@@ -1,0 +1,120 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+@custom-variant dark (&:is(.dark *));
+
+/* ---------- Ember design tokens (DESIGN.md aligned) ----------
+   - Clean SaaS aesthetic, Linear/Notion/Stripe-ish.
+   - Two accent colors max (warm ember red + cool slate accent).
+   - 8px spacing rhythm, 16px radius for cards, soft shadows.
+   - Dark by default — music app.                              */
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-destructive: var(--destructive);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-ember: var(--ember);
+  --color-ember-soft: var(--ember-soft);
+
+  --font-sans: var(--font-sans);
+  --font-mono: var(--font-mono);
+  --font-heading: var(--font-sans);
+
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 16px;
+  --radius-xl: 20px;
+  --radius-2xl: 24px;
+}
+
+:root {
+  /* Dark default. Light theme kept as a possibility but app boots dark. */
+  --background: oklch(0.16 0.005 260);
+  --foreground: oklch(0.98 0 0);
+  --surface: oklch(0.20 0.005 260);
+  --surface-2: oklch(0.24 0.005 260);
+  --card: oklch(0.20 0.005 260);
+  --card-foreground: oklch(0.98 0 0);
+  --popover: oklch(0.22 0.006 260);
+  --popover-foreground: oklch(0.98 0 0);
+  --primary: oklch(0.98 0 0);
+  --primary-foreground: oklch(0.18 0.005 260);
+  --secondary: oklch(0.26 0.005 260);
+  --secondary-foreground: oklch(0.98 0 0);
+  --muted: oklch(0.24 0.005 260);
+  --muted-foreground: oklch(0.70 0.005 260);
+  --accent: oklch(0.30 0.005 260);
+  --accent-foreground: oklch(0.98 0 0);
+  --destructive: oklch(0.65 0.22 25);
+  --border: oklch(1 0 0 / 8%);
+  --input: oklch(1 0 0 / 12%);
+  --ring: oklch(0.68 0.20 25);
+  --radius: 16px;
+  --sidebar: oklch(0.13 0.005 260);
+  --sidebar-foreground: oklch(0.95 0 0);
+  --sidebar-primary: oklch(0.68 0.20 25);
+  --sidebar-primary-foreground: oklch(0.98 0 0);
+  --sidebar-accent: oklch(0.22 0.005 260);
+  --sidebar-accent-foreground: oklch(0.98 0 0);
+  --sidebar-border: oklch(1 0 0 / 6%);
+  --sidebar-ring: oklch(0.68 0.20 25);
+  /* Brand accents — warm ember + softer secondary. */
+  --ember: oklch(0.68 0.20 25);
+  --ember-soft: oklch(0.78 0.13 25);
+}
+
+@layer base {
+  html, body, #__next { height: 100%; }
+  * { @apply border-border; }
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-feature-settings: "ss01" on, "cv11" on;
+  }
+  /* Custom scrollbar — thin, on-brand. */
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-thumb {
+    background: color-mix(in oklab, var(--foreground) 14%, transparent);
+    border-radius: 999px;
+    border: 2px solid transparent;
+    background-clip: padding-box;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: color-mix(in oklab, var(--foreground) 24%, transparent);
+    background-clip: padding-box;
+  }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::selection { background: color-mix(in oklab, var(--ember) 35%, transparent); }
+}
+
+/* Ember utility classes (small set, used in JSX). 8px scale, soft shadows. */
+@layer utilities {
+  .shadow-soft   { box-shadow: 0 1px 2px rgba(0,0,0,.20), 0 6px 24px -8px rgba(0,0,0,.45); }
+  .shadow-glow   { box-shadow: 0 8px 30px -12px color-mix(in oklab, var(--ember) 65%, transparent); }
+  .ring-ember    { box-shadow: 0 0 0 2px color-mix(in oklab, var(--ember) 70%, transparent); }
+  .scrollbar-thin::-webkit-scrollbar { height: 6px; width: 6px; }
+}

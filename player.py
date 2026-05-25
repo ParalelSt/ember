@@ -49,14 +49,19 @@ def to_track_json(t):
     """Normalize a ytmusicapi search result into a flat JSON record."""
     artists = t.get("artists") or []
     artist = artists[0].get("name") if artists else "Unknown"
-    album = (t.get("album") or {}).get("name")
+    artist_id = artists[0].get("id") if artists else None
+    album_obj = t.get("album") or {}
+    album = album_obj.get("name") if isinstance(album_obj, dict) else None
+    album_id = album_obj.get("id") if isinstance(album_obj, dict) else None
     thumbs = t.get("thumbnails") or []
     artwork = thumbs[-1].get("url") if thumbs else None
     return {
         "videoId": t.get("videoId"),
         "title": t.get("title"),
         "artist": artist,
+        "artistId": artist_id,
         "album": album,
+        "albumId": album_id,
         "durationSec": t.get("duration_seconds") or 0,
         "artworkUrl": artwork,
     }
@@ -129,6 +134,105 @@ def cmd_download(args):
     file_path = download_by_id(args.video_id)
     json.dump({"filePath": str(file_path.resolve())}, sys.stdout)
 
+def cmd_info(args):
+    """Resolve a videoId to a direct streamable URL (no download).
+    Used by the API's stream-proxy mode so songs aren't saved to disk."""
+    url = f"https://www.youtube.com/watch?v={args.video_id}"
+    ydl_opts = {
+        'format': 'bestaudio[ext=m4a]/bestaudio[ext=webm]/bestaudio',
+        'quiet': True,
+        'no_warnings': True,
+        'skip_download': True,
+    }
+    with contextlib.redirect_stdout(sys.stderr):
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(url, download=False)
+    json.dump({
+        "url": info.get("url"),
+        "ext": info.get("ext"),
+        "filesize": info.get("filesize") or info.get("filesize_approx"),
+        "durationSec": info.get("duration"),
+        "title": info.get("title"),
+    }, sys.stdout)
+
+def cmd_recommended(args):
+    """Songs related to a seed videoId — uses YT Music's 'watch playlist'
+    (the up-next radio for that song). Falls back to charts when seed is
+    missing or the lookup fails."""
+    items = []
+    if args.seed:
+        try:
+            wp = yt.get_watch_playlist(videoId=args.seed, limit=args.limit)
+            items = (wp or {}).get('tracks', []) or []
+            # First item is often the seed track itself; drop it so the user
+            # sees actual recommendations, not a self-reference.
+            items = [t for t in items if t.get('videoId') != args.seed]
+        except Exception as e:
+            print(f"recommended: watch_playlist failed ({e})", file=sys.stderr)
+
+    if not items:
+        try:
+            charts = yt.get_charts(country=args.country)
+            for key in ('songs', 'trending', 'videos'):
+                section = charts.get(key)
+                if section and 'items' in section:
+                    items = section['items']
+                    break
+        except Exception as e:
+            print(f"recommended: charts fallback failed ({e})", file=sys.stderr)
+
+    tracks = [to_track_json(t) for t in items if t.get('videoId')]
+    json.dump(tracks, sys.stdout)
+
+def cmd_artist(args):
+    """Resolve a YT Music artist channelId to the artist profile + their
+    top songs. The user clicks an artist name in a track row, which routes
+    to /artist/<channelId>; this fills that page."""
+    try:
+        info = yt.get_artist(channelId=args.channel_id)
+    except Exception as e:
+        print(f"artist failed: {e}", file=sys.stderr)
+        json.dump({"error": str(e)}, sys.stdout)
+        return
+
+    songs_section = info.get("songs") or {}
+    songs = songs_section.get("results") or []
+
+    # Some artists only expose the small "songs" list; fall back to a wider
+    # search of their videos so we have more to play.
+    if len(songs) < 5:
+        try:
+            extra = yt.search(info.get("name") or "", filter="songs", limit=30)
+            seen_ids = {s.get("videoId") for s in songs}
+            for e in extra or []:
+                if not e.get("videoId") or e.get("videoId") in seen_ids:
+                    continue
+                # only include results actually attributed to this artist
+                if not any((a.get("name") or "").lower() == (info.get("name") or "").lower()
+                           for a in (e.get("artists") or [])):
+                    continue
+                songs.append(e)
+        except Exception as e:
+            print(f"artist: extra search failed: {e}", file=sys.stderr)
+
+    albums = (info.get("albums") or {}).get("results") or []
+    out = {
+        "name": info.get("name"),
+        "description": info.get("description"),
+        "thumbnails": info.get("thumbnails") or [],
+        "tracks": [to_track_json(t) for t in songs if t.get("videoId")],
+        "albums": [
+            {
+                "browseId": a.get("browseId"),
+                "title": a.get("title"),
+                "year": a.get("year"),
+                "thumbnails": a.get("thumbnails"),
+            }
+            for a in albums if a.get("browseId")
+        ],
+    }
+    json.dump(out, sys.stdout)
+
 def cmd_trending(args):
     """Best-effort 'top tracks today' from YT Music charts. Falls back to a
     generic search if the charts API shape changes (it has historically)."""
@@ -178,6 +282,17 @@ def main():
     p_trending = sub.add_parser("trending", help="Top tracks (charts). Prints JSON.")
     p_trending.add_argument("--country", default="ZZ", help="2-letter country code, ZZ=global")
 
+    p_info = sub.add_parser("info", help="Resolve a videoId to a direct stream URL. Prints JSON.")
+    p_info.add_argument("video_id")
+
+    p_rec = sub.add_parser("recommended", help="Up-next radio for a seed videoId. Prints JSON.")
+    p_rec.add_argument("--seed", help="Seed videoId; missing falls back to charts")
+    p_rec.add_argument("--limit", type=int, default=30)
+    p_rec.add_argument("--country", default="ZZ")
+
+    p_artist = sub.add_parser("artist", help="Artist profile + top songs by channelId. Prints JSON.")
+    p_artist.add_argument("channel_id")
+
     args = parser.parse_args()
 
     if args.cmd == "search":
@@ -186,6 +301,12 @@ def main():
         cmd_download(args)
     elif args.cmd == "trending":
         cmd_trending(args)
+    elif args.cmd == "info":
+        cmd_info(args)
+    elif args.cmd == "recommended":
+        cmd_recommended(args)
+    elif args.cmd == "artist":
+        cmd_artist(args)
     else:
         cmd_interactive()
 

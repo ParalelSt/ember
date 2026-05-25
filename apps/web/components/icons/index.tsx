@@ -1,0 +1,20 @@
+// Re-export the lucide icons we use, with the names the app references.
+// Centralized so swapping the icon library later is a one-file change.
+export {
+  House as HomeIcon,
+  Search as SearchIcon,
+  LibraryBig as LibraryIcon,
+  Play as PlayIcon,
+  Pause as PauseIcon,
+  SkipForward as NextIcon,
+  SkipBack as PrevIcon,
+  Heart as HeartIcon,
+  Plus as PlusIcon,
+  Trash2 as TrashIcon,
+  Volume2 as VolumeIcon,
+  LogOut as LogOutIcon,
+  Menu as MenuIcon,
+  X as CloseIcon,
+  Music as MusicIcon,
+  Flame as FlameIcon,
+} from 'lucide-react';

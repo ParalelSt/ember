@@ -1,0 +1,19 @@
+{
+  "name": "mobile",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Capacitor wrapper that bundles the apps/web build into a native Android (and later iOS) app.",
+  "scripts": {
+    "sync": "cap sync",
+    "open:android": "cap open android",
+    "build:android": "(cd ../web && npm run build) && cap sync android",
+    "run:android": "npm run build:android && cap run android"
+  },
+  "dependencies": {
+    "@capacitor/android": "^6.2.0",
+    "@capacitor/core": "^6.2.0"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^6.2.0"
+  }
+}

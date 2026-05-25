@@ -1,0 +1,36 @@
+# systemd user unit for the Ember API + web bundle.
+#
+# Install:
+#   mkdir -p ~/.config/systemd/user
+#   cp deploy/ember.service ~/.config/systemd/user/
+#   systemctl --user daemon-reload
+#   systemctl --user enable --now ember
+#   systemctl --user status ember
+#   journalctl --user -u ember -f       # follow logs
+#
+# To survive logout (so it keeps running when you SSH out):
+#   sudo loginctl enable-linger aron
+#
+# Edit Environment / paths below if your install location, Node binary, or
+# user differ.
+
+[Unit]
+Description=Ember music app (API + static web)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/spotify-clone
+Environment=NODE_ENV=production
+Environment=PORT=4040
+Environment=HOST=0.0.0.0
+# If your `node` isn't on PATH for systemd, hard-code it here:
+ExecStart=%h/.nvm/versions/node/v24.13.0/bin/node apps/api/src/index.js
+Restart=on-failure
+RestartSec=3
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=default.target

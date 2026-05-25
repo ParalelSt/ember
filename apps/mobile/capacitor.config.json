@@ -1,0 +1,8 @@
+{
+  "appId": "app.ember.music",
+  "appName": "Ember",
+  "webDir": "../web/dist",
+  "android": {
+    "allowMixedContent": false
+  }
+}

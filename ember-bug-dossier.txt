@@ -1,0 +1,295 @@
+Ember music app — "song state and login keep resetting" bug
+============================================================
+
+STACK
+-----
+- React 18 + Vite SPA, served by Express (single port :4040) in production via systemd.
+- @supabase/supabase-js v2.45 for auth, with sessions in browser localStorage.
+- Custom HTML5 <audio>-based player wrapped in a PlayerProvider context. State
+  (queue, current index, volume, position) is also persisted to localStorage.
+- A service worker (sw.js) is registered in production builds. Network-first for
+  navigation, cache-first for fingerprinted assets. Current cache name
+  "ember-shell-v4".
+- Tested primarily on Chrome on Android, accessing a LAN URL
+  (http://192.168.1.105:4040).
+
+
+SYMPTOMS (still happening after multiple supposed "fixes")
+----------------------------------------------------------
+1. Auth resets: User signs in. Closes the tab (or sometimes just switches tabs
+   and comes back). Reload of the URL → site shows the login page again. SDK
+   behavior suggests no session is found.
+
+2. Player state resets: Same trigger. The current track, queue, and current
+   playback position go back to "Nothing playing". Volume *seems* to persist
+   sometimes; queue and position do not.
+
+User reports "exactly the same as before" after each round of changes — so
+either the changes aren't reaching the device, or the changes aren't actually
+doing what we think.
+
+
+WHAT WE'VE ALREADY TRIED
+------------------------
+- Made the Supabase config explicit:
+    createClient(URL, ANON, {
+      auth: {
+        persistSession: true,
+        autoRefreshToken: true,
+        detectSessionInUrl: true,
+        storage: window.localStorage,
+        storageKey: 'ember.auth',
+      },
+    })
+
+- In PlayerProvider, on mount we read localStorage['ember.player.v1'] and seed
+  useState(...) with queue, index, volume, plus a wantPosition ref for the
+  saved playback position.
+
+- We persist on every change of queue/index/volume, periodically every 5s while
+  playing, and on pause, visibilitychange→hidden, and pagehide.
+
+- On track-change effect, after audio.src=…; audio.load();, we attach a
+  one-shot loadedmetadata listener that sets audio.currentTime =
+  wantPosition.current if it's > 1s.
+
+- Service worker cache name was bumped each round (now v4) to invalidate the
+  prior shell. SW is dev-build-skipped (import.meta.env.PROD guard) and
+  registered only in prod.
+
+- Vite serves on :5173 in dev, with a proxy /api → http://localhost:4040.
+  In prod, Express on :4040 serves both static dist/ and the API.
+
+
+WORKING HYPOTHESES (RANKED)
+---------------------------
+1. Phone is still using the old service worker / old JS bundle. Chrome on
+   Android is famously sticky about replacing an existing SW. If the SW that's
+   installed predates these fixes, the user is loading an old index.html that
+   points to an old hashed bundle that doesn't have the explicit Supabase
+   config or the player-state persistence. Cache name v3 → v4 should force
+   re-install on next navigation, but only if the new SW is actually fetched
+   and replaces the old one. If the user has the page open in a still-active
+   tab when the new SW is registered, the old SW stays in control until all
+   clients close. This would explain "nothing changed."
+
+2. Mobile Chrome is killing site data. Some Android settings (battery saver,
+   "clear site data on tab close", incognito-by-default extensions) wipe
+   localStorage between sessions. We have no telemetry from the device.
+
+3. A race between SW startup and localStorage reads. Unlikely — localStorage
+   is sync and available before any module runs — but worth ruling out. If
+   the SW serves the bundle from cache, it doesn't change WHEN the JS runs;
+   it just changes which JS runs.
+
+4. Tab is not actually being killed, just hidden, and on resume the audio
+   element pauses and our pause handler immediately writes position: 0
+   because audio.currentTime is briefly 0 right when src reload happens.
+   Concretely: when setQueue(newList) happens during the radio auto-extend
+   effect, the track-change effect runs, calls a.src = newUrl; a.load(),
+   which fires pause natively (currentTime = 0 at this moment), and the
+   pause handler — attached in a sibling effect with the *current* closure —
+   saves position = 0 to localStorage, overwriting the real position. (This
+   is somewhat mitigated by React's effect-cleanup order, but I'm not 100%
+   sure it's bulletproof, especially since the pause handler is in an effect
+   with deps [queue, index, volume] whose closure could be stale at the
+   moment the audio element fires pause during a src swap.)
+
+
+RELEVANT CODE (verbatim)
+========================
+
+apps/web/src/api/supabase.js
+----------------------------
+import { createClient } from '@supabase/supabase-js';
+
+export const supabase = createClient(
+  import.meta.env.VITE_SUPABASE_URL,
+  import.meta.env.VITE_SUPABASE_ANON_KEY,
+  {
+    auth: {
+      persistSession: true,
+      autoRefreshToken: true,
+      detectSessionInUrl: true,
+      storage: typeof window !== 'undefined' ? window.localStorage : undefined,
+      storageKey: 'ember.auth',
+    },
+  },
+);
+
+
+apps/web/src/context/AuthContext.jsx (mount effect)
+---------------------------------------------------
+useEffect(() => {
+  if (typeof window !== 'undefined') {
+    const raw = window.localStorage.getItem('ember.auth');
+    console.log('[auth] ember.auth in localStorage:', raw ? 'yes' : 'NO');
+  }
+  supabase.auth.getSession().then(({ data, error }) => {
+    if (error) console.error('[auth] getSession error:', error);
+    console.log('[auth] initial session:', data?.session ? `user ${data.session.user.email}` : 'none');
+    setSession(data.session);
+    setLoading(false);
+  });
+  const { data: sub } = supabase.auth.onAuthStateChange((event, s) => {
+    console.log('[auth] state change:', event, s?.user?.email ?? 'none');
+    setSession(s);
+  });
+  return () => sub.subscription.unsubscribe();
+}, []);
+
+
+apps/web/src/context/PlayerContext.jsx — relevant excerpts
+----------------------------------------------------------
+const STORAGE = 'ember.player.v1';
+function loadPersisted() {
+  if (typeof window === 'undefined') return {};
+  try { return JSON.parse(window.localStorage.getItem(STORAGE) ?? '{}'); }
+  catch { return {}; }
+}
+function savePersisted(state) {
+  if (typeof window === 'undefined') return;
+  try { window.localStorage.setItem(STORAGE, JSON.stringify(state)); }
+  catch {}
+}
+
+export function PlayerProvider({ children }) {
+  const persisted = loadPersisted();
+  const audioRef = useRef(null);
+  const [queue, setQueue] = useState(Array.isArray(persisted.queue) ? persisted.queue : []);
+  const [index, setIndex] = useState(typeof persisted.index === 'number' ? persisted.index : -1);
+  const [volume, setVolume] = useState(typeof persisted.volume === 'number' ? persisted.volume : 0.4);
+  const userInteracted = useRef(false);
+  const wantPosition = useRef(typeof persisted.position === 'number' ? persisted.position : 0);
+
+  if (!audioRef.current) {
+    audioRef.current = new Audio();
+    audioRef.current.preload = 'metadata';
+  }
+
+  const current = queue[index] ?? null;
+
+  // Persist on queue/index/volume change — also writes current position.
+  useEffect(() => {
+    const a = audioRef.current;
+    savePersisted({ queue, index, volume, position: a?.currentTime ?? 0 });
+  }, [queue, index, volume]);
+
+  // Track-change effect: load src, optionally restore position, optionally play.
+  useEffect(() => {
+    const a = audioRef.current;
+    if (!current) {
+      a.pause();
+      a.removeAttribute('src');
+      setIsPlaying(false); setPosition(0); setDuration(0);
+      return;
+    }
+    a.src = apiUrl(current.streamUrl);
+    a.load();
+    const restoreTo = wantPosition.current;
+    wantPosition.current = 0;
+    if (restoreTo > 1) {
+      const onMeta = () => {
+        if (restoreTo < (a.duration || Infinity)) {
+          a.currentTime = restoreTo;
+          setPosition(restoreTo);
+        }
+      };
+      a.addEventListener('loadedmetadata', onMeta, { once: true });
+    }
+    if (userInteracted.current) {
+      a.play().then(() => setIsPlaying(true)).catch(() => setIsPlaying(false));
+      recordPlayed(current);
+    }
+  }, [current?.id, recordPlayed]);
+
+  // Periodic + event-driven save of full state including currentTime.
+  useEffect(() => {
+    const a = audioRef.current;
+    const save = () => savePersisted({ queue, index, volume, position: a.currentTime || 0 });
+    const periodic = setInterval(() => { if (!a.paused) save(); }, 5000);
+    const onVis = () => { if (document.hidden) save(); };
+    a.addEventListener('pause', save);
+    document.addEventListener('visibilitychange', onVis);
+    window.addEventListener('pagehide', save);
+    return () => {
+      clearInterval(periodic);
+      a.removeEventListener('pause', save);
+      document.removeEventListener('visibilitychange', onVis);
+      window.removeEventListener('pagehide', save);
+    };
+  }, [queue, index, volume]);
+}
+
+
+apps/web/public/sw.js (current cache v4)
+----------------------------------------
+const CACHE = 'ember-shell-v4';
+const SHELL = ['/', '/index.html', '/manifest.webmanifest'];
+
+self.addEventListener('install', e => {
+  e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)).then(() => self.skipWaiting()));
+});
+self.addEventListener('activate', e => {
+  e.waitUntil(
+    caches.keys().then(keys => Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k))))
+      .then(() => self.clients.claim()),
+  );
+});
+self.addEventListener('fetch', e => {
+  const url = new URL(e.request.url);
+  if (url.pathname.startsWith('/api/')) return;
+  if (url.origin !== self.location.origin) return;
+  if (e.request.method !== 'GET') return;
+  const isNavigation = e.request.mode === 'navigate' || url.pathname === '/' || url.pathname === '/index.html';
+  if (isNavigation) {
+    e.respondWith(
+      fetch(e.request).then(r => {
+        if (r && r.status === 200) {
+          const c = r.clone();
+          caches.open(CACHE).then(cache => cache.put(e.request, c));
+        }
+        return r;
+      }).catch(() => caches.match(e.request).then(r => r ?? caches.match('/index.html'))),
+    );
+    return;
+  }
+  e.respondWith(
+    caches.match(e.request).then(hit => {
+      if (hit) return hit;
+      return fetch(e.request).then(r => {
+        if (!r || r.status !== 200 || r.type !== 'basic') return r;
+        const c = r.clone();
+        caches.open(CACHE).then(cache => cache.put(e.request, c));
+        return r;
+      });
+    }),
+  );
+});
+
+
+SPECIFIC QUESTIONS I WANT ANSWERED
+==================================
+1. Why might 'ember.auth' fail to persist in mobile Chrome's localStorage
+   despite an explicit `persistSession: true, storage: window.localStorage,
+   storageKey: 'ember.auth'` config? Are there known issues with custom
+   storageKey in @supabase/supabase-js v2.45?
+
+2. Is there a race in my PlayerContext where the pause event firing during
+   audio.src = …; audio.load() (track switch) could cause my pause handler
+   to overwrite position with 0 in localStorage using stale queue/index
+   from the previous closure?
+
+3. What's the canonical way to force an Android Chrome PWA to fully replace
+   its old service worker so a user is guaranteed to get the new bundle?
+   Is bumping cache name + skipWaiting + clients.claim enough, or do we need
+   an unregister() flow?
+
+4. Could a pagehide save without event.persisted check be racing or missing
+   entirely on mobile when the tab is killed? Should I be using the Storage
+   API or IndexedDB instead of localStorage for durability across mobile
+   lifecycle events?
+
+5. Is JSON.parse-on-every-PlayerProvider-render a problem (re-parses the
+   whole queue on every render even though useState lazy initializer would
+   be safer)? Should I be using useState(() => loadPersisted())?
