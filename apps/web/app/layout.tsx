@@ -1,7 +1,7 @@
 import type { Metadata, Viewport } from 'next';
 import { Inter } from 'next/font/google';
-import { createClient } from '@/lib/supabase/server';
-import { AuthProvider } from '@/components/providers/AuthProvider';
+import { createClient } from '@/lib/pocketbase/server';
+import { AuthProvider, type AuthUser } from '@/components/providers/AuthProvider';
 import { QueryProvider } from '@/components/providers/QueryProvider';
 import { PlayerProvider } from '@/components/player/PlayerProvider';
 import './globals.css';
@@ -38,14 +38,16 @@ export const viewport: Viewport = {
 };
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
-  const supabase = await createClient();
-  const { data } = await supabase.auth.getSession();
+  const pb = await createClient();
+  const initialUser: AuthUser | null = pb.authStore.isValid && pb.authStore.record
+    ? { id: pb.authStore.record.id, email: String(pb.authStore.record.email ?? '') }
+    : null;
 
   return (
     <html lang="en" className={`${inter.variable} dark`} suppressHydrationWarning>
       <body className="min-h-screen bg-background text-foreground antialiased">
         <QueryProvider>
-          <AuthProvider initialSession={data.session}>
+          <AuthProvider initialUser={initialUser}>
             <PlayerProvider>{children}</PlayerProvider>
           </AuthProvider>
         </QueryProvider>

@@ -1,6 +1,6 @@
 import type { ArtistPayload, Playlist, Track } from '@/types/track';
 
-// Cookies handle auth via @supabase/ssr — no need for manual Bearer headers.
+// Cookies handle auth (PocketBase `pb_auth` cookie) — no manual Bearer headers.
 // API_BASE stays empty for the web build (same-origin); a Capacitor/native
 // shell can set NEXT_PUBLIC_API_BASE_URL to the server's URL.
 export const API_BASE = (process.env.NEXT_PUBLIC_API_BASE_URL ?? '').replace(/\/+$/, '');

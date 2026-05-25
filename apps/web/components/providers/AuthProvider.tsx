@@ -1,12 +1,17 @@
 'use client';
 
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
-import type { Session, User } from '@supabase/supabase-js';
-import { createClient } from '@/lib/supabase/client';
+import { createClient } from '@/lib/pocketbase/client';
+
+/** Minimal user shape exposed to the app — matches the old Supabase one
+ *  closely enough that consumers don't care which backend produced it. */
+export interface AuthUser {
+  id: string;
+  email: string;
+}
 
 interface AuthValue {
-  session: Session | null;
-  user: User | null;
+  user: AuthUser | null;
   loading: boolean;
   signIn: (email: string, password: string) => Promise<{ error: { message: string } | null }>;
   signUp: (email: string, password: string) => Promise<{ error: { message: string } | null; needsConfirmation: boolean }>;
@@ -15,46 +20,60 @@ interface AuthValue {
 
 const AuthContext = createContext<AuthValue | null>(null);
 
-export function AuthProvider({ children, initialSession }: { children: ReactNode; initialSession: Session | null }) {
-  const [supabase] = useState(() => createClient());
-  const [session, setSession] = useState<Session | null>(initialSession);
-  const [loading, setLoading] = useState(initialSession === null);
+export function AuthProvider({ children, initialUser }: { children: ReactNode; initialUser: AuthUser | null }) {
+  const [pb] = useState(() => createClient());
+  const [user, setUser] = useState<AuthUser | null>(initialUser);
+  const [loading, setLoading] = useState(initialUser === null);
 
   useEffect(() => {
-    let active = true;
-    supabase.auth.getSession().then(({ data }) => {
-      if (!active) return;
-      setSession(data.session);
+    // Sync local user state with the SDK on every auth change. The SDK
+    // already syncs to document.cookie via the client wrapper.
+    const unsub = pb.authStore.onChange(() => {
+      const record = pb.authStore.record;
+      setUser(record ? { id: record.id, email: String(record.email ?? '') } : null);
       setLoading(false);
     });
-    const { data: sub } = supabase.auth.onAuthStateChange((_event, s) => setSession(s));
-    return () => {
-      active = false;
-      sub.subscription.unsubscribe();
-    };
-  }, [supabase]);
+
+    // If we mounted without an initial user, attempt a token refresh so a
+    // stale-but-valid cookie can rehydrate the session without a re-login.
+    if (!initialUser && pb.authStore.isValid) {
+      pb.collection('users').authRefresh().catch(() => pb.authStore.clear()).finally(() => setLoading(false));
+    } else {
+      setLoading(false);
+    }
+
+    return () => { unsub(); };
+  }, [pb, initialUser]);
 
   const value = useMemo<AuthValue>(
     () => ({
-      session,
-      user: session?.user ?? null,
+      user,
       loading,
       signIn: async (email, password) => {
-        const { error } = await supabase.auth.signInWithPassword({ email, password });
-        return { error: error ? { message: error.message } : null };
+        try {
+          await pb.collection('users').authWithPassword(email, password);
+          return { error: null };
+        } catch (e) {
+          return { error: { message: (e as Error).message } };
+        }
       },
       signUp: async (email, password) => {
-        const { data, error } = await supabase.auth.signUp({ email, password });
-        return {
-          error: error ? { message: error.message } : null,
-          needsConfirmation: !error && !!data?.user && !data?.session,
-        };
+        try {
+          await pb.collection('users').create({ email, password, passwordConfirm: password });
+          // PocketBase doesn't gate on email verification out of the box —
+          // sign the user straight in. If you enable "require verified" in
+          // the admin UI, swap this for a verification flow.
+          await pb.collection('users').authWithPassword(email, password);
+          return { error: null, needsConfirmation: false };
+        } catch (e) {
+          return { error: { message: (e as Error).message }, needsConfirmation: false };
+        }
       },
       signOut: async () => {
-        await supabase.auth.signOut();
+        pb.authStore.clear();
       },
     }),
-    [session, loading, supabase],
+    [pb, user, loading],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

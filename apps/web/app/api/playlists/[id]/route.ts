@@ -1,28 +1,33 @@
 import type { NextRequest } from 'next/server';
 import { requireUser, UnauthorizedError, unauthorizedResponse } from '@/lib/auth';
-import { mapTrackRow } from '@/lib/mapTrack';
+import { mapTrackRow, type TrackRecord } from '@/lib/mapTrack';
 import { fromError } from '@/lib/upsertTrack';
 
 export async function GET(_req: NextRequest, ctx: RouteContext<'/api/playlists/[id]'>) {
   try {
-    const { supabase } = await requireUser();
+    const { pb } = await requireUser();
     const { id } = await ctx.params;
-    const { data: playlist, error: pErr } = await supabase
-      .from('playlists')
-      .select('id, name, created_at')
-      .eq('id', id)
-      .single();
-    if (pErr) throw pErr;
-    const { data: items, error: iErr } = await supabase
-      .from('playlist_tracks')
-      .select('position, track:tracks(*)')
-      .eq('playlist_id', id)
-      .order('position');
-    if (iErr) throw iErr;
-    const tracks = (items ?? [])
-      .map((i: { track: unknown }) => mapTrackRow(i.track as Parameters<typeof mapTrackRow>[0]))
+
+    const playlistRec = await pb.collection('playlists').getOne(id);
+
+    const items = await pb.collection('playlist_tracks').getFullList({
+      filter: `playlist = "${id}"`,
+      sort: 'position',
+      expand: 'track',
+    });
+
+    const tracks = items
+      .map((i) => mapTrackRow(((i.expand?.track as unknown) ?? null) as TrackRecord | null))
       .filter(Boolean);
-    return Response.json({ playlist, tracks });
+
+    return Response.json({
+      playlist: {
+        id: playlistRec.id,
+        name: String(playlistRec.name ?? ''),
+        created_at: String(playlistRec.created ?? ''),
+      },
+      tracks,
+    });
   } catch (e) {
     if (e instanceof UnauthorizedError) return unauthorizedResponse();
     return fromError(e);
@@ -31,10 +36,9 @@ export async function GET(_req: NextRequest, ctx: RouteContext<'/api/playlists/[
 
 export async function DELETE(_req: NextRequest, ctx: RouteContext<'/api/playlists/[id]'>) {
   try {
-    const { supabase } = await requireUser();
+    const { pb } = await requireUser();
     const { id } = await ctx.params;
-    const { error } = await supabase.from('playlists').delete().eq('id', id);
-    if (error) throw error;
+    await pb.collection('playlists').delete(id);
     return Response.json({ ok: true });
   } catch (e) {
     if (e instanceof UnauthorizedError) return unauthorizedResponse();

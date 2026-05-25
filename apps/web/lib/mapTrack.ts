@@ -1,33 +1,35 @@
 import type { Track } from '@/types/track';
 
-interface TrackRow {
-  id: string;
+/** Shape of a PocketBase `tracks` record (the fields we persist). */
+export interface TrackRecord {
+  id: string;             // PocketBase internal record id (used in relations)
+  external_id: string;    // App-facing id, e.g. "yt_dQw4w9WgXcQ"
   source: string;
   source_id: string;
   title: string;
-  artist: string;
-  artist_id?: string | null;
-  album: string | null;
-  album_id?: string | null;
-  duration_sec: number;
-  artwork_url: string | null;
-  stream_url: string;
+  artist?: string;
+  album?: string;
+  duration_sec?: number;
+  artwork_url?: string;
+  stream_url?: string;
 }
 
-/** Converts a Supabase `tracks` row (snake_case) into the camelCase Track shape. */
-export function mapTrackRow(row: TrackRow | null | undefined): Track | null {
+/** Converts a PocketBase `tracks` record into the camelCase Track shape used
+ *  throughout the app. `Track.id` mirrors the old SQL primary key (the
+ *  app-facing external id), not the PocketBase record id. */
+export function mapTrackRow(row: TrackRecord | null | undefined): Track | null {
   if (!row) return null;
   return {
-    id: row.id,
+    id: row.external_id,
     source: row.source as Track['source'],
     sourceId: row.source_id,
     title: row.title,
-    artist: row.artist,
-    artistId: row.artist_id ?? null,
-    album: row.album,
-    albumId: row.album_id ?? null,
-    durationSec: row.duration_sec,
-    artworkUrl: row.artwork_url,
-    streamUrl: row.stream_url,
+    artist: row.artist ?? '',
+    artistId: null,
+    album: row.album ?? null,
+    albumId: null,
+    durationSec: row.duration_sec ?? 0,
+    artworkUrl: row.artwork_url ?? null,
+    streamUrl: row.stream_url ?? '',
   };
 }

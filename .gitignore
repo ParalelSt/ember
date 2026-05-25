@@ -29,6 +29,11 @@ __pycache__/
 # Local audio cache (large, regenerable)
 my_music/
 
+# PocketBase — binary (per-platform) + data (per-user)
+pocketbase/pocketbase
+pocketbase/pb_data/
+pocketbase/pb_public/
+
 # Editors / OS
 .vscode/
 .idea/

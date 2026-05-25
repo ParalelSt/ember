@@ -1,5 +1,6 @@
 import 'server-only';
-import { createClient } from '@/lib/supabase/server';
+import type PocketBase from 'pocketbase';
+import { createClient } from '@/lib/pocketbase/server';
 
 export class UnauthorizedError extends Error {
   status = 401;
@@ -8,12 +9,23 @@ export class UnauthorizedError extends Error {
   }
 }
 
-/** Returns the current Supabase user or throws UnauthorizedError. */
-export async function requireUser() {
-  const supabase = await createClient();
-  const { data, error } = await supabase.auth.getUser();
-  if (error || !data?.user) throw new UnauthorizedError();
-  return { user: data.user, supabase };
+export interface AuthedUser {
+  id: string;
+  email: string;
+}
+
+/** Returns the current PocketBase user or throws UnauthorizedError. */
+export async function requireUser(): Promise<{ pb: PocketBase; user: AuthedUser }> {
+  const pb = await createClient();
+  if (!pb.authStore.isValid || !pb.authStore.record) throw new UnauthorizedError();
+  const record = pb.authStore.record;
+  return {
+    pb,
+    user: {
+      id: record.id,
+      email: typeof record.email === 'string' ? record.email : '',
+    },
+  };
 }
 
 export function unauthorizedResponse() {

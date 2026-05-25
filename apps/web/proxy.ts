@@ -1,5 +1,10 @@
 import { NextResponse, type NextRequest } from 'next/server';
-import { createServerClient } from '@supabase/ssr';
+import PocketBase from 'pocketbase';
+
+const PB_URL =
+  process.env.POCKETBASE_URL ??
+  process.env.NEXT_PUBLIC_POCKETBASE_URL ??
+  'http://127.0.0.1:8090';
 
 // Public routes (no session required). Auth + stream are open; everything
 // else under the (app) shell requires a session.
@@ -9,24 +14,28 @@ const PUBLIC_API_PREFIXES = ['/api/youtube/stream/', '/api/search', '/api/tracks
 export default async function proxy(req: NextRequest) {
   const response = NextResponse.next({ request: req });
 
-  // Wire Supabase cookie refresh into every response so the access token
-  // stays fresh without the client needing to do anything.
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        getAll() { return req.cookies.getAll(); },
-        setAll(cookiesToSet) {
-          for (const { name, value, options } of cookiesToSet) {
-            response.cookies.set(name, value, options);
-          }
-        },
-      },
-    },
-  );
+  // Load the user from the pb_auth cookie. PocketBase's exportToCookie /
+  // loadFromCookie round-trip means we don't need to manually parse the JWT.
+  const pb = new PocketBase(PB_URL);
+  pb.authStore.loadFromCookie(req.headers.get('cookie') ?? '', 'pb_auth');
 
-  const { data: { user } } = await supabase.auth.getUser();
+  // If the token is close to expiring, refresh and write the new cookie back
+  // so subsequent requests don't re-hit the same code path.
+  if (pb.authStore.isValid) {
+    try {
+      await pb.collection('users').authRefresh();
+      const refreshed = pb.authStore.exportToCookie({
+        httpOnly: false,
+        secure: false,
+        sameSite: 'lax',
+      });
+      response.headers.append('set-cookie', refreshed);
+    } catch {
+      pb.authStore.clear();
+    }
+  }
+
+  const user = pb.authStore.record;
   const path = req.nextUrl.pathname;
 
   const isPublicPage = PUBLIC_PATHS.some((p) => path === p || path.startsWith(p + '/'));

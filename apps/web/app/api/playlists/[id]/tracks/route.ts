@@ -5,26 +5,31 @@ import { fromError, jsonError, upsertTrack } from '@/lib/upsertTrack';
 
 export async function POST(request: NextRequest, ctx: RouteContext<'/api/playlists/[id]/tracks'>) {
   try {
-    const { supabase } = await requireUser();
+    const { pb } = await requireUser();
     const { id } = await ctx.params;
     const body = (await request.json().catch(() => null)) as { track?: Track } | null;
     const track = body?.track;
     if (!track?.id) return jsonError('track required', 400);
 
-    await upsertTrack(supabase, track);
+    const trackRecordId = await upsertTrack(pb, track);
 
-    const { data: maxRow } = await supabase
-      .from('playlist_tracks')
-      .select('position')
-      .eq('playlist_id', id)
-      .order('position', { ascending: false })
-      .limit(1)
-      .maybeSingle();
-    const position = (maxRow?.position ?? -1) + 1;
-    const { error } = await supabase
-      .from('playlist_tracks')
-      .insert({ playlist_id: id, track_id: track.id, position });
-    if (error) throw error;
+    // Append at the next position. Pull the highest existing position via a
+    // single-record query for cheapness.
+    let nextPosition = 0;
+    try {
+      const last = await pb
+        .collection('playlist_tracks')
+        .getFirstListItem(`playlist = "${id}"`, { sort: '-position' });
+      nextPosition = (Number(last.position) || 0) + 1;
+    } catch {
+      // empty playlist — start at 0
+    }
+
+    await pb.collection('playlist_tracks').create({
+      playlist: id,
+      track: trackRecordId,
+      position: nextPosition,
+    });
     return Response.json({ ok: true }, { status: 201 });
   } catch (e) {
     if (e instanceof UnauthorizedError) return unauthorizedResponse();
