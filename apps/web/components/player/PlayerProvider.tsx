@@ -14,6 +14,7 @@ import { usePlayerStore } from '@/stores/usePlayerStore';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { useExecuteRecordPlay, useQueryHistory, useQueryLikes } from '@/hooks/useLibrary';
 import { api, apiUrl } from '@/lib/api';
+import { songKey } from '@/lib/songKey';
 import type { PlaybackContext, Track } from '@/types/track';
 
 interface PlayerControls {
@@ -238,8 +239,20 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     const activeContext = context;
 
     api.getRecommended(currentSourceId).then(({ tracks }) => {
-      // Dedup vs. what's already in the queue.
-      let pool = tracks.filter((t) => t.id !== currentId && !queue.some((q) => q.id === t.id));
+      // Block re-playing the current song or any *version* of it, plus
+      // variants of anything already queued. songKey() ignores
+      // "(Official Video)" / "(Live)" / "(Remix)" noise so we don't line up
+      // five cuts of the same track. Also dedups variants within the pool.
+      const blockedKeys = new Set<string>([songKey(current), ...queue.map(songKey)]);
+      const queuedIds = new Set(queue.map((q) => q.id));
+      const seenKeys = new Set<string>();
+      let pool = tracks.filter((t) => {
+        if (t.id === currentId || queuedIds.has(t.id)) return false;
+        const k = songKey(t);
+        if (blockedKeys.has(k) || seenKeys.has(k)) return false;
+        seenKeys.add(k);
+        return true;
+      });
 
       // Artist context: once the catalog is done, drift to other artists.
       if (activeContext?.type === 'artist' && activeContext.artistName) {
@@ -337,14 +350,14 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     // Synchronously start playback so the user-gesture token isn't lost
     // before audio.play() fires (React 19 schedules effects async).
     loadAndPlay(track, true);
-    if (list && list.length) {
-      const i = list.findIndex((t) => t.id === track.id);
-      setQueue(list);
-      setIndex(i >= 0 ? i : 0);
-    } else {
-      setQueue([track]);
-      setIndex(0);
-    }
+    // Searching for a song and tapping it should play just that song, then
+    // flow into radio — NOT walk through the (variant-heavy) results list.
+    // Other contexts (artist/playlist) still queue their whole list in order.
+    const isSearch = nextContext?.type === 'search';
+    const queueList = !isSearch && list && list.length ? list : [track];
+    const i = queueList.findIndex((t) => t.id === track.id);
+    setQueue(queueList);
+    setIndex(i >= 0 ? i : 0);
     // Default to 'single' when a caller didn't specify — keeps radio behavior
     // identical to today's "play this one and discover similar" flow.
     setContext(nextContext ?? { type: 'single' });
