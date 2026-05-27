@@ -42,7 +42,7 @@ export default function SearchPage() {
       {isFetching && !data?.length ? (
         <div className="text-muted-foreground text-sm py-12 text-center">Searching…</div>
       ) : (
-        <TrackList tracks={data ?? []} />
+        <TrackList tracks={data ?? []} context={{ type: 'search', query: debouncedQ }} />
       )}
     </div>
   );

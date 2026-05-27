@@ -33,6 +33,7 @@ export default function PlaylistPage({ params }: { params: Promise<{ id: string 
   if (isLoading || !data) return <div className="text-muted-foreground py-12 text-center">Loading…</div>;
 
   const { playlist, tracks } = data;
+  const playlistContext = { type: 'playlist' as const, playlistId: id, playlistName: playlist.name };
 
   const handleDelete = async () => {
     if (!window.confirm(`Delete "${playlist.name}"?`)) return;
@@ -55,7 +56,7 @@ export default function PlaylistPage({ params }: { params: Promise<{ id: string 
       <div className="flex items-center gap-3 mb-6">
         <Button
           size="icon"
-          onClick={() => tracks.length && playTrack(tracks[0], tracks)}
+          onClick={() => tracks.length && playTrack(tracks[0], tracks, playlistContext)}
           disabled={!tracks.length}
           className="h-12 w-12 rounded-full bg-ember hover:bg-ember-soft text-white shadow-glow"
           aria-label="Play"
@@ -69,7 +70,7 @@ export default function PlaylistPage({ params }: { params: Promise<{ id: string 
       {tracks.length === 0 ? (
         <div className="text-muted-foreground py-12 text-center">No tracks yet.</div>
       ) : (
-        <TrackList tracks={tracks} onRemove={(trackId) => removeFromPlaylist.mutate({ id, trackId })} />
+        <TrackList tracks={tracks} context={playlistContext} onRemove={(trackId) => removeFromPlaylist.mutate({ id, trackId })} />
       )}
     </div>
   );

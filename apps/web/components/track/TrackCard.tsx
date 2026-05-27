@@ -3,20 +3,22 @@
 import Link from 'next/link';
 import { usePlayer } from '@/components/player/PlayerProvider';
 import { PlayIcon } from '@/components/icons';
-import type { Track } from '@/types/track';
+import type { PlaybackContext, Track } from '@/types/track';
 import { cn } from '@/lib/utils';
 
 interface Props {
   track: Track;
   list?: Track[];
   className?: string;
+  /** Where this card lives — drives radio behavior after the queue ends. */
+  context?: PlaybackContext | null;
 }
 
-export function TrackCard({ track, list, className }: Props) {
+export function TrackCard({ track, list, className, context }: Props) {
   const { playTrack } = usePlayer();
   return (
     <div
-      onClick={() => playTrack(track, list)}
+      onClick={() => playTrack(track, list, context)}
       className={cn(
         'group relative p-4 rounded-xl bg-card hover:bg-card/80 transition-colors cursor-pointer',
         className,
@@ -43,7 +45,7 @@ export function TrackCard({ track, list, className }: Props) {
         )}
       </div>
       <button
-        onClick={(e) => { e.stopPropagation(); playTrack(track, list); }}
+        onClick={(e) => { e.stopPropagation(); playTrack(track, list, context); }}
         className="absolute right-4 bottom-14 grid h-10 w-10 place-items-center rounded-full bg-ember text-white shadow-glow opacity-0 translate-y-2 group-hover:opacity-100 group-hover:translate-y-0 transition-all"
         aria-label="Play"
       >

@@ -7,7 +7,7 @@ import { AddToPlaylistMenu } from './AddToPlaylistMenu';
 import { usePlayer } from '@/components/player/PlayerProvider';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { useExecuteToggleLike, useQueryLikes } from '@/hooks/useLibrary';
-import type { Track } from '@/types/track';
+import type { PlaybackContext, Track } from '@/types/track';
 import { cn } from '@/lib/utils';
 
 function fmt(sec: number | undefined): string {
@@ -21,9 +21,11 @@ interface Props {
   tracks: Track[];
   showAlbum?: boolean;
   onRemove?: (trackId: string) => void;
+  /** Where this list lives — drives radio behavior after the queue ends. */
+  context?: PlaybackContext | null;
 }
 
-export function TrackList({ tracks, showAlbum = true, onRemove }: Props) {
+export function TrackList({ tracks, showAlbum = true, onRemove, context }: Props) {
   const { current, isPlaying, playTrack, toggle } = usePlayer();
   const { user } = useAuth();
   const { data: liked = [] } = useQueryLikes();
@@ -47,7 +49,7 @@ export function TrackList({ tracks, showAlbum = true, onRemove }: Props) {
         return (
           <div
             key={t.id}
-            onDoubleClick={() => playTrack(t, tracks)}
+            onDoubleClick={() => playTrack(t, tracks, context)}
             className={cn(
               'group grid grid-cols-[40px_minmax(0,1fr)_auto] md:grid-cols-[40px_minmax(0,1fr)_minmax(0,1fr)_60px_auto] gap-3 items-center px-3 py-2 rounded-md cursor-pointer hover:bg-card transition-colors',
               playing && 'text-ember',
@@ -58,7 +60,7 @@ export function TrackList({ tracks, showAlbum = true, onRemove }: Props) {
                 variant="ghost"
                 size="icon"
                 className="h-8 w-8"
-                onClick={() => (playing ? toggle() : playTrack(t, tracks))}
+                onClick={() => (playing ? toggle() : playTrack(t, tracks, context))}
                 aria-label={playing && isPlaying ? 'Pause' : 'Play'}
               >
                 {playing && isPlaying ? <PauseIcon className="h-3.5 w-3.5" /> : <PlayIcon className="h-3.5 w-3.5" />}
@@ -71,12 +73,12 @@ export function TrackList({ tracks, showAlbum = true, onRemove }: Props) {
                 <img
                   src={t.artworkUrl}
                   alt=""
-                  onClick={() => playTrack(t, tracks)}
+                  onClick={() => playTrack(t, tracks, context)}
                   className="h-10 w-10 rounded shrink-0 object-cover bg-black"
                 />
               )}
               <div className="min-w-0">
-                <div onClick={() => playTrack(t, tracks)} className="truncate text-sm font-semibold">
+                <div onClick={() => playTrack(t, tracks, context)} className="truncate text-sm font-semibold">
                   {t.title}
                 </div>
                 <div className="truncate text-xs text-muted-foreground">

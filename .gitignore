@@ -34,6 +34,9 @@ pocketbase/pocketbase
 pocketbase/pb_data/
 pocketbase/pb_public/
 
+# cloudflared — tunnel binary (per-platform)
+pocketbase/cloudflared
+
 # Editors / OS
 .vscode/
 .idea/

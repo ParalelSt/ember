@@ -17,4 +17,5 @@ export {
   X as CloseIcon,
   Music as MusicIcon,
   Flame as FlameIcon,
+  ChevronDown as ChevronDownIcon,
 } from 'lucide-react';

@@ -25,6 +25,7 @@ export default function ArtistPage({ params }: { params: Promise<{ id: string }>
 
   const { name, description, thumbnails = [], tracks = [] } = data;
   const heroArt = thumbnails[thumbnails.length - 1]?.url;
+  const artistContext = { type: 'artist' as const, artistName: name, artistId: id };
 
   return (
     <div>
@@ -42,7 +43,7 @@ export default function ArtistPage({ params }: { params: Promise<{ id: string }>
       <div className="flex items-center gap-3 mb-6">
         <Button
           size="icon"
-          onClick={() => tracks.length && playTrack(tracks[0], tracks)}
+          onClick={() => tracks.length && playTrack(tracks[0], tracks, artistContext)}
           disabled={!tracks.length}
           className="h-12 w-12 rounded-full bg-ember hover:bg-ember-soft text-white shadow-glow"
           aria-label="Play top tracks"
@@ -51,7 +52,7 @@ export default function ArtistPage({ params }: { params: Promise<{ id: string }>
         </Button>
       </div>
       <h2 className="mb-3 text-xl font-bold tracking-tight">Top tracks</h2>
-      <TrackList tracks={tracks} />
+      <TrackList tracks={tracks} context={artistContext} />
     </div>
   );
 }

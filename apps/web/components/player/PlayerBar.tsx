@@ -8,6 +8,7 @@ import { AddToPlaylistMenu } from '@/components/track/AddToPlaylistMenu';
 import { usePlayer } from '@/components/player/PlayerProvider';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { useExecuteToggleLike, useQueryLikes } from '@/hooks/useLibrary';
+import { usePlayerStore } from '@/stores/usePlayerStore';
 import { cn } from '@/lib/utils';
 
 function fmt(sec: number): string {
@@ -23,28 +24,40 @@ export function PlayerBar() {
   const { data: liked = [] } = useQueryLikes();
   const toggleLike = useExecuteToggleLike();
   const isLiked = current ? liked.some((t) => t.id === current.id) : false;
+  const openNowPlaying = usePlayerStore((s) => s.setNowPlayingOpen);
 
   return (
     <footer
       className="bg-sidebar border-t border-sidebar-border px-4 py-3 grid grid-cols-[1fr_auto_1fr] md:grid-cols-[1fr_2fr_1fr] gap-4 items-center"
       style={{ paddingBottom: 'calc(0.75rem + env(safe-area-inset-bottom, 0px))' }}
     >
-      {/* Now playing */}
+      {/* Now playing — tapping the art/title opens the full-screen view on phones. */}
       <div className="flex items-center gap-3 min-w-0">
-        {current?.artworkUrl && (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={current.artworkUrl} alt="" className="h-12 w-12 rounded-md object-cover bg-black shrink-0" />
-        )}
-        <div className="min-w-0 flex-1">
-          <div className="truncate text-sm font-semibold">{current?.title ?? 'Nothing playing'}</div>
-          <div className="truncate text-xs text-muted-foreground">
-            {current?.artistId ? (
-              <Link href={`/artist/${current.artistId}`} className="hover:underline">
-                {current.artist}
-              </Link>
-            ) : (
-              current?.artist ?? ''
-            )}
+        <div
+          onClick={() => {
+            if (current && window.matchMedia('(max-width: 767px)').matches) openNowPlaying(true);
+          }}
+          className="flex items-center gap-3 min-w-0 flex-1 cursor-pointer md:cursor-default"
+        >
+          {current?.artworkUrl && (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={current.artworkUrl} alt="" className="h-12 w-12 rounded-md object-cover bg-black shrink-0" />
+          )}
+          <div className="min-w-0 flex-1">
+            <div className="truncate text-sm font-semibold">{current?.title ?? 'Nothing playing'}</div>
+            <div className="truncate text-xs text-muted-foreground">
+              {current?.artistId ? (
+                <Link
+                  href={`/artist/${current.artistId}`}
+                  onClick={(e) => e.stopPropagation()}
+                  className="hover:underline"
+                >
+                  {current.artist}
+                </Link>
+              ) : (
+                current?.artist ?? ''
+              )}
+            </div>
           </div>
         </div>
         {current && user && (

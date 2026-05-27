@@ -29,3 +29,15 @@ export interface ArtistPayload {
   tracks: Track[];
   albums: unknown[];
 }
+
+/** Where a queue was started from. Drives radio-mode behavior — e.g. when the
+ *  artist's catalog finishes, we filter out more-of-the-same so the listener
+ *  drifts into similar-genre tracks by other artists. */
+export type PlaybackContext =
+  | { type: 'artist'; artistName: string; artistId?: string | null }
+  | { type: 'search'; query?: string }
+  | { type: 'playlist'; playlistId: string; playlistName: string }
+  | { type: 'liked' }
+  | { type: 'history' }
+  | { type: 'radio' }
+  | { type: 'single' };

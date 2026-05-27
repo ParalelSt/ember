@@ -6,6 +6,7 @@ import { TopBar } from '@/components/nav/TopBar';
 import { MobileNav } from '@/components/nav/MobileNav';
 import { Drawer } from '@/components/nav/Drawer';
 import { PlayerBar } from '@/components/player/PlayerBar';
+import { NowPlaying } from '@/components/player/NowPlaying';
 
 export default function AppShellLayout({ children }: { children: ReactNode }) {
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -21,6 +22,7 @@ export default function AppShellLayout({ children }: { children: ReactNode }) {
         <PlayerBar />
         <MobileNav />
       </div>
+      <NowPlaying />
     </div>
   );
 }

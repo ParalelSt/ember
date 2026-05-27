@@ -14,7 +14,7 @@ import { usePlayerStore } from '@/stores/usePlayerStore';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { useExecuteRecordPlay, useQueryHistory, useQueryLikes } from '@/hooks/useLibrary';
 import { api, apiUrl } from '@/lib/api';
-import type { Track } from '@/types/track';
+import type { PlaybackContext, Track } from '@/types/track';
 
 interface PlayerControls {
   current: Track | null;
@@ -24,7 +24,8 @@ interface PlayerControls {
   volume: number;
   queue: Track[];
   index: number;
-  playTrack: (track: Track, list?: Track[]) => void;
+  context: PlaybackContext | null;
+  playTrack: (track: Track, list?: Track[], context?: PlaybackContext | null) => void;
   toggle: () => void;
   next: () => void;
   prev: () => void;
@@ -46,12 +47,14 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const duration = usePlayerStore((s) => s.duration);
   const isPlaying = usePlayerStore((s) => s.isPlaying);
   const volume = usePlayerStore((s) => s.volume);
+  const context = usePlayerStore((s) => s.context);
   const setQueue = usePlayerStore((s) => s.setQueue);
   const setIndex = usePlayerStore((s) => s.setIndex);
   const setPosition = usePlayerStore((s) => s.setPosition);
   const setDuration = usePlayerStore((s) => s.setDuration);
   const setIsPlaying = usePlayerStore((s) => s.setIsPlaying);
   const setStoreVolume = usePlayerStore((s) => s.setVolume);
+  const setContext = usePlayerStore((s) => s.setContext);
 
   const { user } = useAuth();
   const { data: history = [] } = useQueryHistory();
@@ -214,7 +217,17 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     };
   }, [audioReady]);
 
-  // Radio mode: when at end of queue, fetch recommended and extend.
+  // Radio mode: when at end of queue, fetch recommended and extend. The
+  // candidates from getRecommended() are already same-style as the current
+  // track (YouTube's "watch next"); we layer two priority rules on top:
+  //
+  //   1. If we entered playback from an artist page, filter OUT more by the
+  //      same artist so the listener drifts into similar-genre songs by other
+  //      artists once the catalog runs out.
+  //   2. Re-rank surviving candidates by the user's personal play count, so
+  //      heavily-played tracks within the same style get surfaced first.
+  //      "Heavily played" stands in for "preferred genre" since the candidate
+  //      pool is already genre-similar.
   useEffect(() => {
     if (!current?.sourceId) return;
     if (index !== queue.length - 1) return;
@@ -222,15 +235,45 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     fetchingRadioFor.current = current.id;
     const currentId = current.id;
     const currentSourceId = current.sourceId;
+    const activeContext = context;
 
     api.getRecommended(currentSourceId).then(({ tracks }) => {
-      const knownIds = new Set([...history.map((t) => t.id), ...liked.map((t) => t.id)]);
-      const filtered = tracks.filter((t) => t.id !== currentId && !queue.some((q) => q.id === t.id));
-      const known = filtered.filter((t) => knownIds.has(t.id));
-      const fresh = filtered.filter((t) => !knownIds.has(t.id));
+      // Dedup vs. what's already in the queue.
+      let pool = tracks.filter((t) => t.id !== currentId && !queue.some((q) => q.id === t.id));
+
+      // Artist context: once the catalog is done, drift to other artists.
+      if (activeContext?.type === 'artist' && activeContext.artistName) {
+        const targetArtist = activeContext.artistName.toLowerCase();
+        pool = pool.filter((t) => (t.artist ?? '').toLowerCase() !== targetArtist);
+      }
+
+      // Build per-track play counts from history. History rows are unique
+      // by recordPlay's collapsing (we just count occurrences here, which
+      // already reflects how often the user has hit play).
+      const playCount = new Map<string, number>();
+      for (const t of history) playCount.set(t.id, (playCount.get(t.id) ?? 0) + 1);
+      const likedIds = new Set(liked.map((t) => t.id));
+
+      // Split into "known" (played-before within this genre-similar pool) and
+      // "fresh" (new discoveries). Known gets sorted by play count desc,
+      // tie-break by liked. Fresh keeps the source order from getRecommended.
+      const known = pool
+        .filter((t) => playCount.has(t.id))
+        .sort((a, b) => {
+          const ca = playCount.get(a.id) ?? 0;
+          const cb = playCount.get(b.id) ?? 0;
+          if (cb !== ca) return cb - ca;
+          return Number(likedIds.has(b.id)) - Number(likedIds.has(a.id));
+        });
+      const fresh = pool.filter((t) => !playCount.has(t.id));
+
+      // Front-load 2 favorites so the transition feels personal, then weave
+      // 1 favorite every 3 tracks to keep discovery alive.
       const merged: Track[] = [];
       let ki = 0;
       let fi = 0;
+      const FRONT_LOAD = Math.min(2, known.length);
+      while (ki < FRONT_LOAD) merged.push(known[ki++]);
       while (ki < known.length || fi < fresh.length) {
         if (ki < known.length && merged.length % 3 === 0) merged.push(known[ki++]);
         else if (fi < fresh.length) merged.push(fresh[fi++]);
@@ -240,7 +283,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     }).catch(() => {}).finally(() => {
       if (fetchingRadioFor.current === currentId) fetchingRadioFor.current = null;
     });
-  }, [current?.id, current?.sourceId, index, queue, history, liked, setQueue]);
+  }, [current?.id, current?.sourceId, index, queue, history, liked, context, setQueue]);
 
   // Discord rich presence.
   useEffect(() => {
@@ -289,7 +332,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     };
   }, [audioReady, prev, next, seek]);
 
-  const playTrack = useCallback((track: Track, list?: Track[]) => {
+  const playTrack = useCallback((track: Track, list?: Track[], nextContext?: PlaybackContext | null) => {
     userInteracted.current = true;
     // Synchronously start playback so the user-gesture token isn't lost
     // before audio.play() fires (React 19 schedules effects async).
@@ -302,7 +345,10 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       setQueue([track]);
       setIndex(0);
     }
-  }, [setQueue, setIndex, loadAndPlay]);
+    // Default to 'single' when a caller didn't specify — keeps radio behavior
+    // identical to today's "play this one and discover similar" flow.
+    setContext(nextContext ?? { type: 'single' });
+  }, [setQueue, setIndex, setContext, loadAndPlay]);
 
   const toggle = useCallback(() => {
     userInteracted.current = true;
@@ -319,10 +365,10 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
   const value = useMemo<PlayerControls>(
     () => ({
-      current, isPlaying, position, duration, volume, queue, index,
+      current, isPlaying, position, duration, volume, queue, index, context,
       playTrack, toggle, next, prev, seek, setVolume,
     }),
-    [current, isPlaying, position, duration, volume, queue, index, playTrack, toggle, next, prev, seek, setVolume],
+    [current, isPlaying, position, duration, volume, queue, index, context, playTrack, toggle, next, prev, seek, setVolume],
   );
 
   return <PlayerContext.Provider value={value}>{children}</PlayerContext.Provider>;

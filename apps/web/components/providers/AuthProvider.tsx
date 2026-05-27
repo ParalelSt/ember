@@ -54,7 +54,7 @@ export function AuthProvider({ children, initialUser }: { children: ReactNode; i
           await pb.collection('users').authWithPassword(email, password);
           return { error: null };
         } catch (e) {
-          return { error: { message: (e as Error).message } };
+          return { error: { message: extractPbError(e) } };
         }
       },
       signUp: async (email, password) => {
@@ -66,7 +66,7 @@ export function AuthProvider({ children, initialUser }: { children: ReactNode; i
           await pb.collection('users').authWithPassword(email, password);
           return { error: null, needsConfirmation: false };
         } catch (e) {
-          return { error: { message: (e as Error).message }, needsConfirmation: false };
+          return { error: { message: extractPbError(e) }, needsConfirmation: false };
         }
       },
       signOut: async () => {
@@ -83,4 +83,17 @@ export function useAuth() {
   const ctx = useContext(AuthContext);
   if (!ctx) throw new Error('useAuth must be used inside AuthProvider');
   return ctx;
+}
+
+/** Pulls the actual reason out of a PocketBase ClientResponseError. The
+ *  top-level `.message` is a generic "Something went wrong" — the useful
+ *  per-field info lives in `.data.<field>.message`. */
+function extractPbError(e: unknown): string {
+  if (!e || typeof e !== 'object') return 'Unexpected error';
+  const err = e as { message?: string; data?: Record<string, { message?: string }> };
+  const fieldMsgs = Object.entries(err.data ?? {})
+    .map(([field, info]) => info?.message ? `${field}: ${info.message}` : null)
+    .filter(Boolean)
+    .join(' · ');
+  return fieldMsgs || err.message || 'Unexpected error';
 }
