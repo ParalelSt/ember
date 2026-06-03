@@ -2,7 +2,10 @@
 
 import PocketBase from 'pocketbase';
 
-const PB_URL = process.env.NEXT_PUBLIC_POCKETBASE_URL ?? 'http://127.0.0.1:8090';
+// Defaults to the same-origin `/pb` proxy (see next.config.ts rewrites) so the
+// browser only ever talks to one origin — works locally and behind a single
+// static tunnel URL without per-restart edits.
+const PB_URL = process.env.NEXT_PUBLIC_POCKETBASE_URL ?? '/pb';
 
 /** Browser PocketBase client. Hydrates auth from document.cookie on creation
  *  and writes back to it on every auth change so the server route handlers

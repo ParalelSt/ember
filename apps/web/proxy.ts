@@ -1,10 +1,14 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import PocketBase from 'pocketbase';
 
-const PB_URL =
+// Middleware runs server-side, so it needs an absolute URL. The public
+// NEXT_PUBLIC_POCKETBASE_URL may be the relative `/pb` proxy path; fall back to
+// localhost when it isn't absolute.
+const RAW_PB_URL =
   process.env.POCKETBASE_URL ??
   process.env.NEXT_PUBLIC_POCKETBASE_URL ??
   'http://127.0.0.1:8090';
+const PB_URL = /^https?:\/\//.test(RAW_PB_URL) ? RAW_PB_URL : 'http://127.0.0.1:8090';
 
 // Public routes (no session required). Auth + stream are open; everything
 // else under the (app) shell requires a session.
