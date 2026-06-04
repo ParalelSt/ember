@@ -15,7 +15,7 @@ export function MobileNav() {
   const pathname = usePathname();
   return (
     <nav
-      className="md:hidden flex items-stretch justify-around bg-sidebar border-t border-sidebar-border"
+      className="md:hidden shrink-0 flex items-stretch justify-around bg-sidebar border-t border-sidebar-border"
       style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
     >
       {NAV.map(({ href, label, icon: Icon }) => {

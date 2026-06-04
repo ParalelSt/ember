@@ -28,9 +28,14 @@ export default async function proxy(req: NextRequest) {
   if (pb.authStore.isValid) {
     try {
       await pb.collection('users').authRefresh();
+      // The TLS terminates at the tunnel; trust X-Forwarded-Proto for the
+      // original scheme so we match Secure correctly behind Tailscale Funnel
+      // / Cloudflare Tunnel / any reverse proxy.
+      const fwdProto = req.headers.get('x-forwarded-proto');
+      const isHttps = (fwdProto === 'https') || req.nextUrl.protocol === 'https:';
       const refreshed = pb.authStore.exportToCookie({
         httpOnly: false,
-        secure: false,
+        secure: isHttps,
         sameSite: 'lax',
       });
       response.headers.append('set-cookie', refreshed);
@@ -44,9 +49,13 @@ export default async function proxy(req: NextRequest) {
 
   const isPublicPage = PUBLIC_PATHS.some((p) => path === p || path.startsWith(p + '/'));
   const isPublicApi = path.startsWith('/api/') && PUBLIC_API_PREFIXES.some((p) => path.startsWith(p));
+  // /pb/* is the same-origin proxy to PocketBase; it must stay open to anons
+  // so the sign-in / sign-up endpoints work before there's a session.
+  // PocketBase enforces its own per-collection rules on the other side.
+  const isPbProxy = path.startsWith('/pb/');
   const isInternal = path.startsWith('/_next') || /\.(png|svg|ico|webmanifest|js)$/.test(path);
 
-  if (!user && !isPublicPage && !isPublicApi && !isInternal) {
+  if (!user && !isPublicPage && !isPublicApi && !isPbProxy && !isInternal) {
     const url = req.nextUrl.clone();
     url.pathname = '/auth';
     url.searchParams.set('next', path);

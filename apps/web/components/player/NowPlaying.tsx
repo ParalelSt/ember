@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { Slider } from '@/components/ui/slider';
 import { Button } from '@/components/ui/button';
 import {
-  ChevronDownIcon, HeartIcon, NextIcon, PauseIcon, PlayIcon, PrevIcon, VolumeIcon, MusicIcon,
+  ChevronDownIcon, HeartIcon, NextIcon, PauseIcon, PlayIcon, PrevIcon, MusicIcon,
 } from '@/components/icons';
 import { usePlayer } from '@/components/player/PlayerProvider';
 import { useAuth } from '@/components/providers/AuthProvider';
@@ -27,7 +27,7 @@ function fmt(sec: number): string {
 export function NowPlaying() {
   const open = usePlayerStore((s) => s.nowPlayingOpen);
   const setOpen = usePlayerStore((s) => s.setNowPlayingOpen);
-  const { current, isPlaying, position, duration, volume, toggle, next, prev, seek, setVolume } = usePlayer();
+  const { current, isPlaying, position, duration, toggle, next, prev, seek } = usePlayer();
   const { user } = useAuth();
   const { data: liked = [] } = useQueryLikes();
   const toggleLike = useExecuteToggleLike();
@@ -59,8 +59,10 @@ export function NowPlaying() {
       aria-modal="true"
       aria-hidden={!open}
       className={cn(
-        'md:hidden fixed inset-0 z-60 flex flex-col transition-transform duration-300 ease-out',
-        open ? 'translate-y-0' : 'translate-y-full pointer-events-none',
+        'md:hidden fixed inset-0 z-60 flex flex-col transition-all duration-300 ease-out',
+        // Opacity-0 in addition to the slide-down so iOS Safari can't leak a
+        // sliver of the blurred-artwork backdrop over the PlayerBar.
+        open ? 'translate-y-0 opacity-100' : 'translate-y-full opacity-0 pointer-events-none',
       )}
     >
       {/* Backdrop: blurred artwork + dark gradient for legibility. */}
@@ -165,20 +167,6 @@ export function NowPlaying() {
           </Button>
         </div>
 
-        {/* Volume */}
-        <div className="mt-8 flex items-center gap-3">
-          <VolumeIcon className="h-4 w-4 text-muted-foreground shrink-0" />
-          <Slider
-            value={[volume * 100]}
-            onValueChange={(v) => {
-              const pct = Array.isArray(v) ? (v[0] ?? 0) : v;
-              setVolume(pct / 100);
-            }}
-            max={100}
-            step={1}
-            className="flex-1"
-          />
-        </div>
       </div>
     </div>
   );

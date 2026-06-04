@@ -26,9 +26,14 @@ export function PlayerBar() {
   const isLiked = current ? liked.some((t) => t.id === current.id) : false;
   const openNowPlaying = usePlayerStore((s) => s.setNowPlayingOpen);
 
+  // Only render the bar once playback has actually started. Avoids the
+  // "Nothing playing" placeholder strip and ensures the bar pops in the moment
+  // a song is queued.
+  if (!current) return null;
+
   return (
     <footer
-      className="bg-sidebar border-t border-sidebar-border px-4 py-3 grid grid-cols-[1fr_auto_1fr] md:grid-cols-[1fr_2fr_1fr] gap-4 items-center"
+      className="shrink-0 bg-sidebar border-t border-sidebar-border px-4 py-3 grid grid-cols-[1fr_auto_1fr] md:grid-cols-[1fr_2fr_1fr] gap-4 items-center"
       style={{ paddingBottom: 'calc(0.75rem + env(safe-area-inset-bottom, 0px))' }}
     >
       {/* Now playing — tapping the art/title opens the full-screen view on phones. */}

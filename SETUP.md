@@ -2,12 +2,13 @@
 
 **Parts:** PocketBase (backend, port 8090) · Next (web app, port 3000, proxies `/pb` → PocketBase).
 
-Mac steps below — adapt commands for Linux/Windows (downloads work cross-platform).
+Commands below are **bash**. macOS / Linux: any terminal works. **Windows:** install Git for Windows and use the **Git Bash** terminal it bundles — every command below then works as-is.
 
 ## Prereqs (download once)
 
+- **Git** — https://git-scm.com/downloads. *Windows users:* this installs **Git Bash**, your terminal for the rest of this guide.
 - **Node.js 20+** — https://nodejs.org/en/download → LTS installer.
-- **PocketBase binary** — https://github.com/pocketbase/pocketbase/releases (use v0.22.21). Pick your OS, unzip, drop `pocketbase` (or `pocketbase.exe`) into this repo's `pocketbase/` folder. The binary is gitignored, so fresh clones don't have it.
+- **PocketBase binary** — https://github.com/pocketbase/pocketbase/releases (use v0.22.21). Pick your OS, unzip, drop the executable (`pocketbase` on Mac/Linux, `pocketbase.exe` on Windows) into this repo's `pocketbase/` folder. Gitignored, so fresh clones don't have it.
 - **cloudflared** (only needed for `./start.sh`) — https://github.com/cloudflare/cloudflared/releases. Drop into `pocketbase/` too.
 
 ## First time
@@ -20,7 +21,7 @@ cp apps/web/.env.example apps/web/.env.local
 cd pocketbase && ./pocketbase serve
 ```
 
-In your browser, open http://127.0.0.1:8090/_/ → create the **backend admin** account on first run. (This is for managing PocketBase; your app users sign up separately.)
+Open http://127.0.0.1:8090/_/ in your browser → create the **backend admin** account on first run. (This manages PocketBase; your app users sign up separately.)
 
 ## Run locally
 
@@ -45,21 +46,34 @@ Prints a public URL — open it on your phone. `Ctrl+C` stops everything. **URL 
 
 ## Permanent URL (free, no domain) — Tailscale Funnel
 
-Static `https://ember.<your-tailnet>.ts.net` over the public internet. Free. Only the host needs Tailscale; phones/users just open the URL. Your Mac has to be **on + signed into Tailscale** for the URL to work.
+Static `https://ember.<your-tailnet>.ts.net` over the public internet. Free. Your computer must stay **on + signed into Tailscale** for the URL to work; phones/users just visit it.
 
-**1. Install Tailscale** — `.pkg` from https://tailscale.com/download/mac → install → **open the Tailscale app once** → sign in with Google / Microsoft / GitHub / Apple (creates your tailnet). Verify the CLI is available:
+**1. Install Tailscale** — https://tailscale.com/download picks the right installer for Mac / Linux / Windows. Install → open the app once → sign in (Google / Microsoft / GitHub / Apple — creates your tailnet). Verify the CLI:
 
 ```bash
 tailscale --version
 ```
 
-If "command not found", open the Tailscale app menu bar item → Preferences → click *Install CLI* (or `sudo ln -s /Applications/Tailscale.app/Contents/MacOS/Tailscale /usr/local/bin/tailscale`).
+If "command not found":
+- **macOS:** Tailscale menu bar → *Preferences* → **Install CLI**.
+- **Windows:** make sure you installed the system installer (not the Store app); restart Git Bash.
+- **Linux:** the official install script (`curl -fsSL https://tailscale.com/install.sh | sh`) gives the CLI directly.
 
-**2. Admin console** at https://login.tailscale.com/admin:
+**2. Admin console** at https://login.tailscale.com/admin (same in any browser):
 
 - *DNS* → scroll to **HTTPS Certificates** → click **Enable HTTPS**.
-- *Machines* → click this Mac → *Edit machine name* → set to **`ember`**.
-- Back on the machine row → toggle **Funnel** on. If the toggle isn't there: *Access controls* → add the line `"nodeAttrs": [{"target": ["autogroup:member"], "attr": ["funnel"]}]` inside the JSON, save.
+- *Machines* → click this computer → *Edit machine name* → set to **`ember`**.
+- Back on the machine row → toggle **Funnel** on.
+
+If you don't see a Funnel toggle, do this instead — open *Access controls* in the left sidebar (it shows the ACL as JSON), then **add a new top-level key** `nodeAttrs`. Paste this block just before the final closing `}` of the file:
+
+```jsonc
+"nodeAttrs": [
+  {"target": ["autogroup:member"], "attr": ["funnel"]},
+],
+```
+
+If the line before it doesn't already end with a comma, add one — Tailscale's ACL is HuJSON, so trailing commas are fine, and the comma between top-level keys is what matters. Click **Save**, then refresh the *Machines* page and the Funnel toggle will appear.
 
 **3. Start the public tunnel (once — persists across reboots):**
 
@@ -67,7 +81,7 @@ If "command not found", open the Tailscale app menu bar item → Preferences →
 tailscale funnel --bg 3000
 ```
 
-It prints `https://ember.<your-tailnet>.ts.net` — that's your permanent URL.
+It prints `https://ember.<your-tailnet>.ts.net` — your permanent URL.
 
 **4. Run the app:**
 
@@ -77,7 +91,7 @@ It prints `https://ember.<your-tailnet>.ts.net` — that's your permanent URL.
 
 Stop the tunnel later: `tailscale funnel reset`.
 
-**Friend wants to host instead?** Same prereqs + steps on his PC. His URL = `ember.<his-tailnet>.ts.net`. Phones never install anything.
+**Friend hosting?** Same prereqs + steps on his computer (any OS). His URL = `ember.<his-tailnet>.ts.net`. Phones never install anything.
 
 ## Reset the database (wipes all users + data)
 

@@ -15,9 +15,13 @@ export function createClient() {
   if (typeof document !== 'undefined') {
     pb.authStore.loadFromCookie(document.cookie);
     pb.authStore.onChange(() => {
+      // Match Secure to the current scheme — HTTPS deployments (tunnels) need
+      // Secure to be true or modern browsers (iOS Safari especially) ignore
+      // the cookie, which breaks the post-signin redirect.
+      const isHttps = window.location.protocol === 'https:';
       document.cookie = pb.authStore.exportToCookie({
         httpOnly: false,
-        secure: false,
+        secure: isHttps,
         sameSite: 'lax',
       });
     }, false);

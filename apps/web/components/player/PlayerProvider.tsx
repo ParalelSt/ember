@@ -356,12 +356,15 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     const isSearch = nextContext?.type === 'search';
     const queueList = !isSearch && list && list.length ? list : [track];
     const i = queueList.findIndex((t) => t.id === track.id);
-    setQueue(queueList);
-    setIndex(i >= 0 ? i : 0);
-    // Default to 'single' when a caller didn't specify — keeps radio behavior
-    // identical to today's "play this one and discover similar" flow.
-    setContext(nextContext ?? { type: 'single' });
-  }, [setQueue, setIndex, setContext, loadAndPlay]);
+    // Atomic update: queue + index + context flip in one store transition so
+    // subscribers never see queue[i] === undefined on an intermediate render.
+    // Default to 'single' when a caller didn't specify.
+    usePlayerStore.setState({
+      queue: queueList,
+      index: i >= 0 ? i : 0,
+      context: nextContext ?? { type: 'single' },
+    });
+  }, [loadAndPlay]);
 
   const toggle = useCallback(() => {
     userInteracted.current = true;
