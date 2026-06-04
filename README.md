@@ -1,116 +1,104 @@
 # Ember
 
-A Spotify-like music streaming app. Dark + red theme. Web first; React Native client can be added later against the same API.
+A Spotify-like music streaming app. Dark + ember-red theme. Self-hosted from your PC; reachable from any phone.
 
-- **Frontend (web):** React + Vite
-- **Backend:** Node + Express
-- **Database / auth:** Supabase (Postgres + Auth)
-- **Catalog source:** Jamendo (free, CC-licensed full tracks via official API)
+- **Frontend:** Next.js 16 (App Router, React 19, Tailwind 4, shadcn/ui)
+- **Backend:** PocketBase (single Go binary — auth, SQLite DB, REST API)
+- **Catalog sources:** YouTube (via a bundled Python `yt-dlp` player) + Jamendo (free, CC-licensed)
+- **Mobile shell:** Capacitor (Android wrapper around the same web build)
+
+For step-by-step install + hosting instructions see **[SETUP.md](SETUP.md)**.
 
 ## Layout
 
 ```
 spotify-clone/
   apps/
-    api/                     # Express API
-      src/
-        index.js             # server entry
-        sources/jamendo.js   # music catalog adapter (the only file that talks to Jamendo)
-        supabase.js          # Supabase clients (admin + per-request)
-        middleware/auth.js   # Bearer-token auth using Supabase
-        routes/
-          search.js          # GET /api/search?q=
-          tracks.js          # GET /api/tracks/:id
-          playlists.js       # CRUD playlists
-          likes.js           # like / unlike / list likes
-          history.js         # record + read recently played
-    web/                     # React + Vite client
-      src/
-        api/client.js        # talks to /api (proxied to :4000 in dev)
-        api/supabase.js      # browser Supabase client (auth only)
-        context/AuthContext.jsx
-        context/PlayerContext.jsx   # HTMLAudioElement-backed player
-        components/          # Sidebar, PlayerBar, TrackList, TrackCard, Icons
-        pages/               # Home, Search, Library, Playlist, Auth
-  supabase/
-    schema.sql               # run in Supabase SQL editor
+    web/                          # Next.js 16 app — the whole UI + API routes
+      app/                        # routes (App Router)
+        (app)/                    # authed shell: home, search, library, etc.
+        api/                      # route handlers — playlists, likes, history,
+                                  # plus the youtube/jamendo proxies
+        auth/                     # sign-in / sign-up page
+      components/
+        player/                   # PlayerProvider, PlayerBar, NowPlaying (mobile full-screen)
+        nav/                      # Sidebar, TopBar, MobileNav, Drawer
+        track/                    # TrackCard, TrackList, AddToPlaylistMenu
+      lib/
+        pocketbase/               # browser + server PB clients (cookie-bound)
+        sources/youtube.ts        # spawns player.py (yt-dlp) for streams + search
+        sources/jamendo.ts        # Jamendo REST adapter
+        songKey.ts                # title+artist normalizer for variant-dedup radio
+      stores/usePlayerStore.ts    # zustand store (queue, index, playback context)
+      proxy.ts                    # middleware — auth gate + cookie refresh
+      next.config.ts              # /pb/* rewrite → local PocketBase
+    mobile/                       # Capacitor Android wrapper around the web build
+  pocketbase/
+    pocketbase                    # PB binary (gitignored, per-platform)
+    pb_migrations/                # collection schema as JS migrations (committed)
+    pb_data/                      # SQLite DB + uploads (gitignored, per-host)
+    cloudflared                   # tunnel binary (gitignored)
+  player.py                       # yt-dlp wrapper invoked by lib/sources/youtube.ts
+  .venv/                          # Python venv for yt-dlp + imageio-ffmpeg
+  start.sh                        # one-command launcher with ephemeral tunnel (testing)
+  start-static.sh                 # production launcher behind Tailscale Funnel (hosting)
+  SETUP.md                        # full setup + hosting docs
 ```
-
-## Setup
-
-### 1. Supabase
-
-1. Create a project at https://supabase.com.
-2. SQL Editor → paste `supabase/schema.sql` → Run.
-3. Settings → API: copy `Project URL`, `anon` key, and `service_role` key.
-
-### 2. Jamendo
-
-1. Register at https://devportal.jamendo.com.
-2. Create an app, copy the `Client ID`.
-
-### 3. API
-
-```bash
-cd apps/api
-cp .env.example .env
-# fill in JAMENDO_CLIENT_ID, SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY
-npm install
-npm run dev
-# -> API on http://localhost:4000
-```
-
-### 4. Web
-
-```bash
-cd apps/web
-cp .env.example .env
-# fill in VITE_SUPABASE_URL, VITE_SUPABASE_ANON_KEY
-npm install
-npm run dev
-# -> Web on http://localhost:5173 (proxies /api to :4000)
-```
-
-Sign up with email + password on first load. Search, like, build playlists, play.
 
 ## How playback works
 
-1. Browser calls `GET /api/search?q=…` (no key in the browser).
-2. API proxies to Jamendo, normalizes results into a `Track` shape, returns them.
-3. Frontend `PlayerContext` sets `audio.src = track.streamUrl` and plays.
-4. On play, frontend posts the track to `POST /api/history` (auth'd) so it shows in "Recently played."
-5. Likes and playlists call the corresponding auth'd routes — Supabase RLS enforces that users only see their own rows.
+1. Browser calls `GET /api/search?q=…` or `/api/youtube/search`. Next runs the route handler — there are no client-side calls to external music APIs.
+2. The route handler spawns `player.py` (which wraps `yt-dlp`) for YouTube, or hits Jamendo's REST API for Jamendo. Results are normalized into the canonical `Track` shape.
+3. The web app's `PlayerProvider` sets `audio.src = track.streamUrl` and plays.
+4. On play, the route `POST /api/history` records it; likes and playlists call their respective `/api/...` handlers.
+5. PocketBase enforces per-collection rules (the equivalent of Supabase RLS) so users only see their own rows.
+
+The browser talks to PocketBase exclusively through the same-origin `/pb/*` proxy ([next.config.ts](apps/web/next.config.ts) rewrites it to local PB), so the whole app lives on a single public URL and one tunnel covers everything.
 
 ## Track shape
 
-The API normalizes everything into:
-
 ```ts
 {
-  id: string,            // "<source>:<sourceId>", e.g. "jamendo:12345"
-  source: string,        // "jamendo"
+  id: string,            // "<source>_<sourceId>", e.g. "yt_dQw4w9WgXcQ"
+  source: 'youtube' | 'jamendo',
   sourceId: string,
   title: string,
   artist: string,
+  artistId: string | null,
   album: string | null,
+  albumId: string | null,
   durationSec: number,
-  artworkUrl: string,
+  artworkUrl: string | null,
   streamUrl: string,
 }
 ```
 
-If you ever onboard a second legitimate catalog (your own uploads in Supabase Storage, Audius, a licensed distributor, etc.), add a sibling file in `apps/api/src/sources/` and route by the `source` prefix in the track ID.
+PocketBase persists this on the `tracks` collection keyed by `external_id`, with a unique index — see [pocketbase/pb_migrations/](pocketbase/pb_migrations/). Cached track upserts run through [lib/upsertTrack.ts](apps/web/lib/upsertTrack.ts) before every like / play / playlist insert.
+
+## Radio (auto-queue)
+
+When the queue runs out, the player pulls YouTube "watch-next" recommendations seeded by the last track, then:
+
+- **Filter** — strips out variants of anything currently playing or already queued, using a normalized title+artist match (`(Official Video)` / `(Live)` / `(Remix)` etc. collapse to the same key). See [lib/songKey.ts](apps/web/lib/songKey.ts).
+- **Boost** — re-ranks surviving candidates so songs you've already played (from your `plays` history) sit ahead of fresh ones, with a 2-track front-load and "1 favorite every 3 tracks" weave.
+- **Context drift** — if you started playback from an artist page, the radio filters out *more by that artist* once the catalog ends, drifting toward similar-genre tracks by other artists.
+
+## Hosting
+
+- **Local dev / quick share:** `./start.sh` boots PocketBase + Next + a Cloudflare quick tunnel and prints a public URL (URL changes per run).
+- **Persistent public URL:** `./start-static.sh` runs a production build behind a **Tailscale Funnel** so you get a static `https://ember.<tailnet>.ts.net` — free, no domain needed. Full steps in [SETUP.md](SETUP.md).
+
+Phones never install anything — they just open the URL. Your Mac (or any computer running the stack) only needs to stay on + signed into Tailscale.
 
 ## What is intentionally NOT here
 
-- No client-side calls to external music APIs. The browser only ever talks to `/api/*`.
-- No environment-variable secrets in the web app. `VITE_*` vars are public by design — only the Supabase URL and anon key live there.
+- No client-side calls to external music APIs. The browser only ever talks to `/api/*` and `/pb/*`.
+- No paid music catalog. YouTube + Jamendo only — works for personal use.
 - No download/offline feature. Streaming only.
 
 ## Roadmap
 
-- React Native client (reuse the API verbatim; replace `<audio>` with `expo-av`).
-- Supabase Storage uploads so users can add their own music.
 - Drag-to-reorder playlists.
-- Queue UI.
-- Server-side rendering / static export for marketing pages.
+- Queue UI (see what's coming up + rearrange).
+- iOS Capacitor build (Android already in `apps/mobile/`).
+- Crossfade + gapless playback tuning.
