@@ -93,18 +93,17 @@ Stop the tunnel later: `tailscale funnel reset`.
 
 **Friend hosting?** Same prereqs + steps on his computer (any OS). His URL = `ember.<his-tailnet>.ts.net`. Phones never install anything.
 
-## Bug reports (optional)
+## Bug reports
 
-The app has a "Report a bug" button in the sidebar / drawer that delivers structured diagnostics + your note to a Discord channel.
+The "Report a bug" button in the sidebar / drawer delivers structured diagnostics + an optional note to a Discord channel.
 
-1. In Discord: *Server Settings → Integrations → Webhooks → New Webhook* → copy the URL.
-2. Paste it into `apps/web/.env.local`:
-   ```
-   DISCORD_BUG_REPORT_WEBHOOK_URL=https://discord.com/api/webhooks/…
-   ```
-3. Restart the app. Without this set, the button returns a friendly 503.
+**Project-owner setup (you, once):** paste your Discord webhook URL into the `DEFAULT_WEBHOOK_URL` constant at the top of [`apps/web/app/api/bug-report/route.ts`](apps/web/app/api/bug-report/route.ts), then commit. Every clone (including friends self-hosting) will deliver bug reports to that channel. Create the webhook in Discord under *Server Settings → Integrations → Webhooks → New Webhook*.
 
-Server-side error logs live at `logs/errors-YYYY-MM-DD.jsonl` (gitignored, auto-deleted after 2 days). The Discord channel becomes your long-term archive.
+**Local override (anyone):** to test against a different channel without changing source, set `DISCORD_BUG_REPORT_WEBHOOK_URL` in `apps/web/.env.local`; it wins over the baked-in default.
+
+Server-side error logs live at `logs/errors-YYYY-MM-DD.jsonl` (gitignored, auto-deleted after 2 days). The Discord channel is the long-term archive.
+
+If the baked-in webhook ever gets abused, delete + recreate it in Discord and rebuild — the new URL replaces the old one in the next push.
 
 ## Reset the database (wipes all users + data)
 
