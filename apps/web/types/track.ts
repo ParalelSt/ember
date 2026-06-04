@@ -20,6 +20,7 @@ export interface Playlist {
   id: string;
   name: string;
   created_at: string;
+  artwork_url: string | null;
 }
 
 export interface ArtistPayload {

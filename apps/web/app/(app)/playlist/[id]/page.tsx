@@ -1,6 +1,6 @@
 'use client';
 
-import { use, useState } from 'react';
+import { use, useRef, useState, type ChangeEvent } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
@@ -14,6 +14,7 @@ import {
   useExecuteAddToPlaylist,
   useExecuteDeletePlaylist,
   useExecuteRemoveFromPlaylist,
+  useExecuteUpdatePlaylistArtwork,
   useQueryPlaylist,
 } from '@/hooks/useLibrary';
 import type { Track } from '@/types/track';
@@ -26,8 +27,23 @@ export default function PlaylistPage({ params }: { params: Promise<{ id: string 
   const deletePlaylist = useExecuteDeletePlaylist();
   const removeFromPlaylist = useExecuteRemoveFromPlaylist();
   const addToPlaylist = useExecuteAddToPlaylist();
+  const updateArtwork = useExecuteUpdatePlaylistArtwork();
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
   const [pendingRemove, setPendingRemove] = useState<Track | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleArtworkPick = (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';   // allow re-selecting the same file
+    if (!file) return;
+    updateArtwork.mutate(
+      { id, file },
+      {
+        onSuccess: () => toast.success('Cover updated'),
+        onError: (err) => toast.error(`Couldn't update cover: ${(err as Error).message}`),
+      },
+    );
+  };
 
   const handleAdd = async (track: Track) => {
     try {
@@ -81,7 +97,33 @@ export default function PlaylistPage({ params }: { params: Promise<{ id: string 
   return (
     <div>
       <div className="flex flex-col md:flex-row items-start md:items-end gap-6 mb-6">
-        <div className="h-44 w-44 md:h-48 md:w-48 rounded-2xl shadow-soft bg-linear-to-br from-ember to-[oklch(0.3_0.15_25)] shrink-0" />
+        <button
+          type="button"
+          onClick={() => fileInputRef.current?.click()}
+          disabled={updateArtwork.isPending}
+          className="group relative h-44 w-44 md:h-48 md:w-48 rounded-2xl shadow-soft shrink-0 overflow-hidden bg-linear-to-br from-ember to-[oklch(0.3_0.15_25)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+          aria-label="Change playlist cover"
+          title="Change playlist cover"
+        >
+          {playlist.artwork_url && (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={playlist.artwork_url}
+              alt=""
+              className="absolute inset-0 h-full w-full object-cover"
+            />
+          )}
+          <span className="absolute inset-0 grid place-items-center bg-black/40 text-white text-sm font-medium opacity-0 group-hover:opacity-100 transition-opacity">
+            {updateArtwork.isPending ? 'Uploading…' : 'Change cover'}
+          </span>
+        </button>
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/jpeg,image/png,image/webp,image/gif"
+          className="hidden"
+          onChange={handleArtworkPick}
+        />
         <div>
           <div className="text-xs uppercase tracking-widest text-muted-foreground">Playlist</div>
           <h1 className="mt-2 text-4xl md:text-5xl font-bold tracking-tight leading-tight">{playlist.name}</h1>

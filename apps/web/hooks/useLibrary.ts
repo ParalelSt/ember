@@ -136,6 +136,17 @@ export function useExecuteAddToPlaylist() {
   });
 }
 
+export function useExecuteUpdatePlaylistArtwork() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, file }: { id: string; file: File }) => api.updatePlaylistArtwork(id, file),
+    onSuccess: (_d, { id }) => {
+      qc.invalidateQueries({ queryKey: QK.playlist(id) });
+      qc.invalidateQueries({ queryKey: QK.playlists });
+    },
+  });
+}
+
 export function useExecuteRemoveFromPlaylist() {
   const qc = useQueryClient();
   return useMutation({

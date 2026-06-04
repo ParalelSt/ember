@@ -20,11 +20,13 @@ export async function GET(_req: NextRequest, ctx: RouteContext<'/api/playlists/[
       .map((i) => mapTrackRow(((i.expand?.track as unknown) ?? null) as TrackRecord | null))
       .filter(Boolean);
 
+    const artworkFile = typeof playlistRec.artwork === 'string' ? playlistRec.artwork : '';
     return Response.json({
       playlist: {
         id: playlistRec.id,
         name: String(playlistRec.name ?? ''),
         created_at: String(playlistRec.created ?? ''),
+        artwork_url: artworkFile ? `/pb/api/files/playlists/${playlistRec.id}/${artworkFile}` : null,
       },
       tracks,
     });

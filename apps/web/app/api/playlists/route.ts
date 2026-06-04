@@ -2,6 +2,13 @@ import type { NextRequest } from 'next/server';
 import { requireUser, UnauthorizedError, unauthorizedResponse } from '@/lib/auth';
 import { fromError, jsonError } from '@/lib/upsertTrack';
 
+/** Build the public artwork URL for a playlist record (routed through the /pb
+ *  proxy so the browser stays same-origin). Returns null when no artwork. */
+function artworkUrl(record: { id: string; artwork?: unknown }): string | null {
+  const file = typeof record.artwork === 'string' ? record.artwork : '';
+  return file ? `/pb/api/files/playlists/${record.id}/${file}` : null;
+}
+
 export async function GET() {
   try {
     const { pb, user } = await requireUser();
@@ -13,6 +20,7 @@ export async function GET() {
       id: r.id,
       name: String(r.name ?? ''),
       created_at: String(r.created ?? ''),
+      artwork_url: artworkUrl(r as { id: string; artwork?: unknown }),
     }));
     return Response.json({ playlists });
   } catch (e) {
@@ -29,7 +37,12 @@ export async function POST(request: NextRequest) {
     if (!name) return jsonError('name required', 400);
     const r = await pb.collection('playlists').create({ user: user.id, name });
     return Response.json({
-      playlist: { id: r.id, name: String(r.name ?? ''), created_at: String(r.created ?? '') },
+      playlist: {
+        id: r.id,
+        name: String(r.name ?? ''),
+        created_at: String(r.created ?? ''),
+        artwork_url: artworkUrl(r as { id: string; artwork?: unknown }),
+      },
     }, { status: 201 });
   } catch (e) {
     if (e instanceof UnauthorizedError) return unauthorizedResponse();

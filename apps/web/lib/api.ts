@@ -46,6 +46,22 @@ export const api = {
   removeFromPlaylist: (id: string, trackId: string) =>
     req<{ ok: true }>(`/playlists/${id}/tracks/${encodeURIComponent(trackId)}`, { method: 'DELETE' }),
   deletePlaylist: (id: string) => req<{ ok: true }>(`/playlists/${id}`, { method: 'DELETE' }),
+  /** Upload (or replace) a playlist cover image. Multipart, so it bypasses
+   *  the JSON `req` helper. */
+  updatePlaylistArtwork: async (id: string, file: File): Promise<{ playlist: Playlist }> => {
+    const fd = new FormData();
+    fd.append('artwork', file);
+    const res = await fetch(`${API_BASE}/api/playlists/${id}/artwork`, {
+      method: 'PATCH',
+      body: fd,
+      credentials: 'include',
+    });
+    if (!res.ok) {
+      const err = (await res.json().catch(() => ({ error: res.statusText }))) as { error?: string };
+      throw new Error(err.error || `Request failed: ${res.status}`);
+    }
+    return (await res.json()) as { playlist: Playlist };
+  },
 
   listLikes: () => req<{ tracks: Track[] }>('/likes'),
   like: (track: Track) => req<{ ok: true }>('/likes', { method: 'POST', body: { track } }),

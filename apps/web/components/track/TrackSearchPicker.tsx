@@ -97,8 +97,11 @@ export function TrackSearchPicker({ added = [], seeds = [], onAdd, className }: 
         )}
       </div>
 
-      <div className="flex flex-col gap-1 overflow-y-auto max-h-72 -mx-1 px-1">
-        {loading && !list?.length && (
+      {/* Wrapper provides visual padding above + below the scrollable element
+          so the native scrollbar's rounded thumb tips don't touch the edges. */}
+      <div className="py-3">
+        <div className="flex flex-col gap-1 overflow-y-auto max-h-96 md:max-h-[60vh] pr-2">
+          {loading && !list?.length && (
           <div className="text-sm text-muted-foreground py-6 text-center">Loading…</div>
         )}
         {!loading && !list?.length && (
@@ -133,6 +136,7 @@ export function TrackSearchPicker({ added = [], seeds = [], onAdd, className }: 
             </div>
           );
         })}
+        </div>
       </div>
     </div>
   );
