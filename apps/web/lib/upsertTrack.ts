@@ -65,6 +65,25 @@ export function jsonError(message: string, status = 500) {
 }
 
 export function fromError(err: unknown) {
-  const e = err as { message?: string; status?: number };
-  return jsonError(e?.message ?? 'Internal error', e?.status ?? 500);
+  // Server-side log: full error so the cause is visible in the terminal
+  // running ./start-static.sh, even when the client-facing message is terse.
+  console.error('[API error]', err);
+
+  const e = err as {
+    message?: string;
+    status?: number;
+    data?: { data?: Record<string, { message?: string }> } | Record<string, { message?: string }>;
+  };
+  // PocketBase nests field-level validation under `.data.data.<field>` (the
+  // outer `data` is the response body, the inner `data` is the per-field
+  // detail). Some shapes only have one level. Walk both safely.
+  const dataObj =
+    (e?.data && 'data' in e.data && typeof e.data.data === 'object' ? e.data.data : e?.data) ?? {};
+  const fields = Object.entries(dataObj as Record<string, { message?: string }>)
+    .map(([f, info]) => (info?.message ? `${f}: ${info.message}` : null))
+    .filter(Boolean)
+    .join('; ');
+  const top = e?.message ?? 'Internal error';
+  const message = fields ? `${top} (${fields})` : top;
+  return jsonError(message, e?.status ?? 500);
 }

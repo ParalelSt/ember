@@ -14,15 +14,16 @@ export async function POST(request: NextRequest, ctx: RouteContext<'/api/playlis
     const trackRecordId = await upsertTrack(pb, track);
 
     // Append at the next position. Pull the highest existing position via a
-    // single-record query for cheapness.
-    let nextPosition = 0;
+    // single-record query for cheapness. Start at 1 — PocketBase's required
+    // validator on number fields rejects 0 as "missing".
+    let nextPosition = 1;
     try {
       const last = await pb
         .collection('playlist_tracks')
         .getFirstListItem(`playlist = "${id}"`, { sort: '-position' });
       nextPosition = (Number(last.position) || 0) + 1;
     } catch {
-      // empty playlist — start at 0
+      // empty playlist — keep 1
     }
 
     await pb.collection('playlist_tracks').create({

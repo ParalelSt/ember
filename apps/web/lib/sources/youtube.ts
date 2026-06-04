@@ -60,7 +60,9 @@ function runPython<T = unknown>(args: string[], { timeoutMs = 30000 } = {}): Pro
       try {
         resolve(JSON.parse(stdout) as T);
       } catch {
-        const e: PythonError = new Error(`bad python output: ${stdout.slice(0, 200)}`);
+        // Include the args that triggered this so the next "bad python output"
+        // log tells us which call actually failed (info vs. search vs. …).
+        const e: PythonError = new Error(`bad python output for [${args.join(' ')}]: ${stdout.slice(0, 200)}`);
         e.status = 502;
         reject(e);
       }

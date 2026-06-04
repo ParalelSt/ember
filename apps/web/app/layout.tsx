@@ -4,6 +4,7 @@ import { createClient } from '@/lib/pocketbase/server';
 import { AuthProvider, type AuthUser } from '@/components/providers/AuthProvider';
 import { QueryProvider } from '@/components/providers/QueryProvider';
 import { PlayerProvider } from '@/components/player/PlayerProvider';
+import { Toaster } from '@/components/ui/sonner';
 import './globals.css';
 
 const inter = Inter({
@@ -51,6 +52,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
             <PlayerProvider>{children}</PlayerProvider>
           </AuthProvider>
         </QueryProvider>
+        <Toaster position="bottom-center" />
       </body>
     </html>
   );

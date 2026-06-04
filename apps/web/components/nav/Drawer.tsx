@@ -1,11 +1,15 @@
 'use client';
 
+import { useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
+import { toast } from 'sonner';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/components/providers/AuthProvider';
-import { useExecuteCreatePlaylist, useQueryPlaylists } from '@/hooks/useLibrary';
+import { useExecuteAddToPlaylist, useExecuteCreatePlaylist, useQueryPlaylists } from '@/hooks/useLibrary';
+import type { Track } from '@/types/track';
+import { CreatePlaylistDialog } from '@/components/track/CreatePlaylistDialog';
 import { HomeIcon, SearchIcon, LibraryIcon, PlusIcon, LogOutIcon, FlameIcon } from '@/components/icons';
 import { cn } from '@/lib/utils';
 
@@ -26,15 +30,23 @@ export function Drawer({ open, onOpenChange }: Props) {
   const { user, signOut } = useAuth();
   const { data: playlists = [] } = useQueryPlaylists();
   const createPlaylist = useExecuteCreatePlaylist();
+  const addToPlaylist = useExecuteAddToPlaylist();
+  const [createOpen, setCreateOpen] = useState(false);
 
   const close = () => onOpenChange(false);
 
-  const create = async () => {
-    const name = window.prompt('Playlist name?');
-    if (!name) return;
-    const playlist = await createPlaylist.mutateAsync(name);
-    close();
-    router.push(`/playlist/${playlist.id}`);
+  const handleCreate = async (name: string, tracks: Track[]) => {
+    try {
+      const playlist = await createPlaylist.mutateAsync(name);
+      for (const t of tracks) {
+        await addToPlaylist.mutateAsync({ id: playlist.id, track: t });
+      }
+      toast.success(tracks.length ? `Created "${playlist.name}" with ${tracks.length} track${tracks.length === 1 ? '' : 's'}` : `Created "${playlist.name}"`);
+      close();
+      router.push(`/playlist/${playlist.id}`);
+    } catch (e) {
+      toast.error(`Couldn't create playlist: ${(e as Error).message}`);
+    }
   };
 
   return (
@@ -72,7 +84,7 @@ export function Drawer({ open, onOpenChange }: Props) {
         <div className="px-4 flex items-center justify-between border-t border-sidebar-border pt-3">
           <span className="text-[11px] uppercase tracking-widest text-sidebar-foreground/55">Playlists</span>
           {user && (
-            <Button size="icon" variant="ghost" className="h-6 w-6" onClick={create} title="New playlist">
+            <Button size="icon" variant="ghost" className="h-6 w-6" onClick={() => setCreateOpen(true)} title="New playlist">
               <PlusIcon className="h-3.5 w-3.5" />
             </Button>
           )}
@@ -111,6 +123,7 @@ export function Drawer({ open, onOpenChange }: Props) {
           </div>
         )}
       </SheetContent>
+      <CreatePlaylistDialog open={createOpen} onOpenChange={setCreateOpen} onCreate={handleCreate} />
     </Sheet>
   );
 }

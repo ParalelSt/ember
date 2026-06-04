@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { HeartIcon, PauseIcon, PlayIcon, TrashIcon } from '@/components/icons';
 import { AddToPlaylistMenu } from './AddToPlaylistMenu';
@@ -33,7 +34,7 @@ export function TrackList({ tracks, showAlbum = true, onRemove, context }: Props
 
   const onLike = (track: Track) => {
     if (!user) {
-      window.alert('Sign in to like tracks');
+      toast.message('Sign in to like tracks', { description: 'Liking saves songs to your library.' });
       return;
     }
     toggleLike.mutate({ track, wasLiked: liked.some((t) => t.id === track.id) });

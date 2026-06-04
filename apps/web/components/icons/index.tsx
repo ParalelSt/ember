@@ -18,4 +18,5 @@ export {
   Music as MusicIcon,
   Flame as FlameIcon,
   ChevronDown as ChevronDownIcon,
+  RotateCw as RefreshIcon,
 } from 'lucide-react';

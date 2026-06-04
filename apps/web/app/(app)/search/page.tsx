@@ -23,7 +23,7 @@ export default function SearchPage() {
   });
 
   return (
-    <div>
+    <div className="pt-4 md:pt-0">
       <h1 className="text-3xl md:text-4xl font-bold tracking-tight mb-6">Search</h1>
       <div className="relative max-w-xl">
         <SearchIcon className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
