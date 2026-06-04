@@ -93,6 +93,19 @@ Stop the tunnel later: `tailscale funnel reset`.
 
 **Friend hosting?** Same prereqs + steps on his computer (any OS). His URL = `ember.<his-tailnet>.ts.net`. Phones never install anything.
 
+## Bug reports (optional)
+
+The app has a "Report a bug" button in the sidebar / drawer that delivers structured diagnostics + your note to a Discord channel.
+
+1. In Discord: *Server Settings → Integrations → Webhooks → New Webhook* → copy the URL.
+2. Paste it into `apps/web/.env.local`:
+   ```
+   DISCORD_BUG_REPORT_WEBHOOK_URL=https://discord.com/api/webhooks/…
+   ```
+3. Restart the app. Without this set, the button returns a friendly 503.
+
+Server-side error logs live at `logs/errors-YYYY-MM-DD.jsonl` (gitignored, auto-deleted after 2 days). The Discord channel becomes your long-term archive.
+
 ## Reset the database (wipes all users + data)
 
 ```bash

@@ -1,4 +1,5 @@
 import type { ArtistPayload, Playlist, Track } from '@/types/track';
+import { logger } from '@/lib/logger/client';
 
 // Cookies handle auth (PocketBase `pb_auth` cookie) — no manual Bearer headers.
 // API_BASE stays empty for the web build (same-origin); a Capacitor/native
@@ -13,15 +14,23 @@ interface ReqOptions {
 }
 
 async function req<T>(path: string, { method = 'GET', body, signal }: ReqOptions = {}): Promise<T> {
-  const res = await fetch(`${API_BASE}/api${path}`, {
-    method,
-    headers: body ? { 'Content-Type': 'application/json' } : undefined,
-    body: body ? JSON.stringify(body) : undefined,
-    credentials: 'include',
-    signal,
-  });
+  let res: Response;
+  try {
+    res = await fetch(`${API_BASE}/api${path}`, {
+      method,
+      headers: body ? { 'Content-Type': 'application/json' } : undefined,
+      body: body ? JSON.stringify(body) : undefined,
+      credentials: 'include',
+      signal,
+    });
+  } catch (e) {
+    // Network-level failure (offline, DNS, CORS, etc.). Log + rethrow.
+    logger.error('api', `${method} ${path} network error`, { method, path }, e as Error);
+    throw e;
+  }
   if (!res.ok) {
     const err = (await res.json().catch(() => ({ error: res.statusText }))) as { error?: string };
+    logger.error('api', `${method} ${path} → ${res.status}`, { method, path, status: res.status, body: err.error });
     throw new Error(err.error || `Request failed: ${res.status}`);
   }
   return (await res.json()) as T;

@@ -10,7 +10,8 @@ import { useAuth } from '@/components/providers/AuthProvider';
 import { useExecuteAddToPlaylist, useExecuteCreatePlaylist, useQueryPlaylists } from '@/hooks/useLibrary';
 import type { Track } from '@/types/track';
 import { CreatePlaylistDialog } from '@/components/track/CreatePlaylistDialog';
-import { HomeIcon, SearchIcon, LibraryIcon, PlusIcon, LogOutIcon, FlameIcon } from '@/components/icons';
+import { HomeIcon, SearchIcon, LibraryIcon, PlusIcon, LogOutIcon, FlameIcon, BugIcon } from '@/components/icons';
+import { useUiStore } from '@/stores/useUiStore';
 import { cn } from '@/lib/utils';
 
 const NAV = [
@@ -32,6 +33,7 @@ export function Drawer({ open, onOpenChange }: Props) {
   const createPlaylist = useExecuteCreatePlaylist();
   const addToPlaylist = useExecuteAddToPlaylist();
   const [createOpen, setCreateOpen] = useState(false);
+  const openBugReport = useUiStore((s) => s.setBugReportOpen);
 
   const close = () => onOpenChange(false);
 
@@ -113,6 +115,13 @@ export function Drawer({ open, onOpenChange }: Props) {
                 {user.email}
               </div>
             </div>
+            <button
+              onClick={() => { close(); openBugReport(true); }}
+              className="mt-1 w-full flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent/60"
+            >
+              <BugIcon className="h-4 w-4" />
+              Report a bug
+            </button>
             <button
               onClick={() => { close(); void signOut(); }}
               className="mt-1 w-full flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium text-destructive hover:bg-destructive/10"

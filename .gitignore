@@ -37,6 +37,9 @@ pocketbase/pb_public/
 # cloudflared — tunnel binary (per-platform)
 pocketbase/cloudflared
 
+# Bug-report logger JSONL output (rotates every 2 days)
+logs/
+
 # Editors / OS
 .vscode/
 .idea/

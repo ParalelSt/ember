@@ -14,6 +14,7 @@ import { usePlayerStore } from '@/stores/usePlayerStore';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { useExecuteRecordPlay, useQueryHistory, useQueryLikes } from '@/hooks/useLibrary';
 import { api, apiUrl } from '@/lib/api';
+import { logger } from '@/lib/logger/client';
 import { songKey } from '@/lib/songKey';
 import type { PlaybackContext, Track } from '@/types/track';
 
@@ -76,6 +77,11 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     if (audioRef.current) return;
     const a = new Audio();
     a.preload = 'metadata';
+    a.addEventListener('error', () => {
+      const code = a.error?.code;
+      const message = a.error?.message ?? 'audio element error';
+      logger.error('audio', message, { code, src: a.src });
+    });
     audioRef.current = a;
     setAudioReady(true);
   }, []);
@@ -364,14 +370,15 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       index: i >= 0 ? i : 0,
       context: nextContext ?? { type: 'single' },
     });
+    logger.breadcrumb('playback', 'play', { trackId: track.id, source: track.source, context: nextContext?.type ?? 'single' });
   }, [loadAndPlay]);
 
   const toggle = useCallback(() => {
     userInteracted.current = true;
     const a = audioRef.current;
     if (!current || !a) return;
-    if (a.paused) void a.play();
-    else a.pause();
+    if (a.paused) { void a.play(); logger.breadcrumb('playback', 'resume', { trackId: current.id }); }
+    else { a.pause(); logger.breadcrumb('playback', 'pause', { trackId: current.id }); }
   }, [current]);
 
   const setVolume = useCallback(

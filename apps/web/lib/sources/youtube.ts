@@ -3,6 +3,7 @@ import { spawn } from 'node:child_process';
 import path from 'node:path';
 import fs from 'node:fs';
 import type { Track } from '@/types/track';
+import { serverLogger } from '@/lib/logger/server';
 
 // apps/web is one level deeper than the old apps/api in workspace layout,
 // but both resolve to the same spotify-clone root.
@@ -41,21 +42,25 @@ function runPython<T = unknown>(args: string[], { timeoutMs = 30000 } = {}): Pro
     });
     let stdout = '';
     let stderr = '';
+    const reject_ = (e: PythonError) => {
+      serverLogger.error('python', e.message, { args, stderr: stderr.slice(-200) }, e);
+      reject(e);
+    };
     const timer = setTimeout(() => {
       child.kill('SIGKILL');
       const e: PythonError = new Error('python timed out');
       e.status = 504;
-      reject(e);
+      reject_(e);
     }, timeoutMs);
     child.stdout.on('data', (d) => { stdout += d.toString(); });
     child.stderr.on('data', (d) => { stderr += d.toString(); });
-    child.on('error', (e) => { clearTimeout(timer); reject(e); });
+    child.on('error', (e) => { clearTimeout(timer); reject_(e as PythonError); });
     child.on('close', (code) => {
       clearTimeout(timer);
       if (code !== 0) {
         const e: PythonError = new Error(stderr.slice(-500) || `python exited ${code}`);
         e.status = 502;
-        return reject(e);
+        return reject_(e);
       }
       try {
         resolve(JSON.parse(stdout) as T);
@@ -64,7 +69,7 @@ function runPython<T = unknown>(args: string[], { timeoutMs = 30000 } = {}): Pro
         // log tells us which call actually failed (info vs. search vs. …).
         const e: PythonError = new Error(`bad python output for [${args.join(' ')}]: ${stdout.slice(0, 200)}`);
         e.status = 502;
-        reject(e);
+        reject_(e);
       }
     });
   });

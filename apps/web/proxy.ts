@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import PocketBase from 'pocketbase';
+import { serverLogger } from '@/lib/logger/server';
 
 // Middleware runs server-side, so it needs an absolute URL. The public
 // NEXT_PUBLIC_POCKETBASE_URL may be the relative `/pb` proxy path; fall back to
@@ -16,12 +17,19 @@ const PUBLIC_PATHS = ['/auth', '/manifest.webmanifest', '/sw.js'];
 const PUBLIC_API_PREFIXES = ['/api/youtube/stream/', '/api/search', '/api/tracks', '/api/youtube/search', '/api/youtube/trending', '/api/youtube/recommended', '/api/youtube/artist', '/api/discord/'];
 
 export default async function proxy(req: NextRequest) {
+  // Per-request id, attached to outgoing responses + any server log lines.
+  const reqId = Math.random().toString(36).slice(2, 10);
   const response = NextResponse.next({ request: req });
+  response.headers.set('x-req-id', reqId);
 
   // Load the user from the pb_auth cookie. PocketBase's exportToCookie /
   // loadFromCookie round-trip means we don't need to manually parse the JWT.
   const pb = new PocketBase(PB_URL);
-  pb.authStore.loadFromCookie(req.headers.get('cookie') ?? '', 'pb_auth');
+  try {
+    pb.authStore.loadFromCookie(req.headers.get('cookie') ?? '', 'pb_auth');
+  } catch (e) {
+    serverLogger.error('middleware', 'loadFromCookie threw', undefined, e, { reqId, route: req.nextUrl.pathname });
+  }
 
   // If the token is close to expiring, refresh and write the new cookie back
   // so subsequent requests don't re-hit the same code path.
@@ -39,7 +47,8 @@ export default async function proxy(req: NextRequest) {
         sameSite: 'lax',
       });
       response.headers.append('set-cookie', refreshed);
-    } catch {
+    } catch (e) {
+      serverLogger.error('middleware', 'authRefresh failed', undefined, e, { reqId, route: req.nextUrl.pathname });
       pb.authStore.clear();
     }
   }

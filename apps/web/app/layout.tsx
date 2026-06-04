@@ -4,6 +4,9 @@ import { createClient } from '@/lib/pocketbase/server';
 import { AuthProvider, type AuthUser } from '@/components/providers/AuthProvider';
 import { QueryProvider } from '@/components/providers/QueryProvider';
 import { PlayerProvider } from '@/components/player/PlayerProvider';
+import { AppErrorBoundary } from '@/components/AppErrorBoundary';
+import { LoggerInit } from '@/components/LoggerInit';
+import { BugReportDialog } from '@/components/BugReportDialog';
 import { Toaster } from '@/components/ui/sonner';
 import './globals.css';
 
@@ -49,8 +52,12 @@ export default async function RootLayout({ children }: { children: React.ReactNo
       <body className="min-h-screen bg-background text-foreground antialiased">
         <QueryProvider>
           <AuthProvider initialUser={initialUser}>
-            <PlayerProvider>{children}</PlayerProvider>
+            <LoggerInit />
+            <PlayerProvider>
+              <AppErrorBoundary>{children}</AppErrorBoundary>
+            </PlayerProvider>
           </AuthProvider>
+          <BugReportDialog />
         </QueryProvider>
         <Toaster position="bottom-center" />
       </body>

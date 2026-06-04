@@ -19,4 +19,5 @@ export {
   Flame as FlameIcon,
   ChevronDown as ChevronDownIcon,
   RotateCw as RefreshIcon,
+  Bug as BugIcon,
 } from 'lucide-react';

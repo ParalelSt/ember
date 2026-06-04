@@ -2,6 +2,7 @@
 
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { createClient } from '@/lib/pocketbase/client';
+import { logger } from '@/lib/logger/client';
 
 /** Minimal user shape exposed to the app — matches the old Supabase one
  *  closely enough that consumers don't care which backend produced it. */
@@ -52,8 +53,10 @@ export function AuthProvider({ children, initialUser }: { children: ReactNode; i
       signIn: async (email, password) => {
         try {
           await pb.collection('users').authWithPassword(email, password);
+          logger.breadcrumb('auth', 'signin', { userId: pb.authStore.record?.id });
           return { error: null };
         } catch (e) {
+          logger.error('auth', 'signin failed', { reason: extractPbError(e) }, e instanceof Error ? e : undefined);
           return { error: { message: extractPbError(e) } };
         }
       },
@@ -64,12 +67,15 @@ export function AuthProvider({ children, initialUser }: { children: ReactNode; i
           // sign the user straight in. If you enable "require verified" in
           // the admin UI, swap this for a verification flow.
           await pb.collection('users').authWithPassword(email, password);
+          logger.breadcrumb('auth', 'signup', { userId: pb.authStore.record?.id });
           return { error: null, needsConfirmation: false };
         } catch (e) {
+          logger.error('auth', 'signup failed', { reason: extractPbError(e) }, e instanceof Error ? e : undefined);
           return { error: { message: extractPbError(e) }, needsConfirmation: false };
         }
       },
       signOut: async () => {
+        logger.breadcrumb('auth', 'signout', { userId: user?.id });
         pb.authStore.clear();
       },
     }),

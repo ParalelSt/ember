@@ -2,6 +2,7 @@ import 'server-only';
 import type PocketBase from 'pocketbase';
 import type { ClientResponseError } from 'pocketbase';
 import type { Track } from '@/types/track';
+import { serverLogger } from '@/lib/logger/server';
 
 /** Upserts a Track into the shared `tracks` collection by `external_id`.
  *  Returns the PocketBase record id so callers can use it in relations
@@ -68,6 +69,9 @@ export function fromError(err: unknown) {
   // Server-side log: full error so the cause is visible in the terminal
   // running ./start-static.sh, even when the client-facing message is terse.
   console.error('[API error]', err);
+  // Also write to the structured JSONL log so bug reports can include it.
+  const e0 = err as { message?: string; status?: number };
+  serverLogger.error('api', e0?.message ?? 'API error', { status: e0?.status }, err);
 
   const e = err as {
     message?: string;

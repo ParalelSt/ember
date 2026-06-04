@@ -3,6 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { useAuth } from '@/components/providers/AuthProvider';
+import { logger } from '@/lib/logger/client';
 import type { Playlist, Track } from '@/types/track';
 
 export const QK = {
@@ -116,6 +117,7 @@ export function useExecuteCreatePlaylist() {
     onSuccess: (playlist) => {
       const prev = qc.getQueryData<Playlist[]>(QK.playlists) ?? [];
       qc.setQueryData(QK.playlists, [playlist, ...prev]);
+      logger.breadcrumb('library', 'playlist.create', { id: playlist.id, name: playlist.name });
     },
   });
 }
@@ -124,7 +126,10 @@ export function useExecuteDeletePlaylist() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (id: string) => api.deletePlaylist(id),
-    onSuccess: () => qc.invalidateQueries({ queryKey: QK.playlists }),
+    onSuccess: (_d, id) => {
+      qc.invalidateQueries({ queryKey: QK.playlists });
+      logger.breadcrumb('library', 'playlist.delete', { id });
+    },
   });
 }
 
@@ -132,7 +137,10 @@ export function useExecuteAddToPlaylist() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: ({ id, track }: { id: string; track: Track }) => api.addToPlaylist(id, track),
-    onSuccess: (_d, { id }) => qc.invalidateQueries({ queryKey: QK.playlist(id) }),
+    onSuccess: (_d, { id, track }) => {
+      qc.invalidateQueries({ queryKey: QK.playlist(id) });
+      logger.breadcrumb('library', 'playlist.add', { playlistId: id, trackId: track.id });
+    },
   });
 }
 
