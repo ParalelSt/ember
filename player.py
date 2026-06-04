@@ -45,16 +45,34 @@ def search_song(query: str, limit=5):
     print(f"Found: {best.get('title')} by {best.get('artists')[0].get('name')}")
     return best
 
+def parse_length(s):
+    """'3:22' -> 202. '1:02:33' -> 3753. Anything else -> None."""
+    if not s or not isinstance(s, str):
+        return None
+    try:
+        nums = [int(p) for p in s.split(":")]
+    except ValueError:
+        return None
+    if len(nums) == 2:
+        return nums[0] * 60 + nums[1]
+    if len(nums) == 3:
+        return nums[0] * 3600 + nums[1] * 60 + nums[2]
+    return None
+
+
 def to_track_json(t):
-    """Normalize a ytmusicapi search result into a flat JSON record."""
+    """Normalize a ytmusicapi result into a flat JSON record.
+    Handles both the search shape (duration_seconds, thumbnails) and the
+    watch_playlist / artist shape (length 'M:SS', thumbnail)."""
     artists = t.get("artists") or []
     artist = artists[0].get("name") if artists else "Unknown"
     artist_id = artists[0].get("id") if artists else None
     album_obj = t.get("album") or {}
     album = album_obj.get("name") if isinstance(album_obj, dict) else None
     album_id = album_obj.get("id") if isinstance(album_obj, dict) else None
-    thumbs = t.get("thumbnails") or []
+    thumbs = t.get("thumbnails") or t.get("thumbnail") or []
     artwork = thumbs[-1].get("url") if thumbs else None
+    duration = t.get("duration_seconds") or parse_length(t.get("length")) or 0
     return {
         "videoId": t.get("videoId"),
         "title": t.get("title"),
@@ -62,7 +80,7 @@ def to_track_json(t):
         "artistId": artist_id,
         "album": album,
         "albumId": album_id,
-        "durationSec": t.get("duration_seconds") or 0,
+        "durationSec": duration,
         "artworkUrl": artwork,
     }
 
