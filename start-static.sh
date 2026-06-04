@@ -30,16 +30,27 @@ pick_bin() {
 
 PB="$(pick_bin "$PB_DIR/pocketbase")" || { echo "✗ PocketBase binary missing in $PB_DIR (see SETUP.md prereqs)"; exit 1; }
 
+# Only react to explicit Ctrl+C / TERM. NOT EXIT — otherwise a `set -e` abort
+# (e.g. the build step failing) would tear down PocketBase too, leaving the
+# user with nothing running. On natural exit we leave background children;
+# they get reparented and keep going so a re-run of this script can detect
+# PB is already up and skip starting another instance.
 cleanup() {
-  trap - INT TERM EXIT
+  trap - INT TERM
   echo ""
   echo "▶ stopping…"
   kill 0 2>/dev/null || true
 }
-trap cleanup INT TERM EXIT
+trap cleanup INT TERM
 
-echo "▶ starting PocketBase…"
-( cd "$PB_DIR" && exec "$PB" serve ) &
+# Skip starting PB if it's already running (e.g. survived a previous failed
+# build, or the user started it manually). Avoids a port-conflict crash.
+if curl -fsS -m 1 http://127.0.0.1:8090/api/health > /dev/null 2>&1; then
+  echo "▶ PocketBase already running, skipping start."
+else
+  echo "▶ starting PocketBase…"
+  ( cd "$PB_DIR" && exec "$PB" serve ) &
+fi
 
 echo "▶ building the web app (production, webpack)…"
 # --webpack opts out of Turbopack, which refuses to follow the .venv/bin/python
