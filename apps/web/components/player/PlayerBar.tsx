@@ -33,9 +33,10 @@ export function PlayerBar() {
 
   return (
     <footer
-      className="shrink-0 bg-sidebar border-t border-sidebar-border px-4 py-3 grid grid-cols-[1fr_auto_1fr] md:grid-cols-[1fr_2fr_1fr] gap-4 items-center"
-      style={{ paddingBottom: 'calc(0.75rem + env(safe-area-inset-bottom, 0px))' }}
+      className="shrink-0 bg-sidebar border-t border-sidebar-border flex flex-col"
+      style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
     >
+    <div className="px-4 pt-3 pb-2 grid grid-cols-[1fr_auto_1fr] md:grid-cols-[1fr_2fr_1fr] gap-4 items-center">
       {/* Now playing — tapping the art/title opens the full-screen view on phones. */}
       <div className="flex items-center gap-3 min-w-0">
         <div
@@ -99,7 +100,7 @@ export function PlayerBar() {
             <NextIcon className="h-4 w-4" />
           </Button>
         </div>
-        <div className="hidden sm:flex w-full max-w-xl items-center gap-2">
+        <div className="hidden md:flex w-full max-w-xl items-center gap-2">
           <span className="text-[10px] text-muted-foreground tabular-nums w-9 text-right">{fmt(position)}</span>
           <Slider
             value={[duration ? (position / duration) * 100 : 0]}
@@ -129,6 +130,22 @@ export function PlayerBar() {
           className="w-32"
         />
       </div>
+    </div>
+
+    {/* Mobile-only thin progress slider at the bottom edge of the bar.
+        Spotify-style: visible, draggable, no labels. md+ uses the inline
+        slider inside the controls column instead. */}
+    <div className="md:hidden px-3 -mt-1">
+      <Slider
+        value={[duration ? (position / duration) * 100 : 0]}
+        onValueChange={(v) => {
+          const pct = Array.isArray(v) ? (v[0] ?? 0) : v;
+          seek((pct / 100) * (duration || 0));
+        }}
+        max={100}
+        step={0.1}
+      />
+    </div>
     </footer>
   );
 }

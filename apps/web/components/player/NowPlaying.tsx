@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import {
   ChevronDownIcon, HeartIcon, NextIcon, PauseIcon, PlayIcon, PrevIcon, MusicIcon,
 } from '@/components/icons';
+import { AddToPlaylistMenu } from '@/components/track/AddToPlaylistMenu';
 import { usePlayer } from '@/components/player/PlayerProvider';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { useExecuteToggleLike, useQueryLikes } from '@/hooks/useLibrary';
@@ -120,15 +121,18 @@ export function NowPlaying() {
             </div>
           </div>
           {current && user && (
-            <Button
-              variant="ghost"
-              size="icon"
-              className={cn('h-10 w-10 shrink-0 text-muted-foreground hover:text-foreground', isLiked && 'text-ember hover:text-ember')}
-              onClick={() => toggleLike.mutate({ track: current, wasLiked: isLiked })}
-              aria-label={isLiked ? 'Unlike' : 'Like'}
-            >
-              <HeartIcon className="h-6 w-6" fill={isLiked ? 'currentColor' : 'none'} />
-            </Button>
+            <div className="flex items-center gap-1 shrink-0">
+              <Button
+                variant="ghost"
+                size="icon"
+                className={cn('h-10 w-10 text-muted-foreground hover:text-foreground', isLiked && 'text-ember hover:text-ember')}
+                onClick={() => toggleLike.mutate({ track: current, wasLiked: isLiked })}
+                aria-label={isLiked ? 'Unlike' : 'Like'}
+              >
+                <HeartIcon className="h-6 w-6" fill={isLiked ? 'currentColor' : 'none'} />
+              </Button>
+              <AddToPlaylistMenu track={current} />
+            </div>
           )}
         </div>
 
