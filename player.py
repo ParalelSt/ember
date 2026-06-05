@@ -251,6 +251,33 @@ def cmd_artist(args):
     }
     json.dump(out, sys.stdout)
 
+def cmd_album(args):
+    """Resolve an album browseId to title/artist/year/cover + tracks.
+    Used by the album page to render a Spotify-style album view."""
+    try:
+        info = yt.get_album(browseId=args.browse_id)
+    except Exception as e:
+        print(f"album failed: {e}", file=sys.stderr)
+        json.dump({"error": str(e)}, sys.stdout)
+        return
+
+    artists = info.get("artists") or []
+    primary = artists[0] if artists else {}
+    tracks_raw = info.get("tracks") or []
+    tracks = [to_track_json(t) for t in tracks_raw if t.get("videoId")]
+
+    out = {
+        "title": info.get("title"),
+        "artist": primary.get("name"),
+        "artistId": primary.get("id"),
+        "year": int(info.get("year")) if str(info.get("year") or "").isdigit() else None,
+        "thumbnails": info.get("thumbnails") or [],
+        "trackCount": info.get("trackCount") or len(tracks),
+        "totalDurationSec": info.get("duration_seconds") or sum((t.get("durationSec") or 0) for t in tracks),
+        "tracks": tracks,
+    }
+    json.dump(out, sys.stdout)
+
 def cmd_trending(args):
     """Best-effort 'top tracks today' from YT Music charts. Falls back to a
     generic search if the charts API shape changes (it has historically)."""
@@ -311,6 +338,9 @@ def main():
     p_artist = sub.add_parser("artist", help="Artist profile + top songs by channelId. Prints JSON.")
     p_artist.add_argument("channel_id")
 
+    p_album = sub.add_parser("album", help="Album detail by browseId. Prints JSON.")
+    p_album.add_argument("browse_id")
+
     args = parser.parse_args()
 
     if args.cmd == "search":
@@ -325,6 +355,8 @@ def main():
         cmd_recommended(args)
     elif args.cmd == "artist":
         cmd_artist(args)
+    elif args.cmd == "album":
+        cmd_album(args)
     else:
         cmd_interactive()
 

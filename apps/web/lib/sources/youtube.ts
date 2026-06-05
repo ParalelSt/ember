@@ -154,6 +154,44 @@ interface RawArtist {
   error?: string;
 }
 
+interface RawAlbumDetail {
+  title?: string;
+  artist?: string;
+  artistId?: string | null;
+  year?: number | null;
+  thumbnails?: { url: string; width?: number; height?: number }[];
+  trackCount?: number;
+  totalDurationSec?: number;
+  tracks?: RawYoutubeTrack[];
+  error?: string;
+}
+
+const ALBUM_ID_RE = /^[A-Za-z0-9_-]{8,40}$/;
+
+export async function getAlbum(browseId: string) {
+  if (!ALBUM_ID_RE.test(browseId)) {
+    const e: PythonError = new Error('invalid albumId');
+    e.status = 400;
+    throw e;
+  }
+  const result = await runPython<RawAlbumDetail>(['album', browseId], { timeoutMs: 30000 });
+  if (result?.error) {
+    const e: PythonError = new Error(result.error);
+    e.status = 502;
+    throw e;
+  }
+  return {
+    title: result?.title ?? 'Album',
+    artist: result?.artist ?? 'Unknown',
+    artistId: result?.artistId ?? null,
+    year: result?.year ?? null,
+    thumbnails: result?.thumbnails ?? [],
+    trackCount: result?.trackCount ?? 0,
+    totalDurationSec: result?.totalDurationSec ?? 0,
+    tracks: (result?.tracks ?? []).filter((t) => t.videoId).map(normalize),
+  };
+}
+
 export async function getArtist(channelId: string) {
   if (!/^[A-Za-z0-9_-]{8,40}$/.test(channelId)) {
     const e: PythonError = new Error('invalid artistId');

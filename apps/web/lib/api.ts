@@ -1,4 +1,4 @@
-import type { ArtistPayload, Playlist, Track } from '@/types/track';
+import type { AlbumDetail, ArtistPayload, Playlist, Track } from '@/types/track';
 import { logger } from '@/lib/logger/client';
 
 // Cookies handle auth (PocketBase `pb_auth` cookie) — no manual Bearer headers.
@@ -43,6 +43,7 @@ export const api = {
   getRecommended: (seedSourceId?: string) =>
     req<{ tracks: Track[] }>(`/youtube/recommended${seedSourceId ? `?seed=${encodeURIComponent(seedSourceId)}` : ''}`),
   getArtist: (channelId: string) => req<ArtistPayload>(`/youtube/artist/${encodeURIComponent(channelId)}`),
+  getAlbum: (browseId: string) => req<AlbumDetail>(`/youtube/album/${encodeURIComponent(browseId)}`),
   saveToServer: (videoId: string) =>
     req<{ ok: true; filePath: string }>(`/youtube/download/${encodeURIComponent(videoId)}`, { method: 'POST' }),
 

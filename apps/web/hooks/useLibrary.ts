@@ -14,6 +14,7 @@ export const QK = {
   trending: ['trending'] as const,
   recommended: (seed: string | undefined) => ['recommended', seed ?? null] as const,
   artist: (id: string) => ['artist', id] as const,
+  album: (id: string) => ['album', id] as const,
   search: (q: string) => ['search', q] as const,
 };
 
@@ -71,6 +72,15 @@ export function useQueryArtist(id: string) {
     queryKey: QK.artist(id),
     queryFn: () => api.getArtist(id),
     enabled: !!id,
+  });
+}
+
+export function useQueryAlbum(id: string | null | undefined) {
+  return useQuery({
+    queryKey: QK.album(id ?? ''),
+    queryFn: () => api.getAlbum(id!),
+    enabled: !!id,
+    staleTime: 60 * 60_000,
   });
 }
 
