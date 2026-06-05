@@ -40,6 +40,9 @@ pocketbase/cloudflared
 # Bug-report logger JSONL output (rotates every 2 days)
 logs/
 
+# Internal design docs / brainstorming notes — local only
+docs/superpowers/
+
 # Editors / OS
 .vscode/
 .idea/
