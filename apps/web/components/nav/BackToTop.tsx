@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useEffect, useCallback, type RefObject } from 'react';
-import { Button } from '@/components/ui/button';
 import { ChevronUpIcon } from '@/components/icons';
 import { cn } from '@/lib/utils';
 
@@ -39,22 +38,22 @@ export function BackToTop({ scrollRef }: Props) {
   }, [scrollRef]);
 
   return (
-    <Button
+    <button
       type="button"
-      size="icon"
       onClick={onClick}
       aria-label="Back to top"
       title="Back to top"
       className={cn(
-        'fixed right-6 z-40 size-10 grid place-items-center rounded-full bg-ember hover:bg-ember-soft text-white shadow-glow',
-        'p-0 transition-all duration-200',
+        'fixed right-6 z-40 size-10 rounded-full bg-ember hover:bg-ember-soft text-white shadow-glow',
+        'flex items-center justify-center',
+        'transition-all duration-200',
         'bottom-36 md:bottom-28',
         visible
           ? 'opacity-100 translate-y-0 pointer-events-auto'
           : 'opacity-0 translate-y-2 pointer-events-none',
       )}
     >
-      <ChevronUpIcon className="size-5" />
-    </Button>
+      <ChevronUpIcon className="size-5" strokeWidth={3} />
+    </button>
   );
 }

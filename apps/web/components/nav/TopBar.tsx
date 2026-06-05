@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { MenuIcon, FlameIcon } from '@/components/icons';
 
@@ -9,10 +10,10 @@ export function TopBar({ onMenu }: { onMenu: () => void }) {
       <Button variant="ghost" size="icon" onClick={onMenu} aria-label="Open menu">
         <MenuIcon className="h-5 w-5" />
       </Button>
-      <div className="flex items-center gap-2 font-bold">
+      <Link href="/" className="flex items-center gap-2 font-bold hover:opacity-80 transition-opacity" aria-label="Home">
         <FlameIcon className="h-4 w-4 text-ember" />
         Ember
-      </div>
+      </Link>
       <div className="w-9" />
     </header>
   );
