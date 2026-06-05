@@ -1,5 +1,6 @@
 'use client';
 
+import { useEffect } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { TrackRow } from '@/components/track/TrackRow';
 import {
@@ -21,6 +22,15 @@ interface Section {
 export default function HomePage() {
   const search = useSearchParams();
   const focus = search.get('focus');
+
+  // Reset the scroll position whenever the focus changes — going INTO a
+  // focused song box (so you start at its top) and coming back OUT (so the
+  // home page restarts from the top, not wherever you were when you clicked
+  // Show all from a lower row).
+  useEffect(() => {
+    const main = document.querySelector('main');
+    if (main) main.scrollTo({ top: 0, behavior: 'instant' as ScrollBehavior });
+  }, [focus]);
 
   const { data: history = [] } = useQueryHistory();
   const { data: liked = [] } = useQueryLikes();
