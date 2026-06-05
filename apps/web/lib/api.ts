@@ -83,4 +83,32 @@ export const api = {
 
   updateDiscord: (track: Track | null, isPlaying: boolean) =>
     req<{ ok: true }>('/discord/update', { method: 'POST', body: { track, isPlaying } }),
+
+  updateProfile: async ({
+    name,
+    avatar,
+    removeAvatar,
+  }: {
+    name?: string;
+    avatar?: File;
+    removeAvatar?: boolean;
+  }): Promise<{
+    ok: true;
+    user: { id: string; email: string; name: string; avatarUrl: string | null };
+  }> => {
+    const fd = new FormData();
+    if (name !== undefined) fd.set('name', name);
+    if (avatar) fd.set('avatar', avatar);
+    if (removeAvatar) fd.set('removeAvatar', 'true');
+    const res = await fetch(`${API_BASE}/api/profile`, {
+      method: 'PATCH',
+      body: fd,
+      credentials: 'include',
+    });
+    if (!res.ok) {
+      const err = (await res.json().catch(() => ({ error: res.statusText }))) as { error?: string };
+      throw new Error(err.error || `Request failed: ${res.status}`);
+    }
+    return res.json();
+  },
 };

@@ -44,7 +44,14 @@ export const viewport: Viewport = {
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
   const pb = await createClient();
   const initialUser: AuthUser | null = pb.authStore.isValid && pb.authStore.record
-    ? { id: pb.authStore.record.id, email: String(pb.authStore.record.email ?? '') }
+    ? {
+        id: pb.authStore.record.id,
+        email: String(pb.authStore.record.email ?? ''),
+        name: String(pb.authStore.record.name ?? ''),
+        avatarUrl: pb.authStore.record.avatar
+          ? pb.files.getURL(pb.authStore.record, pb.authStore.record.avatar as string)
+          : null,
+      }
     : null;
 
   return (

@@ -9,14 +9,23 @@ import { logger } from '@/lib/logger/client';
 export interface AuthUser {
   id: string;
   email: string;
+  name: string;
+  avatarUrl: string | null;
 }
 
 interface AuthValue {
   user: AuthUser | null;
+  /** Convenience — `user?.name || ''`. Empty string when unset. */
+  name: string;
+  /** Convenience — `user?.avatarUrl`. */
+  avatarUrl: string | null;
   loading: boolean;
   signIn: (email: string, password: string) => Promise<{ error: { message: string } | null }>;
   signUp: (email: string, password: string) => Promise<{ error: { message: string } | null; needsConfirmation: boolean }>;
   signOut: () => Promise<void>;
+  /** Re-pulls the user record from PB so derived fields (name, avatarUrl)
+   *  refresh after a profile save. */
+  refresh: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthValue | null>(null);
@@ -31,7 +40,7 @@ export function AuthProvider({ children, initialUser }: { children: ReactNode; i
     // already syncs to document.cookie via the client wrapper.
     const unsub = pb.authStore.onChange(() => {
       const record = pb.authStore.record;
-      setUser(record ? { id: record.id, email: String(record.email ?? '') } : null);
+      setUser(record ? mapRecord(pb, record) : null);
       setLoading(false);
     });
 
@@ -49,7 +58,16 @@ export function AuthProvider({ children, initialUser }: { children: ReactNode; i
   const value = useMemo<AuthValue>(
     () => ({
       user,
+      name: user?.name ?? '',
+      avatarUrl: user?.avatarUrl ?? null,
       loading,
+      refresh: async () => {
+        try {
+          await pb.collection('users').authRefresh();
+        } catch (e) {
+          logger.error('auth', 'refresh failed', { reason: extractPbError(e) }, e instanceof Error ? e : undefined);
+        }
+      },
       signIn: async (email, password) => {
         try {
           await pb.collection('users').authWithPassword(email, password);
@@ -89,6 +107,20 @@ export function useAuth() {
   const ctx = useContext(AuthContext);
   if (!ctx) throw new Error('useAuth must be used inside AuthProvider');
   return ctx;
+}
+
+function mapRecord(
+  pb: ReturnType<typeof createClient>,
+  record: { id: string; email?: string; name?: string; avatar?: string; collectionId?: string; collectionName?: string },
+): AuthUser {
+  return {
+    id: record.id,
+    email: String(record.email ?? ''),
+    name: String(record.name ?? ''),
+    avatarUrl: record.avatar
+      ? pb.files.getURL(record as Parameters<typeof pb.files.getURL>[0], record.avatar)
+      : null,
+  };
 }
 
 /** Pulls the actual reason out of a PocketBase ClientResponseError. The

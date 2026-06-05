@@ -10,14 +10,14 @@ import { useAuth } from '@/components/providers/AuthProvider';
 import { useExecuteAddToPlaylist, useExecuteCreatePlaylist, useQueryPlaylists } from '@/hooks/useLibrary';
 import type { Track } from '@/types/track';
 import { CreatePlaylistDialog } from '@/components/track/CreatePlaylistDialog';
-import { HomeIcon, SearchIcon, LibraryIcon, PlusIcon, LogOutIcon, FlameIcon, BugIcon } from '@/components/icons';
-import { useUiStore } from '@/stores/useUiStore';
+import { HomeIcon, SearchIcon, LibraryIcon, PlusIcon, LogOutIcon, FlameIcon, SettingsIcon } from '@/components/icons';
 import { cn } from '@/lib/utils';
 
 const NAV = [
   { href: '/', label: 'Home', icon: HomeIcon },
   { href: '/search', label: 'Search', icon: SearchIcon },
   { href: '/library', label: 'Library', icon: LibraryIcon },
+  { href: '/settings', label: 'Settings', icon: SettingsIcon },
 ];
 
 interface Props {
@@ -28,12 +28,11 @@ interface Props {
 export function Drawer({ open, onOpenChange }: Props) {
   const pathname = usePathname();
   const router = useRouter();
-  const { user, signOut } = useAuth();
+  const { user, name: displayName, avatarUrl, signOut } = useAuth();
   const { data: playlists = [] } = useQueryPlaylists();
   const createPlaylist = useExecuteCreatePlaylist();
   const addToPlaylist = useExecuteAddToPlaylist();
   const [createOpen, setCreateOpen] = useState(false);
-  const openBugReport = useUiStore((s) => s.setBugReportOpen);
 
   const close = () => onOpenChange(false);
 
@@ -107,21 +106,23 @@ export function Drawer({ open, onOpenChange }: Props) {
 
         {user && (
           <div className="border-t border-sidebar-border px-2 py-3">
-            <div className="flex items-center gap-3 px-2 py-2 min-w-0">
-              <div className="h-7 w-7 rounded-full bg-ember text-white grid place-items-center text-xs font-bold shrink-0">
-                {user.email?.[0]?.toUpperCase() ?? '?'}
+            <Link
+              href="/settings/profile"
+              onClick={close}
+              className="flex items-center gap-3 px-2 py-2 min-w-0 rounded-md hover:bg-sidebar-accent/60"
+            >
+              <div className="relative h-7 w-7 rounded-full overflow-hidden bg-ember text-white grid place-items-center text-xs font-bold shrink-0">
+                {avatarUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={avatarUrl} alt="" className="absolute inset-0 h-full w-full object-cover" />
+                ) : (
+                  (displayName || user.email)[0]?.toUpperCase() ?? '?'
+                )}
               </div>
               <div className="text-xs text-sidebar-foreground/70 truncate" title={user.email}>
-                {user.email}
+                {displayName || user.email}
               </div>
-            </div>
-            <button
-              onClick={() => { close(); openBugReport(true); }}
-              className="mt-1 w-full flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent/60"
-            >
-              <BugIcon className="h-4 w-4" />
-              Report a bug
-            </button>
+            </Link>
             <button
               onClick={() => { close(); void signOut(); }}
               className="mt-1 w-full flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium text-destructive hover:bg-destructive/10"

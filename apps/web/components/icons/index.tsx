@@ -20,4 +20,5 @@ export {
   ChevronDown as ChevronDownIcon,
   RotateCw as RefreshIcon,
   Bug as BugIcon,
+  Settings as SettingsIcon,
 } from 'lucide-react';
