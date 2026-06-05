@@ -8,7 +8,9 @@ export interface TrackRecord {
   source_id: string;
   title: string;
   artist?: string;
+  artist_id?: string;
   album?: string;
+  album_id?: string;
   duration_sec?: number;
   artwork_url?: string;
   stream_url?: string;
@@ -25,9 +27,9 @@ export function mapTrackRow(row: TrackRecord | null | undefined): Track | null {
     sourceId: row.source_id,
     title: row.title,
     artist: row.artist ?? '',
-    artistId: null,
+    artistId: row.artist_id || null,
     album: row.album ?? null,
-    albumId: null,
+    albumId: row.album_id || null,
     durationSec: row.duration_sec ?? 0,
     artworkUrl: row.artwork_url ?? null,
     streamUrl: row.stream_url ?? '',
