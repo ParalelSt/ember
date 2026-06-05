@@ -125,7 +125,7 @@ export function PlayerBar() {
             const pct = Array.isArray(v) ? (v[0] ?? 0) : v;
             setVolume(pct / 100);
           }}
-          max={100}
+          max={85}
           step={1}
           className="w-32"
         />
