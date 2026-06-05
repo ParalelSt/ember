@@ -47,7 +47,7 @@ export function BackToTop({ scrollRef }: Props) {
         'fixed right-6 z-40 size-10 rounded-full bg-ember hover:bg-ember-soft text-white shadow-glow',
         'flex items-center justify-center',
         'transition-all duration-200',
-        'bottom-36 md:bottom-28',
+        'bottom-44 md:bottom-28',
         visible
           ? 'opacity-100 translate-y-0 pointer-events-auto'
           : 'opacity-0 translate-y-2 pointer-events-none',
