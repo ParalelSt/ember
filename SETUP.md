@@ -10,19 +10,21 @@ All commands below are **bash**. macOS / Linux: any terminal works. **Windows:**
 
 ## Three ways to run it
 
-| Script | What it does | Phone access? | Use it for |
-|---|---|---|---|
-| `npm run dev` | Just Next.js dev — PB must already be running in another terminal | localhost only | Coding / development |
-| **`./start.sh`** | PB + Next dev + an **ephemeral** `*.trycloudflare.com` tunnel | Yes — URL changes every run | Quick share / test from a phone |
-| **`./start-static.sh`** | PB + Next **production** build behind a **Tailscale Funnel** | Yes — same URL forever | Long-term hosting |
+Pick based on what you want to do *after* setup:
 
-The Friend setup below uses `./start.sh` — one command, you get a phone URL out of the box. If you want a permanent URL later, jump to **Permanent URL — Tailscale Funnel**.
+| Goal | Command | Extra setup |
+|---|---|---|
+| Use it on this computer only | `npm run dev` (after starting PB) | None |
+| Permanent phone-accessible URL | `./start-static.sh` | Tailscale Funnel (one-time, free) |
+| Quick / temporary phone URL | `./start.sh` | `cloudflared` binary |
+
+The Friend setup below gets you to localhost first (cheapest path). When you're ready for phone access, jump to **Permanent URL — Tailscale Funnel** — that's the recommended option for keeps.
 
 ---
 
 ## Friend setup — start here
 
-Get a working app in ~10 minutes.
+Get a working app on your computer in ~10 minutes.
 
 ### 1. Install the prereqs
 
@@ -32,7 +34,6 @@ One-time downloads:
 - **Node.js 20+** — https://nodejs.org/en/download → LTS installer.
 - **Python 3.11+** — https://www.python.org/downloads. macOS already has it. **Windows:** tick *"Add Python to PATH"* in the installer.
 - **PocketBase v0.22.21** — https://github.com/pocketbase/pocketbase/releases → pick your OS, unzip, drop the executable (`pocketbase` on Mac/Linux, `pocketbase.exe` on Windows) into the repo's `pocketbase/` folder *after* you clone in step 2.
-- **cloudflared** — https://github.com/cloudflare/cloudflared/releases → drop into `pocketbase/` too. Needed by `./start.sh` for the phone URL.
 
 ### 2. Clone, install, configure
 
@@ -54,7 +55,7 @@ python3 -m venv .venv
 
 *(Windows: `python -m venv .venv` then `.venv\Scripts\pip install yt-dlp imageio-ffmpeg ytmusicapi`.)*
 
-Drop the **PocketBase** and **cloudflared** binaries from step 1 into the `pocketbase/` folder.
+Drop the **PocketBase** binary from step 1 into the `pocketbase/` folder if you haven't already.
 
 ### 4. First-run only: create the PocketBase admin
 
@@ -65,7 +66,7 @@ cd pocketbase
 ./pocketbase serve
 ```
 
-Open **http://127.0.0.1:8090/_/** → fill in any email + password → save. `Ctrl+C` to stop PB. You don't need to do this again unless you reset the database.
+Open **http://127.0.0.1:8090/_/** → fill in any email + password → save. Leave PB running in this terminal.
 
 Paste those same credentials into `apps/web/.env.local`:
 
@@ -74,29 +75,17 @@ POCKETBASE_ADMIN_EMAIL=<the email you just used>
 POCKETBASE_ADMIN_PASSWORD=<the password you just used>
 ```
 
-### 5. From now on: one command
+### 5. Start the app
 
-In the **repo root** (one terminal):
+In a **second terminal**, in the repo root:
 
 ```bash
-./start.sh
+npm run dev
 ```
 
-This brings up PocketBase, the Next dev server, and a Cloudflare tunnel. After a few seconds you'll see:
+Wait for `Ready in …s`. Open **http://localhost:3000**.
 
-```
-═══════════════════════════════════════════════════════
-  📱  Open on your phone:
-      https://xxxxx-xxxxx.trycloudflare.com
-
-  🔧  PocketBase admin (local only):
-      http://127.0.0.1:8090/_/
-═══════════════════════════════════════════════════════
-```
-
-Use the tunnel URL from your phone, or `http://localhost:3000` from the same computer.
-
-`Ctrl+C` stops everything. Re-run `./start.sh` to start again.
+(If you'd rather have one command starting both, see **Permanent URL — Tailscale Funnel** below — that's the version that wraps PB + Next into a single `./start-static.sh`.)
 
 ### 6. Get yourself onto the invite list
 
@@ -107,13 +96,15 @@ The app is invite-only. Either:
 
 ### 7. Sign in
 
-Back at the app URL → enter your email → set a password → done. Music search, playlists, all of it works.
+Back at http://localhost:3000 → enter your email → set a password → done. Music search, playlists, all of it works.
 
 ---
 
 ## Permanent URL — Tailscale Funnel
 
 Free, static `https://ember.<your-tailnet>.ts.net` over the public internet. Your computer must stay **on + signed into Tailscale** for the URL to work; visitors just open it.
+
+Once this is set up, you stop using two terminals — `./start-static.sh` boots PocketBase + the production build of the app in one command.
 
 ### 1. Install Tailscale
 
@@ -157,15 +148,29 @@ tailscale funnel --bg 3000
 
 It prints `https://ember.<your-tailnet>.ts.net` — your permanent URL.
 
-### 4. Run the production build
+### 4. Run the app with one command
 
 ```bash
 ./start-static.sh
 ```
 
-This rebuilds the app, starts PB (if not already running), and serves the production bundle. Use this instead of `./start.sh` from now on. Re-run it whenever you change code.
+This rebuilds the app, starts PB (if not already running), and serves the production bundle. Re-run it whenever you change code.
 
 Stop the tunnel later: `tailscale funnel reset`.
+
+---
+
+## Quick / ephemeral phone access — `./start.sh`
+
+Skip this if you set up Tailscale above; you don't need both.
+
+For a fast "let me show this to someone for an afternoon" URL without doing the Tailscale dance, install **cloudflared** (https://github.com/cloudflare/cloudflared/releases → drop into `pocketbase/`) and run:
+
+```bash
+./start.sh
+```
+
+Prints a `*.trycloudflare.com` URL. Open on your phone. `Ctrl+C` stops everything. **URL changes every restart** — that's the trade-off versus Tailscale's static one.
 
 ---
 
@@ -200,7 +205,7 @@ rm -rf pocketbase/pb_data
 cd pocketbase && ./pocketbase serve
 ```
 
-After the restart, you'll need to recreate the PB admin account at `/_/` again, and re-paste the creds into `.env.local`.
+After the restart, you'll need to recreate the PB admin account at `/_/` again and re-paste the creds into `.env.local`.
 
 ---
 
