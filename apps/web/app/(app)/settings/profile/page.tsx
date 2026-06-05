@@ -5,11 +5,12 @@ import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { LogOutIcon } from '@/components/icons';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { api } from '@/lib/api';
 
 export default function SettingsProfile() {
-  const { user, name: currentName, avatarUrl, refresh } = useAuth();
+  const { user, name: currentName, avatarUrl, refresh, signOut } = useAuth();
   const [name, setName] = useState(currentName ?? '');
   const [pendingAvatar, setPendingAvatar] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
@@ -61,7 +62,8 @@ export default function SettingsProfile() {
   const initial = (name || user?.email || '?').slice(0, 1).toUpperCase();
 
   return (
-    <form onSubmit={onSubmit} className="max-w-2xl">
+    <div className="max-w-2xl">
+    <form onSubmit={onSubmit}>
       <h2 className="text-xl font-bold tracking-tight">Profile</h2>
 
       <div className="mt-6 flex items-center gap-5">
@@ -102,8 +104,22 @@ export default function SettingsProfile() {
       </div>
 
       <Button type="submit" disabled={busy} className="mt-6 bg-ember hover:bg-ember-soft text-white">
-        {busy ? 'Saving…' : 'Save changes'}
+        Save changes
       </Button>
     </form>
+
+      <div className="mt-12 pt-6 border-t border-border">
+        <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">Account</h3>
+        <Button
+          type="button"
+          variant="ghost"
+          onClick={() => void signOut()}
+          className="mt-3 text-destructive hover:text-destructive hover:bg-destructive/10"
+        >
+          <LogOutIcon className="h-4 w-4" />
+          Sign out
+        </Button>
+      </div>
+    </div>
   );
 }

@@ -10,7 +10,7 @@ import { useAuth } from '@/components/providers/AuthProvider';
 import { useExecuteAddToPlaylist, useExecuteCreatePlaylist, useQueryPlaylists } from '@/hooks/useLibrary';
 import type { Track } from '@/types/track';
 import { CreatePlaylistDialog } from '@/components/track/CreatePlaylistDialog';
-import { HomeIcon, SearchIcon, LibraryIcon, PlusIcon, LogOutIcon, FlameIcon, SettingsIcon, ShieldIcon } from '@/components/icons';
+import { HomeIcon, SearchIcon, LibraryIcon, PlusIcon, FlameIcon, SettingsIcon, ShieldIcon } from '@/components/icons';
 import { cn } from '@/lib/utils';
 
 const BASE_NAV = [
@@ -28,7 +28,7 @@ interface Props {
 export function Drawer({ open, onOpenChange }: Props) {
   const pathname = usePathname();
   const router = useRouter();
-  const { user, name: displayName, avatarUrl, isAdmin, signOut } = useAuth();
+  const { user, name: displayName, avatarUrl, isAdmin } = useAuth();
   const NAV = isAdmin
     ? [...BASE_NAV, { href: '/admin', label: 'Admin', icon: ShieldIcon }]
     : BASE_NAV;
@@ -126,13 +126,6 @@ export function Drawer({ open, onOpenChange }: Props) {
                 {displayName || user.email}
               </div>
             </Link>
-            <button
-              onClick={() => { close(); void signOut(); }}
-              className="mt-1 w-full flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium text-destructive hover:bg-destructive/10"
-            >
-              <LogOutIcon className="h-4 w-4" />
-              Sign out
-            </button>
           </div>
         )}
       </SheetContent>
