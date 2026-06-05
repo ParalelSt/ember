@@ -47,10 +47,14 @@ export function Sidebar() {
 
   return (
     <aside className="hidden md:flex flex-col w-60 shrink-0 bg-sidebar text-sidebar-foreground border-r border-sidebar-border h-full overflow-hidden">
-      <div className="flex items-center gap-2 px-4 pt-5 pb-4">
+      <Link
+        href="/"
+        className="flex items-center gap-2 px-4 pt-5 pb-4 hover:opacity-80 transition-opacity"
+        aria-label="Home"
+      >
         <FlameIcon className="h-5 w-5 text-ember" />
         <span className="text-lg font-bold tracking-tight">Ember</span>
-      </div>
+      </Link>
 
       <nav className="px-2 flex flex-col gap-1">
         {NAV.map(({ href, label, icon: Icon }) => {

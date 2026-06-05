@@ -121,8 +121,8 @@ export function PlayerBar() {
         </div>
       </div>
 
-      {/* Queue + Volume */}
-      <div className="hidden md:flex justify-end items-center gap-2">
+      {/* Right column — Queue always visible; Volume desktop only. */}
+      <div className="flex justify-end items-center gap-2">
         <Button
           variant="ghost"
           size="icon"
@@ -133,17 +133,19 @@ export function PlayerBar() {
         >
           <QueueIcon className="h-4 w-4" />
         </Button>
-        <VolumeIcon className="h-4 w-4 text-muted-foreground" />
-        <Slider
-          value={[volume * 100]}
-          onValueChange={(v) => {
-            const pct = Array.isArray(v) ? (v[0] ?? 0) : v;
-            setVolume(pct / 100);
-          }}
-          max={85}
-          step={1}
-          className="w-20"
-        />
+        <div className="hidden md:flex items-center gap-2">
+          <VolumeIcon className="h-4 w-4 text-muted-foreground" />
+          <Slider
+            value={[volume * 100]}
+            onValueChange={(v) => {
+              const pct = Array.isArray(v) ? (v[0] ?? 0) : v;
+              setVolume(pct / 100);
+            }}
+            max={85}
+            step={1}
+            className="w-20"
+          />
+        </div>
       </div>
     </div>
 

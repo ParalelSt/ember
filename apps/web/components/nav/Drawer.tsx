@@ -57,9 +57,16 @@ export function Drawer({ open, onOpenChange }: Props) {
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent side="left" className="w-72 max-w-[82vw] flex flex-col bg-sidebar text-sidebar-foreground border-sidebar-border p-0">
         <SheetHeader className="px-4 py-4 border-b border-sidebar-border">
-          <SheetTitle className="flex items-center gap-2 text-base">
-            <FlameIcon className="h-4 w-4 text-ember" />
-            Ember
+          <SheetTitle className="text-base">
+            <Link
+              href="/"
+              onClick={close}
+              className="flex items-center gap-2 hover:opacity-80 transition-opacity"
+              aria-label="Home"
+            >
+              <FlameIcon className="h-4 w-4 text-ember" />
+              Ember
+            </Link>
           </SheetTitle>
         </SheetHeader>
 
