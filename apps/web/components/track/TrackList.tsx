@@ -3,8 +3,9 @@
 import Link from 'next/link';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
-import { HeartIcon, PauseIcon, PlayIcon, TrashIcon } from '@/components/icons';
+import { DownloadIcon, HeartIcon, PauseIcon, PlayIcon, TrashIcon } from '@/components/icons';
 import { AddToPlaylistMenu } from './AddToPlaylistMenu';
+import { downloadSingleTrack, isDownloadable } from '@/lib/download';
 import { usePlayer } from '@/components/player/PlayerProvider';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { useExecuteToggleLike, useQueryLikes } from '@/hooks/useLibrary';
@@ -110,6 +111,18 @@ export function TrackList({ tracks, showAlbum = true, showRank = false, onRemove
 
             <div className="flex items-center gap-1">
               <AddToPlaylistMenu track={t} />
+              {isDownloadable(t) && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                  onClick={() => downloadSingleTrack(t)}
+                  aria-label="Download"
+                  title="Download"
+                >
+                  <DownloadIcon className="h-4 w-4" />
+                </Button>
+              )}
               <Button
                 variant="ghost"
                 size="icon"

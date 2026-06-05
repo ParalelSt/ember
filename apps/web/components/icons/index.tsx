@@ -23,4 +23,5 @@ export {
   Settings as SettingsIcon,
   Shield as ShieldIcon,
   MoreHorizontal as MoreIcon,
+  Download as DownloadIcon,
 } from 'lucide-react';

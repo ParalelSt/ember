@@ -39,6 +39,7 @@ logs/
 
 # Internal design docs / brainstorming notes — local only
 docs/superpowers/
+CHANGES.md
 
 # Editors / OS
 .vscode/

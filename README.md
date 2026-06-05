@@ -88,11 +88,15 @@ When the queue runs out, the player pulls YouTube "watch-next" recommendations s
 
 Phones never install anything — they just open the URL. Your Mac (or any computer running the stack) only needs to stay on + signed into Tailscale.
 
+## Downloads
+
+YouTube tracks have a download button — single tracks via a server-set `Content-Disposition` header on `/api/youtube/stream/<id>?download=1`; whole playlists ZIP themselves client-side via `jszip` and save as `<playlist>.zip`. Jamendo tracks don't surface a download button (cross-origin CDN — no clean way to force a filename).
+
 ## What is intentionally NOT here
 
 - No client-side calls to external music APIs. The browser only ever talks to `/api/*` and `/pb/*`.
 - No paid music catalog. YouTube + Jamendo only — works for personal use.
-- No download/offline feature. Streaming only.
+- No offline / play-while-disconnected mode. Streaming only; downloads land in your filesystem.
 
 ## Roadmap
 
