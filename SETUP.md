@@ -65,14 +65,23 @@ cd pocketbase
 ./pocketbase serve
 ```
 
-Open **http://127.0.0.1:8090/_/** → fill in any email + password → save. Leave PB running in this terminal.
+Open **http://127.0.0.1:8090/_/** → fill in any email + password → save. *Write them down* — you'll paste them into the env file in a second. Leave PB running.
 
-Paste those same credentials into `apps/web/.env.local`:
+Now open `apps/web/.env.local` in any editor. Two lines at the top say:
 
 ```
-POCKETBASE_ADMIN_EMAIL=<the email you just used>
-POCKETBASE_ADMIN_PASSWORD=<the password you just used>
+POCKETBASE_ADMIN_EMAIL=
+POCKETBASE_ADMIN_PASSWORD=
 ```
+
+Paste the email and password you just used after the `=`:
+
+```
+POCKETBASE_ADMIN_EMAIL=admin@example.com
+POCKETBASE_ADMIN_PASSWORD=hunter2hunter2
+```
+
+Save the file. These are how the Next server logs into PB to check the invite list. Without them you'll see *"PocketBase admin credentials not configured"* on the `/auth` page when you try to sign in.
 
 ### 5. Start the app
 
