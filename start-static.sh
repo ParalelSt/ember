@@ -4,10 +4,15 @@
 #
 #   ./start-static.sh
 #
-# Assumes `tailscale funnel --bg 3000` is already running — see SETUP.md.
+# Assumes `tailscale funnel --bg $PORT` is already running — see SETUP.md.
 # Starts:
-#   1. PocketBase                       (127.0.0.1:8090)
-#   2. Next in PRODUCTION mode          (127.0.0.1:3000) — proxies /pb/* to PocketBase
+#   1. PocketBase                       (127.0.0.1:$POCKETBASE_PORT, default 8090)
+#   2. Next in PRODUCTION mode          (127.0.0.1:$PORT, default 3000) — proxies /pb/* to PocketBase
+#
+# Both ports come from apps/web/.env.local:
+#   PORT=3000
+#   POCKETBASE_PORT=8090
+# Either or both may be omitted to keep the defaults. See PORTS.md.
 #
 # Production mode (not `next dev`) is used so:
 #   - No dev-origin CSRF check (Tailscale tunnel hostnames work out of the box).
@@ -20,6 +25,7 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PB_DIR="$ROOT/pocketbase"
+ENV_FILE="$ROOT/apps/web/.env.local"
 
 pick_bin() {
   if [ -f "$1" ]; then echo "$1"
@@ -29,6 +35,25 @@ pick_bin() {
 }
 
 PB="$(pick_bin "$PB_DIR/pocketbase")" || { echo "✗ PocketBase binary missing in $PB_DIR (see SETUP.md prereqs)"; exit 1; }
+
+# Read PORT + POCKETBASE_PORT out of apps/web/.env.local without sourcing the
+# whole file (sourcing would expose every secret in there to this shell).
+read_env() {
+  local key="$1"
+  [ -f "$ENV_FILE" ] || return 0
+  grep -E "^${key}=" "$ENV_FILE" | tail -1 | cut -d= -f2- | tr -d '\r' | tr -d '"' | tr -d "'"
+}
+
+PORT="$(read_env PORT)"
+PORT="${PORT:-3000}"
+
+POCKETBASE_PORT="$(read_env POCKETBASE_PORT)"
+POCKETBASE_PORT="${POCKETBASE_PORT:-8090}"
+
+# Tell Next where PB is. Overrides whatever's in .env.local so changing
+# POCKETBASE_PORT alone is enough — POCKETBASE_URL stays in sync automatically.
+export POCKETBASE_URL="http://127.0.0.1:$POCKETBASE_PORT"
+export PORT
 
 # Only react to explicit Ctrl+C / TERM. NOT EXIT — otherwise a `set -e` abort
 # (e.g. the build step failing) would tear down PocketBase too, leaving the
@@ -45,11 +70,11 @@ trap cleanup INT TERM
 
 # Skip starting PB if it's already running (e.g. survived a previous failed
 # build, or the user started it manually). Avoids a port-conflict crash.
-if curl -fsS -m 1 http://127.0.0.1:8090/api/health > /dev/null 2>&1; then
-  echo "▶ PocketBase already running, skipping start."
+if curl -fsS -m 1 "http://127.0.0.1:$POCKETBASE_PORT/api/health" > /dev/null 2>&1; then
+  echo "▶ PocketBase already running on :$POCKETBASE_PORT, skipping start."
 else
-  echo "▶ starting PocketBase…"
-  ( cd "$PB_DIR" && exec "$PB" serve ) &
+  echo "▶ starting PocketBase on :$POCKETBASE_PORT…"
+  ( cd "$PB_DIR" && exec "$PB" serve --http "127.0.0.1:$POCKETBASE_PORT" ) &
 fi
 
 echo "▶ building the web app (production, webpack)…"
@@ -58,7 +83,7 @@ echo "▶ building the web app (production, webpack)…"
 # spawn the Python player). Webpack happily ignores it.
 ( cd "$ROOT/apps/web" && npx next build --webpack )
 
-echo "▶ starting Next (production)…"
+echo "▶ starting Next on :$PORT (production)…"
 ( cd "$ROOT" && exec npm start ) &
 
 echo ""
@@ -67,7 +92,7 @@ echo "  📱  App is live at your Tailscale Funnel URL"
 echo "      (https://ember.<your-tailnet>.ts.net)"
 echo ""
 echo "  🔧  PocketBase admin (local only):"
-echo "      http://127.0.0.1:8090/_/"
+echo "      http://127.0.0.1:$POCKETBASE_PORT/_/"
 echo "═══════════════════════════════════════════════════════"
 echo ""
 echo "  (Ctrl+C to stop.)"
