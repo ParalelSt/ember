@@ -213,25 +213,32 @@ def cmd_artist(args):
         json.dump({"error": str(e)}, sys.stdout)
         return
 
-    songs_section = info.get("songs") or {}
-    songs = songs_section.get("results") or []
-
-    # Some artists only expose the small "songs" list; fall back to a wider
-    # search of their videos so we have more to play.
-    if len(songs) < 5:
+    # Pull top tracks from search rather than yt.get_artist()['songs']: the
+    # latter returns no duration_seconds OR length, while search returns
+    # both. Search ranking ≈ artist top songs for the same artist anyway.
+    songs = []
+    artist_name = (info.get("name") or "").strip()
+    if artist_name:
         try:
-            extra = yt.search(info.get("name") or "", filter="songs", limit=30)
-            seen_ids = {s.get("videoId") for s in songs}
-            for e in extra or []:
-                if not e.get("videoId") or e.get("videoId") in seen_ids:
+            results = yt.search(artist_name, filter="songs", limit=30)
+            lowered = artist_name.lower()
+            for e in results or []:
+                if not e.get("videoId"):
                     continue
-                # only include results actually attributed to this artist
-                if not any((a.get("name") or "").lower() == (info.get("name") or "").lower()
+                # Only include results actually attributed to this artist.
+                if not any((a.get("name") or "").lower() == lowered
                            for a in (e.get("artists") or [])):
                     continue
                 songs.append(e)
         except Exception as e:
-            print(f"artist: extra search failed: {e}", file=sys.stderr)
+            print(f"artist: search failed: {e}", file=sys.stderr)
+
+    # Fallback: if the search returned nothing (rare — search down, or the
+    # artist name is too generic to match cleanly), surface whatever
+    # get_artist() gave us so the page isn't blank. Those rows won't have
+    # durations, but the page works.
+    if not songs:
+        songs = (info.get("songs") or {}).get("results") or []
 
     albums = (info.get("albums") or {}).get("results") or []
     out = {
