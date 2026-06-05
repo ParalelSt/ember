@@ -8,9 +8,21 @@ All commands below are **bash**. macOS / Linux: any terminal works. **Windows:**
 
 ---
 
+## Three ways to run it
+
+| Script | What it does | Phone access? | Use it for |
+|---|---|---|---|
+| `npm run dev` | Just Next.js dev — PB must already be running in another terminal | localhost only | Coding / development |
+| **`./start.sh`** | PB + Next dev + an **ephemeral** `*.trycloudflare.com` tunnel | Yes — URL changes every run | Quick share / test from a phone |
+| **`./start-static.sh`** | PB + Next **production** build behind a **Tailscale Funnel** | Yes — same URL forever | Long-term hosting |
+
+The Friend setup below uses `./start.sh` — one command, you get a phone URL out of the box. If you want a permanent URL later, jump to **Permanent URL — Tailscale Funnel**.
+
+---
+
 ## Friend setup — start here
 
-Get yourself a working local app in ~10 minutes. Follow the steps in order, top to bottom.
+Get a working app in ~10 minutes.
 
 ### 1. Install the prereqs
 
@@ -19,9 +31,10 @@ One-time downloads:
 - **Git** — https://git-scm.com/downloads *(Windows: this gives you Git Bash. Use it for everything below.)*
 - **Node.js 20+** — https://nodejs.org/en/download → LTS installer.
 - **Python 3.11+** — https://www.python.org/downloads. macOS already has it. **Windows:** tick *"Add Python to PATH"* in the installer.
-- **PocketBase binary** — https://github.com/pocketbase/pocketbase/releases → use **v0.22.21**. Pick your OS, unzip, and drop the executable (`pocketbase` on Mac/Linux, `pocketbase.exe` on Windows) into the repo's `pocketbase/` folder once you've cloned it. The binary is gitignored on purpose.
+- **PocketBase v0.22.21** — https://github.com/pocketbase/pocketbase/releases → pick your OS, unzip, drop the executable (`pocketbase` on Mac/Linux, `pocketbase.exe` on Windows) into the repo's `pocketbase/` folder *after* you clone in step 2.
+- **cloudflared** — https://github.com/cloudflare/cloudflared/releases → drop into `pocketbase/` too. Needed by `./start.sh` for the phone URL.
 
-### 2. Clone and install
+### 2. Clone, install, configure
 
 ```bash
 git clone https://github.com/ParalelSt/ember.git
@@ -32,7 +45,7 @@ cp apps/web/.env.example apps/web/.env.local
 
 ### 3. Set up the Python venv
 
-This is needed for the YouTube source (yt-dlp under the hood).
+Needed for the YouTube source.
 
 ```bash
 python3 -m venv .venv
@@ -41,20 +54,18 @@ python3 -m venv .venv
 
 *(Windows: `python -m venv .venv` then `.venv\Scripts\pip install yt-dlp imageio-ffmpeg ytmusicapi`.)*
 
-You can confirm it worked: `./.venv/bin/yt-dlp --version` should print today's date-ish version.
+Drop the **PocketBase** and **cloudflared** binaries from step 1 into the `pocketbase/` folder.
 
-### 4. Start PocketBase (terminal 1)
+### 4. First-run only: create the PocketBase admin
+
+You need a PB super-admin account before the app can work. One-time:
 
 ```bash
 cd pocketbase
 ./pocketbase serve
 ```
 
-Leave this running. You should see "Server started at http://0.0.0.0:8090".
-
-### 5. Create the PocketBase admin and paste the creds
-
-Open **http://127.0.0.1:8090/_/** in a browser. Fill in an email + password — anything, no need to be your real email. Save it.
+Open **http://127.0.0.1:8090/_/** → fill in any email + password → save. `Ctrl+C` to stop PB. You don't need to do this again unless you reset the database.
 
 Paste those same credentials into `apps/web/.env.local`:
 
@@ -63,35 +74,46 @@ POCKETBASE_ADMIN_EMAIL=<the email you just used>
 POCKETBASE_ADMIN_PASSWORD=<the password you just used>
 ```
 
-This is what the app uses to check the invite list when someone tries to register.
+### 5. From now on: one command
 
-### 6. Start the app (terminal 2, in the repo root)
+In the **repo root** (one terminal):
 
 ```bash
-npm run dev
+./start.sh
 ```
 
-Wait for `Ready in …s`. Open **http://localhost:3000** in a browser.
+This brings up PocketBase, the Next dev server, and a Cloudflare tunnel. After a few seconds you'll see:
 
-### 7. Get yourself onto the invite list
+```
+═══════════════════════════════════════════════════════
+  📱  Open on your phone:
+      https://xxxxx-xxxxx.trycloudflare.com
 
-If you're hosting **for yourself**, add your email to the allow-list:
+  🔧  PocketBase admin (local only):
+      http://127.0.0.1:8090/_/
+═══════════════════════════════════════════════════════
+```
 
-- http://127.0.0.1:8090/_/ → `allowed_emails` collection → **New record** → enter your email → save.
+Use the tunnel URL from your phone, or `http://localhost:3000` from the same computer.
 
-If a **friend is the owner**, send them your email — they'll add it to their list.
+`Ctrl+C` stops everything. Re-run `./start.sh` to start again.
 
-### 8. Sign in
+### 6. Get yourself onto the invite list
 
-Back at http://localhost:3000 → enter your email → set a password → you're in.
+The app is invite-only. Either:
 
-That's it. Music search, playlists, all of it works.
+- **Hosting for yourself:** http://127.0.0.1:8090/_/ → `allowed_emails` collection → **New record** → enter your email → save.
+- **A friend is the owner:** send them your email; they'll add it.
+
+### 7. Sign in
+
+Back at the app URL → enter your email → set a password → done. Music search, playlists, all of it works.
 
 ---
 
-## Want it on your phone? Host it permanently — Tailscale Funnel
+## Permanent URL — Tailscale Funnel
 
-Free, static `https://ember.<your-tailnet>.ts.net` URL over the public internet. Your computer must stay **on + signed into Tailscale** for the URL to work; visitors just open it.
+Free, static `https://ember.<your-tailnet>.ts.net` over the public internet. Your computer must stay **on + signed into Tailscale** for the URL to work; visitors just open it.
 
 ### 1. Install Tailscale
 
@@ -141,27 +163,15 @@ It prints `https://ember.<your-tailnet>.ts.net` — your permanent URL.
 ./start-static.sh
 ```
 
-This rebuilds the app, starts PocketBase (if not already running), and serves the production bundle. Re-run it whenever you change code.
+This rebuilds the app, starts PB (if not already running), and serves the production bundle. Use this instead of `./start.sh` from now on. Re-run it whenever you change code.
 
 Stop the tunnel later: `tailscale funnel reset`.
 
 ---
 
-## Just want to test it on your phone for an afternoon? (no Tailscale)
-
-```bash
-./start.sh
-```
-
-Prints an ephemeral `*.trycloudflare.com` URL. Open it on your phone. `Ctrl+C` stops everything. The URL changes every restart, so this is for quick tests, not long-term hosting.
-
-Needs `cloudflared` in `pocketbase/`: https://github.com/cloudflare/cloudflared/releases.
-
----
-
 ## Project-owner-only setup
 
-These steps are for **you** as the owner of the deployment everyone uses. Friends self-hosting do these for their own copy if they want the same features.
+These steps are for **you** as the owner of the deployment everyone uses. Friends self-hosting do them for their own copy if they want the same features.
 
 ### Bug reports → your Discord channel
 
@@ -177,9 +187,9 @@ http://127.0.0.1:8090/_/ → `allowed_emails` collection → **New record** → 
 
 ### Promoting an admin
 
-http://127.0.0.1:8090/_/ → `users` collection → click the user → toggle `is_admin = true` → save. Next time they sign in, the **Admin** entry appears in their sidebar and the `/admin` dashboard becomes available.
+http://127.0.0.1:8090/_/ → `users` collection → click the user → toggle `is_admin = true` → save. Next time they sign in, the **Admin** entry appears in their sidebar and `/admin` becomes available.
 
-The admin dashboard lets you view every user and track, delete either, toggle is_admin on others, and read recent server errors. Use it for ops + cleanup. Standard CRUD is in PB's admin UI at `/_/`.
+The admin dashboard lets you view every user and track, delete either, toggle is_admin on others, and read recent server errors. Standard CRUD is in PB's admin UI at `/_/`.
 
 ---
 
@@ -190,7 +200,7 @@ rm -rf pocketbase/pb_data
 cd pocketbase && ./pocketbase serve
 ```
 
-After the restart, you'll need to recreate the PB admin account at `/_/` again.
+After the restart, you'll need to recreate the PB admin account at `/_/` again, and re-paste the creds into `.env.local`.
 
 ---
 
@@ -202,11 +212,11 @@ After the restart, you'll need to recreate the PB admin account at `/_/` again.
 ./.venv/bin/pip install -U yt-dlp
 ```
 
-Then `Ctrl+C` whatever's running (`start-static.sh` / `start.sh` / `npm run dev`) and start it again. `./.venv/bin/yt-dlp --version` should show today's date-ish.
+Then `Ctrl+C` whatever's running and start it again. `./.venv/bin/yt-dlp --version` should show today's date-ish.
 
 **`./.venv/bin/python: command not found`** — you skipped the venv step. Go back to **Friend setup → 3**.
 
-**"Bug reporting not configured" 503 when clicking Report a bug** — you didn't set `POCKETBASE_ADMIN_EMAIL` / `POCKETBASE_ADMIN_PASSWORD` in `apps/web/.env.local`. Re-do **Friend setup → 5**.
+**"Bug reporting not configured" 503 when clicking Report a bug** — you didn't set `POCKETBASE_ADMIN_EMAIL` / `POCKETBASE_ADMIN_PASSWORD` in `apps/web/.env.local`. Re-do **Friend setup → 4**.
 
 **Friends can't reach your Tailscale Funnel URL after switching wifi** — Tailscale Funnel binding can get stale when your network changes. On the hosting machine:
 
