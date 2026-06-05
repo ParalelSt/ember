@@ -23,3 +23,20 @@ export async function createClient() {
   pb.authStore.loadFromCookie(cookieHeader, 'pb_auth');
   return pb;
 }
+
+/** Server-side admin client. Re-auths each call — cheap (~30ms) at the
+ *  scale of "a handful of /api/auth/check-email hits per login session".
+ *  Throws status:503 if creds aren't configured so the caller bubbles a
+ *  clear error to the UI. */
+export async function createAdminClient() {
+  const pb = new PocketBase(PB_URL);
+  const email = process.env.POCKETBASE_ADMIN_EMAIL;
+  const password = process.env.POCKETBASE_ADMIN_PASSWORD;
+  if (!email || !password) {
+    const e = new Error('PocketBase admin credentials not configured');
+    (e as { status?: number }).status = 503;
+    throw e;
+  }
+  await pb.collection('_superusers').authWithPassword(email, password);
+  return pb;
+}

@@ -28,6 +28,18 @@ cd pocketbase && ./pocketbase serve
 
 Open http://127.0.0.1:8090/_/ in your browser → create the **backend admin** account on first run. (This manages PocketBase; your app users sign up separately.)
 
+Paste the admin email + password you just chose into `apps/web/.env.local` as `POCKETBASE_ADMIN_EMAIL` and `POCKETBASE_ADMIN_PASSWORD`. The invite-only auth flow needs them to read the `allowed_emails` collection.
+
+## Invite-only registration
+
+Only emails listed in the PocketBase `allowed_emails` collection can register. Manage the list from the admin UI:
+
+1. Open http://127.0.0.1:8090/_/ → `allowed_emails` collection.
+2. Click **New record** → enter the email → save.
+3. The user can now visit `/auth`, type that email, set a password, and register.
+
+Removing an email later only blocks **future** registrations; an existing session keeps working until sign-out.
+
 ## Run locally
 
 Two terminals, both from the repo root:
