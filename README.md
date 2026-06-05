@@ -16,14 +16,19 @@ spotify-clone/
   apps/
     web/                          # Next.js 16 app — the whole UI + API routes
       app/                        # routes (App Router)
-        (app)/                    # authed shell: home, search, library, etc.
+        (app)/                    # authed shell: home, search, library,
+                                  #   artist, album, playlist, settings, admin
         api/                      # route handlers — playlists, likes, history,
-                                  # plus the youtube/jamendo proxies
-        auth/                     # sign-in / sign-up page
+                                  #   admin/*, auth/check-email, profile,
+                                  #   bug-report, plus the youtube/jamendo proxies
+        auth/                     # invite-only sign-in / register flow
       components/
-        player/                   # PlayerProvider, PlayerBar, NowPlaying (mobile full-screen)
+        player/                   # PlayerProvider, PlayerBar, NowPlaying, QueueSheet
         nav/                      # Sidebar, TopBar, MobileNav, Drawer
         track/                    # TrackCard, TrackList, AddToPlaylistMenu
+        artist/                   # AlbumCard, AlbumRow
+        settings/                 # SettingsTabs
+        admin/                    # AdminTabs
       lib/
         pocketbase/               # browser + server PB clients (cookie-bound)
         sources/youtube.ts        # spawns player.py (yt-dlp) for streams + search
@@ -100,7 +105,6 @@ YouTube tracks have a download button — single tracks via a server-set `Conten
 
 ## Roadmap
 
-- Drag-to-reorder playlists.
-- Queue UI (see what's coming up + rearrange).
+- Drag-to-reorder queue and playlists.
 - iOS Capacitor build (Android already in `apps/mobile/`).
 - Crossfade + gapless playback tuning.

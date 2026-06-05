@@ -206,7 +206,9 @@ Then `Ctrl+C` whatever's running and start it again. `./.venv/bin/yt-dlp --versi
 
 **`./.venv/bin/python: command not found`** — you skipped the venv step. Go back to **Friend setup → 3**.
 
-**"Bug reporting not configured" 503 when clicking Report a bug** — you didn't set `POCKETBASE_ADMIN_EMAIL` / `POCKETBASE_ADMIN_PASSWORD` in `apps/web/.env.local`. Re-do **Friend setup → 4**.
+**`/auth` shows "PocketBase admin credentials not configured"** — you didn't paste `POCKETBASE_ADMIN_EMAIL` / `POCKETBASE_ADMIN_PASSWORD` into `apps/web/.env.local`. Re-do **Friend setup → 4**. The invite-only check needs them to read the `allowed_emails` collection.
+
+**"Bug reporting not configured" 503 when clicking Report a bug** — the Discord webhook isn't set. Owner: paste your webhook URL into the `DEFAULT_WEBHOOK_URL` constant at the top of `apps/web/app/api/bug-report/route.ts`. Anyone else: set `DISCORD_BUG_REPORT_WEBHOOK_URL` in `apps/web/.env.local`.
 
 **Friends can't reach your Tailscale Funnel URL after switching wifi** — Tailscale Funnel binding can get stale when your network changes. On the hosting machine:
 
