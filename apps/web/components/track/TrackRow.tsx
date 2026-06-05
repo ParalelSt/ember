@@ -19,7 +19,7 @@ interface Props {
   fullscreen?: boolean;
 }
 
-const GRID_COLS = 'grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6';
+const GRID_COLS = 'grid-cols-2 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6';
 
 // One full row at each breakpoint — keep in sync with GRID_COLS above so the
 // collapsed view never wraps to a second row.
@@ -31,7 +31,7 @@ function useResponsiveRowCount(): number {
       if (w >= 1024) setCount(6);
       else if (w >= 768) setCount(5);
       else if (w >= 640) setCount(4);
-      else setCount(3);
+      else setCount(2);
     };
     update();
     window.addEventListener('resize', update);
