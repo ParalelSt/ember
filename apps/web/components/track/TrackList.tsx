@@ -21,12 +21,15 @@ function fmt(sec: number | undefined): string {
 interface Props {
   tracks: Track[];
   showAlbum?: boolean;
+  /** Show a 1-based rank number in the leading column — hidden on hover so
+   *  the play/pause button takes over. Used on the artist "Popular" list. */
+  showRank?: boolean;
   onRemove?: (trackId: string) => void;
   /** Where this list lives — drives radio behavior after the queue ends. */
   context?: PlaybackContext | null;
 }
 
-export function TrackList({ tracks, showAlbum = true, onRemove, context }: Props) {
+export function TrackList({ tracks, showAlbum = true, showRank = false, onRemove, context }: Props) {
   const { current, isPlaying, playTrack, toggle } = usePlayer();
   const { user } = useAuth();
   const { data: liked = [] } = useQueryLikes();
@@ -44,7 +47,7 @@ export function TrackList({ tracks, showAlbum = true, onRemove, context }: Props
 
   return (
     <div className="flex flex-col">
-      {tracks.map((t) => {
+      {tracks.map((t, i) => {
         const playing = current?.id === t.id;
         const isLiked = liked.some((x) => x.id === t.id);
         return (
@@ -56,11 +59,19 @@ export function TrackList({ tracks, showAlbum = true, onRemove, context }: Props
               playing && 'text-ember',
             )}
           >
-            <div className="grid place-items-center">
+            <div className="relative grid place-items-center h-8 w-8 justify-self-center">
+              {showRank && !playing && (
+                <span className="absolute inset-0 grid place-items-center text-sm tabular-nums text-muted-foreground group-hover:opacity-0 transition-opacity">
+                  {i + 1}
+                </span>
+              )}
               <Button
                 variant="ghost"
                 size="icon"
-                className="h-8 w-8"
+                className={cn(
+                  'h-8 w-8',
+                  showRank && !playing && 'opacity-0 group-hover:opacity-100 transition-opacity',
+                )}
                 onClick={() => (playing ? toggle() : playTrack(t, tracks, context))}
                 aria-label={playing && isPlaying ? 'Pause' : 'Play'}
               >

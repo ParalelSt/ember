@@ -54,8 +54,8 @@ export default function ArtistPage({ params }: { params: Promise<{ id: string }>
       </div>
 
       <h2 className="mb-3 text-xl font-bold tracking-tight">Popular</h2>
-      <div className="max-h-96 overflow-y-auto rounded-md mb-8">
-        <TrackList tracks={tracks} context={artistContext} />
+      <div className="max-h-80 overflow-y-auto rounded-md mb-8">
+        <TrackList tracks={tracks} context={artistContext} showRank />
       </div>
 
       {albums.length > 0 && (
