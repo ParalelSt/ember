@@ -51,6 +51,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         avatarUrl: pb.authStore.record.avatar
           ? pb.files.getURL(pb.authStore.record, pb.authStore.record.avatar as string)
           : null,
+        isAdmin: pb.authStore.record.is_admin === true,
       }
     : null;
 

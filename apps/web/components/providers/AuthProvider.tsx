@@ -11,6 +11,7 @@ export interface AuthUser {
   email: string;
   name: string;
   avatarUrl: string | null;
+  isAdmin: boolean;
 }
 
 interface AuthValue {
@@ -19,6 +20,8 @@ interface AuthValue {
   name: string;
   /** Convenience — `user?.avatarUrl`. */
   avatarUrl: string | null;
+  /** Convenience — `user?.isAdmin === true`. */
+  isAdmin: boolean;
   loading: boolean;
   signIn: (email: string, password: string) => Promise<{ error: { message: string } | null }>;
   signUp: (email: string, password: string) => Promise<{ error: { message: string } | null; needsConfirmation: boolean }>;
@@ -60,6 +63,7 @@ export function AuthProvider({ children, initialUser }: { children: ReactNode; i
       user,
       name: user?.name ?? '',
       avatarUrl: user?.avatarUrl ?? null,
+      isAdmin: user?.isAdmin === true,
       loading,
       refresh: async () => {
         try {
@@ -111,7 +115,7 @@ export function useAuth() {
 
 function mapRecord(
   pb: ReturnType<typeof createClient>,
-  record: { id: string; email?: string; name?: string; avatar?: string; collectionId?: string; collectionName?: string },
+  record: { id: string; email?: string; name?: string; avatar?: string; is_admin?: boolean; collectionId?: string; collectionName?: string },
 ): AuthUser {
   return {
     id: record.id,
@@ -120,6 +124,7 @@ function mapRecord(
     avatarUrl: record.avatar
       ? pb.files.getURL(record as Parameters<typeof pb.files.getURL>[0], record.avatar)
       : null,
+    isAdmin: record.is_admin === true,
   };
 }
 

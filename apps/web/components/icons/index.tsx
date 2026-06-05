@@ -21,4 +21,6 @@ export {
   RotateCw as RefreshIcon,
   Bug as BugIcon,
   Settings as SettingsIcon,
+  Shield as ShieldIcon,
+  MoreHorizontal as MoreIcon,
 } from 'lucide-react';

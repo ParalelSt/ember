@@ -10,10 +10,10 @@ import type { Track } from '@/types/track';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { CreatePlaylistDialog } from '@/components/track/CreatePlaylistDialog';
-import { HomeIcon, SearchIcon, LibraryIcon, PlusIcon, LogOutIcon, FlameIcon, SettingsIcon } from '@/components/icons';
+import { HomeIcon, SearchIcon, LibraryIcon, PlusIcon, LogOutIcon, FlameIcon, SettingsIcon, ShieldIcon } from '@/components/icons';
 import { cn } from '@/lib/utils';
 
-const NAV = [
+const BASE_NAV = [
   { href: '/', label: 'Home', icon: HomeIcon },
   { href: '/search', label: 'Search', icon: SearchIcon },
   { href: '/library', label: 'Library', icon: LibraryIcon },
@@ -23,7 +23,10 @@ const NAV = [
 export function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
-  const { user, name: displayName, avatarUrl, signOut } = useAuth();
+  const { user, name: displayName, avatarUrl, isAdmin, signOut } = useAuth();
+  const NAV = isAdmin
+    ? [...BASE_NAV, { href: '/admin', label: 'Admin', icon: ShieldIcon }]
+    : BASE_NAV;
   const { data: playlists = [] } = useQueryPlaylists();
   const createPlaylist = useExecuteCreatePlaylist();
   const addToPlaylist = useExecuteAddToPlaylist();

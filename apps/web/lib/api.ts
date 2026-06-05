@@ -1,5 +1,20 @@
 import type { AlbumDetail, ArtistPayload, Playlist, Track } from '@/types/track';
+import type { ServerLogEntry } from '@/lib/logger/types';
 import { logger } from '@/lib/logger/client';
+
+export interface AdminUser {
+  id: string;
+  email: string;
+  name: string;
+  avatarUrl: string | null;
+  isAdmin: boolean;
+  created: string;
+}
+
+export interface AdminTrack extends Track {
+  /** PocketBase internal record id — used in admin PATCH / DELETE URLs. */
+  recordId: string;
+}
 
 // Cookies handle auth (PocketBase `pb_auth` cookie) — no manual Bearer headers.
 // API_BASE stays empty for the web build (same-origin); a Capacitor/native
@@ -110,5 +125,48 @@ export const api = {
       throw new Error(err.error || `Request failed: ${res.status}`);
     }
     return res.json();
+  },
+
+  admin: {
+    listUsers: () => req<{ users: AdminUser[] }>('/admin/users'),
+    updateUser: (id: string, patch: { name?: string; isAdmin?: boolean }) =>
+      req<{ ok: true; user: AdminUser }>(
+        `/admin/users/${encodeURIComponent(id)}`,
+        { method: 'PATCH', body: patch },
+      ),
+    deleteUser: (id: string) =>
+      req<{ ok: true }>(`/admin/users/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+
+    listTracks: (params: { page?: number; q?: string } = {}) => {
+      const qs = new URLSearchParams();
+      if (params.page) qs.set('page', String(params.page));
+      if (params.q) qs.set('q', params.q);
+      const tail = qs.toString();
+      return req<{
+        tracks: AdminTrack[];
+        page: number;
+        totalPages: number;
+        totalItems: number;
+      }>(`/admin/tracks${tail ? `?${tail}` : ''}`);
+    },
+    updateTrack: (recordId: string, patch: { title?: string; artist?: string; album?: string }) =>
+      req<{ ok: true; track: AdminTrack | null }>(
+        `/admin/tracks/${encodeURIComponent(recordId)}`,
+        { method: 'PATCH', body: patch },
+      ),
+    deleteTrack: (recordId: string) =>
+      req<{ ok: true }>(`/admin/tracks/${encodeURIComponent(recordId)}`, { method: 'DELETE' }),
+
+    listLogs: (params: { categories?: string[]; q?: string; limit?: number } = {}) => {
+      const qs = new URLSearchParams();
+      if (params.categories?.length) qs.set('category', params.categories.join(','));
+      if (params.q) qs.set('q', params.q);
+      if (params.limit) qs.set('limit', String(params.limit));
+      const tail = qs.toString();
+      return req<{ entries: ServerLogEntry[]; total: number }>(
+        `/admin/logs${tail ? `?${tail}` : ''}`,
+      );
+    },
+    clearLogs: () => req<{ ok: true }>('/admin/logs', { method: 'DELETE' }),
   },
 };
