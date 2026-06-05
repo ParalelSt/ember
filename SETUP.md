@@ -8,6 +8,7 @@ Commands below are **bash**. macOS / Linux: any terminal works. **Windows:** ins
 
 - **Git** — https://git-scm.com/downloads. *Windows users:* this installs **Git Bash**, your terminal for the rest of this guide.
 - **Node.js 20+** — https://nodejs.org/en/download → LTS installer.
+- **Python 3.11+** — https://www.python.org/downloads. Needed for YouTube playback (yt-dlp under the hood). On macOS it's preinstalled; on Windows tick "Add Python to PATH" in the installer.
 - **PocketBase binary** — https://github.com/pocketbase/pocketbase/releases (use v0.22.21). Pick your OS, unzip, drop the executable (`pocketbase` on Mac/Linux, `pocketbase.exe` on Windows) into this repo's `pocketbase/` folder. Gitignored, so fresh clones don't have it.
 - **cloudflared** (only needed for `./start.sh`) — https://github.com/cloudflare/cloudflared/releases. Drop into `pocketbase/` too.
 
@@ -18,8 +19,12 @@ git clone https://github.com/ParalelSt/ember.git
 cd ember
 npm install
 cp apps/web/.env.example apps/web/.env.local
+python3 -m venv .venv
+./.venv/bin/pip install yt-dlp imageio-ffmpeg ytmusicapi
 cd pocketbase && ./pocketbase serve
 ```
+
+(Windows: `python -m venv .venv` and `.venv\Scripts\pip install ...`.)
 
 Open http://127.0.0.1:8090/_/ in your browser → create the **backend admin** account on first run. (This manages PocketBase; your app users sign up separately.)
 
@@ -110,3 +115,15 @@ If the baked-in webhook ever gets abused, delete + recreate it in Discord and re
 ```bash
 rm -rf pocketbase/pb_data && cd pocketbase && ./pocketbase serve
 ```
+
+## Troubleshooting
+
+**Songs won't play / `502` on `/api/youtube/stream/...`** — usually yt-dlp is stale. YouTube changes their signature scrambler every couple weeks and yt-dlp ships daily fixes. Update + restart the app:
+
+```bash
+./.venv/bin/pip install -U yt-dlp
+```
+
+Then `Ctrl+C` the running `start-static.sh` / `start.sh` / `npm run dev` terminal and start it again. Check the install worked with `./.venv/bin/yt-dlp --version` (you should see today's date-ish).
+
+**`./.venv/bin/python: command not found`** — you skipped the Python venv step in **First time**. Go back and create it.
