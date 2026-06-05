@@ -8,7 +8,7 @@ All commands below are **bash**. macOS / Linux: any terminal works. **Windows:**
 
 ---
 
-## Three ways to run it
+## Two ways to run it
 
 Pick based on what you want to do *after* setup:
 
@@ -16,9 +16,8 @@ Pick based on what you want to do *after* setup:
 |---|---|---|
 | Use it on this computer only | `npm run dev` (after starting PB) | None |
 | Permanent phone-accessible URL | `./start-static.sh` | Tailscale Funnel (one-time, free) |
-| Quick / temporary phone URL | `./start.sh` | `cloudflared` binary |
 
-The Friend setup below gets you to localhost first (cheapest path). When you're ready for phone access, jump to **Permanent URL — Tailscale Funnel** — that's the recommended option for keeps.
+The Friend setup below gets you to localhost first (cheapest path). When you're ready for phone access, jump to **Permanent URL — Tailscale Funnel**.
 
 ---
 
@@ -85,7 +84,7 @@ npm run dev
 
 Wait for `Ready in …s`. Open **http://localhost:3000**.
 
-(If you'd rather have one command starting both, see **Permanent URL — Tailscale Funnel** below — that's the version that wraps PB + Next into a single `./start-static.sh`.)
+(If you'd rather have one command, see **Permanent URL — Tailscale Funnel** below — `./start-static.sh` wraps PB + Next together.)
 
 ### 6. Get yourself onto the invite list
 
@@ -157,20 +156,6 @@ It prints `https://ember.<your-tailnet>.ts.net` — your permanent URL.
 This rebuilds the app, starts PB (if not already running), and serves the production bundle. Re-run it whenever you change code.
 
 Stop the tunnel later: `tailscale funnel reset`.
-
----
-
-## Quick / ephemeral phone access — `./start.sh`
-
-Skip this if you set up Tailscale above; you don't need both.
-
-For a fast "let me show this to someone for an afternoon" URL without doing the Tailscale dance, install **cloudflared** (https://github.com/cloudflare/cloudflared/releases → drop into `pocketbase/`) and run:
-
-```bash
-./start.sh
-```
-
-Prints a `*.trycloudflare.com` URL. Open on your phone. `Ctrl+C` stops everything. **URL changes every restart** — that's the trade-off versus Tailscale's static one.
 
 ---
 

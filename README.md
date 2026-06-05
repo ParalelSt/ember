@@ -37,10 +37,8 @@ spotify-clone/
     pocketbase                    # PB binary (gitignored, per-platform)
     pb_migrations/                # collection schema as JS migrations (committed)
     pb_data/                      # SQLite DB + uploads (gitignored, per-host)
-    cloudflared                   # tunnel binary (gitignored)
   player.py                       # yt-dlp wrapper invoked by lib/sources/youtube.ts
   .venv/                          # Python venv for yt-dlp + imageio-ffmpeg
-  start.sh                        # one-command launcher with ephemeral tunnel (testing)
   start-static.sh                 # production launcher behind Tailscale Funnel (hosting)
   SETUP.md                        # full setup + hosting docs
 ```
@@ -85,7 +83,7 @@ When the queue runs out, the player pulls YouTube "watch-next" recommendations s
 
 ## Hosting
 
-- **Local dev / quick share:** `./start.sh` boots PocketBase + Next + a Cloudflare quick tunnel and prints a public URL (URL changes per run).
+- **Local dev:** PocketBase in one terminal (`./pocketbase serve` from `pocketbase/`), `npm run dev` from the repo root in another. Visit http://localhost:3000.
 - **Persistent public URL:** `./start-static.sh` runs a production build behind a **Tailscale Funnel** so you get a static `https://ember.<tailnet>.ts.net` — free, no domain needed. Full steps in [SETUP.md](SETUP.md).
 
 Phones never install anything — they just open the URL. Your Mac (or any computer running the stack) only needs to stay on + signed into Tailscale.
