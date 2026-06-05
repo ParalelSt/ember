@@ -25,4 +25,5 @@ export {
   MoreHorizontal as MoreIcon,
   Download as DownloadIcon,
   ListMusic as QueueIcon,
+  ChevronUp as ChevronUpIcon,
 } from 'lucide-react';
