@@ -24,4 +24,5 @@ export {
   Shield as ShieldIcon,
   MoreHorizontal as MoreIcon,
   Download as DownloadIcon,
+  ListMusic as QueueIcon,
 } from 'lucide-react';

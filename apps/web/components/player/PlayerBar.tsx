@@ -1,14 +1,17 @@
 'use client';
 
+import { useState } from 'react';
 import Link from 'next/link';
 import { Slider } from '@/components/ui/slider';
 import { Button } from '@/components/ui/button';
-import { HeartIcon, NextIcon, PauseIcon, PlayIcon, PrevIcon, VolumeIcon } from '@/components/icons';
+import { HeartIcon, NextIcon, PauseIcon, PlayIcon, PrevIcon, QueueIcon, VolumeIcon } from '@/components/icons';
 import { AddToPlaylistMenu } from '@/components/track/AddToPlaylistMenu';
+import { QueueSheet } from '@/components/player/QueueSheet';
 import { usePlayer } from '@/components/player/PlayerProvider';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { useExecuteToggleLike, useQueryLikes } from '@/hooks/useLibrary';
 import { usePlayerStore } from '@/stores/usePlayerStore';
+import { findLikedVariant } from '@/lib/songKey';
 import { cn } from '@/lib/utils';
 
 function fmt(sec: number): string {
@@ -23,8 +26,10 @@ export function PlayerBar() {
   const { user } = useAuth();
   const { data: liked = [] } = useQueryLikes();
   const toggleLike = useExecuteToggleLike();
-  const isLiked = current ? liked.some((t) => t.id === current.id) : false;
+  const likedVariant = findLikedVariant(current, liked);
+  const isLiked = !!likedVariant;
   const openNowPlaying = usePlayerStore((s) => s.setNowPlayingOpen);
+  const [queueOpen, setQueueOpen] = useState(false);
 
   // Only render the bar once playback has actually started. Avoids the
   // "Nothing playing" placeholder strip and ensures the bar pops in the moment
@@ -72,7 +77,7 @@ export function PlayerBar() {
               variant="ghost"
               size="icon"
               className={cn('h-8 w-8 text-muted-foreground hover:text-foreground', isLiked && 'text-ember hover:text-ember')}
-              onClick={() => toggleLike.mutate({ track: current, wasLiked: isLiked })}
+              onClick={() => toggleLike.mutate({ track: likedVariant ?? current, wasLiked: isLiked })}
               aria-label={isLiked ? 'Unlike' : 'Like'}
             >
               <HeartIcon className="h-4 w-4" fill={isLiked ? 'currentColor' : 'none'} />
@@ -116,8 +121,18 @@ export function PlayerBar() {
         </div>
       </div>
 
-      {/* Volume */}
+      {/* Queue + Volume */}
       <div className="hidden md:flex justify-end items-center gap-2">
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-8 w-8 text-muted-foreground hover:text-foreground"
+          onClick={() => setQueueOpen(true)}
+          aria-label="Queue"
+          title="Queue"
+        >
+          <QueueIcon className="h-4 w-4" />
+        </Button>
         <VolumeIcon className="h-4 w-4 text-muted-foreground" />
         <Slider
           value={[volume * 100]}
@@ -127,7 +142,7 @@ export function PlayerBar() {
           }}
           max={85}
           step={1}
-          className="w-32"
+          className="w-20"
         />
       </div>
     </div>
@@ -146,6 +161,8 @@ export function PlayerBar() {
         step={0.1}
       />
     </div>
+
+    <QueueSheet open={queueOpen} onOpenChange={setQueueOpen} />
     </footer>
   );
 }

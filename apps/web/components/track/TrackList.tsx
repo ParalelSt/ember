@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { DownloadIcon, HeartIcon, PauseIcon, PlayIcon, TrashIcon } from '@/components/icons';
 import { AddToPlaylistMenu } from './AddToPlaylistMenu';
 import { downloadSingleTrack, isDownloadable } from '@/lib/download';
+import { findLikedVariant } from '@/lib/songKey';
 import { usePlayer } from '@/components/player/PlayerProvider';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { useExecuteToggleLike, useQueryLikes } from '@/hooks/useLibrary';
@@ -41,7 +42,10 @@ export function TrackList({ tracks, showAlbum = true, showRank = false, onRemove
       toast.message('Sign in to like tracks', { description: 'Liking saves songs to your library.' });
       return;
     }
-    toggleLike.mutate({ track, wasLiked: liked.some((t) => t.id === track.id) });
+    // If a variant of this song is already liked, toggle THAT entry — keeps
+    // "1 like per song" across album / music-video / live versions.
+    const existing = findLikedVariant(track, liked);
+    toggleLike.mutate({ track: existing ?? track, wasLiked: !!existing });
   };
 
   if (!tracks?.length) return <div className="text-muted-foreground text-sm py-12 text-center">No tracks</div>;
@@ -50,7 +54,7 @@ export function TrackList({ tracks, showAlbum = true, showRank = false, onRemove
     <div className="flex flex-col">
       {tracks.map((t, i) => {
         const playing = current?.id === t.id;
-        const isLiked = liked.some((x) => x.id === t.id);
+        const isLiked = !!findLikedVariant(t, liked);
         return (
           <div
             key={t.id}

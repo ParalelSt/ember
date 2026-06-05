@@ -12,6 +12,7 @@ import { usePlayer } from '@/components/player/PlayerProvider';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { useExecuteToggleLike, useQueryLikes } from '@/hooks/useLibrary';
 import { usePlayerStore } from '@/stores/usePlayerStore';
+import { findLikedVariant } from '@/lib/songKey';
 import { cn } from '@/lib/utils';
 
 function fmt(sec: number): string {
@@ -32,7 +33,8 @@ export function NowPlaying() {
   const { user } = useAuth();
   const { data: liked = [] } = useQueryLikes();
   const toggleLike = useExecuteToggleLike();
-  const isLiked = current ? liked.some((t) => t.id === current.id) : false;
+  const likedVariant = findLikedVariant(current, liked);
+  const isLiked = !!likedVariant;
 
   // Close on Escape; lock body scroll while open.
   useEffect(() => {
@@ -126,7 +128,7 @@ export function NowPlaying() {
                 variant="ghost"
                 size="icon"
                 className={cn('h-10 w-10 text-muted-foreground hover:text-foreground', isLiked && 'text-ember hover:text-ember')}
-                onClick={() => toggleLike.mutate({ track: current, wasLiked: isLiked })}
+                onClick={() => current && toggleLike.mutate({ track: likedVariant ?? current, wasLiked: isLiked })}
                 aria-label={isLiked ? 'Unlike' : 'Like'}
               >
                 <HeartIcon className="h-6 w-6" fill={isLiked ? 'currentColor' : 'none'} />
