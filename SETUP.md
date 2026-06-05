@@ -56,32 +56,15 @@ python3 -m venv .venv
 
 Drop the **PocketBase** binary from step 1 into the `pocketbase/` folder if you haven't already.
 
-### 4. First-run only: create the PocketBase admin
+### 4. Nothing to do — the PB super-admin auto-creates
 
-You need a PB super-admin account before the app can work. One-time:
+When you run the app in step 5, the `ensure_superuser.pb.js` hook bundled in `pocketbase/pb_hooks/` runs on PB boot and creates the super-admin `admin@ember.com` / `egKa5WNMx3QpuG7` (the values pre-filled in your `.env.local` from `.env.example`). No `/_/` setup needed.
 
-```bash
-cd pocketbase
-./pocketbase serve
-```
+If you'd rather use different credentials, edit BOTH:
+- `pocketbase/pb_hooks/ensure_superuser.pb.js` — the `SU_EMAIL` / `SU_PASSWORD` constants at the top.
+- `apps/web/.env.local` — the matching `POCKETBASE_ADMIN_EMAIL` / `POCKETBASE_ADMIN_PASSWORD`.
 
-Open **http://127.0.0.1:8090/_/** → fill in any email + password → save. *Write them down* — you'll paste them into the env file in a second. Leave PB running.
-
-Now open `apps/web/.env.local` in any editor. Two lines at the top say:
-
-```
-POCKETBASE_ADMIN_EMAIL=
-POCKETBASE_ADMIN_PASSWORD=
-```
-
-Paste the email and password you just used after the `=`:
-
-```
-POCKETBASE_ADMIN_EMAIL=admin@example.com
-POCKETBASE_ADMIN_PASSWORD=hunter2hunter2
-```
-
-Save the file. These are how the Next server logs into PB to check the invite list. Without them you'll see *"PocketBase admin credentials not configured"* on the `/auth` page when you try to sign in.
+Then restart PB so the hook picks up the new values.
 
 ### 5. Start the app
 
