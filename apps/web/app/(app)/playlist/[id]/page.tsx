@@ -8,7 +8,8 @@ import { Button } from '@/components/ui/button';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { TrackList } from '@/components/track/TrackList';
 import { TrackSearchPicker } from '@/components/track/TrackSearchPicker';
-import { PlayIcon, TrashIcon } from '@/components/icons';
+import { DownloadIcon, PlayIcon, TrashIcon } from '@/components/icons';
+import { downloadPlaylistAsZip } from '@/lib/download';
 import { usePlayer } from '@/components/player/PlayerProvider';
 import {
   useExecuteAddToPlaylist,
@@ -141,6 +142,16 @@ export default function PlaylistPage({ params }: { params: Promise<{ id: string 
           aria-label="Play"
         >
           <PlayIcon className="h-5 w-5 fill-current ml-0.5" />
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => downloadPlaylistAsZip({ name: playlist.name, tracks })}
+          disabled={!tracks.length}
+          title="Download all tracks as a ZIP"
+        >
+          <DownloadIcon className="h-4 w-4" />
+          Download
         </Button>
         <Button variant="ghost" size="icon" onClick={() => setConfirmDeleteOpen(true)} aria-label="Delete playlist">
           <TrashIcon className="h-4 w-4" />

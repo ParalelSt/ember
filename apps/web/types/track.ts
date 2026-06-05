@@ -23,12 +23,30 @@ export interface Playlist {
   artwork_url: string | null;
 }
 
+export interface AlbumSummary {
+  browseId: string;
+  title: string;
+  year: number | string | null;
+  thumbnails: { url: string; width?: number; height?: number }[];
+}
+
 export interface ArtistPayload {
   name: string;
   description: string | null;
   thumbnails: { url: string; width?: number; height?: number }[];
   tracks: Track[];
-  albums: unknown[];
+  albums: AlbumSummary[];
+}
+
+export interface AlbumDetail {
+  title: string;
+  artist: string;
+  artistId: string | null;
+  year: number | null;
+  thumbnails: { url: string; width?: number; height?: number }[];
+  trackCount: number;
+  totalDurationSec: number;
+  tracks: Track[];
 }
 
 /** Where a queue was started from. Drives radio-mode behavior — e.g. when the
@@ -38,6 +56,7 @@ export type PlaybackContext =
   | { type: 'artist'; artistName: string; artistId?: string | null }
   | { type: 'search'; query?: string }
   | { type: 'playlist'; playlistId: string; playlistName: string }
+  | { type: 'album'; albumId: string; albumTitle: string }
   | { type: 'liked' }
   | { type: 'history' }
   | { type: 'radio' }

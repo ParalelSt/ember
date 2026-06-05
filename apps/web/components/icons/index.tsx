@@ -20,4 +20,9 @@ export {
   ChevronDown as ChevronDownIcon,
   RotateCw as RefreshIcon,
   Bug as BugIcon,
+  Settings as SettingsIcon,
+  Shield as ShieldIcon,
+  MoreHorizontal as MoreIcon,
+  Download as DownloadIcon,
+  ListMusic as QueueIcon,
 } from 'lucide-react';

@@ -34,11 +34,12 @@ pocketbase/pocketbase
 pocketbase/pb_data/
 pocketbase/pb_public/
 
-# cloudflared — tunnel binary (per-platform)
-pocketbase/cloudflared
-
 # Bug-report logger JSONL output (rotates every 2 days)
 logs/
+
+# Internal design docs / brainstorming notes — local only
+docs/superpowers/
+CHANGES.md
 
 # Editors / OS
 .vscode/

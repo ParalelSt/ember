@@ -16,14 +16,19 @@ spotify-clone/
   apps/
     web/                          # Next.js 16 app — the whole UI + API routes
       app/                        # routes (App Router)
-        (app)/                    # authed shell: home, search, library, etc.
+        (app)/                    # authed shell: home, search, library,
+                                  #   artist, album, playlist, settings, admin
         api/                      # route handlers — playlists, likes, history,
-                                  # plus the youtube/jamendo proxies
-        auth/                     # sign-in / sign-up page
+                                  #   admin/*, auth/check-email, profile,
+                                  #   bug-report, plus the youtube/jamendo proxies
+        auth/                     # invite-only sign-in / register flow
       components/
-        player/                   # PlayerProvider, PlayerBar, NowPlaying (mobile full-screen)
+        player/                   # PlayerProvider, PlayerBar, NowPlaying, QueueSheet
         nav/                      # Sidebar, TopBar, MobileNav, Drawer
         track/                    # TrackCard, TrackList, AddToPlaylistMenu
+        artist/                   # AlbumCard, AlbumRow
+        settings/                 # SettingsTabs
+        admin/                    # AdminTabs
       lib/
         pocketbase/               # browser + server PB clients (cookie-bound)
         sources/youtube.ts        # spawns player.py (yt-dlp) for streams + search
@@ -37,10 +42,8 @@ spotify-clone/
     pocketbase                    # PB binary (gitignored, per-platform)
     pb_migrations/                # collection schema as JS migrations (committed)
     pb_data/                      # SQLite DB + uploads (gitignored, per-host)
-    cloudflared                   # tunnel binary (gitignored)
   player.py                       # yt-dlp wrapper invoked by lib/sources/youtube.ts
   .venv/                          # Python venv for yt-dlp + imageio-ffmpeg
-  start.sh                        # one-command launcher with ephemeral tunnel (testing)
   start-static.sh                 # production launcher behind Tailscale Funnel (hosting)
   SETUP.md                        # full setup + hosting docs
 ```
@@ -85,20 +88,23 @@ When the queue runs out, the player pulls YouTube "watch-next" recommendations s
 
 ## Hosting
 
-- **Local dev / quick share:** `./start.sh` boots PocketBase + Next + a Cloudflare quick tunnel and prints a public URL (URL changes per run).
+- **Local dev:** PocketBase in one terminal (`./pocketbase serve` from `pocketbase/`), `npm run dev` from the repo root in another. Visit http://localhost:3000.
 - **Persistent public URL:** `./start-static.sh` runs a production build behind a **Tailscale Funnel** so you get a static `https://ember.<tailnet>.ts.net` — free, no domain needed. Full steps in [SETUP.md](SETUP.md).
 
 Phones never install anything — they just open the URL. Your Mac (or any computer running the stack) only needs to stay on + signed into Tailscale.
+
+## Downloads
+
+YouTube tracks have a download button — single tracks via a server-set `Content-Disposition` header on `/api/youtube/stream/<id>?download=1`; whole playlists ZIP themselves client-side via `jszip` and save as `<playlist>.zip`. Jamendo tracks don't surface a download button (cross-origin CDN — no clean way to force a filename).
 
 ## What is intentionally NOT here
 
 - No client-side calls to external music APIs. The browser only ever talks to `/api/*` and `/pb/*`.
 - No paid music catalog. YouTube + Jamendo only — works for personal use.
-- No download/offline feature. Streaming only.
+- No offline / play-while-disconnected mode. Streaming only; downloads land in your filesystem.
 
 ## Roadmap
 
-- Drag-to-reorder playlists.
-- Queue UI (see what's coming up + rearrange).
+- Drag-to-reorder queue and playlists.
 - iOS Capacitor build (Android already in `apps/mobile/`).
 - Crossfade + gapless playback tuning.

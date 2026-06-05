@@ -3,8 +3,10 @@
 import Link from 'next/link';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
-import { HeartIcon, PauseIcon, PlayIcon, TrashIcon } from '@/components/icons';
+import { DownloadIcon, HeartIcon, PauseIcon, PlayIcon, TrashIcon } from '@/components/icons';
 import { AddToPlaylistMenu } from './AddToPlaylistMenu';
+import { downloadSingleTrack, isDownloadable } from '@/lib/download';
+import { findLikedVariant } from '@/lib/songKey';
 import { usePlayer } from '@/components/player/PlayerProvider';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { useExecuteToggleLike, useQueryLikes } from '@/hooks/useLibrary';
@@ -21,12 +23,15 @@ function fmt(sec: number | undefined): string {
 interface Props {
   tracks: Track[];
   showAlbum?: boolean;
+  /** Show a 1-based rank number in the leading column — hidden on hover so
+   *  the play/pause button takes over. Used on the artist "Popular" list. */
+  showRank?: boolean;
   onRemove?: (trackId: string) => void;
   /** Where this list lives — drives radio behavior after the queue ends. */
   context?: PlaybackContext | null;
 }
 
-export function TrackList({ tracks, showAlbum = true, onRemove, context }: Props) {
+export function TrackList({ tracks, showAlbum = true, showRank = false, onRemove, context }: Props) {
   const { current, isPlaying, playTrack, toggle } = usePlayer();
   const { user } = useAuth();
   const { data: liked = [] } = useQueryLikes();
@@ -37,16 +42,19 @@ export function TrackList({ tracks, showAlbum = true, onRemove, context }: Props
       toast.message('Sign in to like tracks', { description: 'Liking saves songs to your library.' });
       return;
     }
-    toggleLike.mutate({ track, wasLiked: liked.some((t) => t.id === track.id) });
+    // If a variant of this song is already liked, toggle THAT entry — keeps
+    // "1 like per song" across album / music-video / live versions.
+    const existing = findLikedVariant(track, liked);
+    toggleLike.mutate({ track: existing ?? track, wasLiked: !!existing });
   };
 
   if (!tracks?.length) return <div className="text-muted-foreground text-sm py-12 text-center">No tracks</div>;
 
   return (
     <div className="flex flex-col">
-      {tracks.map((t) => {
+      {tracks.map((t, i) => {
         const playing = current?.id === t.id;
-        const isLiked = liked.some((x) => x.id === t.id);
+        const isLiked = !!findLikedVariant(t, liked);
         return (
           <div
             key={t.id}
@@ -56,11 +64,19 @@ export function TrackList({ tracks, showAlbum = true, onRemove, context }: Props
               playing && 'text-ember',
             )}
           >
-            <div className="grid place-items-center">
+            <div className="relative grid place-items-center h-8 w-8 justify-self-center">
+              {showRank && !playing && (
+                <span className="absolute inset-0 grid place-items-center text-sm tabular-nums text-muted-foreground group-hover:opacity-0 transition-opacity">
+                  {i + 1}
+                </span>
+              )}
               <Button
                 variant="ghost"
                 size="icon"
-                className="h-8 w-8"
+                className={cn(
+                  'h-8 w-8',
+                  showRank && !playing && 'opacity-0 group-hover:opacity-100 transition-opacity',
+                )}
                 onClick={() => (playing ? toggle() : playTrack(t, tracks, context))}
                 aria-label={playing && isPlaying ? 'Pause' : 'Play'}
               >
@@ -99,6 +115,18 @@ export function TrackList({ tracks, showAlbum = true, onRemove, context }: Props
 
             <div className="flex items-center gap-1">
               <AddToPlaylistMenu track={t} />
+              {isDownloadable(t) && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                  onClick={() => downloadSingleTrack(t)}
+                  aria-label="Download"
+                  title="Download"
+                >
+                  <DownloadIcon className="h-4 w-4" />
+                </Button>
+              )}
               <Button
                 variant="ghost"
                 size="icon"

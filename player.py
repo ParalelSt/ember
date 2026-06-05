@@ -213,25 +213,32 @@ def cmd_artist(args):
         json.dump({"error": str(e)}, sys.stdout)
         return
 
-    songs_section = info.get("songs") or {}
-    songs = songs_section.get("results") or []
-
-    # Some artists only expose the small "songs" list; fall back to a wider
-    # search of their videos so we have more to play.
-    if len(songs) < 5:
+    # Pull top tracks from search rather than yt.get_artist()['songs']: the
+    # latter returns no duration_seconds OR length, while search returns
+    # both. Search ranking ≈ artist top songs for the same artist anyway.
+    songs = []
+    artist_name = (info.get("name") or "").strip()
+    if artist_name:
         try:
-            extra = yt.search(info.get("name") or "", filter="songs", limit=30)
-            seen_ids = {s.get("videoId") for s in songs}
-            for e in extra or []:
-                if not e.get("videoId") or e.get("videoId") in seen_ids:
+            results = yt.search(artist_name, filter="songs", limit=30)
+            lowered = artist_name.lower()
+            for e in results or []:
+                if not e.get("videoId"):
                     continue
-                # only include results actually attributed to this artist
-                if not any((a.get("name") or "").lower() == (info.get("name") or "").lower()
+                # Only include results actually attributed to this artist.
+                if not any((a.get("name") or "").lower() == lowered
                            for a in (e.get("artists") or [])):
                     continue
                 songs.append(e)
         except Exception as e:
-            print(f"artist: extra search failed: {e}", file=sys.stderr)
+            print(f"artist: search failed: {e}", file=sys.stderr)
+
+    # Fallback: if the search returned nothing (rare — search down, or the
+    # artist name is too generic to match cleanly), surface whatever
+    # get_artist() gave us so the page isn't blank. Those rows won't have
+    # durations, but the page works.
+    if not songs:
+        songs = (info.get("songs") or {}).get("results") or []
 
     albums = (info.get("albums") or {}).get("results") or []
     out = {
@@ -248,6 +255,33 @@ def cmd_artist(args):
             }
             for a in albums if a.get("browseId")
         ],
+    }
+    json.dump(out, sys.stdout)
+
+def cmd_album(args):
+    """Resolve an album browseId to title/artist/year/cover + tracks.
+    Used by the album page to render a Spotify-style album view."""
+    try:
+        info = yt.get_album(browseId=args.browse_id)
+    except Exception as e:
+        print(f"album failed: {e}", file=sys.stderr)
+        json.dump({"error": str(e)}, sys.stdout)
+        return
+
+    artists = info.get("artists") or []
+    primary = artists[0] if artists else {}
+    tracks_raw = info.get("tracks") or []
+    tracks = [to_track_json(t) for t in tracks_raw if t.get("videoId")]
+
+    out = {
+        "title": info.get("title"),
+        "artist": primary.get("name"),
+        "artistId": primary.get("id"),
+        "year": int(info.get("year")) if str(info.get("year") or "").isdigit() else None,
+        "thumbnails": info.get("thumbnails") or [],
+        "trackCount": info.get("trackCount") or len(tracks),
+        "totalDurationSec": info.get("duration_seconds") or sum((t.get("durationSec") or 0) for t in tracks),
+        "tracks": tracks,
     }
     json.dump(out, sys.stdout)
 
@@ -311,6 +345,9 @@ def main():
     p_artist = sub.add_parser("artist", help="Artist profile + top songs by channelId. Prints JSON.")
     p_artist.add_argument("channel_id")
 
+    p_album = sub.add_parser("album", help="Album detail by browseId. Prints JSON.")
+    p_album.add_argument("browse_id")
+
     args = parser.parse_args()
 
     if args.cmd == "search":
@@ -325,6 +362,8 @@ def main():
         cmd_recommended(args)
     elif args.cmd == "artist":
         cmd_artist(args)
+    elif args.cmd == "album":
+        cmd_album(args)
     else:
         cmd_interactive()
 

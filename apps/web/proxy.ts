@@ -14,7 +14,7 @@ const PB_URL = /^https?:\/\//.test(RAW_PB_URL) ? RAW_PB_URL : 'http://127.0.0.1:
 // Public routes (no session required). Auth + stream are open; everything
 // else under the (app) shell requires a session.
 const PUBLIC_PATHS = ['/auth', '/manifest.webmanifest', '/sw.js'];
-const PUBLIC_API_PREFIXES = ['/api/youtube/stream/', '/api/search', '/api/tracks', '/api/youtube/search', '/api/youtube/trending', '/api/youtube/recommended', '/api/youtube/artist', '/api/discord/'];
+const PUBLIC_API_PREFIXES = ['/api/youtube/stream/', '/api/search', '/api/tracks', '/api/youtube/search', '/api/youtube/trending', '/api/youtube/recommended', '/api/youtube/artist', '/api/youtube/album', '/api/discord/', '/api/auth/'];
 
 export default async function proxy(req: NextRequest) {
   // Per-request id, attached to outgoing responses + any server log lines.
