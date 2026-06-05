@@ -26,4 +26,5 @@ export {
   Download as DownloadIcon,
   ListMusic as QueueIcon,
   ChevronUp as ChevronUpIcon,
+  ChevronLeft as ChevronLeftIcon,
 } from 'lucide-react';
