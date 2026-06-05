@@ -46,15 +46,15 @@ export function BackToTop({ scrollRef }: Props) {
       aria-label="Back to top"
       title="Back to top"
       className={cn(
-        'fixed right-6 z-40 h-10 w-10 rounded-full bg-ember hover:bg-ember-soft text-white shadow-glow',
-        'transition-all duration-200',
+        'fixed right-6 z-40 size-10 grid place-items-center rounded-full bg-ember hover:bg-ember-soft text-white shadow-glow',
+        'p-0 transition-all duration-200',
         'bottom-36 md:bottom-28',
         visible
           ? 'opacity-100 translate-y-0 pointer-events-auto'
           : 'opacity-0 translate-y-2 pointer-events-none',
       )}
     >
-      <ChevronUpIcon className="h-5 w-5" />
+      <ChevronUpIcon className="size-5" />
     </Button>
   );
 }
