@@ -181,7 +181,7 @@ http://127.0.0.1:8090/_/ → `users` collection → click the user → toggle `i
 
 The admin dashboard lets you view every user and track, delete either, toggle is_admin on others, and read recent server errors. Standard CRUD is in PB's admin UI at `/_/`.
 
-**Owner auto-admin.** The hook at `pocketbase/pb_hooks/auto_admin.pb.js` flips `is_admin = true` automatically when one of its listed emails registers — so the project owner is admin on every fresh deployment without anyone touching the PB admin UI. Friends self-hosting can edit that file to add their own email; the change only affects their copy.
+**Hardcoded owner account.** The hook at `pocketbase/pb_hooks/ensure_admin.pb.js` pre-creates a user record with a hardcoded email + password and `is_admin = true` on every fresh PB boot — so the project owner can sign into any self-hosted deployment without anyone setting them up. The credentials at the top of the file are the project owner's; friends self-hosting can edit them to swap in their own email + password. Treat the password like a real secret — anyone with this file *and* a deployment URL can sign in as admin.
 
 ---
 
