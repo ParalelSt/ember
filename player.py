@@ -286,47 +286,88 @@ def cmd_album(args):
     json.dump(out, sys.stdout)
 
 def cmd_lyrics(args):
-    """Fetch lyrics from Genius by song title + artist. Uses lyricsgenius
-    (which handles Genius search + scraping the lyrics off the song page,
-    since the official API only returns metadata). Returns
-    {"lyrics", "source": "genius", "url"} on hit, {"lyrics": null,
-    "source": "none"} on no match, or {"error"} on failure."""
-    token = os.environ.get("GENIUS_ACCESS_TOKEN")
-    if not token:
-        json.dump({"error": "GENIUS_ACCESS_TOKEN not set"}, sys.stdout)
-        return
+    """Fetch lyrics from Genius by direct search + page scrape — no API
+    token required. Hits Genius's public /api/search/multi endpoint
+    (the same one their own frontend uses), picks the best song hit,
+    then parses the song page's data-lyrics-container divs.
 
-    try:
-        import lyricsgenius
-    except ImportError:
-        json.dump({"error": "lyricsgenius not installed (pip install lyricsgenius)"}, sys.stdout)
-        return
+    Returns {"lyrics", "source": "genius", "url"} on hit,
+    {"lyrics": null, "source": "none"} on no match, {"error"} on
+    failure."""
+    from urllib.request import Request, urlopen
+    from urllib.parse import quote
+    import json as _json
+    import html as _html
 
-    try:
-        genius = lyricsgenius.Genius(
-            token,
-            skip_non_songs=True,
-            remove_section_headers=False,
-            verbose=False,
-            timeout=10,
+    UA = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124 Safari/537.36"
+
+    def _fetch(url, accept="text/html,application/json"):
+        req = Request(url, headers={"User-Agent": UA, "Accept": accept})
+        with urlopen(req, timeout=15) as resp:
+            return resp.read().decode("utf-8", errors="replace")
+
+    def _search(title, artist):
+        q = quote(f"{title} {artist}".strip())
+        url = f"https://genius.com/api/search/multi?per_page=5&q={q}"
+        data = _json.loads(_fetch(url, accept="application/json"))
+        sections = (data.get("response") or {}).get("sections") or []
+        # Prefer the song-typed section, fall back to whatever has a URL.
+        for s in sections:
+            if s.get("type") == "song":
+                for h in (s.get("hits") or []):
+                    r = h.get("result") or {}
+                    if r.get("url"):
+                        return r
+        for s in sections:
+            for h in (s.get("hits") or []):
+                r = h.get("result") or {}
+                if r.get("url"):
+                    return r
+        return None
+
+    def _extract(html_text):
+        # Each container holds a verse/chorus chunk. Multiple containers
+        # per page get joined with a blank line between them.
+        containers = re.findall(
+            r'<div[^>]*data-lyrics-container="true"[^>]*>(.*?)</div>',
+            html_text,
+            flags=re.DOTALL,
         )
-        # lyricsgenius prints to stdout via its `verbose` flag; we suppressed
-        # but a stray print would corrupt our JSON, so redirect just in case.
-        with contextlib.redirect_stdout(sys.stderr):
-            song = genius.search_song(args.title, args.artist)
-        if not song:
+        if not containers:
+            return None
+        parts = []
+        for raw in containers:
+            text = re.sub(r'<br\s*/?>', '\n', raw)            # line breaks
+            text = re.sub(r'<[^>]+>', '', text)                # strip remaining tags
+            text = _html.unescape(text)                         # &amp; etc.
+            text = re.sub(r'\n{3,}', '\n\n', text).strip()      # collapse runs
+            if text:
+                parts.append(text)
+        out = '\n\n'.join(parts).strip()
+        # Strip the "<N> Contributors / Translations…" preamble Genius
+        # injects above the lyrics. Use the first canonical section
+        # header to anchor the start of the real content.
+        m = re.search(
+            r'\[(Verse|Chorus|Pre-?Chorus|Post-?Chorus|Bridge|Hook|Intro|Outro|Refrain|Interlude|Drop|Break)',
+            out,
+        )
+        if m:
+            out = out[m.start():].strip()
+        # Strip the "<N>Embed" footer Genius appends.
+        out = re.sub(r'\d*Embed\s*$', '', out).strip()
+        return out or None
+
+    try:
+        song = _search(args.title, args.artist)
+        if not song or not song.get("url"):
             json.dump({"lyrics": None, "source": "none"}, sys.stdout)
             return
-        # lyricsgenius prefixes a "<Title> Lyrics" header. Strip it.
-        lyrics = (song.lyrics or "").strip()
-        lyrics = re.sub(r'^.*?Lyrics(\[|\n)', r'\1', lyrics, count=1, flags=re.DOTALL)
-        # Strip the trailing "<n>Embed" footer Genius adds.
-        lyrics = re.sub(r'\d*Embed\s*$', '', lyrics).strip()
-        json.dump({
-            "lyrics": lyrics,
-            "source": "genius",
-            "url": song.url,
-        }, sys.stdout)
+        page = _fetch(song["url"])
+        lyrics = _extract(page)
+        if not lyrics:
+            json.dump({"lyrics": None, "source": "none"}, sys.stdout)
+            return
+        json.dump({"lyrics": lyrics, "source": "genius", "url": song["url"]}, sys.stdout)
     except Exception as e:
         json.dump({"error": str(e)}, sys.stdout)
 

@@ -165,23 +165,9 @@ Server-side error logs live at `logs/errors-YYYY-MM-DD.jsonl` (gitignored, auto-
 
 ### Lyrics
 
-The in-player **Lyrics** button (mic icon next to Queue) fetches from Genius. You need a Genius access token to enable it:
+The in-player **Lyrics** button (mic icon next to Queue) hits Genius directly — no API key needed. `player.py:cmd_lyrics` uses Genius's public search endpoint to find the song page, then scrapes the lyrics from the page HTML. Works out of the box.
 
-1. https://genius.com/api-clients → **New API Client** → name/website can be anything.
-2. Copy the **Client Access Token** at the bottom.
-3. Paste it into `apps/web/.env.local`:
-   ```
-   GENIUS_ACCESS_TOKEN=<your token>
-   ```
-4. Make sure the venv has `lyricsgenius`:
-   ```bash
-   ./.venv/bin/pip install lyricsgenius
-   ```
-5. Restart the app.
-
-Without the token the lyrics button still works — it just shows "no lyrics found" for every track.
-
-For the AI fallback (when Genius has nothing) see **[LYRICS_AI.md](LYRICS_AI.md)**.
+For the planned AI fallback (when Genius has nothing) see **[LYRICS_AI.md](LYRICS_AI.md)**.
 
 ### Adding more invitees
 

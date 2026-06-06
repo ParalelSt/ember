@@ -252,7 +252,7 @@ export async function getLyrics(title: string, artist: string): Promise<LyricsRe
   const raw = await runPython<RawLyrics>(['lyrics', cleanTitle, cleanArtist], { timeoutMs: 20000 });
   if (raw?.error) {
     const e: PythonError = new Error(raw.error);
-    e.status = raw.error.startsWith('GENIUS_ACCESS_TOKEN') ? 503 : 502;
+    e.status = 502;
     throw e;
   }
   const result: LyricsResult = {
