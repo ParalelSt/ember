@@ -135,7 +135,7 @@ export function PlayerBar() {
         </Button>
         <div className="hidden md:flex items-center gap-2">
           <VolumeIcon className="h-4 w-4 text-muted-foreground" />
-          <div className="w-28 shrink-0">
+          <div className="w-29.5 shrink-0">
             <Slider
               value={[volume * 100]}
               onValueChange={(v) => {
