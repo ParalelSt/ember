@@ -126,25 +126,26 @@ export function PlayerBar() {
         <Button
           variant="ghost"
           size="icon"
-          className="h-8 w-8 text-muted-foreground hover:text-foreground"
+          className="h-10 w-10 md:h-8 md:w-8 text-muted-foreground hover:text-foreground"
           onClick={() => setQueueOpen(true)}
           aria-label="Queue"
           title="Queue"
         >
-          <QueueIcon className="h-4 w-4" />
+          <QueueIcon className="h-5 w-5 md:h-4 md:w-4" />
         </Button>
         <div className="hidden md:flex items-center gap-2">
           <VolumeIcon className="h-4 w-4 text-muted-foreground" />
-          <Slider
-            value={[volume * 100]}
-            onValueChange={(v) => {
-              const pct = Array.isArray(v) ? (v[0] ?? 0) : v;
-              setVolume(pct / 100);
-            }}
-            max={85}
-            step={1}
-            className="w-20"
-          />
+          <div className="w-28 shrink-0">
+            <Slider
+              value={[volume * 100]}
+              onValueChange={(v) => {
+                const pct = Array.isArray(v) ? (v[0] ?? 0) : v;
+                setVolume(pct / 100);
+              }}
+              max={85}
+              step={1}
+            />
+          </div>
         </div>
       </div>
     </div>
