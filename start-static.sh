@@ -87,7 +87,11 @@ echo "▶ building the web app (production, webpack)…"
 ( cd "$ROOT/apps/web" && npx next build --webpack )
 
 echo "▶ starting Next on :${PORT} (production)…"
-( cd "$ROOT" && exec npm start ) &
+# Run `next start` directly instead of via `npm start` — the two layers of
+# npm (root → workspace) each print a noisy "code 130" error when Ctrl+C
+# sends them SIGINT. next handles SIGINT cleanly, so going direct gives a
+# quiet shutdown.
+( cd "$ROOT/apps/web" && exec npx next start -p "$PORT" ) &
 
 echo ""
 echo "═══════════════════════════════════════════════════════"
