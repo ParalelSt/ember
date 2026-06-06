@@ -296,8 +296,8 @@ def cmd_lyrics(args):
     failure."""
     from urllib.request import Request, urlopen
     from urllib.parse import quote
+    from html.parser import HTMLParser
     import json as _json
-    import html as _html
 
     UA = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124 Safari/537.36"
 
@@ -325,25 +325,61 @@ def cmd_lyrics(args):
                     return r
         return None
 
+    class _LyricsParser(HTMLParser):
+        """Pulls out every data-lyrics-container div from the page,
+        tracking nested div depth so we get the WHOLE container (Genius
+        wraps verses in inner divs, which a non-greedy regex would
+        truncate). Inserts \\n on <br> and \\n\\n between containers."""
+
+        def __init__(self):
+            super().__init__()
+            self.parts = []
+            self._in = False
+            self._depth = 0
+            self._buf = []
+
+        def handle_starttag(self, tag, attrs):
+            attrs_d = dict(attrs)
+            if tag == 'div' and attrs_d.get('data-lyrics-container') == 'true':
+                self._in = True
+                self._depth = 1
+                self._buf = []
+                return
+            if not self._in:
+                return
+            if tag == 'div':
+                self._depth += 1
+            elif tag == 'br':
+                self._buf.append('\n')
+
+        def handle_endtag(self, tag):
+            if not self._in or tag != 'div':
+                return
+            self._depth -= 1
+            if self._depth == 0:
+                chunk = ''.join(self._buf).strip()
+                if chunk:
+                    self.parts.append(chunk)
+                self._in = False
+                self._buf = []
+
+        def handle_data(self, data):
+            if self._in:
+                self._buf.append(data)
+
+        def handle_entityref(self, name):
+            # html.parser doesn't auto-decode entities into handle_data
+            # in convert_charrefs=False mode; default is True so this is
+            # a no-op on modern Python but kept for older 3.x.
+            pass
+
     def _extract(html_text):
-        # Each container holds a verse/chorus chunk. Multiple containers
-        # per page get joined with a blank line between them.
-        containers = re.findall(
-            r'<div[^>]*data-lyrics-container="true"[^>]*>(.*?)</div>',
-            html_text,
-            flags=re.DOTALL,
-        )
-        if not containers:
+        p = _LyricsParser()
+        p.feed(html_text)
+        if not p.parts:
             return None
-        parts = []
-        for raw in containers:
-            text = re.sub(r'<br\s*/?>', '\n', raw)            # line breaks
-            text = re.sub(r'<[^>]+>', '', text)                # strip remaining tags
-            text = _html.unescape(text)                         # &amp; etc.
-            text = re.sub(r'\n{3,}', '\n\n', text).strip()      # collapse runs
-            if text:
-                parts.append(text)
-        out = '\n\n'.join(parts).strip()
+        out = '\n\n'.join(p.parts).strip()
+        out = re.sub(r'\n{3,}', '\n\n', out)
         # Strip the "<N> Contributors / Translations…" preamble Genius
         # injects above the lyrics. Use the first canonical section
         # header to anchor the start of the real content.

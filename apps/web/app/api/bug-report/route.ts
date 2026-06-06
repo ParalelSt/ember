@@ -31,12 +31,12 @@ export async function POST(request: NextRequest) {
   try {
     const { user } = await requireUser();
 
-    // 3 reports per 10 minutes per user — typing out a detailed bug takes
-    // at least a moment, so this only catches accidental double-submits and
-    // genuine spam, not legitimate use.
+    // 30-second cooldown between reports. Just enough to keep an itchy
+    // Submit-button finger from double-sending the same report twice;
+    // a real second bug a minute later still goes through.
     const limited = rateLimitResponse(`bug-report:${user.id}`, {
-      windowMs: 10 * 60 * 1000,
-      max: 3,
+      windowMs: 30 * 1000,
+      max: 1,
     });
     if (limited) return limited;
 
