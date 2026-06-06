@@ -6,13 +6,13 @@ import { Slider } from '@/components/ui/slider';
 import { Button } from '@/components/ui/button';
 import { HeartIcon, LyricsIcon, NextIcon, PauseIcon, PlayIcon, PrevIcon, QueueIcon, VolumeIcon } from '@/components/icons';
 import { AddToPlaylistMenu } from '@/components/track/AddToPlaylistMenu';
-import { LyricsSheet } from '@/components/player/LyricsSheet';
 import { QueueSheet } from '@/components/player/QueueSheet';
 import { usePlayer } from '@/components/player/PlayerProvider';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { useExecuteToggleLike, useQueryLikes } from '@/hooks/useLibrary';
 import { usePlayerStore } from '@/stores/usePlayerStore';
 import { useSettingsStore } from '@/stores/useSettingsStore';
+import { useUiStore } from '@/stores/useUiStore';
 import { findLikedVariant } from '@/lib/songKey';
 import { cn } from '@/lib/utils';
 
@@ -33,7 +33,8 @@ export function PlayerBar() {
   const openNowPlaying = usePlayerStore((s) => s.setNowPlayingOpen);
   const partyVolume = useSettingsStore((s) => s.partyVolume);
   const [queueOpen, setQueueOpen] = useState(false);
-  const [lyricsOpen, setLyricsOpen] = useState(false);
+  const lyricsOpen = useUiStore((s) => s.lyricsOpen);
+  const setLyricsOpen = useUiStore((s) => s.setLyricsOpen);
 
   // Only render the bar once playback has actually started. Avoids the
   // "Nothing playing" placeholder strip and ensures the bar pops in the moment
@@ -130,9 +131,13 @@ export function PlayerBar() {
         <Button
           variant="ghost"
           size="icon"
-          className="h-10 w-10 md:h-8 md:w-8 text-muted-foreground hover:text-foreground"
-          onClick={() => setLyricsOpen(true)}
-          aria-label="Lyrics"
+          className={cn(
+            'h-10 w-10 md:h-8 md:w-8 hover:text-foreground',
+            lyricsOpen ? 'text-ember hover:text-ember' : 'text-muted-foreground',
+          )}
+          onClick={() => setLyricsOpen(!lyricsOpen)}
+          aria-label={lyricsOpen ? 'Close lyrics' : 'Lyrics'}
+          aria-pressed={lyricsOpen}
           title="Lyrics"
         >
           <LyricsIcon className="h-5 w-5 md:h-4 md:w-4" />
@@ -180,7 +185,6 @@ export function PlayerBar() {
     </div>
 
     <QueueSheet open={queueOpen} onOpenChange={setQueueOpen} />
-    <LyricsSheet open={lyricsOpen} onOpenChange={setLyricsOpen} />
     </footer>
   );
 }

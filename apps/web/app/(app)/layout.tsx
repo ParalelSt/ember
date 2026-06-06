@@ -8,6 +8,8 @@ import { Drawer } from '@/components/nav/Drawer';
 import { BackToTop } from '@/components/nav/BackToTop';
 import { PlayerBar } from '@/components/player/PlayerBar';
 import { NowPlaying } from '@/components/player/NowPlaying';
+import { LyricsPanel } from '@/components/player/LyricsPanel';
+import { LyricsSheet } from '@/components/player/LyricsSheet';
 
 export default function AppShellLayout({ children }: { children: ReactNode }) {
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -18,14 +20,22 @@ export default function AppShellLayout({ children }: { children: ReactNode }) {
       <Drawer open={drawerOpen} onOpenChange={setDrawerOpen} />
       <div className="flex-1 min-h-0 flex flex-col min-w-0">
         <TopBar onMenu={() => setDrawerOpen(true)} />
-        <main ref={mainRef} className="flex-1 min-h-0 overflow-y-auto px-6 md:px-8 py-6 md:py-8">
-          <div className="mx-auto max-w-7xl">{children}</div>
-        </main>
+        {/* Inner row so the LyricsPanel sits beside main on md:+ and the
+            layout reflows around it — main shrinks, controls below stay
+            spanning. Phones don't see this panel (it returns null); they
+            get the LyricsSheet overlay further down. */}
+        <div className="flex-1 min-h-0 flex min-w-0">
+          <main ref={mainRef} className="flex-1 min-h-0 overflow-y-auto px-6 md:px-8 py-6 md:py-8 min-w-0">
+            <div className="mx-auto max-w-7xl">{children}</div>
+          </main>
+          <LyricsPanel />
+        </div>
         <BackToTop scrollRef={mainRef} />
         <PlayerBar />
         <MobileNav />
       </div>
       <NowPlaying />
+      <LyricsSheet />
     </div>
   );
 }
