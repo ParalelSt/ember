@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { Slider } from '@/components/ui/slider';
 import { Button } from '@/components/ui/button';
@@ -42,6 +42,21 @@ export function NowPlaying() {
 
   const scrollerRef = useRef<HTMLDivElement | null>(null);
   const lyricsRef = useRef<HTMLDivElement | null>(null);
+
+  // Scrubbing: slider follows the user's finger without seeking on every
+  // intermediate value — audio keeps playing from `position` until release.
+  const [scrubPct, setScrubPct] = useState<number | null>(null);
+  const playbackPct = duration ? (position / duration) * 100 : 0;
+  const displayPct = scrubPct ?? playbackPct;
+  const displaySec = (displayPct / 100) * (duration || 0);
+  const onSliderChange = (v: number | readonly number[]) => {
+    setScrubPct(Array.isArray(v) ? v[0] ?? 0 : (v as number));
+  };
+  const onSliderCommit = (v: number | readonly number[]) => {
+    const pct = Array.isArray(v) ? v[0] ?? 0 : (v as number);
+    seek((pct / 100) * (duration || 0));
+    setScrubPct(null);
+  };
 
   // Close on Escape; lock body scroll while open.
   useEffect(() => {
@@ -108,11 +123,6 @@ export function NowPlaying() {
         style={{
           paddingTop: 'calc(env(safe-area-inset-top, 0px) + 0.5rem)',
           paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 1.5rem)',
-          // Reserve matching scrollbar-width space on the left so the
-          // lyrics block (and everything else) stays visually centered
-          // on browsers with classic scrollbars. iOS overlay scrollbars
-          // ignore this and lose nothing.
-          scrollbarGutter: 'stable both-edges',
         }}
       >
       {/* "Player" pane — sized to fill the first viewport so the artwork-
@@ -176,16 +186,14 @@ export function NowPlaying() {
         {/* Progress */}
         <div className="mt-6">
           <Slider
-            value={[duration ? (position / duration) * 100 : 0]}
-            onValueChange={(v) => {
-              const pct = Array.isArray(v) ? (v[0] ?? 0) : v;
-              seek((pct / 100) * (duration || 0));
-            }}
+            value={[displayPct]}
+            onValueChange={onSliderChange}
+            onValueCommitted={onSliderCommit}
             max={100}
             step={0.1}
           />
           <div className="mt-1.5 flex justify-between text-[11px] text-muted-foreground tabular-nums">
-            <span>{fmt(position)}</span>
+            <span>{fmt(displaySec)}</span>
             <span>{fmt(duration)}</span>
           </div>
         </div>
@@ -212,10 +220,15 @@ export function NowPlaying() {
       {/* Lyrics section — sits BELOW the min-h-full player pane so the
           scroller actually overflows and scrollIntoView lands at the top
           of this block. Tapping Lyrics in the mini-bar opens NowPlaying
-          with nowPlayingFocus='lyrics' and we smooth-scroll here. */}
+          with nowPlayingFocus='lyrics' and we smooth-scroll here. Fixed
+          height (one viewport) so synced-lyrics auto-scroll happens
+          INSIDE the body's overflow-y-auto, not the page scroller —
+          otherwise every line change would yank the player out of view.
+          Left margin is a touch less negative than the right so the
+          block looks centered against the scrollbar gutter. */}
       <div
         ref={lyricsRef}
-        className="mt-8 -mx-6 min-h-[80vh] rounded-t-2xl bg-sidebar/90 text-sidebar-foreground backdrop-blur-sm flex flex-col"
+        className="mt-8 -mr-6 -ml-3.5 h-dvh rounded-t-2xl bg-sidebar/90 text-sidebar-foreground backdrop-blur-sm flex flex-col"
       >
         <LyricsBody active={open} showHeader={false} />
       </div>

@@ -37,6 +37,24 @@ export function PlayerBar() {
   const setLyricsOpen = useUiStore((s) => s.setLyricsOpen);
   const setNowPlayingFocus = useUiStore((s) => s.setNowPlayingFocus);
 
+  // Scrubbing: track the slider's in-flight value so the thumb follows the
+  // user's finger / cursor visually without seeking the audio on every
+  // intermediate value. Audio keeps playing from `position` until they
+  // release, at which point onValueCommitted fires the actual seek().
+  const [scrubPct, setScrubPct] = useState<number | null>(null);
+  const playbackPct = duration ? (position / duration) * 100 : 0;
+  const displayPct = scrubPct ?? playbackPct;
+  const displaySec = (displayPct / 100) * (duration || 0);
+
+  const onSliderChange = (v: number | readonly number[]) => {
+    setScrubPct(Array.isArray(v) ? v[0] ?? 0 : (v as number));
+  };
+  const onSliderCommit = (v: number | readonly number[]) => {
+    const pct = Array.isArray(v) ? v[0] ?? 0 : (v as number);
+    seek((pct / 100) * (duration || 0));
+    setScrubPct(null);
+  };
+
   const onLyricsClick = () => {
     // On phones the inline panel doesn't fit — pop the full-screen NowPlaying
     // and ask it to scroll its lyrics section into view.
@@ -123,13 +141,11 @@ export function PlayerBar() {
           </Button>
         </div>
         <div className="hidden md:flex w-full max-w-xl items-center gap-2">
-          <span className="text-[10px] text-muted-foreground tabular-nums w-9 text-right">{fmt(position)}</span>
+          <span className="text-[10px] text-muted-foreground tabular-nums w-9 text-right">{fmt(displaySec)}</span>
           <Slider
-            value={[duration ? (position / duration) * 100 : 0]}
-            onValueChange={(v) => {
-              const pct = Array.isArray(v) ? (v[0] ?? 0) : v;
-              seek((pct / 100) * (duration || 0));
-            }}
+            value={[displayPct]}
+            onValueChange={onSliderChange}
+            onValueCommitted={onSliderCommit}
             max={100}
             step={0.1}
             className="flex-1"
@@ -186,11 +202,9 @@ export function PlayerBar() {
         slider inside the controls column instead. */}
     <div className="md:hidden px-3 -mt-1">
       <Slider
-        value={[duration ? (position / duration) * 100 : 0]}
-        onValueChange={(v) => {
-          const pct = Array.isArray(v) ? (v[0] ?? 0) : v;
-          seek((pct / 100) * (duration || 0));
-        }}
+        value={[displayPct]}
+        onValueChange={onSliderChange}
+        onValueCommitted={onSliderCommit}
         max={100}
         step={0.1}
       />

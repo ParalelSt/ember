@@ -68,7 +68,13 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const [audioReady, setAudioReady] = useState(false);
 
   const userInteracted = useRef(false);
-  const wantPosition = useRef(position);
+  // null = "uninitialized, fall back to the persisted store value on read."
+  // We can't seed this from `position` directly because zustand-persist
+  // rehydration completes AFTER the first React render, so useRef would
+  // freeze it at 0 even when the store ends up holding 2:57. Reading from
+  // the store inside loadAndPlay defers that lookup until effects run, by
+  // which point rehydration is guaranteed to be done.
+  const wantPosition = useRef<number | null>(null);
   const isTransitioning = useRef(false);
   const lastValidPosition = useRef(position);
   const lastPosWrite = useRef(0);
@@ -167,7 +173,11 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     isTransitioning.current = true;
     a.src = apiUrl(track.streamUrl);
     a.load();
-    const restoreTo = wantPosition.current;
+    // First call after mount: wantPosition is still null, so honor the
+    // persisted position from the store (which has finished rehydrating
+    // by the time this effect-driven call fires). Subsequent calls
+    // (next/prev) reset wantPosition to 0 below so new tracks start fresh.
+    const restoreTo = wantPosition.current ?? usePlayerStore.getState().position;
     wantPosition.current = 0;
     const onMeta = () => {
       if (restoreTo > 1 && restoreTo < (a.duration || Infinity)) {
