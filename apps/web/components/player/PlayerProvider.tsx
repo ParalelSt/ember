@@ -89,17 +89,66 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
   const current = queue[index] ?? null;
 
+  // Web Audio gain — wraps the <audio> element so we can amplify above
+  // its 1.0 ceiling in party mode. audio.volume alone caps at 1.0; an
+  // AudioContext + GainNode lets us push 2× through for actual louder.
+  const audioCtxRef = useRef<AudioContext | null>(null);
+  const gainNodeRef = useRef<GainNode | null>(null);
+
   const partyVolume = useSettingsStore((s) => s.partyVolume);
   useEffect(() => {
     const a = audioRef.current;
     if (!a) return;
+
+    // Lazily wire up the Web Audio graph on the first effect run after
+    // the audio element exists. Doing it once and only once — repeated
+    // createMediaElementSource() calls on the same element throw.
+    if (typeof window !== 'undefined' && !audioCtxRef.current) {
+      const Ctor: typeof AudioContext | undefined =
+        window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+      if (Ctor) {
+        try {
+          const ctx = new Ctor();
+          const source = ctx.createMediaElementSource(a);
+          const gain = ctx.createGain();
+          source.connect(gain);
+          gain.connect(ctx.destination);
+          audioCtxRef.current = ctx;
+          gainNodeRef.current = gain;
+        } catch (e) {
+          // Safari/iOS sometimes throws if the context is constructed
+          // outside a user gesture — fall back to bare a.volume only.
+          logger.error('audio', 'web audio init failed', undefined, e as Error);
+        }
+      }
+    }
+
     // Default curve: power 1.5 — between the old square curve (which
     // spiked at the top) and pure linear (too loud at halfway). Halfway
     // slider ≈ 0.28 audio, top ≈ 0.78.
     // Party mode: linear with no cap — slider directly drives audio
     // output 1:1 up to 1.0 for loud-as-it-goes playback.
     a.volume = partyVolume ? Math.min(1, volume) : Math.pow(volume, 1.5);
+
+    // Gain boost ONLY in party mode — 2× pre-clipping headroom on top of
+    // the audio element's own 1.0 ceiling. Off mode leaves it at 1.0
+    // (passthrough) so the curve above is the only attenuation.
+    if (gainNodeRef.current) {
+      gainNodeRef.current.gain.value = partyVolume ? 2 : 1;
+    }
   }, [audioReady, volume, partyVolume]);
+
+  // When party mode turns OFF, the stored volume may sit above the
+  // normal 0.85 cap (party allowed up to 1.0). Without this clamp the
+  // slider's max prop drops to 85, the value stays at e.g. 95, and the
+  // thumb gets stuck at the right edge while audio keeps playing at
+  // the higher level. Snap volume back into the normal range so the
+  // slider position and audio level both honour party=off immediately.
+  useEffect(() => {
+    if (!partyVolume && volume > 0.85) {
+      setStoreVolume(0.85);
+    }
+  }, [partyVolume, volume, setStoreVolume]);
 
   // Synchronously load + play the given track on the audio element. Must be
   // called from a user-gesture handler (click, keypress) — React 19 effects
@@ -131,6 +180,11 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     a.addEventListener('loadedmetadata', onMeta, { once: true });
     setTimeout(() => { isTransitioning.current = false; }, 8000);
     if (autoplay) {
+      // Wake the AudioContext if it's suspended — Safari / iOS / new
+      // Chrome require a user gesture to start the graph, and loadAndPlay
+      // only fires from click/keypress handlers. Without this, party-mode
+      // gain produces silence even though the audio element runs.
+      audioCtxRef.current?.resume?.().catch(() => {});
       a.play().then(() => setIsPlaying(true)).catch(() => setIsPlaying(false));
     }
   }, [setPosition, setIsPlaying]);
