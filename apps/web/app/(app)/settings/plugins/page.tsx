@@ -28,7 +28,8 @@ export default function SettingsPlugins() {
       <div className="mt-6 flex flex-col gap-3">
         <PluginToggle
           name="Party-size volume slider"
-          description="Wider slider in the player bar and removes the 85% cap so the audio can go all the way to max."
+          tag="PC only"
+          description="Wider slider in the player bar and removes the 85% cap so the audio can go all the way to max. Visible on desktop — phones don't show the volume slider at all."
           on={partyVolume}
           onToggle={() => setPartyVolume(!partyVolume)}
         />
@@ -57,13 +58,21 @@ interface ToggleProps {
   description: string;
   on: boolean;
   onToggle: () => void;
+  tag?: string;
 }
 
-function PluginToggle({ name, description, on, onToggle }: ToggleProps) {
+function PluginToggle({ name, description, on, onToggle, tag }: ToggleProps) {
   return (
     <div className="rounded-2xl bg-card p-5 shadow-soft flex items-start justify-between gap-4">
       <div className="min-w-0">
-        <div className="font-semibold">{name}</div>
+        <div className="flex items-center gap-2">
+          <span className="font-semibold">{name}</span>
+          {tag && (
+            <span className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-[10px] uppercase tracking-widest text-muted-foreground">
+              {tag}
+            </span>
+          )}
+        </div>
         <p className="mt-1 text-sm text-muted-foreground">{description}</p>
       </div>
       <button
