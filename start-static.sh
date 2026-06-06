@@ -6,7 +6,7 @@
 #
 # Assumes `tailscale funnel --bg $PORT` is already running — see SETUP.md.
 # Starts:
-#   1. PocketBase                       (127.0.0.1:$POCKETBASE_PORT, default 8090)
+#   1. PocketBase                       (127.0.0.1:${POCKETBASE_PORT}, default 8090)
 #   2. Next in PRODUCTION mode          (127.0.0.1:$PORT, default 3000) — proxies /pb/* to PocketBase
 #
 # Both ports come from apps/web/.env.local:
@@ -55,7 +55,7 @@ POCKETBASE_PORT="${POCKETBASE_PORT:-8090}"
 
 # Tell Next where PB is. Overrides whatever's in .env.local so changing
 # POCKETBASE_PORT alone is enough — POCKETBASE_URL stays in sync automatically.
-export POCKETBASE_URL="http://127.0.0.1:$POCKETBASE_PORT"
+export POCKETBASE_URL="http://127.0.0.1:${POCKETBASE_PORT}"
 export PORT
 
 # Only react to explicit Ctrl+C / TERM. NOT EXIT — otherwise a `set -e` abort
@@ -73,11 +73,11 @@ trap cleanup INT TERM
 
 # Skip starting PB if it's already running (e.g. survived a previous failed
 # build, or the user started it manually). Avoids a port-conflict crash.
-if curl -fsS -m 1 "http://127.0.0.1:$POCKETBASE_PORT/api/health" > /dev/null 2>&1; then
-  echo "▶ PocketBase already running on :$POCKETBASE_PORT, skipping start."
+if curl -fsS -m 1 "http://127.0.0.1:${POCKETBASE_PORT}/api/health" > /dev/null 2>&1; then
+  echo "▶ PocketBase already running on :${POCKETBASE_PORT}, skipping start."
 else
-  echo "▶ starting PocketBase on :$POCKETBASE_PORT…"
-  ( cd "$PB_DIR" && exec "$PB" serve --http "127.0.0.1:$POCKETBASE_PORT" ) &
+  echo "▶ starting PocketBase on :${POCKETBASE_PORT}…"
+  ( cd "$PB_DIR" && exec "$PB" serve --http "127.0.0.1:${POCKETBASE_PORT}" ) &
 fi
 
 echo "▶ building the web app (production, webpack)…"
@@ -86,7 +86,7 @@ echo "▶ building the web app (production, webpack)…"
 # spawn the Python player). Webpack happily ignores it.
 ( cd "$ROOT/apps/web" && npx next build --webpack )
 
-echo "▶ starting Next on :$PORT (production)…"
+echo "▶ starting Next on :${PORT} (production)…"
 ( cd "$ROOT" && exec npm start ) &
 
 echo ""
@@ -95,7 +95,7 @@ echo "  📱  App is live at your Tailscale Funnel URL"
 echo "      (https://ember.<your-tailnet>.ts.net)"
 echo ""
 echo "  🔧  PocketBase admin (local only):"
-echo "      http://127.0.0.1:$POCKETBASE_PORT/_/"
+echo "      http://127.0.0.1:${POCKETBASE_PORT}/_/"
 echo "═══════════════════════════════════════════════════════"
 echo ""
 echo "  (Ctrl+C to stop.)"
