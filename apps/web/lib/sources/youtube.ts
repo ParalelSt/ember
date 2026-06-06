@@ -228,14 +228,118 @@ interface RawLyrics {
   error?: string;
 }
 
+export interface LyricsLine {
+  /** Seconds from the start of the track. */
+  time: number;
+  text: string;
+}
+
 export interface LyricsResult {
   lyrics: string | null;
-  source: 'genius' | 'none';
+  source: 'genius' | 'lrclib' | 'none';
   url: string | null;
+  /** Time-synced lines when the source provides them. Empty/undefined
+   *  means we only have plain text — the UI renders it as a single block. */
+  synced?: LyricsLine[];
 }
 
 const LYRICS_CACHE = new Map<string, { result: LyricsResult; expires: number }>();
 const LYRICS_TTL_MS = 60 * 60 * 1000;
+
+/** Parse LRC body into sorted {time, text} entries. Tolerates the common
+ *  `[mm:ss.xx]` and `[mm:ss]` forms, multiple stamps per line, and metadata
+ *  tags like `[ar:...]`/`[ti:...]` which we silently skip. */
+function parseLRC(body: string): LyricsLine[] {
+  const stampRe = /\[(\d{1,3}):(\d{1,2})(?:[.:](\d{1,3}))?\]/g;
+  const lines: LyricsLine[] = [];
+  for (const raw of body.split('\n')) {
+    const stamps: number[] = [];
+    let lastEnd = 0;
+    let m: RegExpExecArray | null;
+    stampRe.lastIndex = 0;
+    while ((m = stampRe.exec(raw)) !== null) {
+      const mm = Number(m[1]);
+      const ss = Number(m[2]);
+      const frac = m[3] ? Number(m[3]) / 10 ** m[3].length : 0;
+      stamps.push(mm * 60 + ss + frac);
+      lastEnd = stampRe.lastIndex;
+    }
+    if (stamps.length === 0) continue;
+    const text = raw.slice(lastEnd).trim();
+    for (const t of stamps) lines.push({ time: t, text });
+  }
+  lines.sort((a, b) => a.time - b.time);
+  return lines;
+}
+
+interface RawLrclibHit {
+  id?: number;
+  plainLyrics?: string | null;
+  syncedLyrics?: string | null;
+  instrumental?: boolean;
+}
+
+/** YouTube titles arrive with cruft like "(Official Music Video)" or
+ *  "feat. X" that LRCLib's matcher trips over. Strip the noise so a track
+ *  like "Until the World Goes Cold (Official Music Video)" looks up as
+ *  just "Until the World Goes Cold". */
+function cleanForLyricsLookup(s: string): string {
+  return s
+    .replace(/\s*[\[(][^\])]*\b(official|lyric|lyrics|music|audio|video|hd|hq|4k|live|remaster(ed)?|visualizer|mv|m\/v)\b[^\])]*[\])]/gi, '')
+    .replace(/\s*[-–—]\s*(official|lyric|lyrics|music|audio|video|hd|hq|4k|live|remaster(ed)?)\b.*$/i, '')
+    .replace(/\s*[\[(]?\bfeat(?:uring)?\.?\b[^)\]]*[\])]?/gi, '')
+    .replace(/\s*[\[(]?\bft\.\b[^)\]]*[\])]?/gi, '')
+    .replace(/\s+VEVO\b/gi, '')
+    .replace(/\s+-\s+Topic\b/gi, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/** LRCLib is a community database that returns both `syncedLyrics` (LRC
+ *  format) and `plainLyrics` for a track. No auth, no rate limits to speak
+ *  of. We try it first because it's the only source we have with timing
+ *  info — falling back to Genius (via the Python scraper) only when LRCLib
+ *  has nothing.
+ *
+ *  Uses /api/search (fuzzy) rather than /api/get (exact) because YouTube
+ *  metadata almost never matches LRCLib's clean artist/title strings. */
+async function fetchLrclib(title: string, artist: string): Promise<LyricsResult | null> {
+  const cleanTitle = cleanForLyricsLookup(title);
+  const cleanArtist = cleanForLyricsLookup(artist);
+  const params = new URLSearchParams({ track_name: cleanTitle });
+  if (cleanArtist) params.set('artist_name', cleanArtist);
+  const url = `https://lrclib.net/api/search?${params.toString()}`;
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      headers: { 'User-Agent': 'Ember (+https://github.com/ParalelSt/ember)' },
+      signal: AbortSignal.timeout(8000),
+    });
+  } catch {
+    return null;
+  }
+  if (!res.ok) return null;
+  const hits = (await res.json().catch(() => null)) as RawLrclibHit[] | null;
+  if (!Array.isArray(hits) || hits.length === 0) return null;
+
+  // Prefer a hit that actually has synced lyrics — that's the whole point
+  // of going to LRCLib. Fall back to the first hit otherwise.
+  const hit =
+    hits.find((h) => !h.instrumental && h.syncedLyrics && h.syncedLyrics.trim().length > 0)
+    ?? hits.find((h) => !h.instrumental && h.plainLyrics);
+  if (!hit) return null;
+
+  const synced = hit.syncedLyrics ? parseLRC(hit.syncedLyrics) : [];
+  const plain = (hit.plainLyrics ?? '').trim()
+    || (synced.length ? synced.map((l) => l.text).join('\n') : '');
+  if (!plain && synced.length === 0) return null;
+  return {
+    lyrics: plain || null,
+    source: 'lrclib',
+    url: null,
+    synced: synced.length ? synced : undefined,
+  };
+}
 
 export async function getLyrics(title: string, artist: string): Promise<LyricsResult> {
   const cleanTitle = title.trim().slice(0, 200);
@@ -245,9 +349,19 @@ export async function getLyrics(title: string, artist: string): Promise<LyricsRe
     e.status = 400;
     throw e;
   }
-  const cacheKey = `${cleanArtist}::${cleanTitle}`.toLowerCase();
+  // v2 = LRCLib (synced) path added. Bumping ensures any v1-era cached
+  // entries (Genius-only, no `synced`) don't shadow newer lookups.
+  const cacheKey = `v2:${cleanArtist}::${cleanTitle}`.toLowerCase();
   const cached = LYRICS_CACHE.get(cacheKey);
   if (cached && cached.expires > Date.now()) return cached.result;
+
+  // Prefer LRCLib because it can give us synced timing. If it has nothing
+  // useful, fall back to Genius via the Python scraper for the plain text.
+  const fromLrclib = await fetchLrclib(cleanTitle, cleanArtist);
+  if (fromLrclib) {
+    LYRICS_CACHE.set(cacheKey, { result: fromLrclib, expires: Date.now() + LYRICS_TTL_MS });
+    return fromLrclib;
+  }
 
   const raw = await runPython<RawLyrics>(['lyrics', cleanTitle, cleanArtist], { timeoutMs: 20000 });
   if (raw?.error) {

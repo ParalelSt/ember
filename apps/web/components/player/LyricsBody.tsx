@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { toast } from 'sonner';
 import {
   Dialog,
@@ -14,7 +14,8 @@ import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { CloseIcon } from '@/components/icons';
 import { usePlayer } from '@/components/player/PlayerProvider';
-import { useQueryLyrics } from '@/hooks/useLyrics';
+import { useQueryLyrics, type LyricsLine } from '@/hooks/useLyrics';
+import { cn } from '@/lib/utils';
 
 interface Props {
   /** Active flag drives the lazy fetch — only goes to /api/lyrics while
@@ -27,7 +28,7 @@ interface Props {
 }
 
 export function LyricsBody({ active, onClose, showHeader = true }: Props) {
-  const { current } = usePlayer();
+  const { current, seek } = usePlayer();
   const { data, isLoading, error } = useQueryLyrics(current, active);
 
   const [reportOpen, setReportOpen] = useState(false);
@@ -66,6 +67,7 @@ export function LyricsBody({ active, onClose, showHeader = true }: Props) {
   };
 
   const hasLyrics = !!current && !!data?.lyrics;
+  const synced = data?.synced && data.synced.length > 0 ? data.synced : null;
 
   return (
     <>
@@ -103,7 +105,7 @@ export function LyricsBody({ active, onClose, showHeader = true }: Props) {
         </div>
       )}
 
-      <div className="flex-1 overflow-y-auto px-4 py-5">
+      <div className="flex-1 overflow-y-auto px-4 py-5 scrollbar-none [&::-webkit-scrollbar]:hidden">
         {!current && (
           <div className="text-sidebar-foreground/55 text-sm py-12 text-center">
             Play a track to see its lyrics.
@@ -122,25 +124,34 @@ export function LyricsBody({ active, onClose, showHeader = true }: Props) {
           </div>
         )}
 
-        {current && data && data.lyrics && (
-          <>
-            <pre className="whitespace-pre-wrap font-sans text-sm leading-relaxed text-sidebar-foreground">
-              {data.lyrics}
-            </pre>
-            {data.url && (
-              <a
-                href={data.url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="mt-6 inline-block text-xs uppercase tracking-widest text-sidebar-foreground/55 hover:text-sidebar-foreground transition-colors"
-              >
-                Source: Genius
-              </a>
-            )}
-          </>
+        {current && data && synced && (
+          <SyncedLyrics lines={synced} onSeek={seek} />
         )}
 
-        {current && data && !data.lyrics && (
+        {current && data && !synced && data.lyrics && (
+          <pre className="whitespace-pre-wrap font-sans text-sm leading-relaxed text-sidebar-foreground">
+            {data.lyrics}
+          </pre>
+        )}
+
+        {current && data && !synced && data.lyrics && data.url && (
+          <a
+            href={data.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="mt-6 inline-block text-xs uppercase tracking-widest text-sidebar-foreground/55 hover:text-sidebar-foreground transition-colors"
+          >
+            Source: Genius
+          </a>
+        )}
+
+        {current && data && synced && (
+          <div className="mt-8 text-[10px] uppercase tracking-widest text-sidebar-foreground/40">
+            Synced from LRCLib
+          </div>
+        )}
+
+        {current && data && !data.lyrics && !synced && (
           <div className="text-sidebar-foreground/55 text-sm py-12 text-center">
             No lyrics found for this track.
           </div>
@@ -189,5 +200,77 @@ export function LyricsBody({ active, onClose, showHeader = true }: Props) {
         </DialogContent>
       </Dialog>
     </>
+  );
+}
+
+/** Karaoke-style lyric scroller: lines dim by distance from the current
+ *  position, the active line is highlighted, and the active line is
+ *  smooth-scrolled into the center of the lyrics scroller as the song
+ *  plays. Clicking a line seeks playback to that timestamp. */
+function SyncedLyrics({
+  lines,
+  onSeek,
+}: {
+  lines: LyricsLine[];
+  onSeek: (t: number) => void;
+}) {
+  const { position } = usePlayer();
+
+  // Binary search for the latest line whose timestamp is <= current position.
+  const activeIdx = useMemo(() => {
+    let lo = 0;
+    let hi = lines.length - 1;
+    let ans = -1;
+    while (lo <= hi) {
+      const mid = (lo + hi) >> 1;
+      if (lines[mid].time <= position) {
+        ans = mid;
+        lo = mid + 1;
+      } else {
+        hi = mid - 1;
+      }
+    }
+    return ans;
+  }, [lines, position]);
+
+  const lineRefs = useRef<Array<HTMLButtonElement | null>>([]);
+
+  useEffect(() => {
+    if (activeIdx < 0) return;
+    const el = lineRefs.current[activeIdx];
+    if (!el) return;
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }, [activeIdx]);
+
+  return (
+    <div className="flex flex-col gap-2 py-2">
+      {lines.map((line, i) => {
+        const isActive = i === activeIdx;
+        const isPast = i < activeIdx;
+        const text = line.text || '♪';
+        return (
+          <button
+            key={`${line.time}-${i}`}
+            type="button"
+            ref={(el) => {
+              lineRefs.current[i] = el;
+            }}
+            onClick={() => onSeek(line.time)}
+            className={cn(
+              'text-left rounded-md px-2 py-1.5 transition-all duration-300',
+              'leading-relaxed cursor-pointer outline-none',
+              'focus-visible:bg-sidebar-foreground/10',
+              isActive
+                ? 'text-foreground font-semibold text-lg scale-[1.02] origin-left'
+                : isPast
+                  ? 'text-sidebar-foreground/30 text-sm'
+                  : 'text-sidebar-foreground/65 text-sm hover:text-sidebar-foreground',
+            )}
+          >
+            {text}
+          </button>
+        );
+      })}
+    </div>
   );
 }

@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Sidebar } from '@/components/nav/Sidebar';
 import { TopBar } from '@/components/nav/TopBar';
 import { MobileNav } from '@/components/nav/MobileNav';
@@ -12,24 +12,49 @@ import { LyricsPanel } from '@/components/player/LyricsPanel';
 
 export default function AppShellLayout({ children }: { children: ReactNode }) {
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const mainRef = useRef<HTMLElement>(null);
+  const scrollerRef = useRef<HTMLDivElement>(null);
+  const [scrollerH, setScrollerH] = useState(0);
+
+  // LyricsPanel reads --ember-scroller-h to size itself to one viewport-of-
+  // scroller, so its position:sticky inside the scroller keeps it glued to
+  // the top while the page below it scrolls.
+  useEffect(() => {
+    const el = scrollerRef.current;
+    if (!el) return;
+    const update = () => setScrollerH(el.clientHeight);
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
   return (
     <div className="h-dvh flex flex-col md:flex-row overflow-hidden">
       <Sidebar />
       <Drawer open={drawerOpen} onOpenChange={setDrawerOpen} />
       <div className="flex-1 min-h-0 flex flex-col min-w-0">
         <TopBar onMenu={() => setDrawerOpen(true)} />
-        {/* Inner row so the LyricsPanel sits beside main on md:+ and the
-            layout reflows around it — main shrinks, controls below stay
-            spanning. Phones tap Lyrics in PlayerBar to open NowPlaying
-            scrolled to its lyrics section instead. */}
-        <div className="flex-1 min-h-0 flex min-w-0">
-          <main ref={mainRef} className="flex-1 min-h-0 overflow-y-auto px-6 md:px-8 py-6 md:py-8 min-w-0">
-            <div className="mx-auto max-w-7xl">{children}</div>
-          </main>
-          <LyricsPanel />
+        {/* The OUTER scroller owns the scrollbar — so it lives on the far
+            right edge of the viewport, past the LyricsPanel. Inside, a
+            flex row holds <main> (grows tall, drives the scroll) and the
+            LyricsPanel (sticky to the top of the scroller's viewport). */}
+        <div
+          ref={scrollerRef}
+          className="flex-1 min-h-0 overflow-y-auto"
+          style={
+            scrollerH
+              ? ({ ['--ember-scroller-h' as string]: `${scrollerH}px` } as React.CSSProperties)
+              : undefined
+          }
+        >
+          <div className="flex min-w-0 min-h-full">
+            <main className="flex-1 min-w-0 px-6 md:px-8 py-6 md:py-8">
+              <div className="mx-auto max-w-7xl">{children}</div>
+            </main>
+            <LyricsPanel />
+          </div>
         </div>
-        <BackToTop scrollRef={mainRef} />
+        <BackToTop scrollRef={scrollerRef} />
         <PlayerBar />
         <MobileNav />
       </div>
