@@ -11,6 +11,7 @@ import {
   type ReactNode,
 } from 'react';
 import { usePlayerStore } from '@/stores/usePlayerStore';
+import { useSettingsStore } from '@/stores/useSettingsStore';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { useExecuteRecordPlay, useQueryHistory, useQueryLikes } from '@/hooks/useLibrary';
 import { api, apiUrl } from '@/lib/api';
@@ -88,16 +89,17 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
   const current = queue[index] ?? null;
 
+  const partyVolume = useSettingsStore((s) => s.partyVolume);
   useEffect(() => {
     const a = audioRef.current;
     if (!a) return;
-    // Power 1.5 — between the old square curve (which spiked at the
-    // top: 2× sensitivity at max vs. bottom) and pure linear (which
-    // made halfway already feel loud). Halfway slider lands around
-    // 0.28 audio, top around 0.78. Slightly gentler at the top, much
-    // tamer in the middle than linear.
-    a.volume = Math.pow(volume, 1.5);
-  }, [audioReady, volume]);
+    // Default curve: power 1.5 — between the old square curve (which
+    // spiked at the top) and pure linear (too loud at halfway). Halfway
+    // slider ≈ 0.28 audio, top ≈ 0.78.
+    // Party mode: linear with no cap — slider directly drives audio
+    // output 1:1 up to 1.0 for loud-as-it-goes playback.
+    a.volume = partyVolume ? Math.min(1, volume) : Math.pow(volume, 1.5);
+  }, [audioReady, volume, partyVolume]);
 
   // Synchronously load + play the given track on the audio element. Must be
   // called from a user-gesture handler (click, keypress) — React 19 effects

@@ -11,6 +11,7 @@ import { usePlayer } from '@/components/player/PlayerProvider';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { useExecuteToggleLike, useQueryLikes } from '@/hooks/useLibrary';
 import { usePlayerStore } from '@/stores/usePlayerStore';
+import { useSettingsStore } from '@/stores/useSettingsStore';
 import { findLikedVariant } from '@/lib/songKey';
 import { cn } from '@/lib/utils';
 
@@ -29,6 +30,7 @@ export function PlayerBar() {
   const likedVariant = findLikedVariant(current, liked);
   const isLiked = !!likedVariant;
   const openNowPlaying = usePlayerStore((s) => s.setNowPlayingOpen);
+  const partyVolume = useSettingsStore((s) => s.partyVolume);
   const [queueOpen, setQueueOpen] = useState(false);
 
   // Only render the bar once playback has actually started. Avoids the
@@ -135,14 +137,14 @@ export function PlayerBar() {
         </Button>
         <div className="hidden md:flex items-center gap-2">
           <VolumeIcon className="h-4 w-4 text-muted-foreground" />
-          <div className="w-29.5 shrink-0">
+          <div className={cn('shrink-0', partyVolume ? 'w-40' : 'w-29.5')}>
             <Slider
               value={[volume * 100]}
               onValueChange={(v) => {
                 const pct = Array.isArray(v) ? (v[0] ?? 0) : v;
                 setVolume(pct / 100);
               }}
-              max={85}
+              max={partyVolume ? 100 : 85}
               step={1}
             />
           </div>

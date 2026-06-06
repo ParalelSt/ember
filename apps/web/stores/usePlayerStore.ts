@@ -45,7 +45,7 @@ export const usePlayerStore = create<PlayerState>()(
       setPosition: (position) => set({ position }),
       setDuration: (duration) => set({ duration }),
       setIsPlaying: (isPlaying) => set({ isPlaying }),
-      setVolume: (volume) => set({ volume: Math.min(0.85, Math.max(0, volume)) }),
+      setVolume: (volume) => set({ volume: Math.min(1, Math.max(0, volume)) }),
       setContext: (context) => set({ context }),
       setNowPlayingOpen: (nowPlayingOpen) => set({ nowPlayingOpen }),
     }),
