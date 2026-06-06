@@ -27,4 +27,6 @@ export {
   ListMusic as QueueIcon,
   ChevronUp as ChevronUpIcon,
   ChevronLeft as ChevronLeftIcon,
+  Mic2 as LyricsIcon,
+  Sparkles as SparklesIcon,
 } from 'lucide-react';

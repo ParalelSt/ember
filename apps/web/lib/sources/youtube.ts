@@ -221,6 +221,49 @@ interface StreamInfo {
 const URL_CACHE = new Map<string, { info: StreamInfo; expires: number }>();
 const URL_TTL_MS = 5 * 60 * 1000;
 
+interface RawLyrics {
+  lyrics?: string | null;
+  source?: 'genius' | 'none';
+  url?: string;
+  error?: string;
+}
+
+export interface LyricsResult {
+  lyrics: string | null;
+  source: 'genius' | 'none';
+  url: string | null;
+}
+
+const LYRICS_CACHE = new Map<string, { result: LyricsResult; expires: number }>();
+const LYRICS_TTL_MS = 60 * 60 * 1000;
+
+export async function getLyrics(title: string, artist: string): Promise<LyricsResult> {
+  const cleanTitle = title.trim().slice(0, 200);
+  const cleanArtist = artist.trim().slice(0, 200);
+  if (!cleanTitle) {
+    const e: PythonError = new Error('missing title');
+    e.status = 400;
+    throw e;
+  }
+  const cacheKey = `${cleanArtist}::${cleanTitle}`.toLowerCase();
+  const cached = LYRICS_CACHE.get(cacheKey);
+  if (cached && cached.expires > Date.now()) return cached.result;
+
+  const raw = await runPython<RawLyrics>(['lyrics', cleanTitle, cleanArtist], { timeoutMs: 20000 });
+  if (raw?.error) {
+    const e: PythonError = new Error(raw.error);
+    e.status = raw.error.startsWith('GENIUS_ACCESS_TOKEN') ? 503 : 502;
+    throw e;
+  }
+  const result: LyricsResult = {
+    lyrics: raw?.lyrics ?? null,
+    source: raw?.source ?? 'none',
+    url: raw?.url ?? null,
+  };
+  LYRICS_CACHE.set(cacheKey, { result, expires: Date.now() + LYRICS_TTL_MS });
+  return result;
+}
+
 export async function resolveStreamUrl(videoId: string): Promise<StreamInfo> {
   if (!VIDEO_ID_RE.test(videoId)) {
     const e: PythonError = new Error('invalid videoId');

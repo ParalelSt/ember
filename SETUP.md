@@ -163,6 +163,26 @@ The webhook URL ships baked into source (you committed it). Friends self-hosting
 
 Server-side error logs live at `logs/errors-YYYY-MM-DD.jsonl` (gitignored, auto-deleted after 2 days). The Discord channel is your long-term archive. If the baked-in webhook ever gets abused, delete + recreate it in Discord and rebuild.
 
+### Lyrics
+
+The in-player **Lyrics** button (mic icon next to Queue) fetches from Genius. You need a Genius access token to enable it:
+
+1. https://genius.com/api-clients → **New API Client** → name/website can be anything.
+2. Copy the **Client Access Token** at the bottom.
+3. Paste it into `apps/web/.env.local`:
+   ```
+   GENIUS_ACCESS_TOKEN=<your token>
+   ```
+4. Make sure the venv has `lyricsgenius`:
+   ```bash
+   ./.venv/bin/pip install lyricsgenius
+   ```
+5. Restart the app.
+
+Without the token the lyrics button still works — it just shows "no lyrics found" for every track.
+
+For the AI fallback (when Genius has nothing) see **[LYRICS_AI.md](LYRICS_AI.md)**.
+
 ### Adding more invitees
 
 http://127.0.0.1:8090/_/ → `allowed_emails` collection → **New record** → enter the email → save. The user can now register at `/auth` on their next visit. No restart, no code change.

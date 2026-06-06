@@ -4,8 +4,9 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { Slider } from '@/components/ui/slider';
 import { Button } from '@/components/ui/button';
-import { HeartIcon, NextIcon, PauseIcon, PlayIcon, PrevIcon, QueueIcon, VolumeIcon } from '@/components/icons';
+import { HeartIcon, LyricsIcon, NextIcon, PauseIcon, PlayIcon, PrevIcon, QueueIcon, VolumeIcon } from '@/components/icons';
 import { AddToPlaylistMenu } from '@/components/track/AddToPlaylistMenu';
+import { LyricsSheet } from '@/components/player/LyricsSheet';
 import { QueueSheet } from '@/components/player/QueueSheet';
 import { usePlayer } from '@/components/player/PlayerProvider';
 import { useAuth } from '@/components/providers/AuthProvider';
@@ -32,6 +33,7 @@ export function PlayerBar() {
   const openNowPlaying = usePlayerStore((s) => s.setNowPlayingOpen);
   const partyVolume = useSettingsStore((s) => s.partyVolume);
   const [queueOpen, setQueueOpen] = useState(false);
+  const [lyricsOpen, setLyricsOpen] = useState(false);
 
   // Only render the bar once playback has actually started. Avoids the
   // "Nothing playing" placeholder strip and ensures the bar pops in the moment
@@ -129,6 +131,16 @@ export function PlayerBar() {
           variant="ghost"
           size="icon"
           className="h-10 w-10 md:h-8 md:w-8 text-muted-foreground hover:text-foreground"
+          onClick={() => setLyricsOpen(true)}
+          aria-label="Lyrics"
+          title="Lyrics"
+        >
+          <LyricsIcon className="h-5 w-5 md:h-4 md:w-4" />
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-10 w-10 md:h-8 md:w-8 text-muted-foreground hover:text-foreground"
           onClick={() => setQueueOpen(true)}
           aria-label="Queue"
           title="Queue"
@@ -168,6 +180,7 @@ export function PlayerBar() {
     </div>
 
     <QueueSheet open={queueOpen} onOpenChange={setQueueOpen} />
+    <LyricsSheet open={lyricsOpen} onOpenChange={setLyricsOpen} />
     </footer>
   );
 }

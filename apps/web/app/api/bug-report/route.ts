@@ -6,6 +6,7 @@ import {
 } from "@/lib/auth";
 import { serverLogger } from "@/lib/logger/server";
 import type { ClientSnapshot } from "@/lib/logger/types";
+import { rateLimitResponse } from "@/lib/rateLimit";
 import { fromError, jsonError } from "@/lib/upsertTrack";
 
 const REPORT_WINDOW_MS = 5 * 60 * 1000;
@@ -29,6 +30,15 @@ interface RequestBody {
 export async function POST(request: NextRequest) {
   try {
     const { user } = await requireUser();
+
+    // 3 reports per 10 minutes per user — typing out a detailed bug takes
+    // at least a moment, so this only catches accidental double-submits and
+    // genuine spam, not legitimate use.
+    const limited = rateLimitResponse(`bug-report:${user.id}`, {
+      windowMs: 10 * 60 * 1000,
+      max: 3,
+    });
+    if (limited) return limited;
 
     if (!WEBHOOK_URL) {
       return jsonError(

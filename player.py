@@ -285,6 +285,51 @@ def cmd_album(args):
     }
     json.dump(out, sys.stdout)
 
+def cmd_lyrics(args):
+    """Fetch lyrics from Genius by song title + artist. Uses lyricsgenius
+    (which handles Genius search + scraping the lyrics off the song page,
+    since the official API only returns metadata). Returns
+    {"lyrics", "source": "genius", "url"} on hit, {"lyrics": null,
+    "source": "none"} on no match, or {"error"} on failure."""
+    token = os.environ.get("GENIUS_ACCESS_TOKEN")
+    if not token:
+        json.dump({"error": "GENIUS_ACCESS_TOKEN not set"}, sys.stdout)
+        return
+
+    try:
+        import lyricsgenius
+    except ImportError:
+        json.dump({"error": "lyricsgenius not installed (pip install lyricsgenius)"}, sys.stdout)
+        return
+
+    try:
+        genius = lyricsgenius.Genius(
+            token,
+            skip_non_songs=True,
+            remove_section_headers=False,
+            verbose=False,
+            timeout=10,
+        )
+        # lyricsgenius prints to stdout via its `verbose` flag; we suppressed
+        # but a stray print would corrupt our JSON, so redirect just in case.
+        with contextlib.redirect_stdout(sys.stderr):
+            song = genius.search_song(args.title, args.artist)
+        if not song:
+            json.dump({"lyrics": None, "source": "none"}, sys.stdout)
+            return
+        # lyricsgenius prefixes a "<Title> Lyrics" header. Strip it.
+        lyrics = (song.lyrics or "").strip()
+        lyrics = re.sub(r'^.*?Lyrics(\[|\n)', r'\1', lyrics, count=1, flags=re.DOTALL)
+        # Strip the trailing "<n>Embed" footer Genius adds.
+        lyrics = re.sub(r'\d*Embed\s*$', '', lyrics).strip()
+        json.dump({
+            "lyrics": lyrics,
+            "source": "genius",
+            "url": song.url,
+        }, sys.stdout)
+    except Exception as e:
+        json.dump({"error": str(e)}, sys.stdout)
+
 def cmd_trending(args):
     """Best-effort 'top tracks today' from YT Music charts. Falls back to a
     generic search if the charts API shape changes (it has historically)."""
@@ -348,6 +393,10 @@ def main():
     p_album = sub.add_parser("album", help="Album detail by browseId. Prints JSON.")
     p_album.add_argument("browse_id")
 
+    p_lyrics = sub.add_parser("lyrics", help="Genius lyrics for title + artist. Prints JSON.")
+    p_lyrics.add_argument("title")
+    p_lyrics.add_argument("artist")
+
     args = parser.parse_args()
 
     if args.cmd == "search":
@@ -364,6 +413,8 @@ def main():
         cmd_artist(args)
     elif args.cmd == "album":
         cmd_album(args)
+    elif args.cmd == "lyrics":
+        cmd_lyrics(args)
     else:
         cmd_interactive()
 
