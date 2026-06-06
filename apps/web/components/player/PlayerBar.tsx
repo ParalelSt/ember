@@ -35,6 +35,18 @@ export function PlayerBar() {
   const [queueOpen, setQueueOpen] = useState(false);
   const lyricsOpen = useUiStore((s) => s.lyricsOpen);
   const setLyricsOpen = useUiStore((s) => s.setLyricsOpen);
+  const setNowPlayingFocus = useUiStore((s) => s.setNowPlayingFocus);
+
+  const onLyricsClick = () => {
+    // On phones the inline panel doesn't fit — pop the full-screen NowPlaying
+    // and ask it to scroll its lyrics section into view.
+    if (window.matchMedia('(max-width: 767px)').matches) {
+      setNowPlayingFocus('lyrics');
+      openNowPlaying(true);
+      return;
+    }
+    setLyricsOpen(!lyricsOpen);
+  };
 
   // Only render the bar once playback has actually started. Avoids the
   // "Nothing playing" placeholder strip and ensures the bar pops in the moment
@@ -135,7 +147,7 @@ export function PlayerBar() {
             'h-10 w-10 md:h-8 md:w-8 hover:text-foreground',
             lyricsOpen ? 'text-ember hover:text-ember' : 'text-muted-foreground',
           )}
-          onClick={() => setLyricsOpen(!lyricsOpen)}
+          onClick={onLyricsClick}
           aria-label={lyricsOpen ? 'Close lyrics' : 'Lyrics'}
           aria-pressed={lyricsOpen}
           title="Lyrics"

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { Slider } from '@/components/ui/slider';
 import { Button } from '@/components/ui/button';
@@ -8,10 +8,12 @@ import {
   ChevronDownIcon, HeartIcon, NextIcon, PauseIcon, PlayIcon, PrevIcon, MusicIcon,
 } from '@/components/icons';
 import { AddToPlaylistMenu } from '@/components/track/AddToPlaylistMenu';
+import { LyricsBody } from '@/components/player/LyricsBody';
 import { usePlayer } from '@/components/player/PlayerProvider';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { useExecuteToggleLike, useQueryLikes } from '@/hooks/useLibrary';
 import { usePlayerStore } from '@/stores/usePlayerStore';
+import { useUiStore } from '@/stores/useUiStore';
 import { findLikedVariant } from '@/lib/songKey';
 import { cn } from '@/lib/utils';
 
@@ -29,12 +31,17 @@ function fmt(sec: number): string {
 export function NowPlaying() {
   const open = usePlayerStore((s) => s.nowPlayingOpen);
   const setOpen = usePlayerStore((s) => s.setNowPlayingOpen);
+  const focus = useUiStore((s) => s.nowPlayingFocus);
+  const setFocus = useUiStore((s) => s.setNowPlayingFocus);
   const { current, isPlaying, position, duration, toggle, next, prev, seek } = usePlayer();
   const { user } = useAuth();
   const { data: liked = [] } = useQueryLikes();
   const toggleLike = useExecuteToggleLike();
   const likedVariant = findLikedVariant(current, liked);
   const isLiked = !!likedVariant;
+
+  const scrollerRef = useRef<HTMLDivElement | null>(null);
+  const lyricsRef = useRef<HTMLDivElement | null>(null);
 
   // Close on Escape; lock body scroll while open.
   useEffect(() => {
@@ -53,6 +60,24 @@ export function NowPlaying() {
   useEffect(() => {
     if (open && !current) setOpen(false);
   }, [open, current, setOpen]);
+
+  // When the lyrics button on the mini-bar requests it, scroll to the
+  // lyrics section after NowPlaying mounts. Double-RAF to wait for the
+  // open transition (translate-y) to finish so scrollIntoView lands.
+  useEffect(() => {
+    if (!open || focus !== 'lyrics') return;
+    let r2 = 0;
+    const r1 = requestAnimationFrame(() => {
+      r2 = requestAnimationFrame(() => {
+        lyricsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        setFocus(null);
+      });
+    });
+    return () => {
+      cancelAnimationFrame(r1);
+      if (r2) cancelAnimationFrame(r2);
+    };
+  }, [open, focus, setFocus]);
 
   const art = current?.artworkUrl ?? null;
 
@@ -78,12 +103,22 @@ export function NowPlaying() {
       </div>
 
       <div
-        className="relative flex flex-col h-full px-6"
+        ref={scrollerRef}
+        className="relative h-full overflow-y-auto px-6"
         style={{
           paddingTop: 'calc(env(safe-area-inset-top, 0px) + 0.5rem)',
           paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 1.5rem)',
+          // Reserve matching scrollbar-width space on the left so the
+          // lyrics block (and everything else) stays visually centered
+          // on browsers with classic scrollbars. iOS overlay scrollbars
+          // ignore this and lose nothing.
+          scrollbarGutter: 'stable both-edges',
         }}
       >
+      {/* "Player" pane — sized to fill the first viewport so the artwork-
+          centered look is preserved. Lyrics live BELOW this wrapper so
+          they push the scroller into overflow and become scroll-reachable. */}
+      <div className="flex flex-col min-h-full">
         {/* Header */}
         <div className="flex items-center justify-between py-3">
           <Button variant="ghost" size="icon" onClick={() => setOpen(false)} aria-label="Close">
@@ -172,7 +207,18 @@ export function NowPlaying() {
             <NextIcon className="h-7 w-7" />
           </Button>
         </div>
+      </div>
 
+      {/* Lyrics section — sits BELOW the min-h-full player pane so the
+          scroller actually overflows and scrollIntoView lands at the top
+          of this block. Tapping Lyrics in the mini-bar opens NowPlaying
+          with nowPlayingFocus='lyrics' and we smooth-scroll here. */}
+      <div
+        ref={lyricsRef}
+        className="mt-8 -mx-6 min-h-[80vh] rounded-t-2xl bg-sidebar/90 text-sidebar-foreground backdrop-blur-sm flex flex-col"
+      >
+        <LyricsBody active={open} showHeader={false} />
+      </div>
       </div>
     </div>
   );

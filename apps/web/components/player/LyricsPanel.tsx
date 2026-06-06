@@ -5,8 +5,8 @@ import { LyricsBody } from './LyricsBody';
 
 /** Desktop (md:+) inline lyrics column. Sits to the right of <main> and
  *  pushes the layout to make room — no overlay, controls stay reachable.
- *  Mobile gets the LyricsSheet overlay instead since there's no width to
- *  spare. */
+ *  Mobile uses the NowPlaying overlay's scroll-to-lyrics flow instead
+ *  since there's no width to spare. */
 export function LyricsPanel() {
   const open = useUiStore((s) => s.lyricsOpen);
   const setOpen = useUiStore((s) => s.setLyricsOpen);

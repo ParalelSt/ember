@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { Skeleton } from '@/components/ui/skeleton';
 import { TrackCard } from './TrackCard';
 import { ChevronLeftIcon } from '@/components/icons';
+import { useUiStore } from '@/stores/useUiStore';
 import type { Track } from '@/types/track';
 
 interface Props {
@@ -19,29 +20,40 @@ interface Props {
   fullscreen?: boolean;
 }
 
-const GRID_COLS = 'grid-cols-2 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6';
+// When the desktop lyrics panel is open, main shrinks by ~max(40vw, 28rem).
+// Use fewer columns so cards stay legible instead of cramming together.
+const GRID_COLS_DEFAULT = 'grid-cols-2 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6';
+const GRID_COLS_LYRICS = 'grid-cols-2 sm:grid-cols-3 md:grid-cols-3 lg:grid-cols-4';
 
-// One full row at each breakpoint — keep in sync with GRID_COLS above so the
-// collapsed view never wraps to a second row.
-function useResponsiveRowCount(): number {
-  const [count, setCount] = useState(6);
+// One full row at each breakpoint — keep in sync with the grid-cols strings
+// above so the collapsed view never wraps to a second row.
+function useResponsiveRowCount(lyricsOpen: boolean): number {
+  const [count, setCount] = useState(lyricsOpen ? 4 : 6);
   useEffect(() => {
     const update = () => {
       const w = window.innerWidth;
-      if (w >= 1024) setCount(6);
-      else if (w >= 768) setCount(5);
-      else if (w >= 640) setCount(4);
-      else setCount(2);
+      if (lyricsOpen) {
+        if (w >= 1024) setCount(4);
+        else if (w >= 640) setCount(3);
+        else setCount(2);
+      } else {
+        if (w >= 1024) setCount(6);
+        else if (w >= 768) setCount(5);
+        else if (w >= 640) setCount(4);
+        else setCount(2);
+      }
     };
     update();
     window.addEventListener('resize', update);
     return () => window.removeEventListener('resize', update);
-  }, []);
+  }, [lyricsOpen]);
   return count;
 }
 
 export function TrackRow({ title, tracks, loading, focusKey, fullscreen }: Props) {
-  const rowCount = useResponsiveRowCount();
+  const lyricsOpen = useUiStore((s) => s.lyricsOpen);
+  const gridCols = lyricsOpen ? GRID_COLS_LYRICS : GRID_COLS_DEFAULT;
+  const rowCount = useResponsiveRowCount(lyricsOpen);
   const hasTracks = !!tracks && tracks.length > 0;
   if (!loading && !hasTracks) return null;
 
@@ -58,7 +70,7 @@ export function TrackRow({ title, tracks, loading, focusKey, fullscreen }: Props
           Back
         </Link>
         <h1 className="text-3xl md:text-4xl font-bold tracking-tight mb-6">{title}</h1>
-        <div className={`grid gap-4 ${GRID_COLS}`} role="list">
+        <div className={`grid gap-4 ${gridCols}`} role="list">
           {all.map((t) => (
             <div key={t.id} role="listitem">
               <TrackCard track={t} list={all} />
@@ -86,7 +98,7 @@ export function TrackRow({ title, tracks, loading, focusKey, fullscreen }: Props
         )}
       </div>
 
-      <div className={`grid gap-4 ${GRID_COLS}`} role="list">
+      <div className={`grid gap-4 ${gridCols}`} role="list">
         {loading && !hasTracks
           ? Array.from({ length: rowCount }).map((_, i) => (
               <div key={i} className="p-3 rounded-xl bg-card">
