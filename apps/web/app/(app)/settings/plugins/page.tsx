@@ -68,7 +68,7 @@ function PluginToggle({ name, description, on, onToggle, tag }: ToggleProps) {
         <div className="flex items-center gap-2">
           <span className="font-semibold">{name}</span>
           {tag && (
-            <span className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-[10px] uppercase tracking-widest text-muted-foreground">
+            <span className="shrink-0 rounded-full bg-amber-500 px-2 py-0.5 text-[10px] uppercase tracking-widest text-white font-semibold">
               {tag}
             </span>
           )}
