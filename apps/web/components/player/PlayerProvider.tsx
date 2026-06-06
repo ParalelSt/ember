@@ -91,7 +91,12 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const a = audioRef.current;
     if (!a) return;
-    a.volume = volume * volume;
+    // Linear mapping — slider position equals audio output. The old
+    // square curve made the top half of the slider ~8× more sensitive
+    // than the bottom (rate of change is 2*v), so small movements near
+    // the top produced big loudness jumps. Linear gives a constant
+    // rate so the slider feels predictable end-to-end.
+    a.volume = volume;
   }, [audioReady, volume]);
 
   // Synchronously load + play the given track on the audio element. Must be
