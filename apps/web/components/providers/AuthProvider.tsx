@@ -99,6 +99,13 @@ export function AuthProvider({ children, initialUser }: { children: ReactNode; i
       signOut: async () => {
         logger.breadcrumb('auth', 'signout', { userId: user?.id });
         pb.authStore.clear();
+        // Hard-navigate so the queue / liked / history caches from the
+        // signed-out user can't leak into the next session. The persisted
+        // settings (ember.settings.v1) + zustand player slice survive
+        // because they live in localStorage, not in React state.
+        if (typeof window !== 'undefined') {
+          window.location.href = '/auth';
+        }
       },
     }),
     [pb, user, loading],
