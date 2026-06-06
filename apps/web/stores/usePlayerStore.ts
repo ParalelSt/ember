@@ -35,7 +35,7 @@ export const usePlayerStore = create<PlayerState>()(
       queue: [],
       index: -1,
       position: 0,
-      volume: 0.3,
+      volume: 0.45,
       isPlaying: false,
       duration: 0,
       context: null,

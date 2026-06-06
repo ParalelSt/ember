@@ -91,12 +91,12 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const a = audioRef.current;
     if (!a) return;
-    // Linear mapping — slider position equals audio output. The old
-    // square curve made the top half of the slider ~8× more sensitive
-    // than the bottom (rate of change is 2*v), so small movements near
-    // the top produced big loudness jumps. Linear gives a constant
-    // rate so the slider feels predictable end-to-end.
-    a.volume = volume;
+    // Power 1.5 — between the old square curve (which spiked at the
+    // top: 2× sensitivity at max vs. bottom) and pure linear (which
+    // made halfway already feel loud). Halfway slider lands around
+    // 0.28 audio, top around 0.78. Slightly gentler at the top, much
+    // tamer in the middle than linear.
+    a.volume = Math.pow(volume, 1.5);
   }, [audioReady, volume]);
 
   // Synchronously load + play the given track on the audio element. Must be
