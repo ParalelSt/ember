@@ -41,7 +41,10 @@ PB="$(pick_bin "$PB_DIR/pocketbase")" || { echo "✗ PocketBase binary missing i
 read_env() {
   local key="$1"
   [ -f "$ENV_FILE" ] || return 0
-  grep -E "^${key}=" "$ENV_FILE" | tail -1 | cut -d= -f2- | tr -d '\r' | tr -d '"' | tr -d "'"
+  # `|| true` catches grep's no-match exit (1) so pipefail doesn't kill the
+  # script via set -e when the key isn't in .env.local. Empty output then
+  # flows through the rest of the pipe and we keep the default.
+  { grep -E "^${key}=" "$ENV_FILE" || true; } | tail -1 | cut -d= -f2- | tr -d '\r' | tr -d '"' | tr -d "'"
 }
 
 PORT="$(read_env PORT)"
