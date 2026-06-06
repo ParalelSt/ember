@@ -39,6 +39,10 @@ onAfterBootstrap((e) => {
 
   const users = dao.findCollectionByNameOrId("users");
   const rec = new Record(users);
+  // PB v0.22 auth records need a username. The auto-generator only fires
+  // for API-driven creates, not for `new Record()` from JSVM — so set it
+  // explicitly to the email's local part (e.g. "aronddtt").
+  rec.set("username", ADMIN_EMAIL.replace(/@.+/, ""));
   rec.setEmail(ADMIN_EMAIL);
   rec.setPassword(ADMIN_PASSWORD);
   rec.setVerified(true);
