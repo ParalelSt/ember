@@ -88,3 +88,34 @@ export function useExecuteClearAdminLogs() {
     },
   });
 }
+
+// ───── Invites ─────
+
+const INVITES_QK = ['admin', 'invites'] as const;
+
+export function useQueryAdminInvites() {
+  return useQuery({
+    queryKey: INVITES_QK,
+    queryFn: () => api.admin.listInvites().then((r) => r.invites),
+  });
+}
+
+export function useExecuteAddAdminInvite() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (email: string) => api.admin.addInvite(email),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: INVITES_QK });
+    },
+  });
+}
+
+export function useExecuteDeleteAdminInvite() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.admin.deleteInvite(id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: INVITES_QK });
+    },
+  });
+}

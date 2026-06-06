@@ -16,6 +16,12 @@ export interface AdminTrack extends Track {
   recordId: string;
 }
 
+export interface AdminInvite {
+  id: string;
+  email: string;
+  created: string;
+}
+
 // Cookies handle auth (PocketBase `pb_auth` cookie) — no manual Bearer headers.
 // API_BASE stays empty for the web build (same-origin); a Capacitor/native
 // shell can set NEXT_PUBLIC_API_BASE_URL to the server's URL.
@@ -168,5 +174,11 @@ export const api = {
       );
     },
     clearLogs: () => req<{ ok: true }>('/admin/logs', { method: 'DELETE' }),
+
+    listInvites: () => req<{ invites: AdminInvite[] }>('/admin/invites'),
+    addInvite: (email: string) =>
+      req<{ ok: true; invite: AdminInvite }>('/admin/invites', { method: 'POST', body: { email } }),
+    deleteInvite: (id: string) =>
+      req<{ ok: true }>(`/admin/invites/${encodeURIComponent(id)}`, { method: 'DELETE' }),
   },
 };
