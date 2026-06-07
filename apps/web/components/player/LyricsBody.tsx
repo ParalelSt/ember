@@ -384,11 +384,11 @@ function SyncedLyrics({
     // scroller (search page, home, etc.) along with it.
     const containerRect = container.getBoundingClientRect();
     const elRect = el.getBoundingClientRect();
-    const offset =
+    const scrollDelta =
       (elRect.top - containerRect.top)
       - container.clientHeight / 2
       + el.clientHeight / 2;
-    container.scrollTo({ top: container.scrollTop + offset, behavior: 'smooth' });
+    container.scrollTo({ top: container.scrollTop + scrollDelta, behavior: 'smooth' });
   }, [activeIdx, scrollerRef]);
 
   return (
