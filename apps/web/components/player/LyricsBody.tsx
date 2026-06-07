@@ -35,6 +35,8 @@ export function LyricsBody({ active, onClose, showHeader = true }: Props) {
   const [note, setNote] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
+  const scrollerRef = useRef<HTMLDivElement | null>(null);
+
   const submitReport = async (e: FormEvent) => {
     e.preventDefault();
     if (!current) return;
@@ -68,6 +70,11 @@ export function LyricsBody({ active, onClose, showHeader = true }: Props) {
 
   const hasLyrics = !!current && !!data?.lyrics;
   const synced = data?.synced && data.synced.length > 0 ? data.synced : null;
+
+  // Non-synced tracks fall back to plain text with a Spotify-style
+  // proportional auto-scroll — the container glides through the lyrics
+  // with playback without pretending to know which line is current.
+  usePlainLyricsAutoScroll(scrollerRef, !synced && !!data?.lyrics);
 
   return (
     <>
@@ -105,7 +112,7 @@ export function LyricsBody({ active, onClose, showHeader = true }: Props) {
         </div>
       )}
 
-      <div className="flex-1 overflow-y-auto px-4 py-5 scrollbar-none [&::-webkit-scrollbar]:hidden">
+      <div ref={scrollerRef} className="flex-1 overflow-y-auto px-4 py-5 scrollbar-none [&::-webkit-scrollbar]:hidden">
         {!current && (
           <div className="text-sidebar-foreground/55 text-sm py-12 text-center">
             Play a track to see its lyrics.
@@ -124,30 +131,42 @@ export function LyricsBody({ active, onClose, showHeader = true }: Props) {
           </div>
         )}
 
-        {current && data && synced && (
-          <SyncedLyrics lines={synced} onSeek={seek} />
+        {/* Karaoke view — only when LRCLib gave us real per-line LRC
+            timestamps. Highlights + auto-scrolls + click-to-seek. */}
+        {current && synced && (
+          <SyncedLyrics lines={synced} onSeek={seek} scrollerRef={scrollerRef} />
         )}
 
+        {/* Fallback view — plain text that scrolls proportionally with
+            playback (see usePlainLyricsAutoScroll above). No per-line
+            highlight: we don't fake timing data we don't have. */}
         {current && data && !synced && data.lyrics && (
           <pre className="whitespace-pre-wrap font-sans text-sm leading-relaxed text-sidebar-foreground">
             {data.lyrics}
           </pre>
         )}
 
-        {current && data && !synced && data.lyrics && data.url && (
-          <a
-            href={data.url}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="mt-6 inline-block text-xs uppercase tracking-widest text-sidebar-foreground/55 hover:text-sidebar-foreground transition-colors"
-          >
-            Source: Genius
-          </a>
-        )}
-
-        {current && data && synced && (
-          <div className="mt-8 text-[10px] uppercase tracking-widest text-sidebar-foreground/40">
-            Synced from LRCLib
+        {current && data && (data.lyrics || synced) && (
+          <div className="mt-8 text-[10px] uppercase tracking-widest text-sidebar-foreground/40 flex items-center gap-2">
+            <span>
+              {synced
+                ? 'Synced from LRCLib'
+                : data.source === 'lrclib'
+                  ? 'Lyrics from LRCLib'
+                  : data.source === 'genius'
+                    ? 'Lyrics from Genius'
+                    : null}
+            </span>
+            {!synced && data.url && (
+              <a
+                href={data.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="hover:text-sidebar-foreground transition-colors underline"
+              >
+                source
+              </a>
+            )}
           </div>
         )}
 
@@ -203,6 +222,49 @@ export function LyricsBody({ active, onClose, showHeader = true }: Props) {
   );
 }
 
+/** Fallback for tracks without real LRC timestamps: scrolls the lyrics
+ *  container linearly with playback progress so the words you're
+ *  hearing stay roughly in view. No per-line highlight — we don't have
+ *  reliable timing data and faking it just looks wrong. Backs off for
+ *  ~4s after any manual scroll so the user can read ahead or back. */
+function usePlainLyricsAutoScroll(
+  scrollerRef: React.RefObject<HTMLDivElement | null>,
+  enabled: boolean,
+) {
+  const { position, duration } = usePlayer();
+  const lastUserScrollAt = useRef(0);
+  const skipNextScrollEvent = useRef(false);
+
+  useEffect(() => {
+    if (!enabled) return;
+    const el = scrollerRef.current;
+    if (!el) return;
+    const onScroll = () => {
+      if (skipNextScrollEvent.current) {
+        skipNextScrollEvent.current = false;
+        return;
+      }
+      lastUserScrollAt.current = performance.now();
+    };
+    el.addEventListener('scroll', onScroll, { passive: true });
+    return () => el.removeEventListener('scroll', onScroll);
+  }, [enabled, scrollerRef]);
+
+  useEffect(() => {
+    if (!enabled || !duration) return;
+    const el = scrollerRef.current;
+    if (!el) return;
+    if (performance.now() - lastUserScrollAt.current < 4000) return;
+    const scrollable = el.scrollHeight - el.clientHeight;
+    if (scrollable <= 0) return;
+    const progress = Math.max(0, Math.min(1, position / duration));
+    const target = scrollable * progress;
+    if (Math.abs(target - el.scrollTop) < 1) return;
+    skipNextScrollEvent.current = true;
+    el.scrollTo({ top: target, behavior: 'smooth' });
+  }, [position, duration, enabled, scrollerRef]);
+}
+
 /** Karaoke-style lyric scroller: lines dim by distance from the current
  *  position, the active line is highlighted, and the active line is
  *  smooth-scrolled into the center of the lyrics scroller as the song
@@ -210,9 +272,15 @@ export function LyricsBody({ active, onClose, showHeader = true }: Props) {
 function SyncedLyrics({
   lines,
   onSeek,
+  scrollerRef,
 }: {
   lines: LyricsLine[];
   onSeek: (t: number) => void;
+  /** The overflow-y-auto container that wraps the lyrics. We scroll
+   *  THIS element directly instead of using scrollIntoView so the
+   *  outer app shell (search page, etc.) doesn't get scrolled along
+   *  with the active line. */
+  scrollerRef: React.RefObject<HTMLDivElement | null>;
 }) {
   const { position } = usePlayer();
 
@@ -238,9 +306,19 @@ function SyncedLyrics({
   useEffect(() => {
     if (activeIdx < 0) return;
     const el = lineRefs.current[activeIdx];
-    if (!el) return;
-    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-  }, [activeIdx]);
+    const container = scrollerRef.current;
+    if (!el || !container) return;
+    // Scroll ONLY this container (not its ancestors). scrollIntoView
+    // walks up the ancestor chain and was yanking the main app
+    // scroller (search page, home, etc.) along with it.
+    const containerRect = container.getBoundingClientRect();
+    const elRect = el.getBoundingClientRect();
+    const offset =
+      (elRect.top - containerRect.top)
+      - container.clientHeight / 2
+      + el.clientHeight / 2;
+    container.scrollTo({ top: container.scrollTop + offset, behavior: 'smooth' });
+  }, [activeIdx, scrollerRef]);
 
   return (
     <div className="flex flex-col gap-2 py-2">
@@ -255,7 +333,13 @@ function SyncedLyrics({
             ref={(el) => {
               lineRefs.current[i] = el;
             }}
-            onClick={() => onSeek(line.time)}
+            // Blur after the click so Space doesn't replay the click on
+            // this button and seek back to its timestamp — the global
+            // spacebar handler in PlayerProvider can then handle pause.
+            onClick={(e) => {
+              onSeek(line.time);
+              e.currentTarget.blur();
+            }}
             className={cn(
               'text-left rounded-md px-2 py-1.5 transition-all duration-300',
               'leading-relaxed cursor-pointer outline-none',

@@ -452,6 +452,31 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     else { a.pause(); logger.breadcrumb('playback', 'pause', { trackId: current.id }); }
   }, [current]);
 
+  // Spacebar → play/pause, app-wide. Skipped when the user is typing
+  // (input, textarea, contenteditable) so search and dialogs still get
+  // their spaces. preventDefault stops the browser from scrolling the
+  // page AND, more importantly, stops the activation of any currently
+  // focused button (e.g. a lyric line the user just clicked) — without
+  // this, Space would re-trigger that button's onClick and seek the
+  // audio back to that line instead of pausing.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.code !== 'Space' && e.key !== ' ') return;
+      if (e.repeat) return;
+      const target = e.target as HTMLElement | null;
+      if (target) {
+        const tag = target.tagName;
+        if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+        if (target.isContentEditable) return;
+      }
+      if (!current) return;
+      e.preventDefault();
+      toggle();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [toggle, current]);
+
   const setVolume = useCallback(
     (v: number) => setStoreVolume(Math.max(0, Math.min(1, v))),
     [setStoreVolume],

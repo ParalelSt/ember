@@ -17,8 +17,13 @@ export interface LyricsResult {
   synced?: LyricsLine[];
 }
 
-async function fetchLyrics(title: string, artist: string): Promise<LyricsResult> {
+async function fetchLyrics(
+  title: string,
+  artist: string,
+  durationSec?: number,
+): Promise<LyricsResult> {
   const qs = new URLSearchParams({ title, artist });
+  if (durationSec && durationSec > 0) qs.set('duration', String(Math.round(durationSec)));
   const res = await fetch(`/api/lyrics?${qs.toString()}`, { credentials: 'include' });
   if (!res.ok) {
     const err = (await res.json().catch(() => ({ error: res.statusText }))) as { error?: string };
@@ -31,11 +36,11 @@ async function fetchLyrics(title: string, artist: string): Promise<LyricsResult>
  *  user opens the lyrics sheet). Cached per track for an hour. */
 export function useQueryLyrics(track: Track | null, enabled: boolean) {
   return useQuery({
-    // 'v2' marks the LRCLib-synced shape — bumping it invalidates any
-    // React Query cache entries from the Genius-only era so users see
-    // synced lyrics without having to hard-refresh first.
-    queryKey: ['lyrics', 'v2', track?.id ?? null],
-    queryFn: () => fetchLyrics(track!.title, track!.artist),
+    // 'v4' = parallel LRCLib chain (was 'v3' sequential, often returned
+    // plain-only or hung). Bumping releases stale v3 entries so tracks
+    // get re-tried under the faster path automatically.
+    queryKey: ['lyrics', 'v4', track?.id ?? null],
+    queryFn: () => fetchLyrics(track!.title, track!.artist, track?.durationSec),
     enabled: enabled && !!track,
     staleTime: 60 * 60 * 1000,
     retry: false,
