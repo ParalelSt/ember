@@ -35,6 +35,11 @@ export function LyricsBody({ active, onClose, showHeader = true }: Props) {
   const [note, setNote] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
+  // Ref to the scrolling lyrics container — passed down to SyncedLyrics
+  // so its active-line auto-scroll only moves THIS element, not the
+  // outer app shell (search page, home, etc.).
+  const scrollerRef = useRef<HTMLDivElement | null>(null);
+
   const submitReport = async (e: FormEvent) => {
     e.preventDefault();
     if (!current) return;
@@ -105,7 +110,7 @@ export function LyricsBody({ active, onClose, showHeader = true }: Props) {
         </div>
       )}
 
-      <div className="flex-1 overflow-y-auto px-4 py-5 scrollbar-none [&::-webkit-scrollbar]:hidden">
+      <div ref={scrollerRef} className="flex-1 overflow-y-auto px-4 py-5 scrollbar-none [&::-webkit-scrollbar]:hidden">
         {!current && (
           <div className="text-sidebar-foreground/55 text-sm py-12 text-center">
             Play a track to see its lyrics.
@@ -125,7 +130,7 @@ export function LyricsBody({ active, onClose, showHeader = true }: Props) {
         )}
 
         {current && data && synced && (
-          <SyncedLyrics lines={synced} onSeek={seek} />
+          <SyncedLyrics lines={synced} onSeek={seek} scrollerRef={scrollerRef} />
         )}
 
         {current && data && !synced && data.lyrics && (
@@ -210,9 +215,15 @@ export function LyricsBody({ active, onClose, showHeader = true }: Props) {
 function SyncedLyrics({
   lines,
   onSeek,
+  scrollerRef,
 }: {
   lines: LyricsLine[];
   onSeek: (t: number) => void;
+  /** The overflow-y-auto container that wraps the lyrics. Auto-scroll
+   *  is math-applied to THIS element directly — scrollIntoView walks
+   *  up the ancestor chain and was yanking the main app scroller
+   *  (search page, home, etc.) every time the active line changed. */
+  scrollerRef: React.RefObject<HTMLDivElement | null>;
 }) {
   const { position } = usePlayer();
 
@@ -238,9 +249,19 @@ function SyncedLyrics({
   useEffect(() => {
     if (activeIdx < 0) return;
     const el = lineRefs.current[activeIdx];
-    if (!el) return;
-    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-  }, [activeIdx]);
+    const container = scrollerRef.current;
+    if (!el || !container) return;
+    // Scroll ONLY this container, not its ancestors. scrollIntoView
+    // walks the ancestor chain and yanks the main app shell along
+    // with the lyrics container, scrolling the search/home page.
+    const containerRect = container.getBoundingClientRect();
+    const elRect = el.getBoundingClientRect();
+    const scrollDelta =
+      (elRect.top - containerRect.top)
+      - container.clientHeight / 2
+      + el.clientHeight / 2;
+    container.scrollTo({ top: container.scrollTop + scrollDelta, behavior: 'smooth' });
+  }, [activeIdx, scrollerRef]);
 
   return (
     <div className="flex flex-col gap-2 py-2">
@@ -255,16 +276,26 @@ function SyncedLyrics({
             ref={(el) => {
               lineRefs.current[i] = el;
             }}
-            onClick={() => onSeek(line.time)}
+            // Blur after the click so Space (play/pause) doesn't replay
+            // this button's onClick and seek the audio back to its
+            // timestamp — the global Space handler can then pause instead.
+            onClick={(e) => {
+              onSeek(line.time);
+              e.currentTarget.blur();
+            }}
             className={cn(
-              'text-left rounded-md px-2 py-1.5 transition-all duration-300',
+              'text-left rounded-md px-2 py-1.5 text-sm transition-all duration-300',
               'leading-relaxed cursor-pointer outline-none',
               'focus-visible:bg-sidebar-foreground/10',
+              // Keep font-size constant across all states so a long
+              // active line doesn't re-wrap and shove the lines below it
+              // out of view. Scale is a GPU transform — visible pop
+              // without touching layout.
               isActive
-                ? 'text-foreground font-semibold text-lg scale-[1.02] origin-left'
+                ? 'text-foreground font-semibold scale-[1.02] origin-left'
                 : isPast
-                  ? 'text-sidebar-foreground/30 text-sm'
-                  : 'text-sidebar-foreground/65 text-sm hover:text-sidebar-foreground',
+                  ? 'text-sidebar-foreground/30'
+                  : 'text-sidebar-foreground/65 hover:text-sidebar-foreground',
             )}
           >
             {text}

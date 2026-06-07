@@ -14,6 +14,7 @@ import { usePlayerStore } from '@/stores/usePlayerStore';
 import { useSettingsStore } from '@/stores/useSettingsStore';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { useExecuteRecordPlay, useQueryHistory, useQueryLikes } from '@/hooks/useLibrary';
+import { useQueryLyrics } from '@/hooks/useLyrics';
 import { api, apiUrl } from '@/lib/api';
 import { logger } from '@/lib/logger/client';
 import { songKey } from '@/lib/songKey';
@@ -94,6 +95,14 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const current = queue[index] ?? null;
+
+  // Ambient lyrics prefetch — fires the moment a track becomes
+  // `current`, NOT only when the lyrics panel opens. React Query
+  // caches the result so when the user later opens the panel, the
+  // data is already there. Without this, the panel sits on
+  // "Looking up the lyrics…" for several seconds after every track
+  // change because the fetch only fired on panel-mount.
+  useQueryLyrics(current, true);
 
   // Web Audio gain — wraps the <audio> element so we can amplify above
   // its 1.0 ceiling in party mode. audio.volume alone caps at 1.0; an
