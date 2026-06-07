@@ -117,3 +117,29 @@ test('exported constants have the documented values', () => {
   assert.equal(MIN_DWELL_SEC, 5);
   assert.equal(FALLBACK_SEC, 45);
 });
+
+test('decideAdvance brief-blip exit does NOT fire fallback the same tick (fires next tick)', () => {
+  // Brief blip ends (gapLen < MIN_SILENCE_SEC) while fallback timer
+  // is also qualified. This tick returns no-advance to keep the
+  // edge/fallback branches non-overlapping; the fallback will fire
+  // on the next tick when silenceStart is null.
+  const thisTick = decideAdvance({
+    elapsedSec: FALLBACK_SEC + 5,
+    rms: 0.5,
+    silenceStart: 99.9,                // gapLen = 100 - 99.9 = 0.1 < MIN_SILENCE_SEC
+    t: 100,
+  });
+  assert.equal(thisTick.advance, false);
+  assert.equal(thisTick.nextSilenceStart, null);
+
+  // Simulate the next tick: silenceStart is now null, fallback
+  // still qualifies, loud audio — fallback fires.
+  const nextTick = decideAdvance({
+    elapsedSec: FALLBACK_SEC + 5.02,
+    rms: 0.5,
+    silenceStart: null,
+    t: 100.02,
+  });
+  assert.equal(nextTick.advance, true);
+  assert.equal(nextTick.nextSilenceStart, null);
+});

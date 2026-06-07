@@ -65,7 +65,11 @@ export function decideAdvance(input: SilenceGapInput): SilenceGapResult {
     if (gapLen >= MIN_SILENCE_SEC) {
       return { advance: true, nextSilenceStart: null };
     }
-    // Brief blip — drop the run, no advance.
+    // Brief blip — drop the run, no advance. If the fallback timer
+    // also qualifies this tick (elapsedSec >= FALLBACK_SEC), it will
+    // fire on the NEXT tick when silenceStart is null and we fall
+    // through to the fallback branch. One-frame delay is acceptable;
+    // returning here keeps the branches strictly non-overlapping.
     return { advance: false, nextSilenceStart: null };
   }
 
