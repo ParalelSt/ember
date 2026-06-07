@@ -15,6 +15,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { CloseIcon } from '@/components/icons';
 import { usePlayer } from '@/components/player/PlayerProvider';
 import { useQueryLyrics, type LyricsLine } from '@/hooks/useLyrics';
+import { useLyricsAlignment } from '@/hooks/useLyricsAlignment';
 import { cn } from '@/lib/utils';
 
 interface Props {
@@ -70,6 +71,8 @@ export function LyricsBody({ active, onClose, showHeader = true }: Props) {
 
   const hasLyrics = !!current && !!data?.lyrics;
   const synced = data?.synced && data.synced.length > 0 ? data.synced : null;
+
+  const alignmentOffset = useLyricsAlignment(current, synced);
 
   // Non-synced tracks fall back to plain text with a Spotify-style
   // proportional auto-scroll — the container glides through the lyrics
@@ -134,7 +137,12 @@ export function LyricsBody({ active, onClose, showHeader = true }: Props) {
         {/* Karaoke view — only when LRCLib gave us real per-line LRC
             timestamps. Highlights + auto-scrolls + click-to-seek. */}
         {current && synced && (
-          <SyncedLyrics lines={synced} onSeek={seek} scrollerRef={scrollerRef} />
+          <SyncedLyrics
+            lines={synced}
+            onSeek={seek}
+            scrollerRef={scrollerRef}
+            offset={alignmentOffset}
+          />
         )}
 
         {/* Fallback view — plain text that scrolls proportionally with
@@ -306,6 +314,7 @@ function SyncedLyrics({
   lines,
   onSeek,
   scrollerRef,
+  offset,
 }: {
   lines: LyricsLine[];
   onSeek: (t: number) => void;
@@ -314,6 +323,9 @@ function SyncedLyrics({
    *  outer app shell (search page, etc.) doesn't get scrolled along
    *  with the active line. */
   scrollerRef: React.RefObject<HTMLDivElement | null>;
+  /** Per-track LRC alignment offset (seconds), applied additively in
+   *  the active-line lookup. 0 when alignment hasn't landed yet. */
+  offset: number;
 }) {
   const { getCurrentTime } = usePlayer();
 
@@ -335,7 +347,10 @@ function SyncedLyrics({
   useEffect(() => {
     let raf = 0;
     const tick = () => {
-      const t = getCurrentTime() + HIGHLIGHT_LOOKAHEAD_SEC;
+      // Subtract the per-track LRC offset so the line whose time matches
+      // the *audible* moment lights up, rather than `audio.currentTime`.
+      // Lookahead still covers the small fixed audio-output latency.
+      const t = getCurrentTime() + HIGHLIGHT_LOOKAHEAD_SEC - offset;
       let lo = 0;
       let hi = lines.length - 1;
       let ans = -1;
@@ -355,7 +370,7 @@ function SyncedLyrics({
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, [lines, getCurrentTime]);
+  }, [lines, getCurrentTime, offset]);
 
   const lineRefs = useRef<Array<HTMLButtonElement | null>>([]);
 
