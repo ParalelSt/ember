@@ -4,7 +4,19 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { Slider } from '@/components/ui/slider';
 import { Button } from '@/components/ui/button';
-import { HeartIcon, LyricsIcon, NextIcon, PauseIcon, PlayIcon, PrevIcon, QueueIcon, VolumeIcon } from '@/components/icons';
+import {
+  HeartIcon,
+  LyricsIcon,
+  NextIcon,
+  PauseIcon,
+  PlayIcon,
+  PrevIcon,
+  QueueIcon,
+  RepeatIcon,
+  RepeatOneIcon,
+  VolumeIcon,
+  VolumeMutedIcon,
+} from '@/components/icons';
 import { AddToPlaylistMenu } from '@/components/track/AddToPlaylistMenu';
 import { QueueSheet } from '@/components/player/QueueSheet';
 import { usePlayer } from '@/components/player/PlayerProvider';
@@ -36,6 +48,10 @@ export function PlayerBar() {
   const lyricsOpen = useUiStore((s) => s.lyricsOpen);
   const setLyricsOpen = useUiStore((s) => s.setLyricsOpen);
   const setNowPlayingFocus = useUiStore((s) => s.setNowPlayingFocus);
+  const loopMode = usePlayerStore((s) => s.loopMode);
+  const cycleLoopMode = usePlayerStore((s) => s.cycleLoopMode);
+  const muted = usePlayerStore((s) => s.muted);
+  const toggleMuted = usePlayerStore((s) => s.toggleMuted);
 
   // Scrubbing: track the slider's in-flight value so the thumb follows the
   // user's finger / cursor visually without seeking the audio on every
@@ -125,6 +141,34 @@ export function PlayerBar() {
       {/* Controls */}
       <div className="flex flex-col items-center gap-1">
         <div className="flex items-center gap-3">
+          {/* Loop: off → all → one → off. Desktop only — mobile keeps
+              the row tight; phones get the same control inside NowPlaying. */}
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={cycleLoopMode}
+            aria-label={`Loop: ${loopMode}`}
+            aria-pressed={loopMode !== 'off'}
+            title={
+              loopMode === 'off'
+                ? 'Loop off'
+                : loopMode === 'all'
+                  ? 'Loop queue'
+                  : 'Loop current song'
+            }
+            className={cn(
+              'hidden md:inline-flex h-8 w-8',
+              loopMode === 'off'
+                ? 'text-muted-foreground hover:text-foreground'
+                : 'text-ember hover:text-ember',
+            )}
+          >
+            {loopMode === 'one' ? (
+              <RepeatOneIcon className="h-4 w-4" />
+            ) : (
+              <RepeatIcon className="h-4 w-4" />
+            )}
+          </Button>
           <Button variant="ghost" size="icon" onClick={prev} aria-label="Previous">
             <PrevIcon className="h-4 w-4" />
           </Button>
@@ -181,8 +225,35 @@ export function PlayerBar() {
           <QueueIcon className="h-5 w-5 md:h-4 md:w-4" />
         </Button>
         <div className="hidden md:flex items-center gap-2">
-          <VolumeIcon className="h-4 w-4 text-muted-foreground" />
-          <div className={cn('shrink-0', partyVolume ? 'w-40' : 'w-29.5')}>
+          {/* Clickable volume icon toggles mute (also bound to M). When
+              muted the icon goes ember so the state is obvious next to
+              the still-populated slider. */}
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={toggleMuted}
+            aria-label={muted ? 'Unmute' : 'Mute'}
+            aria-pressed={muted}
+            title={muted ? 'Unmute (M)' : 'Mute (M)'}
+            className={cn(
+              'h-8 w-8',
+              muted ? 'text-ember hover:text-ember' : 'text-muted-foreground hover:text-foreground',
+            )}
+          >
+            {muted
+              ? <VolumeMutedIcon className="h-4 w-4" />
+              : <VolumeIcon className="h-4 w-4" />}
+          </Button>
+          <div
+            className={cn(
+              'shrink-0 transition-opacity',
+              partyVolume ? 'w-40' : 'w-29.5',
+              // When muted, dim the slider and turn off pointer events
+              // so the user has to un-mute (via the icon or M) before
+              // they can drag again. Matches the look of disabled UI.
+              muted && 'opacity-40 pointer-events-none',
+            )}
+          >
             <Slider
               value={[volume * 100]}
               onValueChange={(v) => {
@@ -191,6 +262,8 @@ export function PlayerBar() {
               }}
               max={partyVolume ? 100 : 85}
               step={1}
+              disabled={muted}
+              aria-disabled={muted}
             />
           </div>
         </div>

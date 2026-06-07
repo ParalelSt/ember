@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { toast } from 'sonner';
 import {
   Dialog,
@@ -226,43 +226,76 @@ export function LyricsBody({ active, onClose, showHeader = true }: Props) {
  *  container linearly with playback progress so the words you're
  *  hearing stay roughly in view. No per-line highlight — we don't have
  *  reliable timing data and faking it just looks wrong. Backs off for
- *  ~4s after any manual scroll so the user can read ahead or back. */
+ *  ~4s after any user input (wheel / touch / arrow keys) so the reader
+ *  can scan ahead or back without being yanked.
+ *
+ *  Implementation: a single rAF loop that eases `scrollTop` toward
+ *  `scrollable × (position / duration)` each frame. Calling
+ *  `scrollTo({ behavior: 'smooth' })` on every position update is the
+ *  WRONG approach — `timeupdate` fires ~4×/s and each new scrollTo
+ *  interrupts the previous one's animation, so the scroller never
+ *  settles and feels like it's running away. The rAF approach gives a
+ *  steady glide that exactly tracks playback. */
 function usePlainLyricsAutoScroll(
   scrollerRef: React.RefObject<HTMLDivElement | null>,
   enabled: boolean,
 ) {
   const { position, duration } = usePlayer();
-  const lastUserScrollAt = useRef(0);
-  const skipNextScrollEvent = useRef(false);
+  const positionRef = useRef(position);
+  const durationRef = useRef(duration);
+  const lastUserInputAt = useRef(0);
+
+  useEffect(() => { positionRef.current = position; }, [position]);
+  useEffect(() => { durationRef.current = duration; }, [duration]);
 
   useEffect(() => {
     if (!enabled) return;
     const el = scrollerRef.current;
     if (!el) return;
-    const onScroll = () => {
-      if (skipNextScrollEvent.current) {
-        skipNextScrollEvent.current = false;
-        return;
-      }
-      lastUserScrollAt.current = performance.now();
+    // Listen for ACTUAL user inputs rather than 'scroll' events, which
+    // also fire from our own programmatic scrolling and made the prior
+    // implementation see itself as the user every frame.
+    const mark = () => { lastUserInputAt.current = performance.now(); };
+    el.addEventListener('wheel', mark, { passive: true });
+    el.addEventListener('touchmove', mark, { passive: true });
+    el.addEventListener('keydown', mark);
+    return () => {
+      el.removeEventListener('wheel', mark);
+      el.removeEventListener('touchmove', mark);
+      el.removeEventListener('keydown', mark);
     };
-    el.addEventListener('scroll', onScroll, { passive: true });
-    return () => el.removeEventListener('scroll', onScroll);
   }, [enabled, scrollerRef]);
 
   useEffect(() => {
-    if (!enabled || !duration) return;
+    if (!enabled) return;
     const el = scrollerRef.current;
     if (!el) return;
-    if (performance.now() - lastUserScrollAt.current < 4000) return;
-    const scrollable = el.scrollHeight - el.clientHeight;
-    if (scrollable <= 0) return;
-    const progress = Math.max(0, Math.min(1, position / duration));
-    const target = scrollable * progress;
-    if (Math.abs(target - el.scrollTop) < 1) return;
-    skipNextScrollEvent.current = true;
-    el.scrollTo({ top: target, behavior: 'smooth' });
-  }, [position, duration, enabled, scrollerRef]);
+    let raf = 0;
+    const tick = () => {
+      // 4-second grace period after any user input.
+      if (performance.now() - lastUserInputAt.current >= 4000) {
+        const d = durationRef.current;
+        const p = positionRef.current;
+        if (d > 0) {
+          const scrollable = el.scrollHeight - el.clientHeight;
+          if (scrollable > 0) {
+            const progress = Math.max(0, Math.min(1, p / d));
+            const target = scrollable * progress;
+            // Ease 8% of the remaining distance per frame. Slow enough
+            // to read comfortably, fast enough to stay in sync with
+            // the song's progress.
+            const next = el.scrollTop + (target - el.scrollTop) * 0.08;
+            if (Math.abs(next - el.scrollTop) > 0.05) {
+              el.scrollTop = next;
+            }
+          }
+        }
+      }
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [enabled, scrollerRef]);
 }
 
 /** Karaoke-style lyric scroller: lines dim by distance from the current
@@ -282,24 +315,47 @@ function SyncedLyrics({
    *  with the active line. */
   scrollerRef: React.RefObject<HTMLDivElement | null>;
 }) {
-  const { position } = usePlayer();
+  const { getCurrentTime } = usePlayer();
 
-  // Binary search for the latest line whose timestamp is <= current position.
-  const activeIdx = useMemo(() => {
-    let lo = 0;
-    let hi = lines.length - 1;
-    let ans = -1;
-    while (lo <= hi) {
-      const mid = (lo + hi) >> 1;
-      if (lines[mid].time <= position) {
-        ans = mid;
-        lo = mid + 1;
-      } else {
-        hi = mid - 1;
+  // rAF-driven active line so the highlight lands within one frame
+  // (~16ms) of the audio crossing a line timestamp — `timeupdate`
+  // only fires ~4×/s, which left the highlight visibly trailing the
+  // singer by up to ~250ms.
+  //
+  // Lookahead bias: `audio.currentTime` reflects the playhead inside
+  // the element, but actual sound output through the buffer +
+  // soundcard/speakers/Bluetooth is ~150–300ms behind that. LRC
+  // timestamps also mark the START of a line, so matching strictly
+  // (time ≤ now) puts the highlight visibly behind the singer. Adding
+  // a small forward bias snaps the highlight onto each line slightly
+  // before its first syllable lands — which to the user reads as "in
+  // sync." 0.35s is a Spotify-ish middle ground.
+  const HIGHLIGHT_LOOKAHEAD_SEC = 0.35;
+  const [activeIdx, setActiveIdx] = useState(-1);
+  useEffect(() => {
+    let raf = 0;
+    const tick = () => {
+      const t = getCurrentTime() + HIGHLIGHT_LOOKAHEAD_SEC;
+      let lo = 0;
+      let hi = lines.length - 1;
+      let ans = -1;
+      while (lo <= hi) {
+        const mid = (lo + hi) >> 1;
+        if (lines[mid].time <= t) {
+          ans = mid;
+          lo = mid + 1;
+        } else {
+          hi = mid - 1;
+        }
       }
-    }
-    return ans;
-  }, [lines, position]);
+      // setActiveIdx with the same value is a no-op (React bails),
+      // so this only re-renders on actual line transitions.
+      setActiveIdx(ans);
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [lines, getCurrentTime]);
 
   const lineRefs = useRef<Array<HTMLButtonElement | null>>([]);
 
@@ -341,14 +397,18 @@ function SyncedLyrics({
               e.currentTarget.blur();
             }}
             className={cn(
-              'text-left rounded-md px-2 py-1.5 transition-all duration-300',
+              'text-left rounded-md px-2 py-1.5 text-sm transition-all duration-300',
               'leading-relaxed cursor-pointer outline-none',
               'focus-visible:bg-sidebar-foreground/10',
+              // Keep font-size constant across all states so a long
+              // active line doesn't re-wrap and shove the column. Scale
+              // is a GPU transform — gives the active line a slight pop
+              // without touching layout.
               isActive
-                ? 'text-foreground font-semibold text-lg scale-[1.02] origin-left'
+                ? 'text-foreground font-semibold scale-[1.02] origin-left'
                 : isPast
-                  ? 'text-sidebar-foreground/30 text-sm'
-                  : 'text-sidebar-foreground/65 text-sm hover:text-sidebar-foreground',
+                  ? 'text-sidebar-foreground/30'
+                  : 'text-sidebar-foreground/65 hover:text-sidebar-foreground',
             )}
           >
             {text}

@@ -34,6 +34,10 @@ interface PlayerControls {
   prev: () => void;
   seek: (sec: number) => void;
   setVolume: (v: number) => void;
+  /** Synchronous read of the audio element's currentTime — for consumers
+   *  that need higher-than-timeupdate-frequency position polling (e.g.
+   *  the synced-lyrics highlight loop). Returns 0 if no audio yet. */
+  getCurrentTime: () => number;
 }
 
 const PlayerContext = createContext<PlayerControls | null>(null);
@@ -102,6 +106,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const gainNodeRef = useRef<GainNode | null>(null);
 
   const partyVolume = useSettingsStore((s) => s.partyVolume);
+  const muted = usePlayerStore((s) => s.muted);
   useEffect(() => {
     const a = audioRef.current;
     if (!a) return;
@@ -134,7 +139,11 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     // slider ≈ 0.28 audio, top ≈ 0.78.
     // Party mode: linear with no cap — slider directly drives audio
     // output 1:1 up to 1.0 for loud-as-it-goes playback.
-    a.volume = partyVolume ? Math.min(1, volume) : Math.pow(volume, 1.5);
+    // Muted forces 0 regardless — the slider's stored value is preserved
+    // for when the user un-mutes.
+    a.volume = muted
+      ? 0
+      : partyVolume ? Math.min(1, volume) : Math.pow(volume, 1.5);
 
     // Gain boost ONLY in party mode — 2× pre-clipping headroom on top of
     // the audio element's own 1.0 ceiling. Off mode leaves it at 1.0
@@ -142,7 +151,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     if (gainNodeRef.current) {
       gainNodeRef.current.gain.value = partyVolume ? 2 : 1;
     }
-  }, [audioReady, volume, partyVolume]);
+  }, [audioReady, volume, partyVolume, muted]);
 
   // When party mode turns OFF, the stored volume may sit above the
   // normal 0.85 cap (party allowed up to 1.0). Without this clamp the
@@ -251,7 +260,29 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       }
     };
     const onMeta = () => setDuration(a.duration || 0);
-    const onEnd = () => next();
+    const onEnd = () => {
+      // Read the latest loop/queue state at fire time so a stale closure
+      // can't lock us into the mode this effect was registered with.
+      const state = usePlayerStore.getState();
+      const cur = state.queue[state.index];
+      // Repeat-one: replay the same track from the top without touching
+      // the queue index.
+      if (state.loopMode === 'one' && cur) {
+        a.currentTime = 0;
+        void a.play();
+        return;
+      }
+      // Repeat-all: wrap back to track 0 once we've fallen off the end.
+      // (Mid-queue ends still flow through next() so radio etc. behaves.)
+      if (state.loopMode === 'all'
+          && state.queue.length > 0
+          && state.index >= state.queue.length - 1) {
+        loadAndPlay(state.queue[0], true);
+        usePlayerStore.setState({ index: 0 });
+        return;
+      }
+      next();
+    };
     const onPlay = () => setIsPlaying(true);
     const onPause = () => setIsPlaying(false);
     a.addEventListener('timeupdate', onTime);
@@ -266,7 +297,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       a.removeEventListener('play', onPlay);
       a.removeEventListener('pause', onPause);
     };
-  }, [audioReady, next, setDuration, setIsPlaying, setPosition]);
+  }, [audioReady, next, setDuration, setIsPlaying, setPosition, loadAndPlay]);
 
   // Position persistence — separate cadence; never overwrites with sus 0 during track swap.
   useEffect(() => {
@@ -403,6 +434,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     a.currentTime = Math.max(0, Math.min(sec, a.duration || 0));
   }, []);
 
+  const getCurrentTime = useCallback(() => audioRef.current?.currentTime ?? 0, []);
+
   // Media Session action handlers — wired to lock-screen/Bluetooth.
   useEffect(() => {
     if (typeof navigator === 'undefined' || !('mediaSession' in navigator)) return;
@@ -452,17 +485,17 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     else { a.pause(); logger.breadcrumb('playback', 'pause', { trackId: current.id }); }
   }, [current]);
 
-  // Spacebar → play/pause, app-wide. Skipped when the user is typing
-  // (input, textarea, contenteditable) so search and dialogs still get
-  // their spaces. preventDefault stops the browser from scrolling the
-  // page AND, more importantly, stops the activation of any currently
-  // focused button (e.g. a lyric line the user just clicked) — without
-  // this, Space would re-trigger that button's onClick and seek the
-  // audio back to that line instead of pausing.
+  // Global keyboard shortcuts — Spotify-style media keys:
+  //   Space    play/pause
+  //   M        toggle mute
+  //   ← / →    seek -5s / +5s
+  // All are skipped while the user is typing (input/textarea/
+  // contenteditable) so search and dialogs still get their characters.
+  // Space.preventDefault() also stops the browser from activating any
+  // focused button — without it, a previously-clicked lyric line would
+  // re-fire its onClick and seek the audio back to its timestamp.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.code !== 'Space' && e.key !== ' ') return;
-      if (e.repeat) return;
       const target = e.target as HTMLElement | null;
       if (target) {
         const tag = target.tagName;
@@ -470,8 +503,40 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         if (target.isContentEditable) return;
       }
       if (!current) return;
-      e.preventDefault();
-      toggle();
+
+      if (e.code === 'Space' || e.key === ' ') {
+        if (e.repeat) return;
+        e.preventDefault();
+        toggle();
+        return;
+      }
+      if (e.key === 'm' || e.key === 'M') {
+        if (e.repeat) return;
+        e.preventDefault();
+        usePlayerStore.getState().toggleMuted();
+        return;
+      }
+      if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+        const a = audioRef.current;
+        if (!a) return;
+        e.preventDefault();
+        const step = e.key === 'ArrowLeft' ? -5 : 5;
+        const max = a.duration || 0;
+        a.currentTime = Math.max(0, Math.min(max, a.currentTime + step));
+        return;
+      }
+      if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+        e.preventDefault();
+        const state = usePlayerStore.getState();
+        // Adjusting volume always un-mutes so the slider tracks what the
+        // user is actually hearing — Spotify-style.
+        if (state.muted) state.setMuted(false);
+        const step = e.key === 'ArrowUp' ? 0.05 : -0.05;
+        // Party-volume mode allows up to 1.0, otherwise we cap at 0.85
+        // to match the slider's own ceiling.
+        const ceiling = useSettingsStore.getState().partyVolume ? 1 : 0.85;
+        state.setVolume(Math.max(0, Math.min(ceiling, state.volume + step)));
+      }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
@@ -485,9 +550,9 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const value = useMemo<PlayerControls>(
     () => ({
       current, isPlaying, position, duration, volume, queue, index, context,
-      playTrack, toggle, next, prev, seek, setVolume,
+      playTrack, toggle, next, prev, seek, setVolume, getCurrentTime,
     }),
-    [current, isPlaying, position, duration, volume, queue, index, context, playTrack, toggle, next, prev, seek, setVolume],
+    [current, isPlaying, position, duration, volume, queue, index, context, playTrack, toggle, next, prev, seek, setVolume, getCurrentTime],
   );
 
   return <PlayerContext.Provider value={value}>{children}</PlayerContext.Provider>;
