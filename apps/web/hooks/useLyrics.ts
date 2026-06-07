@@ -15,6 +15,10 @@ export interface LyricsResult {
   url: string | null;
   /** Present when the source provides time-synced lyrics (LRCLib). */
   synced?: LyricsLine[];
+  /** LRCLib's stored duration for the matched record. The alignment
+   *  cache uses this together with the line-array hash to decide
+   *  whether a cached offset still applies to the current match. */
+  hitDurationSec?: number;
 }
 
 async function fetchLyrics(
@@ -36,10 +40,10 @@ async function fetchLyrics(
  *  user opens the lyrics sheet). Cached per track for an hour. */
 export function useQueryLyrics(track: Track | null, enabled: boolean) {
   return useQuery({
-    // 'v4' = parallel LRCLib chain (was 'v3' sequential, often returned
-    // plain-only or hung). Bumping releases stale v3 entries so tracks
-    // get re-tried under the faster path automatically.
-    queryKey: ['lyrics', 'v4', track?.id ?? null],
+    // 'v5' = duration-ranked LRCLib chain (was 'v4' first-hit picker).
+    // Bumping releases stale v4 entries so tracks get re-tried under the
+    // new selection automatically.
+    queryKey: ['lyrics', 'v5', track?.id ?? null],
     queryFn: () => fetchLyrics(track!.title, track!.artist, track?.durationSec),
     enabled: enabled && !!track,
     staleTime: 60 * 60 * 1000,
