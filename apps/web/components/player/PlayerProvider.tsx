@@ -38,6 +38,11 @@ interface PlayerControls {
    *  that need higher-than-timeupdate-frequency position polling (e.g.
    *  the synced-lyrics highlight loop). Returns 0 if no audio yet. */
   getCurrentTime: () => number;
+  /** Synchronous read of the current audio RMS (linear amplitude).
+   *  Returns 0 if the audio graph isn't initialized OR the audio
+   *  element is paused (a paused element leaves stale samples in the
+   *  analyser; always reporting 0 keeps consumers' logic simple). */
+  getCurrentRMS: () => number;
 }
 
 const PlayerContext = createContext<PlayerControls | null>(null);
@@ -104,6 +109,11 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   // AudioContext + GainNode lets us push 2× through for actual louder.
   const audioCtxRef = useRef<AudioContext | null>(null);
   const gainNodeRef = useRef<GainNode | null>(null);
+  const analyserRef = useRef<AnalyserNode | null>(null);
+  // Reusable buffer for getFloatTimeDomainData reads — allocated lazily
+  // in getCurrentRMS so we don't burn ~2KB while no plain-lyric track
+  // is open.
+  const rmsBufRef = useRef<Float32Array<ArrayBuffer> | null>(null);
 
   const partyVolume = useSettingsStore((s) => s.partyVolume);
   const muted = usePlayerStore((s) => s.muted);
@@ -122,10 +132,18 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
           const ctx = new Ctor();
           const source = ctx.createMediaElementSource(a);
           const gain = ctx.createGain();
+          const analyser = ctx.createAnalyser();
+          // fftSize 512 → ~11ms time-domain resolution at 44.1kHz, more than
+          // enough for silence-gap detection. smoothing 0 = raw per-frame
+          // samples; smoothing happens deliberately in the silence-gap hook.
+          analyser.fftSize = 512;
+          analyser.smoothingTimeConstant = 0;
           source.connect(gain);
-          gain.connect(ctx.destination);
+          gain.connect(analyser);
+          analyser.connect(ctx.destination);
           audioCtxRef.current = ctx;
           gainNodeRef.current = gain;
+          analyserRef.current = analyser;
         } catch (e) {
           // Safari/iOS sometimes throws if the context is constructed
           // outside a user gesture — fall back to bare a.volume only.
@@ -436,6 +454,20 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
   const getCurrentTime = useCallback(() => audioRef.current?.currentTime ?? 0, []);
 
+  const getCurrentRMS = useCallback((): number => {
+    const a = analyserRef.current;
+    if (!a) return 0;
+    const audio = audioRef.current;
+    if (!audio || audio.paused) return 0;
+    // Lazy-allocate the read buffer on first call. fftSize is set once
+    // at graph build time; this won't be resized.
+    const buf = (rmsBufRef.current ??= new Float32Array(a.fftSize) as Float32Array<ArrayBuffer>);
+    a.getFloatTimeDomainData(buf);
+    let sumSq = 0;
+    for (let i = 0; i < buf.length; i++) sumSq += buf[i] * buf[i];
+    return Math.sqrt(sumSq / buf.length);
+  }, []);
+
   // Media Session action handlers — wired to lock-screen/Bluetooth.
   useEffect(() => {
     if (typeof navigator === 'undefined' || !('mediaSession' in navigator)) return;
@@ -550,9 +582,9 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const value = useMemo<PlayerControls>(
     () => ({
       current, isPlaying, position, duration, volume, queue, index, context,
-      playTrack, toggle, next, prev, seek, setVolume, getCurrentTime,
+      playTrack, toggle, next, prev, seek, setVolume, getCurrentTime, getCurrentRMS,
     }),
-    [current, isPlaying, position, duration, volume, queue, index, context, playTrack, toggle, next, prev, seek, setVolume, getCurrentTime],
+    [current, isPlaying, position, duration, volume, queue, index, context, playTrack, toggle, next, prev, seek, setVolume, getCurrentTime, getCurrentRMS],
   );
 
   return <PlayerContext.Provider value={value}>{children}</PlayerContext.Provider>;
