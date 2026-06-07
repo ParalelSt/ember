@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { toast } from 'sonner';
 import {
   Dialog,
@@ -72,12 +72,15 @@ export function LyricsBody({ active, onClose, showHeader = true }: Props) {
   const hasLyrics = !!current && !!data?.lyrics;
   const synced = data?.synced && data.synced.length > 0 ? data.synced : null;
 
-  const alignmentOffset = useLyricsAlignment(current, synced);
-
-  // Non-synced tracks fall back to plain text with a Spotify-style
-  // proportional auto-scroll — the container glides through the lyrics
-  // with playback without pretending to know which line is current.
-  usePlainLyricsAutoScroll(scrollerRef, !synced && !!data?.lyrics);
+  // For plain (non-synced) lyrics we want the alignment hook to detect
+  // the audio's intro silence — feed it a synthetic "first line at t=0"
+  // so its computeOffset(tAudio, 0) returns the actual intro length.
+  // That becomes the start anchor for section 0 in PlainSectionLyrics.
+  const plainAnchor = useMemo<LyricsLine[] | null>(
+    () => (!synced && data?.lyrics ? [{ time: 0, text: '' }] : null),
+    [synced, data?.lyrics],
+  );
+  const alignmentOffset = useLyricsAlignment(current, synced ?? plainAnchor);
 
   return (
     <>
@@ -145,13 +148,17 @@ export function LyricsBody({ active, onClose, showHeader = true }: Props) {
           />
         )}
 
-        {/* Fallback view — plain text that scrolls proportionally with
-            playback (see usePlainLyricsAutoScroll above). No per-line
-            highlight: we don't fake timing data we don't have. */}
+        {/* Fallback view — sections distributed across the song by word
+            weight, anchored on the alignment hook's detected intro
+            silence. Each section gets a time slice proportional to its
+            sung-word count so verses linger and one-liners don't. */}
         {current && data && !synced && data.lyrics && (
-          <pre className="whitespace-pre-wrap font-sans text-sm leading-relaxed text-sidebar-foreground">
-            {data.lyrics}
-          </pre>
+          <PlainSectionLyrics
+            text={data.lyrics}
+            scrollerRef={scrollerRef}
+            introOffset={alignmentOffset}
+            onSeek={seek}
+          />
         )}
 
         {current && data && (data.lyrics || synced) && (
@@ -230,80 +237,184 @@ export function LyricsBody({ active, onClose, showHeader = true }: Props) {
   );
 }
 
-/** Fallback for tracks without real LRC timestamps: scrolls the lyrics
- *  container linearly with playback progress so the words you're
- *  hearing stay roughly in view. No per-line highlight — we don't have
- *  reliable timing data and faking it just looks wrong. Backs off for
- *  ~4s after any user input (wheel / touch / arrow keys) so the reader
- *  can scan ahead or back without being yanked.
+interface PlainSection {
+  /** Raw multi-line text for display, including any leading [Section]
+   *  marker. */
+  text: string;
+  /** Word count used to weight this section's time slice. Section
+   *  markers like [Verse 1] are stripped before counting so they don't
+   *  inflate the slice for sections that are otherwise short. Minimum 1
+   *  so empty-ish sections still get a non-zero share. */
+  weight: number;
+}
+
+/** Split plain lyric text into sections. Boundaries are blank lines and
+ *  [Section] markers on their own line — both common conventions in
+ *  Genius/LRCLib plain payloads. */
+export function parsePlainLyricSections(text: string): PlainSection[] {
+  const lines = text.split('\n');
+  const sections: PlainSection[] = [];
+  let current: string[] = [];
+
+  const flush = () => {
+    if (current.length === 0) return;
+    const joined = current.join('\n').trim();
+    current = [];
+    if (joined.length === 0) return;
+    const stripped = joined.replace(/\[[^\]]+\]/g, '').trim();
+    const words = stripped.split(/\s+/).filter((w) => w.length > 0).length;
+    sections.push({ text: joined, weight: Math.max(1, words) });
+  };
+
+  const markerRe = /^\s*\[[^\]]+\]\s*$/;
+  for (const raw of lines) {
+    const line = raw.replace(/\s+$/, '');
+    if (line.trim().length === 0) {
+      flush();
+      continue;
+    }
+    // A [Section] marker on its own line starts a new section if we
+    // already have content collected — otherwise it's just the header
+    // of the section being built.
+    if (markerRe.test(line) && current.length > 0) {
+      flush();
+    }
+    current.push(line);
+  }
+  flush();
+  return sections;
+}
+
+/** Section-based fallback for tracks without real LRC timestamps.
  *
- *  Implementation: a single rAF loop that eases `scrollTop` toward
- *  `scrollable × (position / duration)` each frame. Calling
- *  `scrollTo({ behavior: 'smooth' })` on every position update is the
- *  WRONG approach — `timeupdate` fires ~4×/s and each new scrollTo
- *  interrupts the previous one's animation, so the scroller never
- *  settles and feels like it's running away. The rAF approach gives a
- *  steady glide that exactly tracks playback. */
-function usePlainLyricsAutoScroll(
-  scrollerRef: React.RefObject<HTMLDivElement | null>,
-  enabled: boolean,
-) {
-  const { position, duration } = usePlayer();
-  const positionRef = useRef(position);
-  const durationRef = useRef(duration);
-  const lastUserInputAt = useRef(0);
+ *  Plain lyrics have no per-line timing data, so the previous
+ *  proportional auto-scroll just crept down at a constant rate and
+ *  felt nothing like the actual song structure. Instead, we parse the
+ *  text into sections (by blank lines / [Section] markers), weight each
+ *  by its sung-word count, and spread them across the time between the
+ *  detected intro silence and the song's end.
+ *
+ *  The intro offset comes from the same alignment hook the synced path
+ *  uses, fed a synthetic "first line at t=0" so its computeOffset
+ *  returns tAudio. Long verses get more time slice; one-liner choruses
+ *  get less. The active section is brighter and gets math-scrolled into
+ *  the centre of the lyrics container. Click a section to seek to its
+ *  estimated start. */
+function PlainSectionLyrics({
+  text,
+  scrollerRef,
+  introOffset,
+  onSeek,
+}: {
+  text: string;
+  scrollerRef: React.RefObject<HTMLDivElement | null>;
+  /** Seconds of intro silence detected in the audio; section 0 starts
+   *  here. 0 while alignment is in flight. */
+  introOffset: number;
+  onSeek: (sec: number) => void;
+}) {
+  const { getCurrentTime, duration } = usePlayer();
 
-  useEffect(() => { positionRef.current = position; }, [position]);
-  useEffect(() => { durationRef.current = duration; }, [duration]);
+  const sections = useMemo(() => parsePlainLyricSections(text), [text]);
 
+  // Time at which each section's slice begins. Empty until we know
+  // duration; first section anchored at introOffset; the rest divide the
+  // remaining duration by word-weight share.
+  const sectionStarts = useMemo<number[]>(() => {
+    if (sections.length === 0 || !duration || duration <= 0) return [];
+    const intro = Math.max(0, Math.min(introOffset, duration));
+    const singDuration = Math.max(0, duration - intro);
+    const totalWeight = sections.reduce((s, sec) => s + sec.weight, 0);
+    if (totalWeight === 0 || singDuration === 0) {
+      return sections.map(() => intro);
+    }
+    let cum = 0;
+    return sections.map((sec) => {
+      const start = intro + (cum / totalWeight) * singDuration;
+      cum += sec.weight;
+      return start;
+    });
+  }, [sections, duration, introOffset]);
+
+  // rAF-driven active section. Same shape as SyncedLyrics — binary
+  // search at every frame, setState bails on no-change so we only
+  // re-render at actual section transitions.
+  const [activeIdx, setActiveIdx] = useState(-1);
   useEffect(() => {
-    if (!enabled) return;
-    const el = scrollerRef.current;
-    if (!el) return;
-    // Listen for ACTUAL user inputs rather than 'scroll' events, which
-    // also fire from our own programmatic scrolling and made the prior
-    // implementation see itself as the user every frame.
-    const mark = () => { lastUserInputAt.current = performance.now(); };
-    el.addEventListener('wheel', mark, { passive: true });
-    el.addEventListener('touchmove', mark, { passive: true });
-    el.addEventListener('keydown', mark);
-    return () => {
-      el.removeEventListener('wheel', mark);
-      el.removeEventListener('touchmove', mark);
-      el.removeEventListener('keydown', mark);
-    };
-  }, [enabled, scrollerRef]);
-
-  useEffect(() => {
-    if (!enabled) return;
-    const el = scrollerRef.current;
-    if (!el) return;
+    if (sectionStarts.length === 0) return;
     let raf = 0;
     const tick = () => {
-      // 4-second grace period after any user input.
-      if (performance.now() - lastUserInputAt.current >= 4000) {
-        const d = durationRef.current;
-        const p = positionRef.current;
-        if (d > 0) {
-          const scrollable = el.scrollHeight - el.clientHeight;
-          if (scrollable > 0) {
-            const progress = Math.max(0, Math.min(1, p / d));
-            const target = scrollable * progress;
-            // Ease 8% of the remaining distance per frame. Slow enough
-            // to read comfortably, fast enough to stay in sync with
-            // the song's progress.
-            const next = el.scrollTop + (target - el.scrollTop) * 0.08;
-            if (Math.abs(next - el.scrollTop) > 0.05) {
-              el.scrollTop = next;
-            }
-          }
+      const t = getCurrentTime();
+      let lo = 0;
+      let hi = sectionStarts.length - 1;
+      let ans = -1;
+      while (lo <= hi) {
+        const mid = (lo + hi) >> 1;
+        if (sectionStarts[mid] <= t) {
+          ans = mid;
+          lo = mid + 1;
+        } else {
+          hi = mid - 1;
         }
       }
+      setActiveIdx(ans);
       raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, [enabled, scrollerRef]);
+  }, [sectionStarts, getCurrentTime]);
+
+  const sectionRefs = useRef<Array<HTMLButtonElement | null>>([]);
+
+  useEffect(() => {
+    if (activeIdx < 0) return;
+    const el = sectionRefs.current[activeIdx];
+    const container = scrollerRef.current;
+    if (!el || !container) return;
+    const containerRect = container.getBoundingClientRect();
+    const elRect = el.getBoundingClientRect();
+    const scrollDelta =
+      (elRect.top - containerRect.top)
+      - container.clientHeight / 2
+      + el.clientHeight / 2;
+    container.scrollTo({ top: container.scrollTop + scrollDelta, behavior: 'smooth' });
+  }, [activeIdx, scrollerRef]);
+
+  if (sections.length === 0) return null;
+
+  return (
+    <div className="flex flex-col gap-5 py-2">
+      {sections.map((sec, i) => {
+        const isActive = i === activeIdx;
+        const isPast = i < activeIdx;
+        return (
+          <button
+            key={i}
+            type="button"
+            ref={(el) => {
+              sectionRefs.current[i] = el;
+            }}
+            onClick={(e) => {
+              onSeek(sectionStarts[i] ?? 0);
+              e.currentTarget.blur();
+            }}
+            className={cn(
+              'text-left rounded-md px-3 py-2 text-sm leading-relaxed',
+              'whitespace-pre-wrap cursor-pointer outline-none transition-colors duration-300',
+              'focus-visible:bg-sidebar-foreground/10',
+              isActive
+                ? 'text-foreground font-semibold'
+                : isPast
+                  ? 'text-sidebar-foreground/30'
+                  : 'text-sidebar-foreground/65 hover:text-sidebar-foreground',
+            )}
+          >
+            {sec.text}
+          </button>
+        );
+      })}
+    </div>
+  );
 }
 
 /** Karaoke-style lyric scroller: lines dim by distance from the current
