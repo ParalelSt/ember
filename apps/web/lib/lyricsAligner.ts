@@ -31,14 +31,18 @@ export function findFirstNonSilenceSec(samples: Float32Array, sampleRate: number
 }
 
 /** Compute the per-track LRC offset, with safety rails:
- *  - clamp raw offset to ±5s first
- *  - tAudio < 0.5s AND not already at clamp boundary → audio starts cold,
- *    trust the LRC → 0
- */
+ *  - tAudio < 0.5s → audio starts cold, trust the LRC → 0
+ *  - clamp final value to ±5s.
+ *
+ *  Order matters: the no-intro guard wins over the clamp. When audio
+ *  has no detectable leading silence but LRC claims its first line is
+ *  at e.g. 100s, we trust the LRC — shifting the highlight 5s earlier
+ *  would be wrong. Only when we DO detect a real intro do we compute
+ *  a delta and clamp it. */
 export function computeOffset(tAudio: number, tLrcFirst: number): number {
+  if (tAudio < NO_INTRO_THRESHOLD_SEC) return 0;
   const raw = tAudio - tLrcFirst;
   if (raw > OFFSET_CLAMP_SEC) return OFFSET_CLAMP_SEC;
   if (raw < -OFFSET_CLAMP_SEC) return -OFFSET_CLAMP_SEC;
-  if (tAudio < NO_INTRO_THRESHOLD_SEC) return 0;
   return raw;
 }

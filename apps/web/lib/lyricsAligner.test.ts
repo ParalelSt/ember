@@ -36,8 +36,17 @@ test('findFirstNonSilenceSec returns 0 for fully silent buffer (no detectable co
 
 test('computeOffset clamps to ±5s', () => {
   assert.equal(computeOffset(100, 0), 5);
-  assert.equal(computeOffset(0, 100), -5);
+  // tAudio is well above the no-intro threshold; tLrcFirst is huge, so
+  // the raw delta is a large negative number and the clamp at -5 kicks in.
+  assert.equal(computeOffset(2, 100), -5);
   assert.equal(computeOffset(3, 1), 2);
+});
+
+test('computeOffset no-intro guard wins over clamp (huge LRC start time, no audio intro)', () => {
+  // tAudio < 0.5 → guard fires immediately and we trust the LRC,
+  // even if the raw delta would clamp to -5.
+  assert.equal(computeOffset(0, 100), 0);
+  assert.equal(computeOffset(0.4, 50), 0);
 });
 
 test('computeOffset forces 0 when tAudio < 0.5s (no detectable leading silence)', () => {
