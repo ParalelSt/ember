@@ -89,6 +89,13 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       const code = a.error?.code;
       const message = a.error?.message ?? 'audio element error';
       logger.error('audio', message, { code, src: a.src });
+      // Reset playback UI so the prior track's persisted position
+      // doesn't stay stuck on screen — failed loads emit no
+      // timeupdate events, so nothing else clears it.
+      a.removeAttribute('src');
+      setPosition(0);
+      setIsPlaying(false);
+      usePlayerStore.setState({ position: 0 });
     });
     audioRef.current = a;
     setAudioReady(true);
