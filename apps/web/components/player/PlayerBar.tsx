@@ -141,8 +141,7 @@ export function PlayerBar() {
       {/* Controls */}
       <div className="flex flex-col items-center gap-1">
         <div className="flex items-center gap-3">
-          {/* Loop: off → all → one → off. Desktop only — mobile keeps
-              the row tight; phones get the same control inside NowPlaying. */}
+          {/* Loop: off → all → one → off. Desktop only — mobile keeps the row tight. */}
           <Button
             variant="ghost"
             size="icon"
@@ -226,8 +225,7 @@ export function PlayerBar() {
         </Button>
         <div className="hidden md:flex items-center gap-2">
           {/* Clickable volume icon toggles mute (also bound to M). When
-              muted the icon goes ember so the state is obvious next to
-              the still-populated slider. */}
+              muted the icon goes ember + the slider greys + disables. */}
           <Button
             variant="ghost"
             size="icon"
@@ -248,9 +246,6 @@ export function PlayerBar() {
             className={cn(
               'shrink-0 transition-opacity',
               partyVolume ? 'w-40' : 'w-29.5',
-              // When muted, dim the slider and turn off pointer events
-              // so the user has to un-mute (via the icon or M) before
-              // they can drag again. Matches the look of disabled UI.
               muted && 'opacity-40 pointer-events-none',
             )}
           >

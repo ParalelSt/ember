@@ -34,15 +34,6 @@ interface PlayerControls {
   prev: () => void;
   seek: (sec: number) => void;
   setVolume: (v: number) => void;
-  /** Synchronous read of the audio element's currentTime — for consumers
-   *  that need higher-than-timeupdate-frequency position polling (e.g.
-   *  the synced-lyrics highlight loop). Returns 0 if no audio yet. */
-  getCurrentTime: () => number;
-  /** Synchronous read of the current audio RMS (linear amplitude).
-   *  Returns 0 if the audio graph isn't initialized OR the audio
-   *  element is paused (a paused element leaves stale samples in the
-   *  analyser; always reporting 0 keeps consumers' logic simple). */
-  getCurrentRMS: () => number;
 }
 
 const PlayerContext = createContext<PlayerControls | null>(null);
@@ -109,11 +100,6 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   // AudioContext + GainNode lets us push 2× through for actual louder.
   const audioCtxRef = useRef<AudioContext | null>(null);
   const gainNodeRef = useRef<GainNode | null>(null);
-  const analyserRef = useRef<AnalyserNode | null>(null);
-  // Reusable buffer for getFloatTimeDomainData reads — allocated lazily
-  // in getCurrentRMS so we don't burn ~2KB while no plain-lyric track
-  // is open.
-  const rmsBufRef = useRef<Float32Array<ArrayBuffer> | null>(null);
 
   const partyVolume = useSettingsStore((s) => s.partyVolume);
   const muted = usePlayerStore((s) => s.muted);
@@ -132,18 +118,10 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
           const ctx = new Ctor();
           const source = ctx.createMediaElementSource(a);
           const gain = ctx.createGain();
-          const analyser = ctx.createAnalyser();
-          // fftSize 512 → ~11ms time-domain resolution at 44.1kHz, more than
-          // enough for silence-gap detection. smoothing 0 = raw per-frame
-          // samples; smoothing happens deliberately in the silence-gap hook.
-          analyser.fftSize = 512;
-          analyser.smoothingTimeConstant = 0;
           source.connect(gain);
-          gain.connect(analyser);
-          analyser.connect(ctx.destination);
+          gain.connect(ctx.destination);
           audioCtxRef.current = ctx;
           gainNodeRef.current = gain;
-          analyserRef.current = analyser;
         } catch (e) {
           // Safari/iOS sometimes throws if the context is constructed
           // outside a user gesture — fall back to bare a.volume only.
@@ -452,22 +430,6 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     a.currentTime = Math.max(0, Math.min(sec, a.duration || 0));
   }, []);
 
-  const getCurrentTime = useCallback(() => audioRef.current?.currentTime ?? 0, []);
-
-  const getCurrentRMS = useCallback((): number => {
-    const a = analyserRef.current;
-    if (!a) return 0;
-    const audio = audioRef.current;
-    if (!audio || audio.paused) return 0;
-    // Lazy-allocate the read buffer on first call. fftSize is set once
-    // at graph build time; this won't be resized.
-    const buf = (rmsBufRef.current ??= new Float32Array(a.fftSize) as Float32Array<ArrayBuffer>);
-    a.getFloatTimeDomainData(buf);
-    let sumSq = 0;
-    for (let i = 0; i < buf.length; i++) sumSq += buf[i] * buf[i];
-    return Math.sqrt(sumSq / buf.length);
-  }, []);
-
   // Media Session action handlers — wired to lock-screen/Bluetooth.
   useEffect(() => {
     if (typeof navigator === 'undefined' || !('mediaSession' in navigator)) return;
@@ -509,23 +471,14 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     logger.breadcrumb('playback', 'play', { trackId: track.id, source: track.source, context: nextContext?.type ?? 'single' });
   }, [loadAndPlay]);
 
-  const toggle = useCallback(() => {
-    userInteracted.current = true;
-    const a = audioRef.current;
-    if (!current || !a) return;
-    if (a.paused) { void a.play(); logger.breadcrumb('playback', 'resume', { trackId: current.id }); }
-    else { a.pause(); logger.breadcrumb('playback', 'pause', { trackId: current.id }); }
-  }, [current]);
-
   // Global keyboard shortcuts — Spotify-style media keys:
   //   Space    play/pause
   //   M        toggle mute
   //   ← / →    seek -5s / +5s
+  //   ↑ / ↓    volume +5% / -5%
   // All are skipped while the user is typing (input/textarea/
-  // contenteditable) so search and dialogs still get their characters.
-  // Space.preventDefault() also stops the browser from activating any
-  // focused button — without it, a previously-clicked lyric line would
-  // re-fire its onClick and seek the audio back to its timestamp.
+  // contenteditable). Space.preventDefault() also stops the browser
+  // from scrolling the page on a focused-button activation.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement | null;
@@ -534,12 +487,17 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
         if (target.isContentEditable) return;
       }
-      if (!current) return;
+      const cur = usePlayerStore.getState().queue[usePlayerStore.getState().index];
+      if (!cur) return;
 
       if (e.code === 'Space' || e.key === ' ') {
         if (e.repeat) return;
         e.preventDefault();
-        toggle();
+        const a = audioRef.current;
+        if (a) {
+          if (a.paused) void a.play();
+          else a.pause();
+        }
         return;
       }
       if (e.key === 'm' || e.key === 'M') {
@@ -564,15 +522,21 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         // user is actually hearing — Spotify-style.
         if (state.muted) state.setMuted(false);
         const step = e.key === 'ArrowUp' ? 0.05 : -0.05;
-        // Party-volume mode allows up to 1.0, otherwise we cap at 0.85
-        // to match the slider's own ceiling.
         const ceiling = useSettingsStore.getState().partyVolume ? 1 : 0.85;
         state.setVolume(Math.max(0, Math.min(ceiling, state.volume + step)));
       }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [toggle, current]);
+  }, []);
+
+  const toggle = useCallback(() => {
+    userInteracted.current = true;
+    const a = audioRef.current;
+    if (!current || !a) return;
+    if (a.paused) { void a.play(); logger.breadcrumb('playback', 'resume', { trackId: current.id }); }
+    else { a.pause(); logger.breadcrumb('playback', 'pause', { trackId: current.id }); }
+  }, [current]);
 
   const setVolume = useCallback(
     (v: number) => setStoreVolume(Math.max(0, Math.min(1, v))),
@@ -582,9 +546,9 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const value = useMemo<PlayerControls>(
     () => ({
       current, isPlaying, position, duration, volume, queue, index, context,
-      playTrack, toggle, next, prev, seek, setVolume, getCurrentTime, getCurrentRMS,
+      playTrack, toggle, next, prev, seek, setVolume,
     }),
-    [current, isPlaying, position, duration, volume, queue, index, context, playTrack, toggle, next, prev, seek, setVolume, getCurrentTime, getCurrentRMS],
+    [current, isPlaying, position, duration, volume, queue, index, context, playTrack, toggle, next, prev, seek, setVolume],
   );
 
   return <PlayerContext.Provider value={value}>{children}</PlayerContext.Provider>;

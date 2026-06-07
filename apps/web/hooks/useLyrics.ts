@@ -15,19 +15,10 @@ export interface LyricsResult {
   url: string | null;
   /** Present when the source provides time-synced lyrics (LRCLib). */
   synced?: LyricsLine[];
-  /** LRCLib's stored duration for the matched record. The alignment
-   *  cache uses this together with the line-array hash to decide
-   *  whether a cached offset still applies to the current match. */
-  hitDurationSec?: number;
 }
 
-async function fetchLyrics(
-  title: string,
-  artist: string,
-  durationSec?: number,
-): Promise<LyricsResult> {
+async function fetchLyrics(title: string, artist: string): Promise<LyricsResult> {
   const qs = new URLSearchParams({ title, artist });
-  if (durationSec && durationSec > 0) qs.set('duration', String(Math.round(durationSec)));
   const res = await fetch(`/api/lyrics?${qs.toString()}`, { credentials: 'include' });
   if (!res.ok) {
     const err = (await res.json().catch(() => ({ error: res.statusText }))) as { error?: string };
@@ -40,11 +31,11 @@ async function fetchLyrics(
  *  user opens the lyrics sheet). Cached per track for an hour. */
 export function useQueryLyrics(track: Track | null, enabled: boolean) {
   return useQuery({
-    // 'v5' = duration-ranked LRCLib chain (was 'v4' first-hit picker).
-    // Bumping releases stale v4 entries so tracks get re-tried under the
-    // new selection automatically.
-    queryKey: ['lyrics', 'v5', track?.id ?? null],
-    queryFn: () => fetchLyrics(track!.title, track!.artist, track?.durationSec),
+    // 'v2' marks the LRCLib-synced shape — bumping it invalidates any
+    // React Query cache entries from the Genius-only era so users see
+    // synced lyrics without having to hard-refresh first.
+    queryKey: ['lyrics', 'v2', track?.id ?? null],
+    queryFn: () => fetchLyrics(track!.title, track!.artist),
     enabled: enabled && !!track,
     staleTime: 60 * 60 * 1000,
     retry: false,
