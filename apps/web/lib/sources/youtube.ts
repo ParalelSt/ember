@@ -4,6 +4,7 @@ import path from 'node:path';
 import fs from 'node:fs';
 import type { Track } from '@/types/track';
 import { serverLogger } from '@/lib/logger/server';
+import { rankLrclibHits, type RankableHit } from '@/lib/lyricsMatcher';
 
 // apps/web is one level deeper than the old apps/api in workspace layout,
 // but both resolve to the same spotify-clone root.
@@ -241,6 +242,10 @@ export interface LyricsResult {
   /** Time-synced lines when the source provides them. Empty/undefined
    *  means we only have plain text — the UI renders it as a single block. */
   synced?: LyricsLine[];
+  /** LRCLib's stored duration for the matched record (when known).
+   *  Drives the alignment cache key — when LRCLib later picks a
+   *  different hit, this changes and the cached offset invalidates. */
+  hitDurationSec?: number;
 }
 
 const LYRICS_CACHE = new Map<string, { result: LyricsResult; expires: number }>();
@@ -274,9 +279,11 @@ function parseLRC(body: string): LyricsLine[] {
 
 interface RawLrclibHit {
   id?: number;
+  duration?: number | null;
   plainLyrics?: string | null;
   syncedLyrics?: string | null;
   instrumental?: boolean;
+  fromStageA?: boolean;
 }
 
 /** YouTube titles arrive with cruft like "(Official Music Video)" or
@@ -320,13 +327,6 @@ async function lrclibFetch<T>(url: string): Promise<T | null> {
   }
 }
 
-function pickBestLrclibHit(hits: RawLrclibHit[]): RawLrclibHit | null {
-  return (
-    hits.find((h) => !h.instrumental && h.syncedLyrics && h.syncedLyrics.trim().length > 0)
-    ?? hits.find((h) => !h.instrumental && h.plainLyrics)
-    ?? null
-  );
-}
 
 function parseLrclibHit(hit: RawLrclibHit | null): LyricsResult | null {
   if (!hit || hit.instrumental) return null;
@@ -348,8 +348,8 @@ function parseLrclibHit(hit: RawLrclibHit | null): LyricsResult | null {
  *  only when nothing matches anywhere.
  *
  *  Three lookups run in PARALLEL — total latency stays one round-trip
- *  (~300ms typical) regardless of how many we run. We then pick the best
- *  result across all of them, preferring synced over plain:
+ *  (~300ms typical) regardless of how many we run. We union all hits and
+ *  rank via `rankLrclibHits` (duration-proximity + synced preference):
  *
  *    A. /api/get with duration (exact-match — highest-quality LRC)
  *    B. /api/search?track_name=&artist_name= (structured fuzzy — full artist)
@@ -364,12 +364,10 @@ async function fetchLrclib(
   const cleanArtist = cleanForLyricsLookup(artist);
   if (!cleanTitle) return null;
 
-  const calls: Array<Promise<LyricsResult | null>> = [];
+  type Branch = Promise<RankableHit[]>;
+  const calls: Branch[] = [];
 
-  // A) Exact match via /api/get + duration. This endpoint demands the
-  //    artist string to line up almost exactly, so we use primaryArtist
-  //    here to strip secondary credits — failure is fine, the other
-  //    parallel calls cover the gap.
+  // A) Exact match via /api/get + duration. Single hit (or none).
   if (durationSec && durationSec > 0) {
     const primaryClean = cleanForLyricsLookup(primaryArtist(artist));
     if (primaryClean) {
@@ -379,39 +377,50 @@ async function fetchLrclib(
           artist_name: primaryClean,
           duration: String(Math.round(durationSec)),
         });
-        const hit = await lrclibFetch<RawLrclibHit>(`https://lrclib.net/api/get?${params}`);
-        return parseLrclibHit(hit);
+        const hit = await lrclibFetch<RawLrclibHit>(
+          `https://lrclib.net/api/get?${params}`,
+        );
+        return hit ? [{ ...hit, fromStageA: true }] : [];
       })());
     }
   }
 
-  // B) Structured fuzzy with the FULL artist string — covers bands whose
-  //    names contain commas / & / slashes (Earth Wind & Fire, AC/DC).
+  // B) Structured fuzzy with the FULL artist string.
   calls.push((async () => {
     const params = new URLSearchParams({ track_name: cleanTitle });
     if (cleanArtist) params.set('artist_name', cleanArtist);
-    const hits = await lrclibFetch<RawLrclibHit[]>(`https://lrclib.net/api/search?${params}`);
-    return Array.isArray(hits) && hits.length > 0
-      ? parseLrclibHit(pickBestLrclibHit(hits))
-      : null;
+    const hits = await lrclibFetch<RawLrclibHit[]>(
+      `https://lrclib.net/api/search?${params}`,
+    );
+    return Array.isArray(hits) ? hits.map((h) => ({ ...h, fromStageA: false })) : [];
   })());
 
-  // C) Free-text. Catches everything the structured matcher trips over.
+  // C) Free-text.
   calls.push((async () => {
     const q = cleanArtist ? `${cleanTitle} ${cleanArtist}` : cleanTitle;
     const params = new URLSearchParams({ q });
-    const hits = await lrclibFetch<RawLrclibHit[]>(`https://lrclib.net/api/search?${params}`);
-    return Array.isArray(hits) && hits.length > 0
-      ? parseLrclibHit(pickBestLrclibHit(hits))
-      : null;
+    const hits = await lrclibFetch<RawLrclibHit[]>(
+      `https://lrclib.net/api/search?${params}`,
+    );
+    return Array.isArray(hits) ? hits.map((h) => ({ ...h, fromStageA: false })) : [];
   })());
 
-  const results = await Promise.all(calls);
-  return (
-    results.find((r) => r?.synced)
-    ?? results.find((r) => r)
-    ?? null
-  );
+  const branches = await Promise.all(calls);
+  const union = branches.flat();
+  if (union.length === 0) return null;
+
+  const winner = rankLrclibHits(union, durationSec ?? 0);
+  if (!winner) return null;
+
+  // Reuse the existing parse helper now that we have a single winner.
+  const result = parseLrclibHit(winner);
+  if (!result) return null;
+  // Surface the hit's duration so the client cache can invalidate when
+  // the matcher later picks a different recording.
+  return {
+    ...result,
+    hitDurationSec: typeof winner.duration === 'number' ? winner.duration : undefined,
+  };
 }
 
 export async function getLyrics(
@@ -426,10 +435,10 @@ export async function getLyrics(
     e.status = 400;
     throw e;
   }
-  // v4 = parallel LRCLib chain. Bumping invalidates any v3-era entries
-  // that came back plain-only from the slow sequential search so tracks
-  // get re-tried against the wider parallel net automatically.
-  const cacheKey = `v4:${cleanArtist}::${cleanTitle}`.toLowerCase();
+  // v5 = ranked LRCLib chain (was v4 first-hit picker). Bumping
+  // invalidates v4-era entries so tracks get re-tried under the new
+  // duration-proximity selection automatically.
+  const cacheKey = `v5:${cleanArtist}::${cleanTitle}`.toLowerCase();
   const cached = LYRICS_CACHE.get(cacheKey);
   if (cached && cached.expires > Date.now()) return cached.result;
 
