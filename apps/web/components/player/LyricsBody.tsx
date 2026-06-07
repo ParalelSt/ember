@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { toast } from 'sonner';
 import {
   Dialog,
@@ -16,6 +16,7 @@ import { CloseIcon } from '@/components/icons';
 import { usePlayer } from '@/components/player/PlayerProvider';
 import { useQueryLyrics, type LyricsLine } from '@/hooks/useLyrics';
 import { useLyricsAlignment } from '@/hooks/useLyricsAlignment';
+import { useSilenceGapAdvance } from '@/hooks/useSilenceGapAdvance';
 import { cn } from '@/lib/utils';
 
 interface Props {
@@ -285,21 +286,6 @@ export function parsePlainLyricSections(text: string): PlainSection[] {
   return sections;
 }
 
-/** Section-based fallback for tracks without real LRC timestamps.
- *
- *  Plain lyrics have no per-line timing data, so the previous
- *  proportional auto-scroll just crept down at a constant rate and
- *  felt nothing like the actual song structure. Instead, we parse the
- *  text into sections (by blank lines / [Section] markers), weight each
- *  by its sung-word count, and spread them across the time between the
- *  detected intro silence and the song's end.
- *
- *  The intro offset comes from the same alignment hook the synced path
- *  uses, fed a synthetic "first line at t=0" so its computeOffset
- *  returns tAudio. Long verses get more time slice; one-liner choruses
- *  get less. The active section is brighter and gets math-scrolled into
- *  the centre of the lyrics container. Click a section to seek to its
- *  estimated start. */
 function PlainSectionLyrics({
   text,
   scrollerRef,
@@ -308,8 +294,8 @@ function PlainSectionLyrics({
 }: {
   text: string;
   scrollerRef: React.RefObject<HTMLDivElement | null>;
-  /** Seconds of intro silence detected in the audio; section 0 starts
-   *  here. 0 while alignment is in flight. */
+  /** Seconds of intro silence detected in the audio; section 0's
+   *  anchor on a cold start. 0 while alignment is in flight. */
   introOffset: number;
   onSeek: (sec: number) => void;
 }) {
@@ -317,9 +303,10 @@ function PlainSectionLyrics({
 
   const sections = useMemo(() => parsePlainLyricSections(text), [text]);
 
-  // Time at which each section's slice begins. Empty until we know
-  // duration; first section anchored at introOffset; the rest divide the
-  // remaining duration by word-weight share.
+  // Word-count-weighted distribution — used now only as (a) click-to-
+  // seek targets and (b) the initial-activeIdx estimate for mid-song
+  // joins. Section transitions during playback are driven by audio
+  // silence-gap detection, not by this array.
   const sectionStarts = useMemo<number[]>(() => {
     if (sections.length === 0 || !duration || duration <= 0) return [];
     const intro = Math.max(0, Math.min(introOffset, duration));
@@ -336,36 +323,54 @@ function PlainSectionLyrics({
     });
   }, [sections, duration, introOffset]);
 
-  // rAF-driven active section. Same shape as SyncedLyrics — binary
-  // search at every frame, setState bails on no-change so we only
-  // re-render at actual section transitions.
+  // Event-driven active section. activeIdx + anchorTime are both
+  // useState because anchorTime needs to reset on every transition so
+  // the hook's dwell + fallback timers restart from now.
   const [activeIdx, setActiveIdx] = useState(-1);
+  const [anchorTime, setAnchorTime] = useState(0);
+
+  // Initial value on track / lyrics / intro change. Estimates which
+  // section "should" be current given the current playback time using
+  // the word-weighted map; the next silence event corrects it.
   useEffect(() => {
-    if (sectionStarts.length === 0) return;
-    let raf = 0;
-    const tick = () => {
-      const t = getCurrentTime();
-      let lo = 0;
-      let hi = sectionStarts.length - 1;
-      let ans = -1;
-      while (lo <= hi) {
-        const mid = (lo + hi) >> 1;
-        if (sectionStarts[mid] <= t) {
-          ans = mid;
-          lo = mid + 1;
-        } else {
-          hi = mid - 1;
-        }
-      }
-      setActiveIdx(ans);
-      raf = requestAnimationFrame(tick);
-    };
-    raf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf);
-  }, [sectionStarts, getCurrentTime]);
+    if (sections.length === 0 || sectionStarts.length === 0) {
+      setActiveIdx(-1);
+      setAnchorTime(0);
+      return;
+    }
+    const t = getCurrentTime();
+    let idx = 0;
+    for (let i = 0; i < sectionStarts.length; i++) {
+      if (sectionStarts[i] <= t) idx = i;
+      else break;
+    }
+    setActiveIdx(idx);
+    setAnchorTime(sectionStarts[idx] ?? introOffset);
+    // Mounted state is fully derived from these deps. We deliberately
+    // do NOT include `getCurrentTime` — it's stable across renders,
+    // and including it would make this re-run on every player render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sections, sectionStarts, introOffset]);
+
+  const onAdvance = useCallback(() => {
+    setActiveIdx((i) => {
+      const next = Math.min(i + 1, sections.length - 1);
+      if (next !== i) setAnchorTime(getCurrentTime());
+      return next;
+    });
+  }, [sections.length, getCurrentTime]);
+
+  useSilenceGapAdvance({
+    enabled: sections.length > 1,
+    onAdvance,
+    anchorTime,
+  });
 
   const sectionRefs = useRef<Array<HTMLButtonElement | null>>([]);
 
+  // Math-scroll the active section into the centre of the lyrics
+  // container. Unchanged from the previous time-derived implementation
+  // — same scrollDelta calculation, same container-only scroll.
   useEffect(() => {
     if (activeIdx < 0) return;
     const el = sectionRefs.current[activeIdx];
@@ -395,7 +400,13 @@ function PlainSectionLyrics({
               sectionRefs.current[i] = el;
             }}
             onClick={(e) => {
-              onSeek(sectionStarts[i] ?? 0);
+              // User intent overrides detection — jump the anchor
+              // window to the clicked section's estimated start so
+              // the hook restarts cleanly from there.
+              const target = sectionStarts[i] ?? 0;
+              onSeek(target);
+              setActiveIdx(i);
+              setAnchorTime(target);
               e.currentTarget.blur();
             }}
             className={cn(
