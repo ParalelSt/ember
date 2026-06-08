@@ -262,6 +262,14 @@ function SyncedLyrics({
 
   useEffect(() => {
     if (activeIdx < 0) {
+      // No line active — playback is before lines[0].time (intro).
+      // If the user rewound here from a later line, snap the scroller
+      // back to the top so the lyric panel doesn't leave them stuck
+      // wherever they were when activeIdx flipped to -1.
+      const container = scrollerRef.current;
+      if (container) {
+        container.scrollTo({ top: 0, behavior: 'auto' });
+      }
       prevActiveIdxRef.current = activeIdx;
       return;
     }
