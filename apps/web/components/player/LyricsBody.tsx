@@ -297,7 +297,7 @@ function SyncedLyrics({
               e.currentTarget.blur();
             }}
             className={cn(
-              'text-left rounded-md px-2 py-1.5 text-sm transition-all duration-300',
+              'text-left rounded-md px-2 py-1.5 text-sm transition-all duration-100',
               'leading-relaxed cursor-pointer outline-none',
               'focus-visible:bg-sidebar-foreground/10',
               // Keep font-size constant across all states so a long
