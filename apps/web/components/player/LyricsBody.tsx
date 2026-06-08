@@ -288,6 +288,16 @@ function SyncedLyrics({
     const prev = prevActiveIdxRef.current;
     const isSeek = prev < 0 || activeIdx - prev !== 1;
 
+    // First line special-case: there's nothing above line 0 to centre
+    // against, and rewinding to near the start of the song should
+    // visually return to the top of the lyrics list — not leave the
+    // container half-scrolled from the centring math.
+    if (activeIdx === 0) {
+      container.scrollTo({ top: 0, behavior: isSeek ? 'auto' : 'smooth' });
+      prevActiveIdxRef.current = activeIdx;
+      return;
+    }
+
     // Scroll ONLY this container, not its ancestors. scrollIntoView
     // walks the ancestor chain and yanks the main app shell along
     // with the lyrics container, scrolling the search/home page.
