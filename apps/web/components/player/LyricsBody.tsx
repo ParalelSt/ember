@@ -208,6 +208,16 @@ export function LyricsBody({ active, onClose, showHeader = true }: Props) {
   );
 }
 
+/** Compensates for two compounding sources of perceived delay on
+ *  the synced lyric highlight:
+ *    - audio output latency from `audio.currentTime` to the speakers
+ *      (~100-150ms wired, ~200-300ms Bluetooth)
+ *    - the ~250ms granularity of the `timeupdate` event we read
+ *      `position` from
+ *  0.2s pulls the average highlight moment closer to the audible
+ *  vocal start without going meaningfully early on well-timed LRCs. */
+const LOOKAHEAD_SEC = 0.2;
+
 /** Karaoke-style lyric scroller: lines dim by distance from the current
  *  position, the active line is highlighted, and the active line is
  *  smooth-scrolled into the center of the lyrics scroller as the song
@@ -229,12 +239,15 @@ function SyncedLyrics({
 
   // Binary search for the latest line whose timestamp is <= current position.
   const activeIdx = useMemo(() => {
+    // Apply LOOKAHEAD_SEC to compensate for audio-output latency and
+    // timeupdate granularity. See the constant's JSDoc above.
+    const t = position + LOOKAHEAD_SEC;
     let lo = 0;
     let hi = lines.length - 1;
     let ans = -1;
     while (lo <= hi) {
       const mid = (lo + hi) >> 1;
-      if (lines[mid].time <= position) {
+      if (lines[mid].time <= t) {
         ans = mid;
         lo = mid + 1;
       } else {
