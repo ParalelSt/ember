@@ -29,7 +29,6 @@ export {
   ChevronLeft as ChevronLeftIcon,
   Mic2 as LyricsIcon,
   Sparkles as SparklesIcon,
-  Repeat as RepeatIcon,
   Repeat1 as RepeatOneIcon,
   VolumeX as VolumeMutedIcon,
 } from 'lucide-react';
