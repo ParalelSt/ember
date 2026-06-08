@@ -129,8 +129,13 @@ export function NowPlaying() {
           centered look is preserved. Lyrics live BELOW this wrapper so
           they push the scroller into overflow and become scroll-reachable. */}
       <div className="flex flex-col min-h-full">
-        {/* Header */}
-        <div className="flex items-center justify-between py-3">
+        {/* Header — sticky so the close button stays reachable when
+            the user has scrolled down into the lyrics card. Without
+            this, the chevron sits a full viewport up and the user
+            feels stuck. The outer scroller already pads for the
+            safe-area inset; the header just needs to span the full
+            width via -mx-6 px-6. */}
+        <div className="sticky top-0 z-10 flex items-center justify-between py-3 bg-background/70 backdrop-blur-sm -mx-6 px-6">
           <Button variant="ghost" size="icon" onClick={() => setOpen(false)} aria-label="Close">
             <ChevronDownIcon className="h-6 w-6" />
           </Button>
@@ -217,18 +222,23 @@ export function NowPlaying() {
         </div>
       </div>
 
-      {/* Lyrics section — sits BELOW the min-h-full player pane so the
-          scroller actually overflows and scrollIntoView lands at the top
-          of this block. Tapping Lyrics in the mini-bar opens NowPlaying
-          with nowPlayingFocus='lyrics' and we smooth-scroll here. Fixed
-          height (one viewport) so synced-lyrics auto-scroll happens
-          INSIDE the body's overflow-y-auto, not the page scroller —
-          otherwise every line change would yank the player out of view.
-          Left margin is a touch less negative than the right so the
-          block looks centered against the scrollbar gutter. */}
+      {/* Lyrics card — sits BELOW the min-h-full player pane so the
+          scroller actually overflows and scrollIntoView lands at the
+          top of this block. Tapping Lyrics in the mini-bar opens
+          NowPlaying with nowPlayingFocus='lyrics' and we smooth-scroll
+          here. Height is 70vh (NOT 100vh) so the user can see they're
+          inside a card — and the page can be swiped down past the card
+          to get back to the player pane without feeling stuck. The
+          card's inner LyricsBody owns its own overflow-y-auto, so
+          synced-lyrics auto-scroll happens inside the card; the outer
+          page scroll only fires on intentional swipes past the card's
+          top/bottom. Left margin is a touch less negative than the
+          right so the block looks centered against the scrollbar
+          gutter. Bottom margin keeps the card from butting up against
+          the safe-area inset. */}
       <div
         ref={lyricsRef}
-        className="mt-8 -mr-6 -ml-3.5 h-dvh rounded-t-2xl bg-sidebar/90 text-sidebar-foreground backdrop-blur-sm flex flex-col"
+        className="mt-8 mb-6 -mr-6 -ml-3.5 h-[70vh] rounded-t-2xl bg-sidebar/90 text-sidebar-foreground backdrop-blur-sm flex flex-col"
       >
         <LyricsBody active={open} showHeader={false} />
       </div>
