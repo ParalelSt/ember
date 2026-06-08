@@ -12,7 +12,6 @@ import {
   PlayIcon,
   PrevIcon,
   QueueIcon,
-  RepeatIcon,
   RepeatOneIcon,
   VolumeIcon,
   VolumeMutedIcon,
@@ -141,32 +140,25 @@ export function PlayerBar() {
       {/* Controls */}
       <div className="flex flex-col items-center gap-1">
         <div className="flex items-center gap-3">
-          {/* Loop: off → all → one → off. Desktop only — mobile keeps the row tight. */}
+          {/* Loop-current-song toggle. Queue-wide looping was removed —
+              the queue auto-extends via radio mode, so there's no real
+              "end" for it to wrap. Desktop only — mobile keeps the row
+              tight. */}
           <Button
             variant="ghost"
             size="icon"
             onClick={cycleLoopMode}
-            aria-label={`Loop: ${loopMode}`}
-            aria-pressed={loopMode !== 'off'}
-            title={
-              loopMode === 'off'
-                ? 'Loop off'
-                : loopMode === 'all'
-                  ? 'Loop queue'
-                  : 'Loop current song'
-            }
+            aria-label={loopMode === 'one' ? 'Disable loop' : 'Loop current song'}
+            aria-pressed={loopMode === 'one'}
+            title={loopMode === 'one' ? 'Loop current song' : 'Loop off'}
             className={cn(
               'hidden md:inline-flex h-8 w-8',
-              loopMode === 'off'
-                ? 'text-muted-foreground hover:text-foreground'
-                : 'text-ember hover:text-ember',
+              loopMode === 'one'
+                ? 'text-ember hover:text-ember'
+                : 'text-muted-foreground hover:text-foreground',
             )}
           >
-            {loopMode === 'one' ? (
-              <RepeatOneIcon className="h-4 w-4" />
-            ) : (
-              <RepeatIcon className="h-4 w-4" />
-            )}
+            <RepeatOneIcon className="h-4 w-4" />
           </Button>
           <Button variant="ghost" size="icon" onClick={prev} aria-label="Previous">
             <PrevIcon className="h-4 w-4" />

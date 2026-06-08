@@ -273,24 +273,16 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     };
     const onMeta = () => setDuration(a.duration || 0);
     const onEnd = () => {
-      // Read the latest loop/queue state at fire time so a stale closure
+      // Read the latest loop state at fire time so a stale closure
       // can't lock us into the mode this effect was registered with.
       const state = usePlayerStore.getState();
       const cur = state.queue[state.index];
       // Repeat-one: replay the same track from the top without touching
-      // the queue index.
+      // the queue index. Any other loop state falls through to next(),
+      // which respects radio mode's queue extension.
       if (state.loopMode === 'one' && cur) {
         a.currentTime = 0;
         void a.play();
-        return;
-      }
-      // Repeat-all: wrap back to track 0 once we've fallen off the end.
-      // (Mid-queue ends still flow through next() so radio etc. behaves.)
-      if (state.loopMode === 'all'
-          && state.queue.length > 0
-          && state.index >= state.queue.length - 1) {
-        loadAndPlay(state.queue[0], true);
-        usePlayerStore.setState({ index: 0 });
         return;
       }
       next();
@@ -309,7 +301,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       a.removeEventListener('play', onPlay);
       a.removeEventListener('pause', onPause);
     };
-  }, [audioReady, next, setDuration, setIsPlaying, setPosition, loadAndPlay]);
+  }, [audioReady, next, setDuration, setIsPlaying, setPosition]);
 
   // Position persistence — separate cadence; never overwrites with sus 0 during track swap.
   useEffect(() => {
