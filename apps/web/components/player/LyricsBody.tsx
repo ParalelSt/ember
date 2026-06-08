@@ -258,12 +258,28 @@ function SyncedLyrics({
   }, [lines, position]);
 
   const lineRefs = useRef<Array<HTMLButtonElement | null>>([]);
+  const prevActiveIdxRef = useRef<number>(-1);
 
   useEffect(() => {
-    if (activeIdx < 0) return;
+    if (activeIdx < 0) {
+      prevActiveIdxRef.current = activeIdx;
+      return;
+    }
     const el = lineRefs.current[activeIdx];
     const container = scrollerRef.current;
-    if (!el || !container) return;
+    if (!el || !container) {
+      prevActiveIdxRef.current = activeIdx;
+      return;
+    }
+
+    // Normal playback advances activeIdx by exactly 1 per line. Anything
+    // else — initial activation from -1, a forward jump >1, any
+    // backward step — is a seek-style transition where we want the
+    // scroll to LAND immediately rather than glide across multiple
+    // lines while the highlight has already moved.
+    const prev = prevActiveIdxRef.current;
+    const isSeek = prev < 0 || activeIdx - prev !== 1;
+
     // Scroll ONLY this container, not its ancestors. scrollIntoView
     // walks the ancestor chain and yanks the main app shell along
     // with the lyrics container, scrolling the search/home page.
@@ -273,7 +289,12 @@ function SyncedLyrics({
       (elRect.top - containerRect.top)
       - container.clientHeight / 2
       + el.clientHeight / 2;
-    container.scrollTo({ top: container.scrollTop + scrollDelta, behavior: 'smooth' });
+    container.scrollTo({
+      top: container.scrollTop + scrollDelta,
+      behavior: isSeek ? 'auto' : 'smooth',
+    });
+
+    prevActiveIdxRef.current = activeIdx;
   }, [activeIdx, scrollerRef]);
 
   return (
