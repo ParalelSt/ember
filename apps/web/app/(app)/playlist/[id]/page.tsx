@@ -1,6 +1,6 @@
 'use client';
 
-import { use, useRef, useState, type ChangeEvent } from 'react';
+import { use, useEffect, useRef, useState, type ChangeEvent } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
@@ -8,9 +8,11 @@ import { Button } from '@/components/ui/button';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { TrackList } from '@/components/track/TrackList';
 import { TrackSearchPicker } from '@/components/track/TrackSearchPicker';
-import { DownloadIcon, PlayIcon, TrashIcon } from '@/components/icons';
-import { downloadPlaylistAsZip } from '@/lib/download';
+import { CheckIcon, CloudDownloadIcon, PlayIcon, TrashIcon, XCircleIcon } from '@/components/icons';
 import { usePlayer } from '@/components/player/PlayerProvider';
+import { useOfflineStore } from '@/stores/useOfflineStore';
+import { cancelDownload, downloadPlaylist, isStale, removeDownload } from '@/lib/offline';
+import { useOnline } from '@/lib/useOnline';
 import {
   useExecuteAddToPlaylist,
   useExecuteDeletePlaylist,
@@ -32,6 +34,22 @@ export default function PlaylistPage({ params }: { params: Promise<{ id: string 
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
   const [pendingRemove, setPendingRemove] = useState<Track | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Offline pin state — hooks must run before early returns. `data` may be
+  // undefined here on first render; the staleness effect guards against that.
+  const isOnline = useOnline();
+  const downloaded = useOfflineStore((s) => s.downloaded.includes(id));
+  const inFlight = useOfflineStore((s) => s.inFlight[id]);
+  const [stale, setStale] = useState(false);
+
+  useEffect(() => {
+    if (!downloaded || !isOnline || !data) return;
+    let cancelled = false;
+    isStale(id, data.tracks.map((t) => t.id))
+      .then((s) => { if (!cancelled) setStale(s); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [downloaded, isOnline, id, data]);
 
   const handleArtworkPick = (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -143,16 +161,68 @@ export default function PlaylistPage({ params }: { params: Promise<{ id: string 
         >
           <PlayIcon className="h-5 w-5 fill-current ml-0.5" />
         </Button>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => downloadPlaylistAsZip({ name: playlist.name, tracks })}
-          disabled={!tracks.length}
-          title="Download all tracks as a ZIP"
-        >
-          <DownloadIcon className="h-4 w-4" />
-          Download
-        </Button>
+        {inFlight ? (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => cancelDownload(id)}
+            title="Cancel download"
+          >
+            <XCircleIcon className="h-4 w-4" />
+            <span className="tabular-nums">{inFlight.current}/{inFlight.total}</span>
+            Cancel
+          </Button>
+        ) : downloaded ? (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={async () => {
+              if (stale) {
+                try {
+                  await downloadPlaylist(playlist, tracks);
+                  setStale(false);
+                  toast.success(`Updated "${playlist.name}"`);
+                } catch (e) {
+                  if ((e as Error).name !== 'AbortError') {
+                    toast.error(`Couldn't update: ${(e as Error).message}`);
+                  }
+                }
+              } else {
+                try {
+                  await removeDownload(id);
+                  toast.success(`Removed offline copy of "${playlist.name}"`);
+                } catch (e) {
+                  toast.error(`Couldn't remove: ${(e as Error).message}`);
+                }
+              }
+            }}
+            title={stale ? 'Update offline copy' : 'Remove offline copy'}
+            className={stale ? '' : 'text-ember border-ember/40'}
+          >
+            {stale ? <CloudDownloadIcon className="h-4 w-4" /> : <CheckIcon className="h-4 w-4" />}
+            {stale ? 'Update download' : 'Downloaded'}
+          </Button>
+        ) : (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={async () => {
+              try {
+                await downloadPlaylist(playlist, tracks);
+                toast.success(`Downloaded "${playlist.name}"`);
+              } catch (e) {
+                if ((e as Error).name !== 'AbortError') {
+                  toast.error(`Couldn't download: ${(e as Error).message}`);
+                }
+              }
+            }}
+            disabled={!tracks.length}
+            title="Save this playlist for offline playback"
+          >
+            <CloudDownloadIcon className="h-4 w-4" />
+            Download for offline
+          </Button>
+        )}
         <Button variant="ghost" size="icon" onClick={() => setConfirmDeleteOpen(true)} aria-label="Delete playlist">
           <TrashIcon className="h-4 w-4" />
         </Button>
