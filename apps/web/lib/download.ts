@@ -65,38 +65,25 @@ export async function downloadPlaylistAsZip({ name, tracks }: DownloadPlaylistOp
   const toastId = toast.loading(`Downloading 0 of ${downloadable.length}…`);
   let succeeded = 0;
   let failed = 0;
-  let done = 0;
 
-  // Concurrency cap of 3 — fast enough to be useful, polite enough that
-  // yt-dlp on the server doesn't get hammered. Throwaway speedup; this
-  // whole file is replaced by the offline-playback orchestrator.
-  const CONCURRENCY = 3;
-  let next = 0;
-  const worker = async () => {
-    for (;;) {
-      const i = next++;
-      if (i >= downloadable.length) return;
-      const t = downloadable[i];
-      try {
-        const res = await fetch(streamDownloadUrl(t), { credentials: 'include' });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const blob = await res.blob();
-        const filename = extractFilenameFromHeader(
-          res.headers.get('content-disposition'),
-          `${sanitize(t.artist)} - ${sanitize(t.title)}.m4a`,
-        );
-        zip.file(filename, blob);
-        succeeded++;
-      } catch (e) {
-        failed++;
-        toast.error(`Skipped "${t.title}": ${(e as Error).message}`);
-      } finally {
-        done++;
-        toast.loading(`Downloading ${done} of ${downloadable.length}…`, { id: toastId });
-      }
+  for (let i = 0; i < downloadable.length; i++) {
+    const t = downloadable[i];
+    toast.loading(`Downloading ${i + 1} of ${downloadable.length} — ${t.title}`, { id: toastId });
+    try {
+      const res = await fetch(streamDownloadUrl(t), { credentials: 'include' });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const blob = await res.blob();
+      const filename = extractFilenameFromHeader(
+        res.headers.get('content-disposition'),
+        `${sanitize(t.artist)} - ${sanitize(t.title)}.m4a`,
+      );
+      zip.file(filename, blob);
+      succeeded++;
+    } catch (e) {
+      failed++;
+      toast.error(`Skipped "${t.title}": ${(e as Error).message}`);
     }
-  };
-  await Promise.all(Array.from({ length: Math.min(CONCURRENCY, downloadable.length) }, worker));
+  }
 
   if (succeeded === 0) {
     toast.error('Download failed — no tracks could be fetched', { id: toastId });
