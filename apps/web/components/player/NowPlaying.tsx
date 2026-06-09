@@ -76,11 +76,15 @@ export function NowPlaying() {
     if (open && !current) setOpen(false);
   }, [open, current, setOpen]);
 
-  // When the lyrics button on the mini-bar requests it, scroll to the
-  // lyrics section after NowPlaying mounts. Double-RAF to wait for the
-  // open transition (translate-y) to finish so scrollIntoView lands.
+  // On every fresh open: reset scroll to the top. Without this the scroller
+  // keeps its previous scrollTop (the dialog isn't unmounted, just hidden
+  // via translate-y) — so reopening after a Lyrics-focused open would
+  // dump you mid-page inside the lyrics card. If focus IS 'lyrics' we
+  // immediately scroll back down to the card after the open transition.
   useEffect(() => {
-    if (!open || focus !== 'lyrics') return;
+    if (!open) return;
+    if (scrollerRef.current) scrollerRef.current.scrollTop = 0;
+    if (focus !== 'lyrics') return;
     let r2 = 0;
     const r1 = requestAnimationFrame(() => {
       r2 = requestAnimationFrame(() => {
@@ -117,11 +121,29 @@ export function NowPlaying() {
         <div className="absolute inset-0 bg-linear-to-b from-background/40 via-background/70 to-background" />
       </div>
 
+      {/* Floating close affordance. Anchored to the dialog (not the
+          scroller) so it stays at the very top of the viewport regardless
+          of scroll position — no boxy sticky-header bar above the artwork,
+          and still reachable when the user has scrolled into the lyrics
+          card below. Sits flush against the safe-area inset on iOS. */}
+      <Button
+        variant="ghost"
+        size="icon"
+        onClick={() => setOpen(false)}
+        aria-label="Close"
+        className="absolute z-20 left-2 h-10 w-10 text-foreground/80 hover:text-foreground"
+        style={{ top: 'calc(env(safe-area-inset-top, 0px) + 0.25rem)' }}
+      >
+        <ChevronDownIcon className="h-6 w-6" />
+      </Button>
+
       <div
         ref={scrollerRef}
         className="relative h-full overflow-y-auto px-6"
         style={{
-          paddingTop: 'calc(env(safe-area-inset-top, 0px) + 0.5rem)',
+          // Padding-top clears the floating close button (its top offset
+          // + button height) so artwork doesn't slide under the chevron.
+          paddingTop: 'calc(env(safe-area-inset-top, 0px) + 3rem)',
           paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 1.5rem)',
         }}
       >
@@ -129,20 +151,6 @@ export function NowPlaying() {
           centered look is preserved. Lyrics live BELOW this wrapper so
           they push the scroller into overflow and become scroll-reachable. */}
       <div className="flex flex-col min-h-full">
-        {/* Header — sticky so the close button stays reachable when
-            the user has scrolled down into the lyrics card. Without
-            this, the chevron sits a full viewport up and the user
-            feels stuck. The outer scroller already pads for the
-            safe-area inset; the header just needs to span the full
-            width via -mx-6 px-6. */}
-        <div className="sticky top-0 z-10 flex items-center justify-between py-3 bg-background/70 backdrop-blur-sm -mx-6 px-6">
-          <Button variant="ghost" size="icon" onClick={() => setOpen(false)} aria-label="Close">
-            <ChevronDownIcon className="h-6 w-6" />
-          </Button>
-          <div className="text-[11px] uppercase tracking-widest text-muted-foreground">Now Playing</div>
-          {/* Spacer balances the chevron so the label stays centered. */}
-          <div className="w-10" />
-        </div>
 
         {/* Artwork — fills the upper space, centered. */}
         <div className="flex-1 grid place-items-center py-4">
