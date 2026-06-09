@@ -9,6 +9,8 @@ import {
   useQueryRecommended,
   useQueryTrending,
 } from '@/hooks/useLibrary';
+import { useOnline } from '@/lib/useOnline';
+import { OfflinePlaceholder } from '@/components/OfflinePlaceholder';
 import type { Track } from '@/types/track';
 
 interface Section {
@@ -22,6 +24,7 @@ interface Section {
 export default function HomePage() {
   const search = useSearchParams();
   const focus = search.get('focus');
+  const isOnline = useOnline();
 
   // Reset the scroll position whenever the focus changes — going INTO a
   // focused song box (so you start at its top) and coming back OUT (so the
@@ -60,6 +63,8 @@ export default function HomePage() {
     { key: 'liked', title: 'From your liked songs', tracks: liked, hidden: liked.length === 0 },
     { key: 'history', title: 'Recently played', tracks: history, hidden: history.length === 0 },
   ];
+
+  if (!isOnline) return <OfflinePlaceholder />;
 
   const focused = focus ? sections.find((s) => s.key === focus && !s.hidden) : null;
 

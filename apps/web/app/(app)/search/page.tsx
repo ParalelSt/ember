@@ -7,10 +7,13 @@ import { TrackList } from '@/components/track/TrackList';
 import { SearchIcon } from '@/components/icons';
 import { api } from '@/lib/api';
 import { QK } from '@/hooks/useLibrary';
+import { useOnline } from '@/lib/useOnline';
+import { OfflinePlaceholder } from '@/components/OfflinePlaceholder';
 
 export default function SearchPage() {
   const [q, setQ] = useState('');
   const [debouncedQ, setDebouncedQ] = useState('');
+  const isOnline = useOnline();
 
   useEffect(() => {
     const t = setTimeout(() => setDebouncedQ(q), 250);
@@ -20,7 +23,10 @@ export default function SearchPage() {
   const { data, isFetching } = useQuery({
     queryKey: QK.search(debouncedQ),
     queryFn: () => api.search(debouncedQ).then((r) => r.tracks),
+    enabled: isOnline,
   });
+
+  if (!isOnline) return <OfflinePlaceholder />;
 
   return (
     <div className="pt-4 md:pt-0">
