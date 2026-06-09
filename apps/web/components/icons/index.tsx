@@ -31,4 +31,7 @@ export {
   Sparkles as SparklesIcon,
   Repeat1 as RepeatOneIcon,
   VolumeX as VolumeMutedIcon,
+  Key as KeyIcon,
+  Eye as EyeIcon,
+  EyeOff as EyeOffIcon,
 } from 'lucide-react';
