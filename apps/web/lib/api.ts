@@ -142,6 +142,11 @@ export const api = {
       ),
     deleteUser: (id: string) =>
       req<{ ok: true }>(`/admin/users/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+    resetUserPassword: (id: string, password: string) =>
+      req<{ ok: true; selfReset: boolean }>(
+        `/admin/users/${encodeURIComponent(id)}/password`,
+        { method: 'POST', body: { password } },
+      ),
 
     listTracks: (params: { page?: number; q?: string } = {}) => {
       const qs = new URLSearchParams();

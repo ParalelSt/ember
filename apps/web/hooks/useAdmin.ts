@@ -40,6 +40,13 @@ export function useExecuteDeleteAdminUser() {
   });
 }
 
+export function useExecuteResetAdminUserPassword() {
+  return useMutation({
+    mutationFn: ({ id, password }: { id: string; password: string }) =>
+      api.admin.resetUserPassword(id, password),
+  });
+}
+
 // ───── Tracks ─────
 
 export function useQueryAdminTracks(page: number, q: string) {
