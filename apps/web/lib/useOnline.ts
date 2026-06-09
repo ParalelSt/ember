@@ -2,23 +2,34 @@
 
 import { useEffect, useState } from 'react';
 
-/** Tracks `navigator.onLine` and listens for online/offline events. SSR-safe:
- *  returns `true` on the server (assume online) so the initial render matches
- *  the typical client state and we avoid a flash-of-offline-content on hydration. */
+const SETTLE_MS = 2000;
+
+/** Tracks online state. Starts optimistic (`true`) so a page refresh doesn't
+ *  flash "You're offline" — `navigator.onLine` reads false during the first
+ *  ~100-1500ms of page load even on a fine network, until the browser has
+ *  confirmed connectivity. We only flip to `false` if:
+ *    (a) the `offline` event fires (real disconnect at runtime), or
+ *    (b) `navigator.onLine` is still false SETTLE_MS after mount.
+ *  Either signal also clears once `online` event fires. */
 export function useOnline(): boolean {
-  const [online, setOnline] = useState<boolean>(() => {
-    if (typeof navigator === 'undefined') return true;
-    return navigator.onLine;
-  });
+  const [online, setOnline] = useState(true);
 
   useEffect(() => {
-    const on = () => setOnline(true);
-    const off = () => setOnline(false);
-    window.addEventListener('online', on);
-    window.addEventListener('offline', off);
+    const goOnline = () => setOnline(true);
+    const goOffline = () => setOnline(false);
+    window.addEventListener('online', goOnline);
+    window.addEventListener('offline', goOffline);
+
+    const settle = setTimeout(() => {
+      if (typeof navigator !== 'undefined' && !navigator.onLine) {
+        setOnline(false);
+      }
+    }, SETTLE_MS);
+
     return () => {
-      window.removeEventListener('online', on);
-      window.removeEventListener('offline', off);
+      window.removeEventListener('online', goOnline);
+      window.removeEventListener('offline', goOffline);
+      clearTimeout(settle);
     };
   }, []);
 
