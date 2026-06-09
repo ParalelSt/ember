@@ -88,7 +88,7 @@ self.addEventListener('fetch', (e) => {
 async function streamWithOfflineFallback(request, videoId) {
   const entry = OFFLINE_INDEX.get(videoId);
   if (!entry) {
-    // Not pinned — pass through.
+    console.log(`[sw] ${videoId} pass-through (not pinned) → backend`);
     return fetch(request);
   }
 
@@ -97,9 +97,13 @@ async function streamWithOfflineFallback(request, videoId) {
       fetch(request),
       new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), NETWORK_TIMEOUT_MS)),
     ]);
-    if (resp && resp.ok) return resp;
+    if (resp && resp.ok) {
+      console.log(`[sw] ${videoId} network-win → backend (pinned, online)`);
+      return resp;
+    }
     throw new Error('non-ok');
   } catch {
+    console.log(`[sw] ${videoId} OPFS fallback → your PC (offline / network failed)`);
     return serveFromOpfs(entry, request);
   }
 }
