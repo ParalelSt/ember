@@ -5,10 +5,12 @@ import { toast } from 'sonner';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
-import { TrashIcon } from '@/components/icons';
+import { PasswordResetDialog } from '@/components/ui/password-reset-dialog';
+import { KeyIcon, TrashIcon } from '@/components/icons';
 import { useAuth } from '@/components/providers/AuthProvider';
 import {
   useExecuteDeleteAdminUser,
+  useExecuteResetAdminUserPassword,
   useExecuteUpdateAdminUser,
   useQueryAdminUsers,
 } from '@/hooks/useAdmin';
@@ -16,13 +18,15 @@ import type { AdminUser } from '@/lib/api';
 import { cn } from '@/lib/utils';
 
 export default function AdminUsersPage() {
-  const { user: actor } = useAuth();
+  const { user: actor, signOut } = useAuth();
   const { data: users = [], isLoading } = useQueryAdminUsers();
   const updateUser = useExecuteUpdateAdminUser();
   const deleteUser = useExecuteDeleteAdminUser();
+  const resetPassword = useExecuteResetAdminUserPassword();
 
   const [search, setSearch] = useState('');
   const [pendingDelete, setPendingDelete] = useState<AdminUser | null>(null);
+  const [pendingReset, setPendingReset] = useState<AdminUser | null>(null);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -70,6 +74,7 @@ export default function AdminUsersPage() {
               },
             )}
             onDelete={() => setPendingDelete(u)}
+            onResetPassword={() => setPendingReset(u)}
           />
         ))}
       </div>
@@ -93,6 +98,30 @@ export default function AdminUsersPage() {
           }
         }}
       />
+
+      {/* `key` resets the dialog's internal state when the target changes —
+          cleaner than a useEffect reset, satisfies set-state-in-effect rule. */}
+      <PasswordResetDialog
+        key={pendingReset?.id ?? 'closed'}
+        open={pendingReset !== null}
+        onOpenChange={(o) => !o && setPendingReset(null)}
+        targetEmail={pendingReset?.email ?? ''}
+        isSelfReset={pendingReset?.id === actor?.id}
+        onSubmit={async (password) => {
+          if (!pendingReset) return;
+          const wasSelf = pendingReset.id === actor?.id;
+          try {
+            const result = await resetPassword.mutateAsync({ id: pendingReset.id, password });
+            toast.success(`Password reset for ${pendingReset.email}`);
+            if (result.selfReset || wasSelf) {
+              await signOut();   // clears authStore + hard-navigates to /auth
+            }
+          } catch (e) {
+            toast.error(`Couldn't reset password: ${(e as Error).message}`);
+            throw e;   // keep dialog open
+          }
+        }}
+      />
     </section>
   );
 }
@@ -103,9 +132,10 @@ interface RowProps {
   onRename: (name: string) => void;
   onToggleAdmin: (isAdmin: boolean) => void;
   onDelete: () => void;
+  onResetPassword: () => void;
 }
 
-function UserRow({ user, isSelf, onRename, onToggleAdmin, onDelete }: RowProps) {
+function UserRow({ user, isSelf, onRename, onToggleAdmin, onDelete, onResetPassword }: RowProps) {
   const [name, setName] = useState(user.name);
 
   const commitRename = () => {
@@ -115,7 +145,7 @@ function UserRow({ user, isSelf, onRename, onToggleAdmin, onDelete }: RowProps) 
   };
 
   return (
-    <div className="grid grid-cols-[40px_minmax(0,1.4fr)_minmax(0,1fr)_auto_auto] gap-3 items-center px-3 py-2 rounded-lg bg-card">
+    <div className="grid grid-cols-[40px_minmax(0,1.4fr)_minmax(0,1fr)_auto_auto_auto] gap-3 items-center px-3 py-2 rounded-lg bg-card">
       <div className="relative h-8 w-8 rounded-full overflow-hidden bg-ember text-white grid place-items-center text-xs font-bold shrink-0">
         {user.avatarUrl ? (
           // eslint-disable-next-line @next/next/no-img-element
@@ -158,6 +188,16 @@ function UserRow({ user, isSelf, onRename, onToggleAdmin, onDelete }: RowProps) 
         />
         Admin
       </label>
+      <Button
+        variant="ghost"
+        size="icon"
+        onClick={onResetPassword}
+        title="Reset password"
+        aria-label={`Reset password for ${user.email}`}
+        className="h-8 w-8 text-muted-foreground hover:text-foreground"
+      >
+        <KeyIcon className="h-4 w-4" />
+      </Button>
       <Button
         variant="ghost"
         size="icon"
