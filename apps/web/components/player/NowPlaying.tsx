@@ -132,7 +132,7 @@ export function NowPlaying() {
         onClick={() => setOpen(false)}
         aria-label="Close"
         className="absolute z-20 left-3 h-10 w-10 text-foreground/80 hover:text-foreground"
-        style={{ top: 'calc(env(safe-area-inset-top, 0px) + 0.5rem)' }}
+        style={{ top: 'calc(env(safe-area-inset-top, 0px) + 1rem)' }}
       >
         <ChevronDownIcon className="h-6 w-6" />
       </Button>
