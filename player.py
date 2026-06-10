@@ -299,6 +299,36 @@ def cmd_info(args):
         "title": info.get("title"),
     }, sys.stdout)
 
+def cmd_track(args):
+    """Resolve a single videoId to track metadata via ytmusicapi get_song.
+    Works for any public YouTube video, not just YT Music-classified songs.
+    Used by the shareable /track/<videoId> page for ids nobody has played
+    yet (PB rows take priority on the Node side). Note: author/channelId
+    are video-level (the uploader), same compromise as the videos search
+    tier — PB-cached tracks keep their proper music metadata."""
+    try:
+        song = yt.get_song(args.video_id)
+    except (KeyError, TypeError, AttributeError) as e:
+        print(f"[track] get_song failed for {args.video_id!r}: {type(e).__name__}: {e}", file=sys.stderr)
+        json.dump({"error": "not found"}, sys.stdout)
+        return
+    details = (song or {}).get("videoDetails") or {}
+    if not details.get("videoId"):
+        json.dump({"error": "not found"}, sys.stdout)
+        return
+    thumbs = ((details.get("thumbnail") or {}).get("thumbnails")) or []
+    artwork = thumbs[-1].get("url") if thumbs else None
+    json.dump({
+        "videoId": details.get("videoId"),
+        "title": details.get("title"),
+        "artist": details.get("author"),
+        "artistId": details.get("channelId"),
+        "album": None,
+        "albumId": None,
+        "durationSec": int(details.get("lengthSeconds") or 0),
+        "artworkUrl": artwork,
+    }, sys.stdout)
+
 def cmd_recommended(args):
     """Songs related to a seed videoId — uses YT Music's 'watch playlist'
     (the up-next radio for that song). Falls back to charts when seed is
@@ -600,6 +630,9 @@ def main():
     p_lyrics.add_argument("title")
     p_lyrics.add_argument("artist")
 
+    p_track = sub.add_parser("track", help="Resolve one videoId to track metadata. Prints JSON.")
+    p_track.add_argument("video_id")
+
     args = parser.parse_args()
 
     if args.cmd == "search":
@@ -618,6 +651,8 @@ def main():
         cmd_album(args)
     elif args.cmd == "lyrics":
         cmd_lyrics(args)
+    elif args.cmd == "track":
+        cmd_track(args)
     else:
         cmd_interactive()
 
