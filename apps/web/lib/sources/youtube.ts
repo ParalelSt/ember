@@ -111,9 +111,29 @@ function dedupeByVideoId(tracks: RawYoutubeTrack[]): RawYoutubeTrack[] {
   });
 }
 
+const SEARCH_CACHE = new Map<string, { tracks: Track[]; expires: number }>();
+const SEARCH_TTL_MS = 5 * 60 * 1000;
+const SEARCH_CACHE_MAX = 100;
+
 export async function searchTracks(query: string, { limit = 30 } = {}): Promise<Track[]> {
+  const key = `${query}:${limit}`;
+  const hit = SEARCH_CACHE.get(key);
+  if (hit && hit.expires > Date.now()) return hit.tracks;
+
   const results = await runPython<RawYoutubeTrack[]>(['search', query, '--limit', String(limit)]);
-  return dedupeByVideoId(results).map(normalize);
+  const tracks = dedupeByVideoId(results).map(normalize);
+
+  // Bound the cache. Drop the oldest insertion when we hit the cap — Map
+  // iteration order is insertion order in JS. Not strict LRU (we don't
+  // bump on hit) but TTL evicts stale entries anyway, and the cap of 100
+  // keeps total memory in the low-MB range.
+  if (SEARCH_CACHE.size >= SEARCH_CACHE_MAX) {
+    const oldest = SEARCH_CACHE.keys().next().value;
+    if (oldest !== undefined) SEARCH_CACHE.delete(oldest);
+  }
+  SEARCH_CACHE.set(key, { tracks, expires: Date.now() + SEARCH_TTL_MS });
+
+  return tracks;
 }
 
 export async function ensureDownloaded(videoId: string): Promise<string> {
