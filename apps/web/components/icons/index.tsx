@@ -37,4 +37,5 @@ export {
   CloudDownload as CloudDownloadIcon,
   Check as CheckIcon,
   XCircle as XCircleIcon,
+  Share as ShareIcon,
 } from 'lucide-react';

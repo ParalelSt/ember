@@ -8,6 +8,7 @@ import {
   ChevronDownIcon, HeartIcon, NextIcon, PauseIcon, PlayIcon, PrevIcon, MusicIcon,
 } from '@/components/icons';
 import { AddToPlaylistMenu } from '@/components/track/AddToPlaylistMenu';
+import { ShareButton } from '@/components/track/ShareButton';
 import { LyricsBody } from '@/components/player/LyricsBody';
 import { usePlayer } from '@/components/player/PlayerProvider';
 import { useAuth } from '@/components/providers/AuthProvider';
@@ -192,6 +193,7 @@ export function NowPlaying() {
                 <HeartIcon className="h-6 w-6" fill={isLiked ? 'currentColor' : 'none'} />
               </Button>
               <AddToPlaylistMenu track={current} />
+              <ShareButton track={current} className="h-10 w-10" />
             </div>
           )}
         </div>

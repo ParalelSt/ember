@@ -59,7 +59,6 @@ async function req<T>(path: string, { method = 'GET', body, signal }: ReqOptions
 
 export const api = {
   search: (q: string) => req<{ tracks: Track[] }>(`/search?q=${encodeURIComponent(q ?? '')}`),
-  getTrack: (id: string) => req<{ track: Track }>(`/tracks/${encodeURIComponent(id)}`),
   getTrending: () => req<{ tracks: Track[] }>('/youtube/trending'),
   getRecommended: (seedSourceId?: string) =>
     req<{ tracks: Track[] }>(`/youtube/recommended${seedSourceId ? `?seed=${encodeURIComponent(seedSourceId)}` : ''}`),

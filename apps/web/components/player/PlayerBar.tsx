@@ -17,6 +17,7 @@ import {
   VolumeMutedIcon,
 } from '@/components/icons';
 import { AddToPlaylistMenu } from '@/components/track/AddToPlaylistMenu';
+import { ShareButton } from '@/components/track/ShareButton';
 import { QueueSheet } from '@/components/player/QueueSheet';
 import { usePlayer } from '@/components/player/PlayerProvider';
 import { useAuth } from '@/components/providers/AuthProvider';
@@ -141,6 +142,7 @@ export function PlayerBar() {
               <HeartIcon className="h-4 w-4" fill={isLiked ? 'currentColor' : 'none'} />
             </Button>
             <AddToPlaylistMenu track={current} />
+            <ShareButton track={current} />
           </div>
         )}
       </div>

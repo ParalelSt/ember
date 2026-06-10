@@ -5,6 +5,7 @@ import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { HeartIcon, PauseIcon, PlayIcon, TrashIcon } from '@/components/icons';
 import { AddToPlaylistMenu } from './AddToPlaylistMenu';
+import { ShareButton } from './ShareButton';
 import { findLikedVariant } from '@/lib/songKey';
 import { usePlayer } from '@/components/player/PlayerProvider';
 import { useAuth } from '@/components/providers/AuthProvider';
@@ -114,6 +115,7 @@ export function TrackList({ tracks, showAlbum = true, showRank = false, onRemove
 
             <div className="flex items-center gap-1">
               <AddToPlaylistMenu track={t} />
+              <ShareButton track={t} />
               <Button
                 variant="ghost"
                 size="icon"
