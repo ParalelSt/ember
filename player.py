@@ -225,19 +225,6 @@ def cmd_search(args):
             file=sys.stderr,
         )
 
-    # Log what each ytmusicapi tier returned (titles + videoIds, compact JSON
-    # array per source). Empty arrays for crashed/empty tiers.
-    print(
-        f"[search] ytmusic-songs: "
-        + json.dumps([{"title": t.get("title"), "videoId": t.get("videoId")} for t in songs], ensure_ascii=False),
-        file=sys.stderr,
-    )
-    print(
-        f"[search] ytmusic-videos: "
-        + json.dumps([{"title": t.get("title"), "videoId": t.get("videoId")} for t in videos], ensure_ascii=False),
-        file=sys.stderr,
-    )
-
     # Reserve slots for videos so a niche track (e.g., DJ Sharpnel's
     # "Back to the Gate" which isn't in YT Music's songs catalog but is
     # the top video hit) still surfaces even when songs returns a full
@@ -281,11 +268,6 @@ def cmd_search(args):
         )
 
     tracks = [to_track_json_from_ytdlp(e) for e in entries if _ytdlp_usable(e)]
-    print(
-        f"[search] yt-dlp: "
-        + json.dumps([{"title": t.get("title"), "videoId": t.get("videoId")} for t in tracks], ensure_ascii=False),
-        file=sys.stderr,
-    )
     print(
         f"[search] yt-dlp fallback returned {len(tracks)} entries for query={args.query!r}",
         file=sys.stderr,
