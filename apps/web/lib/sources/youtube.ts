@@ -126,7 +126,9 @@ export async function searchTracks(query: string, { limit = 30 } = {}): Promise<
   const hit = SEARCH_CACHE.get(key);
   if (hit && hit.expires > Date.now()) return hit.tracks;
 
-  const results = await runPython<RawYoutubeTrack[]>(['search', query, '--limit', String(limit)]);
+  // `--` separates flags from positionals so a query string that starts with
+  // `-` doesn't get misparsed as a flag by argparse. Flags come first.
+  const results = await runPython<RawYoutubeTrack[]>(['search', '--limit', String(limit), '--', query]);
   const tracks = dedupeByVideoId(results).map(normalize);
 
   // Bound the cache. Drop the oldest insertion when we hit the cap — Map
@@ -148,7 +150,7 @@ export async function ensureDownloaded(videoId: string): Promise<string> {
     e.status = 400;
     throw e;
   }
-  const result = await runPython<{ filePath: string }>(['download', videoId], { timeoutMs: 180000 });
+  const result = await runPython<{ filePath: string }>(['download', '--', videoId], { timeoutMs: 180000 });
   return result.filePath;
 }
 
@@ -200,7 +202,7 @@ export async function getAlbum(browseId: string) {
     e.status = 400;
     throw e;
   }
-  const result = await runPython<RawAlbumDetail>(['album', browseId], { timeoutMs: 30000 });
+  const result = await runPython<RawAlbumDetail>(['album', '--', browseId], { timeoutMs: 30000 });
   if (result?.error) {
     const e: PythonError = new Error(result.error);
     e.status = 502;
@@ -224,7 +226,7 @@ export async function getArtist(channelId: string) {
     e.status = 400;
     throw e;
   }
-  const result = await runPython<RawArtist>(['artist', channelId], { timeoutMs: 30000 });
+  const result = await runPython<RawArtist>(['artist', '--', channelId], { timeoutMs: 30000 });
   if (result?.error) {
     const e: PythonError = new Error(result.error);
     e.status = 502;
@@ -389,7 +391,7 @@ export async function getLyrics(title: string, artist: string): Promise<LyricsRe
     return fromLrclib;
   }
 
-  const raw = await runPython<RawLyrics>(['lyrics', cleanTitle, cleanArtist], { timeoutMs: 20000 });
+  const raw = await runPython<RawLyrics>(['lyrics', '--', cleanTitle, cleanArtist], { timeoutMs: 20000 });
   if (raw?.error) {
     const e: PythonError = new Error(raw.error);
     e.status = 502;
@@ -412,7 +414,7 @@ export async function resolveStreamUrl(videoId: string): Promise<StreamInfo> {
   }
   const cached = URL_CACHE.get(videoId);
   if (cached && cached.expires > Date.now()) return cached.info;
-  const info = await runPython<StreamInfo>(['info', videoId], { timeoutMs: 30000 });
+  const info = await runPython<StreamInfo>(['info', '--', videoId], { timeoutMs: 30000 });
   if (!info?.url) {
     const e: PythonError = new Error('no upstream URL');
     e.status = 502;
