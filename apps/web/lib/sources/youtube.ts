@@ -53,7 +53,13 @@ function runPython<T = unknown>(args: string[], { timeoutMs = 30000 } = {}): Pro
       reject_(e);
     }, timeoutMs);
     child.stdout.on('data', (d) => { stdout += d.toString(); });
-    child.stderr.on('data', (d) => { stderr += d.toString(); });
+    // Buffer stderr for error reporting AND forward live to Node's stderr so
+    // `[search] …` / yt-dlp logs surface in the dev/prod terminal as they
+    // happen — not just when the process fails.
+    child.stderr.on('data', (d) => {
+      stderr += d.toString();
+      process.stderr.write(d);
+    });
     child.on('error', (e) => { clearTimeout(timer); reject_(e as PythonError); });
     child.on('close', (code) => {
       clearTimeout(timer);
