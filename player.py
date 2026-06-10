@@ -84,6 +84,49 @@ def to_track_json(t):
         "artworkUrl": artwork,
     }
 
+
+def to_track_json_from_ytdlp(entry):
+    """Same shape as to_track_json, but built from a yt-dlp entry returned by
+    `ytsearchN:query`. Music-aware fields (artistId, album, albumId) are null
+    because plain YouTube search exposes only video-level metadata. The
+    `artist` falls back to the uploader / channel name."""
+    thumbs = entry.get("thumbnails") or []
+    artwork = thumbs[-1].get("url") if thumbs else None
+    return {
+        "videoId": entry.get("id"),
+        "title": entry.get("title"),
+        "artist": entry.get("uploader") or entry.get("channel") or "Unknown",
+        "artistId": None,
+        "album": None,
+        "albumId": None,
+        "durationSec": int(entry.get("duration") or 0),
+        "artworkUrl": artwork,
+    }
+
+
+def _ytdlp_usable(entry):
+    """yt-dlp's ytsearch results can include playlists / channels alongside
+    videos. Skip anything without an id or a duration — those aren't
+    playable tracks."""
+    return bool(entry and entry.get("id")) and entry.get("duration") is not None
+
+
+def ytdlp_search(query: str, limit: int):
+    """Plain YouTube search via yt-dlp — fallback for queries that crash
+    ytmusicapi. extract_flat='in_playlist' returns one batched listing
+    (~1 HTTP request) instead of fetching each video page individually."""
+    ydl_opts = {
+        'extract_flat': 'in_playlist',
+        'skip_download': True,
+        'quiet': True,
+        'no_warnings': True,
+    }
+    with contextlib.redirect_stdout(sys.stderr):
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(f"ytsearch{limit}:{query}", download=False)
+    return (info or {}).get("entries") or []
+
+
 def download_if_needed(video_id: str, title: str, artist: str) -> Path:
     """Interactive: human-named file, verbose output."""
     file_path = get_local_path(title, artist)
@@ -144,8 +187,38 @@ def play_song(file_path: Path):
 
 # ============= CLI HANDLERS =============
 def cmd_search(args):
-    results = yt.search(args.query, filter="songs", limit=args.limit)
-    tracks = [to_track_json(t) for t in results]
+    # Layered backend: ytmusicapi first (music-aware ranking, album/artist
+    # metadata), yt-dlp as a fallback for queries that crash ytmusicapi
+    # (older versions raise KeyError on novel response shapes — see
+    # docs/superpowers/specs/2026-06-09-search-musicshelfrenderer-fix-design.md).
+    results = None
+    try:
+        results = yt.search(args.query, filter="songs", limit=args.limit)
+    except (KeyError, TypeError, AttributeError) as e:
+        print(
+            f"[search] ytmusicapi failed for query={args.query!r}: {type(e).__name__}: {e}",
+            file=sys.stderr,
+        )
+
+    if results:
+        json.dump([to_track_json(t) for t in results], sys.stdout)
+        return
+
+    print(f"[search] falling back to yt-dlp for query={args.query!r}", file=sys.stderr)
+    entries = []
+    try:
+        entries = ytdlp_search(args.query, args.limit)
+    except Exception as e:
+        print(
+            f"[search] yt-dlp fallback failed for query={args.query!r}: {type(e).__name__}: {e}",
+            file=sys.stderr,
+        )
+
+    tracks = [to_track_json_from_ytdlp(e) for e in entries if _ytdlp_usable(e)]
+    print(
+        f"[search] yt-dlp fallback returned {len(tracks)} entries for query={args.query!r}",
+        file=sys.stderr,
+    )
     json.dump(tracks, sys.stdout)
 
 def cmd_download(args):
