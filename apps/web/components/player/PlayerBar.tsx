@@ -105,8 +105,16 @@ export function PlayerBar() {
             <img src={current.artworkUrl} alt="" className="h-12 w-12 rounded-md object-cover bg-black shrink-0" />
           )}
           <div className="min-w-0 flex-1">
-            <div className="truncate text-sm font-semibold">{current?.title ?? 'Nothing playing'}</div>
-            <div className="truncate text-xs text-muted-foreground">
+            <div
+              className="truncate text-sm font-semibold"
+              title={current?.title ?? ''}
+            >
+              {current?.title ?? 'Nothing playing'}
+            </div>
+            <div
+              className="truncate text-xs text-muted-foreground"
+              title={current?.artist ?? ''}
+            >
               {current?.artistId ? (
                 <Link
                   href={`/artist/${current.artistId}`}
