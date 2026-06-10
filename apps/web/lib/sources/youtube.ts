@@ -154,6 +154,23 @@ export async function ensureDownloaded(videoId: string): Promise<string> {
   return result.filePath;
 }
 
+/** Resolve a single videoId to track metadata via ytmusicapi get_song.
+ *  Returns null when the video doesn't exist / is private. Used by the
+ *  shareable /track/<videoId> page for ids not yet in PocketBase. */
+export async function getTrack(videoId: string): Promise<Track | null> {
+  if (!VIDEO_ID_RE.test(videoId)) {
+    const e: PythonError = new Error('invalid videoId');
+    e.status = 400;
+    throw e;
+  }
+  const raw = await runPython<RawYoutubeTrack & { error?: string }>(
+    ['track', '--', videoId],
+    { timeoutMs: 20000 },
+  );
+  if (!raw || raw.error || !raw.videoId) return null;
+  return normalize(raw);
+}
+
 export async function getTrending({ country = 'ZZ' } = {}): Promise<Track[]> {
   const safeCountry = String(country).slice(0, 2).toUpperCase().replace(/[^A-Z]/g, '') || 'ZZ';
   const results = await runPython<RawYoutubeTrack[]>(['trending', '--country', safeCountry]);
