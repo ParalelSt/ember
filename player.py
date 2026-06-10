@@ -4,6 +4,7 @@ import sys
 import json
 import argparse
 import contextlib
+import concurrent.futures
 from pathlib import Path
 from ytmusicapi import YTMusic
 import yt_dlp
@@ -186,24 +187,76 @@ def play_song(file_path: Path):
         print("Playback error:", e)
 
 # ============= CLI HANDLERS =============
+def _search_songs(query, limit):
+    return yt.search(query, filter="songs", limit=limit)
+
+
+def _search_videos(query, limit):
+    return yt.search(query, filter="videos", limit=limit)
+
+
 def cmd_search(args):
-    # Layered backend: ytmusicapi first (music-aware ranking, album/artist
-    # metadata), yt-dlp as a fallback for queries that crash ytmusicapi
-    # (older versions raise KeyError on novel response shapes — see
-    # docs/superpowers/specs/2026-06-09-search-musicshelfrenderer-fix-design.md).
-    results = None
+    # Run songs + videos in parallel. Songs come first in the merged list
+    # (music-aware metadata). Videos backfill rare tracks that aren't in
+    # YouTube Music's songs catalog (niche / doujin / fan-uploaded).
+    # See docs/superpowers/specs/2026-06-09-search-songs-videos-merge-design.md.
+    songs, videos = [], []
     try:
-        results = yt.search(args.query, filter="songs", limit=args.limit)
-    except (KeyError, TypeError, AttributeError) as e:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=2) as ex:
+            songs_future = ex.submit(_search_songs, args.query, args.limit)
+            videos_future = ex.submit(_search_videos, args.query, args.limit)
+            try:
+                songs = songs_future.result() or []
+            except (KeyError, TypeError, AttributeError) as e:
+                print(
+                    f"[search] ytmusicapi songs failed for query={args.query!r}: {type(e).__name__}: {e}",
+                    file=sys.stderr,
+                )
+            try:
+                videos = videos_future.result() or []
+            except (KeyError, TypeError, AttributeError) as e:
+                print(
+                    f"[search] ytmusicapi videos failed for query={args.query!r}: {type(e).__name__}: {e}",
+                    file=sys.stderr,
+                )
+    except Exception as e:
         print(
-            f"[search] ytmusicapi failed for query={args.query!r}: {type(e).__name__}: {e}",
+            f"[search] thread pool failed for query={args.query!r}: {type(e).__name__}: {e}",
             file=sys.stderr,
         )
 
-    if results:
-        json.dump([to_track_json(t) for t in results], sys.stdout)
+    # Reserve slots for videos so a niche track (e.g., DJ Sharpnel's
+    # "Back to the Gate" which isn't in YT Music's songs catalog but is
+    # the top video hit) still surfaces even when songs returns a full
+    # page of unrelated results. Songs get ~2/3 of slots, videos ~1/3.
+    # Either tier backfills the other if it returns fewer items.
+    video_floor = max(5, args.limit // 3)
+    song_cap = max(1, args.limit - video_floor)
+
+    seen = set()
+    merged = []
+
+    def _add(items, cap):
+        for t in items:
+            if len(merged) >= cap:
+                return
+            vid = t.get("videoId")
+            if not vid or vid in seen:
+                continue
+            seen.add(vid)
+            merged.append(to_track_json(t))
+
+    _add(songs, song_cap)
+    _add(videos, args.limit)
+    # Backfill leftover slots with any remaining songs/videos we skipped.
+    _add(songs, args.limit)
+    _add(videos, args.limit)
+
+    if merged:
+        json.dump(merged, sys.stdout)
         return
 
+    # Neither backend produced anything — fall back to yt-dlp.
     print(f"[search] falling back to yt-dlp for query={args.query!r}", file=sys.stderr)
     entries = []
     try:
