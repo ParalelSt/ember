@@ -13,13 +13,17 @@ export default function SearchPage() {
   const [debouncedQ, setDebouncedQ] = useState('');
 
   useEffect(() => {
-    const t = setTimeout(() => setDebouncedQ(q), 250);
+    // Trim during debounce so " " / "   abc   " collapse to "" / "abc" —
+    // pressing space alone (or starting/ending with whitespace) no longer
+    // triggers a search.
+    const t = setTimeout(() => setDebouncedQ(q.trim()), 250);
     return () => clearTimeout(t);
   }, [q]);
 
   const { data, isFetching } = useQuery({
     queryKey: QK.search(debouncedQ),
     queryFn: () => api.search(debouncedQ).then((r) => r.tracks),
+    enabled: debouncedQ.length > 0,
   });
 
   return (
