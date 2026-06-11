@@ -46,7 +46,6 @@ export function PlayerBar() {
   const [queueOpen, setQueueOpen] = useState(false);
   const lyricsOpen = useUiStore((s) => s.lyricsOpen);
   const setLyricsOpen = useUiStore((s) => s.setLyricsOpen);
-  const setNowPlayingFocus = useUiStore((s) => s.setNowPlayingFocus);
   const loopMode = usePlayerStore((s) => s.loopMode);
   const cycleLoopMode = usePlayerStore((s) => s.cycleLoopMode);
   const muted = usePlayerStore((s) => s.muted);
@@ -70,16 +69,9 @@ export function PlayerBar() {
     setScrubPct(null);
   };
 
-  const onLyricsClick = () => {
-    // On phones the inline panel doesn't fit — pop the full-screen NowPlaying
-    // and ask it to scroll its lyrics section into view.
-    if (window.matchMedia('(max-width: 767px)').matches) {
-      setNowPlayingFocus('lyrics');
-      openNowPlaying(true);
-      return;
-    }
-    setLyricsOpen(!lyricsOpen);
-  };
+  // Desktop only — the button is hidden on phones (md:inline-flex), where
+  // lyrics live inside the full-screen NowPlaying view instead.
+  const onLyricsClick = () => setLyricsOpen(!lyricsOpen);
 
   // Only render the bar once playback has actually started. Avoids the
   // "Nothing playing" placeholder strip and ensures the bar pops in the moment
@@ -116,10 +108,14 @@ export function PlayerBar() {
               title={current?.artist ?? ''}
             >
               {current?.artistId ? (
+                // pointer-events-none on phones: the tap falls through to the
+                // wrapper, which opens the full-screen player — artist
+                // navigation happens from inside NowPlaying there. Desktop
+                // keeps the direct link.
                 <Link
                   href={`/artist/${current.artistId}`}
                   onClick={(e) => e.stopPropagation()}
-                  className="hover:underline"
+                  className="hover:underline pointer-events-none md:pointer-events-auto"
                 >
                   {current.artist}
                 </Link>
@@ -203,7 +199,7 @@ export function PlayerBar() {
           variant="ghost"
           size="icon"
           className={cn(
-            'h-10 w-10 md:h-8 md:w-8 hover:text-foreground',
+            'hidden md:inline-flex h-8 w-8 hover:text-foreground',
             lyricsOpen ? 'text-ember hover:text-ember' : 'text-muted-foreground',
           )}
           onClick={onLyricsClick}
@@ -211,7 +207,7 @@ export function PlayerBar() {
           aria-pressed={lyricsOpen}
           title="Lyrics"
         >
-          <LyricsIcon className="h-5 w-5 md:h-4 md:w-4" />
+          <LyricsIcon className="h-4 w-4" />
         </Button>
         <Button
           variant="ghost"
