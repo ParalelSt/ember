@@ -6,6 +6,7 @@ import { QueryProvider } from '@/components/providers/QueryProvider';
 import { PlayerProvider } from '@/components/player/PlayerProvider';
 import { AppErrorBoundary } from '@/components/AppErrorBoundary';
 import { LoggerInit } from '@/components/LoggerInit';
+import { VersionLog } from '@/components/VersionLog';
 import { BugReportDialog } from '@/components/BugReportDialog';
 import { Toaster } from '@/components/ui/sonner';
 import './globals.css';
@@ -58,6 +59,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         <QueryProvider>
           <AuthProvider initialUser={initialUser}>
             <LoggerInit />
+            <VersionLog />
             <PlayerProvider>
               <AppErrorBoundary>{children}</AppErrorBoundary>
             </PlayerProvider>
