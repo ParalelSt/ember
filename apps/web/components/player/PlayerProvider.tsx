@@ -212,6 +212,26 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     }
   }, [partyVolume, volume, setStoreVolume]);
 
+  // Set the lock-screen / notification metadata for a track. Called
+  // SYNCHRONOUSLY from loadAndPlay (not just a React effect) so the metadata
+  // updates atomically with the src change on a track advance. On Firefox
+  // Android the effect-driven update runs too late — the element reset on
+  // src change tears the notification down before React re-renders, and it
+  // never comes back. Setting it inline keeps the session continuous.
+  const applyMediaMetadata = useCallback((track: Track | null) => {
+    if (typeof navigator === 'undefined' || !('mediaSession' in navigator)) return;
+    if (!track) {
+      navigator.mediaSession.metadata = null;
+      return;
+    }
+    navigator.mediaSession.metadata = new MediaMetadata({
+      title: track.title ?? '',
+      artist: track.artist ?? '',
+      album: track.album ?? '',
+      artwork: track.artworkUrl ? [{ src: track.artworkUrl, sizes: '512x512' }] : [],
+    });
+  }, []);
+
   // Synchronously load + play the given track on the audio element. Must be
   // called from a user-gesture handler (click, keypress) — React 19 effects
   // run asynchronously, so audio.play() inside a useEffect loses the user
@@ -224,11 +244,16 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     if (!track) {
       a.pause();
       a.removeAttribute('src');
+      applyMediaMetadata(null);
       return;
     }
     isTransitioning.current = true;
     a.src = apiUrl(track.streamUrl);
     a.load();
+    // Update the media-session metadata in the same synchronous turn as the
+    // src change so the lock-screen notification carries across the track
+    // boundary instead of being torn down (Firefox Android).
+    applyMediaMetadata(track);
     // First call after mount: wantPosition is still null, so honor the
     // persisted position from the store (which has finished rehydrating
     // by the time this effect-driven call fires). Subsequent calls
@@ -253,7 +278,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       audioCtxRef.current?.resume?.().catch(() => {});
       a.play().then(() => setIsPlaying(true)).catch(() => setIsPlaying(false));
     }
-  }, [setPosition, setIsPlaying]);
+  }, [setPosition, setIsPlaying, applyMediaMetadata]);
 
   // Drives src+autoplay on track changes that originate outside playTrack —
   // notably the auto-advance when a track ends (onEnd → next() → index change),
@@ -460,19 +485,11 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [current?.id, isPlaying]);
 
-  // Media Session metadata.
+  // Media Session metadata — backstop for track changes that don't flow
+  // through loadAndPlay (hydration on cold load). The primary path sets it
+  // synchronously inside loadAndPlay so it carries across track boundaries.
   useEffect(() => {
-    if (typeof navigator === 'undefined' || !('mediaSession' in navigator)) return;
-    if (!current) {
-      navigator.mediaSession.metadata = null;
-      return;
-    }
-    navigator.mediaSession.metadata = new MediaMetadata({
-      title: current.title ?? '',
-      artist: current.artist ?? '',
-      album: current.album ?? '',
-      artwork: current.artworkUrl ? [{ src: current.artworkUrl, sizes: '512x512' }] : [],
-    });
+    applyMediaMetadata(current);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [current?.id]);
 
