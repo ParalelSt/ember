@@ -249,10 +249,11 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     }
     isTransitioning.current = true;
     a.src = apiUrl(track.streamUrl);
-    a.load();
+    // No explicit a.load() — setting .src already queues a load, and the extra
+    // load() forces a harder element reset that tears the lock-screen
+    // notification down on a track advance (Firefox Android).
     // Update the media-session metadata in the same synchronous turn as the
-    // src change so the lock-screen notification carries across the track
-    // boundary instead of being torn down (Firefox Android).
+    // src change so the notification carries across the track boundary.
     applyMediaMetadata(track);
     // First call after mount: wantPosition is still null, so honor the
     // persisted position from the store (which has finished rehydrating
