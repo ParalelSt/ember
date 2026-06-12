@@ -84,7 +84,12 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (audioRef.current) return;
     const a = new Audio();
-    a.preload = 'metadata';
+    // 'auto' so the browser buffers well ahead of the playhead. When a tab is
+    // backgrounded (screen off) Firefox Android throttles its network — with
+    // only 'metadata' preloaded the stream stalls and playback dies once the
+    // tiny buffer empties. Buffering further ahead lets the current track keep
+    // playing through the throttle (often to completion).
+    a.preload = 'auto';
     a.addEventListener('error', () => {
       const code = a.error?.code;
       const message = a.error?.message ?? 'audio element error';
