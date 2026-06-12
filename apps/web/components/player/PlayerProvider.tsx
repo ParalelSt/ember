@@ -468,12 +468,37 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     a.currentTime = Math.max(0, Math.min(sec, a.duration || 0));
   }, []);
 
+  // Resume-aware play, used by the lock-screen / notification play button.
+  // When a backgrounded tab is suspended (notably Android Firefox after the
+  // screen has been off a while), the stream stalls and the audio element
+  // errors — our error handler then drops the src + zeroes position. A plain
+  // `audio.play()` on that source-less element does nothing, so the lock
+  // screen looks dead. This reloads the current track and resumes from the
+  // last known position instead.
+  const resumePlayback = useCallback(() => {
+    const a = audioRef.current;
+    if (!a) return;
+    // Source still loaded and healthy → just resume.
+    if (a.src && !a.error && a.readyState >= 2) {
+      a.play().then(() => setIsPlaying(true)).catch(() => {});
+      return;
+    }
+    // Suspended / errored: rebuild from the store. lastValidPosition survives
+    // the error handler's zeroing, so prefer it when the store position was
+    // reset to 0.
+    const state = usePlayerStore.getState();
+    const cur = state.queue[state.index] ?? null;
+    if (!cur) return;
+    wantPosition.current = state.position > 0.5 ? state.position : lastValidPosition.current;
+    loadAndPlay(cur, true);
+  }, [loadAndPlay, setIsPlaying]);
+
   // Media Session action handlers — wired to lock-screen/Bluetooth.
   useEffect(() => {
     if (typeof navigator === 'undefined' || !('mediaSession' in navigator)) return;
     const a = audioRef.current;
     if (!a) return;
-    navigator.mediaSession.setActionHandler('play', () => { void a.play(); });
+    navigator.mediaSession.setActionHandler('play', resumePlayback);
     navigator.mediaSession.setActionHandler('pause', () => a.pause());
     navigator.mediaSession.setActionHandler('previoustrack', prev);
     navigator.mediaSession.setActionHandler('nexttrack', next);
@@ -485,7 +510,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         navigator.mediaSession.setActionHandler(act, null),
       );
     };
-  }, [audioReady, prev, next, seek]);
+  }, [audioReady, prev, next, seek, resumePlayback]);
 
   const playTrack = useCallback((track: Track, list?: Track[], nextContext?: PlaybackContext | null) => {
     userInteracted.current = true;
@@ -572,9 +597,16 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     userInteracted.current = true;
     const a = audioRef.current;
     if (!current || !a) return;
-    if (a.paused) { void a.play(); logger.breadcrumb('playback', 'resume', { trackId: current.id }); }
-    else { a.pause(); logger.breadcrumb('playback', 'pause', { trackId: current.id }); }
-  }, [current]);
+    if (a.paused) {
+      // resumePlayback recovers when a background suspension dropped the src;
+      // for a normal paused element it just calls play().
+      resumePlayback();
+      logger.breadcrumb('playback', 'resume', { trackId: current.id });
+    } else {
+      a.pause();
+      logger.breadcrumb('playback', 'pause', { trackId: current.id });
+    }
+  }, [current, resumePlayback]);
 
   const setVolume = useCallback(
     (v: number) => setStoreVolume(Math.max(0, Math.min(1, v))),
