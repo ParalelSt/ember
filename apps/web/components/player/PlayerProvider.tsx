@@ -102,6 +102,17 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       setIsPlaying(false);
       usePlayerStore.setState({ position: 0 });
     });
+    // Attach to the DOM. Firefox Android's media component only surfaces the
+    // lock-screen / notification controls for media elements it can see in the
+    // document — a detached `new Audio()` plays sound but shows no controls.
+    // Hidden + 1px so it never affects layout.
+    a.setAttribute('aria-hidden', 'true');
+    a.style.position = 'fixed';
+    a.style.width = '1px';
+    a.style.height = '1px';
+    a.style.opacity = '0';
+    a.style.pointerEvents = 'none';
+    if (typeof document !== 'undefined') document.body.appendChild(a);
     audioRef.current = a;
     setAudioReady(true);
   }, []);
