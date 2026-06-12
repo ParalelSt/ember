@@ -3,7 +3,7 @@
 // for /api/youtube/stream/<videoId> requests when the user has pinned a
 // playlist for offline playback (see offline-playback design spec).
 
-const CACHE = 'ember-shell-v5';
+const CACHE = 'ember-shell-v6';
 const SHELL = ['/', '/index.html', '/manifest.webmanifest'];
 const STREAM_RE = /^\/api\/youtube\/stream\/([A-Za-z0-9_-]{11})(?:\/|$|\?)/;
 const NETWORK_TIMEOUT_MS = 3000;
