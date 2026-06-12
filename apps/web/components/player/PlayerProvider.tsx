@@ -119,32 +119,41 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
   const partyVolume = useSettingsStore((s) => s.partyVolume);
   const muted = usePlayerStore((s) => s.muted);
+
+  // Build the Web Audio graph (ctx → source → gain → destination) once, on
+  // demand. Calling createMediaElementSource() re-routes ALL of the element's
+  // audio through the graph permanently (it's one-shot + irreversible), which
+  // breaks native MediaSession integration and lets the AudioContext suspend
+  // in the background. So we ONLY build it when party mode actually needs >1.0
+  // gain — normal playback stays on the bare <audio> element, which gives
+  // native lock-screen controls + background playback. Party mode is
+  // desktop-only, so phones never build the graph. Returns the gain node, or
+  // null if Web Audio is unavailable / construction failed.
+  const ensureAudioGraph = useCallback((): GainNode | null => {
+    if (gainNodeRef.current) return gainNodeRef.current;
+    const a = audioRef.current;
+    if (!a || typeof window === 'undefined') return null;
+    const Ctor: typeof AudioContext | undefined =
+      window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    if (!Ctor) return null;
+    try {
+      const ctx = new Ctor();
+      const source = ctx.createMediaElementSource(a);
+      const gain = ctx.createGain();
+      source.connect(gain);
+      gain.connect(ctx.destination);
+      audioCtxRef.current = ctx;
+      gainNodeRef.current = gain;
+      return gain;
+    } catch (e) {
+      logger.error('audio', 'web audio init failed', undefined, e as Error);
+      return null;
+    }
+  }, []);
+
   useEffect(() => {
     const a = audioRef.current;
     if (!a) return;
-
-    // Lazily wire up the Web Audio graph on the first effect run after
-    // the audio element exists. Doing it once and only once — repeated
-    // createMediaElementSource() calls on the same element throw.
-    if (typeof window !== 'undefined' && !audioCtxRef.current) {
-      const Ctor: typeof AudioContext | undefined =
-        window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
-      if (Ctor) {
-        try {
-          const ctx = new Ctor();
-          const source = ctx.createMediaElementSource(a);
-          const gain = ctx.createGain();
-          source.connect(gain);
-          gain.connect(ctx.destination);
-          audioCtxRef.current = ctx;
-          gainNodeRef.current = gain;
-        } catch (e) {
-          // Safari/iOS sometimes throws if the context is constructed
-          // outside a user gesture — fall back to bare a.volume only.
-          logger.error('audio', 'web audio init failed', undefined, e as Error);
-        }
-      }
-    }
 
     // Default curve: power 1.5 — between the old square curve (which
     // spiked at the top) and pure linear (too loud at halfway). Halfway
@@ -157,13 +166,23 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       ? 0
       : partyVolume ? Math.min(1, volume) : Math.pow(volume, 1.5);
 
-    // Gain boost ONLY in party mode — 2× pre-clipping headroom on top of
-    // the audio element's own 1.0 ceiling. Off mode leaves it at 1.0
-    // (passthrough) so the curve above is the only attenuation.
-    if (gainNodeRef.current) {
-      gainNodeRef.current.gain.value = partyVolume ? 2 : 1;
+    if (partyVolume) {
+      // Party mode needs >1.0 gain — build the graph if it isn't up yet
+      // (also covers a persisted party-on setting at mount), resume it in
+      // case it was constructed suspended, and apply the 2× boost.
+      const gain = ensureAudioGraph();
+      if (gain) {
+        audioCtxRef.current?.resume?.().catch(() => {});
+        gain.gain.value = 2;
+      }
+    } else if (gainNodeRef.current) {
+      // Graph exists only if party mode was used earlier this session
+      // (desktop). Drop back to passthrough — audibly identical to the
+      // bare element. If the graph was never built (all phones), there's
+      // nothing to do and audio stays on the native element.
+      gainNodeRef.current.gain.value = 1;
     }
-  }, [audioReady, volume, partyVolume, muted]);
+  }, [audioReady, volume, partyVolume, muted, ensureAudioGraph]);
 
   // When party mode turns OFF, the stored volume may sit above the
   // normal 0.85 cap (party allowed up to 1.0). Without this clamp the
@@ -268,25 +287,6 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         if (now - lastPosWrite.current > 1000) {
           lastPosWrite.current = now;
           usePlayerStore.setState({ position: pos });
-          // Feed the OS scrubber so the lock-screen / notification progress
-          // tracks playback. The browser still owns play/pause inference for
-          // a real <audio> element — we only supply position here. Guarded:
-          // setPositionState throws on inconsistent values (NaN duration
-          // mid-load, position past duration during a swap).
-          if ('mediaSession' in navigator && navigator.mediaSession.setPositionState) {
-            const dur = a.duration;
-            if (dur && isFinite(dur) && pos <= dur) {
-              try {
-                navigator.mediaSession.setPositionState({
-                  duration: dur,
-                  position: pos,
-                  playbackRate: a.playbackRate || 1,
-                });
-              } catch {
-                // Inconsistent state mid-swap — skip this tick.
-              }
-            }
-          }
         }
       }
     };
@@ -306,16 +306,13 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       }
       next();
     };
-    // Drive mediaSession.playbackState from the element's own events rather
-    // than React's isPlaying (which lags). Manual management is required
-    // because the audio is routed through a Web Audio graph — that breaks
-    // the browser's automatic <audio>-element MediaSession inference, so
-    // without this the lock-screen play/pause + scrubber go stale.
-    const setMediaState = (s: MediaSessionPlaybackState) => {
-      if ('mediaSession' in navigator) navigator.mediaSession.playbackState = s;
-    };
-    const onPlay = () => { setIsPlaying(true); setMediaState('playing'); };
-    const onPause = () => { setIsPlaying(false); setMediaState('paused'); };
+    // Normal playback runs on the bare <audio> element (the Web Audio graph
+    // is built only for desktop party mode), so the browser auto-derives
+    // mediaSession play/pause + scrubber position from the element. We don't
+    // set playbackState / setPositionState manually — doing so fought the
+    // native inference and desynced the lock screen.
+    const onPlay = () => setIsPlaying(true);
+    const onPause = () => setIsPlaying(false);
     a.addEventListener('timeupdate', onTime);
     a.addEventListener('loadedmetadata', onMeta);
     a.addEventListener('ended', onEnd);
