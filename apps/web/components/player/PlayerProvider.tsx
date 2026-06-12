@@ -287,6 +287,23 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         if (now - lastPosWrite.current > 1000) {
           lastPosWrite.current = now;
           usePlayerStore.setState({ position: pos });
+          // Feed the OS scrubber. Guarded — setPositionState throws on
+          // inconsistent values (NaN duration mid-load, position past
+          // duration during a track swap).
+          if ('mediaSession' in navigator && navigator.mediaSession.setPositionState) {
+            const dur = a.duration;
+            if (dur && isFinite(dur) && pos <= dur) {
+              try {
+                navigator.mediaSession.setPositionState({
+                  duration: dur,
+                  position: pos,
+                  playbackRate: a.playbackRate || 1,
+                });
+              } catch {
+                // Inconsistent state mid-swap — skip this tick.
+              }
+            }
+          }
         }
       }
     };
@@ -306,13 +323,17 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       }
       next();
     };
-    // Normal playback runs on the bare <audio> element (the Web Audio graph
-    // is built only for desktop party mode), so the browser auto-derives
-    // mediaSession play/pause + scrubber position from the element. We don't
-    // set playbackState / setPositionState manually — doing so fought the
-    // native inference and desynced the lock screen.
-    const onPlay = () => setIsPlaying(true);
-    const onPause = () => setIsPlaying(false);
+    // Firefox Android only renders the lock-screen / notification media
+    // widget when mediaSession.playbackState is explicitly set — without it
+    // the controls don't appear at all. Drive it from the element's own
+    // play/pause events (not React's isPlaying, which lags). This is safe
+    // now that audio runs on the bare <audio> element (no Web Audio routing
+    // to fight) — the earlier desync was the routing, not this signal.
+    const setMediaState = (s: MediaSessionPlaybackState) => {
+      if ('mediaSession' in navigator) navigator.mediaSession.playbackState = s;
+    };
+    const onPlay = () => { setIsPlaying(true); setMediaState('playing'); };
+    const onPause = () => { setIsPlaying(false); setMediaState('paused'); };
     a.addEventListener('timeupdate', onTime);
     a.addEventListener('loadedmetadata', onMeta);
     a.addEventListener('ended', onEnd);
