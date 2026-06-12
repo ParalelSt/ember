@@ -268,23 +268,6 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         if (now - lastPosWrite.current > 1000) {
           lastPosWrite.current = now;
           usePlayerStore.setState({ position: pos });
-          // Feed the OS scrubber so the lock-screen / notification progress
-          // bar tracks playback. Guarded — setPositionState throws if the
-          // values are inconsistent (e.g. duration still NaN mid-load).
-          if ('mediaSession' in navigator && navigator.mediaSession.setPositionState) {
-            const dur = a.duration;
-            if (dur && isFinite(dur) && pos <= dur) {
-              try {
-                navigator.mediaSession.setPositionState({
-                  duration: dur,
-                  position: pos,
-                  playbackRate: a.playbackRate || 1,
-                });
-              } catch {
-                // Inconsistent state during a track swap — skip this tick.
-              }
-            }
-          }
         }
       }
     };
@@ -444,23 +427,11 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       title: current.title ?? '',
       artist: current.artist ?? '',
       album: current.album ?? '',
-      artwork: current.artworkUrl
-        ? [
-            { src: current.artworkUrl, sizes: '256x256', type: 'image/jpeg' },
-            { src: current.artworkUrl, sizes: '512x512', type: 'image/jpeg' },
-          ]
-        : [],
+      artwork: current.artworkUrl ? [{ src: current.artworkUrl, sizes: '512x512' }] : [],
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [current?.id]);
 
-  // Keep the OS media-session playback state in sync. Without this some
-  // platforms drop the lock-screen / notification widget when the page is
-  // backgrounded, because they can't tell whether we're still playing.
-  useEffect(() => {
-    if (typeof navigator === 'undefined' || !('mediaSession' in navigator)) return;
-    navigator.mediaSession.playbackState = current ? (isPlaying ? 'playing' : 'paused') : 'none';
-  }, [current, isPlaying]);
 
   const seek = useCallback((sec: number) => {
     const a = audioRef.current;
