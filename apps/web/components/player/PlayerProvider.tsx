@@ -306,8 +306,16 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       }
       next();
     };
-    const onPlay = () => setIsPlaying(true);
-    const onPause = () => setIsPlaying(false);
+    // Drive mediaSession.playbackState from the element's own events rather
+    // than React's isPlaying (which lags). Manual management is required
+    // because the audio is routed through a Web Audio graph — that breaks
+    // the browser's automatic <audio>-element MediaSession inference, so
+    // without this the lock-screen play/pause + scrubber go stale.
+    const setMediaState = (s: MediaSessionPlaybackState) => {
+      if ('mediaSession' in navigator) navigator.mediaSession.playbackState = s;
+    };
+    const onPlay = () => { setIsPlaying(true); setMediaState('playing'); };
+    const onPause = () => { setIsPlaying(false); setMediaState('paused'); };
     a.addEventListener('timeupdate', onTime);
     a.addEventListener('loadedmetadata', onMeta);
     a.addEventListener('ended', onEnd);
@@ -468,6 +476,12 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const resumePlayback = useCallback(() => {
     const a = audioRef.current;
     if (!a) return;
+    // Resume the Web Audio graph first. When backgrounded, the AudioContext
+    // suspends — audio.play() then runs but its output is stuck in the
+    // suspended graph, so there's no sound until the phone is unlocked and
+    // the context resumes on its own. A MediaSession action counts as a
+    // user gesture, so resume() is allowed here.
+    audioCtxRef.current?.resume?.().catch(() => {});
     // Source still loaded and healthy → just resume.
     if (a.src && !a.error && a.readyState >= 2) {
       a.play().then(() => setIsPlaying(true)).catch(() => {});
