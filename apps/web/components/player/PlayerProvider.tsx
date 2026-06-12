@@ -268,6 +268,25 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         if (now - lastPosWrite.current > 1000) {
           lastPosWrite.current = now;
           usePlayerStore.setState({ position: pos });
+          // Feed the OS scrubber so the lock-screen / notification progress
+          // tracks playback. The browser still owns play/pause inference for
+          // a real <audio> element — we only supply position here. Guarded:
+          // setPositionState throws on inconsistent values (NaN duration
+          // mid-load, position past duration during a swap).
+          if ('mediaSession' in navigator && navigator.mediaSession.setPositionState) {
+            const dur = a.duration;
+            if (dur && isFinite(dur) && pos <= dur) {
+              try {
+                navigator.mediaSession.setPositionState({
+                  duration: dur,
+                  position: pos,
+                  playbackRate: a.playbackRate || 1,
+                });
+              } catch {
+                // Inconsistent state mid-swap — skip this tick.
+              }
+            }
+          }
         }
       }
     };
