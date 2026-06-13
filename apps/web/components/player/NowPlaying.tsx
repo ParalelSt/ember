@@ -10,6 +10,7 @@ import {
 import { AddToPlaylistMenu } from '@/components/track/AddToPlaylistMenu';
 import { ShareButton } from '@/components/track/ShareButton';
 import { LyricsBody } from '@/components/player/LyricsBody';
+import { MarqueeText } from '@/components/player/MarqueeText';
 import { usePlayer } from '@/components/player/PlayerProvider';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { useExecuteToggleLike, useQueryLikes } from '@/hooks/useLibrary';
@@ -170,7 +171,7 @@ export function NowPlaying() {
         {/* Title + artist + like */}
         <div className="flex items-end justify-between gap-4">
           <div className="min-w-0">
-            <div className="truncate text-2xl font-bold tracking-tight">{current?.title ?? ''}</div>
+            <MarqueeText text={current?.title ?? ''} className="text-2xl font-bold tracking-tight" />
             <div className="mt-1 truncate text-sm text-muted-foreground">
               {current?.artistId ? (
                 <Link href={`/artist/${current.artistId}`} onClick={() => setOpen(false)} className="hover:underline">

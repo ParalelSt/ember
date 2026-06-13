@@ -118,3 +118,15 @@
   .ring-ember    { box-shadow: 0 0 0 2px color-mix(in oklab, var(--ember) 70%, transparent); }
   .scrollbar-thin::-webkit-scrollbar { height: 6px; width: 6px; }
 }
+
+/* Marquee for overflowing titles (full-screen NowPlaying). Scrolls to reveal
+   the end, pauses, returns, pauses, loops. --marquee-shift is the negative
+   overflow in px, set inline per-title. Respects reduced-motion. */
+@keyframes ember-marquee {
+  0%, 12%   { transform: translateX(0); }
+  48%, 60%  { transform: translateX(var(--marquee-shift, 0)); }
+  96%, 100% { transform: translateX(0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ember-marquee-anim { animation: none !important; }
+}
