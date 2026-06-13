@@ -31,48 +31,63 @@ export function MarqueeText({ text, className }: Props) {
     const container = containerRef.current;
     const measure = measureRef.current;
     if (!container || !measure) return;
+
     const run = () => {
       const w = measure.scrollWidth;
+      const avail = container.clientWidth;
+      if (!w || !avail) return; // not laid out yet — wait for a later trigger
       setTextWidth(w);
-      setOverflowing(w > container.clientWidth + 4);
+      setOverflowing(w > avail + 4);
     };
+
     run();
+    // Re-measure once a frame later (layout settled) and after web fonts load
+    // — the title font changes text width and the first pass can run too early.
+    const raf = requestAnimationFrame(run);
+    let cancelled = false;
+    if (typeof document !== 'undefined' && 'fonts' in document) {
+      document.fonts.ready.then(() => { if (!cancelled) run(); }).catch(() => {});
+    }
     const ro = new ResizeObserver(run);
     ro.observe(container);
-    return () => ro.disconnect();
+    return () => {
+      cancelled = true;
+      cancelAnimationFrame(raf);
+      ro.disconnect();
+    };
   }, [text]);
 
-  // Fits → render a single static copy.
-  if (!overflowing) {
-    return (
-      <div ref={containerRef} className={cn('overflow-hidden whitespace-nowrap', className)}>
-        <span ref={measureRef} className="inline-block">{text}</span>
-      </div>
-    );
-  }
-
-  // Overflows → two copies + gap, translate by (textWidth + gap) so copy 2
-  // lands exactly where copy 1 began for a seamless loop.
   const shift = textWidth + GAP_PX;
   const duration = Math.max(6, Math.round(shift / SPEED));
 
   return (
     <div ref={containerRef} className={cn('overflow-hidden whitespace-nowrap', className)}>
+      {/* The track is always rendered with the same first span (stable ref so
+          re-measures stay accurate). It only becomes an animated two-copy
+          marquee when the title overflows; otherwise it's a static line. */}
       <div
-        className="ember-marquee-anim flex w-max"
-        style={{
-          ['--marquee-shift' as string]: `-${shift}px`,
-          animation: `ember-marquee-loop ${duration}s linear ${START_DELAY_MS}ms infinite`,
-        }}
+        className={overflowing ? 'ember-marquee-anim flex w-max' : 'inline-block'}
+        style={
+          overflowing
+            ? {
+                ['--marquee-shift' as string]: `-${shift}px`,
+                animation: `ember-marquee-loop ${duration}s linear ${START_DELAY_MS}ms infinite`,
+              }
+            : undefined
+        }
       >
-        {/* Gap is a margin (excluded from scrollWidth) so the measured text
-            width stays accurate and the shift isn't double-counted. */}
-        <span ref={measureRef} className="inline-block" style={{ marginRight: GAP_PX }}>
+        <span
+          ref={measureRef}
+          className="inline-block"
+          style={overflowing ? { marginRight: GAP_PX } : undefined}
+        >
           {text}
         </span>
-        <span className="inline-block" aria-hidden="true">
-          {text}
-        </span>
+        {overflowing && (
+          <span className="inline-block" aria-hidden="true">
+            {text}
+          </span>
+        )}
       </div>
     </div>
   );
