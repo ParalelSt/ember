@@ -2,8 +2,12 @@
 // pick up immediately; cache-first for fingerprinted assets (JS/CSS/images),
 // since their URL changes when content changes.
 
-const CACHE = 'ember-shell-v4';
+const CACHE = 'ember-shell-v7';
 const SHELL = ['/', '/index.html', '/manifest.webmanifest'];
+// Only these same-origin paths are safe to cache-first — fingerprinted build
+// output + static icons/fonts/manifest. Dynamic content (/pb/*, /api/*,
+// /_next/image, HTML) must never be frozen in the cache.
+const CACHEABLE_RE = /^\/(_next\/static\/|icon-|apple-touch-icon|favicon|manifest\.webmanifest)|\.(?:js|css|woff2?|ttf|otf)$/;
 
 self.addEventListener('install', (e) => {
   e.waitUntil(
@@ -21,7 +25,11 @@ self.addEventListener('activate', (e) => {
 
 self.addEventListener('fetch', (e) => {
   const url = new URL(e.request.url);
+  // Never intercept dynamic / proxied content: the API and the PocketBase
+  // proxy (/pb/* serves playlist covers, avatars AND live JSON). Caching
+  // those cache-first serves stale data and breaks images.
   if (url.pathname.startsWith('/api/')) return;
+  if (url.pathname.startsWith('/pb/')) return;
   if (url.origin !== self.location.origin) return;
   if (e.request.method !== 'GET') return;
 
@@ -41,7 +49,10 @@ self.addEventListener('fetch', (e) => {
     return;
   }
 
-  // Everything else (assets/*, icons, manifest) → cache first.
+  // Cache-first ONLY for genuinely static, fingerprinted assets. Everything
+  // else same-origin goes to the network uncached so dynamic content can't
+  // get frozen in the cache.
+  if (!CACHEABLE_RE.test(url.pathname)) return;
   e.respondWith(
     caches.match(e.request).then((hit) => {
       if (hit) return hit;
