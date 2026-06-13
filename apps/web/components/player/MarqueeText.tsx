@@ -14,6 +14,8 @@ const GAP_PX = 56;
 // Scroll speed in px/s; duration is derived so speed is constant regardless
 // of title length.
 const SPEED = 45;
+// Small pause before the scroll begins (first iteration only).
+const START_DELAY_MS = 200;
 
 /** Single-line text that, when it overflows its container, scrolls
  *  continuously in one direction and loops seamlessly (the title slides off
@@ -60,7 +62,7 @@ export function MarqueeText({ text, className }: Props) {
         className="ember-marquee-anim flex w-max"
         style={{
           ['--marquee-shift' as string]: `-${shift}px`,
-          animation: `ember-marquee-loop ${duration}s linear infinite`,
+          animation: `ember-marquee-loop ${duration}s linear ${START_DELAY_MS}ms infinite`,
         }}
       >
         {/* Gap is a margin (excluded from scrollWidth) so the measured text
