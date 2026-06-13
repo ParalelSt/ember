@@ -84,7 +84,12 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (audioRef.current) return;
     const a = new Audio();
-    a.preload = 'metadata';
+    // 'auto' so the browser buffers well ahead of the playhead. When a tab is
+    // backgrounded (screen off) Firefox Android throttles its network — with
+    // only 'metadata' preloaded the stream stalls and playback dies once the
+    // tiny buffer empties. Buffering further ahead lets the current track keep
+    // playing through the throttle (often to completion).
+    a.preload = 'auto';
     a.addEventListener('error', () => {
       const code = a.error?.code;
       const message = a.error?.message ?? 'audio element error';
@@ -97,6 +102,17 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       setIsPlaying(false);
       usePlayerStore.setState({ position: 0 });
     });
+    // Attach to the DOM. Firefox Android's media component only surfaces the
+    // lock-screen / notification controls for media elements it can see in the
+    // document — a detached `new Audio()` plays sound but shows no controls.
+    // Hidden + 1px so it never affects layout.
+    a.setAttribute('aria-hidden', 'true');
+    a.style.position = 'fixed';
+    a.style.width = '1px';
+    a.style.height = '1px';
+    a.style.opacity = '0';
+    a.style.pointerEvents = 'none';
+    if (typeof document !== 'undefined') document.body.appendChild(a);
     audioRef.current = a;
     setAudioReady(true);
   }, []);
@@ -119,32 +135,41 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
   const partyVolume = useSettingsStore((s) => s.partyVolume);
   const muted = usePlayerStore((s) => s.muted);
+
+  // Build the Web Audio graph (ctx → source → gain → destination) once, on
+  // demand. Calling createMediaElementSource() re-routes ALL of the element's
+  // audio through the graph permanently (it's one-shot + irreversible), which
+  // breaks native MediaSession integration and lets the AudioContext suspend
+  // in the background. So we ONLY build it when party mode actually needs >1.0
+  // gain — normal playback stays on the bare <audio> element, which gives
+  // native lock-screen controls + background playback. Party mode is
+  // desktop-only, so phones never build the graph. Returns the gain node, or
+  // null if Web Audio is unavailable / construction failed.
+  const ensureAudioGraph = useCallback((): GainNode | null => {
+    if (gainNodeRef.current) return gainNodeRef.current;
+    const a = audioRef.current;
+    if (!a || typeof window === 'undefined') return null;
+    const Ctor: typeof AudioContext | undefined =
+      window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    if (!Ctor) return null;
+    try {
+      const ctx = new Ctor();
+      const source = ctx.createMediaElementSource(a);
+      const gain = ctx.createGain();
+      source.connect(gain);
+      gain.connect(ctx.destination);
+      audioCtxRef.current = ctx;
+      gainNodeRef.current = gain;
+      return gain;
+    } catch (e) {
+      logger.error('audio', 'web audio init failed', undefined, e as Error);
+      return null;
+    }
+  }, []);
+
   useEffect(() => {
     const a = audioRef.current;
     if (!a) return;
-
-    // Lazily wire up the Web Audio graph on the first effect run after
-    // the audio element exists. Doing it once and only once — repeated
-    // createMediaElementSource() calls on the same element throw.
-    if (typeof window !== 'undefined' && !audioCtxRef.current) {
-      const Ctor: typeof AudioContext | undefined =
-        window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
-      if (Ctor) {
-        try {
-          const ctx = new Ctor();
-          const source = ctx.createMediaElementSource(a);
-          const gain = ctx.createGain();
-          source.connect(gain);
-          gain.connect(ctx.destination);
-          audioCtxRef.current = ctx;
-          gainNodeRef.current = gain;
-        } catch (e) {
-          // Safari/iOS sometimes throws if the context is constructed
-          // outside a user gesture — fall back to bare a.volume only.
-          logger.error('audio', 'web audio init failed', undefined, e as Error);
-        }
-      }
-    }
 
     // Default curve: power 1.5 — between the old square curve (which
     // spiked at the top) and pure linear (too loud at halfway). Halfway
@@ -157,13 +182,23 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       ? 0
       : partyVolume ? Math.min(1, volume) : Math.pow(volume, 1.5);
 
-    // Gain boost ONLY in party mode — 2× pre-clipping headroom on top of
-    // the audio element's own 1.0 ceiling. Off mode leaves it at 1.0
-    // (passthrough) so the curve above is the only attenuation.
-    if (gainNodeRef.current) {
-      gainNodeRef.current.gain.value = partyVolume ? 2 : 1;
+    if (partyVolume) {
+      // Party mode needs >1.0 gain — build the graph if it isn't up yet
+      // (also covers a persisted party-on setting at mount), resume it in
+      // case it was constructed suspended, and apply the 2× boost.
+      const gain = ensureAudioGraph();
+      if (gain) {
+        audioCtxRef.current?.resume?.().catch(() => {});
+        gain.gain.value = 2;
+      }
+    } else if (gainNodeRef.current) {
+      // Graph exists only if party mode was used earlier this session
+      // (desktop). Drop back to passthrough — audibly identical to the
+      // bare element. If the graph was never built (all phones), there's
+      // nothing to do and audio stays on the native element.
+      gainNodeRef.current.gain.value = 1;
     }
-  }, [audioReady, volume, partyVolume, muted]);
+  }, [audioReady, volume, partyVolume, muted, ensureAudioGraph]);
 
   // When party mode turns OFF, the stored volume may sit above the
   // normal 0.85 cap (party allowed up to 1.0). Without this clamp the
@@ -177,6 +212,26 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     }
   }, [partyVolume, volume, setStoreVolume]);
 
+  // Set the lock-screen / notification metadata for a track. Called
+  // SYNCHRONOUSLY from loadAndPlay (not just a React effect) so the metadata
+  // updates atomically with the src change on a track advance. On Firefox
+  // Android the effect-driven update runs too late — the element reset on
+  // src change tears the notification down before React re-renders, and it
+  // never comes back. Setting it inline keeps the session continuous.
+  const applyMediaMetadata = useCallback((track: Track | null) => {
+    if (typeof navigator === 'undefined' || !('mediaSession' in navigator)) return;
+    if (!track) {
+      navigator.mediaSession.metadata = null;
+      return;
+    }
+    navigator.mediaSession.metadata = new MediaMetadata({
+      title: track.title ?? '',
+      artist: track.artist ?? '',
+      album: track.album ?? '',
+      artwork: track.artworkUrl ? [{ src: track.artworkUrl, sizes: '512x512' }] : [],
+    });
+  }, []);
+
   // Synchronously load + play the given track on the audio element. Must be
   // called from a user-gesture handler (click, keypress) — React 19 effects
   // run asynchronously, so audio.play() inside a useEffect loses the user
@@ -189,11 +244,17 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     if (!track) {
       a.pause();
       a.removeAttribute('src');
+      applyMediaMetadata(null);
       return;
     }
     isTransitioning.current = true;
     a.src = apiUrl(track.streamUrl);
-    a.load();
+    // No explicit a.load() — setting .src already queues a load, and the extra
+    // load() forces a harder element reset that tears the lock-screen
+    // notification down on a track advance (Firefox Android).
+    // Update the media-session metadata in the same synchronous turn as the
+    // src change so the notification carries across the track boundary.
+    applyMediaMetadata(track);
     // First call after mount: wantPosition is still null, so honor the
     // persisted position from the store (which has finished rehydrating
     // by the time this effect-driven call fires). Subsequent calls
@@ -218,7 +279,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       audioCtxRef.current?.resume?.().catch(() => {});
       a.play().then(() => setIsPlaying(true)).catch(() => setIsPlaying(false));
     }
-  }, [setPosition, setIsPlaying]);
+  }, [setPosition, setIsPlaying, applyMediaMetadata]);
 
   // Drives src+autoplay on track changes that originate outside playTrack —
   // notably the auto-advance when a track ends (onEnd → next() → index change),
@@ -287,8 +348,17 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       }
       next();
     };
-    const onPlay = () => setIsPlaying(true);
-    const onPause = () => setIsPlaying(false);
+    // Firefox Android only renders the lock-screen / notification media
+    // widget when mediaSession.playbackState is explicitly set — without it
+    // the controls don't appear at all. Drive it from the element's own
+    // play/pause events (not React's isPlaying, which lags). This is safe
+    // now that audio runs on the bare <audio> element (no Web Audio routing
+    // to fight) — the earlier desync was the routing, not this signal.
+    const setMediaState = (s: MediaSessionPlaybackState) => {
+      if ('mediaSession' in navigator) navigator.mediaSession.playbackState = s;
+    };
+    const onPlay = () => { setIsPlaying(true); setMediaState('playing'); };
+    const onPause = () => { setIsPlaying(false); setMediaState('paused'); };
     a.addEventListener('timeupdate', onTime);
     a.addEventListener('loadedmetadata', onMeta);
     a.addEventListener('ended', onEnd);
@@ -416,21 +486,14 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [current?.id, isPlaying]);
 
-  // Media Session metadata.
+  // Media Session metadata — backstop for track changes that don't flow
+  // through loadAndPlay (hydration on cold load). The primary path sets it
+  // synchronously inside loadAndPlay so it carries across track boundaries.
   useEffect(() => {
-    if (typeof navigator === 'undefined' || !('mediaSession' in navigator)) return;
-    if (!current) {
-      navigator.mediaSession.metadata = null;
-      return;
-    }
-    navigator.mediaSession.metadata = new MediaMetadata({
-      title: current.title ?? '',
-      artist: current.artist ?? '',
-      album: current.album ?? '',
-      artwork: current.artworkUrl ? [{ src: current.artworkUrl, sizes: '512x512' }] : [],
-    });
+    applyMediaMetadata(current);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [current?.id]);
+
 
   const seek = useCallback((sec: number) => {
     const a = audioRef.current;
@@ -438,12 +501,43 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     a.currentTime = Math.max(0, Math.min(sec, a.duration || 0));
   }, []);
 
+  // Resume-aware play, used by the lock-screen / notification play button.
+  // When a backgrounded tab is suspended (notably Android Firefox after the
+  // screen has been off a while), the stream stalls and the audio element
+  // errors — our error handler then drops the src + zeroes position. A plain
+  // `audio.play()` on that source-less element does nothing, so the lock
+  // screen looks dead. This reloads the current track and resumes from the
+  // last known position instead.
+  const resumePlayback = useCallback(() => {
+    const a = audioRef.current;
+    if (!a) return;
+    // Resume the Web Audio graph first. When backgrounded, the AudioContext
+    // suspends — audio.play() then runs but its output is stuck in the
+    // suspended graph, so there's no sound until the phone is unlocked and
+    // the context resumes on its own. A MediaSession action counts as a
+    // user gesture, so resume() is allowed here.
+    audioCtxRef.current?.resume?.().catch(() => {});
+    // Source still loaded and healthy → just resume.
+    if (a.src && !a.error && a.readyState >= 2) {
+      a.play().then(() => setIsPlaying(true)).catch(() => {});
+      return;
+    }
+    // Suspended / errored: rebuild from the store. lastValidPosition survives
+    // the error handler's zeroing, so prefer it when the store position was
+    // reset to 0.
+    const state = usePlayerStore.getState();
+    const cur = state.queue[state.index] ?? null;
+    if (!cur) return;
+    wantPosition.current = state.position > 0.5 ? state.position : lastValidPosition.current;
+    loadAndPlay(cur, true);
+  }, [loadAndPlay, setIsPlaying]);
+
   // Media Session action handlers — wired to lock-screen/Bluetooth.
   useEffect(() => {
     if (typeof navigator === 'undefined' || !('mediaSession' in navigator)) return;
     const a = audioRef.current;
     if (!a) return;
-    navigator.mediaSession.setActionHandler('play', () => { void a.play(); });
+    navigator.mediaSession.setActionHandler('play', resumePlayback);
     navigator.mediaSession.setActionHandler('pause', () => a.pause());
     navigator.mediaSession.setActionHandler('previoustrack', prev);
     navigator.mediaSession.setActionHandler('nexttrack', next);
@@ -455,7 +549,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         navigator.mediaSession.setActionHandler(act, null),
       );
     };
-  }, [audioReady, prev, next, seek]);
+  }, [audioReady, prev, next, seek, resumePlayback]);
 
   const playTrack = useCallback((track: Track, list?: Track[], nextContext?: PlaybackContext | null) => {
     userInteracted.current = true;
@@ -542,9 +636,16 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     userInteracted.current = true;
     const a = audioRef.current;
     if (!current || !a) return;
-    if (a.paused) { void a.play(); logger.breadcrumb('playback', 'resume', { trackId: current.id }); }
-    else { a.pause(); logger.breadcrumb('playback', 'pause', { trackId: current.id }); }
-  }, [current]);
+    if (a.paused) {
+      // resumePlayback recovers when a background suspension dropped the src;
+      // for a normal paused element it just calls play().
+      resumePlayback();
+      logger.breadcrumb('playback', 'resume', { trackId: current.id });
+    } else {
+      a.pause();
+      logger.breadcrumb('playback', 'pause', { trackId: current.id });
+    }
+  }, [current, resumePlayback]);
 
   const setVolume = useCallback(
     (v: number) => setStoreVolume(Math.max(0, Math.min(1, v))),
