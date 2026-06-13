@@ -53,3 +53,6 @@ Thumbs.db
 .cache/
 coverage/
 .nyc_output/
+
+# Local roadmap / status notes — not committed
+ROADMAP.md
