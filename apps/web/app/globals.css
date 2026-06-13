@@ -119,13 +119,15 @@
   .scrollbar-thin::-webkit-scrollbar { height: 6px; width: 6px; }
 }
 
-/* Marquee for overflowing titles (full-screen NowPlaying). Scrolls to reveal
-   the end, pauses, returns, pauses, loops. --marquee-shift is the negative
-   overflow in px, set inline per-title. Respects reduced-motion. */
-@keyframes ember-marquee {
-  0%, 12%   { transform: translateX(0); }
-  48%, 60%  { transform: translateX(var(--marquee-shift, 0)); }
-  96%, 100% { transform: translateX(0); }
+/* Marquee for overflowing titles (full-screen NowPlaying). Continuous
+   one-direction loop: two copies of the text scroll left and the second
+   seamlessly takes the first's place. --marquee-shift is the negative
+   (text width + gap) in px, set inline per-title, so when it has shifted
+   that far copy 2 sits exactly where copy 1 started. The empty gap between
+   copies is the little break. Respects reduced-motion. */
+@keyframes ember-marquee-loop {
+  from { transform: translateX(0); }
+  to   { transform: translateX(var(--marquee-shift, 0)); }
 }
 @media (prefers-reduced-motion: reduce) {
   .ember-marquee-anim { animation: none !important; }
