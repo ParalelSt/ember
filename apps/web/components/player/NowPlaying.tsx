@@ -171,7 +171,7 @@ export function NowPlaying() {
         {/* Title + artist + like */}
         <div className="flex items-end justify-between gap-4">
           <div className="min-w-0">
-            <MarqueeText text={current?.title ?? ''} className="text-2xl font-bold tracking-tight" />
+            <MarqueeText text={current?.title ?? ''} active={open} className="text-2xl font-bold tracking-tight" />
             <div className="mt-1 truncate text-sm text-muted-foreground">
               {current?.artistId ? (
                 <Link href={`/artist/${current.artistId}`} onClick={() => setOpen(false)} className="hover:underline">

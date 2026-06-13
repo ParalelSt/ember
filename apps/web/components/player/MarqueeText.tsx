@@ -6,6 +6,12 @@ import { cn } from '@/lib/utils';
 interface Props {
   text: string;
   className?: string;
+  /** Only animate while the view is actually on-screen. NowPlaying stays
+   *  mounted (translated off-screen) when closed, so without this the CSS
+   *  animation runs — and burns through its start delay — while hidden, and
+   *  you'd open the view to find it already mid-scroll. Gating on `active`
+   *  makes the animation (and its delay) start when the view opens. */
+  active?: boolean;
 }
 
 // Empty space between the end of the title and where it loops back in — the
@@ -21,7 +27,7 @@ const START_DELAY_MS = 1000;
  *  continuously in one direction and loops seamlessly (the title slides off
  *  the left, a gap passes, then it re-enters from the right). Titles that fit
  *  stay static. Used for long song titles in the full-screen NowPlaying view. */
-export function MarqueeText({ text, className }: Props) {
+export function MarqueeText({ text, className, active = true }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const measureRef = useRef<HTMLSpanElement>(null);
   const [textWidth, setTextWidth] = useState(0);
@@ -59,16 +65,19 @@ export function MarqueeText({ text, className }: Props) {
 
   const shift = textWidth + GAP_PX;
   const duration = Math.max(6, Math.round(shift / SPEED));
+  // Animate only when overflowing AND on-screen. Toggling this when the view
+  // opens applies the animation fresh, so the start delay counts from open.
+  const animate = overflowing && active;
 
   return (
     <div ref={containerRef} className={cn('overflow-hidden whitespace-nowrap', className)}>
       {/* The track is always rendered with the same first span (stable ref so
           re-measures stay accurate). It only becomes an animated two-copy
-          marquee when the title overflows; otherwise it's a static line. */}
+          marquee when the title overflows AND the view is open. */}
       <div
-        className={overflowing ? 'ember-marquee-anim flex w-max' : 'inline-block'}
+        className={animate ? 'ember-marquee-anim flex w-max' : 'inline-block'}
         style={
-          overflowing
+          animate
             ? {
                 ['--marquee-shift' as string]: `-${shift}px`,
                 animation: `ember-marquee-loop ${duration}s linear ${START_DELAY_MS}ms infinite`,
@@ -79,11 +88,11 @@ export function MarqueeText({ text, className }: Props) {
         <span
           ref={measureRef}
           className="inline-block"
-          style={overflowing ? { marginRight: GAP_PX } : undefined}
+          style={animate ? { marginRight: GAP_PX } : undefined}
         >
           {text}
         </span>
-        {overflowing && (
+        {animate && (
           <span className="inline-block" aria-hidden="true">
             {text}
           </span>
