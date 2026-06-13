@@ -3,7 +3,11 @@
 // for /api/youtube/stream/<videoId> requests when the user has pinned a
 // playlist for offline playback (see offline-playback design spec).
 
-const CACHE = 'ember-shell-v6';
+const CACHE = 'ember-shell-v7';
+// Only these same-origin paths are safe to cache-first — fingerprinted build
+// output + static icons/fonts/manifest. Dynamic content (/pb/*, /api/*,
+// /_next/image, HTML) must never be frozen in the cache.
+const CACHEABLE_RE = /^\/(_next\/static\/|icon-|apple-touch-icon|favicon|manifest\.webmanifest)|\.(?:js|css|woff2?|ttf|otf)$/;
 const SHELL = ['/', '/index.html', '/manifest.webmanifest'];
 const STREAM_RE = /^\/api\/youtube\/stream\/([A-Za-z0-9_-]{11})(?:\/|$|\?)/;
 const NETWORK_TIMEOUT_MS = 3000;
@@ -52,7 +56,12 @@ self.addEventListener('fetch', (e) => {
     e.respondWith(streamWithOfflineFallback(e.request, streamMatch[1]));
     return;
   }
+  // Never intercept dynamic / proxied content: the API and the PocketBase
+  // proxy (/pb/* serves playlist covers, avatars AND live JSON). Caching
+  // those cache-first served stale data and broke images once the SW went
+  // live. Let them hit the network directly.
   if (url.pathname.startsWith('/api/')) return;
+  if (url.pathname.startsWith('/pb/')) return;
   if (url.origin !== self.location.origin) return;
   if (e.request.method !== 'GET') return;
 
@@ -70,6 +79,10 @@ self.addEventListener('fetch', (e) => {
     return;
   }
 
+  // Cache-first ONLY for genuinely static, fingerprinted assets (Next build
+  // output, icons, fonts, manifest). Everything else same-origin goes to the
+  // network uncached so dynamic content can't get frozen in the cache.
+  if (!CACHEABLE_RE.test(url.pathname)) return;
   e.respondWith(
     caches.match(e.request).then((hit) => {
       if (hit) return hit;
