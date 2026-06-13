@@ -275,12 +275,20 @@ def cmd_search(args):
     json.dump(tracks, sys.stdout)
 
 def cmd_download(args):
+    if not args.video_id:
+        print("[download] called without a video_id", file=sys.stderr)
+        json.dump({"error": "video_id required"}, sys.stdout)
+        return
     file_path = download_by_id(args.video_id)
     json.dump({"filePath": str(file_path.resolve())}, sys.stdout)
 
 def cmd_info(args):
     """Resolve a videoId to a direct streamable URL (no download).
     Used by the API's stream-proxy mode so songs aren't saved to disk."""
+    if not args.video_id:
+        print("[info] called without a video_id", file=sys.stderr)
+        json.dump({"error": "video_id required"}, sys.stdout)
+        return
     url = f"https://www.youtube.com/watch?v={args.video_id}"
     ydl_opts = {
         'format': 'bestaudio[ext=m4a]/bestaudio[ext=webm]/bestaudio',
@@ -607,13 +615,16 @@ def main():
     p_search.add_argument("--limit", type=int, default=30)
 
     p_download = sub.add_parser("download", help="Download by videoId. Prints {filePath} JSON.")
-    p_download.add_argument("video_id")
+    # nargs='?' so a missing id degrades to a clean JSON error in the handler
+    # instead of an argparse hard-crash (exit 2 + stderr) that surfaces as an
+    # ugly 502 in the API logs.
+    p_download.add_argument("video_id", nargs="?")
 
     p_trending = sub.add_parser("trending", help="Top tracks (charts). Prints JSON.")
     p_trending.add_argument("--country", default="ZZ", help="2-letter country code, ZZ=global")
 
     p_info = sub.add_parser("info", help="Resolve a videoId to a direct stream URL. Prints JSON.")
-    p_info.add_argument("video_id")
+    p_info.add_argument("video_id", nargs="?")
 
     p_rec = sub.add_parser("recommended", help="Up-next radio for a seed videoId. Prints JSON.")
     p_rec.add_argument("--seed", help="Seed videoId; missing falls back to charts")
