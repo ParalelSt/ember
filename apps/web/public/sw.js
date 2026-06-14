@@ -1,67 +1,25 @@
-// Service worker for Ember PWA. Network-first for the HTML shell so deploys
-// pick up immediately; cache-first for fingerprinted assets (JS/CSS/images),
-// since their URL changes when content changes.
+// Service worker for Ember PWA — intentionally MINIMAL / passthrough.
+//
+// It exists only to make the PWA installable (an installable PWA needs a
+// registered service worker with a fetch handler). It caches NOTHING:
+// cache-first asset caching repeatedly served stale / broken JS, images and
+// icons after rebuilds, so every request now goes straight to the network
+// (browser default). Offline support is deferred to the native app.
 
-const CACHE = 'ember-shell-v7';
-const SHELL = ['/', '/index.html', '/manifest.webmanifest'];
-// Only these same-origin paths are safe to cache-first — fingerprinted build
-// output + static icons/fonts/manifest. Dynamic content (/pb/*, /api/*,
-// /_next/image, HTML) must never be frozen in the cache.
-const CACHEABLE_RE = /^\/(_next\/static\/|icon-|apple-touch-icon|favicon|manifest\.webmanifest)|\.(?:js|css|woff2?|ttf|otf)$/;
-
-self.addEventListener('install', (e) => {
-  e.waitUntil(
-    caches.open(CACHE).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting()),
-  );
+self.addEventListener('install', () => {
+  self.skipWaiting();
 });
 
 self.addEventListener('activate', (e) => {
-  e.waitUntil(
-    caches.keys().then((keys) =>
-      Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k))),
-    ).then(() => self.clients.claim()),
-  );
+  e.waitUntil((async () => {
+    // Drop every old cache (the poisoned v4–v7 asset caches that broke
+    // images/icons). We no longer use the Cache API at all.
+    const keys = await caches.keys();
+    await Promise.all(keys.map((k) => caches.delete(k)));
+    await self.clients.claim();
+  })());
 });
 
-self.addEventListener('fetch', (e) => {
-  const url = new URL(e.request.url);
-  // Never intercept dynamic / proxied content: the API and the PocketBase
-  // proxy (/pb/* serves playlist covers, avatars AND live JSON). Caching
-  // those cache-first serves stale data and breaks images.
-  if (url.pathname.startsWith('/api/')) return;
-  if (url.pathname.startsWith('/pb/')) return;
-  if (url.origin !== self.location.origin) return;
-  if (e.request.method !== 'GET') return;
-
-  // Navigation / index.html → always try network first so a fresh deploy
-  // becomes visible without forcing the user to bypass the SW manually.
-  const isNavigation = e.request.mode === 'navigate' || url.pathname === '/' || url.pathname === '/index.html';
-  if (isNavigation) {
-    e.respondWith(
-      fetch(e.request).then((resp) => {
-        if (resp && resp.status === 200) {
-          const copy = resp.clone();
-          caches.open(CACHE).then((c) => c.put(e.request, copy));
-        }
-        return resp;
-      }).catch(() => caches.match(e.request).then((r) => r ?? caches.match('/index.html'))),
-    );
-    return;
-  }
-
-  // Cache-first ONLY for genuinely static, fingerprinted assets. Everything
-  // else same-origin goes to the network uncached so dynamic content can't
-  // get frozen in the cache.
-  if (!CACHEABLE_RE.test(url.pathname)) return;
-  e.respondWith(
-    caches.match(e.request).then((hit) => {
-      if (hit) return hit;
-      return fetch(e.request).then((resp) => {
-        if (!resp || resp.status !== 200 || resp.type !== 'basic') return resp;
-        const copy = resp.clone();
-        caches.open(CACHE).then((c) => c.put(e.request, copy));
-        return resp;
-      });
-    }),
-  );
-});
+// A fetch handler must exist for installability, but it intercepts nothing —
+// requests fall through to the network.
+self.addEventListener('fetch', () => {});
