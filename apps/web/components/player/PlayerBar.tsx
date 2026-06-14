@@ -187,6 +187,7 @@ export function PlayerBar() {
             onValueCommitted={onSliderCommit}
             max={100}
             step={0.1}
+            smooth
             className="flex-1"
           />
           <span className="text-[10px] text-muted-foreground tabular-nums w-9">{fmt(duration)}</span>
@@ -271,6 +272,7 @@ export function PlayerBar() {
         onValueCommitted={onSliderCommit}
         max={100}
         step={0.1}
+        smooth
       />
     </div>
 

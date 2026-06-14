@@ -498,8 +498,15 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const seek = useCallback((sec: number) => {
     const a = audioRef.current;
     if (!a) return;
-    a.currentTime = Math.max(0, Math.min(sec, a.duration || 0));
-  }, []);
+    const target = Math.max(0, Math.min(sec, a.duration || 0));
+    a.currentTime = target;
+    // Optimistically move the displayed position to the seek target so the
+    // progress thumb stays where the user dropped it instead of snapping back
+    // to the old spot until the next timeupdate fires — that catch-up lag is
+    // especially visible seeking far into a long, streamed song.
+    setPosition(target);
+    lastValidPosition.current = target;
+  }, [setPosition]);
 
   // Resume-aware play, used by the lock-screen / notification play button.
   // When a backgrounded tab is suspended (notably Android Firefox after the
