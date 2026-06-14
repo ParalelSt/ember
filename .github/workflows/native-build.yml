@@ -1,0 +1,197 @@
+# WS3 — Native app build CI for Ember.
+#
+# Builds the native shells that wrap the live Ember web server:
+#   • apps/desktop  — Tauri 2 desktop app (macOS / Linux / Windows)
+#   • apps/mobile   — Capacitor 6 Android app (debug APK)
+#   • iOS           — deferred (disabled stub, see bottom of file)
+#
+# apps/web is NOT built here; it is deployed separately. The native shells load a
+# REMOTE server URL (server.url / set-url.mjs model), so no web `dist` is bundled.
+#
+# Triggers:
+#   • push of a tag matching v*  → builds AND attaches installers to a GitHub Release
+#   • workflow_dispatch          → builds + uploads workflow artifacts only (no Release)
+#
+# Required GitHub config (Settings → Secrets and variables → Actions):
+#   • Variable  EMBER_APP_URL  — the public URL the native apps should load
+#                                (e.g. https://ember.example.ts.net). Falls back to
+#                                http://localhost:3000 if unset, which is only useful
+#                                for smoke-testing the build, not a shippable app.
+#   • GITHUB_TOKEN             — provided automatically by Actions; used to create the
+#                                Release and upload assets. No manual setup needed.
+
+name: native-build
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+# Allow the Tauri job to create a Release and upload assets via GITHUB_TOKEN.
+permissions:
+  contents: write
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # 1. Desktop (Tauri 2) — matrix across the three desktop OSes.
+  #    Uses the official tauri-apps/tauri-action, pinned to its current major (v0;
+  #    latest release is v0.6.x — there is no published v1 despite some doc samples).
+  #    The action runs `tauri build`, finds the produced bundles, and (when tagName
+  #    is set) creates/updates a GitHub Release and uploads them as assets.
+  # ---------------------------------------------------------------------------
+  desktop:
+    strategy:
+      fail-fast: false
+      matrix:
+        platform:
+          - macos-latest # produces .dmg / .app (Apple silicon by default)
+          - ubuntu-latest # produces .AppImage / .deb
+          - windows-latest # produces .msi / .exe (NSIS)
+    runs-on: ${{ matrix.platform }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Linux needs WebKitGTK + GTK system libs for Tauri 2 (webkit2gtk-4.1).
+      # Package list per the current Tauri v2 Debian/Ubuntu prerequisites docs.
+      - name: Install Linux system dependencies (Tauri)
+        if: matrix.platform == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            build-essential \
+            curl \
+            wget \
+            file \
+            libxdo-dev \
+            libssl-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      # Stable Rust toolchain for the Tauri (Rust) backend.
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      # Cache the Rust build to speed up subsequent runs (keyed on the OS + Cargo.lock).
+      - name: Cache Rust (cargo + target)
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: apps/desktop/src-tauri
+
+      # Install the desktop JS deps (the @tauri-apps/cli that tauri-action invokes).
+      - name: Install desktop dependencies
+        working-directory: apps/desktop
+        run: npm ci
+
+      # Inject the remote server URL into tauri.conf.json BEFORE the action builds.
+      # tauri-action appends `build` to tauriScript, so we can't reuse `npm run build`
+      # (which would also run `tauri build`); instead we run the prepare step on its own
+      # here and let the action invoke the CLI for the actual build.
+      - name: Inject EMBER_APP_URL into tauri.conf.json
+        working-directory: apps/desktop
+        env:
+          EMBER_APP_URL: ${{ vars.EMBER_APP_URL || 'http://localhost:3000' }}
+        run: npm run prepare:url
+
+      - name: Build Tauri app & upload bundles
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          # Tauri project root (where tauri.conf.json lives).
+          projectPath: apps/desktop
+          # Use the local @tauri-apps/cli via the `tauri` npm script; the action
+          # appends `build`, so this resolves to `npm run tauri -- build`.
+          tauriScript: npm run tauri --
+          # On a tag push, create/attach to a Release; otherwise leave empty so the
+          # action only builds (artifacts are uploaded via uploadWorkflowArtifacts).
+          tagName: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || '' }}
+          releaseName: ${{ startsWith(github.ref, 'refs/tags/') && format('Ember {0}', github.ref_name) || '' }}
+          releaseBody: "Ember desktop builds for ${{ github.ref_name }}."
+          releaseDraft: true
+          prerelease: false
+          # Always upload the bundles as workflow artifacts too (useful for
+          # workflow_dispatch runs that have no Release to attach to).
+          uploadWorkflowArtifacts: true
+
+  # ---------------------------------------------------------------------------
+  # 2. Android (Capacitor 6) — debug APK only. Release signing is deferred.
+  #    No web build step: the app loads the live server URL (server.url model),
+  #    so `cap sync` just refreshes the native project + plugins.
+  # ---------------------------------------------------------------------------
+  android:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install mobile dependencies
+        working-directory: apps/mobile
+        run: npm ci
+
+      # Sync the Capacitor config + plugins into the native Android project.
+      # No web assets are copied for the server.url model, but cap sync is still
+      # needed to apply config (appId, server settings) and install plugins.
+      - name: Capacitor sync (android)
+        working-directory: apps/mobile
+        env:
+          # Bakes the target server URL into the synced Android config
+          # (capacitor.config.ts reads process.env.EMBER_APP_URL).
+          EMBER_APP_URL: ${{ vars.EMBER_APP_URL || 'http://localhost:3000' }}
+        run: npx cap sync android
+
+      - name: Build debug APK
+        working-directory: apps/mobile/android
+        run: |
+          chmod +x ./gradlew
+          ./gradlew assembleDebug
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ember-android-debug-apk
+          path: apps/mobile/android/app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+
+  # ---------------------------------------------------------------------------
+  # 3. iOS (Capacitor) — DEFERRED. Intentionally disabled.
+  #
+  #    Building/signing an iOS app requires all of the following, none of which
+  #    are set up yet:
+  #      • a macos-latest runner with Xcode,
+  #      • an Apple Developer Program account,
+  #      • a signing certificate (.p12) + provisioning profile imported into the
+  #        runner keychain (typically via apple-actions/import-codesign-certs),
+  #      • the iOS Capacitor platform added to apps/mobile (`npx cap add ios`),
+  #        which does not currently exist in the repo.
+  #
+  #    When ready, enable by setting `if: true` and filling in the signing steps.
+  # ---------------------------------------------------------------------------
+  ios:
+    if: false # deferred — see comment above. Do not enable without Apple signing setup.
+    runs-on: macos-latest
+    steps:
+      - name: Placeholder
+        run: echo "iOS build is deferred; see workflow comments."
