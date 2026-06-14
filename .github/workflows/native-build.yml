@@ -86,9 +86,9 @@ jobs:
         with:
           workspaces: apps/desktop/src-tauri
 
-      # Install the desktop JS deps (the @tauri-apps/cli that tauri-action invokes).
-      - name: Install desktop dependencies
-        working-directory: apps/desktop
+      # Install JS deps at the workspace ROOT (npm ci fails inside a workspace
+      # member). Hoisted deps (incl. @tauri-apps/cli) land in root node_modules.
+      - name: Install dependencies (workspace root)
         run: npm ci
 
       # Inject the remote server URL into tauri.conf.json BEFORE the action builds.
@@ -147,8 +147,9 @@ jobs:
         with:
           node-version: 20
 
-      - name: Install mobile dependencies
-        working-directory: apps/mobile
+      # Install at the workspace ROOT (npm ci fails inside a workspace member);
+      # the @capacitor/cli semver override is applied here too.
+      - name: Install dependencies (workspace root)
         run: npm ci
 
       # Sync the Capacitor config + plugins into the native Android project.
@@ -160,7 +161,9 @@ jobs:
           # Bakes the target server URL into the synced Android config
           # (capacitor.config.ts reads process.env.EMBER_APP_URL).
           EMBER_APP_URL: ${{ vars.EMBER_APP_URL || 'http://localhost:3000' }}
-        run: npx cap sync android
+        # Invoke the CLI by its real path (not the .bin/cap shim) so resolution
+        # is immune to npm's workspace symlink-vs-copy quirk.
+        run: node ../../node_modules/@capacitor/cli/bin/capacitor sync android
 
       - name: Build debug APK
         working-directory: apps/mobile/android

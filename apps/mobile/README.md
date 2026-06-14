@@ -101,21 +101,22 @@ npx cap sync ios
 Then `npm run open:ios` to open it in Xcode. Remember to set `EMBER_APP_URL`
 (the Tailscale funnel URL) before syncing for a physical iPhone.
 
-## Monorepo note (known issue)
+## Monorepo note (rare `cap` resolution issue)
 
 This is an npm workspace (`workspaces: ["apps/*"]`). `apps/web` pulls in
-`semver@6` transitively, which npm hoists to the root `node_modules`. The
-`@capacitor/cli` needs `semver@7`. If the hoisted `node_modules/.bin/cap`
-shim resolves to the root `semver@6` it fails with
-`Cannot find module 'semver/functions/satisfies'`. If you hit this after a
-fresh `npm install`, recreate the bin as a symlink to the real CLI bin:
+`semver@6` transitively (hoisted to the root `node_modules`), while
+`@capacitor/cli` needs `semver@7` (it ships its own nested copy). A clean
+`npm ci` / `npm install` on macOS/Linux links `node_modules/.bin/cap` as a
+**symlink**, which resolves the CLI's nested `semver@7` correctly — so
+`npm run sync` etc. work normally.
+
+If npm ever materializes `.bin/cap` as a plain copy instead (it has been seen
+mid-install), the shim resolves the root `semver@6` and fails with
+`Cannot find module 'semver/functions/satisfies'`. The robust fix is to invoke
+the CLI by its real path (immune to the shim type) — this is exactly what CI
+does:
 
 ```bash
-cd ../../node_modules/.bin
-rm -f cap capacitor
-ln -s ../@capacitor/cli/bin/capacitor cap
-ln -s ../@capacitor/cli/bin/capacitor capacitor
+# from apps/mobile
+node ../../node_modules/@capacitor/cli/bin/capacitor sync android
 ```
-
-(The CLI ships its own nested `semver@7`, which a symlinked bin resolves
-correctly.)
