@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { Slider } from '@/components/ui/slider';
 import { Button } from '@/components/ui/button';
@@ -11,6 +11,7 @@ import { AddToPlaylistMenu } from '@/components/track/AddToPlaylistMenu';
 import { ShareButton } from '@/components/track/ShareButton';
 import { LyricsBody } from '@/components/player/LyricsBody';
 import { MarqueeText } from '@/components/player/MarqueeText';
+import { useBackDismiss } from '@/lib/useBackDismiss';
 import { usePlayer } from '@/components/player/PlayerProvider';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { useExecuteToggleLike, useQueryLikes } from '@/hooks/useLibrary';
@@ -33,6 +34,10 @@ function fmt(sec: number): string {
 export function NowPlaying() {
   const open = usePlayerStore((s) => s.nowPlayingOpen);
   const setOpen = usePlayerStore((s) => s.setNowPlayingOpen);
+  // Android/browser Back closes the full-screen player instead of leaving
+  // the site while it's open. setOpen from Zustand is stable, so close is too.
+  const close = useCallback(() => setOpen(false), [setOpen]);
+  useBackDismiss(open, close);
   const focus = useUiStore((s) => s.nowPlayingFocus);
   const setFocus = useUiStore((s) => s.setNowPlayingFocus);
   const { current, isPlaying, position, duration, toggle, next, prev, seek } = usePlayer();
