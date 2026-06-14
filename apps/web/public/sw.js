@@ -1,30 +1,31 @@
-// Service worker for Ember PWA. Network-first for the HTML shell so deploys
-// pick up immediately; cache-first for fingerprinted assets; offline-aware
-// for /api/youtube/stream/<videoId> requests when the user has pinned a
-// playlist for offline playback (see offline-playback design spec).
+// Service worker for Ember PWA — intentionally MINIMAL.
+//
+// It exists for two reasons only:
+//   1. Be registered with a fetch handler so the PWA is installable.
+//   2. Serve pinned offline tracks from OPFS for /api/youtube/stream/<id>.
+//
+// It does NOT cache app assets. Cache-first asset caching repeatedly served
+// stale / broken JS, images and icons after rebuilds (start-static.sh churns
+// fingerprinted files constantly), so all non-stream requests now go straight
+// to the network (browser default). Offline app-shell loading is deferred to
+// the native app along with the rest of offline playback.
 
-const CACHE = 'ember-shell-v7';
-// Only these same-origin paths are safe to cache-first — fingerprinted build
-// output + static icons/fonts/manifest. Dynamic content (/pb/*, /api/*,
-// /_next/image, HTML) must never be frozen in the cache.
-const CACHEABLE_RE = /^\/(_next\/static\/|icon-|apple-touch-icon|favicon|manifest\.webmanifest)|\.(?:js|css|woff2?|ttf|otf)$/;
-const SHELL = ['/', '/index.html', '/manifest.webmanifest'];
 const STREAM_RE = /^\/api\/youtube\/stream\/([A-Za-z0-9_-]{11})(?:\/|$|\?)/;
 const NETWORK_TIMEOUT_MS = 3000;
 
 // videoId → { playlistId, audioFilePath } — populated by hydrate + messages.
 const OFFLINE_INDEX = new Map();
 
-self.addEventListener('install', (e) => {
-  e.waitUntil(
-    caches.open(CACHE).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting()),
-  );
+self.addEventListener('install', () => {
+  self.skipWaiting();
 });
 
 self.addEventListener('activate', (e) => {
   e.waitUntil((async () => {
+    // Delete ALL old caches (including the poisoned v4–v7 asset caches that
+    // were breaking images/icons). We no longer use the Cache API at all.
     const keys = await caches.keys();
-    await Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k)));
+    await Promise.all(keys.map((k) => caches.delete(k)));
     await rebuildOfflineIndex().catch(() => {});
     await sweepOrphans().catch(() => {});
     await self.clients.claim();
@@ -56,44 +57,7 @@ self.addEventListener('fetch', (e) => {
     e.respondWith(streamWithOfflineFallback(e.request, streamMatch[1]));
     return;
   }
-  // Never intercept dynamic / proxied content: the API and the PocketBase
-  // proxy (/pb/* serves playlist covers, avatars AND live JSON). Caching
-  // those cache-first served stale data and broke images once the SW went
-  // live. Let them hit the network directly.
-  if (url.pathname.startsWith('/api/')) return;
-  if (url.pathname.startsWith('/pb/')) return;
-  if (url.origin !== self.location.origin) return;
-  if (e.request.method !== 'GET') return;
-
-  const isNavigation = e.request.mode === 'navigate' || url.pathname === '/' || url.pathname === '/index.html';
-  if (isNavigation) {
-    e.respondWith(
-      fetch(e.request).then((resp) => {
-        if (resp && resp.status === 200) {
-          const copy = resp.clone();
-          caches.open(CACHE).then((c) => c.put(e.request, copy));
-        }
-        return resp;
-      }).catch(() => caches.match(e.request).then((r) => r ?? caches.match('/index.html'))),
-    );
-    return;
-  }
-
-  // Cache-first ONLY for genuinely static, fingerprinted assets (Next build
-  // output, icons, fonts, manifest). Everything else same-origin goes to the
-  // network uncached so dynamic content can't get frozen in the cache.
-  if (!CACHEABLE_RE.test(url.pathname)) return;
-  e.respondWith(
-    caches.match(e.request).then((hit) => {
-      if (hit) return hit;
-      return fetch(e.request).then((resp) => {
-        if (!resp || resp.status !== 200 || resp.type !== 'basic') return resp;
-        const copy = resp.clone();
-        caches.open(CACHE).then((c) => c.put(e.request, copy));
-        return resp;
-      });
-    }),
-  );
+  // Everything else → browser default. No caching of any kind.
 });
 
 // ─────────── Offline playback helpers ───────────
