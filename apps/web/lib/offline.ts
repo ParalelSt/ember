@@ -82,7 +82,12 @@ interface SwIndexRemove {
 
 async function notifySwIndex(message: SwIndexAdd | SwIndexRemove): Promise<void> {
   if (typeof navigator === 'undefined') return;
-  const reg = await navigator.serviceWorker?.ready;
+  // Ember no longer runs a service worker (see RegisterSW / public/sw.js). With
+  // no SW controlling the page, `serviceWorker.ready` never resolves — bail out
+  // instead of awaiting a promise that hangs forever. (Offline SW messaging is
+  // dormant and moving to the native app.)
+  if (!navigator.serviceWorker?.controller) return;
+  const reg = await navigator.serviceWorker.ready;
   reg?.active?.postMessage(message);
 }
 
