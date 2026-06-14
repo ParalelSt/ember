@@ -212,6 +212,7 @@ export function NowPlaying() {
             onValueCommitted={onSliderCommit}
             max={100}
             step={0.1}
+            smooth
           />
           <div className="mt-1.5 flex justify-between text-[11px] text-muted-foreground tabular-nums">
             <span>{fmt(displaySec)}</span>
