@@ -1,0 +1,34 @@
+[package]
+name = "ember-desktop"
+version = "0.1.0"
+description = "Ember desktop shell"
+authors = ["Ember"]
+edition = "2021"
+
+# The `_lib` suffix avoids a name collision between the binary and the library
+# on Windows, per Tauri 2 convention.
+[lib]
+name = "ember_desktop_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+
+# --- Transitive dependency unification (not used by our code) ---
+# brotli 8.0.3 (pulled in by tauri-codegen/tauri-utils) is internally inconsistent:
+# it depends on alloc-no-stdlib 2.0.4 directly, while its siblings alloc-stdlib 0.2.3
+# and brotli-decompressor 5.0.2 pull alloc-no-stdlib 3.0.0 — and the two versions are
+# trait-incompatible, so the build fails (E0277). Pinning these to the 0.2.2 / 5.0.1
+# line (which use alloc-no-stdlib 2.x) makes Cargo unify on a single version.
+alloc-stdlib = "=0.2.2"
+brotli-decompressor = "=5.0.1"
+
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = "s"
+panic = "abort"
+strip = true

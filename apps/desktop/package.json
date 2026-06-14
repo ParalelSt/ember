@@ -1,0 +1,15 @@
+{
+  "name": "desktop",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Ember Tauri 2 desktop shell — loads the live Ember server URL in a native window.",
+  "scripts": {
+    "prepare:url": "node scripts/set-url.mjs",
+    "dev": "npm run prepare:url && tauri dev",
+    "build": "npm run prepare:url && tauri build",
+    "tauri": "tauri"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2"
+  }
+}
