@@ -20,6 +20,7 @@ use std::time::Duration;
 use rodio::mixer::Mixer;
 use rodio::{OutputStreamBuilder, Sink};
 use serde::Serialize;
+use souvlaki::{MediaControlEvent, MediaControls, MediaMetadata, MediaPlayback, PlatformConfig};
 use stream_download::storage::temp::TempStorageProvider;
 use stream_download::{Settings, StreamDownload};
 use tauri::{AppHandle, State};
@@ -41,6 +42,11 @@ pub struct AudioEngine {
     generation: Arc<AtomicU64>,
     /// Last loaded absolute stream URL (for diagnostics / future recovery).
     current_url: Mutex<Option<String>>,
+    /// OS media controls (macOS Now Playing / Windows SMTC / Linux MPRIS).
+    /// `None` if init failed — playback still works without OS controls.
+    /// On macOS `MediaControls` is a zero-sized unit struct (state lives in
+    /// global MPNowPlayingInfoCenter/MPRemoteCommandCenter), so it is Send+Sync.
+    controls: Mutex<Option<MediaControls>>,
 }
 
 impl AudioEngine {
@@ -77,7 +83,23 @@ impl AudioEngine {
             sink: Arc::new(Mutex::new(None)),
             generation: Arc::new(AtomicU64::new(0)),
             current_url: Mutex::new(None),
+            controls: Mutex::new(None),
         })
+    }
+
+    /// Reflect play/paused state in the OS Now Playing widget. No-op if media
+    /// controls failed to initialize.
+    fn set_nowplaying(&self, playing: bool) {
+        if let Ok(mut g) = self.controls.lock() {
+            if let Some(c) = g.as_mut() {
+                let pb = if playing {
+                    MediaPlayback::Playing { progress: None }
+                } else {
+                    MediaPlayback::Paused { progress: None }
+                };
+                let _ = c.set_playback(pb);
+            }
+        }
     }
 
     /// Build a fresh Sink connected to this engine's output mixer.
@@ -100,6 +122,13 @@ struct SecPayload {
 #[derive(Clone, Serialize)]
 struct ErrPayload {
     message: String,
+}
+/// An OS media-button press forwarded to the webview. `kind` is one of
+/// play/pause/toggle/next/prev/seek; `sec` is set only for seek.
+#[derive(Clone, Serialize)]
+struct CmdPayload {
+    kind: &'static str,
+    sec: Option<f64>,
 }
 
 fn emit_sec(app: &AppHandle, event: &str, sec: f64) {
@@ -187,6 +216,7 @@ pub async fn audio_load(
     if autoplay {
         emit_bare(&app, "audio:play");
     }
+    engine.set_nowplaying(autoplay);
 
     let (sink_arc, generation) = engine.inner_arc();
     spawn_position_timer(app, sink_arc, generation, my_gen);
@@ -195,21 +225,33 @@ pub async fn audio_load(
 
 #[tauri::command]
 pub fn audio_play(app: AppHandle, engine: State<'_, AudioEngine>) {
+    let mut acted = false;
     if let Ok(g) = engine.sink.lock() {
         if let Some(s) = g.as_ref() {
             s.play();
             emit_bare(&app, "audio:play");
+            acted = true;
         }
+    }
+    // Only reflect "Playing" in the OS widget when a track actually resumed, and
+    // outside the sink lock (set_nowplaying takes the controls lock).
+    if acted {
+        engine.set_nowplaying(true);
     }
 }
 
 #[tauri::command]
 pub fn audio_pause(app: AppHandle, engine: State<'_, AudioEngine>) {
+    let mut acted = false;
     if let Ok(g) = engine.sink.lock() {
         if let Some(s) = g.as_ref() {
             s.pause();
             emit_bare(&app, "audio:pause");
+            acted = true;
         }
+    }
+    if acted {
+        engine.set_nowplaying(false);
     }
 }
 
@@ -243,6 +285,82 @@ pub fn audio_set_volume(engine: State<'_, AudioEngine>, amplitude: f32) {
         if let Some(s) = g.as_ref() {
             // rodio amplifies for values > 1.0, preserving party mode.
             s.set_volume(amplitude.max(0.0));
+        }
+    }
+}
+
+// --- OS media controls (souvlaki) -------------------------------------------
+
+/// Initialize OS media controls and route their transport-button presses to the
+/// webview as `audio:cmd` events. Call ONCE at app setup (main thread). On
+/// Windows, SMTC needs the window HWND (not wired this slice), so init will fail
+/// there — the caller logs it and degrades gracefully (playback unaffected).
+pub fn init_media_controls(app: &AppHandle, engine: &AudioEngine) -> Result<(), String> {
+    // Windows SMTC requires the window HWND; souvlaki's Windows backend PANICS on
+    // a None hwnd (it `.expect()`s) rather than returning Err, which the non-fatal
+    // caller couldn't catch. Until the HWND is wired, bail out with an Err here so
+    // startup degrades gracefully (logged) instead of crashing.
+    #[cfg(windows)]
+    {
+        let _ = (app, engine);
+        return Err("Windows SMTC not wired yet (needs window HWND)".to_string());
+    }
+    #[cfg(not(windows))]
+    {
+    let config = PlatformConfig {
+        display_name: "Ember",
+        dbus_name: "ember",
+        hwnd: None, // macOS/Linux: None.
+    };
+    let mut controls = MediaControls::new(config).map_err(|e| format!("{e:?}"))?;
+    let app2 = app.clone();
+    controls
+        .attach(move |event: MediaControlEvent| {
+            use tauri::Emitter;
+            // The souvlaki callback runs on its own thread — only emit to the
+            // webview here (never touch the sink lock). Toggle is resolved in
+            // the webview from its own play/paused mirror.
+            let payload = match event {
+                MediaControlEvent::Play => CmdPayload { kind: "play", sec: None },
+                MediaControlEvent::Pause => CmdPayload { kind: "pause", sec: None },
+                MediaControlEvent::Toggle => CmdPayload { kind: "toggle", sec: None },
+                MediaControlEvent::Next => CmdPayload { kind: "next", sec: None },
+                MediaControlEvent::Previous => CmdPayload { kind: "prev", sec: None },
+                MediaControlEvent::SetPosition(pos) => {
+                    CmdPayload { kind: "seek", sec: Some(pos.0.as_secs_f64()) }
+                }
+                // Stop / Seek / SeekBy / SetVolume / OpenUri / Raise: ignored.
+                _ => return,
+            };
+            let _ = app2.emit("audio:cmd", payload);
+        })
+        .map_err(|e| format!("{e:?}"))?;
+    *engine
+        .controls
+        .lock()
+        .map_err(|_| "controls lock".to_string())? = Some(controls);
+    Ok(())
+    }
+}
+
+#[tauri::command]
+pub fn audio_set_metadata(
+    engine: State<'_, AudioEngine>,
+    title: String,
+    artist: String,
+    album: String,
+    artwork_url: String,
+) {
+    if let Ok(mut g) = engine.controls.lock() {
+        if let Some(c) = g.as_mut() {
+            // MediaMetadata borrows &str; the local Strings outlive this call.
+            let _ = c.set_metadata(MediaMetadata {
+                title: Some(&title),
+                artist: Some(&artist),
+                album: Some(&album),
+                cover_url: if artwork_url.is_empty() { None } else { Some(&artwork_url) },
+                ..Default::default()
+            });
         }
     }
 }

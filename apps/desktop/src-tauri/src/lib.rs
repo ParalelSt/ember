@@ -7,11 +7,24 @@
 
 mod audio;
 
+use tauri::Manager;
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let engine = audio::AudioEngine::new().expect("failed to init audio engine");
     tauri::Builder::default()
         .manage(engine)
+        .setup(|app| {
+            // Initialize OS media controls (macOS Now Playing / Linux MPRIS /
+            // Windows SMTC). Non-fatal: playback still works without them, so a
+            // failure is logged and swallowed rather than aborting startup.
+            let handle = app.handle().clone();
+            let state = app.state::<audio::AudioEngine>();
+            if let Err(e) = audio::init_media_controls(&handle, state.inner()) {
+                eprintln!("[ember] media controls unavailable: {e}");
+            }
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             audio::audio_stop,
             audio::audio_load,
@@ -19,6 +32,7 @@ pub fn run() {
             audio::audio_pause,
             audio::audio_seek,
             audio::audio_set_volume,
+            audio::audio_set_metadata,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Ember desktop");

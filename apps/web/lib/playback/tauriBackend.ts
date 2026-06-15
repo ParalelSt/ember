@@ -55,6 +55,9 @@ export const createTauriBackend: CreateAudioBackend = (events) => {
     if (!cmds) return;
     if (kind === 'play') cmds.play();
     else if (kind === 'pause') cmds.pause();
+    // OS toggle button (e.g. headphone/media key): resolve here from the local
+    // paused mirror, since RemoteCommands has no dedicated toggle.
+    else if (kind === 'toggle') { if (paused) cmds.play(); else cmds.pause(); }
     else if (kind === 'next') cmds.next();
     else if (kind === 'prev') cmds.prev();
     else if (kind === 'seek' && typeof sec === 'number') cmds.seek(sec);
