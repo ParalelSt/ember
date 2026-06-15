@@ -12,7 +12,12 @@ pub fn run() {
     let engine = audio::AudioEngine::new().expect("failed to init audio engine");
     tauri::Builder::default()
         .manage(engine)
-        .invoke_handler(tauri::generate_handler![audio::audio_stop])
+        .invoke_handler(tauri::generate_handler![
+            audio::audio_stop,
+            audio::audio_load,
+            audio::audio_play,
+            audio::audio_pause,
+        ])
         .run(tauri::generate_context!())
         .expect("error while running Ember desktop");
 }
