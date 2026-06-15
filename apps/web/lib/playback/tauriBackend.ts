@@ -2,6 +2,7 @@
 
 import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
+import { logger } from '@/lib/logger/client';
 import type { Track } from '@/types/track';
 import type { AudioBackend, CreateAudioBackend, RemoteCommands } from './types';
 
@@ -45,7 +46,11 @@ export const createTauriBackend: CreateAudioBackend = (events) => {
   sub<Record<string, never>>('audio:ended', () => events.onEnded());
   sub<Record<string, never>>('audio:play', () => { paused = false; events.onPlay(); });
   sub<Record<string, never>>('audio:pause', () => { paused = true; events.onPause(); });
-  sub<{ message: string }>('audio:error', () => { curTime = 0; events.onError(); });
+  sub<{ message: string }>('audio:error', ({ message }) => {
+    logger.error('audio', message || 'native audio error');
+    curTime = 0;
+    events.onError();
+  });
   sub<{ kind: string; sec?: number }>('audio:cmd', ({ kind, sec }) => {
     if (!cmds) return;
     if (kind === 'play') cmds.play();
