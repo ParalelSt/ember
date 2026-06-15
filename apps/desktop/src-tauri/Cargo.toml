@@ -17,6 +17,19 @@ tauri-build = { version = "2", features = [] }
 [dependencies]
 tauri = { version = "2", features = [] }
 
+# --- Native audio engine (Part 5) ---
+# rodio 0.21 keeps the Sink-based API this code targets (connect_new/append/play/
+# pause/stop/set_volume/get_pos/try_seek/empty). 0.22 renamed Sink->Player, so do NOT
+# bump without a refactor. Default features include `mp4` (= symphonia isomp4 + aac),
+# which is what the host's m4a/AAC stream needs.
+rodio = "0.21"
+# stream-download default features pull in `reqwest` + `temp-storage`, giving a
+# seekable, temp-file-backed HTTP reader (Read + Seek) that rodio's Decoder can read.
+stream-download = "0.24"
+souvlaki = "0.8"                                # OS media controls (wired up in Task 7)
+serde = { version = "1", features = ["derive"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time"] }
+
 # --- Transitive dependency unification (not used by our code) ---
 # brotli 8.0.3 (pulled in by tauri-codegen/tauri-utils) is internally inconsistent:
 # it depends on alloc-no-stdlib 2.0.4 directly, while its siblings alloc-stdlib 0.2.3
