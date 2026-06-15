@@ -213,6 +213,26 @@ pub fn audio_stop(engine: State<'_, AudioEngine>) {
     }
 }
 
+#[tauri::command]
+pub fn audio_seek(app: AppHandle, engine: State<'_, AudioEngine>, sec: f64) {
+    if let Ok(g) = engine.sink.lock() {
+        if let Some(s) = g.as_ref() {
+            let _ = s.try_seek(Duration::from_secs_f64(sec.max(0.0)));
+            emit_sec(&app, "audio:time", sec.max(0.0)); // optimistic
+        }
+    }
+}
+
+#[tauri::command]
+pub fn audio_set_volume(engine: State<'_, AudioEngine>, amplitude: f32) {
+    if let Ok(g) = engine.sink.lock() {
+        if let Some(s) = g.as_ref() {
+            // rodio amplifies for values > 1.0, preserving party mode.
+            s.set_volume(amplitude.max(0.0));
+        }
+    }
+}
+
 // --- Position timer + end detection -----------------------------------------
 
 fn spawn_position_timer(

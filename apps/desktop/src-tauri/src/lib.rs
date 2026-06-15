@@ -17,6 +17,8 @@ pub fn run() {
             audio::audio_load,
             audio::audio_play,
             audio::audio_pause,
+            audio::audio_seek,
+            audio::audio_set_volume,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Ember desktop");
