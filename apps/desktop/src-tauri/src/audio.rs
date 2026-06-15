@@ -55,7 +55,11 @@ impl AudioEngine {
                 Ok(stream) => {
                     let _ = tx.send(Ok(stream.mixer().clone()));
                     // Keep `stream` alive for the lifetime of the process.
-                    std::thread::park();
+                    // Use a loop to guard against spurious wakeups from park().
+                    loop {
+                        std::thread::park();
+                    }
+                    #[allow(unreachable_code)]
                     drop(stream);
                 }
                 Err(e) => {
@@ -137,8 +141,16 @@ pub async fn audio_load(
         }
     };
 
-    let decoder = match rodio::Decoder::new(reader) {
-        Ok(d) => d,
+    // Fix 3: run blocking decoder I/O off the async runtime.
+    let decoder = match tauri::async_runtime::spawn_blocking(move || rodio::Decoder::new(reader))
+        .await
+    {
+        Ok(Ok(d)) => d,
+        Ok(Err(e)) => {
+            let msg = e.to_string();
+            emit_err(&app, msg.clone());
+            return Err(msg);
+        }
         Err(e) => {
             let msg = e.to_string();
             emit_err(&app, msg.clone());
@@ -149,6 +161,11 @@ pub async fn audio_load(
         use rodio::Source;
         decoder.total_duration()
     };
+
+    // Fix 1: bump the generation BEFORE storing the new sink so that the
+    // previous position-timer can never observe the new sink under the old
+    // generation number.
+    let my_gen = engine.generation.fetch_add(1, Ordering::SeqCst) + 1;
 
     let sink = engine.new_sink();
     sink.append(decoder);
@@ -163,9 +180,6 @@ pub async fn audio_load(
 
     *engine.sink.lock().map_err(|_| "lock")? = Some(sink);
     *engine.current_url.lock().map_err(|_| "lock")? = Some(url);
-
-    // Supersede any previous track's position timer.
-    let my_gen = engine.generation.fetch_add(1, Ordering::SeqCst) + 1;
 
     if let Some(d) = total {
         emit_sec(&app, "audio:duration", d.as_secs_f64());
