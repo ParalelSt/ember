@@ -20,7 +20,8 @@ import { logger } from '@/lib/logger/client';
 import { songKey } from '@/lib/songKey';
 import { detectShell } from '@/lib/playback/detectShell';
 import { createWebBackend } from '@/lib/playback/webBackend';
-import { createNativeBackend, NATIVE_BACKEND_READY } from '@/lib/playback/nativeBridge';
+import { createNativeBackend, nativeBackendReady } from '@/lib/playback/nativeBridge';
+import { createTauriBackend } from '@/lib/playback/tauriBackend';
 import type { AudioBackend, AudioBackendEvents } from '@/lib/playback/types';
 import type { PlaybackContext, Track } from '@/types/track';
 
@@ -151,11 +152,13 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         usePlayerStore.setState({ position: 0 });
       },
     };
-    // Use the native backend only when it's actually implemented (Parts 3/5).
-    // Until then EVERY shell (Tauri/Capacitor) runs on the web <audio> backend,
-    // which works inside the webview — picking the no-op stub = silent playback.
-    const useNative = NATIVE_BACKEND_READY && detectShell() !== 'web';
-    const create = useNative ? createNativeBackend : createWebBackend;
+    // Per-shell native backend: tauri has a real engine (Part 5); other shells fall
+    // back to the working web <audio> backend until their native engine lands.
+    const shell = detectShell();
+    let create = createWebBackend;
+    if (shell !== 'web' && nativeBackendReady(shell)) {
+      create = shell === 'tauri' ? createTauriBackend : createNativeBackend;
+    }
     backendRef.current = create(events);
     setBackendReady(true);
     return () => {

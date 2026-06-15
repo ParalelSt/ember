@@ -1,9 +1,11 @@
+import type { Shell } from './detectShell';
 import type { AudioBackend, CreateAudioBackend } from './types';
 
-/** Flip to true once a real native audio bridge is implemented (Parts 3/5).
- *  While false, PlayerProvider keeps every shell (Tauri/Capacitor) on the web
- *  <audio> backend — selecting this no-op stub would make playback silent. */
-export const NATIVE_BACKEND_READY = false;
+/** Which shells have a real native AudioBackend implemented today.
+ *  tauri → yes (Part 5). capacitor → not yet (Part 3); falls back to web. */
+export function nativeBackendReady(shell: Shell): boolean {
+  return shell === 'tauri';
+}
 
 /** No-op backend used until a native shell provides a real bridge (Parts 3/5).
  *  Every method is a guarded no-op; reads return neutral values. The `events`
