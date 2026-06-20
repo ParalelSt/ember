@@ -18,6 +18,18 @@ dist/
 build/
 .vite/
 
+# Next.js build output (regenerable — this was showing up as 10k+ "changes")
+.next/
+**/.next/
+.turbo/
+next-env.d.ts
+*.tsbuildinfo
+
+# Native-shell (Tauri desktop) build artifacts — left in the worktree as
+# leftovers from the native-shell branch; regenerable, thousands of files.
+apps/desktop/src-tauri/target/
+apps/desktop/src-tauri/gen/
+
 # Python venv + caches
 .venv/
 venv/
