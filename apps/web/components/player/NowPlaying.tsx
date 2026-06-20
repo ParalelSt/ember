@@ -113,7 +113,11 @@ export function NowPlaying() {
       aria-modal="true"
       aria-hidden={!open}
       className={cn(
-        'md:hidden fixed inset-0 z-60 flex flex-col transition-all duration-300 ease-out',
+        // z-45: above the app shell + BackToTop (z-40) but BELOW the portal
+        // overlays (dropdown/dialog/sheet at z-50) so the add-to-playlist menu
+        // and its New-playlist dialog open ON TOP of this full-screen view
+        // instead of behind it.
+        'md:hidden fixed inset-0 z-45 flex flex-col transition-all duration-300 ease-out',
         // Opacity-0 in addition to the slide-down so iOS Safari can't leak a
         // sliver of the blurred-artwork backdrop over the PlayerBar.
         open ? 'translate-y-0 opacity-100' : 'translate-y-full opacity-0 pointer-events-none',
