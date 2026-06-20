@@ -80,6 +80,10 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const lastValidPosition = useRef(position);
   const lastPosWrite = useRef(0);
   const fetchingRadioFor = useRef<string | null>(null);
+  // The not-yet-fired loadedmetadata handler from the current load. Removed
+  // before the next load registers its own, so a previous track's restore
+  // position can't fire on the new track's metadata and reseek it.
+  const pendingMetaRef = useRef<(() => void) | null>(null);
 
   useEffect(() => {
     if (audioRef.current) return;
@@ -261,7 +265,15 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     // (next/prev) reset wantPosition to 0 below so new tracks start fresh.
     const restoreTo = wantPosition.current ?? usePlayerStore.getState().position;
     wantPosition.current = 0;
+    // Drop a still-pending restore from the PREVIOUS load — otherwise its
+    // captured restoreTo fires on this track's loadedmetadata and seeks the new
+    // song to where the old one was (e.g. a fresh song starting at the prior
+    // song's position).
+    if (pendingMetaRef.current) {
+      a.removeEventListener('loadedmetadata', pendingMetaRef.current);
+    }
     const onMeta = () => {
+      pendingMetaRef.current = null;
       if (restoreTo > 1 && restoreTo < (a.duration || Infinity)) {
         a.currentTime = restoreTo;
         setPosition(restoreTo);
@@ -269,6 +281,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       }
       isTransitioning.current = false;
     };
+    pendingMetaRef.current = onMeta;
     a.addEventListener('loadedmetadata', onMeta, { once: true });
     setTimeout(() => { isTransitioning.current = false; }, 8000);
     if (autoplay) {

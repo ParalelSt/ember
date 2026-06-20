@@ -179,6 +179,7 @@ interface RawArtist {
   thumbnails?: { url: string }[];
   tracks?: RawYoutubeTrack[];
   albums?: unknown[];
+  singles?: unknown[];
   error?: string;
 }
 
@@ -238,6 +239,7 @@ export async function getArtist(channelId: string) {
     thumbnails: result?.thumbnails ?? [],
     tracks: (result?.tracks ?? []).filter((t) => t.videoId).map(normalize),
     albums: result?.albums ?? [],
+    singles: result?.singles ?? [],
   };
 }
 

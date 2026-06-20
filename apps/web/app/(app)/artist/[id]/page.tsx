@@ -24,7 +24,7 @@ export default function ArtistPage({ params }: { params: Promise<{ id: string }>
   }
   if (isLoading || !data) return <div className="text-muted-foreground py-12 text-center">Loading…</div>;
 
-  const { name, description, thumbnails = [], tracks = [], albums = [] } = data;
+  const { name, description, thumbnails = [], tracks = [], albums = [], singles = [] } = data;
   const heroArt = thumbnails[thumbnails.length - 1]?.url;
   const artistContext = { type: 'artist' as const, artistName: name, artistId: id };
 
@@ -62,6 +62,13 @@ export default function ArtistPage({ params }: { params: Promise<{ id: string }>
         <>
           <h2 className="mb-3 text-xl font-bold tracking-tight">Discography</h2>
           <AlbumRow albums={albums} />
+        </>
+      )}
+
+      {singles.length > 0 && (
+        <>
+          <h2 className="mb-3 mt-8 text-xl font-bold tracking-tight">Singles & EPs</h2>
+          <AlbumRow albums={singles} />
         </>
       )}
     </div>
