@@ -56,3 +56,8 @@ coverage/
 
 # Local roadmap / status notes — not committed
 ROADMAP.md
+
+# Local project rules / app reference / agent docs — not committed
+/RULES.md
+/EMBER.md
+/FIXES-TEST-PLAN.md

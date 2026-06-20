@@ -36,6 +36,7 @@ export interface ArtistPayload {
   thumbnails: { url: string; width?: number; height?: number }[];
   tracks: Track[];
   albums: AlbumSummary[];
+  singles: AlbumSummary[];
 }
 
 export interface AlbumDetail {

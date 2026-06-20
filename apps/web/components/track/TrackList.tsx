@@ -66,7 +66,7 @@ export function TrackList({ tracks, showAlbum = true, showRank = false, onRemove
           >
             <div className="relative grid place-items-center h-8 w-8 justify-self-center">
               {showRank && !playing && (
-                <span className="absolute inset-0 grid place-items-center text-sm tabular-nums text-muted-foreground group-hover:opacity-0 transition-opacity">
+                <span className="pointer-events-none absolute inset-0 grid place-items-center text-sm tabular-nums text-muted-foreground group-hover:opacity-0 transition-opacity">
                   {i + 1}
                 </span>
               )}

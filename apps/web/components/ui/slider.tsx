@@ -2,6 +2,19 @@ import { Slider as SliderPrimitive } from "@base-ui/react/slider"
 
 import { cn } from "@/lib/utils"
 
+/** base-ui's slider has no pointercancel handler, so an interrupted drag
+ *  (common on mobile) leaves its document pointer/touch listeners attached —
+ *  a later tap ANYWHERE then re-fires change+commit with the stale drag value
+ *  and seeks playback back to it. base-ui passes the originating native event
+ *  on every change/commit; a leaked event fires on the tapped element, which
+ *  is outside the slider, so we drop those. Genuine interactions (drag with
+ *  pointer capture, track-press, keyboard) always originate inside the slider. */
+function isFromInsideSlider(details: { event: Event } | undefined): boolean {
+  const target = details?.event?.target
+  if (!(target instanceof Element)) return true // synthetic / no target — don't over-drop
+  return !!target.closest('[data-slot="slider"]')
+}
+
 function Slider({
   className,
   defaultValue,
@@ -9,6 +22,8 @@ function Slider({
   min = 0,
   max = 100,
   smooth = false,
+  onValueChange,
+  onValueCommitted,
   ...props
 }: SliderPrimitive.Root.Props & {
   /** Glide the fill + thumb between value changes. For the playback progress
@@ -23,6 +38,15 @@ function Slider({
       ? defaultValue
       : [min, max]
 
+  const handleValueChange: typeof onValueChange = (val, details) => {
+    if (!isFromInsideSlider(details)) return
+    onValueChange?.(val, details)
+  }
+  const handleValueCommitted: typeof onValueCommitted = (val, details) => {
+    if (!isFromInsideSlider(details)) return
+    onValueCommitted?.(val, details)
+  }
+
   return (
     <SliderPrimitive.Root
       className={cn("data-horizontal:w-full data-vertical:h-full", className)}
@@ -32,6 +56,8 @@ function Slider({
       min={min}
       max={max}
       thumbAlignment="edge"
+      onValueChange={handleValueChange}
+      onValueCommitted={handleValueCommitted}
       {...props}
     >
       <SliderPrimitive.Control className="relative flex w-full touch-none items-center select-none data-disabled:opacity-50 data-horizontal:py-3 data-vertical:h-full data-vertical:min-h-40 data-vertical:w-auto data-vertical:flex-col">
