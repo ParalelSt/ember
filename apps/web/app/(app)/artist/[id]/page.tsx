@@ -8,11 +8,16 @@ import { AlbumRow } from '@/components/artist/AlbumRow';
 import { PlayIcon } from '@/components/icons';
 import { usePlayer } from '@/components/player/PlayerProvider';
 import { useQueryArtist } from '@/hooks/useLibrary';
+import { useOnline } from '@/lib/useOnline';
+import { OfflinePlaceholder } from '@/components/OfflinePlaceholder';
 
 export default function ArtistPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const { playTrack } = usePlayer();
   const { data, isLoading, error } = useQueryArtist(id);
+  const isOnline = useOnline();
+
+  if (!isOnline) return <OfflinePlaceholder />;
 
   if (error) {
     return (

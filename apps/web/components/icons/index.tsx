@@ -34,4 +34,8 @@ export {
   Key as KeyIcon,
   Eye as EyeIcon,
   EyeOff as EyeOffIcon,
+  CloudDownload as CloudDownloadIcon,
+  Check as CheckIcon,
+  XCircle as XCircleIcon,
+  Share as ShareIcon,
 } from 'lucide-react';

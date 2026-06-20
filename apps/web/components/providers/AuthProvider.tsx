@@ -49,8 +49,17 @@ export function AuthProvider({ children, initialUser }: { children: ReactNode; i
 
     // If we mounted without an initial user, attempt a token refresh so a
     // stale-but-valid cookie can rehydrate the session without a re-login.
+    // Offline tolerance: network failures during refresh are SWALLOWED so the
+    // offline-pinned playlists stay reachable. Any non-network error (401/403)
+    // still clears the store.
     if (!initialUser && pb.authStore.isValid) {
-      pb.collection('users').authRefresh().catch(() => pb.authStore.clear()).finally(() => setLoading(false));
+      pb.collection('users').authRefresh()
+        .catch((err: unknown) => {
+          const msg = err instanceof Error ? err.message.toLowerCase() : '';
+          const isNetwork = err instanceof TypeError || msg.includes('failed to fetch') || msg.includes('network');
+          if (!isNetwork) pb.authStore.clear();
+        })
+        .finally(() => setLoading(false));
     } else {
       setLoading(false);
     }

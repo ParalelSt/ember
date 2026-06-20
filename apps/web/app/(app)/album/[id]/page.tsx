@@ -7,6 +7,8 @@ import { TrackList } from '@/components/track/TrackList';
 import { PlayIcon } from '@/components/icons';
 import { usePlayer } from '@/components/player/PlayerProvider';
 import { useQueryAlbum } from '@/hooks/useLibrary';
+import { useOnline } from '@/lib/useOnline';
+import { OfflinePlaceholder } from '@/components/OfflinePlaceholder';
 
 function fmtTotal(sec: number): string {
   if (!sec || !isFinite(sec)) return '';
@@ -21,6 +23,9 @@ export default function AlbumPage({ params }: { params: Promise<{ id: string }> 
   const { id } = use(params);
   const { playTrack } = usePlayer();
   const { data, isLoading, error } = useQueryAlbum(id);
+  const isOnline = useOnline();
+
+  if (!isOnline) return <OfflinePlaceholder />;
 
   if (error) {
     return (

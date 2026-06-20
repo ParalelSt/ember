@@ -16,7 +16,11 @@ export default function AuthPage() {
   const { signIn, signUp } = useAuth();
   const router = useRouter();
   const search = useSearchParams();
-  const next = search.get('next') ?? '/';
+  // Only same-origin paths: must start with a single '/' ('//' is a
+  // protocol-relative external URL). Anything else → home. Keeps ?next=
+  // from being usable as an open redirect.
+  const rawNext = search.get('next') ?? '/';
+  const next = rawNext.startsWith('/') && !rawNext.startsWith('//') ? rawNext : '/';
 
   const [stage, setStage] = useState<Stage>({ kind: 'email' });
   const [email, setEmail] = useState('');

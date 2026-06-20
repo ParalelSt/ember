@@ -7,10 +7,13 @@ import { TrackList } from '@/components/track/TrackList';
 import { SearchIcon } from '@/components/icons';
 import { api } from '@/lib/api';
 import { QK } from '@/hooks/useLibrary';
+import { useOnline } from '@/lib/useOnline';
+import { OfflinePlaceholder } from '@/components/OfflinePlaceholder';
 
 export default function SearchPage() {
   const [q, setQ] = useState('');
   const [debouncedQ, setDebouncedQ] = useState('');
+  const isOnline = useOnline();
 
   useEffect(() => {
     // Trim during debounce so " " / "   abc   " collapse to "" / "abc" —
@@ -23,8 +26,10 @@ export default function SearchPage() {
   const { data, isFetching } = useQuery({
     queryKey: QK.search(debouncedQ),
     queryFn: () => api.search(debouncedQ).then((r) => r.tracks),
-    enabled: debouncedQ.length > 0,
+    enabled: isOnline && debouncedQ.length > 0,
   });
+
+  if (!isOnline) return <OfflinePlaceholder />;
 
   return (
     <div className="pt-4 md:pt-0">

@@ -260,7 +260,34 @@ function SyncedLyrics({
   const lineRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const prevActiveIdxRef = useRef<number>(-1);
 
+  // Only render + auto-scroll the lyric lines while the scroller is actually on
+  // screen. Off-screen (the user is up at the artwork), the ~4×/sec activeIdx
+  // churn would otherwise re-render every line and fire scrollTo on a hidden
+  // container — wasted "random updates" the user can't see. The lyrics data is
+  // still prefetched, so when scrolled into view the lines pop in already on
+  // the right line. Seeking only happens by clicking a line that's in view.
+  const [inView, setInView] = useState(false);
   useEffect(() => {
+    const el = scrollerRef.current;
+    if (!el || typeof IntersectionObserver === 'undefined') {
+      setInView(true);
+      return;
+    }
+    const io = new IntersectionObserver(
+      ([entry]) => {
+        setInView(entry.isIntersecting);
+        // Re-entry should land on the active line immediately, not glide
+        // across the lines it missed while hidden.
+        if (!entry.isIntersecting) prevActiveIdxRef.current = -1;
+      },
+      { threshold: 0 },
+    );
+    io.observe(el);
+    return () => io.disconnect();
+  }, [scrollerRef]);
+
+  useEffect(() => {
+    if (!inView) return;
     if (activeIdx < 0) {
       // No line active — playback is before lines[0].time (intro).
       // If the user rewound here from a later line, snap the scroller
@@ -313,11 +340,11 @@ function SyncedLyrics({
     });
 
     prevActiveIdxRef.current = activeIdx;
-  }, [activeIdx, scrollerRef]);
+  }, [activeIdx, scrollerRef, inView]);
 
   return (
     <div className="flex flex-col gap-2 py-2">
-      {lines.map((line, i) => {
+      {inView && lines.map((line, i) => {
         const isActive = i === activeIdx;
         const isPast = i < activeIdx;
         const text = line.text || '♪';

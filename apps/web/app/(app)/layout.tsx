@@ -9,11 +9,19 @@ import { BackToTop } from '@/components/nav/BackToTop';
 import { PlayerBar } from '@/components/player/PlayerBar';
 import { NowPlaying } from '@/components/player/NowPlaying';
 import { LyricsPanel } from '@/components/player/LyricsPanel';
+import { hydrateOfflineStore } from '@/lib/offline';
 
 export default function AppShellLayout({ children }: { children: ReactNode }) {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const scrollerRef = useRef<HTMLDivElement>(null);
   const [scrollerH, setScrollerH] = useState(0);
+
+  // Hydrate the offline store from OPFS on app boot — fills downloaded set
+  // + totalBytes, and posts every pinned track's videoId to the SW so it
+  // knows which streams to serve from OPFS when offline.
+  useEffect(() => {
+    void hydrateOfflineStore();
+  }, []);
 
   // LyricsPanel reads --ember-scroller-h to size itself to one viewport-of-
   // scroller, so its position:sticky inside the scroller keeps it glued to

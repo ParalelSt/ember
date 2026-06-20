@@ -8,7 +8,9 @@ import {
   ChevronDownIcon, HeartIcon, NextIcon, PauseIcon, PlayIcon, PrevIcon, MusicIcon,
 } from '@/components/icons';
 import { AddToPlaylistMenu } from '@/components/track/AddToPlaylistMenu';
+import { ShareButton } from '@/components/track/ShareButton';
 import { LyricsBody } from '@/components/player/LyricsBody';
+import { MarqueeText } from '@/components/player/MarqueeText';
 import { useBackDismiss } from '@/lib/useBackDismiss';
 import { usePlayer } from '@/components/player/PlayerProvider';
 import { useAuth } from '@/components/providers/AuthProvider';
@@ -111,7 +113,11 @@ export function NowPlaying() {
       aria-modal="true"
       aria-hidden={!open}
       className={cn(
-        'md:hidden fixed inset-0 z-60 flex flex-col transition-all duration-300 ease-out',
+        // z-45: above the app shell + BackToTop (z-40) but BELOW the portal
+        // overlays (dropdown/dialog/sheet at z-50) so the add-to-playlist menu
+        // and its New-playlist dialog open ON TOP of this full-screen view
+        // instead of behind it.
+        'md:hidden fixed inset-0 z-45 flex flex-col transition-all duration-300 ease-out',
         // Opacity-0 in addition to the slide-down so iOS Safari can't leak a
         // sliver of the blurred-artwork backdrop over the PlayerBar.
         open ? 'translate-y-0 opacity-100' : 'translate-y-full opacity-0 pointer-events-none',
@@ -174,7 +180,7 @@ export function NowPlaying() {
         {/* Title + artist + like */}
         <div className="flex items-end justify-between gap-4">
           <div className="min-w-0">
-            <div className="truncate text-2xl font-bold tracking-tight">{current?.title ?? ''}</div>
+            <MarqueeText text={current?.title ?? ''} active={open} className="text-2xl font-bold tracking-tight" />
             <div className="mt-1 truncate text-sm text-muted-foreground">
               {current?.artistId ? (
                 <Link href={`/artist/${current.artistId}`} onClick={() => setOpen(false)} className="hover:underline">
@@ -197,6 +203,7 @@ export function NowPlaying() {
                 <HeartIcon className="h-6 w-6" fill={isLiked ? 'currentColor' : 'none'} />
               </Button>
               <AddToPlaylistMenu track={current} />
+              <ShareButton track={current} className="h-10 w-10" />
             </div>
           )}
         </div>

@@ -1,25 +1,42 @@
-// Service worker for Ember PWA — intentionally MINIMAL / passthrough.
+// Service worker KILL-SWITCH — Ember no longer uses a service worker.
 //
-// It exists only to make the PWA installable (an installable PWA needs a
-// registered service worker with a fetch handler). It caches NOTHING:
-// cache-first asset caching repeatedly served stale / broken JS, images and
-// icons after rebuilds, so every request now goes straight to the network
-// (browser default). Offline support is deferred to the native app.
+// A caching service worker repeatedly served stale / broken assets after
+// rebuilds (vanishing icons and images), and even a "passthrough" SW kept
+// intercepting requests and could stay pinned in a browser long after we
+// shipped a gentler version. PWA install and offline playback are both moving
+// to the native app, so the SW has no remaining purpose.
+//
+// This file exists only to evict any SW a browser still has registered. On the
+// next visit the browser fetches this script (SW scripts are always
+// revalidated), installs + activates it immediately, wipes every cache,
+// unregisters itself, and reloads open tabs so they run uncontrolled — straight
+// to the network — from then on. It registers no fetch handler, so it never
+// intercepts a request while it's briefly alive.
 
-self.addEventListener('install', () => {
-  self.skipWaiting();
-});
+self.addEventListener('install', () => self.skipWaiting());
 
 self.addEventListener('activate', (e) => {
   e.waitUntil((async () => {
-    // Drop every old cache (the poisoned v4–v7 asset caches that broke
-    // images/icons). We no longer use the Cache API at all.
-    const keys = await caches.keys();
-    await Promise.all(keys.map((k) => caches.delete(k)));
-    await self.clients.claim();
+    try {
+      const keys = await caches.keys();
+      await Promise.all(keys.map((k) => caches.delete(k)));
+    } catch {
+      // No Cache API / already gone — nothing to clean up.
+    }
+    try {
+      await self.registration.unregister();
+    } catch {
+      // Unregister can fail in odd states; the reload below still frees tabs.
+    }
+    // Reload controlled tabs once so they re-fetch everything from the network
+    // with no SW in the way.
+    const clients = await self.clients.matchAll({ type: 'window' });
+    for (const client of clients) {
+      try {
+        client.navigate(client.url);
+      } catch {
+        // Client may not be navigable; harmless.
+      }
+    }
   })());
 });
-
-// A fetch handler must exist for installability, but it intercepts nothing —
-// requests fall through to the network.
-self.addEventListener('fetch', () => {});
