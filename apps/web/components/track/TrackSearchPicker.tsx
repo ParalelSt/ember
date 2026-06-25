@@ -6,7 +6,8 @@ import { api } from '@/lib/api';
 import { QK } from '@/hooks/useLibrary';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { SearchIcon, PlusIcon, RefreshIcon } from '@/components/icons';
+import { SearchIcon, PlusIcon, RefreshIcon, PlayIcon, PauseIcon } from '@/components/icons';
+import { usePlayer } from '@/components/player/PlayerProvider';
 import type { Track } from '@/types/track';
 import { cn } from '@/lib/utils';
 
@@ -27,6 +28,7 @@ interface Props {
  *  main /search page (debounced, same `api.search`), with a recommendations
  *  fallback when the input is empty. */
 export function TrackSearchPicker({ added = [], seeds = [], onAdd, className }: Props) {
+  const { current, isPlaying, playTrack, toggle } = usePlayer();
   const [q, setQ] = useState('');
   const [debouncedQ, setDebouncedQ] = useState('');
   // Bumped by the refresh button — also cycles the active seed across the
@@ -111,6 +113,7 @@ export function TrackSearchPicker({ added = [], seeds = [], onAdd, className }: 
         )}
         {(list ?? []).map((t) => {
           const isAdded = addedIds.has(t.id);
+          const playing = current?.id === t.id;
           return (
             <div
               key={t.id}
@@ -121,9 +124,19 @@ export function TrackSearchPicker({ added = [], seeds = [], onAdd, className }: 
                 <img src={t.artworkUrl} alt="" className="h-10 w-10 rounded shrink-0 object-cover bg-black" />
               )}
               <div className="min-w-0 flex-1">
-                <div className="truncate text-sm font-medium">{t.title}</div>
+                <div className={cn('truncate text-sm font-medium', playing && 'text-ember')}>{t.title}</div>
                 <div className="truncate text-xs text-muted-foreground">{t.artist}</div>
               </div>
+              {/* Preview play/pause — plays just this track (then flows into radio). */}
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => (playing ? toggle() : playTrack(t))}
+                aria-label={playing && isPlaying ? 'Pause' : 'Play'}
+                className={cn('h-8 w-8 shrink-0', playing ? 'text-ember hover:text-ember' : 'text-muted-foreground hover:text-foreground')}
+              >
+                {playing && isPlaying ? <PauseIcon className="h-3.5 w-3.5" /> : <PlayIcon className="h-3.5 w-3.5" />}
+              </Button>
               <Button
                 variant="ghost"
                 size="sm"
