@@ -334,6 +334,13 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     if (index > 0) {
       loadAndPlay(queue[index - 1] ?? null, true);
       setIndex(index - 1);
+      return;
+    }
+    // At the first track: with loop-all on, Prev wraps to the last track
+    // (mirrors the Next wrap). loopMode read live so a mid-playback toggle works.
+    if (usePlayerStore.getState().loopMode === 'all' && queue.length > 0) {
+      loadAndPlay(queue[queue.length - 1] ?? null, true);
+      setIndex(queue.length - 1);
     }
   }, [index, queue, setIndex, loadAndPlay]);
 
