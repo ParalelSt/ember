@@ -12,6 +12,7 @@ import {
   PlayIcon,
   PrevIcon,
   QueueIcon,
+  RepeatIcon,
   RepeatOneIcon,
   VolumeIcon,
   VolumeMutedIcon,
@@ -154,17 +155,23 @@ export function PlayerBar() {
             variant="ghost"
             size="icon"
             onClick={cycleLoopMode}
-            aria-label={loopMode === 'one' ? 'Disable loop' : 'Loop current song'}
-            aria-pressed={loopMode === 'one'}
-            title={loopMode === 'one' ? 'Loop current song' : 'Loop off'}
+            aria-label={
+              loopMode === 'one' ? 'Loop one' : loopMode === 'all' ? 'Loop off' : 'Loop playlist'
+            }
+            aria-pressed={loopMode !== 'off'}
+            title={
+              loopMode === 'one' ? 'Looping current song' : loopMode === 'all' ? 'Looping playlist' : 'Loop off'
+            }
             className={cn(
               'hidden md:inline-flex h-8 w-8',
-              loopMode === 'one'
+              loopMode !== 'off'
                 ? 'text-ember hover:text-ember'
                 : 'text-muted-foreground hover:text-foreground',
             )}
           >
-            <RepeatOneIcon className="h-4 w-4" />
+            {loopMode === 'one'
+              ? <RepeatOneIcon className="h-4 w-4" />
+              : <RepeatIcon className="h-4 w-4" />}
           </Button>
           <Button variant="ghost" size="icon" onClick={prev} aria-label="Previous">
             <PrevIcon className="h-4 w-4" />
