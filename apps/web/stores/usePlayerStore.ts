@@ -4,7 +4,7 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { PlaybackContext, Track } from '@/types/track';
 
-export type LoopMode = 'off' | 'one';
+export type LoopMode = 'off' | 'all' | 'one';
 
 interface PlayerState {
   queue: Track[];
@@ -16,9 +16,9 @@ interface PlayerState {
   /** Where the current queue was started from. Used by radio mode to decide
    *  whether to keep the same artist around or drift toward similar genre. */
   context: PlaybackContext | null;
-  /** off → no looping, one → replay current track on end. (Queue-all
-   *  loop is intentionally absent — radio mode auto-extends the queue
-   *  so there's never a real "end" for the loop to wrap.) */
+  /** off → no looping; all → restart the queue from track 0 on end (radio
+   *  auto-extend is suppressed while this is active); one → replay current
+   *  track on end. */
   loopMode: LoopMode;
   /** True = audio output forced to 0. Restores previous `volume` when toggled
    *  off; the slider position stays put so the user doesn't lose their level. */
@@ -63,11 +63,9 @@ export const usePlayerStore = create<PlayerState>()(
       setVolume: (volume) => set({ volume: Math.min(1, Math.max(0, volume)) }),
       setContext: (context) => set({ context }),
       setLoopMode: (loopMode) => set({ loopMode }),
-      // Toggle the two states. Written as "anything-not-one → one"
-      // so legacy persisted 'all' from older versions cycles cleanly
-      // into 'one' on the next click rather than getting stuck.
+      // off → all → one → off. Any unexpected persisted value lands on 'off'.
       cycleLoopMode: () => set((s) => ({
-        loopMode: s.loopMode === 'one' ? 'off' : 'one',
+        loopMode: s.loopMode === 'off' ? 'all' : s.loopMode === 'all' ? 'one' : 'off',
       })),
       setMuted: (muted) => set({ muted }),
       toggleMuted: () => set((s) => ({ muted: !s.muted })),
