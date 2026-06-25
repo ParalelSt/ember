@@ -263,6 +263,9 @@ export async function getArtist(channelId: string) {
 interface StreamInfo {
   url: string;
   ext?: string;
+  /** Headers yt-dlp used to resolve the format URL (notably User-Agent). The
+   *  proxy must replay these when fetching googlevideo or it gets a 403. */
+  httpHeaders?: Record<string, string>;
 }
 
 const URL_CACHE = new Map<string, { info: StreamInfo; expires: number }>();
