@@ -311,6 +311,9 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
   const next = useCallback(() => {
     userInteracted.current = true;
+    const loop = usePlayerStore.getState().loopMode;
+    // [loopdbg] TEMP — diagnosing next/prev wrap. Remove once confirmed.
+    logger.breadcrumb('playback', 'next', { loop, index, queueLen: queue.length });
     if (index < queue.length - 1) {
       // Synchronous play() preserves the user-gesture token; the effect that
       // would otherwise handle this fires too late on React 19.
@@ -319,9 +322,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       return;
     }
     // At the end of the queue: with loop-all on, the Next button wraps back to
-    // the first track (matches the auto-advance wrap in onEnd). Read loopMode
-    // live so a mid-playback toggle is honored.
-    if (usePlayerStore.getState().loopMode === 'all' && queue.length > 0) {
+    // the first track (matches the auto-advance wrap in onEnd).
+    if (loop === 'all' && queue.length > 0) {
       loadAndPlay(queue[0] ?? null, true);
       setIndex(0);
     }
@@ -330,17 +332,21 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const prev = useCallback(() => {
     userInteracted.current = true;
     const a = audioRef.current;
+    const loop = usePlayerStore.getState().loopMode;
+    // [loopdbg] TEMP — diagnosing next/prev wrap. Remove once confirmed.
+    logger.breadcrumb('playback', 'prev', { loop, index, queueLen: queue.length, t: Math.round(a?.currentTime ?? 0) });
+    // First track + loop-all → wrap to the last track, regardless of how far
+    // into the song we are (checked BEFORE the >3s restart so the wrap isn't
+    // swallowed by restart-current at the start of the queue).
+    if (index === 0 && loop === 'all' && queue.length > 0) {
+      loadAndPlay(queue[queue.length - 1] ?? null, true);
+      setIndex(queue.length - 1);
+      return;
+    }
     if (a && a.currentTime > 3) { a.currentTime = 0; return; }
     if (index > 0) {
       loadAndPlay(queue[index - 1] ?? null, true);
       setIndex(index - 1);
-      return;
-    }
-    // At the first track: with loop-all on, Prev wraps to the last track
-    // (mirrors the Next wrap). loopMode read live so a mid-playback toggle works.
-    if (usePlayerStore.getState().loopMode === 'all' && queue.length > 0) {
-      loadAndPlay(queue[queue.length - 1] ?? null, true);
-      setIndex(queue.length - 1);
     }
   }, [index, queue, setIndex, loadAndPlay]);
 
