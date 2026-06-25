@@ -312,8 +312,6 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const next = useCallback(() => {
     userInteracted.current = true;
     const loop = usePlayerStore.getState().loopMode;
-    // [loopdbg] TEMP — diagnosing next/prev wrap. Remove once confirmed.
-    logger.breadcrumb('playback', 'next', { loop, index, queueLen: queue.length });
     if (index < queue.length - 1) {
       // Synchronous play() preserves the user-gesture token; the effect that
       // would otherwise handle this fires too late on React 19.
@@ -333,8 +331,6 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     userInteracted.current = true;
     const a = audioRef.current;
     const loop = usePlayerStore.getState().loopMode;
-    // [loopdbg] TEMP — diagnosing next/prev wrap. Remove once confirmed.
-    logger.breadcrumb('playback', 'prev', { loop, index, queueLen: queue.length, t: Math.round(a?.currentTime ?? 0) });
     // First track + loop-all → wrap to the last track, regardless of how far
     // into the song we are (checked BEFORE the >3s restart so the wrap isn't
     // swallowed by restart-current at the start of the queue).
