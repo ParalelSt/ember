@@ -330,6 +330,10 @@ def cmd_info(args):
         "filesize": info.get("filesize") or info.get("filesize_approx"),
         "durationSec": info.get("duration"),
         "title": info.get("title"),
+        # The headers yt-dlp used to fetch this format (notably User-Agent).
+        # googlevideo URLs are signed for the client that resolved them, so the
+        # proxy MUST replay these when fetching — a mismatched UA gets a 403.
+        "httpHeaders": info.get("http_headers") or {},
     }, sys.stdout)
 
 def cmd_track(args):
