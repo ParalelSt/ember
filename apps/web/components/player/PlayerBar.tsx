@@ -147,10 +147,9 @@ export function PlayerBar() {
       {/* Controls */}
       <div className="flex flex-col items-center gap-1">
         <div className="flex items-center gap-3">
-          {/* Loop-current-song toggle. Queue-wide looping was removed —
-              the queue auto-extends via radio mode, so there's no real
-              "end" for it to wrap. Desktop only — mobile keeps the row
-              tight. */}
+          {/* Loop toggle — cycles off → loop playlist (wrap queue, radio
+              suppressed) → loop one song. Desktop only; phones get the same
+              control in the full-screen NowPlaying transport row. */}
           <Button
             variant="ghost"
             size="icon"
