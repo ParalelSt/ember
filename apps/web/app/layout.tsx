@@ -57,6 +57,13 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   return (
     <html lang="en" className={`${inter.variable} dark`} suppressHydrationWarning>
       <body className="min-h-screen bg-background text-foreground antialiased">
+        {/* Portrait-only on phones — shown over the app when a phone is turned
+            landscape (the layout is built for portrait). CSS-gated in
+            globals.css; inert on tablets/desktop. */}
+        <div className="rotate-lock">
+          <p className="text-lg font-semibold">Rotate your phone to portrait</p>
+          <p className="text-sm text-muted-foreground">Ember is built for portrait on phones.</p>
+        </div>
         <QueryProvider>
           <AuthProvider initialUser={initialUser}>
             <LoggerInit />

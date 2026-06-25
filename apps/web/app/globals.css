@@ -132,3 +132,27 @@
 @media (prefers-reduced-motion: reduce) {
   .ember-marquee-anim { animation: none !important; }
 }
+
+/* Phone rotation lock — the app layout is portrait-only on phones. The PWA
+   manifest locks orientation when installed, but a browser tab can't truly
+   lock it (iOS Safari ignores the manifest entirely), so cover the broken
+   landscape layout with a "rotate to portrait" prompt instead. Heuristic:
+   landscape + short viewport = a phone on its side (tablets/desktops are
+   taller than 500px even in landscape). */
+.rotate-lock { display: none; }
+@media (orientation: landscape) and (max-height: 500px) {
+  .rotate-lock {
+    display: flex;
+    position: fixed;
+    inset: 0;
+    z-index: 100;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    padding: 1.5rem;
+    text-align: center;
+    background: var(--background);
+    color: var(--foreground);
+  }
+}
