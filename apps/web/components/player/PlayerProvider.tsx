@@ -487,8 +487,16 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         else if (fi < fresh.length) merged.push(fresh[fi++]);
         else if (ki < known.length) merged.push(known[ki++]);
       }
+      logger.breadcrumb('radio', 'extend', {
+        context: activeContext?.type ?? 'single',
+        seed: currentSourceId,
+        recs: tracks.length,
+        added: merged.length,
+      });
       if (merged.length > 0) setQueue([...queue, ...merged]);
-    }).catch(() => {}).finally(() => {
+    }).catch((e) => {
+      logger.error('radio', 'recommended fetch failed', { context: activeContext?.type ?? 'single', seed: currentSourceId }, e as Error);
+    }).finally(() => {
       if (fetchingRadioFor.current === currentId) fetchingRadioFor.current = null;
     });
   }, [current?.id, current?.sourceId, index, queue, history, liked, context, setQueue]);
