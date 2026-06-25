@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { SearchIcon, PlusIcon, RefreshIcon, PlayIcon, PauseIcon } from '@/components/icons';
 import { usePlayer } from '@/components/player/PlayerProvider';
+import { songKey } from '@/lib/songKey';
 import type { Track } from '@/types/track';
 import { cn } from '@/lib/utils';
 
@@ -60,7 +61,13 @@ export function TrackSearchPicker({ added = [], seeds = [], onAdd, className }: 
   const refreshRecs = () => setRefreshNonce((n) => n + 1);
 
   const addedIds = new Set(added.map((t) => t.id));
-  const list = searching ? searchQuery.data : recsQuery.data;
+  const addedKeys = new Set(added.map(songKey));
+  // Recommendations must never suggest a song already in the playlist (by id OR
+  // variant — a different upload of the same track). Search results keep showing
+  // the "Added" badge so a deliberate search still gives feedback.
+  const list = searching
+    ? searchQuery.data
+    : (recsQuery.data ?? []).filter((t) => !addedIds.has(t.id) && !addedKeys.has(songKey(t)));
   const loading = searching ? searchQuery.isFetching : recsQuery.isFetching;
 
   return (
