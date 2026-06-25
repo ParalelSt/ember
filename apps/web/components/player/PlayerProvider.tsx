@@ -316,6 +316,14 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       // would otherwise handle this fires too late on React 19.
       loadAndPlay(queue[index + 1] ?? null, true);
       setIndex(index + 1);
+      return;
+    }
+    // At the end of the queue: with loop-all on, the Next button wraps back to
+    // the first track (matches the auto-advance wrap in onEnd). Read loopMode
+    // live so a mid-playback toggle is honored.
+    if (usePlayerStore.getState().loopMode === 'all' && queue.length > 0) {
+      loadAndPlay(queue[0] ?? null, true);
+      setIndex(0);
     }
   }, [index, queue, setIndex, loadAndPlay]);
 
