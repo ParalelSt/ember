@@ -359,6 +359,13 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         void a.play();
         return;
       }
+      // Loop-all: at the end of the queue, wrap to the first track instead of
+      // stopping. Mid-queue, fall through to next() and advance normally.
+      if (state.loopMode === 'all' && state.index === state.queue.length - 1 && state.queue.length > 0) {
+        loadAndPlay(state.queue[0] ?? null, true);
+        setIndex(0);
+        return;
+      }
       next();
     };
     // Firefox Android only renders the lock-screen / notification media
@@ -384,7 +391,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       a.removeEventListener('play', onPlay);
       a.removeEventListener('pause', onPause);
     };
-  }, [audioReady, next, setDuration, setIsPlaying, setPosition]);
+  }, [audioReady, next, loadAndPlay, setIndex, setDuration, setIsPlaying, setPosition]);
 
   // Position persistence — separate cadence; never overwrites with sus 0 during track swap.
   useEffect(() => {
@@ -426,6 +433,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   //      pool is already genre-similar.
   useEffect(() => {
     if (!current?.sourceId) return;
+    // Loop-all wraps the queue instead of extending it — don't pull in radio.
+    if (usePlayerStore.getState().loopMode === 'all') return;
     if (index !== queue.length - 1) return;
     if (fetchingRadioFor.current === current.id) return;
     fetchingRadioFor.current = current.id;
