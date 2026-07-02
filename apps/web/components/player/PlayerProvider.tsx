@@ -20,6 +20,7 @@ import { logger } from '@/lib/logger/client';
 import { songKey } from '@/lib/songKey';
 import { detectShell } from '@/lib/playback/detectShell';
 import { createWebBackend } from '@/lib/playback/webBackend';
+import { createCapacitorBackend } from '@/lib/playback/capacitorBackend';
 import { createNativeBackend, nativeBackendReady } from '@/lib/playback/nativeBridge';
 import { createTauriBackend } from '@/lib/playback/tauriBackend';
 import type { AudioBackend, AudioBackendEvents } from '@/lib/playback/types';
@@ -152,11 +153,15 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         usePlayerStore.setState({ position: 0 });
       },
     };
-    // Per-shell native backend: tauri has a real engine (Part 5); other shells fall
-    // back to the working web <audio> backend until their native engine lands.
+    // Per-shell backend: tauri has a native engine (Part 5); capacitor keeps
+    // web audio but mirrors the session to the native media-session plugin
+    // (Part 3a — foreground service = background playback); plain web uses the
+    // bare <audio> backend.
     const shell = detectShell();
     let create = createWebBackend;
-    if (shell !== 'web' && nativeBackendReady(shell)) {
+    if (shell === 'capacitor') {
+      create = createCapacitorBackend;
+    } else if (shell !== 'web' && nativeBackendReady(shell)) {
       create = shell === 'tauri' ? createTauriBackend : createNativeBackend;
     }
     backendRef.current = create(events);
