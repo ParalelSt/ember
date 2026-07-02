@@ -6,7 +6,13 @@ import type { Track } from '@/types/track';
  *  from queueing a different *version* of what's already playing/queued, and
  *  to make the "liked" heart show the same across variants of a song. */
 export function songKey(track: Pick<Track, 'title' | 'artist'>): string {
-  return `${normalizeTitle(track.title ?? '')}::${normalizeArtist(track.artist ?? '')}`;
+  // Fall back to the raw lowercased title when aggressive normalization strips
+  // it to nothing — titles that are entirely version-noise/punctuation, or in a
+  // non-Latin script (which `[^a-z0-9]` would erase). Without this, every such
+  // song by one artist collapses to the same `::artist` key, so liking one
+  // makes the others' hearts light up too (findLikedVariant false-positive).
+  const title = normalizeTitle(track.title ?? '') || (track.title ?? '').trim().toLowerCase();
+  return `${title}::${normalizeArtist(track.artist ?? '')}`;
 }
 
 /** Returns the liked-list entry that matches `track` (same id or same

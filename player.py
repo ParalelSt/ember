@@ -17,6 +17,27 @@ MUSIC_DIR.mkdir(parents=True, exist_ok=True)
 
 yt = YTMusic()  # Works anonymously. For better results, use OAuth later.
 
+
+def _cookie_opts():
+    """yt-dlp cookie config to get past YouTube's intermittent "Sign in to
+    confirm you're not a bot" 403s on info/stream/download. Set ONE of these
+    env vars on the host (a logged-in YouTube session helps most):
+      YTDLP_COOKIE_FILE=/path/to/cookies.txt        (Netscape format, LF newlines)
+      YTDLP_COOKIES_FROM_BROWSER=firefox            (or chrome/chromium/brave/edge/
+                                                     safari; "firefox:profile" to
+                                                     pick a profile)
+    Returns a dict to splat into ydl_opts; empty when neither is set, so the
+    anonymous path is unchanged by default."""
+    cookie_file = os.environ.get("YTDLP_COOKIE_FILE", "").strip()
+    if cookie_file:
+        return {"cookiefile": cookie_file}
+    browser = os.environ.get("YTDLP_COOKIES_FROM_BROWSER", "").strip()
+    if browser:
+        name, _, profile = browser.partition(":")
+        return {"cookiesfrombrowser": (name, profile or None, None, None)}
+    return {}
+
+
 def sanitize_filename(name: str) -> str:
     """Clean filename for saving."""
     return re.sub(r'[\\/*?:"<>|]', "", name)[:150]
@@ -121,6 +142,7 @@ def ytdlp_search(query: str, limit: int):
         'skip_download': True,
         'quiet': True,
         'no_warnings': True,
+        **_cookie_opts(),
     }
     with contextlib.redirect_stdout(sys.stderr):
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -146,6 +168,7 @@ def download_if_needed(video_id: str, title: str, artist: str) -> Path:
         'embedthumbnail': True,
         'addmetadata': True,
         'quiet': False,
+        **_cookie_opts(),
     }
     url = f"https://www.youtube.com/watch?v={video_id}"
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -167,6 +190,7 @@ def download_by_id(video_id: str) -> Path:
         'outtmpl': outtmpl,
         'quiet': True,
         'no_warnings': True,
+        **_cookie_opts(),
     }
     url = f"https://www.youtube.com/watch?v={video_id}"
     # Belt-and-suspenders: redirect any stray prints from yt-dlp/postprocessors
@@ -295,6 +319,7 @@ def cmd_info(args):
         'quiet': True,
         'no_warnings': True,
         'skip_download': True,
+        **_cookie_opts(),
     }
     with contextlib.redirect_stdout(sys.stderr):
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -305,6 +330,10 @@ def cmd_info(args):
         "filesize": info.get("filesize") or info.get("filesize_approx"),
         "durationSec": info.get("duration"),
         "title": info.get("title"),
+        # The headers yt-dlp used to fetch this format (notably User-Agent).
+        # googlevideo URLs are signed for the client that resolved them, so the
+        # proxy MUST replay these when fetching — a mismatched UA gets a 403.
+        "httpHeaders": info.get("http_headers") or {},
     }, sys.stdout)
 
 def cmd_track(args):
@@ -405,20 +434,26 @@ def cmd_artist(args):
         songs = (info.get("songs") or {}).get("results") or []
 
     albums = (info.get("albums") or {}).get("results") or []
+    # Standalone singles/EPs are a separate get_artist() category from albums;
+    # without this they never reach the artist page (e.g. "Shadow of Intent -
+    # The Migrant"). Same shape as albums — each is an album-type browseId.
+    singles = (info.get("singles") or {}).get("results") or []
+
+    def album_json(a):
+        return {
+            "browseId": a.get("browseId"),
+            "title": a.get("title"),
+            "year": a.get("year"),
+            "thumbnails": a.get("thumbnails"),
+        }
+
     out = {
         "name": info.get("name"),
         "description": info.get("description"),
         "thumbnails": info.get("thumbnails") or [],
         "tracks": [to_track_json(t) for t in songs if t.get("videoId")],
-        "albums": [
-            {
-                "browseId": a.get("browseId"),
-                "title": a.get("title"),
-                "year": a.get("year"),
-                "thumbnails": a.get("thumbnails"),
-            }
-            for a in albums if a.get("browseId")
-        ],
+        "albums": [album_json(a) for a in albums if a.get("browseId")],
+        "singles": [album_json(a) for a in singles if a.get("browseId")],
     }
     json.dump(out, sys.stdout)
 

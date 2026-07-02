@@ -196,6 +196,7 @@ interface RawArtist {
   thumbnails?: { url: string }[];
   tracks?: RawYoutubeTrack[];
   albums?: unknown[];
+  singles?: unknown[];
   error?: string;
 }
 
@@ -255,12 +256,16 @@ export async function getArtist(channelId: string) {
     thumbnails: result?.thumbnails ?? [],
     tracks: (result?.tracks ?? []).filter((t) => t.videoId).map(normalize),
     albums: result?.albums ?? [],
+    singles: result?.singles ?? [],
   };
 }
 
 interface StreamInfo {
   url: string;
   ext?: string;
+  /** Headers yt-dlp used to resolve the format URL (notably User-Agent). The
+   *  proxy must replay these when fetching googlevideo or it gets a 403. */
+  httpHeaders?: Record<string, string>;
 }
 
 const URL_CACHE = new Map<string, { info: StreamInfo; expires: number }>();

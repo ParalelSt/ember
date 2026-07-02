@@ -218,17 +218,34 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
   const next = useCallback(() => {
     userInteracted.current = true;
+    const loop = usePlayerStore.getState().loopMode;
     if (index < queue.length - 1) {
       // Synchronous load preserves the user-gesture token; the id-effect would
       // fire too late on React 19.
       loadAndPlay(queue[index + 1] ?? null, true);
       setIndex(index + 1);
+      return;
+    }
+    // At the end of the queue: with loop-all on, the Next button wraps back to
+    // the first track (matches the auto-advance wrap in onEnd).
+    if (loop === 'all' && queue.length > 0) {
+      loadAndPlay(queue[0] ?? null, true);
+      setIndex(0);
     }
   }, [index, queue, setIndex, loadAndPlay]);
 
   const prev = useCallback(() => {
     userInteracted.current = true;
     const b = backendRef.current;
+    const loop = usePlayerStore.getState().loopMode;
+    // First track + loop-all → wrap to the last track, regardless of how far
+    // into the song we are (checked BEFORE the >3s restart so the wrap isn't
+    // swallowed by restart-current at the start of the queue).
+    if (index === 0 && loop === 'all' && queue.length > 0) {
+      loadAndPlay(queue[queue.length - 1] ?? null, true);
+      setIndex(queue.length - 1);
+      return;
+    }
     if (b && b.getCurrentTime() > 3) {
       b.seek(0);
       return;
@@ -273,6 +290,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   // re-ranked by the user's personal play count.
   useEffect(() => {
     if (!current?.sourceId) return;
+    // Loop-all wraps the queue instead of extending it — don't pull in radio.
+    if (usePlayerStore.getState().loopMode === 'all') return;
     if (index !== queue.length - 1) return;
     if (fetchingRadioFor.current === current.id) return;
     fetchingRadioFor.current = current.id;
@@ -323,8 +342,16 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         else if (fi < fresh.length) merged.push(fresh[fi++]);
         else if (ki < known.length) merged.push(known[ki++]);
       }
+      logger.breadcrumb('radio', 'extend', {
+        context: activeContext?.type ?? 'single',
+        seed: currentSourceId,
+        recs: tracks.length,
+        added: merged.length,
+      });
       if (merged.length > 0) setQueue([...queue, ...merged]);
-    }).catch(() => {}).finally(() => {
+    }).catch((e) => {
+      logger.error('radio', 'recommended fetch failed', { context: activeContext?.type ?? 'single', seed: currentSourceId }, e as Error);
+    }).finally(() => {
       if (fetchingRadioFor.current === currentId) fetchingRadioFor.current = null;
     });
   }, [current?.id, current?.sourceId, index, queue, history, liked, context, setQueue]);

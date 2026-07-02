@@ -62,8 +62,15 @@ export const createWebBackend: CreateAudioBackend = (events) => {
   // restoreTo handling shared by load() and play()-recovery: jump to the saved
   // position once metadata is known, then surface it via onTime so the provider
   // updates position + its last-valid fallback.
+  // pendingMeta: the not-yet-fired handler from the CURRENT load. Removed
+  // before the next load registers its own — otherwise a stale restoreTo fires
+  // on the new track's loadedmetadata and seeks it to the previous song's
+  // position (same leak fixed in the pre-seam provider on test-branch).
+  let pendingMeta: (() => void) | null = null;
   const restoreOnMeta = (restoreTo: number) => {
+    if (pendingMeta) a.removeEventListener('loadedmetadata', pendingMeta);
     const onMetaOnce = () => {
+      pendingMeta = null;
       if (restoreTo > 1 && restoreTo < (a.duration || Infinity)) {
         a.currentTime = restoreTo;
         lastKnownTime = restoreTo;
@@ -71,6 +78,7 @@ export const createWebBackend: CreateAudioBackend = (events) => {
       }
       transitioning = false;
     };
+    pendingMeta = onMetaOnce;
     a.addEventListener('loadedmetadata', onMetaOnce, { once: true });
   };
 
