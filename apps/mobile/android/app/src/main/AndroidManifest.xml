@@ -39,4 +39,9 @@
     <!-- Permissions -->
 
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Android 14+ (targetSdk 34+) requires the typed FGS permission to start
+         the media-session plugin's foregroundServiceType="mediaPlayback"
+         service; the plugin's own manifest only declares the generic
+         FOREGROUND_SERVICE. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
 </manifest>
