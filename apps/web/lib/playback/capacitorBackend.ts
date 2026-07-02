@@ -17,10 +17,13 @@ interface MediaSessionPlugin {
     artwork?: { src: string; sizes?: string; type?: string }[];
   }): Promise<void>;
   setPlaybackState(options: { playbackState: 'none' | 'paused' | 'playing' }): Promise<void>;
+  // NOTE: returns `unknown`, not Promise — when a Capacitor plugin method is
+  // invoked WITH a callback argument, the injected bridge switches to
+  // callback mode and returns a callback-ID string instead of a Promise.
   setActionHandler(
     options: { action: 'play' | 'pause' | 'seekbackward' | 'seekforward' | 'previoustrack' | 'nexttrack' | 'seekto' | 'stop' },
     handler: ((details: { action: string; seekTime?: number | null }) => void) | null,
-  ): Promise<void>;
+  ): unknown;
   setPositionState(options: { duration?: number; playbackRate?: number; position?: number }): Promise<void>;
 }
 
@@ -33,9 +36,13 @@ function plugin(): MediaSessionPlugin | null {
 }
 
 /** Fire-and-forget: a missing/broken plugin must degrade to plain web
- *  behavior, never break playback. */
-function call(p: Promise<void> | undefined): void {
-  void p?.catch(() => {});
+ *  behavior, never break playback. Duck-typed — Capacitor's bridge returns a
+ *  Promise for normal methods but a callback-ID STRING for callback-taking
+ *  methods (setActionHandler), so `.catch` must not be assumed. */
+function call(p: unknown): void {
+  if (p && typeof (p as Promise<void>).catch === 'function') {
+    void (p as Promise<void>).catch(() => {});
+  }
 }
 
 /** Capacitor (Android app) backend — the web <audio> pipeline unchanged, plus
