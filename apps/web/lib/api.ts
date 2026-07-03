@@ -52,7 +52,11 @@ async function req<T>(path: string, { method = 'GET', body, signal }: ReqOptions
   if (!res.ok) {
     const err = (await res.json().catch(() => ({ error: res.statusText }))) as { error?: string };
     logger.error('api', `${method} ${path} → ${res.status}`, { method, path, status: res.status, body: err.error });
-    throw new Error(err.error || `Request failed: ${res.status}`);
+    // Attach the HTTP status so callers can branch on it (e.g. 400 = duplicate
+    // → friendly "already in playlist" toast instead of the raw server text).
+    const error = new Error(err.error || `Request failed: ${res.status}`) as Error & { status?: number };
+    error.status = res.status;
+    throw error;
   }
   return (await res.json()) as T;
 }

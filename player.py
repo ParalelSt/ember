@@ -414,12 +414,15 @@ def cmd_artist(args):
     if artist_name:
         try:
             results = yt.search(artist_name, filter="songs", limit=30)
-            lowered = artist_name.lower()
             for e in results or []:
                 if not e.get("videoId"):
                     continue
-                # Only include results actually attributed to this artist.
-                if not any((a.get("name") or "").lower() == lowered
+                # Only include results attributed to THIS artist's channelId.
+                # Matching by name mixed up same-named artists (two "Noah"s
+                # shared one page); search entries carry the artist id, so
+                # match on that. Entries without ids are dropped — the
+                # get_artist() fallback below covers an over-strict filter.
+                if not any(a.get("id") == args.channel_id
                            for a in (e.get("artists") or [])):
                     continue
                 songs.append(e)

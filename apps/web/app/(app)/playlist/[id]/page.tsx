@@ -71,7 +71,7 @@ export default function PlaylistPage({ params }: { params: Promise<{ id: string 
     } catch (e) {
       const status = (e as { status?: number } | undefined)?.status;
       if (status === 400) toast.message(`"${track.title}" is already in this playlist`);
-      else toast.error(`Couldn't add: ${(e as Error).message}`);
+      else toast.error(`Couldn't add "${track.title}" — please try again.`);
     }
   };
 
@@ -95,7 +95,7 @@ export default function PlaylistPage({ params }: { params: Promise<{ id: string 
       toast.success(`Deleted "${playlist.name}"`);
       router.push('/library');
     } catch (e) {
-      toast.error(`Couldn't delete: ${(e as Error).message}`);
+      toast.error(`Couldn't delete the playlist — please try again.`);
       throw e; // keep the dialog open on failure
     }
   };
@@ -108,7 +108,7 @@ export default function PlaylistPage({ params }: { params: Promise<{ id: string 
       toast.success(`Removed "${track.title}"`);
       setPendingRemove(null);
     } catch (e) {
-      toast.error(`Couldn't remove: ${(e as Error).message}`);
+      toast.error(`Couldn't remove that — please try again.`);
       throw e;
     }
   };
@@ -184,7 +184,7 @@ export default function PlaylistPage({ params }: { params: Promise<{ id: string 
                   toast.success(`Updated "${playlist.name}"`);
                 } catch (e) {
                   if ((e as Error).name !== 'AbortError') {
-                    toast.error(`Couldn't update: ${(e as Error).message}`);
+                    toast.error(`Couldn't update the cover — please try again.`);
                   }
                 }
               } else {
@@ -192,7 +192,7 @@ export default function PlaylistPage({ params }: { params: Promise<{ id: string 
                   await removeDownload(id);
                   toast.success(`Removed offline copy of "${playlist.name}"`);
                 } catch (e) {
-                  toast.error(`Couldn't remove: ${(e as Error).message}`);
+                  toast.error(`Couldn't remove that — please try again.`);
                 }
               }
             }}
@@ -212,7 +212,7 @@ export default function PlaylistPage({ params }: { params: Promise<{ id: string 
                 toast.success(`Downloaded "${playlist.name}"`);
               } catch (e) {
                 if ((e as Error).name !== 'AbortError') {
-                  toast.error(`Couldn't download: ${(e as Error).message}`);
+                  toast.error(`Couldn't download the playlist — please try again.`);
                 }
               }
             }}
