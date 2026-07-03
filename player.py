@@ -633,6 +633,56 @@ def cmd_trending(args):
     tracks = [to_track_json(t) for t in items if t.get('videoId')]
     json.dump(tracks, sys.stdout)
 
+def cmd_ytplaylist(args):
+    """Fetch a public YouTube Music playlist (no auth) → {title, tracks}.
+    Used by the playlist-import feature; private/unknown ids surface as a
+    clean JSON error the API maps to a friendly message."""
+    try:
+        pl = yt.get_playlist(args.playlist_id, limit=None)
+    except Exception as e:
+        print(f"ytplaylist failed: {e}", file=sys.stderr)
+        json.dump({"error": str(e)}, sys.stdout)
+        return
+    raw = pl.get("tracks") or []
+    out = {
+        "title": pl.get("title") or "Imported playlist",
+        "tracks": [to_track_json(t) for t in raw if t.get("videoId")],
+    }
+    json.dump(out, sys.stdout)
+
+def cmd_match(args):
+    """Match Spotify tracks onto YT Music. Each query arg is "title<TAB>artist";
+    prints {results:[track|null, …]} in input order. One YTMusic init serves the
+    whole batch (callers keep batches small — ~8 — for responsiveness)."""
+    results = []
+    for q in args.queries:
+        title, _, artist = q.partition("\t")
+        title = title.strip()
+        artist = artist.strip()
+        if not title:
+            results.append(None)
+            continue
+        try:
+            hits = yt.search(f"{title} {artist}".strip(), filter="songs", limit=5) or []
+        except Exception as e:
+            print(f"match: search failed for {title!r}: {e}", file=sys.stderr)
+            results.append(None)
+            continue
+        hits = [h for h in hits if h.get("videoId")]
+        picked = None
+        if artist:
+            want = artist.casefold()
+            for h in hits:
+                names = [(a.get("name") or "").casefold() for a in (h.get("artists") or [])]
+                # Loose containment either way — "Noah" vs "Noah Official" etc.
+                if any(n and (n in want or want in n) for n in names):
+                    picked = h
+                    break
+        if picked is None and hits:
+            picked = hits[0]
+        results.append(to_track_json(picked) if picked else None)
+    json.dump({"results": results}, sys.stdout)
+
 def cmd_interactive():
     """Original behavior: prompt → search → download → play."""
     query = input("Search for a song: ")
@@ -682,6 +732,12 @@ def main():
     p_track = sub.add_parser("track", help="Resolve one videoId to track metadata. Prints JSON.")
     p_track.add_argument("video_id")
 
+    p_ytpl = sub.add_parser("ytplaylist", help="Public YT Music playlist → {title, tracks}. Prints JSON.")
+    p_ytpl.add_argument("playlist_id")
+
+    p_match = sub.add_parser("match", help='Match "title<TAB>artist" queries to YT Music songs. Prints JSON.')
+    p_match.add_argument("queries", nargs="+")
+
     args = parser.parse_args()
 
     if args.cmd == "search":
@@ -702,6 +758,10 @@ def main():
         cmd_lyrics(args)
     elif args.cmd == "track":
         cmd_track(args)
+    elif args.cmd == "ytplaylist":
+        cmd_ytplaylist(args)
+    elif args.cmd == "match":
+        cmd_match(args)
     else:
         cmd_interactive()
 
