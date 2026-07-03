@@ -28,6 +28,8 @@ export {
   ChevronUp as ChevronUpIcon,
   ChevronLeft as ChevronLeftIcon,
   Mic2 as LyricsIcon,
+  Mic as MicIcon,
+  Clock as ClockIcon,
   Sparkles as SparklesIcon,
   Repeat as RepeatIcon,
   Repeat1 as RepeatOneIcon,
