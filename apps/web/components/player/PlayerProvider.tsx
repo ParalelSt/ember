@@ -11,6 +11,7 @@ import {
   type ReactNode,
 } from 'react';
 import { usePlayerStore } from '@/stores/usePlayerStore';
+import { useSessionStore } from '@/stores/useSessionStore';
 import { useSettingsStore } from '@/stores/useSettingsStore';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { useExecuteRecordPlay, useQueryHistory, useQueryLikes } from '@/hooks/useLibrary';
@@ -452,6 +453,9 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     if (!current?.sourceId) return;
     // Loop-all wraps the queue instead of extending it — don't pull in radio.
     if (usePlayerStore.getState().loopMode === 'all') return;
+    // Hosting a live carlist session: the queue is exactly what the group
+    // added — no radio extension.
+    if (useSessionStore.getState().hostingSessionId) return;
     if (index !== queue.length - 1) return;
     if (fetchingRadioFor.current === current.id) return;
     fetchingRadioFor.current = current.id;

@@ -62,3 +62,26 @@ export type PlaybackContext =
   | { type: 'history' }
   | { type: 'radio' }
   | { type: 'single' };
+
+/** One row of a live carlist session queue. */
+export interface SessionQueueItem {
+  id: string;
+  position: number;
+  played: boolean;
+  addedByName: string;
+  track: Track;
+}
+
+/** Poll payload for a live session (GET /api/sessions/[id]). */
+export interface SessionState {
+  session: {
+    id: string;
+    code: string;
+    name: string;
+    active: boolean;
+    nowIndex: number;
+    hostName: string;
+    isHost: boolean;
+  };
+  queue: SessionQueueItem[];
+}

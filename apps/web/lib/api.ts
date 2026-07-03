@@ -1,4 +1,4 @@
-import type { AlbumDetail, ArtistPayload, Playlist, Track } from '@/types/track';
+import type { AlbumDetail, ArtistPayload, Playlist, SessionState, Track } from '@/types/track';
 import type { ServerLogEntry } from '@/lib/logger/types';
 import { logger } from '@/lib/logger/client';
 
@@ -80,6 +80,22 @@ export const api = {
     req<{ ok: true }>(`/playlists/${id}/tracks`, { method: 'POST', body: { track } }),
   removeFromPlaylist: (id: string, trackId: string) =>
     req<{ ok: true }>(`/playlists/${id}/tracks/${encodeURIComponent(trackId)}`, { method: 'DELETE' }),
+  // — Carlist live sessions —
+  createSession: (body: { name?: string; seedPlaylistId?: string }) =>
+    req<{ session: { id: string; code: string; name: string } }>('/sessions', { method: 'POST', body }),
+  joinSession: (code: string) =>
+    req<{ session: { id: string; name: string } }>('/sessions/join', { method: 'POST', body: { code } }),
+  getSession: (id: string) => req<SessionState>(`/sessions/${id}`),
+  addToSession: (id: string, track: Track) =>
+    req<{ ok: true }>(`/sessions/${id}/tracks`, { method: 'POST', body: { track } }),
+  skipSession: (id: string) => req<{ ok: true }>(`/sessions/${id}/skip`, { method: 'POST' }),
+  consumeSessionCommands: (id: string) =>
+    req<{ commands: { type: string }[] }>(`/sessions/${id}/commands/consume`, { method: 'POST' }),
+  publishSessionNow: (id: string, index: number) =>
+    req<{ ok: true }>(`/sessions/${id}/now`, { method: 'POST', body: { index } }),
+  endSession: (id: string) => req<{ ok: true }>(`/sessions/${id}/end`, { method: 'POST' }),
+  saveSession: (id: string, name?: string) =>
+    req<{ playlist: { id: string; name: string } }>(`/sessions/${id}/save`, { method: 'POST', body: { name } }),
   /** Inspect a pasted Spotify / YT Music playlist link. YTM answers with
    *  ready Ember tracks; Spotify answers with raw items for importMatch. */
   importInspect: (url: string) =>
