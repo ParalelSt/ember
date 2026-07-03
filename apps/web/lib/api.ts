@@ -80,6 +80,16 @@ export const api = {
     req<{ ok: true }>(`/playlists/${id}/tracks`, { method: 'POST', body: { track } }),
   removeFromPlaylist: (id: string, trackId: string) =>
     req<{ ok: true }>(`/playlists/${id}/tracks/${encodeURIComponent(trackId)}`, { method: 'DELETE' }),
+  /** Inspect a pasted Spotify / YT Music playlist link. YTM answers with
+   *  ready Ember tracks; Spotify answers with raw items for importMatch. */
+  importInspect: (url: string) =>
+    req<
+      | { source: 'ytmusic'; name: string; tracks: Track[] }
+      | { source: 'spotify'; name: string; items: { title: string; artist: string }[] }
+    >('/import/inspect', { method: 'POST', body: { url } }),
+  /** Match ≤8 Spotify items onto YT Music (null = no match). */
+  importMatch: (items: { title: string; artist: string }[]) =>
+    req<{ tracks: (Track | null)[] }>('/import/match', { method: 'POST', body: { items } }),
   deletePlaylist: (id: string) => req<{ ok: true }>(`/playlists/${id}`, { method: 'DELETE' }),
   /** Upload (or replace) a playlist cover image. Multipart, so it bypasses
    *  the JSON `req` helper. */

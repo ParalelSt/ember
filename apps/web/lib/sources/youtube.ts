@@ -238,6 +238,47 @@ export async function getAlbum(browseId: string) {
   };
 }
 
+const PLAYLIST_ID_RE = /^[A-Za-z0-9_-]{10,60}$/;
+
+interface RawYtPlaylist {
+  title?: string;
+  tracks?: RawYoutubeTrack[];
+  error?: string;
+}
+
+/** Public YT Music playlist → name + normalized tracks (playlist import). */
+export async function getYtPlaylist(playlistId: string): Promise<{ name: string; tracks: Track[] }> {
+  if (!PLAYLIST_ID_RE.test(playlistId)) {
+    const e: PythonError = new Error('invalid playlistId');
+    e.status = 400;
+    throw e;
+  }
+  const result = await runPython<RawYtPlaylist>(['ytplaylist', '--', playlistId], { timeoutMs: 60000 });
+  if (result?.error) {
+    const e: PythonError = new Error(
+      "Couldn't open that playlist — it must be a public YouTube Music playlist.",
+    );
+    e.status = 404;
+    throw e;
+  }
+  return {
+    name: result?.title ?? 'Imported playlist',
+    tracks: dedupeByVideoId(result?.tracks ?? []).map(normalize),
+  };
+}
+
+interface RawMatchResult {
+  results?: (RawYoutubeTrack | null)[];
+}
+
+/** Match {title, artist} items (≤8 per call) onto YT Music songs; null = miss. */
+export async function matchTracks(items: { title: string; artist: string }[]): Promise<(Track | null)[]> {
+  if (!items.length) return [];
+  const queries = items.map((i) => `${i.title}\t${i.artist}`);
+  const result = await runPython<RawMatchResult>(['match', '--', ...queries], { timeoutMs: 60000 });
+  return (result?.results ?? []).map((r) => (r && r.videoId ? normalize(r) : null));
+}
+
 export async function getArtist(channelId: string) {
   if (!/^[A-Za-z0-9_-]{8,40}$/.test(channelId)) {
     const e: PythonError = new Error('invalid artistId');
