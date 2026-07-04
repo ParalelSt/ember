@@ -1,6 +1,7 @@
 import type { NextRequest } from 'next/server';
 import { requireUser, UnauthorizedError, unauthorizedResponse } from '@/lib/auth';
 import { fromError, jsonError } from '@/lib/upsertTrack';
+import { rateLimitResponse } from '@/lib/rateLimit';
 import { matchTracks } from '@/lib/sources/youtube';
 
 const MAX_BATCH = 8;
@@ -14,7 +15,12 @@ interface MatchItem {
  *  loops these so a 300-track playlist never hits one long request. */
 export async function POST(request: NextRequest) {
   try {
-    await requireUser();
+    const { user } = await requireUser();
+    // Generous backstop — above any real single import's sequential pace, but
+    // stops someone scripting this endpoint directly.
+    const limited = rateLimitResponse(`import-match:${user.id}`, { windowMs: 60_000, max: 120 });
+    if (limited) return limited;
+
     const body = (await request.json().catch(() => null)) as { items?: MatchItem[] } | null;
     const items = Array.isArray(body?.items) ? body.items : null;
     if (!items?.length) return jsonError('items required', 400);
