@@ -38,11 +38,15 @@ export default function SearchPage() {
     return () => clearTimeout(t);
   }, [q]);
 
-  const { data, isFetching } = useQuery({
+  const { data, isFetching, error } = useQuery({
     queryKey: QK.search(debouncedQ),
     queryFn: () => api.search(debouncedQ).then((r) => r.tracks),
     enabled: isOnline && debouncedQ.length > 0,
+    retry: false,
   });
+
+  // Surface the rate-limit 429 quietly instead of a blank result set.
+  const rateLimited = (error as { status?: number } | null)?.status === 429;
 
   if (!isOnline) return <OfflinePlaceholder />;
 
@@ -94,7 +98,9 @@ export default function SearchPage() {
     </div>
   ) : null;
 
-  const results = isFetching && !data?.length ? (
+  const results = rateLimited ? (
+    <div className="text-muted-foreground text-sm py-12 text-center">Searching too fast — one moment.</div>
+  ) : isFetching && !data?.length ? (
     <div className="text-muted-foreground text-sm py-12 text-center">Searching…</div>
   ) : (
     <TrackList
