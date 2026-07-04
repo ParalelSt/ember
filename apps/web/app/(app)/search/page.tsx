@@ -2,14 +2,16 @@
 
 import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { toast } from 'sonner';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { TrackList } from '@/components/track/TrackList';
-import { ClockIcon, CloseIcon, MicIcon, SearchIcon } from '@/components/icons';
+import { CloseIcon, MicIcon, MusicIcon, SearchIcon } from '@/components/icons';
 import { api } from '@/lib/api';
 import { QK } from '@/hooks/useLibrary';
 import { useVoiceSearch } from '@/hooks/useVoiceSearch';
 import { useSearchStore } from '@/stores/useSearchStore';
+import { usePlayer } from '@/components/player/PlayerProvider';
 import { useOnline } from '@/lib/useOnline';
 import { OfflinePlaceholder } from '@/components/OfflinePlaceholder';
 import { cn } from '@/lib/utils';
@@ -18,13 +20,14 @@ export default function SearchPage() {
   const [q, setQ] = useState('');
   const [debouncedQ, setDebouncedQ] = useState('');
   const isOnline = useOnline();
+  const { playTrack } = usePlayer();
 
-  const recentSearches = useSearchStore((s) => s.recentSearches);
-  const addRecentSearch = useSearchStore((s) => s.addRecentSearch);
-  const removeRecentSearch = useSearchStore((s) => s.removeRecentSearch);
+  const recentTracks = useSearchStore((s) => s.recentTracks);
+  const addRecentTrack = useSearchStore((s) => s.addRecentTrack);
+  const removeRecentTrack = useSearchStore((s) => s.removeRecentTrack);
 
   // Spoken words fill the input live; the debounce below turns them into a
-  // search exactly like typing. Recents save on commit (Enter / play), not here.
+  // search exactly like typing.
   const voice = useVoiceSearch((text) => setQ(text));
 
   useEffect(() => {
@@ -43,50 +46,45 @@ export default function SearchPage() {
 
   if (!isOnline) return <OfflinePlaceholder />;
 
-  const onSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Enter') addRecentSearch(q);
+  const onMicClick = () => {
+    if (!voice.supported) {
+      toast.message("Voice search isn't supported in this browser — try Chrome.");
+      return;
+    }
+    voice.toggle();
   };
 
-  const micButton = voice.supported ? (
-    <Button
-      variant="ghost"
-      size="icon"
-      onClick={voice.toggle}
-      aria-label={voice.listening ? 'Stop voice search' : 'Search by voice'}
-      aria-pressed={voice.listening}
-      title="Search by voice"
-      className={cn(
-        'absolute right-2 top-1/2 -translate-y-1/2 h-9 w-9 rounded-full',
-        voice.listening
-          ? 'text-ember hover:text-ember animate-pulse'
-          : 'text-muted-foreground hover:text-foreground',
-      )}
-    >
-      <MicIcon className="h-4 w-4" />
-    </Button>
-  ) : null;
-
-  const recents = !debouncedQ && recentSearches.length > 0 ? (
+  const recents = !debouncedQ && recentTracks.length > 0 ? (
     <div className="mt-8 max-w-xl">
       <h2 className="mb-3 text-xl font-bold tracking-tight">Recent searches</h2>
       <div className="flex flex-col">
-        {recentSearches.map((r) => (
+        {recentTracks.map((t) => (
           <div
-            key={r}
-            onClick={() => setQ(r)}
+            key={t.id}
+            onClick={() => playTrack(t)}
             className="group flex items-center gap-3 px-3 py-2 rounded-md cursor-pointer hover:bg-card transition-colors"
           >
-            <ClockIcon className="h-4 w-4 shrink-0 text-muted-foreground" />
-            <span className="min-w-0 flex-1 truncate text-sm">{r}</span>
+            {t.artworkUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={t.artworkUrl} alt="" className="h-10 w-10 rounded shrink-0 object-cover bg-black" />
+            ) : (
+              <div className="h-10 w-10 rounded shrink-0 bg-black grid place-items-center text-foreground/20">
+                <MusicIcon className="h-4 w-4" />
+              </div>
+            )}
+            <div className="min-w-0 flex-1">
+              <div className="truncate text-sm font-medium">{t.title}</div>
+              <div className="truncate text-xs text-muted-foreground">{t.artist}</div>
+            </div>
             <Button
               variant="ghost"
               size="icon"
               onClick={(e) => {
                 e.stopPropagation();
-                removeRecentSearch(r);
+                removeRecentTrack(t.id);
               }}
-              aria-label={`Remove "${r}" from recent searches`}
-              className="h-7 w-7 text-muted-foreground hover:text-foreground"
+              aria-label={`Remove "${t.title}" from recent searches`}
+              className="h-7 w-7 text-muted-foreground hover:text-foreground opacity-0 group-hover:opacity-100 max-md:opacity-100 transition-opacity"
             >
               <CloseIcon className="h-3.5 w-3.5" />
             </Button>
@@ -102,7 +100,7 @@ export default function SearchPage() {
     <TrackList
       tracks={data ?? []}
       context={{ type: 'search', query: debouncedQ }}
-      onPlayTrack={() => addRecentSearch(debouncedQ)}
+      onPlayTrack={(t) => addRecentTrack(t)}
     />
   );
 
@@ -115,11 +113,27 @@ export default function SearchPage() {
           autoFocus
           value={q}
           onChange={(e) => setQ(e.target.value)}
-          onKeyDown={onSearchKeyDown}
           placeholder="What do you want to listen to?"
-          className={cn('pl-11 h-12 rounded-full bg-card border-0', voice.supported && 'pr-12')}
+          className="pl-11 pr-12 h-12 rounded-full bg-card border-0"
         />
-        {micButton}
+        {/* Always visible (right side of the bar) — unsupported browsers get a
+            pointer to Chrome instead of a hidden button. */}
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={onMicClick}
+          aria-label={voice.listening ? 'Stop voice search' : 'Search by voice'}
+          aria-pressed={voice.listening}
+          title="Search by voice"
+          className={cn(
+            'absolute right-2 top-1/2 -translate-y-1/2 h-9 w-9 rounded-full',
+            voice.listening
+              ? 'text-ember hover:text-ember animate-pulse'
+              : 'text-muted-foreground hover:text-foreground',
+          )}
+        >
+          <MicIcon className="h-4 w-4" />
+        </Button>
       </div>
 
       {recents}

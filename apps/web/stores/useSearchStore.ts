@@ -2,33 +2,34 @@
 
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import type { Track } from '@/types/track';
 
 const MAX_RECENT = 10;
 
 interface SearchState {
-  /** Newest-first, deduped, capped at MAX_RECENT. Per-device (localStorage). */
-  recentSearches: string[];
-  addRecentSearch: (q: string) => void;
-  removeRecentSearch: (q: string) => void;
+  /** Spotify-style recents: the TRACKS you played from search (not query
+   *  strings) — newest first, deduped by id, capped. Per-device. */
+  recentTracks: Track[];
+  addRecentTrack: (t: Track) => void;
+  removeRecentTrack: (trackId: string) => void;
 }
 
-/** Recent search queries shown on the empty search page. A query is saved on
- *  commit (Enter, or playing a track from results) — not per keystroke. */
 export const useSearchStore = create<SearchState>()(
   persist(
     (set) => ({
-      recentSearches: [],
-      addRecentSearch: (q) =>
-        set((s) => {
-          const query = q.trim();
-          if (!query) return s;
-          const lower = query.toLowerCase();
-          const rest = s.recentSearches.filter((r) => r.toLowerCase() !== lower);
-          return { recentSearches: [query, ...rest].slice(0, MAX_RECENT) };
-        }),
-      removeRecentSearch: (q) =>
-        set((s) => ({ recentSearches: s.recentSearches.filter((r) => r !== q) })),
+      recentTracks: [],
+      addRecentTrack: (t) =>
+        set((s) => ({
+          recentTracks: [t, ...s.recentTracks.filter((r) => r.id !== t.id)].slice(0, MAX_RECENT),
+        })),
+      removeRecentTrack: (trackId) =>
+        set((s) => ({ recentTracks: s.recentTracks.filter((r) => r.id !== trackId) })),
     }),
-    { name: 'ember.search.v1' },
+    {
+      name: 'ember.search.v1',
+      version: 1,
+      // v0 stored query strings (recentSearches) — drop them, the shape changed.
+      migrate: () => ({ recentTracks: [] }) as Pick<SearchState, 'recentTracks'>,
+    },
   ),
 );
