@@ -5,12 +5,18 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
-import { Button } from '@/components/ui/button';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { useExecuteAddToPlaylist, useExecuteCreatePlaylist, useQueryPlaylists } from '@/hooks/useLibrary';
 import type { Track } from '@/types/track';
 import { CreatePlaylistDialog } from '@/components/track/CreatePlaylistDialog';
-import { HomeIcon, SearchIcon, LibraryIcon, PlusIcon, FlameIcon, SettingsIcon, ShieldIcon } from '@/components/icons';
+import { ImportPlaylistDialog } from '@/components/track/ImportPlaylistDialog';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { HomeIcon, SearchIcon, LibraryIcon, PlusIcon, DownloadIcon, FlameIcon, SettingsIcon, ShieldIcon } from '@/components/icons';
 import { cn } from '@/lib/utils';
 
 const BASE_NAV = [
@@ -36,6 +42,7 @@ export function Drawer({ open, onOpenChange }: Props) {
   const createPlaylist = useExecuteCreatePlaylist();
   const addToPlaylist = useExecuteAddToPlaylist();
   const [createOpen, setCreateOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
 
   const close = () => onOpenChange(false);
 
@@ -95,9 +102,23 @@ export function Drawer({ open, onOpenChange }: Props) {
         <div className="px-4 flex items-center justify-between border-t border-sidebar-border pt-3">
           <span className="text-[11px] uppercase tracking-widest text-sidebar-foreground/55">Playlists</span>
           {user && (
-            <Button size="icon" variant="ghost" className="h-6 w-6" onClick={() => setCreateOpen(true)} title="New playlist">
-              <PlusIcon className="h-3.5 w-3.5" />
-            </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                className="inline-flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+                aria-label="Add playlist"
+                title="Add playlist"
+              >
+                <PlusIcon className="h-3.5 w-3.5" />
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="min-w-44">
+                <DropdownMenuItem onClick={() => setCreateOpen(true)}>
+                  <PlusIcon className="h-3.5 w-3.5" /> New playlist
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setImportOpen(true)}>
+                  <DownloadIcon className="h-3.5 w-3.5" /> Import playlist
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           )}
         </div>
         <div className="flex-1 overflow-y-auto px-2 py-2 flex flex-col gap-0.5">
@@ -137,6 +158,7 @@ export function Drawer({ open, onOpenChange }: Props) {
         )}
       </SheetContent>
       <CreatePlaylistDialog open={createOpen} onOpenChange={setCreateOpen} onCreate={handleCreate} />
+      <ImportPlaylistDialog open={importOpen} onOpenChange={setImportOpen} />
     </Sheet>
   );
 }
