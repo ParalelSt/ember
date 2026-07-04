@@ -8,15 +8,10 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sh
 import { useAuth } from '@/components/providers/AuthProvider';
 import { useExecuteAddToPlaylist, useExecuteCreatePlaylist, useQueryPlaylists } from '@/hooks/useLibrary';
 import type { Track } from '@/types/track';
+import { Button } from '@/components/ui/button';
 import { CreatePlaylistDialog } from '@/components/track/CreatePlaylistDialog';
 import { ImportPlaylistDialog } from '@/components/track/ImportPlaylistDialog';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
-import { HomeIcon, SearchIcon, LibraryIcon, PlusIcon, DownloadIcon, FlameIcon, SettingsIcon, ShieldIcon } from '@/components/icons';
+import { HomeIcon, SearchIcon, LibraryIcon, PlusIcon, FlameIcon, SettingsIcon, ShieldIcon } from '@/components/icons';
 import { cn } from '@/lib/utils';
 
 const BASE_NAV = [
@@ -102,23 +97,9 @@ export function Drawer({ open, onOpenChange }: Props) {
         <div className="px-4 flex items-center justify-between border-t border-sidebar-border pt-3">
           <span className="text-[11px] uppercase tracking-widest text-sidebar-foreground/55">Playlists</span>
           {user && (
-            <DropdownMenu>
-              <DropdownMenuTrigger
-                className="inline-flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
-                aria-label="Add playlist"
-                title="Add playlist"
-              >
-                <PlusIcon className="h-3.5 w-3.5" />
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="min-w-44">
-                <DropdownMenuItem onClick={() => setCreateOpen(true)}>
-                  <PlusIcon className="h-3.5 w-3.5" /> New playlist
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => setImportOpen(true)}>
-                  <DownloadIcon className="h-3.5 w-3.5" /> Import playlist
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
+            <Button size="icon" variant="ghost" className="h-6 w-6" onClick={() => setCreateOpen(true)} title="New playlist" aria-label="New playlist">
+              <PlusIcon className="h-3.5 w-3.5" />
+            </Button>
           )}
         </div>
         <div className="flex-1 overflow-y-auto px-2 py-2 flex flex-col gap-0.5">
@@ -157,7 +138,7 @@ export function Drawer({ open, onOpenChange }: Props) {
           </div>
         )}
       </SheetContent>
-      <CreatePlaylistDialog open={createOpen} onOpenChange={setCreateOpen} onCreate={handleCreate} />
+      <CreatePlaylistDialog open={createOpen} onOpenChange={setCreateOpen} onCreate={handleCreate} onImport={() => setImportOpen(true)} />
       <ImportPlaylistDialog open={importOpen} onOpenChange={setImportOpen} />
     </Sheet>
   );
