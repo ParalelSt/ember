@@ -11,7 +11,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { TrackSearchPicker } from '@/components/track/TrackSearchPicker';
-import { TrashIcon } from '@/components/icons';
+import { DownloadIcon, TrashIcon } from '@/components/icons';
 import type { Track } from '@/types/track';
 
 interface Props {
@@ -23,12 +23,15 @@ interface Props {
   /** Optional pre-selected tracks (e.g. the currently-playing track when this
    *  dialog is opened from the AddToPlaylistMenu). */
   initialTracks?: Track[];
+  /** When provided, shows an "import from a link" affordance under the song
+   *  picker (closes this dialog and opens the import flow). */
+  onImport?: () => void;
 }
 
 /** In-app "New playlist" dialog with name field + track picker. Replaces the
  *  native browser prompt; lets users seed the playlist with songs at creation
  *  time and surfaces recommendations based on what they've added. */
-export function CreatePlaylistDialog({ open, onOpenChange, onCreate, initialTracks }: Props) {
+export function CreatePlaylistDialog({ open, onOpenChange, onCreate, initialTracks, onImport }: Props) {
   const [name, setName] = useState('');
   const [selected, setSelected] = useState<Track[]>([]);
   const [busy, setBusy] = useState(false);
@@ -104,6 +107,20 @@ export function CreatePlaylistDialog({ open, onOpenChange, onCreate, initialTrac
           )}
 
           <TrackSearchPicker added={selected} seeds={selected} onAdd={addTrack} />
+
+          {onImport && (
+            <button
+              type="button"
+              onClick={() => {
+                onOpenChange(false);
+                onImport();
+              }}
+              className="flex items-center gap-1.5 self-start text-sm text-muted-foreground hover:text-foreground transition-colors"
+            >
+              <DownloadIcon className="h-3.5 w-3.5" />
+              Import a playlist from Spotify or YouTube Music
+            </button>
+          )}
 
           <DialogFooter>
             <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>
