@@ -3,6 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { useAuth } from '@/components/providers/AuthProvider';
+import { usePlayerStore } from '@/stores/usePlayerStore';
 import { logger } from '@/lib/logger/client';
 import type { Playlist, Track } from '@/types/track';
 
@@ -184,6 +185,22 @@ export function useExecuteRemoveFromPlaylist() {
       const prev = qc.getQueryData<{ tracks: Track[]; playlist: Playlist }>(QK.playlist(id));
       if (prev) {
         qc.setQueryData(QK.playlist(id), { ...prev, tracks: prev.tracks.filter((t) => t.id !== trackId) });
+      }
+      // If this playlist is what's CURRENTLY playing, drop the track from the
+      // live player queue too — the queue is a snapshot, so without this the
+      // removed song still plays when its turn comes (until a refresh).
+      const s = usePlayerStore.getState();
+      if (s.context?.type === 'playlist' && s.context.playlistId === id) {
+        const removeIdx = s.queue.findIndex((t) => t.id === trackId);
+        if (removeIdx >= 0) {
+          const queue = s.queue.filter((_, i) => i !== removeIdx);
+          let index = s.index;
+          if (removeIdx < index) index -= 1;
+          // Removing the playing track itself: index now points at the next
+          // song and the player's id-effect advances to it automatically.
+          if (index > queue.length - 1) index = queue.length - 1;
+          usePlayerStore.setState({ queue, index });
+        }
       }
       return { prev, id };
     },

@@ -11,6 +11,7 @@ import {
   type ReactNode,
 } from 'react';
 import { usePlayerStore } from '@/stores/usePlayerStore';
+import { useSessionStore } from '@/stores/useSessionStore';
 import { useSettingsStore } from '@/stores/useSettingsStore';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { useExecuteRecordPlay, useQueryHistory, useQueryLikes } from '@/hooks/useLibrary';
@@ -139,6 +140,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
   const partyVolume = useSettingsStore((s) => s.partyVolume);
   const muted = usePlayerStore((s) => s.muted);
+  const loopMode = usePlayerStore((s) => s.loopMode);
 
   // Build the Web Audio graph (ctx → source → gain → destination) once, on
   // demand. Calling createMediaElementSource() re-routes ALL of the element's
@@ -451,7 +453,13 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!current?.sourceId) return;
     // Loop-all wraps the queue instead of extending it — don't pull in radio.
-    if (usePlayerStore.getState().loopMode === 'all') return;
+    // Reactive (not getState): when the user turns loop OFF the effect must
+    // re-run, otherwise a 1-track queue that skipped extension while looping
+    // stays 1 track forever — un-skippable, looping "even with the toggle off".
+    if (loopMode === 'all') return;
+    // Hosting a live carlist session: the queue is exactly what the group
+    // added — no radio extension.
+    if (useSessionStore.getState().hostingSessionId) return;
     if (index !== queue.length - 1) return;
     if (fetchingRadioFor.current === current.id) return;
     fetchingRadioFor.current = current.id;
@@ -525,7 +533,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     }).finally(() => {
       if (fetchingRadioFor.current === currentId) fetchingRadioFor.current = null;
     });
-  }, [current?.id, current?.sourceId, index, queue, history, liked, context, setQueue]);
+  }, [current?.id, current?.sourceId, index, queue, history, liked, context, loopMode, setQueue]);
 
   // Discord rich presence.
   useEffect(() => {

@@ -1,4 +1,4 @@
-import type { AlbumDetail, ArtistPayload, Playlist, Track } from '@/types/track';
+import type { AlbumDetail, ArtistPayload, Playlist, SessionState, Track } from '@/types/track';
 import type { ServerLogEntry } from '@/lib/logger/types';
 import { logger } from '@/lib/logger/client';
 
@@ -52,7 +52,11 @@ async function req<T>(path: string, { method = 'GET', body, signal }: ReqOptions
   if (!res.ok) {
     const err = (await res.json().catch(() => ({ error: res.statusText }))) as { error?: string };
     logger.error('api', `${method} ${path} → ${res.status}`, { method, path, status: res.status, body: err.error });
-    throw new Error(err.error || `Request failed: ${res.status}`);
+    // Attach the HTTP status so callers can branch on it (e.g. 400 = duplicate
+    // → friendly "already in playlist" toast instead of the raw server text).
+    const error = new Error(err.error || `Request failed: ${res.status}`) as Error & { status?: number };
+    error.status = res.status;
+    throw error;
   }
   return (await res.json()) as T;
 }
@@ -76,6 +80,32 @@ export const api = {
     req<{ ok: true }>(`/playlists/${id}/tracks`, { method: 'POST', body: { track } }),
   removeFromPlaylist: (id: string, trackId: string) =>
     req<{ ok: true }>(`/playlists/${id}/tracks/${encodeURIComponent(trackId)}`, { method: 'DELETE' }),
+  // — Carlist live sessions —
+  createSession: (body: { name?: string; seedPlaylistId?: string }) =>
+    req<{ session: { id: string; code: string; name: string } }>('/sessions', { method: 'POST', body }),
+  joinSession: (code: string) =>
+    req<{ session: { id: string; name: string } }>('/sessions/join', { method: 'POST', body: { code } }),
+  getSession: (id: string) => req<SessionState>(`/sessions/${id}`),
+  addToSession: (id: string, track: Track) =>
+    req<{ ok: true }>(`/sessions/${id}/tracks`, { method: 'POST', body: { track } }),
+  skipSession: (id: string) => req<{ ok: true }>(`/sessions/${id}/skip`, { method: 'POST' }),
+  consumeSessionCommands: (id: string) =>
+    req<{ commands: { type: string }[] }>(`/sessions/${id}/commands/consume`, { method: 'POST' }),
+  publishSessionNow: (id: string, index: number) =>
+    req<{ ok: true }>(`/sessions/${id}/now`, { method: 'POST', body: { index } }),
+  endSession: (id: string) => req<{ ok: true }>(`/sessions/${id}/end`, { method: 'POST' }),
+  saveSession: (id: string, name?: string) =>
+    req<{ playlist: { id: string; name: string } }>(`/sessions/${id}/save`, { method: 'POST', body: { name } }),
+  /** Inspect a pasted Spotify / YT Music playlist link. YTM answers with
+   *  ready Ember tracks; Spotify answers with raw items for importMatch. */
+  importInspect: (url: string) =>
+    req<
+      | { source: 'ytmusic'; name: string; tracks: Track[] }
+      | { source: 'spotify'; name: string; items: { title: string; artist: string }[] }
+    >('/import/inspect', { method: 'POST', body: { url } }),
+  /** Match ≤8 Spotify items onto YT Music (null = no match). */
+  importMatch: (items: { title: string; artist: string }[]) =>
+    req<{ tracks: (Track | null)[] }>('/import/match', { method: 'POST', body: { items } }),
   deletePlaylist: (id: string) => req<{ ok: true }>(`/playlists/${id}`, { method: 'DELETE' }),
   /** Upload (or replace) a playlist cover image. Multipart, so it bypasses
    *  the JSON `req` helper. */
