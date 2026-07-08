@@ -123,9 +123,15 @@ jobs:
           uploadWorkflowArtifacts: true
 
   # ---------------------------------------------------------------------------
-  # 2. Android (Capacitor 6) — debug APK only. Release signing is deferred.
-  #    No web build step: the app loads the live server URL (server.url model),
-  #    so `cap sync` just refreshes the native project + plugins.
+  # 2. Android (Capacitor 7) — RELEASE APK. Signed with the Ember release key
+  #    when the secrets below exist; falls back to a debug-signed release APK
+  #    otherwise (still installable, but uninstall/reinstall needed when the
+  #    signature changes later — set the secrets before sharing widely).
+  #
+  #    Optional secrets (Settings → Secrets → Actions):
+  #      • ANDROID_KEYSTORE_B64       — base64 of ember-release.keystore
+  #                                     (make with: base64 -i ember-release.keystore)
+  #      • ANDROID_KEYSTORE_PASSWORD  — the store/key password
   # ---------------------------------------------------------------------------
   android:
     runs-on: ubuntu-latest
@@ -133,11 +139,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup JDK 17
+      - name: Setup JDK 21
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: "17"
+          java-version: "21"
 
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
@@ -165,17 +171,34 @@ jobs:
         # is immune to npm's workspace symlink-vs-copy quirk.
         run: node ../../node_modules/@capacitor/cli/bin/capacitor sync android
 
-      - name: Build debug APK
+      # Materialize the release keystore from secrets (skipped when unset —
+      # build.gradle then falls back to debug signing automatically).
+      - name: Restore release keystore
+        if: ${{ secrets.ANDROID_KEYSTORE_B64 != '' }}
+        working-directory: apps/mobile/android
+        env:
+          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_B64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+        run: |
+          echo "$KEYSTORE_B64" | base64 -d > ember-release.keystore
+          {
+            echo "storeFile=ember-release.keystore"
+            echo "storePassword=$KEYSTORE_PASSWORD"
+            echo "keyAlias=ember"
+            echo "keyPassword=$KEYSTORE_PASSWORD"
+          } > keystore.properties
+
+      - name: Build release APK
         working-directory: apps/mobile/android
         run: |
           chmod +x ./gradlew
-          ./gradlew assembleDebug
+          ./gradlew assembleRelease
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ember-android-debug-apk
-          path: apps/mobile/android/app/build/outputs/apk/debug/*.apk
+          name: ember-android-apk
+          path: apps/mobile/android/app/build/outputs/apk/release/*.apk
           if-no-files-found: error
 
   # ---------------------------------------------------------------------------

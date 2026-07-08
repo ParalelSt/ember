@@ -73,3 +73,7 @@ ROADMAP.md
 /RULES.md
 /EMBER.md
 /FIXES-TEST-PLAN.md
+
+# Android release signing — NEVER commit (APPS.md explains regeneration)
+apps/mobile/android/ember-release.keystore
+apps/mobile/android/keystore.properties
