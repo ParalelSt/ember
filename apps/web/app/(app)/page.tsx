@@ -11,6 +11,7 @@ import {
 } from '@/hooks/useLibrary';
 import { useOnline } from '@/lib/useOnline';
 import { OfflinePlaceholder } from '@/components/OfflinePlaceholder';
+import { FriendsListening } from '@/components/FriendsListening';
 import type { Track } from '@/types/track';
 
 interface Section {
@@ -83,6 +84,7 @@ export default function HomePage() {
   return (
     <div>
       <h1 className="text-3xl md:text-4xl font-bold tracking-tight mb-8">Home</h1>
+      <FriendsListening />
       {sections
         .filter((s) => !s.hidden)
         .map((s) => (

@@ -112,6 +112,9 @@ export const api = {
     req<{ ok: true }>('/recent-searches', { method: 'POST', body: { track } }),
   removeRecentSearch: (trackId: string) =>
     req<{ ok: true }>(`/recent-searches/${encodeURIComponent(trackId)}`, { method: 'DELETE' }),
+  /** What other members played in the last ~30 min (newest per user). */
+  listening: () =>
+    req<{ items: { userName: string; playedAt: string; track: Track }[] }>('/listening'),
   deletePlaylist: (id: string) => req<{ ok: true }>(`/playlists/${id}`, { method: 'DELETE' }),
   /** Upload (or replace) a playlist cover image. Multipart, so it bypasses
    *  the JSON `req` helper. */
