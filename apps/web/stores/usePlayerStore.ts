@@ -48,7 +48,9 @@ export const usePlayerStore = create<PlayerState>()(
       queue: [],
       index: -1,
       position: 0,
-      volume: 0.45,
+      // Default sits in the first quarter of the slider — a fresh device
+      // starts QUIET (0.25^1.5 ≈ 0.13 gain), not blasting from the middle.
+      volume: 0.25,
       isPlaying: false,
       duration: 0,
       context: null,
