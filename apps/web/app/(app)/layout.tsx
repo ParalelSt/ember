@@ -37,7 +37,11 @@ export default function AppShellLayout({ children }: { children: ReactNode }) {
   }, []);
 
   return (
-    <div className="h-dvh flex flex-col md:flex-row overflow-hidden">
+    // h-svh (NOT dvh): dvh tracks the mobile address bar, so hard scrolling in
+    // Firefox Android collapsed the bar and reflowed the whole shell ("layout
+    // moves up"). svh is the stable small-viewport size — the shell never
+    // moves; hiding the bar just shows a brief same-color strip below it.
+    <div className="h-svh flex flex-col md:flex-row overflow-hidden">
       <Sidebar />
       <Drawer open={drawerOpen} onOpenChange={setDrawerOpen} />
       <div className="flex-1 min-h-0 flex flex-col min-w-0">
