@@ -1,9 +1,13 @@
 'use client';
 
+import { useState } from 'react';
 import Link from 'next/link';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
+import { Button } from '@/components/ui/button';
 import { TrackList } from '@/components/track/TrackList';
-import { CheckIcon } from '@/components/icons';
+import { ImportPlaylistDialog } from '@/components/track/ImportPlaylistDialog';
+import { StartSessionDialog, JoinSessionDialog } from '@/components/session/SessionDialogs';
+import { CheckIcon, DownloadIcon, QueueIcon } from '@/components/icons';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { useQueryHistory, useQueryLikes, useQueryPlaylists } from '@/hooks/useLibrary';
 import { useOfflineStore } from '@/stores/useOfflineStore';
@@ -16,6 +20,9 @@ export default function LibraryPage() {
   const { data: playlists = [] } = useQueryPlaylists();
   const isOnline = useOnline();
   const downloadedIds = useOfflineStore((s) => s.downloaded);
+  const [importOpen, setImportOpen] = useState(false);
+  const [startOpen, setStartOpen] = useState(false);
+  const [joinOpen, setJoinOpen] = useState(false);
 
   if (!user) return <div className="text-muted-foreground py-12 text-center">Sign in to see your library</div>;
 
@@ -51,7 +58,35 @@ export default function LibraryPage() {
 
   return (
     <div>
-      <h1 className="text-3xl md:text-4xl font-bold tracking-tight mb-6">Your library</h1>
+      <div className="mb-6 flex items-center justify-between gap-4">
+        <h1 className="text-3xl md:text-4xl font-bold tracking-tight">Your library</h1>
+        <div className="flex shrink-0 items-center gap-1">
+          <Button
+            variant="ghost"
+            onClick={() => setStartOpen(true)}
+            className="gap-1.5 text-muted-foreground hover:text-foreground"
+          >
+            <QueueIcon className="h-4 w-4" /> Session
+          </Button>
+          <Button
+            variant="ghost"
+            onClick={() => setJoinOpen(true)}
+            className="text-muted-foreground hover:text-foreground"
+          >
+            Join
+          </Button>
+          <Button
+            variant="ghost"
+            onClick={() => setImportOpen(true)}
+            className="gap-1.5 text-muted-foreground hover:text-foreground"
+          >
+            <DownloadIcon className="h-4 w-4" /> Import
+          </Button>
+        </div>
+      </div>
+      <ImportPlaylistDialog open={importOpen} onOpenChange={setImportOpen} />
+      <StartSessionDialog open={startOpen} onOpenChange={setStartOpen} />
+      <JoinSessionDialog open={joinOpen} onOpenChange={setJoinOpen} />
       <Tabs defaultValue="liked" className="w-full">
         <TabsList>
           <TabsTrigger value="liked">Liked</TabsTrigger>

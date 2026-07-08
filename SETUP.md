@@ -169,6 +169,33 @@ The in-player **Lyrics** button (mic icon next to Queue) hits Genius directly �
 
 For the planned AI fallback (when Genius has nothing) see **[LYRICS_AI.md](LYRICS_AI.md)**.
 
+### Spotify playlist import (one-time, ~2 minutes)
+
+The Library → **Import** button imports public Spotify and YouTube Music
+playlists. **YouTube Music works out of the box.** Spotify needs free API keys
+on the host:
+
+1. Go to https://developer.spotify.com/dashboard (log in with any Spotify
+   account — free is fine) → **Create app**. Name/description: anything
+   (e.g. "Ember import"). Redirect URI: put `http://127.0.0.1:3000` (required
+   field, never used). Check "Web API".
+2. Open the app's **Settings** → copy **Client ID** and **Client secret**.
+3. Add both to `apps/web/.env.local`:
+
+```bash
+SPOTIFY_CLIENT_ID=paste-client-id-here
+SPOTIFY_CLIENT_SECRET=paste-client-secret-here
+```
+
+4. Restart the app (`./start-static.sh`).
+
+Until the keys are set, Spotify links show "Spotify import is not set up on
+this server yet" — YT Music import still works. Notes: only **public,
+user-created** playlists import (Spotify blocks its own editorial/algorithmic
+playlists for standard API apps); tracks are matched onto YouTube Music, and
+anything unmatched is listed at the end of the import so it can be added by
+hand.
+
 ### Adding more invitees
 
 http://127.0.0.1:8090/_/ → `allowed_emails` collection → **New record** → enter the email → save. The user can now register at `/auth` on their next visit. No restart, no code change.

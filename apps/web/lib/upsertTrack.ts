@@ -88,7 +88,11 @@ function escape(s: string): string {
 }
 
 export function jsonError(message: string, status = 500) {
-  return Response.json({ error: message }, { status });
+  // PocketBase network failures carry status 0 — Response.json throws a
+  // RangeError outside 200-599, turning a clean error into a route crash.
+  // Anything out of range means "couldn't reach upstream" → 502.
+  const safe = Number.isFinite(status) && status >= 200 && status <= 599 ? status : 502;
+  return Response.json({ error: message }, { status: safe });
 }
 
 export function fromError(err: unknown) {

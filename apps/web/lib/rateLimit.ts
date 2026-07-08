@@ -44,6 +44,24 @@ export function checkRateLimit(key: string, cfg: RateLimitConfig): RateLimitResu
   return { ok: true, retryAfter: 0, remaining: cfg.max - bucket.hits.length };
 }
 
+/** Bounded per-caller key for PUBLIC routes that have no requireUser (e.g.
+ *  search). Prefers the pb_auth cookie (per-user), falls back to the client IP.
+ *  The cookie is hashed to keep the map key small; exactness doesn't matter —
+ *  these are advisory throttles, not auth. */
+export function keyFromRequest(request: Request): string {
+  const cookie = request.headers.get('cookie') ?? '';
+  const m = /(?:^|;\s*)pb_auth=([^;]+)/.exec(cookie);
+  if (m) {
+    // djb2 hash → short stable-per-cookie key.
+    let h = 5381;
+    for (let i = 0; i < m[1].length; i++) h = ((h << 5) + h + m[1].charCodeAt(i)) | 0;
+    return `pb:${(h >>> 0).toString(36)}`;
+  }
+  const fwd = request.headers.get('x-forwarded-for');
+  const ip = fwd?.split(',')[0]?.trim() || request.headers.get('x-real-ip') || 'anon';
+  return `ip:${ip}`;
+}
+
 /** Convenience helper for routes — returns a Response if the caller is over
  *  the limit, otherwise null so the handler continues. */
 export function rateLimitResponse(key: string, cfg: RateLimitConfig): Response | null {

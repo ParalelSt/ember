@@ -40,7 +40,7 @@ export function AddToPlaylistMenu({ track }: { track: Track }) {
       // every other failure is real.
       const status = (e as { status?: number } | undefined)?.status;
       if (status === 400) toast.message(`"${track.title}" is already in ${playlistName}`);
-      else toast.error(`Couldn't add: ${(e as Error).message}`);
+      else toast.error(`Couldn't add "${track.title}" — please try again.`);
     }
   };
 
@@ -59,7 +59,7 @@ export function AddToPlaylistMenu({ track }: { track: Track }) {
       }
       toast.success(`Created "${playlist.name}" with ${tracks.length} track${tracks.length === 1 ? '' : 's'}`);
     } catch (e) {
-      toast.error(`Couldn't create playlist: ${(e as Error).message}`);
+      toast.error(`Couldn't create the playlist — please try again.`);
     }
   };
 

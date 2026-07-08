@@ -5,11 +5,12 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
-import { Button } from '@/components/ui/button';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { useExecuteAddToPlaylist, useExecuteCreatePlaylist, useQueryPlaylists } from '@/hooks/useLibrary';
 import type { Track } from '@/types/track';
+import { Button } from '@/components/ui/button';
 import { CreatePlaylistDialog } from '@/components/track/CreatePlaylistDialog';
+import { ImportPlaylistDialog } from '@/components/track/ImportPlaylistDialog';
 import { HomeIcon, SearchIcon, LibraryIcon, PlusIcon, FlameIcon, SettingsIcon, ShieldIcon } from '@/components/icons';
 import { cn } from '@/lib/utils';
 
@@ -36,6 +37,7 @@ export function Drawer({ open, onOpenChange }: Props) {
   const createPlaylist = useExecuteCreatePlaylist();
   const addToPlaylist = useExecuteAddToPlaylist();
   const [createOpen, setCreateOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
 
   const close = () => onOpenChange(false);
 
@@ -95,7 +97,7 @@ export function Drawer({ open, onOpenChange }: Props) {
         <div className="px-4 flex items-center justify-between border-t border-sidebar-border pt-3">
           <span className="text-[11px] uppercase tracking-widest text-sidebar-foreground/55">Playlists</span>
           {user && (
-            <Button size="icon" variant="ghost" className="h-6 w-6" onClick={() => setCreateOpen(true)} title="New playlist">
+            <Button size="icon" variant="ghost" className="h-6 w-6" onClick={() => setCreateOpen(true)} title="New playlist" aria-label="New playlist">
               <PlusIcon className="h-3.5 w-3.5" />
             </Button>
           )}
@@ -136,7 +138,8 @@ export function Drawer({ open, onOpenChange }: Props) {
           </div>
         )}
       </SheetContent>
-      <CreatePlaylistDialog open={createOpen} onOpenChange={setCreateOpen} onCreate={handleCreate} />
+      <CreatePlaylistDialog open={createOpen} onOpenChange={setCreateOpen} onCreate={handleCreate} onImport={() => setImportOpen(true)} />
+      <ImportPlaylistDialog open={importOpen} onOpenChange={setImportOpen} />
     </Sheet>
   );
 }
