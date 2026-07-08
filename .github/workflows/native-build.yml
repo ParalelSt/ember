@@ -201,6 +201,25 @@ jobs:
           path: apps/mobile/android/app/build/outputs/apk/release/*.apk
           if-no-files-found: error
 
+      # On tag builds, also attach the APK to the (draft) release the desktop
+      # job creates, so all installers live in one place. gh handles draft
+      # releases by tag; retry a few times in case the desktop job hasn't
+      # created it yet. continue-on-error: the artifact upload above is the
+      # safety net either way.
+      - name: Attach APK to release
+        if: startsWith(github.ref, 'refs/tags/')
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          APK=$(ls apps/mobile/android/app/build/outputs/apk/release/*.apk | head -1)
+          cp "$APK" "ember-${{ github.ref_name }}.apk"
+          for i in 1 2 3 4 5; do
+            gh release upload "${{ github.ref_name }}" "ember-${{ github.ref_name }}.apk" --clobber && exit 0
+            echo "release not ready yet (attempt $i), retrying in 60s…"; sleep 60
+          done
+          echo "could not attach APK — grab it from the workflow artifact instead"
+
   # ---------------------------------------------------------------------------
   # 3. iOS (Capacitor) — DEFERRED. Intentionally disabled.
   #
