@@ -310,7 +310,26 @@ interface StreamInfo {
 }
 
 const URL_CACHE = new Map<string, { info: StreamInfo; expires: number }>();
-const URL_TTL_MS = 5 * 60 * 1000;
+// Fallback TTL when the upstream URL carries no readable expiry. googlevideo
+// URLs are signed for ~6h, so an hour is still conservative.
+const URL_TTL_MS = 60 * 60 * 1000;
+
+/** Cache lifetime for a resolved stream URL. googlevideo URLs embed their own
+ *  signed expiry (`expire=<unix seconds>`); trust it minus a 10-min margin.
+ *  The old flat 5-min TTL made every timestamp-slider seek PAST the 5-minute
+ *  mark re-spawn yt-dlp (seconds of lag) — i.e. long tracks always lagged. */
+function urlCacheExpiry(url: string): number {
+  try {
+    const expire = Number(new URL(url).searchParams.get('expire'));
+    if (Number.isFinite(expire) && expire > 0) {
+      const ms = expire * 1000 - 10 * 60 * 1000;
+      if (ms > Date.now()) return Math.min(ms, Date.now() + 6 * 60 * 60 * 1000);
+    }
+  } catch {
+    // unparseable URL — fall through to the flat TTL
+  }
+  return Date.now() + URL_TTL_MS;
+}
 
 interface RawLyrics {
   lyrics?: string | null;
@@ -483,6 +502,6 @@ export async function resolveStreamUrl(videoId: string): Promise<StreamInfo> {
     e.status = 502;
     throw e;
   }
-  URL_CACHE.set(videoId, { info, expires: Date.now() + URL_TTL_MS });
+  URL_CACHE.set(videoId, { info, expires: urlCacheExpiry(info.url) });
   return info;
 }
