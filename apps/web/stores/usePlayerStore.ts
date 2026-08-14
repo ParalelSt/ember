@@ -20,6 +20,11 @@ interface PlayerState {
    *  auto-extend is suppressed while this is active); one → replay current
    *  track on end. */
   loopMode: LoopMode;
+  /** How many tracks at the START of the queue came from the source the user
+   *  actually chose (a playlist), before radio appended extras. Loop-all uses
+   *  it as the wrap point so "loop" means "loop THIS playlist", not "loop the
+   *  playlist plus everything radio tacked on". 0 = no curated base. */
+  baseCount: number;
   /** True = the queue is shuffled. The pre-shuffle order is kept in
    *  `orderBackup` so turning shuffle off restores it exactly (Spotify's
    *  behaviour) rather than leaving the queue scrambled. */
@@ -63,6 +68,7 @@ export const usePlayerStore = create<PlayerState>()(
       duration: 0,
       context: null,
       loopMode: 'off',
+      baseCount: 0,
       shuffle: false,
       orderBackup: null,
       muted: false,
@@ -115,6 +121,7 @@ export const usePlayerStore = create<PlayerState>()(
         volume: s.volume,
         context: s.context,
         loopMode: s.loopMode,
+        baseCount: s.baseCount,
         shuffle: s.shuffle,
         muted: s.muted,
       }),
