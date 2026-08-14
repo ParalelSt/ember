@@ -20,6 +20,13 @@ interface PlayerState {
    *  auto-extend is suppressed while this is active); one → replay current
    *  track on end. */
   loopMode: LoopMode;
+  /** True = the queue is shuffled. The pre-shuffle order is kept in
+   *  `orderBackup` so turning shuffle off restores it exactly (Spotify's
+   *  behaviour) rather than leaving the queue scrambled. */
+  shuffle: boolean;
+  /** Snapshot of the queue as it was before shuffling; null when shuffle is
+   *  off. Not persisted — a reload starts unshuffled. */
+  orderBackup: Track[] | null;
   /** True = audio output forced to 0. Restores previous `volume` when toggled
    *  off; the slider position stays put so the user doesn't lose their level. */
   muted: boolean;
@@ -34,6 +41,7 @@ interface PlayerState {
   setVolume: (v: number) => void;
   setContext: (c: PlaybackContext | null) => void;
   setLoopMode: (m: LoopMode) => void;
+  toggleShuffle: () => void;
   cycleLoopMode: () => void;
   setMuted: (b: boolean) => void;
   toggleMuted: () => void;
@@ -55,6 +63,8 @@ export const usePlayerStore = create<PlayerState>()(
       duration: 0,
       context: null,
       loopMode: 'off',
+      shuffle: false,
+      orderBackup: null,
       muted: false,
       nowPlayingOpen: false,
       setQueue: (queue) => set({ queue }),
@@ -65,6 +75,29 @@ export const usePlayerStore = create<PlayerState>()(
       setVolume: (volume) => set({ volume: Math.min(1, Math.max(0, volume)) }),
       setContext: (context) => set({ context }),
       setLoopMode: (loopMode) => set({ loopMode }),
+      /** Shuffle the upcoming tracks only — whatever is playing stays playing
+       *  and stays at the current index, so toggling never interrupts audio.
+       *  Turning it off restores the original order and re-points the index at
+       *  the same track. */
+      toggleShuffle: () => set((s) => {
+        if (s.shuffle) {
+          const original = s.orderBackup;
+          if (!original) return { shuffle: false, orderBackup: null };
+          const current = s.queue[s.index];
+          const index = current ? original.findIndex((t) => t.id === current.id) : s.index;
+          return { shuffle: false, orderBackup: null, queue: original, index: index >= 0 ? index : s.index };
+        }
+        if (s.queue.length < 2) return { shuffle: true, orderBackup: s.queue.slice() };
+        const backup = s.queue.slice();
+        const played = s.queue.slice(0, Math.max(0, s.index + 1));
+        const upcoming = s.queue.slice(Math.max(0, s.index + 1));
+        // Fisher-Yates over the upcoming tracks only.
+        for (let i = upcoming.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1));
+          [upcoming[i], upcoming[j]] = [upcoming[j], upcoming[i]];
+        }
+        return { shuffle: true, orderBackup: backup, queue: [...played, ...upcoming] };
+      }),
       // off → all → one → off. Any unexpected persisted value lands on 'off'.
       cycleLoopMode: () => set((s) => ({
         loopMode: s.loopMode === 'off' ? 'all' : s.loopMode === 'all' ? 'one' : 'off',
@@ -82,6 +115,7 @@ export const usePlayerStore = create<PlayerState>()(
         volume: s.volume,
         context: s.context,
         loopMode: s.loopMode,
+        shuffle: s.shuffle,
         muted: s.muted,
       }),
     },
