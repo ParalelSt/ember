@@ -6,7 +6,7 @@ import { Slider } from '@/components/ui/slider';
 import { Button } from '@/components/ui/button';
 import {
   ChevronDownIcon, HeartIcon, NextIcon, PauseIcon, PlayIcon, PrevIcon, MusicIcon,
-  RepeatIcon, RepeatOneIcon,
+  RepeatIcon, RepeatOneIcon, ShuffleIcon,
 } from '@/components/icons';
 import { AddToPlaylistMenu } from '@/components/track/AddToPlaylistMenu';
 import { ShareButton } from '@/components/track/ShareButton';
@@ -49,6 +49,8 @@ export function NowPlaying() {
   const isLiked = !!likedVariant;
   const loopMode = usePlayerStore((s) => s.loopMode);
   const cycleLoopMode = usePlayerStore((s) => s.cycleLoopMode);
+  const shuffle = usePlayerStore((s) => s.shuffle);
+  const toggleShuffle = usePlayerStore((s) => s.toggleShuffle);
 
   const scrollerRef = useRef<HTMLDivElement | null>(null);
   const lyricsRef = useRef<HTMLDivElement | null>(null);
@@ -242,6 +244,19 @@ export function NowPlaying() {
           </Button>
           <Button variant="ghost" size="icon" className="h-12 w-12" onClick={next} aria-label="Next">
             <NextIcon className="h-7 w-7" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={toggleShuffle}
+            aria-label={shuffle ? 'Shuffle off' : 'Shuffle'}
+            aria-pressed={shuffle}
+            className={cn(
+              'h-10 w-10',
+              shuffle ? 'text-ember hover:text-ember' : 'text-muted-foreground hover:text-foreground',
+            )}
+          >
+            <ShuffleIcon className="h-5 w-5" />
           </Button>
           <Button
             variant="ghost"

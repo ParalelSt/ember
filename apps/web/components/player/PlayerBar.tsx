@@ -13,6 +13,7 @@ import {
   PrevIcon,
   QueueIcon,
   RepeatIcon,
+  ShuffleIcon,
   RepeatOneIcon,
   VolumeIcon,
   VolumeMutedIcon,
@@ -49,6 +50,8 @@ export function PlayerBar() {
   const lyricsOpen = useUiStore((s) => s.lyricsOpen);
   const setLyricsOpen = useUiStore((s) => s.setLyricsOpen);
   const loopMode = usePlayerStore((s) => s.loopMode);
+  const shuffle = usePlayerStore((s) => s.shuffle);
+  const toggleShuffle = usePlayerStore((s) => s.toggleShuffle);
   const cycleLoopMode = usePlayerStore((s) => s.cycleLoopMode);
   const muted = usePlayerStore((s) => s.muted);
   const toggleMuted = usePlayerStore((s) => s.toggleMuted);
@@ -147,6 +150,23 @@ export function PlayerBar() {
       {/* Controls */}
       <div className="flex flex-col items-center gap-1">
         <div className="flex items-center gap-3">
+          {/* Shuffle — reorders only the tracks AFTER the current one, so the
+              song playing never changes. Turning it off restores the original
+              order. Desktop only; phones get it in the NowPlaying row. */}
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={toggleShuffle}
+            aria-label={shuffle ? 'Shuffle off' : 'Shuffle'}
+            aria-pressed={shuffle}
+            title={shuffle ? 'Shuffling' : 'Shuffle off'}
+            className={cn(
+              'hidden md:inline-flex h-8 w-8',
+              shuffle ? 'text-ember hover:text-ember' : 'text-muted-foreground hover:text-foreground',
+            )}
+          >
+            <ShuffleIcon className="h-4 w-4" />
+          </Button>
           {/* Loop toggle — cycles off → loop playlist (wrap queue, radio
               suppressed) → loop one song. Desktop only; phones get the same
               control in the full-screen NowPlaying transport row. */}
