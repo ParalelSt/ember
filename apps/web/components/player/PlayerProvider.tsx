@@ -527,7 +527,15 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         recs: tracks.length,
         added: merged.length,
       });
-      if (merged.length > 0) setQueue([...queue, ...merged]);
+      if (merged.length > 0) {
+        // Keep the shuffle snapshot in step with the real queue. Without this,
+        // radio tracks appended while shuffle is on are missing from
+        // orderBackup, so turning shuffle off would silently DROP them.
+        usePlayerStore.setState((st) => ({
+          queue: [...st.queue, ...merged],
+          orderBackup: st.orderBackup ? [...st.orderBackup, ...merged] : null,
+        }));
+      }
     }).catch((e) => {
       logger.error('radio', 'recommended fetch failed', { context: activeContext?.type ?? 'single', seed: currentSourceId }, e as Error);
     }).finally(() => {
@@ -631,6 +639,11 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       queue: queueList,
       index: i >= 0 ? i : 0,
       context: nextContext ?? { type: 'single' },
+      // A new queue invalidates any shuffle snapshot — without this, turning
+      // shuffle off later would restore a PREVIOUS list's order. Callers that
+      // want a shuffled start (the playlist Shuffle button) set it right after.
+      shuffle: false,
+      orderBackup: null,
     });
     logger.breadcrumb('playback', 'play', { trackId: track.id, source: track.source, context: nextContext?.type ?? 'single' });
   }, [loadAndPlay]);

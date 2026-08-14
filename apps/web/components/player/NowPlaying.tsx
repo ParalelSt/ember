@@ -51,6 +51,7 @@ export function NowPlaying() {
   const cycleLoopMode = usePlayerStore((s) => s.cycleLoopMode);
   const shuffle = usePlayerStore((s) => s.shuffle);
   const toggleShuffle = usePlayerStore((s) => s.toggleShuffle);
+  const isPlaylist = usePlayerStore((s) => s.context?.type === 'playlist');
 
   const scrollerRef = useRef<HTMLDivElement | null>(null);
   const lyricsRef = useRef<HTMLDivElement | null>(null);
@@ -231,6 +232,24 @@ export function NowPlaying() {
 
         {/* Transport controls — prev/play/next centered; loop pinned right. */}
         <div className="relative mt-6 flex items-center justify-center gap-10">
+          {/* Pinned left, mirroring the loop button on the right — keeping it
+              OUT of the flex flow is what keeps prev/play/next centered.
+              Playlists only: shuffling a search/radio queue makes no sense. */}
+          {isPlaylist && (
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={toggleShuffle}
+              aria-label={shuffle ? 'Shuffle off' : 'Shuffle'}
+              aria-pressed={shuffle}
+              className={cn(
+                'absolute left-0 h-10 w-10',
+                shuffle ? 'text-ember hover:text-ember' : 'text-muted-foreground hover:text-foreground',
+              )}
+            >
+              <ShuffleIcon className="h-5 w-5" />
+            </Button>
+          )}
           <Button variant="ghost" size="icon" className="h-12 w-12" onClick={prev} aria-label="Previous">
             <PrevIcon className="h-7 w-7" />
           </Button>
@@ -244,19 +263,6 @@ export function NowPlaying() {
           </Button>
           <Button variant="ghost" size="icon" className="h-12 w-12" onClick={next} aria-label="Next">
             <NextIcon className="h-7 w-7" />
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={toggleShuffle}
-            aria-label={shuffle ? 'Shuffle off' : 'Shuffle'}
-            aria-pressed={shuffle}
-            className={cn(
-              'h-10 w-10',
-              shuffle ? 'text-ember hover:text-ember' : 'text-muted-foreground hover:text-foreground',
-            )}
-          >
-            <ShuffleIcon className="h-5 w-5" />
           </Button>
           <Button
             variant="ghost"
