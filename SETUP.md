@@ -196,6 +196,25 @@ playlists for standard API apps); tracks are matched onto YouTube Music, and
 anything unmatched is listed at the end of the import so it can be added by
 hand.
 
+### Automatic cleanup of unplayed songs
+
+Once a day the server deletes tracks **nobody has played in 14 days**, along
+with their cached audio in `my_music/`. Anything liked, in a playlist, in a
+live session, or in someone's recent searches is kept regardless of age, as is
+anything played inside the window.
+
+It runs an hour after boot and then daily. To disable, set `CLEANUP_DISABLED=1`
+in `apps/web/.env.local`.
+
+To see what it *would* delete without deleting anything (admin account needed):
+
+```bash
+curl -X POST http://127.0.0.1:3000/api/admin/cleanup -H 'Content-Type: application/json' -d '{}'
+```
+
+Add `-d '{"apply":true}'` to actually run it. The response reports how many
+rows and files were removed and how much disk was freed.
+
 ### Adding more invitees
 
 http://127.0.0.1:8090/_/ → `allowed_emails` collection → **New record** → enter the email → save. The user can now register at `/auth` on their next visit. No restart, no code change.
