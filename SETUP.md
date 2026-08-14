@@ -196,6 +196,22 @@ playlists for standard API apps); tracks are matched onto YouTube Music, and
 anything unmatched is listed at the end of the import so it can be added by
 hand.
 
+### Keep yt-dlp and ytmusicapi updated  ← do this when things break
+
+YouTube changes constantly and both libraries patch within days. A stale copy
+causes symptoms that look like app bugs:
+
+- **stale `ytmusicapi`** → radio / "Recommended for you" silently return NOTHING
+  (the server log shows `watch_playlist failed ('endpoint')`)
+- **stale `yt-dlp`** → 403s, songs refusing to play
+
+```bash
+./.venv/bin/pip install -U yt-dlp ytmusicapi
+```
+
+Then restart. Worth doing every month or so, and first thing whenever
+recommendations go empty or playback starts failing.
+
 ### Streaming, the local cache, and 403s
 
 By default Ember streams a song live from YouTube on first play (instant start)
