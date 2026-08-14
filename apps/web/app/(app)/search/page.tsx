@@ -10,7 +10,11 @@ import { CloseIcon, MicIcon, MusicIcon, SearchIcon } from '@/components/icons';
 import { api } from '@/lib/api';
 import { QK } from '@/hooks/useLibrary';
 import { useVoiceSearch } from '@/hooks/useVoiceSearch';
-import { useSearchStore } from '@/stores/useSearchStore';
+import {
+  useQueryRecentSearches,
+  useExecuteAddRecentSearch,
+  useExecuteRemoveRecentSearch,
+} from '@/hooks/useRecentSearches';
 import { usePlayer } from '@/components/player/PlayerProvider';
 import { useOnline } from '@/lib/useOnline';
 import { OfflinePlaceholder } from '@/components/OfflinePlaceholder';
@@ -22,9 +26,9 @@ export default function SearchPage() {
   const isOnline = useOnline();
   const { playTrack } = usePlayer();
 
-  const recentTracks = useSearchStore((s) => s.recentTracks);
-  const addRecentTrack = useSearchStore((s) => s.addRecentTrack);
-  const removeRecentTrack = useSearchStore((s) => s.removeRecentTrack);
+  const { data: recentTracks = [] } = useQueryRecentSearches();
+  const addRecentTrack = useExecuteAddRecentSearch();
+  const removeRecentTrack = useExecuteRemoveRecentSearch();
 
   // Spoken words fill the input live; the debounce below turns them into a
   // search exactly like typing.
@@ -85,7 +89,7 @@ export default function SearchPage() {
               size="icon"
               onClick={(e) => {
                 e.stopPropagation();
-                removeRecentTrack(t.id);
+                removeRecentTrack.mutate(t.id);
               }}
               aria-label={`Remove "${t.title}" from recent searches`}
               className="h-7 w-7 text-muted-foreground hover:text-foreground opacity-0 group-hover:opacity-100 max-md:opacity-100 transition-opacity"
@@ -106,7 +110,7 @@ export default function SearchPage() {
     <TrackList
       tracks={data ?? []}
       context={{ type: 'search', query: debouncedQ }}
-      onPlayTrack={(t) => addRecentTrack(t)}
+      onPlayTrack={(t) => addRecentTrack.mutate(t)}
     />
   );
 
