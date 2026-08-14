@@ -1,118 +1,88 @@
 # What to test right now
 
-Two groups: **things already on main** (your friend pulls, everyone can test on
-the real URL) and **things on branches** (need a checkout to try).
-
----
-
-## GROUP 1 — already on main
-
-Your friend runs, on the server:
+**Everything except the native apps is now on `test-branch`.** One checkout,
+one build, test it all:
 
 ```bash
-git pull
+cd "/Users/aronmatoic/Documents/Main Projects/spotify-clone"
+git checkout test-branch
 ./start-static.sh
 ```
 
-### 1. 403s / songs failing to play  ← the important one
-- Play a handful of songs you've **never played before**. They should start in
-  ~3 seconds.
-- Play those same songs **again**. Second time should start almost instantly
-  (well under a second) — that means it's now coming from the server's disk,
-  not YouTube.
-- Skip around inside a long track. Seeking should be instant on a song you've
-  played before.
-- ✅ Pass = far fewer "song won't play" errors, and replays are fast.
-- Note: a brand-new song can still occasionally fail on the *first* press.
-  Pressing play again should work. Tell me if that happens a lot.
-
-### 2. Volume is no longer deafening
-- Open Ember on a device you've **never used before** (or clear site data).
-- ✅ Pass = first song starts quiet-ish, slider sitting in the first quarter.
-- Existing devices keep whatever volume you already set — that's intended.
-
-### 3. Firefox on Android — layout jumping
-- Open the app in Firefox on your phone, scroll hard up and down.
-- ✅ Pass = the app doesn't shift up when the address bar hides.
-
-### Also worth doing on the server (not a test, a fix)
-- Fix the cookie path: the file is in `apps/web/`, so it must be
-  `YTDLP_COOKIE_FILE=cookies.txt` (no `../`), or an absolute path.
-  It fails **silently** if wrong.
-- Install Deno (`curl -fsSL https://deno.land/install.sh | sh`) — yt-dlp warns
-  it has no JavaScript runtime, which is a likely cause of the 403s.
-- Update yt-dlp: `.venv/bin/pip install -U yt-dlp` (4 months out of date).
+Open http://localhost:3000. (Runs against your LOCAL database, so you'll see
+your own playlists, not the server's.) Hard-refresh with Cmd+Shift+R if the UI
+looks stale.
 
 ---
 
-## GROUP 2 — on branches (not live)
+## 1. Shuffle  ← the new one
+1. Open a playlist, start a song **in the middle** of it.
+2. Click the shuffle icon in the bottom bar (just left of the loop icon).
+   On a phone it's in the full-screen now-playing view.
+3. ✅ The song keeps playing without a stutter; the songs *after* it get
+   reordered; songs before it stay put.
+4. Click shuffle again.
+5. ✅ The playlist returns to its exact original order, still on the same song.
 
-To try one, from the repo:
+## 2. Recent searches sync  — you already confirmed this works
+Search, play a track, then open Ember on another device with the same account.
+The recents list matches; removing on one removes on both.
 
-```bash
-git checkout <branch>
-./start-static.sh
-```
+## 3. Friends are listening to
+Have someone else play something, then look at Home.
+✅ A row appears with their name and track. Hidden when nobody's listening.
 
-(Then `git checkout main && ./start-static.sh` to go back.)
-
-### `feat/shuffle` — shuffle playlists
-1. Open a playlist and start playing a song in the **middle** of it.
-2. Hit the shuffle icon (next to the loop icon, bottom bar; on phones it's in
-   the full-screen player).
-3. ✅ The song keeps playing without interruption, and the *upcoming* songs are
-   reordered. Already-played ones stay put.
-4. Hit shuffle again to turn it off.
-5. ✅ The playlist goes back to its exact original order, still on the same song.
-
-### `feat/db-cleanup` — auto-delete unplayed songs
-Safe to inspect without deleting anything. While signed in as admin:
+## 4. Cleanup (safe to inspect — deletes nothing by default)
+Signed in as admin:
 
 ```bash
-curl -X POST http://127.0.0.1:3000/api/admin/cleanup \
+curl -X POST http://localhost:3000/api/admin/cleanup \
   -H 'Content-Type: application/json' -d '{}'
 ```
+✅ Reports what it *would* delete (`"dryRun": true`), removes nothing.
+Add `-d '{"apply":true}'` to really run it, then check your liked songs and
+playlists are untouched. Only tracks nobody played in 14 days should go.
 
-- ✅ It reports how many tracks it *would* delete and how much disk it'd free,
-  and deletes nothing (`"dryRun": true`).
-- Add `-d '{"apply":true}'` to actually run it.
-- ✅ Check afterwards that your liked songs and playlists are all still intact —
-  nothing you care about should ever be removed, only tracks nobody has played
-  in 14 days.
+## 5. Faster replays (403 work — already on main too)
+Play a new song, then play it again. The second time should start almost
+instantly, because it now comes from disk instead of YouTube.
 
-### `test-branch` — recent searches sync + friends listening
-1. **Recents sync:** search something and play it. Now open Ember on a
-   *different device* (or a private window) with the same account.
-   ✅ The search page shows the same recent tracks. Remove one → gone on both.
-2. **Friends are listening to:** have someone else play a song, then look at
-   your Home page. ✅ A row appears showing their name and what they're playing.
-   It hides itself when nobody's listening.
-
-### `feat/discord-desktop-presence` — Discord status
-Needs the desktop app and a Discord application id:
-
-```bash
-cd apps/desktop
-DISCORD_APP_ID=<your-app-id> EMBER_APP_URL="https://ember.tailf4de41.ts.net" npm run build
-```
-
-- Run the built app with Discord open, play a song.
-- ✅ Your own Discord profile shows the track. (The old version could only ever
-  show the host's status — this is the fix.)
-
-### `native-shell` — Android app
-- Install `apps/mobile/android/app/build/outputs/apk/release/app-release.apk`
-  on your phone.
-- ✅ Ember opens, plays, and **keeps playing when you switch apps** or lock the
-  screen, with working notification controls.
-- ✅ App icon is the Ember flame.
+When done: `git checkout main && ./start-static.sh`
 
 ---
 
-## Priority if you only have 15 minutes
+## Already live on main (your friend just pulls + restarts)
+- 403 fix / disk caching — **you confirmed this works**
+- Quieter default volume on new devices
+- Firefox Android layout no longer jumps when scrolling
 
-1. 403s / replay speed (Group 1) — the thing people actually complain about
-2. Shuffle (`feat/shuffle`) — quick and self-contained
-3. Recents sync on two devices (`test-branch`)
+Server-side, not code: fix the cookie path (`cookies.txt`, no `../` — it's in
+`apps/web/`), install Deno, and update yt-dlp.
 
-Tell me which pass and I'll merge them to main.
+---
+
+## Native apps — separate branches, separate testing
+
+### `native-shell` — Android
+Install `apps/mobile/android/app/build/outputs/apk/release/app-release.apk`.
+✅ Plays, keeps playing when you switch apps or lock the screen, notification
+controls work, Ember flame icon.
+
+### `native-shell` — desktop
+A built `Ember.app` already exists at
+`apps/desktop/src-tauri/target/release/bundle/macos/`. Nobody has confirmed
+audio actually comes out of it yet.
+✅ Open it, play something, check sound + that media keys and macOS Now Playing
+control it.
+
+### `feat/discord-desktop-presence`
+Needs a rebuild with your Discord app id:
+```bash
+cd apps/desktop
+DISCORD_APP_ID=<id> EMBER_APP_URL="https://ember.tailf4de41.ts.net" npm run build
+```
+✅ With Discord open, playing a song shows it on **your own** profile.
+
+---
+
+Tell me what passes and I'll merge it to main.
