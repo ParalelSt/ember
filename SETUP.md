@@ -233,6 +233,24 @@ STREAM_CACHE_WARM=0      # turn OFF background caching (saves disk, keeps 403 ex
 
 Disk: roughly 3-7 MB per song. The cache grows with listening, so pair it with
 the weekly cleanup of tracks nobody has played.
+### Automatic cleanup of unplayed songs
+
+Once a day the server deletes tracks **nobody has played in 14 days**, along
+with their cached audio in `my_music/`. Anything liked, in a playlist, in a
+live session, or in someone's recent searches is kept regardless of age, as is
+anything played inside the window.
+
+It runs an hour after boot and then daily. To disable, set `CLEANUP_DISABLED=1`
+in `apps/web/.env.local`.
+
+To see what it *would* delete without deleting anything (admin account needed):
+
+```bash
+curl -X POST http://127.0.0.1:3000/api/admin/cleanup -H 'Content-Type: application/json' -d '{}'
+```
+
+Add `-d '{"apply":true}'` to actually run it. The response reports how many
+rows and files were removed and how much disk was freed.
 
 ### Adding more invitees
 
