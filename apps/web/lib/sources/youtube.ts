@@ -488,6 +488,12 @@ export async function getLyrics(title: string, artist: string): Promise<LyricsRe
   return result;
 }
 
+/** Drop a cached stream URL so the next resolve re-extracts. Used when the
+ *  upstream 403s: the signed URL may have gone stale inside its own expiry. */
+export function invalidateStreamUrl(videoId: string): void {
+  URL_CACHE.delete(videoId);
+}
+
 export async function resolveStreamUrl(videoId: string): Promise<StreamInfo> {
   if (!VIDEO_ID_RE.test(videoId)) {
     const e: PythonError = new Error('invalid videoId');

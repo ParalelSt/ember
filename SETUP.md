@@ -196,6 +196,28 @@ playlists for standard API apps); tracks are matched onto YouTube Music, and
 anything unmatched is listed at the end of the import so it can be added by
 hand.
 
+### Streaming, the local cache, and 403s
+
+By default Ember streams a song live from YouTube on first play (instant start)
+and then **downloads it to `my_music/` in the background**, so every later play
+is served straight off the host's disk. Local plays can't 403 and don't touch
+YouTube at all.
+
+If a live stream is refused (403), Ember re-resolves the URL once, and if that
+still fails it downloads the track and serves the file instead. A 403 that
+survives all of that means YouTube is blocking the host's IP — fix that with
+cookies (see the yt-dlp cookie env vars above).
+
+Knobs (both optional, in `apps/web/.env.local`):
+
+```bash
+STREAM_MODE=cache        # download BEFORE first play too (slower first play, zero live streaming)
+STREAM_CACHE_WARM=0      # turn OFF background caching (saves disk, keeps 403 exposure)
+```
+
+Disk: roughly 3-7 MB per song. The cache grows with listening, so pair it with
+the weekly cleanup of tracks nobody has played.
+
 ### Adding more invitees
 
 http://127.0.0.1:8090/_/ → `allowed_emails` collection → **New record** → enter the email → save. The user can now register at `/auth` on their next visit. No restart, no code change.
