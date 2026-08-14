@@ -311,9 +311,27 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [audioReady, current?.id]);
 
+  /** Where loop-all wraps. For a PLAYLIST we wrap at the end of the playlist
+   *  itself, so enabling loop after radio has taken over returns you to the
+   *  playlist instead of cycling the random tail. Everywhere else (search,
+   *  single, radio) the whole queue is the loop — wrapping a 1-track base
+   *  there would strand the user on one un-skippable song. */
+  const loopWrapPoint = useCallback(() => {
+    const st = usePlayerStore.getState();
+    const curated = st.context?.type === 'playlist' ? st.baseCount : 0;
+    return curated > 0 ? Math.min(curated, st.queue.length) : st.queue.length;
+  }, []);
+
   const next = useCallback(() => {
     userInteracted.current = true;
     const loop = usePlayerStore.getState().loopMode;
+    const wrapAt = loopWrapPoint();
+    // Past the playlist (radio territory) with loop on → back to the playlist.
+    if (loop === 'all' && index >= wrapAt - 1 && wrapAt > 0) {
+      loadAndPlay(queue[0] ?? null, true);
+      setIndex(0);
+      return;
+    }
     if (index < queue.length - 1) {
       // Synchronous play() preserves the user-gesture token; the effect that
       // would otherwise handle this fires too late on React 19.
@@ -327,7 +345,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       loadAndPlay(queue[0] ?? null, true);
       setIndex(0);
     }
-  }, [index, queue, setIndex, loadAndPlay]);
+  }, [index, queue, setIndex, loadAndPlay, loopWrapPoint]);
 
   const prev = useCallback(() => {
     userInteracted.current = true;
@@ -337,8 +355,9 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     // into the song we are (checked BEFORE the >3s restart so the wrap isn't
     // swallowed by restart-current at the start of the queue).
     if (index === 0 && loop === 'all' && queue.length > 0) {
-      loadAndPlay(queue[queue.length - 1] ?? null, true);
-      setIndex(queue.length - 1);
+      const last = loopWrapPoint() - 1;
+      loadAndPlay(queue[last] ?? null, true);
+      setIndex(last);
       return;
     }
     if (a && a.currentTime > 3) { a.currentTime = 0; return; }
@@ -346,7 +365,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       loadAndPlay(queue[index - 1] ?? null, true);
       setIndex(index - 1);
     }
-  }, [index, queue, setIndex, loadAndPlay]);
+  }, [index, queue, setIndex, loadAndPlay, loopWrapPoint]);
 
   // Audio event hookups: time, meta, ended, play, pause.
   useEffect(() => {
@@ -639,6 +658,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       queue: queueList,
       index: i >= 0 ? i : 0,
       context: nextContext ?? { type: 'single' },
+      // Size of the curated list, before radio extends it.
+      baseCount: queueList.length,
       // A new queue invalidates any shuffle snapshot — without this, turning
       // shuffle off later would restore a PREVIOUS list's order. Callers that
       // want a shuffled start (the playlist Shuffle button) set it right after.
