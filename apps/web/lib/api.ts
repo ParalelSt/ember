@@ -106,6 +106,15 @@ export const api = {
   /** Match ≤8 Spotify items onto YT Music (null = no match). */
   importMatch: (items: { title: string; artist: string }[]) =>
     req<{ tracks: (Track | null)[] }>('/import/match', { method: 'POST', body: { items } }),
+  // — Recent searches (server-backed so they sync across devices) —
+  listRecentSearches: () => req<{ tracks: Track[] }>('/recent-searches'),
+  addRecentSearch: (track: Track) =>
+    req<{ ok: true }>('/recent-searches', { method: 'POST', body: { track } }),
+  removeRecentSearch: (trackId: string) =>
+    req<{ ok: true }>(`/recent-searches/${encodeURIComponent(trackId)}`, { method: 'DELETE' }),
+  /** What other members played in the last ~30 min (newest per user). */
+  listening: () =>
+    req<{ items: { userName: string; playedAt: string; track: Track }[] }>('/listening'),
   deletePlaylist: (id: string) => req<{ ok: true }>(`/playlists/${id}`, { method: 'DELETE' }),
   /** Upload (or replace) a playlist cover image. Multipart, so it bypasses
    *  the JSON `req` helper. */
