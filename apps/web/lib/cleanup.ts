@@ -97,13 +97,21 @@ export async function runCleanup(pb: PocketBase, { dryRun = false } = {}): Promi
 
   for (const row of tracks) {
     const id = String(row.id);
+    const externalId = String(row.external_id ?? '');
+    // Member uploads are never stale: someone deliberately put them on this
+    // server, and deleting the row frees nothing (the audio lives in the
+    // uploads collection's own directory, removed only via /api/uploads).
+    if (externalId.startsWith('upload:')) {
+      report.protectedCount += 1;
+      continue;
+    }
     if (keepReferenced.has(id) || keepRecent.has(id)) {
       report.protectedCount += 1;
       continue;
     }
 
     // external_id is "youtube:<videoId>"; the cache is keyed by videoId.
-    const videoId = String(row.external_id ?? '').split(':')[1] ?? '';
+    const videoId = externalId.split(':')[1] ?? '';
     const file = videoId ? cachedFileFor(videoId) : null;
 
     if (file) {

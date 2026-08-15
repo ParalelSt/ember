@@ -184,6 +184,25 @@ A report costs well under a cent (the logs are condensed and capped before
 they're sent), but **you** pay for everyone's reports since the key is yours.
 The 30-second-per-user cooldown on reports caps the spend too.
 
+### Custom song uploads
+
+Library → **Upload** puts a file from someone's device onto the server. It
+becomes searchable and playable for every signed-in member — the point is a
+shared library that grows with things YouTube doesn't have (local bands,
+demos, rips).
+
+Nothing to configure. Worth knowing:
+
+- Audio lands in `MUSIC_DIR/uploads` (default `my_music/uploads`), so it's
+  covered by whatever backs up your music directory. **PocketBase must be
+  restarted once** after updating so the `uploads` collection gets created.
+- Limits: 50MB per file and 10 uploads per person per hour. Change the size
+  with `MAX_UPLOAD_MB` in `apps/web/.env.local`.
+- Uploads are validated by their actual bytes, not the browser's claim, and
+  stored under a random filename.
+- Only the uploader (or an admin) can delete an upload; the 14-day cleanup
+  never touches them.
+
 ### Lyrics
 
 The in-player **Lyrics** button (mic icon next to Queue) hits Genius directly — no API key needed. `player.py:cmd_lyrics` uses Genius's public search endpoint to find the song page, then scrapes the lyrics from the page HTML. Works out of the box.

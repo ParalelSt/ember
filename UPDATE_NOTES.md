@@ -45,4 +45,28 @@ Until then, Spotify links show a friendly "not set up" message.
   same-name artists no longer share an artist page; error-handler crash on
   PocketBase network failures.
 
+---
+
+# Next batch — branch `feat/next-batch` (NOT on main yet)
+
+When this branch merges, the host needs:
+
+1. **Full restart again** — `pb_hooks/ensure_uploads.pb.js` creates the
+   `uploads` collection on boot. Custom song uploads don't work until
+   PocketBase has rebooted once.
+2. **Optional:** `ANTHROPIC_API_KEY` in `apps/web/.env.local` turns on AI
+   triage of bug reports (SETUP.md → "Bug reports"). Everything works
+   without it.
+3. Nothing else — no `npm install`, no new services.
+
+Contents:
+- **Guitar tabs** — a guitar-icon button in the player finds the tab for
+  the playing song on Songsterr (links out; they block embedding).
+- **AI bug triage** — reports arrive in Discord with a summary, likely
+  cause and what to check first, instead of only raw logs.
+- **Custom uploads** — Library → Upload adds a song from your own files;
+  everyone on the server can search and play it. 50MB per file by default
+  (`MAX_UPLOAD_MB`), 10 uploads per person per hour. Uploaded audio lives
+  in `MUSIC_DIR/uploads` and is exempt from the 14-day cleanup.
+
 Delete this file whenever it stops being useful.

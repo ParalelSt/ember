@@ -43,4 +43,5 @@ export {
   Check as CheckIcon,
   XCircle as XCircleIcon,
   Share as ShareIcon,
+  Upload as UploadIcon,
 } from 'lucide-react';
