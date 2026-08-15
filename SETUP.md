@@ -196,6 +196,62 @@ playlists for standard API apps); tracks are matched onto YouTube Music, and
 anything unmatched is listed at the end of the import so it can be added by
 hand.
 
+### Keep yt-dlp and ytmusicapi updated  ← do this when things break
+
+YouTube changes constantly and both libraries patch within days. A stale copy
+causes symptoms that look like app bugs:
+
+- **stale `ytmusicapi`** → radio / "Recommended for you" silently return NOTHING
+  (the server log shows `watch_playlist failed ('endpoint')`)
+- **stale `yt-dlp`** → 403s, songs refusing to play
+
+```bash
+./.venv/bin/pip install -U yt-dlp ytmusicapi
+```
+
+Then restart. Worth doing every month or so, and first thing whenever
+recommendations go empty or playback starts failing.
+
+### Streaming, the local cache, and 403s
+
+By default Ember streams a song live from YouTube on first play (instant start)
+and then **downloads it to `my_music/` in the background**, so every later play
+is served straight off the host's disk. Local plays can't 403 and don't touch
+YouTube at all.
+
+If a live stream is refused (403), Ember re-resolves the URL once, and if that
+still fails it downloads the track and serves the file instead. A 403 that
+survives all of that means YouTube is blocking the host's IP — fix that with
+cookies (see the yt-dlp cookie env vars above).
+
+Knobs (both optional, in `apps/web/.env.local`):
+
+```bash
+STREAM_MODE=cache        # download BEFORE first play too (slower first play, zero live streaming)
+STREAM_CACHE_WARM=0      # turn OFF background caching (saves disk, keeps 403 exposure)
+```
+
+Disk: roughly 3-7 MB per song. The cache grows with listening, so pair it with
+the weekly cleanup of tracks nobody has played.
+### Automatic cleanup of unplayed songs
+
+Once a day the server deletes tracks **nobody has played in 14 days**, along
+with their cached audio in `my_music/`. Anything liked, in a playlist, in a
+live session, or in someone's recent searches is kept regardless of age, as is
+anything played inside the window.
+
+It runs an hour after boot and then daily. To disable, set `CLEANUP_DISABLED=1`
+in `apps/web/.env.local`.
+
+To see what it *would* delete without deleting anything (admin account needed):
+
+```bash
+curl -X POST http://127.0.0.1:3000/api/admin/cleanup -H 'Content-Type: application/json' -d '{}'
+```
+
+Add `-d '{"apply":true}'` to actually run it. The response reports how many
+rows and files were removed and how much disk was freed.
+
 ### Adding more invitees
 
 http://127.0.0.1:8090/_/ → `allowed_emails` collection → **New record** → enter the email → save. The user can now register at `/auth` on their next visit. No restart, no code change.

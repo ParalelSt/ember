@@ -31,6 +31,7 @@ export {
   Mic as MicIcon,
   Clock as ClockIcon,
   Sparkles as SparklesIcon,
+  Shuffle as ShuffleIcon,
   Repeat as RepeatIcon,
   Repeat1 as RepeatOneIcon,
   VolumeX as VolumeMutedIcon,

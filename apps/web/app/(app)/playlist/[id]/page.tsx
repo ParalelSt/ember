@@ -8,8 +8,9 @@ import { Button } from '@/components/ui/button';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { TrackList } from '@/components/track/TrackList';
 import { TrackSearchPicker } from '@/components/track/TrackSearchPicker';
-import { CheckIcon, CloudDownloadIcon, PlayIcon, TrashIcon, XCircleIcon } from '@/components/icons';
+import { CheckIcon, CloudDownloadIcon, PlayIcon, ShuffleIcon, TrashIcon, XCircleIcon } from '@/components/icons';
 import { usePlayer } from '@/components/player/PlayerProvider';
+import { usePlayerStore } from '@/stores/usePlayerStore';
 import { useOfflineStore } from '@/stores/useOfflineStore';
 import { cancelDownload, downloadPlaylist, isStale, removeDownload } from '@/lib/offline';
 import { useOnline } from '@/lib/useOnline';
@@ -160,6 +161,30 @@ export default function PlaylistPage({ params }: { params: Promise<{ id: string 
           aria-label="Play"
         >
           <PlayIcon className="h-5 w-5 fill-current ml-0.5" />
+        </Button>
+        {/* Shuffle play — shuffles the whole playlist and starts at the top of
+            the shuffled order. playTrack clears any previous shuffle snapshot,
+            so we record THIS playlist's original order right after, letting the
+            player-bar toggle restore it later. */}
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={() => {
+            if (!tracks.length) return;
+            const shuffled = tracks.slice();
+            for (let i = shuffled.length - 1; i > 0; i--) {
+              const j = Math.floor(Math.random() * (i + 1));
+              [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+            }
+            playTrack(shuffled[0], shuffled, playlistContext);
+            usePlayerStore.setState({ shuffle: true, orderBackup: tracks });
+          }}
+          disabled={!tracks.length}
+          className="h-12 w-12 rounded-full text-muted-foreground hover:text-foreground"
+          aria-label="Shuffle play"
+          title="Shuffle play"
+        >
+          <ShuffleIcon className="h-5 w-5" />
         </Button>
         {inFlight ? (
           <Button
