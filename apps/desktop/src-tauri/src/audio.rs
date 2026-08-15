@@ -292,25 +292,33 @@ pub fn audio_set_volume(engine: State<'_, AudioEngine>, amplitude: f32) {
 // --- OS media controls (souvlaki) -------------------------------------------
 
 /// Initialize OS media controls and route their transport-button presses to the
-/// webview as `audio:cmd` events. Call ONCE at app setup (main thread). On
-/// Windows, SMTC needs the window HWND (not wired this slice), so init will fail
-/// there — the caller logs it and degrades gracefully (playback unaffected).
+/// webview as `audio:cmd` events. Call ONCE at app setup (main thread).
+///
+/// macOS uses Now Playing, Linux MPRIS, Windows SMTC. Windows is the awkward
+/// one: SMTC is attached to a window, so souvlaki needs the HWND — and its
+/// Windows backend `.expect()`s on a None hwnd, i.e. it PANICS rather than
+/// returning Err. So the handle is resolved up front and a missing one becomes
+/// an ordinary Err, which the caller logs while playback carries on.
 pub fn init_media_controls(app: &AppHandle, engine: &AudioEngine) -> Result<(), String> {
-    // Windows SMTC requires the window HWND; souvlaki's Windows backend PANICS on
-    // a None hwnd (it `.expect()`s) rather than returning Err, which the non-fatal
-    // caller couldn't catch. Until the HWND is wired, bail out with an Err here so
-    // startup degrades gracefully (logged) instead of crashing.
     #[cfg(windows)]
-    {
-        let _ = (app, engine);
-        return Err("Windows SMTC not wired yet (needs window HWND)".to_string());
-    }
+    let hwnd = {
+        use tauri::Manager;
+        let window = app
+            .get_webview_window("main")
+            .ok_or_else(|| "no main window for SMTC".to_string())?;
+        let handle = window
+            .hwnd()
+            .map_err(|e| format!("could not get HWND for SMTC: {e}"))?;
+        Some(handle.0 as *mut std::ffi::c_void)
+    };
     #[cfg(not(windows))]
+    let hwnd = None;
+
     {
     let config = PlatformConfig {
         display_name: "Ember",
         dbus_name: "ember",
-        hwnd: None, // macOS/Linux: None.
+        hwnd,
     };
     let mut controls = MediaControls::new(config).map_err(|e| format!("{e:?}"))?;
     let app2 = app.clone();
