@@ -16,6 +16,14 @@ const MAX_ATTEMPTS = 3;
 const BACKOFF_MS = [30_000, 120_000];
 /** Quiet gap between consecutive downloads. */
 const GAP_MS = 3_000;
+/** How long to leave a freshly-played track alone before caching it.
+ *
+ *  YouTube throttles a sequential stream to roughly playback speed. If we start
+ *  yt-dlp on the SAME track while the user is still streaming it, the two
+ *  compete for that throttled budget and the listener's audio — the thing they
+ *  are actually waiting on — gets slower. Caching is never urgent; the point is
+ *  to be fast NEXT time. So hang back and let the live stream have the pipe. */
+const WARM_DELAY_MS = 90_000;
 
 interface Job {
   videoId: string;
@@ -35,7 +43,7 @@ export function queueCacheWarm(videoId: string): void {
   if (queued.has(videoId) || findCachedFile(videoId)) return;
   if (queue.length >= MAX_QUEUE) return;
   queued.add(videoId);
-  queue.push({ videoId, attempt: 0, readyAt: Date.now() });
+  queue.push({ videoId, attempt: 0, readyAt: Date.now() + WARM_DELAY_MS });
   void drain();
 }
 
