@@ -147,6 +147,23 @@ jobs:
           # workflow_dispatch runs that have no Release to attach to).
           uploadWorkflowArtifacts: true
 
+      # tauri-action's own uploadWorkflowArtifacts only fires when there's a
+      # release to attach to — on a branch push it logs "No releaseId or
+      # tagName provided, skipping all uploads" and the installers it just
+      # built are discarded with the runner. Upload them explicitly so a
+      # non-tag build still hands you something installable.
+      - name: Upload desktop installers
+        uses: actions/upload-artifact@v4
+        with:
+          name: ember-desktop-${{ matrix.platform }}
+          path: |
+            apps/desktop/src-tauri/target/release/bundle/msi/*.msi
+            apps/desktop/src-tauri/target/release/bundle/nsis/*-setup.exe
+            apps/desktop/src-tauri/target/release/bundle/dmg/*.dmg
+            apps/desktop/src-tauri/target/release/bundle/appimage/*.AppImage
+            apps/desktop/src-tauri/target/release/bundle/deb/*.deb
+          if-no-files-found: error
+
       # A binary that compiles is not a binary that works. GitHub's Windows
       # runners have a desktop session and a preinstalled WebView2 runtime, so
       # the real app can be launched here and inspected — which is the only
