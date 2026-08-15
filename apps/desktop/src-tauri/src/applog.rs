@@ -25,22 +25,39 @@ impl Default for LogFile {
 }
 
 fn log_dir() -> Option<PathBuf> {
-    let home = std::env::var_os("HOME")?;
-    let mut p = PathBuf::from(home);
-    #[cfg(target_os = "macos")]
+    // Windows has no $HOME — reading it returns None, which silently disabled
+    // logging entirely on Windows (the one platform where you can't just run
+    // the binary from a terminal to see stderr). Use the platform's own
+    // convention on each OS.
+    #[cfg(windows)]
     {
-        p.push("Library");
-        p.push("Logs");
+        let base = std::env::var_os("LOCALAPPDATA")
+            .or_else(|| std::env::var_os("APPDATA"))
+            .or_else(|| std::env::var_os("USERPROFILE"))?;
+        let mut p = PathBuf::from(base);
         p.push("Ember");
-    }
-    #[cfg(not(target_os = "macos"))]
-    {
-        p.push(".local");
-        p.push("share");
-        p.push("ember");
         p.push("logs");
+        Some(p)
     }
-    Some(p)
+    #[cfg(not(windows))]
+    {
+        let home = std::env::var_os("HOME")?;
+        let mut p = PathBuf::from(home);
+        #[cfg(target_os = "macos")]
+        {
+            p.push("Library");
+            p.push("Logs");
+            p.push("Ember");
+        }
+        #[cfg(not(target_os = "macos"))]
+        {
+            p.push(".local");
+            p.push("share");
+            p.push("ember");
+            p.push("logs");
+        }
+        Some(p)
+    }
 }
 
 /// Create the log file (truncating the previous run) and return its path.

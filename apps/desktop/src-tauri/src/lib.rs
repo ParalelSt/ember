@@ -29,14 +29,27 @@ pub fn run() {
         // uncaught exceptions, rejected promises, and the status of every
         // /api and /pb request (which is what you need when login fails).
         .append_invoke_initialization_script(APP_LOG_SCRIPT)
-        .setup(|app| {
+        .setup(move |app| {
             // Initialize OS media controls (macOS Now Playing / Linux MPRIS /
             // Windows SMTC). Non-fatal: playback still works without them, so a
             // failure is logged and swallowed rather than aborting startup.
+            //
+            // The outcome goes to the LOG FILE, not just stderr: a packaged
+            // Windows app is a GUI subsystem binary with nowhere for stderr to
+            // go, so an stderr-only message is invisible exactly where it's
+            // most needed. It also gives CI something to assert on.
             let handle = app.handle().clone();
             let state = app.state::<audio::AudioEngine>();
-            if let Err(e) = audio::init_media_controls(&handle, state.inner()) {
-                eprintln!("[ember] media controls unavailable: {e}");
+            match audio::init_media_controls(&handle, state.inner()) {
+                Ok(()) => applog::write_line(log_path.as_ref(), "INFO", "media controls ready"),
+                Err(e) => {
+                    eprintln!("[ember] media controls unavailable: {e}");
+                    applog::write_line(
+                        log_path.as_ref(),
+                        "WARN",
+                        &format!("media controls unavailable: {e}"),
+                    );
+                }
             }
             // Devtools: right-click → Inspect Element works in release too when
             // the `devtools` feature is on. EMBER_DEVTOOLS=1 opens it on launch.

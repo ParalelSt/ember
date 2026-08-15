@@ -147,6 +147,56 @@ jobs:
           # workflow_dispatch runs that have no Release to attach to).
           uploadWorkflowArtifacts: true
 
+      # A binary that compiles is not a binary that works. GitHub's Windows
+      # runners have a desktop session and a preinstalled WebView2 runtime, so
+      # the real app can be launched here and inspected — which is the only
+      # Windows machine this project has.
+      #
+      # Asserts: the process survives startup (no instant crash), it writes its
+      # log (which needs LOCALAPPDATA — $HOME doesn't exist on Windows), the
+      # webview reaches the live server, and SMTC media controls initialise.
+      - name: Smoke-test the Windows build
+        if: matrix.platform == 'windows-latest'
+        shell: pwsh
+        run: |
+          $exe = Get-ChildItem -Path apps/desktop/src-tauri/target/release -Filter 'Ember.exe' -Recurse |
+                 Select-Object -First 1
+          if (-not $exe) { throw "no Ember.exe was produced" }
+          Write-Host "launching $($exe.FullName)"
+
+          $proc = Start-Process -FilePath $exe.FullName -PassThru
+          Start-Sleep -Seconds 30
+
+          $log = Join-Path $env:LOCALAPPDATA 'Ember\logs\ember-desktop.log'
+          $alive = -not $proc.HasExited
+          if (-not $alive) { Write-Host "::error::app exited on its own (code $($proc.ExitCode))" }
+
+          if (Test-Path $log) {
+            Write-Host "----- ember-desktop.log -----"
+            Get-Content $log | Select-Object -First 60
+            Write-Host "-----------------------------"
+          } else {
+            Write-Host "::error::no log at $log — logging is broken on Windows"
+          }
+          if (-not $proc.HasExited) { Stop-Process -Id $proc.Id -Force }
+
+          $failures = @()
+          if (-not $alive) { $failures += "process died during startup" }
+          if (-not (Test-Path $log)) { $failures += "no log file written" }
+          else {
+            $text = Get-Content $log -Raw
+            if ($text -notmatch 'ember-desktop starting') { $failures += "app never logged startup" }
+            # Wired in this branch; a regression here means no media keys and no
+            # Now Playing flyout on Windows.
+            if ($text -match 'media controls unavailable') { $failures += "SMTC failed to initialise" }
+            if ($text -notmatch 'media controls ready')    { $failures += "media controls never reported ready" }
+          }
+
+          if ($failures.Count -gt 0) {
+            throw "Windows smoke test failed: $($failures -join '; ')"
+          }
+          Write-Host "OK — app launched, logged, and initialised media controls"
+
   # ---------------------------------------------------------------------------
   # 2. Android (Capacitor 7) — RELEASE APK. Signed with the Ember release key
   #    when the secrets below exist; falls back to a debug-signed release APK
