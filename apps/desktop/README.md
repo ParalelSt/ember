@@ -65,3 +65,38 @@ npm run build          # = set-url + `tauri build`
 
 Output lands in `src-tauri/target/release/bundle/`. The `.dmg` is **unsigned**
 in this workstream; signing/notarization is handled by distribution CI later.
+
+## Windows / Linux builds
+
+**You cannot build these on the Mac.** Tauri needs each platform's native
+toolchain, and cross-compiling to Windows dies in `aws-lc-sys`, which compiles
+C and wants MSVC. Builds come from CI instead
+([`.github/workflows/native-build.yml`](../../.github/workflows/native-build.yml)):
+
+- **push to `feat/windows-desktop`** → builds Windows only (cheap: the repo is
+  private, so minutes are billed, and macOS bills at 10x)
+- **push a `v*` tag** → builds macOS + Linux + Windows and attaches them to a
+  draft GitHub Release
+
+Grab the installer from the run's **Artifacts** section (`gh run download <id>`).
+Windows produces both an NSIS `.exe` and an MSI.
+
+The server URL is baked in from the repo variable `EMBER_APP_URL`
+(Settings → Secrets and variables → Actions → Variables).
+
+⚠️ The Windows build is **unsigned**, so SmartScreen shows "Windows protected
+your PC" on first run — *More info* → *Run anyway*. Silencing that needs an
+Authenticode certificate, which costs real money per year.
+
+### Platform feature parity
+
+| | macOS | Windows | Linux |
+|---|---|---|---|
+| Native audio (rodio) | ✓ | ✓ | ✓ |
+| OS media controls | ✓ Now Playing | ✓ SMTC *(untested)* | ✓ MPRIS |
+| Discord presence | ✓ | ✓ | ✓ |
+
+Windows SMTC was wired by resolving the window HWND (souvlaki panics on a
+missing one, so it's resolved up front and a failure degrades to "no media
+controls" rather than a crash). It compiles in CI but **has not been run on a
+Windows machine** — media keys and the Now Playing flyout are unverified.
