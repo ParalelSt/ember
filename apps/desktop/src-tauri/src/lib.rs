@@ -128,7 +128,7 @@ pub fn run() {
 
 /// Injected into the webview before page scripts run.
 const APP_LOG_SCRIPT: &str = r#"
-(function () {
+;(function () {
   // The IPC bridge may not exist yet when this runs, and on a remotely-loaded
   // page it only appears if the capability whitelists this origin. So queue
   // everything and flush once (if) it shows up; give up quietly after 15s
