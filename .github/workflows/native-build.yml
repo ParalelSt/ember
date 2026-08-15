@@ -431,6 +431,10 @@ jobs:
       - name: Publish the release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # This job deliberately doesn't check out the repo (it only needs the
+          # artifacts), so gh has no git remote to infer the repo from and dies
+          # with "not a git repository". Tell it explicitly.
+          GH_REPO: ${{ github.repository }}
           TAG: ${{ github.ref_name }}
         run: |
           set -euo pipefail
