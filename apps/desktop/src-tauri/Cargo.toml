@@ -15,7 +15,9 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-tauri = { version = "2", features = [] }
+# `devtools` keeps right-click → Inspect Element available in RELEASE builds,
+# which is the only way to debug a packaged webview app.
+tauri = { version = "2", features = ["devtools"] }
 
 # --- Native audio engine (Part 5) ---
 # rodio 0.21 keeps the Sink-based API this code targets (connect_new/append/play/

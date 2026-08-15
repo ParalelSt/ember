@@ -1,7 +1,17 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Minimal core permissions for the Ember webview shell.",
-  "windows": ["main"],
-  "permissions": ["core:default"]
+  "description": "Core permissions for the Ember webview shell. `remote` is REQUIRED: the app loads the Ember server in the webview, and without it that remote origin cannot reach our audio/discord/log commands over IPC at all.",
+  "windows": [
+    "main"
+  ],
+  "permissions": [
+    "core:default"
+  ],
+  "remote": {
+    "urls": [
+      "http://localhost:3000",
+      "https://ember.tailf4de41.ts.net"
+    ]
+  }
 }

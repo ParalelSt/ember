@@ -13,6 +13,7 @@ import { dirname, join } from "node:path";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const confPath = join(__dirname, "..", "src-tauri", "tauri.conf.json");
+const capPath = join(__dirname, "..", "src-tauri", "capabilities", "default.json");
 
 const url = process.env.EMBER_APP_URL?.trim() || "http://localhost:3000";
 
@@ -36,4 +37,13 @@ if (!win) {
 
 win.url = url;
 writeFileSync(confPath, JSON.stringify(conf, null, 2) + "\n");
+
+// The capability must list the SAME origin, or the remote page gets no IPC
+// access and every invoke() (native audio, discord, logging) silently fails.
+const cap = JSON.parse(readFileSync(capPath, "utf8"));
+const origin = new URL(url).origin;
+cap.remote = { urls: Array.from(new Set(["http://localhost:3000", origin])) };
+writeFileSync(capPath, JSON.stringify(cap, null, 2) + "\n");
+
 console.log(`[set-url] main window will load: ${url}`);
+console.log(`[set-url] capability grants IPC to: ${cap.remote.urls.join(", ")}`);
