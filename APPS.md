@@ -49,6 +49,34 @@ Without it the feature is silently off (playback is unaffected). Users also
 need the Discord desktop app running; if it's closed, Ember reconnects on the
 next track change.
 
+## Building the macOS app
+
+```bash
+cd apps/desktop
+npm run build:mac          # loads the live server (Tailscale funnel)
+npm run build:mac:local    # loads http://localhost:3000
+```
+
+Signs with your Developer ID automatically, notarizes if credentials are
+stored, and prints the `open` command plus the log path when it finishes.
+
+**Which to use.** The desktop app is a thin shell that DOWNLOADS the web app
+from whatever server you point it at, so web-side changes only show up if that
+server runs them:
+
+- `build:mac` → your friend's deployed code. The real app, but no unreleased fixes.
+- `build:mac:local` → run `./start-static.sh` from the repo root first, then this.
+  Loads YOUR machine's server, so it includes whatever is on your current branch.
+  This is the one to use when testing desktop changes.
+
+**Debugging a packaged build:** right-click inside the window → *Inspect
+Element* (devtools are enabled in release), and check
+`~/Library/Logs/Ember/ember-desktop.log`.
+
+**Note on the DMG:** creating it drives Finder through AppleScript, so it only
+works from a normal Terminal — not from CI or an agent shell. The `.app` builds
+fine either way and is all you need to run it yourself.
+
 ## Signing the macOS app
 
 Your Developer ID certificate is already in the keychain

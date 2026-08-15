@@ -8,7 +8,9 @@
     "dev": "npm run prepare:url && tauri dev",
     "build": "npm run prepare:url && tauri build",
     "tauri": "tauri",
-    "build:signed": "bash scripts/build-signed.sh"
+    "build:signed": "bash scripts/build-signed.sh",
+    "build:mac": "bash scripts/build-mac.sh",
+    "build:mac:local": "bash scripts/build-mac.sh --local"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2"
