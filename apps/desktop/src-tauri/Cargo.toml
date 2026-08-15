@@ -38,6 +38,7 @@ tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time"
 # line (which use alloc-no-stdlib 2.x) makes Cargo unify on a single version.
 alloc-stdlib = "=0.2.2"
 brotli-decompressor = "=5.0.1"
+discord-rich-presence = "1.1.0"
 
 [profile.release]
 codegen-units = 1

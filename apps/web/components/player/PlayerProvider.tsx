@@ -20,6 +20,7 @@ import { api, apiUrl } from '@/lib/api';
 import { logger } from '@/lib/logger/client';
 import { songKey } from '@/lib/songKey';
 import { detectShell } from '@/lib/playback/detectShell';
+import { publishDiscordPresence } from '@/lib/discordPresence';
 import { createWebBackend } from '@/lib/playback/webBackend';
 import { createCapacitorBackend } from '@/lib/playback/capacitorBackend';
 import { createNativeBackend, nativeBackendReady } from '@/lib/playback/nativeBridge';
@@ -396,9 +397,10 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     });
   }, [current?.id, current?.sourceId, index, queue, history, liked, context, loopMode, setQueue]);
 
-  // Discord rich presence.
+  // Discord rich presence — desktop app talks to the user's OWN Discord;
+  // web/phone falls back to the server route (host's Discord only).
   useEffect(() => {
-    api.updateDiscord(current, isPlaying).catch(() => {});
+    publishDiscordPresence(current, isPlaying);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [current?.id, isPlaying]);
 

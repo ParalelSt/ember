@@ -6,6 +6,7 @@
 // emits `audio:*` events back to the webview.
 
 mod audio;
+mod discord;
 
 use tauri::Manager;
 
@@ -14,6 +15,7 @@ pub fn run() {
     let engine = audio::AudioEngine::new().expect("failed to init audio engine");
     tauri::Builder::default()
         .manage(engine)
+        .manage(discord::DiscordPresence::default())
         .setup(|app| {
             // Initialize OS media controls (macOS Now Playing / Linux MPRIS /
             // Windows SMTC). Non-fatal: playback still works without them, so a
@@ -33,6 +35,7 @@ pub fn run() {
             audio::audio_seek,
             audio::audio_set_volume,
             audio::audio_set_metadata,
+            discord::discord_update,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Ember desktop");

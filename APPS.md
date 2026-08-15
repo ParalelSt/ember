@@ -32,6 +32,23 @@ EMBER_APP_URL="https://ember.tailf4de41.ts.net" npm run build
 # → src-tauri/target/release/bundle/…
 ```
 
+## Discord status (desktop app)
+
+The desktop app sets **each user's own** Discord status (the server can only
+ever set the host's — Discord needs a local client, which browsers can't reach).
+
+It needs the Discord application id baked in at build time:
+
+```bash
+cd apps/desktop
+DISCORD_APP_ID=your-app-id EMBER_APP_URL="https://ember.tailf4de41.ts.net" npm run build
+```
+
+In CI, add a repo variable `DISCORD_APP_ID` and pass it to the build step.
+Without it the feature is silently off (playback is unaffected). Users also
+need the Discord desktop app running; if it's closed, Ember reconnects on the
+next track change.
+
 ## Signing key (Android) — IMPORTANT
 
 `apps/mobile/android/ember-release.keystore` + `keystore.properties` live ONLY
