@@ -43,12 +43,22 @@ EMBER_APP_URL="https://ember.<tailnet>.ts.net" npm run sync
 ## Scripts
 
 ```
+npm run apk -- <url>          # build a sideloadable debug APK for that server
+npm run apk -- <url> --install  # …and adb install it onto a plugged-in phone
 npm run sync         # cap sync (copies config + plugins into native projects)
 npm run sync:ios     # cap sync ios
 npm run open:android # open the Android project in Android Studio
 npm run run:android  # build & run on a connected device/emulator
 npm run open:ios     # open the iOS project in Xcode
 ```
+
+`npm run apk` is the one-command path to a phone build: it finds a JDK 17+
+(Android Studio's bundled one) and the SDK, syncs the URL in, and runs Gradle.
+It refuses `localhost` URLs, since a phone can't reach them.
+
+For **Android Auto**, see [ANDROID_AUTO.md](ANDROID_AUTO.md) — the short version
+is that the car needs native playback, which this WebView wrapper doesn't have
+yet.
 
 There is **no web build step** — nothing is bundled. `sync` only pushes the
 config (incl. `EMBER_APP_URL`) and the fallback `public/` page into the native

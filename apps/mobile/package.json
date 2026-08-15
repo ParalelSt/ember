@@ -4,6 +4,7 @@
   "version": "0.1.0",
   "description": "Thin Capacitor webview wrapper that loads Ember's LIVE server URL (set via EMBER_APP_URL). Ember is a Next.js server app and cannot be statically bundled, so nothing is built into the app.",
   "scripts": {
+    "apk": "bash scripts/build-apk.sh",
     "sync": "cap sync",
     "sync:ios": "cap sync ios",
     "open:android": "cap open android",
