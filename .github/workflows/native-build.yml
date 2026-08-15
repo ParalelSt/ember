@@ -410,10 +410,11 @@ jobs:
           TAG: ${{ github.ref_name }}
         run: |
           set -euo pipefail
-          # Draft, so you can write the notes and check the assets before it's
-          # visible. --clobber makes a re-run of the same tag idempotent.
+          # Published, not draft: GitHub only attaches the "Source code
+          # (zip/tar.gz)" assets to a real release. --clobber makes a re-run of
+          # the same tag idempotent.
           if ! gh release view "$TAG" >/dev/null 2>&1; then
-            gh release create "$TAG" --draft --title "Ember $TAG" \
+            gh release create "$TAG" --title "Ember $TAG" \
               --notes "Ember $TAG — one installer per platform. Desktop apps auto-update from here."
           fi
           gh release upload "$TAG" dist/* --clobber
