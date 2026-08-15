@@ -83,7 +83,8 @@ jobs:
             libxdo-dev \
             libssl-dev \
             libayatana-appindicator3-dev \
-            librsvg2-dev
+            librsvg2-dev \
+            libasound2-dev
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -115,23 +116,46 @@ jobs:
           EMBER_APP_URL: ${{ vars.EMBER_APP_URL || 'http://localhost:3000' }}
         run: npm run prepare:url
 
-      # macOS signing + notarization. All optional: when the secrets are absent
-      # the build still succeeds, just unsigned (Gatekeeper will warn).
+      # macOS signing + notarization, and ONLY when a certificate actually
+      # exists. Passing APPLE_CERTIFICATE straight into the build env looks
+      # harmless when the secret is unset — but GitHub still defines the
+      # variable as an empty string, so Tauri tries to sign, `security import`
+      # chokes on the empty cert, and the whole macOS build fails. Setting the
+      # vars here means an absent cert leaves them undefined and the build
+      # comes out unsigned, which is the intended fallback.
       #   APPLE_CERTIFICATE          base64 of the exported .p12
       #   APPLE_CERTIFICATE_PASSWORD its export password
       #   APPLE_SIGNING_IDENTITY     "Developer ID Application: NAME (TEAMID)"
       #   APPLE_ID / APPLE_PASSWORD  Apple ID + app-specific password
       #   APPLE_TEAM_ID              e.g. 8B8D2GSC9U
+      - name: Configure Apple signing
+        if: matrix.platform == 'macos-latest'
+        env:
+          CERT: ${{ secrets.APPLE_CERTIFICATE }}
+          CERT_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          A_ID: ${{ secrets.APPLE_ID }}
+          A_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          A_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          if [ -z "$CERT" ]; then
+            echo "No Apple certificate configured — building unsigned."
+            exit 0
+          fi
+          {
+            echo "APPLE_CERTIFICATE=$CERT"
+            echo "APPLE_CERTIFICATE_PASSWORD=$CERT_PASSWORD"
+            echo "APPLE_SIGNING_IDENTITY=$SIGNING_IDENTITY"
+            echo "APPLE_ID=$A_ID"
+            echo "APPLE_PASSWORD=$A_PASSWORD"
+            echo "APPLE_TEAM_ID=$A_TEAM_ID"
+          } >> "$GITHUB_ENV"
+          echo "Apple signing enabled."
+
       - name: Build Tauri app & upload bundles
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
-          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
           # Updater signing. NOT optional once tauri.conf.json carries a
           # pubkey: Tauri refuses to build at all with "A public key has been
           # found, but no private key", rather than quietly shipping unsigned
