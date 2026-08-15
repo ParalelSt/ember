@@ -19,10 +19,7 @@ pub fn run() {
     // to explain it — which is exactly what happened on a machine with no
     // output device.
     let log_path = applog::init();
-    applog::write_line(log_path.as_ref(), "INFO", &format!(
-        "ember-desktop starting; loading {}",
-        option_env!("EMBER_APP_URL").unwrap_or("http://localhost:3000"),
-    ));
+    applog::write_line(log_path.as_ref(), "INFO", "ember-desktop starting");
 
     // A missing audio device must not stop the app from starting: the window
     // still opens and the webview falls back to web audio.
@@ -70,6 +67,27 @@ pub fn run() {
                     );
                 }
             }
+            // Log the URL the window is ACTUALLY loading, read back from the
+            // window itself. This used to log option_env!("EMBER_APP_URL"),
+            // which is a COMPILE-time variable — unset during the CI build, so
+            // the log confidently claimed "loading http://localhost:3000"
+            // while the window loaded the real server from tauri.conf.json.
+            // A diagnostic that lies is worse than no diagnostic.
+            if let Some(w) = app.get_webview_window("main") {
+                match w.url() {
+                    Ok(url) => applog::write_line(
+                        log_path.as_ref(),
+                        "INFO",
+                        &format!("main window loading {url}"),
+                    ),
+                    Err(e) => applog::write_line(
+                        log_path.as_ref(),
+                        "WARN",
+                        &format!("could not read window URL: {e}"),
+                    ),
+                }
+            }
+
             // Check for a new desktop build in the background. Never blocks
             // startup, and a failure is logged rather than surfaced — see
             // update.rs. EMBER_NO_UPDATE=1 opts out (used by CI's smoke test,
