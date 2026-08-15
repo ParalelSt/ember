@@ -26,6 +26,12 @@ on:
   push:
     tags:
       - "v*"
+    # Build on pushes to this branch too, so the installers can be produced and
+    # downloaded without cutting a release tag. `workflow_dispatch` only works
+    # once the workflow file is on the DEFAULT branch, which it isn't yet —
+    # remove this once the fix reaches main.
+    branches:
+      - feat/windows-desktop
   workflow_dispatch:
 
 # Allow the Tauri job to create a Release and upload assets via GITHUB_TOKEN.
@@ -43,11 +49,17 @@ jobs:
   desktop:
     strategy:
       fail-fast: false
+      # Release tags build all three desktop OSes:
+      #   macos-latest   → .dmg / .app     ubuntu-latest → .AppImage / .deb
+      #   windows-latest → .msi / .exe (NSIS)
+      # Branch pushes build Windows ONLY. This repo is private, so runner
+      # minutes are billed and macOS bills at 10x — no reason to pay for a Mac
+      # build on every branch push when it can be built locally on the Mac.
       matrix:
-        platform:
-          - macos-latest # produces .dmg / .app (Apple silicon by default)
-          - ubuntu-latest # produces .AppImage / .deb
-          - windows-latest # produces .msi / .exe (NSIS)
+        platform: >-
+          ${{ fromJSON(startsWith(github.ref, 'refs/tags/')
+              && '["macos-latest","ubuntu-latest","windows-latest"]'
+              || '["windows-latest"]') }}
     runs-on: ${{ matrix.platform }}
 
     steps:
@@ -186,8 +198,13 @@ jobs:
 
       # Materialize the release keystore from secrets (skipped when unset —
       # build.gradle then falls back to debug signing automatically).
+      # NOTE: `secrets` is NOT available in a step-level `if:` — using it there
+      # makes the whole workflow file invalid, and GitHub then fails every run
+      # in 0s with "workflow file issue" (which is exactly what happened here:
+      # no native build ever ran). Mirror the secret into `env` and branch on
+      # that instead; `env` IS allowed in `if:`.
       - name: Restore release keystore
-        if: ${{ secrets.ANDROID_KEYSTORE_B64 != '' }}
+        if: env.KEYSTORE_B64 != ''
         working-directory: apps/mobile/android
         env:
           KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_B64 }}
@@ -225,7 +242,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          APK=$(ls apps/mobile/android/app/build/outputs/apk/release/*.apk | head -1)
+          APK=$(find apps/mobile/android/app/build/outputs/apk/release -name '*.apk' | head -1)
           cp "$APK" "ember-${{ github.ref_name }}.apk"
           for i in 1 2 3 4 5; do
             gh release upload "${{ github.ref_name }}" "ember-${{ github.ref_name }}.apk" --clobber && exit 0
@@ -247,8 +264,10 @@ jobs:
   #
   #    When ready, enable by setting `if: true` and filling in the signing steps.
   # ---------------------------------------------------------------------------
+  # Gated on a repo variable rather than a constant `if: false`, which
+  # actionlint flags. Set BUILD_IOS=true once Apple signing is configured.
   ios:
-    if: false # deferred — see comment above. Do not enable without Apple signing setup.
+    if: vars.BUILD_IOS == 'true'
     runs-on: macos-latest
     steps:
       - name: Placeholder
