@@ -168,6 +168,14 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       create = shell === 'tauri' ? createTauriBackend : createNativeBackend;
     }
     backendRef.current = create(events);
+    // Visible in devtools; tells you instantly whether the desktop app is on
+    // the Rust engine or fell back to web audio.
+    logger.breadcrumb('playback', 'backend selected', {
+      shell,
+      backend: create === createWebBackend ? 'web'
+        : create === createCapacitorBackend ? 'capacitor'
+        : create === createTauriBackend ? 'tauri-native' : 'native-stub',
+    });
     setBackendReady(true);
     return () => {
       backendRef.current?.destroy();
