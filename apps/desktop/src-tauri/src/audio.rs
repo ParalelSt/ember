@@ -32,8 +32,10 @@ use tauri::{AppHandle, State};
 /// thread and store a cloned `Mixer` (which IS `Send + Sync + Clone`) here. New
 /// `Sink`s are built from that mixer on demand.
 pub struct AudioEngine {
-    /// Output mixer cloned off the (thread-pinned) OutputStream. Used to build sinks.
-    mixer: Mixer,
+    /// Output mixer cloned off the (thread-pinned) OutputStream. Used to build
+    /// sinks. `None` when no output device could be opened — the app still
+    /// starts (see `new_degraded`) and the webview falls back to web audio.
+    mixer: Option<Mixer>,
     /// Current playback sink. `Arc<Mutex<..>>` so the position-polling task can
     /// share access. `None` when nothing is loaded.
     sink: Arc<Mutex<Option<Sink>>>,
@@ -79,12 +81,35 @@ impl AudioEngine {
             .map_err(|_| "audio output thread exited".to_string())??;
 
         Ok(Self {
-            mixer,
+            mixer: Some(mixer),
             sink: Arc::new(Mutex::new(None)),
             generation: Arc::new(AtomicU64::new(0)),
             current_url: Mutex::new(None),
             controls: Mutex::new(None),
         })
+    }
+
+    /// An engine with no output device. Every playback command fails cleanly
+    /// instead of the whole app dying at launch.
+    ///
+    /// This is not hypothetical: a machine with no sound card, audio disabled,
+    /// or (as CI proved) a headless Windows runner would abort the process
+    /// before it drew a window — `panic = abort` turns the `.expect()` into
+    /// exit code 0xC0000409 with nothing logged. A music app with no audio
+    /// device should say so, not vanish.
+    pub fn new_degraded() -> Self {
+        Self {
+            mixer: None,
+            sink: Arc::new(Mutex::new(None)),
+            generation: Arc::new(AtomicU64::new(0)),
+            current_url: Mutex::new(None),
+            controls: Mutex::new(None),
+        }
+    }
+
+    /// Whether a real output device is attached.
+    pub fn has_output(&self) -> bool {
+        self.mixer.is_some()
     }
 
     /// Reflect play/paused state in the OS Now Playing widget. No-op if media
@@ -102,9 +127,14 @@ impl AudioEngine {
         }
     }
 
-    /// Build a fresh Sink connected to this engine's output mixer.
-    fn new_sink(&self) -> Sink {
-        Sink::connect_new(&self.mixer)
+    /// Build a fresh Sink connected to this engine's output mixer, or Err when
+    /// the machine has no audio output.
+    fn new_sink(&self) -> Result<Sink, String> {
+        let mixer = self
+            .mixer
+            .as_ref()
+            .ok_or_else(|| "no audio output device on this machine".to_string())?;
+        Ok(Sink::connect_new(mixer))
     }
 
     /// Shared handles for the position-polling task.
@@ -196,7 +226,7 @@ pub async fn audio_load(
     // generation number.
     let my_gen = engine.generation.fetch_add(1, Ordering::SeqCst) + 1;
 
-    let sink = engine.new_sink();
+    let sink = engine.new_sink()?;
     sink.append(decoder);
     if start_at > 1.0 {
         let _ = sink.try_seek(Duration::from_secs_f64(start_at));

@@ -78,3 +78,9 @@ ROADMAP.md
 # Android release signing — NEVER commit (APPS.md explains regeneration)
 apps/mobile/android/ember-release.keystore
 apps/mobile/android/keystore.properties
+
+# Desktop updater signing key — NEVER commit. Unlike the Android keystore this
+# one CANNOT be regenerated without breaking auto-update for everyone already
+# running Ember: the installed app only trusts updates signed by this exact
+# key. Back it up somewhere real (password manager), not just this folder.
+apps/desktop/.keys/

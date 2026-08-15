@@ -36,6 +36,17 @@ if (!win) {
 }
 
 win.url = url;
+
+// The update feed lives on the same server the app loads. Keeping it in step
+// with EMBER_APP_URL matters: a build pointed at one server that checks
+// another for updates would "work" right up until it installed the wrong
+// thing. The {{...}} placeholders are filled in by Tauri at check time.
+if (conf.plugins?.updater) {
+  conf.plugins.updater.endpoints = [
+    `${new URL(url).origin}/api/desktop/update/{{target}}/{{arch}}/{{current_version}}`,
+  ];
+}
+
 writeFileSync(confPath, JSON.stringify(conf, null, 2) + "\n");
 
 // The capability must list the SAME origin, or the remote page gets no IPC
@@ -47,3 +58,6 @@ writeFileSync(capPath, JSON.stringify(cap, null, 2) + "\n");
 
 console.log(`[set-url] main window will load: ${url}`);
 console.log(`[set-url] capability grants IPC to: ${cap.remote.urls.join(", ")}`);
+if (conf.plugins?.updater) {
+  console.log(`[set-url] update feed: ${conf.plugins.updater.endpoints[0]}`);
+}

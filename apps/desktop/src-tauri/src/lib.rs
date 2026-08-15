@@ -8,19 +8,38 @@
 mod applog;
 mod audio;
 mod discord;
+mod update;
 
 use tauri::Manager;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    let engine = audio::AudioEngine::new().expect("failed to init audio engine");
+    // Logging FIRST. It used to come after the audio engine, so anything that
+    // went wrong during audio init produced a silent process death with no log
+    // to explain it — which is exactly what happened on a machine with no
+    // output device.
     let log_path = applog::init();
     applog::write_line(log_path.as_ref(), "INFO", &format!(
         "ember-desktop starting; loading {}",
         option_env!("EMBER_APP_URL").unwrap_or("http://localhost:3000"),
     ));
 
+    // A missing audio device must not stop the app from starting: the window
+    // still opens and the webview falls back to web audio.
+    let engine = match audio::AudioEngine::new() {
+        Ok(e) => e,
+        Err(e) => {
+            applog::write_line(
+                log_path.as_ref(),
+                "WARN",
+                &format!("no audio output ({e}) — starting without the native engine"),
+            );
+            audio::AudioEngine::new_degraded()
+        }
+    };
+
     tauri::Builder::default()
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(engine)
         .manage(discord::DiscordPresence::default())
         .manage(applog::LogFile(std::sync::Mutex::new(log_path.clone())))
@@ -51,6 +70,18 @@ pub fn run() {
                     );
                 }
             }
+            // Check for a new desktop build in the background. Never blocks
+            // startup, and a failure is logged rather than surfaced — see
+            // update.rs. EMBER_NO_UPDATE=1 opts out (used by CI's smoke test,
+            // which shouldn't reach the network).
+            if std::env::var("EMBER_NO_UPDATE").as_deref() != Ok("1") {
+                let update_handle = app.handle().clone();
+                let update_log = log_path.clone();
+                tauri::async_runtime::spawn(async move {
+                    update::check_on_startup(update_handle, update_log).await;
+                });
+            }
+
             // Devtools: right-click → Inspect Element works in release too when
             // the `devtools` feature is on. EMBER_DEVTOOLS=1 opens it on launch.
             #[cfg(feature = "devtools")]

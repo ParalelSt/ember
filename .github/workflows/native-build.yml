@@ -184,6 +184,9 @@ jobs:
           if (-not $exe) { throw "no Ember binary in target/release" }
           Write-Host "launching $($exe.FullName)"
 
+          # Don't phone home for updates from CI — the feed lives on the Ember
+          # server and this test is about the binary, not the network.
+          $env:EMBER_NO_UPDATE = '1'
           $proc = Start-Process -FilePath $exe.FullName -PassThru
           Start-Sleep -Seconds 30
 
@@ -206,6 +209,11 @@ jobs:
           else {
             $text = Get-Content $log -Raw
             if ($text -notmatch 'ember-desktop starting') { $failures += "app never logged startup" }
+            # The runner has no sound card. The app must survive that rather
+            # than aborting at launch, which is what it used to do.
+            if ($text -match 'no audio output') {
+              Write-Host "note: no audio device on the runner — app degraded gracefully, as intended"
+            }
             # Wired in this branch; a regression here means no media keys and no
             # Now Playing flyout on Windows.
             if ($text -match 'media controls unavailable') { $failures += "SMTC failed to initialise" }

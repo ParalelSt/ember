@@ -41,6 +41,8 @@ tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time"
 alloc-stdlib = "=0.2.2"
 brotli-decompressor = "=5.0.1"
 discord-rich-presence = "1.1.0"
+tauri-plugin-updater = "2.10.1"
+serde_json = "1.0.151"
 
 [profile.release]
 codegen-units = 1
