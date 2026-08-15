@@ -143,9 +143,9 @@ jobs:
           releaseBody: "Ember desktop builds for ${{ github.ref_name }}."
           releaseDraft: true
           prerelease: false
-          # Always upload the bundles as workflow artifacts too (useful for
-          # workflow_dispatch runs that have no Release to attach to).
-          uploadWorkflowArtifacts: true
+          # NOTE: no `uploadWorkflowArtifacts` here — tauri-action@v0 has no such
+          # input and warns "Unexpected input(s)" while silently doing nothing.
+          # The explicit upload step below is what keeps the installers.
 
       # tauri-action's own uploadWorkflowArtifacts only fires when there's a
       # release to attach to — on a branch push it logs "No releaseId or
@@ -176,9 +176,12 @@ jobs:
         if: matrix.platform == 'windows-latest'
         shell: pwsh
         run: |
-          $exe = Get-ChildItem -Path apps/desktop/src-tauri/target/release -Filter 'Ember.exe' -Recurse |
+          # Cargo names the binary after the crate (ember-desktop.exe); only the
+          # INSTALLED app is called Ember.exe. Accept either.
+          $exe = Get-ChildItem -Path apps/desktop/src-tauri/target/release -Filter '*.exe' |
+                 Where-Object { $_.Name -in @('ember-desktop.exe', 'Ember.exe') } |
                  Select-Object -First 1
-          if (-not $exe) { throw "no Ember.exe was produced" }
+          if (-not $exe) { throw "no Ember binary in target/release" }
           Write-Host "launching $($exe.FullName)"
 
           $proc = Start-Process -FilePath $exe.FullName -PassThru
