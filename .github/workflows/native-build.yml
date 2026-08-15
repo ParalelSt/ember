@@ -132,6 +132,13 @@ jobs:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          # Updater signing. NOT optional once tauri.conf.json carries a
+          # pubkey: Tauri refuses to build at all with "A public key has been
+          # found, but no private key", rather than quietly shipping unsigned
+          # updates. Generated once (apps/desktop/.keys/, gitignored) and
+          # stored as repo secrets.
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           # Tauri project root (where tauri.conf.json lives).
           projectPath: apps/desktop
