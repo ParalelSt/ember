@@ -1,6 +1,6 @@
 import type { NextRequest } from 'next/server';
 import { requireUser, UnauthorizedError, unauthorizedResponse } from '@/lib/auth';
-import { fromError, jsonError } from '@/lib/upsertTrack';
+import { jsonError } from '@/lib/upsertTrack';
 import { keyFromRequest, rateLimitResponse } from '@/lib/rateLimit';
 import { serverLogger } from '@/lib/logger/server';
 

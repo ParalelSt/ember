@@ -163,6 +163,27 @@ The webhook URL ships baked into source (you committed it). Friends self-hosting
 
 Server-side error logs live at `logs/errors-YYYY-MM-DD.jsonl` (gitignored, auto-deleted after 2 days). The Discord channel is your long-term archive. If the baked-in webhook ever gets abused, delete + recreate it in Discord and rebuild.
 
+#### AI triage (optional)
+
+Set `ANTHROPIC_API_KEY` in `apps/web/.env.local` and every report gets read by
+Claude before it lands in Discord. The embed then opens with a one-line summary
+of what broke, the likely cause with log evidence, and up to three things to
+check first — colour-coded green/amber/red by severity. The raw `report.json`
+is still attached, and the reporter sees the same diagnosis in the app.
+
+Without the key nothing changes: reports send exactly as they do today. The
+same is true if Anthropic is slow, down, or answers with nonsense — triage is
+skipped and the report still goes out. It can never eat a bug report.
+
+```bash
+ANTHROPIC_API_KEY=sk-ant-…            # from https://console.anthropic.com
+BUG_TRIAGE_MODEL=claude-sonnet-5      # optional; claude-haiku-4-5-20251001 is cheaper
+```
+
+A report costs well under a cent (the logs are condensed and capped before
+they're sent), but **you** pay for everyone's reports since the key is yours.
+The 30-second-per-user cooldown on reports caps the spend too.
+
 ### Lyrics
 
 The in-player **Lyrics** button (mic icon next to Queue) hits Genius directly — no API key needed. `player.py:cmd_lyrics` uses Genius's public search endpoint to find the song page, then scrapes the lyrics from the page HTML. Works out of the box.

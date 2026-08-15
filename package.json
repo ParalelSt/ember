@@ -8,6 +8,8 @@
     "build": "npm run build -w apps/web",
     "start": "npm run start -w apps/web",
     "lint": "npm run lint -w apps/web",
+    "test:triage": "node tests/ai-triage.test.mjs",
+    "test:triage-ui": "node tests/ai-triage-ui.test.mjs",
     "deploy": "npm run build && systemctl --user restart ember && echo '✓ rebuilt + ember restarted'"
   }
 }
