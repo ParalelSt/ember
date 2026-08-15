@@ -77,6 +77,36 @@ Element* (devtools are enabled in release), and check
 works from a normal Terminal — not from CI or an agent shell. The `.app` builds
 fine either way and is all you need to run it yourself.
 
+## iOS
+
+The project exists and builds. Requires Xcode + CocoaPods (both installed).
+
+```bash
+cd apps/mobile
+EMBER_APP_URL="https://ember.tailf4de41.ts.net" npx cap sync ios
+npx cap open ios          # opens Xcode; pick a device/simulator and hit Run
+```
+
+Or straight to a simulator without Xcode's UI:
+
+```bash
+cd apps/mobile/ios/App
+xcodebuild -workspace App.xcworkspace -scheme App -sdk iphonesimulator \
+  -configuration Debug -destination 'generic/platform=iOS Simulator' \
+  CODE_SIGNING_ALLOWED=NO build
+xcrun simctl install booted "$HOME/Library/Developer/Xcode/DerivedData/App-*/Build/Products/Debug-iphonesimulator/App.app"
+xcrun simctl launch booted app.ember.music
+```
+
+`UIBackgroundModes=audio` is set, which is what lets playback continue when the
+app is backgrounded. Portrait-locked, same as Android.
+
+**Getting it onto a real iPhone.** A free Apple ID signs an app that lasts
+**7 days**, then it stops opening and must be reinstalled. For anything
+longer-lived — or to give it to friends via TestFlight — you need the Apple
+Developer Program ($99/yr). Ember will never be App Store material (it plays
+YouTube-sourced audio), so TestFlight is the realistic ceiling.
+
 ## Signing the macOS app
 
 Your Developer ID certificate is already in the keychain
