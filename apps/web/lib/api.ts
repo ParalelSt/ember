@@ -138,6 +138,11 @@ export const api = {
   unlike: (trackId: string) =>
     req<{ ok: true }>(`/likes/${encodeURIComponent(trackId)}`, { method: 'DELETE' }),
 
+  /** Guitar tabs for a track (Songsterr). Links only — they block embedding. */
+  getTabs: (title: string, artist: string) =>
+    req<{ matches: { id: number; artist: string; title: string; hasChords: boolean; instruments: string[]; url: string }[] }>(
+      `/tabs?title=${encodeURIComponent(title)}&artist=${encodeURIComponent(artist)}`,
+    ),
   getHistory: () => req<{ tracks: Track[] }>('/history'),
   recordPlay: (track: Track) => req<{ ok: true }>('/history', { method: 'POST', body: { track } }),
 

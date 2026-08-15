@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import {
   HeartIcon,
   LyricsIcon,
+  TabsIcon,
   NextIcon,
   PauseIcon,
   PlayIcon,
@@ -25,6 +26,7 @@ import { usePlayer } from '@/components/player/PlayerProvider';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { useExecuteToggleLike, useQueryLikes } from '@/hooks/useLibrary';
 import { usePlayerStore } from '@/stores/usePlayerStore';
+import { TabsDialog } from '@/components/player/TabsDialog';
 import { useSettingsStore } from '@/stores/useSettingsStore';
 import { useUiStore } from '@/stores/useUiStore';
 import { findLikedVariant } from '@/lib/songKey';
@@ -78,6 +80,7 @@ export function PlayerBar() {
   // Desktop only — the button is hidden on phones (md:inline-flex), where
   // lyrics live inside the full-screen NowPlaying view instead.
   const onLyricsClick = () => setLyricsOpen(!lyricsOpen);
+  const [tabsOpen, setTabsOpen] = useState(false);
 
   // Only render the bar once playback has actually started. Avoids the
   // "Nothing playing" placeholder strip and ensures the bar pops in the moment
@@ -243,6 +246,19 @@ export function PlayerBar() {
         >
           <LyricsIcon className="h-4 w-4" />
         </Button>
+        {/* Guitar tabs — opens Songsterr in the browser (they block embedding
+            with X-Frame-Options, so an in-app viewer isn't possible). */}
+        <Button
+          variant="ghost"
+          size="icon"
+          className="hidden md:inline-flex h-8 w-8 text-muted-foreground hover:text-foreground"
+          onClick={() => setTabsOpen(true)}
+          disabled={!current}
+          aria-label="Guitar tabs"
+          title="Guitar tabs"
+        >
+          <TabsIcon className="h-4 w-4" />
+        </Button>
         <Button
           variant="ghost"
           size="icon"
@@ -310,6 +326,7 @@ export function PlayerBar() {
     </div>
 
     <QueueSheet open={queueOpen} onOpenChange={setQueueOpen} />
+      <TabsDialog track={current} open={tabsOpen} onOpenChange={setTabsOpen} />
     </footer>
   );
 }
