@@ -49,6 +49,50 @@ Without it the feature is silently off (playback is unaffected). Users also
 need the Discord desktop app running; if it's closed, Ember reconnects on the
 next track change.
 
+## Signing the macOS app
+
+Your Developer ID certificate is already in the keychain
+(`Developer ID Application: ARON MATOIC (8B8D2GSC9U)`), so a signed build is:
+
+```bash
+cd apps/desktop
+npm run build:signed
+```
+
+That picks the certificate up automatically and bakes in the funnel URL.
+
+### Notarization — the missing half
+
+Signing alone still makes other Macs say *"unidentified developer"*. Apple has
+to notarize the app too. One-time setup:
+
+1. Create an **app-specific password** at https://appleid.apple.com →
+   Sign-In and Security → App-Specific Passwords.
+2. Store it once:
+
+```bash
+xcrun notarytool store-credentials "AC_PASSWORD" \
+  --apple-id you@example.com \
+  --team-id 8B8D2GSC9U \
+  --password <the-app-specific-password>
+```
+
+After that `npm run build:signed` notarizes automatically. Verify a finished
+build with:
+
+```bash
+spctl -a -vvv -t install src-tauri/target/release/bundle/macos/Ember.app
+```
+
+`accepted` means other Macs will open it without warnings.
+
+### In CI
+
+Add these repo secrets and the workflow signs macOS builds itself
+(all optional — without them the build still succeeds, just unsigned):
+`APPLE_CERTIFICATE` (base64 of an exported .p12), `APPLE_CERTIFICATE_PASSWORD`,
+`APPLE_SIGNING_IDENTITY`, `APPLE_ID`, `APPLE_PASSWORD`, `APPLE_TEAM_ID`.
+
 ## Signing key (Android) — IMPORTANT
 
 `apps/mobile/android/ember-release.keystore` + `keystore.properties` live ONLY

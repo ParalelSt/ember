@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- Notarization requires the hardened runtime, which blocks a few things
+         Tauri/rodio need unless explicitly allowed. -->
+
+    <!-- The webview JIT-compiles JavaScript. -->
+    <key>com.apple.security.cs.allow-jit</key>
+    <true/>
+    <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+    <true/>
+
+    <!-- Streaming audio from the Ember server. -->
+    <key>com.apple.security.network.client</key>
+    <true/>
+</dict>
+</plist>

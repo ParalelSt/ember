@@ -101,10 +101,23 @@ jobs:
           EMBER_APP_URL: ${{ vars.EMBER_APP_URL || 'http://localhost:3000' }}
         run: npm run prepare:url
 
+      # macOS signing + notarization. All optional: when the secrets are absent
+      # the build still succeeds, just unsigned (Gatekeeper will warn).
+      #   APPLE_CERTIFICATE          base64 of the exported .p12
+      #   APPLE_CERTIFICATE_PASSWORD its export password
+      #   APPLE_SIGNING_IDENTITY     "Developer ID Application: NAME (TEAMID)"
+      #   APPLE_ID / APPLE_PASSWORD  Apple ID + app-specific password
+      #   APPLE_TEAM_ID              e.g. 8B8D2GSC9U
       - name: Build Tauri app & upload bundles
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         with:
           # Tauri project root (where tauri.conf.json lives).
           projectPath: apps/desktop
