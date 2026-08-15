@@ -1,0 +1,28 @@
+PODS:
+  - Capacitor (7.6.7):
+    - CapacitorCordova
+  - CapacitorCordova (7.6.7)
+  - CapgoCapacitorMediaSession (7.3.0):
+    - Capacitor
+
+DEPENDENCIES:
+  - "Capacitor (from `../../node_modules/@capacitor/ios`)"
+  - "CapacitorCordova (from `../../node_modules/@capacitor/ios`)"
+  - "CapgoCapacitorMediaSession (from `../../../../node_modules/@capgo/capacitor-media-session`)"
+
+EXTERNAL SOURCES:
+  Capacitor:
+    :path: "../../node_modules/@capacitor/ios"
+  CapacitorCordova:
+    :path: "../../node_modules/@capacitor/ios"
+  CapgoCapacitorMediaSession:
+    :path: "../../../../node_modules/@capgo/capacitor-media-session"
+
+SPEC CHECKSUMS:
+  Capacitor: 8ef25ba872436d2c5ac2a4791f7255529bdcd93b
+  CapacitorCordova: 139e2ed3d91c54b5aeae7941135c9f9aefc6da1d
+  CapgoCapacitorMediaSession: f2887cc28477702250ea972b66b030fd5aa74689
+
+PODFILE CHECKSUM: aba919e421c74c83ed59d507199d0f95c89e521b
+
+COCOAPODS: 1.16.2
