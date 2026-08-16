@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { LogOutIcon } from '@/components/icons';
 import { useAuth } from '@/components/providers/AuthProvider';
+import { PrivacyToggles } from '@/components/settings/PrivacyToggles';
 import { api } from '@/lib/api';
 
 export default function SettingsProfile() {
@@ -107,6 +108,8 @@ export default function SettingsProfile() {
         Save changes
       </Button>
     </form>
+
+      <PrivacyToggles />
 
       <div className="mt-12 pt-6 border-t border-border">
         <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">Account</h3>

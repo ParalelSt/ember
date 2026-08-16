@@ -2,6 +2,7 @@
 
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { createClient } from '@/lib/pocketbase/client';
+import { usePrivacyStore } from '@/stores/usePrivacyStore';
 import { logger } from '@/lib/logger/client';
 
 /** Minimal user shape exposed to the app — matches the old Supabase one
@@ -66,6 +67,13 @@ export function AuthProvider({ children, initialUser }: { children: ReactNode; i
 
     return () => { unsub(); };
   }, [pb, initialUser]);
+
+  // Pull the privacy switches once there's a session. Presence publishing
+  // assumes "don't share" until this lands, so the cost of it being late is
+  // silence, never an unwanted broadcast.
+  useEffect(() => {
+    if (user) void usePrivacyStore.getState().load();
+  }, [user]);
 
   const value = useMemo<AuthValue>(
     () => ({
