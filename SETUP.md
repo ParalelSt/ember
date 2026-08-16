@@ -149,6 +149,23 @@ This rebuilds the app, starts PB (if not already running), and serves the produc
 
 Stop the tunnel later: `tailscale funnel reset`.
 
+### Updating to a new version
+
+```bash
+./update.sh            # pull, install if needed, rebuild, restart everything
+./update.sh --check    # just show what's new, change nothing
+./update.sh --no-start # update the code only (hosts running Ember via systemd)
+```
+
+**Don't use `git pull && ./start-static.sh` for this.** start-static.sh skips
+PocketBase when it's already healthy, so you'd rebuild the web app while the
+old PocketBase keeps running — and Ember creates collections and fields from
+`pb_hooks` that only run at PB **boot**. New features would silently do
+nothing, with no error explaining why. `update.sh` always restarts PocketBase.
+
+It refuses to run if you have uncommitted changes, and only runs `npm ci` when
+`package-lock.json` actually changed.
+
 ---
 
 ## Project-owner-only setup
