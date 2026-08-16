@@ -4,7 +4,8 @@
  */
 export interface Track {
   id: string;
-  source: 'jamendo' | 'youtube';
+  /** `upload` = a song a member added from their own files (see lib/uploads). */
+  source: 'jamendo' | 'youtube' | 'upload';
   sourceId: string;
   title: string;
   artist: string;

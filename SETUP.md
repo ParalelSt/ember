@@ -163,6 +163,46 @@ The webhook URL ships baked into source (you committed it). Friends self-hosting
 
 Server-side error logs live at `logs/errors-YYYY-MM-DD.jsonl` (gitignored, auto-deleted after 2 days). The Discord channel is your long-term archive. If the baked-in webhook ever gets abused, delete + recreate it in Discord and rebuild.
 
+#### AI triage (optional)
+
+Set `ANTHROPIC_API_KEY` in `apps/web/.env.local` and every report gets read by
+Claude before it lands in Discord. The embed then opens with a one-line summary
+of what broke, the likely cause with log evidence, and up to three things to
+check first — colour-coded green/amber/red by severity. The raw `report.json`
+is still attached, and the reporter sees the same diagnosis in the app.
+
+Without the key nothing changes: reports send exactly as they do today. The
+same is true if Anthropic is slow, down, or answers with nonsense — triage is
+skipped and the report still goes out. It can never eat a bug report.
+
+```bash
+ANTHROPIC_API_KEY=sk-ant-…            # from https://console.anthropic.com
+BUG_TRIAGE_MODEL=claude-sonnet-5      # optional; claude-haiku-4-5-20251001 is cheaper
+```
+
+A report costs well under a cent (the logs are condensed and capped before
+they're sent), but **you** pay for everyone's reports since the key is yours.
+The 30-second-per-user cooldown on reports caps the spend too.
+
+### Custom song uploads
+
+Library → **Upload** puts a file from someone's device onto the server. It
+becomes searchable and playable for every signed-in member — the point is a
+shared library that grows with things YouTube doesn't have (local bands,
+demos, rips).
+
+Nothing to configure. Worth knowing:
+
+- Audio lands in `MUSIC_DIR/uploads` (default `my_music/uploads`), so it's
+  covered by whatever backs up your music directory. **PocketBase must be
+  restarted once** after updating so the `uploads` collection gets created.
+- Limits: 50MB per file and 10 uploads per person per hour. Change the size
+  with `MAX_UPLOAD_MB` in `apps/web/.env.local`.
+- Uploads are validated by their actual bytes, not the browser's claim, and
+  stored under a random filename.
+- Only the uploader (or an admin) can delete an upload; the 14-day cleanup
+  never touches them.
+
 ### Lyrics
 
 The in-player **Lyrics** button (mic icon next to Queue) hits Genius directly — no API key needed. `player.py:cmd_lyrics` uses Genius's public search endpoint to find the song page, then scrapes the lyrics from the page HTML. Works out of the box.

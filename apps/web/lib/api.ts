@@ -138,6 +138,35 @@ export const api = {
   unlike: (trackId: string) =>
     req<{ ok: true }>(`/likes/${encodeURIComponent(trackId)}`, { method: 'DELETE' }),
 
+  /** Guitar tabs for a track (Songsterr). Links only — they block embedding. */
+  getTabs: (title: string, artist: string) =>
+    req<{ matches: { id: number; artist: string; title: string; hasChords: boolean; instruments: string[]; url: string }[] }>(
+      `/tabs?title=${encodeURIComponent(title)}&artist=${encodeURIComponent(artist)}`,
+    ),
+  // — Custom uploads (songs members add from their own files) —
+  listUploads: () => req<{ tracks: Track[] }>('/uploads'),
+  deleteUpload: (id: string) =>
+    req<{ ok: true }>(`/uploads/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  /** Multipart, so it bypasses the JSON `req` helper. `durationSec` is read
+   *  in the browser — the server has no ffprobe to rely on. */
+  uploadTrack: async (
+    file: File,
+    meta: { title: string; artist: string; album?: string; durationSec: number },
+  ): Promise<{ track: Track }> => {
+    const fd = new FormData();
+    fd.append('file', file);
+    fd.append('title', meta.title);
+    fd.append('artist', meta.artist);
+    if (meta.album) fd.append('album', meta.album);
+    fd.append('durationSec', String(Math.round(meta.durationSec)));
+    const res = await fetch(`${API_BASE}/api/uploads`, { method: 'POST', body: fd, credentials: 'include' });
+    if (!res.ok) {
+      const err = (await res.json().catch(() => ({ error: res.statusText }))) as { error?: string };
+      throw new Error(err.error || `Upload failed: ${res.status}`);
+    }
+    return (await res.json()) as { track: Track };
+  },
+
   getHistory: () => req<{ tracks: Track[] }>('/history'),
   recordPlay: (track: Track) => req<{ ok: true }>('/history', { method: 'POST', body: { track } }),
 

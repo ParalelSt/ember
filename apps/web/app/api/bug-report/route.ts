@@ -7,10 +7,19 @@ import {
 import { serverLogger } from "@/lib/logger/server";
 import type { ClientSnapshot } from "@/lib/logger/types";
 import { rateLimitResponse } from "@/lib/rateLimit";
+import { triageBugReport } from "@/lib/ai/triage";
 import { fromError, jsonError } from "@/lib/upsertTrack";
 
 const REPORT_WINDOW_MS = 5 * 60 * 1000;
 const MAX_NOTE_LEN = 1000;
+
+/** Embed stripe colour by AI severity; the default ember orange when there's
+ *  no triage. */
+const SEVERITY_COLORS = {
+  low: 0x4ade80,
+  medium: 0xfacc15,
+  high: 0xef4444,
+} as const;
 
 // Default webhook so every deployment — including friends self-hosting — sends
 // bug reports to the project owner's Discord channel. The env var still wins
@@ -78,6 +87,10 @@ export async function POST(request: NextRequest) {
       server_errors: server.length,
     };
 
+    // Ask Claude what went wrong. Best-effort: null when there's no API key
+    // or the call fails, and the report goes out exactly as it did before.
+    const triage = await triageBugReport({ note, client, server, userAgent });
+
     const payload = {
       reportedAt,
       reporter: { id: user.id, email: user.email },
@@ -85,6 +98,7 @@ export async function POST(request: NextRequest) {
       note: note || null,
       sessionId: client.sessionId,
       counts,
+      triage,
       client,
       server,
     };
@@ -93,12 +107,33 @@ export async function POST(request: NextRequest) {
       type: "application/json",
     });
 
+    // Discord caps a field value at 1024 characters.
+    const field = (name: string, value: string, inline = false) => ({
+      name,
+      value: value.length > 1024 ? `${value.slice(0, 1021)}...` : value,
+      inline,
+    });
+
+    const triageFields = triage
+      ? [
+          field(
+            `🤖 ${triage.severity.toUpperCase()} · ${triage.area} · ${triage.confidence} confidence`,
+            triage.summary,
+          ),
+          field("Likely cause", triage.likelyCause),
+          ...(triage.nextSteps.length
+            ? [field("Check first", triage.nextSteps.map((s) => `• ${s}`).join("\n"))]
+            : []),
+        ]
+      : [];
+
     const embed = {
       title: `Bug report from ${user.email}`,
       description: note || "_(no note)_",
-      color: 0xff5a3a,
+      color: triage ? SEVERITY_COLORS[triage.severity] : 0xff5a3a,
       timestamp: reportedAt,
       fields: [
+        ...triageFields,
         {
           name: "Client errors",
           value: `${counts.client_errors_current} now / ${counts.client_errors_previous} prev`,
@@ -132,7 +167,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    return Response.json({ ok: true });
+    // The reporter sees the diagnosis too — it tells them their report was
+    // understood, and sometimes it's something they can fix themselves.
+    return Response.json({ ok: true, triage });
   } catch (e) {
     if (e instanceof UnauthorizedError) return unauthorizedResponse();
     return fromError(e);

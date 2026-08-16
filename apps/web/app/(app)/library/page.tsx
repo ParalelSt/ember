@@ -6,10 +6,11 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { TrackList } from '@/components/track/TrackList';
 import { ImportPlaylistDialog } from '@/components/track/ImportPlaylistDialog';
+import { UploadTrackDialog } from '@/components/track/UploadTrackDialog';
 import { StartSessionDialog, JoinSessionDialog } from '@/components/session/SessionDialogs';
-import { CheckIcon, DownloadIcon, QueueIcon } from '@/components/icons';
+import { CheckIcon, DownloadIcon, QueueIcon, UploadIcon } from '@/components/icons';
 import { useAuth } from '@/components/providers/AuthProvider';
-import { useQueryHistory, useQueryLikes, useQueryPlaylists } from '@/hooks/useLibrary';
+import { useQueryHistory, useQueryLikes, useQueryPlaylists, useQueryUploads } from '@/hooks/useLibrary';
 import { useOfflineStore } from '@/stores/useOfflineStore';
 import { useOnline } from '@/lib/useOnline';
 
@@ -20,7 +21,9 @@ export default function LibraryPage() {
   const { data: playlists = [] } = useQueryPlaylists();
   const isOnline = useOnline();
   const downloadedIds = useOfflineStore((s) => s.downloaded);
+  const { data: uploads = [] } = useQueryUploads();
   const [importOpen, setImportOpen] = useState(false);
+  const [uploadOpen, setUploadOpen] = useState(false);
   const [startOpen, setStartOpen] = useState(false);
   const [joinOpen, setJoinOpen] = useState(false);
 
@@ -82,9 +85,17 @@ export default function LibraryPage() {
           >
             <DownloadIcon className="h-4 w-4" /> Import
           </Button>
+          <Button
+            variant="ghost"
+            onClick={() => setUploadOpen(true)}
+            className="gap-1.5 text-muted-foreground hover:text-foreground"
+          >
+            <UploadIcon className="h-4 w-4" /> Upload
+          </Button>
         </div>
       </div>
       <ImportPlaylistDialog open={importOpen} onOpenChange={setImportOpen} />
+      <UploadTrackDialog open={uploadOpen} onOpenChange={setUploadOpen} />
       <StartSessionDialog open={startOpen} onOpenChange={setStartOpen} />
       <JoinSessionDialog open={joinOpen} onOpenChange={setJoinOpen} />
       <Tabs defaultValue="liked" className="w-full">
@@ -92,6 +103,7 @@ export default function LibraryPage() {
           <TabsTrigger value="liked">Liked</TabsTrigger>
           <TabsTrigger value="recent">Recently played</TabsTrigger>
           <TabsTrigger value="playlists">Playlists</TabsTrigger>
+          <TabsTrigger value="uploads">Uploads</TabsTrigger>
         </TabsList>
         <TabsContent value="liked" className="mt-6">
           <div className="text-sm text-muted-foreground mb-4">
@@ -120,6 +132,21 @@ export default function LibraryPage() {
                 </Link>
               ))}
             </div>
+          )}
+        </TabsContent>
+        <TabsContent value="uploads" className="mt-6">
+          {uploads.length === 0 ? (
+            <div className="text-muted-foreground py-12 text-center">
+              Nothing uploaded yet. Use <span className="text-foreground">Upload</span> to add a song from your
+              device — everyone on the server can then find it.
+            </div>
+          ) : (
+            <>
+              <div className="text-sm text-muted-foreground mb-4">
+                {uploads.length} {uploads.length === 1 ? 'song' : 'songs'} added by members of this server
+              </div>
+              <TrackList tracks={uploads} />
+            </>
           )}
         </TabsContent>
       </Tabs>

@@ -18,7 +18,19 @@ export const QK = {
   album: (id: string) => ['album', id] as const,
   track: (videoId: string) => ['track', videoId] as const,
   search: (q: string) => ['search', q] as const,
+  uploads: ['uploads'] as const,
 };
+
+/** Every song members have uploaded to this server — a shared library, not
+ *  a per-user one. */
+export function useQueryUploads() {
+  const { user } = useAuth();
+  return useQuery({
+    queryKey: QK.uploads,
+    queryFn: () => api.listUploads().then((r) => r.tracks),
+    enabled: !!user,
+  });
+}
 
 export function useQueryLikes() {
   const { user } = useAuth();

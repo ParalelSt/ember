@@ -31,6 +31,7 @@ export {
   Mic as MicIcon,
   Clock as ClockIcon,
   Sparkles as SparklesIcon,
+  Guitar as TabsIcon,
   Shuffle as ShuffleIcon,
   Repeat as RepeatIcon,
   Repeat1 as RepeatOneIcon,
@@ -42,4 +43,5 @@ export {
   Check as CheckIcon,
   XCircle as XCircleIcon,
   Share as ShareIcon,
+  Upload as UploadIcon,
 } from 'lucide-react';
