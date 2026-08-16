@@ -63,6 +63,14 @@ export const createTauriBackend: CreateAudioBackend = (events) => {
     else if (kind === 'seek' && typeof sec === 'number') cmds.seek(sec);
   });
 
+  /** Just the pb_auth cookie, not the whole jar — the engine has no business
+   *  with anything else the page has set. */
+  const sessionCookie = (): string | null => {
+    if (typeof document === 'undefined') return null;
+    const m = /(?:^|;\s*)pb_auth=([^;]*)/.exec(document.cookie);
+    return m ? `pb_auth=${m[1]}` : null;
+  };
+
   const backend: AudioBackend = {
     load(url, opts) {
       armTransition();
@@ -73,6 +81,11 @@ export const createTauriBackend: CreateAudioBackend = (events) => {
         url: toAbsolute(url),
         autoplay: opts.autoplay,
         startAt: opts.startAt ?? 0,
+        // The Rust engine fetches over plain HTTP with no browser session, so
+        // authenticated routes 401 there. /api/youtube/stream/... is public,
+        // but member uploads are not — without this an uploaded song fails on
+        // desktop while playing fine in a browser. Only pb_auth is forwarded.
+        cookie: sessionCookie(),
       }).catch(() => events.onError());
     },
     play() { paused = false; void invoke('audio_play').catch(() => {}); },

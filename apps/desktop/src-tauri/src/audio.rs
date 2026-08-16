@@ -21,6 +21,9 @@ use rodio::mixer::Mixer;
 use rodio::{OutputStreamBuilder, Sink};
 use serde::Serialize;
 use souvlaki::{MediaControlEvent, MediaControls, MediaMetadata, MediaPlayback, PlatformConfig};
+use stream_download::http::reqwest::header::{HeaderMap, HeaderValue, COOKIE};
+use stream_download::http::reqwest::Client;
+use stream_download::http::HttpStream;
 use stream_download::storage::temp::TempStorageProvider;
 use stream_download::{Settings, StreamDownload};
 use tauri::{AppHandle, State};
@@ -176,6 +179,25 @@ fn emit_err(app: &AppHandle, message: String) {
 
 // --- Commands ---------------------------------------------------------------
 
+/// Builds the HTTP client used to pull audio.
+///
+/// `cookie` carries the webview's `pb_auth` session. Without it only PUBLIC
+/// routes work: `/api/youtube/stream/...` is public, but member uploads
+/// (`/api/uploads/<id>/stream`) require a session, so an uploaded song would
+/// fail here while playing fine in any browser. Sending the session makes the
+/// native engine as capable as the webview without opening uploads to the
+/// whole internet.
+fn http_client(cookie: Option<&str>) -> Result<Client, String> {
+    let mut builder = Client::builder();
+    if let Some(cookie) = cookie.filter(|c| !c.is_empty()) {
+        let mut headers = HeaderMap::new();
+        let value = HeaderValue::from_str(cookie).map_err(|_| "invalid cookie header".to_string())?;
+        headers.insert(COOKIE, value);
+        builder = builder.default_headers(headers);
+    }
+    builder.build().map_err(|e| e.to_string())
+}
+
 #[tauri::command]
 pub async fn audio_load(
     app: AppHandle,
@@ -183,10 +205,21 @@ pub async fn audio_load(
     url: String,
     autoplay: bool,
     start_at: f64,
+    cookie: Option<String>,
 ) -> Result<(), String> {
     // Build a seekable, buffered HTTP source backed by a temp file so seeks work.
-    let reader = match StreamDownload::new_http(
-        url.parse().map_err(|_| "bad url".to_string())?,
+    let parsed = url.parse().map_err(|_| "bad url".to_string())?;
+    let client = http_client(cookie.as_deref())?;
+    let stream = match HttpStream::new(client, parsed).await {
+        Ok(s) => s,
+        Err(e) => {
+            let msg = e.to_string();
+            emit_err(&app, msg.clone());
+            return Err(msg);
+        }
+    };
+    let reader = match StreamDownload::from_stream(
+        stream,
         TempStorageProvider::default(),
         Settings::default(),
     )
@@ -435,4 +468,75 @@ fn spawn_position_timer(
             }
         }
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::{BufRead, BufReader, Write};
+    use std::net::TcpListener;
+    use std::sync::mpsc;
+
+    /// Serves one request and reports back which headers it saw.
+    fn spy_server() -> (String, mpsc::Receiver<Vec<String>>) {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind");
+        let addr = listener.local_addr().expect("addr");
+        let (tx, rx) = mpsc::channel();
+        std::thread::spawn(move || {
+            if let Ok((stream, _)) = listener.accept() {
+                let mut reader = BufReader::new(stream.try_clone().expect("clone"));
+                let mut headers = Vec::new();
+                loop {
+                    let mut line = String::new();
+                    if reader.read_line(&mut line).unwrap_or(0) == 0 {
+                        break;
+                    }
+                    if line.trim().is_empty() {
+                        break;
+                    }
+                    headers.push(line.trim().to_string());
+                }
+                let _ = tx.send(headers);
+                let mut out = stream;
+                let body = b"RIFF----WAVEfmt ";
+                let _ = write!(
+                    out,
+                    "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nContent-Type: audio/wav\r\n\r\n",
+                    body.len()
+                );
+                let _ = out.write_all(body);
+                let _ = out.flush();
+            }
+        });
+        (format!("http://{addr}/stream"), rx)
+    }
+
+    /// The engine must forward the webview's session, or authenticated routes
+    /// (member uploads) 401 while the same song plays fine in a browser.
+    #[tokio::test]
+    async fn sends_the_session_cookie() {
+        let (url, rx) = spy_server();
+        let client = http_client(Some("pb_auth=test-token")).expect("client");
+        let _ = HttpStream::new(client, url.parse().expect("url")).await;
+
+        let headers = rx.recv_timeout(Duration::from_secs(5)).expect("server saw a request");
+        assert!(
+            headers.iter().any(|h| h.to_lowercase() == "cookie: pb_auth=test-token"),
+            "Cookie header missing; server saw: {headers:?}"
+        );
+    }
+
+    /// Public routes must keep working with no session attached.
+    #[tokio::test]
+    async fn omits_the_header_when_there_is_no_session() {
+        let (url, rx) = spy_server();
+        let client = http_client(None).expect("client");
+        let _ = HttpStream::new(client, url.parse().expect("url")).await;
+
+        let headers = rx.recv_timeout(Duration::from_secs(5)).expect("server saw a request");
+        assert!(
+            !headers.iter().any(|h| h.to_lowercase().starts_with("cookie:")),
+            "unexpected Cookie header: {headers:?}"
+        );
+    }
 }
