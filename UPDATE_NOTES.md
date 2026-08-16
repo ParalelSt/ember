@@ -76,8 +76,8 @@ What's in it:
   engine, OS media controls, Discord presence and auto-update; Capacitor
   Android; an iOS scaffold. See `apps/desktop/README.md` and
   `apps/mobile/README.md`. The desktop auto-updater points at
-  `/api/desktop/update`, which does NOT exist yet — until it does, the app
-  logs "update check skipped" and carries on.
+  `/api/desktop/update`. Set `GITHUB_RELEASES_TOKEN` (SETUP.md → "Desktop
+  auto-update") to switch it on; without it the apps simply never self-update.
 - **Release builds** — tagging `v*` builds every platform in CI and publishes
   one installer per OS to a GitHub Release.
 

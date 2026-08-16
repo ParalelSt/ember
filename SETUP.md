@@ -184,6 +184,34 @@ A report costs well under a cent (the logs are condensed and capped before
 they're sent), but **you** pay for everyone's reports since the key is yours.
 The 30-second-per-user cooldown on reports caps the spend too.
 
+### Desktop auto-update
+
+The desktop apps check this server on launch and install new builds
+themselves. They ask `/api/desktop/update/...`; the server answers from the
+GitHub Release and streams the installer back.
+
+Because the repo is private, the server needs a read-only token — and it stays
+on the host, never inside the shipped app:
+
+1. github.com/settings/tokens → **Fine-grained tokens** → this repo only →
+   Repository permissions → **Contents: Read-only**.
+2. Put it in `apps/web/.env.local`:
+
+```bash
+GITHUB_RELEASES_TOKEN=github_pat_...
+```
+
+3. Restart the app.
+
+Without the token the feed just answers "no update" — the desktop apps keep
+working, they simply never self-update. Publishing a new version is only
+`git tag v0.3.0 && git push origin v0.3.0`: CI builds every platform and
+attaches the installers, and the apps pick it up on their next launch.
+
+Note the update endpoints are reachable without a login (the updater runs in
+Rust and has no session). They expose the latest version and a proxied
+installer download — no user data — and the download is rate-limited.
+
 ### Custom song uploads
 
 Library → **Upload** puts a file from someone's device onto the server. It

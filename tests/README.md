@@ -52,6 +52,9 @@ node tests/ai-triage-ui.test.mjs  # or: npm run test:triage-ui
 # Privacy switches
 node tests/privacy.test.mjs                         # or: npm run test:privacy
 
+# Desktop update feed (needs its own server — see the section below)
+node tests/desktop-update.test.mjs                  # or: npm run test:update
+
 # Custom uploads (MUSIC_DIR must match the server's)
 MUSIC_DIR="$SB/music" node tests/uploads.test.mjs   # or: npm run test:uploads
 node tests/uploads-ui.test.mjs                      # or: npm run test:uploads-ui
@@ -127,3 +130,31 @@ presence, and appearing in "Friends are listening to".
 The UI itself (both switches render, flipping one persists across a reload and
 leaves the other alone) was verified in a headless browser against the same
 sandbox.
+
+## What `desktop-update.test.mjs` covers
+
+The desktop auto-update feed (SETUP.md → "Desktop auto-update"). It stands up
+a **fake GitHub API**, so it needs no token, no network, and never touches the
+real release. Run a third sandbox server for it:
+
+```bash
+GITHUB_RELEASES_TOKEN=test-token GITHUB_API_BASE=http://127.0.0.1:4321 \
+UPDATE_CACHE_MS=0 npx next start -p 3007 &
+```
+
+(`UPDATE_CACHE_MS=0` disables the 5-minute cache that production uses —
+otherwise a warm result hides the failure paths.)
+
+- **The right asset per platform** — macOS updates from the `.app.tar.gz`, NOT
+  the `.dmg` a human downloads; Windows the NSIS installer; Linux the AppImage.
+- **Signature included** — Tauri verifies it against the pubkey compiled into
+  the app, so a release with no `.sig` must yield NO update rather than an
+  unverifiable one.
+- **Downloads route through this server**, never GitHub directly — that's what
+  keeps the token on the host and the repo private.
+- **204 means up to date**, and every failure degrades to it: GitHub down,
+  draft-only releases, same or newer client version, unknown platform. A broken
+  update check must never interrupt playback.
+- **The asset proxy** streams bytes with the token attached server-side, and
+  rejects a non-numeric or unknown asset id.
+- **No session needed** — the updater runs in Rust and has no cookies.

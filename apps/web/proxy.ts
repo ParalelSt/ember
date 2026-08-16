@@ -16,7 +16,11 @@ const PB_URL = /^https?:\/\//.test(RAW_PB_URL) ? RAW_PB_URL : 'http://127.0.0.1:
 // song links unfurl (Discord/Messenger crawlers can't log in) and logged-out
 // friends land on the track page instead of the auth wall.
 const PUBLIC_PATHS = ['/auth', '/manifest.webmanifest', '/sw.js', '/track'];
-const PUBLIC_API_PREFIXES = ['/api/youtube/stream/', '/api/search', '/api/tracks', '/api/youtube/search', '/api/youtube/trending', '/api/youtube/recommended', '/api/youtube/artist', '/api/youtube/album', '/api/youtube/track/', '/api/discord/', '/api/auth/'];
+const PUBLIC_API_PREFIXES = ['/api/youtube/stream/', '/api/search', '/api/tracks', '/api/youtube/search', '/api/youtube/trending', '/api/youtube/recommended', '/api/youtube/artist', '/api/youtube/album', '/api/youtube/track/', '/api/discord/', '/api/auth/',
+  // The desktop updater runs in Rust with no browser session, so its feed and
+  // the asset proxy must be reachable without one. They expose the latest
+  // version and a proxied installer — no user data.
+  '/api/desktop/'];
 
 export default async function proxy(req: NextRequest) {
   // Per-request id, attached to outgoing responses + any server log lines.
