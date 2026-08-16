@@ -21,6 +21,7 @@ import {
   useExecuteUpdatePlaylistArtwork,
   useQueryPlaylist,
 } from '@/hooks/useLibrary';
+import { cn } from '@/lib/utils';
 import type { Track } from '@/types/track';
 
 export default function PlaylistPage({ params }: { params: Promise<{ id: string }> }) {
@@ -40,6 +41,12 @@ export default function PlaylistPage({ params }: { params: Promise<{ id: string 
   // undefined here on first render; the staleness effect guards against that.
   const isOnline = useOnline();
   const downloaded = useOfflineStore((s) => s.downloaded.includes(id));
+  // Shuffle state — hooks must run before the early returns below.
+  const shuffleOn = usePlayerStore((s) => s.shuffle);
+  const toggleShuffle = usePlayerStore((s) => s.toggleShuffle);
+  const isPlayingThisPlaylist = usePlayerStore(
+    (s) => s.context?.type === 'playlist' && s.context.playlistId === id,
+  );
   const inFlight = useOfflineStore((s) => s.inFlight[id]);
   const [stale, setStale] = useState(false);
 
@@ -162,27 +169,41 @@ export default function PlaylistPage({ params }: { params: Promise<{ id: string 
         >
           <PlayIcon className="h-5 w-5 fill-current ml-0.5" />
         </Button>
-        {/* Shuffle play — shuffles the whole playlist and starts at the top of
-            the shuffled order. playTrack clears any previous shuffle snapshot,
-            so we record THIS playlist's original order right after, letting the
-            player-bar toggle restore it later. */}
+        {/* Shuffle.
+            While THIS playlist is playing it's a toggle: shuffle the tracks
+            ahead and leave the current song alone. It used to reshuffle from
+            scratch and jump to a new first track on every press, which felt
+            like the button was skipping.
+            When the playlist isn't playing there's nothing to preserve, so it
+            behaves as "shuffle play" and starts somewhere random. */}
         <Button
           variant="ghost"
           size="icon"
           onClick={() => {
             if (!tracks.length) return;
+            if (isPlayingThisPlaylist) {
+              toggleShuffle();
+              return;
+            }
             const shuffled = tracks.slice();
             for (let i = shuffled.length - 1; i > 0; i--) {
               const j = Math.floor(Math.random() * (i + 1));
               [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
             }
             playTrack(shuffled[0], shuffled, playlistContext);
+            // playTrack clears any previous shuffle snapshot, so record THIS
+            // playlist's original order right after, so shuffle-off can
+            // restore it.
             usePlayerStore.setState({ shuffle: true, orderBackup: tracks });
           }}
           disabled={!tracks.length}
-          className="h-12 w-12 rounded-full text-muted-foreground hover:text-foreground"
-          aria-label="Shuffle play"
-          title="Shuffle play"
+          aria-pressed={shuffleOn}
+          className={cn(
+            'h-12 w-12 rounded-full',
+            shuffleOn ? 'text-ember hover:text-ember' : 'text-muted-foreground hover:text-foreground',
+          )}
+          aria-label={isPlayingThisPlaylist ? (shuffleOn ? 'Shuffle off' : 'Shuffle') : 'Shuffle play'}
+          title={isPlayingThisPlaylist ? (shuffleOn ? 'Shuffling' : 'Shuffle') : 'Shuffle play'}
         >
           <ShuffleIcon className="h-5 w-5" />
         </Button>
