@@ -278,26 +278,43 @@ pub async fn audio_load(
         &format!("load #{my_seq} start_at={start_at:.1} autoplay={autoplay} url={url}"),
     );
 
+    // Whole-load budget. Nothing downstream imposes one: on a bad connection
+    // (or when the host stalls mid-response) HttpStream::new and the decoder
+    // simply wait forever. The user sees a track that never starts, with no
+    // error and no fallback — the position watchdog can't help because no sink
+    // exists yet. Giving up lets the webview fall back to web audio, which
+    // buffers progressively and copes better with a weak link.
+    const LOAD_BUDGET: Duration = Duration::from_secs(25);
+    let deadline = std::time::Instant::now() + LOAD_BUDGET;
+    let remaining = || deadline.saturating_duration_since(std::time::Instant::now());
+    let give_up = |app: &AppHandle, stage: &str| -> String {
+        let msg = format!("timed out {stage} after {}s", LOAD_BUDGET.as_secs());
+        log_audio(app, "WARN", &format!("load #{my_seq} {msg}"));
+        emit_err(app, msg.clone());
+        msg
+    };
+
     // Build a seekable, buffered HTTP source backed by a temp file so seeks work.
     let parsed = url.parse().map_err(|_| "bad url".to_string())?;
     let client = http_client(cookie.as_deref())?;
-    let stream = match HttpStream::new(client, parsed).await {
-        Ok(s) => s,
-        Err(e) => {
+    let stream = match tokio::time::timeout(remaining(), HttpStream::new(client, parsed)).await {
+        Err(_) => return Err(give_up(&app, "connecting to the stream")),
+        Ok(Ok(s)) => s,
+        Ok(Err(e)) => {
             let msg = e.to_string();
             emit_err(&app, msg.clone());
             return Err(msg);
         }
     };
-    let reader = match StreamDownload::from_stream(
-        stream,
-        TempStorageProvider::default(),
-        Settings::default(),
+    let reader = match tokio::time::timeout(
+        remaining(),
+        StreamDownload::from_stream(stream, TempStorageProvider::default(), Settings::default()),
     )
     .await
     {
-        Ok(r) => r,
-        Err(e) => {
+        Err(_) => return Err(give_up(&app, "buffering the stream")),
+        Ok(Ok(r)) => r,
+        Ok(Err(e)) => {
             let msg = e.to_string();
             emit_err(&app, msg.clone());
             return Err(msg);
@@ -305,21 +322,28 @@ pub async fn audio_load(
     };
 
     // Fix 3: run blocking decoder I/O off the async runtime.
-    let decoder = match tauri::async_runtime::spawn_blocking(move || rodio::Decoder::new(reader))
-        .await
+    let decoder = match tokio::time::timeout(
+        remaining(),
+        tauri::async_runtime::spawn_blocking(move || rodio::Decoder::new(reader)),
+    )
+    .await
     {
-        Ok(Ok(d)) => d,
+        // Say "timed out", not "unrecognized format" — a misleading error here
+        // sends whoever reads the log hunting for a codec problem.
+        Err(_) => return Err(give_up(&app, "decoding the track")),
+        Ok(Ok(Ok(d))) => d,
+        Ok(Ok(Err(e))) => {
+            let msg = e.to_string();
+            emit_err(&app, msg.clone());
+            return Err(msg);
+        }
         Ok(Err(e)) => {
             let msg = e.to_string();
             emit_err(&app, msg.clone());
             return Err(msg);
         }
-        Err(e) => {
-            let msg = e.to_string();
-            emit_err(&app, msg.clone());
-            return Err(msg);
-        }
     };
+
     let total = {
         use rodio::Source;
         decoder.total_duration()
