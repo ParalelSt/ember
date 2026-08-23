@@ -73,6 +73,14 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const recordPlay = useExecuteRecordPlay();
 
   const backendRef = useRef<AudioBackend | null>(null);
+  /** Which engine is live, and whether we've already swapped away from a
+   *  broken native one (only ever done once — a fallback loop would be worse
+   *  than the original fault). */
+  const backendKindRef = useRef<'web' | 'capacitor' | 'tauri-native' | 'native-stub'>('web');
+  const fellBackRef = useRef(false);
+  const eventsRef = useRef<AudioBackendEvents | null>(null);
+  const loadAndPlayRef = useRef<((t: Track | null, autoplay: boolean) => void) | null>(null);
+  const fallbackToWebAudioRef = useRef<((reason: string) => void) | null>(null);
   const [backendReady, setBackendReady] = useState(false);
 
   const userInteracted = useRef(false);
@@ -151,6 +159,12 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         persistRef.current();
       },
       onError: () => {
+        // A native engine that can't play is worse than no native engine:
+        // retry this track on web audio before giving up on it.
+        if (backendKindRef.current === 'tauri-native' && !fellBackRef.current) {
+          fallbackToWebAudioRef.current?.('audio backend reported an error');
+          return;
+        }
         setPosition(0);
         setIsPlaying(false);
         usePlayerStore.setState({ position: 0 });
@@ -167,6 +181,10 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     } else if (shell !== 'web' && nativeBackendReady(shell)) {
       create = shell === 'tauri' ? createTauriBackend : createNativeBackend;
     }
+    eventsRef.current = events;
+    backendKindRef.current = create === createWebBackend ? 'web'
+      : create === createCapacitorBackend ? 'capacitor'
+      : create === createTauriBackend ? 'tauri-native' : 'native-stub';
     backendRef.current = create(events);
     // Visible in devtools; tells you instantly whether the desktop app is on
     // the Rust engine or fell back to web audio.
@@ -202,6 +220,36 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   // Load + (optionally) play a track. Must run from a user gesture for autoplay
   // (React 19 effects are async and lose the activation token). The first call
   // restores the persisted position; later calls start fresh (wantPosition→0).
+  /** Swap a failing native engine for plain web audio, once, and resume.
+   *
+   *  nativeBackendReady() can only check that Tauri's invoke() EXISTS — and it
+   *  does even when the capability denies every command, which is precisely
+   *  what shipped in v0.2.0: the app chose the Rust engine, every call was
+   *  refused, and the result was silence with a track apparently playing.
+   *  A dead native engine must cost OS media keys, never the music. */
+  const fallbackToWebAudio = useCallback((reason: string) => {
+    if (backendKindRef.current === 'web' || fellBackRef.current) return;
+    fellBackRef.current = true;
+    logger.error('playback', 'native audio failed — falling back to web audio', { reason });
+
+    const events = eventsRef.current;
+    const resumeAt = usePlayerStore.getState().position;
+    try { backendRef.current?.destroy(); } catch { /* already broken */ }
+
+    backendRef.current = createWebBackend(events!);
+    backendKindRef.current = 'web';
+    // partyVolume lives in the settings store, not the player store.
+    const st = usePlayerStore.getState();
+    const party = useSettingsStore.getState().partyVolume;
+    backendRef.current.setVolume(st.muted ? 0 : st.volume, { gain: party ? 2 : 1 });
+
+    const track = st.queue[st.index];
+    if (track) {
+      wantPosition.current = resumeAt;
+      loadAndPlayRef.current?.(track, true);
+    }
+  }, []);
+
   const loadAndPlay = useCallback((track: Track | null, autoplay: boolean) => {
     const b = backendRef.current;
     if (!b) return;
@@ -217,6 +265,9 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     // across a track boundary (Firefox Android tears it down otherwise).
     b.setMetadata(track);
   }, []);
+
+  loadAndPlayRef.current = loadAndPlay;
+  fallbackToWebAudioRef.current = fallbackToWebAudio;
 
   // Drives load+autoplay on track changes from outside playTrack — auto-advance
   // (onEnded → next → index change) and cold-load hydration of a persisted queue.

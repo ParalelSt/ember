@@ -47,6 +47,11 @@ pub struct AudioEngine {
     generation: Arc<AtomicU64>,
     /// Last loaded absolute stream URL (for diagnostics / future recovery).
     current_url: Mutex<Option<String>>,
+    /// Last volume the UI asked for. rodio applies volume PER SINK and every
+    /// load builds a new one, so without remembering it here each track would
+    /// start at rodio's default of 1.0 — i.e. the user sets 20%, the next song
+    /// blasts at full. Applied in `new_sink`.
+    volume: Mutex<f32>,
     /// OS media controls (macOS Now Playing / Windows SMTC / Linux MPRIS).
     /// `None` if init failed — playback still works without OS controls.
     /// On macOS `MediaControls` is a zero-sized unit struct (state lives in
@@ -88,6 +93,7 @@ impl AudioEngine {
             sink: Arc::new(Mutex::new(None)),
             generation: Arc::new(AtomicU64::new(0)),
             current_url: Mutex::new(None),
+            volume: Mutex::new(1.0),
             controls: Mutex::new(None),
         })
     }
@@ -106,6 +112,7 @@ impl AudioEngine {
             sink: Arc::new(Mutex::new(None)),
             generation: Arc::new(AtomicU64::new(0)),
             current_url: Mutex::new(None),
+            volume: Mutex::new(1.0),
             controls: Mutex::new(None),
         }
     }
@@ -137,7 +144,28 @@ impl AudioEngine {
             .mixer
             .as_ref()
             .ok_or_else(|| "no audio output device on this machine".to_string())?;
-        Ok(Sink::connect_new(mixer))
+        let sink = Sink::connect_new(mixer);
+        // Carry the user's volume across the track change.
+        sink.set_volume(self.volume());
+        Ok(sink)
+    }
+
+    /// The volume every new sink starts at.
+    pub fn volume(&self) -> f32 {
+        self.volume.lock().map(|v| *v).unwrap_or(1.0)
+    }
+
+    /// Remember the UI's volume and apply it to whatever is playing now.
+    pub fn set_volume(&self, amplitude: f32) {
+        let clamped = amplitude.max(0.0);
+        if let Ok(mut v) = self.volume.lock() {
+            *v = clamped;
+        }
+        if let Ok(g) = self.sink.lock() {
+            if let Some(s) = g.as_ref() {
+                s.set_volume(clamped);
+            }
+        }
     }
 
     /// Shared handles for the position-polling task.
@@ -344,12 +372,10 @@ pub fn audio_seek(app: AppHandle, engine: State<'_, AudioEngine>, sec: f64) {
 
 #[tauri::command]
 pub fn audio_set_volume(engine: State<'_, AudioEngine>, amplitude: f32) {
-    if let Ok(g) = engine.sink.lock() {
-        if let Some(s) = g.as_ref() {
-            // rodio amplifies for values > 1.0, preserving party mode.
-            s.set_volume(amplitude.max(0.0));
-        }
-    }
+    // Stored as well as applied: rodio volume lives on the SINK, and the next
+    // track gets a brand new one. rodio amplifies above 1.0, preserving party
+    // mode.
+    engine.set_volume(amplitude);
 }
 
 // --- OS media controls (souvlaki) -------------------------------------------
@@ -524,6 +550,34 @@ mod tests {
             headers.iter().any(|h| h.to_lowercase() == "cookie: pb_auth=test-token"),
             "Cookie header missing; server saw: {headers:?}"
         );
+    }
+
+    /// rodio applies volume per SINK, and every load builds a new one. Before
+    /// this was stored on the engine, setting 20% then changing track played
+    /// the next song at rodio's default 1.0 — full blast. The volume set
+    /// BEFORE anything is loaded was discarded entirely.
+    #[test]
+    fn volume_survives_track_changes() {
+        let engine = AudioEngine::new_degraded();
+        assert_eq!(engine.volume(), 1.0, "fresh engine should be unity gain");
+
+        // Set with nothing playing — the old code dropped this on the floor.
+        engine.set_volume(0.2);
+        assert!((engine.volume() - 0.2).abs() < f32::EPSILON);
+
+        // Whatever a later load builds its sink with, it reads this value.
+        engine.set_volume(0.45);
+        assert!((engine.volume() - 0.45).abs() < f32::EPSILON);
+    }
+
+    /// Party mode amplifies above 1.0, so only the negative side is clamped.
+    #[test]
+    fn volume_clamps_negatives_but_allows_amplification() {
+        let engine = AudioEngine::new_degraded();
+        engine.set_volume(-3.0);
+        assert_eq!(engine.volume(), 0.0);
+        engine.set_volume(1.8);
+        assert!((engine.volume() - 1.8).abs() < f32::EPSILON);
     }
 
     /// Public routes must keep working with no session attached.
