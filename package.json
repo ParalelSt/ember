@@ -18,6 +18,7 @@
     "deploy": "npm run build && systemctl --user restart ember && echo '\u2713 rebuilt + ember restarted'",
     "test:update": "node tests/desktop-update.test.mjs",
     "test:stream": "node tests/stream-source.test.mjs",
-    "test:stream-fallback": "node tests/stream-fallback.test.mjs"
+    "test:stream-fallback": "node tests/stream-fallback.test.mjs",
+    "test:desktop-logger": "node tests/desktop-logger.test.mjs"
   }
 }

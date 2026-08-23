@@ -56,6 +56,7 @@ node tests/privacy.test.mjs                         # or: npm run test:privacy
 node tests/desktop-update.test.mjs                  # or: npm run test:update
 
 # Where audio comes from (needs its own server — see the section below)
+node tests/desktop-logger.test.mjs                  # or: npm run test:desktop-logger
 node tests/stream-source.test.mjs                   # or: npm run test:stream
 node tests/stream-fallback.test.mjs                 # or: npm run test:stream-fallback
 
@@ -210,3 +211,19 @@ local stand-in for googlevideo:
 
 The fix for the underlying cause is keeping yt-dlp current, which `update.sh`
 now does on every host update.
+
+## What `desktop-logger.test.mjs` covers
+
+Needs **no sandbox and no Tauri** — it extracts the injected logger script
+straight out of `lib.rs` and runs it against a fake webview, in milliseconds.
+
+The incident: `invoke()` returns a promise, and a rejected one ("Command
+log_event not allowed by ACL") fired `unhandledrejection`, which the logger
+logged, which invoked again. The loop filled the 200-entry buffer with one
+repeated error, so a real bug report arrived containing 400 copies of it and
+nothing else — the actual problem was invisible.
+
+- A refused invoke raises **no unhandled rejection**.
+- Fifty identical errors send at most once — no flooding the buffer.
+- An error raised *by the logging path itself* doesn't re-enter it.
+- Genuinely different messages still all get through.

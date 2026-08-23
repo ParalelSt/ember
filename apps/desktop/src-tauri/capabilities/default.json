@@ -1,12 +1,13 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Core permissions for the Ember webview shell. `remote` is REQUIRED: the app loads the Ember server in the webview, and without it that remote origin cannot reach our audio/discord/log commands over IPC at all.",
+  "description": "Permissions for the Ember webview shell. `remote` is REQUIRED: the app loads the Ember server in the webview, and a remote origin gets NO IPC access without it. allow-ember-commands (permissions/app-commands.toml) is equally required \u2014 remote origins are denied even this app's own commands unless a permission names them.",
   "windows": [
     "main"
   ],
   "permissions": [
-    "core:default"
+    "core:default",
+    "allow-ember-commands"
   ],
   "remote": {
     "urls": [

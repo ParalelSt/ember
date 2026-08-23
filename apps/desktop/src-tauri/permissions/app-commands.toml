@@ -1,0 +1,26 @@
+# The webview loads Ember from a REMOTE origin (the server URL). Tauri treats
+# remote origins as untrusted by default and denies every command that isn't
+# explicitly permitted — including this app's own commands. Without this file
+# the shell's IPC is dead: playback, Discord presence and logging all fail with
+# "Command <name> not allowed by ACL", which is exactly what a bug report from
+# the Windows build showed.
+#
+# Referenced from capabilities/default.json.
+[[permission]]
+identifier = "allow-ember-commands"
+description = "Ember's own IPC commands: native audio, Discord presence, and log forwarding."
+
+[permission.commands]
+allow = [
+  "audio_stop",
+  "audio_load",
+  "audio_play",
+  "audio_pause",
+  "audio_seek",
+  "audio_set_volume",
+  "audio_set_metadata",
+  "discord_update",
+  "log_event",
+  "log_path",
+]
+deny = []

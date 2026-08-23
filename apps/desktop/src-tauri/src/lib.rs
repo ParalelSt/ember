@@ -139,17 +139,42 @@ const APP_LOG_SCRIPT: &str = r#"
     var i = window.__TAURI_INTERNALS__;
     return i && typeof i.invoke === 'function' ? i : null;
   };
+  // invoke() returns a PROMISE. A rejected one (e.g. "Command log_event not
+  // allowed by ACL" — remote origins are denied every command the capability
+  // doesn't name) fires unhandledrejection, which the handler below logs,
+  // which invokes again: an infinite loop that filled the whole buffer with
+  // one repeated error and drowned out every real diagnostic. A real bug
+  // report came back containing nothing but 400 copies of it.
+  //
+  // So: swallow the rejection, AND guard against re-entry, AND never repeat
+  // the same message twice in a row.
+  var sending = false;
+  var lastMsg = '';
+  var fire = function (b, level, msg) {
+    sending = true;
+    try {
+      var p = b.invoke('log_event', { level: level, message: msg });
+      if (p && typeof p.catch === 'function') p.catch(function () {});
+    } catch (_) {
+    } finally {
+      sending = false;
+    }
+  };
   var flush = function (b) {
     ready = true;
     while (queue.length) {
       var q = queue.shift();
-      try { b.invoke('log_event', { level: q[0], message: q[1] }); } catch (_) {}
+      fire(b, q[0], q[1]);
     }
   };
   var send = function (level, msg) {
+    if (sending) return;               // don't log our own logging
+    var text = String(msg);
+    if (text === lastMsg) return;      // one line, not four hundred
+    lastMsg = text;
     var b = bridge();
-    if (ready && b) { try { b.invoke('log_event', { level: level, message: String(msg) }); } catch (_) {} return; }
-    if (queue.length < 200) queue.push([level, String(msg)]);
+    if (ready && b) { fire(b, level, text); return; }
+    if (queue.length < 200) queue.push([level, text]);
   };
   var waited = 0;
   var timer = setInterval(function () {
