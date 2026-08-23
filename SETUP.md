@@ -324,7 +324,18 @@ of that means YouTube is blocking the host's IP — fix that with cookies (see
 the yt-dlp cookie env vars above).
 
 Concurrent requests for the same uncached song share ONE download, so a player
-opening several byte-range connections doesn't start several yt-dlp runs.
+opening several byte-range connections doesn't start several yt-dlp runs. And
+if a download fails outright, Ember falls back to streaming live rather than
+failing the play.
+
+**If downloads start 403ing, your yt-dlp is almost certainly stale.** YouTube
+breaks older versions every few months, and the giveaway is that search and
+playback of already-downloaded songs keep working while new songs won't
+download. `./update.sh` upgrades yt-dlp on every run; to do it by hand:
+
+```bash
+./.venv/bin/pip install -U yt-dlp ytmusicapi
+```
 
 Disk: roughly 3-7 MB per song. The cache grows with listening, so pair it with
 the weekly cleanup of tracks nobody has played.

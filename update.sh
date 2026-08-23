@@ -76,6 +76,22 @@ else
   echo "▶ dependencies unchanged — skipping npm ci"
 fi
 
+# yt-dlp goes stale fast: YouTube breaks older versions every few months, and
+# when it does, downloads start returning 403 while everything else looks fine.
+# It has bitten this project more than once, so keep it current on every update.
+if [ "${SKIP_YTDLP_UPGRADE:-0}" != "1" ] && [ -x "$ROOT/.venv/bin/pip" ]; then
+  echo "▶ updating yt-dlp + ytmusicapi…"
+  BEFORE="$("$ROOT/.venv/bin/python" -m yt_dlp --version 2>/dev/null || echo none)"
+  "$ROOT/.venv/bin/pip" install -q --upgrade yt-dlp ytmusicapi || \
+    echo "  ⚠ upgrade failed — carrying on, but 403s on downloads usually mean a stale yt-dlp"
+  AFTER="$("$ROOT/.venv/bin/python" -m yt_dlp --version 2>/dev/null || echo none)"
+  if [ "$BEFORE" = "$AFTER" ]; then
+    echo "  yt-dlp $AFTER (already current)"
+  else
+    echo "  yt-dlp $BEFORE → $AFTER"
+  fi
+fi
+
 if [ "$MODE" = "no-start" ]; then
   echo
   echo "✓ code updated and dependencies installed."

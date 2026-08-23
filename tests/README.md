@@ -57,6 +57,7 @@ node tests/desktop-update.test.mjs                  # or: npm run test:update
 
 # Where audio comes from (needs its own server — see the section below)
 node tests/stream-source.test.mjs                   # or: npm run test:stream
+node tests/stream-fallback.test.mjs                 # or: npm run test:stream-fallback
 
 # Custom uploads (MUSIC_DIR must match the server's)
 MUSIC_DIR="$SB/music" node tests/uploads.test.mjs   # or: npm run test:uploads
@@ -191,3 +192,21 @@ so the test measures the DEFAULT, not your local preference.
   without deduping means several yt-dlp runs racing to write the same file.
 - **Range requests still work** (206 alongside the 200s).
 - **The audio really is on disk** in MUSIC_DIR afterwards.
+
+## What `stream-fallback.test.mjs` covers
+
+A real incident: the host's yt-dlp went stale, YouTube began 403ing its
+**downloader** while URL resolution kept working, and because downloads are the
+primary source the app stopped playing anything uncached. Silence, no clue why.
+
+With a fake player rigged to fail downloads (`FAKE_FAIL_DOWNLOAD=1`) and a
+local stand-in for googlevideo:
+
+- **A failed download falls through to live streaming** rather than failing the
+  play, and the bytes really come from the live URL.
+- The order is right: download attempted FIRST, live resolution only after.
+- **An explicit `?download=1` still fails loudly** — that request asked for a
+  file on disk, and quietly proxying instead would be a lie.
+
+The fix for the underlying cause is keeping yt-dlp current, which `update.sh`
+now does on every host update.

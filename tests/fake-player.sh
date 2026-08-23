@@ -13,6 +13,13 @@ echo "$CMD $VIDEO_ID" >> "$LOG"
 
 case "$CMD" in
   download)
+    # FAKE_FAIL_DOWNLOAD=1 reproduces the real-world failure this guards
+    # against: a stale yt-dlp whose downloader gets 403'd while URL resolution
+    # still works fine.
+    if [ "${FAKE_FAIL_DOWNLOAD:-0}" = "1" ]; then
+      echo "ERROR: unable to download video data: HTTP Error 403: Forbidden" >&2
+      exit 1
+    fi
     mkdir -p "$MUSIC_DIR"
     OUT="$MUSIC_DIR/$VIDEO_ID.m4a"
     # Slow enough that concurrent callers overlap — that's the race being tested.
@@ -21,9 +28,11 @@ case "$CMD" in
     printf '{"filePath": "%s"}' "$OUT"
     ;;
   info)
-    # Only reached in proxy mode. Points at a URL that does not exist, so any
-    # accidental proxying fails loudly instead of silently "working".
-    printf '{"url": "http://127.0.0.1:9/nope", "ext": "m4a", "httpHeaders": {}}'
+    # Reached in proxy mode, and by the fallback when a download fails.
+    # Defaults to a dead URL so accidental proxying fails loudly rather than
+    # silently "working"; FAKE_STREAM_URL points it at a real test origin.
+    printf '{"url": "%s", "ext": "m4a", "httpHeaders": {}}' \
+      "${FAKE_STREAM_URL:-http://127.0.0.1:9/nope}"
     ;;
   *)
     printf '{"error": "fake-player: unsupported command %s"}' "$CMD" >&2
