@@ -78,6 +78,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
    *  than the original fault). */
   const backendKindRef = useRef<'web' | 'capacitor' | 'tauri-native' | 'native-stub'>('web');
   const fellBackRef = useRef(false);
+  /** Track id currently handed to the backend — guards redundant re-loads. */
+  const loadedTrackRef = useRef<string | null>(null);
   const eventsRef = useRef<AudioBackendEvents | null>(null);
   const loadAndPlayRef = useRef<((t: Track | null, autoplay: boolean) => void) | null>(null);
   const fallbackToWebAudioRef = useRef<((reason: string) => void) | null>(null);
@@ -256,8 +258,17 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     if (!track) {
       b.stop();
       b.setMetadata(null);
+      loadedTrackRef.current = null;
       return;
     }
+    // Cold-start hydration runs more than once (three times, in a traced
+    // launch), and each pass re-downloads and re-decodes the same track. Worse,
+    // those loads carry autoplay=false: if one lands just after the user hits
+    // play, it replaces their playing audio with a PAUSED sink — the "had to
+    // click play a few times" bug. A silent re-load of the track that's already
+    // loaded is never useful, so drop it.
+    if (!autoplay && loadedTrackRef.current === track.id) return;
+    loadedTrackRef.current = track.id;
     const startAt = wantPosition.current ?? usePlayerStore.getState().position;
     wantPosition.current = 0;
     b.load(apiUrl(track.streamUrl), { autoplay, startAt });

@@ -153,6 +153,16 @@ export async function searchTracks(query: string, { limit = 30 } = {}): Promise<
  *  YouTube budget and racing to write the same path. Callers share one run. */
 const inFlight = new Map<string, Promise<string>>();
 
+/** Is yt-dlp currently writing this track?
+ *
+ *  Matters because a download is NOT atomic: yt-dlp renames the file into
+ *  place and then post-processes it, so `<id>.m4a` can exist while still being
+ *  written. Serving it in that window hands the player a truncated file — the
+ *  decoder starves and playback sits frozen at 0:00 with no error. */
+export function isDownloading(videoId: string): boolean {
+  return inFlight.has(videoId);
+}
+
 export async function ensureDownloaded(videoId: string): Promise<string> {
   if (!VIDEO_ID_RE.test(videoId)) {
     const e: PythonError = new Error('invalid videoId');
@@ -160,12 +170,16 @@ export async function ensureDownloaded(videoId: string): Promise<string> {
     throw e;
   }
 
-  // Someone may have finished downloading it while we were queued.
-  const already = findCachedFile(videoId);
-  if (already) return already;
-
+  // Order matters: join an in-flight download BEFORE trusting the disk. yt-dlp
+  // renames the final filename into place and then post-processes it, so while
+  // a download is running the file can exist and still be incomplete. Checking
+  // the cache first handed callers those truncated bytes.
   const running = inFlight.get(videoId);
   if (running) return running;
+
+  // Nothing running — a file on disk now is genuinely finished.
+  const already = findCachedFile(videoId);
+  if (already) return already;
 
   const job = runPython<{ filePath: string }>(['download', '--', videoId], { timeoutMs: 180000 })
     .then((result) => result.filePath)

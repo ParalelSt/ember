@@ -45,6 +45,12 @@ pub struct AudioEngine {
     /// Monotonic load counter. Each `audio_load` bumps it; the position timer
     /// captures its value and exits once a newer load supersedes it.
     generation: Arc<AtomicU64>,
+    /// Claimed at the START of every load, unlike `generation` which is taken
+    /// after the download+decode. Without it, the load that FINISHES last wins:
+    /// a slow startup load (hydrating the persisted track with autoplay=false)
+    /// could land after the user clicked play and replace a playing sink with a
+    /// paused one. That is the "had to click play several times" bug.
+    load_seq: Arc<AtomicU64>,
     /// Last loaded absolute stream URL (for diagnostics / future recovery).
     current_url: Mutex<Option<String>>,
     /// Last volume the UI asked for. rodio applies volume PER SINK and every
@@ -92,6 +98,7 @@ impl AudioEngine {
             mixer: Some(mixer),
             sink: Arc::new(Mutex::new(None)),
             generation: Arc::new(AtomicU64::new(0)),
+            load_seq: Arc::new(AtomicU64::new(0)),
             current_url: Mutex::new(None),
             volume: Mutex::new(1.0),
             controls: Mutex::new(None),
@@ -111,6 +118,7 @@ impl AudioEngine {
             mixer: None,
             sink: Arc::new(Mutex::new(None)),
             generation: Arc::new(AtomicU64::new(0)),
+            load_seq: Arc::new(AtomicU64::new(0)),
             current_url: Mutex::new(None),
             volume: Mutex::new(1.0),
             controls: Mutex::new(None),
@@ -168,6 +176,17 @@ impl AudioEngine {
         }
     }
 
+    /// Take a ticket for a load that is about to start.
+    pub fn claim_load(&self) -> u64 {
+        self.load_seq.fetch_add(1, Ordering::SeqCst) + 1
+    }
+
+    /// Whether this load is still the newest one. A load that lost the race
+    /// must throw its work away rather than install a stale sink.
+    pub fn is_current_load(&self, seq: u64) -> bool {
+        self.load_seq.load(Ordering::SeqCst) == seq
+    }
+
     /// Shared handles for the position-polling task.
     fn inner_arc(&self) -> (Arc<Mutex<Option<Sink>>>, Arc<AtomicU64>) {
         (Arc::clone(&self.sink), Arc::clone(&self.generation))
@@ -200,6 +219,21 @@ fn emit_bare(app: &AppHandle, event: &str) {
     use tauri::Emitter;
     let _ = app.emit(event, ());
 }
+/// Write a line into the app log from the audio engine.
+///
+/// Playback faults here are intermittent and timing-dependent — the kind that
+/// never reproduce while you're watching. Recording each load's sequence
+/// number, start offset and outcome means the next bug report explains itself
+/// instead of needing a re-run.
+fn log_audio(app: &AppHandle, level: &str, msg: &str) {
+    use tauri::Manager;
+    if let Some(state) = app.try_state::<crate::applog::LogFile>() {
+        if let Ok(path) = state.0.lock() {
+            crate::applog::write_line(path.as_ref(), level, &format!("audio: {msg}"));
+        }
+    }
+}
+
 fn emit_err(app: &AppHandle, message: String) {
     use tauri::Emitter;
     let _ = app.emit("audio:error", ErrPayload { message });
@@ -235,6 +269,15 @@ pub async fn audio_load(
     start_at: f64,
     cookie: Option<String>,
 ) -> Result<(), String> {
+    // Claim the load BEFORE any slow work, so a newer request can supersede
+    // this one even if this one finishes later.
+    let my_seq = engine.claim_load();
+    log_audio(
+        &app,
+        "INFO",
+        &format!("load #{my_seq} start_at={start_at:.1} autoplay={autoplay} url={url}"),
+    );
+
     // Build a seekable, buffered HTTP source backed by a temp file so seeks work.
     let parsed = url.parse().map_err(|_| "bad url".to_string())?;
     let client = http_client(cookie.as_deref())?;
@@ -282,6 +325,13 @@ pub async fn audio_load(
         decoder.total_duration()
     };
 
+    // Someone asked for a different track while this one was downloading —
+    // discard it silently rather than yanking playback back.
+    if !engine.is_current_load(my_seq) {
+        log_audio(&app, "INFO", &format!("load #{my_seq} superseded — discarded"));
+        return Ok(());
+    }
+
     // Fix 1: bump the generation BEFORE storing the new sink so that the
     // previous position-timer can never observe the new sink under the old
     // generation number.
@@ -301,6 +351,15 @@ pub async fn audio_load(
     *engine.sink.lock().map_err(|_| "lock")? = Some(sink);
     *engine.current_url.lock().map_err(|_| "lock")? = Some(url);
 
+    log_audio(
+        &app,
+        "INFO",
+        &format!(
+            "load #{my_seq} playing (duration={:.0}s volume={:.2})",
+            total.map(|d| d.as_secs_f64()).unwrap_or(0.0),
+            engine.volume()
+        ),
+    );
     if let Some(d) = total {
         emit_sec(&app, "audio:duration", d.as_secs_f64());
     }
@@ -472,18 +531,27 @@ fn spawn_position_timer(
 ) {
     tauri::async_runtime::spawn(async move {
         let mut interval = tokio::time::interval(Duration::from_millis(250));
+        // Stall watchdog. A sink can be un-paused and non-empty yet produce no
+        // sound: the source is a blocking HTTP read, and if it starves, cpal
+        // gets no samples and get_pos() freezes. It looks to the user like the
+        // song simply won't play, with no error anywhere. Rather than sit
+        // there, report it so the webview can fall back to web audio.
+        const STALL_TICKS: u32 = 24; // 24 × 250ms = 6s of no progress
+        let mut last_pos = f64::NAN;
+        let mut stalled_for: u32 = 0;
+
         loop {
             interval.tick().await;
             if generation.load(Ordering::SeqCst) != my_gen {
                 break; // superseded by a newer load / stop
             }
-            let (pos, empty) = {
+            let (pos, empty, paused) = {
                 let g = match sink.lock() {
                     Ok(g) => g,
                     Err(_) => break,
                 };
                 match g.as_ref() {
-                    Some(s) => (s.get_pos().as_secs_f64(), s.empty()),
+                    Some(s) => (s.get_pos().as_secs_f64(), s.empty(), s.is_paused()),
                     None => break,
                 }
             };
@@ -492,6 +560,24 @@ fn spawn_position_timer(
                 emit_bare(&app, "audio:ended");
                 break;
             }
+
+            if paused {
+                stalled_for = 0; // paused on purpose is not a stall
+            } else if pos == last_pos {
+                stalled_for += 1;
+                if stalled_for >= STALL_TICKS {
+                    log_audio(
+                        &app,
+                        "WARN",
+                        &format!("playback stalled at {pos:.1}s — source starved, giving up"),
+                    );
+                    emit_err(&app, format!("playback stalled at {pos:.1}s"));
+                    break;
+                }
+            } else {
+                stalled_for = 0;
+            }
+            last_pos = pos;
         }
     });
 }
@@ -578,6 +664,26 @@ mod tests {
         assert_eq!(engine.volume(), 0.0);
         engine.set_volume(1.8);
         assert!((engine.volume() - 1.8).abs() < f32::EPSILON);
+    }
+
+    /// A load that started earlier but finishes later must NOT install its
+    /// sink. The startup hydration load (autoplay=false) used to land after a
+    /// user's click-to-play and replace a playing sink with a paused one.
+    #[test]
+    fn a_superseded_load_knows_it_lost() {
+        let engine = AudioEngine::new_degraded();
+        let slow = engine.claim_load();      // startup hydration begins
+        let fast = engine.claim_load();      // user clicks play
+
+        assert!(!engine.is_current_load(slow), "the older load must stand down");
+        assert!(engine.is_current_load(fast), "the newest load owns playback");
+    }
+
+    #[test]
+    fn the_only_load_in_flight_is_current() {
+        let engine = AudioEngine::new_degraded();
+        let seq = engine.claim_load();
+        assert!(engine.is_current_load(seq));
     }
 
     /// Public routes must keep working with no session attached.

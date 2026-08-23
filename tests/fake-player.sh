@@ -22,6 +22,12 @@ case "$CMD" in
     fi
     mkdir -p "$MUSIC_DIR"
     OUT="$MUSIC_DIR/$VIDEO_ID.m4a"
+    # Reproduce yt-dlp's real behaviour: the final filename appears BEFORE the
+    # file is finished (rename, then post-process). Anything serving it during
+    # this window hands out a truncated file.
+    if [ "${FAKE_PARTIAL_FIRST:-0}" = "1" ]; then
+      printf 'PARTIAL' > "$OUT"
+    fi
     # Slow enough that concurrent callers overlap — that's the race being tested.
     sleep "${FAKE_DOWNLOAD_SECONDS:-2}"
     printf 'FAKE-AUDIO-%s' "$VIDEO_ID" > "$OUT"

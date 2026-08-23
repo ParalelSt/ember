@@ -77,6 +77,25 @@ check('C4 the full response is the real audio',
   full !== -1 && Buffer.from(bodies[full]).toString() === `FAKE-AUDIO-${CONCURRENT}`,
   full === -1 ? 'no 200 response at all' : '');
 
+// ── never serve a half-written file ───────────────────────────────────────
+// yt-dlp renames the final filename into place and THEN post-processes it, so
+// `<id>.m4a` can exist while still being written. Serving it in that window
+// gave the player a truncated file: the decoder starved and playback sat
+// frozen at 0:00 with no error — an intermittent "song won't play".
+const PARTIAL = 'ddddddddddd';
+const partialRuns = await Promise.all([
+  stream(PARTIAL),
+  new Promise((r) => setTimeout(r, 700)).then(() => stream(PARTIAL)),  // mid-download
+  new Promise((r) => setTimeout(r, 1400)).then(() => stream(PARTIAL)),
+]);
+const partialBodies = await Promise.all(partialRuns.map((r) => r.arrayBuffer()));
+const texts = partialBodies.map((b) => Buffer.from(b).toString());
+check('E1 requests during a download all get the COMPLETE file',
+  texts.every((t) => t === `FAKE-AUDIO-${PARTIAL}`),
+  texts.map((t) => t.slice(0, 20)).join(' | '));
+check('E2 still only one download for them', calls('download').filter((l) => l.includes(PARTIAL)).length === 1,
+  `${calls('download').filter((l) => l.includes(PARTIAL)).length}`);
+
 // ── the file really is on disk afterwards ─────────────────────────────────
 const musicDir = process.env.MUSIC_DIR ?? '/tmp/ember-stream-test/music';
 check('D1 audio persisted to MUSIC_DIR',
