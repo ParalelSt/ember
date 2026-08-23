@@ -11,6 +11,19 @@ export async function POST(request: NextRequest, ctx: RouteContext<'/api/playlis
     const track = body?.track;
     if (!track?.id) return jsonError('track required', 400);
 
+    // PocketBase's collection rules already stop someone writing into a
+    // playlist that isn't theirs — but they surface it as 400 "Failed to
+    // create record.", which is both the wrong status and a raw internal
+    // message for the user. Check ownership up front and say so plainly.
+    // (The cookie-scoped client can only read the caller's own playlists, so a
+    // miss here means "not yours" or "doesn't exist" — same answer either way,
+    // and it doesn't reveal whether someone else's playlist exists.)
+    try {
+      await pb.collection('playlists').getOne(id);
+    } catch {
+      return jsonError('That playlist doesn’t exist, or isn’t yours', 404);
+    }
+
     const trackRecordId = await upsertTrack(pb, track);
 
     // Append at the next position. Pull the highest existing position via a

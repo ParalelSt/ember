@@ -49,6 +49,9 @@ npm i -D playwright-core
 node tests/fake-anthropic.mjs &
 node tests/ai-triage-ui.test.mjs  # or: npm run test:triage-ui
 
+# Cross-user authorization
+node tests/authorization.test.mjs                   # or: npm run test:auth
+
 # Privacy switches
 node tests/privacy.test.mjs                         # or: npm run test:privacy
 
@@ -227,3 +230,19 @@ nothing else — the actual problem was invisible.
 - Fifty identical errors send at most once — no flooding the buffer.
 - An error raised *by the logging path itself* doesn't re-enter it.
 - Genuinely different messages still all get through.
+
+## What `authorization.test.mjs` covers
+
+Invite-only is not the same as trusting every member with everyone else's
+library. Two fresh users per run, exercising what one could reach of the
+other's:
+
+- Someone else's playlist can't be read, added to, deleted, or have tracks
+  removed — and the refusal must be a sentence, not the store's raw
+  "Failed to create record." (that 400 also masked *whether* the check ran).
+- After a refused write, the owner's playlist is verified UNCHANGED — status
+  codes alone don't prove nothing happened.
+- Likes and history stay per-user.
+- Every admin route (users, tracks, logs, invites, cleanup) refuses a normal
+  member.
+- Signed-out callers get nothing.

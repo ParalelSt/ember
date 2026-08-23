@@ -19,6 +19,7 @@
     "test:update": "node tests/desktop-update.test.mjs",
     "test:stream": "node tests/stream-source.test.mjs",
     "test:stream-fallback": "node tests/stream-fallback.test.mjs",
-    "test:desktop-logger": "node tests/desktop-logger.test.mjs"
+    "test:desktop-logger": "node tests/desktop-logger.test.mjs",
+    "test:auth": "node tests/authorization.test.mjs"
   }
 }
