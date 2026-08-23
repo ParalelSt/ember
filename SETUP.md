@@ -299,25 +299,36 @@ recommendations go empty or playback starts failing.
 
 ### Streaming, the local cache, and 403s
 
-By default Ember streams a song live from YouTube on first play (instant start)
-and then **downloads it to `my_music/` in the background**, so every later play
-is served straight off the host's disk. Local plays can't 403 and don't touch
-YouTube at all.
+**Ember plays songs off the host's disk.** The first time anyone plays a
+track it's downloaded to `my_music/` with yt-dlp, then served from there —
+and from that point on it never touches YouTube again. Local plays can't 403.
 
-If a live stream is refused (403), Ember re-resolves the URL once, and if that
-still fails it downloads the track and serves the file instead. A 403 that
-survives all of that means YouTube is blocking the host's IP — fix that with
-cookies (see the yt-dlp cookie env vars above).
+The cost is that a brand-new song takes a few seconds to start while it
+downloads. That's the deliberate trade: reliable beats instant, especially for
+the native apps.
 
-Knobs (both optional, in `apps/web/.env.local`):
+The alternative is streaming YouTube through live, which starts instantly but
+is where 403s come from — googlevideo URLs are signed for the client that
+resolved them and expire, and native players (which fetch byte ranges over
+several connections) trip over that far more than a browser does. If you want
+that behaviour back:
 
 ```bash
-STREAM_MODE=cache        # download BEFORE first play too (slower first play, zero live streaming)
+STREAM_MODE=proxy        # stream live on first play; falls back to downloading on 403
 STREAM_CACHE_WARM=0      # turn OFF background caching (saves disk, keeps 403 exposure)
 ```
 
+In proxy mode, a refused stream is re-resolved once, and if that still fails
+Ember downloads the track and serves the file instead. A 403 that survives all
+of that means YouTube is blocking the host's IP — fix that with cookies (see
+the yt-dlp cookie env vars above).
+
+Concurrent requests for the same uncached song share ONE download, so a player
+opening several byte-range connections doesn't start several yt-dlp runs.
+
 Disk: roughly 3-7 MB per song. The cache grows with listening, so pair it with
 the weekly cleanup of tracks nobody has played.
+
 ### Automatic cleanup of unplayed songs
 
 Once a day the server deletes tracks **nobody has played in 14 days**, along

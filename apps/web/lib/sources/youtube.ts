@@ -144,14 +144,39 @@ export async function searchTracks(query: string, { limit = 30 } = {}): Promise<
   return tracks;
 }
 
+/** Downloads in flight, keyed by videoId.
+ *
+ *  Without this, every concurrent request for the same uncached track spawns
+ *  its own yt-dlp. That is not rare: a player asking for a byte range opens
+ *  several requests for one song, so a single play could kick off three or
+ *  four downloads of the same file, all fighting for the same throttled
+ *  YouTube budget and racing to write the same path. Callers share one run. */
+const inFlight = new Map<string, Promise<string>>();
+
 export async function ensureDownloaded(videoId: string): Promise<string> {
   if (!VIDEO_ID_RE.test(videoId)) {
     const e: PythonError = new Error('invalid videoId');
     e.status = 400;
     throw e;
   }
-  const result = await runPython<{ filePath: string }>(['download', '--', videoId], { timeoutMs: 180000 });
-  return result.filePath;
+
+  // Someone may have finished downloading it while we were queued.
+  const already = findCachedFile(videoId);
+  if (already) return already;
+
+  const running = inFlight.get(videoId);
+  if (running) return running;
+
+  const job = runPython<{ filePath: string }>(['download', '--', videoId], { timeoutMs: 180000 })
+    .then((result) => result.filePath)
+    .finally(() => {
+      // Clear on failure too, so a transient error doesn't poison the track
+      // until the process restarts.
+      inFlight.delete(videoId);
+    });
+
+  inFlight.set(videoId, job);
+  return job;
 }
 
 /** Resolve a single videoId to track metadata via ytmusicapi get_song.

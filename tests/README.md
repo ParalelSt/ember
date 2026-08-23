@@ -55,6 +55,9 @@ node tests/privacy.test.mjs                         # or: npm run test:privacy
 # Desktop update feed (needs its own server — see the section below)
 node tests/desktop-update.test.mjs                  # or: npm run test:update
 
+# Where audio comes from (needs its own server — see the section below)
+node tests/stream-source.test.mjs                   # or: npm run test:stream
+
 # Custom uploads (MUSIC_DIR must match the server's)
 MUSIC_DIR="$SB/music" node tests/uploads.test.mjs   # or: npm run test:uploads
 node tests/uploads-ui.test.mjs                      # or: npm run test:uploads-ui
@@ -158,3 +161,33 @@ otherwise a warm result hides the failure paths.)
 - **The asset proxy** streams bytes with the token attached server-side, and
   rejects a non-numeric or unknown asset id.
 - **No session needed** — the updater runs in Rust and has no cookies.
+
+## What `stream-source.test.mjs` covers
+
+The rule it locks in: **the downloaded file is the source of truth.** A song is
+fetched once with yt-dlp and served off disk forever after, so playback never
+depends on a signed googlevideo URL staying valid — which is what produced the
+403s, worst of all in the native apps.
+
+It uses `tests/fake-player.sh` in place of player.py, so there's no yt-dlp and
+no network. Its own server:
+
+```bash
+STREAM_MODE= PYTHON_BIN=/bin/bash \
+PLAYER_SCRIPT="$PWD/tests/fake-player.sh" \
+MUSIC_DIR=/tmp/ember-stream-test/music \
+FAKE_PLAYER_LOG=/tmp/ember-stream-test/calls.log \
+STREAM_CACHE_WARM=0 npx next start -p 3008 &
+```
+
+`STREAM_MODE=` (empty) matters: it clears any value in your own `.env.local`
+so the test measures the DEFAULT, not your local preference.
+
+- **A fresh song downloads, then plays from the file** — and the server never
+  resolves a live stream URL at all, so there's no 403 surface.
+- **Replaying it touches yt-dlp zero times.**
+- **Four simultaneous requests for one uncached song spawn ONE download** —
+  the native players open several byte-range connections per song, which
+  without deduping means several yt-dlp runs racing to write the same file.
+- **Range requests still work** (206 alongside the 200s).
+- **The audio really is on disk** in MUSIC_DIR afterwards.
