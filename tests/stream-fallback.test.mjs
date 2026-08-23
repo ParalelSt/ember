@@ -57,6 +57,16 @@ const dl = await fetch(`${APP}/api/youtube/stream/${VIDEO}?download=1`);
 check('B1 an explicit download request fails loudly instead of silently proxying',
   dl.status >= 400, `status ${dl.status}`);
 
+// The error MESSAGE is user-facing: it reaches toasts. A raw traceback tells
+// the listener nothing and leaks absolute server paths.
+const dlBody = await dl.json().catch(() => ({}));
+const msg = String(dlBody.error ?? '');
+check('B2 the error is a sentence, not a Python traceback',
+  !msg.includes('Traceback') && !msg.includes('site-packages') && !msg.includes('/opt/'),
+  msg.slice(0, 90));
+check('B3 it still says what actually went wrong',
+  /403|forbidden|download/i.test(msg), msg.slice(0, 90));
+
 origin.close();
 const failed = results.filter((r) => !r.pass);
 console.log(`\n${results.length - failed.length}/${results.length} checks passed`);

@@ -35,6 +35,23 @@ interface PythonError extends Error {
 const VENV_BIN = path.dirname(PYTHON_BIN);
 const SUBPROCESS_PATH = `${VENV_BIN}:${process.env.PATH ?? ''}`;
 
+/** One readable line explaining why the helper failed.
+ *
+ *  yt-dlp's own "ERROR: ..." line is the useful part; everything around it is
+ *  a traceback through site-packages. Falls back to a plain statement rather
+ *  than dumping raw output. */
+function pythonReason(stderr: string, code: number | null): string {
+  const lines = stderr.split('\n').map((l) => l.trim()).filter(Boolean);
+  const ytdlp = [...lines].reverse().find((l) => l.startsWith('ERROR:'));
+  if (ytdlp) {
+    const cleaned = ytdlp.replace(/^ERROR:\s*/, '').replace(/;\s*please report this issue.*$/i, '');
+    return cleaned.slice(0, 200);
+  }
+  const exception = [...lines].reverse().find((l) => /^[A-Za-z_.]+(Error|Exception):/.test(l));
+  if (exception) return exception.slice(0, 200);
+  return `the media helper failed (exit ${code ?? '?'})`;
+}
+
 function runPython<T = unknown>(args: string[], { timeoutMs = 30000 } = {}): Promise<T> {
   return new Promise((resolve, reject) => {
     const child = spawn(PYTHON_BIN, [PLAYER_SCRIPT, ...args], {
@@ -64,7 +81,11 @@ function runPython<T = unknown>(args: string[], { timeoutMs = 30000 } = {}): Pro
     child.on('close', (code) => {
       clearTimeout(timer);
       if (code !== 0) {
-        const e: PythonError = new Error(stderr.slice(-500) || `python exited ${code}`);
+        // The MESSAGE reaches the browser (and toasts), so it must be a
+        // sentence, not a Python traceback — those leak absolute server paths
+        // and tell the listener nothing. The full stderr still goes to the
+        // server log via reject_ below.
+        const e: PythonError = new Error(pythonReason(stderr, code));
         e.status = 502;
         return reject_(e);
       }

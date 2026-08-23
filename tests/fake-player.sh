@@ -17,7 +17,15 @@ case "$CMD" in
     # against: a stale yt-dlp whose downloader gets 403'd while URL resolution
     # still works fine.
     if [ "${FAKE_FAIL_DOWNLOAD:-0}" = "1" ]; then
-      echo "ERROR: unable to download video data: HTTP Error 403: Forbidden" >&2
+      # Shaped like a real yt-dlp failure: a traceback through site-packages
+      # wrapped around one useful ERROR line. Only that line should ever reach
+      # the browser.
+      {
+        echo "Traceback (most recent call last):"
+        echo "  File \"/opt/ember/.venv/lib/python3.13/site-packages/yt_dlp/YoutubeDL.py\", line 1103, in trouble"
+        echo "    raise DownloadError(message, exc_info)"
+        echo "ERROR: unable to download video data: HTTP Error 403: Forbidden"
+      } >&2
       exit 1
     fi
     mkdir -p "$MUSIC_DIR"

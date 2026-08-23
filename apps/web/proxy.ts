@@ -54,7 +54,19 @@ export default async function proxy(req: NextRequest) {
       });
       response.headers.append('set-cookie', refreshed);
     } catch (e) {
-      serverLogger.error('middleware', 'authRefresh failed', undefined, e, { reqId, route: req.nextUrl.pathname });
+      // An expired or invalid token is ROUTINE — someone came back after a
+      // fortnight, or the server was reinstalled. Logging it as an error fills
+      // the host's error log (and every bug report, which counts server errors)
+      // with non-events and buries the real ones. Only unexpected failures —
+      // PocketBase unreachable, a 5xx — deserve the error log.
+      const status = (e as { status?: number } | undefined)?.status;
+      const expiredSession = status === 401 || status === 403;
+      if (!expiredSession) {
+        serverLogger.error('middleware', 'authRefresh failed', { status }, e, {
+          reqId,
+          route: req.nextUrl.pathname,
+        });
+      }
       pb.authStore.clear();
     }
   }
