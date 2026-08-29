@@ -39,3 +39,35 @@ export function assertActive(session: RecordModel): void {
 export function assertHost(session: RecordModel, userId: string): void {
   if (session.host !== userId) throw new ForbiddenError();
 }
+
+/** Add someone to a session's roster. Idempotent — the unique index makes a
+ *  repeat join a no-op rather than an error. */
+export async function addMember(
+  pb: PocketBase,
+  sessionId: string,
+  userId: string,
+): Promise<void> {
+  try {
+    await pb.collection('session_members').create({ session: sessionId, user: userId });
+  } catch {
+    // Already on the roster, or an older server whose hook hasn't created the
+    // collection yet. Neither is worth failing the join over.
+  }
+}
+
+/** Everyone in a carlist is a DJ, but only people who actually joined are in
+ *  the carlist. Knowing the session id is not membership. */
+export async function assertMember(
+  pb: PocketBase,
+  session: RecordModel,
+  userId: string,
+): Promise<void> {
+  if (session.host === userId) return;
+  try {
+    await pb
+      .collection('session_members')
+      .getFirstListItem(`session = "${session.id}" && user = "${userId}"`);
+  } catch {
+    throw new ForbiddenError('Join this session with its code first.');
+  }
+}

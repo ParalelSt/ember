@@ -2,7 +2,7 @@ import type { NextRequest } from 'next/server';
 import { requireUser, UnauthorizedError, unauthorizedResponse } from '@/lib/auth';
 import { fromError } from '@/lib/upsertTrack';
 import { mapTrackRow, type TrackRecord } from '@/lib/mapTrack';
-import { loadSession } from '@/lib/sessions';
+import { loadSession, assertMember } from '@/lib/sessions';
 
 /** The 2s poll: full session state (session meta + queue with track data). */
 export async function GET(_req: NextRequest, ctx: RouteContext<'/api/sessions/[id]'>) {
@@ -10,6 +10,7 @@ export async function GET(_req: NextRequest, ctx: RouteContext<'/api/sessions/[i
     const { pb, user } = await requireUser();
     const { id } = await ctx.params;
     const session = await loadSession(pb, id);
+    await assertMember(pb, session, user.id);
 
     const items = await pb.collection('session_tracks').getFullList({
       filter: `session = "${session.id}"`,

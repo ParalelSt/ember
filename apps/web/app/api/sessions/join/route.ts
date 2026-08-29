@@ -1,11 +1,12 @@
 import type { NextRequest } from 'next/server';
 import { requireUser, UnauthorizedError, unauthorizedResponse } from '@/lib/auth';
 import { fromError, jsonError } from '@/lib/upsertTrack';
+import { addMember } from '@/lib/sessions';
 
 /** Resolve a join code to a live session. */
 export async function POST(request: NextRequest) {
   try {
-    const { pb } = await requireUser();
+    const { pb, user } = await requireUser();
     const body = (await request.json().catch(() => null)) as { code?: string } | null;
     const code = String(body?.code ?? '')
       .trim()
@@ -16,6 +17,7 @@ export async function POST(request: NextRequest) {
       const session = await pb
         .collection('sessions')
         .getFirstListItem(`code = "${code}" && active = true`);
+      await addMember(pb, session.id, user.id);
       return Response.json({ session: { id: session.id, name: String(session.name) } });
     } catch {
       return jsonError('No live session with that code.', 404);
