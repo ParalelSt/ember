@@ -143,6 +143,14 @@ export const api = {
     req<{ matches: { id: number; artist: string; title: string; hasChords: boolean; instruments: string[]; url: string }[] }>(
       `/tabs?title=${encodeURIComponent(title)}&artist=${encodeURIComponent(artist)}`,
     ),
+  /** Your own Guitar Pro files. Passing the playing song narrows it to the
+   *  tabs that plausibly belong to it. */
+  getTabFiles: (title?: string, artist?: string) =>
+    req<{ tabs: TabFile[] }>(
+      `/tabs/files${title || artist ? `?title=${encodeURIComponent(title ?? '')}&artist=${encodeURIComponent(artist ?? '')}` : ''}`,
+    ),
+  deleteTabFile: (id: string) => req<{ ok: true }>(`/tabs/files/${id}`, { method: 'DELETE' }),
+
   // — Custom uploads (songs members add from their own files) —
   listUploads: () => req<{ tracks: Track[] }>('/uploads'),
   deleteUpload: (id: string) =>
@@ -263,3 +271,13 @@ export const api = {
       req<{ ok: true }>(`/admin/invites/${encodeURIComponent(id)}`, { method: 'DELETE' }),
   },
 };
+
+export interface TabFile {
+  id: string;
+  title: string;
+  artist: string;
+  instrument: string | null;
+  trackId: string | null;
+  ext: string;
+  downloadUrl: string;
+}

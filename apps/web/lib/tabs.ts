@@ -21,7 +21,7 @@ export const TAB_DIR = path.join(MUSIC_DIR, 'tabs');
 /** Tabs are small — a big Guitar Pro file is a couple of hundred KB. */
 export const MAX_TAB_BYTES = Number(process.env.MAX_TAB_MB ?? 5) * 1024 * 1024;
 
-export const TAB_EXTS = ['.gp3', '.gp4', '.gp5', '.gpx', '.gp'] as const;
+export const TAB_EXTS = ['.gp3', '.gp4', '.gp5', '.gpx', '.gp', '.musicxml', '.mxl'] as const;
 
 /** Magic-byte sniff, same reasoning as sniffAudio: the browser's
  *  Content-Type is a claim, and this file is streamed back later.
@@ -31,7 +31,10 @@ export const TAB_EXTS = ['.gp3', '.gp4', '.gp5', '.gpx', '.gp'] as const;
  *  - gpx (Guitar Pro 6) is a BCFZ/BCFS container.
  *  - gp (Guitar Pro 7+) is a zip holding Content/score.gpif — the entry names
  *    sit in plaintext in the local headers even though the data is deflated,
- *    so a zip that never mentions score.gpif is some other zip, not a tab. */
+ *    so a zip that never mentions score.gpif is some other zip, not a tab.
+ *  - MusicXML is the open interchange format every notation editor exports:
+ *    plain XML with a <score-partwise>/<score-timewise> root, or zipped as
+ *    .mxl with a META-INF/container.xml. AlphaTab reads it directly. */
 export function sniffTab(buf: Buffer): string | null {
   if (buf.length < 12) return null;
   const ascii = (start: number, len: number) => buf.subarray(start, start + len).toString('ascii');
@@ -43,11 +46,15 @@ export function sniffTab(buf: Buffer): string | null {
     return '.gp5';
   }
   if (ascii(0, 4) === 'BCFZ' || ascii(0, 4) === 'BCFS') return '.gpx';
+  const head = buf.subarray(0, Math.min(buf.length, 8 * 1024)).toString('latin1');
+  if (/<score-(partwise|timewise)/.test(head)) return '.musicxml';
+
   if (buf[0] === 0x50 && buf[1] === 0x4b && buf[2] === 0x03 && buf[3] === 0x04) {
     // Only look at the head — enough to cover the entry names, and it keeps a
     // large file from being scanned end to end.
-    const head = buf.subarray(0, Math.min(buf.length, 64 * 1024)).toString('latin1');
-    if (head.includes('score.gpif')) return '.gp';
+    const zipHead = buf.subarray(0, Math.min(buf.length, 64 * 1024)).toString('latin1');
+    if (zipHead.includes('score.gpif')) return '.gp';
+    if (zipHead.includes('META-INF/container.xml')) return '.mxl';
   }
   return null;
 }

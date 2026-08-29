@@ -15,13 +15,17 @@
     "test:triage-ui": "node tests/ai-triage-ui.test.mjs",
     "test:uploads": "node tests/uploads.test.mjs",
     "test:uploads-ui": "node tests/uploads-ui.test.mjs",
-    "deploy": "npm run build && systemctl --user restart ember && echo '\u2713 rebuilt + ember restarted'",
+    "deploy": "npm run build && systemctl --user restart ember && echo '✓ rebuilt + ember restarted'",
     "test:update": "node tests/desktop-update.test.mjs",
     "test:stream": "node tests/stream-source.test.mjs",
     "test:stream-fallback": "node tests/stream-fallback.test.mjs",
     "test:desktop-logger": "node tests/desktop-logger.test.mjs",
     "test:auth": "node tests/authorization.test.mjs",
     "test:sessions": "node tests/session-authorization.test.mjs",
-    "test:tabs": "node tests/tabs.test.mjs"
+    "test:tabs": "node tests/tabs.test.mjs",
+    "test:tabs-ui": "node tests/tabs-ui.test.mjs"
+  },
+  "devDependencies": {
+    "playwright-core": "^1.62.1"
   }
 }
