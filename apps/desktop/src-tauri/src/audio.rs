@@ -181,6 +181,22 @@ impl AudioEngine {
         self.load_seq.fetch_add(1, Ordering::SeqCst) + 1
     }
 
+    /// Cut the sound of whatever is playing right now. A new load takes a
+    /// second or two to connect, buffer and decode, and until this the old
+    /// track kept playing over that gap — pressing skip left the previous
+    /// song audible after the UI had already moved on.
+    pub fn silence_current(&self) {
+        self.generation.fetch_add(1, Ordering::SeqCst);
+        if let Ok(mut guard) = self.sink.lock() {
+            if let Some(sink) = guard.take() {
+                sink.stop();
+            }
+        }
+        if let Ok(mut u) = self.current_url.lock() {
+            *u = None;
+        }
+    }
+
     /// Whether this load is still the newest one. A load that lost the race
     /// must throw its work away rather than install a stale sink.
     pub fn is_current_load(&self, seq: u64) -> bool {
@@ -272,6 +288,7 @@ pub async fn audio_load(
     // Claim the load BEFORE any slow work, so a newer request can supersede
     // this one even if this one finishes later.
     let my_seq = engine.claim_load();
+    engine.silence_current();
     log_audio(
         &app,
         "INFO",
@@ -701,6 +718,23 @@ mod tests {
 
         assert!(!engine.is_current_load(slow), "the older load must stand down");
         assert!(engine.is_current_load(fast), "the newest load owns playback");
+    }
+
+    /// Skipping used to leave the previous song audible for a beat, because
+    /// the old sink played on until the new one finished connecting and
+    /// decoding. Silencing drops the sink and bumps the generation (which
+    /// stops the old position timer) right away.
+    #[test]
+    fn silencing_drops_the_current_sink_and_stops_its_timer() {
+        let engine = AudioEngine::new_degraded();
+        let before = engine.generation.load(Ordering::SeqCst);
+        *engine.current_url.lock().unwrap() = Some("http://old/track".into());
+
+        engine.silence_current();
+
+        assert!(engine.sink.lock().unwrap().is_none(), "the old sink must be gone");
+        assert!(engine.current_url.lock().unwrap().is_none(), "no track is loaded any more");
+        assert!(engine.generation.load(Ordering::SeqCst) > before, "the old timer must stand down");
     }
 
     #[test]
