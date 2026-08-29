@@ -1,7 +1,7 @@
 import type { NextRequest } from 'next/server';
 import { requireUser, UnauthorizedError, unauthorizedResponse } from '@/lib/auth';
 import { fromError, jsonError } from '@/lib/upsertTrack';
-import { newSessionCode } from '@/lib/sessions';
+import { newSessionCode, addMember } from '@/lib/sessions';
 
 /** Start a carlist session. Optionally seeds the queue from one of the
  *  caller's playlists. Returns {session:{id, code, name}}. */
@@ -30,9 +30,18 @@ export async function POST(request: NextRequest) {
     }
     if (!session) return jsonError('Could not create the session — try again.', 500);
 
+    await addMember(pb, session.id, user.id);
+
     if (body?.seedPlaylistId) {
+      const seedId = body.seedPlaylistId.replace(/[^a-zA-Z0-9]/g, '');
+      // Seeding reads a playlist's tracks, so it has to be one of yours —
+      // otherwise a session id doubles as a peek into someone else's library.
+      const seed = await pb.collection('playlists').getOne(seedId).catch(() => null);
+      if (!seed || seed.user !== user.id) {
+        return jsonError("That playlist doesn't exist, or isn't yours.", 404);
+      }
       const items = await pb.collection('playlist_tracks').getFullList({
-        filter: `playlist = "${body.seedPlaylistId.replace(/[^a-zA-Z0-9]/g, '')}"`,
+        filter: `playlist = "${seedId}"`,
         sort: 'position',
       });
       let position = 1;

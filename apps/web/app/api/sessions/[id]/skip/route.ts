@@ -1,7 +1,7 @@
 import type { NextRequest } from 'next/server';
 import { requireUser, UnauthorizedError, unauthorizedResponse } from '@/lib/auth';
 import { fromError } from '@/lib/upsertTrack';
-import { loadSession, assertActive } from '@/lib/sessions';
+import { loadSession, assertActive, assertMember } from '@/lib/sessions';
 
 /** Anyone in the session can skip — queues a command the host executes. */
 export async function POST(_req: NextRequest, ctx: RouteContext<'/api/sessions/[id]/skip'>) {
@@ -10,6 +10,7 @@ export async function POST(_req: NextRequest, ctx: RouteContext<'/api/sessions/[
     const { id } = await ctx.params;
     const session = await loadSession(pb, id);
     assertActive(session);
+    await assertMember(pb, session, user.id);
     await pb.collection('session_commands').create({
       session: session.id,
       type: 'skip',

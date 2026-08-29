@@ -51,6 +51,7 @@ node tests/ai-triage-ui.test.mjs  # or: npm run test:triage-ui
 
 # Cross-user authorization
 node tests/authorization.test.mjs                   # or: npm run test:auth
+node tests/session-authorization.test.mjs           # or: npm run test:sessions
 
 # Privacy switches
 node tests/privacy.test.mjs                         # or: npm run test:privacy

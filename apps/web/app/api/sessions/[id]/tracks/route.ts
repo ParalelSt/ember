@@ -1,7 +1,7 @@
 import type { NextRequest } from 'next/server';
 import { requireUser, UnauthorizedError, unauthorizedResponse } from '@/lib/auth';
 import { fromError, jsonError, upsertTrack } from '@/lib/upsertTrack';
-import { loadSession, assertActive } from '@/lib/sessions';
+import { loadSession, assertActive, assertMember } from '@/lib/sessions';
 import type { Track } from '@/types/track';
 
 /** Append a track to the live queue (any member — everyone's a DJ). */
@@ -11,6 +11,7 @@ export async function POST(request: NextRequest, ctx: RouteContext<'/api/session
     const { id } = await ctx.params;
     const session = await loadSession(pb, id);
     assertActive(session);
+    await assertMember(pb, session, user.id);
 
     const body = (await request.json().catch(() => null)) as { track?: Track } | null;
     const track = body?.track;

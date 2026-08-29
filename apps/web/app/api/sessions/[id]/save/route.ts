@@ -1,7 +1,7 @@
 import type { NextRequest } from 'next/server';
 import { requireUser, UnauthorizedError, unauthorizedResponse } from '@/lib/auth';
 import { fromError } from '@/lib/upsertTrack';
-import { loadSession } from '@/lib/sessions';
+import { loadSession, assertMember } from '@/lib/sessions';
 
 /** Copy the session queue into a normal playlist owned by the caller —
  *  anyone in the session can keep the roadtrip mix. */
@@ -10,6 +10,7 @@ export async function POST(request: NextRequest, ctx: RouteContext<'/api/session
     const { pb, user } = await requireUser();
     const { id } = await ctx.params;
     const session = await loadSession(pb, id);
+    await assertMember(pb, session, user.id);
     const body = (await request.json().catch(() => null)) as { name?: string } | null;
     const name = String(body?.name ?? '').trim() || String(session.name);
 
