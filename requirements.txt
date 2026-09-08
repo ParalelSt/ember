@@ -21,3 +21,21 @@
 
 ytmusicapi>=1.12.0
 yt-dlp
+
+# --- Generated guitar tabs (transcribe.py) -----------------------------------
+# Basic Pitch is installed without its declared deps: on macOS + Python 3.13 it
+# asks for tensorflow-macos, which has no wheel. The ONNX runtime below is the
+# backend it falls back to. Install order matters:
+#
+#   .venv/bin/pip install 'setuptools<80'
+#   .venv/bin/pip install --no-deps basic-pitch
+#   .venv/bin/pip install onnxruntime librosa pretty_midi 'resampy<0.4.3' mir_eval scikit-learn typing-extensions
+#
+# setuptools<80 because basic-pitch's resampy still imports pkg_resources.
+#
+# Optional, ~2GB with torch, but it is what makes the result a GUITAR tab
+# rather than a transcription of the whole mix (vocals, bass, drums included):
+#
+#   .venv/bin/pip install demucs
+#
+# Without it transcribe.py falls back to the full mix and says so on stderr.
