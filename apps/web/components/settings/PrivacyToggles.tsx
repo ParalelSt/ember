@@ -41,8 +41,13 @@ function Toggle({
           checked ? 'bg-ember' : 'bg-card border border-border'
         }`}
       >
+        {/* left-0 is load-bearing: without it the thumb has no position of
+            its own and falls back to its STATIC position, which a button
+            centres (text-align: center). That put its origin at the middle of
+            the track and the translate then pushed it clean outside the
+            pill — the switch read as "on" in both states. */}
         <span
-          className={`absolute top-0.5 h-5 w-5 rounded-full bg-white transition-transform ${
+          className={`absolute left-0 top-0.5 h-5 w-5 rounded-full bg-white transition-transform ${
             checked ? 'translate-x-[22px]' : 'translate-x-0.5'
           }`}
         />

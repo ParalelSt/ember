@@ -27,7 +27,8 @@
     "test:resume": "node tests/resume-position.test.mjs",
     "test:position": "node tests/playback-position.test.mjs",
     "test:duration": "node tests/duration.test.mjs",
-    "test:origin": "node tests/public-origin.test.mjs"
+    "test:origin": "node tests/public-origin.test.mjs",
+    "test:toggles": "node tests/toggles-ui.test.mjs"
   },
   "devDependencies": {
     "playwright-core": "^1.62.1"
