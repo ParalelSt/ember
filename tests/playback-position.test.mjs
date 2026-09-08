@@ -72,15 +72,19 @@ const auth = await fetch(`${PB_URL}/api/collections/users/auth-with-password`, {
   .then((r) => r.json());
 const cookie = encodeURIComponent(JSON.stringify({ token: auth.token, record: auth.record }));
 
-// Two long songs, so neither can end and auto-advance mid-test.
+// Two long songs, so neither can end and auto-advance mid-test. Deliberately
+// DIFFERENT lengths: a new song keeping the previous song's duration is the
+// native-app bug this also guards.
 const stamp = Date.now();
 const songs = [`Position A ${stamp}`, `Position B ${stamp}`];
+const LENGTHS = { [songs[0]]: 300, [songs[1]]: 180 };
 for (const title of songs) {
+  const seconds = LENGTHS[title];
   const form = new FormData();
-  form.append('file', new Blob([new Uint8Array(makeWav(300))], { type: 'audio/wav' }), 'song.wav');
+  form.append('file', new Blob([new Uint8Array(makeWav(seconds))], { type: 'audio/wav' }), 'song.wav');
   form.append('title', title);
   form.append('artist', 'Position Tester');
-  form.append('durationSec', '300');
+  form.append('durationSec', String(seconds));
   const res = await fetch(`${APP_URL}/api/uploads`, { method: 'POST', body: form, headers: { cookie: `pb_auth=${cookie}` } });
   if (!res.ok) throw new Error(`could not seed "${title}": ${res.status} ${(await res.text()).slice(0, 120)}`);
 }
@@ -97,10 +101,22 @@ const check = (name, pass, detail = '') => {
 };
 
 /** The player store is the app's own source of truth for the playhead. */
-const position = () => page.evaluate(() => {
+const playerState = (key) => page.evaluate((k) => {
   try {
-    return JSON.parse(localStorage.getItem('ember.player.v1') ?? '{}')?.state?.position ?? null;
+    return JSON.parse(localStorage.getItem('ember.player.v1') ?? '{}')?.state?.[k] ?? null;
   } catch { return null; }
+}, key);
+const position = () => playerState('position');
+/** `duration` is deliberately not persisted, so read what the player bar
+ *  actually shows the user: the last m:ss label on the seek row. */
+const duration = () => page.evaluate(() => {
+  const labels = [...document.querySelectorAll('span.tabular-nums')]
+    .map((el) => el.textContent?.trim() ?? '')
+    .filter((t) => /^\d+:\d{2}$/.test(t));
+  const last = labels.at(-1);
+  if (!last) return null;
+  const [m, sec] = last.split(':').map(Number);
+  return m * 60 + sec;
 });
 
 async function play(title) {
@@ -117,6 +133,8 @@ await play(songs[0]);
 await page.waitForTimeout(6000);
 const posA = await position();
 check('A1 the first song is playing and advancing', (posA ?? 0) > 2, `${posA}s`);
+const durA = await duration();
+check('A2 its length is the song’s own', Math.abs((durA ?? 0) - 300) < 3, `${durA}s, expected 300s`);
 
 // 2. Switch to B. It must start at the beginning, not at A's position.
 await play(songs[1]);
@@ -124,7 +142,12 @@ const posB = await position();
 check('B1 the new song starts from the beginning', posB !== null && posB < 3,
   `${posB}s (song A was at ${posA}s)`);
 
-// 3. And it keeps playing from there rather than jumping.
+// 3. Its length must be ITS length, not the 300s song's.
+const durB = await duration();
+check('B3 the new song does not inherit the previous song’s length',
+  Math.abs((durB ?? 0) - 180) < 3, `${durB}s, expected 180s (previous song was 300s)`);
+
+// 4. And it keeps playing from there rather than jumping.
 await page.waitForTimeout(5000);
 const posB2 = await position();
 check('B2 it plays on from there', posB2 !== null && posB2 > (posB ?? 0) && posB2 < 15, `${posB2}s`);

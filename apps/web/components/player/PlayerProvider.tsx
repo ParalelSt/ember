@@ -21,6 +21,7 @@ import { logger } from '@/lib/logger/client';
 import { songKey } from '@/lib/songKey';
 import { detectShell } from '@/lib/playback/detectShell';
 import { resumeStartAt } from '@/lib/playback/resumePosition';
+import { chooseDuration } from '@/lib/playback/chooseDuration';
 import { publishDiscordPresence } from '@/lib/discordPresence';
 import { createWebBackend } from '@/lib/playback/webBackend';
 import { createCapacitorBackend } from '@/lib/playback/capacitorBackend';
@@ -147,7 +148,13 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
           }
         }
       },
-      onDuration: (d) => setDuration(d),
+      onDuration: (d) => {
+        // The engine's figure is a second opinion, not the truth: see
+        // chooseDuration. A desktop decoder streaming over HTTP often has no
+        // idea how long the song is.
+        const st = usePlayerStore.getState();
+        setDuration(chooseDuration(st.queue[st.index]?.durationSec ?? 0, d));
+      },
       onEnded: () => {
         // Read the latest loop state at fire time so a stale closure can't lock
         // us into the wrong mode.
@@ -296,6 +303,10 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     positionOwner.current = track.id;
     usePlayerStore.setState({ position: startAt });
     setPosition(startAt);
+    // Same for the length. Without this the slider keeps the PREVIOUS song's
+    // duration until the engine volunteers one, which on desktop it often
+    // never does.
+    setDuration(chooseDuration(track.durationSec ?? 0, null));
     b.load(apiUrl(track.streamUrl), { autoplay, startAt });
     // Set metadata in the same synchronous turn so the notification carries
     // across a track boundary (Firefox Android tears it down otherwise).

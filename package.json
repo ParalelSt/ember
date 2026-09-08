@@ -25,7 +25,8 @@
     "test:tabs": "node tests/tabs.test.mjs",
     "test:tabs-ui": "node tests/tabs-ui.test.mjs",
     "test:resume": "node tests/resume-position.test.mjs",
-    "test:position": "node tests/playback-position.test.mjs"
+    "test:position": "node tests/playback-position.test.mjs",
+    "test:duration": "node tests/duration.test.mjs"
   },
   "devDependencies": {
     "playwright-core": "^1.62.1"
