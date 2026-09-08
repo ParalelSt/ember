@@ -62,6 +62,19 @@ export function TabsDialog({ track, open, onOpenChange }: Props) {
     staleTime: 60 * 60 * 1000,
   });
 
+  const canGenerate = !!track && (track.source === 'youtube' || track.source === 'upload');
+  const { data: generated } = useQuery({
+    queryKey: ['generated-tab', track?.id],
+    queryFn: () => api.getGeneratedTab(track!.id),
+    enabled: open && canGenerate,
+    // Poll only while a job is running; a finished or absent tab does not change.
+    refetchInterval: (q) => (q.state.data?.status === 'running' ? 5000 : false),
+  });
+  const generate = useMutation({
+    mutationFn: () => api.generateTab(track!.id, track!.title),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['generated-tab', track?.id] }),
+  });
+
   const body = isFetching && matches.length === 0 ? (
     <div className="py-10 text-center text-sm text-muted-foreground">Looking for tabs…</div>
   ) : matches.length === 0 ? (
@@ -92,6 +105,58 @@ export function TabsDialog({ track, open, onOpenChange }: Props) {
           )}
         </a>
       ))}
+    </div>
+  );
+
+  /** The recording itself as the source. It takes minutes, so the button is
+   *  honest about that, and the row only appears once the file exists. */
+  const fromRecording = canGenerate && (
+    <div>
+      <div className="px-1 pb-1 text-xs uppercase tracking-wide text-muted-foreground">
+        From the recording
+      </div>
+      {generated?.status === 'ready' ? (
+        <button
+          type="button"
+          onClick={() =>
+            setViewing({
+              id: `generated:${track!.id}`,
+              url: `/api/tabs/generated/${encodeURIComponent(track!.id)}`,
+              title: track!.title,
+            })
+          }
+          className="flex w-full items-center gap-3 rounded-md px-3 py-2 text-left hover:bg-card transition-colors"
+        >
+          <div className="min-w-0 flex-1">
+            <div className="truncate text-sm font-medium">Guitar · generated</div>
+            <div className="truncate text-xs text-muted-foreground">
+              Transcribed from this recording. Rough in places.
+            </div>
+          </div>
+          <span className="shrink-0 rounded bg-ember/15 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-ember">
+            open
+          </span>
+        </button>
+      ) : generated?.status === 'running' || generate.isPending ? (
+        <div className="px-3 py-2 text-sm text-muted-foreground">
+          Transcribing… this takes a few minutes.
+        </div>
+      ) : (
+        <div className="flex flex-col gap-1 px-1">
+          {generated?.status === 'failed' && (
+            <div className="text-xs text-destructive">{generated.error ?? 'The last attempt failed.'}</div>
+          )}
+          {generate.error && (
+            <div className="text-xs text-destructive">{(generate.error as Error).message}</div>
+          )}
+          <Button size="sm" variant="outline" className="self-start" onClick={() => generate.mutate()}>
+            Generate guitar tab
+          </Button>
+          <div className="text-xs text-muted-foreground">
+            Listens to the song and writes a tab. A few minutes; rough in places.
+          </div>
+        </div>
+      )}
     </div>
   );
 
@@ -149,9 +214,11 @@ export function TabsDialog({ track, open, onOpenChange }: Props) {
           <DialogTitle>{viewing ? viewing.title : 'Guitar tabs'}</DialogTitle>
           <DialogDescription>
             {viewing
-              ? 'Your Guitar Pro file, rendered here.'
+              ? viewing.id.startsWith('generated:')
+                ? 'Transcribed from the recording. Nudge the sync if it drifts.'
+                : 'Your Guitar Pro file, rendered here.'
               : track
-                ? `Tabs for "${track.title}" — yours render here, Songsterr opens in a browser.`
+                ? `Tabs for "${track.title}" — generated or yours render here, Songsterr opens in a browser.`
                 : 'Nothing playing.'}
           </DialogDescription>
         </DialogHeader>
@@ -160,6 +227,7 @@ export function TabsDialog({ track, open, onOpenChange }: Props) {
           <TabViewer url={viewing.url} tabId={viewing.id} onBack={() => setViewing(null)} />
         ) : (
           <div className="flex flex-col gap-4">
+            {fromRecording}
             {mine}
             <div>
               <div className="px-1 pb-1 text-xs uppercase tracking-wide text-muted-foreground">

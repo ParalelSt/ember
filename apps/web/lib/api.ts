@@ -150,6 +150,17 @@ export const api = {
       `/tabs/files${title || artist ? `?title=${encodeURIComponent(title ?? '')}&artist=${encodeURIComponent(artist ?? '')}` : ''}`,
     ),
   deleteTabFile: (id: string) => req<{ ok: true }>(`/tabs/files/${id}`, { method: 'DELETE' }),
+  /** A tab generated from the recording itself. GET is a status probe: the
+   *  alphaTex body is fetched by TabViewer straight from the URL. */
+  getGeneratedTab: async (trackId: string): Promise<{ status: 'ready' | 'running' | 'failed' | 'none'; error?: string }> => {
+    const res = await fetch(`${API_BASE}/api/tabs/generated/${encodeURIComponent(trackId)}`, { credentials: 'include' });
+    if (res.status === 200) return { status: 'ready' };
+    if (res.status === 202) return { status: 'running' };
+    if (res.status === 409) return { status: 'failed', error: (await res.json().catch(() => ({}))).error };
+    return { status: 'none' };
+  },
+  generateTab: (trackId: string, title: string) =>
+    req<{ status: 'ready' | 'running' }>(`/tabs/generated/${encodeURIComponent(trackId)}?title=${encodeURIComponent(title)}`, { method: 'POST' }),
 
   // — Custom uploads (songs members add from their own files) —
   listUploads: () => req<{ tracks: Track[] }>('/uploads'),

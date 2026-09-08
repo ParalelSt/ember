@@ -130,13 +130,43 @@ if (!hasPlayer) {
   await dialog.waitFor({ timeout: 10_000 });
   check('the tabs dialog opens', true);
 
+  // ── generated tab: no file, the recording itself ─────────────────────────
+  const generate = dialog.getByRole('button', { name: 'Generate guitar tab' });
+  check('the dialog offers to generate a tab from the recording', (await generate.count()) > 0);
+  if (await generate.count()) {
+    await generate.click();
+    await dialog.getByText(/transcribing/i).waitFor({ timeout: 10_000 });
+    check('it shows the transcribing state', true);
+    const generatedRow = dialog.getByRole('button', { name: /guitar · generated/i });
+    await generatedRow.waitFor({ timeout: 30_000 });
+    check('the generated tab appears when the job finishes', true);
+    await generatedRow.click();
+    await page.getByRole('button', { name: /back/i }).waitFor({ timeout: 20_000 });
+    await page.waitForTimeout(8000);
+    const genSurface = await page.evaluate(() => {
+      const el = document.querySelector('[role="dialog"] .at-surface');
+      if (!el) return null;
+      const r = el.getBoundingClientRect();
+      return { w: Math.round(r.width), h: Math.round(r.height) };
+    });
+    check('AlphaTab renders the generated alphaTex', Boolean(genSurface && genSurface.w > 100 && genSurface.h > 100),
+      genSurface ? `surface ${genSurface.w}x${genSurface.h}` : 'no .at-surface');
+    await page.getByRole('button', { name: /back/i }).click();
+    // The file input itself is hidden by design; the button that triggers it is
+    // the visible sign that the list view is back.
+    await dialog.getByRole('button', { name: /add a guitar pro/i }).waitFor({ timeout: 10_000 });
+  }
+
   await dialog.locator('input[type="file"]').setInputFiles(tmp);
   await page.waitForTimeout(4000);
   if (process.env.DEBUG_TABS) console.log('[dialog]', await dialog.innerText());
-  await page.getByRole('button', { name: /open/i }).first().waitFor({ timeout: 20_000 });
+  // The generated row above it is badged 'open' too, so pick the row by its
+  // file-type label rather than the badge.
+  const uploadRow = dialog.getByRole('button', { name: /(musicxml|gp\d?|gpx|mxl) file/i });
+  await uploadRow.first().waitFor({ timeout: 20_000 });
   check('the uploaded tab appears in the dialog', true);
 
-  await page.getByRole('button', { name: /open/i }).first().click();
+  await uploadRow.first().click();
   await page.getByRole('button', { name: /back/i }).waitFor({ timeout: 20_000 });
   check('clicking it opens the viewer', true);
 
