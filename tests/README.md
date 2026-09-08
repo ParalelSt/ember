@@ -54,6 +54,7 @@ node tests/authorization.test.mjs                   # or: npm run test:auth
 node tests/session-authorization.test.mjs           # or: npm run test:sessions
 node tests/tabs.test.mjs                            # or: npm run test:tabs
 node tests/tabs-ui.test.mjs                         # or: npm run test:tabs-ui
+node tests/tabs-generate.test.mjs                   # or: npm run test:tabs-generate
 node tests/resume-position.test.mjs                 # or: npm run test:resume
 node tests/playback-position.test.mjs               # or: npm run test:position
 node tests/duration.test.mjs                        # or: npm run test:duration
