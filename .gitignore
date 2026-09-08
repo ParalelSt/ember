@@ -84,3 +84,6 @@ apps/mobile/android/keystore.properties
 # running Ember: the installed app only trusts updates signed by this exact
 # key. Back it up somewhere real (password manager), not just this folder.
 apps/desktop/.keys/
+
+# Written by update.sh after a successful npm ci.
+.node_modules.stamp

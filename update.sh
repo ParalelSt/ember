@@ -80,17 +80,23 @@ if ! git diff --quiet || ! git diff --cached --quiet; then
   fi
 fi
 
-LOCK_BEFORE="$(git rev-parse HEAD:package-lock.json 2>/dev/null || echo none)"
-
 echo "▶ pulling…"
 git pull --ff-only --quiet origin main
 
-LOCK_AFTER="$(git rev-parse HEAD:package-lock.json 2>/dev/null || echo none)"
-if [ "$LOCK_BEFORE" != "$LOCK_AFTER" ]; then
-  echo "▶ dependencies changed — npm ci…"
+# Install against what is ACTUALLY on disk, not against what changed in this
+# pull. Comparing the two commits' lockfiles looks right but silently does the
+# wrong thing whenever an install was skipped or interrupted earlier: the next
+# pull sees no further lockfile change and leaves node_modules missing a
+# package, which surfaces much later as a type error in the build. A stamp of
+# the lockfile written only after a SUCCESSFUL install is self-correcting.
+LOCK_SHA="$(git hash-object package-lock.json)"
+STAMP="$ROOT/.node_modules.stamp"
+if [ ! -d "$ROOT/node_modules" ] || [ ! -f "$STAMP" ] || [ "$(cat "$STAMP")" != "$LOCK_SHA" ]; then
+  echo "▶ installing dependencies — npm ci…"
   npm ci
+  echo "$LOCK_SHA" > "$STAMP"
 else
-  echo "▶ dependencies unchanged — skipping npm ci"
+  echo "▶ dependencies already match the lockfile — skipping npm ci"
 fi
 
 # yt-dlp goes stale fast: YouTube breaks older versions every few months, and
