@@ -156,3 +156,19 @@
     color: var(--foreground);
   }
 }
+
+/* AlphaTab playback cursor (the tab viewer). AlphaTab positions these but
+   leaves their colour to the page, so without this the line is transparent. */
+.at-cursor-bar {
+  background: color-mix(in oklab, var(--ember) 12%, transparent);
+}
+.at-cursor-beat {
+  background: var(--ember);
+  width: 3px;
+  border-radius: 2px;
+  box-shadow: 0 0 6px color-mix(in oklab, var(--ember) 60%, transparent);
+}
+.at-highlight * {
+  fill: var(--ember);
+  stroke: var(--ember);
+}

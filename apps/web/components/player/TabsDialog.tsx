@@ -34,6 +34,18 @@ export function TabsDialog({ track, open, onOpenChange }: Props) {
   const fileRef = useRef<HTMLInputElement>(null);
   const [viewing, setViewing] = useState<{ id: string; url: string; title: string } | null>(null);
 
+  // The viewer's own Next/Previous change the song. A tab for the old song
+  // must not stay open over the new one, so fall back to the list, which is
+  // keyed to whatever is playing now.
+  const [viewingFor, setViewingFor] = useState<string | null>(null);
+  if (viewing && viewingFor !== (track?.id ?? null)) {
+    setViewing(null);
+  }
+  const openViewer = (v: { id: string; url: string; title: string }) => {
+    setViewingFor(track?.id ?? null);
+    setViewing(v);
+  };
+
   const { data: myTabs = [] } = useQuery({
     queryKey: ['tab-files', track?.title, track?.artist],
     queryFn: () => api.getTabFiles(track?.title, track?.artist).then((r) => r.tabs),
@@ -119,7 +131,7 @@ export function TabsDialog({ track, open, onOpenChange }: Props) {
         <button
           type="button"
           onClick={() =>
-            setViewing({
+            openViewer({
               id: `generated:${track!.id}`,
               url: `/api/tabs/generated/${encodeURIComponent(track!.id)}`,
               title: track!.title,
@@ -166,7 +178,7 @@ export function TabsDialog({ track, open, onOpenChange }: Props) {
         <button
           key={t.id}
           type="button"
-          onClick={() => setViewing({ id: t.id, url: t.downloadUrl, title: t.title })}
+          onClick={() => openViewer({ id: t.id, url: t.downloadUrl, title: t.title })}
           className="flex items-center gap-3 rounded-md px-3 py-2 text-left hover:bg-card transition-colors"
         >
           <div className="min-w-0 flex-1">
