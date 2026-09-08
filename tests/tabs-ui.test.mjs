@@ -141,8 +141,17 @@ if (!hasPlayer) {
   check('clicking it opens the viewer', true);
 
   await page.waitForTimeout(8000);
-  const svg = await dialog.locator('svg').count();
-  check('AlphaTab rendered the score', svg > 0, `${svg} svg node(s)`);
+  // Measure alphaTab's OWN drawing surface, not "is there an <svg>". The
+  // dialog is full of 24x24 icons, so counting <svg> nodes reported success
+  // for weeks while the score rendered 848x0 and nothing was visible.
+  const surface = await page.evaluate(() => {
+    const el = document.querySelector('[role="dialog"] .at-surface');
+    if (!el) return null;
+    const r = el.getBoundingClientRect();
+    return { w: Math.round(r.width), h: Math.round(r.height) };
+  });
+  check('AlphaTab actually drew the score', Boolean(surface && surface.w > 100 && surface.h > 100),
+    surface ? `surface ${surface.w}x${surface.h}` : 'no .at-surface at all');
   const stuck = /Rendering the tab/i.test(await dialog.innerText());
   check('the viewer is not left on the loading message', !stuck);
 
@@ -158,9 +167,6 @@ if (!hasPlayer) {
     return Math.round(r.left + window.scrollX);
   });
 
-  const pos = () => page.evaluate(() => { try { return JSON.parse(localStorage.getItem('ember.player.v1')??'{}')?.state?.position ?? null; } catch { return null; } });
-  const p1 = await pos(); await page.waitForTimeout(3000); const p2 = await pos();
-  console.log(`[playhead] ${p1} -> ${p2}`);
   const first = await cursorX();
   await page.waitForTimeout(6000);
   const later = await cursorX();

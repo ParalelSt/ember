@@ -32,7 +32,7 @@ interface Props {
 export function TabsDialog({ track, open, onOpenChange }: Props) {
   const queryClient = useQueryClient();
   const fileRef = useRef<HTMLInputElement>(null);
-  const [viewing, setViewing] = useState<{ url: string; title: string } | null>(null);
+  const [viewing, setViewing] = useState<{ id: string; url: string; title: string } | null>(null);
 
   const { data: myTabs = [] } = useQuery({
     queryKey: ['tab-files', track?.title, track?.artist],
@@ -101,7 +101,7 @@ export function TabsDialog({ track, open, onOpenChange }: Props) {
         <button
           key={t.id}
           type="button"
-          onClick={() => setViewing({ url: t.downloadUrl, title: t.title })}
+          onClick={() => setViewing({ id: t.id, url: t.downloadUrl, title: t.title })}
           className="flex items-center gap-3 rounded-md px-3 py-2 text-left hover:bg-card transition-colors"
         >
           <div className="min-w-0 flex-1">
@@ -157,7 +157,7 @@ export function TabsDialog({ track, open, onOpenChange }: Props) {
         </DialogHeader>
 
         {viewing ? (
-          <TabViewer url={viewing.url} onBack={() => setViewing(null)} />
+          <TabViewer url={viewing.url} tabId={viewing.id} onBack={() => setViewing(null)} />
         ) : (
           <div className="flex flex-col gap-4">
             {mine}
