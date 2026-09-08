@@ -318,6 +318,12 @@ STREAM_MODE=proxy        # stream live on first play; falls back to downloading 
 STREAM_CACHE_WARM=0      # turn OFF background caching (saves disk, keeps 403 exposure)
 ```
 
+> **This breaks the desktop app.** Observed in production: with `proxy` set, the
+> web app plays perfectly while the native apps throw 403s constantly, because
+> the Rust engine range-requests and reconnects against signed URLs that a
+> browser's single progressive fetch never re-fetches. Do not set it if anyone
+> uses the desktop or mobile builds.
+
 In proxy mode, a refused stream is re-resolved once, and if that still fails
 Ember downloads the track and serves the file instead. A 403 that survives all
 of that means YouTube is blocking the host's IP — fix that with cookies (see
