@@ -57,6 +57,7 @@ node tests/tabs-ui.test.mjs                         # or: npm run test:tabs-ui
 node tests/resume-position.test.mjs                 # or: npm run test:resume
 node tests/playback-position.test.mjs               # or: npm run test:position
 node tests/duration.test.mjs                        # or: npm run test:duration
+node tests/public-origin.test.mjs                   # or: npm run test:origin
 
 # Privacy switches
 node tests/privacy.test.mjs                         # or: npm run test:privacy

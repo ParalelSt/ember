@@ -145,6 +145,44 @@ if (!hasPlayer) {
   check('AlphaTab rendered the score', svg > 0, `${svg} svg node(s)`);
   const stuck = /Rendering the tab/i.test(await dialog.innerText());
   check('the viewer is not left on the loading message', !stuck);
+
+  // ── phase 4: the cursor follows the song ────────────────────────────────
+  const cursors = await dialog.locator('.at-cursor-beat, .at-cursor-bar').count();
+  check('a playback cursor is drawn', cursors > 0, `${cursors} cursor element(s)`);
+
+  /** Where alphaTab has put the beat cursor, in page pixels. */
+  const cursorX = () => page.evaluate(() => {
+    const el = document.querySelector('.at-cursor-beat');
+    if (!el) return null;
+    const r = el.getBoundingClientRect();
+    return Math.round(r.left + window.scrollX);
+  });
+
+  const pos = () => page.evaluate(() => { try { return JSON.parse(localStorage.getItem('ember.player.v1')??'{}')?.state?.position ?? null; } catch { return null; } });
+  const p1 = await pos(); await page.waitForTimeout(3000); const p2 = await pos();
+  console.log(`[playhead] ${p1} -> ${p2}`);
+  const first = await cursorX();
+  await page.waitForTimeout(6000);
+  const later = await cursorX();
+  check('the cursor moves as the song plays',
+    first !== null && later !== null && later !== first, `${first}px -> ${later}px`);
+
+  // The offset control must actually shift the cursor, since that is the only
+  // remedy for a tab that transcribes a different take.
+  const slider = dialog.locator('input[aria-label="Tab timing offset in seconds"]');
+  check('the sync offset control is present', (await slider.count()) > 0);
+  const beforeNudge = await cursorX();
+  await slider.evaluate((el) => {
+    const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+    setter.call(el, '6');
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+    el.dispatchEvent(new Event('change', { bubbles: true }));
+  });
+  await page.waitForTimeout(2500);
+  const afterNudge = await cursorX();
+  check('nudging the offset shifts the cursor',
+    beforeNudge !== null && afterNudge !== null && afterNudge !== beforeNudge,
+    `${beforeNudge}px -> ${afterNudge}px`);
 }
 
 const noisy = consoleErrors.filter((e) => !/favicon|404/.test(e));
