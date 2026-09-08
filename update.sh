@@ -24,8 +24,9 @@ MODE="start"
 case "${1:-}" in
   --no-start) MODE="no-start" ;;
   --check)    MODE="check" ;;
+  --force)    MODE="force" ;;
   "")         ;;
-  *) echo "usage: $0 [--no-start|--check]"; exit 1 ;;
+  *) echo "usage: $0 [--no-start|--check|--force]"; exit 1 ;;
 esac
 
 ENV_FILE="$ROOT/apps/web/.env.local"
@@ -58,9 +59,25 @@ fi
 # Refuse to clobber local edits — on a host these are usually a hand-patched
 # config someone will want back.
 if ! git diff --quiet || ! git diff --cached --quiet; then
-  echo "✗ you have uncommitted changes. Commit or stash them first:"
-  git status --short | sed 's/^/    /'
-  exit 1
+  if [ "$MODE" = "force" ]; then
+    echo "▶ stashing local edits (--force)…"
+    git stash push --quiet --include-untracked -m "update.sh $(date -u +%FT%TZ)"
+    echo "  restore them later with: git stash pop"
+  else
+    echo "✗ NOT UPDATED — you have uncommitted changes, so the pull was skipped."
+    git status --short | sed 's/^/    /'
+    echo
+    echo "  This is usually package-lock.json, which npm rewrites whenever you"
+    echo "  run 'npm install' on the host. If you have not hand-edited anything:"
+    echo
+    echo "      git checkout -- package-lock.json && ./update.sh"
+    echo
+    echo "  or let the script put your edits aside for you:"
+    echo
+    echo "      ./update.sh --force"
+    echo
+    exit 1
+  fi
 fi
 
 LOCK_BEFORE="$(git rev-parse HEAD:package-lock.json 2>/dev/null || echo none)"
@@ -121,6 +138,15 @@ stop_on_port() {
 
 stop_on_port "$PORT" "the web app"
 stop_on_port "$PB_PORT" "PocketBase"
+
+# Say plainly what is now running. "I ran the update and nothing changed" is
+# otherwise indistinguishable from a rebuild of the same commit.
+NOW="$(git rev-parse HEAD)"
+if [ "$NOW" = "$(git rev-parse origin/main)" ]; then
+  echo "✓ updated to $(git rev-parse --short HEAD) — $(git log -1 --format=%s | cut -c1-60)"
+else
+  echo "✗ STILL BEHIND origin/main at $(git rev-parse --short HEAD) — the pull did not take."
+fi
 
 echo "▶ restarting (PocketBase reboots, so pb_hooks run)…"
 exec "$ROOT/start-static.sh"
