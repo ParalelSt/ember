@@ -23,7 +23,9 @@
     "test:auth": "node tests/authorization.test.mjs",
     "test:sessions": "node tests/session-authorization.test.mjs",
     "test:tabs": "node tests/tabs.test.mjs",
-    "test:tabs-ui": "node tests/tabs-ui.test.mjs"
+    "test:tabs-ui": "node tests/tabs-ui.test.mjs",
+    "test:resume": "node tests/resume-position.test.mjs",
+    "test:position": "node tests/playback-position.test.mjs"
   },
   "devDependencies": {
     "playwright-core": "^1.62.1"

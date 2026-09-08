@@ -20,6 +20,7 @@ import { api, apiUrl } from '@/lib/api';
 import { logger } from '@/lib/logger/client';
 import { songKey } from '@/lib/songKey';
 import { detectShell } from '@/lib/playback/detectShell';
+import { resumeStartAt } from '@/lib/playback/resumePosition';
 import { publishDiscordPresence } from '@/lib/discordPresence';
 import { createWebBackend } from '@/lib/playback/webBackend';
 import { createCapacitorBackend } from '@/lib/playback/capacitorBackend';
@@ -90,6 +91,10 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   // zustand-persist rehydration completes AFTER first render, so we can't seed
   // from `position`; deferring the lookup to loadAndPlay (effect time) is safe.
   const wantPosition = useRef<number | null>(null);
+  /** Which track the stored playhead belongs to. Undefined until the first
+   *  load, when it is taken to be the persisted track, so a cold start still
+   *  resumes where you left off. */
+  const positionOwner = useRef<string | undefined>(undefined);
   const lastValidPosition = useRef(position);
   const lastPosWrite = useRef(0);
   const fetchingRadioFor = useRef<string | null>(null);
@@ -235,7 +240,12 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     logger.error('playback', 'native audio failed — falling back to web audio', { reason });
 
     const events = eventsRef.current;
-    const resumeAt = usePlayerStore.getState().position;
+    const st0 = usePlayerStore.getState();
+    // Only resume a position that belongs to the track being retried. A 403 on
+    // the new song used to restart it at the previous song's timestamp.
+    const failing = st0.queue[st0.index];
+    const resumeAt =
+      failing && positionOwner.current === failing.id ? st0.position : 0;
     try { backendRef.current?.destroy(); } catch { /* already broken */ }
 
     backendRef.current = createWebBackend(events!);
@@ -269,8 +279,23 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     // loaded is never useful, so drop it.
     if (!autoplay && loadedTrackRef.current === track.id) return;
     loadedTrackRef.current = track.id;
-    const startAt = wantPosition.current ?? usePlayerStore.getState().position;
-    wantPosition.current = 0;
+    if (positionOwner.current === undefined) {
+      const st = usePlayerStore.getState();
+      positionOwner.current = st.queue[st.index]?.id;
+    }
+    const startAt = resumeStartAt({
+      trackId: track.id,
+      positionOwnerId: positionOwner.current,
+      storedPosition: usePlayerStore.getState().position,
+      requested: wantPosition.current,
+    });
+    wantPosition.current = null;
+    // The playhead now describes THIS track: reset it in the same turn so no
+    // later reader (the web-audio fallback, a refresh) can hand one song's
+    // position to another, and so the slider doesn't linger on the old time.
+    positionOwner.current = track.id;
+    usePlayerStore.setState({ position: startAt });
+    setPosition(startAt);
     b.load(apiUrl(track.streamUrl), { autoplay, startAt });
     // Set metadata in the same synchronous turn so the notification carries
     // across a track boundary (Firefox Android tears it down otherwise).

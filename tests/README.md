@@ -54,6 +54,8 @@ node tests/authorization.test.mjs                   # or: npm run test:auth
 node tests/session-authorization.test.mjs           # or: npm run test:sessions
 node tests/tabs.test.mjs                            # or: npm run test:tabs
 node tests/tabs-ui.test.mjs                         # or: npm run test:tabs-ui
+node tests/resume-position.test.mjs                 # or: npm run test:resume
+node tests/playback-position.test.mjs               # or: npm run test:position
 
 # Privacy switches
 node tests/privacy.test.mjs                         # or: npm run test:privacy
