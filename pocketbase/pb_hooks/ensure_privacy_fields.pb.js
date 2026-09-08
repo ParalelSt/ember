@@ -3,14 +3,18 @@
 // Privacy toggles — two independent switches for "don't broadcast what I'm
 // playing":
 //
-//   hide_discord    → Discord rich presence
-//   hide_listening  → the "Friends are listening to" section on Home
+//   share_discord    → Discord rich presence
+//   share_listening  → the "Friends are listening to" section on Home
 //
-// Stored INVERTED (hide_* rather than share_*) on purpose. PocketBase bool
-// fields default to false, and every existing user has no value at all — so
-// hide_* = false means everyone keeps their current, visible behaviour with
-// no backfill migration. A share_* field would have defaulted everybody to
-// hidden the moment this shipped.
+// Stored as share_* so that OFF is the default. PocketBase bool fields default
+// to false and existing users have no value at all, so everybody starts not
+// sharing and opts in deliberately — which is the right default for a switch
+// about broadcasting what you listen to.
+//
+// This replaces an earlier inverted pair (hide_discord / hide_listening) that
+// defaulted everyone to visible. Those columns are left in place and ignored;
+// dropping them would buy nothing and risks a destructive migration. Anyone
+// who had sharing on by default is now off, which is the safe direction.
 //
 // Added on boot if missing, same pattern as the other ensure_* hooks.
 
@@ -25,7 +29,7 @@ onAfterBootstrap((e) => {
     return;
   }
 
-  const wanted = ["hide_discord", "hide_listening"];
+  const wanted = ["share_discord", "share_listening"];
   let added = 0;
 
   for (const name of wanted) {

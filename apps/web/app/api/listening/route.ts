@@ -10,7 +10,8 @@ const WINDOW_MS = 30 * 60 * 1000;
  *  within the window. Admin client — the `plays` collection is per-user for
  *  normal reads; this is the one deliberate cross-user surface.
  *
- *  Anyone with `hide_listening` set is filtered out HERE, server-side. The UI
+ *  Only members who opted in (`share_listening`) appear, filtered HERE,
+ *  server-side. The UI
  *  declining to render them would not be privacy: the data would still be in
  *  the response for anyone reading the network tab. Their plays are still
  *  recorded, so recommendations and the 14-day cleanup are unaffected. */
@@ -32,11 +33,11 @@ export async function GET() {
       if (seenUsers.has(userId)) continue; // newest play per user only
       seenUsers.add(userId);
       const who = (r.expand?.user ?? null) as
-        | { name?: string; email?: string; hide_listening?: boolean }
+        | { name?: string; email?: string; share_listening?: boolean }
         | null;
       // Opted out of being seen. `seenUsers` already has them, so their older
       // plays can't slip through further down the list either.
-      if (who?.hide_listening === true) continue;
+      if (who?.share_listening !== true) continue;
 
       const track = mapTrackRow(((r.expand?.track as unknown) ?? null) as TrackRecord | null);
       if (!track) continue;

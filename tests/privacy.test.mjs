@@ -97,28 +97,38 @@ const alice = await makeUser('alice');
 const bob = await makeUser('bob');
 await recordPlay(alice, 'Alice Song');
 
-// ── defaults ──────────────────────────────────────────────────────────────
+// ── defaults: sharing is OPT-IN ───────────────────────────────────────────
+// Broadcasting what you listen to should never be something that happens
+// because you never found the setting.
 const defaults = await getJson('/api/privacy', alice.cookie);
-check('A1 defaults to sharing (existing users must not vanish)',
-  defaults.body?.shareDiscord === true && defaults.body?.shareListening === true,
+check('A1 both switches default to OFF',
+  defaults.body?.shareDiscord === false && defaults.body?.shareListening === false,
   JSON.stringify(defaults.body));
 
+const invisible = await getJson('/api/listening', bob.cookie);
+check('A2 alice is NOT visible to bob until she opts in',
+  !(invisible.body?.items ?? []).some((i) => i.track?.title === 'Alice Song'),
+  `${(invisible.body?.items ?? []).length} item(s) returned`);
+
+// ── opting in, then back out ──────────────────────────────────────────────
+const on = await patchPrivacy(alice.cookie, { shareListening: true });
+check('B0 opting in saves', on.status === 200 && on.body?.shareListening === true, JSON.stringify(on.body));
+
 const visible = await getJson('/api/listening', bob.cookie);
-check('A2 alice is visible to bob by default',
+check('B1 alice appears to bob once she opts in',
   (visible.body?.items ?? []).some((i) => i.track?.title === 'Alice Song'));
 
-// ── hiding from the friends tab ───────────────────────────────────────────
 const off = await patchPrivacy(alice.cookie, { shareListening: false });
-check('B1 toggle saves', off.status === 200 && off.body?.shareListening === false, JSON.stringify(off.body));
+check('B1b toggling back off saves', off.status === 200 && off.body?.shareListening === false, JSON.stringify(off.body));
 
 const hidden = await getJson('/api/listening', bob.cookie);
 check('B2 alice is gone from the API response, not just the UI',
   !(hidden.body?.items ?? []).some((i) => i.track?.title === 'Alice Song'),
   `${(hidden.body?.items ?? []).length} item(s) returned`);
 
-// Independence matters: someone may want Discord off but friends on, or vice
+// Independence matters: someone may want Discord on but friends off, or vice
 // versa. A single shared flag would be a quiet privacy bug.
-check('B3 hiding from friends left Discord sharing alone', off.body?.shareDiscord === true);
+check('B3 the friends switch left Discord alone', off.body?.shareDiscord === false);
 
 // A newer play must not resurrect a hidden user.
 await recordPlay(alice, 'Alice Song Two');
@@ -154,14 +164,22 @@ const anonPush = await fetch(`${APP_URL}/api/discord/update`, {
 check('C4 no session → treated as opted out', anonPush?.shared === false, JSON.stringify(anonPush));
 
 // ── the switches are per-user ─────────────────────────────────────────────
+// Alice has been toggling hers throughout; none of it may have touched bob's.
 const bobSettings = await getJson('/api/privacy', bob.cookie);
-check('D1 alice hiding did not change bob',
-  bobSettings.body?.shareDiscord === true && bobSettings.body?.shareListening === true,
+check('D1 alice’s toggling did not change bob’s settings',
+  bobSettings.body?.shareDiscord === false && bobSettings.body?.shareListening === false,
   JSON.stringify(bobSettings.body));
 
+await patchPrivacy(bob.cookie, { shareListening: true });
 await recordPlay(bob, 'Bob Song');
 const aliceView = await getJson('/api/listening', alice.cookie);
-check('D2 bob still visible to alice', (aliceView.body?.items ?? []).some((i) => i.track?.title === 'Bob Song'));
+check('D2 bob is visible to alice once HE opts in',
+  (aliceView.body?.items ?? []).some((i) => i.track?.title === 'Bob Song'));
+
+const bobAfter = await getJson('/api/privacy', bob.cookie);
+check('D3 bob opting in did not opt alice in',
+  bobAfter.body?.shareListening === true &&
+    (await getJson('/api/privacy', alice.cookie)).body?.shareListening === false);
 
 // ── auth + validation ─────────────────────────────────────────────────────
 const anonGet = await fetch(`${APP_URL}/api/privacy`, { redirect: 'manual' });
