@@ -44,7 +44,11 @@ cd apps/desktop
 DISCORD_APP_ID=your-app-id EMBER_APP_URL="https://ember.tailf4de41.ts.net" npm run build
 ```
 
-In CI, add a repo variable `DISCORD_APP_ID` and pass it to the build step.
+In CI, add a repo variable `DISCORD_APP_ID` — the workflow already passes it
+to the desktop build step. **Without it, rich presence silently does nothing**:
+`app_id()` reads it via `option_env!` at COMPILE time, so a build made without
+the variable set can never connect to Discord, no matter what the user does in
+Settings. Every release up to 0.2.3 shipped that way.
 Without it the feature is silently off (playback is unaffected). Users also
 need the Discord desktop app running; if it's closed, Ember reconnects on the
 next track change.

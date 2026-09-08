@@ -164,6 +164,12 @@ jobs:
           # stored as repo secrets.
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          # Discord rich presence. Read at COMPILE time via option_env! (see
+          # src/discord.rs), so a build without it ships an app that silently
+          # never connects to Discord — which is exactly what every release up
+          # to 0.2.3 did. Set the repo variable DISCORD_APP_ID to the Discord
+          # application's ID; unset simply disables the feature.
+          DISCORD_APP_ID: ${{ vars.DISCORD_APP_ID }}
         with:
           # Tauri project root (where tauri.conf.json lives).
           projectPath: apps/desktop
