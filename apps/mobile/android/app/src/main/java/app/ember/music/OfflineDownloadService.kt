@@ -14,7 +14,6 @@ import okhttp3.Request
 import org.json.JSONObject
 import java.io.File
 import java.util.concurrent.Executors
-import java.util.concurrent.atomic.AtomicBoolean
 
 /** Downloads whatever the index says is pending, one track at a time, as a
  *  foreground service so a pinned playlist finishes with the app closed.
@@ -35,17 +34,32 @@ class OfflineDownloadService : Service() {
     }
 
     private val io = Executors.newSingleThreadExecutor()
-    private val running = AtomicBoolean(false)
 
     override fun onBind(intent: Intent?): IBinder? = null
 
+    override fun onDestroy() {
+        // The executor's thread is a non-daemon core thread that never times
+        // out, so without this every service lifecycle would leak one.
+        io.shutdown()
+        super.onDestroy()
+    }
+
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         startForeground(1, notification("Preparing downloads…"))
-        if (running.compareAndSet(false, true)) io.execute { drain() }
+        // Every start queues a drain; the single-thread executor serialises
+        // them, and a drain that finds nothing pending exits immediately.
+        //
+        // Gating this on an "already running" flag was a bug: a pin landing
+        // after the running drain's last pending() check but before it cleared
+        // the flag was dropped by BOTH sides, and its track sat undownloaded
+        // until some unrelated pin restarted the service. There is no such gap
+        // when the request is queued unconditionally, and the cost of the
+        // occasional redundant drain is one pending() call.
+        io.execute { drain(startId) }
         return START_STICKY
     }
 
-    private fun drain() {
+    private fun drain(startId: Int) {
         val store = OfflineStore.shared(this)
         val baseUrl = ServerConfig.baseUrl(this)
         val api = ServerApi(baseUrl) { CookieManager.getInstance().getCookie(baseUrl) }
@@ -63,9 +77,13 @@ class OfflineDownloadService : Service() {
                 listener?.invoke(null)
             }
         } finally {
-            cancelled.clear(); current = null; running.set(false)
+            cancelled.clear(); current = null
             listener?.invoke(null)
-            stopForeground(STOP_FOREGROUND_REMOVE); stopSelf()
+            // stopSelfResult, not stopSelf: it only stops when startId is still
+            // the most recent start, so a pin that arrived while this drain was
+            // working keeps the service (and its notification) alive for the
+            // drain it queued behind us.
+            if (stopSelfResult(startId)) stopForeground(STOP_FOREGROUND_REMOVE)
         }
     }
 
