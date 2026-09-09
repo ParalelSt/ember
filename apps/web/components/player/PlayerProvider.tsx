@@ -27,6 +27,7 @@ import { createWebBackend } from '@/lib/playback/webBackend';
 import { createCapacitorBackend } from '@/lib/playback/capacitorBackend';
 import { createNativeBackend, nativeBackendReady } from '@/lib/playback/nativeBridge';
 import { createTauriBackend } from '@/lib/playback/tauriBackend';
+import { createAndroidBackend, androidPluginPresent } from '@/lib/playback/androidBackend';
 import type { AudioBackend, AudioBackendEvents } from '@/lib/playback/types';
 import type { PlaybackContext, Track } from '@/types/track';
 
@@ -78,11 +79,18 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   /** Which engine is live, and whether we've already swapped away from a
    *  broken native one (only ever done once — a fallback loop would be worse
    *  than the original fault). */
-  const backendKindRef = useRef<'web' | 'capacitor' | 'tauri-native' | 'native-stub'>('web');
+  const backendKindRef = useRef<'web' | 'capacitor' | 'android' | 'tauri-native' | 'native-stub'>('web');
   const fellBackRef = useRef(false);
   /** Track id currently handed to the backend — guards redundant re-loads. */
   const loadedTrackRef = useRef<string | null>(null);
   const eventsRef = useRef<AudioBackendEvents | null>(null);
+  /** When the store's queue/index last changed BECAUSE the native player said
+   *  so. The queue-push effect and the load-on-id-change effect both skip
+   *  changes inside this window, or a car tap would bounce straight back. A
+   *  timestamp rather than a flag: not every native change fires both effects,
+   *  and a flag nobody consumed would swallow the next real change. */
+  const nativeChangeAt = useRef(0);
+  const fromNative = () => Date.now() - nativeChangeAt.current < 300;
   const loadAndPlayRef = useRef<((t: Track | null, autoplay: boolean) => void) | null>(null);
   const fallbackToWebAudioRef = useRef<((reason: string) => void) | null>(null);
   const [backendReady, setBackendReady] = useState(false);
@@ -155,7 +163,27 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         const st = usePlayerStore.getState();
         setDuration(chooseDuration(st.queue[st.index]?.durationSec ?? 0, d));
       },
+      onQueueIndex: (i) => {
+        // Native advanced or the car skipped. Mirror it; do NOT load anything.
+        const st = usePlayerStore.getState();
+        if (i >= 0 && i < st.queue.length && i !== st.index) {
+          nativeChangeAt.current = Date.now();
+          setIndex(i);
+        }
+      },
+      onQueueReplaced: (tracks, i) => {
+        nativeChangeAt.current = Date.now();
+        usePlayerStore.setState({
+          queue: tracks,
+          index: Math.max(0, Math.min(i, tracks.length - 1)),
+          context: null,
+          orderBackup: null,
+        });
+      },
       onEnded: () => {
+        // The native Android player advances by itself; `ended` only means the
+        // whole queue ran out, and there is nothing to load from here.
+        if (backendKindRef.current === 'android') return;
         // Read the latest loop state at fire time so a stale closure can't lock
         // us into the wrong mode.
         const state = usePlayerStore.getState();
@@ -191,13 +219,16 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     const shell = detectShell();
     let create = createWebBackend;
     if (shell === 'capacitor') {
-      create = createCapacitorBackend;
+      // Newer APKs carry the native Media3 player (Android Auto); older ones
+      // only have the media-session plugin. Both keep working against this server.
+      create = androidPluginPresent() ? createAndroidBackend : createCapacitorBackend;
     } else if (shell !== 'web' && nativeBackendReady(shell)) {
       create = shell === 'tauri' ? createTauriBackend : createNativeBackend;
     }
     eventsRef.current = events;
     backendKindRef.current = create === createWebBackend ? 'web'
       : create === createCapacitorBackend ? 'capacitor'
+      : create === createAndroidBackend ? 'android'
       : create === createTauriBackend ? 'tauri-native' : 'native-stub';
     backendRef.current = create(events);
     // Visible in devtools; tells you instantly whether the desktop app is on
@@ -206,6 +237,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       shell,
       backend: create === createWebBackend ? 'web'
         : create === createCapacitorBackend ? 'capacitor'
+        : create === createAndroidBackend ? 'android'
         : create === createTauriBackend ? 'tauri-native' : 'native-stub',
     });
     setBackendReady(true);
@@ -285,6 +317,21 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     // click play a few times" bug. A silent re-load of the track that's already
     // loaded is never useful, so drop it.
     if (!autoplay && loadedTrackRef.current === track.id) return;
+    if (backendKindRef.current === 'android' && b.setQueue) {
+      // The native player owns the queue: hand it the whole thing and the
+      // index to start at. It diffs, so an unchanged queue never restarts.
+      const st = usePlayerStore.getState();
+      let queue = st.queue;
+      let idx = queue.findIndex((t) => t.id === track.id);
+      if (idx < 0) { queue = [track]; idx = 0; }
+      loadedTrackRef.current = track.id;
+      positionOwner.current = track.id;
+      usePlayerStore.setState({ position: 0 });
+      setPosition(0);
+      setDuration(chooseDuration(track.durationSec ?? 0, null));
+      b.setQueue(queue, idx, autoplay);
+      return;
+    }
     loadedTrackRef.current = track.id;
     if (positionOwner.current === undefined) {
       const st = usePlayerStore.getState();
@@ -320,8 +367,12 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   // (onEnded → next → index change) and cold-load hydration of a persisted queue.
   useEffect(() => {
     if (!backendReady) return;
+    // A change the native player reported is already playing there; loading
+    // it again would restart it (and echo the queue back).
+    if (backendKindRef.current === 'android' && fromNative()) return;
     loadAndPlay(current, userInteracted.current);
-    if (current && userInteracted.current && user) recordPlay.mutate(current);
+    // The native Android player records plays itself (car-initiated ones too).
+    if (current && userInteracted.current && user && backendKindRef.current !== 'android') recordPlay.mutate(current);
     if (!current) {
       setIsPlaying(false);
       setPosition(0);
@@ -343,6 +394,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
   const next = useCallback(() => {
     userInteracted.current = true;
+    if (backendKindRef.current === 'android') { backendRef.current?.next?.(); return; }
     const loop = usePlayerStore.getState().loopMode;
     const wrapAt = loopWrapPoint();
     // Past the playlist (radio territory) with loop on → back to the playlist.
@@ -368,6 +420,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
   const prev = useCallback(() => {
     userInteracted.current = true;
+    if (backendKindRef.current === 'android') { backendRef.current?.prev?.(); return; }
     const b = backendRef.current;
     const loop = usePlayerStore.getState().loopMode;
     // First track + loop-all → wrap to the last track, regardless of how far
@@ -502,6 +555,17 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       if (fetchingRadioFor.current === currentId) fetchingRadioFor.current = null;
     });
   }, [current?.id, current?.sourceId, index, queue, history, liked, context, loopMode, setQueue]);
+
+  // Queue-owning backend (Android): whenever the store's queue changes from
+  // THIS side (radio append, add to queue), hand the new queue over. Changes
+  // that arrived from native are flagged and skipped, or they would bounce.
+  useEffect(() => {
+    if (backendKindRef.current !== 'android' || fromNative()) return;
+    const b = backendRef.current;
+    if (!b?.setQueue || !current) return;
+    b.setQueue(queue, index, usePlayerStore.getState().isPlaying);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [queue]);
 
   // Discord rich presence — desktop app talks to the user's OWN Discord;
   // web/phone falls back to the server route (host's Discord only).

@@ -19,6 +19,12 @@ export interface AudioBackendEvents {
   onPlay: () => void; // actually playing
   onPause: () => void; // paused/stalled
   onError: () => void; // load/playback failed
+  /** Queue-owning backends only (Android): the native player moved to another
+   *  item on its own (auto-advance, a skip from the car). */
+  onQueueIndex?: (index: number) => void;
+  /** Queue-owning backends only: the native side built a new queue (a tap in
+   *  the car, native radio). The provider mirrors it; it must NOT push it back. */
+  onQueueReplaced?: (tracks: Track[], index: number) => void;
 }
 
 export interface LoadOptions {
@@ -50,6 +56,12 @@ export interface AudioBackend {
   /** True while a load/seek-restore is settling — callers must not persist
    *  position during this window (the element reports transient values). */
   isTransitioning(): boolean;
+  /** Queue-owning backends only. Hands the whole queue over; the backend diffs
+   *  it against what it has so an append never restarts playback. */
+  setQueue?(tracks: Track[], index: number, play: boolean): void;
+  /** Queue-owning backends only: the native player decides what is next. */
+  next?(): void;
+  prev?(): void;
   /** Tear down listeners / native resources. */
   destroy(): void;
 }
