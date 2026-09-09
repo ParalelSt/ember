@@ -61,6 +61,24 @@ class OfflineStoreTest {
         assertEquals(emptyList<String>(), OfflineStore(root).pins().map { it.id })
     }
 
+    /** Unpin while that track is mid-download: the finished file must not land
+     *  in the store, because prune() has already run and nothing would ever
+     *  collect it. */
+    @Test fun commitAfterUnpinDropsTheFile() {
+        val s = store()
+        s.upsertPin("p1", "One", listOf(track("youtube:a")))
+        s.removePin("p1")
+        val tmp = fakeAudio(9)
+        s.commitAudio("youtube:a", tmp)
+        assertFalse(s.audioFileFor("youtube:a").exists())
+        assertFalse("the temp file must be cleaned up, not left in the cache", tmp.exists())
+        val art = fakeAudio(4)
+        s.commitArt("youtube:a", art)
+        assertFalse(s.artFileFor("youtube:a").exists())
+        assertFalse(art.exists())
+        assertEquals(0L, s.totalBytes())
+    }
+
     @Test fun idsBecomeSafeFileNamesAndTheIndexSurvivesAReload() {
         val root = Files.createTempDirectory("offline").toFile()
         val s = OfflineStore(root)

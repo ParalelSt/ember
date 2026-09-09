@@ -12,6 +12,15 @@ import java.io.File
  *  at most the file being written, never the index. The download service, the
  *  Capacitor plugin and the native player all read this layout, so keep it. */
 class OfflineStore(private val root: File) {
+    companion object {
+        @Volatile private var instance: OfflineStore? = null
+        /** One store per process: the plugin and the download service must see
+         *  the same in-memory index, or a pin made from the WebView would be
+         *  invisible to the service that has to download it. */
+        fun shared(context: android.content.Context): OfflineStore =
+            instance ?: synchronized(this) { instance ?: OfflineStore(java.io.File(context.filesDir, "offline")).also { instance = it } }
+    }
+
     data class Pin(val id: String, val name: String, val trackIds: List<String>, val updatedAt: Long)
     data class TrackFile(val id: String, val track: JSONObject, val audio: File?, val art: File?, val bytesAudio: Long, val bytesArt: Long)
 
@@ -55,8 +64,18 @@ class OfflineStore(private val root: File) {
         } }
     }
 
-    @Synchronized fun commitAudio(trackId: String, tmp: File) { move(tmp, audioFileFor(trackId)) }
-    @Synchronized fun commitArt(trackId: String, tmp: File) { move(tmp, artFileFor(trackId)) }
+    /** A download that finishes after its pin was removed must not resurrect
+     *  the file: prune() already ran, so nothing would ever delete it again.
+     *  Drop the temp file instead. */
+    @Synchronized fun commitAudio(trackId: String, tmp: File) {
+        if (trackId !in tracks) { tmp.delete(); return }
+        move(tmp, audioFileFor(trackId))
+    }
+
+    @Synchronized fun commitArt(trackId: String, tmp: File) {
+        if (trackId !in tracks) { tmp.delete(); return }
+        move(tmp, artFileFor(trackId))
+    }
 
     @Synchronized fun trackFiles(): Map<String, File> =
         tracks.keys.mapNotNull { id -> audioFileFor(id).takeIf { it.exists() }?.let { id to it } }.toMap()
