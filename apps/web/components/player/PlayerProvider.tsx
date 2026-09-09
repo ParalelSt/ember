@@ -506,9 +506,24 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   // Discord rich presence — desktop app talks to the user's OWN Discord;
   // web/phone falls back to the server route (host's Discord only).
   useEffect(() => {
-    publishDiscordPresence(current, isPlaying);
+    const st = usePlayerStore.getState();
+    publishDiscordPresence(current, isPlaying, st.position, st.duration);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [current?.id, isPlaying]);
+
+  // The card carries a time bar, so a seek has to be published too. Seeks
+  // come from many places (slider, ←/→, media keys, a bar clicked in the tab
+  // viewer), so rather than hooking each one, watch the playhead itself: a
+  // jump of more than a couple of seconds between two ticks is a seek.
+  const lastPositionRef = useRef<{ id: string | null; sec: number }>({ id: null, sec: 0 });
+  useEffect(() => {
+    const last = lastPositionRef.current;
+    const id = current?.id ?? null;
+    const jumped = last.id === id && Math.abs(position - last.sec) > 2.5;
+    lastPositionRef.current = { id, sec: position };
+    if (jumped && isPlaying) publishDiscordPresence(current, true, position, duration);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [position]);
 
   // Media metadata backstop for track changes that don't flow through
   // loadAndPlay (hydration on cold load). loadAndPlay sets it synchronously.
