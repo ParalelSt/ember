@@ -29,7 +29,7 @@ export default function DownloadsSettingsPage() {
   const count = native ? pins.length : downloaded.length;
 
   // Retries with whatever track list is already cached from browsing that
-  // playlist/Liked this session — the native side clears `failed` on pin and
+  // playlist/Liked this session. The native side clears `failed` on pin and
   // only re-fetches what's missing.
   const retry = async (pin: PinStatus) => {
     const tracks = pin.id === LIKED_PIN

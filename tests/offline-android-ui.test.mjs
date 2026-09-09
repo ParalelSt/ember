@@ -25,7 +25,7 @@ const PASSWORD = 'BugTest2026!';
 function findChrome() {
   if (process.env.CHROME_PATH) return process.env.CHROME_PATH;
   const root = path.join(process.env.HOME ?? '', 'Library/Caches/ms-playwright');
-  if (!fs.existsSync(root)) throw new Error('no Playwright browser cache — set CHROME_PATH');
+  if (!fs.existsSync(root)) throw new Error('no Playwright browser cache: set CHROME_PATH');
   for (const d of fs.readdirSync(root).filter((x) => x.startsWith('chromium-')).sort().reverse()) {
     const found = execSync(
       `find "${path.join(root, d)}" -maxdepth 6 -type f \\( -name "Google Chrome for Testing" -o -name "Chromium" \\) 2>/dev/null | head -1`,
@@ -33,7 +33,7 @@ function findChrome() {
     ).trim();
     if (found) return found;
   }
-  throw new Error('no Chromium binary found — set CHROME_PATH');
+  throw new Error('no Chromium binary found: set CHROME_PATH');
 }
 
 async function adminToken() {
@@ -66,7 +66,7 @@ function wav(seconds = 120, rate = 8000) {
   return Buffer.concat([h, data]);
 }
 
-// Seed two uploaded tracks — the playlist gets both; the first is liked too.
+// Seed two uploaded tracks: the playlist gets both, the first is liked too.
 const titles = [`Offline Song A ${Date.now()}`, `Offline Song B ${Date.now()}`];
 const uploaded = [];
 for (const t of titles) {
@@ -91,14 +91,14 @@ for (const track of uploaded) {
 }
 
 const checks = [];
-const check = (name, pass, detail = '') => { checks.push(pass); console.log(`${pass ? 'PASS' : 'FAIL'}  ${name}${detail ? `  — ${detail}` : ''}`); };
+const check = (name, pass, detail = '') => { checks.push(pass); console.log(`${pass ? 'PASS' : 'FAIL'}  ${name}${detail ? `  : ${detail}` : ''}`); };
 
 const browser = await chromium.launch({ executablePath: findChrome(), headless: true });
 const ctx = await browser.newContext({ viewport: { width: 1300, height: 950 } });
 await ctx.addCookies([{ name: 'pb_auth', value: cookie, domain: '127.0.0.1', path: '/' }]);
 
 // On a real phone, Capacitor's webview scheme handler serves
-// _capacitor_file_ paths locally — no HTTP round trip, so it never 404s. Here
+// _capacitor_file_ paths locally: no HTTP round trip, so it never 404s. Here
 // that URL hits our sandbox's Next.js server for real, and a 404 would fire
 // the <audio> element's error handler, which drops the src (so the local-
 // playback proof would flap on whether the network round trip beat the
@@ -118,7 +118,7 @@ await ctx.addInitScript(() => {
   // A real EmberOffline plugin lives in the Android process, outside the
   // WebView, so its pins survive a page reload untouched. This fake runs as
   // page JS instead, and `addInitScript` re-injects (fresh closure) on every
-  // navigation — so its state is kept in localStorage/sessionStorage, which
+  // navigation, so its state is kept in localStorage/sessionStorage, which
   // DO survive a reload, to match that real persistence.
   const STATE_KEY = '__emberFakeOfflineState__';
   const CALLS_KEY = '__emberFakeOfflineCalls__';
@@ -192,7 +192,7 @@ const page = await ctx.newPage();
 const errors = [];
 page.on('pageerror', (e) => errors.push(e.message));
 
-// ── 1: playlist page — download for offline ─────────────────────────────
+// ── 1: playlist page: download for offline ─────────────────────────────
 await page.goto(`${APP_URL}/playlist/${playlist.id}`, { waitUntil: 'networkidle' });
 await page.getByRole('heading', { name: playlistName }).waitFor({ timeout: 10_000 });
 const dlButton = page.getByRole('button', { name: /download for offline/i });
@@ -204,7 +204,7 @@ check('clicking it shows Downloading…', true);
 await page.getByText(/^downloaded$/i).waitFor({ timeout: 5_000 });
 check('it settles on Downloaded', true);
 
-// ── 2: Liked tab — like a track, then the Liked download button appears ──
+// ── 2: Liked tab: like a track, then the Liked download button appears ──
 // Liked via the raw API (as the browser page never mounted a heart button
 // for it), so reload rather than client-navigate: react-query's 30s
 // staleTime would otherwise keep serving the pre-like empty cache.
@@ -219,17 +219,17 @@ await likedDlButton.click();
 await page.getByText(/^downloaded$/i).first().waitFor({ timeout: 5_000 });
 await page.waitForTimeout(300); // let the pin's localStorage write settle before navigating away
 
-// ── 3: play a downloaded track — audio src is the local file ────────────
+// ── 3: play a downloaded track: audio src is the local file ────────────
 await page.goto(`${APP_URL}/playlist/${playlist.id}`, { waitUntil: 'networkidle' });
 await page.getByText(titles[0], { exact: true }).first().click({ clickCount: 2 });
 await page.waitForTimeout(1000);
 const audioSrc = await page.evaluate(() => document.querySelector('audio')?.src ?? null);
 check('the downloaded track plays from the local file', !!audioSrc && audioSrc.includes('_capacitor_file_'), audioSrc ?? 'no <audio> element');
 
-// ── 4: offline — library shows the pinned playlist ────────────────────────
+// ── 4: offline: library shows the pinned playlist ────────────────────────
 // Land on /library while still online ("already loaded page" per the brief).
 // /library is force-dynamic (reads the auth cookie), so it has no prefetch
-// cache to soft-navigate from once offline — even a Link click to the exact
+// cache to soft-navigate from once offline: even a Link click to the exact
 // current route asks Next's router to re-fetch and hits the network for
 // real (ERR_INTERNET_DISCONNECTED, confirmed by running this against the
 // sandbox). No navigation is needed to prove the offline view, though:
@@ -243,7 +243,7 @@ check('offline library says Offline', /offline/i.test(offlineBody), offlineBody.
 check('offline library shows the pinned playlist by name', offlineBody.includes(playlistName), offlineBody.slice(0, 200));
 await ctx.setOffline(false);
 
-// ── 5: Settings → Downloads — rows per pin, clear all ────────────────────
+// ── 5: Settings → Downloads: rows per pin, clear all ────────────────────
 await page.goto(`${APP_URL}/settings/downloads`, { waitUntil: 'networkidle' });
 const sizeText = await page.locator('main').innerText();
 check('downloads settings shows a non-zero size', !/^0 B/m.test(sizeText.trim()) && /MB|KB|GB/.test(sizeText), sizeText.slice(0, 200));

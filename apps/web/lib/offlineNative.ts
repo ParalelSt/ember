@@ -10,7 +10,7 @@ export interface PinStatus {
   done: number;
   failed: number;
   downloading: boolean;
-  /** Track ids currently pinned — lets `isStale` compare against the live
+  /** Track ids currently pinned: lets `isStale` compare against the live
    *  playlist exactly instead of just counting. */
   trackIds: string[];
 }
@@ -42,7 +42,7 @@ export function subscribeNative(cb: (s: NativeStatus) => void): void { plugin()?
 
 /** `window.Capacitor` never exists during SSR, so `nativeOfflinePresent()`
  *  called straight in JSX renders false on the server and (on Android) true
- *  on the client — a hydration mismatch. `useSyncExternalStore`'s dedicated
+ *  on the client: a hydration mismatch. `useSyncExternalStore`'s dedicated
  *  server-snapshot argument is the React-approved way to read a value that
  *  legitimately differs between server and client: it renders the server
  *  value first and only then re-reads a client snapshot. Nothing here can
@@ -56,7 +56,7 @@ export function useNativeOfflinePresent(): boolean {
 }
 
 /** Whether the offline-download UI should render at all: the native plugin
- *  (Android), or plain browser storage (OPFS) elsewhere — i.e. everywhere
+ *  (Android), or plain browser storage (OPFS) elsewhere: everywhere
  *  except a browser with no Storage API, so this changes nothing on the web. */
 export function useOfflineDownloadAllowed(): boolean {
   return useSyncExternalStore(

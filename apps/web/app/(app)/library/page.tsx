@@ -38,7 +38,7 @@ export default function LibraryPage() {
 
   if (!user) return <div className="text-muted-foreground py-12 text-center">Sign in to see your library</div>;
 
-  // Offline: hide Recent (needs server data) and show only pinned content —
+  // Offline: hide Recent (needs server data) and show only pinned content:
   // the playlists (and Liked, on Android) pinned via "Download for offline".
   // Pins come from the offline store itself, not the (online-only) playlists
   // query, so this renders correctly even before that query ever succeeded.
@@ -48,7 +48,7 @@ export default function LibraryPage() {
       return (
         <div>
           <h1 className="text-3xl md:text-4xl font-bold tracking-tight mb-2">Your library</h1>
-          <p className="text-sm text-muted-foreground mb-6">Offline — Liked songs from your last sync.</p>
+          <p className="text-sm text-muted-foreground mb-6">Offline. Liked songs from your last sync.</p>
           <TrackList tracks={liked} />
         </div>
       );
@@ -155,7 +155,7 @@ export default function LibraryPage() {
                       await pinLiked(liked);
                       toast.success('Downloading Liked songs');
                     } catch (e) {
-                      toast.error(`Couldn't download — please try again.`);
+                      toast.error(`Couldn't download, please try again.`);
                       void e;
                     }
                   }}
