@@ -3,13 +3,14 @@
 import Link from 'next/link';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
-import { HeartIcon, PauseIcon, PlayIcon, TrashIcon } from '@/components/icons';
+import { HeartIcon, PauseIcon, PlayIcon, RefreshIcon, TrashIcon } from '@/components/icons';
 import { AddToPlaylistMenu } from './AddToPlaylistMenu';
 import { ShareButton } from './ShareButton';
 import { findLikedVariant } from '@/lib/songKey';
 import { usePlayer } from '@/components/player/PlayerProvider';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { useExecuteToggleLike, useQueryLikes } from '@/hooks/useLibrary';
+import { isUnavailable } from '@/lib/playback/skipUnavailable';
 import type { PlaybackContext, Track } from '@/types/track';
 import { cn } from '@/lib/utils';
 
@@ -18,6 +19,19 @@ function fmt(sec: number | undefined): string {
   const m = Math.floor(sec / 60);
   const s = Math.floor(sec % 60);
   return `${m}:${String(s).padStart(2, '0')}`;
+}
+
+/** Words for `unavailableReason` codes — shown as the badge's `title`
+ *  tooltip so a listener can see why without opening the replace dialog. */
+function reasonLabel(reason: string | null | undefined): string {
+  switch (reason) {
+    case 'removed': return 'Removed from YouTube';
+    case 'private': return 'Made private';
+    case 'geo': return 'Blocked in this country';
+    case 'members': return 'Members only';
+    case 'terminated': return 'Channel closed';
+    default: return 'Not available';
+  }
 }
 
 interface Props {
@@ -32,9 +46,12 @@ interface Props {
   /** Fires whenever this list starts playback of a track (e.g. the search
    *  page uses it to save the query to recent searches). */
   onPlayTrack?: (track: Track) => void;
+  /** Opens the find-replacement dialog for an unavailable track. Omitted on
+   *  lists where a replacement wouldn't be actionable (e.g. Recently played). */
+  onReplace?: (track: Track) => void;
 }
 
-export function TrackList({ tracks, showAlbum = true, showRank = false, onRemove, context, onPlayTrack }: Props) {
+export function TrackList({ tracks, showAlbum = true, showRank = false, onRemove, context, onPlayTrack, onReplace }: Props) {
   const { current, isPlaying, playTrack, toggle } = usePlayer();
   const { user } = useAuth();
   const { data: liked = [] } = useQueryLikes();
@@ -56,6 +73,18 @@ export function TrackList({ tracks, showAlbum = true, showRank = false, onRemove
     playTrack(track, tracks, context);
   };
 
+  // The row's double-click / title / artwork handlers all funnel through
+  // here: an unavailable track can't actually start playback (the server
+  // has confirmed yt-dlp can't fetch it), so clicking it explains why
+  // instead of silently doing nothing.
+  const playOrToast = (track: Track) => {
+    if (isUnavailable(track)) {
+      toast.message(`"${track.title}" is unavailable on YouTube`);
+      return;
+    }
+    play(track);
+  };
+
   if (!tracks?.length) return <div className="text-muted-foreground text-sm py-12 text-center">No tracks</div>;
 
   return (
@@ -63,13 +92,16 @@ export function TrackList({ tracks, showAlbum = true, showRank = false, onRemove
       {tracks.map((t, i) => {
         const playing = current?.id === t.id;
         const isLiked = !!findLikedVariant(t, liked);
+        const unavailable = isUnavailable(t);
         return (
           <div
             key={t.id}
-            onDoubleClick={() => play(t)}
+            data-unavailable={unavailable ? 'true' : undefined}
+            onDoubleClick={() => playOrToast(t)}
             className={cn(
               'group grid grid-cols-[40px_minmax(0,1fr)_auto] md:grid-cols-[40px_minmax(0,1fr)_minmax(0,1fr)_60px_auto] gap-3 items-center px-3 py-2 rounded-md cursor-pointer hover:bg-card transition-colors',
               playing && 'text-ember',
+              unavailable && 'opacity-60',
             )}
           >
             <div className="relative grid place-items-center h-8 w-8 justify-self-center">
@@ -86,7 +118,8 @@ export function TrackList({ tracks, showAlbum = true, showRank = false, onRemove
                   showRank && !playing && 'opacity-0 group-hover:opacity-100 transition-opacity',
                 )}
                 onClick={() => (playing ? toggle() : play(t))}
-                aria-label={playing && isPlaying ? 'Pause' : 'Play'}
+                disabled={unavailable}
+                aria-label={unavailable ? 'Unavailable' : playing && isPlaying ? 'Pause' : 'Play'}
               >
                 {playing && isPlaying ? <PauseIcon className="h-3.5 w-3.5" /> : <PlayIcon className="h-3.5 w-3.5" />}
               </Button>
@@ -98,13 +131,25 @@ export function TrackList({ tracks, showAlbum = true, showRank = false, onRemove
                 <img
                   src={t.artworkUrl}
                   alt=""
-                  onClick={() => play(t)}
+                  onClick={() => playOrToast(t)}
                   className="h-10 w-10 rounded shrink-0 object-cover bg-black"
                 />
               )}
               <div className="min-w-0">
-                <div onClick={() => play(t)} className="truncate text-sm font-semibold">
+                <div
+                  onClick={() => playOrToast(t)}
+                  className={cn('truncate text-sm font-semibold', unavailable && 'text-muted-foreground')}
+                >
                   {t.title}
+                  {unavailable && (
+                    <span
+                      data-testid="unavailable-badge"
+                      title={reasonLabel(t.unavailableReason)}
+                      className="ml-2 rounded-full border px-1.5 text-[10px] uppercase tracking-wider text-muted-foreground align-middle"
+                    >
+                      Unavailable
+                    </span>
+                  )}
                 </div>
                 <div className="truncate text-xs text-muted-foreground">
                   {t.artistId ? (
@@ -122,7 +167,7 @@ export function TrackList({ tracks, showAlbum = true, showRank = false, onRemove
             <div className="hidden md:block text-sm text-muted-foreground text-right tabular-nums">{fmt(t.durationSec)}</div>
 
             <div className="flex items-center gap-1">
-              <AddToPlaylistMenu track={t} />
+              {!unavailable && <AddToPlaylistMenu track={t} />}
               <ShareButton track={t} />
               <Button
                 variant="ghost"
@@ -133,6 +178,18 @@ export function TrackList({ tracks, showAlbum = true, showRank = false, onRemove
               >
                 <HeartIcon className="h-4 w-4" fill={isLiked ? 'currentColor' : 'none'} />
               </Button>
+              {unavailable && onReplace && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 text-ember hover:text-ember"
+                  onClick={() => onReplace(t)}
+                  aria-label="Find replacement"
+                  title="Find replacement"
+                >
+                  <RefreshIcon className="h-3.5 w-3.5" />
+                </Button>
+              )}
               {onRemove && (
                 <Button
                   variant="ghost"

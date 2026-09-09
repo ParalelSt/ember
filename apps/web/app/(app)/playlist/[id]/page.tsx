@@ -7,6 +7,7 @@ import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { TrackList } from '@/components/track/TrackList';
+import { ReplaceTrackDialog } from '@/components/track/ReplaceTrackDialog';
 import { TrackSearchPicker } from '@/components/track/TrackSearchPicker';
 import { CheckIcon, CloudDownloadIcon, PlayIcon, ShuffleIcon, TrashIcon, XCircleIcon } from '@/components/icons';
 import { usePlayer } from '@/components/player/PlayerProvider';
@@ -19,6 +20,7 @@ import {
   useExecuteAddToPlaylist,
   useExecuteDeletePlaylist,
   useExecuteRemoveFromPlaylist,
+  useExecuteReplaceInPlaylist,
   useExecuteUpdatePlaylistArtwork,
   useQueryPlaylist,
 } from '@/hooks/useLibrary';
@@ -34,8 +36,10 @@ export default function PlaylistPage({ params }: { params: Promise<{ id: string 
   const removeFromPlaylist = useExecuteRemoveFromPlaylist();
   const addToPlaylist = useExecuteAddToPlaylist();
   const updateArtwork = useExecuteUpdatePlaylistArtwork();
+  const replaceInPlaylist = useExecuteReplaceInPlaylist();
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
   const [pendingRemove, setPendingRemove] = useState<Track | null>(null);
+  const [pendingReplace, setPendingReplace] = useState<Track | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Offline pin state — hooks must run before early returns. `data` may be
@@ -285,6 +289,7 @@ export default function PlaylistPage({ params }: { params: Promise<{ id: string 
             const track = tracks.find((t) => t.id === trackId);
             if (track) setPendingRemove(track);
           }}
+          onReplace={setPendingReplace}
         />
       )}
 
@@ -311,6 +316,16 @@ export default function PlaylistPage({ params }: { params: Promise<{ id: string 
         confirmLabel="Remove"
         variant="destructive"
         onConfirm={handleConfirmRemove}
+      />
+
+      <ReplaceTrackDialog
+        track={pendingReplace}
+        open={!!pendingReplace}
+        onOpenChange={(o) => { if (!o) setPendingReplace(null); }}
+        onConfirm={async (r) => {
+          await replaceInPlaylist.mutateAsync({ id, trackId: pendingReplace!.id, track: r });
+          toast.success(`Replaced with "${r.title}"`);
+        }}
       />
     </div>
   );

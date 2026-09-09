@@ -2,17 +2,26 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
+import { toast } from 'sonner';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { TrackList } from '@/components/track/TrackList';
+import { ReplaceTrackDialog } from '@/components/track/ReplaceTrackDialog';
 import { ImportPlaylistDialog } from '@/components/track/ImportPlaylistDialog';
 import { UploadTrackDialog } from '@/components/track/UploadTrackDialog';
 import { StartSessionDialog, JoinSessionDialog } from '@/components/session/SessionDialogs';
 import { CheckIcon, DownloadIcon, QueueIcon, UploadIcon } from '@/components/icons';
 import { useAuth } from '@/components/providers/AuthProvider';
-import { useQueryHistory, useQueryLikes, useQueryPlaylists, useQueryUploads } from '@/hooks/useLibrary';
+import {
+  useExecuteReplaceLike,
+  useQueryHistory,
+  useQueryLikes,
+  useQueryPlaylists,
+  useQueryUploads,
+} from '@/hooks/useLibrary';
 import { useOfflineStore } from '@/stores/useOfflineStore';
 import { useOnline } from '@/lib/useOnline';
+import type { Track } from '@/types/track';
 
 export default function LibraryPage() {
   const { user } = useAuth();
@@ -22,10 +31,12 @@ export default function LibraryPage() {
   const isOnline = useOnline();
   const downloadedIds = useOfflineStore((s) => s.downloaded);
   const { data: uploads = [] } = useQueryUploads();
+  const replaceLike = useExecuteReplaceLike();
   const [importOpen, setImportOpen] = useState(false);
   const [uploadOpen, setUploadOpen] = useState(false);
   const [startOpen, setStartOpen] = useState(false);
   const [joinOpen, setJoinOpen] = useState(false);
+  const [pendingReplace, setPendingReplace] = useState<Track | null>(null);
 
   if (!user) return <div className="text-muted-foreground py-12 text-center">Sign in to see your library</div>;
 
@@ -109,7 +120,7 @@ export default function LibraryPage() {
           <div className="text-sm text-muted-foreground mb-4">
             {liked.length} {liked.length === 1 ? 'track' : 'tracks'}
           </div>
-          <TrackList tracks={liked} />
+          <TrackList tracks={liked} context={{ type: 'liked' }} onReplace={setPendingReplace} />
         </TabsContent>
         <TabsContent value="recent" className="mt-6"><TrackList tracks={history} /></TabsContent>
         <TabsContent value="playlists" className="mt-6">
@@ -150,6 +161,16 @@ export default function LibraryPage() {
           )}
         </TabsContent>
       </Tabs>
+
+      <ReplaceTrackDialog
+        track={pendingReplace}
+        open={!!pendingReplace}
+        onOpenChange={(o) => { if (!o) setPendingReplace(null); }}
+        onConfirm={async (r) => {
+          await replaceLike.mutateAsync({ oldId: pendingReplace!.id, track: r });
+          toast.success(`Replaced with "${r.title}"`);
+        }}
+      />
     </div>
   );
 }
