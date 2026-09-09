@@ -61,6 +61,10 @@ What's in it:
 
 - **Guitar tabs** — a button in the player finds the tab for the playing song
   on Songsterr (links out; they block embedding).
+- **Android app: native player + Android Auto** — browse playlists, likes,
+  recents and uploads, search and voice, shuffle/repeat, radio at the end of
+  the queue, all from the car. Reinstall the APK (older APKs keep working
+  against this server). Sideloads need Android Auto's "Unknown sources".
 - **AI bug triage** — reports arrive in Discord with a summary, likely cause
   and what to check first, instead of only raw logs.
 - **Custom uploads** — Library → Upload adds a song from your own files;

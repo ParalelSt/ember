@@ -56,9 +56,12 @@ npm run open:ios     # open the iOS project in Xcode
 (Android Studio's bundled one) and the SDK, syncs the URL in, and runs Gradle.
 It refuses `localhost` URLs, since a phone can't reach them.
 
-For **Android Auto**, see [ANDROID_AUTO.md](ANDROID_AUTO.md) — the short version
-is that the car needs native playback, which this WebView wrapper doesn't have
-yet.
+Audio on Android is **native** (Media3/ExoPlayer in `EmberPlaybackService`),
+which is what puts Ember in **Android Auto**: browse, search, transport,
+shuffle/repeat, radio. The WebView is the phone UI and talks to the player
+through the `EmberPlayer` Capacitor plugin. Details, emulator recipes and the
+Android Auto "Unknown sources" step: [ANDROID_AUTO.md](ANDROID_AUTO.md).
+An emulator build points at the Mac with `npm run apk -- http://10.0.2.2:3010`.
 
 There is **no web build step** — nothing is bundled. `sync` only pushes the
 config (incl. `EMBER_APP_URL`) and the fallback `public/` page into the native
