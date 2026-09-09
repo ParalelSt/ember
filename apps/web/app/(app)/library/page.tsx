@@ -2,17 +2,21 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
+import { toast } from 'sonner';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { TrackList } from '@/components/track/TrackList';
 import { ImportPlaylistDialog } from '@/components/track/ImportPlaylistDialog';
 import { UploadTrackDialog } from '@/components/track/UploadTrackDialog';
 import { StartSessionDialog, JoinSessionDialog } from '@/components/session/SessionDialogs';
-import { CheckIcon, DownloadIcon, QueueIcon, UploadIcon } from '@/components/icons';
+import { CheckIcon, CloudDownloadIcon, DownloadIcon, QueueIcon, UploadIcon, XCircleIcon } from '@/components/icons';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { useQueryHistory, useQueryLikes, useQueryPlaylists, useQueryUploads } from '@/hooks/useLibrary';
 import { useOfflineStore } from '@/stores/useOfflineStore';
 import { useOnline } from '@/lib/useOnline';
+import { LIKED_PIN, cancelDownload, pinLiked } from '@/lib/offline';
+import { useNativeOfflinePresent } from '@/lib/offlineNative';
 
 export default function LibraryPage() {
   const { user } = useAuth();
@@ -21,6 +25,11 @@ export default function LibraryPage() {
   const { data: playlists = [] } = useQueryPlaylists();
   const isOnline = useOnline();
   const downloadedIds = useOfflineStore((s) => s.downloaded);
+  const pins = useOfflineStore((s) => s.pins);
+  const likedInFlight = useOfflineStore((s) => s.inFlight[LIKED_PIN]);
+  const likedDownloaded = useOfflineStore((s) => s.downloaded.includes(LIKED_PIN));
+  const nativePresent = useNativeOfflinePresent();
+  const searchParams = useSearchParams();
   const { data: uploads = [] } = useQueryUploads();
   const [importOpen, setImportOpen] = useState(false);
   const [uploadOpen, setUploadOpen] = useState(false);
@@ -29,22 +38,37 @@ export default function LibraryPage() {
 
   if (!user) return <div className="text-muted-foreground py-12 text-center">Sign in to see your library</div>;
 
-  // Offline: hide Liked + Recent (those need server data) and show only the
-  // playlists that have been pinned via the Download-for-offline button.
+  // Offline: hide Recent (needs server data) and show only pinned content —
+  // the playlists (and Liked, on Android) pinned via "Download for offline".
+  // Pins come from the offline store itself, not the (online-only) playlists
+  // query, so this renders correctly even before that query ever succeeded.
   if (!isOnline) {
-    const downloadedPlaylists = playlists.filter((p) => downloadedIds.includes(p.id));
+    const wantsLiked = searchParams.get('tab') === 'liked';
+    if (wantsLiked) {
+      return (
+        <div>
+          <h1 className="text-3xl md:text-4xl font-bold tracking-tight mb-2">Your library</h1>
+          <p className="text-sm text-muted-foreground mb-6">Offline — Liked songs from your last sync.</p>
+          <TrackList tracks={liked} />
+        </div>
+      );
+    }
     return (
       <div>
         <h1 className="text-3xl md:text-4xl font-bold tracking-tight mb-2">Your library</h1>
         <p className="text-sm text-muted-foreground mb-6">Offline — showing downloaded playlists only.</p>
-        {downloadedPlaylists.length === 0 ? (
+        {pins.length === 0 ? (
           <div className="text-muted-foreground py-12 text-center">
             No downloaded playlists. Go online and tap “Download for offline” on a playlist to pin it.
           </div>
         ) : (
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
-            {downloadedPlaylists.map((p) => (
-              <Link key={p.id} href={`/playlist/${p.id}`} className="group p-4 rounded-md bg-card hover:bg-card/80 transition-colors">
+            {pins.map((p) => (
+              <Link
+                key={p.id}
+                href={p.id === LIKED_PIN ? '/library?tab=liked' : `/playlist/${p.id}`}
+                className="group p-4 rounded-md bg-card hover:bg-card/80 transition-colors"
+              >
                 <div className="aspect-square rounded-md shadow-soft bg-linear-to-br from-ember to-[oklch(0.3_0.15_25)]" />
                 <div className="mt-3 flex items-center gap-1.5">
                   <CheckIcon className="h-3.5 w-3.5 text-ember shrink-0" />
@@ -106,8 +130,43 @@ export default function LibraryPage() {
           <TabsTrigger value="uploads">Uploads</TabsTrigger>
         </TabsList>
         <TabsContent value="liked" className="mt-6">
-          <div className="text-sm text-muted-foreground mb-4">
-            {liked.length} {liked.length === 1 ? 'track' : 'tracks'}
+          <div className="flex items-center justify-between gap-3 mb-4">
+            <div className="text-sm text-muted-foreground">
+              {liked.length} {liked.length === 1 ? 'track' : 'tracks'}
+            </div>
+            {nativePresent && (
+              likedInFlight ? (
+                <Button variant="outline" size="sm" onClick={() => cancelDownload(LIKED_PIN)} title="Cancel download">
+                  <XCircleIcon className="h-4 w-4" />
+                  <span className="tabular-nums">{likedInFlight.current}/{likedInFlight.total}</span>
+                  Cancel
+                </Button>
+              ) : likedDownloaded ? (
+                <Button variant="outline" size="sm" disabled className="text-ember border-ember/40">
+                  <CheckIcon className="h-4 w-4" />
+                  Downloaded
+                </Button>
+              ) : (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={async () => {
+                    try {
+                      await pinLiked(liked);
+                      toast.success('Downloading Liked songs');
+                    } catch (e) {
+                      toast.error(`Couldn't download — please try again.`);
+                      void e;
+                    }
+                  }}
+                  disabled={!liked.length}
+                  title="Save Liked songs for offline playback"
+                >
+                  <CloudDownloadIcon className="h-4 w-4" />
+                  Download for offline
+                </Button>
+              )
+            )}
           </div>
           <TrackList tracks={liked} />
         </TabsContent>

@@ -13,6 +13,8 @@ import {
 import { usePlayerStore } from '@/stores/usePlayerStore';
 import { useSessionStore } from '@/stores/useSessionStore';
 import { useSettingsStore } from '@/stores/useSettingsStore';
+import { useOfflineStore } from '@/stores/useOfflineStore';
+import { localSrcFor } from '@/lib/offlineNative';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { useExecuteRecordPlay, useQueryHistory, useQueryLikes } from '@/hooks/useLibrary';
 import { useQueryLyrics } from '@/hooks/useLyrics';
@@ -307,7 +309,9 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     // duration until the engine volunteers one, which on desktop it often
     // never does.
     setDuration(chooseDuration(track.durationSec ?? 0, null));
-    b.load(apiUrl(track.streamUrl), { autoplay, startAt });
+    // A downloaded copy plays even online: instant, and no data used.
+    const local = localSrcFor(track, useOfflineStore.getState().trackFiles);
+    b.load(local ?? apiUrl(track.streamUrl), { autoplay, startAt });
     // Set metadata in the same synchronous turn so the notification carries
     // across a track boundary (Firefox Android tears it down otherwise).
     b.setMetadata(track);

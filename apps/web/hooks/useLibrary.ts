@@ -4,7 +4,10 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { usePlayerStore } from '@/stores/usePlayerStore';
+import { useOfflineStore } from '@/stores/useOfflineStore';
 import { logger } from '@/lib/logger/client';
+import { LIKED_PIN, pinLiked } from '@/lib/offline';
+import { nativeOfflinePresent } from '@/lib/offlineNative';
 import type { Playlist, Track } from '@/types/track';
 
 export const QK = {
@@ -122,7 +125,15 @@ export function useExecuteToggleLike() {
     onError: (_e, _vars, ctx) => {
       if (ctx?.prev) qc.setQueryData(QK.likes, ctx.prev);
     },
-    onSettled: () => qc.invalidateQueries({ queryKey: QK.likes }),
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: QK.likes });
+      // Liked songs are pinned for offline: keep the native download synced
+      // with every like/unlike so it never drifts (re-pin only downloads
+      // what's missing and drops what's no longer liked).
+      if (nativeOfflinePresent() && useOfflineStore.getState().pins.some((p) => p.id === LIKED_PIN)) {
+        void pinLiked(qc.getQueryData<Track[]>(QK.likes) ?? []);
+      }
+    },
   });
 }
 

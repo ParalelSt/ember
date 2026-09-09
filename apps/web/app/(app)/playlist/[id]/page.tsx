@@ -13,6 +13,7 @@ import { usePlayer } from '@/components/player/PlayerProvider';
 import { usePlayerStore } from '@/stores/usePlayerStore';
 import { useOfflineStore } from '@/stores/useOfflineStore';
 import { cancelDownload, downloadPlaylist, isStale, removeDownload } from '@/lib/offline';
+import { useOfflineDownloadAllowed } from '@/lib/offlineNative';
 import { useOnline } from '@/lib/useOnline';
 import {
   useExecuteAddToPlaylist,
@@ -40,6 +41,7 @@ export default function PlaylistPage({ params }: { params: Promise<{ id: string 
   // Offline pin state — hooks must run before early returns. `data` may be
   // undefined here on first render; the staleness effect guards against that.
   const isOnline = useOnline();
+  const offlineAllowed = useOfflineDownloadAllowed();
   const downloaded = useOfflineStore((s) => s.downloaded.includes(id));
   // Shuffle state — hooks must run before the early returns below.
   const shuffleOn = usePlayerStore((s) => s.shuffle);
@@ -207,7 +209,8 @@ export default function PlaylistPage({ params }: { params: Promise<{ id: string 
         >
           <ShuffleIcon className="h-5 w-5" />
         </Button>
-        {inFlight ? (
+        {offlineAllowed && (
+        inFlight ? (
           <Button
             variant="outline"
             size="sm"
@@ -215,8 +218,8 @@ export default function PlaylistPage({ params }: { params: Promise<{ id: string 
             title="Cancel download"
           >
             <XCircleIcon className="h-4 w-4" />
+            Downloading…
             <span className="tabular-nums">{inFlight.current}/{inFlight.total}</span>
-            Cancel
           </Button>
         ) : downloaded ? (
           <Button
@@ -268,7 +271,7 @@ export default function PlaylistPage({ params }: { params: Promise<{ id: string 
             <CloudDownloadIcon className="h-4 w-4" />
             Download for offline
           </Button>
-        )}
+        ))}
         <Button variant="ghost" size="icon" onClick={() => setConfirmDeleteOpen(true)} aria-label="Delete playlist">
           <TrashIcon className="h-4 w-4" />
         </Button>
