@@ -205,17 +205,25 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         const st = usePlayerStore.getState();
         const cur = st.queue[st.index];
         if (!cur || isUnavailable(cur)) return;
-        api.getTrackAvailability(cur.id).then(({ unavailable, reason }) => {
+        const erroredId = cur.id;
+        api.getTrackAvailability(erroredId).then(({ unavailable, reason }) => {
           if (!unavailable) return;
           const at = new Date().toISOString();
+          const before = usePlayerStore.getState();
+          // The request outlived its track: the user may have skipped away
+          // (or the track left the queue) while it was in flight. Flag the
+          // entry by id wherever it now sits, but only auto-advance if it's
+          // still the one actually playing — otherwise this stale answer
+          // would fire an unrequested extra skip from wherever they are now.
+          if (!before.queue.some((t) => t.id === erroredId)) return;
           usePlayerStore.setState((s) => ({
-            queue: s.queue.map((t) => (t.id === cur.id ? { ...t, unavailableAt: at, unavailableReason: reason } : t)),
+            queue: s.queue.map((t) => (t.id === erroredId ? { ...t, unavailableAt: at, unavailableReason: reason } : t)),
           }));
           qc.invalidateQueries({ queryKey: QK.likes });
           qc.invalidateQueries({ queryKey: QK.history });
           qc.invalidateQueries({ queryKey: ['playlist'] });
-          logger.breadcrumb('playback', 'unavailable', { trackId: cur.id, reason });
-          nextRef.current();
+          logger.breadcrumb('playback', 'unavailable', { trackId: erroredId, reason });
+          if (before.queue[before.index]?.id === erroredId) nextRef.current();
         }).catch(() => {});
       },
     };
