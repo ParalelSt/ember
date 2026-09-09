@@ -25,6 +25,17 @@
 
         </activity>
 
+        <service
+            android:name=".EmberPlaybackService"
+            android:exported="true"
+            android:foregroundServiceType="mediaPlayback">
+            <intent-filter>
+                <action android:name="androidx.media3.session.MediaLibraryService" />
+                <action android:name="android.media.browse.MediaBrowserService" />
+            </intent-filter>
+        </service>
+        <meta-data android:name="com.google.android.gms.car.application" android:resource="@xml/automotive_app_desc" />
+
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileprovider"
@@ -39,9 +50,9 @@
     <!-- Permissions -->
 
     <uses-permission android:name="android.permission.INTERNET" />
-    <!-- Android 14+ (targetSdk 34+) requires the typed FGS permission to start
-         the media-session plugin's foregroundServiceType="mediaPlayback"
-         service; the plugin's own manifest only declares the generic
-         FOREGROUND_SERVICE. -->
+    <!-- The native player (EmberPlaybackService) runs as a mediaPlayback
+         foreground service; Android 14+ wants the typed permission too. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 </manifest>
