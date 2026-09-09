@@ -59,6 +59,7 @@ class EmberPlaybackService : MediaLibraryService() {
                 // included; the web app skips its own history call on Android.
                 val track = item?.let { TrackItems.trackOf(it) } ?: return
                 io.execute { runCatching { api.recordPlay(track) }.onFailure { Log.w(TAG, "history: ${it.message}") } }
+                maybeExtendQueue()
             }
         })
         session = MediaLibrarySession.Builder(this, player, Callback()).build()
@@ -70,6 +71,30 @@ class EmberPlaybackService : MediaLibraryService() {
     }
 
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaLibrarySession = session
+
+    /** Never fall silent in the car: when the last item starts playing, pull
+     *  recommendations seeded by it and append them, minus anything already
+     *  queued. Mirrors the web app's radio in the simplest form; the web app's
+     *  own extension (when its UI is alive) reaches here through setQueue and
+     *  wins by arriving first, in which case this sees a non-last item and
+     *  does nothing. */
+    private fun maybeExtendQueue() {
+        if (player.repeatMode != Player.REPEAT_MODE_OFF) return
+        if (player.currentMediaItemIndex != player.mediaItemCount - 1) return
+        val current = player.currentMediaItem?.let { TrackItems.trackOf(it) } ?: return
+        if (current.optString("source") != "youtube") return
+        val seed = current.optString("sourceId")
+        val queued = (0 until player.mediaItemCount).map { player.getMediaItemAt(it).mediaId }.toSet()
+        io.execute {
+            val more = runCatching { api.recommended(seed) }
+                .getOrElse { Log.w(TAG, "radio: ${it.message}"); emptyList() }
+                .filter { it.optString("id") !in queued }
+                .take(20)
+                .map { TrackItems.toMediaItem(it, api.baseUrl) }
+            Log.i(TAG, "radio after ${current.optString("title")}: +${more.size}")
+            if (more.isNotEmpty()) android.os.Handler(mainLooper).post { player.addMediaItems(more) }
+        }
+    }
 
     /** Run a browse fetch off the main thread and turn it into a LibraryResult.
      *  The car shows whatever list comes back, so failures become one-line
