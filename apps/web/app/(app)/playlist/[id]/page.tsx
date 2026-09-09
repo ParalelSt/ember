@@ -13,6 +13,7 @@ import { usePlayer } from '@/components/player/PlayerProvider';
 import { usePlayerStore } from '@/stores/usePlayerStore';
 import { useOfflineStore } from '@/stores/useOfflineStore';
 import { cancelDownload, downloadPlaylist, isStale, removeDownload } from '@/lib/offline';
+import { isUnavailable } from '@/lib/playback/skipUnavailable';
 import { useOnline } from '@/lib/useOnline';
 import {
   useExecuteAddToPlaylist,
@@ -53,7 +54,7 @@ export default function PlaylistPage({ params }: { params: Promise<{ id: string 
   useEffect(() => {
     if (!downloaded || !isOnline || !data) return;
     let cancelled = false;
-    isStale(id, data.tracks.map((t) => t.id))
+    isStale(id, data.tracks.filter((t) => !isUnavailable(t)).map((t) => t.id))
       .then((s) => { if (!cancelled) setStale(s); })
       .catch(() => {});
     return () => { cancelled = true; };
@@ -255,7 +256,8 @@ export default function PlaylistPage({ params }: { params: Promise<{ id: string 
             onClick={async () => {
               try {
                 await downloadPlaylist(playlist, tracks);
-                toast.success(`Downloaded "${playlist.name}"`);
+                const skipped = tracks.filter((t) => isUnavailable(t)).length;
+                toast.success(`Downloaded "${playlist.name}"${skipped > 0 ? `, ${skipped} unavailable skipped` : ''}`);
               } catch (e) {
                 if ((e as Error).name !== 'AbortError') {
                   toast.error(`Couldn't download the playlist — please try again.`);

@@ -14,6 +14,7 @@ import {
   writeStreamToOpfs,
 } from '@/lib/opfs';
 import { apiUrl } from '@/lib/api';
+import { isUnavailable } from '@/lib/playback/skipUnavailable';
 
 export const OFFLINE_SCHEMA_VERSION = 1 as const;
 
@@ -127,12 +128,15 @@ export async function hydrateOfflineStore(): Promise<void> {
 }
 
 export async function downloadPlaylist(playlist: Playlist, tracks: Track[]): Promise<void> {
-  if (tracks.length === 0) throw new Error('Playlist is empty');
+  // Never pin a track we already know the server can't stream — pinning it
+  // would just burn a failed fetch and leave a hole in the offline copy.
+  const playable = tracks.filter((t) => !isUnavailable(t));
+  if (playable.length === 0) throw new Error('Playlist is empty');
 
   await requestPersistence();
 
   const store = useOfflineStore.getState();
-  store.beginDownload(playlist.id, tracks.length);
+  store.beginDownload(playlist.id, playable.length);
 
   const ac = new AbortController();
   aborters.set(playlist.id, ac);
@@ -146,9 +150,9 @@ export async function downloadPlaylist(playlist: Playlist, tracks: Track[]): Pro
   let totalBytesThisPlaylist = 0;
 
   try {
-    for (let i = 0; i < tracks.length; i++) {
+    for (let i = 0; i < playable.length; i++) {
       if (ac.signal.aborted) throw new DOMException('Aborted', 'AbortError');
-      const t = tracks[i];
+      const t = playable[i];
       store.updateProgress(playlist.id, i, t.title);
 
       const audioRes = await fetch(
