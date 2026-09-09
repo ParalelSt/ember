@@ -25,8 +25,35 @@ export function findCachedFile(videoId: string): string | null {
 
 const VIDEO_ID_RE = /^[A-Za-z0-9_-]{11}$/;
 
+export type UnavailableReason = 'removed' | 'private' | 'geo' | 'members' | 'terminated' | 'unavailable';
+
+/** YouTube's mood, not the video's fate. Checked FIRST, and an unknown
+ *  message is transient too: a wrong "unavailable" hides a song from everyone,
+ *  a wrong "transient" only costs one more failed play. */
+const TRANSIENT_RE = /HTTP Error \d{3}|not a bot|confirm your age|timed out|Connection reset|Remote end closed|unable to download|Unable to extract|Failed to extract|Requested format is not available|nsig|Temporary failure|Name or service not known/i;
+
+const UNAVAILABLE_RULES: [RegExp, UnavailableReason][] = [
+  [/account associated with this video has been terminated/i, 'terminated'],
+  [/removed by the uploader|has been removed|copyright claim|Terms of Service/i, 'removed'],
+  [/Private video|This video is private/i, 'private'],
+  [/not available in your country|not made this video available/i, 'geo'],
+  [/members-only|channel's members/i, 'members'],
+  [/Video unavailable|This video is unavailable|This video is not available|does not exist/i, 'unavailable'],
+];
+
+export function classifyYtdlpFailure(message: string): UnavailableReason | null {
+  if (TRANSIENT_RE.test(message)) return null;
+  for (const [re, reason] of UNAVAILABLE_RULES) if (re.test(message)) return reason;
+  return null;
+}
+
+export function isUnavailableError(e: unknown): e is Error & { status: 410; unavailableReason: UnavailableReason } {
+  return !!(e as { unavailableReason?: string } | undefined)?.unavailableReason;
+}
+
 interface PythonError extends Error {
   status?: number;
+  unavailableReason?: UnavailableReason;
 }
 
 // Prepend the venv's bin/ to PATH so yt-dlp can find ffmpeg installed via
@@ -87,6 +114,8 @@ function runPython<T = unknown>(args: string[], { timeoutMs = 30000 } = {}): Pro
         // server log via reject_ below.
         const e: PythonError = new Error(pythonReason(stderr, code));
         e.status = 502;
+        const reason = classifyYtdlpFailure(e.message);
+        if (reason) { e.status = 410; e.unavailableReason = reason; }
         return reject_(e);
       }
       try {

@@ -1,5 +1,6 @@
 import 'server-only';
-import { ensureDownloaded, findCachedFile } from '@/lib/sources/youtube';
+import { ensureDownloaded, findCachedFile, isUnavailableError } from '@/lib/sources/youtube';
+import { markTrackUnavailable } from '@/lib/trackAvailability';
 import { serverLogger } from '@/lib/logger/server';
 
 /** Background caching of played tracks, deliberately SLOW.
@@ -72,12 +73,18 @@ async function drain(): Promise<void> {
         await ensureDownloaded(job.videoId);
         queued.delete(job.videoId);
       } catch (e) {
-        const attempt = job.attempt + 1;
-        if (attempt >= MAX_ATTEMPTS) {
+        if (isUnavailableError(e)) {
+          // No point backing off and retrying a removed video.
           queued.delete(job.videoId);
-          serverLogger.error('stream', 'cache warm gave up', { videoId: job.videoId, attempts: attempt }, e);
+          void markTrackUnavailable(`youtube:${job.videoId}`, e.unavailableReason);
         } else {
-          queue.push({ ...job, attempt, readyAt: Date.now() + BACKOFF_MS[attempt - 1] });
+          const attempt = job.attempt + 1;
+          if (attempt >= MAX_ATTEMPTS) {
+            queued.delete(job.videoId);
+            serverLogger.error('stream', 'cache warm gave up', { videoId: job.videoId, attempts: attempt }, e);
+          } else {
+            queue.push({ ...job, attempt, readyAt: Date.now() + BACKOFF_MS[attempt - 1] });
+          }
         }
       }
       await sleep(GAP_MS);
