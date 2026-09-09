@@ -130,3 +130,14 @@ does:
 # from apps/mobile
 node ../../node_modules/@capacitor/cli/bin/capacitor sync android
 ```
+
+### Stale `capgo-capacitor-media-session` project path
+
+Gradle failing with `No matching variant of project :capgo-capacitor-media-session
+… No variants exist` means the plugin's `projectDir` in the generated
+`android/capacitor.settings.gradle` points somewhere npm did not install it
+(npm may place the package under `apps/mobile/node_modules` or hoist it to the
+root, and the checked-in generated path can go stale). Fix: `npm install` at the
+repo root, then re-run `cap sync` with the URL you want kept, e.g.
+`EMBER_APP_URL="https://ember.<tailnet>.ts.net" npx cap sync android`, which
+rewrites the path. Do not hand-edit the generated file.
