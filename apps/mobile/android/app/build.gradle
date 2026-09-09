@@ -62,6 +62,10 @@ dependencies {
     implementation "androidx.coordinatorlayout:coordinatorlayout:$androidxCoordinatorLayoutVersion"
     implementation "androidx.core:core-splashscreen:$coreSplashScreenVersion"
     implementation project(':capacitor-android')
+    // WebViewCompat.addDocumentStartJavaScript, to give the bundled offline
+    // page the Capacitor runtime (see MainActivity). Capacitor pulls webkit in
+    // itself, but only as `implementation`, so it is not on our classpath.
+    implementation "androidx.webkit:webkit:$androidxWebkitVersion"
     // Offline downloads (see OfflineStore.kt / ServerApi.kt).
     implementation "com.squareup.okhttp3:okhttp:$okhttpVersion"
     testImplementation "com.squareup.okhttp3:mockwebserver:$okhttpVersion"

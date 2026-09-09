@@ -55,6 +55,7 @@ node tests/session-authorization.test.mjs           # or: npm run test:sessions
 node tests/tabs.test.mjs                            # or: npm run test:tabs
 node tests/tabs-ui.test.mjs                         # or: npm run test:tabs-ui
 node tests/offline-android-ui.test.mjs               # or: npm run test:offline-ui
+node tests/offline-page.test.mjs                    # or: npm run test:offline-page (no server needed)
 node tests/resume-position.test.mjs                 # or: npm run test:resume
 node tests/playback-position.test.mjs               # or: npm run test:position
 node tests/duration.test.mjs                        # or: npm run test:duration

@@ -34,6 +34,11 @@ const config: CapacitorConfig = {
     // Needed for an http:// dev URL (localhost / LAN IP). Harmless for https
     // funnel URLs. When true, `cap sync` adds android:usesCleartextTraffic.
     cleartext: true,
+    // With no network the server's pages cannot load at all, so a cold start
+    // would sit on "Connecting to server…" forever even with downloads on the
+    // phone. Capacitor loads this bundled page instead when the remote URL
+    // fails: a small offline player over the EmberOffline plugin's pins.
+    errorPath: 'offline.html',
   },
   android: {
     // Allow the webview to load mixed content during development (e.g. http

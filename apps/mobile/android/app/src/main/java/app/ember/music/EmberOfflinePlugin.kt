@@ -1,5 +1,10 @@
 package app.ember.music
 
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
+import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
 import com.getcapacitor.JSArray
 import com.getcapacitor.JSObject
 import com.getcapacitor.Plugin
@@ -38,6 +43,22 @@ class EmberOfflinePlugin : Plugin() {
 
     @PluginMethod fun status(call: PluginCall) = call.resolve(status())
 
+    /** The track JSON of one pin, in pin order. `status()` deliberately carries
+     *  only ids and file paths, so the cold-start page (public/offline.html) has
+     *  no titles to show without this. */
+    @PluginMethod fun tracks(call: PluginCall) {
+        val id = call.getString("id") ?: return call.reject("id required")
+        val pin = store.pins().firstOrNull { it.id == id } ?: return call.reject("no such pin")
+        val out = JSArray()
+        pin.trackIds.forEach { tid -> store.track(tid)?.let { out.put(it) } }
+        call.resolve(JSObject().put("tracks", out))
+    }
+
+    /** The server this build points at. The offline page is loaded from the
+     *  bundled assets, so `location` tells it nothing about where to retry. */
+    @PluginMethod fun serverUrl(call: PluginCall) =
+        call.resolve(JSObject().put("url", ServerConfig.baseUrl(context)))
+
     @PluginMethod fun pin(call: PluginCall) {
         val id = call.getString("id") ?: return call.reject("id required")
         val name = call.getString("name") ?: id
@@ -48,6 +69,7 @@ class EmberOfflinePlugin : Plugin() {
         // would skip the pin forever. Same for `failed`, so a retry is possible.
         OfflineDownloadService.cancelled.remove(id)
         OfflineDownloadService.failed.remove(id)
+        requestNotificationsIfNeeded()
         store.upsertPin(id, name, tracks)
         OfflineDownloadService.start(context)
         call.resolve(status())
@@ -72,5 +94,17 @@ class EmberOfflinePlugin : Plugin() {
         store.pins().forEach { OfflineDownloadService.cancelled.add(it.id) }
         store.clearAll(); OfflineDownloadService.failed.clear()
         call.resolve(status()); notifyListeners("offline", status())
+    }
+
+    /** On Android 13+ the download notification is dropped silently until the
+     *  user grants POST_NOTIFICATIONS, so ask when a pin is made and the
+     *  permission is still missing (Android itself stops showing the dialog
+     *  once it has been refused). Fire and forget on purpose: the download must
+     *  not wait on an answer, and a refusal only costs the progress notice. */
+    private fun requestNotificationsIfNeeded() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return
+        if (ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) return
+        val activity = activity ?: return
+        runCatching { ActivityCompat.requestPermissions(activity, arrayOf(Manifest.permission.POST_NOTIFICATIONS), 8731) }
     }
 }

@@ -83,7 +83,9 @@ class OfflineDownloadService : Service() {
             // the most recent start, so a pin that arrived while this drain was
             // working keeps the service (and its notification) alive for the
             // drain it queued behind us.
-            if (stopSelfResult(startId)) stopForeground(STOP_FOREGROUND_REMOVE)
+            // ServiceCompat, not Service.stopForeground(int): the int overload is
+            // API 24+ and minSdk here is 23, so a plain call would crash on 23.
+            if (stopSelfResult(startId)) androidx.core.app.ServiceCompat.stopForeground(this, androidx.core.app.ServiceCompat.STOP_FOREGROUND_REMOVE)
         }
     }
 
