@@ -54,6 +54,8 @@ class EmberPlayerPlugin : Plugin() {
         put("duration", if (c.duration > 0) c.duration / 1000.0 else 0.0)
         put("index", if (c.mediaItemCount == 0) -1 else c.currentMediaItemIndex)
         put("trackId", c.currentMediaItem?.mediaId)
+        put("shuffle", c.shuffleModeEnabled)
+        put("repeat", c.repeatMode)
     }
 
     private val listener = object : Player.Listener {

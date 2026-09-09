@@ -15,15 +15,19 @@ import org.json.JSONObject
 object TrackItems {
     const val EXTRA_TRACK = "ember.track"
 
+    /** optString hands back the STRING "null" for a JSON null; treat it as absent. */
+    private fun str(track: JSONObject, key: String): String =
+        if (track.isNull(key)) "" else track.optString(key)
+
     fun toMediaItem(track: JSONObject, baseUrl: String): MediaItem {
-        val stream = track.optString("streamUrl")
+        val stream = str(track, "streamUrl")
         val uri = if (stream.startsWith("http")) stream else baseUrl + stream
-        val artwork = track.optString("artworkUrl").takeIf { it.isNotBlank() }
+        val artwork = str(track, "artworkUrl").takeIf { it.isNotBlank() }
         val extras = Bundle().apply { putString(EXTRA_TRACK, track.toString()) }
         val meta = MediaMetadata.Builder()
-            .setTitle(track.optString("title"))
-            .setArtist(track.optString("artist"))
-            .setAlbumTitle(track.optString("album").takeIf { it.isNotBlank() && it != "null" })
+            .setTitle(str(track, "title"))
+            .setArtist(str(track, "artist"))
+            .setAlbumTitle(str(track, "album").takeIf { it.isNotBlank() })
             .setArtworkUri(artwork?.let { Uri.parse(it) })
             .setIsBrowsable(false)
             .setIsPlayable(true)

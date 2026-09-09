@@ -23,6 +23,15 @@ class TrackItemsTest {
         assertTrue(item.mediaMetadata.isPlayable == true)
     }
 
+    /** org.json's optString hands back the STRING "null" for a JSON null, and
+     *  Media3 then tries to open a file literally called "null" for artwork. */
+    @Test fun jsonNullsDoNotBecomeTheWordNull() {
+        val bare = JSONObject("""{"id":"upload:x","title":"Up","artist":"Me","album":null,"artworkUrl":null,"streamUrl":"/api/uploads/x/stream"}""")
+        val item = TrackItems.toMediaItem(bare, "https://ember.example")
+        assertEquals(null, item.mediaMetadata.artworkUri)
+        assertEquals(null, item.mediaMetadata.albumTitle)
+    }
+
     @Test fun theTrackJsonRoundTripsThroughTheItem() {
         val item = TrackItems.toMediaItem(track, "https://ember.example")
         assertEquals("Song", TrackItems.trackOf(item)!!.getString("title"))

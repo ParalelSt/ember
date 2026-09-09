@@ -37,12 +37,14 @@ class EmberPlaybackService : MediaLibraryService() {
     private lateinit var player: ExoPlayer
     private lateinit var session: MediaLibrarySession
     lateinit var api: ServerApi
+    private lateinit var tree: BrowseTree
     private val io = Executors.newSingleThreadExecutor()
 
     override fun onCreate() {
         super.onCreate()
         val baseUrl = ServerConfig.baseUrl(this)
         api = ServerApi(baseUrl) { CookieManager.getInstance().getCookie(baseUrl) }
+        tree = BrowseTree(api)
         // Streams go through the same OkHttp client, so they carry the cookie
         // and get the same 401 retry as the JSON calls.
         val dataSource = OkHttpDataSource.Factory(api.http)
@@ -60,9 +62,32 @@ class EmberPlaybackService : MediaLibraryService() {
             }
         })
         session = MediaLibrarySession.Builder(this, player, Callback()).build()
+        // Shuffle and repeat as buttons on the now-playing screen (car + notification).
+        session.setCustomLayout(ImmutableList.of(
+            androidx.media3.session.CommandButton.Builder().setDisplayName("Shuffle").setIconResId(android.R.drawable.ic_menu_rotate).setSessionCommand(SessionCommand(COMMAND_SHUFFLE, Bundle.EMPTY)).build(),
+            androidx.media3.session.CommandButton.Builder().setDisplayName("Repeat").setIconResId(android.R.drawable.ic_menu_revert).setSessionCommand(SessionCommand(COMMAND_REPEAT, Bundle.EMPTY)).build(),
+        ))
     }
 
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaLibrarySession = session
+
+    /** Run a browse fetch off the main thread and turn it into a LibraryResult.
+     *  The car shows whatever list comes back, so failures become one-line
+     *  items rather than an empty screen with no explanation. */
+    private fun onIo(fn: () -> List<MediaItem>): ListenableFuture<LibraryResult<ImmutableList<MediaItem>>> {
+        val future = com.google.common.util.concurrent.SettableFuture.create<LibraryResult<ImmutableList<MediaItem>>>()
+        io.execute {
+            val items: List<MediaItem> = try {
+                if (CookieManager.getInstance().getCookie(api.baseUrl).isNullOrBlank()) listOf(tree.placeholder("Sign in on your phone"))
+                else fn()
+            } catch (e: Exception) {
+                Log.w(TAG, "browse: ${e.message}")
+                listOf(tree.placeholder("Can't reach Ember"))
+            }
+            future.set(LibraryResult.ofItemList(ImmutableList.copyOf(items), null))
+        }
+        return future
+    }
 
     override fun onTaskRemoved(rootIntent: Intent?) {
         // Swiped away from recents while paused: nothing to keep alive.
@@ -78,6 +103,7 @@ class EmberPlaybackService : MediaLibraryService() {
 
     inner class Callback : MediaLibrarySession.Callback {
         override fun onConnect(session: MediaSession, controller: MediaSession.ControllerInfo): MediaSession.ConnectionResult {
+            Log.i(TAG, "connect from ${controller.packageName} (legacy=${controller.controllerVersion == MediaSession.ControllerInfo.LEGACY_CONTROLLER_VERSION})")
             val commands = MediaSession.ConnectionResult.DEFAULT_SESSION_AND_LIBRARY_COMMANDS.buildUpon()
                 .add(SessionCommand(COMMAND_SHUFFLE, Bundle.EMPTY))
                 .add(SessionCommand(COMMAND_REPEAT, Bundle.EMPTY))
@@ -101,16 +127,49 @@ class EmberPlaybackService : MediaLibraryService() {
         /** A controller (the car, or a plugin call) may hand over items that
          *  carry only a mediaId. Rebuild the playable item from the JSON that
          *  rides in the extras, or drop what we cannot resolve. */
-        override fun onAddMediaItems(session: MediaSession, controller: MediaSession.ControllerInfo, items: MutableList<MediaItem>): ListenableFuture<MutableList<MediaItem>> {
-            val resolved = items.mapNotNull { item ->
-                if (item.localConfiguration != null) item
-                else TrackItems.trackOf(item)?.let { TrackItems.toMediaItem(it, api.baseUrl) }
-            }.toMutableList()
-            return Futures.immediateFuture(resolved)
+        override fun onAddMediaItems(session: MediaSession, controller: MediaSession.ControllerInfo, items: MutableList<MediaItem>): ListenableFuture<MutableList<MediaItem>> =
+            Futures.immediateFuture(items.mapNotNull(::resolve).toMutableList())
+
+        override fun onGetLibraryRoot(session: MediaLibrarySession, browser: MediaSession.ControllerInfo, params: LibraryParams?): ListenableFuture<LibraryResult<MediaItem>> {
+            Log.i(TAG, "root for ${browser.packageName} recent=${params?.isRecent} suggested=${params?.isSuggested}")
+            return Futures.immediateFuture(LibraryResult.ofItem(tree.root(), params))
+        }
+        override fun onGetChildren(session: MediaLibrarySession, browser: MediaSession.ControllerInfo, parentId: String, page: Int, pageSize: Int, params: LibraryParams?): ListenableFuture<LibraryResult<ImmutableList<MediaItem>>> {
+            Log.i(TAG, "children of $parentId for ${browser.packageName}")
+            return onIo { tree.children(parentId) }
+        }
+        override fun onGetItem(session: MediaLibrarySession, browser: MediaSession.ControllerInfo, mediaId: String): ListenableFuture<LibraryResult<MediaItem>> =
+            Futures.immediateFuture(LibraryResult.ofError(LibraryResult.RESULT_ERROR_BAD_VALUE))
+        override fun onSearch(session: MediaLibrarySession, browser: MediaSession.ControllerInfo, query: String, params: LibraryParams?): ListenableFuture<LibraryResult<Void>> {
+            io.execute {
+                val n = runCatching { tree.search(query).size }.getOrElse { Log.w(TAG, "search: ${it.message}"); 0 }
+                Log.i(TAG, "search \"$query\" for ${browser.packageName} -> $n")
+                session.notifySearchResultChanged(browser, query, n, params)
+            }
+            return Futures.immediateFuture(LibraryResult.ofVoid())
+        }
+        override fun onGetSearchResult(session: MediaLibrarySession, browser: MediaSession.ControllerInfo, query: String, page: Int, pageSize: Int, params: LibraryParams?): ListenableFuture<LibraryResult<ImmutableList<MediaItem>>> {
+            Log.i(TAG, "search results \"$query\" for ${browser.packageName}")
+            return onIo { tree.search(query) }
+        }
+        /** The car tapped a track inside a list. A legacy browser sends ONE item
+         *  with only its id, so play the rest of the list it was shown in too;
+         *  the web app sends the whole queue with the track JSON attached. */
+        override fun onSetMediaItems(session: MediaSession, controller: MediaSession.ControllerInfo, items: MutableList<MediaItem>, startIndex: Int, startPositionMs: Long): ListenableFuture<MediaSession.MediaItemsWithStartPosition> {
+            val resolved: List<MediaItem> =
+                if (items.size == 1 && items[0].localConfiguration == null && TrackItems.trackOf(items[0]) == null)
+                    tree.queueFor(items[0].mediaId).map { TrackItems.toMediaItem(it, api.baseUrl) }
+                else items.mapNotNull(::resolve)
+            Log.i(TAG, "set ${items.size} item(s) from ${controller.packageName} -> queue of ${resolved.size}")
+            return Futures.immediateFuture(MediaSession.MediaItemsWithStartPosition(resolved, startIndex.coerceIn(0, maxOf(0, resolved.size - 1)), startPositionMs))
         }
 
-        // Browse tree arrives in Task 4.
-        override fun onGetLibraryRoot(session: MediaLibrarySession, browser: MediaSession.ControllerInfo, params: LibraryParams?): ListenableFuture<LibraryResult<MediaItem>> =
-            Futures.immediateFuture(LibraryResult.ofError(LibraryResult.RESULT_ERROR_NOT_SUPPORTED))
+        /** Playable item for whatever a controller handed us: already complete,
+         *  carrying its track JSON, or just an id the car has seen before. */
+        private fun resolve(item: MediaItem): MediaItem? {
+            if (item.localConfiguration != null) return item
+            val json = TrackItems.trackOf(item) ?: tree.trackById(item.mediaId) ?: return null
+            return TrackItems.toMediaItem(json, api.baseUrl)
+        }
     }
 }
