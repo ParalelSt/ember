@@ -19,8 +19,12 @@ SB=/tmp/ember-sandbox && mkdir -p "$SB" && cp -R pocketbase/pb_data "$SB/pb_data
 ./pocketbase/pocketbase serve --http=127.0.0.1:8091 --dir="$SB/pb_data" \
   --hooksDir=pocketbase/pb_hooks &
 
-# 3. Build once (turbopack dev is unreliable here — always test a real build)
-cd apps/web && npx next build --webpack
+# 3. Build once (turbopack dev is unreliable here — always test a real build).
+#    POCKETBASE_URL matters HERE, not only at start: the browser's /pb/* proxy
+#    target is baked in at build time. Without it the build points at :8090 and
+#    every sign-in through the form fails with a 500 (the tests never noticed
+#    because they inject a session cookie instead of logging in).
+cd apps/web && POCKETBASE_URL=http://127.0.0.1:8091 npx next build --webpack
 
 # 4. Two app servers: one WITH an AI key, one WITHOUT.
 #    MAX_UPLOAD_MB=1 keeps the uploads "too large" case fast.
