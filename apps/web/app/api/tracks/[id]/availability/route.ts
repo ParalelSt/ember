@@ -14,7 +14,7 @@ export async function GET(_req: NextRequest, ctx: RouteContext<'/api/tracks/[id]
         );
       return Response.json({ unavailable: !!row.unavailable_at, reason: row.unavailable_reason || null });
     } catch (e) {
-      // Never saved to the tracks table yet — nothing to be unavailable.
+      // Never saved to the tracks table yet: nothing to be unavailable.
       if ((e as { status?: number }).status === 404) return Response.json({ unavailable: false, reason: null });
       throw e;
     }

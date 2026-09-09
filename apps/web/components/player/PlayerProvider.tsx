@@ -199,7 +199,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         usePlayerStore.setState({ position: 0 });
 
         // The engine failed on this track for a reason other than "we already
-        // knew it was dead" — ask the server whether it just became dead (a
+        // knew it was dead": ask the server whether it just became dead (a
         // removed YouTube video failing mid-stream) and, if so, flag it and
         // move on rather than sitting on a track that will never play.
         const st = usePlayerStore.getState();
@@ -213,7 +213,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
           // The request outlived its track: the user may have skipped away
           // (or the track left the queue) while it was in flight. Flag the
           // entry by id wherever it now sits, but only auto-advance if it's
-          // still the one actually playing — otherwise this stale answer
+          // still the one actually playing, otherwise this stale answer
           // would fire an unrequested extra skip from wherever they are now.
           if (!before.queue.some((t) => t.id === erroredId)) return;
           usePlayerStore.setState((s) => ({

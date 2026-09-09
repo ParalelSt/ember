@@ -21,7 +21,7 @@ function fmt(sec: number | undefined): string {
   return `${m}:${String(s).padStart(2, '0')}`;
 }
 
-/** Words for `unavailableReason` codes — shown as the badge's `title`
+/** Words for `unavailableReason` codes, shown as the badge's `title`
  *  tooltip so a listener can see why without opening the replace dialog. */
 function reasonLabel(reason: string | null | undefined): string {
   switch (reason) {

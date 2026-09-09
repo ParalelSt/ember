@@ -1,8 +1,8 @@
-/** Skipping unavailable tracks during playback — Task 3.
+/** Skipping unavailable tracks during playback, Task 3.
  *
  *      node tests/skip-unavailable.test.mjs   # or: npm run test:skip
  *
- *  Pure logic — no server, browser or audio device. Mirrors the loader
+ *  Pure logic: no server, browser or audio device. Mirrors the loader
  *  pattern in tests/duration.test.mjs: read the source, strip TS-only
  *  syntax, import as a data: URL. */
 import { readFileSync } from 'node:fs';
@@ -28,7 +28,7 @@ const { isUnavailable, nextPlayable } = await import(
 const out = [];
 const check = (name, fn) => {
   try { fn(); out.push([name, true]); console.log(`PASS  ${name}`); }
-  catch (e) { out.push([name, false]); console.log(`FAIL  ${name}  — ${e.message}`); }
+  catch (e) { out.push([name, false]); console.log(`FAIL  ${name}: ${e.message}`); }
 };
 
 /** Minimal track builder: id + whether it's unavailable. */

@@ -1,4 +1,4 @@
-/** Unavailable songs — Task 1 (server foundation).
+/** Unavailable songs, Task 1 (server foundation).
  *
  *      node tests/unavailable.test.mjs
  *
@@ -6,7 +6,7 @@
  *  through playlists and likes, the stream route's 410, and the flag
  *  clearing itself once a track plays again.
  *
- *  Sandbox (this worktree's own — never :8091/:3010, another worker owns
+ *  Sandbox (this worktree's own, never :8091/:3010, another worker owns
  *  those):
  *
  *    PB_DIR=/private/tmp/claude-501/-Users-aronmatoic-Documents-Main-Projects/b6633bdb-0822-453b-a2b4-a986b08153a8/scratchpad/unavail-pb
@@ -35,7 +35,7 @@ const FLAKY = 'ccccccccccc';
 const out = [];
 const check = (name, pass, detail = '') => {
   out.push({ name, pass });
-  console.log(`${pass ? 'PASS' : 'FAIL'}  ${name}${detail ? `  — ${detail}` : ''}`);
+  console.log(`${pass ? 'PASS' : 'FAIL'}  ${name}${detail ? `: ${detail}` : ''}`);
 };
 
 async function adminToken() {
@@ -94,7 +94,7 @@ const writeList = (name, ids) => fs.writeFileSync(`${SB}/${name}`, ids.join('\n'
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 /** markTrackUnavailable / clearTrackUnavailable are fire-and-forget (`void`)
- *  in the route so the stream response doesn't wait on a PocketBase write —
+ *  in the route so the stream response doesn't wait on a PocketBase write:
  *  poll briefly rather than racing it. */
 async function pollTrack(getPlaylist, videoId, predicate, tries = 20) {
   let track;
@@ -107,7 +107,43 @@ async function pollTrack(getPlaylist, videoId, predicate, tries = 20) {
   return track;
 }
 
-// ── A0: setup — a playlist with DEAD, LIVE, FLAKY; DEAD marked unavailable,
+/** Ground truth check against PocketBase directly (not the app's 60s-cached
+ *  listUnavailableIds()), so idempotency doesn't depend on app cache timing. */
+async function waitClearedInPB(videoIds, tries = 30) {
+  const wanted = new Set(videoIds.map((id) => `youtube:${id}`));
+  for (let i = 0; i < tries; i++) {
+    const rows = await fetch(`${PB}/api/collections/tracks/records?filter=${encodeURIComponent('unavailable_at != ""')}&perPage=200`,
+      { headers: { Authorization: tok } }).then((r) => r.json());
+    const stillFlagged = (rows.items ?? []).some((r) => wanted.has(r.external_id));
+    if (!stillFlagged) return;
+    await sleep(100);
+  }
+}
+
+// ── Idempotency: a rerun against a reused sandbox must not start with any of
+//    this test's ids already flagged from a previous pass. Stream each one
+//    with the fake player set to succeed, so the server's own clearIfFlagged
+//    path (not a hand-written PocketBase patch) clears the PB flag AND nulls
+//    the app's in-memory unavailable-ids cache. A raw admin PATCH would clear
+//    PocketBase but leave that cache stale for up to 60s, which would make
+//    the very next run's B2 candidate-ordering check fail intermittently. ──
+const IDEMPOTENCY_IDS = [DEAD, LIVE, FLAKY, 'bbbbbbbbbbb', 'eeeeeeeeeee', 'fffffffffff'];
+writeList('unavailable.txt', []);
+writeList('transient.txt', []);
+for (const id of IDEMPOTENCY_IDS) {
+  const r = await call(`/api/youtube/stream/${id}`).catch(() => null);
+  await r?.arrayBuffer().catch(() => {});
+}
+await waitClearedInPB(IDEMPOTENCY_IDS);
+// Streaming to clear the flag also downloads each id to MUSIC_DIR as a side
+// effect of succeeding. Left in place, that cached file would poison A1/A4/B2
+// below (a cache hit skips the fake player entirely, so DEAD/FLAKY/eee could
+// never fail again). Delete it now that the flag is cleared.
+for (const id of IDEMPOTENCY_IDS) {
+  try { fs.unlinkSync(`${SB}/music/${id}.m4a`); } catch {}
+}
+
+// ── A0: setup, a playlist with DEAD, LIVE, FLAKY; DEAD marked unavailable,
 //    FLAKY marked transient (a 403 that must never be mistaken for dead) ──
 const plRes = await call('/api/playlists', { method: 'POST', body: JSON.stringify({ name: 'Unavailable test' }) });
 const { playlist } = await plRes.json().catch(() => ({}));
@@ -142,7 +178,7 @@ check('A2 DEAD carries unavailableAt', !!dead2?.unavailableAt, JSON.stringify(de
 check('A2 DEAD carries reason removed', dead2?.unavailableReason === 'removed', dead2?.unavailableReason);
 check('A2 LIVE has no unavailableAt', !live2?.unavailableAt, JSON.stringify(live2));
 
-// ── A3: one truth — liking the dead track carries the same flag through
+// ── A3: one truth, liking the dead track carries the same flag through
 //    /api/likes ──
 const likeRes = await call('/api/likes', { method: 'POST', body: JSON.stringify({ track: track(DEAD, 'Dead Song') }) });
 check('A3 like DEAD ok', likeRes.status === 201, `status ${likeRes.status}`);
@@ -151,7 +187,7 @@ const likedDead = likes.tracks?.find((t) => t.id === `youtube:${DEAD}`);
 check('A3 liked DEAD carries the flag', !!likedDead?.unavailableAt && likedDead.unavailableReason === 'removed', JSON.stringify(likedDead));
 
 // ── A4: a transient failure (bot check / 403) must NOT be mistaken for
-//    dead — no 410, and the playlist doesn't flag it ──
+//    dead: no 410, and the playlist doesn't flag it ──
 const s4 = await call(`/api/youtube/stream/${FLAKY}`);
 check('A4 stream FLAKY is >= 500', s4.status >= 500, `status ${s4.status}`);
 check('A4 stream FLAKY is not 410', s4.status !== 410, `status ${s4.status}`);
@@ -188,7 +224,7 @@ check('B1 LIVE unavailable === false', availLive?.unavailable === false, JSON.st
 const availSignedOut = await fetch(`${APP}/api/tracks/${encodeURIComponent(`youtube:${DEAD}`)}/availability`, { redirect: 'manual' });
 check('B1 signed-out is 401', availSignedOut.status === 401, `status ${availSignedOut.status}`);
 
-// ── B2: replacements endpoint — same-song candidates first, DEAD excluded,
+// ── B2: replacements endpoint, same-song candidates first, DEAD excluded,
 //    at most 5; a flagged candidate disappears ──
 const REPL_BBB = 'bbbbbbbbbbb';
 const REPL_EEE = 'eeeeeeeeeee';
@@ -202,7 +238,7 @@ check(
   JSON.stringify(repl1Ids),
 );
 
-// eee needs a tracks row before it can be flagged — like it first (upserts),
+// eee needs a tracks row before it can be flagged: like it first (upserts),
 // then list it as unavailable and stream it once to trigger the 410 + flag.
 const likeEeeRes = await call('/api/likes', { method: 'POST', body: JSON.stringify({ track: track(REPL_EEE, 'Replacement Song (Live)') }) });
 check('B2 like eee to seed its tracks row', likeEeeRes.status === 201, `status ${likeEeeRes.status}`);
@@ -222,7 +258,7 @@ check('B2 flagged eee disappears from candidates', !repl2Ids.includes(`youtube:$
 // Put unavailable.txt back to just DEAD for the rest of part B.
 writeList('unavailable.txt', [DEAD]);
 
-// ── B3: replace DEAD with bbb — 200, merged false, bbb takes DEAD's index ──
+// ── B3: replace DEAD with bbb: 200, merged false, bbb takes DEAD's index ──
 const replaceRes3 = await call(`/api/playlists/${playlistId}/tracks/${encodeURIComponent(`youtube:${DEAD}`)}/replace`, {
   method: 'POST',
   body: JSON.stringify({ track: track(REPL_BBB, 'Replacement Song') }),
@@ -240,7 +276,7 @@ check(
 );
 
 // ── B4: re-add DEAD (lands last, flagged), then replace it with LIVE
-//    (already present) — merged true, DEAD gone, exactly one LIVE ──
+//    (already present): merged true, DEAD gone, exactly one LIVE ──
 const readdRes = await call(`/api/playlists/${playlistId}/tracks`, {
   method: 'POST',
   body: JSON.stringify({ track: track(DEAD, 'Dead Song') }),

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import {
@@ -22,7 +22,7 @@ function fmt(sec: number | undefined): string {
   return `${m}:${String(s).padStart(2, '0')}`;
 }
 
-// A single stable reference for "no candidates yet" — `data: candidates =
+// A single stable reference for "no candidates yet": `data: candidates =
 // []` would create a NEW array literal every render while the query is
 // loading, which broke the render-time reset below (the `!==` check saw a
 // fresh array every time and looped forever).
@@ -61,6 +61,22 @@ export function ReplaceTrackDialog({ track, open, onOpenChange, onConfirm }: Pro
     setPickedId(candidates[0]?.id ?? null);
   }
 
+  // Roving tabindex: only the checked radio is in the tab order (per the
+  // WAI-ARIA radiogroup pattern), and ArrowUp/ArrowDown both move the
+  // selection and move focus with it, wrapping at the ends.
+  const radioRefs = useRef<Record<string, HTMLButtonElement | null>>({});
+  const moveSelection = (delta: number) => {
+    const idx = candidates.findIndex((c) => c.id === pickedId);
+    const next = candidates[(idx + delta + candidates.length) % candidates.length];
+    if (!next) return;
+    setPickedId(next.id);
+    radioRefs.current[next.id]?.focus();
+  };
+  const onRadioGroupKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'ArrowDown') { e.preventDefault(); moveSelection(1); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); moveSelection(-1); }
+  };
+
   const handleConfirm = async () => {
     const picked = candidates.find((c) => c.id === pickedId);
     if (!picked) return;
@@ -70,7 +86,7 @@ export function ReplaceTrackDialog({ track, open, onOpenChange, onConfirm }: Pro
       onOpenChange(false);
     } catch {
       toast.error("Couldn't replace that. Reload and try again.");
-      // Keep the dialog open — the picked candidate stays selected so the
+      // Keep the dialog open: the picked candidate stays selected so the
       // listener can just retry instead of re-picking from scratch.
     } finally {
       setSubmitting(false);
@@ -92,15 +108,21 @@ export function ReplaceTrackDialog({ track, open, onOpenChange, onConfirm }: Pro
             No match found on YouTube. You can remove the song instead.
           </div>
         ) : (
-          <div role="radiogroup" className="flex flex-col gap-1 max-h-[55vh] overflow-y-auto -mx-1 px-1">
+          <div
+            role="radiogroup"
+            onKeyDown={onRadioGroupKeyDown}
+            className="flex flex-col gap-1 max-h-[55vh] overflow-y-auto -mx-1 px-1"
+          >
             {candidates.map((c) => {
               const checked = c.id === pickedId;
               return (
                 <button
                   key={c.id}
+                  ref={(el) => { radioRefs.current[c.id] = el; }}
                   type="button"
                   role="radio"
                   aria-checked={checked}
+                  tabIndex={checked ? 0 : -1}
                   onClick={() => setPickedId(c.id)}
                   className={`flex items-center gap-3 rounded-md px-2 py-2 text-left transition-colors hover:bg-card ${checked ? 'bg-card ring-1 ring-ember' : ''}`}
                 >

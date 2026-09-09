@@ -128,7 +128,7 @@ export async function hydrateOfflineStore(): Promise<void> {
 }
 
 export async function downloadPlaylist(playlist: Playlist, tracks: Track[]): Promise<void> {
-  // Never pin a track we already know the server can't stream — pinning it
+  // Never pin a track we already know the server can't stream: pinning it
   // would just burn a failed fetch and leave a hole in the offline copy.
   const playable = tracks.filter((t) => !isUnavailable(t));
   if (playable.length === 0) throw new Error('Playlist is empty');

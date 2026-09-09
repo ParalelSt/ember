@@ -1,18 +1,22 @@
-/** UI check for Task 4: the greyed unavailable row and the find-replacement
- *  dialog on the playlist page.
+/** UI check (U1-U4 of the plan's Task 5): the greyed unavailable row, the
+ *  playlist Play button skipping past it, and the find-replacement dialog.
  *
  *      node tests/unavailable-ui.test.mjs   # or: npm run test:unavailable-ui
  *
  *  Proves, against a real browser:
- *   - a flagged track's row carries data-unavailable="true", the
- *     "Unavailable" badge, and a "Find replacement" button
- *   - clicking it opens the dialog, which lists at least one candidate (the
- *     fake player's search results)
- *   - confirming a candidate replaces the row and shows the
- *     `Replaced with "<title>"` toast
+ *   - U1: a flagged track's row carries data-unavailable="true", the
+ *     "Unavailable" badge, and its own Play button is disabled
+ *     (aria-label="Unavailable")
+ *   - U2: the page's big Play button starts the playlist, skips the dead
+ *     first track with a "Skipped: ..." toast, and lands on the live track
+ *   - U3: the "Find replacement" dialog lists the fake player's candidates,
+ *     and confirming one replaces the row (checked both in the DOM and via
+ *     GET /api/playlists/<id>)
+ *   - U4: no console errors other than media decode errors from the fake
+ *     audio bytes
  *
  *  Same sandbox as tests/unavailable.test.mjs (PB 8092, app 3011, the
- *  fake-player.sh wiring). Task 5 will extend this file. */
+ *  fake-player.sh wiring). */
 import { execSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -39,7 +43,7 @@ const LIVE = 'aaaaaaaaaaa';
 function findChrome() {
   if (process.env.CHROME_PATH) return process.env.CHROME_PATH;
   const root = path.join(process.env.HOME ?? '', 'Library/Caches/ms-playwright');
-  if (!fs.existsSync(root)) throw new Error('no Playwright browser cache — set CHROME_PATH');
+  if (!fs.existsSync(root)) throw new Error('no Playwright browser cache: set CHROME_PATH');
   for (const d of fs.readdirSync(root).filter((x) => x.startsWith('chromium-')).sort().reverse()) {
     const found = execSync(
       `find "${path.join(root, d)}" -maxdepth 6 -type f \\( -name "Google Chrome for Testing" -o -name "Chromium" \\) 2>/dev/null | head -1`,
@@ -47,13 +51,13 @@ function findChrome() {
     ).trim();
     if (found) return found;
   }
-  throw new Error('no Chromium binary found — set CHROME_PATH');
+  throw new Error('no Chromium binary found: set CHROME_PATH');
 }
 
 const checks = [];
 const check = (name, pass, detail = '') => {
   checks.push([name, pass]);
-  console.log(`${pass ? 'PASS' : 'FAIL'}  ${name}${detail ? `  — ${detail}` : ''}`);
+  console.log(`${pass ? 'PASS' : 'FAIL'}  ${name}${detail ? `: ${detail}` : ''}`);
 };
 
 async function adminToken() {
@@ -112,10 +116,30 @@ const { playlist } = await plRes.json().catch(() => ({}));
 check('setup: playlist created', plRes.status === 201 && !!playlist?.id, `status ${plRes.status}`);
 const playlistId = playlist?.id;
 
-for (const [id, title] of [[DEAD, 'Dead Song'], [LIVE, 'Live Song']]) {
+// DEAD is named "Replacement Song" to match the brief's U2/U3 checks and
+// tests/fake-player.sh's `search`/`match` results (the same-song candidate
+// bbbbbbbbbbb shares that title, which is the point: it's a re-upload).
+for (const [id, title] of [[DEAD, 'Replacement Song'], [LIVE, 'Live Song']]) {
   const r = await call(`/api/playlists/${playlistId}/tracks`, { method: 'POST', body: JSON.stringify({ track: track(id, title) }) });
   check(`setup: added ${title}`, r.status === 201, `status ${r.status}`);
 }
+
+// upsertTrack only backfills MISSING fields on an existing tracks row, so a
+// title from an earlier test run against the same PocketBase (e.g. DEAD as
+// "Dead Song" in tests/unavailable.test.mjs, same fixed video id) sticks
+// around forever otherwise. Force both titles here so the UI actually shows
+// what this test expects, regardless of run order.
+async function forceTitle(videoId, title) {
+  const rows = await fetch(`${PB_URL}/api/collections/tracks/records?filter=${encodeURIComponent(`external_id = "youtube:${videoId}"`)}`,
+    { headers: { Authorization: tok } }).then((r) => r.json());
+  const row = rows.items?.[0];
+  if (row && row.title !== title) {
+    await fetch(`${PB_URL}/api/collections/tracks/records/${row.id}`, { method: 'PATCH',
+      headers: { Authorization: tok, 'content-type': 'application/json' }, body: JSON.stringify({ title }) });
+  }
+}
+await forceTitle(DEAD, 'Replacement Song');
+await forceTitle(LIVE, 'Live Song');
 
 // Flag DEAD the same way part A of unavailable.test.mjs does: list it in the
 // fake player's unavailable file, then hit the stream route so the server's
@@ -148,46 +172,96 @@ page.on('pageerror', (e) => consoleErrors.push(`pageerror: ${e.message}`));
 
 await page.goto(`${APP_URL}/playlist/${playlistId}`, { waitUntil: 'networkidle' });
 
+// ── U1: the flagged row ──
 const row = page.locator('[data-unavailable="true"]');
 await row.waitFor({ timeout: 10_000 }).catch(() => {});
-check('the dead track row carries data-unavailable="true"', (await row.count()) === 1, `count ${await row.count()}`);
+check('U1: the dead track row carries data-unavailable="true"', (await row.count()) === 1, `count ${await row.count()}`);
 
 const badge = row.getByTestId('unavailable-badge');
 // The badge is styled uppercase (CSS text-transform), so innerText renders
 // as "UNAVAILABLE" even though the DOM text content is "Unavailable".
 const badgeText = (await badge.count()) === 1 ? (await badge.innerText()).toLowerCase() : '';
-check('the row shows the "Unavailable" badge', badgeText === 'unavailable', badgeText);
+check('U1: the row shows the "Unavailable" badge', badgeText === 'unavailable', badgeText);
+
+const unavailablePlayBtn = row.getByRole('button', { name: 'Unavailable' });
+check('U1: the row\'s own Play button is disabled', await unavailablePlayBtn.isDisabled().catch(() => false));
 
 const findReplacementBtn = row.getByRole('button', { name: 'Find replacement' });
-check('the row shows a "Find replacement" button', (await findReplacementBtn.count()) === 1);
+check('U1: the row shows a "Find replacement" button', (await findReplacementBtn.count()) === 1);
 
+// ── U2: the page's big Play button starts the playlist at track 0 (the dead
+// one), skips it with a toast, and plays the live track instead ──
+// The row Play buttons share this aria-label too, but the big button is the
+// first `button[aria-label="Play"]` in the DOM (it sits above the track list).
+const bigPlayBtn = page.locator('button[aria-label="Play"]').first();
+await bigPlayBtn.click();
+await page.getByText(/^Skipped: "Replacement Song"/).waitFor({ timeout: 5_000 });
+check('U2: a "Skipped" toast names the dead track', true);
+// The live track still has to actually download through the fake player
+// (tests/fake-player.sh sleeps ~2s to simulate that), so give this more
+// room than the toast's 5s bound.
+let audioSrc = '';
+for (let i = 0; i < 100; i++) {
+  audioSrc = await page.evaluate(() => document.querySelector('audio')?.src ?? '');
+  if (audioSrc.includes(LIVE)) break;
+  await sleep(150);
+}
+check('U2: the audio element plays the live track instead', audioSrc.includes(LIVE), audioSrc);
+
+// ── U3: the find-replacement dialog ──
 await findReplacementBtn.click();
 const dialog = page.getByRole('dialog');
 await dialog.waitFor({ timeout: 10_000 });
-check('the replace dialog opens', true);
-check('the dialog header names the dead track', /Replace "Dead Song"/.test(await dialog.innerText()));
+check('U3: the replace dialog opens', true);
+check('U3: the dialog header names the dead track', /Replace "Replacement Song"/.test(await dialog.innerText()));
+
+const firstCandidate = dialog.getByRole('radio').first();
+await firstCandidate.waitFor({ timeout: 10_000 });
+const candidateText = await firstCandidate.innerText();
+check('U3: the top candidate is "Replacement Song" by "Fake Artist"', candidateText.includes('Replacement Song') && candidateText.includes('Fake Artist'), candidateText);
 
 const candidates = dialog.getByRole('radio');
-await candidates.first().waitFor({ timeout: 10_000 });
 const candidateCount = await candidates.count();
-check('the dialog lists at least one candidate', candidateCount >= 1, `${candidateCount} candidate(s)`);
+check('U3: the dialog lists at least one candidate', candidateCount >= 1, `${candidateCount} candidate(s)`);
 
 const replaceBtn = dialog.getByRole('button', { name: 'Replace' });
-check('the Replace button is enabled once a candidate is picked (default selection)', await replaceBtn.isEnabled());
+check('U3: the Replace button is enabled once a candidate is picked (default selection)', await replaceBtn.isEnabled());
 
 await replaceBtn.click();
 await page.getByText(/^Replaced with "/).waitFor({ timeout: 10_000 });
-check('the "Replaced with" toast appears', true);
+check('U3: the "Replaced with" toast appears', true);
 
 await dialog.waitFor({ state: 'hidden', timeout: 10_000 }).catch(() => {});
-check('the dialog closes after a successful replace', (await page.getByRole('dialog').count()) === 0);
+check('U3: the dialog closes after a successful replace', (await page.getByRole('dialog').count()) === 0);
 
 await row.waitFor({ state: 'detached', timeout: 10_000 }).catch(() => {});
 const stillDead = await page.locator('[data-unavailable="true"]').count();
-check('the row is no longer marked unavailable after replacing', stillDead === 0, `${stillDead} still flagged`);
+check('U3: the row is no longer marked unavailable after replacing', stillDead === 0, `${stillDead} still flagged`);
 
-const noisy = consoleErrors.filter((e) => !/favicon|404/.test(e));
-check('no unexpected console errors', noisy.length === 0, noisy.slice(0, 2).join(' | '));
+const replacedRow = page.getByText('Replacement Song', { exact: false }).first();
+check('U3: a row shows "Replacement Song" (the new track) without the badge', (await replacedRow.count()) > 0);
+
+const plAfter = await call(`/api/playlists/${playlistId}`).then((r) => r.json());
+const idsAfter = (plAfter.tracks ?? []).map((t) => t.id);
+check(
+  'U3: GET /api/playlists/<id> returns bbbbbbbbbbb first, aaaaaaaaaaa second',
+  JSON.stringify(idsAfter) === JSON.stringify(['youtube:bbbbbbbbbbb', `youtube:${LIVE}`]),
+  JSON.stringify(idsAfter),
+);
+
+// ── U4: no console errors other than media decode errors from the fake
+// audio bytes (FAKE-AUDIO-<id> isn't real audio, so the <audio> element
+// always fails to decode it, that's expected noise, not a bug) and the page's
+// unrelated lyrics fetch, which 502s in this sandbox (no real lyrics
+// provider or network access; every track detail view hits it regardless of
+// availability, so it's a pre-existing sandbox limitation, not something
+// this feature introduces). Browser "Failed to load resource" console
+// messages don't carry the URL, so match on the 502 status text instead. ──
+const noisy = consoleErrors.filter((e) =>
+  !/favicon|404/.test(e) &&
+  !/MEDIA_ELEMENT_ERROR|no supported source/.test(e) &&
+  !/502 \(Bad Gateway\)/.test(e));
+check('U4: no unexpected console errors', noisy.length === 0, noisy.slice(0, 2).join(' | '));
 
 await browser.close();
 
