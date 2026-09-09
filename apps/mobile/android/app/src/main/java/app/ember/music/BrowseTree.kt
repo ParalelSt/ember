@@ -55,7 +55,20 @@ class BrowseTree(private val api: ServerApi) {
         else -> emptyList()
     }
 
-    fun search(q: String): List<MediaItem> = tracks(api.search(q))
+    /** The car searches on every keystroke, and Media3 asks twice per query
+     *  (onSearch for the count, onGetSearchResult for the list). Against a
+     *  server that allows 40 searches a minute that was a 429 by the time the
+     *  driver finished typing. So: nothing below three characters, and one
+     *  network call per distinct query. */
+    @Volatile private var lastSearch: Pair<String, List<JSONObject>>? = null
+
+    fun search(q: String): List<MediaItem> {
+        val query = q.trim()
+        if (query.length < 3) return emptyList()
+        val cached = lastSearch
+        val results = if (cached != null && cached.first == query) cached.second else api.search(query).also { lastSearch = query to it }
+        return tracks(results)
+    }
 
     private fun tracks(list: List<JSONObject>): List<MediaItem> {
         synchronized(known) { list.forEach { known[it.optString("id")] = it } }

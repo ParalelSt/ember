@@ -29,6 +29,18 @@ class BrowseTreeTest {
         server.shutdown()
     }
 
+    @Test fun searchIsFetchedOncePerQueryAndNotForTinyQueries() {
+        val server = MockWebServer()
+        server.enqueue(MockResponse().setBody("""{"tracks":[{"id":"youtube:s1","title":"Song","artist":"X","streamUrl":"/api/youtube/stream/s1"}]}"""))
+        server.start()
+        val tree = BrowseTree(ServerApi(server.url("/").toString().trimEnd('/')) { "pb_auth=x" })
+        assertEquals(0, tree.search("ab").size)
+        assertEquals(1, tree.search("abc").size)
+        assertEquals(1, tree.search("abc").size)
+        assertEquals(1, server.requestCount)
+        server.shutdown()
+    }
+
     /** A legacy browser (Android Auto, the car) taps with only an id. */
     @Test fun aTappedIdResolvesToTheRestOfTheListItWasShownIn() {
         val server = MockWebServer()
