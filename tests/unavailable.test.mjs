@@ -174,6 +174,122 @@ try { fs.unlinkSync(`${SB}/music/${DEAD}.m4a`); } catch {}
 const s5b = await call(`/api/youtube/stream/${DEAD}`);
 check('A5 DEAD re-flags as 410', s5b.status === 410, `status ${s5b.status}`);
 
+// ── Part B: replacement search, replace-in-playlist, availability, radio
+//    filter. Continues from part A's state: DEAD is flagged unavailable
+//    (unavailable.txt = [DEAD]), FLAKY is on transient.txt, and the
+//    playlist from A0 holds DEAD, LIVE, FLAKY in that order. ──
+
+// ── B1: availability endpoint ──
+const availDead = await call(`/api/tracks/${encodeURIComponent(`youtube:${DEAD}`)}/availability`).then((r) => r.json());
+check('B1 DEAD unavailable === true', availDead?.unavailable === true, JSON.stringify(availDead));
+check('B1 DEAD reason === removed', availDead?.reason === 'removed', JSON.stringify(availDead));
+const availLive = await call(`/api/tracks/${encodeURIComponent(`youtube:${LIVE}`)}/availability`).then((r) => r.json());
+check('B1 LIVE unavailable === false', availLive?.unavailable === false, JSON.stringify(availLive));
+const availSignedOut = await fetch(`${APP}/api/tracks/${encodeURIComponent(`youtube:${DEAD}`)}/availability`, { redirect: 'manual' });
+check('B1 signed-out is 401', availSignedOut.status === 401, `status ${availSignedOut.status}`);
+
+// ── B2: replacements endpoint — same-song candidates first, DEAD excluded,
+//    at most 5; a flagged candidate disappears ──
+const REPL_BBB = 'bbbbbbbbbbb';
+const REPL_EEE = 'eeeeeeeeeee';
+const REPL_FFF = 'fffffffffff';
+
+const repl1 = await call(`/api/tracks/${encodeURIComponent(`youtube:${DEAD}`)}/replacements`).then((r) => r.json());
+const repl1Ids = (repl1.candidates ?? []).map((t) => t.id);
+check(
+  'B2 candidates in order bbb, eee, fff',
+  JSON.stringify(repl1Ids) === JSON.stringify([`youtube:${REPL_BBB}`, `youtube:${REPL_EEE}`, `youtube:${REPL_FFF}`]),
+  JSON.stringify(repl1Ids),
+);
+
+// eee needs a tracks row before it can be flagged — like it first (upserts),
+// then list it as unavailable and stream it once to trigger the 410 + flag.
+const likeEeeRes = await call('/api/likes', { method: 'POST', body: JSON.stringify({ track: track(REPL_EEE, 'Replacement Song (Live)') }) });
+check('B2 like eee to seed its tracks row', likeEeeRes.status === 201, `status ${likeEeeRes.status}`);
+writeList('unavailable.txt', [DEAD, REPL_EEE]);
+const streamEee = await call(`/api/youtube/stream/${REPL_EEE}`);
+check('B2 stream eee is 410', streamEee.status === 410, `status ${streamEee.status}`);
+
+let repl2Ids = [];
+for (let i = 0; i < 20; i++) {
+  const repl2 = await call(`/api/tracks/${encodeURIComponent(`youtube:${DEAD}`)}/replacements`).then((r) => r.json());
+  repl2Ids = (repl2.candidates ?? []).map((t) => t.id);
+  if (!repl2Ids.includes(`youtube:${REPL_EEE}`)) break;
+  await sleep(100);
+}
+check('B2 flagged eee disappears from candidates', !repl2Ids.includes(`youtube:${REPL_EEE}`), JSON.stringify(repl2Ids));
+
+// Put unavailable.txt back to just DEAD for the rest of part B.
+writeList('unavailable.txt', [DEAD]);
+
+// ── B3: replace DEAD with bbb — 200, merged false, bbb takes DEAD's index ──
+const replaceRes3 = await call(`/api/playlists/${playlistId}/tracks/${encodeURIComponent(`youtube:${DEAD}`)}/replace`, {
+  method: 'POST',
+  body: JSON.stringify({ track: track(REPL_BBB, 'Replacement Song') }),
+});
+const replaceBody3 = await replaceRes3.json().catch(() => ({}));
+check('B3 replace DEAD->bbb is 200', replaceRes3.status === 200, `status ${replaceRes3.status}`);
+check('B3 merged === false', replaceBody3?.merged === false, JSON.stringify(replaceBody3));
+
+const pl3 = await call(`/api/playlists/${playlistId}`).then((r) => r.json());
+const ids3 = (pl3.tracks ?? []).map((t) => t.id);
+check(
+  'B3 playlist is bbb, LIVE, FLAKY (bbb at DEAD\'s old index)',
+  JSON.stringify(ids3) === JSON.stringify([`youtube:${REPL_BBB}`, `youtube:${LIVE}`, `youtube:${FLAKY}`]),
+  JSON.stringify(ids3),
+);
+
+// ── B4: re-add DEAD (lands last, flagged), then replace it with LIVE
+//    (already present) — merged true, DEAD gone, exactly one LIVE ──
+const readdRes = await call(`/api/playlists/${playlistId}/tracks`, {
+  method: 'POST',
+  body: JSON.stringify({ track: track(DEAD, 'Dead Song') }),
+});
+check('B4 re-add DEAD ok', readdRes.status === 201, `status ${readdRes.status}`);
+const pl4a = await call(`/api/playlists/${playlistId}`).then((r) => r.json());
+const dead4a = pl4a.tracks?.find((t) => t.id === `youtube:${DEAD}`);
+check('B4 re-added DEAD lands last', pl4a.tracks?.[pl4a.tracks.length - 1]?.id === `youtube:${DEAD}`, JSON.stringify(pl4a.tracks?.map((t) => t.id)));
+check('B4 re-added DEAD is flagged', !!dead4a?.unavailableAt, JSON.stringify(dead4a));
+
+const replaceRes4 = await call(`/api/playlists/${playlistId}/tracks/${encodeURIComponent(`youtube:${DEAD}`)}/replace`, {
+  method: 'POST',
+  body: JSON.stringify({ track: track(LIVE, 'Live Song') }),
+});
+const replaceBody4 = await replaceRes4.json().catch(() => ({}));
+check('B4 replace DEAD->LIVE is 200', replaceRes4.status === 200, `status ${replaceRes4.status}`);
+check('B4 merged === true', replaceBody4?.merged === true, JSON.stringify(replaceBody4));
+
+const pl4b = await call(`/api/playlists/${playlistId}`).then((r) => r.json());
+const ids4b = (pl4b.tracks ?? []).map((t) => t.id);
+check('B4 DEAD gone', !ids4b.includes(`youtube:${DEAD}`), JSON.stringify(ids4b));
+check('B4 exactly one LIVE', ids4b.filter((id) => id === `youtube:${LIVE}`).length === 1, JSON.stringify(ids4b));
+
+// ── B5: replacing a track with itself is 400; a second user's replace on
+//    this playlist is 404 and leaves it unchanged ──
+const selfReplaceRes = await call(`/api/playlists/${playlistId}/tracks/${encodeURIComponent(`youtube:${LIVE}`)}/replace`, {
+  method: 'POST',
+  body: JSON.stringify({ track: track(LIVE, 'Live Song') }),
+});
+check('B5 self-replace is 400', selfReplaceRes.status === 400, `status ${selfReplaceRes.status}`);
+
+const other = await user('unavail-other');
+const before5 = await call(`/api/playlists/${playlistId}`).then((r) => r.json()).then((p) => (p.tracks ?? []).map((t) => t.id));
+const otherReplaceRes = await fetch(`${APP}/api/playlists/${playlistId}/tracks/${encodeURIComponent(`youtube:${LIVE}`)}/replace`, {
+  method: 'POST',
+  redirect: 'manual',
+  headers: { cookie: other.cookie, 'content-type': 'application/json' },
+  body: JSON.stringify({ track: track(REPL_BBB, 'Replacement Song') }),
+});
+check('B5 other user replace is 404', otherReplaceRes.status === 404, `status ${otherReplaceRes.status}`);
+const after5 = await call(`/api/playlists/${playlistId}`).then((r) => r.json()).then((p) => (p.tracks ?? []).map((t) => t.id));
+check('B5 playlist unchanged', JSON.stringify(before5) === JSON.stringify(after5), `${JSON.stringify(before5)} vs ${JSON.stringify(after5)}`);
+
+// ── B6: recommended radio excludes flagged tracks ──
+const recRes = await call(`/api/youtube/recommended?seed=${LIVE}`).then((r) => r.json());
+const recIds = (recRes.tracks ?? []).map((t) => t.id);
+check('B6 recommended contains LIVE', recIds.includes(`youtube:${LIVE}`), JSON.stringify(recIds));
+check('B6 recommended excludes DEAD', !recIds.includes(`youtube:${DEAD}`), JSON.stringify(recIds));
+
 const failed = out.filter((o) => !o.pass);
 console.log(`\n${out.length - failed.length}/${out.length} passed`);
 if (failed.length) process.exit(1);

@@ -69,6 +69,10 @@ export const api = {
   getArtist: (channelId: string) => req<ArtistPayload>(`/youtube/artist/${encodeURIComponent(channelId)}`),
   getAlbum: (browseId: string) => req<AlbumDetail>(`/youtube/album/${encodeURIComponent(browseId)}`),
   getTrack: (videoId: string) => req<{ track: Track }>(`/youtube/track/${encodeURIComponent(videoId)}`),
+  getTrackAvailability: (id: string) =>
+    req<{ unavailable: boolean; reason: string | null }>(`/tracks/${encodeURIComponent(id)}/availability`),
+  getReplacements: (id: string) =>
+    req<{ candidates: Track[] }>(`/tracks/${encodeURIComponent(id)}/replacements`),
   saveToServer: (videoId: string) =>
     req<{ ok: true; filePath: string }>(`/youtube/download/${encodeURIComponent(videoId)}`, { method: 'POST' }),
 
@@ -80,6 +84,11 @@ export const api = {
     req<{ ok: true }>(`/playlists/${id}/tracks`, { method: 'POST', body: { track } }),
   removeFromPlaylist: (id: string, trackId: string) =>
     req<{ ok: true }>(`/playlists/${id}/tracks/${encodeURIComponent(trackId)}`, { method: 'DELETE' }),
+  replaceInPlaylist: (playlistId: string, trackId: string, track: Track) =>
+    req<{ ok: true; merged: boolean; track: Track }>(
+      `/playlists/${playlistId}/tracks/${encodeURIComponent(trackId)}/replace`,
+      { method: 'POST', body: { track } },
+    ),
   // — Carlist live sessions —
   createSession: (body: { name?: string; seedPlaylistId?: string }) =>
     req<{ session: { id: string; code: string; name: string } }>('/sessions', { method: 'POST', body }),
