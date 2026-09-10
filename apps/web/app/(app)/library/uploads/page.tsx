@@ -17,7 +17,7 @@ const REF = { kind: 'uploads' } as const;
 export default function UploadsPage() {
   const { user } = useAuth();
   const isOnline = useOnline();
-  const { data: tracks = [], isLoading } = useQueryUploads();
+  const { data: tracks = [], isLoading, isError } = useQueryUploads();
   const context = contextFor(REF);
   const playback = useCollectionPlayback(tracks, context);
   const download = useOfflinePin(REF, titleFor(REF), tracks);
@@ -25,6 +25,7 @@ export default function UploadsPage() {
 
   if (!user) return <div className="text-muted-foreground py-12 text-center">Sign in to see your library</div>;
   if (isLoading && !tracks.length && isOnline) return <div className="text-muted-foreground py-12 text-center">Loading…</div>;
+  if (isError && !tracks.length) return <div className="text-muted-foreground py-12 text-center">Couldn&apos;t load this collection. Please try again.</div>;
 
   const offlineEmpty = !isOnline && tracks.length === 0;
   return (
@@ -37,6 +38,7 @@ export default function UploadsPage() {
       context={context}
       playback={playback}
       download={download}
+      hideActions={offlineEmpty}
       actions={
         <Button variant="outline" size="sm" onClick={() => setUploadOpen(true)}>
           <UploadIcon className="h-4 w-4" /> Upload

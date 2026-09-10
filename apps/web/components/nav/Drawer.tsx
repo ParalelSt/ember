@@ -76,7 +76,8 @@ export function Drawer({ open, onOpenChange }: Props) {
 
         <nav className="px-2 py-3 flex flex-col gap-1">
           {NAV.map(({ href, label, icon: Icon }) => {
-            const isActive = href === '/' ? pathname === '/' : pathname.startsWith(href);
+            // Exact-match Library so a collection sub-route (e.g. /library/liked) doesn't also highlight it.
+            const isActive = href === '/' ? pathname === '/' : href === '/library' ? pathname === '/library' : pathname.startsWith(href);
             return (
               <Link
                 key={href}

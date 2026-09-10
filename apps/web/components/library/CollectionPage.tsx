@@ -35,6 +35,8 @@ export interface CollectionPageProps {
   onRemoveTrack?: (trackId: string) => void;
   emptyMessage: string;
   children?: ReactNode;
+  // When true (no tracks and offline), Play/Shuffle can't do anything useful, so hide them.
+  hideActions?: boolean;
 }
 
 /** Presentational only: the header, action bar and track list shared by
@@ -57,6 +59,7 @@ export function CollectionPage({
   onRemoveTrack,
   emptyMessage,
   children,
+  hideActions,
 }: CollectionPageProps) {
   return (
     <div>
@@ -70,30 +73,34 @@ export function CollectionPage({
         coverBusy={coverBusy}
       >
         <ActionBar>
-          <Button
-            size="icon"
-            onClick={playback.play}
-            disabled={!tracks.length}
-            className="h-12 w-12 rounded-full bg-ember hover:bg-ember-soft text-white shadow-glow"
-            aria-label="Play"
-          >
-            <PlayIcon className="h-5 w-5 fill-current ml-0.5" />
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={playback.shuffle}
-            disabled={!tracks.length}
-            aria-pressed={playback.shuffleOn}
-            className={cn(
-              'h-12 w-12 rounded-full',
-              playback.shuffleOn ? 'text-ember hover:text-ember' : 'text-muted-foreground hover:text-foreground',
-            )}
-            aria-label={playback.active ? (playback.shuffleOn ? 'Shuffle off' : 'Shuffle') : 'Shuffle play'}
-            title={playback.active ? (playback.shuffleOn ? 'Shuffling' : 'Shuffle') : 'Shuffle play'}
-          >
-            <ShuffleIcon className="h-5 w-5" />
-          </Button>
+          {!hideActions && (
+            <>
+              <Button
+                size="icon"
+                onClick={playback.play}
+                disabled={!tracks.length}
+                className="h-12 w-12 rounded-full bg-ember hover:bg-ember-soft text-white shadow-glow"
+                aria-label="Play"
+              >
+                <PlayIcon className="h-5 w-5 fill-current ml-0.5" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={playback.shuffle}
+                disabled={!tracks.length}
+                aria-pressed={playback.shuffleOn}
+                className={cn(
+                  'h-12 w-12 rounded-full',
+                  playback.shuffleOn ? 'text-ember hover:text-ember' : 'text-muted-foreground hover:text-foreground',
+                )}
+                aria-label={playback.active ? (playback.shuffleOn ? 'Shuffle off' : 'Shuffle') : 'Shuffle play'}
+                title={playback.active ? (playback.shuffleOn ? 'Shuffling' : 'Shuffle') : 'Shuffle play'}
+              >
+                <ShuffleIcon className="h-5 w-5" />
+              </Button>
+            </>
+          )}
           {download && <DownloadButton {...download} />}
           {actions}
         </ActionBar>

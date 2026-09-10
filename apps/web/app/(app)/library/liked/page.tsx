@@ -13,13 +13,14 @@ const REF = { kind: 'liked' } as const;
 export default function LikedPage() {
   const { user } = useAuth();
   const isOnline = useOnline();
-  const { data: tracks = [], isLoading } = useQueryLikes();
+  const { data: tracks = [], isLoading, isError } = useQueryLikes();
   const context = contextFor(REF);
   const playback = useCollectionPlayback(tracks, context);
   const download = useOfflinePin(REF, titleFor(REF), tracks);
 
   if (!user) return <div className="text-muted-foreground py-12 text-center">Sign in to see your library</div>;
   if (isLoading && !tracks.length && isOnline) return <div className="text-muted-foreground py-12 text-center">Loading…</div>;
+  if (isError && !tracks.length) return <div className="text-muted-foreground py-12 text-center">Couldn&apos;t load this collection. Please try again.</div>;
 
   const offlineEmpty = !isOnline && tracks.length === 0;
   return (
@@ -32,6 +33,7 @@ export default function LikedPage() {
       context={context}
       playback={playback}
       download={download}
+      hideActions={offlineEmpty}
       emptyMessage={
         offlineEmpty
           ? 'Offline. Open this once while online to see its songs.'
