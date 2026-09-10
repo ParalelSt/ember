@@ -6,6 +6,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { TrackCard } from './TrackCard';
 import { ChevronLeftIcon } from '@/components/icons';
 import { useUiStore } from '@/stores/useUiStore';
+import { gridColsClass, visibleCount } from '@/lib/layout';
 import type { Track } from '@/types/track';
 
 interface Props {
@@ -22,37 +23,25 @@ interface Props {
 
 // When the desktop lyrics panel is open, main shrinks by ~max(40vw, 28rem).
 // Use fewer columns so cards stay legible instead of cramming together.
-const GRID_COLS_DEFAULT = 'grid-cols-2 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6';
-const GRID_COLS_LYRICS = 'grid-cols-2 sm:grid-cols-3 md:grid-cols-3 lg:grid-cols-4';
-
-// One full row at each breakpoint — keep in sync with the grid-cols strings
-// above so the collapsed view never wraps to a second row.
+// The grid-cols strings and the one-row visible count both come from
+// lib/layout.ts's SHELF_ROW_COUNT now, instead of two hand-kept literals.
 function useResponsiveRowCount(lyricsOpen: boolean): number {
+  const variant = lyricsOpen ? 'lyrics' : 'default';
+  // Same pre-mount guess as before: the largest (lg+) count per variant,
+  // since SSR has no window width to measure.
   const [count, setCount] = useState(lyricsOpen ? 4 : 6);
   useEffect(() => {
-    const update = () => {
-      const w = window.innerWidth;
-      if (lyricsOpen) {
-        if (w >= 1024) setCount(4);
-        else if (w >= 640) setCount(3);
-        else setCount(2);
-      } else {
-        if (w >= 1024) setCount(6);
-        else if (w >= 768) setCount(5);
-        else if (w >= 640) setCount(4);
-        else setCount(2);
-      }
-    };
+    const update = () => setCount(visibleCount(variant, window.innerWidth));
     update();
     window.addEventListener('resize', update);
     return () => window.removeEventListener('resize', update);
-  }, [lyricsOpen]);
+  }, [variant]);
   return count;
 }
 
 export function TrackRow({ title, tracks, loading, focusKey, fullscreen }: Props) {
   const lyricsOpen = useUiStore((s) => s.lyricsOpen);
-  const gridCols = lyricsOpen ? GRID_COLS_LYRICS : GRID_COLS_DEFAULT;
+  const gridCols = gridColsClass(lyricsOpen ? 'lyrics' : 'default');
   const rowCount = useResponsiveRowCount(lyricsOpen);
   const hasTracks = !!tracks && tracks.length > 0;
   if (!loading && !hasTracks) return null;
@@ -87,7 +76,7 @@ export function TrackRow({ title, tracks, loading, focusKey, fullscreen }: Props
   return (
     <section className="mb-10">
       <div className="flex items-baseline justify-between gap-3 mb-3">
-        <h2 className="text-xl font-bold tracking-tight">{title}</h2>
+        <h2 className="text-section-title">{title}</h2>
         {canExpand && (
           <Link
             href={`/?focus=${encodeURIComponent(focusKey!)}`}
