@@ -61,6 +61,8 @@ node tests/playback-position.test.mjs               # or: npm run test:position
 node tests/duration.test.mjs                        # or: npm run test:duration
 node tests/public-origin.test.mjs                   # or: npm run test:origin
 node tests/toggles-ui.test.mjs                      # or: npm run test:toggles
+node tests/collections.test.mjs                     # or: npm run test:collections (no server needed)
+node tests/library-collections-ui.test.mjs          # or: npm run test:library-ui
 
 # Privacy switches
 node tests/privacy.test.mjs                         # or: npm run test:privacy
@@ -256,3 +258,24 @@ other's:
 - Every admin route (users, tracks, logs, invites, cleanup) refuses a normal
   member.
 - Signed-out callers get nothing.
+
+## What `library-collections-ui.test.mjs` covers
+
+The rewritten `/library` page (shelves, not tabs) and the three collection
+routes it links to. Uses the same fake `EmberOffline` plugin as
+`offline-android-ui.test.mjs`, so `__emberOfflineCalls` matches between them.
+
+- `/library` shows "Your collections" and "Playlists" shelves, no tablist.
+- The sidebar lists Liked songs, Recently played and Uploads above the
+  playlist links.
+- The Liked page has Play and Shuffle play buttons, a Download for offline
+  button, and downloading it pins `liked`.
+- The Uploads page has an Upload button, a Download for offline button, and
+  downloading it pins `uploads`.
+- The Recently played page is read-only (no Remove buttons), has a Download
+  for offline button, and downloading it pins `recent`.
+- The offline `/library` view lists pinned collections by name, straight from
+  the offline index.
+- A browser without the native offline plugin shows no Download button on a
+  collection page.
+- No page errors in either browser context.
