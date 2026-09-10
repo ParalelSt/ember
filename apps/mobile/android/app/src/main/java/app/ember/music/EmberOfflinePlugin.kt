@@ -19,8 +19,20 @@ import org.json.JSONObject
 class EmberOfflinePlugin : Plugin() {
     private val store by lazy { OfflineStore.shared(context) }
 
+    /** Held so handleOnDestroy can tell OUR listener apart from a newer
+     *  plugin instance's. */
+    private val progressListener: (JSONObject?) -> Unit = { progress -> notifyListeners("offline", status(progress)) }
+
     override fun load() {
-        OfflineDownloadService.listener = { progress -> notifyListeners("offline", status(progress)) }
+        OfflineDownloadService.listener = progressListener
+    }
+
+    override fun handleOnDestroy() {
+        // The listener is a process-wide static: left set, it keeps this dead
+        // plugin (and the WebView behind notifyListeners) reachable for the life
+        // of the process. Only clear it if a newer instance has not taken over.
+        if (OfflineDownloadService.listener === progressListener) OfflineDownloadService.listener = null
+        super.handleOnDestroy()
     }
 
     private fun status(progress: JSONObject? = OfflineDownloadService.current): JSObject {
@@ -29,6 +41,9 @@ class EmberOfflinePlugin : Plugin() {
             val (done, total) = store.progress(p)
             pins.put(JSObject().put("id", p.id).put("name", p.name).put("total", total).put("done", done)
                 .put("failed", OfflineDownloadService.failed[p.id]?.size ?: 0)
+                // Explicit JSON null, not an absent key, so the web type
+                // (failedReason: string | null) is honest about "no failures".
+                .put("failedReason", OfflineDownloadService.failedReason[p.id] ?: JSONObject.NULL)
                 .put("downloading", progress?.optString("id") == p.id)
                 // Exact membership, not just the count: the web side decides a
                 // pin is stale by comparing these ids against the live list.
@@ -69,6 +84,7 @@ class EmberOfflinePlugin : Plugin() {
         // would skip the pin forever. Same for `failed`, so a retry is possible.
         OfflineDownloadService.cancelled.remove(id)
         OfflineDownloadService.failed.remove(id)
+        OfflineDownloadService.failedReason.remove(id)
         requestNotificationsIfNeeded()
         store.upsertPin(id, name, tracks)
         OfflineDownloadService.start(context)
@@ -80,6 +96,7 @@ class EmberOfflinePlugin : Plugin() {
         OfflineDownloadService.cancelled.add(id)
         store.removePin(id)
         OfflineDownloadService.failed.remove(id)
+        OfflineDownloadService.failedReason.remove(id)
         call.resolve(status()); notifyListeners("offline", status())
     }
 
@@ -92,7 +109,7 @@ class EmberOfflinePlugin : Plugin() {
 
     @PluginMethod fun clearAll(call: PluginCall) {
         store.pins().forEach { OfflineDownloadService.cancelled.add(it.id) }
-        store.clearAll(); OfflineDownloadService.failed.clear()
+        store.clearAll(); OfflineDownloadService.failed.clear(); OfflineDownloadService.failedReason.clear()
         call.resolve(status()); notifyListeners("offline", status())
     }
 

@@ -13,6 +13,10 @@ export interface PinStatus {
   /** Track ids currently pinned: lets `isStale` compare against the live
    *  playlist exactly instead of just counting. */
   trackIds: string[];
+  /** Why this pin's first permanent failure happened, so the UI can say what
+   *  to do about it: 'auth', 'storage' or 'http'. Null when nothing failed,
+   *  absent on older native builds. */
+  failedReason?: string | null;
 }
 export interface NativeStatus {
   pins: PinStatus[];

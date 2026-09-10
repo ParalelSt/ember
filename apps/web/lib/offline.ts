@@ -65,6 +65,12 @@ const PLAYLISTS_DIR = 'playlists';
 
 const aborters = new Map<string, AbortController>();
 
+/** hydrateOfflineStore runs once per boot in theory, twice under React
+ *  StrictMode in practice, and the native `offline` subscription has no
+ *  unsubscribe on this path: without this flag every plugin event would be
+ *  applied once per registration. */
+let nativeSubscribed = false;
+
 function extFromContentType(ct: string | null, fallback: string): string {
   if (!ct) return fallback;
   if (ct.includes('webp')) return '.webp';
@@ -111,7 +117,10 @@ async function notifySwIndex(message: SwIndexAdd | SwIndexRemove): Promise<void>
 export async function hydrateOfflineStore(): Promise<void> {
   if (nativeOfflinePresent()) {
     const apply = (s: NativeStatus) => useOfflineStore.getState().setNativeStatus(s);
-    subscribeNative(apply);
+    if (!nativeSubscribed) {
+      nativeSubscribed = true;
+      subscribeNative(apply);
+    }
     apply(await nativeStatus());
     return;
   }

@@ -10,10 +10,12 @@ import android.os.IBinder
 import android.util.Log
 import android.webkit.CookieManager
 import androidx.core.app.NotificationCompat
+import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.json.JSONObject
 import java.io.File
 import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 
 /** Downloads whatever the index says is pending, one track at a time, as a
  *  foreground service so a pinned playlist finishes with the app closed.
@@ -25,6 +27,11 @@ class OfflineDownloadService : Service() {
         const val CHANNEL = "ember.downloads"
         private const val ACTION_CANCEL = "app.ember.music.CANCEL_PIN"
         val failed = java.util.Collections.synchronizedMap(HashMap<String, MutableSet<String>>()) // pinId -> trackIds
+        /** pinId -> why that pin's first permanent failure happened: "auth",
+         *  "storage" or "http". First failure wins, so the reason describes the
+         *  problem the user has to fix rather than whatever failed last. Cleared
+         *  alongside `failed` whenever the pin is re-synced. */
+        val failedReason = java.util.Collections.synchronizedMap(HashMap<String, String>()) // pinId -> reason
         val cancelled = java.util.Collections.synchronizedSet(HashSet<String>())
         @Volatile var current: JSONObject? = null   // { id, done, total, title }
         var listener: ((JSONObject?) -> Unit)? = null
@@ -34,6 +41,15 @@ class OfflineDownloadService : Service() {
     }
 
     private val io = Executors.newSingleThreadExecutor()
+
+    /** Artwork for YouTube/Jamendo tracks is an absolute third-party URL, and
+     *  `ServerApi.http` attaches the Ember `pb_auth` cookie to EVERY request it
+     *  makes, so fetching art through it would hand the user's session cookie
+     *  to hosts that have no business seeing it. Art off the Ember server
+     *  itself still goes through the authed client (it needs the cookie). */
+    private val plainHttp: OkHttpClient by lazy {
+        OkHttpClient.Builder().connectTimeout(15, TimeUnit.SECONDS).readTimeout(30, TimeUnit.SECONDS).build()
+    }
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -72,8 +88,13 @@ class OfflineDownloadService : Service() {
                 current = JSONObject().put("id", pinId).put("done", done).put("total", total).put("title", track.optString("title"))
                 listener?.invoke(current)
                 startForeground(1, notification("${pin.name}: ${done + 1} of $total"))
-                val ok = download(api, baseUrl, store, track) || download(api, baseUrl, store, track)
-                if (!ok) failed.getOrPut(pinId) { HashSet() }.add(track.getString("id"))
+                var reason = download(api, baseUrl, store, track)
+                if (reason != null) reason = download(api, baseUrl, store, track)
+                if (reason != null) {
+                    failed.getOrPut(pinId) { HashSet() }.add(track.getString("id"))
+                    // putIfAbsent is API 24 and minSdk here is 23, so do it by hand.
+                    synchronized(failedReason) { if (failedReason[pinId] == null) failedReason[pinId] = reason }
+                }
                 listener?.invoke(null)
             }
         } finally {
@@ -89,28 +110,55 @@ class OfflineDownloadService : Service() {
         }
     }
 
-    /** One track: audio (required) then artwork (best effort). */
-    private fun download(api: ServerApi, baseUrl: String, store: OfflineStore, track: JSONObject): Boolean {
+    /** One track: audio (required) then artwork (best effort).
+     *  Returns null on success, or the reason the track failed. */
+    private fun download(api: ServerApi, baseUrl: String, store: OfflineStore, track: JSONObject): String? {
         val id = track.getString("id")
         val stream = track.optString("streamUrl")
         val url = if (stream.startsWith("http")) stream else baseUrl + stream
         val tmp = File(cacheDir, "dl-" + store.safeId(id) + ".part")
         try {
             api.http.newCall(Request.Builder().url(url).build()).execute().use { res ->
-                if (!res.isSuccessful) { Log.w(TAG, "$id: HTTP ${res.code}"); return false }
+                if (!res.isSuccessful) {
+                    Log.w(TAG, "$id: HTTP ${res.code}")
+                    // 401 survived ServerApi's one retry with a fresh cookie, so
+                    // the session really is gone: the user has to sign in again.
+                    return if (res.code == 401) "auth" else "http"
+                }
                 res.body!!.byteStream().use { input -> tmp.outputStream().use { input.copyTo(it) } }
             }
             store.commitAudio(id, tmp)
             val art = track.optString("artworkUrl")
             if (art.startsWith("http")) runCatching {
-                api.http.newCall(Request.Builder().url(art).build()).execute().use { res ->
+                artClient(api, baseUrl, art).newCall(Request.Builder().url(art).build()).execute().use { res ->
                     if (res.isSuccessful) { val a = File(cacheDir, "art-" + store.safeId(id)); res.body!!.byteStream().use { i -> a.outputStream().use { i.copyTo(it) } }; store.commitArt(id, a) }
                 }
             }
-            return true
+            return null
         } catch (e: Exception) {
-            Log.w(TAG, "$id: ${e.message}"); tmp.delete(); return false
+            Log.w(TAG, "$id: ${e.message}"); tmp.delete()
+            return if (isOutOfSpace(e)) "storage" else "http"
         }
+    }
+
+    /** The authed client only when the art is served by the Ember server, so
+     *  the session cookie never leaves that host. See `plainHttp`. */
+    private fun artClient(api: ServerApi, baseUrl: String, artUrl: String): OkHttpClient =
+        if (runCatching { java.net.URI(artUrl).host.equals(java.net.URI(baseUrl).host, ignoreCase = true) }.getOrDefault(false))
+            api.http else plainHttp
+
+    /** A full disk reaches us as an IOException (or an ErrnoException cause)
+     *  naming ENOSPC. Matching on the message rather than the type matters
+     *  because a dropped connection is an IOException too, and calling that
+     *  "not enough storage" would send the user chasing the wrong problem. */
+    private fun isOutOfSpace(e: Throwable): Boolean {
+        var t: Throwable? = e
+        while (t != null) {
+            val m = t.message.orEmpty()
+            if (m.contains("ENOSPC") || m.contains("No space left", ignoreCase = true)) return true
+            t = t.cause
+        }
+        return false
     }
 
     private fun notification(text: String): Notification {

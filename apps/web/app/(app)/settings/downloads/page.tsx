@@ -12,6 +12,14 @@ import { QK } from '@/hooks/useLibrary';
 import type { PinStatus } from '@/lib/offlineNative';
 import type { Track } from '@/types/track';
 
+/** What the user can do about a pin that failed for good. The native side
+ *  records the reason of the FIRST failure per pin (see OfflineDownloadService). */
+const FAILED_REASON_TEXT: Record<string, string> = {
+  auth: 'Sign in again',
+  storage: 'Not enough storage',
+  http: 'Download error',
+};
+
 function formatBytes(n: number): string {
   if (n < 1024) return `${n} B`;
   if (n < 1024 * 1024) return `${(n / 1024).toFixed(0)} KB`;
@@ -71,6 +79,9 @@ export default function DownloadsSettingsPage() {
                 <div className="text-sm font-semibold">{p.name}</div>
                 <div className="text-xs text-muted-foreground tabular-nums">
                   {p.done}/{p.total} downloaded{p.failed > 0 ? `, ${p.failed} failed` : ''}
+                  {p.failed > 0 && p.failedReason && FAILED_REASON_TEXT[p.failedReason]
+                    ? ` (${FAILED_REASON_TEXT[p.failedReason]})`
+                    : ''}
                 </div>
               </div>
               {p.failed > 0 && (

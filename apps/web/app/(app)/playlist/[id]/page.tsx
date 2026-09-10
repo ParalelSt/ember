@@ -13,7 +13,7 @@ import { usePlayer } from '@/components/player/PlayerProvider';
 import { usePlayerStore } from '@/stores/usePlayerStore';
 import { useOfflineStore } from '@/stores/useOfflineStore';
 import { cancelDownload, downloadPlaylist, isStale, removeDownload } from '@/lib/offline';
-import { useOfflineDownloadAllowed } from '@/lib/offlineNative';
+import { nativeOfflinePresent, useOfflineDownloadAllowed } from '@/lib/offlineNative';
 import { useOnline } from '@/lib/useOnline';
 import {
   useExecuteAddToPlaylist,
@@ -258,7 +258,13 @@ export default function PlaylistPage({ params }: { params: Promise<{ id: string 
             onClick={async () => {
               try {
                 await downloadPlaylist(playlist, tracks);
-                toast.success(`Downloaded "${playlist.name}"`);
+                // Native pin() resolves as soon as the pin is recorded, before
+                // a single byte lands, so promising "Downloaded" there is a lie.
+                toast.success(
+                  nativeOfflinePresent()
+                    ? `Downloading "${playlist.name}"`
+                    : `Downloaded "${playlist.name}"`,
+                );
               } catch (e) {
                 if ((e as Error).name !== 'AbortError') {
                   toast.error(`Couldn't download the playlist — please try again.`);

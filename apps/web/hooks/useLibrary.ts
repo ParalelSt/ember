@@ -110,6 +110,15 @@ export function useQueryTrack(videoId: string | null | undefined) {
   });
 }
 
+/** Same tracks, order ignored: pins carry the list the native side stored, and
+ *  the query cache reorders on every like. */
+function sameTrackIds(a: string[], b: string[]): boolean {
+  if (a.length !== b.length) return false;
+  const sa = [...a].sort();
+  const sb = [...b].sort();
+  return sa.every((id, i) => id === sb[i]);
+}
+
 export function useExecuteToggleLike() {
   const qc = useQueryClient();
   return useMutation({
@@ -130,9 +139,16 @@ export function useExecuteToggleLike() {
       // Liked songs are pinned for offline: keep the native download synced
       // with every like/unlike so it never drifts (re-pin only downloads
       // what's missing and drops what's no longer liked).
-      if (nativeOfflinePresent() && useOfflineStore.getState().pins.some((p) => p.id === LIKED_PIN)) {
-        void pinLiked(qc.getQueryData<Track[]>(QK.likes) ?? []);
-      }
+      if (!nativeOfflinePresent()) return;
+      const pin = useOfflineStore.getState().pins.find((p) => p.id === LIKED_PIN);
+      if (!pin) return;
+      const likes = qc.getQueryData<Track[]>(QK.likes) ?? [];
+      // A re-pin restarts the download service, which flashes its "Preparing
+      // downloads" notification even when there is nothing to do. onSettled
+      // fires after the invalidated refetch too, so skip the call whenever the
+      // pinned set already matches.
+      if (sameTrackIds(pin.trackIds, likes.map((t) => t.id))) return;
+      void pinLiked(likes);
     },
   });
 }

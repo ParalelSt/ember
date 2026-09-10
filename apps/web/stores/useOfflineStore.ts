@@ -36,6 +36,10 @@ interface OfflineState {
    *  derives `downloaded` + `inFlight` from the pins so playlist/Liked pages
    *  don't need their own bookkeeping for the native path. */
   setNativeStatus: (s: NativeStatus) => void;
+  /** Forget one downloaded file after it turned out to be unplayable, so the
+   *  player streams it instead of retrying a dead path on every play. The
+   *  native store still owns the file; the next status() event is the truth. */
+  dropTrackFile: (trackId: string) => void;
 }
 
 /** Persisted slice: downloaded ids + totalBytes only. Keeps the UI from
@@ -100,6 +104,14 @@ export const useOfflineStore = create<OfflineState>()(
           const { [playlistId]: _drop, ...rest } = s.inFlight;
           void _drop;
           return { inFlight: rest };
+        }),
+
+      dropTrackFile: (trackId) =>
+        set((s) => {
+          if (!(trackId in s.trackFiles)) return s;
+          const { [trackId]: _drop, ...rest } = s.trackFiles;
+          void _drop;
+          return { trackFiles: rest };
         }),
 
       removeDownload: (playlistId, bytesRemoved) =>
