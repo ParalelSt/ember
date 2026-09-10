@@ -303,7 +303,7 @@ if (coldOfflineLoaded) {
   // A fresh navigation with no cache and no SW precache hits the browser's
   // native offline interstitial before Next.js ever renders (same as the
   // /library force-dynamic case above) - nothing in our app to assert on.
-  console.log('SKIP  cold-offline collection page checks — page could not load offline with no prior cache');
+  console.log('SKIP  cold-offline collection page checks: page could not load offline with no prior cache');
 }
 await ctx3.close();
 
