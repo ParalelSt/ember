@@ -2,27 +2,20 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import { usePathname, useRouter } from 'next/navigation';
-import { toast } from 'sonner';
+import { usePathname } from 'next/navigation';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { useAuth } from '@/components/providers/AuthProvider';
-import { useExecuteAddToPlaylist, useExecuteCreatePlaylist, useQueryPlaylists } from '@/hooks/useLibrary';
-import type { Track } from '@/types/track';
+import { useQueryPlaylists } from '@/hooks/useLibrary';
+import { useCreatePlaylistFlow } from '@/hooks/useCreatePlaylistFlow';
 import { Button } from '@/components/ui/button';
 import { CreatePlaylistDialog } from '@/components/track/CreatePlaylistDialog';
 import { ImportPlaylistDialog } from '@/components/track/ImportPlaylistDialog';
 import { CollectionNavList } from '@/components/nav/CollectionNavList';
-import { HomeIcon, SearchIcon, LibraryIcon, PlusIcon, FlameIcon, SettingsIcon, ShieldIcon } from '@/components/icons';
-import { formatCount } from '@/lib/format';
-import { systemCollections } from '@/lib/collections';
-import { cn } from '@/lib/utils';
-
-const BASE_NAV = [
-  { href: '/', label: 'Home', icon: HomeIcon },
-  { href: '/search', label: 'Search', icon: SearchIcon },
-  { href: '/library', label: 'Library', icon: LibraryIcon },
-  { href: '/settings', label: 'Settings', icon: SettingsIcon },
-];
+import { NavLinks } from '@/components/nav/NavLinks';
+import { PlaylistNavList } from '@/components/nav/PlaylistNavList';
+import { FlameIcon, PlusIcon } from '@/components/icons';
+import { BASE_NAV, ADMIN_NAV_ITEM } from '@/lib/nav';
+import { hrefFor, systemCollections } from '@/lib/collections';
 
 interface Props {
   open: boolean;
@@ -31,32 +24,13 @@ interface Props {
 
 export function Drawer({ open, onOpenChange }: Props) {
   const pathname = usePathname();
-  const router = useRouter();
   const { user, name: displayName, avatarUrl, isAdmin } = useAuth();
-  const NAV = isAdmin
-    ? [...BASE_NAV, { href: '/admin', label: 'Admin', icon: ShieldIcon }]
-    : BASE_NAV;
+  const NAV = isAdmin ? [...BASE_NAV, ADMIN_NAV_ITEM] : BASE_NAV;
   const { data: playlists = [] } = useQueryPlaylists();
-  const createPlaylist = useExecuteCreatePlaylist();
-  const addToPlaylist = useExecuteAddToPlaylist();
-  const [createOpen, setCreateOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
 
   const close = () => onOpenChange(false);
-
-  const handleCreate = async (name: string, tracks: Track[]) => {
-    try {
-      const playlist = await createPlaylist.mutateAsync(name);
-      for (const t of tracks) {
-        await addToPlaylist.mutateAsync({ id: playlist.id, track: t });
-      }
-      toast.success(tracks.length ? `Created "${playlist.name}" with ${formatCount(tracks.length, 'track')}` : `Created "${playlist.name}"`);
-      close();
-      router.push(`/playlist/${playlist.id}`);
-    } catch (e) {
-      toast.error(`Couldn't create playlist: ${(e as Error).message}`);
-    }
-  };
+  const { createOpen, setCreateOpen, handleCreate } = useCreatePlaylistFlow(close);
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -76,26 +50,7 @@ export function Drawer({ open, onOpenChange }: Props) {
         </SheetHeader>
 
         <nav className="px-2 py-3 flex flex-col gap-1">
-          {NAV.map(({ href, label, icon: Icon }) => {
-            // Exact-match Library so a collection sub-route (e.g. /library/liked) doesn't also highlight it.
-            const isActive = href === '/' ? pathname === '/' : href === '/library' ? pathname === '/library' : pathname.startsWith(href);
-            return (
-              <Link
-                key={href}
-                href={href}
-                onClick={close}
-                className={cn(
-                  'flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium',
-                  isActive
-                    ? 'bg-sidebar-accent text-sidebar-accent-foreground'
-                    : 'text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent/60',
-                )}
-              >
-                <Icon className="h-4 w-4" />
-                {label}
-              </Link>
-            );
-          })}
+          <NavLinks items={NAV} activePath={pathname} onNavigate={close} />
         </nav>
 
         {user && (
@@ -117,17 +72,11 @@ export function Drawer({ open, onOpenChange }: Props) {
           )}
         </div>
         <div className="flex-1 overflow-y-auto px-2 py-2 flex flex-col gap-0.5">
-          {!user && <div className="text-sm text-sidebar-foreground/55 px-3 py-2">Sign in to create</div>}
-          {playlists.map((p) => (
-            <Link
-              key={p.id}
-              href={`/playlist/${p.id}`}
-              onClick={close}
-              className="px-3 py-2 rounded-md text-sm text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent/60 truncate"
-            >
-              {p.name}
-            </Link>
-          ))}
+          <PlaylistNavList
+            items={playlists.map((p) => ({ id: p.id, name: p.name, href: hrefFor({ kind: 'playlist', id: p.id }) }))}
+            authed={!!user}
+            onNavigate={close}
+          />
         </div>
 
         {user && (
