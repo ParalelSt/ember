@@ -29,7 +29,8 @@
     "test:position": "node tests/playback-position.test.mjs",
     "test:duration": "node tests/duration.test.mjs",
     "test:origin": "node tests/public-origin.test.mjs",
-    "test:toggles": "node tests/toggles-ui.test.mjs"
+    "test:toggles": "node tests/toggles-ui.test.mjs",
+    "test:android-call": "bash tests/android-auto-call.sh"
   },
   "devDependencies": {
     "playwright-core": "^1.62.1"

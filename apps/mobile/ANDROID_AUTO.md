@@ -56,6 +56,30 @@ driven from the car, no offline playback. Playback resumption from the system
 media panel is not implemented (Android's "No root for client
 com.android.systemui" log line is that probe; harmless).
 
+## Calls and audio focus
+
+A phone call pauses the music and hanging up starts it again, from the same
+spot, with no tap from the driver. None of that is Ember's own code: the
+player is built with `setAudioAttributes(..., handleAudioFocus = true)`, so
+Media3 requests audio focus, the ringtone and the call take it away
+transiently, Media3 suppresses playback while that lasts and un-suppresses
+when focus comes back. A permanent loss (another media app starts) pauses
+Ember for good, which is what it should do: it waits for the driver.
+
+The web UI follows because suppression makes `isPlaying` false, so
+`EmberPlayerPlugin` reports `playing = false` in its `state` event and the
+play/pause button flips. Measured lag on the emulator is under 50 ms in both
+directions. Nothing here needs an `AudioManager.OnAudioFocusChangeListener` of
+our own, and adding one would fight Media3 for the same focus.
+
+Run it: get the emulator playing a track at least a minute long (steps in the
+header of `tests/android-auto-call.sh`), then `npm run test:android-call`. It
+rings, answers and hangs up through `adb emu gsm`, polling `dumpsys
+media_session` after each step, and also checks that playback resumed where it
+stopped instead of restarting the song. Flipping that `handleAudioFocus` flag
+to `false` makes it fail on the ring and on the call, which is how the test was
+verified.
+
 ## Testing
 
 **Unit tests** (Robolectric): `cd android && JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home" ./gradlew testDebugUnitTest`.
