@@ -1,5 +1,17 @@
 # Tests
 
+## Unit tests
+
+`npm run test:unit` from the repo root. Vitest, no sandbox, no PocketBase,
+no server: pure `lib/` functions, store actions, and (eventually) presentational
+components render in `happy-dom`. Files live next to the code they test, as
+`*.test.ts` or `*.test.tsx` (for example `lib/songKey.ts` next to
+`lib/songKey.test.ts`). Run just the web app's tests with
+`npm run test:unit -w apps/web`, or watch mode with
+`npm run test:unit:watch -w apps/web`.
+
+## Sandbox tests
+
 Runnable checks against a **sandbox** copy of the app. Nothing here touches
 your live PocketBase data, your real Discord channel, or any paid API — the
 external services are faked in-process.

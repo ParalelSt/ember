@@ -10,6 +10,7 @@
     "build": "npm run build -w apps/web",
     "start": "npm run start -w apps/web",
     "lint": "npm run lint -w apps/web",
+    "test:unit": "npm run test:unit -w apps/web",
     "test:privacy": "node tests/privacy.test.mjs",
     "test:triage": "node tests/ai-triage.test.mjs",
     "test:triage-ui": "node tests/ai-triage-ui.test.mjs",
