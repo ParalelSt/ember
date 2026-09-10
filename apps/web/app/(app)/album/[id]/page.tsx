@@ -3,8 +3,9 @@
 import { use, type ReactNode } from 'react';
 import Link from 'next/link';
 import { TrackList } from '@/components/track/TrackList';
+import { renderTrackMenu } from '@/components/track/TrackMenu';
+import { useTrackActions } from '@/hooks/useTrackActions';
 import { PlayButton } from '@/components/primitives/PlayButton';
-import { usePlayer } from '@/components/player/PlayerProvider';
 import { useQueryAlbum } from '@/hooks/useLibrary';
 import { OnlineOnly } from '@/components/OnlineOnly';
 import { formatTotalDuration } from '@/lib/format';
@@ -22,7 +23,7 @@ export default function AlbumPage({ params }: { params: Promise<{ id: string }> 
 }
 
 function AlbumView({ id }: { id: string }) {
-  const { playTrack } = usePlayer();
+  const trackActions = useTrackActions();
   const { data, isLoading, error } = useQueryAlbum(id);
 
   if (error) {
@@ -64,13 +65,19 @@ function AlbumView({ id }: { id: string }) {
 
       <div className="flex items-center gap-3 mb-6">
         <PlayButton
-          onClick={() => tracks.length && playTrack(tracks[0], tracks, albumContext)}
+          onClick={() => tracks.length && trackActions.onPlay(tracks[0], tracks, albumContext)}
           disabled={!tracks.length}
           label="Play album"
         />
       </div>
 
-      <TrackList tracks={tracks} showAlbum={false} context={albumContext} />
+      <TrackList
+        tracks={tracks}
+        showAlbum={false}
+        context={albumContext}
+        trailing={renderTrackMenu}
+        {...trackActions}
+      />
     </div>
   );
 }

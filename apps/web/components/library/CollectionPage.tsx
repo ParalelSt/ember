@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { Button } from '@/components/ui/button';
-import { TrackList } from '@/components/track/TrackList';
+import { TrackList, type TrackActions } from '@/components/track/TrackList';
 import { ShuffleIcon } from '@/components/icons';
 import { PlayButton } from '@/components/primitives/PlayButton';
 import { CollectionHeader } from '@/components/page/CollectionHeader';
@@ -35,6 +35,11 @@ export interface CollectionPageProps {
   download: DownloadButtonProps | null;
   actions?: ReactNode;
   onRemoveTrack?: (trackId: string) => void;
+  /** Player + likes wiring for the track list. Passed in (from the page's
+   *  `useTrackActions()`) so this component stays presentational. */
+  trackActions: TrackActions;
+  /** Per-row menu; pages pass `renderTrackMenu`. */
+  trailing?: (track: Track) => ReactNode;
   emptyMessage: string;
   children?: ReactNode;
   // When true (no tracks and offline), Play/Shuffle can't do anything useful, so hide them.
@@ -59,6 +64,8 @@ export function CollectionPage({
   download,
   actions,
   onRemoveTrack,
+  trackActions,
+  trailing,
   emptyMessage,
   children,
   hideActions,
@@ -102,7 +109,13 @@ export function CollectionPage({
       {tracks.length === 0 ? (
         <EmptyState>{emptyMessage}</EmptyState>
       ) : (
-        <TrackList tracks={tracks} context={context} onRemove={onRemoveTrack} />
+        <TrackList
+          tracks={tracks}
+          context={context}
+          onRemove={onRemoveTrack}
+          trailing={trailing}
+          {...trackActions}
+        />
       )}
       {children}
     </div>

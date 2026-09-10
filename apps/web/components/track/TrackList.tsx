@@ -1,23 +1,27 @@
 'use client';
 
-import Link from 'next/link';
-import { toast } from 'sonner';
-import { Button } from '@/components/ui/button';
-import { Artwork } from '@/components/primitives/Artwork';
-import { LikeButton } from '@/components/primitives/LikeButton';
-import { PauseIcon, PlayIcon, TrashIcon } from '@/components/icons';
-import { AddToPlaylistMenu } from './AddToPlaylistMenu';
-import { ShareButton } from './ShareButton';
-import { findLikedVariant } from '@/lib/songKey';
-import { formatTime } from '@/lib/format';
-import { usePlayer } from '@/components/player/PlayerProvider';
-import { useAuth } from '@/components/providers/AuthProvider';
-import { useExecuteToggleLike, useQueryLikes } from '@/hooks/useLibrary';
-import type { PlaybackContext, Track } from '@/types/track';
-import { cn } from '@/lib/utils';
+import type { ReactNode } from 'react';
+import { TrackRow } from './TrackRow';
 import { EmptyState } from '@/components/page/EmptyState';
+import { songKey } from '@/lib/songKey';
+import type { PlaybackContext, Track } from '@/types/track';
 
-interface Props {
+/** What a page has to hand a track list: who is playing, what is liked, and
+ *  the three callbacks. `hooks/useTrackActions` produces exactly this, and
+ *  is the only place the "a liked variant counts as liked" rule lives. */
+export interface TrackActions {
+  currentId: string | null;
+  isPlaying: boolean;
+  /** Track ids AND normalized song keys of every liked track, so a
+   *  different upload of a liked song still shows a filled heart. */
+  likedIds: Set<string>;
+  onPlay: (track: Track, list?: Track[], context?: PlaybackContext | null) => void;
+  onToggle: () => void;
+  /** Omit to hide the heart on every row. */
+  onLike?: (track: Track) => void;
+}
+
+interface Props extends TrackActions {
   tracks: Track[];
   showAlbum?: boolean;
   /** Show a 1-based rank number in the leading column — hidden on hover so
@@ -26,116 +30,50 @@ interface Props {
   onRemove?: (trackId: string) => void;
   /** Where this list lives — drives radio behavior after the queue ends. */
   context?: PlaybackContext | null;
-  /** Fires whenever this list starts playback of a track (e.g. the search
-   *  page uses it to save the query to recent searches). */
-  onPlayTrack?: (track: Track) => void;
+  /** Per-row controls before the heart. Pages pass `renderTrackMenu`; this
+   *  list stays presentational and never reaches for the playlist hooks. */
+  trailing?: (track: Track) => ReactNode;
 }
 
-export function TrackList({ tracks, showAlbum = true, showRank = false, onRemove, context, onPlayTrack }: Props) {
-  const { current, isPlaying, playTrack, toggle } = usePlayer();
-  const { user } = useAuth();
-  const { data: liked = [] } = useQueryLikes();
-  const toggleLike = useExecuteToggleLike();
-
-  const onLike = (track: Track) => {
-    if (!user) {
-      toast.message('Sign in to like tracks', { description: 'Liking saves songs to your library.' });
-      return;
-    }
-    // If a variant of this song is already liked, toggle THAT entry — keeps
-    // "1 like per song" across album / music-video / live versions.
-    const existing = findLikedVariant(track, liked);
-    toggleLike.mutate({ track: existing ?? track, wasLiked: !!existing });
-  };
-
-  const play = (track: Track) => {
-    onPlayTrack?.(track);
-    playTrack(track, tracks, context);
-  };
-
+/** Presentational only: the rows of a collection, album, artist or search
+ *  result. Every piece of state arrives as props. */
+export function TrackList({
+  tracks,
+  showAlbum = true,
+  showRank = false,
+  onRemove,
+  context,
+  trailing,
+  currentId,
+  isPlaying,
+  likedIds,
+  onPlay,
+  onToggle,
+  onLike,
+}: Props) {
   if (!tracks?.length) return <EmptyState className="text-sm">No tracks</EmptyState>;
 
   return (
     <div className="flex flex-col">
-      {tracks.map((t, i) => {
-        const playing = current?.id === t.id;
-        const isLiked = !!findLikedVariant(t, liked);
-        return (
-          <div
-            key={t.id}
-            onDoubleClick={() => play(t)}
-            className={cn(
-              'group grid grid-cols-[40px_minmax(0,1fr)_auto] md:grid-cols-[40px_minmax(0,1fr)_minmax(0,1fr)_60px_auto] gap-3 items-center px-3 py-2 rounded-md cursor-pointer hover:bg-card transition-colors',
-              playing && 'text-ember',
-            )}
-          >
-            <div className="relative grid place-items-center h-8 w-8 justify-self-center">
-              {showRank && !playing && (
-                <span className="pointer-events-none absolute inset-0 grid place-items-center text-sm tabular-nums text-muted-foreground group-hover:opacity-0 transition-opacity">
-                  {i + 1}
-                </span>
-              )}
-              <Button
-                variant="ghost"
-                size="icon"
-                className={cn(
-                  'h-8 w-8',
-                  showRank && !playing && 'opacity-0 group-hover:opacity-100 transition-opacity',
-                )}
-                onClick={() => (playing ? toggle() : play(t))}
-                aria-label={playing && isPlaying ? 'Pause' : 'Play'}
-              >
-                {playing && isPlaying ? <PauseIcon className="h-3.5 w-3.5" /> : <PlayIcon className="h-3.5 w-3.5" />}
-              </Button>
-            </div>
-
-            <div className="flex items-center gap-3 min-w-0">
-              {t.artworkUrl && (
-                <Artwork
-                  src={t.artworkUrl}
-                  size="xs"
-                  onClick={() => play(t)}
-                  className="rounded shrink-0 bg-black"
-                />
-              )}
-              <div className="min-w-0">
-                <div onClick={() => play(t)} className="truncate text-sm font-semibold">
-                  {t.title}
-                </div>
-                <div className="truncate text-xs text-muted-foreground">
-                  {t.artistId ? (
-                    <Link href={`/artist/${t.artistId}`} onClick={(e) => e.stopPropagation()} className="hover:underline">
-                      {t.artist}
-                    </Link>
-                  ) : (
-                    t.artist
-                  )}
-                </div>
-              </div>
-            </div>
-
-            <div className="hidden md:block truncate text-sm text-muted-foreground">{showAlbum ? t.album : ''}</div>
-            <div className="hidden md:block text-sm text-muted-foreground text-right tabular-nums">{formatTime(t.durationSec, { empty: '--:--' })}</div>
-
-            <div className="flex items-center gap-1">
-              <AddToPlaylistMenu track={t} />
-              <ShareButton track={t} />
-              <LikeButton liked={isLiked} onToggle={() => onLike(t)} />
-              {onRemove && (
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-8 w-8 text-muted-foreground hover:text-foreground"
-                  onClick={() => onRemove(t.id)}
-                  aria-label="Remove"
-                >
-                  <TrashIcon className="h-3.5 w-3.5" />
-                </Button>
-              )}
-            </div>
-          </div>
-        );
-      })}
+      {tracks.map((t, i) => (
+        <TrackRow
+          key={t.id}
+          track={t}
+          index={i}
+          density="list"
+          showRank={showRank}
+          showAlbum={showAlbum}
+          active={currentId === t.id}
+          playing={isPlaying}
+          // The set carries ids and song keys, so this covers variants too.
+          liked={onLike ? likedIds.has(t.id) || likedIds.has(songKey(t)) : undefined}
+          onPlay={() => onPlay(t, tracks, context)}
+          onToggle={onToggle}
+          onLike={onLike ? () => onLike(t) : undefined}
+          onRemove={onRemove ? () => onRemove(t.id) : undefined}
+          trailing={trailing?.(t)}
+        />
+      ))}
     </div>
   );
 }

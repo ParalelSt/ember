@@ -9,6 +9,8 @@ import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { TrackSearchPicker } from '@/components/track/TrackSearchPicker';
 import { TrashIcon } from '@/components/icons';
 import { CollectionPage } from '@/components/library/CollectionPage';
+import { renderTrackMenu } from '@/components/track/TrackMenu';
+import { useTrackActions } from '@/hooks/useTrackActions';
 import { countLabel } from '@/lib/collections';
 import { useCollectionPlayback } from '@/hooks/useCollectionPlayback';
 import { useOfflinePin } from '@/hooks/useOfflinePin';
@@ -43,6 +45,7 @@ export default function PlaylistPage({ params }: { params: Promise<{ id: string 
   const context = { type: 'playlist' as const, playlistId: id, playlistName: name };
   const playback = useCollectionPlayback(tracks, context);
   const download = useOfflinePin(ref, name, tracks);
+  const trackActions = useTrackActions();
 
   const handleArtworkPick = (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -116,6 +119,8 @@ export default function PlaylistPage({ params }: { params: Promise<{ id: string 
       coverBusy={updateArtwork.isPending}
       tracks={tracks}
       context={context}
+      trackActions={trackActions}
+      trailing={renderTrackMenu}
       playback={playback}
       download={download}
       actions={

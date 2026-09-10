@@ -6,6 +6,7 @@ import { toast } from 'sonner';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { TrackList } from '@/components/track/TrackList';
+import { renderTrackMenu } from '@/components/track/TrackMenu';
 import { CloseIcon, MicIcon, MusicIcon, SearchIcon } from '@/components/icons';
 import { api } from '@/lib/api';
 import { QK } from '@/hooks/useLibrary';
@@ -15,7 +16,7 @@ import {
   useExecuteAddRecentSearch,
   useExecuteRemoveRecentSearch,
 } from '@/hooks/useRecentSearches';
-import { usePlayer } from '@/components/player/PlayerProvider';
+import { useTrackActions } from '@/hooks/useTrackActions';
 import { useOnline } from '@/lib/useOnline';
 import { OnlineOnly } from '@/components/OnlineOnly';
 import { cn } from '@/lib/utils';
@@ -27,7 +28,7 @@ export default function SearchPage() {
   const [q, setQ] = useState('');
   const [debouncedQ, setDebouncedQ] = useState('');
   const isOnline = useOnline();
-  const { playTrack } = usePlayer();
+  const trackActions = useTrackActions();
 
   const { data: recentTracks = [] } = useQueryRecentSearches();
   const addRecentTrack = useExecuteAddRecentSearch();
@@ -70,7 +71,7 @@ export default function SearchPage() {
         {recentTracks.map((t) => (
           <div
             key={t.id}
-            onClick={() => playTrack(t)}
+            onClick={() => trackActions.onPlay(t)}
             className="group flex items-center gap-3 px-3 py-2 rounded-md cursor-pointer hover:bg-card transition-colors"
           >
             {t.artworkUrl ? (
@@ -111,7 +112,14 @@ export default function SearchPage() {
     <TrackList
       tracks={data ?? []}
       context={{ type: 'search', query: debouncedQ }}
-      onPlayTrack={(t) => addRecentTrack.mutate(t)}
+      trailing={renderTrackMenu}
+      {...trackActions}
+      // Playing a result also saves it to recent searches; everything else
+      // about playback comes from the spread above.
+      onPlay={(track, list, context) => {
+        addRecentTrack.mutate(track);
+        trackActions.onPlay(track, list, context);
+      }}
     />
   );
 

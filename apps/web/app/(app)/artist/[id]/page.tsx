@@ -3,10 +3,11 @@
 import { use } from 'react';
 import Link from 'next/link';
 import { TrackList } from '@/components/track/TrackList';
+import { renderTrackMenu } from '@/components/track/TrackMenu';
+import { useTrackActions } from '@/hooks/useTrackActions';
 import { AlbumRow } from '@/components/artist/AlbumRow';
 import { PlayButton } from '@/components/primitives/PlayButton';
 import { CollectionHeader } from '@/components/page/CollectionHeader';
-import { usePlayer } from '@/components/player/PlayerProvider';
 import { useQueryArtist } from '@/hooks/useLibrary';
 import { OnlineOnly } from '@/components/OnlineOnly';
 import { pickThumbnail } from '@/lib/artwork';
@@ -23,7 +24,7 @@ export default function ArtistPage({ params }: { params: Promise<{ id: string }>
 }
 
 function ArtistView({ id }: { id: string }) {
-  const { playTrack } = usePlayer();
+  const trackActions = useTrackActions();
   const { data, isLoading, error } = useQueryArtist(id);
 
   if (error) {
@@ -56,7 +57,7 @@ function ArtistView({ id }: { id: string }) {
       />
       <div className="flex items-center gap-3 mb-6">
         <PlayButton
-          onClick={() => tracks.length && playTrack(tracks[0], tracks, artistContext)}
+          onClick={() => tracks.length && trackActions.onPlay(tracks[0], tracks, artistContext)}
           disabled={!tracks.length}
           label="Play top tracks"
         />
@@ -64,7 +65,13 @@ function ArtistView({ id }: { id: string }) {
 
       <SectionHeader title="Popular" className="mb-3" />
       <div className="max-h-80 overflow-y-auto rounded-md mb-8">
-        <TrackList tracks={tracks} context={artistContext} showRank />
+        <TrackList
+          tracks={tracks}
+          context={artistContext}
+          showRank
+          trailing={renderTrackMenu}
+          {...trackActions}
+        />
       </div>
 
       {albums.length > 0 && (

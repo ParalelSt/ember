@@ -5,6 +5,8 @@ import { Button } from '@/components/ui/button';
 import { UploadIcon } from '@/components/icons';
 import { UploadTrackDialog } from '@/components/track/UploadTrackDialog';
 import { CollectionPage } from '@/components/library/CollectionPage';
+import { renderTrackMenu } from '@/components/track/TrackMenu';
+import { useTrackActions } from '@/hooks/useTrackActions';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { contextFor, countLabel, iconFor, titleFor } from '@/lib/collections';
 import { useOnline } from '@/lib/useOnline';
@@ -22,6 +24,7 @@ export default function UploadsPage() {
   const context = contextFor(REF);
   const playback = useCollectionPlayback(tracks, context);
   const download = useOfflinePin(REF, titleFor(REF), tracks);
+  const trackActions = useTrackActions();
   const [uploadOpen, setUploadOpen] = useState(false);
 
   if (!user) return <EmptyState>Sign in to see your library</EmptyState>;
@@ -37,6 +40,8 @@ export default function UploadsPage() {
       cover={{ src: null, icon: iconFor(REF) }}
       tracks={tracks}
       context={context}
+      trackActions={trackActions}
+      trailing={renderTrackMenu}
       playback={playback}
       download={download}
       hideActions={offlineEmpty}
