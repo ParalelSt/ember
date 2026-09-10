@@ -5,7 +5,7 @@ import { toast } from 'sonner';
 import type { DownloadButtonProps } from '@/components/library/DownloadButton';
 import { pinIdFor, type CollectionRef } from '@/lib/collections';
 import { cancelDownload, downloadPlaylist, isStale, pinList, removeDownload } from '@/lib/offline';
-import { nativeOfflinePresent } from '@/lib/offlineNative';
+import { nativeOfflinePresent, useNativeOfflinePresent, useOfflineDownloadAllowed } from '@/lib/offlineNative';
 import { useOfflineStore } from '@/stores/useOfflineStore';
 import { useOnline } from '@/lib/useOnline';
 import type { Track } from '@/types/track';
@@ -16,9 +16,11 @@ import type { Track } from '@/types/track';
  *  the native plugin; a playlist can also fall back to browser storage. */
 export function useOfflinePin(ref: CollectionRef, name: string, tracks: Track[]): DownloadButtonProps | null {
   const isOnline = useOnline();
-  const available = ref.kind === 'playlist'
-    ? nativeOfflinePresent() || (typeof navigator !== 'undefined' && 'storage' in navigator)
-    : nativeOfflinePresent();
+  // Read through useSyncExternalStore so the server render and the first
+  // client paint agree (the button would otherwise flicker in on hydration).
+  const nativePresent = useNativeOfflinePresent();
+  const browserAllowed = useOfflineDownloadAllowed();
+  const available = ref.kind === 'playlist' ? browserAllowed : nativePresent;
   const id = pinIdFor(ref);
   const downloaded = useOfflineStore((s) => s.downloaded.includes(id));
   const inFlight = useOfflineStore((s) => s.inFlight[id]);

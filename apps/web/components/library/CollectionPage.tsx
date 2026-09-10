@@ -32,7 +32,7 @@ export interface CollectionPageProps {
   playback: CollectionPlaybackHandle;
   download: DownloadButtonProps | null;
   actions?: ReactNode;
-  onRemoveTrack: (trackId: string) => void;
+  onRemoveTrack?: (trackId: string) => void;
   emptyMessage: string;
   children?: ReactNode;
 }
