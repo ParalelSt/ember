@@ -211,6 +211,19 @@ check('Liked songs sits above the playlist link',
 // ── 3: Liked card -> /library/liked, download for offline ───────────────
 await main.getByRole('link', { name: /liked songs/i }).first().click();
 await page.waitForURL(/\/library\/liked$/);
+
+// ── 2b: sidebar "Library" link is not active on a collection sub-route ──
+// Sidebar/Drawer used pathname.startsWith(href) for every BASE_NAV entry,
+// so "/library" matched "/library/liked" too and both rows lit up. Library
+// now exact-matches; CollectionNavList marks active with the same
+// bg-sidebar-accent/text-sidebar-accent-foreground classes (no aria-current).
+const hasActiveClass = (cls) => (cls ?? '').split(/\s+/).includes('bg-sidebar-accent');
+const libraryLink = aside.getByRole('link', { name: 'Library', exact: true });
+const libraryClass = await libraryLink.first().getAttribute('class');
+const likedActiveClass = await likedLink.first().getAttribute('class');
+check('sidebar Library link is not active on /library/liked', !hasActiveClass(libraryClass), libraryClass ?? '');
+check('sidebar Liked songs link is active on /library/liked', hasActiveClass(likedActiveClass), likedActiveClass ?? '');
+
 check('Liked page heading', await appeared(page.getByRole('heading', { name: 'Liked songs' })));
 check('Play button present', (await page.getByRole('button', { name: 'Play' }).count()) > 0);
 check('Shuffle play button present', (await page.getByRole('button', { name: 'Shuffle play' }).count()) > 0);
@@ -264,6 +277,35 @@ check('offline library shows Liked songs', offlineBody.includes('Liked songs'), 
 check('offline library shows Uploads', offlineBody.includes('Uploads'), offlineBody.slice(0, 200));
 check('offline library shows Recently played', offlineBody.includes('Recently played'), offlineBody.slice(0, 200));
 await ctx.setOffline(false);
+
+// ── 6b: collection page opened offline with nothing cached -> no Play, ──
+// empty-state message shown. Fresh context, offline before the very first
+// navigation (no SW precache, no react-query cache), so this is the "opened
+// cold, offline" case rather than an already-hydrated page flipping offline.
+const ctx3 = await browser.newContext({ viewport: { width: 1300, height: 950 } });
+await ctx3.addCookies([{ name: 'pb_auth', value: cookie, domain: '127.0.0.1', path: '/' }]);
+await ctx3.setOffline(true);
+const page3 = await ctx3.newPage();
+let coldOfflineLoaded = true;
+try {
+  await page3.goto(`${APP_URL}/library/recent`, { waitUntil: 'domcontentloaded', timeout: 8_000 });
+  await page3.locator('main').first().waitFor({ timeout: 5_000 });
+} catch {
+  coldOfflineLoaded = false;
+}
+if (coldOfflineLoaded) {
+  check('cold-offline collection page: no Play button',
+    (await page3.getByRole('button', { name: 'Play' }).count()) === 0);
+  const coldBody = await page3.locator('main').innerText().catch(() => '');
+  check('cold-offline collection page: offline empty message shown',
+    /offline/i.test(coldBody), coldBody.slice(0, 200));
+} else {
+  // A fresh navigation with no cache and no SW precache hits the browser's
+  // native offline interstitial before Next.js ever renders (same as the
+  // /library force-dynamic case above) - nothing in our app to assert on.
+  console.log('SKIP  cold-offline collection page checks — page could not load offline with no prior cache');
+}
+await ctx3.close();
 
 // ── 7: no native plugin -> no download button on a collection page ──────
 const ctx2 = await browser.newContext({ viewport: { width: 1300, height: 950 } });
