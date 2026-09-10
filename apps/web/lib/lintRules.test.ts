@@ -10,8 +10,7 @@ import { join } from 'node:path';
 // call sites intentionally keep the same classes plus one more (e.g. a
 // margin), which the migration brief explicitly leaves alone rather than
 // splitting a class string apart, so a substring ban would misfire on
-// those. See the step 2 report for the h-44/h-48 pairs and the gap-*/p-*
-// steps this test does NOT ban yet, and why.
+// those. The gap-*/p-* spacing classes are not banned yet.
 
 const ROOT = join(__dirname, '..');
 const SCAN_DIRS = ['app', 'components'];

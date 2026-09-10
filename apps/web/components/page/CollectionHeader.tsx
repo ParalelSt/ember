@@ -74,7 +74,7 @@ export function CollectionHeader({
           <CollectionCover {...cover} className={coverClassName} />
         </div>
       )}
-      <div className={v.text}>
+      <div className={v.text || undefined}>
         <Eyebrow>{eyebrow}</Eyebrow>
         <h1 className="text-hero-title">{title}</h1>
         {meta.length > 0 && (

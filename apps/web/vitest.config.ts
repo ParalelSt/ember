@@ -23,7 +23,7 @@ export default defineConfig({
     dedupe: ['react', 'react-dom'],
     // Prefer ESM builds so a dependency's react import goes through the
     // aliases above instead of a CommonJS require() node resolves itself.
-    mainFields: ['module', 'jsnext:main', 'jsnext', 'main'],
+    mainFields: ['module', 'jsnext:main', 'jsnext', 'main', 'browser'],
   },
   test: {
     environment: 'happy-dom',

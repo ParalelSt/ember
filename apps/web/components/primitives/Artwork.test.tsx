@@ -54,4 +54,13 @@ describe('Artwork', () => {
     (container.firstElementChild as HTMLElement).click();
     expect(onClick).toHaveBeenCalledTimes(1);
   });
+
+  it('renders no cover-placeholder class when fallback is none and there is no src', () => {
+    const { container } = render(
+      <Artwork src={null} size="md" fallback="none">
+        <span>no art</span>
+      </Artwork>,
+    );
+    expect(container.firstElementChild?.className).not.toContain('cover-placeholder');
+  });
 });
