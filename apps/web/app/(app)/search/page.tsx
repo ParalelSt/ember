@@ -6,8 +6,9 @@ import { toast } from 'sonner';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { TrackList } from '@/components/track/TrackList';
+import { TrackRow } from '@/components/track/TrackRow';
 import { renderTrackMenu } from '@/components/track/TrackMenu';
-import { CloseIcon, MicIcon, MusicIcon, SearchIcon } from '@/components/icons';
+import { MicIcon, MusicIcon, SearchIcon } from '@/components/icons';
 import { api } from '@/lib/api';
 import { QK } from '@/hooks/useLibrary';
 import { useVoiceSearch } from '@/hooks/useVoiceSearch';
@@ -69,36 +70,16 @@ export default function SearchPage() {
       <SectionHeader title="Recent searches" className="mb-3" />
       <div className="flex flex-col">
         {recentTracks.map((t) => (
-          <div
+          <TrackRow
             key={t.id}
-            onClick={() => trackActions.onPlay(t)}
-            className="group flex items-center gap-3 px-3 py-2 rounded-md cursor-pointer hover:bg-card transition-colors"
-          >
-            {t.artworkUrl ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={t.artworkUrl} alt="" className="h-10 w-10 rounded shrink-0 object-cover bg-black" />
-            ) : (
-              <div className="h-10 w-10 rounded shrink-0 bg-black grid place-items-center text-foreground/20">
-                <MusicIcon className="h-4 w-4" />
-              </div>
-            )}
-            <div className="min-w-0 flex-1">
-              <div className="truncate text-sm font-medium">{t.title}</div>
-              <div className="truncate text-xs text-muted-foreground">{t.artist}</div>
-            </div>
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={(e) => {
-                e.stopPropagation();
-                removeRecentTrack.mutate(t.id);
-              }}
-              aria-label={`Remove "${t.title}" from recent searches`}
-              className="h-7 w-7 text-muted-foreground hover:text-foreground opacity-0 group-hover:opacity-100 max-md:opacity-100 transition-opacity"
-            >
-              <CloseIcon className="h-3.5 w-3.5" />
-            </Button>
-          </div>
+            track={t}
+            density="compact"
+            active={trackActions.currentId === t.id}
+            artworkFallback={<MusicIcon className="h-4 w-4" />}
+            onPlay={() => trackActions.onPlay(t)}
+            onRemove={() => removeRecentTrack.mutate(t.id)}
+            removeLabel={`Remove "${t.title}" from recent searches`}
+          />
         ))}
       </div>
     </div>

@@ -1,16 +1,20 @@
 'use client';
 
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
-import { Artwork } from '@/components/primitives/Artwork';
+import { TrackRow } from '@/components/track/TrackRow';
+import { MusicIcon } from '@/components/icons';
 import { usePlayer } from '@/components/player/PlayerProvider';
 import { usePlayerStore } from '@/stores/usePlayerStore';
-import { formatTime } from '@/lib/format';
-import { cn } from '@/lib/utils';
 
 interface Props {
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }
+
+// The sheet paints the sidebar palette, so its rows take the sidebar tone
+// and a matching hover. An artless track keeps its box (with the music
+// icon) so every row lines up.
+const ART_FALLBACK = <MusicIcon className="h-4 w-4" />;
 
 export function QueueSheet({ open, onOpenChange }: Props) {
   const queue = usePlayerStore((s) => s.queue);
@@ -34,7 +38,15 @@ export function QueueSheet({ open, onOpenChange }: Props) {
               <div className="px-3 text-[11px] uppercase tracking-widest text-sidebar-foreground/55 mb-1.5">
                 Now playing
               </div>
-              <Row track={current} highlight />
+              {/* No onPlay: the current row is a label, not a control. */}
+              <TrackRow
+                track={current}
+                density="compact"
+                tone="sidebar"
+                showDuration
+                active
+                artworkFallback={ART_FALLBACK}
+              />
             </div>
           )}
 
@@ -45,10 +57,15 @@ export function QueueSheet({ open, onOpenChange }: Props) {
               </div>
               <div className="flex flex-col">
                 {upcoming.map((t, i) => (
-                  <Row
+                  <TrackRow
                     key={`${t.id}-${index + 1 + i}`}
                     track={t}
-                    onClick={() => playTrack(t, queue, context)}
+                    density="compact"
+                    tone="sidebar"
+                    showDuration
+                    artworkFallback={ART_FALLBACK}
+                    className="hover:bg-sidebar-accent/60"
+                    onPlay={() => playTrack(t, queue, context)}
                   />
                 ))}
               </div>
@@ -63,31 +80,5 @@ export function QueueSheet({ open, onOpenChange }: Props) {
         </div>
       </SheetContent>
     </Sheet>
-  );
-}
-
-interface RowProps {
-  track: { id: string; title: string; artist: string; artworkUrl: string | null; durationSec: number };
-  highlight?: boolean;
-  onClick?: () => void;
-}
-
-function Row({ track, highlight, onClick }: RowProps) {
-  return (
-    <div
-      onClick={onClick}
-      className={cn(
-        'grid grid-cols-[40px_minmax(0,1fr)_auto] gap-3 items-center px-3 py-2 rounded-md transition-colors',
-        onClick && 'cursor-pointer hover:bg-sidebar-accent/60',
-        highlight && 'text-ember',
-      )}
-    >
-      <Artwork src={track.artworkUrl} size="xs" className="rounded bg-black shrink-0" />
-      <div className="min-w-0">
-        <div className="truncate text-sm font-semibold">{track.title}</div>
-        <div className="truncate text-xs text-sidebar-foreground/55">{track.artist}</div>
-      </div>
-      <div className="text-xs text-sidebar-foreground/55 tabular-nums">{formatTime(track.durationSec, { empty: '--:--' })}</div>
-    </div>
   );
 }

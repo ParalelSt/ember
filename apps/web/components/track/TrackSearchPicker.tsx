@@ -7,7 +7,7 @@ import { QK } from '@/hooks/useLibrary';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { SearchIcon, PlusIcon, RefreshIcon, PlayIcon, PauseIcon } from '@/components/icons';
-import { Artwork } from '@/components/primitives/Artwork';
+import { TrackRow } from '@/components/track/TrackRow';
 import { usePlayer } from '@/components/player/PlayerProvider';
 import { songKey } from '@/lib/songKey';
 import type { Track } from '@/types/track';
@@ -123,37 +123,41 @@ export function TrackSearchPicker({ added = [], seeds = [], onAdd, className }: 
           const isAdded = addedIds.has(t.id);
           const playing = current?.id === t.id;
           return (
-            <div
+            <TrackRow
               key={t.id}
-              className="flex items-center gap-3 px-2 py-1.5 rounded-md hover:bg-accent/60 transition-colors"
-            >
-              {t.artworkUrl && (
-                <Artwork src={t.artworkUrl} size="xs" className="rounded shrink-0 bg-black" />
-              )}
-              <div className="min-w-0 flex-1">
-                <div className={cn('truncate text-sm font-medium', playing && 'text-ember')}>{t.title}</div>
-                <div className="truncate text-xs text-muted-foreground">{t.artist}</div>
-              </div>
-              {/* Preview play/pause — plays just this track (then flows into radio). */}
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => (playing ? toggle() : playTrack(t))}
-                aria-label={playing && isPlaying ? 'Pause' : 'Play'}
-                className={cn('h-8 w-8 shrink-0', playing ? 'text-ember hover:text-ember' : 'text-muted-foreground hover:text-foreground')}
-              >
-                {playing && isPlaying ? <PauseIcon className="h-3.5 w-3.5" /> : <PlayIcon className="h-3.5 w-3.5" />}
-              </Button>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => onAdd(t)}
-                disabled={isAdded}
-                className={cn('h-8 shrink-0 gap-1', isAdded && 'text-muted-foreground')}
-              >
-                {isAdded ? 'Added' : (<><PlusIcon className="h-3.5 w-3.5" /> Add</>)}
-              </Button>
-            </div>
+              track={t}
+              density="compact"
+              active={playing}
+              // The picker's rows are not click-to-play (a stray click
+              // while adding songs would hijack playback), so it keeps its
+              // own preview button in the trailing slot and passes no
+              // onPlay. The tighter padding and its own hover colour ride
+              // on className.
+              className="px-2 py-1.5 hover:bg-accent/60"
+              trailing={
+                <>
+                  {/* Preview play/pause — plays just this track (then flows into radio). */}
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => (playing ? toggle() : playTrack(t))}
+                    aria-label={playing && isPlaying ? 'Pause' : 'Play'}
+                    className={cn('h-8 w-8 shrink-0', playing ? 'text-ember hover:text-ember' : 'text-muted-foreground hover:text-foreground')}
+                  >
+                    {playing && isPlaying ? <PauseIcon className="h-3.5 w-3.5" /> : <PlayIcon className="h-3.5 w-3.5" />}
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => onAdd(t)}
+                    disabled={isAdded}
+                    className={cn('h-8 shrink-0 gap-1', isAdded && 'text-muted-foreground')}
+                  >
+                    {isAdded ? 'Added' : (<><PlusIcon className="h-3.5 w-3.5" /> Add</>)}
+                  </Button>
+                </>
+              }
+            />
           );
         })}
         </div>
