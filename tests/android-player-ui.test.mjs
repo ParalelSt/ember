@@ -140,6 +140,17 @@ await page.evaluate(() => window.__emberNativeEmit('state', { playing: true, pos
 await page.waitForTimeout(600);
 check('a native track change moves the UI to that song', /Car Pick One/.test(await page.locator('footer').innerText()));
 
+// A native error must not leave the bar stuck on "paused" while the player
+// keeps going: the next state event has to win.
+await page.evaluate(() => window.__emberNativeEmit('error', { message: 'Source error' }));
+await page.waitForTimeout(300);
+await page.evaluate(() => window.__emberNativeEmit('state', { playing: true, position: 5, duration: 100, index: 0, trackId: 'upload:carA' }));
+await page.waitForTimeout(600);
+check('a native error does not pin the UI to paused', (await page.getByRole('button', { name: 'Pause' }).count()) > 0);
+await page.evaluate(() => window.__emberNativeEmit('state', { playing: false, position: 5, duration: 100, index: 0, trackId: 'upload:carA' }));
+await page.waitForTimeout(600);
+check('a native pause still shows as Play', (await page.getByRole('button', { name: 'Play' }).count()) > 0);
+
 check('no page errors', errors.length === 0, errors.slice(0, 2).join(' | '));
 await browser.close();
 console.log(`\n${checks.filter(Boolean).length}/${checks.length} checks passed`);

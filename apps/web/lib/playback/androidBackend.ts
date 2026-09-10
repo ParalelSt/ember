@@ -54,7 +54,6 @@ export const createAndroidBackend: CreateAudioBackend = (events: AudioBackendEve
   const p = plugin();
 
   const onState = (s: NativeState) => {
-    const wasPaused = paused;
     paused = !s.playing;
     if (s.index !== index) {
       index = s.index;
@@ -66,8 +65,12 @@ export const createAndroidBackend: CreateAudioBackend = (events: AudioBackendEve
     }
     position = s.position;
     events.onTime(s.position);
-    if (wasPaused && s.playing) events.onPlay();
-    if (!wasPaused && !s.playing) events.onPause();
+    // Re-assert on every event, not only when our own mirror flips: native is
+    // the source of truth here, and anything else that writes the store's
+    // playing flag (an error toast, a stale closure) would otherwise leave the
+    // bar out of step until the next real flip. The provider ignores repeats.
+    if (s.playing) events.onPlay();
+    else events.onPause();
   };
 
   if (p) {

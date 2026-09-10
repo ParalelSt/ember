@@ -195,8 +195,13 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         }
         nextRef.current();
       },
-      onPlay: () => setIsPlaying(true),
+      // Both are idempotent: the Android backend repeats them on every native
+      // state event so the store always converges on what the player is doing.
+      onPlay: () => {
+        if (!usePlayerStore.getState().isPlaying) setIsPlaying(true);
+      },
       onPause: () => {
+        if (!usePlayerStore.getState().isPlaying) return;
         setIsPlaying(false);
         persistRef.current();
       },
@@ -207,6 +212,9 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
           fallbackToWebAudioRef.current?.('audio backend reported an error');
           return;
         }
+        // The Android player owns playback and keeps going (or advances) after
+        // a bad item; forcing "paused" here left the bar stuck until reload.
+        if (backendKindRef.current === 'android') return;
         setPosition(0);
         setIsPlaying(false);
         usePlayerStore.setState({ position: 0 });
