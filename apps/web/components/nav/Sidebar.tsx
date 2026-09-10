@@ -51,7 +51,7 @@ export function Sidebar() {
   };
 
   return (
-    <aside className="hidden md:flex flex-col w-60 shrink-0 bg-sidebar text-sidebar-foreground border-r border-sidebar-border h-full overflow-hidden">
+    <aside className="hidden md:flex flex-col w-(--sidebar-w) shrink-0 bg-sidebar text-sidebar-foreground border-r border-sidebar-border h-full overflow-hidden">
       <Link
         href="/"
         className="flex items-center gap-2 px-4 pt-5 pb-4 hover:opacity-80 transition-opacity"

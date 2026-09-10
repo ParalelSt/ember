@@ -48,8 +48,8 @@ export default function AlbumPage({ params }: { params: Promise<{ id: string }> 
           style={cover ? { backgroundImage: `url(${cover})` } : undefined}
         />
         <div className="min-w-0">
-          <div className="text-xs uppercase tracking-widest text-muted-foreground">Album</div>
-          <h1 className="mt-2 text-4xl md:text-5xl font-bold tracking-tight leading-tight">{title}</h1>
+          <div className="text-eyebrow">Album</div>
+          <h1 className="text-hero-title">{title}</h1>
           <div className="mt-3 text-sm text-muted-foreground">
             {artistId ? (
               <Link href={`/artist/${artistId}`} className="font-semibold text-foreground hover:underline">

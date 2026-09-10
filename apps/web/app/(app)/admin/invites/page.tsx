@@ -44,7 +44,7 @@ export default function AdminInvitesPage() {
   return (
     <section>
       <div className="flex items-center justify-between gap-4 mb-4 flex-wrap">
-        <h2 className="text-xl font-bold tracking-tight">Invites · {invites.length}</h2>
+        <h2 className="text-section-title">Invites · {invites.length}</h2>
         <Input
           placeholder="Search…"
           value={search}

@@ -39,7 +39,7 @@ export default function AdminUsersPage() {
   return (
     <section>
       <div className="flex items-center justify-between gap-4 mb-4">
-        <h2 className="text-xl font-bold tracking-tight">Users · {users.length}</h2>
+        <h2 className="text-section-title">Users · {users.length}</h2>
         <Input
           placeholder="Search by email or name…"
           value={search}

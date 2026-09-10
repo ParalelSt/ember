@@ -53,8 +53,8 @@ export function CollectionHeader({
         </div>
       )}
       <div>
-        <div className="text-xs uppercase tracking-widest text-muted-foreground">{eyebrow}</div>
-        <h1 className="mt-2 text-4xl md:text-5xl font-bold tracking-tight leading-tight">{title}</h1>
+        <div className="text-eyebrow">{eyebrow}</div>
+        <h1 className="text-hero-title">{title}</h1>
         <div className="mt-3 text-sm text-muted-foreground">{meta.join(' · ')}</div>
         {children}
       </div>

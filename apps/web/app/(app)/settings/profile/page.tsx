@@ -65,10 +65,10 @@ export default function SettingsProfile() {
   return (
     <div className="max-w-2xl">
     <form onSubmit={onSubmit}>
-      <h2 className="text-xl font-bold tracking-tight">Profile</h2>
+      <h2 className="text-section-title">Profile</h2>
 
       <div className="mt-6 flex items-center gap-5">
-        <div className="relative h-20 w-20 rounded-full overflow-hidden bg-linear-to-br from-ember to-[oklch(0.3_0.15_25)] grid place-items-center text-2xl font-bold text-white shrink-0">
+        <div className="relative h-20 w-20 rounded-full overflow-hidden cover-placeholder grid place-items-center text-2xl font-bold text-white shrink-0">
           {displayedAvatar ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img src={displayedAvatar} alt="" className="absolute inset-0 h-full w-full object-cover" />

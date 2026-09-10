@@ -50,6 +50,15 @@
   --radius-lg: 16px;
   --radius-xl: 20px;
   --radius-2xl: 24px;
+
+  /* Artwork sizes. Spacing tokens feed Tailwind's size/h/w utilities, so
+     size-art-md, h-art-sm, w-art-sm etc become real classes; every artwork
+     size in the app is one of these five. */
+  --spacing-art-xs: 2.5rem;
+  --spacing-art-sm: 3rem;
+  --spacing-art-md: 10rem;
+  --spacing-art-lg: 12rem;
+  --spacing-art-xl: 14rem;
 }
 
 :root {
@@ -86,6 +95,51 @@
   /* Brand accents — warm ember + softer secondary. */
   --ember: oklch(0.68 0.20 25);
   --ember-soft: oklch(0.78 0.13 25);
+
+  /* Cover placeholder gradient (no art yet): ember fading to a darker red.
+     Named tokens so the raw oklch() stops don't live in JSX. */
+  --cover-from: var(--ember);
+  --cover-to: oklch(0.3 0.15 25);
+
+  /* Shell layout sizes: sidebar column, desktop lyrics column, and the
+     content area's max width. */
+  --sidebar-w: 15rem;
+  --lyrics-w: 28rem;
+  --content-max: 80rem;
+}
+
+/* Type utilities: one name per repeated class string so call sites read as
+   intent (page title, eyebrow, meta) instead of a memorized run of classes.
+   Tailwind 4 @utility bodies are plain CSS, so @apply the original classes
+   verbatim to keep rendered output identical. */
+@utility text-page-title {
+  @apply text-3xl md:text-4xl font-bold tracking-tight;
+}
+@utility text-hero-title {
+  @apply mt-2 text-4xl md:text-5xl font-bold tracking-tight leading-tight;
+}
+@utility text-section-title {
+  @apply text-xl font-bold tracking-tight;
+}
+@utility text-eyebrow {
+  @apply text-xs uppercase tracking-widest text-muted-foreground;
+}
+@utility text-meta {
+  @apply text-sm text-muted-foreground;
+}
+
+/* Cover placeholder: the gradient shown behind a collection/profile/artist
+   image before real artwork loads or when there is none. */
+@utility cover-placeholder {
+  background-image: linear-gradient(to bottom right, var(--cover-from), var(--cover-to));
+}
+
+/* Shelf grid: fixed-size cards that wrap to fill the row, instead of a
+   fixed column count per breakpoint. Not adopted yet (see lib/layout.ts and
+   TrackRow, migrated in a later step); defined now so it's ready. */
+@utility grid-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(var(--card-min, 10rem), 1fr));
 }
 
 @layer base {

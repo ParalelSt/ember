@@ -62,7 +62,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
             globals.css; inert on tablets/desktop. */}
         <div className="rotate-lock">
           <p className="text-lg font-semibold">Rotate your phone to portrait</p>
-          <p className="text-sm text-muted-foreground">Ember is built for portrait on phones.</p>
+          <p className="text-meta">Ember is built for portrait on phones.</p>
         </div>
         <QueryProvider>
           <AuthProvider initialUser={initialUser}>

@@ -68,7 +68,7 @@ export default function LibraryPage() {
   return (
     <div>
       <div className="mb-6 flex items-center justify-between gap-4">
-        <h1 className="text-3xl md:text-4xl font-bold tracking-tight">Your library</h1>
+        <h1 className="text-page-title">Your library</h1>
         <div className="flex shrink-0 items-center gap-1">
           <Button
             variant="ghost"

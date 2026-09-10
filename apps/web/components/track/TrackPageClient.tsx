@@ -42,8 +42,8 @@ export function TrackPageClient({ videoId }: { videoId: string }) {
           style={track.artworkUrl ? { backgroundImage: `url(${track.artworkUrl})` } : undefined}
         />
         <div className="min-w-0">
-          <div className="text-xs uppercase tracking-widest text-muted-foreground">Track</div>
-          <h1 className="mt-2 text-4xl md:text-5xl font-bold tracking-tight leading-tight">{track.title}</h1>
+          <div className="text-eyebrow">Track</div>
+          <h1 className="text-hero-title">{track.title}</h1>
           <div className="mt-3 text-sm text-muted-foreground">
             {track.artistId ? (
               <Link href={`/artist/${track.artistId}`} className="font-semibold text-foreground hover:underline">

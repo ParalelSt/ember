@@ -151,7 +151,7 @@ export default function SessionPage({ params }: { params: Promise<{ id: string }
 
       <div className="mb-8">
         <div className="mb-2 flex items-center justify-between">
-          <h2 className="text-xl font-bold tracking-tight">Queue</h2>
+          <h2 className="text-section-title">Queue</h2>
           <Button variant="ghost" size="sm" onClick={handleSave} disabled={save.isPending || saved || queue.length === 0} className="text-muted-foreground hover:text-foreground">
             {saved ? 'Saved ✓' : 'Save as playlist'}
           </Button>

@@ -21,7 +21,7 @@ export function CollectionCover({ src, icon, className }: CollectionCoverProps) 
   return (
     <div
       className={cn(
-        'relative aspect-square overflow-hidden rounded-md shadow-soft bg-linear-to-br from-ember to-[oklch(0.3_0.15_25)]',
+        'relative aspect-square overflow-hidden rounded-md shadow-soft cover-placeholder',
         className,
       )}
     >

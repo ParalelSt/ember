@@ -39,7 +39,7 @@ export default function AdminTracksPage() {
   return (
     <section>
       <div className="flex items-center justify-between gap-4 mb-4">
-        <h2 className="text-xl font-bold tracking-tight">
+        <h2 className="text-section-title">
           Tracks{data ? ` · ${data.totalItems}` : ''}
         </h2>
         <form

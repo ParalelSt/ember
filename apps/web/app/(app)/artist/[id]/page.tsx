@@ -38,12 +38,12 @@ export default function ArtistPage({ params }: { params: Promise<{ id: string }>
     <div>
       <div className="flex flex-col md:flex-row items-start md:items-end gap-6 mb-6">
         <div
-          className="h-36 w-36 md:h-44 md:w-44 rounded-full shadow-soft bg-linear-to-br from-ember to-[oklch(0.3_0.15_25)] shrink-0 bg-cover bg-center"
+          className="h-36 w-36 md:h-44 md:w-44 rounded-full shadow-soft cover-placeholder shrink-0 bg-cover bg-center"
           style={heroArt ? { backgroundImage: `url(${heroArt})` } : undefined}
         />
         <div>
-          <div className="text-xs uppercase tracking-widest text-muted-foreground">Artist</div>
-          <h1 className="mt-2 text-4xl md:text-5xl font-bold tracking-tight leading-tight">{name}</h1>
+          <div className="text-eyebrow">Artist</div>
+          <h1 className="text-hero-title">{name}</h1>
           {description && <p className="mt-3 max-w-2xl text-sm text-muted-foreground line-clamp-3 leading-relaxed">{description}</p>}
         </div>
       </div>

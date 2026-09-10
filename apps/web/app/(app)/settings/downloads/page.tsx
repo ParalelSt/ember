@@ -56,15 +56,15 @@ export default function DownloadsSettingsPage() {
   return (
     <section className="space-y-6">
       <header>
-        <h2 className="text-xl font-bold tracking-tight">Downloads</h2>
-        <p className="text-sm text-muted-foreground">
+        <h2 className="text-section-title">Downloads</h2>
+        <p className="text-meta">
           Playlists pinned for offline playback are stored on this device.
         </p>
       </header>
 
       <div className="rounded-md bg-card px-4 py-3">
         <div className="text-2xl font-bold tabular-nums">{formatBytes(totalBytes)}</div>
-        <div className="text-sm text-muted-foreground">
+        <div className="text-meta">
           Across {formatCount(count, 'pin')}
         </div>
       </div>
