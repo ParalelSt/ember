@@ -11,7 +11,9 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Button } from '@/components/ui/button';
 import { CreatePlaylistDialog } from '@/components/track/CreatePlaylistDialog';
 import { ImportPlaylistDialog } from '@/components/track/ImportPlaylistDialog';
+import { CollectionNavList } from '@/components/nav/CollectionNavList';
 import { HomeIcon, SearchIcon, LibraryIcon, PlusIcon, FlameIcon, SettingsIcon, ShieldIcon } from '@/components/icons';
+import { systemCollections } from '@/lib/collections';
 import { cn } from '@/lib/utils';
 
 const BASE_NAV = [
@@ -78,6 +80,15 @@ export function Sidebar() {
           );
         })}
       </nav>
+
+      {user && (
+        <div className="mt-4 border-t border-sidebar-border pt-3">
+          <CollectionNavList
+            items={systemCollections().map(({ title, href, icon }) => ({ label: title, href, icon }))}
+            activePath={pathname}
+          />
+        </div>
+      )}
 
       <div className="mt-6 px-4 flex items-center justify-between">
         <span className="text-[11px] uppercase tracking-widest text-sidebar-foreground/55">Playlists</span>
