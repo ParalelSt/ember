@@ -25,6 +25,14 @@
 
         </activity>
 
+        <!-- Pinned downloads keep running with the app closed, so they need a
+             foreground service; dataSync is the type Android 14+ expects for
+             "fetching files the user asked for". -->
+        <service
+            android:name=".OfflineDownloadService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
+
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileprovider"
@@ -44,4 +52,10 @@
          service; the plugin's own manifest only declares the generic
          FOREGROUND_SERVICE. -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
+    <!-- Offline downloads (OfflineDownloadService): the generic FGS permission,
+         the typed one Android 14+ requires for foregroundServiceType="dataSync",
+         and the progress notification that service has to post. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 </manifest>

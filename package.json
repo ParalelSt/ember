@@ -21,14 +21,18 @@
     "test:stream-fallback": "node tests/stream-fallback.test.mjs",
     "test:desktop-logger": "node tests/desktop-logger.test.mjs",
     "test:auth": "node tests/authorization.test.mjs",
+    "test:collections": "node tests/collections.test.mjs",
     "test:sessions": "node tests/session-authorization.test.mjs",
     "test:tabs": "node tests/tabs.test.mjs",
     "test:tabs-ui": "node tests/tabs-ui.test.mjs",
+    "test:offline-ui": "node tests/offline-android-ui.test.mjs",
+    "test:offline-page": "node tests/offline-page.test.mjs",
     "test:resume": "node tests/resume-position.test.mjs",
     "test:position": "node tests/playback-position.test.mjs",
     "test:duration": "node tests/duration.test.mjs",
     "test:origin": "node tests/public-origin.test.mjs",
-    "test:toggles": "node tests/toggles-ui.test.mjs"
+    "test:toggles": "node tests/toggles-ui.test.mjs",
+    "test:library-ui": "node tests/library-collections-ui.test.mjs"
   },
   "devDependencies": {
     "playwright-core": "^1.62.1"

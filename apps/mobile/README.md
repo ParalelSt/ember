@@ -77,6 +77,46 @@ For an `http://` dev URL (localhost / LAN IP), cleartext is enabled:
 Cleartext to an http LAN URL works, but the **https Tailscale funnel URL is
 preferred**.
 
+## Offline (Android only)
+
+Pins, not a bulk cache: each playlist and Liked Songs can be pinned for
+offline playback (pin ids: the playlist id, or `liked`). A pin downloads its
+tracks' audio (and artwork, best effort) to app-private storage:
+`files/offline/index.json`, `files/offline/audio/<safeId>.m4a`,
+`files/offline/art/<safeId>.jpg`, refcounted so a track shared by two pins
+keeps its file until neither pin lists it. A downloaded track plays from
+that local file even while online. The native `EmberOffline` Capacitor
+plugin backs this; a foreground `OfflineDownloadService` downloads one track
+at a time with one retry before marking it failed. Liked Songs re-syncs its
+pin on every like/unlike once it has been pinned once. Stale host `yt-dlp`
+breaks downloads per track the same way it breaks streaming: a track fails,
+gets retried once, then shows failed in Settings, Downloads with a Retry
+button. See SETUP.md's
+["Keep yt-dlp and ytmusicapi updated"](../../SETUP.md#keep-yt-dlp-and-ytmusicapi-updated--do-this-when-things-break).
+
+`capacitor.config.ts` sets `server.errorPath: offline.html`, a bundled page
+(`public/offline.html`) Capacitor shows whenever the main-frame request to
+the server fails, including a reachable server's main-frame 4xx/5xx, not
+just being offline. It lists downloaded tracks by pin, plays them locally,
+drives the lock screen via the capgo `MediaSession` plugin, and has a "Try
+again" button. It needs `window.Capacitor` injected, which Capacitor does
+not do for the error page by default; `MainActivity.java` composes and
+registers that injection by hand using Capacitor's `JSExport` statics.
+**Upgrade-sensitive**: not a documented contract, re-check on Capacitor
+bumps (falls back to "Connecting to server..." rather than crashing).
+
+Testing:
+```bash
+npm run test:offline-ui       # web UI, from apps/web
+node tests/offline-page.test.mjs   # bundled offline page, headless
+cd apps/mobile/android && ./gradlew testDebugUnitTest   # OfflineStore
+```
+
+Emulator recipe: boot the AVD, sign in, pin a playlist while online,
+`adb shell cmd connectivity airplane-mode enable`, confirm playback and lock
+screen controls still work, force-stop and relaunch to hit the cold-start
+page, then `airplane-mode disable` and tap "Try again".
+
 ## Prerequisites
 
 ### Android
@@ -130,3 +170,14 @@ does:
 # from apps/mobile
 node ../../node_modules/@capacitor/cli/bin/capacitor sync android
 ```
+
+### Stale `capgo-capacitor-media-session` project path
+
+Gradle failing with `No matching variant of project :capgo-capacitor-media-session
+… No variants exist` means the plugin's `projectDir` in the generated
+`android/capacitor.settings.gradle` points somewhere npm did not install it
+(npm may place the package under `apps/mobile/node_modules` or hoist it to the
+root, and the checked-in generated path can go stale). Fix: `npm install` at the
+repo root, then re-run `cap sync` with the URL you want kept, e.g.
+`EMBER_APP_URL="https://ember.<tailnet>.ts.net" npx cap sync android`, which
+rewrites the path. Do not hand-edit the generated file.

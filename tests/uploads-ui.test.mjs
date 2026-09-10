@@ -117,9 +117,10 @@ await page.getByRole('button', { name: /^upload$/i }).last().click();
 await page.getByText(/Uploaded/i).first().waitFor({ timeout: 30_000 });
 check('success toast shown', true);
 
-await page.getByRole('tab', { name: /uploads/i }).click();
-await page.getByText(songTitle).first().waitFor({ timeout: 15_000 });
-check('song listed in the Uploads tab', true);
+await page.goto(`${APP_URL}/library/uploads`, { waitUntil: 'networkidle' });
+const uploadedRow = page.getByText(songTitle).first();
+await uploadedRow.waitFor({ timeout: 15_000 });
+check('song listed on the Uploads page', (await uploadedRow.count()) > 0);
 
 // Play it: the audio element should get a src on our uploads route and
 // actually advance past zero.

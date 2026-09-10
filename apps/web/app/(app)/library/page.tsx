@@ -1,27 +1,27 @@
 'use client';
 
 import { useState } from 'react';
-import Link from 'next/link';
-import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
-import { TrackList } from '@/components/track/TrackList';
+import { CollectionShelf } from '@/components/library/CollectionShelf';
 import { ImportPlaylistDialog } from '@/components/track/ImportPlaylistDialog';
 import { UploadTrackDialog } from '@/components/track/UploadTrackDialog';
 import { StartSessionDialog, JoinSessionDialog } from '@/components/session/SessionDialogs';
-import { CheckIcon, DownloadIcon, QueueIcon, UploadIcon } from '@/components/icons';
+import { DownloadIcon, QueueIcon, UploadIcon } from '@/components/icons';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { useQueryHistory, useQueryLikes, useQueryPlaylists, useQueryUploads } from '@/hooks/useLibrary';
 import { useOfflineStore } from '@/stores/useOfflineStore';
 import { useOnline } from '@/lib/useOnline';
+import { countLabel, hrefFor, iconFor, refFromPinId, systemCollections, type SystemKind } from '@/lib/collections';
 
 export default function LibraryPage() {
   const { user } = useAuth();
   const { data: liked = [] } = useQueryLikes();
   const { data: history = [] } = useQueryHistory();
   const { data: playlists = [] } = useQueryPlaylists();
-  const isOnline = useOnline();
-  const downloadedIds = useOfflineStore((s) => s.downloaded);
   const { data: uploads = [] } = useQueryUploads();
+  const isOnline = useOnline();
+  const downloaded = useOfflineStore((s) => s.downloaded);
+  const pins = useOfflineStore((s) => s.pins);
   const [importOpen, setImportOpen] = useState(false);
   const [uploadOpen, setUploadOpen] = useState(false);
   const [startOpen, setStartOpen] = useState(false);
@@ -29,35 +29,41 @@ export default function LibraryPage() {
 
   if (!user) return <div className="text-muted-foreground py-12 text-center">Sign in to see your library</div>;
 
-  // Offline: hide Liked + Recent (those need server data) and show only the
-  // playlists that have been pinned via the Download-for-offline button.
+  // Offline: pins are the offline store's own record of what was downloaded,
+  // so this renders correctly even before any online query has ever
+  // succeeded (a cold start with no network yet).
   if (!isOnline) {
-    const downloadedPlaylists = playlists.filter((p) => downloadedIds.includes(p.id));
     return (
       <div>
         <h1 className="text-3xl md:text-4xl font-bold tracking-tight mb-2">Your library</h1>
-        <p className="text-sm text-muted-foreground mb-6">Offline — showing downloaded playlists only.</p>
-        {downloadedPlaylists.length === 0 ? (
-          <div className="text-muted-foreground py-12 text-center">
-            No downloaded playlists. Go online and tap “Download for offline” on a playlist to pin it.
-          </div>
-        ) : (
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
-            {downloadedPlaylists.map((p) => (
-              <Link key={p.id} href={`/playlist/${p.id}`} className="group p-4 rounded-md bg-card hover:bg-card/80 transition-colors">
-                <div className="aspect-square rounded-md shadow-soft bg-linear-to-br from-ember to-[oklch(0.3_0.15_25)]" />
-                <div className="mt-3 flex items-center gap-1.5">
-                  <CheckIcon className="h-3.5 w-3.5 text-ember shrink-0" />
-                  <div className="truncate text-sm font-semibold">{p.name}</div>
-                </div>
-                <div className="mt-1 text-xs text-muted-foreground">Downloaded</div>
-              </Link>
-            ))}
-          </div>
-        )}
+        <p className="text-sm text-muted-foreground mb-6">Offline. Showing what is downloaded.</p>
+        <CollectionShelf
+          title="Downloaded"
+          size="md"
+          items={pins.map((p) => {
+            const ref = refFromPinId(p.id);
+            return {
+              title: p.name,
+              subtitle: 'Downloaded',
+              href: hrefFor(ref),
+              cover: { src: null, icon: iconFor(ref) },
+              badge: 'downloaded' as const,
+              size: 'md' as const,
+            };
+          })}
+          empty={
+            <div className="text-muted-foreground py-12 text-center">
+              No downloaded playlists. Go online and tap “Download for offline” on a playlist to pin it.
+            </div>
+          }
+        />
       </div>
     );
   }
+
+  // Counts default to countLabel(0) via `?? []` above: a system collection's
+  // query has no data yet on first paint, not "empty forever".
+  const counts = { liked: liked.length, recent: history.length, uploads: uploads.length };
 
   return (
     <div>
@@ -98,58 +104,33 @@ export default function LibraryPage() {
       <UploadTrackDialog open={uploadOpen} onOpenChange={setUploadOpen} />
       <StartSessionDialog open={startOpen} onOpenChange={setStartOpen} />
       <JoinSessionDialog open={joinOpen} onOpenChange={setJoinOpen} />
-      <Tabs defaultValue="liked" className="w-full">
-        <TabsList>
-          <TabsTrigger value="liked">Liked</TabsTrigger>
-          <TabsTrigger value="recent">Recently played</TabsTrigger>
-          <TabsTrigger value="playlists">Playlists</TabsTrigger>
-          <TabsTrigger value="uploads">Uploads</TabsTrigger>
-        </TabsList>
-        <TabsContent value="liked" className="mt-6">
-          <div className="text-sm text-muted-foreground mb-4">
-            {liked.length} {liked.length === 1 ? 'track' : 'tracks'}
-          </div>
-          <TrackList tracks={liked} />
-        </TabsContent>
-        <TabsContent value="recent" className="mt-6"><TrackList tracks={history} /></TabsContent>
-        <TabsContent value="playlists" className="mt-6">
-          {playlists.length === 0 ? (
-            <div className="text-muted-foreground py-12 text-center">No playlists yet</div>
-          ) : (
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
-              {playlists.map((p) => (
-                <Link key={p.id} href={`/playlist/${p.id}`} className="group p-4 rounded-md bg-card hover:bg-card/80 transition-colors">
-                  <div className="aspect-square rounded-md shadow-soft bg-linear-to-br from-ember to-[oklch(0.3_0.15_25)]" />
-                  <div className="mt-3 flex items-center gap-1.5">
-                    {downloadedIds.includes(p.id) && (
-                      <CheckIcon className="h-3.5 w-3.5 text-ember shrink-0" />
-                    )}
-                    <div className="truncate text-sm font-semibold">{p.name}</div>
-                  </div>
-                  <div className="mt-1 text-xs text-muted-foreground">
-                    {downloadedIds.includes(p.id) ? 'Downloaded' : 'Playlist'}
-                  </div>
-                </Link>
-              ))}
-            </div>
-          )}
-        </TabsContent>
-        <TabsContent value="uploads" className="mt-6">
-          {uploads.length === 0 ? (
-            <div className="text-muted-foreground py-12 text-center">
-              Nothing uploaded yet. Use <span className="text-foreground">Upload</span> to add a song from your
-              device — everyone on the server can then find it.
-            </div>
-          ) : (
-            <>
-              <div className="text-sm text-muted-foreground mb-4">
-                {uploads.length} {uploads.length === 1 ? 'song' : 'songs'} added by members of this server
-              </div>
-              <TrackList tracks={uploads} />
-            </>
-          )}
-        </TabsContent>
-      </Tabs>
+
+      <CollectionShelf
+        title="Your collections"
+        size="lg"
+        items={systemCollections().map(({ ref, title, href, pinId, icon }) => ({
+          title,
+          subtitle: countLabel(counts[ref.kind as SystemKind] ?? 0),
+          href,
+          cover: { src: null, icon },
+          badge: downloaded.includes(pinId) ? ('downloaded' as const) : undefined,
+          size: 'lg' as const,
+        }))}
+      />
+
+      <CollectionShelf
+        title="Playlists"
+        size="md"
+        items={playlists.map((p) => ({
+          title: p.name,
+          subtitle: downloaded.includes(p.id) ? 'Downloaded' : 'Playlist',
+          href: hrefFor({ kind: 'playlist', id: p.id }),
+          cover: { src: p.artwork_url, icon: null },
+          badge: downloaded.includes(p.id) ? ('downloaded' as const) : undefined,
+          size: 'md' as const,
+        }))}
+        empty={<div className="text-muted-foreground py-12 text-center">No playlists yet</div>}
+      />
     </div>
   );
 }

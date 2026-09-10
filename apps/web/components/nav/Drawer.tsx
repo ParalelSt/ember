@@ -11,7 +11,9 @@ import type { Track } from '@/types/track';
 import { Button } from '@/components/ui/button';
 import { CreatePlaylistDialog } from '@/components/track/CreatePlaylistDialog';
 import { ImportPlaylistDialog } from '@/components/track/ImportPlaylistDialog';
+import { CollectionNavList } from '@/components/nav/CollectionNavList';
 import { HomeIcon, SearchIcon, LibraryIcon, PlusIcon, FlameIcon, SettingsIcon, ShieldIcon } from '@/components/icons';
+import { systemCollections } from '@/lib/collections';
 import { cn } from '@/lib/utils';
 
 const BASE_NAV = [
@@ -74,7 +76,8 @@ export function Drawer({ open, onOpenChange }: Props) {
 
         <nav className="px-2 py-3 flex flex-col gap-1">
           {NAV.map(({ href, label, icon: Icon }) => {
-            const isActive = href === '/' ? pathname === '/' : pathname.startsWith(href);
+            // Exact-match Library so a collection sub-route (e.g. /library/liked) doesn't also highlight it.
+            const isActive = href === '/' ? pathname === '/' : href === '/library' ? pathname === '/library' : pathname.startsWith(href);
             return (
               <Link
                 key={href}
@@ -93,6 +96,16 @@ export function Drawer({ open, onOpenChange }: Props) {
             );
           })}
         </nav>
+
+        {user && (
+          <div className="mt-4 border-t border-sidebar-border pt-3">
+            <CollectionNavList
+              items={systemCollections().map(({ title, href, icon }) => ({ label: title, href, icon }))}
+              activePath={pathname}
+              onNavigate={close}
+            />
+          </div>
+        )}
 
         <div className="px-4 flex items-center justify-between border-t border-sidebar-border pt-3">
           <span className="text-[11px] uppercase tracking-widest text-sidebar-foreground/55">Playlists</span>

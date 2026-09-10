@@ -1,19 +1,17 @@
 'use client';
 
-import { use, useEffect, useRef, useState, type ChangeEvent } from 'react';
+import { use, useRef, useState, type ChangeEvent } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
-import { TrackList } from '@/components/track/TrackList';
 import { TrackSearchPicker } from '@/components/track/TrackSearchPicker';
-import { CheckIcon, CloudDownloadIcon, PlayIcon, ShuffleIcon, TrashIcon, XCircleIcon } from '@/components/icons';
-import { usePlayer } from '@/components/player/PlayerProvider';
-import { usePlayerStore } from '@/stores/usePlayerStore';
-import { useOfflineStore } from '@/stores/useOfflineStore';
-import { cancelDownload, downloadPlaylist, isStale, removeDownload } from '@/lib/offline';
-import { useOnline } from '@/lib/useOnline';
+import { TrashIcon } from '@/components/icons';
+import { CollectionPage } from '@/components/library/CollectionPage';
+import { countLabel } from '@/lib/collections';
+import { useCollectionPlayback } from '@/hooks/useCollectionPlayback';
+import { useOfflinePin } from '@/hooks/useOfflinePin';
 import {
   useExecuteAddToPlaylist,
   useExecuteDeletePlaylist,
@@ -21,13 +19,11 @@ import {
   useExecuteUpdatePlaylistArtwork,
   useQueryPlaylist,
 } from '@/hooks/useLibrary';
-import { cn } from '@/lib/utils';
 import type { Track } from '@/types/track';
 
 export default function PlaylistPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const router = useRouter();
-  const { playTrack } = usePlayer();
   const { data, isLoading, error } = useQueryPlaylist(id);
   const deletePlaylist = useExecuteDeletePlaylist();
   const removeFromPlaylist = useExecuteRemoveFromPlaylist();
@@ -37,27 +33,14 @@ export default function PlaylistPage({ params }: { params: Promise<{ id: string 
   const [pendingRemove, setPendingRemove] = useState<Track | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Offline pin state — hooks must run before early returns. `data` may be
-  // undefined here on first render; the staleness effect guards against that.
-  const isOnline = useOnline();
-  const downloaded = useOfflineStore((s) => s.downloaded.includes(id));
-  // Shuffle state — hooks must run before the early returns below.
-  const shuffleOn = usePlayerStore((s) => s.shuffle);
-  const toggleShuffle = usePlayerStore((s) => s.toggleShuffle);
-  const isPlayingThisPlaylist = usePlayerStore(
-    (s) => s.context?.type === 'playlist' && s.context.playlistId === id,
-  );
-  const inFlight = useOfflineStore((s) => s.inFlight[id]);
-  const [stale, setStale] = useState(false);
-
-  useEffect(() => {
-    if (!downloaded || !isOnline || !data) return;
-    let cancelled = false;
-    isStale(id, data.tracks.map((t) => t.id))
-      .then((s) => { if (!cancelled) setStale(s); })
-      .catch(() => {});
-    return () => { cancelled = true; };
-  }, [downloaded, isOnline, id, data]);
+  // Hooks must run before the early returns below. `data` may be undefined
+  // here on first render.
+  const tracks = data?.tracks ?? [];
+  const name = data?.playlist.name ?? '';
+  const ref = { kind: 'playlist', id } as const;
+  const context = { type: 'playlist' as const, playlistId: id, playlistName: name };
+  const playback = useCollectionPlayback(tracks, context);
+  const download = useOfflinePin(ref, name, tracks);
 
   const handleArtworkPick = (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -79,7 +62,7 @@ export default function PlaylistPage({ params }: { params: Promise<{ id: string 
     } catch (e) {
       const status = (e as { status?: number } | undefined)?.status;
       if (status === 400) toast.message(`"${track.title}" is already in this playlist`);
-      else toast.error(`Couldn't add "${track.title}" — please try again.`);
+      else toast.error(`Couldn't add "${track.title}", please try again.`);
     }
   };
 
@@ -94,8 +77,7 @@ export default function PlaylistPage({ params }: { params: Promise<{ id: string 
   }
   if (isLoading || !data) return <div className="text-muted-foreground py-12 text-center">Loading…</div>;
 
-  const { playlist, tracks } = data;
-  const playlistContext = { type: 'playlist' as const, playlistId: id, playlistName: playlist.name };
+  const { playlist } = data;
 
   const handleDelete = async () => {
     try {
@@ -103,7 +85,7 @@ export default function PlaylistPage({ params }: { params: Promise<{ id: string 
       toast.success(`Deleted "${playlist.name}"`);
       router.push('/library');
     } catch (e) {
-      toast.error(`Couldn't delete the playlist — please try again.`);
+      toast.error(`Couldn't delete the playlist, please try again.`);
       throw e; // keep the dialog open on failure
     }
   };
@@ -116,175 +98,42 @@ export default function PlaylistPage({ params }: { params: Promise<{ id: string 
       toast.success(`Removed "${track.title}"`);
       setPendingRemove(null);
     } catch (e) {
-      toast.error(`Couldn't remove that — please try again.`);
+      toast.error(`Couldn't remove that, please try again.`);
       throw e;
     }
   };
 
   return (
-    <div>
-      <div className="flex flex-col md:flex-row items-start md:items-end gap-6 mb-6">
-        <button
-          type="button"
-          onClick={() => fileInputRef.current?.click()}
-          disabled={updateArtwork.isPending}
-          className="group relative h-44 w-44 md:h-48 md:w-48 rounded-2xl shadow-soft shrink-0 overflow-hidden bg-linear-to-br from-ember to-[oklch(0.3_0.15_25)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
-          aria-label="Change playlist cover"
-          title="Change playlist cover"
-        >
-          {playlist.artwork_url && (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={playlist.artwork_url}
-              alt=""
-              className="absolute inset-0 h-full w-full object-cover"
-            />
-          )}
-          <span className="absolute inset-0 grid place-items-center bg-black/40 text-white text-sm font-medium opacity-0 group-hover:opacity-100 transition-opacity">
-            {updateArtwork.isPending ? 'Uploading…' : 'Change cover'}
-          </span>
-        </button>
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept="image/jpeg,image/png,image/webp,image/gif"
-          className="hidden"
-          onChange={handleArtworkPick}
-        />
-        <div>
-          <div className="text-xs uppercase tracking-widest text-muted-foreground">Playlist</div>
-          <h1 className="mt-2 text-4xl md:text-5xl font-bold tracking-tight leading-tight">{playlist.name}</h1>
-          <div className="mt-3 text-sm text-muted-foreground">
-            {tracks.length} {tracks.length === 1 ? 'track' : 'tracks'}
-          </div>
-        </div>
-      </div>
-      <div className="flex items-center gap-3 mb-6">
-        <Button
-          size="icon"
-          onClick={() => tracks.length && playTrack(tracks[0], tracks, playlistContext)}
-          disabled={!tracks.length}
-          className="h-12 w-12 rounded-full bg-ember hover:bg-ember-soft text-white shadow-glow"
-          aria-label="Play"
-        >
-          <PlayIcon className="h-5 w-5 fill-current ml-0.5" />
-        </Button>
-        {/* Shuffle.
-            While THIS playlist is playing it's a toggle: shuffle the tracks
-            ahead and leave the current song alone. It used to reshuffle from
-            scratch and jump to a new first track on every press, which felt
-            like the button was skipping.
-            When the playlist isn't playing there's nothing to preserve, so it
-            behaves as "shuffle play" and starts somewhere random. */}
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={() => {
-            if (!tracks.length) return;
-            if (isPlayingThisPlaylist) {
-              toggleShuffle();
-              return;
-            }
-            const shuffled = tracks.slice();
-            for (let i = shuffled.length - 1; i > 0; i--) {
-              const j = Math.floor(Math.random() * (i + 1));
-              [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
-            }
-            playTrack(shuffled[0], shuffled, playlistContext);
-            // playTrack clears any previous shuffle snapshot, so record THIS
-            // playlist's original order right after, so shuffle-off can
-            // restore it.
-            usePlayerStore.setState({ shuffle: true, orderBackup: tracks });
-          }}
-          disabled={!tracks.length}
-          aria-pressed={shuffleOn}
-          className={cn(
-            'h-12 w-12 rounded-full',
-            shuffleOn ? 'text-ember hover:text-ember' : 'text-muted-foreground hover:text-foreground',
-          )}
-          aria-label={isPlayingThisPlaylist ? (shuffleOn ? 'Shuffle off' : 'Shuffle') : 'Shuffle play'}
-          title={isPlayingThisPlaylist ? (shuffleOn ? 'Shuffling' : 'Shuffle') : 'Shuffle play'}
-        >
-          <ShuffleIcon className="h-5 w-5" />
-        </Button>
-        {inFlight ? (
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => cancelDownload(id)}
-            title="Cancel download"
-          >
-            <XCircleIcon className="h-4 w-4" />
-            <span className="tabular-nums">{inFlight.current}/{inFlight.total}</span>
-            Cancel
-          </Button>
-        ) : downloaded ? (
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={async () => {
-              if (stale) {
-                try {
-                  await downloadPlaylist(playlist, tracks);
-                  setStale(false);
-                  toast.success(`Updated "${playlist.name}"`);
-                } catch (e) {
-                  if ((e as Error).name !== 'AbortError') {
-                    toast.error(`Couldn't update the cover — please try again.`);
-                  }
-                }
-              } else {
-                try {
-                  await removeDownload(id);
-                  toast.success(`Removed offline copy of "${playlist.name}"`);
-                } catch (e) {
-                  toast.error(`Couldn't remove that — please try again.`);
-                }
-              }
-            }}
-            title={stale ? 'Update offline copy' : 'Remove offline copy'}
-            className={stale ? '' : 'text-ember border-ember/40'}
-          >
-            {stale ? <CloudDownloadIcon className="h-4 w-4" /> : <CheckIcon className="h-4 w-4" />}
-            {stale ? 'Update download' : 'Downloaded'}
-          </Button>
-        ) : (
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={async () => {
-              try {
-                await downloadPlaylist(playlist, tracks);
-                toast.success(`Downloaded "${playlist.name}"`);
-              } catch (e) {
-                if ((e as Error).name !== 'AbortError') {
-                  toast.error(`Couldn't download the playlist — please try again.`);
-                }
-              }
-            }}
-            disabled={!tracks.length}
-            title="Save this playlist for offline playback"
-          >
-            <CloudDownloadIcon className="h-4 w-4" />
-            Download for offline
-          </Button>
-        )}
+    <CollectionPage
+      eyebrow="Playlist"
+      title={playlist.name}
+      meta={[countLabel(tracks.length)]}
+      cover={{ src: playlist.artwork_url, icon: null }}
+      onCoverClick={() => fileInputRef.current?.click()}
+      coverLabel="Change playlist cover"
+      coverBusy={updateArtwork.isPending}
+      tracks={tracks}
+      context={context}
+      playback={playback}
+      download={download}
+      actions={
         <Button variant="ghost" size="icon" onClick={() => setConfirmDeleteOpen(true)} aria-label="Delete playlist">
           <TrashIcon className="h-4 w-4" />
         </Button>
-      </div>
-      {tracks.length === 0 ? (
-        <div className="text-muted-foreground py-12 text-center">No tracks yet.</div>
-      ) : (
-        <TrackList
-          tracks={tracks}
-          context={playlistContext}
-          onRemove={(trackId) => {
-            const track = tracks.find((t) => t.id === trackId);
-            if (track) setPendingRemove(track);
-          }}
-        />
-      )}
+      }
+      onRemoveTrack={(trackId) => {
+        const track = tracks.find((t) => t.id === trackId);
+        if (track) setPendingRemove(track);
+      }}
+      emptyMessage="No tracks yet."
+    >
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/jpeg,image/png,image/webp,image/gif"
+        className="hidden"
+        onChange={handleArtworkPick}
+      />
 
       <section className="mt-10 max-w-3xl">
         <h2 className="mb-3 text-xl font-bold tracking-tight">Add songs</h2>
@@ -310,6 +159,6 @@ export default function PlaylistPage({ params }: { params: Promise<{ id: string 
         variant="destructive"
         onConfirm={handleConfirmRemove}
       />
-    </div>
+    </CollectionPage>
   );
 }

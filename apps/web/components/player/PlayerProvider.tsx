@@ -13,6 +13,8 @@ import {
 import { usePlayerStore } from '@/stores/usePlayerStore';
 import { useSessionStore } from '@/stores/useSessionStore';
 import { useSettingsStore } from '@/stores/useSettingsStore';
+import { useOfflineStore } from '@/stores/useOfflineStore';
+import { localSrcFor } from '@/lib/offlineNative';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { useExecuteRecordPlay, useQueryHistory, useQueryLikes } from '@/hooks/useLibrary';
 import { useQueryLyrics } from '@/hooks/useLyrics';
@@ -82,6 +84,13 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const fellBackRef = useRef(false);
   /** Track id currently handed to the backend — guards redundant re-loads. */
   const loadedTrackRef = useRef<string | null>(null);
+  /** Track id whose CURRENTLY loaded src is a downloaded local file, else null.
+   *  onError needs it to know whether retrying over the network is worth
+   *  anything. */
+  const localSrcTrackRef = useRef<string | null>(null);
+  /** Track id we have already swapped from its local file to the stream, so a
+   *  stream that also fails cannot bounce back and forth. */
+  const streamFallbackRef = useRef<string | null>(null);
   const eventsRef = useRef<AudioBackendEvents | null>(null);
   const loadAndPlayRef = useRef<((t: Track | null, autoplay: boolean) => void) | null>(null);
   const fallbackToWebAudioRef = useRef<((reason: string) => void) | null>(null);
@@ -177,6 +186,24 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         // retry this track on web audio before giving up on it.
         if (backendKindRef.current === 'tauri-native' && !fellBackRef.current) {
           fallbackToWebAudioRef.current?.('audio backend reported an error');
+          return;
+        }
+        // A downloaded file that will not play (deleted under us, or a
+        // half-written one) must not cost the song: stream it instead, once,
+        // from where the playhead was. Offline there is nothing to fall back
+        // to, so the normal error handling stands.
+        const st = usePlayerStore.getState();
+        const track = st.queue[st.index];
+        const online = typeof navigator === 'undefined' || navigator.onLine;
+        if (track && online && localSrcTrackRef.current === track.id && streamFallbackRef.current !== track.id) {
+          streamFallbackRef.current = track.id;
+          localSrcTrackRef.current = null;
+          // Drop the dead path so the next play does not retry it. The native
+          // plugin's next status() event is still the source of truth.
+          useOfflineStore.getState().dropTrackFile(track.id);
+          logger.error('playback', 'downloaded file would not play, streaming instead', { trackId: track.id });
+          wantPosition.current = positionOwner.current === track.id ? st.position : 0;
+          loadAndPlayRef.current?.(track, true);
           return;
         }
         setPosition(0);
@@ -307,7 +334,13 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     // duration until the engine volunteers one, which on desktop it often
     // never does.
     setDuration(chooseDuration(track.durationSec ?? 0, null));
-    b.load(apiUrl(track.streamUrl), { autoplay, startAt });
+    // A downloaded copy plays even online: instant, and no data used.
+    const local = localSrcFor(track, useOfflineStore.getState().trackFiles);
+    localSrcTrackRef.current = local ? track.id : null;
+    // Only a fresh LOCAL load re-arms the one-shot stream fallback; the
+    // fallback's own load is not local, so it cannot re-arm itself.
+    if (local) streamFallbackRef.current = null;
+    b.load(local ?? apiUrl(track.streamUrl), { autoplay, startAt });
     // Set metadata in the same synchronous turn so the notification carries
     // across a track boundary (Firefox Android tears it down otherwise).
     b.setMetadata(track);

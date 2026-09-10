@@ -38,6 +38,7 @@ Until then, Spotify links show a friendly "not set up" message.
 - **Voice search** (mic in the search bar — Chrome/Edge/Safari; Firefox
   shows a hint).
 - **Recent searches** on the search page (the tracks you played, Spotify-style).
+- **Android app: download playlists and Liked songs for offline; reinstall the APK.**
 - **Discord/Messenger embed cards** for shared song links (nothing to
   configure; `/track/...` pages are now public so crawlers can read them).
 - Fixes: removed playlist songs leave the live queue immediately; loop
