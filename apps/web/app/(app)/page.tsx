@@ -2,7 +2,8 @@
 
 import { useEffect } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { TrackRow } from '@/components/track/TrackRow';
+import { TrackShelf } from '@/components/track/TrackShelf';
+import { TrackCard } from '@/components/track/TrackCard';
 import {
   useQueryHistory,
   useQueryLikes,
@@ -10,6 +11,8 @@ import {
   useQueryTrending,
 } from '@/hooks/useLibrary';
 import { OnlineOnly } from '@/components/OnlineOnly';
+import { usePlayer } from '@/components/player/PlayerProvider';
+import { useUiStore } from '@/stores/useUiStore';
 import { FriendsListening } from '@/components/FriendsListening';
 import type { Track } from '@/types/track';
 import { PageTitle } from '@/components/page/PageTitle';
@@ -25,6 +28,24 @@ interface Section {
 export default function HomePage() {
   const search = useSearchParams();
   const focus = search.get('focus');
+  const { current, isPlaying, playTrack, toggle } = usePlayer();
+  // The shelves are presentational, so the page reads the lyrics flag and
+  // renders the cards (with their playback state) itself.
+  const lyricsOpen = useUiStore((s) => s.lyricsOpen);
+
+  const renderCard = (t: Track, list: Track[]) => {
+    const active = current?.id === t.id;
+    return (
+      <TrackCard
+        track={t}
+        active={active}
+        playing={isPlaying}
+        // Same rule the card used to own: re-tapping the current track
+        // toggles play/pause, any other card starts fresh.
+        onActivate={() => (active ? toggle() : playTrack(t, list))}
+      />
+    );
+  };
 
   // Reset the scroll position whenever the focus changes — going INTO a
   // focused song box (so you start at its top) and coming back OUT (so the
@@ -69,11 +90,12 @@ export default function HomePage() {
   return (
     <OnlineOnly>
       {focused ? (
-        <TrackRow
+        <TrackShelf
           title={focused.title}
           tracks={focused.tracks}
           loading={focused.loading}
-          focusKey={focused.key}
+          renderCard={renderCard}
+          lyricsOpen={lyricsOpen}
           fullscreen
         />
       ) : (
@@ -83,12 +105,14 @@ export default function HomePage() {
           {sections
             .filter((s) => !s.hidden)
             .map((s) => (
-              <TrackRow
+              <TrackShelf
                 key={s.key}
                 title={s.title}
                 tracks={s.tracks}
                 loading={s.loading}
-                focusKey={s.key}
+                showAllHref={`/?focus=${encodeURIComponent(s.key)}`}
+                renderCard={renderCard}
+                lyricsOpen={lyricsOpen}
               />
             ))}
         </div>

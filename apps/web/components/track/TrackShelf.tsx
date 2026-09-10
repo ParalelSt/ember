@@ -1,11 +1,11 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, type ReactNode } from 'react';
 import Link from 'next/link';
 import { Skeleton } from '@/components/ui/skeleton';
-import { TrackCard } from './TrackCard';
 import { ChevronLeftIcon } from '@/components/icons';
-import { useUiStore } from '@/stores/useUiStore';
+import { PageTitle } from '@/components/page/PageTitle';
+import { SectionHeader } from '@/components/page/SectionHeader';
 import { gridColsClass, visibleCount } from '@/lib/layout';
 import type { Track } from '@/types/track';
 
@@ -13,10 +13,18 @@ interface Props {
   title: string;
   tracks: Track[] | undefined;
   loading?: boolean;
-  /** Key used to drive the `?focus=<key>` URL when the user clicks
-   *  "Show all" — also tells the row when it's the one being focused. */
-  focusKey?: string;
-  /** When true, the whole content area belongs to this row — back link
+  /** Where "Show all" points. The link only appears when the shelf actually
+   *  hides cards, so a short shelf never offers it. */
+  showAllHref?: string;
+  /** Renders one card. Required rather than defaulting to `TrackCard`
+   *  because this shelf is presentational: playback state and the activate
+   *  handler come from the caller's hooks, not from here. */
+  renderCard: (track: Track, list: Track[]) => ReactNode;
+  /** The desktop lyrics panel is open, so `main` is ~max(40vw, 28rem)
+   *  narrower and the grid uses fewer columns. Passed in because
+   *  presentational components must not read stores. */
+  lyricsOpen?: boolean;
+  /** When true, the whole content area belongs to this shelf — back link
    *  + big title + responsive grid of every track. */
   fullscreen?: boolean;
 }
@@ -25,6 +33,8 @@ interface Props {
 // Use fewer columns so cards stay legible instead of cramming together.
 // The grid-cols strings and the one-row visible count both come from
 // lib/layout.ts's SHELF_ROW_COUNT now, instead of two hand-kept literals.
+// This is a pure viewport hook (it reads window width, never app state), so
+// it can live inside a presentational component.
 function useResponsiveRowCount(lyricsOpen: boolean): number {
   const variant = lyricsOpen ? 'lyrics' : 'default';
   // Same pre-mount guess as before: the largest (lg+) count per variant,
@@ -39,8 +49,9 @@ function useResponsiveRowCount(lyricsOpen: boolean): number {
   return count;
 }
 
-export function TrackRow({ title, tracks, loading, focusKey, fullscreen }: Props) {
-  const lyricsOpen = useUiStore((s) => s.lyricsOpen);
+/** Presentational only: one horizontal shelf of track cards, with an
+ *  optional "Show all" link, or the fullscreen grid of every card. */
+export function TrackShelf({ title, tracks, loading, showAllHref, renderCard, lyricsOpen = false, fullscreen }: Props) {
   const gridCols = gridColsClass(lyricsOpen ? 'lyrics' : 'default');
   const rowCount = useResponsiveRowCount(lyricsOpen);
   const hasTracks = !!tracks && tracks.length > 0;
@@ -58,11 +69,11 @@ export function TrackRow({ title, tracks, loading, focusKey, fullscreen }: Props
           <ChevronLeftIcon className="size-4" />
           Back
         </Link>
-        <h1 className="text-3xl md:text-4xl font-bold tracking-tight mb-6">{title}</h1>
+        <PageTitle className="mb-6">{title}</PageTitle>
         <div className={`grid gap-4 ${gridCols}`} role="list">
           {all.map((t) => (
             <div key={t.id} role="listitem">
-              <TrackCard track={t} list={all} />
+              {renderCard(t, all)}
             </div>
           ))}
         </div>
@@ -70,22 +81,25 @@ export function TrackRow({ title, tracks, loading, focusKey, fullscreen }: Props
     );
   }
 
-  const canExpand = !!focusKey && all.length > rowCount;
+  const canExpand = !!showAllHref && all.length > rowCount;
   const visible = all.slice(0, rowCount);
 
   return (
     <section className="mb-10">
-      <div className="flex items-baseline justify-between gap-3 mb-3">
-        <h2 className="text-section-title">{title}</h2>
-        {canExpand && (
-          <Link
-            href={`/?focus=${encodeURIComponent(focusKey!)}`}
-            className="text-xs uppercase tracking-widest text-muted-foreground hover:text-foreground transition-colors"
-          >
-            Show all ({all.length})
-          </Link>
-        )}
-      </div>
+      <SectionHeader
+        title={title}
+        className="mb-3"
+        action={
+          canExpand ? (
+            <Link
+              href={showAllHref!}
+              className="text-xs uppercase tracking-widest text-muted-foreground hover:text-foreground transition-colors"
+            >
+              Show all ({all.length})
+            </Link>
+          ) : undefined
+        }
+      />
 
       <div className={`grid gap-4 ${gridCols}`} role="list">
         {loading && !hasTracks
@@ -98,7 +112,7 @@ export function TrackRow({ title, tracks, loading, focusKey, fullscreen }: Props
             ))
           : visible.map((t) => (
               <div key={t.id} role="listitem">
-                <TrackCard track={t} list={all} />
+                {renderCard(t, all)}
               </div>
             ))}
       </div>
