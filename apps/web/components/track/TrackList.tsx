@@ -14,10 +14,6 @@ import { useExecuteToggleLike, useQueryLikes } from '@/hooks/useLibrary';
 import type { PlaybackContext, Track } from '@/types/track';
 import { cn } from '@/lib/utils';
 
-function fmt(sec: number | undefined): string {
-  return formatTime(sec, { empty: '--:--' });
-}
-
 interface Props {
   tracks: Track[];
   showAlbum?: boolean;
@@ -117,7 +113,7 @@ export function TrackList({ tracks, showAlbum = true, showRank = false, onRemove
             </div>
 
             <div className="hidden md:block truncate text-sm text-muted-foreground">{showAlbum ? t.album : ''}</div>
-            <div className="hidden md:block text-sm text-muted-foreground text-right tabular-nums">{fmt(t.durationSec)}</div>
+            <div className="hidden md:block text-sm text-muted-foreground text-right tabular-nums">{formatTime(t.durationSec, { empty: '--:--' })}</div>
 
             <div className="flex items-center gap-1">
               <AddToPlaylistMenu track={t} />

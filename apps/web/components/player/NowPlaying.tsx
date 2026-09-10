@@ -22,10 +22,6 @@ import { findLikedVariant } from '@/lib/songKey';
 import { formatTime } from '@/lib/format';
 import { cn } from '@/lib/utils';
 
-function fmt(sec: number): string {
-  return formatTime(sec);
-}
-
 /** Full-screen "Now Playing" view — phones only. Slides up over the app shell
  *  with large artwork up top and transport controls at the bottom, like the
  *  Spotify / YouTube Music expanded player. Opened by tapping the mini player
@@ -223,8 +219,8 @@ export function NowPlaying() {
             smooth
           />
           <div className="mt-1.5 flex justify-between text-[11px] text-muted-foreground tabular-nums">
-            <span>{fmt(displaySec)}</span>
-            <span>{fmt(duration)}</span>
+            <span>{formatTime(displaySec)}</span>
+            <span>{formatTime(duration)}</span>
           </div>
         </div>
 

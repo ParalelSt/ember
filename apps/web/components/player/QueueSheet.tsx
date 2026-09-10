@@ -11,10 +11,6 @@ interface Props {
   onOpenChange: (open: boolean) => void;
 }
 
-function fmt(sec: number | undefined): string {
-  return formatTime(sec, { empty: '--:--' });
-}
-
 export function QueueSheet({ open, onOpenChange }: Props) {
   const queue = usePlayerStore((s) => s.queue);
   const index = usePlayerStore((s) => s.index);
@@ -95,7 +91,7 @@ function Row({ track, highlight, onClick }: RowProps) {
         <div className="truncate text-sm font-semibold">{track.title}</div>
         <div className="truncate text-xs text-sidebar-foreground/55">{track.artist}</div>
       </div>
-      <div className="text-xs text-sidebar-foreground/55 tabular-nums">{fmt(track.durationSec)}</div>
+      <div className="text-xs text-sidebar-foreground/55 tabular-nums">{formatTime(track.durationSec, { empty: '--:--' })}</div>
     </div>
   );
 }

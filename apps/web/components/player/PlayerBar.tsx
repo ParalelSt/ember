@@ -32,10 +32,6 @@ import { findLikedVariant } from '@/lib/songKey';
 import { formatTime } from '@/lib/format';
 import { cn } from '@/lib/utils';
 
-function fmt(sec: number): string {
-  return formatTime(sec);
-}
-
 export function PlayerBar() {
   const { current, isPlaying, position, duration, volume, toggle, next, prev, seek, setVolume } = usePlayer();
   const { user } = useAuth();
@@ -189,7 +185,7 @@ export function PlayerBar() {
           </Button>
         </div>
         <div className="hidden md:flex w-full max-w-xl items-center gap-2">
-          <span className="text-[10px] text-muted-foreground tabular-nums w-9 text-right">{fmt(displaySec)}</span>
+          <span className="text-[10px] text-muted-foreground tabular-nums w-9 text-right">{formatTime(displaySec)}</span>
           <Slider
             value={[displayPct]}
             onValueChange={onSliderChange}
@@ -199,7 +195,7 @@ export function PlayerBar() {
             smooth
             className="flex-1"
           />
-          <span className="text-[10px] text-muted-foreground tabular-nums w-9">{fmt(duration)}</span>
+          <span className="text-[10px] text-muted-foreground tabular-nums w-9">{formatTime(duration)}</span>
         </div>
       </div>
 

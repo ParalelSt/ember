@@ -11,10 +11,6 @@ import { useOnline } from '@/lib/useOnline';
 import { OfflinePlaceholder } from '@/components/OfflinePlaceholder';
 import { formatTime } from '@/lib/format';
 
-function fmt(sec: number): string {
-  return formatTime(sec, { empty: '' });
-}
-
 /** Shareable track page body — the landing target of /track/<videoId> links.
  *  Mirrors the album page's header layout; Play runs the track through the
  *  normal player (radio mode queues related songs after it). The wrapping
@@ -36,7 +32,7 @@ export function TrackPageClient({ videoId }: { videoId: string }) {
   }
   if (isLoading || !track) return <div className="text-muted-foreground py-12 text-center">Loading…</div>;
 
-  const meta = [track.album, fmt(track.durationSec)].filter(Boolean);
+  const meta = [track.album, formatTime(track.durationSec, { empty: '' })].filter(Boolean);
 
   return (
     <div>

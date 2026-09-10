@@ -24,10 +24,11 @@ describe('shuffle', () => {
 
   it('is deterministic given a seeded rng', () => {
     const input = [1, 2, 3, 4, 5];
-    const rng = () => 0; // always picks index 0 -> no swaps ever happen at j
-    const a = shuffle(input, rng);
-    const b = shuffle(input, rng);
-    expect(a).toEqual(b);
+    // Fisher-Yates: iterate i from end to 1, pick j = floor(rng()*(i+1)), swap result[i] <-> result[j]
+    // With rng()=0: j always 0, so each iteration swaps result[i] with result[0]
+    // i=4: [5,2,3,4,1], i=3: [4,2,3,5,1], i=2: [3,2,4,5,1], i=1: [2,3,4,5,1]
+    const rng = () => 0;
+    expect(shuffle(input, rng)).toEqual([2, 3, 4, 5, 1]);
   });
 
   it('handles an empty list', () => {
