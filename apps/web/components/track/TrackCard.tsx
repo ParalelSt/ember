@@ -10,7 +10,7 @@ interface Props {
   track: Track;
   /** This card's track is the player's current one. */
   active?: boolean;
-  /** The player is playing — only meaningful together with `active`. */
+  /** The player is playing: only meaningful together with `active`. */
   playing?: boolean;
   /** Tapping the card or its button. The caller decides what that means
    *  (toggle when this track is already current, otherwise start it). */

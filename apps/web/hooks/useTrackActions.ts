@@ -35,7 +35,7 @@ export function useTrackActions(): Required<TrackActions> {
       toast.message('Sign in to like tracks', { description: 'Liking saves songs to your library.' });
       return;
     }
-    // If a variant of this song is already liked, toggle THAT entry — keeps
+    // If a variant of this song is already liked, toggle THAT entry: keeps
     // "1 like per song" across album / music-video / live versions.
     const existing = findLikedVariant(track, liked);
     toggleLike.mutate({ track: existing ?? track, wasLiked: !!existing });

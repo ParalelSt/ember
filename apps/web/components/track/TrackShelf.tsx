@@ -24,7 +24,7 @@ interface Props {
    *  narrower and the grid uses fewer columns. Passed in because
    *  presentational components must not read stores. */
   lyricsOpen?: boolean;
-  /** When true, the whole content area belongs to this shelf — back link
+  /** When true, the whole content area belongs to this shelf: back link
    *  + big title + responsive grid of every track. */
   fullscreen?: boolean;
 }

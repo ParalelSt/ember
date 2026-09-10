@@ -6,7 +6,7 @@ import type { Track } from '@/types/track';
 
 /** The per-row menu (add to playlist + share). Both halves fetch on their
  *  own, so this lives outside `TrackList` and pages pass it in through the
- *  `trailing` slot — that keeps the list renderable with props alone. */
+ *  `trailing` slot: that keeps the list renderable with props alone. */
 export function TrackMenu({ track }: { track: Track }) {
   return (
     <>

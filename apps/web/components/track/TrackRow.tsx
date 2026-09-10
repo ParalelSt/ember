@@ -29,14 +29,14 @@ export interface TrackRowProps {
   showDuration?: boolean;
   /** This row's track is the player's current one. */
   active?: boolean;
-  /** The player is playing — only meaningful together with `active`. */
+  /** The player is playing: only meaningful together with `active`. */
   playing?: boolean;
   /** Omit to hide the heart entirely (queue, search recents, picker). */
   liked?: boolean;
   /** Start this track. Omitting it makes the row inert (the queue sheet's
    *  "Now playing" row, which is a label rather than a control). */
   onPlay?: () => void;
-  /** Play/pause the current track — used by the leading cell when `active`. */
+  /** Play/pause the current track: used by the leading cell when `active`. */
   onToggle?: () => void;
   onLike?: () => void;
   onRemove?: () => void;

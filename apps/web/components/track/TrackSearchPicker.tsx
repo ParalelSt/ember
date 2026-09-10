@@ -136,7 +136,7 @@ export function TrackSearchPicker({ added = [], seeds = [], onAdd, className }: 
               className="px-2 py-1.5 hover:bg-accent/60"
               trailing={
                 <>
-                  {/* Preview play/pause — plays just this track (then flows into radio). */}
+                  {/* Preview play/pause: plays just this track (then flows into radio). */}
                   <Button
                     variant="ghost"
                     size="icon"
