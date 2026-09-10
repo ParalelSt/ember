@@ -21,6 +21,7 @@
     "test:stream-fallback": "node tests/stream-fallback.test.mjs",
     "test:desktop-logger": "node tests/desktop-logger.test.mjs",
     "test:auth": "node tests/authorization.test.mjs",
+    "test:collections": "node tests/collections.test.mjs",
     "test:sessions": "node tests/session-authorization.test.mjs",
     "test:tabs": "node tests/tabs.test.mjs",
     "test:tabs-ui": "node tests/tabs-ui.test.mjs",

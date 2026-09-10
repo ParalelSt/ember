@@ -29,6 +29,14 @@ import {
  *  its PocketBase id as-is. */
 export const LIKED_PIN = 'liked';
 
+/** Pins any system list (Liked, Recently played, Uploads) under a fixed id.
+ *  Native only: the browser-storage path only knows playlists, and every
+ *  button that calls this is gated on the plugin's presence. */
+export async function pinList(id: string, name: string, tracks: Track[]): Promise<void> {
+  if (!nativeOfflinePresent()) throw new Error('Offline downloads need the Android app');
+  useOfflineStore.getState().setNativeStatus(await nativePin(id, name, tracks));
+}
+
 export const OFFLINE_SCHEMA_VERSION = 1 as const;
 
 export interface OfflineTrackEntry {
@@ -290,10 +298,7 @@ export async function downloadPlaylist(playlist: Playlist, tracks: Track[]): Pro
  *  OPFS fallback for Liked (it isn't a playlist the web offline flow knows
  *  about), and the button that calls this is itself gated on the plugin's
  *  presence. */
-export async function pinLiked(tracks: Track[]): Promise<void> {
-  if (!nativeOfflinePresent()) throw new Error('Offline downloads need the Android app');
-  useOfflineStore.getState().setNativeStatus(await nativePin(LIKED_PIN, 'Liked songs', tracks));
-}
+export const pinLiked = (tracks: Track[]) => pinList(LIKED_PIN, 'Liked songs', tracks);
 
 export async function removeDownload(playlistId: string): Promise<void> {
   if (nativeOfflinePresent()) {

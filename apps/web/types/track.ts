@@ -61,6 +61,7 @@ export type PlaybackContext =
   | { type: 'album'; albumId: string; albumTitle: string }
   | { type: 'liked' }
   | { type: 'history' }
+  | { type: 'uploads' }
   | { type: 'radio' }
   | { type: 'single' };
 
