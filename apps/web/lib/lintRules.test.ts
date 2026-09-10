@@ -103,11 +103,14 @@ describe('style lint', () => {
     expect(hits, `use text-eyebrow:\n${formatHits(hits)}`).toHaveLength(0);
   });
 
-  // Not enforced yet: h-44 w-44 / h-48 w-48 (plain and md:) raw pairs still
-  // appear at 4 sites (album, artist, CollectionHeader, TrackPageClient).
-  // None of them equal an --spacing-art-* token exactly (h-44 is 11rem;
-  // the tokens are 10rem/12rem/14rem), so swapping them now would change
-  // rendered size and break this step's no-visual-change rule. Adopting
-  // Artwork (DESLOP.md step 3) is where these get normalized onto the art
-  // tokens; see the step 2 report for exact counts and sites.
+  // The hero cover pairs the step 2 report left counted but unbanned. Step
+  // 3 added --spacing-art-hero (11rem) and --spacing-art-hero-sm (9rem) so
+  // every hero size is a token, and CollectionHeader owns the geometry, so
+  // a raw pair coming back means a hero stopped going through it.
+  for (const pair of ['h-44 w-44', 'h-48 w-48', 'md:h-44 md:w-44', 'md:h-48 md:w-48']) {
+    it(`has no raw ${pair} artwork pair (use the art tokens)`, () => {
+      const hits = findSubstring(files, pair);
+      expect(hits, `use size-art-*:\n${formatHits(hits)}`).toHaveLength(0);
+    });
+  }
 });

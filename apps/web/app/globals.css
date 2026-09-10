@@ -59,6 +59,11 @@
   --spacing-art-md: 10rem;
   --spacing-art-lg: 12rem;
   --spacing-art-xl: 14rem;
+  /* Hero covers sit between those steps: 11rem is the phone size every
+     hero uses, 9rem the artist page's smaller phone circle. Named rather
+     than rounded to a neighbouring token so no cover changes size. */
+  --spacing-art-hero: 11rem;
+  --spacing-art-hero-sm: 9rem;
 }
 
 :root {
