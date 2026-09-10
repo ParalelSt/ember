@@ -8,21 +8,17 @@ import { UploadTrackDialog } from '@/components/track/UploadTrackDialog';
 import { StartSessionDialog, JoinSessionDialog } from '@/components/session/SessionDialogs';
 import { DownloadIcon, QueueIcon, UploadIcon } from '@/components/icons';
 import { useAuth } from '@/components/providers/AuthProvider';
-import { useQueryHistory, useQueryLikes, useQueryPlaylists, useQueryUploads } from '@/hooks/useLibrary';
+import { useCollections } from '@/hooks/useCollections';
 import { useOfflineStore } from '@/stores/useOfflineStore';
 import { useOnline } from '@/lib/useOnline';
-import { countLabel, hrefFor, iconFor, refFromPinId, systemCollections, type SystemKind } from '@/lib/collections';
+import { hrefFor, iconFor, refFromPinId } from '@/lib/collections';
 import { EmptyState } from '@/components/page/EmptyState';
 import { PageTitle } from '@/components/page/PageTitle';
 
 export default function LibraryPage() {
   const { user } = useAuth();
-  const { data: liked = [] } = useQueryLikes();
-  const { data: history = [] } = useQueryHistory();
-  const { data: playlists = [] } = useQueryPlaylists();
-  const { data: uploads = [] } = useQueryUploads();
+  const { system, playlists } = useCollections();
   const isOnline = useOnline();
-  const downloaded = useOfflineStore((s) => s.downloaded);
   const pins = useOfflineStore((s) => s.pins);
   const [importOpen, setImportOpen] = useState(false);
   const [uploadOpen, setUploadOpen] = useState(false);
@@ -62,10 +58,6 @@ export default function LibraryPage() {
       </div>
     );
   }
-
-  // Counts default to countLabel(0) via `?? []` above: a system collection's
-  // query has no data yet on first paint, not "empty forever".
-  const counts = { liked: liked.length, recent: history.length, uploads: uploads.length };
 
   return (
     <div>
@@ -110,12 +102,12 @@ export default function LibraryPage() {
       <CollectionShelf
         title="Your collections"
         size="lg"
-        items={systemCollections().map(({ ref, title, href, pinId, icon }) => ({
+        items={system.map(({ title, subtitle, href, icon, downloaded }) => ({
           title,
-          subtitle: countLabel(counts[ref.kind as SystemKind] ?? 0),
+          subtitle,
           href,
           cover: { src: null, icon },
-          badge: downloaded.includes(pinId) ? ('downloaded' as const) : undefined,
+          badge: downloaded ? ('downloaded' as const) : undefined,
           size: 'lg' as const,
         }))}
       />
@@ -123,12 +115,12 @@ export default function LibraryPage() {
       <CollectionShelf
         title="Playlists"
         size="md"
-        items={playlists.map((p) => ({
-          title: p.name,
-          subtitle: downloaded.includes(p.id) ? 'Downloaded' : 'Playlist',
-          href: hrefFor({ kind: 'playlist', id: p.id }),
-          cover: { src: p.artwork_url, icon: null },
-          badge: downloaded.includes(p.id) ? ('downloaded' as const) : undefined,
+        items={playlists.map(({ title, subtitle, href, artworkUrl, downloaded }) => ({
+          title,
+          subtitle,
+          href,
+          cover: { src: artworkUrl, icon: null },
+          badge: downloaded ? ('downloaded' as const) : undefined,
           size: 'md' as const,
         }))}
         empty={<EmptyState>No playlists yet</EmptyState>}
