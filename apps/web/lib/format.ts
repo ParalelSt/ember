@@ -7,7 +7,9 @@
  *  the majority of the call sites this replaces. */
 export function formatTime(sec: number | null | undefined, opts?: { empty?: string }): string {
   const empty = opts?.empty ?? '0:00';
-  if (sec === null || sec === undefined || !Number.isFinite(sec) || sec < 0) return empty;
+  // Zero counts as "no duration": every site this replaced treated it that
+  // way (a track with no known length shows the placeholder, not 0:00).
+  if (!sec || !Number.isFinite(sec) || sec < 0) return empty;
   const m = Math.floor(sec / 60);
   const s = Math.floor(sec % 60);
   return `${m}:${String(s).padStart(2, '0')}`;

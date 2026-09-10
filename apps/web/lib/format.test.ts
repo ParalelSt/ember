@@ -4,6 +4,8 @@ import { formatAgo, formatBytes, formatCount, formatTime, formatTotalDuration } 
 describe('formatTime', () => {
   it('formats whole seconds as m:ss', () => {
     expect(formatTime(0)).toBe('0:00');
+    // zero means "unknown length" at the sites that pass a placeholder
+    expect(formatTime(0, { empty: '--:--' })).toBe('--:--');
     expect(formatTime(59)).toBe('0:59');
     expect(formatTime(60)).toBe('1:00');
     expect(formatTime(61)).toBe('1:01');
