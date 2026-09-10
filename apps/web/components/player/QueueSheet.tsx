@@ -1,6 +1,7 @@
 'use client';
 
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
+import { Artwork } from '@/components/primitives/Artwork';
 import { usePlayer } from '@/components/player/PlayerProvider';
 import { usePlayerStore } from '@/stores/usePlayerStore';
 import { formatTime } from '@/lib/format';
@@ -81,12 +82,7 @@ function Row({ track, highlight, onClick }: RowProps) {
         highlight && 'text-ember',
       )}
     >
-      <div className="relative h-10 w-10 rounded bg-black overflow-hidden shrink-0">
-        {track.artworkUrl && (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={track.artworkUrl} alt="" className="absolute inset-0 h-full w-full object-cover" />
-        )}
-      </div>
+      <Artwork src={track.artworkUrl} size="xs" className="rounded bg-black shrink-0" />
       <div className="min-w-0">
         <div className="truncate text-sm font-semibold">{track.title}</div>
         <div className="truncate text-xs text-sidebar-foreground/55">{track.artist}</div>

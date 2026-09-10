@@ -3,7 +3,9 @@
 import Link from 'next/link';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
-import { HeartIcon, PauseIcon, PlayIcon, TrashIcon } from '@/components/icons';
+import { Artwork } from '@/components/primitives/Artwork';
+import { LikeButton } from '@/components/primitives/LikeButton';
+import { PauseIcon, PlayIcon, TrashIcon } from '@/components/icons';
 import { AddToPlaylistMenu } from './AddToPlaylistMenu';
 import { ShareButton } from './ShareButton';
 import { findLikedVariant } from '@/lib/songKey';
@@ -88,12 +90,11 @@ export function TrackList({ tracks, showAlbum = true, showRank = false, onRemove
 
             <div className="flex items-center gap-3 min-w-0">
               {t.artworkUrl && (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
+                <Artwork
                   src={t.artworkUrl}
-                  alt=""
+                  size="xs"
                   onClick={() => play(t)}
-                  className="h-10 w-10 rounded shrink-0 object-cover bg-black"
+                  className="rounded shrink-0 bg-black"
                 />
               )}
               <div className="min-w-0">
@@ -118,15 +119,7 @@ export function TrackList({ tracks, showAlbum = true, showRank = false, onRemove
             <div className="flex items-center gap-1">
               <AddToPlaylistMenu track={t} />
               <ShareButton track={t} />
-              <Button
-                variant="ghost"
-                size="icon"
-                className={cn('h-8 w-8 text-muted-foreground hover:text-foreground', isLiked && 'text-ember hover:text-ember')}
-                onClick={() => onLike(t)}
-                aria-label={isLiked ? 'Unlike' : 'Like'}
-              >
-                <HeartIcon className="h-4 w-4" fill={isLiked ? 'currentColor' : 'none'} />
-              </Button>
+              <LikeButton liked={isLiked} onToggle={() => onLike(t)} />
               {onRemove && (
                 <Button
                   variant="ghost"

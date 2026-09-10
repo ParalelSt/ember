@@ -2,9 +2,8 @@
 
 import { use } from 'react';
 import Link from 'next/link';
-import { Button } from '@/components/ui/button';
 import { TrackList } from '@/components/track/TrackList';
-import { PlayIcon } from '@/components/icons';
+import { PlayButton } from '@/components/primitives/PlayButton';
 import { usePlayer } from '@/components/player/PlayerProvider';
 import { useQueryAlbum } from '@/hooks/useLibrary';
 import { useOnline } from '@/lib/useOnline';
@@ -62,15 +61,11 @@ export default function AlbumPage({ params }: { params: Promise<{ id: string }> 
       </div>
 
       <div className="flex items-center gap-3 mb-6">
-        <Button
-          size="icon"
+        <PlayButton
           onClick={() => tracks.length && playTrack(tracks[0], tracks, albumContext)}
           disabled={!tracks.length}
-          className="h-12 w-12 rounded-full bg-ember hover:bg-ember-soft text-white shadow-glow"
-          aria-label="Play album"
-        >
-          <PlayIcon className="h-5 w-5 fill-current ml-0.5" />
-        </Button>
+          label="Play album"
+        />
       </div>
 
       <TrackList tracks={tracks} showAlbum={false} context={albumContext} />

@@ -1,4 +1,5 @@
 import { ClockIcon, HeartIcon, UploadIcon } from '@/components/icons';
+import { Artwork } from '@/components/primitives/Artwork';
 import { cn } from '@/lib/utils';
 import type { CollectionIcon } from '@/lib/collections';
 
@@ -19,18 +20,12 @@ const ICONS: Record<CollectionIcon, typeof HeartIcon> = {
 export function CollectionCover({ src, icon, className }: CollectionCoverProps) {
   const Icon = icon ? ICONS[icon] : null;
   return (
-    <div
-      className={cn(
-        'relative aspect-square overflow-hidden rounded-md shadow-soft cover-placeholder',
-        className,
-      )}
+    <Artwork
+      src={src}
+      fallback="gradient"
+      className={cn('aspect-square rounded-md shadow-soft', className)}
     >
-      {src ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img src={src} alt="" className="absolute inset-0 h-full w-full object-cover" />
-      ) : Icon ? (
-        <Icon className="absolute inset-0 m-auto h-1/3 w-1/3 text-white/90" />
-      ) : null}
-    </div>
+      {Icon ? <Icon className="absolute inset-0 m-auto h-1/3 w-1/3 text-white/90" /> : null}
+    </Artwork>
   );
 }

@@ -5,9 +5,11 @@ import Link from 'next/link';
 import { Slider } from '@/components/ui/slider';
 import { Button } from '@/components/ui/button';
 import {
-  ChevronDownIcon, HeartIcon, NextIcon, PauseIcon, PlayIcon, PrevIcon, MusicIcon,
+  ChevronDownIcon, NextIcon, PauseIcon, PlayIcon, PrevIcon, MusicIcon,
   RepeatIcon, RepeatOneIcon, ShuffleIcon,
 } from '@/components/icons';
+import { Artwork } from '@/components/primitives/Artwork';
+import { LikeButton } from '@/components/primitives/LikeButton';
 import { AddToPlaylistMenu } from '@/components/track/AddToPlaylistMenu';
 import { ShareButton } from '@/components/track/ShareButton';
 import { LyricsBody } from '@/components/player/LyricsBody';
@@ -165,16 +167,14 @@ export function NowPlaying() {
 
         {/* Artwork — fills the upper space, centered. */}
         <div className="flex-1 grid place-items-center py-4">
-          <div className="w-full max-w-sm aspect-square rounded-2xl overflow-hidden bg-black shadow-2xl ring-1 ring-white/10">
-            {art ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={art} alt="" className="h-full w-full object-cover" />
-            ) : (
-              <div className="h-full w-full grid place-items-center text-foreground/20">
-                <MusicIcon className="h-20 w-20" />
-              </div>
-            )}
-          </div>
+          <Artwork
+            src={art}
+            className="w-full max-w-sm aspect-square rounded-2xl bg-black shadow-2xl ring-1 ring-white/10"
+          >
+            <div className="h-full w-full grid place-items-center text-foreground/20">
+              <MusicIcon className="h-20 w-20" />
+            </div>
+          </Artwork>
         </div>
 
         {/* Title + artist + like */}
@@ -193,15 +193,11 @@ export function NowPlaying() {
           </div>
           {current && user && (
             <div className="flex items-center gap-1 shrink-0">
-              <Button
-                variant="ghost"
-                size="icon"
-                className={cn('h-10 w-10 text-muted-foreground hover:text-foreground', isLiked && 'text-ember hover:text-ember')}
-                onClick={() => current && toggleLike.mutate({ track: likedVariant ?? current, wasLiked: isLiked })}
-                aria-label={isLiked ? 'Unlike' : 'Like'}
-              >
-                <HeartIcon className="h-6 w-6" fill={isLiked ? 'currentColor' : 'none'} />
-              </Button>
+              <LikeButton
+                size="md"
+                liked={isLiked}
+                onToggle={() => current && toggleLike.mutate({ track: likedVariant ?? current, wasLiked: isLiked })}
+              />
               <AddToPlaylistMenu track={current} />
               <ShareButton track={current} className="h-10 w-10" />
             </div>

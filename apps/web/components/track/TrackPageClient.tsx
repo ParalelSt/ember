@@ -1,10 +1,9 @@
 'use client';
 
 import Link from 'next/link';
-import { Button } from '@/components/ui/button';
 import { ShareButton } from '@/components/track/ShareButton';
 import { AddToPlaylistMenu } from '@/components/track/AddToPlaylistMenu';
-import { PlayIcon } from '@/components/icons';
+import { PlayButton } from '@/components/primitives/PlayButton';
 import { usePlayer } from '@/components/player/PlayerProvider';
 import { useQueryTrack } from '@/hooks/useLibrary';
 import { useOnline } from '@/lib/useOnline';
@@ -58,14 +57,7 @@ export function TrackPageClient({ videoId }: { videoId: string }) {
       </div>
 
       <div className="flex items-center gap-3 mb-6">
-        <Button
-          size="icon"
-          onClick={() => playTrack(track)}
-          className="h-12 w-12 rounded-full bg-ember hover:bg-ember-soft text-white shadow-glow"
-          aria-label={`Play ${track.title}`}
-        >
-          <PlayIcon className="h-5 w-5 fill-current ml-0.5" />
-        </Button>
+        <PlayButton onClick={() => playTrack(track)} label={`Play ${track.title}`} />
         <AddToPlaylistMenu track={track} />
         <ShareButton track={track} />
       </div>

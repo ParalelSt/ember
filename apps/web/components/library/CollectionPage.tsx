@@ -1,7 +1,8 @@
 import type { ReactNode } from 'react';
 import { Button } from '@/components/ui/button';
 import { TrackList } from '@/components/track/TrackList';
-import { PlayIcon, ShuffleIcon } from '@/components/icons';
+import { ShuffleIcon } from '@/components/icons';
+import { PlayButton } from '@/components/primitives/PlayButton';
 import { CollectionHeader } from '@/components/page/CollectionHeader';
 import { ActionBar } from '@/components/page/ActionBar';
 import { DownloadButton, type DownloadButtonProps } from '@/components/library/DownloadButton';
@@ -75,15 +76,7 @@ export function CollectionPage({
         <ActionBar>
           {!hideActions && (
             <>
-              <Button
-                size="icon"
-                onClick={playback.play}
-                disabled={!tracks.length}
-                className="h-12 w-12 rounded-full bg-ember hover:bg-ember-soft text-white shadow-glow"
-                aria-label="Play"
-              >
-                <PlayIcon className="h-5 w-5 fill-current ml-0.5" />
-              </Button>
+              <PlayButton onClick={playback.play} disabled={!tracks.length} />
               <Button
                 variant="ghost"
                 size="icon"

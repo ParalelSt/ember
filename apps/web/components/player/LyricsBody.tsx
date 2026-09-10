@@ -13,6 +13,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { CloseIcon } from '@/components/icons';
+import { Artwork } from '@/components/primitives/Artwork';
 import { usePlayer } from '@/components/player/PlayerProvider';
 import { useQueryLyrics, type LyricsLine } from '@/hooks/useLyrics';
 import { cn } from '@/lib/utils';
@@ -96,12 +97,7 @@ export function LyricsBody({ active, onClose, showHeader = true }: Props) {
       {current && (
         <div className="px-4 py-3 border-b border-sidebar-border flex items-center gap-3">
           {current.artworkUrl && (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={current.artworkUrl}
-              alt=""
-              className="h-12 w-12 rounded shrink-0 object-cover bg-black"
-            />
+            <Artwork src={current.artworkUrl} size="sm" className="rounded shrink-0 bg-black" />
           )}
           <div className="min-w-0">
             <div className="truncate text-sm font-semibold">{current.title}</div>

@@ -5,7 +5,6 @@ import Link from 'next/link';
 import { Slider } from '@/components/ui/slider';
 import { Button } from '@/components/ui/button';
 import {
-  HeartIcon,
   LyricsIcon,
   TabsIcon,
   NextIcon,
@@ -18,6 +17,8 @@ import {
   VolumeIcon,
   VolumeMutedIcon,
 } from '@/components/icons';
+import { Artwork } from '@/components/primitives/Artwork';
+import { LikeButton } from '@/components/primitives/LikeButton';
 import { AddToPlaylistMenu } from '@/components/track/AddToPlaylistMenu';
 import { ShareButton } from '@/components/track/ShareButton';
 import { QueueSheet } from '@/components/player/QueueSheet';
@@ -92,8 +93,7 @@ export function PlayerBar() {
           className="flex items-center gap-3 min-w-0 flex-1 cursor-pointer md:cursor-default"
         >
           {current?.artworkUrl && (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={current.artworkUrl} alt="" className="h-12 w-12 rounded-md object-cover bg-black shrink-0" />
+            <Artwork src={current.artworkUrl} size="sm" className="rounded-md bg-black shrink-0" />
           )}
           <div className="min-w-0 flex-1">
             <div
@@ -126,15 +126,10 @@ export function PlayerBar() {
         </div>
         {current && user && (
           <div className="hidden sm:flex items-center gap-1 shrink-0">
-            <Button
-              variant="ghost"
-              size="icon"
-              className={cn('h-8 w-8 text-muted-foreground hover:text-foreground', isLiked && 'text-ember hover:text-ember')}
-              onClick={() => toggleLike.mutate({ track: likedVariant ?? current, wasLiked: isLiked })}
-              aria-label={isLiked ? 'Unlike' : 'Like'}
-            >
-              <HeartIcon className="h-4 w-4" fill={isLiked ? 'currentColor' : 'none'} />
-            </Button>
+            <LikeButton
+              liked={isLiked}
+              onToggle={() => toggleLike.mutate({ track: likedVariant ?? current, wasLiked: isLiked })}
+            />
             <AddToPlaylistMenu track={current} />
             <ShareButton track={current} />
           </div>

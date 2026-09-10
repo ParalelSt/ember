@@ -7,6 +7,7 @@ import { QK } from '@/hooks/useLibrary';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { SearchIcon, PlusIcon, RefreshIcon, PlayIcon, PauseIcon } from '@/components/icons';
+import { Artwork } from '@/components/primitives/Artwork';
 import { usePlayer } from '@/components/player/PlayerProvider';
 import { songKey } from '@/lib/songKey';
 import type { Track } from '@/types/track';
@@ -127,8 +128,7 @@ export function TrackSearchPicker({ added = [], seeds = [], onAdd, className }: 
               className="flex items-center gap-3 px-2 py-1.5 rounded-md hover:bg-accent/60 transition-colors"
             >
               {t.artworkUrl && (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={t.artworkUrl} alt="" className="h-10 w-10 rounded shrink-0 object-cover bg-black" />
+                <Artwork src={t.artworkUrl} size="xs" className="rounded shrink-0 bg-black" />
               )}
               <div className="min-w-0 flex-1">
                 <div className={cn('truncate text-sm font-medium', playing && 'text-ember')}>{t.title}</div>
