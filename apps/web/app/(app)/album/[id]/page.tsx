@@ -6,8 +6,7 @@ import { TrackList } from '@/components/track/TrackList';
 import { PlayButton } from '@/components/primitives/PlayButton';
 import { usePlayer } from '@/components/player/PlayerProvider';
 import { useQueryAlbum } from '@/hooks/useLibrary';
-import { useOnline } from '@/lib/useOnline';
-import { OfflinePlaceholder } from '@/components/OfflinePlaceholder';
+import { OnlineOnly } from '@/components/OnlineOnly';
 import { formatTotalDuration } from '@/lib/format';
 import { pickThumbnail } from '@/lib/artwork';
 import { EmptyState } from '@/components/page/EmptyState';
@@ -15,11 +14,16 @@ import { CollectionHeader } from '@/components/page/CollectionHeader';
 
 export default function AlbumPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
+  return (
+    <OnlineOnly>
+      <AlbumView id={id} />
+    </OnlineOnly>
+  );
+}
+
+function AlbumView({ id }: { id: string }) {
   const { playTrack } = usePlayer();
   const { data, isLoading, error } = useQueryAlbum(id);
-  const isOnline = useOnline();
-
-  if (!isOnline) return <OfflinePlaceholder />;
 
   if (error) {
     return (

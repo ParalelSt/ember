@@ -8,8 +8,7 @@ import { PlayButton } from '@/components/primitives/PlayButton';
 import { CollectionHeader } from '@/components/page/CollectionHeader';
 import { usePlayer } from '@/components/player/PlayerProvider';
 import { useQueryTrack } from '@/hooks/useLibrary';
-import { useOnline } from '@/lib/useOnline';
-import { OfflinePlaceholder } from '@/components/OfflinePlaceholder';
+import { OnlineOnly } from '@/components/OnlineOnly';
 import { formatTime } from '@/lib/format';
 import { EmptyState } from '@/components/page/EmptyState';
 
@@ -18,11 +17,16 @@ import { EmptyState } from '@/components/page/EmptyState';
  *  normal player (radio mode queues related songs after it). The wrapping
  *  server page owns generateMetadata (Discord/Messenger embed cards). */
 export function TrackPageClient({ videoId }: { videoId: string }) {
+  return (
+    <OnlineOnly>
+      <TrackView videoId={videoId} />
+    </OnlineOnly>
+  );
+}
+
+function TrackView({ videoId }: { videoId: string }) {
   const { playTrack } = usePlayer();
   const { data: track, isLoading, error } = useQueryTrack(videoId);
-  const isOnline = useOnline();
-
-  if (!isOnline) return <OfflinePlaceholder />;
 
   if (error) {
     return (

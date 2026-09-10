@@ -17,7 +17,7 @@ import {
 } from '@/hooks/useRecentSearches';
 import { usePlayer } from '@/components/player/PlayerProvider';
 import { useOnline } from '@/lib/useOnline';
-import { OfflinePlaceholder } from '@/components/OfflinePlaceholder';
+import { OnlineOnly } from '@/components/OnlineOnly';
 import { cn } from '@/lib/utils';
 import { EmptyState } from '@/components/page/EmptyState';
 import { PageTitle } from '@/components/page/PageTitle';
@@ -54,8 +54,6 @@ export default function SearchPage() {
 
   // Surface the rate-limit 429 quietly instead of a blank result set.
   const rateLimited = (error as { status?: number } | null)?.status === 429;
-
-  if (!isOnline) return <OfflinePlaceholder />;
 
   const onMicClick = () => {
     if (!voice.supported) {
@@ -118,44 +116,46 @@ export default function SearchPage() {
   );
 
   return (
-    <div className="pt-4 md:pt-0">
-      <PageTitle className="mb-6">Search</PageTitle>
-      <div className="relative max-w-xl">
-        <SearchIcon className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
-        <Input
-          autoFocus
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-          placeholder="What do you want to listen to?"
-          className="pl-11 pr-12 h-12 rounded-full bg-card border-0"
+    <OnlineOnly>
+      <div className="pt-4 md:pt-0">
+        <PageTitle className="mb-6">Search</PageTitle>
+        <div className="relative max-w-xl">
+          <SearchIcon className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+          <Input
+            autoFocus
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder="What do you want to listen to?"
+            className="pl-11 pr-12 h-12 rounded-full bg-card border-0"
+          />
+          {/* Always visible (right side of the bar) — unsupported browsers get a
+              pointer to Chrome instead of a hidden button. */}
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={onMicClick}
+            aria-label={voice.listening ? 'Stop voice search' : 'Search by voice'}
+            aria-pressed={voice.listening}
+            title="Search by voice"
+            className={cn(
+              'absolute right-2 top-1/2 -translate-y-1/2 h-9 w-9 rounded-full',
+              voice.listening
+                ? 'text-ember hover:text-ember animate-pulse'
+                : 'text-muted-foreground hover:text-foreground',
+            )}
+          >
+            <MicIcon className="h-4 w-4" />
+          </Button>
+        </div>
+
+        {recents}
+
+        <SectionHeader
+          title={debouncedQ ? `Results for "${debouncedQ}"` : 'Trending'}
+          className="mt-8 mb-4"
         />
-        {/* Always visible (right side of the bar) — unsupported browsers get a
-            pointer to Chrome instead of a hidden button. */}
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={onMicClick}
-          aria-label={voice.listening ? 'Stop voice search' : 'Search by voice'}
-          aria-pressed={voice.listening}
-          title="Search by voice"
-          className={cn(
-            'absolute right-2 top-1/2 -translate-y-1/2 h-9 w-9 rounded-full',
-            voice.listening
-              ? 'text-ember hover:text-ember animate-pulse'
-              : 'text-muted-foreground hover:text-foreground',
-          )}
-        >
-          <MicIcon className="h-4 w-4" />
-        </Button>
+        {results}
       </div>
-
-      {recents}
-
-      <SectionHeader
-        title={debouncedQ ? `Results for "${debouncedQ}"` : 'Trending'}
-        className="mt-8 mb-4"
-      />
-      {results}
-    </div>
+    </OnlineOnly>
   );
 }

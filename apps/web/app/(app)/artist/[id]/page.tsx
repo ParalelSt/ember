@@ -8,19 +8,23 @@ import { PlayButton } from '@/components/primitives/PlayButton';
 import { CollectionHeader } from '@/components/page/CollectionHeader';
 import { usePlayer } from '@/components/player/PlayerProvider';
 import { useQueryArtist } from '@/hooks/useLibrary';
-import { useOnline } from '@/lib/useOnline';
-import { OfflinePlaceholder } from '@/components/OfflinePlaceholder';
+import { OnlineOnly } from '@/components/OnlineOnly';
 import { pickThumbnail } from '@/lib/artwork';
 import { EmptyState } from '@/components/page/EmptyState';
 import { SectionHeader } from '@/components/page/SectionHeader';
 
 export default function ArtistPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
+  return (
+    <OnlineOnly>
+      <ArtistView id={id} />
+    </OnlineOnly>
+  );
+}
+
+function ArtistView({ id }: { id: string }) {
   const { playTrack } = usePlayer();
   const { data, isLoading, error } = useQueryArtist(id);
-  const isOnline = useOnline();
-
-  if (!isOnline) return <OfflinePlaceholder />;
 
   if (error) {
     return (

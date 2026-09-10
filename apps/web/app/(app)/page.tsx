@@ -9,8 +9,7 @@ import {
   useQueryRecommended,
   useQueryTrending,
 } from '@/hooks/useLibrary';
-import { useOnline } from '@/lib/useOnline';
-import { OfflinePlaceholder } from '@/components/OfflinePlaceholder';
+import { OnlineOnly } from '@/components/OnlineOnly';
 import { FriendsListening } from '@/components/FriendsListening';
 import type { Track } from '@/types/track';
 import { PageTitle } from '@/components/page/PageTitle';
@@ -26,7 +25,6 @@ interface Section {
 export default function HomePage() {
   const search = useSearchParams();
   const focus = search.get('focus');
-  const isOnline = useOnline();
 
   // Reset the scroll position whenever the focus changes — going INTO a
   // focused song box (so you start at its top) and coming back OUT (so the
@@ -66,37 +64,35 @@ export default function HomePage() {
     { key: 'history', title: 'Recently played', tracks: history, hidden: history.length === 0 },
   ];
 
-  if (!isOnline) return <OfflinePlaceholder />;
-
   const focused = focus ? sections.find((s) => s.key === focus && !s.hidden) : null;
 
-  if (focused) {
-    return (
-      <TrackRow
-        title={focused.title}
-        tracks={focused.tracks}
-        loading={focused.loading}
-        focusKey={focused.key}
-        fullscreen
-      />
-    );
-  }
-
   return (
-    <div>
-      <PageTitle className="mb-8">Home</PageTitle>
-      <FriendsListening />
-      {sections
-        .filter((s) => !s.hidden)
-        .map((s) => (
-          <TrackRow
-            key={s.key}
-            title={s.title}
-            tracks={s.tracks}
-            loading={s.loading}
-            focusKey={s.key}
-          />
-        ))}
-    </div>
+    <OnlineOnly>
+      {focused ? (
+        <TrackRow
+          title={focused.title}
+          tracks={focused.tracks}
+          loading={focused.loading}
+          focusKey={focused.key}
+          fullscreen
+        />
+      ) : (
+        <div>
+          <PageTitle className="mb-8">Home</PageTitle>
+          <FriendsListening />
+          {sections
+            .filter((s) => !s.hidden)
+            .map((s) => (
+              <TrackRow
+                key={s.key}
+                title={s.title}
+                tracks={s.tracks}
+                loading={s.loading}
+                focusKey={s.key}
+              />
+            ))}
+        </div>
+      )}
+    </OnlineOnly>
   );
 }
