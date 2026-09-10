@@ -12,6 +12,8 @@ import {
   useQueryAdminInvites,
 } from '@/hooks/useAdmin';
 import type { AdminInvite } from '@/lib/api';
+import { EmptyState } from '@/components/page/EmptyState';
+import { SectionHeader } from '@/components/page/SectionHeader';
 
 export default function AdminInvitesPage() {
   const { data: invites = [], isLoading } = useQueryAdminInvites();
@@ -44,7 +46,7 @@ export default function AdminInvitesPage() {
   return (
     <section>
       <div className="flex items-center justify-between gap-4 mb-4 flex-wrap">
-        <h2 className="text-section-title">Invites · {invites.length}</h2>
+        <SectionHeader title={`Invites · ${invites.length}`} />
         <Input
           placeholder="Search…"
           value={search}
@@ -71,11 +73,11 @@ export default function AdminInvitesPage() {
         </Button>
       </form>
 
-      {isLoading && <div className="text-muted-foreground py-12 text-center">Loading…</div>}
+      {isLoading && <EmptyState>Loading…</EmptyState>}
       {!isLoading && filtered.length === 0 && (
-        <div className="text-muted-foreground py-12 text-center">
+        <EmptyState>
           {search ? 'No invites match.' : 'No invites yet — add one above.'}
-        </div>
+        </EmptyState>
       )}
 
       <div className="flex flex-col gap-2">

@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation';
 import type { ReactNode } from 'react';
 import { requireUser, UnauthorizedError } from '@/lib/auth';
 import { AdminTabs } from '@/components/admin/AdminTabs';
+import { PageTitle } from '@/components/page/PageTitle';
 
 export default async function AdminLayout({ children }: { children: ReactNode }) {
   try {
@@ -13,7 +14,7 @@ export default async function AdminLayout({ children }: { children: ReactNode })
   }
   return (
     <div>
-      <h1 className="mb-6 text-3xl md:text-4xl font-bold tracking-tight">Admin</h1>
+      <PageTitle className="mb-6">Admin</PageTitle>
       <div className="flex flex-col md:flex-row gap-6 md:gap-10">
         <AdminTabs />
         <div className="flex-1 min-w-0">{children}</div>

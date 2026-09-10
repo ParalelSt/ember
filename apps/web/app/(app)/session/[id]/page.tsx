@@ -9,6 +9,9 @@ import { useQuerySession, useExecuteAddToSession, useExecuteSkipSession, useExec
 import { useSessionHost } from '@/hooks/useSessionHost';
 import type { SessionQueueItem, Track } from '@/types/track';
 import { cn } from '@/lib/utils';
+import { EmptyState } from '@/components/page/EmptyState';
+import { PageTitle } from '@/components/page/PageTitle';
+import { SectionHeader } from '@/components/page/SectionHeader';
 
 export default function SessionPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
@@ -23,10 +26,10 @@ export default function SessionPage({ params }: { params: Promise<{ id: string }
   useSessionHost(data);
 
   if (error) {
-    return <div className="text-muted-foreground py-12 text-center">Session not found.</div>;
+    return <EmptyState>Session not found.</EmptyState>;
   }
   if (isLoading || !data) {
-    return <div className="text-muted-foreground py-12 text-center">Loading…</div>;
+    return <EmptyState>Loading…</EmptyState>;
   }
 
   const { session, queue } = data;
@@ -131,7 +134,7 @@ export default function SessionPage({ params }: { params: Promise<{ id: string }
   return (
     <div className="pt-4 md:pt-0 max-w-2xl">
       <div className="mb-1 flex items-center justify-between gap-4">
-        <h1 className="text-3xl md:text-4xl font-bold tracking-tight truncate">{session.name}</h1>
+        <PageTitle className="truncate">{session.name}</PageTitle>
         {session.isHost && session.active && (
           <Button variant="ghost" onClick={handleEnd} className="shrink-0 text-muted-foreground hover:text-foreground">
             End session
@@ -151,7 +154,7 @@ export default function SessionPage({ params }: { params: Promise<{ id: string }
 
       <div className="mb-8">
         <div className="mb-2 flex items-center justify-between">
-          <h2 className="text-section-title">Queue</h2>
+          <SectionHeader title="Queue" />
           <Button variant="ghost" size="sm" onClick={handleSave} disabled={save.isPending || saved || queue.length === 0} className="text-muted-foreground hover:text-foreground">
             {saved ? 'Saved ✓' : 'Save as playlist'}
           </Button>
@@ -165,7 +168,7 @@ export default function SessionPage({ params }: { params: Promise<{ id: string }
 
       {session.active && (
         <div>
-          <h2 className="mb-3 text-xl font-bold tracking-tight">Add songs</h2>
+          <SectionHeader title="Add songs" className="mb-3" />
           <TrackSearchPicker added={queue.map((q) => q.track)} seeds={queue.map((q) => q.track)} onAdd={(t) => void handleAdd(t)} />
         </div>
       )}

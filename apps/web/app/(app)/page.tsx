@@ -13,6 +13,7 @@ import { useOnline } from '@/lib/useOnline';
 import { OfflinePlaceholder } from '@/components/OfflinePlaceholder';
 import { FriendsListening } from '@/components/FriendsListening';
 import type { Track } from '@/types/track';
+import { PageTitle } from '@/components/page/PageTitle';
 
 interface Section {
   key: string;
@@ -83,7 +84,7 @@ export default function HomePage() {
 
   return (
     <div>
-      <h1 className="text-3xl md:text-4xl font-bold tracking-tight mb-8">Home</h1>
+      <PageTitle className="mb-8">Home</PageTitle>
       <FriendsListening />
       {sections
         .filter((s) => !s.hidden)

@@ -12,6 +12,8 @@ import { useQueryHistory, useQueryLikes, useQueryPlaylists, useQueryUploads } fr
 import { useOfflineStore } from '@/stores/useOfflineStore';
 import { useOnline } from '@/lib/useOnline';
 import { countLabel, hrefFor, iconFor, refFromPinId, systemCollections, type SystemKind } from '@/lib/collections';
+import { EmptyState } from '@/components/page/EmptyState';
+import { PageTitle } from '@/components/page/PageTitle';
 
 export default function LibraryPage() {
   const { user } = useAuth();
@@ -27,7 +29,7 @@ export default function LibraryPage() {
   const [startOpen, setStartOpen] = useState(false);
   const [joinOpen, setJoinOpen] = useState(false);
 
-  if (!user) return <div className="text-muted-foreground py-12 text-center">Sign in to see your library</div>;
+  if (!user) return <EmptyState>Sign in to see your library</EmptyState>;
 
   // Offline: pins are the offline store's own record of what was downloaded,
   // so this renders correctly even before any online query has ever
@@ -35,7 +37,7 @@ export default function LibraryPage() {
   if (!isOnline) {
     return (
       <div>
-        <h1 className="text-3xl md:text-4xl font-bold tracking-tight mb-2">Your library</h1>
+        <PageTitle className="mb-2">Your library</PageTitle>
         <p className="text-sm text-muted-foreground mb-6">Offline. Showing what is downloaded.</p>
         <CollectionShelf
           title="Downloaded"
@@ -52,9 +54,9 @@ export default function LibraryPage() {
             };
           })}
           empty={
-            <div className="text-muted-foreground py-12 text-center">
+            <EmptyState>
               No downloaded playlists. Go online and tap “Download for offline” on a playlist to pin it.
-            </div>
+            </EmptyState>
           }
         />
       </div>
@@ -68,7 +70,7 @@ export default function LibraryPage() {
   return (
     <div>
       <div className="mb-6 flex items-center justify-between gap-4">
-        <h1 className="text-page-title">Your library</h1>
+        <PageTitle>Your library</PageTitle>
         <div className="flex shrink-0 items-center gap-1">
           <Button
             variant="ghost"
@@ -129,7 +131,7 @@ export default function LibraryPage() {
           badge: downloaded.includes(p.id) ? ('downloaded' as const) : undefined,
           size: 'md' as const,
         }))}
-        empty={<div className="text-muted-foreground py-12 text-center">No playlists yet</div>}
+        empty={<EmptyState>No playlists yet</EmptyState>}
       />
     </div>
   );

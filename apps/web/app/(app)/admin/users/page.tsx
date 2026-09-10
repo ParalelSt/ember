@@ -16,6 +16,8 @@ import {
 } from '@/hooks/useAdmin';
 import type { AdminUser } from '@/lib/api';
 import { cn } from '@/lib/utils';
+import { EmptyState } from '@/components/page/EmptyState';
+import { SectionHeader } from '@/components/page/SectionHeader';
 
 export default function AdminUsersPage() {
   const { user: actor, signOut } = useAuth();
@@ -39,7 +41,7 @@ export default function AdminUsersPage() {
   return (
     <section>
       <div className="flex items-center justify-between gap-4 mb-4">
-        <h2 className="text-section-title">Users · {users.length}</h2>
+        <SectionHeader title={`Users · ${users.length}`} />
         <Input
           placeholder="Search by email or name…"
           value={search}
@@ -48,9 +50,9 @@ export default function AdminUsersPage() {
         />
       </div>
 
-      {isLoading && <div className="text-muted-foreground py-12 text-center">Loading…</div>}
+      {isLoading && <EmptyState>Loading…</EmptyState>}
       {!isLoading && filtered.length === 0 && (
-        <div className="text-muted-foreground py-12 text-center">No users match.</div>
+        <EmptyState>No users match.</EmptyState>
       )}
 
       <div className="flex flex-col gap-2">

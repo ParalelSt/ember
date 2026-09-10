@@ -7,6 +7,7 @@ import { useOnline } from '@/lib/useOnline';
 import { useCollectionPlayback } from '@/hooks/useCollectionPlayback';
 import { useOfflinePin } from '@/hooks/useOfflinePin';
 import { useQueryHistory } from '@/hooks/useLibrary';
+import { EmptyState } from '@/components/page/EmptyState';
 
 const REF = { kind: 'recent' } as const;
 
@@ -18,9 +19,9 @@ export default function RecentPage() {
   const playback = useCollectionPlayback(tracks, context);
   const download = useOfflinePin(REF, titleFor(REF), tracks);
 
-  if (!user) return <div className="text-muted-foreground py-12 text-center">Sign in to see your library</div>;
-  if (isLoading && !tracks.length && isOnline) return <div className="text-muted-foreground py-12 text-center">Loading…</div>;
-  if (isError && !tracks.length) return <div className="text-muted-foreground py-12 text-center">Couldn&apos;t load this collection. Please try again.</div>;
+  if (!user) return <EmptyState>Sign in to see your library</EmptyState>;
+  if (isLoading && !tracks.length && isOnline) return <EmptyState>Loading…</EmptyState>;
+  if (isError && !tracks.length) return <EmptyState>Couldn&apos;t load this collection. Please try again.</EmptyState>;
 
   const offlineEmpty = !isOnline && tracks.length === 0;
   return (

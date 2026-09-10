@@ -9,6 +9,7 @@ import { LogOutIcon } from '@/components/icons';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { PrivacyToggles } from '@/components/settings/PrivacyToggles';
 import { api } from '@/lib/api';
+import { SectionHeader } from '@/components/page/SectionHeader';
 
 export default function SettingsProfile() {
   const { user, name: currentName, avatarUrl, refresh, signOut } = useAuth();
@@ -65,7 +66,7 @@ export default function SettingsProfile() {
   return (
     <div className="max-w-2xl">
     <form onSubmit={onSubmit}>
-      <h2 className="text-section-title">Profile</h2>
+      <SectionHeader title="Profile" />
 
       <div className="mt-6 flex items-center gap-5">
         <div className="relative h-20 w-20 rounded-full overflow-hidden cover-placeholder grid place-items-center text-2xl font-bold text-white shrink-0">

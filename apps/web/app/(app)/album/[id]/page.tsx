@@ -10,6 +10,7 @@ import { useOnline } from '@/lib/useOnline';
 import { OfflinePlaceholder } from '@/components/OfflinePlaceholder';
 import { formatTotalDuration } from '@/lib/format';
 import { pickThumbnail } from '@/lib/artwork';
+import { EmptyState } from '@/components/page/EmptyState';
 
 export default function AlbumPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
@@ -21,13 +22,13 @@ export default function AlbumPage({ params }: { params: Promise<{ id: string }> 
 
   if (error) {
     return (
-      <div className="text-muted-foreground py-12 text-center">
+      <EmptyState>
         Album not found.<br />
         <Link href="/" className="text-ember hover:underline">Home</Link>
-      </div>
+      </EmptyState>
     );
   }
-  if (isLoading || !data) return <div className="text-muted-foreground py-12 text-center">Loading…</div>;
+  if (isLoading || !data) return <EmptyState>Loading…</EmptyState>;
 
   const { title, artist, artistId, year, thumbnails = [], tracks = [], trackCount, totalDurationSec } = data;
   const cover = pickThumbnail(thumbnails);

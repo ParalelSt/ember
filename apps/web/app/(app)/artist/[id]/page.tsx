@@ -10,6 +10,8 @@ import { useQueryArtist } from '@/hooks/useLibrary';
 import { useOnline } from '@/lib/useOnline';
 import { OfflinePlaceholder } from '@/components/OfflinePlaceholder';
 import { pickThumbnail } from '@/lib/artwork';
+import { EmptyState } from '@/components/page/EmptyState';
+import { SectionHeader } from '@/components/page/SectionHeader';
 
 export default function ArtistPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
@@ -21,13 +23,13 @@ export default function ArtistPage({ params }: { params: Promise<{ id: string }>
 
   if (error) {
     return (
-      <div className="text-muted-foreground py-12 text-center">
+      <EmptyState>
         Artist not found.<br />
         <Link href="/" className="text-ember hover:underline">Home</Link>
-      </div>
+      </EmptyState>
     );
   }
-  if (isLoading || !data) return <div className="text-muted-foreground py-12 text-center">Loading…</div>;
+  if (isLoading || !data) return <EmptyState>Loading…</EmptyState>;
 
   const { name, description, thumbnails = [], tracks = [], albums = [], singles = [] } = data;
   const heroArt = pickThumbnail(thumbnails);
@@ -54,21 +56,21 @@ export default function ArtistPage({ params }: { params: Promise<{ id: string }>
         />
       </div>
 
-      <h2 className="mb-3 text-xl font-bold tracking-tight">Popular</h2>
+      <SectionHeader title="Popular" className="mb-3" />
       <div className="max-h-80 overflow-y-auto rounded-md mb-8">
         <TrackList tracks={tracks} context={artistContext} showRank />
       </div>
 
       {albums.length > 0 && (
         <>
-          <h2 className="mb-3 text-xl font-bold tracking-tight">Discography</h2>
+          <SectionHeader title="Discography" className="mb-3" />
           <AlbumRow albums={albums} />
         </>
       )}
 
       {singles.length > 0 && (
         <>
-          <h2 className="mb-3 mt-8 text-xl font-bold tracking-tight">Singles & EPs</h2>
+          <SectionHeader title="Singles & EPs" className="mb-3 mt-8" />
           <AlbumRow albums={singles} />
         </>
       )}

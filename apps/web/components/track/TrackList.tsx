@@ -15,6 +15,7 @@ import { useAuth } from '@/components/providers/AuthProvider';
 import { useExecuteToggleLike, useQueryLikes } from '@/hooks/useLibrary';
 import type { PlaybackContext, Track } from '@/types/track';
 import { cn } from '@/lib/utils';
+import { EmptyState } from '@/components/page/EmptyState';
 
 interface Props {
   tracks: Track[];
@@ -52,7 +53,7 @@ export function TrackList({ tracks, showAlbum = true, showRank = false, onRemove
     playTrack(track, tracks, context);
   };
 
-  if (!tracks?.length) return <div className="text-muted-foreground text-sm py-12 text-center">No tracks</div>;
+  if (!tracks?.length) return <EmptyState className="text-sm">No tracks</EmptyState>;
 
   return (
     <div className="flex flex-col">

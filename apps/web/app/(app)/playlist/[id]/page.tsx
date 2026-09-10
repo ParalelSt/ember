@@ -20,6 +20,8 @@ import {
   useQueryPlaylist,
 } from '@/hooks/useLibrary';
 import type { Track } from '@/types/track';
+import { EmptyState } from '@/components/page/EmptyState';
+import { SectionHeader } from '@/components/page/SectionHeader';
 
 export default function PlaylistPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
@@ -68,14 +70,14 @@ export default function PlaylistPage({ params }: { params: Promise<{ id: string 
 
   if (error) {
     return (
-      <div className="text-muted-foreground py-12 text-center">
+      <EmptyState>
         Playlist not found.
         <br />
         <Link href="/library" className="text-ember hover:underline">Back to library</Link>
-      </div>
+      </EmptyState>
     );
   }
-  if (isLoading || !data) return <div className="text-muted-foreground py-12 text-center">Loading…</div>;
+  if (isLoading || !data) return <EmptyState>Loading…</EmptyState>;
 
   const { playlist } = data;
 
@@ -136,7 +138,7 @@ export default function PlaylistPage({ params }: { params: Promise<{ id: string 
       />
 
       <section className="mt-10 max-w-3xl">
-        <h2 className="mb-3 text-xl font-bold tracking-tight">Add songs</h2>
+        <SectionHeader title="Add songs" className="mb-3" />
         <TrackSearchPicker added={tracks} seeds={tracks} onAdd={handleAdd} />
       </section>
 

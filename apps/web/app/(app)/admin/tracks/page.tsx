@@ -20,6 +20,8 @@ import {
   useQueryAdminTracks,
 } from '@/hooks/useAdmin';
 import type { AdminTrack } from '@/lib/api';
+import { EmptyState } from '@/components/page/EmptyState';
+import { SectionHeader } from '@/components/page/SectionHeader';
 
 export default function AdminTracksPage() {
   const [page, setPage] = useState(1);
@@ -39,9 +41,7 @@ export default function AdminTracksPage() {
   return (
     <section>
       <div className="flex items-center justify-between gap-4 mb-4">
-        <h2 className="text-section-title">
-          Tracks{data ? ` · ${data.totalItems}` : ''}
-        </h2>
+        <SectionHeader title={`Tracks${data ? ` · ${data.totalItems}` : ''}`} />
         <form
           onSubmit={(e) => { e.preventDefault(); submitSearch(); }}
           className="flex gap-2"
@@ -56,9 +56,9 @@ export default function AdminTracksPage() {
         </form>
       </div>
 
-      {isLoading && <div className="text-muted-foreground py-12 text-center">Loading…</div>}
+      {isLoading && <EmptyState>Loading…</EmptyState>}
       {!isLoading && data && data.tracks.length === 0 && (
-        <div className="text-muted-foreground py-12 text-center">No tracks match.</div>
+        <EmptyState>No tracks match.</EmptyState>
       )}
 
       {data && data.tracks.length > 0 && (

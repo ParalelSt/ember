@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { CollectionCover, type CollectionCoverProps } from '@/components/library/CollectionCover';
+import { Eyebrow } from '@/components/page/Eyebrow';
 import { cn } from '@/lib/utils';
 
 export interface CollectionHeaderProps {
@@ -53,7 +54,7 @@ export function CollectionHeader({
         </div>
       )}
       <div>
-        <div className="text-eyebrow">{eyebrow}</div>
+        <Eyebrow>{eyebrow}</Eyebrow>
         <h1 className="text-hero-title">{title}</h1>
         <div className="mt-3 text-sm text-muted-foreground">{meta.join(' · ')}</div>
         {children}

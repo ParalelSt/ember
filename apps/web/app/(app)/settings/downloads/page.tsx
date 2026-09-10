@@ -13,6 +13,7 @@ import { QK } from '@/hooks/useLibrary';
 import { formatBytes, formatCount } from '@/lib/format';
 import type { PinStatus } from '@/lib/offlineNative';
 import type { Track } from '@/types/track';
+import { SectionHeader } from '@/components/page/SectionHeader';
 
 /** What the user can do about a pin that failed for good. The native side
  *  records the reason of the FIRST failure per pin (see OfflineDownloadService). */
@@ -56,7 +57,7 @@ export default function DownloadsSettingsPage() {
   return (
     <section className="space-y-6">
       <header>
-        <h2 className="text-section-title">Downloads</h2>
+        <SectionHeader title="Downloads" />
         <p className="text-meta">
           Playlists pinned for offline playback are stored on this device.
         </p>

@@ -19,6 +19,9 @@ import { usePlayer } from '@/components/player/PlayerProvider';
 import { useOnline } from '@/lib/useOnline';
 import { OfflinePlaceholder } from '@/components/OfflinePlaceholder';
 import { cn } from '@/lib/utils';
+import { EmptyState } from '@/components/page/EmptyState';
+import { PageTitle } from '@/components/page/PageTitle';
+import { SectionHeader } from '@/components/page/SectionHeader';
 
 export default function SearchPage() {
   const [q, setQ] = useState('');
@@ -64,7 +67,7 @@ export default function SearchPage() {
 
   const recents = !debouncedQ && recentTracks.length > 0 ? (
     <div className="mt-8 max-w-xl">
-      <h2 className="mb-3 text-xl font-bold tracking-tight">Recent searches</h2>
+      <SectionHeader title="Recent searches" className="mb-3" />
       <div className="flex flex-col">
         {recentTracks.map((t) => (
           <div
@@ -103,9 +106,9 @@ export default function SearchPage() {
   ) : null;
 
   const results = rateLimited ? (
-    <div className="text-muted-foreground text-sm py-12 text-center">Searching too fast — one moment.</div>
+    <EmptyState className="text-sm">Searching too fast — one moment.</EmptyState>
   ) : isFetching && !data?.length ? (
-    <div className="text-muted-foreground text-sm py-12 text-center">Searching…</div>
+    <EmptyState className="text-sm">Searching…</EmptyState>
   ) : (
     <TrackList
       tracks={data ?? []}
@@ -116,7 +119,7 @@ export default function SearchPage() {
 
   return (
     <div className="pt-4 md:pt-0">
-      <h1 className="text-3xl md:text-4xl font-bold tracking-tight mb-6">Search</h1>
+      <PageTitle className="mb-6">Search</PageTitle>
       <div className="relative max-w-xl">
         <SearchIcon className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
         <Input
@@ -148,9 +151,10 @@ export default function SearchPage() {
 
       {recents}
 
-      <h2 className="mt-8 mb-4 text-xl font-bold tracking-tight">
-        {debouncedQ ? `Results for "${debouncedQ}"` : 'Trending'}
-      </h2>
+      <SectionHeader
+        title={debouncedQ ? `Results for "${debouncedQ}"` : 'Trending'}
+        className="mt-8 mb-4"
+      />
       {results}
     </div>
   );

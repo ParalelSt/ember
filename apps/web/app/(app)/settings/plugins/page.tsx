@@ -2,6 +2,7 @@
 
 import { useSettingsStore } from '@/stores/useSettingsStore';
 import { cn } from '@/lib/utils';
+import { SectionHeader } from '@/components/page/SectionHeader';
 
 const PLACEHOLDERS = [
   {
@@ -20,7 +21,7 @@ export default function SettingsPlugins() {
 
   return (
     <section className="max-w-2xl">
-      <h2 className="text-section-title">Plugins</h2>
+      <SectionHeader title="Plugins" />
       <p className="mt-1 text-sm text-muted-foreground">
         Optional add-ons that layer on top of the player. More to come.
       </p>

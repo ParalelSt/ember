@@ -9,6 +9,7 @@ import { useQueryTrack } from '@/hooks/useLibrary';
 import { useOnline } from '@/lib/useOnline';
 import { OfflinePlaceholder } from '@/components/OfflinePlaceholder';
 import { formatTime } from '@/lib/format';
+import { EmptyState } from '@/components/page/EmptyState';
 
 /** Shareable track page body — the landing target of /track/<videoId> links.
  *  Mirrors the album page's header layout; Play runs the track through the
@@ -23,13 +24,13 @@ export function TrackPageClient({ videoId }: { videoId: string }) {
 
   if (error) {
     return (
-      <div className="text-muted-foreground py-12 text-center">
+      <EmptyState>
         Track not found.<br />
         <Link href="/" className="text-ember hover:underline">Home</Link>
-      </div>
+      </EmptyState>
     );
   }
-  if (isLoading || !track) return <div className="text-muted-foreground py-12 text-center">Loading…</div>;
+  if (isLoading || !track) return <EmptyState>Loading…</EmptyState>;
 
   const meta = [track.album, formatTime(track.durationSec, { empty: '' })].filter(Boolean);
 

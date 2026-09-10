@@ -9,6 +9,7 @@ import { DownloadButton, type DownloadButtonProps } from '@/components/library/D
 import type { CollectionCoverProps } from '@/components/library/CollectionCover';
 import { cn } from '@/lib/utils';
 import type { PlaybackContext, Track } from '@/types/track';
+import { EmptyState } from '@/components/page/EmptyState';
 
 // Same shape as hooks/useCollectionPlayback's CollectionPlayback, restated
 // here rather than imported: presentational components under components/
@@ -99,7 +100,7 @@ export function CollectionPage({
         </ActionBar>
       </CollectionHeader>
       {tracks.length === 0 ? (
-        <div className="text-muted-foreground py-12 text-center">{emptyMessage}</div>
+        <EmptyState>{emptyMessage}</EmptyState>
       ) : (
         <TrackList tracks={tracks} context={context} onRemove={onRemoveTrack} />
       )}
