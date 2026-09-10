@@ -256,7 +256,8 @@ check("pin('recent') recorded", calls.some((c) => c[0] === 'pin' && c[1] === 're
 // page into its offline branch reactively instead.
 await page.goto(`${APP_URL}/library`, { waitUntil: 'networkidle' });
 await ctx.setOffline(true);
-await page.waitForTimeout(500);
+// Wait for the offline branch to render rather than sleeping a fixed time.
+await page.locator('main').getByText(/offline/i).first().waitFor({ timeout: 5000 }).catch(() => {});
 const offlineBody = await page.locator('main').innerText();
 check('offline library says offline', /offline/i.test(offlineBody), offlineBody.slice(0, 200));
 check('offline library shows Liked songs', offlineBody.includes('Liked songs'), offlineBody.slice(0, 200));
