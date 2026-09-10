@@ -6,7 +6,8 @@ import { useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { useOfflineStore } from '@/stores/useOfflineStore';
-import { clearAllDownloads, downloadPlaylist, pinLiked, LIKED_PIN } from '@/lib/offline';
+import { clearAllDownloads, downloadPlaylist, pinList } from '@/lib/offline';
+import { refFromPinId } from '@/lib/collections';
 import { useNativeOfflinePresent } from '@/lib/offlineNative';
 import { QK } from '@/hooks/useLibrary';
 import type { PinStatus } from '@/lib/offlineNative';
@@ -40,16 +41,19 @@ export default function DownloadsSettingsPage() {
   // playlist/Liked this session. The native side clears `failed` on pin and
   // only re-fetches what's missing.
   const retry = async (pin: PinStatus) => {
-    const tracks = pin.id === LIKED_PIN
-      ? qc.getQueryData<Track[]>(QK.likes)
-      : qc.getQueryData<{ tracks: Track[] }>(QK.playlist(pin.id))?.tracks;
+    const ref = refFromPinId(pin.id);
+    const tracks =
+      ref.kind === 'liked' ? qc.getQueryData<Track[]>(QK.likes)
+      : ref.kind === 'recent' ? qc.getQueryData<Track[]>(QK.history)
+      : ref.kind === 'uploads' ? qc.getQueryData<Track[]>(QK.uploads)
+      : qc.getQueryData<{ tracks: Track[] }>(QK.playlist(ref.id))?.tracks;
     if (!tracks || tracks.length === 0) {
-      toast.error('Open that playlist once while online, then retry.');
+      toast.error('Open that collection once while online, then retry.');
       return;
     }
     try {
-      if (pin.id === LIKED_PIN) await pinLiked(tracks);
-      else await downloadPlaylist({ id: pin.id, name: pin.name, created_at: '', artwork_url: null }, tracks);
+      if (ref.kind === 'playlist') await downloadPlaylist({ id: ref.id, name: pin.name, created_at: '', artwork_url: null }, tracks);
+      else await pinList(pin.id, pin.name, tracks);
     } catch (e) {
       toast.error(`Couldn't retry: ${(e as Error).message}`);
     }

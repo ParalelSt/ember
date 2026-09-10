@@ -215,11 +215,10 @@ check('it settles on Downloaded', await appeared(page.getByText(/^downloaded$/i)
 // staleTime would otherwise keep serving the pre-like empty cache.
 await fetch(`${APP_URL}/api/likes`, { method: 'POST',
   headers: { 'content-type': 'application/json', cookie: `pb_auth=${cookie}` }, body: JSON.stringify({ track: uploaded[0] }) });
-await page.goto(`${APP_URL}/library`, { waitUntil: 'networkidle' });
-await page.getByRole('tab', { name: 'Liked' }).click();
+await page.goto(`${APP_URL}/library/liked`, { waitUntil: 'networkidle' });
 const likedDlButton = page.getByRole('button', { name: /download for offline/i });
 const likedSeen = await appeared(likedDlButton);
-check('the Liked tab shows Download for offline (native plugin present)', likedSeen);
+check('the Liked page shows Download for offline (native plugin present)', likedSeen);
 if (likedSeen) await likedDlButton.click();
 check('the Liked pin settles on Downloaded', await appeared(page.getByText(/^downloaded$/i).first(), 5_000));
 await page.waitForTimeout(300); // let the pin's localStorage write settle before navigating away
