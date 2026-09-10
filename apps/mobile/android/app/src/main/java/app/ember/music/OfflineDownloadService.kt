@@ -118,7 +118,7 @@ class OfflineDownloadService : Service() {
         val url = if (stream.startsWith("http")) stream else baseUrl + stream
         val tmp = File(cacheDir, "dl-" + store.safeId(id) + ".part")
         try {
-            api.http.newCall(Request.Builder().url(url).build()).execute().use { res ->
+            clientFor(api, baseUrl, url).newCall(Request.Builder().url(url).build()).execute().use { res ->
                 if (!res.isSuccessful) {
                     Log.w(TAG, "$id: HTTP ${res.code}")
                     // 401 survived ServerApi's one retry with a fresh cookie, so
@@ -130,7 +130,7 @@ class OfflineDownloadService : Service() {
             store.commitAudio(id, tmp)
             val art = track.optString("artworkUrl")
             if (art.startsWith("http")) runCatching {
-                artClient(api, baseUrl, art).newCall(Request.Builder().url(art).build()).execute().use { res ->
+                clientFor(api, baseUrl, art).newCall(Request.Builder().url(art).build()).execute().use { res ->
                     if (res.isSuccessful) { val a = File(cacheDir, "art-" + store.safeId(id)); res.body!!.byteStream().use { i -> a.outputStream().use { i.copyTo(it) } }; store.commitArt(id, a) }
                 }
             }
@@ -141,10 +141,11 @@ class OfflineDownloadService : Service() {
         }
     }
 
-    /** The authed client only when the art is served by the Ember server, so
-     *  the session cookie never leaves that host. See `plainHttp`. */
-    private fun artClient(api: ServerApi, baseUrl: String, artUrl: String): OkHttpClient =
-        if (runCatching { java.net.URI(artUrl).host.equals(java.net.URI(baseUrl).host, ignoreCase = true) }.getOrDefault(false))
+    /** The authed client only when the URL is served by the Ember server, so
+     *  the session cookie never leaves that host. Audio needs this too: Jamendo
+     *  tracks carry an absolute third-party streamUrl. See `plainHttp`. */
+    private fun clientFor(api: ServerApi, baseUrl: String, url: String): OkHttpClient =
+        if (runCatching { java.net.URI(url).host.equals(java.net.URI(baseUrl).host, ignoreCase = true) }.getOrDefault(false))
             api.http else plainHttp
 
     /** A full disk reaches us as an IOException (or an ErrnoException cause)
