@@ -4,28 +4,16 @@
  *      node tests/collections.test.mjs   # or: npm run test:collections
  *
  *  Framework-free so a plain Node test can import it. */
-import { readFileSync } from 'node:fs';
 import { strict as assert } from 'node:assert';
 
-const src = readFileSync(new URL('../apps/web/lib/collections.ts', import.meta.url), 'utf8');
-const js = src
-  .replace(/import\s+type\s+\{[^}]*\}\s+from\s+[^;]*;/g, '')
-  .replace(/export\s+type\s+[^=]+=[\s\S]*?(?=\n(?:export|const|function|\n|$))/g, '')
-  .replace(/export\s+interface\s+[^{]*\{[^}]*\}/g, '')
-  .replace(/:\s*(?:readonly\s+)?(?:CollectionRef|SystemKind|CollectionIcon|PlaybackContext|number|string|boolean|void|null|undefined)(?:\[\])?(?:\s*\|\s*(?:CollectionRef|SystemKind|CollectionIcon|PlaybackContext|number|string|boolean|void|null|undefined))*(?=[,\s)\{=;])/g, '')
-  .replace(/([a-zA-Z_][a-zA-Z0-9_]*)\?(?=\s*[,)=])/g, '$1')
-  .replace(/\?:/g, ':')
-  .replace(/\s+as\s+const\s+satisfies\s+Record<[^>]+>/g, '')
-  .replace(/\s+as\s+(?:CollectionRef|SystemKind|readonly\s+string\[\])/g, '')
-  .replace(/:\s*SystemCollection\[\]/g, '');
-const c = await import(
-  `data:text/javascript,${encodeURIComponent(js)}`
-);
+// Imported untranspiled: Node 24 strips types, which is why lib/collections.ts
+// must stay erasable TypeScript (no enums, namespaces or parameter properties).
+const c = await import('../apps/web/lib/collections.ts');
 
 const out = [];
 const check = (name, fn) => {
   try { fn(); out.push([name, true]); console.log(`PASS  ${name}`); }
-  catch (e) { out.push([name, false]); console.log(`FAIL  ${name}  — ${e.message}`); }
+  catch (e) { out.push([name, false]); console.log(`FAIL  ${name}: ${e.message}`); }
 };
 
 check('hrefFor returns correct routes', () => {
