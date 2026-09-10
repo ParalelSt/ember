@@ -92,6 +92,11 @@ for (const track of uploaded) {
 
 const checks = [];
 const check = (name, pass, detail = '') => { checks.push(pass); console.log(`${pass ? 'PASS' : 'FAIL'}  ${name}${detail ? `  : ${detail}` : ''}`); };
+/** waitFor as a boolean. A bare waitFor throws on a regression, which kills the
+ *  run before it can print FAIL or a summary; this reports one instead. */
+const appeared = async (locator, timeout = 10_000) => {
+  try { await locator.waitFor({ timeout }); return true; } catch { return false; }
+};
 
 const browser = await chromium.launch({ executablePath: findChrome(), headless: true });
 const ctx = await browser.newContext({ viewport: { width: 1300, height: 950 } });
@@ -196,13 +201,13 @@ page.on('pageerror', (e) => errors.push(e.message));
 await page.goto(`${APP_URL}/playlist/${playlist.id}`, { waitUntil: 'networkidle' });
 await page.getByRole('heading', { name: playlistName }).waitFor({ timeout: 10_000 });
 const dlButton = page.getByRole('button', { name: /download for offline/i });
-await dlButton.waitFor({ timeout: 10_000 });
-check('the playlist page shows Download for offline', true);
-await dlButton.click();
-await page.getByText(/downloading/i).waitFor({ timeout: 5_000 });
-check('clicking it shows Downloading…', true);
-await page.getByText(/^downloaded$/i).waitFor({ timeout: 5_000 });
-check('it settles on Downloaded', true);
+const dlSeen = await appeared(dlButton);
+check('the playlist page shows Download for offline', dlSeen);
+if (dlSeen) await dlButton.click();
+// .first(): both the button and the toast say "Downloading", and a locator
+// matching two nodes is a strict-mode violation, not a pass.
+check('clicking it shows Downloading…', await appeared(page.getByText(/downloading/i).first(), 5_000));
+check('it settles on Downloaded', await appeared(page.getByText(/^downloaded$/i), 5_000));
 
 // ── 2: Liked tab: like a track, then the Liked download button appears ──
 // Liked via the raw API (as the browser page never mounted a heart button
@@ -213,10 +218,10 @@ await fetch(`${APP_URL}/api/likes`, { method: 'POST',
 await page.goto(`${APP_URL}/library`, { waitUntil: 'networkidle' });
 await page.getByRole('tab', { name: 'Liked' }).click();
 const likedDlButton = page.getByRole('button', { name: /download for offline/i });
-await likedDlButton.waitFor({ timeout: 10_000 });
-check('the Liked tab shows Download for offline (native plugin present)', true);
-await likedDlButton.click();
-await page.getByText(/^downloaded$/i).first().waitFor({ timeout: 5_000 });
+const likedSeen = await appeared(likedDlButton);
+check('the Liked tab shows Download for offline (native plugin present)', likedSeen);
+if (likedSeen) await likedDlButton.click();
+check('the Liked pin settles on Downloaded', await appeared(page.getByText(/^downloaded$/i).first(), 5_000));
 await page.waitForTimeout(300); // let the pin's localStorage write settle before navigating away
 
 // ── 3: play a downloaded track: audio src is the local file ────────────
@@ -225,6 +230,46 @@ await page.getByText(titles[0], { exact: true }).first().click({ clickCount: 2 }
 await page.waitForTimeout(1000);
 const audioSrc = await page.evaluate(() => document.querySelector('audio')?.src ?? null);
 check('the downloaded track plays from the local file', !!audioSrc && audioSrc.includes('_capacitor_file_'), audioSrc ?? 'no <audio> element');
+
+// ── 3b: a downloaded file that will not play falls back to the stream ───
+// Point the second track's local file at a path the sandbox 404s (a file the
+// user deleted, or a half-written one). Registered after the 200 route on
+// purpose: Playwright matches the most recently added route first.
+let deadFileRequested = false;
+await ctx.route((url) => url.href.includes('/offline/missing/'), (route) => {
+  deadFileRequested = true;
+  return route.fulfill({ status: 404, contentType: 'text/plain', body: 'gone' });
+});
+const deadPath = `/data/user/0/app.ember.music/files/offline/missing/${uploaded[1].id}.m4a`;
+await page.evaluate(({ id, deadPath }) => {
+  // Both the fake plugin's own state AND the web store's persisted copy, so
+  // the dead path is in place however the page hydrates.
+  const FAKE = '__emberFakeOfflineState__';
+  const fake = JSON.parse(localStorage.getItem(FAKE));
+  fake.trackFiles[id] = deadPath;
+  localStorage.setItem(FAKE, JSON.stringify(fake));
+  const persisted = JSON.parse(localStorage.getItem('ember.offline.v1') ?? 'null');
+  if (persisted?.state?.trackFiles) {
+    persisted.state.trackFiles[id] = deadPath;
+    localStorage.setItem('ember.offline.v1', JSON.stringify(persisted));
+  }
+}, { id: uploaded[1].id, deadPath });
+
+await page.goto(`${APP_URL}/playlist/${playlist.id}`, { waitUntil: 'networkidle' });
+await page.getByText(titles[1], { exact: true }).first().click({ clickCount: 2 });
+let fallbackSrc = null;
+for (let i = 0; i < 40; i++) {
+  fallbackSrc = await page.evaluate(() => document.querySelector('audio')?.src ?? null);
+  if (fallbackSrc && !fallbackSrc.includes('_capacitor_file_')) break;
+  await page.waitForTimeout(250);
+}
+check('the dead local file really was tried first', deadFileRequested);
+check('a dead local file falls back to the stream URL',
+  !!fallbackSrc && fallbackSrc.includes('/api/uploads/') && !fallbackSrc.includes('_capacitor_file_'),
+  fallbackSrc ?? 'no <audio> element');
+const errorToasts = await page.locator('[data-sonner-toast]').allInnerTexts();
+check('the fallback shows no error toast', !errorToasts.some((t) => /couldn't|error|failed/i.test(t)),
+  errorToasts.join(' | ').slice(0, 200));
 
 // ── 4: offline: library shows the pinned playlist ────────────────────────
 // Land on /library while still online ("already loaded page" per the brief).
@@ -257,6 +302,24 @@ const clearCalled = await page.evaluate(() => window.__emberOfflineCalls.some((c
 check("the fake's clearAll was called", clearCalled);
 const rowsAfter = await page.locator('[data-testid="offline-pins"] li').count();
 check('the page shows 0 pins after clearing', rowsAfter === 0, `${rowsAfter} row(s)`);
+
+// ── 6: a pin that failed for good says what to do about it ──────────────
+await page.evaluate(() => {
+  localStorage.setItem('__emberFakeOfflineState__', JSON.stringify({
+    pins: {
+      broken: { id: 'broken', name: 'Broken Pin', total: 3, done: 1, failed: 2,
+        failedReason: 'auth', downloading: false, trackIds: ['x1', 'x2', 'x3'] },
+    },
+    trackFiles: {},
+    totalBytes: 2048,
+  }));
+});
+await page.goto(`${APP_URL}/settings/downloads`, { waitUntil: 'networkidle' });
+const brokenRow = await appeared(page.locator('[data-testid="offline-pins"] li').first(), 10_000)
+  ? await page.locator('[data-testid="offline-pins"]').innerText()
+  : '';
+check('a failed pin explains the reason', /2 failed/.test(brokenRow) && brokenRow.includes('Sign in again'),
+  brokenRow.replace(/\n/g, ' ').slice(0, 200));
 
 check('no page errors', errors.length === 0, errors.slice(0, 2).join(' | '));
 await browser.close();

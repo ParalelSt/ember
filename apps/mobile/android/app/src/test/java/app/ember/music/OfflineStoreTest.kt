@@ -79,6 +79,21 @@ class OfflineStoreTest {
         assertEquals(0L, s.totalBytes())
     }
 
+    /** Killed mid-download (the common case: the user swipes the app away).
+     *  A fresh store over the same directory must reload the index, notice the
+     *  files that did land, and offer only the rest to the downloader. */
+    @Test fun aReloadedStoreResumesOnlyTheIncompleteTracks() {
+        val root = Files.createTempDirectory("offline").toFile()
+        val s = OfflineStore(root)
+        s.upsertPin("p1", "Road", listOf(track("youtube:a"), track("youtube:b"), track("youtube:c")))
+        s.commitAudio("youtube:b", fakeAudio(12))
+
+        val reloaded = OfflineStore(root)
+        assertEquals(listOf("youtube:a", "youtube:c"), reloaded.pending().map { it.second.getString("id") })
+        assertEquals(setOf("youtube:b"), reloaded.trackFiles().keys)
+        assertEquals(1 to 3, reloaded.progress(reloaded.pins()[0]))
+    }
+
     @Test fun idsBecomeSafeFileNamesAndTheIndexSurvivesAReload() {
         val root = Files.createTempDirectory("offline").toFile()
         val s = OfflineStore(root)
