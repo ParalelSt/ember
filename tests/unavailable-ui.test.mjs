@@ -143,8 +143,11 @@ await forceTitle(LIVE, 'Live Song');
 
 // Flag DEAD the same way part A of unavailable.test.mjs does: list it in the
 // fake player's unavailable file, then hit the stream route so the server's
-// own detection path writes the flag (not a manual PB write).
+// own detection path writes the flag (not a manual PB write). A cached file
+// from an earlier run would let findCachedFile serve it before the fake
+// player is even asked, so the flag would never get set: unlink it first.
 writeList('unavailable.txt', [DEAD]);
+try { fs.unlinkSync(`${SB}/music/${DEAD}.m4a`); } catch {}
 const streamRes = await call(`/api/youtube/stream/${DEAD}`);
 check('setup: stream DEAD answers 410', streamRes.status === 410, `status ${streamRes.status}`);
 await streamRes.arrayBuffer().catch(() => {});

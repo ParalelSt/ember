@@ -22,6 +22,29 @@
  *  Then: PB_URL=http://127.0.0.1:8092 APP_URL=http://127.0.0.1:3011 SB="$PB_DIR" node tests/unavailable.test.mjs
  */
 import fs from 'node:fs';
+import { register } from 'node:module';
+
+const out = [];
+const check = (name, pass, detail = '') => {
+  out.push({ name, pass });
+  console.log(`${pass ? 'PASS' : 'FAIL'}  ${name}${detail ? `: ${detail}` : ''}`);
+};
+
+// ── Unit: classifyYtdlpFailure, exercised directly from the real TS source
+//    (not over HTTP) so a bad anchor in the "does not exist" rule fails this
+//    file instead of only showing up as a flaky integration case. ──
+{
+  register('./ts-stub-loader.mjs', import.meta.url);
+  const { classifyYtdlpFailure } = await import('../apps/web/lib/sources/youtube.ts');
+  check(
+    'classify: postprocessing "does not exist" is not unavailable',
+    classifyYtdlpFailure('ERROR: Postprocessing: file /tmp/x.m4a does not exist') === null,
+  );
+  check(
+    'classify: "Video does not exist" is still unavailable',
+    classifyYtdlpFailure('ERROR: [youtube] abc: Video does not exist') === 'unavailable',
+  );
+}
 
 const PB = process.env.PB_URL ?? 'http://127.0.0.1:8092';
 const APP = process.env.APP_URL ?? 'http://127.0.0.1:3011';
@@ -31,12 +54,6 @@ const PW = 'BugTest2026!';
 const DEAD = 'ddddddddddd';
 const LIVE = 'aaaaaaaaaaa';
 const FLAKY = 'ccccccccccc';
-
-const out = [];
-const check = (name, pass, detail = '') => {
-  out.push({ name, pass });
-  console.log(`${pass ? 'PASS' : 'FAIL'}  ${name}${detail ? `: ${detail}` : ''}`);
-};
 
 async function adminToken() {
   for (const p of ['/api/collections/_superusers/auth-with-password', '/api/admins/auth-with-password']) {
@@ -158,6 +175,28 @@ for (const [id, title] of [[DEAD, 'Dead Song'], [LIVE, 'Live Song'], [FLAKY, 'Fl
   check(`A0 added ${title} to playlist`, r.status === 201, `status ${r.status}`);
 }
 
+// upsertTrack only backfills MISSING fields, so a title left over from an
+// earlier run against this same sandbox (e.g. tests/unavailable-ui.test.mjs
+// renames DEAD to "Replacement Song") would otherwise stick and silently
+// break B2's songKey assertions. Force the titles this file assumes.
+async function forceTitle(videoId, title) {
+  const rows = await fetch(
+    `${PB}/api/collections/tracks/records?filter=${encodeURIComponent(`external_id = "youtube:${videoId}"`)}`,
+    { headers: { Authorization: tok } },
+  ).then((r) => r.json());
+  const row = rows.items?.[0];
+  if (row && row.title !== title) {
+    await fetch(`${PB}/api/collections/tracks/records/${row.id}`, {
+      method: 'PATCH',
+      headers: { Authorization: tok, 'content-type': 'application/json' },
+      body: JSON.stringify({ title }),
+    });
+  }
+}
+for (const [id, title] of [[DEAD, 'Dead Song'], [LIVE, 'Live Song'], [FLAKY, 'Flaky Song']]) {
+  await forceTitle(id, title);
+}
+
 writeList('unavailable.txt', [DEAD]);
 writeList('transient.txt', [FLAKY]);
 
@@ -230,11 +269,14 @@ const REPL_BBB = 'bbbbbbbbbbb';
 const REPL_EEE = 'eeeeeeeeeee';
 const REPL_FFF = 'fffffffffff';
 
+// fff's title ("Dead Song (Live)", see fake-player.sh) shares DEAD's songKey
+// even though the fake search lists it last: it must be hoisted to the
+// front, ahead of bbb and eee which only share DEAD's title-less bucket.
 const repl1 = await call(`/api/tracks/${encodeURIComponent(`youtube:${DEAD}`)}/replacements`).then((r) => r.json());
 const repl1Ids = (repl1.candidates ?? []).map((t) => t.id);
 check(
-  'B2 candidates in order bbb, eee, fff',
-  JSON.stringify(repl1Ids) === JSON.stringify([`youtube:${REPL_BBB}`, `youtube:${REPL_EEE}`, `youtube:${REPL_FFF}`]),
+  'B2 candidates in order fff (same songKey, hoisted), bbb, eee',
+  JSON.stringify(repl1Ids) === JSON.stringify([`youtube:${REPL_FFF}`, `youtube:${REPL_BBB}`, `youtube:${REPL_EEE}`]),
   JSON.stringify(repl1Ids),
 );
 
@@ -325,6 +367,32 @@ const recRes = await call(`/api/youtube/recommended?seed=${LIVE}`).then((r) => r
 const recIds = (recRes.tracks ?? []).map((t) => t.id);
 check('B6 recommended contains LIVE', recIds.includes(`youtube:${LIVE}`), JSON.stringify(recIds));
 check('B6 recommended excludes DEAD', !recIds.includes(`youtube:${DEAD}`), JSON.stringify(recIds));
+
+// ── B7: markTrackUnavailable must patch a CHANGED reason on an already
+//    -flagged track, not early-return (a track can go geo-blocked today,
+//    removed outright tomorrow). Exercised directly against the real
+//    function (ts-stub-loader was already registered above), against a
+//    track this test seeds and owns exclusively via /api/likes. ──
+{
+  const GEO_TEST = 'ggggggggggg';
+  const likeGeoRes = await call('/api/likes', { method: 'POST', body: JSON.stringify({ track: track(GEO_TEST, 'Geo Test Song') }) });
+  check('B7 seed geo-test tracks row', likeGeoRes.status === 201, `status ${likeGeoRes.status}`);
+
+  process.env.POCKETBASE_URL ??= PB;
+  process.env.POCKETBASE_ADMIN_EMAIL ??= 'admin@ember.com';
+  process.env.POCKETBASE_ADMIN_PASSWORD ??= 'egKa5WNMx3QpuG7';
+  const { markTrackUnavailable } = await import('../apps/web/lib/trackAvailability.ts');
+
+  await markTrackUnavailable(`youtube:${GEO_TEST}`, 'geo');
+  await markTrackUnavailable(`youtube:${GEO_TEST}`, 'removed');
+
+  const rows = await fetch(
+    `${PB}/api/collections/tracks/records?filter=${encodeURIComponent(`external_id = "youtube:${GEO_TEST}"`)}`,
+    { headers: { Authorization: tok } },
+  ).then((r) => r.json());
+  const row = rows.items?.[0];
+  check('B7 reason updates geo -> removed on re-flag', row?.unavailable_reason === 'removed', JSON.stringify(row));
+}
 
 const failed = out.filter((o) => !o.pass);
 console.log(`\n${out.length - failed.length}/${out.length} passed`);

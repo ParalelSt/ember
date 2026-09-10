@@ -69,7 +69,11 @@ case "$CMD" in
     ;;
   search)
     T='"artist":"Fake Artist","artworkUrl":"","durationSec":200'
-    printf '[{"videoId":"bbbbbbbbbbb","title":"Replacement Song",%s},{"videoId":"eeeeeeeeeee","title":"Replacement Song (Live)",%s},{"videoId":"ddddddddddd","title":"Replacement Song",%s},{"videoId":"fffffffffff","title":"Other Song",%s}]' "$T" "$T" "$T" "$T"
+    # fff's title ("Dead Song (Live)") shares a songKey with the DEAD fixture
+    # ("Dead Song") on purpose, even though it's listed last: the
+    # replacements route must hoist same-songKey candidates to the front
+    # regardless of search order.
+    printf '[{"videoId":"bbbbbbbbbbb","title":"Replacement Song",%s},{"videoId":"eeeeeeeeeee","title":"Replacement Song (Live)",%s},{"videoId":"ddddddddddd","title":"Replacement Song",%s},{"videoId":"fffffffffff","title":"Dead Song (Live)",%s}]' "$T" "$T" "$T" "$T"
     ;;
   recommended)
     T='"artist":"Fake Artist","artworkUrl":"","durationSec":200'
