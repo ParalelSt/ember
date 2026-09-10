@@ -104,7 +104,7 @@ export default function SearchPage() {
   ) : null;
 
   const results = rateLimited ? (
-    <EmptyState className="text-sm">Searching too fast — one moment.</EmptyState>
+    <EmptyState className="text-sm">Searching too fast, one moment.</EmptyState>
   ) : isFetching && !data?.length ? (
     <EmptyState className="text-sm">Searching…</EmptyState>
   ) : (
@@ -128,7 +128,7 @@ export default function SearchPage() {
             placeholder="What do you want to listen to?"
             className="pl-11 pr-12 h-12 rounded-full bg-card border-0"
           />
-          {/* Always visible (right side of the bar) — unsupported browsers get a
+          {/* Always visible (right side of the bar): unsupported browsers get a
               pointer to Chrome instead of a hidden button. */}
           <Button
             variant="ghost"
