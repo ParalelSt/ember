@@ -9,15 +9,8 @@ import { usePlayer } from '@/components/player/PlayerProvider';
 import { useQueryAlbum } from '@/hooks/useLibrary';
 import { useOnline } from '@/lib/useOnline';
 import { OfflinePlaceholder } from '@/components/OfflinePlaceholder';
-
-function fmtTotal(sec: number): string {
-  if (!sec || !isFinite(sec)) return '';
-  const h = Math.floor(sec / 3600);
-  const m = Math.floor((sec % 3600) / 60);
-  const s = Math.floor(sec % 60);
-  if (h > 0) return `${h}h ${m}m`;
-  return `${m}:${String(s).padStart(2, '0')}`;
-}
+import { formatTotalDuration } from '@/lib/format';
+import { pickThumbnail } from '@/lib/artwork';
 
 export default function AlbumPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
@@ -38,13 +31,13 @@ export default function AlbumPage({ params }: { params: Promise<{ id: string }> 
   if (isLoading || !data) return <div className="text-muted-foreground py-12 text-center">Loading…</div>;
 
   const { title, artist, artistId, year, thumbnails = [], tracks = [], trackCount, totalDurationSec } = data;
-  const cover = thumbnails[thumbnails.length - 1]?.url;
+  const cover = pickThumbnail(thumbnails);
   const albumContext = { type: 'album' as const, albumId: id, albumTitle: title };
   const meta = [
     artistId ? null : artist,
     year ? String(year) : null,
     trackCount ? `${trackCount} tracks` : null,
-    totalDurationSec ? fmtTotal(totalDurationSec) : null,
+    totalDurationSec ? formatTotalDuration(totalDurationSec) : null,
   ].filter(Boolean);
 
   return (

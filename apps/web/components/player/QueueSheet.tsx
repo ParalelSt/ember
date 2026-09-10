@@ -3,6 +3,7 @@
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { usePlayer } from '@/components/player/PlayerProvider';
 import { usePlayerStore } from '@/stores/usePlayerStore';
+import { formatTime } from '@/lib/format';
 import { cn } from '@/lib/utils';
 
 interface Props {
@@ -11,10 +12,7 @@ interface Props {
 }
 
 function fmt(sec: number | undefined): string {
-  if (!sec || !isFinite(sec)) return '--:--';
-  const m = Math.floor(sec / 60);
-  const s = Math.floor(sec % 60);
-  return `${m}:${String(s).padStart(2, '0')}`;
+  return formatTime(sec, { empty: '--:--' });
 }
 
 export function QueueSheet({ open, onOpenChange }: Props) {

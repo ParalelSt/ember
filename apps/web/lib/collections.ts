@@ -1,4 +1,5 @@
 import type { PlaybackContext } from '../types/track';
+import { formatCount } from './format';
 
 /** One place that knows what a "collection" is: a user playlist or one of the
  *  three system lists. Routes, pin ids and titles are encoded here so pages,
@@ -54,7 +55,7 @@ export function sameContext(a: PlaybackContext | null | undefined, b: PlaybackCo
   return true;
 }
 export function countLabel(n: number, noun = 'song'): string {
-  return `${n} ${noun}${n === 1 ? '' : 's'}`;
+  return formatCount(n, noun);
 }
 export interface SystemCollection { ref: CollectionRef; title: string; href: string; pinId: string; icon: CollectionIcon }
 export function systemCollections(): SystemCollection[] {

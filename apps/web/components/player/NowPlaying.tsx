@@ -19,13 +19,11 @@ import { useExecuteToggleLike, useQueryLikes } from '@/hooks/useLibrary';
 import { usePlayerStore } from '@/stores/usePlayerStore';
 import { useUiStore } from '@/stores/useUiStore';
 import { findLikedVariant } from '@/lib/songKey';
+import { formatTime } from '@/lib/format';
 import { cn } from '@/lib/utils';
 
 function fmt(sec: number): string {
-  if (!sec || !isFinite(sec)) return '0:00';
-  const m = Math.floor(sec / 60);
-  const s = Math.floor(sec % 60);
-  return `${m}:${String(s).padStart(2, '0')}`;
+  return formatTime(sec);
 }
 
 /** Full-screen "Now Playing" view — phones only. Slides up over the app shell

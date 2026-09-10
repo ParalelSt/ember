@@ -3,6 +3,7 @@
 import { usePlayer } from '@/components/player/PlayerProvider';
 import { usePlayerStore } from '@/stores/usePlayerStore';
 import { sameContext } from '@/lib/collections';
+import { shuffle as shuffleList } from '@/lib/shuffle';
 import type { PlaybackContext, Track } from '@/types/track';
 
 export interface CollectionPlayback {
@@ -38,11 +39,7 @@ export function useCollectionPlayback(tracks: Track[], context: PlaybackContext)
       toggleShuffle();
       return;
     }
-    const shuffled = tracks.slice();
-    for (let i = shuffled.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
-    }
+    const shuffled = shuffleList(tracks);
     playTrack(shuffled[0], shuffled, context);
     // playTrack clears any previous shuffle snapshot, so record THIS
     // collection's original order right after, so shuffle-off can restore it.

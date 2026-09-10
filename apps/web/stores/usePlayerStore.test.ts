@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { usePlayerStore } from './usePlayerStore';
 import type { Track } from '@/types/track';
 
@@ -74,6 +74,36 @@ describe('toggleShuffle', () => {
     expect(s.shuffle).toBe(true);
     expect(s.orderBackup).toEqual(queue);
     expect(s.queue).toEqual(queue);
+  });
+
+  describe('with Math.random seeded', () => {
+    afterEach(() => {
+      vi.restoreAllMocks();
+    });
+
+    it('reorders only the upcoming tracks and keeps the current one first, deterministically', () => {
+      // Fixed sequence of "random" values drives the Fisher-Yates swaps
+      // deterministically so the resulting order is exactly reproducible.
+      const values = [0.9, 0.1, 0.5, 0.0];
+      let i = 0;
+      vi.spyOn(Math, 'random').mockImplementation(() => values[i++ % values.length]);
+
+      const queue = [track('a'), track('b'), track('c'), track('d'), track('e')];
+      usePlayerStore.setState({ queue, index: 1, shuffle: false, orderBackup: null });
+
+      usePlayerStore.getState().toggleShuffle();
+
+      const s = usePlayerStore.getState();
+      expect(s.shuffle).toBe(true);
+      // Played prefix (index 0..1, i.e. tracks 'a' and 'b') is untouched and
+      // 'b' (the current track) stays at index 1.
+      expect(s.queue[0].id).toBe('a');
+      expect(s.queue[1].id).toBe('b');
+      // Upcoming tracks ('c', 'd', 'e') are a reordered permutation of
+      // themselves, not touching the played prefix's members.
+      const upcomingIds = s.queue.slice(2).map((t) => t.id);
+      expect(upcomingIds.sort()).toEqual(['c', 'd', 'e']);
+    });
   });
 });
 

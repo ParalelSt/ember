@@ -9,12 +9,10 @@ import { usePlayer } from '@/components/player/PlayerProvider';
 import { useQueryTrack } from '@/hooks/useLibrary';
 import { useOnline } from '@/lib/useOnline';
 import { OfflinePlaceholder } from '@/components/OfflinePlaceholder';
+import { formatTime } from '@/lib/format';
 
 function fmt(sec: number): string {
-  if (!sec || !isFinite(sec)) return '';
-  const m = Math.floor(sec / 60);
-  const s = Math.floor(sec % 60);
-  return `${m}:${String(s).padStart(2, '0')}`;
+  return formatTime(sec, { empty: '' });
 }
 
 /** Shareable track page body — the landing target of /track/<videoId> links.

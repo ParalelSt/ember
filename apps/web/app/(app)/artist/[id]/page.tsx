@@ -10,6 +10,7 @@ import { usePlayer } from '@/components/player/PlayerProvider';
 import { useQueryArtist } from '@/hooks/useLibrary';
 import { useOnline } from '@/lib/useOnline';
 import { OfflinePlaceholder } from '@/components/OfflinePlaceholder';
+import { pickThumbnail } from '@/lib/artwork';
 
 export default function ArtistPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
@@ -30,7 +31,7 @@ export default function ArtistPage({ params }: { params: Promise<{ id: string }>
   if (isLoading || !data) return <div className="text-muted-foreground py-12 text-center">Loading…</div>;
 
   const { name, description, thumbnails = [], tracks = [], albums = [], singles = [] } = data;
-  const heroArt = thumbnails[thumbnails.length - 1]?.url;
+  const heroArt = pickThumbnail(thumbnails);
   const artistContext = { type: 'artist' as const, artistName: name, artistId: id };
 
   return (

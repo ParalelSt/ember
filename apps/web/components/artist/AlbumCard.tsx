@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import type { AlbumSummary } from '@/types/track';
+import { pickThumbnail } from '@/lib/artwork';
 import { cn } from '@/lib/utils';
 
 interface Props {
@@ -10,7 +11,7 @@ interface Props {
 }
 
 export function AlbumCard({ album, className }: Props) {
-  const cover = album.thumbnails?.[album.thumbnails.length - 1]?.url;
+  const cover = pickThumbnail(album.thumbnails);
   const year = album.year ? String(album.year) : null;
 
   return (

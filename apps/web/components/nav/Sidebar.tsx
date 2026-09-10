@@ -13,6 +13,7 @@ import { CreatePlaylistDialog } from '@/components/track/CreatePlaylistDialog';
 import { ImportPlaylistDialog } from '@/components/track/ImportPlaylistDialog';
 import { CollectionNavList } from '@/components/nav/CollectionNavList';
 import { HomeIcon, SearchIcon, LibraryIcon, PlusIcon, FlameIcon, SettingsIcon, ShieldIcon } from '@/components/icons';
+import { formatCount } from '@/lib/format';
 import { systemCollections } from '@/lib/collections';
 import { cn } from '@/lib/utils';
 
@@ -42,7 +43,7 @@ export function Sidebar() {
       for (const t of tracks) {
         await addToPlaylist.mutateAsync({ id: playlist.id, track: t });
       }
-      toast.success(tracks.length ? `Created "${playlist.name}" with ${tracks.length} track${tracks.length === 1 ? '' : 's'}` : `Created "${playlist.name}"`);
+      toast.success(tracks.length ? `Created "${playlist.name}" with ${formatCount(tracks.length, 'track')}` : `Created "${playlist.name}"`);
       router.push(`/playlist/${playlist.id}`);
     } catch (e) {
       toast.error(`Couldn't create playlist: ${(e as Error).message}`);

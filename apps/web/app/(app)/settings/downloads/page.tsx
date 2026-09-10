@@ -10,6 +10,7 @@ import { clearAllDownloads, downloadPlaylist, pinList } from '@/lib/offline';
 import { refFromPinId } from '@/lib/collections';
 import { useNativeOfflinePresent } from '@/lib/offlineNative';
 import { QK } from '@/hooks/useLibrary';
+import { formatBytes, formatCount } from '@/lib/format';
 import type { PinStatus } from '@/lib/offlineNative';
 import type { Track } from '@/types/track';
 
@@ -20,13 +21,6 @@ const FAILED_REASON_TEXT: Record<string, string> = {
   storage: 'Not enough storage',
   http: 'Download error',
 };
-
-function formatBytes(n: number): string {
-  if (n < 1024) return `${n} B`;
-  if (n < 1024 * 1024) return `${(n / 1024).toFixed(0)} KB`;
-  if (n < 1024 * 1024 * 1024) return `${(n / 1024 / 1024).toFixed(1)} MB`;
-  return `${(n / 1024 / 1024 / 1024).toFixed(2)} GB`;
-}
 
 export default function DownloadsSettingsPage() {
   const downloaded = useOfflineStore((s) => s.downloaded);
@@ -71,7 +65,7 @@ export default function DownloadsSettingsPage() {
       <div className="rounded-md bg-card px-4 py-3">
         <div className="text-2xl font-bold tabular-nums">{formatBytes(totalBytes)}</div>
         <div className="text-sm text-muted-foreground">
-          Across {count} {count === 1 ? 'pin' : 'pins'}
+          Across {formatCount(count, 'pin')}
         </div>
       </div>
 

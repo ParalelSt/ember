@@ -12,6 +12,7 @@ import {
 import { CreatePlaylistDialog } from '@/components/track/CreatePlaylistDialog';
 import { PlusIcon } from '@/components/icons';
 import { useAuth } from '@/components/providers/AuthProvider';
+import { formatCount } from '@/lib/format';
 import {
   useExecuteAddToPlaylist,
   useExecuteCreatePlaylist,
@@ -57,7 +58,7 @@ export function AddToPlaylistMenu({ track }: { track: Track }) {
       for (const t of tracks) {
         await addToPlaylist.mutateAsync({ id: playlist.id, track: t });
       }
-      toast.success(`Created "${playlist.name}" with ${tracks.length} track${tracks.length === 1 ? '' : 's'}`);
+      toast.success(`Created "${playlist.name}" with ${formatCount(tracks.length, 'track')}`);
     } catch (e) {
       toast.error(`Couldn't create the playlist — please try again.`);
     }

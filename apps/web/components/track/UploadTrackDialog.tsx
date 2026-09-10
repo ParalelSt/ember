@@ -15,6 +15,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { api } from '@/lib/api';
 import { QK } from '@/hooks/useLibrary';
+import { formatTime } from '@/lib/format';
 
 /** Add a song from your own files. It lands on the server and becomes
  *  searchable for everyone — that's the point: the library grows with the
@@ -119,7 +120,7 @@ export function UploadTrackDialog({
           {file && (
             <div className="text-xs text-muted-foreground">
               {(file.size / 1024 / 1024).toFixed(1)}MB
-              {durationSec > 0 && ` · ${Math.floor(durationSec / 60)}:${String(Math.round(durationSec % 60)).padStart(2, '0')}`}
+              {durationSec > 0 && ` · ${formatTime(durationSec)}`}
             </div>
           )}
           <DialogFooter>

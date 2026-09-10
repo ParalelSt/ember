@@ -5,15 +5,9 @@ import { api } from '@/lib/api';
 import { usePlayer } from '@/components/player/PlayerProvider';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { MusicIcon } from '@/components/icons';
+import { formatAgo } from '@/lib/format';
 
 const POLL_MS = 30_000;
-
-function agoLabel(iso: string): string {
-  const mins = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 60000));
-  if (mins < 1) return 'now';
-  if (mins === 1) return '1 min ago';
-  return `${mins} min ago`;
-}
 
 /** Home section: what other members played in the last ~30 minutes (newest
  *  per person). Hidden entirely when nobody's listening — no empty state. */
@@ -54,7 +48,7 @@ export function FriendsListening() {
             <div className="mt-2 truncate text-sm font-semibold">{item.track.title}</div>
             <div className="truncate text-xs text-muted-foreground">{item.track.artist}</div>
             <div className="mt-1.5 truncate text-xs text-ember">
-              {item.userName} · {agoLabel(item.playedAt)}
+              {item.userName} · {formatAgo(item.playedAt)}
             </div>
           </button>
         ))}

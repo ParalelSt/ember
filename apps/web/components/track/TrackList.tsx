@@ -7,6 +7,7 @@ import { HeartIcon, PauseIcon, PlayIcon, TrashIcon } from '@/components/icons';
 import { AddToPlaylistMenu } from './AddToPlaylistMenu';
 import { ShareButton } from './ShareButton';
 import { findLikedVariant } from '@/lib/songKey';
+import { formatTime } from '@/lib/format';
 import { usePlayer } from '@/components/player/PlayerProvider';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { useExecuteToggleLike, useQueryLikes } from '@/hooks/useLibrary';
@@ -14,10 +15,7 @@ import type { PlaybackContext, Track } from '@/types/track';
 import { cn } from '@/lib/utils';
 
 function fmt(sec: number | undefined): string {
-  if (!sec || !isFinite(sec)) return '--:--';
-  const m = Math.floor(sec / 60);
-  const s = Math.floor(sec % 60);
-  return `${m}:${String(s).padStart(2, '0')}`;
+  return formatTime(sec, { empty: '--:--' });
 }
 
 interface Props {
