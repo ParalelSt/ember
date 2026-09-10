@@ -38,7 +38,7 @@ const UNAVAILABLE_RULES: [RegExp, UnavailableReason][] = [
   [/Private video|This video is private/i, 'private'],
   [/not available in your country|not made this video available/i, 'geo'],
   [/members-only|channel's members/i, 'members'],
-  [/Video unavailable|This video is unavailable|This video is not available|does not exist/i, 'unavailable'],
+  [/Video unavailable|This video is unavailable|This video is not available|video\b.*does not exist/i, 'unavailable'],
 ];
 
 export function classifyYtdlpFailure(message: string): UnavailableReason | null {

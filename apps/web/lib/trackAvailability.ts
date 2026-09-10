@@ -6,6 +6,7 @@ import type { UnavailableReason } from '@/lib/sources/youtube';
 interface AvailabilityRow {
   id: string;
   unavailable_at?: string;
+  unavailable_reason?: string;
 }
 
 const esc = (s: string) => s.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
@@ -23,7 +24,10 @@ async function findRow(externalId: string) {
 export async function markTrackUnavailable(externalId: string, reason: UnavailableReason): Promise<void> {
   try {
     const { pb, row } = await findRow(externalId);
-    if (row.unavailable_at) return;
+    // Only skip the write when the flag AND reason already match: a changed
+    // reason (geo today, removed tomorrow) still needs to land, but a repeat
+    // of the same reason should not cost a write on every play.
+    if (row.unavailable_at && row.unavailable_reason === reason) return;
     await pb.collection('tracks').update(row.id, { unavailable_at: new Date().toISOString(), unavailable_reason: reason });
     cache = null;
   } catch (e) {

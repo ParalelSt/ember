@@ -1,6 +1,6 @@
 /// <reference path="../pb_data/types.d.ts" />
 
-// Unavailable-song flag — two fields on the shared `tracks` row:
+// Unavailable-song flag: two fields on the shared `tracks` row:
 //
 //   unavailable_at      → when the server last confirmed yt-dlp can't play it
 //   unavailable_reason  → why (removed / private / geo / members / terminated
@@ -14,7 +14,7 @@
 // mark it dead while another's list still shows it healthy).
 //
 // Only the server ever writes these fields (via the admin client in
-// lib/trackAvailability.ts) — a client-writable flag would let anyone hide a
+// lib/trackAvailability.ts): a client-writable flag would let anyone hide a
 // song from everyone else, so there is no user-facing rule granting write
 // access to it.
 //
