@@ -90,9 +90,9 @@ export function TrackShelf({ title, tracks, loading, showAllHref, renderCard, ly
         title={title}
         className="mb-3"
         action={
-          canExpand ? (
+          canExpand && showAllHref ? (
             <Link
-              href={showAllHref!}
+              href={showAllHref}
               className="text-xs uppercase tracking-widest text-muted-foreground hover:text-foreground transition-colors"
             >
               Show all ({all.length})

@@ -25,6 +25,8 @@ import { EmptyState } from '@/components/page/EmptyState';
 import { PageTitle } from '@/components/page/PageTitle';
 import { SectionHeader } from '@/components/page/SectionHeader';
 
+const RECENTS_FALLBACK = <MusicIcon className="h-4 w-4" />;
+
 export default function SearchPage() {
   const [q, setQ] = useState('');
   const [debouncedQ, setDebouncedQ] = useState('');
@@ -74,8 +76,7 @@ export default function SearchPage() {
             key={t.id}
             track={t}
             density="compact"
-            active={trackActions.currentId === t.id}
-            artworkFallback={<MusicIcon className="h-4 w-4" />}
+            artworkFallback={RECENTS_FALLBACK}
             onPlay={() => trackActions.onPlay(t)}
             onRemove={() => removeRecentTrack.mutate(t.id)}
             removeLabel={`Remove "${t.title}" from recent searches`}

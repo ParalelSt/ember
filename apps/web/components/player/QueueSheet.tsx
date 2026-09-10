@@ -2,7 +2,6 @@
 
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { TrackRow } from '@/components/track/TrackRow';
-import { MusicIcon } from '@/components/icons';
 import { usePlayer } from '@/components/player/PlayerProvider';
 import { usePlayerStore } from '@/stores/usePlayerStore';
 
@@ -10,11 +9,6 @@ interface Props {
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }
-
-// The sheet paints the sidebar palette, so its rows take the sidebar tone
-// and a matching hover. An artless track keeps its box (with the music
-// icon) so every row lines up.
-const ART_FALLBACK = <MusicIcon className="h-4 w-4" />;
 
 export function QueueSheet({ open, onOpenChange }: Props) {
   const queue = usePlayerStore((s) => s.queue);
@@ -45,7 +39,7 @@ export function QueueSheet({ open, onOpenChange }: Props) {
                 tone="sidebar"
                 showDuration
                 active
-                artworkFallback={ART_FALLBACK}
+                artworkFallback={null}
               />
             </div>
           )}
@@ -63,7 +57,7 @@ export function QueueSheet({ open, onOpenChange }: Props) {
                     density="compact"
                     tone="sidebar"
                     showDuration
-                    artworkFallback={ART_FALLBACK}
+                    artworkFallback={null}
                     className="hover:bg-sidebar-accent/60"
                     onPlay={() => playTrack(t, queue, context)}
                   />

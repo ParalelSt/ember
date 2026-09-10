@@ -88,7 +88,7 @@ export function TrackRow({
       onClick={compact ? undefined : onPlay}
       className={cn(
         'rounded shrink-0 bg-black',
-        artworkFallback !== undefined && 'grid place-items-center text-foreground/20',
+        !track.artworkUrl && 'grid place-items-center text-foreground/20',
       )}
     >
       {artworkFallback}

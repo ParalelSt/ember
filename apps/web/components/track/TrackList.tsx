@@ -24,11 +24,11 @@ export interface TrackActions {
 interface Props extends TrackActions {
   tracks: Track[];
   showAlbum?: boolean;
-  /** Show a 1-based rank number in the leading column — hidden on hover so
+  /** Show a 1-based rank number in the leading column, hidden on hover so
    *  the play/pause button takes over. Used on the artist "Popular" list. */
   showRank?: boolean;
   onRemove?: (trackId: string) => void;
-  /** Where this list lives — drives radio behavior after the queue ends. */
+  /** Where this list lives: drives radio behavior after the queue ends. */
   context?: PlaybackContext | null;
   /** Per-row controls before the heart. Pages pass `renderTrackMenu`; this
    *  list stays presentational and never reaches for the playlist hooks. */
