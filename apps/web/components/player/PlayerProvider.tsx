@@ -24,6 +24,7 @@ import { songKey } from '@/lib/songKey';
 import { detectShell } from '@/lib/playback/detectShell';
 import { resumeStartAt } from '@/lib/playback/resumePosition';
 import { chooseDuration } from '@/lib/playback/chooseDuration';
+import { nextIndex, prevIndex } from '@/lib/playback/queueNav';
 import { publishDiscordPresence } from '@/lib/discordPresence';
 import { createWebBackend } from '@/lib/playback/webBackend';
 import { createCapacitorBackend } from '@/lib/playback/capacitorBackend';
@@ -363,64 +364,36 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [backendReady, current?.id]);
 
-  /** Where loop-all wraps. For a PLAYLIST we wrap at the end of the playlist
-   *  itself, so enabling loop after radio has taken over returns you to the
-   *  playlist instead of cycling the random tail. Everywhere else (search,
-   *  single, radio) the whole queue is the loop — wrapping a 1-track base
-   *  there would strand the user on one un-skippable song. */
-  const loopWrapPoint = useCallback(() => {
+  /** The loop and next/prev rules live in lib/playback/queueNav. Loop mode,
+   *  context and baseCount are read at call time so a stale closure can't
+   *  navigate by the wrong mode. */
+  const navState = useCallback(() => {
     const st = usePlayerStore.getState();
-    const curated = st.context?.type === 'playlist' ? st.baseCount : 0;
-    return curated > 0 ? Math.min(curated, st.queue.length) : st.queue.length;
-  }, []);
+    return { queue, index, loopMode: st.loopMode, context: st.context, baseCount: st.baseCount };
+  }, [queue, index]);
 
   const next = useCallback(() => {
     userInteracted.current = true;
-    const loop = usePlayerStore.getState().loopMode;
-    const wrapAt = loopWrapPoint();
-    // Past the playlist (radio territory) with loop on → back to the playlist.
-    if (loop === 'all' && index >= wrapAt - 1 && wrapAt > 0) {
-      loadAndPlay(queue[0] ?? null, true);
-      setIndex(0);
-      return;
-    }
-    if (index < queue.length - 1) {
-      // Synchronous load preserves the user-gesture token; the id-effect would
-      // fire too late on React 19.
-      loadAndPlay(queue[index + 1] ?? null, true);
-      setIndex(index + 1);
-      return;
-    }
-    // At the end of the queue: with loop-all on, the Next button wraps back to
-    // the first track (matches the auto-advance wrap in onEnd).
-    if (loop === 'all' && queue.length > 0) {
-      loadAndPlay(queue[0] ?? null, true);
-      setIndex(0);
-    }
-  }, [index, queue, setIndex, loadAndPlay, loopWrapPoint]);
+    const move = nextIndex(navState());
+    if (!move) return;
+    // Synchronous load preserves the user-gesture token; the id-effect would
+    // fire too late on React 19.
+    loadAndPlay(queue[move.index] ?? null, true);
+    setIndex(move.index);
+  }, [queue, setIndex, loadAndPlay, navState]);
 
   const prev = useCallback(() => {
     userInteracted.current = true;
     const b = backendRef.current;
-    const loop = usePlayerStore.getState().loopMode;
-    // First track + loop-all → wrap to the last track, regardless of how far
-    // into the song we are (checked BEFORE the >3s restart so the wrap isn't
-    // swallowed by restart-current at the start of the queue).
-    if (index === 0 && loop === 'all' && queue.length > 0) {
-      const last = loopWrapPoint() - 1;
-      loadAndPlay(queue[last] ?? null, true);
-      setIndex(last);
+    const move = prevIndex(navState(), b ? b.getCurrentTime() : 0);
+    if (!move) return;
+    if ('restart' in move) {
+      b?.seek(0);
       return;
     }
-    if (b && b.getCurrentTime() > 3) {
-      b.seek(0);
-      return;
-    }
-    if (index > 0) {
-      loadAndPlay(queue[index - 1] ?? null, true);
-      setIndex(index - 1);
-    }
-  }, [index, queue, setIndex, loadAndPlay, loopWrapPoint]);
+    loadAndPlay(queue[move.index] ?? null, true);
+    setIndex(move.index);
+  }, [queue, setIndex, loadAndPlay, navState]);
 
   useEffect(() => {
     nextRef.current = next;
