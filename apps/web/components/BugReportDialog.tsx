@@ -16,6 +16,7 @@ import { useUiStore } from '@/stores/useUiStore';
 import { logger } from '@/lib/logger/client';
 import { readDesktopLog } from '@/lib/desktopLog';
 import { detectShell } from '@/lib/playback/detectShell';
+import { scrubText } from '@/lib/logger/sanitize';
 
 const MAX_NOTE = 1000;
 
@@ -58,8 +59,12 @@ export function BugReportDialog() {
       const snapshot = logger.snapshot();
       // Desktop only, best effort: the shell's own log holds what the WebView
       // never sees. An empty string means there is nothing to attach.
+      // The desktop shell's own log is unscrubbed native output (URLs,
+      // headers, whatever the Rust side happened to print): run it through
+      // the same secret patterns as the rest of the snapshot before it ever
+      // leaves the device.
       const desktopLog = await readDesktopLog();
-      if (desktopLog) snapshot.desktopLog = desktopLog;
+      if (desktopLog) snapshot.desktopLog = scrubText(desktopLog);
       const res = await fetch('/api/bug-report', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

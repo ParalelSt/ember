@@ -5,14 +5,19 @@ import {
   unauthorizedResponse,
 } from "@/lib/auth";
 import { serverLogger } from "@/lib/logger/server";
-import type { ClientSnapshot, ReportContext } from "@/lib/logger/types";
+import type { ClientSnapshot, ReportContext, ServerLogEntry } from "@/lib/logger/types";
 import { rateLimitResponse } from "@/lib/rateLimit";
 import { triageBugReport } from "@/lib/ai/triage";
 import { fromError, jsonError } from "@/lib/upsertTrack";
 import { withRequestLog } from '@/lib/logger/withRequestLog';
+import { scrubText } from "@/lib/logger/sanitize";
 
 const REPORT_WINDOW_MS = 5 * 60 * 1000;
 const MAX_NOTE_LEN = 1000;
+// Sane ceiling for individual context strings (route, platform, language,
+// …): a client that sends something absurd here shouldn't blow up the
+// digest or the Discord embed, and it's still plenty for any real value.
+const MAX_CONTEXT_STRING_LEN = 300;
 // The desktop tail is capped at 200 lines natively; this is the belt-and-braces
 // bound on a body the client could have hand-written, and keeps the Discord
 // attachment well under the 8 MB upload limit.
@@ -58,6 +63,42 @@ interface RequestBody {
   client?: ClientSnapshot;
 }
 
+/** Validate `client.context`: must be a plain object when present (an old
+ *  or malformed client could send anything, e.g. a track field sent as a
+ *  bare string), and every string field is capped so one huge value can't
+ *  bloat the digest or the Discord embed. Never rejects the report: a bad
+ *  context is dropped, not fatal. */
+function sanitizeContext(ctx: unknown): ReportContext | undefined {
+  if (ctx === null || ctx === undefined) return undefined;
+  if (typeof ctx !== "object" || Array.isArray(ctx)) return undefined;
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(ctx as Record<string, unknown>)) {
+    out[k] = typeof v === "string" ? v.slice(0, MAX_CONTEXT_STRING_LEN) : v;
+  }
+  return out as unknown as ReportContext;
+}
+
+/** Unlike the client snapshot (already run through `scrub` on the device),
+ *  the server log window travels straight from disk: scrub it before it's
+ *  attached to Discord or handed to triage. `userId` is left alone: it's a
+ *  PocketBase id the host already owns, not a secret (see SETUP.md). */
+function scrubServerEntry(e: ServerLogEntry): ServerLogEntry {
+  let data = e.data;
+  if (data !== undefined && data !== null) {
+    try {
+      data = JSON.parse(scrubText(JSON.stringify(data)));
+    } catch {
+      data = scrubText(String(data));
+    }
+  }
+  return {
+    ...e,
+    message: scrubText(e.message),
+    stack: e.stack ? scrubText(e.stack) : e.stack,
+    data,
+  };
+}
+
 export const POST = withRequestLog('bug-report', async (request: NextRequest) => {
   try {
     const { user } = await requireUser();
@@ -93,13 +134,14 @@ export const POST = withRequestLog('bug-report', async (request: NextRequest) =>
     // The desktop log travels inside the client snapshot but goes out as its
     // own attachment, so strip it here: inlined it would also sit in
     // report.json, doubling the payload for no extra information.
-    const { desktopLog: rawDesktopLog, ...client } = body.client;
+    const { desktopLog: rawDesktopLog, ...clientRest } = body.client;
+    const client = { ...clientRest, context: sanitizeContext(clientRest.context) };
     const desktopLog =
       typeof rawDesktopLog === "string" ? rawDesktopLog.slice(-MAX_DESKTOP_LOG) : "";
 
-    const server = await serverLogger.recentSince(
-      Date.now() - REPORT_WINDOW_MS,
-    );
+    const server = (
+      await serverLogger.recentSince(Date.now() - REPORT_WINDOW_MS)
+    ).map(scrubServerEntry);
 
     const userAgent = request.headers.get("user-agent") ?? "unknown";
     const reportedAt = new Date().toISOString();

@@ -3,7 +3,7 @@
 // filename passed with a Blob, which is the thing being asserted here.
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { NextRequest } from 'next/server';
-import type { ClientSnapshot } from '@/lib/logger/types';
+import type { ClientSnapshot, ServerLogEntry } from '@/lib/logger/types';
 
 // Everything the route leans on is stubbed: this is about what reaches the
 // Discord webhook, not about auth, rate limiting or triage.
@@ -13,7 +13,7 @@ vi.mock('@/lib/auth', () => ({
   unauthorizedResponse: () => new Response('no', { status: 401 }),
 }));
 vi.mock('@/lib/rateLimit', () => ({ rateLimitResponse: () => null }));
-vi.mock('@/lib/logger/server', () => ({ serverLogger: { recentSince: async () => [] } }));
+vi.mock('@/lib/logger/server', () => ({ serverLogger: { recentSince: vi.fn(async () => []) } }));
 vi.mock('@/lib/ai/triage', () => ({ triageBugReport: async () => null }));
 vi.mock('@/lib/upsertTrack', () => ({
   jsonError: (error: string, status: number) => Response.json({ error }, { status }),
@@ -26,6 +26,7 @@ vi.mock('@/lib/logger/withRequestLog', () => ({
 }));
 
 const { POST } = await import('./route');
+const { serverLogger } = await import('@/lib/logger/server');
 
 function snapshot(over: Partial<ClientSnapshot> = {}): ClientSnapshot {
   return {
@@ -55,6 +56,7 @@ let fetchMock: ReturnType<typeof vi.fn>;
 beforeEach(() => {
   fetchMock = vi.fn().mockResolvedValue({ ok: true, text: async () => '' });
   vi.stubGlobal('fetch', fetchMock);
+  vi.mocked(serverLogger.recentSince).mockResolvedValue([]);
 });
 
 describe('POST /api/bug-report: desktop log', () => {
@@ -80,5 +82,64 @@ describe('POST /api/bug-report: desktop log', () => {
   it('ignores a desktopLog that is not a string', async () => {
     await POST(request({ client: snapshot({ desktopLog: { not: 'a string' } as unknown as string }) }), undefined as never);
     expect(postedForm(fetchMock).get('files[1]')).toBeNull();
+  });
+});
+
+describe('POST /api/bug-report: context validation', () => {
+  it('drops a non-object context instead of rejecting the report', async () => {
+    const res = await POST(
+      request({ client: snapshot({ context: 'not-an-object' as unknown as ClientSnapshot['context'] }) }),
+      undefined as never,
+    );
+    expect(res.status).toBe(200);
+    const reportJson = JSON.parse(await (postedForm(fetchMock).get('files[0]') as File).text());
+    expect(reportJson.client.context).toBeUndefined();
+  });
+
+  it('drops an array context (still typeof "object", not a plain object)', async () => {
+    const res = await POST(
+      request({ client: snapshot({ context: ['weird'] as unknown as ClientSnapshot['context'] }) }),
+      undefined as never,
+    );
+    expect(res.status).toBe(200);
+    const reportJson = JSON.parse(await (postedForm(fetchMock).get('files[0]') as File).text());
+    expect(reportJson.client.context).toBeUndefined();
+  });
+
+  it('keeps a well-formed context', async () => {
+    const res = await POST(
+      request({ client: snapshot({ context: { shell: 'tauri', route: '/library' } as ClientSnapshot['context'] }) }),
+      undefined as never,
+    );
+    expect(res.status).toBe(200);
+    const reportJson = JSON.parse(await (postedForm(fetchMock).get('files[0]') as File).text());
+    expect(reportJson.client.context).toEqual({ shell: 'tauri', route: '/library' });
+  });
+});
+
+describe('POST /api/bug-report: server log scrubbing', () => {
+  it('redacts a token in a server entry\'s data before it reaches the webhook payload', async () => {
+    const entry: ServerLogEntry = {
+      ts: Date.now(),
+      kind: 'error',
+      level: 'error',
+      category: 'api',
+      message: 'upstream auth failed',
+      data: { header: 'Authorization: Bearer sk-ant-abcdefgh12345678' },
+      sessionId: 's1',
+      side: 'server',
+      reqId: 'r1',
+      route: 'upstream',
+      userId: 'user123',
+    };
+    vi.mocked(serverLogger.recentSince).mockResolvedValue([entry]);
+
+    const res = await POST(request({ client: snapshot() }), undefined as never);
+    expect(res.status).toBe(200);
+    const reportText = await (postedForm(fetchMock).get('files[0]') as File).text();
+    expect(reportText).not.toContain('sk-ant-abcdefgh12345678');
+    expect(reportText).toContain('[scrubbed]');
+    // userId is the host's own PocketBase id, not a secret: it survives.
+    expect(reportText).toContain('user123');
   });
 });
