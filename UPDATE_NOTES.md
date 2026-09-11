@@ -1,3 +1,22 @@
+# Update notes: Offline: artwork offline, retry from the index, signed-out downloads fail loudly
+
+**Host: a normal rebuild and restart, plus a new APK for anyone on Android.**
+No PocketBase changes, no `npm install`: this is app code only. The phone
+needs the rebuilt APK because the cold-start page is bundled into it.
+
+- **Downloaded songs keep their cover art offline.** A pin now downloads each
+  track's artwork alongside its audio, and the player bar, the full Now
+  Playing view, the lock screen and the cold-start page all show that local
+  copy with the radio off.
+- **Retry actually retries.** Settings, Downloads asks the app's own download
+  index to re-queue just the failed tracks of a pin, so it no longer needs you
+  to have opened that collection while online first.
+- **A download that fails because you are signed out now says so.** It fails
+  with "Sign in again" instead of quietly saving the sign-in page as the song,
+  which used to show as Downloaded and then play nothing.
+- **Recently played keeps its pin in step** with what you have actually
+  played, the way Liked Songs already did.
+
 # Update notes: unavailable songs
 
 **Host: a normal restart is all this needs.** The two new PocketBase fields

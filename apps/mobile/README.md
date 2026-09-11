@@ -120,6 +120,27 @@ no track list from JS and cannot re-sync a pin to a stale one; `pin` is the
 only method that changes which tracks a pin lists. `retry` rejects an unknown
 pin id with "no such pin".
 
+**A signed-out download must fail loudly, never quietly succeed.** The server
+answers an unauthenticated stream request with a redirect to `/auth`, so
+without the rule in `OfflineDownloader.download` the drain would happily write
+the sign-in page to disk as a `.m4a` and report the pin as Downloaded: the
+user only finds out when they press play in a tunnel. After `isSuccessful`,
+a final URL whose path starts with `/auth`, or a `text/html` body, is
+therefore a failure: reason `auth` when it landed on `/auth`, else `http`.
+Nothing is written and the track stays pending, so a later retry (once the
+session is back) picks it up.
+
+**Local artwork reaches the lock screen as a `data:` URL, not as a file
+path.** `Capacitor.convertFileSrc` produces a URL only the WebView can
+resolve, but `@capgo/capacitor-media-session` loads artwork natively over
+`HttpURLConnection`, so handing it a converted path gives the lock screen no
+cover at all (silently: `dumpsys notification` just shows `largeIcon=null`).
+Both players therefore re-read the file where it does resolve and follow up
+with a `data:` URL: `capacitorBackend.setMetadata` for the in-app player and
+`play()` in `offline.html` for the cold-start page. Both guard the follow-up
+with the track index they started from, so a slow read for a track the user
+has already skipped past cannot leave the lock screen a track behind.
+
 `capacitor.config.ts` sets `server.errorPath: offline.html`, a bundled page
 (`public/offline.html`) Capacitor shows whenever the main-frame request to
 the server fails, including a reachable server's main-frame 4xx/5xx, not
@@ -148,6 +169,35 @@ Emulator recipe: boot the AVD, sign in, pin a playlist while online,
 `adb shell cmd connectivity airplane-mode enable`, confirm playback and lock
 screen controls still work, force-stop and relaunch to hit the cold-start
 page, then `airplane-mode disable` and tap "Try again".
+
+Driving the WebView from a script: Playwright cannot attach, so talk raw CDP
+to the DevTools socket.
+
+```bash
+adb forward tcp:9333 localabstract:webview_devtools_remote_$(adb shell pidof app.ember.music)
+curl -s http://127.0.0.1:9333/json          # find the page target's webSocketDebuggerUrl
+```
+
+then `Runtime.evaluate` over a WebSocket (`tests/android-native-log.mjs` is
+the pattern). Three things that will otherwise cost an hour:
+
+- **The pid changes on every force-stop**, so re-run the `adb forward` after
+  one or the socket name no longer exists.
+- **A navigation destroys the execution context**, so `Page.navigate` and
+  then reconnect rather than setting `location.href` and evaluating on.
+- **Repeated airplane-mode toggling can wedge the emulator's networking**
+  (airplane mode reads as off and there is still no `eth0`). `adb reboot`
+  restores it, and app data, including downloads and the session, survives.
+  Check `adb shell ping -c 1 10.0.2.2` before blaming a page load: with the
+  radio off a full reload correctly lands on `offline.html`, which looks like
+  a failure but is the feature.
+
+Evidence to collect, since the interesting state is not on screen:
+`dumpsys media_session` for the session and its metadata,
+`dumpsys notification --noredact | grep largeIcon` for the lock-screen cover
+(`Icon(typ=BITMAP ...)` means it loaded, `null` means it did not),
+`run-as app.ember.music ls -l files/offline/audio files/offline/art` for what
+actually reached disk.
 
 ## Prerequisites
 

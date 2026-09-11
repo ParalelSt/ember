@@ -342,6 +342,33 @@ routes it links to. Uses the same fake `EmberOffline` plugin as
   collection page.
 - No page errors in either browser context.
 
+## What `offline-android-ui.test.mjs` and `offline-page.test.mjs` cover
+
+The two halves of offline on Android, both against a fake `EmberOffline`
+plugin so they run in a desktop browser: `offline-android-ui` drives the real
+app (needs the server), `offline-page` loads the bundled cold-start page
+`apps/mobile/public/offline.html` straight off disk (needs nothing).
+
+- Downloaded tracks play from the local file, and the player bar shows the
+  downloaded artwork rather than the remote `artworkUrl`.
+- Settings, Downloads shows `n failed` with the reason in words, and its Retry
+  calls the plugin's `retry({ id })` with the pin id: no track list from the
+  query cache.
+- The cold-start page lists each pin's downloaded tracks with their local
+  artwork, plays them, and steps through them.
+- The lock screen is handed the artwork inline as a `data:` URL, not as the
+  `_capacitor_file_` path: the native media-session plugin fetches artwork
+  over HTTP and cannot resolve that path (see apps/mobile/README.md). A track
+  with no local art sends no artwork entry at all, and a read that lands after
+  the user has skipped on is dropped instead of overwriting the new track.
+- `offline-page` also guards the page's size and its no-em-dashes rule: it is
+  bundled into the APK, so it has to stay one small file.
+
+Not covered here, because no browser can fake it: whether the native side
+actually writes the files, what the real lock screen shows, and what happens
+with the radio off. That is the emulator pass in apps/mobile/README.md's
+"Emulator recipe".
+
 ## What `unavailable.test.mjs` and `unavailable-ui.test.mjs` cover
 
 A YouTube video that's genuinely gone (removed by the uploader, made
