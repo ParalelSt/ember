@@ -573,10 +573,14 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         b.seek(b.getCurrentTime() + action.sec);
         return;
       }
-      e.preventDefault();
-      const state = usePlayerStore.getState();
-      if (state.muted) state.setMuted(false);
-      state.setVolume(action.volume);
+      // Explicit rather than a fall-through, so a future action type cannot
+      // silently take the volume path.
+      if (action.type === 'volumeBy') {
+        e.preventDefault();
+        const state = usePlayerStore.getState();
+        if (state.muted) state.setMuted(false);
+        state.setVolume(action.volume);
+      }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
