@@ -44,10 +44,11 @@ const check = (name, ok) => { console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}`); o
 
 const browser = await chromium.launch({ executablePath: findChrome(), args: ['--allow-file-access-from-files'] });
 
-/** One page with the fake plugin injected. `pins`/`files` shape the status. */
-async function open({ plugin = true, pins, files } = {}) {
+/** One page with the fake plugin injected. `pins`/`files` shape the status;
+ *  `art` is trackId -> absolute local art path (status().artFiles). */
+async function open({ plugin = true, pins, files, art = {} } = {}) {
   const ctx = await browser.newContext();
-  await ctx.addInitScript(({ plugin, pins, files, serverUrl }) => {
+  await ctx.addInitScript(({ plugin, pins, files, art, serverUrl }) => {
     window.__calls = [];
     if (!plugin) return;                    // no plugin: the fallback path
     const tracksById = {
@@ -62,18 +63,18 @@ async function open({ plugin = true, pins, files } = {}) {
       convertFileSrc: (p) => `capfile://${p}`,
       Plugins: {
         EmberOffline: {
-          status: async () => ({ pins, trackFiles: files, totalBytes: 1 }),
+          status: async () => ({ pins, trackFiles: files, artFiles: art, totalBytes: 1 }),
           tracks: async ({ id }) => ({ tracks: tracksById[id] ?? [] }),
           serverUrl: async () => ({ url: serverUrl }),
         },
         MediaSession: {
-          setMetadata: async (o) => { window.__calls.push(['meta', o.title]); },
+          setMetadata: async (o) => { window.__calls.push(['meta', o.title, o.artwork ?? null]); },
           setPlaybackState: async (o) => { window.__calls.push(['state', o.playbackState]); },
           setActionHandler: async (o, cb) => { (window.__handlers ??= {})[o.action] = cb; },
         },
       },
     };
-  }, { plugin, pins, files, serverUrl: `file://${serverStub}` });
+  }, { plugin, pins, files, art, serverUrl: `file://${serverStub}` });
   const page = await ctx.newPage();
   // Nothing here needs real decoding, and a fake path would stall on load.
   await page.addInitScript(() => {
@@ -143,6 +144,28 @@ const twoPins = {
   // 7. Try again goes to the server URL the plugin reports.
   await Promise.all([page.waitForURL(`file://${serverStub}`), page.getByRole('button', { name: 'Try again' }).click()]);
   check('Try again loads the server URL', (await page.locator('h1').innerText()) === 'THE SERVER UI');
+  await ctx.close();
+}
+
+// 7b. A track with local art renders it in the list and in MediaMetadata;
+// a track with none is graceful (no broken <img>, no artwork entry).
+{
+  const { ctx, page } = await open({ ...twoPins, art: { t1: '/data/offline/art/t1.jpg' } });
+  const artImgs = await page.locator('.row .art').count();
+  check('exactly one row has an art thumbnail (only t1 has local art)', artImgs === 1);
+  const artSrc = await page.locator('.row .art').first().evaluate((img) => img.src);
+  check('the art thumbnail is the converted local path', artSrc === 'capfile:///data/offline/art/t1.jpg');
+
+  await page.locator('.row').first().click(); // t1: has art
+  let calls = await page.evaluate(() => window.__calls);
+  const t1Meta = calls.find(([k, v]) => k === 'meta' && v === 'First Song');
+  check('MediaMetadata artwork uses the converted local art path for t1',
+    !!t1Meta && JSON.stringify(t1Meta[2]) === JSON.stringify([{ src: 'capfile:///data/offline/art/t1.jpg', sizes: '512x512' }]));
+
+  await page.locator('#next').click(); // t2: no art
+  calls = await page.evaluate(() => window.__calls);
+  const t2Meta = [...calls].reverse().find(([k, v]) => k === 'meta' && v === 'Second Song');
+  check('a track with no local art sends no artwork entry (graceful)', !!t2Meta && t2Meta[2] == null);
   await ctx.close();
 }
 
