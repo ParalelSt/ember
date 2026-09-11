@@ -96,8 +96,12 @@ class OfflineDownloader(
             // committing a download nobody asked for any more.
             if (isCancelled(pinId)) { tmp.delete(); return CancelledSentinel }
             store.commitAudio(id, tmp)
-            val art = track.optString("artworkUrl")
-            if (art.startsWith("http")) runCatching {
+            // Uploads carry a relative artwork URL (/api/uploads/<id>/art),
+            // the same shape as their streamUrl, so resolve it against the
+            // server the same way. YouTube and Jamendo art stays absolute.
+            val rawArt = track.optString("artworkUrl")
+            val art = if (rawArt.isEmpty() || rawArt.startsWith("http")) rawArt else baseUrl + rawArt
+            if (art.isNotEmpty()) runCatching {
                 clientFor(art).newCall(Request.Builder().url(art).build()).execute().use { res ->
                     if (!res.isSuccessful) {
                         Log.w(OfflineDownloadService.TAG, "$id: art HTTP ${res.code}")

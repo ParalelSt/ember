@@ -88,6 +88,47 @@ class OfflineDownloadServiceTest {
         assertEquals(setOf("youtube:a"), reloaded.artFiles().keys)
     }
 
+    /** A member upload's artworkUrl is relative (/api/uploads/<id>/art), the
+     *  same shape as its streamUrl, so it has to be resolved against the
+     *  server rather than skipped for not starting with "http". */
+    @Test fun aRelativeArtworkUrlIsFetchedFromTheServerAndCommitted() {
+        server.enqueue(audio())
+        server.enqueue(MockResponse().setResponseCode(200).setHeader("Content-Type", "image/jpeg").setBody("JPEGCOVER"))
+        val upload = JSONObject().put("id", "upload:u1").put("title", "Mine").put("artist", "Me")
+            .put("streamUrl", "/api/uploads/u1/stream").put("artworkUrl", "/api/uploads/u1/art")
+        store.upsertPin("p1", "Road", listOf(upload))
+
+        downloader().drain()
+
+        assertEquals(2, server.requestCount)
+        assertEquals("/api/uploads/u1/stream", server.takeRequest().path)
+        assertEquals("/api/uploads/u1/art", server.takeRequest().path)
+        assertTrue(store.artFileFor("upload:u1").exists())
+        assertEquals("JPEGCOVER", store.artFileFor("upload:u1").readText())
+        assertTrue(OfflineDownloadService.failed.isEmpty())
+        assertEquals(emptyList<Any>(), partFiles())
+        assertEquals(setOf("upload:u1"), OfflineStore(root).artFiles().keys)
+    }
+
+    /** The HTML/auth rejection still applies to a relative art URL: signed out,
+     *  that path answers with the sign-in page, which is not a cover. */
+    @Test fun aRelativeArtworkUrlThatLandsOnTheSignInPageCommitsNoArt() {
+        server.enqueue(audio())
+        server.enqueue(MockResponse().setResponseCode(302).setHeader("Location", "/auth/sign-in"))
+        server.enqueue(MockResponse().setResponseCode(200).setHeader("Content-Type", "text/html").setBody("<html>sign in</html>"))
+        val upload = JSONObject().put("id", "upload:u1").put("title", "Mine").put("artist", "Me")
+            .put("streamUrl", "/api/uploads/u1/stream").put("artworkUrl", "/api/uploads/u1/art")
+        store.upsertPin("p1", "Road", listOf(upload))
+
+        downloader().drain()
+
+        // The audio still counts as downloaded: art is best effort.
+        assertTrue(store.audioFileFor("upload:u1").exists())
+        assertFalse(store.artFileFor("upload:u1").exists())
+        assertTrue(OfflineDownloadService.failed.isEmpty())
+        assertEquals(emptyList<Any>(), partFiles())
+    }
+
     @Test fun twoUnauthorizedResponsesFailTheTrackWithReasonAuth() {
         repeat(2) { server.enqueue(MockResponse().setResponseCode(401)) }
         store.upsertPin("p1", "Road", listOf(track("youtube:a")))
