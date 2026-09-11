@@ -8,7 +8,7 @@ import { createClient } from '@/lib/pocketbase/server';
 type RouteHandler<Ctx = any> = (req: NextRequest, ctx: Ctx) => Promise<Response> | Response;
 
 /** Best-effort current user id, read the same way requireUser() does (via
- *  the pb_auth cookie) but without throwing when there isn't one — logging
+ *  the pb_auth cookie) but without throwing when there isn't one: logging
  *  must never be the reason a request fails. */
 async function resolveUserId(): Promise<string | undefined> {
   try {
@@ -43,13 +43,13 @@ async function readErrorField(res: Response): Promise<string | undefined> {
  * worth a human/AI look:
  *   - a thrown error -> level 'error', and the wrapper returns a generic
  *     500 JSON response (routes that already catch their own errors and
- *     return JSON never hit this path — see fromError in lib/upsertTrack).
+ *     return JSON never hit this path: see fromError in lib/upsertTrack).
  *   - a 5xx response the handler returned -> level 'error' (502/504, which
  *     are usually yt-dlp/python being flaky rather than our bug, log at
  *     'warn' instead).
  *   - a 429 (rate limited) response -> level 'warn'.
  * 2xx/3xx/4xx (other than 429) are not logged here. This never changes the
- * response a route produces — the wrapper only observes and rethrows/returns
+ * response a route produces: the wrapper only observes and rethrows/returns
  * exactly what the handler gave it, except for the uncaught-throw case.
  */
 export function withRequestLog<Ctx = unknown>(

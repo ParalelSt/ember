@@ -9,7 +9,7 @@ vi.mock('@/lib/pocketbase/server', () => ({
   createClient: vi.fn(async () => ({ authStore: { record: null } })),
 }));
 
-// Spy on the append instead of hitting the filesystem — same as any other
+// Spy on the append instead of hitting the filesystem: same as any other
 // serverLogger call site would want in a unit test.
 vi.mock('./server', () => ({
   serverLogger: { error: vi.fn(), warn: vi.fn() },
@@ -69,7 +69,7 @@ describe('withRequestLog', () => {
     const res = await wrapped(makeReq() as never, {});
 
     expect(res.status).toBe(502);
-    // The response body must still be readable by the caller — the wrapper
+    // The response body must still be readable by the caller: the wrapper
     // only clones to inspect it, never consumes the original.
     expect(await res.json()).toEqual({ error: 'upstream failed' });
 
@@ -134,7 +134,7 @@ describe('withRequestLog', () => {
 });
 
 // Every apps/web/app/api/**/route.ts handler export must be wrapped in
-// withRequestLog — otherwise a new route silently opts out of server-side
+// withRequestLog: otherwise a new route silently opts out of server-side
 // request logging and triage loses correlation for it. Mirrors the scan
 // style used by lintRules.test.ts.
 describe('every API route handler is wrapped in withRequestLog', () => {

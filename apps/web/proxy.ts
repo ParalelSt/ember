@@ -26,7 +26,7 @@ export default async function proxy(req: NextRequest) {
   // Per-request id, attached to outgoing responses + any server log lines.
   // Set on both the forwarded request (so route handlers in withRequestLog
   // can read it back via req.headers) and the response (so the client's
-  // api error entries can correlate with the server-side log line — see
+  // api error entries can correlate with the server-side log line: see
   // lib/api.ts).
   const reqId = Math.random().toString(36).slice(2, 10);
   const requestHeaders = new Headers(req.headers);
