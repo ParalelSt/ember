@@ -188,14 +188,19 @@ Server-side error logs live at `logs/errors-YYYY-MM-DD.jsonl` (gitignored, auto-
 - **Native logs**: on the Android app, native-side failures (download/service errors) are forwarded into the client log as `native:<category>` entries, buffered on the native side until the report reads them so nothing is lost to a slow app start.
 - **Desktop log**: on the Tauri app, the shell's own log file (everything outside the WebView: audio engine, media controls, updater) is attached as `desktop.log`, and its tail is included in the AI prompt below.
 
-Privacy is unchanged by any of the above: click breadcrumbs only ever record a button/link's aria-label (never its visible text or the page around it), and the existing scrub/redaction rules for what leaves the device still apply to every field, including the new ones.
+Privacy is unchanged by any of the above: click breadcrumbs only ever record a button/link's aria-label (never its visible text or the page around it). What's scrubbed, precisely:
+
+- The **client snapshot** (breadcrumbs, errors, "State when reported") is run through `lib/logger/sanitize.ts`'s `scrub()` on the device before it's sent: known-sensitive field names (password, token, cookie, authorization) are redacted, long strings are truncated.
+- **Native log** entries forwarded from the Android app go through the same client snapshot, so the same rules apply to them.
+- The **desktop log tail** (Tauri) is free text from outside the WebView, so it's scrubbed differently: `scrubText()` runs each line through pattern matches for bearer tokens, cookie headers, `pb_auth` assignments, query-string values, and long hex/base64 blobs, right after it's read in `BugReportDialog.tsx`, before it's ever sent.
+- The **server request log window** attached to a report is also free text/data from disk, not the client's already-scrubbed snapshot: the route runs each entry's `message`, `data`, and `stack` through the same `scrubText()` before attaching it or handing it to triage. The one field left alone is `userId`: it's a PocketBase id the host's own instance already issued, not a secret, and it's useful for tracing a report back to an account.
 
 #### AI triage (optional)
 
 Set `ANTHROPIC_API_KEY` in `apps/web/.env.local` and every report gets read by
 Claude before it lands in Discord. The embed then opens with a one-line summary
 of what broke, the likely cause with log evidence, a short hypothesis of how to
-reproduce it ("Reproduce"), and up to three things to check first ,
+reproduce it ("Reproduce"), and up to three things to check first,
 colour-coded green/amber/red by severity. Claude sees the "State when
 reported" block, the correlated client/server logs above, and the desktop log
 tail. The raw `report.json` is still attached, and the reporter sees the same
