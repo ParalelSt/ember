@@ -11,9 +11,14 @@ vi.mock('@/lib/pocketbase/server', () => ({
 
 // Spy on the append instead of hitting the filesystem: same as any other
 // serverLogger call site would want in a unit test.
-vi.mock('./server', () => ({
-  serverLogger: { error: vi.fn(), warn: vi.fn() },
-}));
+vi.mock('./server', async () => {
+  const { AsyncLocalStorage } = await import('node:async_hooks');
+  return {
+    serverLogger: { error: vi.fn(), warn: vi.fn() },
+    // the real thing: the request-context test below reads it back
+    requestContext: new AsyncLocalStorage<{ reqId?: string; route?: string; userId?: string }>(),
+  };
+});
 
 import { withRequestLog } from './withRequestLog';
 import { serverLogger } from './server';
@@ -188,6 +193,22 @@ describe('withRequestLog and non-JSON bodies', () => {
     // the wrapper neither consumed nor cloned the body
     expect(res.bodyUsed).toBe(false);
     expect(await res.text()).toBe('ab');
+  });
+});
+
+describe('withRequestLog request context', () => {
+  it('stamps reqId and route on logger calls made inside the handler without ctx', async () => {
+    const { requestContext } = await import('./server');
+    let seen: { reqId?: string; route?: string } | undefined;
+    const handler = async () => {
+      // what serverLogger.error resolves when a route logs with no ctx of its own
+      seen = requestContext.getStore();
+      return new Response(JSON.stringify({ error: 'nope' }), { status: 404, headers: { 'content-type': 'application/json' } });
+    };
+    const wrapped = withRequestLog('ctx-test', handler);
+    await wrapped(makeReq({ 'x-request-id': 'req-ctx-1' }) as never, {});
+    expect(seen?.reqId).toBe('req-ctx-1');
+    expect(seen?.route).toBe('ctx-test');
   });
 });
 

@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from 'node:async_hooks';
 import 'server-only';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
@@ -50,11 +51,16 @@ function todayFile(d: Date = new Date()): string {
   return `errors-${y}-${mo}-${da}.jsonl`;
 }
 
-interface ServerLogContext {
+export interface ServerLogContext {
   reqId?: string;
   route?: string;
   userId?: string;
 }
+/** Request-scoped context set by withRequestLog, so any serverLogger call
+ *  made while handling a request carries its reqId, route and userId even
+ *  when the caller (fromError and friends) passes no ctx of its own. */
+export const requestContext = new AsyncLocalStorage<ServerLogContext>();
+
 
 function writeEntry(
   level: 'error' | 'warn',
@@ -65,6 +71,7 @@ function writeEntry(
   ctx?: ServerLogContext,
 ): void {
   ensureBootSweep();
+  const scoped = ctx ?? requestContext.getStore();
   const entry: ServerLogEntry = {
     ts: Date.now(),
     kind: 'error',
@@ -73,9 +80,9 @@ function writeEntry(
     message,
     sessionId: 'server',
     side: 'server',
-    reqId: ctx?.reqId ?? '',
-    route: ctx?.route ?? '',
-    userId: ctx?.userId,
+    reqId: scoped?.reqId ?? '',
+    route: scoped?.route ?? '',
+    userId: scoped?.userId,
   };
   if (data !== undefined) entry.data = safeJson(data);
   if (err instanceof Error && err.stack) entry.stack = err.stack;

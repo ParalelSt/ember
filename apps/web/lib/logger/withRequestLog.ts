@@ -1,7 +1,7 @@
 import 'server-only';
 import { randomUUID } from 'node:crypto';
 import type { NextRequest } from 'next/server';
-import { serverLogger } from './server';
+import { serverLogger, requestContext } from './server';
 import { createClient } from '@/lib/pocketbase/server';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -68,7 +68,7 @@ export function withRequestLog<Ctx = unknown>(
 
     let res: Response;
     try {
-      res = await handler(req, ctx);
+      res = await requestContext.run({ reqId, route: name, userId }, () => handler(req, ctx));
     } catch (e) {
       const durationMs = Date.now() - start;
       serverLogger.error(
