@@ -139,14 +139,6 @@
   background-image: linear-gradient(to bottom right, var(--cover-from), var(--cover-to));
 }
 
-/* Shelf grid: fixed-size cards that wrap to fill the row, instead of a
-   fixed column count per breakpoint. Not adopted yet (see lib/layout.ts and
-   TrackRow, migrated in a later step); defined now so it's ready. */
-@utility grid-cards {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(var(--card-min, 10rem), 1fr));
-}
-
 @layer base {
   html, body, #__next { height: 100%; }
   * { @apply border-border; }
