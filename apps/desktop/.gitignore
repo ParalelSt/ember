@@ -2,7 +2,7 @@
 node_modules/
 
 # Rust / Tauri build output
-src-tauri/target/
+src-tauri/target*/
 
 # Tauri generated schemas/icons cache
 src-tauri/gen/

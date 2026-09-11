@@ -394,7 +394,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
   useRadioExtend({ current, queue, index, history, liked, context, loopMode });
 
-  useDiscordPresence({ current, isPlaying });
+  useDiscordPresence({ current, isPlaying, position, duration });
 
   useRemoteCommands({ backendRef, backendReady, current, nextRef, prevRef });
 

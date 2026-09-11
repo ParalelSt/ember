@@ -187,8 +187,11 @@ export const api = {
   getHistory: () => req<{ tracks: Track[] }>('/history'),
   recordPlay: (track: Track) => req<{ ok: true }>('/history', { method: 'POST', body: { track } }),
 
-  updateDiscord: (track: Track | null, isPlaying: boolean) =>
-    req<{ ok: true; shared: boolean }>('/discord/update', { method: 'POST', body: { track, isPlaying } }),
+  updateDiscord: (track: Track | null, isPlaying: boolean, positionSec = 0, durationSec = 0) =>
+    req<{ ok: true; shared: boolean }>('/discord/update', {
+      method: 'POST',
+      body: { track, isPlaying, positionSec, durationSec },
+    }),
 
   // — Privacy: two independent "don't broadcast what I'm playing" switches —
   getPrivacy: () => req<{ shareDiscord: boolean; shareListening: boolean }>('/privacy'),

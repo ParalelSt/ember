@@ -73,6 +73,11 @@ What's in it:
 
 - **Guitar tabs** — a button in the player finds the tab for the playing song
   on Songsterr (links out; they block embedding).
+- **Discord presence follows the song** — the card is now "Listening to Ember"
+  with a progress bar that tracks seeks, pauses and resumes. Desktop builds
+  need `DISCORD_APP_ID` at build time (CI has it; local builds pass it to
+  `build-mac.sh`). Each presence decision is logged in the desktop log as
+  `discord: …`.
 - **AI bug triage** — reports arrive in Discord with a summary, likely cause
   and what to check first, instead of only raw logs.
 - **Custom uploads** — Library → Upload adds a song from your own files;
