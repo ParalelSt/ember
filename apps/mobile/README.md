@@ -94,6 +94,31 @@ gets retried once, then shows failed in Settings, Downloads with a Retry
 button. See SETUP.md's
 ["Keep yt-dlp and ytmusicapi updated"](../../SETUP.md#keep-yt-dlp-and-ytmusicapi-updated--do-this-when-things-break).
 
+The plugin's `status()` (and the `offline` event it pushes on every change)
+returns:
+
+```jsonc
+{
+  "pins": [{ "id": "", "name": "", "total": 0, "done": 0, "failed": 0,
+             "failedReason": null, "downloading": false, "trackIds": [] }],
+  "trackFiles": { "<trackId>": "/abs/path.m4a" },  // downloaded audio
+  "artFiles":   { "<trackId>": "/abs/path.jpg" },  // downloaded artwork
+  "totalBytes": 0,
+  "progress": { "id": "", "done": 0, "total": 0, "title": "" } // only while downloading
+}
+```
+
+`artFiles` is a subset of `trackFiles`: artwork is best effort, so a track
+can have audio and no art. Both are absolute app-private paths, which the
+WebView can only load through `Capacitor.convertFileSrc`. `failedReason` is
+`auth`, `storage` or `http` (the pin's FIRST permanent failure), or null.
+
+Plugin methods: `status`, `tracks({ id })`, `serverUrl`, `pin({ id, name,
+tracks })`, `retry({ id })`, `unpin({ id })`, `cancel({ id })`, `clearAll`.
+`retry` re-queues only that pin's failed tracks from the index, so it needs
+no track list from JS and cannot re-sync a pin to a stale one; `pin` is the
+only method that changes which tracks a pin lists.
+
 `capacitor.config.ts` sets `server.errorPath: offline.html`, a bundled page
 (`public/offline.html`) Capacitor shows whenever the main-frame request to
 the server fails, including a reachable server's main-frame 4xx/5xx, not
@@ -109,8 +134,14 @@ Testing:
 ```bash
 npm run test:offline-ui       # web UI, from apps/web
 node tests/offline-page.test.mjs   # bundled offline page, headless
-cd apps/mobile/android && ./gradlew testDebugUnitTest   # OfflineStore
+cd apps/mobile/android && ./gradlew testDebugUnitTest   # OfflineStore + downloader
 ```
+
+The downloader tests (`OfflineDownloadServiceTest`) drive the drain against
+MockWebServer. The drain lives in `OfflineDownloader`, not in the service,
+precisely so it can be run synchronously from a JVM test;
+`OfflineDownloadService` is only the thread and the foreground notification
+around it, so put download rules in the former and keep the latter thin.
 
 Emulator recipe: boot the AVD, sign in, pin a playlist while online,
 `adb shell cmd connectivity airplane-mode enable`, confirm playback and lock
