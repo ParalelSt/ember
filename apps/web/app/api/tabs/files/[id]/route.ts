@@ -5,9 +5,10 @@ import { createAdminClient } from '@/lib/pocketbase/server';
 import { fromError, jsonError } from '@/lib/upsertTrack';
 import { serverLogger } from '@/lib/logger/server';
 import { resolveTabPath } from '@/lib/tabs';
+import { withRequestLog } from '@/lib/logger/withRequestLog';
 
 /** Delete one of your own tabs — the record and the file behind it. */
-export async function DELETE(_req: NextRequest, ctx: RouteContext<'/api/tabs/files/[id]'>) {
+export const DELETE = withRequestLog('tabs/files/[id]', async (_req: NextRequest, ctx: RouteContext<'/api/tabs/files/[id]'>) => {
   try {
     const { user } = await requireUser();
     const { id } = await ctx.params;
@@ -31,4 +32,4 @@ export async function DELETE(_req: NextRequest, ctx: RouteContext<'/api/tabs/fil
     if (e instanceof UnauthorizedError) return unauthorizedResponse();
     return fromError(e);
   }
-}
+});

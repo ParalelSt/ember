@@ -2,6 +2,7 @@ import { requireUser, UnauthorizedError, unauthorizedResponse } from '@/lib/auth
 import { createAdminClient } from '@/lib/pocketbase/server';
 import { mapTrackRow, type TrackRecord } from '@/lib/mapTrack';
 import { fromError } from '@/lib/upsertTrack';
+import { withRequestLog } from '@/lib/logger/withRequestLog';
 
 /** How far back a play still counts as "listening now". */
 const WINDOW_MS = 30 * 60 * 1000;
@@ -15,7 +16,7 @@ const WINDOW_MS = 30 * 60 * 1000;
  *  declining to render them would not be privacy: the data would still be in
  *  the response for anyone reading the network tab. Their plays are still
  *  recorded, so recommendations and the 14-day cleanup are unaffected. */
-export async function GET() {
+export const GET = withRequestLog('listening', async () => {
   try {
     const { user } = await requireUser();
     const pb = await createAdminClient();
@@ -53,4 +54,4 @@ export async function GET() {
     if (e instanceof UnauthorizedError) return unauthorizedResponse();
     return fromError(e);
   }
-}
+});

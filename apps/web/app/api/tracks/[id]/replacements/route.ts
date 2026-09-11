@@ -6,8 +6,9 @@ import { matchTracks, searchTracks } from '@/lib/sources/youtube';
 import { listUnavailableIds } from '@/lib/trackAvailability';
 import { songKey } from '@/lib/songKey';
 import type { Track } from '@/types/track';
+import { withRequestLog } from '@/lib/logger/withRequestLog';
 
-export async function GET(_req: NextRequest, ctx: RouteContext<'/api/tracks/[id]/replacements'>) {
+export const GET = withRequestLog('tracks/[id]/replacements', async (_req: NextRequest, ctx: RouteContext<'/api/tracks/[id]/replacements'>) => {
   try {
     const { pb, user } = await requireUser();
     const limited = rateLimitResponse(`replacements:${user.id}`, { windowMs: 60_000, max: 30 });
@@ -41,7 +42,7 @@ export async function GET(_req: NextRequest, ctx: RouteContext<'/api/tracks/[id]
     if (e instanceof UnauthorizedError) return unauthorizedResponse();
     return fromError(e);
   }
-}
+});
 
 function esc(s: string): string {
   return s.replace(/\\/g, '\\\\').replace(/"/g, '\\"');

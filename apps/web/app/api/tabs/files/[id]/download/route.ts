@@ -4,13 +4,14 @@ import { ForbiddenError, requireUser, UnauthorizedError, unauthorizedResponse } 
 import { createAdminClient } from '@/lib/pocketbase/server';
 import { fromError, jsonError } from '@/lib/upsertTrack';
 import { resolveTabPath } from '@/lib/tabs';
+import { withRequestLog } from '@/lib/logger/withRequestLog';
 
 /** The bytes of one of your own tabs — AlphaTab loads this into the browser.
  *
  *  Whole-file only: a Guitar Pro file is a couple of hundred KB and the
  *  renderer needs all of it before it can draw anything, so Range serving
  *  would buy nothing. */
-export async function GET(_req: NextRequest, ctx: RouteContext<'/api/tabs/files/[id]/download'>) {
+export const GET = withRequestLog('tabs/files/[id]/download', async (_req: NextRequest, ctx: RouteContext<'/api/tabs/files/[id]/download'>) => {
   try {
     const { user } = await requireUser();
     const { id } = await ctx.params;
@@ -35,4 +36,4 @@ export async function GET(_req: NextRequest, ctx: RouteContext<'/api/tabs/files/
     if (e instanceof UnauthorizedError) return unauthorizedResponse();
     return fromError(e);
   }
-}
+});

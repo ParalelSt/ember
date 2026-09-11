@@ -2,8 +2,9 @@ import type { NextRequest } from 'next/server';
 import { requireUser, UnauthorizedError, unauthorizedResponse } from '@/lib/auth';
 import type { Track } from '@/types/track';
 import { fromError, jsonError, upsertTrack } from '@/lib/upsertTrack';
+import { withRequestLog } from '@/lib/logger/withRequestLog';
 
-export async function POST(request: NextRequest, ctx: RouteContext<'/api/playlists/[id]/tracks'>) {
+export const POST = withRequestLog('playlists/[id]/tracks', async (request: NextRequest, ctx: RouteContext<'/api/playlists/[id]/tracks'>) => {
   try {
     const { pb } = await requireUser();
     const { id } = await ctx.params;
@@ -49,4 +50,4 @@ export async function POST(request: NextRequest, ctx: RouteContext<'/api/playlis
     if (e instanceof UnauthorizedError) return unauthorizedResponse();
     return fromError(e);
   }
-}
+});

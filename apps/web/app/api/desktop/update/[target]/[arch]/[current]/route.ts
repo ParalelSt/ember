@@ -1,6 +1,7 @@
 import { updateFor } from '@/lib/desktopUpdate';
 import { isLoopback, publicOrigin } from '@/lib/publicOrigin';
 import { serverLogger } from '@/lib/logger/server';
+import { withRequestLog } from '@/lib/logger/withRequestLog';
 
 /** Tauri's update feed. The desktop app is configured (tauri.conf.json) to
  *  call /api/desktop/update/{{target}}/{{arch}}/{{current_version}}.
@@ -12,7 +13,7 @@ import { serverLogger } from '@/lib/logger/server';
  *  Public by necessity: the updater runs in Rust with no browser session. It
  *  exposes only "what's the latest version" plus a proxied installer download,
  *  never user data. */
-export async function GET(_request: Request, ctx: RouteContext<'/api/desktop/update/[target]/[arch]/[current]'>) {
+export const GET = withRequestLog('desktop/update/[target]/[arch]/[current]', async (_request: Request, ctx: RouteContext<'/api/desktop/update/[target]/[arch]/[current]'>) => {
   try {
     const { target, arch, current } = await ctx.params;
     // Must be the origin the APP can reach, not the one this process was
@@ -31,4 +32,4 @@ export async function GET(_request: Request, ctx: RouteContext<'/api/desktop/upd
     serverLogger.error('update', 'feed failed', undefined, e);
     return new Response(null, { status: 204 });
   }
-}
+});

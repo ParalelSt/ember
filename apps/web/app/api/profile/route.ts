@@ -1,12 +1,13 @@
 import type { NextRequest } from 'next/server';
 import { requireUser, UnauthorizedError, unauthorizedResponse } from '@/lib/auth';
 import { fromError, jsonError } from '@/lib/upsertTrack';
+import { withRequestLog } from '@/lib/logger/withRequestLog';
 
 const MAX_AVATAR_BYTES = 5 * 1024 * 1024;
 const ALLOWED_MIMES = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif']);
 const MAX_NAME_LEN = 50;
 
-export async function PATCH(req: NextRequest) {
+export const PATCH = withRequestLog('profile', async (req: NextRequest) => {
   try {
     const { user, pb } = await requireUser();
     const form = await req.formData();
@@ -50,4 +51,4 @@ export async function PATCH(req: NextRequest) {
     if (e instanceof UnauthorizedError) return unauthorizedResponse();
     return fromError(e);
   }
-}
+});

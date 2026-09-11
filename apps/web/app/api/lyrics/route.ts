@@ -2,8 +2,9 @@ import type { NextRequest } from 'next/server';
 import { requireUser, UnauthorizedError, unauthorizedResponse } from '@/lib/auth';
 import { getLyrics } from '@/lib/sources/youtube';
 import { fromError, jsonError } from '@/lib/upsertTrack';
+import { withRequestLog } from '@/lib/logger/withRequestLog';
 
-export async function GET(req: NextRequest) {
+export const GET = withRequestLog('lyrics', async (req: NextRequest) => {
   try {
     await requireUser();
     const title = req.nextUrl.searchParams.get('title')?.trim() ?? '';
@@ -16,4 +17,4 @@ export async function GET(req: NextRequest) {
     if (e instanceof UnauthorizedError) return unauthorizedResponse();
     return fromError(e);
   }
-}
+});

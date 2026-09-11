@@ -2,9 +2,10 @@ import type { NextRequest } from 'next/server';
 import { requireUser, UnauthorizedError, unauthorizedResponse } from '@/lib/auth';
 import { fromError, jsonError } from '@/lib/upsertTrack';
 import { addMember } from '@/lib/sessions';
+import { withRequestLog } from '@/lib/logger/withRequestLog';
 
 /** Resolve a join code to a live session. */
-export async function POST(request: NextRequest) {
+export const POST = withRequestLog('sessions/join', async (request: NextRequest) => {
   try {
     const { pb, user } = await requireUser();
     const body = (await request.json().catch(() => null)) as { code?: string } | null;
@@ -26,4 +27,4 @@ export async function POST(request: NextRequest) {
     if (e instanceof UnauthorizedError) return unauthorizedResponse();
     return fromError(e);
   }
-}
+});

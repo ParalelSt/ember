@@ -5,6 +5,7 @@ import { createAdminClient } from '@/lib/pocketbase/server';
 import { fromError, jsonError } from '@/lib/upsertTrack';
 import { rateLimitResponse } from '@/lib/rateLimit';
 import { serverLogger } from '@/lib/logger/server';
+import { withRequestLog } from '@/lib/logger/withRequestLog';
 import {
   ALLOWED_TYPES,
   MAX_UPLOAD_BYTES,
@@ -26,7 +27,7 @@ import {
 
 const MAX_TEXT = 200;
 
-export async function GET() {
+export const GET = withRequestLog('uploads', async () => {
   try {
     await requireUser();
     const pb = await createAdminClient();
@@ -36,9 +37,9 @@ export async function GET() {
     if (e instanceof UnauthorizedError) return unauthorizedResponse();
     return fromError(e);
   }
-}
+});
 
-export async function POST(request: NextRequest) {
+export const POST = withRequestLog('uploads', async (request: NextRequest) => {
   let writtenPath: string | null = null;
   try {
     const { user } = await requireUser();
@@ -109,4 +110,4 @@ export async function POST(request: NextRequest) {
     }
     return fromError(e);
   }
-}
+});

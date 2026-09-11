@@ -9,11 +9,12 @@ import {
 import { createAdminClient } from '@/lib/pocketbase/server';
 import { fromError, jsonError } from '@/lib/upsertTrack';
 import { serverLogger } from '@/lib/logger/server';
+import { withRequestLog } from '@/lib/logger/withRequestLog';
 
 const MIN_LEN = 8;
 const MAX_LEN = 71;
 
-export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
+export const POST = withRequestLog('admin/users/[id]/password', async (req: NextRequest, ctx: { params: Promise<{ id: string }> }) => {
   try {
     const { user: actor } = await requireAdmin();
     const { id } = await ctx.params;
@@ -46,4 +47,4 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
     if (e instanceof ForbiddenError) return forbiddenResponse();
     return fromError(e);
   }
-}
+});

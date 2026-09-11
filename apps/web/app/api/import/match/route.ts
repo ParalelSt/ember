@@ -3,6 +3,7 @@ import { requireUser, UnauthorizedError, unauthorizedResponse } from '@/lib/auth
 import { fromError, jsonError } from '@/lib/upsertTrack';
 import { rateLimitResponse } from '@/lib/rateLimit';
 import { matchTracks } from '@/lib/sources/youtube';
+import { withRequestLog } from '@/lib/logger/withRequestLog';
 
 const MAX_BATCH = 8;
 
@@ -13,7 +14,7 @@ interface MatchItem {
 
 /** Match a small batch of Spotify tracks onto YT Music. The import dialog
  *  loops these so a 300-track playlist never hits one long request. */
-export async function POST(request: NextRequest) {
+export const POST = withRequestLog('import/match', async (request: NextRequest) => {
   try {
     const { user } = await requireUser();
     // Generous backstop — above any real single import's sequential pace, but
@@ -35,4 +36,4 @@ export async function POST(request: NextRequest) {
     if (e instanceof UnauthorizedError) return unauthorizedResponse();
     return fromError(e);
   }
-}
+});

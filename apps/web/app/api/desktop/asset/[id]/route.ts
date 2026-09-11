@@ -1,6 +1,7 @@
 import { fetchAsset } from '@/lib/desktopUpdate';
 import { keyFromRequest, rateLimitResponse } from '@/lib/rateLimit';
 import { serverLogger } from '@/lib/logger/server';
+import { withRequestLog } from '@/lib/logger/withRequestLog';
 
 /** Streams a release asset from GitHub with the host's token attached, so the
  *  desktop updater can download from a PRIVATE repo without ever holding a
@@ -11,7 +12,7 @@ import { serverLogger } from '@/lib/logger/server';
  *  reach anything else. */
 const MAX_ID = Number.MAX_SAFE_INTEGER;
 
-export async function GET(request: Request, ctx: RouteContext<'/api/desktop/asset/[id]'>) {
+export const GET = withRequestLog('desktop/asset/[id]', async (request: Request, ctx: RouteContext<'/api/desktop/asset/[id]'>) => {
   const { id } = await ctx.params;
 
   // Installers are multi-MB; this stops one client (or a bored stranger, since
@@ -41,4 +42,4 @@ export async function GET(request: Request, ctx: RouteContext<'/api/desktop/asse
   if (length) headers.set('Content-Length', length);
 
   return new Response(upstream.body, { status: 200, headers });
-}
+});

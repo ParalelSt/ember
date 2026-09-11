@@ -5,6 +5,7 @@ import { Readable } from 'node:stream';
 import { requireUser, UnauthorizedError, unauthorizedResponse } from '@/lib/auth';
 import { createAdminClient } from '@/lib/pocketbase/server';
 import { MIME_BY_EXT, resolveUploadPath } from '@/lib/uploads';
+import { withRequestLog } from '@/lib/logger/withRequestLog';
 
 /** Serves a member-uploaded song with Range support, so seeking works and
  *  the browser can start playing before the whole file arrives. */
@@ -45,7 +46,7 @@ function serveFile(filePath: string, range: string | null): Response {
   });
 }
 
-export async function GET(request: NextRequest, ctx: RouteContext<'/api/uploads/[id]/stream'>) {
+export const GET = withRequestLog('uploads/[id]/stream', async (request: NextRequest, ctx: RouteContext<'/api/uploads/[id]/stream'>) => {
   try {
     await requireUser();
     const { id } = await ctx.params;
@@ -64,4 +65,4 @@ export async function GET(request: NextRequest, ctx: RouteContext<'/api/uploads/
     if (e instanceof UnauthorizedError) return unauthorizedResponse();
     return new Response('stream failed', { status: 500 });
   }
-}
+});

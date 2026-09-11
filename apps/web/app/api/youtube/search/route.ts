@@ -1,8 +1,9 @@
 import type { NextRequest } from 'next/server';
 import { searchTracks } from '@/lib/sources/youtube';
 import { fromError } from '@/lib/upsertTrack';
+import { withRequestLog } from '@/lib/logger/withRequestLog';
 
-export async function GET(request: NextRequest) {
+export const GET = withRequestLog('youtube/search', async (request: NextRequest) => {
   try {
     const q = (request.nextUrl.searchParams.get('q') ?? '').trim();
     if (!q) return Response.json({ tracks: [] });
@@ -11,4 +12,4 @@ export async function GET(request: NextRequest) {
   } catch (e) {
     return fromError(e);
   }
-}
+});

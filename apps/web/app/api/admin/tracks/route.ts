@@ -9,10 +9,11 @@ import {
 import { createAdminClient } from '@/lib/pocketbase/server';
 import { mapTrackRow, type TrackRecord } from '@/lib/mapTrack';
 import { fromError } from '@/lib/upsertTrack';
+import { withRequestLog } from '@/lib/logger/withRequestLog';
 
 const PAGE_SIZE = 50;
 
-export async function GET(req: NextRequest) {
+export const GET = withRequestLog('admin/tracks', async (req: NextRequest) => {
   try {
     await requireAdmin();
     const url = req.nextUrl;
@@ -49,7 +50,7 @@ export async function GET(req: NextRequest) {
     if (e instanceof ForbiddenError) return forbiddenResponse();
     return fromError(e);
   }
-}
+});
 
 function pbEscape(s: string): string {
   return s.replace(/\\/g, '\\\\').replace(/"/g, '\\"');

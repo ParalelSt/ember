@@ -9,12 +9,13 @@ import {
 import { createAdminClient } from '@/lib/pocketbase/server';
 import { mapTrackRow, type TrackRecord } from '@/lib/mapTrack';
 import { fromError } from '@/lib/upsertTrack';
+import { withRequestLog } from '@/lib/logger/withRequestLog';
 
 // `id` in the URL is PB's internal record id, NOT the Track.id external id.
 // The admin list endpoint returns `recordId` alongside `id` so the UI can
 // route mutations here without an extra lookup.
 
-export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
+export const PATCH = withRequestLog('admin/tracks/[id]', async (req: NextRequest, ctx: { params: Promise<{ id: string }> }) => {
   try {
     await requireAdmin();
     const { id } = await ctx.params;
@@ -41,9 +42,9 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
     if (e instanceof ForbiddenError) return forbiddenResponse();
     return fromError(e);
   }
-}
+});
 
-export async function DELETE(_req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
+export const DELETE = withRequestLog('admin/tracks/[id]', async (_req: NextRequest, ctx: { params: Promise<{ id: string }> }) => {
   try {
     await requireAdmin();
     const { id } = await ctx.params;
@@ -55,4 +56,4 @@ export async function DELETE(_req: NextRequest, ctx: { params: Promise<{ id: str
     if (e instanceof ForbiddenError) return forbiddenResponse();
     return fromError(e);
   }
-}
+});

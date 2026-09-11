@@ -9,6 +9,7 @@ import type { ClientSnapshot } from "@/lib/logger/types";
 import { rateLimitResponse } from "@/lib/rateLimit";
 import { triageBugReport } from "@/lib/ai/triage";
 import { fromError, jsonError } from "@/lib/upsertTrack";
+import { withRequestLog } from '@/lib/logger/withRequestLog';
 
 const REPORT_WINDOW_MS = 5 * 60 * 1000;
 const MAX_NOTE_LEN = 1000;
@@ -36,7 +37,7 @@ interface RequestBody {
   client?: ClientSnapshot;
 }
 
-export async function POST(request: NextRequest) {
+export const POST = withRequestLog('bug-report', async (request: NextRequest) => {
   try {
     const { user } = await requireUser();
 
@@ -174,4 +175,4 @@ export async function POST(request: NextRequest) {
     if (e instanceof UnauthorizedError) return unauthorizedResponse();
     return fromError(e);
   }
-}
+});

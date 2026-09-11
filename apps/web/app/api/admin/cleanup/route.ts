@@ -3,11 +3,12 @@ import { requireAdmin, ForbiddenError, UnauthorizedError, unauthorizedResponse }
 import { createAdminClient } from '@/lib/pocketbase/server';
 import { fromError, jsonError } from '@/lib/upsertTrack';
 import { runCleanup, STALE_AFTER_DAYS } from '@/lib/cleanup';
+import { withRequestLog } from '@/lib/logger/withRequestLog';
 
 /** Delete tracks nobody has played in the last two weeks, plus their cached
  *  audio. DRY RUN BY DEFAULT — pass {"apply": true} to actually delete, so the
  *  numbers can always be inspected first. Admin only. */
-export async function POST(request: NextRequest) {
+export const POST = withRequestLog('admin/cleanup', async (request: NextRequest) => {
   try {
     await requireAdmin();
     const body = (await request.json().catch(() => null)) as { apply?: boolean } | null;
@@ -23,4 +24,4 @@ export async function POST(request: NextRequest) {
     if (e instanceof ForbiddenError) return jsonError('Admins only.', 403);
     return fromError(e);
   }
-}
+});

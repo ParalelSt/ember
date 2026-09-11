@@ -2,10 +2,11 @@ import type { NextRequest } from 'next/server';
 import { requireUser, UnauthorizedError, unauthorizedResponse } from '@/lib/auth';
 import { fromError } from '@/lib/upsertTrack';
 import { loadSession, assertMember } from '@/lib/sessions';
+import { withRequestLog } from '@/lib/logger/withRequestLog';
 
 /** Copy the session queue into a normal playlist owned by the caller —
  *  anyone in the session can keep the roadtrip mix. */
-export async function POST(request: NextRequest, ctx: RouteContext<'/api/sessions/[id]/save'>) {
+export const POST = withRequestLog('sessions/[id]/save', async (request: NextRequest, ctx: RouteContext<'/api/sessions/[id]/save'>) => {
   try {
     const { pb, user } = await requireUser();
     const { id } = await ctx.params;
@@ -36,4 +37,4 @@ export async function POST(request: NextRequest, ctx: RouteContext<'/api/session
     if (e instanceof UnauthorizedError) return unauthorizedResponse();
     return fromError(e);
   }
-}
+});

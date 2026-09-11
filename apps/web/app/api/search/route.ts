@@ -6,6 +6,7 @@ import { keyFromRequest, rateLimitResponse } from '@/lib/rateLimit';
 import { createClient } from '@/lib/pocketbase/server';
 import { searchUploads } from '@/lib/uploads';
 import type { Track } from '@/types/track';
+import { withRequestLog } from '@/lib/logger/withRequestLog';
 
 /** Uploads for the signed-in caller. Uses the cookie-bound client, so
  *  PocketBase's own list rule decides visibility — a signed-out caller gets
@@ -21,7 +22,7 @@ async function searchUploadsSafely(q: string): Promise<Track[]> {
   }
 }
 
-export async function GET(request: NextRequest) {
+export const GET = withRequestLog('search', async (request: NextRequest) => {
   try {
     const q = (request.nextUrl.searchParams.get('q') ?? '').trim();
     if (!q) {
@@ -48,4 +49,4 @@ export async function GET(request: NextRequest) {
   } catch (e) {
     return fromError(e);
   }
-}
+});

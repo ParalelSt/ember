@@ -3,12 +3,13 @@ import { requireUser, UnauthorizedError, unauthorizedResponse } from '@/lib/auth
 import { mapTrackRow, type TrackRecord } from '@/lib/mapTrack';
 import { fromError, jsonError, upsertTrack } from '@/lib/upsertTrack';
 import type { Track } from '@/types/track';
+import { withRequestLog } from '@/lib/logger/withRequestLog';
 
 const MAX_RECENT = 10;
 
 /** The tracks this user played from search, newest first. Server-side so the
  *  list is the same on every device. */
-export async function GET() {
+export const GET = withRequestLog('recent-searches', async () => {
   try {
     const { pb, user } = await requireUser();
     const rows = await pb.collection('recent_searches').getList(1, MAX_RECENT, {
@@ -24,11 +25,11 @@ export async function GET() {
     if (e instanceof UnauthorizedError) return unauthorizedResponse();
     return fromError(e);
   }
-}
+});
 
 /** Record a play-from-search. Bumps the timestamp when the track is already
  *  in the list (unique index on user+track), then trims to MAX_RECENT. */
-export async function POST(request: NextRequest) {
+export const POST = withRequestLog('recent-searches', async (request: NextRequest) => {
   try {
     const { pb, user } = await requireUser();
     const body = (await request.json().catch(() => null)) as { track?: Track } | null;
@@ -65,4 +66,4 @@ export async function POST(request: NextRequest) {
     if (e instanceof UnauthorizedError) return unauthorizedResponse();
     return fromError(e);
   }
-}
+});

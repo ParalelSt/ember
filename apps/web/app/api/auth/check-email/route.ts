@@ -2,10 +2,11 @@ import type { NextRequest } from 'next/server';
 import type { ClientResponseError } from 'pocketbase';
 import { createAdminClient } from '@/lib/pocketbase/server';
 import { fromError, jsonError } from '@/lib/upsertTrack';
+import { withRequestLog } from '@/lib/logger/withRequestLog';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-export async function POST(req: NextRequest) {
+export const POST = withRequestLog('auth/check-email', async (req: NextRequest) => {
   try {
     const body = (await req.json().catch(() => ({}))) as { email?: string };
     const email = String(body.email ?? '').trim().toLowerCase();
@@ -28,7 +29,7 @@ export async function POST(req: NextRequest) {
   } catch (e) {
     return fromError(e);
   }
-}
+});
 
 function escape(s: string): string {
   return s.replace(/\\/g, '\\\\').replace(/"/g, '\\"');

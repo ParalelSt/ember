@@ -1,6 +1,7 @@
 import type { NextRequest } from 'next/server';
 import { requireUser, UnauthorizedError, unauthorizedResponse } from '@/lib/auth';
 import { fromError, jsonError } from '@/lib/upsertTrack';
+import { withRequestLog } from '@/lib/logger/withRequestLog';
 
 /** Build the public artwork URL for a playlist record (routed through the /pb
  *  proxy so the browser stays same-origin). Returns null when no artwork. */
@@ -9,7 +10,7 @@ function artworkUrl(record: { id: string; artwork?: unknown }): string | null {
   return file ? `/pb/api/files/playlists/${record.id}/${file}` : null;
 }
 
-export async function GET() {
+export const GET = withRequestLog('playlists', async () => {
   try {
     const { pb, user } = await requireUser();
     const records = await pb.collection('playlists').getFullList({
@@ -27,9 +28,9 @@ export async function GET() {
     if (e instanceof UnauthorizedError) return unauthorizedResponse();
     return fromError(e);
   }
-}
+});
 
-export async function POST(request: NextRequest) {
+export const POST = withRequestLog('playlists', async (request: NextRequest) => {
   try {
     const { pb, user } = await requireUser();
     const body = (await request.json().catch(() => null)) as { name?: string } | null;
@@ -48,4 +49,4 @@ export async function POST(request: NextRequest) {
     if (e instanceof UnauthorizedError) return unauthorizedResponse();
     return fromError(e);
   }
-}
+});

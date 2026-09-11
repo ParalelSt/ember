@@ -8,8 +8,9 @@ import {
 } from '@/lib/auth';
 import { createAdminClient } from '@/lib/pocketbase/server';
 import { fromError } from '@/lib/upsertTrack';
+import { withRequestLog } from '@/lib/logger/withRequestLog';
 
-export async function DELETE(_req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
+export const DELETE = withRequestLog('admin/invites/[id]', async (_req: NextRequest, ctx: { params: Promise<{ id: string }> }) => {
   try {
     await requireAdmin();
     const { id } = await ctx.params;
@@ -21,4 +22,4 @@ export async function DELETE(_req: NextRequest, ctx: { params: Promise<{ id: str
     if (e instanceof ForbiddenError) return forbiddenResponse();
     return fromError(e);
   }
-}
+});

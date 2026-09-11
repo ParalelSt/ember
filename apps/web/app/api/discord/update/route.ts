@@ -2,6 +2,7 @@ import type { NextRequest } from 'next/server';
 import { updateDiscordActivity, clearDiscordActivity } from '@/lib/discord';
 import { createClient } from '@/lib/pocketbase/server';
 import type { Track } from '@/types/track';
+import { withRequestLog } from '@/lib/logger/withRequestLog';
 
 /** Publish "now playing" to the HOST's Discord (browsers can't reach their
  *  own Discord client; the desktop app talks to the local one directly).
@@ -11,7 +12,7 @@ import type { Track } from '@/types/track';
  *  or replayed client call shouldn't be able to broadcast for someone who
  *  turned it off. Unauthenticated callers are treated as opted out: without a
  *  session there's no preference to respect. */
-export async function POST(request: NextRequest) {
+export const POST = withRequestLog('discord/update', async (request: NextRequest) => {
   const body = (await request.json().catch(() => null)) as
     | { track?: Track | null; isPlaying?: boolean; positionSec?: number; durationSec?: number }
     | null;
@@ -33,4 +34,4 @@ export async function POST(request: NextRequest) {
   } else clearDiscordActivity();
 
   return Response.json({ ok: true, shared: mayShare });
-}
+});

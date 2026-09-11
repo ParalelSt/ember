@@ -8,10 +8,11 @@ import {
 } from '@/lib/auth';
 import { createAdminClient } from '@/lib/pocketbase/server';
 import { fromError, jsonError } from '@/lib/upsertTrack';
+import { withRequestLog } from '@/lib/logger/withRequestLog';
 
 const MAX_NAME_LEN = 50;
 
-export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
+export const PATCH = withRequestLog('admin/users/[id]', async (req: NextRequest, ctx: { params: Promise<{ id: string }> }) => {
   try {
     const { user: actor } = await requireAdmin();
     const { id } = await ctx.params;
@@ -48,9 +49,9 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
     if (e instanceof ForbiddenError) return forbiddenResponse();
     return fromError(e);
   }
-}
+});
 
-export async function DELETE(_req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
+export const DELETE = withRequestLog('admin/users/[id]', async (_req: NextRequest, ctx: { params: Promise<{ id: string }> }) => {
   try {
     const { user: actor } = await requireAdmin();
     const { id } = await ctx.params;
@@ -65,4 +66,4 @@ export async function DELETE(_req: NextRequest, ctx: { params: Promise<{ id: str
     if (e instanceof ForbiddenError) return forbiddenResponse();
     return fromError(e);
   }
-}
+});

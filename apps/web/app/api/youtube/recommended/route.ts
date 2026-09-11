@@ -2,8 +2,9 @@ import type { NextRequest } from 'next/server';
 import { getRecommended } from '@/lib/sources/youtube';
 import { fromError } from '@/lib/upsertTrack';
 import { listUnavailableIds } from '@/lib/trackAvailability';
+import { withRequestLog } from '@/lib/logger/withRequestLog';
 
-export async function GET(request: NextRequest) {
+export const GET = withRequestLog('youtube/recommended', async (request: NextRequest) => {
   try {
     const seed = request.nextUrl.searchParams.get('seed') ?? undefined;
     const country = request.nextUrl.searchParams.get('country') ?? undefined;
@@ -13,4 +14,4 @@ export async function GET(request: NextRequest) {
   } catch (e) {
     return fromError(e);
   }
-}
+});

@@ -3,6 +3,7 @@ import { requireUser, UnauthorizedError, unauthorizedResponse } from '@/lib/auth
 import { jsonError } from '@/lib/upsertTrack';
 import { keyFromRequest, rateLimitResponse } from '@/lib/rateLimit';
 import { serverLogger } from '@/lib/logger/server';
+import { withRequestLog } from '@/lib/logger/withRequestLog';
 
 /** Guitar tabs for the playing track, via Songsterr's public search endpoint.
  *
@@ -70,7 +71,7 @@ function slug(s: string): string {
     .slice(0, 60) || 'song';
 }
 
-export async function GET(request: NextRequest) {
+export const GET = withRequestLog('tabs', async (request: NextRequest) => {
   try {
     await requireUser();
     const limited = rateLimitResponse(`tabs:${keyFromRequest(request)}`, { windowMs: 60_000, max: 30 });
@@ -135,4 +136,4 @@ export async function GET(request: NextRequest) {
     serverLogger.error('tabs', 'lookup failed', undefined, e);
     return Response.json({ matches: [] });
   }
-}
+});

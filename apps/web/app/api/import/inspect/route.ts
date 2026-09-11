@@ -4,6 +4,7 @@ import { fromError, jsonError } from '@/lib/upsertTrack';
 import { rateLimitResponse } from '@/lib/rateLimit';
 import { getYtPlaylist } from '@/lib/sources/youtube';
 import { getSpotifyPlaylist } from '@/lib/sources/spotify';
+import { withRequestLog } from '@/lib/logger/withRequestLog';
 
 /** Parse a pasted link into an import source + playlist id.
  *  Supported: open.spotify.com/playlist/<id>, spotify:playlist:<id>,
@@ -31,7 +32,7 @@ function parseImportUrl(raw: string): { source: 'spotify' | 'ytmusic'; id: strin
 
 /** Inspect a pasted playlist link. YT Music returns ready-to-add Ember tracks;
  *  Spotify returns raw {title, artist} items for the client-driven match loop. */
-export async function POST(request: NextRequest) {
+export const POST = withRequestLog('import/inspect', async (request: NextRequest) => {
   try {
     const { user } = await requireUser();
     // Throttle STARTING imports (each can spawn many match processes). A
@@ -54,4 +55,4 @@ export async function POST(request: NextRequest) {
     if (e instanceof UnauthorizedError) return unauthorizedResponse();
     return fromError(e);
   }
-}
+});

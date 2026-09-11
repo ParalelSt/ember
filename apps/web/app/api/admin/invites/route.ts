@@ -8,6 +8,7 @@ import {
 } from '@/lib/auth';
 import { createAdminClient } from '@/lib/pocketbase/server';
 import { fromError, jsonError } from '@/lib/upsertTrack';
+import { withRequestLog } from '@/lib/logger/withRequestLog';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -17,7 +18,7 @@ export interface AdminInvite {
   created: string;
 }
 
-export async function GET(_req: NextRequest) {
+export const GET = withRequestLog('admin/invites', async (_req: NextRequest) => {
   try {
     await requireAdmin();
     const pb = await createAdminClient();
@@ -34,9 +35,9 @@ export async function GET(_req: NextRequest) {
     if (e instanceof ForbiddenError) return forbiddenResponse();
     return fromError(e);
   }
-}
+});
 
-export async function POST(req: NextRequest) {
+export const POST = withRequestLog('admin/invites', async (req: NextRequest) => {
   try {
     await requireAdmin();
     const body = (await req.json().catch(() => ({}))) as { email?: string };
@@ -64,4 +65,4 @@ export async function POST(req: NextRequest) {
     if (e instanceof ForbiddenError) return forbiddenResponse();
     return fromError(e);
   }
-}
+});

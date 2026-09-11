@@ -1,6 +1,7 @@
 import type { NextRequest } from 'next/server';
 import { requireUser, UnauthorizedError, unauthorizedResponse } from '@/lib/auth';
 import { fromError } from '@/lib/upsertTrack';
+import { withRequestLog } from '@/lib/logger/withRequestLog';
 
 /** Two independent "don't broadcast what I'm playing" switches:
  *
@@ -15,7 +16,7 @@ export interface PrivacySettings {
   shareListening: boolean;
 }
 
-export async function GET() {
+export const GET = withRequestLog('privacy', async () => {
   try {
     const { pb, user } = await requireUser();
     const record = await pb.collection('users').getOne(user.id);
@@ -27,9 +28,9 @@ export async function GET() {
     if (e instanceof UnauthorizedError) return unauthorizedResponse();
     return fromError(e);
   }
-}
+});
 
-export async function PATCH(request: NextRequest) {
+export const PATCH = withRequestLog('privacy', async (request: NextRequest) => {
   try {
     const { pb, user } = await requireUser();
     const body = (await request.json().catch(() => null)) as Partial<PrivacySettings> | null;
@@ -53,4 +54,4 @@ export async function PATCH(request: NextRequest) {
     if (e instanceof UnauthorizedError) return unauthorizedResponse();
     return fromError(e);
   }
-}
+});

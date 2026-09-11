@@ -1,8 +1,9 @@
 import type { NextRequest } from 'next/server';
 import { ensureDownloaded } from '@/lib/sources/youtube';
 import { fromError } from '@/lib/upsertTrack';
+import { withRequestLog } from '@/lib/logger/withRequestLog';
 
-export async function POST(_req: NextRequest, ctx: RouteContext<'/api/youtube/download/[videoId]'>) {
+export const POST = withRequestLog('youtube/download/[videoId]', async (_req: NextRequest, ctx: RouteContext<'/api/youtube/download/[videoId]'>) => {
   try {
     const { videoId } = await ctx.params;
     const filePath = await ensureDownloaded(videoId);
@@ -10,4 +11,4 @@ export async function POST(_req: NextRequest, ctx: RouteContext<'/api/youtube/do
   } catch (e) {
     return fromError(e);
   }
-}
+});

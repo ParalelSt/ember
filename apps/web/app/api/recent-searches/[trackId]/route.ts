@@ -1,10 +1,11 @@
 import type { NextRequest } from 'next/server';
 import { requireUser, UnauthorizedError, unauthorizedResponse } from '@/lib/auth';
 import { fromError } from '@/lib/upsertTrack';
+import { withRequestLog } from '@/lib/logger/withRequestLog';
 
 /** Remove one entry (the ✕ on a recent row). `trackId` is the app-level id
  *  ("youtube:<videoId>"), matched against the tracks collection's external_id. */
-export async function DELETE(_req: NextRequest, ctx: RouteContext<'/api/recent-searches/[trackId]'>) {
+export const DELETE = withRequestLog('recent-searches/[trackId]', async (_req: NextRequest, ctx: RouteContext<'/api/recent-searches/[trackId]'>) => {
   try {
     const { pb, user } = await requireUser();
     const { trackId } = await ctx.params;
@@ -32,4 +33,4 @@ export async function DELETE(_req: NextRequest, ctx: RouteContext<'/api/recent-s
     if (e instanceof UnauthorizedError) return unauthorizedResponse();
     return fromError(e);
   }
-}
+});

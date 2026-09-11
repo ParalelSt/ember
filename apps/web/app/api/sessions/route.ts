@@ -2,10 +2,11 @@ import type { NextRequest } from 'next/server';
 import { requireUser, UnauthorizedError, unauthorizedResponse } from '@/lib/auth';
 import { fromError, jsonError } from '@/lib/upsertTrack';
 import { newSessionCode, addMember } from '@/lib/sessions';
+import { withRequestLog } from '@/lib/logger/withRequestLog';
 
 /** Start a carlist session. Optionally seeds the queue from one of the
  *  caller's playlists. Returns {session:{id, code, name}}. */
-export async function POST(request: NextRequest) {
+export const POST = withRequestLog('sessions', async (request: NextRequest) => {
   try {
     const { pb, user } = await requireUser();
     const body = (await request.json().catch(() => null)) as
@@ -64,4 +65,4 @@ export async function POST(request: NextRequest) {
     if (e instanceof UnauthorizedError) return unauthorizedResponse();
     return fromError(e);
   }
-}
+});

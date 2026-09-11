@@ -8,8 +8,9 @@ import {
 } from '@/lib/auth';
 import { createAdminClient } from '@/lib/pocketbase/server';
 import { fromError } from '@/lib/upsertTrack';
+import { withRequestLog } from '@/lib/logger/withRequestLog';
 
-export async function GET(_req: NextRequest) {
+export const GET = withRequestLog('admin/users', async (_req: NextRequest) => {
   try {
     await requireAdmin();
     const pb = await createAdminClient();
@@ -29,4 +30,4 @@ export async function GET(_req: NextRequest) {
     if (e instanceof ForbiddenError) return forbiddenResponse();
     return fromError(e);
   }
-}
+});

@@ -3,9 +3,10 @@ import { requireUser, UnauthorizedError, unauthorizedResponse } from '@/lib/auth
 import { fromError, jsonError, upsertTrack } from '@/lib/upsertTrack';
 import { loadSession, assertActive, assertMember } from '@/lib/sessions';
 import type { Track } from '@/types/track';
+import { withRequestLog } from '@/lib/logger/withRequestLog';
 
 /** Append a track to the live queue (any member — everyone's a DJ). */
-export async function POST(request: NextRequest, ctx: RouteContext<'/api/sessions/[id]/tracks'>) {
+export const POST = withRequestLog('sessions/[id]/tracks', async (request: NextRequest, ctx: RouteContext<'/api/sessions/[id]/tracks'>) => {
   try {
     const { pb, user } = await requireUser();
     const { id } = await ctx.params;
@@ -41,4 +42,4 @@ export async function POST(request: NextRequest, ctx: RouteContext<'/api/session
     if (e instanceof UnauthorizedError) return unauthorizedResponse();
     return fromError(e);
   }
-}
+});

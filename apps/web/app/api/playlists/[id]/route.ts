@@ -2,8 +2,9 @@ import type { NextRequest } from 'next/server';
 import { requireUser, UnauthorizedError, unauthorizedResponse } from '@/lib/auth';
 import { mapTrackRow, type TrackRecord } from '@/lib/mapTrack';
 import { fromError } from '@/lib/upsertTrack';
+import { withRequestLog } from '@/lib/logger/withRequestLog';
 
-export async function GET(_req: NextRequest, ctx: RouteContext<'/api/playlists/[id]'>) {
+export const GET = withRequestLog('playlists/[id]', async (_req: NextRequest, ctx: RouteContext<'/api/playlists/[id]'>) => {
   try {
     const { pb } = await requireUser();
     const { id } = await ctx.params;
@@ -34,9 +35,9 @@ export async function GET(_req: NextRequest, ctx: RouteContext<'/api/playlists/[
     if (e instanceof UnauthorizedError) return unauthorizedResponse();
     return fromError(e);
   }
-}
+});
 
-export async function DELETE(_req: NextRequest, ctx: RouteContext<'/api/playlists/[id]'>) {
+export const DELETE = withRequestLog('playlists/[id]', async (_req: NextRequest, ctx: RouteContext<'/api/playlists/[id]'>) => {
   try {
     const { pb } = await requireUser();
     const { id } = await ctx.params;
@@ -46,4 +47,4 @@ export async function DELETE(_req: NextRequest, ctx: RouteContext<'/api/playlist
     if (e instanceof UnauthorizedError) return unauthorizedResponse();
     return fromError(e);
   }
-}
+});

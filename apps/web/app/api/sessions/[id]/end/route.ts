@@ -2,9 +2,10 @@ import type { NextRequest } from 'next/server';
 import { requireUser, UnauthorizedError, unauthorizedResponse } from '@/lib/auth';
 import { fromError } from '@/lib/upsertTrack';
 import { loadSession, assertHost } from '@/lib/sessions';
+import { withRequestLog } from '@/lib/logger/withRequestLog';
 
 /** Host ends the session — guests' polls see active=false. */
-export async function POST(_req: NextRequest, ctx: RouteContext<'/api/sessions/[id]/end'>) {
+export const POST = withRequestLog('sessions/[id]/end', async (_req: NextRequest, ctx: RouteContext<'/api/sessions/[id]/end'>) => {
   try {
     const { pb, user } = await requireUser();
     const { id } = await ctx.params;
@@ -16,4 +17,4 @@ export async function POST(_req: NextRequest, ctx: RouteContext<'/api/sessions/[
     if (e instanceof UnauthorizedError) return unauthorizedResponse();
     return fromError(e);
   }
-}
+});

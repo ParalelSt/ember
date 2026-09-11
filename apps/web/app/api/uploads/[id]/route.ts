@@ -4,10 +4,11 @@ import { createAdminClient } from '@/lib/pocketbase/server';
 import { fromError, jsonError } from '@/lib/upsertTrack';
 import { serverLogger } from '@/lib/logger/server';
 import { resolveUploadPath } from '@/lib/uploads';
+import { withRequestLog } from '@/lib/logger/withRequestLog';
 
 /** Removes an upload — the record and the file on disk. Uploader or admin
  *  only; other people may have it in a playlist, so this is deliberate. */
-export async function DELETE(_request: Request, ctx: RouteContext<'/api/uploads/[id]'>) {
+export const DELETE = withRequestLog('uploads/[id]', async (_request: Request, ctx: RouteContext<'/api/uploads/[id]'>) => {
   try {
     const { user } = await requireUser();
     const { id } = await ctx.params;
@@ -35,4 +36,4 @@ export async function DELETE(_request: Request, ctx: RouteContext<'/api/uploads/
     if (e instanceof UnauthorizedError) return unauthorizedResponse();
     return fromError(e);
   }
-}
+});

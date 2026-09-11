@@ -1,8 +1,9 @@
 import type { NextRequest } from 'next/server';
 import { requireUser, UnauthorizedError, unauthorizedResponse } from '@/lib/auth';
 import { fromError } from '@/lib/upsertTrack';
+import { withRequestLog } from '@/lib/logger/withRequestLog';
 
-export async function GET(_req: NextRequest, ctx: RouteContext<'/api/tracks/[id]/availability'>) {
+export const GET = withRequestLog('tracks/[id]/availability', async (_req: NextRequest, ctx: RouteContext<'/api/tracks/[id]/availability'>) => {
   try {
     const { pb } = await requireUser();
     const { id } = await ctx.params;
@@ -22,7 +23,7 @@ export async function GET(_req: NextRequest, ctx: RouteContext<'/api/tracks/[id]
     if (e instanceof UnauthorizedError) return unauthorizedResponse();
     return fromError(e);
   }
-}
+});
 
 function esc(s: string): string {
   return s.replace(/\\/g, '\\\\').replace(/"/g, '\\"');

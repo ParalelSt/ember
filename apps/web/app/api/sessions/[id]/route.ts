@@ -3,9 +3,10 @@ import { requireUser, UnauthorizedError, unauthorizedResponse } from '@/lib/auth
 import { fromError } from '@/lib/upsertTrack';
 import { mapTrackRow, type TrackRecord } from '@/lib/mapTrack';
 import { loadSession, assertMember } from '@/lib/sessions';
+import { withRequestLog } from '@/lib/logger/withRequestLog';
 
 /** The 2s poll: full session state (session meta + queue with track data). */
-export async function GET(_req: NextRequest, ctx: RouteContext<'/api/sessions/[id]'>) {
+export const GET = withRequestLog('sessions/[id]', async (_req: NextRequest, ctx: RouteContext<'/api/sessions/[id]'>) => {
   try {
     const { pb, user } = await requireUser();
     const { id } = await ctx.params;
@@ -50,4 +51,4 @@ export async function GET(_req: NextRequest, ctx: RouteContext<'/api/sessions/[i
     if (e instanceof UnauthorizedError) return unauthorizedResponse();
     return fromError(e);
   }
-}
+});

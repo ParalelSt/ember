@@ -1,8 +1,9 @@
 import type { NextRequest } from 'next/server';
 import { requireUser, UnauthorizedError, unauthorizedResponse } from '@/lib/auth';
 import { fromError } from '@/lib/upsertTrack';
+import { withRequestLog } from '@/lib/logger/withRequestLog';
 
-export async function DELETE(_req: NextRequest, ctx: RouteContext<'/api/likes/[trackId]'>) {
+export const DELETE = withRequestLog('likes/[trackId]', async (_req: NextRequest, ctx: RouteContext<'/api/likes/[trackId]'>) => {
   try {
     const { pb, user } = await requireUser();
     const { trackId } = await ctx.params;
@@ -24,7 +25,7 @@ export async function DELETE(_req: NextRequest, ctx: RouteContext<'/api/likes/[t
     if ((e as { status?: number }).status === 404) return Response.json({ ok: true });
     return fromError(e);
   }
-}
+});
 
 function esc(s: string): string {
   return s.replace(/\\/g, '\\\\').replace(/"/g, '\\"');

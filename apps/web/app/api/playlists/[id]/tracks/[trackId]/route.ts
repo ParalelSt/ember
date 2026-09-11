@@ -1,11 +1,12 @@
 import type { NextRequest } from 'next/server';
 import { requireUser, UnauthorizedError, unauthorizedResponse } from '@/lib/auth';
 import { fromError } from '@/lib/upsertTrack';
+import { withRequestLog } from '@/lib/logger/withRequestLog';
 
-export async function DELETE(
+export const DELETE = withRequestLog('playlists/[id]/tracks/[trackId]', async (
   _req: NextRequest,
   ctx: RouteContext<'/api/playlists/[id]/tracks/[trackId]'>,
-) {
+) => {
   try {
     const { pb } = await requireUser();
     const { id, trackId } = await ctx.params;
@@ -26,7 +27,7 @@ export async function DELETE(
     if (e instanceof UnauthorizedError) return unauthorizedResponse();
     return fromError(e);
   }
-}
+});
 
 function esc(s: string): string {
   return s.replace(/\\/g, '\\\\').replace(/"/g, '\\"');

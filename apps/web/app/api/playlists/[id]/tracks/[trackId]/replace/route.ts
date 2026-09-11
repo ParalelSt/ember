@@ -3,11 +3,12 @@ import { requireUser, UnauthorizedError, unauthorizedResponse } from '@/lib/auth
 import { fromError, jsonError, upsertTrack } from '@/lib/upsertTrack';
 import { mapTrackRow, type TrackRecord } from '@/lib/mapTrack';
 import type { Track } from '@/types/track';
+import { withRequestLog } from '@/lib/logger/withRequestLog';
 
-export async function POST(
+export const POST = withRequestLog('playlists/[id]/tracks/[trackId]/replace', async (
   request: NextRequest,
   ctx: RouteContext<'/api/playlists/[id]/tracks/[trackId]/replace'>,
-) {
+) => {
   try {
     const { pb } = await requireUser();
     const { id, trackId } = await ctx.params;
@@ -46,7 +47,7 @@ export async function POST(
     if (e instanceof UnauthorizedError) return unauthorizedResponse();
     return fromError(e);
   }
-}
+});
 
 function esc(s: string): string {
   return s.replace(/\\/g, '\\\\').replace(/"/g, '\\"');

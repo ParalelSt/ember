@@ -3,8 +3,9 @@ import { requireUser, UnauthorizedError, unauthorizedResponse } from '@/lib/auth
 import { mapTrackRow, type TrackRecord } from '@/lib/mapTrack';
 import type { Track } from '@/types/track';
 import { fromError, jsonError, upsertTrack } from '@/lib/upsertTrack';
+import { withRequestLog } from '@/lib/logger/withRequestLog';
 
-export async function GET() {
+export const GET = withRequestLog('likes', async () => {
   try {
     const { pb, user } = await requireUser();
     const records = await pb.collection('likes').getFullList({
@@ -20,9 +21,9 @@ export async function GET() {
     if (e instanceof UnauthorizedError) return unauthorizedResponse();
     return fromError(e);
   }
-}
+});
 
-export async function POST(request: NextRequest) {
+export const POST = withRequestLog('likes', async (request: NextRequest) => {
   try {
     const { pb, user } = await requireUser();
     const body = (await request.json().catch(() => null)) as { track?: Track } | null;
@@ -43,4 +44,4 @@ export async function POST(request: NextRequest) {
     if (e instanceof UnauthorizedError) return unauthorizedResponse();
     return fromError(e);
   }
-}
+});

@@ -1,11 +1,12 @@
 import type { NextRequest } from 'next/server';
 import { requireUser, UnauthorizedError, unauthorizedResponse } from '@/lib/auth';
 import { fromError, jsonError } from '@/lib/upsertTrack';
+import { withRequestLog } from '@/lib/logger/withRequestLog';
 
-export async function PATCH(
+export const PATCH = withRequestLog('playlists/[id]/artwork', async (
   request: NextRequest,
   ctx: { params: Promise<{ id: string }> },
-) {
+) => {
   try {
     const { pb } = await requireUser();
     const { id } = await ctx.params;
@@ -34,4 +35,4 @@ export async function PATCH(
     if (e instanceof UnauthorizedError) return unauthorizedResponse();
     return fromError(e);
   }
-}
+});

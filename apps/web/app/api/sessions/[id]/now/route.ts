@@ -2,9 +2,10 @@ import type { NextRequest } from 'next/server';
 import { requireUser, UnauthorizedError, unauthorizedResponse } from '@/lib/auth';
 import { fromError, jsonError } from '@/lib/upsertTrack';
 import { loadSession, assertHost } from '@/lib/sessions';
+import { withRequestLog } from '@/lib/logger/withRequestLog';
 
 /** Host publishes which queue position is playing (drives guests' screens). */
-export async function POST(request: NextRequest, ctx: RouteContext<'/api/sessions/[id]/now'>) {
+export const POST = withRequestLog('sessions/[id]/now', async (request: NextRequest, ctx: RouteContext<'/api/sessions/[id]/now'>) => {
   try {
     const { pb, user } = await requireUser();
     const { id } = await ctx.params;
@@ -19,4 +20,4 @@ export async function POST(request: NextRequest, ctx: RouteContext<'/api/session
     if (e instanceof UnauthorizedError) return unauthorizedResponse();
     return fromError(e);
   }
-}
+});

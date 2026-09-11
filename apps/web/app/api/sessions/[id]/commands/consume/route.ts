@@ -2,9 +2,10 @@ import type { NextRequest } from 'next/server';
 import { requireUser, UnauthorizedError, unauthorizedResponse } from '@/lib/auth';
 import { fromError } from '@/lib/upsertTrack';
 import { loadSession, assertHost } from '@/lib/sessions';
+import { withRequestLog } from '@/lib/logger/withRequestLog';
 
 /** Host poll: return pending guest commands and delete them. */
-export async function POST(_req: NextRequest, ctx: RouteContext<'/api/sessions/[id]/commands/consume'>) {
+export const POST = withRequestLog('sessions/[id]/commands/consume', async (_req: NextRequest, ctx: RouteContext<'/api/sessions/[id]/commands/consume'>) => {
   try {
     const { pb, user } = await requireUser();
     const { id } = await ctx.params;
@@ -22,4 +23,4 @@ export async function POST(_req: NextRequest, ctx: RouteContext<'/api/sessions/[
     if (e instanceof UnauthorizedError) return unauthorizedResponse();
     return fromError(e);
   }
-}
+});

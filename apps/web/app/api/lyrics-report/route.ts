@@ -2,6 +2,7 @@ import type { NextRequest } from 'next/server';
 import { requireUser, UnauthorizedError, unauthorizedResponse } from '@/lib/auth';
 import { rateLimitResponse } from '@/lib/rateLimit';
 import { fromError, jsonError } from '@/lib/upsertTrack';
+import { withRequestLog } from '@/lib/logger/withRequestLog';
 
 // Same channel as bug reports so the project owner gets every report in
 // one place. Same env-var override pattern (see bug-report/route.ts).
@@ -20,7 +21,7 @@ interface RequestBody {
   lyrics?: string;
 }
 
-export async function POST(request: NextRequest) {
+export const POST = withRequestLog('lyrics-report', async (request: NextRequest) => {
   try {
     const { user } = await requireUser();
 
@@ -76,4 +77,4 @@ export async function POST(request: NextRequest) {
     if (e instanceof UnauthorizedError) return unauthorizedResponse();
     return fromError(e);
   }
-}
+});
