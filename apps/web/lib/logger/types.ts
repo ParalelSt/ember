@@ -2,7 +2,10 @@
  *  docs/superpowers/specs/2026-06-04-bug-report-logging-design.md. */
 
 export type LogKind = 'error' | 'breadcrumb';
-export type LogLevel = 'error' | 'info';
+// 'warn' added for withRequestLog (T2): 429s and 502/504 upstream failures
+// are noteworthy but not necessarily our bug, so they get a lower level than
+// 'error' without being silent.
+export type LogLevel = 'error' | 'info' | 'warn';
 
 export interface LogEntry {
   /** Milliseconds since epoch. */

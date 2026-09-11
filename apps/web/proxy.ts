@@ -24,9 +24,15 @@ const PUBLIC_API_PREFIXES = ['/api/youtube/stream/', '/api/search', '/api/tracks
 
 export default async function proxy(req: NextRequest) {
   // Per-request id, attached to outgoing responses + any server log lines.
+  // Set on both the forwarded request (so route handlers in withRequestLog
+  // can read it back via req.headers) and the response (so the client's
+  // api error entries can correlate with the server-side log line — see
+  // lib/api.ts).
   const reqId = Math.random().toString(36).slice(2, 10);
-  const response = NextResponse.next({ request: req });
-  response.headers.set('x-req-id', reqId);
+  const requestHeaders = new Headers(req.headers);
+  requestHeaders.set('x-request-id', reqId);
+  const response = NextResponse.next({ request: { headers: requestHeaders } });
+  response.headers.set('x-request-id', reqId);
 
   // Load the user from the pb_auth cookie. PocketBase's exportToCookie /
   // loadFromCookie round-trip means we don't need to manually parse the JWT.

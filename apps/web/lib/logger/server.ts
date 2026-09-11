@@ -56,28 +56,46 @@ interface ServerLogContext {
   userId?: string;
 }
 
+function writeEntry(
+  level: 'error' | 'warn',
+  category: string,
+  message: string,
+  data?: unknown,
+  err?: unknown,
+  ctx?: ServerLogContext,
+): void {
+  ensureBootSweep();
+  const entry: ServerLogEntry = {
+    ts: Date.now(),
+    kind: 'error',
+    level,
+    category,
+    message,
+    sessionId: 'server',
+    side: 'server',
+    reqId: ctx?.reqId ?? '',
+    route: ctx?.route ?? '',
+    userId: ctx?.userId,
+  };
+  if (data !== undefined) entry.data = safeJson(data);
+  if (err instanceof Error && err.stack) entry.stack = err.stack;
+  else if (err) entry.data = { ...(entry.data as object | undefined), err: safeJson(err) };
+
+  void appendLine(entry).catch((e) => console.warn('[serverLogger] append failed', e));
+}
+
 export const serverLogger = {
   /** Fire-and-forget append. Failures fall back to console.warn — we never
    *  let logging break a request. */
   error(category: string, message: string, data?: unknown, err?: unknown, ctx?: ServerLogContext): void {
-    ensureBootSweep();
-    const entry: ServerLogEntry = {
-      ts: Date.now(),
-      kind: 'error',
-      level: 'error',
-      category,
-      message,
-      sessionId: 'server',
-      side: 'server',
-      reqId: ctx?.reqId ?? '',
-      route: ctx?.route ?? '',
-      userId: ctx?.userId,
-    };
-    if (data !== undefined) entry.data = safeJson(data);
-    if (err instanceof Error && err.stack) entry.stack = err.stack;
-    else if (err) entry.data = { ...(entry.data as object | undefined), err: safeJson(err) };
+    writeEntry('error', category, message, data, err, ctx);
+  },
 
-    void appendLine(entry).catch((e) => console.warn('[serverLogger] append failed', e));
+  /** Same shape as error(), one level down: expected/routine failures worth
+   *  seeing in triage (429s, 502/504 from yt-dlp/python) but not noise on the
+   *  same footing as an actual server bug. */
+  warn(category: string, message: string, data?: unknown, err?: unknown, ctx?: ServerLogContext): void {
+    writeEntry('warn', category, message, data, err, ctx);
   },
 
   /** Returns server entries with ts > timestampMs. Reads today's + yesterday's

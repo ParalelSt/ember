@@ -51,7 +51,11 @@ async function req<T>(path: string, { method = 'GET', body, signal }: ReqOptions
   }
   if (!res.ok) {
     const err = (await res.json().catch(() => ({ error: res.statusText }))) as { error?: string };
-    logger.error('api', `${method} ${path} → ${res.status}`, { method, path, status: res.status, body: err.error });
+    // proxy.ts stamps every response with x-request-id; surfacing it here
+    // lets triage line up this client-side entry with the matching
+    // server-side withRequestLog entry for the same request.
+    const reqId = res.headers.get('x-request-id') || undefined;
+    logger.error('api', `${method} ${path} → ${res.status}`, { method, path, status: res.status, body: err.error, reqId });
     // Attach the HTTP status so callers can branch on it (e.g. 400 = duplicate
     // → friendly "already in playlist" toast instead of the raw server text).
     const error = new Error(err.error || `Request failed: ${res.status}`) as Error & { status?: number };
