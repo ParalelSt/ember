@@ -9,6 +9,70 @@ re-implements that work, it wraps it.
 
 Paths below are relative to `apps/web/` unless they start with `tests/`.
 
+## Status (as of step 9)
+
+All nine steps of section e landed on branch `deslop`, nothing pushed or
+merged. Full factual list of what each step rewrote is in
+`docs/deslop/CHANGES.md`; this block is the short version, plus what was
+deferred and what is left for later.
+
+Steps and commit ranges (oldest to newest commit in each range):
+
+- Step 0, unit test harness: `f6cba2d..55c2c49`.
+- Step 1, shared helpers (`lib/format.ts`, `lib/shuffle.ts`, `lib/artwork.ts`): `dfa77a9..e8102b7`.
+- Step 2, design tokens and layout table: `386237f..66f0a71`.
+- Step 3, primitives (`Artwork`, `PlayButton`, `LikeButton`, page primitives, `OnlineOnly`): `ebf11e0..70edb40`.
+- Step 4, the track layer (`TrackShelf`, `TrackRow`, `TrackList`, `useTrackActions`): `19b2c2a..fd2059c`.
+- Step 5, Library and navigation (`useCollections`, `NavLinks`, `useCreatePlaylistFlow`): `91a5520..c5594b6`.
+- Step 6, player components (`SeekBar`, `TransportControls`, `VolumeControl`, `NowPlayingSummary`, `useLikeToggle`): `ce3c634..73cf0bd`.
+- Step 7a, pure playback rules (`lib/playback/queueNav.ts`, `radio.ts`, `shortcuts.ts`): `a40ebab..4ef30bf`.
+- Step 8, Home and Search on the new layer: `acbbd8d..3d47695`.
+- Step 7b, `PlayerProvider` hooks (`hooks/player/*`): `8d3d884..8796233` (ran after step 8; the step 9 brief's "added after the step 7b review" items follow from this step).
+- Step 9, cleanup and guard rails (this step): see the commits this step lists in its report.
+
+Deferred, not done in this plan:
+
+- The two lint rules the step 2 report counted and left out: `h-44`/`h-48`
+  raw artwork pairs (4 sites, none exactly matches an `art-*` token so
+  migrating would change rendered size) and the odd Tailwind spacing steps
+  `gap-1`, `gap-3`, `gap-5`, `p-3`, `p-5` (still present: 12, 26, 0, 30, 2
+  uses respectively as of step 9; not zero, so per the step 9 brief this
+  rule stays out).
+- `--lyrics-w` (globals.css) is defined but wired nowhere; left for whoever
+  next touches `LyricsPanel.tsx`'s `w-md`.
+- Step 7b's `PlayerProvider` is 431 lines, not the "well under 300" the
+  plan hoped for. Reaching 300 needs a `useAudioBackend` hook owning
+  backend creation, the events map and `fallbackToWebAudio`; the step 7b
+  report flags this as a bigger, riskier follow-up than any single hook
+  extracted so far, because the events map closes over nearly every ref in
+  the provider.
+- `.grid-cards` (globals.css): defined in step 2 to replace `TrackShelf`'s
+  breakpoint table, evaluated in step 8 and rejected (the sidebar appears
+  at the `md` breakpoint and makes the content width non-monotonic, so the
+  auto-fill grid cannot reproduce the exact column counts); step 9 deleted
+  the now-unused utility rather than leave dead CSS behind.
+
+Known follow-ups collected from the step reports:
+
+- The repo root hoists React 18 while `apps/web` is on React 19, with
+  nothing declaring the root version; `next/link` cannot render in a unit
+  test without a per-test mock as a result (see `components/OnlineOnly.test.tsx`
+  and every component test after it). Installing React 19 at the root, or
+  hoisting `apps/web`'s deps differently, would remove the need for that
+  mock everywhere it now appears.
+- `playwright-core` isn't declared as a dependency anywhere the sandbox UI
+  tests can find it; it had to be installed ad hoc (`npm install --no-save
+  playwright-core`) to run them, in step 1 and again in step 9. Worth
+  fixing at the workspace/install level so it stops being a recurring
+  manual step.
+- Step 4: `TrackMenu` (now `components/track/menus/TrackMenu.tsx`) is a
+  page-level concern six call sites each repeat (`trailing={renderTrackMenu}`);
+  nothing catches a seventh call site forgetting it and silently losing
+  add-to-playlist and share. A browser test asserting the menu exists on
+  one collection page would catch that; none does today.
+- Step 4: the uploads-ui sandbox test flakes on the first run right after a
+  fresh `next start` (cold start); re-run before believing a failure there.
+
 ## a. Current state audit
 
 Numbers come from the `deslop` worktree at commit 782a480.
@@ -166,11 +230,16 @@ Data-aware pieces are hooks, not components:
   JSX afterwards.
 - Type: `@utility text-page-title`, `text-hero-title`, `text-section-title`,
   `text-eyebrow`, `text-meta` mapping to today's exact class strings.
-- Layout: `--sidebar-w: 15rem`, `--lyrics-w: 28rem`, `--content-max: 80rem`;
-  `.grid-cards` = `grid-template-columns: repeat(auto-fill, minmax(var(
-  --card-min, 10rem), 1fr))`, replacing the JS breakpoint table. "One row
-  only" shelves get the visible count from a single `SHELF_ROW_COUNT` map in
-  `lib/layout.ts`, tested, instead of two strings kept in sync by hand.
+- Layout: `--sidebar-w: 15rem`, `--lyrics-w: 28rem`, `--content-max: 80rem`.
+  A `.grid-cards` utility (`grid-template-columns: repeat(auto-fill,
+  minmax(var(--card-min, 10rem), 1fr))`) was defined in step 2 to replace
+  the JS breakpoint table, but step 8 found it cannot reproduce
+  `TrackShelf`'s exact column counts at every breakpoint (the sidebar
+  appears at `md` and makes the content width non-monotonic), so
+  `TrackShelf` kept `gridColsClass`/`SHELF_ROW_COUNT` from `lib/layout.ts`
+  instead; step 9 deleted the unused utility (see Status below). "One row
+  only" shelves get the visible count from that same `SHELF_ROW_COUNT` map,
+  tested, instead of two strings kept in sync by hand.
 - Spacing stays on Tailwind's default 4px scale; the 8px rhythm is enforced
   by using only even steps (`gap-2/4/6/8`, `p-4/6/8`) and a lint test.
 
@@ -296,13 +365,17 @@ the step says so.
    `playTrack`/`next`/`prev`/`toggle`. Tests: each hook with `renderHook` and
    a fake backend. Risk: high; separate night, sandbox suite fully green,
    manual desktop and Android check.
-8. Home and Search on the new layer: `TrackShelf` uses `.grid-cards` and
-   `lib/layout.ts`; `FriendsListening` uses `TrackCard`; search recents use
-   `TrackRow`. Tests: shelf visible-count logic, Search page with mocked
-   queries (rate-limit message, recents remove). Risk: low.
+8. Home and Search on the new layer: `TrackShelf` uses `lib/layout.ts`
+   (`.grid-cards` was tried and rejected, see Styles and tokens above);
+   `FriendsListening` uses `TrackCard`; search recents use `TrackRow`.
+   Tests: shelf visible-count logic, Search page with mocked queries
+   (rate-limit message, recents remove). Risk: low.
 9. Cleanup and guard rails: delete leftover helpers and the old
-   `duration.test.mjs`, add the `no-restricted-imports` rule, update
-   `README.md` layout tree and `tests/README.md`. Risk: low.
+   `duration.test.mjs`, add the `no-restricted-imports` rule, move the
+   vitest-importing fake backend out of the production tree, add a
+   `PlayerProvider` wiring test, delete the unused `.grid-cards` utility,
+   update `README.md`'s layout tree and `tests/README.md`, and write
+   `docs/deslop/CHANGES.md`. Risk: low.
 
 Steps 1, 2 and 3 can run in parallel worktrees; 4 needs 3; 5 needs 4 and
 `library-playlists`; 6 needs 3; 7a and 7b need 1; 8 needs 4.

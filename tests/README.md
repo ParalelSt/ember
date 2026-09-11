@@ -3,12 +3,58 @@
 ## Unit tests
 
 `npm run test:unit` from the repo root. Vitest, no sandbox, no PocketBase,
-no server: pure `lib/` functions, store actions, and (eventually) presentational
+no server: pure `lib/` functions, store actions, hooks and presentational
 components render in `happy-dom`. Files live next to the code they test, as
 `*.test.ts` or `*.test.tsx` (for example `lib/songKey.ts` next to
 `lib/songKey.test.ts`). Run just the web app's tests with
 `npm run test:unit -w apps/web`, or watch mode with
 `npm run test:unit:watch -w apps/web`.
+
+Test folders, `apps/web/`:
+
+- `lib/`, `lib/playback/`: pure functions, format/shuffle/artwork/layout/
+  collections helpers, `chooseDuration`, `resumePosition`, `songKey`,
+  `queueNav`, `radio`, `shortcuts`. Also `lib/lintRules.test.ts`, a unit
+  test (not an eslint rule) that scans `app/` and `components/` for banned
+  class-string patterns (raw `oklch(`, `to-[`, the old artwork size pairs,
+  the type utility strings before they existed).
+- `stores/`: `usePlayerStore` actions (toggleShuffle, cycleLoopMode,
+  toggleMuted).
+- `components/primitives/`, `components/page/`: `Artwork`, `PlayButton`,
+  `LikeButton`, `PageTitle`/`SectionHeader`/`Eyebrow`/`EmptyState`,
+  `CollectionHeader`: pure, props-in components.
+- `components/track/`: `TrackRow`, `TrackList`, `TrackCard`, `TrackShelf`.
+- `components/nav/`: `NavLinks`.
+- `components/player/`: `SeekBar`, `TransportControls`, `VolumeControl`,
+  `NowPlayingSummary`, and `PlayerProvider.test.tsx` (a mocked-backend
+  wiring test: playTrack loads and plays once, a fresh track's position
+  resets rather than inheriting another track's playhead, a backend pause
+  event persists the position).
+- `hooks/`, `hooks/player/`: `useTrackActions`, `useCollections`,
+  `useLikeToggle`, and the five `PlayerProvider` hooks
+  (`usePositionPersistence`, `useRadioExtend`, `useKeyboardShortcuts`,
+  `useRemoteCommands`, `useDiscordPresence`), each with a shared fake
+  `AudioBackend` from `apps/web/test-utils/fakeBackend.ts` (not shipped:
+  it imports `vitest` and lives outside `lib`/`components`/`hooks` proper,
+  so `tsc`/`next build` never see it as app code).
+- `components/`, `app/(app)/search/`: `FriendsListening`, `OnlineOnly`,
+  the Search page with mocked queries (rate-limit message, recents
+  remove).
+
+Guard rails enforced outside the test files themselves:
+
+- `apps/web/eslint.config.mjs` has a `no-restricted-imports` rule: files
+  directly under `components/{primitives,page,track,library,nav}/` cannot
+  import `@/hooks/*`, `@/stores/*`, `@tanstack/react-query` or
+  `@/components/player/PlayerProvider`: they take data as props. A file
+  that is genuinely data-aware today either moved one directory level
+  deeper (for example `components/track/menus/`, which is exempt since
+  the rule only matches direct children) or is listed as an explicit
+  override in the config with a comment (`components/nav/Sidebar.tsx`,
+  `components/nav/Drawer.tsx`, `components/track/TrackPageClient.tsx`).
+  `lib/**` has the mirror rule: no `react`, `next/*` or `@/components/*`
+  imports, with the same override pattern for the few pre-existing files
+  that need one.
 
 ## Sandbox tests
 
@@ -70,7 +116,6 @@ node tests/offline-android-ui.test.mjs               # or: npm run test:offline-
 node tests/offline-page.test.mjs                    # or: npm run test:offline-page (no server needed)
 node tests/resume-position.test.mjs                 # or: npm run test:resume
 node tests/playback-position.test.mjs               # or: npm run test:position
-node tests/duration.test.mjs                        # or: npm run test:duration
 node tests/public-origin.test.mjs                   # or: npm run test:origin
 node tests/toggles-ui.test.mjs                      # or: npm run test:toggles
 node tests/collections.test.mjs                     # or: npm run test:collections (no server needed)

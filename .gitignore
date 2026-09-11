@@ -52,6 +52,8 @@ logs/
 # Internal design docs / brainstorming notes — local only
 docs/superpowers/
 CHANGES.md
+# ...except the deslop plan's changes list, a tracked deliverable.
+!docs/deslop/CHANGES.md
 
 # Editors / OS
 .vscode/
