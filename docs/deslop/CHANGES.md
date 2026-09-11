@@ -226,5 +226,4 @@ through the plan.
 - Added a "Status" block at the top of `docs/DESLOP.md`: commit ranges per
   step, what was deferred, and the follow-ups collected from the step
   reports.
-- Unit tests after step 9: 337 (334 plus the three new `PlayerProvider`
-  cases).
+- Unit tests after step 9: 351 (the final-review fix wave added tests for lib/nav and the collection descriptors).
