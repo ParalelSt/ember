@@ -5,11 +5,11 @@
 // shows what they are playing, because this runs on their machine.
 //
 // App id resolution: DISCORD_APP_ID at runtime, else the value baked in at
-// build time, else disabled (silent no-op — exactly like the server side).
+// build time, else disabled (silent no-op: exactly like the server side).
 //
 // The card carries a time bar (Listening + start/end timestamps), so every
 // update needs the real playhead: `start = now - position`. That is also why
-// updates cannot simply be dropped when they come too fast for Discord — a
+// updates cannot simply be dropped when they come too fast for Discord: a
 // seek that gets dropped leaves the bar lying. Same-track updates inside the
 // rate-limit window are kept as `pending` and flushed once the window ends, so
 // the newest state always lands.
@@ -115,7 +115,7 @@ pub fn discord_update(
     duration_sec: Option<f64>,
 ) {
     let Some(app_id) = app_id() else {
-        log_discord(&app, "no app id — presence disabled");
+        log_discord(&app, "no app id: presence disabled");
         return;
     };
     let Ok(mut st) = state.0.lock() else { return };
@@ -194,7 +194,7 @@ fn send(st: &mut DiscordState, app: &tauri::AppHandle, app_id: &str, presence: P
     }
     if !st.connected {
         if let Some(c) = st.client.as_mut() {
-            // Discord closed / not installed — try again on the next update.
+            // Discord closed / not installed: try again on the next update.
             if c.connect().is_err() {
                 log_discord(app, &format!("update {key:?} -> connect FAILED"));
                 return;
@@ -215,7 +215,7 @@ fn send(st: &mut DiscordState, app: &tauri::AppHandle, app_id: &str, presence: P
     let large_text = trim(presence.album.as_deref().unwrap_or(&presence.title), 128);
 
     // The bar is drawn from wall-clock timestamps, so anchor "start" to where
-    // the playhead is NOW rather than to when the track was first loaded —
+    // the playhead is NOW rather than to when the track was first loaded ,
     // that is what makes a seek show up.
     let now_sec = (now / 1000) as i64;
     let started = now_sec - presence.position_sec.round() as i64;
@@ -252,7 +252,7 @@ fn send(st: &mut DiscordState, app: &tauri::AppHandle, app_id: &str, presence: P
         if failed { "send FAILED" } else { "sent" }
     ));
 
-    // A dropped socket (Discord quit) surfaces here — drop the client so the
+    // A dropped socket (Discord quit) surfaces here: drop the client so the
     // next update reconnects instead of failing forever.
     if failed {
         st.connected = false;

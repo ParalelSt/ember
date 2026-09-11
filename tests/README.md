@@ -60,7 +60,7 @@ Guard rails enforced outside the test files themselves:
 ## Sandbox tests
 
 Runnable checks against a **sandbox** copy of the app. Nothing here touches
-your live PocketBase data, your real Discord channel, or any paid API — the
+your live PocketBase data, your real Discord channel, or any paid API: the
 external services are faked in-process.
 
 > Never point these at the running production stack (`:3000` / `:8090`). The
@@ -78,7 +78,7 @@ SB=/tmp/ember-sandbox && mkdir -p "$SB" && cp -R pocketbase/pb_data "$SB/pb_data
 ./pocketbase/pocketbase serve --http=127.0.0.1:8091 --dir="$SB/pb_data" \
   --hooksDir=pocketbase/pb_hooks &
 
-# 3. Build once (turbopack dev is unreliable here — always test a real build)
+# 3. Build once (turbopack dev is unreliable here: always test a real build)
 cd apps/web && npx next build --webpack
 
 # 4. Two app servers: one WITH an AI key, one WITHOUT.
@@ -103,7 +103,7 @@ npx next start -p 3006 &
 ```bash
 node tests/ai-triage.test.mjs     # or: npm run test:triage
 
-# UI check — needs a browser driver and the standalone fakes
+# UI check: needs a browser driver and the standalone fakes
 npm i -D playwright-core
 node tests/fake-anthropic.mjs &
 node tests/ai-triage-ui.test.mjs  # or: npm run test:triage-ui
@@ -125,10 +125,10 @@ node tests/library-collections-ui.test.mjs          # or: npm run test:library-u
 # Privacy switches
 node tests/privacy.test.mjs                         # or: npm run test:privacy
 
-# Desktop update feed (needs its own server — see the section below)
+# Desktop update feed (needs its own server: see the section below)
 node tests/desktop-update.test.mjs                  # or: npm run test:update
 
-# Where audio comes from (needs its own server — see the section below)
+# Where audio comes from (needs its own server: see the section below)
 node tests/desktop-logger.test.mjs                  # or: npm run test:desktop-logger
 node tests/stream-source.test.mjs                   # or: npm run test:stream
 node tests/stream-fallback.test.mjs                 # or: npm run test:stream-fallback
@@ -154,38 +154,38 @@ Bug reports get read by Claude before landing in Discord (SETUP.md → "Bug
 reports → your Discord channel"). The test stands up a fake Anthropic API and
 a fake Discord webhook, then drives the real route:
 
-- **Happy path** — triage reaches both the reporter and the Discord embed;
+- **Happy path**: triage reaches both the reporter and the Discord embed;
   the right model, key header and API version go out.
-- **Digest quality** — 341 events condense to a bounded prompt, a repeated
+- **Digest quality**: 341 events condense to a bounded prompt, a repeated
   error collapses to `(xN)`, a rare error buried in noise still survives, and
   30 genuinely distinct errors are all preserved.
-- **Failure modes** — Anthropic returning 500, prose instead of JSON, or JSON
+- **Failure modes**: Anthropic returning 500, prose instead of JSON, or JSON
   missing required fields. In every case the report must still reach Discord
   with `triage: null`. **Triage must never be able to eat a bug report.**
-- **No API key** — the default for anyone self-hosting: Anthropic is never
+- **No API key**: the default for anyone self-hosting: Anthropic is never
   called and the report sends exactly as before.
-- **Rate limit** — one report per user per 30s, unchanged.
+- **Rate limit**: one report per user per 30s, unchanged.
 
 ## What `uploads.test.mjs` covers
 
 Members can upload their own songs (SETUP.md → "Custom song uploads"). The
 test uploads a real generated WAV and checks the whole loop:
 
-- **Shared library** — a *different* member sees the upload in the list, finds
+- **Shared library**: a *different* member sees the upload in the list, finds
   it in search (ranked above YouTube), and can stream it. Signed-out callers
   get nothing from either.
-- **Streaming** — bytes come back byte-identical, with working Range requests
+- **Streaming**: bytes come back byte-identical, with working Range requests
   (206, correct `Content-Range`) and 416 for an impossible range.
-- **Validation** — a text file renamed `.mp3` with an audio MIME type is
+- **Validation**: a text file renamed `.mp3` with an audio MIME type is
   rejected on its bytes; oversize and empty files are rejected; a missing
   title falls back to the filename.
-- **Path traversal** — a forged record whose filename escapes the uploads
+- **Path traversal**: a forged record whose filename escapes the uploads
   directory must 404, not serve `/etc/passwd`.
-- **Ownership** — only the uploader can delete; the file leaves disk with the
+- **Ownership**: only the uploader can delete; the file leaves disk with the
   record; the stream then 404s.
-- **Cleanup** — the 14-day sweep must count uploads as protected. Regression
+- **Cleanup**: the 14-day sweep must count uploads as protected. Regression
   guard: an unplayed upload row survives a real (non-dry-run) cleanup.
-- **Rate limit** — upload spam is blocked.
+- **Rate limit**: upload spam is blocked.
 
 `uploads-ui.test.mjs` drives the browser: filename pre-fills title/artist,
 duration is read client-side, the song appears in the Uploads tab, and
@@ -197,17 +197,17 @@ error).
 Two independent switches (Settings → Profile → Privacy): Discord rich
 presence, and appearing in "Friends are listening to".
 
-- **Defaults to sharing** — the flags are stored inverted (`hide_*`) so
+- **Defaults to sharing**: the flags are stored inverted (`hide_*`) so
   existing users don't silently vanish the day this ships.
-- **Server-side enforcement** — a hidden user is absent from the
+- **Server-side enforcement**: a hidden user is absent from the
   `/api/listening` *response*, not merely unrendered. A UI-only hide would
   still leak them to anyone reading the network tab.
-- **Independence** — turning one off leaves the other alone. A single shared
+- **Independence**: turning one off leaves the other alone. A single shared
   flag would be a quiet privacy bug.
-- **No resurrection** — a fresh play doesn't bring a hidden user back.
-- **Discord** — the server refuses to broadcast for an opted-out user, resumes
+- **No resurrection**: a fresh play doesn't bring a hidden user back.
+- **Discord**: the server refuses to broadcast for an opted-out user, resumes
   when re-enabled, and treats a session-less caller as opted out.
-- **Per-user** — one person hiding doesn't affect anyone else.
+- **Per-user**: one person hiding doesn't affect anyone else.
 
 The UI itself (both switches render, flipping one persists across a reload and
 leaves the other alone) was verified in a headless browser against the same
@@ -224,28 +224,28 @@ GITHUB_RELEASES_TOKEN=test-token GITHUB_API_BASE=http://127.0.0.1:4321 \
 UPDATE_CACHE_MS=0 npx next start -p 3007 &
 ```
 
-(`UPDATE_CACHE_MS=0` disables the 5-minute cache that production uses —
+(`UPDATE_CACHE_MS=0` disables the 5-minute cache that production uses ,
 otherwise a warm result hides the failure paths.)
 
-- **The right asset per platform** — macOS updates from the `.app.tar.gz`, NOT
+- **The right asset per platform**: macOS updates from the `.app.tar.gz`, NOT
   the `.dmg` a human downloads; Windows the NSIS installer; Linux the AppImage.
-- **Signature included** — Tauri verifies it against the pubkey compiled into
+- **Signature included**: Tauri verifies it against the pubkey compiled into
   the app, so a release with no `.sig` must yield NO update rather than an
   unverifiable one.
-- **Downloads route through this server**, never GitHub directly — that's what
+- **Downloads route through this server**, never GitHub directly: that's what
   keeps the token on the host and the repo private.
 - **204 means up to date**, and every failure degrades to it: GitHub down,
   draft-only releases, same or newer client version, unknown platform. A broken
   update check must never interrupt playback.
 - **The asset proxy** streams bytes with the token attached server-side, and
   rejects a non-numeric or unknown asset id.
-- **No session needed** — the updater runs in Rust and has no cookies.
+- **No session needed**: the updater runs in Rust and has no cookies.
 
 ## What `stream-source.test.mjs` covers
 
 The rule it locks in: **the downloaded file is the source of truth.** A song is
 fetched once with yt-dlp and served off disk forever after, so playback never
-depends on a signed googlevideo URL staying valid — which is what produced the
+depends on a signed googlevideo URL staying valid: which is what produced the
 403s, worst of all in the native apps.
 
 It uses `tests/fake-player.sh` in place of player.py, so there's no yt-dlp and
@@ -262,10 +262,10 @@ STREAM_CACHE_WARM=0 npx next start -p 3008 &
 `STREAM_MODE=` (empty) matters: it clears any value in your own `.env.local`
 so the test measures the DEFAULT, not your local preference.
 
-- **A fresh song downloads, then plays from the file** — and the server never
+- **A fresh song downloads, then plays from the file**: and the server never
   resolves a live stream URL at all, so there's no 403 surface.
 - **Replaying it touches yt-dlp zero times.**
-- **Four simultaneous requests for one uncached song spawn ONE download** —
+- **Four simultaneous requests for one uncached song spawn ONE download** ,
   the native players open several byte-range connections per song, which
   without deduping means several yt-dlp runs racing to write the same file.
 - **Range requests still work** (206 alongside the 200s).
@@ -283,7 +283,7 @@ local stand-in for googlevideo:
 - **A failed download falls through to live streaming** rather than failing the
   play, and the bytes really come from the live URL.
 - The order is right: download attempted FIRST, live resolution only after.
-- **An explicit `?download=1` still fails loudly** — that request asked for a
+- **An explicit `?download=1` still fails loudly**: that request asked for a
   file on disk, and quietly proxying instead would be a lie.
 
 The fix for the underlying cause is keeping yt-dlp current, which `update.sh`
@@ -291,17 +291,17 @@ now does on every host update.
 
 ## What `desktop-logger.test.mjs` covers
 
-Needs **no sandbox and no Tauri** — it extracts the injected logger script
+Needs **no sandbox and no Tauri**: it extracts the injected logger script
 straight out of `lib.rs` and runs it against a fake webview, in milliseconds.
 
 The incident: `invoke()` returns a promise, and a rejected one ("Command
 log_event not allowed by ACL") fired `unhandledrejection`, which the logger
 logged, which invoked again. The loop filled the 200-entry buffer with one
 repeated error, so a real bug report arrived containing 400 copies of it and
-nothing else — the actual problem was invisible.
+nothing else: the actual problem was invisible.
 
 - A refused invoke raises **no unhandled rejection**.
-- Fifty identical errors send at most once — no flooding the buffer.
+- Fifty identical errors send at most once: no flooding the buffer.
 - An error raised *by the logging path itself* doesn't re-enter it.
 - Genuinely different messages still all get through.
 
@@ -312,9 +312,9 @@ library. Two fresh users per run, exercising what one could reach of the
 other's:
 
 - Someone else's playlist can't be read, added to, deleted, or have tracks
-  removed — and the refusal must be a sentence, not the store's raw
+  removed: and the refusal must be a sentence, not the store's raw
   "Failed to create record." (that 400 also masked *whether* the check ran).
-- After a refused write, the owner's playlist is verified UNCHANGED — status
+- After a refused write, the owner's playlist is verified UNCHANGED: status
   codes alone don't prove nothing happened.
 - Likes and history stay per-user.
 - Every admin route (users, tracks, logs, invites, cleanup) refuses a normal
@@ -394,7 +394,7 @@ rather than a raw PocketBase patch, before seeding its own state.
 
 The pure skip-over-unavailable rules (`isUnavailable`, `nextPlayable`) are
 unit-tested in `apps/web/lib/playback/queueNav.test.ts`, run by
-`npm run test:unit` — they used to have their own `tests/skip-unavailable.test.mjs`
+`npm run test:unit`: they used to have their own `tests/skip-unavailable.test.mjs`
 runner, which the deslop merge folded into that suite.
 
 `unavailable-ui.test.mjs` (22 checks) drives a real browser against the same
