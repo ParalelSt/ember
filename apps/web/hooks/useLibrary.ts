@@ -6,7 +6,7 @@ import { useAuth } from '@/components/providers/AuthProvider';
 import { usePlayerStore } from '@/stores/usePlayerStore';
 import { useOfflineStore } from '@/stores/useOfflineStore';
 import { logger } from '@/lib/logger/client';
-import { LIKED_PIN, pinLiked } from '@/lib/offline';
+import { LIKED_PIN, pinLiked, playableFor } from '@/lib/offline';
 import { nativeOfflinePresent } from '@/lib/offlineNative';
 import type { Playlist, Track } from '@/types/track';
 
@@ -147,7 +147,9 @@ export function useExecuteToggleLike() {
       // downloads" notification even when there is nothing to do. onSettled
       // fires after the invalidated refetch too, so skip the call whenever the
       // pinned set already matches.
-      if (sameTrackIds(pin.trackIds, likes.map((t) => t.id))) return;
+      // Compare against the playable set: pinList drops unavailable tracks,
+      // so the raw likes would never match once one liked song is dead.
+      if (sameTrackIds(pin.trackIds, playableFor(likes).map((t) => t.id))) return;
       void pinLiked(likes);
     },
   });

@@ -215,7 +215,7 @@ fn send(st: &mut DiscordState, app: &tauri::AppHandle, app_id: &str, presence: P
     let large_text = trim(presence.album.as_deref().unwrap_or(&presence.title), 128);
 
     // The bar is drawn from wall-clock timestamps, so anchor "start" to where
-    // the playhead is NOW rather than to when the track was first loaded ,
+    // the playhead is NOW rather than to when the track was first loaded,
     // that is what makes a seek show up.
     let now_sec = (now / 1000) as i64;
     let started = now_sec - presence.position_sec.round() as i64;

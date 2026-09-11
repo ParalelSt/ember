@@ -23,7 +23,7 @@ Both parts matter this time:
 - **PocketBase must restart**: a new hook (`pb_hooks/ensure_sessions.pb.js`)
   creates the three *carlist session* collections on boot. Live sessions
   don't work until PB has rebooted once.
-- The web app rebuild picks up everything else (player.py also changed ,
+- The web app rebuild picks up everything else (player.py also changed,
   the launcher restarts it all).
 
 No `npm install` needed: no dependency changes.
