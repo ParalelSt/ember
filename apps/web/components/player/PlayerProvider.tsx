@@ -169,15 +169,21 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       // remote command, auto-advance, recovery: so this is the one place
       // 'play'/'pause' breadcrumbs are recorded (a per-caller breadcrumb in
       // toggle() would double them up).
+      // Both are idempotent: the web backend reports play twice (the 'play'
+      // event and the play() promise), so only a real flip leaves a breadcrumb.
       onPlay: () => {
-        setIsPlaying(true);
         const cur = usePlayerStore.getState();
+        if (cur.isPlaying) return;
+        setIsPlaying(true);
         logger.breadcrumb('playback', 'play', { trackId: cur.queue[cur.index]?.id ?? null });
       },
       onPause: () => {
-        setIsPlaying(false);
+        // Always persist (a pause is a leave moment even when the store
+        // already says paused); only the flip and its breadcrumb are guarded.
         positions.persistRef.current();
         const cur = usePlayerStore.getState();
+        if (!cur.isPlaying) return;
+        setIsPlaying(false);
         logger.breadcrumb('playback', 'pause', { trackId: cur.queue[cur.index]?.id ?? null });
       },
       onError: () => {
