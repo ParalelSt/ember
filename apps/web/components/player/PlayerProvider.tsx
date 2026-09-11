@@ -11,21 +11,20 @@ import {
   type ReactNode,
 } from 'react';
 import { usePlayerStore } from '@/stores/usePlayerStore';
-import { useSessionStore } from '@/stores/useSessionStore';
 import { useSettingsStore } from '@/stores/useSettingsStore';
 import { useOfflineStore } from '@/stores/useOfflineStore';
 import { localSrcFor } from '@/lib/offlineNative';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { useExecuteRecordPlay, useQueryHistory, useQueryLikes } from '@/hooks/useLibrary';
 import { useQueryLyrics } from '@/hooks/useLyrics';
-import { api, apiUrl } from '@/lib/api';
+import { apiUrl } from '@/lib/api';
 import { logger } from '@/lib/logger/client';
 import { detectShell } from '@/lib/playback/detectShell';
 import { resumeStartAt } from '@/lib/playback/resumePosition';
 import { chooseDuration } from '@/lib/playback/chooseDuration';
 import { nextIndex, prevIndex } from '@/lib/playback/queueNav';
-import { rankRadioPool } from '@/lib/playback/radio';
 import { useDiscordPresence } from '@/hooks/player/useDiscordPresence';
+import { useRadioExtend } from '@/hooks/player/useRadioExtend';
 import { useKeyboardShortcuts } from '@/hooks/player/useKeyboardShortcuts';
 import { useRemoteCommands } from '@/hooks/player/useRemoteCommands';
 import { createWebBackend } from '@/lib/playback/webBackend';
@@ -67,7 +66,6 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const isPlaying = usePlayerStore((s) => s.isPlaying);
   const volume = usePlayerStore((s) => s.volume);
   const context = usePlayerStore((s) => s.context);
-  const setQueue = usePlayerStore((s) => s.setQueue);
   const setIndex = usePlayerStore((s) => s.setIndex);
   const setPosition = usePlayerStore((s) => s.setPosition);
   const setDuration = usePlayerStore((s) => s.setDuration);
@@ -110,7 +108,6 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const positionOwner = useRef<string | undefined>(undefined);
   const lastValidPosition = useRef(position);
   const lastPosWrite = useRef(0);
-  const fetchingRadioFor = useRef<string | null>(null);
 
   // Latest-callback refs so remote commands / onEnded call current logic
   // without re-registering handlers or rebuilding the backend.
@@ -426,58 +423,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     };
   }, [backendReady, persistPosition]);
 
-  // Radio mode: at end of queue, fetch recommended (same-style) and extend.
-  // Artist context drifts to other artists once the catalog runs out; survivors
-  // re-ranked by the user's personal play count.
-  useEffect(() => {
-    if (!current?.sourceId) return;
-    // Loop-all wraps the queue instead of extending it — don't pull in radio.
-    // Reactive (not getState): when the user turns loop OFF the effect must
-    // re-run, otherwise a 1-track queue that skipped extension while looping
-    // stays 1 track forever — un-skippable, looping "even with the toggle off".
-    if (loopMode === 'all') return;
-    // Hosting a live carlist session: the queue is exactly what the group
-    // added — no radio extension.
-    if (useSessionStore.getState().hostingSessionId) return;
-    if (index !== queue.length - 1) return;
-    if (fetchingRadioFor.current === current.id) return;
-    fetchingRadioFor.current = current.id;
-    const currentId = current.id;
-    const currentSourceId = current.sourceId;
-    const activeContext = context;
-
-    api.getRecommended(currentSourceId).then(({ tracks }) => {
-      // The ranking itself (variant blocking, artist drift, front load, weave)
-      // is pure: see lib/playback/radio.
-      const merged = rankRadioPool({
-        pool: tracks,
-        queue,
-        current,
-        history,
-        liked,
-        context: activeContext,
-      });
-      logger.breadcrumb('radio', 'extend', {
-        context: activeContext?.type ?? 'single',
-        seed: currentSourceId,
-        recs: tracks.length,
-        added: merged.length,
-      });
-      if (merged.length > 0) {
-        // Keep the shuffle snapshot in step with the real queue. Without this,
-        // radio tracks appended while shuffle is on are missing from
-        // orderBackup, so turning shuffle off would silently DROP them.
-        usePlayerStore.setState((st) => ({
-          queue: [...st.queue, ...merged],
-          orderBackup: st.orderBackup ? [...st.orderBackup, ...merged] : null,
-        }));
-      }
-    }).catch((e) => {
-      logger.error('radio', 'recommended fetch failed', { context: activeContext?.type ?? 'single', seed: currentSourceId }, e as Error);
-    }).finally(() => {
-      if (fetchingRadioFor.current === currentId) fetchingRadioFor.current = null;
-    });
-  }, [current?.id, current?.sourceId, index, queue, history, liked, context, loopMode, setQueue]);
+  useRadioExtend({ current, queue, index, history, liked, context, loopMode });
 
   useDiscordPresence({ current, isPlaying });
 
