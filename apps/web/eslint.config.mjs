@@ -9,10 +9,11 @@ import nextTs from "eslint-config-next/typescript";
 // restriction, since PlayerBar/NowPlaying and friends are where player
 // state gets composed for everything downstream.
 //
-// The file globs use a single `*` (direct children only), not `**`, so a
-// file that is genuinely data-aware can opt out by moving one directory
-// level deeper (for example components/track/menus/TrackMenu.tsx) instead
-// of needing an override here.
+// The file globs use `**` (every nested file, not just direct children),
+// so a genuinely data-aware file below one of these folders needs an
+// explicit override with a comment (for example components/track/menus/**
+// below) rather than silently escaping the rule by living one directory
+// deeper.
 const presentationalRestrictions = [
   {
     group: ["@/hooks/*", "@/hooks"],
@@ -58,11 +59,11 @@ const eslintConfig = defineConfig([
   ...nextTs,
   {
     files: [
-      "components/primitives/*.{ts,tsx}",
-      "components/page/*.{ts,tsx}",
-      "components/track/*.{ts,tsx}",
-      "components/library/*.{ts,tsx}",
-      "components/nav/*.{ts,tsx}",
+      "components/primitives/**/*.{ts,tsx}",
+      "components/page/**/*.{ts,tsx}",
+      "components/track/**/*.{ts,tsx}",
+      "components/library/**/*.{ts,tsx}",
+      "components/nav/**/*.{ts,tsx}",
     ],
     rules: {
       "no-restricted-imports": ["error", { patterns: presentationalRestrictions }],
@@ -75,11 +76,15 @@ const eslintConfig = defineConfig([
     // and TrackPageClient is the track detail page's client half (it fetches
     // its own track and drives playback), not a reusable row/card
     // primitive. Moving any of the three out of nav/ or track/ would just
-    // relocate the composition root, not remove it.
+    // relocate the composition root, not remove it. components/track/menus/**
+    // is the one folder-wide override: AddToPlaylistMenu and
+    // CreatePlaylistDialog fetch and mutate playlists on their own, so the
+    // whole folder needs hooks/react-query rather than taking data as props.
     files: [
       "components/nav/Sidebar.tsx",
       "components/nav/Drawer.tsx",
       "components/track/TrackPageClient.tsx",
+      "components/track/menus/**/*.{ts,tsx}",
     ],
     rules: {
       "no-restricted-imports": "off",
