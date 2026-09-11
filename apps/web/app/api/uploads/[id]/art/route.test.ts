@@ -76,6 +76,12 @@ describe('GET /api/uploads/[id]/art', () => {
     expect((await GET(new Request('http://t'), ctx('rec4'))).status).toBe(404);
   });
 
+  it('404s when the cover file on disk is empty', async () => {
+    fs.writeFileSync(path.join(UPLOAD_DIR, 'rec5.png'), Buffer.alloc(0));
+    getOne.mockResolvedValue({ id: 'rec5', artwork_ext: 'png' });
+    expect((await GET(new Request('http://t'), ctx('rec5'))).status).toBe(404);
+  });
+
   it('404s for an unknown upload', async () => {
     getOne.mockRejectedValue(new Error('404'));
     expect((await GET(new Request('http://t'), ctx('nope'))).status).toBe(404);

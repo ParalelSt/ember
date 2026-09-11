@@ -28,6 +28,8 @@ export async function GET(_request: Request, ctx: RouteContext<'/api/uploads/[id
     if (!full || !fs.existsSync(full)) return new Response('not found', { status: 404 });
 
     const body = await fs.promises.readFile(full);
+    // A write interrupted after create leaves an empty file; that is not art.
+    if (body.length === 0) return new Response('not found', { status: 404 });
     return new Response(new Uint8Array(body), {
       status: 200,
       headers: {
