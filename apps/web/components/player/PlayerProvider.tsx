@@ -25,7 +25,7 @@ import { resumeStartAt } from '@/lib/playback/resumePosition';
 import { chooseDuration } from '@/lib/playback/chooseDuration';
 import { nextIndex, prevIndex } from '@/lib/playback/queueNav';
 import { rankRadioPool } from '@/lib/playback/radio';
-import { publishDiscordPresence } from '@/lib/discordPresence';
+import { useDiscordPresence } from '@/hooks/player/useDiscordPresence';
 import { useKeyboardShortcuts } from '@/hooks/player/useKeyboardShortcuts';
 import { createWebBackend } from '@/lib/playback/webBackend';
 import { createCapacitorBackend } from '@/lib/playback/capacitorBackend';
@@ -478,12 +478,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     });
   }, [current?.id, current?.sourceId, index, queue, history, liked, context, loopMode, setQueue]);
 
-  // Discord rich presence — desktop app talks to the user's OWN Discord;
-  // web/phone falls back to the server route (host's Discord only).
-  useEffect(() => {
-    publishDiscordPresence(current, isPlaying);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [current?.id, isPlaying]);
+  useDiscordPresence({ current, isPlaying });
 
   // Media metadata backstop for track changes that don't flow through
   // loadAndPlay (hydration on cold load). loadAndPlay sets it synchronously.
