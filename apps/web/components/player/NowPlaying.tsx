@@ -89,7 +89,7 @@ export function NowPlaying() {
 
   const art = current?.artworkUrl ?? null;
 
-  // Pinned left, mirroring the loop button on the right — keeping both OUT of
+  // Pinned left, mirroring the loop button on the right: keeping both OUT of
   // the flex flow is what keeps prev/play/next centered. Playlists only:
   // shuffling a search/radio queue makes no sense.
   const shuffleButton = isPlaylist ? (

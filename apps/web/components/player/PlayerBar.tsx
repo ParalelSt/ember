@@ -50,8 +50,8 @@ export function PlayerBar() {
   // a song is queued.
   if (!current) return null;
 
-  // Loop toggle — cycles off → loop playlist (wrap queue, radio suppressed)
-  // → loop one song. Desktop only; phones get the same control in the
+  // Loop toggle: cycles off, loop playlist (wrap queue, radio suppressed),
+  // loop one song. Desktop only; phones get the same control in the
   // full-screen NowPlaying transport row.
   const loopButton = (
     <Button
