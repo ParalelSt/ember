@@ -15,6 +15,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { useUiStore } from '@/stores/useUiStore';
 import { logger } from '@/lib/logger/client';
 import { readDesktopLog } from '@/lib/desktopLog';
+import { detectShell } from '@/lib/playback/detectShell';
 
 const MAX_NOTE = 1000;
 
@@ -25,6 +26,7 @@ interface Triage {
   severity: 'low' | 'medium' | 'high';
   confidence: 'low' | 'medium' | 'high';
   nextSteps: string[];
+  reproduction: string;
 }
 
 const SEVERITY_STYLE: Record<Triage['severity'], string> = {
@@ -43,9 +45,9 @@ export function BugReportDialog() {
   // Snapshot is recomputed every render the dialog is open so the counts shown
   // reflect activity right up to the moment the user opens it.
   const counts = useMemo(() => {
-    if (!open) return { current: 0, previous: 0 };
+    if (!open) return { current: 0, previous: 0, isDesktop: false };
     const s = logger.snapshot();
-    return { current: s.current.length, previous: s.previous.length };
+    return { current: s.current.length, previous: s.previous.length, isDesktop: detectShell() === 'tauri' };
   }, [open]);
 
   const submit = async (e: FormEvent) => {
@@ -108,6 +110,10 @@ export function BugReportDialog() {
               </span>
             </div>
             <p>{triage.summary}</p>
+            <p className="text-muted-foreground">
+              <span className="text-foreground">Reproduce: </span>
+              {triage.reproduction}
+            </p>
             <p className="text-muted-foreground">{triage.likelyCause}</p>
             {triage.nextSteps.length > 0 && (
               <ul className="list-disc pl-4 text-muted-foreground">
@@ -148,7 +154,9 @@ export function BugReportDialog() {
           />
           <div className="text-xs text-muted-foreground">
             Diagnostic data: <span className="text-foreground">{counts.current}</span> events from this session,
-            {' '}<span className="text-foreground">{counts.previous}</span> from your last session.
+            {' '}<span className="text-foreground">{counts.previous}</span> from your last session, app state
+            {' '}(version, shell, route, current song), the last few minutes of server logs
+            {counts.isDesktop ? ', and the desktop app log' : ''}.
           </div>
           <DialogFooter>
             <Button type="button" variant="ghost" onClick={() => setOpen(false)} disabled={busy}>

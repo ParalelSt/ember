@@ -5,7 +5,7 @@ import {
   unauthorizedResponse,
 } from "@/lib/auth";
 import { serverLogger } from "@/lib/logger/server";
-import type { ClientSnapshot } from "@/lib/logger/types";
+import type { ClientSnapshot, ReportContext } from "@/lib/logger/types";
 import { rateLimitResponse } from "@/lib/rateLimit";
 import { triageBugReport } from "@/lib/ai/triage";
 import { fromError, jsonError } from "@/lib/upsertTrack";
@@ -35,6 +35,23 @@ const DEFAULT_WEBHOOK_URL =
   "https://discord.com/api/webhooks/1512120864391565333/wbnK9NOCeqbHNPK_k8UcdFxRZKztm0LfBR1OfKIQ2txf1zAPwF4mp4kII1S3SA7MIUPY";
 const WEBHOOK_URL =
   process.env.DISCORD_BUG_REPORT_WEBHOOK_URL || DEFAULT_WEBHOOK_URL;
+
+/** One compact line for the Discord embed — the full per-field breakdown
+ *  goes into the AI prompt (lib/ai/triage.ts's "State when reported" block);
+ *  this is the human-skimmable version. */
+function formatContextCompact(ctx: Partial<ReportContext> | undefined): string {
+  if (!ctx) return "(no context)";
+  const parts: string[] = [];
+  const shellVersion = [ctx.shell, ctx.appVersion].filter(Boolean).join(" ");
+  if (shellVersion) parts.push(shellVersion);
+  if (ctx.route) parts.push(ctx.route);
+  parts.push(ctx.online === false ? "offline" : "online");
+  parts.push(
+    ctx.track ? `playing ${ctx.track.source}:${ctx.track.id}` : "nothing playing",
+  );
+  if (ctx.queue && ctx.queue.length > 0) parts.push(`queue ${ctx.queue.index + 1}/${ctx.queue.length}`);
+  return parts.join(", ");
+}
 
 interface RequestBody {
   note?: string;
@@ -99,7 +116,14 @@ export const POST = withRequestLog('bug-report', async (request: NextRequest) =>
 
     // Ask Claude what went wrong. Best-effort: null when there's no API key
     // or the call fails, and the report goes out exactly as it did before.
-    const triage = await triageBugReport({ note, client, server, userAgent });
+    const triage = await triageBugReport({
+      note,
+      client,
+      server,
+      userAgent,
+      context: client.context,
+      desktopLog,
+    });
 
     const payload = {
       reportedAt,
@@ -131,6 +155,7 @@ export const POST = withRequestLog('bug-report', async (request: NextRequest) =>
             triage.summary,
           ),
           field("Likely cause", triage.likelyCause),
+          field("Reproduce", triage.reproduction),
           ...(triage.nextSteps.length
             ? [field("Check first", triage.nextSteps.map((s) => `• ${s}`).join("\n"))]
             : []),
@@ -159,6 +184,7 @@ export const POST = withRequestLog('bug-report', async (request: NextRequest) =>
           value: `${counts.client_current} now / ${counts.client_previous} prev`,
           inline: true,
         },
+        { name: "Where", value: formatContextCompact(client.context), inline: false },
         { name: "Session", value: "`" + client.sessionId + "`", inline: false },
         { name: "User-agent", value: userAgent.slice(0, 1000), inline: false },
       ],
