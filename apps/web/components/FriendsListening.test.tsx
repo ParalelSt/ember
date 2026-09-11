@@ -128,4 +128,15 @@ describe('FriendsListening', () => {
     fireEvent.click(await screen.findByText('Midnight Drive'));
     expect(playTrack).toHaveBeenCalledWith(track);
   });
+
+  it('renders the music icon fallback for items without artwork', async () => {
+    api.listening.mockResolvedValue({
+      items: [
+        { userName: 'Robin', playedAt: new Date(NOW - 60_000).toISOString(), track: makeTrack() },
+      ],
+    });
+    renderWithClient();
+
+    expect(await screen.findByTestId('music-fallback')).toBeInTheDocument();
+  });
 });

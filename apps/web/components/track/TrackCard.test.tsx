@@ -70,4 +70,16 @@ describe('TrackCard', () => {
     fireEvent.click(screen.getByRole('link', { name: 'The Nulls' }));
     expect(onActivate).not.toHaveBeenCalled();
   });
+
+  it('renders the fallback node when the track has no artwork', () => {
+    const fallback = <span data-testid="artwork-fallback">No Artwork</span>;
+    render(
+      <TrackCard
+        track={{ ...track, artworkUrl: null }}
+        onActivate={() => {}}
+        artworkFallback={fallback}
+      />
+    );
+    expect(screen.getByTestId('artwork-fallback')).toBeInTheDocument();
+  });
 });

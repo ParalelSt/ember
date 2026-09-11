@@ -20,12 +20,15 @@ interface Props {
    *  "<name> · <time ago>". Omitted entirely (no empty line) when not
    *  given, so Home's cards render exactly as before. */
   subtitle?: ReactNode;
+  /** Rendered inside the artwork box when the track has no art (icon,
+   *  initials). Omit and artless cards show a plain box. */
+  artworkFallback?: ReactNode;
   className?: string;
 }
 
 /** Presentational only: a square track card with a hover-revealed play
  *  button. Playback state and the activate handler come from props. */
-export function TrackCard({ track, active = false, playing = false, onActivate, subtitle, className }: Props) {
+export function TrackCard({ track, active = false, playing = false, onActivate, subtitle, artworkFallback, className }: Props) {
   return (
     <div
       onClick={onActivate}
@@ -37,8 +40,13 @@ export function TrackCard({ track, active = false, playing = false, onActivate, 
       <Artwork
         src={track.artworkUrl}
         loading="lazy"
-        className="aspect-square w-full rounded-lg bg-black shadow-soft"
-      />
+        className={cn(
+          'aspect-square w-full rounded-lg bg-black shadow-soft',
+          !track.artworkUrl && artworkFallback && 'grid place-items-center text-foreground/20',
+        )}
+      >
+        {artworkFallback}
+      </Artwork>
       <div className="mt-3 truncate text-sm font-semibold">{track.title}</div>
       <div className="mt-1 truncate text-xs text-muted-foreground">
         {track.artistId ? (

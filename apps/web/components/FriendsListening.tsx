@@ -4,10 +4,13 @@ import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { usePlayer } from '@/components/player/PlayerProvider';
 import { useAuth } from '@/components/providers/AuthProvider';
+import { MusicIcon } from '@/components/icons';
 import { TrackCard } from '@/components/track/TrackCard';
 import { formatAgo } from '@/lib/format';
 
 const POLL_MS = 30_000;
+
+const MUSIC_ICON_FALLBACK = <MusicIcon className="h-8 w-8" data-testid="music-fallback" />;
 
 /** Home section: what other members played in the last ~30 minutes (newest
  *  per person). Hidden entirely when nobody's listening — no empty state. */
@@ -39,6 +42,7 @@ export function FriendsListening() {
               track={item.track}
               onActivate={() => playTrack(item.track)}
               subtitle={`${item.userName} · ${formatAgo(item.playedAt)}`}
+              artworkFallback={MUSIC_ICON_FALLBACK}
             />
           </div>
         ))}
