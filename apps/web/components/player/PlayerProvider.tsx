@@ -20,10 +20,10 @@ import { useQueryLyrics } from '@/hooks/useLyrics';
 import { apiUrl } from '@/lib/api';
 import { logger } from '@/lib/logger/client';
 import { detectShell } from '@/lib/playback/detectShell';
-import { resumeStartAt } from '@/lib/playback/resumePosition';
 import { chooseDuration } from '@/lib/playback/chooseDuration';
 import { nextIndex, prevIndex } from '@/lib/playback/queueNav';
 import { useDiscordPresence } from '@/hooks/player/useDiscordPresence';
+import { usePositionPersistence } from '@/hooks/player/usePositionPersistence';
 import { useRadioExtend } from '@/hooks/player/useRadioExtend';
 import { useKeyboardShortcuts } from '@/hooks/player/useKeyboardShortcuts';
 import { useRemoteCommands } from '@/hooks/player/useRemoteCommands';
@@ -98,22 +98,11 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const [backendReady, setBackendReady] = useState(false);
 
   const userInteracted = useRef(false);
-  // null = "uninitialized, fall back to the persisted store value on read."
-  // zustand-persist rehydration completes AFTER first render, so we can't seed
-  // from `position`; deferring the lookup to loadAndPlay (effect time) is safe.
-  const wantPosition = useRef<number | null>(null);
-  /** Which track the stored playhead belongs to. Undefined until the first
-   *  load, when it is taken to be the persisted track, so a cold start still
-   *  resumes where you left off. */
-  const positionOwner = useRef<string | undefined>(undefined);
-  const lastValidPosition = useRef(position);
-  const lastPosWrite = useRef(0);
 
   // Latest-callback refs so remote commands / onEnded call current logic
   // without re-registering handlers or rebuilding the backend.
   const nextRef = useRef<() => void>(() => {});
   const prevRef = useRef<() => void>(() => {});
-  const persistRef = useRef<() => void>(() => {});
 
   const current = queue[index] ?? null;
 
@@ -125,21 +114,10 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const muted = usePlayerStore((s) => s.muted);
   const loopMode = usePlayerStore((s) => s.loopMode);
 
-  // Persist the trustworthy position to the store. Skips during a transition
-  // (the element reports transient values) and never overwrites with a sus 0.
-  const persistPosition = useCallback(() => {
-    const b = backendRef.current;
-    if (!b || b.isTransitioning()) return;
-    const pos = b.getCurrentTime();
-    const dur = b.getDuration();
-    const havePlayable = dur && dur !== Infinity && dur > 0;
-    const trustworthyPos = pos > 0.5 ? pos : lastValidPosition.current;
-    if (!havePlayable && trustworthyPos < 0.5) return;
-    usePlayerStore.setState({ position: trustworthyPos });
-  }, []);
-  useEffect(() => {
-    persistRef.current = persistPosition;
-  }, [persistPosition]);
+  // The stored playhead: who owns it, when it is written, where a track
+  // resumes. Called here, before the backend is built, because the backend's
+  // events report positions and persist on pause.
+  const positions = usePositionPersistence({ backendRef, backendReady });
 
   // Build the backend once, on first client render. Events map straight to the
   // store writes the old element listeners performed.
@@ -148,14 +126,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     const events: AudioBackendEvents = {
       onTime: (sec) => {
         setPosition(sec);
-        if (!backendRef.current?.isTransitioning() && sec > 0.5) {
-          lastValidPosition.current = sec;
-          const now = Date.now();
-          if (now - lastPosWrite.current > 1000) {
-            lastPosWrite.current = now;
-            usePlayerStore.setState({ position: sec });
-          }
-        }
+        positions.noteTime(sec);
       },
       onDuration: (d) => {
         // The engine's figure is a second opinion, not the truth: see
@@ -179,7 +150,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       onPlay: () => setIsPlaying(true),
       onPause: () => {
         setIsPlaying(false);
-        persistRef.current();
+        positions.persistRef.current();
       },
       onError: () => {
         // A native engine that can't play is worse than no native engine:
@@ -202,7 +173,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
           // plugin's next status() event is still the source of truth.
           useOfflineStore.getState().dropTrackFile(track.id);
           logger.error('playback', 'downloaded file would not play, streaming instead', { trackId: track.id });
-          wantPosition.current = positionOwner.current === track.id ? st.position : 0;
+          positions.requestStartAt(positions.resumeTargetFor(track.id));
           loadAndPlayRef.current?.(track, true);
           return;
         }
@@ -258,9 +229,6 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     }
   }, [partyVolume, volume, setStoreVolume]);
 
-  // Load + (optionally) play a track. Must run from a user gesture for autoplay
-  // (React 19 effects are async and lose the activation token). The first call
-  // restores the persisted position; later calls start fresh (wantPosition→0).
   /** Swap a failing native engine for plain web audio, once, and resume.
    *
    *  nativeBackendReady() can only check that Tauri's invoke() EXISTS — and it
@@ -275,11 +243,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
     const events = eventsRef.current;
     const st0 = usePlayerStore.getState();
-    // Only resume a position that belongs to the track being retried. A 403 on
-    // the new song used to restart it at the previous song's timestamp.
     const failing = st0.queue[st0.index];
-    const resumeAt =
-      failing && positionOwner.current === failing.id ? st0.position : 0;
+    const resumeAt = failing ? positions.resumeTargetFor(failing.id) : 0;
     try { backendRef.current?.destroy(); } catch { /* already broken */ }
 
     backendRef.current = createWebBackend(events!);
@@ -291,11 +256,18 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
     const track = st.queue[st.index];
     if (track) {
-      wantPosition.current = resumeAt;
+      positions.requestStartAt(resumeAt);
       loadAndPlayRef.current?.(track, true);
     }
-  }, []);
+    // `positions` is a stable object of stable callbacks, so this callback's
+    // identity does not change: it is listed to satisfy the deps rule, not
+    // because it can ever differ.
+  }, [positions]);
 
+  // Load + (optionally) play a track. Must run from a user gesture for autoplay
+  // (React 19 effects are async and lose the activation token). The first call
+  // restores the persisted position; later calls start fresh (see
+  // usePositionPersistence).
   const loadAndPlay = useCallback((track: Track | null, autoplay: boolean) => {
     const b = backendRef.current;
     if (!b) return;
@@ -313,23 +285,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     // loaded is never useful, so drop it.
     if (!autoplay && loadedTrackRef.current === track.id) return;
     loadedTrackRef.current = track.id;
-    if (positionOwner.current === undefined) {
-      const st = usePlayerStore.getState();
-      positionOwner.current = st.queue[st.index]?.id;
-    }
-    const startAt = resumeStartAt({
-      trackId: track.id,
-      positionOwnerId: positionOwner.current,
-      storedPosition: usePlayerStore.getState().position,
-      requested: wantPosition.current,
-    });
-    wantPosition.current = null;
-    // The playhead now describes THIS track: reset it in the same turn so no
-    // later reader (the web-audio fallback, a refresh) can hand one song's
-    // position to another, and so the slider doesn't linger on the old time.
-    positionOwner.current = track.id;
-    usePlayerStore.setState({ position: startAt });
-    setPosition(startAt);
+    // Hands the stored playhead to this track and returns where it resumes.
+    const startAt = positions.startAt(track.id);
     // Same for the length. Without this the slider keeps the PREVIOUS song's
     // duration until the engine volunteers one, which on desktop it often
     // never does.
@@ -344,7 +301,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     // Set metadata in the same synchronous turn so the notification carries
     // across a track boundary (Firefox Android tears it down otherwise).
     b.setMetadata(track);
-  }, []);
+  }, [positions]);
 
   loadAndPlayRef.current = loadAndPlay;
   fallbackToWebAudioRef.current = fallbackToWebAudio;
@@ -400,28 +357,6 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     prevRef.current = prev;
   }, [prev]);
-
-  // Position persistence — periodic + on leave moments. Never overwrites with a
-  // sus 0 during a track swap (persistPosition guards on isTransitioning).
-  useEffect(() => {
-    if (!backendReady) return;
-    const b = backendRef.current;
-    if (!b) return;
-    const periodic = setInterval(() => {
-      if (!b.isPaused()) persistPosition();
-    }, 5000);
-    const onVisibility = () => {
-      if (document.hidden) persistPosition();
-    };
-    const onPagehide = () => persistPosition();
-    document.addEventListener('visibilitychange', onVisibility);
-    window.addEventListener('pagehide', onPagehide);
-    return () => {
-      clearInterval(periodic);
-      document.removeEventListener('visibilitychange', onVisibility);
-      window.removeEventListener('pagehide', onPagehide);
-    };
-  }, [backendReady, persistPosition]);
 
   useRadioExtend({ current, queue, index, history, liked, context, loopMode });
 
