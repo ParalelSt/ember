@@ -45,6 +45,30 @@ function call(p: unknown): void {
   }
 }
 
+/** The shape `Capacitor.convertFileSrc` produces for an app-private file. */
+function isLocalFileSrc(src: string): boolean {
+  return src.includes('/_capacitor_file_/') || src.startsWith('capacitor://');
+}
+
+/** Reads a WebView-resolvable URL into a data: URL, or null if anything goes
+ *  wrong: artwork is decoration, so a failure must never break metadata. */
+async function toDataUrl(src: string): Promise<string | null> {
+  try {
+    const blob = await (await fetch(src)).blob();
+    return await new Promise<string | null>((resolve) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(typeof reader.result === 'string' ? reader.result : null);
+      reader.onerror = () => resolve(null);
+      reader.readAsDataURL(blob);
+    });
+  } catch {
+    return null;
+  }
+}
+
+/** Guards against a slow read for a track the user has already skipped past. */
+let artToken = 0;
+
 /** Capacitor (Android app) backend — the web <audio> pipeline unchanged, plus
  *  the native media-session plugin mirroring metadata / playback state /
  *  position and receiving the notification's transport commands. On Android
@@ -107,12 +131,26 @@ export const createCapacitorBackend: CreateAudioBackend = (events) => {
       // _capacitor_file_ URL by the caller) wins over the remote artworkUrl:
       // the lock screen should show it even with the radio off.
       const art = localArtSrc ?? track.artworkUrl;
-      call(p.setMetadata({
+      const base = {
         title: track.title ?? '',
         artist: track.artist ?? '',
         album: track.album ?? '',
-        artwork: art ? [{ src: art, sizes: '512x512' }] : [],
-      }));
+      };
+      call(p.setMetadata({ ...base, artwork: art ? [{ src: art, sizes: '512x512' }] : [] }));
+
+      // A _capacitor_file_ URL only resolves inside the WebView: the plugin
+      // fetches artwork natively (HttpURLConnection), so that URL gives the
+      // lock screen no bitmap at all. Re-read the file here, where it does
+      // resolve, and hand the plugin a data: URL it can decode offline.
+      if (!localArtSrc || !isLocalFileSrc(localArtSrc)) return;
+      const token = ++artToken;
+      void toDataUrl(localArtSrc).then((dataUrl) => {
+        // A later track already claimed the session — dropping a stale read
+        // matters more than showing it, or the lock screen ends up one track
+        // behind on fast skips.
+        if (!dataUrl || token !== artToken) return;
+        call(p.setMetadata({ ...base, artwork: [{ src: dataUrl, sizes: '512x512' }] }));
+      });
     },
 
     setRemoteCommands(cmds: RemoteCommands) {
