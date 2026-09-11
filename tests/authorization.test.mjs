@@ -8,8 +8,8 @@
  *
  *  Needs the sandbox from tests/README.md (PB on 8091, app on 3010).
  *  Both users are created fresh per run, so it can be re-run freely. */
-const PB = 'http://127.0.0.1:8091';
-const APP = 'http://127.0.0.1:3010';
+const PB = process.env.PB_URL ?? 'http://127.0.0.1:8091';
+const APP = process.env.APP_URL ?? 'http://127.0.0.1:3010';
 const PW = 'BugTest2026!';
 
 const out = [];

@@ -228,6 +228,12 @@ check('Liked page heading', await appeared(page.getByRole('heading', { name: 'Li
 check('Play button present', (await page.getByRole('button', { name: 'Play' }).count()) > 0);
 check('Shuffle play button present', (await page.getByRole('button', { name: 'Shuffle play' }).count()) > 0);
 check('the song is listed', await appeared(page.getByText(songTitle, { exact: true }).first()));
+// TrackMenu (components/track/menus/TrackMenu.tsx) renders in the row's
+// trailing slot; each page wires it by hand (docs/DESLOP.md step 4 follow-
+// up), so this catches a collection page that forgot it and silently lost
+// add-to-playlist and share.
+check('first track row exposes the add-to-playlist control',
+  (await page.getByRole('button', { name: 'Add to playlist' }).count()) > 0);
 const likedDl = page.getByRole('button', { name: 'Download for offline' });
 check('Download for offline button present', await appeared(likedDl));
 await likedDl.click();
