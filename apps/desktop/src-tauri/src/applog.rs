@@ -93,6 +93,26 @@ pub fn log_event(state: tauri::State<'_, LogFile>, level: String, message: Strin
     write_line(path.as_ref(), &level.to_uppercase(), &msg);
 }
 
+/// The tail of the log file, for attaching to a bug report.
+///
+/// The desktop log holds what the WebView cannot see (audio engine, media
+/// controls, updater, the window's real URL), which is exactly what is missing
+/// from a report filed from inside the shell. Capped at 500 lines: the IPC
+/// response crosses into the WebView and ends up in a Discord attachment, and
+/// the useful part of a log is always its end.
+#[tauri::command]
+pub fn log_tail(state: tauri::State<'_, LogFile>, lines: usize) -> String {
+    let Some(path) = state.0.lock().ok().and_then(|g| g.clone()) else {
+        return String::new();
+    };
+    // A missing or unreadable log is not an error worth surfacing: the caller
+    // attaches nothing and the report still goes out.
+    let text = std::fs::read_to_string(&path).unwrap_or_default();
+    let want = lines.clamp(1, 500);
+    let all: Vec<&str> = text.lines().collect();
+    all[all.len().saturating_sub(want)..].join("\n")
+}
+
 /// Where the log lives, so the UI/user can find it.
 #[tauri::command]
 pub fn log_path(state: tauri::State<'_, LogFile>) -> String {

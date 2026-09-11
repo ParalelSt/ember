@@ -22,5 +22,6 @@ allow = [
   "discord_update",
   "log_event",
   "log_path",
+  "log_tail",
 ]
 deny = []

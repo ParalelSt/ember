@@ -71,4 +71,8 @@ export interface ClientSnapshot {
   previous: LogEntry[];
   sessionId: string;
   context: ReportContext;
+  /** Tail of the desktop app's own log file (Tauri shell only, see
+   *  lib/desktopLog.ts). Attached to the report as desktop.log rather than
+   *  inlined, and absent everywhere else. */
+  desktopLog?: string;
 }

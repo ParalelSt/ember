@@ -13,6 +13,10 @@ import { withRequestLog } from '@/lib/logger/withRequestLog';
 
 const REPORT_WINDOW_MS = 5 * 60 * 1000;
 const MAX_NOTE_LEN = 1000;
+// The desktop tail is capped at 200 lines natively; this is the belt-and-braces
+// bound on a body the client could have hand-written, and keeps the Discord
+// attachment well under the 8 MB upload limit.
+const MAX_DESKTOP_LOG = 200_000;
 
 /** Embed stripe colour by AI severity; the default ember orange when there's
  *  no triage. */
@@ -69,7 +73,12 @@ export const POST = withRequestLog('bug-report', async (request: NextRequest) =>
     const note = String(body.note ?? "")
       .slice(0, MAX_NOTE_LEN)
       .trim();
-    const client = body.client;
+    // The desktop log travels inside the client snapshot but goes out as its
+    // own attachment, so strip it here: inlined it would also sit in
+    // report.json, doubling the payload for no extra information.
+    const { desktopLog: rawDesktopLog, ...client } = body.client;
+    const desktopLog =
+      typeof rawDesktopLog === "string" ? rawDesktopLog.slice(-MAX_DESKTOP_LOG) : "";
 
     const server = await serverLogger.recentSince(
       Date.now() - REPORT_WINDOW_MS,
@@ -158,6 +167,13 @@ export const POST = withRequestLog('bug-report', async (request: NextRequest) =>
     const form = new FormData();
     form.append("payload_json", JSON.stringify({ embeds: [embed] }));
     form.append("files[0]", fileBlob, "report.json");
+    if (desktopLog) {
+      form.append(
+        "files[1]",
+        new Blob([desktopLog], { type: "text/plain" }),
+        "desktop.log",
+      );
+    }
 
     const discordRes = await fetch(WEBHOOK_URL, { method: "POST", body: form });
     if (!discordRes.ok) {

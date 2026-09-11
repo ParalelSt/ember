@@ -121,6 +121,7 @@ pub fn run() {
             discord::discord_update,
             applog::log_event,
             applog::log_path,
+            applog::log_tail,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Ember desktop");

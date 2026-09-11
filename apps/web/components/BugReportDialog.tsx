@@ -14,6 +14,7 @@ import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { useUiStore } from '@/stores/useUiStore';
 import { logger } from '@/lib/logger/client';
+import { readDesktopLog } from '@/lib/desktopLog';
 
 const MAX_NOTE = 1000;
 
@@ -53,6 +54,10 @@ export function BugReportDialog() {
     setBusy(true);
     try {
       const snapshot = logger.snapshot();
+      // Desktop only, best effort: the shell's own log holds what the WebView
+      // never sees. An empty string means there is nothing to attach.
+      const desktopLog = await readDesktopLog();
+      if (desktopLog) snapshot.desktopLog = desktopLog;
       const res = await fetch('/api/bug-report', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
