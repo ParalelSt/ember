@@ -14,6 +14,8 @@ export interface TrackRecord {
   duration_sec?: number;
   artwork_url?: string;
   stream_url?: string;
+  unavailable_at?: string;
+  unavailable_reason?: string;
 }
 
 /** Converts a PocketBase `tracks` record into the camelCase Track shape used
@@ -33,5 +35,7 @@ export function mapTrackRow(row: TrackRecord | null | undefined): Track | null {
     durationSec: row.duration_sec ?? 0,
     artworkUrl: row.artwork_url ?? null,
     streamUrl: row.stream_url ?? '',
+    unavailableAt: row.unavailable_at || null,
+    unavailableReason: row.unavailable_reason || null,
   };
 }

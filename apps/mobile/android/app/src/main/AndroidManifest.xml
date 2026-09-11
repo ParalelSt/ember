@@ -25,6 +25,8 @@
 
         </activity>
 
+        <!-- The native player. Exported because Android Auto and the car's
+             Media Center bind to it from another process. -->
         <service
             android:name=".EmberPlaybackService"
             android:exported="true"
@@ -35,6 +37,14 @@
             </intent-filter>
         </service>
         <meta-data android:name="com.google.android.gms.car.application" android:resource="@xml/automotive_app_desc" />
+
+        <!-- Pinned downloads keep running with the app closed, so they need a
+             foreground service; dataSync is the type Android 14+ expects for
+             "fetching files the user asked for". -->
+        <service
+            android:name=".OfflineDownloadService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
 
         <provider
             android:name="androidx.core.content.FileProvider"
@@ -50,9 +60,13 @@
     <!-- Permissions -->
 
     <uses-permission android:name="android.permission.INTERNET" />
-    <!-- The native player (EmberPlaybackService) runs as a mediaPlayback
-         foreground service; Android 14+ wants the typed permission too. -->
+    <!-- Both foreground services need the generic permission (declared once),
+         plus the typed one Android 14+ requires for their service type:
+         mediaPlayback for EmberPlaybackService, dataSync for
+         OfflineDownloadService. POST_NOTIFICATIONS covers the notifications
+         both of them post. -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 </manifest>

@@ -152,9 +152,10 @@ await patchPrivacy(alice.cookie, { shareDiscord: true });
 const pushShared = await fetch(`${APP_URL}/api/discord/update`, {
   method: 'POST',
   headers: { 'content-type': 'application/json', cookie: alice.cookie },
-  body: JSON.stringify({ track: { title: 'Public', artist: 'X' }, isPlaying: true }),
+  // The playhead rides along so the card's time bar can follow a seek.
+  body: JSON.stringify({ track: { title: 'Public', artist: 'X' }, isPlaying: true, positionSec: 91, durationSec: 200 }),
 }).then((r) => r.json());
-check('C3 broadcasts again once re-enabled', pushShared?.shared === true, JSON.stringify(pushShared));
+check('C3 broadcasts again once re-enabled (with a playhead)', pushShared?.shared === true, JSON.stringify(pushShared));
 
 const anonPush = await fetch(`${APP_URL}/api/discord/update`, {
   method: 'POST',

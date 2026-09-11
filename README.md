@@ -23,13 +23,35 @@ spotify-clone/
                                   #   bug-report, plus the youtube/jamendo proxies
         auth/                     # invite-only sign-in / register flow
       components/
+        primitives/               # Artwork, PlayButton, LikeButton (props in, no hooks/stores)
+        page/                     # PageTitle, SectionHeader, Eyebrow, EmptyState, CollectionHeader
         player/                   # PlayerProvider, PlayerBar, NowPlaying, QueueSheet
-        nav/                      # Sidebar, TopBar, MobileNav, Drawer
-        track/                    # TrackCard, TrackList, AddToPlaylistMenu
+        nav/                      # Sidebar, TopBar, MobileNav, Drawer, NavLinks
+        track/                    # TrackShelf, TrackRow, TrackList; menus/ (TrackMenu, AddToPlaylistMenu, dialogs, data-aware)
+        library/                  # CollectionPage, CollectionCard, CollectionShelf, DownloadButton
         artist/                   # AlbumCard, AlbumRow
         settings/                 # SettingsTabs
         admin/                    # AdminTabs
+      hooks/
+        useTrackActions.ts        # composes player + likes + auth for one track row/card
+        useLikeToggle.ts          # the like toggle shared by the player bar and overlay
+        useCollections.ts         # Library page's two shelves from one hook
+        useOfflinePin.ts          # pin/unpin a collection for offline
+        useCollectionPlayback.ts  # play/shuffle-play a collection
+        useCreatePlaylistFlow.ts  # create-playlist dialog state, shared by Sidebar and Drawer
+        player/                   # PlayerProvider's own hooks: usePositionPersistence,
+                                  #   useRadioExtend, useKeyboardShortcuts, useRemoteCommands,
+                                  #   useDiscordPresence
       lib/
+        format.ts                 # formatTime, formatTotalDuration, formatBytes, formatCount, formatAgo
+        shuffle.ts                # the one Fisher-Yates (injectable rng)
+        artwork.ts                # pickThumbnail
+        layout.ts                 # SHELF_ROW_COUNT, gridColsClass, visibleCount
+        collections.ts            # toSummary, countLabel
+        playback/
+          queueNav.ts              # next/prev index rules, loop wrap point
+          radio.ts                 # rankRadioPool, the radio-extend ranking
+          shortcuts.ts             # shortcutFor, the keyboard map
         pocketbase/               # browser + server PB clients (cookie-bound)
         sources/youtube.ts        # spawns player.py (yt-dlp) for streams + search
         sources/jamendo.ts        # Jamendo REST adapter

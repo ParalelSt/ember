@@ -2,77 +2,88 @@
 
 import { use } from 'react';
 import Link from 'next/link';
-import { Button } from '@/components/ui/button';
 import { TrackList } from '@/components/track/TrackList';
+import { renderTrackMenu } from '@/components/track/menus/TrackMenu';
+import { useTrackActions } from '@/hooks/useTrackActions';
 import { AlbumRow } from '@/components/artist/AlbumRow';
-import { PlayIcon } from '@/components/icons';
-import { usePlayer } from '@/components/player/PlayerProvider';
+import { PlayButton } from '@/components/primitives/PlayButton';
+import { CollectionHeader } from '@/components/page/CollectionHeader';
 import { useQueryArtist } from '@/hooks/useLibrary';
-import { useOnline } from '@/lib/useOnline';
-import { OfflinePlaceholder } from '@/components/OfflinePlaceholder';
+import { OnlineOnly } from '@/components/OnlineOnly';
+import { pickThumbnail } from '@/lib/artwork';
+import { EmptyState } from '@/components/page/EmptyState';
+import { SectionHeader } from '@/components/page/SectionHeader';
 
 export default function ArtistPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
-  const { playTrack } = usePlayer();
-  const { data, isLoading, error } = useQueryArtist(id);
-  const isOnline = useOnline();
+  return (
+    <OnlineOnly>
+      <ArtistView id={id} />
+    </OnlineOnly>
+  );
+}
 
-  if (!isOnline) return <OfflinePlaceholder />;
+function ArtistView({ id }: { id: string }) {
+  const trackActions = useTrackActions();
+  const { data, isLoading, error } = useQueryArtist(id);
 
   if (error) {
     return (
-      <div className="text-muted-foreground py-12 text-center">
+      <EmptyState>
         Artist not found.<br />
         <Link href="/" className="text-ember hover:underline">Home</Link>
-      </div>
+      </EmptyState>
     );
   }
-  if (isLoading || !data) return <div className="text-muted-foreground py-12 text-center">Loading…</div>;
+  if (isLoading || !data) return <EmptyState>Loading…</EmptyState>;
 
   const { name, description, thumbnails = [], tracks = [], albums = [], singles = [] } = data;
-  const heroArt = thumbnails[thumbnails.length - 1]?.url;
+  const heroArt = pickThumbnail(thumbnails);
   const artistContext = { type: 'artist' as const, artistName: name, artistId: id };
 
   return (
     <div>
-      <div className="flex flex-col md:flex-row items-start md:items-end gap-6 mb-6">
-        <div
-          className="h-36 w-36 md:h-44 md:w-44 rounded-full shadow-soft bg-linear-to-br from-ember to-[oklch(0.3_0.15_25)] shrink-0 bg-cover bg-center"
-          style={heroArt ? { backgroundImage: `url(${heroArt})` } : undefined}
-        />
-        <div>
-          <div className="text-xs uppercase tracking-widest text-muted-foreground">Artist</div>
-          <h1 className="mt-2 text-4xl md:text-5xl font-bold tracking-tight leading-tight">{name}</h1>
-          {description && <p className="mt-3 max-w-2xl text-sm text-muted-foreground line-clamp-3 leading-relaxed">{description}</p>}
-        </div>
-      </div>
+      <CollectionHeader
+        variant="artist"
+        eyebrow="Artist"
+        title={name}
+        meta={[]}
+        cover={{ src: heroArt, icon: null }}
+        description={
+          description ? (
+            <p className="mt-3 max-w-2xl text-sm text-muted-foreground line-clamp-3 leading-relaxed">{description}</p>
+          ) : null
+        }
+      />
       <div className="flex items-center gap-3 mb-6">
-        <Button
-          size="icon"
-          onClick={() => tracks.length && playTrack(tracks[0], tracks, artistContext)}
+        <PlayButton
+          onClick={() => tracks.length && trackActions.onPlay(tracks[0], tracks, artistContext)}
           disabled={!tracks.length}
-          className="h-12 w-12 rounded-full bg-ember hover:bg-ember-soft text-white shadow-glow"
-          aria-label="Play top tracks"
-        >
-          <PlayIcon className="h-5 w-5 fill-current ml-0.5" />
-        </Button>
+          label="Play top tracks"
+        />
       </div>
 
-      <h2 className="mb-3 text-xl font-bold tracking-tight">Popular</h2>
+      <SectionHeader title="Popular" className="mb-3" />
       <div className="max-h-80 overflow-y-auto rounded-md mb-8">
-        <TrackList tracks={tracks} context={artistContext} showRank />
+        <TrackList
+          tracks={tracks}
+          context={artistContext}
+          showRank
+          trailing={renderTrackMenu}
+          {...trackActions}
+        />
       </div>
 
       {albums.length > 0 && (
         <>
-          <h2 className="mb-3 text-xl font-bold tracking-tight">Discography</h2>
+          <SectionHeader title="Discography" className="mb-3" />
           <AlbumRow albums={albums} />
         </>
       )}
 
       {singles.length > 0 && (
         <>
-          <h2 className="mb-3 mt-8 text-xl font-bold tracking-tight">Singles & EPs</h2>
+          <SectionHeader title="Singles & EPs" className="mb-3 mt-8" />
           <AlbumRow albums={singles} />
         </>
       )}

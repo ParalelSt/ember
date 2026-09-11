@@ -1,5 +1,5 @@
 import 'server-only';
-// Minimal Discord IPC client. No third-party dep — Discord's IPC protocol is
+// Minimal Discord IPC client. No third-party dep: Discord's IPC protocol is
 // just length-prefixed JSON over a Unix socket. Idle no-op if DISCORD_APP_ID
 // is unset. Lazily connects on first updateDiscordActivity().
 import { createConnection, type Socket } from 'node:net';
@@ -112,18 +112,25 @@ function ensureInit() {
   connect();
 }
 
-export function updateDiscordActivity(track: Track | null, isPlaying: boolean) {
+/** The card carries a time bar, so "start" is anchored to where the playhead
+ *  is now rather than to when the track began: that is what makes a seek
+ *  show up. Same-track updates inside the rate-limit window are coalesced by
+ *  setActivity above, so the newest position always lands. */
+export function updateDiscordActivity(track: Track | null, isPlaying: boolean, positionSec = 0, durationSec = 0) {
   if (!APP_ID) return;
   ensureInit();
   if (!track || !isPlaying) {
     setActivity(null);
     return;
   }
+  const position = Number.isFinite(positionSec) ? Math.max(0, positionSec) : 0;
+  const duration = Number.isFinite(durationSec) ? Math.max(0, durationSec) : 0;
+  const start = Date.now() - Math.round(position * 1000);
   setActivity({
-    type: 0,
+    type: 2, // Listening: the type Discord draws a time bar for
     details: trim(track.title, 128),
     state: track.artist ? trim(`by ${track.artist}`, 128) : undefined,
-    timestamps: { start: Date.now() },
+    timestamps: duration > 0 ? { start, end: start + Math.round(duration * 1000) } : { start },
     assets: {
       large_image: track.artworkUrl ?? undefined,
       large_text: trim(track.album ?? track.title, 128),

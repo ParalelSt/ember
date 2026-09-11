@@ -6,7 +6,9 @@ import { toast } from 'sonner';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { TrackList } from '@/components/track/TrackList';
-import { CloseIcon, MicIcon, MusicIcon, SearchIcon } from '@/components/icons';
+import { TrackRow } from '@/components/track/TrackRow';
+import { renderTrackMenu } from '@/components/track/menus/TrackMenu';
+import { MicIcon, MusicIcon, SearchIcon } from '@/components/icons';
 import { api } from '@/lib/api';
 import { QK } from '@/hooks/useLibrary';
 import { useVoiceSearch } from '@/hooks/useVoiceSearch';
@@ -15,16 +17,21 @@ import {
   useExecuteAddRecentSearch,
   useExecuteRemoveRecentSearch,
 } from '@/hooks/useRecentSearches';
-import { usePlayer } from '@/components/player/PlayerProvider';
+import { useTrackActions } from '@/hooks/useTrackActions';
 import { useOnline } from '@/lib/useOnline';
-import { OfflinePlaceholder } from '@/components/OfflinePlaceholder';
+import { OnlineOnly } from '@/components/OnlineOnly';
 import { cn } from '@/lib/utils';
+import { EmptyState } from '@/components/page/EmptyState';
+import { PageTitle } from '@/components/page/PageTitle';
+import { SectionHeader } from '@/components/page/SectionHeader';
+
+const RECENTS_FALLBACK = <MusicIcon className="h-4 w-4" />;
 
 export default function SearchPage() {
   const [q, setQ] = useState('');
   const [debouncedQ, setDebouncedQ] = useState('');
   const isOnline = useOnline();
-  const { playTrack } = usePlayer();
+  const trackActions = useTrackActions();
 
   const { data: recentTracks = [] } = useQueryRecentSearches();
   const addRecentTrack = useExecuteAddRecentSearch();
@@ -52,8 +59,6 @@ export default function SearchPage() {
   // Surface the rate-limit 429 quietly instead of a blank result set.
   const rateLimited = (error as { status?: number } | null)?.status === 429;
 
-  if (!isOnline) return <OfflinePlaceholder />;
-
   const onMicClick = () => {
     if (!voice.supported) {
       toast.message("Voice search isn't supported in this browser — try Chrome.");
@@ -64,94 +69,83 @@ export default function SearchPage() {
 
   const recents = !debouncedQ && recentTracks.length > 0 ? (
     <div className="mt-8 max-w-xl">
-      <h2 className="mb-3 text-xl font-bold tracking-tight">Recent searches</h2>
+      <SectionHeader title="Recent searches" className="mb-3" />
       <div className="flex flex-col">
         {recentTracks.map((t) => (
-          <div
+          <TrackRow
             key={t.id}
-            onClick={() => playTrack(t)}
-            className="group flex items-center gap-3 px-3 py-2 rounded-md cursor-pointer hover:bg-card transition-colors"
-          >
-            {t.artworkUrl ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={t.artworkUrl} alt="" className="h-10 w-10 rounded shrink-0 object-cover bg-black" />
-            ) : (
-              <div className="h-10 w-10 rounded shrink-0 bg-black grid place-items-center text-foreground/20">
-                <MusicIcon className="h-4 w-4" />
-              </div>
-            )}
-            <div className="min-w-0 flex-1">
-              <div className="truncate text-sm font-medium">{t.title}</div>
-              <div className="truncate text-xs text-muted-foreground">{t.artist}</div>
-            </div>
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={(e) => {
-                e.stopPropagation();
-                removeRecentTrack.mutate(t.id);
-              }}
-              aria-label={`Remove "${t.title}" from recent searches`}
-              className="h-7 w-7 text-muted-foreground hover:text-foreground opacity-0 group-hover:opacity-100 max-md:opacity-100 transition-opacity"
-            >
-              <CloseIcon className="h-3.5 w-3.5" />
-            </Button>
-          </div>
+            track={t}
+            density="compact"
+            artworkFallback={RECENTS_FALLBACK}
+            onPlay={() => trackActions.onPlay(t)}
+            onRemove={() => removeRecentTrack.mutate(t.id)}
+            removeLabel={`Remove "${t.title}" from recent searches`}
+          />
         ))}
       </div>
     </div>
   ) : null;
 
   const results = rateLimited ? (
-    <div className="text-muted-foreground text-sm py-12 text-center">Searching too fast — one moment.</div>
+    <EmptyState className="text-sm">Searching too fast, one moment.</EmptyState>
   ) : isFetching && !data?.length ? (
-    <div className="text-muted-foreground text-sm py-12 text-center">Searching…</div>
+    <EmptyState className="text-sm">Searching…</EmptyState>
   ) : (
     <TrackList
       tracks={data ?? []}
       context={{ type: 'search', query: debouncedQ }}
-      onPlayTrack={(t) => addRecentTrack.mutate(t)}
+      trailing={renderTrackMenu}
+      {...trackActions}
+      // Playing a result also saves it to recent searches; everything else
+      // about playback comes from the spread above.
+      onPlay={(track, list, context) => {
+        addRecentTrack.mutate(track);
+        trackActions.onPlay(track, list, context);
+      }}
     />
   );
 
   return (
-    <div className="pt-4 md:pt-0">
-      <h1 className="text-3xl md:text-4xl font-bold tracking-tight mb-6">Search</h1>
-      <div className="relative max-w-xl">
-        <SearchIcon className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
-        <Input
-          autoFocus
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-          placeholder="What do you want to listen to?"
-          className="pl-11 pr-12 h-12 rounded-full bg-card border-0"
+    <OnlineOnly>
+      <div className="pt-4 md:pt-0">
+        <PageTitle className="mb-6">Search</PageTitle>
+        <div className="relative max-w-xl">
+          <SearchIcon className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+          <Input
+            autoFocus
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder="What do you want to listen to?"
+            className="pl-11 pr-12 h-12 rounded-full bg-card border-0"
+          />
+          {/* Always visible (right side of the bar): unsupported browsers get a
+              pointer to Chrome instead of a hidden button. */}
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={onMicClick}
+            aria-label={voice.listening ? 'Stop voice search' : 'Search by voice'}
+            aria-pressed={voice.listening}
+            title="Search by voice"
+            className={cn(
+              'absolute right-2 top-1/2 -translate-y-1/2 h-9 w-9 rounded-full',
+              voice.listening
+                ? 'text-ember hover:text-ember animate-pulse'
+                : 'text-muted-foreground hover:text-foreground',
+            )}
+          >
+            <MicIcon className="h-4 w-4" />
+          </Button>
+        </div>
+
+        {recents}
+
+        <SectionHeader
+          title={debouncedQ ? `Results for "${debouncedQ}"` : 'Trending'}
+          className="mt-8 mb-4"
         />
-        {/* Always visible (right side of the bar) — unsupported browsers get a
-            pointer to Chrome instead of a hidden button. */}
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={onMicClick}
-          aria-label={voice.listening ? 'Stop voice search' : 'Search by voice'}
-          aria-pressed={voice.listening}
-          title="Search by voice"
-          className={cn(
-            'absolute right-2 top-1/2 -translate-y-1/2 h-9 w-9 rounded-full',
-            voice.listening
-              ? 'text-ember hover:text-ember animate-pulse'
-              : 'text-muted-foreground hover:text-foreground',
-          )}
-        >
-          <MicIcon className="h-4 w-4" />
-        </Button>
+        {results}
       </div>
-
-      {recents}
-
-      <h2 className="mt-8 mb-4 text-xl font-bold tracking-tight">
-        {debouncedQ ? `Results for "${debouncedQ}"` : 'Trending'}
-      </h2>
-      {results}
-    </div>
+    </OnlineOnly>
   );
 }

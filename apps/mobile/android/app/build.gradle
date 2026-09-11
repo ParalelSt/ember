@@ -5,8 +5,8 @@ android {
     namespace "app.ember.music"
     // Capacitor compiles Java at 21 (capacitor.build.gradle); Kotlin must match.
     kotlinOptions { jvmTarget = '21' }
-    // Media3 builders touch android.* classes in plain JVM unit tests.
-    // Robolectric: real Bundle/Uri/org.json in JVM tests instead of stubs.
+    // Robolectric: real Bundle/Uri/org.json in JVM tests instead of stubs, and
+    // Media3 builders touch android.* classes in plain JVM unit tests too.
     testOptions { unitTests.includeAndroidResources = true }
     compileSdk rootProject.ext.compileSdkVersion
     defaultConfig {
@@ -63,6 +63,13 @@ dependencies {
     implementation "androidx.coordinatorlayout:coordinatorlayout:$androidxCoordinatorLayoutVersion"
     implementation "androidx.core:core-splashscreen:$coreSplashScreenVersion"
     implementation project(':capacitor-android')
+    // WebViewCompat.addDocumentStartJavaScript, to give the bundled offline
+    // page the Capacitor runtime (see MainActivity). Capacitor pulls webkit in
+    // itself, but only as `implementation`, so it is not on our classpath.
+    implementation "androidx.webkit:webkit:$androidxWebkitVersion"
+    // Offline downloads (see OfflineStore.kt / ServerApi.kt).
+    implementation "com.squareup.okhttp3:okhttp:$okhttpVersion"
+    testImplementation "com.squareup.okhttp3:mockwebserver:$okhttpVersion"
     testImplementation "junit:junit:$junitVersion"
     testImplementation "org.robolectric:robolectric:4.14.1"
     androidTestImplementation "androidx.test.ext:junit:$androidxJunitVersion"
@@ -72,9 +79,6 @@ dependencies {
     implementation "androidx.media3:media3-exoplayer:$media3Version"
     implementation "androidx.media3:media3-session:$media3Version"
     implementation "androidx.media3:media3-datasource-okhttp:$media3Version"
-    implementation "com.squareup.okhttp3:okhttp:$okhttpVersion"
-    testImplementation "com.squareup.okhttp3:mockwebserver:$okhttpVersion"
-    testImplementation "junit:junit:$junitVersion"
 }
 
 apply from: 'capacitor.build.gradle'

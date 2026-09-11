@@ -3,12 +3,13 @@
 import { Button } from '@/components/ui/button';
 import { BugIcon } from '@/components/icons';
 import { useUiStore } from '@/stores/useUiStore';
+import { SectionHeader } from '@/components/page/SectionHeader';
 
 export default function SettingsHelp() {
   const openBugReport = useUiStore((s) => s.setBugReportOpen);
   return (
     <section className="max-w-2xl">
-      <h2 className="text-xl font-bold tracking-tight">Help</h2>
+      <SectionHeader title="Help" />
       <div className="mt-6 rounded-2xl bg-card p-6 shadow-soft">
         <div className="font-semibold">Report a bug</div>
         <p className="mt-1 text-sm text-muted-foreground">

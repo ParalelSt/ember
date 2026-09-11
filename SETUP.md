@@ -297,6 +297,13 @@ causes symptoms that look like app bugs:
 Then restart. Worth doing every month or so, and first thing whenever
 recommendations go empty or playback starts failing.
 
+Nothing server-side changes for the Android app's offline downloads: the
+native app downloads through the same stream route as normal playback, so a
+host with stale `yt-dlp` will see individual tracks fail to download (with
+the rest of the pin still succeeding), the same as a stale-`yt-dlp` stream
+403. Update `yt-dlp` as above and retry the failed tracks from the app's
+Settings, Downloads screen.
+
 ### Streaming, the local cache, and 403s
 
 **Ember plays songs off the host's disk.** The first time anyone plays a

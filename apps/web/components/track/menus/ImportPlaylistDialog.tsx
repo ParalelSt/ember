@@ -16,6 +16,7 @@ import { Input } from '@/components/ui/input';
 import { api } from '@/lib/api';
 import { QK } from '@/hooks/useLibrary';
 import { logger } from '@/lib/logger/client';
+import { formatCount } from '@/lib/format';
 import type { Track } from '@/types/track';
 
 const MATCH_BATCH = 8;
@@ -141,7 +142,7 @@ export function ImportPlaylistDialog({ open, onOpenChange }: Props) {
         <div className="py-4">
           <div className="text-sm font-semibold truncate">{phase.name}</div>
           <div className="mt-1 text-sm text-muted-foreground">
-            {phase.total} {phase.total === 1 ? 'track' : 'tracks'} · {phase.source === 'spotify' ? 'Spotify' : 'YouTube Music'}
+            {formatCount(phase.total, 'track')} · {phase.source === 'spotify' ? 'Spotify' : 'YouTube Music'}
             {phase.source === 'spotify' && ' — each track gets matched on YouTube Music'}
           </div>
         </div>
@@ -210,7 +211,7 @@ export function ImportPlaylistDialog({ open, onOpenChange }: Props) {
         <>
           <Button variant="ghost" onClick={reset}>Back</Button>
           <Button onClick={() => void runImport(phase)} className="bg-ember hover:bg-ember-soft text-white">
-            Import {phase.total} {phase.total === 1 ? 'track' : 'tracks'}
+            Import {formatCount(phase.total, 'track')}
           </Button>
         </>
       );

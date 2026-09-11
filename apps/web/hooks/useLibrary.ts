@@ -4,7 +4,10 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { usePlayerStore } from '@/stores/usePlayerStore';
+import { useOfflineStore } from '@/stores/useOfflineStore';
 import { logger } from '@/lib/logger/client';
+import { LIKED_PIN, pinLiked, playableFor } from '@/lib/offline';
+import { nativeOfflinePresent } from '@/lib/offlineNative';
 import type { Playlist, Track } from '@/types/track';
 
 export const QK = {
@@ -107,6 +110,15 @@ export function useQueryTrack(videoId: string | null | undefined) {
   });
 }
 
+/** Same tracks, order ignored: pins carry the list the native side stored, and
+ *  the query cache reorders on every like. */
+function sameTrackIds(a: string[], b: string[]): boolean {
+  if (a.length !== b.length) return false;
+  const sa = [...a].sort();
+  const sb = [...b].sort();
+  return sa.every((id, i) => id === sb[i]);
+}
+
 export function useExecuteToggleLike() {
   const qc = useQueryClient();
   return useMutation({
@@ -122,7 +134,24 @@ export function useExecuteToggleLike() {
     onError: (_e, _vars, ctx) => {
       if (ctx?.prev) qc.setQueryData(QK.likes, ctx.prev);
     },
-    onSettled: () => qc.invalidateQueries({ queryKey: QK.likes }),
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: QK.likes });
+      // Liked songs are pinned for offline: keep the native download synced
+      // with every like/unlike so it never drifts (re-pin only downloads
+      // what's missing and drops what's no longer liked).
+      if (!nativeOfflinePresent()) return;
+      const pin = useOfflineStore.getState().pins.find((p) => p.id === LIKED_PIN);
+      if (!pin) return;
+      const likes = qc.getQueryData<Track[]>(QK.likes) ?? [];
+      // A re-pin restarts the download service, which flashes its "Preparing
+      // downloads" notification even when there is nothing to do. onSettled
+      // fires after the invalidated refetch too, so skip the call whenever the
+      // pinned set already matches.
+      // Compare against the playable set: pinList drops unavailable tracks,
+      // so the raw likes would never match once one liked song is dead.
+      if (sameTrackIds(pin.trackIds, playableFor(likes).map((t) => t.id))) return;
+      void pinLiked(likes);
+    },
   });
 }
 
@@ -219,5 +248,30 @@ export function useExecuteRemoveFromPlaylist() {
     onError: (_e, _v, ctx) => {
       if (ctx?.prev && ctx?.id) qc.setQueryData(QK.playlist(ctx.id), ctx.prev);
     },
+  });
+}
+
+export function useExecuteReplaceInPlaylist() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, trackId, track }: { id: string; trackId: string; track: Track }) =>
+      api.replaceInPlaylist(id, trackId, track),
+    onSuccess: (_d, { id, trackId, track }) => {
+      qc.invalidateQueries({ queryKey: QK.playlist(id) });
+      logger.breadcrumb('library', 'playlist.replace', { playlistId: id, from: trackId, to: track.id });
+    },
+  });
+}
+
+/** Swap a dead track for a live one in Likes: like the replacement first
+ *  (so it's never briefly missing), then unlike the old one. */
+export function useExecuteReplaceLike() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ oldId, track }: { oldId: string; track: Track }) => {
+      await api.like(track);
+      await api.unlike(oldId);
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: QK.likes }),
   });
 }

@@ -14,6 +14,37 @@ import {
   writeStreamToOpfs,
 } from '@/lib/opfs';
 import { apiUrl } from '@/lib/api';
+import {
+  nativeCancel,
+  nativeClearAll,
+  nativeOfflinePresent,
+  nativePin,
+  nativeStatus,
+  nativeUnpin,
+  subscribeNative,
+  type NativeStatus,
+} from '@/lib/offlineNative';
+
+import { isUnavailable } from '@/lib/playback/queueNav';
+
+/** Pin id for the Liked songs pseudo-playlist. A playlist's own pin id is
+ *  its PocketBase id as-is. */
+export const LIKED_PIN = 'liked';
+
+/** The tracks worth pinning: never pin one we already know the server
+ *  can't stream, since that only burns a failed fetch and leaves a hole in
+ *  the offline copy. */
+export function playableFor(tracks: Track[]): Track[] {
+  return tracks.filter((t) => !isUnavailable(t));
+}
+
+/** Pins any system list (Liked, Recently played, Uploads) under a fixed id.
+ *  Native only: the browser-storage path only knows playlists, and every
+ *  button that calls this is gated on the plugin's presence. */
+export async function pinList(id: string, name: string, tracks: Track[]): Promise<void> {
+  if (!nativeOfflinePresent()) throw new Error('Offline downloads need the Android app');
+  useOfflineStore.getState().setNativeStatus(await nativePin(id, name, playableFor(tracks)));
+}
 
 export const OFFLINE_SCHEMA_VERSION = 1 as const;
 
@@ -50,6 +81,12 @@ const META_FILE = 'meta.json';
 const PLAYLISTS_DIR = 'playlists';
 
 const aborters = new Map<string, AbortController>();
+
+/** hydrateOfflineStore runs once per boot in theory, twice under React
+ *  StrictMode in practice, and the native `offline` subscription has no
+ *  unsubscribe on this path: without this flag every plugin event would be
+ *  applied once per registration. */
+let nativeSubscribed = false;
 
 function extFromContentType(ct: string | null, fallback: string): string {
   if (!ct) return fallback;
@@ -91,8 +128,19 @@ async function notifySwIndex(message: SwIndexAdd | SwIndexRemove): Promise<void>
   reg?.active?.postMessage(message);
 }
 
-/** Hydrates the offline store from OPFS at app boot. Idempotent. */
+/** Hydrates the offline store at app boot. On Android this subscribes to the
+ *  native plugin's `offline` events and pulls its current status; everywhere
+ *  else it reads OPFS. Idempotent. */
 export async function hydrateOfflineStore(): Promise<void> {
+  if (nativeOfflinePresent()) {
+    const apply = (s: NativeStatus) => useOfflineStore.getState().setNativeStatus(s);
+    if (!nativeSubscribed) {
+      nativeSubscribed = true;
+      subscribeNative(apply);
+    }
+    apply(await nativeStatus());
+    return;
+  }
   if (typeof navigator === 'undefined') return;
   if (!('storage' in navigator) || !navigator.storage.getDirectory) return;
 
@@ -127,12 +175,18 @@ export async function hydrateOfflineStore(): Promise<void> {
 }
 
 export async function downloadPlaylist(playlist: Playlist, tracks: Track[]): Promise<void> {
-  if (tracks.length === 0) throw new Error('Playlist is empty');
+  const playable = playableFor(tracks);
+  if (playable.length === 0) throw new Error('Playlist is empty');
+
+  if (nativeOfflinePresent()) {
+    useOfflineStore.getState().setNativeStatus(await nativePin(playlist.id, playlist.name, playable));
+    return;
+  }
 
   await requestPersistence();
 
   const store = useOfflineStore.getState();
-  store.beginDownload(playlist.id, tracks.length);
+  store.beginDownload(playlist.id, playable.length);
 
   const ac = new AbortController();
   aborters.set(playlist.id, ac);
@@ -146,9 +200,9 @@ export async function downloadPlaylist(playlist: Playlist, tracks: Track[]): Pro
   let totalBytesThisPlaylist = 0;
 
   try {
-    for (let i = 0; i < tracks.length; i++) {
+    for (let i = 0; i < playable.length; i++) {
       if (ac.signal.aborted) throw new DOMException('Aborted', 'AbortError');
-      const t = tracks[i];
+      const t = playable[i];
       store.updateProgress(playlist.id, i, t.title);
 
       const audioRes = await fetch(
@@ -250,7 +304,17 @@ export async function downloadPlaylist(playlist: Playlist, tracks: Track[]): Pro
   }
 }
 
+/** Pins the Liked songs list for offline playback. Native-only: there's no
+ *  OPFS fallback for Liked (it isn't a playlist the web offline flow knows
+ *  about), and the button that calls this is itself gated on the plugin's
+ *  presence. */
+export const pinLiked = (tracks: Track[]) => pinList(LIKED_PIN, 'Liked songs', tracks);
+
 export async function removeDownload(playlistId: string): Promise<void> {
+  if (nativeOfflinePresent()) {
+    useOfflineStore.getState().setNativeStatus(await nativeUnpin(playlistId));
+    return;
+  }
   const root = await getOpfsRoot();
   const playlistsDir = await getDirIfExists(root, [PLAYLISTS_DIR]);
   if (!playlistsDir) return;
@@ -280,12 +344,23 @@ export async function removeDownload(playlistId: string): Promise<void> {
 }
 
 export function cancelDownload(playlistId: string): void {
+  if (nativeOfflinePresent()) {
+    void nativeCancel(playlistId).then((s) => useOfflineStore.getState().setNativeStatus(s));
+    return;
+  }
   const ac = aborters.get(playlistId);
   ac?.abort();
 }
 
 /** Whether the live playlist contents diverge from what's downloaded. */
 export async function isStale(playlistId: string, liveTrackIds: string[]): Promise<boolean> {
+  if (nativeOfflinePresent()) {
+    const pin = useOfflineStore.getState().pins.find((p) => p.id === playlistId);
+    if (!pin) return false;
+    if (pin.trackIds.length !== liveTrackIds.length) return true;
+    const ps = new Set(pin.trackIds);
+    return !liveTrackIds.every((id) => ps.has(id));
+  }
   const root = await getOpfsRoot();
   const dir = await getDirIfExists(root, [PLAYLISTS_DIR, playlistId]);
   if (!dir) return false;
@@ -298,6 +373,10 @@ export async function isStale(playlistId: string, liveTrackIds: string[]): Promi
 }
 
 export async function clearAllDownloads(): Promise<void> {
+  if (nativeOfflinePresent()) {
+    useOfflineStore.getState().setNativeStatus(await nativeClearAll());
+    return;
+  }
   const root = await getOpfsRoot();
   await deleteEntry(root, PLAYLISTS_DIR, { recursive: true });
   await deleteEntry(root, META_FILE);

@@ -11,8 +11,16 @@ import type { Track } from '@/types/track';
  *  Desktop app → the LOCAL Discord client, so each listener's own profile
  *  shows what they're playing. Everywhere else → the server route, which can
  *  only reach the host's Discord (browsers have no way to do presence).
- *  camelCase args are converted to the Rust command's snake_case by Tauri. */
-export function publishDiscordPresence(track: Track | null, isPlaying: boolean): void {
+ *  camelCase args are converted to the Rust command's snake_case by Tauri.
+ *
+ *  The card has a time bar, so the playhead travels with every update: a seek
+ *  that is not published leaves the bar pointing at the wrong place. */
+export function publishDiscordPresence(
+  track: Track | null,
+  isPlaying: boolean,
+  positionSec = 0,
+  durationSec = 0,
+): void {
   // Honour the user's Discord switch. The desktop app writes to the LOCAL
   // Discord client, so nothing server-side can stop it — this check is the
   // only thing standing between "hidden" and broadcasting. When sharing is
@@ -24,6 +32,9 @@ export function publishDiscordPresence(track: Track | null, isPlaying: boolean):
     isPlaying = false;
   }
 
+  const position = Number.isFinite(positionSec) ? Math.max(0, positionSec) : 0;
+  const duration = Number.isFinite(durationSec) ? Math.max(0, durationSec) : 0;
+
   if (detectShell() === 'tauri') {
     void invoke('discord_update', {
       title: track?.title ?? null,
@@ -31,8 +42,10 @@ export function publishDiscordPresence(track: Track | null, isPlaying: boolean):
       album: track?.album ?? null,
       artworkUrl: track?.artworkUrl ?? null,
       isPlaying,
+      positionSec: position,
+      durationSec: duration,
     }).catch(() => {});
     return;
   }
-  void api.updateDiscord(track, isPlaying).catch(() => {});
+  void api.updateDiscord(track, isPlaying, position, duration).catch(() => {});
 }

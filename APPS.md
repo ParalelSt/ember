@@ -178,6 +178,18 @@ keytool -genkeypair -keystore ember-release.keystore -alias ember \
 cp keystore.properties.example keystore.properties   # fill in the password
 ```
 
+## Offline downloads (Android)
+
+Android builds can pin a playlist or Liked Songs for offline playback: the
+`EmberOffline` Capacitor plugin downloads audio (and artwork) to app-private
+storage and a downloaded track plays locally even while online. On a cold
+start with no server reachable (or a main-frame 4xx/5xx from a reachable
+one), the app falls back to a small bundled page listing what is already
+downloaded, with lock-screen controls, instead of a blank screen. See
+`apps/mobile/README.md`'s "Offline (Android only)" section for the file
+layout, the plugin surface, and how to test it (including an emulator
+airplane-mode recipe). iOS and desktop do not have this yet.
+
 ## Installing
 
 **Android (sideload):** send the APK (Discord/Drive/USB) → open it on the

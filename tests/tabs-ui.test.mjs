@@ -113,8 +113,7 @@ const check = (name, pass, detail = '') => {
 };
 
 // Start the seeded song so the player bar (and its tabs button) exists.
-await page.goto(`${APP_URL}/library`, { waitUntil: 'networkidle' });
-await page.getByRole('tab', { name: /uploads/i }).click();
+await page.goto(`${APP_URL}/library/uploads`, { waitUntil: 'networkidle' });
 await page.getByText(songTitle).first().click({ clickCount: 2 });
 await page.waitForTimeout(2500);
 

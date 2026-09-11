@@ -13,7 +13,7 @@ import type { Track } from '@/types/track';
  *  session there's no preference to respect. */
 export async function POST(request: NextRequest) {
   const body = (await request.json().catch(() => null)) as
-    | { track?: Track | null; isPlaying?: boolean }
+    | { track?: Track | null; isPlaying?: boolean; positionSec?: number; durationSec?: number }
     | null;
 
   let mayShare = false;
@@ -28,8 +28,9 @@ export async function POST(request: NextRequest) {
     // PB unreachable / no session — fall through as "don't broadcast".
   }
 
-  if (mayShare && body?.track && body.isPlaying) updateDiscordActivity(body.track, true);
-  else clearDiscordActivity();
+  if (mayShare && body?.track && body.isPlaying) {
+    updateDiscordActivity(body.track, true, Number(body.positionSec) || 0, Number(body.durationSec) || 0);
+  } else clearDiscordActivity();
 
   return Response.json({ ok: true, shared: mayShare });
 }

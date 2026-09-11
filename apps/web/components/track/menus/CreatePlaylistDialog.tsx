@@ -10,8 +10,9 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { TrackSearchPicker } from '@/components/track/TrackSearchPicker';
+import { TrackSearchPicker } from '@/components/track/menus/TrackSearchPicker';
 import { DownloadIcon, TrashIcon } from '@/components/icons';
+import { formatCount } from '@/lib/format';
 import type { Track } from '@/types/track';
 
 interface Props {
@@ -81,7 +82,7 @@ export function CreatePlaylistDialog({ open, onOpenChange, onCreate, initialTrac
           {selected.length > 0 && (
             <div className="flex flex-col gap-1.5">
               <div className="text-[11px] uppercase tracking-widest text-muted-foreground">
-                {selected.length} {selected.length === 1 ? 'track' : 'tracks'} to add
+                {formatCount(selected.length, 'track')} to add
               </div>
               <div className="flex flex-col gap-1 max-h-32 overflow-y-auto -mx-1 px-1">
                 {selected.map((t) => (

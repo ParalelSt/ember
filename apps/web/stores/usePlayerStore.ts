@@ -2,6 +2,7 @@
 
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import { shuffle } from '@/lib/shuffle';
 import type { PlaybackContext, Track } from '@/types/track';
 
 export type LoopMode = 'off' | 'all' | 'one';
@@ -97,12 +98,9 @@ export const usePlayerStore = create<PlayerState>()(
         const backup = s.queue.slice();
         const played = s.queue.slice(0, Math.max(0, s.index + 1));
         const upcoming = s.queue.slice(Math.max(0, s.index + 1));
-        // Fisher-Yates over the upcoming tracks only.
-        for (let i = upcoming.length - 1; i > 0; i--) {
-          const j = Math.floor(Math.random() * (i + 1));
-          [upcoming[i], upcoming[j]] = [upcoming[j], upcoming[i]];
-        }
-        return { shuffle: true, orderBackup: backup, queue: [...played, ...upcoming] };
+        // Shuffle the upcoming tracks only; the played prefix (including the
+        // current track) stays put.
+        return { shuffle: true, orderBackup: backup, queue: [...played, ...shuffle(upcoming)] };
       }),
       // off → all → one → off. Any unexpected persisted value lands on 'off'.
       cycleLoopMode: () => set((s) => ({

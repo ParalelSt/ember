@@ -124,8 +124,7 @@ async function play(title) {
   await page.waitForTimeout(2500);
 }
 
-await page.goto(`${APP_URL}/library`, { waitUntil: 'networkidle' });
-await page.getByRole('tab', { name: /uploads/i }).click();
+await page.goto(`${APP_URL}/library/uploads`, { waitUntil: 'networkidle' });
 await page.waitForTimeout(1000);
 
 // 1. Play A and let it run, so there is a real position to leak.
@@ -162,7 +161,7 @@ check('C1 reloading resumes the same song near where it was',
   `${beforeReload}s -> ${afterReload}s`);
 
 // 5. Then switching songs after that reload still starts clean.
-await page.getByRole('tab', { name: /uploads/i }).click();
+await page.goto(`${APP_URL}/library/uploads`, { waitUntil: 'networkidle' });
 await page.waitForTimeout(1000);
 await play(songs[0]);
 const posAfter = await position();

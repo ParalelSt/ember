@@ -16,9 +16,10 @@ export default function AppShellLayout({ children }: { children: ReactNode }) {
   const scrollerRef = useRef<HTMLDivElement>(null);
   const [scrollerH, setScrollerH] = useState(0);
 
-  // Hydrate the offline store from OPFS on app boot — fills downloaded set
-  // + totalBytes, and posts every pinned track's videoId to the SW so it
-  // knows which streams to serve from OPFS when offline.
+  // Hydrate the offline store on app boot. On Android this subscribes to the
+  // native EmberOffline plugin's pins/trackFiles; elsewhere it reads OPFS
+  // (fills downloaded set + totalBytes, and posts every pinned track's
+  // videoId to the SW so it knows which streams to serve from OPFS offline).
   useEffect(() => {
     void hydrateOfflineStore();
   }, []);
@@ -61,7 +62,7 @@ export default function AppShellLayout({ children }: { children: ReactNode }) {
         >
           <div className="flex min-w-0 min-h-full">
             <main className="flex-1 min-w-0 px-6 md:px-8 py-6 md:py-8">
-              <div className="mx-auto max-w-7xl">{children}</div>
+              <div className="mx-auto max-w-(--content-max)">{children}</div>
             </main>
             <LyricsPanel />
           </div>

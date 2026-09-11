@@ -2,17 +2,20 @@
 
 import { useEffect } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { TrackRow } from '@/components/track/TrackRow';
+import { TrackShelf } from '@/components/track/TrackShelf';
+import { TrackCard } from '@/components/track/TrackCard';
 import {
   useQueryHistory,
   useQueryLikes,
   useQueryRecommended,
   useQueryTrending,
 } from '@/hooks/useLibrary';
-import { useOnline } from '@/lib/useOnline';
-import { OfflinePlaceholder } from '@/components/OfflinePlaceholder';
+import { OnlineOnly } from '@/components/OnlineOnly';
+import { usePlayer } from '@/components/player/PlayerProvider';
+import { useUiStore } from '@/stores/useUiStore';
 import { FriendsListening } from '@/components/FriendsListening';
 import type { Track } from '@/types/track';
+import { PageTitle } from '@/components/page/PageTitle';
 
 interface Section {
   key: string;
@@ -25,7 +28,24 @@ interface Section {
 export default function HomePage() {
   const search = useSearchParams();
   const focus = search.get('focus');
-  const isOnline = useOnline();
+  const { current, isPlaying, playTrack, toggle } = usePlayer();
+  // The shelves are presentational, so the page reads the lyrics flag and
+  // renders the cards (with their playback state) itself.
+  const lyricsOpen = useUiStore((s) => s.lyricsOpen);
+
+  const renderCard = (t: Track, list: Track[]) => {
+    const active = current?.id === t.id;
+    return (
+      <TrackCard
+        track={t}
+        active={active}
+        playing={isPlaying}
+        // Same rule the card used to own: re-tapping the current track
+        // toggles play/pause, any other card starts fresh.
+        onActivate={() => (active ? toggle() : playTrack(t, list))}
+      />
+    );
+  };
 
   // Reset the scroll position whenever the focus changes — going INTO a
   // focused song box (so you start at its top) and coming back OUT (so the
@@ -65,37 +85,38 @@ export default function HomePage() {
     { key: 'history', title: 'Recently played', tracks: history, hidden: history.length === 0 },
   ];
 
-  if (!isOnline) return <OfflinePlaceholder />;
-
   const focused = focus ? sections.find((s) => s.key === focus && !s.hidden) : null;
 
-  if (focused) {
-    return (
-      <TrackRow
-        title={focused.title}
-        tracks={focused.tracks}
-        loading={focused.loading}
-        focusKey={focused.key}
-        fullscreen
-      />
-    );
-  }
-
   return (
-    <div>
-      <h1 className="text-3xl md:text-4xl font-bold tracking-tight mb-8">Home</h1>
-      <FriendsListening />
-      {sections
-        .filter((s) => !s.hidden)
-        .map((s) => (
-          <TrackRow
-            key={s.key}
-            title={s.title}
-            tracks={s.tracks}
-            loading={s.loading}
-            focusKey={s.key}
-          />
-        ))}
-    </div>
+    <OnlineOnly>
+      {focused ? (
+        <TrackShelf
+          title={focused.title}
+          tracks={focused.tracks}
+          loading={focused.loading}
+          renderCard={renderCard}
+          lyricsOpen={lyricsOpen}
+          fullscreen
+        />
+      ) : (
+        <div>
+          <PageTitle className="mb-8">Home</PageTitle>
+          <FriendsListening />
+          {sections
+            .filter((s) => !s.hidden)
+            .map((s) => (
+              <TrackShelf
+                key={s.key}
+                title={s.title}
+                tracks={s.tracks}
+                loading={s.loading}
+                showAllHref={`/?focus=${encodeURIComponent(s.key)}`}
+                renderCard={renderCard}
+                lyricsOpen={lyricsOpen}
+              />
+            ))}
+        </div>
+      )}
+    </OnlineOnly>
   );
 }

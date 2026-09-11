@@ -1,20 +1,13 @@
 'use client';
 
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
+import { TrackRow } from '@/components/track/TrackRow';
 import { usePlayer } from '@/components/player/PlayerProvider';
 import { usePlayerStore } from '@/stores/usePlayerStore';
-import { cn } from '@/lib/utils';
 
 interface Props {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-}
-
-function fmt(sec: number | undefined): string {
-  if (!sec || !isFinite(sec)) return '--:--';
-  const m = Math.floor(sec / 60);
-  const s = Math.floor(sec % 60);
-  return `${m}:${String(s).padStart(2, '0')}`;
 }
 
 export function QueueSheet({ open, onOpenChange }: Props) {
@@ -39,7 +32,15 @@ export function QueueSheet({ open, onOpenChange }: Props) {
               <div className="px-3 text-[11px] uppercase tracking-widest text-sidebar-foreground/55 mb-1.5">
                 Now playing
               </div>
-              <Row track={current} highlight />
+              {/* No onPlay: the current row is a label, not a control. */}
+              <TrackRow
+                track={current}
+                density="compact"
+                tone="sidebar"
+                showDuration
+                active
+                artworkFallback={null}
+              />
             </div>
           )}
 
@@ -50,10 +51,15 @@ export function QueueSheet({ open, onOpenChange }: Props) {
               </div>
               <div className="flex flex-col">
                 {upcoming.map((t, i) => (
-                  <Row
+                  <TrackRow
                     key={`${t.id}-${index + 1 + i}`}
                     track={t}
-                    onClick={() => playTrack(t, queue, context)}
+                    density="compact"
+                    tone="sidebar"
+                    showDuration
+                    artworkFallback={null}
+                    className="hover:bg-sidebar-accent/60"
+                    onPlay={() => playTrack(t, queue, context)}
                   />
                 ))}
               </div>
@@ -68,36 +74,5 @@ export function QueueSheet({ open, onOpenChange }: Props) {
         </div>
       </SheetContent>
     </Sheet>
-  );
-}
-
-interface RowProps {
-  track: { id: string; title: string; artist: string; artworkUrl: string | null; durationSec: number };
-  highlight?: boolean;
-  onClick?: () => void;
-}
-
-function Row({ track, highlight, onClick }: RowProps) {
-  return (
-    <div
-      onClick={onClick}
-      className={cn(
-        'grid grid-cols-[40px_minmax(0,1fr)_auto] gap-3 items-center px-3 py-2 rounded-md transition-colors',
-        onClick && 'cursor-pointer hover:bg-sidebar-accent/60',
-        highlight && 'text-ember',
-      )}
-    >
-      <div className="relative h-10 w-10 rounded bg-black overflow-hidden shrink-0">
-        {track.artworkUrl && (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={track.artworkUrl} alt="" className="absolute inset-0 h-full w-full object-cover" />
-        )}
-      </div>
-      <div className="min-w-0">
-        <div className="truncate text-sm font-semibold">{track.title}</div>
-        <div className="truncate text-xs text-sidebar-foreground/55">{track.artist}</div>
-      </div>
-      <div className="text-xs text-sidebar-foreground/55 tabular-nums">{fmt(track.durationSec)}</div>
-    </div>
   );
 }
