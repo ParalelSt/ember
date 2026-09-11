@@ -97,6 +97,17 @@ describe('capacitorBackend.setMetadata', () => {
     expect(setMetadata).toHaveBeenLastCalledWith(expect.objectContaining({ title: 'Second' }));
   });
 
+  // Skipping to a track with no local art must still cancel the previous
+  // track's pending read, or its cover and title come back on the lock screen.
+  it('drops a local-art read when the next track has no art at all', async () => {
+    const backend = createCapacitorBackend(makeFakeEvents());
+    backend.setMetadata(makeTrack({ title: 'First' }), 'capacitor://localhost/_capacitor_file_/data/art/first.jpg');
+    backend.setMetadata(makeTrack({ title: 'Second', artworkUrl: null }), null);
+    await new Promise((r) => setTimeout(r, 20));
+    expect(setMetadata).toHaveBeenCalledTimes(2);
+    expect(setMetadata).toHaveBeenLastCalledWith(expect.objectContaining({ title: 'Second' }));
+  });
+
   it('leaves the first setMetadata alone when the local art cannot be read', async () => {
     vi.mocked(fetch).mockRejectedValueOnce(new Error('gone'));
     const backend = createCapacitorBackend(makeFakeEvents());

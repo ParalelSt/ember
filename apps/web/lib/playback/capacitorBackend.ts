@@ -45,6 +45,8 @@ function call(p: unknown): void {
   }
 }
 
+const MAX_ART_BYTES = 1_000_000;
+
 /** The shape `Capacitor.convertFileSrc` produces for an app-private file. */
 function isLocalFileSrc(src: string): boolean {
   return src.includes('/_capacitor_file_/') || src.startsWith('capacitor://');
@@ -55,6 +57,9 @@ function isLocalFileSrc(src: string): boolean {
 async function toDataUrl(src: string): Promise<string | null> {
   try {
     const blob = await (await fetch(src)).blob();
+    // Everything goes over the bridge as base64; a multi-megabyte cover is
+    // not worth the round trip for a 126 px notification icon.
+    if (blob.size > MAX_ART_BYTES) return null;
     return await new Promise<string | null>((resolve) => {
       const reader = new FileReader();
       reader.onload = () => resolve(typeof reader.result === 'string' ? reader.result : null);
@@ -118,6 +123,11 @@ export const createCapacitorBackend: CreateAudioBackend = (events) => {
     ...web,
 
     setMetadata(track: Track | null, localArtSrc?: string | null) {
+      // Claim the session for this call first: a pending art read for the
+      // previous track must lose even when this track has no local art at
+      // all (or the session is being released), or the lock screen would
+      // flip back to the previous cover and title.
+      const token = ++artToken;
       web.setMetadata(track, localArtSrc);
       const p = plugin();
       if (!p) return;
@@ -143,7 +153,6 @@ export const createCapacitorBackend: CreateAudioBackend = (events) => {
       // lock screen no bitmap at all. Re-read the file here, where it does
       // resolve, and hand the plugin a data: URL it can decode offline.
       if (!localArtSrc || !isLocalFileSrc(localArtSrc)) return;
-      const token = ++artToken;
       void toDataUrl(localArtSrc).then((dataUrl) => {
         // A later track already claimed the session: dropping a stale read
         // matters more than showing it, or the lock screen ends up one track

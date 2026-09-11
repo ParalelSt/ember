@@ -109,8 +109,11 @@ class OfflineDownloader(
                         Log.w(OfflineDownloadService.TAG, "$id: art got ${type.ifEmpty { "no content type" }} from ${res.request.url.encodedPath}")
                         return@use
                     }
-                    val a = File(cacheDir, "art-" + store.safeId(id))
-                    res.body!!.byteStream().use { i -> a.outputStream().use { i.copyTo(it) } }
+                    // .part like the audio file, and deleted on a failed copy, so
+                    // a half-written cover never lingers in the cache.
+                    val a = File(cacheDir, "art-" + store.safeId(id) + ".part")
+                    runCatching { res.body!!.byteStream().use { i -> a.outputStream().use { i.copyTo(it) } } }
+                        .onFailure { a.delete(); throw it }
                     store.commitArt(id, a)
                 }
             }
