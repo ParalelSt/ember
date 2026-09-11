@@ -110,4 +110,47 @@ describe('TrackShelf', () => {
     expect(screen.queryAllByRole('listitem')).toHaveLength(0);
     expect(screen.getByRole('heading', { name: 'Trending' })).toBeInTheDocument();
   });
+
+  // .grid-cards (auto-fill) was evaluated for this shelf and rejected: see
+  // step-8-report.md. These cases pin the visible-count-per-breakpoint
+  // behaviour the JS table (lib/layout.ts) is kept for, at every width
+  // named in the plan (2/4/5/6 default, 2/3/3/4 lyrics), not just lg.
+  describe('visible count per variant and width', () => {
+    it.each([
+      [320, SHELF_ROW_COUNT.default.base],
+      [640, SHELF_ROW_COUNT.default.sm],
+      [768, SHELF_ROW_COUNT.default.md],
+      [1024, SHELF_ROW_COUNT.default.lg],
+    ])('default variant at %ipx shows %i cards', (width, expected) => {
+      setWidth(width);
+      render(
+        <TrackShelf
+          title="Trending"
+          tracks={makeTracks(expected + 5)}
+          showAllHref="/?focus=trending"
+          renderCard={renderCard}
+        />,
+      );
+      expect(screen.getAllByRole('listitem')).toHaveLength(expected);
+    });
+
+    it.each([
+      [320, SHELF_ROW_COUNT.lyrics.base],
+      [640, SHELF_ROW_COUNT.lyrics.sm],
+      [768, SHELF_ROW_COUNT.lyrics.md],
+      [1024, SHELF_ROW_COUNT.lyrics.lg],
+    ])('lyrics variant at %ipx shows %i cards', (width, expected) => {
+      setWidth(width);
+      render(
+        <TrackShelf
+          title="Trending"
+          tracks={makeTracks(expected + 5)}
+          showAllHref="/?focus=trending"
+          renderCard={renderCard}
+          lyricsOpen
+        />,
+      );
+      expect(screen.getAllByRole('listitem')).toHaveLength(expected);
+    });
+  });
 });
