@@ -3,7 +3,7 @@ import { renderHook } from '@testing-library/react';
 import { usePlayerStore } from '@/stores/usePlayerStore';
 import { useSettingsStore } from '@/stores/useSettingsStore';
 import { useKeyboardShortcuts } from './useKeyboardShortcuts';
-import { makeFakeBackend, makeTrack, type FakeBackend } from './fakeBackend';
+import { makeFakeBackend, makeTrack, type FakeBackend } from '@/test-utils/fakeBackend';
 
 const track = makeTrack();
 

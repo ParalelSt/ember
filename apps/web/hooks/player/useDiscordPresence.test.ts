@@ -1,7 +1,7 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { renderHook } from '@testing-library/react';
 import { useDiscordPresence } from './useDiscordPresence';
-import { makeTrack } from './fakeBackend';
+import { makeTrack } from '@/test-utils/fakeBackend';
 
 const presence = vi.hoisted(() => ({ publishDiscordPresence: vi.fn() }));
 vi.mock('@/lib/discordPresence', () => presence);

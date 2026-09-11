@@ -2,7 +2,7 @@ import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { act, renderHook } from '@testing-library/react';
 import { usePlayerStore } from '@/stores/usePlayerStore';
 import { usePositionPersistence } from './usePositionPersistence';
-import { makeFakeBackend, makeTrack, type FakeBackend } from './fakeBackend';
+import { makeFakeBackend, makeTrack, type FakeBackend } from '@/test-utils/fakeBackend';
 
 const a = makeTrack();
 const b = makeTrack({ id: 'youtube:b2', sourceId: 'b2', title: 'Second Song' });

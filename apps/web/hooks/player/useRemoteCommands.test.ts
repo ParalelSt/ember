@@ -1,7 +1,7 @@
 import { describe, expect, it, vi, beforeEach, type Mock } from 'vitest';
 import { renderHook } from '@testing-library/react';
 import { useRemoteCommands } from './useRemoteCommands';
-import { makeFakeBackend, makeTrack, type FakeBackend } from './fakeBackend';
+import { makeFakeBackend, makeTrack, type FakeBackend } from '@/test-utils/fakeBackend';
 import type { Track } from '@/types/track';
 
 const a = makeTrack();

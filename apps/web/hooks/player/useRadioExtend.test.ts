@@ -3,7 +3,7 @@ import { renderHook, waitFor } from '@testing-library/react';
 import { usePlayerStore, type LoopMode } from '@/stores/usePlayerStore';
 import { useSessionStore } from '@/stores/useSessionStore';
 import { useRadioExtend } from './useRadioExtend';
-import { makeTrack } from './fakeBackend';
+import { makeTrack } from '@/test-utils/fakeBackend';
 import type { PlaybackContext, Track } from '@/types/track';
 
 const api = vi.hoisted(() => ({ getRecommended: vi.fn() }));
