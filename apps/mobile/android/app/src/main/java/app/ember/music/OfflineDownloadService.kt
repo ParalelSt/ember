@@ -62,6 +62,7 @@ class OfflineDownloadService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         startForeground(1, notification("Preparing downloads…"))
+        NativeLog.info("service", "download service started", JSONObject().put("startId", startId))
         // Every start queues a drain; the single-thread executor serialises
         // them, and a drain that finds nothing pending exits immediately.
         //
@@ -71,7 +72,6 @@ class OfflineDownloadService : Service() {
         // until some unrelated pin restarted the service. There is no such gap
         // when the request is queued unconditionally, and the cost of the
         // occasional redundant drain is one pending() call.
-        NativeLog.info("service", "download service started", JSONObject().put("startId", startId))
         // A drain that throws would kill the executor's worker thread and take
         // the app down with it (an uncaught exception on a pool thread reaches
         // the default handler). The failure is worth a report, not a crash, so
