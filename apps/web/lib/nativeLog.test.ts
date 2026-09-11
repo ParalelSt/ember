@@ -1,6 +1,6 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { logger } from '@/lib/logger/client';
-import { recordNativeLog, subscribeNativeLog } from './nativeLog';
+import { recordNativeLog } from './nativeLog';
 import type { NativeLogEvent } from '@/lib/offlineNative';
 
 /** The plugin as the WebView sees it: addListener keeps the callback so the
@@ -70,20 +70,31 @@ describe('native log forwarding', () => {
     expect(nativeEntries().at(-1)!.category).toBe('native:unknown');
   });
 
-  // Before the subscribing case: the module-level guard latches once a real
-  // plugin is found, and off Android there is nothing to subscribe to.
-  it('reports not-listening with no native plugin present', () => {
+  // subscribeNativeLog() latches a module-level `subscribed` flag, so the two
+  // cases below each reset modules and re-import fresh: sharing the module
+  // between them would make the second case's result depend on whether it
+  // runs before or after the first.
+  it('reports not-listening with no native plugin present', async () => {
+    vi.resetModules();
+    const { subscribeNativeLog } = await import('./nativeLog');
     const before = nativeEntries().length;
     expect(subscribeNativeLog()).toBe(false);
     expect(nativeEntries().length).toBe(before);
   });
 
-  it('subscribes to the plugin so a fired nativeLog event becomes a log entry', () => {
+  it('subscribes to the plugin so a fired nativeLog event becomes a log entry', async () => {
+    vi.resetModules();
+    // resetModules() also gives nativeLog.ts its own fresh copy of the logger
+    // singleton, so this test reads back through that same fresh import
+    // rather than the top-level `logger` (which would be watching a
+    // different ring than the one recordNativeLog actually wrote to).
+    const { subscribeNativeLog } = await import('./nativeLog');
+    const { logger: freshLogger } = await import('@/lib/logger/client');
     const fire = installPlugin();
     expect(subscribeNativeLog()).toBe(true);
 
     fire({ level: 'error', category: 'service', message: 'download drain crashed: boom' });
-    const entry = nativeEntries().at(-1)!;
+    const entry = freshLogger.snapshot().current.filter((e) => e.category.startsWith('native:')).at(-1)!;
     expect(entry.category).toBe('native:service');
     expect(entry.message).toBe('download drain crashed: boom');
   });

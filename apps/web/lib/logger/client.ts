@@ -165,6 +165,18 @@ class ClientLogger {
     }
   }
 
+  /** A breadcrumb that should read as a warning rather than plain info (for
+   *  example a native `warn` event forwarded by nativeLog.ts): same kind as
+   *  breadcrumb(), but the entry's own level is 'warn' instead of always
+   *  'info'. */
+  warn(category: string, message: string, data?: unknown): void {
+    try {
+      this.push('breadcrumb', 'warn', category, message, data);
+    } catch (e) {
+      console.warn('[logger.warn] internal failure', e);
+    }
+  }
+
   /** Snapshot of current ring + previous-session archive, plus a context
    *  envelope of what the app was doing, scrubbed and ready for submission. */
   snapshot(): ClientSnapshot {

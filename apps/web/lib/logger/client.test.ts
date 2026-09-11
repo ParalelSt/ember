@@ -143,6 +143,18 @@ describe('ClientLogger: click breadcrumbs', () => {
   });
 });
 
+describe('ClientLogger: warn', () => {
+  it('records a warn-level breadcrumb, distinct from breadcrumb()s default info level', () => {
+    logger.warn('native:offline', 'pin rejected: id required', { foo: 'bar' });
+    const entry = logger.snapshot().current.at(-1)!;
+    expect(entry.kind).toBe('breadcrumb');
+    expect(entry.level).toBe('warn');
+    expect(entry.category).toBe('native:offline');
+    expect(entry.message).toBe('pin rejected: id required');
+    expect(entry.data).toEqual({ foo: 'bar' });
+  });
+});
+
 describe('ClientLogger: ring buffer', () => {
   it('holds at most 400 entries, dropping the oldest first', () => {
     for (let i = 0; i < 450; i++) logger.breadcrumb('test', `entry ${i}`);
