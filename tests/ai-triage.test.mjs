@@ -32,7 +32,7 @@ const check = (name, pass, detail = '') => {
 //    code the route calls, not a re-implementation here. ──
 {
   register('./ts-stub-loader.mjs', import.meta.url);
-  const { buildDigest, TriageSchema } = await import('../apps/web/lib/ai/triage.ts');
+  const { buildDigest, TriageSchema, triageBugReport } = await import('../apps/web/lib/ai/triage.ts');
 
   const now = Date.now();
   const ctx = {
@@ -108,6 +108,32 @@ const check = (name, pass, detail = '') => {
   check('U14 reproduction defaults to unknown when absent', TriageSchema.parse(base).reproduction === 'unknown');
   check('U15 reproduction defaults to unknown when empty string', TriageSchema.parse({ ...base, reproduction: '' }).reproduction === 'unknown');
   check('U16 reproduction passes through when present', TriageSchema.parse({ ...base, reproduction: 'Open a playlist, hit play twice fast' }).reproduction === 'Open a playlist, hit play twice fast');
+
+  // Malformed context (e.g. an old/odd client sending context.track as a
+  // plain string instead of an object) must degrade to "no triage", not
+  // throw out of triageBugReport and lose the whole report (route.ts calls
+  // this unguarded). No network call is reached: the digest build itself
+  // throws (clip(undefined, ...) on ctx.track.title), and that must be
+  // caught inside triageBugReport.
+  const prevKey = process.env.ANTHROPIC_API_KEY;
+  process.env.ANTHROPIC_API_KEY = 'unit-test-key';
+  try {
+    let threw = false;
+    let result;
+    try {
+      result = await triageBugReport({
+        note: '', userAgent: 'ua', context: { ...ctx, track: 'not-an-object' },
+        client: { current: [], previous: [], sessionId: 's' }, server: [],
+      });
+    } catch {
+      threw = true;
+    }
+    check('U17 malformed context: triageBugReport does not throw', !threw);
+    check('U18 malformed context: triageBugReport returns null', result === null);
+  } finally {
+    if (prevKey === undefined) delete process.env.ANTHROPIC_API_KEY;
+    else process.env.ANTHROPIC_API_KEY = prevKey;
+  }
 }
 
 const PB_URL = process.env.PB_URL ?? 'http://127.0.0.1:8091';

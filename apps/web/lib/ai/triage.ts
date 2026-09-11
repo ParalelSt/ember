@@ -67,7 +67,10 @@ export interface TriageInput {
   client: { current: LogEntry[]; previous: LogEntry[]; sessionId: string };
   server: ServerLogEntry[];
   userAgent: string;
-  context: ReportContext;
+  // Optional: the route drops a malformed (non-object) context before it
+  // ever reaches here (see sanitizeContext in app/api/bug-report/route.ts),
+  // so an absent context is a normal, expected shape, not an error.
+  context: ReportContext | undefined;
   /** Tail of the desktop shell's own log, when the report came from Tauri.
    *  Only the last MAX_DESKTOP_LOG_LINES lines go into the prompt; the full
    *  tail is attached to the Discord message separately (see route.ts). */
@@ -310,15 +313,18 @@ export async function triageBugReport(input: TriageInput): Promise<Triage | null
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) return null;
 
-  const digest = buildDigest(input);
-  const prompt = [
-    `Reporter's note: ${input.note || '(none given)'}`,
-    `User-agent: ${input.userAgent}`,
-    '',
-    digest,
-  ].join('\n');
-
   try {
+    // Digest and prompt construction happen inside the try too: a malformed
+    // context (an old/odd client payload) must degrade to "no triage", not
+    // a 500 that loses the whole report.
+    const digest = buildDigest(input);
+    const prompt = [
+      `Reporter's note: ${input.note || '(none given)'}`,
+      `User-agent: ${input.userAgent}`,
+      '',
+      digest,
+    ].join('\n');
+
     const res = await fetch(`${BASE_URL}/v1/messages`, {
       method: 'POST',
       headers: {
