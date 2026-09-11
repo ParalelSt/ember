@@ -128,8 +128,8 @@ await ctx.addInitScript(() => {
   const STATE_KEY = '__emberFakeOfflineState__';
   const CALLS_KEY = '__emberFakeOfflineCalls__';
   const loadState = () => {
-    try { return JSON.parse(localStorage.getItem(STATE_KEY)) ?? { pins: {}, trackFiles: {}, totalBytes: 0 }; }
-    catch { return { pins: {}, trackFiles: {}, totalBytes: 0 }; }
+    try { return JSON.parse(localStorage.getItem(STATE_KEY)) ?? { pins: {}, trackFiles: {}, artFiles: {}, totalBytes: 0 }; }
+    catch { return { pins: {}, trackFiles: {}, artFiles: {}, totalBytes: 0 }; }
   };
   const saveState = (s) => localStorage.setItem(STATE_KEY, JSON.stringify(s));
   const loadCalls = () => { try { return JSON.parse(sessionStorage.getItem(CALLS_KEY)) ?? []; } catch { return []; } };
@@ -137,7 +137,7 @@ await ctx.addInitScript(() => {
 
   const snapshot = () => {
     const s = loadState();
-    return { pins: Object.values(s.pins), trackFiles: { ...s.trackFiles }, totalBytes: s.totalBytes };
+    return { pins: Object.values(s.pins), trackFiles: { ...s.trackFiles }, artFiles: { ...(s.artFiles ?? {}) }, totalBytes: s.totalBytes };
   };
   const emit = (progress) => {
     const s = { ...snapshot(), ...(progress ? { progress } : {}) };
@@ -162,7 +162,12 @@ await ctx.addInitScript(() => {
         setTimeout(() => {
           const s3 = loadState();
           if (!s3.pins[id]) return;
-          for (const t of tracks) s3.trackFiles[t.id] = `/data/user/0/app.ember.music/files/offline/audio/${t.id}.m4a`;
+          for (const t of tracks) {
+            s3.trackFiles[t.id] = `/data/user/0/app.ember.music/files/offline/audio/${t.id}.m4a`;
+            // Every downloaded track gets local art too, the same way the
+            // real plugin's index does.
+            s3.artFiles[t.id] = `/data/user/0/app.ember.music/files/offline/art/${t.id}.jpg`;
+          }
           s3.totalBytes += tracks.length * 1024 * 1024;
           s3.pins[id] = { ...s3.pins[id], done: tracks.length, downloading: false };
           saveState(s3);
@@ -173,7 +178,16 @@ await ctx.addInitScript(() => {
     },
     unpin: ({ id }) => { pushCall(['unpin', id]); const s = loadState(); delete s.pins[id]; saveState(s); return Promise.resolve(snapshot()); },
     cancel: ({ id }) => { pushCall(['cancel', id]); const s = loadState(); delete s.pins[id]; saveState(s); return Promise.resolve(snapshot()); },
-    clearAll: () => { pushCall(['clearAll']); saveState({ pins: {}, trackFiles: {}, totalBytes: 0 }); return Promise.resolve(snapshot()); },
+    clearAll: () => { pushCall(['clearAll']); saveState({ pins: {}, trackFiles: {}, artFiles: {}, totalBytes: 0 }); return Promise.resolve(snapshot()); },
+    // Re-queues a pin's failed tracks: clears failed/failedReason, same as
+    // the real native retry({ id }).
+    retry: ({ id }) => {
+      pushCall(['retry', id]);
+      const s = loadState();
+      if (s.pins[id]) s.pins[id] = { ...s.pins[id], failed: 0, failedReason: null };
+      saveState(s);
+      return Promise.resolve(snapshot());
+    },
   };
 
   window.__emberOfflineCalls = loadCalls();
@@ -229,6 +243,11 @@ await page.getByText(titles[0], { exact: true }).first().click({ clickCount: 2 }
 await page.waitForTimeout(1000);
 const audioSrc = await page.evaluate(() => document.querySelector('audio')?.src ?? null);
 check('the downloaded track plays from the local file', !!audioSrc && audioSrc.includes('_capacitor_file_'), audioSrc ?? 'no <audio> element');
+// The player bar's artwork prefers the downloaded copy's own local art
+// (the fake plugin's artFiles) over the track's remote artworkUrl.
+const barArtSrc = await page.locator('footer img').first().evaluate((img) => img.src).catch(() => null);
+check('the player bar shows local art through convertFileSrc while playing the downloaded track',
+  !!barArtSrc && barArtSrc.includes('_capacitor_file_'), barArtSrc ?? 'no <img> in the player bar');
 
 // ── 3b: a downloaded file that will not play falls back to the stream ───
 // Point the second track's local file at a path the sandbox 404s (a file the
@@ -310,6 +329,7 @@ await page.evaluate(() => {
         failedReason: 'auth', downloading: false, trackIds: ['x1', 'x2', 'x3'] },
     },
     trackFiles: {},
+    artFiles: {},
     totalBytes: 2048,
   }));
 });
@@ -319,6 +339,12 @@ const brokenRow = await appeared(page.locator('[data-testid="offline-pins"] li')
   : '';
 check('a failed pin explains the reason', /2 failed/.test(brokenRow) && brokenRow.includes('Sign in again'),
   brokenRow.replace(/\n/g, ' ').slice(0, 200));
+
+// ── 7: Settings Retry calls the native retry({ id }), not a track-list re-pin ──
+await page.getByRole('button', { name: /retry/i }).click();
+await page.waitForTimeout(300);
+const retryCalled = await page.evaluate(() => window.__emberOfflineCalls.some((c) => c[0] === 'retry' && c[1] === 'broken'));
+check("Settings Retry calls the fake's retry with the pin id", retryCalled);
 
 check('no page errors', errors.length === 0, errors.slice(0, 2).join(' | '));
 await browser.close();
