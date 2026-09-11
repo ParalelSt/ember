@@ -51,6 +51,15 @@ same Google-supplied template. What an app supplies is content and capabilities:
   `res/xml/automotive_app_desc.xml`, the `com.google.android.gms.car.application`
   meta-data.
 
+The APK also ships the offline downloads plugin (`EmberOffline` +
+`OfflineDownloadService`) and the capgo `MediaSession` plugin, both registered
+in `MainActivity`. They coexist with the native player rather than competing
+with it: the provider picks ONE backend per launch (`androidBackend` when the
+`EmberPlayer` plugin is present, otherwise `capacitorBackend`), so only one
+media session is ever published, and the capgo plugin is there for the bundled
+offline page, which runs without the native player. Downloads run in their own
+`dataSync` foreground service while Media3 keeps playing.
+
 Known limits: no like button in the car, live sessions (carlist) are not
 driven from the car, no offline playback. Playback resumption from the system
 media panel is not implemented (Android's "No root for client
