@@ -90,8 +90,8 @@ const page = await ctx.newPage();
 const errors = [];
 page.on('pageerror', (e) => errors.push(e.message));
 
-await page.goto(`${APP_URL}/library`, { waitUntil: 'networkidle' });
-await page.getByRole('tab', { name: /uploads/i }).click();
+// Uploads is its own page now (the library rewrite replaced the tabs).
+await page.goto(`${APP_URL}/library/uploads`, { waitUntil: 'networkidle' });
 await page.getByText(titles[0], { exact: true }).first().click({ clickCount: 2 });
 await page.waitForTimeout(1500);
 
