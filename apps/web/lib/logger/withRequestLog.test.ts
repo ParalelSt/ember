@@ -172,3 +172,22 @@ describe('every API route handler is wrapped in withRequestLog', () => {
     });
   }
 });
+
+describe('withRequestLog and non-JSON bodies', () => {
+  it('returns a streamed 5xx body untouched instead of parsing it', async () => {
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode('ab'));
+        controller.close();
+      },
+    });
+    const handler = async () => new Response(stream, { status: 502, headers: { 'content-type': 'audio/mp4' } });
+    const wrapped = withRequestLog('stream-test', handler);
+    const res = await wrapped(makeReq() as never, {});
+    expect(res.status).toBe(502);
+    // the wrapper neither consumed nor cloned the body
+    expect(res.bodyUsed).toBe(false);
+    expect(await res.text()).toBe('ab');
+  });
+});
+

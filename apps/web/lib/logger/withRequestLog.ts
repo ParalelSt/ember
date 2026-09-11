@@ -24,6 +24,10 @@ async function resolveUserId(): Promise<string | undefined> {
  *  the response that's actually going back to the client. Returns undefined
  *  for non-JSON or unreadable bodies (e.g. a binary/stream response). */
 async function readErrorField(res: Response): Promise<string | undefined> {
+  // Only JSON bodies are inspected: cloning and parsing a streamed audio or
+  // proxied upstream response would buffer the whole stream before it is
+  // handed back to the client.
+  if (!res.headers.get('content-type')?.includes('json')) return undefined;
   try {
     const json: unknown = await res.clone().json();
     if (json && typeof json === 'object' && typeof (json as { error?: unknown }).error === 'string') {
