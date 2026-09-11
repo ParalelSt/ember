@@ -117,7 +117,8 @@ Plugin methods: `status`, `tracks({ id })`, `serverUrl`, `pin({ id, name,
 tracks })`, `retry({ id })`, `unpin({ id })`, `cancel({ id })`, `clearAll`.
 `retry` re-queues only that pin's failed tracks from the index, so it needs
 no track list from JS and cannot re-sync a pin to a stale one; `pin` is the
-only method that changes which tracks a pin lists.
+only method that changes which tracks a pin lists. `retry` rejects an unknown
+pin id with "no such pin".
 
 `capacitor.config.ts` sets `server.errorPath: offline.html`, a bundled page
 (`public/offline.html`) Capacitor shows whenever the main-frame request to

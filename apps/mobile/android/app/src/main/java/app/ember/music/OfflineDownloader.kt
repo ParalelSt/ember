@@ -5,6 +5,7 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.json.JSONObject
 import java.io.File
+import java.util.Collections
 
 /** The download drain itself: pick the next pending track, fetch it, retry
  *  once, record why it gave up, repeat until nothing is pending.
@@ -34,6 +35,8 @@ class OfflineDownloader(
     private val failed get() = OfflineDownloadService.failed
     private val failedReason get() = OfflineDownloadService.failedReason
 
+    private object CancelledSentinel
+
     private fun isCancelled(pinId: String) = pinId in OfflineDownloadService.cancelled
 
     fun drain() {
@@ -46,12 +49,13 @@ class OfflineDownloader(
             val pin = store.pins().firstOrNull { it.id == pinId } ?: continue
             val (done, total) = store.progress(pin)
             onStart(pin, JSONObject().put("id", pinId).put("done", done).put("total", total).put("title", track.optString("title")))
-            var reason = download(pinId, track)
+            var reason: Any? = download(pinId, track)
             // A pin cancelled mid-track is done: neither retry it nor record a
             // failure the user would then see on a pin they just dropped.
-            if (reason != null && !isCancelled(pinId)) reason = download(pinId, track)
-            if (reason != null && !isCancelled(pinId)) {
-                failed.getOrPut(pinId) { HashSet() }.add(track.getString("id"))
+            val wasCancelled = isCancelled(pinId)
+            if (reason != null && !wasCancelled) reason = download(pinId, track)
+            if (reason is String && !wasCancelled) {
+                failed.getOrPut(pinId) { Collections.synchronizedSet(HashSet()) }.add(track.getString("id"))
                 // putIfAbsent is API 24 and minSdk here is 23, so do it by hand.
                 synchronized(failedReason) { if (failedReason[pinId] == null) failedReason[pinId] = reason }
             }
@@ -60,8 +64,9 @@ class OfflineDownloader(
     }
 
     /** One track: audio (required) then artwork (best effort).
-     *  Returns null on success, or the reason the track failed. */
-    fun download(pinId: String, track: JSONObject): String? {
+     *  Returns null on success, or the reason the track failed.
+     *  Returns CancelledSentinel if cancelled mid-download. */
+    fun download(pinId: String, track: JSONObject): Any? {
         val id = track.getString("id")
         val stream = track.optString("streamUrl")
         val url = if (stream.startsWith("http")) stream else baseUrl + stream
@@ -89,12 +94,24 @@ class OfflineDownloader(
             // Cancelled while these bytes were in flight: they belong to a pin
             // the user has dropped, so throw the part file away rather than
             // committing a download nobody asked for any more.
-            if (isCancelled(pinId)) { tmp.delete(); return "cancelled" }
+            if (isCancelled(pinId)) { tmp.delete(); return CancelledSentinel }
             store.commitAudio(id, tmp)
             val art = track.optString("artworkUrl")
             if (art.startsWith("http")) runCatching {
                 clientFor(art).newCall(Request.Builder().url(art).build()).execute().use { res ->
-                    if (res.isSuccessful) { val a = File(cacheDir, "art-" + store.safeId(id)); res.body!!.byteStream().use { i -> a.outputStream().use { i.copyTo(it) } }; store.commitArt(id, a) }
+                    if (!res.isSuccessful) {
+                        Log.w(OfflineDownloadService.TAG, "$id: art HTTP ${res.code}")
+                        return@use
+                    }
+                    val type = res.header("Content-Type").orEmpty()
+                    val landedOnAuth = res.request.url.encodedPath.startsWith("/auth")
+                    if (landedOnAuth || type.startsWith("text/html")) {
+                        Log.w(OfflineDownloadService.TAG, "$id: art got ${type.ifEmpty { "no content type" }} from ${res.request.url.encodedPath}")
+                        return@use
+                    }
+                    val a = File(cacheDir, "art-" + store.safeId(id))
+                    res.body!!.byteStream().use { i -> a.outputStream().use { i.copyTo(it) } }
+                    store.commitArt(id, a)
                 }
             }
             return null

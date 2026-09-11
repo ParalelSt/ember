@@ -114,13 +114,13 @@ class EmberOfflinePlugin : Plugin() {
      *  the ones whose audio is still missing, so clearing the failure state and
      *  starting the service re-queues exactly the failed tracks. Deliberately
      *  NOT `pin()`: that one re-syncs the pin to a track list from JS, which a
-     *  retry has no business doing (a stale list would drop tracks). */
+     *  retry has no business doing (a stale list would drop tracks).
+     *  Rejects unknown pin ids with "no such pin". */
     @PluginMethod fun retry(call: PluginCall) {
         val id = call.getString("id") ?: return call.reject("id required")
         if (store.pins().none { it.id == id }) return call.reject("no such pin")
-        // A pin can be cancelled as well as failed (cancel() removes the pin,
-        // but an unpin/re-pin cycle can leave the id in `cancelled` until a
-        // drain clears it), and the service skips cancelled pins outright.
+        // Defensive: clear cancelled state so the service will resume this pin,
+        // and clear failure state so the drain re-queues the failed tracks.
         OfflineDownloadService.cancelled.remove(id)
         OfflineDownloadService.failed.remove(id)
         OfflineDownloadService.failedReason.remove(id)

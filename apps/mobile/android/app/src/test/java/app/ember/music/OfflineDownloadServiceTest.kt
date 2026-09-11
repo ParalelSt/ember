@@ -179,4 +179,34 @@ class OfflineDownloadServiceTest {
         assertEquals("already here", store.audioFileFor("youtube:a").readText())
         assertTrue(OfflineDownloadService.failed.isEmpty())
     }
+
+    @Test fun cancelSetRightAfterAudioWriteResultsInNoFailedReasonAndNoCommittedFile() {
+        server.enqueue(audio())
+        store.upsertPin("p1", "Road", listOf(track("youtube:a")))
+
+        downloader(onStart = { pin, _ ->
+            // Set cancel after audio is requested, simulating cancel during download
+            OfflineDownloadService.cancelled.add(pin.id)
+        }).drain()
+
+        assertEquals(1, server.requestCount)
+        assertFalse(store.audioFileFor("youtube:a").exists())
+        assertEquals(emptyList<Any>(), partFiles())
+        assertTrue(OfflineDownloadService.failed.isEmpty())
+        assertTrue(OfflineDownloadService.failedReason.isEmpty())
+    }
+
+    @Test fun artRequestRedirectingToAuthLeavesNoArtFileWhileAudioIsCommitted() {
+        server.enqueue(audio())
+        server.enqueue(MockResponse().setResponseCode(302).setHeader("Location", "/auth/sign-in"))
+        server.enqueue(MockResponse().setResponseCode(200).setHeader("Content-Type", "text/html").setBody("<html>sign in</html>"))
+        store.upsertPin("p1", "Road", listOf(track("youtube:a", server.url("/art/a").toString())))
+
+        downloader().drain()
+
+        assertTrue(store.audioFileFor("youtube:a").exists())
+        assertFalse(store.artFileFor("youtube:a").exists())
+        assertEquals("ID3AUDIOBYTES", store.audioFileFor("youtube:a").readText())
+        assertTrue(OfflineDownloadService.failed.isEmpty())
+    }
 }
