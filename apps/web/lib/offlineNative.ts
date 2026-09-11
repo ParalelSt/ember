@@ -24,8 +24,22 @@ export interface NativeStatus {
   totalBytes: number;
   progress?: { id: string; done: number; total: number; title: string };
 }
+
+/** One native diagnostic (see android NativeLog.kt), forwarded into the client
+ *  logger so Kotlin-side failures reach the bug report. */
+export interface NativeLogEvent {
+  level: 'error' | 'warn' | 'info';
+  /** 'offline' | 'player' | 'service'; the web side prefixes it with 'native:'. */
+  category: string;
+  message: string;
+  data?: unknown;
+  /** Milliseconds since epoch, from the device clock. */
+  ts?: number;
+}
+
 interface EmberOfflinePlugin {
-  addListener(event: string, cb: (s: NativeStatus) => void): unknown;
+  addListener(event: 'offline', cb: (s: NativeStatus) => void): unknown;
+  addListener(event: 'nativeLog', cb: (e: NativeLogEvent) => void): unknown;
   status(): Promise<NativeStatus>;
   pin(o: { id: string; name: string; tracks: Track[] }): Promise<NativeStatus>;
   unpin(o: { id: string }): Promise<NativeStatus>;
@@ -43,6 +57,14 @@ export const nativeUnpin = (id: string) => plugin()!.unpin({ id });
 export const nativeCancel = (id: string) => plugin()!.cancel({ id });
 export const nativeClearAll = () => plugin()!.clearAll();
 export function subscribeNative(cb: (s: NativeStatus) => void): void { plugin()?.addListener('offline', cb); }
+/** Native diagnostics. Subscribing is also what drains the events the plugin
+ *  buffered before this page existed, so call it once, early. */
+export function subscribeNativeLogEvents(cb: (e: NativeLogEvent) => void): boolean {
+  const p = plugin();
+  if (!p) return false;
+  p.addListener('nativeLog', cb);
+  return true;
+}
 
 /** `window.Capacitor` never exists during SSR, so `nativeOfflinePresent()`
  *  called straight in JSX renders false on the server and (on Android) true
