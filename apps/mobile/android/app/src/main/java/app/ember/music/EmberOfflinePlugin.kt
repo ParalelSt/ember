@@ -14,7 +14,20 @@ import com.getcapacitor.annotation.CapacitorPlugin
 import org.json.JSONObject
 
 /** The web UI's handle on offline downloads: pin lists, read status, clear.
- *  Every change is also pushed as an `offline` event so the UI never polls. */
+ *  Every change is also pushed as an `offline` event so the UI never polls.
+ *
+ *  The status shape (also the `offline` event payload) is:
+ *
+ *      {
+ *        pins: [{ id, name, total, done, failed, failedReason, downloading, trackIds }],
+ *        trackFiles: { [trackId]: absolutePath },   // downloaded audio
+ *        artFiles:   { [trackId]: absolutePath },   // downloaded artwork, a subset
+ *        totalBytes,
+ *        progress?: { id, done, total, title }      // only while downloading
+ *      }
+ *
+ *  Paths are absolute app-private files: the WebView cannot load them directly,
+ *  it has to put them through `Capacitor.convertFileSrc`. */
 @CapacitorPlugin(name = "EmberOffline")
 class EmberOfflinePlugin : Plugin() {
     private val store by lazy { OfflineStore.shared(context) }
@@ -51,7 +64,12 @@ class EmberOfflinePlugin : Plugin() {
         }
         val files = JSObject()
         store.trackFiles().forEach { (id, f) -> files.put(id, f.absolutePath) }
-        val out = JSObject().put("pins", pins).put("trackFiles", files).put("totalBytes", store.totalBytes())
+        // Artwork lives in its own map because it is best effort: a track with
+        // audio may have no art, and the web side must not read "no art" as
+        // "not downloaded".
+        val art = JSObject()
+        store.artFiles().forEach { (id, f) -> art.put(id, f.absolutePath) }
+        val out = JSObject().put("pins", pins).put("trackFiles", files).put("artFiles", art).put("totalBytes", store.totalBytes())
         if (progress != null) out.put("progress", JSObject(progress.toString()))
         return out
     }
@@ -87,6 +105,26 @@ class EmberOfflinePlugin : Plugin() {
         OfflineDownloadService.failedReason.remove(id)
         requestNotificationsIfNeeded()
         store.upsertPin(id, name, tracks)
+        OfflineDownloadService.start(context)
+        call.resolve(status())
+    }
+
+    /** Try the tracks of this pin that gave up again. No track list is needed:
+     *  the index already has every track's JSON, and `pending()` offers only
+     *  the ones whose audio is still missing, so clearing the failure state and
+     *  starting the service re-queues exactly the failed tracks. Deliberately
+     *  NOT `pin()`: that one re-syncs the pin to a track list from JS, which a
+     *  retry has no business doing (a stale list would drop tracks). */
+    @PluginMethod fun retry(call: PluginCall) {
+        val id = call.getString("id") ?: return call.reject("id required")
+        if (store.pins().none { it.id == id }) return call.reject("no such pin")
+        // A pin can be cancelled as well as failed (cancel() removes the pin,
+        // but an unpin/re-pin cycle can leave the id in `cancelled` until a
+        // drain clears it), and the service skips cancelled pins outright.
+        OfflineDownloadService.cancelled.remove(id)
+        OfflineDownloadService.failed.remove(id)
+        OfflineDownloadService.failedReason.remove(id)
+        requestNotificationsIfNeeded()
         OfflineDownloadService.start(context)
         call.resolve(status())
     }

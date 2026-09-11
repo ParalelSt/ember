@@ -80,6 +80,12 @@ class OfflineStore(private val root: File) {
     @Synchronized fun trackFiles(): Map<String, File> =
         tracks.keys.mapNotNull { id -> audioFileFor(id).takeIf { it.exists() }?.let { id to it } }.toMap()
 
+    /** Artwork is best effort, so this is a subset of trackFiles(): a track can
+     *  have audio and no art. Separate from trackFiles() rather than folded in
+     *  so the web side can keep treating a trackFiles entry as "playable". */
+    @Synchronized fun artFiles(): Map<String, File> =
+        tracks.keys.mapNotNull { id -> artFileFor(id).takeIf { it.exists() }?.let { id to it } }.toMap()
+
     @Synchronized fun track(id: String): JSONObject? = tracks[id]
 
     @Synchronized fun totalBytes(): Long = tracks.keys.sumOf { audioFileFor(it).length() + artFileFor(it).length() }
