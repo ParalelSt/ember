@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { formatAgo, formatBytes, formatCount, formatTime, formatTotalDuration } from './format';
 
 describe('formatTime', () => {
@@ -108,8 +108,18 @@ describe('formatAgo', () => {
     expect(formatAgo(new Date(now - 2 * 24 * 60 * 60_000).toISOString(), now)).toBe('2880 min ago');
   });
 
-  it('defaults `now` to the current time when omitted', () => {
-    const iso = new Date(Date.now() - 20_000).toISOString();
-    expect(formatAgo(iso)).toBe('now');
+  describe('when `now` is omitted', () => {
+    beforeEach(() => {
+      vi.useFakeTimers();
+      vi.setSystemTime(now);
+    });
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it('defaults to the current time instead of reading the real clock', () => {
+      const iso = new Date(now - 20_000).toISOString();
+      expect(formatAgo(iso)).toBe('now');
+    });
   });
 });
