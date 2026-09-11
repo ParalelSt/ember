@@ -149,7 +149,7 @@ throwaway user and checks the diagnosis panel (including the "Reproduce"
 line) renders, resets on **Done**, and logs no console errors. Before
 submitting, it also fires one deliberately-failing request (a nonexistent
 playlist id) so the server log the report picks up has a real error line,
-then — via the fake servers' introspection `GET` (see `fake-anthropic.mjs`) —
+then: via the fake servers' introspection `GET` (see `fake-anthropic.mjs`) ,
 checks the "State when reported" context block and that server error both
 reached the AI prompt, and that the context ("Where") and reproduction
 ("Reproduce") fields both reached the Discord embed.

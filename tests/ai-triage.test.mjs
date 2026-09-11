@@ -23,12 +23,12 @@ import { register } from 'node:module';
 const results = [];
 const check = (name, pass, detail = '') => {
   results.push({ name, pass });
-  console.log(`${pass ? 'PASS' : 'FAIL'}  ${name}${detail ? `  — ${detail}` : ''}`);
+  console.log(`${pass ? 'PASS' : 'FAIL'}  ${name}${detail ? ` : ${detail}` : ''}`);
 };
 
 // ── Unit: buildDigest / TriageSchema, exercised directly from the real TS
-//    source (no sandbox, no network) so the digest's shape — the context
-//    block, reqId pairing, the trim order — is checked against the exact
+//    source (no sandbox, no network) so the digest's shape: the context
+//    block, reqId pairing, the trim order: is checked against the exact
 //    code the route calls, not a re-implementation here. ──
 {
   register('./ts-stub-loader.mjs', import.meta.url);

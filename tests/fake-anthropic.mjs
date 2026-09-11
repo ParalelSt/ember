@@ -6,7 +6,7 @@
  *  ai-triage.test.mjs runs its own fakes in-process and doesn't need this.
  *
  *  Both servers also answer GET with the last POST they received (as JSON:
- *  `{ prompt, headers }` for Anthropic, `{ body }` for Discord) — the UI test
+ *  `{ prompt, headers }` for Anthropic, `{ body }` for Discord): the UI test
  *  runs in a separate process from this one, so that's how it inspects what
  *  the real route actually sent without adding assertions here. */
 import http from 'node:http';

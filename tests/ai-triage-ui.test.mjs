@@ -93,13 +93,13 @@ await page.goto(`${APP_URL}/settings/help`, { waitUntil: 'networkidle' });
 
 // A deliberately failing request (a playlist id that doesn't exist), so the
 // server request log this test's report picks up has a real error line to
-// carry, not just breadcrumbs — proves the server side of the digest, not
+// carry, not just breadcrumbs: proves the server side of the digest, not
 // only that context/reqId code compiles.
 const failingRequestStatus = await page.evaluate(async () => {
   const res = await fetch('/api/playlists/nonexistent-playlist-000', { credentials: 'include' });
   return res.status;
 });
-// Chrome logs a failed resource load to the console for that 404 — it's this
+// Chrome logs a failed resource load to the console for that 404: it's this
 // test's own deliberate failure, not a bug, so it shouldn't fail the "no
 // console errors" check below. Give the (already-resolved) fetch's async
 // console event a moment to land, then drop anything collected so far.
@@ -132,7 +132,7 @@ const checks = [
 ];
 
 // What the real route actually sent, inspected via the fake servers'
-// introspection GET (see tests/fake-anthropic.mjs) — this is running in a
+// introspection GET (see tests/fake-anthropic.mjs): this is running in a
 // separate process, so this is the only way to see it from here.
 const anthropicSeen = await fetch(`http://127.0.0.1:${FAKE_ANTHROPIC_PORT}`).then((r) => r.json());
 const discordSeen = await fetch(`http://127.0.0.1:${FAKE_DISCORD_PORT}`).then((r) => r.json());
@@ -142,7 +142,7 @@ const discordBody = discordSeen?.body ?? '';
 checks.push(['deliberately failing request actually failed', failingRequestStatus >= 400]);
 checks.push(['context block reached the prompt', prompt.includes('## State when reported') && prompt.includes('route: /settings/help')]);
 checks.push(['server error from the failing request reached the prompt',
-  !prompt.includes('## Server log — last 5 minutes (0 events)') && /ERROR api:/.test(prompt)]);
+  !prompt.includes('## Server log: last 5 minutes (0 events)') && /ERROR api:/.test(prompt)]);
 checks.push(['context reached the Discord embed as "Where"', discordBody.includes('"name":"Where"')]);
 checks.push(['reproduction reached the Discord embed as "Reproduce"',
   discordBody.includes('"name":"Reproduce"') && discordBody.includes('wait a few seconds for it to cut out')]);

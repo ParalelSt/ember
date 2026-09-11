@@ -55,7 +55,7 @@ export const TriageSchema = z.object({
   confidence: z.enum(['low', 'medium', 'high']).catch('low'),
   nextSteps: z.array(z.string().max(300)).max(4).default([]),
   // A short hypothesis of concrete steps to reproduce, or "unknown" when the
-  // logs don't support one — .catch() covers both a missing key (older/odd
+  // logs don't support one: .catch() covers both a missing key (older/odd
   // model replies) and an out-of-range value.
   reproduction: z.string().min(1).max(500).catch('unknown'),
 });
@@ -172,7 +172,7 @@ function bytes(n: number): string {
 }
 
 /** `label: value`, or nothing when value is genuinely empty (null/undefined/
- *  ''). Booleans and 0 are real, reportable state — not "empty". */
+ *  ''). Booleans and 0 are real, reportable state: not "empty". */
 function contextLine(label: string, value: string | number | boolean | null | undefined): string | null {
   if (value === null || value === undefined || value === '') return null;
   return `${label}: ${value}`;
@@ -181,7 +181,7 @@ function contextLine(label: string, value: string | number | boolean | null | un
 /** Renders `ReportContext` as one line per field so the model sees exactly
  *  what the app was doing when the report was filed, before it ever reads a
  *  log line. This block is never subject to the digest's char budget (see
- *  buildDigest) — it's small and it's the one part of the prompt that's
+ *  buildDigest): it's small and it's the one part of the prompt that's
  *  always trustworthy (the rest is reconstructed from possibly-incomplete
  *  logs). */
 function buildContextBlock(ctx: ReportContext | undefined): string {
@@ -227,11 +227,11 @@ export function buildDigest(input: TriageInput): string {
   // Order here doubles as trim priority below: earlier sections survive
   // longer than later ones.
   const sections = [
-    { title: `## Client log — current session (${input.client.current.length} events)`, lines: curLines, empty: '(none)' },
+    { title: `## Client log: current session (${input.client.current.length} events)`, lines: curLines, empty: '(none)' },
     ...(input.client.previous.length > 0
-      ? [{ title: `## Client log — previous session (${input.client.previous.length} events)`, lines: prevLines, empty: '(none)' }]
+      ? [{ title: `## Client log: previous session (${input.client.previous.length} events)`, lines: prevLines, empty: '(none)' }]
       : []),
-    { title: `## Server log — last 5 minutes (${input.server.length} events)`, lines: srvLines, empty: '(none)' },
+    { title: `## Server log: last 5 minutes (${input.server.length} events)`, lines: srvLines, empty: '(none)' },
     ...(desktopLines.length > 0
       ? [{ title: `## Desktop log tail (last ${desktopLines.length} lines)`, lines: desktopLines, empty: '' }]
       : []),
@@ -241,7 +241,7 @@ export function buildDigest(input: TriageInput): string {
     [contextBlock, ...sections.map((s) => `${s.title}\n${s.lines.join('\n') || s.empty}`)].join('\n\n');
 
   // The context block is never trimmed (per the brief). If the rest is still
-  // over budget — the per-section caps above make this rare — drop entries
+  // over budget: the per-section caps above make this rare: drop entries
   // oldest-first (pick() already put entries in chronological order), client
   // sections before the server section before the desktop tail: the "what
   // was happening" state and the newest events are worth more than an old
@@ -273,7 +273,7 @@ block describing exactly what the app was doing (route, track, queue
 position, online/offline, playback backend), and condensed logs: client
 breadcrumbs and errors (including native-app events, tagged "native:<area>",
 and a desktop log tail on the Tauri app), and server request logs tagged with
-a request id ("{req XXXXXXXX}") — a client "api" error and the server entry
+a request id ("{req XXXXXXXX}"): a client "api" error and the server entry
 for the same failed request share that id, so use it to line up the two
 sides of one request. Work out what actually went wrong.
 

@@ -36,7 +36,7 @@ const DEFAULT_WEBHOOK_URL =
 const WEBHOOK_URL =
   process.env.DISCORD_BUG_REPORT_WEBHOOK_URL || DEFAULT_WEBHOOK_URL;
 
-/** One compact line for the Discord embed — the full per-field breakdown
+/** One compact line for the Discord embed: the full per-field breakdown
  *  goes into the AI prompt (lib/ai/triage.ts's "State when reported" block);
  *  this is the human-skimmable version. */
 function formatContextCompact(ctx: Partial<ReportContext> | undefined): string {
