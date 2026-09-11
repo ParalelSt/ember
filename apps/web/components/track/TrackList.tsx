@@ -23,6 +23,10 @@ export interface TrackActions {
    *  A predicate rather than a flag on the row so the rule itself stays in
    *  `lib/playback/queueNav` and this list keeps taking data in. */
   isUnavailable?: (track: Track) => boolean;
+  /** A downloaded track's local art URL, or null/undefined to fall back to
+   *  `track.artworkUrl`. Lets an offline list show local artwork without
+   *  this component reaching into the offline store itself. */
+  artworkSrcFor?: (track: Track) => string | null;
 }
 
 interface Props extends TrackActions {
@@ -60,6 +64,7 @@ export function TrackList({
   onToggle,
   onLike,
   isUnavailable,
+  artworkSrcFor,
 }: Props) {
   if (!tracks?.length) return <EmptyState className="text-sm">No tracks</EmptyState>;
 
@@ -79,6 +84,7 @@ export function TrackList({
           playing={isPlaying}
           // The set carries ids and song keys, so this covers variants too.
           liked={onLike ? likedIds.has(t.id) || likedIds.has(songKey(t)) : undefined}
+          artworkSrc={artworkSrcFor?.(t) ?? undefined}
           onPlay={() => onPlay(t, tracks, context)}
           onToggle={onToggle}
           onLike={onLike ? () => onLike(t) : undefined}

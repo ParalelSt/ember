@@ -70,6 +70,10 @@ export interface TrackRowProps {
    *  track without art gets no box at all, which is what the list rows and
    *  the picker have always done. */
   artworkFallback?: ReactNode;
+  /** Overrides `track.artworkUrl` for the artwork image when given (a local
+   *  downloaded-file URL, for offline rows). Undefined falls back to the
+   *  track's own `artworkUrl`; null renders as no art. */
+  artworkSrc?: string | null;
   density?: TrackRowDensity;
   tone?: TrackRowTone;
   className?: string;
@@ -96,6 +100,7 @@ export function TrackRow({
   unavailable = false,
   onReplace,
   artworkFallback,
+  artworkSrc,
   density = 'list',
   tone = 'default',
   className,
@@ -115,16 +120,19 @@ export function TrackRow({
       }
     : undefined;
   const duration = formatTime(track.durationSec, { empty: '--:--' });
-  const hasArtwork = !!track.artworkUrl || artworkFallback !== undefined;
+  // `artworkSrc` (a downloaded file's local URL) wins when given; undefined
+  // means "no override" and falls back to the track's own remote URL.
+  const resolvedArtworkUrl = artworkSrc !== undefined ? artworkSrc : track.artworkUrl;
+  const hasArtwork = !!resolvedArtworkUrl || artworkFallback !== undefined;
 
   const artwork = hasArtwork ? (
     <Artwork
-      src={track.artworkUrl}
+      src={resolvedArtworkUrl}
       size="xs"
       onClick={compact ? undefined : playOrToast}
       className={cn(
         'rounded shrink-0 bg-black',
-        !track.artworkUrl && 'grid place-items-center text-foreground/20',
+        !resolvedArtworkUrl && 'grid place-items-center text-foreground/20',
       )}
     >
       {artworkFallback}

@@ -4,6 +4,9 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sh
 import { TrackRow } from '@/components/track/TrackRow';
 import { usePlayer } from '@/components/player/PlayerProvider';
 import { usePlayerStore } from '@/stores/usePlayerStore';
+import { useOfflineStore } from '@/stores/useOfflineStore';
+import { localArtFor } from '@/lib/offlineNative';
+import type { Track } from '@/types/track';
 
 interface Props {
   open: boolean;
@@ -15,6 +18,10 @@ export function QueueSheet({ open, onOpenChange }: Props) {
   const index = usePlayerStore((s) => s.index);
   const context = usePlayerStore((s) => s.context);
   const { playTrack } = usePlayer();
+  const artFiles = useOfflineStore((s) => s.artFiles);
+  // Downloaded tracks keep their art locally, so the queue still shows
+  // thumbnails offline instead of a blank box from the dead remote URL.
+  const artworkSrcFor = (track: Track) => localArtFor(track, artFiles) ?? track.artworkUrl ?? null;
 
   const current = queue[index] ?? null;
   const upcoming = queue.slice(index + 1);
@@ -40,6 +47,7 @@ export function QueueSheet({ open, onOpenChange }: Props) {
                 showDuration
                 active
                 artworkFallback={null}
+                artworkSrc={artworkSrcFor(current)}
               />
             </div>
           )}
@@ -58,6 +66,7 @@ export function QueueSheet({ open, onOpenChange }: Props) {
                     tone="sidebar"
                     showDuration
                     artworkFallback={null}
+                    artworkSrc={artworkSrcFor(t)}
                     className="hover:bg-sidebar-accent/60"
                     onPlay={() => playTrack(t, queue, context)}
                   />

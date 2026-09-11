@@ -77,6 +77,7 @@ export default function SearchPage() {
             track={t}
             density="compact"
             artworkFallback={RECENTS_FALLBACK}
+            artworkSrc={trackActions.artworkSrcFor(t)}
             onPlay={() => trackActions.onPlay(t)}
             onRemove={() => removeRecentTrack.mutate(t.id)}
             removeLabel={`Remove "${t.title}" from recent searches`}

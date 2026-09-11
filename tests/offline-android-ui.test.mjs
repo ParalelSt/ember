@@ -222,6 +222,13 @@ if (dlSeen) await dlButton.click();
 // matching two nodes is a strict-mode violation, not a pass.
 check('clicking it shows Downloading…', await appeared(page.getByText(/downloading/i).first(), 5_000));
 check('it settles on Downloaded', await appeared(page.getByText(/^downloaded$/i), 5_000));
+// The uploaded seed tracks have no remote artworkUrl, so a track row only
+// gets an <img> once its download's local art (the fake plugin's artFiles,
+// set above) makes TrackList's artworkSrcFor return something: proves the
+// list rows, not just the player bar, resolve local artwork offline-first.
+const rowArtSrc = await page.locator('main img').first().evaluate((img) => img.src).catch(() => null);
+check('a downloaded track row shows local art through convertFileSrc',
+  !!rowArtSrc && rowArtSrc.includes('_capacitor_file_'), rowArtSrc ?? 'no <img> in the track list');
 
 // ── 2: Liked tab: like a track, then the Liked download button appears ──
 // Liked via the raw API (as the browser page never mounted a heart button

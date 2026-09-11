@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { renderHook, waitFor, act } from '@testing-library/react';
 import { useTrackActions } from './useTrackActions';
 import { songKey } from '@/lib/songKey';
+import { useOfflineStore } from '@/stores/useOfflineStore';
 import type { Track } from '@/types/track';
 
 const player = vi.hoisted(() => ({
@@ -69,6 +70,8 @@ beforeEach(() => {
   api.listLikes.mockResolvedValue({ tracks: [likedTrack] });
   api.like.mockResolvedValue({ ok: true });
   api.unlike.mockResolvedValue({ ok: true });
+  useOfflineStore.setState({ artFiles: {} });
+  delete (window as unknown as { Capacitor?: unknown }).Capacitor;
 });
 
 describe('useTrackActions', () => {
@@ -126,5 +129,20 @@ describe('useTrackActions', () => {
     expect(toast.message).toHaveBeenCalledWith('Sign in to like tracks', expect.anything());
     expect(api.like).not.toHaveBeenCalled();
     expect(api.unlike).not.toHaveBeenCalled();
+  });
+
+  it('artworkSrcFor returns the converted local path when the track has a downloaded art file', () => {
+    (window as unknown as { Capacitor: unknown }).Capacitor = {
+      convertFileSrc: (p: string) => `capfile://${p}`,
+    };
+    useOfflineStore.setState({ artFiles: { 'youtube:a1': '/data/art/a1.jpg' } });
+    const { result } = setup();
+    expect(result.current.artworkSrcFor(likedTrack)).toBe('capfile:///data/art/a1.jpg');
+  });
+
+  it('artworkSrcFor falls back to the remote artworkUrl when there is no local art file', () => {
+    const remote = makeTrack({ id: 'youtube:c3', sourceId: 'c3', artworkUrl: 'https://example.test/c3.jpg' });
+    const { result } = setup();
+    expect(result.current.artworkSrcFor(remote)).toBe('https://example.test/c3.jpg');
   });
 });

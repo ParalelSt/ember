@@ -12,9 +12,12 @@ import { CollectionPage } from '@/components/library/CollectionPage';
 import { ReplaceTrackDialog } from '@/components/track/menus/ReplaceTrackDialog';
 import { renderTrackMenu } from '@/components/track/menus/TrackMenu';
 import { useTrackActions } from '@/hooks/useTrackActions';
-import { countLabel } from '@/lib/collections';
+import { countLabel, pinIdFor } from '@/lib/collections';
 import { useCollectionPlayback } from '@/hooks/useCollectionPlayback';
 import { useOfflinePin } from '@/hooks/useOfflinePin';
+import { localArtFor } from '@/lib/offlineNative';
+import { useOfflineStore } from '@/stores/useOfflineStore';
+import { useOnline } from '@/lib/useOnline';
 import {
   useExecuteAddToPlaylist,
   useExecuteDeletePlaylist,
@@ -50,6 +53,16 @@ export default function PlaylistPage({ params }: { params: Promise<{ id: string 
   const playback = useCollectionPlayback(tracks, context);
   const download = useOfflinePin(ref, name, tracks);
   const trackActions = useTrackActions();
+
+  // Offline, the remote cover URL can't load. When this playlist is pinned,
+  // fall back to whichever downloaded track has local art, so the header
+  // isn't blank instead of the actual cover.
+  const isOnline = useOnline();
+  const isPinned = useOfflineStore((s) => s.downloaded.includes(pinIdFor(ref)));
+  const artFiles = useOfflineStore((s) => s.artFiles);
+  const localCoverSrc = !isOnline && isPinned
+    ? (tracks.map((t) => localArtFor(t, artFiles)).find((src) => src) ?? null)
+    : null;
 
   const handleArtworkPick = (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -117,7 +130,7 @@ export default function PlaylistPage({ params }: { params: Promise<{ id: string 
       eyebrow="Playlist"
       title={playlist.name}
       meta={[countLabel(tracks.length)]}
-      cover={{ src: playlist.artwork_url, icon: null }}
+      cover={{ src: localCoverSrc ?? playlist.artwork_url, icon: null }}
       onCoverClick={() => fileInputRef.current?.click()}
       coverLabel="Change playlist cover"
       coverBusy={updateArtwork.isPending}

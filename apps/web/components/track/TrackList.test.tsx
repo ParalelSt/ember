@@ -114,6 +114,18 @@ describe('TrackList', () => {
     expect(screen.getByRole('button', { name: 'Menu for Second Wind' })).toBeInTheDocument();
   });
 
+  it('applies artworkSrcFor per row, falling back to the remote url when it returns null', () => {
+    const withArt = { ...tracks[0], artworkUrl: 'https://example.test/remote.jpg' };
+    const list = [withArt, tracks[1]];
+    const artworkSrcFor = (t: Track) => (t.id === withArt.id ? 'capfile:///data/art/a1.jpg' : null);
+    const { container } = render(<TrackList tracks={list} {...actions()} artworkSrcFor={artworkSrcFor} />);
+    const imgs = container.querySelectorAll('img');
+    // tracks[1] has no artworkUrl and artworkSrcFor returns null for it, so
+    // it renders no artwork box at all: only the first row has an <img>.
+    expect(imgs).toHaveLength(1);
+    expect(imgs[0]).toHaveAttribute('src', 'capfile:///data/art/a1.jpg');
+  });
+
   it('shows ranks only when asked', () => {
     const { rerender } = render(<TrackList tracks={tracks} {...actions()} />);
     expect(screen.queryByText('1')).toBeNull();
