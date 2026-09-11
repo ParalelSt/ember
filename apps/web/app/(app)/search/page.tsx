@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { TrackList } from '@/components/track/TrackList';
 import { TrackRow } from '@/components/track/TrackRow';
-import { renderTrackMenu } from '@/components/track/TrackMenu';
+import { renderTrackMenu } from '@/components/track/menus/TrackMenu';
 import { MicIcon, MusicIcon, SearchIcon } from '@/components/icons';
 import { api } from '@/lib/api';
 import { QK } from '@/hooks/useLibrary';

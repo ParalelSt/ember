@@ -21,7 +21,7 @@ vi.mock('@/hooks/useVoiceSearch', () => ({
 
 // The menu (add-to-playlist + share) fetches on its own and is covered by
 // its own tests; a page test only needs to know the slot is wired.
-vi.mock('@/components/track/TrackMenu', () => ({
+vi.mock('@/components/track/menus/TrackMenu', () => ({
   renderTrackMenu: () => null,
 }));
 

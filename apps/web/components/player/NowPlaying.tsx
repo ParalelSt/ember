@@ -8,7 +8,7 @@ import {
 } from '@/components/icons';
 import { Artwork } from '@/components/primitives/Artwork';
 import { LikeButton } from '@/components/primitives/LikeButton';
-import { AddToPlaylistMenu } from '@/components/track/AddToPlaylistMenu';
+import { AddToPlaylistMenu } from '@/components/track/menus/AddToPlaylistMenu';
 import { ShareButton } from '@/components/track/ShareButton';
 import { LyricsBody } from '@/components/player/LyricsBody';
 import { NowPlayingSummary } from '@/components/player/NowPlayingSummary';

@@ -1,7 +1,7 @@
 'use client';
 
 import { AddToPlaylistMenu } from './AddToPlaylistMenu';
-import { ShareButton } from './ShareButton';
+import { ShareButton } from '../ShareButton';
 import type { Track } from '@/types/track';
 
 /** The per-row menu (add to playlist + share). Both halves fetch on their

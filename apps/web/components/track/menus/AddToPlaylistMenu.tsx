@@ -9,7 +9,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { CreatePlaylistDialog } from '@/components/track/CreatePlaylistDialog';
+import { CreatePlaylistDialog } from '@/components/track/menus/CreatePlaylistDialog';
 import { PlusIcon } from '@/components/icons';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { formatCount } from '@/lib/format';

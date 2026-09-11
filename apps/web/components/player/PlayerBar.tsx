@@ -10,7 +10,7 @@ import {
   RepeatOneIcon,
 } from '@/components/icons';
 import { LikeButton } from '@/components/primitives/LikeButton';
-import { AddToPlaylistMenu } from '@/components/track/AddToPlaylistMenu';
+import { AddToPlaylistMenu } from '@/components/track/menus/AddToPlaylistMenu';
 import { ShareButton } from '@/components/track/ShareButton';
 import { QueueSheet } from '@/components/player/QueueSheet';
 import { NowPlayingSummary } from '@/components/player/NowPlayingSummary';

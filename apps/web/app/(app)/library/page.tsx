@@ -3,8 +3,8 @@
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { CollectionShelf } from '@/components/library/CollectionShelf';
-import { ImportPlaylistDialog } from '@/components/track/ImportPlaylistDialog';
-import { UploadTrackDialog } from '@/components/track/UploadTrackDialog';
+import { ImportPlaylistDialog } from '@/components/track/menus/ImportPlaylistDialog';
+import { UploadTrackDialog } from '@/components/track/menus/UploadTrackDialog';
 import { StartSessionDialog, JoinSessionDialog } from '@/components/session/SessionDialogs';
 import { DownloadIcon, QueueIcon, UploadIcon } from '@/components/icons';
 import { useAuth } from '@/components/providers/AuthProvider';

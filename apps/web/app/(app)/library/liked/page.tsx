@@ -1,7 +1,7 @@
 'use client';
 
 import { CollectionPage } from '@/components/library/CollectionPage';
-import { renderTrackMenu } from '@/components/track/TrackMenu';
+import { renderTrackMenu } from '@/components/track/menus/TrackMenu';
 import { useTrackActions } from '@/hooks/useTrackActions';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { contextFor, countLabel, iconFor, titleFor } from '@/lib/collections';

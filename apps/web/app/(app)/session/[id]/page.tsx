@@ -3,7 +3,7 @@
 import { use, useState } from 'react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
-import { TrackSearchPicker } from '@/components/track/TrackSearchPicker';
+import { TrackSearchPicker } from '@/components/track/menus/TrackSearchPicker';
 import { NextIcon, MusicIcon } from '@/components/icons';
 import { useQuerySession, useExecuteAddToSession, useExecuteSkipSession, useExecuteEndSession, useExecuteSaveSession } from '@/hooks/useSession';
 import { useSessionHost } from '@/hooks/useSessionHost';

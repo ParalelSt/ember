@@ -3,7 +3,7 @@
 import { use, type ReactNode } from 'react';
 import Link from 'next/link';
 import { TrackList } from '@/components/track/TrackList';
-import { renderTrackMenu } from '@/components/track/TrackMenu';
+import { renderTrackMenu } from '@/components/track/menus/TrackMenu';
 import { useTrackActions } from '@/hooks/useTrackActions';
 import { PlayButton } from '@/components/primitives/PlayButton';
 import { useQueryAlbum } from '@/hooks/useLibrary';

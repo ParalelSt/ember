@@ -3,7 +3,7 @@
 import type { ReactNode } from 'react';
 import Link from 'next/link';
 import { ShareButton } from '@/components/track/ShareButton';
-import { AddToPlaylistMenu } from '@/components/track/AddToPlaylistMenu';
+import { AddToPlaylistMenu } from '@/components/track/menus/AddToPlaylistMenu';
 import { PlayButton } from '@/components/primitives/PlayButton';
 import { CollectionHeader } from '@/components/page/CollectionHeader';
 import { usePlayer } from '@/components/player/PlayerProvider';

@@ -10,7 +10,7 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { TrackSearchPicker } from '@/components/track/TrackSearchPicker';
+import { TrackSearchPicker } from '@/components/track/menus/TrackSearchPicker';
 import { DownloadIcon, TrashIcon } from '@/components/icons';
 import { formatCount } from '@/lib/format';
 import type { Track } from '@/types/track';
