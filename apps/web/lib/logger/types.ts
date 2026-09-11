@@ -27,7 +27,7 @@ export interface ServerLogEntry extends LogEntry {
   userId?: string;
 }
 
-/** Minimal track identity carried in the context envelope — never the whole
+/** Minimal track identity carried in the context envelope: never the whole
  *  Track object, so no stream URLs / artwork noise leak into a bug report. */
 export interface ContextTrack {
   id: string;
@@ -57,7 +57,7 @@ export interface ReportContext {
   shuffle: boolean;
   /** Count of playlists/tracks pinned for offline use (native pins + OPFS). */
   offlinePins: number;
-  /** navigator.storage.estimate(), best effort — absent if unsupported or not
+  /** navigator.storage.estimate(), best effort: absent if unsupported or not
    *  yet resolved. */
   storageEstimate?: { usage: number; quota: number };
 }

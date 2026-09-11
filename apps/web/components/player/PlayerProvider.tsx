@@ -165,8 +165,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         }
         nextRef.current();
       },
-      // onPlay/onPause fire for every real backend transition — user toggle,
-      // remote command, auto-advance, recovery — so this is the one place
+      // onPlay/onPause fire for every real backend transition: user toggle,
+      // remote command, auto-advance, recovery: so this is the one place
       // 'play'/'pause' breadcrumbs are recorded (a per-caller breadcrumb in
       // toggle() would double them up).
       onPlay: () => {
@@ -461,7 +461,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     });
     // loadAndPlay (above) already records a 'load' breadcrumb with track id +
     // source, and the backend's onPlay event records 'play' once it actually
-    // starts — logging 'play' here too would be a third, earlier copy of the
+    // starts: logging 'play' here too would be a third, earlier copy of the
     // same transition.
   }, [loadAndPlay]);
 
@@ -469,7 +469,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
   // b.play()/b.pause() both fire the backend's onPlay/onPause, which is
   // where the 'play'/'pause' breadcrumbs are recorded (see the events object
-  // above) — logging here too would double them for every manual toggle.
+  // above): logging here too would double them for every manual toggle.
   const toggle = useCallback(() => {
     userInteracted.current = true;
     const b = backendRef.current;

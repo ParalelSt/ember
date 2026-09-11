@@ -6,7 +6,7 @@ import { detectShell } from '@/lib/playback/detectShell';
 import type { ClientSnapshot, LogEntry, LogKind, LogLevel, ReportContext } from './types';
 import { scrub } from './sanitize';
 
-// lib/ stays framework-free (no React/Next imports — see eslint.config.mjs),
+// lib/ stays framework-free (no React/Next imports: see eslint.config.mjs),
 // but the zustand stores are plain JS modules with a getState() escape hatch,
 // so reading them here (rather than pushing context up through
 // setContextProvider) keeps the context envelope in one place. backendKind
@@ -25,7 +25,7 @@ class ClientLogger {
   /** Fields no store owns (currently just backendKind). Merged into every
    *  snapshot's context. */
   private contextOverrides: Partial<ReportContext> = {};
-  /** Last navigator.storage.estimate() result — refreshed best-effort on
+  /** Last navigator.storage.estimate() result: refreshed best-effort on
    *  boot; estimate() is async so snapshot() stays synchronous by reading
    *  this cached value instead of awaiting. */
   private storageEstimate: { usage: number; quota: number } | undefined;
@@ -104,7 +104,7 @@ class ClientLogger {
 
   /** Bubble-phase click listener: only reports elements deliberately labelled
    *  for accessibility (closest aria-labelled button/link), and only the
-   *  label + route — never text content, which could carry user data. */
+   *  label + route: never text content, which could carry user data. */
   private installClickBreadcrumbs(): void {
     document.addEventListener('click', (e) => {
       const target = e.target as Element | null;
@@ -145,7 +145,7 @@ class ClientLogger {
         this.storageEstimate = { usage: est.usage ?? 0, quota: est.quota ?? 0 };
       })
       .catch(() => {
-        // Unsupported / denied — context envelope just omits it.
+        // Unsupported / denied: context envelope just omits it.
       });
   }
 
