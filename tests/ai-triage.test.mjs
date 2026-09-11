@@ -18,6 +18,97 @@
  *      DISCORD_BUG_REPORT_WEBHOOK_URL=http://127.0.0.1:<FAKE_DISCORD_PORT>/hook
  *  …and the no-key server with an empty ANTHROPIC_API_KEY. */
 import http from 'node:http';
+import { register } from 'node:module';
+
+const results = [];
+const check = (name, pass, detail = '') => {
+  results.push({ name, pass });
+  console.log(`${pass ? 'PASS' : 'FAIL'}  ${name}${detail ? `  — ${detail}` : ''}`);
+};
+
+// ── Unit: buildDigest / TriageSchema, exercised directly from the real TS
+//    source (no sandbox, no network) so the digest's shape — the context
+//    block, reqId pairing, the trim order — is checked against the exact
+//    code the route calls, not a re-implementation here. ──
+{
+  register('./ts-stub-loader.mjs', import.meta.url);
+  const { buildDigest, TriageSchema } = await import('../apps/web/lib/ai/triage.ts');
+
+  const now = Date.now();
+  const ctx = {
+    appVersion: '0.4.2', shell: 'tauri', platform: 'MacIntel', language: 'en-US',
+    online: true, route: '/playlist/abc', viewport: { w: 1280, h: 800 },
+    track: { id: 'xyz', source: 'yt', title: 'Some Song' },
+    queue: { index: 3, length: 12 }, backendKind: 'web-audio', isPlaying: true,
+    loopMode: 'off', shuffle: false, offlinePins: 0,
+  };
+  const reqId = '11112222-3333-4444-5555-666677778888';
+  const clientApiError = {
+    ts: now - 500, kind: 'error', level: 'error', category: 'api',
+    message: 'GET /api/likes → 500', data: { status: 500, reqId }, sessionId: 's',
+  };
+  const nativeEntry = {
+    ts: now - 400, kind: 'error', level: 'error', category: 'native:offline',
+    message: 'download failed: storage', sessionId: 's',
+  };
+  const serverEntry = {
+    ts: now - 300, kind: 'error', level: 'error', category: 'api', message: 'GET /api/likes → 500',
+    sessionId: 's', side: 'server', reqId, route: 'likes',
+  };
+
+  // Context block: present, one line per field, empties omitted (no
+  // storageEstimate, no offlinePins here).
+  const d1 = buildDigest({
+    note: '', userAgent: 'ua', context: ctx,
+    client: { current: [clientApiError, nativeEntry], previous: [], sessionId: 's' },
+    server: [serverEntry],
+  });
+  check('U1 context block present', d1.includes('## State when reported'));
+  check('U2 context fields rendered', d1.includes('route: /playlist/abc') && d1.includes('shell: tauri') && d1.includes('backend: web-audio'));
+  check('U3 empty/absent fields omitted', !d1.includes('storage:') && !d1.includes('offline pins:'));
+  check('U4 native entry included', d1.includes('native:offline') && d1.includes('download failed'));
+  check('U5 client reqId rendered', new RegExp(`\\{req ${reqId.slice(0, 8)}\\}.*api: GET /api/likes`).test(d1));
+  check('U6 server reqId rendered and matches client', (d1.match(new RegExp(`req ${reqId.slice(0, 8)}`, 'g')) ?? []).length === 2);
+  check('U7 reqId not duplicated into the data dump', !d1.includes(`"reqId":"${reqId}"`));
+
+  // Desktop log tail: last 60 lines only in the prompt, full tail is a
+  // separate concern (route.ts attaches the whole thing to Discord).
+  const desktopLines = Array.from({ length: 90 }, (_, i) => `line ${i}`);
+  const d2 = buildDigest({
+    note: '', userAgent: 'ua', context: ctx,
+    client: { current: [], previous: [], sessionId: 's' }, server: [],
+    desktopLog: desktopLines.join('\n'),
+  });
+  check('U8 desktop tail present', d2.includes('## Desktop log tail'));
+  check('U9 desktop tail capped at 60 lines', !d2.includes('line 29') && d2.includes('line 30') && d2.includes('line 89'));
+
+  // Trim order: oldest client entries first, then server, context untouched.
+  // Build far more current-session entries than the per-call cap so the
+  // final char-budget pass (not just the count cap) has to shift lines.
+  const manyClient = Array.from({ length: 80 }, (_, i) => ({
+    ts: now - (80 - i) * 1000, kind: 'breadcrumb', level: 'info', category: 'route',
+    message: `navigate /page-${i} `.padEnd(250, 'x'), sessionId: 's',
+  }));
+  const manyServer = Array.from({ length: 60 }, (_, i) => ({
+    ts: now - (60 - i) * 1000, kind: 'error', level: 'error', category: 'api',
+    message: `server event ${i} `.padEnd(250, 'y'), sessionId: 's', side: 'server', reqId: `r${i}`, route: 'x',
+  }));
+  const d3 = buildDigest({
+    note: '', userAgent: 'ua', context: ctx,
+    client: { current: manyClient, previous: [], sessionId: 's' }, server: manyServer,
+  });
+  check('U10 context survives heavy trimming', d3.includes('## State when reported') && d3.includes('route: /playlist/abc'));
+  check('U11 digest stays within the char budget', d3.length <= 14_000, `${d3.length} chars`);
+  check('U12 newest client entry (page-79) survives trimming', d3.includes('page-79'));
+  check('U13 newest server entry survives trimming', d3.includes('server event 59'));
+
+  // Schema: reproduction defaults to "unknown" when missing or invalid,
+  // otherwise passes through.
+  const base = { summary: 's', likelyCause: 'c', area: 'ui', severity: 'low', confidence: 'low', nextSteps: [] };
+  check('U14 reproduction defaults to unknown when absent', TriageSchema.parse(base).reproduction === 'unknown');
+  check('U15 reproduction defaults to unknown when empty string', TriageSchema.parse({ ...base, reproduction: '' }).reproduction === 'unknown');
+  check('U16 reproduction passes through when present', TriageSchema.parse({ ...base, reproduction: 'Open a playlist, hit play twice fast' }).reproduction === 'Open a playlist, hit play twice fast');
+}
 
 const PB_URL = process.env.PB_URL ?? 'http://127.0.0.1:8091';
 const APP_URL = process.env.APP_URL ?? 'http://127.0.0.1:3005';
@@ -44,6 +135,7 @@ const TRIAGE = {
   severity: 'high',
   confidence: 'high',
   nextSteps: ['Check yt-dlp version', 'Verify cookies.txt path'],
+  reproduction: 'Play any track for a few seconds and wait for it to cut out.',
 };
 
 const reply = (text) => ({ content: [{ type: 'text', text }] });
@@ -142,11 +234,20 @@ function noisySnapshot() {
   }
   current.push({ ts: now - 200, kind: 'error', level: 'error', category: 'python',
     message: 'UNIQUE_MARKER yt-dlp exited 1: unable to extract player response', sessionId: 'sess-test' });
+  current.push({ ts: now - 150, kind: 'error', level: 'error', category: 'native:offline',
+    message: 'download failed: storage', sessionId: 'sess-test' });
   return {
     current,
     previous: [{ ts: now - 90_000, kind: 'error', level: 'error', category: 'api',
       message: 'POST /api/likes → 500', sessionId: 'sess-old' }],
     sessionId: 'sess-test',
+    context: {
+      appVersion: '0.1.0', shell: 'web', platform: 'MacIntel', language: 'en-US',
+      online: true, route: '/playlist/abc', viewport: { w: 1280, h: 800 },
+      track: { id: 'xyz', source: 'yt', title: 'Some Song' },
+      queue: { index: 3, length: 12 }, backendKind: 'web-audio', isPlaying: true,
+      loopMode: 'off', shuffle: false, offlinePins: 0,
+    },
   };
 }
 
@@ -176,12 +277,6 @@ async function report(app, cookie, note, client = noisySnapshot()) {
   return { status: res.status, json: await res.json().catch(() => null) };
 }
 
-const results = [];
-const check = (name, pass, detail = '') => {
-  results.push({ name, pass });
-  console.log(`${pass ? 'PASS' : 'FAIL'}  ${name}${detail ? `  — ${detail}` : ''}`);
-};
-
 // ── run ───────────────────────────────────────────────────────────────────
 await new Promise((r) => anthropic.listen(ANTHROPIC_PORT, '127.0.0.1', r));
 await new Promise((r) => discord.listen(DISCORD_PORT, '127.0.0.1', r));
@@ -193,6 +288,7 @@ const cookie1 = await authCookie(1);
 const a = await report(APP_URL, cookie1, 'Songs cut out after a few seconds');
 check('A1 report accepted', a.status === 200 && a.json?.ok === true, `status ${a.status}`);
 check('A2 triage returned to the reporter', a.json?.triage?.severity === 'high' && a.json?.triage?.area === 'streaming');
+check('A2b reproduction returned to the reporter', a.json?.triage?.reproduction === 'Play any track for a few seconds and wait for it to cut out.');
 
 const call = anthropicSeen.at(-1);
 const prompt = call?.body?.messages?.[0]?.content ?? '';
@@ -205,6 +301,8 @@ check('A7 rare error survives the cap', prompt.includes('UNIQUE_MARKER'));
 check('A8 repeated lines collapsed', /\(x\d+\)/.test(prompt));
 check('A9 digest bounded', prompt.length < 20_000, `${prompt.length} chars from 341 events`);
 check('A10 previous session included', prompt.includes('POST /api/likes'));
+check('A11 context block reaches the prompt', prompt.includes('## State when reported') && prompt.includes('route: /playlist/abc'));
+check('A12 native entry reaches the prompt', prompt.includes('native:offline'));
 
 const embed = discordSeen.at(-1) ?? '';
 check('B1 Discord received the report', discordSeen.length === 1);
@@ -214,6 +312,8 @@ check('B4 embed carries next steps', embed.includes('Check yt-dlp version'));
 check('B5 severity colours the embed', embed.includes(String(0xef4444)), 'high → red');
 check('B6 raw report still attached', embed.includes('report.json') && embed.includes('dQw4w9WgXcQ'));
 check('B7 triage stored in the attachment', embed.includes('"triage"'));
+check('B8 context reaches the Discord embed as "Where"', embed.includes('"name":"Where"') && embed.includes('/playlist/abc'));
+check('B9 reproduction reaches Discord as "Reproduce"', embed.includes('"name":"Reproduce"') && embed.includes('Play any track for a few seconds'));
 
 // C. model wraps its JSON in prose/fences
 anthropicMode = 'fenced';

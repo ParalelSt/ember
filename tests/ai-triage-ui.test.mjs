@@ -27,6 +27,8 @@ try {
 
 const PB_URL = process.env.PB_URL ?? 'http://127.0.0.1:8091';
 const APP_URL = process.env.APP_URL ?? 'http://127.0.0.1:3005';
+const FAKE_ANTHROPIC_PORT = Number(process.env.FAKE_ANTHROPIC_PORT ?? 4311);
+const FAKE_DISCORD_PORT = Number(process.env.FAKE_DISCORD_PORT ?? 4312);
 const PB_ADMIN_EMAIL = process.env.PB_ADMIN_EMAIL ?? 'admin@ember.com';
 const PB_ADMIN_PASSWORD = process.env.PB_ADMIN_PASSWORD ?? 'egKa5WNMx3QpuG7';
 
@@ -89,6 +91,21 @@ page.on('pageerror', (e) => consoleErrors.push(`pageerror: ${e.message}`));
 
 await page.goto(`${APP_URL}/settings/help`, { waitUntil: 'networkidle' });
 
+// A deliberately failing request (a playlist id that doesn't exist), so the
+// server request log this test's report picks up has a real error line to
+// carry, not just breadcrumbs — proves the server side of the digest, not
+// only that context/reqId code compiles.
+const failingRequestStatus = await page.evaluate(async () => {
+  const res = await fetch('/api/playlists/nonexistent-playlist-000', { credentials: 'include' });
+  return res.status;
+});
+// Chrome logs a failed resource load to the console for that 404 — it's this
+// test's own deliberate failure, not a bug, so it shouldn't fail the "no
+// console errors" check below. Give the (already-resolved) fetch's async
+// console event a moment to land, then drop anything collected so far.
+await page.waitForTimeout(200);
+consoleErrors.length = 0;
+
 const reportBtn = page.getByRole('button', { name: /report a bug/i }).first();
 await reportBtn.waitFor({ timeout: 15_000 });
 await reportBtn.click();
@@ -111,7 +128,24 @@ const checks = [
   ['likely cause rendered', /403/.test(body)],
   ['next steps rendered', /yt-dlp/i.test(body)],
   ['honesty caveat present', /automated guess/i.test(body)],
+  ['reproduce field rendered under the summary', /Reproduce:.*wait a few seconds/i.test(body)],
 ];
+
+// What the real route actually sent, inspected via the fake servers'
+// introspection GET (see tests/fake-anthropic.mjs) — this is running in a
+// separate process, so this is the only way to see it from here.
+const anthropicSeen = await fetch(`http://127.0.0.1:${FAKE_ANTHROPIC_PORT}`).then((r) => r.json());
+const discordSeen = await fetch(`http://127.0.0.1:${FAKE_DISCORD_PORT}`).then((r) => r.json());
+const prompt = anthropicSeen?.prompt ?? '';
+const discordBody = discordSeen?.body ?? '';
+
+checks.push(['deliberately failing request actually failed', failingRequestStatus >= 400]);
+checks.push(['context block reached the prompt', prompt.includes('## State when reported') && prompt.includes('route: /settings/help')]);
+checks.push(['server error from the failing request reached the prompt',
+  !prompt.includes('## Server log — last 5 minutes (0 events)') && /ERROR api:/.test(prompt)]);
+checks.push(['context reached the Discord embed as "Where"', discordBody.includes('"name":"Where"')]);
+checks.push(['reproduction reached the Discord embed as "Reproduce"',
+  discordBody.includes('"name":"Reproduce"') && discordBody.includes('wait a few seconds for it to cut out')]);
 
 await page.getByRole('button', { name: /^done$/i }).click();
 await page.waitForTimeout(500);
