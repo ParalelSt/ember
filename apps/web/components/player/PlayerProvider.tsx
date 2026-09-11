@@ -20,11 +20,11 @@ import { useExecuteRecordPlay, useQueryHistory, useQueryLikes } from '@/hooks/us
 import { useQueryLyrics } from '@/hooks/useLyrics';
 import { api, apiUrl } from '@/lib/api';
 import { logger } from '@/lib/logger/client';
-import { songKey } from '@/lib/songKey';
 import { detectShell } from '@/lib/playback/detectShell';
 import { resumeStartAt } from '@/lib/playback/resumePosition';
 import { chooseDuration } from '@/lib/playback/chooseDuration';
 import { nextIndex, prevIndex } from '@/lib/playback/queueNav';
+import { rankRadioPool } from '@/lib/playback/radio';
 import { publishDiscordPresence } from '@/lib/discordPresence';
 import { createWebBackend } from '@/lib/playback/webBackend';
 import { createCapacitorBackend } from '@/lib/playback/capacitorBackend';
@@ -445,48 +445,16 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     const activeContext = context;
 
     api.getRecommended(currentSourceId).then(({ tracks }) => {
-      // Block re-playing the current song or any variant of it, plus variants of
-      // anything already queued. songKey() ignores "(Official Video)" etc.
-      const blockedKeys = new Set<string>([songKey(current), ...queue.map(songKey)]);
-      const queuedIds = new Set(queue.map((q) => q.id));
-      const seenKeys = new Set<string>();
-      let pool = tracks.filter((t) => {
-        if (t.id === currentId || queuedIds.has(t.id)) return false;
-        const k = songKey(t);
-        if (blockedKeys.has(k) || seenKeys.has(k)) return false;
-        seenKeys.add(k);
-        return true;
+      // The ranking itself (variant blocking, artist drift, front load, weave)
+      // is pure: see lib/playback/radio.
+      const merged = rankRadioPool({
+        pool: tracks,
+        queue,
+        current,
+        history,
+        liked,
+        context: activeContext,
       });
-
-      if (activeContext?.type === 'artist' && activeContext.artistName) {
-        const targetArtist = activeContext.artistName.toLowerCase();
-        pool = pool.filter((t) => (t.artist ?? '').toLowerCase() !== targetArtist);
-      }
-
-      const playCount = new Map<string, number>();
-      for (const t of history) playCount.set(t.id, (playCount.get(t.id) ?? 0) + 1);
-      const likedIds = new Set(liked.map((t) => t.id));
-
-      const known = pool
-        .filter((t) => playCount.has(t.id))
-        .sort((a, b) => {
-          const ca = playCount.get(a.id) ?? 0;
-          const cb = playCount.get(b.id) ?? 0;
-          if (cb !== ca) return cb - ca;
-          return Number(likedIds.has(b.id)) - Number(likedIds.has(a.id));
-        });
-      const fresh = pool.filter((t) => !playCount.has(t.id));
-
-      const merged: Track[] = [];
-      let ki = 0;
-      let fi = 0;
-      const FRONT_LOAD = Math.min(2, known.length);
-      while (ki < FRONT_LOAD) merged.push(known[ki++]);
-      while (ki < known.length || fi < fresh.length) {
-        if (ki < known.length && merged.length % 3 === 0) merged.push(known[ki++]);
-        else if (fi < fresh.length) merged.push(fresh[fi++]);
-        else if (ki < known.length) merged.push(known[ki++]);
-      }
       logger.breadcrumb('radio', 'extend', {
         context: activeContext?.type ?? 'single',
         seed: currentSourceId,
