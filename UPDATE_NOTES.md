@@ -1,3 +1,10 @@
+# Update notes: Bug reports carry more
+
+**Host: a normal restart is all this needs.** No schema changes, no `npm install`.
+
+- **Bug reports now include a "State when reported" snapshot** (route, current track, queue position, online/offline, playback backend), client and server logs correlated by request id, native-app failures on Android, and the desktop app's own log tail on Tauri.
+- **AI triage (if you've set `ANTHROPIC_API_KEY`) now guesses reproduction steps too**, shown as "Reproduce" in both the Discord embed and the in-app diagnosis. See SETUP.md → "Bug reports → your Discord channel" for the full list of what a report contains.
+
 # Update notes: unavailable songs
 
 **Host: a normal restart is all this needs.** The two new PocketBase fields

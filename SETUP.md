@@ -180,13 +180,26 @@ The webhook URL ships baked into source (you committed it). Friends self-hosting
 
 Server-side error logs live at `logs/errors-YYYY-MM-DD.jsonl` (gitignored, auto-deleted after 2 days). The Discord channel is your long-term archive. If the baked-in webhook ever gets abused, delete + recreate it in Discord and rebuild.
 
+#### What a report contains
+
+- **State when reported**: a snapshot of what the app was doing right then — app version, shell (web/capacitor/tauri), route, the current track and queue position, online/offline, the active playback backend, and (best-effort) storage quota. This is what "Where" summarizes in the Discord embed.
+- **Client log**: automatic breadcrumbs (route changes, aria-labelled button/link clicks, console errors/warnings, playback load/play/pause/seek events) plus any explicit `logger.error(...)` calls, for this session and the previous one.
+- **Server request log**: the last 5 minutes of server-side request errors and warnings (every API route logs its own outcome — see `withRequestLog`), each tagged with a request id. A client-side "api" error and the server-side entry for that same request share the id, so a report can be traced across the network boundary.
+- **Native logs**: on the Android app, native-side failures (download/service errors) are forwarded into the client log as `native:<category>` entries, buffered on the native side until the report reads them so nothing is lost to a slow app start.
+- **Desktop log**: on the Tauri app, the shell's own log file (everything outside the WebView — audio engine, media controls, updater) is attached as `desktop.log`, and its tail is included in the AI prompt below.
+
+Privacy is unchanged by any of the above: click breadcrumbs only ever record a button/link's aria-label (never its visible text or the page around it), and the existing scrub/redaction rules for what leaves the device still apply to every field, including the new ones.
+
 #### AI triage (optional)
 
 Set `ANTHROPIC_API_KEY` in `apps/web/.env.local` and every report gets read by
 Claude before it lands in Discord. The embed then opens with a one-line summary
-of what broke, the likely cause with log evidence, and up to three things to
-check first — colour-coded green/amber/red by severity. The raw `report.json`
-is still attached, and the reporter sees the same diagnosis in the app.
+of what broke, the likely cause with log evidence, a short hypothesis of how to
+reproduce it ("Reproduce"), and up to three things to check first —
+colour-coded green/amber/red by severity. Claude sees the "State when
+reported" block, the correlated client/server logs above, and the desktop log
+tail. The raw `report.json` is still attached, and the reporter sees the same
+diagnosis (including the reproduction guess) in the app.
 
 Without the key nothing changes: reports send exactly as they do today. The
 same is true if Anthropic is slow, down, or answers with nonsense — triage is

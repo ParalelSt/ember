@@ -145,17 +145,41 @@ node tests/unavailable-ui.test.mjs                  # or: npm run test:unavailab
 Exit code 0 = everything passed; each check prints PASS/FAIL with detail.
 
 `ai-triage-ui.test.mjs` drives a headless browser: it submits a report as a
-throwaway user and checks the diagnosis panel renders, resets on **Done**, and
-logs no console errors.
+throwaway user and checks the diagnosis panel (including the "Reproduce"
+line) renders, resets on **Done**, and logs no console errors. Before
+submitting, it also fires one deliberately-failing request (a nonexistent
+playlist id) so the server log the report picks up has a real error line,
+then — via the fake servers' introspection `GET` (see `fake-anthropic.mjs`) —
+checks the "State when reported" context block and that server error both
+reached the AI prompt, and that the context ("Where") and reproduction
+("Reproduce") fields both reached the Discord embed.
 
 ## What `ai-triage.test.mjs` covers
 
 Bug reports get read by Claude before landing in Discord (SETUP.md → "Bug
-reports → your Discord channel"). The test stands up a fake Anthropic API and
-a fake Discord webhook, then drives the real route:
+reports → your Discord channel"). The file opens with unit-level checks
+(no sandbox, no network) run directly against `lib/ai/triage.ts`'s real
+source via `ts-stub-loader.mjs`:
 
-- **Happy path**: triage reaches both the reporter and the Discord embed;
-  the right model, key header and API version go out.
+- **`buildDigest`**: the "State when reported" context block is present,
+  renders one line per field, and omits empty ones; a native (`native:*`)
+  entry is included; a client "api" error and the matching server entry
+  (same reqId) both render a `{req XXXXXXXX}` tag and the id isn't
+  duplicated into the JSON data dump; the desktop log tail is capped at 60
+  lines; and, when the digest is forced over its char budget, entries trim
+  oldest-first (client before server) while the context block and the
+  newest entries on each side survive.
+- **`TriageSchema`**: `reproduction` defaults to `"unknown"` when absent or
+  empty, and passes through otherwise.
+
+Then it stands up a fake Anthropic API and a fake Discord webhook and drives
+the real route end to end:
+
+- **Happy path**: triage (including `reproduction`) reaches both the
+  reporter and the Discord embed; the right model, key header and API
+  version go out; the context block and a `native:*` entry reach the
+  prompt; the context ("Where") and reproduction ("Reproduce") fields reach
+  the Discord embed.
 - **Digest quality**: 341 events condense to a bounded prompt, a repeated
   error collapses to `(xN)`, a rare error buried in noise still survives, and
   30 genuinely distinct errors are all preserved.
