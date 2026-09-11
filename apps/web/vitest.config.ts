@@ -18,6 +18,10 @@ export default defineConfig({
       // These must come before '@' since alias entries match in order.
       { find: /^react-dom(\/|$)/, replacement: `${webRoot}node_modules/react-dom$1` },
       { find: /^react(\/|$)/, replacement: `${webRoot}node_modules/react$1` },
+      // Server modules start with `import 'server-only'`, which only Next's
+      // compiler knows how to resolve. Point it at the empty module Next
+      // itself substitutes, so those files can be unit tested directly.
+      { find: /^server-only$/, replacement: 'next/dist/compiled/server-only/empty.js' },
       { find: '@', replacement: webRoot },
     ],
     dedupe: ['react', 'react-dom'],

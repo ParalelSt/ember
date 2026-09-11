@@ -4,6 +4,7 @@ import { createAdminClient } from '@/lib/pocketbase/server';
 import { fromError, jsonError } from '@/lib/upsertTrack';
 import { serverLogger } from '@/lib/logger/server';
 import { resolveUploadPath } from '@/lib/uploads';
+import { deleteUploadCover } from '@/lib/uploads/cover';
 
 /** Removes an upload — the record and the file on disk. Uploader or admin
  *  only; other people may have it in a playlist, so this is deliberate. */
@@ -29,6 +30,9 @@ export async function DELETE(_request: Request, ctx: RouteContext<'/api/uploads/
         serverLogger.error('api', 'upload file delete failed', { id, filename: row.filename }, e);
       });
     }
+
+    // The extracted cover goes with it, for the same reason.
+    await deleteUploadCover(id, String(row.artwork_ext ?? ''));
 
     return Response.json({ ok: true });
   } catch (e) {
