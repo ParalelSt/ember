@@ -27,6 +27,7 @@ import { nextIndex, prevIndex } from '@/lib/playback/queueNav';
 import { rankRadioPool } from '@/lib/playback/radio';
 import { useDiscordPresence } from '@/hooks/player/useDiscordPresence';
 import { useKeyboardShortcuts } from '@/hooks/player/useKeyboardShortcuts';
+import { useRemoteCommands } from '@/hooks/player/useRemoteCommands';
 import { createWebBackend } from '@/lib/playback/webBackend';
 import { createCapacitorBackend } from '@/lib/playback/capacitorBackend';
 import { createNativeBackend, nativeBackendReady } from '@/lib/playback/nativeBridge';
@@ -480,31 +481,11 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
   useDiscordPresence({ current, isPlaying });
 
-  // Media metadata backstop for track changes that don't flow through
-  // loadAndPlay (hydration on cold load). loadAndPlay sets it synchronously.
-  useEffect(() => {
-    backendRef.current?.setMetadata(current);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [current?.id]);
+  useRemoteCommands({ backendRef, backendReady, current, nextRef, prevRef });
 
   const seek = useCallback((sec: number) => {
     backendRef.current?.seek(sec);
   }, []);
-
-  // Wire OS/remote transport once the backend exists. next/prev go through refs
-  // so the handlers stay current without re-registering.
-  useEffect(() => {
-    if (!backendReady) return;
-    const b = backendRef.current;
-    if (!b) return;
-    b.setRemoteCommands({
-      play: () => b.play(),
-      pause: () => b.pause(),
-      next: () => nextRef.current(),
-      prev: () => prevRef.current(),
-      seek: (sec) => b.seek(sec),
-    });
-  }, [backendReady]);
 
   const playTrack = useCallback((track: Track, list?: Track[], nextContext?: PlaybackContext | null) => {
     userInteracted.current = true;
