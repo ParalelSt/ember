@@ -163,6 +163,14 @@ export const createWebBackend: CreateAudioBackend = (events) => {
 
     seek(sec) {
       const target = Math.max(0, Math.min(sec, a.duration || 0));
+      const from = a.currentTime || 0;
+      // A tap on the progress bar/remote command is a "jump"; the ~4 Hz
+      // timeupdate-driven onTime() calls above are not seeks at all, so
+      // this is the only place seek breadcrumbs come from. Small
+      // corrections (scrubbing pixel-by-pixel) are noise below 2.5 s.
+      if (Math.abs(target - from) > 2.5) {
+        logger.breadcrumb('playback', 'seek jump', { from, to: target });
+      }
       a.currentTime = target;
       lastKnownTime = target;
       // Optimistically surface the target so the thumb stays where the user

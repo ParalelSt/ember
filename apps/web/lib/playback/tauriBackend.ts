@@ -93,6 +93,9 @@ export const createTauriBackend: CreateAudioBackend = (events) => {
     stop() { void invoke('audio_stop').catch(() => {}); },
     seek(sec) {
       const target = Math.max(0, Math.min(sec, duration || sec));
+      if (Math.abs(target - curTime) > 2.5) {
+        logger.breadcrumb('playback', 'seek jump', { from: curTime, to: target });
+      }
       curTime = target;
       void invoke('audio_seek', { sec: target }).catch(() => {});
       events.onTime(target); // optimistic, mirrors web backend

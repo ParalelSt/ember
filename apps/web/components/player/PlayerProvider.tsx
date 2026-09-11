@@ -157,6 +157,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         // us into the wrong mode.
         const state = usePlayerStore.getState();
         const cur = state.queue[state.index];
+        logger.breadcrumb('playback', 'ended', { trackId: cur?.id ?? null });
         if (state.loopMode === 'one' && cur) {
           backendRef.current?.seek(0);
           backendRef.current?.play();
@@ -164,10 +165,20 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         }
         nextRef.current();
       },
-      onPlay: () => setIsPlaying(true),
+      // onPlay/onPause fire for every real backend transition — user toggle,
+      // remote command, auto-advance, recovery — so this is the one place
+      // 'play'/'pause' breadcrumbs are recorded (a per-caller breadcrumb in
+      // toggle() would double them up).
+      onPlay: () => {
+        setIsPlaying(true);
+        const cur = usePlayerStore.getState();
+        logger.breadcrumb('playback', 'play', { trackId: cur.queue[cur.index]?.id ?? null });
+      },
       onPause: () => {
         setIsPlaying(false);
         positions.persistRef.current();
+        const cur = usePlayerStore.getState();
+        logger.breadcrumb('playback', 'pause', { trackId: cur.queue[cur.index]?.id ?? null });
       },
       onError: () => {
         // A native engine that can't play is worse than no native engine:
@@ -218,6 +229,9 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       : create === createCapacitorBackend ? 'capacitor'
       : create === createTauriBackend ? 'tauri-native' : 'native-stub';
     backendRef.current = create(events);
+    // lib/logger has no ref to backendKindRef, so the provider is the one
+    // place that pushes it into the context envelope (see logger.setContext).
+    logger.setContext({ backendKind: backendKindRef.current });
     // Visible in devtools; tells you instantly whether the desktop app is on
     // the Rust engine or fell back to web audio.
     logger.breadcrumb('playback', 'backend selected', {
@@ -269,6 +283,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
     backendRef.current = createWebBackend(events!);
     backendKindRef.current = 'web';
+    logger.setContext({ backendKind: 'web' });
     // partyVolume lives in the settings store, not the player store.
     const st = usePlayerStore.getState();
     const party = useSettingsStore.getState().partyVolume;
@@ -317,6 +332,11 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     // Only a fresh LOCAL load re-arms the one-shot stream fallback; the
     // fallback's own load is not local, so it cannot re-arm itself.
     if (local) streamFallbackRef.current = null;
+    logger.breadcrumb('playback', 'load', {
+      trackId: track.id,
+      backend: backendKindRef.current,
+      source: local ? 'local' : 'stream',
+    });
     b.load(local ?? apiUrl(track.streamUrl), { autoplay, startAt });
     // Set metadata in the same synchronous turn so the notification carries
     // across a track boundary (Firefox Android tears it down otherwise).
@@ -439,21 +459,25 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       shuffle: false,
       orderBackup: null,
     });
-    logger.breadcrumb('playback', 'play', { trackId: track.id, source: track.source, context: nextContext?.type ?? 'single' });
+    // loadAndPlay (above) already records a 'load' breadcrumb with track id +
+    // source, and the backend's onPlay event records 'play' once it actually
+    // starts — logging 'play' here too would be a third, earlier copy of the
+    // same transition.
   }, [loadAndPlay]);
 
   useKeyboardShortcuts({ backendRef });
 
+  // b.play()/b.pause() both fire the backend's onPlay/onPause, which is
+  // where the 'play'/'pause' breadcrumbs are recorded (see the events object
+  // above) — logging here too would double them for every manual toggle.
   const toggle = useCallback(() => {
     userInteracted.current = true;
     const b = backendRef.current;
     if (!current || !b) return;
     if (b.isPaused()) {
       b.play();
-      logger.breadcrumb('playback', 'resume', { trackId: current.id });
     } else {
       b.pause();
-      logger.breadcrumb('playback', 'pause', { trackId: current.id });
     }
   }, [current]);
 
