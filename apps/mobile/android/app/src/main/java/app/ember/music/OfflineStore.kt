@@ -105,13 +105,23 @@ class OfflineStore(private val root: File) {
         for (id in tracks.keys.toList()) if (id !in referenced) { audioFileFor(id).delete(); artFileFor(id).delete(); tracks.remove(id) }
     }
 
+    /** A failed write (full disk, revoked permission) used to propagate out of
+     *  the plugin call that caused it and reach the user as an unexplained
+     *  rejection. Report it instead: the in-memory index is still correct, so
+     *  the session keeps working and only survives a restart short of this
+     *  save. */
     private fun save() {
         val json = JSONObject()
             .put("pins", JSONArray(pins.values.map { p -> JSONObject().put("id", p.id).put("name", p.name).put("trackIds", JSONArray(p.trackIds)).put("updatedAt", p.updatedAt) }))
             .put("tracks", JSONArray(tracks.values.toList()))
         val tmp = File(root, "index.json.tmp")
-        tmp.writeText(json.toString())
-        if (!tmp.renameTo(indexFile)) { tmp.copyTo(indexFile, overwrite = true); tmp.delete() }
+        runCatching {
+            tmp.writeText(json.toString())
+            if (!tmp.renameTo(indexFile)) { tmp.copyTo(indexFile, overwrite = true); tmp.delete() }
+        }.onFailure { e ->
+            NativeLog.error("offline", "index write failed: " + (e.message ?: e.javaClass.simpleName),
+                JSONObject().put("pins", pins.size).put("tracks", tracks.size))
+        }
     }
 
     private fun load(json: JSONObject) {

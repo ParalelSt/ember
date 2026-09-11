@@ -71,7 +71,24 @@ class OfflineDownloadService : Service() {
         // until some unrelated pin restarted the service. There is no such gap
         // when the request is queued unconditionally, and the cost of the
         // occasional redundant drain is one pending() call.
-        io.execute { drain(startId) }
+        NativeLog.info("service", "download service started", JSONObject().put("startId", startId))
+        // A drain that throws would kill the executor's worker thread and take
+        // the app down with it (an uncaught exception on a pool thread reaches
+        // the default handler). The failure is worth a report, not a crash, so
+        // catch it here: the finally inside drain() has already stopped the
+        // service by this point.
+        io.execute {
+            try {
+                drain(startId)
+            } catch (t: Throwable) {
+                NativeLog.error(
+                    "service",
+                    "download drain crashed: " + (t.message ?: t.javaClass.simpleName),
+                    JSONObject().put("type", t.javaClass.name),
+                )
+                Log.e(TAG, "drain crashed", t)
+            }
+        }
         return START_STICKY
     }
 
@@ -91,6 +108,8 @@ class OfflineDownloadService : Service() {
                 var reason = download(api, baseUrl, store, track)
                 if (reason != null) reason = download(api, baseUrl, store, track)
                 if (reason != null) {
+                    NativeLog.error("offline", "download failed: $reason", JSONObject()
+                        .put("pinId", pinId).put("trackId", track.getString("id")).put("reason", reason))
                     failed.getOrPut(pinId) { HashSet() }.add(track.getString("id"))
                     // putIfAbsent is API 24 and minSdk here is 23, so do it by hand.
                     synchronized(failedReason) { if (failedReason[pinId] == null) failedReason[pinId] = reason }
@@ -106,7 +125,10 @@ class OfflineDownloadService : Service() {
             // drain it queued behind us.
             // ServiceCompat, not Service.stopForeground(int): the int overload is
             // API 24+ and minSdk here is 23, so a plain call would crash on 23.
-            if (stopSelfResult(startId)) androidx.core.app.ServiceCompat.stopForeground(this, androidx.core.app.ServiceCompat.STOP_FOREGROUND_REMOVE)
+            if (stopSelfResult(startId)) {
+                androidx.core.app.ServiceCompat.stopForeground(this, androidx.core.app.ServiceCompat.STOP_FOREGROUND_REMOVE)
+                NativeLog.info("service", "download service stopped", JSONObject().put("startId", startId))
+            }
         }
     }
 
