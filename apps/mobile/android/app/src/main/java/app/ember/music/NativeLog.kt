@@ -66,12 +66,17 @@ object NativeLog {
     }
 
     /** Oldest first, stopping at the first event the sink refuses, so a
-     *  half-open WebView never reorders or loses the rest. */
+     *  half-open WebView never reorders or loses the rest. The sink runs
+     *  Capacitor/JSON code this object does not control (JSObject parsing,
+     *  the bridge); a throw there must not propagate into the download path
+     *  that called emit(), so it is treated the same as a plain "not
+     *  delivered" refusal and the event stays queued for the next attempt. */
     private fun drain() {
         val s = sink ?: return
         while (true) {
             val next = pending.peekFirst() ?: return
-            if (!s(next)) return
+            val delivered = try { s(next) } catch (e: Exception) { false }
+            if (!delivered) return
             pending.removeFirst()
         }
     }

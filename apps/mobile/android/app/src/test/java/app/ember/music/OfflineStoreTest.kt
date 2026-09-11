@@ -3,6 +3,7 @@ package app.ember.music
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -100,5 +101,31 @@ class OfflineStoreTest {
         assertEquals("upload_ab-c_1", s.safeId("upload:ab-c/1"))
         s.upsertPin("p1", "One", listOf(track("upload:ab-c/1")))
         assertEquals("One", OfflineStore(root).pins()[0].name)
+    }
+
+    /** A full disk or revoked permission used to be swallowed inside save():
+     *  pin() would report success while the index on disk stayed stale. Force
+     *  the write to fail by occupying "index.json.tmp" with a directory (a
+     *  File can never writeText into a path that is already a directory),
+     *  then assert the failure reaches the caller AND still gets logged. */
+    @Test fun saveThrowsAndLogsWhenTheIndexCannotBeWritten() {
+        val root = Files.createTempDirectory("offline").toFile()
+        File(root, "index.json.tmp").mkdirs()
+        val s = OfflineStore(root)
+
+        val logged = mutableListOf<JSONObject>()
+        NativeLog.reset()
+        NativeLog.attach { e -> logged.add(e); true }
+        try {
+            assertThrows(Exception::class.java) {
+                s.upsertPin("p1", "One", listOf(track("youtube:a")))
+            }
+        } finally {
+            NativeLog.reset()
+        }
+
+        assertEquals(1, logged.size)
+        assertEquals("error", logged[0].getString("level"))
+        assertTrue(logged[0].getString("message").startsWith("index write failed"))
     }
 }

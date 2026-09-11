@@ -25,17 +25,25 @@ class EmberOfflinePlugin : Plugin() {
     private val store by lazy { OfflineStore.shared(context) }
 
     /** Held so handleOnDestroy can tell OUR listener apart from a newer
-     *  plugin instance's. */
-    private val progressListener: (JSONObject?) -> Unit = { progress -> notifyListeners("offline", status(progress)) }
+     *  plugin instance's. Called by OfflineDownloadService from its own
+     *  executor thread, not the main thread, so the notify has to hop over:
+     *  notifyListeners ends up in the WebView's JS bridge, which Capacitor
+     *  only guarantees is safe from the main thread. */
+    private val progressListener: (JSONObject?) -> Unit = { progress ->
+        val payload = status(progress)
+        bridge.executeOnMainThread { notifyListeners("offline", payload) }
+    }
 
     /** NativeLog's delivery path. Reports FALSE while the WebView has no
      *  `nativeLog` listener, because Capacitor silently drops an event with no
      *  listeners; refusing it instead keeps it buffered until the page is ready
-     *  for it. */
+     *  for it. Runs on whatever thread emitted the log (often a background
+     *  executor), so the actual notify is posted to the main thread; the
+     *  `hasListeners` gate itself is cheap and thread-safe to check inline. */
     private val logSink: (JSONObject) -> Boolean = { event ->
         if (!hasListeners(EVENT_LOG)) false
         else {
-            notifyListeners(EVENT_LOG, JSObject(event.toString()))
+            bridge.executeOnMainThread { notifyListeners(EVENT_LOG, JSObject(event.toString())) }
             true
         }
     }
