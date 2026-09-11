@@ -25,6 +25,8 @@ interface OfflineState {
   pins: PinStatus[];
   /** trackId -> absolute local file path, as reported by the native plugin. */
   trackFiles: Record<string, string>;
+  /** trackId -> absolute local art path, for downloads that have one. */
+  artFiles: Record<string, string>;
 
   setHydration: (input: { downloaded: string[]; totalBytes: number }) => void;
   beginDownload: (playlistId: string, total: number) => void;
@@ -54,6 +56,7 @@ export const useOfflineStore = create<OfflineState>()(
       hydrated: false,
       pins: [],
       trackFiles: {},
+      artFiles: {},
 
       setHydration: ({ downloaded, totalBytes }) =>
         set({ downloaded, totalBytes, hydrated: true }),
@@ -62,6 +65,9 @@ export const useOfflineStore = create<OfflineState>()(
         set({
           pins: s.pins,
           trackFiles: s.trackFiles,
+          // Absent on older native builds: default to {} rather than undefined
+          // so every reader can index it without an extra null check.
+          artFiles: s.artFiles ?? {},
           totalBytes: s.totalBytes,
           hydrated: true,
           downloaded: s.pins.filter((p) => p.total > 0 && p.done === p.total).map((p) => p.id),
@@ -127,6 +133,7 @@ export const useOfflineStore = create<OfflineState>()(
         totalBytes: s.totalBytes,
         pins: s.pins,
         trackFiles: s.trackFiles,
+        artFiles: s.artFiles,
       }),
     },
   ),

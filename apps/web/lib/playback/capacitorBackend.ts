@@ -93,8 +93,8 @@ export const createCapacitorBackend: CreateAudioBackend = (events) => {
   return {
     ...web,
 
-    setMetadata(track: Track | null) {
-      web.setMetadata(track);
+    setMetadata(track: Track | null, localArtSrc?: string | null) {
+      web.setMetadata(track, localArtSrc);
       const p = plugin();
       if (!p) return;
       if (!track) {
@@ -103,11 +103,15 @@ export const createCapacitorBackend: CreateAudioBackend = (events) => {
         call(p.setPlaybackState({ playbackState: 'none' }));
         return;
       }
+      // Local art (a downloaded copy's own file, converted to a
+      // _capacitor_file_ URL by the caller) wins over the remote artworkUrl:
+      // the lock screen should show it even with the radio off.
+      const art = localArtSrc ?? track.artworkUrl;
       call(p.setMetadata({
         title: track.title ?? '',
         artist: track.artist ?? '',
         album: track.album ?? '',
-        artwork: track.artworkUrl ? [{ src: track.artworkUrl, sizes: '512x512' }] : [],
+        artwork: art ? [{ src: art, sizes: '512x512' }] : [],
       }));
     },
 

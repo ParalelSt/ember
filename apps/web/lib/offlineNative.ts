@@ -1,6 +1,7 @@
 'use client';
 
 import { useSyncExternalStore } from 'react';
+import { useOfflineStore } from '@/stores/useOfflineStore';
 import type { Track } from '@/types/track';
 
 export interface PinStatus {
@@ -21,6 +22,9 @@ export interface PinStatus {
 export interface NativeStatus {
   pins: PinStatus[];
   trackFiles: Record<string, string>;
+  /** trackId -> absolute local art path, for tracks whose download has one.
+   *  Absent on older native builds: always default to {} when reading it. */
+  artFiles?: Record<string, string>;
   totalBytes: number;
   progress?: { id: string; done: number; total: number; title: string };
 }
@@ -31,6 +35,8 @@ interface EmberOfflinePlugin {
   unpin(o: { id: string }): Promise<NativeStatus>;
   cancel(o: { id: string }): Promise<NativeStatus>;
   clearAll(): Promise<NativeStatus>;
+  /** Re-queues only the failed tracks of a pin; resolves with the fresh status. */
+  retry(o: { id: string }): Promise<NativeStatus>;
 }
 type Cap = { Plugins?: { EmberOffline?: EmberOfflinePlugin }; convertFileSrc?: (p: string) => string };
 const cap = (): Cap | null => (typeof window === 'undefined' ? null : ((window as unknown as { Capacitor?: Cap }).Capacitor ?? null));
@@ -42,6 +48,7 @@ export const nativePin = (id: string, name: string, tracks: Track[]) => plugin()
 export const nativeUnpin = (id: string) => plugin()!.unpin({ id });
 export const nativeCancel = (id: string) => plugin()!.cancel({ id });
 export const nativeClearAll = () => plugin()!.clearAll();
+export const nativeRetry = (id: string) => plugin()!.retry({ id });
 export function subscribeNative(cb: (s: NativeStatus) => void): void { plugin()?.addListener('offline', cb); }
 
 /** `window.Capacitor` never exists during SSR, so `nativeOfflinePresent()`
@@ -76,4 +83,21 @@ export function localSrcFor(track: Track, trackFiles: Record<string, string>): s
   const path = trackFiles[track.id];
   const convert = cap()?.convertFileSrc;
   return path && convert ? convert(path) : null;
+}
+
+/** Same idea as `localSrcFor`, for artwork: the URL a downloaded track's local
+ *  art file can be shown from, or null when there isn't one. */
+export function localArtFor(track: Track, artFiles: Record<string, string>): string | null {
+  const path = artFiles[track.id];
+  const convert = cap()?.convertFileSrc;
+  return path && convert ? convert(path) : null;
+}
+
+/** Local art when the current track has a downloaded copy with art, else its
+ *  own artworkUrl. One helper so the player bar, the full-screen Now Playing
+ *  view and the lock screen all agree on which image to show offline. */
+export function useTrackArtSrc(track: Track | null | undefined): string | null {
+  const artFiles = useOfflineStore((s) => s.artFiles);
+  if (!track) return null;
+  return localArtFor(track, artFiles) ?? track.artworkUrl ?? null;
 }

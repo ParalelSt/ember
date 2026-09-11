@@ -2,6 +2,8 @@
 
 import { useEffect, type RefObject } from 'react';
 import type { AudioBackend } from '@/lib/playback/types';
+import { localArtFor } from '@/lib/offlineNative';
+import { useOfflineStore } from '@/stores/useOfflineStore';
 import type { Track } from '@/types/track';
 
 /** OS / remote transport wiring: the lock screen, the notification, Bluetooth
@@ -24,12 +26,14 @@ export function useRemoteCommands({
   nextRef: RefObject<() => void>;
   prevRef: RefObject<() => void>;
 }) {
+  const artFiles = useOfflineStore((s) => s.artFiles);
+
   // Media metadata backstop for track changes that don't flow through
   // loadAndPlay (hydration on cold load). loadAndPlay sets it synchronously.
   useEffect(() => {
-    backendRef.current?.setMetadata(current);
+    backendRef.current?.setMetadata(current, current ? localArtFor(current, artFiles) : null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [current?.id]);
+  }, [current?.id, artFiles]);
 
   // Wire OS/remote transport once the backend exists. next/prev go through refs
   // so the handlers stay current without re-registering.

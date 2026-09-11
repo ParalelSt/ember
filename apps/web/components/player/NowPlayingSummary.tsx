@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { Artwork } from '@/components/primitives/Artwork';
 import { MarqueeText } from '@/components/player/MarqueeText';
+import { useTrackArtSrc } from '@/lib/offlineNative';
 import { cn } from '@/lib/utils';
 import type { Track } from '@/types/track';
 
@@ -50,6 +51,10 @@ export function NowPlayingSummary({
   marquee,
   className,
 }: NowPlayingSummaryProps) {
+  // Prefer a downloaded copy's own local art (offline, or just to save data)
+  // over the remote artworkUrl; shared with NowPlaying's full-screen artwork.
+  const artSrc = useTrackArtSrc(track);
+
   const artist = artistLink && track?.artistId ? (
     <Link
       href={`/artist/${track.artistId}`}
@@ -80,8 +85,8 @@ export function NowPlayingSummary({
       onClick={onOpen}
       className={cn('flex items-center gap-3 min-w-0 flex-1 cursor-pointer md:cursor-default', className)}
     >
-      {track?.artworkUrl && (
-        <Artwork src={track.artworkUrl} size="sm" className="rounded-md bg-black shrink-0" />
+      {artSrc && (
+        <Artwork src={artSrc} size="sm" className="rounded-md bg-black shrink-0" />
       )}
       <div className="min-w-0 flex-1">
         <div className="truncate text-sm font-semibold" title={track?.title ?? ''}>

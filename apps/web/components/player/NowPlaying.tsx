@@ -15,6 +15,7 @@ import { NowPlayingSummary } from '@/components/player/NowPlayingSummary';
 import { SeekBar } from '@/components/player/SeekBar';
 import { TransportControls } from '@/components/player/TransportControls';
 import { useBackDismiss } from '@/lib/useBackDismiss';
+import { useTrackArtSrc } from '@/lib/offlineNative';
 import { usePlayer } from '@/components/player/PlayerProvider';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { useLikeToggle } from '@/hooks/useLikeToggle';
@@ -87,7 +88,9 @@ export function NowPlaying() {
     };
   }, [open, focus, setFocus]);
 
-  const art = current?.artworkUrl ?? null;
+  // A downloaded copy's own local art wins over the remote artworkUrl, shared
+  // with NowPlayingSummary's player-bar thumbnail.
+  const art = useTrackArtSrc(current);
 
   // Pinned left, mirroring the loop button on the right: keeping both OUT of
   // the flex flow is what keeps prev/play/next centered. Playlists only:
