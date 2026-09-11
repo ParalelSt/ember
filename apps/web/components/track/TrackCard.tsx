@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import type { ReactNode } from 'react';
 import { Artwork } from '@/components/primitives/Artwork';
 import { PlayButton } from '@/components/primitives/PlayButton';
 import type { Track } from '@/types/track';
@@ -15,12 +16,16 @@ interface Props {
   /** Tapping the card or its button. The caller decides what that means
    *  (toggle when this track is already current, otherwise start it). */
   onActivate: () => void;
+  /** Optional third line below the artist, e.g. FriendsListening's
+   *  "<name> · <time ago>". Omitted entirely (no empty line) when not
+   *  given, so Home's cards render exactly as before. */
+  subtitle?: ReactNode;
   className?: string;
 }
 
 /** Presentational only: a square track card with a hover-revealed play
  *  button. Playback state and the activate handler come from props. */
-export function TrackCard({ track, active = false, playing = false, onActivate, className }: Props) {
+export function TrackCard({ track, active = false, playing = false, onActivate, subtitle, className }: Props) {
   return (
     <div
       onClick={onActivate}
@@ -48,6 +53,9 @@ export function TrackCard({ track, active = false, playing = false, onActivate, 
           track.artist
         )}
       </div>
+      {subtitle != null && (
+        <div className="mt-1.5 truncate text-xs text-ember">{subtitle}</div>
+      )}
       <PlayButton
         size="sm"
         playing={active && playing}
