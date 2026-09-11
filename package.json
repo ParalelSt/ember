@@ -16,7 +16,7 @@
     "test:triage-ui": "node tests/ai-triage-ui.test.mjs",
     "test:uploads": "node tests/uploads.test.mjs",
     "test:uploads-ui": "node tests/uploads-ui.test.mjs",
-    "deploy": "npm run build && systemctl --user restart ember && echo '✓ rebuilt + ember restarted'",
+    "deploy": "npm run build && systemctl --user restart ember && echo '\u2713 rebuilt + ember restarted'",
     "test:update": "node tests/desktop-update.test.mjs",
     "test:stream": "node tests/stream-source.test.mjs",
     "test:stream-fallback": "node tests/stream-fallback.test.mjs",
@@ -34,7 +34,8 @@
     "test:toggles": "node tests/toggles-ui.test.mjs",
     "test:library-ui": "node tests/library-collections-ui.test.mjs",
     "test:unavailable": "node tests/unavailable.test.mjs",
-    "test:unavailable-ui": "node tests/unavailable-ui.test.mjs"
+    "test:unavailable-ui": "node tests/unavailable-ui.test.mjs",
+    "test:android-native-log": "node tests/android-native-log.mjs"
   },
   "devDependencies": {
     "playwright-core": "^1.62.1"

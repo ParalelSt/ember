@@ -147,6 +147,16 @@ class OfflineDownloadService : Service() {
                     // the session really is gone: the user has to sign in again.
                     return if (res.code == 401) "auth" else "http"
                 }
+                // A signed-out session is answered with a redirect to the sign-in
+                // page, which OkHttp follows to a 200 HTML body. Saving that as
+                // audio looks like success and only fails at play time, so any
+                // non-audio body counts as a failure here.
+                val type = res.header("Content-Type").orEmpty()
+                val landedOnAuth = res.request.url.encodedPath.startsWith("/auth")
+                if (landedOnAuth || type.startsWith("text/html")) {
+                    Log.w(TAG, "$id: got ${type.ifEmpty { "no content type" }} from ${res.request.url.encodedPath}")
+                    return if (landedOnAuth) "auth" else "http"
+                }
                 res.body!!.byteStream().use { input -> tmp.outputStream().use { input.copyTo(it) } }
             }
             store.commitAudio(id, tmp)
