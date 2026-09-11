@@ -106,6 +106,15 @@
         return h;
       }
 
+      // Artwork is decoration: a failed read just skips the callback.
+      function artAsDataUrl(src, cb) {
+        fetch(src).then(function (r) { return r.blob(); }).then(function (b) {
+          var fr = new FileReader();
+          fr.onload = function () { if (typeof fr.result === 'string') cb(fr.result); };
+          fr.readAsDataURL(b);
+        }).catch(function () {});
+      }
+
       function play(tracks, i) {
         queue = tracks;
         index = i;
@@ -126,8 +135,16 @@
         // Graceful when a track has no local art: no artwork entry at all
         // rather than a broken image reference.
         if (t.art) meta.artwork = [{ src: t.art, sizes: '512x512' }];
-        if (session) session.setMetadata(meta);
-        else if ('mediaSession' in navigator) navigator.mediaSession.metadata = new MediaMetadata(meta);
+        if (session) {
+          session.setMetadata(meta);
+          // The native plugin fetches artwork over HTTP, so the _capacitor_file_
+          // URL that works in this page leaves the lock screen with no cover.
+          var at = index;
+          if (t.art) artAsDataUrl(t.art, function (url) {
+            meta.artwork = [{ src: url, sizes: '512x512' }];
+            if (at === index) session.setMetadata(meta);   // else: skipped on
+          });
+        } else if ('mediaSession' in navigator) navigator.mediaSession.metadata = new MediaMetadata(meta);
         state('playing');
       }
 

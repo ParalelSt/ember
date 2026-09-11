@@ -46,10 +46,13 @@ const browser = await chromium.launch({ executablePath: findChrome(), args: ['--
 
 /** One page with the fake plugin injected. `pins`/`files` shape the status;
  *  `art` is trackId -> absolute local art path (status().artFiles). */
-async function open({ plugin = true, pins, files, art = {} } = {}) {
+async function open({ plugin = true, pins, files, art = {}, artBytes = null } = {}) {
   const ctx = await browser.newContext();
-  await ctx.addInitScript(({ plugin, pins, files, art, serverUrl }) => {
+  await ctx.addInitScript(({ plugin, pins, files, art, artBytes, serverUrl }) => {
     window.__calls = [];
+    // The page re-reads local art through fetch to hand the native plugin a
+    // data: URL; a capfile:// path cannot really be fetched in a browser.
+    if (artBytes) window.fetch = async () => ({ blob: async () => new Blob([artBytes], { type: 'image/jpeg' }) });
     if (!plugin) return;                    // no plugin: the fallback path
     const tracksById = {
       p1: [
@@ -74,7 +77,7 @@ async function open({ plugin = true, pins, files, art = {} } = {}) {
         },
       },
     };
-  }, { plugin, pins, files, art, serverUrl: `file://${serverStub}` });
+  }, { plugin, pins, files, art, artBytes, serverUrl: `file://${serverStub}` });
   const page = await ctx.newPage();
   // Nothing here needs real decoding, and a fake path would stall on load.
   await page.addInitScript(() => {
@@ -166,6 +169,28 @@ const twoPins = {
   calls = await page.evaluate(() => window.__calls);
   const t2Meta = [...calls].reverse().find(([k, v]) => k === 'meta' && v === 'Second Song');
   check('a track with no local art sends no artwork entry (graceful)', !!t2Meta && t2Meta[2] == null);
+  await ctx.close();
+}
+
+// 7c. The lock screen gets the art as a data: URL: the native media-session
+// plugin fetches artwork over HTTP, so the _capacitor_file_ URL that works
+// inside this page leaves the lock screen with no cover at all.
+{
+  const { ctx, page } = await open({ ...twoPins, art: { t1: '/data/offline/art/t1.jpg' }, artBytes: 'foo' });
+  await page.locator('.row').first().click();                 // t1: has art
+  await page.waitForFunction(() => window.__calls.filter(([k]) => k === 'meta').length >= 2);
+  const metas = (await page.evaluate(() => window.__calls)).filter(([k]) => k === 'meta');
+  check('the lock screen is given the art inline as a data: URL',
+    JSON.stringify(metas.at(-1)[2]) === JSON.stringify([{ src: 'data:image/jpeg;base64,Zm9v', sizes: '512x512' }]));
+  check('the data: URL follow-up keeps the track title', metas.at(-1)[1] === 'First Song');
+
+  // Skipping on before the read lands must not leave the previous cover up.
+  await page.evaluate(() => { window.__calls.length = 0; });
+  await page.locator('#next').click();                        // t2: no art
+  await page.waitForTimeout(150);
+  const after = (await page.evaluate(() => window.__calls)).filter(([k]) => k === 'meta');
+  check('no stale art follow-up arrives for a track with none',
+    after.length === 1 && after[0][1] === 'Second Song' && after[0][2] == null);
   await ctx.close();
 }
 
