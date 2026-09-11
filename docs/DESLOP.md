@@ -51,6 +51,11 @@ Deferred, not done in this plan:
   at the `md` breakpoint and makes the content width non-monotonic, so the
   auto-fill grid cannot reproduce the exact column counts); step 9 deleted
   the now-unused utility rather than leave dead CSS behind.
+- Decoupling rule 3 (only `components/player/*`, pages and hooks read
+  stores) is not enforced, by eslint or otherwise, for `components/{settings,
+  session,providers}` or `BugReportDialog.tsx`: all predate this plan and
+  read stores directly (for example `PrivacyToggles.tsx`, `SessionDialogs.tsx`,
+  `AuthProvider.tsx`, `BugReportDialog.tsx` each import `@/stores/*`).
 
 Known follow-ups collected from the step reports:
 
@@ -60,11 +65,11 @@ Known follow-ups collected from the step reports:
   and every component test after it). Installing React 19 at the root, or
   hoisting `apps/web`'s deps differently, would remove the need for that
   mock everywhere it now appears.
-- `playwright-core` isn't declared as a dependency anywhere the sandbox UI
-  tests can find it; it had to be installed ad hoc (`npm install --no-save
-  playwright-core`) to run them, in step 1 and again in step 9. Worth
-  fixing at the workspace/install level so it stops being a recurring
-  manual step.
+- `playwright-core` is declared at the repo root, but a fresh worktree's
+  `node_modules` can still be missing it; it had to be installed ad hoc
+  (`npm install --no-save playwright-core`) to run the sandbox UI tests, in
+  step 1 and again in step 9. Worth fixing at the workspace/install level
+  so it stops being a recurring manual step.
 - Step 4: `TrackMenu` (now `components/track/menus/TrackMenu.tsx`) is a
   page-level concern six call sites each repeat (`trailing={renderTrackMenu}`);
   nothing catches a seventh call site forgetting it and silently losing

@@ -35,8 +35,10 @@ Test folders, `apps/web/`:
   (`usePositionPersistence`, `useRadioExtend`, `useKeyboardShortcuts`,
   `useRemoteCommands`, `useDiscordPresence`), each with a shared fake
   `AudioBackend` from `apps/web/test-utils/fakeBackend.ts` (not shipped:
-  it imports `vitest` and lives outside `lib`/`components`/`hooks` proper,
-  so `tsc`/`next build` never see it as app code).
+  it imports `vitest` and lives outside `lib`/`components`/`hooks` proper.
+  `tsc --noEmit` still type-checks it, since `tsconfig.json` includes every
+  `**/*.ts`; `next build` does not, since nothing under `app/` or
+  `components/` imports it).
 - `components/`, `app/(app)/search/`: `FriendsListening`, `OnlineOnly`,
   the Search page with mocked queries (rate-limit message, recents
   remove).
@@ -44,14 +46,13 @@ Test folders, `apps/web/`:
 Guard rails enforced outside the test files themselves:
 
 - `apps/web/eslint.config.mjs` has a `no-restricted-imports` rule: files
-  directly under `components/{primitives,page,track,library,nav}/` cannot
+  anywhere under `components/{primitives,page,track,library,nav}/` cannot
   import `@/hooks/*`, `@/stores/*`, `@tanstack/react-query` or
   `@/components/player/PlayerProvider`: they take data as props. A file
-  that is genuinely data-aware today either moved one directory level
-  deeper (for example `components/track/menus/`, which is exempt since
-  the rule only matches direct children) or is listed as an explicit
-  override in the config with a comment (`components/nav/Sidebar.tsx`,
-  `components/nav/Drawer.tsx`, `components/track/TrackPageClient.tsx`).
+  that is genuinely data-aware today is listed as an explicit override in
+  the config with a comment (`components/nav/Sidebar.tsx`,
+  `components/nav/Drawer.tsx`, `components/track/TrackPageClient.tsx`,
+  `components/track/menus/**`).
   `lib/**` has the mirror rule: no `react`, `next/*` or `@/components/*`
   imports, with the same override pattern for the few pre-existing files
   that need one.
