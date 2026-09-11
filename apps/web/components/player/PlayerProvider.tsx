@@ -25,6 +25,7 @@ import { resumeStartAt } from '@/lib/playback/resumePosition';
 import { chooseDuration } from '@/lib/playback/chooseDuration';
 import { nextIndex, prevIndex } from '@/lib/playback/queueNav';
 import { rankRadioPool } from '@/lib/playback/radio';
+import { shortcutFor, type TypingTarget } from '@/lib/playback/shortcuts';
 import { publishDiscordPresence } from '@/lib/discordPresence';
 import { createWebBackend } from '@/lib/playback/webBackend';
 import { createCapacitorBackend } from '@/lib/playback/capacitorBackend';
@@ -535,22 +536,25 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     logger.breadcrumb('playback', 'play', { trackId: track.id, source: track.source, context: nextContext?.type ?? 'single' });
   }, [loadAndPlay]);
 
-  // Global keyboard shortcuts: Space play/pause, M mute, ←/→ seek ∓5s, ↑/↓ vol.
-  // Skipped while typing.
+  // Global keyboard shortcuts. The map itself is pure (lib/playback/shortcuts);
+  // this effect only performs the action it names. preventDefault stays exactly
+  // where it was: on a seek it is called only when a backend exists, so with no
+  // audio the arrow keys still scroll the page.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      const target = e.target as HTMLElement | null;
-      if (target) {
-        const tag = target.tagName;
-        if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
-        if (target.isContentEditable) return;
-      }
-      const cur = usePlayerStore.getState().queue[usePlayerStore.getState().index];
-      if (!cur) return;
+      const st = usePlayerStore.getState();
+      const action = shortcutFor(
+        { key: e.key, code: e.code, repeat: e.repeat, target: e.target as TypingTarget | null },
+        {
+          hasCurrent: Boolean(st.queue[st.index]),
+          volume: st.volume,
+          ceiling: useSettingsStore.getState().partyVolume ? 1 : 0.85,
+        },
+      );
+      if (!action || action.type === 'ignore') return;
       const b = backendRef.current;
 
-      if (e.code === 'Space' || e.key === ' ') {
-        if (e.repeat) return;
+      if (action.type === 'toggle') {
         e.preventDefault();
         if (b) {
           if (b.isPaused()) b.play();
@@ -558,27 +562,21 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         }
         return;
       }
-      if (e.key === 'm' || e.key === 'M') {
-        if (e.repeat) return;
+      if (action.type === 'mute') {
         e.preventDefault();
         usePlayerStore.getState().toggleMuted();
         return;
       }
-      if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+      if (action.type === 'seekBy') {
         if (!b) return;
         e.preventDefault();
-        const step = e.key === 'ArrowLeft' ? -5 : 5;
-        b.seek(b.getCurrentTime() + step);
+        b.seek(b.getCurrentTime() + action.sec);
         return;
       }
-      if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
-        e.preventDefault();
-        const state = usePlayerStore.getState();
-        if (state.muted) state.setMuted(false);
-        const step = e.key === 'ArrowUp' ? 0.05 : -0.05;
-        const ceiling = useSettingsStore.getState().partyVolume ? 1 : 0.85;
-        state.setVolume(Math.max(0, Math.min(ceiling, state.volume + step)));
-      }
+      e.preventDefault();
+      const state = usePlayerStore.getState();
+      if (state.muted) state.setMuted(false);
+      state.setVolume(action.volume);
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
