@@ -208,11 +208,14 @@ const APP_LOG_SCRIPT: &str = r#"
     var url = typeof input === 'string' ? input : (input && input.url) || '';
     var method = (init && init.method) || (input && input.method) || 'GET';
     var watch = url.indexOf('/pb/') !== -1 || url.indexOf('/api/') !== -1;
+    // Drop the query string before it hits the log: search terms, tokens
+    // passed as params, etc. shouldn't end up in the desktop log file.
+    var loggedUrl = url.split('?')[0];
     return origFetch.apply(this, arguments).then(function (res) {
-      if (watch) send(res.ok ? 'info' : 'warn', 'fetch ' + method + ' ' + url + ' -> ' + res.status);
+      if (watch) send(res.ok ? 'info' : 'warn', 'fetch ' + method + ' ' + loggedUrl + ' -> ' + res.status);
       return res;
     }).catch(function (err) {
-      if (watch) send('error', 'fetch ' + method + ' ' + url + ' FAILED: ' + (err && err.message));
+      if (watch) send('error', 'fetch ' + method + ' ' + loggedUrl + ' FAILED: ' + (err && err.message));
       throw err;
     });
   };
