@@ -2,6 +2,7 @@
 
 import { usePlayer } from '@/components/player/PlayerProvider';
 import { useLikeRule } from '@/hooks/useLikeToggle';
+import { isUnavailable } from '@/lib/playback/queueNav';
 import type { TrackActions } from '@/components/track/TrackList';
 
 /** Everything a track list needs from the app: the player, the likes query
@@ -20,5 +21,8 @@ export function useTrackActions(): Required<TrackActions> {
     onPlay: playTrack,
     onToggle: toggle,
     onLike,
+    // The "is this track dead" rule, handed to the list as a predicate so
+    // every page that spreads these actions greys the same rows.
+    isUnavailable,
   };
 }

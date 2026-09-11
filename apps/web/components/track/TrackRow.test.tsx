@@ -4,6 +4,9 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import { TrackRow } from './TrackRow';
 import type { Track } from '@/types/track';
 
+const toast = vi.hoisted(() => Object.assign(vi.fn(), { message: vi.fn(), error: vi.fn() }));
+vi.mock('sonner', () => ({ toast }));
+
 // next/link reads the app router context and pulls in next's own React
 // copy, so component tests render a plain anchor instead (see
 // components/OnlineOnly.test.tsx).
@@ -195,5 +198,56 @@ describe('TrackRow (compact density)', () => {
     );
     expect(container.querySelector('img')).toBeNull();
     expect(screen.getByTestId('art-fallback')).toBeInTheDocument();
+  });
+});
+
+describe('TrackRow (unavailable)', () => {
+  const dead: Track = { ...track, unavailableAt: '2026-09-09T00:00:00.000Z', unavailableReason: 'removed' };
+
+  it('badges the title, greys the row and disables its play cell', () => {
+    const { container } = render(<TrackRow track={dead} unavailable onPlay={vi.fn()} />);
+    const badge = screen.getByTestId('unavailable-badge');
+    expect(badge).toHaveTextContent('Unavailable');
+    expect(badge).toHaveAttribute('title', 'Removed from YouTube');
+    expect(screen.getByRole('button', { name: 'Unavailable' })).toBeDisabled();
+    expect(container.querySelector('[data-unavailable="true"]')).not.toBeNull();
+    expect(container.firstElementChild?.className).toContain('opacity-60');
+  });
+
+  it('falls back to a generic reason when the code is unknown', () => {
+    render(<TrackRow track={{ ...dead, unavailableReason: 'weird' }} unavailable />);
+    expect(screen.getByTestId('unavailable-badge')).toHaveAttribute('title', 'Not available');
+  });
+
+  it('explains instead of playing when the title is clicked', () => {
+    const onPlay = vi.fn();
+    render(<TrackRow track={dead} unavailable onPlay={onPlay} />);
+    fireEvent.click(screen.getByText('Midnight Drive'));
+    expect(onPlay).not.toHaveBeenCalled();
+    expect(toast.message).toHaveBeenCalledWith('"Midnight Drive" is unavailable on YouTube');
+  });
+
+  it('still plays a normal row on click', () => {
+    const onPlay = vi.fn();
+    render(<TrackRow track={track} onPlay={onPlay} />);
+    fireEvent.click(screen.getByText('Midnight Drive'));
+    expect(onPlay).toHaveBeenCalledTimes(1);
+    expect(toast.message).not.toHaveBeenCalled();
+  });
+
+  it('offers Find replacement only when onReplace is given', () => {
+    const onReplace = vi.fn();
+    const { rerender } = render(<TrackRow track={dead} unavailable />);
+    expect(screen.queryByRole('button', { name: 'Find replacement' })).toBeNull();
+
+    rerender(<TrackRow track={dead} unavailable onReplace={onReplace} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Find replacement' }));
+    expect(onReplace).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows no badge and an enabled play button on an available track', () => {
+    render(<TrackRow track={track} onPlay={vi.fn()} />);
+    expect(screen.queryByTestId('unavailable-badge')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Play' })).toBeEnabled();
   });
 });

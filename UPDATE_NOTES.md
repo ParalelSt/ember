@@ -1,3 +1,14 @@
+# Update notes: unavailable songs
+
+**Host: a normal restart is all this needs.** The two new PocketBase fields
+on `tracks` (`unavailable_at`, `unavailable_reason`) come from a hook under
+`pocketbase/pb_hooks`, so they appear the next time PocketBase boots with
+`--hooksDir` pointed at it, same as any other hook. Nothing to migrate by
+hand, no `npm install`.
+
+- **Removed YouTube videos now show as Unavailable, are skipped during
+  playback, and can be swapped for another upload from the row.**
+
 # Update notes — July 2026 feature batch
 
 **Host: do these after `git pull` on `main`.**

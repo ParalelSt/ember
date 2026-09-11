@@ -123,3 +123,37 @@ describe('TrackList', () => {
     expect(screen.getByText('3')).toBeInTheDocument();
   });
 });
+
+describe('TrackList (unavailable rows)', () => {
+  const list = [
+    makeTrack({ id: 'youtube:dead', sourceId: 'dead', title: 'Gone Forever', unavailableAt: '2026-09-09T00:00:00.000Z' }),
+    ...tracks,
+  ];
+  const isUnavailable = (t: Track) => !!t.unavailableAt;
+
+  it('badges only the rows the predicate flags', () => {
+    render(<TrackList tracks={list} {...actions()} isUnavailable={isUnavailable} />);
+    expect(screen.getAllByTestId('unavailable-badge')).toHaveLength(1);
+  });
+
+  it('leaves every row normal without the predicate', () => {
+    render(<TrackList tracks={list} {...actions()} />);
+    expect(screen.queryByTestId('unavailable-badge')).toBeNull();
+  });
+
+  it('offers Find replacement only on the flagged row, with that row track', () => {
+    const onReplace = vi.fn();
+    render(
+      <TrackList tracks={list} {...actions()} isUnavailable={isUnavailable} onReplace={onReplace} />,
+    );
+    const buttons = screen.getAllByRole('button', { name: 'Find replacement' });
+    expect(buttons).toHaveLength(1);
+    fireEvent.click(buttons[0]);
+    expect(onReplace).toHaveBeenCalledWith(list[0]);
+  });
+
+  it('shows no replace button when the page passes no onReplace', () => {
+    render(<TrackList tracks={list} {...actions()} isUnavailable={isUnavailable} />);
+    expect(screen.queryByRole('button', { name: 'Find replacement' })).toBeNull();
+  });
+});

@@ -136,6 +136,10 @@ node tests/stream-fallback.test.mjs                 # or: npm run test:stream-fa
 # Custom uploads (MUSIC_DIR must match the server's)
 MUSIC_DIR="$SB/music" node tests/uploads.test.mjs   # or: npm run test:uploads
 node tests/uploads-ui.test.mjs                      # or: npm run test:uploads-ui
+
+# Unavailable songs: detection, replace, skip-on-play (needs its own server, see below)
+node tests/unavailable.test.mjs                     # or: npm run test:unavailable
+node tests/unavailable-ui.test.mjs                  # or: npm run test:unavailable-ui
 ```
 
 Exit code 0 = everything passed; each check prints PASS/FAIL with detail.
@@ -337,3 +341,66 @@ routes it links to. Uses the same fake `EmberOffline` plugin as
 - A browser without the native offline plugin shows no Download button on a
   collection page.
 - No page errors in either browser context.
+
+## What `unavailable.test.mjs` and `unavailable-ui.test.mjs` cover
+
+A YouTube video that's genuinely gone (removed by the uploader, made
+private, taken down, region-locked, the channel terminated) gets flagged
+unavailable: its row greys out with an "Unavailable" badge, its own Play
+button disables, and a "Find replacement" button opens a dialog of fresh
+candidates to swap in. The rule that makes this safe: only a DEFINITIVE
+yt-dlp message marks a track dead. A 403, a bot-check prompt, a timeout, or
+anything else transient must never be mistaken for removed, since that would
+permanently hide a song that plays fine again a minute later.
+
+`tests/fake-player.sh` drives this without real yt-dlp or network access.
+Two env vars pick the failure per video id, both re-read on every call so a
+test can restore a video mid-run just by editing the file:
+
+- `FAKE_UNAVAILABLE_FILE`: ids listed here fail with a message the detector
+  reads as definitive ("Video unavailable... removed by the uploader").
+- `FAKE_TRANSIENT_FILE`: ids listed here fail with a 403 / bot-check message
+  instead, the kind that must NOT flag the track.
+
+Its own server (this worktree's sandbox: PocketBase on `:8092`, the app on
+`:3011`; use whatever spare pair is actually free in yours):
+
+```bash
+SB=/tmp/ember-unavailable-test && mkdir -p "$SB/music"
+: > "$SB/unavailable.txt" && : > "$SB/transient.txt"
+
+cd apps/web && POCKETBASE_URL=http://127.0.0.1:8092 STREAM_MODE= PYTHON_BIN=/bin/bash \
+PLAYER_SCRIPT="$PWD/../../tests/fake-player.sh" MUSIC_DIR="$SB/music" FAKE_PLAYER_LOG="$SB/calls.log" \
+FAKE_UNAVAILABLE_FILE="$SB/unavailable.txt" FAKE_TRANSIENT_FILE="$SB/transient.txt" STREAM_CACHE_WARM=0 \
+POCKETBASE_ADMIN_EMAIL=admin@ember.com POCKETBASE_ADMIN_PASSWORD=egKa5WNMx3QpuG7 npx next start -p 3011 &
+```
+
+Then:
+
+```bash
+PB_URL=http://127.0.0.1:8092 APP_URL=http://127.0.0.1:3011 SB="$SB" node tests/unavailable.test.mjs      # or: npm run test:unavailable
+PB_URL=http://127.0.0.1:8092 APP_URL=http://127.0.0.1:3011 SB="$SB" node tests/unavailable-ui.test.mjs   # or: npm run test:unavailable-ui
+```
+
+`unavailable.test.mjs` (42 checks): detection (a definitive failure answers
+410 with a clean reason, never a Python traceback), the flag carried on
+playlists and likes, a transient 403 never flagging anything, the flag
+clearing once a track plays again, the replacements/availability endpoints,
+replace-in-playlist (including merging into an already-present track and
+refusing another user's edit), and unavailable tracks excluded from
+recommended radio. It's safe to rerun against a reused sandbox: it clears any
+flag left over from a previous run, through the real clear-on-play path
+rather than a raw PocketBase patch, before seeding its own state.
+
+The pure skip-over-unavailable rules (`isUnavailable`, `nextPlayable`) are
+unit-tested in `apps/web/lib/playback/queueNav.test.ts`, run by
+`npm run test:unit` — they used to have their own `tests/skip-unavailable.test.mjs`
+runner, which the deslop merge folded into that suite.
+
+`unavailable-ui.test.mjs` (22 checks) drives a real browser against the same
+server: the flagged row's badge and disabled Play button (U1), the
+playlist's big Play button skipping the dead first track with a "Skipped"
+toast and landing on the live one instead (U2), the Find Replacement dialog
+swapping a track end to end, checked both in the DOM and with a follow-up
+`GET /api/playlists/<id>` (U3), and no console errors beyond the fake audio
+bytes' expected decode failures (U4).

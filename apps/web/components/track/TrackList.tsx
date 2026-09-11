@@ -19,6 +19,10 @@ export interface TrackActions {
   onToggle: () => void;
   /** Omit to hide the heart on every row. */
   onLike?: (track: Track) => void;
+  /** Whether the server has confirmed a track can no longer be streamed.
+   *  A predicate rather than a flag on the row so the rule itself stays in
+   *  `lib/playback/queueNav` and this list keeps taking data in. */
+  isUnavailable?: (track: Track) => boolean;
 }
 
 interface Props extends TrackActions {
@@ -33,6 +37,10 @@ interface Props extends TrackActions {
   /** Per-row controls before the heart. Pages pass `renderTrackMenu`; this
    *  list stays presentational and never reaches for the playlist hooks. */
   trailing?: (track: Track) => ReactNode;
+  /** Opens the find-replacement dialog for an unavailable track. Omitted on
+   *  lists where a replacement wouldn't be actionable (e.g. Recently
+   *  played, search results). */
+  onReplace?: (track: Track) => void;
 }
 
 /** Presentational only: the rows of a collection, album, artist or search
@@ -44,18 +52,22 @@ export function TrackList({
   onRemove,
   context,
   trailing,
+  onReplace,
   currentId,
   isPlaying,
   likedIds,
   onPlay,
   onToggle,
   onLike,
+  isUnavailable,
 }: Props) {
   if (!tracks?.length) return <EmptyState className="text-sm">No tracks</EmptyState>;
 
   return (
     <div className="flex flex-col">
-      {tracks.map((t, i) => (
+      {tracks.map((t, i) => {
+        const unavailable = !!isUnavailable?.(t);
+        return (
         <TrackRow
           key={t.id}
           track={t}
@@ -72,8 +84,11 @@ export function TrackList({
           onLike={onLike ? () => onLike(t) : undefined}
           onRemove={onRemove ? () => onRemove(t.id) : undefined}
           trailing={trailing?.(t)}
+          unavailable={unavailable}
+          onReplace={unavailable && onReplace ? () => onReplace(t) : undefined}
         />
-      ))}
+        );
+      })}
     </div>
   );
 }

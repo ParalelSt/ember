@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { nextIndex, prevIndex, wrapPoint, type QueueNavState } from './queueNav';
+import { isUnavailable, nextIndex, nextPlayable, prevIndex, wrapPoint, type QueueNavState } from './queueNav';
 
 /** A queue of `n` placeholder entries; only the length is read. */
 function q(n: number) {
@@ -150,5 +150,70 @@ describe('prevIndex', () => {
 
   it('returns null for an empty queue', () => {
     expect(prevIndex(state({ queue: q(0), index: 0, loopMode: 'all' }), 0)).toBeNull();
+  });
+});
+
+/** Minimal track shape: an id plus whether the server flagged it dead.
+ *  Ported from the old tests/skip-unavailable.test.mjs, whose seven cases
+ *  are the seven below. */
+const t = (id: string, dead: boolean) => ({
+  id,
+  unavailableAt: dead ? '2026-09-09T00:00:00.000Z' : null,
+});
+
+describe('isUnavailable', () => {
+  it('is true for a timestamp, false for null / undefined / empty', () => {
+    expect(isUnavailable({ unavailableAt: '2026-09-09T00:00:00.000Z' })).toBe(true);
+    expect(isUnavailable({ unavailableAt: null })).toBe(false);
+    expect(isUnavailable({ unavailableAt: undefined })).toBe(false);
+    expect(isUnavailable({ unavailableAt: '' })).toBe(false);
+    expect(isUnavailable(null)).toBe(false);
+  });
+});
+
+describe('nextPlayable', () => {
+  it('returns the start itself when it is already playable, skipping nothing', () => {
+    const queue = [t('a', false), t('b', false)];
+    const r = nextPlayable(queue, 0, 1, false);
+    expect(r.index).toBe(0);
+    expect(r.skipped).toEqual([]);
+  });
+
+  it('walks forward over two dead tracks', () => {
+    const queue = [t('live0', false), t('dead1', true), t('dead2', true), t('live3', false)];
+    const r = nextPlayable(queue, 1, 1, false);
+    expect(r.index).toBe(3);
+    expect(r.skipped.map((x) => x.id)).toEqual(['dead1', 'dead2']);
+  });
+
+  it('walks backward over two dead tracks', () => {
+    const queue = [t('live0', false), t('dead1', true), t('dead2', true), t('live3', false)];
+    const r = nextPlayable(queue, 2, -1, false);
+    expect(r.index).toBe(0);
+    expect(r.skipped.map((x) => x.id)).toEqual(['dead2', 'dead1']);
+  });
+
+  it('wraps around one lap to find the far end; without wrap it gives up', () => {
+    const queue = [t('dead0', true), t('live1', false), t('dead2', true)];
+    expect(nextPlayable(queue, 2, 1, true).index).toBe(1);
+    expect(nextPlayable(queue, 2, 1, false).index).toBe(-1);
+  });
+
+  it('reports -1 for an all-dead queue, listing each track exactly once', () => {
+    const queue = [t('dead0', true), t('dead1', true), t('dead2', true)];
+    const r = nextPlayable(queue, 0, 1, true);
+    expect(r.index).toBe(-1);
+    expect(r.skipped).toHaveLength(3);
+    expect(r.skipped.map((x) => x.id).sort()).toEqual(['dead0', 'dead1', 'dead2']);
+  });
+
+  it('returns -1 for a start outside the queue when wrap is off', () => {
+    const queue = [t('a', false)];
+    expect(nextPlayable(queue, 5, 1, false).index).toBe(-1);
+    expect(nextPlayable(queue, -1, -1, false).index).toBe(-1);
+  });
+
+  it('returns -1 for an empty queue', () => {
+    expect(nextPlayable([], 0, 1, true).index).toBe(-1);
   });
 });

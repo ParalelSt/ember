@@ -9,6 +9,7 @@ import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { TrackSearchPicker } from '@/components/track/menus/TrackSearchPicker';
 import { TrashIcon } from '@/components/icons';
 import { CollectionPage } from '@/components/library/CollectionPage';
+import { ReplaceTrackDialog } from '@/components/track/menus/ReplaceTrackDialog';
 import { renderTrackMenu } from '@/components/track/menus/TrackMenu';
 import { useTrackActions } from '@/hooks/useTrackActions';
 import { countLabel } from '@/lib/collections';
@@ -18,6 +19,7 @@ import {
   useExecuteAddToPlaylist,
   useExecuteDeletePlaylist,
   useExecuteRemoveFromPlaylist,
+  useExecuteReplaceInPlaylist,
   useExecuteUpdatePlaylistArtwork,
   useQueryPlaylist,
 } from '@/hooks/useLibrary';
@@ -33,8 +35,10 @@ export default function PlaylistPage({ params }: { params: Promise<{ id: string 
   const removeFromPlaylist = useExecuteRemoveFromPlaylist();
   const addToPlaylist = useExecuteAddToPlaylist();
   const updateArtwork = useExecuteUpdatePlaylistArtwork();
+  const replaceInPlaylist = useExecuteReplaceInPlaylist();
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
   const [pendingRemove, setPendingRemove] = useState<Track | null>(null);
+  const [pendingReplace, setPendingReplace] = useState<Track | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Hooks must run before the early returns below. `data` may be undefined
@@ -132,6 +136,7 @@ export default function PlaylistPage({ params }: { params: Promise<{ id: string 
         const track = tracks.find((t) => t.id === trackId);
         if (track) setPendingRemove(track);
       }}
+      onReplaceTrack={setPendingReplace}
       emptyMessage="No tracks yet."
     >
       <input
@@ -165,6 +170,16 @@ export default function PlaylistPage({ params }: { params: Promise<{ id: string 
         confirmLabel="Remove"
         variant="destructive"
         onConfirm={handleConfirmRemove}
+      />
+
+      <ReplaceTrackDialog
+        track={pendingReplace}
+        open={!!pendingReplace}
+        onOpenChange={(o) => { if (!o) setPendingReplace(null); }}
+        onConfirm={async (r) => {
+          await replaceInPlaylist.mutateAsync({ id, trackId: pendingReplace!.id, track: r });
+          toast.success(`Replaced with "${r.title}"`);
+        }}
       />
     </CollectionPage>
   );

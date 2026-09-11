@@ -25,16 +25,25 @@ import {
   type NativeStatus,
 } from '@/lib/offlineNative';
 
+import { isUnavailable } from '@/lib/playback/queueNav';
+
 /** Pin id for the Liked songs pseudo-playlist. A playlist's own pin id is
  *  its PocketBase id as-is. */
 export const LIKED_PIN = 'liked';
+
+/** The tracks worth pinning: never pin one we already know the server
+ *  can't stream, since that only burns a failed fetch and leaves a hole in
+ *  the offline copy. */
+export function playableFor(tracks: Track[]): Track[] {
+  return tracks.filter((t) => !isUnavailable(t));
+}
 
 /** Pins any system list (Liked, Recently played, Uploads) under a fixed id.
  *  Native only: the browser-storage path only knows playlists, and every
  *  button that calls this is gated on the plugin's presence. */
 export async function pinList(id: string, name: string, tracks: Track[]): Promise<void> {
   if (!nativeOfflinePresent()) throw new Error('Offline downloads need the Android app');
-  useOfflineStore.getState().setNativeStatus(await nativePin(id, name, tracks));
+  useOfflineStore.getState().setNativeStatus(await nativePin(id, name, playableFor(tracks)));
 }
 
 export const OFFLINE_SCHEMA_VERSION = 1 as const;
@@ -166,17 +175,18 @@ export async function hydrateOfflineStore(): Promise<void> {
 }
 
 export async function downloadPlaylist(playlist: Playlist, tracks: Track[]): Promise<void> {
-  if (tracks.length === 0) throw new Error('Playlist is empty');
+  const playable = playableFor(tracks);
+  if (playable.length === 0) throw new Error('Playlist is empty');
 
   if (nativeOfflinePresent()) {
-    useOfflineStore.getState().setNativeStatus(await nativePin(playlist.id, playlist.name, tracks));
+    useOfflineStore.getState().setNativeStatus(await nativePin(playlist.id, playlist.name, playable));
     return;
   }
 
   await requestPersistence();
 
   const store = useOfflineStore.getState();
-  store.beginDownload(playlist.id, tracks.length);
+  store.beginDownload(playlist.id, playable.length);
 
   const ac = new AbortController();
   aborters.set(playlist.id, ac);
@@ -190,9 +200,9 @@ export async function downloadPlaylist(playlist: Playlist, tracks: Track[]): Pro
   let totalBytesThisPlaylist = 0;
 
   try {
-    for (let i = 0; i < tracks.length; i++) {
+    for (let i = 0; i < playable.length; i++) {
       if (ac.signal.aborted) throw new DOMException('Aborted', 'AbortError');
-      const t = tracks[i];
+      const t = playable[i];
       store.updateProgress(playlist.id, i, t.title);
 
       const audioRes = await fetch(

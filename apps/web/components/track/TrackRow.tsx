@@ -2,10 +2,11 @@
 
 import type { ReactNode } from 'react';
 import Link from 'next/link';
+import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Artwork } from '@/components/primitives/Artwork';
 import { LikeButton } from '@/components/primitives/LikeButton';
-import { CloseIcon, PauseIcon, PlayIcon, TrashIcon } from '@/components/icons';
+import { CloseIcon, PauseIcon, PlayIcon, RefreshIcon, TrashIcon } from '@/components/icons';
 import { formatTime } from '@/lib/format';
 import type { Track } from '@/types/track';
 import { cn } from '@/lib/utils';
@@ -19,6 +20,19 @@ const SUBTLE: Record<TrackRowTone, string> = {
   default: 'text-muted-foreground',
   sidebar: 'text-sidebar-foreground/55',
 };
+
+/** Words for `unavailableReason` codes, shown as the badge's `title`
+ *  tooltip so a listener can see why without opening the replace dialog. */
+function reasonLabel(reason: string | null | undefined): string {
+  switch (reason) {
+    case 'removed': return 'Removed from YouTube';
+    case 'private': return 'Made private';
+    case 'geo': return 'Blocked in this country';
+    case 'members': return 'Members only';
+    case 'terminated': return 'Channel closed';
+    default: return 'Not available';
+  }
+}
 
 export interface TrackRowProps {
   track: Track;
@@ -44,6 +58,14 @@ export interface TrackRowProps {
   removeLabel?: string;
   /** Extra controls before the heart (the add-to-playlist / share menu). */
   trailing?: ReactNode;
+  /** The server has confirmed this track can no longer be streamed. Greys
+   *  the row, badges the title, disables its play cell, and turns a click
+   *  into an explanation instead of silent nothing. `list` density only:
+   *  compact rows (queue sheet, recents, picker) are unchanged. */
+  unavailable?: boolean;
+  /** Opens the find-replacement flow. Only rendered on an unavailable row,
+   *  and only where a replacement is actionable (a playlist, or Liked). */
+  onReplace?: () => void;
   /** Rendered inside the artwork box when the track has no art. Omit and a
    *  track without art gets no box at all, which is what the list rows and
    *  the picker have always done. */
@@ -71,6 +93,8 @@ export function TrackRow({
   onRemove,
   removeLabel = 'Remove',
   trailing,
+  unavailable = false,
+  onReplace,
   artworkFallback,
   density = 'list',
   tone = 'default',
@@ -78,6 +102,18 @@ export function TrackRow({
 }: TrackRowProps) {
   const compact = density === 'compact';
   const showTime = showDuration ?? !compact;
+  // An unavailable track can't actually start (the server has confirmed
+  // yt-dlp can't fetch it), so clicking it explains why instead of
+  // silently doing nothing.
+  const playOrToast = onPlay
+    ? () => {
+        if (unavailable) {
+          toast.message(`"${track.title}" is unavailable on YouTube`);
+          return;
+        }
+        onPlay();
+      }
+    : undefined;
   const duration = formatTime(track.durationSec, { empty: '--:--' });
   const hasArtwork = !!track.artworkUrl || artworkFallback !== undefined;
 
@@ -85,7 +121,7 @@ export function TrackRow({
     <Artwork
       src={track.artworkUrl}
       size="xs"
-      onClick={compact ? undefined : onPlay}
+      onClick={compact ? undefined : playOrToast}
       className={cn(
         'rounded shrink-0 bg-black',
         !track.artworkUrl && 'grid place-items-center text-foreground/20',
@@ -116,6 +152,19 @@ export function TrackRow({
 
   const like = liked !== undefined && onLike ? <LikeButton liked={liked} onToggle={onLike} /> : null;
 
+  const replace = unavailable && onReplace ? (
+    <Button
+      variant="ghost"
+      size="icon"
+      className="h-8 w-8 text-ember hover:text-ember"
+      onClick={(e) => { e.stopPropagation(); onReplace(); }}
+      aria-label="Find replacement"
+      title="Find replacement"
+    >
+      <RefreshIcon className="h-3.5 w-3.5" />
+    </Button>
+  ) : null;
+
   if (compact) {
     return (
       <div
@@ -145,10 +194,12 @@ export function TrackRow({
 
   return (
     <div
-      onDoubleClick={onPlay}
+      data-unavailable={unavailable ? 'true' : undefined}
+      onDoubleClick={playOrToast}
       className={cn(
         'group grid grid-cols-[40px_minmax(0,1fr)_auto] md:grid-cols-[40px_minmax(0,1fr)_minmax(0,1fr)_60px_auto] gap-3 items-center px-3 py-2 rounded-md cursor-pointer hover:bg-card transition-colors',
         active && 'text-ember',
+        unavailable && 'opacity-60',
         className,
       )}
     >
@@ -163,7 +214,8 @@ export function TrackRow({
           size="icon"
           className={cn('h-8 w-8', showRank && !active && 'opacity-0 group-hover:opacity-100 transition-opacity')}
           onClick={() => (active ? onToggle?.() : onPlay?.())}
-          aria-label={active && playing ? 'Pause' : 'Play'}
+          disabled={unavailable}
+          aria-label={unavailable ? 'Unavailable' : active && playing ? 'Pause' : 'Play'}
         >
           {active && playing ? <PauseIcon className="h-3.5 w-3.5" /> : <PlayIcon className="h-3.5 w-3.5" />}
         </Button>
@@ -172,8 +224,20 @@ export function TrackRow({
       <div className="flex items-center gap-3 min-w-0">
         {artwork}
         <div className="min-w-0">
-          <div onClick={onPlay} className="truncate text-sm font-semibold">
+          <div
+            onClick={playOrToast}
+            className={cn('truncate text-sm font-semibold', unavailable && 'text-muted-foreground')}
+          >
             {track.title}
+            {unavailable && (
+              <span
+                data-testid="unavailable-badge"
+                title={reasonLabel(track.unavailableReason)}
+                className="ml-2 rounded-full border px-1.5 text-[10px] uppercase tracking-wider text-muted-foreground align-middle"
+              >
+                Unavailable
+              </span>
+            )}
           </div>
           <div className="truncate text-xs text-muted-foreground">
             {track.artistId ? (
@@ -197,6 +261,7 @@ export function TrackRow({
       <div className="flex items-center gap-1">
         {trailing}
         {like}
+        {replace}
         {remove}
       </div>
     </div>

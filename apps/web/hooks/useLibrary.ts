@@ -248,3 +248,28 @@ export function useExecuteRemoveFromPlaylist() {
     },
   });
 }
+
+export function useExecuteReplaceInPlaylist() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, trackId, track }: { id: string; trackId: string; track: Track }) =>
+      api.replaceInPlaylist(id, trackId, track),
+    onSuccess: (_d, { id, trackId, track }) => {
+      qc.invalidateQueries({ queryKey: QK.playlist(id) });
+      logger.breadcrumb('library', 'playlist.replace', { playlistId: id, from: trackId, to: track.id });
+    },
+  });
+}
+
+/** Swap a dead track for a live one in Likes: like the replacement first
+ *  (so it's never briefly missing), then unlike the old one. */
+export function useExecuteReplaceLike() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ oldId, track }: { oldId: string; track: Track }) => {
+      await api.like(track);
+      await api.unlike(oldId);
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: QK.likes }),
+  });
+}

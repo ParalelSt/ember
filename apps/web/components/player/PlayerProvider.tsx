@@ -10,6 +10,7 @@ import {
   useState,
   type ReactNode,
 } from 'react';
+import { toast } from 'sonner';
 import { usePlayerStore } from '@/stores/usePlayerStore';
 import { useSettingsStore } from '@/stores/useSettingsStore';
 import { useOfflineStore } from '@/stores/useOfflineStore';
@@ -21,7 +22,8 @@ import { apiUrl } from '@/lib/api';
 import { logger } from '@/lib/logger/client';
 import { detectShell } from '@/lib/playback/detectShell';
 import { chooseDuration } from '@/lib/playback/chooseDuration';
-import { nextIndex, prevIndex } from '@/lib/playback/queueNav';
+import { isUnavailable, nextIndex, nextPlayable, prevIndex } from '@/lib/playback/queueNav';
+import { useAvailabilityProbe } from '@/hooks/player/useAvailabilityProbe';
 import { useDiscordPresence } from '@/hooks/player/useDiscordPresence';
 import { usePositionPersistence } from '@/hooks/player/usePositionPersistence';
 import { useRadioExtend } from '@/hooks/player/useRadioExtend';
@@ -52,6 +54,17 @@ interface PlayerControls {
 }
 
 const PlayerContext = createContext<PlayerControls | null>(null);
+
+/** Toast for tracks passed over on the way to a playable one. One skip names
+ *  the track; more than one just gives the count (naming several would be
+ *  noise). No-op on an empty list. */
+function toastSkipped(skipped: Track[]) {
+  if (skipped.length === 1) {
+    toast(`Skipped: "${skipped[0].title}" is unavailable`);
+  } else if (skipped.length > 1) {
+    toast(`Skipped ${skipped.length} unavailable songs`);
+  }
+}
 
 /** Player provider — owns a swappable AudioBackend (web <audio> today, native
  *  bridge in the shells) and orchestrates playback, persistence-on-write merges,
@@ -119,6 +132,10 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   // events report positions and persist on pause.
   const positions = usePositionPersistence({ backendRef, backendReady });
 
+  // Stable callback, so the backend's one-time event object can close over
+  // it: asks the server whether a failing track has actually died.
+  const probeAvailability = useAvailabilityProbe(nextRef);
+
   // Build the backend once, on first client render. Events map straight to the
   // store writes the old element listeners performed.
   useEffect(() => {
@@ -180,6 +197,9 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         setPosition(0);
         setIsPlaying(false);
         usePlayerStore.setState({ position: 0 });
+        // Was the track itself the problem? The probe asks the server, flags
+        // the queue entry if so, and skips on. See useAvailabilityProbe.
+        probeAvailability();
       },
     };
     // Per-shell backend: tauri has a native engine (Part 5); capacitor keeps
@@ -328,15 +348,30 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     return { queue, index, loopMode: st.loopMode, context: st.context, baseCount: st.baseCount };
   }, [queue, index]);
 
+  /** Advance to the first playable track at/after `target` (walking by
+   *  `step`, wrapping under loop-all), toasting whatever it skips over. Used
+   *  by next/prev instead of jumping straight to `target` so an unavailable
+   *  track never becomes "current" even for an instant. */
+  const goTo = useCallback((target: number, step: 1 | -1) => {
+    const st = usePlayerStore.getState();
+    const r = nextPlayable(st.queue, target, step, st.loopMode === 'all');
+    toastSkipped(r.skipped);
+    if (r.index < 0) {
+      toast.error('Nothing left to play');
+      return;
+    }
+    loadAndPlay(st.queue[r.index], true);
+    setIndex(r.index);
+  }, [loadAndPlay, setIndex]);
+
   const next = useCallback(() => {
     userInteracted.current = true;
     const move = nextIndex(navState());
     if (!move) return;
-    // Synchronous load preserves the user-gesture token; the id-effect would
-    // fire too late on React 19.
-    loadAndPlay(queue[move.index] ?? null, true);
-    setIndex(move.index);
-  }, [queue, setIndex, loadAndPlay, navState]);
+    // goTo, not loadAndPlay: it walks past anything unavailable before it
+    // can become "current" even for an instant.
+    goTo(move.index, 1);
+  }, [goTo, navState]);
 
   const prev = useCallback(() => {
     userInteracted.current = true;
@@ -347,9 +382,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       b?.seek(0);
       return;
     }
-    loadAndPlay(queue[move.index] ?? null, true);
-    setIndex(move.index);
-  }, [queue, setIndex, loadAndPlay, navState]);
+    goTo(move.index, -1);
+  }, [goTo, navState]);
 
   useEffect(() => {
     nextRef.current = next;
@@ -370,17 +404,32 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
   const playTrack = useCallback((track: Track, list?: Track[], nextContext?: PlaybackContext | null) => {
     userInteracted.current = true;
-    // Synchronously start so the user-gesture token survives (React 19 effects
-    // are async).
-    loadAndPlay(track, true);
     // Tapping a search result plays just that song then flows into radio — not
     // the variant-heavy results list. Other contexts queue their whole list.
     const isSearch = nextContext?.type === 'search';
     const queueList = !isSearch && list && list.length ? list : [track];
-    const i = queueList.findIndex((t) => t.id === track.id);
+    let i = queueList.findIndex((t) => t.id === track.id);
+    if (i < 0) i = 0;
+
+    // Tapped track is already known dead: hop to the next playable one in
+    // this same list instead of loading a track we know will fail.
+    if (isUnavailable(track)) {
+      const r = nextPlayable(queueList, Math.max(i, 0), 1, false);
+      if (r.index < 0) {
+        toast.error(`"${track.title}" is unavailable`);
+        return;
+      }
+      toastSkipped(r.skipped);
+      track = queueList[r.index];
+      i = r.index;
+    }
+
+    // Synchronously start so the user-gesture token survives (React 19 effects
+    // are async).
+    loadAndPlay(track, true);
     usePlayerStore.setState({
       queue: queueList,
-      index: i >= 0 ? i : 0,
+      index: i,
       context: nextContext ?? { type: 'single' },
       // Size of the curated list, before radio extends it.
       baseCount: queueList.length,

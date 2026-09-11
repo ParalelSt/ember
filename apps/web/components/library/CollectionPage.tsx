@@ -35,6 +35,9 @@ export interface CollectionPageProps {
   download: DownloadButtonProps | null;
   actions?: ReactNode;
   onRemoveTrack?: (trackId: string) => void;
+  /** Opens the page's find-replacement dialog for an unavailable track.
+   *  Omitted where a replacement isn't actionable (Recently played). */
+  onReplaceTrack?: (track: Track) => void;
   /** Player + likes wiring for the track list. Passed in (from the page's
    *  `useTrackActions()`) so this component stays presentational. */
   trackActions: TrackActions;
@@ -64,6 +67,7 @@ export function CollectionPage({
   download,
   actions,
   onRemoveTrack,
+  onReplaceTrack,
   trackActions,
   trailing,
   emptyMessage,
@@ -113,6 +117,7 @@ export function CollectionPage({
           tracks={tracks}
           context={context}
           onRemove={onRemoveTrack}
+          onReplace={onReplaceTrack}
           trailing={trailing}
           {...trackActions}
         />

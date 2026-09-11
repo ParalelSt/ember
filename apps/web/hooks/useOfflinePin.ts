@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import type { DownloadButtonProps } from '@/components/library/DownloadButton';
 import { pinIdFor, type CollectionRef } from '@/lib/collections';
-import { cancelDownload, downloadPlaylist, isStale, pinList, removeDownload } from '@/lib/offline';
+import { cancelDownload, downloadPlaylist, isStale, pinList, playableFor, removeDownload } from '@/lib/offline';
 import { nativeOfflinePresent, useNativeOfflinePresent, useOfflineDownloadAllowed } from '@/lib/offlineNative';
 import { useOfflineStore } from '@/stores/useOfflineStore';
 import { useOnline } from '@/lib/useOnline';
@@ -26,10 +26,13 @@ export function useOfflinePin(ref: CollectionRef, name: string, tracks: Track[])
   const inFlight = useOfflineStore((s) => s.inFlight[id]);
   const [stale, setStale] = useState(false);
 
+  // Compared against what a pin actually holds: `downloadPlaylist`/`pinList`
+  // skip unavailable tracks, so comparing against every track id would
+  // report a healthy pin as permanently stale.
   useEffect(() => {
     if (!downloaded || !isOnline || !tracks.length) return;
     let cancelled = false;
-    isStale(id, tracks.map((t) => t.id))
+    isStale(id, playableFor(tracks).map((t) => t.id))
       .then((s) => { if (!cancelled) setStale(s); })
       .catch(() => {});
     return () => { cancelled = true; };
@@ -43,9 +46,11 @@ export function useOfflinePin(ref: CollectionRef, name: string, tracks: Track[])
   const onDownload = async () => {
     try {
       await save();
+      const skipped = tracks.length - playableFor(tracks).length;
+      const note = skipped > 0 ? `, ${skipped} unavailable skipped` : '';
       // Native pin() resolves as soon as the pin is recorded, before a
       // single byte lands, so promising "Downloaded" there is a lie.
-      toast.success(nativeOfflinePresent() ? `Downloading "${name}"` : `Downloaded "${name}"`);
+      toast.success(`${nativeOfflinePresent() ? `Downloading "${name}"` : `Downloaded "${name}"`}${note}`);
     } catch (e) {
       if ((e as Error).name !== 'AbortError') {
         toast.error(`Couldn't download "${name}", please try again.`);

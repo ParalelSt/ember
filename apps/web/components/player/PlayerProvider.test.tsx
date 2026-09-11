@@ -41,10 +41,13 @@ vi.mock('@/hooks/useLyrics', () => ({
   useQueryLyrics: () => ({ data: undefined }),
 }));
 
-// Discord presence, radio-extend, shortcuts and remote commands are each
-// unit-tested on their own (hooks/player/*.test.ts); stub them here so this
-// test exercises only what PlayerProvider itself wires: backend calls and
-// the position-persistence path.
+// Discord presence, radio-extend, shortcuts, remote commands and the
+// availability probe are each unit-tested on their own
+// (hooks/player/*.test.ts); stub them here so this test exercises only what
+// PlayerProvider itself wires: backend calls and the position-persistence
+// path. (The probe also calls useQueryClient, which this tree has no
+// provider for.)
+vi.mock('@/hooks/player/useAvailabilityProbe', () => ({ useAvailabilityProbe: () => vi.fn() }));
 vi.mock('@/hooks/player/useDiscordPresence', () => ({ useDiscordPresence: vi.fn() }));
 vi.mock('@/hooks/player/useRadioExtend', () => ({ useRadioExtend: vi.fn() }));
 vi.mock('@/hooks/player/useKeyboardShortcuts', () => ({ useKeyboardShortcuts: vi.fn() }));

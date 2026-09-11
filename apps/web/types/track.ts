@@ -15,6 +15,10 @@ export interface Track {
   durationSec: number;
   artworkUrl: string | null;
   streamUrl: string;
+  /** Set once the server has confirmed yt-dlp can't play this track anymore
+   *  (removed / private / geo / etc). Absent or null means available. */
+  unavailableAt?: string | null;
+  unavailableReason?: string | null;
 }
 
 export interface Playlist {
