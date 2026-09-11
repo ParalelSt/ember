@@ -108,6 +108,11 @@ returns:
 }
 ```
 
+Member uploads keep their embedded cover: the server extracts it at upload
+time and serves it from the relative `/api/uploads/<id>/art`, which the
+downloader resolves against the server URL the same way it resolves a
+relative `streamUrl`.
+
 `artFiles` is a subset of `trackFiles`: artwork is best effort, so a track
 can have audio and no art. Both are absolute app-private paths, which the
 WebView can only load through `Capacitor.convertFileSrc`. `failedReason` is

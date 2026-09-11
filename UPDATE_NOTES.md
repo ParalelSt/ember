@@ -1,3 +1,16 @@
+# Update notes: uploads keep their cover art
+
+**Host: a normal rebuild and restart, plus `npm install` (a new dependency
+reads the tags).** The new `artwork_ext` field on the `uploads` collection
+comes from a hook under `pocketbase/pb_hooks`, so it appears the next time
+PocketBase boots with `--hooksDir` pointed at it. Songs uploaded before this
+keep working; they just stay artwork-less.
+
+- **A song you upload keeps the cover that was in its file.** The cover is
+  pulled out of the tag when the file lands and shown everywhere the app
+  shows artwork, including on the phone offline once the pin has downloaded
+  it.
+
 # Update notes: Offline: artwork offline, retry from the index, signed-out downloads fail loudly
 
 **Host: a normal rebuild and restart, plus a new APK for anyone on Android.**
