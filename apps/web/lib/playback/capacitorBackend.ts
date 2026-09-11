@@ -145,7 +145,7 @@ export const createCapacitorBackend: CreateAudioBackend = (events) => {
       if (!localArtSrc || !isLocalFileSrc(localArtSrc)) return;
       const token = ++artToken;
       void toDataUrl(localArtSrc).then((dataUrl) => {
-        // A later track already claimed the session — dropping a stale read
+        // A later track already claimed the session: dropping a stale read
         // matters more than showing it, or the lock screen ends up one track
         // behind on fast skips.
         if (!dataUrl || token !== artToken) return;
