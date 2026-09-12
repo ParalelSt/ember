@@ -162,8 +162,8 @@ checks.push(['reopens on the form, not the stale result',
 checks.push(['note field cleared for the next report',
   (await page.locator('textarea').first().inputValue()) === '']);
 
-// T3: automatic crash reports. Close the manual dialog first — autoReport.ts
-// must not fire while it's open — then throw an uncaught error in the page
+// T3: automatic crash reports. Close the manual dialog first (autoReport.ts
+// must not fire while it's open), then throw an uncaught error in the page
 // and confirm a silent "Automatic report from <email>" reaches the fake
 // Discord webhook within 5s, with no note field to fill and no dialog to see.
 await page.getByRole('button', { name: /^cancel$/i }).click();
@@ -194,7 +194,7 @@ checks.push(['automatic report title carries the reporter email', autoDiscordBod
 checks.push(['automatic report footer marks it "automatic"',
   /"footer":\{"text":"[^"]*automatic[^"]*"\}/.test(autoDiscordBody)]);
 
-// A second, identical error must not produce a second automatic report —
+// A second, identical error must not produce a second automatic report:
 // the per-fingerprint-per-session dedupe in lib/autoReport.ts.
 await page.evaluate(() => {
   setTimeout(() => { throw new Error('T3_AUTOREPORT_MARKER boom'); }, 0);

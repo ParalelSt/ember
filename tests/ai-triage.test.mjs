@@ -483,7 +483,7 @@ check('H4 automatic report uses the cheaper model',
   hCall?.body?.model === (process.env.BUG_TRIAGE_MODEL_AUTO || 'claude-haiku-4-5-20251001'), hCall?.body?.model);
 
 // Two more automatic reports (3 total) still succeed; a 4th within the hour
-// is blocked — the separate `bug-report:auto:<user>` bucket, not the 30s
+// is blocked: the separate `bug-report:auto:<user>` bucket, not the 30s
 // manual cooldown (F1 above).
 const h2 = await report(APP_URL, cookie7, 'js: uncaught TypeError 2', noisySnapshot(), true);
 const h3 = await report(APP_URL, cookie7, 'js: uncaught TypeError 3', noisySnapshot(), true);

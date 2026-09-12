@@ -223,8 +223,8 @@ The 30-second-per-user cooldown on reports caps the spend too.
 
 Signed-in users also get a "Send crash reports automatically" toggle in
 `/settings/help` (on by default). When the client logger records an
-error-level entry — an uncaught error, an unhandled promise rejection, a
-backend playback failure, or a native offline error — `lib/autoReport.ts`
+error-level entry (an uncaught error, an unhandled promise rejection, a
+backend playback failure, or a native offline error), `lib/autoReport.ts`
 silently posts the same body the bug report dialog would, tagged
 `automatic: true`, with the note filled in as `<category>: <message>`. It's
 deduped per error fingerprint per browser session, capped at three reports a

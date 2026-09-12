@@ -11,7 +11,7 @@ import { scrubText } from './logger/sanitize';
 /** Silent crash reports: when the client logger records an error-level
  *  entry, post the same body BugReportDialog would send (tagged
  *  `automatic: true`) without asking, so hosts learn about crashes nobody
- *  bothered to report by hand. Every gate here fails closed — signed out,
+ *  bothered to report by hand. Every gate here fails closed: signed out,
  *  the Settings toggle off, the manual dialog open, this fingerprint already
  *  reported, or the per-session cap reached all just mean "don't send",
  *  never a thrown error back into the logger call that triggered us. */
@@ -21,7 +21,7 @@ const MAX_PER_SESSION = 3;
 const DEBOUNCE_MS = 2000;
 
 interface SessionState {
-  /** Fingerprints already reported this session — one automatic report per
+  /** Fingerprints already reported this session, one automatic report per
    *  fingerprint, ever, for the life of the sessionStorage entry. */
   reported: string[];
   /** Total automatic reports sent this session, independent of how many
@@ -31,7 +31,7 @@ interface SessionState {
 
 /** In-memory only, keyed by fingerprint: coalesces a burst of the same error
  *  firing repeatedly within DEBOUNCE_MS into a single report. Cleared on
- *  reload (fresh module instance), which is fine — a fresh page load's first
+ *  reload (fresh module instance), which is fine: a fresh page load's first
  *  occurrence of a fingerprint still debounces its own burst. */
 const pendingTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
@@ -88,7 +88,7 @@ function isSignedIn(): boolean {
 async function send(entry: LogEntry): Promise<void> {
   try {
     const snapshot = logger.snapshot();
-    // Desktop only, best effort — same as BugReportDialog's submit.
+    // Desktop only, best effort: same as BugReportDialog's submit.
     const desktopLog = await readDesktopLog();
     if (desktopLog) snapshot.desktopLog = scrubText(desktopLog);
     const res = await fetch('/api/bug-report', {
@@ -113,7 +113,7 @@ async function send(entry: LogEntry): Promise<void> {
 
 /** Called by the client logger right after recording an error-level entry
  *  (uncaught error, unhandled rejection, backend playback error, native
- *  offline error — anything that goes through logger.error()). */
+ *  offline error, anything that goes through logger.error()). */
 export function maybeAutoReport(entry: LogEntry): void {
   try {
     if (typeof window === 'undefined') return;
