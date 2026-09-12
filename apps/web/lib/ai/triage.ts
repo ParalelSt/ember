@@ -21,6 +21,10 @@ const BASE_URL = (process.env.ANTHROPIC_BASE_URL || 'https://api.anthropic.com')
 // worth pennies. Override with BUG_TRIAGE_MODEL=claude-haiku-4-5-20251001 to
 // go cheaper.
 const MODEL = process.env.BUG_TRIAGE_MODEL || 'claude-sonnet-5';
+// Automatic reports (T3: lib/autoReport.ts) can fire a few times per session
+// with no human deciding each one is worth the better model, so they default
+// to the cheaper one. Override with BUG_TRIAGE_MODEL_AUTO.
+const MODEL_AUTO = process.env.BUG_TRIAGE_MODEL_AUTO || 'claude-haiku-4-5-20251001';
 const TIMEOUT_MS = 25_000;
 
 /** Caps. The digest is what we pay for, so it's bounded at every level. */
@@ -82,6 +86,10 @@ export interface TriageInput {
    *  before ("seen before"). Absent/empty degrades to "first time" for
    *  everything, never to a thrown error. */
   history?: ServerLogEntry[];
+  /** Set by the route for silent crash reports (lib/autoReport.ts): picks
+   *  the cheaper MODEL_AUTO instead of MODEL. Absent/false for a
+   *  human-submitted report. */
+  automatic?: boolean;
 }
 
 function clip(s: string, max: number): string {
@@ -350,7 +358,7 @@ export async function triageBugReport(input: TriageInput): Promise<Triage | null
         'anthropic-version': '2023-06-01',
       },
       body: JSON.stringify({
-        model: MODEL,
+        model: input.automatic ? MODEL_AUTO : MODEL,
         max_tokens: 800,
         system: SYSTEM,
         messages: [{ role: 'user', content: prompt }],

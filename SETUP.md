@@ -219,6 +219,32 @@ A report costs well under a cent (the logs are condensed and capped before
 they're sent), but **you** pay for everyone's reports since the key is yours.
 The 30-second-per-user cooldown on reports caps the spend too.
 
+#### Automatic reports
+
+Signed-in users also get a "Send crash reports automatically" toggle in
+`/settings/help` (on by default). When the client logger records an
+error-level entry — an uncaught error, an unhandled promise rejection, a
+backend playback failure, or a native offline error — `lib/autoReport.ts`
+silently posts the same body the bug report dialog would, tagged
+`automatic: true`, with the note filled in as `<category>: <message>`. It's
+deduped per error fingerprint per browser session, capped at three reports a
+session, debounced 2 seconds so a burst of the same error only sends once,
+and it never fires while the manual dialog is open or while the toggle is
+off.
+
+The server rate-limits these separately from manual reports (3/hour per user,
+independent of the 30s manual cooldown) and triages them with a cheaper
+model by default, since they can fire without anyone deciding a report was
+worth it:
+
+```bash
+BUG_TRIAGE_MODEL_AUTO=claude-haiku-4-5-20251001   # optional override
+```
+
+The Discord embed titles these "Automatic report from `<email>`" and adds an
+"automatic" marker to the footer, so a maintainer can tell them apart from a
+report someone chose to send.
+
 ### Desktop auto-update
 
 The desktop apps check this server on launch and install new builds

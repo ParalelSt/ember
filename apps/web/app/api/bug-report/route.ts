@@ -77,6 +77,12 @@ function formatContextCompact(ctx: Partial<ReportContext> | undefined): string {
 interface RequestBody {
   note?: string;
   client?: ClientSnapshot;
+  /** Set by lib/autoReport.ts for a silent crash report (T3). Rate-limited
+   *  and triaged separately from a human-submitted report; never trusted
+   *  beyond "is it truthy" (a forged flag just means someone's manual report
+   *  gets the cheaper model and a different Discord title, not a security
+   *  issue). */
+  automatic?: boolean;
 }
 
 /** Validate `client.context`: must be a plain object when present (an old
@@ -119,22 +125,6 @@ export const POST = withRequestLog('bug-report', async (request: NextRequest) =>
   try {
     const { user } = await requireUser();
 
-    // 30-second cooldown between reports. Just enough to keep an itchy
-    // Submit-button finger from double-sending the same report twice;
-    // a real second bug a minute later still goes through.
-    const limited = rateLimitResponse(`bug-report:${user.id}`, {
-      windowMs: 30 * 1000,
-      max: 1,
-    });
-    if (limited) return limited;
-
-    if (!WEBHOOK_URL) {
-      return jsonError(
-        "Bug reporting not configured. Paste a Discord webhook URL into DEFAULT_WEBHOOK_URL in app/api/bug-report/route.ts, or set DISCORD_BUG_REPORT_WEBHOOK_URL in .env.local.",
-        503,
-      );
-    }
-
     const body = (await request.json().catch(() => null)) as RequestBody | null;
     if (
       !body ||
@@ -144,6 +134,28 @@ export const POST = withRequestLog('bug-report', async (request: NextRequest) =>
     ) {
       return jsonError("Invalid report body", 400);
     }
+    // Never trust the flag beyond "is it truthy": it only picks a rate-limit
+    // bucket, a triage model and a Discord title, none of which are a
+    // security boundary (see the RequestBody doc comment above).
+    const automatic = body.automatic === true;
+
+    // Automatic (lib/autoReport.ts) and manual reports get separate limits:
+    // a human hitting Submit twice by accident is a 30s cooldown, while
+    // autoReport.ts already caps itself at 3 per browser session but that
+    // cap is client-side and per-tab, so the server enforces its own
+    // per-hour ceiling per user across every tab/device.
+    const limited = automatic
+      ? rateLimitResponse(`bug-report:auto:${user.id}`, { windowMs: 60 * 60 * 1000, max: 3 })
+      : rateLimitResponse(`bug-report:${user.id}`, { windowMs: 30 * 1000, max: 1 });
+    if (limited) return limited;
+
+    if (!WEBHOOK_URL) {
+      return jsonError(
+        "Bug reporting not configured. Paste a Discord webhook URL into DEFAULT_WEBHOOK_URL in app/api/bug-report/route.ts, or set DISCORD_BUG_REPORT_WEBHOOK_URL in .env.local.",
+        503,
+      );
+    }
+
     const note = String(body.note ?? "")
       .slice(0, MAX_NOTE_LEN)
       .trim();
@@ -188,6 +200,7 @@ export const POST = withRequestLog('bug-report', async (request: NextRequest) =>
       context: client.context,
       desktopLog,
       history,
+      automatic,
     });
 
     const payload = {
@@ -252,14 +265,21 @@ export const POST = withRequestLog('bug-report', async (request: NextRequest) =>
     const seenBeforeText = formatSeenBefore(server, history);
 
     const whatBroke = triage?.summary || note || "(no note)";
+    // Footer carries severity/area/confidence (when triaged) plus an
+    // "automatic" marker so a maintainer can tell a silent crash report
+    // (lib/autoReport.ts) from one a person chose to send, at a glance.
+    const footerParts = [
+      triage ? `severity: ${triage.severity}` : null,
+      triage ? `area: ${triage.area}` : null,
+      triage ? `confidence: ${triage.confidence}` : null,
+      automatic ? "automatic" : null,
+    ].filter((p): p is string => p !== null);
     const embed = {
-      title: `Bug report from ${user.email}`,
+      title: `${automatic ? "Automatic report" : "Bug report"} from ${user.email}`,
       description: note || "_(no note)_",
       color: triage ? SEVERITY_COLORS[triage.severity] : 0xff5a3a,
       timestamp: reportedAt,
-      footer: triage
-        ? { text: `severity: ${triage.severity} · area: ${triage.area} · confidence: ${triage.confidence}` }
-        : undefined,
+      footer: footerParts.length > 0 ? { text: footerParts.join(" · ") } : undefined,
       fields: [
         field("What broke", whatBroke),
         { name: "Where", value: formatContextCompact(client.context), inline: false },
