@@ -148,6 +148,36 @@ const check = (name, pass, detail = '') => {
   });
   check('U22 seen-before reports a repeat when history has the same fingerprint', /r1: seen 2 times this week/.test(d6));
 
+  // T3: automatic reports (lib/autoReport.ts) get the cheaper model.
+  // Stubs global fetch directly rather than pointing ANTHROPIC_BASE_URL at a
+  // fake server, so this stays a same-process unit check like U1-U22 above.
+  {
+    const prevKey = process.env.ANTHROPIC_API_KEY;
+    process.env.ANTHROPIC_API_KEY = 'unit-test-key';
+    const origFetch = globalThis.fetch;
+    const seenModels = [];
+    globalThis.fetch = async (_url, init) => {
+      seenModels.push(JSON.parse(init.body).model);
+      return {
+        ok: true,
+        json: async () => ({
+          content: [{ type: 'text', text: JSON.stringify({ summary: 's', likelyCause: 'c', area: 'ui', severity: 'low', confidence: 'low', nextSteps: [], reproduction: 'unknown' }) }],
+        }),
+      };
+    };
+    try {
+      const input = { note: '', userAgent: 'ua', context: ctx, client: { current: [], previous: [], sessionId: 's' }, server: [] };
+      await triageBugReport(input);
+      await triageBugReport({ ...input, automatic: true });
+    } finally {
+      globalThis.fetch = origFetch;
+      if (prevKey === undefined) delete process.env.ANTHROPIC_API_KEY;
+      else process.env.ANTHROPIC_API_KEY = prevKey;
+    }
+    check('U23 manual report uses BUG_TRIAGE_MODEL', seenModels[0] === (process.env.BUG_TRIAGE_MODEL || 'claude-sonnet-5'), seenModels[0]);
+    check('U24 automatic report uses BUG_TRIAGE_MODEL_AUTO', seenModels[1] === (process.env.BUG_TRIAGE_MODEL_AUTO || 'claude-haiku-4-5-20251001'), seenModels[1]);
+  }
+
   // Schema: reproduction defaults to "unknown" when missing or invalid,
   // otherwise passes through.
   const base = { summary: 's', likelyCause: 'c', area: 'ui', severity: 'low', confidence: 'low', nextSteps: [] };
@@ -193,7 +223,7 @@ const DISCORD_PORT = Number(process.env.FAKE_DISCORD_PORT ?? 4312);
 // One user per case: the route rate-limits to one report per user per 30s, and
 // separate users keep the suite sleep-free.
 const USER_PASSWORD = 'BugTest2026!';
-const USERS = 6;
+const USERS = 7;
 
 // ── fakes ─────────────────────────────────────────────────────────────────
 let anthropicMode = 'ok';
@@ -340,11 +370,11 @@ function distinctSnapshot() {
   return { current, previous: [], sessionId: 's' };
 }
 
-async function report(app, cookie, note, client = noisySnapshot()) {
+async function report(app, cookie, note, client = noisySnapshot(), automatic = undefined) {
   const res = await fetch(`${app}/api/bug-report`, {
     method: 'POST',
     headers: { 'content-type': 'application/json', cookie, 'user-agent': 'EmberTest/1.0' },
-    body: JSON.stringify({ note, client }),
+    body: JSON.stringify({ note, client, ...(automatic !== undefined ? { automatic } : {}) }),
   });
   return { status: res.status, json: await res.json().catch(() => null) };
 }
@@ -438,6 +468,33 @@ check('G1 report accepted', g.json?.ok === true);
 check('G2 all 30 distinct errors survive', missing.length === 0, missing.length ? `missing ${missing.join(',')}` : '30/30');
 check('G3 400 breadcrumbs trimmed', (gPrompt.match(/navigate \/page-/g) ?? []).length <= 60,
   `${(gPrompt.match(/navigate \/page-/g) ?? []).length} kept`);
+
+// H. automatic reports (T3: lib/autoReport.ts): title, footer marker, the
+// cheaper model, and a rate-limit bucket separate from manual reports.
+anthropicMode = 'ok';
+const cookie7 = await authCookie(7);
+const h1 = await report(APP_URL, cookie7, 'js: uncaught TypeError', noisySnapshot(), true);
+check('H1 automatic report accepted', h1.status === 200 && h1.json?.ok === true, `status ${h1.status}`);
+const hEmbed = discordSeen.at(-1) ?? '';
+check('H2 title reads "Automatic report from <email>"', hEmbed.includes('Automatic report from bugtest7@ember.test'));
+check('H3 footer carries an "automatic" marker', /"footer":\{"text":"[^"]*automatic[^"]*"\}/.test(hEmbed));
+const hCall = anthropicSeen.at(-1);
+check('H4 automatic report uses the cheaper model',
+  hCall?.body?.model === (process.env.BUG_TRIAGE_MODEL_AUTO || 'claude-haiku-4-5-20251001'), hCall?.body?.model);
+
+// Two more automatic reports (3 total) still succeed; a 4th within the hour
+// is blocked — the separate `bug-report:auto:<user>` bucket, not the 30s
+// manual cooldown (F1 above).
+const h2 = await report(APP_URL, cookie7, 'js: uncaught TypeError 2', noisySnapshot(), true);
+const h3 = await report(APP_URL, cookie7, 'js: uncaught TypeError 3', noisySnapshot(), true);
+check('H5 three automatic reports allowed per hour', h2.status === 200 && h3.status === 200,
+  `statuses ${h2.status}/${h3.status}`);
+const h4 = await report(APP_URL, cookie7, 'js: uncaught TypeError 4', noisySnapshot(), true);
+check('H6 fourth automatic report in the hour is blocked', h4.status === 429, `status ${h4.status}`);
+
+// The manual bucket is untouched by automatic traffic on the same user.
+const h5 = await report(APP_URL, cookie7, 'manual after automatics', noisySnapshot(), false);
+check('H7 manual report still allowed after 3 automatics (separate bucket)', h5.status === 200, `status ${h5.status}`);
 
 const failed = results.filter((r) => !r.pass);
 console.log(`\n${results.length - failed.length}/${results.length} checks passed`);

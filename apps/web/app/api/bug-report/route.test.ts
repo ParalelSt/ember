@@ -18,7 +18,9 @@ vi.mock('@/lib/auth', () => ({
   UnauthorizedError: class UnauthorizedError extends Error {},
   unauthorizedResponse: () => new Response('no', { status: 401 }),
 }));
-vi.mock('@/lib/rateLimit', () => ({ rateLimitResponse: () => null }));
+// vi.fn() (not a plain arrow) so tests below can assert on call args/keys —
+// vi.mocked() needs a real mock function, not just something shaped like one.
+vi.mock('@/lib/rateLimit', () => ({ rateLimitResponse: vi.fn(() => null) }));
 vi.mock('@/lib/logger/server', () => ({
   serverLogger: { recentSince: vi.fn(async () => []), entriesSince: vi.fn(async () => []) },
 }));
@@ -28,7 +30,7 @@ vi.mock('@/lib/logger/server', () => ({
 // exercise the actual fingerprint/history logic, not a stand-in for it.
 vi.mock('@/lib/ai/triage', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/lib/ai/triage')>();
-  return { ...actual, triageBugReport: async () => null };
+  return { ...actual, triageBugReport: vi.fn(async () => null) };
 });
 vi.mock('@/lib/upsertTrack', () => ({
   jsonError: (error: string, status: number) => Response.json({ error }, { status }),
@@ -42,6 +44,8 @@ vi.mock('@/lib/logger/withRequestLog', () => ({
 
 const { POST } = await import('./route');
 const { serverLogger } = await import('@/lib/logger/server');
+const { rateLimitResponse } = await import('@/lib/rateLimit');
+const { triageBugReport } = await import('@/lib/ai/triage');
 
 /** The Discord embed the route built (parsed out of the multipart payload). */
 function postedEmbed(fetchMock: ReturnType<typeof vi.fn>): { fields: { name: string; value: string }[] } {
@@ -95,6 +99,8 @@ beforeEach(() => {
   vi.stubGlobal('fetch', fetchMock);
   vi.mocked(serverLogger.recentSince).mockResolvedValue([]);
   vi.mocked(serverLogger.entriesSince).mockResolvedValue([]);
+  vi.mocked(rateLimitResponse).mockReturnValue(null);
+  vi.mocked(triageBugReport).mockResolvedValue(null);
 });
 
 describe('POST /api/bug-report: desktop log', () => {
@@ -290,6 +296,41 @@ describe('POST /api/bug-report: Seen before', () => {
     const embed = postedEmbed(fetchMock);
     const seenBefore = embed.fields.find((f) => f.name === 'Seen before');
     expect(seenBefore?.value).toBe('(no server errors in this report)');
+  });
+});
+
+describe('POST /api/bug-report: automatic reports', () => {
+  it('titles the embed "Automatic report from <email>" and marks the footer', async () => {
+    const res = await POST(request({ client: snapshot(), automatic: true }), undefined as never);
+    expect(res.status).toBe(200);
+    const parsed = JSON.parse(postedForm(fetchMock).get('payload_json') as string);
+    expect(parsed.embeds[0].title).toBe('Automatic report from dev@ember.test');
+    expect(parsed.embeds[0].footer.text).toContain('automatic');
+  });
+
+  it('does not mark the footer or title for a manual report', async () => {
+    const res = await POST(request({ client: snapshot() }), undefined as never);
+    expect(res.status).toBe(200);
+    const parsed = JSON.parse(postedForm(fetchMock).get('payload_json') as string);
+    expect(parsed.embeds[0].title).toBe('Bug report from dev@ember.test');
+    expect(parsed.embeds[0].footer).toBeUndefined();
+  });
+
+  it('rate-limits automatic reports under a separate key from manual reports', async () => {
+    await POST(request({ client: snapshot(), automatic: true }), undefined as never);
+    await POST(request({ client: snapshot() }), undefined as never);
+
+    const keys = vi.mocked(rateLimitResponse).mock.calls.map((c) => c[0]);
+    expect(keys).toContain('bug-report:auto:u1');
+    expect(keys).toContain('bug-report:u1');
+  });
+
+  it('passes automatic through to triageBugReport so it can pick the cheaper model', async () => {
+    await POST(request({ client: snapshot(), automatic: true }), undefined as never);
+    expect(triageBugReport).toHaveBeenCalledWith(expect.objectContaining({ automatic: true }));
+
+    await POST(request({ client: snapshot() }), undefined as never);
+    expect(triageBugReport).toHaveBeenCalledWith(expect.objectContaining({ automatic: false }));
   });
 });
 
