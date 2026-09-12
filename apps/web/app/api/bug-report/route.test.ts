@@ -388,3 +388,12 @@ describe('POST /api/bug-report: field restructure', () => {
   });
 });
 
+describe('POST /api/bug-report: note scrubbing', () => {
+  it('redacts a token pasted into the note', async () => {
+    await POST(request({ note: 'it broke after Authorization: Bearer sk-ant-abcdefgh12345678', client: { current: [], previous: [], sessionId: 's' } }), {} as never);
+    const raw = postedForm(fetchMock).get('payload_json') as string;
+    expect(raw).not.toContain('sk-ant-abcdefgh12345678');
+    expect(raw).toContain('[scrubbed]');
+  });
+});
+

@@ -114,6 +114,10 @@ async function send(entry: LogEntry): Promise<void> {
 /** Called by the client logger right after recording an error-level entry
  *  (uncaught error, unhandled rejection, backend playback error, native
  *  offline error, anything that goes through logger.error()). */
+function isOnline(): boolean {
+  return typeof navigator === 'undefined' || navigator.onLine !== false;
+}
+
 export function maybeAutoReport(entry: LogEntry): void {
   try {
     if (typeof window === 'undefined') return;
@@ -121,6 +125,9 @@ export function maybeAutoReport(entry: LogEntry): void {
     if (!useSettingsStore.getState().autoReportEnabled) return;
     if (!isSignedIn()) return;
     if (useUiStore.getState().bugReportOpen) return;
+    // Offline the send is doomed; reserving a slot for it would silently use
+    // up one of the session's three reports (and mark the fingerprint done).
+    if (!isOnline()) return;
 
     const fp = fingerprint(entry);
     if (pendingTimers.has(fp)) return; // burst: already debounced
@@ -137,6 +144,7 @@ export function maybeAutoReport(entry: LogEntry): void {
       if (!useSettingsStore.getState().autoReportEnabled) return;
       if (!isSignedIn()) return;
       if (useUiStore.getState().bugReportOpen) return;
+      if (!isOnline()) return;
       if (!reserve(fp)) return;
       void send(entry);
     }, DEBOUNCE_MS);

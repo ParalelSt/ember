@@ -156,7 +156,9 @@ export const POST = withRequestLog('bug-report', async (request: NextRequest) =>
       );
     }
 
-    const note = String(body.note ?? "")
+    // Scrubbed like every other field: an automatic note carries a raw
+    // error message, and a person can paste anything.
+    const note = scrubText(String(body.note ?? ""))
       .slice(0, MAX_NOTE_LEN)
       .trim();
     // The desktop log travels inside the client snapshot but goes out as its

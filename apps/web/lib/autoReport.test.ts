@@ -60,6 +60,19 @@ describe('maybeAutoReport: gating', () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
+  it('does nothing while offline, and keeps the session slot for later', async () => {
+    const online = vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
+    const fetchMock = mockFetch();
+    maybeAutoReport(errorEntry());
+    await vi.advanceTimersByTimeAsync(3000);
+    expect(fetchMock).not.toHaveBeenCalled();
+    online.mockReturnValue(true);
+    maybeAutoReport(errorEntry());
+    await vi.advanceTimersByTimeAsync(3000);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    online.mockRestore();
+  });
+
   it('does nothing when the Settings toggle is off', async () => {
     useSettingsStore.setState({ autoReportEnabled: false });
     const fetchMock = mockFetch();
