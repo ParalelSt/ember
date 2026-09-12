@@ -177,7 +177,7 @@ async function readEntriesFromFiles(files: string[]): Promise<ServerLogEntry[]> 
       const text = await fs.readFile(path.join(dir, f), 'utf8');
       lines.push(...text.split('\n').filter(Boolean));
     } catch {
-      // Missing file — fine, skip.
+      // Missing file: fine, skip.
     }
   }
   const out: ServerLogEntry[] = [];
@@ -185,7 +185,7 @@ async function readEntriesFromFiles(files: string[]): Promise<ServerLogEntry[]> 
     try {
       out.push(JSON.parse(line) as ServerLogEntry);
     } catch {
-      // Corrupt line — skip.
+      // Corrupt line: skip.
     }
   }
   return out;

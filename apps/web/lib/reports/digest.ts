@@ -9,7 +9,7 @@ export interface DigestGroup {
   count: number;
   firstSeen: number;
   lastSeen: number;
-  /** Most recent occurrence in the group — the freshest detail to show. */
+  /** Most recent occurrence in the group: the freshest detail to show. */
   example: ServerLogEntry;
   level: LogLevel;
 }

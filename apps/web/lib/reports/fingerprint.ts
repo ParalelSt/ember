@@ -12,14 +12,14 @@ import type { LogEntry, ServerLogEntry } from '../logger/types';
 export function normalizeMessage(message: string): string {
   let s = message;
 
-  // youtube:<id> — keep the "youtube:" tag (it's meaningful), drop the id.
+  // youtube:<id>: keep the "youtube:" tag (it's meaningful), drop the id.
   s = s.replace(/youtube:[A-Za-z0-9_-]{6,}/g, 'youtube:#');
 
   // URL query strings: keep the path (it identifies the endpoint), drop the
   // params (they're usually the varying part: tokens, ids, cache-busters).
   s = s.replace(/(https?:\/\/[^\s"'?]+)\?[^\s"']*/g, '$1');
 
-  // Quoted strings (single or double) — free-form, never stable.
+  // Quoted strings (single or double): free-form, never stable.
   s = s.replace(/"[^"]*"/g, '#');
   s = s.replace(/'[^']*'/g, '#');
 
@@ -36,7 +36,7 @@ export function normalizeMessage(message: string): string {
   return s.toLowerCase().replace(/\s+/g, ' ').trim();
 }
 
-/** FNV-1a 32-bit, hex-encoded. Deterministic across runs/processes — no
+/** FNV-1a 32-bit, hex-encoded. Deterministic across runs/processes: no
  *  Math.random, no environment-dependent hashing (unlike Node's built-in
  *  string hashing, which isn't guaranteed stable across versions). */
 function hash8(s: string): string {

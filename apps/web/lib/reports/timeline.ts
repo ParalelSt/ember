@@ -49,7 +49,7 @@ export function extractStatus(data: unknown): number | undefined {
 function trimStack(stack: string | undefined): string | undefined {
   if (!stack) return undefined;
   const lines = stack.split('\n').map((l) => l.trim()).filter(Boolean);
-  // lines[0] is usually "Error: message", not a frame — search from 1 first
+  // lines[0] is usually "Error: message", not a frame: search from 1 first
   // so it's only used as a last resort.
   const frame = lines.slice(1).find((l) => l.includes('apps/web/') || l.includes('/app/'));
   return frame ?? lines[1];
@@ -71,7 +71,7 @@ function serverText(e: ServerLogEntry): string {
 
 /** Flattens client + server entries into a single chronological array of
  *  lines, capped to the most recent `maxLines`. Grouping into "Errors" /
- *  "Before it" blocks and reqId pairing happen at format time, not here —
+ *  "Before it" blocks and reqId pairing happen at format time, not here ,
  *  this is just "what happened, in order". */
 export function buildTimeline({ client, server, reportedAt, maxLines = DEFAULT_MAX_LINES }: BuildTimelineOptions): TimelineLine[] {
   const clientLines: TimelineLine[] = client.map((e) => ({
