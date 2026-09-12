@@ -3,12 +3,17 @@
 export async function register() {
   // Only the Node server runtime has a filesystem and PocketBase access.
   if (process.env.NEXT_RUNTIME !== 'nodejs') return;
+
+  // Ahead of the CLEANUP_DISABLED guard below: the missing-key warning
+  // must fire on every boot, including sandboxes and tests that disable
+  // cleanup, not just deployments that run the daily job.
+  const { checkTriageConfig } = await import('@/lib/ai/triage');
+  checkTriageConfig();
+
   if (process.env.CLEANUP_DISABLED === '1') return;
 
   const { createAdminClient } = await import('@/lib/pocketbase/server');
   const { runCleanup } = await import('@/lib/cleanup');
-  const { checkTriageConfig } = await import('@/lib/ai/triage');
-  checkTriageConfig();
 
   const DAY_MS = 24 * 60 * 60 * 1000;
   const run = async () => {
