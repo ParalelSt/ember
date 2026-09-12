@@ -67,9 +67,14 @@ const check = (name, pass, detail = '') => {
   check('U2 context fields rendered', d1.includes('route: /playlist/abc') && d1.includes('shell: tauri') && d1.includes('backend: web-audio'));
   check('U3 empty/absent fields omitted', !d1.includes('storage:') && !d1.includes('offline pins:'));
   check('U4 native entry included', d1.includes('native:offline') && d1.includes('download failed'));
-  check('U5 client reqId rendered', new RegExp(`\\{req ${reqId.slice(0, 8)}\\}.*api: GET /api/likes`).test(d1));
-  check('U6 server reqId rendered and matches client', (d1.match(new RegExp(`req ${reqId.slice(0, 8)}`, 'g')) ?? []).length === 2);
-  check('U7 reqId not duplicated into the data dump', !d1.includes(`"reqId":"${reqId}"`));
+  // The prompt now renders through T1's formatTimeline: a paired server line
+  // nests under its client line as "server: ..." instead of both carrying
+  // their own tag, so the reqId tag itself appears exactly once per pair.
+  check('U5 client reqId rendered', new RegExp(`GET /api/likes.*reqId ${reqId.slice(0, 8)}`).test(d1));
+  check('U6 server line paired under the client line, not duplicated as its own reqId tag',
+    d1.includes('server: likes: GET /api/likes') && (d1.match(new RegExp(`reqId ${reqId.slice(0, 8)}`, 'g')) ?? []).length === 1);
+  check('U7 reqId not duplicated into a raw data dump', !d1.includes(`"reqId":"${reqId}"`));
+  check('U7b timeline section present', d1.includes('## Timeline') && d1.includes('Errors'));
 
   // Desktop log tail: last 60 lines only in the prompt, full tail is a
   // separate concern (route.ts attaches the whole thing to Discord).
@@ -101,6 +106,47 @@ const check = (name, pass, detail = '') => {
   check('U11 digest stays within the char budget', d3.length <= 14_000, `${d3.length} chars`);
   check('U12 newest client entry (page-79) survives trimming', d3.includes('page-79'));
   check('U13 newest server entry survives trimming', d3.includes('server event 59'));
+
+  // A report with 300 entries (well past every per-source cap) must still
+  // fit the budget: this is the scenario the char-budget shrink loop exists
+  // for, now driving buildTimeline/formatTimeline instead of the old
+  // hand-rolled line() renderer.
+  const bigClient = Array.from({ length: 260 }, (_, i) => ({
+    ts: now - (260 - i) * 1000, kind: 'breadcrumb', level: 'info', category: 'route',
+    message: `navigate /section-${i}`, sessionId: 's',
+  }));
+  const bigServer = Array.from({ length: 40 }, (_, i) => ({
+    ts: now - (40 - i) * 1000, kind: 'error', level: 'error', category: 'api',
+    message: `distinct failure ${i}`, sessionId: 's', side: 'server', reqId: `b${i}`, route: 'x',
+  }));
+  const d4 = buildDigest({
+    note: '', userAgent: 'ua', context: ctx,
+    client: { current: bigClient, previous: [], sessionId: 's' }, server: bigServer,
+  });
+  check('U19 300-entry report fits the digest budget', d4.length <= 14_000, `${d4.length} chars from 300 entries`);
+  check('U20 300-entry report: newest events still present', d4.includes('section-259') && d4.includes('distinct failure 39'));
+
+  // "Seen before": no history passed → every fingerprint reads as new.
+  const d5 = buildDigest({
+    note: '', userAgent: 'ua', context: undefined,
+    client: { current: [], previous: [], sessionId: 's' },
+    server: [{ ts: now, kind: 'error', level: 'error', category: 'api', message: 'boom', sessionId: 's', side: 'server', reqId: 'x', route: 'r1' }],
+  });
+  check('U21 seen-before section present, first occurrence reads as new', d5.includes('## Seen before') && d5.includes('r1: first time'));
+
+  // With a history window that has seen the same fingerprint before, the
+  // digest's seen-before line reports the repeat count.
+  const history = [
+    { ts: now - 2 * 86_400_000, kind: 'error', level: 'error', category: 'api', message: 'boom', sessionId: 's', side: 'server', reqId: 'h1', route: 'r1' },
+    { ts: now, kind: 'error', level: 'error', category: 'api', message: 'boom', sessionId: 's', side: 'server', reqId: 'x', route: 'r1' },
+  ];
+  const d6 = buildDigest({
+    note: '', userAgent: 'ua', context: undefined,
+    client: { current: [], previous: [], sessionId: 's' },
+    server: [{ ts: now, kind: 'error', level: 'error', category: 'api', message: 'boom', sessionId: 's', side: 'server', reqId: 'x', route: 'r1' }],
+    history,
+  });
+  check('U22 seen-before reports a repeat when history has the same fingerprint', /r1: seen 2 times this week/.test(d6));
 
   // Schema: reproduction defaults to "unknown" when missing or invalid,
   // otherwise passes through.
@@ -332,13 +378,20 @@ check('A12 native entry reaches the prompt', prompt.includes('native:offline'));
 
 const embed = discordSeen.at(-1) ?? '';
 check('B1 Discord received the report', discordSeen.length === 1);
-check('B2 embed leads with the AI summary', embed.includes('Playback stops a few seconds'));
-check('B3 embed carries the likely cause', embed.includes('Likely cause'));
+check('B2 embed leads with the AI summary in "What broke"', embed.includes('"name":"What broke"') && embed.includes('Playback stops a few seconds'));
+check('B3 embed carries an "Evidence" timeline field', embed.includes('"name":"Evidence"') && embed.includes('```'));
 check('B4 embed carries next steps', embed.includes('Check yt-dlp version'));
-check('B5 severity colours the embed', embed.includes(String(0xef4444)), 'high → red');
+check('B5 severity colours the embed', embed.includes(String(0xef4444)), 'high -> red');
 check('B6 raw report still attached', embed.includes('report.json') && embed.includes('dQw4w9WgXcQ'));
 check('B7 triage stored in the attachment', embed.includes('"triage"'));
 check('B8 context reaches the Discord embed as "Where"', embed.includes('"name":"Where"') && embed.includes('/playlist/abc'));
+check('B10 "Seen before" field present', embed.includes('"name":"Seen before"'));
+check('B11 severity/area/confidence moved to the footer', embed.includes('"footer"') && embed.includes('severity: high') && embed.includes('area: streaming'));
+// Evidence is capped at the most recent 25 events by time (unlike the AI
+// prompt's error-priority selection, A7 above), so it isn't guaranteed to
+// carry UNIQUE_MARKER specifically: this noisy report's tail is dominated by
+// real errors either way, so just check the field actually renders one.
+check('B12 Evidence timeline carries an "Errors" block, not just breadcrumb noise', embed.includes('Errors'));
 check('B9 reproduction reaches Discord as "Reproduce"', embed.includes('"name":"Reproduce"') && embed.includes('Play any track for a few seconds'));
 
 // C. model wraps its JSON in prose/fences

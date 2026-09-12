@@ -141,11 +141,14 @@ const discordBody = discordSeen?.body ?? '';
 
 checks.push(['deliberately failing request actually failed', failingRequestStatus >= 400]);
 checks.push(['context block reached the prompt', prompt.includes('## State when reported') && prompt.includes('route: /settings/help')]);
-checks.push(['server error from the failing request reached the prompt',
-  !prompt.includes('## Server log: last 5 minutes (0 events)') && /ERROR api:/.test(prompt)]);
+checks.push(['server error from the failing request reached the prompt (readable timeline, not a raw dump)',
+  prompt.includes('## Timeline') && prompt.includes('Errors') && /-> 404/.test(prompt)]);
 checks.push(['context reached the Discord embed as "Where"', discordBody.includes('"name":"Where"')]);
 checks.push(['reproduction reached the Discord embed as "Reproduce"',
   discordBody.includes('"name":"Reproduce"') && discordBody.includes('wait a few seconds for it to cut out')]);
+checks.push(['Discord embed carries an "Evidence" timeline field', discordBody.includes('"name":"Evidence"') && discordBody.includes('```')]);
+checks.push(['Discord embed carries a "Seen before" field', discordBody.includes('"name":"Seen before"')]);
+checks.push(['Discord embed carries "What broke" instead of the old summary-in-title field', discordBody.includes('"name":"What broke"')]);
 
 await page.getByRole('button', { name: /^done$/i }).click();
 await page.waitForTimeout(500);
