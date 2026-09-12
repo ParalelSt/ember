@@ -112,6 +112,10 @@ What's in it:
 
 - **Guitar tabs**: a button in the player finds the tab for the playing song
   on Songsterr (links out; they block embedding).
+- **Generated guitar tabs**: the tabs dialog can now write a tab from the
+  song's own recording, no Guitar Pro file needed. Rough in places, in time
+  with the song. Needs the optional Python packages from SETUP.md
+  ("Generated guitar tabs"); without them the button just reports a failure.
 - **Android app: native player + Android Auto**: browse playlists, likes,
   recents and uploads, search and voice, shuffle/repeat, radio at the end of
   the queue, all from the car. Reinstall the APK (older APKs keep working

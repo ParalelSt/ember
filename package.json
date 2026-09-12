@@ -26,6 +26,7 @@
     "test:sessions": "node tests/session-authorization.test.mjs",
     "test:tabs": "node tests/tabs.test.mjs",
     "test:tabs-ui": "node tests/tabs-ui.test.mjs",
+    "test:tabs-generate": "node tests/tabs-generate.test.mjs",
     "test:android-ui": "node tests/android-player-ui.test.mjs",
     "test:offline-ui": "node tests/offline-android-ui.test.mjs",
     "test:offline-page": "node tests/offline-page.test.mjs",

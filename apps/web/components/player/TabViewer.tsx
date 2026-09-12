@@ -2,7 +2,16 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
+import { Slider } from '@/components/ui/slider';
+import { NextIcon, PauseIcon, PlayIcon, PrevIcon } from '@/components/icons';
 import { usePlayer } from '@/components/player/PlayerProvider';
+
+function fmt(sec: number): string {
+  if (!sec || !isFinite(sec)) return '0:00';
+  const m = Math.floor(sec / 60);
+  const s = Math.floor(sec % 60);
+  return `${m}:${String(s).padStart(2, '0')}`;
+}
 
 interface Props {
   /** Where to fetch the Guitar Pro / MusicXML file from. */
@@ -63,7 +72,23 @@ export function TabViewer({ url, tabId, onBack }: Props) {
   const [synced, setSynced] = useState(false);
   const [offset, setOffset] = useState(0);
 
-  const { position, duration, isPlaying, seek } = usePlayer();
+  const { position, duration, isPlaying, seek, toggle, next, prev } = usePlayer();
+
+  // The dialog overlay hides the player bar, so the viewer carries its own
+  // transport. Same scrub-then-commit shape as PlayerBar: the slider shows
+  // the drag value while the song keeps playing, and seeks on release.
+  const [scrubPct, setScrubPct] = useState<number | null>(null);
+  const playbackPct = duration ? (position / duration) * 100 : 0;
+  const displayPct = scrubPct ?? playbackPct;
+  const displaySec = (displayPct / 100) * (duration || 0);
+  const onScrub = (v: number | readonly number[]) => {
+    setScrubPct(Array.isArray(v) ? (v[0] ?? 0) : (v as number));
+  };
+  const onScrubCommit = (v: number | readonly number[]) => {
+    const pct = Array.isArray(v) ? (v[0] ?? 0) : (v as number);
+    seek((pct / 100) * (duration || 0));
+    setScrubPct(null);
+  };
 
   // The handler alphaTab calls is installed once, but it must always act on
   // the CURRENT player controls, so route through refs.
@@ -74,6 +99,10 @@ export function TabViewer({ url, tabId, onBack }: Props) {
   /** The last playhead value handed to alphaTab, so an echoed seek can be
    *  told apart from the user clicking a bar in the score. */
   const lastFedRef = useRef(0);
+  /** Where the score ends, in seconds. A tab shorter than the recording is
+   *  normal (outros, fade-outs), and once the playhead passes this point
+   *  alphaTab "finishes" and rewinds its own clock to 0. */
+  const scoreEndRef = useRef(Infinity);
   seekRef.current = seek;
   playingRef.current = isPlaying;
   durationRef.current = duration;
@@ -214,6 +243,11 @@ export function TabViewer({ url, tabId, onBack }: Props) {
               // did not ask to go. So honour a seek only once it has settled,
               // and only when it is a real jump rather than an echo.
               if (Date.now() - installedAt < 2000) return;
+              // Past the end of the score alphaTab stops and seeks itself back
+              // to 0 on every tick. Forwarding that restarted the song the
+              // moment it outlived the tab. There is nothing to click past the
+              // last bar, so a seek from out there is never the user's.
+              if (lastFedRef.current >= scoreEndRef.current - 0.5) return;
               const target = ms / 1000 - offsetRef.current;
               if (Math.abs(target - lastFedRef.current) < 1) return;
               seekRef.current(Math.max(0, target));
@@ -232,6 +266,10 @@ export function TabViewer({ url, tabId, onBack }: Props) {
             }
           }
         };
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        created.playerPositionChanged.on((e: any) => {
+          if (typeof e?.endTime === 'number' && e.endTime > 0) scoreEndRef.current = e.endTime / 1000;
+        });
         created.playerReady.on(installHandler);
         installHandler(); // in case the player was ready before we subscribed
 
@@ -348,6 +386,43 @@ export function TabViewer({ url, tabId, onBack }: Props) {
           )}
           <div ref={scrollRef} className="max-h-[60vh] overflow-auto rounded-md bg-white p-2">
             <div ref={hostRef} />
+          </div>
+
+          {/* Transport. Clicking a bar in the score seeks too (see the handler
+              above); this row is for everything else. */}
+          <div className="flex items-center gap-2">
+            <Button variant="ghost" size="icon" onClick={prev} aria-label="Previous">
+              <PrevIcon className="h-4 w-4" />
+            </Button>
+            <Button
+              size="icon"
+              onClick={toggle}
+              aria-label={isPlaying ? 'Pause' : 'Play'}
+              className="h-9 w-9 rounded-full bg-foreground text-background hover:bg-foreground/90"
+            >
+              {isPlaying ? (
+                <PauseIcon className="h-4 w-4 fill-current" />
+              ) : (
+                <PlayIcon className="h-4 w-4 fill-current ml-0.5" />
+              )}
+            </Button>
+            <Button variant="ghost" size="icon" onClick={next} aria-label="Next">
+              <NextIcon className="h-4 w-4" />
+            </Button>
+            <span aria-label="Elapsed" className="text-[10px] text-muted-foreground tabular-nums w-9 text-right">
+              {fmt(displaySec)}
+            </span>
+            <Slider
+              value={[displayPct]}
+              onValueChange={onScrub}
+              onValueCommitted={onScrubCommit}
+              max={100}
+              step={0.1}
+              smooth
+              thumbLabel="Seek"
+              className="flex-1"
+            />
+            <span className="text-[10px] text-muted-foreground tabular-nums w-9">{fmt(duration)}</span>
           </div>
 
           {/* Nudge. A tab is a transcription, not a render of this recording,

@@ -299,6 +299,25 @@ playlists for standard API apps); tracks are matched onto YouTube Music, and
 anything unmatched is listed at the end of the import so it can be added by
 hand.
 
+### Generated guitar tabs (optional)
+
+The tabs button in the player can write a guitar tab from the song's own
+recording. It needs extra Python packages in `.venv`; without them the
+button reports that transcription failed and everything else keeps working.
+
+```bash
+.venv/bin/pip install 'setuptools<80'
+.venv/bin/pip install --no-deps basic-pitch
+.venv/bin/pip install onnxruntime librosa pretty_midi 'resampy<0.4.3' mir_eval scikit-learn typing-extensions
+# Optional but recommended: separates the guitar from the mix first. ~2GB.
+.venv/bin/pip install demucs
+```
+
+The first generation with Demucs downloads its model (~80MB). A four-minute
+song takes a few minutes of CPU with Demucs, seconds without; jobs run one
+at a time and the result is kept in `my_music/tabs/generated/`, so each
+song is only transcribed once. Delete a file there to regenerate it.
+
 ### Keep yt-dlp and ytmusicapi updated  ← do this when things break
 
 YouTube changes constantly and both libraries patch within days. A stale copy

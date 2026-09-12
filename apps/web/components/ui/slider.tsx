@@ -24,6 +24,7 @@ function Slider({
   smooth = false,
   onValueChange,
   onValueCommitted,
+  thumbLabel,
   ...props
 }: SliderPrimitive.Root.Props & {
   /** Glide the fill + thumb between value changes. For the playback progress
@@ -31,6 +32,9 @@ function Slider({
    *  otherwise step visibly. The transition is disabled while dragging
    *  (data-dragging) so the thumb still follows the finger instantly. */
   smooth?: boolean
+  /** Accessible name for the thumb (the element that actually has the
+   *  `slider` role), e.g. "Seek". An aria-label on the root names a div. */
+  thumbLabel?: string
 }) {
   const _values = Array.isArray(value)
     ? value
@@ -77,6 +81,7 @@ function Slider({
           <SliderPrimitive.Thumb
             data-slot="slider-thumb"
             key={index}
+            getAriaLabel={thumbLabel ? () => thumbLabel : undefined}
             className={cn(
               "relative block size-3 shrink-0 rounded-full border border-ring bg-white ring-ring/50 transition-[color,box-shadow] select-none after:absolute after:-inset-2 hover:ring-3 focus-visible:ring-3 focus-visible:outline-hidden active:ring-3 disabled:pointer-events-none disabled:opacity-50",
               smooth && "transition-[inset-inline-start,color,box-shadow] duration-250 ease-linear data-dragging:transition-none",

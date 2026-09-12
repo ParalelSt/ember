@@ -85,6 +85,18 @@ function makeWav(seconds = 180, sampleRate = 8000) {
 }
 
 const songTitle = `Tab Test Song ${Date.now()}`;
+// A second song, uploaded FIRST so it sits right after the main one in the
+// uploads list (newest first): the viewer's Next button lands on it, and its
+// audio is known to exist here, unlike leftovers from older sandbox runs.
+{
+  const form = new FormData();
+  form.append('file', new Blob([new Uint8Array(makeWav())], { type: 'audio/wav' }), 'song2.wav');
+  form.append('title', `${songTitle} B`);
+  form.append('artist', 'Tab Tester');
+  const res = await fetch(`${APP_URL}/api/uploads`, { method: 'POST', body: form,
+    headers: { cookie: `pb_auth=${cookie}` } });
+  if (!res.ok) throw new Error(`could not seed the second song: ${res.status}`);
+}
 {
   const form = new FormData();
   form.append('file', new Blob([new Uint8Array(makeWav())], { type: 'audio/wav' }), 'song.wav');
@@ -129,13 +141,109 @@ if (!hasPlayer) {
   await dialog.waitFor({ timeout: 10_000 });
   check('the tabs dialog opens', true);
 
+  // ── generated tab: no file, the recording itself ─────────────────────────
+  const generate = dialog.getByRole('button', { name: 'Generate guitar tab' });
+  check('the dialog offers to generate a tab from the recording', (await generate.count()) > 0);
+  if (await generate.count()) {
+    await generate.click();
+    await dialog.getByText(/transcribing/i).waitFor({ timeout: 10_000 });
+    check('it shows the transcribing state', true);
+    const generatedRow = dialog.getByRole('button', { name: /guitar · generated/i });
+    await generatedRow.waitFor({ timeout: 30_000 });
+    check('the generated tab appears when the job finishes', true);
+    await generatedRow.click();
+    await page.getByRole('button', { name: /back/i }).waitFor({ timeout: 20_000 });
+    await page.waitForTimeout(8000);
+    const genSurface = await page.evaluate(() => {
+      const el = document.querySelector('[role="dialog"] .at-surface');
+      if (!el) return null;
+      const r = el.getBoundingClientRect();
+      return { w: Math.round(r.width), h: Math.round(r.height) };
+    });
+    check('AlphaTab renders the generated alphaTex', Boolean(genSurface && genSurface.w > 100 && genSurface.h > 100),
+      genSurface ? `surface ${genSurface.w}x${genSurface.h}` : 'no .at-surface');
+
+    // ── a line you can see, and controls you can reach ──────────────────────
+    // AlphaTab positions the cursor but leaves its colour to the page: an
+    // unstyled cursor is a transparent div that "moves" while nobody sees it.
+    const cursorStyle = await page.evaluate(() => {
+      const el = document.querySelector('[role="dialog"] .at-cursor-beat');
+      if (!el) return null;
+      const r = el.getBoundingClientRect();
+      const cs = getComputedStyle(el);
+      return { w: Math.round(r.width), h: Math.round(r.height), bg: cs.backgroundColor, opacity: Number(cs.opacity) };
+    });
+    check('the playhead line is actually visible',
+      !!cursorStyle && cursorStyle.w >= 2 && cursorStyle.h > 50 && cursorStyle.opacity > 0
+        && cursorStyle.bg !== 'rgba(0, 0, 0, 0)' && cursorStyle.bg !== 'transparent',
+      cursorStyle ? `${cursorStyle.w}x${cursorStyle.h} ${cursorStyle.bg}` : 'no cursor element');
+
+    // The dialog overlay hides the player bar, so the viewer needs its own
+    // transport. Pause must really pause: the cursor stops.
+    const viewerPause = dialog.getByRole('button', { name: 'Pause' });
+    check('the viewer has a pause button', (await viewerPause.count()) > 0);
+    const beatX = () => page.evaluate(() => {
+      const el = document.querySelector('[role="dialog"] .at-cursor-beat');
+      if (!el) return null;
+      return Math.round(el.getBoundingClientRect().left);
+    });
+    if (await viewerPause.count()) {
+      await viewerPause.click();
+      await dialog.getByRole('button', { name: 'Play' }).waitFor({ timeout: 5000 });
+      const x1 = await beatX();
+      await page.waitForTimeout(2500);
+      const x2 = await beatX();
+      check('pausing from the viewer stops the cursor', x1 !== null && x1 === x2, `${x1}px -> ${x2}px`);
+
+      // Seeking while paused: only the seek can move the clock.
+      const elapsed = dialog.locator('[aria-label="Elapsed"]');
+      check('the viewer shows the elapsed time', (await elapsed.count()) > 0);
+      const before = await elapsed.textContent();
+      const thumb = dialog.getByRole('slider', { name: 'Seek' });
+      check('the viewer has a seek bar', (await thumb.count()) > 0);
+      if (await thumb.count()) {
+        await thumb.focus();
+        for (let i = 0; i < 25; i++) await page.keyboard.press('ArrowRight');
+        await page.waitForTimeout(1500);
+        const after = await elapsed.textContent();
+        const secs = (t) => { const [m, sec] = String(t).split(':').map(Number); return m * 60 + sec; };
+        check('the seek bar moves the song forward', secs(after) > secs(before), `${before} -> ${after}`);
+      }
+      await dialog.getByRole('button', { name: 'Play' }).click();
+      await viewerPause.waitFor({ timeout: 5000 });
+      check('play from the viewer resumes', true);
+    }
+
+    // Next inside the viewer changes the song, and a tab for the previous song
+    // must not stay open for the new one: the dialog returns to the list.
+    const viewerNext = dialog.getByRole('button', { name: 'Next' });
+    check('the viewer has a next button', (await viewerNext.count()) > 0);
+    if (await viewerNext.count()) {
+      await viewerNext.click();
+      let backGone = false;
+      for (let i = 0; i < 20 && !backGone; i++) {
+        await page.waitForTimeout(250);
+        backGone = (await page.getByRole('button', { name: /back/i }).count()) === 0;
+      }
+      check('changing track from the viewer returns to the tab list', backGone);
+      // The rest of the checks work against whichever song is now playing.
+    }
+    if (await page.getByRole('button', { name: /back/i }).count()) await page.getByRole('button', { name: /back/i }).click();
+    // The file input itself is hidden by design; the button that triggers it is
+    // the visible sign that the list view is back.
+    await dialog.getByRole('button', { name: /add a guitar pro/i }).waitFor({ timeout: 10_000 });
+  }
+
   await dialog.locator('input[type="file"]').setInputFiles(tmp);
   await page.waitForTimeout(4000);
   if (process.env.DEBUG_TABS) console.log('[dialog]', await dialog.innerText());
-  await page.getByRole('button', { name: /open/i }).first().waitFor({ timeout: 20_000 });
+  // The generated row above it is badged 'open' too, so pick the row by its
+  // file-type label rather than the badge.
+  const uploadRow = dialog.getByRole('button', { name: /(musicxml|gp\d?|gpx|mxl) file/i });
+  await uploadRow.first().waitFor({ timeout: 20_000 });
   check('the uploaded tab appears in the dialog', true);
 
-  await page.getByRole('button', { name: /open/i }).first().click();
+  await uploadRow.first().click();
   await page.getByRole('button', { name: /back/i }).waitFor({ timeout: 20_000 });
   check('clicking it opens the viewer', true);
 
