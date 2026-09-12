@@ -18,10 +18,11 @@ export default defineConfig({
       // These must come before '@' since alias entries match in order.
       { find: /^react-dom(\/|$)/, replacement: `${webRoot}node_modules/react-dom$1` },
       { find: /^react(\/|$)/, replacement: `${webRoot}node_modules/react$1` },
-      // 'server-only' isn't a real installed package: Next special-cases
-      // it at build time. Any test that transitively imports a server-only
-      // file (e.g. withRequestLog.ts) needs it aliased to a no-op stub.
-      { find: 'server-only', replacement: `${webRoot}test-utils/serverOnlyStub.ts` },
+      // 'server-only' isn't a real installed package: Next special-cases it
+      // at build time. Any test that transitively imports a server-only file
+      // (withRequestLog.ts, the uploads routes) needs it aliased to a no-op
+      // stub we own, rather than to a path inside next's compiled output.
+      { find: /^server-only$/, replacement: `${webRoot}test-utils/serverOnlyStub.ts` },
       { find: '@', replacement: webRoot },
     ],
     dedupe: ['react', 'react-dom'],

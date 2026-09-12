@@ -6,7 +6,7 @@ import { useAuth } from '@/components/providers/AuthProvider';
 import { usePlayerStore } from '@/stores/usePlayerStore';
 import { useOfflineStore } from '@/stores/useOfflineStore';
 import { logger } from '@/lib/logger/client';
-import { LIKED_PIN, pinLiked, playableFor } from '@/lib/offline';
+import { LIKED_PIN, RECENT_PIN, pinLiked, pinList, playableFor } from '@/lib/offline';
 import { nativeOfflinePresent } from '@/lib/offlineNative';
 import type { Playlist, Track } from '@/types/track';
 
@@ -168,6 +168,18 @@ export function useExecuteRecordPlay() {
     },
     onError: (_e, _t, ctx) => {
       if (ctx?.prev) qc.setQueryData(QK.history, ctx.prev);
+    },
+    onSettled: () => {
+      // Recently played is pinned for offline the same way Liked is: keep the
+      // native download synced with every play so its download button doesn't
+      // sit on "Update download" after every song (same drift-avoidance guard
+      // as useExecuteToggleLike, mirrored here for history).
+      if (!nativeOfflinePresent()) return;
+      const pin = useOfflineStore.getState().pins.find((p) => p.id === RECENT_PIN);
+      if (!pin) return;
+      const history = qc.getQueryData<Track[]>(QK.history) ?? [];
+      if (sameTrackIds(pin.trackIds, playableFor(history).map((t) => t.id))) return;
+      void pinList(RECENT_PIN, 'Recently played', history);
     },
   });
 }

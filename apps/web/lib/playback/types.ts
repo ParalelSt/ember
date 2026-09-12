@@ -38,8 +38,10 @@ export interface AudioBackend {
   seek(sec: number): void;
   /** v in 0..1. gain > 1 is party-mode boost (web: Web Audio; native may clamp). */
   setVolume(v: number, opts?: { gain?: number }): void;
-  /** Lock-screen / notification metadata. web → MediaMetadata; native → OS. */
-  setMetadata(track: Track | null): void;
+  /** Lock-screen / notification metadata. web → MediaMetadata; native → OS.
+   *  `localArtSrc` overrides `track.artworkUrl` when a downloaded copy has its
+   *  own local art (already convertFileSrc-resolved by the caller). */
+  setMetadata(track: Track | null, localArtSrc?: string | null): void;
   /** Wire OS/remote transport buttons to app actions. web → MediaSession. */
   setRemoteCommands(cmds: RemoteCommands): void;
   /** Current playback position in seconds (0 if unknown). */

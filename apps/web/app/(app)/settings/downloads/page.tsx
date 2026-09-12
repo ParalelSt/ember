@@ -8,7 +8,7 @@ import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { useOfflineStore } from '@/stores/useOfflineStore';
 import { clearAllDownloads, downloadPlaylist, pinList } from '@/lib/offline';
 import { refFromPinId } from '@/lib/collections';
-import { useNativeOfflinePresent } from '@/lib/offlineNative';
+import { nativeRetry, useNativeOfflinePresent } from '@/lib/offlineNative';
 import { QK } from '@/hooks/useLibrary';
 import { formatBytes, formatCount } from '@/lib/format';
 import type { PinStatus } from '@/lib/offlineNative';
@@ -32,10 +32,19 @@ export default function DownloadsSettingsPage() {
   const native = useNativeOfflinePresent();
   const count = native ? pins.length : downloaded.length;
 
-  // Retries with whatever track list is already cached from browsing that
-  // playlist/Liked this session. The native side clears `failed` on pin and
-  // only re-fetches what's missing.
+  // Native: the plugin re-queues the pin's failed tracks itself from its own
+  // index, no track list from JS needed. Browser storage has no such call, so
+  // it still needs a track list already cached from browsing that
+  // playlist/Liked this session.
   const retry = async (pin: PinStatus) => {
+    if (native) {
+      try {
+        useOfflineStore.getState().setNativeStatus(await nativeRetry(pin.id));
+      } catch (e) {
+        toast.error(`Couldn't retry: ${(e as Error).message}`);
+      }
+      return;
+    }
     const ref = refFromPinId(pin.id);
     const tracks =
       ref.kind === 'liked' ? qc.getQueryData<Track[]>(QK.likes)

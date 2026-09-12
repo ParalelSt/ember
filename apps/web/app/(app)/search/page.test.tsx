@@ -32,6 +32,7 @@ const trackActions = vi.hoisted(() => ({
   onPlay: vi.fn(),
   onToggle: vi.fn(),
   onLike: vi.fn(),
+  artworkSrcFor: vi.fn(() => null),
 }));
 vi.mock('@/hooks/useTrackActions', () => ({ useTrackActions: () => trackActions }));
 

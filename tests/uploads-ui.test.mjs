@@ -9,6 +9,7 @@ import { execSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { makeMp3WithApic, tinyJpeg } from './fixtures/embedded-cover.mjs';
 
 let chromium;
 try {
@@ -133,6 +134,59 @@ const audio = await page.evaluate(() => {
 check('player points at the uploads stream', !!audio?.src?.includes('/api/uploads/'), audio?.src ?? 'no audio element');
 check('audio has no decode/network error', audio?.error === null, `error code ${audio?.error}`);
 check('playback advances', (audio?.time ?? 0) > 0, `t=${audio?.time?.toFixed(2)}s paused=${audio?.paused}`);
+// --- Embedded cover art ---------------------------------------------------
+// A file with a cover in its tag should come back with artwork everywhere,
+// which is what makes uploads usable offline on the phone.
+const coverTitle = `Cover Song ${Date.now()}`;
+const coverFile = path.join(os.tmpdir(), `Cover Artist - ${coverTitle}.mp3`);
+// Long enough (about 8 seconds) that it does not end mid-test and send the
+// player on to the next track.
+fs.writeFileSync(coverFile, makeMp3WithApic({ title: coverTitle, frames: 300 }));
+
+await page.goto(`${APP_URL}/library`, { waitUntil: 'networkidle' });
+await page.getByRole('button', { name: /^upload$/i }).first().click();
+await page.locator('input[type="file"]').setInputFiles(coverFile);
+await page.waitForTimeout(1500);
+await page.getByRole('button', { name: /^upload$/i }).last().click();
+await page.getByText(/Uploaded/i).first().waitFor({ timeout: 30_000 });
+
+// The API is the contract the phone reads too, so check it directly: the
+// cover-bearing upload gets an artworkUrl, the WAV without one stays null.
+const listed = await page.evaluate(() => fetch('/api/uploads').then((r) => r.json()));
+const coverTrack = listed.tracks.find((t) => t.title === coverTitle);
+const plainTrack = listed.tracks.find((t) => t.title === songTitle);
+check('cover upload gets an artworkUrl', /^\/api\/uploads\/[^/]+\/art$/.test(coverTrack?.artworkUrl ?? ''), coverTrack?.artworkUrl ?? 'none');
+check('upload without a cover stays artwork-less', plainTrack?.artworkUrl === null, String(plainTrack?.artworkUrl));
+
+// The route must answer with the exact bytes that were in the tag.
+const served = await page.evaluate(async (url) => {
+  const res = await fetch(url);
+  const buf = new Uint8Array(await res.arrayBuffer());
+  return { status: res.status, type: res.headers.get('content-type'), bytes: [...buf] };
+}, coverTrack?.artworkUrl ?? '/api/uploads/none/art');
+check('art route serves an image', served.status === 200 && served.type === 'image/jpeg', `${served.status} ${served.type}`);
+check('art route serves the embedded bytes', Buffer.from(served.bytes).equals(tinyJpeg()), `${served.bytes.length} bytes`);
+
+await page.goto(`${APP_URL}/library/uploads`, { waitUntil: 'networkidle' });
+await page.getByText(coverTitle).first().waitFor({ timeout: 15_000 });
+// naturalWidth only becomes non-zero once the browser has decoded the
+// response, so this proves the route served a real image, not a 404 page.
+const rowArt = await page.evaluate(() =>
+  [...document.querySelectorAll('img')]
+    .filter((i) => /\/api\/uploads\/[^/]+\/art$/.test(i.src))
+    .map((i) => ({ src: i.src, w: i.naturalWidth })),
+);
+check('uploads row shows the embedded cover', rowArt.length > 0 && rowArt[0].w > 0, JSON.stringify(rowArt[0] ?? null));
+
+await page.getByText(coverTitle).first().dblclick();
+await page.waitForTimeout(2500);
+const barArt = await page.evaluate(() =>
+  [...document.querySelectorAll('footer img')]
+    .filter((i) => /\/api\/uploads\/[^/]+\/art$/.test(i.src))
+    .map((i) => ({ src: i.src, w: i.naturalWidth })),
+);
+check('player bar shows the embedded cover', barArt.length > 0 && barArt[0].w > 0, JSON.stringify(barArt[0] ?? null));
+
 check('no console errors', consoleErrors.length === 0, consoleErrors[0] ?? '');
 
 const failed = checks.filter(([, p]) => !p);
@@ -140,5 +194,6 @@ console.log(`\n${checks.length - failed.length}/${checks.length} checks passed`)
 
 await browser.close();
 fs.unlinkSync(tmp);
+fs.unlinkSync(coverFile);
 await fetch(`${PB_URL}/api/collections/users/records/${userId}`, { method: 'DELETE', headers: { Authorization: token } }).catch(() => {});
 process.exit(failed.length ? 1 : 0);

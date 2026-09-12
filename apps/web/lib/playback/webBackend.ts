@@ -194,17 +194,18 @@ export const createWebBackend: CreateAudioBackend = (events) => {
       }
     },
 
-    setMetadata(track) {
+    setMetadata(track, localArtSrc) {
       if (typeof navigator === 'undefined' || !('mediaSession' in navigator)) return;
       if (!track) {
         navigator.mediaSession.metadata = null;
         return;
       }
+      const art = localArtSrc ?? track.artworkUrl;
       navigator.mediaSession.metadata = new MediaMetadata({
         title: track.title ?? '',
         artist: track.artist ?? '',
         album: track.album ?? '',
-        artwork: track.artworkUrl ? [{ src: track.artworkUrl, sizes: '512x512' }] : [],
+        artwork: art ? [{ src: art, sizes: '512x512' }] : [],
       });
     },
 

@@ -57,6 +57,10 @@ onAfterBootstrap((e) => {
       // Relative to MUSIC_DIR/uploads, e.g. "a1b2c3d4.mp3".
       { name: "filename", type: "text", required: true, options: { max: 300 } },
       { name: "mime", type: "text", required: false, options: { max: 100 } },
+      // "jpg" / "png" when the file carried an embedded cover we extracted to
+      // MUSIC_DIR/uploads/<id>.<ext>; empty when it did not. Existing
+      // installs get this from ensure_uploads_artwork instead.
+      { name: "artwork_ext", type: "text", required: false, options: { max: 4 } },
       { name: "size_bytes", type: "number", required: false, options: { min: 0 } },
     ],
   });

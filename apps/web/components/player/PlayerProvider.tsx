@@ -14,7 +14,7 @@ import { toast } from 'sonner';
 import { usePlayerStore } from '@/stores/usePlayerStore';
 import { useSettingsStore } from '@/stores/useSettingsStore';
 import { useOfflineStore } from '@/stores/useOfflineStore';
-import { localSrcFor } from '@/lib/offlineNative';
+import { localArtFor, localSrcFor } from '@/lib/offlineNative';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { useExecuteRecordPlay, useQueryHistory, useQueryLikes } from '@/hooks/useLibrary';
 import { useQueryLyrics } from '@/hooks/useLyrics';
@@ -346,7 +346,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     b.load(local ?? apiUrl(track.streamUrl), { autoplay, startAt });
     // Set metadata in the same synchronous turn so the notification carries
     // across a track boundary (Firefox Android tears it down otherwise).
-    b.setMetadata(track);
+    // Local art (the same downloaded copy) wins over the remote artworkUrl.
+    b.setMetadata(track, localArtFor(track, useOfflineStore.getState().artFiles));
   }, [positions]);
 
   loadAndPlayRef.current = loadAndPlay;

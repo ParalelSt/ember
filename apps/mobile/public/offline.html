@@ -36,8 +36,10 @@
       .pin { padding: 16px 20px 4px; }
       .pin h2 { font-size: 17px; font-weight: 600; margin: 0; }
       .pin .count { font-size: 13px; opacity: 0.5; margin-top: 2px; }
-      .row { padding: 10px 20px; border-bottom: 1px solid #171717; cursor: pointer; }
+      .row { display: flex; align-items: center; gap: 12px; padding: 10px 20px; border-bottom: 1px solid #171717; cursor: pointer; }
       .row.on .title { color: #f59e0b; }
+      .row .art { width: 40px; height: 40px; border-radius: 6px; background: #1f1f1f; object-fit: cover; flex-shrink: 0; }
+      .row .text { min-width: 0; }
       .title { font-size: 15px; }
       .artist { font-size: 13px; opacity: 0.55; margin-top: 2px; }
       .bar {
@@ -104,6 +106,15 @@
         return h;
       }
 
+      // Artwork is decoration: a failed read just skips the callback.
+      function artAsDataUrl(src, cb) {
+        fetch(src).then(function (r) { return r.blob(); }).then(function (b) {
+          var fr = new FileReader();
+          fr.onload = function () { if (typeof fr.result === 'string') cb(fr.result); };
+          fr.readAsDataURL(b);
+        }).catch(function () {});
+      }
+
       function play(tracks, i) {
         queue = tracks;
         index = i;
@@ -121,8 +132,19 @@
         var rows = document.querySelectorAll('.row');
         for (var j = 0; j < rows.length; j++) rows[j].classList.toggle('on', rows[j].dataset.id === t.id);
         var meta = { title: t.title || 'Unknown', artist: t.artist || '', album: t.pinName || 'Offline' };
-        if (session) session.setMetadata(meta);
-        else if ('mediaSession' in navigator) navigator.mediaSession.metadata = new MediaMetadata(meta);
+        // Graceful when a track has no local art: no artwork entry at all
+        // rather than a broken image reference.
+        if (t.art) meta.artwork = [{ src: t.art, sizes: '512x512' }];
+        if (session) {
+          session.setMetadata(meta);
+          // The native plugin fetches artwork over HTTP, so the _capacitor_file_
+          // URL that works in this page leaves the lock screen with no cover.
+          var at = index;
+          if (t.art) artAsDataUrl(t.art, function (url) {
+            meta.artwork = [{ src: url, sizes: '512x512' }];
+            if (at === index) session.setMetadata(meta);   // else: skipped on
+          });
+        } else if ('mediaSession' in navigator) navigator.mediaSession.metadata = new MediaMetadata(meta);
         state('playing');
       }
 
@@ -185,8 +207,19 @@
           s.tracks.forEach(function (t, i) {
             var row = el('div', 'row');
             row.dataset.id = t.id;
-            row.appendChild(el('div', 'title', t.title || 'Unknown'));
-            row.appendChild(el('div', 'artist', t.artist || ''));
+            // Graceful when a track has no local art: just skip the <img>,
+            // no broken-image placeholder.
+            if (t.art) {
+              var img = document.createElement('img');
+              img.className = 'art';
+              img.src = t.art;
+              img.alt = '';
+              row.appendChild(img);
+            }
+            var text = el('div', 'text');
+            text.appendChild(el('div', 'title', t.title || 'Unknown'));
+            text.appendChild(el('div', 'artist', t.artist || ''));
+            row.appendChild(text);
             row.onclick = function () { play(s.tracks, i); };
             app.appendChild(row);
           });
@@ -198,6 +231,8 @@
         var st;
         try { st = await plugin.status(); } catch (e) { return connecting(); }
         var files = (st && st.trackFiles) || {};
+        // Absent on older native builds: default to {} so art is just skipped.
+        var artFiles = (st && st.artFiles) || {};
         var sections = [];
         var pins = ((st && st.pins) || []).filter(function (p) { return p.done > 0; });
         for (var i = 0; i < pins.length; i++) {
@@ -206,7 +241,11 @@
           try { list = (await plugin.tracks({ id: pin.id })).tracks || []; } catch (e) { list = []; }
           // Only tracks whose file is actually on disk: a pin can be part done.
           var playable = list.filter(function (t) { return files[t.id]; }).map(function (t) {
-            return { id: t.id, title: t.title, artist: t.artist, file: files[t.id], pinName: pin.name };
+            return {
+              id: t.id, title: t.title, artist: t.artist, file: files[t.id],
+              art: artFiles[t.id] ? C.convertFileSrc(artFiles[t.id]) : null,
+              pinName: pin.name,
+            };
           });
           if (playable.length) sections.push({ name: pin.name, tracks: playable });
         }

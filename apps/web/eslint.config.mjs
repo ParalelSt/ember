@@ -104,6 +104,7 @@ const eslintConfig = defineConfig([
       "lib/useBackDismiss.ts",
       "lib/useOnline.ts",
       "lib/offlineNative.ts",
+      "lib/offlineNative.test.ts",
       "lib/pocketbase/server.ts",
       // Wraps Next route handlers, so it needs the NextRequest type: there's
       // no framework-free way to type this one.

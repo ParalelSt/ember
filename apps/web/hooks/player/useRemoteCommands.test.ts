@@ -2,6 +2,7 @@ import { describe, expect, it, vi, beforeEach, type Mock } from 'vitest';
 import { renderHook } from '@testing-library/react';
 import { useRemoteCommands } from './useRemoteCommands';
 import { makeFakeBackend, makeTrack, type FakeBackend } from '@/test-utils/fakeBackend';
+import { useOfflineStore } from '@/stores/useOfflineStore';
 import type { Track } from '@/types/track';
 
 const a = makeTrack();
@@ -30,6 +31,8 @@ function setup(backend: FakeBackend | null, initial: Props) {
 beforeEach(() => {
   next = vi.fn();
   prev = vi.fn();
+  useOfflineStore.setState({ artFiles: {} });
+  delete (window as unknown as { Capacitor?: unknown }).Capacitor;
 });
 
 describe('useRemoteCommands', () => {
@@ -83,9 +86,9 @@ describe('useRemoteCommands', () => {
   it('sets media metadata for the current track and on every track change', () => {
     const backend = makeFakeBackend();
     const { view } = setup(backend, { backendReady: true, current: a });
-    expect(backend.setMetadata).toHaveBeenCalledWith(a);
+    expect(backend.setMetadata).toHaveBeenCalledWith(a, null);
     view.rerender({ backendReady: true, current: b });
-    expect(backend.setMetadata).toHaveBeenLastCalledWith(b);
+    expect(backend.setMetadata).toHaveBeenLastCalledWith(b, null);
     expect(backend.setMetadata).toHaveBeenCalledTimes(2);
   });
 
@@ -100,7 +103,17 @@ describe('useRemoteCommands', () => {
     const backend = makeFakeBackend();
     const { view } = setup(backend, { backendReady: true, current: a });
     view.rerender({ backendReady: true, current: null });
-    expect(backend.setMetadata).toHaveBeenLastCalledWith(null);
+    expect(backend.setMetadata).toHaveBeenLastCalledWith(null, null);
+  });
+
+  it('passes the converted local art path when the current track has a downloaded copy with art', () => {
+    (window as unknown as { Capacitor: unknown }).Capacitor = {
+      convertFileSrc: (p: string) => `capfile://${p}`,
+    };
+    useOfflineStore.setState({ artFiles: { [a.id]: '/data/art/a.jpg' } });
+    const backend = makeFakeBackend();
+    setup(backend, { backendReady: true, current: a });
+    expect(backend.setMetadata).toHaveBeenCalledWith(a, 'capfile:///data/art/a.jpg');
   });
 
   it('survives a first render with no backend at all', () => {

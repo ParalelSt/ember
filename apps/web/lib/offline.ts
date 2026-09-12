@@ -31,6 +31,10 @@ import { isUnavailable } from '@/lib/playback/queueNav';
  *  its PocketBase id as-is. */
 export const LIKED_PIN = 'liked';
 
+/** Pin id for the Recently played pseudo-playlist. Matches
+ *  `pinIdFor({ kind: 'recent' })` in lib/collections.ts. */
+export const RECENT_PIN = 'recent';
+
 /** The tracks worth pinning: never pin one we already know the server
  *  can't stream, since that only burns a failed fetch and leaves a hole in
  *  the offline copy. */

@@ -15,6 +15,7 @@ import {
   resolveUploadPath,
   sniffAudio,
 } from '@/lib/uploads';
+import { saveUploadCover } from '@/lib/uploads/cover';
 
 /** Custom song uploads.
  *
@@ -98,6 +99,24 @@ export const POST = withRequestLog('uploads', async (request: NextRequest) => {
       mime: file.type || '',
       size_bytes: file.size,
     });
+
+    // Cover art last, and keyed by the record id, so it can only be written
+    // once there is a record to hang it on. saveUploadCover never throws: a
+    // song without a cover is still a song, and the upload has already
+    // succeeded by this point.
+    const artExt = await saveUploadCover(buf, created.id);
+    if (artExt) {
+      const withArt = await pb
+        .collection('uploads')
+        .update(created.id, { artwork_ext: artExt })
+        .catch((e) => {
+          // The file is on disk but the record does not point at it. Harmless:
+          // the art route only serves what the record admits to.
+          serverLogger.error('api', 'upload artwork_ext update failed', { id: created.id }, e);
+          return created;
+        });
+      return Response.json({ track: mapUpload(withArt) }, { status: 201 });
+    }
 
     return Response.json({ track: mapUpload(created) }, { status: 201 });
   } catch (e) {

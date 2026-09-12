@@ -84,6 +84,15 @@ export function ensureUploadDir(): void {
   fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 }
 
+/** Extensions the cover extractor writes. Kept here (not in lib/uploads/cover)
+ *  so mapUpload can validate a record without pulling in the tag parser. */
+export const COVER_EXTS = ['jpg', 'png'] as const;
+
+/** Whether an uploads record has a cover file on disk. */
+export function hasUploadArt(row: Pick<RecordModel, 'artwork_ext'> | RecordModel): boolean {
+  return (COVER_EXTS as readonly string[]).includes(String(row.artwork_ext ?? ''));
+}
+
 /** PB `uploads` record → the Track shape the whole app speaks. */
 export function mapUpload(row: RecordModel): Track {
   return {
@@ -96,7 +105,10 @@ export function mapUpload(row: RecordModel): Track {
     album: (row.album as string) || null,
     albumId: null,
     durationSec: (row.duration_sec as number) ?? 0,
-    artworkUrl: null,
+    // Set only when the file carried an embedded cover we could extract at
+    // upload time. Uploads from before that existed have no artwork_ext and
+    // stay artwork-less, which is what they looked like anyway.
+    artworkUrl: hasUploadArt(row) ? `/api/uploads/${row.id}/art` : null,
     streamUrl: `/api/uploads/${row.id}/stream`,
   };
 }

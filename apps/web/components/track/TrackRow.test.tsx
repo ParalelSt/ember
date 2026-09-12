@@ -139,6 +139,21 @@ describe('TrackRow (list density)', () => {
     const { container } = render(<TrackRow track={{ ...track, artworkUrl: null }} />);
     expect(container.querySelector('img')).toBeNull();
   });
+
+  it('uses artworkSrc over track.artworkUrl when given', () => {
+    const { container } = render(<TrackRow track={track} artworkSrc="capfile:///data/art/a1.jpg" />);
+    expect(container.querySelector('img')).toHaveAttribute('src', 'capfile:///data/art/a1.jpg');
+  });
+
+  it('falls back to track.artworkUrl when artworkSrc is not given', () => {
+    const { container } = render(<TrackRow track={track} />);
+    expect(container.querySelector('img')).toHaveAttribute('src', track.artworkUrl!);
+  });
+
+  it('renders no artwork box when artworkSrc is explicitly null and the track has no art', () => {
+    const { container } = render(<TrackRow track={{ ...track, artworkUrl: null }} artworkSrc={null} />);
+    expect(container.querySelector('img')).toBeNull();
+  });
 });
 
 describe('TrackRow (compact density)', () => {

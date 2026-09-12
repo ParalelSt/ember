@@ -1,3 +1,35 @@
+# Update notes: uploads keep their cover art
+
+**Host: a normal rebuild and restart, plus `npm install` (a new dependency
+reads the tags).** The new `artwork_ext` field on the `uploads` collection
+comes from a hook under `pocketbase/pb_hooks`, so it appears the next time
+PocketBase boots with `--hooksDir` pointed at it. Songs uploaded before this
+keep working; they just stay artwork-less.
+
+- **A song you upload keeps the cover that was in its file.** The cover is
+  pulled out of the tag when the file lands and shown everywhere the app
+  shows artwork, including on the phone offline once the pin has downloaded
+  it.
+
+# Update notes: Offline: artwork offline, retry from the index, signed-out downloads fail loudly
+
+**Host: a normal rebuild and restart, plus a new APK for anyone on Android.**
+No PocketBase changes, no `npm install`: this is app code only. The phone
+needs the rebuilt APK because the cold-start page is bundled into it.
+
+- **Downloaded songs keep their cover art offline.** A pin now downloads each
+  track's artwork alongside its audio, and the player bar, the full Now
+  Playing view, the lock screen and the cold-start page all show that local
+  copy with the radio off.
+- **Retry actually retries.** Settings, Downloads asks the app's own download
+  index to re-queue just the failed tracks of a pin, so it no longer needs you
+  to have opened that collection while online first.
+- **A download that fails because you are signed out now says so.** It fails
+  with "Sign in again" instead of quietly saving the sign-in page as the song,
+  which used to show as Downloaded and then play nothing.
+- **Recently played keeps its pin in step** with what you have actually
+  played, the way Liked Songs already did.
+
 # Update notes: Bug reports carry more
 
 **Host: a normal restart is all this needs.** No schema changes, no `npm install`.

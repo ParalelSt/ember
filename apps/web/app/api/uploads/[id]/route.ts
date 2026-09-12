@@ -5,6 +5,7 @@ import { fromError, jsonError } from '@/lib/upsertTrack';
 import { serverLogger } from '@/lib/logger/server';
 import { resolveUploadPath } from '@/lib/uploads';
 import { withRequestLog } from '@/lib/logger/withRequestLog';
+import { deleteUploadCover } from '@/lib/uploads/cover';
 
 /** Removes an upload — the record and the file on disk. Uploader or admin
  *  only; other people may have it in a playlist, so this is deliberate. */
@@ -30,6 +31,9 @@ export const DELETE = withRequestLog('uploads/[id]', async (_request: Request, c
         serverLogger.error('api', 'upload file delete failed', { id, filename: row.filename }, e);
       });
     }
+
+    // The extracted cover goes with it, for the same reason.
+    await deleteUploadCover(id, String(row.artwork_ext ?? ''));
 
     return Response.json({ ok: true });
   } catch (e) {
