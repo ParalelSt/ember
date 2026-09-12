@@ -112,6 +112,10 @@ What's in it:
 
 - **Guitar tabs**: a button in the player finds the tab for the playing song
   on Songsterr (links out; they block embedding).
+- **Android app: native player + Android Auto**: browse playlists, likes,
+  recents and uploads, search and voice, shuffle/repeat, radio at the end of
+  the queue, all from the car. Reinstall the APK (older APKs keep working
+  against this server). Sideloads need Android Auto's "Unknown sources".
 - **Discord presence follows the song**: the card is now "Listening to Ember"
   with a progress bar that tracks seeks, pauses and resumes. Desktop builds
   need `DISCORD_APP_ID` at build time (CI has it; local builds pass it to

@@ -32,6 +32,15 @@ EMBER_APP_URL="https://ember.tailf4de41.ts.net" npm run build
 # → src-tauri/target/release/bundle/…
 ```
 
+## Android Auto (Android app)
+
+Ships in the APK; nothing to configure. Playback on Android is the native
+Media3 player (`EmberPlaybackService`), which is also the media browser the
+car talks to. A sideloaded build only appears in the car after enabling
+**Unknown sources** in the Android Auto app's developer settings (tap the
+version number ~10 times → ⋮ → Developer settings). Testing recipes:
+`apps/mobile/ANDROID_AUTO.md`.
+
 ## Discord status (desktop app)
 
 The desktop app sets **each user's own** Discord status (the server can only

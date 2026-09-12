@@ -15,6 +15,7 @@ import java.util.List;
 public class MainActivity extends BridgeActivity {
     @Override
     public void onCreate(Bundle savedInstanceState) {
+        registerPlugin(EmberPlayerPlugin.class);
         registerPlugin(EmberOfflinePlugin.class);
         super.onCreate(savedInstanceState);
         injectBridgeIntoErrorPage();
