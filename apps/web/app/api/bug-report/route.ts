@@ -11,7 +11,7 @@ import { formatSeenBefore, triageBugReport } from "@/lib/ai/triage";
 import { fromError, jsonError } from "@/lib/upsertTrack";
 import { withRequestLog } from '@/lib/logger/withRequestLog';
 import { scrubText } from "@/lib/logger/sanitize";
-import { buildTimeline, formatTimeline } from "@/lib/reports/timeline";
+import { formatTimeline, selectTimeline } from "@/lib/reports/timeline";
 
 const REPORT_WINDOW_MS = 5 * 60 * 1000;
 // How far back "Seen before" looks to tell "this has been happening all
@@ -256,11 +256,13 @@ export const POST = withRequestLog('bug-report', async (request: NextRequest) =>
       }));
     }
 
-    // Same renderer as the "Evidence" code block below feeds the AI prompt
-    // (lib/ai/triage.ts's buildDigest), so the maintainer and the model
-    // reason over the same events.
+    // Same selection (error-priority pick, dedupe, then buildTimeline) as
+    // the AI prompt (lib/ai/triage.ts's buildDigest), so the maintainer
+    // reading Discord and the model reading the prompt reason over the same
+    // events, just cut to a different length (25 lines here vs the prompt's
+    // larger cap).
     const timelineText = formatTimeline(
-      buildTimeline({ client: client.current, server, reportedAt: reportedAtMs, maxLines: 25 }),
+      selectTimeline({ client: client.current, server, reportedAt: reportedAtMs, maxLines: 25 }),
     );
     const seenBeforeText = formatSeenBefore(server, history);
 

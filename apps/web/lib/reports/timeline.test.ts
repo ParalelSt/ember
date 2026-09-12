@@ -45,7 +45,7 @@ describe('buildTimeline', () => {
     const early = clientEntry({ ts: REPORTED_AT - 9000, message: 'early' });
     const late = serverEntry({ ts: REPORTED_AT - 1000, message: 'late', reqId: undefined });
     const lines = buildTimeline({ client: [early], server: [late], reportedAt: REPORTED_AT });
-    expect(lines.map((l) => l.text.split('\n')[0])).toEqual(['early', '/api/youtube/stream/abc: late']);
+    expect(lines.map((l) => l.text.split('\n')[0])).toEqual(['early [playback]', '/api/youtube/stream/abc: late']);
   });
 
   it('caps output at maxLines, keeping the most recent', () => {
@@ -54,7 +54,49 @@ describe('buildTimeline', () => {
     );
     const lines = buildTimeline({ client, server: [], reportedAt: REPORTED_AT, maxLines: 5 });
     expect(lines).toHaveLength(5);
-    expect(lines.map((l) => l.text)).toEqual(['msg 25', 'msg 26', 'msg 27', 'msg 28', 'msg 29']);
+    expect(lines.map((l) => l.text)).toEqual(
+      ['msg 25', 'msg 26', 'msg 27', 'msg 28', 'msg 29'].map((m) => `${m} [playback]`),
+    );
+  });
+
+  it('keeps at least keepErrors error lines, dropping breadcrumbs first, when trimming to maxLines', () => {
+    // 3 errors scattered among 20 breadcrumbs; maxLines is small enough that
+    // a naive "keep the most recent N" would drop the oldest error.
+    const breadcrumbs = Array.from({ length: 20 }, (_, i) =>
+      clientEntry({ ts: REPORTED_AT - (23 - i) * 1000, message: `crumb ${i}` }),
+    );
+    const errors = [0, 10, 19].map((i) =>
+      clientEntry({ ts: REPORTED_AT - (23 - i) * 1000 - 500, level: 'error', message: `err ${i}` }),
+    );
+    const lines = buildTimeline({
+      client: [...breadcrumbs, ...errors],
+      server: [],
+      reportedAt: REPORTED_AT,
+      maxLines: 5,
+      keepErrors: 3,
+    });
+    const errorLines = lines.filter((l) => l.level === 'error');
+    expect(errorLines).toHaveLength(3);
+    expect(errorLines.map((l) => l.text)).toEqual(['err 0 [playback]', 'err 10 [playback]', 'err 19 [playback]']);
+  });
+
+  it('keepErrors never drops an error to make room for a breadcrumb that fits within maxLines', () => {
+    const breadcrumbs = Array.from({ length: 2 }, (_, i) =>
+      clientEntry({ ts: REPORTED_AT - (10 - i) * 1000, message: `crumb ${i}` }),
+    );
+    const errors = Array.from({ length: 8 }, (_, i) =>
+      clientEntry({ ts: REPORTED_AT - (8 - i) * 100, level: 'error', message: `err ${i}` }),
+    );
+    const lines = buildTimeline({
+      client: [...breadcrumbs, ...errors],
+      server: [],
+      reportedAt: REPORTED_AT,
+      maxLines: 5,
+      keepErrors: 8,
+    });
+    // All 8 errors kept even though maxLines is 5: keepErrors is a floor.
+    expect(lines.filter((l) => l.level === 'error')).toHaveLength(8);
+    expect(lines.filter((l) => l.level !== 'error')).toHaveLength(0);
   });
 
   it('defaults maxLines to 25', () => {
@@ -88,6 +130,68 @@ describe('buildTimeline', () => {
     const stack = 'Error: boom\n    at somewhere/else.js:1:1';
     const [line] = buildTimeline({ client: [clientEntry({ stack })], server: [], reportedAt: REPORTED_AT });
     expect(line.text).toContain('somewhere/else.js:1:1');
+  });
+
+  it('does not mistake a package named "*-app" for an in-repo frame', () => {
+    // The old unanchored /app\// regex matched inside "some-app/", a
+    // dependency name, not our app/ directory. Anchored to a leading "/"
+    // (or start of line) so only a real app/ path segment counts.
+    const stack = [
+      'Error: boom',
+      '    at node_modules/some-app/index.js:1:1',
+      '    at internal/modules/cjs/loader.js:999:1',
+    ].join('\n');
+    const [line] = buildTimeline({ client: [clientEntry({ stack, level: 'error' })], server: [], reportedAt: REPORTED_AT });
+    // No frame qualifies as in-repo, so it falls back to the first stack line.
+    expect(line.text).toContain('node_modules/some-app/index.js:1:1');
+  });
+
+  it('matches an in-repo "app/" frame at the very start of the line', () => {
+    const stack = ['Error: boom', 'app/api/bug-report/route.ts:10:1', '    at node_modules/x/index.js:1:1'].join('\n');
+    const [line] = buildTimeline({ client: [clientEntry({ stack, level: 'error' })], server: [], reportedAt: REPORTED_AT });
+    expect(line.text).toContain('app/api/bug-report/route.ts:10:1');
+  });
+
+  it('appends capped extra data on error lines, dropping status and reqId keys', () => {
+    const entry = clientEntry({
+      level: 'error',
+      category: 'api',
+      message: 'stream failed',
+      data: { status: 502, reqId: 'req-abc', helper: 'yt-dlp', exitCode: 1 },
+    });
+    const [line] = buildTimeline({ client: [entry], server: [], reportedAt: REPORTED_AT });
+    expect(line.text).toContain('stream failed [api]');
+    expect(line.text).toContain('"helper":"yt-dlp"');
+    expect(line.text).toContain('"exitCode":1');
+    expect(line.text).not.toContain('"status"');
+    expect(line.text).not.toContain('"reqId"');
+  });
+
+  it('omits the data suffix entirely once status and reqId are stripped and nothing else remains', () => {
+    const entry = clientEntry({ level: 'error', message: 'boom', data: { status: 502, reqId: 'req-abc' } });
+    const [line] = buildTimeline({ client: [entry], server: [], reportedAt: REPORTED_AT });
+    expect(line.text).toBe('boom [playback]');
+  });
+
+  it('never appends a data suffix on a non-error line, even when data is present', () => {
+    const entry = clientEntry({ level: 'info', data: { extra: 'x' } });
+    const [line] = buildTimeline({ client: [entry], server: [], reportedAt: REPORTED_AT });
+    expect(line.text).not.toContain('extra');
+  });
+
+  it('clips a long data suffix to 150 chars', () => {
+    const entry = clientEntry({ level: 'error', message: 'boom', data: { blob: 'x'.repeat(500) } });
+    const [line] = buildTimeline({ client: [entry], server: [], reportedAt: REPORTED_AT });
+    const suffix = line.text.slice(line.text.indexOf('{'));
+    // 150 chars of clipped JSON plus the ellipsis character clip() appends.
+    expect(suffix.length).toBeLessThanOrEqual(151);
+    expect(suffix.endsWith('…')).toBe(true);
+  });
+
+  it('also appends a data suffix on a server error line', () => {
+    const entry = serverEntry({ data: { helper: 'yt-dlp' } });
+    const [line] = buildTimeline({ client: [], server: [entry], reportedAt: REPORTED_AT });
+    expect(line.text).toContain('"helper":"yt-dlp"');
   });
 
   it('includes native:* entries tagged with their category', () => {

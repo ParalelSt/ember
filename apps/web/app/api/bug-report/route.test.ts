@@ -18,7 +18,7 @@ vi.mock('@/lib/auth', () => ({
   UnauthorizedError: class UnauthorizedError extends Error {},
   unauthorizedResponse: () => new Response('no', { status: 401 }),
 }));
-// vi.fn() (not a plain arrow) so tests below can assert on call args/keys —
+// vi.fn() (not a plain arrow) so tests below can assert on call args/keys:
 // vi.mocked() needs a real mock function, not just something shaped like one.
 vi.mock('@/lib/rateLimit', () => ({ rateLimitResponse: vi.fn(() => null) }));
 vi.mock('@/lib/logger/server', () => ({
@@ -254,6 +254,48 @@ describe('POST /api/bug-report: Evidence timeline', () => {
     expect(combined).toContain('video-0');
     expect(combined).toContain('video-24');
     expect(combined).not.toContain('...');
+  });
+
+  it('selects the same lines as the triage prompt for the same input (T2 review: they used to diverge)', async () => {
+    // Small enough that neither the Evidence field's maxLines:25 nor the
+    // prompt's much larger cap needs to cut anything: the only thing left
+    // to differ would be the selection logic itself, so an exact match here
+    // proves route.ts and lib/ai/triage.ts share it (both call
+    // selectTimeline/buildTimeline from lib/reports/timeline.ts). Date.now
+    // is pinned so the route's reportedAt and this test's own buildDigest
+    // call render identical relative times.
+    const NOW = 1_800_000_000_000;
+    const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(NOW);
+    try {
+      const current = [
+        { ts: NOW - 5000, kind: 'breadcrumb', level: 'info', category: 'playback', message: 'play', sessionId: 's1' },
+        { ts: NOW - 3000, kind: 'error', level: 'error', category: 'api', message: 'stream failed', sessionId: 's1' },
+      ] as ClientSnapshot['current'];
+      const server = [serverError({ ts: NOW - 4000 })];
+      vi.mocked(serverLogger.recentSince).mockResolvedValue(server);
+
+      const res = await POST(request({ client: snapshot({ current }) }), undefined as never);
+      expect(res.status).toBe(200);
+      const embed = postedEmbed(fetchMock);
+      const evidenceText = embed.fields
+        .filter((f) => f.name === 'Evidence' || f.name.startsWith('Evidence ('))
+        .map((f) => f.value.replace(/^```\n/, '').replace(/```$/, ''))
+        .join('\n');
+
+      const { buildDigest } = await import('@/lib/ai/triage');
+      const digest = buildDigest({
+        note: '',
+        client: { current, previous: [], sessionId: 's1' },
+        server,
+        userAgent: 'test',
+        context: undefined,
+      });
+      const timelineFromDigest = digest.split('## Timeline\n')[1].split('\n\n## Seen before')[0];
+
+      expect(evidenceText.trim()).toBe(timelineFromDigest.trim());
+    } finally {
+      nowSpy.mockRestore();
+    }
   });
 });
 

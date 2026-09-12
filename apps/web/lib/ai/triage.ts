@@ -4,7 +4,7 @@ import type { LogEntry, ReportContext, ServerLogEntry } from '@/lib/logger/types
 import { serverLogger } from '@/lib/logger/server';
 import { fingerprint } from '@/lib/reports/fingerprint';
 import { historyFor } from '@/lib/reports/history';
-import { buildTimeline, formatTimeline } from '@/lib/reports/timeline';
+import { buildTimeline, dedupeEntries, formatTimeline, pickEntries } from '@/lib/reports/timeline';
 
 /** AI triage for bug reports.
  *
@@ -94,43 +94,6 @@ export interface TriageInput {
 
 function clip(s: string, max: number): string {
   return s.length > max ? `${s.slice(0, max)}…` : s;
-}
-
-/** Errors are the signal; keep every one and fill the rest with breadcrumbs
- *  from the tail (closest in time to the report). Order-preserving, so the
- *  result stays chronological for buildTimeline. */
-function pick<T extends { level: string }>(entries: T[], max: number): T[] {
-  if (entries.length <= max) return entries;
-  const errors = entries.filter((e) => e.level === 'error');
-  const kept = new Set(errors.slice(-max));
-  for (let i = entries.length - 1; i >= 0 && kept.size < max; i--) kept.add(entries[i]);
-  return entries.filter((e) => kept.has(e));
-}
-
-/** Collapse runs of the same message into one entry tagged "(xN)". A stuck
- *  retry loop can emit the same line 200 times; that's one fact, not 200.
- *  Works on entries (not rendered text) so the merged occurrence still flows
- *  through buildTimeline/formatTimeline (T1's reqId pairing, stack trimming,
- *  native: tagging all keep working on it). */
-function dedupeEntries<T extends { message: string }>(entries: T[]): T[] {
-  const out: T[] = [];
-  let last: T | null = null;
-  let count = 0;
-  const flush = () => {
-    if (!last) return;
-    out.push(count > 1 ? { ...last, message: `${last.message}  (x${count})` } : last);
-  };
-  for (const e of entries) {
-    if (last && e.message === last.message) {
-      count++;
-      continue;
-    }
-    flush();
-    last = e;
-    count = 1;
-  }
-  flush();
-  return out;
 }
 
 function bytes(n: number): string {
@@ -223,11 +186,11 @@ export function buildDigest(input: TriageInput): string {
   // renderer the Discord embed's "Evidence" field uses (see route.ts).
   const clipMessage = <T extends { message: string }>(e: T): T => ({ ...e, message: clip(e.message, MAX_MESSAGE_CHARS) });
 
-  const curEntries = dedupeEntries(pick(input.client.current, MAX_CLIENT_CURRENT).map(clipMessage));
+  const curEntries = dedupeEntries(pickEntries(input.client.current, MAX_CLIENT_CURRENT).map(clipMessage));
   const prevEntries = input.client.previous.length > 0
-    ? dedupeEntries(pick(input.client.previous, MAX_CLIENT_PREVIOUS).map(clipMessage))
+    ? dedupeEntries(pickEntries(input.client.previous, MAX_CLIENT_PREVIOUS).map(clipMessage))
     : [];
-  const srvEntries = dedupeEntries(pick(input.server, MAX_SERVER).map(clipMessage));
+  const srvEntries = dedupeEntries(pickEntries(input.server, MAX_SERVER).map(clipMessage));
   const desktopLines = input.desktopLog
     ? input.desktopLog.split('\n').filter((l) => l.length > 0).slice(-MAX_DESKTOP_LOG_LINES)
     : [];
