@@ -1,0 +1,99 @@
+import { describe, expect, it, beforeEach, afterEach } from 'vitest';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { serverLogger } from './server';
+import type { ServerLogEntry } from './types';
+
+// entriesSince/recentSince resolve their directory from EMBER_LOG_DIR on
+// every call (see logDir() in server.ts), so a fresh temp dir per test is
+// enough isolation without needing to reset modules.
+let logDir: string;
+const prevEmberLogDir = process.env.EMBER_LOG_DIR;
+
+beforeEach(() => {
+  logDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ember-logs-test-'));
+  process.env.EMBER_LOG_DIR = logDir;
+});
+
+afterEach(() => {
+  fs.rmSync(logDir, { recursive: true, force: true });
+  if (prevEmberLogDir === undefined) delete process.env.EMBER_LOG_DIR;
+  else process.env.EMBER_LOG_DIR = prevEmberLogDir;
+});
+
+function writeFile(name: string, entries: ServerLogEntry[]): void {
+  fs.writeFileSync(path.join(logDir, name), entries.map((e) => JSON.stringify(e)).join('\n') + '\n', 'utf8');
+}
+
+function entry(overrides: Partial<ServerLogEntry> = {}): ServerLogEntry {
+  return {
+    ts: Date.now(),
+    kind: 'error',
+    level: 'error',
+    category: 'api',
+    message: 'boom',
+    sessionId: 'server',
+    side: 'server',
+    reqId: 'req-1',
+    route: '/api/test',
+    ...overrides,
+  };
+}
+
+function fileFor(d: Date): string {
+  const y = d.getUTCFullYear();
+  const mo = String(d.getUTCMonth() + 1).padStart(2, '0');
+  const da = String(d.getUTCDate()).padStart(2, '0');
+  return `errors-${y}-${mo}-${da}.jsonl`;
+}
+
+describe('serverLogger.entriesSince (EMBER_LOG_DIR override)', () => {
+  it('returns only entries strictly after the given timestamp', async () => {
+    const now = Date.now();
+    writeFile(fileFor(new Date()), [entry({ ts: now - 1000 }), entry({ ts: now + 1000 })]);
+    const out = await serverLogger.entriesSince(now);
+    expect(out).toHaveLength(1);
+    expect(out[0].ts).toBe(now + 1000);
+  });
+
+  it('reads across multiple days when the window spans them', async () => {
+    const now = Date.now();
+    const twoDaysAgo = now - 2 * 24 * 60 * 60 * 1000;
+    writeFile(fileFor(new Date(twoDaysAgo)), [entry({ ts: twoDaysAgo + 500 })]);
+    writeFile(fileFor(new Date()), [entry({ ts: now })]);
+    const out = await serverLogger.entriesSince(twoDaysAgo);
+    expect(out.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('sorts newest first', async () => {
+    const now = Date.now();
+    writeFile(fileFor(new Date()), [entry({ ts: now - 3000 }), entry({ ts: now - 1000 }), entry({ ts: now - 2000 })]);
+    const out = await serverLogger.entriesSince(now - 10_000);
+    expect(out.map((e) => e.ts)).toEqual([now - 1000, now - 2000, now - 3000]);
+  });
+
+  it('caps output at 20000 entries', async () => {
+    const now = Date.now();
+    const many = Array.from({ length: 20_050 }, (_, i) => entry({ ts: now - i }));
+    writeFile(fileFor(new Date()), many);
+    const out = await serverLogger.entriesSince(now - 30_000);
+    expect(out).toHaveLength(20_000);
+  }, 15_000);
+
+  it('skips corrupt lines and missing files without throwing', async () => {
+    const now = Date.now();
+    fs.writeFileSync(
+      path.join(logDir, fileFor(new Date())),
+      `not json\n${JSON.stringify(entry({ ts: now }))}\n`,
+      'utf8',
+    );
+    const out = await serverLogger.entriesSince(now - 1000);
+    expect(out).toHaveLength(1);
+  });
+
+  it('returns an empty array when the log dir has nothing in the window', async () => {
+    const out = await serverLogger.entriesSince(Date.now());
+    expect(out).toEqual([]);
+  });
+});
