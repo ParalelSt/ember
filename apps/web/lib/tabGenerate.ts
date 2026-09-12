@@ -32,7 +32,7 @@ export interface TrackKey {
   key: string;
 }
 
-/** `youtube:<videoId>` or `upload:<pbId>` — the app's compound Track id.
+/** `youtube:<videoId>` or `upload:<pbId>`: the app's compound Track id.
  *  Anything else is refused, which also rules out traversal: the key only
  *  ever contains [A-Za-z0-9_-] and one dash. */
 export function parseTrackKey(trackId: string): TrackKey | null {

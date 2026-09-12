@@ -19,7 +19,7 @@ const PYTHON = process.env.PYTHON_BIN ?? path.join(ROOT, '.venv/bin/python');
 const out = [];
 const check = (name, pass, detail = '') => {
   out.push({ name, pass });
-  console.log(`${pass ? 'PASS' : 'FAIL'}  ${name}${detail ? `  — ${detail}` : ''}`);
+  console.log(`${pass ? 'PASS' : 'FAIL'}  ${name}${detail ? ` : ${detail}` : ''}`);
 };
 
 // ── A. transcribe.py on a synthetic recording ──────────────────────────────

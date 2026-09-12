@@ -17,10 +17,10 @@ import {
 
 /** A guitar tab generated from the track's own recording.
  *
- *  GET  — the alphaTex if it exists (200, text/plain), 202 while a job is
+ *  GET : the alphaTex if it exists (200, text/plain), 202 while a job is
  *         running, 409 with the reason if the last attempt failed, 404 if
  *         nothing has been asked for yet.
- *  POST — start it. 200 if it already exists, 202 once the job is queued.
+ *  POST: start it. 200 if it already exists, 202 once the job is queued.
  *
  *  Generated tabs are shared by everyone on the server, like the audio they
  *  come from, so there is no ownership check beyond being signed in. */

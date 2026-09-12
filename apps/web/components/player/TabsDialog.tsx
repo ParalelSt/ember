@@ -24,7 +24,7 @@ interface Props {
  *
  *  Two sources, in this order:
  *   1. Your own Guitar Pro files, rendered right here by AlphaTab.
- *   2. Songsterr, which can only ever be a link — it sends
+ *   2. Songsterr, which can only ever be a link: it sends
  *      `X-Frame-Options: deny` and the notation is its licensed content.
  *
  *  So Songsterr answers "which song is this", and a file you supply answers
@@ -230,7 +230,7 @@ export function TabsDialog({ track, open, onOpenChange }: Props) {
                 ? 'Transcribed from the recording. Nudge the sync if it drifts.'
                 : 'Your Guitar Pro file, rendered here.'
               : track
-                ? `Tabs for "${track.title}" — generated or yours render here, Songsterr opens in a browser.`
+                ? `Tabs for "${track.title}": generated or yours render here, Songsterr opens in a browser.`
                 : 'Nothing playing.'}
           </DialogDescription>
         </DialogHeader>

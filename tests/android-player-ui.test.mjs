@@ -61,7 +61,7 @@ for (const t of [...titles].reverse()) {           // B first, so A is newest an
 }
 
 const checks = [];
-const check = (name, pass, detail = '') => { checks.push(pass); console.log(`${pass ? 'PASS' : 'FAIL'}  ${name}${detail ? `  — ${detail}` : ''}`); };
+const check = (name, pass, detail = '') => { checks.push(pass); console.log(`${pass ? 'PASS' : 'FAIL'}  ${name}${detail ? ` : ${detail}` : ''}`); };
 
 const browser = await chromium.launch({ executablePath: findChrome(), headless: true });
 const ctx = await browser.newContext({ viewport: { width: 1300, height: 950 } });
