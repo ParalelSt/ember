@@ -40,6 +40,14 @@ const DEFAULT_WEBHOOK_URL =
   "https://discord.com/api/webhooks/1512120864391565333/wbnK9NOCeqbHNPK_k8UcdFxRZKztm0LfBR1OfKIQ2txf1zAPwF4mp4kII1S3SA7MIUPY";
 const WEBHOOK_URL =
   process.env.DISCORD_BUG_REPORT_WEBHOOK_URL || DEFAULT_WEBHOOK_URL;
+const USING_DEFAULT_WEBHOOK = !process.env.DISCORD_BUG_REPORT_WEBHOOK_URL;
+
+/** Test suites sign in as throwaway `@ember.test` accounts. A sandbox started
+ *  without its own webhook must never forward their reports to the real
+ *  channel; the host always sets DISCORD_BUG_REPORT_WEBHOOK_URL explicitly. */
+function isSandboxReporter(email: string): boolean {
+  return USING_DEFAULT_WEBHOOK && email.toLowerCase().endsWith("@ember.test");
+}
 
 /** One compact line for the Discord embed: the full per-field breakdown
  *  goes into the AI prompt (lib/ai/triage.ts's "State when reported" block);
@@ -243,6 +251,9 @@ export const POST = withRequestLog('bug-report', async (request: NextRequest) =>
       );
     }
 
+    if (isSandboxReporter(user.email)) {
+      return Response.json({ ok: true, skipped: "test account", triage });
+    }
     const discordRes = await fetch(WEBHOOK_URL, { method: "POST", body: form });
     if (!discordRes.ok) {
       const text = await discordRes.text().catch(() => "");

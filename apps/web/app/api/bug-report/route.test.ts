@@ -2,6 +2,12 @@
 // Node, not happy-dom: this is server code, and happy-dom's FormData drops the
 // filename passed with a Blob, which is the thing being asserted here.
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+
+// The suite reports as an @ember.test account; an explicit webhook keeps the
+// route posting (the sandbox guard only bites when the default one is in use).
+vi.hoisted(() => {
+  process.env.DISCORD_BUG_REPORT_WEBHOOK_URL = 'http://127.0.0.1:4312/hook';
+});
 import type { NextRequest } from 'next/server';
 import type { ClientSnapshot, ServerLogEntry } from '@/lib/logger/types';
 
@@ -143,3 +149,22 @@ describe('POST /api/bug-report: server log scrubbing', () => {
     expect(reportText).toContain('user123');
   });
 });
+
+describe('POST /api/bug-report: sandbox guard', () => {
+  it('does not post a test account report to the default webhook', async () => {
+    const saved = process.env.DISCORD_BUG_REPORT_WEBHOOK_URL;
+    delete process.env.DISCORD_BUG_REPORT_WEBHOOK_URL;
+    vi.resetModules();
+    try {
+      const { POST } = await import('./route');
+      const res = await POST(request({ note: 'x', client: { current: [], previous: [], sessionId: 's' } }), {} as never);
+      expect(res.status).toBe(200);
+      expect(await res.json()).toMatchObject({ ok: true, skipped: 'test account' });
+      expect(fetchMock).not.toHaveBeenCalled();
+    } finally {
+      process.env.DISCORD_BUG_REPORT_WEBHOOK_URL = saved;
+      vi.resetModules();
+    }
+  });
+});
+

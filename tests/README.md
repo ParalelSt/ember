@@ -1,5 +1,11 @@
 # Tests
 
+> Sandbox servers and Discord: the bug-report route posts to the app's default
+> webhook (the owner's channel) unless `DISCORD_BUG_REPORT_WEBHOOK_URL` is set.
+> Reports from `@ember.test` accounts are dropped when the default webhook is in
+> use, so a test run cannot spam the channel; still set the variable to a local
+> sink (`http://127.0.0.1:4312/hook`) on every sandbox you start.
+
 ## Unit tests
 
 `npm run test:unit` from the repo root. Vitest, no sandbox, no PocketBase,
