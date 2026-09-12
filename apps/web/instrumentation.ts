@@ -7,6 +7,8 @@ export async function register() {
 
   const { createAdminClient } = await import('@/lib/pocketbase/server');
   const { runCleanup } = await import('@/lib/cleanup');
+  const { checkTriageConfig } = await import('@/lib/ai/triage');
+  checkTriageConfig();
 
   const DAY_MS = 24 * 60 * 60 * 1000;
   const run = async () => {

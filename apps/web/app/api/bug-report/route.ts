@@ -7,12 +7,20 @@ import {
 import { serverLogger } from "@/lib/logger/server";
 import type { ClientSnapshot, ReportContext, ServerLogEntry } from "@/lib/logger/types";
 import { rateLimitResponse } from "@/lib/rateLimit";
-import { triageBugReport } from "@/lib/ai/triage";
+import { formatSeenBefore, triageBugReport } from "@/lib/ai/triage";
 import { fromError, jsonError } from "@/lib/upsertTrack";
 import { withRequestLog } from '@/lib/logger/withRequestLog';
 import { scrubText } from "@/lib/logger/sanitize";
+import { buildTimeline, formatTimeline } from "@/lib/reports/timeline";
 
 const REPORT_WINDOW_MS = 5 * 60 * 1000;
+// How far back "Seen before" looks to tell "this has been happening all
+// week" from "brand new": see formatSeenBefore in lib/ai/triage.ts.
+const HISTORY_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
+// Discord's field value cap is 1024 chars; the "Evidence" code block gets
+// a second (or third...) field instead of being truncated, since a cut-off
+// stack frame is worse than a slightly longer message.
+const DISCORD_FIELD_CHARS = 1024;
 const MAX_NOTE_LEN = 1000;
 // Sane ceiling for individual context strings (route, platform, language,
 // …): a client that sends something absurd here shouldn't blow up the
@@ -150,9 +158,15 @@ export const POST = withRequestLog('bug-report', async (request: NextRequest) =>
     const server = (
       await serverLogger.recentSince(Date.now() - REPORT_WINDOW_MS)
     ).map(scrubServerEntry);
+    // Wider window, counts only: how often has each error fingerprint in
+    // this report shown up in the last week (formatSeenBefore, shared with
+    // the triage prompt below). Never displayed verbatim, so it doesn't need
+    // scrubServerEntry's redaction pass.
+    const history = await serverLogger.entriesSince(Date.now() - HISTORY_WINDOW_MS);
 
     const userAgent = request.headers.get("user-agent") ?? "unknown";
-    const reportedAt = new Date().toISOString();
+    const reportedAtMs = Date.now();
+    const reportedAt = new Date(reportedAtMs).toISOString();
 
     const counts = {
       client_current: client.current.length,
@@ -173,6 +187,7 @@ export const POST = withRequestLog('bug-report', async (request: NextRequest) =>
       userAgent,
       context: client.context,
       desktopLog,
+      history,
     });
 
     const payload = {
@@ -191,34 +206,73 @@ export const POST = withRequestLog('bug-report', async (request: NextRequest) =>
       type: "application/json",
     });
 
-    // Discord caps a field value at 1024 characters.
+    // Discord caps a field value at 1024 characters. Most fields here are
+    // short by construction and just get a safety truncation; "Evidence"
+    // (the timeline) is the one field long enough to actually hit the cap
+    // in practice, so it gets split across fields instead (see below).
     const field = (name: string, value: string, inline = false) => ({
       name,
-      value: value.length > 1024 ? `${value.slice(0, 1021)}...` : value,
+      value: value.length > DISCORD_FIELD_CHARS ? `${value.slice(0, DISCORD_FIELD_CHARS - 3)}...` : value,
       inline,
     });
 
-    const triageFields = triage
-      ? [
-          field(
-            `🤖 ${triage.severity.toUpperCase()} · ${triage.area} · ${triage.confidence} confidence`,
-            triage.summary,
-          ),
-          field("Likely cause", triage.likelyCause),
-          field("Reproduce", triage.reproduction),
-          ...(triage.nextSteps.length
-            ? [field("Check first", triage.nextSteps.map((s) => `• ${s}`).join("\n"))]
-            : []),
-        ]
-      : [];
+    // One or more fields carrying `text` as a fenced code block, split on
+    // whole lines so a stack frame or timeline entry is never cut mid-line.
+    // Named "Evidence", "Evidence (cont.)", "Evidence (cont. 2)", ...
+    function codeFields(name: string, text: string): { name: string; value: string; inline: boolean }[] {
+      const fence = "```\n";
+      const budget = DISCORD_FIELD_CHARS - fence.length * 2;
+      const lines = text.split("\n");
+      const chunks: string[] = [];
+      let current = "";
+      for (const l of lines) {
+        const candidate = current ? `${current}\n${l}` : l;
+        if (candidate.length > budget && current) {
+          chunks.push(current);
+          current = l;
+        } else {
+          current = candidate;
+        }
+      }
+      if (current) chunks.push(current);
+      if (chunks.length === 0) chunks.push("(none)");
+      return chunks.map((chunk, i) => ({
+        name: i === 0 ? name : `${name} (cont.${i > 1 ? ` ${i}` : ""})`,
+        value: `${fence}${chunk}\n\`\`\``,
+        inline: false,
+      }));
+    }
 
+    // Same renderer as the "Evidence" code block below feeds the AI prompt
+    // (lib/ai/triage.ts's buildDigest), so the maintainer and the model
+    // reason over the same events.
+    const timelineText = formatTimeline(
+      buildTimeline({ client: client.current, server, reportedAt: reportedAtMs, maxLines: 25 }),
+    );
+    const seenBeforeText = formatSeenBefore(server, history);
+
+    const whatBroke = triage?.summary || note || "(no note)";
     const embed = {
       title: `Bug report from ${user.email}`,
       description: note || "_(no note)_",
       color: triage ? SEVERITY_COLORS[triage.severity] : 0xff5a3a,
       timestamp: reportedAt,
+      footer: triage
+        ? { text: `severity: ${triage.severity} · area: ${triage.area} · confidence: ${triage.confidence}` }
+        : undefined,
       fields: [
-        ...triageFields,
+        field("What broke", whatBroke),
+        { name: "Where", value: formatContextCompact(client.context), inline: false },
+        ...codeFields("Evidence", timelineText),
+        field("Seen before", seenBeforeText),
+        ...(triage
+          ? [
+              field("Reproduce", triage.reproduction),
+              ...(triage.nextSteps.length
+                ? [field("Check first", triage.nextSteps.map((s) => `• ${s}`).join("\n"))]
+                : []),
+            ]
+          : []),
         {
           name: "Client errors",
           value: `${counts.client_errors_current} now / ${counts.client_errors_previous} prev`,
@@ -234,7 +288,6 @@ export const POST = withRequestLog('bug-report', async (request: NextRequest) =>
           value: `${counts.client_current} now / ${counts.client_previous} prev`,
           inline: true,
         },
-        { name: "Where", value: formatContextCompact(client.context), inline: false },
         { name: "Session", value: "`" + client.sessionId + "`", inline: false },
         { name: "User-agent", value: userAgent.slice(0, 1000), inline: false },
       ],
