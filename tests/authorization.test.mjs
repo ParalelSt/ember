@@ -104,6 +104,7 @@ for (const [name, path, init] of [
   ['list tracks', '/api/admin/tracks', {}],
   ['list invites', '/api/admin/invites', {}],
   ['run cleanup', '/api/admin/cleanup', { method: 'POST', body: JSON.stringify({ apply: true }) }],
+  ['send the error digest', '/api/admin/digest', { method: 'POST' }],
 ]) {
   const s = await as(bob, path, init).then(status);
   check(`C ${name} refused to a normal member`, forbidden(s), `status ${s}`);

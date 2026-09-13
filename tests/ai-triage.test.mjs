@@ -32,7 +32,7 @@ const check = (name, pass, detail = '') => {
 //    code the route calls, not a re-implementation here. ──
 {
   register('./ts-stub-loader.mjs', import.meta.url);
-  const { buildDigest, TriageSchema, triageBugReport } = await import('../apps/web/lib/ai/triage.ts');
+  const { buildDigest, summarizeDigest, TriageSchema, triageBugReport } = await import('../apps/web/lib/ai/triage.ts');
 
   const now = Date.now();
   const ctx = {
@@ -178,6 +178,65 @@ const check = (name, pass, detail = '') => {
     check('U24 automatic report uses BUG_TRIAGE_MODEL_AUTO', seenModels[1] === (process.env.BUG_TRIAGE_MODEL_AUTO || 'claude-haiku-4-5-20251001'), seenModels[1]);
   }
 
+  // T4: the daily digest's summary call. Same stubbed-fetch approach as
+  // U23/U24 above: model choice, tolerant parsing, and the no-key path.
+  {
+    const digestText = 'Digest 08:00-08:00 UTC\n12x  api  /api/youtube/stream -> 502  first 08:12 last 19:40  e.g. upstream timeout';
+    const prevKey = process.env.ANTHROPIC_API_KEY;
+    const origFetch = globalThis.fetch;
+
+    delete process.env.ANTHROPIC_API_KEY;
+    let called = false;
+    globalThis.fetch = async () => {
+      called = true;
+      return { ok: true, json: async () => ({ content: [] }) };
+    };
+    const noKey = await summarizeDigest(digestText, 1);
+    check('U25 no API key: digest summary skipped, no call made', noKey === null && !called);
+
+    process.env.ANTHROPIC_API_KEY = 'unit-test-key';
+    const bodies = [];
+    globalThis.fetch = async (_url, init) => {
+      bodies.push(JSON.parse(init.body));
+      return {
+        ok: true,
+        json: async () => ({
+          content: [{ type: 'text', text: '```json\n' + JSON.stringify({
+            headline: '12 problems since yesterday, top: YouTube stream 502s',
+            lines: ['Stream proxy 502s all day', 'Check yt-dlp'],
+          }) + '\n```' }],
+        }),
+      };
+    };
+    const summary = await summarizeDigest(digestText, 12);
+    check('U26 digest summary parses a fenced reply',
+      summary?.headline?.startsWith('12 problems since yesterday') && summary.lines.length === 2);
+    check('U27 digest summary uses the cheaper model',
+      bodies[0]?.model === (process.env.BUG_TRIAGE_MODEL_AUTO || 'claude-haiku-4-5-20251001'), bodies[0]?.model);
+    check('U28 the grouped digest text reaches the prompt',
+      (bodies[0]?.messages?.[0]?.content ?? '').includes('/api/youtube/stream -> 502'));
+
+    // A model that answers with one newline-separated string instead of an
+    // array is still usable: the digest must not be lost to a shape nit.
+    globalThis.fetch = async () => ({
+      ok: true,
+      json: async () => ({ content: [{ type: 'text', text: JSON.stringify({ headline: 'h', lines: 'one\ntwo' }) }] }),
+    });
+    const loose = await summarizeDigest(digestText, 1);
+    check('U29 lines given as a string are split, not rejected',
+      loose?.lines?.length === 2 && loose.lines[0] === 'one');
+
+    // Every failure mode degrades to null so runDigest posts the groups alone.
+    globalThis.fetch = async () => ({ ok: false, status: 500, text: async () => 'overloaded' });
+    check('U30 HTTP failure degrades to null', (await summarizeDigest(digestText, 1)) === null);
+    globalThis.fetch = async () => ({ ok: true, json: async () => ({ content: [{ type: 'text', text: 'sorry, no idea' }] }) });
+    check('U31 unparseable reply degrades to null', (await summarizeDigest(digestText, 1)) === null);
+
+    globalThis.fetch = origFetch;
+    if (prevKey === undefined) delete process.env.ANTHROPIC_API_KEY;
+    else process.env.ANTHROPIC_API_KEY = prevKey;
+  }
+
   // Schema: reproduction defaults to "unknown" when missing or invalid,
   // otherwise passes through.
   const base = { summary: 's', likelyCause: 'c', area: 'ui', severity: 'low', confidence: 'low', nextSteps: [] };
@@ -224,6 +283,7 @@ const DISCORD_PORT = Number(process.env.FAKE_DISCORD_PORT ?? 4312);
 // separate users keep the suite sleep-free.
 const USER_PASSWORD = 'BugTest2026!';
 const USERS = 7;
+const ADMIN_EMAIL = 'bugtestadmin@ember.test';
 
 // ── fakes ─────────────────────────────────────────────────────────────────
 let anthropicMode = 'ok';
@@ -290,6 +350,38 @@ async function adminToken() {
   throw new Error('could not authenticate as PB admin — is the sandbox PB running?');
 }
 
+/** POST /api/admin/digest needs a real admin; the numbered bugtest users are
+ *  deliberately ordinary members (series C checks the admin surface refuses
+ *  them elsewhere). */
+async function ensureAdminUser() {
+  const token = await adminToken();
+  const res = await fetch(`${PB_URL}/api/collections/users/records`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', Authorization: token },
+    body: JSON.stringify({
+      email: ADMIN_EMAIL,
+      password: USER_PASSWORD,
+      passwordConfirm: USER_PASSWORD,
+      name: 'Digest Admin',
+      verified: true,
+      is_admin: true,
+    }),
+  });
+  if (res.ok) return;
+  // Already there from a previous run: make sure it is still an admin.
+  const found = await fetch(
+    `${PB_URL}/api/collections/users/records?filter=${encodeURIComponent(`email="${ADMIN_EMAIL}"`)}`,
+    { headers: { Authorization: token } },
+  ).then((r) => r.json());
+  const id = found?.items?.[0]?.id;
+  if (!id) throw new Error('could not create or find the digest admin user');
+  await fetch(`${PB_URL}/api/collections/users/records/${id}`, {
+    method: 'PATCH',
+    headers: { 'content-type': 'application/json', Authorization: token },
+    body: JSON.stringify({ is_admin: true }),
+  });
+}
+
 async function ensureUsers() {
   const token = await adminToken();
   for (let i = 1; i <= USERS; i++) {
@@ -307,16 +399,18 @@ async function ensureUsers() {
   }
 }
 
-async function authCookie(n) {
+async function cookieFor(identity) {
   const res = await fetch(`${PB_URL}/api/collections/users/auth-with-password`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ identity: `bugtest${n}@ember.test`, password: USER_PASSWORD }),
+    body: JSON.stringify({ identity, password: USER_PASSWORD }),
   });
-  if (!res.ok) throw new Error(`auth failed for bugtest${n}: ${res.status}`);
+  if (!res.ok) throw new Error(`auth failed for ${identity}: ${res.status}`);
   const { token, record } = await res.json();
   return `pb_auth=${encodeURIComponent(JSON.stringify({ token, record }))}`;
 }
+
+const authCookie = (n) => cookieFor(`bugtest${n}@ember.test`);
 
 /** A stuck retry loop (tests dedupe) plus one rare error buried under noise
  *  (tests that the cap keeps the signal). */
@@ -383,6 +477,7 @@ async function report(app, cookie, note, client = noisySnapshot(), automatic = u
 await new Promise((r) => anthropic.listen(ANTHROPIC_PORT, '127.0.0.1', r));
 await new Promise((r) => discord.listen(DISCORD_PORT, '127.0.0.1', r));
 await ensureUsers();
+await ensureAdminUser();
 
 // A. happy path
 anthropicMode = 'ok';
@@ -495,6 +590,65 @@ check('H6 fourth automatic report in the hour is blocked', h4.status === 429, `s
 // The manual bucket is untouched by automatic traffic on the same user.
 const h5 = await report(APP_URL, cookie7, 'manual after automatics', noisySnapshot(), false);
 check('H7 manual report still allowed after 3 automatics (separate bucket)', h5.status === 200, `status ${h5.status}`);
+
+// I. the daily error digest (T4: lib/reports/digestJob.ts), triggered by
+// hand through POST /api/admin/digest. Two distinct server errors are seeded
+// by driving two different routes into a 429 (withRequestLog writes one
+// server entry per rate-limited request), so the digest has two fingerprints
+// to group and report.
+const adminCookie = await cookieFor(ADMIN_EMAIL);
+
+// Seed 1: `bug-report` 429 (the 30s manual cooldown, same user twice).
+await report(APP_URL, cookie1, 'digest seed');
+await report(APP_URL, cookie1, 'digest seed again');
+// Seed 2: `import/inspect` 429 (5 per 10 minutes). The rate limit is checked
+// before the body is parsed, so a body with no usable link is enough: the
+// non-limited calls return 400 without spawning anything or calling out.
+for (let i = 0; i < 6; i++) {
+  await fetch(`${APP_URL}/api/import/inspect`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', cookie: adminCookie },
+    body: JSON.stringify({}),
+  });
+}
+// serverLogger appends fire-and-forget, so give the writes a moment to land
+// before the digest reads the file back.
+await new Promise((r) => setTimeout(r, 750));
+
+const notAdmin = await fetch(`${APP_URL}/api/admin/digest`, { method: 'POST', headers: { cookie: cookie1 } });
+check('I1 digest trigger refused to a normal member', notAdmin.status === 403, `status ${notAdmin.status}`);
+
+const discordBefore = discordSeen.length;
+const digestRes = await fetch(`${APP_URL}/api/admin/digest`, { method: 'POST', headers: { cookie: adminCookie } });
+const digest = await digestRes.json().catch(() => null);
+check('I2 admin can trigger the digest', digestRes.status === 200 && digest?.posted === true,
+  `status ${digestRes.status} posted ${digest?.posted}`);
+
+const routes = (digest?.groups ?? []).map((g) => g.route);
+check('I3 both seeded errors are grouped', routes.includes('bug-report') && routes.includes('import/inspect'),
+  `routes ${routes.join(',')}`);
+check('I4 occurrences are grouped, not listed one per line',
+  (digest?.groups ?? []).every((g) => g.count >= 1) && new Set((digest?.groups ?? []).map((g) => g.fingerprint)).size === (digest?.groups ?? []).length);
+
+const digestEmbed = discordSeen.at(-1) ?? '';
+check('I5 Discord received exactly one digest message', discordSeen.length === discordBefore + 1);
+check('I6 titled "Daily error digest <date>"', /Daily error digest \d{4}-\d{2}-\d{2}/.test(digestEmbed));
+// Every fingerprint the run grouped must be somewhere in the message: the
+// embed carries the top groups, digest.json carries the rest. (A shared
+// sandbox log can hold more than the two seeds, so this checks all of them
+// rather than assuming exactly two.)
+const fps = (digest?.groups ?? []).map((g) => g.fingerprint);
+const unsent = fps.filter((fp) => !digestEmbed.includes(fp));
+check('I7 every grouped fingerprint reaches the message', fps.length >= 2 && unsent.length === 0,
+  `${fps.length} fingerprints, ${unsent.length} missing`);
+check('I8 digest.json attached', digestEmbed.includes('digest.json'));
+check('I9 grouped lines posted as a code block', digestEmbed.includes('"name":"Errors"') && digestEmbed.includes('```'));
+
+// The manual trigger must not consume the day: it writes no marker, so a
+// second run posts again rather than going quiet.
+const again = await fetch(`${APP_URL}/api/admin/digest`, { method: 'POST', headers: { cookie: adminCookie } })
+  .then((r) => r.json()).catch(() => null);
+check('I10 the manual trigger ignores the day marker', again?.posted === true, `posted ${again?.posted}`);
 
 const failed = results.filter((r) => !r.pass);
 console.log(`\n${results.length - failed.length}/${results.length} checks passed`);
