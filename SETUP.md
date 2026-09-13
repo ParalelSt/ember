@@ -245,6 +245,40 @@ The Discord embed titles these "Automatic report from `<email>`" and adds an
 "automatic" marker to the footer, so a maintainer can tell them apart from a
 report someone chose to send.
 
+#### Daily error digest
+
+Once a day the server posts a digest of its own error log to the same Discord
+channel: every server-side error and warning of the last 24 hours, grouped by
+fingerprint, so a hundred occurrences of one bug read as one line rather than
+a hundred. With `ANTHROPIC_API_KEY` set, the cheaper model
+(`BUG_TRIAGE_MODEL_AUTO`) adds a headline and a few lines of what is worth
+looking at; without it the digest still posts the grouped lines and says so in
+the footer. The full grouping is attached as `digest.json`.
+
+Nothing to configure: it is on by default and runs at 08:00 host local time.
+
+```bash
+DIGEST_HOUR=8        # optional; hour of the local day to send, 0-23
+DIGEST_ENABLED=0     # optional; turn the scheduled digest off entirely
+```
+
+The day's send is recorded as `logs/digest-YYYY-MM-DD.sent`, so restarting the
+server does not repost, and a host that was off at `DIGEST_HOUR` still sends
+the digest when it comes back up. Delete that file to let the schedule send
+again today.
+
+To send one right now (admins only), POST to the manual trigger. It always
+covers the last 24 hours, ignores the day's marker and writes no marker, so
+it can be run as often as you like:
+
+```bash
+curl -X POST http://localhost:3000/api/admin/digest \
+  -H "cookie: pb_auth=$YOUR_PB_AUTH_COOKIE"
+```
+
+It answers `{"posted": true, "groups": [...]}`, or `{"posted": false,
+"reason": "quiet"}` on a day with no errors at all.
+
 ### Desktop auto-update
 
 The desktop apps check this server on launch and install new builds

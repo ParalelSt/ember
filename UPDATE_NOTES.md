@@ -1,3 +1,31 @@
+# Update notes: Reports you can read: timeline, seen-before, automatic crash reports, daily digest
+
+**Host: a normal rebuild and restart is all this needs.** No schema changes,
+no `npm install`. Nothing to configure: the digest is on by default. Set
+`DIGEST_HOUR` (default 8, host local time) or `DIGEST_ENABLED=0` in
+`apps/web/.env.local` to move it or turn it off.
+
+- **A bug report now reads as a story, not a log dump.** The Discord message
+  leads with what broke, then where, then an "Evidence" timeline where a
+  client error and the server error for the same request sit together and
+  stack traces are trimmed to the frame that matters.
+- **"Seen before" tells you whether it is new.** Each server error in a report
+  carries how many times that same error has happened in the past week, so a
+  one-off is obvious at a glance and so is something that has been failing all
+  week.
+- **Crashes report themselves.** With the new "Send crash reports
+  automatically" toggle in Settings, Help (on by default), an uncaught error
+  sends a report without anyone having to notice and press a button. Deduped
+  per error, capped at three a session, and titled "Automatic report" so you
+  can tell them from the ones people chose to send.
+- **A daily error digest lands in the same Discord channel.** Once a day,
+  every server error of the last 24 hours grouped by fingerprint, with a short
+  AI summary of what is worth looking at. `POST /api/admin/digest` sends one
+  on demand. See SETUP.md, "Bug reports" for the details.
+- **The admin Logs tab is gone.** The digest and the reports above replace it,
+  and the page only ever existed on one machine: a stray `logs/` rule in
+  `.gitignore` had been hiding it from git the whole time.
+
 # Update notes: uploads keep their cover art
 
 **Host: a normal rebuild and restart, plus `npm install` (a new dependency
