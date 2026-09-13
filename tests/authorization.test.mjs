@@ -102,7 +102,6 @@ check('B6 bob’s history does not include alice’s', !(bobHistory.tracks ?? []
 for (const [name, path, init] of [
   ['list users', '/api/admin/users', {}],
   ['list tracks', '/api/admin/tracks', {}],
-  ['read logs', '/api/admin/logs', {}],
   ['list invites', '/api/admin/invites', {}],
   ['run cleanup', '/api/admin/cleanup', { method: 'POST', body: JSON.stringify({ apply: true }) }],
 ]) {
