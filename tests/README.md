@@ -101,16 +101,16 @@ cd apps/web && POCKETBASE_URL=http://127.0.0.1:8091 npx next build --webpack
 
 # 4. Two app servers: one WITH an AI key, one WITHOUT.
 #    MAX_UPLOAD_MB=1 keeps the uploads "too large" case fast.
-#    DIGEST_ENABLED=0 keeps the scheduled daily digest from firing out of a
-#    test server; the suite triggers it by hand instead.
+#    The scheduled daily digest only runs with DIGEST_ENABLED=1, so it never
+#    fires from a test server; the suite triggers it by hand instead.
 POCKETBASE_URL=http://127.0.0.1:8091 MUSIC_DIR="$SB/music" MAX_UPLOAD_MB=1 \
 ANTHROPIC_API_KEY=test-key ANTHROPIC_BASE_URL=http://127.0.0.1:4311 \
-BUG_TRIAGE_MODEL=claude-sonnet-5 DIGEST_ENABLED=0 \
+BUG_TRIAGE_MODEL=claude-sonnet-5 \
 DISCORD_BUG_REPORT_WEBHOOK_URL=http://127.0.0.1:4312/hook \
 npx next start -p 3005 &
 
 POCKETBASE_URL=http://127.0.0.1:8091 MUSIC_DIR="$SB/music" \
-ANTHROPIC_API_KEY= DIGEST_ENABLED=0 \
+ANTHROPIC_API_KEY= \
 DISCORD_BUG_REPORT_WEBHOOK_URL=http://127.0.0.1:4312/hook \
 npx next start -p 3006 &
 ```
@@ -227,9 +227,9 @@ the real route end to end:
 > numbered `bugtest<N>@ember.test` members, since the digest trigger is
 > admin-only.
 
-Start the sandbox servers with `DIGEST_ENABLED=0` as well, so the scheduled
-digest never fires from a test server. The manual trigger the suite uses is
-unaffected by that flag.
+The scheduled digest stays off unless `DIGEST_ENABLED=1`, so it never fires
+from a test server. The manual trigger the suite uses is unaffected by that
+flag.
 
 ## What `uploads.test.mjs` covers
 

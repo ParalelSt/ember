@@ -11,8 +11,10 @@ export async function register() {
   checkTriageConfig();
 
   // Ahead of the CLEANUP_DISABLED guard too: the digest is its own job with
-  // its own switch (DIGEST_ENABLED=0), not part of the cleanup run.
-  if (process.env.DIGEST_ENABLED !== '0') {
+  // its own switch, not part of the cleanup run. Opt in rather than out: the
+  // webhook falls back to the one baked into the app, so a default-on digest
+  // would have every self-hosted copy posting into its owner's channel daily.
+  if (process.env.DIGEST_ENABLED === '1') {
     const { digestHour, markerExists, runDigest, shouldRunNow } = await import('@/lib/reports/digestJob');
     const hour = digestHour();
     const tick = async () => {

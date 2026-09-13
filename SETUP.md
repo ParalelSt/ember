@@ -255,11 +255,13 @@ a hundred. With `ANTHROPIC_API_KEY` set, the cheaper model
 looking at; without it the digest still posts the grouped lines and says so in
 the footer. The full grouping is attached as `digest.json`.
 
-Nothing to configure: it is on by default and runs at 08:00 host local time.
+Off until you turn it on, because reports and the digest share one webhook and
+a self-hosted copy would otherwise post into the channel baked into the app.
+Set the switch on the machine that should send it:
 
 ```bash
+DIGEST_ENABLED=1     # required; without it the scheduled digest never runs
 DIGEST_HOUR=8        # optional; hour of the local day to send, 0-23
-DIGEST_ENABLED=0     # optional; turn the scheduled digest off entirely
 ```
 
 The day's send is recorded as `logs/digest-YYYY-MM-DD.sent`, so restarting the
