@@ -119,7 +119,7 @@ function serverText(e: ServerLogEntry): string {
 /** Trims a chronological (oldest-first) array down to `maxLines`, dropping
  *  the oldest breadcrumbs first; only once breadcrumbs are exhausted does it
  *  start dropping the oldest errors, and never below `keepErrors` of them
- *  (or however many exist, if fewer) — errors are the signal a report
+ *  (or however many exist, if fewer): errors are the signal a report
  *  exists to carry, breadcrumbs are just context around it. When keepErrors
  *  itself exceeds maxLines, the result stays over maxLines: the floor wins. */
 function trimToMaxLines(all: TimelineLine[], maxLines: number, keepErrors: number): TimelineLine[] {
