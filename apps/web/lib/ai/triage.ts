@@ -297,6 +297,99 @@ export function checkTriageConfig(): void {
   console.warn(`[triage] ${message}`);
 }
 
+/** The daily digest's model output: one headline plus a few short lines of
+ *  "what to look at". Deliberately tiny compared to Triage: the digest is a
+ *  glance, not an investigation. */
+export const DigestSummarySchema = z.object({
+  headline: z.string().min(1).max(300),
+  // Tolerant like the rest of this file: a model that answers with one
+  // newline-separated string instead of an array is still usable, and a
+  // shape nothing can rescue degrades to no lines rather than no digest.
+  lines: z
+    .preprocess(
+      (v) => (typeof v === 'string' ? v.split('\n').filter((l) => l.trim().length > 0) : v),
+      z.array(z.string().min(1).max(300)).max(6),
+    )
+    .catch([]),
+});
+
+export type DigestSummary = z.infer<typeof DigestSummarySchema>;
+
+const DIGEST_SYSTEM = `You summarise a day of server-side errors for Ember, a self-hosted music streaming app.
+
+Stack: Next.js App Router frontend, PocketBase for auth/data, a Python helper
+(yt-dlp + ytmusicapi) for YouTube Music search and audio, and a server-side
+stream proxy that caches downloaded audio to disk. Known recurring failure
+modes: YouTube 403s on expired stream URLs, PocketBase connection errors,
+Python helper timeouts.
+
+You get one line per distinct problem, already grouped and counted:
+"<count>x  <category>  <route> -> <status>  first <HH:MM> last <HH:MM>  e.g. <message>".
+Say what the day looked like and what is worth the maintainer's attention.
+
+Reply with ONLY a JSON object, no prose and no code fences:
+{
+  "headline": "one sentence, e.g. \\"41 problems since yesterday, mostly YouTube 403s on expired stream URLs\\"",
+  "lines": ["3 to 6 short lines: the notable groups, whether each looks new or ongoing, and what to check"]
+}
+
+Be honest: if the groups are routine noise, say so. Never invent an error
+that is not in the list.`;
+
+/** Best-effort summary of the daily digest. Uses the cheaper MODEL_AUTO: this
+ *  runs unattended every day with nobody deciding it is worth the better
+ *  model. Returns null with no API key, on any HTTP/parse failure, or on a
+ *  timeout, and the digest still posts with the grouped lines alone. */
+export async function summarizeDigest(digestText: string, groupCount: number): Promise<DigestSummary | null> {
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) return null;
+
+  try {
+    const res = await fetch(`${BASE_URL}/v1/messages`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+      },
+      body: JSON.stringify({
+        model: MODEL_AUTO,
+        max_tokens: 600,
+        system: DIGEST_SYSTEM,
+        messages: [
+          {
+            role: 'user',
+            content: `${groupCount} distinct problems since yesterday.\n\n${clip(digestText, MAX_DIGEST_CHARS)}`,
+          },
+        ],
+      }),
+      signal: AbortSignal.timeout(TIMEOUT_MS),
+    });
+
+    if (!res.ok) {
+      const detail = await res.text().catch(() => '');
+      serverLogger.error('ai', `digest summary HTTP ${res.status}`, { detail: clip(detail, 300) });
+      return null;
+    }
+
+    const json = (await res.json()) as { content?: { type?: string; text?: string }[] };
+    const text = (json.content ?? [])
+      .filter((b) => b.type === 'text' && typeof b.text === 'string')
+      .map((b) => b.text as string)
+      .join('\n')
+      .trim();
+    if (!text) {
+      serverLogger.error('ai', 'digest summary returned no text');
+      return null;
+    }
+
+    return DigestSummarySchema.parse(extractJson(text));
+  } catch (e) {
+    serverLogger.error('ai', 'digest summary failed', undefined, e);
+    return null;
+  }
+}
+
 export async function triageBugReport(input: TriageInput): Promise<Triage | null> {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) return null;

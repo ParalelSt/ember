@@ -5,22 +5,19 @@ import {
   unauthorizedResponse,
 } from "@/lib/auth";
 import { serverLogger } from "@/lib/logger/server";
-import type { ClientSnapshot, ReportContext, ServerLogEntry } from "@/lib/logger/types";
+import type { ClientSnapshot, ReportContext } from "@/lib/logger/types";
 import { rateLimitResponse } from "@/lib/rateLimit";
 import { formatSeenBefore, triageBugReport } from "@/lib/ai/triage";
 import { fromError, jsonError } from "@/lib/upsertTrack";
 import { withRequestLog } from '@/lib/logger/withRequestLog';
-import { scrubText } from "@/lib/logger/sanitize";
+import { scrubServerEntry, scrubText } from "@/lib/logger/sanitize";
 import { formatTimeline, selectTimeline } from "@/lib/reports/timeline";
+import { codeFields, DISCORD_FIELD_CHARS, usingDefaultWebhook, webhookUrl } from "@/lib/reports/discord";
 
 const REPORT_WINDOW_MS = 5 * 60 * 1000;
 // How far back "Seen before" looks to tell "this has been happening all
 // week" from "brand new": see formatSeenBefore in lib/ai/triage.ts.
 const HISTORY_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
-// Discord's field value cap is 1024 chars; the "Evidence" code block gets
-// a second (or third...) field instead of being truncated, since a cut-off
-// stack frame is worse than a slightly longer message.
-const DISCORD_FIELD_CHARS = 1024;
 const MAX_NOTE_LEN = 1000;
 // Sane ceiling for individual context strings (route, platform, language,
 // …): a client that sends something absurd here shouldn't blow up the
@@ -39,22 +36,11 @@ const SEVERITY_COLORS = {
   high: 0xef4444,
 } as const;
 
-// Default webhook so every deployment — including friends self-hosting — sends
-// bug reports to the project owner's Discord channel. The env var still wins
-// for local testing. Webhook URLs are low-sensitivity (write-only, channel-
-// scoped); if this one ever gets abused, delete + recreate it in Discord
-// (Server Settings → Integrations → Webhooks) and rebuild.
-const DEFAULT_WEBHOOK_URL =
-  "https://discord.com/api/webhooks/1512120864391565333/wbnK9NOCeqbHNPK_k8UcdFxRZKztm0LfBR1OfKIQ2txf1zAPwF4mp4kII1S3SA7MIUPY";
-const WEBHOOK_URL =
-  process.env.DISCORD_BUG_REPORT_WEBHOOK_URL || DEFAULT_WEBHOOK_URL;
-const USING_DEFAULT_WEBHOOK = !process.env.DISCORD_BUG_REPORT_WEBHOOK_URL;
-
 /** Test suites sign in as throwaway `@ember.test` accounts. A sandbox started
  *  without its own webhook must never forward their reports to the real
  *  channel; the host always sets DISCORD_BUG_REPORT_WEBHOOK_URL explicitly. */
 function isSandboxReporter(email: string): boolean {
-  return USING_DEFAULT_WEBHOOK && email.toLowerCase().endsWith("@ember.test");
+  return usingDefaultWebhook() && email.toLowerCase().endsWith("@ember.test");
 }
 
 /** One compact line for the Discord embed: the full per-field breakdown
@@ -100,27 +86,6 @@ function sanitizeContext(ctx: unknown): ReportContext | undefined {
   return out as unknown as ReportContext;
 }
 
-/** Unlike the client snapshot (already run through `scrub` on the device),
- *  the server log window travels straight from disk: scrub it before it's
- *  attached to Discord or handed to triage. `userId` is left alone: it's a
- *  PocketBase id the host already owns, not a secret (see SETUP.md). */
-function scrubServerEntry(e: ServerLogEntry): ServerLogEntry {
-  let data = e.data;
-  if (data !== undefined && data !== null) {
-    try {
-      data = JSON.parse(scrubText(JSON.stringify(data)));
-    } catch {
-      data = scrubText(String(data));
-    }
-  }
-  return {
-    ...e,
-    message: scrubText(e.message),
-    stack: e.stack ? scrubText(e.stack) : e.stack,
-    data,
-  };
-}
-
 export const POST = withRequestLog('bug-report', async (request: NextRequest) => {
   try {
     const { user } = await requireUser();
@@ -149,7 +114,8 @@ export const POST = withRequestLog('bug-report', async (request: NextRequest) =>
       : rateLimitResponse(`bug-report:${user.id}`, { windowMs: 30 * 1000, max: 1 });
     if (limited) return limited;
 
-    if (!WEBHOOK_URL) {
+    const webhook = webhookUrl();
+    if (!webhook) {
       return jsonError(
         "Bug reporting not configured. Paste a Discord webhook URL into DEFAULT_WEBHOOK_URL in app/api/bug-report/route.ts, or set DISCORD_BUG_REPORT_WEBHOOK_URL in .env.local.",
         503,
@@ -231,33 +197,6 @@ export const POST = withRequestLog('bug-report', async (request: NextRequest) =>
       inline,
     });
 
-    // One or more fields carrying `text` as a fenced code block, split on
-    // whole lines so a stack frame or timeline entry is never cut mid-line.
-    // Named "Evidence", "Evidence (cont.)", "Evidence (cont. 2)", ...
-    function codeFields(name: string, text: string): { name: string; value: string; inline: boolean }[] {
-      const fence = "```\n";
-      const budget = DISCORD_FIELD_CHARS - fence.length * 2;
-      const lines = text.split("\n");
-      const chunks: string[] = [];
-      let current = "";
-      for (const l of lines) {
-        const candidate = current ? `${current}\n${l}` : l;
-        if (candidate.length > budget && current) {
-          chunks.push(current);
-          current = l;
-        } else {
-          current = candidate;
-        }
-      }
-      if (current) chunks.push(current);
-      if (chunks.length === 0) chunks.push("(none)");
-      return chunks.map((chunk, i) => ({
-        name: i === 0 ? name : `${name} (cont.${i > 1 ? ` ${i}` : ""})`,
-        value: `${fence}${chunk}\n\`\`\``,
-        inline: false,
-      }));
-    }
-
     // Same selection (error-priority pick, dedupe, then buildTimeline) as
     // the AI prompt (lib/ai/triage.ts's buildDigest), so the maintainer
     // reading Discord and the model reading the prompt reason over the same
@@ -331,7 +270,7 @@ export const POST = withRequestLog('bug-report', async (request: NextRequest) =>
     if (isSandboxReporter(user.email)) {
       return Response.json({ ok: true, skipped: "test account", triage });
     }
-    const discordRes = await fetch(WEBHOOK_URL, { method: "POST", body: form });
+    const discordRes = await fetch(webhook, { method: "POST", body: form });
     if (!discordRes.ok) {
       const text = await discordRes.text().catch(() => "");
       return jsonError(

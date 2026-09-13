@@ -8,7 +8,10 @@ import type { ServerLogEntry } from './types';
 // apps/web is two directories deep in the workspace; resolve via cwd then up.
 // EMBER_LOG_DIR overrides this for tests (a temp dir per test), so it's read
 // on every call rather than resolved once at module load.
-function logDir(): string {
+// Exported so the digest job's marker files land in the same directory
+// instead of re-deriving the path (the deleted admin logs route did that and
+// drifted the moment EMBER_LOG_DIR arrived).
+export function logDir(): string {
   return process.env.EMBER_LOG_DIR
     ? path.resolve(process.env.EMBER_LOG_DIR)
     : path.resolve(process.cwd(), '..', '..', 'logs');
