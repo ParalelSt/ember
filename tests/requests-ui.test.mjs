@@ -5,7 +5,7 @@
  *      node tests/requests-ui.test.mjs      # or: npm run test:requests-ui
  *
  *  Starts its own tiny HTTP sink on :4321 (POST /feature, POST /fix) that
- *  records the last body it received per path — the server under test must
+ *  records the last body it received per path: the server under test must
  *  be started with DISCORD_FEATURE_WEBHOOK_URL=http://127.0.0.1:4321/feature
  *  and DISCORD_FIX_WEBHOOK_URL=http://127.0.0.1:4321/fix (see tests/README.md).
  *  Set CHROME_PATH to pick a browser. */
@@ -32,7 +32,7 @@ const PASSWORD = 'BugTest2026!';
 function findChrome() {
   if (process.env.CHROME_PATH) return process.env.CHROME_PATH;
   const root = path.join(process.env.HOME ?? '', 'Library/Caches/ms-playwright');
-  if (!fs.existsSync(root)) throw new Error('no Playwright browser cache — set CHROME_PATH');
+  if (!fs.existsSync(root)) throw new Error('no Playwright browser cache: set CHROME_PATH');
   for (const d of fs.readdirSync(root).filter((x) => x.startsWith('chromium-')).sort().reverse()) {
     const found = execSync(
       `find "${path.join(root, d)}" -maxdepth 6 -type f \\( -name "Google Chrome for Testing" -o -name "Chromium" \\) 2>/dev/null | head -1`,
@@ -40,7 +40,7 @@ function findChrome() {
     ).trim();
     if (found) return found;
   }
-  throw new Error('no Chromium binary found — set CHROME_PATH');
+  throw new Error('no Chromium binary found: set CHROME_PATH');
 }
 
 // Records the last POST body per path so the test (a separate process from
@@ -98,7 +98,7 @@ page.on('pageerror', (e) => consoleErrors.push(`pageerror: ${e.message}`));
 const checks = [];
 const check = (name, pass, detail = '') => {
   checks.push([name, pass]);
-  console.log(`${pass ? 'PASS' : 'FAIL'}  ${name}${detail ? `  — ${detail}` : ''}`);
+  console.log(`${pass ? 'PASS' : 'FAIL'}  ${name}${detail ? ` : ${detail}` : ''}`);
 };
 
 await page.goto(`${APP_URL}/settings/help`, { waitUntil: 'networkidle' });
