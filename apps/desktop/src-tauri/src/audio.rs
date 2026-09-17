@@ -13,6 +13,7 @@
 //   * stream-download 0.24: `StreamDownload::new_http(url, storage, settings)` is
 //     async and yields a blocking `Read + Seek` reader.
 
+use std::io::{Read, Seek};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{mpsc, Arc, Mutex};
 use std::time::Duration;
@@ -53,6 +54,11 @@ pub struct AudioEngine {
     load_seq: Arc<AtomicU64>,
     /// Last loaded absolute stream URL (for diagnostics / future recovery).
     current_url: Mutex<Option<String>>,
+    /// What the decoder said the loaded track lasts. Read by `audio_seek`:
+    /// rodio clamps every seek target to this figure, so a decoder that
+    /// reports zero (a fragmented mp4, which is what the stream route proxies
+    /// when its download failed) would turn every seek into a seek to 0.
+    current_total: Mutex<Option<Duration>>,
     /// Last volume the UI asked for. rodio applies volume PER SINK and every
     /// load builds a new one, so without remembering it here each track would
     /// start at rodio's default of 1.0 — i.e. the user sets 20%, the next song
@@ -100,6 +106,7 @@ impl AudioEngine {
             generation: Arc::new(AtomicU64::new(0)),
             load_seq: Arc::new(AtomicU64::new(0)),
             current_url: Mutex::new(None),
+            current_total: Mutex::new(None),
             volume: Mutex::new(1.0),
             controls: Mutex::new(None),
         })
@@ -120,6 +127,7 @@ impl AudioEngine {
             generation: Arc::new(AtomicU64::new(0)),
             load_seq: Arc::new(AtomicU64::new(0)),
             current_url: Mutex::new(None),
+            current_total: Mutex::new(None),
             volume: Mutex::new(1.0),
             controls: Mutex::new(None),
         }
@@ -194,6 +202,9 @@ impl AudioEngine {
         }
         if let Ok(mut u) = self.current_url.lock() {
             *u = None;
+        }
+        if let Ok(mut d) = self.current_total.lock() {
+            *d = None;
         }
     }
 
@@ -276,6 +287,46 @@ fn http_client(cookie: Option<&str>) -> Result<Client, String> {
     builder.build().map_err(|e| e.to_string())
 }
 
+/// Build the decoder the engine plays from.
+///
+/// `rodio::Decoder::new` leaves symphonia's media source NOT seekable and with
+/// no byte length, and a non-seekable isomp4 demuxer can only move forwards:
+/// any seek that lands behind its read buffer makes the next packet read fail,
+/// which rodio reports as the end of the source — i.e. the track "ends" and
+/// the player starts the next song. Handing it the byte length the HTTP
+/// response already declared makes the source seekable, and `StreamDownload`
+/// serves the seek from its temp file or a Range request.
+///
+/// Without a content length there is nothing to seek against, so that case
+/// keeps the old non-seekable decoder rather than promising more than it can
+/// do.
+fn build_decoder<R: Read + Seek + Send + Sync + 'static>(
+    reader: R,
+    byte_len: Option<u64>,
+) -> Result<rodio::Decoder<R>, rodio::decoder::DecoderError> {
+    let builder = rodio::Decoder::builder().with_data(reader);
+    match byte_len {
+        Some(len) => builder.with_byte_len(len).with_seekable(true).build(),
+        None => builder.build(),
+    }
+}
+
+/// Where a seek to `sec` should land, or `None` when the engine must refuse it.
+///
+/// rodio clamps every seek target to the decoder's total duration. A
+/// fragmented mp4 (what the stream route proxies whenever its download failed)
+/// carries no sample count, so the decoder reports ZERO — and then a seek to
+/// 1:31 is clamped to 0, restarting the song instead of moving the playhead.
+/// A zero total means "I don't know how long this is", so no seek can be
+/// serviced honestly. An absent total is different: rodio clamps nothing then,
+/// and the demuxer gets the real target.
+fn seek_target(total: Option<Duration>, sec: f64) -> Option<Duration> {
+    if total == Some(Duration::ZERO) {
+        return None;
+    }
+    Some(Duration::from_secs_f64(sec.max(0.0)))
+}
+
 #[tauri::command]
 pub async fn audio_load(
     app: AppHandle,
@@ -338,10 +389,14 @@ pub async fn audio_load(
         }
     };
 
+    // The length the HTTP response declared, so the decoder can be built
+    // seekable (see build_decoder).
+    let byte_len = reader.content_length();
+
     // Fix 3: run blocking decoder I/O off the async runtime.
     let decoder = match tokio::time::timeout(
         remaining(),
-        tauri::async_runtime::spawn_blocking(move || rodio::Decoder::new(reader)),
+        tauri::async_runtime::spawn_blocking(move || build_decoder(reader, byte_len)),
     )
     .await
     {
@@ -381,7 +436,11 @@ pub async fn audio_load(
     let sink = engine.new_sink()?;
     sink.append(decoder);
     if start_at > 1.0 {
-        let _ = sink.try_seek(Duration::from_secs_f64(start_at));
+        // Same guard as audio_seek: a decoder that reports no length would
+        // clamp this to 0, so resuming a proxied track just starts it over.
+        if let Some(target) = seek_target(total, start_at) {
+            let _ = sink.try_seek(target);
+        }
     }
     if autoplay {
         sink.play();
@@ -391,6 +450,7 @@ pub async fn audio_load(
 
     *engine.sink.lock().map_err(|_| "lock")? = Some(sink);
     *engine.current_url.lock().map_err(|_| "lock")? = Some(url);
+    *engine.current_total.lock().map_err(|_| "lock")? = total;
 
     log_audio(
         &app,
@@ -458,14 +518,28 @@ pub fn audio_stop(engine: State<'_, AudioEngine>) {
     if let Ok(mut u) = engine.current_url.lock() {
         *u = None;
     }
+    if let Ok(mut d) = engine.current_total.lock() {
+        *d = None;
+    }
 }
 
 #[tauri::command]
 pub fn audio_seek(app: AppHandle, engine: State<'_, AudioEngine>, sec: f64) {
+    let total = engine.current_total.lock().ok().and_then(|g| *g);
+    let Some(target) = seek_target(total, sec) else {
+        // Refuse rather than restart the song from 0 (see seek_target). The
+        // position timer's next tick puts the slider back where the audio is.
+        log_audio(
+            &app,
+            "WARN",
+            &format!("refused a seek to {sec:.1}s: the decoder reports no duration for this track"),
+        );
+        return;
+    };
     if let Ok(g) = engine.sink.lock() {
         if let Some(s) = g.as_ref() {
-            let _ = s.try_seek(Duration::from_secs_f64(sec.max(0.0)));
-            emit_sec(&app, "audio:time", sec.max(0.0)); // optimistic
+            let _ = s.try_seek(target);
+            emit_sec(&app, "audio:time", target.as_secs_f64()); // optimistic
         }
     }
 }
