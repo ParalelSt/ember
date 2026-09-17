@@ -13,7 +13,8 @@
 //   * stream-download 0.24: `StreamDownload::new_http(url, storage, settings)` is
 //     async and yields a blocking `Read + Seek` reader.
 
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::io::{Read, Seek};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{mpsc, Arc, Mutex};
 use std::time::Duration;
 
@@ -53,6 +54,16 @@ pub struct AudioEngine {
     load_seq: Arc<AtomicU64>,
     /// Last loaded absolute stream URL (for diagnostics / future recovery).
     current_url: Mutex<Option<String>>,
+    /// Whether the source behind the loaded sink has failed. Set by the
+    /// reader wrapper (see `FailFlagged`) and by a seek the decoder refused,
+    /// read by the position timer so a dead stream is reported as an error
+    /// rather than as the end of the track. One per load.
+    source_failed: Mutex<Arc<AtomicBool>>,
+    /// What the decoder said the loaded track lasts. Read by `audio_seek`:
+    /// rodio clamps every seek target to this figure, so a decoder that
+    /// reports zero (a fragmented mp4, which is what the stream route proxies
+    /// when its download failed) would turn every seek into a seek to 0.
+    current_total: Mutex<Option<Duration>>,
     /// Last volume the UI asked for. rodio applies volume PER SINK and every
     /// load builds a new one, so without remembering it here each track would
     /// start at rodio's default of 1.0 — i.e. the user sets 20%, the next song
@@ -100,6 +111,8 @@ impl AudioEngine {
             generation: Arc::new(AtomicU64::new(0)),
             load_seq: Arc::new(AtomicU64::new(0)),
             current_url: Mutex::new(None),
+            current_total: Mutex::new(None),
+            source_failed: Mutex::new(Arc::new(AtomicBool::new(false))),
             volume: Mutex::new(1.0),
             controls: Mutex::new(None),
         })
@@ -120,6 +133,8 @@ impl AudioEngine {
             generation: Arc::new(AtomicU64::new(0)),
             load_seq: Arc::new(AtomicU64::new(0)),
             current_url: Mutex::new(None),
+            current_total: Mutex::new(None),
+            source_failed: Mutex::new(Arc::new(AtomicBool::new(false))),
             volume: Mutex::new(1.0),
             controls: Mutex::new(None),
         }
@@ -194,6 +209,9 @@ impl AudioEngine {
         }
         if let Ok(mut u) = self.current_url.lock() {
             *u = None;
+        }
+        if let Ok(mut d) = self.current_total.lock() {
+            *d = None;
         }
     }
 
@@ -276,6 +294,76 @@ fn http_client(cookie: Option<&str>) -> Result<Client, String> {
     builder.build().map_err(|e| e.to_string())
 }
 
+/// A reader that remembers whether it ever failed.
+///
+/// rodio's symphonia decoder turns ANY read error into "the source ended"
+/// (`decoder/symphonia.rs`: `self.format.next_packet().ok()?`), which is
+/// exactly what a finished song looks like from the outside: the sink goes
+/// empty. `StreamDownload`'s reader fails permanently once its download task
+/// gives up (a truncated body, a refill that 403s, a laptop that slept), so
+/// without this flag the engine reports a stream that died half way through a
+/// song as "track finished", and the webview answers by playing the next one.
+struct FailFlagged<R> {
+    inner: R,
+    failed: Arc<AtomicBool>,
+}
+
+impl<R: Read> Read for FailFlagged<R> {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        self.inner
+            .read(buf)
+            .inspect_err(|_| self.failed.store(true, Ordering::SeqCst))
+    }
+}
+
+impl<R: Seek> Seek for FailFlagged<R> {
+    fn seek(&mut self, pos: std::io::SeekFrom) -> std::io::Result<u64> {
+        self.inner
+            .seek(pos)
+            .inspect_err(|_| self.failed.store(true, Ordering::SeqCst))
+    }
+}
+
+/// Build the decoder the engine plays from.
+///
+/// `rodio::Decoder::new` leaves symphonia's media source NOT seekable and with
+/// no byte length, and a non-seekable isomp4 demuxer can only move forwards:
+/// any seek that lands behind its read buffer makes the next packet read fail,
+/// which rodio reports as the end of the source: i.e. the track "ends" and
+/// the player starts the next song. Handing it the byte length the HTTP
+/// response already declared makes the source seekable, and `StreamDownload`
+/// serves the seek from its temp file or a Range request.
+///
+/// Without a content length there is nothing to seek against, so that case
+/// keeps the old non-seekable decoder rather than promising more than it can
+/// do.
+fn build_decoder<R: Read + Seek + Send + Sync + 'static>(
+    reader: R,
+    byte_len: Option<u64>,
+) -> Result<rodio::Decoder<R>, rodio::decoder::DecoderError> {
+    let builder = rodio::Decoder::builder().with_data(reader);
+    match byte_len {
+        Some(len) => builder.with_byte_len(len).with_seekable(true).build(),
+        None => builder.build(),
+    }
+}
+
+/// Where a seek to `sec` should land, or `None` when the engine must refuse it.
+///
+/// rodio clamps every seek target to the decoder's total duration. A
+/// fragmented mp4 (what the stream route proxies whenever its download failed)
+/// carries no sample count, so the decoder reports ZERO: and then a seek to
+/// 1:31 is clamped to 0, restarting the song instead of moving the playhead.
+/// A zero total means "I don't know how long this is", so no seek can be
+/// serviced honestly. An absent total is different: rodio clamps nothing then,
+/// and the demuxer gets the real target.
+fn seek_target(total: Option<Duration>, sec: f64) -> Option<Duration> {
+    if total == Some(Duration::ZERO) {
+        return None;
+    }
+    Some(Duration::from_secs_f64(sec.max(0.0)))
+}
+
 #[tauri::command]
 pub async fn audio_load(
     app: AppHandle,
@@ -338,10 +426,18 @@ pub async fn audio_load(
         }
     };
 
+    // The length the HTTP response declared, so the decoder can be built
+    // seekable (see build_decoder).
+    let byte_len = reader.content_length();
+    // One flag per load: the reader sets it if the stream ever fails, and the
+    // position timer reads it to tell a dead stream from a finished song.
+    let failed = Arc::new(AtomicBool::new(false));
+    let reader = FailFlagged { inner: reader, failed: Arc::clone(&failed) };
+
     // Fix 3: run blocking decoder I/O off the async runtime.
     let decoder = match tokio::time::timeout(
         remaining(),
-        tauri::async_runtime::spawn_blocking(move || rodio::Decoder::new(reader)),
+        tauri::async_runtime::spawn_blocking(move || build_decoder(reader, byte_len)),
     )
     .await
     {
@@ -381,7 +477,11 @@ pub async fn audio_load(
     let sink = engine.new_sink()?;
     sink.append(decoder);
     if start_at > 1.0 {
-        let _ = sink.try_seek(Duration::from_secs_f64(start_at));
+        // Same guard as audio_seek: a decoder that reports no length would
+        // clamp this to 0, so resuming a proxied track just starts it over.
+        if let Some(target) = seek_target(total, start_at) {
+            let _ = sink.try_seek(target);
+        }
     }
     if autoplay {
         sink.play();
@@ -391,6 +491,8 @@ pub async fn audio_load(
 
     *engine.sink.lock().map_err(|_| "lock")? = Some(sink);
     *engine.current_url.lock().map_err(|_| "lock")? = Some(url);
+    *engine.current_total.lock().map_err(|_| "lock")? = total;
+    *engine.source_failed.lock().map_err(|_| "lock")? = Arc::clone(&failed);
 
     log_audio(
         &app,
@@ -410,7 +512,7 @@ pub async fn audio_load(
     engine.set_nowplaying(autoplay);
 
     let (sink_arc, generation) = engine.inner_arc();
-    spawn_position_timer(app, sink_arc, generation, my_gen);
+    spawn_position_timer(app, sink_arc, generation, my_gen, failed);
     Ok(())
 }
 
@@ -458,15 +560,46 @@ pub fn audio_stop(engine: State<'_, AudioEngine>) {
     if let Ok(mut u) = engine.current_url.lock() {
         *u = None;
     }
+    if let Ok(mut d) = engine.current_total.lock() {
+        *d = None;
+    }
 }
 
 #[tauri::command]
 pub fn audio_seek(app: AppHandle, engine: State<'_, AudioEngine>, sec: f64) {
+    let total = engine.current_total.lock().ok().and_then(|g| *g);
+    let Some(target) = seek_target(total, sec) else {
+        // Refuse rather than restart the song from 0 (see seek_target). The
+        // position timer's next tick puts the slider back where the audio is.
+        log_audio(
+            &app,
+            "WARN",
+            &format!("refused a seek to {sec:.1}s: the decoder reports no duration for this track"),
+        );
+        return;
+    };
+    let mut error = None;
     if let Ok(g) = engine.sink.lock() {
         if let Some(s) = g.as_ref() {
-            let _ = s.try_seek(Duration::from_secs_f64(sec.max(0.0)));
-            emit_sec(&app, "audio:time", sec.max(0.0)); // optimistic
+            match s.try_seek(target) {
+                // A seek the decoder cannot service leaves the source unable to
+                // read its next packet, which rodio reports as the end of the
+                // track. Discarding this error is what turned a drag of the
+                // slider into "play the next song"; surfacing it lets the
+                // webview keep the song and retry it on web audio.
+                Err(e) => error = Some(e.to_string()),
+                Ok(()) => emit_sec(&app, "audio:time", target.as_secs_f64()), // optimistic
+            }
         }
+    }
+    if let Some(message) = error {
+        // Mark the source failed as well, so the position timer does not call
+        // the resulting empty sink an end of track a tick later.
+        if let Ok(f) = engine.source_failed.lock() {
+            f.store(true, Ordering::SeqCst);
+        }
+        log_audio(&app, "WARN", &format!("seek to {sec:.1}s failed: {message}"));
+        emit_err(&app, format!("seek failed: {message}"));
     }
 }
 
@@ -569,6 +702,7 @@ fn spawn_position_timer(
     sink: Arc<Mutex<Option<Sink>>>,
     generation: Arc<AtomicU64>,
     my_gen: u64,
+    failed: Arc<AtomicBool>,
 ) {
     tauri::async_runtime::spawn(async move {
         let mut interval = tokio::time::interval(Duration::from_millis(250));
@@ -598,7 +732,21 @@ fn spawn_position_timer(
             };
             emit_sec(&app, "audio:time", pos);
             if empty {
-                emit_bare(&app, "audio:ended");
+                // An empty sink means the SOURCE ran out, which happens both
+                // when the song finished and when the stream under it died ,
+                // rodio cannot tell those apart, so the flag does. Saying
+                // "ended" for a failure is what made the player skip to the
+                // next song in the middle of this one.
+                if failed.load(Ordering::SeqCst) {
+                    log_audio(
+                        &app,
+                        "WARN",
+                        &format!("the stream failed at {pos:.1}s: reporting an error, not the end"),
+                    );
+                    emit_err(&app, format!("the stream stopped at {pos:.1}s"));
+                } else {
+                    emit_bare(&app, "audio:ended");
+                }
                 break;
             }
 
@@ -622,6 +770,9 @@ fn spawn_position_timer(
         }
     });
 }
+
+#[cfg(test)]
+mod skip_repro;
 
 #[cfg(test)]
 mod tests {
