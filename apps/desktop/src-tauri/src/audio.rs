@@ -329,7 +329,7 @@ impl<R: Seek> Seek for FailFlagged<R> {
 /// `rodio::Decoder::new` leaves symphonia's media source NOT seekable and with
 /// no byte length, and a non-seekable isomp4 demuxer can only move forwards:
 /// any seek that lands behind its read buffer makes the next packet read fail,
-/// which rodio reports as the end of the source — i.e. the track "ends" and
+/// which rodio reports as the end of the source: i.e. the track "ends" and
 /// the player starts the next song. Handing it the byte length the HTTP
 /// response already declared makes the source seekable, and `StreamDownload`
 /// serves the seek from its temp file or a Range request.
@@ -352,7 +352,7 @@ fn build_decoder<R: Read + Seek + Send + Sync + 'static>(
 ///
 /// rodio clamps every seek target to the decoder's total duration. A
 /// fragmented mp4 (what the stream route proxies whenever its download failed)
-/// carries no sample count, so the decoder reports ZERO — and then a seek to
+/// carries no sample count, so the decoder reports ZERO: and then a seek to
 /// 1:31 is clamped to 0, restarting the song instead of moving the playhead.
 /// A zero total means "I don't know how long this is", so no seek can be
 /// serviced honestly. An absent total is different: rodio clamps nothing then,
@@ -733,7 +733,7 @@ fn spawn_position_timer(
             emit_sec(&app, "audio:time", pos);
             if empty {
                 // An empty sink means the SOURCE ran out, which happens both
-                // when the song finished and when the stream under it died —
+                // when the song finished and when the stream under it died ,
                 // rodio cannot tell those apart, so the flag does. Saying
                 // "ended" for a failure is what made the player skip to the
                 // next song in the middle of this one.
@@ -741,7 +741,7 @@ fn spawn_position_timer(
                     log_audio(
                         &app,
                         "WARN",
-                        &format!("the stream failed at {pos:.1}s — reporting an error, not the end"),
+                        &format!("the stream failed at {pos:.1}s: reporting an error, not the end"),
                     );
                     emit_err(&app, format!("the stream stopped at {pos:.1}s"));
                 } else {

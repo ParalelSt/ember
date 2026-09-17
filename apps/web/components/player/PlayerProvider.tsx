@@ -206,7 +206,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         // the song's known length did not come from a finished song: it came
         // from a source that gave out (a stream that died, a seek the decoder
         // could not service). Advancing the queue there IS the skip the
-        // listener sees, so run the error path instead — it keeps the song and
+        // listener sees, so run the error path instead: it keeps the song and
         // retries it. Without a known duration there is nothing to compare
         // against, so the event is taken at face value.
         if (dur > 0 && pos < dur - ENDED_SLACK_SEC) {
