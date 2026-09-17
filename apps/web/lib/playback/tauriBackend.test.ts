@@ -61,7 +61,7 @@ describe('tauriBackend', () => {
     expect(events.onEnded).not.toHaveBeenCalled();
   });
 
-  it('forwards a seek even when the engine reported no duration, as a proxied stream does (bug)', async () => {
+  it('forwards a seek unclamped when the engine reported no duration, leaving the engine to judge it', async () => {
     const events = makeFakeEvents();
     const backend = createTauriBackend(events);
     // A live-proxied googlevideo body is a fragmented mp4: the engine's
@@ -73,9 +73,11 @@ describe('tauriBackend', () => {
     expect(invoked.filter((i) => i.cmd === 'audio_seek')).toEqual([
       { cmd: 'audio_seek', args: { sec: 91 } },
     ]);
-    // And the UI is told the seek landed, so the slider sits at 1:31 right up
-    // to the moment the engine calls the track finished: see
-    // any_seek_in_a_proxied_fragmented_stream_ends_the_track_bug.
+    // The slider moves optimistically, as it does on every backend. A seek
+    // the engine cannot service (a proxied stream whose decoder reports no
+    // duration) is refused there rather than ending the track, and the next
+    // position tick puts the slider back: see audio.rs's seek_target and
+    // a_seek_in_a_proxied_fragmented_stream_is_refused_not_fatal.
     expect(events.onTime).toHaveBeenCalledWith(91);
   });
 });
