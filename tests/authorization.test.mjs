@@ -115,6 +115,13 @@ const anon = await fetch(`${APP}/api/playlists`, { redirect: 'manual' }).then(st
 check('D1 signed-out cannot list playlists', forbidden(anon), `status ${anon}`);
 const anonUp = await fetch(`${APP}/api/uploads`, { redirect: 'manual' }).then(status);
 check('D2 signed-out cannot list uploads', forbidden(anonUp), `status ${anonUp}`);
+const anonReq = await fetch(`${APP}/api/requests`, {
+  method: 'POST',
+  redirect: 'manual',
+  headers: { 'content-type': 'application/json' },
+  body: JSON.stringify({ kind: 'feature', name: 'x', main: 'x' }),
+}).then(status);
+check('D3 signed-out cannot POST /api/requests', forbidden(anonReq), `status ${anonReq}`);
 
 const failed = out.filter((o) => !o.pass);
 console.log(`\n${out.length - failed.length}/${out.length} checks passed`);

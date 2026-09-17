@@ -149,6 +149,14 @@ node tests/stream-fallback.test.mjs                 # or: npm run test:stream-fa
 MUSIC_DIR="$SB/music" node tests/uploads.test.mjs   # or: npm run test:uploads
 node tests/uploads-ui.test.mjs                      # or: npm run test:uploads-ui
 
+# Feature and fix requests (needs DISCORD_FEATURE_WEBHOOK_URL and
+# DISCORD_FIX_WEBHOOK_URL on the server pointed at the test's own sink,
+# see requests-ui.test.mjs's header comment)
+DISCORD_FEATURE_WEBHOOK_URL=http://127.0.0.1:4321/feature \
+DISCORD_FIX_WEBHOOK_URL=http://127.0.0.1:4321/fix \
+npx next start -p 3005 &
+node tests/requests-ui.test.mjs                     # or: npm run test:requests-ui
+
 # Unavailable songs: detection, replace, skip-on-play (needs its own server, see below)
 node tests/unavailable.test.mjs                     # or: npm run test:unavailable
 node tests/unavailable-ui.test.mjs                  # or: npm run test:unavailable-ui
