@@ -34,8 +34,68 @@ read_env() {
   [ -f "$ENV_FILE" ] || return 0
   { grep -E "^${1}=" "$ENV_FILE" || true; } | tail -1 | cut -d= -f2- | tr -d '\r"'"'"
 }
-PORT="$(read_env PORT)";                     PORT="${PORT:-3000}"
-PB_PORT="$(read_env POCKETBASE_PORT)";       PB_PORT="${PB_PORT:-8090}"
+# Same precedence as start-static.sh: an exported port wins over .env.local.
+PORT="${PORT:-}";            [ -n "$PORT" ] || PORT="$(read_env PORT)";                PORT="${PORT:-3000}"
+PB_PORT="${POCKETBASE_PORT:-}"; [ -n "$PB_PORT" ] || PB_PORT="$(read_env POCKETBASE_PORT)"; PB_PORT="${PB_PORT:-8090}"
+
+# start-static.sh's watchdog restarts any service that exits without the
+# watchdog asking. Stop the watchdog FIRST (it then stops both services itself
+# and does not report them as crashes); only then clear the ports, so nothing
+# stopped below gets restarted or posted to Discord as a crash.
+stop_watchdog() {
+  local pidfile="$ROOT/logs/watchdog.pid" pid
+  [ -f "$pidfile" ] || return 0
+  pid="$(tr -dc '0-9' <"$pidfile")"
+  # Pids get reused (a reboot leaves a stale file): only signal a process that
+  # really is start-static.sh.
+  if [ -z "$pid" ] || ! kill -0 "$pid" 2>/dev/null \
+     || ! ps -p "$pid" -o command= 2>/dev/null | grep -q 'start-static'; then
+    rm -f "$pidfile"
+    return 0
+  fi
+  echo "▶ stopping the watchdog (pid $pid)…"
+  kill -TERM "$pid" 2>/dev/null || true
+  for _ in $(seq 1 50); do
+    kill -0 "$pid" 2>/dev/null || return 0
+    sleep 0.2
+  done
+  # Its supervisors check that the watchdog is alive before any restart, so a
+  # SIGKILL here still leaves no restart loop behind; stop_on_port below then
+  # clears whatever it had not stopped yet.
+  echo "  watchdog still up after 10s: forcing"
+  kill -KILL "$pid" 2>/dev/null || true
+}
+
+# Stop the old processes. Matched on the configured ports rather than by
+# name, so this can't reach past this host's own Ember.
+stop_on_port() {
+  local port="$1" label="$2" pids
+  pids="$(lsof -ti tcp:"$port" -sTCP:LISTEN 2>/dev/null || true)"
+  if [ -n "$pids" ]; then
+    echo "▶ stopping $label (port $port)…"
+    # shellcheck disable=SC2086
+    kill $pids 2>/dev/null || true
+    for _ in 1 2 3 4 5 6 7 8 9 10; do
+      sleep 1
+      lsof -ti tcp:"$port" -sTCP:LISTEN >/dev/null 2>&1 || return 0
+    done
+    echo "  still up after 10s: forcing"
+    # shellcheck disable=SC2086
+    kill -9 $pids 2>/dev/null || true
+  fi
+}
+
+stop_everything() {
+  stop_watchdog
+  stop_on_port "$PORT" "the web app"
+  stop_on_port "$PB_PORT" "PocketBase"
+}
+
+# Test-only: run just the stop sequence (tests/watchdog.test.sh), no git.
+if [ "${UPDATE_STOP_ONLY:-0}" = "1" ]; then
+  stop_everything
+  exit 0
+fi
 
 echo "▶ fetching…"
 git fetch --quiet origin main
@@ -123,27 +183,7 @@ if [ "$MODE" = "no-start" ]; then
   exit 0
 fi
 
-# Stop the old processes. Matched on the configured ports rather than by
-# name, so this can't reach past this host's own Ember.
-stop_on_port() {
-  local port="$1" label="$2" pids
-  pids="$(lsof -ti tcp:"$port" -sTCP:LISTEN 2>/dev/null || true)"
-  if [ -n "$pids" ]; then
-    echo "▶ stopping $label (port $port)…"
-    # shellcheck disable=SC2086
-    kill $pids 2>/dev/null || true
-    for _ in 1 2 3 4 5 6 7 8 9 10; do
-      sleep 1
-      lsof -ti tcp:"$port" -sTCP:LISTEN >/dev/null 2>&1 || return 0
-    done
-    echo "  still up after 10s — forcing"
-    # shellcheck disable=SC2086
-    kill -9 $pids 2>/dev/null || true
-  fi
-}
-
-stop_on_port "$PORT" "the web app"
-stop_on_port "$PB_PORT" "PocketBase"
+stop_everything
 
 # Say plainly what is now running. "I ran the update and nothing changed" is
 # otherwise indistinguishable from a rebuild of the same commit.
