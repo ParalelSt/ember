@@ -1,3 +1,25 @@
+# Update notes: crash logging and automatic restarts on the host
+
+**Host: stop Ember and run `./update.sh` as usual, then start it inside tmux
+from now on** (`tmux new -s ember`, run `./start-static.sh`, detach with
+Ctrl+B then D). No PocketBase changes, no `npm install`. Optional: set
+`DISCORD_CRASH_WEBHOOK_URL` in `apps/web/.env.local` to send crash reports to
+their own channel; without it they go to the bug-report channel. See SETUP.md,
+"Crash logging".
+
+- **A crashed PocketBase or web app restarts by itself**, after 5 s, 30 s, then
+  2 minutes. After 5 crashes in 10 minutes the watchdog leaves that service
+  down and says so, so a broken build cannot loop forever.
+- **Crashes are posted to Discord** with the last 50 lines of the service's
+  log (secrets scrubbed), as are uncaught server errors inside the web app, a
+  closed SSH window that stopped Ember, and a start after a reboot or power
+  loss. At most 10 posts an hour.
+- **Service output is kept on disk** in `logs/next.log`, `logs/pocketbase.log`
+  and `logs/watchdog.log`, rotated at 5 MB.
+- **Ports from the environment now win over `apps/web/.env.local`** in
+  `start-static.sh` and `update.sh`, so a sandbox copy can run on spare ports.
+  A host that never exports `PORT` or `POCKETBASE_PORT` sees no change.
+
 # Update notes: send a feature or fix request from Settings > Help
 
 **Host: a normal rebuild and restart. No PocketBase changes.** Set

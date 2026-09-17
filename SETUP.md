@@ -166,6 +166,71 @@ nothing, with no error explaining why. `update.sh` always restarts PocketBase.
 It refuses to run if you have uncommitted changes, and only runs `npm ci` when
 `package-lock.json` actually changed.
 
+### Crash logging
+
+`./start-static.sh` stays in the foreground as a **watchdog** over PocketBase
+and the web app. If either one exits without being asked to (a crash, an out
+of memory kill, a `kill -9`), the watchdog restarts it after 5 s, then 30 s,
+then 120 s for every further crash. A service that crashes 5 times within 10
+minutes is left down, with a "giving up" report, and the other one keeps
+running; fix the cause, then restart Ember.
+
+**Run it inside tmux**, so closing PuTTY does not stop it. A closed SSH window
+sends the watchdog SIGHUP, and it stops Ember cleanly and reports that it did:
+
+```bash
+tmux new -s ember        # start a session, then run ./start-static.sh in it
+                         # detach and leave it running: Ctrl+B, then D
+tmux attach -t ember     # come back to it later (after reconnecting over SSH)
+```
+
+`nohup ./start-static.sh &` works too, but tmux lets you see the output again.
+
+**What gets posted to Discord** (one embed each, footer with the host name,
+git commit and time, no @mentions):
+
+- **A crash**: which service, how it exited (exit code, or the signal that
+  killed it), and when it restarts, with the last 50 lines of its log attached.
+- **Giving up** on a service after 5 crashes in 10 minutes, with its log tail.
+- **A server error** inside the web app that nothing else caught (an uncaught
+  exception or an unhandled promise rejection): the message as the title, the
+  stack as the text, once per distinct message per server process. An uncaught
+  exception also ends the web app process half a second later, so the
+  watchdog restarts a clean one; an unhandled rejection is reported but the
+  server keeps running (see `apps/web/lib/crashHandlers.ts` for why).
+- **Terminal closed**: the SSH session ended and took Ember with it.
+- **Unclean shutdown**: Ember started while `logs/ember.lock` from a previous
+  run was still there with its process gone, meaning the machine rebooted,
+  lost power, or the watchdog was killed outright.
+
+Planned stops are never reported: Ctrl+C, `kill <watchdog pid>` (SIGTERM),
+systemd stopping it, and `./update.sh` (which stops the watchdog first, then
+anything still on the ports).
+
+Log tails are scrubbed of bearer tokens, cookies, `pb_auth`, query-string
+values and long hex/base64 blobs before they are sent. At most 10 reports go
+out per hour; past that, one "too many crash reports, muted for this hour"
+message and then silence until the hour is up.
+
+**Where the posts go**: `DISCORD_CRASH_WEBHOOK_URL` if set, else
+`DISCORD_BUG_REPORT_WEBHOOK_URL`, looked up in the environment and then in
+`apps/web/.env.local`; with neither, the bug-report channel's built-in webhook
+(read from `app/api/bug-report/route.ts`). To get crashes in their own channel,
+add `DISCORD_CRASH_WEBHOOK_URL=...` to `apps/web/.env.local`.
+
+**Log files** in `logs/` (gitignored):
+
+| File | What |
+| --- | --- |
+| `next.log`, `pocketbase.log` | Each service's output (also shown in the terminal). Rotated to `.1` at 5 MB, checked at every start and restart. |
+| `watchdog.log` | Starts, stops, crashes, restarts, give-ups, and any Discord posting error. |
+| `errors-YYYY-MM-DD.jsonl` | The web app's own server error log (uncaught errors land here too). |
+| `watchdog.pid` | The running watchdog's pid, used by `update.sh`. Removed on a clean stop. |
+| `ember.lock` | pid and start time of the running watchdog. Left behind only by an unclean shutdown. |
+| `crash-report.state` | The hourly post count for the rate limit. |
+
+Starting a second copy while one is running refuses with the running pid.
+
 ---
 
 ## Project-owner-only setup

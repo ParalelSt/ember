@@ -1,0 +1,10 @@
+// Fixture for tests/crash-report.test.mjs: the shape of the constant in
+// apps/web/app/api/bug-report/route.ts, with a harmless local URL.
+import { something } from "somewhere";
+
+const SEVERITY_COLOR = { low: 0x22c55e } as const;
+
+const DEFAULT_WEBHOOK_URL =
+  "http://127.0.0.1:9/fixture-default-hook";
+const WEBHOOK_URL =
+  process.env.DISCORD_BUG_REPORT_WEBHOOK_URL || DEFAULT_WEBHOOK_URL;

@@ -39,7 +39,9 @@
     "test:unavailable": "node tests/unavailable.test.mjs",
     "test:unavailable-ui": "node tests/unavailable-ui.test.mjs",
     "test:android-native-log": "node tests/android-native-log.mjs",
-    "test:android-call": "bash tests/android-auto-call.sh"
+    "test:android-call": "bash tests/android-auto-call.sh",
+    "test:watchdog": "bash tests/watchdog.test.sh",
+    "test:crash-report": "node tests/crash-report.test.mjs"
   },
   "devDependencies": {
     "playwright-core": "^1.62.1"
