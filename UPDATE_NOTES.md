@@ -1,19 +1,32 @@
 # Update notes: crash logging and automatic restarts on the host
 
-**Host: stop Ember and run `./update.sh` as usual, then start it inside tmux
-from now on** (`tmux new -s ember`, run `./start-static.sh`, detach with
-Ctrl+B then D). No PocketBase changes, no `npm install`. Optional: set
-`DISCORD_CRASH_WEBHOOK_URL` in `apps/web/.env.local` to send crash reports to
-their own channel; without it they go to the bug-report channel. See SETUP.md,
-"Crash logging".
+**Host: run the update from inside tmux from now on**, so the build happens
+once and Ember keeps running after you disconnect. No PocketBase changes, no
+`npm install`. This time:
+
+1. `command -v lsof` (if it prints nothing: `sudo apt install lsof`).
+2. `tmux new -s ember`
+3. Inside it, if the old Ember is running in this terminal, stop it with Ctrl+C.
+4. `./update.sh`
+5. Wait for "App is live", then detach with Ctrl+B then D.
+
+Later updates: `tmux attach -t ember`, Ctrl+C, `./update.sh`, detach again.
+Do not use `nohup` instead of tmux: closing the SSH session still stops the
+web app. Optional: set `DISCORD_CRASH_WEBHOOK_URL` in `apps/web/.env.local` to
+send crash reports to their own channel; without it they go to the bug-report
+channel. See SETUP.md, "Crash logging".
 
 - **A crashed PocketBase or web app restarts by itself**, after 5 s, 30 s, then
-  2 minutes. After 5 crashes in 10 minutes the watchdog leaves that service
-  down and says so, so a broken build cannot loop forever.
+  2 minutes. After 5 crashes in 10 minutes the watchdog says it is giving up,
+  then retries quietly every 10 minutes and posts once when the service stays
+  up again, so a broken build cannot flood the channel and a passing problem
+  does not need anyone to log in.
 - **Crashes are posted to Discord** with the last 50 lines of the service's
-  log (secrets scrubbed), as are uncaught server errors inside the web app, a
-  closed SSH window that stopped Ember, and a start after a reboot or power
-  loss. At most 10 posts an hour.
+  log (secrets scrubbed), as are uncaught server errors inside the web app
+  (the server keeps running after them), a closed SSH window that stopped
+  Ember, and a start after a reboot or power loss. At most 10 posts an hour.
+- **`update.sh` stops Ember before an `npm ci`**, and both scripts now need
+  `lsof` and say so if it is missing.
 - **Service output is kept on disk** in `logs/next.log`, `logs/pocketbase.log`
   and `logs/watchdog.log`, rotated at 5 MB.
 - **Ports from the environment now win over `apps/web/.env.local`** in

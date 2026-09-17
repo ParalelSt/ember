@@ -29,6 +29,11 @@ check() {
     echo "PASS  $name"
   else
     echo "FAIL  $name"
+    # What is still running from this run's temp dir, which is what most of
+    # these checks are about one way or another. ps, not pgrep: the parent and
+    # the age of a stray process are what tell you where it came from.
+    # shellcheck disable=SC2009
+    ps -eo pid,ppid,etime,command 2>/dev/null | grep "$TMP" | grep -v grep | sed 's/^/      still running: /'
     FAILED=$((FAILED + 1))
   fi
 }
@@ -78,6 +83,17 @@ echo "fake-crash exiting with 1"
 exit 1
 EOF
 
+# Crashes on its first 4 starts, then stays up: a service that recovers
+# after the watchdog has given up on it. $1 is its start counter file.
+cat >"$TMP/flaky.sh" <<'EOF'
+#!/usr/bin/env bash
+n=$(( $(cat "$1" 2>/dev/null || echo 0) + 1 ))
+echo "$n" >"$1"
+echo "fake-flaky start $n"
+if [ "$n" -le 4 ]; then sleep 0.2; exit 1; fi
+exec node "$2"
+EOF
+
 cat >"$TMP/healthy.mjs" <<'EOF'
 import http from 'node:http';
 const port = Number(process.argv[2]);
@@ -104,6 +120,8 @@ export WATCHDOG_SKIP_BUILD=1 WATCHDOG_BACKOFF="0 0 0" WATCHDOG_MAX_CRASHES=3 WAT
 # The posts must never fall back to a real webhook: a temp ROOT has no
 # .env.local or route file, and the env var above always wins anyway.
 unset DISCORD_BUG_REPORT_WEBHOOK_URL
+
+HUP_MESSAGE="Ember stopped: the terminal session closed (SIGHUP). Start it inside tmux so it keeps running after you disconnect."
 
 ROOT_DIR="$TMP/root"
 new_root() {
@@ -166,7 +184,9 @@ check "watchdog.log records the crashes" file_has "$LOGS/watchdog.log" "PocketBa
 check "service output still reaches the terminal" file_has "$TMP/run.out" "fake-healthy up on $HEALTHY_PORT"
 
 BEFORE="$(wc -l <"$POSTS")"
+STOP_STARTED="$(date +%s)"
 check "SIGTERM stops the watchdog" stop_and_wait TERM
+check "a stop of healthy services is prompt, not the full grace period" [ $(( $(date +%s) - STOP_STARTED )) -le 4 ]
 check "and the healthy service with it" wait_until 5 port_down "$HEALTHY_PORT"
 sleep 1.5
 check "no crash post for a planned stop" [ "$(wc -l <"$POSTS")" = "$BEFORE" ]
@@ -192,7 +212,7 @@ check "the lock now belongs to the new run" file_has "$ROOT_DIR/logs/ember.lock"
 check "services come up" wait_until 10 port_up "$HEALTHY_PORT"
 check "SIGHUP stops the watchdog" stop_and_wait HUP
 check "SIGHUP posts the terminal-closed message" wait_until 10 has_posts \
-  "Ember stopped: the terminal session closed (SIGHUP). Start it inside tmux, or with nohup, so it keeps running after you disconnect." 1
+  "$HUP_MESSAGE" 1
 sleep 1.5
 check "no crash post on hangup" [ "$(posts_matching 'crashed')" = 0 ]
 check "services stopped on hangup" port_down "$HEALTHY_PORT"
@@ -257,6 +277,99 @@ check "SIGTERM still stops a watchdog whose service ignores SIGTERM" stop_and_wa
 check "within the 8 s grace plus a little" [ $(( $(date +%s) - STARTED )) -le 12 ]
 check "the stubborn service was SIGKILLed, not left running" wait_until 3 no_leftovers
 check "no crash post for it" [ "$(posts_matching 'crashed')" = 0 ]
+
+# ── 6. a closing SSH session: SIGHUP to the whole process group, twice ───
+echo "── process-group SIGHUP, twice 50 ms apart"
+new_root
+HEALTHY_PORT="$(free_port)"
+export PORT="$HEALTHY_PORT"
+export WATCHDOG_CMD_PB="exec node '$TMP/stay.mjs'"
+export WATCHDOG_CMD_NEXT="exec node '$TMP/healthy.mjs' $HEALTHY_PORT"
+# Its own process group, like a job of the login shell PuTTY started; perl
+# because macOS has no setsid. The exec keeps the pid, so pgid = $WD.
+# shellcheck disable=SC2016  # $ARGV is perl's, not the shell's
+perl -e 'setpgrp(0, 0); exec { $ARGV[0] } @ARGV' -- bash "$ROOT_DIR/start-static.sh" >"$TMP/run.out" 2>&1 &
+WD=$!
+check "services come up under a separate process group" wait_until 10 port_up "$HEALTHY_PORT"
+wait_until 10 pgrep -f "$TMP/stay.mjs" >/dev/null
+kill -HUP -- "-$WD"
+sleep 0.05
+kill -HUP -- "-$WD"
+check "the watchdog stops" wait_until 15 not_running "$WD"
+reap_watchdog
+check "the terminal-closed post still arrives" wait_until 10 has_posts "$HUP_MESSAGE" 1
+sleep 2
+check "exactly one terminal-closed post" [ "$(posts_matching 'terminal session closed')" = 1 ]
+check "no crash post from the hangup" [ "$(posts_matching 'crashed')" = 0 ]
+check "the web service is stopped" port_down "$HEALTHY_PORT"
+check "lock removed: a clean stop" file_missing "$ROOT_DIR/logs/ember.lock"
+check "pid file removed too" file_missing "$ROOT_DIR/logs/watchdog.pid"
+check "nothing left running" wait_until 5 no_leftovers
+
+# ── 7. give up, retry quietly, post once when it is back ─────────────────
+echo "── give-up, quiet retries, recovery"
+new_root
+HEALTHY_PORT="$(free_port)"
+export PORT="$HEALTHY_PORT"
+export WATCHDOG_CMD_PB="exec bash '$TMP/flaky.sh' '$TMP/flaky.count' '$TMP/stay.mjs'"
+export WATCHDOG_CMD_NEXT="exec node '$TMP/healthy.mjs' $HEALTHY_PORT"
+rm -f "$TMP/flaky.count"
+WATCHDOG_RETRY=1 WATCHDOG_RECOVERED_AFTER=2 start_watchdog
+check "gives up after 3 crashes" wait_until 20 has_posts "giving up on PocketBase" 1
+check "posts once when the service stays up again" wait_until 30 has_posts "PocketBase is back up after 2 attempts" 1
+sleep 1
+check "the failed retry in between posted nothing (2 crash posts only)" [ "$(posts_matching 'Ember: PocketBase crashed')" = 2 ]
+check "exactly one recovery post" [ "$(posts_matching 'is back up')" = 1 ]
+check "one 'still retrying' line in the log" [ "$(count_in "$ROOT_DIR/logs/watchdog.log" 'still retrying every 1 min')" = 1 ]
+check "started 5 times: 3 crashes, 1 failed retry, 1 that stayed up" [ "$(cat "$TMP/flaky.count")" = 5 ]
+check "the other service kept running throughout" port_up "$HEALTHY_PORT"
+check "SIGTERM stops it cleanly afterwards" stop_and_wait TERM
+check "nothing left running after recovery and stop" wait_until 5 no_leftovers
+
+# ── 8. update.sh stops Ember before npm ci ───────────────────────────────
+echo "── update.sh stops Ember before an npm ci"
+new_root
+HEALTHY_PORT="$(free_port)"
+PB_FAKE_PORT="$(free_port)"
+export PORT="$HEALTHY_PORT" POCKETBASE_PORT="$PB_FAKE_PORT"
+export WATCHDOG_CMD_PB="exec node '$TMP/healthy.mjs' $PB_FAKE_PORT"
+export WATCHDOG_CMD_NEXT="exec node '$TMP/healthy.mjs' $HEALTHY_PORT"
+# A real git checkout with a local "origin", already up to date, and no
+# node_modules, so update.sh decides an install is needed.
+(
+  cd "$ROOT_DIR" || exit 1
+  printf 'logs/\nnode_modules/\n.node_modules.stamp\n' >.gitignore
+  echo '{}' >package-lock.json
+  git init -q . && git checkout -q -b main && git add -A &&
+    git -c user.email=test@ember.test -c user.name=test commit -q -m init &&
+    git init -q --bare "$TMP/origin.git" &&
+    git remote add origin "$TMP/origin.git" && git push -q origin main
+) >"$TMP/git.out" 2>&1
+check "test git checkout set up" [ $? = 0 ]
+# A fake npm on PATH records whether Ember was still up when the install began.
+mkdir -p "$TMP/bin"
+cat >"$TMP/bin/npm" <<'EOF'
+#!/usr/bin/env bash
+pid="$(cat logs/watchdog.pid 2>/dev/null)"
+if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then echo "watchdog=up"; else echo "watchdog=down"; fi >"$FAKE_NPM_LOG"
+if curl -fsS -m 1 "http://127.0.0.1:$PORT/" >/dev/null 2>&1; then echo "web=up"; else echo "web=down"; fi >>"$FAKE_NPM_LOG"
+mkdir -p node_modules
+EOF
+chmod +x "$TMP/bin/npm"
+start_watchdog
+check "Ember up before the update" wait_until 10 port_up "$HEALTHY_PORT"
+wait_until 10 port_up "$PB_FAKE_PORT"
+PATH="$TMP/bin:$PATH" FAKE_NPM_LOG="$TMP/npm.log" SKIP_YTDLP_UPGRADE=1 \
+  bash "$ROOT_DIR/update.sh" --no-start >"$TMP/update.out" 2>&1
+check "update.sh --no-start exits 0" [ $? = 0 ]
+check "npm ci ran" file_has "$TMP/npm.log" "watchdog="
+check "the watchdog was already stopped when npm ci started" file_has "$TMP/npm.log" "watchdog=down"
+check "the web app was already stopped when npm ci started" file_has "$TMP/npm.log" "web=down"
+check "the watchdog is gone" not_running "$WD"
+reap_watchdog
+sleep 2
+check "no crash posts around the install" [ "$(posts_matching 'crashed')" = 0 ]
+check "nothing restarted during or after the install" no_leftovers
 
 echo
 echo "$((TOTAL - FAILED))/$TOTAL passed"

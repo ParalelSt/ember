@@ -172,11 +172,15 @@ It refuses to run if you have uncommitted changes, and only runs `npm ci` when
 and the web app. If either one exits without being asked to (a crash, an out
 of memory kill, a `kill -9`), the watchdog restarts it after 5 s, then 30 s,
 then 120 s for every further crash. A service that crashes 5 times within 10
-minutes is left down, with a "giving up" report, and the other one keeps
-running; fix the cause, then restart Ember.
+minutes gets a "giving up" report and is then retried quietly every 10
+minutes, with no further posts, until it stays up; that recovery is posted
+once. The other service keeps running the whole time.
 
 **Run it inside tmux**, so closing PuTTY does not stop it. A closed SSH window
-sends the watchdog SIGHUP, and it stops Ember cleanly and reports that it did:
+sends the watchdog SIGHUP, and it stops Ember cleanly and reports that it did.
+`nohup` is not a substitute: the login shell's hangup still reaches the web
+app. `lsof` must be installed (`sudo apt install lsof`); `update.sh` uses it
+to find what to stop, and both scripts refuse to run without it.
 
 ```bash
 tmux new -s ember        # start a session, then run ./start-static.sh in it
@@ -184,20 +188,20 @@ tmux new -s ember        # start a session, then run ./start-static.sh in it
 tmux attach -t ember     # come back to it later (after reconnecting over SSH)
 ```
 
-`nohup ./start-static.sh &` works too, but tmux lets you see the output again.
-
 **What gets posted to Discord** (one embed each, footer with the host name,
 git commit and time, no @mentions):
 
 - **A crash**: which service, how it exited (exit code, or the signal that
   killed it), and when it restarts, with the last 50 lines of its log attached.
 - **Giving up** on a service after 5 crashes in 10 minutes, with its log tail.
+- **Back up**: a service the watchdog gave up on stayed up again ("Next is
+  back up after 3 attempts").
 - **A server error** inside the web app that nothing else caught (an uncaught
   exception or an unhandled promise rejection): the message as the title, the
-  stack as the text, once per distinct message per server process. An uncaught
-  exception also ends the web app process half a second later, so the
-  watchdog restarts a clean one; an unhandled rejection is reported but the
-  server keeps running (see `apps/web/lib/crashHandlers.ts` for why).
+  stack as the text, once per distinct message per server process. The server
+  keeps running after either, as Next does on its own: exiting would turn one
+  error that repeats on some page into a restart loop and a give-up (see
+  `apps/web/lib/crashHandlers.ts`).
 - **Terminal closed**: the SSH session ended and took Ember with it.
 - **Unclean shutdown**: Ember started while `logs/ember.lock` from a previous
   run was still there with its process gone, meaning the machine rebooted,
@@ -205,7 +209,8 @@ git commit and time, no @mentions):
 
 Planned stops are never reported: Ctrl+C, `kill <watchdog pid>` (SIGTERM),
 systemd stopping it, and `./update.sh` (which stops the watchdog first, then
-anything still on the ports).
+anything still on the ports, and does so before an `npm ci` so the install
+cannot pull the web app's dependencies out from under it).
 
 Log tails are scrubbed of bearer tokens, cookies, `pb_auth`, query-string
 values and long hex/base64 blobs before they are sent. At most 10 reports go
@@ -223,7 +228,7 @@ add `DISCORD_CRASH_WEBHOOK_URL=...` to `apps/web/.env.local`.
 | File | What |
 | --- | --- |
 | `next.log`, `pocketbase.log` | Each service's output (also shown in the terminal). Rotated to `.1` at 5 MB, checked at every start and restart. |
-| `watchdog.log` | Starts, stops, crashes, restarts, give-ups, and any Discord posting error. |
+| `watchdog.log` | Starts, stops, crashes, restarts, give-ups, the quiet retries, recoveries, and any Discord posting error. |
 | `errors-YYYY-MM-DD.jsonl` | The web app's own server error log (uncaught errors land here too). |
 | `watchdog.pid` | The running watchdog's pid, used by `update.sh`. Removed on a clean stop. |
 | `ember.lock` | pid and start time of the running watchdog. Left behind only by an unclean shutdown. |

@@ -70,39 +70,48 @@ SETUP.md, "Crash logging"). No sandbox, no PocketBase, no build, no network:
 run them from the repo root.
 
 ```bash
-bash tests/watchdog.test.sh        # or: npm run test:watchdog      (about 20 s)
+bash tests/watchdog.test.sh        # or: npm run test:watchdog      (about 40 s)
 node tests/crash-report.test.mjs   # or: npm run test:crash-report  (a few seconds)
 ```
 
-`watchdog.test.sh` (44 checks) copies `start-static.sh`, `update.sh` and
+`watchdog.test.sh` (72 checks) copies `start-static.sh`, `update.sh` and
 `scripts/crash-report.mjs` into a temp root per scenario, so the repo's own
 `logs/` is never touched, and supervises fake services (`WATCHDOG_CMD_PB`,
 `WATCHDOG_CMD_NEXT`) with `WATCHDOG_BACKOFF="0 0 0"`, `WATCHDOG_MAX_CRASHES=3`
 and `WATCHDOG_WINDOW=60`. Posts go to `tests/fake-discord.mjs` on a random
 port. It covers: a crashing service restarted with one post per crash, then a
-single give-up post and no further restarts, while the healthy one keeps
+single give-up post and no immediate restarts, while the healthy one keeps
 serving; service output in `logs/*.log` and the terminal; SIGTERM stopping
 both services with no crash post, removing `watchdog.pid` and `ember.lock`,
 and leaving no process behind; a leftover lock with a dead pid producing the
 unclean-shutdown post; SIGHUP posting the terminal-closed message and stopping
 cleanly; `update.sh`'s stop sequence (`UPDATE_STOP_ONLY=1`, test-only) stopping
-the watchdog before the ports with no crash post and no restart; and a
-SIGKILLed watchdog whose supervisors then refuse to restart a dead service; and a service that ignores SIGTERM being SIGKILLed after the 8 s grace.
+the watchdog before the ports with no crash post and no restart; a
+SIGKILLed watchdog whose supervisors then refuse to restart a dead service; a
+service that ignores SIGTERM being SIGKILLed after the 8 s grace; the watchdog
+in its own process group getting SIGHUP twice 50 ms apart (as a closing PuTTY
+session does), with exactly one terminal-closed post and a clean stop; a
+service that gives up, fails one quiet retry without posting, then stays up
+and posts "back up after 2 attempts" once (`WATCHDOG_RETRY=1`,
+`WATCHDOG_RECOVERED_AFTER=2`); and a real `update.sh --no-start` run against a
+local git origin with a fake `npm` on `PATH`, checking the watchdog and the web
+app were already stopped when `npm ci` began.
 
-`crash-report.test.mjs` (32 checks): webhook resolution order (crash env var,
+`crash-report.test.mjs` (34 checks): webhook resolution order (crash env var,
 bug-report env var, `.env.local`, then `DEFAULT_WEBHOOK_URL` extracted from a
 fixture copy of the route, plus a check that the real route still has one to
 extract), log-tail scrubbing of a bearer token and cookies, the rate-limit
 state (10 an hour, one mute notice, then silence), the multipart post (embed
 title/text/footer, no mentions, last 50 lines attached, an empty log attaching
-nothing), and exit 0 with one stderr line when the webhook answers 500 or is
+nothing, the title scrubbed too), the poster surviving two SIGHUPs and a SIGINT
+mid-post, and exit 0 with one stderr line when the webhook answers 500 or is
 unreachable. `EMBER_LOG_DIR` keeps its state file in a temp dir.
 
 The server-side catch (`apps/web/lib/crashHandlers.ts`) is unit-tested in
 `apps/web/lib/crashHandlers.test.ts`, run by `npm run test:unit`: it logs,
-spawns the poster once per distinct message, exits after the flush delay on an
-uncaught exception (not on an unhandled rejection), and still exits when
-logging and spawning both throw.
+spawns the poster once per distinct message, keeps the process running after
+both an uncaught exception and an unhandled rejection, and never throws when
+logging and spawning both fail.
 
 ## Sandbox tests
 

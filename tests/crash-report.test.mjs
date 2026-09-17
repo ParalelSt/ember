@@ -136,6 +136,32 @@ async function startSink(status = 204) {
   return { url: `http://127.0.0.1:${port}/hook`, posts, stop: () => proc.kill('SIGTERM') };
 }
 
+/** A webhook that answers after 400 ms; resolves requestStarted on arrival. */
+async function startSlowSink() {
+  const http = await import('node:http');
+  let started;
+  const requestStarted = new Promise((r) => (started = r));
+  const server = http.createServer((req, res) => {
+    started();
+    req.resume();
+    setTimeout(() => {
+      res.writeHead(204);
+      res.end();
+    }, 400);
+  });
+  await new Promise((r) => server.listen(0, '127.0.0.1', r));
+  return {
+    url: `http://127.0.0.1:${server.address().port}/hook`,
+    requestStarted,
+    // closeAllConnections: a poster killed mid-request leaves its socket
+    // open, and a plain close() would keep this test process alive.
+    stop: () => {
+      server.closeAllConnections();
+      server.close();
+    },
+  };
+}
+
 function runCli(args, env) {
   // Async so the sink in this same process can answer while the CLI waits.
   return new Promise((resolve) => {
@@ -172,6 +198,14 @@ function runCli(args, env) {
   const payload = payloadPart ? JSON.parse(payloadPart.content) : null;
   const embed = payload?.embeds?.[0];
   check('embed carries the title and text', embed?.title === 'Ember: Next crashed' && embed?.description.includes('exit code 1'));
+
+  await runCli(['--title', 'Server error: fetch ?token=hunter2hunter2 failed', '--text', 'x'], {
+    DISCORD_CRASH_WEBHOOK_URL: sink.url,
+    EMBER_LOG_DIR: logDir,
+  });
+  const titled = sink.posts()[1];
+  const titledEmbed = titled ? JSON.parse(parseMultipart(titled).find((p) => p.name === 'payload_json').content).embeds[0] : null;
+  check('the title is scrubbed too', !!titledEmbed && !titledEmbed.title.includes('hunter2') && titledEmbed.title.includes('?token=[scrubbed]'), titledEmbed?.title);
   check('mentions are disabled', Array.isArray(payload?.allowed_mentions?.parse) && payload.allowed_mentions.parse.length === 0);
   check(
     'footer has hostname, git sha and time',
@@ -190,7 +224,7 @@ function runCli(args, env) {
   const empty = path.join(TMP, 'empty.log');
   fs.writeFileSync(empty, '');
   await runCli(['--title', 'no tail', '--text', 'x', '--log', empty], { DISCORD_CRASH_WEBHOOK_URL: sink.url, EMBER_LOG_DIR: logDir });
-  const second = sink.posts()[1];
+  const second = sink.posts()[2];
   check('an empty log attaches no file', !!second && !parseMultipart(second).some((p) => p.filename));
   sink.stop();
 }
@@ -232,6 +266,27 @@ function runCli(args, env) {
 }
 
 // A sanity check that importing the module never posts by itself.
+// The poster outlives a closing terminal's SIGHUP (sent twice, 50 ms apart).
+{
+  // A slow webhook keeps the poster alive long enough to be signalled.
+  const slow = await startSlowSink();
+  const child = spawn(process.execPath, ['scripts/crash-report.mjs', '--title', 'hup', '--text', 'x'], {
+    env: { PATH: process.env.PATH, DISCORD_CRASH_WEBHOOK_URL: slow.url, EMBER_LOG_DIR: path.join(TMP, 'hup-logs') },
+    stdio: 'ignore',
+  });
+  // Listen before signalling: a poster killed by the first SIGHUP would
+  // otherwise exit before anyone is listening, and this would hang.
+  const exited = new Promise((r) => child.on('exit', (c, sig) => r(sig ?? c)));
+  await slow.requestStarted;
+  child.kill('SIGHUP');
+  await new Promise((r) => setTimeout(r, 50));
+  child.kill('SIGHUP');
+  child.kill('SIGINT');
+  const code = await exited;
+  check('two SIGHUPs and a SIGINT mid-post do not kill the poster', code === 0, String(code));
+  slow.stop();
+}
+
 {
   const r = spawnSync(process.execPath, ['-e', "import('./scripts/crash-report.mjs').then(() => console.log('ok'))"], {
     encoding: 'utf8',
