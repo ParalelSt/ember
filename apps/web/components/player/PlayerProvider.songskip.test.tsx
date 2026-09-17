@@ -136,6 +136,26 @@ describe('a premature "ended" from the engine', () => {
   });
 });
 
+describe('a mid-song failure the web backend reports as an error', () => {
+  it('stops the song and throws the playhead away, so replaying it starts from the beginning (bug)', () => {
+    renderPlayer();
+    // Where the listener actually was when the stream died.
+    act(() => {
+      capturedEvents?.onTime(97);
+    });
+    fake.currentTime = 97;
+
+    act(() => {
+      capturedEvents?.onError();
+    });
+
+    expect(usePlayerStore.getState().isPlaying).toBe(false);
+    // BUG: the stored playhead is reset to 0, so the same song played again
+    // (which is what the listener does) starts over rather than resuming.
+    expect(usePlayerStore.getState().position).toBe(0);
+  });
+});
+
 describe('Previous', () => {
   it('restarts the current song with seek(0) past the 3s mark, which is the seek the engine turns into an end of track (bug)', () => {
     renderPlayer();

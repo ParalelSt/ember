@@ -412,3 +412,25 @@ async fn a_seekable_decoder_survives_the_same_backward_seek() {
     );
 }
 
+
+/// The same thing against the REAL stream route instead of a fake host.
+/// Ignored by default: it needs a sandbox app (see tests/README.md, plus
+/// tests/stream-range.test.mjs for the server-side half) with a fake player
+/// whose downloads fail and a googlevideo stand-in that cuts the body and
+/// 403s Range requests. Run with:
+///
+///   SANDBOX_STREAM_URL=http://127.0.0.1:3018/api/youtube/stream/eeeeeeeeeee \
+///     cargo test --lib e2e_against -- --ignored --nocapture
+///
+/// Observed: a 120 s track "ended" at 54.2 s, i.e. the player would start the
+/// next song there.
+#[tokio::test(flavor = "multi_thread")]
+#[ignore]
+async fn e2e_against_the_sandbox_route() {
+    let url = std::env::var("SANDBOX_STREAM_URL").expect("SANDBOX_STREAM_URL");
+    let (sink, mut out, total) = open_like_audio_load(&url).await.expect("load");
+    let o = tokio::task::block_in_place(|| drive(&sink, &mut out, None, Duration::from_secs(90)));
+    eprintln!("E2E total={total:?} ended={} last_pos={:.1}", o.ended, o.last_pos);
+    assert!(o.ended);
+    assert!(o.last_pos < 110.0, "ended at {:.1}s of a 120s track", o.last_pos);
+}
