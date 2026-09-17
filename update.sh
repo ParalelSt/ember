@@ -55,14 +55,17 @@ stop_watchdog() {
   fi
   echo "▶ stopping the watchdog (pid $pid)…"
   kill -TERM "$pid" 2>/dev/null || true
-  for _ in $(seq 1 50); do
+  # 20 s: the watchdog gives each service 8 s after SIGTERM, and forcing it
+  # sooner would leave its lock behind, which the next start reports to
+  # Discord as an unclean shutdown.
+  for _ in $(seq 1 100); do
     kill -0 "$pid" 2>/dev/null || return 0
     sleep 0.2
   done
   # Its supervisors check that the watchdog is alive before any restart, so a
   # SIGKILL here still leaves no restart loop behind; stop_on_port below then
   # clears whatever it had not stopped yet.
-  echo "  watchdog still up after 10s: forcing"
+  echo "  watchdog still up after 20s: forcing"
   kill -KILL "$pid" 2>/dev/null || true
 }
 
@@ -85,7 +88,17 @@ stop_on_port() {
   fi
 }
 
+# Every stop below relies on lsof to find what listens on the ports. Without
+# it nothing would be stopped and nothing would say so.
+require_lsof() {
+  if ! command -v lsof >/dev/null 2>&1; then
+    echo "✗ lsof is required: sudo apt install lsof"
+    exit 1
+  fi
+}
+
 stop_everything() {
+  require_lsof
   stop_watchdog
   stop_on_port "$PORT" "the web app"
   stop_on_port "$PB_PORT" "PocketBase"
@@ -96,6 +109,8 @@ if [ "${UPDATE_STOP_ONLY:-0}" = "1" ]; then
   stop_everything
   exit 0
 fi
+
+[ "$MODE" = "check" ] || require_lsof
 
 echo "▶ fetching…"
 git fetch --quiet origin main
@@ -152,6 +167,10 @@ git pull --ff-only --quiet origin main
 LOCK_SHA="$(git hash-object package-lock.json)"
 STAMP="$ROOT/.node_modules.stamp"
 if [ ! -d "$ROOT/node_modules" ] || [ ! -f "$STAMP" ] || [ "$(cat "$STAMP")" != "$LOCK_SHA" ]; then
+  # npm ci deletes node_modules first. Stop Ember before that, so the
+  # running web app is not left without its dependencies, crashing, and
+  # being restarted and reported by the watchdog while the install runs.
+  stop_everything
   echo "▶ installing dependencies — npm ci…"
   npm ci
   echo "$LOCK_SHA" > "$STAMP"

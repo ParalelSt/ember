@@ -21,8 +21,9 @@
 #
 # WATCHDOG. This script stays in the foreground and supervises both services:
 # a service that exits on its own is restarted after a backoff (5 s, 30 s,
-# then 120 s), and after 5 crashes within 10 minutes it is left down with a
-# "giving up" report while the other keeps running. Every crash, give-up,
+# then 120 s). After 5 crashes within 10 minutes it posts "giving up" and
+# drops to a quiet retry every 10 minutes (no posts) until the service stays
+# up, which is posted once. The other service keeps running throughout. Every crash, give-up,
 # terminal hangup and unclean-shutdown notice is posted to Discord through
 # scripts/crash-report.mjs. Output also goes to logs/next.log,
 # logs/pocketbase.log and logs/watchdog.log. See SETUP.md, "Crash logging".
@@ -30,7 +31,9 @@
 # Works on macOS/Linux natively, and Windows under Git Bash. Ctrl+C stops.
 #
 # Test-only knobs (tests/watchdog.test.sh): WATCHDOG_BACKOFF ("5 30 120"),
-# WATCHDOG_MAX_CRASHES (5), WATCHDOG_WINDOW (600 s), WATCHDOG_CMD_NEXT and
+# WATCHDOG_MAX_CRASHES (5), WATCHDOG_WINDOW (600 s), WATCHDOG_RETRY (600 s,
+# the quiet retry interval after giving up), WATCHDOG_RECOVERED_AFTER (60 s
+# up before a retried service counts as back), WATCHDOG_CMD_NEXT and
 # WATCHDOG_CMD_PB (replace the two commands), WATCHDOG_SKIP_BUILD=1.
 #
 # Written for bash 3.2 as well (macOS's /bin/bash): no `wait -n`, no
@@ -49,12 +52,14 @@ LOCK_FILE="$LOG_DIR/ember.lock"
 WATCHDOG_BACKOFF="${WATCHDOG_BACKOFF:-5 30 120}"
 WATCHDOG_MAX_CRASHES="${WATCHDOG_MAX_CRASHES:-5}"
 WATCHDOG_WINDOW="${WATCHDOG_WINDOW:-600}"
+WATCHDOG_RETRY="${WATCHDOG_RETRY:-600}"
+WATCHDOG_RECOVERED_AFTER="${WATCHDOG_RECOVERED_AFTER:-60}"
 WATCHDOG_CMD_NEXT="${WATCHDOG_CMD_NEXT:-}"
 WATCHDOG_CMD_PB="${WATCHDOG_CMD_PB:-}"
 WATCHDOG_SKIP_BUILD="${WATCHDOG_SKIP_BUILD:-0}"
 ROTATE_BYTES=$((5 * 1024 * 1024))
 # How long a service gets to exit after SIGTERM before SIGKILL. Kept under
-# update.sh's 10 s wait for the watchdog, so a planned stop finishes inside it.
+# update.sh's 20 s wait for the watchdog, so a planned stop finishes inside it.
 STOP_GRACE=8
 
 # The pid this watchdog runs as. Supervisor subshells read it to notice when
@@ -67,6 +72,13 @@ pick_bin() {
   else return 1
   fi
 }
+
+# update.sh finds the running services by port with lsof. Without it an
+# update would silently stop nothing, so refuse up front instead.
+if ! command -v lsof >/dev/null 2>&1; then
+  echo "✗ lsof is required: sudo apt install lsof"
+  exit 1
+fi
 
 PB=""
 if [ -z "$WATCHDOG_CMD_PB" ]; then
@@ -111,18 +123,49 @@ say() {
   printf '[%s] %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*" >>"$WATCHDOG_LOG" 2>/dev/null || true
 }
 
+# exec_detached CMD...: execs CMD in a process group (and, with setsid, a
+# session) of its own, keeping the pid. Terminal signals go to the terminal's
+# process group, and a closing SSH session's shell sends SIGHUP to its jobs'
+# groups; neither then reaches the command. `trap '' HUP` alone is not
+# enough: Node resets every signal to its default at startup. setsid is Linux
+# (util-linux); perl's setpgrp covers macOS; with neither, a plain exec.
+# setsid only forks when the caller leads its process group, and a background
+# subshell never does, so the pid stays the one the supervisor waits on.
+exec_detached() {
+  if command -v setsid >/dev/null 2>&1; then
+    exec setsid "$@"
+  elif command -v perl >/dev/null 2>&1; then
+    exec perl -e 'setpgrp(0, 0); exec { $ARGV[0] } @ARGV or exit 127' -- "$@"
+  fi
+  exec "$@"
+}
+
 # post TITLE TEXT [LOGFILE]: one Discord report, in the background so a slow
-# or unreachable Discord never delays a restart. HUP and INT are ignored so a
-# report about the terminal closing is not killed by that same hangup.
+# or unreachable Discord never delays a restart. Detached from the terminal so
+# a report about the terminal closing is not killed by that same hangup (a
+# closing PuTTY session can send SIGHUP more than once).
 post() {
   local title="$1" text="$2" log="${3:-}"
   if [ -n "$log" ]; then
-    ( trap '' HUP INT; exec node "$ROOT/scripts/crash-report.mjs" --title "$title" --text "$text" --log "$log" --lines 50 ) \
+    ( exec_detached node "$ROOT/scripts/crash-report.mjs" --title "$title" --text "$text" --log "$log" --lines 50 ) \
       </dev/null >>"$WATCHDOG_LOG" 2>&1 &
   else
-    ( trap '' HUP INT; exec node "$ROOT/scripts/crash-report.mjs" --title "$title" --text "$text" ) \
+    ( exec_detached node "$ROOT/scripts/crash-report.mjs" --title "$title" --text "$text" ) \
       </dev/null >>"$WATCHDOG_LOG" 2>&1 &
   fi
+}
+
+# await_exit PID SECONDS: true once the process is gone, false on timeout.
+# Polling, not `wait`: after a trap interrupts a `wait`, bash can forget the
+# job, and a second `wait` on it then returns at once although it is alive.
+await_exit() {
+  local pid="$1" left=$(( $2 * 5 ))
+  while kill -0 "$pid" 2>/dev/null; do
+    [ "$left" -le 0 ] && return 1
+    left=$((left - 1))
+    sleep 0.2
+  done
+  return 0
 }
 
 # One generation is enough to see what led up to the latest crash, and it
@@ -152,16 +195,16 @@ is_watchdog_pid() {
 run_service() {
   case "$1" in
     pocketbase)
-      if [ -n "$WATCHDOG_CMD_PB" ]; then cd "$ROOT" && exec bash -c "$WATCHDOG_CMD_PB"; fi
-      cd "$PB_DIR" && exec "$PB" serve --http "127.0.0.1:${POCKETBASE_PORT}"
+      if [ -n "$WATCHDOG_CMD_PB" ]; then cd "$ROOT" && exec_detached bash -c "$WATCHDOG_CMD_PB"; fi
+      cd "$PB_DIR" && exec_detached "$PB" serve --http "127.0.0.1:${POCKETBASE_PORT}"
       ;;
     next)
-      if [ -n "$WATCHDOG_CMD_NEXT" ]; then cd "$ROOT" && exec bash -c "$WATCHDOG_CMD_NEXT"; fi
+      if [ -n "$WATCHDOG_CMD_NEXT" ]; then cd "$ROOT" && exec_detached bash -c "$WATCHDOG_CMD_NEXT"; fi
       # Run the next binary directly. Going through `npm start` or even `npx`
       # means npm wraps next, and npm prints a noisy "code 130 / Lifecycle
       # script failed" error on SIGINT. The binary itself handles signals
       # cleanly, and the watchdog's SIGTERM reaches next itself, not a wrapper.
-      cd "$ROOT/apps/web" && exec "$ROOT/node_modules/.bin/next" start -p "$PORT"
+      cd "$ROOT/apps/web" && exec_detached "$ROOT/node_modules/.bin/next" start -p "$PORT"
       ;;
   esac
 }
@@ -193,14 +236,17 @@ describe_exit() {
 supervise() {
   SUP_NAME="$1"; SUP_LABEL="$2"; SUP_LOG="$3"
   SUP_CHILD=""; SUP_SLEEPER=""; SUP_STOPPING=0; SUP_CRASHES=""
+  # After giving up: count of quiet retries, and whether the "still retrying"
+  # log line has been written yet.
+  SUP_GAVE_UP=0; SUP_ATTEMPTS=0; SUP_RETRY_LOGGED=0
   # Every exit status is inspected by hand; errexit would end the loop on the
   # first non-zero `wait`.
   set +e
   trap 'sup_on_term' TERM
-  # Only the watchdog decides when services stop. Ignoring these here makes
-  # the services inherit that, so Ctrl+C or a closed terminal cannot kill a
-  # service directly and be mistaken for a crash; the watchdog's own trap
-  # sends the SIGTERM instead.
+  # Only the watchdog decides when services stop; its own trap sends the
+  # SIGTERM. This loop and its tee stay in the watchdog's process group, so
+  # they ignore terminal signals; the services themselves are detached (see
+  # exec_detached), since Node would undo an inherited ignore.
   trap '' HUP INT
 
   while :; do
@@ -215,6 +261,10 @@ supervise() {
     # service exits by itself.
     [ "$SUP_STOPPING" = 1 ] && kill -TERM "$SUP_CHILD" 2>/dev/null
     say "▶ $SUP_LABEL started (pid $SUP_CHILD)"
+
+    if [ "$SUP_GAVE_UP" = 1 ]; then
+      sup_watch_recovery
+    fi
 
     wait "$SUP_CHILD"
     local rc=$?
@@ -233,6 +283,22 @@ supervise() {
     # service later, so leave it down instead of orphaning a restart loop.
     kill -0 "$WATCHDOG_PID" 2>/dev/null || exit 0
 
+    local reason
+    reason="$(describe_exit "$rc")"
+
+    # Given up already: no posts and no crash counting, just try again later.
+    if [ "$SUP_GAVE_UP" = 1 ]; then
+      if [ "$SUP_RETRY_LOGGED" = 0 ]; then
+        say "↻ $SUP_LABEL is still down ($reason); still retrying every $(( (WATCHDOG_RETRY + 59) / 60 )) min without posting"
+        SUP_RETRY_LOGGED=1
+      fi
+      sup_sleep "$WATCHDOG_RETRY"
+      [ "$SUP_STOPPING" = 1 ] && exit 0
+      kill -0 "$WATCHDOG_PID" 2>/dev/null || exit 0
+      SUP_ATTEMPTS=$((SUP_ATTEMPTS + 1))
+      continue
+    fi
+
     local now t kept="" count=0
     now="$(date +%s)"
     for t in $SUP_CRASHES; do
@@ -241,16 +307,22 @@ supervise() {
     SUP_CRASHES="$kept $now"
     count=$((count + 1))
 
-    local reason window_min
-    reason="$(describe_exit "$rc")"
+    local window_min
     window_min=$(( (WATCHDOG_WINDOW + 59) / 60 ))
 
     if [ "$count" -ge "$WATCHDOG_MAX_CRASHES" ]; then
       say "✗ $SUP_LABEL crashed ($reason), $count crashes within ${window_min} min: giving up on it"
       post "Ember: giving up on $SUP_LABEL" \
-        "$SUP_LABEL crashed $count times within ${window_min} min (last: $reason), so the watchdog stopped restarting it. The rest of Ember keeps running. Fix the cause, then restart Ember." \
+        "$SUP_LABEL crashed $count times within ${window_min} min (last: $reason), so the watchdog stopped restarting it right away. It retries quietly every $(( (WATCHDOG_RETRY + 59) / 60 )) min and posts once it stays up. The rest of Ember keeps running." \
         "$SUP_LOG"
-      exit 0
+      # Keep retrying instead of leaving it down for good: a crash caused by
+      # something outside Ember (a full disk, PocketBase briefly gone) should
+      # not need someone to log in once it clears.
+      SUP_GAVE_UP=1; SUP_ATTEMPTS=1; SUP_RETRY_LOGGED=0
+      sup_sleep "$WATCHDOG_RETRY"
+      [ "$SUP_STOPPING" = 1 ] && exit 0
+      kill -0 "$WATCHDOG_PID" 2>/dev/null || exit 0
+      continue
     fi
 
     local delay
@@ -263,6 +335,27 @@ supervise() {
     sup_sleep "$delay"
     [ "$SUP_STOPPING" = 1 ] && exit 0
     kill -0 "$WATCHDOG_PID" 2>/dev/null || exit 0
+  done
+}
+
+# After a give-up: polls the freshly restarted service until it has stayed up
+# WATCHDOG_RECOVERED_AFTER seconds (then posts once and resumes normal
+# supervision) or exits (then the caller's wait collects it at once). Polling,
+# because bash 3.2 has no `wait -n` to wait on the service and a timer together.
+sup_watch_recovery() {
+  local started
+  started="$(date +%s)"
+  while kill -0 "$SUP_CHILD" 2>/dev/null; do
+    if [ $(( $(date +%s) - started )) -ge "$WATCHDOG_RECOVERED_AFTER" ]; then
+      local word=attempts
+      [ "$SUP_ATTEMPTS" = 1 ] && word=attempt
+      say "✓ $SUP_LABEL is back up after $SUP_ATTEMPTS $word"
+      post "Ember: $SUP_LABEL is back up" "$SUP_LABEL is back up after $SUP_ATTEMPTS $word."
+      SUP_GAVE_UP=0; SUP_ATTEMPTS=0; SUP_RETRY_LOGGED=0; SUP_CRASHES=""
+      return 0
+    fi
+    sup_sleep 1
+    [ "$SUP_STOPPING" = 1 ] && return 0
   done
 }
 
@@ -285,20 +378,21 @@ sup_on_term() {
 }
 
 # Waits for the (already SIGTERMed) service to exit, SIGKILLing it after
-# STOP_GRACE. `wait` also reaps it: polling `kill -0` instead would keep
-# seeing the zombie as alive.
+# STOP_GRACE.
 sup_stop_child() {
   [ -n "$SUP_CHILD" ] || return 0
-  # `&&`: when the sleep is cut short below, the SIGKILL is skipped, so it can
-  # never land on a reused pid.
-  ( sleep "$STOP_GRACE" && kill -KILL "$SUP_CHILD" 2>/dev/null ) &
-  local timer=$!
-  # A second SIGTERM must not interrupt this wait, or the loop would exit
-  # while the service is still shutting down.
+  # A second SIGTERM must not cut this short, or the service would be left
+  # running while the loop exits.
   trap '' TERM
+  if ! await_exit "$SUP_CHILD" "$STOP_GRACE"; then
+    say "✗ $SUP_LABEL ignored SIGTERM for ${STOP_GRACE}s; killing it"
+    kill -KILL "$SUP_CHILD" 2>/dev/null
+    await_exit "$SUP_CHILD" 3
+  fi
+  # Collect the exit status if bash still lists it as a child. It may not:
+  # a `wait` interrupted by a trap can drop the job, which is exactly why
+  # this polls instead of waiting again.
   wait "$SUP_CHILD" 2>/dev/null
-  pkill -P "$timer" sleep 2>/dev/null || kill -KILL "$timer" 2>/dev/null
-  wait "$timer" 2>/dev/null
   say "■ $SUP_LABEL stopped"
 }
 
@@ -306,10 +400,20 @@ SUPERVISORS=""
 BUILD_PID=""
 STOPPING=0
 
-stop_supervisors() {
+signal_supervisors() {
   local pid
   for pid in $SUPERVISORS; do kill -TERM "$pid" 2>/dev/null || true; done
-  for pid in $SUPERVISORS; do wait "$pid" 2>/dev/null || true; done
+}
+
+stop_supervisors() {
+  local pid
+  signal_supervisors
+  for pid in $SUPERVISORS; do
+    # Each supervisor gives its service STOP_GRACE seconds, then kills it and
+    # allows a little more, so this waits for all of that and then some.
+    await_exit "$pid" $((STOP_GRACE + 6)) || say "✗ a supervisor did not stop in time"
+    wait "$pid" 2>/dev/null || true
+  done
   SUPERVISORS=""
 }
 
@@ -328,11 +432,15 @@ on_signal() {
   if [ "$sig" = HUP ]; then
     say "✗ the terminal session closed (SIGHUP); stopping Ember"
     post "Ember stopped: terminal closed" \
-      "Ember stopped: the terminal session closed (SIGHUP). Start it inside tmux, or with nohup, so it keeps running after you disconnect."
+      "Ember stopped: the terminal session closed (SIGHUP). Start it inside tmux so it keeps running after you disconnect."
   else
     say ""
     say "▶ stopping… ($sig)"
   fi
+  # Supervisors first: they must know this is a planned stop before anything
+  # else changes, so a service that dies on the same Ctrl+C is not counted as
+  # a crash. Then the build, then wait for the supervisors to finish.
+  signal_supervisors
   if [ -n "$BUILD_PID" ]; then
     kill_tree "$BUILD_PID"
     wait "$BUILD_PID" 2>/dev/null || true
@@ -435,8 +543,8 @@ echo ""
 echo "  (Ctrl+C to stop. Closing the terminal stops it too: use tmux.)"
 echo ""
 
-# Returns when every supervisor has ended on its own, which only happens when
-# each one gave up. A signal interrupts this wait and on_signal takes over.
+# Supervisors keep retrying even after giving up, so this returns only if one
+# died unexpectedly; kept so the lock is still released in that case. A signal interrupts this wait and on_signal takes over.
 # shellcheck disable=SC2086
 wait $SUPERVISORS || true
 say "✗ every supervised service has stopped; the watchdog exits"
