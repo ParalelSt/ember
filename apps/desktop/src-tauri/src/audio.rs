@@ -624,6 +624,9 @@ fn spawn_position_timer(
 }
 
 #[cfg(test)]
+mod skip_repro;
+
+#[cfg(test)]
 mod tests {
     use super::*;
     use std::io::{BufRead, BufReader, Write};
