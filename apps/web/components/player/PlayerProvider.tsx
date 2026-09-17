@@ -285,9 +285,12 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
           loadAndPlayRef.current?.(track, true);
           return;
         }
-        setPosition(0);
+        // Stop, but keep the playhead where the listener was. Resetting it to
+        // 0 meant that pressing play again, or clicking the song again, began
+        // the track from the start: the "the same song starts over" half of
+        // the report. The stored playhead already belongs to this track (see
+        // usePositionPersistence), so a retry resumes from it.
         setIsPlaying(false);
-        usePlayerStore.setState({ position: 0 });
         // Was the track itself the problem? The probe asks the server, flags
         // the queue entry if so, and skips on. See useAvailabilityProbe.
         probeAvailability();

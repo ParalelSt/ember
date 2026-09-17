@@ -213,7 +213,7 @@ describe('a premature "ended" from the engine', () => {
 });
 
 describe('a mid-song failure the web backend reports as an error', () => {
-  it('stops the song and throws the playhead away, so replaying it starts from the beginning (bug)', () => {
+  it('stops the song but keeps the playhead, so replaying it resumes where it died', () => {
     renderPlayer();
     // Where the listener actually was when the stream died.
     act(() => {
@@ -226,9 +226,24 @@ describe('a mid-song failure the web backend reports as an error', () => {
     });
 
     expect(usePlayerStore.getState().isPlaying).toBe(false);
-    // BUG: the stored playhead is reset to 0, so the same song played again
-    // (which is what the listener does) starts over rather than resuming.
-    expect(usePlayerStore.getState().position).toBe(0);
+    // The listener's next move is to play the same song again; it should pick
+    // up at 1:37, not start over.
+    expect(usePlayerStore.getState().position).toBe(97);
+  });
+
+  it('keeps the playhead when an ended arrives mid-song too', () => {
+    renderPlayer();
+    act(() => {
+      capturedEvents?.onTime(64);
+    });
+    fake.currentTime = 64;
+
+    act(() => {
+      capturedEvents?.onEnded();
+    });
+
+    expect(usePlayerStore.getState().index).toBe(0);
+    expect(usePlayerStore.getState().position).toBe(64);
   });
 });
 
