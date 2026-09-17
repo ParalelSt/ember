@@ -144,6 +144,7 @@ node tests/desktop-update.test.mjs                  # or: npm run test:update
 node tests/desktop-logger.test.mjs                  # or: npm run test:desktop-logger
 node tests/stream-source.test.mjs                   # or: npm run test:stream
 node tests/stream-fallback.test.mjs                 # or: npm run test:stream-fallback
+node tests/stream-range.test.mjs                    # or: npm run test:stream-range
 
 # Custom uploads (MUSIC_DIR must match the server's)
 MUSIC_DIR="$SB/music" node tests/uploads.test.mjs   # or: npm run test:uploads
@@ -332,6 +333,27 @@ local stand-in for googlevideo:
 
 The fix for the underlying cause is keeping yt-dlp current, which `update.sh`
 now does on every host update.
+
+## What `stream-range.test.mjs` covers
+
+The other half of the stale-yt-dlp story: what the same host does with a
+**Range** request. A Range request is not an edge case. The desktop engine
+sends one whenever its stream drops a chunk (stream-download refills the gap),
+and every browser sends one to seek.
+
+Same setup as `stream-fallback.test.mjs`, plus a googlevideo stand-in that
+answers a plain GET but **403s anything with a Range header**, the way a signed
+URL behaves once it no longer matches the client that resolved it:
+
+- **The first play still works** through the live proxy.
+- **(bug) The mid-file Range request comes back 502 JSON**, after the route has
+  run its whole download -> 403 -> re-extract -> 403 cascade. To the desktop
+  engine that is a dead source: rodio reports end-of-source, the engine emits
+  `audio:ended`, and the player starts the NEXT song part-way through this one.
+  The Rust half of that is
+  `apps/desktop/src-tauri/src/audio/skip_repro.rs`.
+- **A cached track answers 206 with the right bytes**, which is why the fault
+  only touches tracks the stale yt-dlp could not cache.
 
 ## What `desktop-logger.test.mjs` covers
 
