@@ -11,7 +11,6 @@ export async function register() {
   installCrashHandlers({
     log: serverLogger.error,
     spawnReport: spawnCrashReport,
-    exit: (code) => process.exit(code),
   });
 
   if (process.env.CLEANUP_DISABLED === '1') return;

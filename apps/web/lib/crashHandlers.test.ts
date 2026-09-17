@@ -1,18 +1,20 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createCrashHandlers } from './crashHandlers';
 
 function setup() {
   const log = vi.fn();
   const spawnReport = vi.fn();
-  const exit = vi.fn();
-  const timers: Array<{ fn: () => void; ms: number }> = [];
-  const setTimer = (fn: () => void, ms: number) => timers.push({ fn, ms });
-  const handlers = createCrashHandlers({ log, spawnReport, exit, setTimer });
-  const flush = () => timers.splice(0).forEach((t) => t.fn());
-  return { log, spawnReport, exit, timers, handlers, flush };
+  const exit = vi.spyOn(process, 'exit').mockImplementation((() => undefined) as never);
+  const handlers = createCrashHandlers({ log, spawnReport });
+  return { log, spawnReport, exit, handlers };
 }
 
 describe('crash handlers', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.useRealTimers();
+  });
+
   it('logs an uncaught exception with its stack', () => {
     const { log, handlers } = setup();
     const err = new Error('boom');
@@ -31,20 +33,16 @@ describe('crash handlers', () => {
     expect(text).toContain(err.stack);
   });
 
-  it('exits with 1 after the flush delay on an uncaught exception, once', () => {
-    const { exit, timers, handlers, flush } = setup();
+  it('keeps the process running after an uncaught exception', async () => {
+    vi.useFakeTimers();
+    const { exit, handlers } = setup();
     handlers.onUncaughtException(new Error('a'));
-    handlers.onUncaughtException(new Error('b'));
+    await vi.advanceTimersByTimeAsync(5000);
     expect(exit).not.toHaveBeenCalled();
-    expect(timers).toHaveLength(1);
-    expect(timers[0].ms).toBe(500);
-    flush();
-    expect(exit).toHaveBeenCalledWith(1);
-    expect(exit).toHaveBeenCalledTimes(1);
   });
 
   it('logs and reports an unhandled rejection without exiting', () => {
-    const { log, spawnReport, exit, timers, handlers } = setup();
+    const { log, spawnReport, exit, handlers } = setup();
     handlers.onUnhandledRejection('plain string reason');
     expect(log).toHaveBeenCalledWith(
       'crash',
@@ -53,7 +51,6 @@ describe('crash handlers', () => {
       expect.any(Error),
     );
     expect(spawnReport).toHaveBeenCalledWith('Server error: plain string reason', expect.stringContaining('unhandledRejection'));
-    expect(timers).toHaveLength(0);
     expect(exit).not.toHaveBeenCalled();
   });
 
@@ -68,9 +65,7 @@ describe('crash handlers', () => {
     expect(spawnReport.mock.calls.map((c) => c[0])).toEqual(['Server error: same', 'Server error: different']);
   });
 
-  it('still exits when logging and spawning both throw', () => {
-    const exit = vi.fn();
-    const timers: Array<() => void> = [];
+  it('never throws when logging and spawning both fail', () => {
     const handlers = createCrashHandlers({
       log: () => {
         throw new Error('disk full');
@@ -78,11 +73,8 @@ describe('crash handlers', () => {
       spawnReport: () => {
         throw new Error('spawn EAGAIN');
       },
-      exit,
-      setTimer: (fn) => timers.push(fn),
     });
     expect(() => handlers.onUncaughtException(new Error('boom'))).not.toThrow();
-    timers.forEach((fn) => fn());
-    expect(exit).toHaveBeenCalledWith(1);
+    expect(() => handlers.onUnhandledRejection(new Error('boom'))).not.toThrow();
   });
 });

@@ -5,18 +5,20 @@ import path from 'node:path';
  *  Installed from instrumentation.ts register(). Each one is written to the
  *  server log with its stack and posted to Discord through
  *  scripts/crash-report.mjs (the same poster the start-static.sh watchdog
- *  uses), then an uncaught exception ends the process so the watchdog starts
- *  a clean one. */
+ *  uses).
+ *
+ *  Neither kind ends the process. Next 16 deliberately keeps serving after an
+ *  uncaughtException or unhandledRejection (its own handlers only log), and
+ *  exiting here would turn one error that repeats on some request into a
+ *  restart loop: five restarts, a give-up, and a site that stays down for
+ *  everyone over a bug in one page. The report is what matters; the process
+ *  keeps running. */
 
 export interface CrashHandlerDeps {
   /** serverLogger.error in production. */
   log: (category: string, message: string, data?: unknown, err?: unknown) => void;
   /** Starts the Discord poster without waiting for it. */
   spawnReport: (title: string, text: string) => void;
-  exit: (code: number) => void;
-  /** Gives the fire-and-forget log append time to land before exit. */
-  flushDelayMs?: number;
-  setTimer?: (fn: () => void, ms: number) => unknown;
 }
 
 // Past this many distinct messages the process is producing a flood of
@@ -24,10 +26,7 @@ export interface CrashHandlerDeps {
 const MAX_DISTINCT_REPORTS = 50;
 
 export function createCrashHandlers(deps: CrashHandlerDeps) {
-  const flushDelayMs = deps.flushDelayMs ?? 500;
-  const setTimer = deps.setTimer ?? ((fn, ms) => setTimeout(fn, ms));
   const reported = new Set<string>();
-  let exiting = false;
 
   function handle(kind: 'uncaughtException' | 'unhandledRejection', reason: unknown) {
     const err = reason instanceof Error ? reason : new Error(describe(reason));
@@ -37,7 +36,7 @@ export function createCrashHandlers(deps: CrashHandlerDeps) {
     try {
       deps.log('crash', `${kind}: ${message}`, undefined, err);
     } catch {
-      // Logging must never stop the report or the exit below.
+      // Logging must never stop the report below, or throw from a handler.
     }
 
     // A crash loop would otherwise post the same error on every request.
@@ -46,23 +45,8 @@ export function createCrashHandlers(deps: CrashHandlerDeps) {
       try {
         deps.spawnReport(`Server error: ${message.slice(0, 100)}`, `${kind}\n${stack}`);
       } catch {
-        // Same: a failed spawn is not a reason to keep a broken process alive.
+        // A handler that throws would itself be an uncaught exception.
       }
-    }
-
-    // uncaughtException: the throw unwound through code that did not expect
-    // it, so in-memory state may be half-updated. Exit and let the watchdog
-    // start a fresh process.
-    //
-    // unhandledRejection: logged and reported, but the process keeps running.
-    // Next's own handler already keeps the server alive on these today, and
-    // a stray rejection (an aborted fetch, a client that hung up) rarely
-    // leaves shared state broken. Exiting on each one would turn a noisy but
-    // working server into a restart loop that the watchdog gives up on after
-    // five, taking the site down for something users never noticed.
-    if (kind === 'uncaughtException' && !exiting) {
-      exiting = true;
-      setTimer(() => deps.exit(1), flushDelayMs);
     }
   }
 
@@ -81,8 +65,8 @@ function describe(reason: unknown): string {
   }
 }
 
-/** Runs the poster detached, so it outlives this process when an uncaught
- *  exception is about to end it. The server's cwd is apps/web (the same
+/** Runs the poster detached, in its own process group, so it outlives this
+ *  process if the server is stopped while a report is still posting. The server's cwd is apps/web (the same
  *  assumption lib/logger/server.ts makes for logs/). */
 export function spawnCrashReport(title: string, text: string): void {
   const repoRoot = path.resolve(process.cwd(), '..', '..');

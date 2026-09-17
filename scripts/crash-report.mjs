@@ -10,6 +10,12 @@
  *  It never throws and always exits 0. The watchdog runs it in the background
  *  after a crash; a Discord outage must never turn into a second failure.
  */
+// Survive the terminal closing while a report is in flight: a closing PuTTY
+// session can deliver SIGHUP twice, and the report is often about exactly
+// that. An inherited ignore does not help, Node resets signals at startup.
+process.on('SIGHUP', () => {});
+process.on('SIGINT', () => {});
+
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -196,7 +202,9 @@ function gitShortSha() {
 
 export function buildForm({ title, text, logTail, logName = 'log.txt', now = new Date() }) {
   const embed = {
-    title: title.slice(0, TITLE_MAX),
+    // Titles carry error messages too (the server's "Server error: ..."), so
+    // they get the same scrub as the text.
+    title: scrubText(title).slice(0, TITLE_MAX),
     description: scrubText(text).slice(0, DESCRIPTION_MAX),
     color: 0xef4444,
     footer: { text: `${os.hostname()} · ${gitShortSha()} · ${now.toISOString()}` },
