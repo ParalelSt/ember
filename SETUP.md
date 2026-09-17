@@ -219,6 +219,16 @@ A report costs well under a cent (the logs are condensed and capped before
 they're sent), but **you** pay for everyone's reports since the key is yours.
 The 30-second-per-user cooldown on reports caps the spend too.
 
+### Feature and fix requests → your Discord channels
+
+There's a "Send a request" button next to Report a bug under `/settings/help`.
+Unlike bug reports, this one has no baked-in default: set
+`DISCORD_FEATURE_WEBHOOK_URL` and `DISCORD_FIX_WEBHOOK_URL` in
+`apps/web/.env.local` to two separate Discord webhooks, so features and fixes
+land in whichever channels you want. Leave one unset and choosing that kind
+in the dialog fails with "Requests are not set up on this server" — the
+button stays visible either way.
+
 ### Desktop auto-update
 
 The desktop apps check this server on launch and install new builds

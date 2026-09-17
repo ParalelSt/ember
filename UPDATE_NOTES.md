@@ -1,3 +1,16 @@
+# Update notes: send a feature or fix request from Settings > Help
+
+**Host: a normal rebuild and restart. No PocketBase changes.** Set
+`DISCORD_FEATURE_WEBHOOK_URL` and `DISCORD_FIX_WEBHOOK_URL` in
+`apps/web/.env.local` to receive requests; without them the button still
+shows but sending returns "Requests are not set up on this server" (see
+SETUP.md).
+
+- **A "Send a request" button next to Report a bug** opens a dialog where a
+  signed-in user picks New feature or Fix, fills a name and a description (or
+  recommended approach) plus an optional field, and it posts to its own
+  Discord channel.
+
 # Update notes: uploads keep their cover art
 
 **Host: a normal rebuild and restart, plus `npm install` (a new dependency
