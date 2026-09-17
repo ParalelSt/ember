@@ -222,12 +222,11 @@ The 30-second-per-user cooldown on reports caps the spend too.
 ### Feature and fix requests → your Discord channels
 
 There's a "Send a request" button next to Report a bug under `/settings/help`.
-Unlike bug reports, this one has no baked-in default: set
+Like bug reports, the two channel webhooks ship in source
+(`DEFAULT_WEBHOOKS` in `apps/web/app/api/requests/route.ts`), so friends
+self-hosting send to your channels too. To send somewhere else, set
 `DISCORD_FEATURE_WEBHOOK_URL` and `DISCORD_FIX_WEBHOOK_URL` in
-`apps/web/.env.local` to two separate Discord webhooks, so features and fixes
-land in whichever channels you want. Leave one unset and choosing that kind
-in the dialog fails with "Requests are not set up on this server": the
-button stays visible either way.
+`apps/web/.env.local`; the env vars win.
 
 ### Desktop auto-update
 

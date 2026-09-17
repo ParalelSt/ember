@@ -24,7 +24,7 @@ vi.mock('@/lib/logger/withRequestLog', () => ({
   withRequestLog: (_route: string, handler: unknown) => handler,
 }));
 
-const { POST } = await import('./route');
+const { POST, resolveWebhook } = await import('./route');
 
 function request(body: unknown): NextRequest {
   return {
@@ -107,6 +107,25 @@ describe('POST /api/requests: routing per kind', () => {
     const { body } = postedPayload();
     const embed = body.embeds[0];
     expect(embed.fields).toEqual([]);
+  });
+});
+
+describe('resolveWebhook', () => {
+  const defaults = { feature: 'https://example.test/feature', fix: 'https://example.test/fix' };
+  it('prefers the env webhook over the built-in one', () => {
+    expect(resolveWebhook('fix', 'a@b.c', { DISCORD_FIX_WEBHOOK_URL: 'https://env/fix' }, defaults)).toEqual({ url: 'https://env/fix', skip: false });
+  });
+  it('falls back to the built-in channel when env is unset', () => {
+    expect(resolveWebhook('feature', 'friend@example.com', {}, defaults)).toEqual({ url: 'https://example.test/feature', skip: false });
+  });
+  it('skips test accounts when only the built-in channel would receive it', () => {
+    expect(resolveWebhook('feature', 'dev@ember.test', {}, defaults)).toEqual({ url: 'https://example.test/feature', skip: true });
+  });
+  it('lets test accounts post to an explicit env webhook (the sandbox sinks)', () => {
+    expect(resolveWebhook('fix', 'dev@ember.test', { DISCORD_FIX_WEBHOOK_URL: 'http://127.0.0.1:4321/fix' }, defaults).skip).toBe(false);
+  });
+  it('returns no url when neither env nor a built-in channel is set', () => {
+    expect(resolveWebhook('fix', 'a@b.c', {}, { feature: '', fix: '' })).toEqual({ url: '', skip: false });
   });
 });
 

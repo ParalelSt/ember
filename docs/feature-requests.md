@@ -31,12 +31,7 @@ Name and the middle field are required.
 
 The message shows the type and name as the title, the fields, and a footer with the sender, app version, device and page.
 
-Webhooks live in `apps/web/.env.local`:
-
-```
-DISCORD_FEATURE_WEBHOOK_URL=
-DISCORD_FIX_WEBHOOK_URL=
-```
+Same as bug reports: the two channel webhooks are built into the code (`DEFAULT_WEBHOOKS` in `apps/web/app/api/requests/route.ts`), so every copy sends to your channels. `DISCORD_FEATURE_WEBHOOK_URL` and `DISCORD_FIX_WEBHOOK_URL` in `apps/web/.env.local` override them. Test accounts never post to the built-in channels.
 
 ## Limits
 
@@ -58,11 +53,10 @@ fields below whose labels and placeholders switch with the choice.
 
 ## Webhooks
 
-Unlike the bug-report webhook, these have **no default baked into source**:
-`DISCORD_FEATURE_WEBHOOK_URL` and `DISCORD_FIX_WEBHOOK_URL` are read from env
-only. If the one for the chosen kind is unset, the API returns 503 and the
-dialog shows "Requests are not set up on this server".
+Built in like the bug-report webhook (`DEFAULT_WEBHOOKS` in the route), with
+the env vars as overrides. If neither is set for the chosen kind, the API
+returns 503 and the dialog shows "Requests are not set up on this server".
 
 ## Open questions
 
-- Should requests from friends' self-hosted copies also reach your channels, or only from your host? Resolved by the webhook decision above: since there is no default webhook, a friend's self-hosted copy sends nowhere until they set their own env vars.
+- Should requests from friends' self-hosted copies also reach your channels? Yes, the webhooks are built in, same as bug reports.
