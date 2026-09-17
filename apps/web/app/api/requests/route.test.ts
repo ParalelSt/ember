@@ -24,7 +24,8 @@ vi.mock('@/lib/logger/withRequestLog', () => ({
   withRequestLog: (_route: string, handler: unknown) => handler,
 }));
 
-const { POST, resolveWebhook } = await import('./route');
+const { POST } = await import('./route');
+const { resolveWebhook } = await import('@/lib/requestWebhooks');
 
 function request(body: unknown): NextRequest {
   return {
