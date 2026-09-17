@@ -44,4 +44,5 @@ export {
   XCircle as XCircleIcon,
   Share as ShareIcon,
   Upload as UploadIcon,
+  MessageSquarePlus as RequestIcon,
 } from 'lucide-react';
