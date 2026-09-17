@@ -56,6 +56,13 @@ interface PlayerControls {
 
 const PlayerContext = createContext<PlayerControls | null>(null);
 
+/** How far short of a track's known length an `ended` event may land and still
+ *  count as the song finishing. Anything earlier is the engine's source giving
+ *  out, not a finished song. Generous, because backends report the last second
+ *  of a track coarsely (the web element's timeupdate fires a few times a
+ *  second, and a desktop decoder's duration is a second opinion at best). */
+const ENDED_SLACK_SEC = 5;
+
 /** Toast for tracks passed over on the way to a playable one. One skip names
  *  the track; more than one just gives the count (naming several would be
  *  noise). No-op on an empty list. */
@@ -185,7 +192,33 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         // us into the wrong mode.
         const state = usePlayerStore.getState();
         const cur = state.queue[state.index];
-        logger.breadcrumb('playback', 'ended', { trackId: cur?.id ?? null });
+        // The backend's own clock is the freshest reading; the store's is the
+        // last one it reported. The higher of the two, because mistaking a
+        // real end for a failure would cost the listener their auto-advance.
+        const pos = Math.max(backendRef.current?.getCurrentTime() ?? 0, state.position);
+        const dur = state.duration;
+        logger.breadcrumb('playback', 'ended', {
+          trackId: cur?.id ?? null,
+          position: Math.round(pos),
+          duration: Math.round(dur),
+        });
+        // An "ended" that arrives while the playhead is still well short of
+        // the song's known length did not come from a finished song: it came
+        // from a source that gave out (a stream that died, a seek the decoder
+        // could not service). Advancing the queue there IS the skip the
+        // listener sees, so run the error path instead — it keeps the song and
+        // retries it. Without a known duration there is nothing to compare
+        // against, so the event is taken at face value.
+        if (dur > 0 && pos < dur - ENDED_SLACK_SEC) {
+          logger.error('playback', 'the engine ended a track early', {
+            trackId: cur?.id ?? null,
+            position: Math.round(pos),
+            duration: Math.round(dur),
+            backend: backendKindRef.current,
+          });
+          handleError();
+          return;
+        }
         if (state.loopMode === 'one' && cur) {
           backendRef.current?.seek(0);
           backendRef.current?.play();
@@ -218,7 +251,13 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         setIsPlaying(false);
         logger.breadcrumb('playback', 'pause', { trackId: cur.queue[cur.index]?.id ?? null });
       },
-      onError: () => {
+      onError: () => handleError(),
+    };
+    // The error path, named so `onEnded` can run it for an "ended" that is
+    // really a failure (see there). Declared after `events` and hoisted, so
+    // both callbacks close over the same function.
+    function handleError() {
+      {
         // A native engine that can't play is worse than no native engine:
         // retry this track on web audio before giving up on it.
         if (backendKindRef.current === 'tauri-native' && !fellBackRef.current) {
@@ -252,8 +291,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         // Was the track itself the problem? The probe asks the server, flags
         // the queue entry if so, and skips on. See useAvailabilityProbe.
         probeAvailability();
-      },
-    };
+      }
+    }
     // Per-shell backend: tauri has a native engine (Part 5); capacitor keeps
     // web audio but mirrors the session to the native media-session plugin
     // (Part 3a — foreground service = background playback); plain web uses the

@@ -1,23 +1,33 @@
-/** Song-skip investigation: what the player does with the events a failing
- *  native engine sends it.
+/** The song skip, provider side: what the player does with the events a
+ *  failing engine sends it.
  *
  *  The desktop engine reports the end of its decoded source as `audio:ended`
  *  (apps/desktop/src-tauri/src/audio.rs, the position timer's `if empty`
- *  branch), and its source ends on ANY read failure as well as on a real end
- *  of track, and on a seek it cannot service. The Rust side of that is proven
- *  in apps/desktop/src-tauri/src/audio/skip_repro.rs; this is the other half:
- *  what the provider does when such an event arrives.
- *
- *  Tests whose name ends in "(bug)" describe today's behaviour, which is the
- *  reported fault; a fix flips them. */
+ *  branch), and a source can end for reasons that are not a finished song.
+ *  The engine now says so itself (see skip_repro.rs), but the provider is the
+ *  last line: an `ended` that arrives while the playhead is far from the end
+ *  of a song is treated as a failure rather than as a reason to play the next
+ *  one. These tests started as reproductions of the skip and now assert that
+ *  behaviour. */
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, act } from '@testing-library/react';
 import { PlayerProvider, usePlayer } from './PlayerProvider';
 import { usePlayerStore } from '@/stores/usePlayerStore';
 import { makeFakeBackend, makeTrack } from '@/test-utils/fakeBackend';
+import { logger } from '@/lib/logger/client';
 import type { AudioBackendEvents, LoadOptions } from '@/lib/playback/types';
 
 vi.mock('@/lib/api', () => ({ api: {}, apiUrl: (u: string) => u }));
+// A skip has to be explainable afterwards, so the breadcrumbs are asserted on.
+vi.mock('@/lib/logger/client', () => ({
+  logger: {
+    boot: vi.fn(),
+    setContext: vi.fn(),
+    breadcrumb: vi.fn(),
+    error: vi.fn(),
+    warn: vi.fn(),
+  },
+}));
 
 const fake = makeFakeBackend();
 fake.load = vi.fn((_url: string, opts: LoadOptions) => {
@@ -72,14 +82,14 @@ beforeEach(() => {
     position: 0,
     duration: 200,
     isPlaying: true,
-    context: { type: 'album', id: 'alb1' },
+    context: { type: 'album', albumId: 'alb1', albumTitle: 'Night Shift' },
     baseCount: 2,
     loopMode: 'off',
   });
 });
 
 describe('a premature "ended" from the engine', () => {
-  it('starts the next song when the engine says a track ended 30s into a 200s song (bug)', () => {
+  it('does not advance when the engine says a track ended 30s into a 200s song', () => {
     renderPlayer();
     fake.load.mockClear();
     fake.currentTime = 30;
@@ -91,35 +101,102 @@ describe('a premature "ended" from the engine', () => {
       capturedEvents?.onEnded();
     });
 
-    expect(usePlayerStore.getState().index).toBe(1);
-    expect(usePlayerStore.getState().queue[usePlayerStore.getState().index].id).toBe(SECOND.id);
-    expect(fake.load).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({ autoplay: true }));
+    expect(usePlayerStore.getState().index).toBe(0);
+    expect(usePlayerStore.getState().queue[usePlayerStore.getState().index].id).toBe(FIRST.id);
+    // The error path ran instead: the song stays, nothing new is loaded.
+    expect(fake.load).not.toHaveBeenCalled();
+    expect(usePlayerStore.getState().isPlaying).toBe(false);
   });
 
-  it('cannot tell a failure from a finished track: position and duration are not consulted', () => {
+  it('leaves a breadcrumb naming the position and the duration', () => {
     renderPlayer();
-    // A finished track and a failed one look identical here: the only inputs
-    // are the event itself and the queue.
+    fake.currentTime = 30;
+
+    act(() => {
+      capturedEvents?.onEnded();
+    });
+
+    // A skip used to be invisible in a bug report. Both the ordinary
+    // breadcrumb and the error carry the two numbers that explain it.
+    expect(logger.breadcrumb).toHaveBeenCalledWith(
+      'playback',
+      'ended',
+      expect.objectContaining({ trackId: FIRST.id, position: 30, duration: 200 }),
+    );
+    expect(logger.error).toHaveBeenCalledWith(
+      'playback',
+      expect.stringContaining('ended a track early'),
+      expect.objectContaining({ position: 30, duration: 200 }),
+    );
+  });
+
+  it('tells a failure from a finished track by the playhead', () => {
+    renderPlayer();
+    // A track that really finished: the queue advances exactly as before.
     fake.currentTime = 199;
     act(() => {
       capturedEvents?.onEnded();
     });
-    const afterReal = usePlayerStore.getState().index;
+    expect(usePlayerStore.getState().index).toBe(1);
 
-    act(() => {
-      usePlayerStore.setState({ index: 0 });
-    });
+    // The same event two seconds into the next song is a failure.
     fake.currentTime = 2;
     act(() => {
       capturedEvents?.onEnded();
     });
-
-    expect(usePlayerStore.getState().index).toBe(afterReal);
+    expect(usePlayerStore.getState().index).toBe(1);
   });
 
-  it('restarts the current song under loop-one, which the native engine cannot do once its source has ended', () => {
+  it('still advances when the engine ends a track a second short of its length', () => {
+    renderPlayer();
+    // Backends report the last second coarsely; an end that close is real.
+    fake.currentTime = 199.2;
+
+    act(() => {
+      capturedEvents?.onEnded();
+    });
+
+    expect(usePlayerStore.getState().index).toBe(1);
+  });
+
+  it('advances on an ended with no known duration, having nothing to compare against', () => {
+    // Neither the catalog nor the engine knows how long this is (an upload
+    // whose length was never measured, say).
+    usePlayerStore.setState({
+      queue: [makeTrack({ id: 'youtube:unknown', durationSec: 0 }), SECOND],
+      duration: 0,
+    });
+    renderPlayer();
+    fake.currentTime = 0;
+    fake.durationSec = 0;
+
+    act(() => {
+      capturedEvents?.onEnded();
+    });
+
+    expect(usePlayerStore.getState().index).toBe(1);
+  });
+
+  it('restarts the current song under loop-one when it really finished', () => {
     usePlayerStore.setState({ loopMode: 'one' });
     renderPlayer();
+    fake.currentTime = 199;
+    fake.seek.mockClear();
+    fake.play.mockClear();
+
+    act(() => {
+      capturedEvents?.onEnded();
+    });
+
+    expect(fake.seek).toHaveBeenCalledWith(0);
+    expect(fake.play).toHaveBeenCalled();
+    expect(usePlayerStore.getState().index).toBe(0);
+  });
+
+  it('does not replay a dead stream under loop-one when the song had not finished', () => {
+    usePlayerStore.setState({ loopMode: 'one' });
+    renderPlayer();
+    fake.currentTime = 12;
     fake.seek.mockClear();
     fake.play.mockClear();
 
@@ -128,10 +205,9 @@ describe('a premature "ended" from the engine', () => {
     });
 
     // seek(0) + play() on a sink whose source already ended is a no-op in the
-    // Rust engine (nothing is left to seek), so loop-one goes silent after a
-    // failure rather than repeating the song.
-    expect(fake.seek).toHaveBeenCalledWith(0);
-    expect(fake.play).toHaveBeenCalled();
+    // Rust engine, so loop-one went silent after a failure instead of
+    // repeating the song. The error path retries it for real.
+    expect(fake.seek).not.toHaveBeenCalled();
     expect(usePlayerStore.getState().index).toBe(0);
   });
 });
