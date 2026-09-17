@@ -1,8 +1,19 @@
-/** Next's startup hook — runs once when the server boots.
- *  Used to schedule the daily cache/DB cleanup. */
+/** Next's startup hook: runs once when the server boots.
+ *  Installs the uncaught-error catch and schedules the daily cache/DB cleanup. */
 export async function register() {
   // Only the Node server runtime has a filesystem and PocketBase access.
   if (process.env.NEXT_RUNTIME !== 'nodejs') return;
+
+  // Before the cleanup opt-out below: a server with cleanup disabled still
+  // needs its crashes logged and reported.
+  const { installCrashHandlers, spawnCrashReport } = await import('@/lib/crashHandlers');
+  const { serverLogger } = await import('@/lib/logger/server');
+  installCrashHandlers({
+    log: serverLogger.error,
+    spawnReport: spawnCrashReport,
+    exit: (code) => process.exit(code),
+  });
+
   if (process.env.CLEANUP_DISABLED === '1') return;
 
   const { createAdminClient } = await import('@/lib/pocketbase/server');
