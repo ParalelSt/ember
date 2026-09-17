@@ -2,7 +2,7 @@
 //! a seek, into "the track ended".
 //!
 //! These tests drive the SAME source chain `audio_load` builds (`HttpStream`
-//! -> `StreamDownload` on temp storage -> `rodio::Decoder::new` -> `Sink`)
+//! -> `StreamDownload` on temp storage -> `build_decoder` -> `Sink`)
 //! against a local fake stream host, with no audio device: the test pulls
 //! samples out of the sink's queue itself, the way the output mixer would,
 //! and then reads `sink.empty()` - which is exactly the condition
@@ -13,9 +13,9 @@
 //! behaviour after the fix, against the engine's own `build_decoder` and
 //! `seek_target`, so a regression in either shows up here.
 
-use std::io::{BufRead, BufReader, Write};
+use std::io::{self, BufRead, BufReader, Read, Seek, SeekFrom, Write};
 use std::net::{TcpListener, TcpStream};
-use std::sync::atomic::{self, AtomicUsize};
+use std::sync::atomic::{self, AtomicBool, AtomicUsize};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -45,12 +45,11 @@ enum Behaviour {
     /// `honest_ranges` Range requests are answered, and every Range request
     /// after those is refused with `range_status` and a JSON error body.
     ///
-    /// That is a stream that dies mid-song: the load works (the decoder's
-    /// probe reads the tail of the file over the first Range request), the
-    /// song starts, and then the refill the reader needs is refused - a signed
-    /// URL that expired, a proxy that gave up, or the stream route on a host
-    /// whose yt-dlp cannot download, whose refill runs the whole
-    /// download -> 403 -> re-extract -> 403 cascade and ends in an error body.
+    /// That is a host that has stopped being able to serve this file: the
+    /// stream route on a host whose yt-dlp cannot download answers a refill
+    /// with the whole download -> 403 -> re-extract -> 403 cascade and ends in
+    /// an error body. `honest_ranges` says how far it gets first: 0 refuses
+    /// even the read the decoder makes while it is built.
     CutThenRangeFails { cut: usize, range_status: u16, honest_ranges: usize },
 }
 
@@ -319,6 +318,79 @@ async fn a_host_that_cannot_serve_a_refill_fails_the_load_instead_of_skipping() 
     );
 }
 
+/// The fixture in memory, with a switch that makes every read past `good`
+/// bytes fail once it is armed: a `StreamDownload` whose download task has
+/// given up (a truncated body, a refill that 403s, a sleeping laptop). The
+/// switch is armed only after the decoder has been built, so the failure is a
+/// mid-song death rather than a load that never worked.
+struct DiesPastByte {
+    data: &'static [u8],
+    pos: u64,
+    good: u64,
+    armed: Arc<AtomicBool>,
+}
+
+impl Read for DiesPastByte {
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        let dead = self.armed.load(atomic::Ordering::SeqCst);
+        if dead && self.pos >= self.good {
+            return Err(io::Error::other("stream failed to download"));
+        }
+        let limit = if dead { self.good } else { self.data.len() as u64 };
+        let end = (self.pos + buf.len() as u64).min(limit) as usize;
+        let start = self.pos as usize;
+        let n = end.saturating_sub(start);
+        buf[..n].copy_from_slice(&self.data[start..end]);
+        self.pos += n as u64;
+        Ok(n)
+    }
+}
+
+impl Seek for DiesPastByte {
+    fn seek(&mut self, pos: SeekFrom) -> io::Result<u64> {
+        let len = self.data.len() as i64;
+        let target = match pos {
+            SeekFrom::Start(n) => n as i64,
+            SeekFrom::End(n) => len + n,
+            SeekFrom::Current(n) => self.pos as i64 + n,
+        };
+        if target < 0 {
+            return Err(io::Error::other("seek before the start"));
+        }
+        self.pos = (target as u64).min(len as u64);
+        Ok(self.pos)
+    }
+}
+
+/// What the engine builds for a track, over a source that can be killed on
+/// demand: the sink, the queue the mixer pulls from, the switch that kills
+/// the stream, and the failure flag the position timer reads.
+struct Killable {
+    sink: Sink,
+    out: SourcesQueueOutput,
+    kill: Arc<AtomicBool>,
+    failed: Arc<AtomicBool>,
+}
+
+fn killable_source(good_fraction: f64) -> Killable {
+    let kill = Arc::new(AtomicBool::new(false));
+    let failed = Arc::new(AtomicBool::new(false));
+    let reader = super::FailFlagged {
+        inner: DiesPastByte {
+            data: FASTSTART,
+            pos: 0,
+            good: (FASTSTART.len() as f64 * good_fraction) as u64,
+            armed: Arc::clone(&kill),
+        },
+        failed: Arc::clone(&failed),
+    };
+    let decoder = super::build_decoder(reader, Some(FASTSTART.len() as u64)).expect("decode");
+    let (sink, out) = Sink::new();
+    sink.append(decoder);
+    sink.play();
+    Killable { sink, out, kill, failed }
+}
+
 /// CAUSE 2a, FIXED. `audio_load` used to build the decoder with
 /// `rodio::Decoder::new`, which leaves symphonia's media source NOT seekable
 /// and with no byte length, so the demuxer could only move forward: a
@@ -424,6 +496,48 @@ async fn a_proxied_fragmented_stream_plays_through_when_left_alone() {
 
     assert!(o.ended);
     assert!((o.last_pos - FIXTURE_SECS).abs() < 2.0, "it should play to the end: {:.1}s", o.last_pos);
+}
+
+/// CAUSE 2, FIXED. A stream that dies half way through a song used to be
+/// indistinguishable from a song that finished: rodio turns the read error
+/// into end-of-source, the sink goes empty, and the engine emitted
+/// `audio:ended` - which the player answers by starting the NEXT song, with
+/// no error, no toast and no breadcrumb. The reader now records that it
+/// failed, which is what `spawn_position_timer` checks before it calls a
+/// track finished.
+#[test]
+fn a_source_that_dies_mid_song_is_reported_as_a_failure() {
+    let Killable { sink, mut out, kill, failed } = killable_source(0.75);
+
+    // The stream dies now: everything past three quarters of the file is gone
+    // for good, exactly as a failed StreamDownload behaves.
+    kill.store(true, atomic::Ordering::SeqCst);
+    let o = drive(&sink, &mut out, None, Duration::from_secs(30));
+
+    assert!(o.ended, "the sink went empty part-way through the song");
+    assert!(
+        o.last_pos < FIXTURE_SECS - 20.0,
+        "it stopped mid-song, at {:.1}s of {FIXTURE_SECS}s",
+        o.last_pos
+    );
+    assert!(
+        failed.load(atomic::Ordering::SeqCst),
+        "the source is flagged as failed, so the engine emits audio:error instead of audio:ended"
+    );
+}
+
+/// The other half of the same rule: a song that really finishes leaves no
+/// failure behind, so the engine still emits `audio:ended` and the queue
+/// advances as it always did.
+#[test]
+fn a_track_that_really_finishes_is_not_a_failure() {
+    let Killable { sink, mut out, failed, .. } = killable_source(1.0);
+
+    let o = drive(&sink, &mut out, None, Duration::from_secs(30));
+
+    assert!(o.ended);
+    assert!((o.last_pos - FIXTURE_SECS).abs() < 2.0, "it played to the end: {:.1}s", o.last_pos);
+    assert!(!failed.load(atomic::Ordering::SeqCst), "nothing failed, so this is a real end of track");
 }
 
 /// Why the byte length matters, kept as a guard on the cause: build the very
