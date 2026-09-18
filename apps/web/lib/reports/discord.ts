@@ -27,10 +27,31 @@ export function usingDefaultWebhook(): boolean {
 /** Discord's per-field value cap. */
 export const DISCORD_FIELD_CHARS = 1024;
 
+/** Discord rejects an embed whose title, description, fields and footer
+ *  together exceed this many characters (not just each field on its own). */
+export const DISCORD_EMBED_CHARS = 6000;
+
+/** Left un-budgeted on purpose: a cushion against off-by-one counting (does
+ *  a fence's own characters count the same on Discord's side, emoji width,
+ *  etc.) so a report lands a little short of the wall rather than getting
+ *  rejected by it. */
+const DISCORD_EMBED_MARGIN = 200;
+
 export interface EmbedField {
   name: string;
   value: string;
   inline: boolean;
+}
+
+/** How much of the 6000-character embed budget is left for one growing
+ *  field once everything else in the embed (title, description, the other
+ *  fields, footer) is accounted for. `used` is the character count of all
+ *  of that other content; callers pass the result straight into
+ *  `codeFields`'s `maxChars`. Never negative: a caller that is already over
+ *  budget on the fixed parts gets 0, and `codeFields` degrades to an empty
+ *  or minimal field rather than throwing. */
+export function remainingEmbedBudget(used: number): number {
+  return Math.max(0, DISCORD_EMBED_CHARS - DISCORD_EMBED_MARGIN - used);
 }
 
 /** One or more fields carrying `text` as a fenced code block, split on whole
@@ -38,8 +59,14 @@ export interface EmbedField {
  *  "<name>", "<name> (cont.)", "<name> (cont. 2)", ... An embed may hold at
  *  most 25 fields in total, so callers pass `maxFields` to leave room for
  *  their own; anything past it is dropped with a final "(N more lines)"
- *  marker rather than making Discord reject the whole message. */
-export function codeFields(name: string, text: string, maxFields = 6): EmbedField[] {
+ *  marker rather than making Discord reject the whole message.
+ *
+ *  `maxChars`, when given, is a second, whole-embed budget (see
+ *  `remainingEmbedBudget`): once the fields built so far would push the
+ *  embed over it, the field that doesn't fit is truncated with the same
+ *  "(N more lines omitted)" marker and anything after it is dropped, rather
+ *  than silently building an embed Discord rejects outright. */
+export function codeFields(name: string, text: string, maxFields = 6, maxChars?: number): EmbedField[] {
   const fence = '```\n';
   const budget = DISCORD_FIELD_CHARS - fence.length * 2;
   const lines = text.split('\n');
@@ -67,9 +94,35 @@ export function codeFields(name: string, text: string, maxFields = 6): EmbedFiel
     const last = chunks.length - 1;
     chunks[last] = `${chunks[last].slice(0, budget - marker.length)}${marker}`;
   }
-  return chunks.map((chunk, i) => ({
-    name: i === 0 ? name : `${name} (cont.${i > 1 ? ` ${i}` : ''})`,
+
+  const fieldName = (i: number) => (i === 0 ? name : `${name} (cont.${i > 1 ? ` ${i}` : ''})`);
+  const toField = (chunk: string, i: number): EmbedField => ({
+    name: fieldName(i),
     value: `${fence}${chunk}\n\`\`\``,
     inline: false,
-  }));
+  });
+
+  if (maxChars === undefined) return chunks.map(toField);
+
+  // Second pass: keep whole fields while the running total still fits the
+  // whole-embed budget; the first one that doesn't gets truncated in place
+  // (folding every line it and any later field would have carried into one
+  // "more lines omitted" marker) and nothing after it is emitted.
+  const fields: EmbedField[] = [];
+  let used = 0;
+  for (let i = 0; i < chunks.length; i++) {
+    const f = toField(chunks[i], i);
+    const cost = f.name.length + f.value.length;
+    if (used + cost <= maxChars) {
+      fields.push(f);
+      used += cost;
+      continue;
+    }
+    const extraDropped = chunks.slice(i).reduce((n, c) => n + c.split('\n').length, 0);
+    const marker = `\n(${extraDropped} more line${extraDropped === 1 ? '' : 's'} omitted)`;
+    const room = maxChars - used - f.name.length - fence.length * 2 - marker.length;
+    if (room > 0) fields.push({ ...f, value: `${fence}${chunks[i].slice(0, room)}${marker}\n\`\`\`` });
+    break;
+  }
+  return fields;
 }

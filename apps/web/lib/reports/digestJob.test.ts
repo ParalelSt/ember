@@ -168,6 +168,39 @@ describe('runDigest', () => {
     expect(payload.since).toMatch(/T/);
   });
 
+  it('keeps the whole embed under Discord\'s 6000-char cap on a busy day, truncating rather than getting rejected (final-review fix)', async () => {
+    // 20 distinct groups (TOP_GROUPS) with long route names, plus a long AI
+    // headline and "What to look at" list: on its own the Errors code block
+    // would need several full 1024-char fields, and combined with the rest
+    // of the embed that would push the whole thing well past 6000. Nothing
+    // here relies on the per-field 1024 cap or the 6-field maxFields cap
+    // alone; the point is the new whole-embed character budget.
+    const now = Date.now();
+    vi.mocked(serverLogger.entriesSince).mockResolvedValue(
+      Array.from({ length: 20 }, (_, i) =>
+        entry({ ts: now - i * 1000, reqId: `r${i}`, route: `/api/very/long/route/name/${'segment-'.repeat(30)}${i}` }),
+      ),
+    );
+    vi.mocked(summarizeDigest).mockResolvedValue({
+      headline: 'H'.repeat(2000),
+      lines: ['L'.repeat(2000)],
+    });
+
+    const result = await runDigest();
+
+    expect(result.posted).toBe(true);
+    const embed = postedEmbed();
+    const total =
+      embed.title.length +
+      embed.description.length +
+      embed.footer.text.length +
+      embed.fields.reduce((n, f) => n + f.name.length + f.value.length, 0);
+    expect(total).toBeLessThanOrEqual(6000);
+    const errorFields = embed.fields.filter((f) => f.name === 'Errors' || f.name.startsWith('Errors ('));
+    expect(errorFields.length).toBeGreaterThan(0);
+    expect(errorFields.some((f) => f.value.includes('more lines omitted'))).toBe(true);
+  });
+
   it('uses the model headline and lines when the summary comes back', async () => {
     vi.mocked(serverLogger.entriesSince).mockResolvedValue([entry()]);
     vi.mocked(summarizeDigest).mockResolvedValue({

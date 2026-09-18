@@ -269,7 +269,8 @@ server does not repost, and a host that was off at `DIGEST_HOUR` still sends
 the digest when it comes back up. Delete that file to let the schedule send
 again today.
 
-To send one right now (admins only), POST to the manual trigger. It always
+To send one right now (admins only, and only once `DIGEST_ENABLED=1` is set;
+otherwise the endpoint answers 503), POST to the manual trigger. It always
 covers the last 24 hours, ignores the day's marker and writes no marker, so
 it can be run as often as you like:
 

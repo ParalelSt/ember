@@ -48,7 +48,9 @@ const { rateLimitResponse } = await import('@/lib/rateLimit');
 const { triageBugReport } = await import('@/lib/ai/triage');
 
 /** The Discord embed the route built (parsed out of the multipart payload). */
-function postedEmbed(fetchMock: ReturnType<typeof vi.fn>): { fields: { name: string; value: string }[] } {
+function postedEmbed(
+  fetchMock: ReturnType<typeof vi.fn>,
+): { title: string; description: string; footer?: { text: string }; fields: { name: string; value: string }[] } {
   const form = postedForm(fetchMock);
   const payload = JSON.parse(form.get('payload_json') as string);
   return payload.embeds[0];
@@ -296,6 +298,46 @@ describe('POST /api/bug-report: Evidence timeline', () => {
     } finally {
       nowSpy.mockRestore();
     }
+  });
+
+  it('keeps the whole embed under Discord\'s 6000-char cap even with a full triage response and a long Evidence timeline (final-review fix)', async () => {
+    // Every long field this route can produce at once: 40 distinct, longish
+    // server errors (Evidence would need several full 1024-char fields on
+    // its own) plus a maxed-out triage response (Reproduce + 4 Check-first
+    // lines). Before the fix, Evidence was capped only per-field, so this
+    // combination could push the embed's total past 6000 and get the whole
+    // report rejected by Discord.
+    const longErrors = Array.from({ length: 40 }, (_, i) =>
+      serverError({
+        ts: Date.now() - (40 - i) * 1000,
+        reqId: `r${i}`,
+        message: `GET /api/youtube/stream/video-${i}-${'x'.repeat(80)} -> 502 upstream timeout`,
+      }),
+    );
+    vi.mocked(serverLogger.recentSince).mockResolvedValue(longErrors);
+    vi.mocked(triageBugReport).mockResolvedValueOnce({
+      summary: 'S'.repeat(300),
+      likelyCause: 'C'.repeat(800),
+      area: 'streaming',
+      severity: 'high',
+      confidence: 'high',
+      nextSteps: Array.from({ length: 4 }, (_, i) => `Step ${i} `.repeat(20).slice(0, 300)),
+      reproduction: 'R'.repeat(500),
+    });
+
+    const res = await POST(request({ client: snapshot() }), undefined as never);
+    expect(res.status).toBe(200);
+
+    const embed = postedEmbed(fetchMock);
+    const total =
+      embed.title.length +
+      embed.description.length +
+      (embed.footer?.text.length ?? 0) +
+      embed.fields.reduce((n, f) => n + f.name.length + f.value.length, 0);
+    expect(total).toBeLessThanOrEqual(6000);
+
+    const evidenceFields = embed.fields.filter((f) => f.name === 'Evidence' || f.name.startsWith('Evidence ('));
+    expect(evidenceFields.length).toBeGreaterThan(0);
   });
 });
 

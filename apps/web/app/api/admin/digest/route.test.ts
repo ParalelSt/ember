@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { NextRequest } from 'next/server';
 
 // Auth is the point of this route (it triggers a Discord post), so both
@@ -24,6 +24,7 @@ vi.mock('@/lib/auth', () => {
 vi.mock('@/lib/reports/digestJob', () => ({ runDigest: vi.fn() }));
 vi.mock('@/lib/upsertTrack', () => ({
   fromError: (e: unknown) => Response.json({ error: String(e) }, { status: 500 }),
+  jsonError: (error: string, status: number) => Response.json({ error }, { status }),
 }));
 vi.mock('@/lib/logger/withRequestLog', () => ({
   withRequestLog: (_route: string, handler: unknown) => handler,
@@ -34,10 +35,21 @@ const { runDigest } = await import('@/lib/reports/digestJob');
 
 const request = () => ({}) as NextRequest;
 
+const prevDigestEnabled = process.env.DIGEST_ENABLED;
+
 beforeEach(() => {
   vi.clearAllMocks();
   state.role = 'admin';
+  // The route now refuses to run without this (T-fix4); most of this suite
+  // is about the admin gate and the response shape, not that flag, so it
+  // defaults on here and the flag's own tests below override it.
+  process.env.DIGEST_ENABLED = '1';
   vi.mocked(runDigest).mockResolvedValue({ posted: true, groups: [], summary: null });
+});
+
+afterEach(() => {
+  if (prevDigestEnabled === undefined) delete process.env.DIGEST_ENABLED;
+  else process.env.DIGEST_ENABLED = prevDigestEnabled;
 });
 
 describe('POST /api/admin/digest', () => {
@@ -90,6 +102,36 @@ describe('POST /api/admin/digest', () => {
     const res = await POST(request(), undefined as never);
 
     expect(res.status).toBe(401);
+    expect(runDigest).not.toHaveBeenCalled();
+  });
+
+  it('refuses to run when DIGEST_ENABLED is not set (T-fix4)', async () => {
+    delete process.env.DIGEST_ENABLED;
+
+    const res = await POST(request(), undefined as never);
+
+    expect(res.status).toBe(503);
+    expect(runDigest).not.toHaveBeenCalled();
+    const body = await res.json();
+    expect(body.error).toMatch(/DIGEST_ENABLED/);
+  });
+
+  it('refuses to run when DIGEST_ENABLED is set to something other than "1"', async () => {
+    process.env.DIGEST_ENABLED = 'true';
+
+    const res = await POST(request(), undefined as never);
+
+    expect(res.status).toBe(503);
+    expect(runDigest).not.toHaveBeenCalled();
+  });
+
+  it('checks admin status before the DIGEST_ENABLED gate, so a member still gets 403', async () => {
+    delete process.env.DIGEST_ENABLED;
+    state.role = 'member';
+
+    const res = await POST(request(), undefined as never);
+
+    expect(res.status).toBe(403);
     expect(runDigest).not.toHaveBeenCalled();
   });
 });

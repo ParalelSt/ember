@@ -227,9 +227,13 @@ the real route end to end:
 > numbered `bugtest<N>@ember.test` members, since the digest trigger is
 > admin-only.
 
-The scheduled digest stays off unless `DIGEST_ENABLED=1`, so it never fires
-from a test server. The manual trigger the suite uses is unaffected by that
-flag.
+The scheduled digest and the manual trigger both stay off unless
+`DIGEST_ENABLED=1` (the manual trigger used to ignore the flag; a final-review
+fix gated it too, since otherwise a self-hosted admin with no webhook of
+their own could repeatedly post their host's errors into the webhook baked
+into the app). The test server this suite runs against sets `DIGEST_ENABLED=1`
+so the manual trigger works; the scheduler still never fires on its own,
+since that only happens at the top of the hour via instrumentation.ts.
 
 ## What `uploads.test.mjs` covers
 

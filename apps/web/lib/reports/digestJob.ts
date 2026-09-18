@@ -5,7 +5,7 @@ import { isTriageConfigured, summarizeDigest, type DigestSummary } from '@/lib/a
 import { logDir, serverLogger } from '@/lib/logger/server';
 import { scrubServerEntry } from '@/lib/logger/sanitize';
 import { formatDigest, groupForDigest, type DigestGroup } from '@/lib/reports/digest';
-import { codeFields, DISCORD_FIELD_CHARS, webhookUrl, type EmbedField } from '@/lib/reports/discord';
+import { codeFields, DISCORD_FIELD_CHARS, remainingEmbedBudget, webhookUrl, type EmbedField } from '@/lib/reports/discord';
 
 /** The daily error digest: one Discord message a day saying what broke,
  *  grouped by fingerprint so a hundred occurrences of one bug read as one
@@ -163,23 +163,38 @@ async function post(
     summary ? null : isTriageConfigured() ? 'AI summary unavailable' : 'no ANTHROPIC_API_KEY: no AI summary',
   ].filter((p): p is string => p !== null);
 
-  const fields: EmbedField[] = [...codeFields('Errors', text)];
-  if (summary && summary.lines.length > 0) {
-    fields.push({
-      name: 'What to look at',
-      value: clip(summary.lines.map((l) => `• ${l}`).join('\n'), DISCORD_FIELD_CHARS),
-      inline: false,
-    });
-  }
+  const title = `Daily error digest ${localDay(new Date(nowMs))}`;
+  const description = summary?.headline
+    ? clip(summary.headline, 2000)
+    : `${groups.length} distinct problem${groups.length === 1 ? '' : 's'} since yesterday.`;
+  const footerText = footerParts.join(' · ');
+  const whatToLookAt: EmbedField | null =
+    summary && summary.lines.length > 0
+      ? {
+          name: 'What to look at',
+          value: clip(summary.lines.map((l) => `• ${l}`).join('\n'), DISCORD_FIELD_CHARS),
+          inline: false,
+        }
+      : null;
+
+  // Same reasoning as the bug-report embed: everything but "Errors" is
+  // sized first so "Errors" (codeFields' maxChars) only claims what's left
+  // of the embed's 6000-character budget, rather than risking a rejected
+  // post on a busy day.
+  const usedChars =
+    title.length +
+    description.length +
+    footerText.length +
+    (whatToLookAt ? whatToLookAt.name.length + whatToLookAt.value.length : 0);
+  const fields: EmbedField[] = [...codeFields('Errors', text, 6, remainingEmbedBudget(usedChars))];
+  if (whatToLookAt) fields.push(whatToLookAt);
 
   const embed = {
-    title: `Daily error digest ${localDay(new Date(nowMs))}`,
-    description: summary?.headline
-      ? clip(summary.headline, 2000)
-      : `${groups.length} distinct problem${groups.length === 1 ? '' : 's'} since yesterday.`,
+    title,
+    description,
     color: groups.some((g) => g.level === 'error') ? COLOR_ERROR : COLOR_WARN,
     timestamp: new Date(nowMs).toISOString(),
-    footer: { text: footerParts.join(' · ') },
+    footer: { text: footerText },
     fields,
   };
 

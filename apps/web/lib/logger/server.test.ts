@@ -1,4 +1,4 @@
-import { describe, expect, it, beforeEach, afterEach } from 'vitest';
+import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -95,5 +95,50 @@ describe('serverLogger.entriesSince (EMBER_LOG_DIR override)', () => {
   it('returns an empty array when the log dir has nothing in the window', async () => {
     const out = await serverLogger.entriesSince(Date.now());
     expect(out).toEqual([]);
+  });
+});
+
+describe('boot sweep', () => {
+  // ensureBootSweep() only fires once per module instance (a `bootSweepStarted`
+  // flag), so each test needs its own fresh import to see the sweep run
+  // against its own EMBER_LOG_DIR, same pattern as logger/client.test.ts.
+  async function freshLogger() {
+    vi.resetModules();
+    const mod = await import('./server');
+    return mod.serverLogger;
+  }
+
+  function oldDateDaysAgo(days: number): Date {
+    return new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+  }
+
+  it('deletes error log files older than the retention window', async () => {
+    const oldFile = fileFor(oldDateDaysAgo(10));
+    const recentFile = fileFor(new Date());
+    writeFile(oldFile, [entry()]);
+    writeFile(recentFile, [entry()]);
+
+    const logger = await freshLogger();
+    await logger.entriesSince(Date.now() - 60_000);
+    // The sweep is fire-and-forget (void runBootSweep()); give its promise a
+    // turn to settle before checking the filesystem.
+    await new Promise((r) => setTimeout(r, 50));
+
+    expect(fs.existsSync(path.join(logDir, oldFile))).toBe(false);
+    expect(fs.existsSync(path.join(logDir, recentFile))).toBe(true);
+  });
+
+  it('also sweeps stale digest-*.sent markers, not just error logs (T-fix4)', async () => {
+    const oldMarker = `digest-${oldDateDaysAgo(10).toISOString().slice(0, 10)}.sent`;
+    const recentMarker = `digest-${new Date().toISOString().slice(0, 10)}.sent`;
+    fs.writeFileSync(path.join(logDir, oldMarker), 'old\n', 'utf8');
+    fs.writeFileSync(path.join(logDir, recentMarker), 'recent\n', 'utf8');
+
+    const logger = await freshLogger();
+    await logger.entriesSince(Date.now() - 60_000);
+    await new Promise((r) => setTimeout(r, 50));
+
+    expect(fs.existsSync(path.join(logDir, oldMarker))).toBe(false);
+    expect(fs.existsSync(path.join(logDir, recentMarker))).toBe(true);
   });
 });

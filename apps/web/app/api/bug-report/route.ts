@@ -12,7 +12,14 @@ import { fromError, jsonError } from "@/lib/upsertTrack";
 import { withRequestLog } from '@/lib/logger/withRequestLog';
 import { scrubServerEntry, scrubText } from "@/lib/logger/sanitize";
 import { formatTimeline, selectTimeline } from "@/lib/reports/timeline";
-import { codeFields, DISCORD_FIELD_CHARS, usingDefaultWebhook, webhookUrl } from "@/lib/reports/discord";
+import {
+  codeFields,
+  DISCORD_FIELD_CHARS,
+  remainingEmbedBudget,
+  usingDefaultWebhook,
+  webhookUrl,
+  type EmbedField as EmbedFieldT,
+} from "@/lib/reports/discord";
 
 const REPORT_WINDOW_MS = 5 * 60 * 1000;
 // How far back "Seen before" looks to tell "this has been happening all
@@ -217,43 +224,61 @@ export const POST = withRequestLog('bug-report', async (request: NextRequest) =>
       triage ? `confidence: ${triage.confidence}` : null,
       automatic ? "automatic" : null,
     ].filter((p): p is string => p !== null);
+    const title = `${automatic ? "Automatic report" : "Bug report"} from ${user.email}`;
+    const description = note || "_(no note)_";
+    const footerText = footerParts.join(" · ");
+
+    // Everything but "Evidence" is built first so its size is known before
+    // Evidence claims whatever's left of the embed's 6000-character budget
+    // (codeFields' maxChars, via remainingEmbedBudget): a busy report can
+    // have plenty of "Reproduce"/"Check first" text of its own, and Evidence
+    // must never push the total over what Discord accepts.
+    const beforeEvidence: EmbedFieldT[] = [
+      field("What broke", whatBroke),
+      { name: "Where", value: formatContextCompact(client.context), inline: false },
+    ];
+    const afterEvidence: EmbedFieldT[] = [
+      field("Seen before", seenBeforeText),
+      ...(triage
+        ? [
+            field("Reproduce", triage.reproduction),
+            ...(triage.nextSteps.length
+              ? [field("Check first", triage.nextSteps.map((s) => `• ${s}`).join("\n"))]
+              : []),
+          ]
+        : []),
+      {
+        name: "Client errors",
+        value: `${counts.client_errors_current} now / ${counts.client_errors_previous} prev`,
+        inline: true,
+      },
+      {
+        name: "Server errors",
+        value: String(counts.server_errors),
+        inline: true,
+      },
+      {
+        name: "Breadcrumbs",
+        value: `${counts.client_current} now / ${counts.client_previous} prev`,
+        inline: true,
+      },
+      { name: "Session", value: "`" + client.sessionId + "`", inline: false },
+      { name: "User-agent", value: userAgent.slice(0, 1000), inline: false },
+    ];
+    const otherFieldsChars = [...beforeEvidence, ...afterEvidence].reduce(
+      (n, f) => n + f.name.length + f.value.length,
+      0,
+    );
+    const usedChars = title.length + description.length + footerText.length + otherFieldsChars;
+    const evidenceFields = codeFields("Evidence", timelineText, 6, remainingEmbedBudget(usedChars));
+
     const embed = {
-      title: `${automatic ? "Automatic report" : "Bug report"} from ${user.email}`,
-      description: note || "_(no note)_",
+      title,
+      description,
       color: triage ? SEVERITY_COLORS[triage.severity] : 0xff5a3a,
       timestamp: reportedAt,
-      footer: footerParts.length > 0 ? { text: footerParts.join(" · ") } : undefined,
-      fields: [
-        field("What broke", whatBroke),
-        { name: "Where", value: formatContextCompact(client.context), inline: false },
-        ...codeFields("Evidence", timelineText),
-        field("Seen before", seenBeforeText),
-        ...(triage
-          ? [
-              field("Reproduce", triage.reproduction),
-              ...(triage.nextSteps.length
-                ? [field("Check first", triage.nextSteps.map((s) => `• ${s}`).join("\n"))]
-                : []),
-            ]
-          : []),
-        {
-          name: "Client errors",
-          value: `${counts.client_errors_current} now / ${counts.client_errors_previous} prev`,
-          inline: true,
-        },
-        {
-          name: "Server errors",
-          value: String(counts.server_errors),
-          inline: true,
-        },
-        {
-          name: "Breadcrumbs",
-          value: `${counts.client_current} now / ${counts.client_previous} prev`,
-          inline: true,
-        },
-        { name: "Session", value: "`" + client.sessionId + "`", inline: false },
-        { name: "User-agent", value: userAgent.slice(0, 1000), inline: false },
-      ],
+      footer: footerParts.length > 0 ? { text: footerText } : undefined,
+      fields: [...beforeEvidence, ...evidenceFields, ...afterEvidence],
     };
 
     const form = new FormData();

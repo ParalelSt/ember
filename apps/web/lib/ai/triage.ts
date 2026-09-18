@@ -4,7 +4,7 @@ import type { LogEntry, ReportContext, ServerLogEntry } from '@/lib/logger/types
 import { serverLogger } from '@/lib/logger/server';
 import { fingerprint } from '@/lib/reports/fingerprint';
 import { historyFor } from '@/lib/reports/history';
-import { buildTimeline, dedupeEntries, formatTimeline, pickEntries } from '@/lib/reports/timeline';
+import { dedupeEntries, formatTimeline, pickEntries, selectTimeline } from '@/lib/reports/timeline';
 
 /** AI triage for bug reports.
  *
@@ -199,7 +199,13 @@ export function buildDigest(input: TriageInput): string {
 
   // maxLines is generous on purpose: pick() above already bounds how many
   // entries reach here (error-priority, capped per source), so this call
-  // should never itself need to cut anything.
+  // should never itself need to cut anything. Routed through selectTimeline
+  // (T2 review: buildDigest used to call pickEntries/dedupeEntries/
+  // buildTimeline directly, so it only agreed with the Discord "Evidence"
+  // field, which uses selectTimeline, because the caps happened to match).
+  // clientCap/serverCap are set to what curEntries/prevEntries/srvEntries
+  // are already capped to, so selectTimeline's own pick/dedupe pass is a
+  // no-op on this already-processed input, not a second, different cut.
   const render = () => {
     const client = [
       ...curEntries,
@@ -208,7 +214,16 @@ export function buildDigest(input: TriageInput): string {
       // once merged into one chronological timeline with the current session.
       ...prevEntries.map((e) => ({ ...e, message: `${e.message}  [prev session]` })),
     ];
-    const timelineText = formatTimeline(buildTimeline({ client, server: srvEntries, reportedAt: now, maxLines: 10_000 }));
+    const timelineText = formatTimeline(
+      selectTimeline({
+        client,
+        server: srvEntries,
+        reportedAt: now,
+        maxLines: 10_000,
+        clientCap: MAX_CLIENT_CURRENT + MAX_CLIENT_PREVIOUS,
+        serverCap: MAX_SERVER,
+      }),
+    );
     const desktopBlock = desktopLines.length > 0
       ? `\n\n## Desktop log tail (last ${desktopLines.length} lines)\n${desktopLines.join('\n')}`
       : '';
