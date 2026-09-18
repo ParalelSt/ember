@@ -3,6 +3,7 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { createClient } from '@/lib/pocketbase/client';
 import { usePrivacyStore } from '@/stores/usePrivacyStore';
+import { useChangelogStore } from '@/stores/useChangelogStore';
 import { logger } from '@/lib/logger/client';
 
 /** Minimal user shape exposed to the app — matches the old Supabase one
@@ -74,6 +75,13 @@ export function AuthProvider({ children, initialUser }: { children: ReactNode; i
   useEffect(() => {
     if (user) void usePrivacyStore.getState().load();
   }, [user]);
+
+  // What's new read state, per user. Until it lands nothing shows as New.
+  const userId = user?.id;
+  useEffect(() => {
+    if (userId) void useChangelogStore.getState().load();
+    else useChangelogStore.setState({ seenVersion: null, hideNew: false, loaded: false });
+  }, [userId]);
 
   const value = useMemo<AuthValue>(
     () => ({

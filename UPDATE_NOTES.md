@@ -1,3 +1,24 @@
+# 0.3.0: What's new page and one app version
+
+**Host: a normal rebuild and restart (`./update.sh`). No `npm install`, no
+new environment variables.** PocketBase must restart so its hooks run:
+`pb_hooks/ensure_changelog_fields.pb.js` adds two fields to `users` on boot,
+`changelog_seen_version` (text) and `changelog_hide_new` (bool). Nothing to
+do by hand, and existing users keep all their data.
+
+- **What's new**: a new row in the sidebar (and in the phone menu) opens a
+  page listing what changed, newest first. Entries released since a user last
+  marked them read carry a pulsing New tag; the phone menu button gets a small
+  dot. "Mark all as read" clears them, and "Don't show New tags" turns them
+  off for good. Both are stored per user, so they follow people across web,
+  desktop and phone.
+- **Everyone starts with nothing marked New.** The first time someone opens
+  this version, it is recorded as already seen.
+- **Ember now has one version number, 0.3.0**, taken from
+  `apps/web/package.json`. The settings footer and bug reports show it before
+  the build hash, and `update.sh` prints it after the pull. The desktop and
+  Android apps are set to 0.3.0 too, for the next time they are built.
+
 # Update notes: crash logging and automatic restarts on the host
 
 **Host: run the update from inside tmux from now on**, so the build happens
@@ -45,6 +66,35 @@ SETUP.md).
   signed-in user picks New feature or Fix, fills a name and a description (or
   recommended approach) plus an optional field, and it posts to its own
   Discord channel.
+
+# Update notes: Reports you can read: timeline, seen-before, automatic crash reports, daily digest
+
+**Host: a normal rebuild and restart is all this needs.** No schema changes,
+no `npm install`. The daily digest is opt in: set `DIGEST_ENABLED=1` in
+`apps/web/.env.local` to turn it on, and `DIGEST_HOUR` (default 8, host local
+time) to move it. Without it the automatic crash reports still work; only the
+once-a-day summary stays quiet.
+
+- **A bug report now reads as a story, not a log dump.** The Discord message
+  leads with what broke, then where, then an "Evidence" timeline where a
+  client error and the server error for the same request sit together and
+  stack traces are trimmed to the frame that matters.
+- **"Seen before" tells you whether it is new.** Each server error in a report
+  carries how many times that same error has happened in the past week, so a
+  one-off is obvious at a glance and so is something that has been failing all
+  week.
+- **Crashes report themselves.** With the new "Send crash reports
+  automatically" toggle in Settings, Help (on by default), an uncaught error
+  sends a report without anyone having to notice and press a button. Deduped
+  per error, capped at three a session, and titled "Automatic report" so you
+  can tell them from the ones people chose to send.
+- **A daily error digest lands in the same Discord channel.** Once a day,
+  every server error of the last 24 hours grouped by fingerprint, with a short
+  AI summary of what is worth looking at. `POST /api/admin/digest` sends one
+  on demand. See SETUP.md, "Bug reports" for the details.
+- **The admin Logs tab is gone.** The digest and the reports above replace it,
+  and the page only ever existed on one machine: a stray `logs/` rule in
+  `.gitignore` had been hiding it from git the whole time.
 
 # Update notes: uploads keep their cover art
 

@@ -12,6 +12,8 @@ import { CreatePlaylistDialog } from '@/components/track/menus/CreatePlaylistDia
 import { ImportPlaylistDialog } from '@/components/track/menus/ImportPlaylistDialog';
 import { CollectionNavList } from '@/components/nav/CollectionNavList';
 import { NavLinks } from '@/components/nav/NavLinks';
+import { WhatsNewLink } from '@/components/changelog/WhatsNewLink';
+import { useChangelog } from '@/hooks/useChangelog';
 import { PlaylistNavList } from '@/components/nav/PlaylistNavList';
 import { FlameIcon, PlusIcon } from '@/components/icons';
 import { BASE_NAV, ADMIN_NAV_ITEM } from '@/lib/nav';
@@ -28,6 +30,7 @@ export function Drawer({ open, onOpenChange }: Props) {
   const { user, name: displayName, avatarUrl, isAdmin } = useAuth();
   const NAV = isAdmin ? [...BASE_NAV, ADMIN_NAV_ITEM] : BASE_NAV;
   const { data: playlists = [] } = useQueryPlaylists();
+  const { hasNew } = useChangelog();
   const [importOpen, setImportOpen] = useState(false);
   const setSearchOpen = useUiStore((s) => s.setSearchOpen);
 
@@ -58,6 +61,7 @@ export function Drawer({ open, onOpenChange }: Props) {
             onNavigate={close}
             onSearchClick={() => setSearchOpen(true)}
           />
+          <WhatsNewLink showNew={hasNew} activePath={pathname} onNavigate={close} />
         </nav>
 
         {user && (

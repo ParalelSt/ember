@@ -32,7 +32,7 @@ const check = (name, pass, detail = '') => {
 //    code the route calls, not a re-implementation here. ──
 {
   register('./ts-stub-loader.mjs', import.meta.url);
-  const { buildDigest, TriageSchema, triageBugReport } = await import('../apps/web/lib/ai/triage.ts');
+  const { buildDigest, summarizeDigest, TriageSchema, triageBugReport } = await import('../apps/web/lib/ai/triage.ts');
 
   const now = Date.now();
   const ctx = {
@@ -67,9 +67,14 @@ const check = (name, pass, detail = '') => {
   check('U2 context fields rendered', d1.includes('route: /playlist/abc') && d1.includes('shell: tauri') && d1.includes('backend: web-audio'));
   check('U3 empty/absent fields omitted', !d1.includes('storage:') && !d1.includes('offline pins:'));
   check('U4 native entry included', d1.includes('native:offline') && d1.includes('download failed'));
-  check('U5 client reqId rendered', new RegExp(`\\{req ${reqId.slice(0, 8)}\\}.*api: GET /api/likes`).test(d1));
-  check('U6 server reqId rendered and matches client', (d1.match(new RegExp(`req ${reqId.slice(0, 8)}`, 'g')) ?? []).length === 2);
-  check('U7 reqId not duplicated into the data dump', !d1.includes(`"reqId":"${reqId}"`));
+  // The prompt now renders through T1's formatTimeline: a paired server line
+  // nests under its client line as "server: ..." instead of both carrying
+  // their own tag, so the reqId tag itself appears exactly once per pair.
+  check('U5 client reqId rendered', new RegExp(`GET /api/likes.*reqId ${reqId.slice(0, 8)}`).test(d1));
+  check('U6 server line paired under the client line, not duplicated as its own reqId tag',
+    d1.includes('server: likes: GET /api/likes') && (d1.match(new RegExp(`reqId ${reqId.slice(0, 8)}`, 'g')) ?? []).length === 1);
+  check('U7 reqId not duplicated into a raw data dump', !d1.includes(`"reqId":"${reqId}"`));
+  check('U7b timeline section present', d1.includes('## Timeline') && d1.includes('Errors'));
 
   // Desktop log tail: last 60 lines only in the prompt, full tail is a
   // separate concern (route.ts attaches the whole thing to Discord).
@@ -101,6 +106,136 @@ const check = (name, pass, detail = '') => {
   check('U11 digest stays within the char budget', d3.length <= 14_000, `${d3.length} chars`);
   check('U12 newest client entry (page-79) survives trimming', d3.includes('page-79'));
   check('U13 newest server entry survives trimming', d3.includes('server event 59'));
+
+  // A report with 300 entries (well past every per-source cap) must still
+  // fit the budget: this is the scenario the char-budget shrink loop exists
+  // for, now driving buildTimeline/formatTimeline instead of the old
+  // hand-rolled line() renderer.
+  const bigClient = Array.from({ length: 260 }, (_, i) => ({
+    ts: now - (260 - i) * 1000, kind: 'breadcrumb', level: 'info', category: 'route',
+    message: `navigate /section-${i}`, sessionId: 's',
+  }));
+  const bigServer = Array.from({ length: 40 }, (_, i) => ({
+    ts: now - (40 - i) * 1000, kind: 'error', level: 'error', category: 'api',
+    message: `distinct failure ${i}`, sessionId: 's', side: 'server', reqId: `b${i}`, route: 'x',
+  }));
+  const d4 = buildDigest({
+    note: '', userAgent: 'ua', context: ctx,
+    client: { current: bigClient, previous: [], sessionId: 's' }, server: bigServer,
+  });
+  check('U19 300-entry report fits the digest budget', d4.length <= 14_000, `${d4.length} chars from 300 entries`);
+  check('U20 300-entry report: newest events still present', d4.includes('section-259') && d4.includes('distinct failure 39'));
+
+  // "Seen before": no history passed → every fingerprint reads as new.
+  const d5 = buildDigest({
+    note: '', userAgent: 'ua', context: undefined,
+    client: { current: [], previous: [], sessionId: 's' },
+    server: [{ ts: now, kind: 'error', level: 'error', category: 'api', message: 'boom', sessionId: 's', side: 'server', reqId: 'x', route: 'r1' }],
+  });
+  check('U21 seen-before section present, first occurrence reads as new', d5.includes('## Seen before') && d5.includes('r1: first time'));
+
+  // With a history window that has seen the same fingerprint before, the
+  // digest's seen-before line reports the repeat count.
+  const history = [
+    { ts: now - 2 * 86_400_000, kind: 'error', level: 'error', category: 'api', message: 'boom', sessionId: 's', side: 'server', reqId: 'h1', route: 'r1' },
+    { ts: now, kind: 'error', level: 'error', category: 'api', message: 'boom', sessionId: 's', side: 'server', reqId: 'x', route: 'r1' },
+  ];
+  const d6 = buildDigest({
+    note: '', userAgent: 'ua', context: undefined,
+    client: { current: [], previous: [], sessionId: 's' },
+    server: [{ ts: now, kind: 'error', level: 'error', category: 'api', message: 'boom', sessionId: 's', side: 'server', reqId: 'x', route: 'r1' }],
+    history,
+  });
+  check('U22 seen-before reports a repeat when history has the same fingerprint', /r1: seen 2 times this week/.test(d6));
+
+  // T3: automatic reports (lib/autoReport.ts) get the cheaper model.
+  // Stubs global fetch directly rather than pointing ANTHROPIC_BASE_URL at a
+  // fake server, so this stays a same-process unit check like U1-U22 above.
+  {
+    const prevKey = process.env.ANTHROPIC_API_KEY;
+    process.env.ANTHROPIC_API_KEY = 'unit-test-key';
+    const origFetch = globalThis.fetch;
+    const seenModels = [];
+    globalThis.fetch = async (_url, init) => {
+      seenModels.push(JSON.parse(init.body).model);
+      return {
+        ok: true,
+        json: async () => ({
+          content: [{ type: 'text', text: JSON.stringify({ summary: 's', likelyCause: 'c', area: 'ui', severity: 'low', confidence: 'low', nextSteps: [], reproduction: 'unknown' }) }],
+        }),
+      };
+    };
+    try {
+      const input = { note: '', userAgent: 'ua', context: ctx, client: { current: [], previous: [], sessionId: 's' }, server: [] };
+      await triageBugReport(input);
+      await triageBugReport({ ...input, automatic: true });
+    } finally {
+      globalThis.fetch = origFetch;
+      if (prevKey === undefined) delete process.env.ANTHROPIC_API_KEY;
+      else process.env.ANTHROPIC_API_KEY = prevKey;
+    }
+    check('U23 manual report uses BUG_TRIAGE_MODEL', seenModels[0] === (process.env.BUG_TRIAGE_MODEL || 'claude-sonnet-5'), seenModels[0]);
+    check('U24 automatic report uses BUG_TRIAGE_MODEL_AUTO', seenModels[1] === (process.env.BUG_TRIAGE_MODEL_AUTO || 'claude-haiku-4-5-20251001'), seenModels[1]);
+  }
+
+  // T4: the daily digest's summary call. Same stubbed-fetch approach as
+  // U23/U24 above: model choice, tolerant parsing, and the no-key path.
+  {
+    const digestText = 'Digest 08:00-08:00 UTC\n12x  api  /api/youtube/stream -> 502  first 08:12 last 19:40  e.g. upstream timeout';
+    const prevKey = process.env.ANTHROPIC_API_KEY;
+    const origFetch = globalThis.fetch;
+
+    delete process.env.ANTHROPIC_API_KEY;
+    let called = false;
+    globalThis.fetch = async () => {
+      called = true;
+      return { ok: true, json: async () => ({ content: [] }) };
+    };
+    const noKey = await summarizeDigest(digestText, 1);
+    check('U25 no API key: digest summary skipped, no call made', noKey === null && !called);
+
+    process.env.ANTHROPIC_API_KEY = 'unit-test-key';
+    const bodies = [];
+    globalThis.fetch = async (_url, init) => {
+      bodies.push(JSON.parse(init.body));
+      return {
+        ok: true,
+        json: async () => ({
+          content: [{ type: 'text', text: '```json\n' + JSON.stringify({
+            headline: '12 problems since yesterday, top: YouTube stream 502s',
+            lines: ['Stream proxy 502s all day', 'Check yt-dlp'],
+          }) + '\n```' }],
+        }),
+      };
+    };
+    const summary = await summarizeDigest(digestText, 12);
+    check('U26 digest summary parses a fenced reply',
+      summary?.headline?.startsWith('12 problems since yesterday') && summary.lines.length === 2);
+    check('U27 digest summary uses the cheaper model',
+      bodies[0]?.model === (process.env.BUG_TRIAGE_MODEL_AUTO || 'claude-haiku-4-5-20251001'), bodies[0]?.model);
+    check('U28 the grouped digest text reaches the prompt',
+      (bodies[0]?.messages?.[0]?.content ?? '').includes('/api/youtube/stream -> 502'));
+
+    // A model that answers with one newline-separated string instead of an
+    // array is still usable: the digest must not be lost to a shape nit.
+    globalThis.fetch = async () => ({
+      ok: true,
+      json: async () => ({ content: [{ type: 'text', text: JSON.stringify({ headline: 'h', lines: 'one\ntwo' }) }] }),
+    });
+    const loose = await summarizeDigest(digestText, 1);
+    check('U29 lines given as a string are split, not rejected',
+      loose?.lines?.length === 2 && loose.lines[0] === 'one');
+
+    // Every failure mode degrades to null so runDigest posts the groups alone.
+    globalThis.fetch = async () => ({ ok: false, status: 500, text: async () => 'overloaded' });
+    check('U30 HTTP failure degrades to null', (await summarizeDigest(digestText, 1)) === null);
+    globalThis.fetch = async () => ({ ok: true, json: async () => ({ content: [{ type: 'text', text: 'sorry, no idea' }] }) });
+    check('U31 unparseable reply degrades to null', (await summarizeDigest(digestText, 1)) === null);
+
+    globalThis.fetch = origFetch;
+    if (prevKey === undefined) delete process.env.ANTHROPIC_API_KEY;
+    else process.env.ANTHROPIC_API_KEY = prevKey;
+  }
 
   // Schema: reproduction defaults to "unknown" when missing or invalid,
   // otherwise passes through.
@@ -147,7 +282,8 @@ const DISCORD_PORT = Number(process.env.FAKE_DISCORD_PORT ?? 4312);
 // One user per case: the route rate-limits to one report per user per 30s, and
 // separate users keep the suite sleep-free.
 const USER_PASSWORD = 'BugTest2026!';
-const USERS = 6;
+const USERS = 7;
+const ADMIN_EMAIL = 'bugtestadmin@ember.test';
 
 // ── fakes ─────────────────────────────────────────────────────────────────
 let anthropicMode = 'ok';
@@ -214,6 +350,38 @@ async function adminToken() {
   throw new Error('could not authenticate as PB admin — is the sandbox PB running?');
 }
 
+/** POST /api/admin/digest needs a real admin; the numbered bugtest users are
+ *  deliberately ordinary members (series C checks the admin surface refuses
+ *  them elsewhere). */
+async function ensureAdminUser() {
+  const token = await adminToken();
+  const res = await fetch(`${PB_URL}/api/collections/users/records`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', Authorization: token },
+    body: JSON.stringify({
+      email: ADMIN_EMAIL,
+      password: USER_PASSWORD,
+      passwordConfirm: USER_PASSWORD,
+      name: 'Digest Admin',
+      verified: true,
+      is_admin: true,
+    }),
+  });
+  if (res.ok) return;
+  // Already there from a previous run: make sure it is still an admin.
+  const found = await fetch(
+    `${PB_URL}/api/collections/users/records?filter=${encodeURIComponent(`email="${ADMIN_EMAIL}"`)}`,
+    { headers: { Authorization: token } },
+  ).then((r) => r.json());
+  const id = found?.items?.[0]?.id;
+  if (!id) throw new Error('could not create or find the digest admin user');
+  await fetch(`${PB_URL}/api/collections/users/records/${id}`, {
+    method: 'PATCH',
+    headers: { 'content-type': 'application/json', Authorization: token },
+    body: JSON.stringify({ is_admin: true }),
+  });
+}
+
 async function ensureUsers() {
   const token = await adminToken();
   for (let i = 1; i <= USERS; i++) {
@@ -231,16 +399,18 @@ async function ensureUsers() {
   }
 }
 
-async function authCookie(n) {
+async function cookieFor(identity) {
   const res = await fetch(`${PB_URL}/api/collections/users/auth-with-password`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ identity: `bugtest${n}@ember.test`, password: USER_PASSWORD }),
+    body: JSON.stringify({ identity, password: USER_PASSWORD }),
   });
-  if (!res.ok) throw new Error(`auth failed for bugtest${n}: ${res.status}`);
+  if (!res.ok) throw new Error(`auth failed for ${identity}: ${res.status}`);
   const { token, record } = await res.json();
   return `pb_auth=${encodeURIComponent(JSON.stringify({ token, record }))}`;
 }
+
+const authCookie = (n) => cookieFor(`bugtest${n}@ember.test`);
 
 /** A stuck retry loop (tests dedupe) plus one rare error buried under noise
  *  (tests that the cap keeps the signal). */
@@ -294,11 +464,11 @@ function distinctSnapshot() {
   return { current, previous: [], sessionId: 's' };
 }
 
-async function report(app, cookie, note, client = noisySnapshot()) {
+async function report(app, cookie, note, client = noisySnapshot(), automatic = undefined) {
   const res = await fetch(`${app}/api/bug-report`, {
     method: 'POST',
     headers: { 'content-type': 'application/json', cookie, 'user-agent': 'EmberTest/1.0' },
-    body: JSON.stringify({ note, client }),
+    body: JSON.stringify({ note, client, ...(automatic !== undefined ? { automatic } : {}) }),
   });
   return { status: res.status, json: await res.json().catch(() => null) };
 }
@@ -307,6 +477,7 @@ async function report(app, cookie, note, client = noisySnapshot()) {
 await new Promise((r) => anthropic.listen(ANTHROPIC_PORT, '127.0.0.1', r));
 await new Promise((r) => discord.listen(DISCORD_PORT, '127.0.0.1', r));
 await ensureUsers();
+await ensureAdminUser();
 
 // A. happy path
 anthropicMode = 'ok';
@@ -332,13 +503,20 @@ check('A12 native entry reaches the prompt', prompt.includes('native:offline'));
 
 const embed = discordSeen.at(-1) ?? '';
 check('B1 Discord received the report', discordSeen.length === 1);
-check('B2 embed leads with the AI summary', embed.includes('Playback stops a few seconds'));
-check('B3 embed carries the likely cause', embed.includes('Likely cause'));
+check('B2 embed leads with the AI summary in "What broke"', embed.includes('"name":"What broke"') && embed.includes('Playback stops a few seconds'));
+check('B3 embed carries an "Evidence" timeline field', embed.includes('"name":"Evidence"') && embed.includes('```'));
 check('B4 embed carries next steps', embed.includes('Check yt-dlp version'));
-check('B5 severity colours the embed', embed.includes(String(0xef4444)), 'high → red');
+check('B5 severity colours the embed', embed.includes(String(0xef4444)), 'high -> red');
 check('B6 raw report still attached', embed.includes('report.json') && embed.includes('dQw4w9WgXcQ'));
 check('B7 triage stored in the attachment', embed.includes('"triage"'));
 check('B8 context reaches the Discord embed as "Where"', embed.includes('"name":"Where"') && embed.includes('/playlist/abc'));
+check('B10 "Seen before" field present', embed.includes('"name":"Seen before"'));
+check('B11 severity/area/confidence moved to the footer', embed.includes('"footer"') && embed.includes('severity: high') && embed.includes('area: streaming'));
+// Evidence is capped at the most recent 25 events by time (unlike the AI
+// prompt's error-priority selection, A7 above), so it isn't guaranteed to
+// carry UNIQUE_MARKER specifically: this noisy report's tail is dominated by
+// real errors either way, so just check the field actually renders one.
+check('B12 Evidence timeline carries an "Errors" block, not just breadcrumb noise', embed.includes('Errors'));
 check('B9 reproduction reaches Discord as "Reproduce"', embed.includes('"name":"Reproduce"') && embed.includes('Play any track for a few seconds'));
 
 // C. model wraps its JSON in prose/fences
@@ -385,6 +563,92 @@ check('G1 report accepted', g.json?.ok === true);
 check('G2 all 30 distinct errors survive', missing.length === 0, missing.length ? `missing ${missing.join(',')}` : '30/30');
 check('G3 400 breadcrumbs trimmed', (gPrompt.match(/navigate \/page-/g) ?? []).length <= 60,
   `${(gPrompt.match(/navigate \/page-/g) ?? []).length} kept`);
+
+// H. automatic reports (T3: lib/autoReport.ts): title, footer marker, the
+// cheaper model, and a rate-limit bucket separate from manual reports.
+anthropicMode = 'ok';
+const cookie7 = await authCookie(7);
+const h1 = await report(APP_URL, cookie7, 'js: uncaught TypeError', noisySnapshot(), true);
+check('H1 automatic report accepted', h1.status === 200 && h1.json?.ok === true, `status ${h1.status}`);
+const hEmbed = discordSeen.at(-1) ?? '';
+check('H2 title reads "Automatic report from <email>"', hEmbed.includes('Automatic report from bugtest7@ember.test'));
+check('H3 footer carries an "automatic" marker', /"footer":\{"text":"[^"]*automatic[^"]*"\}/.test(hEmbed));
+const hCall = anthropicSeen.at(-1);
+check('H4 automatic report uses the cheaper model',
+  hCall?.body?.model === (process.env.BUG_TRIAGE_MODEL_AUTO || 'claude-haiku-4-5-20251001'), hCall?.body?.model);
+
+// Two more automatic reports (3 total) still succeed; a 4th within the hour
+// is blocked: the separate `bug-report:auto:<user>` bucket, not the 30s
+// manual cooldown (F1 above).
+const h2 = await report(APP_URL, cookie7, 'js: uncaught TypeError 2', noisySnapshot(), true);
+const h3 = await report(APP_URL, cookie7, 'js: uncaught TypeError 3', noisySnapshot(), true);
+check('H5 three automatic reports allowed per hour', h2.status === 200 && h3.status === 200,
+  `statuses ${h2.status}/${h3.status}`);
+const h4 = await report(APP_URL, cookie7, 'js: uncaught TypeError 4', noisySnapshot(), true);
+check('H6 fourth automatic report in the hour is blocked', h4.status === 429, `status ${h4.status}`);
+
+// The manual bucket is untouched by automatic traffic on the same user.
+const h5 = await report(APP_URL, cookie7, 'manual after automatics', noisySnapshot(), false);
+check('H7 manual report still allowed after 3 automatics (separate bucket)', h5.status === 200, `status ${h5.status}`);
+
+// I. the daily error digest (T4: lib/reports/digestJob.ts), triggered by
+// hand through POST /api/admin/digest. Two distinct server errors are seeded
+// by driving two different routes into a 429 (withRequestLog writes one
+// server entry per rate-limited request), so the digest has two fingerprints
+// to group and report.
+const adminCookie = await cookieFor(ADMIN_EMAIL);
+
+// Seed 1: `bug-report` 429 (the 30s manual cooldown, same user twice).
+await report(APP_URL, cookie1, 'digest seed');
+await report(APP_URL, cookie1, 'digest seed again');
+// Seed 2: `import/inspect` 429 (5 per 10 minutes). The rate limit is checked
+// before the body is parsed, so a body with no usable link is enough: the
+// non-limited calls return 400 without spawning anything or calling out.
+for (let i = 0; i < 6; i++) {
+  await fetch(`${APP_URL}/api/import/inspect`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', cookie: adminCookie },
+    body: JSON.stringify({}),
+  });
+}
+// serverLogger appends fire-and-forget, so give the writes a moment to land
+// before the digest reads the file back.
+await new Promise((r) => setTimeout(r, 750));
+
+const notAdmin = await fetch(`${APP_URL}/api/admin/digest`, { method: 'POST', headers: { cookie: cookie1 } });
+check('I1 digest trigger refused to a normal member', notAdmin.status === 403, `status ${notAdmin.status}`);
+
+const discordBefore = discordSeen.length;
+const digestRes = await fetch(`${APP_URL}/api/admin/digest`, { method: 'POST', headers: { cookie: adminCookie } });
+const digest = await digestRes.json().catch(() => null);
+check('I2 admin can trigger the digest', digestRes.status === 200 && digest?.posted === true,
+  `status ${digestRes.status} posted ${digest?.posted}`);
+
+const routes = (digest?.groups ?? []).map((g) => g.route);
+check('I3 both seeded errors are grouped', routes.includes('bug-report') && routes.includes('import/inspect'),
+  `routes ${routes.join(',')}`);
+check('I4 occurrences are grouped, not listed one per line',
+  (digest?.groups ?? []).every((g) => g.count >= 1) && new Set((digest?.groups ?? []).map((g) => g.fingerprint)).size === (digest?.groups ?? []).length);
+
+const digestEmbed = discordSeen.at(-1) ?? '';
+check('I5 Discord received exactly one digest message', discordSeen.length === discordBefore + 1);
+check('I6 titled "Daily error digest <date>"', /Daily error digest \d{4}-\d{2}-\d{2}/.test(digestEmbed));
+// Every fingerprint the run grouped must be somewhere in the message: the
+// embed carries the top groups, digest.json carries the rest. (A shared
+// sandbox log can hold more than the two seeds, so this checks all of them
+// rather than assuming exactly two.)
+const fps = (digest?.groups ?? []).map((g) => g.fingerprint);
+const unsent = fps.filter((fp) => !digestEmbed.includes(fp));
+check('I7 every grouped fingerprint reaches the message', fps.length >= 2 && unsent.length === 0,
+  `${fps.length} fingerprints, ${unsent.length} missing`);
+check('I8 digest.json attached', digestEmbed.includes('digest.json'));
+check('I9 grouped lines posted as a code block', digestEmbed.includes('"name":"Errors"') && digestEmbed.includes('```'));
+
+// The manual trigger must not consume the day: it writes no marker, so a
+// second run posts again rather than going quiet.
+const again = await fetch(`${APP_URL}/api/admin/digest`, { method: 'POST', headers: { cookie: adminCookie } })
+  .then((r) => r.json()).catch(() => null);
+check('I10 the manual trigger ignores the day marker', again?.posted === true, `posted ${again?.posted}`);
 
 const failed = results.filter((r) => !r.pass);
 console.log(`\n${results.length - failed.length}/${results.length} checks passed`);

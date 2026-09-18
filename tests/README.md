@@ -24,13 +24,24 @@ Test folders, `apps/web/`:
   test (not an eslint rule) that scans `app/` and `components/` for banned
   class-string patterns (raw `oklch(`, `to-[`, the old artwork size pairs,
   the type utility strings before they existed).
+- `lib/reports/`: the report libs behind bug reports and the daily digest:
+  `fingerprint` (grouping two occurrences of one bug together),
+  `timeline`/`selectTimeline` (the readable Evidence block), `history`
+  ("seen before" counts), `digest` (grouping and formatting), `discord`
+  (webhook selection and 1024-char field splitting) and `digestJob`
+  (`shouldRunNow`, `digestHour`, and `runDigest` against a fake webhook and
+  a fake model: quiet day, grouping, a failed summary degrading to the
+  groups alone, scrubbing, and the day marker).
 - `stores/`: `usePlayerStore` actions (toggleShuffle, cycleLoopMode,
   toggleMuted).
 - `components/primitives/`, `components/page/`: `Artwork`, `PlayButton`,
   `LikeButton`, `PageTitle`/`SectionHeader`/`Eyebrow`/`EmptyState`,
   `CollectionHeader`: pure, props-in components.
 - `components/track/`: `TrackRow`, `TrackList`, `TrackCard`, `TrackShelf`.
-- `components/nav/`: `NavLinks`.
+- `components/nav/`: `NavLinks`, and `ChangelogBadge` (the What's new
+  row's New tag in `Sidebar` and `Drawer`, the dot on the `TopBar` menu
+  button).
+- `components/changelog/`: the What's new page, row, pill and hide switch.
 - `components/player/`: `SeekBar`, `TransportControls`, `VolumeControl`,
   `NowPlayingSummary`, and `PlayerProvider.test.tsx` (a mocked-backend
   wiring test: playTrack loads and plays once, a fresh track's position
@@ -143,6 +154,8 @@ cd apps/web && POCKETBASE_URL=http://127.0.0.1:8091 npx next build --webpack
 
 # 4. Two app servers: one WITH an AI key, one WITHOUT.
 #    MAX_UPLOAD_MB=1 keeps the uploads "too large" case fast.
+#    The scheduled daily digest only runs with DIGEST_ENABLED=1, so it never
+#    fires from a test server; the suite triggers it by hand instead.
 POCKETBASE_URL=http://127.0.0.1:8091 MUSIC_DIR="$SB/music" MAX_UPLOAD_MB=1 \
 ANTHROPIC_API_KEY=test-key ANTHROPIC_BASE_URL=http://127.0.0.1:4311 \
 BUG_TRIAGE_MODEL=claude-sonnet-5 \
@@ -186,6 +199,10 @@ node tests/library-collections-ui.test.mjs          # or: npm run test:library-u
 
 # Privacy switches
 node tests/privacy.test.mjs                         # or: npm run test:privacy
+
+# What's new: New tag, menu dot, Mark all as read, hide switch (needs PocketBase
+# restarted with this branch's pb_hooks; SHOTS_DIR=<dir> saves screenshots)
+node tests/changelog-ui.test.mjs                    # or: npm run test:changelog-ui
 
 # Desktop update feed (needs its own server: see the section below)
 node tests/desktop-update.test.mjs                  # or: npm run test:update
@@ -260,6 +277,29 @@ the real route end to end:
 - **No API key**: the default for anyone self-hosting: Anthropic is never
   called and the report sends exactly as before.
 - **Rate limit**: one report per user per 30s, unchanged.
+- **Automatic reports** (series H): accepted, titled "Automatic report from
+  `<email>`", marked in the footer, triaged with the cheaper model, and
+  rate-limited in their own 3/hour bucket that leaves the 30s manual cooldown
+  alone.
+- **Daily error digest** (series I): two different routes are driven into a
+  429 so the server log holds two distinct errors, then
+  `POST /api/admin/digest` is called as an admin (and refused as a member).
+  The fake webhook must receive one message titled "Daily error digest
+  `<date>`" carrying both fingerprints, a grouped code block and the
+  `digest.json` attachment; running the trigger twice must post twice, since
+  the manual path deliberately writes no day marker.
+
+> The suite creates `bugtestadmin@ember.test` (an admin) alongside the
+> numbered `bugtest<N>@ember.test` members, since the digest trigger is
+> admin-only.
+
+The scheduled digest and the manual trigger both stay off unless
+`DIGEST_ENABLED=1` (the manual trigger used to ignore the flag; a final-review
+fix gated it too, since otherwise a self-hosted admin with no webhook of
+their own could repeatedly post their host's errors into the webhook baked
+into the app). The test server this suite runs against sets `DIGEST_ENABLED=1`
+so the manual trigger works; the scheduler still never fires on its own,
+since that only happens at the top of the hour via instrumentation.ts.
 
 ## What `uploads.test.mjs` covers
 
@@ -307,6 +347,36 @@ presence, and appearing in "Friends are listening to".
 The UI itself (both switches render, flipping one persists across a reload and
 leaves the other alone) was verified in a headless browser against the same
 sandbox.
+
+## What `changelog-ui.test.mjs` covers
+
+The "What's new" page and its New tags (docs/changelog-system.md), in a
+headless browser. Each run creates and invites a fresh `@ember.test` user,
+signs in through the form, and deletes both at the end. It sets the user's
+seen version directly through the PocketBase admin API to stand in for "a
+release came out since you last looked".
+
+- **A brand new user sees nothing as New**: the first load writes the current
+  app version (read from `apps/web/package.json`) and the sidebar row has no
+  tag.
+- **An older seen version shows the tag**: the pill appears at the right edge
+  of the sidebar row at 1440 wide, it pulses, and the pulse stops under
+  `prefers-reduced-motion`.
+- **Phone, 390 wide**: the menu button has the dot, the drawer has the row
+  with the tag, and the row opens the page.
+- **The page**: every entry above the seen version is tagged, opening the page
+  does not mark anything read, and Mark all as read clears the page and the
+  sidebar, saves the version, survives a reload, and clears the phone dot too.
+- **The hide switch**: removes every tag without marking anything read,
+  survives a reload, hides the phone dot, and turning it off brings the tags
+  back.
+- No uncaught page errors along the way.
+
+The same behaviour is unit tested without a browser in
+`apps/web/lib/{semver,changelog,changelog-new}.test.ts`,
+`stores/useChangelogStore.test.ts`, `app/api/changelog/route.test.ts`,
+`components/changelog/*.test.tsx`, `components/nav/ChangelogBadge.test.tsx`
+and `app/(app)/whats-new/page.test.tsx`.
 
 ## What `desktop-update.test.mjs` covers
 
@@ -433,7 +503,7 @@ other's:
 - After a refused write, the owner's playlist is verified UNCHANGED: status
   codes alone don't prove nothing happened.
 - Likes and history stay per-user.
-- Every admin route (users, tracks, logs, invites, cleanup) refuses a normal
+- Every admin route (users, tracks, invites, cleanup, digest) refuses a normal
   member.
 - Signed-out callers get nothing.
 

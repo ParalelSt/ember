@@ -12,12 +12,14 @@ import { LyricsPanel } from '@/components/player/LyricsPanel';
 import { SearchOverlayContainer } from '@/components/search/SearchOverlayContainer';
 import { hydrateOfflineStore } from '@/lib/offline';
 import { useUiStore } from '@/stores/useUiStore';
+import { useChangelog } from '@/hooks/useChangelog';
 
 export default function AppShellLayout({ children }: { children: ReactNode }) {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const scrollerRef = useRef<HTMLDivElement>(null);
   const [scrollerH, setScrollerH] = useState(0);
   const setSearchOpen = useUiStore((s) => s.setSearchOpen);
+  const { hasNew } = useChangelog();
 
   // Hydrate the offline store on app boot. On Android this subscribes to the
   // native EmberOffline plugin's pins/trackFiles; elsewhere it reads OPFS
@@ -49,7 +51,7 @@ export default function AppShellLayout({ children }: { children: ReactNode }) {
       <Sidebar />
       <Drawer open={drawerOpen} onOpenChange={setDrawerOpen} />
       <div className="flex-1 min-h-0 flex flex-col min-w-0">
-        <TopBar onMenu={() => setDrawerOpen(true)} />
+        <TopBar onMenu={() => setDrawerOpen(true)} menuDot={hasNew} />
         {/* The OUTER scroller owns the scrollbar — so it lives on the far
             right edge of the viewport, past the LyricsPanel. Inside, a
             flex row holds <main> (grows tall, drives the scroll) and the

@@ -1,3 +1,5 @@
+import type { ServerLogEntry } from './types';
+
 /** Defensive scrubber for log payloads before they leave the device. Strips
  *  obviously-sensitive field names and truncates long strings. Runs over an
  *  arbitrary value (object / array / primitive). Handles cycles by short-
@@ -45,6 +47,29 @@ export function scrubText(text: string): string {
       return out;
     })
     .join('\n');
+}
+
+/** Unlike the client snapshot (already run through `scrub` on the device),
+ *  server log entries travel straight from disk: scrub one before it is
+ *  attached to Discord, handed to a model, or rendered into a digest.
+ *  `userId` is left alone: it is a PocketBase id the host already owns, not
+ *  a secret (see SETUP.md). Shared by the bug-report route and the daily
+ *  digest so both redact the same way. */
+export function scrubServerEntry(e: ServerLogEntry): ServerLogEntry {
+  let data = e.data;
+  if (data !== undefined && data !== null) {
+    try {
+      data = JSON.parse(scrubText(JSON.stringify(data)));
+    } catch {
+      data = scrubText(String(data));
+    }
+  }
+  return {
+    ...e,
+    message: scrubText(e.message),
+    stack: e.stack ? scrubText(e.stack) : e.stack,
+    data,
+  };
 }
 
 function walk(value: unknown, seen: WeakSet<object>): unknown {

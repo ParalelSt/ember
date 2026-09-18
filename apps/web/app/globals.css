@@ -241,11 +241,10 @@
   stroke: var(--ember);
 }
 
-/* "New" tag pulse (the /dizajn "What's new" candidates). Two classes, one
-   per badge style: .ember-new-pulse breathes the whole pill (opacity plus
-   an ember glow ring), .ember-new-dot pings the small dot beside a static
-   pill (and the unread dot on an icon button). Reduced motion turns both
-   off, leaving the static pill and a solid dot. */
+/* "What's new" New tag (components/changelog/NewBadge.tsx). .ember-new-pulse
+   breathes the whole pill (opacity plus an ember glow ring); .ember-new-dot
+   pings the small unread dot on the phone menu button. Reduced motion turns
+   both off, leaving a static pill and a solid dot. */
 @keyframes ember-new-pulse {
   0%, 100% {
     opacity: 1;

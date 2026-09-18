@@ -289,6 +289,69 @@ A report costs well under a cent (the logs are condensed and capped before
 they're sent), but **you** pay for everyone's reports since the key is yours.
 The 30-second-per-user cooldown on reports caps the spend too.
 
+#### Automatic reports
+
+Signed-in users also get a "Send crash reports automatically" toggle in
+`/settings/help` (on by default). When the client logger records an
+error-level entry (an uncaught error, an unhandled promise rejection, a
+backend playback failure, or a native offline error), `lib/autoReport.ts`
+silently posts the same body the bug report dialog would, tagged
+`automatic: true`, with the note filled in as `<category>: <message>`. It's
+deduped per error fingerprint per browser session, capped at three reports a
+session, debounced 2 seconds so a burst of the same error only sends once,
+and it never fires while the manual dialog is open or while the toggle is
+off.
+
+The server rate-limits these separately from manual reports (3/hour per user,
+independent of the 30s manual cooldown) and triages them with a cheaper
+model by default, since they can fire without anyone deciding a report was
+worth it:
+
+```bash
+BUG_TRIAGE_MODEL_AUTO=claude-haiku-4-5-20251001   # optional override
+```
+
+The Discord embed titles these "Automatic report from `<email>`" and adds an
+"automatic" marker to the footer, so a maintainer can tell them apart from a
+report someone chose to send.
+
+#### Daily error digest
+
+Once a day the server posts a digest of its own error log to the same Discord
+channel: every server-side error and warning of the last 24 hours, grouped by
+fingerprint, so a hundred occurrences of one bug read as one line rather than
+a hundred. With `ANTHROPIC_API_KEY` set, the cheaper model
+(`BUG_TRIAGE_MODEL_AUTO`) adds a headline and a few lines of what is worth
+looking at; without it the digest still posts the grouped lines and says so in
+the footer. The full grouping is attached as `digest.json`.
+
+Off until you turn it on, because reports and the digest share one webhook and
+a self-hosted copy would otherwise post into the channel baked into the app.
+Set the switch on the machine that should send it:
+
+```bash
+DIGEST_ENABLED=1     # required; without it the scheduled digest never runs
+DIGEST_HOUR=8        # optional; hour of the local day to send, 0-23
+```
+
+The day's send is recorded as `logs/digest-YYYY-MM-DD.sent`, so restarting the
+server does not repost, and a host that was off at `DIGEST_HOUR` still sends
+the digest when it comes back up. Delete that file to let the schedule send
+again today.
+
+To send one right now (admins only, and only once `DIGEST_ENABLED=1` is set;
+otherwise the endpoint answers 503), POST to the manual trigger. It always
+covers the last 24 hours, ignores the day's marker and writes no marker, so
+it can be run as often as you like:
+
+```bash
+curl -X POST http://localhost:3000/api/admin/digest \
+  -H "cookie: pb_auth=$YOUR_PB_AUTH_COOKIE"
+```
+
+It answers `{"posted": true, "groups": [...]}`, or `{"posted": false,
+"reason": "quiet"}` on a day with no errors at all.
+
 ### Feature and fix requests → your Discord channels
 
 There's a "Send a request" button next to Report a bug under `/settings/help`.

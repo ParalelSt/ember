@@ -46,8 +46,11 @@ pocketbase/pocketbase
 pocketbase/pb_data/
 pocketbase/pb_public/
 
-# Bug-report logger JSONL output (rotates every 2 days)
-logs/
+# Bug-report logger JSONL output (rotates every 2 days), plus the daily
+# digest's "already sent today" markers. Anchored to the repo root on
+# purpose: a bare `logs/` also matched app/api/admin/logs and
+# app/(app)/admin/logs, which silently hid real app routes from git.
+/logs/
 
 # Internal design docs / brainstorming notes — local only
 docs/superpowers/

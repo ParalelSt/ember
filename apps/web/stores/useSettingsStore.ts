@@ -11,6 +11,11 @@ interface SettingsState {
    *  normal player uses a gentler power-1.5 curve. */
   partyVolume: boolean;
   setPartyVolume: (on: boolean) => void;
+  /** Silent crash reports (lib/autoReport.ts): on by default so hosts learn
+   *  about crashes nobody bothered to report by hand. Checked on every
+   *  error-level log entry, not just at Settings-page render time. */
+  autoReportEnabled: boolean;
+  setAutoReportEnabled: (on: boolean) => void;
 }
 
 export const useSettingsStore = create<SettingsState>()(
@@ -18,6 +23,8 @@ export const useSettingsStore = create<SettingsState>()(
     (set) => ({
       partyVolume: false,
       setPartyVolume: (partyVolume) => set({ partyVolume }),
+      autoReportEnabled: true,
+      setAutoReportEnabled: (autoReportEnabled) => set({ autoReportEnabled }),
     }),
     { name: 'ember.settings.v1' },
   ),

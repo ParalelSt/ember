@@ -1,5 +1,4 @@
 import type { AlbumDetail, ArtistPayload, Playlist, SessionState, Track } from '@/types/track';
-import type { ServerLogEntry } from '@/lib/logger/types';
 import { logger } from '@/lib/logger/client';
 
 export interface AdminUser {
@@ -216,6 +215,14 @@ export const api = {
       body: patch,
     }),
 
+  // What's new: the version last marked read and "Don't show New tags", per user.
+  getChangelog: () => req<{ seenVersion: string; hideNew: boolean }>('/changelog'),
+  updateChangelog: (patch: { seenVersion?: string; hideNew?: boolean }) =>
+    req<{ seenVersion: string; hideNew: boolean }>('/changelog', {
+      method: 'PATCH',
+      body: patch,
+    }),
+
   updateProfile: async ({
     name,
     avatar,
@@ -278,18 +285,6 @@ export const api = {
       ),
     deleteTrack: (recordId: string) =>
       req<{ ok: true }>(`/admin/tracks/${encodeURIComponent(recordId)}`, { method: 'DELETE' }),
-
-    listLogs: (params: { categories?: string[]; q?: string; limit?: number } = {}) => {
-      const qs = new URLSearchParams();
-      if (params.categories?.length) qs.set('category', params.categories.join(','));
-      if (params.q) qs.set('q', params.q);
-      if (params.limit) qs.set('limit', String(params.limit));
-      const tail = qs.toString();
-      return req<{ entries: ServerLogEntry[]; total: number }>(
-        `/admin/logs${tail ? `?${tail}` : ''}`,
-      );
-    },
-    clearLogs: () => req<{ ok: true }>('/admin/logs', { method: 'DELETE' }),
 
     listInvites: () => req<{ invites: AdminInvite[] }>('/admin/invites'),
     addInvite: (email: string) =>

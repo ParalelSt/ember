@@ -29,5 +29,17 @@ export async function resolve(specifier, context, nextResolve) {
     const rel = /\.[a-z]+$/.test(specifier) ? specifier.slice(2) : `${specifier.slice(2)}.ts`;
     return nextResolve(new URL(rel, WEB_ROOT).href, context);
   }
+  // Plain relative imports between .ts files (e.g. lib/reports/history.ts's
+  // `from './fingerprint'`) work under webpack (extension-free resolution)
+  // but node's own resolver needs the real extension. Only append one when
+  // the importer is itself a .ts file resolved through this loader, so a
+  // relative import from a genuine .js/.mjs file is left alone.
+  if (
+    (specifier.startsWith('./') || specifier.startsWith('../')) &&
+    !/\.[a-z]+$/.test(specifier) &&
+    context.parentURL?.endsWith('.ts')
+  ) {
+    return nextResolve(`${specifier}.ts`, context);
+  }
   return nextResolve(specifier, context);
 }
