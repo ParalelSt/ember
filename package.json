@@ -39,6 +39,7 @@
     "test:library-ui": "node tests/library-collections-ui.test.mjs",
     "test:unavailable": "node tests/unavailable.test.mjs",
     "test:unavailable-ui": "node tests/unavailable-ui.test.mjs",
+    "test:search-ui": "node tests/instant-search-ui.test.mjs",
     "test:android-native-log": "node tests/android-native-log.mjs",
     "test:android-call": "bash tests/android-auto-call.sh",
     "test:watchdog": "bash tests/watchdog.test.sh",
