@@ -79,6 +79,21 @@ case "$CMD" in
     T='"artist":"Fake Artist","artworkUrl":"","durationSec":200'
     printf '[{"videoId":"ddddddddddd","title":"Replacement Song",%s},{"videoId":"aaaaaaaaaaa","title":"Live Song",%s}]' "$T" "$T"
     ;;
+  trending)
+    # A fixed, ranked chart: "Chart Song 01" by "Chart Artist 01" is number 1.
+    # FAKE_FAIL_TRENDING=1 fails the way player.py does when every chart
+    # source is down, so a test can check the server keeps its last good list.
+    if [ "${FAKE_FAIL_TRENDING:-0}" = "1" ]; then
+      echo "ERROR: trending: no chart source returned tracks" >&2
+      exit 1
+    fi
+    TRACKS=""
+    for i in 01 02 03 04 05 06 07 08 09 10 11 12; do
+      [ -n "$TRACKS" ] && TRACKS="$TRACKS,"
+      TRACKS="$TRACKS{\"videoId\":\"chartsong$i\",\"title\":\"Chart Song $i\",\"artist\":\"Chart Artist $i\",\"artworkUrl\":\"\",\"durationSec\":180}"
+    done
+    printf '{"title":"Daily Top Music Videos - Global","playlistId":"PLfakechart","source":"ytmusicapi","tracks":[%s]}' "$TRACKS"
+    ;;
   *)
     printf '{"error": "fake-player: unsupported command %s"}' "$CMD" >&2
     exit 1
