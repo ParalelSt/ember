@@ -10,11 +10,68 @@ import { CollectionSkeleton } from '@/components/page/CollectionSkeleton';
 import { MusicIcon } from '@/components/icons';
 import { SHELF_OPTIONS, RHYTHM_OPTIONS, ACTIONS_OPTIONS } from '@/components/library/options';
 import { RhythmPreview, rhythmLegend, type Rhythm, type ActionsPlacement } from '@/components/library/options/RhythmPreview';
+import {
+  CHANGELOG_PLACEMENTS,
+  CHANGELOG_STATES,
+  BADGE_STYLES,
+  type BadgeStyle,
+  type ChangelogPlacement,
+  type ChangelogState,
+} from '@/components/library/options/changelog';
+import { ChangelogSection } from '@/components/library/options/changelog/ChangelogSection';
 import { MOCK_PLAYLISTS, MOCK_RECENT_TRACKS, MOCK_RESULT_TRACKS } from './mock';
 
 const STORAGE_KEY = 'dizajn-shelf-option';
 const RHYTHM_STORAGE_KEY = 'dizajn-rhythm-option';
 const ACTIONS_STORAGE_KEY = 'dizajn-actions-option';
+const CHANGELOG_PLACEMENT_KEY = 'dizajn-changelog-placement';
+const CHANGELOG_STATE_KEY = 'dizajn-changelog-state';
+const CHANGELOG_BADGE_KEY = 'dizajn-changelog-badge';
+
+/** Lazy-initializer read of one picker's saved id, falling back to the
+ *  first option when nothing (or something stale) is stored. */
+function savedChoice<T extends string>(key: string, options: { id: T }[]): T {
+  if (typeof window === 'undefined') return options[0].id;
+  const saved = window.localStorage.getItem(key);
+  return (options.find((o) => o.id === saved)?.id ?? options[0].id) as T;
+}
+
+const PILL_ON = 'rounded-full bg-ember px-3.5 py-1.5 text-sm font-medium text-white';
+const PILL_OFF = 'rounded-full border border-border px-3.5 py-1.5 text-sm hover:bg-card transition-colors';
+
+/** One pill radiogroup, the same markup as the Rhythm/Actions pickers. */
+function Picker<T extends string>({
+  label,
+  options,
+  value,
+  onChange,
+}: {
+  label: string;
+  options: { id: T; name: string; description: string }[];
+  value: T;
+  onChange: (id: T) => void;
+}) {
+  return (
+    <div>
+      <div className="text-eyebrow mb-2">{label}</div>
+      <div role="radiogroup" aria-label={label} className="flex flex-wrap gap-2">
+        {options.map((o) => (
+          <button
+            key={o.id}
+            type="button"
+            role="radio"
+            aria-checked={o.id === value}
+            onClick={() => onChange(o.id)}
+            title={o.description}
+            className={o.id === value ? PILL_ON : PILL_OFF}
+          >
+            {o.name}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 type OverlayState = 'recents' | 'searching' | 'results' | 'offline' | 'rate-limited';
 
@@ -124,6 +181,23 @@ export default function DizajnPage() {
     window.localStorage.setItem(ACTIONS_STORAGE_KEY, actionsPlacement);
   }, [actionsPlacement]);
 
+  // "What's new" pickers: same lazy-initializer pattern, one key each.
+  const [clPlacement, setClPlacement] = useState<ChangelogPlacement>(() =>
+    savedChoice(CHANGELOG_PLACEMENT_KEY, CHANGELOG_PLACEMENTS),
+  );
+  const [clState, setClState] = useState<ChangelogState>(() => savedChoice(CHANGELOG_STATE_KEY, CHANGELOG_STATES));
+  const [clBadge, setClBadge] = useState<BadgeStyle>(() => savedChoice(CHANGELOG_BADGE_KEY, BADGE_STYLES));
+
+  useEffect(() => {
+    window.localStorage.setItem(CHANGELOG_PLACEMENT_KEY, clPlacement);
+  }, [clPlacement]);
+  useEffect(() => {
+    window.localStorage.setItem(CHANGELOG_STATE_KEY, clState);
+  }, [clState]);
+  useEffect(() => {
+    window.localStorage.setItem(CHANGELOG_BADGE_KEY, clBadge);
+  }, [clBadge]);
+
   return (
     <div>
       <PageTitle className="mb-2">Design gallery</PageTitle>
@@ -131,6 +205,26 @@ export default function DizajnPage() {
         What was built, and the style options for the Library page&apos;s playlist shelves. Not a real
         page in the app: no link points here.
       </p>
+
+      <section className="mb-12">
+        <h2 className="text-section-title mb-1">What&apos;s new (changelog)</h2>
+        <p className="text-meta mb-4">
+          Proposals, not built: where a changelog of app updates lives, shown in the whole app
+          shell. An unread entry gets a New tag until it is read; the changelog itself has Mark all
+          as read and a switch to never show New tags. Click the entry point in the preview to open
+          it.
+        </p>
+
+        <div className="mb-6 flex flex-col gap-4">
+          <Picker label="Placement" options={CHANGELOG_PLACEMENTS} value={clPlacement} onChange={setClPlacement} />
+          <div className="flex flex-wrap gap-x-10 gap-y-4">
+            <Picker label="State" options={CHANGELOG_STATES} value={clState} onChange={setClState} />
+            <Picker label="Badge" options={BADGE_STYLES} value={clBadge} onChange={setClBadge} />
+          </div>
+        </div>
+
+        <ChangelogSection placement={clPlacement} state={clState} badge={clBadge} onStateChange={setClState} />
+      </section>
 
       <section className="mb-12">
         <h2 className="text-section-title mb-1">Instant search overlay</h2>

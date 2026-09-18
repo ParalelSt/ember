@@ -240,3 +240,29 @@
   fill: var(--ember);
   stroke: var(--ember);
 }
+
+/* "New" tag pulse (the /dizajn "What's new" candidates). Two classes, one
+   per badge style: .ember-new-pulse breathes the whole pill (opacity plus
+   an ember glow ring), .ember-new-dot pings the small dot beside a static
+   pill (and the unread dot on an icon button). Reduced motion turns both
+   off, leaving the static pill and a solid dot. */
+@keyframes ember-new-pulse {
+  0%, 100% {
+    opacity: 1;
+    box-shadow: 0 0 0 0 color-mix(in oklab, var(--ember) 55%, transparent);
+  }
+  50% {
+    opacity: 0.72;
+    box-shadow: 0 0 0 4px color-mix(in oklab, var(--ember) 0%, transparent);
+  }
+}
+@keyframes ember-new-dot {
+  0% { box-shadow: 0 0 0 0 color-mix(in oklab, var(--ember) 70%, transparent); }
+  70%, 100% { box-shadow: 0 0 0 5px color-mix(in oklab, var(--ember) 0%, transparent); }
+}
+.ember-new-pulse { animation: ember-new-pulse 1.8s ease-in-out infinite; }
+.ember-new-dot { animation: ember-new-dot 1.6s ease-out infinite; }
+@media (prefers-reduced-motion: reduce) {
+  .ember-new-pulse,
+  .ember-new-dot { animation: none !important; }
+}
