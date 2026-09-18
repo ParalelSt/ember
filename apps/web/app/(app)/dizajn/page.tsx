@@ -20,12 +20,24 @@ import {
   type ChangelogState,
 } from '@/components/library/options/changelog';
 import { ChangelogSection } from '@/components/library/options/changelog/ChangelogSection';
+import {
+  TRENDING_DATA,
+  TRENDING_OPTIONS,
+  TRENDING_VIEWS,
+  type TrendingData,
+  type TrendingOption,
+  type TrendingView,
+} from '@/components/library/options/trending';
+import { TrendingSection } from '@/components/library/options/trending/TrendingSection';
 import { MOCK_LIKED_TRACKS, MOCK_PLAYLISTS, MOCK_RECENT_TRACKS, MOCK_RESULT_TRACKS } from './mock';
 
 const STORAGE_KEY = 'dizajn-shelf-option';
 const CHANGELOG_PLACEMENT_KEY = 'dizajn-changelog-placement';
 const CHANGELOG_STATE_KEY = 'dizajn-changelog-state';
 const CHANGELOG_BADGE_KEY = 'dizajn-changelog-badge';
+const TRENDING_OPTION_KEY = 'dizajn-trending-option';
+const TRENDING_VIEW_KEY = 'dizajn-trending-view';
+const TRENDING_DATA_KEY = 'dizajn-trending-data';
 
 /** Lazy-initializer read of one picker's saved id, falling back to the
  *  first option when nothing (or something stale) is stored. */
@@ -175,6 +187,21 @@ export default function DizajnPage() {
     window.localStorage.setItem(CHANGELOG_BADGE_KEY, clBadge);
   }, [clBadge]);
 
+  // "Trending shelf" pickers: same pattern again.
+  const [trOption, setTrOption] = useState<TrendingOption>(() => savedChoice(TRENDING_OPTION_KEY, TRENDING_OPTIONS));
+  const [trView, setTrView] = useState<TrendingView>(() => savedChoice(TRENDING_VIEW_KEY, TRENDING_VIEWS));
+  const [trData, setTrData] = useState<TrendingData>(() => savedChoice(TRENDING_DATA_KEY, TRENDING_DATA));
+
+  useEffect(() => {
+    window.localStorage.setItem(TRENDING_OPTION_KEY, trOption);
+  }, [trOption]);
+  useEffect(() => {
+    window.localStorage.setItem(TRENDING_VIEW_KEY, trView);
+  }, [trView]);
+  useEffect(() => {
+    window.localStorage.setItem(TRENDING_DATA_KEY, trData);
+  }, [trData]);
+
   return (
     <div>
       <PageTitle className="mb-2">Design gallery</PageTitle>
@@ -182,6 +209,25 @@ export default function DizajnPage() {
         What was built, and the style options for the Library page&apos;s playlist shelves. Not a real
         page in the app: no link points here.
       </p>
+
+      <section className="mb-section">
+        <h2 className="text-section-title">Trending shelf</h2>
+        <p className="text-meta mt-inset mb-block">
+          Proposals, not built: three reworks of Home&apos;s &quot;Trending right now&quot; shelf, which
+          now shows YouTube Music&apos;s real daily chart in rank order. Each sits on the mock Home page
+          inside the whole app shell. Show all opens the full chart as a collection page, with no new
+          page in the nav; Stale shows the note used when the chart could not be refreshed. The live
+          shelf is unchanged.
+        </p>
+
+        <div className="mb-stack flex flex-wrap gap-x-section gap-y-block">
+          <Picker label="Shelf style" options={TRENDING_OPTIONS} value={trOption} onChange={setTrOption} />
+          <Picker label="View" options={TRENDING_VIEWS} value={trView} onChange={setTrView} />
+          <Picker label="Data" options={TRENDING_DATA} value={trData} onChange={setTrData} />
+        </div>
+
+        <TrendingSection option={trOption} view={trView} data={trData} onViewChange={setTrView} />
+      </section>
 
       <section className="mb-12">
         <h2 className="text-section-title mb-1">What&apos;s new (changelog)</h2>
