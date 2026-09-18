@@ -1,3 +1,24 @@
+# 0.3.0: What's new page and one app version
+
+**Host: a normal rebuild and restart (`./update.sh`). No `npm install`, no
+new environment variables.** PocketBase must restart so its hooks run:
+`pb_hooks/ensure_changelog_fields.pb.js` adds two fields to `users` on boot,
+`changelog_seen_version` (text) and `changelog_hide_new` (bool). Nothing to
+do by hand, and existing users keep all their data.
+
+- **What's new**: a new row in the sidebar (and in the phone menu) opens a
+  page listing what changed, newest first. Entries released since a user last
+  marked them read carry a pulsing New tag; the phone menu button gets a small
+  dot. "Mark all as read" clears them, and "Don't show New tags" turns them
+  off for good. Both are stored per user, so they follow people across web,
+  desktop and phone.
+- **Everyone starts with nothing marked New.** The first time someone opens
+  this version, it is recorded as already seen.
+- **Ember now has one version number, 0.3.0**, taken from
+  `apps/web/package.json`. The settings footer and bug reports show it before
+  the build hash, and `update.sh` prints it after the pull. The desktop and
+  Android apps are set to 0.3.0 too, for the next time they are built.
+
 # Update notes: crash logging and automatic restarts on the host
 
 **Host: run the update from inside tmux from now on**, so the build happens

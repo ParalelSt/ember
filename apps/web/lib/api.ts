@@ -215,6 +215,14 @@ export const api = {
       body: patch,
     }),
 
+  // What's new: the version last marked read and "Don't show New tags", per user.
+  getChangelog: () => req<{ seenVersion: string; hideNew: boolean }>('/changelog'),
+  updateChangelog: (patch: { seenVersion?: string; hideNew?: boolean }) =>
+    req<{ seenVersion: string; hideNew: boolean }>('/changelog', {
+      method: 'PATCH',
+      body: patch,
+    }),
+
   updateProfile: async ({
     name,
     avatar,
