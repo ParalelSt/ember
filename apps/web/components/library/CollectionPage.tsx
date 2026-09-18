@@ -47,6 +47,8 @@ export interface CollectionPageProps {
   children?: ReactNode;
   // When true (no tracks and offline), Play/Shuffle can't do anything useful, so hide them.
   hideActions?: boolean;
+  /** Number the rows 1, 2, 3 (a ranked list, like a chart). */
+  showRank?: boolean;
 }
 
 /** Presentational only: the header, action bar and track list shared by
@@ -75,6 +77,7 @@ export function CollectionPage({
   emptyMessage,
   children,
   hideActions,
+  showRank,
 }: CollectionPageProps) {
   // No empty action bar (offline, nothing to play or download): the header
   // would still reserve its stack gap above it.
@@ -121,6 +124,7 @@ export function CollectionPage({
         ) : (
           <TrackList
             tracks={tracks}
+            showRank={showRank}
             context={context}
             onRemove={onRemoveTrack}
             onReplace={onReplaceTrack}
