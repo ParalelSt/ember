@@ -38,7 +38,10 @@ Test folders, `apps/web/`:
   `LikeButton`, `PageTitle`/`SectionHeader`/`Eyebrow`/`EmptyState`,
   `CollectionHeader`: pure, props-in components.
 - `components/track/`: `TrackRow`, `TrackList`, `TrackCard`, `TrackShelf`.
-- `components/nav/`: `NavLinks`.
+- `components/nav/`: `NavLinks`, and `ChangelogBadge` (the What's new
+  row's New tag in `Sidebar` and `Drawer`, the dot on the `TopBar` menu
+  button).
+- `components/changelog/`: the What's new page, row, pill and hide switch.
 - `components/player/`: `SeekBar`, `TransportControls`, `VolumeControl`,
   `NowPlayingSummary`, and `PlayerProvider.test.tsx` (a mocked-backend
   wiring test: playTrack loads and plays once, a fresh track's position
@@ -197,6 +200,10 @@ node tests/library-collections-ui.test.mjs          # or: npm run test:library-u
 # Privacy switches
 node tests/privacy.test.mjs                         # or: npm run test:privacy
 
+# What's new: New tag, menu dot, Mark all as read, hide switch (needs PocketBase
+# restarted with this branch's pb_hooks; SHOTS_DIR=<dir> saves screenshots)
+node tests/changelog-ui.test.mjs                    # or: npm run test:changelog-ui
+
 # Desktop update feed (needs its own server: see the section below)
 node tests/desktop-update.test.mjs                  # or: npm run test:update
 
@@ -340,6 +347,36 @@ presence, and appearing in "Friends are listening to".
 The UI itself (both switches render, flipping one persists across a reload and
 leaves the other alone) was verified in a headless browser against the same
 sandbox.
+
+## What `changelog-ui.test.mjs` covers
+
+The "What's new" page and its New tags (docs/changelog-system.md), in a
+headless browser. Each run creates and invites a fresh `@ember.test` user,
+signs in through the form, and deletes both at the end. It sets the user's
+seen version directly through the PocketBase admin API to stand in for "a
+release came out since you last looked".
+
+- **A brand new user sees nothing as New**: the first load writes the current
+  app version (read from `apps/web/package.json`) and the sidebar row has no
+  tag.
+- **An older seen version shows the tag**: the pill appears at the right edge
+  of the sidebar row at 1440 wide, it pulses, and the pulse stops under
+  `prefers-reduced-motion`.
+- **Phone, 390 wide**: the menu button has the dot, the drawer has the row
+  with the tag, and the row opens the page.
+- **The page**: every entry above the seen version is tagged, opening the page
+  does not mark anything read, and Mark all as read clears the page and the
+  sidebar, saves the version, survives a reload, and clears the phone dot too.
+- **The hide switch**: removes every tag without marking anything read,
+  survives a reload, hides the phone dot, and turning it off brings the tags
+  back.
+- No uncaught page errors along the way.
+
+The same behaviour is unit tested without a browser in
+`apps/web/lib/{semver,changelog,changelog-new}.test.ts`,
+`stores/useChangelogStore.test.ts`, `app/api/changelog/route.test.ts`,
+`components/changelog/*.test.tsx`, `components/nav/ChangelogBadge.test.tsx`
+and `app/(app)/whats-new/page.test.tsx`.
 
 ## What `desktop-update.test.mjs` covers
 
