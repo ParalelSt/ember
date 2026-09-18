@@ -9,12 +9,15 @@ import { BackToTop } from '@/components/nav/BackToTop';
 import { PlayerBar } from '@/components/player/PlayerBar';
 import { NowPlaying } from '@/components/player/NowPlaying';
 import { LyricsPanel } from '@/components/player/LyricsPanel';
+import { SearchOverlayContainer } from '@/components/search/SearchOverlayContainer';
 import { hydrateOfflineStore } from '@/lib/offline';
+import { useUiStore } from '@/stores/useUiStore';
 
 export default function AppShellLayout({ children }: { children: ReactNode }) {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const scrollerRef = useRef<HTMLDivElement>(null);
   const [scrollerH, setScrollerH] = useState(0);
+  const setSearchOpen = useUiStore((s) => s.setSearchOpen);
 
   // Hydrate the offline store on app boot. On Android this subscribes to the
   // native EmberOffline plugin's pins/trackFiles; elsewhere it reads OPFS
@@ -69,9 +72,10 @@ export default function AppShellLayout({ children }: { children: ReactNode }) {
         </div>
         <BackToTop scrollRef={scrollerRef} />
         <PlayerBar />
-        <MobileNav />
+        <MobileNav onSearchClick={() => setSearchOpen(true)} />
       </div>
       <NowPlaying />
+      <SearchOverlayContainer />
     </div>
   );
 }

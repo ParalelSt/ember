@@ -16,6 +16,7 @@ import { PlaylistNavList } from '@/components/nav/PlaylistNavList';
 import { FlameIcon, PlusIcon } from '@/components/icons';
 import { BASE_NAV, ADMIN_NAV_ITEM } from '@/lib/nav';
 import { hrefFor, systemCollections } from '@/lib/collections';
+import { useUiStore } from '@/stores/useUiStore';
 
 interface Props {
   open: boolean;
@@ -28,6 +29,7 @@ export function Drawer({ open, onOpenChange }: Props) {
   const NAV = isAdmin ? [...BASE_NAV, ADMIN_NAV_ITEM] : BASE_NAV;
   const { data: playlists = [] } = useQueryPlaylists();
   const [importOpen, setImportOpen] = useState(false);
+  const setSearchOpen = useUiStore((s) => s.setSearchOpen);
 
   const close = () => onOpenChange(false);
   const { createOpen, setCreateOpen, handleCreate } = useCreatePlaylistFlow(close);
@@ -50,7 +52,12 @@ export function Drawer({ open, onOpenChange }: Props) {
         </SheetHeader>
 
         <nav className="px-2 py-3 flex flex-col gap-1">
-          <NavLinks items={NAV} activePath={pathname} onNavigate={close} />
+          <NavLinks
+            items={NAV}
+            activePath={pathname}
+            onNavigate={close}
+            onSearchClick={() => setSearchOpen(true)}
+          />
         </nav>
 
         {user && (
