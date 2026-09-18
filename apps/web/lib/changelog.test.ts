@@ -45,7 +45,7 @@ describe('CHANGELOG invariants', () => {
       expect(e.summary.trim(), e.id).not.toBe('');
       expect(e.bullets.length, e.id).toBeGreaterThan(0);
       const text = [e.title, e.summary, ...e.bullets].join(' ');
-      expect(text, e.id).not.toContain('—');
+      expect(text, e.id).not.toContain(String.fromCharCode(0x2014));
     }
   });
 });
