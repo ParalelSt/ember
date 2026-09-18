@@ -1,3 +1,12 @@
+# 0.3.1: cleaner collection pages
+
+**Host: a normal rebuild and restart (`./update.sh`). Nothing to configure:
+no `npm install`, no new environment variables, no PocketBase changes.**
+
+- **Cleaner collection pages**: Liked songs, playlists, albums, artists and
+  tracks now share one even layout, with more breathing room above and
+  below the play buttons. Visual only; nothing a button does has changed.
+
 # 0.3.0: What's new page and one app version
 
 **Host: a normal rebuild and restart (`./update.sh`). No `npm install`, no

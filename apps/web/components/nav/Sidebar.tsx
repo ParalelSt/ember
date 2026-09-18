@@ -18,6 +18,7 @@ import { PlaylistNavList } from '@/components/nav/PlaylistNavList';
 import { FlameIcon, PlusIcon } from '@/components/icons';
 import { BASE_NAV, ADMIN_NAV_ITEM } from '@/lib/nav';
 import { hrefFor, systemCollections } from '@/lib/collections';
+import { useUiStore } from '@/stores/useUiStore';
 
 export function Sidebar() {
   const pathname = usePathname();
@@ -27,6 +28,7 @@ export function Sidebar() {
   const { hasNew } = useChangelog();
   const { createOpen, setCreateOpen, handleCreate } = useCreatePlaylistFlow();
   const [importOpen, setImportOpen] = useState(false);
+  const setSearchOpen = useUiStore((s) => s.setSearchOpen);
 
   return (
     <aside className="hidden md:flex flex-col w-(--sidebar-w) shrink-0 bg-sidebar text-sidebar-foreground border-r border-sidebar-border h-full overflow-hidden">
@@ -40,7 +42,7 @@ export function Sidebar() {
       </Link>
 
       <nav className="px-2 flex flex-col gap-1">
-        <NavLinks items={NAV} activePath={pathname} />
+        <NavLinks items={NAV} activePath={pathname} onSearchClick={() => setSearchOpen(true)} />
         <WhatsNewLink showNew={hasNew} activePath={pathname} />
       </nav>
 

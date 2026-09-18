@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync, readdirSync, statSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, relative } from 'node:path';
 
 // Style lint: scans app/ and components/ for patterns the tokens and type
 // utilities in globals.css (deslop step 2) replaced, so they can't creep
@@ -10,7 +10,8 @@ import { join } from 'node:path';
 // call sites intentionally keep the same classes plus one more (e.g. a
 // margin), which the migration brief explicitly leaves alone rather than
 // splitting a class string apart, so a substring ban would misfire on
-// those. The gap-*/p-* spacing classes are not banned yet.
+// those. Raw Tailwind spacing classes (gap-3, mb-6, py-2...) are held by a
+// ratchet instead of a ban: see SPACING_BASELINE below.
 
 const ROOT = join(__dirname, '..');
 const SCAN_DIRS = ['app', 'components'];
@@ -112,4 +113,163 @@ describe('style lint', () => {
       expect(hits, `use size-art-*:\n${formatHits(hits)}`).toHaveLength(0);
     });
   }
+});
+
+// The spacing ratchet (docs/design-system.md section 6). A raw spacing
+// class is a margin, padding, gap or space-* utility with a number (or px)
+// instead of a scale token: `mb-6` rather than `mb-stack`. Allowed: `-0`,
+// `-auto`, and negative margins for scroll bleed (`-mx-1`, which the
+// lookbehind skips because the token starts with a dash). Variant prefixes
+// (`md:px-8`) still count.
+const RAW_SPACING =
+  /(?<=^|[\s"'`{(:!])(?:m[tbxy]?|p[tbxy]?|gap(?:-[xy])?|space-[xy])-(\d+(?:\.\d+)?|px)(?=$|[\s"'`})])/g;
+
+/** app/ and components/ source (.ts and .tsx), minus shadcn's components/ui
+ *  (its icon gaps are its own) and tests (not UI). */
+function ratchetFiles(): string[] {
+  const out: string[] = [];
+  const visit = (dir: string) => {
+    for (const entry of readdirSync(dir)) {
+      const full = join(dir, entry);
+      if (statSync(full).isDirectory()) {
+        if (relative(ROOT, full) !== join('components', 'ui')) visit(full);
+      } else if (/\.tsx?$/.test(entry) && !/\.test\.tsx?$/.test(entry) && !entry.endsWith('.d.ts')) {
+        out.push(full);
+      }
+    }
+  };
+  for (const dir of SCAN_DIRS) visit(join(ROOT, dir));
+  return out;
+}
+
+function countRawSpacing(file: string): number {
+  let n = 0;
+  for (const match of readFileSync(file, 'utf8').matchAll(RAW_SPACING)) if (match[1] !== '0') n++;
+  return n;
+}
+
+// File (relative to apps/web) -> raw spacing classes it may still have.
+// Generated from the tree after stage 1. A file over its number fails (new
+// raw spacing crept in: use the tokens); a file UNDER its number also fails
+// until the number here is lowered, so progress can't be given back later;
+// a file not listed must have none. Each stage lowers this map; stage 5
+// empties it.
+const SPACING_BASELINE: Record<string, number> = {
+  'app/(app)/admin/invites/page.tsx': 8,
+  'app/(app)/admin/layout.tsx': 3,
+  'app/(app)/admin/tracks/page.tsx': 14,
+  'app/(app)/admin/users/page.tsx': 8,
+  'app/(app)/dizajn/page.tsx': 45,
+  'app/(app)/library/loading.tsx': 5,
+  'app/(app)/library/page.tsx': 8,
+  'app/(app)/page.tsx': 1,
+  'app/(app)/playlist/[id]/page.tsx': 2,
+  'app/(app)/search/loading.tsx': 8,
+  'app/(app)/search/page.tsx': 6,
+  'app/(app)/session/[id]/page.tsx': 22,
+  'app/(app)/settings/downloads/page.tsx': 7,
+  'app/(app)/settings/help/page.tsx': 12,
+  'app/(app)/settings/layout.tsx': 4,
+  'app/(app)/settings/plugins/page.tsx': 14,
+  'app/(app)/settings/profile/page.tsx': 9,
+  'app/auth/page.tsx': 18,
+  'components/AppErrorBoundary.tsx': 4,
+  'components/BugReportDialog.tsx': 9,
+  'components/FriendsListening.tsx': 5,
+  'components/OfflinePlaceholder.tsx': 3,
+  'components/RequestDialog.tsx': 5,
+  'components/admin/AdminTabs.tsx': 3,
+  'components/artist/AlbumCard.tsx': 3,
+  'components/artist/AlbumRow.tsx': 3,
+  'components/changelog/ChangelogPage.tsx': 10,
+  'components/changelog/HideTagsSwitch.tsx': 1,
+  'components/changelog/NewBadge.tsx': 2,
+  'components/changelog/WhatsNewLink.tsx': 3,
+  'components/library/CollectionCard.tsx': 4,
+  'components/library/CollectionShelf.tsx': 5,
+  'components/library/options/CoverLedShelf.tsx': 5,
+  'components/library/options/DenseListShelf.tsx': 6,
+  'components/library/options/EditorialGridShelf.tsx': 7,
+  'components/library/options/FeaturedShelf.tsx': 9,
+  'components/library/options/changelog/ChangelogPage.tsx': 5,
+  'components/library/options/changelog/ChangelogPanel.tsx': 11,
+  'components/library/options/changelog/ChangelogSection.tsx': 15,
+  'components/library/options/changelog/HideTagsSwitch.tsx': 1,
+  'components/library/options/changelog/NewBadge.tsx': 3,
+  'components/library/options/changelog/Placements.tsx': 21,
+  'components/library/options/changelog/ShellPreview.tsx': 54,
+  'components/nav/CollectionNavList.tsx': 5,
+  'components/nav/Drawer.tsx': 18,
+  'components/nav/MobileNav.tsx': 2,
+  'components/nav/NavLinks.tsx': 3,
+  'components/nav/PlaylistNavList.tsx': 4,
+  'components/nav/Sidebar.tsx': 19,
+  'components/nav/TopBar.tsx': 4,
+  'components/page/CollectionSkeleton.tsx': 4,
+  'components/page/EmptyState.tsx': 1,
+  'components/page/PageTitle.tsx': 1,
+  'components/page/SectionHeader.tsx': 1,
+  'components/player/LyricsBody.tsx': 22,
+  'components/player/NowPlaying.tsx': 8,
+  'components/player/NowPlayingSummary.tsx': 2,
+  'components/player/PlayerBar.tsx': 9,
+  'components/player/QueueSheet.tsx': 11,
+  'components/player/SeekBar.tsx': 2,
+  'components/player/TabViewer.tsx': 7,
+  'components/player/TabsDialog.tsx': 31,
+  'components/player/TransportControls.tsx': 2,
+  'components/player/VolumeControl.tsx': 1,
+  'components/search/SearchOverlay.tsx': 3,
+  'components/search/SearchOverlayContainer.tsx': 2,
+  'components/session/SessionDialogs.tsx': 4,
+  'components/settings/PrivacyToggles.tsx': 8,
+  'components/settings/SettingsTabs.tsx': 3,
+  'components/track/TrackCard.tsx': 4,
+  'components/track/TrackRow.tsx': 9,
+  'components/track/TrackShelf.tsx': 10,
+  'components/track/menus/CreatePlaylistDialog.tsx': 9,
+  'components/track/menus/ImportPlaylistDialog.tsx': 9,
+  'components/track/menus/ReplaceTrackDialog.tsx': 7,
+  'components/track/menus/TrackSearchPicker.tsx': 9,
+  'components/track/menus/UploadTrackDialog.tsx': 4,
+};
+
+describe('spacing ratchet', () => {
+  const counts = new Map(ratchetFiles().map((f) => [relative(ROOT, f), countRawSpacing(f)] as const));
+
+  it('matches raw spacing classes and nothing else', () => {
+    const hits = (text: string) => [...text.matchAll(RAW_SPACING)].filter((m) => m[1] !== '0').length;
+    expect(hits('className="mb-6 gap-3 md:px-8 py-0.5 space-y-2 gap-x-4 p-px"')).toBe(7);
+    expect(hits('className="mb-stack gap-cluster p-page md:p-page-lg -mx-1 mt-0 mx-auto size-12 top-2"')).toBe(0);
+    expect(hits("cn('mt-3', active && 'py-2')")).toBe(2);
+  });
+
+  it('no file has more raw spacing than its baseline (unlisted files: none)', () => {
+    const over = [...counts]
+      .filter(([file, n]) => n > (SPACING_BASELINE[file] ?? 0))
+      .map(([file, n]) => `${file}: ${n} raw spacing classes, baseline ${SPACING_BASELINE[file] ?? 0} (use the spacing tokens)`);
+    expect(over, over.join('\n')).toEqual([]);
+  });
+
+  it('no file is under its baseline (lower SPACING_BASELINE when you remove raw spacing)', () => {
+    const under = Object.entries(SPACING_BASELINE)
+      .filter(([file, allowed]) => (counts.get(file) ?? 0) < allowed)
+      .map(([file, allowed]) => `${file}: baseline ${allowed}, now ${counts.get(file) ?? 0}`);
+    expect(under, under.join('\n')).toEqual([]);
+  });
+
+  it('the stage 1 collection stack uses tokens only', () => {
+    for (const file of [
+      'components/page/CollectionHeader.tsx',
+      'components/page/ActionBar.tsx',
+      'components/library/CollectionPage.tsx',
+      'components/track/TrackPageClient.tsx',
+      'app/(app)/album/[id]/page.tsx',
+      'app/(app)/artist/[id]/page.tsx',
+      'app/(app)/layout.tsx',
+    ]) {
+      expect(counts.get(file), file).toBe(0);
+      expect(SPACING_BASELINE[file], file).toBeUndefined();
+    }
+  });
 });

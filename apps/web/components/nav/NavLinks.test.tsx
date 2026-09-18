@@ -50,4 +50,34 @@ describe('NavLinks', () => {
     fireEvent.click(screen.getByRole('link', { name: 'Library' }));
     expect(onNavigate).toHaveBeenCalledTimes(1);
   });
+
+  it('opens search via onSearchClick instead of navigating', () => {
+    const withSearch = [...items, { href: '/search', label: 'Search', icon: 'search' as const }];
+    const onSearchClick = vi.fn();
+    render(<NavLinks items={withSearch} activePath="/" onSearchClick={onSearchClick} />);
+
+    const link = screen.getByRole('link', { name: 'Search' });
+    const event = fireEvent.click(link);
+
+    expect(onSearchClick).toHaveBeenCalledTimes(1);
+    // preventDefault was called: jsdom/happy-dom's fireEvent returns false
+    // when the handler called preventDefault.
+    expect(event).toBe(false);
+  });
+
+  it('still navigates on a modified click (new tab) even with onSearchClick set', () => {
+    const withSearch = [...items, { href: '/search', label: 'Search', icon: 'search' as const }];
+    const onSearchClick = vi.fn();
+    render(<NavLinks items={withSearch} activePath="/" onSearchClick={onSearchClick} />);
+
+    fireEvent.click(screen.getByRole('link', { name: 'Search' }), { metaKey: true });
+
+    expect(onSearchClick).not.toHaveBeenCalled();
+  });
+
+  it('leaves the Search link as a real navigable href for deep links', () => {
+    const withSearch = [...items, { href: '/search', label: 'Search', icon: 'search' as const }];
+    render(<NavLinks items={withSearch} activePath="/" />);
+    expect(screen.getByRole('link', { name: 'Search' })).toHaveAttribute('href', '/search');
+  });
 });

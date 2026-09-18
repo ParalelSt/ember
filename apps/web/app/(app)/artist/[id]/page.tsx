@@ -8,6 +8,7 @@ import { useTrackActions } from '@/hooks/useTrackActions';
 import { AlbumRow } from '@/components/artist/AlbumRow';
 import { PlayButton } from '@/components/primitives/PlayButton';
 import { CollectionHeader } from '@/components/page/CollectionHeader';
+import { ActionBar } from '@/components/page/ActionBar';
 import { useQueryArtist } from '@/hooks/useLibrary';
 import { OnlineOnly } from '@/components/OnlineOnly';
 import { pickThumbnail } from '@/lib/artwork';
@@ -42,7 +43,7 @@ function ArtistView({ id }: { id: string }) {
   const artistContext = { type: 'artist' as const, artistName: name, artistId: id };
 
   return (
-    <div>
+    <div className="flex flex-col gap-stack">
       <CollectionHeader
         variant="artist"
         eyebrow="Artist"
@@ -51,42 +52,47 @@ function ArtistView({ id }: { id: string }) {
         cover={{ src: heroArt, icon: null }}
         description={
           description ? (
-            <p className="mt-3 max-w-2xl text-sm text-muted-foreground line-clamp-3 leading-relaxed">{description}</p>
+            <p className="max-w-2xl text-sm text-muted-foreground line-clamp-3 leading-relaxed">{description}</p>
           ) : null
         }
-      />
-      <div className="flex items-center gap-3 mb-6">
-        <PlayButton
-          onClick={() => tracks.length && trackActions.onPlay(tracks[0], tracks, artistContext)}
-          disabled={!tracks.length}
-          label="Play top tracks"
-        />
+      >
+        <ActionBar>
+          <PlayButton
+            onClick={() => tracks.length && trackActions.onPlay(tracks[0], tracks, artistContext)}
+            disabled={!tracks.length}
+            label="Play top tracks"
+          />
+        </ActionBar>
+      </CollectionHeader>
+
+      <div className="flex flex-col gap-section">
+        <section>
+          <SectionHeader title="Popular" className="mb-block" />
+          <div className="max-h-80 overflow-y-auto rounded-md">
+            <TrackList
+              tracks={tracks}
+              context={artistContext}
+              showRank
+              trailing={renderTrackMenu}
+              {...trackActions}
+            />
+          </div>
+        </section>
+
+        {albums.length > 0 && (
+          <section>
+            <SectionHeader title="Discography" className="mb-block" />
+            <AlbumRow albums={albums} />
+          </section>
+        )}
+
+        {singles.length > 0 && (
+          <section>
+            <SectionHeader title="Singles & EPs" className="mb-block" />
+            <AlbumRow albums={singles} />
+          </section>
+        )}
       </div>
-
-      <SectionHeader title="Popular" className="mb-3" />
-      <div className="max-h-80 overflow-y-auto rounded-md mb-8">
-        <TrackList
-          tracks={tracks}
-          context={artistContext}
-          showRank
-          trailing={renderTrackMenu}
-          {...trackActions}
-        />
-      </div>
-
-      {albums.length > 0 && (
-        <>
-          <SectionHeader title="Discography" className="mb-3" />
-          <AlbumRow albums={albums} />
-        </>
-      )}
-
-      {singles.length > 0 && (
-        <>
-          <SectionHeader title="Singles & EPs" className="mb-3 mt-8" />
-          <AlbumRow albums={singles} />
-        </>
-      )}
     </div>
   );
 }

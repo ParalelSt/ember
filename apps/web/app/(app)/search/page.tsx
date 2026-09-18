@@ -1,24 +1,12 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import { toast } from 'sonner';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { TrackList } from '@/components/track/TrackList';
 import { TrackRow } from '@/components/track/TrackRow';
 import { renderTrackMenu } from '@/components/track/menus/TrackMenu';
 import { MicIcon, MusicIcon, SearchIcon } from '@/components/icons';
-import { api } from '@/lib/api';
-import { QK } from '@/hooks/useLibrary';
-import { useVoiceSearch } from '@/hooks/useVoiceSearch';
-import {
-  useQueryRecentSearches,
-  useExecuteAddRecentSearch,
-  useExecuteRemoveRecentSearch,
-} from '@/hooks/useRecentSearches';
-import { useTrackActions } from '@/hooks/useTrackActions';
-import { useOnline } from '@/lib/useOnline';
+import { useSearchQuery } from '@/hooks/useSearchQuery';
 import { OnlineOnly } from '@/components/OnlineOnly';
 import { cn } from '@/lib/utils';
 import { EmptyState } from '@/components/page/EmptyState';
@@ -28,44 +16,20 @@ import { SectionHeader } from '@/components/page/SectionHeader';
 const RECENTS_FALLBACK = <MusicIcon className="h-4 w-4" />;
 
 export default function SearchPage() {
-  const [q, setQ] = useState('');
-  const [debouncedQ, setDebouncedQ] = useState('');
-  const isOnline = useOnline();
-  const trackActions = useTrackActions();
-
-  const { data: recentTracks = [] } = useQueryRecentSearches();
-  const addRecentTrack = useExecuteAddRecentSearch();
-  const removeRecentTrack = useExecuteRemoveRecentSearch();
-
-  // Spoken words fill the input live; the debounce below turns them into a
-  // search exactly like typing.
-  const voice = useVoiceSearch((text) => setQ(text));
-
-  useEffect(() => {
-    // Trim during debounce so " " / "   abc   " collapse to "" / "abc" —
-    // pressing space alone (or starting/ending with whitespace) no longer
-    // triggers a search.
-    const t = setTimeout(() => setDebouncedQ(q.trim()), 250);
-    return () => clearTimeout(t);
-  }, [q]);
-
-  const { data, isFetching, error } = useQuery({
-    queryKey: QK.search(debouncedQ),
-    queryFn: () => api.search(debouncedQ).then((r) => r.tracks),
-    enabled: isOnline && debouncedQ.length > 0,
-    retry: false,
-  });
-
-  // Surface the rate-limit 429 quietly instead of a blank result set.
-  const rateLimited = (error as { status?: number } | null)?.status === 429;
-
-  const onMicClick = () => {
-    if (!voice.supported) {
-      toast.message("Voice search isn't supported in this browser — try Chrome.");
-      return;
-    }
-    voice.toggle();
-  };
+  const {
+    q,
+    setQ,
+    debouncedQ,
+    trackActions,
+    recentTracks,
+    removeRecentTrack,
+    voice,
+    onMicClick,
+    data,
+    isFetching,
+    rateLimited,
+    onPlay,
+  } = useSearchQuery();
 
   const recents = !debouncedQ && recentTracks.length > 0 ? (
     <div className="mt-8 max-w-xl">
@@ -97,12 +61,7 @@ export default function SearchPage() {
       context={{ type: 'search', query: debouncedQ }}
       trailing={renderTrackMenu}
       {...trackActions}
-      // Playing a result also saves it to recent searches; everything else
-      // about playback comes from the spread above.
-      onPlay={(track, list, context) => {
-        addRecentTrack.mutate(track);
-        trackActions.onPlay(track, list, context);
-      }}
+      onPlay={onPlay}
     />
   );
 

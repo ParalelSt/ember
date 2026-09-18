@@ -9,13 +9,16 @@ import { BackToTop } from '@/components/nav/BackToTop';
 import { PlayerBar } from '@/components/player/PlayerBar';
 import { NowPlaying } from '@/components/player/NowPlaying';
 import { LyricsPanel } from '@/components/player/LyricsPanel';
+import { SearchOverlayContainer } from '@/components/search/SearchOverlayContainer';
 import { hydrateOfflineStore } from '@/lib/offline';
+import { useUiStore } from '@/stores/useUiStore';
 import { useChangelog } from '@/hooks/useChangelog';
 
 export default function AppShellLayout({ children }: { children: ReactNode }) {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const scrollerRef = useRef<HTMLDivElement>(null);
   const [scrollerH, setScrollerH] = useState(0);
+  const setSearchOpen = useUiStore((s) => s.setSearchOpen);
   const { hasNew } = useChangelog();
 
   // Hydrate the offline store on app boot. On Android this subscribes to the
@@ -63,7 +66,7 @@ export default function AppShellLayout({ children }: { children: ReactNode }) {
           }
         >
           <div className="flex min-w-0 min-h-full">
-            <main className="flex-1 min-w-0 px-6 md:px-8 py-6 md:py-8">
+            <main className="flex-1 min-w-0 p-page md:p-page-lg">
               <div className="mx-auto max-w-(--content-max)">{children}</div>
             </main>
             <LyricsPanel />
@@ -71,9 +74,10 @@ export default function AppShellLayout({ children }: { children: ReactNode }) {
         </div>
         <BackToTop scrollRef={scrollerRef} />
         <PlayerBar />
-        <MobileNav />
+        <MobileNav onSearchClick={() => setSearchOpen(true)} />
       </div>
       <NowPlaying />
+      <SearchOverlayContainer />
     </div>
   );
 }

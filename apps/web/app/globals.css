@@ -64,6 +64,21 @@
      than rounded to a neighbouring token so no cover changes size. */
   --spacing-art-hero: 11rem;
   --spacing-art-hero-sm: 9rem;
+
+  /* The spacing scale (docs/design-system.md section 2). Six steps plus the
+     page gutter, generating gap-*, mb-*, mt-*, px-*, py-* and size-hit the
+     same way the art tokens above generate size-art-*. Stage 1 put the
+     collection page stack (CollectionHeader, ActionBar, CollectionPage,
+     CollectionSkeleton) and the main column padding on them. */
+  --spacing-inset: 0.25rem; /* 4px: icon to label, chip padding */
+  --spacing-cluster: 0.5rem; /* 8px: eyebrow to title, title to meta, action bar buttons */
+  --spacing-row: 0.75rem; /* 12px: art to text inside a row, row padding */
+  --spacing-block: 1rem; /* 16px: heading to its content */
+  --spacing-stack: 1.5rem; /* 24px: blocks inside one region */
+  --spacing-section: 2.5rem; /* 40px: between page sections */
+  --spacing-page: 1.5rem; /* 24px: main column padding, phone */
+  --spacing-page-lg: 2rem; /* 32px: main column padding, desktop */
+  --spacing-hit: 2.5rem; /* 40px: phone hit box for icon buttons */
 }
 
 :root {
@@ -121,7 +136,7 @@
   @apply text-3xl md:text-4xl font-bold tracking-tight;
 }
 @utility text-hero-title {
-  @apply mt-2 text-4xl md:text-5xl font-bold tracking-tight leading-tight;
+  @apply text-4xl md:text-5xl font-bold tracking-tight leading-tight;
 }
 @utility text-section-title {
   @apply text-xl font-bold tracking-tight;

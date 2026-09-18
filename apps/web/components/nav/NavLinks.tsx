@@ -7,6 +7,11 @@ export interface NavLinksProps {
   items: NavItem[];
   activePath: string;
   onNavigate?: () => void;
+  /** Opens the search overlay instead of navigating, for the item whose
+   *  icon is 'search'. /search stays a real route underneath (deep links,
+   *  landing on it directly): a modified click (new tab, etc.) or a
+   *  missing handler still navigates normally. */
+  onSearchClick?: () => void;
 }
 
 const ICONS: Record<NavIcon, typeof HomeIcon> = {
@@ -20,17 +25,24 @@ const ICONS: Record<NavIcon, typeof HomeIcon> = {
 /** Presentational only: no data fetching, no store reads. Renders just the
  *  Link elements for the top nav; Sidebar and Drawer each keep their own
  *  wrapping <nav> since its padding differs between the two. */
-export function NavLinks({ items, activePath, onNavigate }: NavLinksProps) {
+export function NavLinks({ items, activePath, onNavigate, onSearchClick }: NavLinksProps) {
   return (
     <>
       {items.map(({ href, label, icon }) => {
         const Icon = ICONS[icon];
         const isActive = isNavActive(href, activePath);
+        const isSearch = icon === 'search';
         return (
           <Link
             key={href}
             href={href}
-            onClick={onNavigate}
+            onClick={(e) => {
+              if (isSearch && onSearchClick && !(e.metaKey || e.ctrlKey || e.shiftKey || e.altKey)) {
+                e.preventDefault();
+                onSearchClick();
+              }
+              onNavigate?.();
+            }}
             className={cn(
               'flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition-colors',
               isActive

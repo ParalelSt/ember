@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { CheckIcon } from '@/components/icons';
-import { CollectionCover, type CollectionCoverProps } from '@/components/library/CollectionCover';
+import { CollectionCover, type CollectionCoverProps } from '@/components/primitives/CollectionCover';
 import { cn } from '@/lib/utils';
 
 export interface CollectionCardProps {

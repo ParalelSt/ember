@@ -21,6 +21,17 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    id: 'cleaner-collection-pages',
+    version: '0.3.1',
+    date: '2026-09-18',
+    title: 'Cleaner collection pages',
+    summary: 'More breathing room around the play buttons on your collection pages.',
+    bullets: [
+      'Liked songs, playlists, albums, artists and tracks get more room around the play buttons.',
+      'Every one of those pages now shares the same even spacing.',
+    ],
+  },
+  {
     id: 'instant-search',
     version: '0.3.0',
     date: '2026-09-18',
