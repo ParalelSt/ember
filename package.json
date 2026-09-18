@@ -40,6 +40,8 @@
     "test:library-ui": "node tests/library-collections-ui.test.mjs",
     "test:unavailable": "node tests/unavailable.test.mjs",
     "test:unavailable-ui": "node tests/unavailable-ui.test.mjs",
+    "test:trending-ui": "node tests/trending-ui.test.mjs",
+    "test:trending-py": ".venv/bin/python -m unittest tests/test_player_trending.py",
     "test:search-ui": "node tests/instant-search-ui.test.mjs",
     "test:android-native-log": "node tests/android-native-log.mjs",
     "test:android-call": "bash tests/android-auto-call.sh",
