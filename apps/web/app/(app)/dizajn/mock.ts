@@ -225,3 +225,99 @@ export const MOCK_CHANGELOG: ChangelogEntry[] = [
     unread: false,
   },
 ];
+
+export type ChartMovement = 'up' | 'down' | 'new' | 'same';
+
+/** One chart position for the "Trending shelf" candidates: the rank is the
+ *  position in MOCK_CHART (1-based), the movement is against yesterday. */
+export interface MockChartEntry {
+  track: Track;
+  movement: ChartMovement;
+  /** Places moved, for up and down. */
+  change?: number;
+}
+
+// [title, artist, movement, places moved]. Real-looking global chart, top
+// 50, the way YouTube Music's "Daily Top Music Videos - Global" reads.
+const CHART_ROWS: [string, string, ChartMovement, number?][] = [
+  ['Golden', 'HUNTR/X', 'same'],
+  ['Dai Dai', 'Shakira', 'up', 3],
+  ['The Fate of Ophelia', 'Taylor Swift', 'new'],
+  ['Soda Pop', 'Saja Boys', 'down', 1],
+  ['Manchild', 'Sabrina Carpenter', 'down', 2],
+  ['APT.', 'ROSÉ & Bruno Mars', 'same'],
+  ['Ordinary', 'Alex Warren', 'up', 2],
+  ['Die With A Smile', 'Lady Gaga & Bruno Mars', 'down', 1],
+  ['Your Idol', 'Saja Boys', 'up', 4],
+  ['Jump', 'BLACKPINK', 'down', 3],
+  ['Gnarly', 'KATSEYE', 'up', 1],
+  ['Birds of a Feather', 'Billie Eilish', 'down', 2],
+  ['Training Season', 'Dua Lipa', 'new'],
+  ['back to friends', 'sombr', 'same'],
+  ['Abracadabra', 'Lady Gaga', 'down', 4],
+  ['What It Sounds Like', 'HUNTR/X', 'up', 5],
+  ['Luther', 'Kendrick Lamar & SZA', 'same'],
+  ['Messy', 'Lola Young', 'down', 1],
+  ['DtMF', 'Bad Bunny', 'up', 2],
+  ['Sapphire', 'Ed Sheeran', 'down', 6],
+  ['Tears', 'Sabrina Carpenter', 'same'],
+  ['Just Keep Watching', 'Tate McRae', 'up', 3],
+  ['Pink Pony Club', 'Chappell Roan', 'down', 2],
+  ['Undressed', 'sombr', 'same'],
+  ['Takedown', 'HUNTR/X', 'up', 1],
+  ['Daisies', 'Justin Bieber', 'down', 5],
+  ['Anxiety', 'Doechii', 'same'],
+  ['Baile Inolvidable', 'Bad Bunny', 'up', 4],
+  ['Gabriela', 'KATSEYE', 'down', 1],
+  ['Shake It To The Max (FLY)', 'Moliy', 'new'],
+  ['Blue', 'yung kai', 'same'],
+  ['Mutt', 'Leon Thomas', 'up', 2],
+  ['Timeless', 'The Weeknd & Playboi Carti', 'down', 3],
+  ['Lose Control', 'Teddy Swims', 'same'],
+  ['Beautiful Things', 'Benson Boone', 'down', 2],
+  ['Sailor Song', 'Gigi Perez', 'up', 1],
+  ['Folded', 'Kehlani', 'up', 6],
+  ['How It\'s Done', 'HUNTR/X', 'down', 4],
+  ['Jai Jai Ram', 'Shreya Ghoshal', 'new'],
+  ['NUEVAYoL', 'Bad Bunny', 'same'],
+  ['Bad Dreams', 'Teddy Swims', 'down', 1],
+  ['Free', 'Rumi & Jinu', 'up', 3],
+  ['Espresso', 'Sabrina Carpenter', 'down', 2],
+  ['I Had Some Help', 'Post Malone & Morgan Wallen', 'same'],
+  ['Zoo', 'Shakira', 'up', 5],
+  ['Shararat', 'Madhubanti Bagchi', 'down', 3],
+  ['A Bar Song (Tipsy)', 'Shaboozey', 'same'],
+  ['Stargazing', 'Myles Smith', 'up', 1],
+  ['SaWaDiKa', 'LISA', 'new'],
+  ['Good Luck, Babe!', 'Chappell Roan', 'down', 7],
+];
+
+// Chart covers: the same flat two-tone stand-ins as the Home shelves,
+// cycled so neighbouring rows never share a cover.
+const CHART_PALETTE: [string, string][] = [
+  ['#4b3a2c', '#d59a5c'],
+  ['#2f3d4c', '#6f8aa3'],
+  ['#3d2c4b', '#8e6fb0'],
+  ['#2c4638', '#78a38a'],
+  ['#4b2c33', '#b56b78'],
+  ['#27404a', '#5fa0b3'],
+  ['#3a4a2c', '#98ae6a'],
+];
+const CHART_SHAPES = ['circle', 'square', 'bars'] as const;
+
+/** Today's chart, number 1 first: 50 entries with artwork and a movement
+ *  marker, for the "Trending shelf" section on /dizajn. */
+export const MOCK_CHART: MockChartEntry[] = CHART_ROWS.map(([title, artist, movement, change], i) => {
+  const [bg, fg] = CHART_PALETTE[i % CHART_PALETTE.length];
+  return {
+    track: makeTrack({
+      sourceId: `chart${i + 1}`,
+      title,
+      artist,
+      durationSec: 150 + ((i * 37) % 110),
+      artworkUrl: mockCover(bg, fg, CHART_SHAPES[i % CHART_SHAPES.length]),
+    }),
+    movement,
+    change,
+  };
+});
