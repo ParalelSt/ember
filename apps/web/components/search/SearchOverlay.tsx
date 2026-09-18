@@ -36,12 +36,12 @@ export interface SearchOverlayProps {
 }
 
 /** Presentational: props in, callbacks out. No hooks/, stores/ or
- *  react-query imports — everything it renders comes from props built by
+ *  react-query imports: everything it renders comes from props built by
  *  SearchOverlayContainer. Lives in the app shell (app/(app)/layout.tsx) so
  *  opening it needs no route change and no network: this component itself
  *  never fetches anything.
  *
- *  Styling is provisional (per the brief) — one component, tokens not
+ *  Styling is provisional (per the brief): one component, tokens not
  *  literals, matching components/ui/dialog.tsx and the bug report / request
  *  dialogs, so it's easy to restyle later. */
 export function SearchOverlay({

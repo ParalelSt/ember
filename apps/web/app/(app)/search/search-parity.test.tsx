@@ -9,7 +9,7 @@ import type { Track } from '@/types/track';
 
 // Same query, same mocked response, rendered through both the page and the
 // overlay: they share hooks/useSearchQuery.ts, so both must show the same
-// result rows — proves the overlay didn't drift from the page it reuses.
+// result rows: proves the overlay didn't drift from the page it reuses.
 
 vi.mock('next/link', () => ({
   default: ({ href, children, ...rest }: ComponentProps<'a'>) => (

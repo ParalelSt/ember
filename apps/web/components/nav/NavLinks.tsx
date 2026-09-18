@@ -9,7 +9,7 @@ export interface NavLinksProps {
   onNavigate?: () => void;
   /** Opens the search overlay instead of navigating, for the item whose
    *  icon is 'search'. /search stays a real route underneath (deep links,
-   *  landing on it directly) — a modified click (new tab, etc.) or a
+   *  landing on it directly): a modified click (new tab, etc.) or a
    *  missing handler still navigates normally. */
   onSearchClick?: () => void;
 }

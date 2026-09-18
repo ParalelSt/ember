@@ -3,19 +3,19 @@
  *      node tests/instant-search-ui.test.mjs      # or: npm run test:search-ui
  *
  *  Reported as: tapping Search on a slow link starts a route change to
- *  /search and shows nothing until that route's chunk and payload arrive —
+ *  /search and shows nothing until that route's chunk and payload arrive ,
  *  the tap looks ignored and you can't type. The fix moved the search UI
  *  into the already-loaded app shell as an overlay (components/search),
  *  opened from shell state (stores/useUiStore's searchOpen), not a route.
  *
  *  This drives a real Chromium tab, loads the shell once while the network
  *  is healthy, then throttles the connection near to nothing (CDP
- *  Network.emulateNetworkConditions — heavy latency, ~1kbps either way,
+ *  Network.emulateNetworkConditions: heavy latency, ~1kbps either way,
  *  NOT offline: offline flips useOnline() and swaps in a different message,
  *  which is not what "slow" means here) and clicks Search. The invariant:
  *  the overlay and its input appear well under the throttled round-trip
  *  time, typing lands immediately, and the shell (sidebar/nav) never
- *  disappears — no blank screen at any point.
+ *  disappears: no blank screen at any point.
  *
  *  Needs the sandbox from tests/README.md and playwright-core. Set
  *  CHROME_PATH to pick a browser. */
@@ -38,7 +38,7 @@ const PASSWORD = 'BugTest2026!';
 function findChrome() {
   if (process.env.CHROME_PATH) return process.env.CHROME_PATH;
   const root = path.join(process.env.HOME ?? '', 'Library/Caches/ms-playwright');
-  if (!fs.existsSync(root)) throw new Error('no Playwright browser cache — set CHROME_PATH');
+  if (!fs.existsSync(root)) throw new Error('no Playwright browser cache: set CHROME_PATH');
   for (const d of fs.readdirSync(root).filter((x) => x.startsWith('chromium-')).sort().reverse()) {
     const found = execSync(
       `find "${path.join(root, d)}" -maxdepth 6 -type f \\( -name "Google Chrome for Testing" -o -name "Chromium" \\) 2>/dev/null | head -1`,
@@ -46,7 +46,7 @@ function findChrome() {
     ).trim();
     if (found) return found;
   }
-  throw new Error('no Chromium binary found — set CHROME_PATH');
+  throw new Error('no Chromium binary found: set CHROME_PATH');
 }
 
 async function adminToken() {
@@ -77,12 +77,12 @@ const page = await ctx.newPage();
 const checks = [];
 const check = (name, pass, detail = '') => {
   checks.push([name, pass]);
-  console.log(`${pass ? 'PASS' : 'FAIL'}  ${name}${detail ? `  — ${detail}` : ''}`);
+  console.log(`${pass ? 'PASS' : 'FAIL'}  ${name}${detail ? ` : ${detail}` : ''}`);
 };
 
 // Catches base-ui's own Escape/outside-click dismissal fighting our explicit
 // handler (SearchOverlay.tsx owns Escape and the close button rather than
-// relying only on the dialog primitive) — a double-close, a setState on an
+// relying only on the dialog primitive): a double-close, a setState on an
 // unmounted popup, or a React error would throw here. Uncaught exceptions
 // only (pageerror), not console.error: under the throttled connection the
 // browser itself logs "Failed to load resource: 503/500" for the search
@@ -96,7 +96,7 @@ page.on('pageerror', (e) => pageErrors.push(String(e)));
 await page.goto(`${APP}/`, { waitUntil: 'networkidle' });
 await page.getByRole('link', { name: 'Home' }).first().waitFor({ timeout: 5000 });
 
-// Throttle hard: 1.5s latency, ~1kbps either way. Not setOffline — offline
+// Throttle hard: 1.5s latency, ~1kbps either way. Not setOffline: offline
 // flips useOnline() to show "No connection…" instead of results, which is a
 // different code path than "slow". A real search API round-trip cannot
 // complete inside this test's timeouts at this throughput.
@@ -128,13 +128,13 @@ check('input is focused on open, with the network throttled', focused);
 // The shell never disappeared: the sidebar (loaded before the throttle
 // kicked in) is still there underneath the overlay.
 // A CSS locator, not getByRole: the open dialog correctly marks the rest of
-// the page aria-hidden (standard modal a11y — background content is pulled
+// the page aria-hidden (standard modal a11y: background content is pulled
 // out of the accessibility tree while a dialog is open), which makes
 // getByRole('link', ...) match nothing here even though the sidebar is still
 // visually on screen underneath the overlay. That's the thing this check
 // actually cares about, so ask the DOM directly instead of the a11y tree.
 const sidebarVisible = await page.locator('aside a[aria-label="Home"]').first().isVisible();
-check('the app shell (nav) stayed on screen — no blank transition', sidebarVisible);
+check('the app shell (nav) stayed on screen: no blank transition', sidebarVisible);
 
 await input.fill('daft punk');
 const typedValue = await input.inputValue();
@@ -159,7 +159,7 @@ await cdp.send('Network.emulateNetworkConditions', {
 });
 
 // Reopen and dismiss with a click outside the popup (the dialog primitive's
-// own backdrop dismiss) — the manual check the brief asked for: does that
+// own backdrop dismiss): the manual check the brief asked for: does that
 // fight SearchOverlay's explicit Escape/close-button handling? Two closes
 // racing (base-ui's onOpenChange(false) and our onClose calling setOpen(false)
 // again) would either double-fire history/state updates or throw; the

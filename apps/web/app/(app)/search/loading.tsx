@@ -1,6 +1,6 @@
 import { Skeleton } from '@/components/ui/skeleton';
 
-/** Shown for the moment /search's own chunk and payload are loading — the
+/** Shown for the moment /search's own chunk and payload are loading: the
  *  nav opens the search overlay instantly instead, so this only fires for a
  *  deep link straight to /search. Same shape as the real page: title, the
  *  rounded search-bar pill, and a few row placeholders. */

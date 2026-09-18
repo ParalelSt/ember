@@ -9,7 +9,7 @@ const COVER_CLASS = {
 
 export interface CollectionSkeletonProps {
   variant?: keyof typeof COVER_CLASS;
-  /** How many track rows to sketch — kept small; this is a placeholder for
+  /** How many track rows to sketch: kept small; this is a placeholder for
    *  the blank route-load transition, not a guess at the real list length. */
   rows?: number;
 }
@@ -18,7 +18,7 @@ export interface CollectionSkeletonProps {
  *  (cover + title + meta) and its first few track rows, sized off the same
  *  tokens CollectionHeader and TrackRow use. Used by the route-level
  *  loading.tsx files so a slow connection shows this instead of a blank
- *  screen while the route's chunk and payload arrive — the page's own
+ *  screen while the route's chunk and payload arrive: the page's own
  *  "Loading…" text still covers the fetch that happens after it mounts. */
 export function CollectionSkeleton({ variant = 'collection', rows = 5 }: CollectionSkeletonProps) {
   return (

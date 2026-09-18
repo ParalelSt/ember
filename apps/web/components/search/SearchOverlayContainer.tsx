@@ -15,7 +15,7 @@ import { useUiStore } from '@/stores/useUiStore';
 const RECENTS_FALLBACK = <MusicIcon className="h-4 w-4" />;
 
 /** The data-aware half of the search overlay: owns the open flag (shell
- *  state, not the URL — opening it is instant, even with no network) and
+ *  state, not the URL: opening it is instant, even with no network) and
  *  composes the shared search hook into the props SearchOverlay renders.
  *  Mounted once in app/(app)/layout.tsx, alongside the rest of the
  *  already-loaded shell. */

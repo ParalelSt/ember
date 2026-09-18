@@ -18,7 +18,7 @@ import type { PlaybackContext, Track } from '@/types/track';
 /** Everything the search page and the search overlay need, pulled into one
  *  place so results, recents and error copy stay identical between them
  *  (they are two different chrome around the same query). Keep every string
- *  here exactly as the page originally had it — the page and the overlay
+ *  here exactly as the page originally had it: the page and the overlay
  *  tests both assert on it. */
 export function useSearchQuery() {
   const [q, setQ] = useState('');
@@ -35,7 +35,7 @@ export function useSearchQuery() {
   const voice = useVoiceSearch((text) => setQ(text));
 
   useEffect(() => {
-    // Trim during debounce so " " / "   abc   " collapse to "" / "abc" —
+    // Trim during debounce so " " / "   abc   " collapse to "" / "abc" ,
     // pressing space alone (or starting/ending with whitespace) no longer
     // triggers a search.
     const t = setTimeout(() => setDebouncedQ(q.trim()), 250);
@@ -54,7 +54,7 @@ export function useSearchQuery() {
 
   const onMicClick = () => {
     if (!voice.supported) {
-      toast.message("Voice search isn't supported in this browser — try Chrome.");
+      toast.message("Voice search isn't supported in this browser: try Chrome.");
       return;
     }
     voice.toggle();

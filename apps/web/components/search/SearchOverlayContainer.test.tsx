@@ -57,7 +57,7 @@ vi.mock('@/hooks/useRecentSearches', () => ({
   useExecuteRemoveRecentSearch: () => ({ mutate: recents.removeMutate }),
 }));
 
-// A fetch that never resolves by default — proves opening and typing never
+// A fetch that never resolves by default: proves opening and typing never
 // wait on the network. api.search is swapped per-test where a real response
 // is needed.
 const api = vi.hoisted(() => ({ search: vi.fn<() => Promise<{ tracks: Track[] }>>() }));

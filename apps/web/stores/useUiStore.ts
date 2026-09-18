@@ -13,7 +13,7 @@ interface UiState {
   setBugReportOpen: (open: boolean) => void;
   /** Drives the search overlay in the app shell (components/search). Lives
    *  in the shell's own state, not the URL, so opening it is instant even
-   *  with no network — no route change, no chunk to wait for. */
+   *  with no network: no route change, no chunk to wait for. */
   searchOpen: boolean;
   setSearchOpen: (open: boolean) => void;
   /** Desktop-only: drives the inline LyricsPanel. Mobile uses the
