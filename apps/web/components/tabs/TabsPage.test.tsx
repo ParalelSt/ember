@@ -34,6 +34,7 @@ const api = vi.hoisted(() => ({
   deleteTabFile: vi.fn(),
   saveTabOffset: vi.fn(),
   getTrack: vi.fn(),
+  listUploads: vi.fn(),
 }));
 vi.mock('@/lib/api', () => ({ api }));
 
@@ -136,6 +137,7 @@ beforeEach(() => {
   api.getGeneratedTab.mockResolvedValue({ status: 'none' });
   api.getTabs.mockResolvedValue({ matches: [] });
   api.generateTab.mockResolvedValue({ status: 'running' });
+  api.listUploads.mockResolvedValue({ tracks: [] });
 });
 
 describe('TabsPage source selection', () => {
@@ -192,6 +194,20 @@ describe('TabsPage empty states', () => {
     fireEvent.click(generate);
     await waitFor(() => expect(api.generateTab).toHaveBeenCalledWith('upload:song1', 'Copper Sky', 'Coastline'));
     expect(await screen.findByText(/Transcribing the recording/)).toBeInTheDocument();
+  });
+
+  it('an upload that is not playing and has no tab yet is named from the uploads, and offers to generate', async () => {
+    player.current = { ...SONG, id: 'upload:other' };
+    api.listUploads.mockResolvedValue({ tracks: [SONG] });
+    wrap(<TabsPage trackId="upload:song1" />);
+    expect(await screen.findByRole('heading', { name: 'Copper Sky' })).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: 'Generate a tab' })).toBeInTheDocument();
+  });
+
+  it('a song Ember cannot name at all says so', async () => {
+    player.current = null;
+    wrap(<TabsPage trackId="upload:gone" />);
+    expect(await screen.findByText('Ember does not know that song.')).toBeInTheDocument();
   });
 
   it('a running job shows the transcribing state', async () => {

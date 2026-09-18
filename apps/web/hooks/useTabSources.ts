@@ -2,7 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
-import { useQueryTrack } from '@/hooks/useLibrary';
+import { QK, useQueryTrack } from '@/hooks/useLibrary';
 import { canGenerateFor, drawableTabs, type GeneratedStatus, type TabSummary } from '@/lib/tabSources';
 import type { TabMatch } from '@/lib/songsterr';
 import type { Track } from '@/types/track';
@@ -18,29 +18,35 @@ export interface TabSong {
 }
 
 /** Resolve `/tabs/<trackId>` to a song: the playing track when it is that
- *  one, a YouTube track's metadata, or (for anything else) the title the
- *  track's own tab row carries. */
+ *  one, a YouTube track's metadata, an upload from the server's shared
+ *  uploads, or (for anything else) the title the track's own tab row
+ *  carries. */
 export function useTabSong(trackId: string, current: Track | null): { song: TabSong | null; loading: boolean } {
   const isCurrent = current?.id === trackId;
   const youtubeId = trackId.startsWith('youtube:') ? trackId.slice('youtube:'.length) : null;
+  const isUpload = trackId.startsWith('upload:');
   const remote = useQueryTrack(!isCurrent ? youtubeId : null);
+  const uploads = useQuery({
+    queryKey: QK.uploads,
+    queryFn: () => api.listUploads().then((r) => r.tracks),
+    enabled: !isCurrent && isUpload,
+  });
+  const upload = uploads.data?.find((t) => t.id === trackId) ?? null;
   const byRow = useQuery({
     queryKey: ['track-tabs', trackId, '', ''],
     queryFn: () => api.getTrackTabs(trackId, '', '').then((r) => r.tabs),
-    enabled: !isCurrent && !youtubeId,
+    enabled: !isCurrent && !youtubeId && (!isUpload || (uploads.isFetched && !upload)),
   });
 
-  if (isCurrent && current) {
-    return { song: { id: trackId, title: current.title, artist: current.artist, track: current }, loading: false };
+  const known = isCurrent ? current : youtubeId ? remote.data : upload;
+  if (known) {
+    return { song: { id: trackId, title: known.title, artist: known.artist, track: known }, loading: false };
   }
-  if (youtubeId) {
-    const t = remote.data;
-    return { song: t ? { id: trackId, title: t.title, artist: t.artist, track: t } : null, loading: remote.isLoading };
-  }
+  if (youtubeId) return { song: null, loading: remote.isLoading };
   const row = byRow.data?.find((t) => t.trackId === trackId) ?? byRow.data?.[0];
   return {
     song: row ? { id: trackId, title: row.title, artist: row.artist === 'Unknown artist' ? '' : row.artist, track: null } : null,
-    loading: byRow.isLoading,
+    loading: uploads.isLoading || byRow.isLoading,
   };
 }
 
