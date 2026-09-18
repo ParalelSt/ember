@@ -6,7 +6,11 @@ audio + media notification on Android, Rust audio + media keys on desktop.
 
 ## Get builds from CI (easiest)
 
-Push a tag like `v0.2.0` (or run the **native-build** workflow manually):
+Before tagging, set `tauri.conf.json`, `Cargo.toml` and `build.gradle`
+(`versionName`, `versionCode + 1`) to the app version in
+`apps/web/package.json` (docs/changelog-system.md, section 5).
+
+Push a tag like `v0.3.0` (or run the **native-build** workflow manually):
 - **Desktop**: .dmg (macOS), .msi/.exe (Windows), .AppImage/.deb (Linux) —
   attached to the draft GitHub Release on tags, or as workflow artifacts.
 - **Android**: `ember-android-apk` workflow artifact (attach it to the release
