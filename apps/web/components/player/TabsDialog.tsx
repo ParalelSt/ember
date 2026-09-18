@@ -83,7 +83,7 @@ export function TabsDialog({ track, open, onOpenChange }: Props) {
     refetchInterval: (q) => (q.state.data?.status === 'running' ? 5000 : false),
   });
   const generate = useMutation({
-    mutationFn: () => api.generateTab(track!.id, track!.title),
+    mutationFn: () => api.generateTab(track!.id, track!.title, track!.artist),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['generated-tab', track?.id] }),
   });
 

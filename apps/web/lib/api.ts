@@ -171,8 +171,11 @@ export const api = {
     if (res.status === 409) return { status: 'failed', error: (await res.json().catch(() => ({}))).error };
     return { status: 'none' };
   },
-  generateTab: (trackId: string, title: string) =>
-    req<{ status: 'ready' | 'running' }>(`/tabs/generated/${encodeURIComponent(trackId)}?title=${encodeURIComponent(title)}`, { method: 'POST' }),
+  generateTab: (trackId: string, title: string, artist = '') =>
+    req<{ status: 'ready' | 'running' }>(
+      `/tabs/generated/${encodeURIComponent(trackId)}?title=${encodeURIComponent(title)}&artist=${encodeURIComponent(artist)}`,
+      { method: 'POST' },
+    ),
 
   // — Custom uploads (songs members add from their own files) —
   listUploads: () => req<{ tracks: Track[] }>('/uploads'),
@@ -294,12 +297,22 @@ export const api = {
   },
 };
 
+/** One row of the tab store (lib/tabStore.ts TabSummary). */
 export interface TabFile {
   id: string;
+  kind: 'file' | 'generated';
   title: string;
   artist: string;
   instrument: string | null;
   trackId: string | null;
   ext: string;
+  format: string;
+  /** Visible to everyone on the server. */
+  shared: boolean;
+  /** You added it. */
+  mine: boolean;
+  /** You added it, or you are an admin. */
+  canDelete: boolean;
+  offsetMs: number;
   downloadUrl: string;
 }

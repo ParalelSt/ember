@@ -4,10 +4,13 @@ import { ForbiddenError, requireUser, UnauthorizedError, unauthorizedResponse } 
 import { createAdminClient } from '@/lib/pocketbase/server';
 import { fromError, jsonError } from '@/lib/upsertTrack';
 import { serverLogger } from '@/lib/logger/server';
-import { resolveTabPath } from '@/lib/tabs';
+import { resolveRowPath } from '@/lib/tabs';
+import { canDelete, canView } from '@/lib/tabStore';
 import { withRequestLog } from '@/lib/logger/withRequestLog';
 
-/** Delete one of your own tabs — the record and the file behind it. */
+/** Delete a tab, the record and the file behind it. Only its uploader or an
+ *  admin may; everyone else gets 403 for a shared tab and 404 for a private
+ *  one (a private tab of someone else's does not exist for you). */
 export const DELETE = withRequestLog('tabs/files/[id]', async (_req: NextRequest, ctx: RouteContext<'/api/tabs/files/[id]'>) => {
   try {
     const { user } = await requireUser();
@@ -15,10 +18,10 @@ export const DELETE = withRequestLog('tabs/files/[id]', async (_req: NextRequest
     const pb = await createAdminClient();
 
     const row = await pb.collection('tabs').getOne(id).catch(() => null);
-    if (!row) return jsonError('That tab does not exist.', 404);
-    if (row.user !== user.id) throw new ForbiddenError('That tab is not yours.');
+    if (!row || (!canView(row, user) && !user.isAdmin)) return jsonError('That tab does not exist.', 404);
+    if (!canDelete(row, user)) throw new ForbiddenError('Only whoever added this tab can delete it.');
 
-    const full = resolveTabPath(String(row.file));
+    const full = resolveRowPath(row);
     await pb.collection('tabs').delete(id);
     if (full) {
       await fs.unlink(full).catch((err) => {
