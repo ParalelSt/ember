@@ -184,6 +184,7 @@ node tests/ai-triage-ui.test.mjs  # or: npm run test:triage-ui
 # Cross-user authorization
 node tests/authorization.test.mjs                   # or: npm run test:auth
 node tests/session-authorization.test.mjs           # or: npm run test:sessions
+node tests/fake-songsterr.mjs &                     # port 4330; app needs SONGSTERR_BASE=http://127.0.0.1:4330
 node tests/tabs.test.mjs                            # or: npm run test:tabs
 node tests/tabs-ui.test.mjs                         # or: npm run test:tabs-ui
 node tests/tabs-generate.test.mjs                   # or: npm run test:tabs-generate

@@ -110,8 +110,16 @@ Each stage: tests (unit in vitest next to the code, sandbox in `tests/*.test.mjs
 | 5. Transcription v2 | Bass track, downbeats, tuning hints, fingering, cleanup | `tests/tabs-generate.test.mjs` on synthetic wavs (bass line, offset downbeat); route via `fake-transcribe.sh` | 0.3.6 |
 | 6. Optional | Public domain MusicXML lookup (PDMX), synth playback mode with mute/solo | only if asked | later |
 
-## Decisions for the owner
+## Decisions (owner, final)
 
-1. Home for the tab: full page A, side panel B, or stage C? Recommended: A, with horizontal mode as a toggle.
-2. Should Guitar Pro files people add be shared with everyone on the server (today private)? Recommended: yes, uploader can delete.
-3. Speed control: ship web first and add Android and desktop native rate later? Recommended: yes, web first.
+1. Home for the tab: **A, the Sheet page** (`/tabs/[trackId]`), with C's horizontal scroll as a toggle inside it. `/dizajn` still shows A, B and C so it can be confirmed visually; A is preselected and labelled Recommended.
+2. Tab files people add are **shared with everyone on the server** by default; the uploader (and admins) can delete theirs.
+3. Speed control: **web first** (`audio.playbackRate` + `preservesPitch`); Android Media3 and Tauri native rate come later, after stage 4. Stage 4 ships the web rate only and hides the speed control on shells without `setRate()`.
+
+## Stage 1 as built
+
+- `pb_hooks/ensure_tabs.pb.js` upgrades the collection in place: adds `song_key`, `track_key` (the app's compound track id, e.g. `youtube:abc`; the old `track` relation points at PB `tracks` ids and stays unused), `kind`, `format`, `shared`, `offset_ms`, `hints`; `user` becomes optional (a generated tab recorded after the fact has nobody to name); rules: list/view `shared = true || user = me` for signed-in members, delete `user = me || is_admin`.
+- Old rows: the new bool reads false, so every tab added before sharing **stays private** to its uploader. `song_key`, `kind`, `format` are filled by the web app on first read (`lib/tabStore.ts backfillTabRows`), so the normalization stays in `lib/songKey.ts`.
+- `lib/tabStore.ts` is the store: lookup by `song_key` (unknown artist on either side does not veto a title match) or exact `track_key`, visibility and delete checks mirroring the rules, `orderSources` for file > generated > Songsterr, `recordGenerated`, `hintsFor`.
+- Generated tabs: a row (`kind: generated`, shared, `user` = who asked) is written when the job finishes, or on the first GET of a tab generated before the store.
+- Hints: `lib/songsterr.ts` parses Songsterr's `tracks[].tuning` and `difficulty`. They are stored on every row of the song; a song with a row answers from them without searching. A song with no row keeps only the in-memory cache (there is no row to hold them). `SONGSTERR_BASE` points the sandbox at `tests/fake-songsterr.mjs`.

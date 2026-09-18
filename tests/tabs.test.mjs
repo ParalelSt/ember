@@ -1,16 +1,21 @@
-/** Guitar Pro tab storage — Phase 1 of in-app tabs.
+/** The tab store (docs/tabs-rebuild.md stage 1).
  *
- *      node tests/tabs.test.mjs      # or: npm run test:tabs
+ *      node tests/fake-songsterr.mjs &      # port 4330
+ *      node tests/tabs.test.mjs             # or: npm run test:tabs
  *
- *  Covers upload → list → match-to-song → download → delete, plus the parts
+ *  Covers upload, list, match-to-song, download and delete, plus the parts
  *  that would be dangerous to get wrong: file-type sniffing (a renamed mp3 is
- *  not a tab), the size cap, and cross-user access — a tab is private to its
- *  uploader, unlike the shared music library.
+ *  not a tab), the size cap, and sharing. A tab someone adds is shared with
+ *  everyone on the server; only its uploader (or an admin) can delete it; a
+ *  private row from before sharing stays private. The same holds through
+ *  PocketBase's own rules, not just the web routes. Songsterr hints are
+ *  searched once per song and kept on the row.
  *
  *  Needs the sandbox from tests/README.md (PB on 8091, app on 3010, with
- *  MUSIC_DIR pointed at the sandbox). */
+ *  MUSIC_DIR pointed at the sandbox, SONGSTERR_BASE at the fake). */
 const PB = process.env.PB_URL ?? 'http://127.0.0.1:8091';
 const APP = process.env.APP_URL ?? 'http://127.0.0.1:3010';
+const SONGSTERR = process.env.FAKE_SONGSTERR_URL ?? 'http://127.0.0.1:4330';
 const PW = 'BugTest2026!';
 
 const out = [];
@@ -29,17 +34,22 @@ async function adminToken() {
 }
 const tok = await adminToken();
 
-async function user(label) {
+async function user(label, extra = {}) {
   const email = `${label}-${Date.now()}-${Math.floor(Math.random()*1e5)}@ember.test`;
   const rec = await fetch(`${PB}/api/collections/users/records`, { method: 'POST',
     headers: { 'content-type': 'application/json', Authorization: tok },
-    body: JSON.stringify({ email, password: PW, passwordConfirm: PW, name: label, verified: true }) })
+    body: JSON.stringify({ email, password: PW, passwordConfirm: PW, name: label, verified: true, ...extra }) })
     .then((r) => r.json());
   const auth = await fetch(`${PB}/api/collections/users/auth-with-password`, { method: 'POST',
     headers: { 'content-type': 'application/json' }, body: JSON.stringify({ identity: email, password: PW }) })
     .then((r) => r.json());
-  return { id: rec.id, cookie: `pb_auth=${encodeURIComponent(JSON.stringify({ token: auth.token, record: auth.record }))}` };
+  return { id: rec.id, token: auth.token, cookie: `pb_auth=${encodeURIComponent(JSON.stringify({ token: auth.token, record: auth.record }))}` };
 }
+
+/** PocketBase directly, with a member's own token: the collection rules. */
+const pbAs = (u, p, init = {}) => fetch(PB + p, { ...init, headers: { ...(init.headers || {}), Authorization: u.token } });
+const pbAdmin = (p, init = {}) => fetch(PB + p, { ...init,
+  headers: { ...(init.headers || {}), Authorization: tok, ...(init.body ? { 'content-type': 'application/json' } : {}) } });
 
 const as = (u, path, init = {}) => fetch(APP + path, {
   ...init, redirect: 'manual',
@@ -109,15 +119,70 @@ check('D1 the uploader can download the file', dl.status === 200, `status ${dl.s
 check('D2 the bytes come back unchanged', dlBytes.length === gp5.length && dlBytes.subarray(0, 25).equals(gp5.subarray(0, 25)),
   `${dlBytes.length} bytes`);
 
-// ── another member ────────────────────────────────────────────────────────
-const bobList = await as(bob, '/api/tabs/files').then((r) => r.json());
-check('E1 another member sees none of them', (bobList.tabs ?? []).length === 0, `${(bobList.tabs ?? []).length} tab(s)`);
-const bobDl = await as(bob, `/api/tabs/files/${tabId}/download`).then((r) => r.status);
-check('E2 another member cannot download it', bobDl === 403 || bobDl === 404, `status ${bobDl}`);
+// ── another member: shared by default ─────────────────────────────────────
+const song = `?title=${encodeURIComponent('Master of Puppets')}&artist=Metallica`;
+const bobList = await as(bob, '/api/tabs/files' + song).then((r) => r.json());
+const bobSees = (bobList.tabs ?? []).find((t) => t.id === tabId);
+check('E1 another member sees the shared tab for that song', !!bobSees, `${(bobList.tabs ?? []).length} tab(s)`);
+check('E2 …marked shared, not theirs, not deletable by them',
+  bobSees?.shared === true && bobSees?.mine === false && bobSees?.canDelete === false, JSON.stringify(bobSees ?? {}).slice(0, 120));
+const bobDl = await as(bob, `/api/tabs/files/${tabId}/download`);
+const bobBytes = Buffer.from(await bobDl.arrayBuffer().catch(() => new ArrayBuffer(0)));
+check('E3 another member can download it', bobDl.status === 200 && bobBytes.length === gp5.length, `status ${bobDl.status}`);
 const bobDel = await as(bob, `/api/tabs/files/${tabId}`, { method: 'DELETE' }).then((r) => r.status);
-check('E3 another member cannot delete it', bobDel === 403 || bobDel === 404, `status ${bobDel}`);
+check('E4 another member cannot delete it', bobDel === 403, `status ${bobDel}`);
 const stillThere = await as(alice, `/api/tabs/files/${tabId}/download`).then((r) => r.status);
-check('E4 …and it is still there afterwards', stillThere === 200, `status ${stillThere}`);
+check('E5 …and it is still there afterwards', stillThere === 200, `status ${stillThere}`);
+
+// The same through PocketBase's own rules, with the members' own tokens.
+const pbList = await pbAs(bob, `/api/collections/tabs/records?filter=${encodeURIComponent(`id = "${tabId}"`)}`).then((r) => r.json());
+check('E6 PocketBase lists the shared row to another member', (pbList.items ?? []).length === 1, `${(pbList.items ?? []).length} row(s)`);
+const pbDel = await pbAs(bob, `/api/collections/tabs/records/${tabId}`, { method: 'DELETE' }).then((r) => r.status);
+check('E7 PocketBase refuses another member\'s delete', pbDel === 403 || pbDel === 404, `status ${pbDel}`);
+
+// ── a private row from before sharing stays private ─────────────────────────
+const legacy = await pbAdmin('/api/collections/tabs/records', { method: 'POST', body: JSON.stringify({
+  user: alice.id, title: 'Legacy Riff', artist: 'Oldband', file: 'legacy-missing.gp5', size_bytes: 200,
+}) }).then((r) => r.json());
+check('P1 a legacy row (no store fields) can be seeded', typeof legacy.id === 'string', JSON.stringify(legacy).slice(0, 120));
+const legacySong = `?title=${encodeURIComponent('Legacy Riff (Remastered)')}&artist=Oldband`;
+const aliceLegacy = await as(alice, '/api/tabs/files' + legacySong).then((r) => r.json());
+check('P2 its uploader still finds it by song', (aliceLegacy.tabs ?? []).some((t) => t.id === legacy.id && t.shared === false));
+const bobLegacy = await as(bob, '/api/tabs/files' + legacySong).then((r) => r.json());
+check('P3 another member does not see it', !(bobLegacy.tabs ?? []).some((t) => t.id === legacy.id));
+const bobLegacyDl = await as(bob, `/api/tabs/files/${legacy.id}/download`).then((r) => r.status);
+check('P4 …nor download it', bobLegacyDl === 404, `status ${bobLegacyDl}`);
+const pbLegacy = await pbAs(bob, `/api/collections/tabs/records/${legacy.id}`).then((r) => r.status);
+check('P5 PocketBase hides it from another member too', pbLegacy === 404, `status ${pbLegacy}`);
+const legacyRow = await pbAdmin(`/api/collections/tabs/records/${legacy.id}`).then((r) => r.json());
+check('P6 the store fields were filled in, shared left off',
+  legacyRow.kind === 'file' && legacyRow.format === 'gp5' && legacyRow.song_key === 'legacy riff::oldband' && legacyRow.shared === false,
+  `${legacyRow.kind} ${legacyRow.format} ${legacyRow.song_key} shared=${legacyRow.shared}`);
+await pbAdmin(`/api/collections/tabs/records/${legacy.id}`, { method: 'DELETE' });
+
+// ── Songsterr hints: searched once, kept on the row ───────────────────────
+const fake = await fetch(`${SONGSTERR}/__calls`).then((r) => r.json()).catch(() => null);
+check('S0 the fake Songsterr is running', !!fake, SONGSTERR);
+if (fake) {
+  const hintSong = `Hintsong ${Date.now()}`;
+  const up = await upload(alice, gp5, 'hint.gp5', { title: hintSong, artist: 'Hintband' });
+  const hintTab = (await up.json().catch(() => ({}))).tab;
+  await fetch(`${SONGSTERR}/__reset`, { method: 'POST' });
+  const q = `/api/tabs?title=${encodeURIComponent(hintSong)}&artist=Hintband`;
+  const first = await as(bob, q).then((r) => r.json());
+  check('S1 the Songsterr link-out comes back', (first.matches ?? []).length === 1 && /songsterr\.com/.test(first.matches[0].url),
+    JSON.stringify(first).slice(0, 120));
+  const row = await pbAdmin(`/api/collections/tabs/records/${hintTab?.id}`).then((r) => r.json());
+  const tuning = row.hints?.songs?.[0]?.tracks?.[0]?.tuning;
+  check('S2 hints are stored on the song\'s row, tuning per instrument',
+    row.hints?.source === 'songsterr' && Array.isArray(tuning) && tuning.length === 6, JSON.stringify(row.hints ?? null).slice(0, 120));
+  await as(alice, `/api/tabs?title=${encodeURIComponent(hintSong + ' (Live)')}&artist=Hintband`).then((r) => r.json());
+  const calls = await fetch(`${SONGSTERR}/__calls`).then((r) => r.json());
+  check('S3 the search ran once for two lookups of the song', calls.count === 1, `${calls.count} call(s)`);
+  const down = await as(alice, '/api/tabs?title=zzfail&artist=Nobody');
+  check('S4 Songsterr failing is an empty list, not an error', down.status === 200 && (await down.json()).matches?.length === 0);
+  if (hintTab?.id) await as(alice, `/api/tabs/files/${hintTab.id}`, { method: 'DELETE' });
+}
 
 // ── traversal ─────────────────────────────────────────────────────────────
 for (const evil of ['..%2f..%2fetc%2fpasswd', '..', 'nope']) {
@@ -130,6 +195,14 @@ const del = await as(alice, `/api/tabs/files/${tabId}`, { method: 'DELETE' }).th
 check('G1 the uploader can delete their tab', del === 200, `status ${del}`);
 const gone = await as(alice, `/api/tabs/files/${tabId}/download`).then((r) => r.status);
 check('G2 …and it is gone', gone === 404, `status ${gone}`);
+const goneForBob = await as(bob, '/api/tabs/files' + song).then((r) => r.json());
+check('G3 …for the other member too', !(goneForBob.tabs ?? []).some((t) => t.id === tabId));
+
+// ── an admin can delete anyone's tab ────────────────────────────────────────
+const carol = await user('carol-admin', { is_admin: true });
+const other = await upload(bob, gp5, 'bob.gp5', { title: 'Admin Deletes This', artist: 'Bob' }).then((r) => r.json());
+const adminDel = await as(carol, `/api/tabs/files/${other.tab?.id}`, { method: 'DELETE' }).then((r) => r.status);
+check('G4 an admin member can delete someone else\'s tab', adminDel === 200, `status ${adminDel}`);
 
 // ── signed out ────────────────────────────────────────────────────────────
 const anon = await fetch(`${APP}/api/tabs/files`, { redirect: 'manual' }).then((r) => r.status);
