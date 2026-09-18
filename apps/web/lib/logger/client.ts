@@ -5,6 +5,7 @@ import { useOfflineStore } from '@/stores/useOfflineStore';
 import { detectShell } from '@/lib/playback/detectShell';
 import type { ClientSnapshot, LogEntry, LogKind, LogLevel, ReportContext } from './types';
 import { scrub } from './sanitize';
+import { maybeAutoReport } from '@/lib/autoReport';
 
 // lib/ stays framework-free (no React/Next imports: see eslint.config.mjs),
 // but the zustand stores are plain JS modules with a getState() escape hatch,
@@ -151,7 +152,11 @@ class ClientLogger {
 
   error(category: string, message: string, data?: unknown, err?: Error | unknown): void {
     try {
-      this.push('error', 'error', category, message, data, err);
+      const entry = this.push('error', 'error', category, message, data, err);
+      // Fire-and-forget: autoReport.ts owns every gate (signed in, the
+      // Settings toggle, the manual dialog, dedupe, the session cap) and
+      // never throws back into here.
+      maybeAutoReport(entry);
     } catch (e) {
       console.warn('[logger.error] internal failure', e);
     }
@@ -243,7 +248,7 @@ class ClientLogger {
     message: string,
     data?: unknown,
     err?: Error | unknown,
-  ): void {
+  ): LogEntry {
     const entry: LogEntry = {
       ts: Date.now(),
       kind,
@@ -260,6 +265,7 @@ class ClientLogger {
     if (this.current.length > RING_MAX) {
       this.current.splice(0, this.current.length - RING_MAX);
     }
+    return entry;
   }
 
   private flush(): void {

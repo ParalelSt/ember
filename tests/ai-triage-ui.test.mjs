@@ -141,11 +141,14 @@ const discordBody = discordSeen?.body ?? '';
 
 checks.push(['deliberately failing request actually failed', failingRequestStatus >= 400]);
 checks.push(['context block reached the prompt', prompt.includes('## State when reported') && prompt.includes('route: /settings/help')]);
-checks.push(['server error from the failing request reached the prompt',
-  !prompt.includes('## Server log: last 5 minutes (0 events)') && /ERROR api:/.test(prompt)]);
+checks.push(['server error from the failing request reached the prompt (readable timeline, not a raw dump)',
+  prompt.includes('## Timeline') && prompt.includes('Errors') && /-> 404/.test(prompt)]);
 checks.push(['context reached the Discord embed as "Where"', discordBody.includes('"name":"Where"')]);
 checks.push(['reproduction reached the Discord embed as "Reproduce"',
   discordBody.includes('"name":"Reproduce"') && discordBody.includes('wait a few seconds for it to cut out')]);
+checks.push(['Discord embed carries an "Evidence" timeline field', discordBody.includes('"name":"Evidence"') && discordBody.includes('```')]);
+checks.push(['Discord embed carries a "Seen before" field', discordBody.includes('"name":"Seen before"')]);
+checks.push(['Discord embed carries "What broke" instead of the old summary-in-title field', discordBody.includes('"name":"What broke"')]);
 
 await page.getByRole('button', { name: /^done$/i }).click();
 await page.waitForTimeout(500);
@@ -158,6 +161,53 @@ checks.push(['reopens on the form, not the stale result',
   (await page.locator('textarea[placeholder*="What happened"]').count()) === 1]);
 checks.push(['note field cleared for the next report',
   (await page.locator('textarea').first().inputValue()) === '']);
+
+// T3: automatic crash reports. Close the manual dialog first (autoReport.ts
+// must not fire while it's open), then throw an uncaught error in the page
+// and confirm a silent "Automatic report from <email>" reaches the fake
+// Discord webhook within 5s, with no note field to fill and no dialog to see.
+await page.getByRole('button', { name: /^cancel$/i }).click();
+await page.waitForTimeout(200);
+
+const beforeAuto = JSON.stringify((await fetch(`http://127.0.0.1:${FAKE_DISCORD_PORT}`).then((r) => r.json()))?.body ?? '');
+await page.evaluate(() => {
+  // Escape evaluate()'s own promise/try-catch by scheduling on a macrotask,
+  // so this becomes a genuine uncaught exception the page's
+  // window.addEventListener('error', ...) hook (lib/logger/client.ts) sees,
+  // not just evaluate()'s call rejecting.
+  setTimeout(() => { throw new Error('T3_AUTOREPORT_MARKER boom'); }, 0);
+});
+
+let autoDiscordBody = '';
+const autoDeadline = Date.now() + 5000;
+while (Date.now() < autoDeadline) {
+  await page.waitForTimeout(250);
+  const body = (await fetch(`http://127.0.0.1:${FAKE_DISCORD_PORT}`).then((r) => r.json()))?.body ?? '';
+  if (body && JSON.stringify(body) !== beforeAuto && body.includes('Automatic report')) {
+    autoDiscordBody = body;
+    break;
+  }
+}
+checks.push(['automatic report reached Discord within 5s of an uncaught error',
+  autoDiscordBody.includes('Automatic report from')]);
+checks.push(['automatic report title carries the reporter email', autoDiscordBody.includes(email)]);
+checks.push(['automatic report footer marks it "automatic"',
+  /"footer":\{"text":"[^"]*automatic[^"]*"\}/.test(autoDiscordBody)]);
+
+// A second, identical error must not produce a second automatic report:
+// the per-fingerprint-per-session dedupe in lib/autoReport.ts.
+await page.evaluate(() => {
+  setTimeout(() => { throw new Error('T3_AUTOREPORT_MARKER boom'); }, 0);
+});
+await page.waitForTimeout(3000);
+const afterSecondBody = (await fetch(`http://127.0.0.1:${FAKE_DISCORD_PORT}`).then((r) => r.json()))?.body ?? '';
+checks.push(['a second identical error does not produce a second automatic report',
+  JSON.stringify(afterSecondBody) === JSON.stringify(autoDiscordBody)]);
+
+// These two deliberate throws are this test's own doing, not a bug: drop
+// them before the "no console errors" check, same as the earlier 404.
+consoleErrors.length = 0;
+
 checks.push(['no console errors', consoleErrors.length === 0]);
 
 for (const [name, pass] of checks) console.log(`${pass ? 'PASS' : 'FAIL'}  ${name}`);

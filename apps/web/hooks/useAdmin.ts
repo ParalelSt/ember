@@ -6,8 +6,6 @@ import { api } from '@/lib/api';
 export const ADMIN_QK = {
   users: ['admin', 'users'] as const,
   tracks: (page: number, q: string) => ['admin', 'tracks', page, q] as const,
-  logs: (categories: string[], q: string, limit: number) =>
-    ['admin', 'logs', categories.join(','), q, limit] as const,
 };
 
 // ───── Users ─────
@@ -73,25 +71,6 @@ export function useExecuteDeleteAdminTrack() {
     mutationFn: (recordId: string) => api.admin.deleteTrack(recordId),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['admin', 'tracks'] });
-    },
-  });
-}
-
-// ───── Logs ─────
-
-export function useQueryAdminLogs(categories: string[], q: string, limit: number) {
-  return useQuery({
-    queryKey: ADMIN_QK.logs(categories, q, limit),
-    queryFn: () => api.admin.listLogs({ categories, q, limit }),
-  });
-}
-
-export function useExecuteClearAdminLogs() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: () => api.admin.clearLogs(),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['admin', 'logs'] });
     },
   });
 }

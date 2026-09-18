@@ -2,6 +2,9 @@ import 'server-only';
 import { z } from 'zod';
 import type { LogEntry, ReportContext, ServerLogEntry } from '@/lib/logger/types';
 import { serverLogger } from '@/lib/logger/server';
+import { fingerprint } from '@/lib/reports/fingerprint';
+import { historyFor } from '@/lib/reports/history';
+import { dedupeEntries, formatTimeline, pickEntries, selectTimeline } from '@/lib/reports/timeline';
 
 /** AI triage for bug reports.
  *
@@ -18,6 +21,10 @@ const BASE_URL = (process.env.ANTHROPIC_BASE_URL || 'https://api.anthropic.com')
 // worth pennies. Override with BUG_TRIAGE_MODEL=claude-haiku-4-5-20251001 to
 // go cheaper.
 const MODEL = process.env.BUG_TRIAGE_MODEL || 'claude-sonnet-5';
+// Automatic reports (T3: lib/autoReport.ts) can fire a few times per session
+// with no human deciding each one is worth the better model, so they default
+// to the cheaper one. Override with BUG_TRIAGE_MODEL_AUTO.
+const MODEL_AUTO = process.env.BUG_TRIAGE_MODEL_AUTO || 'claude-haiku-4-5-20251001';
 const TIMEOUT_MS = 25_000;
 
 /** Caps. The digest is what we pay for, so it's bounded at every level. */
@@ -25,8 +32,6 @@ const MAX_CLIENT_CURRENT = 60;
 const MAX_CLIENT_PREVIOUS = 15;
 const MAX_SERVER = 40;
 const MAX_MESSAGE_CHARS = 300;
-const MAX_DATA_CHARS = 200;
-const MAX_STACK_LINES = 3;
 const MAX_DIGEST_CHARS = 14_000;
 // The desktop log's own file is attached in full to the report; only a tail
 // goes into the prompt, same reasoning as the other caps here.
@@ -75,97 +80,20 @@ export interface TriageInput {
    *  Only the last MAX_DESKTOP_LOG_LINES lines go into the prompt; the full
    *  tail is attached to the Discord message separately (see route.ts). */
   desktopLog?: string;
+  /** Server entries from a wider window (route.ts fetches this once via
+   *  serverLogger.entriesSince, typically the last 7 days) used only to
+   *  count how often each error fingerprint in this report has occurred
+   *  before ("seen before"). Absent/empty degrades to "first time" for
+   *  everything, never to a thrown error. */
+  history?: ServerLogEntry[];
+  /** Set by the route for silent crash reports (lib/autoReport.ts): picks
+   *  the cheaper MODEL_AUTO instead of MODEL. Absent/false for a
+   *  human-submitted report. */
+  automatic?: boolean;
 }
 
 function clip(s: string, max: number): string {
   return s.length > max ? `${s.slice(0, max)}…` : s;
-}
-
-/** reqId travels differently on each side: a server entry carries it as its
- *  own field (withRequestLog, T2), a client "api" error carries it inside
- *  `data.reqId` (lib/api.ts echoes the response's x-request-id header back
- *  into the error it logs). Read either shape so both render the same tag. */
-function reqIdOf(e: LogEntry | ServerLogEntry): string | undefined {
-  if ('reqId' in e && typeof e.reqId === 'string' && e.reqId) return e.reqId;
-  const data = e.data;
-  if (data && typeof data === 'object' && 'reqId' in data) {
-    const v = (data as Record<string, unknown>).reqId;
-    if (typeof v === 'string' && v) return v;
-  }
-  return undefined;
-}
-
-/** Short enough to stay readable in a line, long enough that two unrelated
- *  requests colliding in one digest (a few dozen entries) is vanishingly
- *  unlikely. */
-function shortReqId(id: string): string {
-  return id.slice(0, 8);
-}
-
-function stringifyData(data: unknown, reqId: string | undefined): string {
-  if (data === undefined || data === null) return '';
-  // reqId is already rendered in the line's head tag; drop it here so it
-  // isn't printed twice.
-  let toRender: unknown = data;
-  if (reqId && typeof data === 'object' && data !== null && 'reqId' in data) {
-    const rest: Record<string, unknown> = { ...(data as Record<string, unknown>) };
-    delete rest.reqId;
-    toRender = rest;
-    if (Object.keys(rest).length === 0) return '';
-  }
-  try {
-    return ` ${clip(JSON.stringify(toRender), MAX_DATA_CHARS)}`;
-  } catch {
-    return '';
-  }
-}
-
-/** One log entry → one line. Times are relative ("-12.4s") because absolute
- *  timestamps burn tokens and the ordering is what matters for diagnosis. */
-function line(e: LogEntry | ServerLogEntry, now: number): string {
-  const age = ((e.ts - now) / 1000).toFixed(1);
-  const reqId = reqIdOf(e);
-  const reqTag = reqId ? ` {req ${shortReqId(reqId)}}` : '';
-  const levelTag = e.level === 'error' ? 'ERROR' : e.level === 'warn' ? 'WARN' : 'info';
-  const head = `[${age}s]${reqTag} ${levelTag} ${e.category}: ${clip(e.message, MAX_MESSAGE_CHARS)}`;
-  const stack = e.stack
-    ? `\n    ${e.stack.split('\n').slice(0, MAX_STACK_LINES).map((l) => l.trim()).join('\n    ')}`
-    : '';
-  return head + stringifyData(e.data, reqId) + stack;
-}
-
-/** Collapse runs of the same message into "xN". A stuck retry loop can emit
- *  the same line 200 times; that's one fact, not 200. */
-function dedupe(lines: string[]): string[] {
-  const out: string[] = [];
-  let last = '';
-  let count = 0;
-  const flush = () => {
-    if (!last) return;
-    out.push(count > 1 ? `${last}  (x${count})` : last);
-  };
-  for (const l of lines) {
-    const key = l.replace(/^\[-?[\d.]+s\]\s*/, '');
-    if (key === last.replace(/^\[-?[\d.]+s\]\s*/, '') && last) {
-      count++;
-      continue;
-    }
-    flush();
-    last = l;
-    count = 1;
-  }
-  flush();
-  return out;
-}
-
-/** Errors are the signal; keep every one and fill the rest with breadcrumbs
- *  from the tail (closest in time to the report). */
-function pick(entries: LogEntry[], max: number): LogEntry[] {
-  if (entries.length <= max) return entries;
-  const errors = entries.filter((e) => e.level === 'error');
-  const kept = new Set(errors.slice(-max));
-  for (let i = entries.length - 1; i >= 0 && kept.size < max; i--) kept.add(entries[i]);
-  return entries.filter((e) => kept.has(e));
 }
 
 function bytes(n: number): string {
@@ -214,50 +142,111 @@ function buildContextBlock(ctx: ReportContext | undefined): string {
   return `## State when reported\n${lines.join('\n') || '(no context)'}`;
 }
 
+function formatDate(ms: number): string {
+  return new Date(ms).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
+
+/** One line per distinct server-error fingerprint in `entries` (this
+ *  report's own server errors), reporting how often that same bug has shown
+ *  up in `history` (route.ts passes the last 7 days via
+ *  serverLogger.entriesSince): turns a bare error into "this has been
+ *  happening all week" or "brand new". Shared by the Discord embed's "Seen
+ *  before" field (route.ts) and the triage prompt below, so the model
+ *  reasons over the same signal a human reading the report sees. */
+export function formatSeenBefore(entries: ServerLogEntry[], history: ServerLogEntry[]): string {
+  const errors = entries.filter((e) => e.level === 'error');
+  if (errors.length === 0) return '(no server errors in this report)';
+
+  const seen = new Set<string>();
+  const items: { fp: string; label: string }[] = [];
+  for (const e of errors) {
+    const fp = fingerprint(e);
+    if (seen.has(fp)) continue;
+    seen.add(fp);
+    items.push({ fp, label: e.route || e.category });
+  }
+
+  const counts = historyFor(history, items.map((i) => i.fp));
+  return items
+    .map(({ fp, label }) => {
+      const h = counts.get(fp);
+      if (!h || h.count <= 1 || h.firstSeen === null) return `${label}: first time`;
+      return `${label}: seen ${h.count} times this week, first ${formatDate(h.firstSeen)}`;
+    })
+    .join('\n');
+}
+
 export function buildDigest(input: TriageInput): string {
   const now = Date.now();
   const contextBlock = buildContextBlock(input.context);
 
-  const curLines = dedupe(pick(input.client.current, MAX_CLIENT_CURRENT).map((e) => line(e, now)));
-  const prevLines = input.client.previous.length > 0
-    ? dedupe(pick(input.client.previous, MAX_CLIENT_PREVIOUS).map((e) => line(e, now)))
+  // clip() runs before pick()/dedupeEntries() so one absurdly long message
+  // can't blow the budget on its own; the entries then flow straight into
+  // buildTimeline/formatTimeline (T1's report libs) for rendering, the same
+  // renderer the Discord embed's "Evidence" field uses (see route.ts).
+  const clipMessage = <T extends { message: string }>(e: T): T => ({ ...e, message: clip(e.message, MAX_MESSAGE_CHARS) });
+
+  const curEntries = dedupeEntries(pickEntries(input.client.current, MAX_CLIENT_CURRENT).map(clipMessage));
+  const prevEntries = input.client.previous.length > 0
+    ? dedupeEntries(pickEntries(input.client.previous, MAX_CLIENT_PREVIOUS).map(clipMessage))
     : [];
-  const srvLines = dedupe(pick(input.server, MAX_SERVER).map((e) => line(e, now)));
+  const srvEntries = dedupeEntries(pickEntries(input.server, MAX_SERVER).map(clipMessage));
   const desktopLines = input.desktopLog
     ? input.desktopLog.split('\n').filter((l) => l.length > 0).slice(-MAX_DESKTOP_LOG_LINES)
     : [];
 
-  // Order here doubles as trim priority below: earlier sections survive
-  // longer than later ones.
-  const sections = [
-    { title: `## Client log: current session (${input.client.current.length} events)`, lines: curLines, empty: '(none)' },
-    ...(input.client.previous.length > 0
-      ? [{ title: `## Client log: previous session (${input.client.previous.length} events)`, lines: prevLines, empty: '(none)' }]
-      : []),
-    { title: `## Server log: last 5 minutes (${input.server.length} events)`, lines: srvLines, empty: '(none)' },
-    ...(desktopLines.length > 0
-      ? [{ title: `## Desktop log tail (last ${desktopLines.length} lines)`, lines: desktopLines, empty: '' }]
-      : []),
-  ];
+  const seenBefore = formatSeenBefore(input.server, input.history ?? []);
 
-  const render = () =>
-    [contextBlock, ...sections.map((s) => `${s.title}\n${s.lines.join('\n') || s.empty}`)].join('\n\n');
+  // maxLines is generous on purpose: pick() above already bounds how many
+  // entries reach here (error-priority, capped per source), so this call
+  // should never itself need to cut anything. Routed through selectTimeline
+  // (T2 review: buildDigest used to call pickEntries/dedupeEntries/
+  // buildTimeline directly, so it only agreed with the Discord "Evidence"
+  // field, which uses selectTimeline, because the caps happened to match).
+  // clientCap/serverCap are set to what curEntries/prevEntries/srvEntries
+  // are already capped to, so selectTimeline's own pick/dedupe pass is a
+  // no-op on this already-processed input, not a second, different cut.
+  const render = () => {
+    const client = [
+      ...curEntries,
+      // Tag previous-session lines in the message itself: buildTimeline has
+      // no separate "session" concept, and the tag keeps them identifiable
+      // once merged into one chronological timeline with the current session.
+      ...prevEntries.map((e) => ({ ...e, message: `${e.message}  [prev session]` })),
+    ];
+    const timelineText = formatTimeline(
+      selectTimeline({
+        client,
+        server: srvEntries,
+        reportedAt: now,
+        maxLines: 10_000,
+        clientCap: MAX_CLIENT_CURRENT + MAX_CLIENT_PREVIOUS,
+        serverCap: MAX_SERVER,
+      }),
+    );
+    const desktopBlock = desktopLines.length > 0
+      ? `\n\n## Desktop log tail (last ${desktopLines.length} lines)\n${desktopLines.join('\n')}`
+      : '';
+    return `${contextBlock}\n\n## Timeline\n${timelineText}\n\n## Seen before\n${seenBefore}${desktopBlock}`;
+  };
 
-  // The context block is never trimmed (per the brief). If the rest is still
-  // over budget: the per-section caps above make this rare: drop entries
-  // oldest-first (pick() already put entries in chronological order), client
-  // sections before the server section before the desktop tail: the "what
-  // was happening" state and the newest events are worth more than an old
-  // breadcrumb.
+  // The context block and the "Seen before" summary are never trimmed (both
+  // small, both trustworthy regardless of log volume). If the rest is still
+  // over budget: drop entries oldest-first (pick() already left each array
+  // in chronological order), client sections before the server section
+  // before the desktop tail, same priority as before this restructure: the
+  // "what was happening" state and the newest events are worth more than an
+  // old breadcrumb.
   let text = render();
+  const shiftable: Array<{ length: number; shift: () => unknown }> = [curEntries, prevEntries, srvEntries, desktopLines];
   let si = 0;
-  while (text.length > MAX_DIGEST_CHARS && si < sections.length) {
-    const s = sections[si];
-    if (s.lines.length === 0) {
+  while (text.length > MAX_DIGEST_CHARS && si < shiftable.length) {
+    const arr = shiftable[si];
+    if (arr.length === 0) {
       si++;
       continue;
     }
-    s.lines.shift();
+    arr.shift();
     text = render();
   }
   return text;
@@ -273,12 +262,14 @@ errors, Python helper timeouts, and playback/queue state bugs.
 
 You get the reporter's note (may be empty or vague), a "State when reported"
 block describing exactly what the app was doing (route, track, queue
-position, online/offline, playback backend), and condensed logs: client
-breadcrumbs and errors (including native-app events, tagged "native:<area>",
-and a desktop log tail on the Tauri app), and server request logs tagged with
-a request id ("{req XXXXXXXX}"): a client "api" error and the server entry
-for the same failed request share that id, so use it to line up the two
-sides of one request. Work out what actually went wrong.
+position, online/offline, playback backend), a readable Timeline (an
+"Errors" block first, then "Before it" for breadcrumbs, both in time order;
+native-app events are tagged "native:<area>", and a server line sharing a
+request id with a client line is nested under it as "server: ..." so you can
+line up the two sides of one request), a "Seen before" line per distinct
+server error telling you how often that same error has occurred in the past
+week ("first time" for a brand-new one), and a desktop log tail on the Tauri
+app. Work out what actually went wrong.
 
 Reply with ONLY a JSON object, no prose and no code fences:
 {
@@ -309,6 +300,111 @@ export function isTriageConfigured(): boolean {
   return !!process.env.ANTHROPIC_API_KEY;
 }
 
+/** Called once at server startup (instrumentation.ts's register()). A
+ *  missing key doesn't stop the app: triageBugReport() already degrades to
+ *  null and the report still sends. But bug reports silently arriving with
+ *  no diagnosis, forever, is confusing enough to deserve one clear line in
+ *  the logs the moment the server boots, not a mystery discovered later. */
+export function checkTriageConfig(): void {
+  if (isTriageConfigured()) return;
+  const message = 'ANTHROPIC_API_KEY is not set: bug reports will arrive without AI triage';
+  serverLogger.warn('ai', message);
+  console.warn(`[triage] ${message}`);
+}
+
+/** The daily digest's model output: one headline plus a few short lines of
+ *  "what to look at". Deliberately tiny compared to Triage: the digest is a
+ *  glance, not an investigation. */
+export const DigestSummarySchema = z.object({
+  headline: z.string().min(1).max(300),
+  // Tolerant like the rest of this file: a model that answers with one
+  // newline-separated string instead of an array is still usable, and a
+  // shape nothing can rescue degrades to no lines rather than no digest.
+  lines: z
+    .preprocess(
+      (v) => (typeof v === 'string' ? v.split('\n').filter((l) => l.trim().length > 0) : v),
+      z.array(z.string().min(1).max(300)).max(6),
+    )
+    .catch([]),
+});
+
+export type DigestSummary = z.infer<typeof DigestSummarySchema>;
+
+const DIGEST_SYSTEM = `You summarise a day of server-side errors for Ember, a self-hosted music streaming app.
+
+Stack: Next.js App Router frontend, PocketBase for auth/data, a Python helper
+(yt-dlp + ytmusicapi) for YouTube Music search and audio, and a server-side
+stream proxy that caches downloaded audio to disk. Known recurring failure
+modes: YouTube 403s on expired stream URLs, PocketBase connection errors,
+Python helper timeouts.
+
+You get one line per distinct problem, already grouped and counted:
+"<count>x  <category>  <route> -> <status>  first <HH:MM> last <HH:MM>  e.g. <message>".
+Say what the day looked like and what is worth the maintainer's attention.
+
+Reply with ONLY a JSON object, no prose and no code fences:
+{
+  "headline": "one sentence, e.g. \\"41 problems since yesterday, mostly YouTube 403s on expired stream URLs\\"",
+  "lines": ["3 to 6 short lines: the notable groups, whether each looks new or ongoing, and what to check"]
+}
+
+Be honest: if the groups are routine noise, say so. Never invent an error
+that is not in the list.`;
+
+/** Best-effort summary of the daily digest. Uses the cheaper MODEL_AUTO: this
+ *  runs unattended every day with nobody deciding it is worth the better
+ *  model. Returns null with no API key, on any HTTP/parse failure, or on a
+ *  timeout, and the digest still posts with the grouped lines alone. */
+export async function summarizeDigest(digestText: string, groupCount: number): Promise<DigestSummary | null> {
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) return null;
+
+  try {
+    const res = await fetch(`${BASE_URL}/v1/messages`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+      },
+      body: JSON.stringify({
+        model: MODEL_AUTO,
+        max_tokens: 600,
+        system: DIGEST_SYSTEM,
+        messages: [
+          {
+            role: 'user',
+            content: `${groupCount} distinct problems since yesterday.\n\n${clip(digestText, MAX_DIGEST_CHARS)}`,
+          },
+        ],
+      }),
+      signal: AbortSignal.timeout(TIMEOUT_MS),
+    });
+
+    if (!res.ok) {
+      const detail = await res.text().catch(() => '');
+      serverLogger.error('ai', `digest summary HTTP ${res.status}`, { detail: clip(detail, 300) });
+      return null;
+    }
+
+    const json = (await res.json()) as { content?: { type?: string; text?: string }[] };
+    const text = (json.content ?? [])
+      .filter((b) => b.type === 'text' && typeof b.text === 'string')
+      .map((b) => b.text as string)
+      .join('\n')
+      .trim();
+    if (!text) {
+      serverLogger.error('ai', 'digest summary returned no text');
+      return null;
+    }
+
+    return DigestSummarySchema.parse(extractJson(text));
+  } catch (e) {
+    serverLogger.error('ai', 'digest summary failed', undefined, e);
+    return null;
+  }
+}
+
 export async function triageBugReport(input: TriageInput): Promise<Triage | null> {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) return null;
@@ -333,7 +429,7 @@ export async function triageBugReport(input: TriageInput): Promise<Triage | null
         'anthropic-version': '2023-06-01',
       },
       body: JSON.stringify({
-        model: MODEL,
+        model: input.automatic ? MODEL_AUTO : MODEL,
         max_tokens: 800,
         system: SYSTEM,
         messages: [{ role: 'user', content: prompt }],

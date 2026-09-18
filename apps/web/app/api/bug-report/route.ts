@@ -5,14 +5,26 @@ import {
   unauthorizedResponse,
 } from "@/lib/auth";
 import { serverLogger } from "@/lib/logger/server";
-import type { ClientSnapshot, ReportContext, ServerLogEntry } from "@/lib/logger/types";
+import type { ClientSnapshot, ReportContext } from "@/lib/logger/types";
 import { rateLimitResponse } from "@/lib/rateLimit";
-import { triageBugReport } from "@/lib/ai/triage";
+import { formatSeenBefore, triageBugReport } from "@/lib/ai/triage";
 import { fromError, jsonError } from "@/lib/upsertTrack";
 import { withRequestLog } from '@/lib/logger/withRequestLog';
-import { scrubText } from "@/lib/logger/sanitize";
+import { scrubServerEntry, scrubText } from "@/lib/logger/sanitize";
+import { formatTimeline, selectTimeline } from "@/lib/reports/timeline";
+import {
+  codeFields,
+  DISCORD_FIELD_CHARS,
+  remainingEmbedBudget,
+  usingDefaultWebhook,
+  webhookUrl,
+  type EmbedField as EmbedFieldT,
+} from "@/lib/reports/discord";
 
 const REPORT_WINDOW_MS = 5 * 60 * 1000;
+// How far back "Seen before" looks to tell "this has been happening all
+// week" from "brand new": see formatSeenBefore in lib/ai/triage.ts.
+const HISTORY_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 const MAX_NOTE_LEN = 1000;
 // Sane ceiling for individual context strings (route, platform, language,
 // …): a client that sends something absurd here shouldn't blow up the
@@ -31,22 +43,11 @@ const SEVERITY_COLORS = {
   high: 0xef4444,
 } as const;
 
-// Default webhook so every deployment — including friends self-hosting — sends
-// bug reports to the project owner's Discord channel. The env var still wins
-// for local testing. Webhook URLs are low-sensitivity (write-only, channel-
-// scoped); if this one ever gets abused, delete + recreate it in Discord
-// (Server Settings → Integrations → Webhooks) and rebuild.
-const DEFAULT_WEBHOOK_URL =
-  "https://discord.com/api/webhooks/1512120864391565333/wbnK9NOCeqbHNPK_k8UcdFxRZKztm0LfBR1OfKIQ2txf1zAPwF4mp4kII1S3SA7MIUPY";
-const WEBHOOK_URL =
-  process.env.DISCORD_BUG_REPORT_WEBHOOK_URL || DEFAULT_WEBHOOK_URL;
-const USING_DEFAULT_WEBHOOK = !process.env.DISCORD_BUG_REPORT_WEBHOOK_URL;
-
 /** Test suites sign in as throwaway `@ember.test` accounts. A sandbox started
  *  without its own webhook must never forward their reports to the real
  *  channel; the host always sets DISCORD_BUG_REPORT_WEBHOOK_URL explicitly. */
 function isSandboxReporter(email: string): boolean {
-  return USING_DEFAULT_WEBHOOK && email.toLowerCase().endsWith("@ember.test");
+  return usingDefaultWebhook() && email.toLowerCase().endsWith("@ember.test");
 }
 
 /** One compact line for the Discord embed: the full per-field breakdown
@@ -69,6 +70,12 @@ function formatContextCompact(ctx: Partial<ReportContext> | undefined): string {
 interface RequestBody {
   note?: string;
   client?: ClientSnapshot;
+  /** Set by lib/autoReport.ts for a silent crash report (T3). Rate-limited
+   *  and triaged separately from a human-submitted report; never trusted
+   *  beyond "is it truthy" (a forged flag just means someone's manual report
+   *  gets the cheaper model and a different Discord title, not a security
+   *  issue). */
+  automatic?: boolean;
 }
 
 /** Validate `client.context`: must be a plain object when present (an old
@@ -86,46 +93,9 @@ function sanitizeContext(ctx: unknown): ReportContext | undefined {
   return out as unknown as ReportContext;
 }
 
-/** Unlike the client snapshot (already run through `scrub` on the device),
- *  the server log window travels straight from disk: scrub it before it's
- *  attached to Discord or handed to triage. `userId` is left alone: it's a
- *  PocketBase id the host already owns, not a secret (see SETUP.md). */
-function scrubServerEntry(e: ServerLogEntry): ServerLogEntry {
-  let data = e.data;
-  if (data !== undefined && data !== null) {
-    try {
-      data = JSON.parse(scrubText(JSON.stringify(data)));
-    } catch {
-      data = scrubText(String(data));
-    }
-  }
-  return {
-    ...e,
-    message: scrubText(e.message),
-    stack: e.stack ? scrubText(e.stack) : e.stack,
-    data,
-  };
-}
-
 export const POST = withRequestLog('bug-report', async (request: NextRequest) => {
   try {
     const { user } = await requireUser();
-
-    // 30-second cooldown between reports. Just enough to keep an itchy
-    // Submit-button finger from double-sending the same report twice;
-    // a real second bug a minute later still goes through.
-    const limited = rateLimitResponse(`bug-report:${user.id}`, {
-      windowMs: 30 * 1000,
-      max: 1,
-    });
-    if (limited) return limited;
-
-    if (!WEBHOOK_URL) {
-      return jsonError(
-        "Bug reporting not configured. Paste a Discord webhook URL into DEFAULT_WEBHOOK_URL in app/api/bug-report/route.ts, or set DISCORD_BUG_REPORT_WEBHOOK_URL in .env.local.",
-        503,
-      );
-    }
 
     const body = (await request.json().catch(() => null)) as RequestBody | null;
     if (
@@ -136,7 +106,32 @@ export const POST = withRequestLog('bug-report', async (request: NextRequest) =>
     ) {
       return jsonError("Invalid report body", 400);
     }
-    const note = String(body.note ?? "")
+    // Never trust the flag beyond "is it truthy": it only picks a rate-limit
+    // bucket, a triage model and a Discord title, none of which are a
+    // security boundary (see the RequestBody doc comment above).
+    const automatic = body.automatic === true;
+
+    // Automatic (lib/autoReport.ts) and manual reports get separate limits:
+    // a human hitting Submit twice by accident is a 30s cooldown, while
+    // autoReport.ts already caps itself at 3 per browser session but that
+    // cap is client-side and per-tab, so the server enforces its own
+    // per-hour ceiling per user across every tab/device.
+    const limited = automatic
+      ? rateLimitResponse(`bug-report:auto:${user.id}`, { windowMs: 60 * 60 * 1000, max: 3 })
+      : rateLimitResponse(`bug-report:${user.id}`, { windowMs: 30 * 1000, max: 1 });
+    if (limited) return limited;
+
+    const webhook = webhookUrl();
+    if (!webhook) {
+      return jsonError(
+        "Bug reporting not configured. Paste a Discord webhook URL into DEFAULT_WEBHOOK_URL in app/api/bug-report/route.ts, or set DISCORD_BUG_REPORT_WEBHOOK_URL in .env.local.",
+        503,
+      );
+    }
+
+    // Scrubbed like every other field: an automatic note carries a raw
+    // error message, and a person can paste anything.
+    const note = scrubText(String(body.note ?? ""))
       .slice(0, MAX_NOTE_LEN)
       .trim();
     // The desktop log travels inside the client snapshot but goes out as its
@@ -150,9 +145,15 @@ export const POST = withRequestLog('bug-report', async (request: NextRequest) =>
     const server = (
       await serverLogger.recentSince(Date.now() - REPORT_WINDOW_MS)
     ).map(scrubServerEntry);
+    // Wider window, counts only: how often has each error fingerprint in
+    // this report shown up in the last week (formatSeenBefore, shared with
+    // the triage prompt below). Never displayed verbatim, so it doesn't need
+    // scrubServerEntry's redaction pass.
+    const history = await serverLogger.entriesSince(Date.now() - HISTORY_WINDOW_MS);
 
     const userAgent = request.headers.get("user-agent") ?? "unknown";
-    const reportedAt = new Date().toISOString();
+    const reportedAtMs = Date.now();
+    const reportedAt = new Date(reportedAtMs).toISOString();
 
     const counts = {
       client_current: client.current.length,
@@ -173,6 +174,8 @@ export const POST = withRequestLog('bug-report', async (request: NextRequest) =>
       userAgent,
       context: client.context,
       desktopLog,
+      history,
+      automatic,
     });
 
     const payload = {
@@ -191,53 +194,91 @@ export const POST = withRequestLog('bug-report', async (request: NextRequest) =>
       type: "application/json",
     });
 
-    // Discord caps a field value at 1024 characters.
+    // Discord caps a field value at 1024 characters. Most fields here are
+    // short by construction and just get a safety truncation; "Evidence"
+    // (the timeline) is the one field long enough to actually hit the cap
+    // in practice, so it gets split across fields instead (see below).
     const field = (name: string, value: string, inline = false) => ({
       name,
-      value: value.length > 1024 ? `${value.slice(0, 1021)}...` : value,
+      value: value.length > DISCORD_FIELD_CHARS ? `${value.slice(0, DISCORD_FIELD_CHARS - 3)}...` : value,
       inline,
     });
 
-    const triageFields = triage
-      ? [
-          field(
-            `🤖 ${triage.severity.toUpperCase()} · ${triage.area} · ${triage.confidence} confidence`,
-            triage.summary,
-          ),
-          field("Likely cause", triage.likelyCause),
-          field("Reproduce", triage.reproduction),
-          ...(triage.nextSteps.length
-            ? [field("Check first", triage.nextSteps.map((s) => `• ${s}`).join("\n"))]
-            : []),
-        ]
-      : [];
+    // Same selection (error-priority pick, dedupe, then buildTimeline) as
+    // the AI prompt (lib/ai/triage.ts's buildDigest), so the maintainer
+    // reading Discord and the model reading the prompt reason over the same
+    // events, just cut to a different length (25 lines here vs the prompt's
+    // larger cap).
+    const timelineText = formatTimeline(
+      selectTimeline({ client: client.current, server, reportedAt: reportedAtMs, maxLines: 25 }),
+    );
+    const seenBeforeText = formatSeenBefore(server, history);
+
+    const whatBroke = triage?.summary || note || "(no note)";
+    // Footer carries severity/area/confidence (when triaged) plus an
+    // "automatic" marker so a maintainer can tell a silent crash report
+    // (lib/autoReport.ts) from one a person chose to send, at a glance.
+    const footerParts = [
+      triage ? `severity: ${triage.severity}` : null,
+      triage ? `area: ${triage.area}` : null,
+      triage ? `confidence: ${triage.confidence}` : null,
+      automatic ? "automatic" : null,
+    ].filter((p): p is string => p !== null);
+    const title = `${automatic ? "Automatic report" : "Bug report"} from ${user.email}`;
+    const description = note || "_(no note)_";
+    const footerText = footerParts.join(" · ");
+
+    // Everything but "Evidence" is built first so its size is known before
+    // Evidence claims whatever's left of the embed's 6000-character budget
+    // (codeFields' maxChars, via remainingEmbedBudget): a busy report can
+    // have plenty of "Reproduce"/"Check first" text of its own, and Evidence
+    // must never push the total over what Discord accepts.
+    const beforeEvidence: EmbedFieldT[] = [
+      field("What broke", whatBroke),
+      { name: "Where", value: formatContextCompact(client.context), inline: false },
+    ];
+    const afterEvidence: EmbedFieldT[] = [
+      field("Seen before", seenBeforeText),
+      ...(triage
+        ? [
+            field("Reproduce", triage.reproduction),
+            ...(triage.nextSteps.length
+              ? [field("Check first", triage.nextSteps.map((s) => `• ${s}`).join("\n"))]
+              : []),
+          ]
+        : []),
+      {
+        name: "Client errors",
+        value: `${counts.client_errors_current} now / ${counts.client_errors_previous} prev`,
+        inline: true,
+      },
+      {
+        name: "Server errors",
+        value: String(counts.server_errors),
+        inline: true,
+      },
+      {
+        name: "Breadcrumbs",
+        value: `${counts.client_current} now / ${counts.client_previous} prev`,
+        inline: true,
+      },
+      { name: "Session", value: "`" + client.sessionId + "`", inline: false },
+      { name: "User-agent", value: userAgent.slice(0, 1000), inline: false },
+    ];
+    const otherFieldsChars = [...beforeEvidence, ...afterEvidence].reduce(
+      (n, f) => n + f.name.length + f.value.length,
+      0,
+    );
+    const usedChars = title.length + description.length + footerText.length + otherFieldsChars;
+    const evidenceFields = codeFields("Evidence", timelineText, 6, remainingEmbedBudget(usedChars));
 
     const embed = {
-      title: `Bug report from ${user.email}`,
-      description: note || "_(no note)_",
+      title,
+      description,
       color: triage ? SEVERITY_COLORS[triage.severity] : 0xff5a3a,
       timestamp: reportedAt,
-      fields: [
-        ...triageFields,
-        {
-          name: "Client errors",
-          value: `${counts.client_errors_current} now / ${counts.client_errors_previous} prev`,
-          inline: true,
-        },
-        {
-          name: "Server errors",
-          value: String(counts.server_errors),
-          inline: true,
-        },
-        {
-          name: "Breadcrumbs",
-          value: `${counts.client_current} now / ${counts.client_previous} prev`,
-          inline: true,
-        },
-        { name: "Where", value: formatContextCompact(client.context), inline: false },
-        { name: "Session", value: "`" + client.sessionId + "`", inline: false },
-        { name: "User-agent", value: userAgent.slice(0, 1000), inline: false },
-      ],
+      footer: footerParts.length > 0 ? { text: footerText } : undefined,
+      fields: [...beforeEvidence, ...evidenceFields, ...afterEvidence],
     };
 
     const form = new FormData();
@@ -254,7 +295,7 @@ export const POST = withRequestLog('bug-report', async (request: NextRequest) =>
     if (isSandboxReporter(user.email)) {
       return Response.json({ ok: true, skipped: "test account", triage });
     }
-    const discordRes = await fetch(WEBHOOK_URL, { method: "POST", body: form });
+    const discordRes = await fetch(webhook, { method: "POST", body: form });
     if (!discordRes.ok) {
       const text = await discordRes.text().catch(() => "");
       return jsonError(
