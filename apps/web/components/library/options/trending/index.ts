@@ -12,7 +12,7 @@ export const TRENDING_OPTIONS: (PickerOption & { id: TrendingOption })[] = [
     id: 'ranked-cards',
     name: 'Ranked cards',
     description:
-      "Today's card shelf, with a large rank number under each cover and a small up, down or new marker since yesterday. Closest to the other Home shelves.",
+      "Today's card shelf, with a large rank number on each cover and a small up, down or new marker beside the artist. Closest to the other Home shelves.",
   },
   {
     id: 'chart-list',

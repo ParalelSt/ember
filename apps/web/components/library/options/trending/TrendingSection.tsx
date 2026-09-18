@@ -2,14 +2,18 @@
 
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { ChevronLeftIcon, CloseIcon } from '@/components/icons';
+import { ChevronLeftIcon, CloseIcon, ShuffleIcon } from '@/components/icons';
+import { Eyebrow } from '@/components/page/Eyebrow';
+import { ActionBar } from '@/components/page/ActionBar';
+import { CollectionCover } from '@/components/primitives/CollectionCover';
+import { PlayButton } from '@/components/primitives/PlayButton';
 import { PageTitle } from '@/components/page/PageTitle';
 import { SectionHeader } from '@/components/page/SectionHeader';
 import { TrackCard } from '@/components/track/TrackCard';
 import { CollectionPage } from '@/components/library/CollectionPage';
 import { ShellPreview } from '@/components/library/options/changelog/ShellPreview';
 import { ScaledFrame } from '@/components/library/options/changelog/ChangelogSection';
-import { STALE_NOTE, TrendingShelf } from '@/components/library/options/trending/TrendingShelves';
+import { ChartRow, STALE_NOTE, TrendingShelf } from '@/components/library/options/trending/TrendingShelves';
 import {
   TRENDING_OPTIONS,
   type TrendingData,
@@ -44,24 +48,65 @@ function MockShelf({ title, tracks, phone }: { title: string; tracks: Track[]; p
   );
 }
 
+function BackButton({ onBack }: { onBack: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onBack}
+      className="mb-block inline-flex items-center gap-inset text-sm text-muted-foreground transition-colors hover:text-foreground"
+    >
+      <ChevronLeftIcon className="size-4" />
+      Back
+    </button>
+  );
+}
+
+const chartMeta = (stale: boolean) => ['Global', `${CHART_TRACKS.length} songs`, stale ? STALE_NOTE : 'Updated today'];
+
 /** The full chart behind Show all: the real CollectionPage (as Liked songs
  *  uses it) with ranked rows, under Home's Back link. No new route: this is
- *  Home's existing ?focus= view, drawn as a collection. */
-function ChartCollection({ stale, onBack }: { stale: boolean; onBack: () => void }) {
+ *  Home's existing ?focus= view, drawn as a collection.
+ *
+ *  The phone frame gets a copy of CollectionPage's below-768px stack
+ *  instead: the real one switches layout on the browser's width, so inside
+ *  a 390px frame on a desktop screen it would draw its desktop layout. Its
+ *  rows are the chart rows, so rank and movement show on phone too. */
+function ChartCollection({ stale, phone, onBack }: { stale: boolean; phone: boolean; onBack: () => void }) {
+  if (phone) {
+    return (
+      <div data-testid="trending-show-all">
+        <BackButton onBack={onBack} />
+        <div className="flex flex-col items-start gap-stack">
+          <CollectionCover src={null} icon={null} className="size-art-hero rounded-2xl" />
+          <div>
+            <Eyebrow>Daily chart</Eyebrow>
+            <h1 className="mt-cluster text-4xl font-bold tracking-tight">Trending right now</h1>
+            <div className="text-meta mt-cluster">{chartMeta(stale).join(' · ')}</div>
+            <div className="mt-stack">
+              <ActionBar>
+                <PlayButton onClick={NOOP} />
+                <span className="grid size-12 place-items-center text-muted-foreground" aria-hidden>
+                  <ShuffleIcon className="size-5" />
+                </span>
+              </ActionBar>
+            </div>
+          </div>
+          <div className="flex w-full flex-col">
+            {MOCK_CHART.map((e, i) => (
+              <ChartRow key={e.track.id} entry={e} rank={i + 1} />
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  }
   return (
     <div data-testid="trending-show-all">
-      <button
-        type="button"
-        onClick={onBack}
-        className="mb-block inline-flex items-center gap-inset text-sm text-muted-foreground transition-colors hover:text-foreground"
-      >
-        <ChevronLeftIcon className="size-4" />
-        Back
-      </button>
+      <BackButton onBack={onBack} />
       <CollectionPage
         eyebrow="Daily chart"
         title="Trending right now"
-        meta={['Global', `${CHART_TRACKS.length} songs`, stale ? STALE_NOTE : 'Updated today']}
+        meta={chartMeta(stale)}
         cover={{ src: null, icon: null }}
         tracks={CHART_TRACKS}
         showRank
@@ -113,7 +158,7 @@ export function TrendingSection({ option, view, data, onViewChange }: TrendingSe
       onDrawerOpenChange={setDrawerOpen}
       content={
         view === 'show-all' ? (
-          <ChartCollection stale={stale} onBack={() => onViewChange('shelf')} />
+          <ChartCollection stale={stale} phone={phone} onBack={() => onViewChange('shelf')} />
         ) : (
           <div data-testid="mock-home">
             <PageTitle className={cn('mb-section', phone ? 'text-3xl!' : 'text-4xl!')}>Home</PageTitle>

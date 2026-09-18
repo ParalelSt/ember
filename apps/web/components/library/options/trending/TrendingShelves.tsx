@@ -80,30 +80,33 @@ function ShelfHeader({ total, stale, onShowAll }: { total: number; stale: boolea
   );
 }
 
-/** Ranked cards: TrackCard's markup with the rank and movement in the
- *  text block. */
+/** Ranked cards: TrackCard's markup with the rank set large on the cover's
+ *  bottom-left corner, and the movement marker beside the artist. Title and
+ *  artist keep the card's full width. */
 function RankedCard({ entry, rank }: { entry: MockChartEntry; rank: number }) {
   const t = entry.track;
   return (
     <div data-testid="chart-entry" className="group relative cursor-pointer rounded-xl bg-card p-block transition-colors hover:bg-card/80">
-      <Artwork src={t.artworkUrl} className="aspect-square w-full rounded-lg bg-black shadow-soft" />
-      <div className="mt-row flex items-start gap-cluster">
-        <div className="flex w-9 shrink-0 flex-col items-start gap-inset">
-          <span data-testid="chart-rank" className="text-3xl font-bold leading-none tracking-tight tabular-nums">
-            {rank}
-          </span>
-          <MovementMarker entry={entry} />
-        </div>
-        <div className="min-w-0 flex-1">
-          <div className="truncate text-sm font-semibold">{t.title}</div>
-          <div className="mt-inset truncate text-xs text-muted-foreground">{t.artist}</div>
-        </div>
+      <div className="relative">
+        <Artwork src={t.artworkUrl} className="aspect-square w-full rounded-lg bg-black shadow-soft" />
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 h-1/2 rounded-b-lg bg-linear-to-t from-black/70 to-transparent" />
+        <span
+          data-testid="chart-rank"
+          className="absolute bottom-1 left-2.5 text-4xl font-black leading-none tracking-tighter text-white tabular-nums drop-shadow-md"
+        >
+          {rank}
+        </span>
+      </div>
+      <div className="mt-row truncate text-sm font-semibold">{t.title}</div>
+      <div className="mt-inset flex items-center gap-cluster">
+        <div className="min-w-0 flex-1 truncate text-xs text-muted-foreground">{t.artist}</div>
+        <MovementMarker entry={entry} className="shrink-0" />
       </div>
       <PlayButton
         size="sm"
         label={`Play ${t.title}`}
         onClick={(e) => e.stopPropagation()}
-        className="absolute bottom-22 right-4 translate-y-2 opacity-0 transition-all group-hover:translate-y-0 group-hover:opacity-100"
+        className="absolute bottom-14 right-4 translate-y-2 opacity-0 transition-all group-hover:translate-y-0 group-hover:opacity-100"
       />
     </div>
   );
@@ -111,7 +114,7 @@ function RankedCard({ entry, rank }: { entry: MockChartEntry; rank: number }) {
 
 /** One compact chart row: rank, cover (play on hover), title and artist,
  *  movement. Used by Chart list and by Hero + list. */
-function ChartRow({ entry, rank }: { entry: MockChartEntry; rank: number }) {
+export function ChartRow({ entry, rank }: { entry: MockChartEntry; rank: number }) {
   const t = entry.track;
   return (
     <div
@@ -187,9 +190,9 @@ function HeroListShelf({ chart, phone }: { chart: MockChartEntry[]; phone: boole
             <div className="mt-inset truncate text-sm text-muted-foreground">{t.artist}</div>
             <div className="mt-block flex items-center gap-row">
               <PlayButton size={phone ? 'sm' : 'md'} label={`Play ${t.title}`} />
-              <span className="flex items-center gap-cluster text-xs text-muted-foreground">
+              <span className="flex items-center gap-inset whitespace-nowrap text-xs text-muted-foreground">
                 <MovementMarker entry={top} />
-                {movementLabel(top.movement, top.change)}
+                {top.movement === 'same' ? 'Same as yesterday' : top.movement === 'new' ? 'New today' : 'since yesterday'}
               </span>
             </div>
           </div>
