@@ -551,6 +551,22 @@ curl -X POST http://127.0.0.1:3000/api/admin/cleanup -H 'Content-Type: applicati
 Add `-d '{"apply":true}'` to actually run it. The response reports how many
 rows and files were removed and how much disk was freed.
 
+### Trending chart country
+
+Home's "Trending right now" shelf is YouTube Music's daily chart, fetched a
+few times a day and cached in `my_music/trending.json`. It is the global
+chart by default. To show one country's chart instead, set a two-letter code
+in `apps/web/.env.local` and restart:
+
+```bash
+TRENDING_COUNTRY=DE      # default ZZ (global)
+```
+
+Only countries YouTube Music has charts for work (Germany, Austria, Hungary,
+Italy, Czechia and Serbia do; Croatia does not). Anything else falls back to
+the global chart. The setting is per server, so everyone on it sees the same
+chart.
+
 ### Adding more invitees
 
 http://127.0.0.1:8090/_/ → `allowed_emails` collection → **New record** → enter the email → save. The user can now register at `/auth` on their next visit. No restart, no code change.

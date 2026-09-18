@@ -1,92 +1,58 @@
-# Trending now
+# Trending
 
-Plan only. Goal: the "Trending right now" shelf shows a real chart, and a ranked page exists for it.
+The Home "Trending right now" shelf shows YouTube Music's real daily chart. The shelf is the feature: there is no separate `/trending` page. Shipped as 0.3.2.
 
-## What is there today
+## What was broken
 
-Home shelf (`apps/web/app/(app)/page.tsx:83`) -> `useQueryTrending` (`hooks/useLibrary.ts:72`) -> `GET /api/youtube/trending` (`app/api/youtube/trending/route.ts:9`) -> `getTrending` (`lib/sources/youtube.ts:263`) -> `player.py trending` (`player.py:612`).
+Home shelf (`apps/web/app/(app)/page.tsx`) -> `useQueryTrending` (`hooks/useLibrary.ts`) -> `GET /api/youtube/trending` -> `player.py trending`.
 
-The chain is broken at the end. ytmusicapi 1.12.2 `get_charts` no longer returns `songs` or `trending` lists; `videos` is now a list of chart playlists. `player.py:617-621` looks for `'items' in section` on that list, finds nothing, and silently falls back to `search('top hits')` (`player.py:626`). So the shelf is a search result, not a chart. `cmd_recommended` has the same dead branch (`player.py:386-392`). Search's "Trending" heading (`search/page.tsx:145`) is Jamendo popularity (`api/search/route.ts:31`), unrelated.
+ytmusicapi 1.12.2 `get_charts` returns `videos` as a list of chart playlists. `player.py` looked for `'items'` in it, found nothing, and silently fell back to `search('top hits')`, so the shelf was a search result, not a chart. `cmd_recommended` had the same dead branch.
 
-No scraper is needed. The chart is one public playlist away.
+## Source
 
-## 1. Source
-
-Live calls on 2026-09-18 from the repo venv, anonymous, no cookies:
+Measured on 2026-09-18, anonymous, no cookies:
 
 | Call | Result |
 |---|---|
-| `get_charts('ZZ')` | 0.9 s. `videos`: 2 playlists, "Daily Top Music Videos - Global" (`PL4fGSI1pDJn6t3TXLGiiJdD-sZbrG3tG0`) and "Top 100 Music Videos Global". `artists`: 40 ranked, with `rank` and `trend`. |
-| `get_charts('HR')` | Returns Global. HR is not in the 69 supported countries (DE, AT, HU, IT, CZ, RS are). |
-| `get_charts('DE')` | "Trending 20 Germany", "Daily Top Music Videos - Germany", "Top 100 Music Videos Germany". |
-| `get_playlist(daily global)` | 1.4 s. 50 tracks, 50 with `videoId`, 50 `isAvailable`. Fields: title, artists, duration_seconds, thumbnails, views. |
-| Second call within a second | HTTP 503 once. Fine after a 3 s pause. Cache, never fetch per page load. |
+| `get_charts('ZZ')` | `videos`: "Daily Top Music Videos - Global" (`PL4fGSI1pDJn6t3TXLGiiJdD-sZbrG3tG0`) and "Top 100 Music Videos Global" |
+| `get_charts('HR')` | returns Global: HR is not one of the 69 chart countries |
+| `get_charts('DE')` | "Trending 20 Germany", "Daily Top Music Videos - Germany", "Top 100 Music Videos Germany" |
+| `get_playlist(daily global)` | 50 tracks, all with `videoId`, all available |
+| a second call within a second | HTTP 503 once, fine after a 3 s pause: cache, never fetch per page load |
 
-| Source | Playable | Key | Stable | Verdict |
-|---|---|---|---|---|
-| YT Music charts via ytmusicapi (`get_charts` + `get_playlist`) | videoId direct | none | already a dependency, same call as playlist import (`player.py:636`) | Primary |
-| Same playlist via `yt-dlp --flat-playlist -J` | videoId direct | none | second parser for the same data, already installed | Fallback |
-| charts.youtube.com page | yes | none | JS app, needs a headless browser | no |
-| Apple Music / Spotify top 50 pages | no, one `match` call per track (50 searches) | Spotify API needs a key | scraping the pages is ToS-hostile | no |
-| Last.fm `chart.getTopTracks` | no, resolve per track | free key per host, every friend registers one | stable | no |
-| Billboard / Kworb | no, resolve per track | none | HTML scraping | no |
+`player.py trending`:
 
-Recommendation: primary is the YouTube Music chart playlist through ytmusicapi. Pick it from `get_charts(country)['videos']` by title, in order "Daily Top Music Videos", "Trending 20", "Top 100"; keep the global daily id as a constant when `get_charts` itself fails. Fallback is yt-dlp on the same playlist id. Last resort is the cached list (section 3). Drop the "top hits" search fallback: it looks like a chart and is not one.
+1. `get_charts(country)`, pick the playlist by title: "Daily Top Music Videos", then "Trending 20", then "Top 100". If `get_charts` fails, use the global daily id.
+2. `get_playlist` on it (the same call playlist import uses). Entries without a `videoId` or with `isAvailable: false` are dropped.
+3. Fallback: `yt-dlp --flat-playlist` on the same playlist id.
+4. All failed: exit 1. The server then serves its cached list. No "top hits" search.
 
-## 2. Region
+Output: `{ title, playlistId, source, tracks }`, tracks in rank order. `recommended` with no seed (or no watch playlist) uses the same chart.
 
-Default Global. Croatia is not offered, and a neighbour's chart (RS, HU, AT) is not what the owner asked for. Per server, not per user: `TRENDING_COUNTRY` env var, validated against the country list, defaults to `ZZ`. No settings UI in v1. Friends who want Germany set one variable.
+## Region
 
-## 3. Freshness and caching
+Global (`ZZ`) by default. A host can set `TRENDING_COUNTRY` (for example `DE`) in `apps/web/.env.local`. It is checked against the chart country list; an unknown code (including `HR`) falls back to `ZZ`. Per server, no settings UI.
+
+## Cache (`apps/web/lib/trending.ts`)
 
 | Item | Choice |
 |---|---|
-| Refresh | Chart is daily. Cache TTL 6 h. Stale-while-revalidate: serve the cache at once, refetch in the background, one in-flight refresh at a time (pattern: `inFlight` at `lib/sources/youtube.ts:203`). |
-| Where | In-memory, mirrored to `MUSIC_DIR/trending.json` so a restart serves the last list immediately. No PocketBase collection: no relations, no per-user data. |
-| Shape | `{ country, fetchedAt, source: 'ytmusicapi' or 'yt-dlp', tracks: Track[] }`, rank is list position. |
-| Source down | Serve the last good list, response carries `fetchedAt` and `stale: true`. UI shows "Updated 3 h ago" when older than 12 h. Cold start with no cache: empty list, shelf hidden, log one warning. |
-| Cost | About 4 to 8 requests a day per server. Two Python spawns of about 1.5 s each per refresh. |
+| TTL | 6 h. Past it the old list is served at once and refreshed in the background, one refresh in flight. |
+| Where | Memory, mirrored to `MUSIC_DIR/trending.json` so a restart serves it straight away. |
+| Source down | Last good list, with its `fetchedAt` and `stale: true`. The source is retried at most every 5 minutes. |
+| Cold start and source down | Empty list (the shelf hides), one warning in the server log. |
 
-## 4. Where it shows
+`GET /api/youtube/trending` returns `{ tracks, title, country, fetchedAt, stale }`. Tracks the server already marked unavailable are dropped, as `recommended/route.ts` does; ranks are positions after that. The search page, the search overlay and an empty playlist's track picker show the same cached chart when nothing is typed (Jamendo only fills in if no chart has ever loaded).
 
-Keep the Home shelf, title "Trending now", it becomes real with no UI change. Add `/trending`: a ranked list using `TrackList showRank` (`components/track/TrackList.tsx:37`, rank cell at `TrackRow.tsx:215`), header with chart name, country, "Updated x ago", Play and Shuffle. Home's "Show all" points at `/trending` instead of `?focus=trending`. No sidebar row in v1.
+## Shelf design
 
-Candidates for `/dizajn` (branch `design-gallery`, `apps/web/app/(app)/dizajn/page.tsx`, options under `components/library/options/`), new folder `options/trending/`:
+Three candidates for the reworked shelf are on `/dizajn` ("Trending shelf"): Ranked cards, Chart list, Hero + list. Each has "Show all" opening the full chart as a collection page, and an "Updated 3 hours ago" note for stale data. The live shelf is unchanged until the owner picks one.
 
-1. Chart list: collection header with a cover mosaic of the top 4, then rows 1 to 50 with the rank column. Closest to existing pages.
-2. Podium and list: top 3 as large cards side by side, rows 4 to 50 below. Movement arrows (up, down, new) from a diff against the previous cached list.
-3. Shelf only: no page; Home cards get a rank badge, "Show all" stays the fullscreen shelf.
-
-## 5. How tracks become playable
-
-Chart entries are ordinary YouTube tracks. `player.py` maps each playlist item with `to_track_json` (`player.py:85`); `getTrending` runs `normalize` (`lib/sources/youtube.ts:145`), giving `id: youtube:<videoId>` and `streamUrl: /api/youtube/stream/<videoId>`. Play, like and add go through `ensureDownloaded` (`youtube.ts:224`) and `upsertTrack` (`lib/upsertTrack.ts:12`) exactly as search results do. Nothing is upserted ahead of time.
-
-Entries without a `videoId` or with `isAvailable: false` are dropped in `player.py`. Tracks the server has already marked dead are filtered with `listUnavailableIds()` as `recommended/route.ts:11-12` does. Ranks are positions after filtering.
-
-## 6. Tests
+## Tests
 
 | Kind | What |
 |---|---|
-| Vitest `lib/trending.test.ts` | Parsing a captured playlist fixture into Tracks; TTL fresh vs stale; source error keeps the last good list and sets `stale`; cold start plus error gives an empty list; `HR` and junk fall back to `ZZ`. |
-| Fake source | `tests/fake-player.sh` gets a `trending` case (like `recommended`) returning fixed ranked JSON, plus `FAKE_FAIL_TRENDING=1` to exit 1. No test touches the internet. |
-| Python | One `unittest` for the playlist picker with a saved `get_charts` output, so a shape change fails a test instead of silently regressing again. |
-| Browser | `tests/trending-ui.test.mjs`: sandbox with the fake player, open `/trending`, assert ranks 1 to N and the "Updated" text; set `FAKE_FAIL_TRENDING=1`, reload, list still there with the stale note. |
-
-## 7. Changelog
-
-Entry at the top of `apps/web/lib/changelog.ts:22`: `id: 'trending-now'`, version `0.3.1`, summary "Home shows the real YouTube Music top chart, refreshed every few hours." Bump `apps/web/package.json` with `npm version patch --no-git-tag-version`. `UPDATE_NOTES.md` gets one line about the optional `TRENDING_COUNTRY` variable. Commit `chore(release): 0.3.1` per `docs/changelog-system.md` section 5.
-
-## Order of work
-
-1. `player.py`: rewrite `cmd_trending` (charts -> playlist -> yt-dlp), reuse it in `cmd_recommended`'s fallback.
-2. `lib/trending.ts` cache and the route response `{ tracks, fetchedAt, stale, country }`. Home works again here.
-3. `/dizajn` candidates, owner picks, then `/trending` page.
-4. Tests, fake-player case, changelog and version bump.
-
-Implementer: sonnet-worker. Steps 1 and 2 can ship as 0.3.1 before the page.
-
-## Decisions for the owner
-
-1. Global chart, since Croatia is not offered? Recommended: yes, with `TRENDING_COUNTRY` for hosts who want a country.
-2. Full `/trending` page as well as the Home shelf? Recommended: yes, built after the `/dizajn` pick.
-3. Ship the data fix (steps 1 and 2) before the page? Recommended: yes, as 0.3.1.
+| `apps/web/lib/trending.test.ts` | saved player output to Tracks, TTL, stale fallback, cold start, restart from the mirror, country validation, order preserved |
+| `tests/test_player_trending.py` | the playlist picker and fallback chain against saved `get_charts` / `get_playlist` output |
+| `tests/fake-player.sh` | a `trending` case, `FAKE_FAIL_TRENDING=1` to fail it |
+| `tests/trending-ui.test.mjs` | Home shelf in rank order; with the source failing after a good fetch it still shows the last good list |
