@@ -80,6 +80,16 @@ const check = (name, pass, detail = '') => {
   console.log(`${pass ? 'PASS' : 'FAIL'}  ${name}${detail ? `  — ${detail}` : ''}`);
 };
 
+// Catches base-ui's own Escape/outside-click dismissal fighting our explicit
+// handler (SearchOverlay.tsx owns Escape and the close button rather than
+// relying only on the dialog primitive) — a double-close, a setState on an
+// unmounted popup, or a React error would throw here. Uncaught exceptions
+// only (pageerror), not console.error: under the throttled connection the
+// browser itself logs "Failed to load resource: 503/500" for the search
+// request that can't complete in time, which is expected noise, not a bug.
+const pageErrors = [];
+page.on('pageerror', (e) => pageErrors.push(String(e)));
+
 // Load once with a healthy connection: the whole point is that the shell
 // (and the overlay's own chunk, part of the same bundle) is already loaded
 // before the network goes bad.
@@ -117,7 +127,13 @@ check('input is focused on open, with the network throttled', focused);
 
 // The shell never disappeared: the sidebar (loaded before the throttle
 // kicked in) is still there underneath the overlay.
-const sidebarVisible = await page.getByRole('link', { name: 'Home' }).first().isVisible();
+// A CSS locator, not getByRole: the open dialog correctly marks the rest of
+// the page aria-hidden (standard modal a11y — background content is pulled
+// out of the accessibility tree while a dialog is open), which makes
+// getByRole('link', ...) match nothing here even though the sidebar is still
+// visually on screen underneath the overlay. That's the thing this check
+// actually cares about, so ask the DOM directly instead of the a11y tree.
+const sidebarVisible = await page.locator('aside a[aria-label="Home"]').first().isVisible();
 check('the app shell (nav) stayed on screen — no blank transition', sidebarVisible);
 
 await input.fill('daft punk');
@@ -136,10 +152,28 @@ await page.waitForTimeout(200);
 const closedByEscape = !(await input.isVisible().catch(() => false));
 check('Escape dismisses the overlay', closedByEscape);
 
-// Restore the network before closing so the browser can tear down cleanly.
+// Restore the network for the rest: what's left is about the dialog's own
+// dismiss paths, not the slow-connection behavior.
 await cdp.send('Network.emulateNetworkConditions', {
   offline: false, latency: 0, downloadThroughput: -1, uploadThroughput: -1,
 });
+
+// Reopen and dismiss with a click outside the popup (the dialog primitive's
+// own backdrop dismiss) — the manual check the brief asked for: does that
+// fight SearchOverlay's explicit Escape/close-button handling? Two closes
+// racing (base-ui's onOpenChange(false) and our onClose calling setOpen(false)
+// again) would either double-fire history/state updates or throw; the
+// pageerror/console listener above would catch it.
+await searchLink.click();
+await input.waitFor({ state: 'visible', timeout: 2000 });
+await page.mouse.click(10, 10); // corner of the viewport, outside the popup
+await page.waitForTimeout(300);
+const closedByOutsideClick = !(await input.isVisible().catch(() => false));
+check('clicking outside the popup dismisses it too, no conflict with our Escape handler',
+  closedByOutsideClick);
+
+check('no console/page errors from the overlay\'s open/close paths (Escape, close button, outside click)',
+  pageErrors.length === 0, pageErrors.slice(0, 3).join(' | '));
 
 await browser.close();
 
