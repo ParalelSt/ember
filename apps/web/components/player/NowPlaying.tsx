@@ -1,10 +1,11 @@
 'use client';
 
 import { useCallback, useEffect, useRef } from 'react';
+import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import {
   ChevronDownIcon, MusicIcon,
-  RepeatIcon, RepeatOneIcon, ShuffleIcon,
+  RepeatIcon, RepeatOneIcon, ShuffleIcon, TabsIcon,
 } from '@/components/icons';
 import { Artwork } from '@/components/primitives/Artwork';
 import { LikeButton } from '@/components/primitives/LikeButton';
@@ -22,6 +23,7 @@ import { useLikeToggle } from '@/hooks/useLikeToggle';
 import { usePlayerStore } from '@/stores/usePlayerStore';
 import { useUiStore } from '@/stores/useUiStore';
 import { cn } from '@/lib/utils';
+import { tabsHref } from '@/lib/tabSources';
 
 /** Full-screen "Now Playing" view — phones only. Slides up over the app shell
  *  with large artwork up top and transport controls at the bottom, like the
@@ -44,6 +46,14 @@ export function NowPlaying() {
   const shuffle = usePlayerStore((s) => s.shuffle);
   const toggleShuffle = usePlayerStore((s) => s.toggleShuffle);
   const isPlaylist = usePlayerStore((s) => s.context?.type === 'playlist');
+
+  const router = useRouter();
+  // The tab page for this song, full screen on phones like everything else.
+  const openTabs = () => {
+    if (!current) return;
+    setOpen(false);
+    router.push(tabsHref(current.id));
+  };
 
   const scrollerRef = useRef<HTMLDivElement | null>(null);
   const lyricsRef = useRef<HTMLDivElement | null>(null);
@@ -166,6 +176,17 @@ export function NowPlaying() {
         style={{ top: 'calc(env(safe-area-inset-top, 0px) + 1rem)' }}
       >
         <ChevronDownIcon className="h-6 w-6" />
+      </Button>
+      <Button
+        variant="ghost"
+        size="icon"
+        onClick={openTabs}
+        aria-label="Guitar tabs"
+        title="Guitar tabs"
+        className="absolute z-20 right-3 h-10 w-10 text-foreground/80 hover:text-foreground"
+        style={{ top: 'calc(env(safe-area-inset-top, 0px) + 1rem)' }}
+      >
+        <TabsIcon className="h-5 w-5" />
       </Button>
 
       <div
