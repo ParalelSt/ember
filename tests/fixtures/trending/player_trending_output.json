@@ -1,0 +1,507 @@
+{
+ "title": "Daily Top Music Videos - Global",
+ "playlistId": "PL4fGSI1pDJn6t3TXLGiiJdD-sZbrG3tG0",
+ "source": "ytmusicapi",
+ "tracks": [
+  {
+   "videoId": "fcnDmrtj6Sk",
+   "title": "Dai Dai",
+   "artist": "Shakira",
+   "artistId": "UCo6JijJGA3IvIiPsawDK3Ww",
+   "album": null,
+   "albumId": null,
+   "durationSec": 241,
+   "artworkUrl": "https://i.ytimg.com/vi/fcnDmrtj6Sk/hqdefault.jpg?sqp=-oaymwEWCJADEOEBIAQqCggAEOADGC0guwJIWg&rs=AMzJL3mFBjDX1AqBR7GAJFC4rNd4ZdCZGw"
+  },
+  {
+   "videoId": "yWNPxS0sXnE",
+   "title": "Jai Jai Ram",
+   "artist": "Shreya Ghoshal",
+   "artistId": "UCrC-7fsdTCYeaRBpwA6j-Eg",
+   "album": null,
+   "albumId": null,
+   "durationSec": 129,
+   "artworkUrl": "https://i.ytimg.com/vi/yWNPxS0sXnE/hqdefault.jpg?sqp=-oaymwEWCJADEOEBIAQqCggAEOADGC0guwJIWg&rs=AMzJL3n2EUptGvoPg3KQZmETKafQ80sPqQ"
+  },
+  {
+   "videoId": "Tk9TM7-eTmw",
+   "title": "Joseph",
+   "artist": "Serj Tankian",
+   "artistId": null,
+   "album": null,
+   "albumId": null,
+   "durationSec": 258,
+   "artworkUrl": "https://i.ytimg.com/vi/Tk9TM7-eTmw/hqdefault.jpg?sqp=-oaymwEWCJADEOEBIAQqCggAEOADGC0guwJIWg&rs=AMzJL3mufld3MbI1U84XxSDiCrcOtpTctA"
+  },
+  {
+   "videoId": "3DcoC8p9az8",
+   "title": "Training Season (Live)",
+   "artist": "Dua Lipa",
+   "artistId": "UCzVb0SIXp9q9PeKCcFjsBtA",
+   "album": null,
+   "albumId": null,
+   "durationSec": 214,
+   "artworkUrl": "https://i.ytimg.com/vi/3DcoC8p9az8/hqdefault.jpg?sqp=-oaymwEWCJADEOEBIAQqCggAEOADGC0guwJIWg&rs=AMzJL3l80mgL0P8Rqf9TYX0DwufSQrBgNQ"
+  },
+  {
+   "videoId": "FyS5dAywkEo",
+   "title": "SaWaDiKa (Official Music Video)",
+   "artist": "LISA",
+   "artistId": "UCXtPv6CbKfuXPNj3MyKFOig",
+   "album": null,
+   "albumId": null,
+   "durationSec": 187,
+   "artworkUrl": "https://i.ytimg.com/vi/FyS5dAywkEo/hqdefault.jpg?sqp=-oaymwEWCJADEOEBIAQqCggAEOADGC0guwJIWg&rs=AMzJL3l4vSUii271F8byTfUkFxnYNg-j2A"
+  },
+  {
+   "videoId": "rjfxLq3OQ0w",
+   "title": "Zid",
+   "artist": "Shaarib Toshi",
+   "artistId": "UCvHlkG7pSLVqzXd5NfPl4Rg",
+   "album": null,
+   "albumId": null,
+   "durationSec": 301,
+   "artworkUrl": "https://i.ytimg.com/vi/rjfxLq3OQ0w/hqdefault.jpg?sqp=-oaymwEWCJADEOEBIAQqCggAEOADGC0guwJIWg&rs=AMzJL3l47RCJxjH6cCO8zsb3sd1_lYAuKg"
+  },
+  {
+   "videoId": "yebNIHKAC4A",
+   "title": "Golden",
+   "artist": "HUNTR/X",
+   "artistId": "UCB-w1qXuClYVjJV49lVothw",
+   "album": null,
+   "albumId": null,
+   "durationSec": 199,
+   "artworkUrl": "https://i.ytimg.com/vi/yebNIHKAC4A/hqdefault.jpg?sqp=-oaymwEWCJADEOEBIAQqCggAEOADGC0guwJIWg&rs=AMzJL3nuEZOLV20goSzB_3eyD_HMedu4kg"
+  },
+  {
+   "videoId": "YyepU5ztLf4",
+   "title": "Shararat",
+   "artist": "Madhubanti Bagchi",
+   "artistId": "UCibTWzFmf9SSzThvtr3vmiw",
+   "album": null,
+   "albumId": null,
+   "durationSec": 229,
+   "artworkUrl": "https://i.ytimg.com/vi/YyepU5ztLf4/hqdefault.jpg?sqp=-oaymwEWCJADEOEBIAQqCggAEOADGC0guwJIWg&rs=AMzJL3mV56fQCpFKYne-h9tJcaQ029Aa6A"
+  },
+  {
+   "videoId": "u9BdaJTWeiw",
+   "title": "Barbaadi",
+   "artist": "Shilpi Raj",
+   "artistId": "UCYMthbEErlf2Jq10A9tcEbA",
+   "album": null,
+   "albumId": null,
+   "durationSec": 179,
+   "artworkUrl": "https://i.ytimg.com/vi/u9BdaJTWeiw/hqdefault.jpg?sqp=-oaymwEWCJADEOEBIAQqCggAEOADGC0guwJIWg&rs=AMzJL3nyM92K2PCYKG9SvGW61FlXzc2_SQ"
+  },
+  {
+   "videoId": "5Y3a06rJjoU",
+   "title": "Garee2a Awy - A COLORS SHOW",
+   "artist": "TUL8TE",
+   "artistId": "UCv6OuuEWKGkqtRPkg9xbLvA",
+   "album": null,
+   "albumId": null,
+   "durationSec": 157,
+   "artworkUrl": "https://i.ytimg.com/vi/5Y3a06rJjoU/hqdefault.jpg?sqp=-oaymwEWCJADEOEBIAQqCggAEOADGC0guwJIWg&rs=AMzJL3n5fLm4tn6DOMs9Nkzwru_Yvr03BQ"
+  },
+  {
+   "videoId": "fRIhCiUVaKs",
+   "title": "BbY WOW",
+   "artist": "Judeline",
+   "artistId": null,
+   "album": null,
+   "albumId": null,
+   "durationSec": 226,
+   "artworkUrl": "https://i.ytimg.com/vi/fRIhCiUVaKs/hqdefault.jpg?sqp=-oaymwEWCJADEOEBIAQqCggAEOADGC0guwJIWg&rs=AMzJL3n3_4Oo-gGLAznj0LgGPe7G-Y4t4g"
+  },
+  {
+   "videoId": "JpIw7rSLRqc",
+   "title": "時空超えてユニバース - Toki Koete Universe",
+   "artist": "M!LK",
+   "artistId": "UChbU0n7P86fWdZtlzCNCeGg",
+   "album": null,
+   "albumId": null,
+   "durationSec": 219,
+   "artworkUrl": "https://i.ytimg.com/vi/JpIw7rSLRqc/hqdefault.jpg?sqp=-oaymwEWCJADEOEBIAQqCggAEOADGC0guwJIWg&rs=AMzJL3mY3LusmqefqYVZ_AlEMMnVnJKQLQ"
+  },
+  {
+   "videoId": "RO75uUZiAw0",
+   "title": "Teh Hijau",
+   "artist": "Tulus",
+   "artistId": "UC_DHlXllTSMB8pTC38_leFg",
+   "album": null,
+   "albumId": null,
+   "durationSec": 211,
+   "artworkUrl": "https://i.ytimg.com/vi/RO75uUZiAw0/hqdefault.jpg?sqp=-oaymwEWCJADEOEBIAQqCggAEOADGC0guwJIWg&rs=AMzJL3nKzGVGyQrZKyGEA-dFVe0BG3xXDA"
+  },
+  {
+   "videoId": "SQ4jZ-EAL88",
+   "title": "Vaaroon Forever (Official Video) | Mirzapur The Movie | Shreya Ghoshal | Romy | Anand B | Ginny D (feat. Ginny Diwan & Romy)",
+   "artist": "Anand Bhaskar",
+   "artistId": "UC6cwTCAALkC3OdiKiEiDGFg",
+   "album": null,
+   "albumId": null,
+   "durationSec": 253,
+   "artworkUrl": "https://i.ytimg.com/vi/SQ4jZ-EAL88/hqdefault.jpg?sqp=-oaymwEWCJADEOEBIAQqCggAEOADGC0guwJIWg&rs=AMzJL3kRYlIWhjKfqXHIJmYRm6RQWDwpYg"
+  },
+  {
+   "videoId": "kwwdY1bp-Ck",
+   "title": "Todo Lo Fue",
+   "artist": "Lenin Ramirez",
+   "artistId": "UCjb-MC_d8-oYT-sZJ8ShaJw",
+   "album": null,
+   "albumId": null,
+   "durationSec": 190,
+   "artworkUrl": "https://i.ytimg.com/vi/kwwdY1bp-Ck/hqdefault.jpg?sqp=-oaymwEWCJADEOEBIAQqCggAEOADGC0guwJIWg&rs=AMzJL3ngbkxbWJ0NjdjwYDbTnyLmzUFIHw"
+  },
+  {
+   "videoId": "7w7LUaLpM4E",
+   "title": "MALLEPOOLA PALLAKI 8K VIDEO | RAVI TEJA | GV PRAKASH | DAPPU SRINU | IRUMUDI | AYYAPPA SONG",
+   "artist": "Sunkara Anjaneyulu",
+   "artistId": null,
+   "album": null,
+   "albumId": null,
+   "durationSec": 183,
+   "artworkUrl": "https://i.ytimg.com/vi/7w7LUaLpM4E/hqdefault.jpg?sqp=-oaymwEWCJADEOEBIAQqCggAEOADGC0guwJIWg&rs=AMzJL3lziJJhSYoDB3N6lcJNIMuogj6RIA"
+  },
+  {
+   "videoId": "is8UDe2PhKQ",
+   "title": "KATSEYE (캣츠아이) 'Hootie Frutti' Official MV",
+   "artist": "KATSEYE",
+   "artistId": "UCX9kfYB9t0tnd6DYUC2iuKg",
+   "album": null,
+   "albumId": null,
+   "durationSec": 154,
+   "artworkUrl": "https://i.ytimg.com/vi/is8UDe2PhKQ/hqdefault.jpg?sqp=-oaymwEWCJADEOEBIAQqCggAEOADGC0guwJIWg&rs=AMzJL3nE5_DFLerZ4A2bjnpLLR4NKn6xwA"
+  },
+  {
+   "videoId": "QnQnz9G2LNw",
+   "title": "MALLEPOOLA PALLAKI (Song) | Ravi Teja | GV Prakash | Dappu Srinu | Shiva Nirvana | Irumudi",
+   "artist": "Sunkara Anjaneyulu",
+   "artistId": null,
+   "album": null,
+   "albumId": null,
+   "durationSec": 192,
+   "artworkUrl": "https://i.ytimg.com/vi/QnQnz9G2LNw/hqdefault.jpg?sqp=-oaymwEWCJADEOEBIAQqCggAEOADGC0guwJIWg&rs=AMzJL3lQ0Ds_8OldN1PPXAO_DjIgSrXDZQ"
+  },
+  {
+   "videoId": "q2IMrkhSjSA",
+   "title": "Çok Güzel Gülüyorsun",
+   "artist": "BLOK3",
+   "artistId": "UCZpmeLoLLb3vmxgscRyLPgw",
+   "album": null,
+   "albumId": null,
+   "durationSec": 242,
+   "artworkUrl": "https://i.ytimg.com/vi/q2IMrkhSjSA/hqdefault.jpg?sqp=-oaymwEWCJADEOEBIAQqCggAEOADGC0guwJIWg&rs=AMzJL3ks4hvJwsgQ3pNkM3X2DA0EDCBtsw"
+  },
+  {
+   "videoId": "8F2s8ivKXNY",
+   "title": "Life Goes On",
+   "artist": "Oliver Tree",
+   "artistId": "UCoOFEu6s0wk7CUljMh8wisw",
+   "album": null,
+   "albumId": null,
+   "durationSec": 207,
+   "artworkUrl": "https://i.ytimg.com/vi/8F2s8ivKXNY/hqdefault.jpg?sqp=-oaymwEWCJADEOEBIAQqCggAEOADGC0guwJIWg&rs=AMzJL3kPfLNP1UUdYIX7sSr-pURzQ49Kjw"
+  },
+  {
+   "videoId": "-1SgFHqxjlw",
+   "title": "SxyCip - Love All Day (Official Music Video)",
+   "artist": "SxyCip",
+   "artistId": "UCJKvSPYD1yNDAbCgbYFiS7A",
+   "album": null,
+   "albumId": null,
+   "durationSec": 210,
+   "artworkUrl": "https://i.ytimg.com/vi/-1SgFHqxjlw/hqdefault.jpg?sqp=-oaymwEWCJADEOEBIAQqCggAEOADGC0guwJIWg&rs=AMzJL3mRz6b4CeVVpNl9NGsy2H7Ed7OkUw"
+  },
+  {
+   "videoId": "F2m4HPLvj-4",
+   "title": "Jaiye Sajana",
+   "artist": "Jasmine Sandlas",
+   "artistId": "UCnTpYy7WLMGu3NQxWydMd1A",
+   "album": null,
+   "albumId": null,
+   "durationSec": 152,
+   "artworkUrl": "https://i.ytimg.com/vi/F2m4HPLvj-4/hqdefault.jpg?sqp=-oaymwEWCJADEOEBIAQqCggAEOADGC0guwJIWg&rs=AMzJL3nTClr1SYksqJY-LZV25Oh398K4Ug"
+  },
+  {
+   "videoId": "-FBwd9cWJoQ",
+   "title": "Kırgınım",
+   "artist": "BLOK3",
+   "artistId": "UCZpmeLoLLb3vmxgscRyLPgw",
+   "album": null,
+   "albumId": null,
+   "durationSec": 161,
+   "artworkUrl": "https://i.ytimg.com/vi/-FBwd9cWJoQ/hqdefault.jpg?sqp=-oaymwEWCJADEOEBIAQqCggAEOADGC0guwJIWg&rs=AMzJL3lKWsU32obd9efZHR920TIOo07dqA"
+  },
+  {
+   "videoId": "23cipSExADA",
+   "title": "เพราะพี่รักจริง",
+   "artist": "หนึ่ง บีเคแบนด์",
+   "artistId": "UC9lKg20KJcUefQfsuakkgsw",
+   "album": null,
+   "albumId": null,
+   "durationSec": 244,
+   "artworkUrl": "https://i.ytimg.com/vi/23cipSExADA/hqdefault.jpg?sqp=-oaymwEWCJADEOEBIAQqCggAEOADGC0guwJIWg&rs=AMzJL3kljz-BWxwFx2UlydJ3CkkVHGME1g"
+  },
+  {
+   "videoId": "ko70cExuzZM",
+   "title": "The Fate of Ophelia",
+   "artist": "Taylor Swift",
+   "artistId": "UCPC0L1d253x-KuMNwa05TpA",
+   "album": null,
+   "albumId": null,
+   "durationSec": 239,
+   "artworkUrl": "https://i.ytimg.com/vi/ko70cExuzZM/hqdefault.jpg?sqp=-oaymwEWCJADEOEBIAQqCggAEOADGC0guwJIWg&rs=AMzJL3kWDEVTwwPltRH0MVAr_ofOQNS4dQ"
+  },
+  {
+   "videoId": "e2kIhlfmOJw",
+   "title": "Dubplate",
+   "artist": "Little Lion Sound",
+   "artistId": "UCNcU9vnjLAIcliI8TVBox6Q",
+   "album": null,
+   "albumId": null,
+   "durationSec": 199,
+   "artworkUrl": "https://i.ytimg.com/vi/e2kIhlfmOJw/hqdefault.jpg?sqp=-oaymwEWCJADEOEBIAQqCggAEOADGC0guwJIWg&rs=AMzJL3loLCNuh39eo1q1qmzLWM-dPdcqrA"
+  },
+  {
+   "videoId": "547PrKtyw-M",
+   "title": "#Video | Kawan Roki Rangdari | #Khesari Lal Yadav, #Srishti Bharti | Kangana Sharma | Bhojpuri Song",
+   "artist": "Mangalam Music",
+   "artistId": "UCmVIR9Z50yfzzN4ncsPloBg",
+   "album": null,
+   "albumId": null,
+   "durationSec": 221,
+   "artworkUrl": "https://i.ytimg.com/vi/547PrKtyw-M/hqdefault.jpg?sqp=-oaymwEWCJADEOEBIAQqCggAEOADGC0guwJIWg&rs=AMzJL3mWZjQMe-aqwE-14lbmg6K7ZB_X1A"
+  },
+  {
+   "videoId": "PwTcikeQ8Wg",
+   "title": "Parvati (Lyrical) | Jab Zid Pe Aa Gayi Parvati | Hanuman Ansh | Sadhu Tiwari | Shiv Parvati Song",
+   "artist": "Times Music",
+   "artistId": "UCo07fumrTn1w4AxcU4j_uDw",
+   "album": null,
+   "albumId": null,
+   "durationSec": 306,
+   "artworkUrl": "https://i.ytimg.com/vi/PwTcikeQ8Wg/hqdefault.jpg?sqp=-oaymwEWCJADEOEBIAQqCggAEOADGC0guwJIWg&rs=AMzJL3mXo-exGyEhXqJfBnn728w0KlpL7Q"
+  },
+  {
+   "videoId": "elNce4ixLmE",
+   "title": "Hootie Frutti",
+   "artist": "KATSEYE",
+   "artistId": "UCX9kfYB9t0tnd6DYUC2iuKg",
+   "album": null,
+   "albumId": null,
+   "durationSec": 146,
+   "artworkUrl": "https://i.ytimg.com/vi/elNce4ixLmE/hqdefault.jpg?sqp=-oaymwEWCJADEOEBIAQqCggAEOADGC0guwJIWg&rs=AMzJL3nzd1KLHQPRGgoNc6lNVzoUyV4gMg"
+  },
+  {
+   "videoId": "SD4yRDY9mek",
+   "title": "Janice STFU",
+   "artist": "Drake",
+   "artistId": "UCU6cE7pdJPc6DU2jSrKEsdQ",
+   "album": null,
+   "albumId": null,
+   "durationSec": 237,
+   "artworkUrl": "https://i.ytimg.com/vi/SD4yRDY9mek/hqdefault.jpg?sqp=-oaymwEWCJADEOEBIAQqCggAEOADGC0guwJIWg&rs=AMzJL3n_f8jZKcyotbvThcRPRGxZtVctbQ"
+  },
+  {
+   "videoId": "zC3UbTf4qrM",
+   "title": "YA BABA (FITNA FAREBI)",
+   "artist": "Amitabh Bhattacharya",
+   "artistId": "UCRQmZ4lsrzXAyvKRV1DSMYA",
+   "album": null,
+   "albumId": null,
+   "durationSec": 206,
+   "artworkUrl": "https://i.ytimg.com/vi/zC3UbTf4qrM/hqdefault.jpg?sqp=-oaymwEWCJADEOEBIAQqCggAEOADGC0guwJIWg&rs=AMzJL3nmwS0PNcGzmAlbz-9FuSfcprMTFA"
+  },
+  {
+   "videoId": "Elp1SHhSQ9M",
+   "title": "Tus Mentiras (En Vivo)",
+   "artist": "Moy Bobadilla",
+   "artistId": "UCYnqH5bAoV8XsBFFp3oEkSg",
+   "album": null,
+   "albumId": null,
+   "durationSec": 290,
+   "artworkUrl": "https://i.ytimg.com/vi/Elp1SHhSQ9M/hqdefault.jpg?sqp=-oaymwEWCJADEOEBIAQqCggAEOADGC0guwJIWg&rs=AMzJL3mb3H7Ne-RM5yw65bPYcx7H4wRRFA"
+  },
+  {
+   "videoId": "ri1Ar5nEq4s",
+   "title": "Aaj Ki Raat",
+   "artist": "Madhubanti Bagchi",
+   "artistId": "UCibTWzFmf9SSzThvtr3vmiw",
+   "album": null,
+   "albumId": null,
+   "durationSec": 278,
+   "artworkUrl": "https://i.ytimg.com/vi/ri1Ar5nEq4s/hqdefault.jpg?sqp=-oaymwEWCJADEOEBIAQqCggAEOADGC0guwJIWg&rs=AMzJL3k2OUwwoCXEY3oLnAJDA8Ypl9WwIA"
+  },
+  {
+   "videoId": "awWKxGftWh4",
+   "title": "Dunia Yang Nanti",
+   "artist": "Raim laode",
+   "artistId": "UC2ArcMzVC3E4X_hTXpQNzlg",
+   "album": null,
+   "albumId": null,
+   "durationSec": 201,
+   "artworkUrl": "https://i.ytimg.com/vi/awWKxGftWh4/hqdefault.jpg?sqp=-oaymwEWCJADEOEBIAQqCggAEOADGC0guwJIWg&rs=AMzJL3lEPXfPQq3SoC63ObufeKvwHQM4oQ"
+  },
+  {
+   "videoId": "dTWEFx3DeM8",
+   "title": "Anor",
+   "artist": "Mirjalol Nematov",
+   "artistId": "UC9KI4ycDsUCaK5N8Q_QQD8Q",
+   "album": null,
+   "albumId": null,
+   "durationSec": 199,
+   "artworkUrl": "https://i.ytimg.com/vi/dTWEFx3DeM8/hqdefault.jpg?sqp=-oaymwEWCJADEOEBIAQqCggAEOADGC0guwJIWg&rs=AMzJL3nVX_OF6aenCC_xGLs7IKwzOGklvg"
+  },
+  {
+   "videoId": "I_46tPHvVOw",
+   "title": "Dichavate",
+   "artist": "Ya Ice Dilan",
+   "artistId": "UC9aJbR9Q8nscvZaMw_cH4Ww",
+   "album": null,
+   "albumId": null,
+   "durationSec": 253,
+   "artworkUrl": "https://i.ytimg.com/vi/I_46tPHvVOw/hqdefault.jpg?sqp=-oaymwEWCJADEOEBIAQqCggAEOADGC0guwJIWg&rs=AMzJL3lNoUReYQ3vJLNid4-X7LkEWWDTDQ"
+  },
+  {
+   "videoId": "GYfdWiAnshE",
+   "title": "Neno Butterfly Full Video Song 4K | Vishwanath and Sons | Suriya, Mamitha Baiju | G.V. Prakash Kumar (feat. Suriya & Mamitha Baiju)",
+   "artist": "Sublahshini",
+   "artistId": "UCjDazpZWaoiqk7a4OA5QtVw",
+   "album": null,
+   "albumId": null,
+   "durationSec": 280,
+   "artworkUrl": "https://i.ytimg.com/vi/GYfdWiAnshE/hqdefault.jpg?sqp=-oaymwEWCJADEOEBIAQqCggAEOADGC0guwJIWg&rs=AMzJL3nFxKysvIuC09NzrbcQ0GjbZU9BLg"
+  },
+  {
+   "videoId": "6Db-cEgbmC4",
+   "title": "Mi Chico",
+   "artist": "Jason Derulo",
+   "artistId": "UCA7oqkXUZIlT8QXhxaIR4RA",
+   "album": null,
+   "albumId": null,
+   "durationSec": 130,
+   "artworkUrl": "https://i.ytimg.com/vi/6Db-cEgbmC4/hqdefault.jpg?sqp=-oaymwEWCJADEOEBIAQqCggAEOADGC0guwJIWg&rs=AMzJL3mN-t3RSeTbAt3YjTAVxy1hdvT6XA"
+  },
+  {
+   "videoId": "mz9F6mCFftI",
+   "title": "Assala",
+   "artist": "Assala Nasri",
+   "artistId": "UCVX8lszHb68khruE3fPfTyQ",
+   "album": null,
+   "albumId": null,
+   "durationSec": 176,
+   "artworkUrl": "https://i.ytimg.com/vi/mz9F6mCFftI/hqdefault.jpg?sqp=-oaymwEWCJADEOEBIAQqCggAEOADGC0guwJIWg&rs=AMzJL3kQDvwvS0JYAgQBwOUdSyJ8-lfmVg"
+  },
+  {
+   "videoId": "8jff2wz3Hpk",
+   "title": "Mourya Re (Full Song) | Don | Shahrukh Khan | Shankar Mahadevan | T-Series",
+   "artist": "T-Series",
+   "artistId": "UCq-Fj5jknLsUf-MWSy4_brA",
+   "album": null,
+   "albumId": null,
+   "durationSec": 268,
+   "artworkUrl": "https://i.ytimg.com/vi/8jff2wz3Hpk/hqdefault.jpg?sqp=-oaymwEWCJADEOEBIAQqCggAEOADGC0guwJIWg&rs=AMzJL3m2Yu1xugHqlZXlPgplwm2DxmmCKQ"
+  },
+  {
+   "videoId": "EEZ8fbzhEfQ",
+   "title": "Irumudi Kattu",
+   "artist": "Ananthu",
+   "artistId": "UCi6eUukprPo6uev1gsTz08A",
+   "album": null,
+   "albumId": null,
+   "durationSec": 249,
+   "artworkUrl": "https://i.ytimg.com/vi/EEZ8fbzhEfQ/hqdefault.jpg?sqp=-oaymwEWCJADEOEBIAQqCggAEOADGC0guwJIWg&rs=AMzJL3n1__lhClaHWUV-Sa8OIaupodWJ4Q"
+  },
+  {
+   "videoId": "WT-wrwlN144",
+   "title": "YAALALO YAALALO Lyrical | Irumudi | Ravi Teja | GV Prakash | Hesham | Shiva Nirvana",
+   "artist": "Hesham Abdul Wahab",
+   "artistId": "UC0aV0qinwdUmB2NuEhfRS_w",
+   "album": null,
+   "albumId": null,
+   "durationSec": 256,
+   "artworkUrl": "https://i.ytimg.com/vi/WT-wrwlN144/hqdefault.jpg?sqp=-oaymwEWCJADEOEBIAQqCggAEOADGC0guwJIWg&rs=AMzJL3m-oK29DcSmW2sDkDQzWnOyHfdvMg"
+  },
+  {
+   "videoId": "E7ergOnpO1Q",
+   "title": "Not Guilty",
+   "artist": "Dhanda Nyoliwala",
+   "artistId": "UCAAqmCmhXmhQUegwYDkvaSA",
+   "album": null,
+   "albumId": null,
+   "durationSec": 185,
+   "artworkUrl": "https://i.ytimg.com/vi/E7ergOnpO1Q/hqdefault.jpg?sqp=-oaymwEWCJADEOEBIAQqCggAEOADGC0guwJIWg&rs=AMzJL3nvLkjRXV4doQcpRn0Vh5j9JqW7yg"
+  },
+  {
+   "videoId": "LGWUmNnZ7WY",
+   "title": "POR SI MAÑANA NO ESTOY",
+   "artist": "Omar Courtz",
+   "artistId": "UCieB8sWI6qEOX6r_UnJU12w",
+   "album": null,
+   "albumId": null,
+   "durationSec": 266,
+   "artworkUrl": "https://i.ytimg.com/vi/LGWUmNnZ7WY/hqdefault.jpg?sqp=-oaymwEWCJADEOEBIAQqCggAEOADGC0guwJIWg&rs=AMzJL3mTmmHSOevRfxOqDVsTWk2odjkrXg"
+  },
+  {
+   "videoId": "s3a4OQR-10M",
+   "title": "Loser",
+   "artist": "Tame Impala",
+   "artistId": "UCGz-eguN8tcic5kUG4s1ZgA",
+   "album": null,
+   "albumId": null,
+   "durationSec": 268,
+   "artworkUrl": "https://i.ytimg.com/vi/s3a4OQR-10M/hqdefault.jpg?sqp=-oaymwEWCJADEOEBIAQqCggAEOADGC0guwJIWg&rs=AMzJL3moiXmQDq1xsKSsvWsrYJDXiWkLzw"
+  },
+  {
+   "videoId": "0pg0raFMNIU",
+   "title": "Toz Pembe",
+   "artist": "manifest",
+   "artistId": "UCavTTSUSD6aYPeF-F3ND9Yg",
+   "album": null,
+   "albumId": null,
+   "durationSec": 193,
+   "artworkUrl": "https://i.ytimg.com/vi/0pg0raFMNIU/hqdefault.jpg?sqp=-oaymwEWCJADEOEBIAQqCggAEOADGC0guwJIWg&rs=AMzJL3no-mxiOuJjYLLbc3aurM0_JEze5Q"
+  },
+  {
+   "videoId": "RrWFlqoWIHY",
+   "title": "ไม่รักดีกว่า",
+   "artist": "Z9",
+   "artistId": "UCWBOZt9HgUzjvkrNPdT0aJg",
+   "album": null,
+   "albumId": null,
+   "durationSec": 206,
+   "artworkUrl": "https://i.ytimg.com/vi/RrWFlqoWIHY/hqdefault.jpg?sqp=-oaymwEWCJADEOEBIAQqCggAEOADGC0guwJIWg&rs=AMzJL3mL5hhg5OsmcOuBNoE3WJOJS0zspg"
+  },
+  {
+   "videoId": "rC-kbRanJQ0",
+   "title": "Udi Udi",
+   "artist": "Hruday",
+   "artistId": "UC9uw4y30n7NX5BUuudH_q8A",
+   "album": null,
+   "albumId": null,
+   "durationSec": 156,
+   "artworkUrl": "https://i.ytimg.com/vi/rC-kbRanJQ0/hqdefault.jpg?sqp=-oaymwEWCJADEOEBIAQqCggAEOADGC0guwJIWg&rs=AMzJL3mZu8itqqfPIaA_M1ZWE39OKKbYCw"
+  },
+  {
+   "videoId": "dWmdJrML_vM",
+   "title": "New Song 2026 | New Hindi Song | Likh De Mohabbat | Ranbir Kapoor | Tamannaah Bhatia | New Song",
+   "artist": "Gaurav Mali",
+   "artistId": "UC9v8bJgklNmogEWu6Ryp6pQ",
+   "album": null,
+   "albumId": null,
+   "durationSec": 281,
+   "artworkUrl": "https://i.ytimg.com/vi/dWmdJrML_vM/hqdefault.jpg?sqp=-oaymwEWCJADEOEBIAQqCggAEOADGC0guwJIWg&rs=AMzJL3nyQ5ntwyLi7-6WfvM63o5rJeNXrA"
+  },
+  {
+   "videoId": "lhCPiauHI-g",
+   "title": "Lord Verity - Master of Humanity (song)",
+   "artist": "Horror Skunx",
+   "artistId": "UCTjF8TNC7blVsBtWyMrsj4A",
+   "album": null,
+   "albumId": null,
+   "durationSec": 141,
+   "artworkUrl": "https://i.ytimg.com/vi/lhCPiauHI-g/hqdefault.jpg?sqp=-oaymwEWCJADEOEBIAQqCggAEOADGC0guwJIWg&rs=AMzJL3kU1ddB-wRYZQAglU30lC71_3Ks7Q"
+  }
+ ]
+}
