@@ -208,7 +208,8 @@ stop_everything
 # otherwise indistinguishable from a rebuild of the same commit.
 NOW="$(git rev-parse HEAD)"
 if [ "$NOW" = "$(git rev-parse origin/main)" ]; then
-  echo "✓ updated to $(git rev-parse --short HEAD) — $(git log -1 --format=%s | cut -c1-60)"
+  APP_VER="$(node -p "require('$ROOT/apps/web/package.json').version" 2>/dev/null || echo '?')"
+  echo "✓ updated to $APP_VER, $(git rev-parse --short HEAD) — $(git log -1 --format=%s | cut -c1-60)"
 else
   echo "✗ STILL BEHIND origin/main at $(git rev-parse --short HEAD) — the pull did not take."
 fi

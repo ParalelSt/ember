@@ -1,12 +1,15 @@
 import type { NextConfig } from "next";
 import { execSync } from "node:child_process";
+import pkg from "./package.json";
 
 // Where the real PocketBase server lives (server-side / proxy target).
 const POCKETBASE_ORIGIN = process.env.POCKETBASE_URL ?? 'http://127.0.0.1:8090';
 
-// Build-time version stamp: short git SHA + build date. Shown in the
-// settings footer + logged to the console on boot, so "which version is
-// actually running?" is answerable at a glance on any deployment.
+// Build-time version stamp: the app version from package.json (the one the
+// changelog tracks, see docs/changelog-system.md) plus short git SHA and build
+// date, e.g. "0.3.0 (a1b2c3d 2026-09-18)". Shown in the settings footer +
+// logged to the console on boot + attached to bug reports, so "which version
+// is actually running?" is answerable at a glance on any deployment.
 function appVersion(): string {
   let sha = 'unknown';
   try {
@@ -16,7 +19,7 @@ function appVersion(): string {
   } catch {
     // Not a git checkout (tarball deploy) — keep 'unknown'.
   }
-  return `${sha} · ${new Date().toISOString().slice(0, 10)}`;
+  return `${pkg.version} (${sha} ${new Date().toISOString().slice(0, 10)})`;
 }
 
 const nextConfig: NextConfig = {
