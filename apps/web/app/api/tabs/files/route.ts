@@ -7,14 +7,15 @@ import { rateLimitResponse } from '@/lib/rateLimit';
 import { serverLogger } from '@/lib/logger/server';
 import { withRequestLog } from '@/lib/logger/withRequestLog';
 import { MAX_TAB_BYTES, ensureTabDir, newTabFilename, resolveTabPath, sniffTab } from '@/lib/tabs';
-import { findTabs, formatOf, mapTab, songKeyOf } from '@/lib/tabStore';
+import { addedByNames, findTabs, formatOf, mapTab, songKeyOf } from '@/lib/tabStore';
 
 /** Tab files people add (Guitar Pro, MusicXML).
  *
  *  GET  : every file tab you can see (shared ones and your own), files
  *         first, newest first. `?title=&artist=` (and optionally `trackId=`)
  *         narrows to the ones for that song, by song_key, which is what the
- *         player asks for when the tab panel opens.
+ *         tab page asks for. `kind=all` adds generated tabs (the whole
+ *         source chain the page picks from); the default is files only.
  *  POST : multipart `file`, plus optional title/artist/instrument/trackId.
  *         The new tab is shared with everyone on the server; its uploader
  *         (and admins) can delete it.
@@ -37,9 +38,10 @@ export const GET = withRequestLog('tabs/files', async (request: NextRequest) => 
         artist: params.get('artist') ?? '',
         trackId: params.get('trackId') ?? '',
       },
-      { kind: 'file' },
+      params.get('kind') === 'all' ? {} : { kind: 'file' },
     );
-    return Response.json({ tabs: rows.map((r) => mapTab(r, user)) });
+    const names = await addedByNames(pb, rows);
+    return Response.json({ tabs: rows.map((r) => mapTab(r, user, names.get(String(r.user ?? '')) ?? null)) });
   } catch (e) {
     if (e instanceof UnauthorizedError) return unauthorizedResponse();
     return fromError(e);

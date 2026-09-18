@@ -1,5 +1,6 @@
 import type { AlbumDetail, ArtistPayload, Playlist, SessionState, Track } from '@/types/track';
 import { logger } from '@/lib/logger/client';
+import type { TabSummary } from '@/lib/tabSources';
 
 export interface AdminUser {
   id: string;
@@ -155,15 +156,33 @@ export const api = {
     req<{ matches: { id: number; artist: string; title: string; hasChords: boolean; instruments: string[]; url: string }[] }>(
       `/tabs?title=${encodeURIComponent(title)}&artist=${encodeURIComponent(artist)}`,
     ),
-  /** Your own Guitar Pro files. Passing the playing song narrows it to the
-   *  tabs that plausibly belong to it. */
-  getTabFiles: (title?: string, artist?: string) =>
+  /** Every tab for one track, files and generated alike, file first: the
+   *  source chain the tab page picks from. */
+  getTrackTabs: (trackId: string, title: string, artist: string) =>
     req<{ tabs: TabFile[] }>(
-      `/tabs/files${title || artist ? `?title=${encodeURIComponent(title ?? '')}&artist=${encodeURIComponent(artist ?? '')}` : ''}`,
+      `/tabs/files?kind=all&trackId=${encodeURIComponent(trackId)}&title=${encodeURIComponent(title)}&artist=${encodeURIComponent(artist)}`,
     ),
+  /** Add a Guitar Pro or MusicXML file for a song. Multipart, so it
+   *  bypasses the JSON `req` helper. */
+  uploadTabFile: async (file: File, meta: { title: string; artist: string; trackId?: string }): Promise<{ tab: TabFile }> => {
+    const form = new FormData();
+    form.append('file', file);
+    form.append('title', meta.title || file.name);
+    form.append('artist', meta.artist);
+    if (meta.trackId) form.append('trackId', meta.trackId);
+    const res = await fetch(`${API_BASE}/api/tabs/files`, { method: 'POST', body: form, credentials: 'include' });
+    if (!res.ok) {
+      const body = (await res.json().catch(() => ({}))) as { error?: string };
+      throw new Error(body.error ?? 'That file could not be added.');
+    }
+    return (await res.json()) as { tab: TabFile };
+  },
+  /** Save a tab's sync nudge for everyone (its uploader or an admin). */
+  saveTabOffset: (id: string, offsetMs: number) =>
+    req<{ tab: TabFile }>(`/tabs/files/${id}`, { method: 'PATCH', body: { offsetMs } }),
   deleteTabFile: (id: string) => req<{ ok: true }>(`/tabs/files/${id}`, { method: 'DELETE' }),
   /** A tab generated from the recording itself. GET is a status probe: the
-   *  alphaTex body is fetched by TabViewer straight from the URL. */
+   *  alphaTex body is fetched by the tab page straight from the URL. */
   getGeneratedTab: async (trackId: string): Promise<{ status: 'ready' | 'running' | 'failed' | 'none'; error?: string }> => {
     const res = await fetch(`${API_BASE}/api/tabs/generated/${encodeURIComponent(trackId)}`, { credentials: 'include' });
     if (res.status === 200) return { status: 'ready' };
@@ -297,22 +316,5 @@ export const api = {
   },
 };
 
-/** One row of the tab store (lib/tabStore.ts TabSummary). */
-export interface TabFile {
-  id: string;
-  kind: 'file' | 'generated';
-  title: string;
-  artist: string;
-  instrument: string | null;
-  trackId: string | null;
-  ext: string;
-  format: string;
-  /** Visible to everyone on the server. */
-  shared: boolean;
-  /** You added it. */
-  mine: boolean;
-  /** You added it, or you are an admin. */
-  canDelete: boolean;
-  offsetMs: number;
-  downloadUrl: string;
-}
+/** One row of the tab store. */
+export type TabFile = TabSummary;

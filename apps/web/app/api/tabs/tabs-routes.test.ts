@@ -68,7 +68,7 @@ function uploadForm(fields: Record<string, string>) {
 }
 
 beforeEach(() => {
-  store = fakePocketBase({ tabs: [], uploads: [], tracks: [] });
+  store = fakePocketBase({ tabs: [], uploads: [], tracks: [], users: [] });
   resetBackfill();
   requireUser.mockReset();
   search.mockReset();
@@ -130,9 +130,77 @@ describe('GET /api/tabs/files', () => {
     expect(tabs).toEqual([]);
   });
 
+  it('kind=all is the whole chain for the tab page: files first, then generated, with who added each', async () => {
+    store.rows.get('users')!.push({ id: 'alice', collectionId: 'users', collectionName: 'users', name: 'Alice' });
+    as(ALICE);
+    await files.POST(uploadForm({ title: 'One', artist: 'Metallica', trackId: 'youtube:abc' }), undefined as never);
+    store.rows.get('tabs')!.push({
+      id: 'g', collectionId: 'tabs', collectionName: 'tabs', created: '2030-01-01', user: '', shared: true, kind: 'generated',
+      file: 'youtube-abc.alphatex', title: 'One', artist: 'Metallica', song_key: 'one::metallica', track_key: 'youtube:abc',
+    });
+    as(BOB);
+    const res = await files.GET(req('/api/tabs/files?kind=all&trackId=youtube%3Aabc&title=One&artist=Metallica'), undefined as never);
+    const { tabs } = await res.json();
+    expect(tabs.map((t: { kind: string }) => t.kind)).toEqual(['file', 'generated']);
+    expect(tabs[0]).toMatchObject({ addedBy: 'Alice', mine: false, shared: true, trackId: 'youtube:abc' });
+    expect(tabs[1]).toMatchObject({ addedBy: null, downloadUrl: '/api/tabs/generated/youtube%3Aabc' });
+  });
+
+  it('a track id alone finds the tabs added for that track', async () => {
+    as(ALICE);
+    await files.POST(uploadForm({ title: 'Riff', artist: 'Me', trackId: 'upload:u1' }), undefined as never);
+    const { tabs } = await (await files.GET(req('/api/tabs/files?kind=all&trackId=upload%3Au1'), undefined as never)).json();
+    expect(tabs).toHaveLength(1);
+    expect(tabs[0]).toMatchObject({ title: 'Riff', mine: true, addedBy: null });
+  });
+
   it('401 without a user', async () => {
     as(null);
     expect((await files.GET(req('/api/tabs/files'), undefined as never)).status).toBe(401);
+  });
+});
+
+describe('PATCH /api/tabs/files/[id] (the shared sync nudge)', () => {
+  const patch = (id: string, body: unknown) =>
+    one.PATCH(req(`/api/tabs/files/${id}`, { method: 'PATCH', body: JSON.stringify(body) }), idCtx(id));
+
+  async function aliceUploads(): Promise<string> {
+    as(ALICE);
+    return (await (await files.POST(uploadForm({ title: 'Riff', artist: 'Me' }), undefined as never)).json()).tab.id;
+  }
+
+  it('whoever added the tab saves offset_ms for everyone', async () => {
+    const id = await aliceUploads();
+    const res = await patch(id, { offsetMs: 1234 });
+    expect(res.status).toBe(200);
+    expect((await res.json()).tab.offsetMs).toBe(1234);
+    as(BOB);
+    const { tabs } = await (await files.GET(req('/api/tabs/files?title=Riff&artist=Me'), undefined as never)).json();
+    expect(tabs[0].offsetMs).toBe(1234);
+  });
+
+  it('someone else cannot (403), an admin can', async () => {
+    const id = await aliceUploads();
+    as(BOB);
+    expect((await patch(id, { offsetMs: 500 })).status).toBe(403);
+    as(ADMIN);
+    expect((await patch(id, { offsetMs: 500 })).status).toBe(200);
+  });
+
+  it('only a number within +-10 s', async () => {
+    const id = await aliceUploads();
+    expect((await patch(id, { offsetMs: 'soon' })).status).toBe(400);
+    expect((await patch(id, { offsetMs: 60_000 })).status).toBe(400);
+    expect((await patch(id, {})).status).toBe(400);
+  });
+
+  it('someone else’s private tab is a 404, and 401 without a user', async () => {
+    const id = await aliceUploads();
+    store.rows.get('tabs')![0].shared = false;
+    as(BOB);
+    expect((await patch(id, { offsetMs: 0 })).status).toBe(404);
+    as(null);
+    expect((await patch(id, { offsetMs: 0 })).status).toBe(401);
   });
 });
 

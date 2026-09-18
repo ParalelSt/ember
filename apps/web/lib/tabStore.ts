@@ -9,8 +9,8 @@ import {
   searchSongsterr,
   toHints,
   type SongsterrSongHint,
-  type TabMatch,
 } from '@/lib/songsterr';
+import type { TabKind, TabSummary } from '@/lib/tabSources';
 
 /** The one tab store (docs/tabs-rebuild.md section 3): PocketBase `tabs`,
  *  a row per tab, for files people add and tabs Ember generates alike.
@@ -25,7 +25,8 @@ import {
  *  Lookup is by song_key (lib/songKey.ts), so "Song (Remastered 2011)" and
  *  "Song" find the same tabs, plus the exact track the tab was added for. */
 
-export type TabKind = 'file' | 'generated';
+export type { TabKind, TabSummary, TabSource } from '@/lib/tabSources';
+export { orderSources } from '@/lib/tabSources';
 
 /** Who is asking: the signed-in member as lib/auth hands it over. */
 export interface TabViewer {
@@ -39,29 +40,6 @@ export interface TabQuery {
   /** The app's compound track id (youtube:abc, upload:xyz). */
   trackId?: string;
 }
-
-export interface TabSummary {
-  id: string;
-  kind: TabKind;
-  title: string;
-  artist: string;
-  instrument: string | null;
-  trackId: string | null;
-  /** '.gp5', '.musicxml', '.alphatex' ... */
-  ext: string;
-  format: string;
-  shared: boolean;
-  /** You added it. */
-  mine: boolean;
-  canDelete: boolean;
-  offsetMs: number;
-  downloadUrl: string;
-}
-
-export type TabSource =
-  | { type: 'file'; tab: TabSummary }
-  | { type: 'generated'; tab: TabSummary }
-  | { type: 'songsterr'; match: TabMatch };
 
 // ── pure helpers ──────────────────────────────────────────────────────────
 
@@ -112,17 +90,7 @@ export function sortTabs(rows: RecordModel[]): RecordModel[] {
   );
 }
 
-/** The source chain for a track, in the order the viewer tries them: a file
- *  someone added, then a generated tab, then Songsterr's link-out. */
-export function orderSources(tabs: TabSummary[], matches: TabMatch[]): TabSource[] {
-  return [
-    ...tabs.filter((t) => t.kind === 'file').map((tab) => ({ type: 'file' as const, tab })),
-    ...tabs.filter((t) => t.kind === 'generated').map((tab) => ({ type: 'generated' as const, tab })),
-    ...matches.map((match) => ({ type: 'songsterr' as const, match })),
-  ];
-}
-
-export function mapTab(row: RecordModel, viewer: TabViewer): TabSummary {
+export function mapTab(row: RecordModel, viewer: TabViewer, addedBy: string | null = null): TabSummary {
   const kind = kindOf(row);
   const file = String(row.file ?? '');
   const trackId = (row.track_key as string) || null;
@@ -139,6 +107,7 @@ export function mapTab(row: RecordModel, viewer: TabViewer): TabSummary {
     mine: !!row.user && row.user === viewer.id,
     canDelete: canDelete(row, viewer),
     offsetMs: Number(row.offset_ms) || 0,
+    addedBy,
     downloadUrl:
       kind === 'generated' && trackId
         ? `/api/tabs/generated/${encodeURIComponent(trackId)}`
@@ -231,6 +200,21 @@ export async function findTabs(
     });
   }
   return found;
+}
+
+/** Display names of the members who added these rows, by user id. A name
+ *  that cannot be read is simply missing: the chip then says "someone". */
+export async function addedByNames(pb: PocketBase, rows: RecordModel[]): Promise<Map<string, string>> {
+  const names = new Map<string, string>();
+  const ids = [...new Set(rows.map((r) => String(r.user ?? '')).filter(Boolean))];
+  await Promise.all(
+    ids.map(async (id) => {
+      const user = await pb.collection('users').getOne(id).catch(() => null);
+      const name = String(user?.name ?? '').trim();
+      if (name) names.set(id, name);
+    }),
+  );
+  return names;
 }
 
 /** Every row for a song regardless of who can see it: hints are public
