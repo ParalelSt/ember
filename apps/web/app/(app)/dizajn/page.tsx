@@ -8,10 +8,13 @@ import { SectionHeader } from '@/components/page/SectionHeader';
 import { PageTitle } from '@/components/page/PageTitle';
 import { CollectionSkeleton } from '@/components/page/CollectionSkeleton';
 import { MusicIcon } from '@/components/icons';
-import { SHELF_OPTIONS } from '@/components/library/options';
+import { SHELF_OPTIONS, RHYTHM_OPTIONS, ACTIONS_OPTIONS } from '@/components/library/options';
+import { RhythmPreview, rhythmLegend, type Rhythm, type ActionsPlacement } from '@/components/library/options/RhythmPreview';
 import { MOCK_PLAYLISTS, MOCK_RECENT_TRACKS, MOCK_RESULT_TRACKS } from './mock';
 
 const STORAGE_KEY = 'dizajn-shelf-option';
+const RHYTHM_STORAGE_KEY = 'dizajn-rhythm-option';
+const ACTIONS_STORAGE_KEY = 'dizajn-actions-option';
 
 type OverlayState = 'recents' | 'searching' | 'results' | 'offline' | 'rate-limited';
 
@@ -99,6 +102,28 @@ export default function DizajnPage() {
 
   const selected = SHELF_OPTIONS.find((o) => o.id === optionId) ?? SHELF_OPTIONS[0];
 
+  // Same lazy-initializer pattern as optionId above, one key per picker so
+  // the two decisions (rhythm, actions placement) persist independently.
+  const [rhythm, setRhythm] = useState<Rhythm>(() => {
+    if (typeof window === 'undefined') return RHYTHM_OPTIONS[0].id as Rhythm;
+    const saved = window.localStorage.getItem(RHYTHM_STORAGE_KEY);
+    return saved && RHYTHM_OPTIONS.some((o) => o.id === saved) ? (saved as Rhythm) : (RHYTHM_OPTIONS[0].id as Rhythm);
+  });
+  const [actionsPlacement, setActionsPlacement] = useState<ActionsPlacement>(() => {
+    if (typeof window === 'undefined') return ACTIONS_OPTIONS[0].id as ActionsPlacement;
+    const saved = window.localStorage.getItem(ACTIONS_STORAGE_KEY);
+    return saved && ACTIONS_OPTIONS.some((o) => o.id === saved)
+      ? (saved as ActionsPlacement)
+      : (ACTIONS_OPTIONS[0].id as ActionsPlacement);
+  });
+
+  useEffect(() => {
+    window.localStorage.setItem(RHYTHM_STORAGE_KEY, rhythm);
+  }, [rhythm]);
+  useEffect(() => {
+    window.localStorage.setItem(ACTIONS_STORAGE_KEY, actionsPlacement);
+  }, [actionsPlacement]);
+
   return (
     <div>
       <PageTitle className="mb-2">Design gallery</PageTitle>
@@ -150,6 +175,79 @@ export default function DizajnPage() {
               </div>
             </div>
           ))}
+        </div>
+      </section>
+
+      <section className="mb-12">
+        <h2 className="text-section-title mb-1">Collection page rhythm</h2>
+        <p className="text-meta mb-4">
+          Stage 1 candidates (docs/design-system.md section 3): a mock Liked-songs hero under two
+          independent decisions, Rhythm (the gap around the action bar) and Actions (where the action
+          bar sits). Both pickers apply at once, so all four real combinations are reachable. The live
+          Liked page is unchanged.
+        </p>
+
+        <div className="mb-4">
+          <div className="text-eyebrow mb-2">Rhythm</div>
+          <div role="radiogroup" aria-label="Rhythm" className="flex flex-wrap gap-2">
+            {RHYTHM_OPTIONS.map((o) => (
+              <button
+                key={o.id}
+                type="button"
+                role="radio"
+                aria-checked={o.id === rhythm}
+                onClick={() => setRhythm(o.id as Rhythm)}
+                title={o.description}
+                className={
+                  o.id === rhythm
+                    ? 'rounded-full bg-ember px-3.5 py-1.5 text-sm font-medium text-white'
+                    : 'rounded-full border border-border px-3.5 py-1.5 text-sm hover:bg-card transition-colors'
+                }
+              >
+                {o.name}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="mb-6">
+          <div className="text-eyebrow mb-2">Actions</div>
+          <div role="radiogroup" aria-label="Actions" className="flex flex-wrap gap-2">
+            {ACTIONS_OPTIONS.map((o) => (
+              <button
+                key={o.id}
+                type="button"
+                role="radio"
+                aria-checked={o.id === actionsPlacement}
+                onClick={() => setActionsPlacement(o.id as ActionsPlacement)}
+                title={o.description}
+                className={
+                  o.id === actionsPlacement
+                    ? 'rounded-full bg-ember px-3.5 py-1.5 text-sm font-medium text-white'
+                    : 'rounded-full border border-border px-3.5 py-1.5 text-sm hover:bg-card transition-colors'
+                }
+              >
+                {o.name}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <p data-testid="rhythm-legend" className="text-meta mb-4">
+          {rhythmLegend(rhythm)}
+        </p>
+
+        <div className="flex flex-col gap-6">
+          <div>
+            <div className="text-eyebrow mb-2">Phone (390px)</div>
+            <div style={{ width: 390 }} className="max-w-full overflow-x-auto">
+              <RhythmPreview rhythm={rhythm} actions={actionsPlacement} phone />
+            </div>
+          </div>
+          <div>
+            <div className="text-eyebrow mb-2">Desktop</div>
+            <RhythmPreview rhythm={rhythm} actions={actionsPlacement} phone={false} />
+          </div>
         </div>
       </section>
 

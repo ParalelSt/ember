@@ -96,3 +96,19 @@ export const MOCK_RESULT_TRACKS: Track[] = [
   makeTrack({ sourceId: 'q2', title: 'Second Nature', artist: 'Field Notes' }),
   makeTrack({ sourceId: 'q3', title: 'Seconds Apart', artist: 'The Nulls' }),
 ];
+
+/** A Liked-songs collection hero, mock only: the header text and the first
+ *  three rows, for the "Collection page rhythm" section on /dizajn
+ *  (docs/design-system.md section 3). Same shape a real collection page
+ *  would pass to CollectionHeader/TrackList, restated as plain data so
+ *  RhythmPreview stays presentational (no Track/PlaybackContext wiring). */
+export const MOCK_COLLECTION_HERO = {
+  eyebrow: 'Playlist',
+  title: 'Liked songs',
+  meta: '10 songs · 38 min',
+  tracks: [
+    { id: 'h1', title: 'Slow Static', artist: 'Aftertone', duration: '3:41' },
+    { id: 'h2', title: 'Harbor Lights', artist: 'Coastline', duration: '4:02' },
+    { id: 'h3', title: 'Second Nature', artist: 'Field Notes', duration: '3:18' },
+  ],
+};
