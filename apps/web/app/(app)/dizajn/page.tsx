@@ -20,12 +20,24 @@ import {
   type ChangelogState,
 } from '@/components/library/options/changelog';
 import { ChangelogSection } from '@/components/library/options/changelog/ChangelogSection';
+import {
+  TABS_LAYOUTS,
+  TABS_SCROLL,
+  TABS_STAFF,
+  type TabsLayout,
+  type TabsScroll,
+  type TabsStaff,
+} from '@/components/library/options/tabs';
+import { TabsSection } from '@/components/library/options/tabs/TabsSection';
 import { MOCK_LIKED_TRACKS, MOCK_PLAYLISTS, MOCK_RECENT_TRACKS, MOCK_RESULT_TRACKS } from './mock';
 
 const STORAGE_KEY = 'dizajn-shelf-option';
 const CHANGELOG_PLACEMENT_KEY = 'dizajn-changelog-placement';
 const CHANGELOG_STATE_KEY = 'dizajn-changelog-state';
 const CHANGELOG_BADGE_KEY = 'dizajn-changelog-badge';
+const TABS_LAYOUT_KEY = 'dizajn-tabs-layout';
+const TABS_STAFF_KEY = 'dizajn-tabs-staff';
+const TABS_SCROLL_KEY = 'dizajn-tabs-scroll';
 
 /** Lazy-initializer read of one picker's saved id, falling back to the
  *  first option when nothing (or something stale) is stored. */
@@ -46,7 +58,7 @@ function Picker<T extends string>({
   onChange,
 }: {
   label: string;
-  options: { id: T; name: string; description: string }[];
+  options: { id: T; name: string; description: string; badge?: string }[];
   value: T;
   onChange: (id: T) => void;
 }) {
@@ -65,6 +77,11 @@ function Picker<T extends string>({
             className={o.id === value ? PILL_ON : PILL_OFF}
           >
             {o.name}
+            {o.badge && (
+              <span className="ml-cluster rounded-full bg-white/20 px-cluster text-[10px] leading-4 font-semibold uppercase tracking-wide">
+                {o.badge}
+              </span>
+            )}
           </button>
         ))}
       </div>
@@ -175,6 +192,21 @@ export default function DizajnPage() {
     window.localStorage.setItem(CHANGELOG_BADGE_KEY, clBadge);
   }, [clBadge]);
 
+  // "Guitar tabs" pickers: same pattern again.
+  const [tabsLayout, setTabsLayout] = useState<TabsLayout>(() => savedChoice(TABS_LAYOUT_KEY, TABS_LAYOUTS));
+  const [tabsStaff, setTabsStaff] = useState<TabsStaff>(() => savedChoice(TABS_STAFF_KEY, TABS_STAFF));
+  const [tabsScroll, setTabsScroll] = useState<TabsScroll>(() => savedChoice(TABS_SCROLL_KEY, TABS_SCROLL));
+
+  useEffect(() => {
+    window.localStorage.setItem(TABS_LAYOUT_KEY, tabsLayout);
+  }, [tabsLayout]);
+  useEffect(() => {
+    window.localStorage.setItem(TABS_STAFF_KEY, tabsStaff);
+  }, [tabsStaff]);
+  useEffect(() => {
+    window.localStorage.setItem(TABS_SCROLL_KEY, tabsScroll);
+  }, [tabsScroll]);
+
   return (
     <div>
       <PageTitle className="mb-2">Design gallery</PageTitle>
@@ -182,6 +214,31 @@ export default function DizajnPage() {
         What was built, and the style options for the Library page&apos;s playlist shelves. Not a real
         page in the app: no link points here.
       </p>
+
+      <section className="mb-section">
+        <h2 className="text-section-title">Guitar tabs</h2>
+        <p className="text-meta mt-inset mb-block">
+          Where tabs live once they look like Songsterr (docs/tabs-rebuild.md), each inside the whole app
+          shell. Sheet page is the owner&apos;s pick, with Horizontal as a toggle inside it; Side panel and
+          Stage stay here to compare. The score is real: AlphaTab drawing a bundled sample riff with the
+          viewer&apos;s settings. Tracks, Tab + Score and Horizontal work in the preview; speed, loop and
+          count-in are wired in later stages. The live tabs dialog is unchanged.
+        </p>
+
+        <div className="mb-stack flex flex-wrap gap-x-section gap-y-block">
+          <Picker label="Layout" options={TABS_LAYOUTS} value={tabsLayout} onChange={setTabsLayout} />
+          <Picker label="Staff" options={TABS_STAFF} value={tabsStaff} onChange={setTabsStaff} />
+          <Picker label="Scroll" options={TABS_SCROLL} value={tabsScroll} onChange={setTabsScroll} />
+        </div>
+
+        <TabsSection
+          layout={tabsLayout}
+          staff={tabsStaff}
+          scroll={tabsScroll}
+          onStaffChange={setTabsStaff}
+          onScrollChange={setTabsScroll}
+        />
+      </section>
 
       <section className="mb-12">
         <h2 className="text-section-title mb-1">What&apos;s new (changelog)</h2>

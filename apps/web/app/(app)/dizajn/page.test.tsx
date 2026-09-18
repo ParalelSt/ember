@@ -1,11 +1,75 @@
 import type { ComponentProps, PropsWithChildren } from 'react';
-import { describe, expect, it, beforeEach, vi } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, beforeEach, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import DizajnPage from './page';
 import { SHELF_OPTIONS } from '@/components/library/options';
 import { SPACING_SCALE } from '@/lib/spacing';
 import { MOCK_LIKED_TRACKS } from './mock';
 import { CHANGELOG_PLACEMENTS, CHANGELOG_STATES, BADGE_STYLES } from '@/components/library/options/changelog';
+import { TABS_LAYOUTS, TABS_SCROLL, TABS_STAFF } from '@/components/library/options/tabs';
+import { SAMPLE_TEX } from '@/components/library/options/tabs/sample';
+
+// AlphaTab needs a real browser (canvas, fonts, layout), so the Guitar tabs
+// section gets a fake module: it records every AlphaTabApi built (host,
+// settings, the alphaTex and tracks it was given), answers the one bounds
+// lookup the cursor needs, and fires postRenderFinished like the real one.
+const alphaTab = vi.hoisted(() => ({ apis: [] as FakeApi[] }));
+interface FakeApi {
+  settings: Record<string, Record<string, unknown>>;
+  texArgs: { tex: string; tracks: number[] } | null;
+  destroyed: boolean;
+}
+vi.mock('@coderline/alphatab', () => {
+  class Emitter {
+    private fns: (() => void)[] = [];
+    on(fn: () => void) {
+      this.fns.push(fn);
+    }
+    emit() {
+      this.fns.forEach((f) => f());
+    }
+  }
+  const bar = (n: number) => ({ voices: [{ beats: Array.from({ length: n }, () => ({})) }] });
+  class AlphaTabApi {
+    postRenderFinished = new Emitter();
+    error = new Emitter();
+    score: unknown = null;
+    renderer = {
+      boundsLookup: {
+        findBeat: () => ({
+          visualBounds: { x: 120, y: 10, w: 10, h: 60 },
+          barBounds: { masterBarBounds: { visualBounds: { x: 90, y: 10, w: 220, h: 90 } } },
+        }),
+      },
+    };
+    texArgs: FakeApi['texArgs'] = null;
+    destroyed = false;
+    constructor(
+      public host: HTMLElement,
+      public settings: FakeApi['settings'],
+    ) {
+      alphaTab.apis.push(this);
+    }
+    tex(tex: string, tracks: number[]) {
+      this.texArgs = { tex, tracks };
+      const track = { staves: [{ bars: [bar(8), bar(8)] }] };
+      this.score = { tracks: [track, track] };
+      queueMicrotask(() => this.postRenderFinished.emit());
+    }
+    destroy() {
+      this.destroyed = true;
+    }
+  }
+  const names = ['ScoreTitle', 'ScoreSubTitle', 'ScoreArtist', 'ScoreAlbum', 'ScoreWords', 'ScoreMusic',
+    'ScoreWordsAndMusic', 'ScoreCopyright', 'GuitarTuning', 'TrackNames'];
+  return {
+    AlphaTabApi,
+    StaveProfile: { Default: 0, ScoreTab: 1, Score: 2, Tab: 3 },
+    LayoutMode: { Page: 0, Horizontal: 1 },
+    TabRhythmMode: { Hidden: 0, ShowWithBeams: 1 },
+    NotationElement: Object.fromEntries(names.map((n, i) => [n, i])),
+  };
+});
 
 // next/link reads the app router context, which no test renders (see
 // components/OnlineOnly.test.tsx).
@@ -25,14 +89,25 @@ vi.mock('@/components/ui/dialog', () => ({
   DialogTitle: ({ children }: PropsWithChildren) => <h2>{children}</h2>,
 }));
 
+// happy-dom lays nothing out; the score waits for a real width first.
+const clientWidth = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'clientWidth');
+beforeAll(() => {
+  Object.defineProperty(HTMLElement.prototype, 'clientWidth', { configurable: true, get: () => 800 });
+});
+afterAll(() => {
+  if (clientWidth) Object.defineProperty(HTMLElement.prototype, 'clientWidth', clientWidth);
+});
+
 beforeEach(() => {
   window.localStorage.clear();
+  alphaTab.apis.length = 0;
 });
 
 describe('DizajnPage', () => {
   it('renders every section with no network', () => {
     render(<DizajnPage />);
 
+    expect(screen.getByText('Guitar tabs')).toBeInTheDocument();
     expect(screen.getByText("What's new (changelog)")).toBeInTheDocument();
     expect(screen.getByText('Instant search overlay')).toBeInTheDocument();
     expect(screen.getByText('Loading skeletons')).toBeInTheDocument();
@@ -166,7 +241,7 @@ describe('DizajnPage', () => {
         card: screen.queryAllByTestId('whats-new-sidebar-card').length,
         banner: screen.queryAllByTestId('whats-new-home-banner').length,
         topBar: screen.queryAllByTestId('whats-new-top-bar-button').length,
-        menuDot: within(screen.getAllByTestId('mock-menu-button')[0]).queryAllByTestId('unread-dot').length,
+        menuDot: within(within(screen.getByTestId('changelog-section')).getAllByTestId('mock-menu-button')[0]).queryAllByTestId('unread-dot').length,
       });
 
       // Sidebar link: in the desktop sidebar only (the phone drawer is shut).
@@ -257,14 +332,15 @@ describe('DizajnPage', () => {
       render(<DizajnPage />);
       expect(screen.queryByTestId('changelog-fullscreen')).not.toBeInTheDocument();
 
-      fireEvent.click(screen.getByRole('button', { name: 'View full screen' }));
+      const section = screen.getByTestId('changelog-section');
+      fireEvent.click(within(section).getByRole('button', { name: 'View full screen' }));
       const overlay = screen.getByRole('dialog', { name: 'Full screen preview' });
       expect(within(overlay).getByTestId('shell-preview')).toHaveAttribute('data-phone', 'false');
 
       fireEvent.keyDown(window, { key: 'Escape' });
       expect(screen.queryByTestId('changelog-fullscreen')).not.toBeInTheDocument();
 
-      fireEvent.click(screen.getByRole('button', { name: 'View full screen' }));
+      fireEvent.click(within(section).getByRole('button', { name: 'View full screen' }));
       fireEvent.click(screen.getByRole('button', { name: 'Close full screen' }));
       expect(screen.queryByTestId('changelog-fullscreen')).not.toBeInTheDocument();
     });
@@ -290,6 +366,149 @@ describe('DizajnPage', () => {
       window.localStorage.setItem('dizajn-changelog-placement', 'floating-toast');
       render(<DizajnPage />);
       expect(screen.getByRole('radio', { name: 'Sidebar link' })).toHaveAttribute('aria-checked', 'true');
+    });
+  });
+
+  describe('Guitar tabs section', () => {
+    const pick = (group: string, name: string | RegExp) =>
+      fireEvent.click(within(screen.getByRole('radiogroup', { name: group })).getByRole('radio', { name }));
+    const section = () => screen.getByTestId('tabs-section');
+    const scores = () => within(section()).getAllByTestId('tab-score');
+    const live = () => alphaTab.apis.filter((a) => !a.destroyed);
+
+    it('is the first section on the page', () => {
+      render(<DizajnPage />);
+      const headings = screen.getAllByRole('heading', { level: 2 }).map((h) => h.textContent);
+      expect(headings[0]).toBe('Guitar tabs');
+    });
+
+    it('renders the three pickers, Sheet page first, checked and labelled Recommended', () => {
+      render(<DizajnPage />);
+      for (const [group, options] of [
+        ['Layout', TABS_LAYOUTS],
+        ['Staff', TABS_STAFF],
+        ['Scroll', TABS_SCROLL],
+      ] as const) {
+        const radios = within(screen.getByRole('radiogroup', { name: group })).getAllByRole('radio');
+        expect(radios.map((r) => r.textContent)).toEqual(
+          options.map((o) => o.name + ('badge' in o && o.badge ? o.badge : '')),
+        );
+        radios.forEach((r, i) => expect(r).toHaveAttribute('aria-checked', i === 0 ? 'true' : 'false'));
+      }
+      expect(TABS_LAYOUTS.map((o) => o.name)).toEqual(['Sheet page', 'Side panel', 'Stage']);
+      expect(screen.getByRole('radio', { name: /Sheet page/ })).toHaveTextContent('Recommended');
+      expect(TABS_STAFF.map((o) => o.name)).toEqual(['Tab', 'Tab + Score']);
+      expect(TABS_SCROLL.map((o) => o.name)).toEqual(['Vertical', 'Horizontal']);
+    });
+
+    it('draws the Sheet page in the shell, desktop and phone, with a real AlphaTab score', async () => {
+      render(<DizajnPage />);
+      expect(within(section()).getAllByTestId('shell-preview').map((s) => s.dataset.phone)).toEqual(['false', 'true']);
+      expect(within(section()).getAllByTestId('tabs-layout-sheet')).toHaveLength(2);
+      expect(within(section()).getAllByTestId('tabs-toolbar')).toHaveLength(2);
+
+      await waitFor(() => expect(scores().every((s) => s.dataset.status === 'ready')).toBe(true));
+      expect(live()).toHaveLength(2);
+      for (const api of live()) {
+        expect(api.texArgs).toEqual({ tex: SAMPLE_TEX, tracks: [0] });
+        expect(api.settings.core).toMatchObject({ engine: 'svg', fontDirectory: '/alphatab/font/', useWorkers: false });
+        expect(api.settings.display).toMatchObject({ staveProfile: 3, layoutMode: 0 });
+        expect(api.settings.notation).toMatchObject({ rhythmMode: 1 });
+        const resources = api.settings.display.resources as Record<string, string>;
+        expect(resources.mainGlyphColor).toMatch(/^rgba\(/);
+        expect(resources.staffLineColor).toMatch(/^rgba\(/);
+      }
+      // The phone draws smaller, like the planned viewer.
+      expect(live().map((a) => a.settings.display.scale)).toEqual([0.95, 0.65]);
+      // A cursor sits on the score.
+      expect(within(section()).getAllByTestId('tab-cursor')).toHaveLength(2);
+    });
+
+    it('switching the layout changes what renders, with its description', () => {
+      render(<DizajnPage />);
+      pick('Layout', 'Side panel');
+      expect(section().dataset.layout).toBe('side-panel');
+      expect(within(section()).queryByTestId('tabs-layout-sheet')).toBeNull();
+      expect(within(section()).getAllByTestId('tabs-layout-side-panel')).toHaveLength(2);
+      expect(within(section()).getAllByTestId('mock-home')).toHaveLength(2);
+      expect(screen.getByTestId('tabs-description').textContent).toBe(TABS_LAYOUTS[1].description);
+
+      pick('Layout', 'Stage');
+      expect(within(section()).getAllByTestId('tabs-layout-stage')).toHaveLength(2);
+      expect(within(section()).queryByTestId('tabs-layout-side-panel')).toBeNull();
+      expect(screen.getByTestId('tabs-description').textContent).toBe(TABS_LAYOUTS[2].description);
+    });
+
+    it('Staff and Scroll redraw the score with the matching AlphaTab settings', async () => {
+      render(<DizajnPage />);
+      await waitFor(() => expect(live()).toHaveLength(2));
+
+      pick('Staff', 'Tab + Score');
+      await waitFor(() => expect(live().map((a) => a.settings.display.staveProfile)).toEqual([1, 1]));
+      expect(scores().map((s) => s.dataset.staff)).toEqual(['score-tab', 'score-tab']);
+
+      pick('Scroll', 'Horizontal');
+      await waitFor(() => expect(live().map((a) => a.settings.display.layoutMode)).toEqual([1, 1]));
+      expect(scores().map((s) => s.dataset.scroll)).toEqual(['horizontal', 'horizontal']);
+      // Every earlier drawing was torn down, not left behind.
+      expect(alphaTab.apis.filter((a) => a.destroyed).length).toBe(alphaTab.apis.length - 2);
+    });
+
+    it('the toolbar moves the pickers and switches tracks; practice controls only toggle their look', async () => {
+      render(<DizajnPage />);
+      const toolbar = within(section()).getAllByTestId('tabs-toolbar')[0];
+
+      fireEvent.click(within(toolbar).getByRole('button', { name: 'Tab + Score' }));
+      expect(screen.getByRole('radio', { name: 'Tab + Score' })).toHaveAttribute('aria-checked', 'true');
+      fireEvent.click(within(toolbar).getByRole('button', { name: 'Horizontal' }));
+      expect(screen.getByRole('radio', { name: 'Horizontal' })).toHaveAttribute('aria-checked', 'true');
+
+      fireEvent.click(within(toolbar).getByRole('button', { name: /Bass/ }));
+      await waitFor(() => expect(live().map((a) => a.texArgs?.tracks)).toEqual([[1], [1]]));
+      expect(within(section()).getAllByText(/Bass, Drop D/).length).toBeGreaterThan(0);
+
+      const built = alphaTab.apis.length;
+      const loop = within(toolbar).getByRole('button', { name: 'Loop' });
+      expect(loop).toHaveAttribute('aria-pressed', 'false');
+      fireEvent.click(loop);
+      expect(loop).toHaveAttribute('aria-pressed', 'true');
+      fireEvent.click(within(toolbar).getByRole('button', { name: 'Faster' }));
+      expect(within(toolbar).getByText('110%')).toBeInTheDocument();
+      expect(alphaTab.apis.length).toBe(built);
+    });
+
+    it('opens the desktop shell full screen and closes it with Escape', () => {
+      render(<DizajnPage />);
+      fireEvent.click(within(section()).getByRole('button', { name: 'View full screen' }));
+      const overlay = screen.getByRole('dialog', { name: 'Full screen tabs preview' });
+      expect(within(overlay).getByTestId('tabs-layout-sheet')).toBeInTheDocument();
+      expect(within(overlay).getByTestId('shell-preview')).toHaveAttribute('data-phone', 'false');
+      fireEvent.keyDown(window, { key: 'Escape' });
+      expect(screen.queryByTestId('tabs-fullscreen')).not.toBeInTheDocument();
+    });
+
+    it('persists all three choices to localStorage and restores them on mount', async () => {
+      const { unmount } = render(<DizajnPage />);
+      pick('Layout', 'Stage');
+      pick('Staff', 'Tab + Score');
+      pick('Scroll', 'Horizontal');
+
+      await waitFor(() => expect(window.localStorage.getItem('dizajn-tabs-layout')).toBe('stage'));
+      expect(window.localStorage.getItem('dizajn-tabs-staff')).toBe('score-tab');
+      expect(window.localStorage.getItem('dizajn-tabs-scroll')).toBe('horizontal');
+      unmount();
+
+      render(<DizajnPage />);
+      expect(screen.getByRole('radio', { name: 'Stage' })).toHaveAttribute('aria-checked', 'true');
+      expect(screen.getByRole('radio', { name: 'Tab + Score' })).toHaveAttribute('aria-checked', 'true');
+      expect(screen.getByRole('radio', { name: 'Horizontal' })).toHaveAttribute('aria-checked', 'true');
+      expect(section().dataset).toMatchObject({ layout: 'stage', staff: 'score-tab', scroll: 'horizontal' });
+    });
+
+    it('ignores a stale saved value', () => {
+      window.localStorage.setItem('dizajn-tabs-layout', 'floating-window');
+      render(<DizajnPage />);
+      expect(screen.getByRole('radio', { name: /Sheet page/ })).toHaveAttribute('aria-checked', 'true');
     });
   });
 });
