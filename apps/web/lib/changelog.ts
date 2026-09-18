@@ -21,6 +21,18 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    id: 'tab-page',
+    version: '0.3.3',
+    date: '2026-09-18',
+    title: 'A real tab page',
+    summary: 'Tabs open as a full page that follows the song: click a bar to jump there.',
+    bullets: [
+      'The guitar button opens the tab as its own page, and the cursor follows the song as it plays.',
+      'Click any bar to jump the song there. Switch between guitar and bass, Tab or Tab + Score.',
+      'Horizontal mode scrolls the tab sideways in one long row.',
+    ],
+  },
+  {
     id: 'shared-tabs',
     version: '0.3.2',
     date: '2026-09-18',

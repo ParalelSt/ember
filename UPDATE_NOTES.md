@@ -1,3 +1,20 @@
+# 0.3.3: a real tab page
+
+**Host: a normal rebuild and restart (`./update.sh`). Nothing to configure:
+no `npm install`, no new environment variables, no PocketBase changes** (the
+`offset_ms` field it uses came with 0.3.2).
+
+- **Tabs are a page now**: the guitar button in the player bar (and in Now
+  playing on phones) opens `/tabs/<song>` instead of the old dialog. The
+  score fills the page, the player bar stays below it, and the cursor
+  follows the song. Clicking a bar jumps the song there.
+- **Guitar and bass**: a file with several instruments shows a picker with
+  each one's tuning; Tab or Tab + Score, and a Horizontal mode that scrolls
+  sideways like Songsterr.
+- **Adding and generating** tabs moved to the page: its empty state offers
+  "Generate a tab" and "Add a file", and the menu at the top keeps both
+  plus delete. Whoever added a tab can save its sync nudge for everyone.
+
 # 0.3.2: shared guitar tabs
 
 **Host: a normal rebuild and restart (`./update.sh`). No `npm install`, no
