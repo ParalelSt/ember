@@ -81,9 +81,10 @@ function SheetPage(p: ViewProps) {
 }
 
 /** Home as it sits behind the panel (B, desktop). */
-function MockHome() {
+function MockHome({ besidePanel = false }: { besidePanel?: boolean }) {
   return (
-    <div data-testid="mock-home">
+    // Beside the desktop panel, Home keeps to the space left of it.
+    <div data-testid="mock-home" style={besidePanel ? { marginRight: 440 } : undefined}>
       <PageTitle className="mb-section text-4xl!">Home</PageTitle>
       {[
         { title: 'Recommended for you', tracks: MOCK_HOME_TRACKS },
@@ -91,7 +92,7 @@ function MockHome() {
       ].map((s) => (
         <section key={s.title} className="mb-section">
           <SectionHeader title={s.title} className="mb-row" />
-          <div className="grid grid-cols-4 gap-block">
+          <div className={cn('grid gap-block', besidePanel ? 'grid-cols-2' : 'grid-cols-4')}>
             {s.tracks.slice(0, 4).map((t) => (
               <TrackCard key={t.id} track={t} onActivate={NOOP} artworkFallback={<MusicIcon className="h-6 w-6" />} />
             ))}
@@ -175,7 +176,7 @@ function Stage(p: ViewProps) {
         scroll={p.scroll}
         track={p.track}
         scale={p.phone ? 0.7 : 1.05}
-        className={cn('min-h-0 flex-1 px-page', p.scroll === 'vertical' && 'overflow-y-auto')}
+        className={cn('min-h-0 flex-1 px-page pb-[88px]', p.scroll === 'vertical' && 'overflow-y-auto')}
       />
       <div className="pointer-events-none absolute inset-x-0 bottom-0 flex justify-center px-block pb-block">
         <div className="pointer-events-auto flex max-w-full items-center gap-cluster">
@@ -229,7 +230,7 @@ export function TabsSection({ layout, staff, scroll, onStaffChange, onScrollChan
     let cover: ReactNode = null;
     if (layout === 'sheet') content = <SheetPage {...view} />;
     else if (layout === 'side-panel') {
-      content = <MockHome />;
+      content = <MockHome besidePanel={!phone} />;
       if (phone) cover = <PhoneSheet {...view} />;
       else overlay = <SidePanel {...view} />;
     } else {

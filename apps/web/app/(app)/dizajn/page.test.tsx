@@ -61,12 +61,12 @@ vi.mock('@coderline/alphatab', () => {
     }
   }
   const names = ['ScoreTitle', 'ScoreSubTitle', 'ScoreArtist', 'ScoreAlbum', 'ScoreWords', 'ScoreMusic',
-    'ScoreWordsAndMusic', 'ScoreCopyright', 'GuitarTuning', 'TrackNames'];
+    'ScoreWordsAndMusic', 'ScoreCopyright', 'GuitarTuning', 'TrackNames', 'EffectDynamics'];
   return {
     AlphaTabApi,
     StaveProfile: { Default: 0, ScoreTab: 1, Score: 2, Tab: 3 },
     LayoutMode: { Page: 0, Horizontal: 1 },
-    TabRhythmMode: { Hidden: 0, ShowWithBeams: 1 },
+    TabRhythmMode: { Hidden: 0, ShowWithBeams: 1, ShowWithBars: 2 },
     NotationElement: Object.fromEntries(names.map((n, i) => [n, i])),
   };
 });
@@ -413,7 +413,7 @@ describe('DizajnPage', () => {
         expect(api.texArgs).toEqual({ tex: SAMPLE_TEX, tracks: [0] });
         expect(api.settings.core).toMatchObject({ engine: 'svg', fontDirectory: '/alphatab/font/', useWorkers: false });
         expect(api.settings.display).toMatchObject({ staveProfile: 3, layoutMode: 0 });
-        expect(api.settings.notation).toMatchObject({ rhythmMode: 1 });
+        expect(api.settings.notation).toMatchObject({ rhythmMode: 2 });
         const resources = api.settings.display.resources as Record<string, string>;
         expect(resources.mainGlyphColor).toMatch(/^rgba\(/);
         expect(resources.staffLineColor).toMatch(/^rgba\(/);

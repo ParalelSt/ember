@@ -109,13 +109,15 @@ function ScoreCanvas({ staff, scroll, track, scale = 0.9, className }: TabScoreP
             useWorkers: false,
           },
           display: {
-            scale,
+            // One row reads bigger, like Songsterr's scroll mode.
+            scale: scroll === 'horizontal' ? scale * 1.25 : scale,
             staveProfile: staff === 'tab' ? at.StaveProfile.Tab : at.StaveProfile.ScoreTab,
             layoutMode: scroll === 'horizontal' ? at.LayoutMode.Horizontal : at.LayoutMode.Page,
             resources: scoreResources(),
           },
           notation: {
-            rhythmMode: at.TabRhythmMode.ShowWithBeams,
+            // Beamed like Songsterr: eighths and sixteenths joined per beat group.
+            rhythmMode: at.TabRhythmMode.ShowWithBars,
             rhythmHeight: 22,
             // The page header shows title, artist and tuning already.
             elements: new Map([
@@ -129,6 +131,7 @@ function ScoreCanvas({ staff, scroll, track, scale = 0.9, className }: TabScoreP
               [E.ScoreCopyright, false],
               [E.GuitarTuning, false],
               [E.TrackNames, false],
+              [E.EffectDynamics, false],
             ]),
           },
           player: { enablePlayer: false, enableCursor: false },
