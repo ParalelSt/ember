@@ -1,5 +1,6 @@
 import 'server-only';
 import { serverLogger } from '@/lib/logger/server';
+import { isNewer } from '@/lib/semver';
 
 /** Desktop auto-update feed, backed by the GitHub Release.
  *
@@ -94,23 +95,6 @@ function assetPattern(target: string, arch: string): RegExp | null {
   if (t.startsWith('windows')) return a.includes('aarch64') ? /windows-arm64-setup\.exe$/ : /windows-x64-setup\.exe$/;
   if (t.startsWith('linux')) return /linux-.*\.AppImage$/;
   return null;
-}
-
-/** "v0.2.0" / "0.2.0" → [0,2,0]. Anything unparseable sorts lowest, so a
- *  malformed tag can never look newer than a real version. */
-function parseVersion(v: string): number[] {
-  const m = /(\d+)\.(\d+)\.(\d+)/.exec(v.trim());
-  return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : [0, 0, 0];
-}
-
-export function isNewer(candidate: string, current: string): boolean {
-  const a = parseVersion(candidate);
-  const b = parseVersion(current);
-  for (let i = 0; i < 3; i++) {
-    if (a[i] > b[i]) return true;
-    if (a[i] < b[i]) return false;
-  }
-  return false;
 }
 
 /** The manifest Tauri's updater expects, or null when there's nothing newer
