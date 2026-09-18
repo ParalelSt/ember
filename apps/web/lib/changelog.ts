@@ -21,6 +21,18 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    id: 'shared-tabs',
+    version: '0.3.2',
+    date: '2026-09-18',
+    title: 'Shared guitar tabs',
+    summary: 'Tab files are now shared: a tab someone adds on your server shows up for everyone.',
+    bullets: [
+      'A Guitar Pro or MusicXML file someone adds for a song now shows up for everyone on your server.',
+      'Only whoever added a tab (or an admin) can delete it.',
+      'Tabs you added before this update stay private to you.',
+    ],
+  },
+  {
     id: 'cleaner-collection-pages',
     version: '0.3.1',
     date: '2026-09-18',

@@ -1,3 +1,24 @@
+# 0.3.2: shared guitar tabs
+
+**Host: a normal rebuild and restart (`./update.sh`). No `npm install`, no
+new environment variables.** PocketBase must restart so its hooks run:
+`pb_hooks/ensure_tabs.pb.js` turns the `tabs` collection into the one tab
+store on boot (new fields `song_key`, `track_key`, `kind`, `format`,
+`shared`, `offset_ms`, `hints`; new list/view/delete rules; `user` becomes
+optional). Nothing to do by hand, and no row or file is removed.
+
+- **Tab files are now shared**: a Guitar Pro or MusicXML file someone adds
+  shows up for everyone on the server when they open tabs for that song.
+  Only whoever added it, or an admin, can delete it.
+- **Tabs added before this version stay private** to whoever added them
+  (they read as `shared = false`). Their song key, kind and format are filled
+  in the first time the web app reads the store.
+- **Generated tabs get a row too**, the first time one finishes or is opened,
+  so they are found by song like a file. The alphaTex on disk is unchanged.
+- **Songsterr hints** (which instruments, their tuning) are searched once per
+  song that has a tab and kept on its row. Optional: `SONGSTERR_BASE`
+  overrides the Songsterr address (only the test sandbox needs it).
+
 # 0.3.1: cleaner collection pages
 
 **Host: a normal rebuild and restart (`./update.sh`). Nothing to configure:
