@@ -178,6 +178,15 @@ describe('migration of rows from before the store', () => {
     expect((await findTabs(pb, ALICE, { title: 'Legacy Riff', artist: 'Old Artist' })).map((r) => r.id)).toEqual(['old']);
   });
 
+  it('a keyless row written after the one-time pass is still found, and filled in then', async () => {
+    const { pb, rows } = fakePocketBase({ tabs: [] });
+    await backfillTabRows(pb);
+    rows.get('tabs')!.push({ id: 'late', collectionId: 'tabs', collectionName: 'tabs', created: '', user: 'alice', title: 'Late Riff', artist: 'Band', file: 'l.gp4', song_key: '', kind: '', format: '', shared: false });
+    expect((await findTabs(pb, ALICE, { title: 'Late Riff (Live)', artist: 'Band' })).map((r) => r.id)).toEqual(['late']);
+    expect(rows.get('tabs')![0]).toMatchObject({ song_key: 'late riff::band', kind: 'file', format: 'gp4', shared: false });
+    expect(await findTabs(pb, BOB, { title: 'Late Riff', artist: 'Band' })).toEqual([]);
+  });
+
   it('backfills once per process', async () => {
     const { pb, calls } = fakePocketBase({ tabs: [] });
     await backfillTabRows(pb);

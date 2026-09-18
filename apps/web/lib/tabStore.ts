@@ -201,7 +201,8 @@ export async function findTabs(
   const parts = [pb.filter('(shared = true || user = {:me})', { me: viewer.id })];
   if (forSong) {
     const or: string[] = [];
-    if (q.title) or.push(pb.filter('song_key ~ {:t}', { t: `${splitKey(songKeyOf(q)).title}::` }));
+    // Rows with no key yet (from before the store) are matched in TS below.
+    if (q.title) or.push(pb.filter('song_key ~ {:t} || song_key = ""', { t: `${splitKey(songKeyOf(q)).title}::` }));
     if (q.trackId) or.push(pb.filter('track_key = {:id}', { id: q.trackId }));
     parts.push(`(${or.join(' || ')})`);
   }
@@ -211,7 +212,7 @@ export async function findTabs(
   const rows = await pb.collection('tabs').getList(1, 200, { filter: parts.join(' && '), sort: '-created' });
   // The filter narrows; this decides. Contains-matching on the title can
   // over-fetch, and visibility must never rest on a query string alone.
-  return sortTabs(
+  const found = sortTabs(
     rows.items.filter(
       (r) =>
         canView(r, viewer) &&
@@ -219,6 +220,17 @@ export async function findTabs(
         (!opts.kind || kindOf(r) === opts.kind),
     ),
   );
+  // A row the one-time pass missed (written by an older build after it ran)
+  // is filled in as soon as someone finds it.
+  for (const r of found) {
+    const patch = backfillPatch(r);
+    if (!patch) continue;
+    Object.assign(r, patch);
+    await pb.collection('tabs').update(r.id, patch).catch((e) => {
+      serverLogger.error('tabs', 'backfill of a found row failed', { id: r.id }, e);
+    });
+  }
+  return found;
 }
 
 /** Every row for a song regardless of who can see it: hints are public
