@@ -1,34 +1,40 @@
 import { Skeleton } from '@/components/ui/skeleton';
+import {
+  HEADER_CLASSES,
+  HEADER_VARIANTS,
+  type CollectionHeaderVariant,
+} from '@/components/page/CollectionHeader';
 import { cn } from '@/lib/utils';
 
-const COVER_CLASS = {
-  collection: 'size-art-hero md:size-art-lg rounded-2xl',
-  album: 'size-art-hero md:size-art-xl rounded-md',
-  artist: 'size-art-hero-sm md:size-art-hero rounded-full',
-} as const;
-
 export interface CollectionSkeletonProps {
-  variant?: keyof typeof COVER_CLASS;
+  variant?: CollectionHeaderVariant;
   /** How many track rows to sketch: kept small; this is a placeholder for
    *  the blank route-load transition, not a guess at the real list length. */
   rows?: number;
 }
 
 /** Presentational, no data: a muted stand-in for a collection page's header
- *  (cover + title + meta) and its first few track rows, sized off the same
- *  tokens CollectionHeader and TrackRow use. Used by the route-level
+ *  (cover, eyebrow, title, meta, action bar) and its first few track rows.
+ *  The header geometry comes from CollectionHeader's own HEADER_CLASSES and
+ *  the page stack matches CollectionPage (`gap-stack`), so the skeleton
+ *  cannot drift from the page it stands in for. Used by the route-level
  *  loading.tsx files so a slow connection shows this instead of a blank
  *  screen while the route's chunk and payload arrive: the page's own
  *  "Loading…" text still covers the fetch that happens after it mounts. */
 export function CollectionSkeleton({ variant = 'collection', rows = 5 }: CollectionSkeletonProps) {
+  const v = HEADER_VARIANTS[variant];
   return (
-    <div>
-      <div className="flex flex-col md:flex-row items-start md:items-end gap-6 mb-6">
-        <Skeleton className={cn('shrink-0', COVER_CLASS[variant])} />
-        <div className="flex flex-col gap-3 min-w-0 w-full max-w-sm">
+    <div className="flex flex-col gap-stack">
+      <div className={HEADER_CLASSES.root} data-testid="skeleton-header">
+        <Skeleton className={cn('shrink-0', v.cover, v.radius)} />
+        <div className="min-w-0 w-full max-w-sm">
           <Skeleton className="h-3 w-16" />
-          <Skeleton className="h-8 w-2/3" />
-          <Skeleton className="h-3 w-1/3" />
+          <Skeleton className={cn('h-8 w-2/3', HEADER_CLASSES.title)} />
+          <Skeleton className={cn('h-3 w-1/3', HEADER_CLASSES.meta)} />
+          <div className={cn('flex items-center gap-cluster', HEADER_CLASSES.actions)}>
+            <Skeleton className="size-12 rounded-full" />
+            <Skeleton className="size-12 rounded-full" />
+          </div>
         </div>
       </div>
       <div className="flex flex-col gap-1">

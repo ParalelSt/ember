@@ -2,7 +2,9 @@ import type { ComponentProps, PropsWithChildren } from 'react';
 import { describe, expect, it, beforeEach, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import DizajnPage from './page';
-import { SHELF_OPTIONS, RHYTHM_OPTIONS, ACTIONS_OPTIONS } from '@/components/library/options';
+import { SHELF_OPTIONS } from '@/components/library/options';
+import { SPACING_SCALE } from '@/lib/spacing';
+import { MOCK_LIKED_TRACKS } from './mock';
 import { CHANGELOG_PLACEMENTS, CHANGELOG_STATES, BADGE_STYLES } from '@/components/library/options/changelog';
 
 // next/link reads the app router context, which no test renders (see
@@ -34,7 +36,8 @@ describe('DizajnPage', () => {
     expect(screen.getByText("What's new (changelog)")).toBeInTheDocument();
     expect(screen.getByText('Instant search overlay')).toBeInTheDocument();
     expect(screen.getByText('Loading skeletons')).toBeInTheDocument();
-    expect(screen.getByText('Collection page rhythm')).toBeInTheDocument();
+    expect(screen.getByText('Spacing scale')).toBeInTheDocument();
+    expect(screen.getByText('Collection page')).toBeInTheDocument();
     expect(screen.getByText('Library playlists, style options')).toBeInTheDocument();
   });
 
@@ -89,62 +92,32 @@ describe('DizajnPage', () => {
     expect(screen.getByRole('radio', { name: 'Cover-led', checked: true })).toBeInTheDocument();
   });
 
-  describe('Collection page rhythm section', () => {
-    it('renders both pickers with every option as a radio, correctly checked', () => {
+  describe('Spacing scale section', () => {
+    it('draws one ruler per token with its name, px value and width utility', () => {
       render(<DizajnPage />);
-
-      for (const o of RHYTHM_OPTIONS) {
-        const radio = screen.getByRole('radio', { name: o.name });
-        expect(radio).toHaveAttribute('aria-checked', o.id === RHYTHM_OPTIONS[0].id ? 'true' : 'false');
-      }
-      for (const o of ACTIONS_OPTIONS) {
-        const radio = screen.getByRole('radio', { name: o.name });
-        expect(radio).toHaveAttribute('aria-checked', o.id === ACTIONS_OPTIONS[0].id ? 'true' : 'false');
-      }
-
-      // Two preview instances (phone + desktop) for the default combination.
-      expect(screen.getAllByTestId('rhythm-preview')).toHaveLength(2);
-      // Scoped: the "What's new" section has its own Phone/Desktop labels.
-      const rhythmSection = screen.getByText('Collection page rhythm').closest('section')!;
-      expect(within(rhythmSection).getByText('Phone (390px)')).toBeInTheDocument();
-      expect(within(rhythmSection).getByText('Desktop')).toBeInTheDocument();
+      const rulers = screen.getAllByTestId('spacing-ruler');
+      expect(rulers).toHaveLength(SPACING_SCALE.length);
+      SPACING_SCALE.forEach((step, i) => {
+        expect(within(rulers[i]).getByText(step.name)).toBeInTheDocument();
+        expect(within(rulers[i]).getByText(`${step.px}px`)).toBeInTheDocument();
+        expect(rulers[i].querySelector(`.${step.ruler}`)).not.toBeNull();
+      });
     });
+  });
 
-    it('changes the rhythm selection on click and updates the legend', () => {
+  describe('Collection page section', () => {
+    it('renders the real CollectionPage from mock tracks, with no pickers', () => {
       render(<DizajnPage />);
+      const section = screen.getByText('Collection page').closest('section')!;
 
-      const legendBefore = screen.getByTestId('rhythm-legend').textContent;
-      fireEvent.click(screen.getByRole('radio', { name: 'Grouped' }));
-
-      expect(screen.getByRole('radio', { name: 'Grouped' })).toHaveAttribute('aria-checked', 'true');
-      expect(screen.getByRole('radio', { name: 'Even' })).toHaveAttribute('aria-checked', 'false');
-      expect(screen.getByTestId('rhythm-legend').textContent).not.toBe(legendBefore);
-    });
-
-    it('changes the actions selection on click', () => {
-      render(<DizajnPage />);
-
-      fireEvent.click(screen.getByRole('radio', { name: 'Below' }));
-
-      expect(screen.getByRole('radio', { name: 'Below' })).toHaveAttribute('aria-checked', 'true');
-      expect(screen.getByRole('radio', { name: 'Beside' })).toHaveAttribute('aria-checked', 'false');
-    });
-
-    it('persists rhythm and actions choices to localStorage independently and round-trips them', async () => {
-      render(<DizajnPage />);
-
-      fireEvent.click(screen.getByRole('radio', { name: 'Today' }));
-      fireEvent.click(screen.getByRole('radio', { name: 'Below' }));
-
-      await waitFor(() => expect(window.localStorage.getItem('dizajn-rhythm-option')).toBe('today'));
-      await waitFor(() => expect(window.localStorage.getItem('dizajn-actions-option')).toBe('below'));
-
-      window.localStorage.setItem('dizajn-rhythm-option', 'grouped');
-      window.localStorage.setItem('dizajn-actions-option', 'below');
-      render(<DizajnPage />);
-
-      expect(screen.getAllByRole('radio', { name: 'Grouped', checked: true }).length).toBeGreaterThan(0);
-      expect(screen.getAllByRole('radio', { name: 'Below', checked: true }).length).toBeGreaterThan(0);
+      expect(within(section).getByRole('heading', { level: 1, name: 'Liked songs' })).toBeInTheDocument();
+      expect(within(section).getByTestId('collection-header')).toBeInTheDocument();
+      expect(within(section).getByTestId('action-bar')).toBeInTheDocument();
+      for (const t of MOCK_LIKED_TRACKS) expect(within(section).getByText(t.title)).toBeInTheDocument();
+      expect(within(section).queryByRole('radiogroup')).toBeNull();
+      // The losing stage 1 candidates are gone from the page entirely.
+      expect(screen.queryByRole('radio', { name: 'Grouped' })).toBeNull();
+      expect(screen.queryByRole('radio', { name: 'Below' })).toBeNull();
     });
   });
 

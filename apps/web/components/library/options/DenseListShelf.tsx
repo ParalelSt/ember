@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import Link from 'next/link';
 import { CheckIcon } from '@/components/icons';
-import { CollectionCover } from '@/components/library/CollectionCover';
+import { CollectionCover } from '@/components/primitives/CollectionCover';
 import type { CollectionCardProps } from '@/components/library/CollectionCard';
 
 export interface DenseListShelfProps {

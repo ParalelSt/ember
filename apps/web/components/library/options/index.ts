@@ -48,44 +48,10 @@ export const SHELF_OPTIONS: ShelfOption[] = [
   },
 ];
 
+/** One choice in a /dizajn pill picker; `id` is what persists to
+ *  localStorage. */
 export interface PickerOption {
   id: string;
   name: string;
   description: string;
 }
-
-/** Stage 1, "Rhythm" picker (docs/design-system.md section 3): the gap
- *  above and below the action bar. `RhythmPreview` reads these ids
- *  directly, so `id` is also what persists to localStorage. */
-export const RHYTHM_OPTIONS: PickerOption[] = [
-  {
-    id: 'even',
-    name: 'Even',
-    description: 'Stack (24) above the action bar and stack (24) below it.',
-  },
-  {
-    id: 'grouped',
-    name: 'Grouped',
-    description: 'Block (16) above the action bar, 32 below it: the actions read as part of the header.',
-  },
-  {
-    id: 'today',
-    name: 'Today',
-    description: 'The current live spacing, for reference: 0 above the buttons, 48 below them.',
-  },
-];
-
-/** Stage 1, "Actions" picker: where the action bar sits relative to the
- *  header. */
-export const ACTIONS_OPTIONS: PickerOption[] = [
-  {
-    id: 'beside',
-    name: 'Beside',
-    description: "Inside the header's text column, bottom edge on the cover's bottom edge (today, minus the ActionBar margin).",
-  },
-  {
-    id: 'below',
-    name: 'Below',
-    description: "A full-width row under the whole header, aligned to the content's left edge (the album page today).",
-  },
-];

@@ -8,8 +8,9 @@ import { SectionHeader } from '@/components/page/SectionHeader';
 import { PageTitle } from '@/components/page/PageTitle';
 import { CollectionSkeleton } from '@/components/page/CollectionSkeleton';
 import { MusicIcon } from '@/components/icons';
-import { SHELF_OPTIONS, RHYTHM_OPTIONS, ACTIONS_OPTIONS } from '@/components/library/options';
-import { RhythmPreview, rhythmLegend, type Rhythm, type ActionsPlacement } from '@/components/library/options/RhythmPreview';
+import { SHELF_OPTIONS } from '@/components/library/options';
+import { CollectionPage } from '@/components/library/CollectionPage';
+import { SPACING_SCALE } from '@/lib/spacing';
 import {
   CHANGELOG_PLACEMENTS,
   CHANGELOG_STATES,
@@ -19,11 +20,9 @@ import {
   type ChangelogState,
 } from '@/components/library/options/changelog';
 import { ChangelogSection } from '@/components/library/options/changelog/ChangelogSection';
-import { MOCK_PLAYLISTS, MOCK_RECENT_TRACKS, MOCK_RESULT_TRACKS } from './mock';
+import { MOCK_LIKED_TRACKS, MOCK_PLAYLISTS, MOCK_RECENT_TRACKS, MOCK_RESULT_TRACKS } from './mock';
 
 const STORAGE_KEY = 'dizajn-shelf-option';
-const RHYTHM_STORAGE_KEY = 'dizajn-rhythm-option';
-const ACTIONS_STORAGE_KEY = 'dizajn-actions-option';
 const CHANGELOG_PLACEMENT_KEY = 'dizajn-changelog-placement';
 const CHANGELOG_STATE_KEY = 'dizajn-changelog-state';
 const CHANGELOG_BADGE_KEY = 'dizajn-changelog-badge';
@@ -39,7 +38,7 @@ function savedChoice<T extends string>(key: string, options: { id: T }[]): T {
 const PILL_ON = 'rounded-full bg-ember px-3.5 py-1.5 text-sm font-medium text-white';
 const PILL_OFF = 'rounded-full border border-border px-3.5 py-1.5 text-sm hover:bg-card transition-colors';
 
-/** One pill radiogroup, the same markup as the Rhythm/Actions pickers. */
+/** One pill radiogroup, the same markup as the style option picker. */
 function Picker<T extends string>({
   label,
   options,
@@ -159,28 +158,6 @@ export default function DizajnPage() {
 
   const selected = SHELF_OPTIONS.find((o) => o.id === optionId) ?? SHELF_OPTIONS[0];
 
-  // Same lazy-initializer pattern as optionId above, one key per picker so
-  // the two decisions (rhythm, actions placement) persist independently.
-  const [rhythm, setRhythm] = useState<Rhythm>(() => {
-    if (typeof window === 'undefined') return RHYTHM_OPTIONS[0].id as Rhythm;
-    const saved = window.localStorage.getItem(RHYTHM_STORAGE_KEY);
-    return saved && RHYTHM_OPTIONS.some((o) => o.id === saved) ? (saved as Rhythm) : (RHYTHM_OPTIONS[0].id as Rhythm);
-  });
-  const [actionsPlacement, setActionsPlacement] = useState<ActionsPlacement>(() => {
-    if (typeof window === 'undefined') return ACTIONS_OPTIONS[0].id as ActionsPlacement;
-    const saved = window.localStorage.getItem(ACTIONS_STORAGE_KEY);
-    return saved && ACTIONS_OPTIONS.some((o) => o.id === saved)
-      ? (saved as ActionsPlacement)
-      : (ACTIONS_OPTIONS[0].id as ActionsPlacement);
-  });
-
-  useEffect(() => {
-    window.localStorage.setItem(RHYTHM_STORAGE_KEY, rhythm);
-  }, [rhythm]);
-  useEffect(() => {
-    window.localStorage.setItem(ACTIONS_STORAGE_KEY, actionsPlacement);
-  }, [actionsPlacement]);
-
   // "What's new" pickers: same lazy-initializer pattern, one key each.
   const [clPlacement, setClPlacement] = useState<ChangelogPlacement>(() =>
     savedChoice(CHANGELOG_PLACEMENT_KEY, CHANGELOG_PLACEMENTS),
@@ -273,75 +250,59 @@ export default function DizajnPage() {
       </section>
 
       <section className="mb-12">
-        <h2 className="text-section-title mb-1">Collection page rhythm</h2>
+        <h2 className="text-section-title mb-1">Spacing scale</h2>
         <p className="text-meta mb-4">
-          Stage 1 candidates (docs/design-system.md section 3): a mock Liked-songs hero under two
-          independent decisions, Rhythm (the gap around the action bar) and Actions (where the action
-          bar sits). Both pickers apply at once, so all four real combinations are reachable. The live
-          Liked page is unchanged.
+          The spacing tokens in globals.css (docs/design-system.md section 2). Each ruler is drawn
+          with the token&apos;s own width utility, so it is the real value, not a picture of it.
         </p>
-
-        <div className="mb-4">
-          <div className="text-eyebrow mb-2">Rhythm</div>
-          <div role="radiogroup" aria-label="Rhythm" className="flex flex-wrap gap-2">
-            {RHYTHM_OPTIONS.map((o) => (
-              <button
-                key={o.id}
-                type="button"
-                role="radio"
-                aria-checked={o.id === rhythm}
-                onClick={() => setRhythm(o.id as Rhythm)}
-                title={o.description}
-                className={
-                  o.id === rhythm
-                    ? 'rounded-full bg-ember px-3.5 py-1.5 text-sm font-medium text-white'
-                    : 'rounded-full border border-border px-3.5 py-1.5 text-sm hover:bg-card transition-colors'
-                }
-              >
-                {o.name}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <div className="mb-6">
-          <div className="text-eyebrow mb-2">Actions</div>
-          <div role="radiogroup" aria-label="Actions" className="flex flex-wrap gap-2">
-            {ACTIONS_OPTIONS.map((o) => (
-              <button
-                key={o.id}
-                type="button"
-                role="radio"
-                aria-checked={o.id === actionsPlacement}
-                onClick={() => setActionsPlacement(o.id as ActionsPlacement)}
-                title={o.description}
-                className={
-                  o.id === actionsPlacement
-                    ? 'rounded-full bg-ember px-3.5 py-1.5 text-sm font-medium text-white'
-                    : 'rounded-full border border-border px-3.5 py-1.5 text-sm hover:bg-card transition-colors'
-                }
-              >
-                {o.name}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <p data-testid="rhythm-legend" className="text-meta mb-4">
-          {rhythmLegend(rhythm)}
-        </p>
-
-        <div className="flex flex-col gap-6">
-          <div>
-            <div className="text-eyebrow mb-2">Phone (390px)</div>
-            <div style={{ width: 390 }} className="max-w-full overflow-x-auto">
-              <RhythmPreview rhythm={rhythm} actions={actionsPlacement} phone />
+        <div data-testid="spacing-scale" className="flex flex-col gap-cluster">
+          {SPACING_SCALE.map((step) => (
+            <div key={step.name} data-testid="spacing-ruler" className="flex items-center gap-row">
+              <div className="w-20 shrink-0 font-mono text-sm">{step.name}</div>
+              <div className="w-12 shrink-0 text-meta tabular-nums">{step.px}px</div>
+              <div className="w-12 shrink-0">
+                <div className={`h-3 rounded-sm bg-ember ${step.ruler}`} />
+              </div>
+              <div className="min-w-0 text-meta">{step.role}</div>
             </div>
-          </div>
-          <div>
-            <div className="text-eyebrow mb-2">Desktop</div>
-            <RhythmPreview rhythm={rhythm} actions={actionsPlacement} phone={false} />
-          </div>
+          ))}
+        </div>
+      </section>
+
+      <section className="mb-12">
+        <h2 className="text-section-title mb-1">Collection page</h2>
+        <p className="text-meta mb-4">
+          Stage 1 is decided: Rhythm Even (24 above the action bar, 24 below it) with the actions
+          Beside the cover, so there are no pickers any more. This is the real CollectionPage the
+          Liked, Recent, Uploads and playlist pages render, fed mock tracks; album, artist and track
+          pages share the same stack. Narrow the window below 768px for the phone layout.
+        </p>
+        <div className="rounded-lg border border-border p-page md:p-page-lg">
+          <CollectionPage
+            eyebrow="Playlist"
+            title="Liked songs"
+            meta={[`${MOCK_LIKED_TRACKS.length} songs`, '15 min']}
+            cover={{ src: null, icon: 'heart' }}
+            tracks={MOCK_LIKED_TRACKS}
+            context={{ type: 'liked' }}
+            playback={{ play: () => {}, shuffle: () => {}, shuffleOn: false, active: false }}
+            download={{
+              state: 'idle',
+              onDownload: () => {},
+              onCancel: () => {},
+              onRemove: () => {},
+              onUpdate: () => {},
+            }}
+            trackActions={{
+              currentId: null,
+              isPlaying: false,
+              likedIds: new Set(MOCK_LIKED_TRACKS.map((t) => t.id)),
+              onPlay: () => {},
+              onToggle: () => {},
+              onLike: () => {},
+            }}
+            emptyMessage="No liked songs yet."
+          />
         </div>
       </section>
 

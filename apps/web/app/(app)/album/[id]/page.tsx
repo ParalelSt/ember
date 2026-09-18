@@ -12,6 +12,7 @@ import { formatTotalDuration } from '@/lib/format';
 import { pickThumbnail } from '@/lib/artwork';
 import { EmptyState } from '@/components/page/EmptyState';
 import { CollectionHeader } from '@/components/page/CollectionHeader';
+import { ActionBar } from '@/components/page/ActionBar';
 
 export default function AlbumPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
@@ -54,22 +55,22 @@ function AlbumView({ id }: { id: string }) {
   ].filter(Boolean);
 
   return (
-    <div>
+    <div className="flex flex-col gap-stack">
       <CollectionHeader
         variant="album"
         eyebrow="Album"
         title={title}
         meta={meta}
         cover={{ src: cover, icon: null, fallback: 'card' }}
-      />
-
-      <div className="flex items-center gap-3 mb-6">
-        <PlayButton
-          onClick={() => tracks.length && trackActions.onPlay(tracks[0], tracks, albumContext)}
-          disabled={!tracks.length}
-          label="Play album"
-        />
-      </div>
+      >
+        <ActionBar>
+          <PlayButton
+            onClick={() => tracks.length && trackActions.onPlay(tracks[0], tracks, albumContext)}
+            disabled={!tracks.length}
+            label="Play album"
+          />
+        </ActionBar>
+      </CollectionHeader>
 
       <TrackList
         tracks={tracks}

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
-import { CollectionHeader } from './CollectionHeader';
+import { CollectionHeader, HEADER_CLASSES } from './CollectionHeader';
 
 const cover = { src: null, icon: null } as const;
 
@@ -27,10 +27,8 @@ describe('CollectionHeader', () => {
   });
 
   it('renders no meta line when there is no meta', () => {
-    const { container } = render(
-      <CollectionHeader eyebrow="Artist" title="Radiohead" meta={[]} cover={cover} />,
-    );
-    expect(container.querySelector('.mt-3')).toBeNull();
+    render(<CollectionHeader eyebrow="Artist" title="Radiohead" meta={[]} cover={cover} />);
+    expect(screen.queryByTestId('collection-meta')).toBeNull();
   });
 
   it('renders the description slot under the title', () => {
@@ -110,5 +108,64 @@ describe('CollectionHeader', () => {
       </CollectionHeader>,
     );
     expect(screen.getByRole('button', { name: 'Play' })).toBeInTheDocument();
+  });
+
+  // docs/design-system.md section 3, Rhythm "Even" with actions "Beside":
+  // cover to text stack 24, eyebrow to title and title to meta cluster 8,
+  // description block 16, meta to action bar stack 24, and no outer margin.
+  describe('stack geometry', () => {
+    const renderFull = () =>
+      render(
+        <CollectionHeader
+          eyebrow="Artist"
+          title="Radiohead"
+          meta={['2000']}
+          cover={cover}
+          description={<p>From Oxford.</p>}
+        >
+          <div data-testid="bar">
+            <button type="button">Play</button>
+          </div>
+        </CollectionHeader>,
+      );
+
+    it('spaces cover and text with gap-stack and sets no outer margin', () => {
+      renderFull();
+      const root = screen.getByTestId('collection-header');
+      expect(root.className).toContain('gap-stack');
+      expect(root.className).toContain('md:flex-row');
+      expect(root.className).toContain('md:items-end');
+      expect(root.className).not.toMatch(/(^|\s)m[tbxy]?-/);
+    });
+
+    it('puts cluster between eyebrow, title and meta, on a data-testid meta line', () => {
+      renderFull();
+      const title = screen.getByRole('heading', { level: 1, name: 'Radiohead' });
+      expect(title.className).toContain('mt-cluster');
+      const meta = screen.getByTestId('collection-meta');
+      expect(meta).toHaveTextContent('2000');
+      expect(meta.className).toContain('mt-cluster');
+      expect(meta.className).toContain('text-meta');
+    });
+
+    it('puts the description a block under the meta and the actions a stack under that, in the text column', () => {
+      renderFull();
+      const meta = screen.getByTestId('collection-meta');
+      const description = screen.getByText('From Oxford.').parentElement!;
+      const actions = screen.getByTestId('bar').parentElement!;
+      expect(description.className).toBe(HEADER_CLASSES.description);
+      expect(description.className).toBe('mt-block');
+      expect(actions.className).toBe(HEADER_CLASSES.actions);
+      expect(actions.className).toBe('mt-stack');
+      // Beside: the action bar shares the meta line's text column.
+      expect(actions.parentElement).toBe(meta.parentElement);
+      expect(meta.compareDocumentPosition(description) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+      expect(description.compareDocumentPosition(actions) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    });
+
+    it('renders no action wrapper (and so no stray gap) without children', () => {
+      render(<CollectionHeader eyebrow="Album" title="Kid A" meta={['2000']} cover={cover} />);
+      expect(screen.getByTestId('collection-header').querySelector('.mt-stack')).toBeNull();
+    });
   });
 });

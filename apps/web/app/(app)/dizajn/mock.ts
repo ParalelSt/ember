@@ -97,21 +97,15 @@ export const MOCK_RESULT_TRACKS: Track[] = [
   makeTrack({ sourceId: 'q3', title: 'Seconds Apart', artist: 'The Nulls' }),
 ];
 
-/** A Liked-songs collection hero, mock only: the header text and the first
- *  three rows, for the "Collection page rhythm" section on /dizajn
- *  (docs/design-system.md section 3). Same shape a real collection page
- *  would pass to CollectionHeader/TrackList, restated as plain data so
- *  RhythmPreview stays presentational (no Track/PlaybackContext wiring). */
-export const MOCK_COLLECTION_HERO = {
-  eyebrow: 'Playlist',
-  title: 'Liked songs',
-  meta: '10 songs · 38 min',
-  tracks: [
-    { id: 'h1', title: 'Slow Static', artist: 'Aftertone', duration: '3:41' },
-    { id: 'h2', title: 'Harbor Lights', artist: 'Coastline', duration: '4:02' },
-    { id: 'h3', title: 'Second Nature', artist: 'Field Notes', duration: '3:18' },
-  ],
-};
+/** Liked-songs rows for the "Collection page" section on /dizajn: the real
+ *  CollectionPage renders them, so they are full Track records. One has no
+ *  artwork, so the no-art row shows up next to the covered ones. */
+export const MOCK_LIKED_TRACKS: Track[] = [
+  makeTrack({ sourceId: 'l1', title: 'Slow Static', artist: 'Aftertone', album: 'Low Light', durationSec: 221, artworkUrl: MOCK_ART_1 }),
+  makeTrack({ sourceId: 'l2', title: 'Harbor Lights', artist: 'Coastline', album: 'Tidewater', durationSec: 242, artworkUrl: MOCK_ART_2 }),
+  makeTrack({ sourceId: 'l3', title: 'Second Nature', artist: 'Field Notes', album: 'Margins', durationSec: 198 }),
+  makeTrack({ sourceId: 'l4', title: 'Northbound', artist: 'The Nulls', album: 'Night Service', durationSec: 263, artworkUrl: MOCK_ART_1 }),
+];
 
 // Flat two-tone covers for the Home shelves in the changelog shell
 // preview. Same idea as MOCK_ART_1/2 above: stand-ins for real artwork,
