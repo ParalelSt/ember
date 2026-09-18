@@ -182,8 +182,12 @@ describe('LiveTabScore settings', () => {
 
   it('switching to Horizontal and Tab + Score re-lays out the same score', async () => {
     const { view, api, p } = await mount();
+    const resources = api.settings.display.resources;
     view.rerender(<LiveTabScore {...p} scroll="horizontal" staff="score-tab" />);
     await waitFor(() => expect(api.updateSettings).toHaveBeenCalled());
+    // AlphaTab's own RenderingResources instance stays: replacing it with a
+    // plain object made the real re-render throw.
+    expect(api.settings.display.resources).toBe(resources);
     expect(api.settings.display).toMatchObject({ layoutMode: 'horizontal', staveProfile: 'score-tab' });
     expect(at.apis).toHaveLength(1);
     expect(view.getByTestId('tab-score').dataset.scroll).toBe('horizontal');
@@ -255,6 +259,16 @@ describe('LiveTabScore sync', () => {
 });
 
 describe('LiveTabScore follow-scroll', () => {
+  it('after a re-layout (Horizontal, a resize) it finds the playing beat again', async () => {
+    const page = document.createElement('div');
+    page.scrollTo = vi.fn() as never;
+    const { api } = await mount({ getPageScroller: () => page });
+    api.playedBeatChanged.fire({});
+    const before = (page.scrollTo as unknown as ReturnType<typeof vi.fn>).mock.calls.length;
+    api.postRenderFinished.fire();
+    expect((page.scrollTo as unknown as ReturnType<typeof vi.fn>).mock.calls.length).toBe(before + 1);
+  });
+
   it('vertical: scrolls the page scroller down to the playing bar', async () => {
     const page = document.createElement('div');
     page.scrollTo = vi.fn() as never;

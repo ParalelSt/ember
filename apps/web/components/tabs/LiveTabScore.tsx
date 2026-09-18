@@ -2,6 +2,7 @@
 
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { cn } from '@/lib/utils';
+import { logger } from '@/lib/logger/client';
 import { displaySettings, scoreInfo, type ScoreInfo, type TabsScroll, type TabsStaff } from '@/lib/tabScore';
 import {
   beatToSongSec,
@@ -82,6 +83,7 @@ export function LiveTabScore(props: LiveTabScoreProps) {
     let api: any = null;
     let observer: ResizeObserver | null = null;
     let settled = false;
+    let lastBeat: any = null;
     // A file that passed the upload sniff and is still malformed can leave
     // AlphaTab with neither event: cap the wait.
     const timer = setTimeout(() => {
@@ -141,6 +143,9 @@ export function LiveTabScore(props: LiveTabScoreProps) {
           if (cancelled) return;
           settled = true;
           setStatus('ready');
+          // A new layout (Horizontal, a resize) moved everything: find the
+          // playing beat again.
+          if (lastBeat) followBeat(lastBeat);
         });
         api.error.on((e: any) => {
           settled = true;
@@ -190,9 +195,8 @@ export function LiveTabScore(props: LiveTabScoreProps) {
 
         // Keep the playing bar in view.
         api.playedBeatChanged.on((beat: any) => {
-          const bounds = api.renderer?.boundsLookup?.findBeat?.(beat);
-          const bar = bounds?.barBounds?.masterBarBounds?.visualBounds;
-          if (bar) keepInView({ x: bar.x, y: bar.y, w: bar.w, h: bar.h });
+          lastBeat = beat;
+          followBeat(beat);
         });
 
         api.load(bytes, [live.current.track]);
@@ -220,28 +224,35 @@ export function LiveTabScore(props: LiveTabScoreProps) {
       }
     })();
 
-    /** Scroll the page (vertical) or the row (horizontal) so the bar is in
-     *  the band lib/tabSync.ts followScroll keeps it in. */
-    function keepInView(bar: Box) {
+    function followBeat(beat: any) {
+      const bounds = api?.renderer?.boundsLookup?.findBeat?.(beat);
+      const bar = bounds?.barBounds?.masterBarBounds?.visualBounds;
+      const b = bounds?.visualBounds;
+      if (bar) keepInView(bar, b ?? bar);
+    }
+
+    /** Scroll the page (vertical) or the row (horizontal) so the playing
+     *  bar or beat is in the band lib/tabSync.ts followScroll keeps it in. */
+    function keepInView(bar: Box, beat: Box) {
       const host = hostRef.current;
       const mode = live.current.scroll;
       const scroller = mode === 'horizontal' ? scrollerRef.current : live.current.getPageScroller?.();
       if (!host || !scroller) return;
       const hostBox = host.getBoundingClientRect();
       const box = scroller.getBoundingClientRect();
-      const inContent: Box = {
-        x: bar.x + hostBox.left - box.left + scroller.scrollLeft,
-        y: bar.y + hostBox.top - box.top + scroller.scrollTop,
-        w: bar.w,
-        h: bar.h,
-      };
-      const target = followScroll(mode, inContent, {
+      const toContent = (r: Box): Box => ({
+        x: r.x + hostBox.left - box.left + scroller.scrollLeft,
+        y: r.y + hostBox.top - box.top + scroller.scrollTop,
+        w: r.w,
+        h: r.h,
+      });
+      const target = followScroll(mode, toContent(bar), {
         scrollTop: scroller.scrollTop,
         scrollLeft: scroller.scrollLeft,
         width: scroller.clientWidth,
         height: scroller.clientHeight,
         topInset: mode === 'vertical' ? (live.current.getTopInset?.() ?? 0) : 0,
-      });
+      }, toContent(beat));
       if (target) scroller.scrollTo({ ...target, behavior: 'smooth' });
     }
 
@@ -272,14 +283,20 @@ export function LiveTabScore(props: LiveTabScoreProps) {
     if (!api) return;
     (async () => {
       const at: any = await import('@coderline/alphatab');
-      const look = displaySettings(at, { staff, scroll, scale });
-      Object.assign(api.settings.display, look.display);
-      Object.assign(api.settings.notation, look.notation);
+      // Only the fields that change. `resources` is left alone: AlphaTab
+      // keeps a RenderingResources instance there, and a plain object in
+      // its place makes the next render throw.
+      const { display } = displaySettings(at, { staff, scroll, scale });
+      api.settings.display.scale = display.scale;
+      api.settings.display.staveProfile = display.staveProfile;
+      api.settings.display.layoutMode = display.layoutMode;
       try {
         api.updateSettings();
         api.render();
-      } catch {
-        // Keep the previous drawing.
+      } catch (e) {
+        // Keep the previous drawing, but say so: a silent failure here once
+        // hid a toggle that did nothing.
+        logger.error('tabs', 'tab re-layout failed', { staff, scroll }, e as Error);
       }
       // A new layout starts at the left.
       if (scrollerRef.current) scrollerRef.current.scrollLeft = 0;

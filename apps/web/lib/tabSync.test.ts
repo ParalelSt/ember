@@ -132,14 +132,23 @@ describe('follow-scroll', () => {
     expect(t?.top).toBe(0);
   });
 
-  it('horizontal: keeps the bar a third of the way in, and only scrolls sideways', () => {
+  it('horizontal: brings the playing beat back to a third of the way in, and only scrolls sideways', () => {
     const t = followScroll('horizontal', { x: 1500, y: 900, w: 300, h: 120 }, view);
     expect(t).toEqual({ left: Math.round(1500 - 1000 / 3) });
     expect(t?.top).toBeUndefined();
   });
 
-  it('horizontal: no scroll while the bar sits inside the band', () => {
+  it('horizontal: no scroll while the beat sits inside the band', () => {
     expect(followScroll('horizontal', { x: 300, y: 0, w: 200, h: 120 }, view)).toBeNull();
+  });
+
+  it('horizontal follows the beat, not the bar: a wide bar on a phone still scrolls mid-bar', () => {
+    const phone = { ...view, width: 342 };
+    const bar = { x: 100, y: 0, w: 230, h: 120 };
+    // Early in the bar: in view, stay.
+    expect(followScroll('horizontal', bar, phone, { x: 120, y: 0, w: 3, h: 120 })).toBeNull();
+    // Late in the same bar the beat nears the edge: scroll to keep it a third in.
+    expect(followScroll('horizontal', bar, phone, { x: 300, y: 0, w: 3, h: 120 })).toEqual({ left: 300 - 114 });
   });
 
   it('switching modes switches the axis for the same bar', () => {

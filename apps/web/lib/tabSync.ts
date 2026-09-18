@@ -140,12 +140,20 @@ export interface Viewport {
  *  the view; once it leaves that band (a new row below, or a seek above),
  *  its row is brought to the upper third, like Songsterr.
  *
- *  Horizontal: one row that scrolls sideways. The bar is kept a third of
- *  the way in, so what is coming up is always on screen. */
-export function followScroll(mode: ScrollMode, bar: Box, view: Viewport): { top?: number; left?: number } | null {
+ *  Horizontal: one row that scrolls sideways, following the playing beat
+ *  (on a phone one bar is most of the width, so following bars would let
+ *  the cursor reach the edge). Once the beat leaves the band between a
+ *  tenth and three fifths of the view, it is brought back to a third, so
+ *  what is coming up is always on screen. `beat` is the beat's box. */
+export function followScroll(
+  mode: ScrollMode,
+  bar: Box,
+  view: Viewport,
+  beat: Box = bar,
+): { top?: number; left?: number } | null {
   if (mode === 'horizontal') {
-    const target = Math.max(0, Math.round(bar.x - view.width / 3));
-    const inBand = bar.x >= view.scrollLeft + view.width * 0.1 && bar.x + bar.w <= view.scrollLeft + view.width * 0.8;
+    const target = Math.max(0, Math.round(beat.x - view.width / 3));
+    const inBand = beat.x >= view.scrollLeft + view.width * 0.1 && beat.x <= view.scrollLeft + view.width * 0.6;
     if (inBand || Math.abs(target - view.scrollLeft) < 2) return null;
     return { left: target };
   }
