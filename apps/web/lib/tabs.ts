@@ -1,7 +1,6 @@
 import 'server-only';
 import fs from 'node:fs';
 import path from 'node:path';
-import type { RecordModel } from 'pocketbase';
 import { newFilename } from '@/lib/uploads';
 
 /** Guitar Pro tab files.
@@ -78,54 +77,14 @@ export function ensureTabDir(): void {
   fs.mkdirSync(TAB_DIR, { recursive: true });
 }
 
-export interface TabSummary {
-  id: string;
-  title: string;
-  artist: string;
-  instrument: string | null;
-  trackId: string | null;
-  ext: string;
-  downloadUrl: string;
-}
+/** Where a generated tab's alphaTex lives: MUSIC_DIR/tabs/generated. */
+export const GENERATED_DIR = path.join(TAB_DIR, 'generated');
 
-export function mapTab(row: RecordModel): TabSummary {
-  return {
-    id: row.id,
-    title: (row.title as string) || 'Untitled',
-    artist: (row.artist as string) || 'Unknown artist',
-    instrument: (row.instrument as string) || null,
-    trackId: (row.track as string) || null,
-    ext: path.extname((row.file as string) || ''),
-    downloadUrl: `/api/tabs/files/${row.id}/download`,
-  };
-}
-
-/** Loose match of a playing song to a stored tab. Punctuation, casing,
- *  "(Remastered 2011)" and featured-artist noise all differ between a tab
- *  file and a YouTube title, so compare on the squashed core of the string. */
-export function normalizeForMatch(s: string): string {
-  return s
-    .toLowerCase()
-    .replace(/\([^)]*\)|\[[^\]]*\]/g, ' ')
-    .replace(/\b(feat|ft|featuring|official|video|audio|remaster(ed)?|live|hd|hq)\b/g, ' ')
-    .replace(/[^a-z0-9]+/g, '')
-    .trim();
-}
-
-/** Does this stored tab plausibly belong to that track? */
-export function tabMatchesTrack(
-  tab: { title?: string; artist?: string },
-  track: { title?: string; artist?: string },
-): boolean {
-  const t = normalizeForMatch(String(tab.title ?? ''));
-  const tt = normalizeForMatch(String(track.title ?? ''));
-  if (!t || !tt) return false;
-  const titleHit = t === tt || t.includes(tt) || tt.includes(t);
-  if (!titleHit) return false;
-
-  const a = normalizeForMatch(String(tab.artist ?? ''));
-  const ta = normalizeForMatch(String(track.artist ?? ''));
-  // An unknown artist on either side should not veto a solid title match.
-  if (!a || !ta) return true;
-  return a === ta || a.includes(ta) || ta.includes(a);
+/** The file behind a tab row: a file someone added sits in TAB_DIR, a
+ *  generated one in GENERATED_DIR. Same traversal guard for both. */
+export function resolveRowPath(row: { [key: string]: unknown }): string | null {
+  const filename = String(row.file ?? '');
+  if (row.kind !== 'generated') return resolveTabPath(filename);
+  if (!/^[A-Za-z0-9_-]+\.alphatex$/.test(filename)) return null;
+  return path.join(GENERATED_DIR, filename);
 }

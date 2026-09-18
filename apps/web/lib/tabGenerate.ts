@@ -2,7 +2,7 @@ import 'server-only';
 import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
-import { TAB_DIR } from '@/lib/tabs';
+import { GENERATED_DIR } from '@/lib/tabs';
 import { serverLogger } from '@/lib/logger/server';
 
 /** Guitar tabs generated from the recording itself.
@@ -12,13 +12,14 @@ import { serverLogger } from '@/lib/logger/server';
  *  host, and the same machine is streaming audio to everyone, so two jobs in
  *  parallel would make the player stutter.
  *
- *  No database row: the .alphatex file on disk IS the state. Delete it and
- *  the next request regenerates. */
+ *  The .alphatex file on disk is the job state (delete it and the next
+ *  request regenerates); the `tabs` row the route records beside it
+ *  (lib/tabStore.ts recordGenerated) is the metadata that makes it findable
+ *  by song. */
 
 const ROOT = path.resolve(process.cwd(), '..', '..');
 const PYTHON_BIN = process.env.PYTHON_BIN ?? path.join(ROOT, '.venv/bin/python');
 const TRANSCRIBE_SCRIPT = process.env.TRANSCRIBE_SCRIPT ?? path.join(ROOT, 'transcribe.py');
-export const GENERATED_DIR = path.join(TAB_DIR, 'generated');
 
 /** Demucs on a four-minute song takes a few minutes on this hardware. */
 const TIMEOUT_MS = 10 * 60 * 1000;
@@ -45,8 +46,12 @@ export function parseTrackKey(trackId: string): TrackKey | null {
   return { source, sourceId, key: `${source}-${sourceId}` };
 }
 
+export function generatedTabFile(key: string): string {
+  return `${key}.alphatex`;
+}
+
 export function generatedTabPath(key: string): string {
-  return path.join(GENERATED_DIR, `${key}.alphatex`);
+  return path.join(GENERATED_DIR, generatedTabFile(key));
 }
 
 const running = new Map<string, Promise<void>>();
