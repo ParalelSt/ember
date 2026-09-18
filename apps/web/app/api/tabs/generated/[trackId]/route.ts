@@ -57,13 +57,30 @@ async function trackMeta(key: TrackKey, trackId: string, fallback: { title: stri
   };
 }
 
-async function ensureRow(
+/** One recording in flight per key: the job finishing and a poll that sees
+ *  the file can arrive together, and both would find no row and create one. */
+const inFlight = new Map<string, Promise<void>>();
+
+function ensureRow(
   key: TrackKey,
   trackId: string,
   userId: string | null,
   fallback: { title: string; artist: string },
 ): Promise<void> {
-  if (recorded.has(key.key)) return;
+  if (recorded.has(key.key)) return Promise.resolve();
+  const running = inFlight.get(key.key);
+  if (running) return running;
+  const job = writeRow(key, trackId, userId, fallback).finally(() => inFlight.delete(key.key));
+  inFlight.set(key.key, job);
+  return job;
+}
+
+async function writeRow(
+  key: TrackKey,
+  trackId: string,
+  userId: string | null,
+  fallback: { title: string; artist: string },
+): Promise<void> {
   try {
     const meta = await trackMeta(key, trackId, fallback);
     const pb = await createAdminClient();

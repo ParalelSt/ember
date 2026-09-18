@@ -259,6 +259,19 @@ describe('/api/tabs/generated/[trackId] rows', () => {
     expect(store.rows.get('tabs')).toMatchObject([{ kind: 'generated', user: null, song_key: 'old song::band', track_key: 'upload:up1' }]);
   });
 
+  it('a poll and the job finishing together still write one row', async () => {
+    fs.mkdirSync(GENERATED_DIR, { recursive: true });
+    fs.writeFileSync(path.join(GENERATED_DIR, 'upload-up2.alphatex'), '\\title "Two"');
+    gen.status = 'ready';
+    as(BOB);
+    await Promise.all([
+      generated.GET(req('/api/tabs/generated/upload%3Aup2'), trackCtx('upload:up2')),
+      generated.GET(req('/api/tabs/generated/upload%3Aup2'), trackCtx('upload:up2')),
+      generated.POST(req('/api/tabs/generated/upload%3Aup2', { method: 'POST' }), trackCtx('upload:up2')),
+    ]);
+    expect(store.rows.get('tabs')).toHaveLength(1);
+  });
+
   it('401 without a user', async () => {
     as(null);
     expect((await generated.GET(req('/api/tabs/generated/upload%3Aup1'), trackCtx('upload:up1'))).status).toBe(401);
