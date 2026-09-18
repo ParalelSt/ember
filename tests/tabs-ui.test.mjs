@@ -1,14 +1,17 @@
-/** UI check for in-app tabs: add a Guitar Pro file from the player, then
- *  render it with AlphaTab without leaving Ember.
+/** UI check for the tab page (/tabs/[trackId], docs/tabs-rebuild.md stage 3):
+ *  a tab someone else shared, drawn by AlphaTab and synced to Ember's real
+ *  playback, opened from the player bar and from Now playing on a phone,
+ *  and the empty state that generates one.
  *
  *      npm i -D playwright-core
  *      node tests/tabs-ui.test.mjs        # or: npm run test:tabs-ui
  *
- *  Same sandbox as tests/tabs.test.mjs (PB 8091, app 3010, MUSIC_DIR set).
- *  Set CHROME_PATH to pick a browser. */
+ *  Needs a sandbox: PocketBase (PB_URL), the app (APP_URL) built from this
+ *  tree with MUSIC_DIR set and TRANSCRIBE_SCRIPT=tests/fake-transcribe.sh
+ *  (the empty state generates a tab). Songs are uploaded wavs, so no
+ *  yt-dlp and no network. Set CHROME_PATH to pick a browser. */
 import { execSync } from 'node:child_process';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 
 let chromium;
@@ -47,28 +50,24 @@ async function adminToken() {
 }
 
 const token = await adminToken();
-const email = `tabsui-${process.pid}-${Math.floor(Math.random() * 1e6)}@ember.test`;
-await fetch(`${PB_URL}/api/collections/users/records`, { method: 'POST',
-  headers: { 'content-type': 'application/json', Authorization: token },
-  body: JSON.stringify({ email, password: PASSWORD, passwordConfirm: PASSWORD, name: 'Tabs Tester', verified: true }) });
-const auth = await fetch(`${PB_URL}/api/collections/users/auth-with-password`, { method: 'POST',
-  headers: { 'content-type': 'application/json' }, body: JSON.stringify({ identity: email, password: PASSWORD }) })
-  .then((r) => r.json());
-const cookie = encodeURIComponent(JSON.stringify({ token: auth.token, record: auth.record }));
+const run = `${process.pid}-${Math.floor(Math.random() * 1e6)}`;
 
-/** A real score, so this proves AlphaTab actually renders rather than just
- *  that the dialog opens. MusicXML because it is the open format we can keep
- *  in the repo — Guitar Pro files are binary and someone else's export. Point
- *  TAB_SAMPLE at a .gp5 to run the same flow against a real Guitar Pro file. */
-const SAMPLE = process.env.TAB_SAMPLE ?? path.join(process.cwd(), 'tests/fixtures/sample.musicxml');
-const tmp = path.join(os.tmpdir(), `ui-tab-${Date.now()}${path.extname(SAMPLE)}`);
-fs.writeFileSync(tmp, fs.readFileSync(SAMPLE));
+/** A member with a name (the source chip shows it), signed in: the cookie. */
+async function member(tag, name) {
+  const email = `tabsui-${tag}-${run}@ember.test`;
+  await fetch(`${PB_URL}/api/collections/users/records`, { method: 'POST',
+    headers: { 'content-type': 'application/json', Authorization: token },
+    body: JSON.stringify({ email, password: PASSWORD, passwordConfirm: PASSWORD, name, verified: true }) });
+  const auth = await fetch(`${PB_URL}/api/collections/users/auth-with-password`, { method: 'POST',
+    headers: { 'content-type': 'application/json' }, body: JSON.stringify({ identity: email, password: PASSWORD }) })
+    .then((r) => r.json());
+  return encodeURIComponent(JSON.stringify({ token: auth.token, record: auth.record }));
+}
+const listener = await member('listener', 'Tab Listener');
+const sharer = await member('sharer', 'Tab Sharer');
 
-/** A song has to be playing for the player bar (and its tabs button) to
- *  exist. Upload a tiny wav through the API — no network, no yt-dlp. */
-// Long enough that it cannot finish and auto-advance mid-test: the dialog
-// lists tabs for whatever is playing, so a track change would look like a
-// missing tab.
+/** A song long enough not to finish mid-test (a track change would move
+ *  the page to the next song's tab). */
 function makeWav(seconds = 180, sampleRate = 8000) {
   const samples = seconds * sampleRate;
   const data = Buffer.alloc(samples * 2);
@@ -84,226 +83,258 @@ function makeWav(seconds = 180, sampleRate = 8000) {
   return Buffer.concat([h, data]);
 }
 
-const songTitle = `Tab Test Song ${Date.now()}`;
-// A second song, uploaded FIRST so it sits right after the main one in the
-// uploads list (newest first): the viewer's Next button lands on it, and its
-// audio is known to exist here, unlike leftovers from older sandbox runs.
-{
-  const form = new FormData();
-  form.append('file', new Blob([new Uint8Array(makeWav())], { type: 'audio/wav' }), 'song2.wav');
-  form.append('title', `${songTitle} B`);
-  form.append('artist', 'Tab Tester');
-  const res = await fetch(`${APP_URL}/api/uploads`, { method: 'POST', body: form,
-    headers: { cookie: `pb_auth=${cookie}` } });
-  if (!res.ok) throw new Error(`could not seed the second song: ${res.status}`);
-}
-{
+async function uploadSong(title) {
   const form = new FormData();
   form.append('file', new Blob([new Uint8Array(makeWav())], { type: 'audio/wav' }), 'song.wav');
-  form.append('title', songTitle);
+  form.append('title', title);
   form.append('artist', 'Tab Tester');
-  const res = await fetch(`${APP_URL}/api/uploads`, { method: 'POST', body: form,
-    headers: { cookie: `pb_auth=${cookie}` } });
-  if (!res.ok) throw new Error(`could not seed a playable song: ${res.status} ${(await res.text()).slice(0, 200)}`);
+  const res = await fetch(`${APP_URL}/api/uploads`, { method: 'POST', body: form, headers: { cookie: `pb_auth=${listener}` } });
+  if (!res.ok) throw new Error(`could not seed a song: ${res.status} ${(await res.text()).slice(0, 200)}`);
+  return (await res.json()).track;
 }
 
-const browser = await chromium.launch({ executablePath: findChrome(), headless: true });
-const ctx = await browser.newContext({ viewport: { width: 1300, height: 950 } });
-await ctx.addCookies([{ name: 'pb_auth', value: cookie, domain: '127.0.0.1', path: '/' }]);
-const page = await ctx.newPage();
-page.on('response', (r) => {
-  if (process.env.DEBUG_TABS && r.url().includes('/api/tabs/files')) console.log('[net]', r.request().method(), r.status(), r.url());
-});
-const consoleErrors = [];
-page.on('console', (m) => { if (m.type() === 'error') consoleErrors.push(m.text()); });
-page.on('pageerror', (e) => consoleErrors.push(`pageerror: ${e.message}`));
+/** A 40-bar, two-track score at 120 bpm (one bar = 2 s), written as a Guitar
+ *  Pro 7 file by AlphaTab itself: a real multi-track file with a known
+ *  tempo, so "bar 12 starts at 22 s" is something the test can check. */
+async function makeGp() {
+  const at = await import(path.join(process.cwd(), 'node_modules/@coderline/alphatab/dist/alphaTab.mjs'));
+  const bars = (bar) => Array(40).fill(bar).join(' |\n');
+  const tex = `\\title "UI Tab"\n\\tempo 120\n\\track ("Guitar" "Gtr")\n\\instrument 30\n\\tuning (E4 B3 G3 D3 A2 D2)\n\\ts (4 4)\n${bars('0.6.8 0.6.8 3.6.8 0.6.8 5.6.8 0.6.8 3.5.8 5.5.8')}\n\\track ("Bass" "Bass")\n\\instrument 33\n\\tuning (G2 D2 A1 D1)\n${bars('0.4.4 3.4.4 5.4.4 3.4.4')}\n`;
+  const settings = new at.Settings();
+  const imp = new at.importer.AlphaTexImporter();
+  imp.initFromString(tex, settings);
+  return Buffer.from(new at.exporter.Gp7Exporter().export(imp.readScore(), settings));
+}
+
+const song = await uploadSong(`Tab Page Song ${run}`);
+const bare = await uploadSong(`Tab Page Bare ${run}`);
+{
+  const form = new FormData();
+  form.append('file', new Blob([new Uint8Array(await makeGp())]), 'ui-tab.gp');
+  form.append('title', song.title);
+  form.append('artist', song.artist);
+  form.append('trackId', song.id);
+  const res = await fetch(`${APP_URL}/api/tabs/files`, { method: 'POST', body: form, headers: { cookie: `pb_auth=${sharer}` } });
+  if (!res.ok) throw new Error(`could not share the tab: ${res.status} ${(await res.text()).slice(0, 200)}`);
+}
 
 const checks = [];
 const check = (name, pass, detail = '') => {
   checks.push([name, pass]);
   console.log(`${pass ? 'PASS' : 'FAIL'}  ${name}${detail ? `  — ${detail}` : ''}`);
 };
+const consoleErrors = [];
+const browser = await chromium.launch({ executablePath: findChrome(), headless: true, args: ['--autoplay-policy=no-user-gesture-required'] });
 
-// Start the seeded song so the player bar (and its tabs button) exists.
-await page.goto(`${APP_URL}/library/uploads`, { waitUntil: 'networkidle' });
-await page.getByText(songTitle).first().click({ clickCount: 2 });
-await page.waitForTimeout(2500);
+async function newPage(viewport, extra = {}) {
+  const ctx = await browser.newContext({ viewport, ...extra });
+  await ctx.addCookies([{ name: 'pb_auth', value: listener, domain: new URL(APP_URL).hostname, path: '/' }]);
+  const page = await ctx.newPage();
+  page.on('console', (m) => { if (m.type() === 'error') consoleErrors.push(m.text()); });
+  page.on('pageerror', (e) => consoleErrors.push(`pageerror: ${e.message}`));
+  return page;
+}
 
-const tabsButton = page.getByRole('button', { name: 'Guitar tabs' });
-const hasPlayer = await tabsButton.count();
-if (!hasPlayer) {
-  // No track in the player: drive the dialog through the tab library instead,
-  // which is the same component with `track` null.
-  check('player bar present', false, 'no track playing — start one to run the full flow');
-} else {
+async function play(page, title) {
+  await page.goto(`${APP_URL}/library/uploads`, { waitUntil: 'networkidle' });
+  await page.getByText(title, { exact: true }).first().click({ clickCount: 2 });
+  await page.waitForTimeout(2500);
+}
+
+const scoreReady = (page) =>
+  page.waitForFunction(() => document.querySelector('[data-testid="tab-score"]')?.dataset.status === 'ready', null, { timeout: 30_000 });
+const surface = (page) => page.evaluate(() => {
+  const el = document.querySelector('[data-testid="tab-score"] .at-surface');
+  if (!el) return null;
+  const r = el.getBoundingClientRect();
+  return { w: Math.round(r.width), h: Math.round(r.height) };
+});
+/** Where the beat cursor is, in page pixels (x and y: rows wrap). */
+const cursorAt = (page) => page.evaluate(() => {
+  const el = document.querySelector('.at-cursor-beat');
+  if (!el) return null;
+  const r = el.getBoundingClientRect();
+  return `${Math.round(r.left + window.scrollX)},${Math.round(r.top)}`;
+});
+/** The player bar's elapsed time, in seconds. */
+const elapsed = (page) => page.evaluate(() => {
+  const t = document.querySelector('footer span.tabular-nums')?.textContent ?? '';
+  const [m, s] = t.split(':').map(Number);
+  return m * 60 + s;
+});
+const trackPath = (id) => `/tabs/${encodeURIComponent(id)}`;
+
+// ── desktop: the player bar opens the page ─────────────────────────────────
+{
+  const page = await newPage({ width: 1300, height: 950 });
+  await play(page, song.title);
+  const tabsButton = page.getByRole('button', { name: 'Guitar tabs' });
+  check('the player bar has a Guitar tabs button', (await tabsButton.count()) > 0);
   await tabsButton.first().click();
-  const dialog = page.getByRole('dialog');
-  await dialog.waitFor({ timeout: 10_000 });
-  check('the tabs dialog opens', true);
+  await page.waitForURL((u) => u.pathname === trackPath(song.id), { timeout: 10_000, waitUntil: 'commit' }).catch(() => {});
+  check('it opens /tabs/<playing track id>', new URL(page.url()).pathname === trackPath(song.id), page.url());
+  check('no dialog: the page itself', (await page.getByRole('dialog').count()) === 0);
 
-  // ── generated tab: no file, the recording itself ─────────────────────────
-  const generate = dialog.getByRole('button', { name: 'Generate guitar tab' });
-  check('the dialog offers to generate a tab from the recording', (await generate.count()) > 0);
-  if (await generate.count()) {
-    await generate.click();
-    await dialog.getByText(/transcribing/i).waitFor({ timeout: 10_000 });
-    check('it shows the transcribing state', true);
-    const generatedRow = dialog.getByRole('button', { name: /guitar · generated/i });
-    await generatedRow.waitFor({ timeout: 30_000 });
-    check('the generated tab appears when the job finishes', true);
-    await generatedRow.click();
-    await page.getByRole('button', { name: /back/i }).waitFor({ timeout: 20_000 });
-    await page.waitForTimeout(8000);
-    const genSurface = await page.evaluate(() => {
-      const el = document.querySelector('[role="dialog"] .at-surface');
-      if (!el) return null;
-      const r = el.getBoundingClientRect();
-      return { w: Math.round(r.width), h: Math.round(r.height) };
-    });
-    check('AlphaTab renders the generated alphaTex', Boolean(genSurface && genSurface.w > 100 && genSurface.h > 100),
-      genSurface ? `surface ${genSurface.w}x${genSurface.h}` : 'no .at-surface');
+  await scoreReady(page).catch(() => {});
+  await page.waitForTimeout(1500);
+  const s = await surface(page);
+  check('AlphaTab drew the shared score', Boolean(s && s.w > 300 && s.h > 100), s ? `${s.w}x${s.h}` : 'no .at-surface');
+  const chip = await page.getByTestId('tab-source-chip').textContent().catch(() => '');
+  check('another member’s shared file shows with its chip', /File added by Tab Sharer, shared/.test(chip ?? ''), chip ?? '');
+  const header = await page.getByTestId('tab-sheet-header').innerText().catch(() => '');
+  check('the header reads bpm, instrument and tuning from the file', /120 bpm/.test(header) && /Distortion guitar, Drop D/.test(header), header.replace(/\s+/g, ' '));
+  check('the track picker lists guitar and bass',
+    (await page.getByRole('group', { name: 'Tracks' }).getByRole('button').count()) === 2);
+  check('the player bar stays visible below', await page.locator('footer').isVisible());
+  check('the page has no transport of its own',
+    (await page.getByTestId('tabs-page').getByRole('button', { name: /^(Pause|Play|Next|Previous)$/ }).count()) === 0);
 
-    // ── a line you can see, and controls you can reach ──────────────────────
-    // AlphaTab positions the cursor but leaves its colour to the page: an
-    // unstyled cursor is a transparent div that "moves" while nobody sees it.
-    const cursorStyle = await page.evaluate(() => {
-      const el = document.querySelector('[role="dialog"] .at-cursor-beat');
-      if (!el) return null;
-      const r = el.getBoundingClientRect();
-      const cs = getComputedStyle(el);
-      return { w: Math.round(r.width), h: Math.round(r.height), bg: cs.backgroundColor, opacity: Number(cs.opacity) };
-    });
-    check('the playhead line is actually visible',
-      !!cursorStyle && cursorStyle.w >= 2 && cursorStyle.h > 50 && cursorStyle.opacity > 0
-        && cursorStyle.bg !== 'rgba(0, 0, 0, 0)' && cursorStyle.bg !== 'transparent',
-      cursorStyle ? `${cursorStyle.w}x${cursorStyle.h} ${cursorStyle.bg}` : 'no cursor element');
-
-    // The dialog overlay hides the player bar, so the viewer needs its own
-    // transport. Pause must really pause: the cursor stops.
-    const viewerPause = dialog.getByRole('button', { name: 'Pause' });
-    check('the viewer has a pause button', (await viewerPause.count()) > 0);
-    const beatX = () => page.evaluate(() => {
-      const el = document.querySelector('[role="dialog"] .at-cursor-beat');
-      if (!el) return null;
-      return Math.round(el.getBoundingClientRect().left);
-    });
-    if (await viewerPause.count()) {
-      await viewerPause.click();
-      await dialog.getByRole('button', { name: 'Play' }).waitFor({ timeout: 5000 });
-      const x1 = await beatX();
-      await page.waitForTimeout(2500);
-      const x2 = await beatX();
-      check('pausing from the viewer stops the cursor', x1 !== null && x1 === x2, `${x1}px -> ${x2}px`);
-
-      // Seeking while paused: only the seek can move the clock.
-      const elapsed = dialog.locator('[aria-label="Elapsed"]');
-      check('the viewer shows the elapsed time', (await elapsed.count()) > 0);
-      const before = await elapsed.textContent();
-      const thumb = dialog.getByRole('slider', { name: 'Seek' });
-      check('the viewer has a seek bar', (await thumb.count()) > 0);
-      if (await thumb.count()) {
-        await thumb.focus();
-        for (let i = 0; i < 25; i++) await page.keyboard.press('ArrowRight');
-        await page.waitForTimeout(1500);
-        const after = await elapsed.textContent();
-        const secs = (t) => { const [m, sec] = String(t).split(':').map(Number); return m * 60 + sec; };
-        check('the seek bar moves the song forward', secs(after) > secs(before), `${before} -> ${after}`);
-      }
-      await dialog.getByRole('button', { name: 'Play' }).click();
-      await viewerPause.waitFor({ timeout: 5000 });
-      check('play from the viewer resumes', true);
-    }
-
-    // Next inside the viewer changes the song, and a tab for the previous song
-    // must not stay open for the new one: the dialog returns to the list.
-    const viewerNext = dialog.getByRole('button', { name: 'Next' });
-    check('the viewer has a next button', (await viewerNext.count()) > 0);
-    if (await viewerNext.count()) {
-      await viewerNext.click();
-      let backGone = false;
-      for (let i = 0; i < 20 && !backGone; i++) {
-        await page.waitForTimeout(250);
-        backGone = (await page.getByRole('button', { name: /back/i }).count()) === 0;
-      }
-      check('changing track from the viewer returns to the tab list', backGone);
-      // The rest of the checks work against whichever song is now playing.
-    }
-    if (await page.getByRole('button', { name: /back/i }).count()) await page.getByRole('button', { name: /back/i }).click();
-    // The file input itself is hidden by design; the button that triggers it is
-    // the visible sign that the list view is back.
-    await dialog.getByRole('button', { name: /add a guitar pro/i }).waitFor({ timeout: 10_000 });
-  }
-
-  await dialog.locator('input[type="file"]').setInputFiles(tmp);
-  await page.waitForTimeout(4000);
-  if (process.env.DEBUG_TABS) console.log('[dialog]', await dialog.innerText());
-  // The generated row above it is badged 'open' too, so pick the row by its
-  // file-type label rather than the badge.
-  const uploadRow = dialog.getByRole('button', { name: /(musicxml|gp\d?|gpx|mxl) file/i });
-  await uploadRow.first().waitFor({ timeout: 20_000 });
-  check('the uploaded tab appears in the dialog', true);
-
-  await uploadRow.first().click();
-  await page.getByRole('button', { name: /back/i }).waitFor({ timeout: 20_000 });
-  check('clicking it opens the viewer', true);
-
-  await page.waitForTimeout(8000);
-  // Measure alphaTab's OWN drawing surface, not "is there an <svg>". The
-  // dialog is full of 24x24 icons, so counting <svg> nodes reported success
-  // for weeks while the score rendered 848x0 and nothing was visible.
-  const surface = await page.evaluate(() => {
-    const el = document.querySelector('[role="dialog"] .at-surface');
-    if (!el) return null;
-    const r = el.getBoundingClientRect();
-    return { w: Math.round(r.width), h: Math.round(r.height) };
-  });
-  check('AlphaTab actually drew the score', Boolean(surface && surface.w > 100 && surface.h > 100),
-    surface ? `surface ${surface.w}x${surface.h}` : 'no .at-surface at all');
-  const stuck = /Rendering the tab/i.test(await dialog.innerText());
-  check('the viewer is not left on the loading message', !stuck);
-
-  // ── phase 4: the cursor follows the song ────────────────────────────────
-  const cursors = await dialog.locator('.at-cursor-beat, .at-cursor-bar').count();
-  check('a playback cursor is drawn', cursors > 0, `${cursors} cursor element(s)`);
-
-  /** Where alphaTab has put the beat cursor, in page pixels. */
-  const cursorX = () => page.evaluate(() => {
+  const style = await page.evaluate(() => {
     const el = document.querySelector('.at-cursor-beat');
     if (!el) return null;
     const r = el.getBoundingClientRect();
-    return Math.round(r.left + window.scrollX);
+    const cs = getComputedStyle(el);
+    return { w: Math.round(r.width), h: Math.round(r.height), bg: cs.backgroundColor };
   });
+  check('the playhead line is visible', !!style && style.w >= 2 && style.h > 40 && style.bg !== 'rgba(0, 0, 0, 0)',
+    style ? `${style.w}x${style.h} ${style.bg}` : 'no cursor');
 
-  const first = await cursorX();
-  await page.waitForTimeout(6000);
-  const later = await cursorX();
-  check('the cursor moves as the song plays',
-    first !== null && later !== null && later !== first, `${first}px -> ${later}px`);
+  const a = await cursorAt(page);
+  await page.waitForTimeout(3000);
+  const b = await cursorAt(page);
+  check('the cursor advances while the song plays', a !== null && b !== null && a !== b, `${a} -> ${b}`);
 
-  // The offset control must actually shift the cursor, since that is the only
-  // remedy for a tab that transcribes a different take.
-  const slider = dialog.locator('input[aria-label="Tab timing offset in seconds"]');
-  check('the sync offset control is present', (await slider.count()) > 0);
-  const beforeNudge = await cursorX();
-  await slider.evaluate((el) => {
+  await page.locator('footer').getByRole('button', { name: 'Pause', exact: true }).click();
+  await page.waitForTimeout(800);
+  const p1 = await cursorAt(page);
+  await page.waitForTimeout(2500);
+  const p2 = await cursorAt(page);
+  check('pausing from the player bar stops the cursor', p1 !== null && p1 === p2, `${p1} -> ${p2}`);
+  await page.locator('footer').getByRole('button', { name: 'Play', exact: true }).click();
+  await page.waitForTimeout(1000);
+
+  // Click bar 12 of the score: it starts at 22 s (120 bpm, 4/4). AlphaTab
+  // only draws rows near the view, so it is a bar on screen already. Paused
+  // first, so follow-scroll does not pull the page back to the cursor
+  // between finding bar 12 and clicking it.
+  await page.locator('footer').getByRole('button', { name: 'Pause', exact: true }).click();
+  await page.waitForTimeout(500);
+  const before = await elapsed(page);
+  const barTwelve = () => page.evaluate(() => {
+    const label = [...document.querySelectorAll('[data-testid="tab-score"] text')].find((t) => t.textContent?.trim() === '12');
+    if (!label) return null;
+    const r = label.getBoundingClientRect();
+    return { x: r.left + 40, y: r.bottom + 45 };
+  });
+  const first = await barTwelve();
+  if (first) {
+    await page.evaluate((y) => {
+      const sc = document.querySelector('[data-app-scroller]');
+      sc.scrollBy(0, y - sc.clientHeight / 2);
+    }, first.y);
+    await page.waitForTimeout(400);
+  }
+  const target = await barTwelve();
+  if (process.env.DEBUG_TABS) {
+    console.log('[bar 12]', first, target, await page.evaluate((t) => {
+      const e = t && document.elementFromPoint(t.x, t.y);
+      const nums = [...document.querySelectorAll('[data-testid="tab-score"] text')].map((x) => x.textContent?.trim()).filter((x) => Number(x) > 9);
+      return [e?.tagName, e?.closest('.at-surface') ? 'in' : 'out', nums.slice(0, 12)];
+    }, target));
+  }
+  if (target) await page.mouse.click(target.x, target.y);
+  await page.waitForTimeout(1500);
+  const after = await elapsed(page);
+  check('clicking a later bar seeks the song there', !!target && after >= 22 && after <= 25, `${before}s -> ${after}s`);
+  const moved = await page.evaluate(() => {
+    const label = [...document.querySelectorAll('[data-testid="tab-score"] text')].find((t) => t.textContent?.trim() === '12');
+    const beat = document.querySelector('.at-cursor-beat')?.getBoundingClientRect();
+    const r = label?.getBoundingClientRect();
+    return !!(beat && r && Math.abs(beat.top - r.top) < 120);
+  });
+  check('the cursor jumps to the clicked bar while paused', moved);
+  await page.locator('footer').getByRole('button', { name: 'Play', exact: true }).click();
+  await page.waitForTimeout(500);
+
+  // The Sync nudge still moves the cursor against the recording.
+  await page.getByRole('button', { name: 'Sync' }).click();
+  await page.locator('footer').getByRole('button', { name: 'Pause', exact: true }).click();
+  await page.waitForTimeout(800);
+  const n1 = await cursorAt(page);
+  await page.getByLabel('Tab timing offset in seconds').evaluate((el) => {
     const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
     setter.call(el, '6');
     el.dispatchEvent(new Event('input', { bubbles: true }));
     el.dispatchEvent(new Event('change', { bubbles: true }));
   });
+  await page.waitForTimeout(1500);
+  const n2 = await cursorAt(page);
+  check('the sync nudge shifts the cursor', n1 !== null && n2 !== null && n1 !== n2, `${n1} -> ${n2}`);
+  await page.getByRole('button', { name: 'Reset' }).click();
+  await page.locator('footer').getByRole('button', { name: 'Play', exact: true }).click();
+
+  await page.getByRole('button', { name: 'Horizontal' }).click();
   await page.waitForTimeout(2500);
-  const afterNudge = await cursorX();
-  check('nudging the offset shifts the cursor',
-    beforeNudge !== null && afterNudge !== null && afterNudge !== beforeNudge,
-    `${beforeNudge}px -> ${afterNudge}px`);
+  const row = await page.evaluate(() => {
+    const el = document.querySelector('[data-testid="tab-score"]');
+    return { scroll: el.dataset.scroll, sw: el.scrollWidth, cw: el.clientWidth };
+  });
+  check('Horizontal lays the score out as one sideways row', row.scroll === 'horizontal' && row.sw > row.cw * 2, JSON.stringify(row));
+  const h1 = await page.evaluate(() => document.querySelector('[data-testid="tab-score"]').scrollLeft);
+  await page.waitForTimeout(5000);
+  const h2 = await page.evaluate(() => document.querySelector('[data-testid="tab-score"]').scrollLeft);
+  check('horizontal follow-scroll moves sideways with the song', h2 > h1, `${h1} -> ${h2}`);
+  await page.getByRole('button', { name: 'Horizontal' }).click();
+  await page.context().close();
 }
 
+// ── phone: Now playing opens the page, and it fits ─────────────────────────
+{
+  const page = await newPage({ width: 390, height: 844 }, { hasTouch: true, isMobile: true });
+  await play(page, song.title);
+  await page.locator('footer').getByText(song.title).first().click();
+  await page.waitForTimeout(1000);
+  await page.locator('[role="dialog"][aria-hidden="false"]').getByRole('button', { name: 'Guitar tabs' }).click();
+  await page.waitForURL((u) => u.pathname === trackPath(song.id), { timeout: 10_000, waitUntil: 'commit' }).catch(() => {});
+  check('phone: Now playing opens the tab page', new URL(page.url()).pathname === trackPath(song.id), page.url());
+  await scoreReady(page).catch(() => {});
+  await page.waitForTimeout(1500);
+  const s = await surface(page);
+  check('phone: the score renders at phone width', Boolean(s && s.w > 200 && s.w <= 390 && s.h > 100), s ? `${s.w}x${s.h}` : 'none');
+  const overflow = await page.evaluate(() => document.documentElement.scrollWidth);
+  check('phone: no sideways page scroll', overflow <= 390, `${overflow}px`);
+  check('phone: the mini player stays below', await page.locator('footer').isVisible());
+  await page.context().close();
+}
+
+// ── the empty state: generate a tab ───────────────────────────────────────
+{
+  const page = await newPage({ width: 1300, height: 950 });
+  await page.goto(`${APP_URL}${trackPath(bare.id)}`, { waitUntil: 'networkidle' });
+  const generate = page.getByRole('button', { name: 'Generate a tab' });
+  await generate.waitFor({ timeout: 15_000 }).catch(() => {});
+  check('no tab: the page offers Generate a tab', (await generate.count()) > 0);
+  check('no tab: and Add a file', (await page.getByRole('button', { name: 'Add a file' }).count()) > 0);
+  if (await generate.count()) {
+    await generate.click();
+    const busy = await page.getByText(/Transcribing the recording/).waitFor({ timeout: 10_000 }).then(() => true, () => false);
+    check('it shows the transcribing state', busy);
+    await scoreReady(page).catch(() => {});
+    const chip = await page.getByTestId('tab-source-chip').textContent().catch(() => '');
+    check('the generated tab appears when the job finishes', /Generated from the recording/.test(chip ?? ''), chip ?? '');
+    const s = await surface(page);
+    check('AlphaTab draws the generated alphaTex', Boolean(s && s.w > 100 && s.h > 50), s ? `${s.w}x${s.h}` : 'none');
+    check('a song that is not playing says so', (await page.getByText(/This song is not playing/).count()) > 0);
+  }
+  await page.context().close();
+}
+
+// The status probe for a generated tab answers 404 for "none yet"; that is
+// the API's shape, not an error.
 const noisy = consoleErrors.filter((e) => !/favicon|404/.test(e));
 check('no unexpected console errors', noisy.length === 0, noisy.slice(0, 2).join(' | '));
 
 await browser.close();
-fs.rmSync(tmp, { force: true });
-
 const failed = checks.filter(([, p]) => !p);
 console.log(`\n${checks.length - failed.length}/${checks.length} checks passed`);
 if (failed.length) console.log('FAILED:', failed.map(([n]) => n).join(', '));
