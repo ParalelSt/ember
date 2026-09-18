@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import type { Track } from '@/types/track';
 import { PlayerBar } from './PlayerBar';
 import { NowPlaying } from './NowPlaying';
@@ -78,11 +78,13 @@ describe('tabs entry points', () => {
     expect(screen.queryByRole('dialog')).toBeNull();
   });
 
-  it('on phones, Now playing opens the same page and closes itself', () => {
+  it('on phones, Now playing opens the same page and closes itself', async () => {
     usePlayerStore.getState().setNowPlayingOpen(true);
     render(<NowPlaying />);
     fireEvent.click(screen.getByRole('button', { name: 'Guitar tabs' }));
-    expect(nav.push).toHaveBeenCalledWith('/tabs/youtube%3AdQw4w9WgXcQ');
     expect(usePlayerStore.getState().nowPlayingOpen).toBe(false);
+    // After the view's own history entry is popped, so the back cannot undo it.
+    await waitFor(() => expect(nav.push).toHaveBeenCalledWith('/tabs/youtube%3AdQw4w9WgXcQ'));
+    expect(nav.push).toHaveBeenCalledTimes(1);
   });
 });

@@ -49,10 +49,23 @@ export function NowPlaying() {
 
   const router = useRouter();
   // The tab page for this song, full screen on phones like everything else.
+  // Closing this view pops the history entry useBackDismiss pushed, and a
+  // navigation issued before that back lands is undone by it. So close
+  // first and navigate once the pop has happened (or shortly after, if the
+  // entry was already gone).
   const openTabs = () => {
     if (!current) return;
+    const href = tabsHref(current.id);
+    let done = false;
+    const go = () => {
+      if (done) return;
+      done = true;
+      window.removeEventListener('popstate', go);
+      router.push(href);
+    };
+    window.addEventListener('popstate', go);
     setOpen(false);
-    router.push(tabsHref(current.id));
+    window.setTimeout(go, 400);
   };
 
   const scrollerRef = useRef<HTMLDivElement | null>(null);
