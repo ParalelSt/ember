@@ -1,8 +1,9 @@
 import type { PickerOption } from '@/components/library/options';
 
+import type { TabsScroll, TabsStaff } from '@/lib/tabScore';
+
+export type { TabsScroll, TabsStaff } from '@/lib/tabScore';
 export type TabsLayout = 'sheet' | 'side-panel' | 'stage';
-export type TabsStaff = 'tab' | 'score-tab';
-export type TabsScroll = 'vertical' | 'horizontal';
 
 /** Where the tab lives (docs/tabs-rebuild.md section 6), in picker order.
  *  `id` is what persists to localStorage; `badge` marks the owner's pick;

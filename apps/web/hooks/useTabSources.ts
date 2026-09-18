@@ -1,0 +1,142 @@
+'use client';
+
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { api } from '@/lib/api';
+import { useQueryTrack } from '@/hooks/useLibrary';
+import { canGenerateFor, drawableTabs, type GeneratedStatus, type TabSummary } from '@/lib/tabSources';
+import type { TabMatch } from '@/lib/songsterr';
+import type { Track } from '@/types/track';
+
+/** The song a tab page is for: enough to look tabs up and to title the
+ *  page. `track` is the full Track when Ember knows it (so it can be
+ *  played); `null` for an upload that is not playing, named from its tab. */
+export interface TabSong {
+  id: string;
+  title: string;
+  artist: string;
+  track: Track | null;
+}
+
+/** Resolve `/tabs/<trackId>` to a song: the playing track when it is that
+ *  one, a YouTube track's metadata, or (for anything else) the title the
+ *  track's own tab row carries. */
+export function useTabSong(trackId: string, current: Track | null): { song: TabSong | null; loading: boolean } {
+  const isCurrent = current?.id === trackId;
+  const youtubeId = trackId.startsWith('youtube:') ? trackId.slice('youtube:'.length) : null;
+  const remote = useQueryTrack(!isCurrent ? youtubeId : null);
+  const byRow = useQuery({
+    queryKey: ['track-tabs', trackId, '', ''],
+    queryFn: () => api.getTrackTabs(trackId, '', '').then((r) => r.tabs),
+    enabled: !isCurrent && !youtubeId,
+  });
+
+  if (isCurrent && current) {
+    return { song: { id: trackId, title: current.title, artist: current.artist, track: current }, loading: false };
+  }
+  if (youtubeId) {
+    const t = remote.data;
+    return { song: t ? { id: trackId, title: t.title, artist: t.artist, track: t } : null, loading: remote.isLoading };
+  }
+  const row = byRow.data?.find((t) => t.trackId === trackId) ?? byRow.data?.[0];
+  return {
+    song: row ? { id: trackId, title: row.title, artist: row.artist === 'Unknown artist' ? '' : row.artist, track: null } : null,
+    loading: byRow.isLoading,
+  };
+}
+
+export interface TabSourcesState {
+  /** Tabs that can be drawn, file first (lib/tabSources.ts drawableTabs). */
+  tabs: TabSummary[];
+  /** Songsterr link-outs for the song. */
+  matches: TabMatch[];
+  generated: GeneratedStatus;
+  generatedError: string | null;
+  canGenerate: boolean;
+  loading: boolean;
+  generate: () => void;
+  generating: boolean;
+  generateError: string | null;
+  upload: (file: File) => void;
+  uploading: boolean;
+  uploadError: string | null;
+  remove: (id: string) => void;
+  saveOffset: (id: string, offsetMs: number) => Promise<unknown>;
+}
+
+/** The source chain for one song (docs/tabs-rebuild.md section 3), plus the
+ *  flows that add to it: generate from the recording, add a file, delete,
+ *  and save the sync nudge for everyone. */
+export function useTabSources(song: TabSong | null): TabSourcesState {
+  const qc = useQueryClient();
+  const id = song?.id ?? '';
+  const title = song?.title ?? '';
+  const artist = song?.artist ?? '';
+  const canGenerate = !!song && canGenerateFor(id);
+  const tabsKey = ['track-tabs', id, title, artist];
+
+  const tabsQuery = useQuery({
+    queryKey: tabsKey,
+    queryFn: () => api.getTrackTabs(id, title, artist).then((r) => r.tabs),
+    enabled: !!song,
+  });
+  const generatedQuery = useQuery({
+    queryKey: ['generated-tab', id],
+    queryFn: () => api.getGeneratedTab(id),
+    enabled: canGenerate,
+    // Poll only while a job is running; a finished or absent tab does not change.
+    refetchInterval: (q) => (q.state.data?.status === 'running' ? 5000 : false),
+  });
+  const matchesQuery = useQuery({
+    queryKey: ['tabs', id],
+    queryFn: () => api.getTabs(title, artist).then((r) => r.matches),
+    enabled: !!song && !!title,
+    staleTime: 60 * 60 * 1000,
+  });
+
+  const refresh = () => {
+    void qc.invalidateQueries({ queryKey: ['track-tabs', id] });
+    void qc.invalidateQueries({ queryKey: ['generated-tab', id] });
+  };
+  const generate = useMutation({
+    mutationFn: () => api.generateTab(id, title, artist),
+    // The job is queued: show it running now (the poll takes over from
+    // here) rather than flashing the empty state until the next fetch.
+    onSuccess: (r) => {
+      qc.setQueryData(['generated-tab', id], { status: r.status });
+      void qc.invalidateQueries({ queryKey: ['track-tabs', id] });
+    },
+  });
+  const upload = useMutation({
+    mutationFn: (file: File) => api.uploadTabFile(file, { title, artist, trackId: id }),
+    onSuccess: refresh,
+  });
+  const remove = useMutation({
+    mutationFn: (tabId: string) => api.deleteTabFile(tabId),
+    onSuccess: refresh,
+  });
+  const saveOffset = useMutation({
+    mutationFn: ({ tabId, offsetMs }: { tabId: string; offsetMs: number }) => api.saveTabOffset(tabId, offsetMs),
+    onSuccess: refresh,
+  });
+
+  // A job that finishes is drawable at once: drawableTabs stands in for its
+  // row until the next fetch of the chain brings the real one.
+  const generated: GeneratedStatus = generatedQuery.data?.status ?? 'none';
+
+  return {
+    tabs: song ? drawableTabs(tabsQuery.data ?? [], generated, { id, title, artist }) : [],
+    matches: matchesQuery.data ?? [],
+    generated,
+    generatedError: generatedQuery.data?.error ?? null,
+    canGenerate,
+    loading: !!song && (tabsQuery.isLoading || (canGenerate && generatedQuery.isLoading)),
+    generate: () => generate.mutate(),
+    generating: generate.isPending,
+    generateError: generate.error ? (generate.error as Error).message : null,
+    upload: (file) => upload.mutate(file),
+    uploading: upload.isPending,
+    uploadError: upload.error ? (upload.error as Error).message : null,
+    remove: (tabId) => remove.mutate(tabId),
+    saveOffset: (tabId, offsetMs) => saveOffset.mutateAsync({ tabId, offsetMs }),
+  };
+}

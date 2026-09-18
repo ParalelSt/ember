@@ -4,40 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { cn } from '@/lib/utils';
 import type { TabsScroll, TabsStaff } from '@/components/library/options/tabs';
 import { SAMPLE_TEX } from '@/components/library/options/tabs/sample';
-
-/** Score colours from Ember's tokens. AlphaTab parses rgb()/hex only and
- *  the tokens are oklch, so each is painted on a 1px canvas and read back.
- *  Without a canvas (unit tests) the fallbacks are the dark theme's values. */
-const FALLBACK = { fg: [250, 250, 250], muted: [170, 172, 178] };
-
-function tokenRgb(name: string, fallback: number[]): number[] {
-  try {
-    const value = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
-    const ctx = document.createElement('canvas').getContext('2d', { willReadFrequently: true });
-    if (!value || !ctx) return fallback;
-    ctx.fillStyle = value;
-    ctx.fillRect(0, 0, 1, 1);
-    const [r, g, b] = ctx.getImageData(0, 0, 1, 1).data;
-    return [r, g, b];
-  } catch {
-    return fallback;
-  }
-}
-
-const rgba = ([r, g, b]: number[], a = 1) => `rgba(${r}, ${g}, ${b}, ${a})`;
-
-export function scoreResources() {
-  const fg = tokenRgb('--foreground', FALLBACK.fg);
-  const muted = tokenRgb('--muted-foreground', FALLBACK.muted);
-  return {
-    mainGlyphColor: rgba(fg),
-    secondaryGlyphColor: rgba(fg, 0.45),
-    scoreInfoColor: rgba(fg),
-    staffLineColor: rgba(muted, 0.45),
-    barSeparatorColor: rgba(muted, 0.7),
-    barNumberColor: rgba(muted, 0.9),
-  };
-}
+import { displaySettings } from '@/lib/tabScore';
 
 interface Rect {
   x: number;
@@ -65,7 +32,7 @@ let alphaTabModule: Promise<any> | null = null;
 const loadAlphaTab = () => (alphaTabModule ??= import('@coderline/alphatab'));
 
 /** The real score, drawn by AlphaTab from the bundled sample, with the
- *  settings the viewer will use (docs/tabs-rebuild.md section 4): tab staff
+ *  settings the tab page uses (docs/tabs-rebuild.md section 4): tab staff
  *  with rhythm stems and beams, Tab or Tab + Score, Ember's dark colours,
  *  page or horizontal layout. The cursor is placed on a fixed beat in bar 2
  *  so the preview shows what playback looks like; nothing plays. */
@@ -98,42 +65,17 @@ function ScoreCanvas({ staff, scroll, track, scale = 0.9, className }: TabScoreP
         }
         if (cancelled) return;
 
-        const E = at.NotationElement;
         api = new at.AlphaTabApi(host, {
           core: {
             engine: 'svg',
-            // Same place TabViewer loads Bravura from (public/alphatab/font).
+            // Same place the tab page loads Bravura from (public/alphatab/font).
             fontDirectory: '/alphatab/font/',
             // Main thread: the worker's script URL cannot be derived when
-            // alphaTab comes through the bundler (see TabViewer).
+            // alphaTab comes through the bundler (see LiveTabScore).
             useWorkers: false,
           },
-          display: {
-            // One row reads bigger, like Songsterr's scroll mode.
-            scale: scroll === 'horizontal' ? scale * 1.25 : scale,
-            staveProfile: staff === 'tab' ? at.StaveProfile.Tab : at.StaveProfile.ScoreTab,
-            layoutMode: scroll === 'horizontal' ? at.LayoutMode.Horizontal : at.LayoutMode.Page,
-            resources: scoreResources(),
-          },
-          notation: {
-            // Beamed like Songsterr: eighths and sixteenths joined per beat group.
-            rhythmMode: at.TabRhythmMode.ShowWithBars,
-            rhythmHeight: 22,
-            // The page header shows title, artist and tuning already.
-            elements: new Map([
-              [E.ScoreTitle, false],
-              [E.ScoreSubTitle, false],
-              [E.ScoreArtist, false],
-              [E.ScoreAlbum, false],
-              [E.ScoreWords, false],
-              [E.ScoreMusic, false],
-              [E.ScoreWordsAndMusic, false],
-              [E.ScoreCopyright, false],
-              [E.GuitarTuning, false],
-              [E.TrackNames, false],
-              [E.EffectDynamics, false],
-            ]),
-          },
+          // The tab page's own look (lib/tabScore.ts).
+          ...displaySettings(at, { staff, scroll, scale }),
           player: { enablePlayer: false, enableCursor: false },
         });
 

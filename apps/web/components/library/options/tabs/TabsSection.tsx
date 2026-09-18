@@ -2,14 +2,15 @@
 
 import { useEffect, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
-import { ChevronLeftIcon, CloseIcon, MusicIcon, PauseIcon } from '@/components/icons';
+import { CloseIcon, MusicIcon, PauseIcon } from '@/components/icons';
 import { PageTitle } from '@/components/page/PageTitle';
 import { SectionHeader } from '@/components/page/SectionHeader';
 import { TrackCard } from '@/components/track/TrackCard';
 import { ShellPreview } from '@/components/library/options/changelog/ShellPreview';
 import { ScaledFrame } from '@/components/library/options/changelog/ChangelogSection';
 import { TabScore } from '@/components/library/options/tabs/TabScore';
-import { TabsToolbar } from '@/components/library/options/tabs/TabsToolbar';
+import { TabsToolbar as LiveToolbar } from '@/components/tabs/TabsToolbar';
+import { TabSheetHeader, TabSourceChip } from '@/components/tabs/TabSheetHeader';
 import { SAMPLE_SONG, SAMPLE_TRACKS } from '@/components/library/options/tabs/sample';
 import {
   TABS_LAYOUTS,
@@ -39,33 +40,22 @@ function metaLine(track: number): string {
   return `${SAMPLE_SONG.artist} · ${SAMPLE_SONG.tempo} bpm · ${SAMPLE_SONG.key} · ${t.instrument}, ${t.tuning} (${t.strings})`;
 }
 
-/** Where the notes came from: stage 1's source chain, file first. */
-function SourceNote() {
-  return (
-    <span className="inline-flex items-center gap-inset rounded-full bg-card px-cluster py-inset text-xs text-muted-foreground">
-      <span className="size-1.5 rounded-full bg-ember" />
-      File added by Aron, shared
-    </span>
-  );
+/** The live toolbar with the sample's tracks, and the practice controls
+ *  (speed, loop, count-in) still shown as the stage 4 preview. */
+function TabsToolbar({ floating, ...p }: ViewProps & { floating?: boolean }) {
+  return <LiveToolbar {...p} tracks={SAMPLE_TRACKS} practice floating={floating} />;
 }
 
 /** A. Its own page: header, sticky toolbar, score in the content column. */
 function SheetPage(p: ViewProps) {
   return (
     <div data-testid="tabs-layout-sheet">
-      <button
-        type="button"
-        className="mb-block inline-flex items-center gap-inset text-sm text-muted-foreground transition-colors hover:text-foreground"
-      >
-        <ChevronLeftIcon className="size-4" />
-        Back
-      </button>
-      <div className="text-eyebrow">Guitar tab</div>
-      <PageTitle className={cn('mt-cluster', p.phone ? 'text-3xl!' : 'text-4xl!')}>{SAMPLE_SONG.title}</PageTitle>
-      <div className="mt-cluster flex flex-wrap items-center gap-x-row gap-y-cluster">
-        <span className="text-meta">{metaLine(p.track)}</span>
-        <SourceNote />
-      </div>
+      <TabSheetHeader
+        phone={p.phone}
+        title={SAMPLE_SONG.title}
+        meta={metaLine(p.track)}
+        chip={<TabSourceChip label="File added by Aron, shared" />}
+      />
       <div className="sticky top-0 z-20 mt-block border-b border-border bg-background/95 py-cluster backdrop-blur">
         <TabsToolbar {...p} />
       </div>
