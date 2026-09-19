@@ -107,24 +107,28 @@ describe('lining a tab up', () => {
     expect(alreadyTried(store.rows.get('tabs')![0])).toBe(true);
   });
 
-  it('lines up the best sources first, once each, and no more than four', () => {
+  it('lines up the tabs Ember fetched, Songsterr first, once each, four at most', () => {
     const rows = [
       { id: 'gen', kind: 'generated' },
       { id: 'paste', kind: 'pasted' },
-      { id: 'ugbass', kind: 'fetched', source_site: 'ug' },
+      { id: 'ug1', kind: 'fetched', source_site: 'ug' },
       { id: 'ss', kind: 'fetched', source_site: 'songsterr' },
       { id: 'file', kind: 'file' },
-      { id: 'ugtab', kind: 'fetched', source_site: 'ug' },
+      { id: 'ug2', kind: 'fetched', source_site: 'ug' },
+      { id: 'ug3', kind: 'fetched', source_site: 'ug' },
+      { id: 'ug4', kind: 'fetched', source_site: 'ug' },
     ] as never[];
-    expect(autoAlignQueue(rows).map((r) => r.id)).toEqual(['file', 'ss', 'ugbass', 'ugtab']);
+    // Never a tab of this server's own: those are lined up only when
+    // someone asks, from the Source sheet.
+    expect(autoAlignQueue(rows).map((r) => r.id)).toEqual(['ss', 'ug1', 'ug2', 'ug3']);
     expect(MAX_AUTO_ALIGN).toBe(4);
 
     // A tab that has been through align.py is left alone, whether it came
     // back with a timing or with nothing.
     const tried = [
-      { id: 'done', kind: 'file', timing: { offset_ms: 0, confidence: 0.9, bpm: 100, bars: [] } },
-      { id: 'failed', kind: 'file', aligned_at: '2026-09-20T00:00:00Z' },
-      { id: 'fresh', kind: 'file' },
+      { id: 'done', kind: 'fetched', source_site: 'ug', timing: { offset_ms: 0, confidence: 0.9, bpm: 100, bars: [] } },
+      { id: 'failed', kind: 'fetched', source_site: 'ug', aligned_at: '2026-09-20T00:00:00Z' },
+      { id: 'fresh', kind: 'fetched', source_site: 'ug' },
     ] as never[];
     expect(tried.map(alreadyTried)).toEqual([true, true, false]);
     expect(autoAlignQueue(tried).map((r) => r.id)).toEqual(['fresh']);

@@ -132,11 +132,19 @@ function rowRank(row: RecordModel): number {
   return 0;
 }
 
-/** The rows an automatic pass should line up: the ones never tried, best
- *  source first, capped. Pure, so the rule is testable. */
+/** The rows an automatic pass should line up: the tabs Ember fetched that
+ *  have never been through align.py, best source first, capped.
+ *
+ *  Only fetched tabs, on purpose. A file someone added and a text tab
+ *  someone pasted are drawn from the song's start with the shared nudge, as
+ *  they have been since docs/tab-sources.md, and a wrong alignment would
+ *  move a tab that works today. So Ember never re-times one behind the
+ *  listener's back: the Source sheet gives every row a "Line it up", and a
+ *  score earned that way ranks exactly like a fetched tab's
+ *  (lib/tabPick.ts). Pure, so the rule is testable. */
 export function autoAlignQueue(rows: RecordModel[]): RecordModel[] {
   return rows
-    .filter((r) => !alreadyTried(r))
+    .filter((r) => String(r.kind ?? '') === 'fetched' && !alreadyTried(r))
     .sort((a, b) => rowRank(a) - rowRank(b))
     .slice(0, MAX_AUTO_ALIGN);
 }

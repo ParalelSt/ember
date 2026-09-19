@@ -428,14 +428,18 @@ const trackPath = (id) => `/tabs/${encodeURIComponent(id)}`;
     await page.keyboard.press('Escape');
     await page.waitForTimeout(300);
 
+    // The Source sheet (docs/tabs-v3.md stage 6): the same eight tabs, a
+    // card each, inside a side sheet on desktop and a bottom sheet on phone.
     await page.getByRole('button', { name: 'Choose a tab' }).click();
-    await page.getByRole('menuitem').first().waitFor({ timeout: 5000 }).catch(() => {});
-    const picker = await rects(page, '[role="menuitem"]');
-    const titled = await page.evaluate(() => [...document.querySelectorAll('[role="menuitem"]')].every((el) => (el.getAttribute('title') ?? '').length > 0));
-    check(`${width}: all eight picker lines end inside the window`, picker.length === 8 && outside(picker, width).length === 0,
-      `${picker.length} items ${JSON.stringify(outside(picker, width)).slice(0, 160)}`);
-    check(`${width}: a cut line keeps its whole text in the tooltip`, titled);
-    await page.keyboard.press('Escape');
+    await page.getByTestId('tab-source-row').first().waitFor({ timeout: 10_000 }).catch(() => {});
+    const sheet = await rects(page, '[data-testid="tab-source-sheet"], [data-testid="tab-source-row"], [data-testid="tab-source-sheet"] button');
+    const cards = await page.getByTestId('tab-source-row').count();
+    const titled = await page.evaluate(() =>
+      [...document.querySelectorAll('[data-testid="tab-source-row"]')].every((el) => !!el.querySelector('[title]')));
+    check(`${width}: all eight sources end inside the window`, cards === 8 && outside(sheet, width).length === 0,
+      `${cards} cards, ${sheet.length} boxes ${JSON.stringify(outside(sheet, width)).slice(0, 160)}`);
+    check(`${width}: a cut name keeps its whole text in the tooltip`, titled);
+    await page.getByRole('button', { name: 'Close the tab list' }).first().click();
     await page.waitForTimeout(300);
 
     const scroll = await page.evaluate(() => ({ sw: document.documentElement.scrollWidth, iw: window.innerWidth }));

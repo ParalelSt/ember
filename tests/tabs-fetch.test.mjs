@@ -234,6 +234,9 @@ const beatBoxes = (page) =>
 const song = await uploadSong(`Ugfetch Song ${run}`, 'UGTester');
 const missing = await uploadSong(`Nothing Online ${run}`, 'UGTester');
 const ssSong = await uploadSong(`Ssfetch Song ${run}`, 'SSTester', riffWav());
+// A song both fakes have: Songsterr's tab is the recording, Ultimate
+// Guitar's is another song's riff, so stage 7 has a real choice to make.
+const bothSong = await uploadSong(`Ssfetch Ugfetch Both ${run}`, 'BothTester', riffWav());
 await fetch(`${FAKE_UG}/__reset`, { method: 'POST' });
 
 const consoleErrors = [];
@@ -252,6 +255,18 @@ const scoreReady = (page) =>
   page.waitForFunction(() => document.querySelector('[data-testid="tab-score"]')?.dataset.status === 'ready', null, { timeout: 45_000 });
 const trackPath = (id) => `/tabs/${encodeURIComponent(id)}`;
 const chipText = async (page) => ((await page.getByTestId('tab-source-chip').textContent().catch(() => '')) ?? '').trim();
+
+// ── the Source sheet (docs/tabs-v3.md stage 6) ────────────────────────────
+/** Open the sheet from the source chip and wait for its first row. */
+async function openSheet(page) {
+  await page.getByRole('button', { name: 'Choose a tab' }).click();
+  await page.getByTestId('tab-source-row').first().waitFor({ timeout: 10_000 }).catch(() => {});
+}
+/** Every row of the sheet as one line, in the order it lists them. */
+const sheetRows = (page) =>
+  page.getByTestId('tab-source-row').evaluateAll((els) => els.map((el) => (el.textContent ?? '').replace(/\s+/g, ' ').trim()));
+/** Choose the nth source; the sheet closes and the tab is drawn. */
+const pickRow = (page, n) => page.getByTestId('tab-source-row').nth(n).getByRole('radio').click();
 
 async function measure(page) {
   const t = await realTime(page);
@@ -306,13 +321,14 @@ console.log('\n=== First opening ===\n');
   const cur = await cursorRect(page);
   check('the line stays in view below the toolbar', !!cur && cur.top >= band.top - 2 && cur.bottom <= band.bottom + 2);
 
-  await page.getByRole('button', { name: 'Choose a tab' }).click();
-  await page.getByRole('menuitem').first().waitFor({ timeout: 5000 }).catch(() => {});
-  const items = await page.getByRole('menuitem').allInnerTexts();
-  check('the picker lists the guitar tab and the bass tab with their ratings',
-    items.length === 2 && items[0] === 'Ultimate Guitar, Text tab, ★ 4.7 (512 votes)' && items[1] === 'Ultimate Guitar, Bass tab, ★ 4.6 (140 votes)',
+  await openSheet(page);
+  const items = await sheetRows(page);
+  check('the sheet lists the guitar tab and the bass tab with their ratings',
+    items.length === 2 && /Text tab/.test(items[0]) && /★ 4\.7 \(512 votes\)/.test(items[0]) &&
+    /Bass tab/.test(items[1]) && /★ 4\.6 \(140 votes\)/.test(items[1]),
     items.join(' | '));
-  await page.getByRole('menuitem', { name: /Bass tab/ }).click();
+  check('under one Ultimate Guitar heading', (await page.getByTestId('tab-source-sheet').getByText('Ultimate Guitar', { exact: true }).count()) === 1);
+  await pickRow(page, 1);
   await page.waitForFunction(() => /bass/.test(document.querySelector('[data-testid="tab-source-chip"]')?.textContent ?? ''), null, { timeout: 10_000 }).catch(() => {});
   check('picking the bass tab draws it', /From Ultimate Guitar, bass, not lined up yet/.test(await chipText(page)), await chipText(page));
   await page.context().close();
@@ -538,6 +554,72 @@ console.log('\n=== Songsterr, with rhythm and lined up ===\n');
     }
     check('clicking a beat seeks the recording to where it sounds', clicks.length === 0, clicks.join(' | '));
   }
+  await page.context().close();
+}
+
+// ── two sites for one song: the best match wins, the pick sticks ─────────
+// Both fakes answer for this song. Songsterr's tab IS the recording, so it
+// lines up; Ultimate Guitar's is another riff. Ember draws the Songsterr
+// one, the sheet says why, and a listener's own pick overrides it for good.
+console.log('\n=== Picking between two sites ===\n');
+{
+  const page = await newPage(listener);
+  await page.goto(`${APP_URL}${trackPath(bothSong.id)}`, { waitUntil: 'networkidle' });
+  await scoreReady(page).catch(() => {});
+  const lined = await page
+    .waitForFunction(() => {
+      const t = document.querySelector('[data-testid="tab-source-chip"]')?.textContent ?? '';
+      return /^From Songsterr/.test(t) && /, lined up/.test(t);
+    }, null, { timeout: 240_000 })
+    .then(() => true, () => false);
+  check('the Songsterr tab is the one drawn, lined up with the recording', lined, await chipText(page));
+
+  await openSheet(page);
+  const rows = await sheetRows(page);
+  const sheetText = (await page.getByTestId('tab-source-sheet').innerText().catch(() => '')).replace(/\s+/g, ' ');
+  check('the sheet lists both sites, Songsterr first with "Best match"',
+    rows.length === 3 && /Tab with rhythm/.test(rows[0]) && /Best match/.test(rows[0]) && /Lined up \d+%/.test(rows[0]) &&
+    rows.slice(1).every((r) => /Text tab|Bass tab/.test(r) && /(Lined up \d+%|Not lined up yet|Lining it up)/.test(r)),
+    rows.join(' | '));
+  // The site headings are drawn in small caps, so innerText shouts them.
+  check('under both site headings', /songsterr/i.test(sheetText) && /ultimate guitar/i.test(sheetText), sheetText.slice(0, 160));
+
+  await pickRow(page, 1);
+  await page.waitForFunction(() => /^From Ultimate Guitar/.test(document.querySelector('[data-testid="tab-source-chip"]')?.textContent ?? ''),
+    null, { timeout: 15_000 }).catch(() => {});
+  check('choosing the Ultimate Guitar tab draws it', /^From Ultimate Guitar/.test(await chipText(page)), await chipText(page));
+  await page.reload({ waitUntil: 'networkidle' });
+  await scoreReady(page).catch(() => {});
+  await page.waitForTimeout(800);
+  check('and that choice sticks across a reload', /^From Ultimate Guitar/.test(await chipText(page)), await chipText(page));
+
+  // "Line it up" on a row runs align.py again for that tab.
+  await openSheet(page);
+  const first = page.getByTestId('tab-source-row').first();
+  await first.getByRole('button', { name: 'Line it up' }).click();
+  const busy = await first.getByRole('button', { name: 'Lining it up…' }).waitFor({ timeout: 15_000 }).then(() => true, () => false);
+  check('"Line it up" runs the alignment again', busy);
+  await page.context().close();
+}
+
+// ── the sheet fits every window ──────────────────────────────────────────
+for (const width of [390, 1280]) {
+  const page = await newPage(listener, { width, height: 900 });
+  await page.goto(`${APP_URL}${trackPath(bothSong.id)}`, { waitUntil: 'networkidle' });
+  await scoreReady(page).catch(() => {});
+  await openSheet(page);
+  const boxes = await page.$$eval(
+    '[data-testid="tab-source-sheet"], [data-testid="tab-source-row"], [data-testid="tab-source-sheet"] button',
+    (els) => els.map((el) => {
+      const r = el.getBoundingClientRect();
+      return { text: (el.textContent ?? '').trim().slice(0, 30), left: Math.round(r.left), right: Math.round(r.right), w: Math.round(r.width) };
+    }),
+  );
+  const outside = boxes.filter((b) => b.w > 0 && (b.right > width + 1 || b.left < -1));
+  const scroll = await page.evaluate(() => ({ sw: document.documentElement.scrollWidth, iw: window.innerWidth }));
+  check(`${width}: the source sheet and every row end inside the window`, boxes.length >= 6 && outside.length === 0,
+    `${boxes.length} boxes ${JSON.stringify(outside).slice(0, 160)}`);
+  check(`${width}: the sheet adds no sideways page scroll`, scroll.sw <= scroll.iw, `page ${scroll.sw}px in a ${scroll.iw}px window`);
   await page.context().close();
 }
 

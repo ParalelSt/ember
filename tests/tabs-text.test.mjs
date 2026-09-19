@@ -309,10 +309,13 @@ async function measure(page) {
   const chip = (await page.getByTestId('tab-source-chip').textContent().catch(() => '')) ?? '';
   check('with a file and a pasted tab, the file shows first', /File added by Tab Paster, shared/.test(chip), chip);
   await page.getByRole('button', { name: 'Choose a tab' }).click();
-  await page.getByRole('menuitem').first().waitFor({ timeout: 5000 }).catch(() => {});
-  const items = await page.getByRole('menuitem').allInnerTexts();
-  check('the picker lists the file, then the text tab', items.length === 2 && /^Guitar Pro file, Tab Paster/.test(items[0]) && /^Text tab, Tab Paster, Guitar/.test(items[1]), items.join(' | '));
-  await page.getByRole('menuitem', { name: /^Text tab/ }).click();
+  await page.getByTestId('tab-source-row').first().waitFor({ timeout: 10_000 }).catch(() => {});
+  const items = await page.getByTestId('tab-source-row').evaluateAll((els) =>
+    els.map((el) => (el.textContent ?? '').replace(/\s+/g, ' ').trim()));
+  check('the sheet lists the file, then the text tab',
+    items.length === 2 && /Guitar Pro file/.test(items[0]) && /added by Tab Paster/.test(items[0]) &&
+    /Pasted text tab/.test(items[1]) && /pasted by Tab Paster/.test(items[1]), items.join(' | '));
+  await page.getByTestId('tab-source-row').nth(1).getByRole('radio').click();
   await page.waitForFunction(() => /Text tab pasted by/.test(document.querySelector('[data-testid="tab-source-chip"]')?.textContent ?? ''), null, { timeout: 10_000 }).catch(() => {});
   await scoreReady(page).catch(() => {});
   const after = (await page.getByTestId('tab-source-chip').textContent().catch(() => '')) ?? '';
