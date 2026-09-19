@@ -299,7 +299,7 @@ const REVIEW: Record<number, Pick<ImportItem, 'flag' | 'candidates'>> = {
   5: {
     flag: 'Two versions are almost tied',
     candidates: [
-      cand('c6a', 'Instant Crush (feat. Julian Casablancas)', 'Daft Punk - Topic', '5:37', 'Official audio', 74, [['Length matches', true], ['Official audio', true], ['Title adds the feature', false]], 1),
+      cand('c6a', 'Instant Crush (feat. Julian Casablancas)', 'Daft Punk - Topic', '5:37', 'Official audio', 74, [['Length matches', true], ['Same artist', true], ['Title adds the feature', false]], 1),
       cand('c6b', 'Daft Punk - Instant Crush (Official Video) ft. Julian Casablancas', 'Daft Punk', '5:39', 'Music video', 71, [['Length within 2 seconds', true], ["Artist's own channel", true], ['Music video, may have extra sound', false]], 2),
       cand('c6c', 'Instant Crush (Live at the Paris Session)', 'Midnight Sessions', '6:02', 'Live', 38, [['Live version', false], ['Different artist', false], ['25 seconds longer', false]], 3),
     ],
@@ -316,17 +316,17 @@ const REVIEW: Record<number, Pick<ImportItem, 'flag' | 'candidates'>> = {
   23: {
     flag: 'Top result is a music video',
     candidates: [
-      cand('c24a', 'Take On Me', 'a-ha - Topic', '3:45', 'Official audio', 72, [['Length matches', true], ['Official audio', true], ['Fewer views than the video', false]], 3),
+      cand('c24a', 'Take On Me', 'a-ha - Topic', '3:45', 'Official audio', 72, [['Length matches', true], ['Same title and artist', true]], 3),
       cand('c24b', 'a-ha - Take On Me (Official Video) [4K]', 'a-ha', '4:04', 'Music video', 66, [["Artist's own channel", true], ['19 seconds longer', false]], 0),
       cand('c24c', 'a-ha - Take On Me (MTV Unplugged)', 'a-ha', '3:59', 'Live', 41, [['Live, acoustic', false], ['14 seconds longer', false]], 1),
-      cand('c24d', 'Take On Me (1984 Version)', 'a-ha - Topic', '3:32', 'Official audio', 55, [['Official audio', true], ['Earlier recording', false], ['13 seconds shorter', false]], 5),
+      cand('c24d', 'Take On Me (1984 Version)', 'a-ha - Topic', '3:32', 'Official audio', 55, [['Same artist', true], ['Earlier recording', false], ['13 seconds shorter', false]], 5),
       cand('c24e', 'Take On Me - a-ha (cover)', 'Sofia Lane', '3:48', 'Fan upload', 22, [['Different artist', false], ['Cover version', false]], 4),
     ],
   },
   31: {
     flag: 'Only one result has the right length',
     candidates: [
-      cand('c32a', 'Sunset Lover', 'Petit Biscuit - Topic', '3:57', 'Official audio', 68, [['Length matches', true], ['Official audio', true]], 3),
+      cand('c32a', 'Sunset Lover', 'Petit Biscuit - Topic', '3:57', 'Official audio', 68, [['Length matches', true], ['Same title and artist', true]], 3),
       cand('c32b', 'Petit Biscuit - Sunset Lover (Official Video)', 'Petit Biscuit', '4:26', 'Music video', 57, [["Artist's own channel", true], ['29 seconds longer', false]], 0),
       cand('c32c', 'Sunset Lover (1 Hour)', 'Chill Loops', '60:00', 'Fan upload', 12, [['57 minutes longer', false], ["Not the artist's channel", false]], 2),
     ],

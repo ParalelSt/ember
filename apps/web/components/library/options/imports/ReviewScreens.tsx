@@ -1,5 +1,6 @@
 'use client';
 
+import { useEffect, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Artwork } from '@/components/primitives/Artwork';
 import { AlertIcon, CheckIcon, ChevronLeftIcon, CloseIcon, SearchIcon, TrashIcon } from '@/components/icons';
@@ -176,8 +177,15 @@ export interface ReviewPageProps {
  *  one click; not-found songs sit underneath. */
 export function ReviewPage({ phone, source, choices, resolved, onChoose, onAccept, onAcceptAll }: ReviewPageProps) {
   const open = REVIEW_ITEMS.filter((i) => !resolved[i.id]);
+  // A page of its own: start at the top of the frame's scroller, not
+  // wherever the playlist page behind it was left.
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const scroller = ref.current?.closest<HTMLElement>('.overflow-y-auto');
+    if (scroller) scroller.scrollTop = 0;
+  }, []);
   return (
-    <div data-testid="review-page">
+    <div data-testid="review-page" ref={ref}>
       <button type="button" className="mb-block flex items-center gap-inset text-sm text-muted-foreground hover:text-foreground">
         <ChevronLeftIcon className="h-4 w-4" />
         {source.name}

@@ -246,7 +246,7 @@ function TabsDialog({ pasted, source, phone, onCreate }: Omit<ImportDialogProps,
   ];
   return (
     <DialogFrame phone={phone} title="New playlist">
-      <div role="tablist" aria-label="New playlist" className="-mt-cluster flex gap-stack border-b border-border">
+      <div role="tablist" aria-label="New playlist" className="flex gap-stack border-b border-border">
         {tabs.map((t) => (
           <button
             key={t.id}

@@ -1,6 +1,6 @@
 'use client';
 
-import type { ReactNode } from 'react';
+import { useEffect, useRef, type ReactNode } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { CollectionHeader } from '@/components/page/CollectionHeader';
@@ -76,6 +76,11 @@ export function PhoneTrackRow({ track, index, trailing, dim }: { track: Track; i
   );
 }
 
+/** Desktop rows' trailing slot. A fixed width, so a status pill or the
+ *  Pick button on one row does not push that row's album and length
+ *  columns out of line with the rest (TrackRow's last column is auto). */
+const TRAILING = 'flex w-40 items-center justify-end gap-cluster';
+
 /** A source row that has not been matched yet: its Spotify title greyed,
  *  in the same grid as a real row so nothing jumps when it lands. */
 function PendingRow({ item, index, phone, next }: { item: ImportItem; index: number; phone: boolean; next: boolean }) {
@@ -97,7 +102,7 @@ function PendingRow({ item, index, phone, next }: { item: ImportItem; index: num
       </div>
       {!phone && <div className="truncate text-sm text-muted-foreground/60">{item.album}</div>}
       {!phone && <div className="text-right text-sm tabular-nums text-muted-foreground/60">{formatTime(item.durationSec)}</div>}
-      <div className="whitespace-nowrap text-[11px] text-muted-foreground">{next ? 'Matching…' : 'Waiting'}</div>
+      <div className={cn('whitespace-nowrap text-[11px] text-muted-foreground', !phone && TRAILING)}>{next ? 'Matching…' : 'Waiting'}</div>
     </div>
   );
 }
@@ -294,6 +299,19 @@ export function ImportPlaylistPage({
   onReview,
 }: ImportPlaylistPageProps) {
   const landed = phase === 'done' ? MOCK_IMPORT_ITEMS.length : MOCK_IMPORT_PROGRESS.done;
+  // Inline review: bring the open row near the top of the frame's own
+  // scroller so its popover fits underneath. Only that scroller moves,
+  // never the gallery page (scrollIntoView would scroll every ancestor).
+  const openRowRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const row = openRowRef.current;
+    if (!inlineReview || !row) return;
+    const scroller = row.closest<HTMLElement>('.overflow-y-auto');
+    if (!scroller) return;
+    const top = row.getBoundingClientRect().top - scroller.getBoundingClientRect().top;
+    const scale = scroller.getBoundingClientRect().height / (scroller.clientHeight || 1);
+    scroller.scrollTop += top / (scale || 1) - 96;
+  }, [inlineReview, openItemId]);
   const counts = importCounts(resolved);
   const totalSec = MOCK_IMPORT_ITEMS.slice(0, landed)
     .filter((i) => i.status !== 'not-found')
@@ -341,7 +359,7 @@ export function ImportPlaylistPage({
                   Pick
                 </Button>
               ) : null;
-            const trailing =
+            const status =
               item.status === 'not-found' ? (
                 <StatusPill status="not-found" />
               ) : flagged ? (
@@ -349,7 +367,8 @@ export function ImportPlaylistPage({
                   {!(phone && pick) && <StatusPill status="review" />}
                   {pick}
                 </>
-              ) : undefined;
+              ) : null;
+            const trailing = phone ? status ?? undefined : <div className={TRAILING}>{status}</div>;
             const row = phone ? (
               <PhoneTrackRow track={track} index={i} trailing={trailing} dim={item.status === 'not-found'} />
             ) : (
@@ -364,7 +383,12 @@ export function ImportPlaylistPage({
               />
             );
             return (
-              <div key={item.id} className={cn('relative', openItemId === item.id && 'z-20')} data-testid={`import-row-${item.status}`}>
+              <div
+                key={item.id}
+                ref={openItemId === item.id ? openRowRef : undefined}
+                className={cn('relative', openItemId === item.id && 'z-20')}
+                data-testid={`import-row-${item.status}`}
+              >
                   {row}
                   {inlineReview && openItemId === item.id && item.candidates && (
                     <CandidatesPopover
