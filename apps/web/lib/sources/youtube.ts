@@ -11,7 +11,7 @@ const ROOT = path.resolve(process.cwd(), '..', '..');
 
 const PYTHON_BIN = process.env.PYTHON_BIN ?? path.join(ROOT, '.venv/bin/python');
 const PLAYER_SCRIPT = process.env.PLAYER_SCRIPT ?? path.join(ROOT, 'player.py');
-const MUSIC_DIR = process.env.MUSIC_DIR ?? path.join(ROOT, 'my_music');
+export const MUSIC_DIR = process.env.MUSIC_DIR ?? path.join(ROOT, 'my_music');
 
 const CACHE_EXTS = ['.m4a', '.webm', '.opus', '.mp3', '.mp4'] as const;
 
@@ -260,10 +260,28 @@ export async function getTrack(videoId: string): Promise<Track | null> {
   return normalize(raw);
 }
 
-export async function getTrending({ country = 'ZZ' } = {}): Promise<Track[]> {
-  const safeCountry = String(country).slice(0, 2).toUpperCase().replace(/[^A-Z]/g, '') || 'ZZ';
-  const results = await runPython<RawYoutubeTrack[]>(['trending', '--country', safeCountry]);
-  return dedupeByVideoId(results).map(normalize);
+/** What `player.py trending` prints: the chart playlist, in rank order. */
+export interface RawTrendingChart {
+  title?: string | null;
+  playlistId?: string | null;
+  source?: string;
+  tracks?: RawYoutubeTrack[];
+}
+
+/** One chart fetch through the player. Throws when every source failed
+ *  (player.py exits non-zero); lib/trending.ts caches the result. */
+export async function fetchTrendingChart(country: string): Promise<{ title: string | null; source: string; tracks: Track[] }> {
+  const raw = await runPython<RawTrendingChart | RawYoutubeTrack[]>(['trending', '--country', country], { timeoutMs: 60000 });
+  return parseTrendingChart(raw);
+}
+
+/** Player output to Tracks. Order is the chart rank, so it is kept as is;
+ *  duplicates keep their first (higher) position. Also accepts the old bare
+ *  array output. */
+export function parseTrendingChart(raw: RawTrendingChart | RawYoutubeTrack[] | null | undefined) {
+  const chart: RawTrendingChart = Array.isArray(raw) ? { tracks: raw } : (raw ?? {});
+  const tracks = dedupeByVideoId((chart.tracks ?? []).filter((t) => t && VIDEO_ID_RE.test(t.videoId ?? ''))).map(normalize);
+  return { title: chart.title ?? null, source: chart.source ?? 'ytmusicapi', tracks };
 }
 
 interface RecommendedArgs {

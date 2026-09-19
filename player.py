@@ -368,8 +368,8 @@ def cmd_track(args):
 
 def cmd_recommended(args):
     """Songs related to a seed videoId — uses YT Music's 'watch playlist'
-    (the up-next radio for that song). Falls back to charts when seed is
-    missing or the lookup fails."""
+    (the up-next radio for that song). Falls back to the daily chart when the
+    seed is missing or the lookup fails."""
     items = []
     if args.seed:
         try:
@@ -383,14 +383,11 @@ def cmd_recommended(args):
 
     if not items:
         try:
-            charts = yt.get_charts(country=args.country)
-            for key in ('songs', 'trending', 'videos'):
-                section = charts.get(key)
-                if section and 'items' in section:
-                    items = section['items']
-                    break
+            json.dump(chart_tracks(args.country)["tracks"][:args.limit], sys.stdout)
         except Exception as e:
-            print(f"recommended: charts fallback failed ({e})", file=sys.stderr)
+            print(f"recommended: chart fallback failed ({e})", file=sys.stderr)
+            json.dump([], sys.stdout)
+        return
 
     tracks = [to_track_json(t) for t in items if t.get('videoId')]
     json.dump(tracks, sys.stdout)
@@ -609,29 +606,103 @@ def cmd_lyrics(args):
     except Exception as e:
         json.dump({"error": str(e)}, sys.stdout)
 
-def cmd_trending(args):
-    """Best-effort 'top tracks today' from YT Music charts. Falls back to a
-    generic search if the charts API shape changes (it has historically)."""
-    items = []
+# Chart playlists as ytmusicapi's get_charts lists them under "videos", in
+# order of preference. Titles carry the country ("... - Global", "... Germany").
+CHART_TITLE_PREFERENCE = ("Daily Top Music Videos", "Trending 20", "Top 100")
+# "Daily Top Music Videos - Global": used when get_charts itself fails.
+GLOBAL_DAILY_CHART_ID = "PL4fGSI1pDJn6t3TXLGiiJdD-sZbrG3tG0"
+
+
+def pick_chart_playlist(charts):
+    """Pick the chart playlist from a get_charts() result, or None.
+
+    ytmusicapi 1.12 returns `videos` as a plain list of chart playlists
+    ({title, playlistId, thumbnails}). Older versions wrapped lists in
+    {"items": [...]}; both are accepted so a shape change fails loudly in the
+    unit test rather than silently returning nothing."""
+    if not isinstance(charts, dict):
+        return None
+    lists = charts.get("videos")
+    if isinstance(lists, dict):
+        lists = lists.get("items")
+    lists = [p for p in (lists or []) if isinstance(p, dict) and p.get("playlistId")]
+    for prefix in CHART_TITLE_PREFERENCE:
+        for p in lists:
+            if (p.get("title") or "").startswith(prefix):
+                return p
+    return lists[0] if lists else None
+
+
+def chart_playlist_tracks(playlist):
+    """Map a get_playlist() result to track JSON, keeping chart order and
+    dropping entries with no videoId or marked unavailable."""
+    raw = (playlist or {}).get("tracks") or []
+    return [
+        to_track_json(t)
+        for t in raw
+        if t.get("videoId") and t.get("isAvailable") is not False
+    ]
+
+
+def ytdlp_playlist(playlist_id):
+    """Flat listing of a YouTube playlist via yt-dlp: the fallback parser for
+    the same chart when ytmusicapi's get_playlist fails."""
+    ydl_opts = {
+        'extract_flat': 'in_playlist',
+        'skip_download': True,
+        'quiet': True,
+        'no_warnings': True,
+        **_cookie_opts(),
+    }
+    url = f"https://www.youtube.com/playlist?list={playlist_id}"
+    with contextlib.redirect_stdout(sys.stderr):
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(url, download=False)
+    entries = (info or {}).get("entries") or []
+    return [to_track_json_from_ytdlp(e) for e in entries if e and e.get("id")]
+
+
+def chart_tracks(country):
+    """The daily chart for a country (ZZ = global), in rank order.
+
+    get_charts -> pick the chart playlist by title -> get_playlist, then
+    yt-dlp on the same playlist id. Raises when every source fails, so the
+    server keeps serving its last good list instead of something that only
+    looks like a chart."""
+    picked = None
     try:
-        charts = yt.get_charts(country=args.country)
-        for key in ('songs', 'trending', 'videos'):
-            section = charts.get(key)
-            if section and 'items' in section:
-                items = section['items']
-                break
+        picked = pick_chart_playlist(yt.get_charts(country=country))
     except Exception as e:
-        print(f"trending: charts failed ({e}); falling back to search", file=sys.stderr)
+        print(f"trending: get_charts failed ({e})", file=sys.stderr)
+    if not picked:
+        print("trending: no chart playlist found, using the global daily chart", file=sys.stderr)
+        picked = {"playlistId": GLOBAL_DAILY_CHART_ID, "title": "Daily Top Music Videos - Global"}
+    playlist_id = picked["playlistId"]
+    title = picked.get("title")
 
-    if not items:
-        try:
-            items = yt.search('top hits', filter='songs', limit=30)
-        except Exception as e:
-            print(f"trending: fallback search failed ({e})", file=sys.stderr)
-            items = []
+    try:
+        tracks = chart_playlist_tracks(yt.get_playlist(playlist_id, limit=None))
+        if tracks:
+            return {"title": title, "playlistId": playlist_id, "source": "ytmusicapi", "tracks": tracks}
+        print("trending: get_playlist returned no tracks", file=sys.stderr)
+    except Exception as e:
+        print(f"trending: get_playlist failed ({e})", file=sys.stderr)
 
-    tracks = [to_track_json(t) for t in items if t.get('videoId')]
-    json.dump(tracks, sys.stdout)
+    tracks = ytdlp_playlist(playlist_id)
+    if not tracks:
+        raise RuntimeError("trending: no chart source returned tracks")
+    return {"title": title, "playlistId": playlist_id, "source": "yt-dlp", "tracks": tracks}
+
+
+def cmd_trending(args):
+    """Today's chart as {title, playlistId, source, tracks}. Exits non-zero
+    when no source works; the server then serves its cached list."""
+    try:
+        chart = chart_tracks(args.country)
+    except Exception as e:
+        print(f"ERROR: {e}", file=sys.stderr)
+        sys.exit(1)
+    json.dump(chart, sys.stdout)
 
 def cmd_ytplaylist(args):
     """Fetch a public YouTube Music playlist (no auth) → {title, tracks}.
@@ -708,14 +779,14 @@ def main():
     # ugly 502 in the API logs.
     p_download.add_argument("video_id", nargs="?")
 
-    p_trending = sub.add_parser("trending", help="Top tracks (charts). Prints JSON.")
+    p_trending = sub.add_parser("trending", help="Daily chart playlist, in rank order. Prints JSON.")
     p_trending.add_argument("--country", default="ZZ", help="2-letter country code, ZZ=global")
 
     p_info = sub.add_parser("info", help="Resolve a videoId to a direct stream URL. Prints JSON.")
     p_info.add_argument("video_id", nargs="?")
 
     p_rec = sub.add_parser("recommended", help="Up-next radio for a seed videoId. Prints JSON.")
-    p_rec.add_argument("--seed", help="Seed videoId; missing falls back to charts")
+    p_rec.add_argument("--seed", help="Seed videoId; missing falls back to the daily chart")
     p_rec.add_argument("--limit", type=int, default=30)
     p_rec.add_argument("--country", default="ZZ")
 

@@ -228,6 +228,9 @@ node tests/requests-ui.test.mjs                     # or: npm run test:requests-
 # Unavailable songs: detection, replace, skip-on-play (needs its own server, see below)
 node tests/unavailable.test.mjs                     # or: npm run test:unavailable
 node tests/unavailable-ui.test.mjs                  # or: npm run test:unavailable-ui
+
+# Trending shelf: starts its own app server from the build (see below)
+node tests/trending-ui.test.mjs                     # or: npm run test:trending-ui
 ```
 
 Exit code 0 = everything passed; each check prints PASS/FAIL with detail.
@@ -617,3 +620,38 @@ toast and landing on the live one instead (U2), the Find Replacement dialog
 swapping a track end to end, checked both in the DOM and with a follow-up
 `GET /api/playlists/<id>` (U3), and no console errors beyond the fake audio
 bytes' expected decode failures (U4).
+
+## What `trending-ui.test.mjs` and `test_player_trending.py` cover
+
+Home's "Trending right now" shelf is YouTube Music's daily chart
+(docs/trending.md). `tests/fake-player.sh` answers `trending` with a fixed
+12-song chart ("Chart Song 01" by "Chart Artist 01" is number 1), and
+`FAKE_FAIL_TRENDING=1` makes it fail the way player.py does when every chart
+source is down.
+
+`trending-ui.test.mjs` (8 checks) needs only a sandbox PocketBase and a build
+made against it; it starts and stops its own app server (port `APP_PORT`,
+default 3029) with the fake player and a fresh `MUSIC_DIR`, so the chart
+cache starts cold:
+
+```bash
+cd apps/web && POCKETBASE_URL=http://127.0.0.1:8096 npx next build --webpack && cd ../..
+PB_URL=http://127.0.0.1:8096 APP_PORT=3029 node tests/trending-ui.test.mjs   # or: npm run test:trending-ui
+```
+
+It checks the shelf shows the chart in rank order (T1); the API and the
+search empty state answer the same order, fresh, mirrored to
+`MUSIC_DIR/trending.json` (T2); then it ages that file to 13 h, restarts the
+server with `FAKE_FAIL_TRENDING=1`, and checks the shelf still shows the last
+good list while the API marks it `stale` with the old `fetchedAt` (T3), and
+that the server asked the failing source exactly once (T4).
+
+The cache rules themselves (TTL, stale-while-revalidate, one refresh in
+flight, cold start, country validation) are unit tests in
+`apps/web/lib/trending.test.ts`. The player side, picking the chart playlist
+out of `get_charts` and the yt-dlp fallback, is a Python unittest against
+saved ytmusicapi output in `tests/fixtures/trending/`, no network:
+
+```bash
+.venv/bin/python -m unittest tests/test_player_trending.py   # or: npm run test:trending-py
+```

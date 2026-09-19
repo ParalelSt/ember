@@ -77,10 +77,14 @@ export function useQueryTrending() {
   });
 }
 
+/** Home's "Because you played" radio. Only with a seed: without one the
+ *  server answers today's chart, which the Trending shelf already shows, so
+ *  the shelf stays hidden for someone with no history (as it always was). */
 export function useQueryRecommended(seed: string | undefined) {
   return useQuery({
     queryKey: QK.recommended(seed),
     queryFn: () => api.getRecommended(seed).then((r) => r.tracks),
+    enabled: !!seed,
   });
 }
 

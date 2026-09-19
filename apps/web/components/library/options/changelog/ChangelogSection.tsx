@@ -68,7 +68,7 @@ function MockHome({ phone, banner }: { phone: boolean; banner: ReactNode }) {
 /** A fixed-size box (the device's real pixel size) scaled down to the width
  *  its column actually has, never up, keeping proportions. The wrapper
  *  takes the scaled height so nothing below it overlaps. */
-function ScaledFrame({
+export function ScaledFrame({
   width,
   height,
   onScale,

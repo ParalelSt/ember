@@ -1,3 +1,17 @@
+# 0.3.4: real trending songs
+
+**Host: a normal rebuild and restart (`./update.sh`). No `npm install`, no
+PocketBase changes.** Optional: set `TRENDING_COUNTRY` (for example `DE`) in
+`apps/web/.env.local` to show one country's chart instead of the global one.
+See SETUP.md, "Trending chart country".
+
+- **Real trending songs**: the Trending shelf on Home now shows YouTube
+  Music's actual daily chart, in chart order, refreshed every few hours. It
+  used to be a plain "top hits" search. The search page shows the same chart
+  before you type.
+- The chart is cached in `my_music/trending.json`, so a restart shows it
+  straight away. If YouTube is down, the last good chart keeps showing.
+
 # 0.3.3: search fits smaller screens
 
 **Host: a normal rebuild and restart (`./update.sh`). Nothing to configure:

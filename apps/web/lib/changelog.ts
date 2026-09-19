@@ -21,6 +21,18 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    id: 'real-trending',
+    version: '0.3.4',
+    date: '2026-09-19',
+    title: 'Real trending songs',
+    summary: "The Trending shelf on Home now shows YouTube Music's actual daily chart, refreshed every few hours.",
+    bullets: [
+      "Trending right now on Home is today's YouTube Music chart, in chart order.",
+      'It refreshes every few hours, and keeps showing the last chart if YouTube is slow to answer.',
+      'Search shows the same chart before you type.',
+    ],
+  },
+  {
     id: 'search-fits-smaller-screens',
     version: '0.3.3',
     date: '2026-09-19',
