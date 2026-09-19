@@ -1,7 +1,9 @@
 'use client';
 
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from 'react';
 import { cn } from '@/lib/utils';
+import { formatTime } from '@/lib/format';
+import { dragReducer, edgeScrollSpeed, idleDrag, isActive, snapToBeat, type DragEvent, type Snap } from '@/lib/tabDrag';
 import { logger } from '@/lib/logger/client';
 import { displaySettings, scoreInfo, type ScoreInfo, type TabsScroll, type TabsStaff } from '@/lib/tabScore';
 import {
@@ -57,7 +59,12 @@ export interface LiveTabScoreProps {
  *  Nothing AlphaTab does moves the song on its own: the media handler it
  *  talks to is inert, and its built-in click handling is off. A click on a
  *  beat seeks the song exactly once, through `beatMouseDown`, to where
- *  that beat sounds (lib/tabSync.ts beatToSongSec). */
+ *  that beat sounds (lib/tabSync.ts beatToSongSec).
+ *
+ *  The line itself can be grabbed (lib/tabDrag.ts): a hit area rides on
+ *  AlphaTab's cursor, a drag shows a ghost line snapped to the nearest beat
+ *  with its time, and letting go seeks there, once. With the score focused,
+ *  Left and Right move the line by one beat. */
 export function LiveTabScore(props: LiveTabScoreProps) {
   const { url, staff, scroll, track, scale, className } = props;
   const scrollerRef = useRef<HTMLDivElement>(null);
@@ -76,6 +83,15 @@ export function LiveTabScore(props: LiveTabScoreProps) {
   const anchor = useRef<Anchor>({ sec: props.position, at: 0 });
   /** Where the score ends on the tab clock (ms), from AlphaTab. */
   const endMs = useRef(Infinity);
+
+  // ── dragging the line (lib/tabDrag.ts) ──────────────────────────────────
+  const hitRef = useRef<HTMLDivElement>(null);
+  const drag = useRef(idleDrag);
+  const snap = useRef<Snap | null>(null);
+  const [ghost, setGhost] = useState<{ x: number; y: number; h: number; label: string; flip: boolean } | null>(null);
+  const [dragging, setDragging] = useState(false);
+  /** Bring the playing beat back into view (set once AlphaTab is up). */
+  const refollow = useRef<() => void>(() => {});
 
   // ── build AlphaTab once per file ────────────────────────────────────────
   useEffect(() => {
@@ -224,6 +240,10 @@ export function LiveTabScore(props: LiveTabScoreProps) {
       }
     })();
 
+    refollow.current = () => {
+      if (lastBeat) followBeat(lastBeat);
+    };
+
     function followBeat(beat: any) {
       const bounds = api?.renderer?.boundsLookup?.findBeat?.(beat);
       const bar = bounds?.barBounds?.masterBarBounds?.visualBounds;
@@ -234,6 +254,8 @@ export function LiveTabScore(props: LiveTabScoreProps) {
     /** Scroll the page (vertical) or the row (horizontal) so the playing
      *  bar or beat is in the band lib/tabSync.ts followScroll keeps it in. */
     function keepInView(bar: Box, beat: Box) {
+      // Hands off while the line is held: the listener is steering.
+      if (isActive(drag.current)) return;
       const host = hostRef.current;
       const mode = live.current.scroll;
       const scroller = mode === 'horizontal' ? scrollerRef.current : live.current.getPageScroller?.();
@@ -267,6 +289,7 @@ export function LiveTabScore(props: LiveTabScoreProps) {
       }
       apiRef.current = null;
       outputRef.current = null;
+      refollow.current = () => {};
       endMs.current = Infinity;
       setSynced(false);
     };
@@ -360,6 +383,219 @@ export function LiveTabScore(props: LiveTabScoreProps) {
     return () => cancelAnimationFrame(raf);
   }, [follows, synced]);
 
+  // ── the line's hit area rides on AlphaTab's cursor ───────────────────────
+  // AlphaTab moves its cursor with CSS transitions, so its box is read every
+  // frame and the (invisible) hit area is laid over it.
+  const ready = status === 'ready';
+  useEffect(() => {
+    if (!follows || !ready) return;
+    let raf = 0;
+    let last = '';
+    const tick = () => {
+      raf = requestAnimationFrame(tick);
+      const hit = hitRef.current;
+      const host = hostRef.current;
+      const cursor = host?.querySelector('.at-cursor-beat');
+      if (!hit || !host) return;
+      const r = cursor?.getBoundingClientRect();
+      const h = hostBoxOf(host);
+      const next =
+        r && r.height > 0 ? `${r.left + r.width / 2 - h.left}px|${r.top - h.top}px|${r.height}px` : 'none';
+      if (next === last) return;
+      last = next;
+      if (next === 'none') {
+        hit.style.display = 'none';
+        return;
+      }
+      const [left, top, height] = next.split('|');
+      hit.style.display = '';
+      hit.style.left = left;
+      hit.style.top = top;
+      hit.style.height = height;
+    };
+    raf = requestAnimationFrame(tick);
+    return () => {
+      cancelAnimationFrame(raf);
+      // The handle is going (another song, a failed redraw): drop any drag
+      // on it, so follow-scroll is not left paused.
+      if (isActive(drag.current)) {
+        drag.current = idleDrag;
+        snap.current = null;
+        setGhost(null);
+        setDragging(false);
+      }
+    };
+  }, [follows, ready]);
+
+  /** Where a beat sounds in the song, or null if AlphaTab cannot place it. */
+  const beatSec = (beat: unknown): number | null => {
+    const api = apiRef.current;
+    if (!api?.tickCache || !beat) return null;
+    try {
+      return beatToSongSec(api.tickCache, beat as never, live.current.offsetMs);
+    } catch {
+      return null;
+    }
+  };
+
+  /** The beat nearest a client point, with the ghost line's box and time. */
+  const snapAt = (clientX: number, clientY: number) => {
+    const host = hostRef.current;
+    const lookup = apiRef.current?.renderer?.boundsLookup;
+    if (!host || !lookup) return;
+    const h = hostBoxOf(host);
+    const s = snapToBeat(lookup, clientX - h.left, clientY - h.top);
+    const sec = s ? beatSec(s.beat) : null;
+    if (!s || sec === null) return;
+    snap.current = s;
+    const label = formatTime(sec, { empty: '0:00' });
+    // Near the right edge the time sits on the line's left instead.
+    const flip = s.x > host.clientWidth - 64;
+    setGhost((g) =>
+      g && g.x === s.x && g.y === s.y && g.h === s.h && g.label === label && g.flip === flip
+        ? g
+        : { x: s.x, y: s.y, h: s.h, label, flip },
+    );
+  };
+
+  const seekTo = (beat: unknown) => {
+    const sec = beatSec(beat);
+    if (sec !== null && live.current.follows) live.current.onSeek(sec);
+  };
+
+  const send = (e: DragEvent) => {
+    const prev = drag.current;
+    const next = dragReducer(prev, e);
+    drag.current = next;
+    if (next.phase === 'dragging') {
+      if (prev.phase !== 'dragging') setDragging(true);
+      snapAt(next.x, next.y);
+      return;
+    }
+    if (next.phase === 'released') {
+      if (prev.phase === 'dragging') {
+        if (snap.current) seekTo(snap.current.beat);
+      } else {
+        // Never moved: a click, which seeks where AlphaTab's own click would.
+        const host = hostRef.current;
+        const lookup = apiRef.current?.renderer?.boundsLookup;
+        if (host && lookup) {
+          const h = hostBoxOf(host);
+          seekTo(lookup.getBeatAtPos?.(next.startX - h.left, next.startY - h.top));
+        }
+      }
+    }
+    if (next.phase === 'released' || next.phase === 'cancelled') {
+      const wasCancelled = next.phase === 'cancelled';
+      drag.current = idleDrag;
+      snap.current = null;
+      setGhost(null);
+      setDragging(false);
+      // A cancelled drag may have scrolled away from the line: go back.
+      if (wasCancelled && live.current.playing) refollow.current();
+    }
+  };
+
+  const onPointerDown = (e: PointerEvent<HTMLDivElement>) => {
+    if (!follows || (e.pointerType === 'mouse' && e.button !== 0)) return;
+    // No text selection, no compatibility mousedown for AlphaTab.
+    e.preventDefault();
+    e.stopPropagation();
+    try {
+      e.currentTarget.setPointerCapture(e.pointerId);
+    } catch {
+      // Not every environment can capture; moves still arrive while over it.
+    }
+    send({ type: 'down', pointerId: e.pointerId, x: e.clientX, y: e.clientY });
+  };
+  const onPointerMove = (e: PointerEvent<HTMLDivElement>) => {
+    if (isActive(drag.current)) send({ type: 'move', pointerId: e.pointerId, x: e.clientX, y: e.clientY });
+  };
+  const onPointerUp = (e: PointerEvent<HTMLDivElement>) => {
+    if (isActive(drag.current)) send({ type: 'up', pointerId: e.pointerId });
+  };
+  const onPointerCancel = () => {
+    if (isActive(drag.current)) send({ type: 'cancel' });
+  };
+
+  // Escape drops a drag with no seek.
+  const active = dragging || ghost !== null;
+  useEffect(() => {
+    if (!dragging) return;
+    const onKey = (e: globalThis.KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      e.preventDefault();
+      const id = drag.current.pointerId;
+      send({ type: 'cancel' });
+      try {
+        if (id !== null) hitRef.current?.releasePointerCapture(id);
+      } catch {
+        // Already released.
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+    // send reads refs only; the listener lives exactly as long as the drag.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dragging]);
+
+  // Near an edge of the visible score, scroll so the drag can go further.
+  useEffect(() => {
+    if (!dragging) return;
+    let raf = 0;
+    const tick = () => {
+      raf = requestAnimationFrame(tick);
+      const p = live.current;
+      const d = drag.current;
+      if (d.phase !== 'dragging') return;
+      const horizontal = p.scroll === 'horizontal';
+      const scroller = horizontal ? scrollerRef.current : p.getPageScroller?.();
+      if (!scroller) return;
+      const box = scroller.getBoundingClientRect();
+      const speed = horizontal
+        ? edgeScrollSpeed(d.x, box.left, box.right)
+        : edgeScrollSpeed(d.y, box.top + (p.getTopInset?.() ?? 0), Math.min(box.bottom, window.innerHeight));
+      if (!speed) return;
+      if (horizontal) scroller.scrollLeft += speed;
+      else scroller.scrollTop += speed;
+      snapAt(d.x, d.y);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dragging]);
+
+  // ── keyboard: Left and Right move the line by one beat ──────────────────
+  const keyTarget = useRef<{ beat: unknown; at: number } | null>(null);
+  const onKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
+    if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+    if (!follows || e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
+    const api = apiRef.current;
+    if (!api?.tickCache) return;
+    // Presses quicker than the player reports its new position step on
+    // from the last target rather than from a stale playhead.
+    const now = performance.now();
+    let beat: any = keyTarget.current && now - keyTarget.current.at < 600 ? keyTarget.current.beat : null;
+    if (!beat) {
+      try {
+        const tracks = new Set<number>((api.tracks ?? []).map((t: any) => t.index));
+        // A few ticks in, so a playhead sitting exactly on a beat (after a
+        // seek there) is not rounded down into the one before.
+        beat = api.tickCache.findBeat(tracks, (api.tickPosition ?? 0) + 10)?.beat ?? null;
+      } catch {
+        beat = null;
+      }
+    }
+    if (!beat) return;
+    const target = e.key === 'ArrowRight' ? beat.nextBeat : beat.previousBeat;
+    // The score's own arrow keys win over the player's 5 s jumps.
+    e.preventDefault();
+    e.stopPropagation();
+    if (!target) return;
+    keyTarget.current = { beat: target, at: now };
+    seekTo(target);
+  };
+
   return (
     <div
       ref={scrollerRef}
@@ -368,14 +604,49 @@ export function LiveTabScore(props: LiveTabScoreProps) {
       data-scroll={scroll}
       data-staff={staff}
       data-track={track}
+      data-dragging={active || undefined}
+      tabIndex={follows ? 0 : undefined}
+      aria-label={follows ? 'Tab. Drag the line to move through the song; Left and Right move it by a beat.' : undefined}
+      onKeyDown={onKeyDown}
       className={cn(
-        'relative min-w-0',
+        'relative isolate min-w-0 rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-ember/40',
         scroll === 'horizontal' && 'overflow-x-auto overflow-y-hidden',
         !follows && '[&_.at-cursor-beat]:hidden [&_.at-cursor-bar]:hidden',
         className,
       )}
     >
       <div ref={hostRef} className="w-full" />
+      {follows && ready && (
+        <div
+          ref={hitRef}
+          data-testid="tab-line-handle"
+          aria-hidden
+          className="tab-line-handle"
+          style={{ display: 'none' }}
+          onPointerDown={onPointerDown}
+          onPointerMove={onPointerMove}
+          onPointerUp={onPointerUp}
+          onPointerCancel={onPointerCancel}
+          onLostPointerCapture={onPointerCancel}
+        />
+      )}
+      {ghost && (
+        <>
+          <div
+            data-testid="tab-line-ghost"
+            className="tab-line-ghost"
+            style={{ left: ghost.x, top: ghost.y, height: ghost.h }}
+          />
+          <div
+            data-testid="tab-line-time"
+            data-flip={ghost.flip || undefined}
+            className="tab-line-time rounded-md bg-card px-cluster py-inset text-xs font-medium tabular-nums text-ember shadow-sm"
+            style={{ left: ghost.x, top: ghost.y }}
+          >
+            {ghost.label}
+          </div>
+        </>
+      )}
       {status === 'loading' && <div className="text-meta py-block">Drawing the tab…</div>}
       {status === 'error' && (
         <div role="alert" className="text-meta py-block">
@@ -384,4 +655,10 @@ export function LiveTabScore(props: LiveTabScoreProps) {
       )}
     </div>
   );
+}
+
+/** The host's box in the viewport: bounds from AlphaTab are relative to it. */
+function hostBoxOf(host: HTMLElement): { left: number; top: number } {
+  const r = host.getBoundingClientRect();
+  return { left: r.left, top: r.top };
 }

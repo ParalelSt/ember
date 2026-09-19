@@ -234,6 +234,53 @@
   border-radius: 2px;
   box-shadow: 0 0 6px color-mix(in oklab, var(--ember) 60%, transparent);
 }
+/* Grabbing the line (components/tabs/LiveTabScore.tsx). The handle is an
+   invisible strip laid over AlphaTab's cursor: comfortable to hit with a
+   mouse, a finger's width on touch, and the only part of the score that
+   keeps the page from scrolling under a finger. While dragging, a softer
+   ghost line marks the beat it will jump to, with that beat's time. */
+.tab-line-handle {
+  position: absolute;
+  z-index: 1001;
+  width: 24px;
+  transform: translateX(-50%);
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+  border-radius: 6px;
+}
+.tab-line-handle:hover {
+  background: color-mix(in oklab, var(--ember) 10%, transparent);
+}
+[data-dragging] .tab-line-handle {
+  cursor: grabbing;
+  background: transparent;
+}
+@media (pointer: coarse) {
+  .tab-line-handle {
+    width: 44px;
+  }
+}
+.tab-line-ghost {
+  position: absolute;
+  z-index: 1001;
+  width: 2px;
+  transform: translateX(-50%);
+  pointer-events: none;
+  border-radius: 2px;
+  background: color-mix(in oklab, var(--ember) 40%, transparent);
+  box-shadow: 0 0 0 2px color-mix(in oklab, var(--ember) 8%, transparent);
+}
+.tab-line-time {
+  position: absolute;
+  z-index: 1002;
+  pointer-events: none;
+  white-space: nowrap;
+  transform: translate(6px, -2px);
+}
+.tab-line-time[data-flip] {
+  transform: translate(calc(-100% - 6px), -2px);
+}
 .at-highlight * {
   fill: var(--ember);
   stroke: var(--ember);
