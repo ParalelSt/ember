@@ -1,3 +1,23 @@
+# 0.3.3: search fits smaller screens
+
+**Host: a normal rebuild and restart (`./update.sh`). Nothing to configure:
+no `npm install`, no new environment variables, no PocketBase changes.**
+
+- **Search fits smaller screens**: the rows in the search pop-up now size
+  their columns to the pop-up's own width instead of the window's, so song
+  titles are no longer cut short on smaller screens or at higher Windows
+  zoom levels.
+
+# 0.3.2: profile pictures load everywhere
+
+**Host: a normal rebuild and restart (`./update.sh`). Nothing to configure:
+no `npm install`, no new environment variables, no PocketBase changes.**
+
+- **Profile pictures load everywhere**: pictures are now served from the
+  app's own address, so they no longer show as a broken image in the admin
+  user list or right after someone changes their picture. When a picture
+  cannot load, the initial shows instead.
+
 # 0.3.1: cleaner collection pages
 
 **Host: a normal rebuild and restart (`./update.sh`). Nothing to configure:
