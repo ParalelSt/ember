@@ -1,14 +1,21 @@
-/** UI check for the Home "Trending right now" shelf against the fake player.
+/** UI check for the Home "Trending right now" shelf against the fake player,
+ *  blended across TRENDING_COUNTRIES.
  *
  *      node tests/trending-ui.test.mjs   # or: npm run test:trending-ui
  *
  *  Starts its OWN app server (twice) from the existing build in apps/web,
  *  with tests/fake-player.sh as the player and a fresh MUSIC_DIR, so the
  *  chart cache starts cold. Needs a sandbox PocketBase (PB_URL) and a build
- *  made with POCKETBASE_URL pointing at it. Proves, in a real browser:
- *   - T1: the shelf shows the fake chart in rank order (Chart Song 01 first)
+ *  made with POCKETBASE_URL pointing at it. TRENDING_COUNTRIES=US,GB,DE,RS;
+ *  the fake serves each country the same 10 "Chart Song" tracks (same rank
+ *  order everywhere) plus 2 country-exclusive tracks, so the blended order
+ *  (shared songs first, then each country's exclusives) proves the blend
+ *  runs end to end, not just a single country's chart. Proves, in a real
+ *  browser:
+ *   - T1: the shelf shows the blended chart in rank order
  *   - T2: /api/youtube/trending answers the same order, fresh (stale: false),
- *     and the search empty state ("Trending") is the same chart
+ *     lists the blended countries in `source`, and the search empty state
+ *     ("Trending") is the same chart
  *   - T3: after a good fetch, with the chart 13 h old and the source failing
  *     (FAKE_FAIL_TRENDING=1, server restarted), the shelf still shows the
  *     last good list, and the API marks it stale with the old fetchedAt
@@ -41,7 +48,15 @@ const SB = process.env.SB ?? fs.mkdtempSync(path.join(os.tmpdir(), 'ember-trendi
 const MUSIC = path.join(SB, 'music');
 const CALLS = path.join(SB, 'calls.log');
 const PW = 'TrendTest2026!';
-const EXPECTED = Array.from({ length: 12 }, (_, i) => `Chart Song ${String(i + 1).padStart(2, '0')}`);
+const BLEND_COUNTRIES = ['US', 'GB', 'DE', 'RS'];
+// Matches tests/fake-player.sh's trending case: 10 shared songs (same rank
+// in every country, so they outscore any single country's exclusives), then
+// each country's rank-11 exclusive, then each country's rank-12 exclusive.
+const EXPECTED = [
+  ...Array.from({ length: 10 }, (_, i) => `Chart Song ${String(i + 1).padStart(2, '0')}`),
+  ...BLEND_COUNTRIES.map((c) => `${c} Extra A`),
+  ...BLEND_COUNTRIES.map((c) => `${c} Extra B`),
+];
 
 function findChrome() {
   if (process.env.CHROME_PATH) return process.env.CHROME_PATH;
@@ -80,6 +95,7 @@ async function startApp(extraEnv = {}) {
       FAKE_PLAYER_LOG: CALLS,
       STREAM_CACHE_WARM: '0',
       TRENDING_COUNTRY: '',
+      TRENDING_COUNTRIES: BLEND_COUNTRIES.join(','),
       ...extraEnv,
     },
     stdio: ['ignore', 'ignore', 'pipe'],
@@ -162,8 +178,10 @@ try {
   const fresh = await api('/api/youtube/trending');
   check('T2 API answers the chart in rank order', JSON.stringify(fresh.tracks?.map((t) => t.title)) === JSON.stringify(EXPECTED),
     JSON.stringify(fresh.tracks?.map((t) => t.title)));
-  check('T2 API marks it fresh', fresh.stale === false && !!fresh.fetchedAt && fresh.country === 'ZZ',
-    JSON.stringify({ stale: fresh.stale, fetchedAt: fresh.fetchedAt, country: fresh.country }));
+  check('T2 API marks it fresh', fresh.stale === false && !!fresh.fetchedAt,
+    JSON.stringify({ stale: fresh.stale, fetchedAt: fresh.fetchedAt }));
+  check('T2 API lists the blended countries in `source`', JSON.stringify(fresh.source) === JSON.stringify(BLEND_COUNTRIES),
+    JSON.stringify(fresh.source));
   const search = await api('/api/search?q=');
   check('T2 search empty state is the same chart', JSON.stringify(search.tracks?.map((t) => t.title)) === JSON.stringify(EXPECTED));
   check('T2 chart mirrored to MUSIC_DIR/trending.json', fs.existsSync(path.join(MUSIC, 'trending.json')));

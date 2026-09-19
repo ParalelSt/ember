@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { createTrendingCache, resolveTrendingCountry, TRENDING_TTL_MS } from '@/lib/trending';
+import { createTrendingCache, DEFAULT_TRENDING_COUNTRIES, resolveTrendingCountries, resolveTrendingCountry, TRENDING_TTL_MS } from '@/lib/trending';
 import { parseTrendingChart } from '@/lib/sources/youtube';
 
 // player.py's real output for the chart captured on 2026-09-18 (see
@@ -51,6 +51,36 @@ describe('resolveTrendingCountry', () => {
     for (const bad of ['HR', 'xx', 'DEU', '../', '', undefined, null]) {
       expect(resolveTrendingCountry(bad)).toBe('ZZ');
     }
+  });
+});
+
+describe('resolveTrendingCountries', () => {
+  it('uses the default blend when neither env is set', () => {
+    expect(resolveTrendingCountries(undefined, undefined)).toEqual(DEFAULT_TRENDING_COUNTRIES);
+  });
+
+  it('parses and uppercases a valid TRENDING_COUNTRIES list', () => {
+    expect(resolveTrendingCountries('us, gb ,de', undefined)).toEqual(['US', 'GB', 'DE']);
+  });
+
+  it('drops unknown codes and warns, keeping the valid ones', () => {
+    const warn = vi.fn();
+    expect(resolveTrendingCountries('US,HR,GB', undefined, warn)).toEqual(['US', 'GB']);
+    expect(warn).toHaveBeenCalledWith('trending: dropping unsupported TRENDING_COUNTRIES codes', { dropped: ['HR'] });
+  });
+
+  it('falls back to the default blend when nothing valid is left, with a warning', () => {
+    const warn = vi.fn();
+    expect(resolveTrendingCountries('HR,XX', undefined, warn)).toEqual(DEFAULT_TRENDING_COUNTRIES);
+    expect(warn).toHaveBeenCalledWith('trending: no valid TRENDING_COUNTRIES codes left, using the default blend', { default: DEFAULT_TRENDING_COUNTRIES });
+  });
+
+  it('TRENDING_COUNTRY, single, wins over TRENDING_COUNTRIES for backward compatibility', () => {
+    expect(resolveTrendingCountries('US,GB,DE,RS', 'DE')).toEqual(['DE']);
+  });
+
+  it('an invalid TRENDING_COUNTRY still wins (falls back to ZZ, not the blend)', () => {
+    expect(resolveTrendingCountries('US,GB,DE,RS', 'HR')).toEqual(['ZZ']);
   });
 });
 
@@ -143,7 +173,7 @@ describe('createTrendingCache', () => {
     const warn = vi.fn();
     const fetchChart = vi.fn().mockRejectedValue(new Error('HTTP 503'));
     const c = createTrendingCache({ fetchChart, cacheFile: file, country: () => 'ZZ', now, warn });
-    expect(await c.get()).toEqual({ country: 'ZZ', title: null, fetchedAt: null, stale: true, tracks: [] });
+    expect(await c.get()).toEqual({ country: 'ZZ', title: null, fetchedAt: null, source: [], stale: true, tracks: [] });
     // Inside the retry window the source is left alone.
     await c.get();
     expect(fetchChart).toHaveBeenCalledTimes(1);

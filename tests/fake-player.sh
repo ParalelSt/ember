@@ -116,19 +116,36 @@ case "$CMD" in
     printf '[{"videoId":"ddddddddddd","title":"Replacement Song",%s},{"videoId":"aaaaaaaaaaa","title":"Live Song",%s}]' "$T" "$T"
     ;;
   trending)
-    # A fixed, ranked chart: "Chart Song 01" by "Chart Artist 01" is number 1.
+    # Stand-in for player.py's already-blended trending output. $VIDEO_ID
+    # (the last arg) is --countries' comma list, e.g. "US,GB,DE,RS".
+    #
+    # Every country shares the same 10 songs, "Chart Song 01".."10", in the
+    # SAME rank order, so real Borda scoring puts them first regardless of
+    # which countries are blended. Each country also has two exclusive songs
+    # ("<CC> Extra A/B") at ranks 11/12, present in only that one country's
+    # chart, so the blend has to reach across countries to surface them.
+    #
     # FAKE_FAIL_TRENDING=1 fails the way player.py does when every chart
     # source is down, so a test can check the server keeps its last good list.
     if [ "${FAKE_FAIL_TRENDING:-0}" = "1" ]; then
       echo "ERROR: trending: no chart source returned tracks" >&2
       exit 1
     fi
-    TRACKS=""
-    for i in 01 02 03 04 05 06 07 08 09 10 11 12; do
-      [ -n "$TRACKS" ] && TRACKS="$TRACKS,"
-      TRACKS="$TRACKS{\"videoId\":\"chartsong$i\",\"title\":\"Chart Song $i\",\"artist\":\"Chart Artist $i\",\"artworkUrl\":\"\",\"durationSec\":180}"
-    done
-    printf '{"title":"Daily Top Music Videos - Global","playlistId":"PLfakechart","source":"ytmusicapi","tracks":[%s]}' "$TRACKS"
+    node -e '
+      const countries = (process.argv[1] || "ZZ").split(",").map((s) => s.trim()).filter(Boolean);
+      const track = (id, title) => ({ videoId: id, title, artist: "Chart Artist", artworkUrl: "", durationSec: 180 });
+      const shared = Array.from({ length: 10 }, (_, i) =>
+        track(`chartsong${String(i + 1).padStart(2, "0")}`, `Chart Song ${String(i + 1).padStart(2, "0")}`));
+      // Rank 11 then rank 12 per country, in blend order: shared songs win on
+      // score (every country contributes points), country exclusives tie at
+      // score 2 (rank 11) and 1 (rank 12), broken by first-seen country order.
+      // videoId must look real (11 chars) or the app drops it as invalid.
+      const vid = (s) => s.toLowerCase().padEnd(11, "0");
+      const extrasA = countries.map((c) => track(vid(`${c}extraa`), `${c} Extra A`));
+      const extrasB = countries.map((c) => track(vid(`${c}extrab`), `${c} Extra B`));
+      const out = { title: countries.length > 1 ? "Trending blend" : null, countries, tracks: [...shared, ...extrasA, ...extrasB] };
+      process.stdout.write(JSON.stringify(out));
+    ' "$VIDEO_ID"
     ;;
   *)
     printf '{"error": "fake-player: unsupported command %s"}' "$CMD" >&2

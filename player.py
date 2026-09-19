@@ -2,6 +2,7 @@ import os
 import re
 import sys
 import json
+import time
 import argparse
 import contextlib
 import concurrent.futures
@@ -694,15 +695,91 @@ def chart_tracks(country):
     return {"title": title, "playlistId": playlist_id, "source": "yt-dlp", "tracks": tracks}
 
 
+# Pause between two live get_charts/get_playlist calls for different
+# countries: a rapid second call has answered HTTP 503 (see docs/trending.md).
+CHART_FETCH_PACING_SEC = 3
+
+
+def normalize_song_key(title, artist):
+    """A loose identity for cross-country dedupe: same song, different
+    videoId per country. Strips everything but letters and digits so casing,
+    punctuation and spacing differences do not create duplicate entries."""
+    def clean(s):
+        return re.sub(r'[^a-z0-9]+', '', (s or '').lower())
+    return f"{clean(title)}|{clean(artist)}"
+
+
+def fetch_country_charts(countries):
+    """Each country's daily chart, sequentially with pacing between live
+    calls. Returns (successes, failures): successes is [(country, tracks)],
+    failures is the list of countries whose chart could not be fetched."""
+    successes, failures = [], []
+    for i, country in enumerate(countries):
+        if i > 0:
+            time.sleep(CHART_FETCH_PACING_SEC)
+        try:
+            successes.append((country, chart_tracks(country)["tracks"]))
+        except Exception as e:
+            print(f"trending: {country} chart failed ({e})", file=sys.stderr)
+            failures.append(country)
+    return successes, failures
+
+
+def blend_charts(country_tracks, cap=100):
+    """Merge several countries' daily charts into one ranked list.
+
+    Borda-style score: a song's points are the sum, over every country chart
+    it appears in, of (N - rank + 1) where N is that chart's length. Ties
+    break on the best (lowest) single rank. Songs are grouped by videoId AND
+    by normalized title+artist, since the same song often has a different
+    videoId per country. Returns tracks in blended rank order, capped."""
+    groups = {}
+    videoid_to_group = {}
+    key_to_group = {}
+    next_id = 0
+    for _country, tracks in country_tracks:
+        n = len(tracks)
+        for idx, t in enumerate(tracks):
+            rank = idx + 1
+            points = n - rank + 1
+            vid = t.get("videoId")
+            key = normalize_song_key(t.get("title"), t.get("artist"))
+            gid = videoid_to_group.get(vid) if vid else None
+            if gid is None:
+                gid = key_to_group.get(key)
+            if gid is None:
+                gid = next_id
+                next_id += 1
+                groups[gid] = {"score": 0, "best_rank": rank, "track": t}
+            g = groups[gid]
+            g["score"] += points
+            if rank < g["best_rank"]:
+                g["best_rank"] = rank
+                g["track"] = t
+            if vid:
+                videoid_to_group[vid] = gid
+            key_to_group[key] = gid
+    ordered = sorted(groups.values(), key=lambda g: (-g["score"], g["best_rank"]))
+    return [g["track"] for g in ordered[:cap]]
+
+
 def cmd_trending(args):
-    """Today's chart as {title, playlistId, source, tracks}. Exits non-zero
-    when no source works; the server then serves its cached list."""
-    try:
-        chart = chart_tracks(args.country)
-    except Exception as e:
-        print(f"ERROR: {e}", file=sys.stderr)
+    """Today's chart, blended across one or more countries, as
+    {title, countries, tracks}. `countries` lists the codes that actually
+    made it into the blend (a country whose chart failed is skipped, not
+    fatal). Exits non-zero only when every country failed; the server then
+    serves its cached list."""
+    countries = [c.strip().upper() for c in (args.countries or "").split(",") if c.strip()] or [args.country]
+    successes, failures = fetch_country_charts(countries)
+    if not successes:
+        print("ERROR: trending: every country's chart failed", file=sys.stderr)
         sys.exit(1)
-    json.dump(chart, sys.stdout)
+    if failures:
+        print(f"trending: blended without {', '.join(failures)}", file=sys.stderr)
+    used = [c for c, _ in successes]
+    tracks = blend_charts(successes, cap=100)
+    title = "Trending blend" if len(used) > 1 else None
+    json.dump({"title": title, "countries": used, "tracks": tracks}, sys.stdout)
 
 def _ytdlp_playlist(playlist_id):
     """Fallback reader for a public playlist when ytmusicapi fails: the same
@@ -836,8 +913,9 @@ def main():
     # ugly 502 in the API logs.
     p_download.add_argument("video_id", nargs="?")
 
-    p_trending = sub.add_parser("trending", help="Daily chart playlist, in rank order. Prints JSON.")
-    p_trending.add_argument("--country", default="ZZ", help="2-letter country code, ZZ=global")
+    p_trending = sub.add_parser("trending", help="Daily chart playlist, blended across countries, in rank order. Prints JSON.")
+    p_trending.add_argument("--country", default="ZZ", help="2-letter country code, ZZ=global (ignored if --countries is given)")
+    p_trending.add_argument("--countries", help="Comma list of 2-letter country codes to blend, e.g. US,GB,DE,RS")
 
     p_info = sub.add_parser("info", help="Resolve a videoId to a direct stream URL. Prints JSON.")
     p_info.add_argument("video_id", nargs="?")
