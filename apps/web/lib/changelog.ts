@@ -21,6 +21,17 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    id: 'trending-fits-better',
+    version: '0.3.6',
+    date: '2026-09-19',
+    title: 'Trending fits better',
+    summary: 'The Trending shelf now mixes the US, UK, German and Serbian charts instead of the worldwide one.',
+    bullets: [
+      'The worldwide chart leaned heavily toward one country’s taste; the shelf now blends several countries’ charts instead.',
+      'A host can pick their own mix with TRENDING_COUNTRIES.',
+    ],
+  },
+  {
     id: 'spotify-imports-work-again',
     version: '0.3.5',
     date: '2026-09-19',

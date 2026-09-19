@@ -559,19 +559,31 @@ rows and files were removed and how much disk was freed.
 
 ### Trending chart country
 
-Home's "Trending right now" shelf is YouTube Music's daily chart, fetched a
-few times a day and cached in `my_music/trending.json`. It is the global
-chart by default. To show one country's chart instead, set a two-letter code
-in `apps/web/.env.local` and restart:
+Home's "Trending right now" shelf is a blend of several countries' YouTube
+Music daily charts, fetched a few times a day and cached in
+`my_music/trending.json`. By default it blends the US, UK, German and
+Serbian charts (a worldwide chart leans heavily toward whichever country has
+the most listeners, which does not suit every group of friends). To change
+the mix, set a comma list of two-letter codes in `apps/web/.env.local` and
+restart:
 
 ```bash
-TRENDING_COUNTRY=DE      # default ZZ (global)
+TRENDING_COUNTRIES=US,GB,DE,RS   # default; a comma list of chart country codes
 ```
 
-Only countries YouTube Music has charts for work (Germany, Austria, Hungary,
-Italy, Czechia and Serbia do; Croatia does not). Anything else falls back to
-the global chart. The setting is per server, so everyone on it sees the same
-chart.
+Unknown codes are dropped with a log warning; if none are left, the default
+blend is used. Only countries YouTube Music has charts for work (Germany,
+Austria, Hungary, Italy, Czechia and Serbia do; Croatia does not). The
+setting is per server, so everyone on it sees the same blended chart.
+
+To show a single country's chart instead of a blend, set `TRENDING_COUNTRY`
+(unchanged from before, and it wins over `TRENDING_COUNTRIES` when set):
+
+```bash
+TRENDING_COUNTRY=DE      # a single chart country code; overrides TRENDING_COUNTRIES
+```
+
+An unknown code falls back to the global chart (`ZZ`).
 
 ### Adding more invitees
 

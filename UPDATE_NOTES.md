@@ -1,3 +1,16 @@
+# 0.3.6: Trending fits better
+
+**Host: a normal rebuild and restart (`./update.sh`). No `npm install`, no
+required environment variable change.** Optional: set `TRENDING_COUNTRIES`
+in `apps/web/.env.local` to pick your own mix of chart countries (a comma
+list of two-letter codes, default `US,GB,DE,RS`); `TRENDING_COUNTRY`
+(single code) still works and overrides it, for hosts who already set it.
+
+- **The Trending shelf now blends charts**: instead of YouTube Music's
+  worldwide chart, which leans heavily toward whichever country has the
+  most listeners, Home's "Trending right now" shelf now mixes the US, UK,
+  German and Serbian daily charts.
+
 # 0.3.5: Spotify imports work again
 
 **Host: a normal rebuild and restart (`./update.sh`), and restart
