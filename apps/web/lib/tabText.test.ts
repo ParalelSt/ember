@@ -378,6 +378,12 @@ describe('refusals and options', () => {
     importTex(r.alphaTex);
   });
 
+  it('"00" is two open strings, "12" one fret, "35" two frets', () => {
+    const text = ['e|-00-12-35---|', 'B|-----------|', 'G|-----------|', 'D|-----------|', 'A|-----------|', 'E|-----------|'].join('\n');
+    const at = importTex(ok(parseTabText(text)).alphaTex);
+    expect(at.bars[0].map((b) => b.notes[0])).toEqual(['0@1', '0@1', '12@1', '3@1', '5@1']);
+  });
+
   it('labels missing: standard tuning for the string count, with a warning', () => {
     const text = ['|-3---|', '|-----|', '|-----|', '|-----|', '|-----|', '|-----|'].join('\n');
     const r = ok(parseTabText(text));

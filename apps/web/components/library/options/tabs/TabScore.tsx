@@ -20,6 +20,8 @@ export interface TabScoreProps {
   track: number;
   /** AlphaTab's display scale: smaller on phone, like the planned viewer. */
   scale?: number;
+  /** alphaTex to draw instead of the bundled sample (the paste previews). */
+  tex?: string;
   className?: string;
 }
 
@@ -39,11 +41,11 @@ const loadAlphaTab = () => (alphaTabModule ??= import('@coderline/alphatab'));
 export function TabScore(props: TabScoreProps) {
   // A fresh drawing per setting: AlphaTab is rebuilt anyway, and a new key
   // starts the loading state over without resetting it inside an effect.
-  const { staff, scroll, track, scale = 0.9 } = props;
-  return <ScoreCanvas key={`${staff}:${scroll}:${track}:${scale}`} {...props} />;
+  const { staff, scroll, track, scale = 0.9, tex = SAMPLE_TEX } = props;
+  return <ScoreCanvas key={`${staff}:${scroll}:${track}:${scale}:${tex}`} {...props} />;
 }
 
-function ScoreCanvas({ staff, scroll, track, scale = 0.9, className }: TabScoreProps) {
+function ScoreCanvas({ staff, scroll, track, scale = 0.9, tex = SAMPLE_TEX, className }: TabScoreProps) {
   const scrollerRef = useRef<HTMLDivElement>(null);
   const hostRef = useRef<HTMLDivElement>(null);
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading');
@@ -103,7 +105,7 @@ function ScoreCanvas({ staff, scroll, track, scale = 0.9, className }: TabScoreP
             scroller.scrollLeft = Math.max(0, next.beat.x - scroller.clientWidth / 3);
           }
         });
-        api.tex(SAMPLE_TEX, [track]);
+        api.tex(tex, [track]);
       } catch {
         if (!cancelled) setStatus('error');
       }
@@ -117,7 +119,7 @@ function ScoreCanvas({ staff, scroll, track, scale = 0.9, className }: TabScoreP
         // A half-initialised AlphaTab can throw on destroy; it is going anyway.
       }
     };
-  }, [staff, scroll, track, scale]);
+  }, [staff, scroll, track, scale, tex]);
 
   return (
     <div

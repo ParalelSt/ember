@@ -333,7 +333,8 @@ function readSegment(seg: string, stringNo: number, startCol: number, marks: { i
     const c = seg[i];
     if (/[0-9]/.test(c)) {
       let digits = c;
-      if (/[0-9]/.test(seg[i + 1] ?? '') && Number(c + seg[i + 1]) <= 24) digits = c + seg[i + 1];
+      // Two digits make one fret (12), but not "00" or "35": frets stop at 24.
+      if (c !== '0' && /[0-9]/.test(seg[i + 1] ?? '') && Number(c + seg[i + 1]) <= 24) digits = c + seg[i + 1];
       const note: Note = {
         string: stringNo,
         fret: Number(digits),

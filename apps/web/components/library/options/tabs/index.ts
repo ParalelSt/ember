@@ -39,3 +39,23 @@ export const TABS_SCROLL: (PickerOption & { id: TabsScroll })[] = [
   { id: 'vertical', name: 'Vertical', description: 'Page layout: rows of bars that wrap, the page scrolls down.' },
   { id: 'horizontal', name: 'Horizontal', description: 'One endless row that scrolls sideways, like Songsterr.' },
 ];
+
+export type TabsPaste = 'dialog' | 'inline';
+
+/** How pasting a text tab looks (docs/tab-sources.md section 6), in picker
+ *  order. The owner picks one by name before the live paste UI is built. */
+export const TABS_PASTE: (PickerOption & { id: TabsPaste; badge?: string })[] = [
+  {
+    id: 'dialog',
+    name: 'Paste dialog',
+    badge: 'Recommended',
+    description:
+      'A. "Paste a tab" on the empty tab page opens a dialog: the text on the left, the real score on the right as you paste, the report ("6 strings, Drop D, 9 bars") and the tempo row underneath, Save in the footer. Tempo fits the song length by default; Tap along is the other way. Phone: full screen, stacked, text first.',
+  },
+  {
+    id: 'inline',
+    name: 'Inline editor',
+    description:
+      'B. The empty tab page itself becomes the editor: tempo, report and Save in the sticky toolbar, the text on top and the score below it, where the tab will sit once saved. Phone: the same, stacked.',
+  },
+];

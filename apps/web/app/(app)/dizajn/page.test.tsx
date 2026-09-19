@@ -6,7 +6,8 @@ import { SHELF_OPTIONS } from '@/components/library/options';
 import { SPACING_SCALE } from '@/lib/spacing';
 import { MOCK_LIKED_TRACKS } from './mock';
 import { CHANGELOG_PLACEMENTS, CHANGELOG_STATES, BADGE_STYLES } from '@/components/library/options/changelog';
-import { TABS_LAYOUTS, TABS_SCROLL, TABS_STAFF } from '@/components/library/options/tabs';
+import { TABS_LAYOUTS, TABS_PASTE, TABS_SCROLL, TABS_STAFF } from '@/components/library/options/tabs';
+import { PASTE_SAMPLE_TEXT } from '@/components/library/options/tabs/pasteSample';
 import { SAMPLE_TEX } from '@/components/library/options/tabs/sample';
 
 // AlphaTab needs a real browser (canvas, fonts, layout), so the Guitar tabs
@@ -15,6 +16,7 @@ import { SAMPLE_TEX } from '@/components/library/options/tabs/sample';
 // lookup the cursor needs, and fires postRenderFinished like the real one.
 const alphaTab = vi.hoisted(() => ({ apis: [] as FakeApi[] }));
 interface FakeApi {
+  host: HTMLElement;
   settings: Record<string, Record<string, unknown>>;
   texArgs: { tex: string; tracks: number[] } | null;
   destroyed: boolean;
@@ -374,7 +376,8 @@ describe('DizajnPage', () => {
       fireEvent.click(within(screen.getByRole('radiogroup', { name: group })).getByRole('radio', { name }));
     const section = () => screen.getByTestId('tabs-section');
     const scores = () => within(section()).getAllByTestId('tab-score');
-    const live = () => alphaTab.apis.filter((a) => !a.destroyed);
+    // The paste candidates below draw their own scores: count only these.
+    const live = () => alphaTab.apis.filter((a) => !a.destroyed && section().contains(a.host));
 
     it('is the first section on the page', () => {
       render(<DizajnPage />);
@@ -451,7 +454,8 @@ describe('DizajnPage', () => {
       await waitFor(() => expect(live().map((a) => a.settings.display.layoutMode)).toEqual([1, 1]));
       expect(scores().map((s) => s.dataset.scroll)).toEqual(['horizontal', 'horizontal']);
       // Every earlier drawing was torn down, not left behind.
-      expect(alphaTab.apis.filter((a) => a.destroyed).length).toBe(alphaTab.apis.length - 2);
+      const mine = alphaTab.apis.filter((a) => a.destroyed || section().contains(a.host));
+      expect(mine.filter((a) => a.destroyed).length).toBe(mine.length - 2);
     });
 
     it('the toolbar moves the pickers and switches tracks; practice controls only toggle their look', async () => {
@@ -509,6 +513,101 @@ describe('DizajnPage', () => {
       window.localStorage.setItem('dizajn-tabs-layout', 'floating-window');
       render(<DizajnPage />);
       expect(screen.getByRole('radio', { name: /Sheet page/ })).toHaveAttribute('aria-checked', 'true');
+    });
+  });
+
+  describe('Paste a text tab (Guitar tabs)', () => {
+    const pick = (name: string | RegExp) =>
+      fireEvent.click(within(screen.getByRole('radiogroup', { name: 'Paste' })).getByRole('radio', { name }));
+    const paste = () => screen.getByTestId('paste-section');
+    const pasteApis = () => alphaTab.apis.filter((a) => !a.destroyed && paste().contains(a.host));
+
+    it('offers Paste dialog (Recommended, checked) and Inline editor', () => {
+      render(<DizajnPage />);
+      const radios = within(screen.getByRole('radiogroup', { name: 'Paste' })).getAllByRole('radio');
+      expect(TABS_PASTE.map((o) => o.name)).toEqual(['Paste dialog', 'Inline editor']);
+      expect(radios.map((r) => r.textContent)).toEqual(['Paste dialogRecommended', 'Inline editor']);
+      expect(radios.map((r) => r.getAttribute('aria-checked'))).toEqual(['true', 'false']);
+      expect(screen.getByTestId('paste-description').textContent).toBe(TABS_PASTE[0].description);
+    });
+
+    it('A: the dialog over the empty tab page, desktop and phone, with the real parser and a real score', async () => {
+      render(<DizajnPage />);
+      expect(within(paste()).getAllByTestId('shell-preview').map((s) => s.dataset.phone)).toEqual(['false', 'true']);
+      expect(within(paste()).getAllByTestId('paste-layout-dialog')).toHaveLength(2);
+      expect(within(paste()).getAllByRole('dialog', { name: 'Paste a text tab' })).toHaveLength(2);
+      // Behind it: the empty state with the search chips and Paste a tab.
+      expect(within(paste()).getAllByRole('button', { name: 'Paste a tab' })).toHaveLength(2);
+      expect(within(paste()).getAllByRole('link', { name: 'Ultimate Guitar' })[0]).toHaveAttribute(
+        'href',
+        'https://www.ultimate-guitar.com/search.php?search_type=title&value=Coastline+Copper+Sky',
+      );
+
+      const boxes = within(paste()).getAllByRole('textbox', { name: 'Text tab' });
+      expect((boxes[0] as HTMLTextAreaElement).value).toBe(PASTE_SAMPLE_TEXT);
+      for (const r of within(paste()).getAllByTestId('paste-report')) {
+        expect(r).toHaveTextContent('6 strings, Drop D, 9 bars, 114 notes, 4 lines skipped');
+      }
+      // Fit to song length is the default: 9 bars in 22.5 s is 96 bpm.
+      for (const t of within(paste()).getAllByTestId('paste-tempo')) {
+        expect(within(t).getByRole('button', { name: 'Fit to song length' })).toHaveAttribute('aria-pressed', 'true');
+        expect(within(t).getByRole('spinbutton', { name: 'Beats per minute' })).toHaveValue(96);
+      }
+      await waitFor(() => expect(pasteApis()).toHaveLength(2));
+      for (const api of pasteApis()) {
+        expect(api.texArgs?.tex).toContain('\\tuning (E4 B3 G3 D3 A2 D2)');
+        expect(api.texArgs?.tex).toContain('\\tempo 96');
+        expect(api.texArgs?.tex).toContain('\\section "Chorus"');
+      }
+      expect(within(paste()).getAllByRole('button', { name: 'Save' }).every((b) => !b.hasAttribute('disabled'))).toBe(true);
+    });
+
+    it('editing the text re-parses: junk is refused and Save turns off', async () => {
+      render(<DizajnPage />);
+      const box = within(paste()).getAllByRole('textbox', { name: 'Text tab' })[0];
+      fireEvent.change(box, { target: { value: 'just some lyrics\nC G Am F' } });
+      await waitFor(() => expect(within(paste()).getAllByTestId('paste-report')[0]).toHaveTextContent(/No tab lines found/));
+      expect(within(paste()).getAllByRole('button', { name: 'Save' })[0]).toBeDisabled();
+      expect(within(paste()).getAllByTestId('paste-preview')[0]).toHaveTextContent(/Nothing to draw yet/);
+    });
+
+    it('a typed tempo, or tapping along, redraws the score at that tempo', async () => {
+      render(<DizajnPage />);
+      const tempo = () => within(paste()).getAllByTestId('paste-tempo')[0];
+      fireEvent.change(within(tempo()).getByRole('spinbutton', { name: 'Beats per minute' }), { target: { value: '80' } });
+      await waitFor(() => expect(pasteApis().every((a) => a.texArgs?.tex.includes('\\tempo 80'))).toBe(true));
+
+      let now = 0;
+      const clock = vi.spyOn(performance, 'now').mockImplementation(() => (now += 500));
+      for (let i = 0; i < 4; i++) fireEvent.click(within(tempo()).getByRole('button', { name: /Tap along/ }));
+      clock.mockRestore();
+      await waitFor(() => expect(pasteApis().every((a) => a.texArgs?.tex.includes('\\tempo 120'))).toBe(true));
+      expect(within(tempo()).getByRole('button', { name: /Tap along/ })).toHaveAttribute('aria-pressed', 'true');
+    });
+
+    it('B: the inline editor on the tab page, desktop and phone, with Save in the sticky toolbar', async () => {
+      render(<DizajnPage />);
+      pick('Inline editor');
+      expect(paste().dataset.option).toBe('inline');
+      expect(within(paste()).queryByTestId('paste-layout-dialog')).toBeNull();
+      expect(within(paste()).getAllByTestId('paste-layout-inline')).toHaveLength(2);
+      expect(within(paste()).getAllByTestId('tab-sheet-header')).toHaveLength(2);
+      expect(screen.getByTestId('paste-description').textContent).toBe(TABS_PASTE[1].description);
+      await waitFor(() => expect(pasteApis()).toHaveLength(2));
+    });
+
+    it('opens full screen, closes with Escape, and remembers the choice', async () => {
+      const { unmount } = render(<DizajnPage />);
+      pick('Inline editor');
+      fireEvent.click(within(paste()).getByRole('button', { name: 'View full screen' }));
+      const overlay = screen.getByRole('dialog', { name: 'Full screen paste preview' });
+      expect(within(overlay).getByTestId('paste-layout-inline')).toBeInTheDocument();
+      fireEvent.keyDown(window, { key: 'Escape' });
+      expect(screen.queryByTestId('paste-fullscreen')).not.toBeInTheDocument();
+      await waitFor(() => expect(window.localStorage.getItem('dizajn-tabs-paste')).toBe('inline'));
+      unmount();
+      render(<DizajnPage />);
+      expect(screen.getByRole('radio', { name: 'Inline editor' })).toHaveAttribute('aria-checked', 'true');
     });
   });
 });

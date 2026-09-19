@@ -22,13 +22,16 @@ import {
 import { ChangelogSection } from '@/components/library/options/changelog/ChangelogSection';
 import {
   TABS_LAYOUTS,
+  TABS_PASTE,
   TABS_SCROLL,
   TABS_STAFF,
   type TabsLayout,
+  type TabsPaste,
   type TabsScroll,
   type TabsStaff,
 } from '@/components/library/options/tabs';
 import { TabsSection } from '@/components/library/options/tabs/TabsSection';
+import { PasteSection } from '@/components/library/options/tabs/PasteSection';
 import { MOCK_LIKED_TRACKS, MOCK_PLAYLISTS, MOCK_RECENT_TRACKS, MOCK_RESULT_TRACKS } from './mock';
 
 const STORAGE_KEY = 'dizajn-shelf-option';
@@ -38,6 +41,7 @@ const CHANGELOG_BADGE_KEY = 'dizajn-changelog-badge';
 const TABS_LAYOUT_KEY = 'dizajn-tabs-layout';
 const TABS_STAFF_KEY = 'dizajn-tabs-staff';
 const TABS_SCROLL_KEY = 'dizajn-tabs-scroll';
+const TABS_PASTE_KEY = 'dizajn-tabs-paste';
 
 /** Lazy-initializer read of one picker's saved id, falling back to the
  *  first option when nothing (or something stale) is stored. */
@@ -196,6 +200,7 @@ export default function DizajnPage() {
   const [tabsLayout, setTabsLayout] = useState<TabsLayout>(() => savedChoice(TABS_LAYOUT_KEY, TABS_LAYOUTS));
   const [tabsStaff, setTabsStaff] = useState<TabsStaff>(() => savedChoice(TABS_STAFF_KEY, TABS_STAFF));
   const [tabsScroll, setTabsScroll] = useState<TabsScroll>(() => savedChoice(TABS_SCROLL_KEY, TABS_SCROLL));
+  const [tabsPaste, setTabsPaste] = useState<TabsPaste>(() => savedChoice(TABS_PASTE_KEY, TABS_PASTE));
 
   useEffect(() => {
     window.localStorage.setItem(TABS_LAYOUT_KEY, tabsLayout);
@@ -206,6 +211,9 @@ export default function DizajnPage() {
   useEffect(() => {
     window.localStorage.setItem(TABS_SCROLL_KEY, tabsScroll);
   }, [tabsScroll]);
+  useEffect(() => {
+    window.localStorage.setItem(TABS_PASTE_KEY, tabsPaste);
+  }, [tabsPaste]);
 
   return (
     <div>
@@ -238,6 +246,18 @@ export default function DizajnPage() {
           onStaffChange={setTabsStaff}
           onScrollChange={setTabsScroll}
         />
+
+        <h3 className="mt-section font-semibold">Paste a text tab</h3>
+        <p className="text-meta mt-inset mb-block">
+          Two ways to paste a tab copied from Ultimate Guitar or anywhere else (docs/tab-sources.md). The
+          sample is an original riff typed the way text tabs look; it runs through the real parser and the
+          preview is real AlphaTab, so edit the text and watch the score and the report follow. Tempo fits
+          the song length by default, Tap along is the alternative. Save and the search chips do nothing here.
+        </p>
+        <div className="mb-stack">
+          <Picker label="Paste" options={TABS_PASTE} value={tabsPaste} onChange={setTabsPaste} />
+        </div>
+        <PasteSection option={tabsPaste} />
       </section>
 
       <section className="mb-12">
