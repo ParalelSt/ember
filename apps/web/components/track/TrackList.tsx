@@ -69,7 +69,12 @@ export function TrackList({
   if (!tracks?.length) return <EmptyState className="text-sm">No tracks</EmptyState>;
 
   return (
-    <div className="flex flex-col">
+    // A container query root, not just a viewport one: this list can sit in
+    // full-width collection pages OR in the search overlay's ~544px popup on
+    // a wide window, and the row's own layout (album/duration columns) needs
+    // to key off the space it actually has, not window width. See TrackRow's
+    // @3xl grid switch.
+    <div className="@container flex flex-col">
       {tracks.map((t, i) => {
         const unavailable = !!isUnavailable?.(t);
         return (

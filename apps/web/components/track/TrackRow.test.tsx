@@ -154,6 +154,30 @@ describe('TrackRow (list density)', () => {
     const { container } = render(<TrackRow track={{ ...track, artworkUrl: null }} artworkSrc={null} />);
     expect(container.querySelector('img')).toBeNull();
   });
+
+  // Regression: the desktop 5-column shape (album + duration) used to key
+  // off the viewport (md:), so a narrow container on a wide window (the
+  // search overlay, capped at ~576px, on any laptop-or-wider display) still
+  // got the desktop grid and squeezed title/album into equal, too-narrow
+  // halves. It must key off the row's own container instead, via @3xl (the
+  // same 768px the old md: breakpoint used, on the container-query scale),
+  // so a narrow container always gets the 3-column "phone" shape regardless
+  // of window size.
+  it('switches columns by container width (@3xl), not viewport width', () => {
+    render(<TrackRow track={track} />);
+    const row = screen.getByTestId('track-row');
+    expect(row.className).toContain('grid-cols-[40px_minmax(0,1fr)_auto]');
+    expect(row.className).toContain('@3xl:grid-cols-[40px_minmax(0,1fr)_minmax(0,1fr)_60px_auto]');
+    expect(row.className).not.toContain(' md:grid-cols');
+  });
+
+  it('hides the album and duration cells below the @3xl container threshold, shows them above it', () => {
+    render(<TrackRow track={track} />);
+    const albumCell = screen.getByTestId('track-row-album-cell');
+    expect(albumCell.className).toContain('hidden');
+    expect(albumCell.className).toContain('@3xl:block');
+    expect(albumCell.className).not.toContain(' md:block');
+  });
 });
 
 describe('TrackRow (compact density)', () => {

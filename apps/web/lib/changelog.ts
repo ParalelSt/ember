@@ -21,6 +21,17 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    id: 'search-fits-smaller-screens',
+    version: '0.3.3',
+    date: '2026-09-19',
+    title: 'Search fits smaller screens',
+    summary: 'Song titles in the search pop-up no longer get cut short on smaller or zoomed screens.',
+    bullets: [
+      'The search pop-up now sizes its rows to its own width, not the window.',
+      'Song titles show in full on smaller screens and at higher Windows zoom levels.',
+    ],
+  },
+  {
     id: 'profile-pictures-load-everywhere',
     version: '0.3.2',
     date: '2026-09-19',
