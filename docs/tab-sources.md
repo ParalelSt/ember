@@ -4,7 +4,7 @@ Plan only. Unreleased 0.3.3 work on `tabs-rebuild`. Paths are relative to `apps/
 
 ## 1. Why
 
-Research verdict (`docs/tabs-rebuild.md:34-36`): no free legal API gives notes for popular songs. Songsterr's public API is metadata and a link-out (`:23`); Ultimate Guitar has no API and forbids automation (`:24`), so Ember never fetches UG. The user copies and pastes. Today the chain is file, generated, Songsterr link (`lib/tabSources.ts:41-47`), and generating is the only easy path. This plan adds two cheap real sources and pushes generated to the end.
+Research verdict (`docs/tabs-rebuild.md:34-36`): no free legal API gives notes for popular songs. Songsterr's public API is metadata and a link-out (`:23`); Ultimate Guitar has no API and forbids automation (`:24`), so Ember never fetches UG. The user copies and pastes. (Superseded by the owner's decision in `docs/tabs-v3.md`: Ember now fetches UG's free text tabs itself, once per song.) Today the chain is file, generated, Songsterr link (`lib/tabSources.ts:41-47`), and generating is the only easy path. This plan adds two cheap real sources and pushes generated to the end.
 
 ## 2. The text tab parser (`lib/tabText.ts`, pure, shared by client preview and server)
 

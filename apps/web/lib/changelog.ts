@@ -33,6 +33,8 @@ export const CHANGELOG: ChangelogEntry[] = [
       'Horizontal mode scrolls the tab sideways in one long row.',
       'No tab yet? One click searches Ultimate Guitar, Guitar Pro files or Songsterr for the song.',
       'Text tabs pasted on your server show as a real tab that follows the song, marked with who pasted them.',
+      'Tabs are found online automatically: open a song and Ember looks for a guitar and a bass tab on Ultimate Guitar, once, and keeps them for everyone.',
+      'No ffmpeg install needed on the server any more: Ember brings its own.',
       'Can be switched off in Settings > Plugins.',
       'Plugin settings now follow your account, so a switch you flip on your phone is flipped on your computer too.',
     ],
