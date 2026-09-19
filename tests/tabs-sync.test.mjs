@@ -14,6 +14,12 @@
  *      seeks there on release (mouse at 1440, a finger at 390 through real
  *      touch input), and a vertical swipe on the score away from the line
  *      still scrolls the page without seeking.
+ *   4. The line jumps with every seek and stays in view: a click on the
+ *      next bar, a few Right presses and the Sync nudge put the line at
+ *      the song's time within 0.2s (it used to slide there over a beat or
+ *      two); paused, a seek from the player bar and a refresh mid-song
+ *      bring the line into view; coming back to the page mid-song places
+ *      it where the song is.
  *
  *  This is a verification test: it does not touch product code. On a
  *  failing check it reports the evidence (numbers, screenshots) rather
@@ -229,7 +235,7 @@ function rowAt(labels, y) {
  *  10), by interpolating between the two bar-number labels either side
  *  of it on its row. Falls back to the bar's own number (no fraction) at
  *  the edges. */
-function barPositionFromCursor(labels, cursor) {
+function barPositionFromCursor(labels, cursor, rowRight = null) {
   // The cursor rect spans the full staff height; its vertical centre sits
   // more reliably inside its own row than its top edge does near a row
   // boundary.
@@ -251,6 +257,8 @@ function barPositionFromCursor(labels, cursor) {
   if (!width && row.length > 1) {
     width = (row[row.length - 1].x - row[0].x) / (row.length - 1);
   }
+  // One bar to a row (a phone): it runs to the score's right edge.
+  if (!width && row.length === 1 && rowRight !== null) width = rowRight - lo.x;
   if (width && width > 0) {
     const frac = Math.max(0, Math.min(1, (cursor.x - lo.x) / width));
     return lo.n + frac;
@@ -671,6 +679,151 @@ console.log('\n=== 3. Moving the line controls the song ===\n');
   }
 }
 
+// ── Requirement 4: the line jumps with every seek, and stays in view ──────
+// AlphaTab animates its line towards whatever position it is fed and only
+// snaps it on a seek, so a small jump forward (a click on the next bar, a
+// few arrow presses, the sync nudge) used to slide the line over a beat or
+// two while the song was already there; and nothing scrolled to the line
+// while paused. Each check reads the line within a fifth of a second of
+// the action, where a slide is still visibly behind.
+console.log('\n=== 4. The line jumps with every seek, and stays in view ===\n');
+{
+  const pauseBtn = () => page.locator('footer').getByRole('button', { name: 'Pause', exact: true });
+  const playBtn = () => page.locator('footer').getByRole('button', { name: 'Play', exact: true });
+  const trackBox = async () => {
+    const track = page.locator('footer [data-slot="slider-track"]');
+    for (let i = 0; i < (await track.count()); i++) {
+      const box = await track.nth(i).boundingBox();
+      if (box && box.width > 20) return box;
+    }
+    return null;
+  };
+  const seekPlayerBar = async (sec) => {
+    const box = await trackBox();
+    await page.mouse.click(box.x + box.width * Math.max(0, Math.min(1, sec / duration)), box.y + box.height / 2);
+  };
+  /** Song time the line shows vs the real player time, `offset` applied. */
+  const lineVsSong = async (offset) => {
+    const [t, c, labels] = await Promise.all([realTime(page), cursorRect(page), barLabels(page)]);
+    const barPos = c ? barPositionFromCursor(labels, c) : null;
+    if (t === null || barPos === null) return { t, barPos, delta: null };
+    return { t, barPos, delta: Math.abs(barPos - expectedBarPosition(t, offset)) * BAR_SEC };
+  };
+  const inView = async () => {
+    const [c, band] = await Promise.all([cursorRect(page), viewBand(page)]);
+    return { ok: !!c && c.top >= band.top - 2 && c.bottom <= band.bottom + 2, c, band };
+  };
+  const scrollTop = () => page.evaluate(() => document.querySelector('[data-app-scroller]')?.scrollTop ?? 0);
+
+  // (a) Playing, click the next bar on the line's own row.
+  await page.evaluate(() => document.querySelector('[data-app-scroller]')?.scrollTo(0, 0));
+  await seekPlayerBar(2.6 + 0.8); // bar 2, second beat
+  if (!(await pauseBtn().count())) await playBtn().click();
+  await page.waitForTimeout(600);
+  {
+    const t = await realTime(page);
+    const n = Math.floor((t + offsetMs / 1000) / BAR_SEC) + 1;
+    const labels = await barLabels(page);
+    const cur = labels.find((l) => l.n === n);
+    const next = labels.find((l) => l.n === n + 1 && cur && Math.abs(l.y - cur.y) < 40);
+    if (!next) {
+      check('playing, click the next bar: the line is there at once', false, `bar ${n + 1} is not on bar ${n}'s row`);
+    } else {
+      await page.mouse.click(next.x + 40, next.y + 45);
+      await page.waitForTimeout(200);
+      const r = await lineVsSong(offsetMs);
+      check(
+        'playing, click the next bar: the line is there within 0.2s',
+        r.delta !== null && r.delta <= TOLERANCE_SEC,
+        `clicked bar ${n + 1} from bar ${n}; 200ms later song ${r.t?.toFixed(2)}s, line at bar ${r.barPos?.toFixed(2)} (expected ${expectedBarPosition(r.t ?? 0, offsetMs).toFixed(2)}), off by ${r.delta?.toFixed(2)}s`,
+      );
+    }
+  }
+
+  // (b) Playing, three quick Right presses: three beats on.
+  await page.waitForTimeout(800);
+  await page.locator('[data-testid="tab-score"]').focus();
+  for (let i = 0; i < 3; i++) await page.keyboard.press('ArrowRight');
+  await page.waitForTimeout(200);
+  {
+    const r = await lineVsSong(offsetMs);
+    check(
+      'playing, Right three times: the line is there within 0.2s',
+      r.delta !== null && r.delta <= TOLERANCE_SEC,
+      `song ${r.t?.toFixed(2)}s, line at bar ${r.barPos?.toFixed(2)}, off by ${r.delta?.toFixed(2)}s`,
+    );
+  }
+
+  // (c) Playing, nudge the tab 2s ahead: the line moves with the nudge.
+  await page.getByRole('button', { name: 'Sync' }).click();
+  await page.getByLabel('Tab timing offset in seconds').fill(String(offsetMs / 1000 + 2));
+  await page.waitForTimeout(200);
+  {
+    const r = await lineVsSong(offsetMs + 2000);
+    check(
+      'playing, the Sync nudge moves the line within 0.2s',
+      r.delta !== null && r.delta <= TOLERANCE_SEC,
+      `nudged +2s: song ${r.t?.toFixed(2)}s, line at bar ${r.barPos?.toFixed(2)} (expected ${expectedBarPosition(r.t ?? 0, offsetMs + 2000).toFixed(2)}), off by ${r.delta?.toFixed(2)}s`,
+    );
+  }
+  await page.getByRole('button', { name: 'Reset' }).click();
+  await page.getByRole('button', { name: 'Sync' }).click();
+  await page.waitForTimeout(400);
+
+  // (d) Paused, the player bar far down the song: the page follows the line.
+  await pauseBtn().click().catch(() => {});
+  await page.evaluate(() => document.querySelector('[data-app-scroller]')?.scrollTo(0, 0));
+  await page.waitForTimeout(400);
+  const topBefore = await scrollTop();
+  await seekPlayerBar(72);
+  await page.waitForTimeout(1200);
+  {
+    const v = await inView();
+    const r = await lineVsSong(offsetMs);
+    check(
+      'paused, a seek from the player bar to a bar off screen brings the line into view',
+      v.ok && r.delta !== null && r.delta <= TOLERANCE_SEC,
+      `song ${r.t?.toFixed(2)}s, line ${v.c ? `${Math.round(v.c.top)}..${Math.round(v.c.bottom)}` : 'missing'} vs view ${Math.round(v.band.top)}..${Math.round(v.band.bottom)}, page scroll ${topBefore} -> ${await scrollTop()}`,
+    );
+  }
+
+  // (e) Paused mid-song, refresh the page: the line is shown where the song is.
+  await page.reload({ waitUntil: 'networkidle' });
+  await scoreReady(page).catch(() => {});
+  await page.waitForTimeout(1500);
+  {
+    const v = await inView();
+    const r = await lineVsSong(offsetMs);
+    check(
+      'paused, after a refresh mid-song the line is in view at the song’s time',
+      v.ok && r.delta !== null && r.delta <= TOLERANCE_SEC,
+      `song ${r.t?.toFixed(2)}s, line at bar ${r.barPos?.toFixed(2)}, line ${v.c ? `${Math.round(v.c.top)}..${Math.round(v.c.bottom)}` : 'missing'} vs view ${Math.round(v.band.top)}..${Math.round(v.band.bottom)}`,
+    );
+  }
+
+  // (f) Playing, leave the tab page and come back mid-song: the line is
+  // placed where the song is, rather than sliding in from where it was.
+  await seekPlayerBar(30);
+  if (!(await pauseBtn().count())) await playBtn().click();
+  await page.waitForTimeout(800);
+  // In-app navigation, so the song keeps playing.
+  await page.locator('a[href="/library/uploads"]').first().click();
+  await page.waitForURL((u) => u.pathname === '/library/uploads', { timeout: 10_000 }).catch(() => {});
+  await page.waitForTimeout(3000);
+  await page.locator('footer').getByRole('button', { name: 'Guitar tabs' }).first().click();
+  await scoreReady(page).catch(() => {});
+  await page.waitForTimeout(400);
+  {
+    const r = await lineVsSong(offsetMs);
+    const v = await inView();
+    check(
+      'back on the tab page mid-song: the line is in view at the song’s time',
+      v.ok && r.delta !== null && r.delta <= TOLERANCE_SEC,
+      `400ms after the score drew: song ${r.t?.toFixed(2)}s, line at bar ${r.barPos?.toFixed(2)}, off by ${r.delta?.toFixed(2)}s`,
+    );
+  }
+}
+
 // ── Requirement 2, briefly, at phone width ───────────────────────────────
 console.log('\n=== 2 (repeat), phone viewport 390x844 ===\n');
 {
@@ -698,8 +851,13 @@ console.log('\n=== 2 (repeat), phone viewport 390x844 ===\n');
   };
 
   const sampleAtPhone = async (label) => {
-    const [t, c, labels] = await Promise.all([realTime(phonePage), cursorRect(phonePage), barLabels(phonePage)]);
-    const barPos = c ? barPositionFromCursor(labels, c) : null;
+    const [t, c, labels, right] = await Promise.all([
+      realTime(phonePage),
+      cursorRect(phonePage),
+      barLabels(phonePage),
+      phonePage.evaluate(() => document.querySelector('[data-testid="tab-score"]')?.getBoundingClientRect().right ?? null),
+    ]);
+    const barPos = c ? barPositionFromCursor(labels, c, right) : null;
     const expected = t !== null ? expectedBarPosition(t, offsetMsPhone) : null;
     const pass = t !== null && barPos !== null && Math.abs(barPos - expected) * BAR_SEC <= TOLERANCE_SEC;
     check(
