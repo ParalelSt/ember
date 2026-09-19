@@ -292,6 +292,10 @@ jobs:
 
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
+        # The action's default list includes the long-removed 'tools'
+        # package, which newer cmdline-tools reject; name what we need.
+        with:
+          packages: 'platform-tools platforms;android-35'
 
       - name: Setup Node
         uses: actions/setup-node@v4
