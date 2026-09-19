@@ -6,7 +6,7 @@ import { LiveTabScore, type LiveTabScoreProps } from './LiveTabScore';
 // tab page uses: the settings it is built with, its events (fired by the
 // test), the external media output the playhead is fed to, the tick lookup
 // a click is resolved through, and the bounds follow-scroll reads.
-const at = vi.hoisted(() => ({ apis: [] as FakeApi[] }));
+const at = vi.hoisted(() => ({ apis: [] as FakeApi[], ready: true }));
 
 type Handler = (arg?: unknown) => void;
 class Emitter {
@@ -45,6 +45,10 @@ interface FakeApi {
   renderer: { boundsLookup: { getBeatAtPos: ReturnType<typeof vi.fn> } & Record<string, unknown> };
   tickPosition: number;
   loaded: { tracks: number[] } | null;
+  /** Every `timePosition` AlphaTab was told to seek to (tab ms). */
+  seeks: number[];
+  midiLoaded: Emitter;
+  isReadyForPlayback: boolean;
 }
 
 vi.mock('@coderline/alphatab', () => {
@@ -95,6 +99,16 @@ vi.mock('@coderline/alphatab', () => {
     tracks: object[] = [];
     loaded: FakeApi['loaded'] = null;
     tickPosition = 0;
+    seeks: number[] = [];
+    midiLoaded = new Emitter();
+    isReadyForPlayback = at.ready;
+    // A seek, as AlphaTab's own transport takes one: its cursor snaps there.
+    set timePosition(ms: number) {
+      this.seeks.push(ms);
+    }
+    get timePosition() {
+      return this.seeks.at(-1) ?? 0;
+    }
     tickCache = {
       masterBars: [{ tempoChanges: [{ tick: 0, tempo: 96 }] }],
       getMasterBarStart: (mb: { start?: number }) => (mb === bar2 ? 3840 : (mb?.start ?? 0)),
@@ -172,6 +186,7 @@ afterAll(() => {
 
 beforeEach(() => {
   at.apis.length = 0;
+  at.ready = true;
 });
 
 function props(over: Partial<LiveTabScoreProps> = {}): LiveTabScoreProps {
@@ -251,7 +266,49 @@ describe('LiveTabScore settings', () => {
 describe('LiveTabScore sync', () => {
   it('feeds Ember’s playhead to the cursor, shifted by the offset', async () => {
     const { api } = await mount({ position: 10, offsetMs: 1500 });
+    // The first position places the line (a seek); after that it is fed.
+    await waitFor(() => expect(api.seeks).toEqual([11_500]));
     await waitFor(() => expect(api.player.output.updatePosition).toHaveBeenCalledWith(11_500));
+  });
+
+  it('steady playback is fed as playback, not as seeks', async () => {
+    const { api } = await mount({ position: 10, playing: true });
+    await waitFor(() => expect(api.player.output.updatePosition.mock.calls.length).toBeGreaterThan(3));
+    expect(api.seeks).toHaveLength(1);
+  });
+
+  it('a jump a beat ahead reaches AlphaTab as a seek, so the line jumps instead of sliding', async () => {
+    const { view, api, p } = await mount({ position: 30, playing: true });
+    await waitFor(() => expect(api.seeks).toHaveLength(1));
+    view.rerender(<LiveTabScore {...p} position={30.9} />);
+    await waitFor(() => expect(api.seeks).toHaveLength(2));
+    expect(api.seeks[1]).toBeGreaterThanOrEqual(30_900);
+    expect(api.seeks[1]).toBeLessThan(31_000);
+  });
+
+  it('the sync nudge moves the line at once', async () => {
+    const { view, api, p } = await mount({ position: 30 });
+    await waitFor(() => expect(api.seeks).toEqual([30_000]));
+    view.rerender(<LiveTabScore {...p} offsetMs={500} />);
+    await waitFor(() => expect(api.seeks).toEqual([30_000, 30_500]));
+  });
+
+  it('a fresh layout or a reloaded score places the line again', async () => {
+    const { api } = await mount({ position: 30 });
+    await waitFor(() => expect(api.seeks).toHaveLength(1));
+    api.postRenderFinished.fire();
+    await waitFor(() => expect(api.seeks).toHaveLength(2));
+    api.midiLoaded.fire();
+    await waitFor(() => expect(api.seeks).toHaveLength(3));
+  });
+
+  it('nothing is sought before AlphaTab can take a seek', async () => {
+    at.ready = false;
+    const { api } = await mount({ position: 30 });
+    await waitFor(() => expect(api.player.output.updatePosition).toHaveBeenCalledWith(30_000));
+    expect(api.seeks).toEqual([]);
+    api.isReadyForPlayback = true;
+    await waitFor(() => expect(api.seeks).toEqual([30_000]));
   });
 
   it('mirrors play and pause, so the cursor runs and stops with the song', async () => {
@@ -265,7 +322,7 @@ describe('LiveTabScore sync', () => {
   it('a seek from the player bar moves the cursor while paused', async () => {
     const { view, api, p } = await mount({ position: 5 });
     view.rerender(<LiveTabScore {...p} position={60} />);
-    await waitFor(() => expect(api.player.output.updatePosition).toHaveBeenLastCalledWith(60_000));
+    await waitFor(() => expect(api.seeks.at(-1)).toBe(60_000));
   });
 
   it('clicking a beat seeks the song to where it sounds, once', async () => {
@@ -309,6 +366,42 @@ describe('LiveTabScore follow-scroll', () => {
     expect((page.scrollTo as unknown as ReturnType<typeof vi.fn>).mock.calls.length).toBe(before + 1);
   });
 
+  it('paused, a seek brings the line into view (a refresh, the player bar)', async () => {
+    const page = document.createElement('div');
+    page.scrollTo = vi.fn() as never;
+    const scrolls = () => (page.scrollTo as unknown as ReturnType<typeof vi.fn>).mock.calls.length;
+    const { view, api, p } = await mount({ position: 50, getPageScroller: () => page });
+    // Opened (or refreshed) mid-song while paused: the line is shown.
+    await waitFor(() => expect(scrolls()).toBeGreaterThan(0));
+    const before = scrolls();
+    view.rerender(<LiveTabScore {...p} position={70} getPageScroller={() => page} />);
+    await waitFor(() => expect(api.seeks.at(-1)).toBe(70_000));
+    expect(scrolls()).toBeGreaterThan(before);
+  });
+
+  it('paused, a line already on screen stays put: a click there does not move the page', async () => {
+    const page = document.createElement('div');
+    page.scrollTo = vi.fn() as never;
+    // Tall enough that the line's bar (y 1500..1620 in the fake) is on screen.
+    Object.defineProperty(page, 'clientHeight', { configurable: true, get: () => 2000 });
+    const { view, api, p } = await mount({ position: 50, getPageScroller: () => page });
+    await waitFor(() => expect(api.seeks).toHaveLength(1));
+    view.rerender(<LiveTabScore {...p} position={51} getPageScroller={() => page} />);
+    await waitFor(() => expect(api.seeks).toHaveLength(2));
+    expect(page.scrollTo).not.toHaveBeenCalled();
+  });
+
+  it('paused and left alone, the page is not pulled back to the line', async () => {
+    const page = document.createElement('div');
+    page.scrollTo = vi.fn() as never;
+    const scrolls = () => (page.scrollTo as unknown as ReturnType<typeof vi.fn>).mock.calls.length;
+    await mount({ position: 50, getPageScroller: () => page });
+    await waitFor(() => expect(scrolls()).toBeGreaterThan(0));
+    const before = scrolls();
+    await new Promise((r) => setTimeout(r, 300));
+    expect(scrolls()).toBe(before);
+  });
+
   it('vertical: scrolls the page scroller down to the playing bar', async () => {
     const page = document.createElement('div');
     page.scrollTo = vi.fn() as never;
@@ -339,6 +432,8 @@ const ptr = (x: number, y: number, pointerId = 1) => ({ pointerId, clientX: x, c
 async function mountForDrag(over: Partial<LiveTabScoreProps> = {}) {
   const m = await mount(over);
   const handle = await waitFor(() => m.view.getByTestId('tab-line-handle'));
+  // Opening the page places the line (and scrolls to it) once.
+  await waitFor(() => expect(m.api.seeks.length).toBeGreaterThan(0));
   return { ...m, handle };
 }
 
@@ -435,6 +530,7 @@ describe('LiveTabScore drag the line', () => {
     page.scrollTo = vi.fn() as never;
     const scrollTo = page.scrollTo as unknown as ReturnType<typeof vi.fn>;
     const { api, handle } = await mountForDrag({ getPageScroller: () => page });
+    scrollTo.mockClear();
     fireEvent.pointerDown(handle, ptr(20, 50));
     fireEvent.pointerMove(handle, ptr(290, 200));
     act(() => api.playedBeatChanged.fire({}));
@@ -449,6 +545,7 @@ describe('LiveTabScore drag the line', () => {
     page.scrollTo = vi.fn() as never;
     const scrollTo = page.scrollTo as unknown as ReturnType<typeof vi.fn>;
     const { api, handle } = await mountForDrag({ getPageScroller: () => page });
+    scrollTo.mockClear();
     fireEvent.pointerDown(handle, ptr(20, 50));
     fireEvent.pointerMove(handle, ptr(290, 200));
     act(() => api.playedBeatChanged.fire({}));

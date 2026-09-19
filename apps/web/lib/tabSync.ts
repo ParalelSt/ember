@@ -111,6 +111,35 @@ export function estimateSongSec(anchor: Anchor, now: number, playing: boolean): 
 /** The cursor is fed at most this often (docs/tabs-rebuild.md section 4). */
 export const FEED_INTERVAL_MS = 50;
 
+/** The last position fed to the cursor (tab ms) and when (performance.now). */
+export interface Fed {
+  ms: number;
+  at: number;
+}
+
+/** How far off continuous playback a fed position may land and still be
+ *  playback: the player's reports wobble around the wall-clock estimate by
+ *  a few tens of ms. */
+export const JUMP_MS = 250;
+
+/** A feed silent this long during playback (a background tab, where
+ *  animation frames stop) left the cursor standing still while the song
+ *  ran on, so what comes next is a jump. */
+const FEED_GAP_MS = 1000;
+
+/** True when `ms` is not where playback from the last feed would have got
+ *  to: a seek (a click on a beat, the player bar, a drag, the sync nudge),
+ *  the first feed, or a feed resuming after a gap. AlphaTab animates its
+ *  cursor towards whatever it is fed, and only snaps it on a seek, so a
+ *  jump has to reach it as one or the line slides over for a beat or two. */
+export function isJump(prev: Fed | null, ms: number, now: number, playing: boolean): boolean {
+  if (!prev) return true;
+  const gap = now - prev.at;
+  if (playing && gap > FEED_GAP_MS) return true;
+  const expected = prev.ms + (playing ? Math.max(0, gap) : 0);
+  return Math.abs(ms - expected) > JUMP_MS;
+}
+
 // ── follow-scroll ─────────────────────────────────────────────────────────
 
 export type ScrollMode = 'vertical' | 'horizontal';
@@ -144,13 +173,19 @@ export interface Viewport {
  *  (on a phone one bar is most of the width, so following bars would let
  *  the cursor reach the edge). Once the beat leaves the band between a
  *  tenth and three fifths of the view, it is brought back to a third, so
- *  what is coming up is always on screen. `beat` is the beat's box. */
+ *  what is coming up is always on screen. `beat` is the beat's box.
+ *
+ *  `hiddenOnly` (paused): a line anywhere on screen stays put, so a click
+ *  on a beat does not move the page under the pointer; only a line off
+ *  screen (a refresh, a seek from the player bar) is brought into view. */
 export function followScroll(
   mode: ScrollMode,
   bar: Box,
   view: Viewport,
   beat: Box = bar,
+  { hiddenOnly = false }: { hiddenOnly?: boolean } = {},
 ): { top?: number; left?: number } | null {
+  if (hiddenOnly && onScreen(mode, bar, view, beat)) return null;
   if (mode === 'horizontal') {
     const target = Math.max(0, Math.round(beat.x - view.width / 3));
     const inBand = beat.x >= view.scrollLeft + view.width * 0.1 && beat.x <= view.scrollLeft + view.width * 0.6;
@@ -164,6 +199,12 @@ export function followScroll(
   const target = Math.max(0, Math.round(bar.y - view.topInset - usable / 3 + bar.h / 2));
   if (Math.abs(target - view.scrollTop) < 2) return null;
   return { top: target };
+}
+
+function onScreen(mode: ScrollMode, bar: Box, view: Viewport, beat: Box): boolean {
+  if (mode === 'horizontal') return beat.x >= view.scrollLeft && beat.x + beat.w <= view.scrollLeft + view.width;
+  const top = view.scrollTop + view.topInset;
+  return bar.y >= top && bar.y + bar.h <= view.scrollTop + view.height;
 }
 
 // ── the listener's own nudge ──────────────────────────────────────────────

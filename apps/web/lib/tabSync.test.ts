@@ -4,6 +4,7 @@ import {
   clampOffset,
   estimateSongSec,
   followScroll,
+  isJump,
   loadLocalOffsetMs,
   MAX_OFFSET_MS,
   saveLocalOffsetMs,
@@ -114,6 +115,36 @@ describe('the playhead between player reports', () => {
   });
 });
 
+describe('telling a seek from playback', () => {
+  it('the first position fed is a jump: the cursor is placed, not slid there', () => {
+    expect(isJump(null, 30_000, 1000, true)).toBe(true);
+  });
+
+  it('steady playback is not a jump', () => {
+    expect(isJump({ ms: 30_000, at: 1000 }, 30_050, 1050, true)).toBe(false);
+    // The player's report landing a little off the wall-clock estimate.
+    expect(isJump({ ms: 30_000, at: 1000 }, 29_900, 1050, true)).toBe(false);
+  });
+
+  it('holding still while paused is not a jump', () => {
+    expect(isJump({ ms: 30_000, at: 1000 }, 30_000, 4000, false)).toBe(false);
+  });
+
+  it('a seek a beat or two ahead is a jump, playing or paused', () => {
+    // 0.7 s ahead: the case AlphaTab animated towards instead of jumping.
+    expect(isJump({ ms: 30_000, at: 1000 }, 30_750, 1050, true)).toBe(true);
+    expect(isJump({ ms: 30_000, at: 1000 }, 30_700, 1050, false)).toBe(true);
+  });
+
+  it('a seek back is a jump', () => {
+    expect(isJump({ ms: 30_000, at: 1000 }, 27_000, 1050, true)).toBe(true);
+  });
+
+  it('a feed that stopped for a while (a background tab) resumes with a jump', () => {
+    expect(isJump({ ms: 30_000, at: 1000 }, 42_000, 13_000, true)).toBe(true);
+  });
+});
+
 describe('follow-scroll', () => {
   const view = { scrollTop: 0, scrollLeft: 0, width: 1000, height: 900, topInset: 60 };
 
@@ -136,6 +167,21 @@ describe('follow-scroll', () => {
     const t = followScroll('horizontal', { x: 1500, y: 900, w: 300, h: 120 }, view);
     expect(t).toEqual({ left: Math.round(1500 - 1000 / 3) });
     expect(t?.top).toBeUndefined();
+  });
+
+  it('paused: a line anywhere on screen is left where it is, a click there does not move the page', () => {
+    // Below the upper two thirds, but visible: playing would scroll, paused does not.
+    expect(followScroll('vertical', { x: 0, y: 700, w: 300, h: 120 }, view, undefined, { hiddenOnly: true })).toBeNull();
+    expect(followScroll('horizontal', { x: 900, y: 0, w: 200, h: 120 }, view, { x: 900, y: 0, w: 1, h: 120 }, { hiddenOnly: true })).toBeNull();
+  });
+
+  it('paused: a line off screen (a refresh, the player bar) is brought into view as usual', () => {
+    expect(followScroll('vertical', { x: 0, y: 1500, w: 300, h: 120 }, view, undefined, { hiddenOnly: true })).toEqual(
+      followScroll('vertical', { x: 0, y: 1500, w: 300, h: 120 }, view),
+    );
+    // Hidden under the sticky toolbar counts as off screen.
+    expect(followScroll('vertical', { x: 0, y: 500, w: 300, h: 120 }, { ...view, scrollTop: 480 }, undefined, { hiddenOnly: true })).not.toBeNull();
+    expect(followScroll('horizontal', { x: 1500, y: 0, w: 200, h: 120 }, view, { x: 1500, y: 0, w: 1, h: 120 }, { hiddenOnly: true })).not.toBeNull();
   });
 
   it('horizontal: no scroll while the beat sits inside the band', () => {

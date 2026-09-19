@@ -11,9 +11,11 @@ import {
   estimateSongSec,
   FEED_INTERVAL_MS,
   followScroll,
+  isJump,
   songToTabMs,
   type Anchor,
   type Box,
+  type Fed,
 } from '@/lib/tabSync';
 
 // alphaTab ships no types we can reach through a dynamic import without
@@ -54,7 +56,10 @@ export interface LiveTabScoreProps {
  *  recording. The score is loaded in `EnabledExternalMedia` mode, where
  *  AlphaTab draws and moves the cursor while something else owns the time
  *  axis, and Ember's playhead is fed to it every 50 ms (between the
- *  player's own reports the wall clock carries it on).
+ *  player's own reports the wall clock carries it on). A position that is
+ *  not where playback would have got to (a seek, the sync nudge, a fresh
+ *  layout) goes to AlphaTab as a seek, so the line jumps there rather than
+ *  sliding over, and is brought into view even while paused.
  *
  *  Nothing AlphaTab does moves the song on its own: the media handler it
  *  talks to is inert, and its built-in click handling is off. A click on a
@@ -92,6 +97,10 @@ export function LiveTabScore(props: LiveTabScoreProps) {
   const [dragging, setDragging] = useState(false);
   /** Bring the playing beat back into view (set once AlphaTab is up). */
   const refollow = useRef<() => void>(() => {});
+  /** Bring the beat at AlphaTab's playhead into view, playing or not. */
+  const followPlayhead = useRef<() => void>(() => {});
+  /** The last position fed to AlphaTab; null makes the next feed a seek. */
+  const fed = useRef<Fed | null>(null);
 
   // ── build AlphaTab once per file ────────────────────────────────────────
   useEffect(() => {
@@ -160,8 +169,9 @@ export function LiveTabScore(props: LiveTabScoreProps) {
           settled = true;
           setStatus('ready');
           // A new layout (Horizontal, a resize) moved everything: find the
-          // playing beat again.
-          if (lastBeat) followBeat(lastBeat);
+          // playing beat again, and place the line afresh on the next feed.
+          fed.current = null;
+          if (lastBeat) followBeat(lastBeat, !live.current.playing);
         });
         api.error.on((e: any) => {
           settled = true;
@@ -192,6 +202,11 @@ export function LiveTabScore(props: LiveTabScoreProps) {
         };
         api.playerReady.on(installHandler);
         installHandler(); // in case the player was ready before we subscribed
+
+        // Loading the score rewinds AlphaTab to the top: place the line again.
+        api.midiLoaded?.on?.(() => {
+          fed.current = null;
+        });
 
         api.playerPositionChanged.on((e: any) => {
           if (typeof e?.endTime === 'number' && e.endTime > 0) endMs.current = e.endTime;
@@ -243,17 +258,31 @@ export function LiveTabScore(props: LiveTabScoreProps) {
     refollow.current = () => {
       if (lastBeat) followBeat(lastBeat);
     };
+    followPlayhead.current = () => {
+      try {
+        const tracks = new Set<number>((api?.tracks ?? []).map((t: any) => t.index));
+        const beat = api?.tickCache?.findBeat?.(tracks, api.tickPosition ?? 0)?.beat;
+        if (!beat) return;
+        lastBeat = beat;
+        // Paused, only a line off screen is brought back: a click on a beat
+        // must not move the page under the pointer.
+        followBeat(beat, !live.current.playing);
+      } catch {
+        // Not finding the beat only means not scrolling to it.
+      }
+    };
 
-    function followBeat(beat: any) {
+    function followBeat(beat: any, hiddenOnly = false) {
       const bounds = api?.renderer?.boundsLookup?.findBeat?.(beat);
       const bar = bounds?.barBounds?.masterBarBounds?.visualBounds;
       const b = bounds?.visualBounds;
-      if (bar) keepInView(bar, b ?? bar);
+      if (bar) keepInView(bar, b ?? bar, hiddenOnly);
     }
 
     /** Scroll the page (vertical) or the row (horizontal) so the playing
-     *  bar or beat is in the band lib/tabSync.ts followScroll keeps it in. */
-    function keepInView(bar: Box, beat: Box) {
+     *  bar or beat is in the band lib/tabSync.ts followScroll keeps it in
+     *  (or, `hiddenOnly`, just on screen). */
+    function keepInView(bar: Box, beat: Box, hiddenOnly = false) {
       // Hands off while the line is held: the listener is steering.
       if (isActive(drag.current)) return;
       const host = hostRef.current;
@@ -274,7 +303,7 @@ export function LiveTabScore(props: LiveTabScoreProps) {
         width: scroller.clientWidth,
         height: scroller.clientHeight,
         topInset: mode === 'vertical' ? (live.current.getTopInset?.() ?? 0) : 0,
-      }, toContent(beat));
+      }, toContent(beat), { hiddenOnly });
       if (target) scroller.scrollTo({ ...target, behavior: 'smooth' });
     }
 
@@ -290,6 +319,8 @@ export function LiveTabScore(props: LiveTabScoreProps) {
       apiRef.current = null;
       outputRef.current = null;
       refollow.current = () => {};
+      followPlayhead.current = () => {};
+      fed.current = null;
       endMs.current = Infinity;
       setSynced(false);
     };
@@ -371,7 +402,21 @@ export function LiveTabScore(props: LiveTabScoreProps) {
       if (!output || !api) return;
       const tabMs = songToTabMs(estimateSongSec(anchor.current, now, p.playing), p.offsetMs);
       try {
-        output.updatePosition(tabMs);
+        if (!api.isReadyForPlayback) {
+          // No score in the player yet: it cannot seek, and whatever it
+          // shows now is placed again once it can.
+          output.updatePosition(tabMs);
+          fed.current = null;
+        } else if (isJump(fed.current, tabMs, now, p.playing)) {
+          // Fed as playback, AlphaTab would animate its line from where it
+          // was towards here over a beat or two; as a seek it jumps.
+          api.timePosition = tabMs;
+          fed.current = { ms: tabMs, at: now };
+          followPlayhead.current();
+        } else {
+          output.updatePosition(tabMs);
+          fed.current = { ms: tabMs, at: now };
+        }
         // Past the last bar AlphaTab stops itself; after a seek back into
         // the score it has to be told to run again.
         if (p.playing && api.playerState !== 1 && tabMs < endMs.current - 200) api.play();
