@@ -191,6 +191,14 @@ export const api = {
     if (res.status === 409) return { status: 'failed', error: (await res.json().catch(() => ({}))).error };
     return { status: 'none' };
   },
+  /** Look for the song's tab online (Ultimate Guitar). Once per song: the
+   *  server answers "cached" when it was searched before; `again` searches
+   *  anew (the ⋯ menu's "Search online again"). */
+  findTabsOnline: (trackId: string, title: string, artist: string, again = false) =>
+    req<{ status: 'found' | 'none' | 'cached' | 'failed'; searchedAt: string | null; added: number }>('/tabs/online', {
+      method: 'POST',
+      body: { trackId, title, artist, again },
+    }),
   generateTab: (trackId: string, title: string, artist = '') =>
     req<{ status: 'ready' | 'running' }>(
       `/tabs/generated/${encodeURIComponent(trackId)}?title=${encodeURIComponent(title)}&artist=${encodeURIComponent(artist)}`,

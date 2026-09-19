@@ -45,6 +45,7 @@ const api = vi.hoisted(() => ({
   saveTabOffset: vi.fn(),
   getTrack: vi.fn(),
   listUploads: vi.fn(),
+  findTabsOnline: vi.fn(),
 }));
 vi.mock('@/lib/api', () => ({ api }));
 
@@ -151,6 +152,7 @@ beforeEach(() => {
   api.getTabs.mockResolvedValue({ matches: [] });
   api.generateTab.mockResolvedValue({ status: 'running' });
   api.listUploads.mockResolvedValue({ tracks: [] });
+  api.findTabsOnline.mockResolvedValue({ status: 'cached', searchedAt: '2026-09-19T10:00:00Z', added: 0 });
 });
 
 describe('TabsPage source selection', () => {
@@ -391,5 +393,67 @@ describe('TabsPage and the player', () => {
     wrap(<TabsPage trackId="upload:song1" />);
     fireEvent.click(await screen.findByRole('button', { name: 'Back' }));
     expect(router.back.mock.calls.length + router.push.mock.calls.length).toBe(1);
+  });
+});
+
+describe('TabsPage looking online', () => {
+  const fetched = tab({
+    id: 'u1',
+    kind: 'fetched',
+    addedBy: null,
+    instrument: 'Guitar',
+    downloadUrl: '/api/tabs/files/u1/download',
+    source: {
+      site: 'ug',
+      siteLabel: 'Ultimate Guitar',
+      url: 'https://tabs.ultimate-guitar.com/tab/c/copper-sky-tabs-1',
+      part: 'guitar',
+      version: 1,
+      rating: 4.7,
+      votes: 512,
+    },
+  });
+
+  it('asks once when the page opens, after the store answered', async () => {
+    wrap(<TabsPage trackId="upload:song1" />);
+    await waitFor(() => expect(api.findTabsOnline).toHaveBeenCalledWith('upload:song1', 'Copper Sky', 'Coastline'));
+    expect(api.findTabsOnline).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows Finding a tab online while it looks, then draws what it found', async () => {
+    let finish: (v: unknown) => void = () => {};
+    api.findTabsOnline.mockReturnValue(new Promise((r) => (finish = r)));
+    api.getTrackTabs.mockResolvedValueOnce({ tabs: [] }).mockResolvedValue({ tabs: [fetched] });
+    wrap(<TabsPage trackId="upload:song1" />);
+    expect(await screen.findByTestId('tabs-searching')).toHaveTextContent('Finding a tab online…');
+    finish({ status: 'found', searchedAt: 'now', added: 1 });
+    expect(await screen.findByTestId('tab-score')).toHaveAttribute('data-url', '/api/tabs/files/u1/download');
+    expect(screen.getByTestId('tab-source-chip')).toHaveTextContent('From Ultimate Guitar, not lined up yet');
+  });
+
+  it('a fetched tab is listed in the picker with its site and rating', async () => {
+    api.getTrackTabs.mockResolvedValue({ tabs: [tab({}), fetched] });
+    wrap(<TabsPage trackId="upload:song1" />);
+    await screen.findByTestId('tab-score');
+    const items = screen.getAllByRole('menuitem').map((b) => b.textContent);
+    expect(items).toContain('Ultimate Guitar, Text tab, ★ 4.7 (512 votes)');
+  });
+
+  it('Search online again asks the server anew, and says when nothing new came', async () => {
+    api.getTrackTabs.mockResolvedValue({ tabs: [fetched] });
+    wrap(<TabsPage trackId="upload:song1" />);
+    await screen.findByTestId('tab-score');
+    await waitFor(() => expect(api.findTabsOnline).toHaveBeenCalledTimes(1));
+    api.findTabsOnline.mockResolvedValue({ status: 'found', searchedAt: 'now', added: 0 });
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Search online again' }));
+    await waitFor(() => expect(api.findTabsOnline).toHaveBeenLastCalledWith('upload:song1', 'Copper Sky', 'Coastline', true));
+    expect(await screen.findByTestId('tabs-online-status')).toHaveTextContent('Nothing new found online.');
+  });
+
+  it('a failed search is quiet: the empty state stays as it was', async () => {
+    api.findTabsOnline.mockRejectedValue(new Error('boom'));
+    wrap(<TabsPage trackId="upload:song1" />);
+    expect(await screen.findByTestId('tabs-empty')).toBeInTheDocument();
+    expect(screen.queryByTestId('tabs-searching')).toBeNull();
   });
 });

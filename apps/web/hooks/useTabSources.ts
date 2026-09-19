@@ -1,5 +1,6 @@
 'use client';
 
+import { useEffect } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { QK, useQueryTrack } from '@/hooks/useLibrary';
@@ -67,6 +68,23 @@ export interface TabSourcesState {
   uploadError: string | null;
   remove: (id: string) => void;
   saveOffset: (id: string, offsetMs: number) => Promise<unknown>;
+  /** Ember is looking for the song online (the automatic search when the
+   *  page opens, or "Search online again"). */
+  searchingOnline: boolean;
+  searchOnlineAgain: () => void;
+  /** After "Search online again": what it came back with, for one quiet
+   *  line. Null before or while it runs. */
+  searchAgainResult: 'found' | 'none' | 'failed' | null;
+}
+
+function againResult(
+  pending: boolean,
+  failed: boolean,
+  data: { status: string; added: number } | undefined,
+): TabSourcesState['searchAgainResult'] {
+  if (pending || (!failed && !data)) return null;
+  if (failed || data?.status === 'failed') return 'failed';
+  return data && data.added > 0 ? 'found' : 'none';
 }
 
 /** The source chain for one song (docs/tabs-rebuild.md section 3), plus the
@@ -99,6 +117,24 @@ export function useTabSources(song: TabSong | null): TabSourcesState {
     staleTime: 60 * 60 * 1000,
   });
 
+  // Look online once per song: the server remembers it was searched and
+  // answers "cached" after that, so this costs a site request only the
+  // first time any listener opens the song (docs/tabs-v3.md, owner's
+  // decision 2). Asked after the store answered, so the page draws what it
+  // has at once.
+  const online = useQuery({
+    queryKey: ['tabs-online', id, title, artist],
+    queryFn: () => api.findTabsOnline(id, title, artist),
+    enabled: !!song && !!title && tabsQuery.isFetched,
+    staleTime: Infinity,
+    gcTime: Infinity,
+    retry: false,
+  });
+  const onlineAdded = online.data?.added ?? 0;
+  useEffect(() => {
+    if (onlineAdded > 0) void qc.invalidateQueries({ queryKey: ['track-tabs', id] });
+  }, [onlineAdded, id, qc]);
+
   const refresh = () => {
     void qc.invalidateQueries({ queryKey: ['track-tabs', id] });
     void qc.invalidateQueries({ queryKey: ['generated-tab', id] });
@@ -119,6 +155,12 @@ export function useTabSources(song: TabSong | null): TabSourcesState {
   const remove = useMutation({
     mutationFn: (tabId: string) => api.deleteTabFile(tabId),
     onSuccess: refresh,
+  });
+  const searchAgain = useMutation({
+    mutationFn: () => api.findTabsOnline(id, title, artist, true),
+    onSuccess: (r) => {
+      if (r.added > 0) void qc.invalidateQueries({ queryKey: ['track-tabs', id] });
+    },
   });
   const saveOffset = useMutation({
     mutationFn: ({ tabId, offsetMs }: { tabId: string; offsetMs: number }) => api.saveTabOffset(tabId, offsetMs),
@@ -144,5 +186,8 @@ export function useTabSources(song: TabSong | null): TabSourcesState {
     uploadError: upload.error ? (upload.error as Error).message : null,
     remove: (tabId) => remove.mutate(tabId),
     saveOffset: (tabId, offsetMs) => saveOffset.mutateAsync({ tabId, offsetMs }),
+    searchingOnline: online.isFetching || searchAgain.isPending,
+    searchOnlineAgain: () => searchAgain.mutate(),
+    searchAgainResult: againResult(searchAgain.isPending, searchAgain.isError, searchAgain.data),
   };
 }

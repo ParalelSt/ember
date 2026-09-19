@@ -5,9 +5,25 @@ import type { TabMatch } from '@/lib/songsterr';
  *  picks from them. docs/tabs-rebuild.md section 3. */
 
 /** Where a tab came from: a Guitar Pro or MusicXML file someone added, a
- *  text tab someone pasted (kept as alphaTex beside the original text), or
- *  one Ember generated from the recording. docs/tab-sources.md section 4. */
-export type TabKind = 'file' | 'pasted' | 'generated';
+ *  text tab someone pasted (kept as alphaTex beside the original text), a
+ *  text tab Ember found online (docs/tabs-v3.md), or one Ember generated
+ *  from the recording. docs/tab-sources.md section 4. */
+export type TabKind = 'file' | 'pasted' | 'fetched' | 'generated';
+
+/** Where a fetched tab was found: the site's page and what it said of the
+ *  tab. Null for every other kind. */
+export interface TabOnlineSource {
+  site: 'ug';
+  /** "Ultimate Guitar". */
+  siteLabel: string;
+  url: string;
+  /** Guitar tab or bass tab. */
+  part: 'guitar' | 'bass';
+  /** The site's version number of this song's tab (UG: "ver 2"). */
+  version: number;
+  rating: number | null;
+  votes: number | null;
+}
 
 /** One row of the tab store as the client sees it. */
 export interface TabSummary {
@@ -32,21 +48,25 @@ export interface TabSummary {
    *  recorded after the fact names nobody). */
   addedBy: string | null;
   downloadUrl: string;
+  /** Set for a tab found online (kind fetched). */
+  source?: TabOnlineSource | null;
 }
 
 export type TabSource =
   | { type: 'file'; tab: TabSummary }
   | { type: 'pasted'; tab: TabSummary }
+  | { type: 'fetched'; tab: TabSummary }
   | { type: 'generated'; tab: TabSummary }
   | { type: 'songsterr'; match: TabMatch };
 
 /** The source chain for a track, in the order the viewer tries them: a file
- *  someone added, then a pasted text tab, then a generated tab, then
- *  Songsterr's link-out. */
+ *  someone added, then a pasted text tab, then a tab found online, then a
+ *  generated tab, then Songsterr's link-out. */
 export function orderSources(tabs: TabSummary[], matches: TabMatch[]): TabSource[] {
   return [
     ...tabs.filter((t) => t.kind === 'file').map((tab) => ({ type: 'file' as const, tab })),
     ...tabs.filter((t) => t.kind === 'pasted').map((tab) => ({ type: 'pasted' as const, tab })),
+    ...tabs.filter((t) => t.kind === 'fetched').map((tab) => ({ type: 'fetched' as const, tab })),
     ...tabs.filter((t) => t.kind === 'generated').map((tab) => ({ type: 'generated' as const, tab })),
     ...matches.map((match) => ({ type: 'songsterr' as const, match })),
   ];
@@ -78,7 +98,7 @@ export function generatedStandIn(trackId: string, title: string, artist: string)
 }
 
 /** Every tab the page can draw for a track: files, then pasted text tabs,
- *  then generated ones (rough, so last). A generated tab
+ *  then tabs found online, then generated ones (rough, so last). A generated tab
  *  that is ready on disk but has no row yet is added as a stand-in. */
 export function drawableTabs(
   tabs: TabSummary[],
@@ -87,6 +107,7 @@ export function drawableTabs(
 ): TabSummary[] {
   const files = tabs.filter((t) => t.kind === 'file');
   const pasted = tabs.filter((t) => t.kind === 'pasted');
+  const fetched = tabs.filter((t) => t.kind === 'fetched');
   const gens = tabs.filter((t) => t.kind === 'generated');
   // The track's own generated tab first among generated ones: it was made
   // from this very recording, so it lines up best.
@@ -94,7 +115,7 @@ export function drawableTabs(
   if (generated === 'ready' && !gens.some((t) => t.trackId === track.id)) {
     gens.unshift(generatedStandIn(track.id, track.title, track.artist));
   }
-  return [...files, ...pasted, ...gens];
+  return [...files, ...pasted, ...fetched, ...gens];
 }
 
 /** The tab to show: the one the listener picked if it still exists, else
@@ -114,19 +135,48 @@ function addedByLabel(tab: TabSummary): string {
   return tab.mine ? 'you' : (tab.addedBy ?? 'someone');
 }
 
+/** "Ultimate Guitar, ver 2, bass": the site, then what tells this tab
+ *  apart from the site's others. */
+function onlineName(source: TabOnlineSource): string {
+  const parts = [source.siteLabel];
+  if (source.version > 1) parts.push(`ver ${source.version}`);
+  if (source.part === 'bass') parts.push('bass');
+  return parts.join(', ');
+}
+
+/** "★ 4.7 (1,371 votes)", or '' when the site gave no rating. */
+export function ratingLabel(source: TabOnlineSource): string {
+  if (source.rating === null || !(source.rating > 0)) return '';
+  const votes = source.votes ?? 0;
+  return `★ ${source.rating.toFixed(1)} (${votes.toLocaleString('en-US')} vote${votes === 1 ? '' : 's'})`;
+}
+
+/** Tabs found online are not lined up with the recording yet (that is the
+ *  next round, docs/tabs-v3.md section 3): they start at the song's start
+ *  plus the nudge, at the tab's own tempo. Said calmly on the chip. */
+export const NOT_LINED_UP = 'not lined up yet';
+
 /** The chip under the title: where the notes came from. */
 export function sourceChipLabel(tab: TabSummary): string {
   if (tab.kind === 'generated') return 'Generated from the recording, rough';
+  if (tab.kind === 'fetched' && tab.source) return `From ${onlineName(tab.source)}, ${NOT_LINED_UP}`;
   const scope = tab.shared ? 'shared' : 'private';
   if (tab.kind === 'pasted') return `Text tab pasted by ${addedByLabel(tab)}, ${scope}`;
   return `File added by ${addedByLabel(tab)}, ${scope}`;
 }
 
 /** One line per tab in the chip's picker: "Guitar Pro file, Aron, Guitar",
- *  "Text tab, Aron, Guitar", "Generated, rough". */
+ *  "Text tab, Aron, Guitar", "Ultimate Guitar, Text tab, ver 2, ★ 4.7
+ *  (1,371 votes)", "Generated, rough". */
 export function pickerLabel(tab: TabSummary): string {
   const parts: string[] = [];
   if (tab.kind === 'generated') parts.push('Generated', 'rough');
+  else if (tab.kind === 'fetched' && tab.source) {
+    parts.push(tab.source.siteLabel, tab.source.part === 'bass' ? 'Bass tab' : 'Text tab');
+    if (tab.source.version > 1) parts.push(`ver ${tab.source.version}`);
+    const rating = ratingLabel(tab.source);
+    if (rating) parts.push(rating);
+  }
   else {
     const musicXml = tab.format === 'musicxml' || tab.format === 'mxl';
     parts.push(tab.kind === 'pasted' ? 'Text tab' : musicXml ? 'MusicXML file' : 'Guitar Pro file');
@@ -140,6 +190,9 @@ export function pickerLabel(tab: TabSummary): string {
 export type EmptyState =
   | { kind: 'loading' }
   | { kind: 'generating' }
+  /** Ember is looking for the song on the tab sites (docs/tabs-v3.md
+   *  section 6: "Finding a tab online"). */
+  | { kind: 'searching' }
   | {
       kind: 'empty';
       /** "Generate a tab" is offered (YouTube and uploaded songs). */
@@ -157,9 +210,12 @@ export function emptyStateFor(input: {
   generateError: string | null;
   canGenerate: boolean;
   matches: TabMatch[];
+  /** The online search for this song is running. */
+  searchingOnline?: boolean;
 }): EmptyState {
   if (input.loading) return { kind: 'loading' };
   if (input.generated === 'running' || input.generating) return { kind: 'generating' };
+  if (input.searchingOnline) return { kind: 'searching' };
   return {
     kind: 'empty',
     canGenerate: input.canGenerate,

@@ -10,7 +10,7 @@ import {
   toHints,
   type SongsterrSongHint,
 } from '@/lib/songsterr';
-import type { TabKind, TabSummary } from '@/lib/tabSources';
+import type { TabKind, TabOnlineSource, TabSummary } from '@/lib/tabSources';
 
 /** The one tab store (docs/tabs-rebuild.md section 3): PocketBase `tabs`,
  *  a row per tab, for files people add and tabs Ember generates alike.
@@ -61,6 +61,7 @@ export function formatOf(filename: string): string {
 export function kindOf(row: RecordModel): TabKind {
   if (row.kind === 'generated') return 'generated';
   if (row.kind === 'pasted') return 'pasted';
+  if (row.kind === 'fetched') return 'fetched';
   return 'file';
 }
 
@@ -84,15 +85,42 @@ export function matchesQuery(row: RecordModel, q: TabQuery): boolean {
   return !rowKey.artist || !want.artist || rowKey.artist === want.artist;
 }
 
-const RANK: Record<TabKind, number> = { file: 0, pasted: 1, generated: 2 };
+const RANK: Record<TabKind, number> = { file: 0, pasted: 1, fetched: 2, generated: 3 };
 
-/** Files first, then pasted text tabs, then generated; newest first inside
- *  each. */
+/** Among tabs found online: guitar before bass (the page draws the first,
+ *  and a guitar tab is what "Guitar tab" promises), then the most votes. */
+function fetchedOrder(a: RecordModel, b: RecordModel): number {
+  if (kindOf(a) !== 'fetched' || kindOf(b) !== 'fetched') return 0;
+  const bass = (r: RecordModel) => Number((r.source_meta as { part?: string } | null)?.part === 'bass');
+  return bass(a) - bass(b) || (Number(b.source_votes) || 0) - (Number(a.source_votes) || 0);
+}
+
+/** Files first, then pasted text tabs, then tabs found online (guitar
+ *  first), then generated; newest first inside each. */
 export function sortTabs(rows: RecordModel[]): RecordModel[] {
   const rank = (r: RecordModel) => RANK[kindOf(r)];
   return [...rows].sort(
-    (a, b) => rank(a) - rank(b) || String(b.created ?? '').localeCompare(String(a.created ?? '')),
+    (a, b) =>
+      rank(a) - rank(b) || fetchedOrder(a, b) || String(b.created ?? '').localeCompare(String(a.created ?? '')),
   );
+}
+
+const SITE_LABELS: Record<TabOnlineSource['site'], string> = { ug: 'Ultimate Guitar' };
+
+/** Where a fetched row was found, from its source_* fields. */
+export function onlineSourceOf(row: RecordModel): TabOnlineSource | null {
+  if (row.kind !== 'fetched' || row.source_site !== 'ug') return null;
+  const meta = (row.source_meta && typeof row.source_meta === 'object' ? row.source_meta : {}) as Record<string, unknown>;
+  const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : null);
+  return {
+    site: 'ug',
+    siteLabel: SITE_LABELS.ug,
+    url: String(row.source_url ?? ''),
+    part: meta.part === 'bass' ? 'bass' : 'guitar',
+    version: Number.isInteger(meta.version) ? (meta.version as number) : 1,
+    rating: num(row.source_rating),
+    votes: num(row.source_votes),
+  };
 }
 
 export function mapTab(row: RecordModel, viewer: TabViewer, addedBy: string | null = null): TabSummary {
@@ -117,6 +145,7 @@ export function mapTab(row: RecordModel, viewer: TabViewer, addedBy: string | nu
       kind === 'generated' && trackId
         ? `/api/tabs/generated/${encodeURIComponent(trackId)}`
         : `/api/tabs/files/${row.id}/download`,
+    ...(kind === 'fetched' ? { source: onlineSourceOf(row) } : {}),
   };
 }
 
@@ -182,7 +211,8 @@ export async function findTabs(
   }
   if (opts.kind === 'generated') parts.push('kind = "generated"');
   if (opts.kind === 'pasted') parts.push('kind = "pasted"');
-  if (opts.kind === 'file') parts.push('kind != "generated" && kind != "pasted"');
+  if (opts.kind === 'fetched') parts.push('kind = "fetched"');
+  if (opts.kind === 'file') parts.push('kind != "generated" && kind != "pasted" && kind != "fetched"');
 
   const rows = await pb.collection('tabs').getList(1, 200, { filter: parts.join(' && '), sort: '-created' });
   // The filter narrows; this decides. Contains-matching on the title can

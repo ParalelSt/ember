@@ -31,6 +31,7 @@
     "test:tabs-sync": "node tests/tabs-sync.test.mjs",
     "test:tabs-generate": "node tests/tabs-generate.test.mjs",
     "test:tabs-text": "node tests/tabs-text.test.mjs",
+    "test:tabs-fetch": "node tests/tabs-fetch.test.mjs",
     "test:transcribe-timing": "node tests/transcribe-timing.test.mjs",
     "test:ffmpeg": "node tests/ffmpeg-resolve.test.mjs",
     "test:preferences-ui": "node tests/preferences-ui.test.mjs",

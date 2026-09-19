@@ -175,7 +175,7 @@ function TabsSheet({ song, sources, onBack }: { song: TabSong; sources: TabSourc
   const addFile = () => fileRef.current?.click();
   const ownGenerated = sources.tabs.some((t) => t.kind === 'generated' && t.trackId === song.id);
   const busyGenerating = sources.generated === 'running' || sources.generating;
-  // Links only: the browser opens them, Ember never fetches a tab site.
+  // Links for the listener to open; Ember's own search is useTabSources'.
   const searchLinks = tabSearchLinks(song, sources.matches);
 
   const actions = (
@@ -195,6 +195,11 @@ function TabsSheet({ song, sources, onBack }: { song: TabSong; sources: TabSourc
             onClick={sources.generate}
           />
         )}
+        <MenuItem
+          label={sources.searchingOnline ? 'Searching online…' : 'Search online again'}
+          disabled={sources.searchingOnline}
+          onClick={sources.searchOnlineAgain}
+        />
         <DropdownMenuSeparator />
         {searchLinks.map((l) => (
           <MenuItem key={l.id} label={l.menuLabel} onClick={() => window.open(l.url, '_blank', 'noopener,noreferrer')} />
@@ -235,6 +240,13 @@ function TabsSheet({ song, sources, onBack }: { song: TabSong; sources: TabSourc
         }}
       />
       <TabSheetHeader phone={phone} title={song.title} meta={meta} chip={chipNode} actions={actions} onBack={onBack} />
+      {sources.searchAgainResult && sources.searchAgainResult !== 'found' && (
+        <p role="status" data-testid="tabs-online-status" className="text-meta mt-cluster">
+          {sources.searchAgainResult === 'none'
+            ? 'Nothing new found online.'
+            : 'Could not search online just now. Try again later.'}
+        </p>
+      )}
       {(sources.uploading || sources.uploadError) && (
         <p role="status" className={cn('text-meta mt-cluster', sources.uploadError && 'text-destructive')}>
           {sources.uploadError ?? 'Adding the file…'}
@@ -432,8 +444,18 @@ function NoTab({
     generateError: sources.generateError ?? sources.generatedError,
     canGenerate: sources.canGenerate,
     matches: sources.matches,
+    searchingOnline: sources.searchingOnline,
   });
   if (state.kind === 'loading') return <EmptyState>Looking for a tab…</EmptyState>;
+  if (state.kind === 'searching') {
+    return (
+      <EmptyState>
+        <span role="status" data-testid="tabs-searching">
+          Finding a tab online…
+        </span>
+      </EmptyState>
+    );
+  }
   if (state.kind === 'generating') {
     return (
       <EmptyState>

@@ -8,11 +8,21 @@
 //   song_key   normalized "title::artist" (apps/web/lib/songKey.ts), the lookup
 //   track_key  the app's compound track id it was added for, e.g. youtube:abc
 //   kind       "file", "pasted" (a text tab, stored as alphatex beside the
-//              original .txt) or "generated"
+//              original .txt), "fetched" (a text tab Ember found online,
+//              docs/tabs-v3.md) or "generated"
 //   format     gp3, gp4, gp5, gpx, gp, musicxml, mxl or alphatex
 //   shared     visible to every signed-in member; new rows are shared
 //   offset_ms  sync nudge against the recording, shared by everyone
 //   hints      Songsterr metadata (songId, per-track tuning, difficulty)
+//   source_*   where a fetched tab was found: site ("ug"), page URL, the
+//              site's tab id, rating and votes, and source_meta (JSON: part,
+//              version, the site's tuning, the parse report)
+//
+// tab_lookups: one row per song and site that Ember has searched online, so
+// a song is searched once and never again on its own (the "Search online
+// again" menu item re-runs it). status "found" or "none", results = the
+// site's best candidates. Admin only (every rule null): the web app reads and
+// writes it with the admin client.
 //
 // Sharing, and the migration of rows from before it: tabs used to be private
 // to their uploader. A bool field added to existing rows reads false, so every
@@ -80,11 +90,17 @@ onAfterBootstrap((e) => {
   const NEW_FIELDS = [
     { name: "song_key", type: "text", options: { max: 500 } },
     { name: "track_key", type: "text", options: { max: 80 } },
-    { name: "kind", type: "select", options: { maxSelect: 1, values: ["file", "pasted", "generated"] } },
+    { name: "kind", type: "select", options: { maxSelect: 1, values: ["file", "pasted", "fetched", "generated"] } },
     { name: "format", type: "text", options: { max: 12 } },
     { name: "shared", type: "bool", options: {} },
     { name: "offset_ms", type: "number", options: { noDecimal: true } },
     { name: "hints", type: "json", options: { maxSize: 20000 } },
+    { name: "source_site", type: "text", options: { max: 20 } },
+    { name: "source_url", type: "text", options: { max: 500 } },
+    { name: "source_id", type: "text", options: { max: 40 } },
+    { name: "source_rating", type: "number", options: {} },
+    { name: "source_votes", type: "number", options: { noDecimal: true } },
+    { name: "source_meta", type: "json", options: { maxSize: 20000 } },
   ];
 
   const NEW_INDEXES = [
@@ -110,13 +126,13 @@ onAfterBootstrap((e) => {
     changed = true;
   }
 
-  // Pasted text tabs (docs/tab-sources.md) arrived after the select did:
-  // add the value to a collection that only knows file and generated.
+  // Pasted text tabs (docs/tab-sources.md) and fetched ones (docs/tabs-v3.md)
+  // arrived after the select did: add the values to an older collection.
   const kind = tabs.schema.getFieldByName("kind");
   if (kind) {
     const values = (kind.options && kind.options.values) || [];
-    if (values.indexOf("pasted") < 0) {
-      kind.options.values = ["file", "pasted", "generated"];
+    if (values.indexOf("pasted") < 0 || values.indexOf("fetched") < 0) {
+      kind.options.values = ["file", "pasted", "fetched", "generated"];
       changed = true;
     }
   }
@@ -147,7 +163,36 @@ onAfterBootstrap((e) => {
   }
   tabs.indexes = indexes;
 
-  if (!changed) return;
-  dao.saveCollection(tabs);
-  console.log("[ensure_tabs] tabs store up to date (song_key, kind, shared, hints, pasted)");
+  if (changed) {
+    dao.saveCollection(tabs);
+    console.log("[ensure_tabs] tabs store up to date (song_key, kind, shared, hints, pasted, fetched)");
+  }
+
+  let lookups = null;
+  try {
+    lookups = dao.findCollectionByNameOrId("tab_lookups");
+  } catch (_) {
+    lookups = null;
+  }
+  if (!lookups) {
+    dao.saveCollection(new Collection({
+      name: "tab_lookups",
+      type: "base",
+      listRule: null,
+      viewRule: null,
+      createRule: null,
+      updateRule: null,
+      deleteRule: null,
+      indexes: ["CREATE UNIQUE INDEX idx_tab_lookups_song_site ON tab_lookups (song_key, site)"],
+      schema: [
+        { name: "song_key", type: "text", required: true, options: { max: 500 } },
+        { name: "site", type: "text", required: true, options: { max: 20 } },
+        { name: "status", type: "select", required: true, options: { maxSelect: 1, values: ["found", "none"] } },
+        { name: "query", type: "text", options: { max: 300 } },
+        { name: "searched_at", type: "text", options: { max: 40 } },
+        { name: "results", type: "json", options: { maxSize: 50000 } },
+      ],
+    }));
+    console.log("[ensure_tabs] created tab_lookups");
+  }
 });

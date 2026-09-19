@@ -21,7 +21,8 @@ import { MAX_TAB_TEXT_BYTES, MAX_TEMPO, MIN_TEMPO, parseTabText } from '@/lib/ta
  *  kept for a later re-parse). Deleting goes through /api/tabs/files/[id]:
  *  whoever pasted it, or an admin, and both files go.
  *
- *  Ember never fetches a tab site: the listener copies the text themselves. */
+ *  The listener copies the text themselves; tabs Ember finds online on its
+ *  own go through /api/tabs/online (lib/tabFetch) and the same parser. */
 
 const MAX_TEXT = 200;
 /** JSON quoting and the other fields on top of the tab text itself. */

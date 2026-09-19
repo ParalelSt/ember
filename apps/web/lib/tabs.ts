@@ -80,13 +80,30 @@ export function ensureTabDir(): void {
 /** Where a generated tab's alphaTex lives: MUSIC_DIR/tabs/generated. */
 export const GENERATED_DIR = path.join(TAB_DIR, 'generated');
 
+/** Where a tab found online lives: MUSIC_DIR/tabs/fetched, `<stem>.alphatex`
+ *  (what AlphaTab loads) beside `<stem>.txt` (the tab text as the site gave
+ *  it, marks removed, so a better parser can redo the alphaTex without
+ *  asking the site again). docs/tabs-v3.md section 2. */
+export const FETCHED_DIR = path.join(TAB_DIR, 'fetched');
+
+const STORED_ALPHATEX = /^[A-Za-z0-9_-]+\.alphatex$/;
+
 /** The file behind a tab row: a file someone added sits in TAB_DIR, a
- *  generated one in GENERATED_DIR. Same traversal guard for both. */
+ *  generated one in GENERATED_DIR, a fetched one in FETCHED_DIR. Generated
+ *  and fetched names are checked against a plain `<stem>.alphatex` shape. */
 export function resolveRowPath(row: { [key: string]: unknown }): string | null {
   const filename = String(row.file ?? '');
-  if (row.kind !== 'generated') return resolveTabPath(filename);
-  if (!/^[A-Za-z0-9_-]+\.alphatex$/.test(filename)) return null;
-  return path.join(GENERATED_DIR, filename);
+  if (row.kind !== 'generated' && row.kind !== 'fetched') return resolveTabPath(filename);
+  if (!STORED_ALPHATEX.test(filename)) return null;
+  return path.join(row.kind === 'fetched' ? FETCHED_DIR : GENERATED_DIR, filename);
+}
+
+/** The tab text a fetched row was made from: `<stem>.txt` beside it. */
+export function fetchedTextPath(row: { [key: string]: unknown }): string | null {
+  if (row.kind !== 'fetched') return null;
+  const filename = String(row.file ?? '');
+  if (!STORED_ALPHATEX.test(filename)) return null;
+  return path.join(FETCHED_DIR, `${filename.slice(0, -'.alphatex'.length)}.txt`);
 }
 
 /** A pasted text tab is two files side by side in TAB_DIR: `<stem>.alphatex`
@@ -101,5 +118,5 @@ export function pastedTextPath(row: { [key: string]: unknown }): string | null {
 
 /** Every file on disk behind a row: what delete removes. */
 export function rowPaths(row: { [key: string]: unknown }): string[] {
-  return [resolveRowPath(row), pastedTextPath(row)].filter((p): p is string => !!p);
+  return [resolveRowPath(row), pastedTextPath(row), fetchedTextPath(row)].filter((p): p is string => !!p);
 }

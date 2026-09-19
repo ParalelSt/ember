@@ -6,8 +6,10 @@ import {
   followTrackChange,
   isTabsPathFor,
   localOffsetId,
+  orderSources,
   pickTab,
   pickerLabel,
+  ratingLabel,
   sourceChipLabel,
   tabsHref,
   trackIdFromParam,
@@ -112,6 +114,57 @@ describe('pasted text tabs in the chain', () => {
 
   it('keeps its own sync nudge key (its row id)', () => {
     expect(localOffsetId(tab({ id: 'p', kind: 'pasted', trackId: song.id }))).toBe('p');
+  });
+});
+
+describe('tabs found online in the chain', () => {
+  const ug = (over: Partial<TabSummary> = {}, src: Partial<NonNullable<TabSummary['source']>> = {}) =>
+    tab({
+      id: 'u',
+      kind: 'fetched',
+      source: {
+        site: 'ug',
+        siteLabel: 'Ultimate Guitar',
+        url: 'https://tabs.ultimate-guitar.com/tab/a/b-tabs-1',
+        part: 'guitar',
+        version: 1,
+        rating: 4.71,
+        votes: 1371,
+        ...src,
+      },
+      ...over,
+    });
+
+  it('file, then pasted, then fetched, then generated', () => {
+    const gen = tab({ id: 'g', kind: 'generated', trackId: song.id });
+    const pasted = tab({ id: 'p', kind: 'pasted' });
+    const file = tab({ id: 'f' });
+    expect(drawableTabs([gen, ug(), pasted, file], 'ready', song).map((t) => t.id)).toEqual(['f', 'p', 'u', 'g']);
+    expect(pickTab(drawableTabs([gen, ug()], 'ready', song), null)?.id).toBe('u');
+    expect(orderSources([gen, ug(), file], []).map((x) => x.type)).toEqual(['file', 'fetched', 'generated']);
+  });
+
+  it('the chip names the site and says it is not lined up yet', () => {
+    expect(sourceChipLabel(ug())).toBe('From Ultimate Guitar, not lined up yet');
+    expect(sourceChipLabel(ug({}, { version: 2, part: 'bass' }))).toBe('From Ultimate Guitar, ver 2, bass, not lined up yet');
+  });
+
+  it('the picker gives site, type, version and rating', () => {
+    expect(pickerLabel(ug())).toBe('Ultimate Guitar, Text tab, ★ 4.7 (1,371 votes)');
+    expect(pickerLabel(ug({}, { part: 'bass', version: 3, votes: 1 }))).toBe('Ultimate Guitar, Bass tab, ver 3, ★ 4.7 (1 vote)');
+    expect(pickerLabel(ug({}, { rating: 0 }))).toBe('Ultimate Guitar, Text tab');
+    expect(ratingLabel(ug({}, { rating: null }).source!)).toBe('');
+  });
+
+  it('keeps its own sync nudge key (its row id)', () => {
+    expect(localOffsetId(ug({ trackId: song.id }))).toBe('u');
+  });
+
+  it('while the online search runs with nothing to draw: Finding a tab online', () => {
+    const base = { loading: false, generated: 'none' as const, generating: false, generateError: null, canGenerate: true, matches: [] };
+    expect(emptyStateFor({ ...base, searchingOnline: true })).toEqual({ kind: 'searching' });
+    expect(emptyStateFor({ ...base, loading: true, searchingOnline: true })).toEqual({ kind: 'loading' });
+    expect(emptyStateFor({ ...base, searchingOnline: false }).kind).toBe('empty');
   });
 });
 
