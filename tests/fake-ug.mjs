@@ -4,6 +4,9 @@
  *
  *      node tests/fake-ug.mjs [port]        # default 4331
  *
+ *  tests/fake-songsterr.mjs mounts the same handler under /ug, so one
+ *  server can stand in for both sites (UG_BASE=http://127.0.0.1:4330/ug).
+ *
  *  Start the app with UG_BASE=http://127.0.0.1:4331 (and TAB_FETCH_GAP_MS=0
  *  to skip the 2 s politeness gap in tests, optional).
  *
@@ -43,21 +46,25 @@ function searchFor(query) {
   return html.replace(attr, () => renamed);
 }
 
-const server = http.createServer((req, res) => {
-  const url = new URL(req.url ?? '/', `http://127.0.0.1:${port}`);
+/** Answers one request, with paths taken relative to `prefix` (the fake
+ *  Songsterr mounts this under /ug so one server serves both sites).
+ *  Returns false when the path is none of UG's. */
+export function handleUg(req, res, url, prefix = '') {
   const send = (status, body, type = 'text/html; charset=utf-8') => {
     res.writeHead(status, { 'content-type': type });
     res.end(body);
+    return true;
   };
-  if (url.pathname === '/__calls') {
+  const pathname = prefix && url.pathname.startsWith(prefix) ? url.pathname.slice(prefix.length) || '/' : url.pathname;
+  if (pathname === '/__calls') {
     return send(200, JSON.stringify({ count: searches.length + pages.length, searches, pages }), 'application/json');
   }
-  if (url.pathname === '/__reset' && req.method === 'POST') {
+  if (pathname === '/__reset' && req.method === 'POST') {
     searches = [];
     pages = [];
     return send(200, '{"ok":true}', 'application/json');
   }
-  if (url.pathname === '/search.php') {
+  if (pathname === '/search.php') {
     const q = url.searchParams.get('value') ?? '';
     searches.push({ q, types: url.searchParams.getAll('type[]'), ua: req.headers['user-agent'] ?? '' });
     if (q.includes('zz429')) return send(429, 'Too Many Requests');
@@ -65,13 +72,23 @@ const server = http.createServer((req, res) => {
     if (!/ugfetch/i.test(q)) return send(200, read('search-empty.html'));
     return send(200, searchFor(q));
   }
-  const tab = /^\/tab\/[^/]+\/[^/]+-(\d+)$/.exec(url.pathname);
+  const tab = /^\/tab\/[^/]+\/[^/]+-(\d+)$/.exec(pathname);
   if (tab) {
-    pages.push({ id: Number(tab[1]), path: url.pathname });
+    pages.push({ id: Number(tab[1]), path: pathname });
     const file = path.join(DIR, `tab-${tab[1]}.html`);
     if (fs.existsSync(file)) return send(200, fs.readFileSync(file, 'utf8'));
+    return send(404, 'not found');
   }
-  send(404, 'not found');
-});
+  return false;
+}
 
-server.listen(port, '127.0.0.1', () => console.log(`listening ${port}`));
+if (process.argv[1] === fileURLToPath(import.meta.url)) {
+  http
+    .createServer((req, res) => {
+      const url = new URL(req.url ?? '/', `http://127.0.0.1:${port}`);
+      if (handleUg(req, res, url)) return;
+      res.writeHead(404, { 'content-type': 'text/html' });
+      res.end('not found');
+    })
+    .listen(port, '127.0.0.1', () => console.log(`listening ${port}`));
+}

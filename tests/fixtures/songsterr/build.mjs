@@ -322,6 +322,9 @@ export function timeline() {
   const drawn = [PARTS[1], PARTS[2], PARTS[3]];
   const bars = [];
   const onsets = new Map();
+  /** Every beat of each drawn part on its own, in playing order: what the
+   *  browser test compares the cursor against. */
+  const perPart = { 1: [], 2: [], 3: [] };
   let clock = 0;
   PLAYED.forEach((mi, k) => {
     bars.push({ bar: k, sec: clock });
@@ -353,8 +356,9 @@ export function timeline() {
       let at = 0;
       for (const b of p.measures[mi].voices[0].beats) {
         const sounding = (b.notes ?? []).filter((n) => !n.rest && !n.tie);
+        const t = Math.round((clock + toSec(at)) * 1e6) / 1e6;
+        perPart[p.partId].push({ sec: t, bar: k, rest: !!b.rest || sounding.length === 0, notes: sounding.length });
         if (!b.rest && sounding.length) {
-          const t = Math.round((clock + toSec(at)) * 1e6) / 1e6;
           const e = onsets.get(t) ?? [];
           for (const n of sounding) if (!n.dead) e.push(p.tuning[n.string] + n.fret);
           onsets.set(t, e);
@@ -366,6 +370,7 @@ export function timeline() {
   });
   return {
     bars,
+    perPart,
     end: clock,
     onsets: [...onsets.entries()].sort((a, b) => a[0] - b[0]).map(([sec, pitches]) => ({ sec, pitches })),
   };
