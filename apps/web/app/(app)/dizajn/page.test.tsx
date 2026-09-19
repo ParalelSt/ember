@@ -6,6 +6,13 @@ import { SHELF_OPTIONS } from '@/components/library/options';
 import { SPACING_SCALE } from '@/lib/spacing';
 import { MOCK_LIKED_TRACKS } from './mock';
 import { CHANGELOG_PLACEMENTS, CHANGELOG_STATES, BADGE_STYLES } from '@/components/library/options/changelog';
+import {
+  IMPORT_CHOICE_STYLES,
+  IMPORT_REVIEW_STYLES,
+  IMPORT_SOURCES,
+  IMPORT_STEPS,
+} from '@/components/library/options/imports';
+import { MOCK_IMPORT_ITEMS } from './mock';
 
 // next/link reads the app router context, which no test renders (see
 // components/OnlineOnly.test.tsx).
@@ -33,6 +40,7 @@ describe('DizajnPage', () => {
   it('renders every section with no network', () => {
     render(<DizajnPage />);
 
+    expect(screen.getByText('Playlist import')).toBeInTheDocument();
     expect(screen.getByText("What's new (changelog)")).toBeInTheDocument();
     expect(screen.getByText('Instant search overlay')).toBeInTheDocument();
     expect(screen.getByText('Loading skeletons')).toBeInTheDocument();
@@ -121,6 +129,261 @@ describe('DizajnPage', () => {
     });
   });
 
+  describe('Playlist import section', () => {
+    const section = () => screen.getByTestId('imports-section');
+    const pick = (group: string, name: string) =>
+      fireEvent.click(within(screen.getByRole('radiogroup', { name: group })).getByRole('radio', { name }));
+
+    it('sits at the top of the page', () => {
+      render(<DizajnPage />);
+      const headings = screen.getAllByRole('heading', { level: 2 }).map((h) => h.textContent);
+      expect(headings[0]).toBe('Playlist import');
+    });
+
+    it('has a realistic mock: 42 songs, 36 confident, 4 to review with 3 to 5 candidates, 2 not found', () => {
+      expect(MOCK_IMPORT_ITEMS).toHaveLength(42);
+      const by = (s: string) => MOCK_IMPORT_ITEMS.filter((i) => i.status === s);
+      expect(by('matched')).toHaveLength(36);
+      expect(by('review')).toHaveLength(4);
+      expect(by('not-found')).toHaveLength(2);
+      for (const i of by('review')) {
+        expect(i.candidates!.length).toBeGreaterThanOrEqual(3);
+        expect(i.candidates!.length).toBeLessThanOrEqual(5);
+        for (const c of i.candidates!) expect(c.reasons.length).toBeGreaterThan(0);
+      }
+    });
+
+    it('renders all four pickers as radiogroups with the first option checked', () => {
+      render(<DizajnPage />);
+      for (const [group, options] of [
+        ['Choice style', IMPORT_CHOICE_STYLES],
+        ['Step', IMPORT_STEPS],
+        ['Review screen', IMPORT_REVIEW_STYLES],
+        ['Pasted link', IMPORT_SOURCES],
+      ] as const) {
+        const radios = within(screen.getByRole('radiogroup', { name: group })).getAllByRole('radio');
+        expect(radios.map((r) => r.textContent)).toEqual(options.map((o) => o.name));
+        radios.forEach((r, i) => expect(r).toHaveAttribute('aria-checked', i === 0 ? 'true' : 'false'));
+      }
+      pick('Choice style', 'Cards');
+      expect(within(screen.getByRole('radiogroup', { name: 'Choice style' })).getByRole('radio', { name: 'Cards' })).toHaveAttribute(
+        'aria-checked',
+        'true',
+      );
+    });
+
+    it('renders the shell twice, desktop and phone, with the dialog open over it', () => {
+      render(<DizajnPage />);
+      expect(within(section()).getAllByTestId('shell-preview').map((s) => s.dataset.phone)).toEqual(['false', 'true']);
+      expect(within(section()).getByText('Phone (390px)')).toBeInTheDocument();
+      expect(within(section()).getAllByTestId('import-dialog')).toHaveLength(2);
+    });
+
+    it('shows tabs only for Tabs, cards only for Cards, the hint only for Smart field', () => {
+      render(<DizajnPage />);
+      const s = section();
+      expect(within(s).getAllByRole('tab', { name: 'Import from a link' })).toHaveLength(2);
+      expect(within(s).queryAllByTestId('import-choice-card')).toHaveLength(0);
+
+      pick('Choice style', 'Cards');
+      expect(within(s).queryAllByRole('tab')).toHaveLength(0);
+      expect(within(s).getAllByTestId('import-choice-card')).toHaveLength(4);
+
+      pick('Choice style', 'Smart field');
+      expect(within(s).queryAllByRole('tab')).toHaveLength(0);
+      expect(within(s).queryAllByTestId('import-choice-card')).toHaveLength(0);
+      expect(within(s).getAllByTestId('smart-field-hint')).toHaveLength(2);
+    });
+
+    it('Tabs: the Import tab switches the dialog body to the link field', () => {
+      render(<DizajnPage />);
+      const tab = within(section()).getAllByRole('tab', { name: 'Import from a link' })[0];
+      expect(tab).toHaveAttribute('aria-selected', 'false');
+      fireEvent.click(tab);
+      expect(tab).toHaveAttribute('aria-selected', 'true');
+      expect(within(section()).getByRole('textbox', { name: 'Playlist link' })).toBeInTheDocument();
+    });
+
+    it('Cards: picking Import slides to the link step, Back returns', () => {
+      render(<DizajnPage />);
+      pick('Choice style', 'Cards');
+      fireEvent.click(within(section()).getAllByTestId('import-choice-card')[1]);
+      expect(within(section()).getByRole('dialog', { name: 'Import from a link' })).toBeInTheDocument();
+      fireEvent.click(within(section()).getByRole('button', { name: 'Back' }));
+      expect(within(section()).getAllByTestId('import-choice-card')).toHaveLength(4);
+    });
+
+    it('Link pasted shows the preview for every style, with the source badge and song count', () => {
+      render(<DizajnPage />);
+      pick('Step', 'Link pasted');
+      for (const style of IMPORT_CHOICE_STYLES) {
+        pick('Choice style', style.name);
+        const previews = within(section()).getAllByTestId('link-preview');
+        expect(previews).toHaveLength(2);
+        expect(within(previews[0]).getByText('Late night drive')).toBeInTheDocument();
+        expect(within(previews[0]).getByText(/42 songs/)).toBeInTheDocument();
+        expect(within(previews[0]).getByTestId('source-badge')).toHaveTextContent('Spotify');
+        expect(within(section()).queryByTestId('first-100-note')).toBeNull();
+      }
+      pick('Pasted link', 'YouTube Music');
+      expect(within(within(section()).getAllByTestId('link-preview')[0]).getByTestId('source-badge')).toHaveTextContent(
+        'YouTube Music',
+      );
+      pick('Pasted link', 'Spotify, over 100');
+      expect(within(section()).getAllByTestId('first-100-note')).toHaveLength(2);
+    });
+
+    it('Create moves to Importing: dialog gone, ring and count in the sidebar, rows landing, banner', () => {
+      render(<DizajnPage />);
+      pick('Step', 'Link pasted');
+      expect(within(section()).queryAllByTestId('import-progress-ring')).toHaveLength(0);
+      fireEvent.click(within(section()).getAllByRole('button', { name: /Create, import 42 songs/ })[0]);
+
+      expect(screen.getByRole('radio', { name: 'Importing' })).toHaveAttribute('aria-checked', 'true');
+      expect(within(section()).queryByTestId('import-dialog')).toBeNull();
+      const navRow = within(section()).getByTestId('import-nav-row');
+      expect(navRow).toHaveTextContent('18 of 42');
+      expect(within(navRow).getByTestId('import-progress-ring')).toBeInTheDocument();
+      expect(within(section()).getAllByTestId('import-progress-banner')).toHaveLength(2);
+      // 24 of 42 still to land, in each frame.
+      expect(within(section()).getAllByTestId('pending-row')).toHaveLength(48);
+    });
+
+    it('the progress ring shows only while importing', () => {
+      render(<DizajnPage />);
+      for (const step of IMPORT_STEPS) {
+        pick('Step', step.name);
+        const rings = within(section()).queryAllByTestId('import-progress-ring').length;
+        if (step.id === 'importing') expect(rings).toBeGreaterThan(0);
+        else expect(rings).toBe(0);
+      }
+    });
+
+    it('Done shows the summary, and Review opens the picked review screen', () => {
+      render(<DizajnPage />);
+      pick('Step', 'Done');
+      const summary = within(section()).getAllByTestId('import-summary')[0];
+      expect(summary).toHaveTextContent('36 added');
+      expect(summary).toHaveTextContent('4 need review');
+      expect(summary).toHaveTextContent('2 not found');
+      expect(within(section()).queryByTestId('candidates-popover')).toBeNull();
+
+      fireEvent.click(within(summary).getByRole('button', { name: 'Review' }));
+      expect(section()).toHaveAttribute('data-review-open', 'true');
+      expect(within(section()).getAllByTestId('candidates-popover')).toHaveLength(2);
+    });
+
+    it('each review option renders its own screen, and only Inline has the popover', () => {
+      render(<DizajnPage />);
+      pick('Review screen', 'Inline');
+      // Picking a review screen jumps to Done with it open.
+      expect(screen.getByRole('radio', { name: 'Done' })).toHaveAttribute('aria-checked', 'true');
+      expect(within(section()).getAllByTestId('candidates-popover')).toHaveLength(2);
+      expect(within(section()).queryByTestId('review-sheet')).toBeNull();
+      expect(within(section()).queryByTestId('review-page')).toBeNull();
+
+      pick('Review screen', 'Side sheet');
+      expect(within(section()).queryByTestId('candidates-popover')).toBeNull();
+      expect(within(section()).getAllByTestId('review-sheet')).toHaveLength(2);
+
+      pick('Review screen', 'Review page');
+      expect(within(section()).queryByTestId('candidates-popover')).toBeNull();
+      expect(within(section()).queryByTestId('review-sheet')).toBeNull();
+      expect(within(section()).getAllByTestId('review-page')).toHaveLength(2);
+    });
+
+    it('candidate rows have a preview button and plain-words reasons', () => {
+      render(<DizajnPage />);
+      pick('Review screen', 'Inline');
+      const pop = within(section()).getAllByTestId('candidates-popover')[0];
+      const rows = within(pop).getAllByTestId('candidate-row');
+      expect(rows).toHaveLength(3); // Instant Crush
+      expect(within(rows[0]).getByRole('button', { name: /^Preview "/ })).toBeInTheDocument();
+      expect(within(rows[0]).getByText('Length matches')).toBeInTheDocument();
+      expect(within(rows[2]).getByText('Live version')).toBeInTheDocument();
+      expect(within(rows[2]).getByText('Different artist')).toBeInTheDocument();
+    });
+
+    it('Inline: picking a candidate resolves the row and opens the next one', () => {
+      render(<DizajnPage />);
+      pick('Review screen', 'Inline');
+      const firstPop = within(section()).getAllByTestId('candidates-popover')[0];
+      expect(firstPop).toHaveAccessibleName('Pick a match for Instant Crush');
+      fireEvent.click(within(within(firstPop).getAllByTestId('candidate-row')[0]).getByRole('button', { pressed: false }));
+      expect(within(section()).getAllByTestId('candidates-popover')[0]).toHaveAccessibleName('Pick a match for Dreams');
+      expect(within(section()).getAllByTestId('import-summary')[0]).toHaveTextContent('3 need review');
+    });
+
+    it('Side sheet: number keys pick, S skips, then All reviewed', () => {
+      render(<DizajnPage />);
+      pick('Review screen', 'Side sheet');
+      const sheet = () => within(section()).getAllByTestId('review-sheet')[0];
+      expect(sheet()).toHaveTextContent('1 of 4');
+      expect(within(sheet()).getAllByTestId('candidate-row')).toHaveLength(3);
+      fireEvent.keyDown(window, { key: '2' });
+      expect(sheet()).toHaveTextContent('2 of 4');
+      fireEvent.keyDown(window, { key: 's' });
+      expect(sheet()).toHaveTextContent('3 of 4');
+      // Take On Me has five candidates: three up front, two behind "Show 2 more".
+      fireEvent.click(within(sheet()).getByRole('button', { name: 'Show 2 more' }));
+      expect(within(sheet()).getAllByTestId('candidate-row')).toHaveLength(5);
+      fireEvent.click(within(sheet()).getByRole('button', { name: 'Skip S' }));
+      fireEvent.keyDown(window, { key: '1' });
+      expect(sheet()).toHaveTextContent('All reviewed');
+    });
+
+    it('Review page: best match chosen by default, Accept all resolves everything', () => {
+      render(<DizajnPage />);
+      pick('Review screen', 'Review page');
+      const page = within(section()).getAllByTestId('review-page')[0];
+      const cards = within(page).getAllByTestId('review-card');
+      expect(cards).toHaveLength(4);
+      for (const card of cards) {
+        const rows = within(card).getAllByTestId('candidate-row');
+        expect(rows[0]).toHaveAttribute('data-selected', 'true');
+        rows.slice(1).forEach((r) => expect(r).toHaveAttribute('data-selected', 'false'));
+      }
+      expect(within(page).getAllByTestId('review-not-found')).toHaveLength(2);
+
+      fireEvent.click(within(page).getByRole('button', { name: 'Accept all (4)' }));
+      expect(within(page).queryAllByTestId('review-card')).toHaveLength(0);
+      expect(within(page).getAllByTestId('review-card-done')).toHaveLength(4);
+    });
+
+    it('opens the desktop shell full screen', () => {
+      render(<DizajnPage />);
+      fireEvent.click(within(section()).getByRole('button', { name: 'View full screen' }));
+      const overlay = screen.getByTestId('imports-fullscreen');
+      expect(within(overlay).getByTestId('shell-preview')).toHaveAttribute('data-phone', 'false');
+      fireEvent.keyDown(window, { key: 'Escape' });
+      expect(screen.queryByTestId('imports-fullscreen')).toBeNull();
+    });
+
+    it('persists the three choices to localStorage and restores them on mount', async () => {
+      const { unmount } = render(<DizajnPage />);
+      pick('Choice style', 'Smart field');
+      pick('Review screen', 'Side sheet');
+      pick('Step', 'Importing');
+
+      await waitFor(() => expect(window.localStorage.getItem('dizajn-imports-style')).toBe('smart-field'));
+      expect(window.localStorage.getItem('dizajn-imports-step')).toBe('importing');
+      expect(window.localStorage.getItem('dizajn-imports-review')).toBe('sheet');
+      unmount();
+
+      render(<DizajnPage />);
+      expect(screen.getByRole('radio', { name: 'Smart field' })).toHaveAttribute('aria-checked', 'true');
+      expect(screen.getByRole('radio', { name: 'Importing' })).toHaveAttribute('aria-checked', 'true');
+      expect(screen.getByRole('radio', { name: 'Side sheet' })).toHaveAttribute('aria-checked', 'true');
+      expect(section()).toHaveAttribute('data-step', 'importing');
+    });
+
+    it('ignores a stale saved value', () => {
+      window.localStorage.setItem('dizajn-imports-style', 'wizard');
+      render(<DizajnPage />);
+      expect(screen.getByRole('radio', { name: 'Tabs' })).toHaveAttribute('aria-checked', 'true');
+    });
+  });
+
   describe("What's new (changelog) section", () => {
     const pick = (group: string, name: string) =>
       fireEvent.click(within(screen.getByRole('radiogroup', { name: group })).getByRole('radio', { name }));
@@ -166,7 +429,10 @@ describe('DizajnPage', () => {
         card: screen.queryAllByTestId('whats-new-sidebar-card').length,
         banner: screen.queryAllByTestId('whats-new-home-banner').length,
         topBar: screen.queryAllByTestId('whats-new-top-bar-button').length,
-        menuDot: within(screen.getAllByTestId('mock-menu-button')[0]).queryAllByTestId('unread-dot').length,
+        // Scoped: the import section's shell has a menu button of its own.
+        menuDot: within(within(screen.getByTestId('changelog-section')).getAllByTestId('mock-menu-button')[0]).queryAllByTestId(
+          'unread-dot',
+        ).length,
       });
 
       // Sidebar link: in the desktop sidebar only (the phone drawer is shut).
@@ -186,8 +452,9 @@ describe('DizajnPage', () => {
 
     it('puts the sidebar entry in the phone drawer when the menu opens', () => {
       render(<DizajnPage />);
-      expect(screen.queryByTestId('mock-drawer')).not.toBeInTheDocument();
-      fireEvent.click(screen.getByRole('button', { name: 'Open menu', pressed: false }));
+      const section = screen.getByTestId('changelog-section');
+      expect(within(section).queryByTestId('mock-drawer')).not.toBeInTheDocument();
+      fireEvent.click(within(section).getByRole('button', { name: 'Open menu', pressed: false }));
       const drawer = screen.getByTestId('mock-drawer');
       expect(within(drawer).getByTestId('whats-new-sidebar-link')).toBeInTheDocument();
     });
@@ -255,16 +522,18 @@ describe('DizajnPage', () => {
 
     it('opens the desktop shell full screen and closes it with Escape or the close button', () => {
       render(<DizajnPage />);
+      // Scoped: the import section has its own "View full screen".
+      const section = screen.getByTestId('changelog-section');
       expect(screen.queryByTestId('changelog-fullscreen')).not.toBeInTheDocument();
 
-      fireEvent.click(screen.getByRole('button', { name: 'View full screen' }));
+      fireEvent.click(within(section).getByRole('button', { name: 'View full screen' }));
       const overlay = screen.getByRole('dialog', { name: 'Full screen preview' });
       expect(within(overlay).getByTestId('shell-preview')).toHaveAttribute('data-phone', 'false');
 
       fireEvent.keyDown(window, { key: 'Escape' });
       expect(screen.queryByTestId('changelog-fullscreen')).not.toBeInTheDocument();
 
-      fireEvent.click(screen.getByRole('button', { name: 'View full screen' }));
+      fireEvent.click(within(section).getByRole('button', { name: 'View full screen' }));
       fireEvent.click(screen.getByRole('button', { name: 'Close full screen' }));
       expect(screen.queryByTestId('changelog-fullscreen')).not.toBeInTheDocument();
     });

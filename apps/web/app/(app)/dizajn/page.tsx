@@ -20,12 +20,26 @@ import {
   type ChangelogState,
 } from '@/components/library/options/changelog';
 import { ChangelogSection } from '@/components/library/options/changelog/ChangelogSection';
+import {
+  IMPORT_CHOICE_STYLES,
+  IMPORT_REVIEW_STYLES,
+  IMPORT_SOURCES,
+  IMPORT_STEPS,
+  type ImportChoiceStyle,
+  type ImportReviewStyle,
+  type ImportSourceId,
+  type ImportStep,
+} from '@/components/library/options/imports';
+import { ImportsSection } from '@/components/library/options/imports/ImportsSection';
 import { MOCK_LIKED_TRACKS, MOCK_PLAYLISTS, MOCK_RECENT_TRACKS, MOCK_RESULT_TRACKS } from './mock';
 
 const STORAGE_KEY = 'dizajn-shelf-option';
 const CHANGELOG_PLACEMENT_KEY = 'dizajn-changelog-placement';
 const CHANGELOG_STATE_KEY = 'dizajn-changelog-state';
 const CHANGELOG_BADGE_KEY = 'dizajn-changelog-badge';
+const IMPORTS_STYLE_KEY = 'dizajn-imports-style';
+const IMPORTS_STEP_KEY = 'dizajn-imports-step';
+const IMPORTS_REVIEW_KEY = 'dizajn-imports-review';
 
 /** Lazy-initializer read of one picker's saved id, falling back to the
  *  first option when nothing (or something stale) is stored. */
@@ -175,6 +189,26 @@ export default function DizajnPage() {
     window.localStorage.setItem(CHANGELOG_BADGE_KEY, clBadge);
   }, [clBadge]);
 
+  // "Playlist import" pickers, same pattern. The pasted-link source is a
+  // local toggle only, not a design choice, so it is not saved.
+  const [imStyle, setImStyle] = useState<ImportChoiceStyle>(() => savedChoice(IMPORTS_STYLE_KEY, IMPORT_CHOICE_STYLES));
+  const [imStep, setImStep] = useState<ImportStep>(() => savedChoice(IMPORTS_STEP_KEY, IMPORT_STEPS));
+  const [imReview, setImReview] = useState<ImportReviewStyle>(() => savedChoice(IMPORTS_REVIEW_KEY, IMPORT_REVIEW_STYLES));
+  const [imSource, setImSource] = useState<ImportSourceId>('spotify');
+  // Bumped on every Review screen click (even the checked one), which
+  // opens that review screen in the preview.
+  const [imReviewRequest, setImReviewRequest] = useState(0);
+
+  useEffect(() => {
+    window.localStorage.setItem(IMPORTS_STYLE_KEY, imStyle);
+  }, [imStyle]);
+  useEffect(() => {
+    window.localStorage.setItem(IMPORTS_STEP_KEY, imStep);
+  }, [imStep]);
+  useEffect(() => {
+    window.localStorage.setItem(IMPORTS_REVIEW_KEY, imReview);
+  }, [imReview]);
+
   return (
     <div>
       <PageTitle className="mb-2">Design gallery</PageTitle>
@@ -182,6 +216,45 @@ export default function DizajnPage() {
         What was built, and the style options for the Library page&apos;s playlist shelves. Not a real
         page in the app: no link points here.
       </p>
+
+      <section className="mb-section">
+        <h2 className="text-section-title mb-inset">Playlist import</h2>
+        <p className="text-meta mb-block">
+          Proposals, not built: importing a Spotify or YouTube Music playlist from inside the
+          create-playlist dialog (the + next to Playlists), then the playlist filling in, then
+          checking the songs the matcher was unsure of. Everything here is mock data; buttons in
+          the preview work locally (Create, Review, Pick, Skip, Accept all).
+        </p>
+
+        <div className="mb-stack flex flex-col gap-block">
+          <div className="flex flex-wrap gap-x-section gap-y-block">
+            <Picker label="Choice style" options={IMPORT_CHOICE_STYLES} value={imStyle} onChange={setImStyle} />
+            <Picker label="Step" options={IMPORT_STEPS} value={imStep} onChange={setImStep} />
+          </div>
+          <div className="flex flex-wrap gap-x-section gap-y-block">
+            <Picker
+              label="Review screen"
+              options={IMPORT_REVIEW_STYLES}
+              value={imReview}
+              onChange={(id) => {
+                setImReview(id);
+                setImStep('done');
+                setImReviewRequest((n) => n + 1);
+              }}
+            />
+            <Picker label="Pasted link" options={IMPORT_SOURCES} value={imSource} onChange={setImSource} />
+          </div>
+        </div>
+
+        <ImportsSection
+          choiceStyle={imStyle}
+          step={imStep}
+          review={imReview}
+          reviewRequest={imReviewRequest}
+          sourceId={imSource}
+          onStepChange={setImStep}
+        />
+      </section>
 
       <section className="mb-12">
         <h2 className="text-section-title mb-1">What&apos;s new (changelog)</h2>
