@@ -21,6 +21,18 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    id: 'spotify-imports-work-again',
+    version: '0.3.2',
+    date: '2026-09-19',
+    title: 'Spotify imports work again',
+    summary: 'Spotify playlist links import again with no setup, and unsure matches are listed instead of guessed.',
+    bullets: [
+      'Paste any public Spotify playlist link: the first 100 songs import, no keys needed.',
+      'Better song matching: length, artist, explicit and live or remix versions all count.',
+      'Songs Ember is unsure about are listed as needing review instead of guessed.',
+    ],
+  },
+  {
     id: 'cleaner-collection-pages',
     version: '0.3.1',
     date: '2026-09-18',

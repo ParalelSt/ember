@@ -1,3 +1,22 @@
+# 0.3.2: Spotify imports work again
+
+**Host: a normal rebuild and restart (`./update.sh`). No `npm install`, no
+new environment variables, no PocketBase changes.** Optional clean-up: delete
+`SPOTIFY_CLIENT_ID` and `SPOTIFY_CLIENT_SECRET` from `apps/web/.env.local` if
+they are there. Ember no longer reads them (Spotify's February 2026 API change
+stopped them working for import), so leaving them does no harm either.
+
+- **Spotify playlist links import again, with no setup**: Ember reads public
+  playlists from Spotify's embed page, the first 100 songs of each. See
+  SETUP.md, "Spotify playlist import (no setup)".
+- **Better song matching**: every Spotify song gets up to five YouTube Music
+  candidates, scored on title, artist, length, explicit flag, live, remix and
+  cover versions, and official audio vs fan uploads. Only confident matches
+  are added; the import's last step lists "Needs review" and "Not found"
+  songs separately so they can be added by hand.
+- **YouTube playlists** fall back to yt-dlp when YouTube Music's API errors,
+  and private or missing playlists get a clear message.
+
 # 0.3.1: cleaner collection pages
 
 **Host: a normal rebuild and restart (`./update.sh`). Nothing to configure:
