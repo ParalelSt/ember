@@ -67,6 +67,8 @@ Runner: `lib/import/runner.ts`, started from `instrumentation.ts` like the diges
 
 Playlists get two new fields, `source_url` and `import_job`, so re-sync is possible later.
 
+As built (stages 3 and 4): items are created up front with status `pending` (so the playlist page can show the rows still waiting), and jobs carry four more fields: `retry_at` (paused by a backoff, when it tries again; empty means waiting for Retry), `runner` and `heartbeat` (a running job whose heartbeat is older than 30 s belonged to a server that stopped, so two servers on one PocketBase never run the same job), and `dismissed` (the Done summary was closed). A new job is held `paused` until its items exist, then queued. Code: `lib/import/{jobState,runner,store,runnerInstance,records,rows,reasons,nav}.ts`, routes under `app/api/import/{jobs,items}`, UI in `components/import/` and `components/track/menus/{CreatePlaylistDialog,ImportLinkForm}.tsx`.
+
 ## 6. Re-sync
 
 Not in v1. Manual "Sync now" (add new source tracks at the end, never remove or reorder) is a later stage. Daily sync would need a source read per playlist per day against Spotify's quota; skip.
