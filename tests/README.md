@@ -187,6 +187,7 @@ node tests/session-authorization.test.mjs           # or: npm run test:sessions
 node tests/fake-songsterr.mjs &                     # port 4330; app needs SONGSTERR_BASE=http://127.0.0.1:4330
 node tests/tabs.test.mjs                            # or: npm run test:tabs
 node tests/tabs-ui.test.mjs                         # or: npm run test:tabs-ui
+node tests/tabs-sync.test.mjs                       # or: npm run test:tabs-sync
 node tests/tabs-generate.test.mjs                   # or: npm run test:tabs-generate
 node tests/android-player-ui.test.mjs               # or: npm run test:android-ui
 node tests/offline-android-ui.test.mjs              # or: npm run test:offline-ui
