@@ -78,6 +78,8 @@ class MatchTest(unittest.TestCase):
         self.yt.search.side_effect = [self.hits, [], Exception("503 Service Unavailable")]
         res = run_match(["Bass Persuades\tMiley Cyrus", "Nothing\tNobody", "Broken\tSearch"])
         self.assertEqual([len(r) for r in res["results"]], [5, 0, 0])
+        # Nothing found and could not ask are told apart.
+        self.assertEqual(res["failed"], [2])
 
     def test_empty_title_is_an_empty_list(self):
         res = run_match(["\tMiley Cyrus"])

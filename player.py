@@ -716,6 +716,9 @@ def cmd_match(args):
     ignore_spelling, the second try for a track the first search missed.
     One YTMusic init serves the whole batch (callers keep batches at about 8)."""
     results = []
+    # Indexes whose search raised (503s, timeouts): an empty list there means
+    # "could not ask", not "nothing found", and the caller retries the batch.
+    failed = []
     for q in args.queries:
         title, _, artist = q.partition("\t")
         title = title.strip()
@@ -730,11 +733,12 @@ def cmd_match(args):
                 hits = yt.search(f"{title} {artist}".strip(), filter="songs", limit=MATCH_CANDIDATES) or []
         except Exception as e:
             print(f"match: search failed for {title!r}: {e}", file=sys.stderr)
+            failed.append(len(results))
             results.append([])
             continue
         hits = [h for h in hits if h.get("videoId")][:MATCH_CANDIDATES]
         results.append([to_candidate_json(h) for h in hits])
-    json.dump({"results": results}, sys.stdout)
+    json.dump({"results": results, "failed": failed}, sys.stdout)
 
 def cmd_interactive():
     """Original behavior: prompt → search → download → play."""
