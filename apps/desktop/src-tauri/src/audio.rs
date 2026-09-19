@@ -434,6 +434,14 @@ pub(crate) struct DownloadProgress {
     last_ms: AtomicU64,
     /// The body has arrived in full; nothing more is coming, by design.
     complete: AtomicBool,
+    /// Stops the download task, captured from the first progress callback.
+    ///
+    /// Held as a closure rather than the token itself so this file needs no
+    /// dependency on tokio-util just to name the type. It matters because
+    /// giving up on a load only drops OUR future: the download task behind it
+    /// carries on, reconnecting every few seconds forever (that is its retry
+    /// behaviour), with a temp file and a thread to go with it.
+    stop: Mutex<Option<Box<dyn Fn() + Send + Sync>>>,
 }
 
 impl DownloadProgress {
@@ -444,6 +452,25 @@ impl DownloadProgress {
             started: std::time::Instant::now(),
             last_ms: AtomicU64::new(0),
             complete: AtomicBool::new(false),
+            stop: Mutex::new(None),
+        }
+    }
+
+    /// Remember how to stop this download. The first caller wins; later ones
+    /// are the same token again.
+    pub(crate) fn on_stop(&self, stop: Box<dyn Fn() + Send + Sync>) {
+        if let Ok(mut slot) = self.stop.lock() {
+            slot.get_or_insert(stop);
+        }
+    }
+
+    /// Stop the download, if anything has arrived to tell us how. A source
+    /// that never sent a byte has nothing to cancel.
+    pub(crate) fn stop_download(&self) {
+        if let Ok(slot) = self.stop.lock() {
+            if let Some(stop) = slot.as_ref() {
+                stop();
+            }
         }
     }
 
@@ -502,7 +529,9 @@ pub(crate) async fn while_progressing<F: std::future::Future>(
 pub(crate) fn download_settings(
     progress: Arc<DownloadProgress>,
 ) -> Settings<HttpStream<Client>> {
-    Settings::default().on_progress(move |_stream, state, _cancel| {
+    Settings::default().on_progress(move |_stream, state, cancel| {
+        let cancel = cancel.clone();
+        progress.on_stop(Box::new(move || cancel.cancel()));
         progress.record(matches!(state.phase, StreamPhase::Complete));
     })
 }
@@ -596,7 +625,12 @@ pub(crate) async fn open_source(
     )
     .await
     {
-        Err(stop) => return Err(stalled(stop, "buffering")),
+        Err(stop) => {
+            // Nothing else can reach this download now: our future is the only
+            // handle on it, and we are dropping it.
+            progress.stop_download();
+            return Err(stalled(stop, "buffering"));
+        }
         Ok(Ok(r)) => r,
         Ok(Err(e)) => return Err(host_error(format!("the stream could not be read: {e}"))),
     };

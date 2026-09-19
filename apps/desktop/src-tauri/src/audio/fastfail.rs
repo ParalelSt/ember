@@ -23,11 +23,11 @@ use std::time::{Duration, Instant};
 
 use stream_download::http::HttpStream;
 use stream_download::storage::temp::TempStorageProvider;
-use stream_download::{Settings, StreamDownload};
+use stream_download::StreamDownload;
 
 use super::{
-    build_decoder, http_client, is_stalled, open_source, while_progressing, DownloadProgress,
-    LoadBudgets, LoadStop,
+    build_decoder, download_settings, http_client, is_stalled, open_source, while_progressing,
+    DownloadProgress, LoadBudgets, LoadStop,
 };
 
 /// 120 s of AAC in a plain m4a: a healthy body, so the only thing under test is
@@ -127,7 +127,21 @@ async fn open_with(url: &str, budgets: LoadBudgets) -> (Duration, Opened) {
         .await
         .map(|o| o.total)
         .map_err(|e| (e.message, e.retry));
-    (started.elapsed(), outcome)
+    let took = started.elapsed();
+    settle().await;
+    (took, outcome)
+}
+
+/// Give the cancelled download a moment to notice, AFTER the clock is read.
+///
+/// Giving up on a load stops the download, which is what unblocks the read it
+/// abandoned. That happens on the runtime, and each test here owns a runtime it
+/// drops the moment it returns: dropping one waits for its blocking threads, so
+/// a test that returned in the same breath as the cancellation could deadlock
+/// on its own shutdown. The app's runtime lives as long as the app, so this is
+/// a test artefact, not a behaviour.
+async fn settle() {
+    tokio::time::sleep(Duration::from_millis(300)).await;
 }
 
 /// The same, on the budgets a real load runs with.
@@ -138,6 +152,12 @@ async fn open(url: &str) -> (Duration, Opened) {
 /// The engine BEFORE the fix: one flat budget spread over the three stages,
 /// with nothing watching whether the source is actually delivering. Kept as the
 /// measurement of what a dead source used to cost.
+///
+/// One thing here is NOT the old shape: it keeps a handle on the download so it
+/// can stop it at the end. The old shape had none, which is the other half of
+/// the same fault (a load it gave up on left its download reconnecting for the
+/// life of the app) and would hang this test process at shutdown. It is taken
+/// after the clock is read, so the measurement is untouched.
 async fn open_with_one_flat_budget(url: &str) -> Duration {
     const FLAT_BUDGET: Duration = Duration::from_secs(25);
     let deadline = Instant::now() + FLAT_BUDGET;
@@ -152,20 +172,26 @@ async fn open_with_one_flat_budget(url: &str) -> Duration {
             Ok(Ok(s)) => s,
             _ => return started.elapsed(),
         };
+    let progress = std::sync::Arc::new(DownloadProgress::started_now());
     let reader = match tokio::time::timeout(
         remaining(),
-        StreamDownload::from_stream(stream, TempStorageProvider::default(), Settings::default()),
+        StreamDownload::from_stream(
+            stream,
+            TempStorageProvider::default(),
+            download_settings(std::sync::Arc::clone(&progress)),
+        ),
     )
     .await
     {
         Ok(Ok(r)) => r,
-        _ => return started.elapsed(),
+        _ => {
+            let took = started.elapsed();
+            progress.stop_download();
+            settle().await;
+            return took;
+        }
     };
     let byte_len = reader.content_length();
-    // Abandoning this blocking read is what the old shape did; the token is
-    // only kept so the test process can still exit (a blocking task stuck in a
-    // read holds the tokio runtime open at shutdown). Taken after the clock, so
-    // it cannot flatter the measurement.
     let download = reader.cancellation_token();
     let _ = tokio::time::timeout(
         remaining(),
@@ -174,6 +200,7 @@ async fn open_with_one_flat_budget(url: &str) -> Duration {
     .await;
     let took = started.elapsed();
     download.cancel();
+    settle().await;
     took
 }
 
