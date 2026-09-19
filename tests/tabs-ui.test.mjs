@@ -362,6 +362,88 @@ const trackPath = (id) => `/tabs/${encodeURIComponent(id)}`;
   await page.context().close();
 }
 
+// ── nothing overflows (docs/tabs-v3.md section 5) ─────────────────────────
+// A long song name, a member with a 60-character name, a file with six
+// long-named tracks and seven pasted tabs: eight lines in the picker. At
+// 390, 1280 and 1920 every chip, menu item and picker line ends inside the
+// window, and the page never scrolls sideways (the toolbar scrolls inside
+// itself, so its row is checked, not each pill).
+{
+  const LONG_NAME = 'Maximiliana Wolkenstein-Hohenberg of the Harbour Lantern Choir';
+  const longMember = await member('longname', LONG_NAME);
+  const longSong = await uploadSong(`A Very Long Song Name That Keeps Going Well Past Any Sensible Header Width ${run}`);
+  {
+    const at = await import(path.join(process.cwd(), 'node_modules/@coderline/alphatab/dist/alphaTab.mjs'));
+    const names = ['Rhythm Guitar (Fender Jaguar, fuzz, left channel)', 'Lead Guitar (Gibson SG, wah, right channel)',
+      'Acoustic Guitar (12-string, intro and outro only)', 'Baritone Guitar (tuned to B standard, doubles the bass)',
+      'Electric Bass (finger, flatwound strings, chorus pedal)', 'Slide Guitar (open G, glass slide, bridge solo)'];
+    const tracks = names.map((n) => `\\track ("${n}" "${n.slice(0, 6)}")\n\\tuning (E4 B3 G3 D3 A2 E2)\n${Array(8).fill('0.6.4 2.6.4 3.6.4 5.6.4').join(' |\n')}\n`).join('');
+    const settings = new at.Settings();
+    const imp = new at.importer.AlphaTexImporter();
+    imp.initFromString(`\\title "Long"\n\\tempo 120\n${tracks}`, settings);
+    const gp = Buffer.from(new at.exporter.Gp7Exporter().export(imp.readScore(), settings));
+    const form = new FormData();
+    form.append('file', new Blob([new Uint8Array(gp)]), 'long.gp');
+    form.append('title', longSong.title);
+    form.append('artist', longSong.artist);
+    form.append('trackId', longSong.id);
+    const up = await fetch(`${APP_URL}/api/tabs/files`, { method: 'POST', body: form, headers: { cookie: `pb_auth=${longMember}` } });
+    if (!up.ok) throw new Error(`could not add the long file: ${up.status}`);
+  }
+  const RIFF = ['e|-----------------|', 'B|-----------------|', 'G|-----------------|', 'D|---------2---4---|', 'A|-----0---2-------|', 'E|-3---------------|'].join('\n');
+  for (let i = 0; i < 7; i++) {
+    const res = await fetch(`${APP_URL}/api/tabs/text`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', cookie: `pb_auth=${longMember}` },
+      body: JSON.stringify({ text: RIFF, title: longSong.title, artist: longSong.artist, trackId: longSong.id }),
+    });
+    if (res.status !== 201) throw new Error(`could not paste tab ${i}: ${res.status}`);
+  }
+
+  /** Every element matching the selector, as {text, left, right}. */
+  const rects = (page, selector) => page.evaluate((sel) => [...document.querySelectorAll(sel)].map((el) => {
+    const r = el.getBoundingClientRect();
+    return { text: (el.textContent ?? '').trim().slice(0, 40), left: Math.round(r.left), right: Math.round(r.right), w: Math.round(r.width) };
+  }), selector);
+  const outside = (list, width) => list.filter((x) => x.w > 0 && (x.right > width || x.left < 0));
+
+  for (const width of [390, 1280, 1920]) {
+    const phone = width < 640;
+    const page = await newPage({ width, height: 900 }, phone ? { hasTouch: true, isMobile: true } : {});
+    await page.goto(`${APP_URL}${trackPath(longSong.id)}`, { waitUntil: 'networkidle' });
+    await scoreReady(page).catch(() => {});
+    await page.waitForTimeout(800);
+
+    const header = await rects(page, '[data-testid="tab-sheet-header"] h1, [data-testid="tab-sheet-header"] .text-meta, [data-testid="tab-source-chip"], [data-testid="tabs-toolbar"]');
+    check(`${width}: title, meta, chip and toolbar end inside the window`, header.length >= 4 && outside(header, width).length === 0,
+      JSON.stringify(outside(header, width)).slice(0, 200));
+    const chipLabel = await page.getByTestId('tab-source-chip').innerText().catch(() => '');
+    check(`${width}: the chip names the long-named member`, chipLabel.includes('File added by Maximiliana'), chipLabel.slice(0, 60));
+
+    await page.getByRole('button', { name: 'Tab options' }).click();
+    await page.getByRole('menuitem').first().waitFor({ timeout: 5000 }).catch(() => {});
+    const menu = await rects(page, '[role="menuitem"]');
+    check(`${width}: every ⋯ menu item ends inside the window`, menu.length >= 5 && outside(menu, width).length === 0,
+      `${menu.length} items ${JSON.stringify(outside(menu, width)).slice(0, 160)}`);
+    await page.keyboard.press('Escape');
+    await page.waitForTimeout(300);
+
+    await page.getByRole('button', { name: 'Choose a tab' }).click();
+    await page.getByRole('menuitem').first().waitFor({ timeout: 5000 }).catch(() => {});
+    const picker = await rects(page, '[role="menuitem"]');
+    const titled = await page.evaluate(() => [...document.querySelectorAll('[role="menuitem"]')].every((el) => (el.getAttribute('title') ?? '').length > 0));
+    check(`${width}: all eight picker lines end inside the window`, picker.length === 8 && outside(picker, width).length === 0,
+      `${picker.length} items ${JSON.stringify(outside(picker, width)).slice(0, 160)}`);
+    check(`${width}: a cut line keeps its whole text in the tooltip`, titled);
+    await page.keyboard.press('Escape');
+    await page.waitForTimeout(300);
+
+    const scroll = await page.evaluate(() => ({ sw: document.documentElement.scrollWidth, iw: window.innerWidth }));
+    check(`${width}: no sideways page scroll`, scroll.sw <= scroll.iw, `page ${scroll.sw}px in a ${scroll.iw}px window`);
+    await page.context().close();
+  }
+}
+
 // The status probe for a generated tab answers 404 for "none yet"; that is
 // the API's shape, not an error.
 const noisy = consoleErrors.filter((e) => !/favicon|404/.test(e));

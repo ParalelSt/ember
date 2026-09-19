@@ -186,23 +186,24 @@ function TabsSheet({ song, sources, onBack }: { song: TabSong; sources: TabSourc
       >
         <MoreIcon className="size-4" />
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="min-w-56">
-        <DropdownMenuItem onClick={addFile}>Add a Guitar Pro or MusicXML file</DropdownMenuItem>
+      <DropdownMenuContent align="end" className={MENU_CLASS}>
+        <MenuItem label="Add a Guitar Pro or MusicXML file" onClick={addFile} />
         {sources.canGenerate && !ownGenerated && (
-          <DropdownMenuItem disabled={busyGenerating} onClick={sources.generate}>
-            {busyGenerating ? 'Transcribing…' : 'Generate a tab from the recording'}
-          </DropdownMenuItem>
+          <MenuItem
+            label={busyGenerating ? 'Transcribing…' : 'Generate a tab from the recording'}
+            disabled={busyGenerating}
+            onClick={sources.generate}
+          />
         )}
         <DropdownMenuSeparator />
         {searchLinks.map((l) => (
-          <DropdownMenuItem key={l.id} onClick={() => window.open(l.url, '_blank', 'noopener,noreferrer')}>
-            {l.menuLabel}
-          </DropdownMenuItem>
+          <MenuItem key={l.id} label={l.menuLabel} onClick={() => window.open(l.url, '_blank', 'noopener,noreferrer')} />
         ))}
         {tab?.canDelete && !tab.id.startsWith('generated:') && (
           <>
             <DropdownMenuSeparator />
-            <DropdownMenuItem
+            <MenuItem
+              label="Delete this tab"
               className="text-destructive"
               onClick={() => {
                 if (window.confirm('Delete this tab for everyone?')) {
@@ -210,9 +211,7 @@ function TabsSheet({ song, sources, onBack }: { song: TabSong; sources: TabSourc
                   sources.remove(tab.id);
                 }
               }}
-            >
-              Delete this tab
-            </DropdownMenuItem>
+            />
           </>
         )}
       </DropdownMenuContent>
@@ -321,6 +320,30 @@ function TabsSheet({ song, sources, onBack }: { song: TabSong; sources: TabSourc
   );
 }
 
+/** The tab page's menus never run off the screen (docs/tabs-v3.md section
+ *  5): at most the viewport less a margin, whatever the trigger's width. */
+const MENU_CLASS = 'w-max min-w-56 max-w-[calc(100vw-2rem)]';
+
+/** One line of a menu: cut with an ellipsis when too long, whole in the
+ *  tooltip. */
+function MenuItem({
+  label,
+  onClick,
+  disabled,
+  className,
+}: {
+  label: string;
+  onClick: () => void;
+  disabled?: boolean;
+  className?: string;
+}) {
+  return (
+    <DropdownMenuItem title={label} disabled={disabled} onClick={onClick} className={cn('min-w-0', className)}>
+      <span className="min-w-0 truncate">{label}</span>
+    </DropdownMenuItem>
+  );
+}
+
 /** "File added by Aron, shared", "Text tab pasted by Aron, shared" or
  *  "Generated from the recording, rough"; with more than one tab for the
  *  song it opens a menu to switch between them, in chain order. */
@@ -330,15 +353,21 @@ function SourceChip({ tab, tabs, onPick }: { tab: TabSummary; tabs: TabSummary[]
   return (
     <TabSourceChip label={label}>
       <DropdownMenu>
-        <DropdownMenuTrigger aria-label="Choose a tab" className="inline-flex items-center gap-inset hover:text-foreground">
-          {label}
-          <ChevronDownIcon className="size-3" />
+        <DropdownMenuTrigger
+          aria-label="Choose a tab"
+          className="inline-flex min-w-0 max-w-full items-center gap-inset hover:text-foreground"
+        >
+          <span className="min-w-0 truncate">{label}</span>
+          <ChevronDownIcon className="size-3 shrink-0" />
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="start" className="min-w-56">
+        <DropdownMenuContent align="start" className={MENU_CLASS}>
           {tabs.map((t) => (
-            <DropdownMenuItem key={t.id} onClick={() => onPick(t.id)} className={cn(t.id === tab.id && 'text-ember')}>
-              {pickerLabel(t)}
-            </DropdownMenuItem>
+            <MenuItem
+              key={t.id}
+              label={pickerLabel(t)}
+              onClick={() => onPick(t.id)}
+              className={cn(t.id === tab.id && 'text-ember')}
+            />
           ))}
         </DropdownMenuContent>
       </DropdownMenu>
