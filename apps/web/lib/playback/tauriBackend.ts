@@ -46,10 +46,14 @@ export const createTauriBackend: CreateAudioBackend = (events) => {
   sub<Record<string, never>>('audio:ended', () => events.onEnded());
   sub<Record<string, never>>('audio:play', () => { paused = false; events.onPlay(); });
   sub<Record<string, never>>('audio:pause', () => { paused = true; events.onPause(); });
-  sub<{ message: string }>('audio:error', ({ message }) => {
+  // `retry` is the engine's own verdict on whether web audio could do better:
+  // 'none' means the host could not deliver the song at all, so swapping
+  // engines only asks the same server the same question. Anything else (an
+  // older engine sends no field at all) keeps the old "try web audio" answer.
+  sub<{ message: string; retry?: string }>('audio:error', ({ message, retry }) => {
     logger.error('audio', message || 'native audio error');
     curTime = 0;
-    events.onError();
+    events.onError({ canRetryOnWebAudio: retry !== 'none' });
   });
   sub<{ kind: string; sec?: number }>('audio:cmd', ({ kind, sec }) => {
     if (!cmds) return;
@@ -86,7 +90,12 @@ export const createTauriBackend: CreateAudioBackend = (events) => {
         // but member uploads are not — without this an uploaded song fails on
         // desktop while playing fine in a browser. Only pb_auth is forwarded.
         cookie: sessionCookie(),
-      }).catch(() => events.onError());
+        // A rejection here means the COMMAND could not run at all (the
+        // capability denied it, no output device): the engine is the problem,
+        // not the song, so web audio is exactly the right answer. Failures the
+        // engine itself saw come through `audio:error` instead, with their own
+        // verdict, and do not reject.
+      }).catch(() => events.onError({ canRetryOnWebAudio: true }));
     },
     play() { paused = false; void invoke('audio_play').catch(() => {}); },
     pause() { paused = true; void invoke('audio_pause').catch(() => {}); },

@@ -16,18 +16,27 @@ import { isUnavailable } from '@/lib/playback/queueNav';
  *
  *  Returns a stable `probe()` the backend's `onError` can call. Nothing
  *  happens when there is no current track, or when it is already flagged
- *  (that failure was expected). */
+ *  (that failure was expected).
+ *
+ *  `onStillPlayable` runs for the other answer: the server has nothing against
+ *  this track, so it failed for some passing reason (a download the host could
+ *  not make, a stream that stopped) and the listener is owed a word about the
+ *  song they are looking at. It is the ONLY place that says so, precisely so a
+ *  track that turns out to be dead gets the skip message instead, never both. */
 export function useAvailabilityProbe(nextRef: RefObject<() => void>) {
   const qc = useQueryClient();
 
-  return useCallback(() => {
+  return useCallback((onStillPlayable?: (track: { title: string }) => void) => {
     const st = usePlayerStore.getState();
     const cur = st.queue[st.index];
     if (!cur || isUnavailable(cur)) return;
     const erroredId = cur.id;
 
     api.getTrackAvailability(erroredId).then(({ unavailable, reason }) => {
-      if (!unavailable) return;
+      if (!unavailable) {
+        onStillPlayable?.(cur);
+        return;
+      }
       const at = new Date().toISOString();
       const before = usePlayerStore.getState();
       // The request outlived its track: the user may have skipped away (or
@@ -46,6 +55,11 @@ export function useAvailabilityProbe(nextRef: RefObject<() => void>) {
       qc.invalidateQueries({ queryKey: ['playlist'] });
       logger.breadcrumb('playback', 'unavailable', { trackId: erroredId, reason });
       if (before.queue[before.index]?.id === erroredId) nextRef.current();
-    }).catch(() => {});
+    }).catch(() => {
+      // The server could not be asked either. The track is not known to be
+      // dead, so it is the same "it just would not load" case: say so rather
+      // than leaving the player silent with no explanation.
+      onStillPlayable?.(cur);
+    });
   }, [qc, nextRef]);
 }

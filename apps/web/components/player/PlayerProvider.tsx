@@ -34,7 +34,7 @@ import { createCapacitorBackend } from '@/lib/playback/capacitorBackend';
 import { createNativeBackend, nativeBackendReady } from '@/lib/playback/nativeBridge';
 import { createTauriBackend } from '@/lib/playback/tauriBackend';
 import { createAndroidBackend, androidPluginPresent } from '@/lib/playback/androidBackend';
-import type { AudioBackend, AudioBackendEvents } from '@/lib/playback/types';
+import type { AudioBackend, AudioBackendEvents, AudioErrorInfo } from '@/lib/playback/types';
 import type { PlaybackContext, Track } from '@/types/track';
 
 interface PlayerControls {
@@ -251,16 +251,24 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         setIsPlaying(false);
         logger.breadcrumb('playback', 'pause', { trackId: cur.queue[cur.index]?.id ?? null });
       },
-      onError: () => handleError(),
+      onError: (info) => handleError(info),
     };
     // The error path, named so `onEnded` can run it for an "ended" that is
     // really a failure (see there). Declared after `events` and hoisted, so
     // both callbacks close over the same function.
-    function handleError() {
+    function handleError(info?: AudioErrorInfo) {
       {
         // A native engine that can't play is worse than no native engine:
-        // retry this track on web audio before giving up on it.
-        if (backendKindRef.current === 'tauri-native' && !fellBackRef.current) {
+        // retry this track on web audio before giving up on it. Unless the
+        // engine says the HOST could not deliver the song, in which case web
+        // audio would ask the same server the same question, the listener
+        // would wait through a second failure, and the session would lose its
+        // OS media keys over one bad track.
+        if (
+          backendKindRef.current === 'tauri-native'
+          && !fellBackRef.current
+          && info?.canRetryOnWebAudio !== false
+        ) {
           fallbackToWebAudioRef.current?.('audio backend reported an error');
           return;
         }
@@ -293,7 +301,10 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         setIsPlaying(false);
         // Was the track itself the problem? The probe asks the server, flags
         // the queue entry if so, and skips on. See useAvailabilityProbe.
-        probeAvailability();
+        // If the server has nothing against it, the song simply would not
+        // load, and the listener gets told that instead of watching a player
+        // that has quietly stopped.
+        probeAvailability((track) => toast.error(`Couldn't load "${track.title}"`));
       }
     }
     // Per-shell backend: tauri has a native engine (Part 5); capacitor keeps

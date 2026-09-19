@@ -61,6 +61,36 @@ describe('tauriBackend', () => {
     expect(events.onEnded).not.toHaveBeenCalled();
   });
 
+  it('passes on the engine verdict that web audio cannot help', async () => {
+    const events = makeFakeEvents();
+    createTauriBackend(events);
+
+    // The host could not deliver the song at all (its download failed and no
+    // live stream could stand in): a browser would ask the same server the
+    // same question, so the provider must not swap engines over it.
+    await emit('audio:error', { message: 'the host refused the song', retry: 'none' });
+
+    expect(events.onError).toHaveBeenCalledWith({ canRetryOnWebAudio: false });
+  });
+
+  it('keeps asking for web audio when the engine itself came up short', async () => {
+    const events = makeFakeEvents();
+    createTauriBackend(events);
+
+    await emit('audio:error', { message: 'this engine could not decode the song', retry: 'web-audio' });
+
+    expect(events.onError).toHaveBeenCalledWith({ canRetryOnWebAudio: true });
+  });
+
+  it('treats an error with no verdict (an older engine) as worth a web-audio try', async () => {
+    const events = makeFakeEvents();
+    createTauriBackend(events);
+
+    await emit('audio:error', { message: 'playback stalled at 41.0s' });
+
+    expect(events.onError).toHaveBeenCalledWith({ canRetryOnWebAudio: true });
+  });
+
   it('forwards a seek unclamped when the engine reported no duration, leaving the engine to judge it', async () => {
     const events = makeFakeEvents();
     const backend = createTauriBackend(events);
