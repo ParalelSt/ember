@@ -260,18 +260,24 @@ export async function getTrack(videoId: string): Promise<Track | null> {
   return normalize(raw);
 }
 
-/** What `player.py trending` prints: the chart playlist, in rank order. */
+/** What `player.py trending` prints: the chart, blended across whichever
+ *  countries it was asked for and could fetch, in rank order. */
 export interface RawTrendingChart {
   title?: string | null;
   playlistId?: string | null;
   source?: string;
+  /** Country codes that actually made it into the blend (player.py skips a
+   *  country whose chart fetch failed rather than failing the whole call). */
+  countries?: string[];
   tracks?: RawYoutubeTrack[];
 }
 
-/** One chart fetch through the player. Throws when every source failed
- *  (player.py exits non-zero); lib/trending.ts caches the result. */
-export async function fetchTrendingChart(country: string): Promise<{ title: string | null; source: string; tracks: Track[] }> {
-  const raw = await runPython<RawTrendingChart | RawYoutubeTrack[]>(['trending', '--country', country], { timeoutMs: 60000 });
+/** One chart fetch through the player: `countries` is a comma list of chart
+ *  country codes (a single code works too). Throws when every country's
+ *  chart failed (player.py exits non-zero); lib/trending.ts caches the
+ *  result. */
+export async function fetchTrendingChart(countries: string): Promise<{ title: string | null; source: string; countries: string[]; tracks: Track[] }> {
+  const raw = await runPython<RawTrendingChart | RawYoutubeTrack[]>(['trending', '--countries', countries], { timeoutMs: 60000 });
   return parseTrendingChart(raw);
 }
 
@@ -281,7 +287,7 @@ export async function fetchTrendingChart(country: string): Promise<{ title: stri
 export function parseTrendingChart(raw: RawTrendingChart | RawYoutubeTrack[] | null | undefined) {
   const chart: RawTrendingChart = Array.isArray(raw) ? { tracks: raw } : (raw ?? {});
   const tracks = dedupeByVideoId((chart.tracks ?? []).filter((t) => t && VIDEO_ID_RE.test(t.videoId ?? ''))).map(normalize);
-  return { title: chart.title ?? null, source: chart.source ?? 'ytmusicapi', tracks };
+  return { title: chart.title ?? null, source: chart.source ?? 'ytmusicapi', countries: chart.countries ?? [], tracks };
 }
 
 interface RecommendedArgs {
