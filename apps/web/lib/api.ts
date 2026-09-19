@@ -1,6 +1,7 @@
 import type { AlbumDetail, ArtistPayload, Playlist, SessionState, Track } from '@/types/track';
 import { logger } from '@/lib/logger/client';
 import type { TabSummary } from '@/lib/tabSources';
+import type { TabTiming } from '@/lib/tabSync';
 import type { StoredPlugins } from '@/lib/pluginSettings';
 
 export interface AdminUser {
@@ -199,6 +200,13 @@ export const api = {
       method: 'POST',
       body: { trackId, title, artist, again },
     }),
+  /** How a tab's alignment with the recording stands (docs/tabs-v3.md
+   *  section 3), and starting it ("Line it up"). */
+  getTabAlignment: (tabId: string) =>
+    req<{ status: 'ready' | 'running' | 'failed' | 'none'; timing?: TabTiming; error?: string }>(
+      `/tabs/align?tabId=${encodeURIComponent(tabId)}`,
+    ),
+  lineTabUp: (tabId: string) => req<{ status: 'running' }>('/tabs/align', { method: 'POST', body: { tabId } }),
   generateTab: (trackId: string, title: string, artist = '') =>
     req<{ status: 'ready' | 'running' }>(
       `/tabs/generated/${encodeURIComponent(trackId)}?title=${encodeURIComponent(title)}&artist=${encodeURIComponent(artist)}`,

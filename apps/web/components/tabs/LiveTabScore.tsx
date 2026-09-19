@@ -7,15 +7,19 @@ import { dragReducer, edgeScrollSpeed, idleDrag, isActive, snapToBeat, type Drag
 import { logger } from '@/lib/logger/client';
 import { displaySettings, scoreInfo, type ScoreInfo, type TabsScroll, type TabsStaff } from '@/lib/tabScore';
 import {
+  barStartsMs,
   beatToSongSec,
   estimateSongSec,
   FEED_INTERVAL_MS,
   followScroll,
   isJump,
-  songToTabMs,
+  songSecToTabMs,
+  syncPoints,
   type Anchor,
   type Box,
   type Fed,
+  type SyncPoint,
+  type TabTiming,
 } from '@/lib/tabSync';
 
 // alphaTab ships no types we can reach through a dynamic import without
@@ -32,6 +36,10 @@ export interface LiveTabScoreProps {
   scale: number;
   /** The tab's sync nudge in ms (positive: the tab runs ahead). */
   offsetMs: number;
+  /** Where the tab sits in the recording (align.py, lib/tabSync.ts), when
+   *  it has been lined up confidently. Null: the tab's own clock starts at
+   *  the song's start, as before. */
+  timing?: TabTiming | null;
   /** This tab's song is the one Ember is playing, so the cursor follows it
    *  and a click seeks it. False: the score is drawn, nothing moves. */
   follows: boolean;
@@ -60,6 +68,11 @@ export interface LiveTabScoreProps {
  *  not where playback would have got to (a seek, the sync nudge, a fresh
  *  layout) goes to AlphaTab as a seek, so the line jumps there rather than
  *  sliding over, and is brought into view even while paused.
+ *
+ *  A tab lined up with the recording (docs/tabs-v3.md section 3) is fed
+ *  through its bar anchors instead: song time to tab time piecewise over
+ *  them (lib/tabSync.ts songSecToTabMs), the nudge still on top, and every
+ *  seek (a click, a drag, the arrow keys) back the same way.
  *
  *  Nothing AlphaTab does moves the song on its own: the media handler it
  *  talks to is inert, and its built-in click handling is off. A click on a
@@ -99,8 +112,13 @@ export function LiveTabScore(props: LiveTabScoreProps) {
   const refollow = useRef<() => void>(() => {});
   /** Bring the beat at AlphaTab's playhead into view, playing or not. */
   const followPlayhead = useRef<() => void>(() => {});
+  /** Read the bar anchors again (a new score, a fresh alignment). */
+  const readAnchorsRef = useRef<() => void>(() => {});
   /** The last position fed to AlphaTab; null makes the next feed a seek. */
   const fed = useRef<Fed | null>(null);
+  /** Song time against tab time at every bar, from the alignment and
+   *  AlphaTab's own tick lookup. Empty when the tab is not lined up. */
+  const points = useRef<SyncPoint[]>([]);
 
   // ── build AlphaTab once per file ────────────────────────────────────────
   useEffect(() => {
@@ -190,7 +208,8 @@ export function LiveTabScore(props: LiveTabScoreProps) {
           outputRef.current = output;
           output.handler = {
             get backingTrackDuration() {
-              return Math.max(0, live.current.duration) * 1000 + Math.max(0, live.current.offsetMs);
+              const p = live.current;
+              return songSecToTabMs(Math.max(0, p.duration), points.current, Math.max(0, p.offsetMs));
             },
             playbackRate: 1,
             masterVolume: 1,
@@ -203,9 +222,11 @@ export function LiveTabScore(props: LiveTabScoreProps) {
         api.playerReady.on(installHandler);
         installHandler(); // in case the player was ready before we subscribed
 
-        // Loading the score rewinds AlphaTab to the top: place the line again.
+        // Loading the score rewinds AlphaTab to the top: place the line
+        // again, and read the bars' own clock for the alignment's anchors.
         api.midiLoaded?.on?.(() => {
           fed.current = null;
+          readAnchors();
         });
 
         api.playerPositionChanged.on((e: any) => {
@@ -218,7 +239,7 @@ export function LiveTabScore(props: LiveTabScoreProps) {
           const p2 = live.current;
           if (!p2.follows || !api.tickCache || !beat) return;
           try {
-            p2.onSeek(beatToSongSec(api.tickCache, beat, p2.offsetMs));
+            p2.onSeek(beatToSongSec(api.tickCache, beat, p2.offsetMs, points.current));
           } catch {
             // A beat AlphaTab cannot place is not worth breaking playback.
           }
@@ -274,6 +295,13 @@ export function LiveTabScore(props: LiveTabScoreProps) {
       }
     };
 
+    function readAnchors() {
+      const bars = apiRef.current?.tickCache?.masterBars;
+      const timing = live.current.timing ?? null;
+      points.current = timing && bars ? syncPoints(timing, barStartsMs(bars)) : [];
+    }
+    readAnchorsRef.current = readAnchors;
+
     function followBeat(beat: any, hiddenOnly = false, instant = false) {
       const bounds = api?.renderer?.boundsLookup?.findBeat?.(beat);
       const bar = bounds?.barBounds?.masterBarBounds?.visualBounds;
@@ -320,6 +348,7 @@ export function LiveTabScore(props: LiveTabScoreProps) {
       }
       apiRef.current = null;
       outputRef.current = null;
+      points.current = [];
       refollow.current = () => {};
       followPlayhead.current = () => {};
       fed.current = null;
@@ -358,6 +387,16 @@ export function LiveTabScore(props: LiveTabScoreProps) {
       if (scrollerRef.current) scrollerRef.current.scrollLeft = 0;
     })();
   }, [staff, scroll, scale]);
+
+  // ── the alignment ───────────────────────────────────────────────────────
+  // A job that finished while the page was open (or a tab that was lined up
+  // before) changes where the cursor goes: read the anchors again and place
+  // the line afresh on the next feed.
+  const { timing } = props;
+  useEffect(() => {
+    readAnchorsRef.current();
+    fed.current = null;
+  }, [timing, status]);
 
   // ── the instrument shown ────────────────────────────────────────────────
   useEffect(() => {
@@ -402,7 +441,7 @@ export function LiveTabScore(props: LiveTabScoreProps) {
       const output = outputRef.current;
       const api = apiRef.current;
       if (!output || !api) return;
-      const tabMs = songToTabMs(estimateSongSec(anchor.current, now, p.playing), p.offsetMs);
+      const tabMs = songSecToTabMs(estimateSongSec(anchor.current, now, p.playing), points.current, p.offsetMs);
       try {
         if (!api.isReadyForPlayback) {
           // No score in the player yet: it cannot seek, and whatever it
@@ -479,7 +518,7 @@ export function LiveTabScore(props: LiveTabScoreProps) {
     const api = apiRef.current;
     if (!api?.tickCache || !beat) return null;
     try {
-      return beatToSongSec(api.tickCache, beat as never, live.current.offsetMs);
+      return beatToSongSec(api.tickCache, beat as never, live.current.offsetMs, points.current);
     } catch {
       return null;
     }

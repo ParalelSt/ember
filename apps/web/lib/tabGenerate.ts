@@ -3,6 +3,7 @@ import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { GENERATED_DIR } from '@/lib/tabs';
+import { queuePythonJob } from '@/lib/pythonJobs';
 import { serverLogger } from '@/lib/logger/server';
 
 /** Guitar tabs generated from the recording itself.
@@ -56,8 +57,6 @@ export function generatedTabPath(key: string): string {
 
 const running = new Map<string, Promise<void>>();
 const lastError = new Map<string, string>();
-/** The queue of one: every job waits for the previous one, success or not. */
-let chain: Promise<void> = Promise.resolve();
 
 export type GenerationStatus =
   | { status: 'ready' }
@@ -81,8 +80,9 @@ export function startGeneration(key: string, audioPath: string, title: string): 
   if (existing) return existing;
   lastError.delete(key);
 
-  const job = chain
-    .then(() => runScript(audioPath, generatedTabPath(key), title))
+  // The queue of one (lib/pythonJobs.ts): every Python job waits for the
+  // one before it, success or not.
+  const job = queuePythonJob(() => runScript(audioPath, generatedTabPath(key), title))
     .catch((e: unknown) => {
       const reason = e instanceof Error ? e.message : String(e);
       lastError.set(key, reason);
@@ -92,8 +92,6 @@ export function startGeneration(key: string, audioPath: string, title: string): 
     .finally(() => running.delete(key));
 
   running.set(key, job);
-  // The chain must never reject, or every later job would be skipped.
-  chain = job.catch(() => {});
   return job;
 }
 

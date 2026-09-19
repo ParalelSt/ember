@@ -6,6 +6,7 @@ import { rateLimitResponse } from '@/lib/rateLimit';
 import { serverLogger } from '@/lib/logger/server';
 import { withRequestLog } from '@/lib/logger/withRequestLog';
 import { findOnline } from '@/lib/tabFetch/online';
+import { alignInBackground } from '@/lib/tabAlign';
 
 /** Look for a song's tab online (docs/tabs-v3.md, stage 3).
  *
@@ -16,7 +17,8 @@ import { findOnline } from '@/lib/tabFetch/online';
  *
  *  Answers { status: found | none | cached | failed, searchedAt, added }.
  *  Never an error for a site being down or slow: the page just keeps its
- *  other sources. */
+ *  other sources. Whatever it finds is lined up with the recording in the
+ *  background (lib/tabAlign.ts). */
 
 const MAX_TEXT = 200;
 
@@ -37,10 +39,18 @@ export const POST = withRequestLog('tabs/online', async (request: NextRequest) =
       : rateLimitResponse(`tabs-online:${user.id}`, { windowMs: 60_000, max: 30 });
     if (limited) return limited;
 
+    const pb = await createAdminClient();
     const result = await findOnline(
-      await createAdminClient(),
+      pb,
       { title, artist: str('artist'), trackId: str('trackId', 80) },
-      { again, freshPb: createAdminClient },
+      {
+        again,
+        freshPb: createAdminClient,
+        // Every tab found is lined up with the recording in the background
+        // (docs/tabs-v3.md section 3); the page draws it meanwhile and asks
+        // how it went through /api/tabs/align.
+        onAdded: (rows) => alignInBackground(pb, rows, { freshPb: createAdminClient }),
+      },
     );
     return Response.json(result);
   } catch (e) {

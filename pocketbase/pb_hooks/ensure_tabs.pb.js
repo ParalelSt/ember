@@ -14,9 +14,12 @@
 //   shared     visible to every signed-in member; new rows are shared
 //   offset_ms  sync nudge against the recording, shared by everyone
 //   hints      Songsterr metadata (songId, per-track tuning, difficulty)
-//   source_*   where a fetched tab was found: site ("ug"), page URL, the
-//              site's tab id, rating and votes, and source_meta (JSON: part,
-//              version, the site's tuning, the parse report)
+//   source_*   where a fetched tab was found: site ("songsterr", "ug"), page
+//              URL, the site's id, rating and votes, and source_meta (JSON:
+//              part, version, the site's tuning, the parse report)
+//   timing     where the tab sits in the recording, as align.py heard it
+//              (docs/tabs-v3.md section 3): { offset_ms, bpm, confidence,
+//              bars: [{ bar, ms }] }
 //
 // tab_lookups: one row per song and site that Ember has searched online, so
 // a song is searched once and never again on its own (the "Search online
@@ -101,6 +104,7 @@ onAfterBootstrap((e) => {
     { name: "source_rating", type: "number", options: {} },
     { name: "source_votes", type: "number", options: { noDecimal: true } },
     { name: "source_meta", type: "json", options: { maxSize: 20000 } },
+    { name: "timing", type: "json", options: { maxSize: 50000 } },
   ];
 
   const NEW_INDEXES = [
@@ -165,7 +169,7 @@ onAfterBootstrap((e) => {
 
   if (changed) {
     dao.saveCollection(tabs);
-    console.log("[ensure_tabs] tabs store up to date (song_key, kind, shared, hints, pasted, fetched)");
+    console.log("[ensure_tabs] tabs store up to date (song_key, kind, shared, hints, pasted, fetched, timing)");
   }
 
   let lookups = null;

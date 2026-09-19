@@ -5,6 +5,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { QK, useQueryTrack } from '@/hooks/useLibrary';
 import { canGenerateFor, drawableTabs, type GeneratedStatus, type TabSummary } from '@/lib/tabSources';
+import { isLinedUp, type TabTiming } from '@/lib/tabSync';
 import type { TabMatch } from '@/lib/songsterr';
 import type { Track } from '@/types/track';
 
@@ -189,5 +190,56 @@ export function useTabSources(song: TabSong | null): TabSourcesState {
     searchingOnline: online.isFetching || searchAgain.isPending,
     searchOnlineAgain: () => searchAgain.mutate(),
     searchAgainResult: againResult(searchAgain.isPending, searchAgain.isError, searchAgain.data),
+  };
+}
+
+// ── lining a tab up with the recording ────────────────────────────────────
+
+export interface TabAlignment {
+  /** Where the tab sits in the recording, once it is known. */
+  timing: TabTiming | null;
+  /** A job is running (the fetch started one, or "Line it up" did). */
+  running: boolean;
+  /** Why the last attempt failed, if it did. */
+  error: string | null;
+  lineUp: () => void;
+}
+
+/** The alignment of the tab on screen (docs/tabs-v3.md section 3): what the
+ *  server worked out, whether a job is running now (asked again every few
+ *  seconds while it is), and the button that runs it again. Only tabs found
+ *  online are lined up. */
+export function useTabAlignment(tab: TabSummary | null): TabAlignment {
+  const qc = useQueryClient();
+  const id = tab?.kind === 'fetched' ? tab.id : '';
+  const known = isLinedUp(tab?.timing);
+  const query = useQuery({
+    queryKey: ['tab-align', id],
+    queryFn: () => api.getTabAlignment(id),
+    enabled: !!id,
+    // A tab already lined up needs no asking; one that is not may have a
+    // job running from the search that found it.
+    refetchInterval: (q) => (q.state.data?.status === 'running' ? 3000 : false),
+    staleTime: known ? Infinity : 0,
+    retry: false,
+  });
+  const lineUp = useMutation({
+    mutationFn: () => api.lineTabUp(id),
+    onSuccess: () => qc.setQueryData(['tab-align', id], { status: 'running' as const }),
+  });
+
+  // A job that finished brings the row its timing.
+  const status = query.data?.status;
+  useEffect(() => {
+    if (status === 'ready' && tab?.id) void qc.invalidateQueries({ queryKey: ['track-tabs'] });
+  }, [status, tab?.id, qc]);
+
+  return {
+    timing: query.data?.status === 'ready' ? (query.data.timing ?? null) : (tab?.timing ?? null),
+    running: status === 'running' || lineUp.isPending,
+    error: query.data?.status === 'failed' ? (query.data.error ?? 'It could not be lined up.') : null,
+    lineUp: () => {
+      if (id) lineUp.mutate();
+    },
   };
 }

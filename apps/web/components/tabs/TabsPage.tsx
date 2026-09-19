@@ -17,7 +17,7 @@ import { usePlayer } from '@/components/player/PlayerProvider';
 import { LiveTabScore } from '@/components/tabs/LiveTabScore';
 import { TabSheetHeader, TabSourceChip } from '@/components/tabs/TabSheetHeader';
 import { TabsToolbar, chip, chipOff, chipOn } from '@/components/tabs/TabsToolbar';
-import { useTabSong, useTabSources, type TabSong, type TabSourcesState } from '@/hooks/useTabSources';
+import { useTabAlignment, useTabSong, useTabSources, type TabSong, type TabSourcesState } from '@/hooks/useTabSources';
 import { useSettingsStore } from '@/stores/useSettingsStore';
 import { cn } from '@/lib/utils';
 import { metaLine, scoreScale, type ScoreInfo, type TabsScroll, type TabsStaff } from '@/lib/tabScore';
@@ -30,7 +30,7 @@ import {
   sourceChipLabel,
   type TabSummary,
 } from '@/lib/tabSources';
-import { clampOffset, loadLocalOffsetMs, MAX_OFFSET_MS, saveLocalOffsetMs } from '@/lib/tabSync';
+import { clampOffset, isLinedUp, loadLocalOffsetMs, MAX_OFFSET_MS, saveLocalOffsetMs } from '@/lib/tabSync';
 import { tabSearchLinks, type TabSearchLink } from '@/lib/tabSearchLinks';
 
 const TAB_ACCEPT = '.gp,.gp3,.gp4,.gp5,.gpx,.musicxml,.xml,.mxl';
@@ -134,6 +134,11 @@ function TabsSheet({ song, sources, onBack }: { song: TabSong; sources: TabSourc
     writePref(SCROLL_KEY, s);
   };
 
+  // Where the tab sits in the recording (docs/tabs-v3.md section 3): the
+  // search that found it starts the job, this asks how it went.
+  const align = useTabAlignment(tab);
+  const timing = isLinedUp(align.timing) ? align.timing : null;
+
   const [info, setInfo] = useState<ScoreInfo | null>(null);
   const [trackChoice, setTrackChoice] = useState<{ tabId: string; index: number } | null>(null);
   const savedTrack = (tabId: string) => {
@@ -200,6 +205,13 @@ function TabsSheet({ song, sources, onBack }: { song: TabSong; sources: TabSourc
           disabled={sources.searchingOnline}
           onClick={sources.searchOnlineAgain}
         />
+        {tab?.kind === 'fetched' && (
+          <MenuItem
+            label={align.running ? 'Lining it up…' : 'Line it up again'}
+            disabled={align.running}
+            onClick={align.lineUp}
+          />
+        )}
         <DropdownMenuSeparator />
         {searchLinks.map((l) => (
           <MenuItem key={l.id} label={l.menuLabel} onClick={() => window.open(l.url, '_blank', 'noopener,noreferrer')} />
@@ -223,7 +235,23 @@ function TabsSheet({ song, sources, onBack }: { song: TabSong; sources: TabSourc
     </DropdownMenu>
   );
 
-  const chipNode = tab ? <SourceChip tab={tab} tabs={sources.tabs} onPick={setChosenId} /> : null;
+  const chipNode = tab ? (
+    <>
+      <SourceChip tab={tab} tabs={sources.tabs} onPick={setChosenId} instrument={info?.tracks[trackIndex]?.name} />
+      {tab.kind === 'fetched' && !timing && (
+        <button
+          type="button"
+          data-testid="tab-line-up"
+          disabled={align.running}
+          onClick={align.lineUp}
+          title={align.error ?? 'Listen to the recording and line the tab up with it'}
+          className={cn(chip, align.running ? chipOff : chipOn)}
+        >
+          {align.running ? 'Lining it up…' : 'Line it up'}
+        </button>
+      )}
+    </>
+  ) : null;
 
   return (
     <div data-testid="tabs-page" data-track-id={song.id}>
@@ -314,6 +342,7 @@ function TabsSheet({ song, sources, onBack }: { song: TabSong; sources: TabSourc
             track={trackIndex}
             scale={scoreScale(phone)}
             offsetMs={offsetMs}
+            timing={timing}
             follows={follows}
             playing={isPlaying}
             position={position}
@@ -357,10 +386,22 @@ function MenuItem({
 }
 
 /** "File added by Aron, shared", "Text tab pasted by Aron, shared" or
- *  "Generated from the recording, rough"; with more than one tab for the
- *  song it opens a menu to switch between them, in chain order. */
-function SourceChip({ tab, tabs, onPick }: { tab: TabSummary; tabs: TabSummary[]; onPick: (id: string) => void }) {
-  const label = sourceChipLabel(tab);
+ *  "From Songsterr, Rhythm Guitar, lined up" or "Generated from the
+ *  recording, rough"; with more than one tab for the song it opens a menu
+ *  to switch between them, in chain order. */
+function SourceChip({
+  tab,
+  tabs,
+  onPick,
+  instrument,
+}: {
+  tab: TabSummary;
+  tabs: TabSummary[];
+  onPick: (id: string) => void;
+  /** The staff on screen, named on the chip of a tab that holds several. */
+  instrument?: string;
+}) {
+  const label = sourceChipLabel(tab, instrument);
   if (tabs.length < 2) return <TabSourceChip label={label} />;
   return (
     <TabSourceChip label={label}>
