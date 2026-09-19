@@ -30,7 +30,8 @@ function build(item: SourceItem, raw: RawMatchCandidate[]): MatchResult {
   return { item, status: statusFor(confidence), confidence, candidates };
 }
 
-/** Match source tracks onto YouTube Music (8 or fewer per call).
+/** Match source tracks onto YouTube Music (8 or fewer per call, from the
+ *  import runner).
  *
  *  First search: "title artist". Any item whose best candidate scores under
  *  50 gets a second search on the title alone with ignore_spelling; the two
@@ -43,17 +44,17 @@ export async function matchItems(items: SourceItem[]): Promise<MatchResult[]> {
 
   const retry = results.flatMap((r, i) => ((r.confidence ?? 0) < REVIEW_AT ? [i] : []));
   if (retry.length) {
+    // A failure here throws like the first search: the runner repeats the
+    // batch rather than marking these songs not found.
     const second = await searchMatchCandidates(
       retry.map((i) => queries[i]),
       { titleOnly: true },
-    ).catch(() => null);
-    if (second) {
-      retry.forEach((idx, k) => {
-        const seen = new Set((first[idx] ?? []).map((c) => c.track.sourceId));
-        const merged = [...(first[idx] ?? []), ...(second[k] ?? []).filter((c) => !seen.has(c.track.sourceId))];
-        results[idx] = build(items[idx], merged);
-      });
-    }
+    );
+    retry.forEach((idx, k) => {
+      const seen = new Set((first[idx] ?? []).map((c) => c.track.sourceId));
+      const merged = [...(first[idx] ?? []), ...(second[k] ?? []).filter((c) => !seen.has(c.track.sourceId))];
+      results[idx] = build(items[idx], merged);
+    });
   }
   return results;
 }

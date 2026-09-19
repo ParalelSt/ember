@@ -26,6 +26,8 @@ export interface Playlist {
   name: string;
   created_at: string;
   artwork_url: string | null;
+  /** Set on a playlist made by an import (only on GET /api/playlists/:id). */
+  import_job?: string | null;
 }
 
 export interface AlbumSummary {

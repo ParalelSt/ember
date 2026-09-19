@@ -380,6 +380,8 @@ interface RawCandidateJson extends RawYoutubeTrack {
 
 interface RawMatchResult {
   results?: (RawCandidateJson[] | null)[];
+  /** Indexes whose search raised: "could not ask", not "nothing found". */
+  failed?: number[];
 }
 
 /** Up to 5 YT Music candidates per {title, artist} item (8 or fewer items per
@@ -393,6 +395,13 @@ export async function searchMatchCandidates(
   const queries = items.map((i) => `${i.title}\t${i.artist}`);
   const args = ['match', ...(titleOnly ? ['--title-only'] : []), '--', ...queries];
   const result = await runPython<RawMatchResult>(args, { timeoutMs: 60000 });
+  if (result?.failed?.length) {
+    // Usually YouTube Music's 503 for searching too fast. The import runner
+    // backs off and repeats the batch rather than calling these not found.
+    const e: PythonError = new Error('YouTube Music search failed, try again shortly');
+    e.status = 503;
+    throw e;
+  }
   const rows = result?.results ?? [];
   return items.map((_, i) =>
     (rows[i] ?? [])
