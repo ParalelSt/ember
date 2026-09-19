@@ -189,6 +189,7 @@ node tests/tabs.test.mjs                            # or: npm run test:tabs
 node tests/tabs-ui.test.mjs                         # or: npm run test:tabs-ui
 node tests/tabs-sync.test.mjs                       # or: npm run test:tabs-sync
 node tests/tabs-generate.test.mjs                   # or: npm run test:tabs-generate
+MUSIC_DIR="$SB/music" node tests/tabs-text.test.mjs # or: npm run test:tabs-text (pasted text tabs: route, chain, tab page follows the song, search links; PB restarted with this branch's pb_hooks)
 node tests/transcribe-timing.test.mjs              # or: npm run test:transcribe-timing (no server needed; python3 or PYTHON_BIN)
 node tests/preferences-ui.test.mjs                  # or: npm run test:preferences-ui (plugin switches across two devices; PB restarted with this branch's pb_hooks)
 node tests/android-player-ui.test.mjs               # or: npm run test:android-ui
@@ -245,6 +246,29 @@ then: via the fake servers' introspection `GET` (see `fake-anthropic.mjs`),
 checks the "State when reported" context block and that server error both
 reached the AI prompt, and that the context ("Where") and reproduction
 ("Reproduce") fields both reached the Discord embed.
+
+## What `tabs-text.test.mjs` covers
+
+Pasted text tabs (docs/tab-sources.md, stages 1 to 3), against a running
+sandbox (PB_URL, APP_URL; MUSIC_DIR for the on-disk checks):
+
+- **Route**: `POST /api/tabs/text` stores a shared `kind: pasted` row with
+  `<stem>.alphatex` and the original `<stem>.txt` side by side; the report
+  (strings, tuning, bars, tempo); another member downloads the alphaTex;
+  refused signed out, 422 for text with no tab, 413 over 256 KB, 400 for a
+  bad tempo.
+- **Chain and delete**: `kind=all` lists a file before a pasted tab, the
+  default list stays files only; another member cannot delete (403), the
+  paster can, and both files go.
+- **Tab page**: the pasted tab draws with the "Text tab pasted by" chip and
+  its tempo in the header; the playhead line matches the real audio time
+  (read through `tests/tabs-measure.mjs`, shared with `tabs-sync.test.mjs`)
+  while playing and after a seek from the player bar, and stays in view;
+  the tab picker lists the file, then the text tab.
+- **Search links**: the empty state's Ultimate Guitar, Guitar Pro files and
+  Songsterr chips carry the right URLs and open a new tab with noopener,
+  and the ⋯ menu has the same three (never clicked); Generate comes after
+  Add a file, marked rough.
 
 ## What `ai-triage.test.mjs` covers
 
