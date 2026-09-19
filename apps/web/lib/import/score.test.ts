@@ -52,6 +52,8 @@ const TABLE: [string, ScoreSource, ScoreCandidate, number, 'accepted' | 'review'
   ['acoustic version', src('Song A', ['Band']), cand('Song A (Acoustic)', ['Band'], 190), 55, 'review', ['Acoustic version']],
   ['karaoke upload', src('Song A', ['Band']), cand('Song A (Karaoke Version)', ['Karaoke Hits'], 200, null, 'UGC'), 20, 'missing', ['Karaoke version', 'Different artist']],
   ['sped up', src('Song A', ['Band']), cand('Song A (Sped Up)', ['Band'], 160), 35, 'missing', ['Sped up version']],
+  ['apostrophe and a bracketed extra', src("Summer Of '69", ['Bryan Adams'], 216_000), cand('Summer of 69 (Classic Version)', ['Bryan Adams'], 249), 61, 'review', ['Similar title', 'Length off by 33 s']],
+  ['candidate with no artist data', src("Livin' On A Prayer", ['Bon Jovi'], 249_000), cand("Livin' On A Prayer", [], 249, null, null), 60, 'review', ['Same title', 'Length matches']],
   ['no length, explicit or type data', src('Song A', ['Band'], null, null), cand('Song A', ['Band'], null, null, null), 75, 'accepted', []],
 ];
 

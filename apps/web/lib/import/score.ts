@@ -7,6 +7,7 @@
  *  | Signal                                             | Points          |
  *  |----------------------------------------------------|-----------------|
  *  | Title similarity after normalising                 | 0 to 45         |
+ *  |   (a bracketed extra like "(Classic Version)" set aside: 90% of that) |
  *  | Same artist / artist name contained in the other   | +30 / +15       |
  *  | Length: 2 s or less / 6 s or less / over 15 s off   | +15 / +8 / -20  |
  *  | Explicit flag equal / differs                      | +5 / -10        |
@@ -49,11 +50,11 @@ export interface ScoreResult {
 function fold(s: string): string {
   return s
     .normalize('NFKD')
-    .replace(/[̀-ͯ]/g, '')
+    .replace(/[\u0300-\u036f]/g, '')
     .toLowerCase()
-    .replace(/[‘’`´]/g, "'")
-    .replace(/[“”]/g, '"')
-    .replace(/[‐-―]/g, '-');
+    .replace(/[\u2018\u2019\u0060\u00b4]/g, "'")
+    .replace(/[\u201c\u201d]/g, '"')
+    .replace(/[\u2010-\u2015]/g, '-')
 }
 
 const REMASTER = String.raw`(?:\d{4}\s+)?(?:digital(?:ly)?\s+)?remaster(?:ed)?(?:\s+\d{4})?(?:\s+version)?`;
@@ -116,6 +117,10 @@ function coreTitle(normalized: string): string {
   return flat(s);
 }
 
+function dropBrackets(normalized: string): string {
+  return normalized.replace(/[([][^)\]]*[)\]]/g, ' ');
+}
+
 function variantsOf(normalized: string): Set<string> {
   return new Set(VARIANTS.filter((v) => v.re.test(normalized)).map((v) => v.label));
 }
@@ -167,7 +172,12 @@ export function score(source: ScoreSource, cand: ScoreCandidate): ScoreResult {
   // Title, 0 to 45.
   const srcNorm = normalizeTitle(source.title);
   const candNorm = normalizeTitle(cand.title);
-  const sim = titleSimilarity(coreTitle(srcNorm), coreTitle(candNorm));
+  // A bracketed descriptor that is not a variant ("(Classic Version)", "(From
+  // the Movie)") still counts, but a match with it set aside is worth 90%.
+  const sim = Math.max(
+    titleSimilarity(coreTitle(srcNorm), coreTitle(candNorm)),
+    0.9 * titleSimilarity(coreTitle(dropBrackets(srcNorm)), coreTitle(dropBrackets(candNorm))),
+  );
   points += Math.round(45 * sim);
   if (sim === 1) reasons.push('Same title');
   else if (sim >= 0.8) reasons.push('Similar title');

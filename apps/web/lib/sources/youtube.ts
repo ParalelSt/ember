@@ -399,7 +399,9 @@ export async function searchMatchCandidates(
       .filter((r) => r && r.videoId)
       .map((r) => ({
         track: normalize(r),
-        artists: r.artists?.length ? r.artists : [r.artist].filter(Boolean),
+        // "Unknown" is to_track_json's placeholder, not an artist: leave it
+        // out so the scorer sees no artist data rather than a different one.
+        artists: r.artists?.length ? r.artists : [r.artist].filter((a) => a && a !== 'Unknown'),
         videoType: r.videoType ?? null,
         explicit: typeof r.isExplicit === 'boolean' ? r.isExplicit : null,
       })),
