@@ -54,7 +54,7 @@ CHROMA_HOP = 512
 # tests/test_align.py: the curve is read this much later than the note.
 ONSET_LAG_S = 0.010
 HARM_HOP = 512               # the harmonic onset curve's frames (23 ms)
-HARM_LAG_S = 0.095           # measured the same way, for the harmonic curve
+MAX_HARM_LAG_S = 0.15        # how far the harmonic curve may lag the mix's
 MIX_WEIGHT = 0.25            # the whole mix's onsets beside the harmonic ones
 QUIET_SHARE = 0.4            # a window this much quieter than usual moves nothing
 POLISH_S = 0.07              # last, each bar is placed this finely on the mix
@@ -64,7 +64,7 @@ SCALES = np.arange(0.80, 1.2501, 0.002)    # recording seconds per tab second
 WINDOW_S = 30.0              # the tab's first seconds that find the start
 TOP_CANDIDATES = 30          # the strongest distinct starts, refined on the first bars
 EARLIEST_CANDIDATES = 12     # and the earliest strong ones
-NEAR_BEST = 0.8              # starts this close to the best are followed through the song
+NEAR_BEST = 0.7              # starts this close to the best are followed through the song
 FOLLOW_CANDIDATES = 8
 WINDOW_BARS = 8              # bars of evidence for each placement
 REFINE_S = 0.1               # each start is refined this far on the first bars
@@ -118,9 +118,9 @@ def onset_curve(y: np.ndarray) -> np.ndarray:
 def harmonic_curve(y: np.ndarray, frames: int) -> np.ndarray:
     """The onset curve of the recording's harmonic part only (librosa's
     median-filter HPSS on the spectrogram): the attacks of pitched notes,
-    which is what a tab has, without the drums, which a tab does not. On
-    the onset curve's time grid, read HARM_LAG_S late (its long frames
-    register an attack late)."""
+    which is what a tab has, without the drums, which a tab does not. On the
+    onset curve's own time grid, not yet shifted (its longer frames see an
+    attack late, by how much depends on the instruments: harm_lag)."""
     import librosa
     from scipy.ndimage import median_filter
     S = np.abs(librosa.stft(y, n_fft=2048, hop_length=HARM_HOP))
@@ -132,9 +132,27 @@ def harmonic_curve(y: np.ndarray, frames: int) -> np.ndarray:
     spread = float(np.std(env))
     if spread > 1e-9:
         env = env / spread
-    # sample() reads a curve ONSET_LAG_S late; this one needs HARM_LAG_S.
-    t = np.arange(frames) / FPS + HARM_LAG_S - ONSET_LAG_S
-    return np.interp(t * fps, np.arange(len(env)), env, left=0.0, right=0.0)
+    return np.interp(np.arange(frames) / FPS * fps, np.arange(len(env)), env, left=0.0, right=0.0)
+
+
+def harm_lag(mix: np.ndarray, harm: np.ndarray) -> float:
+    """How much later the harmonic curve sees the same attacks as the mix's
+    (its frames are four times longer, and a bass note rises slower than a
+    drum): the shift, up to MAX_HARM_LAG_S, where the two agree most. The
+    mix's own lag is already in ONSET_LAG_S."""
+    n = int(MAX_HARM_LAG_S * FPS)
+    if len(mix) < 4 * n or n < 2:
+        return 0.0
+    a = mix[n : len(mix) - n]
+    scores = [float(a @ harm[n + d : len(mix) - n + d]) for d in range(-n, n + 1)]
+    return (int(np.argmax(scores)) - n) / FPS
+
+
+def shifted(env: np.ndarray, lag: float) -> np.ndarray:
+    """The curve read `lag` later, on the same grid."""
+    if abs(lag) < 1e-6:
+        return env
+    return np.interp(np.arange(len(env)) + lag * FPS, np.arange(len(env)), env, left=0.0, right=0.0)
 
 
 def onset_peaks(env: np.ndarray) -> np.ndarray:
@@ -192,6 +210,15 @@ def sample(env: np.ndarray, t: np.ndarray) -> np.ndarray:
     """The onset curve at times `t` (s), linearly interpolated, 0 outside."""
     f = (t + ONSET_LAG_S) * FPS
     return np.interp(f, np.arange(len(env)), env, left=0.0, right=0.0)
+
+
+def span_mean(env: np.ndarray, lo: float, hi: float) -> float:
+    """The onset curve's average over a stretch of the recording: what a
+    tab's onsets would score there by chance, so scores from a quiet verse
+    and a busy chorus can be compared."""
+    a = max(0, int(lo * FPS))
+    b = min(len(env), int(hi * FPS) + 1)
+    return float(env[a:b].mean()) if b > a + 1 else 1.0
 
 
 def chroma_score(tab_chroma: np.ndarray, starts: np.ndarray, chroma: np.ndarray, rotate: int = 0) -> float:
@@ -323,7 +350,10 @@ def refine(tab: Tab, env: np.ndarray, scale: float, zero: float) -> tuple[float,
         den = a - 2 * b + c
         if den < 0:
             x += 0.005 * 0.5 * (a - c) / den
-    return float(grid[i, j]), float(paces[j]), float(x - tab.bars[lo] * paces[j])
+    # Against the recording's own loudness there: a busy chorus scores
+    # higher than a quiet verse whether the tab fits it or not.
+    score = float(grid[i, j]) / max(1e-6, span_mean(env, x, x + rel[-1] * paces[j]))
+    return score, float(paces[j]), float(x - tab.bars[lo] * paces[j])
 
 
 def whole_fit(tab: Tab, env: np.ndarray, peaks: np.ndarray, chroma: np.ndarray, zero: float, pace: float) -> dict:
@@ -332,8 +362,8 @@ def whole_fit(tab: Tab, env: np.ndarray, peaks: np.ndarray, chroma: np.ndarray, 
     much of the recording's onsets the tab spans, and the chroma."""
     anchor_t, anchor_s = follow_bars(tab, env, pace, zero)
     song = to_song(tab.onsets, anchor_t, anchor_s)
-    onset = float(sample(env, song).mean())
     lo, hi = float(song.min()) - 0.5, float(song.max()) + 0.5
+    onset = float(sample(env, song).mean()) / max(1e-6, span_mean(env, lo, hi))
     strong = peaks[sample(env, peaks) > 1.0] if len(peaks) else peaks
     covered = float(((strong >= lo) & (strong <= hi)).mean()) if len(strong) else 0.0
     tab_chroma = tab.bar_chroma()
@@ -355,8 +385,11 @@ def best_fit(tab: Tab, env: np.ndarray, peaks: np.ndarray, chroma: np.ndarray, c
         refined.append((score, pace, z))
     top_window = max(r[0] for r in refined)
     close = sorted({round(r[2], 2): r for r in refined if r[0] >= NEAR_BEST * top_window}.values(), key=lambda r: r[2])
+    # The best few, and the earliest few: a song whose later half is busier
+    # fits any tab better there, and the whole-song fit is the judge.
+    chosen = sorted({id(r): r for r in close[: FOLLOW_CANDIDATES // 2] + sorted(close, key=lambda r: -r[0])[: FOLLOW_CANDIDATES // 2]}.values(), key=lambda r: r[2])
     fits = []
-    for score, pace, z in close[:FOLLOW_CANDIDATES]:
+    for score, pace, z in chosen:
         fit = whole_fit(tab, env, peaks, chroma, z, pace)
         fit["window"] = score
         fits.append(fit)
@@ -491,7 +524,9 @@ def align(y: np.ndarray, plan: dict) -> dict:
     mix = onset_curve(y)
     if not mix.any():
         return empty
-    env = harmonic_curve(y, len(mix)) + MIX_WEIGHT * mix
+    harm = harmonic_curve(y, len(mix))
+    lag = harm_lag(mix, harm)
+    env = shifted(harm, lag) + MIX_WEIGHT * mix
     chroma = audio_chroma(y)
     peaks = onset_peaks(env)
     cands = start_candidates(tab, env)
@@ -524,6 +559,7 @@ def align(y: np.ndarray, plan: dict) -> dict:
             "chroma": round(fit["chroma"], 3),
             "scale": round(scale, 4),
             "tracked_bpm": round(recording_tempo(y), 1),
+            "harm_lag_ms": round(lag * 1000),
         },
     }
 
