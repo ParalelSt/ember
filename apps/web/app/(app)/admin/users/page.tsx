@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { PasswordResetDialog } from '@/components/ui/password-reset-dialog';
+import { Avatar } from '@/components/primitives/Avatar';
 import { KeyIcon, TrashIcon } from '@/components/icons';
 import { useAuth } from '@/components/providers/AuthProvider';
 import {
@@ -148,14 +149,12 @@ function UserRow({ user, isSelf, onRename, onToggleAdmin, onDelete, onResetPassw
 
   return (
     <div className="grid grid-cols-[40px_minmax(0,1.4fr)_minmax(0,1fr)_auto_auto_auto] gap-3 items-center px-3 py-2 rounded-lg bg-card">
-      <div className="relative h-8 w-8 rounded-full overflow-hidden bg-ember text-white grid place-items-center text-xs font-bold shrink-0">
-        {user.avatarUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={user.avatarUrl} alt="" className="absolute inset-0 h-full w-full object-cover" />
-        ) : (
-          (user.name || user.email)[0]?.toUpperCase() ?? '?'
-        )}
-      </div>
+      <Avatar
+        src={user.avatarUrl}
+        name={user.name}
+        email={user.email}
+        className="h-8 w-8 bg-ember text-white text-xs"
+      />
       <div className="min-w-0">
         <div className="truncate text-sm font-semibold">{user.email}</div>
         <div className="text-xs text-muted-foreground">{new Date(user.created).toLocaleDateString()}</div>

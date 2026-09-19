@@ -7,6 +7,7 @@ import {
   unauthorizedResponse,
 } from '@/lib/auth';
 import { createAdminClient } from '@/lib/pocketbase/server';
+import { fileUrl } from '@/lib/pocketbase/fileUrl';
 import { fromError } from '@/lib/upsertTrack';
 import { withRequestLog } from '@/lib/logger/withRequestLog';
 
@@ -20,7 +21,7 @@ export const GET = withRequestLog('admin/users', async (_req: NextRequest) => {
         id: r.id,
         email: r.email,
         name: r.name ?? '',
-        avatarUrl: r.avatar ? pb.files.getURL(r, r.avatar as string) : null,
+        avatarUrl: r.avatar ? fileUrl(r, r.avatar as string) : null,
         isAdmin: r.is_admin === true,
         created: r.created,
       })),

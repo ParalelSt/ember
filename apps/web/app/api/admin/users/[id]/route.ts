@@ -7,6 +7,7 @@ import {
   unauthorizedResponse,
 } from '@/lib/auth';
 import { createAdminClient } from '@/lib/pocketbase/server';
+import { fileUrl } from '@/lib/pocketbase/fileUrl';
 import { fromError, jsonError } from '@/lib/upsertTrack';
 import { withRequestLog } from '@/lib/logger/withRequestLog';
 
@@ -39,7 +40,7 @@ export const PATCH = withRequestLog('admin/users/[id]', async (req: NextRequest,
         id: updated.id,
         email: updated.email,
         name: updated.name ?? '',
-        avatarUrl: updated.avatar ? pb.files.getURL(updated, updated.avatar as string) : null,
+        avatarUrl: updated.avatar ? fileUrl(updated, updated.avatar as string) : null,
         isAdmin: updated.is_admin === true,
         created: updated.created,
       },

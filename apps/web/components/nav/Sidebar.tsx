@@ -15,6 +15,7 @@ import { NavLinks } from '@/components/nav/NavLinks';
 import { WhatsNewLink } from '@/components/changelog/WhatsNewLink';
 import { useChangelog } from '@/hooks/useChangelog';
 import { PlaylistNavList } from '@/components/nav/PlaylistNavList';
+import { Avatar } from '@/components/primitives/Avatar';
 import { FlameIcon, PlusIcon } from '@/components/icons';
 import { BASE_NAV, ADMIN_NAV_ITEM } from '@/lib/nav';
 import { hrefFor, systemCollections } from '@/lib/collections';
@@ -79,14 +80,12 @@ export function Sidebar() {
             href="/settings/profile"
             className="flex items-center gap-3 px-2 py-2 min-w-0 rounded-md hover:bg-sidebar-accent/60 transition-colors"
           >
-            <div className="relative h-7 w-7 rounded-full overflow-hidden bg-ember text-white grid place-items-center text-xs font-bold shrink-0">
-              {avatarUrl ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={avatarUrl} alt="" className="absolute inset-0 h-full w-full object-cover" />
-              ) : (
-                (displayName || user.email)[0]?.toUpperCase() ?? '?'
-              )}
-            </div>
+            <Avatar
+              src={avatarUrl}
+              name={displayName}
+              email={user.email}
+              className="h-7 w-7 bg-ember text-white text-xs"
+            />
             <div className="text-xs text-sidebar-foreground/70 truncate" title={user.email}>
               {displayName || user.email}
             </div>
