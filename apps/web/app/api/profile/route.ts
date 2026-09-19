@@ -1,5 +1,6 @@
 import type { NextRequest } from 'next/server';
 import { requireUser, UnauthorizedError, unauthorizedResponse } from '@/lib/auth';
+import { fileUrl } from '@/lib/pocketbase/fileUrl';
 import { fromError, jsonError } from '@/lib/upsertTrack';
 import { withRequestLog } from '@/lib/logger/withRequestLog';
 
@@ -44,7 +45,7 @@ export const PATCH = withRequestLog('profile', async (req: NextRequest) => {
         id: updated.id,
         email: updated.email,
         name: updated.name ?? '',
-        avatarUrl: updated.avatar ? pb.files.getURL(updated, updated.avatar) : null,
+        avatarUrl: updated.avatar ? fileUrl(updated, updated.avatar) : null,
       },
     });
   } catch (e) {

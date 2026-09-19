@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from 'next';
 import { Inter } from 'next/font/google';
 import { createClient } from '@/lib/pocketbase/server';
+import { fileUrl } from '@/lib/pocketbase/fileUrl';
 import { AuthProvider, type AuthUser } from '@/components/providers/AuthProvider';
 import { QueryProvider } from '@/components/providers/QueryProvider';
 import { PlayerProvider } from '@/components/player/PlayerProvider';
@@ -48,7 +49,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         email: String(pb.authStore.record.email ?? ''),
         name: String(pb.authStore.record.name ?? ''),
         avatarUrl: pb.authStore.record.avatar
-          ? pb.files.getURL(pb.authStore.record, pb.authStore.record.avatar as string)
+          ? fileUrl(pb.authStore.record, pb.authStore.record.avatar as string)
           : null,
         isAdmin: pb.authStore.record.is_admin === true,
       }
