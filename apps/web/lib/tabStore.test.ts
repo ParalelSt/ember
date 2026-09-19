@@ -112,6 +112,31 @@ describe('source priority', () => {
     expect(orderSources([g, f], [link]).map((s) => s.type)).toEqual(['file', 'generated', 'songsterr']);
     expect(orderSources([], [link]).map((s) => s.type)).toEqual(['songsterr']);
   });
+
+  it('a pasted text tab sits between files and generated tabs', () => {
+    const sorted = sortTabs([
+      row({ id: 'g', kind: 'generated', created: '2026-09-05' }),
+      row({ id: 'p', kind: 'pasted', created: '2026-09-04' }),
+      row({ id: 'f', kind: 'file', created: '2026-09-01' }),
+    ]);
+    expect(sorted.map((r) => r.id)).toEqual(['f', 'p', 'g']);
+    const g = mapTab(row({ id: 'g', kind: 'generated', track_key: 'upload:x', file: 'upload-x.alphatex' }), ALICE);
+    const p = mapTab(row({ id: 'p', kind: 'pasted', file: 'abc.alphatex', format: 'alphatex' }), ALICE);
+    const f = mapTab(row({ id: 'f', kind: 'file', file: 'a.gp5' }), ALICE);
+    const link = { id: 42, artist: 'A', title: 'B', hasChords: false, instruments: [], url: 'https://x' };
+    expect(orderSources([g, p, f], [link]).map((s) => s.type)).toEqual(['file', 'pasted', 'generated', 'songsterr']);
+  });
+
+  it('a pasted row maps to kind pasted, loaded through the file download route', () => {
+    expect(mapTab(row({ id: 'p', kind: 'pasted', file: 'abc.alphatex', format: 'alphatex', user: 'alice', shared: true }), ALICE)).toMatchObject({
+      kind: 'pasted',
+      format: 'alphatex',
+      ext: '.alphatex',
+      mine: true,
+      canDelete: true,
+      downloadUrl: '/api/tabs/files/p/download',
+    });
+  });
 });
 
 describe('findTabs', () => {

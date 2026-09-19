@@ -59,7 +59,9 @@ export function formatOf(filename: string): string {
 }
 
 export function kindOf(row: RecordModel): TabKind {
-  return row.kind === 'generated' ? 'generated' : 'file';
+  if (row.kind === 'generated') return 'generated';
+  if (row.kind === 'pasted') return 'pasted';
+  return 'file';
 }
 
 export function canView(row: RecordModel, viewer: TabViewer): boolean {
@@ -82,9 +84,12 @@ export function matchesQuery(row: RecordModel, q: TabQuery): boolean {
   return !rowKey.artist || !want.artist || rowKey.artist === want.artist;
 }
 
-/** Files first, then generated; newest first inside each. */
+const RANK: Record<TabKind, number> = { file: 0, pasted: 1, generated: 2 };
+
+/** Files first, then pasted text tabs, then generated; newest first inside
+ *  each. */
 export function sortTabs(rows: RecordModel[]): RecordModel[] {
-  const rank = (r: RecordModel) => (kindOf(r) === 'file' ? 0 : 1);
+  const rank = (r: RecordModel) => RANK[kindOf(r)];
   return [...rows].sort(
     (a, b) => rank(a) - rank(b) || String(b.created ?? '').localeCompare(String(a.created ?? '')),
   );
@@ -176,7 +181,8 @@ export async function findTabs(
     parts.push(`(${or.join(' || ')})`);
   }
   if (opts.kind === 'generated') parts.push('kind = "generated"');
-  if (opts.kind === 'file') parts.push('kind != "generated"');
+  if (opts.kind === 'pasted') parts.push('kind = "pasted"');
+  if (opts.kind === 'file') parts.push('kind != "generated" && kind != "pasted"');
 
   const rows = await pb.collection('tabs').getList(1, 200, { filter: parts.join(' && '), sort: '-created' });
   // The filter narrows; this decides. Contains-matching on the title can

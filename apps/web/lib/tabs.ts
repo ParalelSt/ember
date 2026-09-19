@@ -88,3 +88,18 @@ export function resolveRowPath(row: { [key: string]: unknown }): string | null {
   if (!/^[A-Za-z0-9_-]+\.alphatex$/.test(filename)) return null;
   return path.join(GENERATED_DIR, filename);
 }
+
+/** A pasted text tab is two files side by side in TAB_DIR: `<stem>.alphatex`
+ *  (the row's file, what AlphaTab loads) and `<stem>.txt` (the text as it
+ *  was pasted, kept so a better parser can redo the alphaTex later). */
+export function pastedTextPath(row: { [key: string]: unknown }): string | null {
+  if (row.kind !== 'pasted') return null;
+  const filename = String(row.file ?? '');
+  if (!filename.endsWith('.alphatex')) return null;
+  return resolveTabPath(`${filename.slice(0, -'.alphatex'.length)}.txt`);
+}
+
+/** Every file on disk behind a row: what delete removes. */
+export function rowPaths(row: { [key: string]: unknown }): string[] {
+  return [resolveRowPath(row), pastedTextPath(row)].filter((p): p is string => !!p);
+}

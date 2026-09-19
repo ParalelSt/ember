@@ -4,7 +4,10 @@ import type { TabMatch } from '@/lib/songsterr';
  *  routes (lib/tabStore.ts) build these, the tab page (/tabs/[trackId])
  *  picks from them. docs/tabs-rebuild.md section 3. */
 
-export type TabKind = 'file' | 'generated';
+/** Where a tab came from: a Guitar Pro or MusicXML file someone added, a
+ *  text tab someone pasted (kept as alphaTex beside the original text), or
+ *  one Ember generated from the recording. docs/tab-sources.md section 4. */
+export type TabKind = 'file' | 'pasted' | 'generated';
 
 /** One row of the tab store as the client sees it. */
 export interface TabSummary {
@@ -33,14 +36,17 @@ export interface TabSummary {
 
 export type TabSource =
   | { type: 'file'; tab: TabSummary }
+  | { type: 'pasted'; tab: TabSummary }
   | { type: 'generated'; tab: TabSummary }
   | { type: 'songsterr'; match: TabMatch };
 
 /** The source chain for a track, in the order the viewer tries them: a file
- *  someone added, then a generated tab, then Songsterr's link-out. */
+ *  someone added, then a pasted text tab, then a generated tab, then
+ *  Songsterr's link-out. */
 export function orderSources(tabs: TabSummary[], matches: TabMatch[]): TabSource[] {
   return [
     ...tabs.filter((t) => t.kind === 'file').map((tab) => ({ type: 'file' as const, tab })),
+    ...tabs.filter((t) => t.kind === 'pasted').map((tab) => ({ type: 'pasted' as const, tab })),
     ...tabs.filter((t) => t.kind === 'generated').map((tab) => ({ type: 'generated' as const, tab })),
     ...matches.map((match) => ({ type: 'songsterr' as const, match })),
   ];
@@ -71,7 +77,8 @@ export function generatedStandIn(trackId: string, title: string, artist: string)
   };
 }
 
-/** Every tab the page can draw for a track, file first. A generated tab
+/** Every tab the page can draw for a track: files, then pasted text tabs,
+ *  then generated ones (rough, so last). A generated tab
  *  that is ready on disk but has no row yet is added as a stand-in. */
 export function drawableTabs(
   tabs: TabSummary[],
@@ -79,6 +86,7 @@ export function drawableTabs(
   track: { id: string; title: string; artist: string },
 ): TabSummary[] {
   const files = tabs.filter((t) => t.kind === 'file');
+  const pasted = tabs.filter((t) => t.kind === 'pasted');
   const gens = tabs.filter((t) => t.kind === 'generated');
   // The track's own generated tab first among generated ones: it was made
   // from this very recording, so it lines up best.
@@ -86,7 +94,7 @@ export function drawableTabs(
   if (generated === 'ready' && !gens.some((t) => t.trackId === track.id)) {
     gens.unshift(generatedStandIn(track.id, track.title, track.artist));
   }
-  return [...files, ...gens];
+  return [...files, ...pasted, ...gens];
 }
 
 /** The tab to show: the one the listener picked if it still exists, else
@@ -102,11 +110,30 @@ export function localOffsetId(tab: TabSummary): string {
   return tab.kind === 'generated' && tab.trackId ? `generated:${tab.trackId}` : tab.id;
 }
 
+function addedByLabel(tab: TabSummary): string {
+  return tab.mine ? 'you' : (tab.addedBy ?? 'someone');
+}
+
 /** The chip under the title: where the notes came from. */
 export function sourceChipLabel(tab: TabSummary): string {
-  if (tab.kind === 'generated') return 'Generated from the recording';
-  const who = tab.mine ? 'you' : (tab.addedBy ?? 'someone');
-  return `File added by ${who}, ${tab.shared ? 'shared' : 'private'}`;
+  if (tab.kind === 'generated') return 'Generated from the recording, rough';
+  const scope = tab.shared ? 'shared' : 'private';
+  if (tab.kind === 'pasted') return `Text tab pasted by ${addedByLabel(tab)}, ${scope}`;
+  return `File added by ${addedByLabel(tab)}, ${scope}`;
+}
+
+/** One line per tab in the chip's picker: "Guitar Pro file, Aron, Guitar",
+ *  "Text tab, Aron, Guitar", "Generated, rough". */
+export function pickerLabel(tab: TabSummary): string {
+  const parts: string[] = [];
+  if (tab.kind === 'generated') parts.push('Generated', 'rough');
+  else {
+    const musicXml = tab.format === 'musicxml' || tab.format === 'mxl';
+    parts.push(tab.kind === 'pasted' ? 'Text tab' : musicXml ? 'MusicXML file' : 'Guitar Pro file');
+    parts.push(tab.mine ? 'you' : (tab.addedBy ?? 'someone'));
+    if (tab.instrument) parts.push(tab.instrument);
+  }
+  return parts.join(', ');
 }
 
 /** What the page shows when there is no tab to draw. */

@@ -26,6 +26,7 @@ import {
   followTrackChange,
   localOffsetId,
   pickTab,
+  pickerLabel,
   sourceChipLabel,
   type TabSummary,
 } from '@/lib/tabSources';
@@ -320,8 +321,9 @@ function TabsSheet({ song, sources, onBack }: { song: TabSong; sources: TabSourc
   );
 }
 
-/** "File added by Aron, shared"; with more than one tab for the song it
- *  opens a menu to switch between them. */
+/** "File added by Aron, shared", "Text tab pasted by Aron, shared" or
+ *  "Generated from the recording, rough"; with more than one tab for the
+ *  song it opens a menu to switch between them, in chain order. */
 function SourceChip({ tab, tabs, onPick }: { tab: TabSummary; tabs: TabSummary[]; onPick: (id: string) => void }) {
   const label = sourceChipLabel(tab);
   if (tabs.length < 2) return <TabSourceChip label={label} />;
@@ -335,8 +337,7 @@ function SourceChip({ tab, tabs, onPick }: { tab: TabSummary; tabs: TabSummary[]
         <DropdownMenuContent align="start" className="min-w-56">
           {tabs.map((t) => (
             <DropdownMenuItem key={t.id} onClick={() => onPick(t.id)} className={cn(t.id === tab.id && 'text-ember')}>
-              {sourceChipLabel(t)}
-              {t.instrument ? ` · ${t.instrument}` : ''}
+              {pickerLabel(t)}
             </DropdownMenuItem>
           ))}
         </DropdownMenuContent>

@@ -4,12 +4,13 @@ import { ForbiddenError, requireUser, UnauthorizedError, unauthorizedResponse } 
 import { createAdminClient } from '@/lib/pocketbase/server';
 import { fromError, jsonError } from '@/lib/upsertTrack';
 import { serverLogger } from '@/lib/logger/server';
-import { resolveRowPath } from '@/lib/tabs';
+import { rowPaths } from '@/lib/tabs';
 import { canDelete, canView, mapTab } from '@/lib/tabStore';
 import { MAX_OFFSET_MS } from '@/lib/tabSync';
 import { withRequestLog } from '@/lib/logger/withRequestLog';
 
-/** Delete a tab, the record and the file behind it. Only its uploader or an
+/** Delete a tab, the record and the files behind it (a pasted text tab has
+ *  two: its alphaTex and the text). Only its uploader or an
  *  admin may; everyone else gets 403 for a shared tab and 404 for a private
  *  one (a private tab of someone else's does not exist for you). */
 export const DELETE = withRequestLog('tabs/files/[id]', async (_req: NextRequest, ctx: RouteContext<'/api/tabs/files/[id]'>) => {
@@ -22,9 +23,9 @@ export const DELETE = withRequestLog('tabs/files/[id]', async (_req: NextRequest
     if (!row || (!canView(row, user) && !user.isAdmin)) return jsonError('That tab does not exist.', 404);
     if (!canDelete(row, user)) throw new ForbiddenError('Only whoever added this tab can delete it.');
 
-    const full = resolveRowPath(row);
+    const paths = rowPaths(row);
     await pb.collection('tabs').delete(id);
-    if (full) {
+    for (const full of paths) {
       await fs.unlink(full).catch((err) => {
         // The record is gone either way; a missing file is not an error worth
         // failing the request over.

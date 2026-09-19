@@ -7,6 +7,7 @@ import {
   isTabsPathFor,
   localOffsetId,
   pickTab,
+  pickerLabel,
   sourceChipLabel,
   tabsHref,
   trackIdFromParam,
@@ -83,8 +84,34 @@ describe('the source chip', () => {
     expect(sourceChipLabel(tab({ addedBy: null }))).toBe('File added by someone, shared');
   });
 
-  it('a generated tab says where it came from', () => {
-    expect(sourceChipLabel(tab({ kind: 'generated' }))).toBe('Generated from the recording');
+  it('a generated tab says where it came from, and that it is rough', () => {
+    expect(sourceChipLabel(tab({ kind: 'generated' }))).toBe('Generated from the recording, rough');
+  });
+
+  it('a pasted text tab names who pasted it', () => {
+    expect(sourceChipLabel(tab({ kind: 'pasted', format: 'alphatex' }))).toBe('Text tab pasted by Mira, shared');
+    expect(sourceChipLabel(tab({ kind: 'pasted', mine: true }))).toBe('Text tab pasted by you, shared');
+  });
+
+  it('the picker says what each tab is, who added it and the instrument', () => {
+    expect(pickerLabel(tab({ instrument: 'Guitar' }))).toBe('Guitar Pro file, Mira, Guitar');
+    expect(pickerLabel(tab({ format: 'musicxml' }))).toBe('MusicXML file, Mira');
+    expect(pickerLabel(tab({ kind: 'pasted', instrument: 'Guitar' }))).toBe('Text tab, Mira, Guitar');
+    expect(pickerLabel(tab({ kind: 'generated', instrument: 'Guitar' }))).toBe('Generated, rough');
+  });
+});
+
+describe('pasted text tabs in the chain', () => {
+  it('file, then pasted, then generated, whatever order they arrive in', () => {
+    const gen = tab({ id: 'g', kind: 'generated', trackId: song.id });
+    const pasted = tab({ id: 'p', kind: 'pasted' });
+    const file = tab({ id: 'f' });
+    expect(drawableTabs([gen, pasted, file], 'ready', song).map((t) => t.id)).toEqual(['f', 'p', 'g']);
+    expect(pickTab(drawableTabs([gen, pasted], 'ready', song), null)?.id).toBe('p');
+  });
+
+  it('keeps its own sync nudge key (its row id)', () => {
+    expect(localOffsetId(tab({ id: 'p', kind: 'pasted', trackId: song.id }))).toBe('p');
   });
 });
 

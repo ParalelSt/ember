@@ -7,7 +7,8 @@
 //
 //   song_key   normalized "title::artist" (apps/web/lib/songKey.ts), the lookup
 //   track_key  the app's compound track id it was added for, e.g. youtube:abc
-//   kind       "file" or "generated"
+//   kind       "file", "pasted" (a text tab, stored as alphatex beside the
+//              original .txt) or "generated"
 //   format     gp3, gp4, gp5, gpx, gp, musicxml, mxl or alphatex
 //   shared     visible to every signed-in member; new rows are shared
 //   offset_ms  sync nudge against the recording, shared by everyone
@@ -79,7 +80,7 @@ onAfterBootstrap((e) => {
   const NEW_FIELDS = [
     { name: "song_key", type: "text", options: { max: 500 } },
     { name: "track_key", type: "text", options: { max: 80 } },
-    { name: "kind", type: "select", options: { maxSelect: 1, values: ["file", "generated"] } },
+    { name: "kind", type: "select", options: { maxSelect: 1, values: ["file", "pasted", "generated"] } },
     { name: "format", type: "text", options: { max: 12 } },
     { name: "shared", type: "bool", options: {} },
     { name: "offset_ms", type: "number", options: { noDecimal: true } },
@@ -107,6 +108,17 @@ onAfterBootstrap((e) => {
     if (tabs.schema.getFieldByName(f.name)) continue;
     tabs.schema.addField(new SchemaField({ name: f.name, type: f.type, required: false, options: f.options }));
     changed = true;
+  }
+
+  // Pasted text tabs (docs/tab-sources.md) arrived after the select did:
+  // add the value to a collection that only knows file and generated.
+  const kind = tabs.schema.getFieldByName("kind");
+  if (kind) {
+    const values = (kind.options && kind.options.values) || [];
+    if (values.indexOf("pasted") < 0) {
+      kind.options.values = ["file", "pasted", "generated"];
+      changed = true;
+    }
   }
 
   // Generated tabs belong to no uploader (a lazily recorded one has nobody
@@ -137,5 +149,5 @@ onAfterBootstrap((e) => {
 
   if (!changed) return;
   dao.saveCollection(tabs);
-  console.log("[ensure_tabs] tabs store up to date (song_key, kind, shared, hints)");
+  console.log("[ensure_tabs] tabs store up to date (song_key, kind, shared, hints, pasted)");
 });
