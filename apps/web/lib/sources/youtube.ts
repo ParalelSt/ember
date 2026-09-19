@@ -656,6 +656,17 @@ export function invalidateStreamUrl(videoId: string): void {
   URL_CACHE.delete(videoId);
 }
 
+/** Would the next resolveStreamUrl answer from the cache?
+ *
+ *  The stream route asks before it fetches: a 403 on a REPLAYED url can mean
+ *  the signature went stale and is worth one re-extraction, while a 403 on a
+ *  url yt-dlp produced moments ago means YouTube is refusing us, and running
+ *  yt-dlp again to hear that twice only makes the listener wait. */
+export function hasCachedStreamUrl(videoId: string): boolean {
+  const cached = URL_CACHE.get(videoId);
+  return !!cached && cached.expires > Date.now();
+}
+
 export async function resolveStreamUrl(videoId: string): Promise<StreamInfo> {
   if (!VIDEO_ID_RE.test(videoId)) {
     const e: PythonError = new Error('invalid videoId');
