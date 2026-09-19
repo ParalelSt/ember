@@ -33,6 +33,7 @@ export function PlayerBar() {
   const { liked: isLiked, toggle: toggleLike } = useLikeToggle(current);
   const openNowPlaying = usePlayerStore((s) => s.setNowPlayingOpen);
   const partyVolume = useSettingsStore((s) => s.partyVolume);
+  const tabsEnabled = useSettingsStore((s) => s.tabsEnabled);
   const [queueOpen, setQueueOpen] = useState(false);
   const lyricsOpen = useUiStore((s) => s.lyricsOpen);
   const setLyricsOpen = useUiStore((s) => s.setLyricsOpen);
@@ -141,21 +142,24 @@ export function PlayerBar() {
           <LyricsIcon className="h-4 w-4" />
         </Button>
         {/* Guitar tabs: the tab page for the playing song. Phones reach it
-            from the full-screen NowPlaying view. */}
-        <Button
-          variant="ghost"
-          size="icon"
-          className={cn(
-            'hidden md:inline-flex h-8 w-8 hover:text-foreground',
-            tabsOpen ? 'text-ember hover:text-ember' : 'text-muted-foreground',
-          )}
-          onClick={() => router.push(tabsHref(current.id))}
-          aria-label="Guitar tabs"
-          aria-pressed={tabsOpen}
-          title="Guitar tabs"
-        >
-          <TabsIcon className="h-4 w-4" />
-        </Button>
+            from the full-screen NowPlaying view. Hidden entirely when the
+            Songsterr integration plugin is switched off in Settings. */}
+        {tabsEnabled && (
+          <Button
+            variant="ghost"
+            size="icon"
+            className={cn(
+              'hidden md:inline-flex h-8 w-8 hover:text-foreground',
+              tabsOpen ? 'text-ember hover:text-ember' : 'text-muted-foreground',
+            )}
+            onClick={() => router.push(tabsHref(current.id))}
+            aria-label="Guitar tabs"
+            aria-pressed={tabsOpen}
+            title="Guitar tabs"
+          >
+            <TabsIcon className="h-4 w-4" />
+          </Button>
+        )}
         <Button
           variant="ghost"
           size="icon"

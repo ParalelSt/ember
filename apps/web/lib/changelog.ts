@@ -30,6 +30,7 @@ export const CHANGELOG: ChangelogEntry[] = [
       'The guitar button opens the tab as its own page, and the cursor follows the song as it plays.',
       'Click any bar to jump the song there. Switch between guitar and bass, Tab or Tab + Score.',
       'Horizontal mode scrolls the tab sideways in one long row.',
+      'Can be switched off in Settings > Plugins.',
     ],
   },
   {

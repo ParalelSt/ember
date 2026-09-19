@@ -1,8 +1,9 @@
 'use client';
 
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Button } from '@/components/ui/button';
+import { Button, buttonVariants } from '@/components/ui/button';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -17,6 +18,7 @@ import { LiveTabScore } from '@/components/tabs/LiveTabScore';
 import { TabSheetHeader, TabSourceChip } from '@/components/tabs/TabSheetHeader';
 import { TabsToolbar, chip, chipOff, chipOn } from '@/components/tabs/TabsToolbar';
 import { useTabSong, useTabSources, type TabSong, type TabSourcesState } from '@/hooks/useTabSources';
+import { useSettingsStore } from '@/stores/useSettingsStore';
 import { cn } from '@/lib/utils';
 import { metaLine, scoreScale, type ScoreInfo, type TabsScroll, type TabsStaff } from '@/lib/tabScore';
 import {
@@ -70,6 +72,7 @@ function usePhone(): boolean {
 export function TabsPage({ trackId }: { trackId: string }) {
   const router = useRouter();
   const player = usePlayer();
+  const tabsEnabled = useSettingsStore((s) => s.tabsEnabled);
   const { song, loading: songLoading } = useTabSong(trackId, player.current);
   const sources = useTabSources(song);
 
@@ -86,6 +89,17 @@ export function TabsPage({ trackId }: { trackId: string }) {
     if (window.history.length > 1) router.back();
     else router.push('/');
   };
+
+  if (!tabsEnabled) {
+    return (
+      <EmptyState className="flex flex-col items-center gap-cluster">
+        <p>Guitar tabs are turned off.</p>
+        <Link href="/settings/plugins" className={buttonVariants({ variant: 'outline' })}>
+          Settings &gt; Plugins
+        </Link>
+      </EmptyState>
+    );
+  }
 
   if (!song) {
     return (

@@ -1,9 +1,10 @@
-import type { ReactNode } from 'react';
+import type { ComponentProps, ReactNode } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { TabSummary } from '@/lib/tabSources';
 import type { Track } from '@/types/track';
+import { useSettingsStore } from '@/stores/useSettingsStore';
 import type { LiveTabScoreProps } from './LiveTabScore';
 import { TabsPage } from './TabsPage';
 
@@ -14,6 +15,15 @@ import { TabsPage } from './TabsPage';
 
 const router = vi.hoisted(() => ({ push: vi.fn(), replace: vi.fn(), back: vi.fn() }));
 vi.mock('next/navigation', () => ({ useRouter: () => router, usePathname: () => '/' }));
+
+// next/link reads the app router context, which no test renders, and next
+// itself is hoisted to the repo root where it resolves React 18. The
+// turned-off state only needs the anchor.
+vi.mock('next/link', () => ({
+  default: ({ href, children, ...rest }: ComponentProps<'a'>) => (
+    <a href={href} {...rest}>{children}</a>
+  ),
+}));
 
 const player = vi.hoisted(() => ({
   current: null as Track | null,
@@ -120,9 +130,12 @@ function wrap(ui: ReactNode) {
   return render(<QueryClientProvider client={qc}>{ui}</QueryClientProvider>);
 }
 
+const initialSettings = useSettingsStore.getState();
+
 beforeEach(() => {
   vi.clearAllMocks();
   window.localStorage.clear();
+  useSettingsStore.setState(initialSettings, true);
   phone = false;
   window.matchMedia = ((q: string) => ({
     matches: phone && q.includes('max-width'),
@@ -182,6 +195,18 @@ describe('TabsPage source selection', () => {
     fireEvent.change(screen.getByLabelText('Tab timing offset in seconds'), { target: { value: '2.5' } });
     expect(screen.getByTestId('tab-score')).toHaveAttribute('data-offset', '2500');
     expect(window.localStorage.getItem('ember.tab.offset.f1')).toBe('2.5');
+  });
+});
+
+describe('TabsPage turned off', () => {
+  it('shows the turned-off state instead of the score, with a link to Settings > Plugins', async () => {
+    useSettingsStore.getState().setTabsEnabled(false);
+    api.getTrackTabs.mockResolvedValue({ tabs: [tab({})] });
+    wrap(<TabsPage trackId="upload:song1" />);
+    expect(await screen.findByText('Guitar tabs are turned off.')).toBeInTheDocument();
+    const link = screen.getByRole('link', { name: /Settings/ });
+    expect(link).toHaveAttribute('href', '/settings/plugins');
+    expect(screen.queryByTestId('tab-score')).toBeNull();
   });
 });
 

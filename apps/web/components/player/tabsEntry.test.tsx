@@ -4,6 +4,7 @@ import type { Track } from '@/types/track';
 import { PlayerBar } from './PlayerBar';
 import { NowPlaying } from './NowPlaying';
 import { usePlayerStore } from '@/stores/usePlayerStore';
+import { useSettingsStore } from '@/stores/useSettingsStore';
 
 // The tabs button opens the tab page for the playing song: the player bar
 // on desktop, the full-screen Now playing view on phones. Everything else
@@ -53,10 +54,13 @@ vi.mock('@/components/player/NowPlayingSummary', () => ({ NowPlayingSummary: Stu
 vi.mock('@/components/player/TransportControls', () => ({ TransportControls: Stub }));
 vi.mock('@/components/primitives/Artwork', () => ({ Artwork: Stub }));
 
+const initialSettings = useSettingsStore.getState();
+
 beforeEach(() => {
   nav.push.mockReset();
   nav.pathname = '/';
   player.current = TRACK;
+  useSettingsStore.setState(initialSettings, true);
 });
 
 describe('tabs entry points', () => {
@@ -86,5 +90,18 @@ describe('tabs entry points', () => {
     // After the view's own history entry is popped, so the back cannot undo it.
     await waitFor(() => expect(nav.push).toHaveBeenCalledWith('/tabs/youtube%3AdQw4w9WgXcQ'));
     expect(nav.push).toHaveBeenCalledTimes(1);
+  });
+
+  it('the player bar hides the Guitar tabs button when the plugin is off', () => {
+    useSettingsStore.getState().setTabsEnabled(false);
+    render(<PlayerBar />);
+    expect(screen.queryByRole('button', { name: 'Guitar tabs' })).toBeNull();
+  });
+
+  it('Now playing hides the Guitar tabs button when the plugin is off', () => {
+    useSettingsStore.getState().setTabsEnabled(false);
+    usePlayerStore.getState().setNowPlayingOpen(true);
+    render(<NowPlaying />);
+    expect(screen.queryByRole('button', { name: 'Guitar tabs' })).toBeNull();
   });
 });

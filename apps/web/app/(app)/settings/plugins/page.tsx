@@ -6,10 +6,6 @@ import { SectionHeader } from '@/components/page/SectionHeader';
 
 const PLACEHOLDERS = [
   {
-    name: 'Songsterr integration',
-    description: 'Guitar tabs and guitar mode for the currently-playing track.',
-  },
-  {
     name: 'TikTok window',
     description: 'Pinned side panel for TikTok while you listen.',
   },
@@ -18,6 +14,8 @@ const PLACEHOLDERS = [
 export default function SettingsPlugins() {
   const partyVolume = useSettingsStore((s) => s.partyVolume);
   const setPartyVolume = useSettingsStore((s) => s.setPartyVolume);
+  const tabsEnabled = useSettingsStore((s) => s.tabsEnabled);
+  const setTabsEnabled = useSettingsStore((s) => s.setTabsEnabled);
 
   return (
     <section className="max-w-2xl">
@@ -33,6 +31,14 @@ export default function SettingsPlugins() {
           description="Wider slider in the player bar and removes the 85% cap so the audio can go all the way to max. Visible on desktop — phones don't show the volume slider at all."
           on={partyVolume}
           onToggle={() => setPartyVolume(!partyVolume)}
+        />
+
+        <PluginToggle
+          name="Songsterr integration"
+          tag="Work in progress"
+          description="Guitar tabs and guitar mode for the currently-playing track."
+          on={tabsEnabled}
+          onToggle={() => setTabsEnabled(!tabsEnabled)}
         />
 
         {PLACEHOLDERS.map((p) => (

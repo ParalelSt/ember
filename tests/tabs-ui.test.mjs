@@ -307,6 +307,39 @@ const trackPath = (id) => `/tabs/${encodeURIComponent(id)}`;
   await page.context().close();
 }
 
+// ── the Songsterr integration plugin toggle turns the feature off ─────────
+{
+  const page = await newPage({ width: 1300, height: 950 });
+  await play(page, song.title);
+  check('the tabs button is there before the plugin is touched',
+    (await page.locator('footer').getByRole('button', { name: 'Guitar tabs' }).count()) > 0);
+
+  await page.goto(`${APP_URL}/settings/plugins`, { waitUntil: 'networkidle' });
+  const toggle = page.getByRole('button', { name: 'Turn off Songsterr integration' });
+  check('the Songsterr card is tagged Work in progress', (await page.getByText('Work in progress').count()) > 0);
+  await toggle.click();
+  await page.waitForTimeout(300);
+
+  check('the tabs button disappears from the player bar once off',
+    (await page.locator('footer').getByRole('button', { name: 'Guitar tabs' }).count()) === 0);
+
+  await page.goto(`${APP_URL}${trackPath(song.id)}`, { waitUntil: 'networkidle' });
+  check('the tab page shows the turned-off message',
+    (await page.getByText('Guitar tabs are turned off.').count()) > 0);
+  check('the turned-off page links to Settings > Plugins',
+    (await page.getByRole('link', { name: 'Settings > Plugins' }).getAttribute('href')) === '/settings/plugins');
+
+  await page.goto(`${APP_URL}/settings/plugins`, { waitUntil: 'networkidle' });
+  await page.getByRole('button', { name: 'Turn on Songsterr integration' }).click();
+  await page.waitForTimeout(300);
+
+  await page.goto(`${APP_URL}/library/uploads`, { waitUntil: 'networkidle' });
+  await page.waitForTimeout(1000);
+  check('the tabs button returns once the plugin is back on',
+    (await page.locator('footer').getByRole('button', { name: 'Guitar tabs' }).count()) > 0);
+  await page.context().close();
+}
+
 // ── the empty state: generate a tab ───────────────────────────────────────
 {
   const page = await newPage({ width: 1300, height: 950 });

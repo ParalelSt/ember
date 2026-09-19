@@ -16,6 +16,11 @@ interface SettingsState {
    *  error-level log entry, not just at Settings-page render time. */
   autoReportEnabled: boolean;
   setAutoReportEnabled: (on: boolean) => void;
+  /** Guitar tabs plugin (Songsterr integration): the tabs button in the
+   *  player bar and Now Playing, and the /tabs/[trackId] page itself. On by
+   *  default so nobody who already uses tabs loses them on update. */
+  tabsEnabled: boolean;
+  setTabsEnabled: (on: boolean) => void;
 }
 
 export const useSettingsStore = create<SettingsState>()(
@@ -25,6 +30,8 @@ export const useSettingsStore = create<SettingsState>()(
       setPartyVolume: (partyVolume) => set({ partyVolume }),
       autoReportEnabled: true,
       setAutoReportEnabled: (autoReportEnabled) => set({ autoReportEnabled }),
+      tabsEnabled: true,
+      setTabsEnabled: (tabsEnabled) => set({ tabsEnabled }),
     }),
     { name: 'ember.settings.v1' },
   ),
