@@ -1,8 +1,10 @@
 # 0.3.3: a real tab page
 
 **Host: a normal rebuild and restart (`./update.sh`). Nothing to configure:
-no `npm install`, no new environment variables, no PocketBase changes** (the
-`offset_ms` field it uses came with 0.3.2).
+no `npm install`, no new environment variables.** PocketBase must restart so
+its hooks run: `pb_hooks/ensure_plugin_settings.pb.js` adds one field,
+`plugins` (JSON), to `users` on boot. Nothing to do by hand. (The
+`offset_ms` field the tab page uses came with 0.3.2.)
 
 - **Tabs are a page now**: the guitar button in the player bar (and in Now
   playing on phones) opens `/tabs/<song>` instead of the old dialog. The
@@ -14,6 +16,11 @@ no `npm install`, no new environment variables, no PocketBase changes** (the
 - **Adding and generating** tabs moved to the page: its empty state offers
   "Generate a tab" and "Add a file", and the menu at the top keeps both
   plus delete. Whoever added a tab can save its sync nudge for everyone.
+- **Plugin settings follow the account**: the switches on Settings > Plugins
+  (party-size volume slider, Songsterr integration) are saved on the user,
+  so they match on every device. The first device to load after the update
+  writes its current switches up for that account; other devices then take
+  the account's values. Signed out, each device keeps its own.
 
 # 0.3.2: shared guitar tabs
 

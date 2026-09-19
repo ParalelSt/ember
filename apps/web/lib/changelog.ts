@@ -32,6 +32,7 @@ export const CHANGELOG: ChangelogEntry[] = [
       'Drag the line to jump anywhere in the song: it shows the time as you go, and the arrow keys move it a beat at a time.',
       'Horizontal mode scrolls the tab sideways in one long row.',
       'Can be switched off in Settings > Plugins.',
+      'Plugin settings now follow your account, so a switch you flip on your phone is flipped on your computer too.',
     ],
   },
   {
