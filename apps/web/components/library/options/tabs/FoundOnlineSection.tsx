@@ -159,7 +159,7 @@ function PickerMenu({ state, sources, selectedId, phone, onPick }: PickerProps) 
       role="menu"
       aria-label="Choose a tab"
       className={cn(
-        'absolute left-0 top-full z-30 mt-cluster flex max-w-full flex-col overflow-hidden rounded-xl border border-border bg-popover p-inset text-popover-foreground shadow-soft',
+        'absolute left-0 top-full z-30 mt-cluster flex max-h-[26rem] max-w-full flex-col overflow-y-auto overflow-x-hidden rounded-xl border border-border bg-popover p-inset text-popover-foreground shadow-soft',
         phone ? 'w-full' : 'w-[30rem]',
       )}
     >
@@ -249,12 +249,12 @@ function SourceCard({ source, on, onPick }: { source: MockTabSource; on: boolean
       onClick={onPick}
       className={cn(
         'block w-full min-w-0 rounded-xl border p-row text-left transition-colors',
-        on ? 'border-ember/50 bg-ember/5' : 'border-border hover:bg-card',
+        on ? 'border-ember/40 bg-card' : 'border-border hover:bg-card',
       )}
     >
       <span className="flex min-w-0 items-center justify-between gap-row">
         <span className="text-eyebrow min-w-0 truncate">
-          {source.siteLabel} · {source.type}
+          {source.type}
         </span>
         <LinedBadge lined={source.lined} />
       </span>
