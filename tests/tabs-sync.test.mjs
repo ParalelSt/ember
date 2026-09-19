@@ -10,9 +10,10 @@
  *      bar the cursor sits in matches floor((time-offset)/2.5)+1 for the
  *      sample track (96 bpm, 4/4, one bar = 2.5s), within one beat.
  *   3. Moving the line controls the song: clicking a bar seeks the real
- *      player there; dragging the cursor is checked honestly and FAILS
- *      the "drag the line to seek" check if unsupported, without any
- *      product-code changes to make it pass.
+ *      player there; pressing on the cursor and dragging it to another bar
+ *      seeks there on release (mouse at 1440, a finger at 390 through real
+ *      touch input), and a vertical swipe on the score away from the line
+ *      still scrolls the page without seeking.
  *
  *  This is a verification test: it does not touch product code. On a
  *  failing check it reports the evidence (numbers, screenshots) rather
@@ -264,6 +265,31 @@ function expectedBarPosition(realSec, offsetMs) {
 
 function barPositionToSongSec(barPos, offsetMs) {
   return (barPos - 1) * BAR_SEC - offsetMs / 1000;
+}
+
+/** The drag's ghost-line time label (m:ss), or null when none is shown. */
+const dragLabel = (page) =>
+  page.evaluate(() => document.querySelector('[data-testid="tab-line-time"]')?.textContent ?? null);
+
+/** Real touch input through the DevTools protocol, so the page sees
+ *  pointerType "touch" and the browser applies its own touch-action
+ *  scrolling, as on a phone. */
+async function touchPath(page, points, { holdMs = 0, onHold = null } = {}) {
+  const cdp = await page.context().newCDPSession(page);
+  const [first, ...rest] = points;
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: first.x, y: first.y }] });
+  for (const p of rest) {
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: p.x, y: p.y }] });
+    await page.waitForTimeout(16);
+  }
+  if (holdMs) await page.waitForTimeout(holdMs);
+  if (onHold) await onHold();
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+  await cdp.detach().catch(() => {});
+}
+
+function steps(from, to, n) {
+  return Array.from({ length: n + 1 }, (_, i) => ({ x: from.x + ((to.x - from.x) * i) / n, y: from.y + ((to.y - from.y) * i) / n }));
 }
 
 async function shot(page, name) {
@@ -625,6 +651,8 @@ console.log('\n=== 3. Moving the line controls the song ===\n');
     await page.mouse.move((startX + endX) / 2, (startY + endY) / 2, { steps: 5 });
     await page.mouse.move(endX, endY, { steps: 5 });
     await page.waitForTimeout(150);
+    const ghostLabel = await dragLabel(page);
+    await shot(page, 'drag-in-progress-1440.png');
     await page.mouse.up();
     await page.waitForTimeout(700);
     const afterD = await realTime(page);
@@ -637,7 +665,7 @@ console.log('\n=== 3. Moving the line controls the song ===\n');
       'drag the line to seek',
       seekedToDrop,
       seekedToDrop
-        ? `dropping at bar ${targetLabel.n} seeked the song to ${afterD.toFixed(2)}s (expected ~${expectDrop.toFixed(2)}s)`
+        ? `dropping at bar ${targetLabel.n} seeked the song to ${afterD.toFixed(2)}s (expected ~${expectDrop.toFixed(2)}s; time label while dragging: ${ghostLabel ?? 'none'})`
         : `NOT SUPPORTED: pressed at bar 6 (~${expectPress.toFixed(2)}s) and dragged to bar ${targetLabel.n} (~${expectDrop.toFixed(2)}s), but the song ended up at ${afterD === null ? 'no reading' : `${afterD.toFixed(2)}s`} before ${beforeD?.toFixed(2)}s — ${seekedToPress ? 'only the initial press point took effect; the drop was ignored' : 'no click-through seek was registered at all on a mouse-down + drag'}`,
     );
   }
@@ -699,6 +727,78 @@ console.log('\n=== 2 (repeat), phone viewport 390x844 ===\n');
     !!pp1 && !!pp2 && Math.abs(pp1.x - pp2.x) < 1 && Math.abs(pp1.y - pp2.y) < 1,
     `${JSON.stringify(pp1)} -> ${JSON.stringify(pp2)}`,
   );
+
+  // (3, phone) Drag the line with a finger: press on the cursor, drag it a
+  // few bars on (onto another row), let go. Paused, it stays paused.
+  await phonePage.evaluate(() => document.querySelector('[data-app-scroller]')?.scrollTo(0, 0));
+  await phonePage.waitForTimeout(300);
+  await clickBar(phonePage, 3, { scroller: '[data-app-scroller]' });
+  await phonePage.waitForTimeout(600);
+  const pc = await cursorRect(phonePage);
+  const pBand = await viewBand(phonePage);
+  const pLabels = await barLabels(phonePage);
+  const pTarget = pLabels
+    // Drop well clear of the band's edges: near one, the drag scrolls the
+    // page on (by design), and the finger ends up over a later bar.
+    .filter((l) => l.n >= 5 && l.n <= 9 && l.y + 35 > pBand.top + 70 && l.y + 35 < pBand.bottom - 70)
+    .sort((a, b) => a.n - b.n)
+    .pop();
+  if (!pc || !pTarget) {
+    check('phone: drag the line with a finger to seek', false, 'could not locate the cursor or a target bar on screen');
+  } else {
+    const from = { x: pc.x + pc.w / 2, y: pc.y + pc.h / 2 };
+    const to = { x: Math.min(pTarget.x + 30, 380), y: pTarget.y + 35 };
+    const beforeT = await realTime(phonePage);
+    const scrollBefore = await phonePage.evaluate(() => document.querySelector('[data-app-scroller]')?.scrollTop ?? 0);
+    let label = null;
+    await touchPath(phonePage, steps(from, to, 12), {
+      holdMs: 150,
+      onHold: async () => {
+        label = await dragLabel(phonePage);
+        await shot(phonePage, 'drag-in-progress-390.png');
+      },
+    });
+    await phonePage.waitForTimeout(800);
+    const afterT = await realTime(phonePage);
+    const scrollAfter = await phonePage.evaluate(() => document.querySelector('[data-app-scroller]')?.scrollTop ?? 0);
+    const expectT = barPositionToSongSec(pTarget.n, offsetMsPhone);
+    check(
+      'phone: drag the line with a finger to seek',
+      afterT !== null && Math.abs(afterT - expectT) <= TOLERANCE_SEC && label !== null,
+      `touch-dragged from bar 3 (${beforeT?.toFixed(2)}s) to bar ${pTarget.n}: song at ${afterT?.toFixed(2)}s, expected ~${expectT.toFixed(2)}s; time label while dragging: ${label ?? 'none'}; page scroll ${scrollBefore} -> ${scrollAfter}`,
+    );
+    check('phone: after a drag, playback stays paused (it was paused)', !(await phonePauseBtn.count()));
+  }
+
+  // (3, phone) A vertical swipe on the score away from the line scrolls the
+  // page, as always, and does not seek.
+  {
+    const c = await cursorRect(phonePage);
+    const band = await viewBand(phonePage);
+    const score = await phonePage.evaluate(() => {
+      const r = document.querySelector('[data-testid="tab-score"]')?.getBoundingClientRect();
+      return r ? { left: r.left, right: r.right } : null;
+    });
+    const scroller = '[data-app-scroller]';
+    await phonePage.evaluate((sel) => document.querySelector(sel)?.scrollTo(0, 0), scroller);
+    await phonePage.waitForTimeout(400);
+    const c0 = (await cursorRect(phonePage)) ?? c;
+    // Pick a column at least 80px from the line, in the middle of the band.
+    const xs = [score.left + 40, score.right - 40, (score.left + score.right) / 2];
+    const x = xs.find((v) => !c0 || Math.abs(v - (c0.x + c0.w / 2)) > 80) ?? xs[0];
+    const y0 = band.top + (band.bottom - band.top) * 0.75;
+    const tBefore = await realTime(phonePage);
+    const sBefore = await phonePage.evaluate((sel) => document.querySelector(sel)?.scrollTop ?? 0, scroller);
+    await touchPath(phonePage, steps({ x, y: y0 }, { x, y: y0 - 300 }, 15));
+    await phonePage.waitForTimeout(900);
+    const tAfter = await realTime(phonePage);
+    const sAfter = await phonePage.evaluate((sel) => document.querySelector(sel)?.scrollTop ?? 0, scroller);
+    check(
+      'phone: a vertical swipe on the score (off the line) scrolls the page and does not seek',
+      sAfter - sBefore > 60 && tBefore !== null && tAfter !== null && Math.abs(tAfter - tBefore) < 0.05,
+      `swipe at x=${Math.round(x)} (line at x=${c0 ? Math.round(c0.x) : '?'}): page scroll ${sBefore} -> ${sAfter}, song ${tBefore?.toFixed(2)}s -> ${tAfter?.toFixed(2)}s`,
+    );
+  }
 
   await phonePage.context().close();
 }
