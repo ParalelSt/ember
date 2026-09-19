@@ -24,6 +24,14 @@ Test folders, `apps/web/`:
   test (not an eslint rule) that scans `app/` and `components/` for banned
   class-string patterns (raw `oklch(`, `to-[`, the old artwork size pairs,
   the type utility strings before they existed).
+- `lib/import/`: playlist import (docs/imports.md). `url` (Spotify, short
+  link, YT Music and YouTube links, and what is rejected), `embed` (the
+  Spotify embed-page parser against saved pages in `tests/fixtures/imports/`:
+  a 50-track playlist, a full 100-track one, Spotify's "Page not found"
+  state, a changed page shape) and `score` (the fixture table: exact, feat.,
+  remix either way, live, clean vs explicit, length off by 2, 5 and 40 s,
+  Topic channel vs fan upload, plus the reasons text and the 75 / 50
+  thresholds).
 - `lib/reports/`: the report libs behind bug reports and the daily digest:
   `fingerprint` (grouping two occurrences of one bug together),
   `timeline`/`selectTimeline` (the readable Evidence block), `history`
@@ -228,6 +236,12 @@ node tests/requests-ui.test.mjs                     # or: npm run test:requests-
 # Unavailable songs: detection, replace, skip-on-play (needs its own server, see below)
 node tests/unavailable.test.mjs                     # or: npm run test:unavailable
 node tests/unavailable-ui.test.mjs                  # or: npm run test:unavailable-ui
+
+# Playlist import: Spotify embed source and match scoring (needs its own server, see below)
+node tests/import.test.mjs                          # or: npm run test:import
+
+# player.py `match` and `ytplaylist`, no server, no network
+.venv/bin/python -m unittest tests/test_player_match.py   # or: npm run test:player-match
 ```
 
 Exit code 0 = everything passed; each check prints PASS/FAIL with detail.
@@ -617,3 +631,52 @@ toast and landing on the live one instead (U2), the Find Replacement dialog
 swapping a track end to end, checked both in the DOM and with a follow-up
 `GET /api/playlists/<id>` (U3), and no console errors beyond the fake audio
 bytes' expected decode failures (U4).
+
+## What `import.test.mjs` and `test_player_match.py` cover
+
+Playlist import, stages 1 and 2 of docs/imports.md. Nothing reaches the
+internet: `tests/fake-spotify.mjs` serves the saved Spotify embed pages and
+oEmbed answers from `tests/fixtures/imports/`, and `tests/fake-player.sh`
+answers `match` from `tests/fixtures/imports/ytm-candidates.json` (keyed by
+the search string, `title-only:<title>` for the retry) and `ytplaylist` from
+`tests/fixtures/imports/ytm-playlists.json`. The app finds the fake through
+`SPOTIFY_EMBED_BASE`.
+
+Its own server (this worktree's sandbox: PocketBase on `:8094`, the app on
+`:3034`); the test starts the fake Spotify on `:4331` itself:
+
+```bash
+SB=/tmp/ember-import-test && mkdir -p "$SB/music"
+cd apps/web && POCKETBASE_URL=http://127.0.0.1:8094 \
+  SPOTIFY_EMBED_BASE=http://127.0.0.1:4331 \
+  PYTHON_BIN=/bin/bash PLAYER_SCRIPT="$PWD/../../tests/fake-player.sh" \
+  FAKE_PLAYER_LOG="$SB/calls.log" MUSIC_DIR="$SB/music" \
+  DISCORD_BUG_REPORT_WEBHOOK_URL=http://127.0.0.1:4312/hook \
+  npx next start -p 3034 &
+cd ../.. && PB_URL=http://127.0.0.1:8094 APP_URL=http://127.0.0.1:3034 node tests/import.test.mjs
+```
+
+- **Spotify inspect** (A): a playlist link reads all 50 tracks of the saved
+  page in source order, with title, artists (a multi-artist line split),
+  length, explicit flag and uri; the name and cover come from oEmbed; a
+  100-track playlist is flagged as possibly longer.
+- **Errors people can act on** (B): an unknown or private playlist is a 404
+  that says to make it public; a changed page shape is a 502 that says so; an
+  album link is a 400.
+- **Matching** (C): all 50 tracks through `/api/import/match` in batches of
+  8 split into accepted (4), needs review (2: a live version, a fan upload by
+  someone else) and not found (44). Every result carries its source item and
+  every candidate with a score and reasons; a remix is kept but scored down;
+  official audio beats the music video; a track the first search misses is
+  found by the title-only retry; a batch over 8 is refused; signed out never
+  matches.
+- **YouTube Music** (D): a public playlist inspects to ready tracks; private
+  and unknown playlists get their own messages.
+
+`test_player_match.py` runs `player.py match` against saved ytmusicapi
+search output (`ytm-search-bass-persuades.json`) with YTMusic mocked:
+five candidates in search order with title, artists, length, video type and
+explicit flag, unscored; the two query forms (`"title artist"`, then the
+title alone with `ignore_spelling`); one list per query even when a search
+fails. It also checks `ytplaylist` falling back to yt-dlp when ytmusicapi
+fails, and reporting `private` when both fail. Run it with the repo's venv.

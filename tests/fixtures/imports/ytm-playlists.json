@@ -1,0 +1,12 @@
+{
+  "_comment": "tests/fake-player.sh `ytplaylist` answers from here by playlist id. A missing id answers like a playlist that does not exist.",
+  "PLfakeEmberImport01": {
+    "title": "Fake YT Music mix",
+    "tracks": [
+      { "videoId": "ytmTrack001", "title": "First Song", "artist": "Band One", "artistId": null, "album": null, "albumId": null, "durationSec": 201, "artworkUrl": "" },
+      { "videoId": "ytmTrack002", "title": "Second Song", "artist": "Band Two", "artistId": null, "album": null, "albumId": null, "durationSec": 187, "artworkUrl": "" },
+      { "videoId": "ytmTrack003", "title": "Third Song", "artist": "Band Three", "artistId": null, "album": null, "albumId": null, "durationSec": 240, "artworkUrl": "" }
+    ]
+  },
+  "PLfakeEmberPrivate01": { "error": "ERROR: [youtube:tab] This playlist is private", "reason": "private" }
+}

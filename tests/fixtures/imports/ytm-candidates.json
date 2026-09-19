@@ -1,0 +1,24 @@
+{
+  "_comment": "tests/fake-player.sh `match` answers from here, keyed by the search string player.py would send: \"title artist\", or \"title-only:title\" for the --title-only retry. A query not listed gets one unrelated default candidate. Tracks are the first rows of spotify-embed-todays-top-hits.html; tests/import.test.mjs expects accepted 0, 1, 3, 5, review 2, 4, the rest not found.",
+  "Bass Persuades Miley Cyrus": [
+    { "videoId": "D70Ld2UoZVI", "title": "Bass Persuades", "artists": ["Miley Cyrus"], "durationSec": 203, "videoType": "ATV", "isExplicit": false },
+    { "videoId": "rmxRmxRmx01", "title": "Bass Persuades Remixx", "artists": ["Miley Cyrus"], "durationSec": 217, "videoType": "ATV", "isExplicit": false }
+  ],
+  "hate that i made you love me Ariana Grande": [
+    { "videoId": "hateThat001", "title": "hate that i made you love me (Official Audio)", "artists": ["Ariana Grande"], "durationSec": 198, "videoType": "OMV", "isExplicit": false },
+    { "videoId": "hateThat002", "title": "hate that i made you love me", "artists": ["Ariana Grande"], "durationSec": 198, "videoType": "ATV", "isExplicit": false }
+  ],
+  "Loser Tame Impala": [
+    { "videoId": "loserLive01", "title": "Loser - Live at Glastonbury", "artists": ["Tame Impala"], "durationSec": 230, "videoType": "ATV", "isExplicit": true }
+  ],
+  "BbY WOW KAROL G, Judeline, rusowsky": [],
+  "title-only:BbY WOW": [
+    { "videoId": "bbyWow00001", "title": "BbY WOW", "artists": ["KAROL G", "Judeline", "rusowsky"], "durationSec": 226, "videoType": "ATV", "isExplicit": false }
+  ],
+  "Earrings Malcolm Todd": [
+    { "videoId": "earrings001", "title": "Earrings (Lyrics)", "artists": ["lyricsvault"], "durationSec": 152, "videoType": "UGC", "isExplicit": null }
+  ],
+  "Ain't In LA ADÉLA": [
+    { "videoId": "aintInLA001", "title": "Ain’t In LA", "artists": ["Adela"], "durationSec": 185, "videoType": "ATV", "isExplicit": true }
+  ]
+}
