@@ -379,6 +379,19 @@ describe('LiveTabScore follow-scroll', () => {
     expect(scrolls()).toBeGreaterThan(before);
   });
 
+  it('after a seek the view goes straight to the line; while it plays on it scrolls smoothly', async () => {
+    const page = document.createElement('div');
+    page.scrollTo = vi.fn() as never;
+    const scrollTo = page.scrollTo as unknown as ReturnType<typeof vi.fn>;
+    const { view, api, p } = await mount({ position: 10, playing: true, getPageScroller: () => page });
+    await waitFor(() => expect(api.seeks).toHaveLength(1));
+    view.rerender(<LiveTabScore {...p} position={60} getPageScroller={() => page} />);
+    await waitFor(() => expect(api.seeks).toHaveLength(2));
+    expect(scrollTo).toHaveBeenLastCalledWith(expect.objectContaining({ behavior: 'instant' }));
+    act(() => api.playedBeatChanged.fire({}));
+    expect(scrollTo).toHaveBeenLastCalledWith(expect.objectContaining({ behavior: 'smooth' }));
+  });
+
   it('paused, a line already on screen stays put: a click there does not move the page', async () => {
     const page = document.createElement('div');
     page.scrollTo = vi.fn() as never;

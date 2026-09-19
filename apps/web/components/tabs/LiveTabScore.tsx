@@ -265,24 +265,26 @@ export function LiveTabScore(props: LiveTabScoreProps) {
         if (!beat) return;
         lastBeat = beat;
         // Paused, only a line off screen is brought back: a click on a beat
-        // must not move the page under the pointer.
-        followBeat(beat, !live.current.playing);
+        // must not move the page under the pointer. After a seek the view
+        // goes straight there; a smooth scroll across the score left the
+        // line off screen for most of a second.
+        followBeat(beat, !live.current.playing, true);
       } catch {
         // Not finding the beat only means not scrolling to it.
       }
     };
 
-    function followBeat(beat: any, hiddenOnly = false) {
+    function followBeat(beat: any, hiddenOnly = false, instant = false) {
       const bounds = api?.renderer?.boundsLookup?.findBeat?.(beat);
       const bar = bounds?.barBounds?.masterBarBounds?.visualBounds;
       const b = bounds?.visualBounds;
-      if (bar) keepInView(bar, b ?? bar, hiddenOnly);
+      if (bar) keepInView(bar, b ?? bar, hiddenOnly, instant);
     }
 
     /** Scroll the page (vertical) or the row (horizontal) so the playing
      *  bar or beat is in the band lib/tabSync.ts followScroll keeps it in
      *  (or, `hiddenOnly`, just on screen). */
-    function keepInView(bar: Box, beat: Box, hiddenOnly = false) {
+    function keepInView(bar: Box, beat: Box, hiddenOnly = false, instant = false) {
       // Hands off while the line is held: the listener is steering.
       if (isActive(drag.current)) return;
       const host = hostRef.current;
@@ -304,7 +306,7 @@ export function LiveTabScore(props: LiveTabScoreProps) {
         height: scroller.clientHeight,
         topInset: mode === 'vertical' ? (live.current.getTopInset?.() ?? 0) : 0,
       }, toContent(beat), { hiddenOnly });
-      if (target) scroller.scrollTo({ ...target, behavior: 'smooth' });
+      if (target) scroller.scrollTo({ ...target, behavior: instant ? 'instant' : 'smooth' });
     }
 
     return () => {
