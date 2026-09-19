@@ -1,6 +1,7 @@
 import type { AlbumDetail, ArtistPayload, Playlist, SessionState, Track } from '@/types/track';
 import { logger } from '@/lib/logger/client';
 import type { TabSummary } from '@/lib/tabSources';
+import type { StoredPlugins } from '@/lib/pluginSettings';
 
 export interface AdminUser {
   id: string;
@@ -241,6 +242,14 @@ export const api = {
   getChangelog: () => req<{ seenVersion: string; hideNew: boolean }>('/changelog'),
   updateChangelog: (patch: { seenVersion?: string; hideNew?: boolean }) =>
     req<{ seenVersion: string; hideNew: boolean }>('/changelog', {
+      method: 'PATCH',
+      body: patch,
+    }),
+
+  // Plugin switches (Settings > Plugins), per user. A missing key was never saved.
+  getPlugins: () => req<StoredPlugins>('/plugins'),
+  updatePlugins: (patch: StoredPlugins) =>
+    req<StoredPlugins>('/plugins', {
       method: 'PATCH',
       body: patch,
     }),
