@@ -202,10 +202,22 @@ export function TrackRow({
 
   return (
     <div
+      data-testid="track-row"
       data-unavailable={unavailable ? 'true' : undefined}
       onDoubleClick={playOrToast}
       className={cn(
-        'group grid grid-cols-[40px_minmax(0,1fr)_auto] md:grid-cols-[40px_minmax(0,1fr)_minmax(0,1fr)_60px_auto] gap-3 items-center px-3 py-2 rounded-md cursor-pointer hover:bg-card transition-colors',
+        // The 5-column desktop shape (adds the album + duration columns)
+        // only kicks in once the row's own container is wide enough, not
+        // once the *window* is: a viewport breakpoint (md:) would still
+        // pick the desktop shape inside a narrow container on a wide
+        // window (the search overlay caps at max-w-xl, ~576px, well past
+        // sm:768px on any laptop or desktop display), squeezing title and
+        // album into equal, too-narrow halves. @3xl is 48rem/768px on the
+        // container-query scale, the same number the old md: breakpoint
+        // used, just measured against the row's own space. Below it, the
+        // 3-column "phone" shape (this one, unqualified) is used, same as
+        // it always was on a narrow phone screen.
+        'group grid grid-cols-[40px_minmax(0,1fr)_auto] @3xl:grid-cols-[40px_minmax(0,1fr)_minmax(0,1fr)_60px_auto] gap-3 items-center px-3 py-2 rounded-md cursor-pointer hover:bg-card transition-colors',
         active && 'text-ember',
         unavailable && 'opacity-60',
         className,
@@ -229,7 +241,7 @@ export function TrackRow({
         </Button>
       </div>
 
-      <div className="flex items-center gap-3 min-w-0">
+      <div data-testid="track-row-title-cell" className="flex items-center gap-3 min-w-0">
         {artwork}
         <div className="min-w-0">
           <div
@@ -262,9 +274,13 @@ export function TrackRow({
       </div>
 
       {/* Both desktop-only cells are always rendered so the 5-column grid
-          keeps its shape; the flags decide what goes in them. */}
-      <div className="hidden md:block truncate text-sm text-muted-foreground">{showAlbum ? track.album : ''}</div>
-      <div className="hidden md:block text-sm text-muted-foreground text-right tabular-nums">{showTime ? duration : ''}</div>
+          keeps its shape; the flags decide what goes in them. Same @3xl
+          switch as the grid-cols above: a plain `hidden md:block` (window
+          width) could show these while the grid itself (now keyed off the
+          container) is still in its 3-column shape, leaving them as
+          unaccounted-for extra grid items. */}
+      <div data-testid="track-row-album-cell" className="hidden @3xl:block truncate text-sm text-muted-foreground">{showAlbum ? track.album : ''}</div>
+      <div className="hidden @3xl:block text-sm text-muted-foreground text-right tabular-nums">{showTime ? duration : ''}</div>
 
       <div className="flex items-center gap-1">
         {trailing}

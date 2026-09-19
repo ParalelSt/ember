@@ -126,6 +126,16 @@ describe('TrackList', () => {
     expect(imgs[0]).toHaveAttribute('src', 'capfile:///data/art/a1.jpg');
   });
 
+  // Regression: TrackRow's album/duration columns switch on @3xl (the
+  // row's own container width), not the viewport, precisely because this
+  // wrapper marks itself as the container query root. Without it, the
+  // search overlay's ~544px-wide results (well under 768px) would still
+  // inherit the desktop 5-column shape from the surrounding wide window.
+  it('marks its wrapper as a container so TrackRow can key its columns off it, not the viewport', () => {
+    const { container } = render(<TrackList tracks={tracks} {...actions()} />);
+    expect(container.firstElementChild?.className).toContain('@container');
+  });
+
   it('shows ranks only when asked', () => {
     const { rerender } = render(<TrackList tracks={tracks} {...actions()} />);
     expect(screen.queryByText('1')).toBeNull();
