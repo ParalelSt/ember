@@ -704,55 +704,112 @@ def cmd_trending(args):
         sys.exit(1)
     json.dump(chart, sys.stdout)
 
+def _ytdlp_playlist(playlist_id):
+    """Fallback reader for a public playlist when ytmusicapi fails: the same
+    listing `yt-dlp --flat-playlist -J` prints. Also reads plain YouTube
+    playlists. Entries carry video-level metadata only, so `artist` is the
+    channel name (without YouTube's " - Topic" suffix)."""
+    ydl_opts = {
+        'extract_flat': 'in_playlist',
+        'skip_download': True,
+        'quiet': True,
+        'no_warnings': True,
+        **_cookie_opts(),
+    }
+    with contextlib.redirect_stdout(sys.stderr):
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(
+                f"https://www.youtube.com/playlist?list={playlist_id}", download=False)
+    tracks = []
+    for e in (info or {}).get("entries") or []:
+        if not e or not e.get("id") or e.get("duration") is None:
+            continue
+        t = to_track_json_from_ytdlp(e)
+        t["artist"] = re.sub(r"\s*-\s*Topic$", "", t["artist"] or "") or "Unknown"
+        tracks.append(t)
+    return {"title": (info or {}).get("title") or "Imported playlist", "tracks": tracks}
+
+
+def _playlist_error_reason(message):
+    """Sort a playlist read failure into what the user can do about it."""
+    m = (message or "").lower()
+    if "private" in m or "sign in" in m or "members" in m:
+        return "private"
+    if "does not exist" in m or "not found" in m or "404" in m or "400" in m or "unavailable" in m:
+        return "not-found"
+    return "failed"
+
+
 def cmd_ytplaylist(args):
-    """Fetch a public YouTube Music playlist (no auth) → {title, tracks}.
-    Used by the playlist-import feature; private/unknown ids surface as a
-    clean JSON error the API maps to a friendly message."""
+    """Fetch a public YouTube Music playlist (no auth) -> {title, tracks}.
+    Used by the playlist-import feature. ytmusicapi first; when it errors,
+    yt-dlp's flat playlist listing. A failure of both prints a clean JSON
+    error with a `reason` (private, not-found, failed) the API maps to a
+    friendly message."""
     try:
         pl = yt.get_playlist(args.playlist_id, limit=None)
-    except Exception as e:
-        print(f"ytplaylist failed: {e}", file=sys.stderr)
-        json.dump({"error": str(e)}, sys.stdout)
+        raw = pl.get("tracks") or []
+        out = {
+            "title": pl.get("title") or "Imported playlist",
+            "tracks": [to_track_json(t) for t in raw if t.get("videoId")],
+        }
+        json.dump(out, sys.stdout)
         return
-    raw = pl.get("tracks") or []
-    out = {
-        "title": pl.get("title") or "Imported playlist",
-        "tracks": [to_track_json(t) for t in raw if t.get("videoId")],
-    }
-    json.dump(out, sys.stdout)
+    except Exception as e:
+        print(f"ytplaylist: ytmusicapi failed ({e}); trying yt-dlp", file=sys.stderr)
+    try:
+        json.dump(_ytdlp_playlist(args.playlist_id), sys.stdout)
+    except Exception as e:
+        print(f"ytplaylist: yt-dlp failed: {e}", file=sys.stderr)
+        json.dump({"error": str(e), "reason": _playlist_error_reason(str(e))}, sys.stdout)
+
+
+MATCH_CANDIDATES = 5
+
+
+def to_candidate_json(h):
+    """A search hit as a match candidate: the track fields plus what the
+    scorer (apps/web/lib/import/score.ts) needs. No scoring happens here."""
+    out = to_track_json(h)
+    out["artists"] = [a.get("name") for a in (h.get("artists") or []) if a.get("name")]
+    vt = h.get("videoType") or ""
+    out["videoType"] = vt.replace("MUSIC_VIDEO_TYPE_", "") or None
+    explicit = h.get("isExplicit")
+    out["isExplicit"] = explicit if isinstance(explicit, bool) else None
+    return out
+
 
 def cmd_match(args):
-    """Match Spotify tracks onto YT Music. Each query arg is "title<TAB>artist";
-    prints {results:[track|null, …]} in input order. One YTMusic init serves the
-    whole batch (callers keep batches small — ~8 — for responsiveness)."""
+    """Search candidates for source playlist tracks. Each query arg is
+    "title<TAB>artist"; prints {results: [[candidate, ...], ...]} in input
+    order, up to 5 raw candidates each (search order, unscored: the web app
+    scores them). With --title-only the search is the title alone with
+    ignore_spelling, the second try for a track the first search missed.
+    One YTMusic init serves the whole batch (callers keep batches at about 8)."""
     results = []
+    # Indexes whose search raised (503s, timeouts): an empty list there means
+    # "could not ask", not "nothing found", and the caller retries the batch.
+    failed = []
     for q in args.queries:
         title, _, artist = q.partition("\t")
         title = title.strip()
         artist = artist.strip()
         if not title:
-            results.append(None)
+            results.append([])
             continue
         try:
-            hits = yt.search(f"{title} {artist}".strip(), filter="songs", limit=5) or []
+            if args.title_only:
+                hits = yt.search(title, filter="songs", limit=MATCH_CANDIDATES, ignore_spelling=True) or []
+            else:
+                hits = yt.search(f"{title} {artist}".strip(), filter="songs", limit=MATCH_CANDIDATES) or []
         except Exception as e:
             print(f"match: search failed for {title!r}: {e}", file=sys.stderr)
-            results.append(None)
+            failed.append(len(results))
+            results.append([])
             continue
-        hits = [h for h in hits if h.get("videoId")]
-        picked = None
-        if artist:
-            want = artist.casefold()
-            for h in hits:
-                names = [(a.get("name") or "").casefold() for a in (h.get("artists") or [])]
-                # Loose containment either way — "Noah" vs "Noah Official" etc.
-                if any(n and (n in want or want in n) for n in names):
-                    picked = h
-                    break
-        if picked is None and hits:
-            picked = hits[0]
-        results.append(to_track_json(picked) if picked else None)
-    json.dump({"results": results}, sys.stdout)
+        hits = [h for h in hits if h.get("videoId")][:MATCH_CANDIDATES]
+        results.append([to_candidate_json(h) for h in hits])
+    json.dump({"results": results, "failed": failed}, sys.stdout)
 
 def cmd_interactive():
     """Original behavior: prompt → search → download → play."""
@@ -806,7 +863,8 @@ def main():
     p_ytpl = sub.add_parser("ytplaylist", help="Public YT Music playlist → {title, tracks}. Prints JSON.")
     p_ytpl.add_argument("playlist_id")
 
-    p_match = sub.add_parser("match", help='Match "title<TAB>artist" queries to YT Music songs. Prints JSON.')
+    p_match = sub.add_parser("match", help='Top 5 YT Music candidates per "title<TAB>artist" query. Prints JSON.')
+    p_match.add_argument("--title-only", action="store_true", help="Search the title alone, ignore_spelling on")
     p_match.add_argument("queries", nargs="+")
 
     args = parser.parse_args()

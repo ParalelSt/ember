@@ -1,6 +1,7 @@
 'use client';
 
-import { use, useRef, useState, type ChangeEvent } from 'react';
+import { use, useEffect, useRef, useState, type ChangeEvent } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
@@ -10,7 +11,16 @@ import { TrackSearchPicker } from '@/components/track/menus/TrackSearchPicker';
 import { TrashIcon } from '@/components/icons';
 import { CollectionPage } from '@/components/library/CollectionPage';
 import { ReplaceTrackDialog } from '@/components/track/menus/ReplaceTrackDialog';
-import { renderTrackMenu } from '@/components/track/menus/TrackMenu';
+import { TrackMenu } from '@/components/track/menus/TrackMenu';
+import { ImportBanner } from '@/components/import/ImportBanner';
+import { ImportTrackList } from '@/components/import/ImportTrackList';
+import { ReviewSheet } from '@/components/import/ReviewSheet';
+import { SOURCE_NAME } from '@/components/import/parts';
+import { useImportActions, useImportJob } from '@/hooks/useImports';
+import { useImportReview } from '@/hooks/useImportReview';
+import { isActive } from '@/lib/import/jobState';
+import { importRows, itemForTrack } from '@/lib/import/rows';
+import type { ImportItem } from '@/lib/import/types';
 import { useTrackActions } from '@/hooks/useTrackActions';
 import { countLabel, pinIdFor } from '@/lib/collections';
 import { useCollectionPlayback } from '@/hooks/useCollectionPlayback';
@@ -25,6 +35,7 @@ import {
   useExecuteReplaceInPlaylist,
   useExecuteUpdatePlaylistArtwork,
   useQueryPlaylist,
+  QK,
 } from '@/hooks/useLibrary';
 import type { Track } from '@/types/track';
 import { EmptyState } from '@/components/page/EmptyState';
@@ -43,6 +54,7 @@ export default function PlaylistPage({ params }: { params: Promise<{ id: string 
   const [pendingRemove, setPendingRemove] = useState<Track | null>(null);
   const [pendingReplace, setPendingReplace] = useState<Track | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const qc = useQueryClient();
 
   // Hooks must run before the early returns below. `data` may be undefined
   // here on first render.
@@ -53,6 +65,18 @@ export default function PlaylistPage({ params }: { params: Promise<{ id: string 
   const playback = useCollectionPlayback(tracks, context);
   const download = useOfflinePin(ref, name, tracks);
   const trackActions = useTrackActions();
+
+  // An imported playlist: follow its job, and refetch the tracks whenever
+  // the job moves so rows land as they are matched.
+  const importJob = useImportJob(data?.playlist.import_job);
+  const job = importJob.data?.job ?? null;
+  const items = importJob.data?.items ?? [];
+  const importActions = useImportActions(job?.id, id);
+  const review = useImportReview(items);
+  const progressKey = job ? `${job.status}:${job.cursor}:${job.accepted}` : '';
+  useEffect(() => {
+    if (progressKey) void qc.invalidateQueries({ queryKey: QK.playlist(id) });
+  }, [progressKey, qc, id]);
 
   // Offline, the remote cover URL can't load. When this playlist is pinned,
   // fall back to whichever downloaded track has local art, so the header
@@ -100,6 +124,42 @@ export default function PlaylistPage({ params }: { params: Promise<{ id: string 
   if (isLoading || !data) return <EmptyState>Loading…</EmptyState>;
 
   const { playlist } = data;
+  const showImport = !!job && !job.dismissed;
+  const toReview = items.filter((i) => i.status === 'review' || i.status === 'missing').length;
+  const importing = !!job && isActive(job.status);
+  const meta = job
+    ? [`From ${SOURCE_NAME[job.source]}`, importing ? `${job.cursor} of ${job.total} songs` : countLabel(tracks.length)]
+    : [countLabel(tracks.length)];
+
+  const trailing = (t: Track) => {
+    const item = job ? itemForTrack(items, t) : null;
+    return <TrackMenu track={t} onRematch={item ? () => review.openRematch(item) : undefined} />;
+  };
+
+  const act = (action: 'cancel' | 'retry' | 'dismiss') =>
+    importActions.update.mutate(action, {
+      onError: (e) => toast.error((e as Error).message),
+    });
+
+  const handlePick = (item: ImportItem, track: Track) => {
+    const rematch = review.mode === 'rematch';
+    importActions.pick.mutate(
+      { itemId: item.id, track },
+      {
+        onSuccess: () => {
+          toast.success(`${rematch ? 'Swapped in' : 'Added'} "${track.title}"`);
+          if (rematch) review.close();
+          else review.advance();
+        },
+        onError: (e) => toast.error(`Couldn't add that song: ${(e as Error).message}`),
+      },
+    );
+  };
+  const handleRemoveItem = (item: ImportItem) =>
+    importActions.skip.mutate(item.id, {
+      onSuccess: () => review.advance(),
+      onError: (e) => toast.error((e as Error).message),
+    });
 
   const handleDelete = async () => {
     try {
@@ -129,7 +189,7 @@ export default function PlaylistPage({ params }: { params: Promise<{ id: string 
     <CollectionPage
       eyebrow="Playlist"
       title={playlist.name}
-      meta={[countLabel(tracks.length)]}
+      meta={meta}
       cover={{ src: localCoverSrc ?? playlist.artwork_url, icon: null }}
       onCoverClick={() => fileInputRef.current?.click()}
       coverLabel="Change playlist cover"
@@ -137,9 +197,38 @@ export default function PlaylistPage({ params }: { params: Promise<{ id: string 
       tracks={tracks}
       context={context}
       trackActions={trackActions}
-      trailing={renderTrackMenu}
+      trailing={trailing}
       playback={playback}
       download={download}
+      banner={
+        showImport ? (
+          <ImportBanner
+            job={job}
+            toReview={toReview}
+            busy={importActions.busy}
+            onStop={() => act('cancel')}
+            onRetry={() => act('retry')}
+            onReview={() => review.openReview()}
+            onDismiss={() => act('dismiss')}
+          />
+        ) : undefined
+      }
+      list={
+        showImport ? (
+          <ImportTrackList
+            rows={importRows(items, tracks, job.status)}
+            context={context}
+            trailing={trailing}
+            onRemove={(trackId) => {
+              const track = tracks.find((t) => t.id === trackId);
+              if (track) setPendingRemove(track);
+            }}
+            onReplace={setPendingReplace}
+            onOpenItem={(item) => review.openReview(item)}
+            {...trackActions}
+          />
+        ) : undefined
+      }
       actions={
         <Button variant="ghost" size="icon" onClick={() => setConfirmDeleteOpen(true)} aria-label="Delete playlist">
           <TrashIcon className="h-4 w-4" />
@@ -184,6 +273,28 @@ export default function PlaylistPage({ params }: { params: Promise<{ id: string 
         variant="destructive"
         onConfirm={handleConfirmRemove}
       />
+
+      {job && (
+        <ReviewSheet
+          open={review.open}
+          onClose={review.close}
+          mode={review.mode}
+          playlistName={playlist.name}
+          source={job.source}
+          queue={review.queue}
+          index={review.index}
+          busy={importActions.busy}
+          previewId={review.previewId}
+          previewPlaying={review.previewPlaying}
+          onPreview={review.onPreview}
+          onPick={handlePick}
+          onSkip={review.advance}
+          onRemove={handleRemoveItem}
+          searchResults={review.searchResults}
+          searching={review.searching}
+          onSearch={review.onSearch}
+        />
+      )}
 
       <ReplaceTrackDialog
         track={pendingReplace}

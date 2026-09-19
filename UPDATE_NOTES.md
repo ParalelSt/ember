@@ -1,3 +1,32 @@
+# 0.3.5: Spotify imports work again
+
+**Host: a normal rebuild and restart (`./update.sh`), and restart
+PocketBase once: on boot it creates two new collections, `import_jobs` and
+`import_items`, and adds `source_url` and `import_job` to `playlists`
+(`pocketbase/pb_hooks/ensure_imports.pb.js`). No `npm install`, no new
+environment variables.** Optional clean-up: delete
+`SPOTIFY_CLIENT_ID` and `SPOTIFY_CLIENT_SECRET` from `apps/web/.env.local` if
+they are there. Ember no longer reads them (Spotify's February 2026 API change
+stopped them working for import), so leaving them does no harm either.
+
+- **Spotify playlist links import again, with no setup**: Ember reads public
+  playlists from Spotify's embed page, the first 100 songs of each. See
+  SETUP.md, "Spotify playlist import (no setup)".
+- **Imports run in the background**: the import now lives in the
+  new-playlist dialog ("Import from a link" tab; the separate Import buttons
+  are gone). Create makes the playlist at once and the server fills it in,
+  one import at a time, with a progress ring in the sidebar. Closing the tab
+  or restarting the server does not lose it: it picks up where it stopped.
+  YouTube Music's "slow down" (503) pauses it briefly; a failed import can be
+  retried and a running one stopped.
+- **Better song matching**: every Spotify song gets up to five YouTube Music
+  candidates, scored on title, artist, length, explicit flag, live, remix and
+  cover versions, and official audio vs fan uploads. Only confident matches
+  are added; the rest wait in a review sheet (keys 1 to 3 pick, S skips),
+  and any imported song can be re-matched later from its menu.
+- **YouTube playlists** fall back to yt-dlp when YouTube Music's API errors,
+  and private or missing playlists get a clear message.
+
 # 0.3.4: real trending songs
 
 **Host: a normal rebuild and restart (`./update.sh`). No `npm install`, no

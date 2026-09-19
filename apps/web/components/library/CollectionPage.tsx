@@ -44,6 +44,10 @@ export interface CollectionPageProps {
   /** Per-row menu; pages pass `renderTrackMenu`. */
   trailing?: (track: Track) => ReactNode;
   emptyMessage: string;
+  /** Between the header and the list (an import's progress or summary). */
+  banner?: ReactNode;
+  /** Replaces the track list (an import's rows with its placeholders). */
+  list?: ReactNode;
   children?: ReactNode;
   // When true (no tracks and offline), Play/Shuffle can't do anything useful, so hide them.
   hideActions?: boolean;
@@ -75,6 +79,8 @@ export function CollectionPage({
   trackActions,
   trailing,
   emptyMessage,
+  banner,
+  list,
   children,
   hideActions,
   showRank,
@@ -119,7 +125,8 @@ export function CollectionPage({
             {actions}
           </ActionBar>}
         </CollectionHeader>
-        {tracks.length === 0 ? (
+        {banner}
+        {list ?? (tracks.length === 0 ? (
           <EmptyState>{emptyMessage}</EmptyState>
         ) : (
           <TrackList
@@ -131,7 +138,7 @@ export function CollectionPage({
             trailing={trailing}
             {...trackActions}
           />
-        )}
+        ))}
       </div>
       {children}
     </div>

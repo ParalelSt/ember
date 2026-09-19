@@ -2,7 +2,8 @@ import type { NextRequest } from 'next/server';
 import { requireUser, UnauthorizedError, unauthorizedResponse } from '@/lib/auth';
 import { fromError } from '@/lib/upsertTrack';
 import { rateLimitResponse } from '@/lib/rateLimit';
-import { matchTracks, searchTracks } from '@/lib/sources/youtube';
+import { searchMatchCandidates, searchTracks } from '@/lib/sources/youtube';
+import { rankCandidates } from '@/lib/import/score';
 import { listUnavailableIds } from '@/lib/trackAvailability';
 import { songKey } from '@/lib/songKey';
 import type { Track } from '@/types/track';
@@ -22,13 +23,18 @@ export const GET = withRequestLog('tracks/[id]/replacements', async (_req: NextR
     // Both spawn player.py; run them together so the dialog waits for the
     // slower one, not the sum.
     const [matched, searched, dead] = await Promise.all([
-      matchTracks([{ title, artist }]).catch(() => [null]),
+      searchMatchCandidates([{ title, artist }]).catch(() => [[]]),
       searchTracks(`${title} ${artist}`.trim(), { limit: 10 }).catch(() => []),
       listUnavailableIds(),
     ]);
     const want = songKey({ title, artist });
     const seen = new Set<string>([id]);
-    const pool = [...(matched[0] ? [matched[0]] : []), ...searched].filter((t: Track) => {
+    // The best-scoring song match leads, as the old single match did.
+    const best = rankCandidates(
+      { title, artists: [artist] },
+      (matched[0] ?? []).map((c) => ({ ...c, title: c.track.title, durationSec: c.track.durationSec })),
+    )[0]?.track;
+    const pool = [...(best ? [best] : []), ...searched].filter((t: Track) => {
       if (seen.has(t.id) || dead.has(t.id)) return false;
       seen.add(t.id);
       return true;

@@ -46,7 +46,10 @@
     "test:android-native-log": "node tests/android-native-log.mjs",
     "test:android-call": "bash tests/android-auto-call.sh",
     "test:watchdog": "bash tests/watchdog.test.sh",
-    "test:crash-report": "node tests/crash-report.test.mjs"
+    "test:crash-report": "node tests/crash-report.test.mjs",
+    "test:import": "node tests/import.test.mjs",
+    "test:import-ui": "node tests/import-ui.test.mjs",
+    "test:player-match": ".venv/bin/python -m unittest tests/test_player_match.py"
   },
   "devDependencies": {
     "playwright-core": "^1.62.1"

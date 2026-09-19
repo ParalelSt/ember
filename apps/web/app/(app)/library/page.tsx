@@ -3,10 +3,9 @@
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { CollectionShelf } from '@/components/library/CollectionShelf';
-import { ImportPlaylistDialog } from '@/components/track/menus/ImportPlaylistDialog';
 import { UploadTrackDialog } from '@/components/track/menus/UploadTrackDialog';
 import { StartSessionDialog, JoinSessionDialog } from '@/components/session/SessionDialogs';
-import { DownloadIcon, QueueIcon, UploadIcon } from '@/components/icons';
+import { QueueIcon, UploadIcon } from '@/components/icons';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { useCollections } from '@/hooks/useCollections';
 import { useOfflineStore } from '@/stores/useOfflineStore';
@@ -20,7 +19,6 @@ export default function LibraryPage() {
   const { system, playlists } = useCollections();
   const isOnline = useOnline();
   const pins = useOfflineStore((s) => s.pins);
-  const [importOpen, setImportOpen] = useState(false);
   const [uploadOpen, setUploadOpen] = useState(false);
   const [startOpen, setStartOpen] = useState(false);
   const [joinOpen, setJoinOpen] = useState(false);
@@ -80,13 +78,6 @@ export default function LibraryPage() {
           </Button>
           <Button
             variant="ghost"
-            onClick={() => setImportOpen(true)}
-            className="gap-1.5 text-muted-foreground hover:text-foreground"
-          >
-            <DownloadIcon className="h-4 w-4" /> Import
-          </Button>
-          <Button
-            variant="ghost"
             onClick={() => setUploadOpen(true)}
             className="gap-1.5 text-muted-foreground hover:text-foreground"
           >
@@ -94,7 +85,6 @@ export default function LibraryPage() {
           </Button>
         </div>
       </div>
-      <ImportPlaylistDialog open={importOpen} onOpenChange={setImportOpen} />
       <UploadTrackDialog open={uploadOpen} onOpenChange={setUploadOpen} />
       <StartSessionDialog open={startOpen} onOpenChange={setStartOpen} />
       <JoinSessionDialog open={joinOpen} onOpenChange={setJoinOpen} />

@@ -21,6 +21,19 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    id: 'spotify-imports-work-again',
+    version: '0.3.5',
+    date: '2026-09-19',
+    title: 'Spotify imports work again',
+    summary: 'Spotify playlist links import again with no setup, in the background, and unsure songs wait for you to check.',
+    bullets: [
+      'Paste any public Spotify playlist link: the first 100 songs import, no keys needed.',
+      'Start an import from the new-playlist button: it runs in the background, with its progress in the sidebar.',
+      'Better song matching: length, artist, explicit and live or remix versions all count.',
+      'Songs Ember is unsure about are never guessed: check them one by one, and re-match any imported song later.',
+    ],
+  },
+  {
     id: 'real-trending',
     version: '0.3.4',
     date: '2026-09-19',

@@ -1,15 +1,15 @@
 'use client';
 
-import { useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { useQueryPlaylists } from '@/hooks/useLibrary';
 import { useCreatePlaylistFlow } from '@/hooks/useCreatePlaylistFlow';
+import { useImportJobs } from '@/hooks/useImports';
+import { navImportStates } from '@/lib/import/nav';
 import { Button } from '@/components/ui/button';
 import { CreatePlaylistDialog } from '@/components/track/menus/CreatePlaylistDialog';
-import { ImportPlaylistDialog } from '@/components/track/menus/ImportPlaylistDialog';
 import { CollectionNavList } from '@/components/nav/CollectionNavList';
 import { NavLinks } from '@/components/nav/NavLinks';
 import { WhatsNewLink } from '@/components/changelog/WhatsNewLink';
@@ -32,7 +32,8 @@ export function Drawer({ open, onOpenChange }: Props) {
   const NAV = isAdmin ? [...BASE_NAV, ADMIN_NAV_ITEM] : BASE_NAV;
   const { data: playlists = [] } = useQueryPlaylists();
   const { hasNew } = useChangelog();
-  const [importOpen, setImportOpen] = useState(false);
+  const { data: importJobs = [] } = useImportJobs();
+  const importStates = navImportStates(importJobs);
   const setSearchOpen = useUiStore((s) => s.setSearchOpen);
 
   const close = () => onOpenChange(false);
@@ -85,7 +86,13 @@ export function Drawer({ open, onOpenChange }: Props) {
         </div>
         <div className="flex-1 overflow-y-auto px-2 py-2 flex flex-col gap-0.5">
           <PlaylistNavList
-            items={playlists.map((p) => ({ id: p.id, name: p.name, href: hrefFor({ kind: 'playlist', id: p.id }) }))}
+            items={playlists.map((p) => ({
+              id: p.id,
+              name: p.name,
+              href: hrefFor({ kind: 'playlist', id: p.id }),
+              importState: importStates[p.id],
+            }))}
+            activePath={pathname}
             authed={!!user}
             onNavigate={close}
           />
@@ -111,8 +118,7 @@ export function Drawer({ open, onOpenChange }: Props) {
           </div>
         )}
       </SheetContent>
-      <CreatePlaylistDialog open={createOpen} onOpenChange={setCreateOpen} onCreate={handleCreate} onImport={() => setImportOpen(true)} />
-      <ImportPlaylistDialog open={importOpen} onOpenChange={setImportOpen} />
+      <CreatePlaylistDialog open={createOpen} onOpenChange={setCreateOpen} onCreate={handleCreate} onImported={close} />
     </Sheet>
   );
 }

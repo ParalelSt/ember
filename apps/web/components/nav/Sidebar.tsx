@@ -1,15 +1,15 @@
 'use client';
 
-import { useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { useQueryPlaylists } from '@/hooks/useLibrary';
 import { useCreatePlaylistFlow } from '@/hooks/useCreatePlaylistFlow';
+import { useImportJobs } from '@/hooks/useImports';
+import { navImportStates } from '@/lib/import/nav';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Button } from '@/components/ui/button';
 import { CreatePlaylistDialog } from '@/components/track/menus/CreatePlaylistDialog';
-import { ImportPlaylistDialog } from '@/components/track/menus/ImportPlaylistDialog';
 import { CollectionNavList } from '@/components/nav/CollectionNavList';
 import { NavLinks } from '@/components/nav/NavLinks';
 import { WhatsNewLink } from '@/components/changelog/WhatsNewLink';
@@ -28,7 +28,8 @@ export function Sidebar() {
   const { data: playlists = [] } = useQueryPlaylists();
   const { hasNew } = useChangelog();
   const { createOpen, setCreateOpen, handleCreate } = useCreatePlaylistFlow();
-  const [importOpen, setImportOpen] = useState(false);
+  const { data: importJobs = [] } = useImportJobs();
+  const importStates = navImportStates(importJobs);
   const setSearchOpen = useUiStore((s) => s.setSearchOpen);
 
   return (
@@ -68,7 +69,13 @@ export function Sidebar() {
       <ScrollArea className="flex-1 mt-2">
         <div className="px-2 pb-3 flex flex-col gap-0.5">
           <PlaylistNavList
-            items={playlists.map((p) => ({ id: p.id, name: p.name, href: hrefFor({ kind: 'playlist', id: p.id }) }))}
+            items={playlists.map((p) => ({
+              id: p.id,
+              name: p.name,
+              href: hrefFor({ kind: 'playlist', id: p.id }),
+              importState: importStates[p.id],
+            }))}
+            activePath={pathname}
             authed={!!user}
           />
         </div>
@@ -93,8 +100,7 @@ export function Sidebar() {
         </div>
       )}
 
-      <CreatePlaylistDialog open={createOpen} onOpenChange={setCreateOpen} onCreate={handleCreate} onImport={() => setImportOpen(true)} />
-      <ImportPlaylistDialog open={importOpen} onOpenChange={setImportOpen} />
+      <CreatePlaylistDialog open={createOpen} onOpenChange={setCreateOpen} onCreate={handleCreate} />
     </aside>
   );
 }

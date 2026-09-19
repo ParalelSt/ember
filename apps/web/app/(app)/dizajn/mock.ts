@@ -321,3 +321,221 @@ export const MOCK_CHART: MockChartEntry[] = CHART_ROWS.map(([title, artist, move
     change,
   };
 });
+
+// ---------- Playlist import (the "Playlist import" section) ----------
+
+/** One YouTube result the matcher weighed for a source track. `reasons`
+ *  are the plain-words explanations the review screens show next to it;
+ *  `good` colours them (a point for, or a point against). */
+export interface ImportCandidate {
+  id: string;
+  title: string;
+  channel: string;
+  durationSec: number;
+  kind: 'Official audio' | 'Music video' | 'Live' | 'Lyric video' | 'Fan upload';
+  score: number;
+  reasons: { text: string; good: boolean }[];
+  artworkUrl: string;
+}
+
+export type ImportItemStatus = 'matched' | 'review' | 'not-found';
+
+/** One row of the source playlist and what the import made of it. */
+export interface ImportItem {
+  id: string;
+  title: string;
+  artist: string;
+  album: string;
+  durationSec: number;
+  status: ImportItemStatus;
+  /** Review items: why the matcher was not sure, in one short line. */
+  flag?: string;
+  /** Review items: 3 to 5, best first (the default pick). */
+  candidates?: ImportCandidate[];
+}
+
+const IMPORT_ART = [
+  mockCover('#1f2a44', '#e0795a', 'circle'),
+  mockCover('#2b1f3d', '#c46a9a', 'square'),
+  mockCover('#13303a', '#4fb3c4', 'bars'),
+  mockCover('#3a2418', '#e3a15c', 'circle'),
+  mockCover('#1d2b22', '#7fbf8f', 'square'),
+  mockCover('#2a2a3a', '#9aa0d6', 'bars'),
+];
+
+/** Seconds from "m:ss", so the table below reads like a tracklist. */
+function secs(t: string): number {
+  const [m, s] = t.split(':').map(Number);
+  return m * 60 + s;
+}
+
+function cand(
+  id: string,
+  title: string,
+  channel: string,
+  length: string,
+  kind: ImportCandidate['kind'],
+  score: number,
+  reasons: [string, boolean][],
+  art: number,
+): ImportCandidate {
+  return {
+    id,
+    title,
+    channel,
+    durationSec: secs(length),
+    kind,
+    score,
+    reasons: reasons.map(([text, good]) => ({ text, good })),
+    artworkUrl: IMPORT_ART[art % IMPORT_ART.length],
+  };
+}
+
+const REVIEW: Record<number, Pick<ImportItem, 'flag' | 'candidates'>> = {
+  5: {
+    flag: 'Two versions are almost tied',
+    candidates: [
+      cand('c6a', 'Instant Crush (feat. Julian Casablancas)', 'Daft Punk - Topic', '5:37', 'Official audio', 74, [['Length matches', true], ['Same artist', true], ['Title adds the feature', false]], 1),
+      cand('c6b', 'Daft Punk - Instant Crush (Official Video) ft. Julian Casablancas', 'Daft Punk', '5:39', 'Music video', 71, [['Length within 2 seconds', true], ["Artist's own channel", true], ['Music video, may have extra sound', false]], 2),
+      cand('c6c', 'Instant Crush (Live at the Paris Session)', 'Midnight Sessions', '6:02', 'Live', 38, [['Live version', false], ['Different artist', false], ['25 seconds longer', false]], 3),
+    ],
+  },
+  12: {
+    flag: 'A remaster and a live version both match',
+    candidates: [
+      cand('c13a', 'Dreams (2004 Remaster)', 'Fleetwood Mac - Topic', '4:17', 'Official audio', 69, [['Same recording, remastered', true], ['Length within 3 seconds', true], ['Title says Remaster', false]], 0),
+      cand('c13b', 'Fleetwood Mac - Dreams (Official Music Video)', 'Fleetwood Mac', '4:21', 'Music video', 61, [["Artist's own channel", true], ['7 seconds longer', false]], 4),
+      cand('c13c', 'Dreams (Live) The Dance 1997', 'Fleetwood Mac', '4:37', 'Live', 44, [['Live version', false], ['23 seconds longer', false]], 5),
+      cand('c13d', 'Fleetwood Mac - Dreams (Lyrics)', '7clouds', '4:14', 'Lyric video', 52, [['Length matches', true], ["Not the artist's channel", false]], 2),
+    ],
+  },
+  23: {
+    flag: 'Top result is a music video',
+    candidates: [
+      cand('c24a', 'Take On Me', 'a-ha - Topic', '3:45', 'Official audio', 72, [['Length matches', true], ['Same title and artist', true]], 3),
+      cand('c24b', 'a-ha - Take On Me (Official Video) [4K]', 'a-ha', '4:04', 'Music video', 66, [["Artist's own channel", true], ['19 seconds longer', false]], 0),
+      cand('c24c', 'a-ha - Take On Me (MTV Unplugged)', 'a-ha', '3:59', 'Live', 41, [['Live, acoustic', false], ['14 seconds longer', false]], 1),
+      cand('c24d', 'Take On Me (1984 Version)', 'a-ha - Topic', '3:32', 'Official audio', 55, [['Same artist', true], ['Earlier recording', false], ['13 seconds shorter', false]], 5),
+      cand('c24e', 'Take On Me - a-ha (cover)', 'Sofia Lane', '3:48', 'Fan upload', 22, [['Different artist', false], ['Cover version', false]], 4),
+    ],
+  },
+  31: {
+    flag: 'Only one result has the right length',
+    candidates: [
+      cand('c32a', 'Sunset Lover', 'Petit Biscuit - Topic', '3:57', 'Official audio', 68, [['Length matches', true], ['Same title and artist', true]], 3),
+      cand('c32b', 'Petit Biscuit - Sunset Lover (Official Video)', 'Petit Biscuit', '4:26', 'Music video', 57, [["Artist's own channel", true], ['29 seconds longer', false]], 0),
+      cand('c32c', 'Sunset Lover (1 Hour)', 'Chill Loops', '60:00', 'Fan upload', 12, [['57 minutes longer', false], ["Not the artist's channel", false]], 2),
+    ],
+  },
+};
+
+const NOT_FOUND = new Set([17, 38]);
+
+// [title, artist, album, length], in the playlist's own order.
+const IMPORT_ROWS: [string, string, string, string][] = [
+  ['Nightcall', 'Kavinsky', 'OutRun', '4:18'],
+  ['Midnight City', 'M83', "Hurry Up, We're Dreaming", '4:03'],
+  ['Blinding Lights', 'The Weeknd', 'After Hours', '3:20'],
+  ['Resonance', 'HOME', 'Odyssey', '3:32'],
+  ['A Real Hero', 'College, Electric Youth', 'Drive (Soundtrack)', '4:27'],
+  ['Instant Crush', 'Daft Punk, Julian Casablancas', 'Random Access Memories', '5:37'],
+  ['The Less I Know The Better', 'Tame Impala', 'Currents', '3:36'],
+  ['Tadow', 'Masego, FKJ', 'Tadow', '5:01'],
+  ['Redbone', 'Childish Gambino', 'Awaken, My Love!', '5:26'],
+  ['Electric Feel', 'MGMT', 'Oracular Spectacular', '3:49'],
+  ['Heroes', 'David Bowie', 'Heroes', '6:11'],
+  ['Do I Wanna Know?', 'Arctic Monkeys', 'AM', '4:32'],
+  ['Dreams', 'Fleetwood Mac', 'Rumours', '4:14'],
+  ['Something About Us', 'Daft Punk', 'Discovery', '3:51'],
+  ['Starboy', 'The Weeknd, Daft Punk', 'Starboy', '3:50'],
+  ['Night Drive', 'Chromatics', 'Night Drive', '4:39'],
+  ['Genesis', 'Grimes', 'Visions', '4:15'],
+  ['Glass Coast (Demo)', 'Aftertone', 'Low Light Demos', '3:12'],
+  ['Moth To A Flame', 'Swedish House Mafia, The Weeknd', 'Paradise Again', '3:54'],
+  ['Sweater Weather', 'The Neighbourhood', 'I Love You.', '4:00'],
+  ['Nights', 'Frank Ocean', 'Blonde', '5:07'],
+  ['After Dark', 'Mr.Kitty', 'Time', '4:17'],
+  ['Out of Time', 'The Weeknd', 'Dawn FM', '3:34'],
+  ['Take On Me', 'a-ha', 'Hunting High and Low', '3:45'],
+  ['Feel It Still', 'Portugal. The Man', 'Woodstock', '2:43'],
+  ['Tongue Tied', 'Grouplove', 'Never Trust a Happy Song', '3:38'],
+  ['Space Song', 'Beach House', 'Depression Cherry', '5:20'],
+  ['Somebody Else', 'The 1975', 'I like it when you sleep', '5:47'],
+  ['Borderline', 'Tame Impala', 'The Slow Rush', '3:57'],
+  ['Summertime Sadness', 'Lana Del Rey', 'Born To Die', '4:25'],
+  ['Kids', 'MGMT', 'Oracular Spectacular', '5:02'],
+  ['Sunset Lover', 'Petit Biscuit', 'Sunset Lover', '3:57'],
+  ['Innerbloom', 'RÜFÜS DU SOL', 'Bloom', '9:38'],
+  ['Pink + White', 'Frank Ocean', 'Blonde', '3:04'],
+  ['Turbo Killer', 'Carpenter Brut', 'Trilogy', '3:23'],
+  ['Dark All Day', 'GUNSHIP', 'Dark All Day', '4:41'],
+  ['Crystalised', 'The xx', 'xx', '3:21'],
+  ['Wicked Game', 'Chris Isaak', 'Heart Shaped World', '4:49'],
+  ['Late Exit (Unreleased)', 'Coastline', 'Tidewater Sessions', '2:58'],
+  ['Lost in Yesterday', 'Tame Impala', 'The Slow Rush', '4:10'],
+  ['Intro', 'The xx', 'xx', '2:07'],
+  ['Oblivion', 'Grimes', 'Visions', '4:11'],
+];
+
+/** The Spotify playlist the import section pastes: 42 songs, of which 36
+ *  match confidently, 4 need a look (3 to 5 YouTube candidates each) and 2
+ *  are not on YouTube at all. Positions follow the source. */
+export const MOCK_IMPORT_ITEMS: ImportItem[] = IMPORT_ROWS.map(([title, artist, album, length], i) => ({
+  id: `imp-${i + 1}`,
+  title,
+  artist,
+  album,
+  durationSec: secs(length),
+  status: REVIEW[i] ? 'review' : NOT_FOUND.has(i) ? 'not-found' : 'matched',
+  ...(REVIEW[i] ?? {}),
+}));
+
+/** What the link preview shows once a link is pasted. */
+export interface ImportSource {
+  id: 'spotify' | 'ytm' | 'spotify-long';
+  kind: 'spotify' | 'ytm';
+  url: string;
+  name: string;
+  owner: string;
+  songCount: number;
+  cover: string;
+}
+
+export const MOCK_IMPORT_SOURCES: ImportSource[] = [
+  {
+    id: 'spotify',
+    kind: 'spotify',
+    url: 'https://open.spotify.com/playlist/37i9dQZF1DX6GJXiuZRisr',
+    name: 'Late night drive',
+    owner: 'Maya Okafor',
+    songCount: MOCK_IMPORT_ITEMS.length,
+    cover: IMPORT_ART[0],
+  },
+  {
+    id: 'ytm',
+    kind: 'ytm',
+    url: 'https://music.youtube.com/playlist?list=PLx0sYbCqOb8TBPRdmBHs5Iftvv9TPboYG',
+    name: 'Late night drive',
+    owner: 'Maya Okafor',
+    songCount: MOCK_IMPORT_ITEMS.length,
+    cover: IMPORT_ART[0],
+  },
+  {
+    id: 'spotify-long',
+    kind: 'spotify',
+    url: 'https://open.spotify.com/playlist/5S8SJdl1BDc0ugpkEvFsIL',
+    name: 'Every synthwave song ever',
+    owner: 'nightrunner',
+    songCount: 318,
+    cover: IMPORT_ART[2],
+  },
+];
+
+/** The import's running state in the Importing step. */
+export const MOCK_IMPORT_PROGRESS = { done: 18, total: MOCK_IMPORT_ITEMS.length };
+
+/** Art for a matched row, so the playlist page is not a column of black
+ *  squares. */
+export function importArt(i: number): string {
+  return IMPORT_ART[i % IMPORT_ART.length];
+}

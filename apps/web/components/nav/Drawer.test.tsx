@@ -37,7 +37,7 @@ vi.mock('@/hooks/useCreatePlaylistFlow', () => ({
 }));
 vi.mock('@/stores/useUiStore', () => ({ useUiStore: () => vi.fn() }));
 vi.mock('@/components/track/menus/CreatePlaylistDialog', () => ({ CreatePlaylistDialog: () => null }));
-vi.mock('@/components/track/menus/ImportPlaylistDialog', () => ({ ImportPlaylistDialog: () => null }));
+vi.mock('@/hooks/useImports', () => ({ useImportJobs: () => ({ data: [] }) }));
 
 describe('Drawer', () => {
   it('renders the signed-in profile row through the shared Avatar', () => {

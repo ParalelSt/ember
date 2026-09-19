@@ -18,7 +18,7 @@ vi.mock('@/hooks/useCreatePlaylistFlow', () => ({
   useCreatePlaylistFlow: () => ({ createOpen: false, setCreateOpen: () => {}, handleCreate: () => {} }),
 }));
 vi.mock('@/components/track/menus/CreatePlaylistDialog', () => ({ CreatePlaylistDialog: () => null }));
-vi.mock('@/components/track/menus/ImportPlaylistDialog', () => ({ ImportPlaylistDialog: () => null }));
+vi.mock('@/hooks/useImports', () => ({ useImportJobs: () => ({ data: [] }) }));
 // base-ui's dialog resolves a second React copy under happy-dom; the drawer's
 // Sheet is not what this test is about, so render its parts as plain divs.
 vi.mock('@/components/ui/sheet', () => {

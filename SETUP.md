@@ -414,32 +414,38 @@ The in-player **Lyrics** button (mic icon next to Queue) hits Genius directly �
 
 For the planned AI fallback (when Genius has nothing) see **[LYRICS_AI.md](LYRICS_AI.md)**.
 
-### Spotify playlist import (one-time, ~2 minutes)
+### Spotify playlist import (no setup)
 
-The Library → **Import** button imports public Spotify and YouTube Music
-playlists. **YouTube Music works out of the box.** Spotify needs free API keys
-on the host:
+The Library **Import** button imports public Spotify and YouTube Music
+playlists. **Both work out of the box: no keys, no developer account, nothing
+in `.env.local`.**
 
-1. Go to https://developer.spotify.com/dashboard (log in with any Spotify
-   account — free is fine) → **Create app**. Name/description: anything
-   (e.g. "Ember import"). Redirect URI: put `http://127.0.0.1:3000` (required
-   field, never used). Check "Web API".
-2. Open the app's **Settings** → copy **Client ID** and **Client secret**.
-3. Add both to `apps/web/.env.local`:
+- **Spotify**: Ember reads the playlist from Spotify's public embed page
+  (`open.spotify.com/embed/playlist/<id>`, the player websites use to show a
+  playlist) and takes the name and cover from Spotify's oEmbed endpoint. Any
+  public playlist works, Spotify's own editorial playlists included. Spotify
+  only lists the **first 100 songs** there, so a longer playlist stops at 100
+  (the dialog says so). Private playlists and Liked Songs cannot be read this
+  way; connecting a Spotify account for those is a later, optional stage.
+- **YouTube Music and YouTube**: public and unlisted playlists, read with
+  ytmusicapi, with `yt-dlp --flat-playlist` as the fallback.
 
-```bash
-SPOTIFY_CLIENT_ID=paste-client-id-here
-SPOTIFY_CLIENT_SECRET=paste-client-secret-here
-```
+Each Spotify song is matched on YouTube Music and scored (title, artist,
+length, explicit flag, live/remix/cover versions, official audio vs fan
+uploads). Only confident matches are added; the rest are listed at the end of
+the import as "Needs review" or "Not found" so they can be added by hand.
 
-4. Restart the app (`./start-static.sh`).
+**Why the old setup steps are gone:** this section used to ask for a
+`SPOTIFY_CLIENT_ID` and `SPOTIFY_CLIENT_SECRET` from a developer.spotify.com
+app. Spotify's February 2026 Web API change means such an app can no longer
+read the songs of a playlist it does not own, so those keys stopped working
+for import and Ember no longer uses them. If your `apps/web/.env.local` still
+has them, delete both lines.
 
-Until the keys are set, Spotify links show "Spotify import is not set up on
-this server yet" — YT Music import still works. Notes: only **public,
-user-created** playlists import (Spotify blocks its own editorial/algorithmic
-playlists for standard API apps); tracks are matched onto YouTube Music, and
-anything unmatched is listed at the end of the import so it can be added by
-hand.
+If Spotify imports start failing with "Spotify changed its playlist page",
+Spotify has changed the embed page's shape: file a bug report. The parser is
+`apps/web/lib/import/embed.ts`, tested against a saved page in
+`tests/fixtures/imports/`.
 
 ### Generated guitar tabs (optional)
 

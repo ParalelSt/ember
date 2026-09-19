@@ -28,6 +28,7 @@ export const GET = withRequestLog('playlists/[id]', async (_req: NextRequest, ct
         name: String(playlistRec.name ?? ''),
         created_at: String(playlistRec.created ?? ''),
         artwork_url: artworkFile ? `/pb/api/files/playlists/${playlistRec.id}/${artworkFile}` : null,
+        import_job: typeof playlistRec.import_job === 'string' && playlistRec.import_job ? playlistRec.import_job : null,
       },
       tracks,
     });

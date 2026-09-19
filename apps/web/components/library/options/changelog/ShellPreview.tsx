@@ -26,7 +26,7 @@ import { cn } from '@/lib/utils';
 import { MOCK_NOW_PLAYING } from '@/app/(app)/dizajn/mock';
 import { UnreadDot } from '@/components/library/options/changelog/NewBadge';
 
-const MOCK_SIDEBAR_PLAYLISTS = [
+export const MOCK_SIDEBAR_PLAYLISTS = [
   { id: 'p1', name: 'Late Night Drive', href: '/playlist/mock-1' },
   { id: 'p2', name: 'Gym', href: '/playlist/mock-3' },
   { id: 'p3', name: 'Sunday Mornings', href: '/playlist/mock-4' },
@@ -60,6 +60,13 @@ export interface ShellPreviewProps {
   /** Absolutely positioned over the content column (below the phone top
    *  bar), for a popover. */
   overlay?: ReactNode;
+  /** The sidebar/drawer playlist links; defaults to MOCK_SIDEBAR_PLAYLISTS. */
+  playlists?: { id: string; name: string; href: string }[];
+  /** A row above the playlist links (an import in progress). */
+  playlistsTop?: ReactNode;
+  /** Covers the whole shell, sidebar included, the way a real dialog's
+   *  backdrop covers the viewport. */
+  modal?: ReactNode;
   /** Phone: the slide-out menu. The mock's own menu button toggles it. */
   drawerOpen?: boolean;
   onDrawerOpenChange?: (open: boolean) => void;
@@ -106,7 +113,9 @@ function PlaylistsHeader({ className }: { className?: string }) {
 
 /** A copy of Sidebar's markup (same classes, same order) fed from mock
  *  data: the real one reads auth, the playlists query and the UI store. */
-function MockSidebar({ activePath, navExtra, footerExtra }: Pick<ShellPreviewProps, 'activePath' | 'navExtra' | 'footerExtra'>) {
+type SidebarSlots = Pick<ShellPreviewProps, 'activePath' | 'navExtra' | 'footerExtra' | 'playlists' | 'playlistsTop'>;
+
+function MockSidebar({ activePath, navExtra, footerExtra, playlists = MOCK_SIDEBAR_PLAYLISTS, playlistsTop }: SidebarSlots) {
   return (
     <aside className="flex h-full w-(--sidebar-w) shrink-0 flex-col overflow-hidden border-r border-sidebar-border bg-sidebar text-sidebar-foreground">
       <SidebarLogo />
@@ -120,7 +129,8 @@ function MockSidebar({ activePath, navExtra, footerExtra }: Pick<ShellPreviewPro
       <PlaylistsHeader className="mt-6" />
       <div className="mt-2 min-h-0 flex-1 overflow-hidden">
         <div className="flex flex-col gap-0.5 px-2 pb-3">
-          <PlaylistNavList items={MOCK_SIDEBAR_PLAYLISTS} authed />
+          {playlistsTop}
+          <PlaylistNavList items={playlists} authed />
         </div>
       </div>
       {footerExtra}
@@ -135,8 +145,10 @@ function MockDrawer({
   activePath,
   navExtra,
   footerExtra,
+  playlists = MOCK_SIDEBAR_PLAYLISTS,
+  playlistsTop,
   onClose,
-}: Pick<ShellPreviewProps, 'activePath' | 'navExtra' | 'footerExtra'> & { onClose: () => void }) {
+}: SidebarSlots & { onClose: () => void }) {
   return (
     <div className="absolute inset-0 z-30" data-testid="mock-drawer">
       <button
@@ -159,7 +171,8 @@ function MockDrawer({
         </div>
         <PlaylistsHeader className="border-t border-sidebar-border pt-3" />
         <div className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-hidden px-2 py-2">
-          <PlaylistNavList items={MOCK_SIDEBAR_PLAYLISTS} authed />
+          {playlistsTop}
+          <PlaylistNavList items={playlists} authed />
         </div>
         {footerExtra}
         <ProfileRow />
@@ -330,6 +343,9 @@ export function ShellPreview({
   topBarRight,
   menuDot,
   overlay,
+  playlists,
+  playlistsTop,
+  modal,
   drawerOpen = false,
   onDrawerOpenChange,
 }: ShellPreviewProps) {
@@ -343,7 +359,15 @@ export function ShellPreview({
         phone ? 'flex-col' : 'flex-row',
       )}
     >
-      {!phone && <MockSidebar activePath={activePath} navExtra={navExtra} footerExtra={footerExtra} />}
+      {!phone && (
+        <MockSidebar
+          activePath={activePath}
+          navExtra={navExtra}
+          footerExtra={footerExtra}
+          playlists={playlists}
+          playlistsTop={playlistsTop}
+        />
+      )}
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
         {phone && (
           <MockTopBar topBarRight={topBarRight} menuDot={menuDot} onMenu={() => onDrawerOpenChange?.(true)} />
@@ -365,9 +389,12 @@ export function ShellPreview({
           activePath={activePath}
           navExtra={navExtra}
           footerExtra={footerExtra}
+          playlists={playlists}
+          playlistsTop={playlistsTop}
           onClose={() => onDrawerOpenChange?.(false)}
         />
       )}
+      {modal}
     </div>
   );
 }

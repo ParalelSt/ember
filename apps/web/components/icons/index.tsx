@@ -45,4 +45,8 @@ export {
   Share as ShareIcon,
   Upload as UploadIcon,
   MessageSquarePlus as RequestIcon,
+  Link2 as LinkIcon,
+  ChevronRight as ChevronRightIcon,
+  CircleAlert as AlertIcon,
+  ListChecks as ReviewIcon,
 } from 'lucide-react';

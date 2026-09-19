@@ -24,6 +24,31 @@ Test folders, `apps/web/`:
   test (not an eslint rule) that scans `app/` and `components/` for banned
   class-string patterns (raw `oklch(`, `to-[`, the old artwork size pairs,
   the type utility strings before they existed).
+- `lib/import/`: playlist import (docs/imports.md). `url` (Spotify, short
+  link, YT Music and YouTube links, and what is rejected), `embed` (the
+  Spotify embed-page parser against saved pages in `tests/fixtures/imports/`:
+  a 50-track playlist, a full 100-track one, Spotify's "Page not found"
+  state, a changed page shape) and `score` (the fixture table: exact, feat.,
+  remix either way, live, clean vs explicit, length off by 2, 5 and 40 s,
+  Topic channel vs fan upload, plus the reasons text and the 75 / 50
+  thresholds). Background imports: `jobState` (the queued, running, paused,
+  done, failed, cancelled table, what is final, source positions),
+  `runner` (an in-memory store and a fake matcher: batches of 8, the cursor,
+  pacing, a restart resuming from the cursor without adding twice, the 5 /
+  20 / 60 s backoff then a pause for Retry, cancel mid-way and mid-backoff,
+  never two loops at once), `store` (a small fake PocketBase:
+  position-preserving inserts, review picks, a re-match swapping in place,
+  Remove song, a half-made import cleaned up), `records`, `reasons`, `rows`
+  (the playlist's rows with the import's placeholders in source order) and
+  `nav` (what each sidebar row says).
+- `components/import/`: `ReviewSheet` (keys 1 to 3 pick, S skips, keys
+  left alone while typing a search, search then use, all done, re-match
+  mode), `ImportBanner` (progress, backoff, Retry, the Done counts) and
+  `ImportTrackList`. With them, `components/track/menus/CreatePlaylistDialog`
+  (the Tabs and the link step: preview, the 100-song note, Create closing the
+  dialog and opening the playlist), `components/track/menus/TrackMenu` (the
+  re-match item) and `components/nav/PlaylistNavList` (the ring and "18 of
+  42").
 - `lib/reports/`: the report libs behind bug reports and the daily digest:
   `fingerprint` (grouping two occurrences of one bug together),
   `timeline`/`selectTimeline` (the readable Evidence block), `history`
@@ -231,6 +256,15 @@ node tests/unavailable-ui.test.mjs                  # or: npm run test:unavailab
 
 # Trending shelf: starts its own app server from the build (see below)
 node tests/trending-ui.test.mjs                     # or: npm run test:trending-ui
+
+# Playlist import: Spotify embed source, background jobs, picks (needs its own server, see below)
+node tests/import.test.mjs                          # or: npm run test:import
+# Playlist import in the browser: Tabs dialog, sidebar ring, restart, 503, review sheet
+# (starts its own app on :3034 from the last build, see below)
+node tests/import-ui.test.mjs                       # or: npm run test:import-ui
+
+# player.py `match` and `ytplaylist`, no server, no network
+.venv/bin/python -m unittest tests/test_player_match.py   # or: npm run test:player-match
 ```
 
 Exit code 0 = everything passed; each check prints PASS/FAIL with detail.
@@ -655,3 +689,89 @@ saved ytmusicapi output in `tests/fixtures/trending/`, no network:
 ```bash
 .venv/bin/python -m unittest tests/test_player_trending.py   # or: npm run test:trending-py
 ```
+
+## What `import.test.mjs`, `import-ui.test.mjs` and `test_player_match.py` cover
+
+Playlist import, stages 1 to 4 of docs/imports.md. Nothing reaches the
+internet: `tests/fake-spotify.mjs` serves the saved Spotify embed pages and
+oEmbed answers from `tests/fixtures/imports/`, and `tests/fake-player.sh`
+answers `match` from `tests/fixtures/imports/ytm-candidates.json` (keyed by
+the search string, `title-only:<title>` for the retry) and `ytplaylist` from
+`tests/fixtures/imports/ytm-playlists.json`. The app finds the fake through
+`SPOTIFY_EMBED_BASE`.
+
+Its own server (this worktree's sandbox: PocketBase on `:8094`, the app on
+`:3034`); the test starts the fake Spotify on `:4331` itself:
+
+```bash
+SB=/tmp/ember-import-test && mkdir -p "$SB/music"
+cd apps/web && POCKETBASE_URL=http://127.0.0.1:8094 \
+  SPOTIFY_EMBED_BASE=http://127.0.0.1:4331 \
+  PYTHON_BIN=/bin/bash PLAYER_SCRIPT="$PWD/../../tests/fake-player.sh" \
+  FAKE_PLAYER_LOG="$SB/calls.log" MUSIC_DIR="$SB/music" \
+  POCKETBASE_ADMIN_EMAIL=admin@ember.com POCKETBASE_ADMIN_PASSWORD=egKa5WNMx3QpuG7 \
+  DISCORD_BUG_REPORT_WEBHOOK_URL=http://127.0.0.1:4312/hook \
+  npx next start -p 3034 &
+cd ../.. && PB_URL=http://127.0.0.1:8094 APP_URL=http://127.0.0.1:3034 node tests/import.test.mjs
+# Stop that server before import-ui.test.mjs, which starts its own on :3034.
+```
+
+PocketBase needs `ensure_imports.pb.js` loaded (restart it once after
+pulling), and the server needs the admin credentials: the import runner and
+the job routes write with the admin client.
+
+- **Spotify inspect** (A): a playlist link reads all 50 tracks of the saved
+  page in source order, with title, artists (a multi-artist line split),
+  length, explicit flag and uri; the name and cover come from oEmbed; a
+  100-track playlist is flagged as possibly longer.
+- **Errors people can act on** (B): an unknown or private playlist is a 404
+  that says to make it public; a changed page shape is a 502 that says so; an
+  album link is a 400.
+- **A background job** (C): `POST /api/import/jobs` creates the playlist and
+  a queued job; the server's runner matches all 50 tracks and splits them
+  into accepted (4), needs review (2: a live version, a fan upload by someone
+  else) and not found (44), with the job's counts agreeing. Every item keeps
+  its source row and every candidate with a score and reasons; a remix is
+  kept but scored down; official audio beats the music video; a track the
+  first search misses is found by the title-only retry; only accepted tracks
+  are in the playlist, in source order. Signed out never starts one, someone
+  else can neither read nor settle it, a pick lands at its source position,
+  only a YouTube song can be picked, Remove song updates the counts, and a
+  finished import cannot be stopped.
+- **YouTube Music** (D): a public playlist inspects to ready tracks; private
+  and unknown playlists get their own messages; an import adds the
+  playlist's own tracks with nothing to review.
+- **Rate limit** (E): the sixth start within ten minutes is a 429.
+
+`import-ui.test.mjs` drives Chromium (playwright-core) against an app it
+starts itself on `:3034` (from `apps/web`'s last `next build`, pointed at
+PocketBase on `:8094`, the fake Spotify and `fake-player.sh` with
+`FAKE_MATCH_SECONDS=0.5`, `IMPORT_STALE_MS=3000` and a `FAKE_503_ONCE` flag
+file), because it has to stop and restart it mid-import. Nothing else may be
+listening on `:3034`. Checks: the library's old Import button is gone (U1);
+"+" opens New playlist with the Start empty / Import from a link tabs, a
+pasted link previews, Create closes the dialog and opens the playlist
+(U2 to U5); the sidebar row's ring counts up with "N of 50" and the page shows
+the progress banner (U6, U7); the server is killed mid-import and restarted,
+and the job resumes from its cursor (U8, U9); the one-off 503 pauses it with a
+retry time, then it continues (U10); the playlist filled in source order and
+the Done summary counts match the job, with "2 to review" in the sidebar
+(U11 to U14); Review opens the right-side sheet, key 2 puts the second
+candidate in at its source position, S skips (U15 to U20); "Wrong song?
+Re-match" from a track's More menu swaps it in place (U21, U22); no page
+errors (U23).
+
+`fake-player.sh` knobs for these: `FAKE_503_ONCE=<file>` fails the next
+`match` call like a rate-limited YouTube Music search while the file exists
+(and deletes it, so exactly one call fails); `FAKE_MATCH_SECONDS` slows every
+`match` call.
+
+`test_player_match.py` runs `player.py match` against saved ytmusicapi
+search output (`ytm-search-bass-persuades.json`) with YTMusic mocked:
+five candidates in search order with title, artists, length, video type and
+explicit flag, unscored; the two query forms (`"title artist"`, then the
+title alone with `ignore_spelling`); one list per query even when a search
+fails, with the failed indexes listed separately (`failed`) so the runner
+retries the batch instead of calling those songs not found. It also checks
+`ytplaylist` falling back to yt-dlp when ytmusicapi fails, and reporting
+`private` when both fail. Run it with the repo's venv.

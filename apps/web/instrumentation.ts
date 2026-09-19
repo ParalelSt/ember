@@ -1,6 +1,6 @@
 /** Next's startup hook: runs once when the server boots. Installs the
- *  uncaught-error catch, and schedules the daily cache/DB cleanup and the
- *  daily error digest. */
+ *  uncaught-error catch, starts the playlist import runner, and schedules
+ *  the daily cache/DB cleanup and the daily error digest. */
 export async function register() {
   // Only the Node server runtime has a filesystem and PocketBase access.
   if (process.env.NEXT_RUNTIME !== 'nodejs') return;
@@ -42,6 +42,13 @@ export async function register() {
     // it comes back, and the marker file keeps that to once a day.
     const digest = setInterval(() => void tick(), 60 * 1000);
     digest.unref?.();
+  }
+
+  // Background playlist imports (docs/imports.md): one runner per server,
+  // picking up where it stopped if the server went down mid-import.
+  if (process.env.IMPORT_RUNNER_DISABLED !== '1') {
+    const { startImportRunner } = await import('@/lib/import/runnerInstance');
+    startImportRunner();
   }
 
   if (process.env.CLEANUP_DISABLED === '1') return;
