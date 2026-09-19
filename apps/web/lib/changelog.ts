@@ -21,6 +21,17 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    id: 'profile-pictures-load-everywhere',
+    version: '0.3.2',
+    date: '2026-09-19',
+    title: 'Profile pictures load everywhere',
+    summary: 'Fixed pictures showing as a broken image in the admin user list and right after changing your picture.',
+    bullets: [
+      'Your picture no longer shows as a broken image in the admin user list.',
+      'Your picture shows right away after you change it, from any device.',
+    ],
+  },
+  {
     id: 'cleaner-collection-pages',
     version: '0.3.1',
     date: '2026-09-18',
