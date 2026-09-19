@@ -11,6 +11,7 @@ import {
   type SongsterrSongHint,
 } from '@/lib/songsterr';
 import type { TabKind, TabOnlineSource, TabSummary } from '@/lib/tabSources';
+import { readTiming } from '@/lib/tabSync';
 
 /** The one tab store (docs/tabs-rebuild.md section 3): PocketBase `tabs`,
  *  a row per tab, for files people add and tabs Ember generates alike.
@@ -87,12 +88,14 @@ export function matchesQuery(row: RecordModel, q: TabQuery): boolean {
 
 const RANK: Record<TabKind, number> = { file: 0, pasted: 1, fetched: 2, generated: 3 };
 
-/** Among tabs found online: guitar before bass (the page draws the first,
- *  and a guitar tab is what "Guitar tab" promises), then the most votes. */
+/** Among tabs found online: Songsterr's first (real rhythm, every
+ *  instrument), then guitar before bass (the page draws the first, and a
+ *  guitar tab is what "Guitar tab" promises), then the most votes. */
 function fetchedOrder(a: RecordModel, b: RecordModel): number {
   if (kindOf(a) !== 'fetched' || kindOf(b) !== 'fetched') return 0;
+  const site = (r: RecordModel) => Number(r.source_site !== 'songsterr');
   const bass = (r: RecordModel) => Number((r.source_meta as { part?: string } | null)?.part === 'bass');
-  return bass(a) - bass(b) || (Number(b.source_votes) || 0) - (Number(a.source_votes) || 0);
+  return site(a) - site(b) || bass(a) - bass(b) || (Number(b.source_votes) || 0) - (Number(a.source_votes) || 0);
 }
 
 /** Files first, then pasted text tabs, then tabs found online (guitar
@@ -105,13 +108,26 @@ export function sortTabs(rows: RecordModel[]): RecordModel[] {
   );
 }
 
-const SITE_LABELS: Record<TabOnlineSource['site'], string> = { ug: 'Ultimate Guitar' };
+const SITE_LABELS: Record<TabOnlineSource['site'], string> = { ug: 'Ultimate Guitar', songsterr: 'Songsterr' };
 
 /** Where a fetched row was found, from its source_* fields. */
 export function onlineSourceOf(row: RecordModel): TabOnlineSource | null {
-  if (row.kind !== 'fetched' || row.source_site !== 'ug') return null;
+  if (row.kind !== 'fetched') return null;
   const meta = (row.source_meta && typeof row.source_meta === 'object' ? row.source_meta : {}) as Record<string, unknown>;
   const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : null);
+  if (row.source_site === 'songsterr') {
+    return {
+      site: 'songsterr',
+      siteLabel: SITE_LABELS.songsterr,
+      url: String(row.source_url ?? ''),
+      part: 'multi',
+      instruments: Array.isArray(meta.instruments) ? meta.instruments.map(String).slice(0, 8) : [],
+      version: 1,
+      rating: null,
+      votes: null,
+    };
+  }
+  if (row.source_site !== 'ug') return null;
   return {
     site: 'ug',
     siteLabel: SITE_LABELS.ug,
@@ -145,7 +161,7 @@ export function mapTab(row: RecordModel, viewer: TabViewer, addedBy: string | nu
       kind === 'generated' && trackId
         ? `/api/tabs/generated/${encodeURIComponent(trackId)}`
         : `/api/tabs/files/${row.id}/download`,
-    ...(kind === 'fetched' ? { source: onlineSourceOf(row) } : {}),
+    ...(kind === 'fetched' ? { source: onlineSourceOf(row), timing: readTiming(row.timing) } : {}),
   };
 }
 

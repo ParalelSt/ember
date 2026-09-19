@@ -7,7 +7,7 @@ import { fakePocketBase, type FakePb } from '@/test-utils/fakePocketBase';
 import { findTabs, mapTab, songKeyOf } from '@/lib/tabStore';
 import { pickerLabel, sourceChipLabel } from '@/lib/tabSources';
 import { PoliteFetcher } from './polite';
-import { findOnline, MAX_TAB_PAGES, resetOnline } from './online';
+import { findOnline as findOnlineAll, MAX_TAB_PAGES, resetOnline } from './online';
 import { readJsStore } from './ug';
 
 const FIXTURES = path.resolve(__dirname, '../../../../tests/fixtures/ug');
@@ -15,6 +15,10 @@ const fixture = (name: string) => fs.readFileSync(path.join(FIXTURES, name), 'ut
 const SONG = { title: 'Harbour Lights', artist: 'The Lantern Keepers', trackId: 'youtube:abc123' };
 const KEY = songKeyOf(SONG);
 const VIEWER = { id: 'alice', isAdmin: false };
+
+/** These tests are Ultimate Guitar's; Songsterr has its own file
+ *  (songsterrOnline.test.ts). */
+const findOnline = (...[pb, song, opts]: Parameters<typeof findOnlineAll>) => findOnlineAll(pb, song, { sites: ['ug'], ...opts });
 
 /** A site that serves the fixtures and records every URL asked for.
  *  `search` overrides the search page; `status` answers every request

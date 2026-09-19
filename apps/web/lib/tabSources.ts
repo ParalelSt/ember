@@ -1,4 +1,5 @@
 import type { TabMatch } from '@/lib/songsterr';
+import { isLinedUp, type TabTiming } from '@/lib/tabSync';
 
 /** The tab store's shapes and the source chain, without the server: the
  *  routes (lib/tabStore.ts) build these, the tab page (/tabs/[trackId])
@@ -13,12 +14,14 @@ export type TabKind = 'file' | 'pasted' | 'fetched' | 'generated';
 /** Where a fetched tab was found: the site's page and what it said of the
  *  tab. Null for every other kind. */
 export interface TabOnlineSource {
-  site: 'ug';
-  /** "Ultimate Guitar". */
+  site: 'ug' | 'songsterr';
+  /** "Ultimate Guitar", "Songsterr". */
   siteLabel: string;
   url: string;
-  /** Guitar tab or bass tab. */
-  part: 'guitar' | 'bass';
+  /** Guitar tab or bass tab; Songsterr's hold every instrument ("multi"). */
+  part: 'guitar' | 'bass' | 'multi';
+  /** Songsterr: the instruments in the file, in order ("Rhythm Guitar"). */
+  instruments?: string[];
   /** The site's version number of this song's tab (UG: "ver 2"). */
   version: number;
   rating: number | null;
@@ -50,6 +53,9 @@ export interface TabSummary {
   downloadUrl: string;
   /** Set for a tab found online (kind fetched). */
   source?: TabOnlineSource | null;
+  /** Where the tab sits in the recording (align.py), when it has been
+   *  lined up; drawn by it only when confident (lib/tabSync.ts isLinedUp). */
+  timing?: TabTiming | null;
 }
 
 export type TabSource =
@@ -151,27 +157,37 @@ export function ratingLabel(source: TabOnlineSource): string {
   return `★ ${source.rating.toFixed(1)} (${votes.toLocaleString('en-US')} vote${votes === 1 ? '' : 's'})`;
 }
 
-/** Tabs found online are not lined up with the recording yet (that is the
- *  next round, docs/tabs-v3.md section 3): they start at the song's start
- *  plus the nudge, at the tab's own tempo. Said calmly on the chip. */
+/** A tab found online that align.py has not lined up with the recording
+ *  (or not confidently, docs/tabs-v3.md section 3) starts at the song's
+ *  start plus the nudge, at the tab's own tempo. Said calmly on the chip. */
 export const NOT_LINED_UP = 'not lined up yet';
+export const LINED_UP = 'lined up';
 
-/** The chip under the title: where the notes came from. */
-export function sourceChipLabel(tab: TabSummary): string {
+/** The chip under the title: where the notes came from. `instrument` is
+ *  the staff shown, named for a Songsterr tab (it holds several). */
+export function sourceChipLabel(tab: TabSummary, instrument?: string): string {
   if (tab.kind === 'generated') return 'Generated from the recording, rough';
-  if (tab.kind === 'fetched' && tab.source) return `From ${onlineName(tab.source)}, ${NOT_LINED_UP}`;
+  if (tab.kind === 'fetched' && tab.source) {
+    const shown = tab.source.site === 'songsterr' && instrument ? `, ${instrument}` : '';
+    return `From ${onlineName(tab.source)}${shown}, ${isLinedUp(tab.timing) ? LINED_UP : NOT_LINED_UP}`;
+  }
   const scope = tab.shared ? 'shared' : 'private';
   if (tab.kind === 'pasted') return `Text tab pasted by ${addedByLabel(tab)}, ${scope}`;
   return `File added by ${addedByLabel(tab)}, ${scope}`;
 }
 
 /** One line per tab in the chip's picker: "Guitar Pro file, Aron, Guitar",
- *  "Text tab, Aron, Guitar", "Ultimate Guitar, Text tab, ver 2, ★ 4.7
- *  (1,371 votes)", "Generated, rough". */
+ *  "Text tab, Aron, Guitar", "Songsterr, Tab with rhythm, 3 instruments",
+ *  "Ultimate Guitar, Text tab, ver 2, ★ 4.7 (1,371 votes)", "Generated,
+ *  rough". */
 export function pickerLabel(tab: TabSummary): string {
   const parts: string[] = [];
   if (tab.kind === 'generated') parts.push('Generated', 'rough');
-  else if (tab.kind === 'fetched' && tab.source) {
+  else if (tab.kind === 'fetched' && tab.source?.site === 'songsterr') {
+    const n = tab.source.instruments?.length ?? 0;
+    parts.push(tab.source.siteLabel, 'Tab with rhythm');
+    if (n > 0) parts.push(`${n} instrument${n === 1 ? '' : 's'}`);
+  } else if (tab.kind === 'fetched' && tab.source) {
     parts.push(tab.source.siteLabel, tab.source.part === 'bass' ? 'Bass tab' : 'Text tab');
     if (tab.source.version > 1) parts.push(`ver ${tab.source.version}`);
     const rating = ratingLabel(tab.source);

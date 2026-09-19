@@ -82,8 +82,9 @@ export const GENERATED_DIR = path.join(TAB_DIR, 'generated');
 
 /** Where a tab found online lives: MUSIC_DIR/tabs/fetched, `<stem>.alphatex`
  *  (what AlphaTab loads) beside `<stem>.txt` (the tab text as the site gave
- *  it, marks removed, so a better parser can redo the alphaTex without
- *  asking the site again). docs/tabs-v3.md section 2. */
+ *  it, marks removed) or `<stem>.json` (Songsterr's parts), so a better
+ *  converter can redo the alphaTex without asking the site again.
+ *  docs/tabs-v3.md section 2. */
 export const FETCHED_DIR = path.join(TAB_DIR, 'fetched');
 
 const STORED_ALPHATEX = /^[A-Za-z0-9_-]+\.alphatex$/;
@@ -98,12 +99,14 @@ export function resolveRowPath(row: { [key: string]: unknown }): string | null {
   return path.join(row.kind === 'fetched' ? FETCHED_DIR : GENERATED_DIR, filename);
 }
 
-/** The tab text a fetched row was made from: `<stem>.txt` beside it. */
+/** What a fetched row was made from, beside it: `<stem>.txt` (a text tab
+ *  from Ultimate Guitar) or `<stem>.json` (Songsterr's parts as fetched). */
 export function fetchedTextPath(row: { [key: string]: unknown }): string | null {
   if (row.kind !== 'fetched') return null;
   const filename = String(row.file ?? '');
   if (!STORED_ALPHATEX.test(filename)) return null;
-  return path.join(FETCHED_DIR, `${filename.slice(0, -'.alphatex'.length)}.txt`);
+  const ext = row.source_site === 'songsterr' ? '.json' : '.txt';
+  return path.join(FETCHED_DIR, `${filename.slice(0, -'.alphatex'.length)}${ext}`);
 }
 
 /** A pasted text tab is two files side by side in TAB_DIR: `<stem>.alphatex`
