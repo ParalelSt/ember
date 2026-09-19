@@ -30,6 +30,7 @@ import {
   type TabSummary,
 } from '@/lib/tabSources';
 import { clampOffset, loadLocalOffsetMs, MAX_OFFSET_MS, saveLocalOffsetMs } from '@/lib/tabSync';
+import { tabSearchLinks, type TabSearchLink } from '@/lib/tabSearchLinks';
 
 const TAB_ACCEPT = '.gp,.gp3,.gp4,.gp5,.gpx,.musicxml,.xml,.mxl';
 const STAFF_KEY = 'ember.tabs.staff';
@@ -173,6 +174,8 @@ function TabsSheet({ song, sources, onBack }: { song: TabSong; sources: TabSourc
   const addFile = () => fileRef.current?.click();
   const ownGenerated = sources.tabs.some((t) => t.kind === 'generated' && t.trackId === song.id);
   const busyGenerating = sources.generated === 'running' || sources.generating;
+  // Links only: the browser opens them, Ember never fetches a tab site.
+  const searchLinks = tabSearchLinks(song, sources.matches);
 
   const actions = (
     <DropdownMenu>
@@ -189,11 +192,12 @@ function TabsSheet({ song, sources, onBack }: { song: TabSong; sources: TabSourc
             {busyGenerating ? 'Transcribing…' : 'Generate a tab from the recording'}
           </DropdownMenuItem>
         )}
-        {sources.matches[0] && (
-          <DropdownMenuItem onClick={() => window.open(sources.matches[0].url, '_blank', 'noopener,noreferrer')}>
-            Open on Songsterr
+        <DropdownMenuSeparator />
+        {searchLinks.map((l) => (
+          <DropdownMenuItem key={l.id} onClick={() => window.open(l.url, '_blank', 'noopener,noreferrer')}>
+            {l.menuLabel}
           </DropdownMenuItem>
-        )}
+        ))}
         {tab?.canDelete && !tab.id.startsWith('generated:') && (
           <>
             <DropdownMenuSeparator />
@@ -310,7 +314,7 @@ function TabsSheet({ song, sources, onBack }: { song: TabSong; sources: TabSourc
           />
         </>
       ) : (
-        <NoTab sources={sources} onAddFile={addFile} />
+        <NoTab sources={sources} searchLinks={searchLinks} onAddFile={addFile} />
       )}
     </div>
   );
@@ -380,9 +384,17 @@ function SyncRow({
   );
 }
 
-/** No tab to draw: generate one, add a file, or (when that is all there
- *  is) follow the link to Songsterr. */
-function NoTab({ sources, onAddFile }: { sources: TabSourcesState; onAddFile: () => void }) {
+/** No tab to draw: search for one by hand, add a file, or (the last resort)
+ *  generate a rough one from the recording. */
+function NoTab({
+  sources,
+  searchLinks,
+  onAddFile,
+}: {
+  sources: TabSourcesState;
+  searchLinks: TabSearchLink[];
+  onAddFile: () => void;
+}) {
   const state = emptyStateFor({
     loading: sources.loading,
     generated: sources.generated,
@@ -402,15 +414,36 @@ function NoTab({ sources, onAddFile }: { sources: TabSourcesState; onAddFile: ()
   return (
     <div data-testid="tabs-empty" className="mt-section flex flex-col items-center gap-block text-center">
       <p className="text-muted-foreground">No tab for this song yet.</p>
+      <div className="flex flex-col items-center gap-cluster">
+        <div className="text-eyebrow">Find one</div>
+        <div data-testid="tab-search-links" className="flex flex-wrap justify-center gap-cluster">
+          {searchLinks.map((l) => (
+            <a
+              key={l.id}
+              href={l.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              data-link={l.id}
+              className={cn(chip, chipOff)}
+            >
+              {l.label}
+            </a>
+          ))}
+        </div>
+      </div>
       <div className="flex flex-wrap justify-center gap-cluster">
-        {state.canGenerate && <Button onClick={sources.generate}>Generate a tab</Button>}
         <Button variant="outline" onClick={onAddFile} disabled={sources.uploading}>
           {sources.uploading ? 'Adding…' : 'Add a file'}
         </Button>
+        {state.canGenerate && (
+          <Button variant="ghost" onClick={sources.generate}>
+            Generate a tab (rough)
+          </Button>
+        )}
       </div>
       <p className="text-meta max-w-md">
         {state.canGenerate
-          ? 'Generating listens to the recording and writes a guitar tab: a few minutes, rough in places. A file is a Guitar Pro or MusicXML tab, shared with everyone here.'
+          ? 'A file is a Guitar Pro or MusicXML tab, shared with everyone here. Generating listens to the recording and writes a guitar tab: a few minutes, rough in places, so it is the last resort.'
           : 'A file is a Guitar Pro or MusicXML tab, shared with everyone here.'}
       </p>
       {state.failed && <p className="text-sm text-destructive">{state.failed}</p>}

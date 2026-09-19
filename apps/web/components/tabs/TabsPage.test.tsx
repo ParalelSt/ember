@@ -213,7 +213,7 @@ describe('TabsPage turned off', () => {
 describe('TabsPage empty states', () => {
   it('no tab: offers Generate a tab and Add a file', async () => {
     wrap(<TabsPage trackId="upload:song1" />);
-    const generate = await screen.findByRole('button', { name: 'Generate a tab' });
+    const generate = await screen.findByRole('button', { name: 'Generate a tab (rough)' });
     expect(screen.getByRole('button', { name: 'Add a file' })).toBeInTheDocument();
     expect(screen.queryByTestId('tab-score')).toBeNull();
     fireEvent.click(generate);
@@ -226,7 +226,7 @@ describe('TabsPage empty states', () => {
     api.listUploads.mockResolvedValue({ tracks: [SONG] });
     wrap(<TabsPage trackId="upload:song1" />);
     expect(await screen.findByRole('heading', { name: 'Copper Sky' })).toBeInTheDocument();
-    expect(await screen.findByRole('button', { name: 'Generate a tab' })).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: 'Generate a tab (rough)' })).toBeInTheDocument();
   });
 
   it('a song Ember cannot name at all says so', async () => {
@@ -250,8 +250,55 @@ describe('TabsPage empty states', () => {
     const link = await screen.findByRole('link', { name: /Copper Sky/ });
     expect(link).toHaveAttribute('href', 'https://www.songsterr.com/a/7');
     expect(link).toHaveAttribute('target', '_blank');
-    expect(screen.queryByRole('button', { name: 'Generate a tab' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Generate a tab (rough)' })).toBeNull();
     expect(screen.getByRole('button', { name: 'Add a file' })).toBeInTheDocument();
+  });
+});
+
+describe('TabsPage search links', () => {
+  it('the empty state links out to Ultimate Guitar, Guitar Pro files and Songsterr search, in a new tab', async () => {
+    wrap(<TabsPage trackId="upload:song1" />);
+    const ug = await screen.findByRole('link', { name: 'Ultimate Guitar' });
+    expect(ug).toHaveAttribute('href', 'https://www.ultimate-guitar.com/search.php?search_type=title&value=Coastline+Copper+Sky');
+    expect(ug).toHaveAttribute('target', '_blank');
+    expect(ug).toHaveAttribute('rel', 'noopener noreferrer');
+    expect(screen.getByRole('link', { name: 'Guitar Pro files' })).toHaveAttribute(
+      'href',
+      'https://duckduckgo.com/?q=Coastline+Copper+Sky+(gp5+OR+gpx+OR+"guitar+pro")',
+    );
+    expect(screen.getByRole('link', { name: 'Songsterr' })).toHaveAttribute(
+      'href',
+      'https://www.songsterr.com/?pattern=Coastline+Copper+Sky',
+    );
+  });
+
+  it('generating comes after adding a file, marked rough', async () => {
+    wrap(<TabsPage trackId="upload:song1" />);
+    const generate = await screen.findByRole('button', { name: 'Generate a tab (rough)' });
+    const add = screen.getByRole('button', { name: 'Add a file' });
+    expect(add.compareDocumentPosition(generate) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('the menu opens each search with noopener, Songsterr on its match', async () => {
+    const open = vi.spyOn(window, 'open').mockReturnValue(null);
+    api.getTrackTabs.mockResolvedValue({ tabs: [tab({})] });
+    api.getTabs.mockResolvedValue({
+      matches: [{ id: 7, artist: 'Coastline', title: 'Copper Sky', hasChords: false, instruments: ['Guitar'], url: 'https://www.songsterr.com/a/7' }],
+    });
+    wrap(<TabsPage trackId="upload:song1" />);
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Search Ultimate Guitar' }));
+    expect(open).toHaveBeenLastCalledWith(
+      'https://www.ultimate-guitar.com/search.php?search_type=title&value=Coastline+Copper+Sky',
+      '_blank',
+      'noopener,noreferrer',
+    );
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Search Guitar Pro files' }));
+    expect(open.mock.lastCall?.[0]).toContain('https://duckduckgo.com/?q=Coastline+Copper+Sky+');
+    await waitFor(() => {
+      fireEvent.click(screen.getByRole('menuitem', { name: 'Open on Songsterr' }));
+      expect(open).toHaveBeenLastCalledWith('https://www.songsterr.com/a/7', '_blank', 'noopener,noreferrer');
+    });
+    open.mockRestore();
   });
 });
 
