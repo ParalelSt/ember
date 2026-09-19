@@ -10,7 +10,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { CreatePlaylistDialog } from '@/components/track/menus/CreatePlaylistDialog';
-import { PlusIcon } from '@/components/icons';
+import { PlusIcon, RefreshIcon } from '@/components/icons';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { formatCount } from '@/lib/format';
 import {
@@ -21,7 +21,10 @@ import {
 import type { Track } from '@/types/track';
 import { cn } from '@/lib/utils';
 
-export function AddToPlaylistMenu({ track }: { track: Track }) {
+/** `onRematch`: the track came from an import, so on phones (where the row
+ *  has no room for a separate More button) this menu also offers "Wrong
+ *  song? Re-match". */
+export function AddToPlaylistMenu({ track, onRematch }: { track: Track; onRematch?: () => void }) {
   const { user } = useAuth();
   const { data: playlists = [] } = useQueryPlaylists();
   const addToPlaylist = useExecuteAddToPlaylist();
@@ -76,6 +79,20 @@ export function AddToPlaylistMenu({ track }: { track: Track }) {
         <PlusIcon className="h-4 w-4" />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="min-w-56" onClick={(e) => e.stopPropagation()}>
+        {onRematch && (
+          <>
+            <DropdownMenuItem
+              onClick={() => {
+                setOpen(false);
+                onRematch();
+              }}
+              className="md:hidden"
+            >
+              <RefreshIcon className="h-3.5 w-3.5" /> Wrong song? Re-match
+            </DropdownMenuItem>
+            <DropdownMenuSeparator className="md:hidden" />
+          </>
+        )}
         <DropdownMenuItem onClick={openCreate} className="text-ember font-semibold">
           <PlusIcon className="h-3.5 w-3.5" /> New playlist
         </DropdownMenuItem>
