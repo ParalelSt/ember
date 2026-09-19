@@ -21,6 +21,18 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    id: 'instrumental-versions-stay-separate',
+    version: '0.3.9',
+    date: '2026-09-19',
+    title: 'Instrumental versions stay separate',
+    summary: 'An instrumental, live or remixed version is no longer treated as the same song as the original.',
+    bullets: [
+      'Liking one version no longer lights up the heart on the other.',
+      'Radio stops skipping a version because it looks like one already in the queue.',
+      'A replacement for an unavailable song no longer offers a different version as the same track.',
+    ],
+  },
+  {
     id: 'trending-fits-better',
     version: '0.3.6',
     date: '2026-09-19',

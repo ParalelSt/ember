@@ -1,3 +1,26 @@
+# 0.3.9: Instrumental versions stay separate
+
+**Host: a normal rebuild and restart (`./update.sh`). No `npm install`, no
+PocketBase changes, no cache to clear.** The fix is a pure code change to a
+runtime comparison — nothing was stored under a merged key, so there is
+nothing to migrate. (Note: this version number may be renumbered at merge,
+since other branches are also taking 0.3.7/0.3.8.)
+
+- **Instrumental, live, remix, acoustic, karaoke, sped up/slowed, cover,
+  demo, extended, radio edit and clean/censored versions of a song no
+  longer count as "the same track" as the plain version.** The shared
+  "song identity" used by the liked heart, radio's next-up dedup, and the
+  picker for a replacement when a track goes unavailable, only ignored
+  punctuation and noise like "(Official Video)" or "feat." spelling. It
+  didn't treat a version marker as meaningful, so "Song" and "Song
+  (Instrumental)" collapsed to one identity: liking one lit up the other's
+  heart, radio could skip queueing one because it "already had" the other
+  queued, and the unavailable-track replacement dialog could rank one as a
+  stand-in for the other. Two different videos now only share an identity
+  when they're genuinely the same recording (title punctuation, feat.
+  spelling, and "(Official Video)"/"(Lyrics)"/remaster noise still
+  collapse as before).
+
 # 0.3.6: Trending fits better
 
 **Host: a normal rebuild and restart (`./update.sh`). No `npm install`, no

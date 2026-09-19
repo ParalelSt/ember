@@ -28,8 +28,11 @@ describe('songKey', () => {
   it('strips parenthetical version noise', () => {
     expect(songKey({ title: 'Blinding Lights (Official Video)', artist: 'The Weeknd' }))
       .toBe(songKey({ title: 'Blinding Lights', artist: 'The Weeknd' }));
+  });
+
+  it('does NOT collapse a (Live) title into the plain title — it is a different recording', () => {
     expect(songKey({ title: 'Blinding Lights (Live)', artist: 'The Weeknd' }))
-      .toBe(songKey({ title: 'Blinding Lights', artist: 'The Weeknd' }));
+      .not.toBe(songKey({ title: 'Blinding Lights', artist: 'The Weeknd' }));
   });
 
   it('strips bracketed version noise', () => {
@@ -70,7 +73,48 @@ describe('songKey', () => {
 
   it('a title that is entirely version noise falls back to the raw lowercased title, not an empty key', () => {
     const key = songKey({ title: '(Official Video)', artist: 'Artist' });
-    expect(key).toBe('(official video)::artist');
+    expect(key).toBe('(official video)::::artist');
+  });
+
+  // The bug report: an instrumental and the normal version of a song were
+  // treated as one identity (shared likes, radio dedup, and the unavailable-
+  // track replacement pool all key off songKey). Every pair below must NOT
+  // share a key; a plain-punctuation/feat. variant of the SAME recording
+  // must still share one.
+  const BASE = { title: "Welcome Back O' Sleeping Dreamer", artist: 'Lorna Shore' };
+  const MUST_NOT_MATCH: [string, string][] = [
+    ['instrumental', "Welcome Back O' Sleeping Dreamer (Instrumental)"],
+    ['live', "Welcome Back O' Sleeping Dreamer (Live)"],
+    ['remix', "Welcome Back O' Sleeping Dreamer (Remix)"],
+    ['acoustic', "Welcome Back O' Sleeping Dreamer (Acoustic)"],
+    ['karaoke', "Welcome Back O' Sleeping Dreamer (Karaoke Version)"],
+    ['sped up', "Welcome Back O' Sleeping Dreamer (Sped Up)"],
+    ['slowed', "Welcome Back O' Sleeping Dreamer (Slowed + Reverb)"],
+    ['cover', "Welcome Back O' Sleeping Dreamer (Cover)"],
+    ['demo', "Welcome Back O' Sleeping Dreamer (Demo)"],
+    ['extended', "Welcome Back O' Sleeping Dreamer (Extended)"],
+    ['clean', "Welcome Back O' Sleeping Dreamer (Clean)"],
+    ['censored', "Welcome Back O' Sleeping Dreamer (Censored)"],
+    ['radio edit', "Welcome Back O' Sleeping Dreamer (Radio Edit)"],
+  ];
+  it.each(MUST_NOT_MATCH)('a %s title does not share a key with the plain version', (_label, variantTitle) => {
+    expect(songKey({ title: variantTitle, artist: BASE.artist })).not.toBe(songKey(BASE));
+  });
+
+  const MUST_MATCH: [string, string, string][] = [
+    ['punctuation only', "Welcome Back O' Sleeping Dreamer", 'Welcome Back O Sleeping Dreamer!'],
+    ['feat. suffix', 'Some Song', 'Some Song feat. Artist Two'],
+    ['ft. spelling', 'Some Song', 'Some Song ft. Artist Two'],
+    ['official video noise', 'Some Song', 'Some Song (Official Video)'],
+    ['case only', 'Some Song', 'SOME SONG'],
+  ];
+  it.each(MUST_MATCH)('%s: two spellings of the same recording share a key', (_label, a, b) => {
+    expect(songKey({ title: a, artist: BASE.artist })).toBe(songKey({ title: b, artist: BASE.artist }));
+  });
+
+  it('two different variant markers on the same base title also differ from each other', () => {
+    expect(songKey({ title: "Welcome Back O' Sleeping Dreamer (Instrumental)", artist: BASE.artist }))
+      .not.toBe(songKey({ title: "Welcome Back O' Sleeping Dreamer (Live)", artist: BASE.artist }));
   });
 });
 
