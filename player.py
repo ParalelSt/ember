@@ -8,6 +8,7 @@ import concurrent.futures
 from pathlib import Path
 from ytmusicapi import YTMusic
 import yt_dlp
+from ffmpeg_path import ffmpeg_exe
 
 # ============= CONFIG =============
 # MUSIC_DIR resolves relative to this script (not cwd) so the Express API can
@@ -36,6 +37,14 @@ def _cookie_opts():
         name, _, profile = browser.partition(":")
         return {"cookiesfrombrowser": (name, profile or None, None, None)}
     return {}
+
+
+def _ffmpeg_opts():
+    """Point yt-dlp at Ember's own ffmpeg (ffmpeg_path.py: the imageio-ffmpeg
+    binary, else the one on PATH), so a host needs no system install. Empty
+    when there is none: yt-dlp then does what it can without it."""
+    exe = ffmpeg_exe()
+    return {"ffmpeg_location": exe} if exe else {}
 
 
 def sanitize_filename(name: str) -> str:
@@ -143,6 +152,7 @@ def ytdlp_search(query: str, limit: int):
         'quiet': True,
         'no_warnings': True,
         **_cookie_opts(),
+        **_ffmpeg_opts(),
     }
     with contextlib.redirect_stdout(sys.stderr):
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -169,6 +179,7 @@ def download_if_needed(video_id: str, title: str, artist: str) -> Path:
         'addmetadata': True,
         'quiet': False,
         **_cookie_opts(),
+        **_ffmpeg_opts(),
     }
     url = f"https://www.youtube.com/watch?v={video_id}"
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -191,6 +202,7 @@ def download_by_id(video_id: str) -> Path:
         'quiet': True,
         'no_warnings': True,
         **_cookie_opts(),
+        **_ffmpeg_opts(),
     }
     url = f"https://www.youtube.com/watch?v={video_id}"
     # Belt-and-suspenders: redirect any stray prints from yt-dlp/postprocessors
@@ -320,6 +332,7 @@ def cmd_info(args):
         'no_warnings': True,
         'skip_download': True,
         **_cookie_opts(),
+        **_ffmpeg_opts(),
     }
     with contextlib.redirect_stdout(sys.stderr):
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:

@@ -17,10 +17,11 @@ from __future__ import annotations
 import argparse
 import json
 import os
-import shutil
 import subprocess
 import sys
 import tempfile
+
+from ffmpeg_path import MISSING as FFMPEG_MISSING, ffmpeg_exe
 
 # String 1 (high e) .. string 6 (low E), as MIDI numbers. Standard tuning only.
 STRINGS = [64, 59, 55, 50, 45, 40]
@@ -181,9 +182,9 @@ def _q(s: str) -> str:
 # ── the pipeline ─────────────────────────────────────────────────────────────
 
 def decode(src: str, dst: str) -> None:
-    ffmpeg = shutil.which("ffmpeg")
+    ffmpeg = ffmpeg_exe()
     if not ffmpeg:
-        fail("ffmpeg is not installed")
+        fail(FFMPEG_MISSING)
     r = subprocess.run([ffmpeg, "-y", "-loglevel", "error", "-i", src, "-ac", "2", "-ar", "44100", dst],
                        capture_output=True, text=True)
     if r.returncode != 0:

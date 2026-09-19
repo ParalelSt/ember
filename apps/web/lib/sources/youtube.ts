@@ -56,9 +56,10 @@ interface PythonError extends Error {
   unavailableReason?: UnavailableReason;
 }
 
-// Prepend the venv's bin/ to PATH so yt-dlp can find ffmpeg installed via
-// `pip install imageio-ffmpeg` (which symlinks into .venv/bin). Without this,
-// yt-dlp downloads fragmented DASH MP4s that <audio> elements refuse.
+// Prepend the venv's bin/ to PATH so yt-dlp can find ffmpeg: update.sh links
+// the imageio-ffmpeg binary to .venv/bin/ffmpeg (player.py also hands it to
+// yt-dlp as ffmpeg_location, via ffmpeg_path.py). Without ffmpeg, yt-dlp
+// downloads fragmented DASH MP4s that <audio> elements refuse.
 const VENV_BIN = path.dirname(PYTHON_BIN);
 const SUBPROCESS_PATH = `${VENV_BIN}:${process.env.PATH ?? ''}`;
 

@@ -49,10 +49,18 @@ Needed for the YouTube source.
 
 ```bash
 python3 -m venv .venv
-./.venv/bin/pip install yt-dlp imageio-ffmpeg ytmusicapi
+./.venv/bin/pip install -r requirements.txt
+./.venv/bin/python ffmpeg_path.py   # prints Ember's own ffmpeg
 ```
 
-*(Windows: `python -m venv .venv` then `.venv\Scripts\pip install yt-dlp imageio-ffmpeg ytmusicapi`.)*
+*(Windows: `python -m venv .venv` then `.venv\Scripts\pip install -r requirements.txt`.)*
+
+**No ffmpeg install needed.** `imageio-ffmpeg` (in `requirements.txt`) ships a
+static ffmpeg binary; `player.py` (yt-dlp) and `transcribe.py` (tab
+generation) find it through `ffmpeg_path.py`, and every `./update.sh` installs
+the package if missing and links the binary to `.venv/bin/ffmpeg`. A system
+ffmpeg on `PATH` is only the fallback. If something says "ffmpeg is missing:
+run ./update.sh", that is the fix.
 
 Drop the **PocketBase** binary from step 1 into the `pocketbase/` folder if you haven't already.
 
@@ -156,6 +164,9 @@ Stop the tunnel later: `tailscale funnel reset`.
 ./update.sh --check    # just show what's new, change nothing
 ./update.sh --no-start # update the code only (hosts running Ember via systemd)
 ```
+
+Every run also installs Ember's own ffmpeg (`imageio-ffmpeg`) if it is missing
+and relinks it to `.venv/bin/ffmpeg`, so the host never needs a system ffmpeg.
 
 **Don't use `git pull && ./start-static.sh` for this.** start-static.sh skips
 PocketBase when it's already healthy, so you'd rebuild the web app while the

@@ -124,6 +124,29 @@ spawns the poster once per distinct message, keeps the process running after
 both an uncaught exception and an unhandled rejection, and never throws when
 logging and spawning both fail.
 
+## Ember's own ffmpeg
+
+No sandbox, no network: run from the repo root with a Python that has
+`imageio-ffmpeg` (`PYTHON_BIN`, else `.venv/bin/python`).
+
+```bash
+node tests/ffmpeg-resolve.test.mjs   # or: npm run test:ffmpeg   (a few seconds)
+.venv/bin/python -m unittest tests/test_ffmpeg_path.py            # the Python half alone
+```
+
+`ffmpeg-resolve.test.mjs` (9 checks) copies `update.sh` into a temp root with
+a fake `.venv` (`pip` only logs its arguments, `python` hands over to the real
+one) and runs just its ffmpeg step (`UPDATE_FFMPEG_ONLY=1`, test-only, no git)
+with `PATH=/usr/bin:/bin`: pip is asked for `imageio-ffmpeg`,
+`.venv/bin/ffmpeg` becomes a symlink into `imageio_ffmpeg` that runs
+`-version`, a stale link is replaced on the next run, no venv means the step is
+skipped, and a missing binary is a warning while the update carries on. Then it
+runs `tests/test_ffmpeg_path.py` (9 unittests): `ffmpeg_path.py` finds the
+bundled binary with an empty `PATH`, falls back to `PATH`, says "ffmpeg is
+missing: run ./update.sh" when there is none, `transcribe.py`'s decode works
+with an empty `PATH` and fails with that message without ffmpeg, and every
+yt-dlp option set in `player.py` carries `ffmpeg_location`.
+
 ## Sandbox tests
 
 Runnable checks against a **sandbox** copy of the app. Nothing here touches
