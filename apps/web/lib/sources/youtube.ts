@@ -333,21 +333,28 @@ interface RawYtPlaylist {
   title?: string;
   tracks?: RawYoutubeTrack[];
   error?: string;
+  reason?: 'private' | 'not-found' | 'failed';
 }
 
-/** Public YT Music playlist → name + normalized tracks (playlist import). */
+const YT_PLAYLIST_ERRORS: Record<NonNullable<RawYtPlaylist['reason']>, [string, number]> = {
+  private: ['That playlist is private. Set it to public or unlisted on YouTube Music, then try again.', 403],
+  'not-found': ["Couldn't find that playlist. Check the link and try again.", 404],
+  failed: ["Couldn't read that playlist from YouTube Music right now. Try again in a moment.", 502],
+};
+
+/** Public YT Music (or YouTube) playlist -> name + normalized tracks.
+ *  player.py reads it with ytmusicapi and falls back to yt-dlp. */
 export async function getYtPlaylist(playlistId: string): Promise<{ name: string; tracks: Track[] }> {
   if (!PLAYLIST_ID_RE.test(playlistId)) {
-    const e: PythonError = new Error('invalid playlistId');
+    const e: PythonError = new Error("That doesn't look like a playlist link.");
     e.status = 400;
     throw e;
   }
-  const result = await runPython<RawYtPlaylist>(['ytplaylist', '--', playlistId], { timeoutMs: 60000 });
+  const result = await runPython<RawYtPlaylist>(['ytplaylist', '--', playlistId], { timeoutMs: 90000 });
   if (result?.error) {
-    const e: PythonError = new Error(
-      "Couldn't open that playlist — it must be a public YouTube Music playlist.",
-    );
-    e.status = 404;
+    const [message, status] = YT_PLAYLIST_ERRORS[result.reason ?? 'failed'] ?? YT_PLAYLIST_ERRORS.failed;
+    const e: PythonError = new Error(message);
+    e.status = status;
     throw e;
   }
   return {
@@ -356,16 +363,47 @@ export async function getYtPlaylist(playlistId: string): Promise<{ name: string;
   };
 }
 
-interface RawMatchResult {
-  results?: (RawYoutubeTrack | null)[];
+/** A raw search hit from `player.py match`: the track plus what the scorer
+ *  reads. Unscored; lib/import/match.ts scores it. */
+export interface RawMatchCandidate {
+  track: Track;
+  artists: string[];
+  videoType: string | null;
+  explicit: boolean | null;
 }
 
-/** Match {title, artist} items (≤8 per call) onto YT Music songs; null = miss. */
-export async function matchTracks(items: { title: string; artist: string }[]): Promise<(Track | null)[]> {
+interface RawCandidateJson extends RawYoutubeTrack {
+  artists?: string[];
+  videoType?: string | null;
+  isExplicit?: boolean | null;
+}
+
+interface RawMatchResult {
+  results?: (RawCandidateJson[] | null)[];
+}
+
+/** Up to 5 YT Music candidates per {title, artist} item (8 or fewer items per
+ *  call), in input order. `titleOnly` searches the title alone with
+ *  ignore_spelling, the second try for items the first search missed. */
+export async function searchMatchCandidates(
+  items: { title: string; artist: string }[],
+  { titleOnly = false } = {},
+): Promise<RawMatchCandidate[][]> {
   if (!items.length) return [];
   const queries = items.map((i) => `${i.title}\t${i.artist}`);
-  const result = await runPython<RawMatchResult>(['match', '--', ...queries], { timeoutMs: 60000 });
-  return (result?.results ?? []).map((r) => (r && r.videoId ? normalize(r) : null));
+  const args = ['match', ...(titleOnly ? ['--title-only'] : []), '--', ...queries];
+  const result = await runPython<RawMatchResult>(args, { timeoutMs: 60000 });
+  const rows = result?.results ?? [];
+  return items.map((_, i) =>
+    (rows[i] ?? [])
+      .filter((r) => r && r.videoId)
+      .map((r) => ({
+        track: normalize(r),
+        artists: r.artists?.length ? r.artists : [r.artist].filter(Boolean),
+        videoType: r.videoType ?? null,
+        explicit: typeof r.isExplicit === 'boolean' ? r.isExplicit : null,
+      })),
+  );
 }
 
 export async function getArtist(channelId: string) {

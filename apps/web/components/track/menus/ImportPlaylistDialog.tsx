@@ -18,20 +18,25 @@ import { QK } from '@/hooks/useLibrary';
 import { logger } from '@/lib/logger/client';
 import { formatCount } from '@/lib/format';
 import type { Track } from '@/types/track';
+import type { MatchResult, SourceItem } from '@/lib/import/types';
+import { SPOTIFY_EMBED_LIMIT } from '@/lib/import/embed';
 
 const MATCH_BATCH = 8;
-
-interface SpotifyItem {
-  title: string;
-  artist: string;
-}
 
 type Phase =
   | { step: 'idle' }
   | { step: 'inspecting' }
-  | { step: 'preview'; source: 'spotify' | 'ytmusic'; name: string; total: number; tracks?: Track[]; items?: SpotifyItem[] }
+  | {
+      step: 'preview';
+      source: 'spotify' | 'ytmusic';
+      name: string;
+      total: number;
+      tracks?: Track[];
+      items?: SourceItem[];
+      truncated?: boolean;
+    }
   | { step: 'importing'; name: string; done: number; total: number }
-  | { step: 'done'; name: string; added: number; total: number; misses: SpotifyItem[] };
+  | { step: 'done'; name: string; added: number; total: number; review: MatchResult[]; misses: MatchResult[] };
 
 interface Props {
   open: boolean;
@@ -40,7 +45,9 @@ interface Props {
 
 /** Import a public Spotify / YouTube Music playlist from a pasted link.
  *  YTM arrives as ready tracks (one shot); Spotify goes through client-driven
- *  match batches so big playlists never hit one long request. */
+ *  match batches so big playlists never hit one long request. Only confident
+ *  matches are added: the rest are listed as "needs review" or "not found"
+ *  (the real review screen comes with background imports, docs/imports.md). */
 export function ImportPlaylistDialog({ open, onOpenChange }: Props) {
   const qc = useQueryClient();
   const [url, setUrl] = useState('');
@@ -68,11 +75,18 @@ export function ImportPlaylistDialog({ open, onOpenChange }: Props) {
       if (r.source === 'ytmusic') {
         setPhase({ step: 'preview', source: 'ytmusic', name: r.name, total: r.tracks.length, tracks: r.tracks });
       } else {
-        setPhase({ step: 'preview', source: 'spotify', name: r.name, total: r.items.length, items: r.items });
+        setPhase({
+          step: 'preview',
+          source: 'spotify',
+          name: r.name,
+          total: r.items.length,
+          items: r.items,
+          truncated: r.truncated,
+        });
       }
     } catch (e) {
-      // Server messages here are written for users (not-configured, private,
-      // editorial-blocked, bad link) — show them as-is.
+      // Server messages here are written for users (private, not found, bad
+      // link, Spotify unreachable): show them as-is.
       toast.error((e as Error).message);
       setPhase({ step: 'idle' });
     }
@@ -86,7 +100,8 @@ export function ImportPlaylistDialog({ open, onOpenChange }: Props) {
       const { playlist } = await api.createPlaylist(p.name);
       let added = 0;
       let done = 0;
-      const misses: SpotifyItem[] = [];
+      const review: MatchResult[] = [];
+      const misses: MatchResult[] = [];
       const bump = () => {
         done += 1;
         setPhase({ step: 'importing', name: p.name, done, total: p.total });
@@ -97,7 +112,7 @@ export function ImportPlaylistDialog({ open, onOpenChange }: Props) {
           await api.addToPlaylist(playlist.id, t);
           added += 1;
         } catch {
-          // Duplicate within the source playlist (same song twice) — skip.
+          // Duplicate within the source playlist (same song twice): skip.
         }
       };
 
@@ -112,22 +127,28 @@ export function ImportPlaylistDialog({ open, onOpenChange }: Props) {
         for (let i = 0; i < items.length; i += MATCH_BATCH) {
           if (cancelledRef.current) return;
           const slice = items.slice(i, i + MATCH_BATCH);
-          const { tracks } = await api.importMatch(slice);
-          for (let j = 0; j < slice.length; j++) {
+          const { results } = await api.importMatch(slice);
+          for (const r of results) {
             if (cancelledRef.current) return;
-            const t = tracks[j];
-            if (t) await addTrack(t);
-            else misses.push(slice[j]);
+            if (r.status === 'accepted' && r.candidates[0]) await addTrack(r.candidates[0].track);
+            else if (r.status === 'review') review.push(r);
+            else misses.push(r);
             bump();
           }
         }
       }
 
       void qc.invalidateQueries({ queryKey: QK.playlists });
-      logger.breadcrumb('import', 'done', { source: p.source, added, total: p.total, misses: misses.length });
-      setPhase({ step: 'done', name: p.name, added, total: p.total, misses });
+      logger.breadcrumb('import', 'done', {
+        source: p.source,
+        added,
+        total: p.total,
+        review: review.length,
+        misses: misses.length,
+      });
+      setPhase({ step: 'done', name: p.name, added, total: p.total, review, misses });
     } catch {
-      toast.error('Import failed partway — the playlist may be incomplete. Try again.');
+      toast.error('Import failed partway, so the playlist may be incomplete. Try again.');
       void qc.invalidateQueries({ queryKey: QK.playlists });
       setPhase({ step: 'idle' });
     }
@@ -135,7 +156,7 @@ export function ImportPlaylistDialog({ open, onOpenChange }: Props) {
 
   const body = (() => {
     if (phase.step === 'inspecting') {
-      return <div className="py-8 text-center text-sm text-muted-foreground">Looking up the playlist…</div>;
+      return <div className="py-8 text-center text-sm text-muted-foreground">Looking up the playlist...</div>;
     }
     if (phase.step === 'preview') {
       return (
@@ -143,8 +164,14 @@ export function ImportPlaylistDialog({ open, onOpenChange }: Props) {
           <div className="text-sm font-semibold truncate">{phase.name}</div>
           <div className="mt-1 text-sm text-muted-foreground">
             {formatCount(phase.total, 'track')} · {phase.source === 'spotify' ? 'Spotify' : 'YouTube Music'}
-            {phase.source === 'spotify' && ' — each track gets matched on YouTube Music'}
+            {phase.source === 'spotify' && '. Each song is matched on YouTube Music.'}
           </div>
+          {phase.truncated && (
+            <div className="mt-block text-sm text-muted-foreground">
+              Spotify only shares the first {SPOTIFY_EMBED_LIMIT} songs of a playlist through a link, so a longer
+              playlist stops there.
+            </div>
+          )}
         </div>
       );
     }
@@ -153,7 +180,7 @@ export function ImportPlaylistDialog({ open, onOpenChange }: Props) {
       return (
         <div className="py-4">
           <div className="text-sm text-muted-foreground mb-2">
-            Importing… {phase.done}/{phase.total} — keep this open
+            Importing {phase.done}/{phase.total}. Keep this open.
           </div>
           <div className="h-2 rounded-full bg-muted overflow-hidden">
             <div className="h-full bg-ember transition-[width] duration-300" style={{ width: `${pct}%` }} />
@@ -167,15 +194,33 @@ export function ImportPlaylistDialog({ open, onOpenChange }: Props) {
           <div className="text-sm font-semibold">
             Added {phase.added} of {phase.total} to “{phase.name}”
           </div>
-          {phase.misses.length > 0 && (
+          {phase.review.length > 0 && (
             <div className="mt-3">
               <div className="text-xs uppercase tracking-widest text-muted-foreground mb-1.5">
-                Not found on YouTube Music
+                Needs review ({phase.review.length})
               </div>
               <div className="max-h-40 overflow-y-auto text-sm text-muted-foreground">
-                {phase.misses.map((m, i) => (
-                  <div key={`${m.title}-${i}`} className="truncate">
-                    {m.title} — {m.artist}
+                {phase.review.map((r) => {
+                  const best = r.candidates[0];
+                  return (
+                    <div key={`review-${r.item.position}`} className="truncate">
+                      {r.item.title}, {r.item.artist}
+                      {best && `: maybe “${best.track.title}” by ${best.track.artist} (${best.reasons.join(', ')})`}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+          {phase.misses.length > 0 && (
+            <div className="mt-block">
+              <div className="text-xs uppercase tracking-widest text-muted-foreground mb-cluster">
+                Not found ({phase.misses.length})
+              </div>
+              <div className="max-h-40 overflow-y-auto text-sm text-muted-foreground">
+                {phase.misses.map((m) => (
+                  <div key={`missing-${m.item.position}`} className="truncate">
+                    {m.item.title}, {m.item.artist}
                   </div>
                 ))}
               </div>
@@ -192,7 +237,7 @@ export function ImportPlaylistDialog({ open, onOpenChange }: Props) {
         onKeyDown={(e) => {
           if (e.key === 'Enter' && url.trim()) void inspect();
         }}
-        placeholder="Paste a Spotify or YouTube Music playlist link…"
+        placeholder="Paste a Spotify or YouTube Music playlist link"
         className="mt-2"
       />
     );

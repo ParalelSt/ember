@@ -1,5 +1,6 @@
 import type { AlbumDetail, ArtistPayload, Playlist, SessionState, Track } from '@/types/track';
 import { logger } from '@/lib/logger/client';
+import type { InspectResult, MatchResult, SourceItem } from '@/lib/import/types';
 
 export interface AdminUser {
   id: string;
@@ -108,16 +109,13 @@ export const api = {
   endSession: (id: string) => req<{ ok: true }>(`/sessions/${id}/end`, { method: 'POST' }),
   saveSession: (id: string, name?: string) =>
     req<{ playlist: { id: string; name: string } }>(`/sessions/${id}/save`, { method: 'POST', body: { name } }),
-  /** Inspect a pasted Spotify / YT Music playlist link. YTM answers with
-   *  ready Ember tracks; Spotify answers with raw items for importMatch. */
+  /** Inspect a pasted playlist link. YT Music answers with ready Ember
+   *  tracks; Spotify answers with its source items for importMatch. */
   importInspect: (url: string) =>
-    req<
-      | { source: 'ytmusic'; name: string; tracks: Track[] }
-      | { source: 'spotify'; name: string; items: { title: string; artist: string }[] }
-    >('/import/inspect', { method: 'POST', body: { url } }),
-  /** Match ≤8 Spotify items onto YT Music (null = no match). */
-  importMatch: (items: { title: string; artist: string }[]) =>
-    req<{ tracks: (Track | null)[] }>('/import/match', { method: 'POST', body: { items } }),
+    req<InspectResult>('/import/inspect', { method: 'POST', body: { url } }),
+  /** Match 8 or fewer source items onto YT Music: status plus scored candidates each. */
+  importMatch: (items: SourceItem[]) =>
+    req<{ results: MatchResult[] }>('/import/match', { method: 'POST', body: { items } }),
   // — Recent searches (server-backed so they sync across devices) —
   listRecentSearches: () => req<{ tracks: Track[] }>('/recent-searches'),
   addRecentSearch: (track: Track) =>
