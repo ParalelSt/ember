@@ -64,6 +64,16 @@ case "$CMD" in
       "${FAKE_STREAM_URL:-http://127.0.0.1:9/nope}"
     ;;
   match)
+    # FAKE_503_ONCE names a flag file: while it exists, the next match call
+    # fails the way a rate-limited YouTube Music search does, and removes it
+    # (so exactly one call fails). FAKE_MATCH_SECONDS slows every call, so a
+    # test can stop the server mid-import.
+    if [ -n "${FAKE_503_ONCE:-}" ] && [ -f "$FAKE_503_ONCE" ]; then
+      rm -f "$FAKE_503_ONCE"
+      echo "ERROR: HTTP Error 503: Service Unavailable" >&2
+      exit 1
+    fi
+    sleep "${FAKE_MATCH_SECONDS:-0}"
     # Candidates per query from $FAKE_MATCH_FIXTURE (default
     # fixtures/imports/ytm-candidates.json), keyed "title artist", or
     # "title-only:title" for --title-only. Any other query gets one unrelated
