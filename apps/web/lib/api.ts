@@ -1,6 +1,6 @@
 import type { AlbumDetail, ArtistPayload, Playlist, SessionState, Track } from '@/types/track';
 import { logger } from '@/lib/logger/client';
-import type { InspectResult, MatchResult, SourceItem } from '@/lib/import/types';
+import type { ImportItem, ImportJob, InspectResult } from '@/lib/import/types';
 
 export interface AdminUser {
   id: string;
@@ -109,13 +109,28 @@ export const api = {
   endSession: (id: string) => req<{ ok: true }>(`/sessions/${id}/end`, { method: 'POST' }),
   saveSession: (id: string, name?: string) =>
     req<{ playlist: { id: string; name: string } }>(`/sessions/${id}/save`, { method: 'POST', body: { name } }),
-  /** Inspect a pasted playlist link. YT Music answers with ready Ember
-   *  tracks; Spotify answers with its source items for importMatch. */
+  /** Inspect a pasted playlist link for the create dialog's preview. */
   importInspect: (url: string) =>
     req<InspectResult>('/import/inspect', { method: 'POST', body: { url } }),
-  /** Match 8 or fewer source items onto YT Music: status plus scored candidates each. */
-  importMatch: (items: SourceItem[]) =>
-    req<{ results: MatchResult[] }>('/import/match', { method: 'POST', body: { items } }),
+  /** Create the playlist and queue its import; the server does the rest. */
+  importStart: (url: string) =>
+    req<{ job: ImportJob; playlistId: string }>('/import/jobs', { method: 'POST', body: { url } }),
+  listImportJobs: () => req<{ jobs: ImportJob[] }>('/import/jobs'),
+  getImportJob: (id: string) => req<{ job: ImportJob; items: ImportItem[] }>(`/import/jobs/${encodeURIComponent(id)}`),
+  updateImportJob: (id: string, action: 'cancel' | 'retry' | 'dismiss') =>
+    req<{ job: ImportJob }>(`/import/jobs/${encodeURIComponent(id)}`, { method: 'PATCH', body: { action } }),
+  /** Settle one imported song: put `track` in at its source position, or
+   *  leave the song out. */
+  pickImportItem: (id: string, track: Track) =>
+    req<{ item: ImportItem; job: ImportJob }>(`/import/items/${encodeURIComponent(id)}`, {
+      method: 'POST',
+      body: { action: 'pick', track },
+    }),
+  skipImportItem: (id: string) =>
+    req<{ item: ImportItem; job: ImportJob }>(`/import/items/${encodeURIComponent(id)}`, {
+      method: 'POST',
+      body: { action: 'skip' },
+    }),
   // — Recent searches (server-backed so they sync across devices) —
   listRecentSearches: () => req<{ tracks: Track[] }>('/recent-searches'),
   addRecentSearch: (track: Track) =>
