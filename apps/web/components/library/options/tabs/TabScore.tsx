@@ -22,6 +22,9 @@ export interface TabScoreProps {
   scale?: number;
   /** alphaTex to draw instead of the bundled sample (the paste previews). */
   tex?: string;
+  /** Show the still "playing" cursor on bar 2 (off in the paste previews,
+   *  where nothing plays yet). */
+  cursor?: boolean;
   className?: string;
 }
 
@@ -45,7 +48,7 @@ export function TabScore(props: TabScoreProps) {
   return <ScoreCanvas key={`${staff}:${scroll}:${track}:${scale}:${tex}`} {...props} />;
 }
 
-function ScoreCanvas({ staff, scroll, track, scale = 0.9, tex = SAMPLE_TEX, className }: TabScoreProps) {
+function ScoreCanvas({ staff, scroll, track, scale = 0.9, tex = SAMPLE_TEX, cursor: showCursor = true, className }: TabScoreProps) {
   const scrollerRef = useRef<HTMLDivElement>(null);
   const hostRef = useRef<HTMLDivElement>(null);
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading');
@@ -136,7 +139,7 @@ function ScoreCanvas({ staff, scroll, track, scale = 0.9, tex = SAMPLE_TEX, clas
       )}
     >
       <div className="relative">
-        {cursor && (
+        {showCursor && cursor && (
           <>
             <div
               aria-hidden

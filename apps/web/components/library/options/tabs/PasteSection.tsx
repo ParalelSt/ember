@@ -129,7 +129,15 @@ function Preview({ state, phone, className }: { state: PasteState; phone: boolea
   return (
     <div data-testid="paste-preview" className={cn('min-h-0 min-w-0 rounded-lg border border-border', className)}>
       {result.ok ? (
-        <TabScore tex={result.alphaTex} staff="tab" scroll="vertical" track={0} scale={phone ? 0.55 : 0.7} className="p-cluster" />
+        <TabScore
+          tex={result.alphaTex}
+          staff="tab"
+          scroll="vertical"
+          track={0}
+          scale={phone ? 0.55 : 0.7}
+          cursor={false}
+          className="p-cluster"
+        />
       ) : (
         <div className="text-meta p-block">Nothing to draw yet: {result.error}</div>
       )}
@@ -255,7 +263,7 @@ function InlineEditor({ state, phone }: { state: PasteState; phone: boolean }) {
       <div className="mt-block">
         <FindOne />
       </div>
-      <PasteBox state={state} className={cn('mt-row', phone ? 'h-48' : 'h-56')} />
+      <PasteBox state={state} className="mt-row h-44" />
       <div className="text-eyebrow mt-block">Preview</div>
       <Preview state={state} phone={phone} className="mt-cluster" />
     </div>
