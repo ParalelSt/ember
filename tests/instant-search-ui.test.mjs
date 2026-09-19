@@ -175,6 +175,44 @@ check('clicking outside the popup dismisses it too, no conflict with our Escape 
 check('no console/page errors from the overlay\'s open/close paths (Escape, close button, outside click)',
   pageErrors.length === 0, pageErrors.slice(0, 3).join(' | '));
 
+// Regression: the overlay caps at max-w-xl (~576px) regardless of window
+// size, but TrackRow's desktop 5-column shape (album + duration columns)
+// used to switch on the *viewport* (md: 768px), not the space the row
+// actually has. On any window at least 768px wide, that put the overlay's
+// rows in the desktop shape squeezed into ~544px, splitting title and
+// album into equal, too-narrow halves (titles like "Yes Sir, I Can Boogie"
+// truncated to "Yes Sir, I…"). Checked at 1280x720 and 1536x864: both are
+// well past 768px viewport width, so both used to reproduce it.
+for (const size of [{ width: 1280, height: 720 }, { width: 1536, height: 864 }]) {
+  await page.setViewportSize(size);
+  await searchLink.click();
+  await input.waitFor({ state: 'visible', timeout: 2000 });
+  await input.fill('yes sir');
+  await page.getByText('Results for').first().waitFor({ timeout: 15000 });
+  await page.locator('[data-testid="track-row"]').first().waitFor({ timeout: 15000 });
+
+  const dialogBox = await page.locator('[data-slot="dialog-content"]').boundingBox();
+  const label = `${size.width}x${size.height}`;
+  check(`overlay stays fully inside the viewport at ${label}`,
+    !!dialogBox && dialogBox.x >= 0 && dialogBox.x + dialogBox.width <= size.width,
+    dialogBox ? `left=${dialogBox.x} right=${dialogBox.x + dialogBox.width} viewport=${size.width}` : 'no dialog box');
+
+  const rows = await page.locator('[data-testid="track-row"]').all();
+  let minRatio = Infinity;
+  for (const row of rows) {
+    const rowBox = await row.boundingBox();
+    const titleBox = await row.locator('[data-testid="track-row-title-cell"]').boundingBox();
+    if (!rowBox || !titleBox || rowBox.width === 0) continue;
+    minRatio = Math.min(minRatio, titleBox.width / rowBox.width);
+  }
+  check(`every result title is at least 45% of its row width at ${label}`,
+    rows.length > 0 && minRatio >= 0.45, `${rows.length} rows, min ratio ${minRatio.toFixed(2)}`);
+
+  await input.fill('');
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(200);
+}
+
 await browser.close();
 
 const failed = checks.filter(([, p]) => !p);
