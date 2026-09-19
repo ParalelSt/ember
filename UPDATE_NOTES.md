@@ -1,3 +1,12 @@
+# 0.3.7: Radio works for every song
+
+**Host: a normal rebuild and restart (`./update.sh`). Nothing to configure.**
+
+- **Recommendations (radio) work for every song**: a small slice of
+  YouTube ids legitimately start with a dash, and those seeds were
+  crashing the recommendation lookup with a 502; fixed at the call site so
+  it can't recur.
+
 # 0.3.6: Trending fits better
 
 **Host: a normal rebuild and restart (`./update.sh`). No `npm install`, no

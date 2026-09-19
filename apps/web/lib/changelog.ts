@@ -21,6 +21,16 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    id: 'radio-works-for-every-song',
+    version: '0.3.7',
+    date: '2026-09-19',
+    title: 'Radio works for every song',
+    summary: 'Songs whose id starts with a dash no longer break the recommendations that fill your queue.',
+    bullets: [
+      'A small slice of YouTube ids legitimately start with a dash; those songs now start radio normally instead of failing.',
+    ],
+  },
+  {
     id: 'trending-fits-better',
     version: '0.3.6',
     date: '2026-09-19',
