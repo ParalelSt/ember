@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { QK, useQueryTrack } from '@/hooks/useLibrary';
@@ -76,6 +76,11 @@ export interface TabSourcesState {
   /** After "Search online again": what it came back with, for one quiet
    *  line. Null before or while it runs. */
   searchAgainResult: 'found' | 'none' | 'failed' | null;
+  /** Line one of the song's tabs up with the recording, from the Source
+   *  sheet's row (docs/tabs-v3.md stage 6). */
+  lineUp: (tabId: string) => void;
+  /** Tabs whose "Line it up" is still running. */
+  liningUp: string[];
 }
 
 function againResult(
@@ -86,6 +91,25 @@ function againResult(
   if (pending || (!failed && !data)) return null;
   if (failed || data?.status === 'failed') return 'failed';
   return data && data.added > 0 ? 'found' : 'none';
+}
+
+/** align.py gives up after five minutes (lib/tabAlign.ts); a row waiting
+ *  longer than that has nothing left to wait for. */
+const ALIGN_GIVE_UP_MS = 6 * 60 * 1000;
+
+/** Of the tabs someone pressed "Line it up" on, the ones still waiting: the
+ *  row is there, its confidence is the one it had when the job was asked
+ *  for, and align.py has not had longer than its own cap. Worked out at
+ *  render time, so a finished job needs no effect to clear it. */
+function stillWaiting(asked: Record<string, { was: number | null; at: number }>, rows: TabSummary[] | undefined): string[] {
+  return Object.entries(asked)
+    .filter(([tabId, started]) => {
+      if (Date.now() - started.at >= ALIGN_GIVE_UP_MS) return false;
+      if (!rows) return true;
+      const row = rows.find((t) => t.id === tabId);
+      return !!row && (row.timing?.confidence ?? null) === started.was;
+    })
+    .map(([tabId]) => tabId);
 }
 
 /** The source chain for one song (docs/tabs-rebuild.md section 3), plus the
@@ -99,11 +123,19 @@ export function useTabSources(song: TabSong | null): TabSourcesState {
   const canGenerate = !!song && canGenerateFor(id);
   const tabsKey = ['track-tabs', id, title, artist];
 
+  // Tabs the listener asked to line up from the Source sheet. While one is
+  // waiting the chain is re-read every few seconds; a tab leaves the list
+  // when its row comes back with a different confidence (align.py wrote a
+  // new timing), or when the job has had longer than align.py's own cap.
+  const [waiting, setWaiting] = useState<Record<string, { was: number | null; at: number }>>({});
+
   const tabsQuery = useQuery({
     queryKey: tabsKey,
     queryFn: () => api.getTrackTabs(id, title, artist).then((r) => r.tabs),
     enabled: !!song,
+    refetchInterval: (q) => (stillWaiting(waiting, q.state.data).length > 0 ? 4000 : false),
   });
+  const liningUp = stillWaiting(waiting, tabsQuery.data);
   const generatedQuery = useQuery({
     queryKey: ['generated-tab', id],
     queryFn: () => api.getGeneratedTab(id),
@@ -167,6 +199,11 @@ export function useTabSources(song: TabSong | null): TabSourcesState {
     mutationFn: ({ tabId, offsetMs }: { tabId: string; offsetMs: number }) => api.saveTabOffset(tabId, offsetMs),
     onSuccess: refresh,
   });
+  const lineUpOne = useMutation({
+    mutationFn: (tabId: string) => api.lineTabUp(tabId),
+    onError: (_e, tabId) =>
+      setWaiting((m) => Object.fromEntries(Object.entries(m).filter(([k]) => k !== tabId))),
+  });
 
   // A job that finishes is drawable at once: drawableTabs stands in for its
   // row until the next fetch of the chain brings the real one.
@@ -190,8 +227,16 @@ export function useTabSources(song: TabSong | null): TabSourcesState {
     searchingOnline: online.isFetching || searchAgain.isPending,
     searchOnlineAgain: () => searchAgain.mutate(),
     searchAgainResult: againResult(searchAgain.isPending, searchAgain.isError, searchAgain.data),
+    lineUp: (tabId) => {
+      if (!tabId || tabId.startsWith('generated:')) return;
+      const was = (tabsQuery.data ?? []).find((t) => t.id === tabId)?.timing?.confidence ?? null;
+      setWaiting((m) => ({ ...m, [tabId]: { was, at: Date.now() } }));
+      lineUpOne.mutate(tabId);
+    },
+    liningUp,
   };
 }
+
 
 // ── lining a tab up with the recording ────────────────────────────────────
 
@@ -207,11 +252,12 @@ export interface TabAlignment {
 
 /** The alignment of the tab on screen (docs/tabs-v3.md section 3): what the
  *  server worked out, whether a job is running now (asked again every few
- *  seconds while it is), and the button that runs it again. Only tabs found
- *  online are lined up. */
+ *  seconds while it is), and the button that runs it again. Every kind of
+ *  tab can be lined up now (stage 7 ranks them by how well they match); a
+ *  generated tab with no row of its own yet is the one exception. */
 export function useTabAlignment(tab: TabSummary | null): TabAlignment {
   const qc = useQueryClient();
-  const id = tab?.kind === 'fetched' ? tab.id : '';
+  const id = tab && !tab.id.startsWith('generated:') ? tab.id : '';
   const known = isLinedUp(tab?.timing);
   const query = useQuery({
     queryKey: ['tab-align', id],

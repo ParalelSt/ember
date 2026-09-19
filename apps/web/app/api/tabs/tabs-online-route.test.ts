@@ -59,7 +59,14 @@ vi.mock('@/lib/pocketbase/server', () => ({ createAdminClient: async () => store
 const alignedRows: string[] = [];
 vi.mock('@/lib/tabAlign', () => ({
   alignInBackground: (_pb: unknown, rows: { id: string }[]) => alignedRows.push(...rows.map((r) => r.id)),
+  // The real one keeps the rows that have never been through align.py,
+  // best source first, capped (lib/tabAlign.test.ts covers that).
+  autoAlignQueue: (rows: { id: string }[]) => rows,
 }));
+
+/** The route queues the alignments after it answers, so the test waits for
+ *  that turn of the event loop before reading what was queued. */
+const settle = () => new Promise((r) => setTimeout(r, 0));
 
 const online = await import('./online/route');
 const download = await import('./files/[id]/download/route');
@@ -111,6 +118,7 @@ describe('POST /api/tabs/online', () => {
       'http://ug.test/tab/the-lantern-keepers/harbour-lights-bass-9100011',
     ]);
     const row = store.rows.get('tabs')![0];
+    await settle();
     expect(alignedRows).toEqual(store.rows.get('tabs')!.map((r) => r.id));
     expect(fs.existsSync(path.join(musicDir, 'tabs', 'fetched', String(row.file)))).toBe(true);
     const dl = await download.GET(req(`/api/tabs/files/${row.id}/download`), { params: Promise.resolve({ id: row.id }) } as never);

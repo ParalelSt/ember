@@ -19,6 +19,8 @@ import {
 } from '@/components/library/options/tabs';
 import { TabsToolbar, chip, chipOff, chipOn } from '@/components/tabs/TabsToolbar';
 import { TabSheetHeader, TabSourceChip } from '@/components/tabs/TabSheetHeader';
+import { TabSourceSheet, type TabSheetAction } from '@/components/tabs/TabSourceSheet';
+import type { TabSheetRow } from '@/lib/tabPick';
 import { tabSearchLinks } from '@/lib/tabSearchLinks';
 import { cn } from '@/lib/utils';
 import {
@@ -238,161 +240,45 @@ A|-0---0---3---5--|-0---3---5------|
 D|-0---0---3---5--|-0---3---5---0--|`,
 };
 
-/** One match as a card in the source sheet. */
-function SourceCard({ source, on, onPick }: { source: MockTabSource; on: boolean; onPick: () => void }) {
-  return (
-    <button
-      type="button"
-      role="radio"
-      aria-checked={on}
-      data-testid="v3-sheet-card"
-      onClick={onPick}
-      className={cn(
-        'block w-full min-w-0 rounded-xl border p-row text-left transition-colors',
-        on ? 'border-ember/40 bg-card' : 'border-border hover:bg-card',
-      )}
-    >
-      <span className="flex min-w-0 items-center justify-between gap-row">
-        <span className="text-eyebrow min-w-0 truncate">
-          {source.type}
-        </span>
-        <LinedBadge lined={source.lined} />
-      </span>
-      <span title={source.name} className={cn('mt-inset line-clamp-2 break-words text-sm font-semibold', on && 'text-ember')}>
-        {source.name}
-      </span>
-      {source.rating !== undefined && (
-        <span className="mt-inset block">
-          <Rating source={source} long />
-        </span>
-      )}
-      <span className="mt-cluster flex min-w-0 flex-wrap gap-inset">
-        {source.instruments.map((i) => (
-          <span key={i} title={i} className="max-w-full truncate rounded-full bg-muted px-cluster py-inset text-[11px] text-muted-foreground">
-            {i}
-          </span>
-        ))}
-      </span>
-      {source.lined !== null && (
-        <span className="mt-cluster flex items-center gap-cluster text-[11px] text-muted-foreground">
-          <span className="relative h-1 min-w-0 flex-1 rounded-full bg-muted">
-            <span
-              className={cn('absolute inset-y-0 left-0 rounded-full', isLined(source.lined) ? 'bg-ember' : 'bg-muted-foreground/60')}
-              style={{ width: `${source.lined}%` }}
-            />
-          </span>
-          <span className="shrink-0 tabular-nums">{source.lined}% sure</span>
-        </span>
-      )}
-      <span
-        aria-hidden
-        className="mt-cluster block overflow-hidden whitespace-pre rounded-md bg-background/60 p-cluster font-mono text-[10px] leading-3 text-muted-foreground"
-      >
-        {PREVIEWS[source.preview]}
-      </span>
-    </button>
-  );
+/** A mock match as the production sheet's row (lib/tabPick.ts builds the
+ *  real ones from the store). The sheet itself is the very component the
+ *  tab page uses: components/tabs/TabSourceSheet.tsx. */
+function mockRow(s: MockTabSource, selectedId: string): TabSheetRow {
+  const ok = isLined(s.lined);
+  const votes = (s.votes ?? 0).toLocaleString('en-US');
+  return {
+    id: s.id,
+    group: s.site,
+    groupLabel: s.siteLabel,
+    type: s.type,
+    name: s.name,
+    rating: s.rating === undefined ? '' : `\u2605 ${s.rating.toFixed(1)} (${votes} votes)`,
+    instruments: s.instruments,
+    confidence: s.lined,
+    linedUp: ok,
+    status: ok ? `Lined up ${s.lined}%` : 'Not lined up yet',
+    badge: s.id === selectedId ? 'Best match' : null,
+    addedBy: null,
+    drawn: s.id === selectedId,
+    canDelete: false,
+    canLineUp: true,
+    aligning: false,
+  };
 }
 
-/** B. A side sheet over the content column (desktop) or a bottom sheet
- *  over the whole app (phone): a card per match, grouped by site. */
-function SourceSheet({ state, sources, selectedId, phone, onPick, onClose }: PickerProps) {
-  const online = sources.filter((s) => s.site !== 'server').length;
-  const body = (
-    <>
-      <div className="flex shrink-0 items-start justify-between gap-row px-block pt-block">
-        <div className="min-w-0">
-          <div className="text-eyebrow">Tabs for this song</div>
-          <div className="truncate font-semibold">
-            {SONG.title} <span className="font-normal text-muted-foreground">· {SONG.artist}</span>
-          </div>
-          <div className="text-meta mt-inset">
-            {state === 'searching'
-              ? 'Looking online…'
-              : sources.length > 0
-                ? `${sources.length} tabs, ${online} found online`
-                : 'Nothing found online'}
-          </div>
-        </div>
-        <button
-          type="button"
-          aria-label="Close the tab list"
-          onClick={onClose}
-          className="grid size-8 shrink-0 place-items-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-        >
-          <CloseIcon className="size-4" />
-        </button>
-      </div>
-      <div role="radiogroup" aria-label="Tabs for this song" className="flex min-h-0 flex-1 flex-col gap-block overflow-y-auto px-block py-block">
-        {state === 'searching' && (
-          <div className="flex flex-col gap-row">
-            <SiteChecks />
-            {[0, 1].map((i) => (
-              <Skeleton key={i} className="h-36 w-full rounded-xl" />
-            ))}
-          </div>
-        )}
-        {state === 'nothing' && (
-          <p className="text-sm text-muted-foreground">
-            Ember checked Songsterr and Ultimate Guitar today. Nothing for this song yet.
-          </p>
-        )}
-        {groupBySite(sources).map((g) => (
-          <div key={g.site} className="flex flex-col gap-cluster">
-            <div className="text-eyebrow">{g.items[0].siteLabel}</div>
-            {g.items.map((s) => (
-              <SourceCard key={s.id} source={s} on={s.id === selectedId} onPick={() => onPick(s.id)} />
-            ))}
-          </div>
-        ))}
-      </div>
-      <div className="flex shrink-0 flex-wrap gap-cluster border-t border-border px-block py-row">
-        {(state === 'found' || state === 'not-lined-up') && (
-          <Button size="sm" variant="outline">
-            Line it up again
-          </Button>
-        )}
-        {state !== 'searching' && (
-          <Button size="sm" variant="outline">
-            Search online again
-          </Button>
-        )}
-        <Button size="sm" variant="ghost">
-          Paste a tab
-        </Button>
-        <Button size="sm" variant="ghost">
-          Add a file
-        </Button>
-      </div>
-    </>
-  );
-
-  if (phone) {
-    return (
-      <div data-testid="v3-source-sheet" className="absolute inset-0 z-40 flex flex-col">
-        <button type="button" aria-label="Close the tab list" onClick={onClose} className="h-[18%] shrink-0 bg-black/50" />
-        <div
-          role="dialog"
-          aria-label="Choose a tab"
-          className="flex min-h-0 flex-1 flex-col rounded-t-2xl border-t border-border bg-sidebar text-sidebar-foreground shadow-soft"
-        >
-          <div aria-hidden className="mx-auto mt-cluster h-1 w-10 shrink-0 rounded-full bg-muted" />
-          {body}
-        </div>
-      </div>
-    );
-  }
-  return (
-    <aside
-      data-testid="v3-source-sheet"
-      role="dialog"
-      aria-label="Choose a tab"
-      className="absolute inset-y-0 right-0 z-30 flex w-[420px] flex-col border-l border-sidebar-border bg-sidebar text-sidebar-foreground shadow-soft"
-    >
-      {body}
-    </aside>
-  );
+/** The sheet's inert footer buttons, the same set PickerActions lists. */
+function mockActions(state: TabsV3State): TabSheetAction[] {
+  const drawn = state === 'found' || state === 'not-lined-up';
+  const all: (TabSheetAction | null)[] = [
+    drawn ? { id: 'line-up', label: 'Line it up again', onClick: NOOP } : null,
+    state !== 'searching' ? { id: 'search', label: 'Search online again', onClick: NOOP } : null,
+    { id: 'paste', label: 'Paste a tab', onClick: NOOP, variant: 'ghost' },
+    { id: 'file', label: 'Add a file', onClick: NOOP, variant: 'ghost' },
+  ];
+  return all.filter((a): a is TabSheetAction => !!a);
 }
+
+const NOTHING_NOTE = 'Ember checked Songsterr and Ultimate Guitar today. Nothing for this song yet.';
 
 /** Where the score will be, while Ember looks: a toolbar and three
  *  systems of six string lines, pulsing. */
@@ -668,18 +554,25 @@ export function FoundOnlineSection({ picker, state }: FoundOnlineSectionProps) {
       onScrollChange: setScroll,
       onTrackChange: setTrack,
     };
+    const sheetSources = sourcesFor(state);
     const sheet =
-      picker === 'sheet' && open ? (
-        <SourceSheet
-          state={state}
-          sources={sourcesFor(state)}
-          selectedId={selectedId}
+      picker === 'sheet' ? (
+        <TabSourceSheet
+          open={open}
           phone={phone}
+          position="absolute"
+          title={SONG.title}
+          artist={SONG.artist}
+          rows={sheetSources.map((s) => mockRow(s, selectedId))}
+          searching={state === 'searching'}
+          emptyNote={NOTHING_NOTE}
+          previewOf={(row) => PREVIEWS[sheetSources.find((s) => s.id === row.id)?.preview ?? 'guitar']}
           onPick={(id) => {
             setSelectedId(id);
             setOpen(false);
           }}
           onClose={() => setOpen(false)}
+          actions={mockActions(state)}
         />
       ) : null;
     let overlay: ReactNode = null;

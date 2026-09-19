@@ -32,7 +32,8 @@ const TEX = `\\title "Copper Tide"
 3.6.4 5.6.4 7.6.4 5.6.4 |
 `;
 
-const { alignmentStatus, alignTab, audioForTrack, resetAlignment } = await import('./tabAlign');
+const { alignmentStatus, alignTab, alreadyTried, audioForTrack, autoAlignQueue, MAX_AUTO_ALIGN, resetAlignment } =
+  await import('./tabAlign');
 const { FETCHED_DIR } = await import('./tabs');
 
 let store: FakePb;
@@ -77,6 +78,8 @@ describe('lining a tab up', () => {
     // tab's bars and notes on the tab's own clock (100 bpm, 4/4).
     expect(fs.existsSync(plan)).toBe(false);
     expect(store.rows.get('tabs')![0].timing).toEqual(TIMING);
+    // Marked as tried, so the automatic pass leaves it alone from now on.
+    expect(String(store.rows.get('tabs')![0].aligned_at)).toMatch(/^\d{4}-/);
     expect(alignmentStatus(store.rows.get('tabs')![0])).toEqual({
       status: 'ready',
       timing: { offsetMs: 1350, bpm: 97.4, confidence: 0.82, bars: TIMING.bars },
@@ -99,6 +102,32 @@ describe('lining a tab up', () => {
       status: 'failed',
       error: 'could not decode the audio: broken',
     });
+    // A failure counts as a try: the automatic pass never listens twice.
+    expect(String(store.rows.get('tabs')![0].aligned_at)).toMatch(/^\d{4}-/);
+    expect(alreadyTried(store.rows.get('tabs')![0])).toBe(true);
+  });
+
+  it('lines up the best sources first, once each, and no more than four', () => {
+    const rows = [
+      { id: 'gen', kind: 'generated' },
+      { id: 'paste', kind: 'pasted' },
+      { id: 'ugbass', kind: 'fetched', source_site: 'ug' },
+      { id: 'ss', kind: 'fetched', source_site: 'songsterr' },
+      { id: 'file', kind: 'file' },
+      { id: 'ugtab', kind: 'fetched', source_site: 'ug' },
+    ] as never[];
+    expect(autoAlignQueue(rows).map((r) => r.id)).toEqual(['file', 'ss', 'ugbass', 'ugtab']);
+    expect(MAX_AUTO_ALIGN).toBe(4);
+
+    // A tab that has been through align.py is left alone, whether it came
+    // back with a timing or with nothing.
+    const tried = [
+      { id: 'done', kind: 'file', timing: { offset_ms: 0, confidence: 0.9, bpm: 100, bars: [] } },
+      { id: 'failed', kind: 'file', aligned_at: '2026-09-20T00:00:00Z' },
+      { id: 'fresh', kind: 'file' },
+    ] as never[];
+    expect(tried.map(alreadyTried)).toEqual([true, true, false]);
+    expect(autoAlignQueue(tried).map((r) => r.id)).toEqual(['fresh']);
   });
 
   it('says so when Ember has no recording, and when the tab has no file', async () => {

@@ -6,7 +6,8 @@ import { rateLimitResponse } from '@/lib/rateLimit';
 import { serverLogger } from '@/lib/logger/server';
 import { withRequestLog } from '@/lib/logger/withRequestLog';
 import { findOnline } from '@/lib/tabFetch/online';
-import { alignInBackground } from '@/lib/tabAlign';
+import { alignInBackground, autoAlignQueue } from '@/lib/tabAlign';
+import { findTabs } from '@/lib/tabStore';
 
 /** Look for a song's tab online (docs/tabs-v3.md, stage 3).
  *
@@ -40,18 +41,18 @@ export const POST = withRequestLog('tabs/online', async (request: NextRequest) =
     if (limited) return limited;
 
     const pb = await createAdminClient();
-    const result = await findOnline(
-      pb,
-      { title, artist: str('artist'), trackId: str('trackId', 80) },
-      {
-        again,
-        freshPb: createAdminClient,
-        // Every tab found is lined up with the recording in the background
-        // (docs/tabs-v3.md section 3); the page draws it meanwhile and asks
-        // how it went through /api/tabs/align.
-        onAdded: (rows) => alignInBackground(pb, rows, { freshPb: createAdminClient }),
-      },
-    );
+    const song = { title, artist: str('artist'), trackId: str('trackId', 80) };
+    const result = await findOnline(pb, song, { again, freshPb: createAdminClient });
+
+    // Every candidate for the song is lined up with the recording in the
+    // background, best source first and at most MAX_AUTO_ALIGN of them, so
+    // stage 7 can rank them against each other (docs/tabs-v3.md). Once per
+    // tab: a row that has been through align.py is left alone, whatever
+    // came of it, until someone presses "Line it up".
+    void findTabs(pb, user, song)
+      .then((rows) => alignInBackground(pb, autoAlignQueue(rows), { freshPb: createAdminClient }))
+      .catch((e) => serverLogger.error('tabs', 'queueing the alignments failed', undefined, e));
+
     return Response.json(result);
   } catch (e) {
     if (e instanceof UnauthorizedError) return unauthorizedResponse();

@@ -16,6 +16,7 @@ import { EmptyState } from '@/components/page/EmptyState';
 import { usePlayer } from '@/components/player/PlayerProvider';
 import { LiveTabScore } from '@/components/tabs/LiveTabScore';
 import { TabSheetHeader, TabSourceChip } from '@/components/tabs/TabSheetHeader';
+import { TabSourceSheet, type TabSheetAction } from '@/components/tabs/TabSourceSheet';
 import { TabsToolbar, chip, chipOff, chipOn } from '@/components/tabs/TabsToolbar';
 import { useTabAlignment, useTabSong, useTabSources, type TabSong, type TabSourcesState } from '@/hooks/useTabSources';
 import { useSettingsStore } from '@/stores/useSettingsStore';
@@ -25,11 +26,10 @@ import {
   emptyStateFor,
   followTrackChange,
   localOffsetId,
-  pickTab,
-  pickerLabel,
   sourceChipLabel,
   type TabSummary,
 } from '@/lib/tabSources';
+import { chooseTab, confidencePercent, loadPick, savePick, sheetRows } from '@/lib/tabPick';
 import { clampOffset, isLinedUp, loadLocalOffsetMs, MAX_OFFSET_MS, saveLocalOffsetMs } from '@/lib/tabSync';
 import { tabSearchLinks, type TabSearchLink } from '@/lib/tabSearchLinks';
 
@@ -118,8 +118,16 @@ function TabsSheet({ song, sources, onBack }: { song: TabSong; sources: TabSourc
   const { current, isPlaying, position, duration, seek, playTrack } = usePlayer();
   const follows = current?.id === song.id;
 
-  const [chosenId, setChosenId] = useState<string | null>(null);
-  const tab = pickTab(sources.tabs, chosenId);
+  // Which tab is drawn: the listener's own pick for this song when they
+  // made one, else the one that matches the recording best (lib/tabPick.ts).
+  const [chosenId, setChosenId] = useState<string | null>(() => loadPick(song.id));
+  const choice = chooseTab(sources.tabs, chosenId);
+  const tab = choice.tab;
+  const pick = (id: string | null) => {
+    setChosenId(id);
+    savePick(song.id, id);
+  };
+  const [sheetOpen, setSheetOpen] = useState(false);
 
   const [staff, setStaffState] = useState<TabsStaff>(() => readPref(STAFF_KEY, ['tab', 'score-tab'] as const, 'tab'));
   const [scroll, setScrollState] = useState<TabsScroll>(() =>
@@ -182,6 +190,36 @@ function TabsSheet({ song, sources, onBack }: { song: TabSong; sources: TabSourc
   const busyGenerating = sources.generated === 'running' || sources.generating;
   // Links for the listener to open; Ember's own search is useTabSources'.
   const searchLinks = tabSearchLinks(song, sources.matches);
+  const removeTab = (id: string) => {
+    if (!window.confirm('Delete this tab for everyone?')) return;
+    if (chosenId === id) pick(null);
+    sources.remove(id);
+  };
+
+  // The Source sheet (docs/tabs-v3.md section 6, candidate B): every tab
+  // for the song in rank order, with what it is, how well it matched the
+  // recording, and the actions that apply to it.
+  const rows = sheetRows(sources.tabs, { chosenId, aligning: sources.liningUp });
+  const sheetActions: TabSheetAction[] = [
+    {
+      id: 'search-again',
+      label: sources.searchingOnline ? 'Searching online…' : 'Search online again',
+      disabled: sources.searchingOnline,
+      onClick: sources.searchOnlineAgain,
+    },
+    { id: 'add-file', label: sources.uploading ? 'Adding…' : 'Add a file', disabled: sources.uploading, onClick: addFile },
+    ...(sources.canGenerate && !ownGenerated
+      ? [
+          {
+            id: 'generate',
+            label: busyGenerating ? 'Transcribing…' : 'Generate a tab (rough)',
+            disabled: busyGenerating,
+            variant: 'ghost' as const,
+            onClick: sources.generate,
+          },
+        ]
+      : []),
+  ];
 
   const actions = (
     <DropdownMenu>
@@ -222,12 +260,7 @@ function TabsSheet({ song, sources, onBack }: { song: TabSong; sources: TabSourc
             <MenuItem
               label="Delete this tab"
               className="text-destructive"
-              onClick={() => {
-                if (window.confirm('Delete this tab for everyone?')) {
-                  setChosenId(null);
-                  sources.remove(tab.id);
-                }
-              }}
+              onClick={() => removeTab(tab.id)}
             />
           </>
         )}
@@ -237,7 +270,12 @@ function TabsSheet({ song, sources, onBack }: { song: TabSong; sources: TabSourc
 
   const chipNode = tab ? (
     <>
-      <SourceChip tab={tab} tabs={sources.tabs} onPick={setChosenId} instrument={info?.tracks[trackIndex]?.name} />
+      <SourceChip
+        tab={tab}
+        instrument={info?.tracks[trackIndex]?.name}
+        open={sheetOpen}
+        onOpen={() => setSheetOpen((v) => !v)}
+      />
       {tab.kind === 'fetched' && !timing && (
         <button
           type="button"
@@ -357,6 +395,23 @@ function TabsSheet({ song, sources, onBack }: { song: TabSong; sources: TabSourc
       ) : (
         <NoTab sources={sources} searchLinks={searchLinks} onAddFile={addFile} />
       )}
+      <TabSourceSheet
+        open={sheetOpen}
+        phone={phone}
+        title={song.title}
+        artist={song.artist}
+        rows={rows}
+        searching={sources.searchingOnline && rows.length === 0}
+        emptyNote="Ember found nothing online for this song yet."
+        onPick={(id) => {
+          pick(id);
+          setSheetOpen(false);
+        }}
+        onClose={() => setSheetOpen(false)}
+        onLineUp={sources.lineUp}
+        onDelete={removeTab}
+        actions={sheetActions}
+      />
     </div>
   );
 }
@@ -385,45 +440,39 @@ function MenuItem({
   );
 }
 
-/** "File added by Aron, shared", "Text tab pasted by Aron, shared" or
- *  "From Songsterr, Rhythm Guitar, lined up" or "Generated from the
- *  recording, rough"; with more than one tab for the song it opens a menu
- *  to switch between them, in chain order. */
+/** "File added by Aron, shared", "Text tab pasted by Aron, shared", "From
+ *  Songsterr, Rhythm Guitar, lined up" or "Generated from the recording,
+ *  rough", with how sure the alignment is when there is one. Clicking it
+ *  opens the Source sheet: every tab for the song. */
 function SourceChip({
   tab,
-  tabs,
-  onPick,
   instrument,
+  open,
+  onOpen,
 }: {
   tab: TabSummary;
-  tabs: TabSummary[];
-  onPick: (id: string) => void;
   /** The staff on screen, named on the chip of a tab that holds several. */
   instrument?: string;
+  open: boolean;
+  onOpen: () => void;
 }) {
   const label = sourceChipLabel(tab, instrument);
-  if (tabs.length < 2) return <TabSourceChip label={label} />;
+  const pct = isLinedUp(tab.timing) ? confidencePercent(tab) : null;
   return (
     <TabSourceChip label={label}>
-      <DropdownMenu>
-        <DropdownMenuTrigger
-          aria-label="Choose a tab"
-          className="inline-flex min-w-0 max-w-full items-center gap-inset hover:text-foreground"
-        >
-          <span className="min-w-0 truncate">{label}</span>
-          <ChevronDownIcon className="size-3 shrink-0" />
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="start" className={MENU_CLASS}>
-          {tabs.map((t) => (
-            <MenuItem
-              key={t.id}
-              label={pickerLabel(t)}
-              onClick={() => onPick(t.id)}
-              className={cn(t.id === tab.id && 'text-ember')}
-            />
-          ))}
-        </DropdownMenuContent>
-      </DropdownMenu>
+      <button
+        type="button"
+        aria-label="Choose a tab"
+        aria-haspopup="dialog"
+        aria-expanded={open}
+        onClick={onOpen}
+        title={label}
+        className="inline-flex min-w-0 max-w-full items-center gap-inset hover:text-foreground"
+      >
+        <span className="min-w-0 truncate">{label}</span>
+        {pct !== null && <span className="shrink-0 tabular-nums text-ember">{pct}%</span>}
+        <ChevronDownIcon className="size-3 shrink-0" />
+      </button>
     </TabSourceChip>
   );
 }

@@ -467,7 +467,7 @@ describe('DizajnPage', () => {
       pick('Page state', 'Found and lined up');
       const menus = within(v3()).getAllByTestId('v3-picker-menu');
       expect(menus).toHaveLength(2);
-      expect(within(v3()).queryByTestId('v3-source-sheet')).toBeNull();
+      expect(within(v3()).queryByTestId('tab-source-sheet')).toBeNull();
       const menu = menus[0];
       expect(within(menu).getAllByRole('group').map((g) => g.getAttribute('aria-label'))).toEqual([
         'Songsterr',
@@ -507,20 +507,23 @@ describe('DizajnPage', () => {
       pick('Page state', 'Found and lined up');
       expect(v3().dataset.picker).toBe('sheet');
       expect(within(v3()).queryByTestId('v3-picker-menu')).toBeNull();
-      const sheets = within(v3()).getAllByTestId('v3-source-sheet');
+      // The gallery renders the production sheet itself
+      // (components/tabs/TabSourceSheet.tsx) with mock rows.
+      const sheets = within(v3()).getAllByTestId('tab-source-sheet');
       expect(sheets).toHaveLength(2);
       expect(sheets[0].tagName).toBe('ASIDE');
-      const cards = within(sheets[1]).getAllByTestId('v3-sheet-card');
+      const cards = within(sheets[1]).getAllByTestId('tab-source-row');
       expect(cards).toHaveLength(MOCK_TAB_SOURCES.length);
-      expect(cards[0]).toHaveAttribute('aria-checked', 'true');
-      expect(cards[1]).toHaveTextContent('4.8 from 1,204 votes');
+      expect(within(cards[0]).getByRole('radio')).toHaveAttribute('aria-checked', 'true');
+      expect(cards[0]).toHaveTextContent('Best match');
+      expect(cards[1]).toHaveTextContent('★ 4.8 (1,204 votes)');
       expect(cards[2]).toHaveTextContent('Lead Guitar (Fender Jaguar, fuzz)');
       expect(screen.getByTestId('tabs-v3-description').textContent).toBe(TABS_V3_PICKER[1].description);
 
       fireEvent.click(within(sheets[0]).getByRole('button', { name: 'Close the tab list' }));
-      expect(within(v3()).queryByTestId('v3-source-sheet')).toBeNull();
+      expect(within(v3()).queryByTestId('tab-source-sheet')).toBeNull();
       fireEvent.click(within(v3()).getAllByTestId('v3-source-trigger')[1]);
-      expect(within(v3()).getAllByTestId('v3-source-sheet')).toHaveLength(2);
+      expect(within(v3()).getAllByTestId('tab-source-sheet')).toHaveLength(2);
     });
 
     it('opens full screen and closes with Escape', () => {

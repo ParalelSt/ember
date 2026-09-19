@@ -86,10 +86,13 @@ export function alignTab(pb: PocketBase, row: RecordModel, deps: AlignDeps = {})
   if (existing) return existing;
   lastError.delete(row.id);
   const job = queuePythonJob(() => run(pb, row, deps))
-    .catch((e: unknown) => {
+    .catch(async (e: unknown) => {
       const reason = e instanceof Error ? e.message : String(e);
       lastError.set(row.id, reason.slice(0, 200));
       serverLogger.error('tabs', 'lining the tab up failed', { tab: row.id, reason });
+      // Remember the attempt even when it failed, so the automatic pass
+      // never tries the same tab twice; "Line it up" still does.
+      await markTried(pb, row, deps).catch(() => undefined);
       return null;
     })
     .finally(() => running.delete(row.id));
@@ -103,6 +106,44 @@ export function alignInBackground(pb: PocketBase, rows: RecordModel[], deps: Ali
   for (const row of rows) {
     void alignTab(pb, row, deps).catch(() => undefined);
   }
+}
+
+/** At most this many of a song's tabs are lined up on their own when the
+ *  page opens. Listening costs a Python job each (lib/pythonJobs.ts runs
+ *  one at a time), and past the best few the ranking has all it needs. */
+export const MAX_AUTO_ALIGN = 4;
+
+/** Has this tab been through align.py already? A row is marked the first
+ *  time a job finishes for it, whether it worked or not, so the automatic
+ *  pass never listens to the same tab twice (docs/tabs-v3.md stage 7). The
+ *  "Line it up" button ignores this. */
+export function alreadyTried(row: RecordModel): boolean {
+  return !!row.aligned_at || !!readTiming(row.timing);
+}
+
+/** A row's source rank, the same order lib/tabPick.ts ranks the drawn tab
+ *  in: a file, then Songsterr's notes, then Ultimate Guitar's text, then a
+ *  pasted tab, then the generated one. */
+function rowRank(row: RecordModel): number {
+  const kind = String(row.kind ?? 'file');
+  if (kind === 'generated') return 4;
+  if (kind === 'pasted') return 3;
+  if (kind === 'fetched') return row.source_site === 'songsterr' ? 1 : 2;
+  return 0;
+}
+
+/** The rows an automatic pass should line up: the ones never tried, best
+ *  source first, capped. Pure, so the rule is testable. */
+export function autoAlignQueue(rows: RecordModel[]): RecordModel[] {
+  return rows
+    .filter((r) => !alreadyTried(r))
+    .sort((a, b) => rowRank(a) - rowRank(b))
+    .slice(0, MAX_AUTO_ALIGN);
+}
+
+async function markTried(pb: PocketBase, row: RecordModel, deps: AlignDeps): Promise<void> {
+  const writer = deps.freshPb ? await deps.freshPb() : pb;
+  await writer.collection('tabs').update(row.id, { aligned_at: new Date().toISOString() });
 }
 
 async function run(pb: PocketBase, row: RecordModel, deps: AlignDeps): Promise<TabTiming | null> {
@@ -124,7 +165,7 @@ async function run(pb: PocketBase, row: RecordModel, deps: AlignDeps): Promise<T
     const timing = readTiming(JSON.parse(await fs.readFile(outPath, 'utf8')));
     if (!timing) throw new Error('align.py wrote no timing');
     const writer = deps.freshPb ? await deps.freshPb() : pb;
-    await writer.collection('tabs').update(row.id, { timing: toRow(timing) });
+    await writer.collection('tabs').update(row.id, { timing: toRow(timing), aligned_at: new Date().toISOString() });
     serverLogger.warn('tabs', 'tab lined up', {
       tab: row.id,
       offsetMs: timing.offsetMs,

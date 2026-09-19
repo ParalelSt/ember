@@ -161,7 +161,11 @@ export function mapTab(row: RecordModel, viewer: TabViewer, addedBy: string | nu
       kind === 'generated' && trackId
         ? `/api/tabs/generated/${encodeURIComponent(trackId)}`
         : `/api/tabs/files/${row.id}/download`,
-    ...(kind === 'fetched' ? { source: onlineSourceOf(row), timing: readTiming(row.timing) } : {}),
+    // Every kind can be lined up with the recording now (docs/tabs-v3.md
+    // stage 7 ranks them against each other), so the timing always rides
+    // along; only a tab found online has a site behind it.
+    timing: readTiming(row.timing),
+    ...(kind === 'fetched' ? { source: onlineSourceOf(row) } : {}),
   };
 }
 

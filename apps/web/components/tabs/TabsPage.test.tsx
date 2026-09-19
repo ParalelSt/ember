@@ -1,6 +1,6 @@
 import type { ComponentProps, ReactNode } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { TabSummary } from '@/lib/tabSources';
 import type { Track } from '@/types/track';
@@ -46,6 +46,8 @@ const api = vi.hoisted(() => ({
   getTrack: vi.fn(),
   listUploads: vi.fn(),
   findTabsOnline: vi.fn(),
+  getTabAlignment: vi.fn(),
+  lineTabUp: vi.fn(),
 }));
 vi.mock('@/lib/api', () => ({ api }));
 
@@ -153,6 +155,8 @@ beforeEach(() => {
   api.generateTab.mockResolvedValue({ status: 'running' });
   api.listUploads.mockResolvedValue({ tracks: [] });
   api.findTabsOnline.mockResolvedValue({ status: 'cached', searchedAt: '2026-09-19T10:00:00Z', added: 0 });
+  api.getTabAlignment.mockResolvedValue({ status: 'none' });
+  api.lineTabUp.mockResolvedValue({ status: 'running' });
 });
 
 describe('TabsPage source selection', () => {
@@ -431,12 +435,27 @@ describe('TabsPage looking online', () => {
     expect(screen.getByTestId('tab-source-chip')).toHaveTextContent('From Ultimate Guitar, not lined up yet');
   });
 
-  it('a fetched tab is listed in the picker with its site and rating', async () => {
+  it('the Source sheet lists every tab with its type and rating, and a pick is remembered', async () => {
     api.getTrackTabs.mockResolvedValue({ tabs: [tab({}), fetched] });
     wrap(<TabsPage trackId="upload:song1" />);
     await screen.findByTestId('tab-score');
-    const items = screen.getAllByRole('menuitem').map((b) => b.textContent);
-    expect(items).toContain('Ultimate Guitar, Text tab, ★ 4.7 (512 votes)');
+    fireEvent.click(screen.getByRole('button', { name: 'Choose a tab' }));
+    const rows = screen.getAllByTestId('tab-source-row');
+    expect(rows).toHaveLength(2);
+    expect(rows[0]).toHaveTextContent('Guitar Pro file');
+    expect(rows[1]).toHaveTextContent('Text tab');
+    expect(rows[1]).toHaveTextContent('★ 4.7 (512 votes)');
+    fireEvent.click(within(rows[1]).getByRole('radio'));
+    await waitFor(() => expect(screen.getByTestId('tab-score')).toHaveAttribute('data-url', '/api/tabs/files/u1/download'));
+    expect(window.localStorage.getItem('ember.tab.pick.upload:song1')).toBe('u1');
+    expect(screen.queryByTestId('tab-source-sheet')).toBeNull();
+  });
+
+  it('a pick made before is the tab the page opens on', async () => {
+    window.localStorage.setItem('ember.tab.pick.upload:song1', 'u1');
+    api.getTrackTabs.mockResolvedValue({ tabs: [tab({}), fetched] });
+    wrap(<TabsPage trackId="upload:song1" />);
+    expect(await screen.findByTestId('tab-score')).toHaveAttribute('data-url', '/api/tabs/files/u1/download');
   });
 
   it('Search online again asks the server anew, and says when nothing new came', async () => {

@@ -20,6 +20,8 @@
 //   timing     where the tab sits in the recording, as align.py heard it
 //              (docs/tabs-v3.md section 3): { offset_ms, bpm, confidence,
 //              bars: [{ bar, ms }] }
+//   aligned_at when align.py last ran for this tab, worked or not, so the
+//              automatic pass listens to a tab once (docs/tabs-v3.md 7)
 //
 // tab_lookups: one row per song and site that Ember has searched online, so
 // a song is searched once and never again on its own (the "Search online
@@ -105,6 +107,7 @@ onAfterBootstrap((e) => {
     { name: "source_votes", type: "number", options: { noDecimal: true } },
     { name: "source_meta", type: "json", options: { maxSize: 20000 } },
     { name: "timing", type: "json", options: { maxSize: 50000 } },
+    { name: "aligned_at", type: "text", options: { max: 40 } },
   ];
 
   const NEW_INDEXES = [
@@ -169,7 +172,7 @@ onAfterBootstrap((e) => {
 
   if (changed) {
     dao.saveCollection(tabs);
-    console.log("[ensure_tabs] tabs store up to date (song_key, kind, shared, hints, pasted, fetched, timing)");
+    console.log("[ensure_tabs] tabs store up to date (song_key, kind, shared, hints, pasted, fetched, timing, aligned_at)");
   }
 
   let lookups = null;
