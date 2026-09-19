@@ -30,7 +30,7 @@ export default function SettingsPlugins() {
           tag="PC only"
           description="Wider slider in the player bar and removes the 85% cap so the audio can go all the way to max. Visible on desktop — phones don't show the volume slider at all."
           on={partyVolume}
-          onToggle={() => setPartyVolume(!partyVolume)}
+          onToggle={() => void setPartyVolume(!partyVolume)}
         />
 
         <PluginToggle
@@ -38,7 +38,7 @@ export default function SettingsPlugins() {
           tag="Work in progress"
           description="Guitar tabs and guitar mode for the currently-playing track."
           on={tabsEnabled}
-          onToggle={() => setTabsEnabled(!tabsEnabled)}
+          onToggle={() => void setTabsEnabled(!tabsEnabled)}
         />
 
         {PLACEHOLDERS.map((p) => (

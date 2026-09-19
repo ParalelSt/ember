@@ -4,6 +4,7 @@ import { createContext, useContext, useEffect, useMemo, useState, type ReactNode
 import { createClient } from '@/lib/pocketbase/client';
 import { usePrivacyStore } from '@/stores/usePrivacyStore';
 import { useChangelogStore } from '@/stores/useChangelogStore';
+import { useSettingsStore } from '@/stores/useSettingsStore';
 import { logger } from '@/lib/logger/client';
 
 /** Minimal user shape exposed to the app — matches the old Supabase one
@@ -81,6 +82,13 @@ export function AuthProvider({ children, initialUser }: { children: ReactNode; i
   useEffect(() => {
     if (userId) void useChangelogStore.getState().load();
     else useChangelogStore.setState({ seenVersion: null, hideNew: false, loaded: false });
+  }, [userId]);
+
+  // Plugin switches follow the account. The local cache keeps showing the
+  // last known values until this lands; signed out, it is all there is.
+  useEffect(() => {
+    if (userId) void useSettingsStore.getState().loadPlugins(userId);
+    else useSettingsStore.getState().resetPluginSync();
   }, [userId]);
 
   const value = useMemo<AuthValue>(
