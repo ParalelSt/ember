@@ -4,9 +4,16 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import DizajnPage from './page';
 import { SHELF_OPTIONS } from '@/components/library/options';
 import { SPACING_SCALE } from '@/lib/spacing';
-import { MOCK_LIKED_TRACKS } from './mock';
+import { MOCK_LIKED_TRACKS, MOCK_TAB_SOURCES } from './mock';
 import { CHANGELOG_PLACEMENTS, CHANGELOG_STATES, BADGE_STYLES } from '@/components/library/options/changelog';
-import { TABS_LAYOUTS, TABS_PASTE, TABS_SCROLL, TABS_STAFF } from '@/components/library/options/tabs';
+import {
+  TABS_LAYOUTS,
+  TABS_PASTE,
+  TABS_SCROLL,
+  TABS_STAFF,
+  TABS_V3_PICKER,
+  TABS_V3_STATE,
+} from '@/components/library/options/tabs';
 import { PASTE_SAMPLE_TEXT } from '@/components/library/options/tabs/pasteSample';
 import { SAMPLE_TEX } from '@/components/library/options/tabs/sample';
 
@@ -368,6 +375,208 @@ describe('DizajnPage', () => {
       window.localStorage.setItem('dizajn-changelog-placement', 'floating-toast');
       render(<DizajnPage />);
       expect(screen.getByRole('radio', { name: 'Sidebar link' })).toHaveAttribute('aria-checked', 'true');
+    });
+  });
+
+  describe('Tabs v3: found online (Guitar tabs)', () => {
+    const group = (name: string) => screen.getByRole('radiogroup', { name });
+    const pick = (g: string, name: string | RegExp) => fireEvent.click(within(group(g)).getByRole('radio', { name }));
+    const v3 = () => screen.getByTestId('tabs-v3-section');
+    const v3Apis = () => alphaTab.apis.filter((a) => !a.destroyed && v3().contains(a.host));
+
+    it('sits at the top of Guitar tabs, marked as a preview of the planned design', () => {
+      render(<DizajnPage />);
+      const block = screen.getByTestId('tabs-v3-block');
+      expect(within(block).getByRole('heading', { level: 3 })).toHaveTextContent('Tabs v3: found online');
+      expect(block).toHaveTextContent('Preview of the planned design, not built yet');
+      // Before the older layout candidates and the paste candidates.
+      expect(block.compareDocumentPosition(screen.getByTestId('tabs-section')) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+      expect(within(v3()).getAllByTestId('shell-preview').map((s) => s.dataset.phone)).toEqual(['false', 'true']);
+    });
+
+    it('offers both pickers as radiogroups, Picker menu (Recommended) and Found first', () => {
+      render(<DizajnPage />);
+      const pickers = within(group('Source picker')).getAllByRole('radio');
+      expect(pickers.map((r) => r.textContent)).toEqual(['Picker menuRecommended', 'Source sheet']);
+      expect(pickers.map((r) => r.getAttribute('aria-checked'))).toEqual(['true', 'false']);
+      const states = within(group('Page state')).getAllByRole('radio');
+      expect(states.map((r) => r.textContent)).toEqual([
+        'Searching online',
+        'Found and lined up',
+        'Not lined up yet',
+        'Nothing online',
+      ]);
+      expect(states.map((r) => r.getAttribute('aria-checked'))).toEqual(['true', 'false', 'false', 'false']);
+      expect(TABS_V3_PICKER.map((o) => o.name)).toEqual(['Picker menu', 'Source sheet']);
+      expect(TABS_V3_STATE.map((o) => o.id)).toEqual(['searching', 'found', 'not-lined-up', 'nothing']);
+    });
+
+    it('Searching online: a skeleton score and the sites being checked, no score drawn', () => {
+      render(<DizajnPage />);
+      expect(v3().dataset.state).toBe('searching');
+      expect(within(v3()).getAllByTestId('v3-searching')).toHaveLength(2);
+      expect(within(v3()).getAllByTestId('v3-score-skeleton')).toHaveLength(2);
+      expect(within(v3()).getAllByText('Looking for tabs for Copper Sky by Coastline…')).toHaveLength(2);
+      expect(within(within(v3()).getAllByTestId('v3-searching')[0]).getByText('Ultimate Guitar')).toBeInTheDocument();
+      expect(within(v3()).getAllByTestId('v3-source-trigger')[0]).toHaveTextContent('Searching online…');
+      expect(within(v3()).queryByTestId('tab-score')).toBeNull();
+      expect(screen.getByTestId('tabs-v3-state-description').textContent).toBe(TABS_V3_STATE[0].description);
+    });
+
+    it('Found and lined up: the real score, the chip says Songsterr, lined up, with the confidence', async () => {
+      render(<DizajnPage />);
+      pick('Page state', 'Found and lined up');
+      const triggers = within(v3()).getAllByTestId('v3-source-trigger');
+      for (const t of triggers) expect(t).toHaveTextContent('Songsterr, lined up94%');
+      expect(within(v3()).getAllByTestId('tabs-toolbar')).toHaveLength(2);
+      expect(within(v3()).queryByTestId('v3-not-lined')).toBeNull();
+      await waitFor(() => expect(v3Apis()).toHaveLength(2));
+      for (const api of v3Apis()) expect(api.texArgs).toEqual({ tex: SAMPLE_TEX, tracks: [0] });
+    });
+
+    it('Not lined up yet: the score still draws, with the calm note, Line it up and the Sync nudge', async () => {
+      render(<DizajnPage />);
+      pick('Page state', 'Not lined up yet');
+      for (const t of within(v3()).getAllByTestId('v3-source-trigger')) {
+        expect(t).toHaveTextContent('Songsterr, not lined up yet');
+      }
+      const notes = within(v3()).getAllByTestId('v3-not-lined');
+      expect(notes).toHaveLength(2);
+      expect(within(notes[0]).getByRole('button', { name: 'Line it up' })).toBeInTheDocument();
+      expect(notes[0]).toHaveTextContent('41% sure');
+      expect(within(v3()).getAllByTestId('v3-sync')).toHaveLength(2);
+      await waitFor(() => expect(v3Apis()).toHaveLength(2));
+    });
+
+    it('Nothing online: search links, Paste a tab, Add a file, and the rough generated tab last', () => {
+      render(<DizajnPage />);
+      pick('Page state', 'Nothing online');
+      const empty = within(v3()).getAllByTestId('v3-nothing')[0];
+      expect(within(empty).getByRole('link', { name: 'Ultimate Guitar' })).toHaveAttribute(
+        'href',
+        'https://www.ultimate-guitar.com/search.php?search_type=title&value=Coastline+Copper+Sky',
+      );
+      const buttons = within(empty).getAllByRole('button').map((b) => b.textContent);
+      expect(buttons).toEqual(['Paste a tab', 'Add a file', 'Generate from the recording (rough)']);
+      expect(within(v3()).queryByTestId('tab-score')).toBeNull();
+      expect(within(v3()).getAllByTestId('v3-source-trigger')[0]).toHaveTextContent('Nothing found online');
+    });
+
+    it('Picker menu: every source in rank order with site, type, rating, instruments and alignment', () => {
+      render(<DizajnPage />);
+      pick('Page state', 'Found and lined up');
+      const menus = within(v3()).getAllByTestId('v3-picker-menu');
+      expect(menus).toHaveLength(2);
+      expect(within(v3()).queryByTestId('v3-source-sheet')).toBeNull();
+      const menu = menus[0];
+      expect(within(menu).getAllByRole('group').map((g) => g.getAttribute('aria-label'))).toEqual([
+        'Songsterr',
+        'Ultimate Guitar',
+        'On this server',
+      ]);
+      const rows = within(menu).getAllByRole('menuitemradio');
+      expect(rows).toHaveLength(MOCK_TAB_SOURCES.length);
+      expect(rows[0]).toHaveAttribute('aria-checked', 'true');
+      expect(rows[0]).toHaveTextContent('Tab with rhythm · Guitar, Bass, Drums');
+      expect(rows[0]).toHaveTextContent('Lined up 94%');
+      expect(rows[1]).toHaveTextContent('4.8 · 1,204');
+      expect(rows[2]).toHaveTextContent('4.5 · 310');
+      expect(rows[2]).toHaveTextContent('Not lined up yet');
+      expect(rows[3]).toHaveTextContent('Bass tab · Bass');
+      expect(rows[3]).toHaveTextContent('3.9 · 22');
+      expect(rows[4]).toHaveTextContent('Text tab pasted by Mira');
+      expect(rows[5]).toHaveTextContent('Generated from the recording, rough');
+      // The long name and instrument list truncate, with the full text on hover.
+      const longName = within(rows[3]).getByTitle(MOCK_TAB_SOURCES[3].name);
+      expect(longName.className).toContain('truncate');
+      expect(within(menu).getByRole('menuitem', { name: 'Line it up again' })).toBeInTheDocument();
+
+      // Picking a row switches the chip and closes the menu; the chip reopens it.
+      fireEvent.click(rows[1]);
+      expect(within(v3()).queryByTestId('v3-picker-menu')).toBeNull();
+      const trigger = within(v3()).getAllByTestId('v3-source-trigger')[0];
+      expect(trigger).toHaveTextContent('Ultimate Guitar, ver 2, lined up81%');
+      expect(trigger).toHaveAttribute('aria-expanded', 'false');
+      fireEvent.click(trigger);
+      expect(within(v3()).getAllByTestId('v3-picker-menu')).toHaveLength(2);
+    });
+
+    it('Source sheet: a side sheet on desktop and a bottom sheet on phone, a card per source', () => {
+      render(<DizajnPage />);
+      pick('Source picker', 'Source sheet');
+      pick('Page state', 'Found and lined up');
+      expect(v3().dataset.picker).toBe('sheet');
+      expect(within(v3()).queryByTestId('v3-picker-menu')).toBeNull();
+      const sheets = within(v3()).getAllByTestId('v3-source-sheet');
+      expect(sheets).toHaveLength(2);
+      expect(sheets[0].tagName).toBe('ASIDE');
+      const cards = within(sheets[1]).getAllByTestId('v3-sheet-card');
+      expect(cards).toHaveLength(MOCK_TAB_SOURCES.length);
+      expect(cards[0]).toHaveAttribute('aria-checked', 'true');
+      expect(cards[1]).toHaveTextContent('4.8 from 1,204 votes');
+      expect(cards[2]).toHaveTextContent('Lead Guitar (Fender Jaguar, fuzz)');
+      expect(screen.getByTestId('tabs-v3-description').textContent).toBe(TABS_V3_PICKER[1].description);
+
+      fireEvent.click(within(sheets[0]).getByRole('button', { name: 'Close the tab list' }));
+      expect(within(v3()).queryByTestId('v3-source-sheet')).toBeNull();
+      fireEvent.click(within(v3()).getAllByTestId('v3-source-trigger')[1]);
+      expect(within(v3()).getAllByTestId('v3-source-sheet')).toHaveLength(2);
+    });
+
+    it('opens full screen and closes with Escape', () => {
+      render(<DizajnPage />);
+      fireEvent.click(within(v3()).getByRole('button', { name: 'View full screen' }));
+      const overlay = screen.getByRole('dialog', { name: 'Full screen tabs v3 preview' });
+      expect(within(overlay).getByTestId('v3-page')).toBeInTheDocument();
+      fireEvent.keyDown(window, { key: 'Escape' });
+      expect(screen.queryByTestId('tabs-v3-fullscreen')).not.toBeInTheDocument();
+    });
+
+    it('persists both choices to localStorage, restores them on mount and ignores stale ones', () => {
+      const { unmount } = render(<DizajnPage />);
+      pick('Source picker', 'Source sheet');
+      pick('Page state', 'Nothing online');
+      expect(window.localStorage.getItem('dizajn-tabs-v3-picker')).toBe('sheet');
+      expect(window.localStorage.getItem('dizajn-tabs-v3-state')).toBe('nothing');
+      unmount();
+
+      render(<DizajnPage />);
+      expect(screen.getByRole('radio', { name: 'Source sheet' })).toHaveAttribute('aria-checked', 'true');
+      expect(screen.getByRole('radio', { name: 'Nothing online' })).toHaveAttribute('aria-checked', 'true');
+      expect(v3().dataset).toMatchObject({ picker: 'sheet', state: 'nothing' });
+    });
+
+    it('ignores a stale saved value', () => {
+      window.localStorage.setItem('dizajn-tabs-v3-picker', 'carousel');
+      render(<DizajnPage />);
+      expect(screen.getByRole('radio', { name: /Picker menu/ })).toHaveAttribute('aria-checked', 'true');
+    });
+
+    it('renders the first option on the server and the saved one after hydration (no #418)', async () => {
+      window.localStorage.setItem('dizajn-tabs-v3-state', 'found');
+      window.localStorage.setItem('dizajn-tabs-layout', 'stage');
+      const { renderToString } = await import('react-dom/server');
+      const html = renderToString(<DizajnPage />);
+      expect(html).toContain('data-state="searching"');
+      expect(html).toContain('data-layout="sheet"');
+
+      const container = document.createElement('div');
+      container.innerHTML = html;
+      document.body.appendChild(container);
+      const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+      const { hydrateRoot } = await import('react-dom/client');
+      const { act } = await import('react');
+      let root: ReturnType<typeof hydrateRoot> | undefined;
+      const recoverable: unknown[] = [];
+      await act(async () => {
+        root = hydrateRoot(container, <DizajnPage />, { onRecoverableError: (e) => recoverable.push(e) });
+      });
+      expect(recoverable).toEqual([]);
+      expect(container.querySelector('[data-testid="tabs-v3-section"]')?.getAttribute('data-state')).toBe('found');
+      expect(container.querySelector('[data-testid="tabs-section"]')?.getAttribute('data-layout')).toBe('stage');
+      errors.mockRestore();
+      await act(async () => root?.unmount());
+      container.remove();
     });
   });
 

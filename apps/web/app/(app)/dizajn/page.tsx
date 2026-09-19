@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState, useSyncExternalStore } from 'react';
 import { SearchOverlay } from '@/components/search/SearchOverlay';
 import { TrackRow } from '@/components/track/TrackRow';
 import { TrackList } from '@/components/track/TrackList';
@@ -25,13 +25,18 @@ import {
   TABS_PASTE,
   TABS_SCROLL,
   TABS_STAFF,
+  TABS_V3_PICKER,
+  TABS_V3_STATE,
   type TabsLayout,
   type TabsPaste,
   type TabsScroll,
   type TabsStaff,
+  type TabsV3Picker,
+  type TabsV3State,
 } from '@/components/library/options/tabs';
 import { TabsSection } from '@/components/library/options/tabs/TabsSection';
 import { PasteSection } from '@/components/library/options/tabs/PasteSection';
+import { FoundOnlineSection } from '@/components/library/options/tabs/FoundOnlineSection';
 import { MOCK_LIKED_TRACKS, MOCK_PLAYLISTS, MOCK_RECENT_TRACKS, MOCK_RESULT_TRACKS } from './mock';
 
 const STORAGE_KEY = 'dizajn-shelf-option';
@@ -42,13 +47,51 @@ const TABS_LAYOUT_KEY = 'dizajn-tabs-layout';
 const TABS_STAFF_KEY = 'dizajn-tabs-staff';
 const TABS_SCROLL_KEY = 'dizajn-tabs-scroll';
 const TABS_PASTE_KEY = 'dizajn-tabs-paste';
+const TABS_V3_PICKER_KEY = 'dizajn-tabs-v3-picker';
+const TABS_V3_STATE_KEY = 'dizajn-tabs-v3-state';
 
-/** Lazy-initializer read of one picker's saved id, falling back to the
- *  first option when nothing (or something stale) is stored. */
-function savedChoice<T extends string>(key: string, options: { id: T }[]): T {
-  if (typeof window === 'undefined') return options[0].id;
-  const saved = window.localStorage.getItem(key);
-  return (options.find((o) => o.id === saved)?.id ?? options[0].id) as T;
+// Saved picker choices. The page is server-rendered with the first option
+// of every picker, so the saved one must not be read during the first
+// (hydrating) render or React reports a mismatch (#418). A store read
+// through useSyncExternalStore does exactly that: the server snapshot
+// (nothing saved) during hydration, then the saved id straight after.
+const choiceListeners = new Set<() => void>();
+
+function subscribeChoices(listener: () => void) {
+  choiceListeners.add(listener);
+  window.addEventListener('storage', listener);
+  return () => {
+    choiceListeners.delete(listener);
+    window.removeEventListener('storage', listener);
+  };
+}
+
+function readChoice(key: string): string | null {
+  try {
+    return window.localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+/** One picker's choice, saved to localStorage under `key`, falling back to
+ *  the first option when nothing (or something stale) is stored. */
+function useSavedChoice<T extends string>(key: string, options: { id: T }[]): [T, (id: T) => void] {
+  const saved = useSyncExternalStore(
+    subscribeChoices,
+    () => readChoice(key),
+    () => null,
+  );
+  const value = options.find((o) => o.id === saved)?.id ?? options[0].id;
+  const set = (id: T) => {
+    try {
+      window.localStorage.setItem(key, id);
+    } catch {
+      // Storage off (private window): the choice just is not remembered.
+    }
+    choiceListeners.forEach((l) => l());
+  };
+  return [value, set];
 }
 
 const PILL_ON = 'rounded-full bg-ember px-3.5 py-1.5 text-sm font-medium text-white';
@@ -163,57 +206,20 @@ function overlayPropsFor(state: OverlayState) {
 export default function DizajnPage() {
   const [overlayState, setOverlayState] = useState<OverlayState>('recents');
   const [overlayOpen, setOverlayOpen] = useState(false);
-  // Lazy initializer, not a post-mount effect: this page is never
-  // server-rendered with meaningful content for a signed-out visitor (the
-  // app layout gates it), and reading synchronously here avoids a second
-  // render just to apply the saved choice.
-  const [optionId, setOptionId] = useState(() => {
-    if (typeof window === 'undefined') return SHELF_OPTIONS[0].id;
-    const saved = window.localStorage.getItem(STORAGE_KEY);
-    return saved && SHELF_OPTIONS.some((o) => o.id === saved) ? saved : SHELF_OPTIONS[0].id;
-  });
-
-  useEffect(() => {
-    window.localStorage.setItem(STORAGE_KEY, optionId);
-  }, [optionId]);
-
+  // Every picker below: saved to localStorage, read after hydration.
+  const [optionId, setOptionId] = useSavedChoice(STORAGE_KEY, SHELF_OPTIONS);
   const selected = SHELF_OPTIONS.find((o) => o.id === optionId) ?? SHELF_OPTIONS[0];
 
-  // "What's new" pickers: same lazy-initializer pattern, one key each.
-  const [clPlacement, setClPlacement] = useState<ChangelogPlacement>(() =>
-    savedChoice(CHANGELOG_PLACEMENT_KEY, CHANGELOG_PLACEMENTS),
-  );
-  const [clState, setClState] = useState<ChangelogState>(() => savedChoice(CHANGELOG_STATE_KEY, CHANGELOG_STATES));
-  const [clBadge, setClBadge] = useState<BadgeStyle>(() => savedChoice(CHANGELOG_BADGE_KEY, BADGE_STYLES));
+  const [clPlacement, setClPlacement] = useSavedChoice<ChangelogPlacement>(CHANGELOG_PLACEMENT_KEY, CHANGELOG_PLACEMENTS);
+  const [clState, setClState] = useSavedChoice<ChangelogState>(CHANGELOG_STATE_KEY, CHANGELOG_STATES);
+  const [clBadge, setClBadge] = useSavedChoice<BadgeStyle>(CHANGELOG_BADGE_KEY, BADGE_STYLES);
 
-  useEffect(() => {
-    window.localStorage.setItem(CHANGELOG_PLACEMENT_KEY, clPlacement);
-  }, [clPlacement]);
-  useEffect(() => {
-    window.localStorage.setItem(CHANGELOG_STATE_KEY, clState);
-  }, [clState]);
-  useEffect(() => {
-    window.localStorage.setItem(CHANGELOG_BADGE_KEY, clBadge);
-  }, [clBadge]);
-
-  // "Guitar tabs" pickers: same pattern again.
-  const [tabsLayout, setTabsLayout] = useState<TabsLayout>(() => savedChoice(TABS_LAYOUT_KEY, TABS_LAYOUTS));
-  const [tabsStaff, setTabsStaff] = useState<TabsStaff>(() => savedChoice(TABS_STAFF_KEY, TABS_STAFF));
-  const [tabsScroll, setTabsScroll] = useState<TabsScroll>(() => savedChoice(TABS_SCROLL_KEY, TABS_SCROLL));
-  const [tabsPaste, setTabsPaste] = useState<TabsPaste>(() => savedChoice(TABS_PASTE_KEY, TABS_PASTE));
-
-  useEffect(() => {
-    window.localStorage.setItem(TABS_LAYOUT_KEY, tabsLayout);
-  }, [tabsLayout]);
-  useEffect(() => {
-    window.localStorage.setItem(TABS_STAFF_KEY, tabsStaff);
-  }, [tabsStaff]);
-  useEffect(() => {
-    window.localStorage.setItem(TABS_SCROLL_KEY, tabsScroll);
-  }, [tabsScroll]);
-  useEffect(() => {
-    window.localStorage.setItem(TABS_PASTE_KEY, tabsPaste);
-  }, [tabsPaste]);
+  const [tabsLayout, setTabsLayout] = useSavedChoice<TabsLayout>(TABS_LAYOUT_KEY, TABS_LAYOUTS);
+  const [tabsStaff, setTabsStaff] = useSavedChoice<TabsStaff>(TABS_STAFF_KEY, TABS_STAFF);
+  const [tabsScroll, setTabsScroll] = useSavedChoice<TabsScroll>(TABS_SCROLL_KEY, TABS_SCROLL);
+  const [tabsPaste, setTabsPaste] = useSavedChoice<TabsPaste>(TABS_PASTE_KEY, TABS_PASTE);
+  const [v3Picker, setV3Picker] = useSavedChoice<TabsV3Picker>(TABS_V3_PICKER_KEY, TABS_V3_PICKER);
+  const [v3State, setV3State] = useSavedChoice<TabsV3State>(TABS_V3_STATE_KEY, TABS_V3_STATE);
 
   return (
     <div>
@@ -224,7 +230,25 @@ export default function DizajnPage() {
       </p>
 
       <section className="mb-section">
-        <h2 className="text-section-title">Guitar tabs</h2>
+        <h2 className="text-section-title mb-block">Guitar tabs</h2>
+
+        <div data-testid="tabs-v3-block" className="mb-section">
+          <h3 className="font-semibold">Tabs v3: found online</h3>
+          <p className="text-meta mt-inset mb-block">
+            Preview of the planned design, not built yet (docs/tabs-v3.md). Ember looks for the song on
+            Songsterr and Ultimate Guitar, draws the best match and lines it up with the recording. Two
+            ways to pick between the tabs it found, and the four states the page can be in. The sources,
+            ratings and votes are made up; the score is real AlphaTab drawing the bundled original riff.
+            Click the source chip to open or close the picker.
+          </p>
+          <div className="mb-stack flex flex-wrap gap-x-section gap-y-block">
+            <Picker label="Source picker" options={TABS_V3_PICKER} value={v3Picker} onChange={setV3Picker} />
+            <Picker label="Page state" options={TABS_V3_STATE} value={v3State} onChange={setV3State} />
+          </div>
+          <FoundOnlineSection picker={v3Picker} state={v3State} />
+        </div>
+
+        <h3 className="font-semibold">Where the tab lives</h3>
         <p className="text-meta mt-inset mb-block">
           Where tabs live once they look like Songsterr (docs/tabs-rebuild.md), each inside the whole app
           shell. Sheet page is the owner&apos;s pick, with Horizontal as a toggle inside it; Side panel and
@@ -232,7 +256,6 @@ export default function DizajnPage() {
           viewer&apos;s settings. Tracks, Tab + Score and Horizontal work in the preview; speed, loop and
           count-in are wired in later stages. The live tabs dialog is unchanged.
         </p>
-
         <div className="mb-stack flex flex-wrap gap-x-section gap-y-block">
           <Picker label="Layout" options={TABS_LAYOUTS} value={tabsLayout} onChange={setTabsLayout} />
           <Picker label="Staff" options={TABS_STAFF} value={tabsStaff} onChange={setTabsStaff} />
