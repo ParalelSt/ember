@@ -81,15 +81,15 @@ Not in v1. Manual "Sync now" (add new source tracks at the end, never remove or 
 
 ## 8. UI
 
-Entry points stay: "Import" in the create-playlist dialog (`components/nav/Sidebar.tsx:97`) and the Library page. Candidates go on `/dizajn` inside `ShellPreview`, under `components/library/options/imports/`, picked before any UI is built.
+Entry point (decided): the create-playlist dialog (`apps/web/components/track/menus/CreatePlaylistDialog.tsx`) opens with a choice at the top: "Start empty" (today's flow) or "Import from a link". Import: paste a Spotify or YouTube Music link, preview (name, cover, song count), Create; the playlist appears at once and fills in the background with progress in the sidebar. The separate sidebar "Import playlist" button and ImportPlaylistDialog are removed, so there is one way in. Candidates for how the choice looks go on `/dizajn` inside `ShellPreview`, under `components/library/options/imports/`, picked before any UI is built.
 
-Import flow candidates:
+Import flow candidates (all start from the create-playlist dialog):
 
 | Id | Idea |
 |---|---|
-| A. Dialog and ring | Two-step dialog (link, preview). Then the sidebar playlist row shows a progress ring and "42 of 120". |
-| B. Import page | `/import`: link box on top, list of past and running jobs with bars, Retry and Cancel. |
-| C. Empty playlist fill | Paste the link on a new empty playlist page; rows appear as they land, a banner shows progress. |
+| A. Tabs | "Start empty" / "Import from a link" as tabs in the dialog header. |
+| B. Cards | Two large option cards below the header. |
+| C. Mode switch | Single dialog where pasting a link into the name field switches it to import mode. |
 
 Review screen candidates:
 
