@@ -189,6 +189,7 @@ node tests/tabs.test.mjs                            # or: npm run test:tabs
 node tests/tabs-ui.test.mjs                         # or: npm run test:tabs-ui
 node tests/tabs-sync.test.mjs                       # or: npm run test:tabs-sync
 node tests/tabs-generate.test.mjs                   # or: npm run test:tabs-generate
+node tests/transcribe-timing.test.mjs              # or: npm run test:transcribe-timing (no server needed; python3 or PYTHON_BIN)
 node tests/preferences-ui.test.mjs                  # or: npm run test:preferences-ui (plugin switches across two devices; PB restarted with this branch's pb_hooks)
 node tests/android-player-ui.test.mjs               # or: npm run test:android-ui
 node tests/offline-android-ui.test.mjs              # or: npm run test:offline-ui
