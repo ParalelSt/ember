@@ -1,7 +1,14 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import {
+  barStartsMs,
   beatToSongSec,
   clampOffset,
+  isLinedUp,
+  readTiming,
+  songSecToTabMs,
+  syncPoints,
+  tabMsToSongSecAligned,
+  type TabTiming,
   estimateSongSec,
   followScroll,
   isJump,
@@ -98,6 +105,114 @@ describe('click a beat to seek', () => {
   it('falls back to the beat playbackStart without a relative range', () => {
     const plain: TickLookup = { ...lookup, getRelativeBeatPlaybackRange: undefined };
     expect(beatToSongSec(plain, { ...beat, playbackStart: 960 }, 0)).toBeCloseTo(3.125);
+  });
+});
+
+describe('a tab lined up with the recording (piecewise over bar anchors)', () => {
+  // The tab: 4/4 at 100 bpm, 2.4 s a bar on its own clock.
+  const barTab = Array.from({ length: 8 }, (_, i) => i * 2400);
+  // The recording: bar 1 at 1.35 s, bars getting shorter (it speeds up):
+  // 2.5 s, 2.4 s, 2.3 s ...
+  const barSong = [1350];
+  for (let i = 1; i < 8; i++) barSong.push(barSong[i - 1] + 2500 - (i - 1) * 100);
+  const timing: TabTiming = { offsetMs: 1350, bpm: 98, confidence: 0.9, bars: barSong.map((ms, bar) => ({ bar, ms })) };
+  const points = syncPoints(timing, barTab);
+
+  it('puts every bar start where the recording plays it', () => {
+    barSong.forEach((ms, bar) => expect(songSecToTabMs(ms / 1000, points, 0)).toBeCloseTo(barTab[bar], 6));
+  });
+
+  it('is linear inside a bar that is longer or shorter than the tab’s', () => {
+    // Halfway through bar 2 of the recording (2.4 s long) is halfway through
+    // the tab's bar 2.
+    expect(songSecToTabMs((barSong[1] + 1200) / 1000, points, 0)).toBeCloseTo(2400 + 1200, 6);
+    // A quarter into bar 4 (2.2 s long).
+    expect(songSecToTabMs((barSong[3] + 550) / 1000, points, 0)).toBeCloseTo(7200 + 600, 6);
+  });
+
+  it('runs back to the song exactly (the inverse), with and without the nudge', () => {
+    for (const nudge of [0, 700, -1300]) {
+      for (const sec of [1.4, 2.0, 5.55, 9.99, 14.2, 20.0]) {
+        // Before the tab's top the clock holds at 0: no inverse there.
+        if (sec * 1000 + nudge < 1350) continue;
+        const tab = songSecToTabMs(sec, points, nudge);
+        expect(tabMsToSongSecAligned(tab, points, nudge)).toBeCloseTo(sec, 6);
+      }
+    }
+  });
+
+  it('applies the nudge on top: a positive nudge runs the tab ahead', () => {
+    // +500 ms: the song at 1.35 s reads as 1.85 s, half a second (at the
+    // first bar's 2.5 s against the tab's 2.4 s) into the tab.
+    expect(songSecToTabMs(1.35, points, 500)).toBeCloseTo(500 * (2400 / 2500), 6);
+    expect(songSecToTabMs(1.35, points, -500)).toBe(0);
+    // A clicked beat at the tab's bar 3 sounds at the recording's bar 3,
+    // earlier by the nudge.
+    expect(tabMsToSongSecAligned(4800, points, 500)).toBeCloseTo((barSong[2] - 500) / 1000, 6);
+  });
+
+  it('carries on at the edge bars’ pace before the first and past the last anchor', () => {
+    // Before bar 1: the first bar's slope (2400 per 2500).
+    expect(songSecToTabMs(0.35, points, 0)).toBe(0);
+    expect(tabMsToSongSecAligned(-960, points, 0)).toBeCloseTo((1350 - 1000) / 1000, 6);
+    // Past the last bar (2.0 s long on the recording, 2.4 s on the tab).
+    const last = barSong[7];
+    expect(songSecToTabMs((last + 1000) / 1000, points, 0)).toBeCloseTo(barTab[7] + 1000 * (2400 / 1900), 6);
+  });
+
+  it('takes only anchors that move forward on both clocks', () => {
+    const messy: TabTiming = { ...timing, bars: [{ bar: 0, ms: 1000 }, { bar: 1, ms: 900 }, { bar: 2, ms: 5800 }, { bar: 99, ms: 9000 }] };
+    expect(syncPoints(messy, barTab)).toEqual([
+      { song: 1000, tab: 0 },
+      { song: 5800, tab: 4800 },
+    ]);
+  });
+
+  it('without bar anchors, the tab’s first bar sits at offset_ms (slope 1)', () => {
+    const plain = syncPoints({ ...timing, bars: [] }, barTab);
+    expect(plain).toEqual([{ song: 1350, tab: 0 }]);
+    expect(songSecToTabMs(11.35, plain, 0)).toBeCloseTo(10_000, 6);
+    expect(songSecToTabMs(11.35, plain, 250)).toBeCloseTo(10_250, 6);
+    expect(tabMsToSongSecAligned(10_000, plain, 250)).toBeCloseTo(11.1, 6);
+  });
+
+  it('with no timing, it is the plain path exactly', () => {
+    expect(syncPoints(null, barTab)).toEqual([]);
+    expect(songSecToTabMs(10, [], 1500)).toBe(songToTabMs(10, 1500));
+    expect(tabMsToSongSecAligned(4000, [], 1000)).toBe(tabMsToSongSec(4000, 1000));
+  });
+
+  it('seeks a clicked beat through the anchors', () => {
+    const lookup: TickLookup = {
+      masterBars: [{ tempoChanges: [{ tick: 0, tempo: 100 }] }],
+      getMasterBarStart: () => 3840 * 2,
+      getRelativeBeatPlaybackRange: () => ({ startTick: 1920 }),
+    };
+    const beat = { playbackStart: 0, voice: { bar: { masterBar: {} } } };
+    // Bar 3, halfway: the recording's bar 3 is 2.3 s long.
+    expect(beatToSongSec(lookup, beat, 0, points)).toBeCloseTo((barSong[2] + 1150) / 1000, 6);
+    expect(beatToSongSec(lookup, beat, 0)).toBeCloseTo(6.0, 6);
+  });
+
+  it('reads bar starts from the tick lookup, through tempo changes', () => {
+    const bars = [
+      { start: 0, masterBar: { index: 0 }, tempoChanges: [{ tick: 0, tempo: 100 }] },
+      { start: 3840, masterBar: { index: 1 }, tempoChanges: [{ tick: 3840, tempo: 120 }] },
+      { start: 7680, masterBar: { index: 2 } },
+      // A repeat plays bar 1 again: its first start is kept.
+      { start: 11520, masterBar: { index: 1 } },
+    ];
+    expect(barStartsMs(bars)).toEqual([0, 2400, 4400]);
+  });
+
+  it('reads timing off the row, and knows when it is lined up', () => {
+    const t = readTiming({ offset_ms: 1350, bpm: 97.4, confidence: 0.81, bars: [{ bar: 0, ms: 1350 }, { bar: 'x', ms: 2 }, { bar: 1, ms: 3800 }] });
+    expect(t).toEqual({ offsetMs: 1350, bpm: 97.4, confidence: 0.81, bars: [{ bar: 0, ms: 1350 }, { bar: 1, ms: 3800 }] });
+    expect(isLinedUp(t)).toBe(true);
+    expect(isLinedUp({ ...t!, confidence: 0.3 })).toBe(false);
+    expect(isLinedUp(null)).toBe(false);
+    expect(readTiming(null)).toBeNull();
+    expect(readTiming({ bpm: 90 })).toBeNull();
   });
 });
 

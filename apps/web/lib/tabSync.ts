@@ -27,6 +27,133 @@ export function tabMsToSongSec(tabMs: number, offsetMs: number): number {
   return Math.max(0, (tabMs - offsetMs) / 1000);
 }
 
+// ── a tab lined up with the recording ─────────────────────────────────────
+
+/** Where a tab sits in the recording, as align.py found it (docs/tabs-v3.md
+ *  section 3), stored on the tab row as `timing`. */
+export interface TabTiming {
+  /** Where the tab's first bar starts in the song. */
+  offsetMs: number;
+  /** The recording's tempo, quarter notes per minute. */
+  bpm: number;
+  /** How sure the alignment is, 0 to 1. */
+  confidence: number;
+  /** Where each bar starts in the song (bar 0 is the tab's first bar). */
+  bars: { bar: number; ms: number }[];
+}
+
+/** Under this the tab is "not lined up yet": drawn at the song's start
+ *  plus the nudge, as before, with a "Line it up" button. */
+export const LINED_UP_CONFIDENCE = 0.5;
+
+export function isLinedUp(timing: TabTiming | null | undefined): timing is TabTiming {
+  return !!timing && Number.isFinite(timing.confidence) && timing.confidence >= LINED_UP_CONFIDENCE && Number.isFinite(timing.offsetMs);
+}
+
+/** `timing` as the row stores it (snake case, from align.py), or null when
+ *  it is missing or malformed. */
+export function readTiming(raw: unknown): TabTiming | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const t = raw as Record<string, unknown>;
+  const n = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : null);
+  const offset = n(t.offset_ms ?? t.offsetMs);
+  const confidence = n(t.confidence);
+  if (offset === null || confidence === null) return null;
+  const bars = (Array.isArray(t.bars) ? t.bars : [])
+    .map((b) => (b && typeof b === 'object' ? (b as Record<string, unknown>) : null))
+    .filter((b): b is Record<string, unknown> => !!b && Number.isInteger(b.bar) && n(b.ms) !== null)
+    .map((b) => ({ bar: b.bar as number, ms: b.ms as number }));
+  return { offsetMs: offset, bpm: n(t.bpm) ?? 0, confidence, bars };
+}
+
+/** A point both clocks agree on: this song time is this tab time (ms). */
+export interface SyncPoint {
+  song: number;
+  tab: number;
+}
+
+/** The anchors of a lined-up tab: each bar's start in the song against the
+ *  same bar's start on the tab's clock (`barTabMs[bar]`, from AlphaTab's
+ *  tick lookup). Only points that move forward on both clocks are kept, so
+ *  the mapping is monotonic and has an inverse. With no bar anchors, the
+ *  tab's first bar at `offsetMs` is the one point. */
+export function syncPoints(timing: TabTiming | null, barTabMs: number[]): SyncPoint[] {
+  if (!timing) return [];
+  const raw = timing.bars
+    .filter((b) => b.bar >= 0 && b.bar < barTabMs.length && Number.isFinite(barTabMs[b.bar]))
+    .map((b) => ({ song: b.ms, tab: barTabMs[b.bar] }))
+    .sort((a, b) => a.tab - b.tab);
+  const out: SyncPoint[] = [];
+  for (const p of raw) {
+    const last = out[out.length - 1];
+    if (!last || (p.song > last.song && p.tab > last.tab)) out.push(p);
+  }
+  if (out.length === 0) out.push({ song: timing.offsetMs, tab: 0 });
+  return out;
+}
+
+/** The slope (tab ms per song ms) used past either end of the anchors:
+ *  the neighbouring segment's, within sane bounds, else 1. */
+function edgeSlope(a: SyncPoint | undefined, b: SyncPoint | undefined): number {
+  if (!a || !b || b.song === a.song) return 1;
+  const k = (b.tab - a.tab) / (b.song - a.song);
+  return Number.isFinite(k) ? Math.max(0.5, Math.min(2, k)) : 1;
+}
+
+/** Interpolate `x` from the `from` clock to the `to` clock over sorted
+ *  points, linear between them and along the edge slope beyond. */
+function piecewise(points: SyncPoint[], x: number, from: 'song' | 'tab', to: 'song' | 'tab'): number {
+  const n = points.length;
+  if (n === 1) return points[0][to] + (x - points[0][from]);
+  if (x <= points[0][from]) {
+    const k = edgeSlope(points[0], points[1]);
+    const slope = from === 'song' ? k : 1 / k;
+    return points[0][to] + (x - points[0][from]) * slope;
+  }
+  if (x >= points[n - 1][from]) {
+    const k = edgeSlope(points[n - 2], points[n - 1]);
+    const slope = from === 'song' ? k : 1 / k;
+    return points[n - 1][to] + (x - points[n - 1][from]) * slope;
+  }
+  let lo = 0;
+  let hi = n - 1;
+  while (hi - lo > 1) {
+    const mid = (lo + hi) >> 1;
+    if (points[mid][from] <= x) lo = mid;
+    else hi = mid;
+  }
+  const a = points[lo];
+  const b = points[hi];
+  return a[to] + ((x - a[from]) / (b[from] - a[from])) * (b[to] - a[to]);
+}
+
+/** Song time (seconds) to the tab's clock (ms) for a lined-up tab: the
+ *  nudge first (a positive nudge runs the tab ahead, as songToTabMs), then
+ *  piecewise linear between the bar anchors. No points: the plain path,
+ *  exactly songToTabMs. */
+export function songSecToTabMs(songSec: number, points: SyncPoint[], nudgeMs: number): number {
+  if (points.length === 0) return songToTabMs(songSec, nudgeMs);
+  return Math.max(0, piecewise(points, songSec * 1000 + nudgeMs, 'song', 'tab'));
+}
+
+/** The inverse: where in the song a point of the tab sounds, in seconds. */
+export function tabMsToSongSecAligned(tabMs: number, points: SyncPoint[], nudgeMs: number): number {
+  if (points.length === 0) return tabMsToSongSec(tabMs, nudgeMs);
+  return Math.max(0, (piecewise(points, tabMs, 'tab', 'song') - nudgeMs) / 1000);
+}
+
+/** Each master bar's start on the tab's clock, from AlphaTab's tick lookup
+ *  (bars in playing order; a bar played twice keeps its first start). */
+export function barStartsMs(masterBars: { start: number; masterBar?: { index?: number }; tempoChanges?: { tick: number; tempo: number }[] }[]): number[] {
+  const tempos = tempoMap(masterBars);
+  const out: number[] = [];
+  masterBars.forEach((mb, i) => {
+    const index = typeof mb.masterBar?.index === 'number' ? mb.masterBar.index : i;
+    if (out[index] === undefined) out[index] = tickToMs(tempos, mb.start);
+  });
+  return out;
+}
+
 // ── ticks and tempo ───────────────────────────────────────────────────────
 
 export interface TempoChange {
@@ -77,13 +204,14 @@ export interface ClickedBeat {
 }
 
 /** Where in the song a clicked beat sounds, in seconds: the beat's first
- *  tick (as AlphaTab itself would seek to it), through the tempo map, minus
- *  the tab's offset. This is the whole of click-to-seek; nothing else in
- *  AlphaTab is allowed to move the song. */
-export function beatToSongSec(lookup: TickLookup, beat: ClickedBeat, offsetMs: number): number {
+ *  tick (as AlphaTab itself would seek to it), through the tempo map, then
+ *  back through the alignment's anchors (`points`, none for a tab not
+ *  lined up) and the nudge. This is the whole of click-to-seek; nothing
+ *  else in AlphaTab is allowed to move the song. */
+export function beatToSongSec(lookup: TickLookup, beat: ClickedBeat, offsetMs: number, points: SyncPoint[] = []): number {
   const barStart = lookup.getMasterBarStart(beat.voice.bar.masterBar);
   const within = lookup.getRelativeBeatPlaybackRange?.(beat)?.startTick ?? beat.playbackStart;
-  return tabMsToSongSec(tickToMs(tempoMap(lookup.masterBars), barStart + within), offsetMs);
+  return tabMsToSongSecAligned(tickToMs(tempoMap(lookup.masterBars), barStart + within), points, offsetMs);
 }
 
 // ── the playhead between player ticks ─────────────────────────────────────
