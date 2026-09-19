@@ -21,6 +21,18 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    id: 'song-that-will-not-load-says-so',
+    version: '0.3.8',
+    date: '2026-09-20',
+    title: 'A song that will not load says so',
+    summary: 'A song Ember cannot fetch now fails in a couple of seconds with a message, instead of freezing the player for half a minute.',
+    bullets: [
+      'When a song cannot be downloaded and cannot be streamed live either, Ember says so straight away instead of sitting on it.',
+      'You get a message naming the song, and the queue stays where it is so you can try again.',
+      'A slow connection is still left alone: only a song that has stopped arriving is given up on.',
+    ],
+  },
+  {
     id: 'trending-fits-better',
     version: '0.3.6',
     date: '2026-09-19',

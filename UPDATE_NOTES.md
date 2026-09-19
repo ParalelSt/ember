@@ -1,3 +1,32 @@
+# 0.3.8: A song that will not load says so
+
+**Host: a normal rebuild and restart (`./update.sh`). No `npm install`, no new
+environment variables, no PocketBase changes.** Desktop users need the next
+app release for the native half of this (the server half helps them straight
+away). Version note: 0.3.7 is taken by another branch, so this may be
+renumbered when the two are merged.
+
+- **A song Ember cannot fetch now fails in a couple of seconds**, with a
+  message naming it, instead of freezing the player. When a download fails and
+  the live stream it falls back to cannot stand in either, the server answers a
+  real error at once rather than running yt-dlp a second time over (it used to
+  ask for a second URL extraction and a second download before admitting
+  defeat) or, if the live stream simply never answered, never replying at all.
+- **A stream that stops mid-song now breaks instead of hanging**: the proxy
+  puts a clock on the upstream's headers (6s) and on silence inside the body
+  (10s). A slow but progressing stream is untouched.
+- **Desktop (next app release)**: the native engine used to spend one flat 25
+  second budget on connect + buffer + decode, so every unplayable song cost the
+  whole 25 seconds ("timed out decoding the track after 25s" in the automatic
+  reports) and then spent the session's web-audio fallback on a track web audio
+  could not have played either, losing the OS media keys with it. It now judges
+  a source on PROGRESS: silence after the response has started is given up on
+  in about three seconds, while a download that keeps moving is left alone, and
+  the fallback to web audio is kept for failures web audio can actually fix.
+- The underlying trigger is still a stale yt-dlp on the host (`./update.sh`
+  updates it): this makes Ember behave properly while that is true, for any
+  reason a download fails.
+
 # 0.3.6: Trending fits better
 
 **Host: a normal rebuild and restart (`./update.sh`). No `npm install`, no
