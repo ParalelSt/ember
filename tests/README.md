@@ -237,6 +237,7 @@ node tests/desktop-logger.test.mjs                  # or: npm run test:desktop-l
 node tests/stream-source.test.mjs                   # or: npm run test:stream
 node tests/stream-fallback.test.mjs                 # or: npm run test:stream-fallback
 node tests/stream-range.test.mjs                    # or: npm run test:stream-range
+node tests/stream-fastfail.test.mjs                 # or: npm run test:stream-fastfail (starts its own server)
 
 # Custom uploads (MUSIC_DIR must match the server's)
 MUSIC_DIR="$SB/music" node tests/uploads.test.mjs   # or: npm run test:uploads
@@ -511,6 +512,48 @@ URL behaves once it no longer matches the client that resolved it:
   `apps/desktop/src-tauri/src/audio/skip_repro.rs`.
 - **A cached track answers 206 with the right bytes**, which is why the fault
   only touches tracks the stale yt-dlp could not cache.
+
+## What `stream-fastfail.test.mjs` covers
+
+The third part of the same story, and the one the field reports were about: a
+song the host cannot produce at all must FAIL, quickly. It used to freeze the
+app instead, for 25 seconds ("timed out decoding the track after 25s", twice in
+real reports, ten times in one week), because the request either ran a second
+whole yt-dlp round before answering or never answered at all, and a player
+cannot tell a server that is still working from one that never will.
+
+Unlike the two above it starts **its own** app server (`APP_PORT`, default
+3038) from the existing build in `apps/web`, with `FAKE_FAIL_DOWNLOAD=1` and a
+fake googlevideo on `ORIGIN_PORT` (default 4462) whose behaviour it switches
+between checks. No PocketBase needed. What it measures is time to an answer:
+
+- **F1**: the fallback that works still works (a failed download is still
+  served live).
+- **F2/F3**: with the live stream refused too, the play answers **502 with a
+  readable sentence in well under a second**, having asked yt-dlp **once**.
+  Before: `download, info, info, download` , two extraction runs and two
+  downloads, tens of seconds on a real host, for an answer it already had.
+- **F4**: an upstream that accepts the connection and never answers is given up
+  on at the headers budget (6s) instead of never (`fetch` has no read timeout
+  in Node, so the old route simply never replied).
+- **F5**: a body that stops mid-transfer **breaks** at the stall budget (10s)
+  instead of leaving the client holding an open 200 forever. That shape is what
+  produced the 25s freeze.
+- **F6**: a slow but PROGRESSING stream is delivered in full , the guard
+  against turning a hang fix into a "your connection is too slow" bug.
+- **F7**: nothing listening upstream at all is a clear 502, not a bare 500
+  saying "fetch failed".
+
+The engine's half of the same fault (one flat 25s budget over connect, buffer
+and decode, so every dead source cost the lot) is
+`apps/desktop/src-tauri/src/audio/fastfail.rs`, run by `cargo test --lib` in
+`apps/desktop/src-tauri`: it drives the real `open_source` against a host that
+stalls, refuses, or delivers slowly, and keeps the old flat-budget shape in one
+test as the measurement of what it used to cost. What the listener is told, and
+the rule that web audio is only tried when it could actually help, are unit
+tests: `components/player/PlayerProvider.fastfail.test.tsx`,
+`lib/playback/tauriBackend.test.ts`, `hooks/player/useAvailabilityProbe.test.ts`
+and `lib/streamGuard.test.ts`.
 
 ## What `desktop-logger.test.mjs` covers
 
