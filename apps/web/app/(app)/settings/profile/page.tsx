@@ -8,6 +8,7 @@ import { Label } from '@/components/ui/label';
 import { LogOutIcon } from '@/components/icons';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { PrivacyToggles } from '@/components/settings/PrivacyToggles';
+import { Avatar } from '@/components/primitives/Avatar';
 import { api } from '@/lib/api';
 import { SectionHeader } from '@/components/page/SectionHeader';
 
@@ -61,7 +62,6 @@ export default function SettingsProfile() {
   };
 
   const displayedAvatar = previewUrl ?? (removeAvatar ? null : avatarUrl);
-  const initial = (name || user?.email || '?').slice(0, 1).toUpperCase();
 
   return (
     <div className="max-w-2xl">
@@ -69,14 +69,12 @@ export default function SettingsProfile() {
       <SectionHeader title="Profile" />
 
       <div className="mt-6 flex items-center gap-5">
-        <div className="relative h-20 w-20 rounded-full overflow-hidden cover-placeholder grid place-items-center text-2xl font-bold text-white shrink-0">
-          {displayedAvatar ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={displayedAvatar} alt="" className="absolute inset-0 h-full w-full object-cover" />
-          ) : (
-            initial
-          )}
-        </div>
+        <Avatar
+          src={displayedAvatar}
+          name={name}
+          email={user?.email}
+          className="h-20 w-20 cover-placeholder text-2xl text-white"
+        />
         <div className="flex flex-col gap-2">
           <Button type="button" variant="outline" size="sm" onClick={() => fileRef.current?.click()}>
             Upload picture
