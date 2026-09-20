@@ -82,6 +82,28 @@
 
 *(Version: this one entry replaces the separate 0.3.2, 0.3.3, 0.3.7, 0.3.8
 and 0.3.9 sections the four merged branches each wrote for themselves.)*
+# 0.3.11: Search without losing your place
+
+**Host: a normal rebuild and restart (`./update.sh`). Nothing to configure:
+no `npm install`, no new environment variables, no PocketBase change.**
+
+- **Search stops taking over the screen**: on a desktop window the search
+  box now lives in the page, at the top of the content column, and the
+  results hang under it as an ordinary dropdown. There is no backdrop and
+  nothing is disabled, so the player bar, the sidebar and the page behind it
+  all stay clickable while search is open.
+- **Start a song and keep looking**: pressing play on a result no longer
+  closes anything. Escape, a click anywhere outside it, or going to another
+  page closes it; Escape puts the cursor back where it was.
+- **Phones are unchanged**: below the `md` width, search is still the
+  full-screen sheet it has always been, which is the right shape there.
+- **The `/` shortcut is unchanged too**: it now puts the cursor in the
+  in-page box instead of opening a dialog. `/search` is still a real route
+  for deep links, and on a desktop window the shell's box steps aside there
+  so the page's own box is the only one.
+
+*(Version number: this branch used 0.3.11 because 0.4.0 is taken by other
+unmerged branches; it may be renumbered when it merges.)*
 
 # 0.3.10: Play straight from search
 

@@ -26,6 +26,13 @@ vi.mock('@/components/ui/dialog', () => ({
   DialogTitle: ({ children }: PropsWithChildren) => <h2>{children}</h2>,
 }));
 
+// The overlay reads the route (it stands down on /search, and closes when
+// the page navigates) and the window size (dropdown vs sheet). Neither is
+// what this test is about: pin both, and render the overlay on a path where
+// it is live.
+vi.mock('next/navigation', () => ({ usePathname: () => '/' }));
+vi.mock('@/hooks/useIsDesktop', () => ({ useIsDesktop: () => true }));
+
 vi.mock('@/lib/useOnline', () => ({ useOnline: () => true }));
 
 vi.mock('@/hooks/useVoiceSearch', () => ({

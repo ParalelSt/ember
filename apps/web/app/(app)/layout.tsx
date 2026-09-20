@@ -52,25 +52,35 @@ export default function AppShellLayout({ children }: { children: ReactNode }) {
       <Drawer open={drawerOpen} onOpenChange={setDrawerOpen} />
       <div className="flex-1 min-h-0 flex flex-col min-w-0">
         <TopBar onMenu={() => setDrawerOpen(true)} menuDot={hasNew} />
-        {/* The OUTER scroller owns the scrollbar — so it lives on the far
-            right edge of the viewport, past the LyricsPanel. Inside, a
-            flex row holds <main> (grows tall, drives the scroll) and the
-            LyricsPanel (sticky to the top of the scroller's viewport). */}
+        {/* The content column. --ember-scroller-h is published HERE rather
+            than on the scroller itself so both children can read it: the
+            LyricsPanel inside sizes itself to it, and the search dropdown
+            above caps its panel with it so the results never reach past the
+            player bar. */}
         <div
-          ref={scrollerRef}
-          data-app-scroller
-          className="flex-1 min-h-0 overflow-y-auto"
+          className="flex-1 min-h-0 flex flex-col"
           style={
             scrollerH
               ? ({ ['--ember-scroller-h' as string]: `${scrollerH}px` } as React.CSSProperties)
               : undefined
           }
         >
-          <div className="flex min-w-0 min-h-full">
-            <main className="flex-1 min-w-0 p-page md:p-page-lg">
-              <div className="mx-auto max-w-(--content-max)">{children}</div>
-            </main>
-            <LyricsPanel />
+          {/* Desktop: the search box, a real one, in the page above
+              everything the page itself draws, with its results hanging
+              under it. Phone: nothing in flow, just the full-screen sheet
+              when it is open. */}
+          <SearchOverlayContainer />
+          {/* The OUTER scroller owns the scrollbar — so it lives on the far
+              right edge of the viewport, past the LyricsPanel. Inside, a
+              flex row holds <main> (grows tall, drives the scroll) and the
+              LyricsPanel (sticky to the top of the scroller's viewport). */}
+          <div ref={scrollerRef} data-app-scroller className="flex-1 min-h-0 overflow-y-auto">
+            <div className="flex min-w-0 min-h-full">
+              <main className="flex-1 min-w-0 p-page md:p-page-lg">
+                <div className="mx-auto max-w-(--content-max)">{children}</div>
+              </main>
+              <LyricsPanel />
+            </div>
           </div>
         </div>
         <BackToTop scrollRef={scrollerRef} />
@@ -78,7 +88,6 @@ export default function AppShellLayout({ children }: { children: ReactNode }) {
         <MobileNav onSearchClick={() => setSearchOpen(true)} />
       </div>
       <NowPlaying />
-      <SearchOverlayContainer />
     </div>
   );
 }
