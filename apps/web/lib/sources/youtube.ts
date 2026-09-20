@@ -298,7 +298,11 @@ interface RecommendedArgs {
 
 export async function getRecommended({ seed, country = 'ZZ', limit = 30 }: RecommendedArgs = {}): Promise<Track[]> {
   const args = ['recommended', '--country', country, '--limit', String(limit)];
-  if (seed && VIDEO_ID_RE.test(seed)) args.push('--seed', seed);
+  // `--seed=<id>` (not `--seed <id>`) so a hyphen-leading videoId (legal per
+  // VIDEO_ID_RE, e.g. "-UaaeSP971U") is never mistaken by argparse for
+  // another option. `--` can't help here since --seed is an optional, not
+  // a positional.
+  if (seed && VIDEO_ID_RE.test(seed)) args.push(`--seed=${seed}`);
   const results = await runPython<RawYoutubeTrack[]>(args);
   return dedupeByVideoId(results).map(normalize);
 }

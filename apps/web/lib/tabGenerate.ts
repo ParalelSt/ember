@@ -99,7 +99,9 @@ function runScript(audioPath: string, outPath: string, title: string): Promise<v
     // TRANSCRIBE_SCRIPT at a shell script instead, which runs on its own.
     const isPython = TRANSCRIBE_SCRIPT.endsWith('.py');
     const cmd = isPython ? PYTHON_BIN : TRANSCRIBE_SCRIPT;
-    const args = [...(isPython ? [TRANSCRIBE_SCRIPT] : []), audioPath, outPath, '--title', title];
+    // `--title=<value>` (not `--title <value>`) so a hyphen-leading,
+    // space-free title can't be misread by argparse as another option.
+    const args = [...(isPython ? [TRANSCRIBE_SCRIPT] : []), audioPath, outPath, `--title=${title}`];
     const child = spawn(cmd, args, {
       env: { ...process.env, PATH: `${path.dirname(PYTHON_BIN)}:${process.env.PATH ?? ''}` },
     });
