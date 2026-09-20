@@ -362,6 +362,125 @@ const trackPath = (id) => `/tabs/${encodeURIComponent(id)}`;
   await page.context().close();
 }
 
+// ── every shape of tab draws, with no console error ───────────────────────
+// A file that only carries standard notation (a MusicXML export with no
+// string and fret numbers) has no tablature staff. Asked for AlphaTab's Tab
+// stave profile it lays out an empty system and throws
+// ("can't access property staves"), so the page drew nothing at all; the
+// score staff is kept for such a file instead. The same section walks a
+// multi-track file, a pasted text tab, the instrument picker, Tab and
+// Tab + Score, and switching between the sources, and every step has to
+// leave the console clean.
+{
+  const shapes = await uploadSong(`Tab Shapes ${run}`);
+  const at = await import(path.join(process.cwd(), 'node_modules/@coderline/alphatab/dist/alphaTab.mjs'));
+
+  /** A Guitar Pro 7 file with one instrument per name, like a Songsterr part list. */
+  const multiTrack = (names) => {
+    const bars = Array(12).fill('0.6.8 3.6.8 5.6.8 3.6.8').join(' |\n');
+    const tex = `\\title "Shapes"\n\\tempo 120\n${names
+      .map((n, i) => `\\track ("${n}" "${n.slice(0, 6)}")\n\\instrument ${30 + i}\n\\tuning (E4 B3 G3 D3 A2 E2)\n\\ts (4 4)\n${bars}\n`)
+      .join('')}`;
+    const settings = new at.Settings();
+    const imp = new at.importer.AlphaTexImporter();
+    imp.initFromString(tex, settings);
+    return Buffer.from(new at.exporter.Gp7Exporter().export(imp.readScore(), settings));
+  };
+  /** Standard notation only: no string or fret numbers anywhere. */
+  const SCORE_ONLY = `<?xml version="1.0" encoding="UTF-8"?>
+<score-partwise version="3.1">
+  <part-list><score-part id="P1"><part-name>Piano</part-name></score-part></part-list>
+  <part id="P1">
+    <measure number="1">
+      <attributes><divisions>1</divisions><key><fifths>0</fifths></key><time><beats>4</beats><beat-type>4</beat-type></time><clef><sign>G</sign><line>2</line></clef></attributes>
+      <note><pitch><step>C</step><octave>4</octave></pitch><duration>1</duration><type>quarter</type></note>
+      <note><pitch><step>D</step><octave>4</octave></pitch><duration>1</duration><type>quarter</type></note>
+      <note><pitch><step>E</step><octave>4</octave></pitch><duration>1</duration><type>quarter</type></note>
+      <note><pitch><step>F</step><octave>4</octave></pitch><duration>1</duration><type>quarter</type></note>
+    </measure>
+  </part>
+</score-partwise>`;
+
+  const addFile = async (bytes, name, title) => {
+    const form = new FormData();
+    form.append('file', new Blob([new Uint8Array(bytes)]), name);
+    form.append('title', title);
+    form.append('artist', shapes.artist);
+    form.append('trackId', shapes.id);
+    const res = await fetch(`${APP_URL}/api/tabs/files`, { method: 'POST', body: form, headers: { cookie: `pb_auth=${listener}` } });
+    if (!res.ok) throw new Error(`could not add ${name}: ${res.status} ${(await res.text()).slice(0, 160)}`);
+  };
+  await addFile(multiTrack(['Lead Guitar', 'Rhythm Guitar', 'Guitar Harmonies', 'Bass']), 'multi.gp', `${shapes.title} multi`);
+  await addFile(Buffer.from(SCORE_ONLY, 'utf8'), 'score-only.musicxml', `${shapes.title} score only`);
+  {
+    const text = ['e|-----------------|', 'B|-----------------|', 'G|-----------------|', 'D|---------2---4---|', 'A|-----0---2-------|', 'E|-3---------------|'].join('\n');
+    const res = await fetch(`${APP_URL}/api/tabs/text`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', cookie: `pb_auth=${listener}` },
+      body: JSON.stringify({ text, title: `${shapes.title} text`, artist: shapes.artist, trackId: shapes.id }),
+    });
+    if (res.status !== 201) throw new Error(`could not paste the text tab: ${res.status}`);
+  }
+
+  const page = await newPage({ width: 1440, height: 950 });
+  // This section's own console, so a step names the step that made the noise.
+  const mine = [];
+  page.on('console', (m) => { if (m.type() === 'error') mine.push(m.text()); });
+  page.on('pageerror', (e) => mine.push(`pageerror: ${e.message}`));
+  const quiet = () => mine.filter((e) => !/favicon|404/.test(e));
+  const drew = async () => {
+    const s = await surface(page);
+    return Boolean(s && s.w > 300 && s.h > 40);
+  };
+  const sources = async () => {
+    await page.getByRole('button', { name: 'Choose a tab' }).click();
+    await page.getByTestId('tab-source-row').first().waitFor({ timeout: 10_000 });
+    return page.getByTestId('tab-source-row').evaluateAll((els) => els.map((e) => (e.textContent ?? '').replace(/\s+/g, ' ')));
+  };
+  const pickSource = async (rows, needle) => {
+    const n = rows.findIndex((r) => r.includes(needle));
+    if (n < 0) throw new Error(`no source matching ${needle} in ${JSON.stringify(rows)}`);
+    await page.getByTestId('tab-source-row').nth(n).getByRole('radio').click();
+    await scoreReady(page).catch(() => {});
+    await page.waitForTimeout(1200);
+  };
+
+  await page.goto(`${APP_URL}${trackPath(shapes.id)}`, { waitUntil: 'networkidle' });
+  await scoreReady(page).catch(() => {});
+  const rows = await sources();
+
+  await pickSource(rows, 'multi');
+  check('a multi-track file draws', await drew());
+  const pills = page.getByRole('group', { name: 'Tracks' }).getByRole('button');
+  check('and lists its four instruments', (await pills.count()) === 4, `${await pills.count()} pills`);
+  await pills.nth(3).click();
+  await page.waitForTimeout(2000);
+  check('switching instrument keeps it drawn', await drew());
+  for (const label of ['Tab + Score', 'Tab']) {
+    await page.getByRole('button', { name: label, exact: true }).click();
+    await page.waitForTimeout(1800);
+    check(`${label} keeps it drawn`, await drew());
+  }
+
+  await pickSource(await sources(), 'score only');
+  check('a file with no tablature draws too, in Tab', await drew());
+  check('and says nothing went wrong', (await page.getByTestId('tab-score').getByRole('alert').count()) === 0,
+    (await page.getByTestId('tab-score').innerText()).slice(0, 120));
+
+  await pickSource(await sources(), 'text');
+  check('a pasted text tab draws', await drew());
+
+  // Back to the widest file and away again: the picker is filled from the
+  // score on screen, so this is where a stale instrument index used to
+  // reach AlphaTab and make it render no track at all.
+  await pickSource(await sources(), 'multi');
+  await pickSource(await sources(), 'score only');
+  check('switching back and forth between sources stays drawn', await drew());
+
+  check('every shape of tab drew with a clean console', quiet().length === 0, quiet().slice(0, 3).join(' | '));
+  await page.context().close();
+}
+
 // ── nothing overflows (docs/tabs-v3.md section 5) ─────────────────────────
 // A long song name, a member with a 60-character name, a file with six
 // long-named tracks and seven pasted tabs: eight lines in the picker. At

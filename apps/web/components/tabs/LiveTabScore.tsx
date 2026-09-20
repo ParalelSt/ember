@@ -5,7 +5,15 @@ import { cn } from '@/lib/utils';
 import { formatTime } from '@/lib/format';
 import { dragReducer, edgeScrollSpeed, idleDrag, isActive, snapToBeat, type DragEvent, type Snap } from '@/lib/tabDrag';
 import { logger } from '@/lib/logger/client';
-import { displaySettings, scoreInfo, type ScoreInfo, type TabsScroll, type TabsStaff } from '@/lib/tabScore';
+import {
+  displaySettings,
+  scoreInfo,
+  staveProfileOf,
+  trackIndexIn,
+  type ScoreInfo,
+  type TabsScroll,
+  type TabsStaff,
+} from '@/lib/tabScore';
 import {
   barStartsMs,
   beatToSongSec,
@@ -88,6 +96,8 @@ export function LiveTabScore(props: LiveTabScoreProps) {
   const scrollerRef = useRef<HTMLDivElement>(null);
   const hostRef = useRef<HTMLDivElement>(null);
   const apiRef = useRef<any>(null);
+  /** The AlphaTab module, kept once it is imported. */
+  const atRef = useRef<any>(null);
   const outputRef = useRef<any>(null);
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading');
   const [error, setError] = useState<string | null>(null);
@@ -119,6 +129,13 @@ export function LiveTabScore(props: LiveTabScoreProps) {
   /** Song time against tab time at every bar, from the alignment and
    *  AlphaTab's own tick lookup. Empty when the tab is not lined up. */
   const points = useRef<SyncPoint[]>([]);
+  /** What the loaded file holds, read before AlphaTab is built: the index
+   *  asked for is clamped to it and the stave profile follows it. Null
+   *  until the score is in hand. */
+  const loaded = useRef<ScoreInfo | null>(null);
+  /** The instrument on screen has a tablature staff, so "Tab" can be drawn
+   *  on its own (lib/tabScore.ts staveProfileOf). */
+  const hasTab = (index: number) => loaded.current?.tracks[index]?.tab ?? true;
 
   // ── build AlphaTab once per file ────────────────────────────────────────
   useEffect(() => {
@@ -154,8 +171,25 @@ export function LiveTabScore(props: LiveTabScoreProps) {
         if (cancelled) return;
         if (host.clientWidth === 0) throw new Error('The tab never got a size to draw into.');
 
+        // Read the file before AlphaTab is built, not after: the score says
+        // which instruments exist and whether they carry tablature, and both
+        // have to be right at the first drawing. Handed a track it cannot
+        // resolve, or asked for "Tab" on a score with no tablature staff,
+        // AlphaTab lays out an empty system and throws instead of drawing.
+        atRef.current = at;
+        const score = at.importer.ScoreLoader.loadScoreFromBytes(bytes, new at.Settings());
+        const info = scoreInfo(score);
+        if (info.tracks.length === 0) throw new Error('That tab has no instrument to draw.');
+        loaded.current = info;
+        const index = trackIndexIn(info.tracks.length, live.current.track);
+
         const p = live.current;
-        const look = displaySettings(at, { staff: p.staff, scroll: p.scroll, scale: p.scale });
+        const look = displaySettings(at, {
+          staff: p.staff,
+          scroll: p.scroll,
+          scale: p.scale,
+          hasTab: info.tracks[index]?.tab ?? true,
+        });
         api = new at.AlphaTabApi(host, {
           core: {
             engine: 'svg',
@@ -251,7 +285,7 @@ export function LiveTabScore(props: LiveTabScoreProps) {
           followBeat(beat);
         });
 
-        api.load(bytes, [live.current.track]);
+        api.renderScore(score, [index]);
 
         // Re-lay out when the column changes width (window resize, the
         // lyrics panel opening).
@@ -348,6 +382,7 @@ export function LiveTabScore(props: LiveTabScoreProps) {
       }
       apiRef.current = null;
       outputRef.current = null;
+      loaded.current = null;
       points.current = [];
       refollow.current = () => {};
       followPlayhead.current = () => {};
@@ -371,7 +406,12 @@ export function LiveTabScore(props: LiveTabScoreProps) {
       // Only the fields that change. `resources` is left alone: AlphaTab
       // keeps a RenderingResources instance there, and a plain object in
       // its place makes the next render throw.
-      const { display } = displaySettings(at, { staff, scroll, scale });
+      const { display } = displaySettings(at, {
+        staff,
+        scroll,
+        scale,
+        hasTab: hasTab(trackIndexIn(loaded.current?.tracks.length ?? 0, live.current.track)),
+      });
       api.settings.display.scale = display.scale;
       api.settings.display.staveProfile = display.staveProfile;
       api.settings.display.layoutMode = display.layoutMode;
@@ -401,9 +441,18 @@ export function LiveTabScore(props: LiveTabScoreProps) {
   // ── the instrument shown ────────────────────────────────────────────────
   useEffect(() => {
     const api = apiRef.current;
-    const t = api?.score?.tracks?.[track];
-    // The first drawing already shows the chosen track (api.load above).
-    if (t && api.tracks?.[0] !== t) api.renderTracks([t]);
+    const at = atRef.current;
+    const count = api?.score?.tracks?.length ?? 0;
+    if (!count) return;
+    // The picker's list can be a score behind (another tab is loading), so
+    // the index is clamped to the score actually in hand.
+    const index = trackIndexIn(count, track);
+    const t = api.score.tracks[index];
+    // The first drawing already shows the chosen track (api.renderScore above).
+    if (!t || api.tracks?.[0] === t) return;
+    // This instrument may be score-only where the last one had tablature.
+    if (at) api.settings.display.staveProfile = staveProfileOf(at, live.current.staff, hasTab(index));
+    api.renderTracks([t]);
   }, [track, status]);
 
   // ── transport: mirror Ember into AlphaTab ───────────────────────────────

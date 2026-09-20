@@ -15,6 +15,10 @@ export interface ScoreTrackInfo {
   tuning: string;
   /** Strings low to high: 'D A D G B E'. */
   strings: string;
+  /** This instrument has a tablature staff to draw. False for a file that
+   *  only carries standard notation (a MusicXML export without string and
+   *  fret numbers, a drum part): see `staveProfileOf`. */
+  tab: boolean;
 }
 
 export interface ScoreInfo {
@@ -88,7 +92,8 @@ export function scoreInfo(score: any): ScoreInfo {
   const tempo = Number(score?.tempo) > 0 ? Math.round(Number(score.tempo)) : null;
   const key = first ? keyName(Number(first.keySignature ?? 0), Number(first.keySignatureType ?? 0)) : null;
   const tracks: ScoreTrackInfo[] = (score?.tracks ?? []).map((t: any, index: number) => {
-    const staff = t?.staves?.[0];
+    const staves: any[] = Array.isArray(t?.staves) ? t.staves : [];
+    const staff = staves[0];
     const tuning: number[] = Array.isArray(staff?.tuning) ? staff.tuning : [];
     const name = String(t?.name || `Track ${index + 1}`).trim();
     const program = Number(t?.playbackInfo?.program);
@@ -98,6 +103,7 @@ export function scoreInfo(score: any): ScoreInfo {
       instrument: PROGRAMS[program] ?? name,
       tuning: staff?.tuningName ? shortTuningName(String(staff.tuningName)) : '',
       strings: tuning.length ? stringsText(tuning) : '',
+      tab: staves.some((s) => s?.showTablature === true),
     };
   });
   return { tempo, key, tracks };
@@ -156,18 +162,46 @@ export function scoreResources() {
   };
 }
 
+/** Which instrument of the score to draw: the one asked for when the score
+ *  has it, else the last one it does have (and 0 for a score with none).
+ *
+ *  The index can be stale: the picker is filled from the score on screen,
+ *  so a switch to another tab can carry an index the new file does not
+ *  reach. AlphaTab drops an index it cannot resolve and then draws *no*
+ *  track at all, which throws inside its layout instead of showing
+ *  anything, so the index is always clamped against the score in hand. */
+export function trackIndexIn(trackCount: number, wanted: number): number {
+  if (!Number.isInteger(wanted) || wanted < 0) return 0;
+  return Math.max(0, Math.min(wanted, trackCount - 1));
+}
+
 /* eslint-disable @typescript-eslint/no-explicit-any */
+/** The stave profile a score can actually be drawn with. "Tab" alone needs
+ *  a tablature staff; a file that only carries standard notation (MusicXML
+ *  exported without string and fret numbers, a drum part) has none, and
+ *  AlphaTab's Tab profile then lays out an empty system and throws
+ *  ("can't access property staves"). Such a score keeps its standard staff
+ *  instead of drawing nothing. */
+export function staveProfileOf(at: any, staff: TabsStaff, hasTab: boolean) {
+  return staff === 'tab' && hasTab ? at.StaveProfile.Tab : at.StaveProfile.ScoreTab;
+}
+
 /** The settings every drawn tab shares (docs/tabs-rebuild.md section 4):
  *  tab staff with rhythm under the numbers, Tab or Tab + Score, Ember's
  *  colours, page or horizontal layout, and the score's own title block
- *  hidden because the page header shows it. `at` is the AlphaTab module. */
-export function displaySettings(at: any, opts: { staff: TabsStaff; scroll: TabsScroll; scale: number }) {
+ *  hidden because the page header shows it. `at` is the AlphaTab module.
+ *  `hasTab` says whether the instrument being drawn has a tablature staff;
+ *  unknown (no score yet) counts as yes. */
+export function displaySettings(
+  at: any,
+  opts: { staff: TabsStaff; scroll: TabsScroll; scale: number; hasTab?: boolean },
+) {
   const E = at.NotationElement;
   return {
     display: {
       // One row reads bigger, like Songsterr's scroll mode.
       scale: opts.scroll === 'horizontal' ? opts.scale * 1.25 : opts.scale,
-      staveProfile: opts.staff === 'tab' ? at.StaveProfile.Tab : at.StaveProfile.ScoreTab,
+      staveProfile: staveProfileOf(at, opts.staff, opts.hasTab ?? true),
       layoutMode: opts.scroll === 'horizontal' ? at.LayoutMode.Horizontal : at.LayoutMode.Page,
       resources: scoreResources(),
     },

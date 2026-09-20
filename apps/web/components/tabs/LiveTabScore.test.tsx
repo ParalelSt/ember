@@ -6,7 +6,29 @@ import { LiveTabScore, type LiveTabScoreProps } from './LiveTabScore';
 // tab page uses: the settings it is built with, its events (fired by the
 // test), the external media output the playhead is fed to, the tick lookup
 // a click is resolved through, and the bounds follow-scroll reads.
-const at = vi.hoisted(() => ({ apis: [] as FakeApi[], ready: true }));
+const at = vi.hoisted(() => ({
+  apis: [] as FakeApi[],
+  ready: true,
+  /** The score the fake importer reads out of the downloaded bytes. Null:
+   *  the two-track guitar and bass file every other test uses. */
+  score: null as ({ tracks: object[] } & Record<string, unknown>) | null,
+}));
+
+/** A score with one instrument per name. `tab` off is a score-only file (a
+ *  MusicXML export with no string and fret numbers, a drum part), which
+ *  AlphaTab cannot draw with the Tab stave profile alone. */
+function fakeScore(names: string[], tab = true) {
+  return {
+    tempo: 96,
+    masterBars: [{ keySignature: -1, keySignatureType: 1 }],
+    tracks: names.map((name, index) => ({
+      index,
+      name,
+      playbackInfo: { program: index === 0 ? 30 : 33 },
+      staves: [{ tuning: [64, 59, 55, 50, 45, 38], showTablature: tab }],
+    })),
+  };
+}
 
 type Handler = (arg?: unknown) => void;
 class Emitter {
@@ -38,6 +60,7 @@ interface FakeApi {
   updateSettings: ReturnType<typeof vi.fn>;
   render: ReturnType<typeof vi.fn>;
   renderTracks: ReturnType<typeof vi.fn>;
+  renderScore: (score: { tracks: object[] }, tracks: number[]) => void;
   playerState: number;
   score: { tracks: object[] } | null;
   tracks: object[];
@@ -78,6 +101,14 @@ vi.mock('@coderline/alphatab', () => {
   beats.forEach((b, i) => {
     b.previousBeat = beats[i - 1] ?? null;
     b.nextBeat = beats[i + 1] ?? null;
+  });
+  const defaultScore = () => ({
+    tempo: 96,
+    masterBars: [{ keySignature: -1, keySignatureType: 1 }],
+    tracks: [
+      { index: 0, name: 'Guitar', playbackInfo: { program: 30 }, staves: [{ tuning: [64, 59, 55, 50, 45, 38], tuningName: 'Guitar Dropped D Tuning', showTablature: true }] },
+      { index: 1, name: 'Bass', playbackInfo: { program: 33 }, staves: [{ tuning: [43, 38, 33, 26], showTablature: true }] },
+    ],
   });
   class AlphaTabApi {
     settings: FakeApi['settings'];
@@ -140,18 +171,20 @@ vi.mock('@coderline/alphatab', () => {
       };
       at.apis.push(this as unknown as FakeApi);
     }
+    /** AlphaTab's own "read these bytes and draw them" shortcut. */
     load(_bytes: Uint8Array, tracks: number[]) {
+      this.renderScore(at.score ?? defaultScore(), tracks);
+    }
+    renderScore(score: { tracks: object[] }, tracks: number[]) {
       this.loaded = { tracks };
-      const score = {
-        tempo: 96,
-        masterBars: [{ keySignature: -1, keySignatureType: 1 }],
-        tracks: [
-          { index: 0, name: 'Guitar', playbackInfo: { program: 30 }, staves: [{ tuning: [64, 59, 55, 50, 45, 38], tuningName: 'Guitar Dropped D Tuning' }] },
-          { index: 1, name: 'Bass', playbackInfo: { program: 33 }, staves: [{ tuning: [43, 38, 33, 26] }] },
-        ],
-      };
       this.score = score;
-      this.tracks = [score.tracks[tracks[0] ?? 0]];
+      // AlphaTab renders nothing at all for an index the score has no
+      // instrument for, and then throws inside its layout.
+      this.tracks = tracks.map((i) => score.tracks[i]).filter(Boolean);
+      if (this.tracks.length === 0) {
+        this.error.fire(new Error('can\'t access property "staves", e is undefined'));
+        return;
+      }
       this.scoreLoaded.fire(score);
       this.postRenderFinished.fire();
     }
@@ -159,6 +192,12 @@ vi.mock('@coderline/alphatab', () => {
   }
   return {
     AlphaTabApi,
+    Settings: class {},
+    importer: {
+      ScoreLoader: {
+        loadScoreFromBytes: () => at.score ?? defaultScore(),
+      },
+    },
     PlayerMode: { EnabledExternalMedia: 3 },
     ScrollMode: { Off: 0, Continuous: 1 },
     StaveProfile: { Tab: 'tab', ScoreTab: 'score-tab' },
@@ -187,6 +226,7 @@ afterAll(() => {
 beforeEach(() => {
   at.apis.length = 0;
   at.ready = true;
+  at.score = null;
 });
 
 function props(over: Partial<LiveTabScoreProps> = {}): LiveTabScoreProps {
@@ -233,6 +273,57 @@ describe('LiveTabScore settings', () => {
     expect(api.settings.display).toMatchObject({ staveProfile: 'tab', layoutMode: 'page', scale: 0.95 });
     expect(api.settings.display.resources).toMatchObject({ mainGlyphColor: expect.stringMatching(/^rgba\(/) });
     expect(api.settings.notation.rhythmMode).toBe('bars');
+  });
+
+  // A tab with no tablature in it (a MusicXML export carrying only standard
+  // notation, a drum part) draws nothing at all under AlphaTab's Tab stave
+  // profile: its layout ends up with no staff and throws
+  // (TypeError: can't access property "staves"). The score's own staff is
+  // kept instead, so the page shows the music.
+  it('a file with no tablature keeps its standard staff instead of drawing nothing', async () => {
+    at.score = fakeScore(['Piano'], false);
+    const { view, api } = await mount();
+    expect(api.settings.display.staveProfile).toBe('score-tab');
+    expect(view.getByTestId('tab-score').dataset.status).toBe('ready');
+  });
+
+  it('still draws Tab alone when the file has tablature', async () => {
+    at.score = fakeScore(['Guitar', 'Bass']);
+    const { api } = await mount();
+    expect(api.settings.display.staveProfile).toBe('tab');
+  });
+
+  // The picker is filled from the score on screen, so switching tabs can
+  // carry an instrument index the new file has no track for. AlphaTab then
+  // renders no track at all and throws in its layout.
+  it('clamps an instrument index the file has no track for', async () => {
+    at.score = fakeScore(['Guitar', 'Bass']);
+    const { view, api } = await mount({ track: 5 });
+    expect(api.loaded?.tracks).toEqual([1]);
+    expect(view.getByTestId('tab-score').dataset.status).toBe('ready');
+  });
+
+  it('switching to an instrument the file does not have draws the last one it does', async () => {
+    at.score = fakeScore(['Guitar', 'Bass']);
+    const { view, api, p } = await mount({ track: 0 });
+    view.rerender(<LiveTabScore {...p} track={7} />);
+    await waitFor(() => expect(api.renderTracks).toHaveBeenCalledWith([api.score!.tracks[1]]));
+  });
+
+  it('switching to a score-only instrument keeps its standard staff', async () => {
+    at.score = {
+      tempo: 96,
+      masterBars: [{ keySignature: 0, keySignatureType: 0 }],
+      tracks: [
+        { index: 0, name: 'Guitar', playbackInfo: { program: 30 }, staves: [{ tuning: [64, 59, 55, 50, 45, 38], showTablature: true }] },
+        { index: 1, name: 'Piano', playbackInfo: { program: 1 }, staves: [{ tuning: [], showTablature: false }] },
+      ],
+    };
+    const { view, api, p } = await mount({ track: 0 });
+    expect(api.settings.display.staveProfile).toBe('tab');
+    view.rerender(<LiveTabScore {...p} track={1} />);
+    await waitFor(() => expect(api.renderTracks).toHaveBeenCalled());
+    expect(api.settings.display.staveProfile).toBe('score-tab');
   });
 
   it('switching to Horizontal and Tab + Score re-lays out the same score', async () => {

@@ -147,7 +147,12 @@ function TabsSheet({ song, sources, onBack }: { song: TabSong; sources: TabSourc
   const align = useTabAlignment(tab);
   const timing = isLinedUp(align.timing) ? align.timing : null;
 
-  const [info, setInfo] = useState<ScoreInfo | null>(null);
+  // What the drawn score holds, kept with the tab it was read from: while
+  // another tab is loading the old score's instruments are not this tab's,
+  // and using them fills the picker with the wrong list and lets a track
+  // index through that the new file has no instrument for.
+  const [drawn, setDrawn] = useState<{ tabId: string; info: ScoreInfo } | null>(null);
+  const info = tab && drawn?.tabId === tab.id ? drawn.info : null;
   const [trackChoice, setTrackChoice] = useState<{ tabId: string; index: number } | null>(null);
   const savedTrack = (tabId: string) => {
     try {
@@ -386,7 +391,7 @@ function TabsSheet({ song, sources, onBack }: { song: TabSong; sources: TabSourc
             position={position}
             duration={duration}
             onSeek={seek}
-            onScore={setInfo}
+            onScore={(next) => setDrawn({ tabId: tab.id, info: next })}
             getPageScroller={() => stickyRef.current?.closest<HTMLElement>('[data-app-scroller]') ?? null}
             getTopInset={() => stickyRef.current?.getBoundingClientRect().height ?? 0}
             className="mt-block"

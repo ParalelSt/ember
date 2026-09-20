@@ -334,8 +334,8 @@ describe('TabsPage toolbar and layout', () => {
         tempo: 96,
         key: 'D minor',
         tracks: [
-          { index: 0, name: 'Guitar', instrument: 'Distortion guitar', tuning: 'Drop D', strings: 'D A D G B E' },
-          { index: 1, name: 'Bass', instrument: 'Bass', tuning: 'Drop D', strings: 'D A D G' },
+          { index: 0, name: 'Guitar', instrument: 'Distortion guitar', tuning: 'Drop D', strings: 'D A D G B E', tab: true },
+          { index: 1, name: 'Bass', instrument: 'Bass', tuning: 'Drop D', strings: 'D A D G', tab: true },
         ],
       }),
     );
