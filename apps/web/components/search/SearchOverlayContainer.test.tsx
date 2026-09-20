@@ -97,6 +97,8 @@ beforeEach(() => {
   vi.clearAllMocks();
   api.search.mockImplementation(neverResolves);
   recents.tracks = [];
+  trackActions.currentId = null;
+  trackActions.isPlaying = false;
   online.value = true;
   useUiStore.setState({ searchOpen: true });
 });
@@ -162,4 +164,60 @@ describe('SearchOverlayContainer', () => {
 
     expect(screen.getByText('Midnight Drive')).toBeInTheDocument();
   });
+
+  // The search-row controls: both row shapes the overlay shows get the
+  // trailing play/pause button and the ember title, off one player.
+  it('gives the recents a trailing play button that plays that track', () => {
+    recents.tracks = [makeTrack()];
+    renderOverlay();
+
+    const button = screen.getByRole('button', { name: 'Play Midnight Drive' });
+    fireEvent.click(button);
+    expect(trackActions.onPlay).toHaveBeenCalledTimes(1);
+    expect(trackActions.onPlay.mock.calls[0][0]).toMatchObject({ id: 'youtube:a1' });
+    expect(trackActions.onToggle).not.toHaveBeenCalled();
+  });
+
+  it('pauses and resumes the recents row that is the current song', () => {
+    recents.tracks = [makeTrack()];
+    trackActions.currentId = 'youtube:a1';
+    trackActions.isPlaying = true;
+    const { rerender } = renderOverlay();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Pause Midnight Drive' }));
+    expect(trackActions.onToggle).toHaveBeenCalledTimes(1);
+    expect(trackActions.onPlay).not.toHaveBeenCalled();
+    expect(screen.getByTestId('track-row-title').className).toContain('text-ember');
+
+    trackActions.isPlaying = false;
+    rerender(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <SearchOverlayContainer />
+      </QueryClientProvider>,
+    );
+    expect(screen.getByRole('button', { name: 'Resume Midnight Drive' })).toBeInTheDocument();
+    // Paused looks the same as playing apart from the icon: the title keeps
+    // the accent and nothing else marks the row.
+    expect(screen.getByTestId('track-row-title').className).toContain('text-ember');
+  });
+
+  it('gives the results a trailing play button and the ember title, no glyph', async () => {
+    const track = makeTrack({ id: 'youtube:b2', sourceId: 'b2', title: 'Second Wind' });
+    trackActions.currentId = 'youtube:b2';
+    trackActions.isPlaying = true;
+    api.search.mockResolvedValue({ tracks: [track] });
+    renderOverlay();
+
+    fireEvent.change(screen.getByPlaceholderText('What do you want to listen to?'), {
+      target: { value: 'second wind' },
+    });
+
+    expect(await screen.findByRole('button', { name: 'Pause Second Wind' })).toBeInTheDocument();
+    const title = screen.getByTestId('track-row-title');
+    expect(title.className).toContain('text-ember');
+    expect(title.querySelector('svg')).toBeNull();
+    // No leading play cell any more: the control is the trailing one.
+    expect(screen.queryByRole('button', { name: 'Pause' })).toBeNull();
+  });
+
 });

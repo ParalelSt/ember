@@ -74,6 +74,14 @@ export interface TrackRowProps {
    *  downloaded-file URL, for offline rows). Undefined falls back to the
    *  track's own `artworkUrl`; null renders as no art. */
   artworkSrc?: string | null;
+  /** The search overlay's row shape. The play/pause control moves to the
+   *  trailing end of the row (revealed on hover or keyboard focus, always
+   *  shown on the current row, always shown on a phone, which has neither),
+   *  the `list` density drops its leading play column with it, and the
+   *  current row is marked by its TITLE in the ember accent rather than the
+   *  whole line. Default off, so every other caller keeps the leading play
+   *  cell and the whole-row tint it has always had. */
+  trailingPlayControl?: boolean;
   density?: TrackRowDensity;
   tone?: TrackRowTone;
   className?: string;
@@ -101,6 +109,7 @@ export function TrackRow({
   onReplace,
   artworkFallback,
   artworkSrc,
+  trailingPlayControl = false,
   density = 'list',
   tone = 'default',
   className,
@@ -173,6 +182,50 @@ export function TrackRow({
     </Button>
   ) : null;
 
+  // The search overlay's control. Hidden with opacity rather than removed,
+  // so the space it takes is already reserved and nothing shifts when a
+  // hover reveals it; opacity-0 still leaves it clickable and in the tab
+  // order, which is what makes keyboard focus able to reveal it at all.
+  // `size-hit md:size-8` is the app's touch convention (40px phone / 32px
+  // desktop, docs/design-system.md section 2); 40px is also the xs artwork
+  // height, so a compact row keeps its height on a phone.
+  const playControl = trailingPlayControl ? (
+    <Button
+      variant="ghost"
+      size="icon"
+      data-testid="track-row-play"
+      className={cn(
+        'size-hit md:size-8 transition-opacity',
+        active
+          ? 'text-ember hover:text-ember'
+          : 'text-muted-foreground hover:text-foreground opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 max-md:opacity-100',
+      )}
+      onClick={(e) => {
+        e.stopPropagation();
+        if (active) onToggle?.();
+        else playOrToast?.();
+      }}
+      disabled={unavailable}
+      aria-label={
+        unavailable
+          ? `"${track.title}" is unavailable`
+          : active
+            ? playing
+              ? `Pause ${track.title}`
+              : `Resume ${track.title}`
+            : `Play ${track.title}`
+      }
+    >
+      {active && playing ? <PauseIcon className="h-3.5 w-3.5" /> : <PlayIcon className="h-3.5 w-3.5" />}
+    </Button>
+  ) : null;
+
+  /** The current row's mark when `trailingPlayControl` is on: the title in
+   *  the ember accent, in both the playing and the paused state, and no
+   *  glyph beside it. The button's own icon is the only thing that says
+   *  which of the two it is. */
+  const emberTitle = trailingPlayControl && active && 'text-ember';
+
   if (compact) {
     return (
       <div
@@ -180,19 +233,22 @@ export function TrackRow({
         className={cn(
           'group flex items-center gap-3 px-3 py-2 rounded-md transition-colors',
           onPlay && 'cursor-pointer hover:bg-card',
-          active && 'text-ember',
+          active && !trailingPlayControl && 'text-ember',
           className,
         )}
       >
         {artwork}
         <div className="min-w-0 flex-1">
-          <div className="truncate text-sm font-medium">{track.title}</div>
+          <div data-testid="track-row-title" className={cn('truncate text-sm font-medium', emberTitle)}>
+            {track.title}
+          </div>
           {/* Plain text, not a link: these rows sit inside a sheet, a
               recents list and a picker, where a stray navigation would
               throw away what the user was doing. */}
           <div className={cn('truncate text-xs', SUBTLE[tone])}>{track.artist}</div>
         </div>
         {showTime && <div className={cn('text-xs tabular-nums', SUBTLE[tone])}>{duration}</div>}
+        {playControl}
         {trailing}
         {like}
         {remove}
@@ -217,36 +273,45 @@ export function TrackRow({
         // used, just measured against the row's own space. Below it, the
         // 3-column "phone" shape (this one, unqualified) is used, same as
         // it always was on a narrow phone screen.
-        'group grid grid-cols-[40px_minmax(0,1fr)_auto] @3xl:grid-cols-[40px_minmax(0,1fr)_minmax(0,1fr)_60px_auto] gap-3 items-center px-3 py-2 rounded-md cursor-pointer hover:bg-card transition-colors',
-        active && 'text-ember',
+        'group grid gap-3 items-center px-3 py-2 rounded-md cursor-pointer hover:bg-card transition-colors',
+        // `trailingPlayControl` moves the control to the far end, so the
+        // leading 40px column goes with it and the title starts at the
+        // row's edge.
+        trailingPlayControl
+          ? 'grid-cols-[minmax(0,1fr)_auto] @3xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_60px_auto]'
+          : 'grid-cols-[40px_minmax(0,1fr)_auto] @3xl:grid-cols-[40px_minmax(0,1fr)_minmax(0,1fr)_60px_auto]',
+        active && !trailingPlayControl && 'text-ember',
         unavailable && 'opacity-60',
         className,
       )}
     >
-      <div className="relative grid place-items-center h-8 w-8 justify-self-center">
-        {showRank && !active && (
-          <span className="pointer-events-none absolute inset-0 grid place-items-center text-sm tabular-nums text-muted-foreground group-hover:opacity-0 transition-opacity">
-            {index + 1}
-          </span>
-        )}
-        <Button
-          variant="ghost"
-          size="icon"
-          className={cn('h-8 w-8', showRank && !active && 'opacity-0 group-hover:opacity-100 transition-opacity')}
-          onClick={() => (active ? onToggle?.() : onPlay?.())}
-          disabled={unavailable}
-          aria-label={unavailable ? 'Unavailable' : active && playing ? 'Pause' : 'Play'}
-        >
-          {active && playing ? <PauseIcon className="h-3.5 w-3.5" /> : <PlayIcon className="h-3.5 w-3.5" />}
-        </Button>
-      </div>
+      {!trailingPlayControl && (
+        <div className="relative grid place-items-center h-8 w-8 justify-self-center">
+          {showRank && !active && (
+            <span className="pointer-events-none absolute inset-0 grid place-items-center text-sm tabular-nums text-muted-foreground group-hover:opacity-0 transition-opacity">
+              {index + 1}
+            </span>
+          )}
+          <Button
+            variant="ghost"
+            size="icon"
+            className={cn('h-8 w-8', showRank && !active && 'opacity-0 group-hover:opacity-100 transition-opacity')}
+            onClick={() => (active ? onToggle?.() : onPlay?.())}
+            disabled={unavailable}
+            aria-label={unavailable ? 'Unavailable' : active && playing ? 'Pause' : 'Play'}
+          >
+            {active && playing ? <PauseIcon className="h-3.5 w-3.5" /> : <PlayIcon className="h-3.5 w-3.5" />}
+          </Button>
+        </div>
+      )}
 
       <div data-testid="track-row-title-cell" className="flex items-center gap-3 min-w-0">
         {artwork}
         <div className="min-w-0">
           <div
+            data-testid="track-row-title"
             onClick={playOrToast}
-            className={cn('truncate text-sm font-semibold', unavailable && 'text-muted-foreground')}
+            className={cn('truncate text-sm font-semibold', emberTitle, unavailable && 'text-muted-foreground')}
           >
             {track.title}
             {unavailable && (
@@ -283,6 +348,7 @@ export function TrackRow({
       <div className="hidden @3xl:block text-sm text-muted-foreground text-right tabular-nums">{showTime ? duration : ''}</div>
 
       <div className="flex items-center gap-1">
+        {playControl}
         {trailing}
         {like}
         {replace}
