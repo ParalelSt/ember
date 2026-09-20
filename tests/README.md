@@ -295,6 +295,11 @@ node tests/trending-ui.test.mjs                     # or: npm run test:trending-
 PB_URL=http://127.0.0.1:8091 APP_URL=http://127.0.0.1:3005 \
 node tests/instant-search-ui.test.mjs               # or: npm run test:search-ui
 
+# The full-screen phone player's song title: still when it fits, one smooth
+# scroll when it does not, never flickering. PB_URL / APP_URL as above.
+PB_URL=http://127.0.0.1:8091 APP_URL=http://127.0.0.1:3005 \
+node tests/marquee-ui.test.mjs                      # or: npm run test:marquee-ui
+
 # Playlist import: Spotify embed source, background jobs, picks (needs its own server, see below)
 node tests/import.test.mjs                          # or: npm run test:import
 # Playlist import in the browser: Tabs dialog, sidebar ring, restart, 503, review sheet
@@ -831,6 +836,37 @@ which closes the panel; Escape closes it and takes focus out of the box;
 the arrow keys walk the rows and come back to the box. Finally, at 390, the
 phone still gets the modal full-screen sheet with its backdrop and its
 close button, inside the viewport, closing on Escape.
+
+## What `marquee-ui.test.mjs` covers
+
+The song title in the full-screen phone player (`components/player/
+MarqueeText.tsx`), in a real Chromium tab at 390x844 with touch, 12 checks.
+
+The bug it was written for: the title "flickered and was mumbled". A
+design-system spacing token, `--spacing-block`, completes one of Tailwind
+4's own utility names, so it generated a second
+`.inline-block { inline-size: 1rem }` rule, emitted after the core
+`display: inline-block` one at the same specificity. Every `inline-block`
+element in the app was pinned to 16px wide, and the marquee's two copies of
+the title became two 16px boxes with the whole title spilling out of each,
+sliding over one another.
+
+It seeds one long and one short upload, opens the full-screen view on each
+and samples the title element every 100 ms for three seconds. A long title:
+its box never moves or resizes (a measure/render loop would show here), the
+number of rendered copies never changes (the animated/static flip would
+show here), both copies keep one identical width wider than the box (the
+squashing above would show here), the marquee animation runs throughout,
+the title holds still through its start delay and is moving by the end. A
+short title: one copy, no animation, not a pixel of movement. Plus no
+uncaught page errors.
+
+The threshold itself, where a title is within a pixel or two of the edge of
+its box, is covered by unit tests instead
+(`apps/web/components/player/MarqueeText.test.tsx`), and the token collision
+by `apps/web/lib/themeCollisions.test.ts`, which fails if a `--spacing-*`
+token shadows a core display utility without globals.css putting the stolen
+property back.
 
 ## What `trending-ui.test.mjs` and `test_player_trending.py` cover
 

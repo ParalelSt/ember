@@ -183,6 +183,18 @@
   .shadow-glow   { box-shadow: 0 8px 30px -12px color-mix(in oklab, var(--ember) 65%, transparent); }
   .ring-ember    { box-shadow: 0 0 0 2px color-mix(in oklab, var(--ember) 70%, transparent); }
   .scrollbar-thin::-webkit-scrollbar { height: 6px; width: 6px; }
+
+  /* Put `inline-block` back to meaning only "display: inline-block".
+     Tailwind 4 derives a logical-width family (`inline-*` -> inline-size)
+     from the `--spacing-*` scale, so the `--spacing-block` rhythm token
+     above also generates `.inline-block { inline-size: 1rem }`. That rule
+     is emitted after the core display utility of the same name and at the
+     same specificity, so it wins, and every element in the app carrying
+     `inline-block` was pinned to 16px wide (the full-screen player's title
+     was two 16px boxes of overflowing text sliding over each other).
+     `block` is the only one of our spacing token names that collides with
+     a core utility; lib/themeCollisions.test.ts keeps that true. */
+  .inline-block { inline-size: auto; }
 }
 
 /* Marquee for overflowing titles (full-screen NowPlaying). Continuous

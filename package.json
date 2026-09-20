@@ -51,6 +51,7 @@
     "test:trending-ui": "node tests/trending-ui.test.mjs",
     "test:trending-py": ".venv/bin/python -m unittest tests/test_player_trending.py",
     "test:search-ui": "node tests/instant-search-ui.test.mjs",
+    "test:marquee-ui": "node tests/marquee-ui.test.mjs",
     "test:android-native-log": "node tests/android-native-log.mjs",
     "test:android-call": "bash tests/android-auto-call.sh",
     "test:watchdog": "bash tests/watchdog.test.sh",
