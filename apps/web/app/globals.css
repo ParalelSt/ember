@@ -263,3 +263,26 @@
   .ember-new-pulse,
   .ember-new-dot { animation: none !important; }
 }
+
+/* Now-playing bars for the /dizajn "Search rows" candidates
+   (components/library/options/searchrows/SearchRow.tsx). Three SVG rects
+   scaled from their base line, staggered so they never move together.
+   Paused uses .ember-eq-still, the same bars standing at a fixed height,
+   and reduced motion falls back to exactly that, so the indicator still
+   reads without any movement. */
+@keyframes ember-eq {
+  0%, 100% { transform: scaleY(0.28); }
+  50%      { transform: scaleY(1); }
+}
+.ember-eq-bar,
+.ember-eq-still {
+  transform-box: fill-box;
+  transform-origin: bottom;
+}
+.ember-eq-bar { animation: ember-eq 0.9s ease-in-out infinite; }
+.ember-eq-bar-2 { animation-duration: 1.15s; animation-delay: -0.3s; }
+.ember-eq-bar-3 { animation-duration: 0.78s; animation-delay: -0.6s; }
+.ember-eq-still { transform: scaleY(0.5); }
+@media (prefers-reduced-motion: reduce) {
+  .ember-eq-bar { animation: none !important; transform: scaleY(0.5); }
+}
