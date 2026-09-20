@@ -182,6 +182,38 @@ describe('SearchOverlayContainer', () => {
     renderOverlay();
 
     expect(screen.getByText('Midnight Drive')).toBeInTheDocument();
+    expect(screen.queryByText('Trending')).toBeNull();
+  });
+
+  it('shows no Trending heading or list with an empty query', () => {
+    recents.tracks = [makeTrack()];
+    renderOverlay();
+
+    expect(screen.queryByText('Trending')).toBeNull();
+    expect(screen.queryByText('No tracks')).toBeNull();
+  });
+
+  it('shows a calm line instead of an empty panel when there are no recents either', () => {
+    recents.tracks = [];
+    renderOverlay();
+
+    expect(screen.getByText('Search for a song, artist or album')).toBeInTheDocument();
+    expect(screen.queryByText('Trending')).toBeNull();
+    expect(screen.queryByText('No tracks')).toBeNull();
+  });
+
+  it('still renders results for an actual query, with no Trending heading', async () => {
+    const track = makeTrack({ id: 'youtube:c3', sourceId: 'c3', title: 'Third Wheel' });
+    api.search.mockResolvedValue({ tracks: [track] });
+    renderOverlay();
+
+    fireEvent.change(screen.getByPlaceholderText('What do you want to listen to?'), {
+      target: { value: 'third wheel' },
+    });
+
+    expect(await screen.findByText('Third Wheel')).toBeInTheDocument();
+    expect(screen.getByText('Results for "third wheel"')).toBeInTheDocument();
+    expect(screen.queryByText('Trending')).toBeNull();
   });
 
   // The search-row controls: both row shapes the overlay shows get the
@@ -365,6 +397,22 @@ describe('SearchOverlayContainer, phone sheet', () => {
   // job, and the stand-in above always renders its children, so there is
   // nothing here to assert. The desktop box, which IS always in the page,
   // is covered above.)
+
+  it('shows recents and no Trending heading with an empty query', () => {
+    recents.tracks = [makeTrack()];
+    renderOverlay();
+
+    expect(screen.getByText('Midnight Drive')).toBeInTheDocument();
+    expect(screen.queryByText('Trending')).toBeNull();
+    expect(screen.queryByText('No tracks')).toBeNull();
+  });
+
+  it('shows the calm empty line with no recents', () => {
+    recents.tracks = [];
+    renderOverlay();
+
+    expect(screen.getByText('Search for a song, artist or album')).toBeInTheDocument();
+  });
 
   it('dismisses on Escape', () => {
     renderOverlay();

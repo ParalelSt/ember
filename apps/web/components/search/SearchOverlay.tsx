@@ -150,14 +150,25 @@ export function SearchOverlay({
     </div>
   );
 
-  const body = (
+  // With no query typed yet, the panel is just recents: no "Trending"
+  // heading and no chart to fetch (the overlay never asked for one; the
+  // Home shelf's useQueryTrending is a separate call). Offline still gets
+  // its own line here, since recents are local and searching is not what
+  // is blocked; a calm one-liner replaces the old empty "No tracks" list
+  // when there is nothing to show at all.
+  const body = !debouncedQ ? (
+    recentsNode ?? (
+      showOffline ? (
+        <EmptyState className="text-sm">
+          No connection. This will run when you are back online.
+        </EmptyState>
+      ) : (
+        <EmptyState className="text-sm">Search for a song, artist or album</EmptyState>
+      )
+    )
+  ) : (
     <>
-      {!debouncedQ && recentsNode}
-
-      <SectionHeader
-        title={debouncedQ ? `Results for "${debouncedQ}"` : 'Trending'}
-        className="mt-6 mb-4"
-      />
+      <SectionHeader title={`Results for "${debouncedQ}"`} className="mt-6 mb-4" />
       {showOffline && (
         <EmptyState className="text-sm">
           No connection. This will run when you are back online.

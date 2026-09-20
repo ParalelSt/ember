@@ -141,6 +141,16 @@ await input.waitFor({ state: 'focused', timeout: 1000 }).catch(() => {});
 const focused = await input.evaluate((el) => el === document.activeElement);
 check('input is focused on open, with the network throttled', focused);
 
+// Empty query, brand-new test user with no recent searches yet: the panel
+// shows the calm one-liner, no "Trending" heading and no empty "No tracks"
+// list under it (that block was dropped from the overlay entirely).
+const emptyStateText = (await panel.innerText()).trim();
+check('empty query shows the calm line, not a "Trending" heading',
+  emptyStateText.includes('Search for a song, artist or album') && !emptyStateText.includes('Trending'),
+  emptyStateText);
+check('empty query has no leftover "No tracks" list', !emptyStateText.includes('No tracks'),
+  emptyStateText);
+
 // The shell never disappeared: the sidebar (loaded before the throttle
 // kicked in) is still there beside the dropdown. A CSS locator rather than
 // getByRole is what this used to need when search was a modal dialog (a
