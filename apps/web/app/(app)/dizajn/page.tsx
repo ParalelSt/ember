@@ -40,6 +40,8 @@ import {
   type TrendingView,
 } from '@/components/library/options/trending';
 import { TrendingSection } from '@/components/library/options/trending/TrendingSection';
+import { ROW_STATES, type RowState } from '@/components/library/options/searchrows';
+import { SearchRowsSection } from '@/components/library/options/searchrows/SearchRowsSection';
 import { MOCK_LIKED_TRACKS, MOCK_PLAYLISTS, MOCK_RECENT_TRACKS, MOCK_RESULT_TRACKS } from './mock';
 
 const STORAGE_KEY = 'dizajn-shelf-option';
@@ -52,6 +54,7 @@ const IMPORTS_REVIEW_KEY = 'dizajn-imports-review';
 const TRENDING_OPTION_KEY = 'dizajn-trending-option';
 const TRENDING_VIEW_KEY = 'dizajn-trending-view';
 const TRENDING_DATA_KEY = 'dizajn-trending-data';
+const SEARCHROWS_STATE_KEY = 'dizajn-searchrows-state';
 
 /** Lazy-initializer read of one picker's saved id, falling back to the
  *  first option when nothing (or something stale) is stored. */
@@ -236,6 +239,14 @@ export default function DizajnPage() {
     window.localStorage.setItem(TRENDING_DATA_KEY, trData);
   }, [trData]);
 
+  // "Search rows" picker: same pattern again. Only the player state is
+  // still a choice; the control style and the indicator were picked.
+  const [srState, setSrState] = useState<RowState>(() => savedChoice(SEARCHROWS_STATE_KEY, ROW_STATES));
+
+  useEffect(() => {
+    window.localStorage.setItem(SEARCHROWS_STATE_KEY, srState);
+  }, [srState]);
+
   return (
     <div>
       <PageTitle className="mb-2">Design gallery</PageTitle>
@@ -243,6 +254,30 @@ export default function DizajnPage() {
         What was built, and the style options for the Library page&apos;s playlist shelves. Not a real
         page in the app: no link points here.
       </p>
+
+      <section className="mb-section">
+        <h2 className="text-section-title mb-inset">Search rows</h2>
+        <p className="text-meta mb-block">
+          Built: a play/pause button you can actually press inside the search overlay&apos;s rows, and
+          the song playing marked by its title in the ember accent. Both the recent searches (the
+          compact lines) and the results below them have it. The button appears on hover or keyboard
+          focus, stays visible on the row that is playing, and is always visible on a phone, which has
+          neither. The rows below are the REAL <code>TrackRow</code> and <code>TrackList</code> the
+          overlay renders, on mock data, so this preview cannot drift from what ships; pressing a
+          control moves the Player state picker the way the real player would. One thing the phone
+          frame below cannot show: &quot;always visible on a phone&quot; keys off the window width, and
+          that frame is a scaled box inside this one, so hover the rows to see the button here.
+        </p>
+
+        <div className="mb-stack flex flex-wrap gap-x-section gap-y-block">
+          {/* "Player state", not "State": the changelog section further down
+              already has a picker by that name, and two radiogroups sharing a
+              label would be ambiguous to a screen reader (and to a test). */}
+          <Picker label="Player state" options={ROW_STATES} value={srState} onChange={setSrState} />
+        </div>
+
+        <SearchRowsSection state={srState} onStateChange={setSrState} />
+      </section>
 
       <section className="mb-section">
         <h2 className="text-section-title mb-inset">Playlist import</h2>

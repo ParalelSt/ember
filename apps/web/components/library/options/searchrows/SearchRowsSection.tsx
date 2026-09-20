@@ -1,0 +1,253 @@
+'use client';
+
+import { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
+import { CloseIcon, MicIcon, MusicIcon, SearchIcon } from '@/components/icons';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { PageTitle } from '@/components/page/PageTitle';
+import { SectionHeader } from '@/components/page/SectionHeader';
+import { TrackCard } from '@/components/track/TrackCard';
+import { TrackList } from '@/components/track/TrackList';
+import { TrackRow } from '@/components/track/TrackRow';
+import { ShellPreview } from '@/components/library/options/changelog/ShellPreview';
+import { ScaledFrame } from '@/components/library/options/changelog/ChangelogSection';
+import type { RowState } from '@/components/library/options/searchrows';
+import { cn } from '@/lib/utils';
+import {
+  MOCK_HOME_TRACKS,
+  MOCK_SEARCH_PLAYING_ID,
+  MOCK_SEARCH_RECENTS,
+  MOCK_SEARCH_RESULTS,
+} from '@/app/(app)/dizajn/mock';
+
+// A little taller than the other sections' 1100x700 shell: the overlay is
+// the whole point here, and at 700 its last result row fell below the
+// popup's scroll edge.
+const DESKTOP = { width: 1100, height: 790 };
+const PHONE = { width: 390, height: 780 };
+const NOOP = () => {};
+const RECENTS_FALLBACK = <MusicIcon className="h-4 w-4" />;
+const NOTHING_LIKED = new Set<string>();
+
+/** A plain Home behind the overlay, so the backdrop has a real page under
+ *  it rather than an empty box. */
+function MockHome({ phone }: { phone: boolean }) {
+  return (
+    <div data-testid="searchrows-home">
+      <PageTitle className={cn('mb-section', phone ? 'text-3xl!' : 'text-4xl!')}>Home</PageTitle>
+      <SectionHeader title="Recommended for you" className="mb-row" />
+      <div className={cn('grid gap-block', phone ? 'grid-cols-2' : 'grid-cols-6')}>
+        {MOCK_HOME_TRACKS.slice(0, phone ? 2 : 6).map((t) => (
+          <TrackCard key={t.id} track={t} onActivate={NOOP} artworkFallback={<MusicIcon className="h-6 w-6" />} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/** SearchOverlay's popup drawn in place instead of portalled, so it sits
+ *  inside the gallery's shell frame: the chrome classes are the real
+ *  DialogContent's plus SearchOverlay's own, with spacing on tokens. The
+ *  rows themselves are the REAL production components, the same
+ *  `TrackRow density="compact" trailingPlayControl` recents line and the
+ *  same `TrackList trailingPlayControl` the live overlay renders, wired to
+ *  mock data instead of the player, so this preview cannot drift from what
+ *  ships. The query is empty, which is the overlay state that shows recents
+ *  AND a list at once, so both row shapes are visible in one picture. */
+function OverlayPanel({
+  phone,
+  state,
+  activeId,
+  onActivate,
+  onToggle,
+}: {
+  phone: boolean;
+  state: RowState;
+  activeId: string | null;
+  onActivate: (id: string) => void;
+  onToggle: () => void;
+}) {
+  const currentId = state === 'idle' ? null : activeId;
+  const isPlaying = state === 'playing';
+
+  return (
+    <div data-testid="searchrows-overlay" className="absolute inset-0 z-40">
+      <div className="absolute inset-0 bg-black/50 backdrop-blur-xs" />
+      <div
+        className={cn(
+          'absolute left-1/2 top-8 flex max-h-[86%] w-[calc(100%-2rem)] -translate-x-1/2 flex-col gap-block overflow-hidden rounded-xl bg-popover p-block text-sm text-popover-foreground shadow-soft ring-1 ring-foreground/10',
+          !phone && 'max-w-xl',
+        )}
+      >
+        <div className="relative shrink-0">
+          <SearchIcon className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            readOnly
+            value=""
+            onChange={NOOP}
+            placeholder="What do you want to listen to?"
+            className="h-12 rounded-full border-0 bg-card pl-11 pr-20"
+          />
+          <Button
+            variant="ghost"
+            size="icon"
+            aria-label="Search by voice"
+            className="absolute right-10 top-1/2 h-9 w-9 -translate-y-1/2 rounded-full text-muted-foreground hover:text-foreground"
+          >
+            <MicIcon className="h-4 w-4" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            aria-label="Close search"
+            className="absolute right-1 top-1/2 h-9 w-9 -translate-y-1/2 rounded-full text-muted-foreground hover:text-foreground"
+          >
+            <CloseIcon className="h-4 w-4" />
+          </Button>
+        </div>
+
+        <div className="-mx-block min-h-0 flex-1 overflow-y-auto px-block">
+          <div className="mb-cluster">
+            <SectionHeader title="Recent searches" className="mb-row" />
+            <div className="flex flex-col">
+              {MOCK_SEARCH_RECENTS.map((t) => (
+                <TrackRow
+                  key={t.id}
+                  track={t}
+                  density="compact"
+                  trailingPlayControl
+                  active={currentId === t.id}
+                  playing={isPlaying}
+                  artworkFallback={RECENTS_FALLBACK}
+                  onPlay={() => onActivate(t.id)}
+                  onToggle={onToggle}
+                  onRemove={NOOP}
+                  removeLabel={`Remove "${t.title}" from recent searches`}
+                />
+              ))}
+            </div>
+          </div>
+          <SectionHeader title="Trending" className="mb-block mt-stack" />
+          <TrackList
+            tracks={MOCK_SEARCH_RESULTS}
+            trailingPlayControl
+            currentId={currentId}
+            isPlaying={isPlaying}
+            likedIds={NOTHING_LIKED}
+            onPlay={(t) => onActivate(t.id)}
+            onToggle={onToggle}
+            onLike={NOOP}
+          />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export interface SearchRowsSectionProps {
+  state: RowState;
+  /** Pressing a row's control inside the preview moves the State picker,
+   *  so the mock plays and pauses like the real overlay would. */
+  onStateChange: (state: RowState) => void;
+}
+
+/** The chosen search-overlay row in context: the search overlay over the
+ *  whole Ember shell, desktop (scaled to fit) and phone (390px), plus a 1:1
+ *  full-screen view. Mock data only, nothing fetches. */
+export function SearchRowsSection({ state, onStateChange }: SearchRowsSectionProps) {
+  const [fullscreen, setFullscreen] = useState(false);
+  const [desktopScale, setDesktopScale] = useState(1);
+  const [activeId, setActiveId] = useState(MOCK_SEARCH_PLAYING_ID);
+
+  useEffect(() => {
+    if (!fullscreen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setFullscreen(false);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [fullscreen]);
+
+  // Starting a row: it takes over and plays. Pressing the current row's own
+  // control instead toggles, which is TrackRow's `onToggle` path.
+  const activate = (id: string) => {
+    setActiveId(id);
+    onStateChange('playing');
+  };
+  const toggle = () => onStateChange(state === 'playing' ? 'paused' : 'playing');
+
+  const shell = (phone: boolean) => (
+    <ShellPreview
+      phone={phone}
+      activePath="/"
+      content={<MockHome phone={phone} />}
+      modal={
+        <OverlayPanel
+          phone={phone}
+          state={state}
+          activeId={state === 'idle' ? null : activeId}
+          onActivate={activate}
+          onToggle={toggle}
+        />
+      }
+    />
+  );
+
+  return (
+    <div data-testid="searchrows-section" data-state={state}>
+      <div className="flex flex-col gap-stack lg:flex-row lg:items-start">
+        <div className="min-w-0 lg:flex-[1100_1_0%]">
+          <div className="mb-cluster flex min-h-7 items-center justify-between gap-row">
+            <div className="text-eyebrow">
+              Desktop <span className="normal-case tracking-normal">({Math.round(desktopScale * 100)}%)</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setFullscreen(true)}
+              className="rounded-full border border-border px-row py-inset text-xs font-medium transition-colors hover:bg-card"
+            >
+              View full screen
+            </button>
+          </div>
+          <ScaledFrame width={DESKTOP.width} height={DESKTOP.height} onScale={setDesktopScale}>
+            {shell(false)}
+          </ScaledFrame>
+        </div>
+        <div className="w-full min-w-0 max-w-[390px] lg:flex-[390_1_0%]">
+          <div className="mb-cluster flex min-h-7 items-center">
+            <div className="text-eyebrow">Phone (390px)</div>
+          </div>
+          <ScaledFrame width={PHONE.width} height={PHONE.height}>
+            {shell(true)}
+          </ScaledFrame>
+        </div>
+      </div>
+
+      {fullscreen &&
+        createPortal(
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label="Full screen search rows preview"
+            data-testid="searchrows-fullscreen"
+            className="fixed inset-0 z-[70] bg-background"
+          >
+            {shell(false)}
+            <div className="absolute left-1/2 top-3 z-[80] flex -translate-x-1/2 items-center gap-cluster rounded-full border border-border bg-popover/95 py-inset pl-block pr-inset text-xs text-muted-foreground shadow-soft backdrop-blur">
+              Full-size preview, Esc to close
+              <button
+                type="button"
+                onClick={() => setFullscreen(false)}
+                aria-label="Close full screen"
+                className="grid h-7 w-7 place-items-center rounded-full text-foreground transition-colors hover:bg-muted"
+              >
+                <CloseIcon className="h-4 w-4" />
+              </button>
+            </div>
+          </div>,
+          document.body,
+        )}
+    </div>
+  );
+}

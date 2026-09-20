@@ -52,9 +52,15 @@ export function SearchOverlayContainer() {
             key={t.id}
             track={t}
             density="compact"
+            trailingPlayControl
+            // Same player as the results below: one source of truth for
+            // which row is current and whether it is paused.
+            active={trackActions.currentId === t.id}
+            playing={trackActions.isPlaying}
             artworkFallback={RECENTS_FALLBACK}
             artworkSrc={trackActions.artworkSrcFor(t)}
             onPlay={() => trackActions.onPlay(t)}
+            onToggle={trackActions.onToggle}
             onRemove={() => removeRecentTrack.mutate(t.id)}
             removeLabel={`Remove "${t.title}" from recent searches`}
           />
@@ -68,6 +74,7 @@ export function SearchOverlayContainer() {
       tracks={data ?? []}
       context={{ type: 'search', query: debouncedQ }}
       trailing={renderTrackMenu}
+      trailingPlayControl
       {...trackActions}
       onPlay={onPlay}
     />

@@ -1,3 +1,19 @@
+# 0.3.10: Play straight from search
+
+**Host: a normal rebuild and restart (`./update.sh`). Nothing to configure:
+no `npm install`, no new environment variables, no PocketBase change.**
+
+- **A play button in the search box**: every row in the search overlay, both
+  the results and the recent searches above them, now has a play/pause
+  button at its right end. It appears when you point at a row or tab to it,
+  and stays visible on the row that is playing, so the same button pauses
+  and starts it again.
+- **The song playing is easier to spot**: its title is drawn in the ember
+  accent colour, in the results and in recent searches alike.
+
+*(Version number: this branch used 0.3.10 because 0.3.7 to 0.3.9 are taken
+by other unmerged branches; it may be renumbered when it merges.)*
+
 # 0.3.6: Trending fits better
 
 **Host: a normal rebuild and restart (`./update.sh`). No `npm install`, no

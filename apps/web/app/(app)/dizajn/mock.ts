@@ -151,6 +151,33 @@ export const MOCK_HOME_RECENT: Track[] = [
 /** The track "playing" in the mock player bar. */
 export const MOCK_NOW_PLAYING: Track = MOCK_HOME_TRACKS[1];
 
+// ---------- Search overlay rows (the "Search rows" section) ----------
+
+/** Recent-searches rows for the "Search rows" candidates. Separate from
+ *  MOCK_RECENT_TRACKS (the "Instant search overlay" section further down
+ *  the page) so every title on /dizajn stays unique and a test can look one
+ *  up without hitting two sections at once. Each has artwork, because the
+ *  "On the art" control has nowhere to sit without it. */
+export const MOCK_SEARCH_RECENTS: Track[] = [
+  makeTrack({ sourceId: 's1', title: 'Lantern Street', artist: 'Vellum', album: 'Paper Weather', durationSec: 194, artworkUrl: mockCover('#3a2f4b', '#8a76ad', 'circle') }),
+  makeTrack({ sourceId: 's2', title: 'Salt Flats', artist: 'Bramblewood', album: 'Dry Season', durationSec: 226, artworkUrl: mockCover('#2f4038', '#6f9b82', 'bars') }),
+  makeTrack({ sourceId: 's3', title: 'Quiet Hour', artist: 'Ivy Corner', album: 'Small Rooms', durationSec: 171, artworkUrl: mockCover('#45362b', '#b08a5f', 'square') }),
+];
+
+/** Result rows for the "Search rows" candidates: five, enough that the
+ *  playing row has rows above and below it to be told apart from. */
+export const MOCK_SEARCH_RESULTS: Track[] = [
+  makeTrack({ sourceId: 's4', title: 'Winter Fair', artist: 'Vellum', album: 'Paper Weather', durationSec: 208, artworkUrl: mockCover('#2b3a4a', '#6b93ab', 'square') }),
+  makeTrack({ sourceId: 's5', title: 'Marble Arch', artist: 'Bramblewood', album: 'Dry Season', durationSec: 245, artworkUrl: mockCover('#4a2b33', '#ad6a78', 'circle') }),
+  makeTrack({ sourceId: 's6', title: 'Static Bloom', artist: 'Ivy Corner', album: 'Small Rooms', durationSec: 183, artworkUrl: mockCover('#2c4638', '#7fae93', 'bars') }),
+  makeTrack({ sourceId: 's7', title: 'Long Division', artist: 'Hollow Pines', album: 'Arithmetic', durationSec: 262, artworkUrl: mockCover('#3f3a26', '#a39a5f', 'square') }),
+  makeTrack({ sourceId: 's8', title: 'Perennial', artist: 'Vellum', album: 'Paper Weather', durationSec: 199, artworkUrl: mockCover('#2f3646', '#7280a8', 'circle') }),
+];
+
+/** The result row the "Search rows" preview starts on when a state other
+ *  than "Nothing playing" is picked. */
+export const MOCK_SEARCH_PLAYING_ID = MOCK_SEARCH_RESULTS[1].id;
+
 export interface ChangelogEntry {
   id: string;
   /** Short date label for the eyebrow, e.g. "Sep 16". */

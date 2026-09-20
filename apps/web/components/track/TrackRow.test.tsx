@@ -290,3 +290,153 @@ describe('TrackRow (unavailable)', () => {
     expect(screen.getByRole('button', { name: 'Play' })).toBeEnabled();
   });
 });
+
+// The search overlay's row shape (the owner's pick from /dizajn: a trailing
+// play/pause button, and the current row marked by its title in the ember
+// accent with no glyph). Everything here is off unless `trailingPlayControl`
+// is passed, which the "unchanged by default" block below pins down.
+describe('TrackRow (trailingPlayControl)', () => {
+  const reveal = (el: HTMLElement) => el.className;
+
+  it('is off by default: no trailing control, leading play cell, whole-row tint', () => {
+    const { container, rerender } = render(<TrackRow track={track} onPlay={vi.fn()} />);
+    expect(screen.queryByTestId('track-row-play')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Play' })).toBeInTheDocument();
+    expect(container.firstElementChild?.className).toContain('grid-cols-[40px_minmax(0,1fr)_auto]');
+
+    rerender(<TrackRow track={track} active playing onPlay={vi.fn()} />);
+    expect(container.firstElementChild?.className).toContain('text-ember');
+    expect(screen.getByTestId('track-row-title').className).not.toContain('text-ember');
+  });
+
+  it('is off by default on a compact row too', () => {
+    const { container } = render(<TrackRow track={track} density="compact" active playing onPlay={vi.fn()} />);
+    expect(screen.queryByTestId('track-row-play')).toBeNull();
+    expect(container.firstElementChild?.className).toContain('text-ember');
+    expect(screen.getByTestId('track-row-title').className).not.toContain('text-ember');
+  });
+
+  for (const density of ['list', 'compact'] as const) {
+    describe(`${density} density`, () => {
+      const row = (over: Partial<ComponentProps<typeof TrackRow>> = {}) => (
+        <TrackRow track={track} density={density} trailingPlayControl onPlay={vi.fn()} {...over} />
+      );
+
+      it('names the song and the action, and hides the button until hover or focus', () => {
+        render(row());
+        const button = screen.getByRole('button', { name: 'Play Midnight Drive' });
+        expect(button).toBe(screen.getByTestId('track-row-play'));
+        // Hidden with opacity, not removed: its space is already reserved,
+        // so revealing it on hover shifts nothing.
+        expect(reveal(button)).toContain('opacity-0');
+        expect(reveal(button)).toContain('group-hover:opacity-100');
+        // A phone has no hover, so there the button is simply always shown.
+        expect(reveal(button)).toContain('max-md:opacity-100');
+      });
+
+      it('keyboard focus reveals it: the row is the group and the button can take focus', () => {
+        const { container } = render(row());
+        const button = screen.getByTestId('track-row-play');
+        expect(container.firstElementChild?.className).toContain('group');
+        expect(reveal(button)).toContain('group-focus-within:opacity-100');
+        expect(reveal(button)).toContain('focus-visible:opacity-100');
+
+        button.focus();
+        expect(document.activeElement).toBe(button);
+      });
+
+      it('is always visible on the playing row, in both states, and never hidden there', () => {
+        const { rerender } = render(row({ active: true, playing: true }));
+        let button = screen.getByRole('button', { name: 'Pause Midnight Drive' });
+        expect(reveal(button)).not.toContain('opacity-0');
+        expect(reveal(button)).toContain('text-ember');
+
+        rerender(row({ active: true, playing: false }));
+        button = screen.getByRole('button', { name: 'Resume Midnight Drive' });
+        expect(reveal(button)).not.toContain('opacity-0');
+      });
+
+      it('uses the phone touch size and the desktop row size', () => {
+        render(row());
+        expect(reveal(screen.getByTestId('track-row-play'))).toContain('size-hit md:size-8');
+      });
+
+      it('plays this track, then pauses and resumes it once it is the current one', () => {
+        const onPlay = vi.fn();
+        const onToggle = vi.fn();
+        const { rerender } = render(row({ onPlay, onToggle }));
+
+        fireEvent.click(screen.getByRole('button', { name: 'Play Midnight Drive' }));
+        expect(onPlay).toHaveBeenCalledTimes(1);
+        expect(onToggle).not.toHaveBeenCalled();
+
+        rerender(row({ onPlay, onToggle, active: true, playing: true }));
+        fireEvent.click(screen.getByRole('button', { name: 'Pause Midnight Drive' }));
+        expect(onToggle).toHaveBeenCalledTimes(1);
+        expect(onPlay).toHaveBeenCalledTimes(1);
+
+        rerender(row({ onPlay, onToggle, active: true, playing: false }));
+        fireEvent.click(screen.getByRole('button', { name: 'Resume Midnight Drive' }));
+        expect(onToggle).toHaveBeenCalledTimes(2);
+        expect(onPlay).toHaveBeenCalledTimes(1);
+      });
+
+      it('marks the current row by its title in ember, in both states, with no glyph', () => {
+        const { container, rerender } = render(row({ active: true, playing: true }));
+        const title = () => screen.getByTestId('track-row-title');
+        expect(title().className).toContain('text-ember');
+        expect(title().querySelector('svg')).toBeNull();
+        // The whole line is NOT tinted: the title carries the mark alone.
+        expect(container.firstElementChild?.className).not.toContain('text-ember');
+
+        rerender(row({ active: true, playing: false }));
+        expect(title().className).toContain('text-ember');
+        expect(title().querySelector('svg')).toBeNull();
+      });
+
+      it('leaves an idle row title alone', () => {
+        render(row());
+        expect(screen.getByTestId('track-row-title').className).not.toContain('text-ember');
+      });
+
+    });
+  }
+
+  // A compact row plays on a single click of the row itself, so the
+  // control's press must not reach it: pausing the current row would
+  // otherwise restart it in the same click.
+  it('does not let a compact control press reach the row underneath', () => {
+    const onPlay = vi.fn();
+    const onToggle = vi.fn();
+    render(
+      <TrackRow
+        track={track}
+        density="compact"
+        trailingPlayControl
+        active
+        playing
+        onPlay={onPlay}
+        onToggle={onToggle}
+      />,
+    );
+
+    fireEvent.click(screen.getByTestId('track-row-play'));
+    expect(onToggle).toHaveBeenCalledTimes(1);
+    expect(onPlay).not.toHaveBeenCalled();
+  });
+
+  it('drops the leading play column on a list row, so nothing sits before the title', () => {
+    const { container } = render(<TrackRow track={track} trailingPlayControl onPlay={vi.fn()} />);
+    expect(container.firstElementChild?.className).toContain('grid-cols-[minmax(0,1fr)_auto]');
+    expect(container.firstElementChild?.className).not.toContain('grid-cols-[40px_');
+    expect(screen.queryByRole('button', { name: 'Play' })).toBeNull();
+  });
+
+  it('disables the control and says so on an unavailable track', () => {
+    const onPlay = vi.fn();
+    render(<TrackRow track={track} trailingPlayControl unavailable onPlay={onPlay} />);
+    const button = screen.getByTestId('track-row-play');
+    expect(button).toBeDisabled();
+    expect(button).toHaveAttribute('aria-label', '"Midnight Drive" is unavailable');
+  });
+});

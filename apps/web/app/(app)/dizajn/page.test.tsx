@@ -15,6 +15,8 @@ import {
 import { MOCK_IMPORT_ITEMS } from './mock';
 import { TRENDING_DATA, TRENDING_OPTIONS, TRENDING_VIEWS } from '@/components/library/options/trending';
 import { MOCK_CHART } from './mock';
+import { ROW_STATES } from '@/components/library/options/searchrows';
+import { MOCK_SEARCH_RECENTS, MOCK_SEARCH_RESULTS } from './mock';
 
 // next/link reads the app router context, which no test renders (see
 // components/OnlineOnly.test.tsx).
@@ -38,10 +40,22 @@ beforeEach(() => {
   window.localStorage.clear();
 });
 
+/** The page's own section titles, in order. The previews inside a section
+ *  render <h2>s of their own (a mock shelf header, the search overlay's
+ *  "Recent searches"), so ordering has to look at a section's own heading
+ *  rather than every level-2 heading on the page. */
+function sectionHeadings(): (string | null)[] {
+  return screen
+    .getAllByRole('heading', { level: 2 })
+    .filter((h) => h.parentElement?.tagName === 'SECTION')
+    .map((h) => h.textContent);
+}
+
 describe('DizajnPage', () => {
   it('renders every section with no network', () => {
     render(<DizajnPage />);
 
+    expect(screen.getByText('Search rows')).toBeInTheDocument();
     expect(screen.getByText('Playlist import')).toBeInTheDocument();
     expect(screen.getByText('Trending shelf')).toBeInTheDocument();
     expect(screen.getByText("What's new (changelog)")).toBeInTheDocument();
@@ -137,10 +151,9 @@ describe('DizajnPage', () => {
     const pick = (group: string, name: string) =>
       fireEvent.click(within(screen.getByRole('radiogroup', { name: group })).getByRole('radio', { name }));
 
-    it('sits at the top of the page', () => {
+    it('sits right below Search rows, ahead of every other section', () => {
       render(<DizajnPage />);
-      const headings = screen.getAllByRole('heading', { level: 2 }).map((h) => h.textContent);
-      expect(headings[0]).toBe('Playlist import');
+      expect(sectionHeadings().slice(0, 2)).toEqual(['Search rows', 'Playlist import']);
     });
 
     it('has a realistic mock: 42 songs, 36 confident, 4 to review with 3 to 5 candidates, 2 not found', () => {
@@ -570,11 +583,11 @@ describe('DizajnPage', () => {
     const section = () => screen.getByTestId('trending-section');
     const ranks = (root: HTMLElement) => within(root).getAllByTestId('chart-rank').map((r) => r.textContent);
 
-    it('is the second section on the page, right after Playlist import', () => {
+    it('is the third section on the page, right after Playlist import', () => {
       render(<DizajnPage />);
-      const headings = screen.getAllByRole('heading', { level: 2 }).map((h) => h.textContent);
-      expect(headings[1]).toBe('Trending shelf');
-      expect(headings.indexOf("What's new (changelog)")).toBeGreaterThan(0);
+      const headings = sectionHeadings();
+      expect(headings[2]).toBe('Trending shelf');
+      expect(headings.indexOf("What's new (changelog)")).toBeGreaterThan(2);
     });
 
     it('renders the three pickers with every option as a radio, first one checked', () => {
@@ -679,6 +692,113 @@ describe('DizajnPage', () => {
       window.localStorage.setItem('dizajn-trending-option', 'podium');
       render(<DizajnPage />);
       expect(screen.getByRole('radio', { name: 'Ranked cards' })).toHaveAttribute('aria-checked', 'true');
+    });
+  });
+
+  describe('Search rows section', () => {
+    const pick = (group: string, name: string) =>
+      fireEvent.click(within(screen.getByRole('radiogroup', { name: group })).getByRole('radio', { name }));
+    const section = () => screen.getByTestId('searchrows-section');
+    // Both frames draw the same overlay; the desktop one is the first.
+    const desktop = () => within(within(section()).getAllByTestId('searchrows-overlay')[0]);
+    const titles = () => desktop().getAllByTestId('track-row-title');
+    const emberTitles = () => titles().filter((t) => t.className.includes('text-ember'));
+    const ROW_COUNT = MOCK_SEARCH_RECENTS.length + MOCK_SEARCH_RESULTS.length;
+    const PLAYING = MOCK_SEARCH_RESULTS[1].title;
+
+    it('is the first section on the page, in the desktop and phone shells', () => {
+      render(<DizajnPage />);
+      expect(sectionHeadings()[0]).toBe('Search rows');
+      expect(within(section()).getAllByTestId('shell-preview').map((s) => s.dataset.phone)).toEqual(['false', 'true']);
+    });
+
+    it('keeps only the Player state picker now that the combination is chosen', () => {
+      render(<DizajnPage />);
+      const radios = within(screen.getByRole('radiogroup', { name: 'Player state' })).getAllByRole('radio');
+      expect(radios.map((r) => r.textContent)).toEqual(ROW_STATES.map((o) => o.name));
+      radios.forEach((r, i) => expect(r).toHaveAttribute('aria-checked', i === 0 ? 'true' : 'false'));
+      expect(ROW_STATES.map((o) => o.name)).toEqual(['Nothing playing', 'This row playing', 'This row paused']);
+      expect(screen.queryByRole('radiogroup', { name: 'Control style' })).toBeNull();
+      expect(screen.queryByRole('radiogroup', { name: 'Playing indicator' })).toBeNull();
+    });
+
+    // The point of the trim: no copy of the rows any more. The results come
+    // through the real TrackList (its rows carry TrackRow's own testid) and
+    // the recents through the real compact TrackRow.
+    it('draws the overlay with the real production rows, recents above the results', () => {
+      render(<DizajnPage />);
+      expect(within(section()).getAllByTestId('searchrows-overlay')).toHaveLength(2);
+      expect(desktop().getByText('Recent searches')).toBeInTheDocument();
+      expect(titles()).toHaveLength(ROW_COUNT);
+      expect(titles().slice(0, 3).map((t) => t.textContent)).toEqual(MOCK_SEARCH_RECENTS.map((t) => t.title));
+      // Only the list rows are TrackList's; the three recents are compact.
+      expect(desktop().getAllByTestId('track-row')).toHaveLength(MOCK_SEARCH_RESULTS.length);
+      for (const t of MOCK_SEARCH_RESULTS) expect(desktop().getByText(t.title)).toBeInTheDocument();
+    });
+
+    it('gives every row a trailing play button and marks no row while nothing is playing', () => {
+      render(<DizajnPage />);
+      expect(desktop().getAllByTestId('track-row-play')).toHaveLength(ROW_COUNT);
+      expect(emberTitles()).toHaveLength(0);
+      for (const t of [...MOCK_SEARCH_RECENTS, ...MOCK_SEARCH_RESULTS]) {
+        expect(desktop().getByRole('button', { name: `Play ${t.title}` })).toBeInTheDocument();
+      }
+    });
+
+    it('marks the playing row with its title in ember and no glyph, in both states', () => {
+      render(<DizajnPage />);
+
+      pick('Player state', 'This row playing');
+      expect(emberTitles().map((t) => t.textContent)).toEqual([PLAYING]);
+      expect(desktop().getByRole('button', { name: `Pause ${PLAYING}` })).toBeInTheDocument();
+      // The title cell carries the colour and nothing else: no speaker or
+      // pause glyph beside it, which is what the owner picked.
+      expect(emberTitles()[0].querySelector('svg')).toBeNull();
+
+      pick('Player state', 'This row paused');
+      expect(emberTitles().map((t) => t.textContent)).toEqual([PLAYING]);
+      expect(desktop().getByRole('button', { name: `Resume ${PLAYING}` })).toBeInTheDocument();
+      expect(emberTitles()[0].querySelector('svg')).toBeNull();
+    });
+
+    it('pressing a row control starts that row, and pressing it again pauses', () => {
+      render(<DizajnPage />);
+      const recent = MOCK_SEARCH_RECENTS[0].title;
+
+      fireEvent.click(desktop().getByRole('button', { name: `Play ${recent}` }));
+      expect(screen.getByRole('radio', { name: 'This row playing' })).toHaveAttribute('aria-checked', 'true');
+      expect(emberTitles().map((t) => t.textContent)).toEqual([recent]);
+
+      fireEvent.click(desktop().getByRole('button', { name: `Pause ${recent}` }));
+      expect(screen.getByRole('radio', { name: 'This row paused' })).toHaveAttribute('aria-checked', 'true');
+      expect(emberTitles().map((t) => t.textContent)).toEqual([recent]);
+    });
+
+    it('opens the desktop shell full screen and closes it with Escape', () => {
+      render(<DizajnPage />);
+      fireEvent.click(within(section()).getByRole('button', { name: 'View full screen' }));
+      const overlay = screen.getByRole('dialog', { name: 'Full screen search rows preview' });
+      expect(within(overlay).getByTestId('searchrows-overlay')).toBeInTheDocument();
+      fireEvent.keyDown(window, { key: 'Escape' });
+      expect(screen.queryByTestId('searchrows-fullscreen')).not.toBeInTheDocument();
+    });
+
+    it('persists the player state to localStorage and restores it on mount', async () => {
+      const { unmount } = render(<DizajnPage />);
+      pick('Player state', 'This row paused');
+
+      await waitFor(() => expect(window.localStorage.getItem('dizajn-searchrows-state')).toBe('paused'));
+      unmount();
+
+      render(<DizajnPage />);
+      expect(screen.getByRole('radio', { name: 'This row paused' })).toHaveAttribute('aria-checked', 'true');
+      expect(section().dataset).toMatchObject({ state: 'paused' });
+    });
+
+    it('ignores a stale saved value', () => {
+      window.localStorage.setItem('dizajn-searchrows-state', 'halo');
+      render(<DizajnPage />);
+      expect(screen.getByRole('radio', { name: 'Nothing playing' })).toHaveAttribute('aria-checked', 'true');
     });
   });
 });

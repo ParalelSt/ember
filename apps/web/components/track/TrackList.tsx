@@ -45,6 +45,11 @@ interface Props extends TrackActions {
    *  lists where a replacement wouldn't be actionable (e.g. Recently
    *  played, search results). */
   onReplace?: (track: Track) => void;
+  /** Hands every row TrackRow's `trailingPlayControl` shape: the play/pause
+   *  button at the trailing end and the current row marked by its title.
+   *  Only the search overlay passes it; default off leaves every other list
+   *  exactly as it was. */
+  trailingPlayControl?: boolean;
 }
 
 /** Presentational only: the rows of a collection, album, artist or search
@@ -57,6 +62,7 @@ export function TrackList({
   context,
   trailing,
   onReplace,
+  trailingPlayControl = false,
   currentId,
   isPlaying,
   likedIds,
@@ -95,6 +101,7 @@ export function TrackList({
           onLike={onLike ? () => onLike(t) : undefined}
           onRemove={onRemove ? () => onRemove(t.id) : undefined}
           trailing={trailing?.(t)}
+          trailingPlayControl={trailingPlayControl}
           unavailable={unavailable}
           onReplace={unavailable && onReplace ? () => onReplace(t) : undefined}
         />

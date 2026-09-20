@@ -178,4 +178,52 @@ describe('TrackList (unavailable rows)', () => {
     render(<TrackList tracks={list} {...actions()} isUnavailable={isUnavailable} />);
     expect(screen.queryByRole('button', { name: 'Find replacement' })).toBeNull();
   });
+
+  // The search overlay's row shape, off unless asked for: every other
+  // caller (collection pages, album, artist, the search page) renders
+  // exactly as before.
+  it('renders no trailing play control by default', () => {
+    render(<TrackList tracks={tracks} {...actions({ currentId: 'youtube:a2', isPlaying: true })} />);
+    expect(screen.queryAllByTestId('track-row-play')).toHaveLength(0);
+    expect(screen.getAllByRole('button', { name: 'Play' })).toHaveLength(2);
+    expect(screen.getByRole('button', { name: 'Pause' })).toBeInTheDocument();
+    expect(screen.getAllByTestId('track-row-title').every((t) => !t.className.includes('text-ember'))).toBe(true);
+  });
+
+  it('hands trailingPlayControl to every row when asked', () => {
+    render(
+      <TrackList
+        tracks={tracks}
+        trailingPlayControl
+        {...actions({ currentId: 'youtube:a2', isPlaying: true })}
+      />,
+    );
+    expect(screen.getAllByTestId('track-row-play')).toHaveLength(3);
+    expect(screen.getByRole('button', { name: 'Pause Second Wind' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Play Midnight Drive' })).toBeInTheDocument();
+    const ember = screen.getAllByTestId('track-row-title').filter((t) => t.className.includes('text-ember'));
+    expect(ember.map((t) => t.textContent)).toEqual(['Second Wind']);
+  });
+
+  it('plays the right track from a trailing control, and toggles the current one', () => {
+    const onPlay = vi.fn();
+    const onToggle = vi.fn();
+    const { rerender } = render(
+      <TrackList tracks={tracks} trailingPlayControl {...actions({ onPlay, onToggle })} />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Play Third Rail' }));
+    expect(onPlay).toHaveBeenCalledWith(tracks[2], tracks, undefined);
+
+    rerender(
+      <TrackList
+        tracks={tracks}
+        trailingPlayControl
+        {...actions({ onPlay, onToggle, currentId: 'youtube:a3', isPlaying: true })}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Pause Third Rail' }));
+    expect(onToggle).toHaveBeenCalledTimes(1);
+  });
+
 });
