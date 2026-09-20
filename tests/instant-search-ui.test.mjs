@@ -213,6 +213,117 @@ for (const size of [{ width: 1280, height: 720 }, { width: 1536, height: 864 }])
   await page.waitForTimeout(200);
 }
 
+// The search-row play controls (the /dizajn "Search rows" pick: a trailing
+// play/pause button on every row, the current row marked by its title in
+// the ember accent, no glyph). Driven against the real player: playing is
+// a real stream, not a mocked flag.
+const ROW_PLAY = '[data-testid="track-row-play"]';
+
+async function openWithResults(query) {
+  await page.getByRole('link', { name: 'Search' }).first().click();
+  await input.waitFor({ state: 'visible', timeout: 5000 });
+  await input.fill(query);
+  await page.getByText('Results for').first().waitFor({ timeout: 20000 });
+  await page.locator('[data-testid="track-row"]').first().waitFor({ timeout: 20000 });
+}
+
+async function closeOverlay() {
+  await input.fill('');
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(250);
+}
+
+/** The label of every row's play control, in row order. */
+function rowLabels() {
+  return page.locator(ROW_PLAY).evaluateAll((els) => els.map((e) => e.getAttribute('aria-label')));
+}
+
+/** The titles currently drawn in the ember accent. */
+function emberTitles() {
+  return page
+    .locator('[data-testid="track-row-title"]')
+    .evaluateAll((els) => els.filter((e) => e.className.includes('text-ember')).map((e) => e.textContent.trim()));
+}
+
+for (const size of [{ width: 1280, height: 800 }, { width: 390, height: 844 }]) {
+  const label = `${size.width}x${size.height}`;
+  // The first pass starts with a player that has never played anything;
+  // the second inherits whatever the first left current, so the
+  // "nothing is marked yet" checks only make sense the first time.
+  const fresh = size.width === 1280;
+  await page.setViewportSize(size);
+  await openWithResults('yes sir');
+
+  const labels = await rowLabels();
+  const rowCount = await page.locator('[data-testid="track-row"]').count();
+  check(`every result row has a play control naming its song at ${label}`,
+    labels.length >= rowCount && labels.length > 1 &&
+      labels.every((l) => /^(Play|Pause|Resume) ./.test(l ?? '')),
+    `${labels.length} controls for ${rowCount} rows, first "${labels[0]}"`);
+
+  if (fresh) {
+    check(`no row is marked before anything plays at ${label}`, (await emberTitles()).length === 0);
+    check(`every control offers Play before anything plays at ${label}`,
+      labels.every((l) => l.startsWith('Play ')), `first "${labels[0]}"`);
+  }
+
+  // Play the first row from its own control.
+  const firstLabel = labels[0];
+  const first = firstLabel.slice(firstLabel.indexOf(' ') + 1);
+  await page.locator(ROW_PLAY).first().click();
+  const firstPause = page.getByRole('button', { name: `Pause ${first}`, exact: true }).first();
+  const started = await firstPause.waitFor({ timeout: 25000 }).then(() => true).catch(() => false);
+  check(`pressing a row's play button starts that song at ${label}`, started, `"${first}"`);
+
+  const marked = await emberTitles();
+  check(`the playing row shows the pause button and an ember title at ${label}`,
+    started && marked.length === 1 && marked[0] === first, `ember titles: ${JSON.stringify(marked)}`);
+
+  // The same button pauses, and its icon (so its label) flips.
+  await firstPause.click();
+  const flipped = await page.getByRole('button', { name: `Resume ${first}`, exact: true }).first()
+    .waitFor({ timeout: 10000 }).then(() => true).catch(() => false);
+  const stillMarked = await emberTitles();
+  check(`pressing it again pauses and the icon flips at ${label}`, flipped, `"${first}"`);
+  check(`a paused row keeps its ember title and nothing else changes at ${label}`,
+    stillMarked.length === 1 && stillMarked[0] === first, JSON.stringify(stillMarked));
+
+  // A different row's button takes over.
+  const others = (await rowLabels()).map((l, i) => [l, i]).filter(([l]) => l.startsWith('Play '));
+  const [otherLabel, otherIndex] = others[others.length - 1];
+  const other = otherLabel.slice('Play '.length);
+  await page.locator(ROW_PLAY).nth(otherIndex).click();
+  const tookOver = await page.getByRole('button', { name: `Pause ${other}`, exact: true }).first()
+    .waitFor({ timeout: 25000 }).then(() => true).catch(() => false);
+  const movedTo = await emberTitles();
+  check(`pressing a different row's button plays that one at ${label}`, tookOver, `"${other}"`);
+  check(`the ember title moves to the new row at ${label}`,
+    movedTo.length === 1 && movedTo[0] === other, JSON.stringify(movedTo));
+
+  // Nothing overflows: not the page, not a single row.
+  const overflow = await page.evaluate(() => ({
+    page: document.documentElement.scrollWidth - window.innerWidth,
+    row: Math.max(0, ...[...document.querySelectorAll('[data-testid="track-row"]')]
+      .map((r) => r.scrollWidth - r.clientWidth)),
+  }));
+  check(`nothing overflows at ${label}`, overflow.page <= 0 && overflow.row <= 0,
+    `page +${overflow.page}px, worst row +${overflow.row}px`);
+
+  // Tab from the search box: a row's play control must be reachable.
+  await input.focus();
+  let reached = null;
+  for (let i = 0; i < 12 && !reached; i++) {
+    await page.keyboard.press('Tab');
+    reached = await page.evaluate(() =>
+      document.activeElement?.dataset?.testid === 'track-row-play'
+        ? document.activeElement.getAttribute('aria-label')
+        : null);
+  }
+  check(`a row's play button is reachable by Tab at ${label}`, !!reached, reached ?? 'never focused');
+
+  await closeOverlay();
+}
+
 await browser.close();
 
 const failed = checks.filter(([, p]) => !p);
