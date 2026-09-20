@@ -17,6 +17,16 @@
  *  time, typing lands immediately, and the shell (sidebar/nav) never
  *  disappears: no blank screen at any point.
  *
+ *  The desktop shape changed since: search is no longer a modal dialog on a
+ *  desktop window but a real search box at the top of the content column
+ *  with a non-modal dropdown of results under it ("Search without losing
+ *  your place"). So the checks below ask about the PANEL
+ *  (`[data-testid="search-dropdown"]`) where they used to ask about the
+ *  input, which is now always in the page, and the last block checks the
+ *  thing the change is for: with the dropdown open, the player bar, the
+ *  sidebar and the page behind it are all still live. A phone (below `md`)
+ *  keeps the full-screen sheet, and is checked at 390 alongside.
+ *
  *  Needs the sandbox from tests/README.md and playwright-core. Set
  *  CHROME_PATH to pick a browser. */
 import { execSync } from 'node:child_process';
@@ -112,10 +122,16 @@ await cdp.send('Network.emulateNetworkConditions', {
 const searchLink = page.getByRole('link', { name: 'Search' }).first();
 await searchLink.waitFor({ timeout: 2000 });
 
+// The desktop search box is in the page at all times now; what has to
+// appear instantly is the results panel it opens.
+const PANEL = '[data-testid="search-dropdown"]';
+const panel = page.locator(PANEL);
+
 const t0 = Date.now();
 await searchLink.click();
 const input = page.getByPlaceholder('What do you want to listen to?');
 await input.waitFor({ state: 'visible', timeout: 1000 });
+await panel.waitFor({ state: 'visible', timeout: 1000 });
 const openedMs = Date.now() - t0;
 
 check('overlay input appears well under a round-trip at this throughput',
@@ -126,13 +142,10 @@ const focused = await input.evaluate((el) => el === document.activeElement);
 check('input is focused on open, with the network throttled', focused);
 
 // The shell never disappeared: the sidebar (loaded before the throttle
-// kicked in) is still there underneath the overlay.
-// A CSS locator, not getByRole: the open dialog correctly marks the rest of
-// the page aria-hidden (standard modal a11y: background content is pulled
-// out of the accessibility tree while a dialog is open), which makes
-// getByRole('link', ...) match nothing here even though the sidebar is still
-// visually on screen underneath the overlay. That's the thing this check
-// actually cares about, so ask the DOM directly instead of the a11y tree.
+// kicked in) is still there beside the dropdown. A CSS locator rather than
+// getByRole is what this used to need when search was a modal dialog (a
+// dialog pulls the rest of the page out of the accessibility tree); the
+// dropdown does not, but the check is about pixels on screen either way.
 const sidebarVisible = await page.locator('aside a[aria-label="Home"]').first().isVisible();
 check('the app shell (nav) stayed on screen: no blank transition', sidebarVisible);
 
@@ -149,7 +162,7 @@ check('body is not blank', bodyText.length > 0, `${bodyText.length} chars`);
 await input.fill('');
 await page.keyboard.press('Escape');
 await page.waitForTimeout(200);
-const closedByEscape = !(await input.isVisible().catch(() => false));
+const closedByEscape = !(await panel.isVisible().catch(() => false));
 check('Escape dismisses the overlay', closedByEscape);
 
 // Restore the network for the rest: what's left is about the dialog's own
@@ -158,17 +171,16 @@ await cdp.send('Network.emulateNetworkConditions', {
   offline: false, latency: 0, downloadThroughput: -1, uploadThroughput: -1,
 });
 
-// Reopen and dismiss with a click outside the popup (the dialog primitive's
-// own backdrop dismiss): the manual check the brief asked for: does that
-// fight SearchOverlay's explicit Escape/close-button handling? Two closes
-// racing (base-ui's onOpenChange(false) and our onClose calling setOpen(false)
-// again) would either double-fire history/state updates or throw; the
-// pageerror/console listener above would catch it.
+// Reopen and dismiss with a click outside the panel. There is no backdrop
+// to catch it any more: SearchDropdown listens for a pointerdown that lands
+// outside its own box. Does that fight its Escape handling? Two closes
+// racing would either double-fire state updates or throw; the pageerror
+// listener above would catch it.
 await searchLink.click();
-await input.waitFor({ state: 'visible', timeout: 2000 });
-await page.mouse.click(10, 10); // corner of the viewport, outside the popup
+await panel.waitFor({ state: 'visible', timeout: 2000 });
+await page.mouse.click(10, 10); // corner of the viewport, outside the panel
 await page.waitForTimeout(300);
-const closedByOutsideClick = !(await input.isVisible().catch(() => false));
+const closedByOutsideClick = !(await panel.isVisible().catch(() => false));
 check('clicking outside the popup dismisses it too, no conflict with our Escape handler',
   closedByOutsideClick);
 
@@ -186,12 +198,12 @@ check('no console/page errors from the overlay\'s open/close paths (Escape, clos
 for (const size of [{ width: 1280, height: 720 }, { width: 1536, height: 864 }]) {
   await page.setViewportSize(size);
   await searchLink.click();
-  await input.waitFor({ state: 'visible', timeout: 2000 });
+  await panel.waitFor({ state: 'visible', timeout: 2000 });
   await input.fill('yes sir');
   await page.getByText('Results for').first().waitFor({ timeout: 15000 });
   await page.locator('[data-testid="track-row"]').first().waitFor({ timeout: 15000 });
 
-  const dialogBox = await page.locator('[data-slot="dialog-content"]').boundingBox();
+  const dialogBox = await panel.boundingBox();
   const label = `${size.width}x${size.height}`;
   check(`overlay stays fully inside the viewport at ${label}`,
     !!dialogBox && dialogBox.x >= 0 && dialogBox.x + dialogBox.width <= size.width,
@@ -219,9 +231,15 @@ for (const size of [{ width: 1280, height: 720 }, { width: 1536, height: 864 }])
 // a real stream, not a mocked flag.
 const ROW_PLAY = '[data-testid="track-row-play"]';
 
+/** Opens search from whichever nav is on screen (the sidebar on a desktop
+ *  window, the bottom bar on a phone) and waits for real results. On a
+ *  desktop window the box is already in the page, so what has to show up is
+ *  the panel; on a phone the whole sheet does. */
 async function openWithResults(query) {
   await page.getByRole('link', { name: 'Search' }).first().click();
   await input.waitFor({ state: 'visible', timeout: 5000 });
+  await page.locator('[data-testid="search-dropdown"], [data-slot="dialog-content"]')
+    .first().waitFor({ state: 'visible', timeout: 5000 });
   await input.fill(query);
   await page.getByText('Results for').first().waitFor({ timeout: 20000 });
   await page.locator('[data-testid="track-row"]').first().waitFor({ timeout: 20000 });
@@ -323,6 +341,196 @@ for (const size of [{ width: 1280, height: 800 }, { width: 390, height: 844 }]) 
 
   await closeOverlay();
 }
+
+// ---------------------------------------------------------------------
+// The dropdown is NON-MODAL: the whole point of the change. With it open,
+// the player bar, the sidebar and the page behind it stay live. Run at
+// 1280 and 1440; the phone sheet is checked after, and must still be the
+// modal it always was.
+// ---------------------------------------------------------------------
+
+/** What is actually on top at the centre of `locator`: a covered element
+ *  (a backdrop over it, say) fails this, a reachable one passes. The real
+ *  question a non-modal panel has to answer. */
+async function topmostAt(locator) {
+  const b = await locator.boundingBox();
+  if (!b) return null;
+  return page.evaluate(([x, y]) => {
+    const el = document.elementFromPoint(x, y);
+    if (!el) return null;
+    return {
+      inFooter: !!el.closest('footer'),
+      inSidebar: !!el.closest('aside'),
+      label: el.closest('button,a')?.getAttribute('aria-label') ?? el.tagName,
+    };
+  }, [b.x + b.width / 2, b.y + b.height / 2]);
+}
+
+for (const size of [{ width: 1280, height: 800 }, { width: 1440, height: 900 }]) {
+  const label = `${size.width}x${size.height}`;
+  await page.setViewportSize(size);
+  await openWithResults('yes sir');
+
+  // Nothing modal about it: no backdrop element, nothing on screen marked
+  // aria-modal, nothing pulled out of the accessibility tree, and the panel
+  // itself sits inside no dialog at all. (`aria-modal` is counted only for
+  // boxes with a height: the phone NowPlaying sheet is always mounted, off
+  // screen and `md:hidden`, and has been since long before this.)
+  const modalMarks = await page.evaluate(() => ({
+    backdrops: document.querySelectorAll('[data-slot="dialog-overlay"]').length,
+    ariaModal: [...document.querySelectorAll('[aria-modal="true"]')]
+      .filter((e) => e.getBoundingClientRect().height > 0).length,
+    hidden: document.querySelectorAll('aside[aria-hidden="true"], footer[aria-hidden="true"]').length,
+    panelInDialog: !!document.querySelector('[data-testid="search-dropdown"]')
+      ?.closest('[role="dialog"], [aria-modal]'),
+  }));
+  check(`the dropdown draws no backdrop and marks nothing aria-modal at ${label}`,
+    modalMarks.backdrops === 0 && modalMarks.ariaModal === 0 && modalMarks.hidden === 0
+      && modalMarks.panelInDialog === false,
+    JSON.stringify(modalMarks));
+
+  // Fits the window, and stops above the player bar rather than running
+  // under it.
+  const panelBox = await page.locator(PANEL).boundingBox();
+  const barTop = (await page.locator('footer').boundingBox())?.y ?? size.height;
+  check(`the dropdown stays inside the viewport and above the player bar at ${label}`,
+    !!panelBox && panelBox.x >= 0 && panelBox.y >= 0
+      && panelBox.x + panelBox.width <= size.width
+      && panelBox.y + panelBox.height <= Math.min(size.height, barTop),
+    panelBox ? `panel bottom=${Math.round(panelBox.y + panelBox.height)} bar top=${Math.round(barTop)} viewport=${size.height}` : 'no panel');
+
+  // Many results, one panel: it scrolls inside itself.
+  const scrolls = await page.locator(PANEL).evaluate((el) => el.scrollHeight > el.clientHeight + 1);
+  check(`the dropdown scrolls internally rather than growing at ${label}`, scrolls);
+
+  // Start a song FROM the dropdown, and keep searching: it must not close.
+  const firstLabel = (await rowLabels())[0];
+  const first = firstLabel.slice(firstLabel.indexOf(' ') + 1);
+  await page.locator(ROW_PLAY).first().click();
+  const started = await page.getByRole('button', { name: `Pause ${first}`, exact: true }).first()
+    .waitFor({ timeout: 25000 }).then(() => true).catch(() => false);
+  const stillOpen = await page.locator(PANEL).isVisible();
+  const marked = await emberTitles();
+  check(`pressing a row's play starts the song and the dropdown STAYS open at ${label}`,
+    started && stillOpen, `started=${started} open=${stillOpen}`);
+  check(`the playing row keeps its ember title with the dropdown open at ${label}`,
+    marked.length === 1 && marked[0] === first, JSON.stringify(marked));
+
+  // The player bar is not just visible, it is reachable and it works.
+  const barToggle = page.locator('footer button[aria-label="Pause"], footer button[aria-label="Play"]').first();
+  const overBar = await topmostAt(barToggle);
+  check(`the player bar's play/pause is the topmost thing at its own position at ${label}`,
+    !!overBar && overBar.inFooter, JSON.stringify(overBar));
+
+  const wasPause = (await barToggle.getAttribute('aria-label')) === 'Pause';
+  await barToggle.click();
+  const flipped = await page.locator(`footer button[aria-label="${wasPause ? 'Play' : 'Pause'}"]`).first()
+    .waitFor({ timeout: 10000 }).then(() => true).catch(() => false);
+  check(`clicking the player bar works with the dropdown open at ${label}`, flipped,
+    `was ${wasPause ? 'Pause' : 'Play'}`);
+  // It lands on the button AND counts as a click outside the panel, so the
+  // panel closes: one press, both things, nothing swallowed. (Under the old
+  // modal the press hit the backdrop and the player bar never saw it.)
+  const openAfterBar = await page.locator(PANEL).isVisible().catch(() => false);
+  check(`the player bar press is also a click-outside, so the dropdown closes at ${label}`,
+    !openAfterBar);
+
+  // The sidebar too.
+  await openWithResults('yes sir');
+  const sidebarLink = page.locator('aside a[href="/library/liked"]').first();
+  const overSidebar = await topmostAt(sidebarLink);
+  check(`the sidebar is the topmost thing at its own position at ${label}`,
+    !!overSidebar && overSidebar.inSidebar, JSON.stringify(overSidebar));
+
+  // Escape closes it, and hands focus back to whatever opened it.
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(250);
+  const closed = !(await page.locator(PANEL).isVisible().catch(() => false));
+  const focusLeftTheBox = await page.evaluate(() =>
+    document.activeElement?.getAttribute('placeholder') !== 'What do you want to listen to?');
+  check(`Escape closes the dropdown at ${label}`, closed);
+  check(`Escape takes focus back out of the search box at ${label}`, focusLeftTheBox);
+
+  // "/" still opens search and puts the caret in the box: same shortcut,
+  // same isTypingTarget guard, it just focuses the in-page box now.
+  await page.keyboard.press('/');
+  const reopened = await page.locator(PANEL).waitFor({ state: 'visible', timeout: 2000 })
+    .then(() => true).catch(() => false);
+  const boxFocused = await page.evaluate(() =>
+    document.activeElement?.getAttribute('placeholder') === 'What do you want to listen to?');
+  const slashTyped = await input.inputValue();
+  check(`"/" opens search and focuses the box at ${label}`, reopened && boxFocused,
+    `open=${reopened} focused=${boxFocused}`);
+  check(`"/" is not typed into the box at ${label}`, !slashTyped.includes('/'), `"${slashTyped}"`);
+
+  // Arrow keys walk the rows from the box and back up to it.
+  await input.fill('yes sir');
+  await page.locator('[data-testid="track-row"]').first().waitFor({ timeout: 20000 });
+  const walk = [];
+  const here = () => page.evaluate(() =>
+    document.activeElement?.dataset?.testid === 'track-row-play'
+      ? document.activeElement.getAttribute('aria-label')
+      : document.activeElement?.getAttribute('placeholder') ?? document.activeElement?.tagName);
+  for (const key of ['ArrowDown', 'ArrowDown', 'ArrowUp', 'ArrowUp']) {
+    await page.keyboard.press(key);
+    walk.push(await here());
+  }
+  // The first row may read "Resume …" rather than "Play …": it is whatever
+  // was started from search earlier, now paused. What matters is that the
+  // focus lands on a row control, moves on, comes back, and ends in the box.
+  const onARow = (s) => /^(Play|Pause|Resume) ./.test(s ?? '');
+  check(`arrow keys walk the result rows and return to the box at ${label}`,
+    onARow(walk[0]) && onARow(walk[1]) && walk[1] !== walk[0]
+      && walk[2] === walk[0] && walk[3] === 'What do you want to listen to?',
+    JSON.stringify(walk));
+
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(200);
+
+  // A real click on the sidebar navigates, and that closes the dropdown.
+  await openWithResults('yes sir');
+  await sidebarLink.click();
+  await page.waitForURL('**/library/liked', { timeout: 10000 }).catch(() => {});
+  await page.waitForTimeout(400);
+  const navigated = page.url().includes('/library/liked');
+  const closedByNav = !(await page.locator(PANEL).isVisible().catch(() => false));
+  check(`clicking the sidebar while the dropdown is open navigates at ${label}`, navigated, page.url());
+  check(`navigating closes the dropdown at ${label}`, closedByNav);
+
+  await page.goto(`${APP}/`, { waitUntil: 'networkidle' });
+  await page.getByRole('link', { name: 'Home' }).first().waitFor({ timeout: 10000 });
+}
+
+// The phone keeps today's full-screen sheet, modal and all: on a phone
+// there is nothing behind it worth reaching.
+await page.setViewportSize({ width: 390, height: 844 });
+await page.goto(`${APP}/`, { waitUntil: 'networkidle' });
+await openWithResults('yes sir');
+
+const sheetMarks = await page.evaluate(() => ({
+  backdrops: document.querySelectorAll('[data-slot="dialog-overlay"]').length,
+  ariaModal: document.querySelectorAll('[data-slot="dialog-content"][aria-modal="true"], [role="dialog"][aria-modal="true"]').length,
+  dropdown: document.querySelectorAll('[data-testid="search-dropdown"]').length,
+}));
+check('the phone still gets the modal full-screen sheet, not the dropdown',
+  sheetMarks.backdrops === 1 && sheetMarks.ariaModal >= 1 && sheetMarks.dropdown === 0,
+  JSON.stringify(sheetMarks));
+
+const sheetBox = await page.locator('[data-slot="dialog-content"]').boundingBox();
+check('the phone sheet stays inside the 390px viewport',
+  !!sheetBox && sheetBox.x >= 0 && sheetBox.x + sheetBox.width <= 390,
+  sheetBox ? `left=${sheetBox.x} right=${sheetBox.x + sheetBox.width}` : 'no sheet');
+
+check('the phone sheet still has its close button',
+  await page.getByRole('button', { name: 'Close search' }).first().isVisible());
+
+await page.keyboard.press('Escape');
+await page.waitForTimeout(300);
+check('the phone sheet still closes on Escape',
+  !(await page.locator('[data-slot="dialog-content"]').isVisible().catch(() => false)));
+
+check('no console/page errors from the non-modal dropdown or the phone sheet',
+  pageErrors.length === 0, pageErrors.slice(0, 3).join(' | '));
 
 await browser.close();
 

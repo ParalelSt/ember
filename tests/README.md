@@ -257,6 +257,13 @@ node tests/unavailable-ui.test.mjs                  # or: npm run test:unavailab
 # Trending shelf: starts its own app server from the build (see below)
 node tests/trending-ui.test.mjs                     # or: npm run test:trending-ui
 
+# Search in the browser: instant open on a throttled link, the desktop
+# dropdown (non-modal: player bar, sidebar and page stay live behind it),
+# the row play controls, and the phone's full-screen sheet.
+# PB_URL / APP_URL point it at your sandbox.
+PB_URL=http://127.0.0.1:8091 APP_URL=http://127.0.0.1:3005 \
+node tests/instant-search-ui.test.mjs               # or: npm run test:search-ui
+
 # Playlist import: Spotify embed source, background jobs, picks (needs its own server, see below)
 node tests/import.test.mjs                          # or: npm run test:import
 # Playlist import in the browser: Tabs dialog, sidebar ring, restart, 503, review sheet
@@ -654,6 +661,36 @@ toast and landing on the live one instead (U2), the Find Replacement dialog
 swapping a track end to end, checked both in the DOM and with a follow-up
 `GET /api/playlists/<id>` (U3), and no console errors beyond the fake audio
 bytes' expected decode failures (U4).
+
+## What `instant-search-ui.test.mjs` covers
+
+Search in a real Chromium tab against the sandbox (`PB_URL`, `APP_URL`), 69
+checks in three parts.
+
+First, the bug it was written for: with the shell already loaded and the
+connection throttled to ~1kbps and 1.5 s latency, clicking Search shows the
+results panel and a focused box well inside one round trip, typing lands at
+once, the sidebar never disappears, and Escape and a click outside both
+dismiss it with no page errors from the two paths racing.
+
+Then the row play controls: every result and recent-search row has a
+play/pause button naming its song, pressing one starts it for real (a real
+stream, not a mocked flag), the same button pauses and resumes, another
+row's button takes over, the playing row's title is the only one in the
+ember accent, nothing overflows, and a row's button is reachable by Tab.
+
+Then the desktop dropdown's own promise, at 1280 and 1440: it draws no
+backdrop, marks nothing on screen `aria-modal`, and sits inside no dialog;
+it fits the window and stops above the player bar, scrolling inside itself;
+pressing a row's play starts the song and leaves the panel open with its
+ember title; the player bar's play/pause is the topmost thing at its own
+position and a press both works and closes the panel (a press outside is
+the close); the sidebar is likewise unblocked, and clicking it navigates,
+which closes the panel; Escape closes it and takes focus out of the box;
+"/" reopens it with the caret in the box (and is not typed into it); and
+the arrow keys walk the rows and come back to the box. Finally, at 390, the
+phone still gets the modal full-screen sheet with its backdrop and its
+close button, inside the viewport, closing on Escape.
 
 ## What `trending-ui.test.mjs` and `test_player_trending.py` cover
 

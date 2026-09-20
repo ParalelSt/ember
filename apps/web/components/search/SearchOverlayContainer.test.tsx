@@ -14,13 +14,25 @@ vi.mock('next/link', () => ({
   ),
 }));
 
+const pathname = vi.hoisted(() => ({ value: '/' }));
+const desktop = vi.hoisted(() => ({ value: true }));
+vi.mock('next/navigation', () => ({ usePathname: () => pathname.value }));
+vi.mock('@/hooks/useIsDesktop', () => ({ useIsDesktop: () => desktop.value }));
+
 // @base-ui's Dialog reaches the repo root's hoisted React 18 through its own
 // node_modules copy (see BugReportDialog.test.tsx), so render a plain
 // element for the chrome: this test is about the overlay's behavior, not
-// base-ui's own portal/focus machinery.
+// base-ui's own portal/focus machinery. The stand-ins carry the modal
+// markers a real dialog would (a backdrop, aria-modal) so the desktop
+// dropdown can be checked for NOT having them.
 vi.mock('@/components/ui/dialog', () => ({
   Dialog: ({ children }: PropsWithChildren) => <div>{children}</div>,
-  DialogContent: ({ children }: PropsWithChildren) => <div>{children}</div>,
+  DialogContent: ({ children }: PropsWithChildren) => (
+    <div>
+      <div data-slot="dialog-overlay" data-testid="sheet-backdrop" />
+      <div data-testid="search-sheet" role="dialog" aria-modal="true">{children}</div>
+    </div>
+  ),
   DialogTitle: ({ children }: PropsWithChildren) => <h2>{children}</h2>,
 }));
 
@@ -80,13 +92,25 @@ function makeTrack(over: Partial<Track> = {}): Track {
   };
 }
 
+/** The overlay plus one ordinary button beside it, standing in for the rest
+ *  of the app: on desktop the dropdown covers nothing, so that button has to
+ *  stay clickable and is where focus goes back to on Escape. */
 function renderOverlay() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={client}>
+      <button type="button" data-testid="elsewhere">Play</button>
       <SearchOverlayContainer />
     </QueryClientProvider>,
   );
+}
+
+function box() {
+  return screen.getByPlaceholderText('What do you want to listen to?');
+}
+
+function panel() {
+  return screen.queryByTestId('search-dropdown');
 }
 
 function neverResolves() {
@@ -100,6 +124,8 @@ beforeEach(() => {
   trackActions.currentId = null;
   trackActions.isPlaying = false;
   online.value = true;
+  pathname.value = '/';
+  desktop.value = true;
   useUiStore.setState({ searchOpen: true });
 });
 
@@ -108,8 +134,7 @@ describe('SearchOverlayContainer', () => {
     api.search.mockImplementation(neverResolves);
     renderOverlay();
 
-    const input = screen.getByPlaceholderText('What do you want to listen to?');
-    await waitFor(() => expect(input).toHaveFocus());
+    await waitFor(() => expect(box()).toHaveFocus());
   });
 
   it('keeps every keystroke while a request is in flight', async () => {
@@ -139,12 +164,6 @@ describe('SearchOverlayContainer', () => {
   it('dismisses on Escape', () => {
     renderOverlay();
     fireEvent.keyDown(window, { key: 'Escape' });
-    expect(useUiStore.getState().searchOpen).toBe(false);
-  });
-
-  it('dismisses on the close button', () => {
-    renderOverlay();
-    fireEvent.click(screen.getByRole('button', { name: 'Close search' }));
     expect(useUiStore.getState().searchOpen).toBe(false);
   });
 
@@ -219,5 +238,137 @@ describe('SearchOverlayContainer', () => {
     // No leading play cell any more: the control is the trailing one.
     expect(screen.queryByRole('button', { name: 'Pause' })).toBeNull();
   });
+});
 
+// The desktop shape: a real search box in the page with the results hanging
+// under it, and nothing else on screen covered, dimmed or disabled.
+describe('SearchOverlayContainer, desktop dropdown', () => {
+  it('keeps the search box in the page with the panel closed', () => {
+    useUiStore.setState({ searchOpen: false });
+    renderOverlay();
+
+    expect(box()).toBeInTheDocument();
+    expect(panel()).toBeNull();
+  });
+
+  it('is not a modal: no backdrop, no aria-modal, no dialog chrome', () => {
+    const { container } = renderOverlay();
+
+    expect(panel()).toBeInTheDocument();
+    expect(container.querySelector('[aria-modal]')).toBeNull();
+    expect(container.querySelector('[data-slot="dialog-overlay"]')).toBeNull();
+    expect(screen.queryByTestId('search-sheet')).toBeNull();
+    expect(screen.queryByRole('dialog')).toBeNull();
+    // And no X: clicking away is the close, which is only honest because
+    // there is something behind it to click.
+    expect(screen.queryByRole('button', { name: 'Close search' })).toBeNull();
+  });
+
+  it('opens and focuses the box on the "/" shortcut, then hands focus back on Escape', async () => {
+    useUiStore.setState({ searchOpen: false });
+    renderOverlay();
+    const elsewhere = screen.getByTestId('elsewhere');
+    elsewhere.focus();
+
+    fireEvent.keyDown(elsewhere, { key: '/' });
+    expect(useUiStore.getState().searchOpen).toBe(true);
+    await waitFor(() => expect(box()).toHaveFocus());
+
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(useUiStore.getState().searchOpen).toBe(false);
+    expect(elsewhere).toHaveFocus();
+  });
+
+  it('opens when the box is focused', () => {
+    useUiStore.setState({ searchOpen: false });
+    renderOverlay();
+
+    fireEvent.focus(box());
+    expect(useUiStore.getState().searchOpen).toBe(true);
+  });
+
+  it('closes on a press outside it', () => {
+    renderOverlay();
+
+    fireEvent.pointerDown(screen.getByTestId('elsewhere'));
+    expect(useUiStore.getState().searchOpen).toBe(false);
+  });
+
+  it('stays open on a press inside it', () => {
+    renderOverlay();
+
+    fireEvent.pointerDown(box());
+    expect(useUiStore.getState().searchOpen).toBe(true);
+  });
+
+  // The point of the whole change: start a song and keep searching.
+  it('does NOT close when a row is played', () => {
+    recents.tracks = [makeTrack()];
+    renderOverlay();
+
+    const play = screen.getByRole('button', { name: 'Play Midnight Drive' });
+    fireEvent.pointerDown(play);
+    fireEvent.click(play);
+
+    expect(trackActions.onPlay).toHaveBeenCalledTimes(1);
+    expect(useUiStore.getState().searchOpen).toBe(true);
+    expect(panel()).toBeInTheDocument();
+  });
+
+  it('closes when the page navigates', () => {
+    const { rerender } = renderOverlay();
+    expect(useUiStore.getState().searchOpen).toBe(true);
+
+    pathname.value = '/library';
+    rerender(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <button type="button" data-testid="elsewhere">Play</button>
+        <SearchOverlayContainer />
+      </QueryClientProvider>,
+    );
+
+    expect(useUiStore.getState().searchOpen).toBe(false);
+  });
+
+  it('stands down on /search, which is the search UI already', () => {
+    pathname.value = '/search';
+    renderOverlay();
+
+    expect(screen.queryByPlaceholderText('What do you want to listen to?')).toBeNull();
+    expect(panel()).toBeNull();
+  });
+});
+
+// The phone shape is exactly what it was: a full-screen modal sheet.
+describe('SearchOverlayContainer, phone sheet', () => {
+  beforeEach(() => {
+    desktop.value = false;
+  });
+
+  it('renders the modal sheet, not the dropdown', () => {
+    renderOverlay();
+
+    expect(screen.getByTestId('search-sheet')).toHaveAttribute('aria-modal', 'true');
+    expect(screen.getByTestId('sheet-backdrop')).toBeInTheDocument();
+    expect(panel()).toBeNull();
+  });
+
+  it('keeps its close button, and its box takes focus on open', async () => {
+    renderOverlay();
+
+    await waitFor(() => expect(box()).toHaveFocus());
+    fireEvent.click(screen.getByRole('button', { name: 'Close search' }));
+    expect(useUiStore.getState().searchOpen).toBe(false);
+  });
+
+  // (Whether a closed sheet renders nothing is base-ui's Dialog doing its
+  // job, and the stand-in above always renders its children, so there is
+  // nothing here to assert. The desktop box, which IS always in the page,
+  // is covered above.)
+
+  it('dismisses on Escape', () => {
+    renderOverlay();
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(useUiStore.getState().searchOpen).toBe(false);
+  });
 });
