@@ -21,6 +21,18 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    id: 'play-from-search',
+    version: '0.3.10',
+    date: '2026-09-20',
+    title: 'Play straight from search',
+    summary: 'Search results and recent searches now have a play button, and the song playing shows in the accent colour.',
+    bullets: [
+      'Every row in the search box has a play button at its right end: point at a row, or tab to it, and press play.',
+      'The song playing keeps its button showing, so the same press pauses it and presses again to carry on.',
+      'That song’s title is in the ember accent, in both the search results and your recent searches, so you can see which row is playing.',
+    ],
+  },
+  {
     id: 'trending-fits-better',
     version: '0.3.6',
     date: '2026-09-19',
