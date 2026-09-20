@@ -22,6 +22,24 @@ const GAP_PX = 56;
 const SPEED = 45;
 // Pause before the scroll begins (first iteration only).
 const START_DELAY_MS = 1000;
+// Hysteresis around the overflow threshold. A title has to overrun the box
+// by START_PX before it starts scrolling, and has to come STOP_PX clear of
+// the edge before it goes static again. Without the gap between the two, a
+// title sitting within a pixel of the edge flips state on every measure and
+// the whole thing strobes.
+const START_PX = 4;
+const STOP_PX = 12;
+
+/** Whether the title should be scrolling, given the last answer. Sticky
+ *  inside [avail - STOP_PX, avail + START_PX]: measurements that land in
+ *  that band leave the state alone, so alternating measurements settle
+ *  instead of oscillating. Exported for the unit tests. */
+export function shouldScroll(prev: boolean, textWidth: number, available: number): boolean {
+  // Nothing laid out yet (a hidden view, a first pass before layout):
+  // nothing has been measured, so keep the answer we already had.
+  if (textWidth <= 0 || available <= 0) return prev;
+  return prev ? textWidth > available - STOP_PX : textWidth > available + START_PX;
+}
 
 /** Single-line text that, when it overflows its container, scrolls
  *  continuously in one direction and loops seamlessly (the title slides off
@@ -39,11 +57,14 @@ export function MarqueeText({ text, className, active = true }: Props) {
     if (!container || !measure) return;
 
     const run = () => {
-      const w = measure.scrollWidth;
+      // The ruler is absolutely positioned at max-content width and never
+      // changes with the animation, so measuring it cannot change the box
+      // the ResizeObserver below is watching: no measure/render loop.
+      const w = Math.ceil(measure.getBoundingClientRect().width);
       const avail = container.clientWidth;
       if (!w || !avail) return; // not laid out yet — wait for a later trigger
       setTextWidth(w);
-      setOverflowing(w > avail + 4);
+      setOverflowing((prev) => shouldScroll(prev, w, avail));
     };
 
     run();
@@ -70,12 +91,30 @@ export function MarqueeText({ text, className, active = true }: Props) {
   const animate = overflowing && active;
 
   return (
-    <div ref={containerRef} className={cn('overflow-hidden whitespace-nowrap', className)}>
-      {/* The track is always rendered with the same first span (stable ref so
-          re-measures stay accurate). It only becomes an animated two-copy
-          marquee when the title overflows AND the view is open. */}
+    <div
+      ref={containerRef}
+      data-testid="marquee"
+      className={cn('relative overflow-hidden whitespace-nowrap', className)}
+    >
+      {/* The ruler: one copy of the title at its natural width, out of flow
+          and invisible, in the container's own font. It is the only thing
+          ever measured, so what the marquee does next can never change what
+          the next measurement says. */}
+      <span
+        ref={measureRef}
+        aria-hidden="true"
+        className="pointer-events-none invisible absolute left-0 top-0 w-max"
+      >
+        {text}
+      </span>
+      {/* The track. One copy, sitting still, until the title overflows AND
+          the view is open; then a second copy follows it across. shrink-0
+          keeps both copies at their natural width: they are flex items, so
+          without it a narrow track would squeeze them and the two copies
+          would paint over each other. */}
       <div
-        className={animate ? 'ember-marquee-anim flex w-max' : 'inline-block'}
+        data-testid="marquee-track"
+        className={animate ? 'ember-marquee-anim flex w-max' : 'block w-max'}
         style={
           animate
             ? {
@@ -85,15 +124,11 @@ export function MarqueeText({ text, className, active = true }: Props) {
             : undefined
         }
       >
-        <span
-          ref={measureRef}
-          className="inline-block"
-          style={animate ? { marginRight: GAP_PX } : undefined}
-        >
+        <span className="shrink-0" style={animate ? { marginRight: GAP_PX } : undefined}>
           {text}
         </span>
         {animate && (
-          <span className="inline-block" aria-hidden="true">
+          <span className="shrink-0" aria-hidden="true">
             {text}
           </span>
         )}

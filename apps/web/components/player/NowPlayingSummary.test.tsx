@@ -69,7 +69,11 @@ describe('NowPlayingSummary', () => {
   it('leaves out the artwork at size lg, where the view draws its own', () => {
     const { container } = render(<NowPlayingSummary track={makeTrack()} size="lg" />);
     expect(container.querySelector('img')).toBeNull();
-    expect(screen.getByText('Midnight Drive')).toBeInTheDocument();
+    // The marquee renders the title twice: once in the track you read, and
+    // once in the aria-hidden ruler it measures the text against.
+    const copies = screen.getAllByText('Midnight Drive');
+    expect(copies).toHaveLength(2);
+    expect(copies.filter((el) => el.getAttribute('aria-hidden') !== 'true')).toHaveLength(1);
   });
 
   it('falls back to a placeholder title with nothing playing', () => {

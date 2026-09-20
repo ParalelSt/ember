@@ -73,7 +73,11 @@ export function NowPlayingSummary({
 
   if (size === 'lg') {
     return (
-      <div className={cn('min-w-0', className)}>
+      // flex-1: the title block takes whatever the row's button cluster
+      // leaves, so the marquee's box is sized by the row and never by the
+      // title inside it. Shrink-to-fit here would make the box depend on
+      // its own content, which is a loop waiting to happen.
+      <div className={cn('min-w-0 flex-1', className)}>
         <MarqueeText text={track?.title ?? ''} active={marquee} className="text-2xl font-bold tracking-tight" />
         <div className={ARTIST_ROW.lg}>{artist}</div>
       </div>
