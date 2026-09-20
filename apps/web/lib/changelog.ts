@@ -21,6 +21,19 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    id: 'search-without-losing-your-place',
+    version: '0.3.11',
+    date: '2026-09-20',
+    title: 'Search without losing your place',
+    summary: 'Search now opens under the search box instead of taking over the screen, so the player and the rest of the app keep working while it is open.',
+    bullets: [
+      'On a computer there is a search box at the top of every page, and the results drop down under it.',
+      'Nothing behind it is blocked any more: pause, skip, change the volume or open a playlist without closing search first.',
+      'Starting a song from a result leaves search open, so you can keep looking. Press Escape or click anywhere else to close it.',
+      'On a phone search still opens full screen, which is the right thing on a small screen.',
+    ],
+  },
+  {
     id: 'play-from-search',
     version: '0.3.10',
     date: '2026-09-20',
