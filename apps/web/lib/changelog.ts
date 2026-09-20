@@ -36,6 +36,8 @@ export const CHANGELOG: ChangelogEntry[] = [
       'Tabs are found online automatically: open a song and Ember looks for a guitar and a bass tab on Ultimate Guitar, once, and keeps them for everyone.',
       'Songsterr tabs too: real rhythm and every instrument, with the guitars and the bass in one tab you switch between.',
       'Tabs found online line themselves up with the recording: Ember listens to the song and puts the tab where it actually plays, even when the band drifts.',
+      'Every tab found for a song sits in one list you can open and pick from, with its rating and whether it lines up.',
+      'Ember draws whichever tab matches the recording best, and remembers it if you choose a different one.',
       'No ffmpeg install needed on the server any more: Ember brings its own.',
       'Can be switched off in Settings > Plugins.',
       'Plugin settings now follow your account, so a switch you flip on your phone is flipped on your computer too.',
