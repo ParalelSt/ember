@@ -1,6 +1,9 @@
 import type { AlbumDetail, ArtistPayload, Playlist, SessionState, Track } from '@/types/track';
 import { logger } from '@/lib/logger/client';
 import type { ImportItem, ImportJob, InspectResult } from '@/lib/import/types';
+import type { TabSummary } from '@/lib/tabSources';
+import type { TabTiming } from '@/lib/tabSync';
+import type { StoredPlugins } from '@/lib/pluginSettings';
 
 export interface AdminUser {
   id: string;
@@ -169,15 +172,33 @@ export const api = {
     req<{ matches: { id: number; artist: string; title: string; hasChords: boolean; instruments: string[]; url: string }[] }>(
       `/tabs?title=${encodeURIComponent(title)}&artist=${encodeURIComponent(artist)}`,
     ),
-  /** Your own Guitar Pro files. Passing the playing song narrows it to the
-   *  tabs that plausibly belong to it. */
-  getTabFiles: (title?: string, artist?: string) =>
+  /** Every tab for one track, files and generated alike, file first: the
+   *  source chain the tab page picks from. */
+  getTrackTabs: (trackId: string, title: string, artist: string) =>
     req<{ tabs: TabFile[] }>(
-      `/tabs/files${title || artist ? `?title=${encodeURIComponent(title ?? '')}&artist=${encodeURIComponent(artist ?? '')}` : ''}`,
+      `/tabs/files?kind=all&trackId=${encodeURIComponent(trackId)}&title=${encodeURIComponent(title)}&artist=${encodeURIComponent(artist)}`,
     ),
+  /** Add a Guitar Pro or MusicXML file for a song. Multipart, so it
+   *  bypasses the JSON `req` helper. */
+  uploadTabFile: async (file: File, meta: { title: string; artist: string; trackId?: string }): Promise<{ tab: TabFile }> => {
+    const form = new FormData();
+    form.append('file', file);
+    form.append('title', meta.title || file.name);
+    form.append('artist', meta.artist);
+    if (meta.trackId) form.append('trackId', meta.trackId);
+    const res = await fetch(`${API_BASE}/api/tabs/files`, { method: 'POST', body: form, credentials: 'include' });
+    if (!res.ok) {
+      const body = (await res.json().catch(() => ({}))) as { error?: string };
+      throw new Error(body.error ?? 'That file could not be added.');
+    }
+    return (await res.json()) as { tab: TabFile };
+  },
+  /** Save a tab's sync nudge for everyone (its uploader or an admin). */
+  saveTabOffset: (id: string, offsetMs: number) =>
+    req<{ tab: TabFile }>(`/tabs/files/${id}`, { method: 'PATCH', body: { offsetMs } }),
   deleteTabFile: (id: string) => req<{ ok: true }>(`/tabs/files/${id}`, { method: 'DELETE' }),
   /** A tab generated from the recording itself. GET is a status probe: the
-   *  alphaTex body is fetched by TabViewer straight from the URL. */
+   *  alphaTex body is fetched by the tab page straight from the URL. */
   getGeneratedTab: async (trackId: string): Promise<{ status: 'ready' | 'running' | 'failed' | 'none'; error?: string }> => {
     const res = await fetch(`${API_BASE}/api/tabs/generated/${encodeURIComponent(trackId)}`, { credentials: 'include' });
     if (res.status === 200) return { status: 'ready' };
@@ -185,8 +206,26 @@ export const api = {
     if (res.status === 409) return { status: 'failed', error: (await res.json().catch(() => ({}))).error };
     return { status: 'none' };
   },
-  generateTab: (trackId: string, title: string) =>
-    req<{ status: 'ready' | 'running' }>(`/tabs/generated/${encodeURIComponent(trackId)}?title=${encodeURIComponent(title)}`, { method: 'POST' }),
+  /** Look for the song's tab online (Ultimate Guitar). Once per song: the
+   *  server answers "cached" when it was searched before; `again` searches
+   *  anew (the ⋯ menu's "Search online again"). */
+  findTabsOnline: (trackId: string, title: string, artist: string, again = false) =>
+    req<{ status: 'found' | 'none' | 'cached' | 'failed'; searchedAt: string | null; added: number }>('/tabs/online', {
+      method: 'POST',
+      body: { trackId, title, artist, again },
+    }),
+  /** How a tab's alignment with the recording stands (docs/tabs-v3.md
+   *  section 3), and starting it ("Line it up"). */
+  getTabAlignment: (tabId: string) =>
+    req<{ status: 'ready' | 'running' | 'failed' | 'none'; timing?: TabTiming; error?: string }>(
+      `/tabs/align?tabId=${encodeURIComponent(tabId)}`,
+    ),
+  lineTabUp: (tabId: string) => req<{ status: 'running' }>('/tabs/align', { method: 'POST', body: { tabId } }),
+  generateTab: (trackId: string, title: string, artist = '') =>
+    req<{ status: 'ready' | 'running' }>(
+      `/tabs/generated/${encodeURIComponent(trackId)}?title=${encodeURIComponent(title)}&artist=${encodeURIComponent(artist)}`,
+      { method: 'POST' },
+    ),
 
   // — Custom uploads (songs members add from their own files) —
   listUploads: () => req<{ tracks: Track[] }>('/uploads'),
@@ -233,6 +272,14 @@ export const api = {
   getChangelog: () => req<{ seenVersion: string; hideNew: boolean }>('/changelog'),
   updateChangelog: (patch: { seenVersion?: string; hideNew?: boolean }) =>
     req<{ seenVersion: string; hideNew: boolean }>('/changelog', {
+      method: 'PATCH',
+      body: patch,
+    }),
+
+  // Plugin switches (Settings > Plugins), per user. A missing key was never saved.
+  getPlugins: () => req<StoredPlugins>('/plugins'),
+  updatePlugins: (patch: StoredPlugins) =>
+    req<StoredPlugins>('/plugins', {
       method: 'PATCH',
       body: patch,
     }),
@@ -308,12 +355,5 @@ export const api = {
   },
 };
 
-export interface TabFile {
-  id: string;
-  title: string;
-  artist: string;
-  instrument: string | null;
-  trackId: string | null;
-  ext: string;
-  downloadUrl: string;
-}
+/** One row of the tab store. */
+export type TabFile = TabSummary;

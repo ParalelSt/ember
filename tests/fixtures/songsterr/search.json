@@ -1,0 +1,170 @@
+[
+ {
+  "songId": 777001,
+  "artistId": 9001,
+  "artist": "Night Ferry",
+  "title": "Copper Tide",
+  "hasChords": true,
+  "hasPlayer": true,
+  "tracks": [
+   {
+    "instrumentId": 54,
+    "instrument": "Voice Oohs",
+    "views": 120,
+    "name": "Lead Vocals | Ada North",
+    "tuning": [
+     64,
+     59,
+     55,
+     50,
+     45,
+     40
+    ],
+    "hash": "vocals_Fx01"
+   },
+   {
+    "instrumentId": 30,
+    "instrument": "Distortion Guitar",
+    "views": 900,
+    "name": "Mara Quill | Lead Guitar",
+    "tuning": [
+     64,
+     59,
+     55,
+     50,
+     45,
+     40
+    ],
+    "difficulty": 3,
+    "hash": "guitar_Fx02"
+   },
+   {
+    "instrumentId": 30,
+    "instrument": "Distortion Guitar",
+    "views": 5000,
+    "name": "Tomas Reed | Firewood Custom | Rhythm Guitar",
+    "tuning": [
+     64,
+     59,
+     55,
+     50,
+     45,
+     38
+    ],
+    "difficulty": 2,
+    "hash": "guitar_Fx03"
+   },
+   {
+    "instrumentId": 34,
+    "instrument": "Electric Bass (pick)",
+    "views": 2000,
+    "name": "Ines Vale | Bass",
+    "tuning": [
+     43,
+     38,
+     33,
+     26
+    ],
+    "difficulty": 2,
+    "hash": "other_Fx04"
+   },
+   {
+    "instrumentId": 1024,
+    "instrument": "Drums",
+    "views": 700,
+    "name": "Drums",
+    "difficulty": 2,
+    "hash": "drums_Fx05"
+   }
+  ],
+  "defaultTrack": 2,
+  "popularTrack": 2,
+  "isJunk": false,
+  "popularTrackGuitar": 2,
+  "popularTrackBass": 3,
+  "popularTrackDrum": 4,
+  "popularTrackVocals": 0
+ },
+ {
+  "songId": 777002,
+  "artistId": 9001,
+  "artist": "Night Ferry",
+  "title": "Copper Tide (Acoustic)",
+  "hasChords": true,
+  "hasPlayer": true,
+  "tracks": [
+   {
+    "instrumentId": 30,
+    "instrument": "Distortion Guitar",
+    "views": 900,
+    "name": "Mara Quill | Lead Guitar",
+    "tuning": [
+     64,
+     59,
+     55,
+     50,
+     45,
+     40
+    ],
+    "difficulty": 3,
+    "hash": "guitar_Fx02"
+   }
+  ],
+  "defaultTrack": 2,
+  "popularTrack": 2,
+  "isJunk": false,
+  "popularTrackGuitar": 2,
+  "popularTrackBass": 3,
+  "popularTrackDrum": 4,
+  "popularTrackVocals": 0
+ },
+ {
+  "songId": 777003,
+  "artistId": 9001,
+  "artist": "Harbour Choir",
+  "title": "Copper Tide Blues",
+  "hasChords": true,
+  "hasPlayer": true,
+  "tracks": [
+   {
+    "instrumentId": 30,
+    "instrument": "Distortion Guitar",
+    "views": 900,
+    "name": "Mara Quill | Lead Guitar",
+    "tuning": [
+     64,
+     59,
+     55,
+     50,
+     45,
+     40
+    ],
+    "difficulty": 3,
+    "hash": "guitar_Fx02"
+   },
+   {
+    "instrumentId": 30,
+    "instrument": "Distortion Guitar",
+    "views": 5000,
+    "name": "Tomas Reed | Firewood Custom | Rhythm Guitar",
+    "tuning": [
+     64,
+     59,
+     55,
+     50,
+     45,
+     38
+    ],
+    "difficulty": 2,
+    "hash": "guitar_Fx03"
+   }
+  ],
+  "defaultTrack": 2,
+  "popularTrack": 2,
+  "isJunk": false,
+  "popularTrackGuitar": 2,
+  "popularTrackBass": 3,
+  "popularTrackDrum": 4,
+  "popularTrackVocals": 0
+ }
+]

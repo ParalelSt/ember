@@ -7,7 +7,10 @@ import { rateLimitResponse } from '@/lib/rateLimit';
 import { ensureDownloaded } from '@/lib/sources/youtube';
 import { resolveUploadPath } from '@/lib/uploads';
 import { withRequestLog } from '@/lib/logger/withRequestLog';
+import { serverLogger } from '@/lib/logger/server';
+import { recordGenerated } from '@/lib/tabStore';
 import {
+  generatedTabFile,
   generatedTabPath,
   generationStatus,
   parseTrackKey,
@@ -23,7 +26,72 @@ import {
  *  POST: start it. 200 if it already exists, 202 once the job is queued.
  *
  *  Generated tabs are shared by everyone on the server, like the audio they
- *  come from, so there is no ownership check beyond being signed in. */
+ *  come from, so there is no ownership check beyond being signed in.
+ *
+ *  Each one also gets a row in the `tabs` store (kind "generated"), so it is
+ *  found by song like a file is. The row is written when the job finishes,
+ *  or on the first GET of a tab generated before the store existed. */
+
+/** Keys whose row is known to exist, so a GET costs no extra query after
+ *  the first. */
+const recorded = new Set<string>();
+/** Who started each job, so whichever request records the row (the job's
+ *  own completion or a poll that sees the file first) names the same
+ *  member. */
+const requestedBy = new Map<string, { userId: string; title: string; artist: string }>();
+
+/** Title and artist for the row: the upload or the shared tracks row, else
+ *  what the client said, else the bare id. */
+async function trackMeta(key: TrackKey, trackId: string, fallback: { title: string; artist: string }) {
+  const pb = await createAdminClient();
+  const row =
+    key.source === 'upload'
+      ? await pb.collection('uploads').getOne(key.sourceId).catch(() => null)
+      : await pb
+          .collection('tracks')
+          .getFirstListItem(pb.filter('external_id = {:id}', { id: trackId }))
+          .catch(() => null);
+  return {
+    title: String(row?.title || fallback.title || key.sourceId),
+    artist: String(row?.artist || fallback.artist || ''),
+  };
+}
+
+/** One recording in flight per key: the job finishing and a poll that sees
+ *  the file can arrive together, and both would find no row and create one. */
+const inFlight = new Map<string, Promise<void>>();
+
+function ensureRow(
+  key: TrackKey,
+  trackId: string,
+  userId: string | null,
+  fallback: { title: string; artist: string },
+): Promise<void> {
+  if (recorded.has(key.key)) return Promise.resolve();
+  const running = inFlight.get(key.key);
+  if (running) return running;
+  const job = writeRow(key, trackId, userId, fallback).finally(() => inFlight.delete(key.key));
+  inFlight.set(key.key, job);
+  return job;
+}
+
+async function writeRow(
+  key: TrackKey,
+  trackId: string,
+  userId: string | null,
+  fallback: { title: string; artist: string },
+): Promise<void> {
+  try {
+    const meta = await trackMeta(key, trackId, fallback);
+    const pb = await createAdminClient();
+    await recordGenerated(pb, { trackId, ...meta, userId, file: generatedTabFile(key.key) });
+    recorded.add(key.key);
+  } catch (e) {
+    // The tab itself is on disk and served either way; the row only makes
+    // it findable by song, and the next request tries again.
+    serverLogger.error('tabs', 'recording generated tab failed', { key: key.key }, e);
+  }
+}
 
 async function audioFor(key: TrackKey): Promise<string | null> {
   if (key.source === 'youtube') return ensureDownloaded(key.sourceId);
@@ -37,12 +105,14 @@ async function audioFor(key: TrackKey): Promise<string | null> {
 export const GET = withRequestLog('tabs/generated/[trackId]', async (_req: NextRequest, ctx: RouteContext<'/api/tabs/generated/[trackId]'>) => {
   try {
     await requireUser();
-    const { trackId } = await ctx.params;
-    const key = parseTrackKey(decodeURIComponent(trackId));
+    const trackId = decodeURIComponent((await ctx.params).trackId);
+    const key = parseTrackKey(trackId);
     if (!key) return jsonError('Tabs can only be generated for YouTube and uploaded songs.', 400);
 
     const status = generationStatus(key.key);
     if (status.status === 'ready') {
+      const by = requestedBy.get(key.key);
+      await ensureRow(key, trackId, by?.userId ?? null, by ?? { title: '', artist: '' });
       const text = await fs.promises.readFile(generatedTabPath(key.key), 'utf8');
       return new Response(text, {
         headers: { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'private, max-age=3600' },
@@ -60,11 +130,20 @@ export const GET = withRequestLog('tabs/generated/[trackId]', async (_req: NextR
 export const POST = withRequestLog('tabs/generated/[trackId]', async (request: NextRequest, ctx: RouteContext<'/api/tabs/generated/[trackId]'>) => {
   try {
     const { user } = await requireUser();
-    const { trackId } = await ctx.params;
-    const key = parseTrackKey(decodeURIComponent(trackId));
+    const trackId = decodeURIComponent((await ctx.params).trackId);
+    const key = parseTrackKey(trackId);
     if (!key) return jsonError('Tabs can only be generated for YouTube and uploaded songs.', 400);
 
-    if (generationStatus(key.key).status === 'ready') return Response.json({ status: 'ready' });
+    const params = request.nextUrl.searchParams;
+    const said = {
+      title: (params.get('title') ?? '').slice(0, 200),
+      artist: (params.get('artist') ?? '').slice(0, 200),
+    };
+
+    if (generationStatus(key.key).status === 'ready') {
+      await ensureRow(key, trackId, user.id, said);
+      return Response.json({ status: 'ready' });
+    }
 
     // A job costs minutes of CPU, so this is per member and deliberately low.
     // Joining a job that is already running is free and not counted.
@@ -76,10 +155,18 @@ export const POST = withRequestLog('tabs/generated/[trackId]', async (request: N
     const audio = await audioFor(key);
     if (!audio) return jsonError('Ember has no recording of that song to transcribe.', 404);
 
-    const title = (request.nextUrl.searchParams.get('title') ?? '').slice(0, 200) || key.sourceId;
+    const title = said.title || key.sourceId;
+    if (!requestedBy.has(key.key)) requestedBy.set(key.key, { userId: user.id, ...said });
     // Fire and forget: the client polls GET. Errors are remembered by the
     // queue and surfaced there, so an unhandled rejection here is not one.
-    startGeneration(key.key, audio, title).catch(() => {});
+    // The row is written as soon as the file exists, naming who asked.
+    startGeneration(key.key, audio, title)
+      .then(async () => {
+        const by = requestedBy.get(key.key);
+        await ensureRow(key, trackId, by?.userId ?? user.id, by ?? said);
+      })
+      .catch(() => {})
+      .finally(() => requestedBy.delete(key.key));
     return Response.json({ status: 'running' }, { status: 202 });
   } catch (e) {
     if (e instanceof UnauthorizedError) return unauthorizedResponse();

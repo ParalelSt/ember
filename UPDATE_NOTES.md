@@ -1,3 +1,88 @@
+# 0.4.0: Guitar tabs, properly
+
+**Host, in order: `./update.sh` as usual, then restart PocketBase once.**
+
+1. **`./update.sh`** (a normal rebuild and restart). It now also installs
+   Ember's own ffmpeg and links it: `imageio-ffmpeg` is new in
+   `requirements.txt`, it ships a static ffmpeg binary in the wheel, and
+   every run installs it into `.venv` if missing and relinks
+   `.venv/bin/ffmpeg` to it (an upgrade of the package renames the binary,
+   so the link is redone each run). **No system ffmpeg install is needed
+   any more**: `player.py` (yt-dlp) and `transcribe.py` (tab generation)
+   find it through `ffmpeg_path.py`, and a system ffmpeg on `PATH` is only
+   the fallback. Check it with
+   `./.venv/bin/python ffmpeg_path.py`, which prints the binary it will
+   use. If pip cannot reach the network, update.sh prints a warning and
+   carries on: tab generation and some downloads will fail until it can.
+   If you install Python packages by hand instead, re-run
+   `./.venv/bin/pip install -r requirements.txt`.
+2. **Restart PocketBase once** so its boot hooks run. Nothing to do by
+   hand, and no row or file is removed:
+   - `pb_hooks/ensure_tabs.pb.js` turns `tabs` into the one tab store:
+     new fields `song_key`, `track_key`, `kind`, `format`, `shared`,
+     `offset_ms`, `hints`, the `source_*` set (`source_site`,
+     `source_url`, `source_id`, `source_rating`, `source_votes`,
+     `source_meta`), `timing` and `aligned_at`; new list/view/delete
+     rules; `user` becomes optional.
+   - The same hook creates a **new `tab_lookups` collection** (one row per
+     song and site Ember has already searched, so a song is searched once),
+     admin only.
+   - `pb_hooks/ensure_plugin_settings.pb.js` adds one field, `plugins`
+     (JSON), to `users`.
+3. **No new environment variables, and no `npm install`.**
+   `SONGSTERR_BASE`, `SONGSTERR_CDN_BASE` and `UG_BASE` exist only so the
+   test sandbox can point at the fakes; a real server leaves them unset.
+4. **Outbound internet** to `songsterr.com` and `ultimate-guitar.com` is
+   what the automatic tab fetching uses. Ember is polite about it: a
+   browser User-Agent, one queue per site with 2 s between requests, at
+   most 3 requests per song, an hour's backoff on a 429 or 503, and a miss
+   remembered for a day. Nothing re-fetches on its own.
+
+- **Tabs are found online by themselves**: open a song and Ember searches
+  Songsterr first, then Ultimate Guitar, once per song, and keeps what it
+  finds for everyone on the server. Songsterr tabs come with real rhythm
+  and every instrument in one tab; Ultimate Guitar contributes text tabs.
+- **Tabs line themselves up with the recording** (`align.py`): Ember
+  listens to the song and puts the tab where it actually plays, even when
+  the band drifts. Every tab found for a song sits in one Source sheet you
+  can open and pick from, with its rating and whether it lines up, and the
+  best match is drawn by default.
+- **The tab page**: the guitar button opens `/tabs/<song>` instead of the
+  old dialog. The cursor follows the song, clicking a bar jumps there,
+  and the line can be dragged anywhere (with the time shown as you go,
+  and the arrow keys moving a beat at a time). Guitar and bass with each
+  one's tuning, Tab or Tab and Score, a sideways mode, pasting in a text
+  tab, and search links to the tab sites when nothing is found.
+- **Tabs can be switched off** in Settings > Plugins. Those plugin
+  switches are now saved on the account, so they match on every device.
+  The first device to load after the update writes its current switches up
+  for that account; other devices then take the account's values. Signed
+  out, each device keeps its own.
+- **Tabs added before this version stay private** to whoever added them;
+  everything new is shared with the server.
+- **A song that will not load fails in seconds**: when a download fails
+  and the live stream cannot stand in either, the server answers a real
+  error at once instead of running yt-dlp a second time over, or never
+  answering. The proxy also puts a clock on the upstream's headers (6 s)
+  and on silence inside the body (10 s); a slow but progressing stream is
+  untouched. **Desktop users need the next app release** for the native
+  half of this (the server half helps them straight away): the native
+  engine now judges a source on progress rather than spending one flat 25
+  second budget, and keeps the web-audio fallback for failures web audio
+  can actually fix. The underlying trigger is still a stale yt-dlp on the
+  host, which `./update.sh` updates.
+- **Radio works for every song**: a small slice of YouTube ids legitimately
+  start with a dash, and those seeds were failing the recommendation
+  lookup with a 502.
+- **Instrumental, live and remix versions stay separate** from the
+  original: the shared song identity behind the liked heart, radio's
+  dedup and the unavailable-track replacement no longer collapses them
+  into one. A pure code change to a runtime comparison, so there is
+  nothing to migrate.
+
+*(Version: this one entry replaces the separate 0.3.2, 0.3.3, 0.3.7, 0.3.8
+and 0.3.9 sections the four merged branches each wrote for themselves.)*
+
 # 0.3.10: Play straight from search
 
 **Host: a normal rebuild and restart (`./update.sh`). Nothing to configure:

@@ -21,6 +21,23 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    id: 'guitar-tabs',
+    version: '0.4.0',
+    date: '2026-09-20',
+    title: 'Guitar tabs, properly',
+    summary: 'Ember finds guitar tabs for your songs by itself, lines them up with the recording, and shows them on a page that follows along as the song plays.',
+    bullets: [
+      'Open a song and Ember looks for its tab online by itself: Songsterr tabs, with real rhythm and every instrument in one tab, and Ultimate Guitar text tabs. Whatever it finds is kept for everyone on your server.',
+      'A tab lines itself up with the recording, so it sits where the band actually plays, even when they drift; every tab found for a song sits in one list you can open and pick from, and Ember draws the one that matches best.',
+      'The tab page follows the song: click a bar to jump there, or drag the line anywhere and watch the time as you go. Switch between guitar and bass, show Tab or Tab and Score together, or turn the page sideways. You can paste in a text tab yourself, and when nothing is found, one click searches the tab sites for the song.',
+      'Tabs can be switched off in Settings, under Plugins, and plugin settings now follow your account, so a switch you flip on your phone is flipped on your computer too.',
+      'Nothing to install on the server for this: Ember now brings its own copy of ffmpeg.',
+      'A song Ember cannot load now says so in a couple of seconds, and names the song, instead of freezing the player for half a minute.',
+      'Radio works for every song now: a small group of songs used to fail to start one.',
+      'An instrumental, live or remixed version is kept apart from the original, so liking one no longer lights up the other and radio stops mistaking them for each other.',
+    ],
+  },
+  {
     id: 'play-from-search',
     version: '0.3.10',
     date: '2026-09-20',

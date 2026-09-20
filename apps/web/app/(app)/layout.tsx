@@ -58,6 +58,7 @@ export default function AppShellLayout({ children }: { children: ReactNode }) {
             LyricsPanel (sticky to the top of the scroller's viewport). */}
         <div
           ref={scrollerRef}
+          data-app-scroller
           className="flex-1 min-h-0 overflow-y-auto"
           style={
             scrollerH

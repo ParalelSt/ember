@@ -2,7 +2,8 @@ import 'server-only';
 import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
-import { TAB_DIR } from '@/lib/tabs';
+import { GENERATED_DIR } from '@/lib/tabs';
+import { queuePythonJob } from '@/lib/pythonJobs';
 import { serverLogger } from '@/lib/logger/server';
 
 /** Guitar tabs generated from the recording itself.
@@ -12,13 +13,14 @@ import { serverLogger } from '@/lib/logger/server';
  *  host, and the same machine is streaming audio to everyone, so two jobs in
  *  parallel would make the player stutter.
  *
- *  No database row: the .alphatex file on disk IS the state. Delete it and
- *  the next request regenerates. */
+ *  The .alphatex file on disk is the job state (delete it and the next
+ *  request regenerates); the `tabs` row the route records beside it
+ *  (lib/tabStore.ts recordGenerated) is the metadata that makes it findable
+ *  by song. */
 
 const ROOT = path.resolve(process.cwd(), '..', '..');
 const PYTHON_BIN = process.env.PYTHON_BIN ?? path.join(ROOT, '.venv/bin/python');
 const TRANSCRIBE_SCRIPT = process.env.TRANSCRIBE_SCRIPT ?? path.join(ROOT, 'transcribe.py');
-export const GENERATED_DIR = path.join(TAB_DIR, 'generated');
 
 /** Demucs on a four-minute song takes a few minutes on this hardware. */
 const TIMEOUT_MS = 10 * 60 * 1000;
@@ -45,14 +47,16 @@ export function parseTrackKey(trackId: string): TrackKey | null {
   return { source, sourceId, key: `${source}-${sourceId}` };
 }
 
+export function generatedTabFile(key: string): string {
+  return `${key}.alphatex`;
+}
+
 export function generatedTabPath(key: string): string {
-  return path.join(GENERATED_DIR, `${key}.alphatex`);
+  return path.join(GENERATED_DIR, generatedTabFile(key));
 }
 
 const running = new Map<string, Promise<void>>();
 const lastError = new Map<string, string>();
-/** The queue of one: every job waits for the previous one, success or not. */
-let chain: Promise<void> = Promise.resolve();
 
 export type GenerationStatus =
   | { status: 'ready' }
@@ -76,8 +80,9 @@ export function startGeneration(key: string, audioPath: string, title: string): 
   if (existing) return existing;
   lastError.delete(key);
 
-  const job = chain
-    .then(() => runScript(audioPath, generatedTabPath(key), title))
+  // The queue of one (lib/pythonJobs.ts): every Python job waits for the
+  // one before it, success or not.
+  const job = queuePythonJob(() => runScript(audioPath, generatedTabPath(key), title))
     .catch((e: unknown) => {
       const reason = e instanceof Error ? e.message : String(e);
       lastError.set(key, reason);
@@ -87,8 +92,6 @@ export function startGeneration(key: string, audioPath: string, title: string): 
     .finally(() => running.delete(key));
 
   running.set(key, job);
-  // The chain must never reject, or every later job would be skipped.
-  chain = job.catch(() => {});
   return job;
 }
 

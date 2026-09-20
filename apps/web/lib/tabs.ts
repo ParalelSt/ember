@@ -1,7 +1,6 @@
 import 'server-only';
 import fs from 'node:fs';
 import path from 'node:path';
-import type { RecordModel } from 'pocketbase';
 import { newFilename } from '@/lib/uploads';
 
 /** Guitar Pro tab files.
@@ -78,54 +77,49 @@ export function ensureTabDir(): void {
   fs.mkdirSync(TAB_DIR, { recursive: true });
 }
 
-export interface TabSummary {
-  id: string;
-  title: string;
-  artist: string;
-  instrument: string | null;
-  trackId: string | null;
-  ext: string;
-  downloadUrl: string;
+/** Where a generated tab's alphaTex lives: MUSIC_DIR/tabs/generated. */
+export const GENERATED_DIR = path.join(TAB_DIR, 'generated');
+
+/** Where a tab found online lives: MUSIC_DIR/tabs/fetched, `<stem>.alphatex`
+ *  (what AlphaTab loads) beside `<stem>.txt` (the tab text as the site gave
+ *  it, marks removed) or `<stem>.json` (Songsterr's parts), so a better
+ *  converter can redo the alphaTex without asking the site again.
+ *  docs/tabs-v3.md section 2. */
+export const FETCHED_DIR = path.join(TAB_DIR, 'fetched');
+
+const STORED_ALPHATEX = /^[A-Za-z0-9_-]+\.alphatex$/;
+
+/** The file behind a tab row: a file someone added sits in TAB_DIR, a
+ *  generated one in GENERATED_DIR, a fetched one in FETCHED_DIR. Generated
+ *  and fetched names are checked against a plain `<stem>.alphatex` shape. */
+export function resolveRowPath(row: { [key: string]: unknown }): string | null {
+  const filename = String(row.file ?? '');
+  if (row.kind !== 'generated' && row.kind !== 'fetched') return resolveTabPath(filename);
+  if (!STORED_ALPHATEX.test(filename)) return null;
+  return path.join(row.kind === 'fetched' ? FETCHED_DIR : GENERATED_DIR, filename);
 }
 
-export function mapTab(row: RecordModel): TabSummary {
-  return {
-    id: row.id,
-    title: (row.title as string) || 'Untitled',
-    artist: (row.artist as string) || 'Unknown artist',
-    instrument: (row.instrument as string) || null,
-    trackId: (row.track as string) || null,
-    ext: path.extname((row.file as string) || ''),
-    downloadUrl: `/api/tabs/files/${row.id}/download`,
-  };
+/** What a fetched row was made from, beside it: `<stem>.txt` (a text tab
+ *  from Ultimate Guitar) or `<stem>.json` (Songsterr's parts as fetched). */
+export function fetchedTextPath(row: { [key: string]: unknown }): string | null {
+  if (row.kind !== 'fetched') return null;
+  const filename = String(row.file ?? '');
+  if (!STORED_ALPHATEX.test(filename)) return null;
+  const ext = row.source_site === 'songsterr' ? '.json' : '.txt';
+  return path.join(FETCHED_DIR, `${filename.slice(0, -'.alphatex'.length)}${ext}`);
 }
 
-/** Loose match of a playing song to a stored tab. Punctuation, casing,
- *  "(Remastered 2011)" and featured-artist noise all differ between a tab
- *  file and a YouTube title, so compare on the squashed core of the string. */
-export function normalizeForMatch(s: string): string {
-  return s
-    .toLowerCase()
-    .replace(/\([^)]*\)|\[[^\]]*\]/g, ' ')
-    .replace(/\b(feat|ft|featuring|official|video|audio|remaster(ed)?|live|hd|hq)\b/g, ' ')
-    .replace(/[^a-z0-9]+/g, '')
-    .trim();
+/** A pasted text tab is two files side by side in TAB_DIR: `<stem>.alphatex`
+ *  (the row's file, what AlphaTab loads) and `<stem>.txt` (the text as it
+ *  was pasted, kept so a better parser can redo the alphaTex later). */
+export function pastedTextPath(row: { [key: string]: unknown }): string | null {
+  if (row.kind !== 'pasted') return null;
+  const filename = String(row.file ?? '');
+  if (!filename.endsWith('.alphatex')) return null;
+  return resolveTabPath(`${filename.slice(0, -'.alphatex'.length)}.txt`);
 }
 
-/** Does this stored tab plausibly belong to that track? */
-export function tabMatchesTrack(
-  tab: { title?: string; artist?: string },
-  track: { title?: string; artist?: string },
-): boolean {
-  const t = normalizeForMatch(String(tab.title ?? ''));
-  const tt = normalizeForMatch(String(track.title ?? ''));
-  if (!t || !tt) return false;
-  const titleHit = t === tt || t.includes(tt) || tt.includes(t);
-  if (!titleHit) return false;
-
-  const a = normalizeForMatch(String(tab.artist ?? ''));
-  const ta = normalizeForMatch(String(track.artist ?? ''));
-  // An unknown artist on either side should not veto a solid title match.
-  if (!a || !ta) return true;
-  return a === ta || a.includes(ta) || ta.includes(a);
+/** Every file on disk behind a row: what delete removes. */
+export function rowPaths(row: { [key: string]: unknown }): string[] {
+  return [resolveRowPath(row), pastedTextPath(row), fetchedTextPath(row)].filter((p): p is string => !!p);
 }

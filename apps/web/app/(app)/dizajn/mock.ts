@@ -566,3 +566,116 @@ export const MOCK_IMPORT_PROGRESS = { done: 18, total: MOCK_IMPORT_ITEMS.length 
 export function importArt(i: number): string {
   return IMPORT_ART[i % IMPORT_ART.length];
 }
+/** Tabs v3 on /dizajn (docs/tabs-v3.md): every tab Ember could find for the
+ *  now-playing "Copper Sky" by Coastline (an invented song), in the rank
+ *  order the picker lists them. Nothing here is fetched; the names, ratings
+ *  and votes are made up. One long name and one long instrument list prove
+ *  the rows truncate or wrap instead of overflowing. */
+export type MockTabSite = 'songsterr' | 'ug' | 'server';
+
+export interface MockTabSource {
+  id: string;
+  site: MockTabSite;
+  /** "Songsterr", "Ultimate Guitar", "On this server". */
+  siteLabel: string;
+  /** "Tab with rhythm", "Text tab", "Bass tab", "Pasted text tab". */
+  type: string;
+  name: string;
+  rating?: number;
+  votes?: number;
+  instruments: string[];
+  /** Alignment with the recording: confidence 0..100, or null when it has
+   *  not been lined up yet. */
+  lined: number | null;
+  /** The chip label when this one is drawn. */
+  chip: string;
+  /** Which two bars the source sheet previews. */
+  preview: 'guitar' | 'bass' | 'rough';
+}
+
+export const MOCK_TAB_SOURCES: MockTabSource[] = [
+  {
+    id: 'songsterr-1',
+    site: 'songsterr',
+    siteLabel: 'Songsterr',
+    type: 'Tab with rhythm',
+    name: 'Copper Sky',
+    instruments: ['Guitar', 'Bass', 'Drums'],
+    lined: 94,
+    chip: 'Songsterr',
+    preview: 'guitar',
+  },
+  {
+    id: 'ug-1',
+    site: 'ug',
+    siteLabel: 'Ultimate Guitar',
+    type: 'Text tab',
+    name: 'Copper Sky (ver 2)',
+    rating: 4.8,
+    votes: 1204,
+    instruments: ['Guitar'],
+    lined: 81,
+    chip: 'Ultimate Guitar, ver 2',
+    preview: 'guitar',
+  },
+  {
+    id: 'ug-2',
+    site: 'ug',
+    siteLabel: 'Ultimate Guitar',
+    type: 'Text tab',
+    name: 'Copper Sky',
+    rating: 4.5,
+    votes: 310,
+    instruments: [
+      'Rhythm Guitar',
+      'Lead Guitar (Fender Jaguar, fuzz)',
+      'Acoustic Guitar',
+      '12-string Guitar (intro only)',
+      'Baritone Guitar',
+    ],
+    lined: null,
+    chip: 'Ultimate Guitar',
+    preview: 'guitar',
+  },
+  {
+    id: 'ug-3',
+    site: 'ug',
+    siteLabel: 'Ultimate Guitar',
+    type: 'Bass tab',
+    name: 'Copper Sky (live at the Harbour Room, full bass line with the extended outro and the fills)',
+    rating: 3.9,
+    votes: 22,
+    instruments: ['Bass'],
+    lined: null,
+    chip: 'Ultimate Guitar, bass',
+    preview: 'bass',
+  },
+  {
+    id: 'pasted-1',
+    site: 'server',
+    siteLabel: 'On this server',
+    type: 'Pasted text tab',
+    name: 'Text tab pasted by Mira',
+    instruments: ['Guitar'],
+    lined: 72,
+    chip: 'Text tab pasted by Mira',
+    preview: 'guitar',
+  },
+  {
+    id: 'generated-1',
+    site: 'server',
+    siteLabel: 'On this server',
+    type: 'Generated, rough',
+    name: 'Generated from the recording, rough',
+    instruments: ['Guitar'],
+    lined: 100,
+    chip: 'Generated from the recording, rough',
+    preview: 'rough',
+  },
+];
+
+/** Confidence under this reads "not lined up yet" (docs/tabs-v3.md 3). */
+export const MOCK_LINED_THRESHOLD = 60;
+
+/** The Songsterr match when Ember could not line it up with confidence. */
+export const MOCK_NOT_LINED_CONFIDENCE = 41;

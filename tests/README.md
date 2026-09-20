@@ -149,6 +149,29 @@ spawns the poster once per distinct message, keeps the process running after
 both an uncaught exception and an unhandled rejection, and never throws when
 logging and spawning both fail.
 
+## Ember's own ffmpeg
+
+No sandbox, no network: run from the repo root with a Python that has
+`imageio-ffmpeg` (`PYTHON_BIN`, else `.venv/bin/python`).
+
+```bash
+node tests/ffmpeg-resolve.test.mjs   # or: npm run test:ffmpeg   (a few seconds)
+.venv/bin/python -m unittest tests/test_ffmpeg_path.py            # the Python half alone
+```
+
+`ffmpeg-resolve.test.mjs` (9 checks) copies `update.sh` into a temp root with
+a fake `.venv` (`pip` only logs its arguments, `python` hands over to the real
+one) and runs just its ffmpeg step (`UPDATE_FFMPEG_ONLY=1`, test-only, no git)
+with `PATH=/usr/bin:/bin`: pip is asked for `imageio-ffmpeg`,
+`.venv/bin/ffmpeg` becomes a symlink into `imageio_ffmpeg` that runs
+`-version`, a stale link is replaced on the next run, no venv means the step is
+skipped, and a missing binary is a warning while the update carries on. Then it
+runs `tests/test_ffmpeg_path.py` (9 unittests): `ffmpeg_path.py` finds the
+bundled binary with an empty `PATH`, falls back to `PATH`, says "ffmpeg is
+missing: run ./update.sh" when there is none, `transcribe.py`'s decode works
+with an empty `PATH` and fails with that message without ffmpeg, and every
+yt-dlp option set in `player.py` carries `ffmpeg_location`.
+
 ## Sandbox tests
 
 Runnable checks against a **sandbox** copy of the app. Nothing here touches
@@ -209,9 +232,16 @@ node tests/ai-triage-ui.test.mjs  # or: npm run test:triage-ui
 # Cross-user authorization
 node tests/authorization.test.mjs                   # or: npm run test:auth
 node tests/session-authorization.test.mjs           # or: npm run test:sessions
+node tests/fake-songsterr.mjs &                     # port 4330; app needs SONGSTERR_BASE=http://127.0.0.1:4330
 node tests/tabs.test.mjs                            # or: npm run test:tabs
 node tests/tabs-ui.test.mjs                         # or: npm run test:tabs-ui
+node tests/tabs-sync.test.mjs                       # or: npm run test:tabs-sync
 node tests/tabs-generate.test.mjs                   # or: npm run test:tabs-generate
+MUSIC_DIR="$SB/music" node tests/tabs-text.test.mjs # or: npm run test:tabs-text (pasted text tabs: route, chain, tab page follows the song, search links; PB restarted with this branch's pb_hooks)
+node tests/fake-ug.mjs &                            # port 4331; app needs UG_BASE=http://127.0.0.1:4331
+MUSIC_DIR="$SB/music" node tests/tabs-fetch.test.mjs # or: npm run test:tabs-fetch (tabs found on Ultimate Guitar: once per song, drawn, follows the song; PB restarted with this branch's pb_hooks)
+node tests/transcribe-timing.test.mjs              # or: npm run test:transcribe-timing (no server needed; python3 or PYTHON_BIN)
+node tests/preferences-ui.test.mjs                  # or: npm run test:preferences-ui (plugin switches across two devices; PB restarted with this branch's pb_hooks)
 node tests/android-player-ui.test.mjs               # or: npm run test:android-ui
 node tests/offline-android-ui.test.mjs              # or: npm run test:offline-ui
 node tests/offline-page.test.mjs                    # or: npm run test:offline-page (no server needed)
@@ -279,6 +309,73 @@ then: via the fake servers' introspection `GET` (see `fake-anthropic.mjs`),
 checks the "State when reported" context block and that server error both
 reached the AI prompt, and that the context ("Where") and reproduction
 ("Reproduce") fields both reached the Discord embed.
+
+## What `tabs-text.test.mjs` covers
+
+Pasted text tabs (docs/tab-sources.md, stages 1 to 3), against a running
+sandbox (PB_URL, APP_URL; MUSIC_DIR for the on-disk checks):
+
+- **Route**: `POST /api/tabs/text` stores a shared `kind: pasted` row with
+  `<stem>.alphatex` and the original `<stem>.txt` side by side; the report
+  (strings, tuning, bars, tempo); another member downloads the alphaTex;
+  refused signed out, 422 for text with no tab, 413 over 256 KB, 400 for a
+  bad tempo.
+- **Chain and delete**: `kind=all` lists a file before a pasted tab, the
+  default list stays files only; another member cannot delete (403), the
+  paster can, and both files go.
+- **Tab page**: the pasted tab draws with the "Text tab pasted by" chip and
+  its tempo in the header; the playhead line matches the real audio time
+  (read through `tests/tabs-measure.mjs`, shared with `tabs-sync.test.mjs`)
+  while playing and after a seek from the player bar, and stays in view;
+  the tab picker lists the file, then the text tab.
+- **Search links**: the empty state's Ultimate Guitar, Guitar Pro files and
+  Songsterr chips carry the right URLs and open a new tab with noopener,
+  and the ⋯ menu has the same three (never clicked); Generate comes after
+  Add a file, marked rough.
+
+## What `tabs-fetch.test.mjs` covers
+
+Tabs Ember finds online (docs/tabs-v3.md stage 3) against `tests/fake-ug.mjs`,
+which serves `tests/fixtures/ug` (Ultimate Guitar's page shape with invented
+content, built by `tests/fixtures/ug/build.mjs`) and counts every request
+(`GET /__calls`). The fake finds only queries containing "ugfetch", so other
+suites' songs stay tab-less when the app points at it. The app must run with
+`UG_BASE=http://127.0.0.1:4331`; PB_URL, APP_URL, FAKE_UG, and MUSIC_DIR for
+the on-disk checks.
+
+- **First opening**: the page says "Finding a tab online"; the server makes one
+  search (`artist title`, types 200 and 400, a browser User-Agent) and two tab
+  pages: the whole-song tab with the most votes among those rated 4+ (not the
+  intro-only one with more votes) and the bass tab. The guitar tab draws with
+  the chip "From Ultimate Guitar, not lined up yet", 100 bpm and Drop D from
+  the tab; the playhead matches the real audio time (`tests/tabs-measure.mjs`)
+  and stays in view; the picker lists both with their ratings, and picking
+  the bass tab draws it.
+- **Store**: two shared `kind: fetched` rows with no uploader, the page URL,
+  UG id, rating, votes and tuning; a `tab_lookups` row saying "found"; the
+  alphaTex and the tab text side by side in `MUSIC_DIR/tabs/fetched`.
+- **Once per song**: reopening, as the same member and another, sends the
+  site nothing. "Search online again" in the ⋯ menu sends one search, fetches
+  no page it already has, and says "Nothing new found online."
+- **Nothing online**: a song the fake does not know falls back to the empty
+  state and is searched once only, across a reload.
+
+The unit side (vitest): `lib/tabFetch/ug.test.ts` (search and tab page
+parsing from the fixtures, what is skipped, ranking, song matching, marks,
+tuning, alphaTex through AlphaTab), `lib/tabFetch/polite.test.ts` (the
+2 s queue per site, a browser User-Agent, an hour's backoff on 429, 403 and
+503), `lib/tabFetch/online.test.ts` (rows, files, the once-per-song lookup,
+two openings sharing one search, "again", "none", a page with no notes, a
+missing page, 429/403 and block pages staying quiet, the store order and
+labels) and `app/api/tabs/tabs-online-route.test.ts` (the route with a fake
+site on `UG_BASE`).
+
+`tabs-ui.test.mjs` also has a **nothing overflows** section (docs/tabs-v3.md
+section 5): a long song name, a member with a 60-character name, a file with
+six long-named tracks and seven pasted tabs, at 390, 1280 and 1920 wide. Title,
+meta line, chip and toolbar row, every ⋯ menu item and all eight picker lines
+end inside the window, every picker line keeps its whole text as a tooltip,
+and `document.documentElement.scrollWidth` never exceeds the window.
 
 ## What `ai-triage.test.mjs` covers
 

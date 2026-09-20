@@ -21,6 +21,10 @@
 
 ytmusicapi>=1.12.0
 yt-dlp
+# Ember's own ffmpeg (a static binary in the wheel), so the host needs no
+# system install: ffmpeg_path.py finds it, update.sh links it to
+# .venv/bin/ffmpeg. Used by yt-dlp (player.py) and transcribe.py.
+imageio-ffmpeg
 
 # --- Generated guitar tabs (transcribe.py) -----------------------------------
 # Basic Pitch is installed without its declared deps: on macOS + Python 3.13 it

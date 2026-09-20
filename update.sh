@@ -104,9 +104,35 @@ stop_everything() {
   stop_on_port "$PB_PORT" "PocketBase"
 }
 
+# Ember brings its own ffmpeg: the imageio-ffmpeg package ships a static
+# binary. Install it if missing, then link it to .venv/bin/ffmpeg so anything
+# that looks ffmpeg up by PATH finds it too (player.py and transcribe.py ask
+# ffmpeg_path.py directly). Relinked every run: an upgrade of the package
+# renames the binary. A host never installs ffmpeg by hand.
+link_ffmpeg() {
+  local venv="$ROOT/.venv/bin"
+  [ -x "$venv/pip" ] || return 0
+  echo "▶ ffmpeg (bundled with imageio-ffmpeg)…"
+  "$venv/pip" install -q imageio-ffmpeg || { echo "  ⚠ could not install imageio-ffmpeg"; return 0; }
+  local exe
+  exe="$("$venv/python" -c 'import imageio_ffmpeg; print(imageio_ffmpeg.get_ffmpeg_exe())' 2>/dev/null || true)"
+  if [ -z "$exe" ] || [ ! -x "$exe" ]; then
+    echo "  ⚠ imageio-ffmpeg has no ffmpeg binary for this machine; tab generation and some downloads will fail"
+    return 0
+  fi
+  ln -sfn "$exe" "$venv/ffmpeg"
+  echo "  $venv/ffmpeg -> $exe"
+}
+
 # Test-only: run just the stop sequence (tests/watchdog.test.sh), no git.
 if [ "${UPDATE_STOP_ONLY:-0}" = "1" ]; then
   stop_everything
+  exit 0
+fi
+
+# Test-only: run just the ffmpeg step (tests/ffmpeg-resolve.test.mjs), no git.
+if [ "${UPDATE_FFMPEG_ONLY:-0}" = "1" ]; then
+  link_ffmpeg
   exit 0
 fi
 
@@ -193,6 +219,8 @@ if [ "${SKIP_YTDLP_UPGRADE:-0}" != "1" ] && [ -x "$ROOT/.venv/bin/pip" ]; then
     echo "  yt-dlp $BEFORE → $AFTER"
   fi
 fi
+
+link_ffmpeg
 
 if [ "$MODE" = "no-start" ]; then
   echo

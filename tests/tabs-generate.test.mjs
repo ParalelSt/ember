@@ -107,7 +107,7 @@ async function user(label, tok) {
   const auth = await fetch(`${PB}/api/collections/users/auth-with-password`, { method: 'POST',
     headers: { 'content-type': 'application/json' }, body: JSON.stringify({ identity: email, password: PW }) })
     .then((r) => r.json());
-  return { id: rec.id, cookie: `pb_auth=${encodeURIComponent(JSON.stringify({ token: auth.token, record: auth.record }))}` };
+  return { id: rec.id, token: auth.token, cookie: `pb_auth=${encodeURIComponent(JSON.stringify({ token: auth.token, record: auth.record }))}` };
 }
 
 const as = (u, p, init = {}) => fetch(APP + p, { ...init, redirect: 'manual', headers: { ...(init.headers || {}), cookie: u.cookie } });
@@ -135,7 +135,8 @@ function silentWav(seconds = 2, sampleRate = 8000) {
 
   const form = new FormData();
   form.append('file', new Blob([new Uint8Array(silentWav())], { type: 'audio/wav' }), 'quiet.wav');
-  form.append('title', `Gen Test ${Date.now()}`);
+  const upTitle = `Gen Test ${Date.now()}`;
+  form.append('title', upTitle);
   form.append('artist', 'Gen Tester');
   const up = await as(alice, '/api/uploads', { method: 'POST', body: form }).then((r) => r.json());
   const trackId = up.track?.id;
@@ -178,6 +179,20 @@ function silentWav(seconds = 2, sampleRate = 8000) {
   check('POST for a finished tab is 200 and does not rerun', again.status === 200, `status ${again.status}`);
   const jobsAfter = fs.readFileSync(log, 'utf8').trim().split('\n').filter(Boolean);
   check('still one job', jobsAfter.length === 1, `${jobsAfter.length} job(s)`);
+
+  // ── the store row (docs/tabs-rebuild.md stage 1) ─────────────────────────
+  const filter = encodeURIComponent(`track_key = "${trackId}"`);
+  const rows = await fetch(`${PB}/api/collections/tabs/records?filter=${filter}`, { headers: { Authorization: tok } })
+    .then((r) => r.json());
+  const row = rows.items?.[0];
+  check('the finished tab has one row in the tabs store', (rows.items ?? []).length === 1, `${(rows.items ?? []).length} row(s)`);
+  check('the row is a shared generated alphaTex, named after the song, owned by who asked',
+    row?.kind === 'generated' && row?.format === 'alphatex' && row?.shared === true && row?.user === alice.id
+      && row?.song_key === `${upTitle.toLowerCase()}::gen tester`,
+    JSON.stringify(row ?? {}).slice(0, 200));
+  const bobSees = await fetch(`${PB}/api/collections/tabs/records?filter=${filter}`, { headers: { Authorization: bob.token } })
+    .then((r) => r.json());
+  check('another member can see the generated row through PocketBase', (bobSees.items ?? []).length === 1);
 }
 
 const failed = out.filter((o) => !o.pass);

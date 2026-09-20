@@ -1,10 +1,11 @@
 'use client';
 
 import { useCallback, useEffect, useRef } from 'react';
+import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import {
   ChevronDownIcon, MusicIcon,
-  RepeatIcon, RepeatOneIcon, ShuffleIcon,
+  RepeatIcon, RepeatOneIcon, ShuffleIcon, TabsIcon,
 } from '@/components/icons';
 import { Artwork } from '@/components/primitives/Artwork';
 import { LikeButton } from '@/components/primitives/LikeButton';
@@ -20,8 +21,10 @@ import { usePlayer } from '@/components/player/PlayerProvider';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { useLikeToggle } from '@/hooks/useLikeToggle';
 import { usePlayerStore } from '@/stores/usePlayerStore';
+import { useSettingsStore } from '@/stores/useSettingsStore';
 import { useUiStore } from '@/stores/useUiStore';
 import { cn } from '@/lib/utils';
+import { tabsHref } from '@/lib/tabSources';
 
 /** Full-screen "Now Playing" view — phones only. Slides up over the app shell
  *  with large artwork up top and transport controls at the bottom, like the
@@ -44,6 +47,28 @@ export function NowPlaying() {
   const shuffle = usePlayerStore((s) => s.shuffle);
   const toggleShuffle = usePlayerStore((s) => s.toggleShuffle);
   const isPlaylist = usePlayerStore((s) => s.context?.type === 'playlist');
+  const tabsEnabled = useSettingsStore((s) => s.tabsEnabled);
+
+  const router = useRouter();
+  // The tab page for this song, full screen on phones like everything else.
+  // Closing this view pops the history entry useBackDismiss pushed, and a
+  // navigation issued before that back lands is undone by it. So close
+  // first and navigate once the pop has happened (or shortly after, if the
+  // entry was already gone).
+  const openTabs = () => {
+    if (!current) return;
+    const href = tabsHref(current.id);
+    let done = false;
+    const go = () => {
+      if (done) return;
+      done = true;
+      window.removeEventListener('popstate', go);
+      router.push(href);
+    };
+    window.addEventListener('popstate', go);
+    setOpen(false);
+    window.setTimeout(go, 400);
+  };
 
   const scrollerRef = useRef<HTMLDivElement | null>(null);
   const lyricsRef = useRef<HTMLDivElement | null>(null);
@@ -167,6 +192,19 @@ export function NowPlaying() {
       >
         <ChevronDownIcon className="h-6 w-6" />
       </Button>
+      {tabsEnabled && (
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={openTabs}
+          aria-label="Guitar tabs"
+          title="Guitar tabs"
+          className="absolute z-20 right-3 h-10 w-10 text-foreground/80 hover:text-foreground"
+          style={{ top: 'calc(env(safe-area-inset-top, 0px) + 1rem)' }}
+        >
+          <TabsIcon className="h-5 w-5" />
+        </Button>
+      )}
 
       <div
         ref={scrollerRef}

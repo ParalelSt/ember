@@ -17,10 +17,11 @@ from __future__ import annotations
 import argparse
 import json
 import os
-import shutil
 import subprocess
 import sys
 import tempfile
+
+from ffmpeg_path import MISSING as FFMPEG_MISSING, ffmpeg_exe
 
 # String 1 (high e) .. string 6 (low E), as MIDI numbers. Standard tuning only.
 STRINGS = [64, 59, 55, 50, 45, 40]
@@ -48,9 +49,13 @@ def place(pitch: int):
 
 
 def beat_grid(beats: list[float], duration: float) -> list[float]:
-    """Beat times covering [0, duration]. Tracked beats are extended in both
-    directions with their median spacing; too few beats means a 120 BPM grid,
-    which is what a two-second test clip or a beatless intro gets."""
+    """Beat times covering [0, duration], the first one at exactly 0: the tab
+    page plays the top of the tab at the top of the song, so the grid's first
+    beat has to be the song's 0. Tracked beats are extended in both directions
+    with their median spacing, and the beat nearest the start is stretched or
+    squeezed to begin at 0 (half a beat either way at most). Too few beats
+    means a 120 BPM grid, which is what a two-second test clip or a beatless
+    intro gets."""
     if len(beats) < 8:
         step = 60.0 / FALLBACK_BPM
         return [i * step for i in range(int(duration / step) + 2)]
@@ -59,6 +64,10 @@ def beat_grid(beats: list[float], duration: float) -> list[float]:
     grid = list(beats)
     while grid[0] - step > 0:
         grid.insert(0, grid[0] - step)
+    if grid[0] > step / 2:
+        grid.insert(0, 0.0)
+    else:
+        grid[0] = 0.0
     while grid[-1] < duration + step:
         grid.append(grid[-1] + step)
     return grid
@@ -89,11 +98,12 @@ def to_alphatex(notes, beats: list[float], title: str) -> str:
     slots_per_bar = SLOTS_PER_BEAT * BEATS_PER_BAR
     last_slot = max(events)
     n_bars = last_slot // slots_per_bar + 1
-    lines = [f'\\title "{_q(title)}"', f"\\tempo {_bar_tempo(beats, 0)}", "."]
+    tempos = _bar_tempos(beats, n_bars)
+    lines = [f'\\title "{_q(title)}"', f"\\tempo {tempos[0]}", "."]
 
     for bar in range(n_bars):
         bar_start = bar * slots_per_bar
-        tokens = [f"\\tempo {_bar_tempo(beats, bar)}"]
+        tokens = [f"\\tempo {tempos[bar]}"]
         pos = bar_start
         while pos < bar_start + slots_per_bar:
             remaining = bar_start + slots_per_bar - pos
@@ -144,6 +154,27 @@ def _bar_tempo(beats: list[float], bar: int) -> int:
     return max(30, min(300, round(60.0 * (j - i) / (beats[j] - beats[i]))))
 
 
+def _bar_tempos(beats: list[float], n_bars: int) -> list[int]:
+    """A whole-number tempo per bar that keeps the tab's clock on the
+    recording's: each bar's tempo is chosen so the bar ends where its last
+    beat sounds, counting from where the tab's clock actually is after the
+    bars before. Rounding each bar on its own (97.4 to 97 every bar) let the
+    line drift from the notes by most of a second over a song."""
+    out: list[int] = []
+    clock = 0.0  # the tab's clock at the start of the bar, seconds
+    for bar in range(n_bars):
+        i = bar * BEATS_PER_BAR
+        j = min(len(beats) - 1, i + BEATS_PER_BAR)
+        if j - i < BEATS_PER_BAR:
+            bpm = _bar_tempo(beats, bar)
+        else:
+            span = beats[j] - beats[0] - clock
+            bpm = 300 if span <= 0 else max(30, min(300, round(60.0 * BEATS_PER_BAR / span)))
+        out.append(bpm)
+        clock += 60.0 * BEATS_PER_BAR / bpm
+    return out
+
+
 def _q(s: str) -> str:
     return s.replace("\\", " ").replace('"', "'")
 
@@ -151,9 +182,9 @@ def _q(s: str) -> str:
 # ── the pipeline ─────────────────────────────────────────────────────────────
 
 def decode(src: str, dst: str) -> None:
-    ffmpeg = shutil.which("ffmpeg")
+    ffmpeg = ffmpeg_exe()
     if not ffmpeg:
-        fail("ffmpeg is not installed")
+        fail(FFMPEG_MISSING)
     r = subprocess.run([ffmpeg, "-y", "-loglevel", "error", "-i", src, "-ac", "2", "-ar", "44100", dst],
                        capture_output=True, text=True)
     if r.returncode != 0:

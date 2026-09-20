@@ -1,12 +1,14 @@
 import type { NextRequest } from 'next/server';
 import fs from 'node:fs';
-import { ForbiddenError, requireUser, UnauthorizedError, unauthorizedResponse } from '@/lib/auth';
+import { requireUser, UnauthorizedError, unauthorizedResponse } from '@/lib/auth';
 import { createAdminClient } from '@/lib/pocketbase/server';
 import { fromError, jsonError } from '@/lib/upsertTrack';
-import { resolveTabPath } from '@/lib/tabs';
+import { resolveRowPath } from '@/lib/tabs';
+import { canView } from '@/lib/tabStore';
 import { withRequestLog } from '@/lib/logger/withRequestLog';
 
-/** The bytes of one of your own tabs — AlphaTab loads this into the browser.
+/** The bytes of a tab you can see (shared, or your own): AlphaTab loads
+ *  this into the browser. A private tab of someone else's is a 404.
  *
  *  Whole-file only: a Guitar Pro file is a couple of hundred KB and the
  *  renderer needs all of it before it can draw anything, so Range serving
@@ -18,10 +20,9 @@ export const GET = withRequestLog('tabs/files/[id]/download', async (_req: NextR
     const pb = await createAdminClient();
 
     const row = await pb.collection('tabs').getOne(id).catch(() => null);
-    if (!row) return jsonError('That tab does not exist.', 404);
-    if (row.user !== user.id) throw new ForbiddenError('That tab is not yours.');
+    if (!row || !canView(row, user)) return jsonError('That tab does not exist.', 404);
 
-    const full = resolveTabPath(String(row.file));
+    const full = resolveRowPath(row);
     if (!full || !fs.existsSync(full)) return jsonError('That tab file is missing.', 404);
 
     const buf = await fs.promises.readFile(full);

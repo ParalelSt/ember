@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { usePathname, useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import {
   LyricsIcon,
@@ -21,10 +22,10 @@ import { usePlayer } from '@/components/player/PlayerProvider';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { useLikeToggle } from '@/hooks/useLikeToggle';
 import { usePlayerStore } from '@/stores/usePlayerStore';
-import { TabsDialog } from '@/components/player/TabsDialog';
 import { useSettingsStore } from '@/stores/useSettingsStore';
 import { useUiStore } from '@/stores/useUiStore';
 import { cn } from '@/lib/utils';
+import { isTabsPathFor, tabsHref } from '@/lib/tabSources';
 
 export function PlayerBar() {
   const { current, isPlaying, position, duration, volume, toggle, next, prev, seek, setVolume } = usePlayer();
@@ -32,6 +33,7 @@ export function PlayerBar() {
   const { liked: isLiked, toggle: toggleLike } = useLikeToggle(current);
   const openNowPlaying = usePlayerStore((s) => s.setNowPlayingOpen);
   const partyVolume = useSettingsStore((s) => s.partyVolume);
+  const tabsEnabled = useSettingsStore((s) => s.tabsEnabled);
   const [queueOpen, setQueueOpen] = useState(false);
   const lyricsOpen = useUiStore((s) => s.lyricsOpen);
   const setLyricsOpen = useUiStore((s) => s.setLyricsOpen);
@@ -43,12 +45,14 @@ export function PlayerBar() {
   // Desktop only — the button is hidden on phones (md:inline-flex), where
   // lyrics live inside the full-screen NowPlaying view instead.
   const onLyricsClick = () => setLyricsOpen(!lyricsOpen);
-  const [tabsOpen, setTabsOpen] = useState(false);
+  const router = useRouter();
+  const pathname = usePathname();
 
   // Only render the bar once playback has actually started. Avoids the
   // "Nothing playing" placeholder strip and ensures the bar pops in the moment
   // a song is queued.
   if (!current) return null;
+  const tabsOpen = isTabsPathFor(pathname, current.id);
 
   // Loop toggle: cycles off, loop playlist (wrap queue, radio suppressed),
   // loop one song. Desktop only; phones get the same control in the
@@ -137,19 +141,25 @@ export function PlayerBar() {
         >
           <LyricsIcon className="h-4 w-4" />
         </Button>
-        {/* Guitar tabs — opens Songsterr in the browser (they block embedding
-            with X-Frame-Options, so an in-app viewer isn't possible). */}
-        <Button
-          variant="ghost"
-          size="icon"
-          className="hidden md:inline-flex h-8 w-8 text-muted-foreground hover:text-foreground"
-          onClick={() => setTabsOpen(true)}
-          disabled={!current}
-          aria-label="Guitar tabs"
-          title="Guitar tabs"
-        >
-          <TabsIcon className="h-4 w-4" />
-        </Button>
+        {/* Guitar tabs: the tab page for the playing song. Phones reach it
+            from the full-screen NowPlaying view. Hidden entirely when the
+            Songsterr integration plugin is switched off in Settings. */}
+        {tabsEnabled && (
+          <Button
+            variant="ghost"
+            size="icon"
+            className={cn(
+              'hidden md:inline-flex h-8 w-8 hover:text-foreground',
+              tabsOpen ? 'text-ember hover:text-ember' : 'text-muted-foreground',
+            )}
+            onClick={() => router.push(tabsHref(current.id))}
+            aria-label="Guitar tabs"
+            aria-pressed={tabsOpen}
+            title="Guitar tabs"
+          >
+            <TabsIcon className="h-4 w-4" />
+          </Button>
+        )}
         <Button
           variant="ghost"
           size="icon"
@@ -178,7 +188,6 @@ export function PlayerBar() {
     <SeekBar position={position} duration={duration} onSeek={seek} className="md:hidden px-3 -mt-1" />
 
     <QueueSheet open={queueOpen} onOpenChange={setQueueOpen} />
-      <TabsDialog track={current} open={tabsOpen} onOpenChange={setTabsOpen} />
     </footer>
   );
 }
