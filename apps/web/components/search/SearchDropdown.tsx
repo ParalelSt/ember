@@ -23,8 +23,19 @@ const ROW_STOP = '[data-testid="track-row-play"]';
  *  its bottom edge clear of the player bar at every window size. The `vh`
  *  fallback only ever applies for the first frame, before the layout's
  *  ResizeObserver has measured. */
+const PANEL_H_CLAMP = 'min(28rem, calc(var(--ember-scroller-h, 60vh) - 2rem))';
+
+/** The panel used to fill this same cap every time it held the Trending
+ *  block (a heading plus a full results list), even with an empty query.
+ *  Dropping Trending (bc7844b) left the panel free to shrink down to
+ *  whatever a few recents take, which reads as broken chrome rather than a
+ *  deliberate small box. Pinning min-height to the same clamp as the max
+ *  brings that size back: the panel is always exactly as tall as the room
+ *  allows, 1 recent or 10, and still yields to a short window because both
+ *  bounds are driven by the same `--ember-scroller-h` term. */
 const PANEL_MAX_H: CSSProperties = {
-  maxHeight: 'min(28rem, calc(var(--ember-scroller-h, 60vh) - 2rem))',
+  minHeight: PANEL_H_CLAMP,
+  maxHeight: PANEL_H_CLAMP,
 };
 
 export interface SearchDropdownProps {

@@ -542,6 +542,73 @@ check('the phone sheet still closes on Escape',
 check('no console/page errors from the non-modal dropdown or the phone sheet',
   pageErrors.length === 0, pageErrors.slice(0, 3).join(' | '));
 
+// The panel used to fill this same room every time it held the Trending
+// block (bc7844b removed it), even with an empty query and no recents.
+// SearchDropdown now pins min-height to the same `--ember-scroller-h`
+// clamp as the max, so the panel comes back to that size instead of
+// shrinking to a couple of lines of text. Checked at a roomy size (1440x900,
+// where the 28rem/448px cap wins) and a short one (1440x700, where the
+// scroller-relative term is what wins) — the panel must be tall in both,
+// and never reach past where the player bar starts (the content scroller's
+// own bottom edge, since the player bar sits right below it in the shell).
+for (const size of [{ width: 1440, height: 900 }, { width: 1440, height: 700 }]) {
+  await page.setViewportSize(size);
+  await page.goto(`${APP}/`, { waitUntil: 'networkidle' });
+  await page.getByRole('link', { name: 'Home' }).first().waitFor({ timeout: 10000 });
+
+  await searchLink.click();
+  await panel.waitFor({ state: 'visible', timeout: 2000 });
+  // Empty query, no typing: recents (if the test account has any left over
+  // from earlier in this run) or the calm one-liner, never results.
+
+  const measured = await page.evaluate(() => {
+    const el = document.querySelector('[data-testid="search-dropdown"]');
+    const scroller = document.querySelector('[data-app-scroller]');
+    if (!el || !scroller) return null;
+    // layout.tsx sets --ember-scroller-h as an inline style on the content
+    // column, the scroller's own parent, not on :root.
+    const columnEl = scroller.parentElement;
+    const scrollerH = columnEl
+      ? parseFloat(getComputedStyle(columnEl).getPropertyValue('--ember-scroller-h')) || null
+      : null;
+    const cs = getComputedStyle(el);
+    // DOMRect's fields are prototype getters: pick them into a plain
+    // object so Playwright's structured-clone serialization keeps them.
+    const plainRect = (r) => ({ top: r.top, bottom: r.bottom, height: r.height });
+    return {
+      panel: plainRect(el.getBoundingClientRect()),
+      scroller: plainRect(scroller.getBoundingClientRect()),
+      minHeight: cs.minHeight,
+      maxHeight: cs.maxHeight,
+      scrollerHVar: scrollerH,
+    };
+  });
+
+  const label = `${size.width}x${size.height}`;
+  check(`panel reports both a min-height and a capped max-height at ${label}`,
+    !!measured && measured.minHeight !== 'none' && measured.minHeight !== '0px'
+      && measured.maxHeight !== 'none',
+    measured ? `min=${measured.minHeight} max=${measured.maxHeight}` : 'no measurement');
+
+  // The intended size: min(28rem, scroller height - one page gutter),
+  // the same clamp SearchDropdown.tsx applies as both bounds.
+  const REM = 16;
+  const expected = measured?.scrollerHVar
+    ? Math.min(28 * REM, measured.scrollerHVar - 2 * REM)
+    : 28 * REM;
+  const panelH = measured?.panel.height ?? 0;
+  check(`panel is at least the intended Trending-era height at ${label}`,
+    !!measured && panelH >= expected - 2, // 2px tolerance for subpixel rounding
+    measured ? `panelH=${panelH} expected>=${expected}` : 'no measurement');
+
+  check(`panel still stays above the player bar (inside the content scroller) at ${label}`,
+    !!measured && measured.panel.bottom <= measured.scroller.bottom + 2,
+    measured ? `panelBottom=${measured.panel.bottom} scrollerBottom=${measured.scroller.bottom}` : 'no measurement');
+
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(150);
+}
+
 await browser.close();
 
 const failed = checks.filter(([, p]) => !p);

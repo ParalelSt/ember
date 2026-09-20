@@ -296,6 +296,19 @@ describe('SearchOverlayContainer, desktop dropdown', () => {
     expect(screen.queryByRole('button', { name: 'Close search' })).toBeNull();
   });
 
+  // The Trending block used to fill this panel to its cap even with an
+  // empty query; dropping it (bc7844b) let the panel shrink to a couple of
+  // lines. SearchDropdown pins min-height to the same clamp as the
+  // existing max-height cap so the panel comes back to that size instead
+  // of collapsing around a short recents list.
+  it('pins the panel to a minimum height, not just a maximum', () => {
+    renderOverlay();
+
+    const style = panel()!.getAttribute('style') ?? '';
+    expect(style).toMatch(/min-height:\s*min\(28rem/);
+    expect(style).toMatch(/max-height:\s*min\(28rem/);
+  });
+
   it('opens and focuses the box on the "/" shortcut, then hands focus back on Escape', async () => {
     useUiStore.setState({ searchOpen: false });
     renderOverlay();
