@@ -59,6 +59,39 @@ describe('useAvailabilityProbe', () => {
     expect(usePlayerStore.getState().queue[0].unavailableAt).toBeUndefined();
   });
 
+  it('says the song would not load when the server has nothing against it', async () => {
+    api.getTrackAvailability.mockResolvedValue({ unavailable: false, reason: null });
+    const { probe, next } = setup();
+    const stillPlayable = vi.fn();
+    probe(stillPlayable);
+
+    // The listener is owed a word: the player has stopped and the queue has
+    // not moved, so without this nothing on screen explains itself.
+    await waitFor(() => expect(stillPlayable).toHaveBeenCalledTimes(1));
+    expect(stillPlayable.mock.calls[0][0].title).toBe('Gone');
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  it('says the same when the server cannot be asked at all', async () => {
+    api.getTrackAvailability.mockRejectedValue(new Error('offline'));
+    const { probe } = setup();
+    const stillPlayable = vi.fn();
+    probe(stillPlayable);
+
+    await waitFor(() => expect(stillPlayable).toHaveBeenCalledTimes(1));
+  });
+
+  it('does not double up on a track the server confirms is gone', async () => {
+    const { probe, next } = setup();
+    const stillPlayable = vi.fn();
+    probe(stillPlayable);
+
+    // That track gets the skip message instead; two messages for one song
+    // would be worse than none.
+    await waitFor(() => expect(next).toHaveBeenCalledTimes(1));
+    expect(stillPlayable).not.toHaveBeenCalled();
+  });
+
   it('never asks about a track already known to be unavailable', () => {
     const known = { ...dead, unavailableAt: '2026-09-09T00:00:00.000Z' };
     const { probe, next } = setup([known, live]);

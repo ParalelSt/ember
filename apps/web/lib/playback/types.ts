@@ -10,6 +10,17 @@ export interface RemoteCommands {
   seek: (sec: number) => void;
 }
 
+/** What a backend can tell the provider about a failure, beyond "it failed". */
+export interface AudioErrorInfo {
+  /** False when web audio would hit the same wall: the HOST could not deliver
+   *  the song (it refused, or it went quiet), rather than this engine being
+   *  unable to play bytes it did receive. Swapping engines then costs the whole
+   *  session its OS media keys and makes the listener wait twice for the same
+   *  answer. Absent means "try it", which is what every backend but the native
+   *  one has always meant. */
+  canRetryOnWebAudio?: boolean;
+}
+
 /** Backend → provider callbacks. The backend owns the player; it reports state
  *  changes up so the provider can update the store / drive the UI. */
 export interface AudioBackendEvents {
@@ -18,7 +29,7 @@ export interface AudioBackendEvents {
   onEnded: () => void; // track finished → provider decides next
   onPlay: () => void; // actually playing
   onPause: () => void; // paused/stalled
-  onError: () => void; // load/playback failed
+  onError: (info?: AudioErrorInfo) => void; // load/playback failed
   /** Queue-owning backends only (Android): the native player moved to another
    *  item on its own (auto-advance, a skip from the car). */
   onQueueIndex?: (index: number) => void;

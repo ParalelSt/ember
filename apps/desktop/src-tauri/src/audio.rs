@@ -26,7 +26,7 @@ use stream_download::http::reqwest::header::{HeaderMap, HeaderValue, COOKIE};
 use stream_download::http::reqwest::Client;
 use stream_download::http::HttpStream;
 use stream_download::storage::temp::TempStorageProvider;
-use stream_download::{Settings, StreamDownload};
+use stream_download::{Settings, StreamDownload, StreamPhase};
 use tauri::{AppHandle, State};
 
 /// Native audio engine state, stored in Tauri managed state.
@@ -233,9 +233,21 @@ impl AudioEngine {
 struct SecPayload {
     sec: f64,
 }
+/// Whether the webview should try this track again on web audio.
+///
+/// `WEB_AUDIO` is anything this engine could not do with bytes it did get (no
+/// output device, a codec rodio lacks): a browser may well manage. `NONE` is
+/// the host refusing or failing to deliver the song at all — the browser would
+/// ask the same server for the same bytes and wait all over again, and the
+/// swap costs the whole session its OS media keys. Reported so the webview can
+/// tell the two apart instead of falling back on every error.
+const RETRY_WEB_AUDIO: &str = "web-audio";
+const RETRY_NONE: &str = "none";
+
 #[derive(Clone, Serialize)]
 struct ErrPayload {
     message: String,
+    retry: &'static str,
 }
 /// An OS media-button press forwarded to the webview. `kind` is one of
 /// play/pause/toggle/next/prev/seek; `sec` is set only for seek.
@@ -268,9 +280,9 @@ fn log_audio(app: &AppHandle, level: &str, msg: &str) {
     }
 }
 
-fn emit_err(app: &AppHandle, message: String) {
+fn emit_err(app: &AppHandle, retry: &'static str, message: String) {
     use tauri::Emitter;
-    let _ = app.emit("audio:error", ErrPayload { message });
+    let _ = app.emit("audio:error", ErrPayload { message, retry });
 }
 
 // --- Commands ---------------------------------------------------------------
@@ -303,9 +315,9 @@ fn http_client(cookie: Option<&str>) -> Result<Client, String> {
 /// gives up (a truncated body, a refill that 403s, a laptop that slept), so
 /// without this flag the engine reports a stream that died half way through a
 /// song as "track finished", and the webview answers by playing the next one.
-struct FailFlagged<R> {
-    inner: R,
-    failed: Arc<AtomicBool>,
+pub(crate) struct FailFlagged<R> {
+    pub(crate) inner: R,
+    pub(crate) failed: Arc<AtomicBool>,
 }
 
 impl<R: Read> Read for FailFlagged<R> {
@@ -357,11 +369,322 @@ fn build_decoder<R: Read + Seek + Send + Sync + 'static>(
 /// A zero total means "I don't know how long this is", so no seek can be
 /// serviced honestly. An absent total is different: rodio clamps nothing then,
 /// and the demuxer gets the real target.
+// --- Load budgets -----------------------------------------------------------
+
+/// How long the HOST gets to answer with response headers.
+///
+/// Deliberately the long one: the first play of a track has the host running
+/// yt-dlp before it can send a byte, which legitimately takes tens of seconds.
+/// Nothing has arrived yet, so there is no progress to judge it by.
+const CONNECT_BUDGET: Duration = Duration::from_secs(25);
+
+/// Longest silence allowed AFTER the headers, before the source is called dead.
+///
+/// Headers mean the bytes exist — a file on disk, or a live stream already
+/// flowing — so a gap this long is a source that has stopped, not a slow one.
+/// Every chunk resets it, so a weak link that keeps delivering is never cut
+/// off by it; `PROGRESS_BUDGET` is what bounds that case.
+const STALL_BUDGET: Duration = Duration::from_secs(3);
+
+/// Backstop for everything after the headers while the download IS still
+/// progressing: the old flat budget, kept for exactly that case.
+const PROGRESS_BUDGET: Duration = Duration::from_secs(25);
+
+/// The clocks one load runs on. A struct so a test can drive the real
+/// `open_source` with short ones instead of waiting out the real budgets.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct LoadBudgets {
+    pub connect: Duration,
+    pub stall: Duration,
+    pub progress: Duration,
+}
+
+impl LoadBudgets {
+    /// What a real load uses.
+    pub(crate) const DEFAULT: Self = Self {
+        connect: CONNECT_BUDGET,
+        stall: STALL_BUDGET,
+        progress: PROGRESS_BUDGET,
+    };
+}
+
+/// Why the engine stopped waiting for a source.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum LoadStop {
+    /// Nothing has arrived for `STALL_BUDGET`: a dead source.
+    Stalled,
+    /// Bytes keep coming, but far too slowly to play.
+    TooSlow,
+}
+
+/// Whether a source that has been quiet for `quiet` should be called dead.
+///
+/// `complete` means the whole body has already arrived, and then silence is
+/// simply what a finished download sounds like: waiting on it is correct, so
+/// nothing is a stall after that.
+pub(crate) fn is_stalled(quiet: Duration, complete: bool, grace: Duration) -> bool {
+    !complete && quiet > grace
+}
+
+/// When the download last moved, shared between `stream-download`'s progress
+/// hook and the loader waiting on it.
+pub(crate) struct DownloadProgress {
+    started: std::time::Instant,
+    /// Milliseconds after `started` at the most recent chunk.
+    last_ms: AtomicU64,
+    /// The body has arrived in full; nothing more is coming, by design.
+    complete: AtomicBool,
+    /// Stops the download task, captured from the first progress callback.
+    ///
+    /// Held as a closure rather than the token itself so this file needs no
+    /// dependency on tokio-util just to name the type. It matters because
+    /// giving up on a load only drops OUR future: the download task behind it
+    /// carries on, reconnecting every few seconds forever (that is its retry
+    /// behaviour), with a temp file and a thread to go with it.
+    stop: Mutex<Option<Box<dyn Fn() + Send + Sync>>>,
+}
+
+impl DownloadProgress {
+    /// Starts the clock now — call it when the headers land, so the first
+    /// chunk is measured from there and not from the request.
+    pub(crate) fn started_now() -> Self {
+        Self {
+            started: std::time::Instant::now(),
+            last_ms: AtomicU64::new(0),
+            complete: AtomicBool::new(false),
+            stop: Mutex::new(None),
+        }
+    }
+
+    /// Remember how to stop this download. The first caller wins; later ones
+    /// are the same token again.
+    pub(crate) fn on_stop(&self, stop: Box<dyn Fn() + Send + Sync>) {
+        if let Ok(mut slot) = self.stop.lock() {
+            slot.get_or_insert(stop);
+        }
+    }
+
+    /// Stop the download, if anything has arrived to tell us how. A source
+    /// that never sent a byte has nothing to cancel.
+    pub(crate) fn stop_download(&self) {
+        if let Ok(slot) = self.stop.lock() {
+            if let Some(stop) = slot.as_ref() {
+                stop();
+            }
+        }
+    }
+
+    /// One chunk processed. `complete` comes from the stream's phase.
+    pub(crate) fn record(&self, complete: bool) {
+        let ms = self.started.elapsed().as_millis().min(u64::MAX as u128) as u64;
+        self.last_ms.store(ms, Ordering::SeqCst);
+        if complete {
+            self.complete.store(true, Ordering::SeqCst);
+        }
+    }
+
+    /// How long the source has been silent.
+    pub(crate) fn quiet_for(&self) -> Duration {
+        self.started
+            .elapsed()
+            .saturating_sub(Duration::from_millis(self.last_ms.load(Ordering::SeqCst)))
+    }
+
+    pub(crate) fn is_stalled(&self, grace: Duration) -> bool {
+        is_stalled(self.quiet_for(), self.complete.load(Ordering::SeqCst), grace)
+    }
+}
+
+/// Awaits `fut` for as long as the download keeps moving.
+///
+/// Gives up the moment the source has been quiet for `grace` — which is the
+/// difference between a song that will not load and one that is merely slow —
+/// and, for a source that IS delivering but far too slowly to be worth
+/// waiting on, at `hard`.
+pub(crate) async fn while_progressing<F: std::future::Future>(
+    fut: F,
+    progress: &DownloadProgress,
+    grace: Duration,
+    hard: Duration,
+) -> Result<F::Output, LoadStop> {
+    tokio::pin!(fut);
+    let deadline = tokio::time::Instant::now() + hard;
+    let mut tick = tokio::time::interval(Duration::from_millis(100));
+    loop {
+        tokio::select! {
+            out = &mut fut => return Ok(out),
+            _ = tick.tick() => {
+                if progress.is_stalled(grace) {
+                    return Err(LoadStop::Stalled);
+                }
+                if tokio::time::Instant::now() >= deadline {
+                    return Err(LoadStop::TooSlow);
+                }
+            }
+        }
+    }
+}
+
+/// Settings for the temp-file-backed download, wired to report progress.
+pub(crate) fn download_settings(
+    progress: Arc<DownloadProgress>,
+) -> Settings<HttpStream<Client>> {
+    Settings::default().on_progress(move |_stream, state, cancel| {
+        let cancel = cancel.clone();
+        progress.on_stop(Box::new(move || cancel.cancel()));
+        progress.record(matches!(state.phase, StreamPhase::Complete));
+    })
+}
+
 fn seek_target(total: Option<Duration>, sec: f64) -> Option<Duration> {
     if total == Some(Duration::ZERO) {
         return None;
     }
     Some(Duration::from_secs_f64(sec.max(0.0)))
+}
+
+/// The reader a load decodes from: a temp-file-backed HTTP download that
+/// remembers whether it ever failed.
+type StreamReader = FailFlagged<StreamDownload<TempStorageProvider>>;
+
+/// A source that is ready to play.
+pub(crate) struct OpenedSource {
+    pub decoder: rodio::Decoder<StreamReader>,
+    /// What the decoder says the track lasts, if it can say.
+    pub total: Option<Duration>,
+    /// Set if the stream dies later; the position timer reads it to tell a
+    /// dead stream from a finished song.
+    pub failed: Arc<AtomicBool>,
+}
+
+/// Why a source could not be opened, in words the app log can print, plus
+/// whether the webview should try this track again on web audio.
+pub(crate) struct OpenError {
+    pub message: String,
+    pub retry: &'static str,
+}
+
+/// Connects to `url`, buffers enough of it, and builds the decoder.
+///
+/// The budgets are the point. Nothing downstream imposes one: `HttpStream::new`,
+/// the prefetch and the decoder all wait forever on a source that has gone
+/// quiet, and the position watchdog cannot help because no sink exists yet. One
+/// flat 25s budget over all three (what this used to be) made EVERY unplayable
+/// song cost the full 25s, because "the host is still downloading the song" and
+/// "the host will never send anything" look identical until you measure
+/// progress. So the host gets the long budget to answer at all, and once it
+/// has, silence is judged in seconds while a download that keeps moving is left
+/// alone.
+pub(crate) async fn open_source(
+    client: Client,
+    url: &str,
+    budgets: LoadBudgets,
+) -> Result<OpenedSource, OpenError> {
+    let host_error = |message: String| OpenError { message, retry: RETRY_NONE };
+    let parsed = url
+        .parse()
+        .map_err(|_| OpenError { message: "bad url".into(), retry: RETRY_WEB_AUDIO })?;
+
+    let stream = match tokio::time::timeout(budgets.connect, HttpStream::new(client, parsed)).await {
+        Err(_) => {
+            return Err(host_error(format!(
+                "the host sent nothing for {}s",
+                budgets.connect.as_secs()
+            )))
+        }
+        Ok(Ok(s)) => s,
+        // Includes a non-2xx status: the host answering "I cannot serve this
+        // song" (which it now does promptly when a download fails) lands here,
+        // and web audio would only ask the same server the same question.
+        Ok(Err(e)) => return Err(host_error(format!("the host refused the song: {e}"))),
+    };
+
+    // From here the response has started, so every wait is judged on progress.
+    let progress = Arc::new(DownloadProgress::started_now());
+    let stalled = |stop: LoadStop, stage: &str| {
+        host_error(match stop {
+            LoadStop::Stalled => format!(
+                "the song stopped arriving while {stage} (nothing for {}s)",
+                budgets.stall.as_secs()
+            ),
+            LoadStop::TooSlow => {
+                format!("the song was still {stage} after {}s", budgets.progress.as_secs())
+            }
+        })
+    };
+
+    let reader = match while_progressing(
+        StreamDownload::from_stream(
+            stream,
+            TempStorageProvider::default(),
+            download_settings(Arc::clone(&progress)),
+        ),
+        &progress,
+        budgets.stall,
+        budgets.progress,
+    )
+    .await
+    {
+        Err(stop) => {
+            // Nothing else can reach this download now: our future is the only
+            // handle on it, and we are dropping it.
+            progress.stop_download();
+            return Err(stalled(stop, "buffering"));
+        }
+        Ok(Ok(r)) => r,
+        Ok(Err(e)) => return Err(host_error(format!("the stream could not be read: {e}"))),
+    };
+
+    // The length the HTTP response declared, so the decoder can be built
+    // seekable (see build_decoder).
+    let byte_len = reader.content_length();
+    // Taken BEFORE the reader moves into the blocking task. Giving up on a
+    // decode leaves that task blocked inside a read that will never return, and
+    // a blocking task cannot be cancelled: cancelling the DOWNLOAD is what ends
+    // it, so the thread (and the temp file behind it) are not held for the life
+    // of the app.
+    let download = reader.cancellation_token();
+    // One flag per load: the reader sets it if the stream ever fails.
+    let failed = Arc::new(AtomicBool::new(false));
+    let reader = FailFlagged { inner: reader, failed: Arc::clone(&failed) };
+
+    // Fix 3: run blocking decoder I/O off the async runtime. Building the
+    // decoder READS (a seekable one reads the tail as well), so it blocks on
+    // the same download and is judged the same way.
+    let decoder = match while_progressing(
+        tauri::async_runtime::spawn_blocking(move || build_decoder(reader, byte_len)),
+        &progress,
+        budgets.stall,
+        budgets.progress,
+    )
+    .await
+    {
+        // Say "stopped arriving", not "unrecognized format" — a misleading
+        // error here sends whoever reads the log hunting for a codec problem.
+        Err(stop) => {
+            download.cancel();
+            return Err(stalled(stop, "decoding"));
+        }
+        Ok(Ok(Ok(d))) => d,
+        // Bytes arrived and this engine could not make sense of them: a format
+        // rodio was not built for (the route also serves webm/opus) is exactly
+        // what a browser does handle, so this one IS worth a retry there.
+        Ok(Ok(Err(e))) => {
+            return Err(OpenError {
+                message: format!("this engine could not decode the song: {e}"),
+                retry: RETRY_WEB_AUDIO,
+            })
+        }
+        Ok(Err(e)) => {
+            return Err(OpenError { message: e.to_string(), retry: RETRY_WEB_AUDIO })
+        }
+    };
+
+    let total = {
+        use rodio::Source;
+        decoder.total_duration()
+    };
+    Ok(OpenedSource { decoder, total, failed })
 }
 
 #[tauri::command]
@@ -383,84 +706,22 @@ pub async fn audio_load(
         &format!("load #{my_seq} start_at={start_at:.1} autoplay={autoplay} url={url}"),
     );
 
-    // Whole-load budget. Nothing downstream imposes one: on a bad connection
-    // (or when the host stalls mid-response) HttpStream::new and the decoder
-    // simply wait forever. The user sees a track that never starts, with no
-    // error and no fallback — the position watchdog can't help because no sink
-    // exists yet. Giving up lets the webview fall back to web audio, which
-    // buffers progressively and copes better with a weak link.
-    const LOAD_BUDGET: Duration = Duration::from_secs(25);
-    let deadline = std::time::Instant::now() + LOAD_BUDGET;
-    let remaining = || deadline.saturating_duration_since(std::time::Instant::now());
-    let give_up = |app: &AppHandle, stage: &str| -> String {
-        let msg = format!("timed out {stage} after {}s", LOAD_BUDGET.as_secs());
-        log_audio(app, "WARN", &format!("load #{my_seq} {msg}"));
-        emit_err(app, msg.clone());
-        msg
-    };
-
-    // Build a seekable, buffered HTTP source backed by a temp file so seeks work.
-    let parsed = url.parse().map_err(|_| "bad url".to_string())?;
+    // Everything from "connect" to "we have a decoder", with the budgets that
+    // keep a dead source from costing half a minute (see `open_source`).
+    //
+    // A failure there is REPORTED through `audio:error` and then returns Ok:
+    // that event carries the retry decision the webview needs, and an Err as
+    // well would race a second, less informed report through invoke()'s catch.
     let client = http_client(cookie.as_deref())?;
-    let stream = match tokio::time::timeout(remaining(), HttpStream::new(client, parsed)).await {
-        Err(_) => return Err(give_up(&app, "connecting to the stream")),
-        Ok(Ok(s)) => s,
-        Ok(Err(e)) => {
-            let msg = e.to_string();
-            emit_err(&app, msg.clone());
-            return Err(msg);
+    let opened = match open_source(client, &url, LoadBudgets::DEFAULT).await {
+        Ok(o) => o,
+        Err(e) => {
+            log_audio(&app, "WARN", &format!("load #{my_seq} {}", e.message));
+            emit_err(&app, e.retry, e.message);
+            return Ok(());
         }
     };
-    let reader = match tokio::time::timeout(
-        remaining(),
-        StreamDownload::from_stream(stream, TempStorageProvider::default(), Settings::default()),
-    )
-    .await
-    {
-        Err(_) => return Err(give_up(&app, "buffering the stream")),
-        Ok(Ok(r)) => r,
-        Ok(Err(e)) => {
-            let msg = e.to_string();
-            emit_err(&app, msg.clone());
-            return Err(msg);
-        }
-    };
-
-    // The length the HTTP response declared, so the decoder can be built
-    // seekable (see build_decoder).
-    let byte_len = reader.content_length();
-    // One flag per load: the reader sets it if the stream ever fails, and the
-    // position timer reads it to tell a dead stream from a finished song.
-    let failed = Arc::new(AtomicBool::new(false));
-    let reader = FailFlagged { inner: reader, failed: Arc::clone(&failed) };
-
-    // Fix 3: run blocking decoder I/O off the async runtime.
-    let decoder = match tokio::time::timeout(
-        remaining(),
-        tauri::async_runtime::spawn_blocking(move || build_decoder(reader, byte_len)),
-    )
-    .await
-    {
-        // Say "timed out", not "unrecognized format" — a misleading error here
-        // sends whoever reads the log hunting for a codec problem.
-        Err(_) => return Err(give_up(&app, "decoding the track")),
-        Ok(Ok(Ok(d))) => d,
-        Ok(Ok(Err(e))) => {
-            let msg = e.to_string();
-            emit_err(&app, msg.clone());
-            return Err(msg);
-        }
-        Ok(Err(e)) => {
-            let msg = e.to_string();
-            emit_err(&app, msg.clone());
-            return Err(msg);
-        }
-    };
-
-    let total = {
-        use rodio::Source;
-        decoder.total_duration()
-    };
+    let OpenedSource { decoder, total, failed } = opened;
 
     // Someone asked for a different track while this one was downloading —
     // discard it silently rather than yanking playback back.
@@ -599,7 +860,7 @@ pub fn audio_seek(app: AppHandle, engine: State<'_, AudioEngine>, sec: f64) {
             f.store(true, Ordering::SeqCst);
         }
         log_audio(&app, "WARN", &format!("seek to {sec:.1}s failed: {message}"));
-        emit_err(&app, format!("seek failed: {message}"));
+        emit_err(&app, RETRY_WEB_AUDIO, format!("seek failed: {message}"));
     }
 }
 
@@ -743,7 +1004,7 @@ fn spawn_position_timer(
                         "WARN",
                         &format!("the stream failed at {pos:.1}s: reporting an error, not the end"),
                     );
-                    emit_err(&app, format!("the stream stopped at {pos:.1}s"));
+                    emit_err(&app, RETRY_WEB_AUDIO, format!("the stream stopped at {pos:.1}s"));
                 } else {
                     emit_bare(&app, "audio:ended");
                 }
@@ -760,7 +1021,7 @@ fn spawn_position_timer(
                         "WARN",
                         &format!("playback stalled at {pos:.1}s — source starved, giving up"),
                     );
-                    emit_err(&app, format!("playback stalled at {pos:.1}s"));
+                    emit_err(&app, RETRY_WEB_AUDIO, format!("playback stalled at {pos:.1}s"));
                     break;
                 }
             } else {
@@ -773,6 +1034,8 @@ fn spawn_position_timer(
 
 #[cfg(test)]
 mod skip_repro;
+#[cfg(test)]
+mod fastfail;
 
 #[cfg(test)]
 mod tests {
