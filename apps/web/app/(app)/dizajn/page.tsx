@@ -360,8 +360,10 @@ export default function DizajnPage() {
       <section className="mb-12">
         <h2 className="text-section-title mb-1">Instant search overlay</h2>
         <p className="text-meta mb-4">
-          Built and on the instant-search branch. Open each state below to see the real
-          SearchOverlay component, driven by mock data instead of a live search.
+          Built and shipped. Open each state below to see the real SearchOverlay component,
+          driven by mock data instead of a live search. This is its phone chrome (the
+          full-screen sheet); a desktop window gets the non-modal dropdown instead, which
+          only makes sense anchored to the real app shell.
         </p>
         <div className="flex flex-wrap gap-2">
           {OVERLAY_STATES.map((s) => (
@@ -381,6 +383,8 @@ export default function DizajnPage() {
         <SearchOverlay
           open={overlayOpen}
           onClose={() => setOverlayOpen(false)}
+          onOpen={() => setOverlayOpen(true)}
+          variant="sheet"
           {...overlayPropsFor(overlayState)}
         />
       </section>
