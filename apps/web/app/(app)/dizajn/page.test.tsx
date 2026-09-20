@@ -15,15 +15,8 @@ import {
 import { MOCK_IMPORT_ITEMS } from './mock';
 import { TRENDING_DATA, TRENDING_OPTIONS, TRENDING_VIEWS } from '@/components/library/options/trending';
 import { MOCK_CHART } from './mock';
-import {
-  RECOMMENDED_ROW,
-  ROW_CONTROLS,
-  ROW_INDICATORS,
-  ROW_STATES,
-} from '@/components/library/options/searchrows';
+import { ROW_STATES } from '@/components/library/options/searchrows';
 import { MOCK_SEARCH_RECENTS, MOCK_SEARCH_RESULTS } from './mock';
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
 
 // next/link reads the app router context, which no test renders (see
 // components/OnlineOnly.test.tsx).
@@ -708,8 +701,10 @@ describe('DizajnPage', () => {
     const section = () => screen.getByTestId('searchrows-section');
     // Both frames draw the same overlay; the desktop one is the first.
     const desktop = () => within(within(section()).getAllByTestId('searchrows-overlay')[0]);
-    const activeRow = () => desktop().getAllByTestId('search-row').find((r) => r.dataset.active === 'true')!;
+    const titles = () => desktop().getAllByTestId('track-row-title');
+    const emberTitles = () => titles().filter((t) => t.className.includes('text-ember'));
     const ROW_COUNT = MOCK_SEARCH_RECENTS.length + MOCK_SEARCH_RESULTS.length;
+    const PLAYING = MOCK_SEARCH_RESULTS[1].title;
 
     it('is the first section on the page, in the desktop and phone shells', () => {
       render(<DizajnPage />);
@@ -717,101 +712,53 @@ describe('DizajnPage', () => {
       expect(within(section()).getAllByTestId('shell-preview').map((s) => s.dataset.phone)).toEqual(['false', 'true']);
     });
 
-    it('renders the three pickers with every option as a radio, first one checked', () => {
+    it('keeps only the Player state picker now that the combination is chosen', () => {
       render(<DizajnPage />);
-      for (const [group, options] of [
-        ['Control style', ROW_CONTROLS],
-        ['Playing indicator', ROW_INDICATORS],
-        ['Player state', ROW_STATES],
-      ] as const) {
-        const radios = within(screen.getByRole('radiogroup', { name: group })).getAllByRole('radio');
-        expect(radios.map((r) => r.textContent)).toEqual(options.map((o) => o.name));
-        radios.forEach((r, i) => expect(r).toHaveAttribute('aria-checked', i === 0 ? 'true' : 'false'));
-      }
-      expect(ROW_CONTROLS.map((o) => o.name)).toEqual(['On the art', 'Trailing button', 'Leading slot']);
-      expect(ROW_INDICATORS.map((o) => o.name)).toEqual(['Bars', 'Ember title', 'Tinted row']);
+      const radios = within(screen.getByRole('radiogroup', { name: 'Player state' })).getAllByRole('radio');
+      expect(radios.map((r) => r.textContent)).toEqual(ROW_STATES.map((o) => o.name));
+      radios.forEach((r, i) => expect(r).toHaveAttribute('aria-checked', i === 0 ? 'true' : 'false'));
       expect(ROW_STATES.map((o) => o.name)).toEqual(['Nothing playing', 'This row playing', 'This row paused']);
+      expect(screen.queryByRole('radiogroup', { name: 'Control style' })).toBeNull();
+      expect(screen.queryByRole('radiogroup', { name: 'Playing indicator' })).toBeNull();
     });
 
-    it('draws the overlay over the shell with the mock recents above the results', () => {
+    // The point of the trim: no copy of the rows any more. The results come
+    // through the real TrackList (its rows carry TrackRow's own testid) and
+    // the recents through the real compact TrackRow.
+    it('draws the overlay with the real production rows, recents above the results', () => {
       render(<DizajnPage />);
       expect(within(section()).getAllByTestId('searchrows-overlay')).toHaveLength(2);
       expect(desktop().getByText('Recent searches')).toBeInTheDocument();
-      const rows = desktop().getAllByTestId('search-row');
-      expect(rows).toHaveLength(ROW_COUNT);
-      expect(rows.map((r) => within(r).getAllByText(/./)[0]?.textContent).slice(0, 3)).toEqual(
-        MOCK_SEARCH_RECENTS.map((t) => t.title),
-      );
+      expect(titles()).toHaveLength(ROW_COUNT);
+      expect(titles().slice(0, 3).map((t) => t.textContent)).toEqual(MOCK_SEARCH_RECENTS.map((t) => t.title));
+      // Only the list rows are TrackList's; the three recents are compact.
+      expect(desktop().getAllByTestId('track-row')).toHaveLength(MOCK_SEARCH_RESULTS.length);
       for (const t of MOCK_SEARCH_RESULTS) expect(desktop().getByText(t.title)).toBeInTheDocument();
     });
 
-    it('each control style renders its own control on every row and no other', () => {
+    it('gives every row a trailing play button and marks no row while nothing is playing', () => {
       render(<DizajnPage />);
-      const counts = () => ({
-        art: desktop().queryAllByTestId('row-art-control').length,
-        trailing: desktop().queryAllByTestId('row-trailing-control').length,
-        lead: desktop().queryAllByTestId('row-lead-slot').length,
-      });
-
-      expect(counts()).toEqual({ art: ROW_COUNT, trailing: 0, lead: 0 });
-      pick('Control style', 'Trailing button');
-      expect(counts()).toEqual({ art: 0, trailing: ROW_COUNT, lead: 0 });
-      pick('Control style', 'Leading slot');
-      expect(counts()).toEqual({ art: 0, trailing: 0, lead: ROW_COUNT });
-      expect(desktop().getAllByTestId('row-lead-control')).toHaveLength(ROW_COUNT);
+      expect(desktop().getAllByTestId('track-row-play')).toHaveLength(ROW_COUNT);
+      expect(emberTitles()).toHaveLength(0);
+      for (const t of [...MOCK_SEARCH_RECENTS, ...MOCK_SEARCH_RESULTS]) {
+        expect(desktop().getByRole('button', { name: `Play ${t.title}` })).toBeInTheDocument();
+      }
     });
 
-    it('marks no row at all while nothing is playing', () => {
+    it('marks the playing row with its title in ember and no glyph, in both states', () => {
       render(<DizajnPage />);
-      expect(desktop().getAllByTestId('search-row').every((r) => r.dataset.active === 'false')).toBe(true);
-      expect(desktop().queryAllByTestId('row-eq-bars')).toHaveLength(0);
-      expect(desktop().queryAllByTestId('row-glyph')).toHaveLength(0);
-      expect(desktop().queryByTestId('row-tint-edge')).toBeNull();
-    });
-
-    it('each indicator marks the playing row with its own markup', () => {
-      render(<DizajnPage />);
-      pick('Player state', 'This row playing');
-
-      // Bars, the default.
-      expect(desktop().getAllByTestId('row-eq-bars')).toHaveLength(1);
-      expect(desktop().queryByTestId('row-ember-title')).toBeNull();
-      expect(desktop().queryByTestId('row-tint-edge')).toBeNull();
-      expect(desktop().queryAllByTestId('row-glyph')).toHaveLength(0);
-
-      pick('Playing indicator', 'Ember title');
-      expect(desktop().queryAllByTestId('row-eq-bars')).toHaveLength(0);
-      const title = desktop().getAllByTestId('row-ember-title');
-      expect(title).toHaveLength(1);
-      expect(title[0]).toHaveClass('text-ember');
-      expect(title[0]).toHaveTextContent(MOCK_SEARCH_RESULTS[1].title);
-      expect(desktop().getAllByTestId('row-glyph')).toHaveLength(1);
-      expect(desktop().queryByTestId('row-tint-edge')).toBeNull();
-
-      pick('Playing indicator', 'Tinted row');
-      expect(desktop().queryAllByTestId('row-eq-bars')).toHaveLength(0);
-      expect(desktop().queryByTestId('row-ember-title')).toBeNull();
-      expect(desktop().getAllByTestId('row-tint-edge')).toHaveLength(1);
-      expect(desktop().getAllByTestId('row-glyph')).toHaveLength(1);
-      expect(activeRow()).toHaveClass('bg-ember/10');
-    });
-
-    it('the playing and paused states differ on the row and on its control', () => {
-      render(<DizajnPage />);
-      const title = MOCK_SEARCH_RESULTS[1].title;
 
       pick('Player state', 'This row playing');
-      expect(activeRow().dataset.playing).toBe('true');
-      expect(within(activeRow()).getByTestId('row-eq-bars').dataset.playing).toBe('true');
-      expect(within(activeRow()).getByTestId('row-eq-bars').querySelector('.ember-eq-bar')).not.toBeNull();
-      expect(desktop().getByRole('button', { name: `Pause ${title}` })).toBeInTheDocument();
+      expect(emberTitles().map((t) => t.textContent)).toEqual([PLAYING]);
+      expect(desktop().getByRole('button', { name: `Pause ${PLAYING}` })).toBeInTheDocument();
+      // The title cell carries the colour and nothing else: no speaker or
+      // pause glyph beside it, which is what the owner picked.
+      expect(emberTitles()[0].querySelector('svg')).toBeNull();
 
       pick('Player state', 'This row paused');
-      expect(activeRow().dataset.playing).toBe('false');
-      expect(within(activeRow()).getByTestId('row-eq-bars').dataset.playing).toBe('false');
-      expect(within(activeRow()).getByTestId('row-eq-bars').querySelector('.ember-eq-bar')).toBeNull();
-      expect(within(activeRow()).getByTestId('row-eq-bars').querySelector('.ember-eq-still')).not.toBeNull();
-      expect(desktop().getByRole('button', { name: `Resume ${title}` })).toBeInTheDocument();
+      expect(emberTitles().map((t) => t.textContent)).toEqual([PLAYING]);
+      expect(desktop().getByRole('button', { name: `Resume ${PLAYING}` })).toBeInTheDocument();
+      expect(emberTitles()[0].querySelector('svg')).toBeNull();
     });
 
     it('pressing a row control starts that row, and pressing it again pauses', () => {
@@ -820,26 +767,11 @@ describe('DizajnPage', () => {
 
       fireEvent.click(desktop().getByRole('button', { name: `Play ${recent}` }));
       expect(screen.getByRole('radio', { name: 'This row playing' })).toHaveAttribute('aria-checked', 'true');
-      expect(activeRow()).toHaveTextContent(recent);
+      expect(emberTitles().map((t) => t.textContent)).toEqual([recent]);
 
       fireEvent.click(desktop().getByRole('button', { name: `Pause ${recent}` }));
       expect(screen.getByRole('radio', { name: 'This row paused' })).toHaveAttribute('aria-checked', 'true');
-    });
-
-    it('pressing the row itself starts it too, for a phone with no hover', () => {
-      render(<DizajnPage />);
-      // Not the row the preview starts on, so the press has to move it.
-      fireEvent.click(desktop().getAllByTestId('search-row')[5]);
-      expect(screen.getByRole('radio', { name: 'This row playing' })).toHaveAttribute('aria-checked', 'true');
-      expect(activeRow()).toHaveTextContent(MOCK_SEARCH_RESULTS[2].title);
-    });
-
-    it('marks On the art + Bars as the recommended combination', () => {
-      render(<DizajnPage />);
-      expect(RECOMMENDED_ROW).toEqual({ control: 'on-art', indicator: 'bars' });
-      expect(within(section()).getByTestId('searchrows-recommended')).toHaveTextContent('Recommended');
-      pick('Playing indicator', 'Tinted row');
-      expect(within(section()).queryByTestId('searchrows-recommended')).toBeNull();
+      expect(emberTitles().map((t) => t.textContent)).toEqual([recent]);
     });
 
     it('opens the desktop shell full screen and closes it with Escape', () => {
@@ -851,41 +783,22 @@ describe('DizajnPage', () => {
       expect(screen.queryByTestId('searchrows-fullscreen')).not.toBeInTheDocument();
     });
 
-    it('persists all three choices to localStorage and restores them on mount', async () => {
+    it('persists the player state to localStorage and restores it on mount', async () => {
       const { unmount } = render(<DizajnPage />);
-      pick('Control style', 'Leading slot');
-      pick('Playing indicator', 'Tinted row');
       pick('Player state', 'This row paused');
 
-      await waitFor(() => expect(window.localStorage.getItem('dizajn-searchrows-control')).toBe('leading'));
-      expect(window.localStorage.getItem('dizajn-searchrows-indicator')).toBe('tinted');
-      expect(window.localStorage.getItem('dizajn-searchrows-state')).toBe('paused');
+      await waitFor(() => expect(window.localStorage.getItem('dizajn-searchrows-state')).toBe('paused'));
       unmount();
 
       render(<DizajnPage />);
-      expect(screen.getByRole('radio', { name: 'Leading slot' })).toHaveAttribute('aria-checked', 'true');
-      expect(screen.getByRole('radio', { name: 'Tinted row' })).toHaveAttribute('aria-checked', 'true');
       expect(screen.getByRole('radio', { name: 'This row paused' })).toHaveAttribute('aria-checked', 'true');
-      expect(section().dataset).toMatchObject({ control: 'leading', indicator: 'tinted', state: 'paused' });
+      expect(section().dataset).toMatchObject({ state: 'paused' });
     });
 
     it('ignores a stale saved value', () => {
-      window.localStorage.setItem('dizajn-searchrows-control', 'floating');
-      window.localStorage.setItem('dizajn-searchrows-indicator', 'halo');
+      window.localStorage.setItem('dizajn-searchrows-state', 'halo');
       render(<DizajnPage />);
-      expect(screen.getByRole('radio', { name: 'On the art' })).toHaveAttribute('aria-checked', 'true');
-      expect(screen.getByRole('radio', { name: 'Bars' })).toHaveAttribute('aria-checked', 'true');
-    });
-
-    // Reduced motion is handled in CSS, not with a matchMedia check in the
-    // component, so assert the guard itself: the bars must fall back to the
-    // same still shape the paused state uses.
-    it('globals.css freezes the bars under prefers-reduced-motion', () => {
-      const css = readFileSync(join(__dirname, '..', '..', 'globals.css'), 'utf8');
-      expect(css).toMatch(/\.ember-eq-bar\s*\{\s*animation:\s*ember-eq/);
-      expect(css).toMatch(
-        /@media \(prefers-reduced-motion: reduce\)\s*\{\s*\.ember-eq-bar\s*\{\s*animation:\s*none !important;\s*transform:\s*scaleY\(0\.5\);\s*\}\s*\}/,
-      );
+      expect(screen.getByRole('radio', { name: 'Nothing playing' })).toHaveAttribute('aria-checked', 'true');
     });
   });
 });

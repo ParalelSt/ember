@@ -40,14 +40,7 @@ import {
   type TrendingView,
 } from '@/components/library/options/trending';
 import { TrendingSection } from '@/components/library/options/trending/TrendingSection';
-import {
-  ROW_CONTROLS,
-  ROW_INDICATORS,
-  ROW_STATES,
-  type RowControl,
-  type RowIndicator,
-  type RowState,
-} from '@/components/library/options/searchrows';
+import { ROW_STATES, type RowState } from '@/components/library/options/searchrows';
 import { SearchRowsSection } from '@/components/library/options/searchrows/SearchRowsSection';
 import { MOCK_LIKED_TRACKS, MOCK_PLAYLISTS, MOCK_RECENT_TRACKS, MOCK_RESULT_TRACKS } from './mock';
 
@@ -61,8 +54,6 @@ const IMPORTS_REVIEW_KEY = 'dizajn-imports-review';
 const TRENDING_OPTION_KEY = 'dizajn-trending-option';
 const TRENDING_VIEW_KEY = 'dizajn-trending-view';
 const TRENDING_DATA_KEY = 'dizajn-trending-data';
-const SEARCHROWS_CONTROL_KEY = 'dizajn-searchrows-control';
-const SEARCHROWS_INDICATOR_KEY = 'dizajn-searchrows-indicator';
 const SEARCHROWS_STATE_KEY = 'dizajn-searchrows-state';
 
 /** Lazy-initializer read of one picker's saved id, falling back to the
@@ -248,19 +239,10 @@ export default function DizajnPage() {
     window.localStorage.setItem(TRENDING_DATA_KEY, trData);
   }, [trData]);
 
-  // "Search rows" pickers: same pattern again.
-  const [srControl, setSrControl] = useState<RowControl>(() => savedChoice(SEARCHROWS_CONTROL_KEY, ROW_CONTROLS));
-  const [srIndicator, setSrIndicator] = useState<RowIndicator>(() =>
-    savedChoice(SEARCHROWS_INDICATOR_KEY, ROW_INDICATORS),
-  );
+  // "Search rows" picker: same pattern again. Only the player state is
+  // still a choice; the control style and the indicator were picked.
   const [srState, setSrState] = useState<RowState>(() => savedChoice(SEARCHROWS_STATE_KEY, ROW_STATES));
 
-  useEffect(() => {
-    window.localStorage.setItem(SEARCHROWS_CONTROL_KEY, srControl);
-  }, [srControl]);
-  useEffect(() => {
-    window.localStorage.setItem(SEARCHROWS_INDICATOR_KEY, srIndicator);
-  }, [srIndicator]);
   useEffect(() => {
     window.localStorage.setItem(SEARCHROWS_STATE_KEY, srState);
   }, [srState]);
@@ -276,38 +258,25 @@ export default function DizajnPage() {
       <section className="mb-section">
         <h2 className="text-section-title mb-inset">Search rows</h2>
         <p className="text-meta mb-block">
-          Proposals, not built: a play/pause control you can actually press inside the search
-          overlay&apos;s rows, and a way to tell which row is the song playing. Both the recent
-          searches (the compact lines) and the results below them use the chosen pair. Controls in
-          the preview work: press one and that row takes over, press it again to pause, which moves
-          the Player state picker. The row itself is pressable too, since a phone has no hover to
-          reveal a control with. The live overlay and TrackRow are unchanged.
-        </p>
-        <p className="text-meta mb-block">
-          Recommended: <strong className="font-semibold text-foreground">On the art + Bars</strong>.
-          The artwork is already where a row is pressed everywhere else in Ember, so it costs no new
-          column and nothing shifts when the control appears; the bars then sit in that same box, which
-          makes &quot;what is playing&quot; and &quot;pause it&quot; one 40px target, the thing that matters most
-          on a phone, where this overlay is mostly used. Ember title and Tinted row both read well but
-          say nothing about pausing, and the Leading slot buys its stability with a gutter that is empty
-          on every row but one.
+          Built: a play/pause button you can actually press inside the search overlay&apos;s rows, and
+          the song playing marked by its title in the ember accent. Both the recent searches (the
+          compact lines) and the results below them have it. The button appears on hover or keyboard
+          focus, stays visible on the row that is playing, and is always visible on a phone, which has
+          neither. The rows below are the REAL <code>TrackRow</code> and <code>TrackList</code> the
+          overlay renders, on mock data, so this preview cannot drift from what ships; pressing a
+          control moves the Player state picker the way the real player would. One thing the phone
+          frame below cannot show: &quot;always visible on a phone&quot; keys off the window width, and
+          that frame is a scaled box inside this one, so hover the rows to see the button here.
         </p>
 
         <div className="mb-stack flex flex-wrap gap-x-section gap-y-block">
-          <Picker label="Control style" options={ROW_CONTROLS} value={srControl} onChange={setSrControl} />
-          <Picker label="Playing indicator" options={ROW_INDICATORS} value={srIndicator} onChange={setSrIndicator} />
           {/* "Player state", not "State": the changelog section further down
               already has a picker by that name, and two radiogroups sharing a
               label would be ambiguous to a screen reader (and to a test). */}
           <Picker label="Player state" options={ROW_STATES} value={srState} onChange={setSrState} />
         </div>
 
-        <SearchRowsSection
-          control={srControl}
-          indicator={srIndicator}
-          state={srState}
-          onStateChange={setSrState}
-        />
+        <SearchRowsSection state={srState} onStateChange={setSrState} />
       </section>
 
       <section className="mb-section">

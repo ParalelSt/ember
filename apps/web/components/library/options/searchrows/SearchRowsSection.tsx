@@ -8,17 +8,11 @@ import { Input } from '@/components/ui/input';
 import { PageTitle } from '@/components/page/PageTitle';
 import { SectionHeader } from '@/components/page/SectionHeader';
 import { TrackCard } from '@/components/track/TrackCard';
+import { TrackList } from '@/components/track/TrackList';
+import { TrackRow } from '@/components/track/TrackRow';
 import { ShellPreview } from '@/components/library/options/changelog/ShellPreview';
 import { ScaledFrame } from '@/components/library/options/changelog/ChangelogSection';
-import { SearchRow } from '@/components/library/options/searchrows/SearchRow';
-import {
-  RECOMMENDED_ROW,
-  ROW_CONTROLS,
-  ROW_INDICATORS,
-  type RowControl,
-  type RowIndicator,
-  type RowState,
-} from '@/components/library/options/searchrows';
+import type { RowState } from '@/components/library/options/searchrows';
 import { cn } from '@/lib/utils';
 import {
   MOCK_HOME_TRACKS,
@@ -33,6 +27,8 @@ import {
 const DESKTOP = { width: 1100, height: 790 };
 const PHONE = { width: 390, height: 780 };
 const NOOP = () => {};
+const RECENTS_FALLBACK = <MusicIcon className="h-4 w-4" />;
+const NOTHING_LIKED = new Set<string>();
 
 /** A plain Home behind the overlay, so the backdrop has a real page under
  *  it rather than an empty box. */
@@ -51,32 +47,29 @@ function MockHome({ phone }: { phone: boolean }) {
 }
 
 /** SearchOverlay's popup drawn in place instead of portalled, so it sits
- *  inside the gallery's shell frame: the classes are the real
+ *  inside the gallery's shell frame: the chrome classes are the real
  *  DialogContent's plus SearchOverlay's own, with spacing on tokens. The
- *  query is empty, which is the overlay state that shows recents AND a
- *  list at once, so both row shapes are visible in one picture. */
+ *  rows themselves are the REAL production components, the same
+ *  `TrackRow density="compact" trailingPlayControl` recents line and the
+ *  same `TrackList trailingPlayControl` the live overlay renders, wired to
+ *  mock data instead of the player, so this preview cannot drift from what
+ *  ships. The query is empty, which is the overlay state that shows recents
+ *  AND a list at once, so both row shapes are visible in one picture. */
 function OverlayPanel({
   phone,
-  control,
-  indicator,
   state,
   activeId,
   onActivate,
+  onToggle,
 }: {
   phone: boolean;
-  control: RowControl;
-  indicator: RowIndicator;
   state: RowState;
   activeId: string | null;
   onActivate: (id: string) => void;
+  onToggle: () => void;
 }) {
-  const rowProps = (id: string) => ({
-    control,
-    indicator,
-    active: state !== 'idle' && activeId === id,
-    playing: state === 'playing',
-    onActivate: () => onActivate(id),
-  });
+  const currentId = state === 'idle' ? null : activeId;
+  const isPlaying = state === 'playing';
 
   return (
     <div data-testid="searchrows-overlay" className="absolute inset-0 z-40">
@@ -119,18 +112,33 @@ function OverlayPanel({
             <SectionHeader title="Recent searches" className="mb-row" />
             <div className="flex flex-col">
               {MOCK_SEARCH_RECENTS.map((t) => (
-                <SearchRow key={t.id} track={t} density="compact" {...rowProps(t.id)} />
+                <TrackRow
+                  key={t.id}
+                  track={t}
+                  density="compact"
+                  trailingPlayControl
+                  active={currentId === t.id}
+                  playing={isPlaying}
+                  artworkFallback={RECENTS_FALLBACK}
+                  onPlay={() => onActivate(t.id)}
+                  onToggle={onToggle}
+                  onRemove={NOOP}
+                  removeLabel={`Remove "${t.title}" from recent searches`}
+                />
               ))}
             </div>
           </div>
           <SectionHeader title="Trending" className="mb-block mt-stack" />
-          {/* The container-query root the live TrackList is, so the rows
-              size their columns against the popup, not the window. */}
-          <div className="@container flex flex-col">
-            {MOCK_SEARCH_RESULTS.map((t) => (
-              <SearchRow key={t.id} track={t} density="list" {...rowProps(t.id)} />
-            ))}
-          </div>
+          <TrackList
+            tracks={MOCK_SEARCH_RESULTS}
+            trailingPlayControl
+            currentId={currentId}
+            isPlaying={isPlaying}
+            likedIds={NOTHING_LIKED}
+            onPlay={(t) => onActivate(t.id)}
+            onToggle={onToggle}
+            onLike={NOOP}
+          />
         </div>
       </div>
     </div>
@@ -138,18 +146,16 @@ function OverlayPanel({
 }
 
 export interface SearchRowsSectionProps {
-  control: RowControl;
-  indicator: RowIndicator;
   state: RowState;
   /** Pressing a row's control inside the preview moves the State picker,
    *  so the mock plays and pauses like the real overlay would. */
   onStateChange: (state: RowState) => void;
 }
 
-/** The "Search rows" candidates in context: the search overlay over the
+/** The chosen search-overlay row in context: the search overlay over the
  *  whole Ember shell, desktop (scaled to fit) and phone (390px), plus a 1:1
  *  full-screen view. Mock data only, nothing fetches. */
-export function SearchRowsSection({ control, indicator, state, onStateChange }: SearchRowsSectionProps) {
+export function SearchRowsSection({ state, onStateChange }: SearchRowsSectionProps) {
   const [fullscreen, setFullscreen] = useState(false);
   const [desktopScale, setDesktopScale] = useState(1);
   const [activeId, setActiveId] = useState(MOCK_SEARCH_PLAYING_ID);
@@ -163,20 +169,13 @@ export function SearchRowsSection({ control, indicator, state, onStateChange }: 
     return () => window.removeEventListener('keydown', onKey);
   }, [fullscreen]);
 
-  // Pressing a control: a different row takes over and starts, the current
-  // row toggles between playing and paused.
+  // Starting a row: it takes over and plays. Pressing the current row's own
+  // control instead toggles, which is TrackRow's `onToggle` path.
   const activate = (id: string) => {
-    if (state !== 'idle' && id === activeId) {
-      onStateChange(state === 'playing' ? 'paused' : 'playing');
-      return;
-    }
     setActiveId(id);
     onStateChange('playing');
   };
-
-  const recommended = control === RECOMMENDED_ROW.control && indicator === RECOMMENDED_ROW.indicator;
-  const controlCopy = ROW_CONTROLS.find((o) => o.id === control)?.description ?? '';
-  const indicatorCopy = ROW_INDICATORS.find((o) => o.id === indicator)?.description ?? '';
+  const toggle = () => onStateChange(state === 'playing' ? 'paused' : 'playing');
 
   const shell = (phone: boolean) => (
     <ShellPreview
@@ -186,23 +185,17 @@ export function SearchRowsSection({ control, indicator, state, onStateChange }: 
       modal={
         <OverlayPanel
           phone={phone}
-          control={control}
-          indicator={indicator}
           state={state}
           activeId={state === 'idle' ? null : activeId}
           onActivate={activate}
+          onToggle={toggle}
         />
       }
     />
   );
 
   return (
-    <div
-      data-testid="searchrows-section"
-      data-control={control}
-      data-indicator={indicator}
-      data-state={state}
-    >
+    <div data-testid="searchrows-section" data-state={state}>
       <div className="flex flex-col gap-stack lg:flex-row lg:items-start">
         <div className="min-w-0 lg:flex-[1100_1_0%]">
           <div className="mb-cluster flex min-h-7 items-center justify-between gap-row">
@@ -229,23 +222,6 @@ export function SearchRowsSection({ control, indicator, state, onStateChange }: 
             {shell(true)}
           </ScaledFrame>
         </div>
-      </div>
-
-      <div className="mt-block flex flex-col gap-cluster">
-        {recommended && (
-          <span
-            data-testid="searchrows-recommended"
-            className="w-fit rounded-full bg-ember px-row py-inset text-xs font-medium text-white"
-          >
-            Recommended
-          </span>
-        )}
-        <p data-testid="searchrows-control-copy" className="text-meta">
-          {controlCopy}
-        </p>
-        <p data-testid="searchrows-indicator-copy" className="text-meta">
-          {indicatorCopy}
-        </p>
       </div>
 
       {fullscreen &&
