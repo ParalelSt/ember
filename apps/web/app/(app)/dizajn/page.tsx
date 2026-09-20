@@ -43,6 +43,17 @@ import { TrendingSection } from '@/components/library/options/trending/TrendingS
 import { ROW_STATES, type RowState } from '@/components/library/options/searchrows';
 import { SearchRowsSection } from '@/components/library/options/searchrows/SearchRowsSection';
 import {
+  MOBILE_INSET_OPTIONS,
+  MOBILE_PLAYER_LAYOUTS,
+  MOBILE_TITLE_OPTIONS,
+  type MobileInsetOption,
+  type MobilePlayerLayout,
+  type MobileTitleOption,
+  TODAY_TAPS,
+  TODAY_TITLE_PX,
+} from '@/components/library/options/mobileplayer';
+import { MobilePlayerSection } from '@/components/library/options/mobileplayer/MobilePlayerSection';
+import {
   TABS_LAYOUTS,
   TABS_PASTE,
   TABS_SCROLL,
@@ -72,6 +83,9 @@ const TRENDING_OPTION_KEY = 'dizajn-trending-option';
 const TRENDING_VIEW_KEY = 'dizajn-trending-view';
 const TRENDING_DATA_KEY = 'dizajn-trending-data';
 const SEARCHROWS_STATE_KEY = 'dizajn-searchrows-state';
+const MOBILEPLAYER_LAYOUT_KEY = 'dizajn-mobileplayer-layout';
+const MOBILEPLAYER_TITLE_KEY = 'dizajn-mobileplayer-title';
+const MOBILEPLAYER_INSET_KEY = 'dizajn-mobileplayer-inset';
 const TABS_LAYOUT_KEY = 'dizajn-tabs-layout';
 const TABS_STAFF_KEY = 'dizajn-tabs-staff';
 const TABS_SCROLL_KEY = 'dizajn-tabs-scroll';
@@ -269,6 +283,11 @@ export default function DizajnPage() {
   // still a choice; the control style and the indicator were picked.
   const [srState, setSrState] = useSavedChoice<RowState>(SEARCHROWS_STATE_KEY, ROW_STATES);
 
+  // "Mobile player" pickers: same pattern again.
+  const [mpLayout, setMpLayout] = useSavedChoice<MobilePlayerLayout>(MOBILEPLAYER_LAYOUT_KEY, MOBILE_PLAYER_LAYOUTS);
+  const [mpTitle, setMpTitle] = useSavedChoice<MobileTitleOption>(MOBILEPLAYER_TITLE_KEY, MOBILE_TITLE_OPTIONS);
+  const [mpInset, setMpInset] = useSavedChoice<MobileInsetOption>(MOBILEPLAYER_INSET_KEY, MOBILE_INSET_OPTIONS);
+
   return (
     <div>
       <PageTitle className="mb-2">Design gallery</PageTitle>
@@ -276,6 +295,36 @@ export default function DizajnPage() {
         What was built, and the style options for the Library page&apos;s playlist shelves. Not a real
         page in the app: no link points here.
       </p>
+
+      <section className="mb-section">
+        <h2 className="text-section-title mb-inset">Mobile player</h2>
+        <p className="text-meta mb-block">
+          Proposals, not built: a phone player bar that survives the bottom of an Android screen. Three
+          problems at once. The bar and the nav sit UNDER Android&apos;s own back, home and recents
+          buttons, because the app targets SDK 35, where the system draws itself over the WebView, and
+          the Android WebView reports nothing for <code>env(safe-area-inset-bottom)</code>, so the
+          <code> 0px</code> fallback in PlayerBar and MobileNav lifts nothing. The song name gets a{' '}
+          {TODAY_TITLE_PX}px box at 390 (the bar is a [1fr auto 1fr] grid, and the artwork eats most of
+          the left column), which is why &quot;Yes Sir, I Can Boogie&quot; reads &quot;Yes ...&quot;.
+          And the buttons are small: {TODAY_TAPS}. Each candidate below is drawn in the mock shell at
+          390 and at 360, twice with a mock Android navigation strip over it so the bottom inset can be
+          judged. Mock data only; the live player bar is unchanged.
+        </p>
+        <p className="text-meta mb-block">
+          <span className="font-semibold text-foreground">Recommended: Two rows + Scroll + Safe area.</span>{' '}
+          It is the only combination that answers all three complaints at once: the name gets the full
+          width of the bar and scrolls when even that is not enough, every button is 48px or larger, and
+          the safe-area lift keeps the whole row clear of the system buttons.
+        </p>
+
+        <div className="mb-stack flex flex-wrap gap-x-section gap-y-block">
+          <Picker label="Bar layout" options={MOBILE_PLAYER_LAYOUTS} value={mpLayout} onChange={setMpLayout} />
+          <Picker label="Title" options={MOBILE_TITLE_OPTIONS} value={mpTitle} onChange={setMpTitle} />
+          <Picker label="Bottom inset" options={MOBILE_INSET_OPTIONS} value={mpInset} onChange={setMpInset} />
+        </div>
+
+        <MobilePlayerSection layout={mpLayout} title={mpTitle} inset={mpInset} />
+      </section>
 
       <section className="mb-section">
         <h2 className="text-section-title mb-inset">Search rows</h2>

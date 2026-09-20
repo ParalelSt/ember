@@ -18,6 +18,12 @@ import { MOCK_CHART } from './mock';
 import { ROW_STATES } from '@/components/library/options/searchrows';
 import { MOCK_SEARCH_RECENTS, MOCK_SEARCH_RESULTS } from './mock';
 import {
+  MOBILE_INSET_OPTIONS,
+  MOBILE_PLAYER_LAYOUTS,
+  MOBILE_TITLE_OPTIONS,
+} from '@/components/library/options/mobileplayer';
+import { MOCK_MOBILE_NOW_PLAYING } from './mock';
+import {
   TABS_LAYOUTS,
   TABS_PASTE,
   TABS_SCROLL,
@@ -138,6 +144,7 @@ describe('DizajnPage', () => {
   it('renders every section with no network', () => {
     render(<DizajnPage />);
 
+    expect(screen.getByText('Mobile player')).toBeInTheDocument();
     expect(screen.getByText('Search rows')).toBeInTheDocument();
     expect(screen.getByText('Playlist import')).toBeInTheDocument();
     expect(screen.getByText('Trending shelf')).toBeInTheDocument();
@@ -237,7 +244,7 @@ describe('DizajnPage', () => {
 
     it('sits right below Search rows, ahead of every other section', () => {
       render(<DizajnPage />);
-      expect(sectionHeadings().slice(0, 2)).toEqual(['Search rows', 'Playlist import']);
+      expect(sectionHeadings().slice(0, 3)).toEqual(['Mobile player', 'Search rows', 'Playlist import']);
     });
 
     it('has a realistic mock: 42 songs, 36 confident, 4 to review with 3 to 5 candidates, 2 not found', () => {
@@ -670,8 +677,8 @@ describe('DizajnPage', () => {
     it('is the third section on the page, right after Playlist import', () => {
       render(<DizajnPage />);
       const headings = sectionHeadings();
-      expect(headings[2]).toBe('Trending shelf');
-      expect(headings.indexOf("What's new (changelog)")).toBeGreaterThan(2);
+      expect(headings[3]).toBe('Trending shelf');
+      expect(headings.indexOf("What's new (changelog)")).toBeGreaterThan(3);
     });
 
     it('renders the three pickers with every option as a radio, first one checked', () => {
@@ -779,6 +786,167 @@ describe('DizajnPage', () => {
     });
   });
 
+  describe('Mobile player section', () => {
+    // The Recommended badge sits inside the pill, so a radio's accessible
+    // name is "Two rows Recommended": match on a prefix, the way the Guitar
+    // tabs tests do.
+    const pick = (group: string, name: string) =>
+      fireEvent.click(
+        within(screen.getByRole('radiogroup', { name: group })).getByRole('radio', { name: new RegExp(`^${name}`) }),
+      );
+    const section = () => screen.getByTestId('mobileplayer-section');
+    const bars = () => within(section()).getAllByTestId('mobile-player-bar');
+    const FRAME_COUNT = 3;
+
+    it('is the first section on the page, three phone frames, two of them with the Android strip', () => {
+      render(<DizajnPage />);
+      expect(sectionHeadings()[0]).toBe('Mobile player');
+
+      const frames = within(section()).getAllByTestId('mobileplayer-frame');
+      expect(frames.map((f) => f.dataset.frame)).toEqual(['clean-390', 'android-390', 'android-360']);
+      // Every frame is the phone shell, never the desktop one.
+      expect(within(section()).getAllByTestId('shell-preview').map((s) => s.dataset.phone)).toEqual(
+        Array(FRAME_COUNT).fill('true'),
+      );
+      expect(within(section()).getAllByTestId('android-nav-strip')).toHaveLength(2);
+      expect(within(section()).getAllByText(MOCK_MOBILE_NOW_PLAYING.title).length).toBe(FRAME_COUNT);
+    });
+
+    it('renders all three pickers as radiogroups with the first option checked', () => {
+      render(<DizajnPage />);
+      for (const [group, options] of [
+        ['Bar layout', MOBILE_PLAYER_LAYOUTS],
+        ['Title', MOBILE_TITLE_OPTIONS],
+        ['Bottom inset', MOBILE_INSET_OPTIONS],
+      ] as const) {
+        const radios = within(screen.getByRole('radiogroup', { name: group })).getAllByRole('radio');
+        expect(radios).toHaveLength(options.length);
+        radios.forEach((r, i) => {
+          expect(r).toHaveTextContent(options[i].name);
+          expect(r).toHaveAttribute('aria-checked', i === 0 ? 'true' : 'false');
+        });
+      }
+      expect(MOBILE_PLAYER_LAYOUTS.map((o) => o.name)).toEqual(['One row, bigger', 'Two rows', 'Split']);
+      expect(MOBILE_TITLE_OPTIONS.map((o) => o.name)).toEqual(['Truncate', 'Scroll', 'Two lines']);
+      expect(MOBILE_INSET_OPTIONS.map((o) => o.name)).toEqual(['Safe area', 'Today']);
+    });
+
+    it('marks exactly one combination Recommended, one badge per picker', () => {
+      render(<DizajnPage />);
+      expect(MOBILE_PLAYER_LAYOUTS.filter((o) => o.badge)).toHaveLength(1);
+      expect(MOBILE_TITLE_OPTIONS.filter((o) => o.badge)).toHaveLength(1);
+      expect(MOBILE_INSET_OPTIONS.filter((o) => o.badge)).toHaveLength(1);
+      expect([
+        MOBILE_PLAYER_LAYOUTS.find((o) => o.badge)!.id,
+        MOBILE_TITLE_OPTIONS.find((o) => o.badge)!.id,
+        MOBILE_INSET_OPTIONS.find((o) => o.badge)!.id,
+      ]).toEqual(['two-rows', 'scroll', 'safe-area']);
+      expect(within(section().parentElement!).getAllByText(/Recommended: Two rows/)).not.toHaveLength(0);
+    });
+
+    // One distinct structure per layout: a single row with prev + queue in
+    // it, a name row above a control row, or a progress line at the very
+    // top with only play and next beside the name.
+    it('draws a different bar per layout, with the tap sizes the copy quotes', () => {
+      render(<DizajnPage />);
+
+      const taps = () => within(bars()[0]).getAllByTestId('mp-tap').map((t) => Number(t.dataset.tap));
+      expect(bars()).toHaveLength(FRAME_COUNT);
+      expect(bars()[0].dataset.layout).toBe('one-row');
+      expect(within(bars()[0]).getByTestId('mp-single-row')).toBeInTheDocument();
+      expect(within(bars()[0]).getByTestId('mp-progress-bottom')).toBeInTheDocument();
+      expect(within(bars()[0]).queryByTestId('mp-progress-top')).toBeNull();
+      expect(taps()).toEqual([44, 48, 44, 44]);
+
+      pick('Bar layout', 'Two rows');
+      expect(bars()[0].dataset.layout).toBe('two-rows');
+      expect(within(bars()[0]).getByTestId('mp-title-row')).toBeInTheDocument();
+      expect(within(bars()[0]).getByTestId('mp-controls-row')).toBeInTheDocument();
+      expect(within(bars()[0]).queryByTestId('mp-single-row')).toBeNull();
+      expect(taps()).toEqual([48, 56, 48, 48]);
+
+      pick('Bar layout', 'Split');
+      expect(bars()[0].dataset.layout).toBe('split');
+      expect(within(bars()[0]).getByTestId('mp-progress-top')).toBeInTheDocument();
+      expect(within(bars()[0]).queryByTestId('mp-progress-bottom')).toBeNull();
+      // Only play and next: previous and the queue moved to the full-screen view.
+      expect(within(bars()[0]).queryByLabelText('Previous')).toBeNull();
+      expect(within(bars()[0]).queryByLabelText('Queue')).toBeNull();
+      expect(taps()).toEqual([56, 48]);
+    });
+
+    it('draws the song name three ways: truncated, scrolling, or wrapped to two lines', () => {
+      render(<DizajnPage />);
+      const block = () => within(bars()[0]).getByTestId('mp-title-block');
+
+      expect(block().dataset.title).toBe('truncate');
+      expect(within(bars()[0]).getByTestId('mp-title')).toHaveClass('truncate');
+      expect(within(bars()[0]).queryByTestId('marquee')).toBeNull();
+
+      pick('Title', 'Scroll');
+      expect(block().dataset.title).toBe('scroll');
+      // The real MarqueeText from the full-screen view, not a copy of it.
+      // MarqueeText draws its invisible measuring ruler beside the title.
+      expect(within(within(bars()[0]).getByTestId('marquee')).getAllByText(MOCK_MOBILE_NOW_PLAYING.title)).not.toHaveLength(0);
+      expect(within(bars()[0]).queryByTestId('mp-title')).toBeNull();
+
+      pick('Title', 'Two lines');
+      expect(block().dataset.title).toBe('two-lines');
+      expect(within(bars()[0]).getByTestId('mp-title')).toHaveClass('line-clamp-2');
+      expect(within(bars()[0]).getByTestId('mp-title')).not.toHaveClass('truncate');
+    });
+
+    it('lifts the bottom nav by the safe-area inset, and by nothing at all on Today', () => {
+      render(<DizajnPage />);
+      const navs = () => within(section()).getAllByTestId('mock-mobile-nav');
+
+      // Today (what ships): the 0px fallback, so the nav stays under the
+      // Android strip drawn over it.
+      pick('Bottom inset', 'Today');
+      expect(section().dataset.inset).toBe('today');
+      for (const nav of navs()) expect(nav).toHaveStyle({ paddingBottom: '0px' });
+
+      pick('Bottom inset', 'Safe area');
+      expect(section().dataset.inset).toBe('safe-area');
+      expect(navs()).toHaveLength(FRAME_COUNT);
+      for (const nav of navs()) expect(nav).toHaveStyle({ paddingBottom: '48px' });
+    });
+
+    it('persists all three choices and restores them on mount', async () => {
+      const { unmount } = render(<DizajnPage />);
+      pick('Bar layout', 'Split');
+      pick('Title', 'Two lines');
+      pick('Bottom inset', 'Today');
+
+      await waitFor(() => {
+        expect(window.localStorage.getItem('dizajn-mobileplayer-layout')).toBe('split');
+        expect(window.localStorage.getItem('dizajn-mobileplayer-title')).toBe('two-lines');
+        expect(window.localStorage.getItem('dizajn-mobileplayer-inset')).toBe('today');
+      });
+      unmount();
+
+      render(<DizajnPage />);
+      expect(within(screen.getByRole('radiogroup', { name: 'Bar layout' })).getByRole('radio', { name: 'Split' })).toHaveAttribute('aria-checked', 'true');
+      expect(within(screen.getByRole('radiogroup', { name: 'Title' })).getByRole('radio', { name: 'Two lines' })).toHaveAttribute('aria-checked', 'true');
+      expect(within(screen.getByRole('radiogroup', { name: 'Bottom inset' })).getByRole('radio', { name: 'Today' })).toHaveAttribute('aria-checked', 'true');
+      expect(screen.getByTestId('mobileplayer-section').dataset.layout).toBe('split');
+    });
+
+    it('describes the chosen layout and its measured tap targets', () => {
+      render(<DizajnPage />);
+      expect(within(section()).getByTestId('mobileplayer-description')).toHaveTextContent('One row, bigger.');
+      expect(within(section()).getByTestId('mobileplayer-taps')).toHaveTextContent(
+        'play 48px, prev/next 44px, queue 44px, artwork 40px',
+      );
+
+      pick('Bar layout', 'Two rows');
+      expect(within(section()).getByTestId('mobileplayer-taps')).toHaveTextContent(
+        'play 56px, prev/next 48px, queue 48px, artwork 48px',
+      );
+      expect(within(section()).getByTestId('mobileplayer-taps')).toHaveTextContent('Today, for comparison');
+    });
+  });
+
   describe('Search rows section', () => {
     const pick = (group: string, name: string) =>
       fireEvent.click(within(screen.getByRole('radiogroup', { name: group })).getByRole('radio', { name }));
@@ -790,9 +958,9 @@ describe('DizajnPage', () => {
     const ROW_COUNT = MOCK_SEARCH_RECENTS.length + MOCK_SEARCH_RESULTS.length;
     const PLAYING = MOCK_SEARCH_RESULTS[1].title;
 
-    it('is the first section on the page, in the desktop and phone shells', () => {
+    it('sits right below Mobile player, in the desktop and phone shells', () => {
       render(<DizajnPage />);
-      expect(sectionHeadings()[0]).toBe('Search rows');
+      expect(sectionHeadings()[1]).toBe('Search rows');
       expect(within(section()).getAllByTestId('shell-preview').map((s) => s.dataset.phone)).toEqual(['false', 'true']);
     });
 

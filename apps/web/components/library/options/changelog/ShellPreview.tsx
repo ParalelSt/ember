@@ -67,6 +67,16 @@ export interface ShellPreviewProps {
   /** Covers the whole shell, sidebar included, the way a real dialog's
    *  backdrop covers the viewport. */
   modal?: ReactNode;
+  /** Replaces the mock player bar, for a section whose subject IS the bar
+   *  (the Mobile player candidates). */
+  playerBar?: ReactNode;
+  /** Phone: pixels of bottom inset the nav lifts itself by, standing in for
+   *  env(safe-area-inset-bottom). 0 is what the Android WebView reports
+   *  today. */
+  bottomInset?: number;
+  /** Phone: drawn over the bottom edge of the frame, above everything, the
+   *  way Android draws its own navigation bar over the WebView. */
+  systemNav?: ReactNode;
   /** Phone: the slide-out menu. The mock's own menu button toggles it. */
   drawerOpen?: boolean;
   onDrawerOpenChange?: (open: boolean) => void;
@@ -301,15 +311,22 @@ function MockPlayerBar({ phone }: { phone: boolean }) {
   );
 }
 
-/** MobileNav's markup with Home active. */
-function MockMobileNav({ activePath }: { activePath: string }) {
+/** MobileNav's markup with Home active. `bottomInset` is the real nav's
+ *  own `paddingBottom: env(safe-area-inset-bottom, 0px)`, given a number so
+ *  a preview can show both what that inset would do and what today's 0px
+ *  fallback does. */
+function MockMobileNav({ activePath, bottomInset = 0 }: { activePath: string; bottomInset?: number }) {
   const items = [
     { href: '/', label: 'Home', Icon: HomeIcon },
     { href: '/search', label: 'Search', Icon: SearchIcon },
     { href: '/library', label: 'Library', Icon: LibraryIcon },
   ];
   return (
-    <nav className="flex shrink-0 items-stretch justify-around border-t border-sidebar-border bg-sidebar">
+    <nav
+      data-testid="mock-mobile-nav"
+      className="flex shrink-0 items-stretch justify-around border-t border-sidebar-border bg-sidebar"
+      style={{ paddingBottom: bottomInset }}
+    >
       {items.map(({ href, label, Icon }) => (
         <div
           key={href}
@@ -346,6 +363,9 @@ export function ShellPreview({
   playlists,
   playlistsTop,
   modal,
+  playerBar,
+  bottomInset,
+  systemNav,
   drawerOpen = false,
   onDrawerOpenChange,
 }: ShellPreviewProps) {
@@ -381,9 +401,10 @@ export function ShellPreview({
           {!phone && contentCorner && <div className="absolute right-8 top-[34px] z-10">{contentCorner}</div>}
           {overlay}
         </div>
-        <MockPlayerBar phone={phone} />
-        {phone && <MockMobileNav activePath={activePath} />}
+        {playerBar ?? <MockPlayerBar phone={phone} />}
+        {phone && <MockMobileNav activePath={activePath} bottomInset={bottomInset} />}
       </div>
+      {phone && systemNav}
       {phone && drawerOpen && (
         <MockDrawer
           activePath={activePath}

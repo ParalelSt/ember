@@ -151,6 +151,18 @@ export const MOCK_HOME_RECENT: Track[] = [
 /** The track "playing" in the mock player bar. */
 export const MOCK_NOW_PLAYING: Track = MOCK_HOME_TRACKS[1];
 
+/** The track "playing" in the Mobile player candidates. A long real name on
+ *  purpose: it is the one the owner photographed being cut to "Yes ..." in
+ *  today's bar, so every candidate is judged on the case that broke. */
+export const MOCK_MOBILE_NOW_PLAYING: Track = makeTrack({
+  sourceId: 'm1',
+  title: 'Yes Sir, I Can Boogie',
+  artist: 'Baccara',
+  album: 'Baccara',
+  durationSec: 264,
+  artworkUrl: mockCover('#4b2c3f', '#c07a9e', 'circle'),
+});
+
 // ---------- Search overlay rows (the "Search rows" section) ----------
 
 /** Recent-searches rows for the "Search rows" candidates. Separate from
