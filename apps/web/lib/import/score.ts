@@ -81,8 +81,14 @@ const VARIANTS: Variant[] = [
   { re: /\bcover\b/, label: 'cover' },
   { re: /\bkaraoke\b/, label: 'karaoke version' },
   { re: /\bsped[\s-]*up\b/, label: 'sped up version' },
+  { re: /\bslowed(?:\s*(?:\+|and)?\s*reverb)?\b/, label: 'slowed version' },
   { re: /\binstrumental\b/, label: 'instrumental' },
   { re: /\bnightcore\b/, label: 'nightcore version' },
+  { re: /\bdemo\b/, label: 'demo' },
+  { re: /\bextended\b/, label: 'extended version' },
+  { re: /\bradio\s*edit\b/, label: 'radio edit' },
+  { re: /\bclean\b/, label: 'clean version' },
+  { re: /\bcensored\b/, label: 'censored version' },
 ];
 
 /** The title with case, accents, "feat. X", "(Official Audio)" and
@@ -123,6 +129,20 @@ function dropBrackets(normalized: string): string {
 
 function variantsOf(normalized: string): Set<string> {
   return new Set(VARIANTS.filter((v) => v.re.test(normalized)).map((v) => v.label));
+}
+
+/** The sorted, joined labels of every version marker (instrumental, live,
+ *  remix, acoustic, karaoke, sped up, slowed, cover, demo, extended, radio
+ *  edit, clean/censored, ...) found in `title` — empty string when there are
+ *  none. Two titles with different marker sets must never collapse to one
+ *  song identity, even when they're otherwise the same song; two titles that
+ *  differ only by punctuation, "feat." spelling, or noise words like
+ *  "(Official Video)" must produce the same markers (usually none) and so
+ *  stay collapsible. This is the one shared source of variant words — reused
+ *  by score() above (as a scoring penalty) and by songKey() (as part of the
+ *  identity key), so a new marker only needs to be added here once. */
+export function variantMarkers(title: string): string {
+  return [...variantsOf(normalizeTitle(title))].sort().join('+');
 }
 
 function bigrams(s: string): Map<string, number> {

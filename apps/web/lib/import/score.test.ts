@@ -6,6 +6,7 @@ import {
   rankCandidates,
   score,
   statusFor,
+  variantMarkers,
   type ScoreCandidate,
   type ScoreSource,
 } from '@/lib/import/score';
@@ -156,5 +157,38 @@ describe('normalizeTitle', () => {
     ['Song (Live)', 'song (live)'],
   ])('%s -> %s', (input, out) => {
     expect(normalizeTitle(input)).toBe(out);
+  });
+});
+
+describe('variantMarkers', () => {
+  it.each([
+    ['Welcome Back O’ Sleeping Dreamer', ''],
+    ['Welcome Back O’ Sleeping Dreamer (Instrumental)', 'instrumental'],
+    ['Song (Live)', 'live version'],
+    ['Song (Live) (Remix)', 'live version+remix'],
+    ['Song - Acoustic', 'acoustic version'],
+    ['Song (Cover)', 'cover'],
+    ['Song (Karaoke Version)', 'karaoke version'],
+    ['Song (Sped Up)', 'sped up version'],
+    ['Song (Slowed + Reverb)', 'slowed version'],
+    ['Song (Demo)', 'demo'],
+    ['Song (Extended)', 'extended version'],
+    ['Song (Radio Edit)', 'radio edit'],
+    ['Song (Clean)', 'clean version'],
+    ['Song (Censored)', 'censored version'],
+    // Noise, not a version marker: no markers found.
+    ['Song (Official Video)', ''],
+    ['Song feat. Someone', ''],
+    ['Song - Remastered 2011', ''],
+  ])('%s -> %s', (title, expected) => {
+    expect(variantMarkers(title)).toBe(expected);
+  });
+
+  it('is the same list score() uses for the variant-word penalty, so both stay in sync', () => {
+    const withInstrumental = variantMarkers('Song (Instrumental)');
+    const plain = variantMarkers('Song');
+    expect(withInstrumental).not.toBe(plain);
+    const result = score({ title: 'Song', artists: ['Band'] }, { title: 'Song (Instrumental)', artists: ['Band'] });
+    expect(result.reasons).toContain('Instrumental');
   });
 });

@@ -1,10 +1,20 @@
 import type { Track } from '@/types/track';
+import { variantMarkers } from '@/lib/import/score';
 
 /** A normalized identity for a song, ignoring version noise — so "Blinding
  *  Lights", "Blinding Lights (Official Video)", "Blinding Lights (Live)" and
  *  "Blinding Lights [Lyrics]" all collapse to the same key. Used to keep radio
  *  from queueing a different *version* of what's already playing/queued, and
- *  to make the "liked" heart show the same across variants of a song. */
+ *  to make the "liked" heart show the same across variants of a song.
+ *
+ *  "Noise" and "version" are different things: (Official Video), [Lyrics],
+ *  remaster, feat./ft. spelling, and punctuation don't change which recording
+ *  it is, so they collapse. An instrumental, live take, remix, acoustic,
+ *  karaoke, sped up/slowed, cover, demo, extended, radio edit, or
+ *  clean/censored cut IS a different recording, so `variantMarkers` (the
+ *  same marker list score.ts uses to penalize import matches) is folded into
+ *  the key too — two titles with different markers never share an identity,
+ *  even if their title text is otherwise identical after stripping noise. */
 export function songKey(track: Pick<Track, 'title' | 'artist'>): string {
   // Fall back to the raw lowercased title when aggressive normalization strips
   // it to nothing — titles that are entirely version-noise/punctuation, or in a
@@ -12,7 +22,8 @@ export function songKey(track: Pick<Track, 'title' | 'artist'>): string {
   // song by one artist collapses to the same `::artist` key, so liking one
   // makes the others' hearts light up too (findLikedVariant false-positive).
   const title = normalizeTitle(track.title ?? '') || (track.title ?? '').trim().toLowerCase();
-  return `${title}::${normalizeArtist(track.artist ?? '')}`;
+  const variant = variantMarkers(track.title ?? '');
+  return `${title}::${variant}::${normalizeArtist(track.artist ?? '')}`;
 }
 
 /** Returns the liked-list entry that matches `track` (same id or same
