@@ -27,7 +27,10 @@ import {
   MOCK_SEARCH_RESULTS,
 } from '@/app/(app)/dizajn/mock';
 
-const DESKTOP = { width: 1100, height: 700 };
+// A little taller than the other sections' 1100x700 shell: the overlay is
+// the whole point here, and at 700 its last result row fell below the
+// popup's scroll edge.
+const DESKTOP = { width: 1100, height: 790 };
 const PHONE = { width: 390, height: 780 };
 const NOOP = () => {};
 
@@ -80,7 +83,7 @@ function OverlayPanel({
       <div className="absolute inset-0 bg-black/50 backdrop-blur-xs" />
       <div
         className={cn(
-          'absolute left-1/2 top-8 flex max-h-[82%] w-[calc(100%-2rem)] -translate-x-1/2 flex-col gap-block overflow-hidden rounded-xl bg-popover p-block text-sm text-popover-foreground shadow-soft ring-1 ring-foreground/10',
+          'absolute left-1/2 top-8 flex max-h-[86%] w-[calc(100%-2rem)] -translate-x-1/2 flex-col gap-block overflow-hidden rounded-xl bg-popover p-block text-sm text-popover-foreground shadow-soft ring-1 ring-foreground/10',
           !phone && 'max-w-xl',
         )}
       >

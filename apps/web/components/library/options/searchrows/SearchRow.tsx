@@ -193,6 +193,11 @@ export function SearchRow({ track, density, control, indicator, active, playing,
   );
 
   const flags = {
+    // The row itself activates too, the way the live compact recents rows
+    // already do. A phone has no hover, so without this the "On the art"
+    // and "Trailing button" candidates would leave a tap with nothing but
+    // an invisible target to find.
+    onClick: onActivate,
     'data-testid': 'search-row',
     'data-control': control,
     'data-indicator': indicator,

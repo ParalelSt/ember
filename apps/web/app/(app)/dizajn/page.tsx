@@ -280,7 +280,8 @@ export default function DizajnPage() {
           overlay&apos;s rows, and a way to tell which row is the song playing. Both the recent
           searches (the compact lines) and the results below them use the chosen pair. Controls in
           the preview work: press one and that row takes over, press it again to pause, which moves
-          the State picker. The live overlay and TrackRow are unchanged.
+          the Player state picker. The row itself is pressable too, since a phone has no hover to
+          reveal a control with. The live overlay and TrackRow are unchanged.
         </p>
         <p className="text-meta mb-block">
           Recommended: <strong className="font-semibold text-foreground">On the art + Bars</strong>.

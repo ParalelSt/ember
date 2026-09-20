@@ -826,6 +826,14 @@ describe('DizajnPage', () => {
       expect(screen.getByRole('radio', { name: 'This row paused' })).toHaveAttribute('aria-checked', 'true');
     });
 
+    it('pressing the row itself starts it too, for a phone with no hover', () => {
+      render(<DizajnPage />);
+      // Not the row the preview starts on, so the press has to move it.
+      fireEvent.click(desktop().getAllByTestId('search-row')[5]);
+      expect(screen.getByRole('radio', { name: 'This row playing' })).toHaveAttribute('aria-checked', 'true');
+      expect(activeRow()).toHaveTextContent(MOCK_SEARCH_RESULTS[2].title);
+    });
+
     it('marks On the art + Bars as the recommended combination', () => {
       render(<DizajnPage />);
       expect(RECOMMENDED_ROW).toEqual({ control: 'on-art', indicator: 'bars' });
