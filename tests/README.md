@@ -23,7 +23,10 @@ Test folders, `apps/web/`:
   `queueNav`, `radio`, `shortcuts`. Also `lib/lintRules.test.ts`, a unit
   test (not an eslint rule) that scans `app/` and `components/` for banned
   class-string patterns (raw `oklch(`, `to-[`, the old artwork size pairs,
-  the type utility strings before they existed).
+  the type utility strings before they existed), and holds the safe-area
+  inset to one definition: `--safe-top` / `--safe-bottom` on `:root` in
+  globals.css, two utility classes that spend them, and no component with
+  an `env(safe-area-inset-*)` string of its own.
 - `lib/import/`: playlist import (docs/imports.md). `url` (Spotify, short
   link, YT Music and YouTube links, and what is rejected), `embed` (the
   Spotify embed-page parser against saved pages in `tests/fixtures/imports/`:
@@ -63,12 +66,16 @@ Test folders, `apps/web/`:
   `LikeButton`, `PageTitle`/`SectionHeader`/`Eyebrow`/`EmptyState`,
   `CollectionHeader`: pure, props-in components.
 - `components/track/`: `TrackRow`, `TrackList`, `TrackCard`, `TrackShelf`.
-- `components/nav/`: `NavLinks`, and `ChangelogBadge` (the What's new
-  row's New tag in `Sidebar` and `Drawer`, the dot on the `TopBar` menu
-  button).
+- `components/nav/`: `NavLinks`, `MobileNav` (the safe-area class and the
+  search-overlay click), and `ChangelogBadge` (the What's new row's New tag
+  in `Sidebar` and `Drawer`, the dot on the `TopBar` menu button).
 - `components/changelog/`: the What's new page, row, pill and hide switch.
 - `components/player/`: `SeekBar`, `TransportControls`, `VolumeControl`,
-  `NowPlayingSummary`, and `PlayerProvider.test.tsx` (a mocked-backend
+  `NowPlayingSummary`, `PhonePlayerBar` (the two-row phone bar: the name on
+  its own row, the approved tap sizes, the shared safe-area class),
+  `PlayerBar` (that the md layout is untouched: the same footer, grid,
+  three columns and control sizes it had before the phone bar was split
+  out of it), and `PlayerProvider.test.tsx` (a mocked-backend
   wiring test: playTrack loads and plays once, a fresh track's position
   resets rather than inheriting another track's playhead, a backend pause
   event persists the position).
@@ -299,6 +306,13 @@ node tests/instant-search-ui.test.mjs               # or: npm run test:search-ui
 # scroll when it does not, never flickering. PB_URL / APP_URL as above.
 PB_URL=http://127.0.0.1:8091 APP_URL=http://127.0.0.1:3005 \
 node tests/marquee-ui.test.mjs                      # or: npm run test:marquee-ui
+
+# The phone player bar: two rows, 48px-and-up tap targets, a name box that
+# scrolls when it overruns, and the safe-area lift that keeps the bar and the
+# bottom nav clear of Android's system buttons. PB_URL / APP_URL as above;
+# SHOT_DIR, if set, writes a screenshot per width and state into it.
+PB_URL=http://127.0.0.1:8091 APP_URL=http://127.0.0.1:3005 \
+node tests/mobile-player-ui.test.mjs                # or: npm run test:mobile-player
 
 # Playlist import: Spotify embed source, background jobs, picks (needs its own server, see below)
 node tests/import.test.mjs                          # or: npm run test:import
@@ -867,6 +881,46 @@ its box, is covered by unit tests instead
 by `apps/web/lib/themeCollisions.test.ts`, which fails if a `--spacing-*`
 token shadows a core display utility without globals.css putting the stolen
 property back.
+
+## What `mobile-player-ui.test.mjs` covers
+
+The phone player bar (`apps/web/components/player/PhonePlayerBar.tsx`) in a
+real Chromium tab with touch, at 390x844 and again at 360x740: 49 checks.
+
+What it was written for: on a phone the bar gave the song name a 38px box
+(the old [1fr auto 1fr] row, most of the left column eaten by the artwork),
+its buttons were 32 to 40px, and both the bar and the bottom nav sat UNDER
+Android's back, home and recents buttons. The last of those is half a native
+bug: the app targets SDK 35, where the system draws itself over the WebView,
+and the WebView reports nothing through `env(safe-area-inset-bottom)`, so
+`MainActivity` publishes the real window insets to the page as
+`--ember-inset-*` (see `apps/mobile/android/.../SafeAreaInsets.kt`).
+
+It seeds one long and one short upload, plays each, and measures the live
+bar: the name row sits above the control row, the name box is at least
+300px (358 at 390, 328 at 360) and is the full width of the bar, previous,
+next, queue and the artwork are each at least 48x48 and play at least 56x56,
+and nothing overflows the viewport horizontally. A long name is drawn as two
+copies with the marquee animation running and is actually moving a second
+later; a short name is one copy, no animation, not a pixel of movement.
+
+Then the inset, published the way the phone publishes it
+(`--ember-inset-bottom` on `<html>`, which globals.css folds into
+`--safe-bottom`): with none, the bar and the nav have 0 padding and the nav
+reaches the bottom of the viewport; with 48px, both carry exactly 48px, the
+nav grows by exactly 48px so its buttons move up, the control row ends above
+where the system buttons would start, and no tap target shrank to pay for
+it. Plus no uncaught page errors.
+
+Last, the native script itself: the literal JavaScript `MainActivity`
+injects for a 48dp navigation bar is run in the page, and the bar and the
+nav are checked to lift by 48px. `SafeAreaInsetsTest` asserts the Kotlin
+produces byte-for-byte that string, so the two halves cannot drift.
+
+The rest of the Android half is covered by JVM unit tests
+(`apps/mobile/android/app/src/test/java/app/ember/music/SafeAreaInsetsTest.kt`,
+`./gradlew testDebugUnitTest`), and the single source of truth for the inset
+by `apps/web/lib/lintRules.test.ts`.
 
 ## What `trending-ui.test.mjs` and `test_player_trending.py` cover
 
