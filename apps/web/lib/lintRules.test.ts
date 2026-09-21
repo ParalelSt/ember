@@ -198,6 +198,11 @@ const SPACING_BASELINE: Record<string, number> = {
   'components/library/options/changelog/NewBadge.tsx': 3,
   'components/library/options/changelog/Placements.tsx': 21,
   'components/library/options/changelog/ShellPreview.tsx': 54,
+  // Deliberately un-tokenized: BeforeBar reproduces the phone bar's exact
+  // pre-two-row classes (commit 97a0269^, PlayerBar.tsx) for the /dizajn
+  // gallery's "Before" comparison, raw spacing and all, rather than the
+  // token equivalents the rest of the app has moved to.
+  'components/library/options/mobileplayer/BeforeBar.tsx': 7,
   'components/nav/CollectionNavList.tsx': 5,
   'components/nav/Drawer.tsx': 18,
   'components/nav/MobileNav.tsx': 2,

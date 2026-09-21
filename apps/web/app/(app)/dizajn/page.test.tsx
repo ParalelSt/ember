@@ -18,6 +18,7 @@ import { MOCK_CHART } from './mock';
 import { ROW_STATES } from '@/components/library/options/searchrows';
 import { MOCK_SEARCH_RECENTS, MOCK_SEARCH_RESULTS } from './mock';
 import { MOCK_MOBILE_NOW_PLAYING } from './mock';
+import { ARRANGEMENTS, ARRANGEMENT_METRICS } from '@/components/library/options/mobileplayer';
 import {
   TABS_LAYOUTS,
   TABS_PASTE,
@@ -860,8 +861,165 @@ describe('DizajnPage', () => {
       const taps = within(section()).getByTestId('mobileplayer-taps');
       expect(taps).toHaveTextContent('play 56px, prev/next 48px, queue 48px, artwork 48px');
       expect(taps).toHaveTextContent('358px at 390');
-      expect(taps).toHaveTextContent('Before, for comparison');
+      expect(taps).toHaveTextContent('Before the two-row bar shipped, for comparison');
       expect(taps).toHaveTextContent('play 40px, prev/next 32px, queue 40px, artwork 48px');
+    });
+
+    describe('Arrangement picker', () => {
+      const radios = () => within(screen.getByRole('radiogroup', { name: 'Arrangement' })).getAllByRole('radio');
+      // Same technique PhonePlayerBar.test.tsx uses: the tap box a control
+      // actually draws, read off its h-/w- Tailwind class pair.
+      const box = (el: HTMLElement): [number, number] => {
+        const h = el.className.match(/(?:^|\s)h-(\d+)(?:\s|$)/);
+        const w = el.className.match(/(?:^|\s)w-(\d+)(?:\s|$)/);
+        if (h && w) return [Number(h[1]) * 4, Number(w[1]) * 4];
+        // "Before"'s Previous/Next draw Button's own default `size-8` box
+        // (no explicit h-/w- override), the old (pre-phone-size) behaviour.
+        const size = el.className.match(/(?:^|\s)size-(\d+)(?:\s|$)/);
+        if (size) return [Number(size[1]) * 4, Number(size[1]) * 4];
+        return [h ? Number(h[1]) * 4 : 0, w ? Number(w[1]) * 4 : 0];
+      };
+
+      it('is a radiogroup with all five arrangements, "Before" first, Today checked by default', () => {
+        render(<DizajnPage />);
+        const rs = radios();
+        expect(rs.map((r) => r.textContent?.replace('Recommended', '').trim())).toEqual(
+          ARRANGEMENTS.map((o) => o.name),
+        );
+        expect(ARRANGEMENTS[0].id).toBe('before');
+        // "Before" leads the list (history), but the picker still opens on
+        // the shipped baseline, not on whatever is first in the array.
+        rs.forEach((r) =>
+          expect(r).toHaveAttribute('aria-checked', r.textContent?.startsWith('Today') ? 'true' : 'false'),
+        );
+        // The recommended candidate carries the badge, and only it.
+        const recommended = ARRANGEMENTS.find((o) => o.badge === 'Recommended');
+        expect(recommended?.id).toBe('art-with-name');
+        expect(rs.filter((r) => r.textContent?.includes('Recommended'))).toHaveLength(1);
+      });
+
+      it('saves the pick to localStorage and restores it on reload', () => {
+        const { unmount } = render(<DizajnPage />);
+        fireEvent.click(within(screen.getByRole('radiogroup', { name: 'Arrangement' })).getByRole('radio', {
+          name: /Art with the name/,
+        }));
+        expect(window.localStorage.getItem('dizajn-mobileplayer-arrangement')).toBe('art-with-name');
+        unmount();
+
+        render(<DizajnPage />);
+        expect(screen.getByRole('radio', { name: /Art with the name/ })).toHaveAttribute('aria-checked', 'true');
+        expect(screen.getByRole('radio', { name: 'Today' })).toHaveAttribute('aria-checked', 'false');
+      });
+
+      it('ignores a stale saved value', () => {
+        window.localStorage.setItem('dizajn-mobileplayer-arrangement', 'nonexistent-variant');
+        render(<DizajnPage />);
+        expect(screen.getByRole('radio', { name: 'Today' })).toHaveAttribute('aria-checked', 'true');
+      });
+
+      // Each variant's structure is distinct: which row (if any) holds the
+      // artwork, whether the artwork sits beside the title, and whether the
+      // seek line comes before or after the rest of the bar.
+      it('renders the five arrangements with distinct structure', () => {
+        render(<DizajnPage />);
+        const pick = (name: string | RegExp) =>
+          fireEvent.click(within(screen.getByRole('radiogroup', { name: 'Arrangement' })).getByRole('radio', { name }));
+        const firstBar = () => bars()[0];
+
+        // Before: the old one-row bar. Artwork is in the title row, beside
+        // the (non-marquee, plain-truncate) name; its footer never carries
+        // the safe-area lift class, since that is the bug being shown.
+        pick('Before');
+        const before = firstBar();
+        expect(before.dataset.variant).toBe('before');
+        expect(before.querySelector('[data-testid="phone-player-title-row"] .size-art-sm')).not.toBeNull();
+        expect(within(before).queryByTestId('marquee')).toBeNull();
+        expect(before.closest('footer')).not.toHaveClass('safe-area-bottom');
+
+        // Today: the shipped bar. Artwork is in the controls row, not the
+        // title row.
+        pick('Today');
+        expect(firstBar().dataset.variant).toBeUndefined();
+        expect(within(firstBar().querySelector('[data-testid="phone-player-title-row"]')!).queryByRole('img')).toBeNull();
+        expect(firstBar().querySelector('[data-testid="phone-player-controls-row"] .size-art-sm')).not.toBeNull();
+
+        // Art with the name: artwork inside the title row, beside the name.
+        pick(/Art with the name/);
+        expect(bars()[0].dataset.variant).toBe('art-with-name');
+        expect(bars()[0].querySelector('[data-testid="phone-player-title-row"] .size-art-sm')).not.toBeNull();
+
+        // Art spans both rows: no artwork inside either the title or the
+        // controls row (it is a sibling of the column that holds both).
+        pick('Art spans both rows');
+        const spans = bars()[0];
+        expect(spans.dataset.variant).toBe('art-spans-both');
+        expect(spans.querySelector('[data-testid="phone-player-title-row"] img')).toBeNull();
+        expect(spans.querySelector('[data-testid="phone-player-controls-row"] img')).toBeNull();
+        expect(within(spans).getByRole('button', { name: 'Pause' }).closest('[data-testid="phone-player-controls-row"]')).not.toBeNull();
+
+        // Seek on top: a dedicated seek element ahead of the title row.
+        pick('Seek on top');
+        const seekTop = bars()[0];
+        expect(seekTop.dataset.variant).toBe('seek-on-top');
+        const seekEl = seekTop.querySelector('[data-testid="phone-player-seek-top"]');
+        const titleEl = seekTop.querySelector('[data-testid="phone-player-title-row"]');
+        expect(seekEl).not.toBeNull();
+        expect(seekEl!.compareDocumentPosition(titleEl!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+        expect(seekTop.querySelector('[data-testid="phone-player-title-row"] .size-art-sm')).not.toBeNull();
+      });
+
+      it('keeps the approved tap sizes and the safe-area lift on every current arrangement', () => {
+        render(<DizajnPage />);
+        // "Before" is deliberately excluded: it reproduces the old, smaller
+        // tap targets and the old chrome that never lifted, which is the
+        // whole point of it, not a regression to guard against.
+        for (const option of ARRANGEMENTS.filter((o) => o.id !== 'before')) {
+          fireEvent.click(within(screen.getByRole('radiogroup', { name: 'Arrangement' })).getByRole('radio', {
+            name: new RegExp(option.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')),
+          }));
+          for (const bar of bars()) {
+            expect(box(within(bar).getByRole('button', { name: 'Pause' }))).toEqual([56, 56]);
+            for (const name of ['Previous', 'Next', 'Queue']) {
+              expect(box(within(bar).getByRole('button', { name }))).toEqual([48, 48]);
+            }
+            expect(bar.querySelector('.size-art-sm, [class*="w-20"]')).not.toBeNull();
+          }
+          for (const bar of bars()) expect(bar.closest('footer')).toHaveClass('safe-area-bottom');
+        }
+      });
+
+      it('"Before" reproduces the old, smaller tap targets and never lifts above the system nav', () => {
+        render(<DizajnPage />);
+        fireEvent.click(within(screen.getByRole('radiogroup', { name: 'Arrangement' })).getByRole('radio', {
+          name: /Before/,
+        }));
+        for (const bar of bars()) {
+          expect(box(within(bar).getByRole('button', { name: 'Pause' }))).toEqual([40, 40]);
+          for (const name of ['Previous', 'Next']) {
+            expect(box(within(bar).getByRole('button', { name }))).toEqual([32, 32]);
+          }
+          expect(box(within(bar).getByRole('button', { name: 'Queue' }))).toEqual([40, 40]);
+          expect(bar.querySelector('.size-art-sm')).not.toBeNull();
+          // The bug, shown honestly: the old chrome never carried the
+          // safe-area lift class the shipped bar and nav share.
+          expect(bar.closest('footer')).not.toHaveClass('safe-area-bottom');
+        }
+      });
+
+      it('quotes each arrangement\'s measured sizes in the section copy, matching ARRANGEMENT_METRICS', () => {
+        render(<DizajnPage />);
+        for (const option of ARRANGEMENTS) {
+          fireEvent.click(within(screen.getByRole('radiogroup', { name: 'Arrangement' })).getByRole('radio', {
+            name: new RegExp(option.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')),
+          }));
+          const metrics = ARRANGEMENT_METRICS[option.id];
+          const taps = within(section()).getByTestId('mobileplayer-taps');
+          expect(taps).toHaveTextContent(metrics.taps);
+          expect(taps).toHaveTextContent(`${metrics.titlePx390}px at 390`);
+          expect(taps).toHaveTextContent(`${metrics.titlePx360}px at 360`);
+          expect(taps).toHaveTextContent(`Bar height: ${metrics.barHeight}px`);
+        }
+      });
     });
   });
 

@@ -1,5 +1,6 @@
 'use client';
 
+import type { ReactElement } from 'react';
 import { MusicIcon } from '@/components/icons';
 import { PageTitle } from '@/components/page/PageTitle';
 import { SectionHeader } from '@/components/page/SectionHeader';
@@ -7,13 +8,18 @@ import { TrackCard } from '@/components/track/TrackCard';
 import { ScaledFrame } from '@/components/library/options/changelog/ChangelogSection';
 import { ShellPreview } from '@/components/library/options/changelog/ShellPreview';
 import { AndroidNavStrip } from '@/components/library/options/mobileplayer/AndroidNavStrip';
+import { BeforeBar } from '@/components/library/options/mobileplayer/BeforeBar';
+import { ArtWithNameBar } from '@/components/library/options/mobileplayer/ArtWithNameBar';
+import { ArtSpansBothBar } from '@/components/library/options/mobileplayer/ArtSpansBothBar';
+import { SeekOnTopBar } from '@/components/library/options/mobileplayer/SeekOnTopBar';
 import { PhonePlayerBar, PLAYER_BAR_CHROME } from '@/components/player/PhonePlayerBar';
 import {
   ANDROID_NAV_PX,
+  ARRANGEMENT_METRICS,
   BEFORE_TAPS,
   BEFORE_TITLE_PX,
-  SHIPPED_TAPS,
-  SHIPPED_TITLE_PX,
+  type Arrangement,
+  type ArrangementBarProps,
 } from '@/components/library/options/mobileplayer';
 import { MOCK_HOME_TRACKS, MOCK_MOBILE_NOW_PLAYING } from '@/app/(app)/dizajn/mock';
 
@@ -57,8 +63,46 @@ function MockHome() {
  *  shell around it is mock markup (the real one reads auth, queries and
  *  stores). The frames publish `--ember-inset-bottom`, the same custom
  *  property MainActivity sets from the window insets on a real phone, so
- *  the lift shown here is the lift the CSS actually performs. */
-export function MobilePlayerSection() {
+ *  the lift shown here is the lift the CSS actually performs.
+ *
+ *  `arrangement` swaps the bar every frame draws: 'today' is the REAL
+ *  `PhonePlayerBar` (the shipped one, untouched); 'before' and the other
+ *  three are gallery-only mocks (`BeforeBar`, `ArtWithNameBar`,
+ *  `ArtSpansBothBar`, `SeekOnTopBar`, all in this folder) built from the
+ *  same presentational pieces the shipped bar uses. Swapping the picker
+ *  never edits `PhonePlayerBar` itself, so whichever candidate the owner
+ *  has not picked yet cannot leak into what ships.
+ *
+ *  'before' is handled separately below (not through this table): it draws
+ *  its own <footer>, not the shared `PLAYER_BAR_CHROME`, because the point
+ *  of it is to show the old chrome's bug (no lift above Android's system
+ *  nav) rather than fix it. */
+const ARRANGEMENT_BARS: Record<Exclude<Arrangement, 'today' | 'before'>, (props: ArrangementBarProps) => ReactElement> = {
+  'art-with-name': ArtWithNameBar,
+  'art-spans-both': ArtSpansBothBar,
+  'seek-on-top': SeekOnTopBar,
+};
+
+export interface MobilePlayerSectionProps {
+  arrangement: Arrangement;
+}
+
+export function MobilePlayerSection({ arrangement }: MobilePlayerSectionProps) {
+  const barProps: ArrangementBarProps = {
+    track: MOCK_MOBILE_NOW_PLAYING,
+    playing: true,
+    position: 92,
+    duration: MOCK_MOBILE_NOW_PLAYING.durationSec ?? 264,
+    onToggle: () => {},
+    onNext: () => {},
+    onPrev: () => {},
+    onSeek: () => {},
+    onOpen: () => {},
+    onQueue: () => {},
+  };
+  const Variant = arrangement === 'today' || arrangement === 'before' ? null : ARRANGEMENT_BARS[arrangement];
+  const metrics = ARRANGEMENT_METRICS[arrangement];
+
   return (
     <div data-testid="mobileplayer-section">
       <div className="flex flex-wrap items-start gap-stack">
@@ -78,22 +122,19 @@ export function MobilePlayerSection() {
                 activePath="/"
                 content={<MockHome />}
                 playerBar={
-                  // The same <footer> chrome PlayerBar puts around it, from
-                  // the one constant, with the real bar inside.
-                  <footer data-testid="player-bar" className={PLAYER_BAR_CHROME}>
-                    <PhonePlayerBar
-                      track={MOCK_MOBILE_NOW_PLAYING}
-                      playing
-                      position={92}
-                      duration={MOCK_MOBILE_NOW_PLAYING.durationSec ?? 264}
-                      onToggle={() => {}}
-                      onNext={() => {}}
-                      onPrev={() => {}}
-                      onSeek={() => {}}
-                      onOpen={() => {}}
-                      onQueue={() => {}}
-                    />
-                  </footer>
+                  arrangement === 'before' ? (
+                    // BeforeBar draws its own <footer>, with the old chrome
+                    // (no safe-area lift), so the frames below show the bug
+                    // honestly instead of silently fixing it in the mock.
+                    <BeforeBar {...barProps} />
+                  ) : (
+                    // The same <footer> chrome PlayerBar puts around it, from
+                    // the one constant, with either the real bar or the picked
+                    // mock candidate inside.
+                    <footer data-testid="player-bar" className={PLAYER_BAR_CHROME}>
+                      {Variant ? <Variant {...barProps} /> : <PhonePlayerBar {...barProps} />}
+                    </footer>
+                  )
                 }
                 bottomInset={ANDROID_NAV_PX}
                 systemNav={frame.systemNav ? <AndroidNavStrip /> : undefined}
@@ -105,9 +146,10 @@ export function MobilePlayerSection() {
 
       <div className="mt-block flex flex-col gap-cluster">
         <p data-testid="mobileplayer-taps" className="text-meta">
-          <span className="font-semibold text-foreground">Tap targets:</span> {SHIPPED_TAPS}. Song name
-          box: {SHIPPED_TITLE_PX}px at 390, {SHIPPED_TITLE_PX - 30}px at 360. Before, for comparison:{' '}
-          {BEFORE_TAPS}, song name box {BEFORE_TITLE_PX}px at 390.
+          <span className="font-semibold text-foreground">Tap targets:</span> {metrics.taps}. Song name
+          box: {metrics.titlePx390}px at 390, {metrics.titlePx360}px at 360. Bar height: {metrics.barHeight}
+          px. Before the two-row bar shipped, for comparison: {BEFORE_TAPS}, song name box {BEFORE_TITLE_PX}
+          px at 390.
         </p>
       </div>
     </div>

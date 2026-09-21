@@ -42,7 +42,13 @@ import {
 import { TrendingSection } from '@/components/library/options/trending/TrendingSection';
 import { ROW_STATES, type RowState } from '@/components/library/options/searchrows';
 import { SearchRowsSection } from '@/components/library/options/searchrows/SearchRowsSection';
-import { BEFORE_TAPS, BEFORE_TITLE_PX } from '@/components/library/options/mobileplayer';
+import {
+  ARRANGEMENT_METRICS,
+  ARRANGEMENTS,
+  BEFORE_TAPS,
+  BEFORE_TITLE_PX,
+  type Arrangement,
+} from '@/components/library/options/mobileplayer';
 import { MobilePlayerSection } from '@/components/library/options/mobileplayer/MobilePlayerSection';
 import {
   TABS_LAYOUTS,
@@ -80,6 +86,7 @@ const TABS_SCROLL_KEY = 'dizajn-tabs-scroll';
 const TABS_PASTE_KEY = 'dizajn-tabs-paste';
 const TABS_V3_PICKER_KEY = 'dizajn-tabs-v3-picker';
 const TABS_V3_STATE_KEY = 'dizajn-tabs-v3-state';
+const MOBILEPLAYER_ARRANGEMENT_KEY = 'dizajn-mobileplayer-arrangement';
 
 // Saved picker choices. The page is server-rendered with the first option
 // of every picker, so the saved one must not be read during the first
@@ -106,14 +113,18 @@ function readChoice(key: string): string | null {
 }
 
 /** One picker's choice, saved to localStorage under `key`, falling back to
- *  the first option when nothing (or something stale) is stored. */
-function useSavedChoice<T extends string>(key: string, options: { id: T }[]): [T, (id: T) => void] {
+ *  `defaultId` (or the first option, when that is omitted) when nothing (or
+ *  something stale) is stored. The explicit default lets a picker's display
+ *  order (e.g. "Before" shown first, as history) differ from what it opens
+ *  on (the shipped baseline). */
+function useSavedChoice<T extends string>(key: string, options: { id: T }[], defaultId?: T): [T, (id: T) => void] {
   const saved = useSyncExternalStore(
     subscribeChoices,
     () => readChoice(key),
     () => null,
   );
-  const value = options.find((o) => o.id === saved)?.id ?? options[0].id;
+  const fallback = defaultId ?? options[0].id;
+  const value = options.find((o) => o.id === saved)?.id ?? fallback;
   const set = (id: T) => {
     try {
       window.localStorage.setItem(key, id);
@@ -241,6 +252,12 @@ export default function DizajnPage() {
   const [optionId, setOptionId] = useSavedChoice(STORAGE_KEY, SHELF_OPTIONS);
   const selected = SHELF_OPTIONS.find((o) => o.id === optionId) ?? SHELF_OPTIONS[0];
 
+  const [mpArrangement, setMpArrangement] = useSavedChoice<Arrangement>(
+    MOBILEPLAYER_ARRANGEMENT_KEY,
+    ARRANGEMENTS,
+    'today',
+  );
+
   const [clPlacement, setClPlacement] = useSavedChoice<ChangelogPlacement>(CHANGELOG_PLACEMENT_KEY, CHANGELOG_PLACEMENTS);
   const [clState, setClState] = useSavedChoice<ChangelogState>(CHANGELOG_STATE_KEY, CHANGELOG_STATES);
   const [clBadge, setClBadge] = useSavedChoice<BadgeStyle>(CHANGELOG_BADGE_KEY, BADGE_STYLES);
@@ -301,8 +318,65 @@ export default function DizajnPage() {
           publish the same bottom inset the phone does, so the lift stays visible here: if it ever
           stops working, the nav disappears under the strip.
         </p>
+        <p className="text-meta mb-block">
+          The owner&apos;s call on the shipped bar: &quot;this still looks a tiny bit odd, can we
+          mettle around with it&quot;, then, wanting to see it rather than take a description on
+          faith: &quot;How did our old one look? Like before we changed it to this layout?&quot;{' '}
+          <span className="font-semibold text-foreground">&quot;Before&quot;</span> below is that: the
+          one-row bar from <code>PlayerBar.tsx</code> as it stood right before the two-row change,
+          reproduced faithfully, bug included (it never lifted clear of Android&apos;s system
+          navigation, because its old chrome only trusted <code>env()</code>, which the WebView never
+          reported). The oddness the owner meant is the artwork in today&apos;s bar: it sits below the
+          title row, bottom-left, visually detached from the name it belongs to, with empty space to
+          its right and the seek line pinned under everything. The other three arrangements try that,
+          holding everything already approved (title still scrolls when long, play still at least
+          56px, every other control still at least 48px, the safe-area lift, no overflow at 390 or
+          360). Pick one below to preview it in the frames; nothing here changes the live bar until
+          the owner picks.{' '}
+          <span className="font-semibold text-foreground">Recommended: &quot;Art with the name&quot;</span>
+          , because it puts the artwork next to the name it belongs to without inventing a new shape
+          for it (still 48px, still the <code>size-art-sm</code> token): the title box gives up some
+          width to it and the bar gains about 12px of height, but the artwork stops reading as
+          detached from the name above it, which was the actual complaint.
+        </p>
 
-        <MobilePlayerSection />
+        <div className="mb-block overflow-x-auto">
+          <table data-testid="mobileplayer-comparison" className="text-meta w-full min-w-160 border-collapse">
+            <thead>
+              <tr className="border-b border-border text-left">
+                <th className="py-cluster pr-block font-semibold text-foreground">Arrangement</th>
+                <th className="py-cluster pr-block font-semibold text-foreground">Title box @390</th>
+                <th className="py-cluster pr-block font-semibold text-foreground">Play</th>
+                <th className="py-cluster pr-block font-semibold text-foreground">Other controls</th>
+                <th className="py-cluster pr-block font-semibold text-foreground">Artwork</th>
+                <th className="py-cluster font-semibold text-foreground">Bar height</th>
+              </tr>
+            </thead>
+            <tbody>
+              {ARRANGEMENTS.map((o) => {
+                const m = ARRANGEMENT_METRICS[o.id];
+                return (
+                  <tr key={o.id} data-testid={`mobileplayer-comparison-row-${o.id}`} className="border-b border-border/50">
+                    <td className="py-cluster pr-block">{o.name}</td>
+                    <td className="py-cluster pr-block tabular-nums">{m.titlePx390}px</td>
+                    <td className="py-cluster pr-block tabular-nums">{o.id === 'before' ? '40px' : '56px'}</td>
+                    <td className="py-cluster pr-block tabular-nums">{o.id === 'before' ? '32px' : '48px'}</td>
+                    <td className="py-cluster pr-block tabular-nums">
+                      {o.id === 'art-spans-both' ? '80x100px' : '48px'}
+                    </td>
+                    <td className="py-cluster tabular-nums">{m.barHeight}px</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+
+        <div className="mb-block">
+          <Picker label="Arrangement" options={ARRANGEMENTS} value={mpArrangement} onChange={setMpArrangement} />
+        </div>
+
+        <MobilePlayerSection arrangement={mpArrangement} />
       </section>
 
       <section className="mb-section">
