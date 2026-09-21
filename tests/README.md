@@ -314,6 +314,12 @@ node tests/marquee-ui.test.mjs                      # or: npm run test:marquee-u
 PB_URL=http://127.0.0.1:8091 APP_URL=http://127.0.0.1:3005 \
 node tests/mobile-player-ui.test.mjs                # or: npm run test:mobile-player
 
+# The phone bar's size presets on /dizajn: every Bar size and Play style is
+# measured in the gallery's frames and must equal the numbers the section
+# quotes. Signs in as EMBER_EMAIL / EMBER_PASSWORD; writes nothing. MEASURE=1
+# prints the measured numbers, SHOT_DIR keeps a screenshot per combination.
+node tests/phone-bar-sizes-ui.test.mjs              # or: npm run test:phone-bar-sizes
+
 # Playlist import: Spotify embed source, background jobs, picks (needs its own server, see below)
 node tests/import.test.mjs                          # or: npm run test:import
 # Playlist import in the browser: Tabs dialog, sidebar ring, restart, 503, review sheet
