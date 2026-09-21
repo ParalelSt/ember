@@ -1,5 +1,6 @@
-/** The phone player bar: two rows, big tap targets, a scrolling name, and a
- *  bar plus nav that stand clear of Android's system buttons.
+/** The phone player bar: one row (artwork, a scrolling song name, one play
+ *  button), with previous, next and the queue on the full-screen view it
+ *  opens, and a bar plus nav that stand clear of Android's system buttons.
  *
  *      node tests/mobile-player-ui.test.mjs     # or: npm run test:mobile-player
  *
@@ -7,16 +8,20 @@
  *  (390x844 and 360x740), plays a long-titled upload and a short-titled one,
  *  and measures the bar that ships:
  *
- *    - every control's tap box is at least 48px, play at least 56px,
- *    - the song name has a box of at least 300px, on its own row,
+ *    - the song name has a box of at least 200px at 390 (170px at 360),
+ *    - play and the artwork are at least 48px, and play is the bar's only
+ *      control: no previous, next or queue in it,
  *    - a long name scrolls, a short one sits perfectly still,
+ *    - play toggles without opening the full-screen view; a tap on the name
+ *      opens it, and it has previous, next and a queue that opens,
  *    - nothing overflows the viewport horizontally,
  *    - with a bottom inset published the way MainActivity publishes it
  *      (--ember-inset-bottom on <html>), the bar and the nav both lift by it
  *      and leave the system buttons' strip empty; with none, nothing moves.
  *
+ *  Creates its own user and uploads, and deletes them again at the end.
  *  Needs the sandbox from tests/README.md and playwright-core. Set
- *  CHROME_PATH to pick a browser. */
+ *  CHROME_PATH to pick a browser, SHOT_DIR to keep screenshots. */
 import { execSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -25,15 +30,17 @@ let chromium;
 try { ({ chromium } = await import('playwright-core')); }
 catch { console.error('needs playwright-core: npm i -D playwright-core'); process.exit(2); }
 
-const PB_URL = process.env.PB_URL ?? 'http://127.0.0.1:8091';
-const APP_URL = process.env.APP_URL ?? 'http://127.0.0.1:3010';
+const PB_URL = process.env.PB_URL ?? 'http://127.0.0.1:8088';
+const APP_URL = process.env.APP_URL ?? 'http://127.0.0.1:3050';
 const PASSWORD = 'BugTest2026!';
 const SHOTS = process.env.SHOT_DIR ?? '';
 
 // Android's three-button navigation bar is 48dp: the inset the real phone
 // publishes, and the one this test publishes the same way.
 const INSET_PX = 48;
-// Wider than any phone's title box, and comfortably narrower than it.
+// The name box floors per width: the gallery measured 232 and 202.
+const MIN_NAME_PX = { 390: 200, 360: 170 };
+// Wider than any phone's title box.
 const LONG_TITLE = 'A Very Long Song Title That Cannot Possibly Fit On One Phone Line';
 const SHORT_TITLE = 'Short One';
 
@@ -93,6 +100,7 @@ const cookie = encodeURIComponent(JSON.stringify({ token: auth.token, record: au
 // Short enough a suffix that the short title stays short.
 const stamp = Date.now().toString(36).slice(-4);
 const titles = { long: `${LONG_TITLE} ${stamp}`, short: `${SHORT_TITLE} ${stamp}` };
+const uploadIds = [];
 for (const title of [titles.long, titles.short]) {
   const form = new FormData();
   form.append('file', new Blob([new Uint8Array(wav())], { type: 'audio/wav' }), 'a.wav');
@@ -100,6 +108,20 @@ for (const title of [titles.long, titles.short]) {
   form.append('artist', 'Bar Tester');
   const r = await fetch(`${APP_URL}/api/uploads`, { method: 'POST', body: form, headers: { cookie: `pb_auth=${cookie}` } });
   if (!r.ok) throw new Error(`seed failed ${r.status}: ${(await r.text()).slice(0, 200)}`);
+  uploadIds.push((await r.json()).track.sourceId);
+}
+
+/** Remove everything this run created: the uploads (record, file and cover,
+ *  through the app's own DELETE) and then the user. */
+async function cleanup() {
+  for (const id of uploadIds) {
+    const r = await fetch(`${APP_URL}/api/uploads/${id}`, { method: 'DELETE', headers: { cookie: `pb_auth=${cookie}` } });
+    if (!r.ok) console.log(`cleanup: upload ${id} not deleted (${r.status})`);
+  }
+  const r = await fetch(`${PB_URL}/api/collections/users/records/${auth.record.id}`, {
+    method: 'DELETE', headers: { Authorization: token } });
+  if (!r.ok) console.log(`cleanup: user not deleted (${r.status})`);
+  else console.log('cleanup: test user and uploads removed');
 }
 
 const checks = [];
@@ -123,22 +145,22 @@ function measure() {
   };
   const marquee = bar.querySelector('[data-testid="marquee"]');
   const track = marquee && marquee.querySelector('[data-testid="marquee-track"]');
+  const view = document.querySelector('[data-testid="now-playing"]');
   return {
     bar: rect(footer),
     barPadBottom: Math.round(parseFloat(getComputedStyle(footer).paddingBottom)),
     navPadBottom: nav ? Math.round(parseFloat(getComputedStyle(nav).paddingBottom)) : null,
     nav: nav ? rect(nav) : null,
-    titleRow: rect(bar.querySelector('[data-testid="phone-player-title-row"]')),
-    controlsRow: rect(bar.querySelector('[data-testid="phone-player-controls-row"]')),
+    row: rect(bar.querySelector('[data-testid="phone-player-row"]')),
     marquee: marquee ? rect(marquee) : null,
     copies: track ? track.children.length : 0,
     animation: track ? getComputedStyle(track).animationName : 'none',
     transform: track ? getComputedStyle(track).transform : 'none',
     artwork: bar.querySelector('.size-art-sm') ? rect(bar.querySelector('.size-art-sm')) : null,
-    prev: control('Previous'),
+    buttons: [...bar.querySelectorAll('button')].map((b) => b.getAttribute('aria-label')),
     play: control('Pause') || control('Play'),
-    next: control('Next'),
-    queue: control('Queue'),
+    playLabel: (bar.querySelector('[aria-label="Pause"]') && 'Pause') || (bar.querySelector('[aria-label="Play"]') && 'Play'),
+    viewOpen: !!view && view.getAttribute('aria-hidden') === 'false',
     docScrollW: document.documentElement.scrollWidth,
     innerW: window.innerWidth,
     innerH: window.innerHeight,
@@ -169,6 +191,7 @@ const setInset = (page, px) => page.evaluate((v) => {
   else document.documentElement.style.setProperty('--ember-inset-bottom', v + 'px');
 }, px);
 
+try {
 for (const [w, h] of [[390, 844], [360, 740]]) {
   const ctx = await browser.newContext({
     viewport: { width: w, height: h },
@@ -185,24 +208,20 @@ for (const [w, h] of [[390, 844], [360, 740]]) {
   await playTitle(page, titles.long);
   let m = await page.evaluate(measure);
 
-  check(at('the bar draws two rows, the song name above the controls'),
-    m.titleRow.y + m.titleRow.h <= m.controlsRow.y,
-    `name row ends at ${m.titleRow.y + m.titleRow.h}, controls start at ${m.controlsRow.y}`);
-
-  check(at('the song name gets a box of at least 300px'),
-    m.marquee.w >= 300, `${m.marquee.w}px of ${w}`);
-
-  check(at('the name row is the full width of the bar, less its padding'),
-    m.titleRow.w === m.marquee.w && m.titleRow.w >= w - 40,
-    `name row ${m.titleRow.w}px, marquee ${m.marquee.w}px`);
-
-  for (const [label, min] of [['prev', 48], ['next', 48], ['queue', 48], ['artwork', 48]]) {
+  check(at(`the song name gets a box of at least ${MIN_NAME_PX[w]}px`),
+    m.marquee.w >= MIN_NAME_PX[w], `${m.marquee.w}px of ${w}`);
+  check(at('play is the bar\'s only control: no previous, next or queue'),
+    m.buttons.length === 1 && m.buttons[0] === 'Pause', JSON.stringify(m.buttons));
+  for (const label of ['play', 'artwork']) {
     const box = m[label];
-    check(at(`${label} is at least ${min}px in both directions`),
-      !!box && box.w >= min && box.h >= min, box ? `${box.w}x${box.h}` : 'missing');
+    check(at(`${label} is at least 48px in both directions`),
+      !!box && box.w >= 48 && box.h >= 48, box ? `${box.w}x${box.h}` : 'missing');
   }
-  check(at('play is at least 56px in both directions'),
-    m.play.w >= 56 && m.play.h >= 56, `${m.play.w}x${m.play.h}`);
+  check(at('artwork, name and play sit on one row'),
+    m.artwork.x < m.marquee.x && m.marquee.x + m.marquee.w <= m.play.x
+      && Math.abs((m.artwork.y + m.artwork.h / 2) - (m.play.y + m.play.h / 2)) <= 2,
+    `art x${m.artwork.x}, name x${m.marquee.x}+${m.marquee.w}, play x${m.play.x}`);
+  check(at('the bar is about 92px tall'), m.bar.h >= 86 && m.bar.h <= 98, `${m.bar.h}px`);
 
   check(at('nothing overflows the viewport horizontally'),
     m.docScrollW <= m.innerW, `scrollWidth ${m.docScrollW} vs ${m.innerW}`);
@@ -219,6 +238,61 @@ for (const [w, h] of [[390, 844], [360, 740]]) {
   check(at('a long name is actually moving'), before !== after, `${before} -> ${after}`);
 
   if (SHOTS) await page.screenshot({ path: path.join(SHOTS, `phone-${w}-long.png`) });
+
+  // ---- play only plays; everything else opens the full-screen view -----
+  const playBtn = page.locator('[data-testid="phone-player-bar"] button');
+  await playBtn.click();
+  await page.waitForTimeout(400);
+  let t = await page.evaluate(measure);
+  check(at('play pauses without opening the full-screen view'),
+    t.playLabel === 'Play' && !t.viewOpen, `label ${t.playLabel}, view open ${t.viewOpen}`);
+  await playBtn.click();
+  await page.waitForTimeout(400);
+  t = await page.evaluate(measure);
+  check(at('play resumes, still without opening it'),
+    t.playLabel === 'Pause' && !t.viewOpen, `label ${t.playLabel}, view open ${t.viewOpen}`);
+
+  await page.locator('[data-testid="phone-player-bar"] [data-testid="marquee"]').click();
+  const view = page.locator('[data-testid="now-playing"]');
+  await page.waitForFunction(() =>
+    document.querySelector('[data-testid="now-playing"]')?.getAttribute('aria-hidden') === 'false', null, { timeout: 5000 })
+    .catch(() => {});
+  await page.waitForTimeout(500);
+  t = await page.evaluate(measure);
+  check(at('a tap on the name opens the full-screen view'), t.viewOpen, `view open ${t.viewOpen}`);
+  const viewButtons = await view.evaluate((el) => [...el.querySelectorAll('button')]
+    .filter((b) => { const r = b.getBoundingClientRect(); return r.width > 0 && r.height > 0; })
+    .map((b) => b.getAttribute('aria-label')));
+  for (const label of ['Previous', 'Pause', 'Next', 'Queue']) {
+    check(at(`the full-screen view has ${label}`), viewButtons.includes(label), JSON.stringify(viewButtons));
+  }
+  if (SHOTS) await page.screenshot({ path: path.join(SHOTS, `phone-${w}-fullscreen.png`) });
+  await view.getByRole('button', { name: 'Queue', exact: true }).click();
+  const sheet = page.getByRole('dialog').filter({ hasText: 'Next up' }).or(page.getByRole('dialog').filter({ hasText: 'Now playing' }));
+  const sheetShown = await sheet.first().waitFor({ state: 'visible', timeout: 5000 }).then(() => true, () => false);
+  check(at('Queue in the full-screen view opens the queue'), sheetShown);
+  if (SHOTS) await page.screenshot({ path: path.join(SHOTS, `phone-${w}-queue.png`) });
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(400);
+  // Escape may close the queue alone, or the queue and the view together.
+  if (await view.getAttribute('aria-hidden') === 'false') {
+    await page.keyboard.press('Escape');
+    await page.waitForTimeout(500);
+  }
+  if (await view.getAttribute('aria-hidden') === 'false') {
+    await view.getByRole('button', { name: 'Close', exact: true }).click();
+    await page.waitForTimeout(500);
+  }
+  t = await page.evaluate(measure);
+  check(at('the full-screen view closes again'), !t.viewOpen, `view open ${t.viewOpen}`);
+
+  // A tap on the artwork opens it too.
+  await page.locator('[data-testid="phone-player-bar"] .size-art-sm').click();
+  await page.waitForTimeout(500);
+  t = await page.evaluate(measure);
+  check(at('a tap on the artwork opens it too'), t.viewOpen, `view open ${t.viewOpen}`);
+  await view.getByRole('button', { name: 'Close', exact: true }).click();
+  await page.waitForTimeout(600);
 
   // ---- the safe-area lift ----------------------------------------------
   const noInset = await page.evaluate(measure);
@@ -239,12 +313,11 @@ for (const [w, h] of [[390, 844], [360, 740]]) {
   check(at('the nav grows by exactly the inset, so its buttons move up'),
     lifted.nav.h === noInset.nav.h + INSET_PX,
     `${noInset.nav.h}px -> ${lifted.nav.h}px`);
-  check(at('the controls row now sits clear of the system buttons strip'),
-    lifted.controlsRow.bottom <= lifted.innerH - INSET_PX,
-    `controls end at ${lifted.controlsRow.bottom}, strip starts at ${lifted.innerH - INSET_PX}`);
+  check(at('the bar\'s row now sits clear of the system buttons strip'),
+    lifted.row.bottom <= lifted.innerH - INSET_PX,
+    `row ends at ${lifted.row.bottom}, strip starts at ${lifted.innerH - INSET_PX}`);
   check(at('the tap targets did not shrink to pay for the lift'),
-    lifted.play.h >= 56 && lifted.prev.h >= 48 && lifted.queue.h >= 48,
-    `play ${lifted.play.h}, prev ${lifted.prev.h}, queue ${lifted.queue.h}`);
+    lifted.play.h >= 48 && lifted.artwork.h >= 48, `play ${lifted.play.h}, artwork ${lifted.artwork.h}`);
 
   if (SHOTS) await page.screenshot({ path: path.join(SHOTS, `phone-${w}-long-inset.png`) });
   await setInset(page, null);
@@ -274,7 +347,7 @@ for (const [w, h] of [[390, 844], [360, 740]]) {
   await page.waitForTimeout(1200);
   const stillB = (await page.evaluate(measure)).transform;
   check(at('a short name is perfectly still'), stillA === stillB, `${stillA} -> ${stillB}`);
-  check(at('the short name still gets the full-width box'), m.marquee.w >= 300, `${m.marquee.w}px`);
+  check(at('the short name gets the same box'), m.marquee.w >= MIN_NAME_PX[w], `${m.marquee.w}px`);
   check(at('nothing overflows horizontally with a short name'),
     m.docScrollW <= m.innerW, `scrollWidth ${m.docScrollW} vs ${m.innerW}`);
 
@@ -284,8 +357,10 @@ for (const [w, h] of [[390, 844], [360, 740]]) {
 }
 
 check('no uncaught page errors', pageErrors.length === 0, pageErrors.join(' | '));
-
-await browser.close();
+} finally {
+  await browser.close().catch(() => {});
+  await cleanup();
+}
 
 const failed = checks.filter((p) => !p).length;
 console.log(`\n${checks.length - failed}/${checks.length} checks passed`);
