@@ -880,7 +880,7 @@ describe('DizajnPage', () => {
         return [h ? Number(h[1]) * 4 : 0, w ? Number(w[1]) * 4 : 0];
       };
 
-      it('is a radiogroup with all five arrangements, "Before" first, Today checked by default', () => {
+      it('is a radiogroup with all seven arrangements, "Before" first, Today checked by default', () => {
         render(<DizajnPage />);
         const rs = radios();
         expect(rs.map((r) => r.textContent?.replace('Recommended', '').trim())).toEqual(
@@ -920,7 +920,7 @@ describe('DizajnPage', () => {
       // Each variant's structure is distinct: which row (if any) holds the
       // artwork, whether the artwork sits beside the title, and whether the
       // seek line comes before or after the rest of the bar.
-      it('renders the five arrangements with distinct structure', () => {
+      it('renders the seven arrangements with distinct structure', () => {
         render(<DizajnPage />);
         const pick = (name: string | RegExp) =>
           fireEvent.click(within(screen.getByRole('radiogroup', { name: 'Arrangement' })).getByRole('radio', { name }));
@@ -935,6 +935,35 @@ describe('DizajnPage', () => {
         expect(before.querySelector('[data-testid="phone-player-title-row"] .size-art-sm')).not.toBeNull();
         expect(within(before).queryByTestId('marquee')).toBeNull();
         expect(before.closest('footer')).not.toHaveClass('safe-area-bottom');
+
+        // Old + scrolling name: same old one-row shape as Before, but the
+        // name is a real marquee, and this one DOES carry the safe-area
+        // lift (unlike Before, which shows the old chrome's bug on
+        // purpose).
+        pick(/Old \+ scrolling name/);
+        const oldScroll = firstBar();
+        expect(oldScroll.dataset.variant).toBe('old-scroll');
+        expect(oldScroll.querySelector('[data-testid="phone-player-title-row"] .size-art-sm')).not.toBeNull();
+        expect(within(oldScroll).queryByTestId('marquee')).not.toBeNull();
+        expect(oldScroll.closest('footer')).toHaveClass('safe-area-bottom');
+        // Prev/next and queue are still here, just moved beside each other.
+        for (const name of ['Previous', 'Pause', 'Next', 'Queue']) {
+          expect(within(oldScroll).getByRole('button', { name })).toBeInTheDocument();
+        }
+
+        // Old + play only: same old one-row shape, but stripped to artwork +
+        // name + a single play/pause button; previous, next and queue are
+        // gone (they moved to the full-screen view).
+        pick(/Old \+ play only/);
+        const oldPlayOnly = firstBar();
+        expect(oldPlayOnly.dataset.variant).toBe('old-play-only');
+        expect(oldPlayOnly.querySelector('[data-testid="phone-player-title-row"] .size-art-sm')).not.toBeNull();
+        expect(within(oldPlayOnly).queryByTestId('marquee')).not.toBeNull();
+        expect(oldPlayOnly.closest('footer')).toHaveClass('safe-area-bottom');
+        expect(within(oldPlayOnly).getByRole('button', { name: 'Pause' })).toBeInTheDocument();
+        for (const name of ['Previous', 'Next', 'Queue']) {
+          expect(within(oldPlayOnly).queryByRole('button', { name })).toBeNull();
+        }
 
         // Today: the shipped bar. Artwork is in the controls row, not the
         // title row.
@@ -970,10 +999,14 @@ describe('DizajnPage', () => {
 
       it('keeps the approved tap sizes and the safe-area lift on every current arrangement', () => {
         render(<DizajnPage />);
-        // "Before" is deliberately excluded: it reproduces the old, smaller
-        // tap targets and the old chrome that never lifted, which is the
-        // whole point of it, not a regression to guard against.
-        for (const option of ARRANGEMENTS.filter((o) => o.id !== 'before')) {
+        // "Before", "Old + scrolling name" and "Old + play only" are
+        // deliberately excluded: the first two reproduce the old, smaller
+        // tap targets on purpose, and the third does not even draw
+        // Previous/Next/Queue buttons (they moved to the full-screen view).
+        // Each has its own dedicated tap-target test below instead.
+        for (const option of ARRANGEMENTS.filter(
+          (o) => o.id !== 'before' && o.id !== 'old-scroll' && o.id !== 'old-play-only',
+        )) {
           fireEvent.click(within(screen.getByRole('radiogroup', { name: 'Arrangement' })).getByRole('radio', {
             name: new RegExp(option.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')),
           }));
@@ -1003,6 +1036,40 @@ describe('DizajnPage', () => {
           // The bug, shown honestly: the old chrome never carried the
           // safe-area lift class the shipped bar and nav share.
           expect(bar.closest('footer')).not.toHaveClass('safe-area-bottom');
+        }
+      });
+
+      it('"Old + scrolling name" keeps the old bar\'s tap sizes, but DOES lift above the system nav', () => {
+        render(<DizajnPage />);
+        fireEvent.click(within(screen.getByRole('radiogroup', { name: 'Arrangement' })).getByRole('radio', {
+          name: /Old \+ scrolling name/,
+        }));
+        for (const bar of bars()) {
+          expect(box(within(bar).getByRole('button', { name: 'Pause' }))).toEqual([40, 40]);
+          for (const name of ['Previous', 'Next']) {
+            expect(box(within(bar).getByRole('button', { name }))).toEqual([32, 32]);
+          }
+          expect(box(within(bar).getByRole('button', { name: 'Queue' }))).toEqual([40, 40]);
+          expect(bar.querySelector('.size-art-sm')).not.toBeNull();
+          // Unlike "Before", this candidate is not showing the old chrome's
+          // bug: it carries the safe-area lift like every other current
+          // candidate.
+          expect(bar.closest('footer')).toHaveClass('safe-area-bottom');
+        }
+      });
+
+      it('"Old + play only" raises play to 48px, drops prev/next/queue, and lifts above the system nav', () => {
+        render(<DizajnPage />);
+        fireEvent.click(within(screen.getByRole('radiogroup', { name: 'Arrangement' })).getByRole('radio', {
+          name: /Old \+ play only/,
+        }));
+        for (const bar of bars()) {
+          expect(box(within(bar).getByRole('button', { name: 'Pause' }))).toEqual([48, 48]);
+          for (const name of ['Previous', 'Next', 'Queue']) {
+            expect(within(bar).queryByRole('button', { name })).toBeNull();
+          }
+          expect(bar.querySelector('.size-art-sm')).not.toBeNull();
+          expect(bar.closest('footer')).toHaveClass('safe-area-bottom');
         }
       });
 

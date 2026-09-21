@@ -19,7 +19,14 @@ export interface ArrangementBarProps {
   onQueue: () => void;
 }
 
-export type Arrangement = 'before' | 'today' | 'art-with-name' | 'art-spans-both' | 'seek-on-top';
+export type Arrangement =
+  | 'before'
+  | 'old-scroll'
+  | 'old-play-only'
+  | 'today'
+  | 'art-with-name'
+  | 'art-spans-both'
+  | 'seek-on-top';
 
 export interface ArrangementOption {
   id: Arrangement;
@@ -42,6 +49,23 @@ export const ARRANGEMENTS: ArrangementOption[] = [
       'truncated name beside it, transport centred, queue right. Shown honestly, bug included: it does ' +
       'not lift clear of Android’s system navigation, because its old chrome only trusted env() ' +
       'for the safe-area padding, which the WebView never reported.',
+  },
+  {
+    id: 'old-scroll',
+    name: 'Old + scrolling name',
+    description:
+      'The old one-row shape kept exactly (artwork left, transport and queue right, seek line pinned under ' +
+      'everything, 93px bar), but the name scrolls with the same MarqueeText the full-screen view already uses ' +
+      'instead of truncating. The transport moves from centred to beside the queue on the right, and gaps and ' +
+      'padding tighten, so the name column grows from 38px to 152px at 390.',
+  },
+  {
+    id: 'old-play-only',
+    name: 'Old + play only',
+    description:
+      'The old one-row shape, stripped to just the artwork, the scrolling name and artist, and a single ' +
+      'play/pause button. Previous, next and queue move to the full-screen view, reached by tapping the bar. ' +
+      'With that room back, the name column measures 232px at 390, and play is raised to 48px.',
   },
   {
     id: 'today',
@@ -94,6 +118,12 @@ export const BEFORE_TAPS = 'play 40px, prev/next 32px, queue 40px, artwork 48px'
  *  48px artwork and its 12px gap took 60. */
 export const BEFORE_TITLE_PX = 38;
 
+/** "Old + play only" drops prev/next and queue from the minimised bar (they
+ *  move to the full-screen view), so their tap-target sizes do not apply
+ *  here; play is raised from the old bar's 40px to 48px, still inside the
+ *  row's existing 48px content height. */
+export const OLD_PLAY_ONLY_TAPS = 'play 48px, artwork 48px (prev/next/queue: full-screen view)';
+
 /** What shipped, for the section copy. The numbers are asserted against the
  *  live bar by tests/mobile-player-ui.test.mjs, so they cannot drift. */
 export const SHIPPED_TAPS = 'play 56px, prev/next 48px, queue 48px, artwork 48px';
@@ -116,6 +146,8 @@ export const SHIPPED_TITLE_PX = 358;
  *  it. */
 export const ARRANGEMENT_METRICS: Record<Arrangement, ArrangementMetrics> = {
   before: { taps: BEFORE_TAPS, titlePx390: BEFORE_TITLE_PX, titlePx360: 23, barHeight: 93 },
+  'old-scroll': { taps: BEFORE_TAPS, titlePx390: 152, titlePx360: 122, barHeight: 92 },
+  'old-play-only': { taps: OLD_PLAY_ONLY_TAPS, titlePx390: 232, titlePx360: 202, barHeight: 92 },
   today: { taps: SHIPPED_TAPS, titlePx390: SHIPPED_TITLE_PX, titlePx360: SHIPPED_TITLE_PX - 30, barHeight: 144 },
   'art-with-name': { taps: SHIPPED_TAPS, titlePx390: 296, titlePx360: 266, barHeight: 156 },
   'art-spans-both': {

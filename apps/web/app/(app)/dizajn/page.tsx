@@ -339,6 +339,20 @@ export default function DizajnPage() {
           width to it and the bar gains about 12px of height, but the artwork stops reading as
           detached from the name above it, which was the actual complaint.
         </p>
+        <p className="text-meta mb-block">
+          Then, on seeing &quot;Before&quot; again: &quot;Yeah that one was cleaner though. Okay give
+          me 2 more options, BOTH OF THEM BEING WITH THE OLD LAYOUT WE HAD BEFORE THIS.&quot; Two more
+          candidates below, both the old one-row shape, both with the safe-area lift this time (unlike
+          &quot;Before&quot;, which shows the old chrome&apos;s bug on purpose).{' '}
+          <span className="font-semibold text-foreground">&quot;Old + scrolling name&quot;</span> is
+          the old shape with the name scrolling instead of truncating: the transport moves from
+          centred to beside the queue, and gaps and padding tighten, which grows the name column from
+          {' '}{BEFORE_TITLE_PX}px to 152px at 390 without the bar getting any taller.{' '}
+          <span className="font-semibold text-foreground">&quot;Old + play only&quot;</span> goes
+          further: previous, next and queue move to the full-screen view entirely, leaving only the
+          artwork, the scrolling name, and play/pause (raised to 48px) in the minimised bar, which
+          gives the name a 232px column at 390.
+        </p>
 
         <div className="mb-block overflow-x-auto">
           <table data-testid="mobileplayer-comparison" className="text-meta w-full min-w-160 border-collapse">
@@ -359,8 +373,20 @@ export default function DizajnPage() {
                   <tr key={o.id} data-testid={`mobileplayer-comparison-row-${o.id}`} className="border-b border-border/50">
                     <td className="py-cluster pr-block">{o.name}</td>
                     <td className="py-cluster pr-block tabular-nums">{m.titlePx390}px</td>
-                    <td className="py-cluster pr-block tabular-nums">{o.id === 'before' ? '40px' : '56px'}</td>
-                    <td className="py-cluster pr-block tabular-nums">{o.id === 'before' ? '32px' : '48px'}</td>
+                    <td className="py-cluster pr-block tabular-nums">
+                      {o.id === 'before' || o.id === 'old-scroll'
+                        ? '40px'
+                        : o.id === 'old-play-only'
+                          ? '48px'
+                          : '56px'}
+                    </td>
+                    <td className="py-cluster pr-block tabular-nums">
+                      {o.id === 'before' || o.id === 'old-scroll'
+                        ? '32px'
+                        : o.id === 'old-play-only'
+                          ? 'none (full-screen view)'
+                          : '48px'}
+                    </td>
                     <td className="py-cluster pr-block tabular-nums">
                       {o.id === 'art-spans-both' ? '80x100px' : '48px'}
                     </td>

@@ -9,6 +9,8 @@ import { ScaledFrame } from '@/components/library/options/changelog/ChangelogSec
 import { ShellPreview } from '@/components/library/options/changelog/ShellPreview';
 import { AndroidNavStrip } from '@/components/library/options/mobileplayer/AndroidNavStrip';
 import { BeforeBar } from '@/components/library/options/mobileplayer/BeforeBar';
+import { OldScrollBar } from '@/components/library/options/mobileplayer/OldScrollBar';
+import { OldPlayOnlyBar } from '@/components/library/options/mobileplayer/OldPlayOnlyBar';
 import { ArtWithNameBar } from '@/components/library/options/mobileplayer/ArtWithNameBar';
 import { ArtSpansBothBar } from '@/components/library/options/mobileplayer/ArtSpansBothBar';
 import { SeekOnTopBar } from '@/components/library/options/mobileplayer/SeekOnTopBar';
@@ -67,17 +69,23 @@ function MockHome() {
  *
  *  `arrangement` swaps the bar every frame draws: 'today' is the REAL
  *  `PhonePlayerBar` (the shipped one, untouched); 'before' and the other
- *  three are gallery-only mocks (`BeforeBar`, `ArtWithNameBar`,
- *  `ArtSpansBothBar`, `SeekOnTopBar`, all in this folder) built from the
- *  same presentational pieces the shipped bar uses. Swapping the picker
- *  never edits `PhonePlayerBar` itself, so whichever candidate the owner
- *  has not picked yet cannot leak into what ships.
+ *  five are gallery-only mocks (`BeforeBar`, `OldScrollBar`,
+ *  `OldPlayOnlyBar`, `ArtWithNameBar`, `ArtSpansBothBar`, `SeekOnTopBar`,
+ *  all in this folder) built from the same presentational pieces the
+ *  shipped bar uses. Swapping the picker never edits `PhonePlayerBar`
+ *  itself, so whichever candidate the owner has not picked yet cannot leak
+ *  into what ships.
  *
  *  'before' is handled separately below (not through this table): it draws
  *  its own <footer>, not the shared `PLAYER_BAR_CHROME`, because the point
  *  of it is to show the old chrome's bug (no lift above Android's system
- *  nav) rather than fix it. */
+ *  nav) rather than fix it. 'old-scroll' and 'old-play-only' keep the old
+ *  bar's SHAPE but not its chrome bug: both go through this table, so both
+ *  get the safe-area lift `PLAYER_BAR_CHROME` applies, same as every other
+ *  candidate except 'before' itself. */
 const ARRANGEMENT_BARS: Record<Exclude<Arrangement, 'today' | 'before'>, (props: ArrangementBarProps) => ReactElement> = {
+  'old-scroll': OldScrollBar,
+  'old-play-only': OldPlayOnlyBar,
   'art-with-name': ArtWithNameBar,
   'art-spans-both': ArtSpansBothBar,
   'seek-on-top': SeekOnTopBar,
