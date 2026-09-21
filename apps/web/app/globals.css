@@ -64,11 +64,9 @@
      than rounded to a neighbouring token so no cover changes size. */
   --spacing-art-hero: 11rem;
   --spacing-art-hero-sm: 9rem;
-  /* The phone player bar's larger artwork, for the size presets on /dizajn
-     (PHONE_BAR_SIZES in PhonePlayerBar.tsx): 56px and 64px, between art-sm
-     and art-md. Nothing live uses them until a preset is picked. */
+  /* The phone player bar's artwork (PhonePlayerBar.tsx): 56px, between
+     art-sm and art-md. */
   --spacing-art-bar: 3.5rem;
-  --spacing-art-bar-lg: 4rem;
 
   /* The spacing scale (docs/design-system.md section 2). Six steps plus the
      page gutter, generating gap-*, mb-*, mt-*, px-*, py-* and size-hit the
