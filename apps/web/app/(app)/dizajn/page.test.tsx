@@ -18,6 +18,12 @@ import { MOCK_CHART } from './mock';
 import { ROW_STATES } from '@/components/library/options/searchrows';
 import { MOCK_SEARCH_RECENTS, MOCK_SEARCH_RESULTS } from './mock';
 import { MOCK_MOBILE_NOW_PLAYING } from './mock';
+import { MOCK_PHONE_SEARCH_PLAYING, MOCK_PHONE_SEARCH_RECENTS, MOCK_PHONE_SEARCH_RESULTS } from './mock';
+import {
+  PHONE_SEARCH_OPTIONS,
+  PHONE_SEARCH_RECOMMENDED,
+  PHONE_SEARCH_STATES,
+} from '@/components/library/options/phonesearch';
 import {
   TABS_LAYOUTS,
   TABS_PASTE,
@@ -148,6 +154,7 @@ describe('DizajnPage', () => {
   it('renders every section with no network', () => {
     render(<DizajnPage />);
 
+    expect(screen.getByText('Phone search', { selector: 'h2' })).toBeInTheDocument();
     expect(screen.getByText('Mobile player')).toBeInTheDocument();
     expect(screen.getByText('Search rows')).toBeInTheDocument();
     expect(screen.getByText('Playlist import')).toBeInTheDocument();
@@ -248,7 +255,7 @@ describe('DizajnPage', () => {
 
     it('sits right below Search rows, ahead of every other section', () => {
       render(<DizajnPage />);
-      expect(sectionHeadings().slice(0, 3)).toEqual(['Mobile player', 'Search rows', 'Playlist import']);
+      expect(sectionHeadings().slice(0, 4)).toEqual(['Phone search', 'Mobile player', 'Search rows', 'Playlist import']);
     });
 
     it('has a realistic mock: 42 songs, 36 confident, 4 to review with 3 to 5 candidates, 2 not found', () => {
@@ -681,8 +688,8 @@ describe('DizajnPage', () => {
     it('is the third section on the page, right after Playlist import', () => {
       render(<DizajnPage />);
       const headings = sectionHeadings();
-      expect(headings[3]).toBe('Trending shelf');
-      expect(headings.indexOf("What's new (changelog)")).toBeGreaterThan(3);
+      expect(headings[4]).toBe('Trending shelf');
+      expect(headings.indexOf("What's new (changelog)")).toBeGreaterThan(4);
     });
 
     it('renders the three pickers with every option as a radio, first one checked', () => {
@@ -790,14 +797,233 @@ describe('DizajnPage', () => {
     });
   });
 
+  describe('Phone search section', () => {
+    const section = () => screen.getByTestId('phonesearch-section');
+    const frames = () => within(section()).getAllByTestId('phonesearch-frame');
+    const group = (name: string) => screen.getByRole('radiogroup', { name });
+    const pick = (groupName: string, id: string, options: { id: string; name: string }[]) => {
+      const name = options.find((o) => o.id === id)!.name;
+      fireEvent.click(within(group(groupName)).getByRole('radio', { name: new RegExp(`^${name}`) }));
+    };
+    const pickOption = (id: string) => pick('Phone search', id, PHONE_SEARCH_OPTIONS);
+    const pickState = (id: string) => pick('Search state', id, PHONE_SEARCH_STATES);
+    const checkedName = (name: string) =>
+      within(group(name))
+        .getAllByRole('radio')
+        .filter((r) => r.getAttribute('aria-checked') === 'true')
+        .map((r) => r.textContent);
+
+    it('is the first section on the page, in the three phone frames with the Android strip on two', () => {
+      render(<DizajnPage />);
+      expect(sectionHeadings()[0]).toBe('Phone search');
+      expect(frames().map((f) => f.dataset.frame)).toEqual(['clean-390', 'android-390', 'android-360']);
+      expect(within(section()).getAllByTestId('shell-preview').map((s) => s.dataset.phone)).toEqual([
+        'true',
+        'true',
+        'true',
+      ]);
+      expect(within(section()).getAllByTestId('android-nav-strip')).toHaveLength(2);
+      // The Android frames publish the strip's height, the clean one nothing.
+      expect(within(section()).getAllByTestId('shell-preview').map((s) => s.dataset.bottomInset)).toEqual([
+        '0',
+        '48',
+        '48',
+      ]);
+    });
+
+    it('has two radiogroups with correct aria-checked, opening on the recommended candidate, playing', () => {
+      render(<DizajnPage />);
+      const options = within(group('Phone search')).getAllByRole('radio');
+      expect(options.map((r) => r.textContent)).toEqual(
+        PHONE_SEARCH_OPTIONS.map((o) => o.name + (o.badge ?? '')),
+      );
+      expect(PHONE_SEARCH_OPTIONS.map((o) => o.name)).toEqual([
+        'Sheet above the player',
+        'Search page',
+        'Mini player in the sheet',
+      ]);
+      const states = within(group('Search state')).getAllByRole('radio');
+      expect(states.map((r) => r.textContent)).toEqual(['Typing', 'Playing from search', 'Nothing typed']);
+
+      expect(checkedName('Phone search')).toEqual(['Sheet above the playerRecommended']);
+      expect(checkedName('Search state')).toEqual(['Playing from search']);
+
+      pickOption('mini-player');
+      pickState('empty');
+      expect(checkedName('Phone search')).toEqual(['Mini player in the sheet']);
+      expect(checkedName('Search state')).toEqual(['Nothing typed']);
+      // Exactly one checked radio per group, always.
+      for (const name of ['Phone search', 'Search state']) {
+        expect(within(group(name)).getAllByRole('radio').filter((r) => r.getAttribute('aria-checked') === 'true')).toHaveLength(1);
+      }
+    });
+
+    it('marks exactly one candidate Recommended, with its reason', () => {
+      render(<DizajnPage />);
+      expect(PHONE_SEARCH_OPTIONS.filter((o) => o.badge === 'Recommended').map((o) => o.id)).toEqual([
+        PHONE_SEARCH_RECOMMENDED,
+      ]);
+      expect(screen.getByTestId('phonesearch-recommended')).toHaveTextContent('Recommended: Sheet above the player.');
+    });
+
+    it('says what each candidate does with the keyboard, the back gesture and closing', () => {
+      render(<DizajnPage />);
+      const seen = new Set<string>();
+      for (const o of PHONE_SEARCH_OPTIONS) {
+        pickOption(o.id);
+        expect(within(section()).getByTestId('phonesearch-keyboard')).toHaveTextContent(o.keyboard);
+        expect(within(section()).getByTestId('phonesearch-back')).toHaveTextContent(o.back);
+        expect(within(section()).getByTestId('phonesearch-close')).toHaveTextContent(o.close);
+        seen.add(o.keyboard + o.back + o.close);
+      }
+      expect(seen.size).toBe(3);
+    });
+
+    it('Sheet above the player: the sheet ends above the real bar and the nav, which stay uncovered', () => {
+      render(<DizajnPage />);
+      pickOption('sheet-above');
+      for (const frame of frames()) {
+        const shell = within(frame).getByTestId('shell-preview');
+        const sheet = within(frame).getByTestId('phonesearch-sheet');
+        const bar = within(frame).getByTestId('phone-player-bar');
+        const nav = within(frame).getByTestId('mock-mobile-nav');
+        expect(sheet.dataset.coversPlayer).toBe('false');
+        // Inside the shell's above-the-bar layer, and that layer is not
+        // an ancestor of the bar or the nav: it ends where the bar begins.
+        const layer = within(shell).getByTestId('shell-sheet-layer');
+        expect(layer).toContainElement(sheet);
+        expect(layer.contains(bar)).toBe(false);
+        expect(layer.contains(nav)).toBe(false);
+        expect(layer.parentElement!.compareDocumentPosition(bar.closest('footer')!)).toBe(
+          Node.DOCUMENT_POSITION_FOLLOWING,
+        );
+        expect(within(frame).queryByTestId('phonesearch-mini-strip')).toBeNull();
+        expect(within(frame).queryByTestId('phonesearch-page')).toBeNull();
+      }
+    });
+
+    it('Search page: no sheet at all, the page in the content column, Search lit in the nav', () => {
+      render(<DizajnPage />);
+      pickOption('search-page');
+      for (const frame of frames()) {
+        expect(within(frame).queryByTestId('phonesearch-sheet')).toBeNull();
+        expect(within(frame).queryByTestId('shell-sheet-layer')).toBeNull();
+        expect(within(frame).queryByTestId('phonesearch-mini-strip')).toBeNull();
+        const page = within(frame).getByTestId('phonesearch-page');
+        expect(page.closest('main')).not.toBeNull();
+        expect(within(page).getByRole('heading', { level: 1, name: 'Search' })).toBeInTheDocument();
+        // The page has nothing to close.
+        expect(within(page).queryByRole('button', { name: 'Close search' })).toBeNull();
+        expect(within(frame).getByTestId('phone-player-bar')).toBeInTheDocument();
+        const nav = within(frame).getByTestId('mock-mobile-nav');
+        expect(within(nav).getByText('Search')).toHaveClass('text-foreground');
+        expect(within(nav).getByText('Home')).toHaveClass('text-foreground/55');
+      }
+    });
+
+    it('Mini player in the sheet: a full-screen sheet with the now-playing strip pinned at its bottom', () => {
+      render(<DizajnPage />);
+      pickOption('mini-player');
+      for (const frame of frames()) {
+        const sheet = within(frame).getByTestId('phonesearch-sheet');
+        expect(sheet.dataset.coversPlayer).toBe('true');
+        expect(within(frame).queryByTestId('shell-sheet-layer')).toBeNull();
+        const strip = within(sheet).getByTestId('phonesearch-mini-strip');
+        expect(sheet.lastElementChild).toBe(strip);
+        expect(within(strip).getByText(MOCK_PHONE_SEARCH_PLAYING.title)).toBeInTheDocument();
+        expect(within(strip).getByRole('button', { name: 'Pause' })).toBeInTheDocument();
+        // The real bar is still rendered, under the sheet, not inside it.
+        expect(sheet.contains(within(frame).getByTestId('phone-player-bar'))).toBe(false);
+      }
+    });
+
+    it('the three candidates are structurally distinct', () => {
+      render(<DizajnPage />);
+      const shape = () => {
+        const f = frames()[0];
+        return [
+          within(f).queryByTestId('shell-sheet-layer') !== null,
+          within(f).queryByTestId('phonesearch-page') !== null,
+          within(f).queryByTestId('phonesearch-mini-strip') !== null,
+        ].join();
+      };
+      const shapes = PHONE_SEARCH_OPTIONS.map((o) => {
+        pickOption(o.id);
+        return shape();
+      });
+      expect(shapes).toEqual(['true,false,false', 'false,true,false', 'false,false,true']);
+    });
+
+    it('the states differ: keyboard and focus, the playing row and bar, recents only', () => {
+      render(<DizajnPage />);
+      for (const o of PHONE_SEARCH_OPTIONS) {
+        pickOption(o.id);
+        const frame = () => frames()[1];
+        const titles = () => within(frame()).queryAllByTestId('track-row-title');
+        const emberTitles = () => titles().filter((t) => t.className.includes('text-ember'));
+
+        pickState('typing');
+        expect(within(frame()).getByTestId('mock-keyboard')).toBeInTheDocument();
+        expect(within(frame()).getByRole('textbox', { name: 'Search' })).toHaveAttribute('data-focused', 'true');
+        expect(within(frame()).getByRole('textbox', { name: 'Search' })).toHaveValue('harbour');
+        expect(within(frame()).getByTestId('phonesearch-results')).toBeInTheDocument();
+        expect(emberTitles()).toHaveLength(0);
+        expect(within(within(frame()).getByTestId('phone-player-bar')).getAllByText(MOCK_MOBILE_NOW_PLAYING.title).length).toBeGreaterThan(0);
+
+        pickState('playing');
+        expect(within(frame()).queryByTestId('mock-keyboard')).toBeNull();
+        expect(emberTitles().map((t) => t.textContent)).toEqual([MOCK_PHONE_SEARCH_PLAYING.title]);
+        const playingRow = emberTitles()[0].closest('[data-testid="track-row"]') as HTMLElement | null;
+        expect(playingRow).not.toBeNull();
+        expect(within(playingRow!).getByRole('button', { name: /pause/i })).toBeInTheDocument();
+        const bar = within(frame()).getByTestId('phone-player-bar');
+        expect(within(bar).getAllByText(MOCK_PHONE_SEARCH_PLAYING.title).length).toBeGreaterThan(0);
+        expect(within(bar).getByRole('button', { name: 'Pause' })).toBeInTheDocument();
+
+        pickState('empty');
+        expect(within(frame()).queryByTestId('mock-keyboard')).toBeNull();
+        expect(within(frame()).queryByTestId('phonesearch-results')).toBeNull();
+        expect(within(frame()).getByRole('textbox', { name: 'Search' })).toHaveValue('');
+        const recents = within(frame()).getByTestId('phonesearch-recents');
+        expect(within(recents).getAllByTestId('track-row-title').map((t) => t.textContent)).toEqual(
+          MOCK_PHONE_SEARCH_RECENTS.map((t) => t.title),
+        );
+        expect(within(frame()).queryByText(MOCK_PHONE_SEARCH_RESULTS[0].title)).toBeNull();
+      }
+    });
+
+    it('saves both choices to localStorage and restores them on mount', async () => {
+      const { unmount } = render(<DizajnPage />);
+      pickOption('search-page');
+      pickState('typing');
+      await waitFor(() => expect(window.localStorage.getItem('dizajn-phonesearch-option')).toBe('search-page'));
+      expect(window.localStorage.getItem('dizajn-phonesearch-state')).toBe('typing');
+      unmount();
+
+      render(<DizajnPage />);
+      expect(checkedName('Phone search')).toEqual(['Search page']);
+      expect(checkedName('Search state')).toEqual(['Typing']);
+      expect(section().dataset.option).toBe('search-page');
+      expect(section().dataset.state).toBe('typing');
+    });
+
+    it('ignores a stale saved choice and falls back to the defaults', () => {
+      window.localStorage.setItem('dizajn-phonesearch-option', 'bottom-drawer');
+      window.localStorage.setItem('dizajn-phonesearch-state', 'loading');
+      render(<DizajnPage />);
+      expect(section().dataset.option).toBe('sheet-above');
+      expect(section().dataset.state).toBe('playing');
+    });
+  });
+
   describe('Mobile player section', () => {
     const section = () => screen.getByTestId('mobileplayer-section');
     const bars = () => within(section()).getAllByTestId('phone-player-bar');
     const FRAME_COUNT = 3;
 
-    it('is the first section on the page, three phone frames, two of them with the Android strip', () => {
+    it('sits right below Phone search, three phone frames, two of them with the Android strip', () => {
       render(<DizajnPage />);
-      expect(sectionHeadings()[0]).toBe('Mobile player');
+      expect(sectionHeadings()[1]).toBe('Mobile player');
 
       const frames = within(section()).getAllByTestId('mobileplayer-frame');
       expect(frames.map((f) => f.dataset.frame)).toEqual(['clean-390', 'android-390', 'android-360']);
@@ -899,7 +1125,7 @@ describe('DizajnPage', () => {
 
     it('sits right below Mobile player, in the desktop and phone shells', () => {
       render(<DizajnPage />);
-      expect(sectionHeadings()[1]).toBe('Search rows');
+      expect(sectionHeadings()[2]).toBe('Search rows');
       expect(within(section()).getAllByTestId('shell-preview').map((s) => s.dataset.phone)).toEqual(['false', 'true']);
     });
 

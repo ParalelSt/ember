@@ -190,6 +190,35 @@ export const MOCK_SEARCH_RESULTS: Track[] = [
  *  than "Nothing playing" is picked. */
 export const MOCK_SEARCH_PLAYING_ID = MOCK_SEARCH_RESULTS[1].id;
 
+// ---------- Phone search (the "Phone search" section) ----------
+
+/** The query typed in the Phone search candidates' "Typing" and "Playing
+ *  from search" states. */
+export const MOCK_PHONE_SEARCH_QUERY = 'harbour';
+
+/** Recent searches in the Phone search candidates. Their own titles, so
+ *  every title on /dizajn stays unique and a test can find one without
+ *  hitting another section. */
+export const MOCK_PHONE_SEARCH_RECENTS: Track[] = [
+  makeTrack({ sourceId: 'ps1', title: 'Copper Kettle', artist: 'Saltmarsh', album: 'Low Tide', durationSec: 201, artworkUrl: mockCover('#3d2f2a', '#b3805f', 'circle') }),
+  makeTrack({ sourceId: 'ps2', title: 'Neon Orchard', artist: 'The Lindens', album: 'Glasshouse', durationSec: 233, artworkUrl: mockCover('#26383f', '#5f9fb3', 'bars') }),
+  makeTrack({ sourceId: 'ps3', title: 'Paper Lanterns', artist: 'Mira Holt', album: 'Kites', durationSec: 188, artworkUrl: mockCover('#3b2a44', '#9a73b8', 'square') }),
+];
+
+/** Results for MOCK_PHONE_SEARCH_QUERY: six, so the list runs under the
+ *  keyboard and the player the way a real result list does. */
+export const MOCK_PHONE_SEARCH_RESULTS: Track[] = [
+  makeTrack({ sourceId: 'ps4', title: 'Harbour Lights', artist: 'Saltmarsh', album: 'Low Tide', durationSec: 214, artworkUrl: mockCover('#1f3340', '#6aa0c0', 'circle') }),
+  makeTrack({ sourceId: 'ps5', title: 'Harbour Road', artist: 'Glen Avery', album: 'Coastlines', durationSec: 247, artworkUrl: mockCover('#40301f', '#c09a6a', 'square') }),
+  makeTrack({ sourceId: 'ps6', title: 'Grey Harbour', artist: 'The Lindens', album: 'Glasshouse', durationSec: 196, artworkUrl: mockCover('#2a3b2d', '#7fb38a', 'bars') }),
+  makeTrack({ sourceId: 'ps7', title: 'Harbour Master', artist: 'Ottoline', album: 'Tidewater', durationSec: 268, artworkUrl: mockCover('#3f2433', '#b86a90', 'circle') }),
+  makeTrack({ sourceId: 'ps8', title: 'Safe Harbour', artist: 'Mira Holt', album: 'Kites', durationSec: 205, artworkUrl: mockCover('#33343f', '#8a8cb8', 'square') }),
+  makeTrack({ sourceId: 'ps9', title: 'Harbour Wall', artist: 'Saltmarsh', album: 'Low Tide', durationSec: 222, artworkUrl: mockCover('#3a3a24', '#aaa65f', 'bars') }),
+];
+
+/** The result started in the "Playing from search" state. */
+export const MOCK_PHONE_SEARCH_PLAYING = MOCK_PHONE_SEARCH_RESULTS[1];
+
 export interface ChangelogEntry {
   id: string;
   /** Short date label for the eyebrow, e.g. "Sep 16". */

@@ -81,6 +81,10 @@ export interface ShellPreviewProps {
   /** Phone: drawn over the bottom edge of the frame, above everything, the
    *  way Android draws its own navigation bar over the WebView. */
   systemNav?: ReactNode;
+  /** Phone: a layer over the top bar and the content column that ends at
+   *  the player bar's top edge, so the bar and the nav below it are never
+   *  covered (the "Sheet above the player" search candidate). */
+  sheet?: ReactNode;
   /** Phone: the slide-out menu. The mock's own menu button toggles it. */
   drawerOpen?: boolean;
   onDrawerOpenChange?: (open: boolean) => void;
@@ -368,6 +372,7 @@ export function ShellPreview({
   playerBar,
   bottomInset,
   systemNav,
+  sheet,
   drawerOpen = false,
   onDrawerOpenChange,
 }: ShellPreviewProps) {
@@ -393,17 +398,26 @@ export function ShellPreview({
         />
       )}
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-        {phone && (
-          <MockTopBar topBarRight={topBarRight} menuDot={menuDot} onMenu={() => onDrawerOpenChange?.(true)} />
-        )}
-        <div className="relative min-h-0 flex-1">
-          <div className="absolute inset-0 overflow-y-auto">
-            <main className={phone ? 'px-6 py-6' : 'px-8 py-8'}>
-              <div className="mx-auto max-w-(--content-max)">{content}</div>
-            </main>
+        {/* Everything above the player bar, in one box so a phone `sheet`
+            can cover exactly this much and no more. */}
+        <div className="relative flex min-h-0 flex-1 flex-col">
+          {phone && (
+            <MockTopBar topBarRight={topBarRight} menuDot={menuDot} onMenu={() => onDrawerOpenChange?.(true)} />
+          )}
+          <div className="relative min-h-0 flex-1">
+            <div className="absolute inset-0 overflow-y-auto">
+              <main className={phone ? 'px-6 py-6' : 'px-8 py-8'}>
+                <div className="mx-auto max-w-(--content-max)">{content}</div>
+              </main>
+            </div>
+            {!phone && contentCorner && <div className="absolute right-8 top-[34px] z-10">{contentCorner}</div>}
+            {overlay}
           </div>
-          {!phone && contentCorner && <div className="absolute right-8 top-[34px] z-10">{contentCorner}</div>}
-          {overlay}
+          {phone && sheet && (
+            <div data-testid="shell-sheet-layer" className="absolute inset-0 z-20 flex flex-col">
+              {sheet}
+            </div>
+          )}
         </div>
         {playerBar ?? <MockPlayerBar phone={phone} />}
         {phone && <MockMobileNav activePath={activePath} />}

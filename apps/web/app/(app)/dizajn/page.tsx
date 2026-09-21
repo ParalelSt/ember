@@ -49,6 +49,15 @@ import {
 } from '@/components/library/options/mobileplayer';
 import { MobilePlayerSection } from '@/components/library/options/mobileplayer/MobilePlayerSection';
 import {
+  PHONE_SEARCH_OPTIONS,
+  PHONE_SEARCH_RECOMMENDED,
+  PHONE_SEARCH_RECOMMENDED_REASON,
+  PHONE_SEARCH_STATES,
+  type PhoneSearchOption,
+  type PhoneSearchState,
+} from '@/components/library/options/phonesearch';
+import { PhoneSearchSection } from '@/components/library/options/phonesearch/PhoneSearchSection';
+import {
   TABS_LAYOUTS,
   TABS_PASTE,
   TABS_SCROLL,
@@ -84,6 +93,8 @@ const TABS_SCROLL_KEY = 'dizajn-tabs-scroll';
 const TABS_PASTE_KEY = 'dizajn-tabs-paste';
 const TABS_V3_PICKER_KEY = 'dizajn-tabs-v3-picker';
 const TABS_V3_STATE_KEY = 'dizajn-tabs-v3-state';
+const PHONESEARCH_OPTION_KEY = 'dizajn-phonesearch-option';
+const PHONESEARCH_STATE_KEY = 'dizajn-phonesearch-state';
 
 // Saved picker choices. The page is server-rendered with the first option
 // of every picker, so the saved one must not be read during the first
@@ -279,6 +290,16 @@ export default function DizajnPage() {
   // still a choice; the control style and the indicator were picked.
   const [srState, setSrState] = useSavedChoice<RowState>(SEARCHROWS_STATE_KEY, ROW_STATES);
 
+  // "Phone search" pickers: same pattern. It opens on the recommended
+  // candidate, playing from search (the case the owner reported).
+  const [psOption, setPsOption] = useSavedChoice<PhoneSearchOption>(
+    PHONESEARCH_OPTION_KEY,
+    PHONE_SEARCH_OPTIONS,
+    PHONE_SEARCH_RECOMMENDED,
+  );
+  const [psState, setPsState] = useSavedChoice<PhoneSearchState>(PHONESEARCH_STATE_KEY, PHONE_SEARCH_STATES, 'playing');
+  const psRecommended = PHONE_SEARCH_OPTIONS.find((o) => o.id === PHONE_SEARCH_RECOMMENDED)!;
+
   return (
     <div>
       <PageTitle className="mb-2">Design gallery</PageTitle>
@@ -286,6 +307,33 @@ export default function DizajnPage() {
         What was built, and the style options for the Library page&apos;s playlist shelves. Not a real
         page in the app: no link points here.
       </p>
+
+      <section className="mb-section">
+        <h2 className="text-section-title mb-inset">Phone search</h2>
+        <p className="text-meta mb-block">
+          Proposals, not built: search on a phone. Today it is a full-screen sheet that covers the
+          player bar and the bottom nav, so after pressing play on a result there is no player and
+          no controls on screen. Three ways out, each inside the mock app shell in the same phone
+          frames as Mobile player below. The rows are the REAL <code>TrackRow</code> and{' '}
+          <code>TrackList</code> the overlay renders and the bar is the REAL{' '}
+          <code>PhonePlayerBar</code>, on mock data with inert handlers; the sheets, the page, the
+          mini strip and the keyboard are mock markup. The live search is unchanged. As in Search
+          rows, a row&apos;s own play button shows on hover here (on a phone it is always shown).
+        </p>
+        <p data-testid="phonesearch-recommended" className="text-meta mb-block">
+          <span className="font-semibold text-foreground">Recommended: {psRecommended.name}.</span>{' '}
+          {PHONE_SEARCH_RECOMMENDED_REASON}
+        </p>
+
+        <div className="mb-stack flex flex-wrap gap-x-section gap-y-block">
+          {/* "Search state", not "State": the changelog section already has
+              a radiogroup by that name. */}
+          <Picker label="Phone search" options={PHONE_SEARCH_OPTIONS} value={psOption} onChange={setPsOption} />
+          <Picker label="Search state" options={PHONE_SEARCH_STATES} value={psState} onChange={setPsState} />
+        </div>
+
+        <PhoneSearchSection option={psOption} state={psState} />
+      </section>
 
       <section className="mb-section">
         <h2 className="text-section-title mb-inset">Mobile player</h2>
