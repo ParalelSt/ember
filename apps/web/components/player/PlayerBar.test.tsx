@@ -149,14 +149,25 @@ describe('PlayerBar', () => {
     });
   });
 
-  it('stands both bars off the bottom edge through the shared class, with no inline padding', () => {
-    for (const isDesktop of [false, true]) {
-      desktop.value = isDesktop;
-      const { unmount } = render(<PlayerBar />);
-      expect(bar()).toHaveClass('safe-area-bottom');
-      expect(bar().getAttribute('style')).toBeNull();
-      unmount();
-    }
+  it('stands the desktop bar off the bottom edge itself, with no inline padding', () => {
+    // MobileNav is mounted but `md:hidden` at this width, so it lifts
+    // nothing here: the desktop footer is the bottom-most visible element
+    // and carries the safe-area class itself.
+    desktop.value = true;
+    const { unmount } = render(<PlayerBar />);
+    expect(bar()).toHaveClass('safe-area-bottom');
+    expect(bar().getAttribute('style')).toBeNull();
+    unmount();
+  });
+
+  it('leaves the safe-area lift to MobileNav on a phone, not the phone bar', () => {
+    // MobileNav renders below the phone bar in the real shell (app/(app)/layout.tsx)
+    // and is the bottom-most element there, so it alone carries the inset.
+    desktop.value = false;
+    const { unmount } = render(<PlayerBar />);
+    expect(bar()).not.toHaveClass('safe-area-bottom');
+    expect(bar().getAttribute('style')).toBeNull();
+    unmount();
   });
 
   it('hides the tabs button when the plugin is off', () => {
@@ -175,7 +186,9 @@ describe('PlayerBar', () => {
       render(<PlayerBar />);
       const footer = bar();
       expect(within(footer).getAllByRole('button').map((b) => b.getAttribute('aria-label'))).toEqual(['Pause']);
-      expect(footer).toHaveClass('safe-area-bottom');
+      // MobileNav under it carries the inset instead: see the dedicated
+      // 'leaves the safe-area lift to MobileNav' test above.
+      expect(footer).not.toHaveClass('safe-area-bottom');
     });
 
     it('opens the full-screen view on a tap, but not from play', () => {

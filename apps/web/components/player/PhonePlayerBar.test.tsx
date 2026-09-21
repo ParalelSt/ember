@@ -167,17 +167,17 @@ describe('PhonePlayerBar', () => {
     expect(onToggle).not.toHaveBeenCalled();
   });
 
-  it('leaves the strip chrome, the safe-area lift included, to the footer that holds it', () => {
+  it('leaves the strip chrome to the footer that holds it, with no safe-area lift of its own', () => {
     setup();
-    // The bar itself paints nothing: the background, the top border and the
-    // safe-area stand-off are one constant, spent by PlayerBar's <footer>
-    // and by the design gallery's preview alike.
+    // The bar itself paints nothing: the background and the top border are
+    // one constant, spent by PlayerBar's <footer> and by the design
+    // gallery's preview alike. The safe-area lift is NOT part of it: only
+    // MobileNav, the bottom-most element in the shell, carries that, or the
+    // bar would double up and leave an empty band under the seek line.
     const bar = screen.getByTestId('phone-player-bar');
     expect(bar.className).toBe('flex flex-col');
     expect(bar.getAttribute('style')).toBeNull();
-    // Not an env() string of its own: --safe-bottom lives once, on :root in
-    // globals.css, and MobileNav spends the same class.
-    expect(PLAYER_BAR_CHROME.split(' ')).toContain('safe-area-bottom');
+    expect(PLAYER_BAR_CHROME.split(' ')).not.toContain('safe-area-bottom');
     expect(PLAYER_BAR_CHROME.split(' ')).toContain('bg-sidebar');
     expect(PLAYER_BAR_CHROME.split(' ')).toContain('border-t');
   });

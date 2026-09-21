@@ -304,10 +304,14 @@ describe('safe-area insets', () => {
   it('is what the bars and the nav actually use', () => {
     const uses = (file: string, token: string) =>
       expect(readFileSync(join(ROOT, file), 'utf8'), file).toContain(token);
-    // The player bar spends it once, in PLAYER_BAR_CHROME, which both
-    // PlayerBar's footer and the design gallery's preview render.
-    uses('components/player/PhonePlayerBar.tsx', 'safe-area-bottom');
+    // PhonePlayerBar's own chrome (PLAYER_BAR_CHROME) does NOT carry the
+    // class: MobileNav below it is the bottom-most element in the phone
+    // shell and spends it alone, or the two would double up and leave an
+    // empty band under the seek line. On a desktop-width window MobileNav
+    // is `md:hidden` and contributes nothing, so PlayerBar's own footer
+    // spends the class itself there instead.
     uses('components/player/PlayerBar.tsx', 'PLAYER_BAR_CHROME');
+    uses('components/player/PlayerBar.tsx', 'safe-area-bottom');
     uses('components/library/options/mobileplayer/MobilePlayerSection.tsx', 'PLAYER_BAR_CHROME');
     uses('components/nav/MobileNav.tsx', 'safe-area-bottom');
     uses('components/nav/TopBar.tsx', 'var(--safe-top)');

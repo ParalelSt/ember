@@ -20,8 +20,9 @@
  *      opens it, and it has previous, next and a queue that opens,
  *    - nothing overflows the viewport horizontally,
  *    - with a bottom inset published the way MainActivity publishes it
- *      (--ember-inset-bottom on <html>), the bar and the nav both lift by it
- *      and leave the system buttons' strip empty; with none, nothing moves.
+ *      (--ember-inset-bottom on <html>), the nav alone lifts by it and
+ *      leaves the system buttons' strip empty; the bar carries none of it
+ *      and sits flush on top of the nav, with none, nothing moves.
  *
  *  Creates its own user and uploads, and deletes them again at the end.
  *  Needs the sandbox from tests/README.md and playwright-core. Set
@@ -138,8 +139,9 @@ const pageErrors = [];
 function measure() {
   const bar = document.querySelector('[data-testid="phone-player-bar"]');
   if (!bar) return null;
-  // The bar is inside the one <footer> that carries the strip's chrome and
-  // the safe-area stand-off (PLAYER_BAR_CHROME).
+  // The bar is inside the one <footer> that carries the strip's chrome
+  // (PLAYER_BAR_CHROME); the safe-area stand-off lives on MobileNav below
+  // it instead, the bottom-most element in the shell.
   const footer = bar.closest('footer');
   const nav = document.querySelector('[data-testid="mobile-nav"]');
   const rect = (el) => { const r = el.getBoundingClientRect(); return { x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.width), h: Math.round(r.height), bottom: Math.round(r.bottom) }; };
@@ -326,7 +328,7 @@ for (const [w, h] of [[390, 844], [360, 740]]) {
   await view.getByRole('button', { name: 'Close', exact: true }).click();
   await page.waitForTimeout(600);
 
-  // ---- the safe-area lift ----------------------------------------------
+  // ---- the safe-area lift: the nav alone carries it, not the bar too ----
   const noInset = await page.evaluate(measure);
   check(at('with no inset published, nothing is lifted'),
     noInset.barPadBottom === 0 && noInset.navPadBottom === 0,
@@ -335,25 +337,33 @@ for (const [w, h] of [[390, 844], [360, 740]]) {
     Math.abs(noInset.nav.bottom - noInset.innerH) <= 1,
     `nav bottom ${noInset.nav.bottom}, viewport ${noInset.innerH}`);
 
-  await setInset(page, INSET_PX);
-  await page.waitForTimeout(150);
-  const lifted = await page.evaluate(measure);
-  check(at(`the nav lifts its content by the ${INSET_PX}px inset`),
-    lifted.navPadBottom === INSET_PX, `${lifted.navPadBottom}px`);
-  check(at('the player bar carries the same inset'),
-    lifted.barPadBottom === INSET_PX, `${lifted.barPadBottom}px`);
-  check(at('the nav grows by exactly the inset, so its buttons move up'),
-    lifted.nav.h === noInset.nav.h + INSET_PX,
-    `${noInset.nav.h}px -> ${lifted.nav.h}px`);
-  check(at('the bar\'s row now sits clear of the system buttons strip'),
-    lifted.row.bottom <= lifted.innerH - INSET_PX,
-    `row ends at ${lifted.row.bottom}, strip starts at ${lifted.innerH - INSET_PX}`);
-  check(at('the tap targets did not shrink to pay for the lift'),
-    lifted.play.h === 48 && lifted.disc.h === 36 && lifted.artwork.h === 56,
-    `play ${lifted.play.h}, disc ${lifted.disc.h}, artwork ${lifted.artwork.h}`);
+  for (let pass = 1; pass <= 2; pass++) {
+    await setInset(page, INSET_PX);
+    await page.waitForTimeout(150);
+    const lifted = await page.evaluate(measure);
+    check(at(`[pass ${pass}] the nav lifts its content by the ${INSET_PX}px inset`),
+      lifted.navPadBottom === INSET_PX, `${lifted.navPadBottom}px`);
+    check(at(`[pass ${pass}] the bar carries none of it: no bottom padding of its own`),
+      lifted.barPadBottom === 0, `${lifted.barPadBottom}px`);
+    check(at(`[pass ${pass}] the nav grows by exactly the inset, so its buttons move up`),
+      lifted.nav.h === noInset.nav.h + INSET_PX,
+      `${noInset.nav.h}px -> ${lifted.nav.h}px`);
+    check(at(`[pass ${pass}] the bar sits directly on top of the nav, no gap`),
+      lifted.bar.bottom === lifted.nav.y, `bar bottom ${lifted.bar.bottom}, nav top ${lifted.nav.y}`);
+    check(at(`[pass ${pass}] the bar's row still sits clear of the system buttons strip`),
+      lifted.row.bottom <= lifted.innerH - INSET_PX,
+      `row ends at ${lifted.row.bottom}, strip starts at ${lifted.innerH - INSET_PX}`);
+    check(at(`[pass ${pass}] the nav's own bottom edge stays clear of the system buttons strip`),
+      lifted.nav.bottom <= lifted.innerH - INSET_PX + 1,
+      `nav ends at ${lifted.nav.bottom}, strip starts at ${lifted.innerH - INSET_PX}`);
+    check(at(`[pass ${pass}] the tap targets did not shrink to pay for the lift`),
+      lifted.play.h === 48 && lifted.disc.h === 36 && lifted.artwork.h === 56,
+      `play ${lifted.play.h}, disc ${lifted.disc.h}, artwork ${lifted.artwork.h}`);
 
-  if (SHOTS) await page.screenshot({ path: path.join(SHOTS, `phone-${w}-long-inset.png`) });
-  await setInset(page, null);
+    if (pass === 1 && SHOTS) await page.screenshot({ path: path.join(SHOTS, `phone-${w}-long-inset.png`) });
+    await setInset(page, null);
+    await page.waitForTimeout(100);
+  }
 
   // The native half, for real: the literal script MainActivity injects for a
   // 48dp navigation bar. SafeAreaInsets.script(0, 0, 48, 0) is pinned to this
@@ -362,8 +372,8 @@ for (const [w, h] of [[390, 844], [360, 740]]) {
   await page.evaluate(NATIVE_INSET_SCRIPT);
   await page.waitForTimeout(150);
   const native = await page.evaluate(measure);
-  check(at("the script MainActivity injects lifts the bar and the nav"),
-    native.barPadBottom === INSET_PX && native.navPadBottom === INSET_PX,
+  check(at("the script MainActivity injects lifts the nav, not the bar"),
+    native.barPadBottom === 0 && native.navPadBottom === INSET_PX,
     `bar ${native.barPadBottom}px, nav ${native.navPadBottom}px`);
   await page.evaluate(() => {
     for (const k of ['top', 'right', 'bottom', 'left']) {

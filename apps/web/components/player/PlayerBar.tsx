@@ -108,8 +108,13 @@ export function PlayerBar() {
     </Button>
   );
 
+  // MobileNav stays mounted but `md:hidden` on this breakpoint, so it
+  // contributes no height and no safe-area lift here: this footer is the
+  // bottom-most visible element on a desktop-width window and must carry
+  // the inset itself (a phone-sized window never reaches this branch — the
+  // phone bar above leaves the inset to MobileNav instead).
   return (
-    <footer data-testid="player-bar" className={PLAYER_BAR_CHROME}>
+    <footer data-testid="player-bar" className={cn(PLAYER_BAR_CHROME, 'safe-area-bottom')}>
     <div className="px-4 pt-3 pb-2 grid grid-cols-[1fr_auto_1fr] md:grid-cols-[1fr_2fr_1fr] gap-4 items-center">
       {/* Now playing. No tap-to-open here: this bar only renders on an md
           and wider window, and the phone bar owns that gesture. */}

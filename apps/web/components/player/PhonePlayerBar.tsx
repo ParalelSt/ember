@@ -10,13 +10,14 @@ import { useTrackArtSrc } from '@/lib/offlineNative';
 import { cn } from '@/lib/utils';
 import type { Track } from '@/types/track';
 
-/** The player bar's chrome: the strip's own background, its top border and
- *  the safe-area stand-off that keeps it clear of Android's system
- *  navigation. On the <footer> rather than on either layout inside it, so
- *  the two cannot disagree, and shared with the design gallery's preview so
- *  that cannot drift either. */
+/** The player bar's chrome: the strip's own background and its top border.
+ *  No safe-area stand-off here: MobileNav below it is the bottom-most
+ *  element in the shell, so it alone carries the safe-area lift (applying
+ *  it here too left an empty band under the seek line). On the <footer>
+ *  rather than on either layout inside it, so the two cannot disagree, and
+ *  shared with the design gallery's preview so that cannot drift either. */
 export const PLAYER_BAR_CHROME =
-  'shrink-0 bg-sidebar border-t border-sidebar-border flex flex-col safe-area-bottom';
+  'shrink-0 bg-sidebar border-t border-sidebar-border flex flex-col';
 
 /** Play/pause: a 48px hit box (what a finger presses) with a smaller 36px
  *  solid white disc drawn inside it, so the button sits in proportion with

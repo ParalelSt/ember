@@ -1083,7 +1083,7 @@ describe('DizajnPage', () => {
       expect(within(marquee).getAllByText(MOCK_MOBILE_NOW_PLAYING.title)).not.toHaveLength(0);
     });
 
-    it('lifts the bar and the nav by the safe-area inset in every frame', () => {
+    it('lifts only the nav by the safe-area inset in every frame, not the bar too', () => {
       render(<DizajnPage />);
       const shells = within(section()).getAllByTestId('shell-preview');
       expect(shells).toHaveLength(FRAME_COUNT);
@@ -1092,9 +1092,11 @@ describe('DizajnPage', () => {
         expect(shell.dataset.bottomInset).toBe('48');
         expect(shell.style.getPropertyValue('--safe-bottom')).toBe('48px');
       }
-      // Both the bar and the nav spend it, through the one shared class.
+      // The bar itself spends none of it: MobileNav below it is the
+      // bottom-most element in the shell, so only it carries the lift.
+      // Applying it to both left an empty 48px band under the seek line.
       for (const bar of bars()) {
-        expect(bar.closest('footer')).toHaveClass('safe-area-bottom');
+        expect(bar.closest('footer')).not.toHaveClass('safe-area-bottom');
       }
       const navs = within(section()).getAllByTestId('mock-mobile-nav');
       expect(navs).toHaveLength(FRAME_COUNT);
