@@ -362,7 +362,7 @@ export default function DizajnPage() {
           Then the sizes, picked from four presets tried here:{' '}
           <span className="font-semibold text-foreground">Balanced, with a smaller play button</span>{' '}
           (&quot;the button is too big while the rest is good&quot;). A 56px artwork, the name at 16px
-          and the artist at 14px, and play drawn as a 36px white disc inside the same 48px hit box, so
+          and the artist at 14px, and play drawn as a 40px white disc inside the same 48px hit box, so
           it sits in proportion with the artwork and is still easy to hit.
         </p>
         <p className="text-meta mb-block">

@@ -7,7 +7,7 @@
  *  Signs in (EMBER_EMAIL / EMBER_PASSWORD), opens /dizajn in a window wide
  *  enough that the three phone frames draw 1:1, and measures the REAL
  *  PhonePlayerBar in each frame: the artwork (56), the play hit box (48)
- *  and the visible disc inside it (36, glyph 18), the name and artist font
+ *  and the visible disc inside it (40, glyph 20), the name and artist font
  *  sizes (16 / 14), the bar height and the name box at 390 and 360. The
  *  bar height and name boxes must equal what the section quotes. The size
  *  pickers are gone: a choice they saved in localStorage changes nothing,
@@ -28,7 +28,7 @@ const EMAIL = process.env.EMBER_EMAIL ?? 'strixparalel@gmail.com';
 const PASSWORD = process.env.EMBER_PASSWORD ?? 'EmberTest2026!';
 const SHOTS = process.env.SHOT_DIR ?? '';
 // What ships (Balanced, with a smaller play disc), in CSS px.
-const WANT = { art: 56, disc: 36, glyph: 18, hit: 48, title: 16, artist: 14 };
+const WANT = { art: 56, disc: 40, glyph: 20, hit: 48, title: 16, artist: 14 };
 // The keys the removed Bar size / Play style pickers saved under.
 const OLD_KEYS = ['dizajn-mobileplayer-size', 'dizajn-mobileplayer-play-style'];
 
@@ -131,8 +131,8 @@ try {
   check('the section quotes the measured name boxes',
     m.taps.includes(`${f390.name}px at 390, ${f360.name}px at 360`), m.taps);
   check('the section quotes the measured bar height', m.taps.includes(`Bar height: ${f390.bar}px`), m.taps);
-  check('the section quotes the 36px disc in the 48px hit box, artwork 56',
-    m.taps.includes('play 48px (a 36px disc inside it), artwork 56px'), m.taps);
+  check('the section quotes the 40px disc in the 48px hit box, artwork 56',
+    m.taps.includes('play 48px (a 40px disc inside it), artwork 56px'), m.taps);
 
   if (SHOTS) {
     fs.mkdirSync(SHOTS, { recursive: true });

@@ -19,10 +19,10 @@ import type { Track } from '@/types/track';
 export const PLAYER_BAR_CHROME =
   'shrink-0 bg-sidebar border-t border-sidebar-border flex flex-col';
 
-/** Play/pause: a 48px hit box (what a finger presses) with a smaller 36px
+/** Play/pause: a 48px hit box (what a finger presses) with a smaller 40px
  *  solid white disc drawn inside it, so the button sits in proportion with
  *  the 56px artwork without the tap target shrinking with it. The glyph is
- *  half the disc (18px), the same ratio the desktop disc uses. */
+ *  half the disc (20px), the same ratio the desktop disc uses. */
 function BarPlayButton({ playing, onToggle }: { playing: boolean; onToggle: () => void }) {
   const Glyph = playing ? PauseIcon : PlayIcon;
   return (
@@ -35,11 +35,11 @@ function BarPlayButton({ playing, onToggle }: { playing: boolean; onToggle: () =
     >
       <span
         data-testid="phone-play-disc"
-        className="flex size-9 items-center justify-center rounded-full bg-foreground text-background"
+        className="flex size-10 items-center justify-center rounded-full bg-foreground text-background"
       >
         {/* The play triangle's weight sits left of its box: a whole pixel
-            nudge centres it at 18px and keeps it crisp. */}
-        <Glyph className={cn('size-4.5 fill-current', !playing && 'translate-x-px')} />
+            nudge centres it at 20px and keeps it crisp. */}
+        <Glyph className={cn('size-5 fill-current', !playing && 'translate-x-px')} />
       </span>
     </Button>
   );
@@ -60,7 +60,7 @@ export interface PhonePlayerBarProps {
 /**
  * The phone player bar: the old one-row shape, stripped to what a glance
  * needs. A 56px artwork, the song name (16px, scrolling with MarqueeText
- * when it overflows) and artist (14px), and one play/pause button, a 36px
+ * when it overflows) and artist (14px), and one play/pause button, a 40px
  * disc in a 48px hit box; the thin seek line under all of it. Previous,
  * next and the queue are not here: they live on the full-screen NowPlaying
  * view, which a tap on the bar opens. The name gets about 224px at a 390px

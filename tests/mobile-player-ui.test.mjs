@@ -2,7 +2,7 @@
  *  button), with previous, next and the queue on the full-screen view it
  *  opens, and a bar plus nav that stand clear of Android's system buttons.
  *  At the owner's pick of sizes: Balanced (artwork 56, name 16px, artist
- *  14px) with play drawn as a 36px disc inside a 48px hit box.
+ *  14px) with play drawn as a 40px disc inside a 48px hit box.
  *
  *      node tests/mobile-player-ui.test.mjs     # or: npm run test:mobile-player
  *
@@ -12,7 +12,7 @@
  *
  *    - the song name has a box of at least 220px at 390 (190px at 360),
  *    - the artwork is 56px, the name 16px and the artist 14px,
- *    - play is a 48px hit box with a 36px disc centred in it (18px glyph),
+ *    - play is a 48px hit box with a 40px disc centred in it (20px glyph),
  *      and play is the bar's only control: no previous, next or queue,
  *    - the bar is about 100px tall,
  *    - a long name scrolls, a short one sits perfectly still,
@@ -237,15 +237,15 @@ for (const [w, h] of [[390, 844], [360, 740]]) {
     m.titlePx === 16 && m.artistPx === 14, `name ${m.titlePx}px, artist ${m.artistPx}px`);
   check(at('play\'s hit area is 48px square'),
     !!m.play && m.play.w === 48 && m.play.h === 48, m.play ? `${m.play.w}x${m.play.h}` : 'missing');
-  check(at('play is drawn as one 36px solid disc in the foreground (white)'),
-    m.discs === 1 && m.disc.w === 36 && m.disc.h === 36 && m.discBg === m.fg && !/, 0\)$/.test(m.discBg),
+  check(at('play is drawn as one 40px solid disc in the foreground (white)'),
+    m.discs === 1 && m.disc.w === 40 && m.disc.h === 40 && m.discBg === m.fg && !/, 0\)$/.test(m.discBg),
     m.disc ? `${m.discs} disc(s), ${m.disc.w}x${m.disc.h}, ${m.discBg} vs foreground ${m.fg}` : 'missing');
   check(at('the disc is centred in the hit area'),
     !!m.disc && Math.abs((m.disc.x + m.disc.w / 2) - (m.play.x + m.play.w / 2)) <= 1
       && Math.abs((m.disc.y + m.disc.h / 2) - (m.play.y + m.play.h / 2)) <= 1,
     m.disc ? `disc ${m.disc.x},${m.disc.y} in ${m.play.x},${m.play.y}` : 'missing');
   check(at('the glyph is 18px, inside the disc'),
-    !!m.glyph && m.glyph.w === 18 && m.glyph.h === 18
+    !!m.glyph && m.glyph.w === 20 && m.glyph.h === 20
       && m.glyph.x >= m.disc.x && m.glyph.x + m.glyph.w <= m.disc.x + m.disc.w
       && m.glyph.y >= m.disc.y && m.glyph.y + m.glyph.h <= m.disc.y + m.disc.h,
     m.glyph ? `${m.glyph.w}x${m.glyph.h} at ${m.glyph.x},${m.glyph.y}` : 'missing');
@@ -360,7 +360,7 @@ for (const [w, h] of [[390, 844], [360, 740]]) {
       lifted.nav.bottom - lifted.navPadBottom <= lifted.innerH - INSET_PX + 1,
       `nav content ends at ${lifted.nav.bottom - lifted.navPadBottom}, strip starts at ${lifted.innerH - INSET_PX}`);
     check(at(`[pass ${pass}] the tap targets did not shrink to pay for the lift`),
-      lifted.play.h === 48 && lifted.disc.h === 36 && lifted.artwork.h === 56,
+      lifted.play.h === 48 && lifted.disc.h === 40 && lifted.artwork.h === 56,
       `play ${lifted.play.h}, disc ${lifted.disc.h}, artwork ${lifted.artwork.h}`);
 
     if (pass === 1 && SHOTS) await page.screenshot({ path: path.join(SHOTS, `phone-${w}-long-inset.png`) });

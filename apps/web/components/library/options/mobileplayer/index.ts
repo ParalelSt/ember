@@ -22,7 +22,7 @@ export const BEFORE_TITLE_PX = 38;
  *  built gallery and are asserted (as floors) against the live bar by
  *  tests/mobile-player-ui.test.mjs. */
 export const SHIPPED_TAPS =
-  'play 48px (a 36px disc inside it), artwork 56px (previous, next and queue: full-screen view)';
+  'play 48px (a 40px disc inside it), artwork 56px (previous, next and queue: full-screen view)';
 export const SHIPPED_TITLE_PX_390 = 224;
 export const SHIPPED_TITLE_PX_360 = 194;
 export const SHIPPED_BAR_HEIGHT = 100;

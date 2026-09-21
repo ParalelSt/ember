@@ -1041,9 +1041,9 @@ describe('DizajnPage', () => {
       expect(bars()).toHaveLength(FRAME_COUNT);
       for (const bar of bars()) {
         expect(bar.querySelector('[data-testid="phone-player-title-row"] .size-art-bar')).not.toBeNull();
-        // The shipped play button: a 36px disc inside the 48px hit box.
+        // The shipped play button: a 40px disc inside the 48px hit box.
         expect(within(bar).getByRole('button', { name: 'Pause' })).toHaveClass('size-12');
-        expect(within(bar).getByTestId('phone-play-disc')).toHaveClass('size-9', 'bg-foreground');
+        expect(within(bar).getByTestId('phone-play-disc')).toHaveClass('size-10', 'bg-foreground');
         // The size presets are gone: the bar takes no size or style.
         expect(bar.dataset.size).toBeUndefined();
         expect(bar.dataset.playStyle).toBeUndefined();
@@ -1106,7 +1106,7 @@ describe('DizajnPage', () => {
     it('quotes the shipped tap targets and what they replaced', () => {
       render(<DizajnPage />);
       const taps = within(section()).getByTestId('mobileplayer-taps');
-      expect(taps).toHaveTextContent('play 48px (a 36px disc inside it), artwork 56px (previous, next and queue: full-screen view)');
+      expect(taps).toHaveTextContent('play 48px (a 40px disc inside it), artwork 56px (previous, next and queue: full-screen view)');
       expect(taps).toHaveTextContent('224px at 390, 194px at 360');
       expect(taps).toHaveTextContent('Bar height: 100px');
       expect(taps).toHaveTextContent('The phone bar before this work, for comparison');

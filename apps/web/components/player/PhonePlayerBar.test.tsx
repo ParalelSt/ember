@@ -115,7 +115,7 @@ describe('PhonePlayerBar', () => {
     expect(bar.dataset.playStyle).toBeUndefined();
   });
 
-  it('draws play as a 36px white disc inside a 48px hit box, glyph scaled to match', () => {
+  it('draws play as a 40px white disc inside a 48px hit box, glyph scaled to match', () => {
     setup();
     const play = screen.getByRole('button', { name: 'Pause' });
     expect(sizePx(play)).toBe(48);
@@ -124,11 +124,11 @@ describe('PhonePlayerBar', () => {
     // The hit box itself paints nothing: the disc inside it is what shows.
     expect(play).not.toHaveClass('bg-foreground');
     const disc = within(play).getByTestId('phone-play-disc');
-    expect(sizePx(disc)).toBe(36);
+    expect(sizePx(disc)).toBe(40);
     expect(disc).toHaveClass('rounded-full', 'bg-foreground', 'text-background', 'items-center', 'justify-center');
     // Half the disc, the ratio the desktop disc uses.
     const glyph = disc.querySelector('svg')!;
-    expect(sizePx(glyph)).toBe(18);
+    expect(sizePx(glyph)).toBe(20);
     expect(glyph).toHaveClass('fill-current');
     expect(within(play).getAllByTestId('phone-play-disc')).toHaveLength(1);
   });
@@ -142,7 +142,7 @@ describe('PhonePlayerBar', () => {
     // The play triangle keeps the disc and the glyph size, nudged one whole
     // pixel right so it reads centred.
     const glyph = within(play).getByTestId('phone-play-disc').querySelector('svg')!;
-    expect(sizePx(glyph)).toBe(18);
+    expect(sizePx(glyph)).toBe(20);
     expect(glyph).toHaveClass('translate-x-px');
   });
 
