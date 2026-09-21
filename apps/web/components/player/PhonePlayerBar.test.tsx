@@ -1,6 +1,14 @@
 import { describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, within } from '@testing-library/react';
-import { PhonePlayerBar, PLAYER_BAR_CHROME } from './PhonePlayerBar';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import {
+  PHONE_BAR_SIZES,
+  PhonePlayerBar,
+  PLAYER_BAR_CHROME,
+  type PhoneBarSize,
+  type PhonePlayStyle,
+} from './PhonePlayerBar';
 import type { Track } from '@/types/track';
 
 // base-ui's Slider reaches the repo root's hoisted React 18 through its own
@@ -130,5 +138,169 @@ describe('PhonePlayerBar', () => {
     expect(PLAYER_BAR_CHROME.split(' ')).toContain('safe-area-bottom');
     expect(PLAYER_BAR_CHROME.split(' ')).toContain('bg-sidebar');
     expect(PLAYER_BAR_CHROME.split(' ')).toContain('border-t');
+  });
+});
+
+// The px a size/type class draws, resolved the way the stylesheet does:
+// `size-N` is N * 4px, `size-art-*` reads its --spacing-art-* token from
+// globals.css, and the type scale is Tailwind's (xs 12, sm 14, base 16).
+const GLOBALS = readFileSync(join(__dirname, '../../app/globals.css'), 'utf8');
+function sizePx(cls: string): number {
+  const token = cls.match(/(?:^|\s)size-(art-[a-z-]+)(?:\s|$)/);
+  if (token) {
+    const rem = GLOBALS.match(new RegExp(`--spacing-${token[1]}:\\s*([\\d.]+)rem;`));
+    if (!rem) throw new Error(`no --spacing-${token[1]} in globals.css`);
+    return Number(rem[1]) * 16;
+  }
+  const n = cls.match(/(?:^|\s)size-([\d.]+)(?:\s|$)/);
+  if (!n) throw new Error(`no size-* in "${cls}"`);
+  return Number(n[1]) * 4;
+}
+const FONT_PX: Record<string, number> = { 'text-xs': 12, 'text-sm': 14, 'text-base': 16 };
+function fontPx(cls: string): number {
+  const hit = Object.keys(FONT_PX).find((k) => cls.split(/\s+/).includes(k));
+  if (!hit) throw new Error(`no type-scale class in "${cls}"`);
+  return FONT_PX[hit];
+}
+
+function renderBar(size?: PhoneBarSize, playStyle?: PhonePlayStyle) {
+  return render(
+    <PhonePlayerBar
+      track={TRACK}
+      playing
+      position={92}
+      duration={264}
+      onToggle={vi.fn()}
+      onSeek={vi.fn()}
+      onOpen={vi.fn()}
+      size={size}
+      playStyle={playStyle}
+    />,
+  );
+}
+
+function parts(container: HTMLElement) {
+  const bar = within(container).getByTestId('phone-player-bar');
+  const titleRow = within(bar).getByTestId('phone-player-title-row');
+  const marquee = within(titleRow).getByTestId('marquee');
+  return {
+    bar,
+    row: within(bar).getByTestId('phone-player-row'),
+    art: titleRow.firstElementChild as HTMLElement,
+    marquee,
+    artist: marquee.nextElementSibling as HTMLElement,
+    play: within(bar).getByRole('button', { name: 'Pause' }),
+    disc: within(bar).queryByTestId('phone-play-disc'),
+  };
+}
+
+describe('PhonePlayerBar size presets', () => {
+  const SIZES = Object.keys(PHONE_BAR_SIZES) as PhoneBarSize[];
+
+  it('offers the four presets, Today first', () => {
+    expect(SIZES).toEqual(['today', 'balanced', 'art', 'compact']);
+  });
+
+  // The live app passes neither prop: it must render exactly the bar that
+  // shipped before the presets existed, class for class.
+  it('renders today exactly by default', () => {
+    const { container } = renderBar();
+    const p = parts(container);
+    expect(p.bar.dataset).toMatchObject({ size: 'today', playStyle: 'disc' });
+    expect(p.row.className).toBe('flex cursor-pointer items-center gap-block px-block pt-row pb-cluster');
+    expect(p.art.className).toBe('relative overflow-hidden size-art-sm shrink-0 rounded-md bg-black');
+    expect(p.marquee.className).toBe('relative overflow-hidden whitespace-nowrap text-sm font-semibold');
+    expect(p.artist.className).toBe('truncate text-xs text-muted-foreground');
+    // Today's button is the shared 48px PlayPauseButton: a solid white disc
+    // that is its own hit box, with the 24px glyph inside.
+    expect(box(p.play)).toEqual([48, 48]);
+    expect(p.play).toHaveClass('shrink-0', 'rounded-full', 'bg-foreground', 'text-background');
+    expect(p.disc).toBeNull();
+    expect(p.play.querySelector('svg')).toHaveClass('size-6');
+  });
+
+  it('the explicit today + disc is the same markup as the default', () => {
+    const a = renderBar().container.innerHTML;
+    const b = renderBar('today', 'disc').container.innerHTML;
+    expect(b).toBe(a);
+  });
+
+  for (const size of ['balanced', 'art', 'compact'] as const) {
+    it(`${size}: artwork, type, row padding and a disc inside a larger hit box`, () => {
+      const spec = PHONE_BAR_SIZES[size];
+      const { container } = renderBar(size, 'disc');
+      const p = parts(container);
+      expect(p.bar.dataset).toMatchObject({ size, playStyle: 'disc' });
+      expect(p.row.className).toBe(`flex cursor-pointer items-center gap-block px-block ${spec.row}`);
+      expect(p.art).toHaveClass(...spec.art.split(' '));
+      expect(p.marquee).toHaveClass(...spec.title.split(' '));
+      expect(p.artist).toHaveClass(...spec.artist.split(' '), 'truncate', 'text-muted-foreground');
+      expect(p.play).toHaveClass(...spec.hit.split(' '), 'shrink-0', 'rounded-full');
+      expect(p.disc).not.toBeNull();
+      expect(p.disc).toHaveClass(...spec.disc.split(' '), 'rounded-full', 'bg-foreground', 'text-background');
+      expect(p.disc!.querySelector('svg')).toHaveClass(spec.discIcon);
+    });
+  }
+
+  it('sizes each preset the way the brief asks', () => {
+    const px = (size: PhoneBarSize) => {
+      const s = PHONE_BAR_SIZES[size];
+      return {
+        art: sizePx(s.art),
+        disc: sizePx(s.disc),
+        hit: sizePx(s.hit),
+        title: fontPx(s.title),
+        artist: fontPx(s.artist),
+      };
+    };
+    expect(px('today')).toEqual({ art: 48, disc: 48, hit: 48, title: 14, artist: 12 });
+    expect(px('balanced')).toEqual({ art: 56, disc: 40, hit: 48, title: 16, artist: 14 });
+    expect(px('art')).toEqual({ art: 64, disc: 44, hit: 48, title: 16, artist: 14 });
+    expect(px('compact')).toEqual({ art: 48, disc: 40, hit: 48, title: 16, artist: 14 });
+    for (const size of SIZES) {
+      // Every tap target at least 44px; the disc never outgrows its hit box.
+      expect(px(size).hit).toBeGreaterThanOrEqual(44);
+      expect(px(size).disc).toBeLessThanOrEqual(px(size).hit);
+    }
+    // Compact's row is the shortest: less padding than today's pt-row.
+    expect(PHONE_BAR_SIZES.compact.row).toBe('pt-cluster pb-inset');
+  });
+
+  for (const size of Object.keys(PHONE_BAR_SIZES) as PhoneBarSize[]) {
+    it(`${size}: both play styles share one hit box`, () => {
+      const disc = parts(renderBar(size, 'disc').container);
+      const icon = parts(renderBar(size, 'icon').container);
+      expect(sizePx(icon.play.className)).toBe(48);
+      expect(sizePx(icon.play.className)).toBe(size === 'today' ? box(disc.play)[0] : sizePx(disc.play.className));
+      // Icon only: no disc, the bare glyph in the text colour.
+      expect(icon.disc).toBeNull();
+      expect(icon.play).toHaveClass('text-foreground');
+      expect(icon.play).not.toHaveClass('bg-foreground');
+      expect(icon.play.querySelector('svg')).toHaveClass(PHONE_BAR_SIZES[size].bareIcon);
+      expect(icon.bar.dataset.playStyle).toBe('icon');
+    });
+  }
+
+  it('the presets keep the behaviour: play only plays, the row opens', () => {
+    const onToggle = vi.fn();
+    const onOpen = vi.fn();
+    render(
+      <PhonePlayerBar
+        track={TRACK}
+        playing={false}
+        position={0}
+        duration={264}
+        onToggle={onToggle}
+        onSeek={vi.fn()}
+        onOpen={onOpen}
+        size="balanced"
+        playStyle="icon"
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Play' }).querySelector('svg')!);
+    expect(onToggle).toHaveBeenCalledTimes(1);
+    expect(onOpen).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByTestId('phone-player-row'));
+    expect(onOpen).toHaveBeenCalledTimes(1);
   });
 });
