@@ -94,6 +94,7 @@ const cookie = encodeURIComponent(JSON.stringify({ token: auth.token, record: au
 // would push it past the box and it would (correctly) start scrolling.
 const stamp = Date.now().toString(36).slice(-4);
 const titles = { long: `${LONG_TITLE} ${stamp}`, short: `${SHORT_TITLE} ${stamp}` };
+const uploadIds = [];
 for (const title of [titles.long, titles.short]) {
   const form = new FormData();
   form.append('file', new Blob([new Uint8Array(wav())], { type: 'audio/wav' }), 'a.wav');
@@ -101,6 +102,7 @@ for (const title of [titles.long, titles.short]) {
   form.append('artist', 'Marquee Tester');
   const r = await fetch(`${APP_URL}/api/uploads`, { method: 'POST', body: form, headers: { cookie: `pb_auth=${cookie}` } });
   if (!r.ok) throw new Error(`seed failed ${r.status}: ${(await r.text()).slice(0, 200)}`);
+  uploadIds.push((await r.json()).track.sourceId);
 }
 
 const checks = [];
@@ -247,6 +249,13 @@ check('short title: perfectly still', distinct(short, 'transform').length === 1,
 check('no uncaught page errors', pageErrors.length === 0, pageErrors.join(' | '));
 
 await browser.close();
+
+// Leave the sandbox as it was: the uploads (record, file, cover) through the
+// app's own DELETE, then the user.
+for (const id of uploadIds) {
+  await fetch(`${APP_URL}/api/uploads/${id}`, { method: 'DELETE', headers: { cookie: `pb_auth=${cookie}` } });
+}
+await fetch(`${PB_URL}/api/collections/users/records/${auth.record.id}`, { method: 'DELETE', headers: { Authorization: token } });
 
 const failed = checks.filter((p) => !p).length;
 console.log(`\n${checks.length - failed}/${checks.length} checks passed`);

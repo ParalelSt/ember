@@ -271,6 +271,8 @@ for (const [w, h] of [[390, 844], [360, 740]]) {
   const sheet = page.getByRole('dialog').filter({ hasText: 'Next up' }).or(page.getByRole('dialog').filter({ hasText: 'Now playing' }));
   const sheetShown = await sheet.first().waitFor({ state: 'visible', timeout: 5000 }).then(() => true, () => false);
   check(at('Queue in the full-screen view opens the queue'), sheetShown);
+  // Let the sheet's slide-in finish before the picture.
+  await page.waitForTimeout(600);
   if (SHOTS) await page.screenshot({ path: path.join(SHOTS, `phone-${w}-queue.png`) });
   await page.keyboard.press('Escape');
   await page.waitForTimeout(400);
