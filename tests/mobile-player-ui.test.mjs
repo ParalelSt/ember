@@ -1,6 +1,8 @@
 /** The phone player bar: one row (artwork, a scrolling song name, one play
  *  button), with previous, next and the queue on the full-screen view it
  *  opens, and a bar plus nav that stand clear of Android's system buttons.
+ *  At the owner's pick of sizes: Balanced (artwork 56, name 16px, artist
+ *  14px) with play drawn as a 36px disc inside a 48px hit box.
  *
  *      node tests/mobile-player-ui.test.mjs     # or: npm run test:mobile-player
  *
@@ -8,9 +10,11 @@
  *  (390x844 and 360x740), plays a long-titled upload and a short-titled one,
  *  and measures the bar that ships:
  *
- *    - the song name has a box of at least 200px at 390 (170px at 360),
- *    - play and the artwork are at least 48px, and play is the bar's only
- *      control: no previous, next or queue in it,
+ *    - the song name has a box of at least 220px at 390 (190px at 360),
+ *    - the artwork is 56px, the name 16px and the artist 14px,
+ *    - play is a 48px hit box with a 36px disc centred in it (18px glyph),
+ *      and play is the bar's only control: no previous, next or queue,
+ *    - the bar is about 100px tall,
  *    - a long name scrolls, a short one sits perfectly still,
  *    - play toggles without opening the full-screen view; a tap on the name
  *      opens it, and it has previous, next and a queue that opens,
@@ -38,8 +42,8 @@ const SHOTS = process.env.SHOT_DIR ?? '';
 // Android's three-button navigation bar is 48dp: the inset the real phone
 // publishes, and the one this test publishes the same way.
 const INSET_PX = 48;
-// The name box floors per width: the gallery measured 232 and 202.
-const MIN_NAME_PX = { 390: 200, 360: 170 };
+// The name box floors per width: the gallery measured 224 and 194.
+const MIN_NAME_PX = { 390: 220, 360: 190 };
 // Wider than any phone's title box.
 const LONG_TITLE = 'A Very Long Song Title That Cannot Possibly Fit On One Phone Line';
 const SHORT_TITLE = 'Short One';
@@ -146,6 +150,10 @@ function measure() {
   const marquee = bar.querySelector('[data-testid="marquee"]');
   const track = marquee && marquee.querySelector('[data-testid="marquee-track"]');
   const view = document.querySelector('[data-testid="now-playing"]');
+  const art = bar.querySelector('.size-art-bar');
+  const disc = bar.querySelector('[data-testid="phone-play-disc"]');
+  const glyph = disc && disc.querySelector('svg');
+  const artistEl = marquee && marquee.nextElementSibling;
   return {
     bar: rect(footer),
     barPadBottom: Math.round(parseFloat(getComputedStyle(footer).paddingBottom)),
@@ -156,7 +164,16 @@ function measure() {
     copies: track ? track.children.length : 0,
     animation: track ? getComputedStyle(track).animationName : 'none',
     transform: track ? getComputedStyle(track).transform : 'none',
-    artwork: bar.querySelector('.size-art-sm') ? rect(bar.querySelector('.size-art-sm')) : null,
+    artwork: art ? rect(art) : null,
+    disc: disc ? rect(disc) : null,
+    discs: bar.querySelectorAll('[data-testid="phone-play-disc"]').length,
+    discBg: disc ? getComputedStyle(disc).backgroundColor : null,
+    // The theme's foreground (near white), read off the button's own text
+    // colour, since the disc is painted bg-foreground.
+    fg: disc ? getComputedStyle(disc.closest('button')).color : null,
+    glyph: glyph ? rect(glyph) : null,
+    titlePx: marquee ? parseFloat(getComputedStyle(marquee).fontSize) : null,
+    artistPx: artistEl ? parseFloat(getComputedStyle(artistEl).fontSize) : null,
     buttons: [...bar.querySelectorAll('button')].map((b) => b.getAttribute('aria-label')),
     play: control('Pause') || control('Play'),
     playLabel: (bar.querySelector('[aria-label="Pause"]') && 'Pause') || (bar.querySelector('[aria-label="Play"]') && 'Play'),
@@ -212,16 +229,29 @@ for (const [w, h] of [[390, 844], [360, 740]]) {
     m.marquee.w >= MIN_NAME_PX[w], `${m.marquee.w}px of ${w}`);
   check(at('play is the bar\'s only control: no previous, next or queue'),
     m.buttons.length === 1 && m.buttons[0] === 'Pause', JSON.stringify(m.buttons));
-  for (const label of ['play', 'artwork']) {
-    const box = m[label];
-    check(at(`${label} is at least 48px in both directions`),
-      !!box && box.w >= 48 && box.h >= 48, box ? `${box.w}x${box.h}` : 'missing');
-  }
+  check(at('the artwork is 56px square'),
+    !!m.artwork && m.artwork.w === 56 && m.artwork.h === 56, m.artwork ? `${m.artwork.w}x${m.artwork.h}` : 'missing');
+  check(at('the name is 16px and the artist 14px'),
+    m.titlePx === 16 && m.artistPx === 14, `name ${m.titlePx}px, artist ${m.artistPx}px`);
+  check(at('play\'s hit area is 48px square'),
+    !!m.play && m.play.w === 48 && m.play.h === 48, m.play ? `${m.play.w}x${m.play.h}` : 'missing');
+  check(at('play is drawn as one 36px solid disc in the foreground (white)'),
+    m.discs === 1 && m.disc.w === 36 && m.disc.h === 36 && m.discBg === m.fg && !/, 0\)$/.test(m.discBg),
+    m.disc ? `${m.discs} disc(s), ${m.disc.w}x${m.disc.h}, ${m.discBg} vs foreground ${m.fg}` : 'missing');
+  check(at('the disc is centred in the hit area'),
+    !!m.disc && Math.abs((m.disc.x + m.disc.w / 2) - (m.play.x + m.play.w / 2)) <= 1
+      && Math.abs((m.disc.y + m.disc.h / 2) - (m.play.y + m.play.h / 2)) <= 1,
+    m.disc ? `disc ${m.disc.x},${m.disc.y} in ${m.play.x},${m.play.y}` : 'missing');
+  check(at('the glyph is 18px, inside the disc'),
+    !!m.glyph && m.glyph.w === 18 && m.glyph.h === 18
+      && m.glyph.x >= m.disc.x && m.glyph.x + m.glyph.w <= m.disc.x + m.disc.w
+      && m.glyph.y >= m.disc.y && m.glyph.y + m.glyph.h <= m.disc.y + m.disc.h,
+    m.glyph ? `${m.glyph.w}x${m.glyph.h} at ${m.glyph.x},${m.glyph.y}` : 'missing');
   check(at('artwork, name and play sit on one row'),
     m.artwork.x < m.marquee.x && m.marquee.x + m.marquee.w <= m.play.x
       && Math.abs((m.artwork.y + m.artwork.h / 2) - (m.play.y + m.play.h / 2)) <= 2,
     `art x${m.artwork.x}, name x${m.marquee.x}+${m.marquee.w}, play x${m.play.x}`);
-  check(at('the bar is about 92px tall'), m.bar.h >= 86 && m.bar.h <= 98, `${m.bar.h}px`);
+  check(at('the bar is about 100px tall'), m.bar.h >= 96 && m.bar.h <= 104, `${m.bar.h}px`);
 
   check(at('nothing overflows the viewport horizontally'),
     m.docScrollW <= m.innerW, `scrollWidth ${m.docScrollW} vs ${m.innerW}`);
@@ -289,7 +319,7 @@ for (const [w, h] of [[390, 844], [360, 740]]) {
   check(at('the full-screen view closes again'), !t.viewOpen, `view open ${t.viewOpen}`);
 
   // A tap on the artwork opens it too.
-  await page.locator('[data-testid="phone-player-bar"] .size-art-sm').click();
+  await page.locator('[data-testid="phone-player-bar"] .size-art-bar').click();
   await page.waitForTimeout(500);
   t = await page.evaluate(measure);
   check(at('a tap on the artwork opens it too'), t.viewOpen, `view open ${t.viewOpen}`);
@@ -319,7 +349,8 @@ for (const [w, h] of [[390, 844], [360, 740]]) {
     lifted.row.bottom <= lifted.innerH - INSET_PX,
     `row ends at ${lifted.row.bottom}, strip starts at ${lifted.innerH - INSET_PX}`);
   check(at('the tap targets did not shrink to pay for the lift'),
-    lifted.play.h >= 48 && lifted.artwork.h >= 48, `play ${lifted.play.h}, artwork ${lifted.artwork.h}`);
+    lifted.play.h === 48 && lifted.disc.h === 36 && lifted.artwork.h === 56,
+    `play ${lifted.play.h}, disc ${lifted.disc.h}, artwork ${lifted.artwork.h}`);
 
   if (SHOTS) await page.screenshot({ path: path.join(SHOTS, `phone-${w}-long-inset.png`) });
   await setInset(page, null);

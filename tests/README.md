@@ -307,17 +307,17 @@ node tests/instant-search-ui.test.mjs               # or: npm run test:search-ui
 PB_URL=http://127.0.0.1:8091 APP_URL=http://127.0.0.1:3005 \
 node tests/marquee-ui.test.mjs                      # or: npm run test:marquee-ui
 
-# The phone player bar: two rows, 48px-and-up tap targets, a name box that
-# scrolls when it overruns, and the safe-area lift that keeps the bar and the
+# The phone player bar: one row at the shipped sizes (artwork 56, a 36px
+# play disc in a 48px hit box), a name box that scrolls when it overruns, and the safe-area lift that keeps the bar and the
 # bottom nav clear of Android's system buttons. PB_URL / APP_URL as above;
 # SHOT_DIR, if set, writes a screenshot per width and state into it.
 PB_URL=http://127.0.0.1:8091 APP_URL=http://127.0.0.1:3005 \
 node tests/mobile-player-ui.test.mjs                # or: npm run test:mobile-player
 
-# The phone bar's size presets on /dizajn: every Bar size and Play style is
-# measured in the gallery's frames and must equal the numbers the section
-# quotes. Signs in as EMBER_EMAIL / EMBER_PASSWORD; writes nothing. MEASURE=1
-# prints the measured numbers, SHOT_DIR keeps a screenshot per combination.
+# The phone bar's shipped sizes on /dizajn (Balanced, a 36px play disc in a
+# 48px hit box): measured in the gallery's frames and must equal the numbers
+# the section quotes; the old size pickers are gone. Signs in as
+# EMBER_EMAIL / EMBER_PASSWORD; writes nothing. SHOT_DIR keeps screenshots.
 node tests/phone-bar-sizes-ui.test.mjs              # or: npm run test:phone-bar-sizes
 
 # Playlist import: Spotify embed source, background jobs, picks (needs its own server, see below)
