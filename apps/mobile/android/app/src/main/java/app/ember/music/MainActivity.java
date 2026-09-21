@@ -2,6 +2,11 @@ package app.ember.music;
 
 import android.net.Uri;
 import android.os.Bundle;
+import android.webkit.WebView;
+import androidx.core.graphics.Insets;
+import androidx.core.view.ViewCompat;
+import androidx.core.view.WindowInsetsCompat;
+import androidx.webkit.ScriptHandler;
 import androidx.webkit.WebViewCompat;
 import androidx.webkit.WebViewFeature;
 import com.getcapacitor.BridgeActivity;
@@ -13,12 +18,82 @@ import java.util.Collections;
 import java.util.List;
 
 public class MainActivity extends BridgeActivity {
+
+    /** The document-start script currently publishing the insets, so a new
+     *  set of insets can replace it rather than pile up. */
+    private ScriptHandler insetScript;
+    /** The script last published, so identical insets are a no-op. */
+    private String publishedInsets = "";
+
     @Override
     public void onCreate(Bundle savedInstanceState) {
         registerPlugin(EmberPlayerPlugin.class);
         registerPlugin(EmberOfflinePlugin.class);
         super.onCreate(savedInstanceState);
         injectBridgeIntoErrorPage();
+        publishSafeAreaInsets();
+    }
+
+    /**
+     * Feed the window's real insets to the page as --ember-inset-* (see
+     * SafeAreaInsets).
+     *
+     * The app targets SDK 35, so Android 15 draws the status bar and the
+     * three-button navigation bar OVER the WebView; the WebView does not
+     * report either through env(safe-area-inset-*), so without this the
+     * bottom nav sits under the system buttons. Below SDK 35 the decor
+     * still fits the system windows, the WebView is laid out inside them
+     * and these insets arrive as 0 — which is correct there, and means
+     * nothing about those devices changes.
+     *
+     * Deliberately NOT Capacitor's own android.adjustMarginsForEdgeToEdge:
+     * that sets margins on the WebView, which letterboxes the page instead
+     * of telling it where the edges are, and still leaves env() at 0.
+     */
+    private void publishSafeAreaInsets() {
+        if (getBridge() == null || getBridge().getWebView() == null) return;
+        final WebView webView = getBridge().getWebView();
+        ViewCompat.setOnApplyWindowInsetsListener(webView, (v, windowInsets) -> {
+            Insets i = windowInsets.getInsets(WindowInsetsCompat.Type.systemBars() | WindowInsetsCompat.Type.displayCutout());
+            float density = getResources().getDisplayMetrics().density;
+            applySafeAreaInsets(
+                SafeAreaInsets.script(
+                    SafeAreaInsets.cssPx(i.top, density),
+                    SafeAreaInsets.cssPx(i.right, density),
+                    SafeAreaInsets.cssPx(i.bottom, density),
+                    SafeAreaInsets.cssPx(i.left, density)
+                )
+            );
+            // Returned unconsumed on purpose: consuming them would hide the
+            // insets from anything Capacitor or a plugin adds to the view.
+            return windowInsets;
+        });
+        ViewCompat.requestApplyInsets(webView);
+    }
+
+    /**
+     * Run one insets script against the page that is open, and leave it
+     * registered as a document-start script so a navigation (Ember is a
+     * server app: every route change can be a real load) does not lose it.
+     */
+    private void applySafeAreaInsets(String js) {
+        if (js.equals(publishedInsets)) return;
+        publishedInsets = js;
+        WebView webView = getBridge().getWebView();
+        try {
+            webView.evaluateJavascript(js, null);
+            if (!WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) return;
+            if (insetScript != null) {
+                insetScript.remove();
+                insetScript = null;
+            }
+            insetScript = WebViewCompat.addDocumentStartJavaScript(webView, js, Collections.singleton("*"));
+        } catch (Exception e) {
+            // A page with no insets published still renders; it just sits
+            // under the system bars, which is where it sat before. Never
+            // take the app down for it.
+            Logger.error("safe-area inset publish failed", e);
+        }
     }
 
     /**
