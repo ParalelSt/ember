@@ -21,8 +21,8 @@ export function MobileNav({ onSearchClick }: MobileNavProps) {
   const pathname = usePathname();
   return (
     <nav
-      className="md:hidden shrink-0 flex items-stretch justify-around bg-sidebar border-t border-sidebar-border"
-      style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
+      data-testid="mobile-nav"
+      className="safe-area-bottom md:hidden shrink-0 flex items-stretch justify-around bg-sidebar border-t border-sidebar-border"
     >
       {NAV.map(({ href, label, icon: Icon, isSearch }) => {
         const isActive = href === '/' ? pathname === '/' : pathname.startsWith(href);

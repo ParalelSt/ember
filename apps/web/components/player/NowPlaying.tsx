@@ -188,7 +188,7 @@ export function NowPlaying() {
         onClick={() => setOpen(false)}
         aria-label="Close"
         className="absolute z-20 left-3 h-10 w-10 text-foreground/80 hover:text-foreground"
-        style={{ top: 'calc(env(safe-area-inset-top, 0px) + 1rem)' }}
+        style={{ top: 'calc(var(--safe-top) + 1rem)' }}
       >
         <ChevronDownIcon className="h-6 w-6" />
       </Button>
@@ -200,7 +200,7 @@ export function NowPlaying() {
           aria-label="Guitar tabs"
           title="Guitar tabs"
           className="absolute z-20 right-3 h-10 w-10 text-foreground/80 hover:text-foreground"
-          style={{ top: 'calc(env(safe-area-inset-top, 0px) + 1rem)' }}
+          style={{ top: 'calc(var(--safe-top) + 1rem)' }}
         >
           <TabsIcon className="h-5 w-5" />
         </Button>
@@ -212,8 +212,8 @@ export function NowPlaying() {
         style={{
           // Padding-top clears the floating close button (its top offset
           // + button height) so artwork doesn't slide under the chevron.
-          paddingTop: 'calc(env(safe-area-inset-top, 0px) + 3rem)',
-          paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 1.5rem)',
+          paddingTop: 'calc(var(--safe-top) + 3rem)',
+          paddingBottom: 'calc(var(--safe-bottom) + 1.5rem)',
         }}
       >
       {/* "Player" pane — sized to fill the first viewport so the artwork-

@@ -126,6 +126,18 @@
   --sidebar-w: 15rem;
   --lyrics-w: 28rem;
   --content-max: 80rem;
+
+  /* Safe-area insets: the ONE source of truth for how far the bars have to
+     stand off each edge. Two sources feed it, and whichever is real wins.
+
+     env() is what a browser reports (iOS notch and home indicator, a
+     desktop browser 0). The Capacitor Android WebView reports 0 for the
+     system navigation bar even though SDK 35 draws it OVER the WebView, so
+     Ember's MainActivity reads the real window insets and publishes them as
+     --ember-inset-* on <html>. Both fall back to 0px, so where there is no
+     inset at all these resolve to 0 and nothing moves. */
+  --safe-top: max(env(safe-area-inset-top, 0px), var(--ember-inset-top, 0px));
+  --safe-bottom: max(env(safe-area-inset-bottom, 0px), var(--ember-inset-bottom, 0px));
 }
 
 /* Type utilities: one name per repeated class string so call sites read as
@@ -195,6 +207,14 @@
      `block` is the only one of our spacing token names that collides with
      a core utility; lib/themeCollisions.test.ts keeps that true. */
   .inline-block { inline-size: auto; }
+
+  /* Stand a bar off the bottom / top edge of the screen by the safe-area
+     inset (Android's system navigation, an iPhone's home indicator or
+     notch). The value lives once, on :root above; these are the only two
+     classes that spend it, so there is no second copy of the rule to drift.
+     Both are 0 wherever there is no inset, which is every desktop browser. */
+  .safe-area-bottom { padding-bottom: var(--safe-bottom); }
+  .safe-area-top    { padding-top: var(--safe-top); }
 }
 
 /* Marquee for overflowing titles (full-screen NowPlaying). Continuous

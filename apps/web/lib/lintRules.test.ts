@@ -212,7 +212,7 @@ const SPACING_BASELINE: Record<string, number> = {
   'components/player/LyricsBody.tsx': 22,
   'components/player/NowPlaying.tsx': 8,
   'components/player/NowPlayingSummary.tsx': 2,
-  'components/player/PlayerBar.tsx': 9,
+  'components/player/PlayerBar.tsx': 8,
   'components/player/QueueSheet.tsx': 11,
   'components/player/SeekBar.tsx': 2,
   'components/player/TransportControls.tsx': 2,
@@ -267,5 +267,48 @@ describe('spacing ratchet', () => {
       expect(counts.get(file), file).toBe(0);
       expect(SPACING_BASELINE[file], file).toBeUndefined();
     }
+  });
+});
+
+// The safe-area inset (Android's system navigation bar, an iPhone's home
+// indicator and notch) is one value in one place: --safe-top / --safe-bottom
+// on :root in globals.css, spent through two utility classes. Before this,
+// three components each carried their own `env(safe-area-inset-*, 0px)`
+// string, which is how one of them could be fixed and the others not.
+describe('safe-area insets', () => {
+  const css = readFileSync(join(ROOT, 'app/globals.css'), 'utf8');
+  const occurrences = (needle: string) => css.split(needle).length - 1;
+
+  it('derives both insets once, from env() and the native inset, each falling back to 0', () => {
+    expect(occurrences('--safe-top: max(env(safe-area-inset-top, 0px), var(--ember-inset-top, 0px));')).toBe(1);
+    expect(occurrences('--safe-bottom: max(env(safe-area-inset-bottom, 0px), var(--ember-inset-bottom, 0px));')).toBe(1);
+    // Both arms fall back to 0px, so where there is no inset at all — every
+    // desktop browser, iOS Safari with nothing in the way — the bars move by
+    // nothing and the layout is exactly what it was.
+    expect(occurrences('env(safe-area-inset-top, 0px)')).toBe(1);
+    expect(occurrences('env(safe-area-inset-bottom, 0px)')).toBe(1);
+  });
+
+  it('spends them through exactly one utility class each', () => {
+    expect(occurrences('.safe-area-bottom { padding-bottom: var(--safe-bottom); }')).toBe(1);
+    expect(occurrences('.safe-area-top    { padding-top: var(--safe-top); }')).toBe(1);
+  });
+
+  it('leaves no component with an env(safe-area-inset-*) string of its own', () => {
+    const hits = allTsxFiles()
+      .filter((f) => /style=\{\{[^}]*env\(safe-area-inset-/.test(readFileSync(f, 'utf8')))
+      .map((f) => relative(ROOT, f));
+    expect(hits, hits.join('\n')).toEqual([]);
+  });
+
+  it('is what the bars and the nav actually use', () => {
+    const uses = (file: string, token: string) =>
+      expect(readFileSync(join(ROOT, file), 'utf8'), file).toContain(token);
+    uses('components/player/PhonePlayerBar.tsx', 'safe-area-bottom');
+    uses('components/player/PlayerBar.tsx', 'safe-area-bottom');
+    uses('components/nav/MobileNav.tsx', 'safe-area-bottom');
+    uses('components/nav/TopBar.tsx', 'var(--safe-top)');
+    uses('components/player/NowPlaying.tsx', 'var(--safe-top)');
+    uses('components/player/NowPlaying.tsx', 'var(--safe-bottom)');
   });
 });
