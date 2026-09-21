@@ -112,6 +112,9 @@ const pageErrors = [];
 function measure() {
   const bar = document.querySelector('[data-testid="phone-player-bar"]');
   if (!bar) return null;
+  // The bar is inside the one <footer> that carries the strip's chrome and
+  // the safe-area stand-off (PLAYER_BAR_CHROME).
+  const footer = bar.closest('footer');
   const nav = document.querySelector('[data-testid="mobile-nav"]');
   const rect = (el) => { const r = el.getBoundingClientRect(); return { x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.width), h: Math.round(r.height), bottom: Math.round(r.bottom) }; };
   const control = (label) => {
@@ -121,8 +124,8 @@ function measure() {
   const marquee = bar.querySelector('[data-testid="marquee"]');
   const track = marquee && marquee.querySelector('[data-testid="marquee-track"]');
   return {
-    bar: rect(bar),
-    barPadBottom: Math.round(parseFloat(getComputedStyle(bar).paddingBottom)),
+    bar: rect(footer),
+    barPadBottom: Math.round(parseFloat(getComputedStyle(footer).paddingBottom)),
     navPadBottom: nav ? Math.round(parseFloat(getComputedStyle(nav).paddingBottom)) : null,
     nav: nav ? rect(nav) : null,
     titleRow: rect(bar.querySelector('[data-testid="phone-player-title-row"]')),
@@ -203,7 +206,7 @@ for (const [w, h] of [[390, 844], [360, 740]]) {
 
   check(at('nothing overflows the viewport horizontally'),
     m.docScrollW <= m.innerW, `scrollWidth ${m.docScrollW} vs ${m.innerW}`);
-  check(at('the bar itself is inside the viewport'),
+  check(at('the bar footer is inside the viewport'),
     m.bar.x >= 0 && m.bar.x + m.bar.w <= w, `${m.bar.x}..${m.bar.x + m.bar.w}`);
 
   // A long name scrolls: two copies, the marquee animation running, and the

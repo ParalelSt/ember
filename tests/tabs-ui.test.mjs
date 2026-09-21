@@ -292,7 +292,9 @@ const trackPath = (id) => `/tabs/${encodeURIComponent(id)}`;
 {
   const page = await newPage({ width: 390, height: 844 }, { hasTouch: true, isMobile: true });
   await play(page, song.title);
-  await page.locator('footer').getByText(song.title).first().click();
+  // The bar's song-name row, not its text: the phone bar's title is a
+  // marquee, whose invisible measuring ruler is the first text match.
+  await page.locator('[data-testid="phone-player-title-row"]').click();
   await page.waitForTimeout(1000);
   await page.locator('[role="dialog"][aria-hidden="false"]').getByRole('button', { name: 'Guitar tabs' }).click();
   await page.waitForURL((u) => u.pathname === trackPath(song.id), { timeout: 10_000, waitUntil: 'commit' }).catch(() => {});

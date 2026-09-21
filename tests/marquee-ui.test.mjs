@@ -125,13 +125,17 @@ page.on('pageerror', (e) => pageErrors.push(String(e)));
  *  visibility check says yes even when it is parked off-screen. Reloading
  *  the page closes it (the open flag is not persisted), which is what keeps
  *  the two rounds below independent of each other. */
+// The phone player BAR now scrolls its own title too, so every lookup here
+// has to say which marquee it means: the full-screen view's.
+const NP_MARQUEE = '[data-testid="now-playing"] [data-testid="marquee"]';
+
 /** Is the full-screen view actually on screen (not parked below it)? */
-const playerIsOpen = () => page.evaluate(() => {
-  const el = document.querySelector('[data-testid="marquee"]');
+const playerIsOpen = () => page.evaluate((sel) => {
+  const el = document.querySelector(sel);
   if (!el) return false;
   const r = el.getBoundingClientRect();
   return r.top >= 0 && r.bottom <= window.innerHeight;
-});
+}, NP_MARQUEE);
 
 /** Close it the way a phone does, and wait for it to be gone. Leaving it
  *  open across a navigation lets its own back-dismiss history entry fire
@@ -139,10 +143,10 @@ const playerIsOpen = () => page.evaluate(() => {
 async function closePlayer() {
   if (!(await playerIsOpen())) return;
   await page.getByRole('button', { name: 'Close' }).first().click();
-  await page.waitForFunction(() => {
-    const el = document.querySelector('[data-testid="marquee"]');
+  await page.waitForFunction((sel) => {
+    const el = document.querySelector(sel);
     return !el || el.getBoundingClientRect().top >= window.innerHeight;
-  }, null, { timeout: 10_000 });
+  }, NP_MARQUEE, { timeout: 10_000 });
   await page.waitForTimeout(400);
 }
 
@@ -155,27 +159,29 @@ async function openPlayerFor(title) {
   // reliably swap the playing track while something else is already going
   // (a separate known bug, not this one's business).
   await row.getByLabel('Play', { exact: true }).first().click();
-  // The bar appears as soon as a track is current; tapping it opens the
-  // full-screen view (phones only, which is the viewport we are at).
-  const bar = page.locator('footer').getByText(title).first();
+  // The bar appears as soon as a track is current; tapping its song-name
+  // row opens the full-screen view (phones only, which is the viewport we
+  // are at). The row, not the text: the bar's own title is a marquee now,
+  // and its measuring ruler is the first thing a text lookup finds.
+  const bar = page.locator('[data-testid="phone-player-title-row"]');
   await bar.waitFor({ timeout: 15_000 });
   await bar.click();
-  await page.waitForFunction((wanted) => {
-    const el = document.querySelector('[data-testid="marquee"]');
+  await page.waitForFunction(([wanted, sel]) => {
+    const el = document.querySelector(sel);
     const copy = el && el.querySelector('[data-testid="marquee-track"]')?.firstElementChild;
     if (!copy || copy.textContent.trim() !== wanted) return false;
     const r = el.getBoundingClientRect();
     return r.top >= 0 && r.bottom <= window.innerHeight;
-  }, title, { timeout: 15_000 });
+  }, [title, NP_MARQUEE], { timeout: 15_000 });
   // Let the open transition and the first measure settle before sampling.
   await page.waitForTimeout(700);
 }
 
 /** Sample the title element every `every` ms for `ms` ms. */
 async function sample(ms, every = 100) {
-  return page.evaluate(async ([total, step]) => {
+  return page.evaluate(async ([total, step, sel]) => {
     const out = [];
-    const el = document.querySelector('[data-testid="marquee"]');
+    const el = document.querySelector(sel);
     const track = () => el.querySelector('[data-testid="marquee-track"]');
     for (let t = 0; t < total; t += step) {
       const r = el.getBoundingClientRect();
@@ -190,7 +196,7 @@ async function sample(ms, every = 100) {
       await new Promise((r2) => setTimeout(r2, step));
     }
     return out;
-  }, [ms, every]);
+  }, [ms, every, NP_MARQUEE]);
 }
 
 const distinct = (rows, key) => [...new Set(rows.map((r) => r[key]))];
