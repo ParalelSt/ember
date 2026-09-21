@@ -8,14 +8,14 @@ import { ScaledFrame } from '@/components/library/options/changelog/ChangelogSec
 import { ShellPreview } from '@/components/library/options/changelog/ShellPreview';
 import { PhonePlayerBar, PLAYER_BAR_CHROME } from '@/components/player/PhonePlayerBar';
 import {
-  BAR_COLOR_OPTIONS,
-  BAR_COLOR_RECOMMENDED,
-} from '@/components/library/options/barcolors';
+  BAR_SPACING_OPTIONS,
+  BAR_SPACING_RECOMMENDED,
+} from '@/components/library/options/barspacing';
 import { MOCK_HOME_TRACKS, MOCK_MOBILE_NOW_PLAYING } from '@/app/(app)/dizajn/mock';
 
 const FRAME_W = 390;
 // Tall enough for the page title and a row of cards above the bar and nav,
-// so the colours are judged against the page, not in isolation.
+// so the spacing is judged against the page, not in isolation.
 const FRAME_H = 460;
 
 function MockHome() {
@@ -32,21 +32,21 @@ function MockHome() {
   );
 }
 
-/** One phone frame per colour option, each around the REAL PhonePlayerBar
- *  (on mock data, inert handlers) in the mock shell, so only colour differs
- *  between them and nothing can drift from what ships. */
-export function BarColorsSection() {
+/** One phone frame per spacing option, each around the REAL PhonePlayerBar
+ *  (on mock data, inert handlers) in the mock shell, so only spacing
+ *  differs between them and nothing can drift from what ships. */
+export function BarSpacingSection() {
   return (
-    <div data-testid="barcolors-section" className="grid grid-cols-1 gap-stack sm:grid-cols-2 xl:grid-cols-3">
-      {BAR_COLOR_OPTIONS.map((opt) => (
-        <div key={opt.id} data-testid="barcolors-option" data-option={opt.id} className="min-w-0">
+    <div data-testid="barspacing-section" className="grid grid-cols-1 gap-stack sm:grid-cols-2 xl:grid-cols-3">
+      {BAR_SPACING_OPTIONS.map((opt) => (
+        <div key={opt.id} data-testid="barspacing-option" data-option={opt.id} className="min-w-0">
           <div className="mb-cluster flex min-h-7 items-center gap-row">
             <div className="text-eyebrow">{opt.label}</div>
-            {opt.id === BAR_COLOR_RECOMMENDED && (
+            {opt.id === BAR_SPACING_RECOMMENDED && (
               <span className="rounded-full bg-ring/15 px-row text-xs font-medium text-ring">Recommended</span>
             )}
           </div>
-          <div data-testid="barcolors-frame" className={opt.className}>
+          <div data-testid="barspacing-frame" className={opt.className}>
             <ScaledFrame width={FRAME_W} height={FRAME_H}>
               <ShellPreview
                 phone

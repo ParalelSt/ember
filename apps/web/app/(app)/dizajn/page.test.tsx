@@ -2,7 +2,7 @@ import type { ComponentProps } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import { render, screen, within } from '@testing-library/react';
 import DizajnPage from './page';
-import { BAR_COLOR_OPTIONS, BAR_COLOR_RECOMMENDED } from '@/components/library/options/barcolors';
+import { BAR_SPACING_OPTIONS, BAR_SPACING_RECOMMENDED } from '@/components/library/options/barspacing';
 
 // base-ui's Slider cannot render under happy-dom (see SeekBar.test.tsx);
 // the gallery only needs the seek line to be there, with its data-slots.
@@ -23,11 +23,11 @@ vi.mock('next/link', () => ({
   ),
 }));
 
-describe('DizajnPage (phone player colours only)', () => {
-  it('shows one frame per colour option and nothing else from the old gallery', () => {
+describe('DizajnPage (phone player spacing only)', () => {
+  it('shows one frame per spacing option and nothing else from the old gallery', () => {
     render(<DizajnPage />);
-    const options = screen.getAllByTestId('barcolors-option');
-    expect(options.map((o) => o.dataset.option)).toEqual(BAR_COLOR_OPTIONS.map((o) => o.id));
+    const options = screen.getAllByTestId('barspacing-option');
+    expect(options.map((o) => o.dataset.option)).toEqual(BAR_SPACING_OPTIONS.map((o) => o.id));
     expect(screen.queryByText('Design gallery')).toBeNull();
     expect(screen.queryByRole('radiogroup')).toBeNull();
     expect(screen.getByRole('link', { name: 'the full gallery' })).toHaveAttribute('href', '/dizajn/sve');
@@ -35,27 +35,27 @@ describe('DizajnPage (phone player colours only)', () => {
 
   it('every frame is the REAL phone bar with the same layout: play and next', () => {
     render(<DizajnPage />);
-    for (const frame of screen.getAllByTestId('barcolors-frame')) {
+    for (const frame of screen.getAllByTestId('barspacing-frame')) {
       const bar = within(frame).getByTestId('phone-player-bar');
       expect(within(bar).getAllByRole('button').map((b) => b.getAttribute('aria-label'))).toEqual(['Play', 'Next']);
       expect(within(bar).getByTestId('phone-play-disc')).toHaveClass('size-10');
     }
   });
 
-  it('only the wrapper colours differ, and "As it is" changes nothing', () => {
+  it('only the wrapper spacing differs, and "As it is" changes nothing', () => {
     render(<DizajnPage />);
-    const frames = screen.getAllByTestId('barcolors-frame');
+    const frames = screen.getAllByTestId('barspacing-frame');
     const classes = frames.map((f) => f.className);
     expect(new Set(classes).size).toBe(classes.length);
-    expect(frames[BAR_COLOR_OPTIONS.findIndex((o) => o.id === 'now')].className).toBe('');
-    // Colour only: no option touches size or spacing.
-    for (const c of classes) expect(c).not.toMatch(/:(size|w|h|p[xytrbl]?|m[xytrbl]?|gap)-/);
+    expect(frames[BAR_SPACING_OPTIONS.findIndex((o) => o.id === 'now')].className).toBe('');
+    // Spacing only: no option touches size or colour.
+    for (const c of classes) expect(c).not.toMatch(/:(size|w|h|bg|text|border|opacity)-/);
   });
 
   it('marks exactly one option as recommended', () => {
     render(<DizajnPage />);
-    const tagged = screen.getAllByText('Recommended').map((t) => t.closest('[data-testid="barcolors-option"]'));
+    const tagged = screen.getAllByText('Recommended').map((t) => t.closest('[data-testid="barspacing-option"]'));
     expect(tagged).toHaveLength(1);
-    expect((tagged[0] as HTMLElement).dataset.option).toBe(BAR_COLOR_RECOMMENDED);
+    expect((tagged[0] as HTMLElement).dataset.option).toBe(BAR_SPACING_RECOMMENDED);
   });
 });

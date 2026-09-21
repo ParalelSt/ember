@@ -319,7 +319,7 @@ node tests/mobile-player-ui.test.mjs                # or: npm run test:mobile-pl
 # the section quotes; the old size pickers are gone. Signs in as
 # EMBER_EMAIL / EMBER_PASSWORD; writes nothing. SHOT_DIR keeps screenshots.
 node tests/phone-bar-sizes-ui.test.mjs              # or: npm run test:phone-bar-sizes
-node tests/bar-colors-ui.test.mjs                   # or: npm run test:bar-colors
+node tests/bar-spacing-ui.test.mjs                  # or: npm run test:bar-spacing
 
 # Playlist import: Spotify embed source, background jobs, picks (needs its own server, see below)
 node tests/import.test.mjs                          # or: npm run test:import

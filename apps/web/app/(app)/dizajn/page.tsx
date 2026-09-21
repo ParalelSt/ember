@@ -2,8 +2,8 @@
 
 import Link from 'next/link';
 import { PageTitle } from '@/components/page/PageTitle';
-import { BarColorsSection } from '@/components/library/options/barcolors/BarColorsSection';
-import { BAR_COLOR_RECOMMENDED_REASON } from '@/components/library/options/barcolors';
+import { BarSpacingSection } from '@/components/library/options/barspacing/BarSpacingSection';
+import { BAR_SPACING_RECOMMENDED_REASON } from '@/components/library/options/barspacing';
 
 /** /dizajn: only the question open right now. The full gallery of past
  *  picks and candidates lives at /dizajn/sve. Mock data only; no link in
@@ -11,12 +11,13 @@ import { BAR_COLOR_RECOMMENDED_REASON } from '@/components/library/options/barco
 export default function DizajnPage() {
   return (
     <div>
-      <PageTitle className="mb-cluster">Phone player colours</PageTitle>
+      <PageTitle className="mb-cluster">Phone player spacing</PageTitle>
       <p className="text-meta mb-stack">
-        Same bar, same layout, only the colours change. Right now the red ring on the seek dot is the
-        only colour in the strip. {BAR_COLOR_RECOMMENDED_REASON}
+        Same bar, same layout, same colours (you kept them as they are), only the spacing changes.
+        Right now the seek line starts left of the artwork and runs past the next button.{' '}
+        {BAR_SPACING_RECOMMENDED_REASON}
       </p>
-      <BarColorsSection />
+      <BarSpacingSection />
       <p className="text-meta mt-section">
         Everything else that used to be here:{' '}
         <Link href="/dizajn/sve" className="text-foreground underline">
