@@ -80,6 +80,25 @@
   into one. A pure code change to a runtime comparison, so there is
   nothing to migrate.
 
+- **The phone player bar**: the song name now has a full-width line of its
+  own above the controls (358px at a 390px phone against the old 38px), and
+  it scrolls when a name is too long for even that. Play is 56px, previous,
+  next, the queue button and the artwork are 48px. Nothing on a desktop or
+  tablet window changed.
+- **The Android app must be rebuilt for the safe-area fix.** The bar and the
+  bottom nav sitting under Android's back, home and recents buttons was half
+  a native bug: the app targets SDK 35, where the system draws itself over
+  the WebView, and the WebView reports nothing through
+  `env(safe-area-inset-bottom)`. `MainActivity` now reads the window insets
+  itself and publishes them to the page as `--ember-inset-*`, which the web
+  side folds into one `--safe-bottom` token. **The web half alone changes
+  nothing on the phone**: the lift only appears once a new APK is installed
+  (`cd apps/mobile/android && ./gradlew assembleDebug`, or the usual release
+  build). Nothing to do on the host for it, and no new dependency: it is
+  ordinary AndroidX insets plus the `androidx.webkit` the app already had.
+  Android 14 and below are untouched, because there the system does not draw
+  over the WebView and the insets arrive as 0.
+
 *(Version: this one entry replaces the separate 0.3.2, 0.3.3, 0.3.7, 0.3.8
 and 0.3.9 sections the four merged branches each wrote for themselves.)*
 # 0.3.11: Search without losing your place
