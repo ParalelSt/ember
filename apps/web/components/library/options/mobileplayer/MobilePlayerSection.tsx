@@ -7,20 +7,11 @@ import { TrackCard } from '@/components/track/TrackCard';
 import { ScaledFrame } from '@/components/library/options/changelog/ChangelogSection';
 import { ShellPreview } from '@/components/library/options/changelog/ShellPreview';
 import { AndroidNavStrip } from '@/components/library/options/mobileplayer/AndroidNavStrip';
-import {
-  PhonePlayerBar,
-  PLAYER_BAR_CHROME,
-  type PhoneBarSize,
-  type PhonePlayStyle,
-} from '@/components/player/PhonePlayerBar';
+import { PhonePlayerBar, PLAYER_BAR_CHROME } from '@/components/player/PhonePlayerBar';
 import {
   ANDROID_NAV_PX,
   BEFORE_TAPS,
   BEFORE_TITLE_PX,
-  PHONE_BAR_MEASURED,
-  PHONE_BAR_SIZE_OPTIONS,
-  PHONE_PLAY_STYLE_OPTIONS,
-  RECOMMENDED_PHONE_BAR,
   SHIPPED_BAR_HEIGHT,
   SHIPPED_TAPS,
   SHIPPED_TITLE_PX_360,
@@ -69,17 +60,9 @@ function MockHome() {
  *  `--ember-inset-bottom`, the same custom property MainActivity sets from
  *  the window insets on a real phone, so the lift shown here is the lift the
  *  CSS actually performs. */
-export function MobilePlayerSection({
-  size = 'today',
-  playStyle = 'disc',
-}: {
-  size?: PhoneBarSize;
-  playStyle?: PhonePlayStyle;
-}) {
-  const recSize = PHONE_BAR_SIZE_OPTIONS.find((o) => o.id === RECOMMENDED_PHONE_BAR.size)!;
-  const recStyle = PHONE_PLAY_STYLE_OPTIONS.find((o) => o.id === RECOMMENDED_PHONE_BAR.playStyle)!;
+export function MobilePlayerSection() {
   return (
-    <div data-testid="mobileplayer-section" data-size={size} data-play-style={playStyle}>
+    <div data-testid="mobileplayer-section">
       <div className="flex flex-wrap items-start gap-stack">
         {FRAMES.map((frame) => (
           <div
@@ -106,8 +89,6 @@ export function MobilePlayerSection({
                       onToggle={() => {}}
                       onSeek={() => {}}
                       onOpen={() => {}}
-                      size={size}
-                      playStyle={playStyle}
                     />
                   </footer>
                 }
@@ -126,61 +107,6 @@ export function MobilePlayerSection({
           {SHIPPED_BAR_HEIGHT}px. The phone bar before this work, for comparison: {BEFORE_TAPS}, song
           name box {BEFORE_TITLE_PX}px at 390.
         </p>
-
-        <p data-testid="mobileplayer-recommended" className="text-meta">
-          <span className="font-semibold text-foreground">
-            Recommended: {recSize.name} + {recStyle.name}.
-          </span>{' '}
-          The artwork grows to match the text, the name and artist read at body size, and the play
-          glyph stops being the heaviest thing in the row while keeping its 48px hit box.
-        </p>
-
-        <div className="overflow-x-auto">
-          <table data-testid="mobileplayer-sizes" className="text-meta w-full min-w-max text-left tabular-nums">
-            <caption className="text-eyebrow mb-cluster text-left">
-              Measured in these frames, CSS px
-            </caption>
-            <thead>
-              <tr className="text-foreground">
-                <th className="py-inset pr-row font-semibold">Preset</th>
-                <th className="py-inset pr-row font-semibold">Artwork</th>
-                <th className="py-inset pr-row font-semibold">Play (disc / icon only)</th>
-                <th className="py-inset pr-row font-semibold">Hit area</th>
-                <th className="py-inset pr-row font-semibold">Name / artist font</th>
-                <th className="py-inset pr-row font-semibold">Bar height</th>
-                <th className="py-inset pr-row font-semibold">Name box 390 / 360</th>
-              </tr>
-            </thead>
-            <tbody>
-              {PHONE_BAR_SIZE_OPTIONS.map((o) => {
-                const m = PHONE_BAR_MEASURED[o.id];
-                return (
-                  <tr
-                    key={o.id}
-                    data-testid="mobileplayer-size-row"
-                    data-size={o.id}
-                    aria-current={o.id === size ? 'true' : undefined}
-                    className={o.id === size ? 'text-foreground' : undefined}
-                  >
-                    <td className="py-inset pr-row">{o.name}</td>
-                    <td className="py-inset pr-row">{m.art}</td>
-                    <td className="py-inset pr-row">
-                      {m.play} / {m.glyph}
-                    </td>
-                    <td className="py-inset pr-row">{m.hit}</td>
-                    <td className="py-inset pr-row">
-                      {m.title} / {m.artist}
-                    </td>
-                    <td className="py-inset pr-row">{m.bar}</td>
-                    <td className="py-inset pr-row">
-                      {m.name390} / {m.name360}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
       </div>
     </div>
   );

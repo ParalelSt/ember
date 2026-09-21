@@ -45,11 +45,8 @@ import { SearchRowsSection } from '@/components/library/options/searchrows/Searc
 import {
   BEFORE_TAPS,
   BEFORE_TITLE_PX,
-  PHONE_BAR_SIZE_OPTIONS,
-  PHONE_PLAY_STYLE_OPTIONS,
   SHIPPED_TITLE_PX_390,
 } from '@/components/library/options/mobileplayer';
-import type { PhoneBarSize, PhonePlayStyle } from '@/components/player/PhonePlayerBar';
 import { MobilePlayerSection } from '@/components/library/options/mobileplayer/MobilePlayerSection';
 import {
   TABS_LAYOUTS,
@@ -87,8 +84,6 @@ const TABS_SCROLL_KEY = 'dizajn-tabs-scroll';
 const TABS_PASTE_KEY = 'dizajn-tabs-paste';
 const TABS_V3_PICKER_KEY = 'dizajn-tabs-v3-picker';
 const TABS_V3_STATE_KEY = 'dizajn-tabs-v3-state';
-const MOBILEPLAYER_SIZE_KEY = 'dizajn-mobileplayer-size';
-const MOBILEPLAYER_PLAY_KEY = 'dizajn-mobileplayer-play-style';
 
 // Saved picker choices. The page is server-rendered with the first option
 // of every picker, so the saved one must not be read during the first
@@ -284,10 +279,6 @@ export default function DizajnPage() {
   // still a choice; the control style and the indicator were picked.
   const [srState, setSrState] = useSavedChoice<RowState>(SEARCHROWS_STATE_KEY, ROW_STATES);
 
-  // "Mobile player" size pickers: same pattern. Both open on what ships.
-  const [mpSize, setMpSize] = useSavedChoice<PhoneBarSize>(MOBILEPLAYER_SIZE_KEY, PHONE_BAR_SIZE_OPTIONS);
-  const [mpPlay, setMpPlay] = useSavedChoice<PhonePlayStyle>(MOBILEPLAYER_PLAY_KEY, PHONE_PLAY_STYLE_OPTIONS);
-
   return (
     <div>
       <PageTitle className="mb-2">Design gallery</PageTitle>
@@ -314,10 +305,17 @@ export default function DizajnPage() {
           The owner&apos;s pick, after trying seven arrangements side by side:{' '}
           <span className="font-semibold text-foreground">&quot;Old + play only&quot;</span>. The old
           one-row shape (artwork left, the seek line pinned under everything), stripped to the
-          artwork, the song name and artist, and one 48px play/pause button. Previous, next and the
+          artwork, the song name and artist, and one play/pause button. Previous, next and the
           queue are not in the bar any more; they live on the full-screen player, which a tap anywhere
           on the bar except play opens. With that room back the name gets a {SHIPPED_TITLE_PX_390}px box
           at 390 and scrolls when even that is not enough.
+        </p>
+        <p className="text-meta mb-block">
+          Then the sizes, picked from four presets tried here:{' '}
+          <span className="font-semibold text-foreground">Balanced, with a smaller play button</span>{' '}
+          (&quot;the button is too big while the rest is good&quot;). A 56px artwork, the name at 16px
+          and the artist at 14px, and play drawn as a 36px white disc inside the same 48px hit box, so
+          it sits in proportion with the artwork and is still easy to hit.
         </p>
         <p className="text-meta mb-block">
           The bar below is the REAL <code>PhonePlayerBar</code> the app renders, on mock data with
@@ -326,21 +324,8 @@ export default function DizajnPage() {
           publish the same bottom inset the phone does, so the lift stays visible here: if it ever
           stops working, the bar and the nav disappear under the strip.
         </p>
-        <p className="text-meta mb-block">
-          Proposals, not built: sizes. The owner asked for the play button, the artwork and the
-          name and artist to be resized. Bar size picks one of four coherent presets (Today is
-          exactly what ships); Play style draws play/pause as today&apos;s filled disc or as the bare
-          glyph, with the same 48px hit box either way. Every tap target stays at least 48px. The
-          live bar keeps Today until one is picked; the numbers under the frames are measured from
-          these frames.
-        </p>
 
-        <div className="mb-stack flex flex-wrap gap-x-section gap-y-block">
-          <Picker label="Bar size" options={PHONE_BAR_SIZE_OPTIONS} value={mpSize} onChange={setMpSize} />
-          <Picker label="Play style" options={PHONE_PLAY_STYLE_OPTIONS} value={mpPlay} onChange={setMpPlay} />
-        </div>
-
-        <MobilePlayerSection size={mpSize} playStyle={mpPlay} />
+        <MobilePlayerSection />
       </section>
 
       <section className="mb-section">
