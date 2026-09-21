@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, within } from '@testing-library/react';
-import { PhonePlayerBar } from './PhonePlayerBar';
+import { PhonePlayerBar, PLAYER_BAR_CHROME } from './PhonePlayerBar';
 import type { Track } from '@/types/track';
 
 // base-ui's Slider reaches the repo root's hoisted React 18 through its own
@@ -26,7 +26,7 @@ const TRACK: Track = {
   streamUrl: 'https://example.test/s.mp3',
 };
 
-function setup(props: Partial<Parameters<typeof PhonePlayerBar>[0]> = {}) {
+function setup() {
   const handlers = {
     onToggle: vi.fn(),
     onNext: vi.fn(),
@@ -36,7 +36,7 @@ function setup(props: Partial<Parameters<typeof PhonePlayerBar>[0]> = {}) {
     onQueue: vi.fn(),
   };
   const view = render(
-    <PhonePlayerBar track={TRACK} playing position={92} duration={264} {...handlers} {...props} />,
+    <PhonePlayerBar track={TRACK} playing position={92} duration={264} {...handlers} />,
   );
   return { ...view, ...handlers };
 }
@@ -102,16 +102,18 @@ describe('PhonePlayerBar', () => {
     expect(onOpen).toHaveBeenCalledTimes(2);
   });
 
-  it('stands off the bottom edge through the one shared safe-area class', () => {
+  it('leaves the strip chrome to the footer that holds it', () => {
     setup();
-    // Not an env() string of its own: the value lives once, on :root in
+    // The bar itself paints nothing: the background, the top border and the
+    // safe-area stand-off are one constant, spent by PlayerBar's <footer>
+    // and by the design gallery's preview alike.
+    const bar = screen.getByTestId('phone-player-bar');
+    expect(bar.className).toBe('flex flex-col');
+    expect(bar.getAttribute('style')).toBeNull();
+    // Not an env() string of its own: --safe-bottom lives once, on :root in
     // globals.css, and MobileNav spends the same class.
-    expect(screen.getByTestId('phone-player-bar')).toHaveClass('safe-area-bottom');
-    expect(screen.getByTestId('phone-player-bar').getAttribute('style')).toBeNull();
-  });
-
-  it('takes its breakpoint gate from the caller, so a 390px preview can show it', () => {
-    setup({ className: 'md:hidden' });
-    expect(screen.getByTestId('phone-player-bar')).toHaveClass('md:hidden');
+    expect(PLAYER_BAR_CHROME.split(' ')).toContain('safe-area-bottom');
+    expect(PLAYER_BAR_CHROME.split(' ')).toContain('bg-sidebar');
+    expect(PLAYER_BAR_CHROME.split(' ')).toContain('border-t');
   });
 });

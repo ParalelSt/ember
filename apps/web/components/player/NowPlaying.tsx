@@ -154,6 +154,7 @@ export function NowPlaying() {
 
   return (
     <div
+      data-testid="now-playing"
       role="dialog"
       aria-modal="true"
       aria-hidden={!open}

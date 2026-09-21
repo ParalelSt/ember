@@ -40,6 +40,10 @@ vi.mock('@/components/providers/AuthProvider', () => ({
   useAuth: () => ({ user: { id: 'u1', email: 'a@b.c', name: 'A', avatarUrl: null, isAdmin: false } }),
 }));
 vi.mock('@/hooks/useLikeToggle', () => ({ useLikeToggle: () => ({ liked: false, toggle: vi.fn() }) }));
+// The window size decides which bar renders. A real media query, so the page
+// only ever holds one transport (see hooks/useIsDesktop).
+const desktop = vi.hoisted(() => ({ value: true }));
+vi.mock('@/hooks/useIsDesktop', () => ({ useIsDesktop: () => desktop.value }));
 vi.mock('@/components/track/menus/AddToPlaylistMenu', () => ({ AddToPlaylistMenu: () => null }));
 vi.mock('@/components/track/ShareButton', () => ({ ShareButton: () => null }));
 vi.mock('@/components/player/QueueSheet', () => ({ QueueSheet: () => null }));
@@ -61,21 +65,35 @@ vi.mock('@/components/ui/slider', () => ({
   ),
 }));
 
-const phoneBar = () => screen.getByTestId('phone-player-bar');
-const desktopBar = () => screen.getByTestId('desktop-player-bar');
+const bar = () => screen.getByTestId('player-bar');
+/** Render the desktop bar and hand it back. `desktop` already defaults to
+ *  true in beforeEach, so this is just render-and-find. */
+const desktopBar = () => {
+  render(<PlayerBar />);
+  return bar();
+};
 
 beforeEach(() => {
+  desktop.value = true;
   useSettingsStore.setState({ tabsEnabled: true, partyVolume: false });
 });
 
 describe('PlayerBar', () => {
-  it('renders one bar per breakpoint, each hidden at the other', () => {
+  it('renders exactly one bar, the one the window calls for', () => {
+    desktop.value = false;
+    const { unmount } = render(<PlayerBar />);
+    expect(screen.getAllByTestId('player-bar')).toHaveLength(1);
+    expect(screen.getByTestId('phone-player-bar')).toBeInTheDocument();
+    // One footer, one transport: suites that reach for `footer` still find
+    // a single bar, and no control is in the page twice.
+    expect(screen.getAllByRole('button', { name: 'Pause' })).toHaveLength(1);
+    unmount();
+
+    desktop.value = true;
     render(<PlayerBar />);
-    expect(phoneBar()).toHaveClass('md:hidden');
-    expect(desktopBar()).toHaveClass('hidden', 'md:flex');
-    // Phone first in the DOM, so nothing about the desktop bar's own order
-    // changed underneath it.
-    expect(phoneBar().compareDocumentPosition(desktopBar()) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.getAllByTestId('player-bar')).toHaveLength(1);
+    expect(screen.queryByTestId('phone-player-bar')).toBeNull();
+    expect(screen.getAllByRole('button', { name: 'Pause' })).toHaveLength(1);
   });
 
   // The desktop bar must be pixel-for-pixel what it was before the phone bar
@@ -84,10 +102,10 @@ describe('PlayerBar', () => {
   // class (0 on a desktop browser) are new.
   describe('the md layout is untouched', () => {
     it('keeps the footer and the grid it always had', () => {
-      render(<PlayerBar />);
-      expect(desktopBar().tagName).toBe('FOOTER');
-      expect(desktopBar()).toHaveClass('shrink-0', 'bg-sidebar', 'border-t', 'border-sidebar-border', 'flex-col');
-      const grid = desktopBar().firstElementChild!;
+      const footer = desktopBar();
+      expect(footer.tagName).toBe('FOOTER');
+      expect(footer).toHaveClass('shrink-0', 'bg-sidebar', 'border-t', 'border-sidebar-border', 'flex', 'flex-col');
+      const grid = footer.firstElementChild!;
       expect(grid.className).toBe(
         'px-4 pt-3 pb-2 grid grid-cols-[1fr_auto_1fr] md:grid-cols-[1fr_2fr_1fr] gap-4 items-center',
       );
@@ -95,7 +113,6 @@ describe('PlayerBar', () => {
     });
 
     it('keeps the three columns and their contents in order', () => {
-      render(<PlayerBar />);
       const [left, middle, right] = [...desktopBar().firstElementChild!.children] as HTMLElement[];
 
       // Left: the now-playing cluster plus the per-track actions.
@@ -121,24 +138,27 @@ describe('PlayerBar', () => {
     });
 
     it('has no phone-only leftovers inside it', () => {
-      render(<PlayerBar />);
-      // The grid and nothing else: the unlabelled phone progress strip that
-      // used to sit under it moved into the phone bar.
-      expect(desktopBar().children).toHaveLength(1);
+      // The grid, and the queue sheet the mock renders as nothing: the
+      // unlabelled phone progress strip that used to sit under the grid
+      // moved into the phone bar.
+      const footer = desktopBar();
+      expect(footer.children).toHaveLength(1);
       // The scrolling title belongs only to the phone bar.
-      expect(desktopBar().querySelectorAll('[data-testid="marquee"]')).toHaveLength(0);
+      expect(footer.querySelectorAll('[data-testid="marquee"]')).toHaveLength(0);
     });
   });
 
-  it('gives both bars the shared safe-area class and no inline padding', () => {
-    render(<PlayerBar />);
-    for (const bar of [phoneBar(), desktopBar()]) {
-      expect(bar).toHaveClass('safe-area-bottom');
-      expect(bar.getAttribute('style')).toBeNull();
+  it('stands both bars off the bottom edge through the shared class, with no inline padding', () => {
+    for (const isDesktop of [false, true]) {
+      desktop.value = isDesktop;
+      const { unmount } = render(<PlayerBar />);
+      expect(bar()).toHaveClass('safe-area-bottom');
+      expect(bar().getAttribute('style')).toBeNull();
+      unmount();
     }
   });
 
-  it('hides the tabs button on both bars when the plugin is off', () => {
+  it('hides the tabs button when the plugin is off', () => {
     useSettingsStore.setState({ tabsEnabled: false });
     render(<PlayerBar />);
     expect(screen.queryByRole('button', { name: 'Guitar tabs' })).toBeNull();

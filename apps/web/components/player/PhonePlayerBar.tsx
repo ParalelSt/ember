@@ -7,8 +7,15 @@ import { SeekBar } from '@/components/player/SeekBar';
 import { TransportControls } from '@/components/player/TransportControls';
 import { Artwork } from '@/components/primitives/Artwork';
 import { useTrackArtSrc } from '@/lib/offlineNative';
-import { cn } from '@/lib/utils';
 import type { Track } from '@/types/track';
+
+/** The player bar's chrome: the strip's own background, its top border and
+ *  the safe-area stand-off that keeps it clear of Android's system
+ *  navigation. On the <footer> rather than on either layout inside it, so
+ *  the two cannot disagree, and shared with the design gallery's preview so
+ *  that cannot drift either. */
+export const PLAYER_BAR_CHROME =
+  'shrink-0 bg-sidebar border-t border-sidebar-border flex flex-col safe-area-bottom';
 
 export interface PhonePlayerBarProps {
   track: Track;
@@ -23,10 +30,6 @@ export interface PhonePlayerBarProps {
    *  target for it, the way they were in the one-row bar. */
   onOpen: () => void;
   onQueue: () => void;
-  /** The breakpoint gate. PlayerBar passes `md:hidden`; the design gallery
-   *  draws the same bar inside a 390px frame on a desktop viewport, where a
-   *  `md:` class would (wrongly) hide it, so it passes nothing. */
-  className?: string;
 }
 
 /**
@@ -39,9 +42,9 @@ export interface PhonePlayerBarProps {
  * queue button, every box at or above Android's 48px minimum: play 56,
  * previous/next 48, queue 48, artwork 48.
  *
- * `safe-area-bottom` stands the whole bar off the bottom edge by the
- * safe-area inset, which on Android is the height of the system navigation
- * bar (see MainActivity) and everywhere else is 0.
+ * The strip's own background, border and safe-area stand-off are not here:
+ * they are PLAYER_BAR_CHROME above, on the <footer> that holds whichever of
+ * the two bars the window calls for.
  */
 export function PhonePlayerBar({
   track,
@@ -54,20 +57,13 @@ export function PhonePlayerBar({
   onSeek,
   onOpen,
   onQueue,
-  className,
 }: PhonePlayerBarProps) {
   // Prefer a downloaded copy's own local art over the remote URL, the same
   // way the desktop bar's NowPlayingSummary does.
   const artSrc = useTrackArtSrc(track);
 
   return (
-    <footer
-      data-testid="phone-player-bar"
-      className={cn(
-        'safe-area-bottom flex shrink-0 flex-col border-t border-sidebar-border bg-sidebar',
-        className,
-      )}
-    >
+    <div data-testid="phone-player-bar" className="flex flex-col">
       <div className="flex flex-col gap-cluster px-block pt-cluster pb-inset">
         <div
           data-testid="phone-player-title-row"
@@ -118,6 +114,6 @@ export function PhonePlayerBar({
       {/* The thin progress slider along the bottom edge: visible, draggable,
           no labels. */}
       <SeekBar position={position} duration={duration} onSeek={onSeek} className="px-row pb-inset" />
-    </footer>
+    </div>
   );
 }

@@ -847,7 +847,9 @@ describe('DizajnPage', () => {
         expect(shell.style.getPropertyValue('--safe-bottom')).toBe('48px');
       }
       // Both the bar and the nav spend it, through the one shared class.
-      for (const bar of bars()) expect(bar).toHaveClass('safe-area-bottom');
+      for (const bar of bars()) {
+        expect(bar.closest('footer')).toHaveClass('safe-area-bottom');
+      }
       const navs = within(section()).getAllByTestId('mock-mobile-nav');
       expect(navs).toHaveLength(FRAME_COUNT);
       for (const nav of navs) expect(nav).toHaveClass('safe-area-bottom');

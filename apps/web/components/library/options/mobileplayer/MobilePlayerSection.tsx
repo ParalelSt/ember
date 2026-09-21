@@ -7,7 +7,7 @@ import { TrackCard } from '@/components/track/TrackCard';
 import { ScaledFrame } from '@/components/library/options/changelog/ChangelogSection';
 import { ShellPreview } from '@/components/library/options/changelog/ShellPreview';
 import { AndroidNavStrip } from '@/components/library/options/mobileplayer/AndroidNavStrip';
-import { PhonePlayerBar } from '@/components/player/PhonePlayerBar';
+import { PhonePlayerBar, PLAYER_BAR_CHROME } from '@/components/player/PhonePlayerBar';
 import {
   ANDROID_NAV_PX,
   BEFORE_TAPS,
@@ -52,7 +52,8 @@ function MockHome() {
  *  over two of the three frames.
  *
  *  The bar is the REAL `PhonePlayerBar` the app renders, on mock data and
- *  with inert handlers, so this section cannot drift from what ships. The
+ *  with inert handlers, inside the same `PLAYER_BAR_CHROME` footer, so this
+ *  section cannot drift from what ships. The
  *  shell around it is mock markup (the real one reads auth, queries and
  *  stores). The frames publish `--ember-inset-bottom`, the same custom
  *  property MainActivity sets from the window insets on a real phone, so
@@ -77,18 +78,22 @@ export function MobilePlayerSection() {
                 activePath="/"
                 content={<MockHome />}
                 playerBar={
-                  <PhonePlayerBar
-                    track={MOCK_MOBILE_NOW_PLAYING}
-                    playing
-                    position={92}
-                    duration={MOCK_MOBILE_NOW_PLAYING.durationSec ?? 264}
-                    onToggle={() => {}}
-                    onNext={() => {}}
-                    onPrev={() => {}}
-                    onSeek={() => {}}
-                    onOpen={() => {}}
-                    onQueue={() => {}}
-                  />
+                  // The same <footer> chrome PlayerBar puts around it, from
+                  // the one constant, with the real bar inside.
+                  <footer data-testid="player-bar" className={PLAYER_BAR_CHROME}>
+                    <PhonePlayerBar
+                      track={MOCK_MOBILE_NOW_PLAYING}
+                      playing
+                      position={92}
+                      duration={MOCK_MOBILE_NOW_PLAYING.durationSec ?? 264}
+                      onToggle={() => {}}
+                      onNext={() => {}}
+                      onPrev={() => {}}
+                      onSeek={() => {}}
+                      onOpen={() => {}}
+                      onQueue={() => {}}
+                    />
+                  </footer>
                 }
                 bottomInset={ANDROID_NAV_PX}
                 systemNav={frame.systemNav ? <AndroidNavStrip /> : undefined}

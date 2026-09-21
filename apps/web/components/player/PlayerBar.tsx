@@ -15,12 +15,13 @@ import { AddToPlaylistMenu } from '@/components/track/menus/AddToPlaylistMenu';
 import { ShareButton } from '@/components/track/ShareButton';
 import { QueueSheet } from '@/components/player/QueueSheet';
 import { NowPlayingSummary } from '@/components/player/NowPlayingSummary';
-import { PhonePlayerBar } from '@/components/player/PhonePlayerBar';
+import { PhonePlayerBar, PLAYER_BAR_CHROME } from '@/components/player/PhonePlayerBar';
 import { SeekBar } from '@/components/player/SeekBar';
 import { TransportControls } from '@/components/player/TransportControls';
 import { VolumeControl } from '@/components/player/VolumeControl';
 import { usePlayer } from '@/components/player/PlayerProvider';
 import { useAuth } from '@/components/providers/AuthProvider';
+import { useIsDesktop } from '@/hooks/useIsDesktop';
 import { useLikeToggle } from '@/hooks/useLikeToggle';
 import { usePlayerStore } from '@/stores/usePlayerStore';
 import { useSettingsStore } from '@/stores/useSettingsStore';
@@ -31,6 +32,11 @@ import { isTabsPathFor, tabsHref } from '@/lib/tabSources';
 export function PlayerBar() {
   const { current, isPlaying, position, duration, volume, toggle, next, prev, seek, setVolume } = usePlayer();
   const { user } = useAuth();
+  // A real media query, not `md:` classes: the two bars share almost no
+  // geometry, and rendering both with one hidden would put two transports,
+  // two queue buttons and two copies of the song name in the page at once
+  // (same reason as the search overlay, see hooks/useIsDesktop).
+  const isDesktop = useIsDesktop();
   const { liked: isLiked, toggle: toggleLike } = useLikeToggle(current);
   const openNowPlaying = usePlayerStore((s) => s.setNowPlayingOpen);
   const partyVolume = useSettingsStore((s) => s.partyVolume);
@@ -54,6 +60,28 @@ export function PlayerBar() {
   // a song is queued.
   if (!current) return null;
   const tabsOpen = isTabsPathFor(pathname, current.id);
+
+  // Phones get their own bar: the song name on its own full-width line
+  // above a row of 48px-and-up controls.
+  if (!isDesktop) {
+    return (
+      <footer data-testid="player-bar" className={PLAYER_BAR_CHROME}>
+        <PhonePlayerBar
+          track={current}
+          playing={isPlaying}
+          position={position}
+          duration={duration}
+          onToggle={toggle}
+          onNext={next}
+          onPrev={prev}
+          onSeek={seek}
+          onOpen={() => openNowPlaying(true)}
+          onQueue={() => setQueueOpen(true)}
+        />
+        <QueueSheet open={queueOpen} onOpenChange={setQueueOpen} />
+      </footer>
+    );
+  }
 
   // Loop toggle: cycles off, loop playlist (wrap queue, radio suppressed),
   // loop one song. Desktop only; phones get the same control in the
@@ -84,31 +112,10 @@ export function PlayerBar() {
   );
 
   return (
-    <>
-    {/* Phones get their own bar: the song name on its own full-width line
-        above a row of 48px-and-up controls. Two bars rather than one that
-        reshapes itself, because the two share almost no geometry and the
-        desktop one must not move. */}
-    <PhonePlayerBar
-      className="md:hidden"
-      track={current}
-      playing={isPlaying}
-      position={position}
-      duration={duration}
-      onToggle={toggle}
-      onNext={next}
-      onPrev={prev}
-      onSeek={seek}
-      onOpen={() => openNowPlaying(true)}
-      onQueue={() => setQueueOpen(true)}
-    />
-    <footer
-      data-testid="desktop-player-bar"
-      className="hidden md:flex shrink-0 bg-sidebar border-t border-sidebar-border flex-col safe-area-bottom"
-    >
+    <footer data-testid="player-bar" className={PLAYER_BAR_CHROME}>
     <div className="px-4 pt-3 pb-2 grid grid-cols-[1fr_auto_1fr] md:grid-cols-[1fr_2fr_1fr] gap-4 items-center">
-      {/* Now playing. No tap-to-open here: this bar is md-and-up only, and
-          the phone bar above owns that gesture. */}
+      {/* Now playing. No tap-to-open here: this bar only renders on an md
+          and wider window, and the phone bar owns that gesture. */}
       <div className="flex items-center gap-3 min-w-0">
         <NowPlayingSummary track={current} size="sm" />
         {current && user && (
@@ -196,8 +203,7 @@ export function PlayerBar() {
       </div>
     </div>
 
-    </footer>
     <QueueSheet open={queueOpen} onOpenChange={setQueueOpen} />
-    </>
+    </footer>
   );
 }
