@@ -242,6 +242,8 @@ for (const [w, h] of [[390, 844], [360, 740]]) {
     !!m.next && m.next.w === 48 && m.next.h === 48 && m.next.x >= m.play.x + m.play.w
       && Math.abs(m.next.y - m.play.y) <= 1 && m.nextGlyph && m.nextGlyph.w === 24,
     m.next ? `next ${m.next.w}x${m.next.h} at ${m.next.x}, play ends ${m.play.x + m.play.w}, glyph ${m.nextGlyph?.w}` : 'missing');
+  check(at('the next icon ends 28px from the edge'),
+    w - (m.nextGlyph.x + m.nextGlyph.w) === 28, `icon ends ${m.nextGlyph.x + m.nextGlyph.w} of ${w}`);
   check(at('the seek line starts under the artwork and ends under the next icon'),
     !!m.line && Math.abs(m.line.x - m.artwork.x) <= 1 && Math.abs((m.line.x + m.line.w) - (m.nextGlyph.x + m.nextGlyph.w)) <= 1,
     m.line ? `line ${m.line.x}..${m.line.x + m.line.w}, art ${m.artwork.x}, next icon ends ${m.nextGlyph.x + m.nextGlyph.w}` : 'missing');

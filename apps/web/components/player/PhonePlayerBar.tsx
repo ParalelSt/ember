@@ -65,7 +65,7 @@ export interface PhonePlayerBarProps {
  * hit box) and next (a plain 24px glyph in a 48px hit box); the thin seek
  * line under all of it. Previous and the queue are not here: they live on
  * the full-screen NowPlaying view, which a tap on the bar opens. The name
- * gets about 188px at a 390px phone (158px at 360).
+ * gets about 176px at a 390px phone (146px at 360).
  *
  * The strip's own background, border and safe-area stand-off are not here:
  * they are PLAYER_BAR_CHROME above, on the <footer> that holds whichever of
@@ -97,7 +97,7 @@ export function PhonePlayerBar({
       <div
         data-testid="phone-player-row"
         onClick={openUnlessButton}
-        className="flex cursor-pointer items-center gap-block pl-block pr-inset pt-row pb-cluster"
+        className="flex cursor-pointer items-center gap-block pl-block pr-block pt-row pb-cluster"
       >
         <div data-testid="phone-player-title-row" className="flex min-w-0 flex-1 items-center gap-row">
           <Artwork src={artSrc} className="size-art-bar shrink-0 rounded-md bg-black" />
@@ -128,11 +128,12 @@ export function PhonePlayerBar({
 
       {/* The thin progress slider along the bottom edge: visible, draggable,
           no labels. Outside the row, so dragging it never opens anything. */}
-      {/* Lined up with the row above ("Aligned" on /dizajn): the line starts
-          under the artwork (16px in) and ends under the next icon, which is
-          why the row keeps only 4px on the right: next's 48px hit box puts
-          its 24px glyph 12px inside that. */}
-      <SeekBar position={position} duration={duration} onSeek={onSeek} className="px-block -mt-1" />
+      {/* Lined up with the row above (the owner's "Aligned", then "12px
+          left"): the line starts under the artwork (16px in) and ends under
+          the next icon. The row keeps 16px on the right and next's 48px hit
+          box puts its 24px glyph 12px inside that, so the icon (and the
+          line) end 28px from the edge. */}
+      <SeekBar position={position} duration={duration} onSeek={onSeek} className="pl-block pr-[28px] -mt-1" />
     </div>
   );
 }

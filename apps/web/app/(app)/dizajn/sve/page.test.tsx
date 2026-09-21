@@ -1107,7 +1107,7 @@ describe('DizajnPage', () => {
       render(<DizajnPage />);
       const taps = within(section()).getByTestId('mobileplayer-taps');
       expect(taps).toHaveTextContent('play 48px (a 40px disc inside it), next 48px (24px glyph), artwork 56px (previous and queue: full-screen view)');
-      expect(taps).toHaveTextContent('188px at 390, 158px at 360');
+      expect(taps).toHaveTextContent('176px at 390, 146px at 360');
       expect(taps).toHaveTextContent('Bar height: 100px');
       expect(taps).toHaveTextContent('The phone bar before this work, for comparison');
       expect(taps).toHaveTextContent('play 40px, prev/next 32px, queue 40px, artwork 48px');
