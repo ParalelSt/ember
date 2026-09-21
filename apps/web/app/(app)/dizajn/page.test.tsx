@@ -19,6 +19,16 @@ import { ROW_STATES } from '@/components/library/options/searchrows';
 import { MOCK_SEARCH_RECENTS, MOCK_SEARCH_RESULTS } from './mock';
 import { MOCK_MOBILE_NOW_PLAYING } from './mock';
 import {
+  PHONE_BAR_MEASURED,
+  PHONE_BAR_SIZE_OPTIONS,
+  PHONE_PLAY_STYLE_OPTIONS,
+  RECOMMENDED_PHONE_BAR,
+  SHIPPED_BAR_HEIGHT,
+  SHIPPED_TITLE_PX_360,
+  SHIPPED_TITLE_PX_390,
+} from '@/components/library/options/mobileplayer';
+import { PHONE_BAR_SIZES } from '@/components/player/PhonePlayerBar';
+import {
   TABS_LAYOUTS,
   TABS_PASTE,
   TABS_SCROLL,
@@ -864,6 +874,132 @@ describe('DizajnPage', () => {
       expect(taps).toHaveTextContent('Bar height: 92px');
       expect(taps).toHaveTextContent('The phone bar before this work, for comparison');
       expect(taps).toHaveTextContent('play 40px, prev/next 32px, queue 40px, artwork 48px');
+    });
+
+    describe('size pickers', () => {
+      const group = (label: string) => screen.getByRole('radiogroup', { name: label });
+      const pick = (label: string, name: string) =>
+        fireEvent.click(within(group(label)).getByRole('radio', { name: new RegExp(`^${name}`) }));
+      const checked = (label: string) =>
+        within(group(label))
+          .getAllByRole('radio')
+          .filter((r) => r.getAttribute('aria-checked') === 'true')
+          .map((r) => r.textContent);
+
+      it('are two radiogroups that open on what ships: Today and Filled disc', () => {
+        render(<DizajnPage />);
+        const sizes = within(group('Bar size')).getAllByRole('radio');
+        expect(sizes.map((r) => r.textContent?.replace('Recommended', ''))).toEqual([
+          'Today',
+          'Balanced',
+          'Art forward',
+          'Compact',
+        ]);
+        const styles = within(group('Play style')).getAllByRole('radio');
+        expect(styles.map((r) => r.textContent?.replace('Recommended', ''))).toEqual(['Filled disc', 'Icon only']);
+        expect(checked('Bar size')).toEqual(['Today']);
+        expect(checked('Play style')).toEqual(['Filled disc']);
+        for (const bar of bars()) expect(bar.dataset).toMatchObject({ size: 'today', playStyle: 'disc' });
+      });
+
+      it('moves aria-checked, re-renders every frame and saves the choice', () => {
+        render(<DizajnPage />);
+        pick('Bar size', 'Art forward');
+        pick('Play style', 'Icon only');
+        expect(checked('Bar size')).toEqual(['Art forward']);
+        expect(checked('Play style')).toEqual(['Icon onlyRecommended']);
+        expect(bars()).toHaveLength(FRAME_COUNT);
+        for (const bar of bars()) {
+          expect(bar.dataset).toMatchObject({ size: 'art', playStyle: 'icon' });
+          expect(bar.querySelector(`.${PHONE_BAR_SIZES.art.art}`)).not.toBeNull();
+          expect(within(bar).queryByTestId('phone-play-disc')).toBeNull();
+        }
+        expect(window.localStorage.getItem('dizajn-mobileplayer-size')).toBe('art');
+        expect(window.localStorage.getItem('dizajn-mobileplayer-play-style')).toBe('icon');
+      });
+
+      it('restores the saved choice on the next visit, and ignores a stale one', async () => {
+        window.localStorage.setItem('dizajn-mobileplayer-size', 'compact');
+        window.localStorage.setItem('dizajn-mobileplayer-play-style', 'icon');
+        const first = render(<DizajnPage />);
+        await waitFor(() => expect(checked('Bar size')).toEqual(['Compact']));
+        expect(checked('Play style')).toEqual(['Icon onlyRecommended']);
+        for (const bar of bars()) expect(bar.dataset).toMatchObject({ size: 'compact', playStyle: 'icon' });
+        first.unmount();
+
+        window.localStorage.setItem('dizajn-mobileplayer-size', 'huge');
+        window.localStorage.setItem('dizajn-mobileplayer-play-style', 'ring');
+        render(<DizajnPage />);
+        expect(checked('Bar size')).toEqual(['Today']);
+        expect(checked('Play style')).toEqual(['Filled disc']);
+      });
+
+      it('marks exactly one combination Recommended, with its reason', () => {
+        render(<DizajnPage />);
+        expect(PHONE_BAR_SIZE_OPTIONS.filter((o) => o.badge === 'Recommended').map((o) => o.id)).toEqual([
+          RECOMMENDED_PHONE_BAR.size,
+        ]);
+        expect(PHONE_PLAY_STYLE_OPTIONS.filter((o) => o.badge === 'Recommended').map((o) => o.id)).toEqual([
+          RECOMMENDED_PHONE_BAR.playStyle,
+        ]);
+        expect(within(section()).getByTestId('mobileplayer-recommended')).toHaveTextContent(
+          'Recommended: Balanced + Icon only.',
+        );
+      });
+
+      it('quotes every preset\'s measured numbers, and the current one is marked', () => {
+        render(<DizajnPage />);
+        pick('Bar size', 'Balanced');
+        const rows = within(section()).getAllByTestId('mobileplayer-size-row');
+        expect(rows.map((r) => r.dataset.size)).toEqual(['today', 'balanced', 'art', 'compact']);
+        for (const row of rows) {
+          const m = PHONE_BAR_MEASURED[row.dataset.size as keyof typeof PHONE_BAR_MEASURED];
+          const cells = [...row.querySelectorAll('td')].map((td) => td.textContent);
+          expect(cells.slice(1)).toEqual([
+            `${m.art}`,
+            `${m.play} / ${m.glyph}`,
+            `${m.hit}`,
+            `${m.title} / ${m.artist}`,
+            `${m.bar}`,
+            `${m.name390} / ${m.name360}`,
+          ]);
+          expect(row.getAttribute('aria-current')).toBe(row.dataset.size === 'balanced' ? 'true' : null);
+        }
+      });
+
+      // The quoted numbers were read from the built gallery's DOM (and
+      // tests/phone-bar-sizes-ui.test.mjs re-reads them); here they must at
+      // least agree with the classes each preset renders and, for Today,
+      // with the shipped numbers quoted above.
+      it('the quoted numbers agree with the preset classes and the shipped bar', () => {
+        const PX: Record<string, number> = {
+          'size-art-sm': 48, 'size-art-bar': 56, 'size-art-bar-lg': 64,
+          'size-10': 40, 'size-11': 44, 'size-12': 48, 'size-7': 28,
+          'text-xs': 12, 'text-sm': 14, 'text-base': 16,
+        };
+        const first = (cls: string) => PX[cls.split(' ')[0]];
+        for (const o of PHONE_BAR_SIZE_OPTIONS) {
+          const spec = PHONE_BAR_SIZES[o.id];
+          const m = PHONE_BAR_MEASURED[o.id];
+          expect({ art: m.art, play: m.play, glyph: m.glyph, hit: m.hit, title: m.title, artist: m.artist }).toEqual({
+            art: first(spec.art),
+            play: first(spec.disc),
+            glyph: first(spec.bareIcon),
+            hit: first(spec.hit),
+            title: first(spec.title),
+            artist: first(spec.artist),
+          });
+          expect(m.hit).toBeGreaterThanOrEqual(44);
+        }
+        expect(PHONE_BAR_MEASURED.today).toMatchObject({
+          bar: SHIPPED_BAR_HEIGHT,
+          name390: SHIPPED_TITLE_PX_390,
+          name360: SHIPPED_TITLE_PX_360,
+        });
+        // Compact is the shortest bar; the bigger artwork costs name width.
+        expect(PHONE_BAR_MEASURED.compact.bar).toBeLessThan(PHONE_BAR_MEASURED.today.bar);
+        expect(PHONE_BAR_MEASURED.art.name390).toBeLessThan(PHONE_BAR_MEASURED.balanced.name390);
+      });
     });
   });
 

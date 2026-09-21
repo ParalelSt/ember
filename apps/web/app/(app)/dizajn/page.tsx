@@ -45,8 +45,11 @@ import { SearchRowsSection } from '@/components/library/options/searchrows/Searc
 import {
   BEFORE_TAPS,
   BEFORE_TITLE_PX,
+  PHONE_BAR_SIZE_OPTIONS,
+  PHONE_PLAY_STYLE_OPTIONS,
   SHIPPED_TITLE_PX_390,
 } from '@/components/library/options/mobileplayer';
+import type { PhoneBarSize, PhonePlayStyle } from '@/components/player/PhonePlayerBar';
 import { MobilePlayerSection } from '@/components/library/options/mobileplayer/MobilePlayerSection';
 import {
   TABS_LAYOUTS,
@@ -84,6 +87,8 @@ const TABS_SCROLL_KEY = 'dizajn-tabs-scroll';
 const TABS_PASTE_KEY = 'dizajn-tabs-paste';
 const TABS_V3_PICKER_KEY = 'dizajn-tabs-v3-picker';
 const TABS_V3_STATE_KEY = 'dizajn-tabs-v3-state';
+const MOBILEPLAYER_SIZE_KEY = 'dizajn-mobileplayer-size';
+const MOBILEPLAYER_PLAY_KEY = 'dizajn-mobileplayer-play-style';
 
 // Saved picker choices. The page is server-rendered with the first option
 // of every picker, so the saved one must not be read during the first
@@ -279,6 +284,10 @@ export default function DizajnPage() {
   // still a choice; the control style and the indicator were picked.
   const [srState, setSrState] = useSavedChoice<RowState>(SEARCHROWS_STATE_KEY, ROW_STATES);
 
+  // "Mobile player" size pickers: same pattern. Both open on what ships.
+  const [mpSize, setMpSize] = useSavedChoice<PhoneBarSize>(MOBILEPLAYER_SIZE_KEY, PHONE_BAR_SIZE_OPTIONS);
+  const [mpPlay, setMpPlay] = useSavedChoice<PhonePlayStyle>(MOBILEPLAYER_PLAY_KEY, PHONE_PLAY_STYLE_OPTIONS);
+
   return (
     <div>
       <PageTitle className="mb-2">Design gallery</PageTitle>
@@ -317,8 +326,21 @@ export default function DizajnPage() {
           publish the same bottom inset the phone does, so the lift stays visible here: if it ever
           stops working, the bar and the nav disappear under the strip.
         </p>
+        <p className="text-meta mb-block">
+          Proposals, not built: sizes. The owner asked for the play button, the artwork and the
+          name and artist to be resized. Bar size picks one of four coherent presets (Today is
+          exactly what ships); Play style draws play/pause as today&apos;s filled disc or as the bare
+          glyph, with the same 48px hit box either way. Every tap target stays at least 48px. The
+          live bar keeps Today until one is picked; the numbers under the frames are measured from
+          these frames.
+        </p>
 
-        <MobilePlayerSection />
+        <div className="mb-stack flex flex-wrap gap-x-section gap-y-block">
+          <Picker label="Bar size" options={PHONE_BAR_SIZE_OPTIONS} value={mpSize} onChange={setMpSize} />
+          <Picker label="Play style" options={PHONE_PLAY_STYLE_OPTIONS} value={mpPlay} onChange={setMpPlay} />
+        </div>
+
+        <MobilePlayerSection size={mpSize} playStyle={mpPlay} />
       </section>
 
       <section className="mb-section">
