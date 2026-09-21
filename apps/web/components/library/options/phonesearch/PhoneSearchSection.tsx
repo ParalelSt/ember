@@ -272,6 +272,7 @@ function PhoneFrame({
         duration={track.durationSec ?? 200}
         onToggle={NOOP}
         onSeek={NOOP}
+        onNext={NOOP}
         onOpen={NOOP}
       />
     </footer>

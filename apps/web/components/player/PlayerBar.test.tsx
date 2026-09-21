@@ -182,18 +182,20 @@ describe('PlayerBar', () => {
       usePlayerStore.getState().setNowPlayingOpen(false);
     });
 
-    it('draws the one-row bar with play as its only control', () => {
+    it('draws the one-row bar with play and next as its controls', () => {
       render(<PlayerBar />);
       const footer = bar();
-      expect(within(footer).getAllByRole('button').map((b) => b.getAttribute('aria-label'))).toEqual(['Pause']);
+      expect(within(footer).getAllByRole('button').map((b) => b.getAttribute('aria-label'))).toEqual(['Pause', 'Next']);
       // MobileNav under it carries the inset instead: see the dedicated
       // 'leaves the safe-area lift to MobileNav' test above.
       expect(footer).not.toHaveClass('safe-area-bottom');
     });
 
-    it('opens the full-screen view on a tap, but not from play', () => {
+    it('opens the full-screen view on a tap, but not from play or next', () => {
       render(<PlayerBar />);
       fireEvent.click(screen.getByRole('button', { name: 'Pause' }));
+      expect(usePlayerStore.getState().nowPlayingOpen).toBe(false);
+      fireEvent.click(screen.getByRole('button', { name: 'Next' }));
       expect(usePlayerStore.getState().nowPlayingOpen).toBe(false);
       fireEvent.click(screen.getByTestId('phone-player-row'));
       expect(usePlayerStore.getState().nowPlayingOpen).toBe(true);

@@ -36,7 +36,7 @@ export const CHANGELOG: ChangelogEntry[] = [
       'Radio works for every song now: a small group of songs used to fail to start one.',
       'An instrumental, live or remixed version is kept apart from the original, so liking one no longer lights up the other and radio stops mistaking them for each other.',
       'On a phone, the song name in the full-screen player is readable again: long titles had been drawn on top of themselves, and now they sit still for a moment and then scroll across once, the way they used to.',
-      'The player bar on a phone is back to one clean row: the artwork, the song name with room to actually read it (it scrolls when it is too long for even that), and a single play button. Previous, next and the queue are in the full-screen player, which opens when you tap the bar. The bar and the row of Home, Search and Library now sit clear of the Android buttons at the bottom of the screen instead of hiding behind them.',
+      'The player bar on a phone is back to one clean row: the artwork, the song name with room to actually read it (it scrolls when it is too long for even that), and play and next buttons. Previous and the queue are in the full-screen player, which opens when you tap the bar. The bar and the row of Home, Search and Library now sit clear of the Android buttons at the bottom of the screen instead of hiding behind them.',
     ],
   },
   {

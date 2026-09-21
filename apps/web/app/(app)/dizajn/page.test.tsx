@@ -1036,7 +1036,7 @@ describe('DizajnPage', () => {
 
     // The point of the section after the pick: it draws the shipping bar,
     // not a copy of it, so it cannot drift from what the app renders.
-    it('draws the REAL PhonePlayerBar: artwork, name, one play button, no pickers left', () => {
+    it('draws the REAL PhonePlayerBar: artwork, name, play and next, no pickers left', () => {
       render(<DizajnPage />);
       expect(bars()).toHaveLength(FRAME_COUNT);
       for (const bar of bars()) {
@@ -1047,8 +1047,8 @@ describe('DizajnPage', () => {
         // The size presets are gone: the bar takes no size or style.
         expect(bar.dataset.size).toBeUndefined();
         expect(bar.dataset.playStyle).toBeUndefined();
-        expect(within(bar).getAllByRole('button').map((b) => b.getAttribute('aria-label'))).toEqual(['Pause']);
-        for (const name of ['Previous', 'Next', 'Queue']) {
+        expect(within(bar).getAllByRole('button').map((b) => b.getAttribute('aria-label'))).toEqual(['Pause', 'Next']);
+        for (const name of ['Previous', 'Queue']) {
           expect(within(bar).queryByRole('button', { name })).toBeNull();
         }
         // Mock candidates tagged themselves; the real bar does not.
@@ -1106,8 +1106,8 @@ describe('DizajnPage', () => {
     it('quotes the shipped tap targets and what they replaced', () => {
       render(<DizajnPage />);
       const taps = within(section()).getByTestId('mobileplayer-taps');
-      expect(taps).toHaveTextContent('play 48px (a 40px disc inside it), artwork 56px (previous, next and queue: full-screen view)');
-      expect(taps).toHaveTextContent('224px at 390, 194px at 360');
+      expect(taps).toHaveTextContent('play 48px (a 40px disc inside it), next 48px (24px glyph), artwork 56px (previous and queue: full-screen view)');
+      expect(taps).toHaveTextContent('176px at 390, 146px at 360');
       expect(taps).toHaveTextContent('Bar height: 100px');
       expect(taps).toHaveTextContent('The phone bar before this work, for comparison');
       expect(taps).toHaveTextContent('play 40px, prev/next 32px, queue 40px, artwork 48px');

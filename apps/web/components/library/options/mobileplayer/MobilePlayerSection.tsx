@@ -88,6 +88,7 @@ export function MobilePlayerSection() {
                       duration={MOCK_MOBILE_NOW_PLAYING.durationSec ?? 264}
                       onToggle={() => {}}
                       onSeek={() => {}}
+                      onNext={() => {}}
                       onOpen={() => {}}
                     />
                   </footer>

@@ -355,8 +355,9 @@ export default function DizajnPage() {
           one-row shape (artwork left, the seek line pinned under everything), stripped to the
           artwork, the song name and artist, and one play/pause button. Previous, next and the
           queue are not in the bar any more; they live on the full-screen player, which a tap anywhere
-          on the bar except play opens. With that room back the name gets a {SHIPPED_TITLE_PX_390}px box
-          at 390 and scrolls when even that is not enough.
+          on the bar except play opens. Next came back later, beside play, so skipping needs no
+          trip to the full-screen view; the name still gets a {SHIPPED_TITLE_PX_390}px box at 390 and
+          scrolls when that is not enough.
         </p>
         <p className="text-meta mb-block">
           Then the sizes, picked from four presets tried here:{' '}

@@ -61,9 +61,8 @@ export function PlayerBar() {
   if (!current) return null;
   const tabsOpen = isTabsPathFor(pathname, current.id);
 
-  // Phones get their own bar: artwork, the scrolling song name and one play
-  // button. Previous, next and the queue live on the full-screen view the
-  // bar opens.
+  // Phones get their own bar: artwork, the scrolling song name, play and
+  // next. Previous and the queue live on the full-screen view the bar opens.
   if (!isDesktop) {
     return (
       <footer data-testid="player-bar" className={PLAYER_BAR_CHROME}>
@@ -74,6 +73,7 @@ export function PlayerBar() {
           duration={duration}
           onToggle={toggle}
           onSeek={seek}
+          onNext={next}
           onOpen={() => openNowPlaying(true)}
         />
       </footer>

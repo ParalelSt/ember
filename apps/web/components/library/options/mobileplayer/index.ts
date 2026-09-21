@@ -17,12 +17,12 @@ export const BEFORE_TITLE_PX = 38;
 
 /** What ships: the owner's pick, "Old + play only", at the Balanced size
  *  with a smaller disc ("the button is too big while the rest is good").
- *  Previous, next and the queue are not in the bar; they live on the
- *  full-screen view. The title box and bar height were measured on the
+ *  Next sits beside play (added after "it looks pretty empty"); previous
+ *  and the queue live on the full-screen view. The title box and bar height were measured on the
  *  built gallery and are asserted (as floors) against the live bar by
  *  tests/mobile-player-ui.test.mjs. */
 export const SHIPPED_TAPS =
-  'play 48px (a 40px disc inside it), artwork 56px (previous, next and queue: full-screen view)';
-export const SHIPPED_TITLE_PX_390 = 224;
-export const SHIPPED_TITLE_PX_360 = 194;
+  'play 48px (a 40px disc inside it), next 48px (24px glyph), artwork 56px (previous and queue: full-screen view)';
+export const SHIPPED_TITLE_PX_390 = 176;
+export const SHIPPED_TITLE_PX_360 = 146;
 export const SHIPPED_BAR_HEIGHT = 100;

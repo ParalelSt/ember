@@ -118,7 +118,7 @@ try {
     JSON.stringify(ids));
   for (const [id, f] of Object.entries(m.frames)) {
     check(`${id}: draws 1:1`, f.scale === 1, String(f.scale));
-    check(`${id}: one control, no size or style marker`, f.buttons === 1 && !f.marked, `${f.buttons} buttons`);
+    check(`${id}: play and next, no size or style marker`, f.buttons === 2 && !f.marked, `${f.buttons} buttons`);
     const got = { art: f.art, disc: f.disc, glyph: f.glyph, hit: f.hit, title: f.title, artist: f.artist };
     check(`${id}: the shipped sizes`, JSON.stringify(got) === JSON.stringify(WANT),
       `got ${JSON.stringify(got)}`);
@@ -131,8 +131,8 @@ try {
   check('the section quotes the measured name boxes',
     m.taps.includes(`${f390.name}px at 390, ${f360.name}px at 360`), m.taps);
   check('the section quotes the measured bar height', m.taps.includes(`Bar height: ${f390.bar}px`), m.taps);
-  check('the section quotes the 40px disc in the 48px hit box, artwork 56',
-    m.taps.includes('play 48px (a 40px disc inside it), artwork 56px'), m.taps);
+  check('the section quotes the 40px disc in the 48px hit box, next, artwork 56',
+    m.taps.includes('play 48px (a 40px disc inside it), next 48px (24px glyph), artwork 56px'), m.taps);
 
   if (SHOTS) {
     fs.mkdirSync(SHOTS, { recursive: true });

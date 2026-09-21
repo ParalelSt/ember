@@ -32,6 +32,7 @@ function setup() {
   const handlers = {
     onToggle: vi.fn(),
     onSeek: vi.fn(),
+    onNext: vi.fn(),
     onOpen: vi.fn(),
   };
   const view = render(
@@ -67,16 +68,16 @@ function fontPx(el: Element): number {
 }
 
 describe('PhonePlayerBar', () => {
-  it('draws the artwork, the name, the artist and exactly one control: play/pause', () => {
+  it('draws the artwork, the name, the artist and two controls: play/pause, then next', () => {
     const { container } = setup();
     const bar = screen.getByTestId('phone-player-bar');
     const titleRow = within(bar).getByTestId('phone-player-title-row');
     // The artwork sits beside the name, in one row, the old bar's shape.
     expect(titleRow.querySelector('.size-art-bar')).not.toBeNull();
     expect(titleRow).toHaveTextContent(TRACK.artist);
-    expect(within(bar).getAllByRole('button').map((b) => b.getAttribute('aria-label'))).toEqual(['Pause']);
-    // Previous, next and the queue live on the full-screen view now.
-    for (const name of ['Previous', 'Next', 'Queue']) {
+    expect(within(bar).getAllByRole('button').map((b) => b.getAttribute('aria-label'))).toEqual(['Pause', 'Next']);
+    // Previous and the queue live on the full-screen view.
+    for (const name of ['Previous', 'Queue']) {
       expect(within(bar).queryByRole('button', { name })).toBeNull();
     }
     // The seek line is still there, under the row.
@@ -135,7 +136,7 @@ describe('PhonePlayerBar', () => {
 
   it('shows Play while paused', () => {
     render(
-      <PhonePlayerBar track={TRACK} playing={false} position={0} duration={264} onToggle={vi.fn()} onSeek={vi.fn()} onOpen={vi.fn()} />,
+      <PhonePlayerBar track={TRACK} playing={false} position={0} duration={264} onToggle={vi.fn()} onSeek={vi.fn()} onNext={vi.fn()} onOpen={vi.fn()} />,
     );
     const play = screen.getByRole('button', { name: 'Play' });
     expect(screen.queryByRole('button', { name: 'Pause' })).toBeNull();
@@ -153,6 +154,27 @@ describe('PhonePlayerBar', () => {
     fireEvent.click(screen.getByTestId('phone-play-disc'));
     fireEvent.click(screen.getByRole('button', { name: 'Pause' }).querySelector('svg')!);
     expect(onToggle).toHaveBeenCalledTimes(3);
+    expect(onOpen).not.toHaveBeenCalled();
+  });
+
+  it('draws next as a plain 24px glyph in a 48px hit box, no disc', () => {
+    setup();
+    const next = screen.getByRole('button', { name: 'Next' });
+    expect(sizePx(next)).toBe(48);
+    expect(next).toHaveClass('shrink-0', 'rounded-full', 'text-foreground');
+    expect(next).not.toHaveClass('bg-foreground');
+    expect(within(next).queryByTestId('phone-play-disc')).toBeNull();
+    const glyph = within(next).getByTestId('phone-next-glyph');
+    expect(sizePx(glyph)).toBe(24);
+    expect(glyph).toHaveClass('fill-current');
+  });
+
+  it('next skips without toggling or opening the full-screen view', () => {
+    const { onNext, onToggle, onOpen } = setup();
+    fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+    fireEvent.click(screen.getByTestId('phone-next-glyph'));
+    expect(onNext).toHaveBeenCalledTimes(2);
+    expect(onToggle).not.toHaveBeenCalled();
     expect(onOpen).not.toHaveBeenCalled();
   });
 
