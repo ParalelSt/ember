@@ -159,7 +159,7 @@ const SPACING_BASELINE: Record<string, number> = {
   'app/(app)/admin/layout.tsx': 3,
   'app/(app)/admin/tracks/page.tsx': 14,
   'app/(app)/admin/users/page.tsx': 8,
-  'app/(app)/dizajn/page.tsx': 45,
+  'app/(app)/dizajn/sve/page.tsx': 45,
   'app/(app)/library/loading.tsx': 5,
   'app/(app)/library/page.tsx': 7,
   'app/(app)/page.tsx': 1,

@@ -102,7 +102,7 @@ try {
   const ctx = await browser.newContext({ viewport: { width: 1800, height: 1100 }, deviceScaleFactor: 2 });
   await ctx.addCookies([{ name: 'pb_auth', value: cookie, url: APP_URL }]);
   const page = await ctx.newPage();
-  await page.goto(`${APP_URL}/dizajn`, { waitUntil: 'networkidle' });
+  await page.goto(`${APP_URL}/dizajn/sve`, { waitUntil: 'networkidle' });
   // A choice the removed pickers saved must not reach the bar.
   await page.evaluate((keys) => { localStorage.setItem(keys[0], 'art'); localStorage.setItem(keys[1], 'icon'); }, OLD_KEYS);
   await page.reload({ waitUntil: 'networkidle' });

@@ -54,6 +54,7 @@
     "test:marquee-ui": "node tests/marquee-ui.test.mjs",
     "test:mobile-player": "node tests/mobile-player-ui.test.mjs",
     "test:phone-bar-sizes": "node tests/phone-bar-sizes-ui.test.mjs",
+    "test:bar-colors": "node tests/bar-colors-ui.test.mjs",
     "test:android-native-log": "node tests/android-native-log.mjs",
     "test:android-call": "bash tests/android-auto-call.sh",
     "test:watchdog": "bash tests/watchdog.test.sh",
