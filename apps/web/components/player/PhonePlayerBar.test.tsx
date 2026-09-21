@@ -29,11 +29,8 @@ const TRACK: Track = {
 function setup() {
   const handlers = {
     onToggle: vi.fn(),
-    onNext: vi.fn(),
-    onPrev: vi.fn(),
     onSeek: vi.fn(),
     onOpen: vi.fn(),
-    onQueue: vi.fn(),
   };
   const view = render(
     <PhonePlayerBar track={TRACK} playing position={92} duration={264} {...handlers} />,
@@ -53,21 +50,24 @@ function box(el: HTMLElement): [number, number] {
 }
 
 describe('PhonePlayerBar', () => {
-  it('puts the song name on its own row above the controls', () => {
-    setup();
+  it('draws the artwork, the name, the artist and exactly one control: play/pause', () => {
+    const { container } = setup();
     const bar = screen.getByTestId('phone-player-bar');
     const titleRow = within(bar).getByTestId('phone-player-title-row');
-    const controlsRow = within(bar).getByTestId('phone-player-controls-row');
-
-    // Two rows, name first: the whole point of the layout.
-    expect(titleRow.compareDocumentPosition(controlsRow) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    // The name row holds the name and nothing else, so it has the full width.
-    expect(within(titleRow).queryByRole('button')).toBeNull();
+    // The artwork sits beside the name, in one row, the old bar's shape.
+    expect(titleRow.querySelector('.size-art-sm')).not.toBeNull();
     expect(titleRow).toHaveTextContent(TRACK.artist);
-    // Every control is in the second row.
-    for (const name of ['Previous', 'Pause', 'Next', 'Queue']) {
-      expect(within(controlsRow).getByRole('button', { name })).toBeInTheDocument();
+    expect(within(bar).getAllByRole('button').map((b) => b.getAttribute('aria-label'))).toEqual(['Pause']);
+    // Previous, next and the queue live on the full-screen view now.
+    for (const name of ['Previous', 'Next', 'Queue']) {
+      expect(within(bar).queryByRole('button', { name })).toBeNull();
     }
+    // The seek line is still there, under the row.
+    const row = within(bar).getByTestId('phone-player-row');
+    const seek = within(bar).getByLabelText('progress');
+    expect(row.compareDocumentPosition(seek) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(row.contains(seek)).toBe(false);
+    expect(container.querySelectorAll('[data-testid="phone-player-controls-row"]')).toHaveLength(0);
   });
 
   it('scrolls the song name with the real MarqueeText', () => {
@@ -79,30 +79,45 @@ describe('PhonePlayerBar', () => {
     expect(within(marquee).getByTestId('marquee-track')).toBeInTheDocument();
   });
 
-  it('draws the approved tap sizes: play 56, prev/next 48, queue 48, artwork 48', () => {
+  it('draws play at 48px and the artwork at 48px', () => {
     const { container } = setup();
-    expect(box(screen.getByRole('button', { name: 'Pause' }))).toEqual([56, 56]);
-    expect(box(screen.getByRole('button', { name: 'Previous' }))).toEqual([48, 48]);
-    expect(box(screen.getByRole('button', { name: 'Next' }))).toEqual([48, 48]);
-    expect(box(screen.getByRole('button', { name: 'Queue' }))).toEqual([48, 48]);
+    const play = screen.getByRole('button', { name: 'Pause' });
+    expect(box(play)).toEqual([48, 48]);
+    // Beside a flex-1 name column, it must never be squeezed.
+    expect(play).toHaveClass('shrink-0', 'rounded-full');
     // --spacing-art-sm is 3rem, so `size-art-sm` is a 48px artwork box.
     expect(container.querySelector('.size-art-sm')).not.toBeNull();
   });
 
-  it('fires every control, and the name and the artwork open the full-screen view', () => {
-    const { container, onToggle, onNext, onPrev, onQueue, onOpen } = setup();
-    fireEvent.click(screen.getByRole('button', { name: 'Pause' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Next' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Previous' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Queue' }));
-    expect([onToggle, onNext, onPrev, onQueue].map((f) => f.mock.calls.length)).toEqual([1, 1, 1, 1]);
-
-    fireEvent.click(screen.getByTestId('phone-player-title-row'));
-    fireEvent.click(container.querySelector('.size-art-sm')!);
-    expect(onOpen).toHaveBeenCalledTimes(2);
+  it('shows Play while paused', () => {
+    render(
+      <PhonePlayerBar track={TRACK} playing={false} position={0} duration={264} onToggle={vi.fn()} onSeek={vi.fn()} onOpen={vi.fn()} />,
+    );
+    expect(screen.getByRole('button', { name: 'Play' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Pause' })).toBeNull();
   });
 
-  it('leaves the strip chrome to the footer that holds it', () => {
+  it('play toggles playback without opening the full-screen view', () => {
+    const { onToggle, onOpen } = setup();
+    fireEvent.click(screen.getByRole('button', { name: 'Pause' }));
+    // The icon inside the button is a tap on the button too.
+    fireEvent.click(screen.getByRole('button', { name: 'Pause' }).querySelector('svg')!);
+    expect(onToggle).toHaveBeenCalledTimes(2);
+    expect(onOpen).not.toHaveBeenCalled();
+  });
+
+  it('a tap anywhere else on the row opens the full-screen view', () => {
+    const { container, onOpen, onToggle } = setup();
+    fireEvent.click(screen.getByTestId('phone-player-row'));
+    fireEvent.click(container.querySelector('.size-art-sm')!);
+    fireEvent.click(within(screen.getByTestId('phone-player-title-row')).getByText(TRACK.artist));
+    fireEvent.click(within(screen.getByTestId('phone-player-title-row')).getByTestId('marquee'));
+    // Once per tap: nothing inside opens it a second time on the way up.
+    expect(onOpen).toHaveBeenCalledTimes(4);
+    expect(onToggle).not.toHaveBeenCalled();
+  });
+
+  it('leaves the strip chrome, the safe-area lift included, to the footer that holds it', () => {
     setup();
     // The bar itself paints nothing: the background, the top border and the
     // safe-area stand-off are one constant, spent by PlayerBar's <footer>

@@ -1,10 +1,10 @@
 'use client';
 
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import {
-  ChevronDownIcon, MusicIcon,
+  ChevronDownIcon, MusicIcon, QueueIcon,
   RepeatIcon, RepeatOneIcon, ShuffleIcon, TabsIcon,
 } from '@/components/icons';
 import { Artwork } from '@/components/primitives/Artwork';
@@ -13,6 +13,7 @@ import { AddToPlaylistMenu } from '@/components/track/menus/AddToPlaylistMenu';
 import { ShareButton } from '@/components/track/ShareButton';
 import { LyricsBody } from '@/components/player/LyricsBody';
 import { NowPlayingSummary } from '@/components/player/NowPlayingSummary';
+import { QueueSheet } from '@/components/player/QueueSheet';
 import { SeekBar } from '@/components/player/SeekBar';
 import { TransportControls } from '@/components/player/TransportControls';
 import { useBackDismiss } from '@/lib/useBackDismiss';
@@ -48,6 +49,9 @@ export function NowPlaying() {
   const toggleShuffle = usePlayerStore((s) => s.toggleShuffle);
   const isPlaylist = usePlayerStore((s) => s.context?.type === 'playlist');
   const tabsEnabled = useSettingsStore((s) => s.tabsEnabled);
+  // The queue: the phone bar has no queue button of its own any more, so
+  // this is where phones reach it. The sheet portals above this view.
+  const [queueOpen, setQueueOpen] = useState(false);
 
   const router = useRouter();
   // The tab page for this song, full screen on phones like everything else.
@@ -193,19 +197,35 @@ export function NowPlaying() {
       >
         <ChevronDownIcon className="h-6 w-6" />
       </Button>
-      {tabsEnabled && (
+      {/* Top right: guitar tabs (when the plugin is on) and the queue. */}
+      <div
+        className="absolute z-20 right-3 flex items-center gap-inset"
+        style={{ top: 'calc(var(--safe-top) + 1rem)' }}
+      >
+        {tabsEnabled && (
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={openTabs}
+            aria-label="Guitar tabs"
+            title="Guitar tabs"
+            className="h-10 w-10 text-foreground/80 hover:text-foreground"
+          >
+            <TabsIcon className="h-5 w-5" />
+          </Button>
+        )}
         <Button
           variant="ghost"
           size="icon"
-          onClick={openTabs}
-          aria-label="Guitar tabs"
-          title="Guitar tabs"
-          className="absolute z-20 right-3 h-10 w-10 text-foreground/80 hover:text-foreground"
-          style={{ top: 'calc(var(--safe-top) + 1rem)' }}
+          onClick={() => setQueueOpen(true)}
+          aria-label="Queue"
+          title="Queue"
+          className="h-10 w-10 text-foreground/80 hover:text-foreground"
         >
-          <TabsIcon className="h-5 w-5" />
+          <QueueIcon className="h-5 w-5" />
         </Button>
-      )}
+      </div>
+      <QueueSheet open={queueOpen} onOpenChange={setQueueOpen} />
 
       <div
         ref={scrollerRef}

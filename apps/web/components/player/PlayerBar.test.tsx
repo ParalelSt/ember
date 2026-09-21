@@ -1,7 +1,8 @@
 import type { ComponentProps } from 'react';
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { PlayerBar } from './PlayerBar';
+import { usePlayerStore } from '@/stores/usePlayerStore';
 import { useSettingsStore } from '@/stores/useSettingsStore';
 import type { Track } from '@/types/track';
 
@@ -162,5 +163,27 @@ describe('PlayerBar', () => {
     useSettingsStore.setState({ tabsEnabled: false });
     render(<PlayerBar />);
     expect(screen.queryByRole('button', { name: 'Guitar tabs' })).toBeNull();
+  });
+
+  describe('on a phone', () => {
+    beforeEach(() => {
+      desktop.value = false;
+      usePlayerStore.getState().setNowPlayingOpen(false);
+    });
+
+    it('draws the one-row bar with play as its only control', () => {
+      render(<PlayerBar />);
+      const footer = bar();
+      expect(within(footer).getAllByRole('button').map((b) => b.getAttribute('aria-label'))).toEqual(['Pause']);
+      expect(footer).toHaveClass('safe-area-bottom');
+    });
+
+    it('opens the full-screen view on a tap, but not from play', () => {
+      render(<PlayerBar />);
+      fireEvent.click(screen.getByRole('button', { name: 'Pause' }));
+      expect(usePlayerStore.getState().nowPlayingOpen).toBe(false);
+      fireEvent.click(screen.getByTestId('phone-player-row'));
+      expect(usePlayerStore.getState().nowPlayingOpen).toBe(true);
+    });
   });
 });

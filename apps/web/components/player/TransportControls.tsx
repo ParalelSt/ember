@@ -5,9 +5,8 @@ import { Button } from '@/components/ui/button';
 import { NextIcon, PauseIcon, PlayIcon, PrevIcon } from '@/components/icons';
 import { cn } from '@/lib/utils';
 
-/** 'sm' is the desktop mini player bar, 'phone' the phone bar's control row
- *  (every box at or above Android's 48px minimum), 'lg' the full-screen
- *  view. */
+/** 'sm' is the desktop mini player bar, 'phone' the phone bar (its one play
+ *  button, at Android's 48px minimum), 'lg' the full-screen view. */
 export type TransportSize = 'sm' | 'phone' | 'lg';
 
 const ROW: Record<TransportSize, string> = {
@@ -36,7 +35,7 @@ const STEP_ICON: Record<TransportSize, string> = {
 
 const PLAY_BOX: Record<TransportSize, string> = {
   sm: 'h-10 w-10',
-  phone: 'h-14 w-14',
+  phone: 'h-12 w-12',
   lg: 'h-16 w-16',
 };
 
@@ -59,6 +58,34 @@ export interface TransportControlsProps {
   className?: string;
 }
 
+/** The round play/pause button on its own: the middle of TransportControls,
+ *  and the only control the phone bar keeps (previous, next and queue live
+ *  on the full-screen view there). */
+export function PlayPauseButton({
+  playing,
+  onToggle,
+  size,
+}: Pick<TransportControlsProps, 'playing' | 'onToggle' | 'size'>) {
+  return (
+    <Button
+      size="icon"
+      onClick={onToggle}
+      aria-label={playing ? 'Pause' : 'Play'}
+      className={cn(
+        PLAY_BOX[size],
+        // On the phone bar it sits beside a flex-1 name column, which must
+        // never squeeze it below 48px.
+        size === 'phone' && 'shrink-0',
+        'rounded-full bg-foreground text-background hover:bg-foreground/90',
+      )}
+    >
+      {playing
+        ? <PauseIcon className={cn(PLAY_ICON[size], 'fill-current')} />
+        : <PlayIcon className={cn(PLAY_ICON[size], 'fill-current ml-0.5')} />}
+    </Button>
+  );
+}
+
 /** Previous / Play-Pause / Next, with slots either side for the toggles each
  *  bar pins next to them. */
 export function TransportControls({
@@ -77,16 +104,7 @@ export function TransportControls({
       <Button variant="ghost" size="icon" className={STEP_BOX[size]} onClick={onPrev} aria-label="Previous">
         <PrevIcon className={STEP_ICON[size]} />
       </Button>
-      <Button
-        size="icon"
-        onClick={onToggle}
-        aria-label={playing ? 'Pause' : 'Play'}
-        className={cn(PLAY_BOX[size], 'rounded-full bg-foreground text-background hover:bg-foreground/90')}
-      >
-        {playing
-          ? <PauseIcon className={cn(PLAY_ICON[size], 'fill-current')} />
-          : <PlayIcon className={cn(PLAY_ICON[size], 'fill-current ml-0.5')} />}
-      </Button>
+      <PlayPauseButton playing={playing} onToggle={onToggle} size={size} />
       <Button variant="ghost" size="icon" className={STEP_BOX[size]} onClick={onNext} aria-label="Next">
         <NextIcon className={STEP_ICON[size]} />
       </Button>

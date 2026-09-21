@@ -1,10 +1,9 @@
 'use client';
 
-import { Button } from '@/components/ui/button';
-import { QueueIcon } from '@/components/icons';
+import type { MouseEvent } from 'react';
 import { MarqueeText } from '@/components/player/MarqueeText';
 import { SeekBar } from '@/components/player/SeekBar';
-import { TransportControls } from '@/components/player/TransportControls';
+import { PlayPauseButton } from '@/components/player/TransportControls';
 import { Artwork } from '@/components/primitives/Artwork';
 import { useTrackArtSrc } from '@/lib/offlineNative';
 import type { Track } from '@/types/track';
@@ -23,24 +22,20 @@ export interface PhonePlayerBarProps {
   position: number;
   duration: number;
   onToggle: () => void;
-  onNext: () => void;
-  onPrev: () => void;
   onSeek: (sec: number) => void;
-  /** Opens the full-screen view: the song name and the artwork are the tap
-   *  target for it, the way they were in the one-row bar. */
+  /** Opens the full-screen view: a tap anywhere on the row except the play
+   *  button. Previous, next and the queue live there. */
   onOpen: () => void;
-  onQueue: () => void;
 }
 
 /**
- * The phone player bar: two rows.
- *
- * Row one is the song name and artist across the whole width of the bar, so
- * a long name has 358px at a 390px phone instead of the 38px the old
- * [1fr auto 1fr] row left it, and it scrolls (MarqueeText) when even that is
- * not enough. Row two is artwork, the transport centred on the bar, and the
- * queue button, every box at or above Android's 48px minimum: play 56,
- * previous/next 48, queue 48, artwork 48.
+ * The phone player bar: the old one-row shape, stripped to what a glance
+ * needs. Artwork, the song name and artist (scrolling with MarqueeText when
+ * the name overflows), and one 48px play/pause button; the thin seek line
+ * under all of it, where the old bar had it. Previous, next and the queue
+ * are not here: they live on the full-screen NowPlaying view, which a tap
+ * on the bar opens. With those gone the name gets about 232px at a 390px
+ * phone (202px at 360) instead of the old bar's 38px.
  *
  * The strip's own background, border and safe-area stand-off are not here:
  * they are PLAYER_BAR_CHROME above, on the <footer> that holds whichever of
@@ -52,24 +47,29 @@ export function PhonePlayerBar({
   position,
   duration,
   onToggle,
-  onNext,
-  onPrev,
   onSeek,
   onOpen,
-  onQueue,
 }: PhonePlayerBarProps) {
   // Prefer a downloaded copy's own local art over the remote URL, the same
   // way the desktop bar's NowPlayingSummary does.
   const artSrc = useTrackArtSrc(track);
 
+  // The whole row opens the full-screen view, except the play button:
+  // pressing play must only play.
+  const openUnlessButton = (e: MouseEvent<HTMLDivElement>) => {
+    if ((e.target as HTMLElement).closest('button')) return;
+    onOpen();
+  };
+
   return (
     <div data-testid="phone-player-bar" className="flex flex-col">
-      <div className="flex flex-col gap-cluster px-block pt-cluster pb-inset">
-        <div
-          data-testid="phone-player-title-row"
-          onClick={onOpen}
-          className="flex min-w-0 cursor-pointer"
-        >
+      <div
+        data-testid="phone-player-row"
+        onClick={openUnlessButton}
+        className="flex cursor-pointer items-center gap-block px-block pt-row pb-cluster"
+      >
+        <div data-testid="phone-player-title-row" className="flex min-w-0 flex-1 items-center gap-row">
+          <Artwork src={artSrc} size="sm" className="shrink-0 rounded-md bg-black" />
           {/* min-w-0 flex-1: the marquee's box is sized by the row, never by
               the title inside it, which is what keeps measuring it stable. */}
           <div className="min-w-0 flex-1">
@@ -80,40 +80,12 @@ export function PhonePlayerBar({
           </div>
         </div>
 
-        {/* [1fr auto 1fr] so the transport stays centred on the bar whatever
-            sits either side of it. */}
-        <div data-testid="phone-player-controls-row" className="grid grid-cols-[1fr_auto_1fr] items-center">
-          <Artwork
-            src={artSrc}
-            size="sm"
-            onClick={onOpen}
-            className="shrink-0 cursor-pointer rounded-md bg-black"
-          />
-          <TransportControls
-            playing={playing}
-            onToggle={onToggle}
-            onNext={onNext}
-            onPrev={onPrev}
-            size="phone"
-          />
-          <div className="flex justify-end">
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-12 w-12 text-muted-foreground hover:text-foreground"
-              onClick={onQueue}
-              aria-label="Queue"
-              title="Queue"
-            >
-              <QueueIcon className="size-6" />
-            </Button>
-          </div>
-        </div>
+        <PlayPauseButton playing={playing} onToggle={onToggle} size="phone" />
       </div>
 
       {/* The thin progress slider along the bottom edge: visible, draggable,
-          no labels. */}
-      <SeekBar position={position} duration={duration} onSeek={onSeek} className="px-row pb-inset" />
+          no labels. Outside the row, so dragging it never opens anything. */}
+      <SeekBar position={position} duration={duration} onSeek={onSeek} className="px-row -mt-1" />
     </div>
   );
 }
