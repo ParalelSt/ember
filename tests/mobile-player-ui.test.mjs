@@ -19,6 +19,7 @@
  *    - a long name scrolls, a short one sits perfectly still,
  *    - play toggles without opening the full-screen view; a tap on the name
  *      opens it, and it has previous, next and a queue that opens,
+ *    - the seek line starts under the artwork and ends under the next icon,
  *    - nothing overflows the viewport horizontally,
  *    - with a bottom inset published the way MainActivity publishes it
  *      (--ember-inset-bottom on <html>), the nav alone lifts by it and
@@ -181,6 +182,7 @@ function measure() {
     buttons: [...bar.querySelectorAll('button')].map((b) => b.getAttribute('aria-label')),
     play: control('Pause') || control('Play'),
     next: control('Next'),
+    line: bar.querySelector('[data-slot="slider-track"]') ? rect(bar.querySelector('[data-slot="slider-track"]')) : null,
     nextGlyph: bar.querySelector('[data-testid="phone-next-glyph"]') ? rect(bar.querySelector('[data-testid="phone-next-glyph"]')) : null,
     title: track && track.firstElementChild ? track.firstElementChild.textContent.trim() : null,
     playLabel: (bar.querySelector('[aria-label="Pause"]') && 'Pause') || (bar.querySelector('[aria-label="Play"]') && 'Play'),
@@ -240,6 +242,9 @@ for (const [w, h] of [[390, 844], [360, 740]]) {
     !!m.next && m.next.w === 48 && m.next.h === 48 && m.next.x >= m.play.x + m.play.w
       && Math.abs(m.next.y - m.play.y) <= 1 && m.nextGlyph && m.nextGlyph.w === 24,
     m.next ? `next ${m.next.w}x${m.next.h} at ${m.next.x}, play ends ${m.play.x + m.play.w}, glyph ${m.nextGlyph?.w}` : 'missing');
+  check(at('the seek line starts under the artwork and ends under the next icon'),
+    !!m.line && Math.abs(m.line.x - m.artwork.x) <= 1 && Math.abs((m.line.x + m.line.w) - (m.nextGlyph.x + m.nextGlyph.w)) <= 1,
+    m.line ? `line ${m.line.x}..${m.line.x + m.line.w}, art ${m.artwork.x}, next icon ends ${m.nextGlyph.x + m.nextGlyph.w}` : 'missing');
   check(at('the artwork is 56px square'),
     !!m.artwork && m.artwork.w === 56 && m.artwork.h === 56, m.artwork ? `${m.artwork.w}x${m.artwork.h}` : 'missing');
   check(at('the name is 16px and the artist 14px'),

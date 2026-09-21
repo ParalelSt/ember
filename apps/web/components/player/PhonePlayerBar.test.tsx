@@ -189,6 +189,18 @@ describe('PhonePlayerBar', () => {
     expect(onToggle).not.toHaveBeenCalled();
   });
 
+  it('lines the seek line up with the row: under the artwork on the left, under the next icon on the right', () => {
+    setup();
+    // Row: 16px left (the artwork's edge), 4px right, so next's 24px glyph,
+    // centred in its 48px hit box, ends 16px in. The seek line runs 16px in
+    // on both sides to match. The browser suite measures it for real.
+    const row = screen.getByTestId('phone-player-row');
+    expect(row).toHaveClass('pl-block', 'pr-inset');
+    expect(row).not.toHaveClass('px-block');
+    const seekWrap = row.nextElementSibling!;
+    expect(seekWrap).toHaveClass('px-block');
+  });
+
   it('leaves the strip chrome to the footer that holds it, with no safe-area lift of its own', () => {
     setup();
     // The bar itself paints nothing: the background and the top border are

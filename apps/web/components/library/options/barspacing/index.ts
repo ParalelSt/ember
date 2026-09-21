@@ -1,13 +1,12 @@
-/** Spacing options for the phone player bar. The layout and the colours are
- *  fixed (the owner's picks: "Old + play only" plus next, colours as they
- *  are); only padding and gaps change between these. Each option is a set
- *  of descendant overrides on a wrapper around the REAL bar in the gallery,
- *  so the candidates restyle what ships instead of copying it.
+/** How far left the play and next buttons sit on the phone player bar.
+ *  Layout, colours and the "Aligned" spacing are fixed (the owner's picks);
+ *  only the row's right padding changes, and with it where the seek line
+ *  ends. Each option is a set of descendant overrides on a wrapper around
+ *  the REAL bar in the gallery, so the candidates restyle what ships.
  *
- *  What is off today: the seek line runs 12px from the edges while the row
- *  above it sits 16px in, and the next glyph stops 28px from the right edge
- *  while the line runs on to 12px, so neither end lines up. */
-export type BarSpacingId = 'now' | 'aligned' | 'roomy' | 'compact' | 'edge';
+ *  Shipped today: next's icon ends 16px from the screen edge, the same as
+ *  the artwork on the left, and the seek line ends right under it. */
+export type BarSpacingId = 'aligned' | 'left-8' | 'left-12' | 'left-20' | 'left-12-line';
 
 export interface BarSpacingOption {
   id: BarSpacingId;
@@ -18,48 +17,47 @@ export interface BarSpacingOption {
   className: string;
 }
 
-// The targets: the row (artwork, name, buttons), the artwork-to-name gap
-// (the title row), the play/next group (the row's last child) and the seek
-// line's wrapper (the element right after the row). Written out in full,
-// never built from pieces: Tailwind only generates class names it can read
-// literally in the source.
+// The targets: the row (artwork, name, buttons) and the seek line's wrapper
+// (the element right after the row). Next's 24px icon sits 12px inside its
+// 48px hit box, so the icon's gap to the edge is the row's right padding
+// plus 12. Written out in full, never built from pieces: Tailwind only
+// generates class names it can read literally in the source.
 export const BAR_SPACING_OPTIONS: BarSpacingOption[] = [
   {
-    id: 'now',
-    label: 'As it is',
-    blurb: 'For comparison. The line starts left of the artwork and runs past the next button.',
+    id: 'aligned',
+    label: 'As it is now (Aligned)',
+    blurb: 'For comparison. The next icon ends 16px from the edge, the line under it.',
     className: '',
   },
   {
-    id: 'aligned',
-    label: 'Aligned',
-    blurb: 'Same sizes, edges lined up: the line starts under the artwork and ends under the next icon.',
+    id: 'left-8',
+    label: '8px left',
+    blurb: 'The next icon ends 24px from the edge, the same margin the page content uses. The line still ends under it.',
     className:
-      '[&_[data-testid=phone-player-row]]:pr-inset [&_[data-testid=phone-player-row]+div]:px-block',
+      '[&_[data-testid=phone-player-row]]:pr-row [&_[data-testid=phone-player-row]+div]:pr-stack',
   },
   {
-    id: 'roomy',
-    label: 'Roomy',
-    blurb: 'Aligned, plus more air: a bigger gap after the artwork and between play and next, more above the row.',
+    id: 'left-12',
+    label: '12px left',
+    blurb: 'The next icon ends 28px from the edge. The line still ends under it.',
     className:
-      '[&_[data-testid=phone-player-row]]:pr-inset [&_[data-testid=phone-player-row]]:pt-block [&_[data-testid=phone-player-row]]:pb-row [&_[data-testid=phone-player-title-row]]:gap-block [&_[data-testid=phone-player-row]>div:last-child]:gap-cluster [&_[data-testid=phone-player-row]+div]:px-block',
+      '[&_[data-testid=phone-player-row]]:pr-block [&_[data-testid=phone-player-row]+div]:pr-[28px]',
   },
   {
-    id: 'compact',
-    label: 'Compact',
-    blurb: 'Aligned, and tighter top to bottom: the line tucks up under the row, the bar gets shorter.',
+    id: 'left-20',
+    label: '20px left',
+    blurb: 'The next icon ends 36px from the edge, clearly away from it. The line still ends under it.',
     className:
-      '[&_[data-testid=phone-player-row]]:pr-inset [&_[data-testid=phone-player-row]]:pt-cluster [&_[data-testid=phone-player-row]]:pb-inset [&_[data-testid=phone-player-row]+div]:px-block [&_[data-testid=phone-player-row]+div]:-mt-cluster',
+      '[&_[data-testid=phone-player-row]]:pr-stack [&_[data-testid=phone-player-row]+div]:pr-[36px]',
   },
   {
-    id: 'edge',
-    label: 'Edge to edge',
-    blurb: 'The row lined up on the right as in Aligned, and the line running the full width of the screen.',
-    className:
-      '[&_[data-testid=phone-player-row]]:pr-inset [&_[data-testid=phone-player-row]+div]:px-0',
+    id: 'left-12-line',
+    label: '12px left, line stays',
+    blurb: 'The buttons move 12px left, but the line keeps running to 16px from the edge, even on both sides.',
+    className: '[&_[data-testid=phone-player-row]]:pr-block',
   },
 ];
 
-export const BAR_SPACING_RECOMMENDED: BarSpacingId = 'aligned';
+export const BAR_SPACING_RECOMMENDED: BarSpacingId = 'left-8';
 export const BAR_SPACING_RECOMMENDED_REASON =
-  'Aligned fixes the one thing that looks off, both ends of the line, and changes nothing else you already liked.';
+  '8px left puts the next icon on the same 24px margin as the page above it, so the bar lines up with the page instead of hugging the edge.';

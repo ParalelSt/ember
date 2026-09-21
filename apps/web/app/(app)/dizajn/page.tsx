@@ -11,11 +11,10 @@ import { BAR_SPACING_RECOMMENDED_REASON } from '@/components/library/options/bar
 export default function DizajnPage() {
   return (
     <div>
-      <PageTitle className="mb-cluster">Phone player spacing</PageTitle>
+      <PageTitle className="mb-cluster">Phone player: buttons further left</PageTitle>
       <p className="text-meta mb-stack">
-        Same bar, same layout, same colours (you kept them as they are), only the spacing changes.
-        Right now the seek line starts left of the artwork and runs past the next button.{' '}
-        {BAR_SPACING_RECOMMENDED_REASON}
+        Aligned is in the real bar now. These only change how far left play and next sit (and where
+        the seek line ends); everything else stays. {BAR_SPACING_RECOMMENDED_REASON}
       </p>
       <BarSpacingSection />
       <p className="text-meta mt-section">

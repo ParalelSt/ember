@@ -42,12 +42,12 @@ describe('DizajnPage (phone player spacing only)', () => {
     }
   });
 
-  it('only the wrapper spacing differs, and "As it is" changes nothing', () => {
+  it('only the wrapper spacing differs, and the shipped one changes nothing', () => {
     render(<DizajnPage />);
     const frames = screen.getAllByTestId('barspacing-frame');
     const classes = frames.map((f) => f.className);
     expect(new Set(classes).size).toBe(classes.length);
-    expect(frames[BAR_SPACING_OPTIONS.findIndex((o) => o.id === 'now')].className).toBe('');
+    expect(frames[BAR_SPACING_OPTIONS.findIndex((o) => o.id === 'aligned')].className).toBe('');
     // Spacing only: no option touches size or colour.
     for (const c of classes) expect(c).not.toMatch(/:(size|w|h|bg|text|border|opacity)-/);
   });

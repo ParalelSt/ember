@@ -23,6 +23,6 @@ export const BEFORE_TITLE_PX = 38;
  *  tests/mobile-player-ui.test.mjs. */
 export const SHIPPED_TAPS =
   'play 48px (a 40px disc inside it), next 48px (24px glyph), artwork 56px (previous and queue: full-screen view)';
-export const SHIPPED_TITLE_PX_390 = 176;
-export const SHIPPED_TITLE_PX_360 = 146;
+export const SHIPPED_TITLE_PX_390 = 188;
+export const SHIPPED_TITLE_PX_360 = 158;
 export const SHIPPED_BAR_HEIGHT = 100;

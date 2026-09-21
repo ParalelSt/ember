@@ -1,6 +1,6 @@
-/** The /dizajn phone player spacing options: each frame is the real bar in
- *  the mock shell, and each option moves the edges it says it does and
- *  nothing else (sizes and colours measure the same in every frame).
+/** The /dizajn phone player button-position options: each frame is the real
+ *  bar in the mock shell, and each option moves play and next (and the end
+ *  of the seek line) as far as it says and nothing else.
  *
  *      node tests/bar-spacing-ui.test.mjs     # or: npm run test:bar-spacing
  *
@@ -66,6 +66,7 @@ function measure() {
       next: box(next, bar),
       nextGlyph: box(q('[data-testid="phone-next-glyph"]'), bar),
       line: box(q('[data-slot="slider-track"]'), bar),
+      pageTitle: box(opt.querySelector('h1'), bar),
       look: [q('[data-testid="phone-play-disc"]').offsetWidth, getComputedStyle(q('[data-testid="phone-play-disc"]')).backgroundColor,
         getComputedStyle(q('[data-slot="slider-thumb"]')).borderTopColor, q('.size-art-bar').offsetWidth].join(','),
     };
@@ -86,24 +87,27 @@ try {
   const show = (o) => `art ${o.art.l}, line ${o.line.l}..${o.line.r}, next glyph ends ${o.nextGlyph.r}, gap art-name ${o.name.l - o.art.r}, play-next ${o.next.l - o.play.r}, bar ${o.barH}px`;
   for (const id of ids) console.log(`       ${id}: ${show(m[id])}`);
 
-  check('five options, as listed', JSON.stringify(ids) === JSON.stringify(['now', 'aligned', 'roomy', 'compact', 'edge']), JSON.stringify(ids));
+  check('five options, as listed',
+    JSON.stringify(ids) === JSON.stringify(['aligned', 'left-8', 'left-12', 'left-20', 'left-12-line']), JSON.stringify(ids));
   check('sizes and colours are identical in every option', new Set(ids.map((id) => m[id].look)).size === 1,
     ids.map((id) => m[id].look).join(' | '));
+  check('the bar height and the left side never change',
+    new Set(ids.map((id) => `${m[id].barH},${m[id].art.l},${m[id].line.l}`)).size === 1,
+    ids.map((id) => `${id} ${m[id].barH},${m[id].art.l},${m[id].line.l}`).join(' | '));
 
-  const { now, aligned, roomy, compact, edge } = m;
-  check('As it is: neither end of the line lines up (the problem)',
-    now.line.l !== now.art.l && now.line.r !== now.nextGlyph.r, show(now));
-  for (const [id, o] of [['Aligned', aligned], ['Roomy', roomy], ['Compact', compact]]) {
-    check(`${id}: the line starts under the artwork and ends under the next icon`,
-      Math.abs(o.line.l - o.art.l) <= 1 && Math.abs(o.line.r - o.nextGlyph.r) <= 1, show(o));
+  const edge = (o) => o.barW - o.nextGlyph.r;
+  const want = { aligned: 16, 'left-8': 24, 'left-12': 28, 'left-20': 36, 'left-12-line': 28 };
+  for (const id of ids) {
+    check(`${id}: the next icon ends ${want[id]}px from the edge`, edge(m[id]) === want[id], show(m[id]));
   }
-  check('Aligned: same height and gaps as now', aligned.barH === now.barH
-    && aligned.name.l - aligned.art.r === now.name.l - now.art.r, show(aligned));
-  check('Roomy: bigger gaps and a taller bar', roomy.barH > now.barH
-    && roomy.name.l - roomy.art.r > now.name.l - now.art.r && roomy.next.l - roomy.play.r > now.next.l - now.play.r, show(roomy));
-  check('Compact: a shorter bar', compact.barH < now.barH, show(compact));
-  check('Edge to edge: the line spans the full width, the next icon lines up with the art margin',
-    edge.line.l === 0 && edge.line.r === edge.barW && edge.barW - edge.nextGlyph.r === edge.art.l, show(edge));
+  for (const id of ['aligned', 'left-8', 'left-12', 'left-20']) {
+    check(`${id}: the line ends under the next icon`, Math.abs(m[id].line.r - m[id].nextGlyph.r) <= 1, show(m[id]));
+  }
+  const ls = m['left-12-line'];
+  check('12px left, line stays: the line keeps 16px on both sides',
+    ls.line.l === 16 && ls.barW - ls.line.r === 16, show(ls));
+  check('8px left: the icon margin equals the page content margin',
+    edge(m['left-8']) === m['left-8'].pageTitle.l, `icon ${edge(m['left-8'])}, page title at ${m['left-8'].pageTitle.l}`);
 
   if (SHOTS) {
     fs.mkdirSync(SHOTS, { recursive: true });

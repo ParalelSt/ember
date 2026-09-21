@@ -32,7 +32,7 @@ function MockHome() {
   );
 }
 
-/** One phone frame per spacing option, each around the REAL PhonePlayerBar
+/** One phone frame per button-position option, each around the REAL PhonePlayerBar
  *  (on mock data, inert handlers) in the mock shell, so only spacing
  *  differs between them and nothing can drift from what ships. */
 export function BarSpacingSection() {
