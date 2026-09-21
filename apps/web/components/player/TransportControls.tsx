@@ -5,33 +5,44 @@ import { Button } from '@/components/ui/button';
 import { NextIcon, PauseIcon, PlayIcon, PrevIcon } from '@/components/icons';
 import { cn } from '@/lib/utils';
 
-/** 'sm' is the mini player bar, 'lg' the full-screen view. */
-export type TransportSize = 'sm' | 'lg';
+/** 'sm' is the desktop mini player bar, 'phone' the phone bar's control row
+ *  (every box at or above Android's 48px minimum), 'lg' the full-screen
+ *  view. */
+export type TransportSize = 'sm' | 'phone' | 'lg';
 
 const ROW: Record<TransportSize, string> = {
   sm: 'flex items-center gap-3',
+  phone: 'flex items-center gap-cluster',
   lg: 'relative flex items-center justify-center gap-10',
 };
 
-// Prev / next buttons: the bar keeps the Button default box, the full-screen
-// view sizes them up.
+// Prev / next buttons: the desktop bar keeps the Button default box, the
+// phone bar and the full-screen view size them up.
 const STEP_BOX: Record<TransportSize, string | undefined> = {
   sm: undefined,
+  phone: 'h-12 w-12',
   lg: 'h-12 w-12',
 };
 
+// `size-*` (not `h-* w-*`): Button's own
+// `[&_svg:not([class*='size-'])]:size-4` rule outranks a bare h/w pair by
+// specificity, so an icon that does not name a `size-` class is pinned to
+// 16px however large its box is.
 const STEP_ICON: Record<TransportSize, string> = {
   sm: 'h-4 w-4',
+  phone: 'size-6',
   lg: 'h-7 w-7',
 };
 
 const PLAY_BOX: Record<TransportSize, string> = {
   sm: 'h-10 w-10',
+  phone: 'h-14 w-14',
   lg: 'h-16 w-16',
 };
 
 const PLAY_ICON: Record<TransportSize, string> = {
   sm: 'h-4 w-4',
+  phone: 'size-6',
   lg: 'h-7 w-7',
 };
 

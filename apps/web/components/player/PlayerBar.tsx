@@ -15,6 +15,7 @@ import { AddToPlaylistMenu } from '@/components/track/menus/AddToPlaylistMenu';
 import { ShareButton } from '@/components/track/ShareButton';
 import { QueueSheet } from '@/components/player/QueueSheet';
 import { NowPlayingSummary } from '@/components/player/NowPlayingSummary';
+import { PhonePlayerBar } from '@/components/player/PhonePlayerBar';
 import { SeekBar } from '@/components/player/SeekBar';
 import { TransportControls } from '@/components/player/TransportControls';
 import { VolumeControl } from '@/components/player/VolumeControl';
@@ -83,20 +84,33 @@ export function PlayerBar() {
   );
 
   return (
+    <>
+    {/* Phones get their own bar: the song name on its own full-width line
+        above a row of 48px-and-up controls. Two bars rather than one that
+        reshapes itself, because the two share almost no geometry and the
+        desktop one must not move. */}
+    <PhonePlayerBar
+      className="md:hidden"
+      track={current}
+      playing={isPlaying}
+      position={position}
+      duration={duration}
+      onToggle={toggle}
+      onNext={next}
+      onPrev={prev}
+      onSeek={seek}
+      onOpen={() => openNowPlaying(true)}
+      onQueue={() => setQueueOpen(true)}
+    />
     <footer
-      className="shrink-0 bg-sidebar border-t border-sidebar-border flex flex-col"
-      style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
+      data-testid="desktop-player-bar"
+      className="hidden md:flex shrink-0 bg-sidebar border-t border-sidebar-border flex-col safe-area-bottom"
     >
     <div className="px-4 pt-3 pb-2 grid grid-cols-[1fr_auto_1fr] md:grid-cols-[1fr_2fr_1fr] gap-4 items-center">
-      {/* Now playing — tapping the art/title opens the full-screen view on phones. */}
+      {/* Now playing. No tap-to-open here: this bar is md-and-up only, and
+          the phone bar above owns that gesture. */}
       <div className="flex items-center gap-3 min-w-0">
-        <NowPlayingSummary
-          track={current}
-          size="sm"
-          onOpen={() => {
-            if (current && window.matchMedia('(max-width: 767px)').matches) openNowPlaying(true);
-          }}
-        />
+        <NowPlayingSummary track={current} size="sm" />
         {current && user && (
           <div className="hidden sm:flex items-center gap-1 shrink-0">
             <LikeButton liked={isLiked} onToggle={toggleLike} />
@@ -182,12 +196,8 @@ export function PlayerBar() {
       </div>
     </div>
 
-    {/* Mobile-only thin progress slider at the bottom edge of the bar.
-        Spotify-style: visible, draggable, no labels. md+ uses the inline
-        slider inside the controls column instead. */}
-    <SeekBar position={position} duration={duration} onSeek={seek} className="md:hidden px-3 -mt-1" />
-
-    <QueueSheet open={queueOpen} onOpenChange={setQueueOpen} />
     </footer>
+    <QueueSheet open={queueOpen} onOpenChange={setQueueOpen} />
+    </>
   );
 }
