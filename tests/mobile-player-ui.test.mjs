@@ -353,9 +353,12 @@ for (const [w, h] of [[390, 844], [360, 740]]) {
     check(at(`[pass ${pass}] the bar's row still sits clear of the system buttons strip`),
       lifted.row.bottom <= lifted.innerH - INSET_PX,
       `row ends at ${lifted.row.bottom}, strip starts at ${lifted.innerH - INSET_PX}`);
-    check(at(`[pass ${pass}] the nav's own bottom edge stays clear of the system buttons strip`),
-      lifted.nav.bottom <= lifted.innerH - INSET_PX + 1,
-      `nav ends at ${lifted.nav.bottom}, strip starts at ${lifted.innerH - INSET_PX}`);
+    // Edge to edge, the nav's background is meant to run under the system
+    // buttons; what must stay clear of them is its content, which ends where
+    // its inset padding begins.
+    check(at(`[pass ${pass}] the nav's buttons stay clear of the system buttons strip`),
+      lifted.nav.bottom - lifted.navPadBottom <= lifted.innerH - INSET_PX + 1,
+      `nav content ends at ${lifted.nav.bottom - lifted.navPadBottom}, strip starts at ${lifted.innerH - INSET_PX}`);
     check(at(`[pass ${pass}] the tap targets did not shrink to pay for the lift`),
       lifted.play.h === 48 && lifted.disc.h === 36 && lifted.artwork.h === 56,
       `play ${lifted.play.h}, disc ${lifted.disc.h}, artwork ${lifted.artwork.h}`);
