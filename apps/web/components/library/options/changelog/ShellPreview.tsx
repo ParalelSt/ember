@@ -1,4 +1,4 @@
-import type { MouseEvent, ReactNode } from 'react';
+import type { CSSProperties, MouseEvent, ReactNode } from 'react';
 import {
   FlameIcon,
   HeartIcon,
@@ -70,9 +70,13 @@ export interface ShellPreviewProps {
   /** Replaces the mock player bar, for a section whose subject IS the bar
    *  (the Mobile player candidates). */
   playerBar?: ReactNode;
-  /** Phone: pixels of bottom inset the nav lifts itself by, standing in for
-   *  env(safe-area-inset-bottom). 0 is what the Android WebView reports
-   *  today. */
+  /** Phone: pixels of bottom safe-area inset, which the shell publishes as
+   *  `--safe-bottom` so the real bars inside it lift by it exactly as they
+   *  do on a phone. On a real phone the value comes from :root, where
+   *  globals.css derives it from env() and the `--ember-inset-bottom`
+   *  MainActivity publishes; a custom property is inherited already
+   *  substituted, so a preview nested this deep has to set the derived
+   *  token rather than its input. */
   bottomInset?: number;
   /** Phone: drawn over the bottom edge of the frame, above everything, the
    *  way Android draws its own navigation bar over the WebView. */
@@ -311,11 +315,10 @@ function MockPlayerBar({ phone }: { phone: boolean }) {
   );
 }
 
-/** MobileNav's markup with Home active. `bottomInset` is the real nav's
- *  own `paddingBottom: env(safe-area-inset-bottom, 0px)`, given a number so
- *  a preview can show both what that inset would do and what today's 0px
- *  fallback does. */
-function MockMobileNav({ activePath, bottomInset = 0 }: { activePath: string; bottomInset?: number }) {
+/** MobileNav's markup with Home active, carrying the real nav's own
+ *  `safe-area-bottom` class so the shell's `--safe-bottom` lifts it here
+ *  the same way it lifts it on a phone. */
+function MockMobileNav({ activePath }: { activePath: string }) {
   const items = [
     { href: '/', label: 'Home', Icon: HomeIcon },
     { href: '/search', label: 'Search', Icon: SearchIcon },
@@ -324,8 +327,7 @@ function MockMobileNav({ activePath, bottomInset = 0 }: { activePath: string; bo
   return (
     <nav
       data-testid="mock-mobile-nav"
-      className="flex shrink-0 items-stretch justify-around border-t border-sidebar-border bg-sidebar"
-      style={{ paddingBottom: bottomInset }}
+      className="safe-area-bottom flex shrink-0 items-stretch justify-around border-t border-sidebar-border bg-sidebar"
     >
       {items.map(({ href, label, Icon }) => (
         <div
@@ -373,7 +375,9 @@ export function ShellPreview({
     <div
       data-testid="shell-preview"
       data-phone={phone}
+      data-bottom-inset={bottomInset ?? 0}
       onClickCapture={stopLinkNavigation}
+      style={{ ['--safe-bottom' as string]: `${bottomInset ?? 0}px` } as CSSProperties}
       className={cn(
         'relative flex h-full w-full overflow-hidden bg-background text-foreground',
         phone ? 'flex-col' : 'flex-row',
@@ -402,7 +406,7 @@ export function ShellPreview({
           {overlay}
         </div>
         {playerBar ?? <MockPlayerBar phone={phone} />}
-        {phone && <MockMobileNav activePath={activePath} bottomInset={bottomInset} />}
+        {phone && <MockMobileNav activePath={activePath} />}
       </div>
       {phone && systemNav}
       {phone && drawerOpen && (

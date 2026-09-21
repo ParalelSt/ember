@@ -7,24 +7,23 @@ import { TrackCard } from '@/components/track/TrackCard';
 import { ScaledFrame } from '@/components/library/options/changelog/ChangelogSection';
 import { ShellPreview } from '@/components/library/options/changelog/ShellPreview';
 import { AndroidNavStrip } from '@/components/library/options/mobileplayer/AndroidNavStrip';
-import { MobilePlayerBar } from '@/components/library/options/mobileplayer/MobilePlayerBar';
+import { PhonePlayerBar } from '@/components/player/PhonePlayerBar';
 import {
   ANDROID_NAV_PX,
-  MOBILE_PLAYER_LAYOUTS,
-  MOBILE_TITLE_OPTIONS,
-  TODAY_TAPS,
-  TODAY_TITLE_PX,
-  type MobileInsetOption,
-  type MobilePlayerLayout,
-  type MobileTitleOption,
+  BEFORE_TAPS,
+  BEFORE_TITLE_PX,
+  SHIPPED_TAPS,
+  SHIPPED_TITLE_PX,
 } from '@/components/library/options/mobileplayer';
 import { MOCK_HOME_TRACKS, MOCK_MOBILE_NOW_PLAYING } from '@/app/(app)/dizajn/mock';
 
 const FRAME_H = 720;
 
-/** The three frames the candidates are judged in: the phone frame the rest
+/** The three frames the shipped bar is shown in: the phone frame the rest
  *  of the gallery uses, the same frame with Android's navigation bar drawn
- *  over it, and a small Android phone (360) with the same strip. */
+ *  over it, and a small Android phone (360) with the same strip. The two
+ *  Android frames keep the bug visible: the strip is drawn OVER the shell,
+ *  so if the safe-area lift ever stops working it is obvious here. */
 const FRAMES: { id: string; label: string; width: number; systemNav: boolean }[] = [
   { id: 'clean-390', label: 'Phone (390px)', width: 390, systemNav: false },
   { id: 'android-390', label: 'Phone (390px), Android nav', width: 390, systemNav: true },
@@ -48,23 +47,19 @@ function MockHome() {
   );
 }
 
-export interface MobilePlayerSectionProps {
-  layout: MobilePlayerLayout;
-  title: MobileTitleOption;
-  inset: MobileInsetOption;
-}
-
-/** The mobile player-bar candidates, each inside the mock app shell at the
- *  two widths Android phones actually are, with the system navigation bar
- *  drawn over two of the three frames. Mock data only: no player, no
- *  stores, no network. The live PlayerBar and MobileNav are untouched. */
-export function MobilePlayerSection({ layout, title, inset }: MobilePlayerSectionProps) {
-  const option = MOBILE_PLAYER_LAYOUTS.find((o) => o.id === layout) ?? MOBILE_PLAYER_LAYOUTS[0];
-  const titleOption = MOBILE_TITLE_OPTIONS.find((o) => o.id === title) ?? MOBILE_TITLE_OPTIONS[0];
-  const bottomInset = inset === 'safe-area' ? ANDROID_NAV_PX : 0;
-
+/** The phone player bar as it ships, inside the mock app shell at the two
+ *  widths Android phones actually are, with the system navigation bar drawn
+ *  over two of the three frames.
+ *
+ *  The bar is the REAL `PhonePlayerBar` the app renders, on mock data and
+ *  with inert handlers, so this section cannot drift from what ships. The
+ *  shell around it is mock markup (the real one reads auth, queries and
+ *  stores). The frames publish `--ember-inset-bottom`, the same custom
+ *  property MainActivity sets from the window insets on a real phone, so
+ *  the lift shown here is the lift the CSS actually performs. */
+export function MobilePlayerSection() {
   return (
-    <div data-testid="mobileplayer-section" data-layout={layout} data-title={title} data-inset={inset}>
+    <div data-testid="mobileplayer-section">
       <div className="flex flex-wrap items-start gap-stack">
         {FRAMES.map((frame) => (
           <div
@@ -81,8 +76,21 @@ export function MobilePlayerSection({ layout, title, inset }: MobilePlayerSectio
                 phone
                 activePath="/"
                 content={<MockHome />}
-                playerBar={<MobilePlayerBar layout={layout} title={title} track={MOCK_MOBILE_NOW_PLAYING} />}
-                bottomInset={bottomInset}
+                playerBar={
+                  <PhonePlayerBar
+                    track={MOCK_MOBILE_NOW_PLAYING}
+                    playing
+                    position={92}
+                    duration={MOCK_MOBILE_NOW_PLAYING.durationSec ?? 264}
+                    onToggle={() => {}}
+                    onNext={() => {}}
+                    onPrev={() => {}}
+                    onSeek={() => {}}
+                    onOpen={() => {}}
+                    onQueue={() => {}}
+                  />
+                }
+                bottomInset={ANDROID_NAV_PX}
                 systemNav={frame.systemNav ? <AndroidNavStrip /> : undefined}
               />
             </ScaledFrame>
@@ -91,15 +99,10 @@ export function MobilePlayerSection({ layout, title, inset }: MobilePlayerSectio
       </div>
 
       <div className="mt-block flex flex-col gap-cluster">
-        <p data-testid="mobileplayer-description" className="text-meta">
-          <span className="font-semibold text-foreground">{option.name}.</span> {option.description}
-        </p>
         <p data-testid="mobileplayer-taps" className="text-meta">
-          <span className="font-semibold text-foreground">Tap targets:</span> {option.taps}. Song name box:{' '}
-          {option.titleBox}. Today, for comparison: {TODAY_TAPS}, song name box {TODAY_TITLE_PX}px at 390.
-        </p>
-        <p data-testid="mobileplayer-title-description" className="text-meta">
-          <span className="font-semibold text-foreground">{titleOption.name}.</span> {titleOption.description}
+          <span className="font-semibold text-foreground">Tap targets:</span> {SHIPPED_TAPS}. Song name
+          box: {SHIPPED_TITLE_PX}px at 390, {SHIPPED_TITLE_PX - 30}px at 360. Before, for comparison:{' '}
+          {BEFORE_TAPS}, song name box {BEFORE_TITLE_PX}px at 390.
         </p>
       </div>
     </div>

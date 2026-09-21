@@ -17,11 +17,6 @@ import { TRENDING_DATA, TRENDING_OPTIONS, TRENDING_VIEWS } from '@/components/li
 import { MOCK_CHART } from './mock';
 import { ROW_STATES } from '@/components/library/options/searchrows';
 import { MOCK_SEARCH_RECENTS, MOCK_SEARCH_RESULTS } from './mock';
-import {
-  MOBILE_INSET_OPTIONS,
-  MOBILE_PLAYER_LAYOUTS,
-  MOBILE_TITLE_OPTIONS,
-} from '@/components/library/options/mobileplayer';
 import { MOCK_MOBILE_NOW_PLAYING } from './mock';
 import {
   TABS_LAYOUTS,
@@ -113,6 +108,15 @@ vi.mock('@/components/ui/dialog', () => ({
   Dialog: ({ children }: PropsWithChildren) => <div>{children}</div>,
   DialogContent: ({ children }: PropsWithChildren) => <div>{children}</div>,
   DialogTitle: ({ children }: PropsWithChildren) => <h2>{children}</h2>,
+}));
+
+// base-ui's Slider reaches the repo root's hoisted React 18 through its own
+// copy, so it cannot render under happy-dom (see SeekBar.test.tsx, which
+// covers the real seek behaviour). The bar only needs it to be *there*.
+vi.mock('@/components/ui/slider', () => ({
+  Slider: ({ className }: { className?: string }) => (
+    <input type="range" aria-label="progress" className={className} readOnly />
+  ),
 }));
 
 // happy-dom lays nothing out; the score waits for a real width first.
@@ -787,15 +791,8 @@ describe('DizajnPage', () => {
   });
 
   describe('Mobile player section', () => {
-    // The Recommended badge sits inside the pill, so a radio's accessible
-    // name is "Two rows Recommended": match on a prefix, the way the Guitar
-    // tabs tests do.
-    const pick = (group: string, name: string) =>
-      fireEvent.click(
-        within(screen.getByRole('radiogroup', { name: group })).getByRole('radio', { name: new RegExp(`^${name}`) }),
-      );
     const section = () => screen.getByTestId('mobileplayer-section');
-    const bars = () => within(section()).getAllByTestId('mobile-player-bar');
+    const bars = () => within(section()).getAllByTestId('phone-player-bar');
     const FRAME_COUNT = 3;
 
     it('is the first section on the page, three phone frames, two of them with the Android strip', () => {
@@ -809,141 +806,60 @@ describe('DizajnPage', () => {
         Array(FRAME_COUNT).fill('true'),
       );
       expect(within(section()).getAllByTestId('android-nav-strip')).toHaveLength(2);
-      expect(within(section()).getAllByText(MOCK_MOBILE_NOW_PLAYING.title).length).toBe(FRAME_COUNT);
     });
 
-    it('renders all three pickers as radiogroups with the first option checked', () => {
+    // The point of the section after the pick: it draws the shipping bar,
+    // not a copy of it, so it cannot drift from what the app renders.
+    it('draws the REAL PhonePlayerBar, two rows, with no pickers left', () => {
       render(<DizajnPage />);
-      for (const [group, options] of [
-        ['Bar layout', MOBILE_PLAYER_LAYOUTS],
-        ['Title', MOBILE_TITLE_OPTIONS],
-        ['Bottom inset', MOBILE_INSET_OPTIONS],
-      ] as const) {
-        const radios = within(screen.getByRole('radiogroup', { name: group })).getAllByRole('radio');
-        expect(radios).toHaveLength(options.length);
-        radios.forEach((r, i) => {
-          expect(r).toHaveTextContent(options[i].name);
-          expect(r).toHaveAttribute('aria-checked', i === 0 ? 'true' : 'false');
-        });
-      }
-      expect(MOBILE_PLAYER_LAYOUTS.map((o) => o.name)).toEqual(['One row, bigger', 'Two rows', 'Split']);
-      expect(MOBILE_TITLE_OPTIONS.map((o) => o.name)).toEqual(['Truncate', 'Scroll', 'Two lines']);
-      expect(MOBILE_INSET_OPTIONS.map((o) => o.name)).toEqual(['Safe area', 'Today']);
-    });
-
-    it('marks exactly one combination Recommended, one badge per picker', () => {
-      render(<DizajnPage />);
-      expect(MOBILE_PLAYER_LAYOUTS.filter((o) => o.badge)).toHaveLength(1);
-      expect(MOBILE_TITLE_OPTIONS.filter((o) => o.badge)).toHaveLength(1);
-      expect(MOBILE_INSET_OPTIONS.filter((o) => o.badge)).toHaveLength(1);
-      expect([
-        MOBILE_PLAYER_LAYOUTS.find((o) => o.badge)!.id,
-        MOBILE_TITLE_OPTIONS.find((o) => o.badge)!.id,
-        MOBILE_INSET_OPTIONS.find((o) => o.badge)!.id,
-      ]).toEqual(['two-rows', 'scroll', 'safe-area']);
-      expect(within(section().parentElement!).getAllByText(/Recommended: Two rows/)).not.toHaveLength(0);
-    });
-
-    // One distinct structure per layout: a single row with prev + queue in
-    // it, a name row above a control row, or a progress line at the very
-    // top with only play and next beside the name.
-    it('draws a different bar per layout, with the tap sizes the copy quotes', () => {
-      render(<DizajnPage />);
-
-      const taps = () => within(bars()[0]).getAllByTestId('mp-tap').map((t) => Number(t.dataset.tap));
       expect(bars()).toHaveLength(FRAME_COUNT);
-      expect(bars()[0].dataset.layout).toBe('one-row');
-      expect(within(bars()[0]).getByTestId('mp-single-row')).toBeInTheDocument();
-      expect(within(bars()[0]).getByTestId('mp-progress-bottom')).toBeInTheDocument();
-      expect(within(bars()[0]).queryByTestId('mp-progress-top')).toBeNull();
-      expect(taps()).toEqual([44, 48, 44, 44]);
-
-      pick('Bar layout', 'Two rows');
-      expect(bars()[0].dataset.layout).toBe('two-rows');
-      expect(within(bars()[0]).getByTestId('mp-title-row')).toBeInTheDocument();
-      expect(within(bars()[0]).getByTestId('mp-controls-row')).toBeInTheDocument();
-      expect(within(bars()[0]).queryByTestId('mp-single-row')).toBeNull();
-      expect(taps()).toEqual([48, 56, 48, 48]);
-
-      pick('Bar layout', 'Split');
-      expect(bars()[0].dataset.layout).toBe('split');
-      expect(within(bars()[0]).getByTestId('mp-progress-top')).toBeInTheDocument();
-      expect(within(bars()[0]).queryByTestId('mp-progress-bottom')).toBeNull();
-      // Only play and next: previous and the queue moved to the full-screen view.
-      expect(within(bars()[0]).queryByLabelText('Previous')).toBeNull();
-      expect(within(bars()[0]).queryByLabelText('Queue')).toBeNull();
-      expect(taps()).toEqual([56, 48]);
+      for (const bar of bars()) {
+        expect(within(bar).getByTestId('phone-player-title-row')).toBeInTheDocument();
+        expect(within(bar).getByTestId('phone-player-controls-row')).toBeInTheDocument();
+        // Every control the phone bar owns is in the control row.
+        for (const name of ['Previous', 'Pause', 'Next', 'Queue']) {
+          expect(within(bar).getByRole('button', { name })).toBeInTheDocument();
+        }
+      }
+      // The losing layouts, title treatments and the "Today" inset are gone,
+      // pickers and all.
+      for (const group of ['Bar layout', 'Title', 'Bottom inset']) {
+        expect(screen.queryByRole('radiogroup', { name: group })).toBeNull();
+      }
+      expect(within(section()).queryByTestId('mobile-player-bar')).toBeNull();
     });
 
-    it('draws the song name three ways: truncated, scrolling, or wrapped to two lines', () => {
+    it('scrolls the song name with the real MarqueeText', () => {
       render(<DizajnPage />);
-      const block = () => within(bars()[0]).getByTestId('mp-title-block');
-
-      expect(block().dataset.title).toBe('truncate');
-      expect(within(bars()[0]).getByTestId('mp-title')).toHaveClass('truncate');
-      expect(within(bars()[0]).queryByTestId('marquee')).toBeNull();
-
-      pick('Title', 'Scroll');
-      expect(block().dataset.title).toBe('scroll');
-      // The real MarqueeText from the full-screen view, not a copy of it.
-      // MarqueeText draws its invisible measuring ruler beside the title.
-      expect(within(within(bars()[0]).getByTestId('marquee')).getAllByText(MOCK_MOBILE_NOW_PLAYING.title)).not.toHaveLength(0);
-      expect(within(bars()[0]).queryByTestId('mp-title')).toBeNull();
-
-      pick('Title', 'Two lines');
-      expect(block().dataset.title).toBe('two-lines');
-      expect(within(bars()[0]).getByTestId('mp-title')).toHaveClass('line-clamp-2');
-      expect(within(bars()[0]).getByTestId('mp-title')).not.toHaveClass('truncate');
+      // MarqueeText draws its invisible measuring ruler beside the title, so
+      // the name appears more than once inside the marquee box.
+      const marquee = within(bars()[0]).getByTestId('marquee');
+      expect(within(marquee).getAllByText(MOCK_MOBILE_NOW_PLAYING.title)).not.toHaveLength(0);
     });
 
-    it('lifts the bottom nav by the safe-area inset, and by nothing at all on Today', () => {
+    it('lifts the bar and the nav by the safe-area inset in every frame', () => {
       render(<DizajnPage />);
-      const navs = () => within(section()).getAllByTestId('mock-mobile-nav');
-
-      // Today (what ships): the 0px fallback, so the nav stays under the
-      // Android strip drawn over it.
-      pick('Bottom inset', 'Today');
-      expect(section().dataset.inset).toBe('today');
-      for (const nav of navs()) expect(nav).toHaveStyle({ paddingBottom: '0px' });
-
-      pick('Bottom inset', 'Safe area');
-      expect(section().dataset.inset).toBe('safe-area');
-      expect(navs()).toHaveLength(FRAME_COUNT);
-      for (const nav of navs()) expect(nav).toHaveStyle({ paddingBottom: '48px' });
+      const shells = within(section()).getAllByTestId('shell-preview');
+      expect(shells).toHaveLength(FRAME_COUNT);
+      for (const shell of shells) {
+        // The frame publishes the inset the phone publishes from its window.
+        expect(shell.dataset.bottomInset).toBe('48');
+        expect(shell.style.getPropertyValue('--safe-bottom')).toBe('48px');
+      }
+      // Both the bar and the nav spend it, through the one shared class.
+      for (const bar of bars()) expect(bar).toHaveClass('safe-area-bottom');
+      const navs = within(section()).getAllByTestId('mock-mobile-nav');
+      expect(navs).toHaveLength(FRAME_COUNT);
+      for (const nav of navs) expect(nav).toHaveClass('safe-area-bottom');
     });
 
-    it('persists all three choices and restores them on mount', async () => {
-      const { unmount } = render(<DizajnPage />);
-      pick('Bar layout', 'Split');
-      pick('Title', 'Two lines');
-      pick('Bottom inset', 'Today');
-
-      await waitFor(() => {
-        expect(window.localStorage.getItem('dizajn-mobileplayer-layout')).toBe('split');
-        expect(window.localStorage.getItem('dizajn-mobileplayer-title')).toBe('two-lines');
-        expect(window.localStorage.getItem('dizajn-mobileplayer-inset')).toBe('today');
-      });
-      unmount();
-
+    it('quotes the shipped tap targets and what they replaced', () => {
       render(<DizajnPage />);
-      expect(within(screen.getByRole('radiogroup', { name: 'Bar layout' })).getByRole('radio', { name: 'Split' })).toHaveAttribute('aria-checked', 'true');
-      expect(within(screen.getByRole('radiogroup', { name: 'Title' })).getByRole('radio', { name: 'Two lines' })).toHaveAttribute('aria-checked', 'true');
-      expect(within(screen.getByRole('radiogroup', { name: 'Bottom inset' })).getByRole('radio', { name: 'Today' })).toHaveAttribute('aria-checked', 'true');
-      expect(screen.getByTestId('mobileplayer-section').dataset.layout).toBe('split');
-    });
-
-    it('describes the chosen layout and its measured tap targets', () => {
-      render(<DizajnPage />);
-      expect(within(section()).getByTestId('mobileplayer-description')).toHaveTextContent('One row, bigger.');
-      expect(within(section()).getByTestId('mobileplayer-taps')).toHaveTextContent(
-        'play 48px, prev/next 44px, queue 44px, artwork 40px',
-      );
-
-      pick('Bar layout', 'Two rows');
-      expect(within(section()).getByTestId('mobileplayer-taps')).toHaveTextContent(
-        'play 56px, prev/next 48px, queue 48px, artwork 48px',
-      );
-      expect(within(section()).getByTestId('mobileplayer-taps')).toHaveTextContent('Today, for comparison');
+      const taps = within(section()).getByTestId('mobileplayer-taps');
+      expect(taps).toHaveTextContent('play 56px, prev/next 48px, queue 48px, artwork 48px');
+      expect(taps).toHaveTextContent('358px at 390');
+      expect(taps).toHaveTextContent('Before, for comparison');
+      expect(taps).toHaveTextContent('play 40px, prev/next 32px, queue 40px, artwork 48px');
     });
   });
 
