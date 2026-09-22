@@ -1,5 +1,6 @@
 import { detectShell, type Shell } from '@/lib/playback/detectShell';
 import type { SpeechAdapter, SpeechUnavailableReason } from './types';
+import { capacitorSpeechPresent, createCapacitorSpeech } from './capacitorSpeech';
 import { createWebSpeech, webSpeechAvailable } from './webSpeech';
 
 export interface SpeechAdapterPick {
@@ -18,6 +19,9 @@ export function selectSpeechAdapter(
   if (shell === 'web') {
     if (!webSpeechAvailable(win)) return { adapter: null, reason: 'no-recognizer' };
     return { adapter: { kind: 'web', create: () => createWebSpeech(win) } };
+  }
+  if (shell === 'capacitor' && capacitorSpeechPresent(win)) {
+    return { adapter: { kind: 'capacitor', create: () => createCapacitorSpeech(win) } };
   }
   return { adapter: null, reason: 'no-bridge' };
 }

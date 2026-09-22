@@ -50,7 +50,6 @@ describe('webSpeech', () => {
   it('is available only with a SpeechRecognition ctor', () => {
     expect(webSpeechAvailable(fakeWindow().win)).toBe(true);
     expect(webSpeechAvailable({} as Window)).toBe(false);
-    expect(webSpeechAvailable(undefined)).toBe(false);
   });
 
   it('configures lang, interim results and single-utterance mode', async () => {

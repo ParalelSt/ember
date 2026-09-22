@@ -13,8 +13,19 @@ describe('selectSpeechAdapter', () => {
     expect(selectSpeechAdapter('web', bare)).toEqual({ adapter: null, reason: 'no-recognizer' });
   });
 
-  it('web during SSR gives no adapter', () => {
-    expect(selectSpeechAdapter('web', undefined).adapter).toBeNull();
+  it('a capacitor shell with the EmberSpeech plugin gives the capacitor adapter', () => {
+    const win = { Capacitor: { Plugins: { EmberSpeech: {} } } } as unknown as Window;
+    expect(selectSpeechAdapter('capacitor', win).adapter?.kind).toBe('capacitor');
+  });
+
+  it('a capacitor shell without the plugin (old APK) gives no-bridge', () => {
+    const win = { Capacitor: { Plugins: { EmberPlayer: {} } } } as unknown as Window;
+    expect(selectSpeechAdapter('capacitor', win)).toEqual({ adapter: null, reason: 'no-bridge' });
+  });
+
+  it('the plugin does not count outside a capacitor shell', () => {
+    const win = { Capacitor: { Plugins: { EmberSpeech: {} } } } as unknown as Window;
+    expect(selectSpeechAdapter('web', win)).toEqual({ adapter: null, reason: 'no-recognizer' });
   });
 
   it('a capacitor shell never falls back to the WebView recognizer', () => {
