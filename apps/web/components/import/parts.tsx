@@ -38,6 +38,15 @@ export const SOURCE_NAME: Record<ImportSourceKind, string> = {
   paste: 'A pasted list',
 };
 
+/** The same source named inside a sentence ("Importing from a file"):
+ *  SOURCE_NAME is a label and starts with a capital, which reads wrong
+ *  mid-sentence for the two sources that are not a service. */
+export const SOURCE_PHRASE: Record<ImportSourceKind, string> = {
+  ...SOURCE_NAME,
+  csv: 'a file',
+  paste: 'a pasted list',
+};
+
 /** "Spotify" / "YouTube Music" pill: where the pasted playlist lives. */
 export function SourceBadge({ kind, className }: { kind: ImportSourceKind; className?: string }) {
   return (

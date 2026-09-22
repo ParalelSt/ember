@@ -45,6 +45,15 @@ export function importRows(items: ImportItem[], tracks: Track[], status: JobStat
   return rows;
 }
 
+/** The rows of the "Transferring" block on the Liked page: only the songs
+ *  that are not likes yet. A transfer has no playlist of its own, and every
+ *  song it accepted is already in the likes list underneath, so the block
+ *  holds what is still being matched, waiting for a look, or was not found.
+ *  Same shape as a playlist import's rows, so ImportTrackList draws both. */
+export function transferRows(items: ImportItem[], status: JobStatus): ImportRow[] {
+  return importRows(items, [], status);
+}
+
 /** The import item behind a playlist track, for "Wrong song? Re-match". */
 export function itemForTrack(items: ImportItem[], track: Track): ImportItem | null {
   return (

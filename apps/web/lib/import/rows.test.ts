@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { importRows, itemForTrack, reviewQueue } from '@/lib/import/rows';
+import { importRows, itemForTrack, reviewQueue, transferRows } from '@/lib/import/rows';
 import type { ImportItem } from '@/lib/import/types';
 import type { Track } from '@/types/track';
 
@@ -81,5 +81,27 @@ describe('reviewQueue and itemForTrack', () => {
     const items = [item(0, 'accepted', 'a'), item(1, 'resolved', 'b'), item(2, 'review')];
     expect(itemForTrack(items, track('b'))?.id).toBe('i1');
     expect(itemForTrack(items, track('mine'))).toBeNull();
+  });
+});
+
+describe('transferRows', () => {
+  const items = [item(0, 'accepted', 'a'), item(1, 'review'), item(2, 'missing'), item(3, 'pending')];
+
+  it('keeps only the songs that are not likes yet, in source order', () => {
+    const rows = transferRows(items, 'running');
+    expect(rows.map((r) => `${r.kind}:${r.item?.position}`)).toEqual(['review:1', 'missing:2', 'pending:3']);
+  });
+
+  it('marks the song being matched right now', () => {
+    const [, , pending] = transferRows(items, 'running');
+    expect(pending.kind === 'pending' && pending.next).toBe(true);
+  });
+
+  it('a finished transfer leaves only what still needs a person', () => {
+    expect(transferRows(items, 'done').map((r) => r.kind)).toEqual(['review', 'missing']);
+  });
+
+  it('everything liked: nothing to show', () => {
+    expect(transferRows([item(0, 'accepted', 'a'), item(1, 'resolved', 'b')], 'done')).toEqual([]);
   });
 });

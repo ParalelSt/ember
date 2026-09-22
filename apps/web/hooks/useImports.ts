@@ -38,9 +38,29 @@ export function useImportJob(id: string | null | undefined) {
   });
 }
 
+/** The newest transfer the Liked page reports on: the job whose songs
+ *  become likes, unless it has been dismissed. Pure, so the page's states
+ *  can be tested without a query client. */
+export function newestLikedJob(jobs: ImportJob[]): ImportJob | null {
+  // The list comes newest first, which is the order the sidebar ring uses
+  // too (lib/import/nav.ts).
+  return jobs.find((j) => j.kind === 'liked' && !j.dismissed) ?? null;
+}
+
+/** The Liked page's transfer, with its songs. The summary from the jobs
+ *  list is shown until the detail arrives, so the banner does not flash in
+ *  a moment after the page. */
+export function useLikedImportJob(): { job: ImportJob | null; items: ImportItem[] } {
+  const { data: jobs = [] } = useImportJobs();
+  const summary = newestLikedJob(jobs);
+  const detail = useImportJob(summary?.id);
+  return { job: detail.data?.job ?? summary, items: detail.data?.items ?? [] };
+}
+
 /** Stop, Retry, Dismiss, and settling one song. Every change refreshes the
- *  job, the sidebar's list and the playlist's tracks. */
-export function useImportActions(jobId: string | null | undefined, playlistId: string) {
+ *  job, the sidebar's list and wherever the songs land: a playlist's tracks,
+ *  or the likes when this is a transfer (no playlist at all). */
+export function useImportActions(jobId: string | null | undefined, playlistId: string | null) {
   const qc = useQueryClient();
   const refresh = (job?: ImportJob, item?: ImportItem) => {
     if (jobId && job) {
@@ -50,7 +70,8 @@ export function useImportActions(jobId: string | null | undefined, playlistId: s
     }
     void qc.invalidateQueries({ queryKey: IMPORT_QK.jobs });
     if (jobId) void qc.invalidateQueries({ queryKey: IMPORT_QK.job(jobId) });
-    void qc.invalidateQueries({ queryKey: QK.playlist(playlistId) });
+    if (playlistId) void qc.invalidateQueries({ queryKey: QK.playlist(playlistId) });
+    else void qc.invalidateQueries({ queryKey: QK.likes });
   };
   const update = useMutation({
     mutationFn: (action: 'cancel' | 'retry' | 'dismiss') => api.updateImportJob(jobId as string, action),

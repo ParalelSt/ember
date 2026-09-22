@@ -7,7 +7,7 @@ import { useAuth } from '@/components/providers/AuthProvider';
 import { useQueryPlaylists } from '@/hooks/useLibrary';
 import { useCreatePlaylistFlow } from '@/hooks/useCreatePlaylistFlow';
 import { useImportJobs } from '@/hooks/useImports';
-import { navImportStates } from '@/lib/import/nav';
+import { LIKED_NAV_KEY, navImportStates } from '@/lib/import/nav';
 import { Button } from '@/components/ui/button';
 import { CreatePlaylistDialog } from '@/components/track/menus/CreatePlaylistDialog';
 import { CollectionNavList } from '@/components/nav/CollectionNavList';
@@ -69,7 +69,12 @@ export function Drawer({ open, onOpenChange }: Props) {
         {user && (
           <div className="mt-4 border-t border-sidebar-border pt-3">
             <CollectionNavList
-              items={systemCollections().map(({ title, href, icon }) => ({ label: title, href, icon }))}
+              items={systemCollections().map(({ ref, title, href, icon }) => ({
+                label: title,
+                href,
+                icon,
+                importState: ref.kind === LIKED_NAV_KEY ? importStates[LIKED_NAV_KEY] : undefined,
+              }))}
               activePath={pathname}
               onNavigate={close}
             />

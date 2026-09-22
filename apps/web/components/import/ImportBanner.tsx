@@ -1,7 +1,7 @@
 import { Button } from '@/components/ui/button';
 import { ProgressRing } from '@/components/primitives/ProgressRing';
 import { CloseIcon, RefreshIcon, ReviewIcon } from '@/components/icons';
-import { SOURCE_NAME } from '@/components/import/parts';
+import { SOURCE_PHRASE } from '@/components/import/parts';
 import type { ImportJob } from '@/lib/import/types';
 import { cn } from '@/lib/utils';
 
@@ -18,9 +18,13 @@ export interface ImportBannerProps {
 
 /** What the import is doing, above the playlist's rows: the slim progress
  *  banner while it runs, a Retry when it stopped on an error, and the Done
- *  summary with its counts and Review once it is finished. */
+ *  summary with its counts and Review once it is finished. A transfer (the
+ *  songs become likes) says "transfer" rather than "import" throughout, and
+ *  counts the ones the person already had. */
 export function ImportBanner({ job, toReview, busy = false, onStop, onRetry, onReview, onDismiss }: ImportBannerProps) {
-  const from = SOURCE_NAME[job.source];
+  const from = SOURCE_PHRASE[job.source];
+  const noun = job.kind === 'liked' ? 'Transfer' : 'Import';
+  const verb = job.kind === 'liked' ? 'Transferring' : 'Importing';
   const waiting = job.status === 'paused' && !job.retryAt;
   if (job.status === 'queued' || job.status === 'running' || (job.status === 'paused' && !waiting)) {
     const slowed = job.status === 'paused';
@@ -31,7 +35,9 @@ export function ImportBanner({ job, toReview, busy = false, onStop, onRetry, onR
           <ProgressRing done={job.cursor} total={job.total} size={18} />
           <div className="min-w-0 flex-1 text-sm">
             <span className="font-medium">
-              {job.status === 'queued' ? `Starting the import from ${from}` : `Importing from ${from}, ${job.cursor} of ${job.total}`}
+              {job.status === 'queued'
+                ? `Starting the ${noun.toLowerCase()} from ${from}`
+                : `${verb} from ${from}, ${job.cursor} of ${job.total}`}
             </span>
             <span className="text-muted-foreground max-md:hidden">
               {slowed ? ` · ${job.error ?? 'Waiting a moment before carrying on.'}` : ' · You can leave this page, it keeps going.'}
@@ -57,7 +63,7 @@ export function ImportBanner({ job, toReview, busy = false, onStop, onRetry, onR
       >
         <div className="min-w-0 flex-1">
           <div className="text-sm font-medium">
-            {job.status === 'failed' ? 'Import failed' : 'Import paused'} at {job.cursor} of {job.total}
+            {job.status === 'failed' ? `${noun} failed` : `${noun} paused`} at {job.cursor} of {job.total}
           </div>
           <div className="text-sm text-muted-foreground">{job.error ?? 'Something went wrong.'}</div>
         </div>
@@ -76,6 +82,11 @@ export function ImportBanner({ job, toReview, busy = false, onStop, onRetry, onR
 
   const stats: { n: number; label: string; tone: string }[] = [
     { n: job.accepted, label: 'added', tone: 'text-foreground' },
+    // Only a transfer can meet a song the person already liked, and saying
+    // "0 already liked" on every other one would be noise.
+    ...(job.kind === 'liked' && job.existing > 0
+      ? [{ n: job.existing, label: 'already liked', tone: 'text-muted-foreground' }]
+      : []),
     { n: job.review, label: 'need review', tone: 'text-ember' },
     { n: job.missing, label: 'not found', tone: 'text-muted-foreground' },
   ];
@@ -87,7 +98,7 @@ export function ImportBanner({ job, toReview, busy = false, onStop, onRetry, onR
     >
       <div className="min-w-0 flex-1">
         <div className="text-sm font-medium">
-          {job.status === 'cancelled' ? `Import stopped at ${job.cursor} of ${job.total}` : 'Import finished'}
+          {job.status === 'cancelled' ? `${noun} stopped at ${job.cursor} of ${job.total}` : `${noun} finished`}
         </div>
         <div className="mt-inset flex flex-wrap gap-x-block gap-y-inset text-sm">
           {stats.map((s) => (

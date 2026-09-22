@@ -3,7 +3,6 @@ import { requireUser, UnauthorizedError, unauthorizedResponse } from '@/lib/auth
 import { fromError, jsonError } from '@/lib/upsertTrack';
 import { rateLimitResponse } from '@/lib/rateLimit';
 import { createAdminClient } from '@/lib/pocketbase/server';
-import { MAX_TRANSFER_ITEMS } from '@/lib/import/jobState';
 import { createImportJob } from '@/lib/import/store';
 import { kickImportRunner } from '@/lib/import/runnerInstance';
 import {
@@ -14,6 +13,7 @@ import {
   type ParsedSource,
 } from '@/lib/import/sources/index';
 import { jobSourceFor } from '@/lib/import/sources/types';
+import { OVER_CAP_MESSAGE } from '@/lib/import/transferCopy';
 import type { JobKind } from '@/lib/import/types';
 import { withRequestLog } from '@/lib/logger/withRequestLog';
 
@@ -33,8 +33,6 @@ import { withRequestLog } from '@/lib/logger/withRequestLog';
 
 /** How many songs the preview shows. */
 const SAMPLE_SIZE = 5;
-
-const OVER_CAP_MESSAGE = `Ember can transfer up to ${MAX_TRANSFER_ITEMS.toLocaleString('en-GB')} songs at once. Split the file and upload it in parts.`;
 
 export const POST = withRequestLog('import/upload', async (request: NextRequest) => {
   try {

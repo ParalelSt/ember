@@ -14,7 +14,9 @@ export interface PlaylistNavListProps {
   onNavigate?: () => void;
 }
 
-function ImportTail({ state }: { state: NavImportState }) {
+/** The ring, the count or "Import failed" at the end of a nav row. Shared
+ *  with CollectionNavList, whose Liked songs row wears it for a transfer. */
+export function ImportTail({ state }: { state: NavImportState }) {
   if (state.kind === 'importing' || state.kind === 'paused') {
     return (
       <>
