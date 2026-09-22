@@ -11,6 +11,12 @@ vi.mock('@/hooks/useVoiceSearch', () => ({
   useVoiceSearch: () => ({ supported: false, listening: false, toggle: vi.fn() }),
 }));
 
+const toast = vi.hoisted(() => ({ message: vi.fn(), error: vi.fn() }));
+vi.mock('sonner', () => ({ toast }));
+
+const shell = vi.hoisted(() => ({ value: 'web' as 'web' | 'capacitor' | 'tauri' }));
+vi.mock('@/lib/playback/detectShell', () => ({ detectShell: () => shell.value }));
+
 const trackActions = vi.hoisted(() => ({
   currentId: null as string | null,
   isPlaying: false,
@@ -57,6 +63,7 @@ function wrapper({ children }: { children: ReactNode }) {
 beforeEach(() => {
   vi.clearAllMocks();
   recents.tracks = [];
+  shell.value = 'web';
 });
 
 describe('useSearchQuery', () => {
@@ -85,5 +92,18 @@ describe('useSearchQuery', () => {
 
     expect(recents.addMutate).toHaveBeenCalledWith(track);
     expect(trackActions.onPlay).toHaveBeenCalledWith(track, [track], { type: 'search', query: 'midnight' });
+  });
+
+  it('mic without voice support suggests Chrome in a browser', () => {
+    const { result } = renderHook(() => useSearchQuery(), { wrapper });
+    act(() => result.current.onMicClick());
+    expect(toast.message).toHaveBeenCalledExactlyOnceWith("Voice search isn't supported in this browser: try Chrome.");
+  });
+
+  it('mic without voice support asks for an app update inside a shell', () => {
+    shell.value = 'capacitor';
+    const { result } = renderHook(() => useSearchQuery(), { wrapper });
+    act(() => result.current.onMicClick());
+    expect(toast.message).toHaveBeenCalledExactlyOnceWith('Update the Ember app to use voice search.');
   });
 });
