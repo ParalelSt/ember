@@ -34,9 +34,6 @@ on:
     # remove this once the fix reaches main.
     branches:
       - feat/windows-desktop
-      # temporary: remove before merging to main. The only way to compile the
-      # Windows voice search backend (src/speech/windows.rs) for real.
-      - voice-search-desktop
   workflow_dispatch:
 
 # Allow the Tauri job to create a Release and upload assets via GITHUB_TOKEN.
