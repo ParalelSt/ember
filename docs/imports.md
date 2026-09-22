@@ -122,6 +122,44 @@ Each stage merges alone with a changelog entry in `lib/changelog.ts` and the nex
 | 5 | YT Music browser headers (Liked Music, private), Spotify OAuth (Liked Songs, private, over 100) | "Import your liked songs" |
 | 6 | Manual "Sync now" | later |
 
+## 11. Transfer your YouTube Music liked songs
+
+Built. `POST /api/import/liked/ytmusic` reads the Liked Music list of the person's own YouTube Music account and turns it into a `kind: 'liked'` import. It is the only source that names the exact video of every song, so nothing is searched for and nothing needs reviewing: the items arrive with their candidate filled in and the runner accepts them as they are.
+
+It needs one thing from the person: the request headers of a signed-in `music.youtube.com` tab, which is what ytmusicapi's own browser setup asks for. That is a desktop-browser job; there are no developer tools on a phone.
+
+### What the person does
+
+1. On a computer, open `music.youtube.com` in Chrome, Edge or Firefox, signed in to the right account.
+2. Press F12 to open the developer tools, then choose the **Network** tab.
+3. Play any song, or click Library, so requests appear in the list.
+4. Click a request named **browse** (its address starts with `/youtubei/v1/browse`).
+5. Copy its request headers:
+   - **Firefox:** right-click the request, Copy, **Copy Request Headers**.
+   - **Chrome or Edge:** open the **Headers** pane, find **Request Headers**, and copy everything under it. A "Copy as fetch" paste works too: Ember turns the JSON back into header lines itself.
+6. Paste it into the Transfer dialog's YouTube Music box and start the transfer.
+
+Ember uses the paste for that one read and keeps no copy of it. Signing out of YouTube Music afterwards makes what was pasted useless to anyone. Cookies otherwise stay valid for about two years, which is why the copy needs doing only once per transfer.
+
+The copy above lives in code as `YTMUSIC_HEADERS_STEPS`, `YTMUSIC_HEADERS_NOTE` and `YTMUSIC_HEADERS_DESKTOP_ONLY` (`apps/web/lib/import/sources/ytmusicLiked.ts`), so the dialog and this page cannot drift apart.
+
+### How it is handled
+
+| Rule | Where |
+|---|---|
+| The paste arrives in the POST body as `secret` and is checked for shape first (a Cookie line, a name that identifies an account, `x-goog-authuser`), so a useless paste costs nothing | `lib/import/sources/ytmusicLiked.ts` |
+| It goes to `player.py liked --auth-stdin` on **stdin**, never in argv (`ps` shows argv to every process on the host) | `lib/sources/youtube.ts`, `runPython({ stdin })` |
+| It is never written to disk: `ytmusicapi.setup(headers_raw=...)` is called without a filepath, so no `browser.json` is ever produced | `player.py` |
+| Nothing derived from it is printed, on any path: every failure is one of three fixed sentences with a `kind` of `auth`, `network` or `parse` | `player.py`, `LIKED_ERRORS` |
+| Anything that could still carry it, the helper's stderr, every server log line, every bug report, the route's own error, goes through `redactSecrets` | `lib/import/redact.ts`, wired into `lib/logger/sanitize.ts` |
+| Three reads an hour per person (`import-secret:<user>`), and at most 10 000 songs per transfer | the route, `MAX_TRANSFER_ITEMS` |
+
+YouTube Music does not say when a song was liked, so the like dates are synthesised from the order of the list, newest first, below every like the person already had (`lib/import/likedAt.ts`).
+
+Python dependencies: none beyond the `ytmusicapi>=1.12.0` already in `requirements.txt`, which `update.sh` installs on the host.
+
+Tests: `tests/test_player_liked.py` (the helper, including that a credential never reaches stdout or stderr), `apps/web/lib/import/redact.test.ts`, `apps/web/lib/import/sources/ytmusicLiked.test.ts`, `apps/web/lib/sources/youtube.test.ts`, the route's own test, and `tests/transfer-ytmusic.test.mjs` against the sandbox with the fake player.
+
 ## Decisions for the owner
 
 1. Spotify default is the embed page with a 100-track cap, OAuth optional in stage 5? Recommended: yes.

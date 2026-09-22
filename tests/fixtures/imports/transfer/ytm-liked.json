@@ -1,0 +1,49 @@
+{
+  "items": [
+    {
+      "videoId": "liked000001",
+      "title": "Liked Song One",
+      "artists": [
+        "Fake Artist"
+      ],
+      "artistId": "UCfakelike",
+      "album": "Fake Album",
+      "durationSec": 214,
+      "artworkUrl": "https://lh3.example/liked000001",
+      "videoType": "ATV",
+      "likedAt": null,
+      "setVideoId": "set-liked000001"
+    },
+    {
+      "videoId": "liked000002",
+      "title": "Liked Song Two",
+      "artists": [
+        "Fake Artist",
+        "Guest Artist"
+      ],
+      "artistId": "UCfakelike",
+      "album": "Fake Album",
+      "durationSec": 214,
+      "artworkUrl": "https://lh3.example/liked000002",
+      "videoType": "ATV",
+      "likedAt": null,
+      "setVideoId": "set-liked000002"
+    },
+    {
+      "videoId": "liked000003",
+      "title": "Liked Song Three",
+      "artists": [
+        "Another Artist"
+      ],
+      "artistId": "UCfakelike",
+      "album": "Fake Album",
+      "durationSec": 216,
+      "artworkUrl": "https://lh3.example/liked000003",
+      "videoType": "ATV",
+      "likedAt": null,
+      "setVideoId": "set-liked000003"
+    }
+  ],
+  "count": 3,
+  "truncated": false
+}
