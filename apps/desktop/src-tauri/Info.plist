@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- Merged by Tauri into the bundle's generated Info.plist. Voice search
+         (src/speech/macos.rs) needs both: TCC terminates an app that asks for
+         the mic or speech recognition without a usage string. -->
+    <key>NSMicrophoneUsageDescription</key>
+    <string>Ember listens to your voice for voice search.</string>
+    <key>NSSpeechRecognitionUsageDescription</key>
+    <string>Ember turns what you say into a search.</string>
+</dict>
+</plist>

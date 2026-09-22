@@ -8,6 +8,7 @@
 mod applog;
 mod audio;
 mod discord;
+mod speech;
 mod update;
 
 use tauri::Manager;
@@ -40,6 +41,7 @@ pub fn run() {
         .manage(engine)
         .manage(discord::DiscordPresence::default())
         .manage(applog::LogFile(std::sync::Mutex::new(log_path.clone())))
+        .manage(speech::new_backend(log_path.as_deref()))
         // Runs in the webview BEFORE the page loads. Forwards the things that
         // are otherwise invisible in a packaged app: console errors/warnings,
         // uncaught exceptions, rejected promises, and the status of every
@@ -67,6 +69,20 @@ pub fn run() {
                     );
                 }
             }
+            // One line saying whether voice search can work here; CI's Windows
+            // smoke test reads it. Asked off the main thread: the backends may
+            // spin up a recognizer (or a WinRT grammar compile) to answer.
+            let speech_handle = app.handle().clone();
+            let speech_log = log_path.clone();
+            std::thread::spawn(move || {
+                let a = speech_handle.state::<speech::SpeechState>().0.probe();
+                speech::log(
+                    speech_log.as_ref(),
+                    "INFO",
+                    &format!("available={} onDevice={}", a.available, a.on_device),
+                );
+            });
+
             // Log the URL the window is ACTUALLY loading, read back from the
             // window itself. This used to log option_env!("EMBER_APP_URL"),
             // which is a COMPILE-time variable — unset during the CI build, so
@@ -122,6 +138,10 @@ pub fn run() {
             applog::log_event,
             applog::log_path,
             applog::log_tail,
+            speech::speech_available,
+            speech::speech_start,
+            speech::speech_stop,
+            speech::speech_abort,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Ember desktop");

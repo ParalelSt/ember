@@ -34,6 +34,9 @@ on:
     # remove this once the fix reaches main.
     branches:
       - feat/windows-desktop
+      # temporary: remove before merging to main. The only way to compile the
+      # Windows voice search backend (src/speech/windows.rs) for real.
+      - voice-search-desktop
   workflow_dispatch:
 
 # Allow the Tauri job to create a Release and upload assets via GITHUB_TOKEN.
@@ -153,6 +156,12 @@ jobs:
           } >> "$GITHUB_ENV"
           echo "Apple signing enabled."
 
+      # The speech module's pure tests include cfg(windows) ones (HRESULT and
+      # WinRT error mapping) that only run on a Windows host.
+      - name: Speech unit tests (Windows)
+        if: matrix.platform == 'windows-latest'
+        run: cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml --lib speech
+
       - name: Build Tauri app & upload bundles
         uses: tauri-apps/tauri-action@v0
         env:
@@ -260,6 +269,13 @@ jobs:
             # Now Playing flyout on Windows.
             if ($text -match 'media controls unavailable') { $failures += "SMTC failed to initialise" }
             if ($text -notmatch 'media controls ready')    { $failures += "media controls never reported ready" }
+            # Voice search: the runner has no mic and the online speech
+            # setting is off, so available=false is expected. Only a missing
+            # line fails: it means the backend crashed or never initialised.
+            $speech = Get-Content $log | Select-String -Pattern 'speech: available=' | Select-Object -First 1
+            if ($speech) { Write-Host "speech status: $($speech.Line)" }
+            else { $failures += "speech backend never reported its status" }
+            Get-Content $log | Select-String -Pattern 'speech: ' | ForEach-Object { Write-Host $_.Line }
           }
 
           if ($failures.Count -gt 0) {

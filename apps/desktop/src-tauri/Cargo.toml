@@ -44,6 +44,25 @@ discord-rich-presence = "1.1.0"
 tauri-plugin-updater = "2.10.1"
 serde_json = "1.0.151"
 
+# --- Native voice search (src/speech/macos.rs) ---
+# All resolve against the objc2 0.6 / objc2-foundation 0.3 / block2 0.6 already
+# in the tree via tauri. Explicit features only: the default feature sets pull
+# in every framework header and cost minutes of compile time.
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = { version = "0.6", features = ["exception"] }   # exception::catch: an ObjC throw must not abort the app
+objc2-foundation = { version = "0.3", features = ["NSString", "NSLocale", "NSError", "NSArray", "NSObject", "NSDictionary", "NSBundle"] }
+objc2-speech = { version = "0.3.2", default-features = false, features = ["std", "SFSpeechRecognizer", "SFSpeechRecognitionRequest", "SFSpeechRecognitionResult", "SFSpeechRecognitionTask", "SFSpeechRecognitionTaskHint", "SFTranscription", "SFErrors", "block2", "objc2-avf-audio"] }
+objc2-avf-audio = { version = "0.3.2", default-features = false, features = ["std", "block2", "AVAudioEngine", "AVAudioNode", "AVAudioIONode", "AVAudioFormat", "AVAudioBuffer", "AVAudioTime", "AVAudioTypes"] }
+objc2-av-foundation = { version = "0.3.2", default-features = false, features = ["std", "block2", "AVCaptureDevice", "AVMediaFormat"] }   # mic TCC status + prompt
+block2 = "0.6"
+
+# --- Native voice search (src/speech/windows.rs) ---
+# No appx manifest (plain desktop app), so there is no `microphone` capability
+# to declare; the OS toggle "Let desktop apps access your microphone" governs
+# access and surfaces as E_ACCESSDENIED.
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.62", features = ["Foundation", "Foundation_Collections", "Globalization", "Media_SpeechRecognition"] }
+
 [profile.release]
 codegen-units = 1
 lto = true
