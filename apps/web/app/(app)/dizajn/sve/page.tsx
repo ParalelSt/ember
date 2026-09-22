@@ -74,6 +74,13 @@ import {
 import { TabsSection } from '@/components/library/options/tabs/TabsSection';
 import { PasteSection } from '@/components/library/options/tabs/PasteSection';
 import { FoundOnlineSection } from '@/components/library/options/tabs/FoundOnlineSection';
+import {
+  ATTACH_RECOMMENDED,
+  ATTACH_RECOMMENDED_REASON,
+  ATTACH_STATES,
+  type AttachState,
+} from '@/components/library/options/attachments';
+import { AttachmentsSection } from '@/components/library/options/attachments/AttachmentsSection';
 import { MOCK_LIKED_TRACKS, MOCK_PLAYLISTS, MOCK_RECENT_TRACKS, MOCK_RESULT_TRACKS } from '../mock';
 
 const STORAGE_KEY = 'dizajn-shelf-option';
@@ -95,6 +102,7 @@ const TABS_V3_PICKER_KEY = 'dizajn-tabs-v3-picker';
 const TABS_V3_STATE_KEY = 'dizajn-tabs-v3-state';
 const PHONESEARCH_OPTION_KEY = 'dizajn-phonesearch-option';
 const PHONESEARCH_STATE_KEY = 'dizajn-phonesearch-state';
+const ATTACH_STATE_KEY = 'dizajn-attach-state';
 
 // Saved picker choices. The page is server-rendered with the first option
 // of every picker, so the saved one must not be read during the first
@@ -299,6 +307,7 @@ export default function DizajnPage() {
   );
   const [psState, setPsState] = useSavedChoice<PhoneSearchState>(PHONESEARCH_STATE_KEY, PHONE_SEARCH_STATES, 'playing');
   const psRecommended = PHONE_SEARCH_OPTIONS.find((o) => o.id === PHONE_SEARCH_RECOMMENDED)!;
+  const [attachState, setAttachState] = useSavedChoice<AttachState>(ATTACH_STATE_KEY, ATTACH_STATES, 'files');
 
   return (
     <div>
@@ -673,6 +682,37 @@ export default function DizajnPage() {
         </div>
 
         <selected.Component title="Playlists" items={MOCK_PLAYLISTS} size="md" />
+      </section>
+
+      <section>
+        <h2 className="text-section-title mb-inset">Attach screenshots and recordings</h2>
+        <p className="text-meta mb-block">
+          Proposals, not built: three ways to attach images and clips to Bug report, New feature and
+          Fix, each drawn in both forms. {ATTACH_RECOMMENDED_REASON}
+        </p>
+        <div role="radiogroup" aria-label="Attach state" className="flex flex-wrap gap-cluster mb-block">
+          {ATTACH_STATES.map((s) => (
+            <button
+              key={s.id}
+              type="button"
+              role="radio"
+              aria-checked={attachState === s.id}
+              onClick={() => setAttachState(s.id)}
+              className={
+                attachState === s.id
+                  ? 'rounded-full bg-ember px-row py-cluster text-sm font-medium text-white'
+                  : 'rounded-full border border-border px-row py-cluster text-sm hover:bg-card transition-colors'
+              }
+            >
+              {s.label}
+            </button>
+          ))}
+        </div>
+        <p className="text-meta mb-row">
+          <span className="font-semibold text-foreground">Recommended: </span>
+          {ATTACH_RECOMMENDED}.
+        </p>
+        <AttachmentsSection state={attachState} />
       </section>
     </div>
   );
