@@ -170,3 +170,84 @@ describe('RequestDialog: submit', () => {
     await waitFor(() => expect(onOpenChange).toHaveBeenCalledWith(false));
   });
 });
+
+describe('RequestDialog: attachments', () => {
+  const MB = 1024 * 1024;
+  const fakeFile = (name: string, type: string, size = 1000) => {
+    const f = new File(['x'], name, { type });
+    Object.defineProperty(f, 'size', { value: size });
+    return f;
+  };
+  const fill = async () => {
+    await userEvent.type(screen.getByPlaceholderText('Short name, e.g. Sleep timer'), 'Sleep timer');
+    await userEvent.type(
+      screen.getByPlaceholderText(
+        'What should it do, and when would you use it? e.g. Stop playback after 30 minutes so I can fall asleep to music.',
+      ),
+      'Stop after 30 min',
+    );
+  };
+  const attach = (files: File[]) => userEvent.upload(screen.getByTestId('attachment-input'), files);
+
+  beforeEach(() => {
+    vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:test');
+    vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
+  });
+  afterEach(() => vi.restoreAllMocks());
+
+  it('sends the files as multipart with the JSON in a payload part', async () => {
+    const fetchMock = mockFetch();
+    render(<RequestDialog open onOpenChange={() => {}} />);
+    await fill();
+    await userEvent.click(screen.getByRole('tab', { name: 'Fix' }));
+    await attach([fakeFile('shot.png', 'image/png'), fakeFile('clip.mp4', 'video/mp4')]);
+    await userEvent.click(screen.getByRole('button', { name: 'Send' }));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    const [url, init] = fetchMock.mock.calls.at(-1) as [string, RequestInit];
+    expect(url).toBe('/api/requests');
+    expect(init.headers).toBeUndefined();
+    const form = init.body as FormData;
+    expect(form).toBeInstanceOf(FormData);
+    expect(JSON.parse(form.get('payload') as string)).toMatchObject({
+      kind: 'fix',
+      name: 'Sleep timer',
+      main: 'Stop after 30 min',
+    });
+    expect((form.getAll('attachments') as File[]).map((f) => f.name)).toEqual(['shot.png', 'clip.mp4']);
+  });
+
+  it('disables Send while the files are too big', async () => {
+    mockFetch();
+    render(<RequestDialog open onOpenChange={() => {}} />);
+    await fill();
+    const send = screen.getByRole('button', { name: 'Send' });
+    expect(send).not.toBeDisabled();
+    await attach([fakeFile('long.mp4', 'video/mp4', 11 * MB)]);
+    expect(screen.getByTestId('attach-problem')).toBeInTheDocument();
+    expect(send).toBeDisabled();
+    await userEvent.click(screen.getByRole('button', { name: 'Remove long.mp4' }));
+    expect(send).not.toBeDisabled();
+  });
+
+  it('clears the files on close', async () => {
+    const onOpenChange = vi.fn();
+    render(<RequestDialog open onOpenChange={onOpenChange} />);
+    await attach([fakeFile('shot.png', 'image/png')]);
+    expect(screen.getAllByTestId('attach-thumb')).toHaveLength(1);
+    await userEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+    expect(screen.queryAllByTestId('attach-thumb')).toHaveLength(0);
+  });
+
+  it('clears the files after a successful send', async () => {
+    mockFetch();
+    const onOpenChange = vi.fn();
+    render(<RequestDialog open onOpenChange={onOpenChange} />);
+    await fill();
+    await attach([fakeFile('shot.png', 'image/png')]);
+    await userEvent.click(screen.getByRole('button', { name: 'Send' }));
+    await waitFor(() => expect(onOpenChange).toHaveBeenCalledWith(false));
+    expect(screen.queryAllByTestId('attach-thumb')).toHaveLength(0);
+  });
+});

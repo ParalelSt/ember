@@ -16,6 +16,8 @@ import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { logger } from '@/lib/logger/client';
+import { AttachmentPicker } from '@/components/AttachmentPicker';
+import { ATTACHMENT_FIELD, attachmentProblem, PAYLOAD_FIELD } from '@/lib/attachments';
 
 type Kind = 'feature' | 'fix';
 
@@ -60,17 +62,20 @@ export function RequestDialog({ open, onOpenChange }: RequestDialogProps) {
   const [name, setName] = useState('');
   const [main, setMain] = useState('');
   const [extra, setExtra] = useState('');
+  const [files, setFiles] = useState<File[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const copy = COPY[kind];
-  const canSend = name.trim().length > 0 && main.trim().length > 0 && !busy;
+  const canSend =
+    name.trim().length > 0 && main.trim().length > 0 && !busy && attachmentProblem(files) === null;
 
   const reset = () => {
     setKind('feature');
     setName('');
     setMain('');
     setExtra('');
+    setFiles([]);
     setError(null);
   };
 
@@ -87,17 +92,27 @@ export function RequestDialog({ open, onOpenChange }: RequestDialogProps) {
     try {
       const snapshot = logger.snapshot();
       const { appVersion, shell, route, platform } = snapshot.context;
+      const payload = JSON.stringify({
+        kind,
+        name: name.trim(),
+        main: main.trim(),
+        extra: extra.trim() || undefined,
+        context: { appVersion, shell, route, platform },
+      });
+      // Plain JSON as before without files; with files, the same JSON as a
+      // `payload` part next to them (the browser sets the multipart header).
+      let body: BodyInit = payload;
+      if (files.length > 0) {
+        const form = new FormData();
+        form.append(PAYLOAD_FIELD, payload);
+        for (const f of files) form.append(ATTACHMENT_FIELD, f, f.name);
+        body = form;
+      }
       const res = await fetch('/api/requests', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: files.length > 0 ? undefined : { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({
-          kind,
-          name: name.trim(),
-          main: main.trim(),
-          extra: extra.trim() || undefined,
-          context: { appVersion, shell, route, platform },
-        }),
+        body,
       });
       if (!res.ok) {
         const err = (await res.json().catch(() => ({ error: res.statusText }))) as { error?: string };
@@ -158,6 +173,7 @@ export function RequestDialog({ open, onOpenChange }: RequestDialogProps) {
               rows={3}
             />
           </div>
+          <AttachmentPicker files={files} onChange={setFiles} disabled={busy} />
           {error && <p className="text-sm text-destructive">{error}</p>}
           <DialogFooter>
             <Button type="button" variant="ghost" onClick={() => close(false)} disabled={busy}>

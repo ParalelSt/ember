@@ -41,3 +41,26 @@ export function attachmentProblem(files: AttachmentLike[]): string | null {
   }
   return null;
 }
+
+/** The multipart field the dialogs put each file under, next to a `payload`
+ *  field holding the JSON body they would otherwise send on its own. */
+export const ATTACHMENT_FIELD = 'attachments';
+export const PAYLOAD_FIELD = 'payload';
+
+/** The file part of every `attachments` entry in a posted form (a string
+ *  entry, which a hand-written request could send, is not a file). */
+export function formAttachments(form: FormData): File[] {
+  return form.getAll(ATTACHMENT_FIELD).filter((v): v is File => typeof v !== 'string');
+}
+
+/** The name a file goes to Discord under: the original basename, reduced to
+ *  safe characters, so Discord still sees the extension and renders an image
+ *  inline or a clip as a player. Falls back to `attachment-N`. */
+export function safeAttachmentName(name: string, index: number): string {
+  const base = name.split(/[\\/]/).pop() ?? '';
+  const cleaned = base
+    .replace(/[^A-Za-z0-9._-]+/g, '_')
+    .replace(/^[._]+/, '')
+    .slice(-100);
+  return /[A-Za-z0-9]/.test(cleaned) ? cleaned : `attachment-${index + 1}`;
+}

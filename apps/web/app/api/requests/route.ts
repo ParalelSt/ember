@@ -10,8 +10,8 @@ import { fromError, jsonError } from "@/lib/upsertTrack";
 import { withRequestLog } from "@/lib/logger/withRequestLog";
 import { scrubText } from "@/lib/logger/sanitize";
 import { resolveWebhook } from "@/lib/requestWebhooks";
-
-
+import { readReportBody } from "@/lib/reports/readBody";
+import { safeAttachmentName } from "@/lib/attachments";
 
 const MAX_NAME_LEN = 80;
 const MAX_MAIN_LEN = 2000;
@@ -74,8 +74,9 @@ export const POST = withRequestLog("requests", async (request: NextRequest) => {
     });
     if (limited) return limited;
 
-    const body = (await request.json().catch(() => null)) as RequestBody | null;
-    if (!body) return jsonError("Invalid request body", 400);
+    const parsed = await readReportBody<RequestBody>(request);
+    if (!parsed.ok) return jsonError(parsed.error ?? "Invalid request body", 400);
+    const { body, files } = parsed;
 
     const kind = body.kind;
     if (kind !== "feature" && kind !== "fix") {
@@ -136,10 +137,20 @@ export const POST = withRequestLog("requests", async (request: NextRequest) => {
       footer: footerParts.length ? { text: footerParts.join(" · ") } : undefined,
     };
 
+    const message = JSON.stringify({ embeds: [embed], allowed_mentions: { parse: [] } });
+    // JSON exactly as before; with screenshots or clips, multipart so they
+    // land on the same message as real attachments.
+    let discordBody: BodyInit = message;
+    if (files.length > 0) {
+      const form = new FormData();
+      form.append("payload_json", message);
+      files.forEach((f, i) => form.append(`files[${i}]`, f, safeAttachmentName(f.name, i)));
+      discordBody = form;
+    }
     const discordRes = await fetch(webhookUrl, {
       method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ embeds: [embed], allowed_mentions: { parse: [] } }),
+      headers: files.length > 0 ? undefined : { "content-type": "application/json" },
+      body: discordBody,
     });
 
     if (!discordRes.ok) {

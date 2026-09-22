@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import {
   attachmentProblem,
+  formAttachments,
   formatBytes,
   isAllowedType,
   MAX_ATTACHMENT_BYTES,
   MAX_ATTACHMENTS,
+  safeAttachmentName,
   totalBytes,
 } from './attachments';
 
@@ -44,5 +46,39 @@ describe('attachments', () => {
       'Files are 39.6 MB. Discord takes 10 MB per message: trim the clip or send fewer files.',
     );
     expect(totalBytes([img(1), vid(2)])).toBe(3);
+  });
+});
+
+describe('safeAttachmentName', () => {
+  it('keeps a plain name and its extension', () => {
+    expect(safeAttachmentName('Screenshot_2026-09-22.png', 0)).toBe('Screenshot_2026-09-22.png');
+  });
+
+  it('drops any path and replaces unsafe characters', () => {
+    expect(safeAttachmentName('../../etc/pass wd.png', 0)).toBe('pass_wd.png');
+    expect(safeAttachmentName('C:\\Users\\me\\Screen Shot (2).mov', 0)).toBe('Screen_Shot_2_.mov');
+    expect(safeAttachmentName('clip<script>.mp4', 0)).toBe('clip_script_.mp4');
+  });
+
+  it('does not start with a dot and keeps the tail of a very long name', () => {
+    expect(safeAttachmentName('.hidden.png', 0)).toBe('hidden.png');
+    const long = safeAttachmentName(`${'a'.repeat(300)}.webm`, 0);
+    expect(long.length).toBe(100);
+    expect(long.endsWith('.webm')).toBe(true);
+  });
+
+  it('falls back to a numbered name when nothing usable is left', () => {
+    expect(safeAttachmentName('', 2)).toBe('attachment-3');
+    expect(safeAttachmentName('???', 0)).toBe('attachment-1');
+  });
+});
+
+describe('formAttachments', () => {
+  it('returns the file entries only', () => {
+    const form = new FormData();
+    form.append('attachments', new File(['x'], 'a.png', { type: 'image/png' }));
+    form.append('attachments', 'not a file');
+    form.append('other', new File(['y'], 'b.png', { type: 'image/png' }));
+    expect(formAttachments(form).map((f) => f.name)).toEqual(['a.png']);
   });
 });

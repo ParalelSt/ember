@@ -17,6 +17,8 @@ import { logger } from '@/lib/logger/client';
 import { readDesktopLog } from '@/lib/desktopLog';
 import { detectShell } from '@/lib/playback/detectShell';
 import { scrubText } from '@/lib/logger/sanitize';
+import { AttachmentPicker } from '@/components/AttachmentPicker';
+import { ATTACHMENT_FIELD, attachmentProblem, PAYLOAD_FIELD } from '@/lib/attachments';
 
 const MAX_NOTE = 1000;
 
@@ -40,6 +42,7 @@ export function BugReportDialog() {
   const open = useUiStore((s) => s.bugReportOpen);
   const setOpen = useUiStore((s) => s.setBugReportOpen);
   const [note, setNote] = useState('');
+  const [files, setFiles] = useState<File[]>([]);
   const [busy, setBusy] = useState(false);
   const [triage, setTriage] = useState<Triage | null>(null);
 
@@ -53,7 +56,7 @@ export function BugReportDialog() {
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
-    if (busy) return;
+    if (busy || attachmentProblem(files) !== null) return;
     setBusy(true);
     try {
       const snapshot = logger.snapshot();
@@ -65,11 +68,21 @@ export function BugReportDialog() {
       // leaves the device.
       const desktopLog = await readDesktopLog();
       if (desktopLog) snapshot.desktopLog = scrubText(desktopLog);
+      const payload = JSON.stringify({ note: note.trim() || undefined, client: snapshot });
+      // Plain JSON as before without files (lib/autoReport.ts always sends
+      // that); with files, the same JSON as a `payload` part next to them.
+      let body: BodyInit = payload;
+      if (files.length > 0) {
+        const form = new FormData();
+        form.append(PAYLOAD_FIELD, payload);
+        for (const f of files) form.append(ATTACHMENT_FIELD, f, f.name);
+        body = form;
+      }
       const res = await fetch('/api/bug-report', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: files.length > 0 ? undefined : { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ note: note.trim() || undefined, client: snapshot }),
+        body,
       });
       if (!res.ok) {
         const err = (await res.json().catch(() => ({ error: res.statusText }))) as { error?: string };
@@ -78,6 +91,7 @@ export function BugReportDialog() {
       const data = (await res.json().catch(() => ({}))) as { triage?: Triage | null };
       toast.success('Report sent');
       setNote('');
+      setFiles([]);
       // With AI triage on, stay open to show the diagnosis; without it there's
       // nothing to show, so close as before.
       if (data.triage) setTriage(data.triage);
@@ -92,6 +106,12 @@ export function BugReportDialog() {
   const close = () => {
     setOpen(false);
     setTriage(null);
+    setFiles([]);
+  };
+
+  const onOpenChange = (o: boolean) => {
+    if (!o) setFiles([]);
+    setOpen(o);
   };
 
   if (triage) {
@@ -142,7 +162,7 @@ export function BugReportDialog() {
   }
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>Report a bug</DialogTitle>
@@ -157,6 +177,7 @@ export function BugReportDialog() {
             placeholder="What happened? (optional)"
             rows={4}
           />
+          <AttachmentPicker files={files} onChange={setFiles} disabled={busy} />
           <div className="text-xs text-muted-foreground">
             Diagnostic data: <span className="text-foreground">{counts.current}</span> events from this session,
             {' '}<span className="text-foreground">{counts.previous}</span> from your last session, app state
@@ -164,12 +185,12 @@ export function BugReportDialog() {
             {counts.isDesktop ? ', and the desktop app log' : ''}.
           </div>
           <DialogFooter>
-            <Button type="button" variant="ghost" onClick={() => setOpen(false)} disabled={busy}>
+            <Button type="button" variant="ghost" onClick={() => onOpenChange(false)} disabled={busy}>
               Cancel
             </Button>
             <Button
               type="submit"
-              disabled={busy}
+              disabled={busy || attachmentProblem(files) !== null}
               className="bg-ember hover:bg-ember-soft text-white"
             >
               {busy ? 'Sending…' : 'Send report'}

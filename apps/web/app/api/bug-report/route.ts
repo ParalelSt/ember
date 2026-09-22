@@ -20,6 +20,8 @@ import {
   webhookUrl,
   type EmbedField as EmbedFieldT,
 } from "@/lib/reports/discord";
+import { readReportBody } from "@/lib/reports/readBody";
+import { safeAttachmentName } from "@/lib/attachments";
 
 const REPORT_WINDOW_MS = 5 * 60 * 1000;
 // How far back "Seen before" looks to tell "this has been happening all
@@ -97,7 +99,10 @@ export const POST = withRequestLog('bug-report', async (request: NextRequest) =>
   try {
     const { user } = await requireUser();
 
-    const body = (await request.json().catch(() => null)) as RequestBody | null;
+    const parsed = await readReportBody<RequestBody>(request);
+    if (!parsed.ok && parsed.error) return jsonError(parsed.error, 400);
+    const body = parsed.ok ? parsed.body : null;
+    const files = parsed.ok ? parsed.files : [];
     if (
       !body ||
       !body.client ||
@@ -291,6 +296,12 @@ export const POST = withRequestLog('bug-report', async (request: NextRequest) =>
         "desktop.log",
       );
     }
+    // The reporter's screenshots and clips follow report.json (and the
+    // desktop log): at most 2 + MAX_ATTACHMENTS files, inside Discord's 10.
+    const firstUserFile = desktopLog ? 2 : 1;
+    files.forEach((f, i) =>
+      form.append(`files[${firstUserFile + i}]`, f, safeAttachmentName(f.name, i)),
+    );
 
     if (isSandboxReporter(user.email)) {
       return Response.json({ ok: true, skipped: "test account", triage });

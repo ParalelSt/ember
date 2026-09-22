@@ -95,3 +95,66 @@ describe('BugReportDialog: desktop log', () => {
     vi.useRealTimers();
   });
 });
+
+describe('BugReportDialog: attachments', () => {
+  const MB = 1024 * 1024;
+  const fakeFile = (name: string, type: string, size = 1000) => {
+    const f = new File(['x'], name, { type });
+    Object.defineProperty(f, 'size', { value: size });
+    return f;
+  };
+  const attach = (files: File[]) => userEvent.upload(screen.getByTestId('attachment-input'), files);
+
+  beforeEach(() => {
+    tauri.invoke.mockResolvedValue('');
+    vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:test');
+    vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
+  });
+  afterEach(() => vi.restoreAllMocks());
+
+  it('keeps sending plain JSON when nothing is attached', async () => {
+    const fetchMock = mockFetch();
+    await submitReport();
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    const [, init] = fetchMock.mock.calls.at(-1) as [string, RequestInit];
+    expect(init.headers).toEqual({ 'Content-Type': 'application/json' });
+    expect(typeof init.body).toBe('string');
+  });
+
+  it('sends the files as multipart with the report JSON in a payload part', async () => {
+    const fetchMock = mockFetch();
+    render(<BugReportDialog />);
+    await userEvent.type(screen.getByPlaceholderText('What happened? (optional)'), 'It went silent');
+    await attach([fakeFile('shot.png', 'image/png'), fakeFile('clip.webm', 'video/webm')]);
+    await userEvent.click(screen.getByRole('button', { name: 'Send report' }));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    const [url, init] = fetchMock.mock.calls.at(-1) as [string, RequestInit];
+    expect(url).toBe('/api/bug-report');
+    expect(init.headers).toBeUndefined();
+    const form = init.body as FormData;
+    const payload = JSON.parse(form.get('payload') as string);
+    expect(payload.note).toBe('It went silent');
+    expect(Array.isArray(payload.client.current)).toBe(true);
+    expect((form.getAll('attachments') as File[]).map((f) => f.name)).toEqual(['shot.png', 'clip.webm']);
+    await waitFor(() => expect(screen.queryAllByTestId('attach-thumb')).toHaveLength(0));
+  });
+
+  it('disables Send report while the files are not sendable', async () => {
+    mockFetch();
+    render(<BugReportDialog />);
+    const send = screen.getByRole('button', { name: 'Send report' });
+    await attach([fakeFile('long.mp4', 'video/mp4', 11 * MB)]);
+    expect(screen.getByTestId('attach-problem')).toHaveTextContent('Files are 11 MB.');
+    expect(send).toBeDisabled();
+  });
+
+  it('clears the files on Cancel', async () => {
+    render(<BugReportDialog />);
+    await attach([fakeFile('shot.png', 'image/png')]);
+    await userEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(useUiStore.getState().bugReportOpen).toBe(false);
+    useUiStore.setState({ bugReportOpen: true });
+    expect(screen.queryAllByTestId('attach-thumb')).toHaveLength(0);
+  });
+});

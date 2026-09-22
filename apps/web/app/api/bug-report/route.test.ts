@@ -439,3 +439,93 @@ describe('POST /api/bug-report: note scrubbing', () => {
   });
 });
 
+
+describe('POST /api/bug-report: attachments', () => {
+  const MB = 1024 * 1024;
+  const file = (name: string, type: string, size?: number) => {
+    const f = new File([`bytes of ${name}`], name, { type });
+    if (size !== undefined) Object.defineProperty(f, 'size', { value: size });
+    return f;
+  };
+  function multipart(body: unknown, files: File[]): NextRequest {
+    const form = new FormData();
+    form.append('payload', JSON.stringify(body));
+    for (const f of files) form.append('attachments', f, f.name);
+    return {
+      json: async () => {
+        throw new Error('multipart body read as JSON');
+      },
+      formData: async () => form,
+      headers: new Headers({ 'content-type': 'multipart/form-data; boundary=----x', 'user-agent': 'Ember web' }),
+    } as unknown as NextRequest;
+  }
+
+  it('puts the files after report.json, with their names', async () => {
+    const res = await POST(
+      multipart({ note: 'went silent', client: snapshot() }, [file('shot.png', 'image/png'), file('my clip.webm', 'video/webm')]),
+      undefined as never,
+    );
+    expect(res.status).toBe(200);
+    const form = postedForm(fetchMock);
+    expect((form.get('files[0]') as File).name).toBe('report.json');
+    expect((form.get('files[1]') as File).name).toBe('shot.png');
+    expect(await (form.get('files[1]') as File).text()).toBe('bytes of shot.png');
+    expect((form.get('files[2]') as File).name).toBe('my_clip.webm');
+    expect(form.get('files[3]')).toBeNull();
+    expect(postedEmbed(fetchMock).description).toBe('went silent');
+  });
+
+  it('puts the files after the desktop log when there is one', async () => {
+    await POST(
+      multipart({ client: snapshot({ desktopLog: '[1] INFO starting' }) }, [file('shot.png', 'image/png')]),
+      undefined as never,
+    );
+    const form = postedForm(fetchMock);
+    const names = [0, 1, 2].map((i) => (form.get(`files[${i}]`) as File).name);
+    expect(names).toEqual(['report.json', 'desktop.log', 'shot.png']);
+    expect(form.get('files[3]')).toBeNull();
+  });
+
+  it('keeps the attachments out of report.json', async () => {
+    await POST(multipart({ client: snapshot() }, [file('shot.png', 'image/png')]), undefined as never);
+    const report = await (postedForm(fetchMock).get('files[0]') as File).text();
+    expect(report).not.toContain('bytes of shot.png');
+  });
+
+  it('400s with the dialog sentence when the files are too big', async () => {
+    const res = await POST(
+      multipart({ client: snapshot() }, [file('a.mp4', 'video/mp4', 6 * MB), file('b.mp4', 'video/mp4', 5 * MB)]),
+      undefined as never,
+    );
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({
+      error: 'Files are 11 MB. Discord takes 10 MB per message: trim the clip or send fewer files.',
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('400s on a file that is not an image or a video, and on more than 4 files', async () => {
+    const bad = await POST(multipart({ client: snapshot() }, [file('x.zip', 'application/zip')]), undefined as never);
+    expect(bad.status).toBe(400);
+    expect(await bad.json()).toEqual({ error: 'x.zip is not an image or a video.' });
+    const five = ['1', '2', '3', '4', '5'].map((n) => file(`${n}.png`, 'image/png'));
+    const many = await POST(multipart({ client: snapshot() }, five), undefined as never);
+    expect(many.status).toBe(400);
+    expect(await many.json()).toEqual({ error: 'Up to 4 files per message.' });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('400s on a multipart body without a valid report', async () => {
+    const res = await POST(multipart({ note: 'no client' }, []), undefined as never);
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: 'Invalid report body' });
+  });
+
+  it('a JSON report (the crash reporter) still goes through with no extra files', async () => {
+    const res = await POST(request({ note: 'TypeError: x', client: snapshot(), automatic: true }), undefined as never);
+    expect(res.status).toBe(200);
+    const form = postedForm(fetchMock);
+    expect((form.get('files[0]') as File).name).toBe('report.json');
+    expect(form.get('files[1]')).toBeNull();
+  });
+});

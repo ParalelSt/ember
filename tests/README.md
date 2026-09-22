@@ -320,6 +320,15 @@ node tests/mobile-player-ui.test.mjs                # or: npm run test:mobile-pl
 # EMBER_EMAIL / EMBER_PASSWORD; writes nothing. SHOT_DIR keeps screenshots.
 node tests/phone-bar-sizes-ui.test.mjs              # or: npm run test:phone-bar-sizes
 
+# Screenshots and clips on Report a bug and Send a request: attaches a
+# generated PNG and a 2 s webm (made with ffmpeg), checks the thumbnails and
+# the total, sends both, and checks the files reached its own Discord sink on
+# :8099 as files[n] with their names. The server needs
+# DISCORD_BUG_REPORT_WEBHOOK_URL=http://127.0.0.1:8099/bug,
+# DISCORD_FEATURE_WEBHOOK_URL=http://127.0.0.1:8099/feature and
+# DISCORD_FIX_WEBHOOK_URL=http://127.0.0.1:8099/fix. PB_URL / APP_URL as above.
+node tests/attachments-ui.test.mjs                  # or: npm run test:attachments-ui
+
 # Playlist import: Spotify embed source, background jobs, picks (needs its own server, see below)
 node tests/import.test.mjs                          # or: npm run test:import
 # Playlist import in the browser: Tabs dialog, sidebar ring, restart, 503, review sheet

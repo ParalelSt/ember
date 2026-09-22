@@ -214,3 +214,96 @@ describe('POST /api/requests: auth', () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 });
+
+describe('POST /api/requests: attachments', () => {
+  const MB = 1024 * 1024;
+  const file = (name: string, type: string, size?: number) => {
+    const f = new File([`bytes of ${name}`], name, { type });
+    if (size !== undefined) Object.defineProperty(f, 'size', { value: size });
+    return f;
+  };
+  function multipart(body: unknown, files: File[]): NextRequest {
+    const form = new FormData();
+    form.append('payload', JSON.stringify(body));
+    for (const f of files) form.append('attachments', f, f.name);
+    return {
+      json: async () => {
+        throw new Error('multipart body read as JSON');
+      },
+      formData: async () => form,
+      headers: new Headers({ 'content-type': 'multipart/form-data; boundary=----x' }),
+    } as unknown as NextRequest;
+  }
+
+  it('forwards the files as files[n] on the same message, with their names', async () => {
+    const res = await POST(
+      multipart(validBody({ kind: 'fix' }), [file('Screen Shot 1.png', 'image/png'), file('clip.mp4', 'video/mp4')]),
+      undefined as never,
+    );
+    expect(res.status).toBe(200);
+    const [url, init] = fetchMock.mock.calls.at(-1) as [string, { body: FormData; headers?: unknown }];
+    expect(url).toBe('http://127.0.0.1:4321/fix');
+    expect(init.headers).toBeUndefined();
+    const form = init.body;
+    const payload = JSON.parse(form.get('payload_json') as string);
+    expect(payload.embeds[0].title).toBe('Fix: Sleep timer');
+    expect(payload.allowed_mentions).toEqual({ parse: [] });
+    const first = form.get('files[0]') as File;
+    const second = form.get('files[1]') as File;
+    expect(first.name).toBe('Screen_Shot_1.png');
+    expect(await first.text()).toBe('bytes of Screen Shot 1.png');
+    expect(second.name).toBe('clip.mp4');
+    expect(form.get('files[2]')).toBeNull();
+  });
+
+  it('still scrubs the text fields of a multipart request', async () => {
+    await POST(
+      multipart(validBody({ main: 'bearer sk-ant-abcdefgh12345678 fails' }), [file('a.png', 'image/png')]),
+      undefined as never,
+    );
+    const [, init] = fetchMock.mock.calls.at(-1) as [string, { body: FormData }];
+    expect(init.body.get('payload_json')).not.toContain('sk-ant-abcdefgh12345678');
+  });
+
+  it('400s with the dialog sentence when the files are too big', async () => {
+    const res = await POST(multipart(validBody(), [file('long.mp4', 'video/mp4', 11 * MB)]), undefined as never);
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({
+      error: 'Files are 11 MB. Discord takes 10 MB per message: trim the clip or send fewer files.',
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('400s on a file that is not an image or a video', async () => {
+    const res = await POST(multipart(validBody(), [file('notes.pdf', 'application/pdf')]), undefined as never);
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: 'notes.pdf is not an image or a video.' });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('400s on more than 4 files', async () => {
+    const five = ['1', '2', '3', '4', '5'].map((n) => file(`${n}.png`, 'image/png'));
+    const res = await POST(multipart(validBody(), five), undefined as never);
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: 'Up to 4 files per message.' });
+  });
+
+  it('400s on a multipart body without a readable payload', async () => {
+    const form = new FormData();
+    form.append('payload', '{not json');
+    const req = {
+      formData: async () => form,
+      headers: new Headers({ 'content-type': 'multipart/form-data; boundary=----x' }),
+    } as unknown as NextRequest;
+    const res = await POST(req, undefined as never);
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: 'Invalid request body' });
+  });
+
+  it('a JSON request keeps going out as JSON', async () => {
+    await POST(request(validBody()), undefined as never);
+    const [, init] = fetchMock.mock.calls.at(-1) as [string, { body: unknown; headers: unknown }];
+    expect(typeof init.body).toBe('string');
+    expect(init.headers).toEqual({ 'content-type': 'application/json' });
+  });
+});

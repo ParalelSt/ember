@@ -31,6 +31,14 @@ const nextConfig: NextConfig = {
   // here too if you run `next dev` behind a named tunnel on one.
   allowedDevOrigins: ['*.trycloudflare.com', '*.ts.net'],
 
+  experimental: {
+    // proxy.ts sits in front of /api, and Next buffers every request body it
+    // proxies up to this size (10 MB by default), cutting off the rest. A bug
+    // report or request can carry 10 MB of screenshots and clips
+    // (lib/attachments.ts) plus its JSON, so leave room above that.
+    proxyClientMaxBodySize: '12mb',
+  },
+
   // Same-origin proxy for PocketBase: the browser calls `/pb/*` and Next
   // forwards it to the real PocketBase server. This keeps the whole app on a
   // single public origin, so one static tunnel URL covers everything.
