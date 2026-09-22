@@ -8,7 +8,7 @@
 # Referenced from capabilities/default.json.
 [[permission]]
 identifier = "allow-ember-commands"
-description = "Ember's own IPC commands: native audio, Discord presence, and log forwarding."
+description = "Ember's own IPC commands: native audio, Discord presence, log forwarding, and voice search."
 
 [permission.commands]
 allow = [
@@ -23,5 +23,11 @@ allow = [
   "log_event",
   "log_path",
   "log_tail",
+  # Native voice search (src/speech.rs). Same reason as the rest: without
+  # these the remote page's mic gets "not allowed by ACL".
+  "speech_available",
+  "speech_start",
+  "speech_stop",
+  "speech_abort",
 ]
 deny = []
