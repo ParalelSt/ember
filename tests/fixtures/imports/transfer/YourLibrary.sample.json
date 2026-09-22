@@ -1,0 +1,15 @@
+{
+  "tracks": [
+    { "artist": "Halcyon Drift", "album": "Paper Lanterns", "track": "Paper Lanterns", "uri": "spotify:track:1AbCdEfGhIjKlMnOpQrStU" },
+    { "artist": "Nadia Okonkwo", "album": "Slow Weather", "track": "Slow Weather", "uri": "spotify:track:2BcDeFgHiJkLmNoPqRsTuV" },
+    { "artist": "Halcyon Drift", "album": "Paper Lanterns", "track": "Paper Lanterns", "uri": "spotify:track:1AbCdEfGhIjKlMnOpQrStU" },
+    { "artist": "The Quiet Parade", "album": "Nine Streets", "track": "Nine Streets", "uri": "not-a-spotify-uri" },
+    { "artist": "Mirror Hall", "album": "Cold Open", "track": "", "uri": "spotify:track:3CdEfGhIjKlMnOpQrStUvW" },
+    { "artist": "Sāmi Rekdal", "album": "Fjord", "track": "Fjord, at Dawn", "uri": "spotify:track:4DeFgHiJkLmNoPqRsTuVwX" }
+  ],
+  "albums": [{ "artist": "Halcyon Drift", "album": "Paper Lanterns", "uri": "spotify:album:9ZzZzZzZzZzZzZzZzZzZzZ" }],
+  "shows": [],
+  "episodes": [],
+  "artists": [{ "name": "Halcyon Drift", "uri": "spotify:artist:8YyYyYyYyYyYyYyYyYyYyY" }],
+  "bannedTracks": []
+}
