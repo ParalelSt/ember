@@ -9,8 +9,11 @@ export const GET = withRequestLog('likes', async () => {
   try {
     const { pb, user } = await requireUser();
     const records = await pb.collection('likes').getFullList({
+      // liked_at is what a transfer sets, so imported songs sort into the
+      // list where they belong (ensure_likes_fields.pb.js); `created` is the
+      // tie-break and covers a row written before the backfill ran.
       filter: `user = "${user.id}"`,
-      sort: '-created',
+      sort: '-liked_at,-created',
       expand: 'track',
     });
     const tracks = records
@@ -33,7 +36,12 @@ export const POST = withRequestLog('likes', async (request: NextRequest) => {
     const trackRecordId = await upsertTrack(pb, track);
 
     try {
-      await pb.collection('likes').create({ user: user.id, track: trackRecordId });
+      await pb.collection('likes').create({
+        user: user.id,
+        track: trackRecordId,
+        liked_at: new Date().toISOString(),
+        origin: 'user',
+      });
     } catch (e) {
       // Unique (user, track) — already liked. Treat as idempotent.
       const status = (e as { status?: number } | undefined)?.status;
