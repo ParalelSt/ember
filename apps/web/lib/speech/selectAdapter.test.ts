@@ -36,8 +36,13 @@ describe('selectSpeechAdapter', () => {
     expect(selectSpeechAdapter('tauri', withCtor)).toEqual({ adapter: null, reason: 'no-bridge' });
   });
 
-  it('a tauri shell with __TAURI_INTERNALS__ but no adapter yet gives no-bridge', () => {
+  it('a tauri shell with an invoke bridge gives the tauri adapter', () => {
     const win = { __TAURI_INTERNALS__: { invoke: () => Promise.resolve() } } as unknown as Window;
+    expect(selectSpeechAdapter('tauri', win).adapter?.kind).toBe('tauri');
+  });
+
+  it('a tauri shell with __TAURI_INTERNALS__ but no invoke gives no-bridge', () => {
+    const win = { __TAURI_INTERNALS__: {} } as unknown as Window;
     expect(selectSpeechAdapter('tauri', win)).toEqual({ adapter: null, reason: 'no-bridge' });
   });
 });

@@ -1,6 +1,7 @@
 import { detectShell, type Shell } from '@/lib/playback/detectShell';
 import type { SpeechAdapter, SpeechUnavailableReason } from './types';
 import { capacitorSpeechPresent, createCapacitorSpeech } from './capacitorSpeech';
+import { createTauriSpeech, tauriSpeechPresent } from './tauriSpeech';
 import { createWebSpeech, webSpeechAvailable } from './webSpeech';
 
 export interface SpeechAdapterPick {
@@ -22,6 +23,9 @@ export function selectSpeechAdapter(
   }
   if (shell === 'capacitor' && capacitorSpeechPresent(win)) {
     return { adapter: { kind: 'capacitor', create: () => createCapacitorSpeech(win) } };
+  }
+  if (shell === 'tauri' && tauriSpeechPresent(win)) {
+    return { adapter: { kind: 'tauri', create: createTauriSpeech } };
   }
   return { adapter: null, reason: 'no-bridge' };
 }
