@@ -12,7 +12,7 @@ import { BugReportDialog } from './BugReportDialog';
 const tauri = vi.hoisted(() => ({ invoke: vi.fn() }));
 vi.mock('@tauri-apps/api/core', () => ({ invoke: tauri.invoke }));
 vi.mock('@/lib/playback/detectShell', () => ({ detectShell: () => 'tauri' }));
-vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
+vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn(), warning: vi.fn() } }));
 
 // @base-ui's Dialog and Button reach the repo root's hoisted React 18 through
 // their own node_modules copy (the same resolution problem OnlineOnly.test.tsx
@@ -156,5 +156,27 @@ describe('BugReportDialog: attachments', () => {
     expect(useUiStore.getState().bugReportOpen).toBe(false);
     useUiStore.setState({ bugReportOpen: true });
     expect(screen.queryAllByTestId('attach-thumb')).toHaveLength(0);
+  });
+});
+
+describe('BugReportDialog: attachments Discord would not take', () => {
+  it('says the report went without them', async () => {
+    const { toast } = await import('sonner');
+    tauri.invoke.mockResolvedValue('');
+    vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:test');
+    vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ ok: true, triage: null, attachmentsDropped: true }),
+    }));
+    render(<BugReportDialog />);
+    await userEvent.upload(screen.getByTestId('attachment-input'), new File(['x'], 'shot.png', { type: 'image/png' }));
+    vi.mocked(toast.success).mockClear();
+    await userEvent.click(screen.getByRole('button', { name: 'Send report' }));
+
+    await waitFor(() => expect(toast.warning).toHaveBeenCalledWith('Sent, but the attachments were too big for Discord'));
+    expect(toast.success).not.toHaveBeenCalled();
+    await waitFor(() => expect(useUiStore.getState().bugReportOpen).toBe(false));
+    vi.restoreAllMocks();
   });
 });

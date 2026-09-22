@@ -307,3 +307,67 @@ describe('POST /api/requests: attachments', () => {
     expect(init.headers).toEqual({ 'content-type': 'application/json' });
   });
 });
+
+describe('POST /api/requests: attachments too big for Discord', () => {
+  function multipart(files: File[]): NextRequest {
+    const form = new FormData();
+    form.append('payload', JSON.stringify(validBody({ extra: 'Only on Chrome' })));
+    for (const f of files) form.append('attachments', f, f.name);
+    return {
+      formData: async () => form,
+      headers: new Headers({ 'content-type': 'multipart/form-data; boundary=----x' }),
+    } as unknown as NextRequest;
+  }
+  const png = (name: string) => new File(['x'.repeat(2048)], name, { type: 'image/png' });
+
+  it('sends once more without the files, notes them in the embed, and flags it', async () => {
+    fetchMock
+      .mockResolvedValueOnce({ ok: false, status: 413, text: async () => 'request entity too large' })
+      .mockResolvedValueOnce({ ok: true, text: async () => '' });
+    const res = await POST(multipart([png('a.png'), png('b.png')]), undefined as never);
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true, attachmentsDropped: true });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    const first = (fetchMock.mock.calls[0] as [string, { body: FormData }])[1].body;
+    const [url, init] = fetchMock.mock.calls[1] as [string, { body: FormData }];
+    expect(first.get('files[0]')).not.toBeNull();
+    expect(url).toBe('http://127.0.0.1:4321/feature');
+    expect(init.body.get('files[0]')).toBeNull();
+    const embed = JSON.parse(init.body.get('payload_json') as string).embeds[0];
+    expect(embed.title).toBe('New feature: Sleep timer');
+    expect(embed.fields).toEqual([
+      { name: 'Anything else', value: 'Only on Chrome' },
+      { name: 'Attachments', value: '2 files, 4 KB, too big for Discord, not included', inline: false },
+    ]);
+  });
+
+  it('also retries on a 400 carrying Discord code 40005', async () => {
+    fetchMock
+      .mockResolvedValueOnce({ ok: false, status: 400, text: async () => '{"message": "Request entity too large", "code": 40005}' })
+      .mockResolvedValueOnce({ ok: true, text: async () => '' });
+    const res = await POST(multipart([png('a.png')]), undefined as never);
+    expect(await res.json()).toEqual({ ok: true, attachmentsDropped: true });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not retry any other failure', async () => {
+    fetchMock.mockResolvedValue({ ok: false, status: 400, text: async () => '{"code": 50035}' });
+    const res = await POST(multipart([png('a.png')]), undefined as never);
+    expect(res.status).toBe(502);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('502s when the resend fails too', async () => {
+    fetchMock.mockResolvedValue({ ok: false, status: 413, text: async () => '' });
+    const res = await POST(multipart([png('a.png')]), undefined as never);
+    expect(res.status).toBe(502);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('never retries a message without files', async () => {
+    fetchMock.mockResolvedValue({ ok: false, status: 413, text: async () => '' });
+    const res = await POST(request(validBody()), undefined as never);
+    expect(res.status).toBe(502);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+});

@@ -18,7 +18,12 @@ import { readDesktopLog } from '@/lib/desktopLog';
 import { detectShell } from '@/lib/playback/detectShell';
 import { scrubText } from '@/lib/logger/sanitize';
 import { AttachmentPicker } from '@/components/AttachmentPicker';
-import { ATTACHMENT_FIELD, attachmentProblem, PAYLOAD_FIELD } from '@/lib/attachments';
+import {
+  ATTACHMENT_FIELD,
+  attachmentProblem,
+  ATTACHMENTS_DROPPED_TOAST,
+  PAYLOAD_FIELD,
+} from '@/lib/attachments';
 
 const MAX_NOTE = 1000;
 
@@ -88,8 +93,12 @@ export function BugReportDialog() {
         const err = (await res.json().catch(() => ({ error: res.statusText }))) as { error?: string };
         throw new Error(err.error || `Failed: ${res.status}`);
       }
-      const data = (await res.json().catch(() => ({}))) as { triage?: Triage | null };
-      toast.success('Report sent');
+      const data = (await res.json().catch(() => ({}))) as {
+        triage?: Triage | null;
+        attachmentsDropped?: boolean;
+      };
+      if (data.attachmentsDropped) toast.warning(ATTACHMENTS_DROPPED_TOAST);
+      else toast.success('Report sent');
       setNote('');
       setFiles([]);
       // With AI triage on, stay open to show the diagnosis; without it there's

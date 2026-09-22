@@ -4,7 +4,7 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { RequestDialog } from './RequestDialog';
 
-vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
+vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn(), warning: vi.fn() } }));
 vi.mock('@/lib/logger/client', () => ({
   logger: {
     snapshot: () => ({
@@ -249,5 +249,31 @@ describe('RequestDialog: attachments', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Send' }));
     await waitFor(() => expect(onOpenChange).toHaveBeenCalledWith(false));
     expect(screen.queryAllByTestId('attach-thumb')).toHaveLength(0);
+  });
+});
+
+describe('RequestDialog: attachments Discord would not take', () => {
+  it('says the request went without them', async () => {
+    const { toast } = await import('sonner');
+    vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:test');
+    vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
+    mockFetch(true, { ok: true, attachmentsDropped: true });
+    const onOpenChange = vi.fn();
+    render(<RequestDialog open onOpenChange={onOpenChange} />);
+    await userEvent.type(screen.getByPlaceholderText('Short name, e.g. Sleep timer'), 'Sleep timer');
+    await userEvent.type(
+      screen.getByPlaceholderText(
+        'What should it do, and when would you use it? e.g. Stop playback after 30 minutes so I can fall asleep to music.',
+      ),
+      'Stop after 30 min',
+    );
+    await userEvent.upload(screen.getByTestId('attachment-input'), new File(['x'], 'shot.png', { type: 'image/png' }));
+    vi.mocked(toast.success).mockClear();
+    await userEvent.click(screen.getByRole('button', { name: 'Send' }));
+
+    await waitFor(() => expect(toast.warning).toHaveBeenCalledWith('Sent, but the attachments were too big for Discord'));
+    expect(toast.success).not.toHaveBeenCalled();
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+    vi.restoreAllMocks();
   });
 });

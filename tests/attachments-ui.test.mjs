@@ -66,6 +66,9 @@ const expectedTotal = pngBytes.length + clipBytes.length;
 /** Every POST per path, parsed: payload_json plus each files[n] as
  *  { key, name, type, bytes }. */
 const received = { bug: [], feature: [], fix: [] };
+/** Paths whose next POST gets a 413, the way Discord refuses a message too
+ *  big for the channel's server. */
+const reject413 = new Set();
 const sink = http.createServer((req, res) => {
   const chunks = [];
   req.on('data', (c) => chunks.push(c));
@@ -87,6 +90,12 @@ const sink = http.createServer((req, res) => {
       entry.error = String(e);
     }
     (received[key] ??= []).push(entry);
+    if (reject413.delete(key)) {
+      entry.rejected = true;
+      res.writeHead(413, { 'content-type': 'application/json' });
+      res.end('{"message": "Request entity too large", "code": 40005}');
+      return;
+    }
     res.writeHead(204);
     res.end();
   });
@@ -235,7 +244,34 @@ try {
   check('fix request: reopened with no files', (await req.locator('[data-testid="attach-thumb"]').count()) === 0);
   await page.keyboard.press('Escape');
 
-  check('feature sink untouched by the dialogs', received.feature.length === 0);
+  // --- Send a request (New feature), refused once for size ------------------
+  // Discord says 413: the route sends it again without the files and the
+  // dialog says so.
+  reject413.add('feature');
+  // The fix request's success toast has to be gone for the check below.
+  await page.getByText(/thanks, request sent/i).first().waitFor({ state: 'detached', timeout: 15_000 }).catch(() => {});
+  await page.getByRole('button', { name: /^send a request$/i }).click();
+  await req.waitFor();
+  const featureName = `Attach feature ${Date.now()}`;
+  await req.getByPlaceholder('Short name, e.g. Sleep timer').fill(featureName);
+  await req.getByPlaceholder(/What should it do, and when would you use it/).fill('With a screenshot Discord will refuse.');
+  await req.locator('[data-testid="attachment-input"]').setInputFiles([PNG, CLIP]);
+  await req.locator('[data-testid="attach-duration"]').waitFor({ timeout: 10_000 });
+  await req.getByRole('button', { name: /^send$/i }).click();
+  const toastShown = await page.getByText('Sent, but the attachments were too big for Discord').first()
+    .waitFor({ timeout: 15_000 }).then(() => true, () => false);
+  check('413 once: the dialog says the attachments were left out', toastShown);
+  check('413 once: no plain success toast', (await page.getByText(/thanks, request sent/i).count()) === 0);
+  const [refused, resent] = received.feature;
+  check('413 once: two posts, the first with the files', received.feature.length === 2 && refused.rejected && refused.files.length === 2,
+    `${received.feature.length} ${refused?.files.length}`);
+  const resentFields = resent?.payload?.embeds?.[0]?.fields ?? [];
+  check('413 once: the resend has no files and says what was left out',
+    resent?.files.length === 0 && resent.payload.embeds[0].title === `New feature: ${featureName}` &&
+      resentFields.some((f) => f.name === 'Attachments' && f.value === `2 files, ${formatBytes(expectedTotal)}, too big for Discord, not included`),
+    JSON.stringify(resentFields));
+  await req.waitFor({ state: 'hidden' });
+  received.feature.length = 0;
 
   // --- Straight at the route: the size limits through proxy.ts ---------------
   // Exactly 10 MB of files is allowed, and with the JSON and the multipart

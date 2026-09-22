@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
   attachmentProblem,
+  droppedAttachmentsField,
   formAttachments,
   formatBytes,
   isAllowedType,
+  isTooLargeForDiscord,
   MAX_ATTACHMENT_BYTES,
   MAX_ATTACHMENTS,
   safeAttachmentName,
@@ -80,5 +82,25 @@ describe('formAttachments', () => {
     form.append('attachments', 'not a file');
     form.append('other', new File(['y'], 'b.png', { type: 'image/png' }));
     expect(formAttachments(form).map((f) => f.name)).toEqual(['a.png']);
+  });
+});
+
+describe('isTooLargeForDiscord', () => {
+  it('is a 413, or a 400 carrying Discord code 40005', () => {
+    expect(isTooLargeForDiscord(413, '')).toBe(true);
+    expect(isTooLargeForDiscord(400, '{"message": "Request entity too large", "code": 40005}')).toBe(true);
+    expect(isTooLargeForDiscord(400, '{"message": "Invalid Form Body", "code": 50035}')).toBe(false);
+    expect(isTooLargeForDiscord(500, 'entity too large')).toBe(false);
+  });
+});
+
+describe('droppedAttachmentsField', () => {
+  it('counts the files and their size', () => {
+    expect(droppedAttachmentsField([img(3 * MB), vid(5 * MB)])).toEqual({
+      name: 'Attachments',
+      value: '2 files, 8 MB, too big for Discord, not included',
+      inline: false,
+    });
+    expect(droppedAttachmentsField([img(MB)]).value).toBe('1 file, 1 MB, too big for Discord, not included');
   });
 });

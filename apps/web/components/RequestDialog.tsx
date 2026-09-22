@@ -17,7 +17,12 @@ import { Label } from '@/components/ui/label';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { logger } from '@/lib/logger/client';
 import { AttachmentPicker } from '@/components/AttachmentPicker';
-import { ATTACHMENT_FIELD, attachmentProblem, PAYLOAD_FIELD } from '@/lib/attachments';
+import {
+  ATTACHMENT_FIELD,
+  attachmentProblem,
+  ATTACHMENTS_DROPPED_TOAST,
+  PAYLOAD_FIELD,
+} from '@/lib/attachments';
 
 type Kind = 'feature' | 'fix';
 
@@ -118,7 +123,9 @@ export function RequestDialog({ open, onOpenChange }: RequestDialogProps) {
         const err = (await res.json().catch(() => ({ error: res.statusText }))) as { error?: string };
         throw new Error(err.error || `Failed: ${res.status}`);
       }
-      toast.success('Thanks, request sent');
+      const data = (await res.json().catch(() => ({}))) as { attachmentsDropped?: boolean };
+      if (data.attachmentsDropped) toast.warning(ATTACHMENTS_DROPPED_TOAST);
+      else toast.success('Thanks, request sent');
       reset();
       onOpenChange(false);
     } catch (e) {

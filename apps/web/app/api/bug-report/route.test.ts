@@ -529,3 +529,63 @@ describe('POST /api/bug-report: attachments', () => {
     expect(form.get('files[1]')).toBeNull();
   });
 });
+
+describe('POST /api/bug-report: attachments too big for Discord', () => {
+  function multipart(body: unknown, files: File[]): NextRequest {
+    const form = new FormData();
+    form.append('payload', JSON.stringify(body));
+    for (const f of files) form.append('attachments', f, f.name);
+    return {
+      formData: async () => form,
+      headers: new Headers({ 'content-type': 'multipart/form-data; boundary=----x' }),
+    } as unknown as NextRequest;
+  }
+  const clip = new File(['x'.repeat(3 * 1024)], 'clip.webm', { type: 'video/webm' });
+
+  it('sends the report again without the files, notes them, and flags it', async () => {
+    fetchMock
+      .mockResolvedValueOnce({ ok: false, status: 413, text: async () => 'request entity too large' })
+      .mockResolvedValueOnce({ ok: true, text: async () => '' });
+    const res = await POST(
+      multipart({ note: 'went silent', client: snapshot({ desktopLog: '[1] INFO starting' }) }, [clip]),
+      undefined as never,
+    );
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true, triage: null, attachmentsDropped: true });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    const first = (fetchMock.mock.calls[0] as [string, { body: FormData }])[1].body;
+    expect((first.get('files[2]') as File).name).toBe('clip.webm');
+    const second = postedForm(fetchMock);
+    expect((second.get('files[0]') as File).name).toBe('report.json');
+    expect((second.get('files[1]') as File).name).toBe('desktop.log');
+    expect(second.get('files[2]')).toBeNull();
+    const fields = postedEmbed(fetchMock).fields;
+    expect(fields.at(-1)).toEqual({
+      name: 'Attachments',
+      value: '1 file, 3 KB, too big for Discord, not included',
+      inline: false,
+    });
+    // The first message had no such field.
+    const firstEmbed = JSON.parse(first.get('payload_json') as string).embeds[0];
+    expect(firstEmbed.fields.some((f: { name: string }) => f.name === 'Attachments')).toBe(false);
+  });
+
+  it('does not retry other failures, or a report without files', async () => {
+    fetchMock.mockResolvedValue({ ok: false, status: 400, text: async () => '{"code": 50035}' });
+    const other = await POST(multipart({ client: snapshot() }, [clip]), undefined as never);
+    expect(other.status).toBe(502);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    fetchMock.mockClear();
+    fetchMock.mockResolvedValue({ ok: false, status: 413, text: async () => '' });
+    const plain = await POST(request({ client: snapshot() }), undefined as never);
+    expect(plain.status).toBe(502);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('502s when the resend fails too', async () => {
+    fetchMock.mockResolvedValue({ ok: false, status: 413, text: async () => 'too big' });
+    const res = await POST(multipart({ client: snapshot() }, [clip]), undefined as never);
+    expect(res.status).toBe(502);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+});

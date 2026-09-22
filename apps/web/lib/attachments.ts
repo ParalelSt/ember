@@ -64,3 +64,25 @@ export function safeAttachmentName(name: string, index: number): string {
     .slice(-100);
   return /[A-Za-z0-9]/.test(cleaned) ? cleaned : `attachment-${index + 1}`;
 }
+
+/** True when Discord refused a message for its size: a 413, or a 400 with
+ *  its "Request entity too large" error (code 40005). Only then is it worth
+ *  sending the message again without the reporter's files. */
+export function isTooLargeForDiscord(status: number, body: string): boolean {
+  if (status === 413) return true;
+  return status === 400 && (/\b40005\b/.test(body) || /entity too large/i.test(body));
+}
+
+/** What the dialogs say when the message went out without its files. */
+export const ATTACHMENTS_DROPPED_TOAST = 'Sent, but the attachments were too big for Discord';
+
+/** The embed field that stands in for files Discord would not take, so the
+ *  message still says something was attached. */
+export function droppedAttachmentsField(files: AttachmentLike[]): { name: string; value: string; inline: false } {
+  const n = files.length;
+  return {
+    name: 'Attachments',
+    value: `${n} file${n === 1 ? '' : 's'}, ${formatBytes(totalBytes(files))}, too big for Discord, not included`,
+    inline: false,
+  };
+}

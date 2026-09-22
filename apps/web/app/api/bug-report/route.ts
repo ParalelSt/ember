@@ -21,7 +21,11 @@ import {
   type EmbedField as EmbedFieldT,
 } from "@/lib/reports/discord";
 import { readReportBody } from "@/lib/reports/readBody";
-import { safeAttachmentName } from "@/lib/attachments";
+import {
+  droppedAttachmentsField,
+  isTooLargeForDiscord,
+  safeAttachmentName,
+} from "@/lib/attachments";
 
 const REPORT_WINDOW_MS = 5 * 60 * 1000;
 // How far back "Seen before" looks to tell "this has been happening all
@@ -274,7 +278,12 @@ export const POST = withRequestLog('bug-report', async (request: NextRequest) =>
       (n, f) => n + f.name.length + f.value.length,
       0,
     );
-    const usedChars = title.length + description.length + footerText.length + otherFieldsChars;
+    // With files attached, room is kept for the "Attachments" field a resend
+    // without them adds (see below), so that resend never overruns the budget.
+    const droppedField = files.length > 0 ? droppedAttachmentsField(files) : null;
+    const reservedChars = droppedField ? droppedField.name.length + droppedField.value.length : 0;
+    const usedChars =
+      title.length + description.length + footerText.length + otherFieldsChars + reservedChars;
     const evidenceFields = codeFields("Evidence", timelineText, 6, remainingEmbedBudget(usedChars));
 
     const embed = {
@@ -286,38 +295,54 @@ export const POST = withRequestLog('bug-report', async (request: NextRequest) =>
       fields: [...beforeEvidence, ...evidenceFields, ...afterEvidence],
     };
 
-    const form = new FormData();
-    form.append("payload_json", JSON.stringify({ embeds: [embed] }));
-    form.append("files[0]", fileBlob, "report.json");
-    if (desktopLog) {
-      form.append(
-        "files[1]",
-        new Blob([desktopLog], { type: "text/plain" }),
-        "desktop.log",
-      );
-    }
-    // The reporter's screenshots and clips follow report.json (and the
-    // desktop log): at most 2 + MAX_ATTACHMENTS files, inside Discord's 10.
-    const firstUserFile = desktopLog ? 2 : 1;
-    files.forEach((f, i) =>
-      form.append(`files[${firstUserFile + i}]`, f, safeAttachmentName(f.name, i)),
-    );
+    const buildForm = (withUserFiles: boolean) => {
+      const fields =
+        !withUserFiles && droppedField ? [...embed.fields, droppedField] : embed.fields;
+      const form = new FormData();
+      form.append("payload_json", JSON.stringify({ embeds: [{ ...embed, fields }] }));
+      form.append("files[0]", fileBlob, "report.json");
+      if (desktopLog) {
+        form.append(
+          "files[1]",
+          new Blob([desktopLog], { type: "text/plain" }),
+          "desktop.log",
+        );
+      }
+      // The reporter's screenshots and clips follow report.json (and the
+      // desktop log): at most 2 + MAX_ATTACHMENTS files, inside Discord's 10.
+      const firstUserFile = desktopLog ? 2 : 1;
+      if (withUserFiles) {
+        files.forEach((f, i) =>
+          form.append(`files[${firstUserFile + i}]`, f, safeAttachmentName(f.name, i)),
+        );
+      }
+      return form;
+    };
 
     if (isSandboxReporter(user.email)) {
       return Response.json({ ok: true, skipped: "test account", triage });
     }
-    const discordRes = await fetch(webhook, { method: "POST", body: form });
+    let discordRes = await fetch(webhook, { method: "POST", body: buildForm(true) });
+    let failText = discordRes.ok ? "" : await discordRes.text().catch(() => "");
+    // Discord's size limit can be lower than ours (it depends on the
+    // server's boosts): rather than lose the report, send it once more
+    // without the reporter's files and say so in the embed.
+    let attachmentsDropped = false;
+    if (!discordRes.ok && files.length > 0 && isTooLargeForDiscord(discordRes.status, failText)) {
+      attachmentsDropped = true;
+      discordRes = await fetch(webhook, { method: "POST", body: buildForm(false) });
+      failText = discordRes.ok ? "" : await discordRes.text().catch(() => "");
+    }
     if (!discordRes.ok) {
-      const text = await discordRes.text().catch(() => "");
       return jsonError(
-        `Discord rejected the report (${discordRes.status}): ${text.slice(0, 200)}`,
+        `Discord rejected the report (${discordRes.status}): ${failText.slice(0, 200)}`,
         502,
       );
     }
 
     // The reporter sees the diagnosis too — it tells them their report was
     // understood, and sometimes it's something they can fix themselves.
-    return Response.json({ ok: true, triage });
+    return Response.json(attachmentsDropped ? { ok: true, triage, attachmentsDropped } : { ok: true, triage });
   } catch (e) {
     if (e instanceof UnauthorizedError) return unauthorizedResponse();
     return fromError(e);
