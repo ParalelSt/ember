@@ -720,3 +720,103 @@ export const MOCK_LINED_THRESHOLD = 60;
 
 /** The Songsterr match when Ember could not line it up with confidence. */
 export const MOCK_NOT_LINED_CONFIDENCE = 41;
+
+/** Transfer (docs/superpowers/plans/2026-09-22-transfer-liked-songs.md,
+ *  Task 0): a running job for the "Running" state, sized to the plan's own
+ *  example (240 of 1200, 18 to review), and its finished counterpart for
+ *  "Done, some missing" (the plan's "412 added, 38 already liked, 61 to
+ *  check, 9 not found" example, scaled to a bigger library). `source` is
+ *  'spotify' because Transfer's own source kinds (file, paste) do not
+ *  exist on ImportJob yet (Task 2); the banner only reads the name. */
+export const MOCK_TRANSFER_JOB_RUNNING = {
+  id: 'transfer-mock',
+  playlistId: '',
+  name: 'your Spotify data export',
+  source: 'spotify' as const,
+  sourceUrl: '',
+  coverUrl: null,
+  status: 'running' as const,
+  total: 1200,
+  cursor: 240,
+  accepted: 198,
+  review: 18,
+  missing: 3,
+  error: null,
+  retryAt: null,
+  dismissed: false,
+};
+
+export const MOCK_TRANSFER_JOB_DONE = {
+  ...MOCK_TRANSFER_JOB_RUNNING,
+  status: 'done' as const,
+  cursor: 1200,
+  accepted: 1042,
+  review: 61,
+  missing: 18,
+};
+
+/** Two source songs from the transfer that need a look, with YouTube Music
+ *  candidates for the review sheet (components/import/ReviewSheet.tsx,
+ *  reused as-is: it already takes data in and callbacks out). */
+export const MOCK_TRANSFER_REVIEW_ITEMS = [
+  {
+    id: 'ti1',
+    position: 240,
+    status: 'review' as const,
+    source: {
+      position: 240,
+      title: 'Copper Sky',
+      artists: ['Coastline'],
+      artist: 'Coastline',
+      durationMs: 231000,
+      explicit: false,
+      uri: null,
+    },
+    videoId: null,
+    confidence: 62,
+    candidates: [
+      {
+        track: MOCK_HOME_TRACKS[1],
+        artists: ['Coastline'],
+        videoType: 'ATV',
+        explicit: false,
+        score: 62,
+        reasons: ['Title matches', 'Length is 8 seconds off'],
+      },
+      {
+        track: MOCK_HOME_TRACKS[3],
+        artists: ['Coastline', 'A Mix'],
+        videoType: 'UGC',
+        explicit: false,
+        score: 41,
+        reasons: ['Title matches', 'Uploaded by a fan channel'],
+      },
+    ],
+  },
+  {
+    id: 'ti2',
+    position: 241,
+    status: 'missing' as const,
+    source: {
+      position: 241,
+      title: 'Field Notes (Live)',
+      artists: ['Field Notes'],
+      artist: 'Field Notes',
+      durationMs: 198000,
+      explicit: false,
+      uri: null,
+    },
+    videoId: null,
+    confidence: null,
+    candidates: [
+      {
+        track: MOCK_HOME_TRACKS[4],
+        artists: ['Field Notes'],
+        videoType: 'OMV',
+        explicit: false,
+        score: 38,
+        reasons: ['Title is close', 'No live version found'],
+      },
+    ],
+  },
+];
