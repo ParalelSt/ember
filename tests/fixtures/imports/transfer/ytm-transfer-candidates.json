@@ -1,0 +1,19 @@
+{
+  "_comment": "What the fake player answers for the songs in exportify.sample.csv, so tests/transfer.test.mjs is the same every run. Keys are the matcher's query: \"<title> <artist line>\", or \"title-only:<title>\" for its second, title-only search (apps/web/lib/import/match.ts).",
+
+  "Paper Lanterns Halcyon Drift": [
+    { "videoId": "paperLantr1", "title": "Paper Lanterns", "artists": ["Halcyon Drift"], "durationSec": 214, "videoType": "MUSIC_VIDEO_TYPE_ATV", "isExplicit": false }
+  ],
+
+  "Slow Weather, Pt. 2 Nadia Okonkwo": [
+    { "videoId": "slowWeath02", "title": "Slow Weather, Pt. 2", "artists": ["Nadia Okonkwo"], "durationSec": 198, "videoType": "MUSIC_VIDEO_TYPE_ATV", "isExplicit": true }
+  ],
+
+  "Nine Streets Earth, Wind & Fire, The Quiet Parade": [
+    { "videoId": "wrongSong01", "title": "Nine Streets", "artists": ["Cover Collective"], "durationSec": 252, "videoType": "UGC", "isExplicit": null }
+  ],
+
+  "title-only:Nine Streets": [
+    { "videoId": "nineStreet1", "title": "Nine Streets (Live at the Hall)", "artists": ["The Quiet Parade"], "durationSec": 240, "videoType": "MUSIC_VIDEO_TYPE_ATV", "isExplicit": null }
+  ]
+}

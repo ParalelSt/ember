@@ -91,7 +91,8 @@ export function ImportLinkForm({ onCancel, onCreated }: ImportLinkFormProps) {
       logger.breadcrumb('import', 'queued', { source: job.source, total: job.total });
       void qc.invalidateQueries({ queryKey: QK.playlists });
       void qc.invalidateQueries({ queryKey: IMPORT_QK.jobs });
-      onCreated(playlistId);
+      // This form always imports into a playlist, so there is always one.
+      if (playlistId) onCreated(playlistId);
     } catch (e) {
       setState({ step: 'error', message: (e as Error).message });
     } finally {

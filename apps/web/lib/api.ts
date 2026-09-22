@@ -1,6 +1,7 @@
 import type { AlbumDetail, ArtistPayload, Playlist, SessionState, Track } from '@/types/track';
 import { logger } from '@/lib/logger/client';
-import type { ImportItem, ImportJob, InspectResult } from '@/lib/import/types';
+import type { ImportItem, ImportJob, InspectResult, JobKind } from '@/lib/import/types';
+import type { TransferPreview } from '@/app/api/import/upload/route';
 import type { TabSummary } from '@/lib/tabSources';
 import type { TabTiming } from '@/lib/tabSync';
 import type { StoredPlugins } from '@/lib/pluginSettings';
@@ -39,11 +40,14 @@ interface ReqOptions {
 
 async function req<T>(path: string, { method = 'GET', body, signal }: ReqOptions = {}): Promise<T> {
   let res: Response;
+  // A FormData body carries its own multipart boundary: setting the header
+  // by hand would strip it and the upload would arrive unreadable.
+  const form = body instanceof FormData;
   try {
     res = await fetch(`${API_BASE}/api${path}`, {
       method,
-      headers: body ? { 'Content-Type': 'application/json' } : undefined,
-      body: body ? JSON.stringify(body) : undefined,
+      headers: body && !form ? { 'Content-Type': 'application/json' } : undefined,
+      body: form ? (body as FormData) : body ? JSON.stringify(body) : undefined,
       credentials: 'include',
       signal,
     });
@@ -66,6 +70,16 @@ async function req<T>(path: string, { method = 'GET', body, signal }: ReqOptions
     throw error;
   }
   return (await res.json()) as T;
+}
+
+/** A file goes as multipart so it is never turned into a JSON string;
+ *  pasted text goes as plain JSON. */
+function transferBody(input: { file?: File; text?: string; destination?: JobKind }): FormData | { text: string; destination?: JobKind } {
+  if (!input.file) return { text: input.text ?? '', ...(input.destination ? { destination: input.destination } : {}) };
+  const form = new FormData();
+  form.append('file', input.file);
+  if (input.destination) form.append('destination', input.destination);
+  return form;
 }
 
 export const api = {
@@ -116,9 +130,20 @@ export const api = {
   /** Inspect a pasted playlist link for the create dialog's preview. */
   importInspect: (url: string) =>
     req<InspectResult>('/import/inspect', { method: 'POST', body: { url } }),
-  /** Create the playlist and queue its import; the server does the rest. */
-  importStart: (url: string) =>
-    req<{ job: ImportJob; playlistId: string }>('/import/jobs', { method: 'POST', body: { url } }),
+  /** Queue the import of a pasted link. The default destination creates the
+   *  playlist now; `liked` makes its songs likes and returns no playlist. */
+  importStart: (url: string, destination: JobKind = 'playlist') =>
+    req<{ job: ImportJob; playlistId: string | null }>('/import/jobs', {
+      method: 'POST',
+      body: { url, destination },
+    }),
+  /** What is in an uploaded file or a pasted list, without starting
+   *  anything. */
+  transferPreview: (input: { file?: File; text?: string }) =>
+    req<{ preview: TransferPreview }>('/import/upload?preview=1', { method: 'POST', body: transferBody(input) }),
+  /** Queue a transfer from an uploaded file or a pasted list. */
+  transferStart: (input: { file?: File; text?: string; destination?: JobKind }) =>
+    req<{ job: ImportJob; playlistId: string | null }>('/import/upload', { method: 'POST', body: transferBody(input) }),
   listImportJobs: () => req<{ jobs: ImportJob[] }>('/import/jobs'),
   getImportJob: (id: string) => req<{ job: ImportJob; items: ImportItem[] }>(`/import/jobs/${encodeURIComponent(id)}`),
   updateImportJob: (id: string, action: 'cancel' | 'retry' | 'dismiss') =>
