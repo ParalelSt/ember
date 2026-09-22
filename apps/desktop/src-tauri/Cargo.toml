@@ -56,6 +56,13 @@ objc2-avf-audio = { version = "0.3.2", default-features = false, features = ["st
 objc2-av-foundation = { version = "0.3.2", default-features = false, features = ["std", "block2", "AVCaptureDevice", "AVMediaFormat"] }   # mic TCC status + prompt
 block2 = "0.6"
 
+# --- Native voice search (src/speech/windows.rs) ---
+# No appx manifest (plain desktop app), so there is no `microphone` capability
+# to declare; the OS toggle "Let desktop apps access your microphone" governs
+# access and surfaces as E_ACCESSDENIED.
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.62", features = ["Foundation", "Foundation_Collections", "Globalization", "Media_SpeechRecognition"] }
+
 [profile.release]
 codegen-units = 1
 lto = true

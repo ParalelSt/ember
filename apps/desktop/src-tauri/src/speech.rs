@@ -31,8 +31,10 @@ use tauri::{AppHandle, Manager, State};
 // other's tables too. The FFI halves stay behind their own target cfg.
 #[cfg(any(target_os = "macos", test))]
 mod macos;
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
 mod unsupported;
+#[cfg(any(target_os = "windows", test))]
+mod windows;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "kebab-case")]
@@ -353,9 +355,7 @@ pub fn new_backend(log: Option<&Path>) -> SpeechState {
     }
     #[cfg(target_os = "windows")]
     {
-        // Filled in by the Windows backend.
-        let _ = log;
-        SpeechState(Box::new(unsupported::Unsupported))
+        SpeechState(Box::new(windows::WinSpeech::new(log)))
     }
     #[cfg(not(any(target_os = "macos", target_os = "windows")))]
     {
