@@ -26,6 +26,12 @@ use std::time::Duration;
 use serde::Serialize;
 use tauri::{AppHandle, Manager, State};
 
+// The pure parts of each platform module (error mapping, silence watchdog)
+// are compiled into every test build, so `cargo test` on one OS covers the
+// other's tables too. The FFI halves stay behind their own target cfg.
+#[cfg(any(target_os = "macos", test))]
+mod macos;
+#[cfg(not(target_os = "macos"))]
 mod unsupported;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
@@ -34,6 +40,8 @@ pub enum SpeechErrorKind {
     PermissionDenied,
     Unavailable,
     Network,
+    // Windows only: the "Online speech recognition" privacy toggle is off.
+    #[cfg_attr(not(target_os = "windows"), allow(dead_code))]
     SpeechSettingOff,
     NoSpeech,
     Aborted,
@@ -338,8 +346,22 @@ pub fn speech_abort(state: State<'_, SpeechState>) {
 }
 
 pub fn new_backend(log: Option<&Path>) -> SpeechState {
-    let _log = log.map(Path::to_path_buf);
-    SpeechState(Box::new(unsupported::Unsupported))
+    let log = log.map(Path::to_path_buf);
+    #[cfg(target_os = "macos")]
+    {
+        SpeechState(Box::new(macos::MacSpeech::new(log)))
+    }
+    #[cfg(target_os = "windows")]
+    {
+        // Filled in by the Windows backend.
+        let _ = log;
+        SpeechState(Box::new(unsupported::Unsupported))
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    {
+        let _ = log;
+        SpeechState(Box::new(unsupported::Unsupported))
+    }
 }
 
 #[cfg(test)]

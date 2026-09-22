@@ -14,5 +14,10 @@
     <!-- Streaming audio from the Ember server. -->
     <key>com.apple.security.network.client</key>
     <true/>
+
+    <!-- Voice search. The hardened runtime blocks the microphone without it,
+         even after the user allowed it in the TCC prompt. -->
+    <key>com.apple.security.device.audio-input</key>
+    <true/>
 </dict>
 </plist>
