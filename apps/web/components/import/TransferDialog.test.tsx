@@ -2,7 +2,7 @@ import type { ComponentProps, PropsWithChildren } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { RATE_LIMITED_MESSAGE } from '@/lib/import/transferCopy';
+import { RATE_LIMITED_MESSAGE, YTMUSIC_RATE_LIMITED_MESSAGE } from '@/lib/import/transferCopy';
 
 // The dialog, the destination cards and every sentence a refused upload
 // puts on screen. The real base-ui dialog resolves a second React copy
@@ -21,12 +21,17 @@ vi.mock('@/components/ui/button', () => ({
   Button: ({ children, ...rest }: ComponentProps<'button'>) => <button {...rest}>{children}</button>,
 }));
 vi.mock('@/components/ui/input', () => ({ Input: (props: ComponentProps<'input'>) => <input {...props} /> }));
-vi.mock('@/lib/logger/client', () => ({ logger: { breadcrumb: vi.fn() } }));
+const logger = vi.hoisted(() => ({ breadcrumb: vi.fn(), error: vi.fn() }));
+vi.mock('@/lib/logger/client', () => ({ logger }));
+const toast = vi.hoisted(() => ({ info: vi.fn(), success: vi.fn(), error: vi.fn() }));
+vi.mock('sonner', () => ({ toast }));
 const api = vi.hoisted(() => ({
   transferPreview: vi.fn(),
   transferStart: vi.fn(),
   importInspect: vi.fn(),
   importStart: vi.fn(),
+  ytmusicLikedPreview: vi.fn(),
+  ytmusicLikedStart: vi.fn(),
 }));
 vi.mock('@/lib/api', () => ({ api }));
 
@@ -84,6 +89,9 @@ const startButton = () => screen.getByRole('button', { name: /^Transfer/ });
 
 beforeEach(() => {
   push.mockReset();
+  logger.breadcrumb.mockReset();
+  logger.error.mockReset();
+  toast.info.mockReset();
   for (const fn of Object.values(api)) fn.mockReset();
 });
 
@@ -107,6 +115,7 @@ describe('TransferDialog: the destination step', () => {
       'Upload a file',
       'Paste a list',
       'Paste a link',
+      'YouTube Music',
     ]);
     expect(startButton()).toBeDisabled();
   });
@@ -119,11 +128,25 @@ describe('TransferDialog: the destination step', () => {
     expect(screen.getAllByTestId('transfer-destination-card')).toHaveLength(2);
   });
 
-  it('says YouTube Music likes are still coming, and calls nothing for them', () => {
+  it('the YouTube Music tab only shows up once Liked songs is the destination', () => {
     setup();
     pick('Liked songs');
-    expect(screen.getByText(/YouTube Music likes straight across|straight across, without a file, is coming later/)).toBeInTheDocument();
-    expect(api.transferPreview).not.toHaveBeenCalled();
+    expect(screen.getAllByRole('tab').map((t) => t.textContent)).toEqual([
+      'Upload a file',
+      'Paste a list',
+      'Paste a link',
+      'YouTube Music',
+    ]);
+  });
+
+  it('picking A new playlist offers no YouTube Music tab', () => {
+    setup();
+    pick('A new playlist');
+    expect(screen.getAllByRole('tab').map((t) => t.textContent)).toEqual([
+      'Upload a file',
+      'Paste a list',
+      'Paste a link',
+    ]);
   });
 });
 
@@ -276,5 +299,162 @@ describe('TransferDialog: what it says when Ember will not take it', () => {
     fireEvent.click(startButton());
     await waitFor(() => expect(screen.getByTestId('transfer-error')).toHaveTextContent(RATE_LIMITED_MESSAGE));
     expect(push).not.toHaveBeenCalled();
+  });
+});
+
+describe('TransferDialog: YouTube Music likes, straight from the account', () => {
+  const ytPreview = (over: Record<string, unknown> = {}) => ({
+    preview: {
+      kind: 'ytmusic-liked',
+      label: 'Liked songs from YouTube Music',
+      order: 'newest-first',
+      count: 3,
+      dropped: 0,
+      truncated: false,
+      sample: [{ title: 'Paper Lanterns', artist: 'Halcyon Drift' }],
+      ...over,
+    },
+  });
+  const SECRET = 'cookie: SAPISID=some-fake-session-value; other=1\nx-goog-authuser: 0';
+
+  function openYtmusicTab() {
+    pick('Liked songs');
+    fireEvent.click(screen.getByRole('tab', { name: 'YouTube Music' }));
+  }
+
+  function pasteSecret(value = SECRET) {
+    fireEvent.change(screen.getByLabelText('Your YouTube Music request headers'), { target: { value } });
+  }
+
+  const previewButton = () => screen.getByRole('button', { name: /^Preview|^Reading/ });
+
+  it('is only offered once Liked songs is the destination, and asks nothing on its own', () => {
+    setup();
+    pick('A new playlist');
+    expect(screen.queryByRole('tab', { name: 'YouTube Music' })).toBeNull();
+    expect(api.ytmusicLikedPreview).not.toHaveBeenCalled();
+  });
+
+  it('shows the steps, the desktop-only line and the used-once note, and reads nothing until Preview is pressed', () => {
+    setup();
+    openYtmusicTab();
+    expect(screen.getByText(/Open music\.youtube\.com|music\.youtube\.com in Chrome/)).toBeInTheDocument();
+    expect(screen.getByText(/needs a desktop browser/)).toBeInTheDocument();
+    expect(screen.getByText(/Signing out of YouTube Music afterwards makes them useless/)).toBeInTheDocument();
+    pasteSecret();
+    expect(api.ytmusicLikedPreview).not.toHaveBeenCalled();
+    expect(previewButton()).toBeEnabled();
+  });
+
+  it('Preview reads the account and renders the shared preview card', async () => {
+    api.ytmusicLikedPreview.mockResolvedValue(ytPreview());
+    setup();
+    openYtmusicTab();
+    pasteSecret();
+    fireEvent.click(previewButton());
+    expect(api.ytmusicLikedPreview).toHaveBeenCalledWith(SECRET);
+    await waitFor(() => expect(screen.getByTestId('transfer-preview')).toBeInTheDocument());
+    const card = screen.getByTestId('transfer-preview');
+    expect(card).toHaveTextContent('Liked songs from YouTube Music');
+    expect(card).toHaveTextContent('3 songs');
+    expect(card).toHaveTextContent('Paper Lanterns');
+    expect(startButton()).toBeEnabled();
+    expect(startButton()).toHaveTextContent('Transfer 3 songs');
+  });
+
+  it('Start queues the transfer, lands on Liked songs, and clears the pasted headers', async () => {
+    api.ytmusicLikedPreview.mockResolvedValue(ytPreview());
+    api.ytmusicLikedStart.mockResolvedValue({ job, playlistId: null, truncated: false, note: null });
+    const { onOpenChange } = setup();
+    openYtmusicTab();
+    pasteSecret();
+    fireEvent.click(previewButton());
+    await waitFor(() => expect(startButton()).toBeEnabled());
+    fireEvent.click(startButton());
+    await waitFor(() => expect(api.ytmusicLikedStart).toHaveBeenCalledWith(SECRET));
+    await waitFor(() => expect(push).toHaveBeenCalledWith('/library/liked'));
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+    expect(screen.getByLabelText('Your YouTube Music request headers')).toHaveValue('');
+  });
+
+  it('a note on a truncated account is toasted, not swallowed', async () => {
+    api.ytmusicLikedPreview.mockResolvedValue(ytPreview({ truncated: true }));
+    api.ytmusicLikedStart.mockResolvedValue({
+      job,
+      playlistId: null,
+      truncated: true,
+      note: 'Ember can transfer up to 10,000 songs at once, and your YouTube Music library has more. Ember will take the newest 10,000.',
+    });
+    setup();
+    openYtmusicTab();
+    pasteSecret();
+    fireEvent.click(previewButton());
+    await waitFor(() => expect(startButton()).toBeEnabled());
+    fireEvent.click(startButton());
+    await waitFor(() => expect(toast.info).toHaveBeenCalledWith(expect.stringContaining('Ember will take the newest')));
+  });
+
+  const cases: [string, number, string][] = [
+    ['nothing pasted', 400, 'Paste your YouTube Music request headers first. Open music.youtube.com…'],
+    ['a signed-out cookie', 400, 'That Cookie line is from a signed-out tab. Sign in to music.youtube.com and try again.'],
+    ['signed out or stale headers', 401, 'Your YouTube Music session has expired. Sign in again and paste fresh headers.'],
+    ['no likes on the account', 422, 'There are no liked songs in that YouTube Music account yet.'],
+    ['YouTube Music unreachable', 502, 'Ember could not read your YouTube Music likes. Try again in a moment.'],
+  ];
+  for (const [name, status, message] of cases) {
+    it(`${name}: shown as its own sentence`, async () => {
+      api.ytmusicLikedPreview.mockRejectedValue(refuse(status, message));
+      setup();
+      openYtmusicTab();
+      pasteSecret();
+      fireEvent.click(previewButton());
+      await waitFor(() => expect(screen.getByTestId('transfer-error')).toHaveTextContent(message));
+      expect(screen.getByTestId('transfer-error')).toHaveAttribute('role', 'alert');
+    });
+  }
+
+  it('three tries an hour: the 429 reads like a person wrote it', async () => {
+    api.ytmusicLikedPreview.mockRejectedValue(refuse(429, 'Slow down, try again in about 900s.'));
+    setup();
+    openYtmusicTab();
+    pasteSecret();
+    fireEvent.click(previewButton());
+    await waitFor(() => expect(screen.getByTestId('transfer-error')).toHaveTextContent(YTMUSIC_RATE_LIMITED_MESSAGE));
+    expect(YTMUSIC_RATE_LIMITED_MESSAGE).toMatch(/three/i);
+  });
+
+  it('the pasted headers never reach the logger, and are cleared when the dialog closes', async () => {
+    api.ytmusicLikedPreview.mockRejectedValue(refuse(401, 'Your YouTube Music session has expired.'));
+    const { rerender } = render(
+      <QueryClientProvider client={new QueryClient()}>
+        <TransferDialog open onOpenChange={vi.fn()} />
+      </QueryClientProvider>,
+    );
+    pick('Liked songs');
+    fireEvent.click(screen.getByRole('tab', { name: 'YouTube Music' }));
+    pasteSecret();
+    fireEvent.click(previewButton());
+    await waitFor(() => expect(screen.getByTestId('transfer-error')).toBeInTheDocument());
+
+    const everyLoggedString = [...logger.breadcrumb.mock.calls, ...logger.error.mock.calls]
+      .flat()
+      .map((v) => JSON.stringify(v))
+      .join('\n');
+    expect(everyLoggedString).not.toContain(SECRET);
+    expect(everyLoggedString).not.toContain('some-fake-session-value');
+
+    rerender(
+      <QueryClientProvider client={new QueryClient()}>
+        <TransferDialog open={false} onOpenChange={vi.fn()} />
+      </QueryClientProvider>,
+    );
+    rerender(
+      <QueryClientProvider client={new QueryClient()}>
+        <TransferDialog open onOpenChange={vi.fn()} />
+      </QueryClientProvider>,
+    );
+    pick('Liked songs');
+    fireEvent.click(screen.getByRole('tab', { name: 'YouTube Music' }));
+    expect(screen.getByLabelText('Your YouTube Music request headers')).toHaveValue('');
   });
 });

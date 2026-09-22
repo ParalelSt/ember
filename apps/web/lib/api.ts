@@ -144,6 +144,17 @@ export const api = {
   /** Queue a transfer from an uploaded file or a pasted list. */
   transferStart: (input: { file?: File; text?: string; destination?: JobKind }) =>
     req<{ job: ImportJob; playlistId: string | null }>('/import/upload', { method: 'POST', body: transferBody(input) }),
+  /** Read a YouTube Music account's liked songs from pasted request headers,
+   *  without starting anything. `secret` goes in the JSON body only: never a
+   *  query string, never logged. */
+  ytmusicLikedPreview: (secret: string) =>
+    req<{ preview: TransferPreview }>('/import/liked/ytmusic?preview=1', { method: 'POST', body: { secret } }),
+  /** Queue the transfer of those same liked songs into Ember's likes. */
+  ytmusicLikedStart: (secret: string) =>
+    req<{ job: ImportJob; playlistId: null; truncated: boolean; note: string | null }>('/import/liked/ytmusic', {
+      method: 'POST',
+      body: { secret },
+    }),
   listImportJobs: () => req<{ jobs: ImportJob[] }>('/import/jobs'),
   getImportJob: (id: string) => req<{ job: ImportJob; items: ImportItem[] }>(`/import/jobs/${encodeURIComponent(id)}`),
   updateImportJob: (id: string, action: 'cancel' | 'retry' | 'dismiss') =>

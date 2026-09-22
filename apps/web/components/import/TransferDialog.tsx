@@ -1,8 +1,9 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState, type ChangeEvent } from 'react';
+import { useCallback, useEffect, useRef, useState, type ChangeEvent, type CSSProperties } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'next/navigation';
+import { toast } from 'sonner';
 import {
   Dialog,
   DialogContent,
@@ -19,7 +20,12 @@ import { QK } from '@/hooks/useLibrary';
 import { IMPORT_QK } from '@/hooks/useImports';
 import { logger } from '@/lib/logger/client';
 import { parseImportUrl } from '@/lib/import/url';
-import { OVER_CAP_MESSAGE, transferErrorMessage } from '@/lib/import/transferCopy';
+import { OVER_CAP_MESSAGE, transferErrorMessage, ytmusicLikedErrorMessage } from '@/lib/import/transferCopy';
+import {
+  YTMUSIC_HEADERS_DESKTOP_ONLY,
+  YTMUSIC_HEADERS_NOTE,
+  YTMUSIC_HEADERS_STEPS,
+} from '@/lib/import/sources/ytmusicLiked';
 import type { JobKind, ImportSourceKind } from '@/lib/import/types';
 import type { TransferPreview } from '@/app/api/import/upload/route';
 import { cn } from '@/lib/utils';
@@ -27,7 +33,7 @@ import { cn } from '@/lib/utils';
 /** Wait this long after typing stops before reading a pasted list or link. */
 const LOOKUP_DELAY_MS = 400;
 
-type SourceTab = 'file' | 'paste' | 'link';
+type SourceTab = 'file' | 'paste' | 'link' | 'ytmusic';
 
 const DESTINATIONS: { id: JobKind; name: string; consequence: string; icon: typeof HeartIcon }[] = [
   {
@@ -64,6 +70,15 @@ const TABS: { id: SourceTab; label: string; help: string }[] = [
   },
 ];
 
+/** Only offered once the destination is Liked songs: the route always lands
+ *  its songs in the likes, so it makes no sense as a way to build a
+ *  playlist. */
+const YTMUSIC_TAB: { id: SourceTab; label: string; help: string } = {
+  id: 'ytmusic',
+  label: 'YouTube Music',
+  help: 'Your liked songs, straight from your YouTube Music account: no file, no list.',
+};
+
 /** A link Ember looked up, flattened so both kinds of source render the
  *  same preview card. */
 interface LinkLookup {
@@ -80,7 +95,8 @@ type Lookup =
   | { step: 'looking' }
   | { step: 'error'; message: string }
   | { step: 'file'; preview: TransferPreview }
-  | { step: 'link'; preview: LinkLookup };
+  | { step: 'link'; preview: LinkLookup }
+  | { step: 'ytmusic'; preview: TransferPreview };
 
 export interface TransferDialogProps {
   open: boolean;
@@ -102,6 +118,11 @@ export function TransferDialog({ open, onOpenChange, from = 'settings' }: Transf
   const [file, setFile] = useState<File | null>(null);
   const [text, setText] = useState('');
   const [url, setUrl] = useState('');
+  // The pasted YouTube Music request headers: a Google session, kept in
+  // state only as long as the dialog needs it, never logged, never put in a
+  // toast or an error string, and cleared the moment a transfer starts or
+  // the dialog closes.
+  const [secret, setSecret] = useState('');
   const [lookup, setLookup] = useState<Lookup>({ step: 'idle' });
   const [starting, setStarting] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
@@ -111,6 +132,7 @@ export function TransferDialog({ open, onOpenChange, from = 'settings' }: Transf
     setFile(null);
     setText('');
     setUrl('');
+    setSecret('');
     setLookup({ step: 'idle' });
   }, []);
 
@@ -133,6 +155,10 @@ export function TransferDialog({ open, onOpenChange, from = 'settings' }: Transf
       setTab('file');
       setStarting(false);
       resetSource();
+    } else {
+      // Gone the moment the dialog closes, not just on the next open: those
+      // headers are a Google session.
+      setSecret('');
     }
   }
   useEffect(() => {
@@ -193,6 +219,19 @@ export function TransferDialog({ open, onOpenChange, from = 'settings' }: Transf
     }
   }, []);
 
+  // Unlike the other sources, this one is not read as the person types: the
+  // route is rate limited to three reads an hour because each one spends a
+  // signed-in Google session, so Preview is a deliberate click.
+  const readYtmusic = useCallback(async () => {
+    setLookup({ step: 'looking' });
+    try {
+      const { preview } = await api.ytmusicLikedPreview(secret);
+      setLookup({ step: 'ytmusic', preview });
+    } catch (e) {
+      setLookup({ step: 'error', message: ytmusicLikedErrorMessage(e) });
+    }
+  }, [secret]);
+
   // A pasted list and a pasted link both read themselves once typing stops;
   // a chosen file is read at once.
   useEffect(() => {
@@ -223,16 +262,29 @@ export function TransferDialog({ open, onOpenChange, from = 'settings' }: Transf
   };
 
   // Over the cap, the upload route refuses the start, so the dialog says so
-  // here instead of letting someone press Start and be turned away.
+  // here instead of letting someone press Start and be turned away. The
+  // YouTube Music route is different: over the cap it still starts, just
+  // with the newest songs kept, so it never sets overCap.
   const overCap = lookup.step === 'file' && lookup.preview.truncated;
-  const count = lookup.step === 'file' || lookup.step === 'link' ? lookup.preview.count : 0;
-  const empty = (lookup.step === 'file' || lookup.step === 'link') && count === 0 && !overCap;
-  const ready = (lookup.step === 'file' || lookup.step === 'link') && count > 0 && !overCap;
+  const count = lookup.step === 'file' || lookup.step === 'link' || lookup.step === 'ytmusic' ? lookup.preview.count : 0;
+  const empty = (lookup.step === 'file' || lookup.step === 'link' || lookup.step === 'ytmusic') && count === 0 && !overCap;
+  const ready = (lookup.step === 'file' || lookup.step === 'link' || lookup.step === 'ytmusic') && count > 0 && !overCap;
 
   const start = async () => {
     if (!ready || !destination || starting) return;
     setStarting(true);
     try {
+      if (lookup.step === 'ytmusic') {
+        const r = await api.ytmusicLikedStart(secret);
+        setSecret('');
+        logger.breadcrumb('import', 'transfer queued', { from, destination, source: r.job.source, total: r.job.total });
+        void qc.invalidateQueries({ queryKey: IMPORT_QK.jobs });
+        void qc.invalidateQueries({ queryKey: QK.likes });
+        if (r.note) toast.info(r.note);
+        onOpenChange(false);
+        router.push('/library/liked');
+        return;
+      }
       const r =
         lookup.step === 'link'
           ? await api.importStart(lookup.preview.url, destination)
@@ -244,13 +296,16 @@ export function TransferDialog({ open, onOpenChange, from = 'settings' }: Transf
       onOpenChange(false);
       router.push(r.playlistId ? `/playlist/${r.playlistId}` : '/library/liked');
     } catch (e) {
-      setLookup({ step: 'error', message: transferErrorMessage(e) });
+      setLookup({ step: 'error', message: lookup.step === 'ytmusic' ? ytmusicLikedErrorMessage(e) : transferErrorMessage(e) });
     } finally {
       setStarting(false);
     }
   };
 
-  const help = TABS.find((t) => t.id === tab)!.help;
+  // The straight-from-the-account tab always lands in the likes, so it is
+  // only offered once that is the destination.
+  const tabs = destination === 'liked' ? [...TABS, YTMUSIC_TAB] : TABS;
+  const help = tabs.find((t) => t.id === tab)?.help ?? TABS[0].help;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -269,7 +324,13 @@ export function TransferDialog({ open, onOpenChange, from = 'settings' }: Transf
                   type="button"
                   data-testid="transfer-destination-card"
                   data-destination={d.id}
-                  onClick={() => setDestination(d.id)}
+                  onClick={() => {
+                    setDestination(d.id);
+                    // The YouTube Music tab only exists for Liked songs: if
+                    // it was chosen going into a playlist instead, land back
+                    // on a tab that still exists.
+                    if (d.id !== 'liked' && tab === 'ytmusic') setTab('file');
+                  }}
                   className="flex flex-col gap-cluster rounded-lg border border-border bg-card p-block text-left transition-colors hover:border-ember hover:bg-accent/60"
                 >
                   <d.icon className="h-5 w-5 text-ember" />
@@ -301,7 +362,7 @@ export function TransferDialog({ open, onOpenChange, from = 'settings' }: Transf
             </div>
 
             <div role="tablist" aria-label="Where the songs come from" className="flex gap-stack border-b border-border">
-              {TABS.map((t) => (
+              {tabs.map((t) => (
                 <button
                   key={t.id}
                   type="button"
@@ -366,7 +427,47 @@ export function TransferDialog({ open, onOpenChange, from = 'settings' }: Transf
               </div>
             )}
 
+            {tab === 'ytmusic' && destination === 'liked' && (
+              <div className="flex flex-col gap-cluster">
+                <ol className="flex flex-col gap-inset text-xs text-muted-foreground">
+                  {YTMUSIC_HEADERS_STEPS.map((step, i) => (
+                    <li key={i}>
+                      {i + 1}. {step}
+                    </li>
+                  ))}
+                </ol>
+                <p className="text-xs text-muted-foreground">{YTMUSIC_HEADERS_DESKTOP_ONLY}</p>
+                <textarea
+                  aria-label="Your YouTube Music request headers"
+                  data-testid="ytmusic-secret"
+                  rows={4}
+                  // A password field, not a text field: this is a Google
+                  // session, so it never appears on screen as itself.
+                  style={{ WebkitTextSecurity: 'disc' } as unknown as CSSProperties}
+                  value={secret}
+                  onChange={(e) => {
+                    setSecret(e.target.value);
+                    if (lookup.step === 'ytmusic' || lookup.step === 'error') setLookup({ step: 'idle' });
+                  }}
+                  placeholder="Paste the request headers here"
+                  className="w-full resize-none rounded-lg border border-border bg-transparent px-row py-cluster text-sm"
+                />
+                <p className="text-xs text-muted-foreground">{YTMUSIC_HEADERS_NOTE}</p>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  disabled={!secret.trim() || lookup.step === 'looking'}
+                  onClick={() => void readYtmusic()}
+                  className="self-start"
+                >
+                  {lookup.step === 'looking' ? 'Reading…' : 'Preview'}
+                </Button>
+              </div>
+            )}
+
             {lookup.step === 'file' && <FilePreviewCard preview={lookup.preview} />}
+            {lookup.step === 'ytmusic' && <FilePreviewCard preview={lookup.preview} />}
             {lookup.step === 'link' && (
               <LinkPreview
                 kind={lookup.preview.kind}
@@ -392,10 +493,7 @@ export function TransferDialog({ open, onOpenChange, from = 'settings' }: Transf
                 {lookup.message}
               </p>
             )}
-            {lookup.step === 'idle' && <p className="text-xs text-muted-foreground">{help}</p>}
-            <p className="text-xs text-muted-foreground/70">
-              Bringing your YouTube Music likes straight across, without a file, is coming later.
-            </p>
+            {lookup.step === 'idle' && tab !== 'ytmusic' && <p className="text-xs text-muted-foreground">{help}</p>}
           </div>
         )}
 
