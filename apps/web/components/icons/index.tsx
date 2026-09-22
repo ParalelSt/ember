@@ -49,4 +49,7 @@ export {
   ChevronRight as ChevronRightIcon,
   CircleAlert as AlertIcon,
   ListChecks as ReviewIcon,
+  Paperclip as AttachIcon,
+  Film as VideoIcon,
+  ImageUp as ImageUploadIcon,
 } from 'lucide-react';
