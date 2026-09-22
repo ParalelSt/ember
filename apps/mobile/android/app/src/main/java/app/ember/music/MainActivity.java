@@ -29,6 +29,7 @@ public class MainActivity extends BridgeActivity {
     public void onCreate(Bundle savedInstanceState) {
         registerPlugin(EmberPlayerPlugin.class);
         registerPlugin(EmberOfflinePlugin.class);
+        registerPlugin(EmberSpeechPlugin.class);
         super.onCreate(savedInstanceState);
         injectBridgeIntoErrorPage();
         publishSafeAreaInsets();
