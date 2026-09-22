@@ -108,7 +108,7 @@ mod imp {
 
     use super::super::{
         log as write_log, pick_locale, Availability, Session, SpeechBackend, SpeechError, SpeechErrorKind,
-        StartGate, START_WAIT,
+        AvailabilityCache, StartGate, AVAILABLE_WAIT, PROBE_WAIT, START_WAIT,
     };
     use super::{map_completion, map_hresult, Completion};
 
@@ -143,11 +143,12 @@ mod imp {
     pub struct WinSpeech {
         tx: Mutex<Option<Sender<Cmd>>>,
         log: Option<PathBuf>,
+        cache: AvailabilityCache,
     }
 
     impl WinSpeech {
         pub fn new(log: Option<PathBuf>) -> Self {
-            WinSpeech { tx: Mutex::new(None), log }
+            WinSpeech { tx: Mutex::new(None), log, cache: AvailabilityCache::default() }
         }
 
         /// Sends to the worker, spawning it on first use (and again if its
@@ -163,9 +164,10 @@ mod imp {
             };
             let (tx, rx) = mpsc::channel();
             let log = self.log.clone();
+            let cache = self.cache.clone();
             let spawned = std::thread::Builder::new()
                 .name("ember-speech".into())
-                .spawn(move || worker(rx, log));
+                .spawn(move || worker(rx, log, cache));
             if spawned.is_err() {
                 write_log(self.log.as_ref(), "WARN", "could not start the speech thread");
                 *guard = None;
@@ -177,15 +179,27 @@ mod imp {
         }
     }
 
-    impl SpeechBackend for WinSpeech {
-        fn available(&self) -> Availability {
+    impl WinSpeech {
+        /// Asks the worker, falling back to its last answer when it is busy.
+        fn ask(&self, wait: Duration) -> Availability {
             let (reply, rx) = mpsc::channel();
             if !self.send(Cmd::Available { reply }) {
                 return Availability::default();
             }
-            // The first answer compiles the dictation grammar, which can take
-            // a few seconds; later ones are cached.
-            rx.recv_timeout(Duration::from_secs(10)).unwrap_or_default()
+            rx.recv_timeout(wait)
+                .ok()
+                .or_else(|| self.cache.get())
+                .unwrap_or_default()
+        }
+    }
+
+    impl SpeechBackend for WinSpeech {
+        fn available(&self) -> Availability {
+            self.ask(AVAILABLE_WAIT)
+        }
+
+        fn probe(&self) -> Availability {
+            self.ask(PROBE_WAIT)
         }
 
         fn start(&self, lang: String, app: AppHandle) -> Result<(), SpeechError> {
@@ -241,10 +255,9 @@ mod imp {
         }
     }
 
-    fn worker(rx: Receiver<Cmd>, log: Option<PathBuf>) {
+    fn worker(rx: Receiver<Cmd>, log: Option<PathBuf>, cache: AvailabilityCache) {
         let mut active: Option<Active> = None;
         let mut queue: VecDeque<Cmd> = VecDeque::new();
-        let mut cached: Option<Availability> = None;
         loop {
             let cmd = match queue.pop_front() {
                 Some(c) => Some(c),
@@ -301,7 +314,11 @@ mod imp {
                     }
                 }
                 Some(Cmd::Available { reply }) => {
-                    let a = *cached.get_or_insert_with(|| availability(&log));
+                    let a = cache.get().unwrap_or_else(|| {
+                        let a = availability(&log);
+                        cache.set(a);
+                        a
+                    });
                     let _ = reply.send(a);
                 }
                 None => {}

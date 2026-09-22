@@ -20,7 +20,7 @@
 
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Condvar, Mutex};
+use std::sync::{Arc, Condvar, Mutex};
 use std::time::Duration;
 
 use serde::Serialize;
@@ -109,7 +109,13 @@ pub fn pick_locale(os: Option<&str>, requested: Option<&str>) -> String {
 
 /// Platform backends implement this; commands only talk to it.
 pub trait SpeechBackend: Send + Sync + 'static {
+    /// Must answer within about `AVAILABLE_WAIT`: the web races the invoke
+    /// against 2 s and reads a timeout as an old desktop build.
     fn available(&self) -> Availability;
+    /// The slow, fresh answer for the startup log line.
+    fn probe(&self) -> Availability {
+        self.available()
+    }
     fn start(&self, lang: String, app: AppHandle) -> Result<(), SpeechError>;
     fn stop(&self);
     fn abort(&self);
@@ -247,17 +253,40 @@ enum GateState {
 }
 
 /// Hands the outcome of a start from the backend's worker thread back to the
-/// `speech_start` command. The JS side races the invoke against 2 s, so the
-/// command never waits longer than `START_WAIT`; once it has given up (or once
-/// the worker said Ok and then went on to show a permission prompt), later
-/// failures travel as `speech:error` + `speech:end` instead. The gate makes
+/// `speech_start` command. The web races the invoke against 90 s (it may sit
+/// behind the mic and speech permission dialogs) and aborts on timeout, so
+/// the command gives up a little earlier, at `START_WAIT`; after that, a late
+/// failure travels as `speech:error` + `speech:end` instead. The gate makes
 /// sure every failure is reported exactly one of those two ways.
 pub struct StartGate {
     state: Mutex<GateState>,
     cv: Condvar,
 }
 
-pub const START_WAIT: Duration = Duration::from_millis(1500);
+pub const START_WAIT: Duration = Duration::from_secs(85);
+
+/// How long `available()` may wait for the worker before answering from the
+/// cache (see `SpeechBackend::available`).
+pub const AVAILABLE_WAIT: Duration = Duration::from_millis(100);
+/// The startup log line can afford a real answer (a WinRT grammar compile).
+pub const PROBE_WAIT: Duration = Duration::from_secs(15);
+
+/// Last availability the worker computed, so `available()` stays fast while
+/// the worker is busy (starting, or waiting on a permission dialog).
+#[derive(Clone, Default)]
+pub struct AvailabilityCache(Arc<Mutex<Option<Availability>>>);
+
+impl AvailabilityCache {
+    pub fn get(&self) -> Option<Availability> {
+        self.0.lock().ok().and_then(|g| *g)
+    }
+
+    pub fn set(&self, a: Availability) {
+        if let Ok(mut g) = self.0.lock() {
+            *g = Some(a);
+        }
+    }
+}
 
 impl Default for StartGate {
     fn default() -> Self {
@@ -326,15 +355,18 @@ pub fn speech_available(app: AppHandle) -> Availability {
     }
 }
 
-// `async` keeps these off the main thread: a start waits on the worker, and
-// the macOS result handlers are delivered on the main queue.
-#[tauri::command(async)]
-pub fn speech_start(
-    app: AppHandle,
-    state: State<'_, SpeechState>,
-    lang: Option<String>,
-) -> Result<(), SpeechError> {
-    state.0.start(lang.unwrap_or_default(), app)
+// Off the main thread and off the async workers: a start can wait on the
+// permission dialogs for over a minute, and on macOS the recognizer's result
+// handlers are delivered on the main queue.
+#[tauri::command]
+pub async fn speech_start(app: AppHandle, lang: Option<String>) -> Result<(), SpeechError> {
+    let worker_app = app.clone();
+    tauri::async_runtime::spawn_blocking(move || match app.try_state::<SpeechState>() {
+        Some(state) => state.0.start(lang.unwrap_or_default(), worker_app),
+        None => Err(SpeechError::new(SpeechErrorKind::Unavailable, "speech not initialised")),
+    })
+    .await
+    .unwrap_or_else(|e| Err(SpeechError::new(SpeechErrorKind::Unavailable, format!("speech task: {e}"))))
 }
 
 #[tauri::command]
@@ -426,6 +458,14 @@ mod tests {
         assert_eq!(r.unwrap_err().kind, SpeechErrorKind::PermissionDenied);
         // Already taken: a late second answer is not delivered twice.
         assert!(!g.resolve(Ok(())));
+    }
+
+    #[test]
+    fn availability_cache_round_trips() {
+        let c = AvailabilityCache::default();
+        assert_eq!(c.get(), None);
+        c.set(Availability { available: true, on_device: true });
+        assert_eq!(c.clone().get(), Some(Availability { available: true, on_device: true }));
     }
 
     #[test]

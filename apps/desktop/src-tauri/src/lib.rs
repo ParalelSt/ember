@@ -75,7 +75,7 @@ pub fn run() {
             let speech_handle = app.handle().clone();
             let speech_log = log_path.clone();
             std::thread::spawn(move || {
-                let a = speech_handle.state::<speech::SpeechState>().0.available();
+                let a = speech_handle.state::<speech::SpeechState>().0.probe();
                 speech::log(
                     speech_log.as_ref(),
                     "INFO",

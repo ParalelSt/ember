@@ -81,13 +81,14 @@ mod imp {
 
     use super::super::{
         log, pick_locale, Availability, Session, SpeechBackend, SpeechError, SpeechErrorKind,
-        StartGate, START_WAIT,
+        AvailabilityCache, StartGate, AVAILABLE_WAIT, PROBE_WAIT, START_WAIT,
     };
     use super::{map_error, should_stop, STOP_GRACE};
 
     const TICK: Duration = Duration::from_millis(250);
-    /// The user is reading a system dialog; give them time.
-    const PROMPT_WAIT: Duration = Duration::from_secs(60);
+    /// The user is reading a system dialog; give them time, but two of these
+    /// back to back must stay inside `START_WAIT` (and the web's 90 s race).
+    const PROMPT_WAIT: Duration = Duration::from_secs(40);
 
     enum Cmd {
         Start { lang: String, app: AppHandle, gate: Arc<StartGate> },
@@ -99,11 +100,12 @@ mod imp {
     pub struct MacSpeech {
         tx: Mutex<Option<Sender<Cmd>>>,
         log: Option<PathBuf>,
+        cache: AvailabilityCache,
     }
 
     impl MacSpeech {
         pub fn new(log: Option<PathBuf>) -> Self {
-            MacSpeech { tx: Mutex::new(None), log }
+            MacSpeech { tx: Mutex::new(None), log, cache: AvailabilityCache::default() }
         }
 
         /// Sends to the worker, spawning it on first use (and again if it
@@ -119,9 +121,10 @@ mod imp {
             };
             let (tx, rx) = mpsc::channel();
             let log = self.log.clone();
+            let cache = self.cache.clone();
             let spawned = std::thread::Builder::new()
                 .name("ember-speech".into())
-                .spawn(move || worker(rx, log));
+                .spawn(move || worker(rx, log, cache));
             if spawned.is_err() {
                 log_line(&self.log, "WARN", "could not start the speech thread");
                 *guard = None;
@@ -133,13 +136,27 @@ mod imp {
         }
     }
 
-    impl SpeechBackend for MacSpeech {
-        fn available(&self) -> Availability {
+    impl MacSpeech {
+        /// Asks the worker, falling back to its last answer when it is busy.
+        fn ask(&self, wait: Duration) -> Availability {
             let (reply, rx) = mpsc::channel();
             if !self.send(Cmd::Available { reply }) {
                 return Availability::default();
             }
-            rx.recv_timeout(Duration::from_secs(3)).unwrap_or_default()
+            rx.recv_timeout(wait)
+                .ok()
+                .or_else(|| self.cache.get())
+                .unwrap_or_default()
+        }
+    }
+
+    impl SpeechBackend for MacSpeech {
+        fn available(&self) -> Availability {
+            self.ask(AVAILABLE_WAIT)
+        }
+
+        fn probe(&self) -> Availability {
+            self.ask(PROBE_WAIT)
         }
 
         fn start(&self, lang: String, app: AppHandle) -> Result<(), SpeechError> {
@@ -237,7 +254,7 @@ mod imp {
         }
     }
 
-    fn worker(rx: Receiver<Cmd>, log: Option<PathBuf>) {
+    fn worker(rx: Receiver<Cmd>, log: Option<PathBuf>, cache: AvailabilityCache) {
         let mut active: Option<Active> = None;
         let mut queue: VecDeque<Cmd> = VecDeque::new();
         loop {
@@ -265,7 +282,7 @@ mod imp {
                         a.teardown(true);
                     }
                     let session = Arc::new(Session::new(app));
-                    active = start(&rx, &mut queue, &lang, &session, &gate, &log);
+                    active = start(&rx, &mut queue, &lang, &session, &gate, &cache, &log);
                     // Whatever happened, the command must not wait any longer.
                     gate.resolve(Ok(()));
                 }
@@ -282,7 +299,9 @@ mod imp {
                     }
                 }
                 Some(Cmd::Available { reply }) => {
-                    let _ = reply.send(availability());
+                    let a = availability();
+                    cache.set(a);
+                    let _ = reply.send(a);
                 }
                 None => {}
             }
@@ -332,6 +351,7 @@ mod imp {
         answer: &Receiver<T>,
         rx: &Receiver<Cmd>,
         queue: &mut VecDeque<Cmd>,
+        cache: &AvailabilityCache,
     ) -> Wait<T> {
         let deadline = Instant::now() + PROMPT_WAIT;
         loop {
@@ -342,8 +362,10 @@ mod imp {
             }
             while let Ok(cmd) = rx.try_recv() {
                 match cmd {
+                    // Answered from the cache: `availability()` would ask
+                    // TCC for a status while its own dialog is up.
                     Cmd::Available { reply } => {
-                        let _ = reply.send(availability());
+                        let _ = reply.send(cache.get().unwrap_or_default());
                     }
                     Cmd::Stop | Cmd::Abort => return Wait::Interrupted,
                     start @ Cmd::Start { .. } => {
@@ -426,13 +448,10 @@ mod imp {
     fn speech_permission(
         rx: &Receiver<Cmd>,
         queue: &mut VecDeque<Cmd>,
-        gate: &StartGate,
+        cache: &AvailabilityCache,
     ) -> Result<(), Option<SpeechError>> {
         let status = objc("auth status", || unsafe { SFSpeechRecognizer::authorizationStatus() })?;
         let status = if status == SFSpeechRecognizerAuthorizationStatus::NotDetermined {
-            // Answer the invoke now: the web gives it 2 s and the dialog can
-            // take much longer. The outcome follows as events.
-            gate.resolve(Ok(()));
             let (tx, answer) = mpsc::channel();
             let block = RcBlock::new(move |s: SFSpeechRecognizerAuthorizationStatus| {
                 let _ = tx.send(s);
@@ -440,7 +459,7 @@ mod imp {
             objc("request speech auth", || unsafe {
                 SFSpeechRecognizer::requestAuthorization(&block)
             })?;
-            match wait_prompt(&answer, rx, queue) {
+            match wait_prompt(&answer, rx, queue, cache) {
                 Wait::Got(s) => s,
                 Wait::TimedOut => {
                     return Err(Some(SpeechError::new(
@@ -466,7 +485,7 @@ mod imp {
     fn mic_permission(
         rx: &Receiver<Cmd>,
         queue: &mut VecDeque<Cmd>,
-        gate: &StartGate,
+        cache: &AvailabilityCache,
     ) -> Result<(), Option<SpeechError>> {
         // Without this check a denied mic makes the engine deliver silence
         // and the user just sees nothing happen.
@@ -477,7 +496,6 @@ mod imp {
             AVCaptureDevice::authorizationStatusForMediaType(media)
         })?;
         let granted = if status == AVAuthorizationStatus::NotDetermined {
-            gate.resolve(Ok(()));
             let (tx, answer) = mpsc::channel();
             let block = RcBlock::new(move |ok: Bool| {
                 let _ = tx.send(ok.as_bool());
@@ -485,7 +503,7 @@ mod imp {
             objc("request mic access", || unsafe {
                 AVCaptureDevice::requestAccessForMediaType_completionHandler(media, &block)
             })?;
-            match wait_prompt(&answer, rx, queue) {
+            match wait_prompt(&answer, rx, queue, cache) {
                 Wait::Got(ok) => ok,
                 Wait::TimedOut => false,
                 Wait::Interrupted => return Err(None),
@@ -508,6 +526,7 @@ mod imp {
         requested: &str,
         session: &Arc<Session>,
         gate: &StartGate,
+        cache: &AvailabilityCache,
         log: &Option<PathBuf>,
     ) -> Option<Active> {
         let fail = |err: SpeechError| {
@@ -520,7 +539,7 @@ mod imp {
             return None;
         }
         for step in [speech_permission, mic_permission] {
-            match step(rx, queue, gate) {
+            match step(rx, queue, cache) {
                 Ok(()) => {}
                 Err(Some(e)) => {
                     fail(e);
@@ -530,7 +549,14 @@ mod imp {
                     log_line(log, "INFO", "interrupted while a permission dialog was open");
                     // A newer start replaces this session silently (see the
                     // worker); a stop or abort ends it normally.
-                    if matches!(queue.back(), Some(Cmd::Start { .. })) {
+                    // The command is still waiting, so it reports the stop as
+                    // a quiet `aborted` rejection. Past that, a newer start
+                    // replaces this session silently (see the worker) and a
+                    // stop or abort ends it normally.
+                    let aborted = SpeechError::new(SpeechErrorKind::Aborted, "interrupted");
+                    if gate.resolve(Err(aborted))
+                        || matches!(queue.back(), Some(Cmd::Start { .. }))
+                    {
                         session.close_silently();
                     } else {
                         session.end();
