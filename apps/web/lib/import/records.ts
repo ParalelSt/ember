@@ -105,8 +105,13 @@ export function itemRecord(
 
 /** A YouTube Music playlist track as a source item plus its one ready
  *  candidate: the playlist named the exact video, so there is nothing to
- *  guess. */
-export function readyItem(track: Track, position: number): { item: SourceItem; candidates: ImportCandidate[] } {
+ *  guess. `reason` is what the review sheet shows for that candidate; a
+ *  transfer from someone's own likes says so instead. */
+export function readyItem(
+  track: Track,
+  position: number,
+  reason = 'From the playlist itself',
+): { item: SourceItem; candidates: ImportCandidate[] } {
   return {
     item: {
       position,
@@ -124,7 +129,7 @@ export function readyItem(track: Track, position: number): { item: SourceItem; c
         videoType: null,
         explicit: null,
         score: 100,
-        reasons: ['From the playlist itself'],
+        reasons: [reason],
       },
     ],
   };

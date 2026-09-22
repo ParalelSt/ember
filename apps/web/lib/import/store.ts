@@ -202,7 +202,9 @@ export function createJobStore(getAdmin: () => Promise<PocketBase>): JobStore {
 
 /** A source song, with the time the source says it was liked when it has
  *  one (Exportify's `Added At`, Last.fm's `date`). */
-export type NewImportItem = SourceItem & { likedAt?: number | null };
+/** `candidates` is filled only by a source that names the exact video (the
+ *  person's own YouTube Music likes), so those items skip the matcher. */
+export type NewImportItem = SourceItem & { likedAt?: number | null; candidates?: ImportCandidate[] };
 
 export interface NewImport {
   userId: string;
@@ -244,7 +246,7 @@ export async function createImportJob(
   const kind: JobKind = n.kind ?? 'playlist';
   const rows: { item: NewImportItem; candidates: ImportCandidate[] }[] = n.tracks
     ? n.tracks.map((t, i) => readyItem(t, i))
-    : (n.items ?? []).map((item) => ({ item, candidates: [] }));
+    : (n.items ?? []).map((item) => ({ item, candidates: item.candidates ?? [] }));
   const likedAt = kind === 'liked' ? await transferDates(pb, n, rows.length) : null;
 
   const playlist =
