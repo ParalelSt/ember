@@ -9,7 +9,8 @@
  *  DISCORD_BUG_REPORT_WEBHOOK_URL=http://127.0.0.1:8099/bug,
  *  DISCORD_FEATURE_WEBHOOK_URL=http://127.0.0.1:8099/feature and
  *  DISCORD_FIX_WEBHOOK_URL=http://127.0.0.1:8099/fix (the sandbox's
- *  start-app.sh does). Makes the two files with ffmpeg (FFMPEG_BIN, else
+ *  start-app.sh does when started as SINK=1 ./start-app.sh; plain
+ *  ./start-app.sh sends to the real Discord). Makes the two files with ffmpeg (FFMPEG_BIN, else
  *  ffmpeg on PATH). Signs in as a throwaway @ember.test user made through
  *  the PocketBase admin API, deleted at the end. SHOT_DIR keeps
  *  screenshots. Needs the sandbox from tests/README.md. */

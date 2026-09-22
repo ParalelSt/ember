@@ -371,3 +371,13 @@ describe('POST /api/requests: attachments too big for Discord', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('POST /api/requests: Discord unreachable', () => {
+  it('answers with a sentence a person can read, not "fetch failed"', async () => {
+    fetchMock.mockRejectedValueOnce(new TypeError('fetch failed'));
+    const res = await POST(request(validBody()), undefined as never);
+    expect(res.status).toBe(502);
+    const body = (await res.json()) as { error: string };
+    expect(body.error).toBe("Couldn't send the request, please try again");
+  });
+});

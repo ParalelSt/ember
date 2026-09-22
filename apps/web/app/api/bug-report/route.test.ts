@@ -22,7 +22,7 @@ vi.mock('@/lib/auth', () => ({
 // vi.mocked() needs a real mock function, not just something shaped like one.
 vi.mock('@/lib/rateLimit', () => ({ rateLimitResponse: vi.fn(() => null) }));
 vi.mock('@/lib/logger/server', () => ({
-  serverLogger: { recentSince: vi.fn(async () => []), entriesSince: vi.fn(async () => []) },
+  serverLogger: { recentSince: vi.fn(async () => []), entriesSince: vi.fn(async () => []), error: vi.fn() },
 }));
 // triageBugReport is the only thing stubbed: it needs a live API key and a
 // network call, neither of which belongs in this suite. formatSeenBefore is
@@ -587,5 +587,16 @@ describe('POST /api/bug-report: attachments too big for Discord', () => {
     const res = await POST(multipart({ client: snapshot() }, [clip]), undefined as never);
     expect(res.status).toBe(502);
     expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('POST /api/bug-report: Discord unreachable', () => {
+  it('answers with a sentence a person can read, not "fetch failed"', async () => {
+    fetchMock.mockRejectedValueOnce(new TypeError('fetch failed'));
+    const res = await POST(request({ client: snapshot() }), undefined as never);
+    expect(res.status).toBe(502);
+    const body = (await res.json()) as { error: string };
+    expect(body.error).toBe("Couldn't reach Discord, please try again");
+    expect(body.error).not.toContain('fetch failed');
   });
 });

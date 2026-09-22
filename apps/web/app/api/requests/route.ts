@@ -10,6 +10,7 @@ import { fromError, jsonError } from "@/lib/upsertTrack";
 import { withRequestLog } from "@/lib/logger/withRequestLog";
 import { scrubText } from "@/lib/logger/sanitize";
 import { resolveWebhook } from "@/lib/requestWebhooks";
+import { postToDiscord } from "@/lib/reports/discord";
 import { readReportBody } from "@/lib/reports/readBody";
 import {
   droppedAttachmentsField,
@@ -145,7 +146,7 @@ export const POST = withRequestLog("requests", async (request: NextRequest) => {
     // land on the same message as real attachments.
     const send = (withFiles: boolean) => {
       if (files.length === 0) {
-        return fetch(webhookUrl, {
+        return postToDiscord(webhookUrl, {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({ embeds: [embed], allowed_mentions: { parse: [] } }),
@@ -157,7 +158,7 @@ export const POST = withRequestLog("requests", async (request: NextRequest) => {
       if (withFiles) {
         files.forEach((f, i) => form.append(`files[${i}]`, f, safeAttachmentName(f.name, i)));
       }
-      return fetch(webhookUrl, { method: "POST", body: form });
+      return postToDiscord(webhookUrl, { method: "POST", body: form });
     };
 
     let discordRes = await send(true);

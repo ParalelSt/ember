@@ -14,6 +14,8 @@ import { scrubServerEntry, scrubText } from "@/lib/logger/sanitize";
 import { formatTimeline, selectTimeline } from "@/lib/reports/timeline";
 import {
   codeFields,
+  DISCORD_UNREACHABLE,
+  postToDiscord,
   DISCORD_FIELD_CHARS,
   remainingEmbedBudget,
   usingDefaultWebhook,
@@ -322,7 +324,7 @@ export const POST = withRequestLog('bug-report', async (request: NextRequest) =>
     if (isSandboxReporter(user.email)) {
       return Response.json({ ok: true, skipped: "test account", triage });
     }
-    let discordRes = await fetch(webhook, { method: "POST", body: buildForm(true) });
+    let discordRes = await postToDiscord(webhook, { method: "POST", body: buildForm(true) });
     let failText = discordRes.ok ? "" : await discordRes.text().catch(() => "");
     // Discord's size limit can be lower than ours (it depends on the
     // server's boosts): rather than lose the report, send it once more
@@ -330,8 +332,12 @@ export const POST = withRequestLog('bug-report', async (request: NextRequest) =>
     let attachmentsDropped = false;
     if (!discordRes.ok && files.length > 0 && isTooLargeForDiscord(discordRes.status, failText)) {
       attachmentsDropped = true;
-      discordRes = await fetch(webhook, { method: "POST", body: buildForm(false) });
+      discordRes = await postToDiscord(webhook, { method: "POST", body: buildForm(false) });
       failText = discordRes.ok ? "" : await discordRes.text().catch(() => "");
+    }
+    if (discordRes.status === DISCORD_UNREACHABLE) {
+      serverLogger.error("api", "bug-report: Discord unreachable", { detail: failText.slice(0, 200) });
+      return jsonError("Couldn't reach Discord, please try again", 502);
     }
     if (!discordRes.ok) {
       return jsonError(

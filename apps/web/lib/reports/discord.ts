@@ -126,3 +126,17 @@ export function codeFields(name: string, text: string, maxFields = 6, maxChars?:
   }
   return fields;
 }
+
+/** Status for a webhook POST that never got an answer (DNS, refused, TLS,
+ *  offline host): not an HTTP code, so it can never be mistaken for one. */
+export const DISCORD_UNREACHABLE = 599;
+
+/** fetch() for the webhook that never throws: a network failure comes back
+ *  as a DISCORD_UNREACHABLE response, so each route answers the person with
+ *  its own sentence instead of leaking undici's bare "fetch failed". */
+export function postToDiscord(url: string, init: RequestInit): Promise<Response> {
+  return fetch(url, init).catch(
+    (e: unknown) =>
+      new Response(`unreachable: ${(e as Error)?.message ?? 'network error'}`, { status: DISCORD_UNREACHABLE }),
+  );
+}
