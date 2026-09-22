@@ -22,6 +22,7 @@ const item = (position: number, status: ImportItem['status'], videoId: string | 
   position,
   status,
   source: { position, title: `s${position}`, artists: [], artist: '', durationMs: null, explicit: null, uri: null },
+  likedAt: null,
   videoId,
   confidence: null,
   candidates: [],

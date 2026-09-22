@@ -62,6 +62,7 @@ const loser: ImportItem = {
   position: 2,
   status: 'review',
   source: { position: 2, title: 'Loser', artists: ['Tame Impala'], artist: 'Tame Impala', durationMs: 223_000, explicit: true, uri: null },
+  likedAt: null,
   videoId: null,
   confidence: 55,
   candidates: [

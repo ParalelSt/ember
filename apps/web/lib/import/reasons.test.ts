@@ -28,6 +28,7 @@ const item = (status: ImportItem['status'], candidates: ImportCandidate[]): Impo
   position: 0,
   status,
   source: { position: 0, title: 's', artists: [], artist: '', durationMs: null, explicit: null, uri: null },
+  likedAt: null,
   videoId: null,
   confidence: candidates[0]?.score ?? null,
   candidates,

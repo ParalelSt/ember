@@ -41,12 +41,31 @@ export type InspectResult =
       truncated: boolean;
     };
 
-export type ImportSourceKind = 'spotify' | 'ytmusic' | 'youtube';
+/** Where the source songs came from. The first three are pasted links; the
+ *  rest are transfer sources (uploads, pastes and free public APIs), and
+ *  every value here is also a value of `import_jobs.source`. */
+export type ImportSourceKind =
+  | 'spotify'
+  | 'ytmusic'
+  | 'youtube'
+  | 'spotify-export'
+  | 'csv'
+  | 'paste'
+  | 'lastfm'
+  | 'deezer'
+  | 'apple-export';
+
+/** Where the accepted songs land: a new playlist, or the person's likes. */
+export type JobKind = 'playlist' | 'liked';
 
 /** One background import, as the sidebar and the playlist page see it. */
 export interface ImportJob {
   id: string;
-  playlistId: string;
+  /** Who it belongs to. */
+  userId: string;
+  kind: JobKind;
+  /** The playlist being filled, or null for a transfer into the likes. */
+  playlistId: string | null;
   name: string;
   source: ImportSourceKind;
   sourceUrl: string;
@@ -55,10 +74,13 @@ export interface ImportJob {
   total: number;
   /** Source items processed so far. */
   cursor: number;
-  /** Added to the playlist (accepted by the matcher, or picked by hand). */
+  /** Added to the playlist, or liked (accepted by the matcher, or picked by
+   *  hand). */
   accepted: number;
   review: number;
   missing: number;
+  /** Transfers only: accepted songs the person had already liked. */
+  existing: number;
   /** A sentence for the banner when paused or failed. */
   error: string | null;
   /** Paused by a backoff: when it tries again (ISO). */
@@ -72,6 +94,9 @@ export interface ImportItem {
   position: number;
   status: ItemStatus;
   source: SourceItem;
+  /** Epoch ms this song is liked at when the job is a transfer; null for a
+   *  playlist import. */
+  likedAt: number | null;
   /** The YouTube video in the playlist for accepted and resolved items. */
   videoId: string | null;
   confidence: number | null;

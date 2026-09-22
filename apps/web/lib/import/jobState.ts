@@ -29,6 +29,8 @@ export type JobEvent =
   | 'cancel'
   /** The Retry button, on a paused or failed job. */
   | 'retry'
+  /** A long transfer steps aside so a job that arrived later can run. */
+  | 'yield'
   /** A server restart found the job held by a runner that is gone. */
   | 'boot';
 
@@ -41,6 +43,7 @@ const TABLE: Record<JobStatus, Partial<Record<JobEvent, JobStatus>>> = {
     fail: 'failed',
     cancel: 'cancelled',
     boot: 'queued',
+    yield: 'queued',
   },
   paused: { resume: 'running', cancel: 'cancelled', retry: 'queued', boot: 'queued', fail: 'failed' },
   failed: { retry: 'queued', cancel: 'cancelled' },
@@ -80,6 +83,16 @@ export const PACE_MS = 1500;
 export const BACKOFF_MS = [5_000, 20_000, 60_000] as const;
 /** A running job whose runner has not checked in for this long is orphaned. */
 export const STALE_MS = 30_000;
+/** How many batches a transfer works through before it checks whether
+ *  someone else is waiting. One runner works one job to the end, so a
+ *  friend's 40-track import would otherwise sit behind a 5 000-song
+ *  transfer for the best part of an hour. */
+export const YIELD_AFTER_BATCHES = 10;
+/** Most source songs one transfer may carry. */
+export const MAX_TRANSFER_ITEMS = 10_000;
+/** A job that has already been told to slow down paces twice as slowly for
+ *  the rest of its run, up to this. */
+export const MAX_PACE_MS = 6_000;
 
 /** The playlist_tracks position for a source item. Positions start at 1
  *  (PocketBase's required number check rejects 0), and every import row

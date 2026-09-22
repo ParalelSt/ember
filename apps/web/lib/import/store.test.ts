@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import type PocketBase from 'pocketbase';
-import { addTrackAt, createImportJob, pickItem, skipItem } from '@/lib/import/store';
+import { addTrackAt, createImportJob, likeTrack, pickItem, skipItem } from '@/lib/import/store';
 import { itemFromRecord, jobFromRecord } from '@/lib/import/records';
 import type { ImportCandidate, SourceItem } from '@/lib/import/types';
 import type { Track } from '@/types/track';
@@ -8,9 +8,9 @@ import type { Track } from '@/types/track';
 vi.mock('@/lib/logger/server', () => ({ serverLogger: { error: vi.fn(), warn: vi.fn() } }));
 
 // A small in-memory PocketBase: enough of the SDK for the import store
-// (create, update, delete, getOne, getFirstListItem, getFullList), with
-// `a = "b" && c = "d"` filters and playlist_tracks' (playlist, track)
-// unique index.
+// (create, update, delete, getOne, getFirstListItem, getFullList, getList),
+// with `a = "b" && c != "d"` filters, playlist_tracks' (playlist, track)
+// unique index and likes' (user, track) one.
 
 type Rec = Record<string, unknown> & { id: string };
 
@@ -22,13 +22,17 @@ function fakePb() {
   const matches = (r: Rec, filter?: string) =>
     !filter ||
     filter.split('&&').every((clause) => {
-      const m = /^\s*(\w+)\s*=\s*"([^"]*)"\s*$/.exec(clause);
+      const m = /^\s*(\w+)\s*(!?=)\s*"([^"]*)"\s*$/.exec(clause);
       if (!m) throw new Error(`fake pb cannot read filter: ${clause}`);
-      return String(r[m[1]] ?? '') === m[2];
+      const same = String(r[m[1]] ?? '') === m[3];
+      return m[2] === '=' ? same : !same;
     });
   const collection = (name: string) => ({
     async create(data: Record<string, unknown>) {
       if (name === 'playlist_tracks' && table(name).some((r) => r.playlist === data.playlist && r.track === data.track)) {
+        throw Object.assign(new Error('unique'), { status: 400 });
+      }
+      if (name === 'likes' && table(name).some((r) => r.user === data.user && r.track === data.track)) {
         throw Object.assign(new Error('unique'), { status: 400 });
       }
       const rec = { id: `r${++n}`, created: String(n), ...data } as Rec;
@@ -55,6 +59,8 @@ function fakePb() {
         db.import_jobs = table('import_jobs').filter((j) => !jobs.includes(j.id));
         db.import_items = table('import_items').filter((i) => !jobs.includes(String(i.job)));
       }
+      // A job's items cascade with it.
+      if (name === 'import_jobs') db.import_items = table('import_items').filter((i) => i.job !== id);
       return true;
     },
     async getOne(id: string) {
@@ -69,6 +75,15 @@ function fakePb() {
     },
     async getFullList(opts: { filter?: string } = {}) {
       return table(name).filter((r) => matches(r, opts.filter));
+    },
+    async getList(_page: number, perPage: number, opts: { filter?: string; sort?: string } = {}) {
+      const rows = table(name).filter((r) => matches(r, opts.filter));
+      const sort = opts.sort ?? '';
+      const key = sort.replace('-', '');
+      if (key) {
+        rows.sort((a, b) => String(a[key] ?? '').localeCompare(String(b[key] ?? '')) * (sort.startsWith('-') ? -1 : 1));
+      }
+      return { items: rows.slice(0, perPage) };
     },
   });
   const pb = { collection, autoCancellation: vi.fn() } as unknown as PocketBase;
@@ -127,6 +142,7 @@ async function setup(total = 6) {
     coverUrl: null,
     items: Array.from({ length: total }, (_, i) => source(i)),
   });
+  if (!playlistId) throw new Error('a playlist import must make its playlist');
   return { f, job, playlistId };
 }
 
@@ -261,5 +277,187 @@ describe('pickItem and skipItem', () => {
     await skipItem(s.f.pb, s.job(), s.item(2));
     expect(s.item(2).status).toBe('skipped');
     expect(s.job()).toMatchObject({ accepted: 2, review: 1, missing: 0 });
+  });
+});
+
+// A transfer (kind: 'liked'): no playlist, dated items, likes instead of
+// playlist rows.
+describe('a transfer into the likes', () => {
+  async function transfer(over: Partial<Parameters<typeof createImportJob>[1]> = {}, total = 4) {
+    const f = fakePb();
+    const { job, playlistId } = await createImportJob(f.pb, {
+      userId: 'u1',
+      source: 'csv',
+      sourceId: 'upload',
+      sourceUrl: '',
+      name: 'Liked songs from Spotify',
+      coverUrl: null,
+      kind: 'liked',
+      order: 'newest-first',
+      items: Array.from({ length: total }, (_, i) => source(i)),
+      ...over,
+    });
+    return { f, job, playlistId };
+  }
+
+  const likedAt = (f: ReturnType<typeof fakePb>) =>
+    f
+      .table('import_items')
+      .sort((a, b) => Number(a.position) - Number(b.position))
+      .map((r) => itemFromRecord(r).likedAt);
+
+  it('makes no playlist, only the job and its items', async () => {
+    const { f, job, playlistId } = await transfer();
+    expect(playlistId).toBeNull();
+    expect(f.table('playlists')).toHaveLength(0);
+    expect(job).toMatchObject({ kind: 'liked', playlistId: null, status: 'queued', total: 4, existing: 0 });
+    expect(f.table('import_items')).toHaveLength(4);
+  });
+
+  it('dates every song below the oldest like the person already has, in source order', async () => {
+    const f = fakePb();
+    await f.pb.collection('likes').create({ user: 'u1', track: 'other', liked_at: '2025-01-01 00:00:00.000Z' });
+    const { job } = await createImportJob(f.pb, {
+      userId: 'u1',
+      source: 'paste',
+      sourceId: 'paste',
+      sourceUrl: '',
+      name: 'A pasted list',
+      coverUrl: null,
+      kind: 'liked',
+      order: 'newest-first',
+      items: [source(0), source(1), source(2)],
+    });
+    expect(job.kind).toBe('liked');
+    const dates = likedAt(f);
+    const oldest = Date.parse('2025-01-01T00:00:00.000Z');
+    expect(dates.every((d) => d !== null && d < oldest)).toBe(true);
+    expect(dates[0]! - dates[1]!).toBe(1000);
+    expect(dates[1]! - dates[2]!).toBe(1000);
+  });
+
+  it('keeps the time the source gave where it gave one', async () => {
+    const stamped = Date.UTC(2024, 4, 5, 6, 7, 8);
+    const { f } = await transfer({ items: [{ ...source(0), likedAt: stamped }, { ...source(1), likedAt: stamped - 1000 }] }, 2);
+    expect(likedAt(f)).toEqual([stamped, stamped - 1000]);
+  });
+
+  it('turns an oldest-first source around, so the list still reads newest first', async () => {
+    const { f } = await transfer({ order: 'oldest-first' }, 3);
+    const dates = likedAt(f);
+    expect(dates[2]! - dates[1]!).toBe(1000);
+    expect(dates[1]! - dates[0]!).toBe(1000);
+  });
+
+  it('removes the half-made job when an item cannot be written', async () => {
+    const f = fakePb();
+    const real = f.pb.collection.bind(f.pb) as unknown as (name: string) => Record<string, (...a: never[]) => unknown>;
+    let made = 0;
+    (f.pb as unknown as { collection: unknown }).collection = (name: string) => {
+      const c = real(name) as unknown as { create: (d: Record<string, unknown>) => Promise<unknown> };
+      if (name !== 'import_items') return c;
+      return {
+        ...c,
+        create: async (d: Record<string, unknown>) => {
+          if (++made === 3) throw new Error('PocketBase is down');
+          return c.create(d);
+        },
+      };
+    };
+    await expect(
+      createImportJob(f.pb, {
+        userId: 'u1',
+        source: 'csv',
+        sourceId: 'upload',
+        sourceUrl: '',
+        name: 'Broken transfer',
+        coverUrl: null,
+        kind: 'liked',
+        items: [source(0), source(1), source(2), source(3)],
+      }),
+    ).rejects.toThrow('PocketBase is down');
+    expect(f.table('import_jobs')).toHaveLength(0);
+    expect(f.table('import_items')).toHaveLength(0);
+    expect(f.table('playlists')).toHaveLength(0);
+  });
+});
+
+describe('likeTrack', () => {
+  it('likes a song as an import, at the date it was given', async () => {
+    const f = fakePb();
+    const at = Date.UTC(2020, 0, 2, 3, 4, 5);
+    expect(await likeTrack(f.pb, 'u1', track('vid0'), at)).toEqual({ created: true });
+    expect(f.table('likes')[0]).toMatchObject({ user: 'u1', origin: 'import', liked_at: '2020-01-02 03:04:05.000Z' });
+  });
+
+  it('a song the person already liked is not an error and not a new like', async () => {
+    const f = fakePb();
+    await likeTrack(f.pb, 'u1', track('vid0'), 1);
+    expect(await likeTrack(f.pb, 'u1', track('vid0'), 2)).toEqual({ created: false });
+    expect(f.table('likes')).toHaveLength(1);
+  });
+});
+
+describe('pickItem and skipItem on a transfer', () => {
+  async function withItems() {
+    const f = fakePb();
+    const { job } = await createImportJob(f.pb, {
+      userId: 'u1',
+      source: 'csv',
+      sourceId: 'upload',
+      sourceUrl: '',
+      name: 'Liked songs from Spotify',
+      coverUrl: null,
+      kind: 'liked',
+      items: [source(0), source(1), source(2)],
+    });
+    // What the runner left: 0 accepted (and liked), 1 unsure, 2 not found.
+    const statuses = ['accepted', 'review', 'missing'];
+    f.table('import_items').forEach((r, i) => {
+      Object.assign(r, {
+        status: statuses[i],
+        video_id: statuses[i] === 'accepted' ? `vid${i}` : '',
+        candidates: [cand(`vid${i}`, 90), cand(`alt${i}`, 60)],
+      });
+    });
+    await likeTrack(f.pb, 'u1', track('vid0'), 1_000);
+    const freshJob = () => jobFromRecord(f.table('import_jobs')[0]);
+    const item = (i: number) => itemFromRecord(f.table('import_items')[i]);
+    const liked = () =>
+      f.table('likes').map((l) => String(f.table('tracks').find((t) => t.id === l.track)?.source_id));
+    return { f, job, freshJob, item, liked };
+  }
+
+  it('a pick for an unsure song likes it, at the date the item carries', async () => {
+    const s = await withItems();
+    const before = s.item(1).likedAt;
+    await pickItem(s.f.pb, s.freshJob(), s.item(1), track('alt1'));
+    expect(s.liked()).toEqual(['vid0', 'alt1']);
+    expect(s.item(1)).toMatchObject({ status: 'resolved', videoId: 'alt1' });
+    expect(s.freshJob()).toMatchObject({ accepted: 2, review: 0, missing: 1 });
+    const picked = s.f.table('tracks').find((t) => t.source_id === 'alt1');
+    const row = s.f.table('likes').find((l) => l.track === picked?.id);
+    expect(Date.parse(String(row?.liked_at).replace(' ', 'T'))).toBe(before);
+  });
+
+  it('a re-match unlikes the song this transfer got wrong', async () => {
+    const s = await withItems();
+    await pickItem(s.f.pb, s.freshJob(), s.item(0), track('alt0'));
+    expect(s.liked()).toEqual(['alt0']);
+  });
+
+  it('a like the person made themselves is never removed by a re-match', async () => {
+    const s = await withItems();
+    // They had liked the wrong guess for their own reasons.
+    s.f.table('likes').forEach((l) => Object.assign(l, { origin: 'user' }));
+    await pickItem(s.f.pb, s.freshJob(), s.item(0), track('alt0'));
+    expect(s.liked().sort()).toEqual(['alt0', 'vid0']);
+  });
+
+  it('Remove song on a transfer leaves the likes alone', async () => {
+    const s = await withItems();
+    await skipItem(s.f.pb, s.freshJob(), s.item(2));
+    expect(s.item(2).status).toBe('skipped');
+    expect(s.liked()).toEqual(['vid0']);
   });
 });

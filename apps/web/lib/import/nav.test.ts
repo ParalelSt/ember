@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { navImportStates } from '@/lib/import/nav';
+import { LIKED_NAV_KEY, navImportStates } from '@/lib/import/nav';
 import type { ImportJob } from '@/lib/import/types';
 
 const job = (over: Partial<ImportJob>): ImportJob => ({
   id: 'j',
+  userId: 'u1',
+  kind: 'playlist',
   playlistId: 'p',
   name: 'n',
   source: 'spotify',
@@ -15,6 +17,7 @@ const job = (over: Partial<ImportJob>): ImportJob => ({
   accepted: 15,
   review: 2,
   missing: 1,
+  existing: 0,
   error: null,
   retryAt: null,
   dismissed: false,
@@ -36,6 +39,22 @@ describe('navImportStates', () => {
   it('a finished import shows what is left to review, or nothing', () => {
     expect(navImportStates([job({ status: 'done', review: 4 })]).p).toEqual({ kind: 'review', count: 4 });
     expect(navImportStates([job({ status: 'done', review: 0 })])).toEqual({});
+  });
+
+  it('a transfer rings the Liked songs row, not a playlist', () => {
+    const states = navImportStates([job({ kind: 'liked', playlistId: null, status: 'running', cursor: 7 })]);
+    expect(states).toEqual({ [LIKED_NAV_KEY]: { kind: 'importing', done: 7, total: 42 } });
+  });
+
+  it('a transfer and a playlist import ring their own rows at once', () => {
+    const states = navImportStates([
+      job({ id: 't', kind: 'liked', playlistId: null, status: 'done', review: 3 }),
+      job({ id: 'p', status: 'running' }),
+    ]);
+    expect(states).toEqual({
+      [LIKED_NAV_KEY]: { kind: 'review', count: 3 },
+      p: { kind: 'importing', done: 18, total: 42 },
+    });
   });
 
   it('the newest job per playlist wins and dismissed ones are ignored', () => {

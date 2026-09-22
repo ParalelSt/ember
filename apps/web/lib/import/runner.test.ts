@@ -9,7 +9,15 @@ import {
   type PendingItem,
   type RunnerJob,
 } from '@/lib/import/runner';
-import { BACKOFF_MS, PACE_MS, countItems, type ItemStatus, type JobStatus } from '@/lib/import/jobState';
+import {
+  BACKOFF_MS,
+  MAX_PACE_MS,
+  PACE_MS,
+  YIELD_AFTER_BATCHES,
+  countItems,
+  type ItemStatus,
+  type JobStatus,
+} from '@/lib/import/jobState';
 import type { ImportCandidate, MatchResult, SourceItem } from '@/lib/import/types';
 import type { Track } from '@/types/track';
 
@@ -64,14 +72,29 @@ interface Item extends PendingItem {
   videoId?: string | null;
 }
 
-function memoryStore(total: number, opts: { ready?: boolean; status?: JobStatus; cursor?: number } = {}) {
+interface StoreOpts {
+  ready?: boolean;
+  status?: JobStatus;
+  cursor?: number;
+  /** A transfer: accepted songs are liked, not added to a playlist. */
+  liked?: boolean;
+  /** Songs the person had already liked, by video id. */
+  alreadyLiked?: string[];
+  /** Another job is waiting, so a transfer may step aside. */
+  othersQueued?: boolean;
+}
+
+function memoryStore(total: number, opts: StoreOpts = {}) {
   const job: Job = {
     id: 'j1',
     status: opts.status ?? 'queued',
     cursor: opts.cursor ?? 0,
     total,
     source: opts.ready ? 'ytmusic' : 'spotify',
-    playlistId: 'p1',
+    kind: opts.liked ? 'liked' : 'playlist',
+    playlistId: opts.liked ? null : 'p1',
+    userId: 'u1',
+    existing: 0,
   };
   const items: Item[] = Array.from({ length: total }, (_, i) => ({
     id: `i${i}`,
@@ -80,8 +103,11 @@ function memoryStore(total: number, opts: { ready?: boolean; status?: JobStatus;
     source: source(i),
     candidates: opts.ready ? [cand(`vid${i}`, 100)] : [],
     status: 'pending',
+    likedAt: opts.liked ? 1_700_000_000_000 - i * 1000 : null,
   }));
   const playlist: { position: number; track: Track }[] = [];
+  const likes: { track: Track; likedAt: number | null }[] = [];
+  const alreadyLiked = new Set(opts.alreadyLiked ?? []);
   const patches: JobPatch[] = [];
   const store: JobStore = {
     releaseStale: vi.fn(async (staleBefore: number) => {
@@ -111,9 +137,16 @@ function memoryStore(total: number, opts: { ready?: boolean; status?: JobStatus;
       if (playlist.some((p) => p.track.id === t.id)) return;
       playlist.push({ position, track: t });
     }),
+    like: vi.fn(async (_userId: string, t: Track, likedAt: number | null) => {
+      // The (user, track) unique index: a song already liked is a no-op.
+      if (alreadyLiked.has(t.sourceId) || likes.some((l) => l.track.id === t.id)) return { created: false };
+      likes.push({ track: t, likedAt });
+      return { created: true };
+    }),
+    hasOtherQueued: vi.fn(async () => opts.othersQueued === true),
     counts: vi.fn(async () => countItems(items.map((i) => i.status))),
   };
-  return { job, items, playlist, patches, store };
+  return { job, items, playlist, likes, patches, store };
 }
 
 /** Scores by position: every third song is unsure, every fifth not found. */
@@ -317,5 +350,111 @@ describe('ImportRunner', () => {
     const { r } = runner(m.store, { staleMs: 30_000 });
     await r.tick();
     expect(m.store.releaseStale).toHaveBeenCalledWith(1_000_000 - 30_000);
+  });
+});
+
+// A transfer (kind: 'liked'): the same loop, but accepted songs become likes.
+describe('ImportRunner, a transfer into the likes', () => {
+  it('likes the accepted songs instead of adding them to a playlist', async () => {
+    const m = memoryStore(20, { liked: true });
+    const { r } = runner(m.store);
+    await r.tick();
+    expect(m.job.status).toBe('done');
+    expect(m.playlist).toHaveLength(0);
+    const accepted = m.items.filter((i) => i.status === 'accepted');
+    expect(m.likes.map((l) => l.track.sourceId)).toEqual(accepted.map((i) => `vid${i.position}`));
+    expect(m.store.addTrack).not.toHaveBeenCalled();
+  });
+
+  it('carries each song its own liked_at through to the like', async () => {
+    const m = memoryStore(8, { liked: true });
+    const { r } = runner(m.store);
+    await r.tick();
+    const first = m.items.find((i) => i.status === 'accepted')!;
+    expect(m.likes[0].likedAt).toBe(1_700_000_000_000 - first.position * 1000);
+    // Source order: every like is older than the one before it.
+    expect(m.likes.every((l, k) => k === 0 || l.likedAt! < m.likes[k - 1].likedAt!)).toBe(true);
+  });
+
+  it('counts songs the person had already liked as existing, not as new', async () => {
+    const m = memoryStore(20, { liked: true, alreadyLiked: ['vid0', 'vid3'] });
+    const { r } = runner(m.store);
+    await r.tick();
+    expect(m.job.existing).toBe(2);
+    expect(m.job.accepted).toBe(m.items.filter((i) => i.status === 'accepted').length);
+    expect(m.likes.map((l) => l.track.sourceId)).not.toContain('vid0');
+  });
+
+  it('a playlist import never writes an existing count', async () => {
+    const m = memoryStore(10);
+    const { r } = runner(m.store);
+    await r.tick();
+    expect(m.patches.every((p) => p.existing === undefined)).toBe(true);
+  });
+
+  it('steps aside after ten batches when another job is waiting, keeping its cursor', async () => {
+    const m = memoryStore(200, { liked: true, othersQueued: true });
+    const match = vi.fn(fakeMatch);
+    const { r } = runner(m.store, { match });
+    await r.tick();
+
+    // It hands itself back to the queue, lets go of the runner, and the
+    // cursor says where to pick up. (The loop then claims the next queued
+    // job, which in this store is the same one, so it runs on to the end.)
+    const yielded = m.patches.filter((p) => p.status === 'queued');
+    expect(yielded).toHaveLength(2);
+    expect(yielded[0]).toMatchObject({ status: 'queued', heartbeat: null, runner: '' });
+    const cursors = m.patches.filter((p) => p.cursor !== undefined).map((p) => p.cursor);
+    expect(cursors[YIELD_AFTER_BATCHES - 1]).toBe(YIELD_AFTER_BATCHES * 8);
+    // Nothing is matched twice: it carried on from the cursor each time.
+    const seen = match.mock.calls.flatMap((c) => c[0].map((i) => i.position));
+    expect(new Set(seen).size).toBe(seen.length);
+    expect(m.job.status).toBe('done');
+    expect(m.likes.length).toBeGreaterThan(0);
+  });
+
+  it('never steps aside when nothing else is waiting', async () => {
+    const m = memoryStore(200, { liked: true });
+    const { r } = runner(m.store);
+    await r.tick();
+    expect(m.job.status).toBe('done');
+    expect(m.store.hasOtherQueued).toHaveBeenCalled();
+  });
+
+  it('a playlist import never steps aside, however long it is', async () => {
+    const m = memoryStore(200, { othersQueued: true });
+    const { r } = runner(m.store);
+    await r.tick();
+    expect(m.job.status).toBe('done');
+    expect(m.store.hasOtherQueued).not.toHaveBeenCalled();
+  });
+
+  it('a cancel mid-transfer keeps the likes already made', async () => {
+    const m = memoryStore(24, { liked: true });
+    const match = vi.fn(async (items: SourceItem[]) => {
+      if (items[0].position === 8) m.job.status = 'cancelled';
+      return fakeMatch(items);
+    });
+    const { r } = runner(m.store, { match });
+    await r.tick();
+    expect(m.job.status).toBe('cancelled');
+    expect(m.likes.length).toBeGreaterThan(0);
+    // The batch in hand is finished before the cancel is noticed, so two
+    // batches' worth of likes stand, and nothing after them.
+    expect(m.likes.every((l) => Number(l.track.sourceId.replace('vid', '')) < 16)).toBe(true);
+  });
+
+  it('paces twice as slowly for the rest of a job that was told to slow down', async () => {
+    const m = memoryStore(32);
+    let calls = 0;
+    const match = vi.fn(async (items: SourceItem[]) => {
+      calls += 1;
+      if (calls === 2) throw Object.assign(new Error('503'), { status: 503 });
+      return fakeMatch(items);
+    });
+    const { r, sleeps } = runner(m.store, { match });
+    await r.tick();
+    expect(sleeps).toEqual([PACE_MS, BACKOFF_MS[0], PACE_MS * 2, PACE_MS * 2, PACE_MS * 2]);
+    expect(PACE_MS * 2).toBeLessThanOrEqual(MAX_PACE_MS);
   });
 });

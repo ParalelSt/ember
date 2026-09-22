@@ -3,8 +3,9 @@ import type PocketBase from 'pocketbase';
 import type { Track } from '@/types/track';
 import { upsertTrack } from '@/lib/upsertTrack';
 import { countItems, playlistPosition, type ItemStatus } from '@/lib/import/jobState';
-import { itemFromRecord, itemRecord, jobFromRecord, pbDate, readyItem } from '@/lib/import/records';
-import type { ImportCandidate, ImportItem, ImportJob, ImportSourceKind, SourceItem } from '@/lib/import/types';
+import { itemFromRecord, itemRecord, jobFromRecord, pbDate, pbMillis, readyItem } from '@/lib/import/records';
+import { syntheticLikedAt, transferBase, type SourceOrder } from '@/lib/import/likedAt';
+import type { ImportCandidate, ImportItem, ImportJob, ImportSourceKind, JobKind, SourceItem } from '@/lib/import/types';
 import type { ItemResult, JobCounts, JobPatch, JobStore, PendingItem, RunnerJob } from '@/lib/import/runner';
 
 // PocketBase side of imports. Every write goes through the admin client:
@@ -19,7 +20,17 @@ function status(e: unknown): number | undefined {
 
 function runnerJob(r: Record<string, unknown>): RunnerJob {
   const j = jobFromRecord(r);
-  return { id: j.id, status: j.status, cursor: j.cursor, total: j.total, source: j.source, playlistId: j.playlistId };
+  return {
+    id: j.id,
+    status: j.status,
+    cursor: j.cursor,
+    total: j.total,
+    source: j.source,
+    kind: j.kind,
+    playlistId: j.playlistId,
+    userId: j.userId,
+    existing: j.existing,
+  };
 }
 
 function patchRecord(p: JobPatch): Record<string, unknown> {
@@ -29,9 +40,11 @@ function patchRecord(p: JobPatch): Record<string, unknown> {
   if (p.accepted !== undefined) out.accepted = p.accepted;
   if (p.review !== undefined) out.review = p.review;
   if (p.missing !== undefined) out.missing = p.missing;
+  if (p.existing !== undefined) out.existing = p.existing;
   if (p.error !== undefined) out.error = p.error.slice(0, 300);
   if (p.retryAt !== undefined) out.retry_at = p.retryAt === null ? '' : pbDate(p.retryAt);
-  if (p.heartbeat !== undefined) out.heartbeat = pbDate(p.heartbeat);
+  if (p.heartbeat !== undefined) out.heartbeat = p.heartbeat === null ? '' : pbDate(p.heartbeat);
+  if (p.runner !== undefined) out.runner = p.runner;
   return out;
 }
 
@@ -44,6 +57,31 @@ export async function addTrackAt(pb: PocketBase, playlistId: string, position: n
     await pb.collection('playlist_tracks').create({ playlist: playlistId, track: trackId, position });
   } catch (e) {
     if (status(e) !== 400) throw e;
+  }
+}
+
+/** Like a track for a transfer. The (user, track) unique index makes a
+ *  second like of the same song a no-op, which is exactly what a re-run or a
+ *  song the person had already liked needs; `created` says which happened so
+ *  the Done summary can count them apart. */
+export async function likeTrack(
+  pb: PocketBase,
+  userId: string,
+  track: Track,
+  likedAt: number | null,
+): Promise<{ created: boolean }> {
+  const trackId = await upsertTrack(pb, track);
+  try {
+    await pb.collection('likes').create({
+      user: userId,
+      track: trackId,
+      liked_at: pbDate(likedAt ?? Date.now()),
+      origin: 'import',
+    });
+    return { created: true };
+  } catch (e) {
+    if (status(e) !== 400) throw e;
+    return { created: false };
   }
 }
 
@@ -118,7 +156,13 @@ export function createJobStore(getAdmin: () => Promise<PocketBase>): JobStore {
       });
       return list.items.map((r): PendingItem => {
         const item = itemFromRecord(r);
-        return { id: item.id, position: item.position, source: item.source, candidates: item.candidates };
+        return {
+          id: item.id,
+          position: item.position,
+          source: item.source,
+          candidates: item.candidates,
+          likedAt: item.likedAt,
+        };
       });
     },
 
@@ -138,11 +182,27 @@ export function createJobStore(getAdmin: () => Promise<PocketBase>): JobStore {
       await addTrackAt(await getPb(), playlistId, position, track);
     },
 
+    async like(userId, track, likedAt) {
+      return likeTrack(await getPb(), userId, track, likedAt);
+    },
+
+    async hasOtherQueued(jobId) {
+      const pb = await getPb();
+      const list = await pb
+        .collection('import_jobs')
+        .getList(1, 1, { filter: `status = "queued" && id != "${esc(jobId)}"` });
+      return list.items.length > 0;
+    },
+
     async counts(jobId) {
       return jobCounts(await getPb(), jobId);
     },
   };
 }
+
+/** A source song, with the time the source says it was liked when it has
+ *  one (Exportify's `Added At`, Last.fm's `date`). */
+export type NewImportItem = SourceItem & { likedAt?: number | null };
 
 export interface NewImport {
   userId: string;
@@ -151,29 +211,54 @@ export interface NewImport {
   sourceUrl: string;
   name: string;
   coverUrl: string | null;
-  /** Spotify: source items to search for. */
-  items?: SourceItem[];
+  /** Where the accepted songs land. Default: a new playlist. */
+  kind?: JobKind;
+  /** Spotify and every transfer source: source items to search for. */
+  items?: NewImportItem[];
   /** YouTube Music: the playlist's own tracks, accepted as they are. */
   tracks?: Track[];
+  /** How the source lists its songs, for dating a transfer's likes. */
+  order?: SourceOrder;
 }
 
-/** The playlist, the queued job and one pending item per source track.
- *  The playlist exists (and shows in the sidebar) before any matching. */
-export async function createImportJob(pb: PocketBase, n: NewImport): Promise<{ job: ImportJob; playlistId: string }> {
+/** The oldest like the person already has, for placing a transfer's songs
+ *  underneath it (lib/import/likedAt.ts). Rows written before
+ *  ensure_likes_fields.pb.js backfilled are skipped: an empty date would
+ *  sort first and drag the whole transfer back to 1970. */
+async function oldestLikedAt(pb: PocketBase, userId: string): Promise<number | null> {
+  const list = await pb
+    .collection('likes')
+    .getList(1, 1, { filter: `user = "${esc(userId)}" && liked_at != ""`, sort: 'liked_at', fields: 'liked_at' });
+  return pbMillis(list.items[0]?.liked_at);
+}
+
+/** The queued job and one pending item per source track, plus (for a
+ *  playlist import) the playlist itself, which exists and shows in the
+ *  sidebar before any matching. A transfer has no playlist: its items carry
+ *  the date their likes will get instead. */
+export async function createImportJob(
+  pb: PocketBase,
+  n: NewImport,
+): Promise<{ job: ImportJob; playlistId: string | null }> {
   noAutoCancel(pb);
-  const rows: { item: SourceItem; candidates: ImportCandidate[] }[] = n.tracks
+  const kind: JobKind = n.kind ?? 'playlist';
+  const rows: { item: NewImportItem; candidates: ImportCandidate[] }[] = n.tracks
     ? n.tracks.map((t, i) => readyItem(t, i))
     : (n.items ?? []).map((item) => ({ item, candidates: [] }));
+  const likedAt = kind === 'liked' ? await transferDates(pb, n, rows.length) : null;
 
-  const playlist = await pb.collection('playlists').create({
-    user: n.userId,
-    name: n.name.slice(0, 120) || 'Imported playlist',
-    source_url: n.sourceUrl.slice(0, 500),
-  });
+  const playlist =
+    kind === 'liked'
+      ? null
+      : await pb.collection('playlists').create({
+          user: n.userId,
+          name: n.name.slice(0, 120) || 'Imported playlist',
+          source_url: n.sourceUrl.slice(0, 500),
+        });
   const job = await pb.collection('import_jobs').create({
     user: n.userId,
     source: n.source,
-    kind: 'playlist',
+    kind,
     source_id: n.sourceId.slice(0, 120),
     source_url: n.sourceUrl.slice(0, 500),
     name: n.name.slice(0, 200),
@@ -186,25 +271,45 @@ export async function createImportJob(pb: PocketBase, n: NewImport): Promise<{ j
     accepted: 0,
     review: 0,
     missing: 0,
-    playlist: playlist.id,
+    existing: 0,
+    ...(playlist ? { playlist: playlist.id } : {}),
     dismissed: false,
   });
   try {
-    await pb.collection('playlists').update(playlist.id, { import_job: job.id });
+    if (playlist) await pb.collection('playlists').update(playlist.id, { import_job: job.id });
     // A few at a time: fast enough for 100 rows, gentle on PocketBase.
     for (let i = 0; i < rows.length; i += 10) {
       await Promise.all(
-        rows.slice(i, i + 10).map((r) => pb.collection('import_items').create(itemRecord(job.id, r.item, r.candidates))),
+        rows
+          .slice(i, i + 10)
+          .map((r) => pb.collection('import_items').create(itemRecord(job.id, r.item, r.candidates, likedAt?.[r.item.position] ?? null))),
       );
     }
     const queued = await pb.collection('import_jobs').update(job.id, { status: 'queued' });
-    return { job: jobFromRecord(queued), playlistId: playlist.id };
+    return { job: jobFromRecord(queued), playlistId: playlist?.id ?? null };
   } catch (e) {
-    // Half an import is worse than none: the playlist goes, and its job and
-    // items with it (cascade).
-    await pb.collection('playlists').delete(playlist.id).catch(() => {});
+    // Half an import is worse than none. A playlist import takes its job and
+    // items with it through the cascade; a transfer has only the job.
+    if (playlist) await pb.collection('playlists').delete(playlist.id).catch(() => {});
+    else await pb.collection('import_jobs').delete(job.id).catch(() => {});
     throw e;
   }
+}
+
+/** The like date for every source position of a transfer: what the source
+ *  says where it says anything, else one placed below the person's existing
+ *  likes, in source order (lib/import/likedAt.ts). */
+async function transferDates(pb: PocketBase, n: NewImport, total: number): Promise<Record<number, number>> {
+  const given = new Map<number, number>();
+  for (const item of n.items ?? []) if (typeof item.likedAt === 'number') given.set(item.position, item.likedAt);
+  const out: Record<number, number> = {};
+  if (given.size === total) {
+    for (const [position, ms] of given) out[position] = ms;
+    return out;
+  }
+  const base = transferBase(await oldestLikedAt(pb, n.userId), Date.now());
+  for (let i = 0; i < total; i++) out[i] = given.get(i) ?? syntheticLikedAt(base, n.order ?? 'unknown', total, i);
+  return out;
 }
 
 /** Give the new playlist the source's cover. Best effort: a playlist without
@@ -226,8 +331,18 @@ export async function attachCover(pb: PocketBase, playlistId: string, coverUrl: 
 }
 
 /** Put a picked track in the playlist for an import item, at its source
- *  position. A re-pick swaps the old track out in place. */
+ *  position, or (for a transfer) like it. A re-pick swaps the old track out
+ *  in place. */
 export async function pickItem(pb: PocketBase, job: ImportJob, item: ImportItem, track: Track): Promise<void> {
+  if (job.kind === 'liked') {
+    await pickLiked(pb, job, item, track);
+    await saveResolvedItem(pb, job, item, track);
+    return;
+  }
+  const { playlistId } = job;
+  // A playlist import always has its playlist: createImportJob writes it
+  // before the job, and deleting it takes the job with it.
+  if (!playlistId) throw new Error('that import has no playlist');
   const oldVideo = item.videoId;
   const newTrackId = await upsertTrack(pb, track);
   let junction: { id: string } | null = null;
@@ -236,7 +351,7 @@ export async function pickItem(pb: PocketBase, job: ImportJob, item: ImportItem,
       const oldTrack = await pb.collection('tracks').getFirstListItem(`external_id = "youtube:${esc(oldVideo)}"`);
       junction = await pb
         .collection('playlist_tracks')
-        .getFirstListItem(`playlist = "${esc(job.playlistId)}" && track = "${oldTrack.id}"`);
+        .getFirstListItem(`playlist = "${esc(playlistId)}" && track = "${oldTrack.id}"`);
     } catch (e) {
       if (status(e) !== 404) throw e;
     }
@@ -251,15 +366,40 @@ export async function pickItem(pb: PocketBase, job: ImportJob, item: ImportItem,
       await pb.collection('playlist_tracks').delete(junction.id);
     }
   } else {
-    await addTrackAt(pb, job.playlistId, playlistPosition(item.position), track);
+    await addTrackAt(pb, playlistId, playlistPosition(item.position), track);
   }
 
+  await saveResolvedItem(pb, job, item, track);
+}
+
+/** Like the picked song for a transfer. A wrong song this same transfer
+ *  liked is unliked first: it is only in the likes because Ember guessed it,
+ *  so the person correcting the guess expects it gone. A like the person
+ *  made themselves (origin `user`) is left alone. */
+async function pickLiked(pb: PocketBase, job: ImportJob, item: ImportItem, track: Track): Promise<void> {
+  const oldVideo = item.videoId;
+  if (oldVideo && oldVideo !== track.sourceId) {
+    try {
+      const oldTrack = await pb.collection('tracks').getFirstListItem(`external_id = "youtube:${esc(oldVideo)}"`);
+      const like = await pb
+        .collection('likes')
+        .getFirstListItem(`user = "${esc(job.userId)}" && track = "${oldTrack.id}" && origin = "import"`);
+      await pb.collection('likes').delete(like.id);
+    } catch (e) {
+      if (status(e) !== 404) throw e;
+    }
+  }
+  await likeTrack(pb, job.userId, track, item.likedAt);
+}
+
+/** The item is settled: it points at the picked song, which joins the
+ *  candidates when it came from a search so a later re-match still lists
+ *  it, and the job's counts are recomputed. */
+async function saveResolvedItem(pb: PocketBase, job: ImportJob, item: ImportItem, track: Track): Promise<void> {
   const known = item.candidates.some((c) => c.track.sourceId === track.sourceId);
   await pb.collection('import_items').update(item.id, {
     status: 'resolved',
     video_id: track.sourceId,
-    // A song found by searching joins the candidates, so a later re-match
-    // still lists it.
     ...(known
       ? {}
       : {

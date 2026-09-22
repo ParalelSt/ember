@@ -11,7 +11,7 @@ import {
 } from '@/lib/import/jobState';
 
 const STATUSES: JobStatus[] = ['queued', 'running', 'paused', 'done', 'failed', 'cancelled'];
-const EVENTS: JobEvent[] = ['claim', 'backoff', 'resume', 'give-up', 'finish', 'fail', 'cancel', 'retry', 'boot'];
+const EVENTS: JobEvent[] = ['claim', 'backoff', 'resume', 'give-up', 'finish', 'fail', 'cancel', 'retry', 'boot', 'yield'];
 
 describe('import job state machine', () => {
   it('walks the happy path: queued, running, done', () => {
@@ -24,6 +24,14 @@ describe('import job state machine', () => {
     expect(transition('paused', 'resume')).toBe('running');
     expect(transition('running', 'give-up')).toBe('paused');
     expect(transition('paused', 'retry')).toBe('queued');
+  });
+
+  it('a long transfer can step aside, which puts it back in the queue', () => {
+    expect(transition('running', 'yield')).toBe('queued');
+    // Only a job in hand can step aside.
+    for (const s of ['queued', 'paused', 'done', 'failed', 'cancelled'] as const) {
+      expect(canTransition(s, 'yield')).toBe(false);
+    }
   });
 
   it('a failed job is retryable, a restart re-queues a running one', () => {

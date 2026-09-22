@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { cleanPickedTrack, itemFromRecord, itemRecord, jobFromRecord, pbDate, readyItem } from '@/lib/import/records';
+import { cleanPickedTrack, itemFromRecord, itemRecord, jobFromRecord, pbDate, pbMillis, readyItem } from '@/lib/import/records';
 import type { Track } from '@/types/track';
 
 const yt: Track = {
@@ -38,6 +38,41 @@ describe('import records', () => {
     expect(j).toMatchObject({ id: 'j1', playlistId: 'p1', status: 'paused', cursor: 18, total: 42, coverUrl: null });
     expect(j.retryAt).toBe('2026-09-19T12:00:05.000Z');
     expect(jobFromRecord({ id: 'j2', retry_at: '' }).retryAt).toBeNull();
+    // A row written before the transfer fields existed still reads as a
+    // playlist import.
+    expect(j).toMatchObject({ kind: 'playlist', existing: 0 });
+  });
+
+  it('maps a transfer job: no playlist, its own kind, its owner and the existing count', () => {
+    const j = jobFromRecord({
+      id: 'j3',
+      user: 'u1',
+      kind: 'liked',
+      playlist: '',
+      source: 'csv',
+      status: 'running',
+      total: 412,
+      accepted: 380,
+      existing: 38,
+    });
+    expect(j).toMatchObject({ kind: 'liked', playlistId: null, userId: 'u1', source: 'csv', existing: 38 });
+  });
+
+  it('reads and writes an item liked_at, and leaves it empty when there is none', () => {
+    const at = Date.UTC(2024, 4, 5, 6, 7, 8);
+    const row = itemRecord('j1', { position: 0, title: 't', artists: [], artist: '', durationMs: null, explicit: null, uri: null }, [], at);
+    expect(row.liked_at).toBe(pbDate(at));
+    expect(itemFromRecord({ ...row, id: 'i1' }).likedAt).toBe(at);
+    const plain = itemRecord('j1', { position: 0, title: 't', artists: [], artist: '', durationMs: null, explicit: null, uri: null });
+    expect(plain.liked_at).toBe('');
+    expect(itemFromRecord({ ...plain, id: 'i2' }).likedAt).toBeNull();
+  });
+
+  it('pbMillis reads PocketBase dates and shrugs at anything else', () => {
+    expect(pbMillis('2026-09-19 12:00:05.000Z')).toBe(Date.parse('2026-09-19T12:00:05.000Z'));
+    expect(pbMillis('')).toBeNull();
+    expect(pbMillis(undefined)).toBeNull();
+    expect(pbMillis('not a date')).toBeNull();
   });
 
   it('round-trips a source item through its row', () => {

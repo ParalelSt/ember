@@ -55,7 +55,7 @@ export const POST = withRequestLog('import/jobs', async (request: NextRequest) =
       ...(src.source === 'spotify' ? { items: src.items } : { tracks: src.tracks }),
     });
     kickImportRunner();
-    if (job.coverUrl) void attachCover(admin, playlistId, job.coverUrl);
+    if (playlistId && job.coverUrl) void attachCover(admin, playlistId, job.coverUrl);
     return Response.json({ job, playlistId }, { status: 201 });
   } catch (e) {
     if (e instanceof UnauthorizedError) return unauthorizedResponse();

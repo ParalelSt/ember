@@ -3,7 +3,7 @@
  *  back. Pure, so the mapping is unit tested without a server. */
 
 import type { Track } from '@/types/track';
-import type { ImportCandidate, ImportItem, ImportJob, ImportSourceKind, SourceItem } from '@/lib/import/types';
+import type { ImportCandidate, ImportItem, ImportJob, ImportSourceKind, JobKind, SourceItem } from '@/lib/import/types';
 import type { ItemStatus, JobStatus } from '@/lib/import/jobState';
 
 type Row = Record<string, unknown>;
@@ -16,11 +16,21 @@ export function pbDate(ms: number): string {
   return new Date(ms).toISOString().replace('T', ' ');
 }
 
+/** A PocketBase date back to epoch ms, or null when the field is empty. */
+export function pbMillis(v: unknown): number | null {
+  const s = str(v);
+  if (!s) return null;
+  const ms = new Date(s.replace(' ', 'T')).getTime();
+  return Number.isFinite(ms) ? ms : null;
+}
+
 export function jobFromRecord(r: Row): ImportJob {
   const retryAt = str(r.retry_at);
   return {
     id: str(r.id),
-    playlistId: str(r.playlist),
+    userId: str(r.user),
+    kind: (str(r.kind) || 'playlist') as JobKind,
+    playlistId: str(r.playlist) || null,
     name: str(r.name),
     source: (str(r.source) || 'spotify') as ImportSourceKind,
     sourceUrl: str(r.source_url),
@@ -31,6 +41,7 @@ export function jobFromRecord(r: Row): ImportJob {
     accepted: num(r.accepted),
     review: num(r.review),
     missing: num(r.missing),
+    existing: num(r.existing),
     error: str(r.error) || null,
     retryAt: retryAt ? new Date(retryAt.replace(' ', 'T')).toISOString() : null,
     dismissed: r.dismissed === true,
@@ -60,6 +71,7 @@ export function itemFromRecord(r: Row): ImportItem {
     position,
     status: (str(r.status) || 'pending') as ItemStatus,
     source,
+    likedAt: pbMillis(r.liked_at),
     videoId: str(r.video_id) || null,
     confidence,
     candidates: Array.isArray(r.candidates) ? r.candidates.filter(isCandidate) : [],
@@ -67,11 +79,18 @@ export function itemFromRecord(r: Row): ImportItem {
 }
 
 /** The row for a new pending item. `candidates` is filled in advance only
- *  for a YouTube Music playlist, whose tracks need no search. */
-export function itemRecord(jobId: string, item: SourceItem, candidates: ImportCandidate[] = []): Row {
+ *  for a YouTube Music playlist, whose tracks need no search; `likedAt` only
+ *  for a transfer, where it decides where the song lands in the likes. */
+export function itemRecord(
+  jobId: string,
+  item: SourceItem,
+  candidates: ImportCandidate[] = [],
+  likedAt: number | null = null,
+): Row {
   return {
     job: jobId,
     position: item.position,
+    liked_at: likedAt === null ? '' : pbDate(likedAt),
     source_title: item.title,
     source_artists: item.artists,
     source_duration_ms: item.durationMs ?? 0,

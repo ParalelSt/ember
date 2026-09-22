@@ -3,8 +3,13 @@
  *  One job at a time: claim the oldest queued job, then walk its items from
  *  the cursor in batches of 8. Each batch is matched (one `player.py match`
  *  process), its accepted tracks are added to the playlist at their source
- *  positions, the items are saved and the cursor moves on. A crash between
- *  those steps only repeats one batch: re-adding a track is a no-op.
+ *  positions (or liked, for a `kind: 'liked'` transfer), the items are saved
+ *  and the cursor moves on. A crash between those steps only repeats one
+ *  batch: re-adding a track and re-liking one are both no-ops.
+ *
+ *  A transfer can be thousands of songs, so every ten batches it checks for
+ *  a job that arrived after it and, if there is one, hands itself back to
+ *  the queue at its cursor.
  *
  *  YouTube Music answers rapid searches with 503, so batches are paced, and
  *  a failed batch waits 5 s, 20 s, 60 s before trying again; after that the
@@ -14,12 +19,14 @@
  *  through `RunnerDeps`, so the unit tests drive it with fakes. */
 
 import type { Track } from '@/types/track';
-import type { ImportCandidate, ImportSourceKind, MatchResult, SourceItem } from '@/lib/import/types';
+import type { ImportCandidate, ImportSourceKind, JobKind, MatchResult, SourceItem } from '@/lib/import/types';
 import {
   BACKOFF_MS,
   BATCH_SIZE,
+  MAX_PACE_MS,
   PACE_MS,
   STALE_MS,
+  YIELD_AFTER_BATCHES,
   playlistPosition,
   transition,
   type JobStatus,
@@ -31,7 +38,13 @@ export interface RunnerJob {
   cursor: number;
   total: number;
   source: ImportSourceKind;
-  playlistId: string;
+  kind: JobKind;
+  /** Null for a transfer: its songs become likes, not playlist rows. */
+  playlistId: string | null;
+  /** Whose likes a transfer fills. */
+  userId: string;
+  /** Transfers only: accepted songs already in the person's likes. */
+  existing: number;
 }
 
 export interface PendingItem {
@@ -41,6 +54,8 @@ export interface PendingItem {
   /** Filled in advance for a YouTube Music playlist: its own tracks, so no
    *  search is needed. Empty for Spotify items. */
   candidates: ImportCandidate[];
+  /** Transfers only: when the like this song becomes is dated. */
+  likedAt: number | null;
 }
 
 export interface ItemResult {
@@ -50,6 +65,7 @@ export interface ItemResult {
   videoId: string | null;
   confidence: number | null;
   candidates: ImportCandidate[];
+  likedAt: number | null;
 }
 
 export interface JobCounts {
@@ -64,7 +80,11 @@ export interface JobPatch extends Partial<JobCounts> {
   error?: string;
   /** Epoch ms, or null to clear. */
   retryAt?: number | null;
-  heartbeat?: number;
+  /** Epoch ms, or null to clear (a job that let go of its runner). */
+  heartbeat?: number | null;
+  /** The runner holding the job; empty to let go. */
+  runner?: string;
+  existing?: number;
 }
 
 export interface JobStore {
@@ -80,6 +100,11 @@ export interface JobStore {
   saveResults(results: ItemResult[]): Promise<void>;
   /** Add a track at a playlist position. Already there: a no-op. */
   addTrack(playlistId: string, position: number, track: Track): Promise<void>;
+  /** Like a track for a transfer. `created` is false when the person had
+   *  already liked it, which the Done summary counts separately. */
+  like(userId: string, track: Track, likedAt: number | null): Promise<{ created: boolean }>;
+  /** Is any other job waiting? A long transfer steps aside when one is. */
+  hasOtherQueued(jobId: string): Promise<boolean>;
   counts(jobId: string): Promise<JobCounts>;
 }
 
@@ -148,6 +173,11 @@ export class ImportRunner {
     const { store, sleep, now } = this.deps;
     const backoff = this.deps.backoffMs ?? BACKOFF_MS;
     let failures = 0;
+    let batches = 0;
+    // Doubled after a backoff, for the rest of this job only: a source that
+    // is having a bad evening is worth going slower for, but the next job
+    // starts fresh.
+    let pace = this.deps.paceMs ?? PACE_MS;
     for (;;) {
       const fresh = await store.getJob(job.id);
       // Cancelled, deleted with its playlist, or handed back to the queue.
@@ -197,13 +227,20 @@ export class ImportRunner {
           retryAt: null,
           heartbeat: now(),
         });
+        pace = Math.min(pace * 2, MAX_PACE_MS);
         continue;
       }
       failures = 0;
 
-      // Source order: each accepted track lands at its own position.
+      // A transfer likes what it accepted; a playlist import puts each
+      // accepted track at its own source position.
+      let alreadyLiked = 0;
       for (const r of results) {
-        if (r.status === 'accepted' && r.candidates[0]) {
+        if (r.status !== 'accepted' || !r.candidates[0]) continue;
+        if (job.kind === 'liked') {
+          const { created } = await store.like(job.userId, r.candidates[0].track, r.likedAt);
+          if (!created) alreadyLiked += 1;
+        } else if (job.playlistId) {
           await store.addTrack(job.playlistId, playlistPosition(r.position), r.candidates[0].track);
         }
       }
@@ -211,11 +248,22 @@ export class ImportRunner {
       const counts = await store.counts(job.id);
       await store.updateJob(job.id, {
         ...counts,
+        ...(job.kind === 'liked' ? { existing: fresh.existing + alreadyLiked } : {}),
         cursor: items[items.length - 1].position + 1,
         heartbeat: now(),
       });
 
-      if (searched) await sleep(this.deps.paceMs ?? PACE_MS);
+      // A transfer can be thousands of songs, so it steps aside now and then
+      // for whoever came after it. The cursor is already saved, and
+      // claimNext still sorts by age, so it comes back once they are done.
+      batches += 1;
+      if (job.kind === 'liked' && batches % YIELD_AFTER_BATCHES === 0 && (await store.hasOtherQueued(job.id))) {
+        this.deps.log?.('transfer yielded to a waiting import', { job: job.id, batches });
+        await store.updateJob(job.id, { status: transition('running', 'yield'), heartbeat: null, runner: '' });
+        return;
+      }
+
+      if (searched) await sleep(pace);
     }
   }
 
@@ -236,6 +284,7 @@ export class ImportRunner {
           videoId: item.candidates[0].track.sourceId,
           confidence: item.candidates[0].score,
           candidates: item.candidates,
+          likedAt: item.likedAt,
         };
       }
       return {
@@ -245,6 +294,7 @@ export class ImportRunner {
         videoId: m.status === 'accepted' ? (m.candidates[0]?.track.sourceId ?? null) : null,
         confidence: m.confidence,
         candidates: m.candidates,
+        likedAt: item.likedAt,
       };
     });
   }

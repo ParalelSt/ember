@@ -10,6 +10,8 @@ const { ImportBanner } = await import('./ImportBanner');
 
 const job = (over: Partial<ImportJob>): ImportJob => ({
   id: 'j',
+  userId: 'u1',
+  kind: 'playlist',
   playlistId: 'p',
   name: 'n',
   source: 'spotify',
@@ -21,6 +23,7 @@ const job = (over: Partial<ImportJob>): ImportJob => ({
   accepted: 36,
   review: 4,
   missing: 2,
+  existing: 0,
   error: null,
   retryAt: null,
   dismissed: false,
