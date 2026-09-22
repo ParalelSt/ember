@@ -8,6 +8,7 @@ import contextlib
 import concurrent.futures
 from pathlib import Path
 from ytmusicapi import YTMusic
+from ytmusicapi import setup as ytmusicapi_setup
 import yt_dlp
 from ffmpeg_path import ffmpeg_exe
 
@@ -901,6 +902,142 @@ def cmd_match(args):
         results.append([to_candidate_json(h) for h in hits])
     json.dump({"results": results, "failed": failed}, sys.stdout)
 
+# ============= LIKED SONGS (the person's own YouTube Music library) =============
+# The one command that handles somebody's Google session, so it is the one
+# command with rules of its own:
+#   - the headers arrive on STDIN, never in argv (ps shows argv to every
+#     process on the host)
+#   - they are never written to disk: no browser.json, no cache, nothing
+#   - nothing derived from them is ever printed, on any path. Every failure
+#     prints one of the fixed sentences in LIKED_ERRORS, never repr(e), so a
+#     library that puts a request (headers and all) in its exception message
+#     cannot leak it through stderr into a log line or a bug report.
+# Called only by apps/web/app/api/import/liked/ytmusic/route.ts, one shot per
+# transfer; the headers live in memory for that call and are dropped with the
+# process.
+
+LIKED_MAX_ITEMS = 10000
+
+# ytmusicapi's own requirement (auth/browser.py): a /browse request's Cookie
+# line plus the authuser it was made as.
+LIKED_REQUIRED_HEADERS = ("cookie", "x-goog-authuser")
+
+LIKED_ERRORS = {
+    "auth": (
+        "Ember could not read your YouTube Music library with those headers. "
+        "Copy them again from a tab where you are signed in to music.youtube.com."
+    ),
+    "network": "YouTube Music did not answer. Wait a minute and try again.",
+    "parse": "Ember could not read the liked songs YouTube Music sent back.",
+}
+
+
+def missing_liked_headers(raw):
+    """Header names ytmusicapi needs that the paste does not have. Only names
+    are returned, never a value, so the answer is safe to print."""
+    lowered = (raw or "").lower()
+    missing = [h for h in LIKED_REQUIRED_HEADERS if not re.search(rf"(?:^|\n)\s*{h}\s*:", lowered)]
+    # "apisid" catches SAPISID and __Secure-3PAPISID, the two names that
+    # actually identify the account.
+    if "cookie" not in missing and not re.search(r"apisid|__secure-\w*psid", lowered):
+        # A Cookie line from a logged-out tab: present, but nothing in it
+        # identifies the person.
+        missing.append("cookie (signed in)")
+    return missing
+
+
+def liked_error_kind(e):
+    """Sort a failure into what the person can do about it. The exception is
+    read here and printed nowhere."""
+    name = type(e).__name__
+    text = str(e).lower()
+    # A bare number in a message means nothing (a user agent has plenty), so
+    # a status code only counts when something calls it one.
+    m = re.search(r"(?:http|status)(?:\s*(?:error|code))?\D{0,3}(\d{3})\b", text)
+    code = int(m.group(1)) if m else 0
+    if name in ("YTMusicUserError", "PermissionError") or code in (401, 403) or any(
+        w in text for w in ("unauthorized", "not authenticated", "missing in your headers", "sign in")
+    ):
+        return "auth"
+    if code == 429 or 500 <= code <= 599 or any(
+        w in text for w in ("timed out", "timeout", "connection refused", "connection reset", "unreachable",
+                            "temporarily unavailable", "failed to resolve", "name resolution")
+    ):
+        return "network"
+    return "parse"
+
+
+def to_liked_json(t):
+    """One liked song, flat. Shaped for the transfer route rather than for the
+    player: it names the exact video, so the import needs no search."""
+    artist_objs = [a for a in (t.get("artists") or []) if isinstance(a, dict) and a.get("name")]
+    album_obj = t.get("album") or {}
+    thumbs = t.get("thumbnails") or []
+    video_type = t.get("videoType") or ""
+    return {
+        "videoId": t.get("videoId"),
+        "title": t.get("title"),
+        "artists": [a["name"] for a in artist_objs],
+        "artistId": artist_objs[0].get("id") if artist_objs else None,
+        "album": album_obj.get("name") if isinstance(album_obj, dict) else None,
+        "durationSec": t.get("duration_seconds") or parse_length(t.get("duration")) or 0,
+        "artworkUrl": thumbs[-1].get("url") if thumbs else None,
+        "videoType": video_type.replace("MUSIC_VIDEO_TYPE_", "") or None,
+        # YouTube Music does not say when a song was liked, so this is always
+        # null and Ember dates the likes from their order instead
+        # (apps/web/lib/import/likedAt.ts). Kept in the shape for the sources
+        # that do say (Last.fm, Deezer).
+        "likedAt": None,
+        "setVideoId": t.get("setVideoId"),
+    }
+
+
+def liked_songs(raw_headers, limit=LIKED_MAX_ITEMS):
+    """The whole Liked Music list, newest first. ytmusicapi pages through the
+    continuations itself; asking for one more than the cap is how a library
+    bigger than a transfer may carry is noticed."""
+    auth = ytmusicapi_setup(headers_raw=raw_headers)
+    yt_auth = YTMusic(auth=auth)
+    playlist = yt_auth.get_liked_songs(limit + 1) or {}
+    items = []
+    for t in playlist.get("tracks") or []:
+        if not isinstance(t, dict) or not t.get("videoId"):
+            continue
+        # A song blocked where the host is cannot be played, so liking it
+        # would only put a dead row in the library.
+        if t.get("isAvailable") is False:
+            continue
+        items.append(to_liked_json(t))
+    truncated = len(items) > limit
+    return {"items": items[:limit], "count": min(len(items), limit), "truncated": truncated}
+
+
+def cmd_liked(args):
+    """The person's YouTube Music likes, read with the headers on stdin.
+    Prints {items, count, truncated}, or {error, kind} where kind is one of
+    auth, network, parse. Exit code stays 0 either way: the error belongs in
+    the JSON, where the route can turn it into a sentence, not in a stderr
+    traceback."""
+    try:
+        if not args.auth_stdin:
+            raise ValueError("liked needs --auth-stdin")
+        raw = sys.stdin.read()
+        missing = missing_liked_headers(raw)
+        if missing:
+            json.dump(
+                {"error": f"{LIKED_ERRORS['auth']} Missing: {', '.join(missing)}.", "kind": "auth"},
+                sys.stdout,
+            )
+            return
+        result = liked_songs(raw)
+        del raw
+    except Exception as e:  # noqa: BLE001 - every failure is a fixed sentence
+        kind = liked_error_kind(e)
+        json.dump({"error": LIKED_ERRORS[kind], "kind": kind}, sys.stdout)
+        return
+    json.dump(result, sys.stdout)
+
+
 def cmd_interactive():
     """Original behavior: prompt → search → download → play."""
     query = input("Search for a song: ")
@@ -954,6 +1091,11 @@ def main():
     p_ytpl = sub.add_parser("ytplaylist", help="Public YT Music playlist → {title, tracks}. Prints JSON.")
     p_ytpl.add_argument("playlist_id")
 
+    p_liked = sub.add_parser("liked", help="The caller's own YT Music liked songs. Headers on stdin. Prints JSON.")
+    # A flag, not a value: the credentials must never be reachable from argv.
+    p_liked.add_argument("--auth-stdin", action="store_true", required=True,
+                         help="Read the browser request headers from stdin (the only way in)")
+
     p_match = sub.add_parser("match", help='Top 5 YT Music candidates per "title<TAB>artist" query. Prints JSON.')
     p_match.add_argument("--title-only", action="store_true", help="Search the title alone, ignore_spelling on")
     p_match.add_argument("queries", nargs="+")
@@ -980,6 +1122,8 @@ def main():
         cmd_track(args)
     elif args.cmd == "ytplaylist":
         cmd_ytplaylist(args)
+    elif args.cmd == "liked":
+        cmd_liked(args)
     elif args.cmd == "match":
         cmd_match(args)
     else:

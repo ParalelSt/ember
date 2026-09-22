@@ -1,3 +1,4 @@
+import { redactSecrets } from '@/lib/import/redact';
 import type { ServerLogEntry } from './types';
 
 /** Defensive scrubber for log payloads before they leave the device. Strips
@@ -37,7 +38,11 @@ export function scrubText(text: string): string {
   return text
     .split('\n')
     .map((line) => {
-      let out = line;
+      // Session cookies first (lib/import/redact.ts): a transfer from
+      // YouTube Music puts a Google session through this app, and a cookie
+      // name the generic rules below do not know must not survive into a bug
+      // report.
+      let out = redactSecrets(line, SCRUBBED_MARKER);
       out = out.replace(BEARER_RE, `bearer ${SCRUBBED_MARKER}`);
       out = out.replace(COOKIE_HEADER_RE, (m, name) => `${name}: ${SCRUBBED_MARKER}`);
       out = out.replace(PB_AUTH_RE, `pb_auth=${SCRUBBED_MARKER}`);
