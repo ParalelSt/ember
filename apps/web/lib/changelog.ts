@@ -21,6 +21,18 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    id: 'native-voice-search',
+    version: '0.4.0',
+    date: '2026-09-22',
+    title: 'Voice search in the apps',
+    summary: 'The mic in the search box now works in the Android app and on the desktop, using your device\'s own speech recognition.',
+    bullets: [
+      'Tap the mic and speak; the words fill the search box as you say them, and the search runs when you stop.',
+      'Android uses the phone\'s own recognizer, macOS uses Apple\'s (on the device where it can), Windows uses Microsoft\'s and needs the Online speech recognition setting turned on.',
+      'The first use asks for microphone access. Older app builds show a note to update.',
+    ],
+  },
+  {
     id: 'guitar-tabs',
     version: '0.4.0',
     date: '2026-09-20',

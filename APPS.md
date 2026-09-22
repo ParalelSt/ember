@@ -3,6 +3,9 @@
 The Android and desktop apps are **thin webview shells around the live server**
 (they load `EMBER_APP_URL`; nothing is bundled). Native extras: background
 audio + media notification on Android, Rust audio + media keys on desktop.
+Voice search in both uses the OS recognizer (Android `SpeechRecognizer`,
+macOS `SFSpeechRecognizer`, Windows `Windows.Media.SpeechRecognition`): see
+the "Voice search" sections in `apps/desktop/README.md` and `apps/mobile/README.md`.
 
 ## Get builds from CI (easiest)
 

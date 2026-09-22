@@ -88,6 +88,56 @@ The server URL is baked in from the repo variable `EMBER_APP_URL`
 your PC" on first run — *More info* → *Run anyway*. Silencing that needs an
 Authenticode certificate, which costs real money per year.
 
+## Voice search
+
+The mic in the search box uses the operating system's own recognizer; the
+WebView's `webkitSpeechRecognition` is never used inside the app (WebView2
+exposes it but every session fails with `network`, WKWebView has none).
+The web app talks to Rust through four commands, `speech_available`,
+`speech_start` (`lang`), `speech_stop` and `speech_abort`, and listens for
+`speech:partial` / `speech:final` (`{ text }`), `speech:error`
+(`{ kind, detail }`) and `speech:end`. All four commands are listed in
+`permissions/app-commands.toml`: without that the remote origin gets "not
+allowed by ACL", which the web app shows as "Update the Ember app to use voice
+search." (the same toast an older desktop build gets).
+
+| | Recognizer | Needs |
+|---|---|---|
+| macOS | `SFSpeechRecognizer` + `AVAudioEngine`, on the device where Apple has the language model, Apple's server otherwise | Speech Recognition and Microphone permission (two prompts on first use) |
+| Windows | `Windows.Media.SpeechRecognition` dictation | Settings, Privacy & security, Speech: **Online speech recognition** on; Microphone: **Let desktop apps access your microphone** on |
+| Linux | none (the mic toast says voice search isn't available on this device) | |
+
+**macOS bundle requirements.** macOS only grants the mic and speech to a
+validly signed bundle that declares why it wants them:
+
+- `src-tauri/Info.plist` (merged into the bundle's plist) carries
+  `NSMicrophoneUsageDescription` and `NSSpeechRecognitionUsageDescription`.
+- `src-tauri/entitlements.plist` carries `com.apple.security.device.audio-input`;
+  the hardened runtime blocks the mic without it.
+- `tauri.conf.json` sets `bundle.macOS.signingIdentity` to `"-"` (ad-hoc).
+  Before this the bundle had only the linker's signature on the binary and none
+  on the bundle ("code has no resources but signature indicates they must be
+  present"), which TCC refuses and which also crashed NSOpenPanel (the bug
+  report screenshot picker). A real Developer ID from `APPLE_SIGNING_IDENTITY`
+  (CI, `scripts/build-mac.sh`) is what release builds should sign with; the
+  build output's "Signing with identity ..." line says which one was used.
+  Ad-hoc bundles still need right-click, Open on other Macs.
+
+Check a built bundle:
+
+```sh
+cd src-tauri/target/release/bundle/macos
+codesign --verify --deep --strict --verbose=2 Ember.app      # valid on disk, satisfies its Designated Requirement
+codesign -d --entitlements - Ember.app | grep audio-input
+plutil -p Ember.app/Contents/Info.plist | grep Usage
+```
+
+**Windows.** Dictation is a cloud grammar, so `onDevice` is always false and
+the **Online speech recognition** privacy switch must be on; when it is off
+the app says exactly that ("Turn on Online speech recognition in Windows
+Settings ..."). The desktop log records `speech: available=<bool> onDevice=<bool>`
+at startup.
+
 ### Platform feature parity
 
 | | macOS | Windows | Linux |

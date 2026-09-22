@@ -207,6 +207,36 @@ Evidence to collect, since the interesting state is not on screen:
 `run-as app.ember.music ls -l files/offline/audio files/offline/art` for what
 actually reached disk.
 
+## Voice search (Android)
+
+The mic in the search box uses Android's own `SpeechRecognizer` (the default
+recognizer, which Google runs on the device where it can), never the
+WebView's `webkitSpeechRecognition` (it exists but every session fails with
+`network`). It needs, in `AndroidManifest.xml`:
+
+- `<uses-permission android:name="android.permission.RECORD_AUDIO" />`, asked
+  for at the first mic tap. Denied gives the toast "Allow microphone access to
+  use voice search."
+- a top-level `<queries><intent><action android:name="android.speech.RecognitionService" /></intent></queries>`:
+  without it Android 11+ package visibility hides the recognizer and
+  `isRecognitionAvailable` is false.
+
+The native `EmberSpeech` Capacitor plugin (registered in `MainActivity.java`,
+reached from the web app as `window.Capacitor.Plugins.EmberSpeech`):
+
+| | |
+|---|---|
+| `available()` | `{ available, onDevice }` |
+| `start({ lang })` | starts listening; rejects with `code` = `permission-denied` or `unavailable` when it cannot |
+| `stop()` | stop capturing; the final result still arrives |
+| `abort()` | drop everything; only `end` follows |
+| events | `partial { text }`, `final { text }`, `error { kind, detail? }`, `end {}` |
+
+`kind` is one of `permission-denied`, `unavailable`, `network`, `no-speech`
+(silence, no toast), `aborted`. An APK from before voice search has no
+`EmberSpeech` plugin, and the mic then says "Update the Ember app to use voice
+search."
+
 ## Prerequisites
 
 ### Android
