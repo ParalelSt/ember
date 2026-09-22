@@ -730,7 +730,10 @@ export const MOCK_NOT_LINED_CONFIDENCE = 41;
  *  exist on ImportJob yet (Task 2); the banner only reads the name. */
 export const MOCK_TRANSFER_JOB_RUNNING = {
   id: 'transfer-mock',
-  playlistId: '',
+  userId: 'mock-user',
+  kind: 'liked' as const,
+  existing: 21,
+  playlistId: null,
   name: 'your Spotify data export',
   source: 'spotify' as const,
   sourceUrl: '',
@@ -773,6 +776,7 @@ export const MOCK_TRANSFER_REVIEW_ITEMS = [
       uri: null,
     },
     videoId: null,
+    likedAt: null,
     confidence: 62,
     candidates: [
       {
@@ -807,6 +811,7 @@ export const MOCK_TRANSFER_REVIEW_ITEMS = [
       uri: null,
     },
     videoId: null,
+    likedAt: null,
     confidence: null,
     candidates: [
       {
