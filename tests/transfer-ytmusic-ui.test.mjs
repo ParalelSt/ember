@@ -1,7 +1,8 @@
 /** Transfer: YouTube Music likes, straight from the account, in a real
- *  browser. Settings > Library > Transfer > Liked songs > the YouTube Music
- *  tab: paste fake request headers, Preview, Start, and land on the Liked
- *  page with the transfer running. Sibling to transfer-ytmusic.test.mjs
+ *  browser. Settings > Library > Transfer > Liked songs > YouTube Music >
+ *  "I am on a computer and do not mind a technical step": paste fake request
+ *  headers, Preview, Start, and land on the Liked page with the transfer
+ *  running. Sibling to transfer-ytmusic.test.mjs
  *  (which drives the route directly) and transfer-ui.test.mjs (the file
  *  upload path in a browser); this one is the dialog path for the account
  *  route.
@@ -121,13 +122,16 @@ try {
   await page.waitForSelector('[data-testid="transfer-dialog"]');
   await page.click('[data-testid="transfer-destination-card"][data-destination="liked"]');
   await page.waitForSelector('[data-testid="transfer-chosen-destination"]');
-  const tabs = await page.$$eval('[role="tab"]', (els) => els.map((e) => e.textContent));
-  check('A1 the YouTube Music tab is offered once Liked songs is chosen', tabs.includes('YouTube Music'), JSON.stringify(tabs));
-  await page.click('role=tab[name="YouTube Music"]');
+  await page.click('[data-testid="transfer-service-card"][data-service="ytmusic"]');
+  const options = await page.$$eval('[data-testid="transfer-have-option"]', (els) => els.map((e) => e.textContent));
+  check('A1 the account read is one of the two answers once Liked songs is chosen',
+    options.includes('I am on a computer and do not mind a technical step'), JSON.stringify(options));
+  await page.click('[data-testid="transfer-have-option"][data-route="ytmusic-account"]');
   await page.waitForSelector('[aria-label="Your YouTube Music request headers"]');
   const stepsText = await page.textContent('[data-testid="transfer-dialog"]');
   check('A2 the steps and the used-once note are on screen', /music\.youtube\.com/.test(stepsText ?? '') && /uses it once/.test(stepsText ?? ''), '');
-  await shot(page, 'ytmusic-tab');
+  check('A3 and it says there is nothing to look up by name', /nothing to look up by name/.test(stepsText ?? ''));
+  await shot(page, 'ytmusic-steps');
 
   // ── B. Paste, Preview ──
   const previewButton = page.getByRole('button', { name: /^Preview$/ });
@@ -165,7 +169,8 @@ try {
   });
   await page.waitForSelector('[data-testid="transfer-dialog"]');
   await page.click('[data-testid="transfer-destination-card"][data-destination="liked"]');
-  await page.click('role=tab[name="YouTube Music"]');
+  await page.click('[data-testid="transfer-service-card"][data-service="ytmusic"]');
+  await page.click('[data-testid="transfer-have-option"][data-route="ytmusic-account"]');
   const leftover = await page.inputValue('[aria-label="Your YouTube Music request headers"]');
   check('E1 the pasted headers are gone: cleared once the transfer started', leftover === '', `"${leftover}"`);
 

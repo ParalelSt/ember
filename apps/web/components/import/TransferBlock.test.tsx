@@ -86,15 +86,17 @@ describe('TransferBlock', () => {
   it('when it is finished: the summary counts what was already liked, and the block renames itself', () => {
     setup(job({ status: 'done', cursor: 1200, accepted: 1042, review: 61, missing: 18 }));
     expect(screen.getByTestId('import-summary')).toHaveTextContent('Transfer finished');
-    expect(screen.getByTestId('import-count-added')).toHaveTextContent('1042 added');
-    expect(screen.getByTestId('import-count-already-liked')).toHaveTextContent('21 already liked');
+    expect(screen.getByTestId('transfer-result')).toHaveTextContent(
+      'We found 1042 songs. 61 need a quick check, 18 we could not find, 21 you already had.',
+    );
     expect(screen.getByTestId('transferring-block')).toHaveTextContent('Still to sort out');
   });
 
   it('a playlist import never claims songs were already liked', () => {
     setup(job({ kind: 'playlist', playlistId: 'p1', status: 'done', existing: 0 }));
     expect(screen.getByTestId('import-summary')).toHaveTextContent('Import finished');
-    expect(screen.queryByTestId('import-count-already-liked')).toBeNull();
+    expect(screen.queryByTestId('transfer-result')).toBeNull();
+    expect(screen.queryByText(/already had/)).toBeNull();
   });
 
   it('nothing left over: the banner alone', () => {

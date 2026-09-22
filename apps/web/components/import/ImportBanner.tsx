@@ -2,6 +2,7 @@ import { Button } from '@/components/ui/button';
 import { ProgressRing } from '@/components/primitives/ProgressRing';
 import { CloseIcon, RefreshIcon, ReviewIcon } from '@/components/icons';
 import { SOURCE_PHRASE } from '@/components/import/parts';
+import { plainTransferResult } from '@/lib/import/transferCopy';
 import type { ImportJob } from '@/lib/import/types';
 import { cn } from '@/lib/utils';
 
@@ -80,13 +81,11 @@ export function ImportBanner({ job, toReview, busy = false, onStop, onRetry, onR
     );
   }
 
+  // A transfer says what happened as a sentence, the same plain words the
+  // dialog asked its questions in. A playlist import keeps its four
+  // counters: that page is about the playlist, not about a person's likes.
   const stats: { n: number; label: string; tone: string }[] = [
     { n: job.accepted, label: 'added', tone: 'text-foreground' },
-    // Only a transfer can meet a song the person already liked, and saying
-    // "0 already liked" on every other one would be noise.
-    ...(job.kind === 'liked' && job.existing > 0
-      ? [{ n: job.existing, label: 'already liked', tone: 'text-muted-foreground' }]
-      : []),
     { n: job.review, label: 'need review', tone: 'text-ember' },
     { n: job.missing, label: 'not found', tone: 'text-muted-foreground' },
   ];
@@ -100,13 +99,19 @@ export function ImportBanner({ job, toReview, busy = false, onStop, onRetry, onR
         <div className="text-sm font-medium">
           {job.status === 'cancelled' ? `${noun} stopped at ${job.cursor} of ${job.total}` : `${noun} finished`}
         </div>
-        <div className="mt-inset flex flex-wrap gap-x-block gap-y-inset text-sm">
-          {stats.map((s) => (
-            <span key={s.label} data-testid={`import-count-${s.label.replace(' ', '-')}`} className="tabular-nums">
-              <span className={cn('font-semibold', s.tone)}>{s.n}</span> <span className="text-muted-foreground">{s.label}</span>
-            </span>
-          ))}
-        </div>
+        {job.kind === 'liked' ? (
+          <p data-testid="transfer-result" className="mt-inset text-sm text-muted-foreground tabular-nums">
+            {plainTransferResult({ found: job.accepted, check: job.review, notFound: job.missing, existing: job.existing })}
+          </p>
+        ) : (
+          <div className="mt-inset flex flex-wrap gap-x-block gap-y-inset text-sm">
+            {stats.map((s) => (
+              <span key={s.label} data-testid={`import-count-${s.label.replace(' ', '-')}`} className="tabular-nums">
+                <span className={cn('font-semibold', s.tone)}>{s.n}</span> <span className="text-muted-foreground">{s.label}</span>
+              </span>
+            ))}
+          </div>
+        )}
       </div>
       <div className="flex items-center gap-cluster">
         <Button onClick={onReview} disabled={toReview === 0} className="bg-ember text-white hover:bg-ember-soft max-md:flex-1">

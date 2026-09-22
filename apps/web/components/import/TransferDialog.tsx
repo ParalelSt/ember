@@ -13,27 +13,28 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { ChevronLeftIcon, HeartIcon, LinkIcon, QueueIcon, UploadIcon } from '@/components/icons';
+import { AlertIcon, ChevronLeftIcon, HeartIcon, LinkIcon, QueueIcon, UploadIcon } from '@/components/icons';
 import { LinkPreview } from '@/components/import/LinkPreview';
 import { api } from '@/lib/api';
 import { QK } from '@/hooks/useLibrary';
 import { IMPORT_QK } from '@/hooks/useImports';
+import { useIsDesktop } from '@/hooks/useIsDesktop';
 import { logger } from '@/lib/logger/client';
 import { parseImportUrl } from '@/lib/import/url';
 import { OVER_CAP_MESSAGE, transferErrorMessage, ytmusicLikedErrorMessage } from '@/lib/import/transferCopy';
 import {
-  YTMUSIC_HEADERS_DESKTOP_ONLY,
-  YTMUSIC_HEADERS_NOTE,
-  YTMUSIC_HEADERS_STEPS,
-} from '@/lib/import/sources/ytmusicLiked';
+  routesFor,
+  serviceById,
+  TRANSFER_SERVICES,
+  type TransferRoute,
+  type TransferServiceId,
+} from '@/lib/import/transferRoutes';
+import { YTMUSIC_HEADERS_NOTE } from '@/lib/import/sources/ytmusicLiked';
 import type { JobKind, ImportSourceKind } from '@/lib/import/types';
 import type { TransferPreview } from '@/app/api/import/upload/route';
-import { cn } from '@/lib/utils';
 
 /** Wait this long after typing stops before reading a pasted list or link. */
 const LOOKUP_DELAY_MS = 400;
-
-type SourceTab = 'file' | 'paste' | 'link' | 'ytmusic';
 
 const DESTINATIONS: { id: JobKind; name: string; consequence: string; icon: typeof HeartIcon }[] = [
   {
@@ -49,35 +50,6 @@ const DESTINATIONS: { id: JobKind; name: string; consequence: string; icon: type
     icon: QueueIcon,
   },
 ];
-
-const TABS: { id: SourceTab; label: string; help: string }[] = [
-  {
-    id: 'file',
-    label: 'Upload a file',
-    help:
-      'Your Spotify data export (Account, then Privacy settings, then Download your data): upload the YourLibrary.json inside it, unzipped. A CSV from Exportify, Soundiiz, TuneMyMusic or Apple’s export works as it is.',
-  },
-  {
-    id: 'paste',
-    label: 'Paste a list',
-    help: 'One song a line, written "Artist - Title". Numbering and lengths at the end of a line are ignored.',
-  },
-  {
-    id: 'link',
-    label: 'Paste a link',
-    help:
-      'A public Spotify playlist link, or a YouTube Music playlist link. Spotify cannot share Liked Songs, so copy them into a public playlist first.',
-  },
-];
-
-/** Only offered once the destination is Liked songs: the route always lands
- *  its songs in the likes, so it makes no sense as a way to build a
- *  playlist. */
-const YTMUSIC_TAB: { id: SourceTab; label: string; help: string } = {
-  id: 'ytmusic',
-  label: 'YouTube Music',
-  help: 'Your liked songs, straight from your YouTube Music account: no file, no list.',
-};
 
 /** A link Ember looked up, flattened so both kinds of source render the
  *  same preview card. */
@@ -105,16 +77,20 @@ export interface TransferDialogProps {
   from?: string;
 }
 
-/** Bring songs liked somewhere else into Ember. Two steps: where they land
- *  (two cards, because "these become your likes" is a consequence worth
- *  reading before anything is uploaded), then where they come from (a file,
- *  a pasted list, or a playlist link) with a preview of what Ember read.
- *  Nothing starts until that preview is on screen. */
+/** Bring songs liked somewhere else into Ember, asked in plain words. Three
+ *  questions, each a fact rather than a judgement: where the songs should
+ *  land (two cards, because "these become your likes" is a consequence worth
+ *  reading before anything is uploaded), where the music is now, and what
+ *  the person already has in hand. Only the steps for that one combination
+ *  show, so nobody reads about CSVs unless a file is their way in. Nothing
+ *  starts until Ember has read the source and shown a preview of it. */
 export function TransferDialog({ open, onOpenChange, from = 'settings' }: TransferDialogProps) {
   const router = useRouter();
   const qc = useQueryClient();
+  const isDesktop = useIsDesktop();
   const [destination, setDestination] = useState<JobKind | null>(null);
-  const [tab, setTab] = useState<SourceTab>('file');
+  const [serviceId, setServiceId] = useState<TransferServiceId | null>(null);
+  const [routeId, setRouteId] = useState<string | null>(null);
   const [file, setFile] = useState<File | null>(null);
   const [text, setText] = useState('');
   const [url, setUrl] = useState('');
@@ -152,7 +128,8 @@ export function TransferDialog({ open, onOpenChange, from = 'settings' }: Transf
     setWasOpen(open);
     if (open) {
       setDestination(null);
-      setTab('file');
+      setServiceId(null);
+      setRouteId(null);
       setStarting(false);
       resetSource();
     } else {
@@ -166,6 +143,16 @@ export function TransferDialog({ open, onOpenChange, from = 'settings' }: Transf
     asked.current = '';
     if (fileInput.current) fileInput.current.value = '';
   }, [open]);
+
+  const service = serviceId ? serviceById(serviceId) : null;
+  // What this service can still offer for the chosen destination: the
+  // YouTube Music account read always lands in the likes, so a new playlist
+  // never sees it. One way in is no question at all, so it is taken as read.
+  const choices = service && destination ? routesFor(service, destination) : [];
+  const route: TransferRoute | null = choices.find((r) => r.id === routeId) ?? (choices.length === 1 ? choices[0] : null);
+  // No phone browser has developer tools, so the account read is impossible
+  // here. Said plainly, with the other way in offered rather than a shrug.
+  const deadEnd = route !== null && route.desktopOnly === true && !isDesktop;
 
   const readFile = useCallback(async (chosen: File) => {
     const token = `file:${chosen.name}:${chosen.size}:${chosen.lastModified}`;
@@ -234,20 +221,21 @@ export function TransferDialog({ open, onOpenChange, from = 'settings' }: Transf
 
   // A pasted list and a pasted link both read themselves once typing stops;
   // a chosen file is read at once.
+  const kind = route?.kind ?? null;
   useEffect(() => {
-    if (tab === 'paste') {
+    if (kind === 'paste') {
       const body = text.trim();
       if (!body || asked.current === `text:${body}`) return;
       const t = setTimeout(() => void readText(body), LOOKUP_DELAY_MS);
       return () => clearTimeout(t);
     }
-    if (tab === 'link') {
+    if (kind === 'link') {
       const link = url.trim();
       if (!link || asked.current === `link:${link}` || !parseImportUrl(link)) return;
       const t = setTimeout(() => void readLink(link), LOOKUP_DELAY_MS);
       return () => clearTimeout(t);
     }
-  }, [tab, text, url, readText, readLink]);
+  }, [kind, text, url, readText, readLink]);
 
   const chooseFile = (e: ChangeEvent<HTMLInputElement>) => {
     const chosen = e.target.files?.[0] ?? null;
@@ -256,9 +244,25 @@ export function TransferDialog({ open, onOpenChange, from = 'settings' }: Transf
     else setLookup({ step: 'idle' });
   };
 
-  const switchTab = (next: SourceTab) => {
-    setTab(next);
+  const pickService = (id: TransferServiceId) => {
+    setServiceId(id);
+    setRouteId(null);
     clearSource();
+  };
+
+  const pickRoute = (id: string) => {
+    setRouteId(id);
+    clearSource();
+  };
+
+  /** One question back, whichever question that is. A service with a single
+   *  way in never asked "what do you have", so its steps go straight back to
+   *  the service cards. */
+  const back = () => {
+    clearSource();
+    if (route && choices.length > 1) setRouteId(null);
+    else if (service) setServiceId(null);
+    else setDestination(null);
   };
 
   // Over the cap, the upload route refuses the start, so the dialog says so
@@ -302,16 +306,19 @@ export function TransferDialog({ open, onOpenChange, from = 'settings' }: Transf
     }
   };
 
-  // The straight-from-the-account tab always lands in the likes, so it is
-  // only offered once that is the destination.
-  const tabs = destination === 'liked' ? [...TABS, YTMUSIC_TAB] : TABS;
-  const help = tabs.find((t) => t.id === tab)?.help ?? TABS[0].help;
+  const title = !destination
+    ? 'Transfer songs into Ember'
+    : !service
+      ? 'Where is your music now?'
+      : !route
+        ? 'What do you have already?'
+        : service.heading;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-2xl max-h-[90vh] flex flex-col" data-testid="transfer-dialog">
         <DialogHeader>
-          <DialogTitle>{destination ? 'Where are they now?' : 'Transfer songs into Ember'}</DialogTitle>
+          <DialogTitle>{title}</DialogTitle>
         </DialogHeader>
 
         {!destination ? (
@@ -324,13 +331,7 @@ export function TransferDialog({ open, onOpenChange, from = 'settings' }: Transf
                   type="button"
                   data-testid="transfer-destination-card"
                   data-destination={d.id}
-                  onClick={() => {
-                    setDestination(d.id);
-                    // The YouTube Music tab only exists for Liked songs: if
-                    // it was chosen going into a playlist instead, land back
-                    // on a tab that still exists.
-                    if (d.id !== 'liked' && tab === 'ytmusic') setTab('file');
-                  }}
+                  onClick={() => setDestination(d.id)}
                   className="flex flex-col gap-cluster rounded-lg border border-border bg-card p-block text-left transition-colors hover:border-ember hover:bg-accent/60"
                 >
                   <d.icon className="h-5 w-5 text-ember" />
@@ -341,45 +342,90 @@ export function TransferDialog({ open, onOpenChange, from = 'settings' }: Transf
             </div>
           </div>
         ) : (
-          <div className="flex min-h-0 flex-col gap-block">
+          <div className="flex min-h-0 flex-col gap-block overflow-y-auto">
             <div className="flex items-center gap-cluster text-xs text-muted-foreground">
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                className="text-muted-foreground"
-                onClick={() => {
-                  setDestination(null);
-                  clearSource();
-                }}
-              >
+              <Button type="button" variant="ghost" size="sm" className="text-muted-foreground" onClick={back}>
                 <ChevronLeftIcon className="h-3.5 w-3.5" />
                 Back
               </Button>
               <span data-testid="transfer-chosen-destination">
                 Going to {destination === 'liked' ? 'your Liked songs' : 'a new playlist'}
+                {service ? ` · ${service.name}` : ''}
               </span>
             </div>
 
-            <div role="tablist" aria-label="Where the songs come from" className="flex gap-stack border-b border-border">
-              {tabs.map((t) => (
-                <button
-                  key={t.id}
-                  type="button"
-                  role="tab"
-                  aria-selected={tab === t.id}
-                  onClick={() => switchTab(t.id)}
-                  className={cn(
-                    '-mb-px flex items-center gap-cluster border-b-2 pb-cluster text-sm font-medium transition-colors',
-                    tab === t.id ? 'border-ember text-foreground' : 'border-transparent text-muted-foreground hover:text-foreground',
-                  )}
-                >
-                  {t.label}
-                </button>
-              ))}
-            </div>
+            {!service && (
+              <div className="grid gap-row md:grid-cols-2">
+                {TRANSFER_SERVICES.map((s) => (
+                  <button
+                    key={s.id}
+                    type="button"
+                    data-testid="transfer-service-card"
+                    data-service={s.id}
+                    onClick={() => pickService(s.id)}
+                    className="rounded-lg border border-border bg-card p-block text-left text-sm font-semibold transition-colors hover:border-ember hover:bg-accent/60"
+                  >
+                    {s.name}
+                  </button>
+                ))}
+              </div>
+            )}
 
-            {tab === 'file' && (
+            {service && !route && (
+              <div className="flex flex-col gap-cluster" data-testid="transfer-have-options">
+                {choices.map((r) => (
+                  <button
+                    key={r.id}
+                    type="button"
+                    data-testid="transfer-have-option"
+                    data-route={r.id}
+                    onClick={() => pickRoute(r.id)}
+                    className="rounded-lg border border-border p-row text-left text-sm font-medium transition-colors hover:border-ember hover:bg-accent/40"
+                  >
+                    {r.whatYouHave}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {route && (
+              <div className="flex flex-col gap-cluster" data-testid="transfer-steps">
+                <ol className="flex flex-col gap-inset text-xs text-muted-foreground">
+                  {route.steps.map((step, i) => (
+                    <li key={i}>
+                      {i + 1}. {step}
+                    </li>
+                  ))}
+                </ol>
+                {route.notes.map((note) => (
+                  <p key={note} className="text-xs text-muted-foreground">
+                    {note}
+                  </p>
+                ))}
+              </div>
+            )}
+
+            {route && deadEnd && (
+              <div data-testid="transfer-dead-end" className="flex flex-col gap-row rounded-lg border border-border bg-card p-row">
+                <div className="flex items-center gap-cluster text-sm font-semibold">
+                  <AlertIcon className="h-4 w-4 text-muted-foreground" />
+                  This one needs a computer
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Those steps need a desktop browser, and this looks like a phone. Come back to this on a computer, or
+                  bring a playlist over instead.
+                </p>
+                {choices
+                  .filter((r) => r.id !== route.id && !r.desktopOnly)
+                  .map((r) => (
+                    <Button key={r.id} type="button" variant="secondary" size="sm" onClick={() => pickRoute(r.id)} className="self-start">
+                      {r.whatYouHave}
+                    </Button>
+                  ))}
+              </div>
+            )}
+
+            {route && !deadEnd && route.kind === 'file' && (
               <div className="flex flex-col gap-cluster">
                 <input
                   ref={fileInput}
@@ -401,7 +447,7 @@ export function TransferDialog({ open, onOpenChange, from = 'settings' }: Transf
               </div>
             )}
 
-            {tab === 'paste' && (
+            {route && !deadEnd && route.kind === 'paste' && (
               <textarea
                 autoFocus
                 aria-label="Your songs, one a line"
@@ -413,7 +459,7 @@ export function TransferDialog({ open, onOpenChange, from = 'settings' }: Transf
               />
             )}
 
-            {tab === 'link' && (
+            {route && !deadEnd && route.kind === 'link' && (
               <div className="relative">
                 <LinkIcon className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                 <Input
@@ -421,22 +467,14 @@ export function TransferDialog({ open, onOpenChange, from = 'settings' }: Transf
                   aria-label="Playlist link"
                   value={url}
                   onChange={(e) => setUrl(e.target.value)}
-                  placeholder="Paste a Spotify or YouTube Music playlist link"
+                  placeholder={serviceId === 'ytmusic' ? 'Paste the YouTube Music playlist link' : 'Paste the Spotify playlist link'}
                   className="truncate pl-10"
                 />
               </div>
             )}
 
-            {tab === 'ytmusic' && destination === 'liked' && (
+            {route && !deadEnd && route.kind === 'ytmusic' && (
               <div className="flex flex-col gap-cluster">
-                <ol className="flex flex-col gap-inset text-xs text-muted-foreground">
-                  {YTMUSIC_HEADERS_STEPS.map((step, i) => (
-                    <li key={i}>
-                      {i + 1}. {step}
-                    </li>
-                  ))}
-                </ol>
-                <p className="text-xs text-muted-foreground">{YTMUSIC_HEADERS_DESKTOP_ONLY}</p>
                 <textarea
                   aria-label="Your YouTube Music request headers"
                   data-testid="ytmusic-secret"
@@ -493,7 +531,6 @@ export function TransferDialog({ open, onOpenChange, from = 'settings' }: Transf
                 {lookup.message}
               </p>
             )}
-            {lookup.step === 'idle' && tab !== 'ytmusic' && <p className="text-xs text-muted-foreground">{help}</p>}
           </div>
         )}
 
@@ -501,7 +538,7 @@ export function TransferDialog({ open, onOpenChange, from = 'settings' }: Transf
           <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
-          {destination && (
+          {route && !deadEnd && (
             <Button
               type="button"
               disabled={!ready || starting}

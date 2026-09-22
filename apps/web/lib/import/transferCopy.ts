@@ -47,3 +47,29 @@ export function ytmusicLikedErrorMessage(e: unknown): string {
   const message = typeof err?.message === 'string' ? err.message.trim() : '';
   return message && !message.startsWith('Request failed') ? message : UNKNOWN_MESSAGE;
 }
+
+export interface TransferResultCounts {
+  /** Songs that landed, the transfer's own `accepted`. */
+  found: number;
+  /** Matched, but not well enough to trust: `review`. */
+  check: number;
+  /** Nothing plausible anywhere: `missing`. */
+  notFound: number;
+  /** Songs the person already had liked. Left out when there are none. */
+  existing?: number;
+}
+
+/** What a finished transfer says, as a sentence rather than four counters:
+ *  "We found 812 songs. 41 need a quick check, 6 we could not find." The
+ *  one route that never searches by name (YouTube Music, straight from the
+ *  account) has nothing to check, so it gets a sentence of its own. */
+export function plainTransferResult({ found, check, notFound, existing = 0 }: TransferResultCounts): string {
+  const bits: string[] = [];
+  if (check > 0) bits.push(`${check} ${check === 1 ? 'needs' : 'need'} a quick check`);
+  if (notFound > 0) bits.push(`${notFound} we could not find`);
+  if (existing > 0) bits.push(`${existing} you already had`);
+  const tail = bits.length > 0 ? ` ${bits.join(', ')}.` : '';
+  if (found === 0) return `We found none of your songs.${tail}`;
+  const songs = `${found} ${found === 1 ? 'song' : 'songs'}`;
+  return bits.length === 0 ? `We found all ${songs}. Nothing to check.` : `We found ${songs}.${tail}`;
+}

@@ -1,7 +1,9 @@
 /** Transfer in a real browser, end to end: Settings > Library, the Transfer
- *  row, the two destination cards, an uploaded CSV, its preview, Start, and
- *  the Liked songs page showing the transfer run (the sidebar ring, the
- *  progress banner, then the summary and the songs themselves).
+ *  row, then the three plain questions (where the songs land, where the
+ *  music is now, what you already have), an uploaded CSV, its preview,
+ *  Start, and the Liked songs page showing the transfer run (the sidebar
+ *  ring, the progress banner, then the plain-words summary and the songs
+ *  themselves).
  *
  *      node tests/transfer-ui.test.mjs
  *
@@ -123,8 +125,30 @@ try {
   await page.waitForSelector('[data-testid="transfer-chosen-destination"]');
   const chosen = await page.textContent('[data-testid="transfer-chosen-destination"]');
   check('B2 picking Liked songs opens the source step and says so', /Liked songs/.test(chosen ?? ''), `${chosen}`);
+
+  // ── B'. Where is your music now? ──
+  const services = await page.$$eval('[data-testid="transfer-service-card"]', (els) => els.map((e) => e.textContent));
+  check('B3 then it asks where the music is now, by name',
+    JSON.stringify(services) === '["Spotify","YouTube Music","Apple Music","Somewhere else"]', `${services}`);
+  await page.click('[data-testid="transfer-service-card"][data-service="spotify"]');
+
+  // ── B''. What do you have already? ──
+  const options = await page.$$eval('[data-testid="transfer-have-option"]', (els) => els.map((e) => e.textContent));
+  check('B4 and what is already in hand, not which route to take',
+    JSON.stringify(options) === JSON.stringify([
+      'A link to a playlist',
+      'A file someone gave me, or one I downloaded',
+      'Nothing yet, but I can wait a few days',
+    ]), `${options}`);
+  await shot(page, 'what-you-have');
+  await page.click('[data-testid="transfer-have-option"][data-route="spotify-converter"]');
+  await page.waitForSelector('[data-testid="transfer-steps"]');
+  const stepsText = await page.textContent('[data-testid="transfer-steps"]');
+  check('B5 only that one combination\u2019s steps show',
+    /Exportify/.test(stepsText ?? '') && !/Download your data/.test(stepsText ?? ''), `${(stepsText ?? '').slice(0, 120)}`);
+  check('B6 and the steps say songs are looked up by name', /looks each song up by name/.test(stepsText ?? ''));
   const startOffBefore = await page.getByRole('button', { name: /^Transfer$/ }).isDisabled();
-  check('B3 nothing can be started before Ember has read a source', startOffBefore);
+  check('B7 nothing can be started before Ember has read a source', startOffBefore);
 
   // ── C. An uploaded CSV, previewed before anything happens ──
   await page.setInputFiles('input[type="file"][aria-label="Song list file"]', FIXTURE);
@@ -155,7 +179,9 @@ try {
   // ── E. It finishes, and the songs are likes ──
   await page.waitForSelector('[data-testid="import-summary"]', { timeout: 60_000 });
   const summary = await page.textContent('[data-testid="import-summary"]');
-  check('E1 the summary says the transfer finished, with its counts', /Transfer finished/.test(summary ?? '') && /added/.test(summary ?? ''), `${(summary ?? '').slice(0, 160)}`);
+  check('E1 the summary says the transfer finished, in plain words',
+    /Transfer finished/.test(summary ?? '') && /We found \d+ songs?\.|We found all \d+ songs?\.|We found none of your songs\./.test(summary ?? ''),
+    `${(summary ?? '').slice(0, 160)}`);
   await page.waitForFunction(() => document.body.innerText.includes('Paper Lanterns'), null, { timeout: 30_000 });
   check('E2 a transferred song is in the likes list', (await page.textContent('body'))?.includes('Paper Lanterns') ?? false);
   await shot(page, 'done');

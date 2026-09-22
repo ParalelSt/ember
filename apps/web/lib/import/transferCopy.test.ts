@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { OVER_CAP_MESSAGE, RATE_LIMITED_MESSAGE, transferErrorMessage, UNKNOWN_MESSAGE } from './transferCopy';
+import {
+  OVER_CAP_MESSAGE,
+  plainTransferResult,
+  RATE_LIMITED_MESSAGE,
+  transferErrorMessage,
+  UNKNOWN_MESSAGE,
+} from './transferCopy';
 
 describe('transferErrorMessage', () => {
   it('passes the route’s own sentences through', () => {
@@ -32,5 +38,39 @@ describe('transferErrorMessage', () => {
 
   it('has no em dashes', () => {
     for (const s of [OVER_CAP_MESSAGE, RATE_LIMITED_MESSAGE, UNKNOWN_MESSAGE]) expect(s).not.toContain('—');
+  });
+});
+
+describe('plainTransferResult', () => {
+  it('says what happened as a sentence, the way the owner asked for it', () => {
+    expect(plainTransferResult({ found: 812, check: 41, notFound: 6 })).toBe(
+      'We found 812 songs. 41 need a quick check, 6 we could not find.',
+    );
+  });
+
+  it('a route that never searches by name has nothing to report but the count', () => {
+    expect(plainTransferResult({ found: 340, check: 0, notFound: 0 })).toBe('We found all 340 songs. Nothing to check.');
+  });
+
+  it('counts songs the person already had, and only when there are some', () => {
+    expect(plainTransferResult({ found: 1042, check: 61, notFound: 18, existing: 21 })).toBe(
+      'We found 1042 songs. 61 need a quick check, 18 we could not find, 21 you already had.',
+    );
+    expect(plainTransferResult({ found: 10, check: 0, notFound: 0, existing: 0 })).not.toContain('already had');
+  });
+
+  it('counts of one read as one', () => {
+    expect(plainTransferResult({ found: 1, check: 1, notFound: 0 })).toBe('We found 1 song. 1 needs a quick check.');
+  });
+
+  it('nothing found at all is still a sentence', () => {
+    expect(plainTransferResult({ found: 0, check: 0, notFound: 4 })).toBe(
+      'We found none of your songs. 4 we could not find.',
+    );
+    expect(plainTransferResult({ found: 0, check: 0, notFound: 0 })).toBe('We found none of your songs.');
+  });
+
+  it('has no em dashes', () => {
+    expect(plainTransferResult({ found: 3, check: 1, notFound: 1, existing: 1 })).not.toContain('\u2014');
   });
 });

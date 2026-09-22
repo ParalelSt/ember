@@ -74,6 +74,20 @@ describe('ImportBanner', () => {
     expect(cb.onDismiss).toHaveBeenCalled();
   });
 
+  it('a finished transfer says it in the plain words the dialog asked in', () => {
+    setup(job({ kind: 'liked', playlistId: null, status: 'done', cursor: 42, accepted: 36, review: 4, missing: 2 }));
+    expect(screen.getByTestId('transfer-result')).toHaveTextContent(
+      'We found 36 songs. 4 need a quick check, 2 we could not find.',
+    );
+    expect(screen.queryByTestId('import-count-added')).toBeNull();
+  });
+
+  it('a playlist import keeps its four counters, unchanged', () => {
+    setup(job({ status: 'done' }));
+    expect(screen.queryByTestId('transfer-result')).toBeNull();
+    expect(screen.getByTestId('import-count-added')).toBeInTheDocument();
+  });
+
   it('nothing left to check: Review is off', () => {
     setup(job({ status: 'done', review: 0, missing: 0 }), 0);
     expect(screen.getByRole('button', { name: /Review/ })).toBeDisabled();

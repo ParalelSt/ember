@@ -1,12 +1,15 @@
 import type { ComponentProps, PropsWithChildren } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { RATE_LIMITED_MESSAGE, YTMUSIC_RATE_LIMITED_MESSAGE } from '@/lib/import/transferCopy';
+import { MATCHED_BY_NAME, SPOTIFY_LINK_CAP } from '@/lib/import/transferRoutes';
 
-// The dialog, the destination cards and every sentence a refused upload
-// puts on screen. The real base-ui dialog resolves a second React copy
-// under happy-dom (see ReviewSheet.test.tsx), so its shell is stubbed.
+// The dialog's three plain questions (where they land, where the music is
+// now, what you already have), every route each answer reaches, and every
+// sentence a refused upload puts on screen. The real base-ui dialog resolves
+// a second React copy under happy-dom (see ReviewSheet.test.tsx), so its
+// shell is stubbed.
 
 const push = vi.fn();
 vi.mock('next/navigation', () => ({ useRouter: () => ({ push }) }));
@@ -38,6 +41,22 @@ vi.mock('@/lib/api', () => ({ api }));
 const { TransferDialog } = await import('./TransferDialog');
 
 const LINK = 'https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M';
+const YT_LINK = 'https://music.youtube.com/playlist?list=PLabc123def456';
+
+/** useIsDesktop reads a real media query, and happy-dom drives matchMedia
+ *  off window.innerWidth (see hooks/useIsDesktop.test.tsx). */
+interface HappyWindow extends Omit<Window, 'innerWidth'> {
+  innerWidth: number;
+  happyDOM?: { setViewport?: (viewport: { width: number }) => void };
+}
+function setWidth(px: number) {
+  act(() => {
+    const w = window as unknown as HappyWindow;
+    w.happyDOM?.setViewport?.({ width: px });
+    w.innerWidth = px;
+    w.dispatchEvent(new Event('resize'));
+  });
+}
 
 const preview = (over: Record<string, unknown> = {}) => ({
   preview: {
@@ -68,14 +87,36 @@ function setup() {
   return { onOpenChange };
 }
 
-/** Straight to the source step with the given destination chosen. */
+/** Question one: where the songs land. */
 function pick(name: 'Liked songs' | 'A new playlist') {
   fireEvent.click(screen.getByRole('button', { name: new RegExp(name) }));
+}
+
+/** Question two: where the music is now. */
+function service(name: 'Spotify' | 'YouTube Music' | 'Apple Music' | 'Somewhere else') {
+  const card = screen.getAllByTestId('transfer-service-card').find((c) => c.textContent === name);
+  if (!card) throw new Error(`no service card called ${name}`);
+  fireEvent.click(card);
+}
+
+/** Question three: what is already in hand. */
+function have(match: RegExp) {
+  const option = screen.getAllByTestId('transfer-have-option').find((o) => match.test(o.textContent ?? ''));
+  if (!option) throw new Error(`no "what do you have" option matching ${match}`);
+  fireEvent.click(option);
 }
 
 function chooseFile(name = 'exportify.csv', body = 'Track Name,Artist Name\na,b\n') {
   const input = screen.getByLabelText('Song list file');
   fireEvent.change(input, { target: { files: [new File([body], name, { type: 'text/csv' })] } });
+}
+
+/** Straight to the Spotify converter-file route, the one most of the error
+ *  cases below travel through. */
+function toSpotifyFile() {
+  pick('Liked songs');
+  service('Spotify');
+  have(/A file someone gave me/);
 }
 
 /** A refusal shaped the way lib/api.ts throws one. */
@@ -86,8 +127,10 @@ function refuse(status: number, message: string) {
 }
 
 const startButton = () => screen.getByRole('button', { name: /^Transfer/ });
+const steps = () => screen.getByTestId('transfer-steps').textContent ?? '';
 
 beforeEach(() => {
+  setWidth(1280);
   push.mockReset();
   logger.breadcrumb.mockReset();
   logger.error.mockReset();
@@ -95,29 +138,29 @@ beforeEach(() => {
   for (const fn of Object.values(api)) fn.mockReset();
 });
 
-describe('TransferDialog: the destination step', () => {
-  it('asks where the songs land first, as two cards with their consequence', () => {
+describe('TransferDialog: where the songs land', () => {
+  it('asks that first, as two cards with their consequence', () => {
     setup();
     const cards = screen.getAllByTestId('transfer-destination-card');
     expect(cards.map((c) => c.dataset.destination)).toEqual(['liked', 'playlist']);
     expect(cards[0]).toHaveTextContent('These become your likes and shape your mixes and radio.');
     expect(cards[1]).toHaveTextContent('A playlist you can edit, reorder and share.');
-    // Nothing to start yet: no source has been named.
-    expect(screen.queryByRole('tablist')).toBeNull();
+    // Nothing else is asked yet, and nothing can be started.
+    expect(screen.queryAllByTestId('transfer-service-card')).toHaveLength(0);
     expect(screen.queryByRole('button', { name: /^Transfer/ })).toBeNull();
   });
 
-  it('picking one opens the source step, saying where they are going', () => {
+  it('picking one asks where the music is now, saying where it is going', () => {
     setup();
     pick('Liked songs');
     expect(screen.getByTestId('transfer-chosen-destination')).toHaveTextContent('Going to your Liked songs');
-    expect(screen.getAllByRole('tab').map((t) => t.textContent)).toEqual([
-      'Upload a file',
-      'Paste a list',
-      'Paste a link',
+    expect(screen.getAllByTestId('transfer-service-card').map((c) => c.textContent)).toEqual([
+      'Spotify',
       'YouTube Music',
+      'Apple Music',
+      'Somewhere else',
     ]);
-    expect(startButton()).toBeDisabled();
+    expect(screen.queryByRole('button', { name: /^Transfer/ })).toBeNull();
   });
 
   it('Back returns to the two cards', () => {
@@ -127,44 +170,98 @@ describe('TransferDialog: the destination step', () => {
     fireEvent.click(screen.getByRole('button', { name: /Back/ }));
     expect(screen.getAllByTestId('transfer-destination-card')).toHaveLength(2);
   });
+});
 
-  it('the YouTube Music tab only shows up once Liked songs is the destination', () => {
+describe('TransferDialog: what do you have already', () => {
+  it('Spotify asks about a link, a file, or nothing yet', () => {
     setup();
     pick('Liked songs');
-    expect(screen.getAllByRole('tab').map((t) => t.textContent)).toEqual([
-      'Upload a file',
-      'Paste a list',
-      'Paste a link',
-      'YouTube Music',
+    service('Spotify');
+    expect(screen.getAllByTestId('transfer-have-option').map((o) => o.textContent)).toEqual([
+      'A link to a playlist',
+      'A file someone gave me, or one I downloaded',
+      'Nothing yet, but I can wait a few days',
     ]);
+    // No technical name anywhere in the question.
+    expect(screen.queryByText(/CSV/)).toBeNull();
   });
 
-  it('picking A new playlist offers no YouTube Music tab', () => {
+  it('a file in hand gets the converter steps and the file picker, not the export wait', () => {
     setup();
-    pick('A new playlist');
-    expect(screen.getAllByRole('tab').map((t) => t.textContent)).toEqual([
-      'Upload a file',
-      'Paste a list',
-      'Paste a link',
+    toSpotifyFile();
+    expect(steps()).toMatch(/Exportify, Soundiiz or TuneMyMusic/);
+    expect(steps()).not.toMatch(/Download your data/);
+    expect(steps()).toContain(MATCHED_BY_NAME);
+    expect(screen.getByLabelText('Song list file')).toBeInTheDocument();
+  });
+
+  it('nothing yet gets the data-export steps, and the same file picker', () => {
+    setup();
+    pick('Liked songs');
+    service('Spotify');
+    have(/Nothing yet/);
+    expect(steps()).toMatch(/Download your data/);
+    expect(steps()).toMatch(/YourLibrary\.json/);
+    expect(screen.getByLabelText('Song list file')).toBeInTheDocument();
+  });
+
+  it('a link gets the playlist steps, and says plainly what a Spotify link cannot do', () => {
+    setup();
+    pick('Liked songs');
+    service('Spotify');
+    have(/A link to a playlist/);
+    expect(steps()).toMatch(/cannot share your liked songs as a link/);
+    expect(steps()).toContain(SPOTIFY_LINK_CAP);
+    expect(screen.getByLabelText('Playlist link')).toBeInTheDocument();
+  });
+
+  it('Apple Music has one way in, so it asks nothing and shows the privacy-export steps', () => {
+    setup();
+    pick('Liked songs');
+    service('Apple Music');
+    expect(screen.queryAllByTestId('transfer-have-option')).toHaveLength(0);
+    expect(steps()).toMatch(/privacy\.apple\.com/);
+    expect(steps()).toMatch(/shares no links/);
+    expect(screen.getByLabelText('Song list file')).toBeInTheDocument();
+  });
+
+  it('Somewhere else asks between a list to type and a file', () => {
+    setup();
+    pick('Liked songs');
+    service('Somewhere else');
+    expect(screen.getAllByTestId('transfer-have-option').map((o) => o.textContent)).toEqual([
+      'Just a list I can type out',
+      'A file someone gave me',
     ]);
+    have(/Just a list/);
+    expect(screen.getByLabelText('Your songs, one a line')).toBeInTheDocument();
+  });
+
+  it('Back walks the questions backwards, one at a time', () => {
+    setup();
+    toSpotifyFile();
+    fireEvent.click(screen.getByRole('button', { name: /Back/ }));
+    expect(screen.getAllByTestId('transfer-have-option').length).toBeGreaterThan(1);
+    fireEvent.click(screen.getByRole('button', { name: /Back/ }));
+    expect(screen.getAllByTestId('transfer-service-card')).toHaveLength(4);
+    fireEvent.click(screen.getByRole('button', { name: /Back/ }));
+    expect(screen.getAllByTestId('transfer-destination-card')).toHaveLength(2);
+  });
+
+  it('a service with nothing to ask goes straight back to the services', () => {
+    setup();
+    pick('Liked songs');
+    service('Apple Music');
+    fireEvent.click(screen.getByRole('button', { name: /Back/ }));
+    expect(screen.getAllByTestId('transfer-service-card')).toHaveLength(4);
   });
 });
 
-describe('TransferDialog: the source step', () => {
-  it('each tab explains what that source is, before anything is chosen', () => {
-    setup();
-    pick('Liked songs');
-    expect(screen.getByText(/YourLibrary.json inside it, unzipped/)).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('tab', { name: 'Paste a list' }));
-    expect(screen.getByText(/One song a line, written "Artist - Title"/)).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('tab', { name: 'Paste a link' }));
-    expect(screen.getByText(/public Spotify playlist link/)).toBeInTheDocument();
-  });
-
+describe('TransferDialog: every answer reaches its route', () => {
   it('an uploaded file is read and previewed: where it came from, how many, the first songs', async () => {
     api.transferPreview.mockResolvedValue(preview({ count: 42, dropped: 2 }));
     setup();
-    pick('Liked songs');
+    toSpotifyFile();
     chooseFile();
     await waitFor(() => expect(screen.getByTestId('transfer-preview')).toBeInTheDocument());
     const card = screen.getByTestId('transfer-preview');
@@ -180,7 +277,7 @@ describe('TransferDialog: the source step', () => {
     api.transferPreview.mockResolvedValue(preview());
     api.transferStart.mockResolvedValue({ job, playlistId: null });
     const { onOpenChange } = setup();
-    pick('Liked songs');
+    toSpotifyFile();
     chooseFile();
     await waitFor(() => expect(startButton()).toBeEnabled());
     fireEvent.click(startButton());
@@ -195,6 +292,8 @@ describe('TransferDialog: the source step', () => {
     api.transferStart.mockResolvedValue({ job, playlistId: 'p7' });
     setup();
     pick('A new playlist');
+    service('Spotify');
+    have(/A file someone gave me/);
     chooseFile();
     await waitFor(() => expect(startButton()).toBeEnabled());
     fireEvent.click(startButton());
@@ -202,11 +301,12 @@ describe('TransferDialog: the source step', () => {
     await waitFor(() => expect(push).toHaveBeenCalledWith('/playlist/p7'));
   });
 
-  it('a pasted list is read once typing stops', async () => {
+  it('a typed-out list is read once typing stops', async () => {
     api.transferPreview.mockResolvedValue(preview({ kind: 'paste', label: 'Liked songs from a list', count: 2 }));
     setup();
     pick('Liked songs');
-    fireEvent.click(screen.getByRole('tab', { name: 'Paste a list' }));
+    service('Somewhere else');
+    have(/Just a list/);
     fireEvent.change(screen.getByLabelText('Your songs, one a line'), {
       target: { value: 'Halcyon Drift - Paper Lanterns\nNadia Okonkwo - Slow Weather' },
     });
@@ -214,7 +314,7 @@ describe('TransferDialog: the source step', () => {
     await waitFor(() => expect(screen.getByTestId('transfer-preview')).toHaveTextContent('Liked songs from a list'));
   });
 
-  it('a pasted playlist link is looked up and starts through the link route', async () => {
+  it('a pasted Spotify playlist link is looked up and starts through the link route', async () => {
     api.importInspect.mockResolvedValue({
       source: 'spotify',
       id: 'x',
@@ -226,11 +326,28 @@ describe('TransferDialog: the source step', () => {
     api.importStart.mockResolvedValue({ job: { ...job, source: 'spotify' }, playlistId: null });
     setup();
     pick('Liked songs');
-    fireEvent.click(screen.getByRole('tab', { name: 'Paste a link' }));
+    service('Spotify');
+    have(/A link to a playlist/);
     fireEvent.change(screen.getByLabelText('Playlist link'), { target: { value: LINK } });
     await waitFor(() => expect(screen.getByTestId('link-preview')).toHaveTextContent('Late night drive'));
     fireEvent.click(startButton());
     await waitFor(() => expect(api.importStart).toHaveBeenCalledWith(LINK, 'liked'));
+  });
+
+  it('a pasted YouTube Music playlist link goes through the same route', async () => {
+    api.importInspect.mockResolvedValue({
+      source: 'ytmusic',
+      name: 'Weekend',
+      tracks: [{ artworkUrl: null }, { artworkUrl: null }],
+    });
+    api.importStart.mockResolvedValue({ job: { ...job, source: 'ytmusic' }, playlistId: 'p9' });
+    setup();
+    pick('A new playlist');
+    service('YouTube Music');
+    fireEvent.change(screen.getByLabelText('Playlist link'), { target: { value: YT_LINK } });
+    await waitFor(() => expect(screen.getByTestId('link-preview')).toHaveTextContent('Weekend'));
+    fireEvent.click(startButton());
+    await waitFor(() => expect(api.importStart).toHaveBeenCalledWith(YT_LINK, 'playlist'));
   });
 });
 
@@ -262,7 +379,7 @@ describe('TransferDialog: what it says when Ember will not take it', () => {
     it(`${name}: a sentence, not a code`, async () => {
       api.transferPreview.mockRejectedValue(refuse(status, serverSays));
       setup();
-      pick('Liked songs');
+      toSpotifyFile();
       chooseFile();
       await waitFor(() => expect(screen.getByTestId('transfer-error')).toHaveTextContent(shown));
       expect(screen.getByTestId('transfer-error')).toHaveAttribute('role', 'alert');
@@ -273,7 +390,7 @@ describe('TransferDialog: what it says when Ember will not take it', () => {
   it('over 10 000 songs: the preview says to split the file and Start stays off', async () => {
     api.transferPreview.mockResolvedValue(preview({ count: 10_000, truncated: true }));
     setup();
-    pick('Liked songs');
+    toSpotifyFile();
     chooseFile();
     await waitFor(() => expect(screen.getByTestId('transfer-over-cap')).toBeInTheDocument());
     expect(screen.getByTestId('transfer-over-cap')).toHaveTextContent('Split the file and upload it in parts.');
@@ -283,7 +400,7 @@ describe('TransferDialog: what it says when Ember will not take it', () => {
   it('a file with no songs in it: Start stays off', async () => {
     api.transferPreview.mockResolvedValue(preview({ count: 0, sample: [] }));
     setup();
-    pick('Liked songs');
+    toSpotifyFile();
     chooseFile();
     await waitFor(() => expect(screen.getByTestId('transfer-empty')).toBeInTheDocument());
     expect(startButton()).toBeDisabled();
@@ -293,7 +410,7 @@ describe('TransferDialog: what it says when Ember will not take it', () => {
     api.transferPreview.mockResolvedValue(preview());
     api.transferStart.mockRejectedValue(refuse(429, 'Slow down, try again in about 120s.'));
     setup();
-    pick('Liked songs');
+    toSpotifyFile();
     chooseFile();
     await waitFor(() => expect(startButton()).toBeEnabled());
     fireEvent.click(startButton());
@@ -317,9 +434,10 @@ describe('TransferDialog: YouTube Music likes, straight from the account', () =>
   });
   const SECRET = 'cookie: SAPISID=some-fake-session-value; other=1\nx-goog-authuser: 0';
 
-  function openYtmusicTab() {
+  function toAccountRoute() {
     pick('Liked songs');
-    fireEvent.click(screen.getByRole('tab', { name: 'YouTube Music' }));
+    service('YouTube Music');
+    have(/technical step/);
   }
 
   function pasteSecret(value = SECRET) {
@@ -331,13 +449,30 @@ describe('TransferDialog: YouTube Music likes, straight from the account', () =>
   it('is only offered once Liked songs is the destination, and asks nothing on its own', () => {
     setup();
     pick('A new playlist');
-    expect(screen.queryByRole('tab', { name: 'YouTube Music' })).toBeNull();
+    service('YouTube Music');
+    // One way in left, so no question: straight to the playlist-link steps.
+    expect(screen.queryAllByTestId('transfer-have-option')).toHaveLength(0);
+    expect(screen.queryByLabelText('Your YouTube Music request headers')).toBeNull();
+    expect(screen.getByLabelText('Playlist link')).toBeInTheDocument();
     expect(api.ytmusicLikedPreview).not.toHaveBeenCalled();
+  });
+
+  it('with Liked songs it is one of two answers, and it is the one that needs no name matching', () => {
+    setup();
+    pick('Liked songs');
+    service('YouTube Music');
+    expect(screen.getAllByTestId('transfer-have-option').map((o) => o.textContent)).toEqual([
+      'A link to a playlist',
+      'I am on a computer and do not mind a technical step',
+    ]);
+    have(/technical step/);
+    expect(steps()).toMatch(/nothing to look up by name/);
+    expect(steps()).not.toContain(MATCHED_BY_NAME);
   });
 
   it('shows the steps, the desktop-only line and the used-once note, and reads nothing until Preview is pressed', () => {
     setup();
-    openYtmusicTab();
+    toAccountRoute();
     expect(screen.getByText(/Open music\.youtube\.com|music\.youtube\.com in Chrome/)).toBeInTheDocument();
     expect(screen.getByText(/needs a desktop browser/)).toBeInTheDocument();
     expect(screen.getByText(/Signing out of YouTube Music afterwards makes them useless/)).toBeInTheDocument();
@@ -349,7 +484,7 @@ describe('TransferDialog: YouTube Music likes, straight from the account', () =>
   it('Preview reads the account and renders the shared preview card', async () => {
     api.ytmusicLikedPreview.mockResolvedValue(ytPreview());
     setup();
-    openYtmusicTab();
+    toAccountRoute();
     pasteSecret();
     fireEvent.click(previewButton());
     expect(api.ytmusicLikedPreview).toHaveBeenCalledWith(SECRET);
@@ -366,7 +501,7 @@ describe('TransferDialog: YouTube Music likes, straight from the account', () =>
     api.ytmusicLikedPreview.mockResolvedValue(ytPreview());
     api.ytmusicLikedStart.mockResolvedValue({ job, playlistId: null, truncated: false, note: null });
     const { onOpenChange } = setup();
-    openYtmusicTab();
+    toAccountRoute();
     pasteSecret();
     fireEvent.click(previewButton());
     await waitFor(() => expect(startButton()).toBeEnabled());
@@ -386,7 +521,7 @@ describe('TransferDialog: YouTube Music likes, straight from the account', () =>
       note: 'Ember can transfer up to 10,000 songs at once, and your YouTube Music library has more. Ember will take the newest 10,000.',
     });
     setup();
-    openYtmusicTab();
+    toAccountRoute();
     pasteSecret();
     fireEvent.click(previewButton());
     await waitFor(() => expect(startButton()).toBeEnabled());
@@ -405,7 +540,7 @@ describe('TransferDialog: YouTube Music likes, straight from the account', () =>
     it(`${name}: shown as its own sentence`, async () => {
       api.ytmusicLikedPreview.mockRejectedValue(refuse(status, message));
       setup();
-      openYtmusicTab();
+      toAccountRoute();
       pasteSecret();
       fireEvent.click(previewButton());
       await waitFor(() => expect(screen.getByTestId('transfer-error')).toHaveTextContent(message));
@@ -416,11 +551,24 @@ describe('TransferDialog: YouTube Music likes, straight from the account', () =>
   it('three tries an hour: the 429 reads like a person wrote it', async () => {
     api.ytmusicLikedPreview.mockRejectedValue(refuse(429, 'Slow down, try again in about 900s.'));
     setup();
-    openYtmusicTab();
+    toAccountRoute();
     pasteSecret();
     fireEvent.click(previewButton());
     await waitFor(() => expect(screen.getByTestId('transfer-error')).toHaveTextContent(YTMUSIC_RATE_LIMITED_MESSAGE));
     expect(YTMUSIC_RATE_LIMITED_MESSAGE).toMatch(/three/i);
+  });
+
+  it('on a phone it is an honest dead end, offering the playlist link instead', () => {
+    setWidth(390);
+    setup();
+    toAccountRoute();
+    expect(screen.getByTestId('transfer-dead-end')).toHaveTextContent('This one needs a computer');
+    expect(screen.queryByLabelText('Your YouTube Music request headers')).toBeNull();
+    // Not even a Start to press: there is nothing this phone can read.
+    expect(screen.queryByRole('button', { name: /^Transfer/ })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'A link to a playlist' }));
+    expect(screen.queryByTestId('transfer-dead-end')).toBeNull();
+    expect(screen.getByLabelText('Playlist link')).toBeInTheDocument();
   });
 
   it('the pasted headers never reach the logger, and are cleared when the dialog closes', async () => {
@@ -430,8 +578,7 @@ describe('TransferDialog: YouTube Music likes, straight from the account', () =>
         <TransferDialog open onOpenChange={vi.fn()} />
       </QueryClientProvider>,
     );
-    pick('Liked songs');
-    fireEvent.click(screen.getByRole('tab', { name: 'YouTube Music' }));
+    toAccountRoute();
     pasteSecret();
     fireEvent.click(previewButton());
     await waitFor(() => expect(screen.getByTestId('transfer-error')).toBeInTheDocument());
@@ -453,8 +600,7 @@ describe('TransferDialog: YouTube Music likes, straight from the account', () =>
         <TransferDialog open onOpenChange={vi.fn()} />
       </QueryClientProvider>,
     );
-    pick('Liked songs');
-    fireEvent.click(screen.getByRole('tab', { name: 'YouTube Music' }));
+    toAccountRoute();
     expect(screen.getByLabelText('Your YouTube Music request headers')).toHaveValue('');
   });
 });
