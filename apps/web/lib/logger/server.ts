@@ -18,15 +18,26 @@ export function logDir(): string {
 }
 const RETENTION_DAYS = 2;
 
-let bootSweepStarted = false;
+// The UTC day key (YYYY-MM-DD) the sweep last ran for, so a long-lived
+// server process re-sweeps once a new day starts instead of only ever
+// sweeping the one time at boot. A process that runs for days would
+// otherwise let two days' worth of files past the retention window pile up
+// (RETENTION_DAYS=2 keeps today + yesterday, so day 3 onward never got
+// swept away without a restart).
+let lastSweptDayKey: string | null = null;
 
-function ensureBootSweep(): void {
-  if (bootSweepStarted) return;
-  bootSweepStarted = true;
-  void runBootSweep();
+function dayKey(d: Date = new Date()): string {
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`;
 }
 
-async function runBootSweep(): Promise<void> {
+function ensureDailySweep(): void {
+  const key = dayKey();
+  if (lastSweptDayKey === key) return;
+  lastSweptDayKey = key;
+  void runSweep();
+}
+
+async function runSweep(): Promise<void> {
   try {
     const dir = logDir();
     await fs.mkdir(dir, { recursive: true });
@@ -48,7 +59,7 @@ async function runBootSweep(): Promise<void> {
         }),
     );
   } catch (e) {
-    console.warn('[serverLogger] boot sweep failed', e);
+    console.warn('[serverLogger] sweep failed', e);
   }
 }
 
@@ -85,7 +96,7 @@ function writeEntry(
   err?: unknown,
   ctx?: ServerLogContext,
 ): void {
-  ensureBootSweep();
+  ensureDailySweep();
   const scoped = ctx ?? requestContext.getStore();
   const entry: ServerLogEntry = {
     ts: Date.now(),
@@ -123,7 +134,7 @@ export const serverLogger = {
   /** Returns server entries with ts > timestampMs. Reads today's + yesterday's
    *  files (covers the report window even across UTC midnight). */
   async recentSince(timestampMs: number): Promise<ServerLogEntry[]> {
-    ensureBootSweep();
+    ensureDailySweep();
     try {
       const today = todayFile();
       const yesterday = todayFile(new Date(Date.now() - 24 * 60 * 60 * 1000));
@@ -142,7 +153,7 @@ export const serverLogger = {
    *  yesterday" cover the window. Capped at 20000 entries, newest first, so
    *  a huge window can't load an unbounded amount of JSONL into memory. */
   async entriesSince(timestampMs: number): Promise<ServerLogEntry[]> {
-    ensureBootSweep();
+    ensureDailySweep();
     try {
       const files = filesForWindow(timestampMs);
       const entries = await readEntriesFromFiles(files);
