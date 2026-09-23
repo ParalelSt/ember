@@ -217,6 +217,20 @@ export function useThemeEditor() {
     void runSave();
   }, [runSave]);
 
+  // Leaving Appearance (navigating away, closing the tab) must not drop a
+  // colour edit still waiting out SAVE_DELAY_MS: flush it on unmount and on
+  // pagehide, which fires for both cases (bughunt N1).
+  useEffect(() => {
+    const onPageHide = () => {
+      flush();
+    };
+    window.addEventListener('pagehide', onPageHide);
+    return () => {
+      window.removeEventListener('pagehide', onPageHide);
+      flush();
+    };
+  }, [flush]);
+
   const edit = useCallback(
     (next: { inputs: ThemeInputs; pinned: Set<MoreKey> }, delay: number) => {
       if (!editable) return;
