@@ -14,8 +14,11 @@
  *  and the collection rules straight through /pb. Back to Ember clears
  *  every override; signed-out pages are Ember whatever is cached.
  *
- *  Task 2 has no Appearance page yet, so choices go through the routes
- *  with the person's cookie (Task 3 moves them onto the page).
+ *  Choices a person makes (a preset, a custom theme, sharing, using and
+ *  copying someone else's) go through Settings > Appearance in the
+ *  browser; the refusals and the collection rules go straight at the
+ *  routes and /pb. With SHOT_DIR set, every preset is photographed on Home
+ *  and on Appearance at 390 and 1300 wide.
  *
  *  Needs a sandbox: PocketBase (PB_URL) started with this branch's
  *  pb_hooks (ensure_themes.pb.js), and the app (APP_URL) built from this
@@ -46,10 +49,14 @@ const MIDNIGHT_INPUTS = {
   background: [0.17, 0.03, 262], surface: [0.21, 0.03, 262], text: [0.97, 0.01, 250], mutedText: [0.7, 0.02, 255],
   accent: [0.75, 0.14, 225], accentHover: [0.83, 0.1, 225], border: [1, 0, 0], sidebar: [0.14, 0.03, 262],
 };
-// A custom theme: Midnight with a violet accent.
-const NIGHT_DRIVE = { ...MIDNIGHT_INPUTS, accent: [0.72, 0.16, 300], accentHover: [0.8, 0.12, 300] };
-const NIGHT_DRIVE_EMBER = 'oklch(0.72 0.16 300)';
+// A custom theme: Midnight with a violet accent, typed into the page as hex.
+const VIOLET = '#a07cf0';
 // The accent pushed onto the background: links and buttons unreadable.
+const MURKY_HEX = '#141c2c';
+const PRESETS = ['ember', 'midnight', 'forest', 'nebula', 'mono'];
+const SHOT_DIR = process.env.SHOT_DIR;
+/** The CSS lib/theme writes for a stored colour (already at storage precision). */
+const css = ([l, c, h]) => `oklch(${l} ${c} ${h})`;
 const MURKY = { ...MIDNIGHT_INPUTS, accent: [0.24, 0.05, 262], accentHover: [0.3, 0.05, 262] };
 
 /** globals.css :root colour tokens, var() references resolved. */
@@ -190,6 +197,34 @@ async function freshCookie(page) {
   return (await page.context().cookies()).find((x) => x.name === 'pb_auth')?.value;
 }
 
+const rootVar = (page, name) =>
+  page.evaluate((n) => getComputedStyle(document.documentElement).getPropertyValue(n).trim(), name);
+
+/** Settings > Appearance, with the lists loaded. */
+async function appearance(page) {
+  await page.goto(`${APP_URL}/settings/appearance`, { waitUntil: 'networkidle' });
+  await page.getByTestId('theme-count').waitFor({ timeout: 10000 });
+}
+
+/** The save line, once it says `text` (or null when it never does). */
+async function saveLine(page, text, timeout = 8000) {
+  const line = page.getByTestId('save-status');
+  try {
+    await line.filter({ hasText: text }).waitFor({ timeout });
+  } catch {
+    return null;
+  }
+  return line.textContent();
+}
+
+const tab = (page, name) => page.getByRole('tab', { name, exact: true }).click();
+
+async function typeHex(page, label, hex) {
+  const field = page.getByLabel(`${label} hex`, { exact: true });
+  await field.fill(hex);
+  await field.press('Enter');
+}
+
 // ── 1. Ember with nothing saved is exactly today's CSS ───────────────────
 const aron = await member('aron', 'Aron');
 {
@@ -210,12 +245,14 @@ const aron = await member('aron', 'Aron');
 
 // ── 2. A preset on the account paints from the first byte ────────────────
 {
-  const picked = await call(aron, 'PATCH', '/theme', { preset: 'midnight' });
-  check('picking Midnight saves to the account', picked.status === 200 && picked.body?.preset === 'midnight', JSON.stringify(picked.body));
+  // Device A picks Midnight in Settings > Appearance.
+  const a = await device(aron.cookie);
+  await appearance(a);
+  await a.getByRole('radio', { name: /Midnight/ }).click();
+  check('Appearance: picking Midnight says Saved', (await saveLine(a, 'Saved')) === 'Saved');
+  check('Appearance: Midnight is the checked preset', (await a.getByRole('radio', { name: /Midnight/ }).getAttribute('aria-checked')) === 'true');
   check('GET /api/theme says Midnight', JSON.stringify((await call(aron, 'GET', '/theme')).body) === '{"v":1,"preset":"midnight"}');
 
-  // Device A's cookie predates the choice: the app brings it up to date.
-  const a = await device(aron.cookie);
   await a.goto(`${APP_URL}/`, { waitUntil: 'networkidle' });
   const p = await paint(a);
   check('A: --background is Midnight', p.tokens['--background'] === MIDNIGHT.background, p.tokens['--background']);
@@ -282,26 +319,54 @@ const aron = await member('aron', 'Aron');
   await a.context().close();
 }
 
-// ── 3. Saved themes: create, cap, refusal, use ────────────────────────────
+// ── 3. Saved themes: make one on the page, the refusals, the cap ─────────
 let nightDrive;
+let NIGHT_DRIVE_EMBER;
 {
-  const made = await call(aron, 'POST', '/themes', { name: 'Night drive', base: 'midnight', inputs: NIGHT_DRIVE });
-  nightDrive = made.body?.theme;
-  check('saving a custom theme', made.status === 201 && nightDrive?.name === 'Night drive' && nightDrive?.shared === false, JSON.stringify(made.body));
-
-  const murky = await call(aron, 'POST', '/themes', { name: 'Murky', base: 'midnight', inputs: MURKY });
-  check('an unreadable theme is refused with its findings (422)',
-    murky.status === 422 && murky.body?.findings?.some((f) => f.pair === 'accent'), JSON.stringify(murky.body));
-
-  const used = await call(aron, 'PATCH', '/theme', { themeId: nightDrive.id });
-  check('using it copies its colours into the active theme',
-    used.status === 200 && used.body?.themeId === nightDrive.id && JSON.stringify(used.body?.custom?.accent) === '[0.72,0.16,300]', JSON.stringify(used.body));
-
   const page = await device(aron.cookie);
-  await page.goto(`${APP_URL}/`, { waitUntil: 'networkidle' });
-  const ember = await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--ember').trim());
-  check('the page paints the custom accent', ember === NIGHT_DRIVE_EMBER, ember);
-  await cookieTheme(page, used.body);
+  await appearance(page);
+  await page.getByRole('radio', { name: /Midnight/ }).click();
+  await saveLine(page, 'Saved');
+  await tab(page, 'Colours');
+  await typeHex(page, 'Accent', VIOLET);
+  // Live on the whole app before anything is saved.
+  const live = await rootVar(page, '--ember');
+  check('a colour change shows on the whole app at once', live !== MIDNIGHT.ember && live.startsWith('oklch('), live);
+  check('editing a preset saves a new theme of mine', (await saveLine(page, 'Saved as My Midnight')) === 'Saved as My Midnight');
+
+  await tab(page, 'Themes');
+  await page.getByRole('button', { name: 'Rename My Midnight' }).click();
+  await page.getByLabel('New name for My Midnight').fill('Night drive');
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
+  await page.getByRole('button', { name: 'Use Night drive' }).waitFor({ timeout: 5000 });
+  check('the count reads 1 of 20', (await page.getByTestId('theme-count').textContent()) === '1 of 20');
+
+  const mineNow = await call(aron, 'GET', '/themes');
+  nightDrive = mineNow.body?.mine?.find((t) => t.name === 'Night drive');
+  check('saved to the account, renamed, not shared', !!nightDrive && nightDrive.shared === false && nightDrive.base === 'midnight', JSON.stringify(mineNow.body?.mine));
+  NIGHT_DRIVE_EMBER = css(nightDrive.inputs.accent);
+  const active = await call(aron, 'GET', '/theme');
+  check('and it is the active theme', active.body?.themeId === nightDrive.id && active.body?.name === 'Night drive', JSON.stringify(active.body));
+  const ember = await rootVar(page, '--ember');
+  check('the page paints the custom accent', ember === NIGHT_DRIVE_EMBER, `${ember} vs ${NIGHT_DRIVE_EMBER}`);
+
+  // An unreadable accent: shown, explained, never saved.
+  await tab(page, 'Colours');
+  await typeHex(page, 'Accent', MURKY_HEX);
+  const blocked = await saveLine(page, 'Not saved: accent links on the background is hard to read.');
+  check('Appearance: an unreadable pair blocks the save in plain words', !!blocked, String(blocked));
+  const finding = page.getByTestId('finding').filter({ hasText: 'Accent links on the background' });
+  check('with the finding and its Fix it', (await finding.getAttribute('data-level')) === 'fail' && (await finding.getByRole('button', { name: 'Fix it' }).count()) === 1);
+  await page.waitForTimeout(1200);
+  const untouched = (await call(aron, 'GET', '/themes')).body?.mine?.find((t) => t.id === nightDrive.id);
+  check('nothing reached the account', JSON.stringify(untouched?.inputs) === JSON.stringify(nightDrive.inputs));
+  // Back to the saved colours, so the rest runs on Night drive.
+  await typeHex(page, 'Accent', VIOLET);
+  await saveLine(page, 'Saved');
+  nightDrive = (await call(aron, 'GET', '/themes')).body?.mine?.find((t) => t.id === nightDrive.id);
+  NIGHT_DRIVE_EMBER = css(nightDrive.inputs.accent);
+
+  await cookieTheme(page, (await call(aron, 'GET', '/theme')).body);
   aron.cookie = await freshCookie(page);
   await page.context().close();
   const noJs = await device(aron.cookie, { js: false });
@@ -309,6 +374,10 @@ let nightDrive;
   const e2 = await noJs.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--ember').trim());
   check('JS off: the custom theme is in the first document too', e2 === NIGHT_DRIVE_EMBER, e2);
   await noJs.context().close();
+
+  const murky = await call(aron, 'POST', '/themes', { name: 'Murky', base: 'midnight', inputs: MURKY });
+  check('the route refuses an unreadable theme with its findings (422)',
+    murky.status === 422 && murky.body?.findings?.some((f) => f.pair === 'accent'), JSON.stringify(murky.body));
 
   // The cap: 20 per person.
   const filler = await member('filler', 'Filler');
@@ -328,8 +397,15 @@ let nightDrive;
   const direct = await pbDirect(luka, 'GET', `/collections/themes/records/${nightDrive.id}`);
   check('nor straight through /pb (404)', direct.status === 404, String(direct.status));
 
-  const shared = await call(aron, 'PATCH', `/themes/${nightDrive.id}`, { shared: true });
-  check('Aron shares it with everyone', shared.status === 200 && shared.body?.theme?.shared === true);
+  const ap = await device(aron.cookie);
+  await appearance(ap);
+  await tab(ap, 'Share');
+  const toggle = ap.getByRole('switch', { name: 'Share with everyone' });
+  await toggle.click();
+  await ap.waitForFunction(() => document.querySelector('[role="switch"]')?.getAttribute('aria-checked') === 'true', null, { timeout: 5000 }).catch(() => {});
+  const shared = await call(aron, 'GET', '/themes');
+  check('Aron shares it with everyone from the Share tab', shared.body?.mine?.find((t) => t.id === nightDrive.id)?.shared === true);
+  check('the Share tab says who sees it', (await ap.getByTestId('share-line').textContent())?.startsWith('Everyone on this Ember server sees Night drive'));
 
   const after = await call(luka, 'GET', '/themes');
   const seen = after.body?.shared?.find((t) => t.id === nightDrive.id);
@@ -343,19 +419,33 @@ let nightDrive;
   const pbCreate = await pbDirect(luka, 'POST', '/collections/themes/records', { owner: luka.id, name: 'x', base: 'ember', inputs: MIDNIGHT_INPUTS });
   check('/pb refuses writes from anyone (only the routes write)', pbWrite.status === 403 && pbCreate.status === 403, `${pbWrite.status} ${pbCreate.status}`);
 
-  const lukaUses = await call(luka, 'PATCH', '/theme', { themeId: nightDrive.id });
-  check('Luka can use it', lukaUses.status === 200 && lukaUses.body?.themeId === nightDrive.id);
   const lp = await device(luka.cookie);
-  await lp.goto(`${APP_URL}/`, { waitUntil: 'networkidle' });
-  const lukaEmber = await lp.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--ember').trim());
+  await appearance(lp);
+  const row = lp.getByTestId('shared-theme').filter({ hasText: 'Night drive' });
+  check('Luka\'s Appearance lists it by Aron', (await row.getByText('by Aron').count()) === 1);
+  await row.getByRole('button', { name: 'Use Night drive' }).click();
+  await saveLine(lp, 'Saved');
+  const lukaUses = await call(luka, 'GET', '/theme');
+  check('Luka uses it from the page', lukaUses.body?.themeId === nightDrive.id, JSON.stringify(lukaUses.body));
+  const lukaEmber = await rootVar(lp, '--ember');
   check('Luka\'s page paints Aron\'s theme', lukaEmber === NIGHT_DRIVE_EMBER, lukaEmber);
+  await tab(lp, 'Colours');
+  check('and sees it read-only', (await lp.getByTestId('read-only-note').textContent())?.includes('Only Aron can change it'));
+  await tab(lp, 'Share');
+  check('with sharing not his to change', await lp.getByRole('switch', { name: 'Share with everyone' }).isDisabled());
+  await tab(lp, 'Themes');
 
-  const copy = await call(luka, 'POST', '/themes', { duplicateOf: nightDrive.id });
-  check('Luka can copy it into his own themes', copy.status === 201 && copy.body?.theme?.name === 'Night drive copy' && copy.body?.theme?.shared === false);
+  await lp.getByRole('button', { name: 'Copy Night drive to my themes' }).click();
+  await lp.getByTestId('appearance-notice').filter({ hasText: 'Copied to My themes as Night drive copy.' }).waitFor({ timeout: 5000 }).catch(() => {});
+  const copied = (await call(luka, 'GET', '/themes')).body?.mine?.find((t) => t.name === 'Night drive copy');
+  check('Luka copies it into his own themes from the page', !!copied && copied.shared === false, JSON.stringify(copied));
 
-  await call(aron, 'PATCH', `/themes/${nightDrive.id}`, { shared: false });
+  await toggle.click();
+  await ap.waitForFunction(() => document.querySelector('[role="switch"]')?.getAttribute('aria-checked') === 'false', null, { timeout: 5000 }).catch(() => {});
+  check('Aron unshares it from the Share tab', (await call(aron, 'GET', '/themes')).body?.mine?.find((t) => t.id === nightDrive.id)?.shared === false);
+  await ap.context().close();
   const kept = await call(luka, 'GET', '/theme');
-  check('unshared: Luka keeps a copy of its colours', !kept.body?.themeId && JSON.stringify(kept.body?.custom?.accent) === '[0.72,0.16,300]', JSON.stringify(kept.body));
+  check('unshared: Luka keeps a copy of its colours', !kept.body?.themeId && JSON.stringify(kept.body?.custom?.accent) === JSON.stringify(nightDrive.inputs.accent), JSON.stringify(kept.body));
   await lp.reload({ waitUntil: 'networkidle' });
   const stillEmber = await lp.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--ember').trim());
   check('and his page still looks the same', stillEmber === NIGHT_DRIVE_EMBER, stillEmber);
@@ -392,6 +482,38 @@ let nightDrive;
   await page.goto(`${APP_URL}/privacy`, { waitUntil: 'networkidle' });
   const q = await paint(page);
   check('/privacy signed out: Ember', q.inline.length === 0 && sameColour(q.tokens['--background'], TOKENS['--background']));
+  await page.context().close();
+}
+
+// ── 7. Every preset on Home and Appearance, phone and desktop ────────────
+{
+  const who = await member('shots', 'Shots');
+  const page = await device(who.cookie);
+  if (SHOT_DIR) fs.mkdirSync(SHOT_DIR, { recursive: true });
+  const overflow = [];
+  for (const preset of PRESETS) {
+    await page.setViewportSize({ width: 1300, height: 900 });
+    await appearance(page);
+    await page.getByRole('radio', { name: new RegExp(`^${preset}`, 'i') }).click();
+    await saveLine(page, 'Saved');
+    for (const width of [1300, 390]) {
+      await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
+      for (const [name, route] of [['home', '/'], ['appearance', '/settings/appearance']]) {
+        await page.goto(`${APP_URL}${route}`, { waitUntil: 'networkidle' });
+        if (name === 'appearance') await page.getByTestId('theme-count').waitFor({ timeout: 10000 });
+        const wide = await page.evaluate(() => {
+          const el = document.querySelector('[data-app-scroller]');
+          return el ? el.scrollWidth - el.clientWidth : 0;
+        });
+        if (wide > 1) overflow.push(`${preset}-${name}-${width}: ${wide}px`);
+        if (SHOT_DIR) await page.screenshot({ path: path.join(SHOT_DIR, `${preset}-${name}-${width}.png`) });
+      }
+    }
+  }
+  const bg = await rootVar(page, '--background');
+  check('every preset renders Home and Appearance at 390 and 1300 with no sideways scroll', overflow.length === 0, overflow.join(', '));
+  check('the last preset picked (Mono) is on the page', bg === 'oklch(0 0 0)', bg);
+  if (SHOT_DIR) console.log(`screenshots in ${SHOT_DIR}`);
   await page.context().close();
 }
 
