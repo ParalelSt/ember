@@ -1,7 +1,7 @@
 import type { NextRequest } from 'next/server';
 import { requireUser, UnauthorizedError, unauthorizedResponse } from '@/lib/auth';
 import { mapTrackRow, type TrackRecord } from '@/lib/mapTrack';
-import { fromError, jsonError, upsertTrack } from '@/lib/upsertTrack';
+import { fromError, jsonError, upsertCatalogTrack } from '@/lib/upsertTrack';
 import type { Track } from '@/types/track';
 import { withRequestLog } from '@/lib/logger/withRequestLog';
 
@@ -36,7 +36,7 @@ export const POST = withRequestLog('recent-searches', async (request: NextReques
     const track = body?.track;
     if (!track?.id) return jsonError('track required', 400);
 
-    const trackRecordId = await upsertTrack(pb, track);
+    const trackRecordId = await upsertCatalogTrack(track);
     const playedAt = new Date().toISOString();
 
     try {

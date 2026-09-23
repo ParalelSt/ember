@@ -3,7 +3,7 @@ import { requireUser, UnauthorizedError, unauthorizedResponse } from '@/lib/auth
 import { mapTrackRow, type TrackRecord } from '@/lib/mapTrack';
 import { isUniqueHit, mapLimit, outcomeOf, racedSkip, readBulkTracks } from '@/lib/bulkCopy';
 import { planCopy } from '@/lib/playlistCopy';
-import { fromError, jsonError, upsertTrack } from '@/lib/upsertTrack';
+import { fromError, jsonError, upsertCatalogTrack } from '@/lib/upsertTrack';
 import { withRequestLog } from '@/lib/logger/withRequestLog';
 import type { Track } from '@/types/track';
 
@@ -40,7 +40,7 @@ export const POST = withRequestLog('likes/bulk', async (request: NextRequest) =>
     // picked order at the top of Liked songs (newest first).
     const now = Date.now();
     const results = await mapLimit(plan.add, 4, async (track, i) => {
-      const trackRecordId = await upsertTrack(pb, track);
+      const trackRecordId = await upsertCatalogTrack(track);
       try {
         await pb.collection('likes').create({
           user: user.id,

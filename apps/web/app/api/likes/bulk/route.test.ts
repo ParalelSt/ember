@@ -62,7 +62,12 @@ vi.mock('@/lib/auth', () => ({
   unauthorizedResponse: () => Response.json({ error: 'Unauthorized' }, { status: 401 }),
 }));
 vi.mock('@/lib/upsertTrack', () => ({
-  upsertTrack: vi.fn(async (_pb: unknown, track: Track) => {
+  // The shared catalog is server-written (bughunt W03): the route must use
+  // upsertCatalogTrack, never upsertTrack with the member's client.
+  upsertTrack: vi.fn(async () => {
+    throw new Error('member client must not write the catalog');
+  }),
+  upsertCatalogTrack: vi.fn(async (track: Track) => {
     catalog.set(track.id, track);
     return track.id;
   }),

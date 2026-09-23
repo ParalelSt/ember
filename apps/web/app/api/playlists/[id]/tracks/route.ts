@@ -1,7 +1,7 @@
 import type { NextRequest } from 'next/server';
 import { requireUser, UnauthorizedError, unauthorizedResponse } from '@/lib/auth';
 import type { Track } from '@/types/track';
-import { fromError, jsonError, upsertTrack } from '@/lib/upsertTrack';
+import { fromError, jsonError, upsertCatalogTrack } from '@/lib/upsertTrack';
 import { withRequestLog } from '@/lib/logger/withRequestLog';
 
 export const POST = withRequestLog('playlists/[id]/tracks', async (request: NextRequest, ctx: RouteContext<'/api/playlists/[id]/tracks'>) => {
@@ -25,7 +25,7 @@ export const POST = withRequestLog('playlists/[id]/tracks', async (request: Next
       return jsonError('That playlist doesn’t exist, or isn’t yours', 404);
     }
 
-    const trackRecordId = await upsertTrack(pb, track);
+    const trackRecordId = await upsertCatalogTrack(track);
 
     // Append at the next position. Pull the highest existing position via a
     // single-record query for cheapness. Start at 1 — PocketBase's required

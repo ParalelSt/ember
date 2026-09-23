@@ -3,7 +3,7 @@ import { requireUser, UnauthorizedError, unauthorizedResponse } from '@/lib/auth
 import { mapTrackRow, type TrackRecord } from '@/lib/mapTrack';
 import { isUniqueHit, mapLimit, outcomeOf, racedSkip, readBulkTracks } from '@/lib/bulkCopy';
 import { planCopy } from '@/lib/playlistCopy';
-import { fromError, jsonError, upsertTrack } from '@/lib/upsertTrack';
+import { fromError, jsonError, upsertCatalogTrack } from '@/lib/upsertTrack';
 import { withRequestLog } from '@/lib/logger/withRequestLog';
 import type { Track } from '@/types/track';
 
@@ -50,7 +50,7 @@ export const POST = withRequestLog(
       pb.autoCancellation(false);
       const plan = planCopy(parsed.tracks, there);
       const results = await mapLimit(plan.add, 4, async (track, i) => {
-        const trackRecordId = await upsertTrack(pb, track);
+        const trackRecordId = await upsertCatalogTrack(track);
         try {
           await pb.collection('playlist_tracks').create({ playlist: id, track: trackRecordId, position: start + i });
           return null;
