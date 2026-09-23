@@ -27,6 +27,9 @@ interface OfflineState {
   trackFiles: Record<string, string>;
   /** trackId -> absolute local art path, for downloads that have one. */
   artFiles: Record<string, string>;
+  /** trackId -> blob: URL of a browser-storage (OPFS) download, rebuilt at
+   *  boot by lib/offline. Not persisted: a blob: URL dies with the page. */
+  webFiles: Record<string, string>;
 
   setHydration: (input: { downloaded: string[]; totalBytes: number }) => void;
   beginDownload: (playlistId: string, total: number) => void;
@@ -42,6 +45,7 @@ interface OfflineState {
    *  player streams it instead of retrying a dead path on every play. The
    *  native store still owns the file; the next status() event is the truth. */
   dropTrackFile: (trackId: string) => void;
+  setWebFiles: (files: Record<string, string>) => void;
 }
 
 /** Persisted slice: downloaded ids + totalBytes only. Keeps the UI from
@@ -57,6 +61,7 @@ export const useOfflineStore = create<OfflineState>()(
       pins: [],
       trackFiles: {},
       artFiles: {},
+      webFiles: {},
 
       setHydration: ({ downloaded, totalBytes }) =>
         set({ downloaded, totalBytes, hydrated: true }),
@@ -114,11 +119,15 @@ export const useOfflineStore = create<OfflineState>()(
 
       dropTrackFile: (trackId) =>
         set((s) => {
-          if (!(trackId in s.trackFiles)) return s;
+          if (!(trackId in s.trackFiles) && !(trackId in s.webFiles)) return s;
           const { [trackId]: _drop, ...rest } = s.trackFiles;
+          const { [trackId]: _dropWeb, ...restWeb } = s.webFiles;
           void _drop;
-          return { trackFiles: rest };
+          void _dropWeb;
+          return { trackFiles: rest, webFiles: restWeb };
         }),
+
+      setWebFiles: (webFiles) => set({ webFiles }),
 
       removeDownload: (playlistId, bytesRemoved) =>
         set((s) => ({

@@ -375,25 +375,30 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
    *  what shipped in v0.2.0: the app chose the Rust engine, every call was
    *  refused, and the result was silence with a track apparently playing.
    *  A dead native engine must cost OS media keys, never the music. */
-  const fallbackToWebAudio = useCallback((reason: string) => {
-    if (backendKindRef.current === 'web' || fellBackRef.current) return;
+  /** The engine swap itself, for good: the native engine is destroyed and
+   *  plain web audio takes over with the current volume. Loads nothing. */
+  const swapToWebAudio = useCallback(() => {
     fellBackRef.current = true;
-    logger.error('playback', 'native audio failed — falling back to web audio', { reason });
-
-    const events = eventsRef.current;
-    const st0 = usePlayerStore.getState();
-    const failing = st0.queue[st0.index];
-    const resumeAt = failing ? positions.resumeTargetFor(failing.id) : 0;
     try { backendRef.current?.destroy(); } catch { /* already broken */ }
-
-    backendRef.current = createWebBackend(events!);
+    backendRef.current = createWebBackend(eventsRef.current!);
     backendKindRef.current = 'web';
     logger.setContext({ backendKind: 'web' });
     // partyVolume lives in the settings store, not the player store.
     const st = usePlayerStore.getState();
     const party = useSettingsStore.getState().partyVolume;
     backendRef.current.setVolume(musicLevel(st.volume, st.muted, duckRef.current), { gain: party ? 2 : 1 });
+  }, []);
 
+  const fallbackToWebAudio = useCallback((reason: string) => {
+    if (backendKindRef.current === 'web' || fellBackRef.current) return;
+    logger.error('playback', 'native audio failed — falling back to web audio', { reason });
+
+    const st0 = usePlayerStore.getState();
+    const failing = st0.queue[st0.index];
+    const resumeAt = failing ? positions.resumeTargetFor(failing.id) : 0;
+    swapToWebAudio();
+
+    const st = usePlayerStore.getState();
     const track = st.queue[st.index];
     if (track) {
       positions.requestStartAt(resumeAt);
@@ -402,14 +407,14 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     // `positions` is a stable object of stable callbacks, so this callback's
     // identity does not change: it is listed to satisfy the deps rule, not
     // because it can ever differ.
-  }, [positions]);
+  }, [positions, swapToWebAudio]);
 
   // Load + (optionally) play a track. Must run from a user gesture for autoplay
   // (React 19 effects are async and lose the activation token). The first call
   // restores the persisted position; later calls start fresh (see
   // usePositionPersistence).
   const loadAndPlay = useCallback((track: Track | null, autoplay: boolean) => {
-    const b = backendRef.current;
+    let b = backendRef.current;
     if (!b) return;
     if (!track) {
       b.stop();
@@ -448,8 +453,19 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     // duration until the engine volunteers one, which on desktop it often
     // never does.
     setDuration(chooseDuration(track.durationSec ?? 0, null));
+    // A browser-storage download is a blob: URL only this page can read. The
+    // desktop Rust engine fetches outside the webview, so it keeps streaming
+    // online; offline, web audio playing the downloaded copy beats silence.
+    const downloads = useOfflineStore.getState();
+    const webCopy = downloads.webFiles[track.id] ?? null;
+    if (webCopy && backendKindRef.current === 'tauri-native' && !navigator.onLine) {
+      logger.breadcrumb('playback', 'offline: web audio for a downloaded copy', { trackId: track.id });
+      swapToWebAudio();
+      b = backendRef.current!;
+    }
+    const readsBlobs = backendKindRef.current === 'web' || backendKindRef.current === 'capacitor';
     // A downloaded copy plays even online: instant, and no data used.
-    const local = localSrcFor(track, useOfflineStore.getState().trackFiles);
+    const local = localSrcFor(track, downloads.trackFiles) ?? (readsBlobs ? webCopy : null);
     localSrcTrackRef.current = local ? track.id : null;
     // Only a fresh LOCAL load re-arms the one-shot stream fallback; the
     // fallback's own load is not local, so it cannot re-arm itself.
@@ -463,8 +479,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     // Set metadata in the same synchronous turn so the notification carries
     // across a track boundary (Firefox Android tears it down otherwise).
     // Local art (the same downloaded copy) wins over the remote artworkUrl.
-    b.setMetadata(track, localArtFor(track, useOfflineStore.getState().artFiles));
-  }, [positions]);
+    b.setMetadata(track, localArtFor(track, downloads.artFiles));
+  }, [positions, swapToWebAudio]);
 
   loadAndPlayRef.current = loadAndPlay;
   fallbackToWebAudioRef.current = fallbackToWebAudio;
