@@ -339,3 +339,27 @@ async fn a_stop_during_a_slow_load_is_kept() {
     assert_eq!(rig.count("audio:play"), 0, "audio:play after stop: {:?}", rig.events());
     assert!(!rig.engine().load_in_flight(), "nothing is loading after a stop");
 }
+
+// --- A2: what the Windows updater waits for ---------------------------------
+
+/// The updater installs a kept update at launch only when no music is
+/// playing (installing quits the app on Windows). A song loaded paused, as
+/// at startup, does not count; one playing, or on its way to play, does.
+#[tokio::test(flavor = "multi_thread")]
+async fn is_playing_counts_only_music_playing_or_about_to() {
+    let rig = Rig::new();
+    let song = host(&[Answer::Song], Duration::ZERO);
+    assert!(!rig.engine().is_playing(), "nothing loaded");
+    rig.load(&song.url, false).await;
+    assert!(!rig.engine().is_playing(), "loaded paused");
+    rig.play();
+    assert!(rig.engine().is_playing(), "playing");
+    rig.pause();
+    assert!(!rig.engine().is_playing(), "paused again");
+
+    let slow = host(&[Answer::Song], Duration::from_millis(1_500));
+    let load = tokio::spawn(load_on(rig.app.handle().clone(), slow.url.clone(), true));
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    assert!(rig.engine().is_playing(), "a song on its way to play");
+    load.await.expect("load");
+}

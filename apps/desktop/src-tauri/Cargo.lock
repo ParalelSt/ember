@@ -951,9 +951,11 @@ name = "ember-desktop"
 version = "0.4.1"
 dependencies = [
  "alloc-stdlib",
+ "base64 0.22.1",
  "block2",
  "brotli-decompressor",
  "discord-rich-presence",
+ "minisign-verify",
  "objc2",
  "objc2-av-foundation",
  "objc2-avf-audio",
