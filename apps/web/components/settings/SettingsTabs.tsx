@@ -1,5 +1,6 @@
 'use client';
 
+import { useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { cn } from '@/lib/utils';
@@ -15,14 +16,25 @@ const TABS = [
 
 export function SettingsTabs() {
   const path = usePathname();
+  const activeRef = useRef<HTMLAnchorElement>(null);
+
+  // Below md the tab row scrolls horizontally, so a tab picked from a link
+  // elsewhere (or the section landed on directly) can start off-screen with
+  // nothing on the page hinting there's more to scroll to. Bring it into
+  // view whenever the active tab changes.
+  useEffect(() => {
+    activeRef.current?.scrollIntoView({ block: 'nearest', inline: 'center' });
+  }, [path]);
+
   return (
-    <nav className="md:w-48 shrink-0">
+    <nav className="md:w-48 shrink-0 relative">
       <ul className="flex md:flex-col gap-1 overflow-x-auto md:overflow-visible">
         {TABS.map(({ href, label }) => {
           const active = path.startsWith(href);
           return (
             <li key={href}>
               <Link
+                ref={active ? activeRef : undefined}
                 href={href}
                 className={cn(
                   'block px-3 py-2 rounded-md text-sm font-medium transition-colors whitespace-nowrap',
@@ -37,6 +49,18 @@ export function SettingsTabs() {
           );
         })}
       </ul>
+      {/* Edge fades hint that the row scrolls, below md only (md:overflow-visible
+          removes the scroller above that). bg-background (never a hardcoded
+          colour) so it holds under every theme; pointer-events-none so it
+          never blocks a tap on a tab underneath. */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-y-0 left-0 w-block bg-linear-to-r from-background to-transparent md:hidden"
+      />
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-y-0 right-0 w-block bg-linear-to-l from-background to-transparent md:hidden"
+      />
     </nav>
   );
 }
