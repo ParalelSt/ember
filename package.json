@@ -37,6 +37,8 @@
     "test:ffmpeg": "node tests/ffmpeg-resolve.test.mjs",
     "test:align": "${PYTHON_BIN:-.venv/bin/python} -m unittest tests/test_align.py",
     "test:preferences-ui": "node tests/preferences-ui.test.mjs",
+    "test:pranks-ui": "node tests/pranks-ui.test.mjs",
+    "test:pranks-spike": "node tests/pranks-realtime.spike.mjs",
     "test:android-ui": "node tests/android-player-ui.test.mjs",
     "test:offline-ui": "node tests/offline-android-ui.test.mjs",
     "test:offline-page": "node tests/offline-page.test.mjs",

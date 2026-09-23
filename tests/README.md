@@ -249,6 +249,8 @@ node tests/fake-ug.mjs &                            # port 4331; app needs UG_BA
 MUSIC_DIR="$SB/music" node tests/tabs-fetch.test.mjs # or: npm run test:tabs-fetch (tabs found on Ultimate Guitar: once per song, drawn, follows the song; PB restarted with this branch's pb_hooks)
 node tests/transcribe-timing.test.mjs              # or: npm run test:transcribe-timing (no server needed; python3 or PYTHON_BIN)
 node tests/preferences-ui.test.mjs                  # or: npm run test:preferences-ui (plugin switches across two devices; PB restarted with this branch's pb_hooks)
+node tests/pranks-ui.test.mjs                       # or: npm run test:pranks-ui (admin pings a playing target in a second browser context, rules, switch, cap, 45 s expiry; PB restarted with this branch's pb_hooks)
+node tests/pranks-realtime.spike.mjs                # or: npm run test:pranks-spike (does PocketBase SSE stream through /pb? under next start it does not: gzip buffers it)
 node tests/android-player-ui.test.mjs               # or: npm run test:android-ui
 node tests/offline-android-ui.test.mjs              # or: npm run test:offline-ui
 node tests/offline-page.test.mjs                    # or: npm run test:offline-page (no server needed)
