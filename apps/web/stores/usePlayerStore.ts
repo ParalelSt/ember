@@ -120,7 +120,11 @@ export const usePlayerStore = create<PlayerState>()(
         context: s.context,
         loopMode: s.loopMode,
         baseCount: s.baseCount,
-        shuffle: s.shuffle,
+        // shuffle is intentionally left out: its pre-shuffle order
+        // (orderBackup) is never persisted, so persisting the flag alone
+        // would reload into a queue that LOOKS shuffled but has no backup to
+        // restore when the user turns it off. A reload always starts
+        // unshuffled (see the orderBackup comment above).
         muted: s.muted,
       }),
     },
