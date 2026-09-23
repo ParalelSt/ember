@@ -1,11 +1,29 @@
 import 'server-only';
+import { verifiedUserId } from '@/lib/auth';
 
 interface Bucket {
   /** Timestamps (ms) of recent allowed hits, newest last. */
   hits: number[];
+  /** The window this key is checked with, so the sweep knows when it's stale. */
+  windowMs: number;
 }
 
 const buckets = new Map<string, Bucket>();
+
+/** Every key ever seen used to stay in the map for good (bughunt S04). Now
+ *  a sweep at most once a minute drops buckets whose newest hit has left
+ *  their window: such a bucket would allow the next hit anyway. */
+const SWEEP_EVERY_MS = 60_000;
+let lastSweep = 0;
+
+function sweep(now: number) {
+  if (now - lastSweep < SWEEP_EVERY_MS) return;
+  lastSweep = now;
+  for (const [key, b] of buckets) {
+    const newest = b.hits[b.hits.length - 1];
+    if (newest === undefined || newest <= now - b.windowMs) buckets.delete(key);
+  }
+}
 
 export interface RateLimitConfig {
   /** Window in ms. Hits older than this are forgotten. */
@@ -23,13 +41,13 @@ export interface RateLimitResult {
 }
 
 /** In-memory per-key rate limiter. Loses state on server restart, which is
- *  fine for the protections it covers (the rules are advisory throttles
- *  against accidental spam, not a security boundary).
+ *  fine for what it guards: floods, not a determined attacker with many IPs
+ *  (the Python helper cap in lib/sources/youtube.ts is the backstop there).
  *
- *  `consume: false` reads the bucket without recording a hit — for routes
- *  that need to reject an already-over-limit caller up front but must not
- *  charge the quota until the work the limit guards actually succeeds (see
- *  recordRateLimitHit). Defaults to true so existing callers are unchanged. */
+ *  `consume: false` reads the bucket without recording a hit, for routes
+ *  that must reject an already-over-limit caller up front but only charge
+ *  the quota once the guarded work succeeds (see recordRateLimitHit).
+ *  Defaults to true so existing callers are unchanged. */
 export function checkRateLimit(
   key: string,
   cfg: RateLimitConfig,
@@ -37,8 +55,10 @@ export function checkRateLimit(
 ): RateLimitResult {
   const consume = opts.consume ?? true;
   const now = Date.now();
+  sweep(now);
   const cutoff = now - cfg.windowMs;
-  const bucket = buckets.get(key) ?? { hits: [] };
+  const bucket = buckets.get(key) ?? { hits: [], windowMs: cfg.windowMs };
+  bucket.windowMs = cfg.windowMs;
   // Prune old hits.
   bucket.hits = bucket.hits.filter((t) => t > cutoff);
 
@@ -54,35 +74,47 @@ export function checkRateLimit(
   return { ok: true, retryAfter: 0, remaining: cfg.max - bucket.hits.length };
 }
 
-/** Records a hit without checking the limit first — for a caller that
- *  already confirmed (via checkRateLimit/rateLimitResponse with
- *  consume:false) that it's under the cap, and now wants to charge it only
- *  because the guarded work actually succeeded. */
+/** Records a hit without checking the limit first, for a caller that
+ *  already confirmed (checkRateLimit/rateLimitResponse with consume:false)
+ *  it is under the cap and now charges it because the work succeeded. */
 export function recordRateLimitHit(key: string, cfg: RateLimitConfig): void {
   const now = Date.now();
   const cutoff = now - cfg.windowMs;
-  const bucket = buckets.get(key) ?? { hits: [] };
+  const bucket = buckets.get(key) ?? { hits: [], windowMs: cfg.windowMs };
+  bucket.windowMs = cfg.windowMs;
   bucket.hits = bucket.hits.filter((t) => t > cutoff);
   bucket.hits.push(now);
   buckets.set(key, bucket);
 }
 
-/** Bounded per-caller key for PUBLIC routes that have no requireUser (e.g.
- *  search). Prefers the pb_auth cookie (per-user), falls back to the client IP.
- *  The cookie is hashed to keep the map key small; exactness doesn't matter —
- *  these are advisory throttles, not auth. */
-export function keyFromRequest(request: Request): string {
+/** The caller's IP address: the LAST X-Forwarded-For entry.
+ *
+ *  Next 16 gives route handlers no socket address. What it does do (see
+ *  next/dist/server/base-server.js) is fill X-Forwarded-For with the socket's
+ *  remote address when the request has none. The public way in is Tailscale
+ *  Funnel (`tailscale funnel 3000`), whose proxy replaces any X-Forwarded-For
+ *  the client sent with the one address it saw. Proxies that append instead
+ *  (nginx, Caddy) put the address they saw last. Either way the last entry is
+ *  the one a proxy wrote, while earlier entries are whatever the caller typed.
+ *  Someone connecting straight to :3000 on the LAN or tailnet can still
+ *  choose it; that is the trusted side, and the helper cap still holds.
+ *  X-Real-IP is ignored: nothing in front of Ember sets it. */
+export function clientIp(request: Request): string {
+  const fwd = request.headers.get('x-forwarded-for') ?? '';
+  const parts = fwd.split(',').map((p) => p.trim()).filter(Boolean);
+  return parts[parts.length - 1] ?? 'unknown';
+}
+
+/** Per-caller key: the user id when PocketBase confirms the session, else
+ *  the client IP. The cookie alone is never trusted: a made-up pb_auth used
+ *  to buy a fresh bucket with every request (bughunt S04). */
+export async function callerKey(request: Request): Promise<string> {
   const cookie = request.headers.get('cookie') ?? '';
-  const m = /(?:^|;\s*)pb_auth=([^;]+)/.exec(cookie);
-  if (m) {
-    // djb2 hash → short stable-per-cookie key.
-    let h = 5381;
-    for (let i = 0; i < m[1].length; i++) h = ((h << 5) + h + m[1].charCodeAt(i)) | 0;
-    return `pb:${(h >>> 0).toString(36)}`;
+  if (/(?:^|;\s*)pb_auth=/.test(cookie)) {
+    const id = await verifiedUserId();
+    if (id) return `user:${id}`;
   }
-  const fwd = request.headers.get('x-forwarded-for');
-  const ip = fwd?.split(',')[0]?.trim() || request.headers.get('x-real-ip') || 'anon';
-  return `ip:${ip}`;
+  return `ip:${clientIp(request)}`;
 }
 
 /** Convenience helper for routes — returns a Response if the caller is over
@@ -101,4 +133,33 @@ export function rateLimitResponse(
       headers: { 'Retry-After': String(r.retryAfter) },
     },
   );
+}
+
+/** Limits for the public routes that start a Python helper (bughunt S04).
+ *  Generous: a person browsing, even quickly, stays far below them. */
+export const PUBLIC_PYTHON_LIMITS = {
+  /** Typed searches; the search box debounces 250 ms. */
+  search: { windowMs: 60_000, max: 40 },
+  /** Album, artist and shared-track pages. */
+  browse: { windowMs: 60_000, max: 60 },
+  /** "More like this" from a seed song. */
+  recommended: { windowMs: 60_000, max: 30 },
+  /** Songs not on disk yet, each a yt-dlp download. */
+  streamFetch: { windowMs: 60_000, max: 60 },
+} satisfies Record<string, RateLimitConfig>;
+
+/** rateLimitResponse keyed on callerKey, for public routes. */
+export async function limitCaller(request: Request, scope: string, cfg: RateLimitConfig): Promise<Response | null> {
+  return rateLimitResponse(`${scope}:${await callerKey(request)}`, cfg);
+}
+
+/** Tests only. */
+export function _bucketCount(): number {
+  return buckets.size;
+}
+
+/** Tests only. */
+export function _resetBuckets(): void {
+  buckets.clear();
+  lastSweep = 0;
 }

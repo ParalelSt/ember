@@ -2,7 +2,7 @@ import type { NextRequest } from 'next/server';
 import { featured } from '@/lib/sources/jamendo';
 import { searchTracks as youtubeSearch } from '@/lib/sources/youtube';
 import { fromError } from '@/lib/upsertTrack';
-import { keyFromRequest, rateLimitResponse } from '@/lib/rateLimit';
+import { limitCaller, PUBLIC_PYTHON_LIMITS } from '@/lib/rateLimit';
 import { createClient } from '@/lib/pocketbase/server';
 import { searchUploads } from '@/lib/uploads';
 import type { Track } from '@/types/track';
@@ -48,7 +48,7 @@ export const GET = withRequestLog('search', async (request: NextRequest) => {
     }
     // Caps actual searches (typed or voice — voice just fills the box). Humans
     // never hit this thanks to the 250ms debounce + React Query cache.
-    const limited = rateLimitResponse(`search:${keyFromRequest(request)}`, { windowMs: 60_000, max: 40 });
+    const limited = await limitCaller(request, 'search', PUBLIC_PYTHON_LIMITS.search);
     if (limited) return limited;
 
     // Songs members uploaded to this server rank above YouTube: they're

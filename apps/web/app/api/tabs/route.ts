@@ -2,7 +2,7 @@ import type { NextRequest } from 'next/server';
 import { requireUser, UnauthorizedError, unauthorizedResponse } from '@/lib/auth';
 import { createAdminClient } from '@/lib/pocketbase/server';
 import { jsonError } from '@/lib/upsertTrack';
-import { keyFromRequest, rateLimitResponse } from '@/lib/rateLimit';
+import { rateLimitResponse } from '@/lib/rateLimit';
 import { serverLogger } from '@/lib/logger/server';
 import { withRequestLog } from '@/lib/logger/withRequestLog';
 import { searchSongsterr, toMatches } from '@/lib/songsterr';
@@ -23,8 +23,8 @@ export type { TabMatch } from '@/lib/songsterr';
  *  search run once per song that has a tab, across restarts. */
 export const GET = withRequestLog('tabs', async (request: NextRequest) => {
   try {
-    await requireUser();
-    const limited = rateLimitResponse(`tabs:${keyFromRequest(request)}`, { windowMs: 60_000, max: 30 });
+    const { user } = await requireUser();
+    const limited = rateLimitResponse(`tabs:${user.id}`, { windowMs: 60_000, max: 30 });
     if (limited) return limited;
 
     const title = (request.nextUrl.searchParams.get('title') ?? '').trim();
