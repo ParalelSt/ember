@@ -5,6 +5,16 @@ import pkg from "./package.json";
 // Where the real PocketBase server lives (server-side / proxy target).
 const POCKETBASE_ORIGIN = process.env.POCKETBASE_URL ?? 'http://127.0.0.1:8090';
 
+// The superuser-only PocketBase routes, as a lookahead for the /pb rewrite
+// (the same list as PB_SUPERUSER_ROUTES in proxy.ts): the admin UI, superuser
+// sign-in and management, settings, backups, logs, collection definitions.
+const PB_SUPERUSER_ROUTES = [
+  '_(?:/|$)',
+  'api/(?:admins|settings|backups|logs)(?:/|$)',
+  'api/collections/_superusers(?:/|$)',
+  'api/collections(?:/[^/]*)?/?$',
+].join('|');
+
 // Build-time version stamp: the app version from package.json (the one the
 // changelog tracks, see docs/changelog-system.md) plus short git SHA and build
 // date, e.g. "0.3.0 (a1b2c3d 2026-09-18)". Shown in the settings footer +
@@ -42,9 +52,15 @@ const nextConfig: NextConfig = {
   // Same-origin proxy for PocketBase: the browser calls `/pb/*` and Next
   // forwards it to the real PocketBase server. This keeps the whole app on a
   // single public origin, so one static tunnel URL covers everything.
+  // PocketBase's superuser surface is never forwarded (bughunt W14): proxy.ts
+  // answers it with a 404, and this pattern leaves the same routes out for the
+  // paths proxy.ts's matcher skips (anything ending in .png, .svg...).
   async rewrites() {
     return [
-      { source: '/pb/:path*', destination: `${POCKETBASE_ORIGIN}/:path*` },
+      {
+        source: `/pb/:path((?!${PB_SUPERUSER_ROUTES})(?:.*))`,
+        destination: `${POCKETBASE_ORIGIN}/:path`,
+      },
     ];
   },
 };
