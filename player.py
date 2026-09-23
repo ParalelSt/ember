@@ -286,6 +286,11 @@ def play_song(file_path: Path):
         print("Playback error:", e)
 
 # ============= CLI HANDLERS =============
+# What a ytmusicapi parser crash raises (its nav() on a response shape it
+# doesn't know). Deterministic: asking again gives the same crash.
+PARSER_ERRORS = (KeyError, IndexError, TypeError, AttributeError)
+
+
 def _search_songs(query, limit):
     return yt.search(query, filter="songs", limit=limit)
 
@@ -300,29 +305,29 @@ def cmd_search(args):
     # YouTube Music's songs catalog (niche / doujin / fan-uploaded).
     # See docs/superpowers/specs/2026-06-09-search-songs-videos-merge-design.md.
     songs, videos = [], []
-    try:
-        with concurrent.futures.ThreadPoolExecutor(max_workers=2) as ex:
-            songs_future = ex.submit(_search_songs, args.query, args.limit)
-            videos_future = ex.submit(_search_videos, args.query, args.limit)
-            try:
-                songs = songs_future.result() or []
-            except (KeyError, TypeError, AttributeError) as e:
-                print(
-                    f"[search] ytmusicapi songs failed for query={args.query!r}: {type(e).__name__}: {e}",
-                    file=sys.stderr,
-                )
-            try:
-                videos = videos_future.result() or []
-            except (KeyError, TypeError, AttributeError) as e:
-                print(
-                    f"[search] ytmusicapi videos failed for query={args.query!r}: {type(e).__name__}: {e}",
-                    file=sys.stderr,
-                )
-    except Exception as e:
-        print(
-            f"[search] thread pool failed for query={args.query!r}: {type(e).__name__}: {e}",
-            file=sys.stderr,
-        )
+    # A backend that could not be asked (network, busy) as opposed to one
+    # that crashed parsing this query. If nothing is found and any backend
+    # could not be asked, the search fails: "no results" would be cached.
+    unreachable = False
+    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as ex:
+        songs_future = ex.submit(_search_songs, args.query, args.limit)
+        videos_future = ex.submit(_search_videos, args.query, args.limit)
+        try:
+            songs = songs_future.result() or []
+        except Exception as e:
+            unreachable = unreachable or not isinstance(e, PARSER_ERRORS)
+            print(
+                f"[search] ytmusicapi songs failed for query={args.query!r}: {type(e).__name__}: {e}",
+                file=sys.stderr,
+            )
+        try:
+            videos = videos_future.result() or []
+        except Exception as e:
+            unreachable = unreachable or not isinstance(e, PARSER_ERRORS)
+            print(
+                f"[search] ytmusicapi videos failed for query={args.query!r}: {type(e).__name__}: {e}",
+                file=sys.stderr,
+            )
 
     # Reserve slots for videos so a niche track (e.g., DJ Sharpnel's
     # "Back to the Gate" which isn't in YT Music's songs catalog but is
@@ -361,6 +366,7 @@ def cmd_search(args):
     try:
         entries = ytdlp_search(args.query, args.limit)
     except Exception as e:
+        unreachable = True
         print(
             f"[search] yt-dlp fallback failed for query={args.query!r}: {type(e).__name__}: {e}",
             file=sys.stderr,
@@ -371,6 +377,9 @@ def cmd_search(args):
         f"[search] yt-dlp fallback returned {len(tracks)} entries for query={args.query!r}",
         file=sys.stderr,
     )
+    if not tracks and unreachable:
+        print("ERROR: search is unavailable right now, try again shortly", file=sys.stderr)
+        sys.exit(1)
     json.dump(tracks, sys.stdout)
 
 def cmd_download(args):
@@ -974,7 +983,7 @@ def _search_retryable(e):
     """YouTube Music busy or the network failing, as opposed to a bug.
     Parser crashes are ruled out first: ytmusicapi's message dumps the whole
     response, where a "503" or "544" is just a number."""
-    if isinstance(e, (KeyError, IndexError, TypeError, AttributeError)):
+    if isinstance(e, PARSER_ERRORS):
         return False
     if isinstance(e, (requests.exceptions.RequestException, json.JSONDecodeError)):
         return True
