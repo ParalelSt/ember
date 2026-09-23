@@ -18,7 +18,7 @@ use std::time::{Duration, Instant};
 use tauri::test::{mock_app, MockRuntime};
 use tauri::{App, AppHandle, Listener, Manager};
 
-use super::{audio_load, audio_pause, audio_play, AudioEngine};
+use super::{audio_load, audio_pause, audio_play, audio_seek, AudioEngine};
 
 /// 120 s of AAC in a plain m4a: a cached song, decoded seekable.
 const TRACK: &[u8] = include_bytes!("../../test-fixtures/tone-faststart.m4a");
@@ -129,6 +129,10 @@ impl Rig {
 
     fn pause(&self) {
         audio_pause(self.app.handle().clone(), self.engine());
+    }
+
+    fn seek(&self, sec: f64) {
+        audio_seek(self.app.handle().clone(), self.engine(), sec);
     }
 
     /// Every event so far, oldest first.
@@ -271,5 +275,48 @@ async fn play_after_a_failed_load_tries_the_song_again() {
         playing,
         "play after the failure did nothing: {} request(s) to the host",
         flaky.requests.load(Ordering::SeqCst)
+    );
+}
+
+// --- P02: repeat one ---------------------------------------------------------
+
+/// The latest position the engine reported after the `from`-th event.
+fn latest_time_after(events: &[(String, String)], from: usize) -> f64 {
+    events[from..]
+        .iter()
+        .filter(|(n, _)| n == "audio:time")
+        .filter_map(|(_, p)| serde_json::from_str::<serde_json::Value>(p).ok()?["sec"].as_f64())
+        .last()
+        .unwrap_or(0.0)
+}
+
+/// With repeat one on, the webview answers `audio:ended` with a seek to 0 and
+/// a play (PlayerProvider's onEnded). By then the sink has played its source
+/// to the end, and rodio accepts a seek on an empty sink and does nothing, so
+/// the song "restarted" into silence with the slider stuck at 0:00.
+#[tokio::test(flavor = "multi_thread")]
+async fn repeat_one_plays_the_song_again_after_it_ends() {
+    let rig = Rig::new();
+    let song = host(&[Answer::Song], Duration::ZERO);
+    rig.load(&song.url, true).await;
+    assert!(
+        rig.until(Duration::from_secs(60), |r| r.count("audio:ended") == 1).await,
+        "the song should play through first: {:?}",
+        rig.events().last()
+    );
+
+    let mark = rig.events().len();
+    rig.seek(0.0);
+    rig.play();
+
+    let again = rig.until(Duration::from_secs(20), |r| latest_time_after(&r.events(), mark) > 5.0).await;
+    assert!(
+        again,
+        "the repeat never got past {:.1}s",
+        latest_time_after(&rig.events(), mark)
+    );
+    assert!(
+        rig.until(Duration::from_secs(60), |r| r.count("audio:ended") == 2).await,
+        "the repeat should reach the end again"
     );
 }
