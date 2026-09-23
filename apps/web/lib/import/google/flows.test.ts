@@ -248,6 +248,31 @@ describe('every way a sign-in ends early forgets it', () => {
     expect(flowStatus('u1', flowId)).toBeNull();
     expect(_flowStats()).toEqual({ flows: 0, holdingSecrets: 0 });
   });
+
+  it('a late approval gets a fresh deadline for reading, not the tail of the waiting one (bughunt S12)', async () => {
+    // The 178th poll (5s apart) lands the approval 10 seconds before the
+    // original 15-minute waiting deadline would have fired.
+    const g = fakeGoogle({ polls: [...Array.from({ length: 177 }, () => pending), 'token'] });
+    let release: () => void = () => {};
+    const gate = new Promise<void>((r) => (release = r));
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string, init?: RequestInit) => {
+        if (String(url).includes('/videos?')) await gate;
+        return g.fetch(url, init);
+      }),
+    );
+    const { flowId } = await beginFlow('u1', cfg);
+    await tick(178 * 5_000);
+    expect(flowStatus('u1', flowId)?.state).toBe('reading');
+    // Past the point the original waiting deadline would have expired the
+    // flow mid-read: it must still be reading, not expired or gone.
+    await tick(20_000);
+    expect(flowStatus('u1', flowId)?.state).toBe('reading');
+    release();
+    await tick(0);
+    expect(flowStatus('u1', flowId)?.state).toBe('ready');
+  });
 });
 
 // The second pass: YouTube Music says which of the likes that got past the
