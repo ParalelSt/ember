@@ -1,5 +1,5 @@
-/** Admin pranks, delivery spine (plan Task 1): two browser contexts, an
- *  admin and a target.
+/** Admin pranks (plan Tasks 1 to 3): two browser contexts, an admin and a
+ *  target.
  *
  *      npm i -D playwright-core
  *      PB_URL=http://127.0.0.1:8089 APP_URL=http://127.0.0.1:3051 node tests/pranks-ui.test.mjs
@@ -7,9 +7,14 @@
  *  The target plays an uploaded song; the admin page shows what they play in
  *  words; a Ping from the admin page reaches the target and is acknowledged
  *  within a couple of seconds, with nothing shown on the target's side. The
- *  target cannot read acknowledged rows or write any. Members get 403, the
- *  switch gives 409, the hourly cap 429, and a ping to someone offline reads
- *  as expired after 45 s.
+ *  admin uploads a short generated sound from the page and sends it: the
+ *  target's page plays it on a second audio element while the music element
+ *  drops to 30% and comes back, and the log says done. The library refuses
+ *  a renamed image and a too-long sound; its media URL answers only admins
+ *  and the target of a live prank. The target cannot read acknowledged rows
+ *  or write any. Members get 403, the switch gives 409, the hourly cap and
+ *  the 15 s sound gap 429, a sound for a paused person is skipped, and a
+ *  ping to someone offline reads as expired after 45 s.
  *
  *  Needs a sandbox: PocketBase (PB_URL) with pb_hooks/ensure_pranks.pb.js
  *  loaded, and the app (APP_URL) built from this tree with MUSIC_DIR set.
@@ -207,6 +212,165 @@ const stillPlaying = await t.page.evaluate(() => {
   return !!el && !el.paused;
 });
 check('a ping does not touch the music', stillPlaying);
+
+// ── the library ───────────────────────────────────────────────────────────
+const soundName = `Quack ${run}`;
+let snd = null;
+{
+  await a.page.locator('form[aria-label="Add to the library"] input[type=file]')
+    .setInputFiles({ name: 'quack.wav', mimeType: 'audio/wav', buffer: makeWav(4) });
+  await a.page.getByPlaceholder('Name (optional)').fill(soundName);
+  const up = a.page.waitForResponse((r) => r.url().endsWith('/api/admin/pranks/sounds') && r.request().method() === 'POST');
+  await a.page.getByRole('button', { name: 'Upload' }).click();
+  const upRes = await up;
+  snd = (await upRes.json()).sound;
+  check('the admin uploads a short sound from the page (201)', upRes.status() === 201 && snd?.kind === 'sound'
+    && Math.abs((snd?.durationSec ?? 0) - 4) < 0.5, `${upRes.status()} ${JSON.stringify(snd)}`);
+  const listed = await a.page.getByRole('list', { name: 'Library' }).getByText(soundName).first()
+    .waitFor({ timeout: 8_000 }).then(() => true, () => false);
+  check('it shows in the library by name', listed);
+}
+
+async function uploadAs(who, bytes, fields, filename, type) {
+  const form = new FormData();
+  form.append('file', new Blob([new Uint8Array(bytes)], { type }), filename);
+  for (const [k, v] of Object.entries(fields)) form.append(k, v);
+  return fetch(`${APP_URL}/api/admin/pranks/sounds`, { method: 'POST', body: form, headers: { cookie: `pb_auth=${who.cookie}` } });
+}
+{
+  const png = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.alloc(300)]);
+  const fake = await uploadAs(boss, png, { kind: 'sound' }, 'quack.mp3', 'audio/mpeg');
+  check('a png renamed to mp3 is refused (415)', fake.status === 415, String(fake.status));
+  const long = await uploadAs(boss, makeWav(31), { kind: 'sound' }, 'long.wav', 'audio/wav');
+  const longBody = await long.json();
+  check('a 31 s sound is refused in words', long.status === 400 && longBody.error === 'Sounds are 30 seconds at most; upload it as a song', longBody.error);
+  const member = await uploadAs(outsider, makeWav(1), { kind: 'sound' }, 'x.wav', 'audio/wav');
+  check('a member cannot upload to the library (403)', member.status === 403);
+  const list = await app(outsider, '/api/admin/pranks/sounds');
+  check('a member cannot list the library (403)', list.status === 403);
+  const pbList = await fetch(`${APP_URL}/pb/api/collections/prank_sounds/records`, { headers: { Authorization: target.token } }).then((r) => r.json());
+  check('nor read it through /pb', !(pbList.totalItems > 0), JSON.stringify(pbList).slice(0, 120));
+}
+
+const mediaPath = `/api/pranks/media/${snd?.id}`;
+const mediaStatus = (who, headers = {}) => fetch(`${APP_URL}${mediaPath}`, { headers: { cookie: `pb_auth=${who.cookie}`, ...headers } })
+  .then(async (r) => { await r.arrayBuffer().catch(() => null); return r.status; });
+{
+  check('the admin can fetch the media (200)', (await mediaStatus(boss)) === 200);
+  check('with Range (206)', (await mediaStatus(boss, { range: 'bytes=0-99' })) === 206);
+  check('a non-admin cannot fetch the media URL (403)', (await mediaStatus(outsider)) === 403);
+  check('nor can the target before any prank carries it (403)', (await mediaStatus(target)) === 403);
+  const anon = await fetch(`${APP_URL}${mediaPath}`, { redirect: 'manual' });
+  check('nor anyone signed out', ![200, 206].includes(anon.status) && !(anon.headers.get('content-type') ?? '').startsWith('audio/'),
+    `${anon.status} ${anon.headers.get('content-type')}`);
+}
+
+// ── a sound, ducking the music ────────────────────────────────────────────
+{
+  // Sample the target's audio elements every 100 ms from here on.
+  await t.page.evaluate(() => {
+    window.__mix = [];
+    const tick = () => {
+      const all = [...document.querySelectorAll('audio')];
+      const fx = all.find((x) => x.src.includes('/api/pranks/media/'));
+      const music = all.find((x) => x.src && !x.src.includes('/api/pranks/media/'));
+      window.__mix.push({
+        at: Date.now(),
+        fx: fx ? { src: fx.src, time: fx.currentTime, volume: fx.volume } : null,
+        musicVolume: music ? music.volume : null,
+        musicPaused: music ? music.paused : null,
+      });
+    };
+    window.__mixTimer = setInterval(tick, 100);
+  });
+  await t.page.waitForTimeout(400);
+  const before = await t.page.evaluate(() => window.__mix.at(-1).musicVolume);
+
+  await a.page.getByRole('combobox', { name: 'Sound to play' }).selectOption(snd.id);
+  const sentRes = a.page.waitForResponse((r) => r.url().endsWith('/api/admin/pranks') && r.request().method() === 'POST');
+  await a.page.getByRole('button', { name: `Play the sound for ${targetName}` }).click();
+  const soundRes = await sentRes;
+  const soundSentAt = Date.now();
+  const soundPrank = (await soundRes.json()).prank;
+  check('Sound creates a prank (201)', soundRes.status() === 201, String(soundRes.status()));
+
+  let sawDelivered = false;
+  let liveMedia = null;
+  let srow = null;
+  while (Date.now() - soundSentAt < 20_000) {
+    srow = await pbRow(soundPrank.id);
+    if (srow.status === 'delivered' && !sawDelivered) {
+      sawDelivered = true;
+      liveMedia = await mediaStatus(target);
+    }
+    if (srow.status !== 'pending' && srow.status !== 'delivered') break;
+    await sleep(150);
+  }
+  check('the target acknowledges the sound once it is heard, then says done', sawDelivered && srow?.status === 'done'
+    && srow?.engine === 'web', `${srow?.status} ${srow?.engine} ${srow?.reason}`);
+  check('it ran for the sound\'s length', srow?.played_sec >= 3 && srow?.played_sec <= 5, String(srow?.played_sec));
+  check('the target may fetch the media while the prank is live (200)', liveMedia === 200, String(liveMedia));
+  check('and not once it is over (403)', (await mediaStatus(target)) === 403);
+
+  await t.page.waitForTimeout(600);
+  const mix = await t.page.evaluate(() => { clearInterval(window.__mixTimer); return window.__mix; });
+  const during = mix.filter((m) => m.fx);
+  const firstFx = during[0];
+  const maxTime = Math.max(0, ...during.map((m) => m.fx.time));
+  check('the target page plays it on a second audio element', !!firstFx && firstFx.fx.src === `${APP_URL}${mediaPath}` && maxTime > 2,
+    `${firstFx?.fx.src} up to ${maxTime.toFixed(2)} s`);
+  check('within a few seconds of Send', !!firstFx && firstFx.at - soundSentAt < 5_000, `${firstFx ? firstFx.at - soundSentAt : '-'} ms`);
+  const ducked = Math.min(...during.slice(3).map((m) => m.musicVolume ?? 1));
+  check('the music drops while it plays', ducked < before * 0.5, `${before.toFixed(3)} -> ${ducked.toFixed(3)}`);
+  const last = mix.at(-1);
+  check('and comes back after', !last.fx && Math.abs((last.musicVolume ?? 0) - before) < 0.005, `${last.musicVolume}`);
+  check('the sound is never louder than the music was', during.every((m) => m.fx.volume <= before + 1e-6),
+    `${Math.max(...during.map((m) => m.fx.volume))} vs ${before}`);
+  check('the music keeps playing throughout', mix.every((m) => m.musicPaused === false));
+
+  const doneLine = await a.page.getByText(`played a sound for ${targetName}: done after`).first()
+    .waitFor({ timeout: 8_000 }).then(() => true, () => false);
+  check('the admin log says done, in words', doneLine);
+
+  const again = await app(boss, '/api/admin/pranks', { method: 'POST', body: JSON.stringify({ targetId: target.id, kind: 'sound', soundId: snd.id }) });
+  const againBody = await again.json();
+  check('a second sound within 15 s is refused in words (429)', again.status === 429 && /^Sounds need 15 s between them/.test(againBody.error), againBody.error);
+
+  const text = (await t.page.textContent('body')) ?? '';
+  const said = /.{0,30}(pranked|from an admin|Pranks on you|Quack).{0,30}/i.exec(text)?.[0];
+  check('nothing on the target page mentions the sound', !said, said);
+  check('still no toast on the target side', (await t.page.locator('[data-sonner-toast]').count()) === 0);
+  check('still nothing in the target console about pranks', !t.consoleLines.some((l) => /prank/i.test(l)),
+    t.consoleLines.filter((l) => /prank/i.test(l)).join(' | '));
+
+  // Sounds only while music plays: pause, wait out the gap, send again.
+  await t.page.evaluate(() => [...document.querySelectorAll('audio')].find((x) => x.src)?.pause());
+  const gap = soundSentAt + 16_000 - Date.now();
+  if (gap > 0) await sleep(gap);
+  const paused = await app(boss, '/api/admin/pranks', { method: 'POST', body: JSON.stringify({ targetId: target.id, kind: 'sound', soundId: snd.id }) });
+  const pausedPrank = (await paused.json()).prank;
+  let prow = null;
+  const pausedAt = Date.now();
+  while (Date.now() - pausedAt < 15_000) {
+    prow = await pbRow(pausedPrank.id);
+    if (prow.status !== 'pending') break;
+    await sleep(250);
+  }
+  check('a sound for someone whose music is paused is skipped', prow?.status === 'skipped' && prow?.reason === 'not-playing',
+    `${prow?.status} ${prow?.reason}`);
+  const log = await app(boss, `/api/admin/pranks?target=${target.id}`).then((r) => r.json());
+  const pausedLine = log.pranks?.find((p) => p.id === pausedPrank.id)?.line ?? '';
+  check('and the log says why, in words', pausedLine.endsWith('not played: nothing was playing'), pausedLine);
+  const noFx = await t.page.evaluate(() => ![...document.querySelectorAll('audio')].some((x) => x.src.includes('/api/pranks/media/')));
+  check('nothing played on the paused page', noFx);
+}
+
+// ── delete from the library ───────────────────────────────────────────────
+{
+  const del = await app(boss, `/api/admin/pranks/sounds/${snd.id}`, { method: 'DELETE' });
+  check('the admin deletes the sound (200)', del.status === 200);
+  check('and its media is gone (404)', (await mediaStatus(boss)) === 404);
+}
 
 // ── rules at the /pb boundary ─────────────────────────────────────────────
 {
