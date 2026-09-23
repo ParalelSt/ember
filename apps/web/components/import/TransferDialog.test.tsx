@@ -510,6 +510,10 @@ describe('TransferDialog: YouTube Music likes, after a Google sign-in', () => {
     expect(link).toHaveTextContent('Open google.com/device');
     expect(screen.getByTestId('google-waiting')).toHaveTextContent('Waiting for you to allow Ember');
     expect(screen.queryByRole('button', { name: /Sign in with Google/ })).toBeNull();
+    // Any Google account can import, so Google's unverified-app page is
+    // coming: say so before they reach it, so nobody backs out.
+    expect(screen.getByTestId('google-unverified-hint')).toHaveTextContent("Google will say it hasn't verified Ember");
+    expect(screen.getByTestId('google-unverified-hint')).toHaveTextContent('press Continue');
   });
 
   it('waiting, reading, then ready: the shared preview card, the skipped line, and Start', async () => {

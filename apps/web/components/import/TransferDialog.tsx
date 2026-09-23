@@ -28,7 +28,7 @@ import {
   type TransferRoute,
   type TransferServiceId,
 } from '@/lib/import/transferRoutes';
-import { GOOGLE_FALLBACK_HINT, GOOGLE_MESSAGES, skippedLine } from '@/lib/import/sources/ytmusicLiked';
+import { GOOGLE_FALLBACK_HINT, GOOGLE_MESSAGES, GOOGLE_UNVERIFIED_HINT, skippedLine } from '@/lib/import/sources/ytmusicLiked';
 import type { JobKind, ImportSourceKind } from '@/lib/import/types';
 import type { TransferPreview } from '@/app/api/import/upload/route';
 import type { GooglePreview } from '@/lib/import/google/flows';
@@ -652,6 +652,9 @@ function GoogleSignInPanel({ signIn, onSignIn }: { signIn: SignIn; onSignIn: () 
           Open {shown}
         </a>
         <span className="text-xs text-muted-foreground">Type the code there and allow Ember.</span>
+        <span data-testid="google-unverified-hint" className="text-xs text-muted-foreground">
+          {GOOGLE_UNVERIFIED_HINT}
+        </span>
         <p data-testid="google-waiting" role="status" className="text-xs text-muted-foreground">
           {signIn.reading ? 'Google said yes. Reading your likes…' : 'Waiting for you to allow Ember…'}
         </p>

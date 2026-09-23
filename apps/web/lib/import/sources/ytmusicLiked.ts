@@ -54,7 +54,7 @@ export const GOOGLE_MESSAGES = {
   denied: "You said no on Google's page, so nothing was read.",
   expired: 'The code ran out. Press Sign in with Google to get a new one.',
   noScope: 'Google did not let Ember see your YouTube likes, so nothing was read. Sign in again and leave that box ticked.',
-  blocked: 'Google blocked this sign-in for that account. Ask the person who runs Ember to add your Google email as a tester.',
+  blocked: "Google blocked this sign-in for that account. The person who runs Ember needs to publish Ember's Google project so any account can use it.",
   setupWrong: "Google turned down this server's sign-in setup, so the person who runs Ember needs to check it.",
   busy: 'Google is handing out too many codes right now. Try again in a minute.',
   unreachable: 'Google did not answer. Try again in a moment.',
@@ -66,6 +66,12 @@ export const GOOGLE_MESSAGES = {
 } as const;
 
 export type GoogleFailure = keyof typeof GOOGLE_MESSAGES;
+
+/** Under the code, while waiting: Ember's Google project is published but not
+ *  reviewed by Google, so every account meets Google's warning page first.
+ *  Said up front so nobody backs out of it thinking something is wrong. */
+export const GOOGLE_UNVERIFIED_HINT =
+  "Google will say it hasn't verified Ember. That is expected for a small private app: press Continue, or Advanced and then Go to Ember.";
 
 /** Under the not-configured sentence: the way in that needs no sign-in. */
 export const GOOGLE_FALLBACK_HINT = 'You can still bring your likes over as a playlist link.';

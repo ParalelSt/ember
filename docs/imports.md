@@ -133,7 +133,7 @@ It uses Google's OAuth 2.0 device flow (the "TVs and Limited Input devices" clie
 1. Settings, Library, Transfer, then **Liked songs**, **YouTube Music**, **I can sign in to my Google account**.
 2. One button: **Sign in with Google**. Pressing it shows a short code in large letters (like `ABCD-EFGH`) and a button that opens google.com/device in a new tab, with "Waiting for you to allow Ember..." underneath.
 3. On google.com/device (on the same computer, or on their phone) they type the code and pick their Google account.
-4. While the app is in Testing and they are on the test-user list, Google shows **"Google hasn't verified this app"**. They press **Continue**. (If the owner published the app instead, the same warning appears for everyone; it is expected for a small private app.) If they are not on the test-user list, Google says **"Access blocked"** and Ember says to ask the owner to add their email.
+4. Google shows **"Google hasn't verified this app"**. Ember has already told them to expect it, under the code. They press **Continue** (or **Advanced**, then **Go to Ember**). If the owner left the project in Testing and their email is not on the list, Google says **"Access blocked"** instead, and Ember says the project needs publishing.
 5. Google asks whether Ember may **"View your YouTube account"**. They press **Continue** (or **Allow**), and Google says they can go back to their device.
 6. Back in Ember, the line changes to "Google said yes. Reading your likes..." and then the usual preview: how many songs, the first few by name, and "Left out N likes that are not music." They press **Transfer N songs** and land on Liked songs with the transfer running.
 
@@ -144,9 +144,7 @@ The endings, each one sentence: "You said no on Google's page, so nothing was re
 1. Go to https://console.cloud.google.com and sign in with any Google account. Create a new project (top bar, project picker, **New project**), call it Ember.
 2. **APIs & Services**, **Library**: search for **YouTube Data API v3** and press **Enable**.
 3. **APIs & Services**, **OAuth consent screen** (in newer consoles: **Google Auth Platform**, **Branding** and **Audience**): user type **External**, app name Ember, your email as support and developer contact. Save. On the scopes step you can add `.../auth/youtube.readonly`, or leave it: Ember asks for it itself.
-4. Who may sign in. Pick one:
-   - **Testing** (the default): under **Test users** (or **Audience**, **Test users**) add each friend's Google email, up to 100. Only they can sign in; everyone else sees "Access blocked". Nothing to publish, no review.
-   - **In production**: press **Publish app**. Anyone can sign in, but everyone sees Google's "unverified app" warning and has to press Continue, and Google caps an unverified app at 100 users in total. Google's own verification is not needed for a private group.
+4. Who may use it. The owner's choice is **any Google account**, so press **Publish app** (In production). Anyone can then do the import with no list to keep. Two things come with an unreviewed app, both set by Google: everyone sees the "Google hasn't verified this app" page and presses Continue (or Advanced, then Go to Ember), which the Ember dialog warns them about in advance; and at most 100 different accounts can ever use it until Google reviews the app. Google's review is free but needs a website on a domain you own and a privacy policy page, so for a private group publishing unreviewed is the practical choice. (Leaving it in **Testing** instead limits it to the emails you add under **Test users**; anyone else sees "Access blocked".)
 5. **APIs & Services**, **Credentials**, **Create credentials**, **OAuth client ID**. Application type: **TVs and Limited Input devices**. Name it Ember TV. Create. Google shows a **Client ID** (ends in `.apps.googleusercontent.com`) and a **Client secret** (starts with `GOCSPX-`).
 6. Put both in `apps/web/.env.local` on the host:
 
