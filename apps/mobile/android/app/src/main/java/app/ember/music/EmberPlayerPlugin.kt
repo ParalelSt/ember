@@ -143,16 +143,8 @@ class EmberPlayerPlugin : Plugin() {
             queueFromJs = System.currentTimeMillis()
             // Sent first: the service applies it before the items arrive.
             c.sendCustomCommand(SessionCommand(EmberPlaybackService.COMMAND_QUEUE_CONTEXT, Bundle.EMPTY), queueContext)
-            val current = (0 until c.mediaItemCount).map { c.getMediaItemAt(it).mediaId }
-            val wanted = items.map { it.mediaId }
-            val sameStart = wanted.size >= current.size && current.isNotEmpty() && wanted.subList(0, current.size) == current
-            when {
-                // Same queue, maybe a different item: never restart what plays.
-                wanted == current -> if (index != c.currentMediaItemIndex) c.seekTo(index, 0)
-                // Radio / add-to-queue appended: keep playing, add the tail.
-                sameStart && index == c.currentMediaItemIndex -> c.addMediaItems(items.subList(current.size, items.size))
-                else -> { c.setMediaItems(items, index, 0); c.prepare() }
-            }
+            // Never restarts the song that plays when it is still the one asked for.
+            QueueSync.apply(c, items, index)
             if (play) c.play()
             call.resolve()
         }
