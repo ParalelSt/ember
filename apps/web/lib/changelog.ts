@@ -21,6 +21,18 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    id: 'desktop-stream-stall',
+    version: '0.5.1',
+    date: '2026-09-23',
+    title: 'Long songs load again on desktop',
+    summary: 'The desktop app no longer gives up with "Couldn\'t load" on long songs.',
+    bullets: [
+      'Some songs, mostly long ones, failed to start in the desktop app while they played fine in a browser. They now start straight away, from one download instead of dozens of small ones.',
+      'If a song does get stuck while loading, the app tries once more on its own before telling you.',
+      'Needs the new desktop app (0.4.1).',
+    ],
+  },
+  {
     id: 'transfer-liked-songs',
     version: '0.5.0',
     date: '2026-09-23',
