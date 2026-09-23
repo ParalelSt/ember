@@ -14,7 +14,11 @@ vi.mock('@/lib/auth', () => ({
   unauthorizedResponse: () => Response.json({ error: 'Unauthorized' }, { status: 401 }),
 }));
 const rateLimitMock = vi.fn(() => null as Response | null);
-vi.mock('@/lib/rateLimit', () => ({ rateLimitResponse: () => rateLimitMock() }));
+const recordRateLimitHitMock = vi.fn();
+vi.mock('@/lib/rateLimit', () => ({
+  rateLimitResponse: () => rateLimitMock(),
+  recordRateLimitHit: () => recordRateLimitHitMock(),
+}));
 vi.mock('@/lib/logger/server', () => ({ serverLogger: { error: vi.fn() } }));
 vi.mock('@/lib/upsertTrack', () => ({
   jsonError: (error: string, status: number) => Response.json({ error }, { status }),
@@ -52,6 +56,7 @@ beforeEach(() => {
   vi.stubGlobal('fetch', fetchMock);
   requireUserMock.mockResolvedValue({ user: { id: 'u1', email: 'dev@ember.test' } });
   rateLimitMock.mockReturnValue(null);
+  recordRateLimitHitMock.mockClear();
   process.env.DISCORD_FEATURE_WEBHOOK_URL = 'http://127.0.0.1:4321/feature';
   process.env.DISCORD_FIX_WEBHOOK_URL = 'http://127.0.0.1:4321/fix';
 });
@@ -145,6 +150,9 @@ describe('POST /api/requests: validation', () => {
     const res = await POST(request(validBody({ kind: 'other' })), undefined as never);
     expect(res.status).toBe(400);
     expect(fetchMock).not.toHaveBeenCalled();
+    // [bughunt W12] a request that never reaches Discord must not burn the
+    // hourly quota.
+    expect(recordRateLimitHitMock).not.toHaveBeenCalled();
   });
 
   it('rejects an empty name', async () => {
@@ -194,6 +202,12 @@ describe('POST /api/requests: rate limiting', () => {
     expect(res.status).toBe(429);
     expect(fetchMock).not.toHaveBeenCalled();
   });
+
+  it('[bughunt W12] charges the quota once Discord accepts the message, and not before', async () => {
+    const res = await POST(request(validBody()), undefined as never);
+    expect(res.status).toBe(200);
+    expect(recordRateLimitHitMock).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe('POST /api/requests: Discord failure', () => {
@@ -202,6 +216,12 @@ describe('POST /api/requests: Discord failure', () => {
     const res = await POST(request(validBody()), undefined as never);
     expect(res.status).toBe(502);
     expect(await res.json()).toEqual({ error: "Couldn't send the request, please try again" });
+  });
+
+  it('[bughunt W12] does not charge the quota when Discord rejects the post', async () => {
+    fetchMock.mockResolvedValue({ ok: false, status: 500, text: async () => 'server error' });
+    await POST(request(validBody()), undefined as never);
+    expect(recordRateLimitHitMock).not.toHaveBeenCalled();
   });
 });
 
