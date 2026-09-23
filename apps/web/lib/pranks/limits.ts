@@ -51,14 +51,22 @@ export interface RecentPrank {
   kind: PrankKind;
   status: PrankStatus;
   created: number;
+  reason?: string;
 }
 
 export type CapResult = { ok: true } | { ok: false; reason: CapReason; retryAfterSec: number };
 export type CapReason = 'target-hourly' | 'admin-hourly' | 'sound-gap' | 'swap-active';
 
 const HOUR_MS = 60 * 60 * 1000;
-/** Rows that never reached anybody do not count against a cap. */
-const counts = (p: RecentPrank) => p.status !== 'cancelled' && p.status !== 'expired';
+/** Rows nobody heard do not count against a cap: never delivered, or
+ *  skipped because nothing was playing. */
+const counts = (p: RecentPrank) =>
+  p.status !== 'cancelled' && p.status !== 'expired' && !(p.status === 'skipped' && p.reason === 'not-playing');
+
+/** How many pranks a person has had this hour, as the cap counts them. */
+export function hourCount(forTarget: RecentPrank[], now: number): number {
+  return forTarget.filter((p) => counts(p) && p.kind !== 'ping' && p.created > now - HOUR_MS).length;
+}
 
 /** Frequency caps for one new prank. `forTarget` is the target's rows from
  *  the last hour (any issuer), `byAdmin` the issuing admin's rows from the

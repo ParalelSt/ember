@@ -1,6 +1,6 @@
 /** Next's startup hook: runs once when the server boots. Installs the
  *  uncaught-error catch, starts the playlist import runner, and schedules
- *  the daily cache/DB cleanup and the daily error digest. */
+ *  the daily cache/DB cleanup, the daily error digest and the prank tick. */
 export async function register() {
   // Only the Node server runtime has a filesystem and PocketBase access.
   if (process.env.NEXT_RUNTIME !== 'nodejs') return;
@@ -49,6 +49,13 @@ export async function register() {
   if (process.env.IMPORT_RUNNER_DISABLED !== '1') {
     const { startImportRunner } = await import('@/lib/import/runnerInstance');
     startImportRunner();
+  }
+
+  // Repeating prank sounds (lib/pranks/scheduler.ts): a 5 s tick that turns
+  // due schedules into pranks. The global switch is checked on every tick.
+  if (process.env.PRANK_TICK_DISABLED !== '1') {
+    const { startPrankTick } = await import('@/lib/pranks/schedulerInstance');
+    startPrankTick();
   }
 
   if (process.env.CLEANUP_DISABLED === '1') return;

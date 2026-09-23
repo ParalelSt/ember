@@ -26,7 +26,12 @@ export function effectiveStatus(row: RecordModel, now: number): PrankStatus {
 }
 
 export function toRecent(row: RecordModel, now: number): RecentPrank {
-  return { kind: row.kind as PrankKind, status: effectiveStatus(row, now), created: parsePbDate(row.created) };
+  return {
+    kind: row.kind as PrankKind,
+    status: effectiveStatus(row, now),
+    created: parsePbDate(row.created),
+    reason: String(row.reason ?? ''),
+  };
 }
 
 const dateOrNull = (v: unknown) => (typeof v === 'string' && v ? v : null);
