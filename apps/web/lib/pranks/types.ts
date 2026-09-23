@@ -75,6 +75,8 @@ export interface PrankLogEntry {
   deliveredAt: string | null;
   doneAt: string | null;
   playedSec: number | null;
+  /** Sent by a repeat rather than by hand. */
+  fromRepeat: boolean;
   /** The whole line, e.g. "Aron pinged Marko at 21:03: delivered on desktop". */
   line: string;
 }

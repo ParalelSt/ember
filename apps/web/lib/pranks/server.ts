@@ -55,6 +55,7 @@ export function toLogEntry(row: RecordModel, names: Map<string, string>, now: nu
     deliveredAt: dateOrNull(row.delivered_at),
     doneAt: dateOrNull(row.done_at),
     playedSec,
+    fromRepeat: typeof row.schedule === 'string' && row.schedule !== '',
   };
   return { ...entry, line: logLine(entry) };
 }
