@@ -1,6 +1,7 @@
 import 'server-only';
 import { spawn } from 'node:child_process';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { GENERATED_DIR } from '@/lib/tabs';
 import { queuePythonJob } from '@/lib/pythonJobs';
@@ -22,8 +23,10 @@ const ROOT = path.resolve(process.cwd(), '..', '..');
 const PYTHON_BIN = process.env.PYTHON_BIN ?? path.join(ROOT, '.venv/bin/python');
 const TRANSCRIBE_SCRIPT = process.env.TRANSCRIBE_SCRIPT ?? path.join(ROOT, 'transcribe.py');
 
-/** Demucs on a four-minute song takes a few minutes on this hardware. */
-const TIMEOUT_MS = 10 * 60 * 1000;
+/** Demucs on a four-minute song takes a few minutes on this hardware.
+ *  Exported so tests can advance fake timers past it exactly, rather than
+ *  hardcoding the same number in two places. */
+export const TIMEOUT_MS = 10 * 60 * 1000;
 
 const SOURCE_ID_RE = /^[A-Za-z0-9_-]{1,32}$/;
 
@@ -57,6 +60,12 @@ export function generatedTabPath(key: string): string {
 
 const running = new Map<string, Promise<void>>();
 const lastError = new Map<string, string>();
+/** Keys whose POST has committed to a job but hasn't reached startGeneration
+ *  yet (still awaiting ensureDownloaded, below `running`'s own entry). Without
+ *  this, a GET that lands during that download sees neither the file nor a
+ *  `running` entry and answers 404 "none" — as if nothing had been asked for,
+ *  while the POST that asked is still in flight. */
+const pending = new Set<string>();
 
 export type GenerationStatus =
   | { status: 'ready' }
@@ -66,10 +75,21 @@ export type GenerationStatus =
 
 export function generationStatus(key: string): GenerationStatus {
   if (fs.existsSync(generatedTabPath(key))) return { status: 'ready' };
-  if (running.has(key)) return { status: 'running' };
+  if (running.has(key) || pending.has(key)) return { status: 'running' };
   const error = lastError.get(key);
   if (error) return { status: 'failed', error };
   return { status: 'none' };
+}
+
+/** Mark `key` as claimed before the (possibly slow) audio fetch starts, so
+ *  concurrent GETs poll as "running" instead of "none". Call `clearPending`
+ *  once `startGeneration` has been called (or the attempt was abandoned). */
+export function markPending(key: string): void {
+  pending.add(key);
+}
+
+export function clearPending(key: string): void {
+  pending.delete(key);
 }
 
 /** Start (or join) the job for `key`. Resolves when the file exists; rejects
@@ -95,6 +115,30 @@ export function startGeneration(key: string, audioPath: string, title: string): 
   return job;
 }
 
+/** transcribe.py decodes into a `tempfile.TemporaryDirectory(prefix=
+ *  "ember-transcribe-")` under the OS tmp dir, cleaned up by its own `with`
+ *  block on a normal exit. SIGKILL (below, on timeout) gives Python no chance
+ *  to run that cleanup, so the wav dir is left behind. Only one transcription
+ *  job ever runs at a time (the queue in startGeneration above), so any such
+ *  dir still around when a job ends is this job's leftover and safe to sweep. */
+function sweepTranscribeTmpDirs(): void {
+  const tmpRoot = os.tmpdir();
+  let entries: string[];
+  try {
+    entries = fs.readdirSync(tmpRoot);
+  } catch {
+    return;
+  }
+  for (const name of entries) {
+    if (!name.startsWith('ember-transcribe-')) continue;
+    try {
+      fs.rmSync(path.join(tmpRoot, name), { recursive: true, force: true });
+    } catch {
+      // best effort — a stray dir next run is better than crashing this one
+    }
+  }
+}
+
 function runScript(audioPath: string, outPath: string, title: string): Promise<void> {
   return new Promise((resolve, reject) => {
     fs.mkdirSync(GENERATED_DIR, { recursive: true });
@@ -111,6 +155,7 @@ function runScript(audioPath: string, outPath: string, title: string): Promise<v
     let stderr = '';
     const timer = setTimeout(() => {
       child.kill('SIGKILL');
+      sweepTranscribeTmpDirs();
       reject(new Error('transcription timed out'));
     }, TIMEOUT_MS);
     child.stderr.on('data', (d: Buffer) => {
@@ -119,10 +164,15 @@ function runScript(audioPath: string, outPath: string, title: string): Promise<v
     child.stdout.on('data', () => {}); // keep the pipe drained
     child.on('error', (e) => {
       clearTimeout(timer);
+      sweepTranscribeTmpDirs();
       reject(e);
     });
     child.on('close', (code) => {
       clearTimeout(timer);
+      // A clean exit already cleaned up after itself (transcribe.py's own
+      // `with` block); this only matters after a kill or crash, but it's
+      // cheap enough to run unconditionally rather than track which case.
+      sweepTranscribeTmpDirs();
       if (code === 0 && fs.existsSync(outPath)) return resolve();
       // The script's own last line is the useful part; everything above it is
       // a traceback or a model warning.

@@ -10,9 +10,11 @@ import { withRequestLog } from '@/lib/logger/withRequestLog';
 import { serverLogger } from '@/lib/logger/server';
 import { recordGenerated } from '@/lib/tabStore';
 import {
+  clearPending,
   generatedTabFile,
   generatedTabPath,
   generationStatus,
+  markPending,
   parseTrackKey,
   startGeneration,
   type TrackKey,
@@ -152,8 +154,23 @@ export const POST = withRequestLog('tabs/generated/[trackId]', async (request: N
       if (limited) return limited;
     }
 
-    const audio = await audioFor(key);
-    if (!audio) return jsonError('Ember has no recording of that song to transcribe.', 404);
+    // Register the job as claimed BEFORE the (possibly slow) download, so a
+    // GET that polls while ensureDownloaded is still running sees "running"
+    // rather than "none" — otherwise a poll landing in that window reads as
+    // if nothing had ever been asked for. Cleared once startGeneration takes
+    // over (it has its own `running` entry by then) or the attempt fails.
+    markPending(key.key);
+    let audio: string | null;
+    try {
+      audio = await audioFor(key);
+    } catch (e) {
+      clearPending(key.key);
+      throw e;
+    }
+    if (!audio) {
+      clearPending(key.key);
+      return jsonError('Ember has no recording of that song to transcribe.', 404);
+    }
 
     const title = said.title || key.sourceId;
     if (!requestedBy.has(key.key)) requestedBy.set(key.key, { userId: user.id, ...said });
@@ -167,6 +184,7 @@ export const POST = withRequestLog('tabs/generated/[trackId]', async (request: N
       })
       .catch(() => {})
       .finally(() => requestedBy.delete(key.key));
+    clearPending(key.key);
     return Response.json({ status: 'running' }, { status: 202 });
   } catch (e) {
     if (e instanceof UnauthorizedError) return unauthorizedResponse();
