@@ -182,13 +182,16 @@ impl AudioEngine {
     /// Reflect play/paused state in the OS Now Playing widget. No-op if media
     /// controls failed to initialize.
     fn set_nowplaying(&self, playing: bool) {
+        self.set_playback(if playing {
+            MediaPlayback::Playing { progress: None }
+        } else {
+            MediaPlayback::Paused { progress: None }
+        });
+    }
+
+    fn set_playback(&self, pb: MediaPlayback) {
         if let Ok(mut g) = self.controls.lock() {
             if let Some(c) = g.as_mut() {
-                let pb = if playing {
-                    MediaPlayback::Playing { progress: None }
-                } else {
-                    MediaPlayback::Paused { progress: None }
-                };
                 let _ = c.set_playback(pb);
             }
         }
@@ -1232,6 +1235,11 @@ async fn load_track<R: Runtime>(
     // and the song started anyway.
     let playing = {
         let mut slot = engine.sink.lock().map_err(|_| "lock")?;
+        // Checked again under the lock: a stop or a newer load that came in
+        // since the check above would otherwise get this sink anyway.
+        if !engine.is_current_load(my_seq) {
+            return Ok(());
+        }
         let playing = engine.want_play.load(Ordering::SeqCst);
         if playing {
             sink.play();
@@ -1339,9 +1347,15 @@ pub fn audio_pause<R: Runtime>(app: AppHandle<R>, engine: State<'_, AudioEngine>
 
 #[tauri::command]
 pub fn audio_stop(engine: State<'_, AudioEngine>) {
+    // Stop outranks a load in flight, as a newer load would: stop pressed
+    // while a song was on its way had no sink to stop, so the song started.
+    // Settled at once, so play and pause see nothing loading.
+    let seq = engine.claim_load();
+    engine.settled_seq.fetch_max(seq, Ordering::SeqCst);
     // Bumping the generation also stops the active position timer.
     engine.generation.fetch_add(1, Ordering::SeqCst);
     if let Ok(mut guard) = engine.sink.lock() {
+        engine.want_play.store(false, Ordering::SeqCst);
         if let Some(sink) = guard.take() {
             sink.stop();
         }
@@ -1357,6 +1371,7 @@ pub fn audio_stop(engine: State<'_, AudioEngine>) {
     if let Ok(mut d) = engine.current_total.lock() {
         *d = None;
     }
+    engine.set_playback(MediaPlayback::Stopped);
 }
 
 #[tauri::command]
