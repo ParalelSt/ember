@@ -54,15 +54,11 @@ class EmberPlaybackService : MediaLibraryService() {
             .setAudioAttributes(AudioAttributes.Builder().setUsage(C.USAGE_MEDIA).setContentType(C.AUDIO_CONTENT_TYPE_MUSIC).build(), true)
             .setHandleAudioBecomingNoisy(true)
             .build()
-        player.addListener(object : Player.Listener {
-            override fun onMediaItemTransition(item: MediaItem?, reason: Int) {
-                // Every item start is one play in history, car-initiated ones
-                // included; the web app skips its own history call on Android.
-                val track = item?.let { TrackItems.trackOf(it) } ?: return
-                io.execute { runCatching { api.recordPlay(track) }.onFailure { Log.w(TAG, "history: ${it.message}") } }
-                maybeExtendQueue()
-            }
-        })
+        player.addListener(QueueListener(
+            player,
+            recordPlay = { track -> io.execute { runCatching { api.recordPlay(track) }.onFailure { Log.w(TAG, "history: ${it.message}") } } },
+            extendQueue = ::maybeExtendQueue,
+        ))
         overlay = PrankOverlay(this, player, dataSource, baseUrl)
         session = MediaLibrarySession.Builder(this, player, Callback()).build()
         // Shuffle and repeat as buttons on the now-playing screen (car + notification).
