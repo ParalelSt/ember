@@ -6,6 +6,8 @@ import type { FlowState as GoogleFlowState, GooglePreview } from '@/lib/import/g
 import type { TabSummary } from '@/lib/tabSources';
 import type { TabTiming } from '@/lib/tabSync';
 import type { StoredPlugins } from '@/lib/pluginSettings';
+import type { PresetId, ThemeDoc, ThemeInputs } from '@/lib/theme/model';
+import type { SavedTheme, ThemeSelection, ThemesList } from '@/lib/theme/saved';
 import type {
   PrankAck,
   PrankLogEntry,
@@ -48,9 +50,13 @@ interface ReqOptions {
   method?: string;
   body?: unknown;
   signal?: AbortSignal;
+  /** Statuses that are an answer, not a fault (a cap reached, a refusal
+   *  with reasons): logged as a warning, so they never trigger a silent
+   *  crash report. The error still throws, carrying the response body. */
+  expected?: number[];
 }
 
-async function req<T>(path: string, { method = 'GET', body, signal }: ReqOptions = {}): Promise<T> {
+async function req<T>(path: string, { method = 'GET', body, signal, expected }: ReqOptions = {}): Promise<T> {
   let res: Response;
   // A FormData body carries its own multipart boundary: setting the header
   // by hand would strip it and the upload would arrive unreadable.
@@ -74,11 +80,14 @@ async function req<T>(path: string, { method = 'GET', body, signal }: ReqOptions
     // lets triage line up this client-side entry with the matching
     // server-side withRequestLog entry for the same request.
     const reqId = res.headers.get('x-request-id') || undefined;
-    logger.error('api', `${method} ${path} → ${res.status}`, { method, path, status: res.status, body: err.error, reqId });
+    const entry = { method, path, status: res.status, body: err.error, reqId };
+    if (expected?.includes(res.status)) logger.warn('api', `${method} ${path} → ${res.status}`, entry);
+    else logger.error('api', `${method} ${path} → ${res.status}`, entry);
     // Attach the HTTP status so callers can branch on it (e.g. 400 = duplicate
     // → friendly "already in playlist" toast instead of the raw server text).
-    const error = new Error(err.error || `Request failed: ${res.status}`) as Error & { status?: number };
+    const error = new Error(err.error || `Request failed: ${res.status}`) as Error & { status?: number; body?: unknown };
     error.status = res.status;
+    error.body = err;
     throw error;
   }
   return (await res.json()) as T;
@@ -358,6 +367,31 @@ export const api = {
       method: 'PATCH',
       body: patch,
     }),
+
+  // Themes (Settings > Appearance). The active theme follows the account;
+  // saved themes are a list per person, each optionally shared with
+  // everyone. 409 (the cap) and 422 (unreadable colours, with `findings`
+  // on error.body) are answers the page shows, not faults.
+  getTheme: () => req<ThemeDoc>('/theme'),
+  setTheme: (selection: ThemeSelection) =>
+    req<ThemeDoc>('/theme', { method: 'PATCH', body: selection, expected: [404, 422] }),
+  listThemes: () => req<ThemesList>('/themes'),
+  createTheme: (theme: { name: string; base: PresetId; inputs: ThemeInputs; shared?: boolean }) =>
+    req<{ theme: SavedTheme }>('/themes', { method: 'POST', body: theme, expected: [409, 422] }),
+  duplicateTheme: (id: string, name?: string) =>
+    req<{ theme: SavedTheme }>('/themes', {
+      method: 'POST',
+      body: name === undefined ? { duplicateOf: id } : { duplicateOf: id, name },
+      expected: [404, 409],
+    }),
+  updateSavedTheme: (id: string, patch: { name?: string; base?: PresetId; inputs?: ThemeInputs; shared?: boolean }) =>
+    req<{ theme: SavedTheme; active?: ThemeDoc }>(`/themes/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      body: patch,
+      expected: [422],
+    }),
+  deleteSavedTheme: (id: string) =>
+    req<{ ok: true; active?: ThemeDoc }>(`/themes/${encodeURIComponent(id)}`, { method: 'DELETE' }),
 
   updateProfile: async ({
     name,

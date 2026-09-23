@@ -22,6 +22,16 @@ export function themeColor(doc: ThemeDoc): string {
   return oklchToHex(resolveInputs(doc).background);
 }
 
+/** The root layout's <html> attributes for a theme: the font class plus
+ *  `dark` for a dark theme, and the inline variables (none for Ember, so
+ *  the markup is exactly what it was before themes). */
+export function htmlProps(fontClass: string, doc: ThemeDoc): { className: string; style: Record<string, string> } {
+  const scheme = themeScheme(doc);
+  const style = themeStyle(doc);
+  if (scheme === 'light') style.colorScheme = 'light';
+  return { className: scheme === 'dark' ? `${fontClass} dark` : fontClass, style };
+}
+
 export interface ThemeEventDetail {
   scheme: Scheme;
   background: string;

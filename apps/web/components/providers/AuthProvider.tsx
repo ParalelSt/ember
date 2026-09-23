@@ -5,6 +5,8 @@ import { createClient } from '@/lib/pocketbase/client';
 import { usePrivacyStore } from '@/stores/usePrivacyStore';
 import { useChangelogStore } from '@/stores/useChangelogStore';
 import { useSettingsStore } from '@/stores/useSettingsStore';
+import { registerThemeCookieWriter, useThemeStore } from '@/stores/useThemeStore';
+import { parseThemeDoc, sameDoc } from '@/lib/theme/model';
 import { logger } from '@/lib/logger/client';
 
 /** Minimal user shape exposed to the app — matches the old Supabase one
@@ -90,6 +92,26 @@ export function AuthProvider({ children, initialUser }: { children: ReactNode; i
     if (userId) void useSettingsStore.getState().loadPlugins(userId);
     else useSettingsStore.getState().resetPluginSync();
   }, [userId]);
+
+  // The active theme follows the account too. The cached theme (and the
+  // cookie's, painted by the root layout) shows until this lands.
+  useEffect(() => {
+    if (userId) void useThemeStore.getState().loadTheme(userId);
+    else useThemeStore.getState().resetThemeSync();
+  }, [userId]);
+
+  // After a theme change, put it into the auth record so the client
+  // wrapper rewrites the pb_auth cookie at once: the root layout paints the
+  // next hard reload from that cookie. One client, this one.
+  useEffect(() => {
+    registerThemeCookieWriter((theme) => {
+      const record = pb.authStore.record;
+      if (!pb.authStore.isValid || !record) return;
+      if (sameDoc(parseThemeDoc(record.theme), theme)) return;
+      pb.authStore.save(pb.authStore.token, { ...record, theme });
+    });
+    return () => registerThemeCookieWriter(null);
+  }, [pb]);
 
   const value = useMemo<AuthValue>(
     () => ({

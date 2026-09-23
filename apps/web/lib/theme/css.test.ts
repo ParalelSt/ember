@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { applyToDocument, themeColor, themeScheme, themeStyle, type ThemeEventDetail } from '@/lib/theme/css';
+import { applyToDocument, htmlProps, themeColor, themeScheme, themeStyle, type ThemeEventDetail } from '@/lib/theme/css';
 import { derive, THEME_VARS } from '@/lib/theme/derive';
 import { DEFAULT_THEME, type ThemeDoc } from '@/lib/theme/model';
 import { EMBER_INPUTS, PRESET_BY_ID } from '@/lib/theme/presets';
@@ -35,6 +35,25 @@ describe('themeStyle', () => {
     expect(themeScheme(LIGHT)).toBe('light');
     expect(themeColor(DEFAULT_THEME)).toBe('#0c0d0f');
     expect(themeColor({ v: 1, preset: 'mono' })).toBe('#000000');
+  });
+});
+
+describe('htmlProps (the root layout)', () => {
+  it('renders exactly the pre-themes <html> for Ember: font class plus dark, no style', () => {
+    expect(htmlProps('__inter', DEFAULT_THEME)).toEqual({ className: '__inter dark', style: {} });
+  });
+
+  it('adds the variables for any other theme and keeps dark for a dark one', () => {
+    const props = htmlProps('__inter', MIDNIGHT);
+    expect(props.className).toBe('__inter dark');
+    expect(props.style['--background']).toBe('oklch(0.17 0.03 262)');
+    expect(Object.keys(props.style)).toHaveLength(THEME_VARS.length);
+  });
+
+  it('drops dark and sets color-scheme for a light theme', () => {
+    const props = htmlProps('__inter', LIGHT);
+    expect(props.className).toBe('__inter');
+    expect(props.style.colorScheme).toBe('light');
   });
 });
 
