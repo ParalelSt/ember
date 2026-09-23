@@ -11,11 +11,24 @@
 onAfterBootstrap((e) => {
   const dao = $app.dao();
 
+  let existing = null;
   try {
-    dao.findCollectionByNameOrId("uploads");
-    return; // already exists
+    existing = dao.findCollectionByNameOrId("uploads");
   } catch (_) {
     // fall through and create it
+  }
+  if (existing) {
+    // Installs from before updates went server-only still let the uploader
+    // edit the row, filename included (bughunt W08).
+    // Rules come back from Go as string pointers, so compare the JSON form
+    // (same as ensure_tabs).
+    const rule = existing.updateRule;
+    if ((rule === null || rule === undefined ? null : JSON.parse(JSON.stringify(rule))) !== null) {
+      existing.updateRule = null;
+      dao.saveCollection(existing);
+      console.log("[ensure_uploads] uploads updates are server-only now");
+    }
+    return;
   }
 
   let users;
@@ -30,11 +43,13 @@ onAfterBootstrap((e) => {
     name: "uploads",
     type: "base",
     // Anyone signed in can find and play an upload — uploads are a shared
-    // library. Only the uploader (or an admin) can change or remove one.
+    // library. Only the uploader (or an admin) can remove one. Nobody edits
+    // one directly: filename and artwork_ext name files on disk that the
+    // delete route removes, so only the server may set them.
     listRule: '@request.auth.id != ""',
     viewRule: '@request.auth.id != ""',
     createRule: null, // server-only: the API route writes with admin creds
-    updateRule: "uploader = @request.auth.id",
+    updateRule: null,
     deleteRule: "uploader = @request.auth.id",
     indexes: [
       "CREATE INDEX idx_uploads_uploader ON uploads (uploader)",
