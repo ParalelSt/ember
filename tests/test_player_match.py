@@ -12,7 +12,7 @@ import os
 import sys
 import tempfile
 import unittest
-from contextlib import redirect_stdout
+from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 from unittest import mock
 
@@ -80,6 +80,32 @@ class MatchTest(unittest.TestCase):
         self.assertEqual([len(r) for r in res["results"]], [5, 0, 0])
         # Nothing found and could not ask are told apart.
         self.assertEqual(res["failed"], [2])
+
+    def test_parser_crash_is_not_found_not_failed(self):
+        # ytmusicapi's nav() on a result shape it doesn't know. Retrying the
+        # batch hits the same crash every time, so it must not be "failed".
+        crash = KeyError("Unable to find 'musicResponsiveListItemRenderer' using path "
+                         "['contents', 0, 'musicResponsiveListItemRenderer'] on {'width': 544, 'code': 503}, exception: "
+                         "'musicResponsiveListItemRenderer'")
+        self.yt.search.side_effect = [self.hits, crash, TypeError("'NoneType' object is not subscriptable")]
+        with redirect_stderr(io.StringIO()):
+            res = run_match(["Bass Persuades\tMiley Cyrus", "Odd\tShape", "Odd\tType"])
+        self.assertEqual([len(r) for r in res["results"]], [5, 0, 0])
+        self.assertEqual(res["failed"], [])
+
+    def test_network_and_busy_errors_still_fail(self):
+        import requests
+        from ytmusicapi.exceptions import YTMusicServerError
+        self.yt.search.side_effect = [
+            YTMusicServerError("Server returned HTTP 503: Service Unavailable.\nThe service is currently unavailable."),
+            YTMusicServerError("Server returned HTTP 429: Too Many Requests.\nslow down"),
+            requests.exceptions.ConnectionError("Connection aborted."),
+            requests.exceptions.ReadTimeout("Read timed out. (read timeout=30)"),
+            json.JSONDecodeError("Expecting value", "<html>", 0),
+        ]
+        with redirect_stderr(io.StringIO()):
+            res = run_match(["A\ta", "B\tb", "C\tc", "D\td", "E\te"])
+        self.assertEqual(res["failed"], [0, 1, 2, 3, 4])
 
     def test_empty_title_is_an_empty_list(self):
         res = run_match(["\tMiley Cyrus"])

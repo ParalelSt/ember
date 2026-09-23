@@ -8,6 +8,7 @@ import argparse
 import contextlib
 import concurrent.futures
 from pathlib import Path
+import requests
 from ytmusicapi import YTMusic
 import yt_dlp
 from ffmpeg_path import ffmpeg_exe
@@ -954,14 +955,30 @@ def cmd_match(args):
                 hits = yt.search(title, filter="songs", limit=MATCH_CANDIDATES, ignore_spelling=True) or []
             else:
                 hits = yt.search(f"{title} {artist}".strip(), filter="songs", limit=MATCH_CANDIDATES) or []
+            hits = [h for h in hits if h.get("videoId")][:MATCH_CANDIDATES]
+            cands = [to_candidate_json(h) for h in hits]
         except Exception as e:
-            print(f"match: search failed for {title!r}: {e}", file=sys.stderr)
-            failed.append(len(results))
+            print(f"match: search failed for {title!r}: {type(e).__name__}: {e}", file=sys.stderr)
+            # Only a failure worth retrying is "failed": a parser crash on a
+            # result shape ytmusicapi doesn't know repeats on every retry and
+            # would stall the import, so it counts as nothing found.
+            if _search_retryable(e):
+                failed.append(len(results))
             results.append([])
             continue
-        hits = [h for h in hits if h.get("videoId")][:MATCH_CANDIDATES]
-        results.append([to_candidate_json(h) for h in hits])
+        results.append(cands)
     json.dump({"results": results, "failed": failed}, sys.stdout)
+
+
+def _search_retryable(e):
+    """YouTube Music busy or the network failing, as opposed to a bug.
+    Parser crashes are ruled out first: ytmusicapi's message dumps the whole
+    response, where a "503" or "544" is just a number."""
+    if isinstance(e, (KeyError, IndexError, TypeError, AttributeError)):
+        return False
+    if isinstance(e, (requests.exceptions.RequestException, json.JSONDecodeError)):
+        return True
+    return bool(BUSY_RE.search(str(e)) or re.search(r"HTTP 5\d\d|timed out|connection", str(e), re.I))
 
 # YouTube Music's own word on what a video is. Anything else (no type, an
 # unplayable video, a podcast episode) is not a song Ember brings over.
