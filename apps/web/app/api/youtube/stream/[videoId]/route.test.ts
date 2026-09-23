@@ -1,3 +1,7 @@
+// @vitest-environment node
+//
+// happy-dom's Headers is lenient about non-Latin1 header values; Node's
+// (what Next actually runs on) throws, which is the real M1 crash below.
 import { describe, expect, it, vi, beforeAll } from 'vitest';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -80,5 +84,30 @@ describe('stream route byte ranges (1000-byte file)', () => {
     expect(r.status).toBe(200);
     expect(r.cl).toBe('1000');
     expect(r.bodyLen).toBe(1000);
+  });
+});
+
+async function getDownload(title: string, artist: string) {
+  const url = new URL('http://x/api/youtube/stream/AAAAAAAAAAA');
+  url.searchParams.set('download', '1');
+  url.searchParams.set('title', title);
+  url.searchParams.set('artist', artist);
+  const req = { headers: new Headers(), nextUrl: url };
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return (GET as any)(req, { params: Promise.resolve({ videoId: 'AAAAAAAAAAA' }) }) as Promise<Response>;
+}
+
+describe('?download=1 with a non-Latin1 title', () => {
+  it('does not 500, and sets an RFC 5987 filename* alongside an ASCII fallback', async () => {
+    const res = await getDownload('お気に入り', 'テスト');
+    expect(res.status).toBe(200);
+    const cd = res.headers.get('content-disposition');
+    expect(cd).toBeTruthy();
+    expect(cd).toMatch(/filename\*=UTF-8''/);
+    expect(cd).toContain(encodeURIComponent('テスト - お気に入り.m4a'));
+    // The ASCII fallback filename= must stay within Latin-1 (Headers.set
+    // would throw otherwise, which is exactly the crash this guards).
+    const asciiMatch = /filename="([^"]*)"/.exec(cd ?? '');
+    expect(asciiMatch?.[1]).toMatch(/^[\x20-\x7E]*$/);
   });
 });
