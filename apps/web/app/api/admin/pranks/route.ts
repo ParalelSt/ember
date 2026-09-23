@@ -5,6 +5,7 @@ import { rateLimitResponse } from '@/lib/rateLimit';
 import { withRequestLog } from '@/lib/logger/withRequestLog';
 import { capWords, personName } from '@/lib/pranks/copy';
 import { checkCaps, normaliseParams, pbDate, PRANK_KINDS, PRANK_LIMITS } from '@/lib/pranks/limits';
+import { prankMediaUrl } from '@/lib/pranks/media';
 import { pranksEnabled } from '@/lib/pranks/settings';
 import { effectiveStatus, prankErrorResponse, toLogEntry, toRecent } from '@/lib/pranks/server';
 import type { PrankKind } from '@/lib/pranks/types';
@@ -13,23 +14,28 @@ const HOUR_MS = 60 * 60 * 1000;
 const LOG_SIZE = 200;
 
 /** Send a prank: one `pranks` row, pending for 45 s. This route is the only
- *  writer (the collection's create rule is null). Only `ping` exists until
- *  the prank library lands; sounds and swaps need its media. */
+ *  writer (the collection's create rule is null). `ping` and `sound` so far
+ *  (a sound names a library `soundId`); swaps arrive with the swap engine.
+ *  The media URL the target loads is set here, never taken from the body. */
 export const POST = withRequestLog('admin/pranks', async (req: NextRequest) => {
   try {
     const { user } = await requireAdmin();
     const limited = rateLimitResponse(`prank-create:${user.id}`, { windowMs: 60_000, max: 30 });
     if (limited) return limited;
 
-    const body = (await req.json().catch(() => null)) as { targetId?: unknown; kind?: unknown; params?: unknown } | null;
+    const body = (await req.json().catch(() => null)) as
+      | { targetId?: unknown; kind?: unknown; params?: unknown; soundId?: unknown }
+      | null;
     const targetId = typeof body?.targetId === 'string' ? body.targetId : '';
     const kind = body?.kind as PrankKind;
     if (!targetId || !PRANK_KINDS.includes(kind)) {
       return Response.json({ error: 'Pick a person and a prank' }, { status: 400 });
     }
-    if (kind !== 'ping') {
-      return Response.json({ error: 'Sounds and swaps arrive with the prank library' }, { status: 400 });
+    if (kind === 'swap') {
+      return Response.json({ error: 'Swaps are not ready yet' }, { status: 400 });
     }
+    const soundId = typeof body?.soundId === 'string' ? body.soundId : '';
+    if (kind === 'sound' && !soundId) return Response.json({ error: 'Pick a sound' }, { status: 400 });
 
     const pb = await createAdminClient();
     if (!(await pranksEnabled(pb))) {
@@ -41,6 +47,15 @@ export const POST = withRequestLog('admin/pranks', async (req: NextRequest) => {
     } catch (e) {
       if ((e as { status?: number })?.status === 404) return Response.json({ error: 'No such person' }, { status: 404 });
       throw e;
+    }
+
+    let sound = null;
+    if (kind === 'sound') {
+      sound = await pb.collection('prank_sounds').getOne(soundId).catch((e) => {
+        if ((e as { status?: number })?.status === 404) return null;
+        throw e;
+      });
+      if (!sound || sound.kind !== 'sound') return Response.json({ error: 'No such sound' }, { status: 404 });
     }
 
     const now = Date.now();
@@ -69,7 +84,11 @@ export const POST = withRequestLog('admin/pranks', async (req: NextRequest) => {
       target: targetId,
       issued_by: user.id,
       kind,
-      params: normaliseParams(kind, body?.params),
+      ...(sound ? { sound: sound.id } : {}),
+      params: {
+        ...normaliseParams(kind, body?.params),
+        ...(sound ? { streamUrl: prankMediaUrl(sound.id) } : {}),
+      },
       status: 'pending',
       expires_at: pbDate(now + PRANK_LIMITS.expirySec * 1000),
     });

@@ -48,6 +48,10 @@ beforeEach(() => {
     app_settings: [{ id: 's1', key: 'pranks', value: { enabled: true } }],
     pranks: [],
     prank_schedules: [],
+    prank_sounds: [
+      { id: 'quack', kind: 'sound', name: 'Duck quack', filename: 'a.wav' },
+      { id: 'tune', kind: 'song', name: 'Wrong song', filename: 'b.wav' },
+    ],
     plays: [],
   });
 });
@@ -80,12 +84,46 @@ describe('POST /api/admin/pranks', () => {
     expect((await post({ targetId: 'marko', kind: 'ping' })).status).toBe(429);
   });
 
-  it('validates the body, and holds sounds and swaps until the library exists', async () => {
+  it('validates the body, and holds swaps until the swap engine exists', async () => {
     expect((await post({ kind: 'ping' })).status).toBe(400);
     expect((await post({ targetId: 'marko', kind: 'explode' })).status).toBe(400);
     expect((await post({ targetId: 'marko', kind: 'sound' })).status).toBe(400);
+    expect((await post({ targetId: 'marko', kind: 'swap', soundId: 'tune' })).status).toBe(400);
     expect((await post({ targetId: 'nobody', kind: 'ping' })).status).toBe(404);
     expect(rows()).toHaveLength(0);
+  });
+
+  it('sends a library sound: the row names it and carries a server-set relative media URL', async () => {
+    const res = await post({
+      targetId: 'marko', kind: 'sound', soundId: 'quack',
+      params: { mode: 'duck', volume: 0.6, streamUrl: 'https://evil.example/x.mp3' },
+    });
+    expect(res.status).toBe(201);
+    expect((await res.json()).prank.line).toBe('You played a sound for Marko: waiting for their app');
+    const [row] = rows();
+    expect(row).toMatchObject({ kind: 'sound', sound: 'quack', status: 'pending' });
+    expect(row.params).toEqual({
+      durationSec: 30, volume: 0.6, mode: 'duck', startFrom: 'start', streamUrl: '/api/pranks/media/quack',
+    });
+  });
+
+  it('refuses a missing sound, or a swap song played as a sound', async () => {
+    expect((await post({ targetId: 'marko', kind: 'sound', soundId: 'nope' })).status).toBe(404);
+    expect((await post({ targetId: 'marko', kind: 'sound', soundId: 'tune' })).status).toBe(404);
+    expect(rows()).toHaveLength(0);
+  });
+
+  it('keeps 15 s between two sounds on one person, in words', async () => {
+    const now = Date.now();
+    store.rows.get('pranks')!.push({
+      id: 'recent', target: 'marko', issued_by: 'root', kind: 'sound', status: 'done',
+      created: pbDate(now - 5000), expires_at: pbDate(now + 40_000),
+    } as never);
+    const res = await post({ targetId: 'marko', kind: 'sound', soundId: 'quack' });
+    expect(res.status).toBe(429);
+    expect((await res.json()).error).toMatch(/^Sounds need 15 s between them; try again in \d+ s$/);
+    // Someone else is fair game.
+    expect((await post({ targetId: 'ivana', kind: 'sound', soundId: 'quack' })).status).toBe(201);
   });
 
   it('refuses with 409 while the switch is off', async () => {
