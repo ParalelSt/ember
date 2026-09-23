@@ -123,6 +123,9 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
    *  and a flag nobody consumed would swallow the next real change. */
   const nativeChangeAt = useRef(0);
   const fromNative = () => Date.now() - nativeChangeAt.current < 300;
+  /** The queue last handed to the native Android player, so the queue-push
+   *  effect does not send the same list a second time. */
+  const sentQueueRef = useRef<Track[] | null>(null);
   const loadAndPlayRef = useRef<((t: Track | null, autoplay: boolean) => void) | null>(null);
   const fallbackToWebAudioRef = useRef<((reason: string) => void) | null>(null);
   const [backendReady, setBackendReady] = useState(false);
@@ -416,8 +419,10 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   // Load + (optionally) play a track. Must run from a user gesture for autoplay
   // (React 19 effects are async and lose the activation token). The first call
   // restores the persisted position; later calls start fresh (see
-  // usePositionPersistence).
-  const loadAndPlay = useCallback((track: Track | null, autoplay: boolean) => {
+  // usePositionPersistence). `list` is the queue about to be set, for the
+  // native Android player: without it, a tap in a new list was first sent as
+  // a one-song queue and then again as the whole list.
+  const loadAndPlay = useCallback((track: Track | null, autoplay: boolean, list?: Track[]) => {
     const b = backendRef.current;
     if (!b) return;
     if (!track) {
@@ -436,10 +441,9 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     if (backendKindRef.current === 'android' && b.setQueue) {
       // The native player owns the queue: hand it the whole thing and the
       // index to start at. It diffs, so an unchanged queue never restarts.
-      const st = usePlayerStore.getState();
-      let list = st.queue;
-      let idx = list.findIndex((t) => t.id === track.id);
-      if (idx < 0) { list = [track]; idx = 0; }
+      let queue = list ?? usePlayerStore.getState().queue;
+      let idx = queue.findIndex((t) => t.id === track.id);
+      if (idx < 0) { queue = [track]; idx = 0; }
       loadedTrackRef.current = track.id;
       // Native starts the item it is given from the top, so hand the stored
       // playhead to THIS track at 0: nothing later can resume it at the
@@ -447,7 +451,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       positions.requestStartAt(0);
       positions.startAt(track.id);
       setDuration(chooseDuration(track.durationSec ?? 0, null));
-      b.setQueue(list, idx, autoplay);
+      sentQueueRef.current = queue;
+      b.setQueue(queue, idx, autoplay);
       return;
     }
     loadedTrackRef.current = track.id;
@@ -564,11 +569,13 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
   // Queue-owning backend (Android): whenever the store's queue changes from
   // THIS side (radio append, add to queue), hand the new queue over. Changes
-  // that arrived from native are flagged and skipped, or they would bounce.
+  // that arrived from native are flagged and skipped, or they would bounce,
+  // and so is a queue playTrack has just handed over itself.
   useEffect(() => {
     if (backendKindRef.current !== 'android' || fromNative()) return;
     const b = backendRef.current;
-    if (!b?.setQueue || !current) return;
+    if (!b?.setQueue || !current || queue === sentQueueRef.current) return;
+    sentQueueRef.current = queue;
     b.setQueue(queue, index, usePlayerStore.getState().isPlaying);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [queue]);
@@ -613,7 +620,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
     // Synchronously start so the user-gesture token survives (React 19 effects
     // are async).
-    loadAndPlay(track, true);
+    loadAndPlay(track, true, queueList);
     usePlayerStore.setState({
       queue: queueList,
       index: i,
