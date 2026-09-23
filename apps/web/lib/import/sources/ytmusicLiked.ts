@@ -6,8 +6,9 @@
  *  the server reads their likes once with the YouTube Data API before it
  *  signs itself out again (lib/import/google/). YouTube names the exact video
  *  for every like, so the import needs no search at all: each item arrives
- *  with its one candidate already filled in and the runner accepts it as it
- *  is.
+ *  with its one candidate already filled in. What YouTube does not say is
+ *  whether a liked video is a song, so the runner asks YouTube Music about
+ *  each one before liking it (lib/import/musicCheck.ts).
  *
  *  Everything here is pure: the parser, and the words the dialog and the
  *  routes say, so the two can never drift apart. */
@@ -15,6 +16,7 @@
 import { MAX_TRANSFER_ITEMS } from '@/lib/import/jobState';
 import { readyItem } from '@/lib/import/records';
 import { field, type ParsedSource, type TransferItem } from '@/lib/import/sources/types';
+import type { MusicVideoType } from '@/lib/import/musicCheck';
 import type { Track } from '@/types/track';
 
 /** One liked song: the exact video, plus every artist named (the Track
@@ -26,12 +28,15 @@ export interface LikedSong {
    *  order decides (lib/import/likedAt.ts). Kept because other sources do
    *  say. */
   likedAt: number | null;
+  /** Known before any asking: ATV for an auto-generated Topic channel.
+   *  Null or missing: YouTube Music says what it is during the transfer. */
+  videoType?: MusicVideoType | null;
 }
 
 export const YTMUSIC_LIKED_LABEL = 'Liked songs from YouTube Music';
 
 /** Why the review sheet shows this candidate with no competition. */
-const READY_REASON = 'From your YouTube Music likes';
+export const READY_REASON = 'From your YouTube Music likes';
 
 /** The steps above the button, one line each. */
 export const GOOGLE_SIGNIN_STEPS: readonly string[] = [
@@ -45,7 +50,8 @@ export const GOOGLE_FORGET_NOTE =
   'Ember reads your likes once, then signs itself out of your Google account and forgets it. Nothing about the account is kept.';
 
 /** Google's likes hold every video, not only songs. */
-export const GOOGLE_MUSIC_ONLY_NOTE = 'Only music comes across: videos you liked that are not songs are left out.';
+export const GOOGLE_MUSIC_ONLY_NOTE =
+  'Only music comes across: YouTube Music says which of your likes are songs, and videos that are not music are left out.';
 
 /** Every sentence the Google sign-in can end with. The routes answer with
  *  these and the dialog shows them as they are. */
@@ -76,24 +82,19 @@ export const GOOGLE_UNVERIFIED_HINT =
 /** Under the not-configured sentence: the way in that needs no sign-in. */
 export const GOOGLE_FALLBACK_HINT = 'You can still bring your likes over as a playlist link.';
 
-/** A Google account whose likes are all videos, not songs. */
-export function noMusicMessage(skipped: number): string {
-  return skipped > 0
-    ? `None of the ${skipped} ${skipped === 1 ? 'video' : 'videos'} you liked on that Google account ${skipped === 1 ? 'is' : 'are'} music, so there is nothing to bring over.`
-    : GOOGLE_MESSAGES.noLikes;
-}
+/** The line under the preview: Google hands over every like, and which are
+ *  songs is only known as the transfer goes. */
+export const GOOGLE_CHECKING_LINE =
+  'YouTube Music checks each like as the transfer goes: songs are liked, videos that are not music are left out, and uploads it is not sure about wait for a quick check from you.';
 
-/** The line under the preview when some likes were not music. */
-export function skippedLine(skipped: number): string {
-  return `Left out ${skipped} ${skipped === 1 ? 'like that is' : 'likes that are'} not music.`;
-}
-
-/** The liked songs as a transfer source. Every item carries its one ready
- *  candidate, which is what keeps a 3 000-song transfer off the search. */
+/** The liked videos as a transfer source. Every item carries its one ready
+ *  candidate, which is what keeps a 3 000-song transfer off the search;
+ *  the ones not from a Topic channel are marked for YouTube Music to check. */
 export function parseYtmusicLiked(songs: LikedSong[], { truncated = false, dropped = 0 } = {}): ParsedSource {
   const kept = songs.slice(0, MAX_TRANSFER_ITEMS);
   const items: TransferItem[] = kept.map((song, position) => {
     const ready = readyItem(song.track, position, READY_REASON);
+    const candidates = ready.candidates.map((c) => (song.videoType ? { ...c, videoType: song.videoType } : { ...c, unchecked: true }));
     const artists = (song.artists.length ? song.artists : ready.item.artists).map((a) => field(a)).filter(Boolean);
     return {
       ...ready.item,
@@ -101,7 +102,7 @@ export function parseYtmusicLiked(songs: LikedSong[], { truncated = false, dropp
       artists,
       artist: artists.join(', '),
       likedAt: song.likedAt,
-      candidates: ready.candidates,
+      candidates,
     };
   });
   return {

@@ -4,6 +4,7 @@ import type PocketBase from 'pocketbase';
 import { createAdminClient } from '@/lib/pocketbase/server';
 import { serverLogger } from '@/lib/logger/server';
 import { matchItems } from '@/lib/import/match';
+import { classifyVideos } from '@/lib/sources/youtube';
 import { createJobStore } from '@/lib/import/store';
 import { ImportRunner } from '@/lib/import/runner';
 
@@ -45,6 +46,7 @@ function slot(): Slot {
     const runner = new ImportRunner({
       store,
       match: matchItems,
+      classify: classifyVideos,
       sleep: (ms) => new Promise((r) => setTimeout(r, ms)),
       now: () => Date.now(),
       runnerId: `${os.hostname()}:${process.pid}:${Math.random().toString(36).slice(2, 8)}`.slice(0, 60),

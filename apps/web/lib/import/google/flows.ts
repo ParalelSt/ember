@@ -3,13 +3,14 @@ import { randomBytes } from 'node:crypto';
 import {
   GoogleError,
   pollToken,
-  readLikedMusic,
+  readLikes,
   requestDeviceCode,
   revokeTokens,
   YOUTUBE_READONLY_SCOPE,
   type GoogleConfig,
 } from '@/lib/import/google/client';
-import { noMusicMessage, parseYtmusicLiked, GOOGLE_MESSAGES, type GoogleFailure } from '@/lib/import/sources/ytmusicLiked';
+import { parseYtmusicLiked, GOOGLE_MESSAGES, type GoogleFailure } from '@/lib/import/sources/ytmusicLiked';
+import { needsMusicCheck } from '@/lib/import/musicCheck';
 import type { ParsedSource } from '@/lib/import/sources/types';
 import type { TransferPreview } from '@/app/api/import/upload/route';
 
@@ -43,9 +44,11 @@ const MIN_INTERVAL_MS = 1_000;
 /** Consecutive hiccups while polling before giving up. */
 const MAX_TRANSIENT = 5;
 
+/** `count` is every like Google returned, songs or not. */
 export interface GooglePreview extends TransferPreview {
-  /** Likes left out because they were not music. */
-  skipped: number;
+  /** Likes YouTube Music still has to say are songs, during the transfer.
+   *  The rest come from Topic channels, which are songs for sure. */
+  toCheck: number;
 }
 
 interface Flow {
@@ -59,7 +62,6 @@ interface Flow {
   intervalMs: number;
   transient: number;
   parsed: ParsedSource | null;
-  skipped: number;
   poll: ReturnType<typeof setTimeout> | null;
   deadline: ReturnType<typeof setTimeout> | null;
   abort: AbortController;
@@ -164,9 +166,9 @@ async function poll(flow: Flow): Promise<void> {
 async function read(flow: Flow): Promise<void> {
   const tokens = flow.tokens;
   if (!tokens) return;
-  let result: Awaited<ReturnType<typeof readLikedMusic>>;
+  let result: Awaited<ReturnType<typeof readLikes>>;
   try {
-    result = await readLikedMusic(flow.cfg, tokens.accessToken, { signal: flow.abort.signal });
+    result = await readLikes(flow.cfg, tokens.accessToken, { signal: flow.abort.signal });
   } catch (e) {
     if (alive(flow) && flow.state === 'reading') {
       return end(flow, 'error', GOOGLE_MESSAGES[e instanceof GoogleError ? e.reason : 'readFailed']);
@@ -178,9 +180,8 @@ async function read(flow: Flow): Promise<void> {
   flow.tokens = null;
   await revokeTokens(flow.cfg, tokens);
   if (!alive(flow) || flow.state !== 'reading') return;
-  if (!result.songs.length) return end(flow, 'error', noMusicMessage(result.skipped));
+  if (!result.songs.length) return end(flow, 'error', GOOGLE_MESSAGES.noLikes);
   flow.parsed = parseYtmusicLiked(result.songs, { truncated: result.truncated });
-  flow.skipped = result.skipped;
   flow.state = 'ready';
   // A fresh quarter of an hour to look at the preview and press Start.
   if (flow.deadline) clearTimeout(flow.deadline);
@@ -219,7 +220,6 @@ export async function beginFlow(userId: string, cfg: GoogleConfig): Promise<Star
     intervalMs: Math.max(MIN_INTERVAL_MS, code.interval * 1000),
     transient: 0,
     parsed: null,
-    skipped: 0,
     poll: null,
     deadline: null,
     abort: new AbortController(),
@@ -267,7 +267,7 @@ export function flowStatus(userId: string, flowId: string): FlowStatus | null {
         dropped: p.dropped,
         truncated: p.truncated,
         sample: p.items.slice(0, SAMPLE_SIZE).map((i) => ({ title: i.title, artist: i.artist })),
-        skipped: flow.skipped,
+        toCheck: p.items.filter((i) => needsMusicCheck(i.candidates ?? [])).length,
       },
     };
   }

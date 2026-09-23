@@ -336,11 +336,17 @@ node tests/import.test.mjs                          # or: npm run test:import
 node tests/import-ui.test.mjs                       # or: npm run test:import-ui
 # Transfer: YouTube Music likes after a Google sign-in, against its own fake
 # Google on :8097 (the app needs GOOGLE_OAUTH_BASE / YOUTUBE_API_BASE pointed
-# there, see the file's header for the whole start line)
+# there, see the file's header for the whole start line). The fake player's
+# `classify` answers from fixtures/imports/ytm-classify.json, so it covers a
+# like YouTube Music calls a song, an upload the person says yes or no to,
+# and videos left out as not music.
 node tests/transfer-google-ui.test.mjs
 
 # player.py `match` and `ytplaylist`, no server, no network
 .venv/bin/python -m unittest tests/test_player_match.py   # or: npm run test:player-match
+# player.py `classify` (YouTube Music's type per liked video), from the
+# owner's 16 real likes in fixtures/imports/ytm-get-song-liked16.json
+.venv/bin/python -m unittest tests/test_player_classify.py
 ```
 
 Exit code 0 = everything passed; each check prints PASS/FAIL with detail.

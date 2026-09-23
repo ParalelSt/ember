@@ -8,14 +8,15 @@ import { createImportJob } from '@/lib/import/store';
 import { kickImportRunner } from '@/lib/import/runnerInstance';
 import { FLOW_ID_RE, takeFlow } from '@/lib/import/google/flows';
 import { GOOGLE_MESSAGES } from '@/lib/import/sources/ytmusicLiked';
+import { GOOGLE_LIKES_SOURCE_ID } from '@/lib/import/musicCheck';
 import { withRequestLog } from '@/lib/logger/withRequestLog';
 
 const CAP = MAX_TRANSFER_ITEMS.toLocaleString('en-GB');
 const OVER_CAP_MESSAGE = `Ember can transfer up to ${CAP} songs at once, and your YouTube Music likes have more. Ember will take the newest ${CAP}.`;
 
-/** Start: the songs a ready sign-in read become a `kind: 'liked'` transfer.
- *  Every item already names its video, so the runner accepts it without a
- *  search. The sign-in is gone afterwards (its tokens went when the likes
+/** Start: the likes a ready sign-in read become a `kind: 'liked'` transfer.
+ *  Every item already names its video, so nothing is searched; the runner
+ *  asks YouTube Music whether each one is a song as it goes. The sign-in is gone afterwards (its tokens went when the likes
  *  were read). */
 export const POST = withRequestLog(
   'import/liked/google/[flowId]/start',
@@ -30,7 +31,7 @@ export const POST = withRequestLog(
       const { job } = await createImportJob(admin, {
         userId: user.id,
         source: 'ytmusic',
-        sourceId: 'ytmusic-liked',
+        sourceId: GOOGLE_LIKES_SOURCE_ID,
         sourceUrl: '',
         name: parsed.label,
         coverUrl: null,

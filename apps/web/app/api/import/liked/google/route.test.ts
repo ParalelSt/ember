@@ -166,7 +166,12 @@ describe('GET /api/import/liked/google/:flowId, through every state', () => {
     await tick(0);
     const ready = (await status(flowId)).body as unknown as { state: string; preview: Record<string, unknown> };
     expect(ready.state).toBe('ready');
-    expect(ready.preview).toMatchObject({ count: 2, skipped: 1, label: 'Liked songs from YouTube Music', sample: [{ title: 'First' }, { title: 'Second' }] });
+    expect(ready.preview).toMatchObject({
+      count: 3,
+      toCheck: 2,
+      label: 'Liked songs from YouTube Music',
+      sample: [{ title: 'First' }, { title: 'Vlog' }, { title: 'Second' }],
+    });
     expect(g.revoked).toEqual([FAKE_REFRESH]);
   });
 

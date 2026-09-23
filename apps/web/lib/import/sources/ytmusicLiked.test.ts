@@ -3,10 +3,10 @@ import { MAX_TRANSFER_ITEMS } from '@/lib/import/jobState';
 import {
   GOOGLE_FORGET_NOTE,
   GOOGLE_MESSAGES,
+  GOOGLE_CHECKING_LINE,
+  GOOGLE_MUSIC_ONLY_NOTE,
   GOOGLE_SIGNIN_STEPS,
-  noMusicMessage,
   parseYtmusicLiked,
-  skippedLine,
   YTMUSIC_LIKED_LABEL,
   type LikedSong,
 } from '@/lib/import/sources/ytmusicLiked';
@@ -46,6 +46,13 @@ describe('parseYtmusicLiked', () => {
     expect(item.candidates?.[0].track.sourceId).toBe('aaaaaaaaaaa');
     expect(item.candidates?.[0].score).toBe(100);
     expect(item.candidates?.[0].reasons).toEqual(['From your YouTube Music likes']);
+  });
+
+  it('marks a like for YouTube Music to check, unless a Topic channel already says it is a song', () => {
+    const [plain, topic] = parseYtmusicLiked([song('aaaaaaaaaaa', 'First'), { ...song('bbbbbbbbbbb', 'Second'), videoType: 'ATV' }]).items;
+    expect(plain.candidates?.[0]).toMatchObject({ unchecked: true, videoType: null });
+    expect(topic.candidates?.[0].unchecked).toBeUndefined();
+    expect(topic.candidates?.[0].videoType).toBe('ATV');
   });
 
   it('keeps every artist YouTube Music named, not only the first', () => {
@@ -98,15 +105,15 @@ describe('the words the sign-in says', () => {
     }
   });
 
-  it('says how many likes were not music, in the singular too', () => {
-    expect(skippedLine(1)).toBe('Left out 1 like that is not music.');
-    expect(skippedLine(12)).toBe('Left out 12 likes that are not music.');
-    expect(noMusicMessage(0)).toBe(GOOGLE_MESSAGES.noLikes);
-    expect(noMusicMessage(3)).toContain('None of the 3 videos');
+  it('says YouTube Music checks the likes as it goes', () => {
+    expect(GOOGLE_CHECKING_LINE).toMatch(/YouTube Music checks each like as the transfer goes/);
+    expect(GOOGLE_CHECKING_LINE).toMatch(/not music are left out/);
+    expect(GOOGLE_CHECKING_LINE).toMatch(/quick check/);
+    expect(GOOGLE_MUSIC_ONLY_NOTE).toMatch(/YouTube Music says which of your likes are songs/);
   });
 
   it('have no em dashes', () => {
-    const all = [...GOOGLE_SIGNIN_STEPS, GOOGLE_FORGET_NOTE, ...Object.values(GOOGLE_MESSAGES), skippedLine(2), noMusicMessage(2)];
+    const all = [...GOOGLE_SIGNIN_STEPS, GOOGLE_FORGET_NOTE, ...Object.values(GOOGLE_MESSAGES), GOOGLE_CHECKING_LINE, GOOGLE_MUSIC_ONLY_NOTE];
     for (const line of all) expect(line).not.toContain('\u2014');
   });
 });

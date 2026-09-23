@@ -101,7 +101,13 @@ export function ImportBanner({ job, toReview, busy = false, onStop, onRetry, onR
         </div>
         {job.kind === 'liked' ? (
           <p data-testid="transfer-result" className="mt-inset text-sm text-muted-foreground tabular-nums">
-            {plainTransferResult({ found: job.accepted, check: job.review, notFound: job.missing, existing: job.existing })}
+            {plainTransferResult({
+              found: job.accepted,
+              check: job.review,
+              notFound: job.missing,
+              existing: job.existing,
+              notMusic: job.notMusic,
+            })}
           </p>
         ) : (
           <div className="mt-inset flex flex-wrap gap-x-block gap-y-inset text-sm">

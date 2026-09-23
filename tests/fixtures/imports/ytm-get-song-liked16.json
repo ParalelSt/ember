@@ -1,0 +1,133 @@
+{
+  "_about": "YTMusic().get_song(videoId) for the 16 likes of the owner's real Google likes transfer, recorded 2026-09-23 (anonymous). videoDetails.musicVideoType and playabilityStatus.status as YouTube Music gave them; channel is the uploading channel (microformat pageOwnerDetails.name), which is what the YouTube Data API calls channelTitle.",
+  "songs": [
+    {
+      "videoId": "18CJQSgttJA",
+      "title": "How long it takes to learn drums #drums #drummers",
+      "author": "Andy James",
+      "channel": "Andy James",
+      "musicVideoType": null,
+      "playability": "UNPLAYABLE"
+    },
+    {
+      "videoId": "_VH9rmJU8tM",
+      "title": "I Built a GIANT Mob Farm in Old Minecraft",
+      "author": "HorseFridge",
+      "channel": "HorseFridge",
+      "musicVideoType": null,
+      "playability": "UNPLAYABLE"
+    },
+    {
+      "videoId": "16GpicX09gk",
+      "title": "ZITTI E BUONI",
+      "author": "Måneskin",
+      "channel": "Måneskin - Topic",
+      "musicVideoType": "MUSIC_VIDEO_TYPE_ATV",
+      "playability": "OK"
+    },
+    {
+      "videoId": "ryw_2t_XL5k",
+      "title": "Voices",
+      "author": "Damiano David",
+      "channel": "Damiano David - Topic",
+      "musicVideoType": "MUSIC_VIDEO_TYPE_ATV",
+      "playability": "OK"
+    },
+    {
+      "videoId": "gZjdAWgjLx8",
+      "title": "Chopin - Etude Op. 25 No. 11 (Winter Wind)",
+      "author": "Rousseau",
+      "channel": "Rousseau",
+      "musicVideoType": "MUSIC_VIDEO_TYPE_UGC",
+      "playability": "OK"
+    },
+    {
+      "videoId": "9uzFcfyVwbM",
+      "title": "Ashes of the Dawn",
+      "author": "Dragonforce",
+      "channel": "DragonForce - Topic",
+      "musicVideoType": "MUSIC_VIDEO_TYPE_ATV",
+      "playability": "OK"
+    },
+    {
+      "videoId": "1CfRcFLmhZI",
+      "title": "NEW Bricks and Minifigs Commercial (satire)",
+      "author": "AFK Anthem",
+      "channel": "AFK Anthem",
+      "musicVideoType": "MUSIC_VIDEO_TYPE_UGC",
+      "playability": "OK"
+    },
+    {
+      "videoId": "LHvx1FIciSM",
+      "title": "[YTP] dexter can't open the cargo box",
+      "author": "dookgus",
+      "channel": "dookgus",
+      "musicVideoType": null,
+      "playability": "OK"
+    },
+    {
+      "videoId": "v43I_ox7BL8",
+      "title": "Welcome to American Fork!",
+      "author": "AFK Anthem",
+      "channel": "AFK Anthem",
+      "musicVideoType": "MUSIC_VIDEO_TYPE_UGC",
+      "playability": "OK"
+    },
+    {
+      "videoId": "MJiwV8_KQN4",
+      "title": "Kradem Bakar",
+      "author": "Kao Nekad",
+      "channel": "Kao Nekad - Topic",
+      "musicVideoType": "MUSIC_VIDEO_TYPE_ATV",
+      "playability": "OK"
+    },
+    {
+      "videoId": "6WlI24rv__g",
+      "title": "Batzorig Vaanchig- Mongolian Throat Singing",
+      "author": "Martin Rybka",
+      "channel": "Martin Rybka",
+      "musicVideoType": "MUSIC_VIDEO_TYPE_UGC",
+      "playability": "OK"
+    },
+    {
+      "videoId": "6GaoxMRfxO8",
+      "title": "Eminem on TV Was Actually Insane",
+      "author": "XMusicWorld",
+      "channel": "XMusicWorld",
+      "musicVideoType": null,
+      "playability": "UNPLAYABLE"
+    },
+    {
+      "videoId": "GpjwBVKPQCM",
+      "title": "Uzalud Sunce Sja",
+      "author": "Opća Opasnost",
+      "channel": "CroatiaRecordsVEVO",
+      "musicVideoType": "MUSIC_VIDEO_TYPE_OMV",
+      "playability": "OK"
+    },
+    {
+      "videoId": "lmI2YLxLvpc",
+      "title": "ты слышал это в играх про гонки",
+      "author": "Ara5Love music",
+      "channel": "Ara5Love music",
+      "musicVideoType": null,
+      "playability": "UNPLAYABLE"
+    },
+    {
+      "videoId": "i5_rnV-DAvs",
+      "title": "Ali-A intro song",
+      "author": "LDK MUSIC",
+      "channel": "LDK MUSIC",
+      "musicVideoType": "MUSIC_VIDEO_TYPE_UGC",
+      "playability": "OK"
+    },
+    {
+      "videoId": "xtaJ0QTOLz8",
+      "title": "if you're reading this, i'm in prison...",
+      "author": "Free Jack D",
+      "channel": "Free Jack D",
+      "musicVideoType": null,
+      "playability": "UNPLAYABLE"
+    }
+  ]
+}

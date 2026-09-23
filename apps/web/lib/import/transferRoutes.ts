@@ -29,7 +29,7 @@ export const MATCHED_BY_NAME =
 /** Nothing is searched for on this one: the songs arrive already named by
  *  YouTube itself. */
 export const NOTHING_TO_MATCH =
-  'These come straight from your account, so there is nothing to look up by name and nothing to check afterwards.';
+  'These come straight from your account, so there is nothing to look up by name. Only uploads YouTube Music is not sure are songs wait for a quick check.';
 
 /** Ember reads a Spotify playlist through Spotify's own embed, and the
  *  embed stops at 100 songs. */

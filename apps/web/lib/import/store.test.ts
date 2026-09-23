@@ -1,6 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 import type PocketBase from 'pocketbase';
-import { addTrackAt, createImportJob, likeTrack, pickItem, skipItem } from '@/lib/import/store';
+import { addTrackAt, createImportJob, createJobStore, likeTrack, pickItem, skipItem } from '@/lib/import/store';
+import { parseYtmusicLiked } from '@/lib/import/sources/ytmusicLiked';
+import { GOOGLE_LIKES_SOURCE_ID, checkedCandidate } from '@/lib/import/musicCheck';
 import { itemFromRecord, jobFromRecord } from '@/lib/import/records';
 import type { ImportCandidate, SourceItem } from '@/lib/import/types';
 import type { Track } from '@/types/track';
@@ -459,5 +461,80 @@ describe('pickItem and skipItem on a transfer', () => {
     await skipItem(s.f.pb, s.freshJob(), s.item(2));
     expect(s.item(2).status).toBe('skipped');
     expect(s.liked()).toEqual(['vid0']);
+  });
+});
+
+// A Google likes transfer through the store: the check mark survives the
+// round trip through PocketBase, and each of YouTube Music's three answers
+// lands as the item status the Liked page and the review sheet read.
+describe('a Google likes transfer, through the store', () => {
+  async function googleJob() {
+    const f = fakePb();
+    const parsed = parseYtmusicLiked(
+      ['vid0000000a', 'vid0000000b', 'vid0000000c'].map((id) => ({ track: track(id, `Like ${id}`), artists: ['A'], likedAt: null })),
+    );
+    const { job } = await createImportJob(f.pb, {
+      userId: 'u1',
+      source: 'ytmusic',
+      sourceId: GOOGLE_LIKES_SOURCE_ID,
+      sourceUrl: '',
+      name: parsed.label,
+      coverUrl: null,
+      kind: 'liked',
+      order: parsed.order,
+      items: parsed.items,
+    });
+    const store = createJobStore(async () => f.pb);
+    const item = (i: number) => itemFromRecord(f.table('import_items').sort((a, b) => Number(a.position) - Number(b.position))[i]);
+    const freshJob = () => jobFromRecord(f.table('import_jobs')[0]);
+    const liked = () => f.table('likes').map((l) => String(f.table('tracks').find((t) => t.id === l.track)?.source_id));
+    return { f, job, store, item, freshJob, liked };
+  }
+
+  it('every like is stored waiting for YouTube Music, its video the one candidate', async () => {
+    const g = await googleJob();
+    expect(g.job).toMatchObject({ kind: 'liked', source: 'ytmusic', total: 3, notMusic: 0 });
+    for (const i of [0, 1, 2]) {
+      expect(g.item(i).status).toBe('pending');
+      expect(g.item(i).candidates).toHaveLength(1);
+      expect(g.item(i).candidates[0]).toMatchObject({ unchecked: true, videoType: null });
+    }
+  });
+
+  /** What the runner does with YouTube Music's answers ATV, UGC and none. */
+  async function answered(g: Awaited<ReturnType<typeof googleJob>>) {
+    const [a, b, c] = [0, 1, 2].map(g.item);
+    const song = checkedCandidate(a.candidates[0], 'ATV');
+    await g.store.like('u1', song.track, a.likedAt);
+    await g.store.saveResults([
+      { itemId: a.id, position: 0, status: 'accepted', videoId: 'vid0000000a', confidence: 100, candidates: [song], likedAt: a.likedAt },
+      { itemId: b.id, position: 1, status: 'review', videoId: null, confidence: 100, candidates: [checkedCandidate(b.candidates[0], 'UGC')], likedAt: b.likedAt },
+      { itemId: c.id, position: 2, status: 'skipped', videoId: null, confidence: null, candidates: [checkedCandidate(c.candidates[0], null)], likedAt: c.likedAt },
+    ]);
+    await g.store.updateJob(g.job.id, { ...(await g.store.counts(g.job.id)), cursor: 3, status: 'done' });
+  }
+
+  it('a song is liked, an upload waits for a check, and a video that is not music is left out and counted', async () => {
+    const g = await googleJob();
+    await answered(g);
+    expect([0, 1, 2].map((i) => g.item(i).status)).toEqual(['accepted', 'review', 'skipped']);
+    expect(g.item(1).candidates[0]).toMatchObject({ videoType: 'UGC', track: { sourceId: 'vid0000000b' } });
+    expect(g.item(1).candidates[0].unchecked).toBeUndefined();
+    expect(g.liked()).toEqual(['vid0000000a']);
+    expect(g.freshJob()).toMatchObject({ accepted: 1, review: 1, missing: 0, notMusic: 1 });
+
+    // Yes in the review sheet: the upload is liked like any song.
+    await pickItem(g.f.pb, g.freshJob(), g.item(1), g.item(1).candidates[0].track);
+    expect(g.liked()).toEqual(['vid0000000a', 'vid0000000b']);
+    expect(g.freshJob()).toMatchObject({ accepted: 2, review: 0, notMusic: 1 });
+  });
+
+  it('no in the review sheet counts the upload as not music', async () => {
+    const g = await googleJob();
+    await answered(g);
+    await skipItem(g.f.pb, g.freshJob(), g.item(1));
+    expect(g.item(1).status).toBe('skipped');
+    expect(g.liked()).toEqual(['vid0000000a']);
+    expect(g.freshJob()).toMatchObject({ accepted: 1, review: 0, notMusic: 2 });
   });
 });

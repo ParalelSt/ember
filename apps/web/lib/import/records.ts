@@ -5,6 +5,7 @@
 import type { Track } from '@/types/track';
 import type { ImportCandidate, ImportItem, ImportJob, ImportSourceKind, JobKind, SourceItem } from '@/lib/import/types';
 import type { ItemStatus, JobStatus } from '@/lib/import/jobState';
+import { GOOGLE_LIKES_SOURCE_ID, notMusicCount } from '@/lib/import/musicCheck';
 
 type Row = Record<string, unknown>;
 
@@ -26,6 +27,7 @@ export function pbMillis(v: unknown): number | null {
 
 export function jobFromRecord(r: Row): ImportJob {
   const retryAt = str(r.retry_at);
+  const counts = { cursor: num(r.cursor), accepted: num(r.accepted), review: num(r.review), missing: num(r.missing) };
   return {
     id: str(r.id),
     userId: str(r.user),
@@ -45,6 +47,7 @@ export function jobFromRecord(r: Row): ImportJob {
     error: str(r.error) || null,
     retryAt: retryAt ? new Date(retryAt.replace(' ', 'T')).toISOString() : null,
     dismissed: r.dismissed === true,
+    ...(str(r.source_id) === GOOGLE_LIKES_SOURCE_ID ? { notMusic: notMusicCount(counts) } : {}),
   };
 }
 

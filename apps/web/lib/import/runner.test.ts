@@ -20,6 +20,20 @@ import {
 } from '@/lib/import/jobState';
 import type { ImportCandidate, MatchResult, SourceItem } from '@/lib/import/types';
 import type { Track } from '@/types/track';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import {
+  GOOGLE_LIKES_SOURCE_ID,
+  UPLOAD_REASON,
+  musicVideoType,
+  notMusicCount,
+  parseMusicCheck,
+  type MusicCheck,
+} from '@/lib/import/musicCheck';
+import { likesFromPage } from '@/lib/import/google/likes';
+import { parseYtmusicLiked } from '@/lib/import/sources/ytmusicLiked';
+import { jobFromRecord } from '@/lib/import/records';
+import { plainTransferResult } from '@/lib/import/transferCopy';
 
 // The runner against an in-memory PocketBase: jobs, items and the
 // playlist's tracks are plain arrays, the matcher and the clock are fakes.
@@ -82,6 +96,8 @@ interface StoreOpts {
   alreadyLiked?: string[];
   /** Another job is waiting, so a transfer may step aside. */
   othersQueued?: boolean;
+  /** Each item's ready candidates, by position (a Google likes transfer). */
+  candidates?: (position: number) => ImportCandidate[];
 }
 
 function memoryStore(total: number, opts: StoreOpts = {}) {
@@ -101,7 +117,7 @@ function memoryStore(total: number, opts: StoreOpts = {}) {
     jobId: 'j1',
     position: i,
     source: source(i),
-    candidates: opts.ready ? [cand(`vid${i}`, 100)] : [],
+    candidates: opts.candidates ? opts.candidates(i) : opts.ready ? [cand(`vid${i}`, 100)] : [],
     status: 'pending',
     likedAt: opts.liked ? 1_700_000_000_000 - i * 1000 : null,
   }));
@@ -131,7 +147,9 @@ function memoryStore(total: number, opts: StoreOpts = {}) {
       items.filter((i) => i.status === 'pending' && i.position >= from).slice(0, limit),
     ),
     saveResults: vi.fn(async (results: ItemResult[]) => {
-      for (const r of results) Object.assign(items.find((i) => i.id === r.itemId)!, { status: r.status, videoId: r.videoId });
+      for (const r of results) {
+        Object.assign(items.find((i) => i.id === r.itemId)!, { status: r.status, videoId: r.videoId, candidates: r.candidates });
+      }
     }),
     addTrack: vi.fn(async (_playlistId: string, position: number, t: Track) => {
       if (playlist.some((p) => p.track.id === t.id)) return;
@@ -456,5 +474,161 @@ describe('ImportRunner, a transfer into the likes', () => {
     await r.tick();
     expect(sleeps).toEqual([PACE_MS, BACKOFF_MS[0], PACE_MS * 2, PACE_MS * 2, PACE_MS * 2]);
     expect(PACE_MS * 2).toBeLessThanOrEqual(MAX_PACE_MS);
+  });
+});
+
+// A Google likes transfer: every like arrives with its video as the one
+// candidate, marked for YouTube Music to say whether it is a song.
+describe('ImportRunner, a Google likes transfer asks YouTube Music about each like', () => {
+  const unchecked = (i: number): ImportCandidate[] => [{ ...cand(`vid${i}`, 100), videoType: null, reasons: ['From your YouTube Music likes'], unchecked: true }];
+  /** ATV, OMV, UGC, nothing, by position. */
+  const TYPES = ['ATV', 'OMV', 'UGC', null] as const;
+  const fakeClassify = (answer: (id: string) => string | null = (id) => TYPES[Number(id.replace('vid', '')) % 4]) =>
+    vi.fn(async (ids: string[]): Promise<MusicCheck> => ({ types: new Map(ids.map((id) => [id, musicVideoType(answer(id))])), failed: [] }));
+
+  it('likes official audio and music videos, asks about uploads, leaves the rest out', async () => {
+    const m = memoryStore(12, { liked: true, candidates: unchecked });
+    const classify = fakeClassify();
+    const match = vi.fn(fakeMatch);
+    const { r, sleeps } = runner(m.store, { classify, match });
+    await r.tick();
+    expect(m.job.status).toBe('done');
+    // One helper call per batch of 8, and never a search by name.
+    expect(classify.mock.calls.map((c) => c[0].length)).toEqual([8, 4]);
+    expect(match).not.toHaveBeenCalled();
+    // Paced like searched batches: YouTube Music is asked either way.
+    expect(sleeps).toEqual([PACE_MS, PACE_MS]);
+
+    const byStatus = (st: ItemStatus) => m.items.filter((i) => i.status === st).map((i) => i.position);
+    expect(byStatus('accepted')).toEqual([0, 1, 4, 5, 8, 9]);
+    expect(byStatus('review')).toEqual([2, 6, 10]);
+    expect(byStatus('skipped')).toEqual([3, 7, 11]);
+    expect(m.likes.map((l) => l.track.sourceId)).toEqual(['vid0', 'vid1', 'vid4', 'vid5', 'vid8', 'vid9']);
+
+    // The accepted ones say what they are; the check mark is gone.
+    expect(m.items[0].candidates[0]).toMatchObject({ videoType: 'ATV' });
+    expect(m.items[1].candidates[0]).toMatchObject({ videoType: 'OMV' });
+    expect(m.items[0].videoId).toBe('vid0');
+    // An upload waits for a yes or no, the video itself its one candidate.
+    expect(m.items[2].videoId).toBeNull();
+    expect(m.items[2].candidates).toHaveLength(1);
+    expect(m.items[2].candidates[0]).toMatchObject({ videoType: 'UGC', track: { sourceId: 'vid2' } });
+    expect(m.items[2].candidates[0].reasons).toContain(UPLOAD_REASON);
+    expect(m.items.every((i) => i.candidates[0].unchecked === undefined)).toBe(true);
+
+    expect({ accepted: m.job.accepted, review: m.job.review, missing: m.job.missing }).toEqual({ accepted: 6, review: 3, missing: 0 });
+    expect(notMusicCount({ cursor: m.job.cursor, accepted: m.job.accepted ?? 0, review: m.job.review ?? 0, missing: m.job.missing ?? 0 })).toBe(3);
+  });
+
+  it('never asks about a like a Topic channel already vouched for', async () => {
+    const m = memoryStore(4, {
+      liked: true,
+      candidates: (i) => (i % 2 ? [{ ...cand(`vid${i}`, 100), videoType: 'ATV' }] : unchecked(i)),
+    });
+    const classify = fakeClassify(() => null);
+    const { r } = runner(m.store, { classify });
+    await r.tick();
+    expect(classify.mock.calls.map((c) => c[0])).toEqual([['vid0', 'vid2']]);
+    expect(m.items.map((i) => i.status)).toEqual(['skipped', 'accepted', 'skipped', 'accepted']);
+  });
+
+  it('one video whose lookup failed is left out with a warning, and the job carries on', async () => {
+    const m = memoryStore(3, { liked: true, candidates: unchecked });
+    const classify = vi.fn(async (ids: string[]) =>
+      parseMusicCheck({ results: { vid0: 'ATV', vid1: null, vid2: 'OMV' }, failed: ['vid1'], busy: false }, ids),
+    );
+    const log = vi.fn();
+    const { r } = runner(m.store, { classify, log });
+    await r.tick();
+    expect(m.job.status).toBe('done');
+    expect(m.items.map((i) => i.status)).toEqual(['accepted', 'skipped', 'accepted']);
+    expect(log).toHaveBeenCalledWith(expect.stringMatching(/failed/), { job: 'j1', videoId: 'vid1' });
+    expect(m.job.error ?? '').toBe('');
+  });
+
+  it('YouTube Music asking to slow down backs off and repeats the batch, like a search', async () => {
+    const m = memoryStore(8, { liked: true, candidates: unchecked });
+    let calls = 0;
+    const classify = vi.fn(async (ids: string[]) => {
+      calls += 1;
+      return parseMusicCheck(calls === 1 ? { busy: true, results: {}, failed: [] } : { results: Object.fromEntries(ids.map((id) => [id, 'ATV'])) }, ids);
+    });
+    const { r, sleeps } = runner(m.store, { classify });
+    await r.tick();
+    expect(classify).toHaveBeenCalledTimes(2);
+    expect(m.patches.some((p) => p.status === 'paused' && p.error === BUSY_MESSAGE)).toBe(true);
+    expect(sleeps[0]).toBe(BACKOFF_MS[0]);
+    expect(m.job.status).toBe('done');
+    expect(m.likes).toHaveLength(8);
+  });
+
+  it('without the check wired in, a Google like is never liked blind', async () => {
+    const m = memoryStore(2, { liked: true, candidates: unchecked });
+    const { r } = runner(m.store, { backoffMs: [] });
+    await r.tick();
+    expect(m.likes).toHaveLength(0);
+    expect(m.job.status).toBe('paused');
+    expect(m.job.error).toBe(GAVE_UP_MESSAGE);
+  });
+
+  // The owner's real transfer, which brought a Minecraft video, a YTP and a
+  // satire ad into their Liked songs. Their 16 likes, with what YouTube
+  // Music's get_song said about each (tests/fixtures/imports/
+  // ytm-get-song-liked16.json), through the whole path: Google's page,
+  // the parser, the runner, and the summary.
+  it("the owner's 16 real likes: 5 official songs liked, 5 uploads to check, 6 left out", async () => {
+    const fixture = JSON.parse(
+      readFileSync(join(__dirname, '..', '..', '..', '..', 'tests', 'fixtures', 'imports', 'ytm-get-song-liked16.json'), 'utf8'),
+    ) as { songs: { videoId: string; title: string; channel: string; musicVideoType: string | null }[] };
+    const byId = new Map(fixture.songs.map((f) => [f.videoId, f]));
+    // What the YouTube Data API hands over: every one of them says "Music".
+    const page = fixture.songs.map((f) => ({
+      id: f.videoId,
+      snippet: { title: f.title, channelTitle: f.channel, categoryId: '10' },
+      contentDetails: { duration: 'PT3M' },
+    }));
+    const parsed = parseYtmusicLiked(likesFromPage(page, new Set()));
+    expect(parsed.items).toHaveLength(16);
+
+    const m = memoryStore(16, { liked: true, candidates: (i) => parsed.items[i].candidates ?? [] });
+    // player.py's own mapping: MUSIC_VIDEO_TYPE_ATV to ATV, and so on.
+    const classify = vi.fn(async (ids: string[]) =>
+      parseMusicCheck(
+        { results: Object.fromEntries(ids.map((id) => [id, (byId.get(id)!.musicVideoType ?? '').replace('MUSIC_VIDEO_TYPE_', '') || null])) },
+        ids,
+      ),
+    );
+    const { r } = runner(m.store, { classify });
+    await r.tick();
+    expect(m.job.status).toBe('done');
+
+    const titles = (st: ItemStatus) => m.items.filter((i) => i.status === st).map((i) => byId.get(i.candidates[0].track.sourceId)!.title);
+    expect(titles('accepted').sort()).toEqual(['Ashes of the Dawn', 'Kradem Bakar', 'Uzalud Sunce Sja', 'Voices', 'ZITTI E BUONI']);
+    expect(titles('review').sort()).toEqual([
+      'Ali-A intro song',
+      'Batzorig Vaanchig- Mongolian Throat Singing',
+      'Chopin - Etude Op. 25 No. 11 (Winter Wind)',
+      'NEW Bricks and Minifigs Commercial (satire)',
+      'Welcome to American Fork!',
+    ]);
+    expect(titles('skipped').sort()).toEqual([
+      'Eminem on TV Was Actually Insane',
+      'How long it takes to learn drums #drums #drummers',
+      'I Built a GIANT Mob Farm in Old Minecraft',
+      '[YTP] dexter can\'t open the cargo box',
+      'if you\'re reading this, i\'m in prison...',
+      'ты слышал это в играх про гонки',
+    ]);
+    // Only the official ones reach the likes.
+    expect(m.likes).toHaveLength(5);
+    // The four Topic channels were known already; only the other 12 were asked about.
+    expect(classify.mock.calls.flat().flat()).toHaveLength(12);
+
+    // And the Liked page says so in plain words.
+    const job = jobFromRecord({ ...m.job, source_id: GOOGLE_LIKES_SOURCE_ID });
+    expect(job.notMusic).toBe(6);
+    expect(plainTransferResult({ found: job.accepted, check: job.review, notFound: job.missing, notMusic: job.notMusic })).toBe(
+      'We found 5 songs. 5 need a quick check. 6 likes were not music.',
+    );
   });
 });

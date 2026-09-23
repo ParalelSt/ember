@@ -5,7 +5,7 @@ import {
   GoogleError,
   googleConfig,
   pollToken,
-  readLikedMusic,
+  readLikes,
   requestDeviceCode,
   revokeTokens,
   type GoogleConfig,
@@ -155,13 +155,13 @@ describe('revokeTokens', () => {
   });
 });
 
-describe('readLikedMusic', () => {
+describe('readLikes', () => {
   const page = (from: number, n: number, category = '10') =>
     Array.from({ length: n }, (_, i) => music(`v${String(from + i).padStart(10, '0')}`, `Song ${from + i}`, 'Band', category));
 
   it('asks for likes with the token, pages to the end, keeps the order', async () => {
     const g = useGoogle({ pages: [page(0, 50), page(50, 50), page(100, 7)] });
-    const r = await readLikedMusic(cfg, FAKE_ACCESS);
+    const r = await readLikes(cfg, FAKE_ACCESS);
     expect(r.songs).toHaveLength(107);
     expect(r.songs[0].track.title).toBe('Song 0');
     expect(r.songs[106].track.title).toBe('Song 106');
@@ -177,16 +177,16 @@ describe('readLikedMusic', () => {
     expect(g.requests.some((r) => r.url.includes(SECRET_MARK))).toBe(false);
   });
 
-  it('keeps only music and counts the rest', async () => {
+  it('keeps every like whatever its category: YouTube Music says which are songs later', async () => {
     useGoogle({ pages: [[...page(0, 3), ...page(3, 2, '20')], [music('topic000001', 'Topic song', 'Singer - Topic', '24')]] });
-    const r = await readLikedMusic(cfg, FAKE_ACCESS);
-    expect(r.songs.map((s) => s.track.title)).toEqual(['Song 0', 'Song 1', 'Song 2', 'Topic song']);
-    expect(r.skipped).toBe(2);
+    const r = await readLikes(cfg, FAKE_ACCESS);
+    expect(r.songs.map((s) => s.track.title)).toEqual(['Song 0', 'Song 1', 'Song 2', 'Song 3', 'Song 4', 'Topic song']);
+    expect(r.songs.map((s) => s.videoType ?? null)).toEqual([null, null, null, null, null, 'ATV']);
   });
 
   it('stops at the cap and says there was more', async () => {
     const g = useGoogle({ pages: [page(0, 50), page(50, 50), page(100, 50)] });
-    const r = await readLikedMusic(cfg, FAKE_ACCESS, { cap: 60 });
+    const r = await readLikes(cfg, FAKE_ACCESS, { cap: 60 });
     expect(r.songs).toHaveLength(60);
     expect(r.songs[59].track.title).toBe('Song 59');
     expect(r.truncated).toBe(true);
@@ -196,31 +196,30 @@ describe('readLikedMusic', () => {
 
   it('exactly the cap is not more than the cap', async () => {
     useGoogle({ pages: [page(0, 50), page(50, 10)] });
-    const r = await readLikedMusic(cfg, FAKE_ACCESS, { cap: 60 });
+    const r = await readLikes(cfg, FAKE_ACCESS, { cap: 60 });
     expect(r.songs).toHaveLength(60);
     expect(r.truncated).toBe(false);
   });
 
   it('stops after the most pages Ember reads, and says there was more', async () => {
     const g = useGoogle({ pages: [page(0, 50, '20'), page(50, 50, '20'), page(100, 50)] });
-    const r = await readLikedMusic(cfg, FAKE_ACCESS, { maxPages: 2 });
-    expect(r.songs).toHaveLength(0);
-    expect(r.skipped).toBe(100);
+    const r = await readLikes(cfg, FAKE_ACCESS, { maxPages: 2 });
+    expect(r.songs).toHaveLength(100);
     expect(r.truncated).toBe(true);
     expect(g.requests).toHaveLength(2);
   });
 
   it('a used-up quota, a missing scope and a broken API each say so', async () => {
     useGoogle({ videosError: { status: 403, reason: 'quotaExceeded' } });
-    await expect(readLikedMusic(cfg, FAKE_ACCESS)).rejects.toMatchObject({ reason: 'quota' });
+    await expect(readLikes(cfg, FAKE_ACCESS)).rejects.toMatchObject({ reason: 'quota' });
     useGoogle({ videosError: { status: 403, reason: 'insufficientPermissions' } });
-    await expect(readLikedMusic(cfg, FAKE_ACCESS)).rejects.toMatchObject({ reason: 'noScope' });
+    await expect(readLikes(cfg, FAKE_ACCESS)).rejects.toMatchObject({ reason: 'noScope' });
     useGoogle({ videosError: { status: 403, reason: 'accessNotConfigured' } });
-    await expect(readLikedMusic(cfg, FAKE_ACCESS)).rejects.toMatchObject({ reason: 'setupWrong' });
+    await expect(readLikes(cfg, FAKE_ACCESS)).rejects.toMatchObject({ reason: 'setupWrong' });
     useGoogle({ videosError: { status: 503, reason: 'backendError' } });
-    await expect(readLikedMusic(cfg, FAKE_ACCESS)).rejects.toMatchObject({ reason: 'unreachable' });
+    await expect(readLikes(cfg, FAKE_ACCESS)).rejects.toMatchObject({ reason: 'unreachable' });
     useGoogle({ videosError: { status: 401, reason: 'authError' } });
-    const e = await readLikedMusic(cfg, FAKE_ACCESS).catch((x: unknown) => x);
+    const e = await readLikes(cfg, FAKE_ACCESS).catch((x: unknown) => x);
     expect(e).toMatchObject({ reason: 'readFailed' });
     expect(String((e as Error).message)).not.toContain(SECRET_MARK);
   });

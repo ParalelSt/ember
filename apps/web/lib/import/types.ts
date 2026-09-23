@@ -16,6 +16,9 @@ export interface ImportCandidate {
   score: number;
   /** Short plain words for the review screen: "Length matches". */
   reasons: string[];
+  /** A liked video from Google that YouTube Music has not yet said is a
+   *  song. The runner asks before liking it (lib/import/musicCheck.ts). */
+  unchecked?: boolean;
 }
 
 /** A source track and every candidate found for it, best first. Kept whole
@@ -81,6 +84,9 @@ export interface ImportJob {
   missing: number;
   /** Transfers only: accepted songs the person had already liked. */
   existing: number;
+  /** Google likes transfers only: likes it got through that were not music
+   *  (left out by YouTube Music, or said no to in the review). */
+  notMusic?: number;
   /** A sentence for the banner when paused or failed. */
   error: string | null;
   /** Paused by a backoff: when it tries again (ISO). */

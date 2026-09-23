@@ -1,10 +1,13 @@
 /** A page of `videos.list?myRating=like` turned into liked songs. Pure, so
- *  the music-only rule and the title cleanup are fixture tests.
+ *  the title cleanup is a fixture test.
  *
  *  Google keeps one list of likes for YouTube and YouTube Music, so it holds
- *  every video a person ever liked. Music is what `categoryId` "10" says, plus
- *  anything from an auto-generated "Artist - Topic" channel (YouTube Music's
- *  own uploads, which are sometimes filed under another category). */
+ *  every video a person ever liked, and the category an uploader picks says
+ *  nothing: YouTube calls a Minecraft video "Music" if its uploader did. So
+ *  every like is kept here, and YouTube Music itself says which are songs
+ *  while the transfer runs (lib/import/musicCheck.ts). The one thing known
+ *  up front is an auto-generated "Artist - Topic" channel: those are
+ *  YouTube Music's own official audio, ATV, and need no asking. */
 
 import type { LikedSong } from '@/lib/import/sources/ytmusicLiked';
 import type { Track } from '@/types/track';
@@ -21,8 +24,6 @@ export interface YoutubeVideo {
   contentDetails?: { duration?: string };
 }
 
-export const MUSIC_CATEGORY_ID = '10';
-
 const VIDEO_ID_RE = /^[A-Za-z0-9_-]{11}$/;
 const TOPIC_RE = /\s+-\s+Topic$/i;
 
@@ -33,9 +34,9 @@ const NOISE_RE =
 /** "Artist - Title", with a hyphen, an en dash or an em dash between. */
 const ARTIST_TITLE_RE = /^(.+?)\s+[-\u2013\u2014]\s+(.+)$/;
 
-export function isMusic(video: YoutubeVideo): boolean {
-  const s = video.snippet;
-  return s?.categoryId === MUSIC_CATEGORY_ID || TOPIC_RE.test(s?.channelTitle ?? '');
+/** From an auto-generated Topic channel: official audio, a song for sure. */
+export function isTopic(video: YoutubeVideo): boolean {
+  return TOPIC_RE.test(video.snippet?.channelTitle ?? '');
 }
 
 /** ISO 8601 duration ("PT3M22S", "PT1H2M") in seconds; 0 when unreadable. */
@@ -83,23 +84,18 @@ export function likedSongFromVideo(video: YoutubeVideo): LikedSong | null {
     artworkUrl: artwork(video),
     streamUrl: `/api/youtube/stream/${videoId}`,
   };
-  return { track, artists: [artist], likedAt: null };
+  return { track, artists: [artist], likedAt: null, videoType: isTopic(video) ? 'ATV' : null };
 }
 
-/** Sorts one page into songs to keep and a count of what was left out.
- *  `seen` carries over between pages so a video liked twice lands once. */
-export function musicFromPage(videos: YoutubeVideo[], seen: Set<string>): { songs: LikedSong[]; skipped: number } {
+/** One page of likes, in Google's order. `seen` carries over between pages
+ *  so a video liked twice lands once. */
+export function likesFromPage(videos: YoutubeVideo[], seen: Set<string>): LikedSong[] {
   const songs: LikedSong[] = [];
-  let skipped = 0;
   for (const video of videos) {
-    if (!isMusic(video)) {
-      skipped++;
-      continue;
-    }
     const song = likedSongFromVideo(video);
     if (!song || seen.has(song.track.sourceId)) continue;
     seen.add(song.track.sourceId);
     songs.push(song);
   }
-  return { songs, skipped };
+  return songs;
 }

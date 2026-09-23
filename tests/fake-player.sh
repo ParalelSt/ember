@@ -95,6 +95,29 @@ case "$CMD" in
       process.stdout.write(JSON.stringify({ results }));
     ' "$FIX" "$@"
     ;;
+  classify)
+    # YouTube Music's type per liked video, from $FAKE_CLASSIFY_FIXTURE
+    # (default fixtures/imports/ytm-classify.json): "ATV", "OMV", "UGC",
+    # null, or "fail" for a video whose own lookup raises. An id it does not
+    # list has no type, like a real video that is not music.
+    FIX="${FAKE_CLASSIFY_FIXTURE:-$(dirname "$0")/fixtures/imports/ytm-classify.json}"
+    # Every id asked about, on a line of its own, since the line above only
+    # logs the last one.
+    echo "classify-ids ${*:2}" >> "$LOG"
+    node -e '
+      const fix = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"));
+      const args = process.argv.slice(2);
+      const ids = args.slice(args.indexOf("--") + 1);
+      const results = {};
+      const failed = [];
+      for (const id of ids) {
+        const t = fix[id] ?? null;
+        if (t === "fail") failed.push(id);
+        results[id] = t === "fail" ? null : t;
+      }
+      process.stdout.write(JSON.stringify({ results, failed, busy: false }));
+    ' "$FIX" "$@"
+    ;;
   ytplaylist)
     FIX="${FAKE_PLAYLIST_FIXTURE:-$(dirname "$0")/fixtures/imports/ytm-playlists.json}"
     node -e '

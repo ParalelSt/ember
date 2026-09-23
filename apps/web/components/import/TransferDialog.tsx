@@ -30,7 +30,7 @@ import {
   type TransferRoute,
   type TransferServiceId,
 } from '@/lib/import/transferRoutes';
-import { GOOGLE_FALLBACK_HINT, GOOGLE_MESSAGES, GOOGLE_UNVERIFIED_HINT, skippedLine } from '@/lib/import/sources/ytmusicLiked';
+import { GOOGLE_CHECKING_LINE, GOOGLE_FALLBACK_HINT, GOOGLE_MESSAGES, GOOGLE_UNVERIFIED_HINT } from '@/lib/import/sources/ytmusicLiked';
 import type { JobKind, ImportSourceKind } from '@/lib/import/types';
 import type { TransferPreview } from '@/app/api/import/upload/route';
 import type { GooglePreview } from '@/lib/import/google/flows';
@@ -598,10 +598,10 @@ export function TransferDialog({
             {lookup.step === 'file' && <FilePreviewCard preview={lookup.preview} />}
             {lookup.step === 'google' && (
               <>
-                <FilePreviewCard preview={lookup.preview} />
-                {lookup.preview.skipped > 0 && (
-                  <p data-testid="google-skipped" className="text-xs text-muted-foreground">
-                    {skippedLine(lookup.preview.skipped)}
+                <FilePreviewCard preview={lookup.preview} noun="like" />
+                {lookup.preview.toCheck > 0 && (
+                  <p data-testid="google-checking" className="text-xs text-muted-foreground">
+                    {GOOGLE_CHECKING_LINE}
                   </p>
                 )}
               </>
@@ -645,7 +645,7 @@ export function TransferDialog({
               onClick={() => void start()}
               className="bg-ember text-white hover:bg-ember-soft"
             >
-              {starting ? 'Starting…' : ready ? `Transfer ${count} songs` : 'Transfer'}
+              {starting ? 'Starting…' : ready ? `Transfer ${count} ${lookup.step === 'google' ? 'like' : 'song'}${count === 1 ? '' : 's'}` : 'Transfer'}
             </Button>
           )}
         </DialogFooter>
@@ -702,13 +702,14 @@ function GoogleSignInPanel({ signIn, onSignIn }: { signIn: SignIn; onSignIn: () 
 
 /** What Ember read out of the file or the pasted list, before anything is
  *  started: how many songs, where they came from, and the first few by name
- *  so an obviously wrong file is obvious. */
-function FilePreviewCard({ preview }: { preview: TransferPreview }) {
+ *  so an obviously wrong file is obvious. A Google sign-in counts likes:
+ *  which of them are songs is only known as the transfer goes. */
+function FilePreviewCard({ preview, noun = 'song' }: { preview: TransferPreview; noun?: 'song' | 'like' }) {
   return (
     <div data-testid="transfer-preview" className="rounded-lg border border-border bg-card p-row">
       <div className="text-sm font-semibold">{preview.label}</div>
       <div className="text-xs text-muted-foreground">
-        {preview.count} {preview.count === 1 ? 'song' : 'songs'}
+        {preview.count} {preview.count === 1 ? noun : `${noun}s`}
         {preview.dropped > 0 ? `, ${preview.dropped} ${preview.dropped === 1 ? 'row' : 'rows'} Ember could not read` : ''}
       </div>
       {preview.sample.length > 0 && (

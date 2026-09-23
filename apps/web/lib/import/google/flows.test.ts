@@ -73,11 +73,14 @@ describe('a sign-in that goes well', () => {
       kind: 'ytmusic-liked',
       label: 'Liked songs from YouTube Music',
       order: 'newest-first',
-      count: 2,
-      skipped: 1,
+      // Every like, the vlog too: YouTube Music says which are songs during
+      // the transfer. The Topic one is known already, so two wait for it.
+      count: 3,
+      toCheck: 2,
       truncated: false,
       sample: [
         { title: 'First', artist: 'An Artist' },
+        { title: 'A vlog', artist: 'Me' },
         { title: 'Second', artist: 'Band' },
       ],
     });
@@ -93,7 +96,7 @@ describe('a sign-in that goes well', () => {
     await tick(5_000);
     const parsed = takeFlow('u1', flowId)!;
     expect(parsed.items.map((i) => i.title)).toEqual(['First', 'Second']);
-    expect(parsed.items[0].candidates?.[0]).toMatchObject({ score: 100, track: { sourceId: 'aaaaaaaaaaa' } });
+    expect(parsed.items[0].candidates?.[0]).toMatchObject({ score: 100, unchecked: true, track: { sourceId: 'aaaaaaaaaaa' } });
     expect(takeFlow('u1', flowId)).toBeNull();
     expect(flowStatus('u1', flowId)).toBeNull();
     expect(_flowStats().flows).toBe(0);
@@ -136,7 +139,6 @@ describe('every way a sign-in ends early forgets it', () => {
     ['an account Google blocks', { polls: [{ error: 'org_internal', status: 403 }] }, 'error', GOOGLE_MESSAGES.blocked],
     ['the one scope unticked', { scope: 'openid' }, 'denied', GOOGLE_MESSAGES.noScope],
     ['a used-up quota', { videosError: { status: 403, reason: 'quotaExceeded' } }, 'error', GOOGLE_MESSAGES.quota],
-    ['likes with no music in them', { pages: [[music('aaaaaaaaaaa', 'Vlog', 'Me', '22')]] }, 'error', 'None of the 1 video'],
     ['an account with no likes at all', { pages: [[]] }, 'error', GOOGLE_MESSAGES.noLikes],
   ];
   for (const [name, opts, state, message] of endings) {

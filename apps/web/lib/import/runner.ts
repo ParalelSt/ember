@@ -11,6 +11,11 @@
  *  a job that arrived after it and, if there is one, hands itself back to
  *  the queue at its cursor.
  *
+ *  A Google likes transfer searches nothing, but asks YouTube Music whether
+ *  each liked video is a song (`player.py classify`, one call per batch):
+ *  official audio and music videos are liked, uploads wait in the review
+ *  list for a yes or no, and the rest is left out (lib/import/musicCheck.ts).
+ *
  *  YouTube Music answers rapid searches with 503, so batches are paced, and
  *  a failed batch waits 5 s, 20 s, 60 s before trying again; after that the
  *  job is paused until someone presses Retry.
@@ -20,6 +25,7 @@
 
 import type { Track } from '@/types/track';
 import type { ImportCandidate, ImportSourceKind, JobKind, MatchResult, SourceItem } from '@/lib/import/types';
+import { checkedCandidate, likeOutcome, needsMusicCheck, type MusicCheck } from '@/lib/import/musicCheck';
 import {
   BACKOFF_MS,
   BATCH_SIZE,
@@ -61,7 +67,8 @@ export interface PendingItem {
 export interface ItemResult {
   itemId: string;
   position: number;
-  status: 'accepted' | 'review' | 'missing';
+  /** `skipped`: a liked video YouTube Music says is not a song. */
+  status: 'accepted' | 'review' | 'missing' | 'skipped';
   videoId: string | null;
   confidence: number | null;
   candidates: ImportCandidate[];
@@ -111,6 +118,9 @@ export interface JobStore {
 export interface RunnerDeps {
   store: JobStore;
   match: (items: SourceItem[]) => Promise<MatchResult[]>;
+  /** YouTube Music's type for each video id, for liked videos that still
+   *  wait for it. Throws when YouTube Music asks to slow down. */
+  classify?: (videoIds: string[]) => Promise<MusicCheck>;
   sleep: (ms: number) => Promise<void>;
   now: () => number;
   runnerId: string;
@@ -197,9 +207,10 @@ export class ImportRunner {
       }
 
       let results: ItemResult[];
-      const searched = items.some((i) => !i.candidates.length);
+      // Searched by name, or a like checked with YouTube Music: either way it was asked.
+      const asked = items.some((i) => !i.candidates.length || needsMusicCheck(i.candidates));
       try {
-        results = await this.matchBatch(items);
+        results = await this.matchBatch(job.id, items);
       } catch (e) {
         failures += 1;
         const wait = backoff[failures - 1];
@@ -263,18 +274,35 @@ export class ImportRunner {
         return;
       }
 
-      if (searched) await sleep(pace);
+      if (asked) await sleep(pace);
     }
   }
 
-  /** Items with ready candidates are accepted as they are; the rest go
-   *  through the matcher in one call. */
-  private async matchBatch(items: PendingItem[]): Promise<ItemResult[]> {
+  /** Items with ready candidates are accepted as they are, liked videos
+   *  still waiting for YouTube Music's word are checked in one call, and the
+   *  rest go through the matcher in one call. */
+  private async matchBatch(jobId: string, items: PendingItem[]): Promise<ItemResult[]> {
+    const toCheck = items.filter((i) => needsMusicCheck(i.candidates));
     const toSearch = items.filter((i) => !i.candidates.length);
     const matched = toSearch.length ? await this.deps.match(toSearch.map((i) => i.source)) : [];
     if (matched.length !== toSearch.length) throw new Error('the matcher returned the wrong number of results');
+    const check = toCheck.length ? await this.checkMusic(jobId, toCheck) : null;
     const byId = new Map(toSearch.map((item, k) => [item.id, matched[k]]));
     return items.map((item) => {
+      if (check && needsMusicCheck(item.candidates)) {
+        const type = check.types.get(item.candidates[0].track.sourceId) ?? null;
+        const status = likeOutcome(type);
+        const candidate = checkedCandidate(item.candidates[0], type);
+        return {
+          itemId: item.id,
+          position: item.position,
+          status,
+          videoId: status === 'accepted' ? candidate.track.sourceId : null,
+          confidence: status === 'skipped' ? null : candidate.score,
+          candidates: [candidate],
+          likedAt: item.likedAt,
+        };
+      }
       const m = byId.get(item.id);
       if (!m) {
         return {
@@ -297,5 +325,17 @@ export class ImportRunner {
         likedAt: item.likedAt,
       };
     });
+  }
+
+  /** One `player.py classify` for the batch. A video whose own lookup failed
+   *  is left out with a warning rather than failing the job; YouTube Music
+   *  asking to slow down throws, and the batch backs off like a search. */
+  private async checkMusic(jobId: string, items: PendingItem[]): Promise<MusicCheck> {
+    if (!this.deps.classify) throw new Error('no music check configured for a Google likes transfer');
+    const check = await this.deps.classify(items.map((i) => i.candidates[0].track.sourceId));
+    for (const videoId of check.failed) {
+      this.deps.log?.('music check failed for a like, left out', { job: jobId, videoId });
+    }
+    return check;
   }
 }

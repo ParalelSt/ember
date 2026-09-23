@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { candidateReasons, kindOf, reasonIsGood, reviewFlag } from '@/lib/import/reasons';
 import type { ImportCandidate, ImportItem } from '@/lib/import/types';
+import { UPLOAD_REASON } from '@/lib/import/musicCheck';
 
 const cand = (score: number, reasons: string[], videoType: string | null = 'ATV'): ImportCandidate => ({
   track: {
@@ -63,5 +64,16 @@ describe('import reasons', () => {
       'Best match: live version, fan upload',
     );
     expect(reviewFlag(item('accepted', [cand(90, [])]))).toBeNull();
+  });
+
+  it('a liked upload asks the one question that matters: is it a song', () => {
+    const upload = cand(100, ['From your YouTube Music likes', UPLOAD_REASON], 'UGC');
+    expect(reviewFlag(item('review', [upload]))).toBe('Is this a song? YouTube Music only knows it as an upload');
+    expect(kindOf(upload.videoType)).toBe('Fan upload');
+    // Coming from the person's own likes counts in its favour.
+    expect(candidateReasons(upload)).toEqual([
+      { text: 'From your YouTube Music likes', good: true },
+      { text: UPLOAD_REASON, good: false },
+    ]);
   });
 });
