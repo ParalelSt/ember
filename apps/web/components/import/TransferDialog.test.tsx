@@ -43,6 +43,7 @@ const api = vi.hoisted(() => ({
 vi.mock('@/lib/api', () => ({ api }));
 
 const { TransferDialog } = await import('./TransferDialog');
+const { ALL_SERVICES, LIKED_SERVICES_OPEN } = await import('@/lib/import/transferRoutes');
 
 const LINK = 'https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M';
 const YT_LINK = 'https://music.youtube.com/playlist?list=PLabc123def456';
@@ -85,7 +86,7 @@ function setup() {
   const qc = new QueryClient();
   render(
     <QueryClientProvider client={qc}>
-      <TransferDialog open onOpenChange={onOpenChange} />
+      <TransferDialog open onOpenChange={onOpenChange} likedServicesOpen={ALL_SERVICES} />
     </QueryClientProvider>,
   );
   return { onOpenChange };
@@ -721,5 +722,51 @@ describe('TransferDialog: YouTube Music likes, after a Google sign-in', () => {
     await waitFor(() => expect(screen.getByTestId('transfer-error')).toHaveTextContent(GOOGLE_MESSAGES.gone));
     expect(signInButton()).toBeEnabled();
     expect(push).not.toHaveBeenCalled();
+  });
+});
+
+describe('TransferDialog: only YouTube Music fills the Liked songs for now', () => {
+  function setupDefault() {
+    const qc = new QueryClient();
+    render(
+      <QueryClientProvider client={qc}>
+        <TransferDialog open onOpenChange={vi.fn()} />
+      </QueryClientProvider>,
+    );
+  }
+
+  it('is the default, with YouTube Music the one service open', () => {
+    expect(LIKED_SERVICES_OPEN).toEqual(['ytmusic']);
+  });
+
+  it('crosses out and disables every other service for Liked songs, and says why', () => {
+    setupDefault();
+    pick('Liked songs');
+    const cards = screen.getAllByTestId('transfer-service-card');
+    const byId = Object.fromEntries(cards.map((c) => [c.dataset.service, c as HTMLButtonElement]));
+    expect(byId.ytmusic).toBeEnabled();
+    for (const id of ['spotify', 'apple', 'other']) {
+      expect(byId[id]).toBeDisabled();
+      expect(byId[id]).toHaveClass('line-through');
+    }
+    expect(screen.getByTestId('transfer-services-held-back')).toHaveTextContent('For now only YouTube Music');
+    // A crossed-out card does nothing when pressed.
+    fireEvent.click(byId.spotify);
+    expect(screen.queryAllByTestId('transfer-have-option')).toHaveLength(0);
+    expect(screen.getAllByTestId('transfer-service-card')).toHaveLength(4);
+  });
+
+  it('YouTube Music still opens its choices', () => {
+    setupDefault();
+    pick('Liked songs');
+    service('YouTube Music');
+    expect(screen.getAllByTestId('transfer-have-option').length).toBeGreaterThan(0);
+  });
+
+  it('a new playlist can still come from any service', () => {
+    setupDefault();
+    pick('A new playlist');
+    for (const card of screen.getAllByTestId('transfer-service-card')) expect(card).toBeEnabled();
+    expect(screen.queryByTestId('transfer-services-held-back')).toBeNull();
   });
 });

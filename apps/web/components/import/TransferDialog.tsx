@@ -22,8 +22,10 @@ import { logger } from '@/lib/logger/client';
 import { parseImportUrl } from '@/lib/import/url';
 import { googleLikesErrorMessage, OVER_CAP_MESSAGE, transferErrorMessage } from '@/lib/import/transferCopy';
 import {
+  LIKED_SERVICES_OPEN,
   routesFor,
   serviceById,
+  serviceOpen,
   TRANSFER_SERVICES,
   type TransferRoute,
   type TransferServiceId,
@@ -87,6 +89,9 @@ export interface TransferDialogProps {
   onOpenChange: (open: boolean) => void;
   /** Where the dialog was opened from, for the breadcrumb only. */
   from?: string;
+  /** Services that may fill the Liked songs; the rest show crossed out.
+   *  Defaults to what is open for now (`LIKED_SERVICES_OPEN`). */
+  likedServicesOpen?: readonly TransferServiceId[];
 }
 
 /** Bring songs liked somewhere else into Ember, asked in plain words. Three
@@ -96,7 +101,12 @@ export interface TransferDialogProps {
  *  the person already has in hand. Only the steps for that one combination
  *  show, so nobody reads about CSVs unless a file is their way in. Nothing
  *  starts until Ember has read the source and shown a preview of it. */
-export function TransferDialog({ open, onOpenChange, from = 'settings' }: TransferDialogProps) {
+export function TransferDialog({
+  open,
+  onOpenChange,
+  from = 'settings',
+  likedServicesOpen = LIKED_SERVICES_OPEN,
+}: TransferDialogProps) {
   const router = useRouter();
   const qc = useQueryClient();
   const [destination, setDestination] = useState<JobKind | null>(null);
@@ -453,18 +463,32 @@ export function TransferDialog({ open, onOpenChange, from = 'settings' }: Transf
 
             {!service && (
               <div className="grid gap-row md:grid-cols-2">
-                {TRANSFER_SERVICES.map((s) => (
-                  <button
-                    key={s.id}
-                    type="button"
-                    data-testid="transfer-service-card"
-                    data-service={s.id}
-                    onClick={() => pickService(s.id)}
-                    className="rounded-lg border border-border bg-card p-block text-left text-sm font-semibold transition-colors hover:border-ember hover:bg-accent/60"
-                  >
-                    {s.name}
-                  </button>
-                ))}
+                {TRANSFER_SERVICES.map((s) => {
+                  const open = destination ? serviceOpen(s.id, destination, likedServicesOpen) : true;
+                  return (
+                    <button
+                      key={s.id}
+                      type="button"
+                      data-testid="transfer-service-card"
+                      data-service={s.id}
+                      data-open={open ? 'true' : 'false'}
+                      disabled={!open}
+                      onClick={() => pickService(s.id)}
+                      className={
+                        open
+                          ? 'rounded-lg border border-border bg-card p-block text-left text-sm font-semibold transition-colors hover:border-ember hover:bg-accent/60'
+                          : 'cursor-not-allowed rounded-lg border border-border bg-card p-block text-left text-sm font-semibold text-muted-foreground line-through opacity-50'
+                      }
+                    >
+                      {s.name}
+                    </button>
+                  );
+                })}
+                {destination === 'liked' && TRANSFER_SERVICES.some((s) => !likedServicesOpen.includes(s.id)) && (
+                  <p data-testid="transfer-services-held-back" className="text-xs text-muted-foreground md:col-span-2">
+                    For now only YouTube Music can fill your Liked songs. The others can still make a new playlist.
+                  </p>
+                )}
               </div>
             )}
 
