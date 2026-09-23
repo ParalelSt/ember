@@ -1,5 +1,5 @@
 import { fetchAsset } from '@/lib/desktopUpdate';
-import { keyFromRequest, rateLimitResponse } from '@/lib/rateLimit';
+import { limitCaller } from '@/lib/rateLimit';
 import { serverLogger } from '@/lib/logger/server';
 import { withRequestLog } from '@/lib/logger/withRequestLog';
 
@@ -17,7 +17,7 @@ export const GET = withRequestLog('desktop/asset/[id]', async (request: Request,
 
   // Installers are multi-MB; this stops one client (or a bored stranger, since
   // the route is unauthenticated by necessity) pulling them in a loop.
-  const limited = rateLimitResponse(`desktop-asset:${keyFromRequest(request)}`, {
+  const limited = await limitCaller(request, 'desktop-asset', {
     windowMs: 60 * 60 * 1000,
     max: 20,
   });

@@ -6,6 +6,7 @@ import type { Track } from '@/types/track';
 import { redactSecrets } from '@/lib/import/redact';
 import { serverLogger } from '@/lib/logger/server';
 import { parseMusicCheck, type MusicCheck, type RawMusicCheck } from '@/lib/import/musicCheck';
+import { BusyError, createSemaphore, type Semaphore } from '@/lib/semaphore';
 
 // apps/web is one level deeper than the old apps/api in workspace layout,
 // but both resolve to the same spotify-clone root.
@@ -84,10 +85,46 @@ function pythonReason(stderr: string, code: number | null): string {
   return `the media helper failed (exit ${code ?? '?'})`;
 }
 
-/** One `player.py` run. The child's stderr is redacted on its way to both
- *  the terminal and the server log, so a helper that ever echoed a
- *  credential could not put it there. */
-function runPython<T = unknown>(args: string[], { timeoutMs = 30000 }: { timeoutMs?: number } = {}): Promise<T> {
+/** Python helpers allowed to run at once, per lane (bughunt S04). Search and
+ *  every other public route could start one per request with no ceiling, so
+ *  a flood of requests was a flood of processes on the host. Each lane has
+ *  its own slots so slow work cannot starve quick work: a 3-minute download
+ *  or an import's batch never holds the slot a search needs. A job only
+ *  holds a slot while its own process runs and never waits on another job,
+ *  so a download that falls back to a stream lookup cannot deadlock.
+ *  Transcription for tabs (lib/tabGenerate.ts) spawns its own processes and
+ *  stays outside: it is signed-in only and limited to 5 an hour per user. */
+export type PythonLane = 'interactive' | 'bulk' | 'download';
+
+function envCap(name: string, fallback: number): number {
+  const n = Number(process.env[name]);
+  return Number.isInteger(n) && n > 0 ? n : fallback;
+}
+
+const LANES: Record<PythonLane, Semaphore> = {
+  // Search, stream lookups, album/artist/track pages, lyrics, trending.
+  interactive: createSemaphore(envCap('PYTHON_MAX_CONCURRENCY', 4), { queueTimeoutMs: 15_000, maxQueue: 64 }),
+  // Import batches (match, classify, playlist reads): they retry on a 503.
+  bulk: createSemaphore(envCap('PYTHON_MAX_BULK', 2), { queueTimeoutMs: 120_000, maxQueue: 64 }),
+  download: createSemaphore(envCap('PYTHON_MAX_DOWNLOADS', 3), { queueTimeoutMs: 60_000, maxQueue: 64 }),
+};
+
+/** One `player.py` run, once its lane has a free slot. A job that waits too
+ *  long fails with a 503 instead of queueing forever. */
+function runPython<T = unknown>(
+  args: string[],
+  { timeoutMs = 30000, lane = 'interactive' }: { timeoutMs?: number; lane?: PythonLane } = {},
+): Promise<T> {
+  return LANES[lane].run(() => spawnPython<T>(args, timeoutMs)).catch((e: unknown) => {
+    if (e instanceof BusyError) serverLogger.error('python', 'helper queue full', { lane, command: args[0] });
+    throw e;
+  });
+}
+
+/** The child's stderr is redacted on its way to both the terminal and the
+ *  server log, so a helper that ever echoed a credential could not put it
+ *  there. */
+function spawnPython<T>(args: string[], timeoutMs: number): Promise<T> {
   return new Promise((resolve, reject) => {
     const child = spawn(PYTHON_BIN, [PLAYER_SCRIPT, ...args], {
       env: { ...process.env, MUSIC_DIR, PATH: SUBPROCESS_PATH },
@@ -243,7 +280,7 @@ export async function ensureDownloaded(videoId: string): Promise<string> {
   const already = findCachedFile(videoId);
   if (already) return already;
 
-  const job = runPython<{ filePath: string }>(['download', '--', videoId], { timeoutMs: 180000 })
+  const job = runPython<{ filePath: string }>(['download', '--', videoId], { timeoutMs: 180000, lane: 'download' })
     .then((result) => result.filePath)
     .finally(() => {
       // Clear on failure too, so a transient error doesn't poison the track
@@ -402,7 +439,7 @@ export async function getYtPlaylist(playlistId: string): Promise<{ name: string;
     e.status = 400;
     throw e;
   }
-  const result = await runPython<RawYtPlaylist>(['ytplaylist', '--', playlistId], { timeoutMs: 90000 });
+  const result = await runPython<RawYtPlaylist>(['ytplaylist', '--', playlistId], { timeoutMs: 90000, lane: 'bulk' });
   if (result?.error) {
     const [message, status] = YT_PLAYLIST_ERRORS[result.reason ?? 'failed'] ?? YT_PLAYLIST_ERRORS.failed;
     const e: PythonError = new Error(message);
@@ -438,15 +475,17 @@ interface RawMatchResult {
 
 /** Up to 5 YT Music candidates per {title, artist} item (8 or fewer items per
  *  call), in input order. `titleOnly` searches the title alone with
- *  ignore_spelling, the second try for items the first search missed. */
+ *  ignore_spelling, the second try for items the first search missed. Import
+ *  batches use the bulk lane; a listener waiting on the answer passes
+ *  'interactive'. */
 export async function searchMatchCandidates(
   items: { title: string; artist: string }[],
-  { titleOnly = false } = {},
+  { titleOnly = false, lane = 'bulk' }: { titleOnly?: boolean; lane?: PythonLane } = {},
 ): Promise<RawMatchCandidate[][]> {
   if (!items.length) return [];
   const queries = items.map((i) => `${i.title}\t${i.artist}`);
   const args = ['match', ...(titleOnly ? ['--title-only'] : []), '--', ...queries];
-  const result = await runPython<RawMatchResult>(args, { timeoutMs: 60000 });
+  const result = await runPython<RawMatchResult>(args, { timeoutMs: 60000, lane });
   if (result?.failed?.length) {
     // Usually YouTube Music's 503 for searching too fast. The import runner
     // backs off and repeats the batch rather than calling these not found.
@@ -475,7 +514,7 @@ export async function searchMatchCandidates(
  *  in `failed`. */
 export async function classifyVideos(videoIds: string[]): Promise<MusicCheck> {
   if (!videoIds.length) return { types: new Map(), failed: [] };
-  const raw = await runPython<RawMusicCheck>(['classify', '--', ...videoIds], { timeoutMs: 60000 });
+  const raw = await runPython<RawMusicCheck>(['classify', '--', ...videoIds], { timeoutMs: 60000, lane: 'bulk' });
   return parseMusicCheck(raw, videoIds);
 }
 

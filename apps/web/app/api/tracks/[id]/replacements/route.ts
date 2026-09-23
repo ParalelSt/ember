@@ -23,7 +23,7 @@ export const GET = withRequestLog('tracks/[id]/replacements', async (_req: NextR
     // Both spawn player.py; run them together so the dialog waits for the
     // slower one, not the sum.
     const [matched, searched, dead] = await Promise.all([
-      searchMatchCandidates([{ title, artist }]).catch(() => [[]]),
+      searchMatchCandidates([{ title, artist }], { lane: 'interactive' }).catch(() => [[]]),
       searchTracks(`${title} ${artist}`.trim(), { limit: 10 }).catch(() => []),
       listUnavailableIds(),
     ]);
