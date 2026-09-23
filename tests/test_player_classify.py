@@ -97,6 +97,31 @@ class ClassifyTest(unittest.TestCase):
         self.assertEqual(self.yt.get_song.call_count, 2)
         self.assertEqual(res["results"], {"16GpicX09gk": "ATV"})
 
+    def test_network_error_stops_the_batch_and_says_busy(self):
+        # A network error says nothing about the video itself: it must not
+        # be counted as "not music" the way a real lookup failure is.
+        ok = song_response(self.songs[2])
+        import requests
+
+        self.yt.get_song.side_effect = [ok, requests.exceptions.ConnectionError("Failed to establish a new connection"), ok]
+        res = run_classify(["16GpicX09gk", "bbbbbbbbbbb", "ccccccccccc"])
+        self.assertIs(res["busy"], True)
+        self.assertEqual(self.yt.get_song.call_count, 2)
+        self.assertEqual(res["results"], {"16GpicX09gk": "ATV"})
+        self.assertEqual(res["failed"], [])
+
+    def test_server_error_stops_the_batch_and_says_busy(self):
+        # 5xx without the "too many requests"/rate-limit wording BUSY_RE
+        # looked for is still YouTube Music being unavailable, not the video
+        # being unplayable.
+        ok = song_response(self.songs[2])
+        self.yt.get_song.side_effect = [ok, Exception("Server returned HTTP 500: Internal Server Error."), ok]
+        res = run_classify(["16GpicX09gk", "bbbbbbbbbbb", "ccccccccccc"])
+        self.assertIs(res["busy"], True)
+        self.assertEqual(self.yt.get_song.call_count, 2)
+        self.assertEqual(res["results"], {"16GpicX09gk": "ATV"})
+        self.assertEqual(res["failed"], [])
+
     def test_a_malformed_id_is_never_looked_up(self):
         res = run_classify(["../etc", "16GpicX09gk"])
         self.assertEqual(res["results"]["../etc"], None)

@@ -189,6 +189,13 @@ async function poll(flow: Flow): Promise<void> {
         return end(flow, 'denied', GOOGLE_MESSAGES.noScope);
       }
       flow.state = 'reading';
+      // A late approval can land close to the original waiting deadline
+      // (Google's own device code can last up to 30 minutes); without a
+      // fresh window here that stale deadline can fire mid-read and yank
+      // the tokens out from under readLikedMusic. Reading gets its own
+      // full FLOW_TTL_MS, same as the second pass and the ready state
+      // already get.
+      expireIn(flow, FLOW_TTL_MS);
       return read(flow);
   }
 }

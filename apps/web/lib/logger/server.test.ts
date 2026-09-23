@@ -99,9 +99,9 @@ describe('serverLogger.entriesSince (EMBER_LOG_DIR override)', () => {
 });
 
 describe('boot sweep', () => {
-  // ensureBootSweep() only fires once per module instance (a `bootSweepStarted`
-  // flag), so each test needs its own fresh import to see the sweep run
-  // against its own EMBER_LOG_DIR, same pattern as logger/client.test.ts.
+  // ensureDailySweep() only fires once per day (a `lastSweptDayKey` guard),
+  // so each test needs its own fresh import to see the sweep run against its
+  // own EMBER_LOG_DIR, same pattern as logger/client.test.ts.
   async function freshLogger() {
     vi.resetModules();
     const mod = await import('./server');
@@ -120,7 +120,7 @@ describe('boot sweep', () => {
 
     const logger = await freshLogger();
     await logger.entriesSince(Date.now() - 60_000);
-    // The sweep is fire-and-forget (void runBootSweep()); give its promise a
+    // The sweep is fire-and-forget (void runSweep()); give its promise a
     // turn to settle before checking the filesystem.
     await new Promise((r) => setTimeout(r, 50));
 
@@ -140,5 +140,36 @@ describe('boot sweep', () => {
 
     expect(fs.existsSync(path.join(logDir, oldMarker))).toBe(false);
     expect(fs.existsSync(path.join(logDir, recentMarker))).toBe(true);
+  });
+
+  it('re-sweeps when the day rolls over, not just once at boot (bughunt S11)', async () => {
+    const logger = await freshLogger();
+    // First call of the (long-lived) process: sweeps immediately, same as
+    // before. Nothing old on disk yet, so nothing to delete.
+    await logger.entriesSince(Date.now() - 60_000);
+    await new Promise((r) => setTimeout(r, 50));
+
+    // A file ages past the retention window while the process keeps running.
+    const staleFile = fileFor(oldDateDaysAgo(10));
+    writeFile(staleFile, [entry()]);
+
+    // Same calendar day: the old "only at boot" behavior and the fixed
+    // behavior agree here, so this call alone wouldn't distinguish them.
+    await logger.entriesSince(Date.now() - 60_000);
+    await new Promise((r) => setTimeout(r, 50));
+    expect(fs.existsSync(path.join(logDir, staleFile))).toBe(true);
+
+    // The day rolls over without the process restarting.
+    vi.setSystemTime(new Date(Date.now() + 24 * 60 * 60 * 1000));
+    try {
+      await logger.entriesSince(Date.now() - 60_000);
+      await new Promise((r) => setTimeout(r, 50));
+    } finally {
+      vi.useRealTimers();
+    }
+
+    // Only a re-sweep on the new day catches the now-stale file; a sweep
+    // that only ever ran once at boot would leave it forever.
+    expect(fs.existsSync(path.join(logDir, staleFile))).toBe(false);
   });
 });
