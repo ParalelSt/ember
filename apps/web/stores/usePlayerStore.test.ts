@@ -107,6 +107,33 @@ describe('toggleShuffle', () => {
   });
 });
 
+describe('persistence', () => {
+  it('does not persist shuffle, so a reload always starts unshuffled', () => {
+    const queue = [track('a'), track('b'), track('c'), track('d')];
+    usePlayerStore.setState({ queue, index: 0, shuffle: false, orderBackup: null });
+
+    usePlayerStore.getState().toggleShuffle();
+    expect(usePlayerStore.getState().shuffle).toBe(true);
+
+    const persisted = JSON.parse(localStorage.getItem('ember.player.v1') ?? '{}').state;
+    expect(persisted).not.toHaveProperty('shuffle');
+    expect(persisted).not.toHaveProperty('orderBackup');
+
+    // Simulate a reload: only the persisted slice comes back, so `shuffle`
+    // falls back to the store's own default (false), matching the queue
+    // that IS persisted (the already-shuffled order).
+    usePlayerStore.setState({ orderBackup: null, shuffle: initial.shuffle, queue: persisted.queue });
+    const s = usePlayerStore.getState();
+    expect(s.shuffle).toBe(false);
+    // The queue itself (the shuffled order) IS persisted; only the flag and
+    // its backup are not. With no backup, turning shuffle "off" again after
+    // a reload can't restore the pre-shuffle order (there's nothing to
+    // restore it with) -- but at least the app doesn't come back claiming
+    // to be shuffled while the toggle silently does nothing.
+    expect(s.orderBackup).toBeNull();
+  });
+});
+
 describe('cycleLoopMode', () => {
   it('cycles off -> all -> one -> off', () => {
     usePlayerStore.setState({ loopMode: 'off' });
