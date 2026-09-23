@@ -3,7 +3,9 @@
   "productName": "Ember",
   "version": "0.4.5",
   "identifier": "app.ember.desktop",
-  "build": {},
+  "build": {
+    "frontendDist": "offline"
+  },
   "app": {
     "withGlobalTauri": true,
     "windows": [

@@ -6,6 +6,7 @@
 // emits `audio:*` events back to the webview.
 
 mod applog;
+mod connect;
 mod audio;
 mod cache;
 mod discord;
@@ -44,6 +45,7 @@ pub fn run() {
         .manage(discord::DiscordPresence::default())
         .manage(applog::LogFile(std::sync::Mutex::new(log_path.clone())))
         .manage(speech::new_backend(log_path.as_deref()))
+        .manage(connect::Retry::default())
         // Runs in the webview BEFORE the page loads. Forwards the things that
         // are otherwise invisible in a packaged app: console errors/warnings,
         // uncaught exceptions, rejected promises, and the status of every
@@ -149,6 +151,13 @@ pub fn run() {
                 }
             }
 
+            // The server may be out of reach (offline, down, tailnet not up
+            // yet): the window then shows a Retry page instead of staying
+            // dead. See connect.rs.
+            let connect_handle = app.handle().clone();
+            let connect_log = log_path.clone();
+            tauri::async_runtime::spawn(connect::watch(connect_handle, connect_log));
+
             // Check for a new desktop build in the background. Never blocks
             // startup, and a failure is logged rather than surfaced — see
             // update.rs. EMBER_NO_UPDATE=1 opts out (used by CI's smoke test,
@@ -198,6 +207,7 @@ pub fn run() {
             speech::speech_stop,
             speech::speech_abort,
             theme::theme_apply,
+            connect::connect_retry,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Ember desktop");
