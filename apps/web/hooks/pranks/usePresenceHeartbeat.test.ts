@@ -64,6 +64,13 @@ describe('usePresenceHeartbeat', () => {
     expect(send).toHaveBeenCalledTimes(1);
   });
 
+  it("takes the engine's length when the track carries none (uploads)", () => {
+    const send = vi.fn<Send>(async () => ({}));
+    usePlayerStore.setState({ duration: 180 });
+    setup(send, { userId: 'u1', current: { ...a, durationSec: 0 }, isPlaying: true });
+    expect(send).toHaveBeenCalledWith(expect.objectContaining({ track: expect.objectContaining({ durationSec: 180 }) }));
+  });
+
   it('drops a failed send silently', async () => {
     const send = vi.fn<Send>(async () => { throw new Error('offline'); });
     setup(send, { userId: 'u1', current: a, isPlaying: true });

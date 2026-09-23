@@ -43,10 +43,12 @@ export function usePresenceHeartbeat({
       const now = Date.now();
       if (!force && last.current.key === key && now - last.current.at < MIN_GAP_MS) return;
       last.current = { key, at: now };
+      const st = usePlayerStore.getState();
       void sendRef
         .current({
-          track: { id: current.id, title: current.title, artist: current.artist, durationSec: current.durationSec },
-          position: usePlayerStore.getState().position,
+          // Uploads can carry no length; the engine's own figure fills in.
+          track: { id: current.id, title: current.title, artist: current.artist, durationSec: current.durationSec || st.duration },
+          position: st.position,
           isPlaying,
           engine: engineRef.current,
           appVersion: APP_VERSION,

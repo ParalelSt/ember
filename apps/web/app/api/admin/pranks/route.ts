@@ -45,9 +45,17 @@ export const POST = withRequestLog('admin/pranks', async (req: NextRequest) => {
 
     const now = Date.now();
     const since = pbDate(now - HOUR_MS);
+    // Two reads of one collection at once: without requestKey null the SDK
+    // auto-cancels the first as a duplicate.
     const [forTarget, byAdmin] = await Promise.all([
-      pb.collection('pranks').getFullList({ filter: pb.filter('target = {:t} && created >= {:since}', { t: targetId, since }) }),
-      pb.collection('pranks').getFullList({ filter: pb.filter('issued_by = {:a} && created >= {:since}', { a: user.id, since }) }),
+      pb.collection('pranks').getFullList({
+        filter: pb.filter('target = {:t} && created >= {:since}', { t: targetId, since }),
+        requestKey: null,
+      }),
+      pb.collection('pranks').getFullList({
+        filter: pb.filter('issued_by = {:a} && created >= {:since}', { a: user.id, since }),
+        requestKey: null,
+      }),
     ]);
     const cap = checkCaps(kind, forTarget.map((r) => toRecent(r, now)), byAdmin.map((r) => toRecent(r, now)), now);
     if (!cap.ok) {

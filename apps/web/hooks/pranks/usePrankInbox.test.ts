@@ -101,7 +101,7 @@ describe('usePrankInbox (realtime)', () => {
   it('subscribes for this user, handles pushed rows, and stops polling while live', async () => {
     const { link, subscribe } = fakeRealtime();
     const { inbox, deps } = fakeDeps(subscribe);
-    const receive = vi.fn((_row: PrankRow) => DELIVERED);
+    const receive = vi.fn<(row: PrankRow) => PrankAck>(() => DELIVERED);
     const { unmount } = renderHook(() => usePrankInbox({ userId: 'u1', isPlaying: true, receive, deps }));
     await flush();
     expect(link.userId).toBe('u1');
