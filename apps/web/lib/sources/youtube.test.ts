@@ -19,6 +19,8 @@ let fakeChild: FakeChild;
  *  search with. */
 let nextStdout = '[]';
 let nextStderr = '';
+/** The next fake run's exit code. */
+let nextCode = 0;
 
 vi.mock('node:child_process', () => {
   const spawn = vi.fn((_cmd: string, args: unknown[]) => {
@@ -28,7 +30,7 @@ vi.mock('node:child_process', () => {
     queueMicrotask(() => {
       if (nextStderr) fakeChild.stderr.emit('data', Buffer.from(nextStderr));
       fakeChild.stdout.emit('data', Buffer.from(nextStdout));
-      fakeChild.emit('close', 0);
+      fakeChild.emit('close', nextCode);
     });
     return fakeChild;
   });
@@ -102,5 +104,46 @@ describe('runPython stderr', () => {
     }
     expect(written.join('')).not.toContain('s3cr3tSAPISID');
     expect(written.join('')).toContain('[redacted]');
+  });
+});
+
+// YouTube's rate limit reads "Video unavailable" too. Treating it as a dead
+// video greyed out every song tried during the limit, for everyone, for good.
+describe('yt-dlp failure classification', () => {
+  // yt-dlp 2026.08.19 (extractor/youtube/_video.py), verbatim.
+  const RATE_LIMITED =
+    "ERROR: [youtube] dQw4w9WgXcQ: Video unavailable. This content isn't available, try again later. " +
+    'The current session has been rate-limited by YouTube for up to an hour. It is recommended to use ' +
+    '`-t sleep` to add a delay between video requests to avoid exceeding the rate limit. For more ' +
+    'information, refer to  https://github.com/yt-dlp/yt-dlp/wiki/Extractors#this-content-isnt-available-try-again-later';
+  const ACCOUNT_RATE_LIMITED = RATE_LIMITED.replace('The current session', 'Your account');
+
+  afterEach(() => {
+    vi.clearAllMocks();
+    nextStdout = '[]';
+    nextStderr = '';
+    nextCode = 0;
+  });
+
+  it('treats the rate-limit message as transient, not unavailable', async () => {
+    const { classifyYtdlpFailure } = await import('./youtube');
+    expect(classifyYtdlpFailure(RATE_LIMITED.replace(/^ERROR: /, ''))).toBeNull();
+    expect(classifyYtdlpFailure(ACCOUNT_RATE_LIMITED.replace(/^ERROR: /, ''))).toBeNull();
+  });
+
+  it('a rate-limited stream resolve is a 502, never a 410', async () => {
+    nextStdout = '';
+    nextStderr = `Traceback (most recent call last):\n  ...\n${RATE_LIMITED}\n`;
+    nextCode = 1;
+    const { resolveStreamUrl, isUnavailableError } = await import('./youtube');
+    const err = await resolveStreamUrl('dQw4w9WgXcQ').catch((e: unknown) => e);
+    expect(isUnavailableError(err)).toBe(false);
+    expect((err as { status?: number }).status).toBe(502);
+  });
+
+  it('still marks a genuinely removed video unavailable', async () => {
+    const { classifyYtdlpFailure } = await import('./youtube');
+    expect(classifyYtdlpFailure('[youtube] dQw4w9WgXcQ: Video unavailable')).toBe('unavailable');
+    expect(classifyYtdlpFailure('[youtube] dQw4w9WgXcQ: Video unavailable. This video has been removed by the uploader')).toBe('removed');
   });
 });
