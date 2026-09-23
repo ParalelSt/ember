@@ -52,4 +52,8 @@ export {
   Paperclip as AttachIcon,
   Film as VideoIcon,
   ImageUp as ImageUploadIcon,
+  Pencil as EditIcon,
+  Copy as CopyIcon,
+  Users as CommunityIcon,
+  Palette as PaletteIcon,
 } from 'lucide-react';
