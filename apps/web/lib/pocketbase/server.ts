@@ -62,3 +62,24 @@ export async function createAdminClient() {
   }
   return pb;
 }
+
+// Reused admin token for the hot catalog path (every like and play writes the
+// shared tracks row). createAdminClient signs in on each call, which is a
+// password check per play; this signs in once and reuses the token.
+let catalogToken: { token: string; expires: number } | null = null;
+const CATALOG_TOKEN_TTL_MS = 10 * 60_000;
+
+/** Admin client for writes to the shared tracks catalog. Pass fresh=true to
+ *  drop the reused token (after a 401/403, e.g. the admin password changed).
+ *  A new PocketBase instance per call, so concurrent requests never share an
+ *  auth store or cancel each other's requests. */
+export async function createCatalogClient(fresh = false): Promise<PocketBase> {
+  if (!fresh && catalogToken && catalogToken.expires > Date.now()) {
+    const pb = new PocketBase(PB_URL);
+    pb.authStore.save(catalogToken.token, null);
+    return pb;
+  }
+  const pb = await createAdminClient();
+  catalogToken = { token: pb.authStore.token, expires: Date.now() + CATALOG_TOKEN_TTL_MS };
+  return pb;
+}

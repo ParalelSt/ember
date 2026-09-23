@@ -1,6 +1,6 @@
 import type { NextRequest } from 'next/server';
 import { requireUser, UnauthorizedError, unauthorizedResponse } from '@/lib/auth';
-import { fromError, jsonError, upsertTrack } from '@/lib/upsertTrack';
+import { fromError, jsonError, upsertCatalogTrack } from '@/lib/upsertTrack';
 import { loadSession, assertActive, assertMember } from '@/lib/sessions';
 import type { Track } from '@/types/track';
 import { withRequestLog } from '@/lib/logger/withRequestLog';
@@ -18,7 +18,7 @@ export const POST = withRequestLog('sessions/[id]/tracks', async (request: NextR
     const track = body?.track;
     if (!track?.id) return jsonError('track required', 400);
 
-    const trackRecordId = await upsertTrack(pb, track);
+    const trackRecordId = await upsertCatalogTrack(track);
 
     let nextPosition = 1;
     try {

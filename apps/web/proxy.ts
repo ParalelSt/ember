@@ -24,6 +24,16 @@ const PUBLIC_API_PREFIXES = ['/api/youtube/stream/', '/api/search', '/api/tracks
   // version and a proxied installer — no user data.
   '/api/desktop/'];
 
+/** Next's own files and the images in public/. Scripts are not on the list:
+ *  the only public one, /sw.js, is in PUBLIC_PATHS, and a blanket `.js` rule
+ *  let any path ending in .js (an API route included) skip the sign-in check
+ *  (bughunt W01). Nothing under /api/ counts, whatever it ends in. */
+export function isStaticAsset(path: string): boolean {
+  if (path.startsWith('/_next/')) return true;
+  if (path.startsWith('/api/')) return false;
+  return /\.(png|svg|ico|webmanifest)$/.test(path);
+}
+
 export default async function proxy(req: NextRequest) {
   // Per-request id, attached to outgoing responses + any server log lines.
   // Set on both the forwarded request (so route handlers in withRequestLog
@@ -88,9 +98,7 @@ export default async function proxy(req: NextRequest) {
   // so the sign-in / sign-up endpoints work before there's a session.
   // PocketBase enforces its own per-collection rules on the other side.
   const isPbProxy = path.startsWith('/pb/');
-  const isInternal = path.startsWith('/_next') || /\.(png|svg|ico|webmanifest|js)$/.test(path);
-
-  if (!user && !isPublicPage && !isPublicApi && !isPbProxy && !isInternal) {
+  if (!user && !isPublicPage && !isPublicApi && !isPbProxy && !isStaticAsset(path)) {
     const url = req.nextUrl.clone();
     url.pathname = '/auth';
     url.searchParams.set('next', path);

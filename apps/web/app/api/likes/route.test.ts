@@ -27,6 +27,7 @@ vi.mock('@/lib/auth', () => ({
 }));
 vi.mock('@/lib/upsertTrack', () => ({
   upsertTrack: vi.fn(async () => 'trk1'),
+  upsertCatalogTrack: vi.fn(async () => 'trk1'),
   jsonError: (error: string, status: number) => Response.json({ error }, { status }),
   fromError: (e: unknown) => Response.json({ error: String(e) }, { status: 500 }),
 }));

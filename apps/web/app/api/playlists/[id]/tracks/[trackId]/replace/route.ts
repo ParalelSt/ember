@@ -1,6 +1,6 @@
 import type { NextRequest } from 'next/server';
 import { requireUser, UnauthorizedError, unauthorizedResponse } from '@/lib/auth';
-import { fromError, jsonError, upsertTrack } from '@/lib/upsertTrack';
+import { fromError, jsonError, upsertCatalogTrack } from '@/lib/upsertTrack';
 import { mapTrackRow, type TrackRecord } from '@/lib/mapTrack';
 import type { Track } from '@/types/track';
 import { withRequestLog } from '@/lib/logger/withRequestLog';
@@ -27,7 +27,7 @@ export const POST = withRequestLog('playlists/[id]/tracks/[trackId]/replace', as
     const junction = await pb
       .collection('playlist_tracks')
       .getFirstListItem(`playlist = "${esc(id)}" && track = "${oldRec.id}"`);
-    const newRecId = await upsertTrack(pb, replacement);
+    const newRecId = await upsertCatalogTrack(replacement);
 
     // Already in the playlist: keep that copy where it sits and drop the dead
     // row, so a replace never creates a duplicate.
