@@ -66,6 +66,9 @@ export interface ItemResult {
   confidence: number | null;
   candidates: ImportCandidate[];
   likedAt: number | null;
+  /** Transfers only: the like this item made, so a re-match removes that
+   *  one and never a like it found already there. */
+  likeId?: string | null;
 }
 
 export interface JobCounts {
@@ -103,8 +106,9 @@ export interface JobStore {
   /** Add a track at a playlist position. Already there: a no-op. */
   addTrack(playlistId: string, position: number, track: Track): Promise<void>;
   /** Like a track for a transfer. `created` is false when the person had
-   *  already liked it, which the Done summary counts separately. */
-  like(userId: string, track: Track, likedAt: number | null): Promise<{ created: boolean }>;
+   *  already liked it, which the Done summary counts separately; `id` is
+   *  the new like, null when there was none. */
+  like(userId: string, track: Track, likedAt: number | null): Promise<{ created: boolean; id: string | null }>;
   /** Is any other job waiting? A long transfer steps aside when one is. */
   hasOtherQueued(jobId: string): Promise<boolean>;
   counts(jobId: string): Promise<JobCounts>;
@@ -246,7 +250,8 @@ export class ImportRunner {
       for (const r of results) {
         if (r.status !== 'accepted' || !r.candidates[0]) continue;
         if (job.kind === 'liked') {
-          const { created } = await store.like(job.userId, r.candidates[0].track, r.likedAt);
+          const { created, id } = await store.like(job.userId, r.candidates[0].track, r.likedAt);
+          r.likeId = created ? id : null;
           if (!created) alreadyLiked += 1;
         } else if (job.playlistId) {
           await store.addTrack(job.playlistId, playlistPosition(r.position), r.candidates[0].track);

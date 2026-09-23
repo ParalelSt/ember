@@ -388,14 +388,15 @@ describe('likeTrack', () => {
   it('likes a song as an import, at the date it was given', async () => {
     const f = fakePb();
     const at = Date.UTC(2020, 0, 2, 3, 4, 5);
-    expect(await likeTrack(f.pb, 'u1', track('vid0'), at)).toEqual({ created: true });
+    const liked = await likeTrack(f.pb, 'u1', track('vid0'), at);
+    expect(liked).toEqual({ created: true, id: f.table('likes')[0].id });
     expect(f.table('likes')[0]).toMatchObject({ user: 'u1', origin: 'import', liked_at: '2020-01-02 03:04:05.000Z' });
   });
 
   it('a song the person already liked is not an error and not a new like', async () => {
     const f = fakePb();
     await likeTrack(f.pb, 'u1', track('vid0'), 1);
-    expect(await likeTrack(f.pb, 'u1', track('vid0'), 2)).toEqual({ created: false });
+    expect(await likeTrack(f.pb, 'u1', track('vid0'), 2)).toEqual({ created: false, id: null });
     expect(f.table('likes')).toHaveLength(1);
   });
 });
@@ -423,6 +424,8 @@ describe('pickItem and skipItem on a transfer', () => {
       });
     });
     await likeTrack(f.pb, 'u1', track('vid0'), 1_000);
+    // The runner records the like it made on the item.
+    Object.assign(f.table('import_items')[0], { like_id: f.table('likes')[0].id });
     const freshJob = () => jobFromRecord(f.table('import_jobs')[0]);
     const item = (i: number) => itemFromRecord(f.table('import_items')[i]);
     const liked = () =>
@@ -454,6 +457,39 @@ describe('pickItem and skipItem on a transfer', () => {
     s.f.table('likes').forEach((l) => Object.assign(l, { origin: 'user' }));
     await pickItem(s.f.pb, s.freshJob(), s.item(0), track('alt0'));
     expect(s.liked().sort()).toEqual(['alt0', 'vid0']);
+  });
+
+  it('a re-match leaves an import like this transfer did not make (an earlier transfer did)', async () => {
+    const s = await withItems();
+    // The runner found vid0 already liked, so the item holds no like of its own.
+    Object.assign(s.f.table('import_items')[0], { like_id: '' });
+    await pickItem(s.f.pb, s.freshJob(), s.item(0), track('alt0'));
+    expect(s.liked().sort()).toEqual(['alt0', 'vid0']);
+  });
+
+  it('an item saved before likes were recorded never unlikes anything', async () => {
+    const s = await withItems();
+    delete s.f.table('import_items')[0].like_id;
+    await pickItem(s.f.pb, s.freshJob(), s.item(0), track('alt0'));
+    expect(s.liked().sort()).toEqual(['alt0', 'vid0']);
+  });
+
+  it('a re-match keeps the like while another song of the same transfer still points at it', async () => {
+    const s = await withItems();
+    // Song 1 was matched to the same video as song 0.
+    Object.assign(s.f.table('import_items')[1], { status: 'accepted', video_id: 'vid0' });
+    await pickItem(s.f.pb, s.freshJob(), s.item(0), track('alt0'));
+    expect(s.liked().sort()).toEqual(['alt0', 'vid0']);
+    // Song 1 now owns that like, so re-matching it later removes it.
+    await pickItem(s.f.pb, s.freshJob(), s.item(1), track('alt1'));
+    expect(s.liked().sort()).toEqual(['alt0', 'alt1']);
+  });
+
+  it('a picked song remembers the like it made, so a second re-match removes it', async () => {
+    const s = await withItems();
+    await pickItem(s.f.pb, s.freshJob(), s.item(1), track('alt1'));
+    await pickItem(s.f.pb, s.freshJob(), s.item(1), track('vid1'));
+    expect(s.liked().sort()).toEqual(['vid0', 'vid1']);
   });
 
   it('Remove song on a transfer leaves the likes alone', async () => {
@@ -527,6 +563,17 @@ describe('a Google likes transfer, through the store', () => {
     await pickItem(g.f.pb, g.freshJob(), g.item(1), g.item(1).candidates[0].track);
     expect(g.liked()).toEqual(['vid0000000a', 'vid0000000b']);
     expect(g.freshJob()).toMatchObject({ accepted: 2, review: 0, notMusic: 1 });
+  });
+
+  it('the like the runner made is recorded on its item, so a re-match removes it', async () => {
+    const g = await googleJob();
+    const song = g.item(0);
+    const { id } = await g.store.like('u1', song.candidates[0].track, song.likedAt);
+    await g.store.saveResults([
+      { itemId: song.id, position: 0, status: 'accepted', videoId: 'vid0000000a', confidence: 100, candidates: song.candidates, likedAt: song.likedAt, likeId: id },
+    ]);
+    await pickItem(g.f.pb, g.freshJob(), g.item(0), track('vid0000000z'));
+    expect(g.liked()).toEqual(['vid0000000z']);
   });
 
   it('no in the review sheet counts the upload as not music', async () => {
