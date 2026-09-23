@@ -1,36 +1,75 @@
 'use client';
 
+import { useRef, useState, type FormEvent } from 'react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { Avatar } from '@/components/primitives/Avatar';
 import { EmptyState } from '@/components/page/EmptyState';
 import { SectionHeader } from '@/components/page/SectionHeader';
 import {
+  useExecuteDeletePrankSound,
   useExecuteSendPrank,
   useExecuteSetPranksEnabled,
+  useExecuteUploadPrankSound,
   useQueryPrankLog,
   useQueryPrankPeople,
   useQueryPrankSettings,
+  useQueryPrankSounds,
 } from '@/hooks/useAdmin';
-import type { PrankPerson } from '@/lib/pranks/types';
+import { formatTime } from '@/lib/format';
+import type { PrankPerson, PrankSoundKind } from '@/lib/pranks/types';
 import { cn } from '@/lib/utils';
 
-/** TEMPORARY admin pranks page: the delivery spine only (people, a Ping
- *  button, the global switch, the log). The real page replaces this once
- *  the owner picks a design on /dizajn (plan Task 8). */
+/** TEMPORARY admin pranks page: people with Ping and Sound buttons, the
+ *  global switch, the library and the log. The real page replaces this
+ *  once the owner picks a design on /dizajn (plan Task 8). */
 export default function AdminPranksPage() {
   const { data: people = [], isLoading: peopleLoading } = useQueryPrankPeople();
   const { data: log, isLoading: logLoading } = useQueryPrankLog();
   const { data: settings } = useQueryPrankSettings();
   const send = useExecuteSendPrank();
   const setEnabled = useExecuteSetPranksEnabled();
+  const { data: library = [], isLoading: libraryLoading } = useQueryPrankSounds();
+  const upload = useExecuteUploadPrankSound();
+  const remove = useExecuteDeletePrankSound();
   const enabled = settings?.enabled ?? log?.enabled ?? true;
 
+  const sounds = library.filter((s) => s.kind === 'sound');
+  const [soundId, setSoundId] = useState('');
+  const [duck, setDuck] = useState(true);
+  const picked = sounds.find((s) => s.id === soundId) ?? null;
+
   const ping = (p: PrankPerson) =>
-    send.mutate(p.id, {
+    send.mutate({ targetId: p.id, kind: 'ping' }, {
       onSuccess: () => toast.success(`Ping sent to ${p.name}`),
       onError: (e) => toast.error((e as Error).message),
     });
+
+  const playSound = (p: PrankPerson) => {
+    if (!picked) return;
+    send.mutate({ targetId: p.id, kind: 'sound', soundId: picked.id, params: { mode: duck ? 'duck' : 'over' } }, {
+      onSuccess: () => toast.success(`“${picked.name}” sent to ${p.name}`),
+      onError: (e) => toast.error((e as Error).message),
+    });
+  };
+
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [uploadName, setUploadName] = useState('');
+  const [uploadKind, setUploadKind] = useState<PrankSoundKind>('sound');
+  const submitUpload = (e: FormEvent) => {
+    e.preventDefault();
+    const file = fileRef.current?.files?.[0];
+    if (!file) return;
+    upload.mutate({ file, kind: uploadKind, name: uploadName.trim() || undefined }, {
+      onSuccess: (r) => {
+        toast.success(`Added “${r.sound.name}”`);
+        setUploadName('');
+        if (fileRef.current) fileRef.current.value = '';
+      },
+      onError: (err) => toast.error((err as Error).message),
+    });
+  };
 
   const flip = () =>
     setEnabled.mutate(!enabled, {
@@ -42,7 +81,7 @@ export default function AdminPranksPage() {
   return (
     <section className="flex flex-col gap-section">
       <div className="rounded-lg border border-dashed px-row py-cluster text-sm text-muted-foreground">
-        Temporary page: the real Pranks page comes after the /dizajn pick. Only pings work so far.
+        Temporary page: the real Pranks page comes after the /dizajn pick. Pings and sounds work so far.
       </div>
 
       <div className="flex flex-wrap items-center justify-between gap-row">
@@ -56,6 +95,27 @@ export default function AdminPranksPage() {
         >
           {enabled ? 'Pranks are on' : 'Pranks are off'}
         </Button>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-row text-sm">
+        <label className="flex items-center gap-inset">
+          Sound
+          <select
+            aria-label="Sound to play"
+            value={soundId}
+            onChange={(e) => setSoundId(e.target.value)}
+            className="rounded-md border bg-card px-row py-inset"
+          >
+            <option value="">Pick a sound</option>
+            {sounds.map((s) => (
+              <option key={s.id} value={s.id}>{s.name}</option>
+            ))}
+          </select>
+        </label>
+        <label className="flex items-center gap-inset">
+          <input type="checkbox" checked={duck} onChange={(e) => setDuck(e.target.checked)} />
+          Turn their music down while it plays
+        </label>
       </div>
 
       <div>
@@ -81,6 +141,70 @@ export default function AdminPranksPage() {
                 aria-label={`Ping ${p.name}`}
               >
                 Ping
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={!enabled || !picked || send.isPending}
+                onClick={() => playSound(p)}
+                aria-label={`Play the sound for ${p.name}`}
+              >
+                Sound
+              </Button>
+            </li>
+          ))}
+        </ul>
+      </div>
+
+      <div>
+        <SectionHeader title="Library" className="mb-block" />
+        <form onSubmit={submitUpload} className="mb-block flex flex-wrap items-center gap-row text-sm" aria-label="Add to the library">
+          <input ref={fileRef} type="file" accept="audio/mpeg,audio/mp4,.mp3,.m4a,audio/*" aria-label="File" />
+          <Input
+            value={uploadName}
+            onChange={(e) => setUploadName(e.target.value)}
+            placeholder="Name (optional)"
+            maxLength={120}
+            className="w-48"
+          />
+          <select
+            aria-label="Kind"
+            value={uploadKind}
+            onChange={(e) => setUploadKind(e.target.value as PrankSoundKind)}
+            className="rounded-md border bg-card px-row py-inset"
+          >
+            <option value="sound">Sound (30 s, 5 MB at most)</option>
+            <option value="song">Song for a swap (50 MB at most)</option>
+          </select>
+          <Button type="submit" size="sm" disabled={upload.isPending}>
+            {upload.isPending ? 'Uploading…' : 'Upload'}
+          </Button>
+          <span className="text-xs text-muted-foreground">mp3 or m4a play everywhere.</span>
+        </form>
+        {libraryLoading && <EmptyState>Loading…</EmptyState>}
+        {!libraryLoading && library.length === 0 && <EmptyState>Nothing in the library yet.</EmptyState>}
+        <ul className="flex flex-col gap-inset text-sm" aria-label="Library">
+          {library.map((s) => (
+            <li key={s.id} className="flex items-center gap-row">
+              <span className="min-w-0 flex-1 truncate">{s.name}</span>
+              <span className="text-muted-foreground">
+                {s.kind === 'sound' ? 'Sound' : 'Song'}, {formatTime(s.durationSec)}
+              </span>
+              <Button
+                size="sm"
+                variant="ghost"
+                disabled={remove.isPending}
+                aria-label={`Delete ${s.name}`}
+                onClick={() =>
+                  remove.mutate(s.id, {
+                    onSuccess: () => {
+                      if (soundId === s.id) setSoundId('');
+                    },
+                    onError: (e) => toast.error((e as Error).message),
+                  })
+                }
+              >
+                Delete
               </Button>
             </li>
           ))}

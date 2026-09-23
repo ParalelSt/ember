@@ -112,6 +112,7 @@ const PRANKS_QK = {
   people: ['admin', 'pranks', 'people'] as const,
   log: ['admin', 'pranks', 'log'] as const,
   settings: ['admin', 'pranks', 'settings'] as const,
+  sounds: ['admin', 'pranks', 'sounds'] as const,
 };
 
 export function useQueryPrankPeople() {
@@ -140,7 +141,7 @@ export function useQueryPrankSettings() {
 export function useExecuteSendPrank() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (targetId: string) => api.admin.pranks.send({ targetId, kind: 'ping' }),
+    mutationFn: (body: Parameters<typeof api.admin.pranks.send>[0]) => api.admin.pranks.send(body),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: PRANKS_QK.log });
     },
@@ -153,6 +154,33 @@ export function useExecuteSetPranksEnabled() {
     mutationFn: (enabled: boolean) => api.admin.pranks.setEnabled(enabled),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['admin', 'pranks'] });
+    },
+  });
+}
+
+export function useQueryPrankSounds() {
+  return useQuery({
+    queryKey: PRANKS_QK.sounds,
+    queryFn: () => api.admin.pranks.sounds().then((r) => r.sounds),
+  });
+}
+
+export function useExecuteUploadPrankSound() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: Parameters<typeof api.admin.pranks.uploadSound>[0]) => api.admin.pranks.uploadSound(input),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: PRANKS_QK.sounds });
+    },
+  });
+}
+
+export function useExecuteDeletePrankSound() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.admin.pranks.deleteSound(id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: PRANKS_QK.sounds });
     },
   });
 }

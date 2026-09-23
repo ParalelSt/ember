@@ -6,7 +6,16 @@ import type { FlowState as GoogleFlowState, GooglePreview } from '@/lib/import/g
 import type { TabSummary } from '@/lib/tabSources';
 import type { TabTiming } from '@/lib/tabSync';
 import type { StoredPlugins } from '@/lib/pluginSettings';
-import type { PrankAck, PrankLogEntry, PrankPerson, PrankRow, PresenceReport } from '@/lib/pranks/types';
+import type {
+  PrankAck,
+  PrankLogEntry,
+  PrankParams,
+  PrankPerson,
+  PrankRow,
+  PrankSound,
+  PrankSoundKind,
+  PresenceReport,
+} from '@/lib/pranks/types';
 
 export interface AdminUser {
   id: string;
@@ -423,12 +432,24 @@ export const api = {
         req<{ pranks: PrankLogEntry[]; enabled: boolean }>(
           `/admin/pranks${target ? `?target=${encodeURIComponent(target)}` : ''}`,
         ),
-      send: (body: { targetId: string; kind: 'ping' }) =>
+      send: (body: { targetId: string; kind: 'ping' | 'sound'; soundId?: string; params?: Partial<PrankParams> }) =>
         req<{ prank: PrankLogEntry }>('/admin/pranks', { method: 'POST', body }),
       people: () => req<{ people: PrankPerson[] }>('/admin/pranks/people'),
       settings: () => req<{ enabled: boolean; forcedOff: boolean }>('/admin/pranks/settings'),
       setEnabled: (enabled: boolean) =>
         req<{ enabled: boolean; cancelled: number }>('/admin/pranks/settings', { method: 'PATCH', body: { enabled } }),
+      sounds: () => req<{ sounds: PrankSound[] }>('/admin/pranks/sounds'),
+      uploadSound: (input: { file: File; kind: PrankSoundKind; name?: string }) => {
+        const form = new FormData();
+        form.append('file', input.file);
+        form.append('kind', input.kind);
+        if (input.name) form.append('name', input.name);
+        return req<{ sound: PrankSound }>('/admin/pranks/sounds', { method: 'POST', body: form });
+      },
+      renameSound: (id: string, name: string) =>
+        req<{ sound: PrankSound }>(`/admin/pranks/sounds/${encodeURIComponent(id)}`, { method: 'PATCH', body: { name } }),
+      deleteSound: (id: string) =>
+        req<{ ok: true }>(`/admin/pranks/sounds/${encodeURIComponent(id)}`, { method: 'DELETE' }),
     },
   },
 
