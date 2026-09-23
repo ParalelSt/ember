@@ -9,6 +9,7 @@ import {
   getDirIfExists,
   getOpfsRoot,
   listEntries,
+  readBlob,
   readJson,
   requestPersistence,
   writeStreamToOpfs,
@@ -111,6 +112,35 @@ async function writeMeta(meta: OfflineMeta): Promise<void> {
   await atomicWriteJson(root, META_FILE, meta);
 }
 
+/** Gives every audio file a browser-storage download holds a blob: URL the
+ *  player can load (PlayerProvider reads `webFiles`). The File behind it is a
+ *  handle on disk, not the bytes in memory. `fresh` names tracks just written
+ *  again, whose old URL points at the replaced file; any other track keeps
+ *  its URL, since revoking one can cut off the song that is playing. */
+async function indexWebFiles(fresh: Set<string> = new Set()): Promise<void> {
+  const old = useOfflineStore.getState().webFiles;
+  const next: Record<string, string> = {};
+  const root = await getOpfsRoot();
+  const playlistsDir = await getDirIfExists(root, [PLAYLISTS_DIR]);
+  for (const { name, kind } of playlistsDir ? await listEntries(playlistsDir) : []) {
+    if (kind !== 'directory') continue;
+    const dir = await getDirIfExists(root, [PLAYLISTS_DIR, name]);
+    if (!dir) continue;
+    const manifest = await readJson<OfflineManifest>(dir, 'manifest.json');
+    for (const t of manifest?.tracks ?? []) {
+      if (next[t.id]) continue;
+      if (old[t.id] && !fresh.has(t.id)) { next[t.id] = old[t.id]; continue; }
+      const parts = t.audioFile.split('/');
+      const fileName = parts.pop()!;
+      const audioDir = await getDirIfExists(dir, parts);
+      const file = audioDir && await readBlob(audioDir, fileName);
+      if (file) next[t.id] = URL.createObjectURL(file);
+    }
+  }
+  for (const [id, url] of Object.entries(old)) if (!next[id]) URL.revokeObjectURL(url);
+  useOfflineStore.getState().setWebFiles(next);
+}
+
 interface SwIndexAdd {
   type: 'index-add';
   entries: Array<{ videoId: string; playlistId: string; audioFilePath: string }>;
@@ -153,6 +183,7 @@ export async function hydrateOfflineStore(): Promise<void> {
     downloaded: meta.downloadedPlaylistIds,
     totalBytes: meta.totalBytes,
   });
+  await indexWebFiles();
 
   const root = await getOpfsRoot();
   const playlistsDir = await getDirIfExists(root, [PLAYLISTS_DIR]);
@@ -178,13 +209,24 @@ export async function hydrateOfflineStore(): Promise<void> {
   }
 }
 
-export async function downloadPlaylist(playlist: Playlist, tracks: Track[]): Promise<void> {
+/** How a browser-storage download went: tracks saved, and tracks skipped
+ *  because they could not be fetched or stored. */
+export interface DownloadResult {
+  saved: number;
+  failed: number;
+}
+
+/** Saves a playlist for offline playback. Resolves with the counts on the
+ *  browser-storage path, or null on Android, where the native plugin only
+ *  records the pin and downloads (and counts) in the background. A track
+ *  that fails is skipped; only a download that saved nothing rejects. */
+export async function downloadPlaylist(playlist: Playlist, tracks: Track[]): Promise<DownloadResult | null> {
   const playable = playableFor(tracks);
   if (playable.length === 0) throw new Error('Playlist is empty');
 
   if (nativeOfflinePresent()) {
     useOfflineStore.getState().setNativeStatus(await nativePin(playlist.id, playlist.name, playable));
-    return;
+    return null;
   }
 
   await requestPersistence();
@@ -201,6 +243,7 @@ export async function downloadPlaylist(playlist: Playlist, tracks: Track[]): Pro
   const artDir = await ensureDir(playlistDir, ['art']);
 
   const completed: OfflineTrackEntry[] = [];
+  let failed = 0;
   let totalBytesThisPlaylist = 0;
 
   try {
@@ -209,15 +252,24 @@ export async function downloadPlaylist(playlist: Playlist, tracks: Track[]): Pro
       const t = playable[i];
       store.updateProgress(playlist.id, i, t.title);
 
-      const audioRes = await fetch(
-        apiUrl(`/api/youtube/stream/${encodeURIComponent(t.sourceId)}`),
-        { signal: ac.signal, credentials: 'include' },
-      );
-      if (!audioRes.ok || !audioRes.body) {
-        throw new Error(`Audio fetch ${audioRes.status} for ${t.title}`);
-      }
+      // The track's own stream URL, the one the player uses: an upload lives
+      // at /api/uploads/<id>/stream, not on the YouTube route.
       const audioFile = `${t.id}.m4a`;
-      const bytesAudio = await writeStreamToOpfs(audioDir, audioFile, audioRes.body, ac.signal);
+      let bytesAudio: number;
+      try {
+        const audioRes = await fetch(apiUrl(t.streamUrl), { signal: ac.signal, credentials: 'include' });
+        // A signed-out session is answered with the sign-in page: saving that
+        // as audio would look like success and only fail at play time.
+        if (!audioRes.ok || !audioRes.body || audioRes.headers.get('content-type')?.startsWith('text/html')) {
+          throw new Error(`Audio fetch ${audioRes.status} for ${t.title}`);
+        }
+        bytesAudio = await writeStreamToOpfs(audioDir, audioFile, audioRes.body, ac.signal);
+      } catch (e) {
+        if ((e as Error)?.name === 'AbortError') throw e;
+        // One bad track costs that track, not the tracks already saved.
+        failed++;
+        continue;
+      }
 
       let artFile: string | null = null;
       let bytesArt = 0;
@@ -283,6 +335,7 @@ export async function downloadPlaylist(playlist: Playlist, tracks: Track[]): Pro
     await writeMeta(meta);
 
     store.finishDownload(playlist.id, totalBytesThisPlaylist);
+    await indexWebFiles(new Set(completed.map((t) => t.id)));
 
     await notifySwIndex({
       type: 'index-add',
@@ -292,11 +345,12 @@ export async function downloadPlaylist(playlist: Playlist, tracks: Track[]): Pro
         audioFilePath: `${PLAYLISTS_DIR}/${playlist.id}/${t.audioFile}`,
       })),
     });
+    return { saved: completed.length, failed };
   } catch (e) {
     store.failDownload(playlist.id);
     if ((e as Error)?.name === 'AbortError') {
       // Partial state intentionally left for resume.
-      return;
+      return { saved: completed.length, failed };
     }
     const playlistsRoot = await getDirIfExists(root, [PLAYLISTS_DIR]);
     if (playlistsRoot) {
@@ -345,6 +399,7 @@ export async function removeDownload(playlistId: string): Promise<void> {
   await writeMeta(meta);
 
   useOfflineStore.getState().removeDownload(playlistId, bytesRemoved);
+  await indexWebFiles();
 }
 
 export function cancelDownload(playlistId: string): void {
@@ -386,4 +441,5 @@ export async function clearAllDownloads(): Promise<void> {
   await deleteEntry(root, META_FILE);
   await notifySwIndex({ type: 'index-remove', videoIds: '*' });
   useOfflineStore.setState({ downloaded: [], totalBytes: 0, inFlight: {} });
+  await indexWebFiles();
 }
