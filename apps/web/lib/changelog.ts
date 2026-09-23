@@ -21,6 +21,16 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    id: 'admin-pranks-tab',
+    version: '0.6.0',
+    date: '2026-09-23',
+    title: 'A Pranks tab for admins',
+    summary: 'Admins get a new Pranks tab in the admin pages.',
+    bullets: [
+      'Admins get a new Pranks tab in the admin pages, alongside the other admin tools.',
+    ],
+  },
+  {
     id: 'transfer-liked-songs',
     version: '0.5.0',
     date: '2026-09-23',

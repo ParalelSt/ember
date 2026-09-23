@@ -1,3 +1,19 @@
+# 0.6.0: Admin pranks (plan-23-9)
+
+**Host, in order: `./update.sh` as usual, then a new Android APK for the
+prank sound to reach the app there.**
+
+1. **`./update.sh`** (a normal rebuild and restart). Restarting PocketBase
+   runs `pb_hooks/ensure_pranks.pb.js`, which creates the `pranks`,
+   `prank_sounds` and `prank_schedules` collections on first boot; nothing
+   to do by hand.
+2. **A new Android APK** is what brings prank sound playback to the app;
+   an older APK still receives a prank but logs "their app cannot do that
+   yet" instead of playing it. Web and desktop (through the desktop app's
+   webview overlay) already work once the host is updated.
+3. See `docs/pranks.md` for what the feature does, its limits, and the
+   `PRANK_TICK_DISABLED` / `PRANK_TICK_INTERVAL_MS` env settings.
+
 # 0.5.0: Bring your liked songs over
 
 **Host, in order: `./update.sh` as usual (it restarts PocketBase, which is
