@@ -10,9 +10,9 @@ export type CollectionHeaderVariant = 'collection' | 'album' | 'artist';
 // collection (playlists, Liked, Recent, Uploads) 176 -> 192px rounded card,
 // album (and the track page) 176 -> 224px, artist 144 -> 176px circle.
 export const HEADER_VARIANTS: Record<CollectionHeaderVariant, { cover: string; radius: string; text: string }> = {
-  collection: { cover: 'size-art-hero md:size-art-lg', radius: 'rounded-2xl', text: '' },
-  album: { cover: 'size-art-hero md:size-art-xl', radius: 'rounded-md', text: 'min-w-0' },
-  artist: { cover: 'size-art-hero-sm md:size-art-hero', radius: 'rounded-full', text: '' },
+  collection: { cover: 'size-art-hero md:size-art-lg', radius: 'rounded-2xl', text: 'min-w-0 w-full md:w-auto' },
+  album: { cover: 'size-art-hero md:size-art-xl', radius: 'rounded-md', text: 'min-w-0 w-full md:w-auto' },
+  artist: { cover: 'size-art-hero-sm md:size-art-hero', radius: 'rounded-full', text: 'min-w-0 w-full md:w-auto' },
 };
 
 export interface CollectionHeaderProps {
@@ -91,7 +91,7 @@ export function CollectionHeader({
       )}
       <div className={v.text || undefined}>
         <Eyebrow>{eyebrow}</Eyebrow>
-        <h1 className={cn('text-hero-title', HEADER_CLASSES.title)}>{title}</h1>
+        <h1 className={cn('text-hero-title break-words line-clamp-3', HEADER_CLASSES.title)}>{title}</h1>
         {meta.length > 0 && (
           <div data-testid="collection-meta" className={cn('text-meta', HEADER_CLASSES.meta)}>
             {meta.map((entry, i) => (
