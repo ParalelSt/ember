@@ -53,6 +53,10 @@ export const createTauriBackend: CreateAudioBackend = (events) => {
   sub<{ message: string; retry?: string }>('audio:error', ({ message, retry }) => {
     logger.error('audio', message || 'native audio error');
     curTime = 0;
+    // Nothing is playing now. Left at "playing", the provider's toggle sent
+    // pause for every press of play; the engine answers play after a failed
+    // load by trying the song again.
+    paused = true;
     events.onError({ canRetryOnWebAudio: retry !== 'none' });
   });
   sub<{ kind: string; sec?: number }>('audio:cmd', ({ kind, sec }) => {
