@@ -148,7 +148,7 @@ function UserRow({ user, isSelf, onRename, onToggleAdmin, onDelete, onResetPassw
   };
 
   return (
-    <div className="grid grid-cols-[40px_minmax(0,1.4fr)_minmax(0,1fr)_auto_auto_auto] gap-3 items-center px-3 py-2 rounded-lg bg-card">
+    <div className="grid grid-cols-[40px_1fr] gap-y-cluster gap-x-row items-center px-3 py-2 rounded-lg bg-card md:grid-cols-[40px_minmax(0,1.4fr)_minmax(0,1fr)_auto_auto_auto] md:gap-3">
       <Avatar
         src={user.avatarUrl}
         name={user.name}
@@ -171,47 +171,56 @@ function UserRow({ user, isSelf, onRename, onToggleAdmin, onDelete, onResetPassw
         }}
         placeholder="Display name"
         maxLength={50}
-        className="h-8 text-sm"
+        className="h-8 text-sm col-span-2 md:col-span-1"
       />
-      <label
-        className={cn(
-          'flex items-center gap-2 text-sm px-2 select-none',
-          isSelf && 'text-muted-foreground cursor-not-allowed',
-        )}
-        title={isSelf ? "Can't demote yourself" : ''}
-      >
-        <input
-          type="checkbox"
-          checked={user.isAdmin}
-          disabled={isSelf}
-          onChange={(e) => onToggleAdmin(e.target.checked)}
-          className="h-4 w-4 accent-ember"
-        />
-        Admin
-      </label>
-      <Button
-        variant="ghost"
-        size="icon"
-        onClick={onResetPassword}
-        title="Reset password"
-        aria-label={`Reset password for ${user.email}`}
-        className="h-8 w-8 text-muted-foreground hover:text-foreground"
-      >
-        <KeyIcon className="h-4 w-4" />
-      </Button>
-      <Button
-        variant="ghost"
-        size="icon"
-        onClick={onDelete}
-        disabled={isSelf}
-        title={isSelf ? "Can't delete yourself" : 'Delete user'}
-        className={cn(
-          'h-8 w-8 text-muted-foreground hover:text-destructive',
-          isSelf && 'opacity-30 cursor-not-allowed',
-        )}
-      >
-        <TrashIcon className="h-4 w-4" />
-      </Button>
+      {/* Below md the row is two columns (avatar / everything else), so the
+          admin toggle and the action buttons are grouped into one full-width
+          flex row, spread to the edges. md:contents on both wrappers drops
+          them from layout at md and up, letting the label and each button
+          fall back into their own columns of the original 6-column grid. */}
+      <div className="col-span-2 flex items-center justify-between md:contents">
+        <label
+          className={cn(
+            'flex items-center gap-2 text-sm px-2 select-none',
+            isSelf && 'text-muted-foreground cursor-not-allowed',
+          )}
+          title={isSelf ? "Can't demote yourself" : ''}
+        >
+          <input
+            type="checkbox"
+            checked={user.isAdmin}
+            disabled={isSelf}
+            onChange={(e) => onToggleAdmin(e.target.checked)}
+            className="h-4 w-4 accent-ember"
+          />
+          Admin
+        </label>
+        <div className="flex items-center gap-inset md:contents">
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={onResetPassword}
+            title="Reset password"
+            aria-label={`Reset password for ${user.email}`}
+            className="h-8 w-8 text-muted-foreground hover:text-foreground"
+          >
+            <KeyIcon className="h-4 w-4" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={onDelete}
+            disabled={isSelf}
+            title={isSelf ? "Can't delete yourself" : 'Delete user'}
+            className={cn(
+              'h-8 w-8 text-muted-foreground hover:text-destructive',
+              isSelf && 'opacity-30 cursor-not-allowed',
+            )}
+          >
+            <TrashIcon className="h-4 w-4" />
+          </Button>
+        </div>
+      </div>
     </div>
   );
 }
