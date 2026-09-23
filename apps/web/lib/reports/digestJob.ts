@@ -25,6 +25,11 @@ const TOP_GROUPS = 20;
 /** Embed stripe: red when any group escalated to an error, amber otherwise. */
 const COLOR_ERROR = 0xef4444;
 const COLOR_WARN = 0xfacc15;
+/** A scheduled post that fails is tried again, at most this many times a day
+ *  and no sooner than RETRY_GAP_MS apart, then the day is given up: a webhook
+ *  that keeps refusing must not become a post (and a model call) a minute. */
+const MAX_POST_ATTEMPTS = 3;
+const RETRY_GAP_MS = 30 * 60 * 1000;
 
 export interface RunDigestOptions {
   /** Treated as "now"; defaults to Date.now(). */
@@ -40,7 +45,7 @@ export interface RunDigestOptions {
 export interface DigestResult {
   posted: boolean;
   /** Why nothing was posted. Absent when `posted` is true. */
-  reason?: 'quiet' | 'no-webhook' | 'post-failed';
+  reason?: 'quiet' | 'no-webhook' | 'post-failed' | 'retry-later';
   groups: DigestGroup[];
   summary: DigestSummary | null;
 }
@@ -77,10 +82,37 @@ export async function markerExists(now: Date): Promise<boolean> {
   }
 }
 
+/** `logs/digest-YYYY-MM-DD.failed`: today's failed scheduled posts, as
+ *  `{ count, last }`, until the day is marked sent. */
+function failedPath(now: Date): string {
+  return path.join(logDir(), `digest-${localDay(now)}.failed`);
+}
+
+async function readFailed(now: Date): Promise<{ count: number; last: number }> {
+  try {
+    const raw = JSON.parse(await fs.readFile(failedPath(now), 'utf8')) as { count?: unknown; last?: unknown };
+    return { count: Number(raw.count) || 0, last: Number(raw.last) || 0 };
+  } catch {
+    return { count: 0, last: 0 };
+  }
+}
+
+async function writeFailed(now: Date, count: number): Promise<void> {
+  try {
+    await fs.mkdir(logDir(), { recursive: true });
+    await fs.writeFile(failedPath(now), JSON.stringify({ count, last: now.getTime() }), 'utf8');
+  } catch (e) {
+    // Unrecorded, the next tick retries at once: still better than giving up
+    // the day's digest, and the marker below still ends it.
+    console.warn('[digest] could not record the failed post', e);
+  }
+}
+
 async function writeMarkerFile(now: Date): Promise<void> {
   try {
     await fs.mkdir(logDir(), { recursive: true });
     await fs.writeFile(markerPath(now), `${new Date(now).toISOString()}\n`, 'utf8');
+    await fs.rm(failedPath(now), { force: true });
   } catch (e) {
     // A marker we could not write means at worst one extra digest later
     // today, which is much better than failing the run that already posted.
@@ -114,11 +146,23 @@ export async function runDigest(options: RunDigestOptions = {}): Promise<DigestR
   const nowMs = options.now ?? Date.now();
   const since = options.since ?? nowMs - DAY_MS;
 
+  const day = new Date(nowMs);
+  const failed = options.writeMarker ? await readFailed(day) : { count: 0, last: 0 };
+  // Too soon after a failed post: skip before reading a day of JSONL.
+  if (failed.count > 0 && nowMs - failed.last < RETRY_GAP_MS) {
+    return { posted: false, reason: 'retry-later', groups: [], summary: null };
+  }
+
   const finish = async (result: DigestResult): Promise<DigestResult> => {
-    // The marker is written on every path the scheduler reaches, including a
-    // quiet day and a failed post: the alternative is re-reading a day of
-    // JSONL (and possibly re-posting) every minute until midnight.
-    if (options.writeMarker) await writeMarkerFile(new Date(nowMs));
+    if (!options.writeMarker) return result;
+    // A failed post is retried later, up to the cap. Every other path, a
+    // quiet day included, marks the day done: the alternative is re-reading
+    // a day of JSONL every minute until midnight.
+    if (result.reason === 'post-failed' && failed.count + 1 < MAX_POST_ATTEMPTS) {
+      await writeFailed(day, failed.count + 1);
+    } else {
+      await writeMarkerFile(day);
+    }
     return result;
   };
 
