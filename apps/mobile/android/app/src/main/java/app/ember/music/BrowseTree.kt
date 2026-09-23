@@ -12,15 +12,27 @@ class BrowseTree(private val api: ServerApi) {
      *  (Android Auto, the car Media Center) hands back only the mediaId, so the
      *  full track has to be looked up here. */
     private val known = HashMap<String, JSONObject>()
-    /** The list most recently shown, so a tap plays the rest of it too. */
-    @Volatile private var lastList: List<JSONObject> = emptyList()
+    /** Every list shown, by the id of the folder it was shown in, so a tap
+     *  plays the rest of that list too. The car loads more than one list
+     *  before a tap (the tab it opens and the ones next to it), so "the list
+     *  fetched last" was often another one. */
+    private val lists = HashMap<String, List<JSONObject>>()
 
-    fun trackById(id: String): JSONObject? = synchronized(known) { known[id] }
+    /** A track in a list the car shows carries that list in its id
+     *  ("liked|youtube:abc"), since the tap hands back only the id. Track ids
+     *  never contain '|'; a search query in the folder id may. */
+    private fun split(mediaId: String): Pair<String?, String> {
+        val at = mediaId.lastIndexOf(SEP)
+        return if (at < 0) null to mediaId else mediaId.substring(0, at) to mediaId.substring(at + 1)
+    }
+
+    fun trackById(mediaId: String): JSONObject? = synchronized(known) { known[split(mediaId).second] }
 
     /** The list the tapped track came from, from that track onward; or just
      *  the track when it was not part of a list we showed. */
-    fun queueFor(id: String): List<JSONObject> {
-        val list = lastList
+    fun queueFor(mediaId: String): List<JSONObject> {
+        val (parent, id) = split(mediaId)
+        val list = parent?.let { synchronized(lists) { lists[it] } }.orEmpty()
         val i = list.indexOfFirst { it.optString("id") == id }
         if (i >= 0) return list.drop(i)
         return listOfNotNull(trackById(id))
@@ -33,6 +45,8 @@ class BrowseTree(private val api: ServerApi) {
         const val RECENT = "recent"
         const val UPLOADS = "uploads"
         const val PLAYLIST_PREFIX = "playlist:"
+        const val SEARCH_PREFIX = "search:"
+        private const val SEP = '|'
     }
 
     private fun folder(id: String, title: String): MediaItem = MediaItem.Builder().setMediaId(id)
@@ -48,10 +62,10 @@ class BrowseTree(private val api: ServerApi) {
     fun children(parentId: String): List<MediaItem> = when {
         parentId == ROOT -> listOf(folder(PLAYLISTS, "Playlists"), folder(LIKED, "Liked songs"), folder(RECENT, "Recently played"), folder(UPLOADS, "Uploads"))
         parentId == PLAYLISTS -> api.playlists().map { folder(PLAYLIST_PREFIX + it.getString("id"), it.optString("name", "Playlist")) }
-        parentId == LIKED -> tracks(api.likes())
-        parentId == RECENT -> tracks(api.history())
-        parentId == UPLOADS -> tracks(api.uploads())
-        parentId.startsWith(PLAYLIST_PREFIX) -> tracks(api.playlistTracks(parentId.removePrefix(PLAYLIST_PREFIX)))
+        parentId == LIKED -> tracks(parentId, api.likes())
+        parentId == RECENT -> tracks(parentId, api.history())
+        parentId == UPLOADS -> tracks(parentId, api.uploads())
+        parentId.startsWith(PLAYLIST_PREFIX) -> tracks(parentId, api.playlistTracks(parentId.removePrefix(PLAYLIST_PREFIX)))
         else -> emptyList()
     }
 
@@ -67,12 +81,14 @@ class BrowseTree(private val api: ServerApi) {
         if (query.length < 3) return emptyList()
         val cached = lastSearch
         val results = if (cached != null && cached.first == query) cached.second else api.search(query).also { lastSearch = query to it }
-        return tracks(results)
+        return tracks(SEARCH_PREFIX + query, results)
     }
 
-    private fun tracks(list: List<JSONObject>): List<MediaItem> {
+    private fun tracks(parentId: String, list: List<JSONObject>): List<MediaItem> {
         synchronized(known) { list.forEach { known[it.optString("id")] = it } }
-        lastList = list
-        return list.map { TrackItems.toMediaItem(it, api.baseUrl) }
+        synchronized(lists) { lists[parentId] = list }
+        return list.map { track ->
+            TrackItems.toMediaItem(track, api.baseUrl).buildUpon().setMediaId(parentId + SEP + track.optString("id")).build()
+        }
     }
 }
