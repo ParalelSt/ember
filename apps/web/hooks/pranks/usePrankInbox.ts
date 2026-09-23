@@ -6,8 +6,8 @@ import { createClient } from '@/lib/pocketbase/client';
 import { toPrankRow } from '@/lib/pranks/decide';
 import type { PrankAck, PrankRow } from '@/lib/pranks/types';
 
-/** Inbox poll: fast while music plays (sounds and swaps only land then),
- *  slow otherwise (a ping still arrives well inside its 45 s window). */
+/** Inbox poll: fast while music plays (a sound only lands then), slow
+ *  otherwise (a ping still arrives well inside its 45 s window). */
 export const POLL_PLAYING_MS = 2_500;
 export const POLL_IDLE_MS = 10_000;
 
