@@ -2,11 +2,11 @@ import { contrast, type Oklch } from '@/lib/theme/oklch';
 import { emberForeground } from '@/lib/theme/derive';
 import type { ThemeInputKey, ThemeInputs } from '@/lib/theme/model';
 
-/** The readability guard (plan section 5, item 4): six pairs the app leans
- *  on, each rated by WCAG contrast. A `fail` blocks saving a theme to the
- *  account; nothing is ever adjusted silently, a finding only offers a
+/** The readability guard (plan section 5, item 4): seven pairs the app
+ *  leans on, each rated by WCAG contrast. A `fail` blocks saving a theme to
+ *  the account; nothing is ever adjusted silently, a finding only offers a
  *  `fix` the person can apply. */
-export type PairId = 'text' | 'hover' | 'muted' | 'button' | 'accent' | 'sidebar';
+export type PairId = 'text' | 'hover' | 'menu' | 'muted' | 'button' | 'accent' | 'sidebar';
 export type Level = 'ok' | 'warn' | 'fail';
 
 export interface Finding {
@@ -39,6 +39,9 @@ const shift = ([l, c, h]: Oklch, dl: number): Oklch => [Math.min(1, Math.max(0, 
 export const PAIRS: readonly Pair[] = [
   { id: 'text', label: 'Text on the background', fg: (i) => i.text, bg: (i) => i.background, ok: 7, warn: 4.5, moves: 'text' },
   { id: 'hover', label: 'Text on highlighted rows', fg: (i) => i.text, bg: (i) => shift(i.surface, 0.04), ok: 7, warn: 4.5, moves: 'surface' },
+  // Menu and dropdown highlight rows (shadcn's own --accent) sit on
+  // surface+0.1, a step lighter than the +0.04 hover row above.
+  { id: 'menu', label: 'Text on menu highlights', fg: (i) => i.text, bg: (i) => shift(i.surface, 0.1), ok: 7, warn: 4.5, moves: 'surface' },
   { id: 'muted', label: 'Muted text on cards', fg: (i) => i.mutedText, bg: (i) => i.surface, ok: 4.5, warn: 3, moves: 'mutedText' },
   // Buttons use the 3:1 bar for bold and large text with no warn band:
   // white on Ember's red is about 3.2:1 and Ember stays exactly as it is.
