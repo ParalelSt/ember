@@ -478,6 +478,21 @@ def cmd_recommended(args):
     tracks = [to_track_json(t) for t in items if t.get('videoId')]
     json.dump(tracks, sys.stdout)
 
+# What YouTube Music answers for an album or artist id that doesn't exist: a
+# response with no page at all, so ytmusicapi fails on the very first key.
+# A layout change fails deeper in the path and stays a plain failure.
+BROWSE_MISSING_RE = re.compile(r"Unable to find 'contents' using path \['contents',|HTTP 404")
+
+
+def _browse_error(kind, e):
+    """A short {error, reason} for an album/artist lookup that raised. The
+    exception itself (ytmusicapi dumps the whole response into it) only goes
+    to stderr, never to the browser."""
+    if BROWSE_MISSING_RE.search(str(e)):
+        return {"error": f"{kind.capitalize()} not found", "reason": "not-found"}
+    return {"error": f"Couldn't load this {kind} from YouTube Music right now", "reason": "failed"}
+
+
 def cmd_artist(args):
     """Resolve a YT Music artist channelId to the artist profile + their
     top songs. The user clicks an artist name in a track row, which routes
@@ -485,8 +500,8 @@ def cmd_artist(args):
     try:
         info = yt.get_artist(channelId=args.channel_id)
     except Exception as e:
-        print(f"artist failed: {e}", file=sys.stderr)
-        json.dump({"error": str(e)}, sys.stdout)
+        print(f"artist failed: {type(e).__name__}: {e}", file=sys.stderr)
+        json.dump(_browse_error("artist", e), sys.stdout)
         return
 
     # Pull top tracks from search rather than yt.get_artist()['songs']: the
@@ -549,8 +564,8 @@ def cmd_album(args):
     try:
         info = yt.get_album(browseId=args.browse_id)
     except Exception as e:
-        print(f"album failed: {e}", file=sys.stderr)
-        json.dump({"error": str(e)}, sys.stdout)
+        print(f"album failed: {type(e).__name__}: {e}", file=sys.stderr)
+        json.dump(_browse_error("album", e), sys.stdout)
         return
 
     artists = info.get("artists") or []
