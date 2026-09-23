@@ -81,7 +81,9 @@ export function scrubServerEntry(e: ServerLogEntry): ServerLogEntry {
   let data = e.data;
   if (data !== undefined && data !== null) {
     try {
-      data = JSON.parse(scrubText(JSON.stringify(data)));
+      // Scrubbed leaf by leaf: run over the whole JSON text, a query value's
+      // pattern swallowed the closing quote and the object would not re-parse.
+      data = scrubDataLeaves(JSON.parse(JSON.stringify(data)));
     } catch {
       data = scrubText(String(data));
     }
@@ -92,6 +94,23 @@ export function scrubServerEntry(e: ServerLogEntry): ServerLogEntry {
     stack: e.stack ? scrubText(e.stack) : e.stack,
     data,
   };
+}
+
+/** Header names redactSecrets drops by name in text, which a leaf alone no
+ *  longer shows next to its value. */
+const SERVER_SCRUBBED_KEYS = [...SCRUBBED_KEYS, 'set-cookie', 'proxy-authorization', 'x-goog-authuser', 'x-goog-visitor-id', 'x-goog-pageid'];
+
+/** `scrubText` on every string (keys too) of parsed JSON; a secret-named key
+ *  loses its whole value. */
+function scrubDataLeaves(value: unknown): unknown {
+  if (typeof value === 'string') return scrubText(value);
+  if (value === null || typeof value !== 'object') return value;
+  if (Array.isArray(value)) return value.map(scrubDataLeaves);
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+    out[scrubText(k)] = SERVER_SCRUBBED_KEYS.includes(k.toLowerCase()) ? SCRUBBED_MARKER : scrubDataLeaves(v);
+  }
+  return out;
 }
 
 function walk(value: unknown, seen: WeakSet<object>): unknown {
