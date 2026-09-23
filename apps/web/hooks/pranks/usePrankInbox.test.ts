@@ -62,6 +62,44 @@ describe('usePrankInbox (poll)', () => {
     expect(deps.fetchInbox).toHaveBeenCalledTimes(4);
   });
 
+  it('sends a receipt\'s ack first and its follow-up only after that one landed', async () => {
+    const { inbox, deps } = fakeDeps();
+    inbox.push(ping('s1'));
+    let finish!: (a: PrankAck) => void;
+    const then = new Promise<PrankAck>((r) => (finish = r));
+    let releaseFirst!: () => void;
+    deps.ack.mockImplementationOnce(() => new Promise((r) => (releaseFirst = () => r({ ok: true }))));
+    renderHook(() => usePrankInbox({ userId: 'u1', isPlaying: true, receive: () => ({ ack: DELIVERED, then }), deps }));
+    await flush();
+    expect(deps.ack).toHaveBeenCalledTimes(1);
+    expect(deps.ack).toHaveBeenCalledWith('s1', DELIVERED);
+
+    // The sound finishes before the first ack is back: the follow-up waits.
+    finish({ status: 'done', playedSec: 2 });
+    await flush();
+    expect(deps.ack).toHaveBeenCalledTimes(1);
+    releaseFirst();
+    await flush();
+    expect(deps.ack).toHaveBeenLastCalledWith('s1', { status: 'done', playedSec: 2 });
+    expect(deps.ack).toHaveBeenCalledTimes(2);
+  });
+
+  it('sends no follow-up when the receipt\'s follow-up is null, or when the first ack failed', async () => {
+    const { inbox, deps } = fakeDeps();
+    inbox.push(ping('s1'), ping('s2'));
+    deps.ack.mockImplementation(async (id: string) => {
+      if (id === 's2') throw new Error('offline');
+      return { ok: true };
+    });
+    const done: PrankAck = { status: 'done', playedSec: 1 };
+    renderHook(() => usePrankInbox({
+      userId: 'u1', isPlaying: true, deps,
+      receive: (row) => ({ ack: DELIVERED, then: Promise.resolve(row.id === 's1' ? null : done) }),
+    }));
+    await flush();
+    expect(deps.ack.mock.calls).toEqual([['s1', DELIVERED], ['s2', DELIVERED]]);
+  });
+
   it('sends no ack when receive returns null, and does nothing signed out', async () => {
     const { inbox, deps } = fakeDeps();
     inbox.push(ping('late'));

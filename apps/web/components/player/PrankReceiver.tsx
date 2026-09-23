@@ -1,34 +1,86 @@
 'use client';
 
-import { useCallback, type RefObject } from 'react';
+import { useCallback, useEffect, useRef, type RefObject } from 'react';
 import { useAuth } from '@/components/providers/AuthProvider';
-import { usePrankInbox } from '@/hooks/pranks/usePrankInbox';
+import { usePrankInbox, type PrankReceipt } from '@/hooks/pranks/usePrankInbox';
 import { usePresenceHeartbeat } from '@/hooks/pranks/usePresenceHeartbeat';
+import { apiUrl } from '@/lib/api';
 import { decidePrank } from '@/lib/pranks/decide';
+import { PRANK_LIMITS } from '@/lib/pranks/limits';
+import { overlayLevel } from '@/lib/pranks/mix';
+import { createOverlayPlayer, type OverlayPlayer } from '@/lib/pranks/overlayPlayer';
 import type { PrankAck, PrankEngine, PrankRow } from '@/lib/pranks/types';
 import type { AudioBackend } from '@/lib/playback/types';
 import { usePlayerStore } from '@/stores/usePlayerStore';
+import { useSettingsStore } from '@/stores/useSettingsStore';
 
 const APP_VERSION = process.env.NEXT_PUBLIC_APP_VERSION ?? '';
 
 /** Turns an incoming prank into what the player does, and reports back.
  *  Renders nothing and never shows anything: the person on the receiving end
- *  is never told (owner decision). Only `ping` is handled so far; sounds and
- *  swaps arrive in later tasks and are acknowledged as unsupported until then. */
+ *  is never told (owner decision). Pings and sounds so far; swaps arrive in a
+ *  later task and are acknowledged as unsupported until then. A sound plays
+ *  through a second audio element (see overlayPlayer) with the music ducked
+ *  through `onDuck`; the native Android engine gets its own overlay later, so
+ *  until then decidePrank skips sounds there as unsupported. */
 export function PrankReceiver({
   backendRef,
   engineRef,
+  onDuck,
+  makeOverlay = createOverlayPlayer,
 }: {
   backendRef: RefObject<AudioBackend | null>;
   engineRef: RefObject<PrankEngine>;
+  /** Music level multiplier while a sound plays (1 = none). */
+  onDuck: (level: number) => void;
+  makeOverlay?: () => OverlayPlayer;
 }) {
   const { user } = useAuth();
   const userId = user?.id ?? null;
   const current = usePlayerStore((s) => s.queue[s.index] ?? null);
   const isPlaying = usePlayerStore((s) => s.isPlaying);
+  const volume = usePlayerStore((s) => s.volume);
+  const muted = usePlayerStore((s) => s.muted);
+  const party = useSettingsStore((s) => s.partyVolume);
+
+  const overlayRef = useRef<OverlayPlayer | null>(null);
+  /** The admin's share of the person's volume for the sound playing now. */
+  const shareRef = useRef<number | null>(null);
+  const onDuckRef = useRef(onDuck);
+  useEffect(() => {
+    onDuckRef.current = onDuck;
+  }, [onDuck]);
+  const makeOverlayRef = useRef(makeOverlay);
+
+  const playSound = useCallback(
+    async (url: string, share: number, duck: boolean, base: Partial<PrankAck>): Promise<PrankAck | PrankReceipt> => {
+      const overlay = (overlayRef.current ??= makeOverlayRef.current());
+      const st = usePlayerStore.getState();
+      const handle = overlay.play(apiUrl(url), {
+        volume: overlayLevel(share, st.volume, st.muted, useSettingsStore.getState().partyVolume),
+        maxSec: PRANK_LIMITS.soundMaxSec,
+      });
+      shareRef.current = share;
+      const settle = handle.finished.then((r) => {
+        shareRef.current = null;
+        if (duck) onDuckRef.current(1);
+        return r;
+      });
+      if (!(await handle.started)) {
+        await settle;
+        return { status: 'skipped', reason: 'error:load', ...base };
+      }
+      if (duck) onDuckRef.current(PRANK_LIMITS.duck);
+      return {
+        ack: { status: 'delivered', ...base },
+        then: settle.then((r): PrankAck => ({ status: 'done', playedSec: r.playedSec })),
+      };
+    },
+    [],
+  );
 
   const receive = useCallback(
-    (row: PrankRow): PrankAck | null => {
+    (row: PrankRow): PrankAck | Promise<PrankAck | PrankReceipt> | null => {
       const st = usePlayerStore.getState();
       const b = backendRef.current;
       const engine = engineRef.current;
@@ -37,7 +89,7 @@ export function PrankReceiver({
         hasTrack: !!st.queue[st.index],
         position: st.position,
         engine,
-        busy: false,
+        busy: overlayRef.current?.busy() ?? false,
         pluginHasSwap: false,
         pluginHasOverlay: false,
         now: Date.now(),
@@ -50,11 +102,32 @@ export function PrankReceiver({
           return { status: 'delivered', ...base };
         case 'skip':
           return { status: 'skipped', reason: action.reason, ...base };
+        case 'sound':
+          return playSound(action.url, action.volume, action.duck, base);
         default:
           return { status: 'skipped', reason: 'engine-unsupported', ...base };
       }
     },
-    [backendRef, engineRef],
+    [backendRef, engineRef, playSound],
+  );
+
+  // Pausing the music ends the sound too (and with it the duck).
+  useEffect(() => {
+    if (!isPlaying) overlayRef.current?.stop();
+  }, [isPlaying]);
+
+  // The sound follows the person's own volume, mute and party mode.
+  useEffect(() => {
+    const share = shareRef.current;
+    if (share !== null) overlayRef.current?.setVolume(overlayLevel(share, volume, muted, party));
+  }, [volume, muted, party]);
+
+  useEffect(
+    () => () => {
+      overlayRef.current?.destroy();
+      overlayRef.current = null;
+    },
+    [],
   );
 
   usePrankInbox({ userId, isPlaying, receive });

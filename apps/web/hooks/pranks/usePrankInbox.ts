@@ -20,6 +20,14 @@ export type PrankSubscribe = (
   onDisconnect: () => void,
 ) => () => void;
 
+/** What `receive` hands back for a prank that runs for a while (a sound):
+ *  the first acknowledgement now, and a follow-up (`done`) that is sent only
+ *  after the first has landed, since the server takes the moves in order. */
+export interface PrankReceipt {
+  ack: PrankAck;
+  then: Promise<PrankAck | null>;
+}
+
 export interface PrankInboxDeps {
   fetchInbox: () => Promise<PrankRow[]>;
   ack: (id: string, body: PrankAck) => Promise<unknown>;
@@ -69,8 +77,9 @@ export const defaultPrankInboxDeps: PrankInboxDeps = {
 /** Receives pranks for the signed-in user: poll (always while the realtime
  *  link is down), realtime when available, a catch-up fetch on every
  *  (re)connect. Each prank is handed to `receive` once; whatever it returns
- *  is sent back as the acknowledgement (null sends nothing). Silent by
- *  design: nothing here toasts, logs or throws. */
+ *  is sent back as the acknowledgement (null sends nothing; a receipt sends
+ *  its ack, then its follow-up). Silent by design: nothing here toasts,
+ *  logs or throws. */
 export function usePrankInbox({
   userId,
   isPlaying,
@@ -79,7 +88,7 @@ export function usePrankInbox({
 }: {
   userId: string | null;
   isPlaying: boolean;
-  receive: (row: PrankRow) => PrankAck | null | Promise<PrankAck | null>;
+  receive: (row: PrankRow) => PrankAck | PrankReceipt | null | Promise<PrankAck | PrankReceipt | null>;
   deps?: PrankInboxDeps;
 }) {
   const receiveRef = useRef(receive);
@@ -100,7 +109,16 @@ export function usePrankInbox({
     seen.current.add(row.id);
     Promise.resolve()
       .then(() => receiveRef.current(row))
-      .then((ack) => (ack ? depsRef.current.ack(row.id, ack) : null))
+      .then(async (result) => {
+        if (!result) return;
+        if (!('ack' in result)) {
+          await depsRef.current.ack(row.id, result);
+          return;
+        }
+        await depsRef.current.ack(row.id, result.ack);
+        const followUp = await result.then;
+        if (followUp) await depsRef.current.ack(row.id, followUp);
+      })
       .catch(() => {});
   });
 
