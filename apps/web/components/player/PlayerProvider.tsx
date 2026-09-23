@@ -36,6 +36,7 @@ import { createTauriBackend } from '@/lib/playback/tauriBackend';
 import { createAndroidBackend, androidPluginPresent } from '@/lib/playback/androidBackend';
 import type { AudioBackend, AudioBackendEvents, AudioErrorInfo } from '@/lib/playback/types';
 import type { PlaybackContext, Track } from '@/types/track';
+import { musicLevel } from '@/lib/pranks/mix';
 import { PrankReceiver } from './PrankReceiver';
 
 interface PlayerControls {
@@ -347,12 +348,17 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Volume curve + party gain. Muted forces 0 (stored value preserved).
+  // Volume curve + party gain. Muted forces 0 (stored value preserved). A
+  // ducking prank sound scales the music down while it plays (duck < 1);
+  // every engine gets that through the same setVolume.
+  const [duck, setDuck] = useState(1);
+  const duckRef = useRef(1);
   useEffect(() => {
+    duckRef.current = duck;
     const b = backendRef.current;
     if (!b) return;
-    b.setVolume(muted ? 0 : volume, { gain: partyVolume ? 2 : 1 });
-  }, [backendReady, volume, partyVolume, muted]);
+    b.setVolume(musicLevel(volume, muted, duck), { gain: partyVolume ? 2 : 1 });
+  }, [backendReady, volume, partyVolume, muted, duck]);
 
   // When party mode turns OFF, snap volume back under the normal 0.85 cap so the
   // slider thumb doesn't stick at the right edge.
@@ -386,7 +392,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     // partyVolume lives in the settings store, not the player store.
     const st = usePlayerStore.getState();
     const party = useSettingsStore.getState().partyVolume;
-    backendRef.current.setVolume(st.muted ? 0 : st.volume, { gain: party ? 2 : 1 });
+    backendRef.current.setVolume(musicLevel(st.volume, st.muted, duckRef.current), { gain: party ? 2 : 1 });
 
     const track = st.queue[st.index];
     if (track) {
@@ -637,7 +643,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   // this component, so their store reads don't re-render the whole player.
   return (
     <PlayerContext.Provider value={value}>
-      <PrankReceiver backendRef={backendRef} engineRef={backendKindRef} />
+      <PrankReceiver backendRef={backendRef} engineRef={backendKindRef} onDuck={setDuck} />
       {children}
     </PlayerContext.Provider>
   );
