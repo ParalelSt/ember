@@ -174,14 +174,18 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         const st = usePlayerStore.getState();
         if (i >= 0 && i < st.queue.length && i !== st.index) {
           nativeChangeAt.current = Date.now();
+          // Native is playing it now, so it counts as loaded.
+          loadedTrackRef.current = st.queue[i].id;
           setIndex(i);
         }
       },
       onQueueReplaced: (tracks, i) => {
         nativeChangeAt.current = Date.now();
+        const at = Math.max(0, Math.min(i, tracks.length - 1));
+        loadedTrackRef.current = tracks[at]?.id ?? null;
         usePlayerStore.setState({
           queue: tracks,
-          index: Math.max(0, Math.min(i, tracks.length - 1)),
+          index: at,
           context: null,
           orderBackup: null,
         });
@@ -469,14 +473,20 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   loadAndPlayRef.current = loadAndPlay;
   fallbackToWebAudioRef.current = fallbackToWebAudio;
 
-  // Drives load+autoplay on track changes from outside playTrack — auto-advance
-  // (onEnded → next → index change) and cold-load hydration of a persisted queue.
+  // Drives load+autoplay on track changes nobody loaded yet: cold-load
+  // hydration of a persisted queue, and index changes that did not go through
+  // playTrack/next/prev (those load in the gesture, before the index moves).
   useEffect(() => {
     if (!backendReady) return;
     // A change the native player reported is already playing there; loading
     // it again would restart it (and echo the queue back).
     if (backendKindRef.current === 'android' && fromNative()) return;
-    loadAndPlay(current, userInteracted.current);
+    // Already handed to the backend by the gesture that changed the track.
+    // Loading it again aborted that load's play(): a pause/play flicker on
+    // every change, and two loads (two error toasts) on desktop.
+    if (!current || loadedTrackRef.current !== current.id) {
+      loadAndPlay(current, userInteracted.current);
+    }
     // The native Android player records plays itself (car-initiated ones too).
     if (current && userInteracted.current && user && backendKindRef.current !== 'android') recordPlay.mutate(current);
     if (!current) {

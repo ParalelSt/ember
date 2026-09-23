@@ -37,8 +37,11 @@ export function SeekBar({ position, duration, onSeek, labels = 'none', className
     setScrubPct(readPct(v));
   };
   const onValueCommitted = (v: number | readonly number[]) => {
-    onSeek((readPct(v) / 100) * (duration || 0));
     setScrubPct(null);
+    // No length, no way to turn a spot on the bar into a time: seeking would
+    // land on 0:00. The slider is disabled then; this covers a stray commit.
+    if (!duration) return;
+    onSeek((readPct(v) / 100) * duration);
   };
 
   const slider = (
@@ -49,6 +52,7 @@ export function SeekBar({ position, duration, onSeek, labels = 'none', className
       max={100}
       step={0.1}
       smooth
+      disabled={!duration}
       className={labels === 'inline' ? 'flex-1' : undefined}
     />
   );

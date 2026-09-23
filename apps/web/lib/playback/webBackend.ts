@@ -130,7 +130,11 @@ export const createWebBackend: CreateAudioBackend = (events) => {
       restoreOnMeta(opts.startAt ?? 0);
       if (opts.autoplay) {
         audioCtx?.resume?.().catch(() => {});
-        a.play().then(() => events.onPlay()).catch(() => events.onPause());
+        // AbortError means a newer load replaced this one, not that playback
+        // stopped: reporting it as a pause flickered the notification.
+        a.play().then(() => events.onPlay()).catch((e: unknown) => {
+          if ((e as { name?: string } | null)?.name !== 'AbortError') events.onPause();
+        });
       }
     },
 
@@ -162,7 +166,10 @@ export const createWebBackend: CreateAudioBackend = (events) => {
     },
 
     seek(sec) {
-      const target = Math.max(0, Math.min(sec, a.duration || 0));
+      // Clamp only to a length the element actually knows: right after a load
+      // it is NaN, and clamping to "0" sent every early seek to 0:00.
+      const len = a.duration;
+      const target = Math.max(0, Number.isFinite(len) && len > 0 ? Math.min(sec, len) : sec);
       const from = a.currentTime || 0;
       // A tap on the progress bar/remote command is a "jump"; the ~4 Hz
       // timeupdate-driven onTime() calls above are not seeks at all, so
