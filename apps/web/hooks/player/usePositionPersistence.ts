@@ -110,6 +110,9 @@ export function usePositionPersistence({
     // later reader (the web-audio fallback, a refresh) can hand one song's
     // position to another, and so the slider doesn't linger on the old time.
     positionOwner.current = trackId;
+    // persist()'s fallback too: left alone, a pause before this track's first
+    // report stored the previous song's time.
+    lastValidPosition.current = at;
     usePlayerStore.setState({ position: at });
     setPosition(at);
     return at;
