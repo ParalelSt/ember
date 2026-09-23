@@ -299,6 +299,10 @@ ESLint, `eslint.config.mjs`, `no-restricted-imports` patterns:
   `@/components/library/options/*`, so an unchosen option cannot leak into
   the live app.
 
+The same test file also holds the colour ratchet (no raw palette colours
+in components, only theme tokens) and the ban on `inline-block` paired with
+a width; both are described in [`docs/themes.md`](themes.md#6-lint-the-colour-ratchet-and-the-inline-block-rule).
+
 The 9 pre-existing lint errors stay pre-existing; a stage must not add any.
 
 ## 7. Stages
@@ -420,8 +424,10 @@ sonnet worker, one stage per run, each ending with the two commits above.
 
 ## 8. Out of scope
 
-- The light theme (`globals.css:70` keeps it a possibility, nothing here
-  touches colour).
+- Colour. This pass touches spacing, type and layout only; colours,
+  themes and the colour lint are in [`docs/themes.md`](themes.md). A light
+  theme's values are still out of scope there too (the plumbing for one
+  ships, no light preset does).
 - New features: sticky action bar on scroll, drag to reorder, filter
   chips, "Show all" on library shelves, anything in
   `docs/deslop/design-options.md` beyond the layout the pages already have.

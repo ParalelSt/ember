@@ -254,7 +254,7 @@ node tests/pranks-ui.test.mjs                       # or: npm run test:pranks-ui
 node tests/pranks-realtime.spike.mjs                # or: npm run test:pranks-spike (does PocketBase SSE stream through /pb? under next start it does not: gzip buffers it)
 node tests/android-player-ui.test.mjs               # or: npm run test:android-ui
 node tests/offline-android-ui.test.mjs              # or: npm run test:offline-ui
-node tests/offline-page.test.mjs                    # or: npm run test:offline-page (no server needed)
+node tests/offline-page.test.mjs                    # or: npm run test:offline-page (no server needed; also checks the page takes the theme variables Android publishes, docs/themes.md)
 node tests/resume-position.test.mjs                 # or: npm run test:resume
 node tests/playback-position.test.mjs               # or: npm run test:position
 node tests/public-origin.test.mjs                   # or: npm run test:origin
