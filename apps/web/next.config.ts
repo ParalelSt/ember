@@ -33,10 +33,14 @@ const nextConfig: NextConfig = {
 
   experimental: {
     // proxy.ts sits in front of /api, and Next buffers every request body it
-    // proxies up to this size (10 MB by default), cutting off the rest. A bug
-    // report or request can carry 10 MB of screenshots and clips
-    // (lib/attachments.ts) plus its JSON, so leave room above that.
-    proxyClientMaxBodySize: '12mb',
+    // proxies up to this size, silently truncating anything past it (no
+    // error — just a partial body, see the proxyClientMaxBodySize docs). A
+    // bug report or request can carry attachments (lib/attachments.ts) plus
+    // its JSON, and a song upload can be up to MAX_UPLOAD_MB (lib/uploads.ts,
+    // 50MB default): stay comfortably above the largest of those plus
+    // multipart overhead, or uploads over ~12MB silently arrive empty
+    // ("No file uploaded", bughunt W04).
+    proxyClientMaxBodySize: '55mb',
   },
 
   // Same-origin proxy for PocketBase: the browser calls `/pb/*` and Next
