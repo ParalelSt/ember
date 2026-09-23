@@ -12,6 +12,7 @@ vi.mock('@/lib/api', () => ({ api: {} }));
 
 const { ThemeApplier } = await import('./ThemeApplier');
 const { useThemeStore } = await import('@/stores/useThemeStore');
+const { SHELL_NOTIFY_DELAY_MS } = await import('@/lib/theme/native');
 
 const initial = useThemeStore.getState();
 const bg = () => document.documentElement.style.getPropertyValue('--background');
@@ -69,5 +70,57 @@ describe('ThemeApplier', () => {
     expect(warn).not.toHaveBeenCalled();
     act(() => useThemeStore.setState({ doc: { v: 1, preset: 'forest' } }));
     expect(bg()).toBe('');
+  });
+
+  describe('the native shell', () => {
+    const win = window as unknown as Record<string, unknown>;
+    let apply: ReturnType<typeof vi.fn>;
+    beforeEach(() => {
+      vi.useFakeTimers();
+      apply = vi.fn(() => Promise.resolve());
+      win.Capacitor = { isNativePlatform: () => true, Plugins: { EmberTheme: { apply } } };
+    });
+    afterEach(() => {
+      vi.useRealTimers();
+      delete win.Capacitor;
+    });
+    const sent = () => (apply.mock.calls as unknown as [{ background: string }][]).map(([a]) => a.background);
+
+    it('tells the shell about the theme once the page settles', () => {
+      render(<ThemeApplier initial={MIDNIGHT} />);
+      // The page is themed at once; the shell a moment later.
+      expect(bg()).toBe(bgOf('midnight'));
+      expect(apply).not.toHaveBeenCalled();
+      act(() => vi.advanceTimersByTime(SHELL_NOTIFY_DELAY_MS));
+      expect(sent()).toEqual(['#080f1c']);
+    });
+
+    it('sends only the last of a burst of changes, as a colour drag makes', () => {
+      render(<ThemeApplier initial={MIDNIGHT} />);
+      act(() => {
+        useThemeStore.getState().setPreview({ v: 1, preset: 'forest' });
+        vi.advanceTimersByTime(SHELL_NOTIFY_DELAY_MS / 3);
+        useThemeStore.getState().setPreview({ v: 1, preset: 'nebula' });
+        vi.advanceTimersByTime(SHELL_NOTIFY_DELAY_MS / 3);
+        useThemeStore.getState().setPreview({ v: 1, preset: 'mono' });
+      });
+      act(() => vi.advanceTimersByTime(SHELL_NOTIFY_DELAY_MS));
+      expect(sent()).toEqual(['#000000']);
+    });
+
+    it('gives the shell Ember when signed out, like the page', () => {
+      auth.user = null;
+      useThemeStore.setState({ doc: MIDNIGHT });
+      render(<ThemeApplier initial={null} />);
+      act(() => vi.advanceTimersByTime(SHELL_NOTIFY_DELAY_MS));
+      expect(sent()).toEqual(['#0c0d0f']);
+    });
+
+    it('sends nothing after unmount', () => {
+      const { unmount } = render(<ThemeApplier initial={MIDNIGHT} />);
+      unmount();
+      act(() => vi.advanceTimersByTime(SHELL_NOTIFY_DELAY_MS * 2));
+      expect(apply).not.toHaveBeenCalled();
+    });
   });
 });
