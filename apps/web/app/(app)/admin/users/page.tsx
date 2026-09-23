@@ -153,7 +153,7 @@ function UserRow({ user, isSelf, onRename, onToggleAdmin, onDelete, onResetPassw
         src={user.avatarUrl}
         name={user.name}
         email={user.email}
-        className="h-8 w-8 bg-ember text-white text-xs"
+        className="h-8 w-8 bg-ember text-ember-foreground text-xs"
       />
       <div className="min-w-0">
         <div className="truncate text-sm font-semibold">{user.email}</div>

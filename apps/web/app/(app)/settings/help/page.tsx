@@ -22,7 +22,7 @@ export default function SettingsHelp() {
         <p className="mt-1 text-sm text-muted-foreground">
           Send your last session&apos;s diagnostics with an optional note. Goes straight to the project&apos;s Discord.
         </p>
-        <Button onClick={() => openBugReport(true)} className="mt-4 bg-ember hover:bg-ember-soft text-white">
+        <Button onClick={() => openBugReport(true)} variant="ember" className="mt-4">
           <BugIcon className="h-4 w-4" />
           Report a bug
         </Button>
@@ -32,7 +32,7 @@ export default function SettingsHelp() {
         <p className="mt-1 text-sm text-muted-foreground">
           Suggest a new feature or a fix. Goes straight to the project&apos;s Discord.
         </p>
-        <Button onClick={() => setRequestOpen(true)} className="mt-4 bg-ember hover:bg-ember-soft text-white">
+        <Button onClick={() => setRequestOpen(true)} variant="ember" className="mt-4">
           <RequestIcon className="h-4 w-4" />
           Send a request
         </Button>
@@ -58,8 +58,8 @@ export default function SettingsHelp() {
         >
           <span
             className={cn(
-              'absolute top-0.5 left-0.5 h-5 w-5 rounded-full bg-white shadow-sm transition-transform',
-              autoReportEnabled && 'translate-x-5',
+              'absolute top-0.5 left-0.5 h-5 w-5 rounded-full shadow-sm transition-transform',
+              autoReportEnabled ? 'translate-x-5 bg-ember-foreground' : 'bg-foreground',
             )}
           />
         </button>

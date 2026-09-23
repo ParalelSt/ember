@@ -34,7 +34,7 @@ export function EditorialGridShelf({ title, items, empty }: EditorialGridShelfPr
                 type="button"
                 tabIndex={-1}
                 aria-hidden="true"
-                className="absolute bottom-2.5 right-2.5 flex h-11 w-11 items-center justify-center rounded-full bg-ember text-white opacity-0 shadow-glow transition-opacity duration-150 group-hover:opacity-100 group-focus-visible:opacity-100"
+                className="absolute bottom-2.5 right-2.5 flex h-11 w-11 items-center justify-center rounded-full bg-ember text-ember-foreground opacity-0 shadow-glow transition-opacity duration-150 group-hover:opacity-100 group-focus-visible:opacity-100"
               >
                 <PlayIcon className="ml-0.5 h-4 w-4 fill-current" />
               </button>

@@ -66,11 +66,8 @@ export function ConfirmDialog({
             type="button"
             onClick={handleConfirm}
             disabled={busy}
-            className={cn(
-              variant === 'destructive'
-                ? 'bg-destructive hover:bg-destructive/90 text-white'
-                : 'bg-ember hover:bg-ember-soft text-white',
-            )}
+            variant={variant === 'destructive' ? 'default' : 'ember'}
+            className={cn(variant === 'destructive' && 'bg-destructive hover:bg-destructive/90 text-white')}
           >
             {busy ? '…' : confirmLabel}
           </Button>

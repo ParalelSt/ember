@@ -25,8 +25,8 @@ export function HideTagsSwitch({ checked, onCheckedChange, className }: HideTags
       >
         <span
           className={cn(
-            'absolute top-0.5 left-0.5 h-5 w-5 rounded-full bg-white shadow-sm transition-transform',
-            checked && 'translate-x-5',
+            'absolute top-0.5 left-0.5 h-5 w-5 rounded-full shadow-sm transition-transform',
+            checked ? 'translate-x-5 bg-ember-foreground' : 'bg-foreground',
           )}
         />
       </button>

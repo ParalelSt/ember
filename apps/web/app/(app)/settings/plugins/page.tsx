@@ -75,7 +75,7 @@ function PluginToggle({ name, description, on, onToggle, tag }: ToggleProps) {
         <div className="flex items-center gap-2">
           <span className="font-semibold">{name}</span>
           {tag && (
-            <span className="shrink-0 rounded-full bg-amber-500 px-2 py-0.5 text-[10px] uppercase tracking-widest text-white font-semibold">
+            <span className="shrink-0 rounded-full bg-ember px-2 py-0.5 text-[10px] uppercase tracking-widest text-ember-foreground font-semibold">
               {tag}
             </span>
           )}
@@ -94,8 +94,8 @@ function PluginToggle({ name, description, on, onToggle, tag }: ToggleProps) {
       >
         <span
           className={cn(
-            'absolute top-0.5 left-0.5 h-5 w-5 rounded-full bg-white shadow-sm transition-transform',
-            on && 'translate-x-5',
+            'absolute top-0.5 left-0.5 h-5 w-5 rounded-full shadow-sm transition-transform',
+            on ? 'translate-x-5 bg-ember-foreground' : 'bg-foreground',
           )}
         />
       </button>

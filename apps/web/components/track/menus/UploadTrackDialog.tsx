@@ -130,7 +130,7 @@ export function UploadTrackDialog({
             <Button
               type="submit"
               disabled={!file || !title.trim() || upload.isPending}
-              className="bg-ember hover:bg-ember-soft text-white"
+              variant="ember"
             >
               {upload.isPending ? 'Uploading…' : 'Upload'}
             </Button>

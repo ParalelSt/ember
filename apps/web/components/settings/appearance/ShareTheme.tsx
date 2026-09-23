@@ -60,8 +60,8 @@ export function ShareTheme({
         >
           <span
             className={cn(
-              'absolute left-0 top-0.5 h-5 w-5 rounded-full bg-foreground transition-transform',
-              checked ? 'translate-x-5.5' : 'translate-x-0.5',
+              'absolute left-0 top-0.5 h-5 w-5 rounded-full transition-transform',
+              checked ? 'translate-x-5.5 bg-ember-foreground' : 'translate-x-0.5 bg-foreground',
             )}
           />
         </button>

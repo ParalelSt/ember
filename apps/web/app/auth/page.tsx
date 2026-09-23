@@ -111,7 +111,7 @@ export default function AuthPage() {
                 onChange={(e) => setEmail(e.target.value)}
               />
             </div>
-            <Button type="submit" disabled={busy} className="mt-6 w-full bg-ember hover:bg-ember-soft text-white">
+            <Button type="submit" disabled={busy} variant="ember" className="mt-6 w-full">
               {busy ? '…' : 'Continue'}
             </Button>
           </>
@@ -145,7 +145,7 @@ export default function AuthPage() {
                 onChange={(e) => setPassword(e.target.value)}
               />
             </div>
-            <Button type="submit" disabled={busy} className="mt-6 w-full bg-ember hover:bg-ember-soft text-white">
+            <Button type="submit" disabled={busy} variant="ember" className="mt-6 w-full">
               {busy ? '…' : stage.mode === 'existing' ? 'Log in' : 'Register'}
             </Button>
           </>

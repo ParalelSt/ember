@@ -69,7 +69,7 @@ export function ImportBanner({ job, toReview, busy = false, onStop, onRetry, onR
           <div className="text-sm text-muted-foreground">{job.error ?? 'Something went wrong.'}</div>
         </div>
         <div className="flex items-center gap-cluster">
-          <Button onClick={onRetry} disabled={busy} className="bg-ember text-white hover:bg-ember-soft max-md:flex-1">
+          <Button onClick={onRetry} disabled={busy} variant="ember" className="max-md:flex-1">
             <RefreshIcon className="h-4 w-4" />
             Retry
           </Button>
@@ -120,7 +120,7 @@ export function ImportBanner({ job, toReview, busy = false, onStop, onRetry, onR
         )}
       </div>
       <div className="flex items-center gap-cluster">
-        <Button onClick={onReview} disabled={toReview === 0} className="bg-ember text-white hover:bg-ember-soft max-md:flex-1">
+        <Button onClick={onReview} disabled={toReview === 0} variant="ember" className="max-md:flex-1">
           <ReviewIcon className="h-4 w-4" />
           Review
         </Button>

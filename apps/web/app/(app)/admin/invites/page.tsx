@@ -66,7 +66,7 @@ export default function AdminInvitesPage() {
         <Button
           type="submit"
           disabled={addInvite.isPending || !newEmail.trim()}
-          className="bg-ember hover:bg-ember-soft text-white"
+          variant="ember"
         >
           <PlusIcon className="h-4 w-4" />
           Add

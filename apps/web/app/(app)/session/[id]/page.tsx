@@ -86,9 +86,9 @@ export default function SessionPage({ params }: { params: Promise<{ id: string }
     <div className="mb-6 rounded-md bg-card p-4 flex items-center gap-4">
       {nowItem.track.artworkUrl ? (
         // eslint-disable-next-line @next/next/no-img-element
-        <img src={nowItem.track.artworkUrl} alt="" className="h-14 w-14 rounded object-cover bg-black shrink-0" />
+        <img src={nowItem.track.artworkUrl} alt="" className="h-14 w-14 rounded object-cover bg-art shrink-0" />
       ) : (
-        <div className="h-14 w-14 rounded bg-black grid place-items-center text-foreground/20 shrink-0">
+        <div className="h-14 w-14 rounded bg-art grid place-items-center text-foreground/20 shrink-0">
           <MusicIcon className="h-6 w-6" />
         </div>
       )}
@@ -98,7 +98,7 @@ export default function SessionPage({ params }: { params: Promise<{ id: string }
         <div className="truncate text-xs text-muted-foreground">{nowItem.track.artist} · added by {nowItem.addedByName}</div>
       </div>
       {session.active && (
-        <Button onClick={handleSkip} disabled={skip.isPending} className="shrink-0 gap-1.5 bg-ember hover:bg-ember-soft text-white">
+        <Button onClick={handleSkip} disabled={skip.isPending} variant="ember" className="shrink-0 gap-1.5">
           <NextIcon className="h-4 w-4" /> Skip
         </Button>
       )}

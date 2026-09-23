@@ -668,7 +668,7 @@ export function TransferDialog({
               type="button"
               disabled={!ready || starting}
               onClick={() => void start()}
-              className="bg-ember text-white hover:bg-ember-soft"
+              variant="ember"
             >
               {starting ? 'Starting…' : ready ? `Transfer ${count} ${count === 1 ? 'song' : 'songs'}` : 'Transfer'}
             </Button>
@@ -695,7 +695,7 @@ function GoogleSignInPanel({ signIn, onSignIn }: { signIn: SignIn; onSignIn: () 
           href={signIn.verificationUrl}
           target="_blank"
           rel="noopener noreferrer"
-          className="inline-flex items-center gap-cluster rounded-md bg-ember px-row py-cluster text-sm font-medium text-white hover:bg-ember-soft"
+          className="inline-flex items-center gap-cluster rounded-md bg-ember px-row py-cluster text-sm font-medium text-ember-foreground hover:bg-ember-soft"
         >
           <LinkIcon className="h-4 w-4" />
           Open {shown}

@@ -52,7 +52,7 @@ export function MockKeyboard({ bottom, suggestions }: { bottom: number; suggesti
         <Key label="," />
         <span className="h-10 flex-[5] rounded-md bg-white/25" />
         <Key label="." />
-        <span className="grid h-10 flex-[1.5] place-items-center rounded-md bg-ember text-white">
+        <span className="grid h-10 flex-[1.5] place-items-center rounded-md bg-ember text-ember-foreground">
           <SearchIcon className="h-4 w-4" />
         </span>
       </div>

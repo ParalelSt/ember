@@ -91,8 +91,6 @@ function Footer({ phone, children }: { phone: boolean; children: ReactNode }) {
   );
 }
 
-const CREATE_CLASS = 'bg-ember hover:bg-ember-soft text-white';
-
 /** TrackSearchPicker's look with four mock recommendations. */
 function MockSongPicker({ rows }: { rows: number }) {
   return (
@@ -159,7 +157,7 @@ export function LinkPreview({ source, phone }: { source: ImportSource; phone: bo
   return (
     <div data-testid="link-preview" className="flex flex-col gap-row rounded-lg border border-border bg-card p-row">
       <div className={cn('flex gap-block', phone ? 'items-start' : 'items-center')}>
-        <Artwork src={source.cover} className={cn('shrink-0 rounded-md bg-black shadow-soft', phone ? 'size-20' : 'size-24')} />
+        <Artwork src={source.cover} className={cn('shrink-0 rounded-md bg-art shadow-soft', phone ? 'size-20' : 'size-24')} />
         <div className="min-w-0 flex-1">
           <SourceBadge kind={source.kind} />
           <div className="mt-cluster truncate text-lg font-bold tracking-tight">{source.name}</div>
@@ -217,7 +215,7 @@ function ImportFooter({ phone, pasted, source, onCreate }: { phone: boolean; pas
       <Button type="button" variant="ghost">
         Cancel
       </Button>
-      <Button type="button" disabled={!pasted} onClick={onCreate} className={CREATE_CLASS}>
+      <Button type="button" disabled={!pasted} onClick={onCreate} variant="ember">
         {pasted ? `Create, import ${n} songs` : 'Create'}
       </Button>
     </Footer>
@@ -230,7 +228,7 @@ function EmptyFooter({ phone }: { phone: boolean }) {
       <Button type="button" variant="ghost">
         Cancel
       </Button>
-      <Button type="button" disabled className={CREATE_CLASS}>
+      <Button type="button" disabled variant="ember">
         Create
       </Button>
     </Footer>

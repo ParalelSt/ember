@@ -32,7 +32,7 @@ export function CollectionCover({ src, icon, className, fallback = 'gradient' }:
         className,
       )}
     >
-      {Icon ? <Icon className="absolute inset-0 m-auto h-1/3 w-1/3 text-white/90" /> : null}
+      {Icon ? <Icon className="absolute inset-0 m-auto h-1/3 w-1/3 text-ember-foreground/90" /> : null}
     </Artwork>
   );
 }

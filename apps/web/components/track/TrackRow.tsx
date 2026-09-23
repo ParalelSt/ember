@@ -140,7 +140,7 @@ export function TrackRow({
       size="xs"
       onClick={compact ? undefined : playOrToast}
       className={cn(
-        'rounded shrink-0 bg-black',
+        'rounded shrink-0 bg-art',
         !resolvedArtworkUrl && 'grid place-items-center text-foreground/20',
       )}
     >

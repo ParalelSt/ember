@@ -189,7 +189,7 @@ function MockDialog({
         )}
         <div className="ml-auto flex gap-cluster">
           <Button type="button" variant="ghost">Cancel</Button>
-          <Button type="button" disabled={blocked} className="bg-ember text-white hover:bg-ember-soft">
+          <Button type="button" disabled={blocked} variant="ember">
             {sendLabel}
           </Button>
         </div>

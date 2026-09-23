@@ -35,7 +35,7 @@ export function PeopleList({
               selectedId === p.id ? 'bg-card' : 'hover:bg-card/60',
             )}
           >
-            <Avatar src={p.avatarUrl} name={p.name} className="size-8 shrink-0 bg-ember text-xs text-white" />
+            <Avatar src={p.avatarUrl} name={p.name} className="size-8 shrink-0 bg-ember text-xs text-ember-foreground" />
             <span className="min-w-0 flex-1">
               <span className="flex items-center gap-cluster">
                 <span

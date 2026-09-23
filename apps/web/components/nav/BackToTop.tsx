@@ -44,7 +44,7 @@ export function BackToTop({ scrollRef }: Props) {
       aria-label="Back to top"
       title="Back to top"
       className={cn(
-        'fixed right-6 z-40 size-10 rounded-full bg-ember hover:bg-ember-soft text-white shadow-glow',
+        'fixed right-6 z-40 size-10 rounded-full bg-ember hover:bg-ember-soft text-ember-foreground shadow-glow',
         'flex items-center justify-center',
         'transition-all duration-200',
         'bottom-41.5 md:bottom-28',

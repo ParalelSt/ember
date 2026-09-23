@@ -118,7 +118,7 @@ function SearchPanel({
               data-testid="review-search-result"
               className="flex items-center gap-row rounded-md px-cluster py-inset text-left transition-colors hover:bg-card disabled:opacity-60"
             >
-              <Artwork src={t.artworkUrl} size="xs" className="grid shrink-0 place-items-center rounded bg-black text-foreground/20">
+              <Artwork src={t.artworkUrl} size="xs" className="grid shrink-0 place-items-center rounded bg-art text-foreground/20">
                 <MusicIcon className="h-4 w-4" />
               </Artwork>
               <span className="min-w-0 flex-1">
@@ -320,7 +320,8 @@ export function ReviewSheet({
                     <Button
                       onClick={() => candidates[0] && onPick(item, candidates[0].track)}
                       disabled={busy || !candidates[0] || missing}
-                      className="bg-ember text-white hover:bg-ember-soft max-md:flex-1"
+                      variant="ember"
+                      className="max-md:flex-1"
                     >
                       Use best match
                     </Button>

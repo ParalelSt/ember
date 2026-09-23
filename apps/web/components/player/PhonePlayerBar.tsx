@@ -100,7 +100,7 @@ export function PhonePlayerBar({
         className="flex cursor-pointer items-center gap-block pl-block pr-block pt-row pb-cluster"
       >
         <div data-testid="phone-player-title-row" className="flex min-w-0 flex-1 items-center gap-row">
-          <Artwork src={artSrc} className="size-art-bar shrink-0 rounded-md bg-black" />
+          <Artwork src={artSrc} className="size-art-bar shrink-0 rounded-md bg-art" />
           {/* min-w-0 flex-1: the marquee's box is sized by the row, never by
               the title inside it, which is what keeps measuring it stable. */}
           <div className="min-w-0 flex-1">

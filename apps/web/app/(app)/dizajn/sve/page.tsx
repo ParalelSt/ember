@@ -152,7 +152,7 @@ function useSavedChoice<T extends string>(key: string, options: { id: T }[], def
   return [value, set];
 }
 
-const PILL_ON = 'rounded-full bg-ember px-3.5 py-1.5 text-sm font-medium text-white';
+const PILL_ON = 'rounded-full bg-ember px-3.5 py-1.5 text-sm font-medium text-ember-foreground';
 const PILL_OFF = 'rounded-full border border-border px-3.5 py-1.5 text-sm hover:bg-card transition-colors';
 
 /** One pill radiogroup, the same markup as the style option picker. */
@@ -183,7 +183,7 @@ function Picker<T extends string>({
           >
             {o.name}
             {o.badge && (
-              <span className="ml-cluster rounded-full bg-white/20 px-cluster text-[10px] leading-4 font-semibold uppercase tracking-wide">
+              <span className="ml-cluster rounded-full bg-ember-foreground/20 px-cluster text-[10px] leading-4 font-semibold uppercase tracking-wide">
                 {o.badge}
               </span>
             )}
@@ -667,7 +667,7 @@ export default function DizajnPage() {
               onClick={() => setOptionId(o.id)}
               className={
                 o.id === optionId
-                  ? 'rounded-full bg-ember px-3.5 py-1.5 text-sm font-medium text-white'
+                  ? 'rounded-full bg-ember px-3.5 py-1.5 text-sm font-medium text-ember-foreground'
                   : 'rounded-full border border-border px-3.5 py-1.5 text-sm hover:bg-card transition-colors'
               }
             >
@@ -700,7 +700,7 @@ export default function DizajnPage() {
               onClick={() => setAttachState(s.id)}
               className={
                 attachState === s.id
-                  ? 'rounded-full bg-ember px-row py-cluster text-sm font-medium text-white'
+                  ? 'rounded-full bg-ember px-row py-cluster text-sm font-medium text-ember-foreground'
                   : 'rounded-full border border-border px-row py-cluster text-sm hover:bg-card transition-colors'
               }
             >

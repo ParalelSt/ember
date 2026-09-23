@@ -83,7 +83,7 @@ function Slider({
             key={index}
             getAriaLabel={thumbLabel ? () => thumbLabel : undefined}
             className={cn(
-              "relative block size-3 shrink-0 rounded-full border border-ring bg-white ring-ring/50 transition-[color,box-shadow] select-none after:absolute after:-inset-2 hover:ring-3 focus-visible:ring-3 focus-visible:outline-hidden active:ring-3 disabled:pointer-events-none disabled:opacity-50",
+              "relative block size-3 shrink-0 rounded-full border border-ring bg-foreground ring-ring/50 transition-[color,box-shadow] select-none after:absolute after:-inset-2 hover:ring-3 focus-visible:ring-3 focus-visible:outline-hidden active:ring-3 disabled:pointer-events-none disabled:opacity-50",
               smooth && "transition-[inset-inline-start,color,box-shadow] duration-250 ease-linear data-dragging:transition-none",
             )}
           />
