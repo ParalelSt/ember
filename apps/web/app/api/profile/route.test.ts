@@ -65,4 +65,17 @@ describe('PATCH /api/profile', () => {
 
     expect(body.user.avatarUrl).toBeNull();
   });
+
+  it('[bughunt W13] answers 400, not a 500, when the body is JSON instead of a form', async () => {
+    const jsonReq = {
+      formData: async () => {
+        throw new TypeError('Could not parse content as FormData.');
+      },
+    } as unknown as NextRequest;
+
+    const res = await PATCH(jsonReq, undefined as never);
+
+    expect(res.status).toBe(400);
+    expect(update).not.toHaveBeenCalled();
+  });
 });
