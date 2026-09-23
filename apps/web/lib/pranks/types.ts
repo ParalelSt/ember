@@ -42,6 +42,10 @@ export type PrankAction =
   | { type: 'skip'; reason: string }
   | { type: 'sound'; url: string; volume: number; duck: boolean }
   | { type: 'ack-only' }
+  /** Nothing plays on this device: say nothing and leave the prank pending,
+   *  for another of their devices that is playing (or this one, if music
+   *  starts inside the window). A skip from here would take it from them. */
+  | { type: 'wait' }
   /** Past its expiry: a prank that arrives late is not a prank, so nothing
    *  happens and nothing is acknowledged. */
   | { type: 'ignore' };

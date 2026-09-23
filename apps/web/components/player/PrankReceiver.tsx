@@ -109,7 +109,7 @@ export function PrankReceiver({
   );
 
   const receive = useCallback(
-    (row: PrankRow): PrankAck | Promise<PrankAck | PrankReceipt> | null => {
+    (row: PrankRow): PrankAck | Promise<PrankAck | PrankReceipt> | 'later' | null => {
       const st = usePlayerStore.getState();
       const b = backendRef.current;
       const engine = engineRef.current;
@@ -128,6 +128,8 @@ export function PrankReceiver({
           return null;
         case 'ack-only':
           return { status: 'delivered', ...base };
+        case 'wait':
+          return 'later';
         case 'skip':
           return { status: 'skipped', reason: action.reason, ...base };
         case 'sound':

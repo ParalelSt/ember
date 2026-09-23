@@ -58,6 +58,11 @@ only works on a host that serves `/pb` uncompressed (a compressing proxy in
 front of PocketBase breaks the realtime SSE stream), so it is opt-in and off
 by default.
 
+A device where nothing is playing never answers for a sound: it leaves the
+prank pending, so another of the person's devices that is playing can take
+it (or this one, if music starts inside the 45 s window). If none does, the
+prank expires.
+
 ## Server-side env settings
 
 - `PRANK_TICK_DISABLED=1` turns off the background tick that turns a due
