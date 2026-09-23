@@ -91,6 +91,17 @@ export default async function proxy(req: NextRequest) {
   const isInternal = path.startsWith('/_next') || /\.(png|svg|ico|webmanifest|js)$/.test(path);
 
   if (!user && !isPublicPage && !isPublicApi && !isPbProxy && !isInternal) {
+    // An API call with no session gets a plain 401 JSON body, not a
+    // redirect: fetch() follows redirects and hands the caller the sign-in
+    // page's HTML, which res.json() then chokes on ("Unexpected token '<'",
+    // bughunt W05). Pages still redirect to /auth as before; lib/api.ts's
+    // req() is the one that sends the browser to /auth on a 401.
+    if (path.startsWith('/api/')) {
+      return Response.json(
+        { error: 'Unauthorized' },
+        { status: 401, headers: response.headers },
+      );
+    }
     const url = req.nextUrl.clone();
     url.pathname = '/auth';
     url.searchParams.set('next', path);
