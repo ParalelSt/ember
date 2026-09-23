@@ -8,6 +8,8 @@ import {
   THEME_PRESET_BY_ID,
   formatOklch,
 } from '@/components/library/options/themes/mock';
+import { derive } from '@/lib/theme/derive';
+import { PRESET_BY_ID } from '@/lib/theme/presets';
 
 /** Compares two `oklch(l c h)` (or `oklch(l c h / a%)`) strings numerically,
  *  matching the plan's own tolerance ("L and C to 3 decimals, H to 0") so a
@@ -57,12 +59,11 @@ describe('THEME_PRESETS (mock)', () => {
     }
   });
 
-  it('Forest and Mono flip --ember-foreground to the background; the rest keep text', () => {
-    expect(THEME_PRESET_BY_ID.forest.vars['--ember-foreground']).toBe(THEME_PRESET_BY_ID.forest.vars['--background']);
-    expect(THEME_PRESET_BY_ID.mono.vars['--ember-foreground']).toBe(THEME_PRESET_BY_ID.mono.vars['--background']);
-    expect(THEME_PRESET_BY_ID.ember.vars['--ember-foreground']).toBe(THEME_PRESET_BY_ID.ember.vars['--foreground']);
-    expect(THEME_PRESET_BY_ID.midnight.vars['--ember-foreground']).toBe(THEME_PRESET_BY_ID.midnight.vars['--foreground']);
-    expect(THEME_PRESET_BY_ID.nebula.vars['--ember-foreground']).toBe(THEME_PRESET_BY_ID.nebula.vars['--foreground']);
+  it('uses lib/theme as its one source of truth for the presets and their variables', () => {
+    for (const preset of THEME_PRESETS) {
+      expect(preset.inputs).toBe(PRESET_BY_ID[preset.id].inputs);
+      expect(preset.vars).toEqual(derive(preset.inputs).vars);
+    }
   });
 
   it('every preset drives a visibly different --background and --ember', () => {

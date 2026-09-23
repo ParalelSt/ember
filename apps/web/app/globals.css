@@ -40,6 +40,8 @@
   --color-sidebar-ring: var(--sidebar-ring);
   --color-ember: var(--ember);
   --color-ember-soft: var(--ember-soft);
+  --color-ember-foreground: var(--ember-foreground);
+  --color-art: var(--art);
 
   --font-sans: var(--font-sans);
   --font-mono: var(--font-mono);
@@ -118,6 +120,12 @@
   /* Brand accents — warm ember + softer secondary. */
   --ember: oklch(0.68 0.20 25);
   --ember-soft: oklch(0.78 0.13 25);
+  /* Text on the accent (buttons, badges): white, what text-white paints
+     today. A theme with a light accent swaps it for its dark background
+     (lib/theme/derive.ts). */
+  --ember-foreground: oklch(1 0 0);
+  /* Behind artwork: black in every dark theme. */
+  --art: oklch(0 0 0);
 
   /* Cover placeholder gradient (no art yet): ember fading to a darker red.
      Named tokens so the raw oklch() stops don't live in JSX. */
