@@ -1,5 +1,6 @@
 package app.ember.music
 
+import android.content.Context
 import android.content.Intent
 import android.os.Bundle
 import android.util.Log
@@ -32,6 +33,15 @@ class EmberPlaybackService : MediaLibraryService() {
         const val TAG = "EmberPlayback"
         const val COMMAND_SHUFFLE = "ember.shuffle"
         const val COMMAND_REPEAT = "ember.repeat"
+
+        /** The music player: streams, or the downloaded copy when there is
+         *  one (OfflineAudio). Its own function so tests build the same one. */
+        fun buildPlayer(context: Context, streams: OkHttpDataSource.Factory, offline: OfflineStore): ExoPlayer =
+            ExoPlayer.Builder(context)
+                .setMediaSourceFactory(DefaultMediaSourceFactory(context).setDataSourceFactory(OfflineAudio.dataSourceFactory(context, streams, offline)))
+                .setAudioAttributes(AudioAttributes.Builder().setUsage(C.USAGE_MEDIA).setContentType(C.AUDIO_CONTENT_TYPE_MUSIC).build(), true)
+                .setHandleAudioBecomingNoisy(true)
+                .build()
     }
 
     private lateinit var player: ExoPlayer
@@ -49,20 +59,12 @@ class EmberPlaybackService : MediaLibraryService() {
         // Streams go through the same OkHttp client, so they carry the cookie
         // and get the same 401 retry as the JSON calls.
         val dataSource = OkHttpDataSource.Factory(api.http)
-        player = ExoPlayer.Builder(this)
-            .setMediaSourceFactory(DefaultMediaSourceFactory(this).setDataSourceFactory(dataSource))
-            .setAudioAttributes(AudioAttributes.Builder().setUsage(C.USAGE_MEDIA).setContentType(C.AUDIO_CONTENT_TYPE_MUSIC).build(), true)
-            .setHandleAudioBecomingNoisy(true)
-            .build()
-        player.addListener(object : Player.Listener {
-            override fun onMediaItemTransition(item: MediaItem?, reason: Int) {
-                // Every item start is one play in history, car-initiated ones
-                // included; the web app skips its own history call on Android.
-                val track = item?.let { TrackItems.trackOf(it) } ?: return
-                io.execute { runCatching { api.recordPlay(track) }.onFailure { Log.w(TAG, "history: ${it.message}") } }
-                maybeExtendQueue()
-            }
-        })
+        player = buildPlayer(this, dataSource, OfflineStore.shared(this))
+        player.addListener(QueueListener(
+            player,
+            recordPlay = { track -> io.execute { runCatching { api.recordPlay(track) }.onFailure { Log.w(TAG, "history: ${it.message}") } } },
+            extendQueue = ::maybeExtendQueue,
+        ))
         overlay = PrankOverlay(this, player, dataSource, baseUrl)
         session = MediaLibrarySession.Builder(this, player, Callback()).build()
         // Shuffle and repeat as buttons on the now-playing screen (car + notification).
