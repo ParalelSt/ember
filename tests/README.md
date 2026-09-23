@@ -224,7 +224,13 @@ npx next start -p 3006 &
 ```
 
 `POCKETBASE_ADMIN_EMAIL` / `POCKETBASE_ADMIN_PASSWORD` come from
-`apps/web/.env.local`; the tests default to the values in `.env.example`.
+`apps/web/.env.local`. The tests default to the sandbox superuser
+`admin@ember.com` and the password they have always used. That password was
+once hardcoded in `pb_hooks` and is public (bughunt W14): it belongs in a
+throwaway sandbox only, never on a real host. The hooks no longer create it,
+so a fresh sandbox gets its superuser from the environment: start its
+PocketBase with `EMBER_PB_SUPERUSER_EMAIL` / `EMBER_PB_SUPERUSER_PASSWORD`, or
+run `pocketbase admin create <email> <password> --dir="$SB/pb_data"` once.
 
 ## Running
 
@@ -1098,3 +1104,41 @@ secret, and the fake player.
 - **F**: closing the dialog mid-sign-in stops the server polling Google.
 - **G**: no response the browser received, no console line and nothing in
   `EMBER_LOG_DIR` holds a token, device code or the client secret.
+
+## What `pb-admin-exposure.test.mjs` and `pb-hooks-credentials.test.mjs` cover
+
+Bughunt W14: PocketBase's superuser was reachable from the internet through
+the app's `/pb` proxy, with a password hardcoded in the public repo.
+
+`pb-admin-exposure.test.mjs` needs a throwaway PocketBase (this checkout's
+hooks and migrations, a fresh data dir) and the app built against it, then:
+
+```bash
+EMBER_PB_SUPERUSER_EMAIL=su@sandbox.test EMBER_PB_SUPERUSER_PASSWORD=<sandbox password> \
+APP_URL=http://127.0.0.1:3053 PB_URL=http://127.0.0.1:8086 node tests/pb-admin-exposure.test.mjs
+```
+
+- **A**: through the app, superuser sign-in (wrong and right password), the
+  password-reset route, `/_/` and its images, settings, backups, logs and the
+  collection definitions all end at 404, however the path is spelled
+  (`%61dmins`, doubled slashes, a trailing `.png` that skips proxy.ts).
+- **B**: member sign-in, liking a song, reading your own records through
+  `/pb`, `/pb/api/health`, and the server's own superuser client
+  (check-email) still work.
+
+`pb-hooks-credentials.test.mjs` boots its own PocketBase (`PB_BIN`, port
+`PB_PORT`, default 8086) on temp data dirs, one boot at a time:
+
+- **S1**: with no env, boot warns and changes nothing; a password set with
+  `pocketbase admin update` survives a reboot.
+- **S2**: `EMBER_PB_SUPERUSER_*` creates the superuser, a new password
+  replaces the old one on the next boot, unsetting the env changes nothing,
+  and a password under 10 characters is refused.
+- **S3**: `EMBER_ADMIN_*` unset creates no owner account; set, it creates one
+  with `is_admin`; a later different `EMBER_ADMIN_PASSWORD` never overwrites
+  the existing password.
+- **S4**: neither hook carries a password literal.
+
+`watchdog.test.sh` scenario 9 checks that `start-static.sh` hands those
+values (from the environment or `.env.local`) to PocketBase alone, never to
+Next or a command line.
