@@ -91,6 +91,23 @@ describe('tauriBackend', () => {
     expect(events.onError).toHaveBeenCalledWith({ canRetryOnWebAudio: true });
   });
 
+  it('reports paused once the engine fails, so the play button asks it to play (bughunt P07)', async () => {
+    const events = makeFakeEvents();
+    const backend = createTauriBackend(events);
+    backend.load('/api/youtube/stream/abc', { autoplay: true });
+
+    // The load failed: nothing is playing. The mirror used to keep saying
+    // "playing", so the provider's toggle sent pause, over and over, and the
+    // play button did nothing at all.
+    await emit('audio:error', { message: 'the host refused the song', retry: 'none' });
+
+    expect(backend.isPaused()).toBe(true);
+    invoked.length = 0;
+    backend.play();
+    expect(invoked.map((i) => i.cmd)).toEqual(['audio_play']);
+    expect(backend.isPaused()).toBe(false);
+  });
+
   it('forwards a seek unclamped when the engine reported no duration, leaving the engine to judge it', async () => {
     const events = makeFakeEvents();
     const backend = createTauriBackend(events);

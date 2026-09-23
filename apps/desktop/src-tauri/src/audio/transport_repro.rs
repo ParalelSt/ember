@@ -18,7 +18,7 @@ use std::time::{Duration, Instant};
 use tauri::test::{mock_app, MockRuntime};
 use tauri::{App, AppHandle, Listener, Manager};
 
-use super::{audio_load, audio_play, audio_seek, AudioEngine};
+use super::{audio_load, audio_pause, audio_play, audio_seek, AudioEngine};
 
 /// 120 s of AAC in a plain m4a: a cached song, decoded seekable.
 const TRACK: &[u8] = include_bytes!("../../test-fixtures/tone-faststart.m4a");
@@ -31,10 +31,13 @@ enum Answer {
     /// A 200 with bytes no decoder can read: the engine calls this worth a
     /// retry on web audio.
     Garbage,
+    /// A 502: the host could not get the song.
+    Refuse,
 }
 
 struct Host {
     url: String,
+    requests: Arc<AtomicUsize>,
 }
 
 /// Answers the n-th request (0-based) with `answers[n]`, or the last one past
@@ -42,7 +45,8 @@ struct Host {
 fn host(answers: &'static [Answer], delay: Duration) -> Host {
     let listener = TcpListener::bind("127.0.0.1:0").expect("bind");
     let addr = listener.local_addr().expect("addr");
-    let count = Arc::new(AtomicUsize::new(0));
+    let requests = Arc::new(AtomicUsize::new(0));
+    let count = Arc::clone(&requests);
     std::thread::spawn(move || {
         for conn in listener.incoming() {
             let Ok(mut stream) = conn else { continue };
@@ -54,6 +58,7 @@ fn host(answers: &'static [Answer], delay: Duration) -> Host {
                 let (status, body): (&str, &[u8]) = match answers[n.min(answers.len() - 1)] {
                     Answer::Song => ("200 OK", TRACK),
                     Answer::Garbage => ("200 OK", &[0u8; 4096]),
+                    Answer::Refuse => ("502 Bad Gateway", br#"{"error":"download failed"}"#),
                 };
                 let _ = write!(
                     stream,
@@ -65,7 +70,7 @@ fn host(answers: &'static [Answer], delay: Duration) -> Host {
             });
         }
     });
-    Host { url: format!("http://{addr}/api/youtube/stream/abc") }
+    Host { url: format!("http://{addr}/api/youtube/stream/abc"), requests }
 }
 
 fn read_headers(stream: &TcpStream) {
@@ -122,6 +127,10 @@ impl Rig {
         audio_play(self.app.handle().clone(), self.engine());
     }
 
+    fn pause(&self) {
+        audio_pause(self.app.handle().clone(), self.engine());
+    }
+
     fn seek(&self, sec: f64) {
         audio_seek(self.app.handle().clone(), self.engine(), sec);
     }
@@ -133,6 +142,13 @@ impl Rig {
 
     fn count(&self, name: &str) -> usize {
         self.events().iter().filter(|(n, _)| n == name).count()
+    }
+
+    /// The loaded sink: (has sound left, paused), or None when nothing is.
+    fn sink(&self) -> Option<(bool, bool)> {
+        let engine = self.engine();
+        let g = engine.sink.lock().expect("sink");
+        g.as_ref().map(|s| (!s.empty(), s.is_paused()))
     }
 
 }
@@ -238,5 +254,69 @@ async fn repeat_one_plays_the_song_again_after_it_ends() {
     assert!(
         rig.until(Duration::from_secs(60), |r| r.count("audio:ended") == 2).await,
         "the repeat should reach the end again"
+    );
+}
+
+// --- P07: play and pause around a load ---------------------------------------
+
+/// The last play or pause the webview was told about.
+fn last_transport(events: &[(String, String)]) -> Option<String> {
+    events
+        .iter()
+        .rev()
+        .find(|(n, _)| n == "audio:play" || n == "audio:pause")
+        .map(|(n, _)| n.clone())
+}
+
+/// Pause, pressed while the song is still on its way. There was no sink to
+/// pause yet, so the press was dropped and the song started anyway, with the
+/// player saying "playing" again.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_pause_during_a_slow_load_is_kept() {
+    let rig = Rig::new();
+    let slow = host(&[Answer::Song], Duration::from_millis(1_500));
+    let load = tokio::spawn(load_on(rig.app.handle().clone(), slow.url.clone(), true));
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    rig.pause();
+    load.await.expect("load");
+
+    assert_eq!(rig.sink(), Some((true, true)), "the song is loaded, paused");
+    assert_eq!(last_transport(&rig.events()).as_deref(), Some("audio:pause"));
+}
+
+/// And play after that pause, still during the load, plays.
+#[tokio::test(flavor = "multi_thread")]
+async fn play_after_a_pause_during_a_load_plays() {
+    let rig = Rig::new();
+    let slow = host(&[Answer::Song], Duration::from_millis(1_500));
+    let load = tokio::spawn(load_on(rig.app.handle().clone(), slow.url.clone(), true));
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    rig.pause();
+    rig.play();
+    load.await.expect("load");
+
+    assert_eq!(rig.sink().map(|(_, paused)| paused), Some(false), "the song plays");
+    assert_eq!(last_transport(&rig.events()).as_deref(), Some("audio:play"));
+}
+
+/// After a load failed there was nothing loaded, so play did nothing, and the
+/// only way to hear the song was to find it and click it again. Play now
+/// tries the song again.
+#[tokio::test(flavor = "multi_thread")]
+async fn play_after_a_failed_load_tries_the_song_again() {
+    let rig = Rig::new();
+    let flaky = host(&[Answer::Refuse, Answer::Song], Duration::ZERO);
+    rig.load(&flaky.url, true).await;
+    assert_eq!(rig.count("audio:error"), 1, "the first attempt fails");
+
+    rig.play();
+
+    let playing = rig
+        .until(Duration::from_secs(10), |r| r.sink().is_some_and(|(_, paused)| !paused))
+        .await;
+    assert!(
+        playing,
+        "play after the failure did nothing: {} request(s) to the host",
+        flaky.requests.load(Ordering::SeqCst)
     );
 }
