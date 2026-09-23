@@ -61,6 +61,7 @@ class EmberPlayerPlugin : Plugin() {
         put("trackId", c.currentMediaItem?.mediaId)
         put("shuffle", c.shuffleModeEnabled)
         put("repeat", c.repeatMode)
+        put("loop", LoopModes.fromRepeat(c.repeatMode))
     }
 
     private val listener = object : Player.Listener {
@@ -108,16 +109,8 @@ class EmberPlayerPlugin : Plugin() {
         val items = (0 until tracks.length()).map { TrackItems.toMediaItem(tracks.getJSONObject(it), ServerConfig.baseUrl(context)) }
         withController { c ->
             queueFromJs = System.currentTimeMillis()
-            val current = (0 until c.mediaItemCount).map { c.getMediaItemAt(it).mediaId }
-            val wanted = items.map { it.mediaId }
-            val sameStart = wanted.size >= current.size && current.isNotEmpty() && wanted.subList(0, current.size) == current
-            when {
-                // Same queue, maybe a different item: never restart what plays.
-                wanted == current -> if (index != c.currentMediaItemIndex) c.seekTo(index, 0)
-                // Radio / add-to-queue appended: keep playing, add the tail.
-                sameStart && index == c.currentMediaItemIndex -> c.addMediaItems(items.subList(current.size, items.size))
-                else -> { c.setMediaItems(items, index, 0); c.prepare() }
-            }
+            // Never restarts the song that plays when it is still the one asked for.
+            QueueSync.apply(c, items, index)
             if (play) c.play()
             call.resolve()
         }
@@ -128,6 +121,12 @@ class EmberPlayerPlugin : Plugin() {
     @PluginMethod fun prev(call: PluginCall) = withController { it.seekToPreviousMediaItem(); call.resolve() }
     @PluginMethod fun seek(call: PluginCall) = withController { it.seekTo(((call.getDouble("sec") ?: 0.0) * 1000).toLong()); call.resolve() }
     @PluginMethod fun setVolume(call: PluginCall) = withController { it.volume = (call.getDouble("v") ?: 1.0).toFloat().coerceIn(0f, 1f); call.resolve() }
+    /** The loop button: "off", "all" or "one". Native repeats by itself, so
+     *  loop-one and loop-all only work once it has been told. */
+    @PluginMethod fun setRepeat(call: PluginCall) {
+        val mode = LoopModes.toRepeat(call.getString("mode")) ?: return call.reject("mode must be off, all or one")
+        withController { it.repeatMode = mode; call.resolve() }
+    }
     @PluginMethod fun getState(call: PluginCall) = withController { call.resolve(state(it)) }
 
     /** A prank sound over the music. Resolves `{ started, reason? }` once it
