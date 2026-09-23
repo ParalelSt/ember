@@ -114,6 +114,24 @@ describe('useRadioExtend', () => {
     expect(usePlayerStore.getState().queue).toHaveLength(2);
   });
 
+  it('does not append radio for a song the user already left', async () => {
+    const other = makeTrack({ id: 'youtube:other', sourceId: 'other', title: 'Other Song' });
+    const staleRec = makeTrack({ id: 'youtube:stale', sourceId: 'stale', title: 'Stale Rec' });
+    let resolveSeed!: (v: { tracks: Track[] }) => void;
+    api.getRecommended.mockImplementation((sourceId: string) =>
+      sourceId === 'seed' ? new Promise((r) => { resolveSeed = r; }) : Promise.resolve({ tracks: [] }));
+    const { rerender } = setup();
+    // User jumps to a different song before the radio fetch for `seed`
+    // resolves: a brand new single-track queue.
+    usePlayerStore.setState({ queue: [other], index: 0 });
+    rerender({ ...base, current: other, queue: [other] });
+    resolveSeed({ tracks: [staleRec] });
+    await waitFor(() => expect(logger.breadcrumb).toHaveBeenCalledWith('radio', 'stale-skip', {
+      context: 'single', seed: 'seed',
+    }));
+    expect(usePlayerStore.getState().queue.map((t) => t.id)).not.toContain('youtube:stale');
+  });
+
   it('logs a failed fetch and lets a later render retry', async () => {
     api.getRecommended.mockRejectedValueOnce(new Error('offline'));
     const { rerender } = setup();
