@@ -1065,13 +1065,22 @@ pub fn audio_stop(engine: State<'_, AudioEngine>) {
 pub fn audio_seek<R: Runtime>(app: AppHandle<R>, engine: State<'_, AudioEngine>, sec: f64) {
     let total = engine.current_total.lock().ok().and_then(|g| *g);
     let forward_only = engine.forward_only.load(Ordering::SeqCst);
-    let (pos, playing) = engine
+    let (pos, playing, spent) = engine
         .sink
         .lock()
         .ok()
-        .and_then(|g| g.as_ref().map(|s| (s.get_pos(), !s.is_paused())))
-        .unwrap_or((Duration::ZERO, false));
-    let target = match plan_seek(total, forward_only, pos, sec) {
+        .and_then(|g| g.as_ref().map(|s| (s.get_pos(), !s.is_paused(), s.empty())))
+        .unwrap_or((Duration::ZERO, false, false));
+    // A sink that has played its source to the end has nothing left to seek
+    // in: rodio accepts the seek and does nothing. That is how "repeat one"
+    // (a seek to 0 and a play, on `audio:ended`) restarted the song into
+    // silence. Loading the track again is the only way back into it.
+    let plan = if spent {
+        SeekPlan::Reopen(Duration::from_secs_f64(sec.max(0.0)))
+    } else {
+        plan_seek(total, forward_only, pos, sec)
+    };
+    let target = match plan {
         SeekPlan::InPlace(target) => target,
         SeekPlan::Refuse => {
             // Refuse rather than restart the song from 0 (see seek_target).
@@ -1088,11 +1097,8 @@ pub fn audio_seek<R: Runtime>(app: AppHandle<R>, engine: State<'_, AudioEngine>,
             let url = engine.current_url.lock().ok().and_then(|g| g.clone());
             let cookie = engine.current_cookie.lock().ok().and_then(|g| g.clone());
             let Some(url) = url else { return };
-            log_audio(
-                &app,
-                "INFO",
-                &format!("seek back to {sec:.1}s in a forward-only stream: re-opening it there"),
-            );
+            let why = if spent { "after the track ran out" } else { "back in a forward-only stream" };
+            log_audio(&app, "INFO", &format!("seek to {sec:.1}s {why}: re-opening it there"));
             // Off this thread: a load takes a round trip, and a sync command
             // runs on the main thread.
             tauri::async_runtime::spawn(async move {
