@@ -1,32 +1,37 @@
 /// <reference path="../pb_data/types.d.ts" />
 
-// Hardcoded project-owner admin account.
+// Project-owner app account, from the environment.
 //
-// On every server boot (after migrations run), this hook makes sure a
-// user record exists with ADMIN_EMAIL / ADMIN_PASSWORD and is_admin=true.
-// Use these credentials to sign in on any self-hosted deployment as the
-// owner — no PB-admin-UI step needed.
+// On every boot (after migrations run), with EMBER_ADMIN_EMAIL set:
 //
-//   * If the account is missing, it's created with the hardcoded password.
+//   * If the account is missing, it's created with EMBER_ADMIN_PASSWORD and
+//     is_admin = true, so a fresh deployment has an owner to sign in as.
 //   * If it already exists, only is_admin is forced back to true. The
-//     password is NOT overwritten on subsequent boots — change it through
-//     PB admin UI and the new password sticks.
+//     password is NEVER overwritten: change it in the app or the PB admin UI
+//     and the new one sticks. EMBER_ADMIN_PASSWORD is only a first password.
 //
-// SECURITY: anyone with this file (and the URL to a deployment running
-// it) can sign in as admin. Rotate ADMIN_PASSWORD here + wipe pb_data
-// if it ever leaks beyond people you trust.
+// Unset EMBER_ADMIN_EMAIL: nothing happens but a warning. start-static.sh
+// reads both from the environment or apps/web/.env.local.
+//
+// The email and first password used to be hardcoded here, in a public repo:
+// see docs/reports/bughunt-2026-09-24/W14-pocketbase-admin-exposed.md.
 
 onAfterBootstrap((e) => {
-  const ADMIN_EMAIL = "aronddtt@gmail.com";
-  const ADMIN_PASSWORD = "EmberOwner2026!";   // change before sharing the URL publicly
+  const email = ($os.getenv("EMBER_ADMIN_EMAIL") || "").trim();
+  const password = $os.getenv("EMBER_ADMIN_PASSWORD") || "";
+
+  if (!email) {
+    console.warn("[ensure_admin] EMBER_ADMIN_EMAIL is not set: no owner account is created or checked.");
+    return;
+  }
 
   const dao = $app.dao();
 
   let existing = null;
   try {
-    existing = dao.findFirstRecordByFilter("users", 'email = "' + ADMIN_EMAIL + '"');
+    existing = dao.findAuthRecordByEmail("users", email);
   } catch (err) {
-    // not found — fall through to create
+    // not found: fall through to create
   }
 
   if (existing) {
@@ -37,15 +42,35 @@ onAfterBootstrap((e) => {
     return;
   }
 
-  const users = dao.findCollectionByNameOrId("users");
-  const rec = new Record(users);
-  // PB v0.22 auth records need a username. The auto-generator only fires
-  // for API-driven creates, not for `new Record()` from JSVM — so set it
-  // explicitly to the email's local part (e.g. "aronddtt").
-  rec.set("username", ADMIN_EMAIL.replace(/@.+/, ""));
-  rec.setEmail(ADMIN_EMAIL);
-  rec.setPassword(ADMIN_PASSWORD);
-  rec.setVerified(true);
-  rec.set("is_admin", true);
-  dao.saveRecord(rec);
+  if (password.length < 10) {
+    console.warn(
+      "[ensure_admin] no account for " + email + " yet, and EMBER_ADMIN_PASSWORD is unset or under " +
+        "10 characters: not creating it."
+    );
+    return;
+  }
+  // sha256 of the first password this file used to hardcode (public now).
+  if ($security.sha256(password) === "d48eba869ccad9bc55dc0e14348f1afe70cf92d0dd8b295aec571eda372dee92") {
+    console.warn("[ensure_admin] EMBER_ADMIN_PASSWORD is the old one from the public repo: not creating the account with it.");
+    return;
+  }
+
+  // A failure here (say, the username is taken) must not stop PocketBase
+  // from booting: warn and carry on.
+  try {
+    const users = dao.findCollectionByNameOrId("users");
+    const rec = new Record(users);
+    // PB v0.22 auth records need a username. The auto-generator only fires
+    // for API-driven creates, not for `new Record()` from JSVM, so set it
+    // explicitly to the email's local part.
+    rec.set("username", email.replace(/@.+/, "").replace(/[^\w.-]/g, "_"));
+    rec.setEmail(email);
+    rec.setPassword(password);
+    rec.setVerified(true);
+    rec.set("is_admin", true);
+    dao.saveRecord(rec);
+    console.log("[ensure_admin] created the owner account " + email);
+  } catch (err) {
+    console.warn("[ensure_admin] could not create the owner account " + email + ": " + err);
+  }
 });

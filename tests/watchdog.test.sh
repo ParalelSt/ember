@@ -371,6 +371,51 @@ sleep 2
 check "no crash posts around the install" [ "$(posts_matching 'crashed')" = 0 ]
 check "nothing restarted during or after the install" no_leftovers
 
+# ── 9. PocketBase's accounts reach PocketBase only (bughunt W14) ─────────
+echo "── PocketBase accounts from .env.local"
+new_root
+mkdir -p "$ROOT_DIR/apps/web"
+cat >"$ROOT_DIR/apps/web/.env.local" <<'EOF'
+POCKETBASE_ADMIN_EMAIL=su@w14.test
+POCKETBASE_ADMIN_PASSWORD=Fake-Su-Pass-2026
+EMBER_ADMIN_EMAIL=owner@w14.test
+EMBER_ADMIN_PASSWORD="Fake-Owner-Pass-2026"
+EOF
+HEALTHY_PORT="$(free_port)"
+export PORT="$HEALTHY_PORT"
+unset EMBER_PB_SUPERUSER_EMAIL EMBER_PB_SUPERUSER_PASSWORD EMBER_ADMIN_EMAIL EMBER_ADMIN_PASSWORD POCKETBASE_ADMIN_EMAIL POCKETBASE_ADMIN_PASSWORD
+export WATCHDOG_CMD_PB="env | grep '^EMBER_' | sort >'$TMP/pb.env'; exec node '$TMP/stay.mjs'"
+export WATCHDOG_CMD_NEXT="env | grep '^EMBER_' | sort >'$TMP/next.env'; exec node '$TMP/healthy.mjs' $HEALTHY_PORT"
+start_watchdog
+check "services come up" wait_until 10 port_up "$HEALTHY_PORT"
+check "PocketBase gets the superuser from the app's POCKETBASE_ADMIN_*" \
+  wait_until 5 grep -qsx 'EMBER_PB_SUPERUSER_PASSWORD=Fake-Su-Pass-2026' "$TMP/pb.env"
+check "and the superuser email" grep -qsx 'EMBER_PB_SUPERUSER_EMAIL=su@w14.test' "$TMP/pb.env"
+check "PocketBase gets the owner account (quotes stripped)" grep -qsx 'EMBER_ADMIN_PASSWORD=Fake-Owner-Pass-2026' "$TMP/pb.env"
+check "Next gets none of them" sh -c "[ -f '$TMP/next.env' ] && [ ! -s '$TMP/next.env' ]"
+check "no password on any command line" sh -c "! ps -eo command | grep -v grep | grep -q 'Fake-Su-Pass-2026'"
+check "SIGTERM stops it" stop_and_wait TERM
+
+new_root
+mkdir -p "$ROOT_DIR/apps/web"
+printf 'POCKETBASE_ADMIN_EMAIL=su@w14.test\nPOCKETBASE_ADMIN_PASSWORD=Fake-Su-Pass-2026\n' >"$ROOT_DIR/apps/web/.env.local"
+rm -f "$TMP/pb.env"
+export EMBER_PB_SUPERUSER_PASSWORD="Exported-Pass-2026"
+start_watchdog
+check "an exported EMBER_PB_SUPERUSER_PASSWORD wins over .env.local" \
+  wait_until 10 grep -qsx 'EMBER_PB_SUPERUSER_PASSWORD=Exported-Pass-2026' "$TMP/pb.env"
+check "SIGTERM stops it" stop_and_wait TERM
+unset EMBER_PB_SUPERUSER_PASSWORD
+
+new_root
+rm -f "$TMP/pb.env"
+start_watchdog
+check "with nothing configured it warns and still starts" wait_until 10 file_has "$TMP/run.out" "POCKETBASE_ADMIN_PASSWORD are not set"
+check "PocketBase gets empty values (its hooks then change nothing)" \
+  wait_until 5 grep -qsx 'EMBER_PB_SUPERUSER_PASSWORD=' "$TMP/pb.env"
+check "SIGTERM stops it" stop_and_wait TERM
+check "nothing left running" wait_until 5 no_leftovers
+
 echo
 echo "$((TOTAL - FAILED))/$TOTAL passed"
 [ "$FAILED" = 0 ]
