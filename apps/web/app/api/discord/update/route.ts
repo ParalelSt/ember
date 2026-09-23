@@ -1,6 +1,6 @@
 import type { NextRequest } from 'next/server';
 import { updateDiscordActivity, clearDiscordActivity } from '@/lib/discord';
-import { createClient } from '@/lib/pocketbase/server';
+import { requireUser } from '@/lib/auth';
 import type { Track } from '@/types/track';
 import { withRequestLog } from '@/lib/logger/withRequestLog';
 
@@ -19,12 +19,11 @@ export const POST = withRequestLog('discord/update', async (request: NextRequest
 
   let mayShare = false;
   try {
-    const pb = await createClient();
-    const userId = pb.authStore.record?.id;
-    if (userId) {
-      const record = await pb.collection('users').getOne(userId);
-      mayShare = record.share_discord === true;
-    }
+    // requireUser, not the cookie's record: the id must be the one
+    // PocketBase vouches for, or anyone could borrow another member's switch.
+    const { pb, user } = await requireUser();
+    const record = await pb.collection('users').getOne(user.id);
+    mayShare = record.share_discord === true;
   } catch {
     // PB unreachable / no session — fall through as "don't broadcast".
   }
