@@ -24,7 +24,7 @@ describe('PRESETS', () => {
     expect(scheme).toBe('dark');
     expect(Object.keys(vars).sort()).toEqual([...THEME_VARS].sort());
     const findings = checkTheme(preset.inputs);
-    expect(findings).toHaveLength(6);
+    expect(findings).toHaveLength(7);
     expect(findings.filter((f) => f.level !== 'ok')).toEqual([]);
   });
 

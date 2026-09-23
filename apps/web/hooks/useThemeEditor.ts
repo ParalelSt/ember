@@ -69,6 +69,11 @@ export function useThemeEditor() {
   const draftRef = useRef<Draft | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const queue = useRef<Promise<void>>(Promise.resolve());
+  // The save currently running through `queue`, if any: set while a save
+  // started by schedule()'s timer or by flush() is still in flight, null
+  // once it settles. leave() (below) uses this to wait for a save already
+  // past its timer, not just one still ticking (bughunt N2).
+  const outstanding = useRef<Promise<void> | null>(null);
 
   const setList = useCallback((next: ThemesList | null) => {
     listRef.current = next;
@@ -193,8 +198,18 @@ export function useThemeEditor() {
 
   const runSave = useCallback(() => {
     const d = draftRef.current;
-    queue.current = queue.current.then(() => save(d)).catch(() => {});
-    return queue.current;
+    const run: Promise<void> = queue.current.then(() => save(d)).catch(() => {});
+    queue.current = run;
+    outstanding.current = run;
+    run.then(
+      () => {
+        if (outstanding.current === run) outstanding.current = null;
+      },
+      () => {
+        if (outstanding.current === run) outstanding.current = null;
+      },
+    );
+    return run;
   }, [save]);
 
   const schedule = useCallback(
@@ -209,13 +224,29 @@ export function useThemeEditor() {
   );
 
   /** A save that is waiting goes now: used before switching themes, so an
-   *  edit to one of mine is not lost to the switch. */
-  const flush = useCallback(() => {
-    if (!timer.current) return;
+   *  edit to one of mine is not lost to the switch. Returns the save so a
+   *  caller can wait for it to land before doing anything that reads or
+   *  overwrites the same active theme (leave, below). */
+  const flush = useCallback((): Promise<void> => {
+    if (!timer.current) return Promise.resolve();
     clearTimeout(timer.current);
     timer.current = null;
-    void runSave();
+    return runSave();
   }, [runSave]);
+
+  // Leaving Appearance (navigating away, closing the tab) must not drop a
+  // colour edit still waiting out SAVE_DELAY_MS: flush it on unmount and on
+  // pagehide, which fires for both cases (bughunt N1).
+  useEffect(() => {
+    const onPageHide = () => {
+      flush();
+    };
+    window.addEventListener('pagehide', onPageHide);
+    return () => {
+      window.removeEventListener('pagehide', onPageHide);
+      flush();
+    };
+  }, [flush]);
 
   const edit = useCallback(
     (next: { inputs: ThemeInputs; pinned: Set<MoreKey> }, delay: number) => {
@@ -248,15 +279,25 @@ export function useThemeEditor() {
     edit({ inputs: base, pinned: pinnedOf(base) }, 0);
   };
 
-  const leave = () => {
-    flush();
+  /** Drops the draft and, crucially, waits for an edit-save still in
+   *  flight before anything else touches the active theme: switching while
+   *  that save is still going is what lets the switch's write land first
+   *  and then get overwritten by the stale save behind it (bughunt N2).
+   *  Returns the flush to await, or undefined when there was nothing
+   *  pending, so a caller with no draft to save (picking a preset with a
+   *  clean page) keeps switching the instant it is clicked, `await`-free. */
+  const leave = (): Promise<void> | undefined => {
+    if (timer.current) flush();
+    const pending = outstanding.current ?? undefined;
     setDraft(null);
     setNotice(null);
     setStatus(IDLE);
+    return pending;
   };
 
   const pickPreset = async (preset: PresetId) => {
-    leave();
+    const pending = leave();
+    if (pending) await pending;
     const saved = await useThemeStore.getState().select({ preset });
     setStatus(saved ? SAVED : { tone: 'error', text: `Not saved: ${refusal(null)}` });
   };
@@ -265,7 +306,8 @@ export function useThemeEditor() {
     const l = listRef.current;
     const row = l?.mine.find((t) => t.id === id) ?? l?.shared.find((t) => t.id === id);
     if (!row) return;
-    leave();
+    const pending = leave();
+    if (pending) await pending;
     const saved = await useThemeStore.getState().select({ themeId: id }, docFromSaved(row));
     if (saved) setStatus(SAVED);
     else {
@@ -280,7 +322,8 @@ export function useThemeEditor() {
     if (!l) return false;
     const from = inputs;
     const base = selection.base;
-    leave();
+    const pending = leave();
+    if (pending) await pending;
     try {
       const { theme } = await api.createTheme({ name: uniqueName('New theme', l.mine.map((t) => t.name)), base, inputs: from });
       putMine(theme);
