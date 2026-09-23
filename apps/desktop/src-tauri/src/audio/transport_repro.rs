@@ -1,0 +1,177 @@
+//! Play, pause, seek and error reports, through the REAL audio commands.
+//!
+//! The other test files drive the source chain. These call the commands the
+//! webview invokes (`audio_load`, `audio_play`, `audio_pause`, `audio_seek`)
+//! on tauri's mock app, against a local fake host, and read back the `audio:*`
+//! events the webview would get. The engine plays into a mixer this file
+//! drains itself, standing in for the sound card, as fast as it will go: a
+//! two minute song plays through in seconds.
+//!
+//! Bughunt 2026-09-24, P02, P03 and P07. See docs/reports/bughunt-2026-09-24/.
+
+use std::io::{BufRead, BufReader, Write};
+use std::net::{TcpListener, TcpStream};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::{Arc, Mutex};
+use std::time::Duration;
+
+use tauri::test::{mock_app, MockRuntime};
+use tauri::{App, AppHandle, Listener, Manager};
+
+use super::{audio_load, AudioEngine};
+
+/// 120 s of AAC in a plain m4a: a cached song, decoded seekable.
+const TRACK: &[u8] = include_bytes!("../../test-fixtures/tone-faststart.m4a");
+
+/// What the fake host sends for one request.
+#[derive(Clone, Copy, Debug)]
+enum Answer {
+    /// The song, in full.
+    Song,
+    /// A 200 with bytes no decoder can read: the engine calls this worth a
+    /// retry on web audio.
+    Garbage,
+}
+
+struct Host {
+    url: String,
+}
+
+/// Answers the n-th request (0-based) with `answers[n]`, or the last one past
+/// the end, after `delay`: the time a real host spends before its first byte.
+fn host(answers: &'static [Answer], delay: Duration) -> Host {
+    let listener = TcpListener::bind("127.0.0.1:0").expect("bind");
+    let addr = listener.local_addr().expect("addr");
+    let count = Arc::new(AtomicUsize::new(0));
+    std::thread::spawn(move || {
+        for conn in listener.incoming() {
+            let Ok(mut stream) = conn else { continue };
+            let count = Arc::clone(&count);
+            std::thread::spawn(move || {
+                read_headers(&stream);
+                let n = count.fetch_add(1, Ordering::SeqCst);
+                std::thread::sleep(delay);
+                let (status, body): (&str, &[u8]) = match answers[n.min(answers.len() - 1)] {
+                    Answer::Song => ("200 OK", TRACK),
+                    Answer::Garbage => ("200 OK", &[0u8; 4096]),
+                };
+                let _ = write!(
+                    stream,
+                    "HTTP/1.1 {status}\r\nContent-Type: audio/mp4\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                    body.len()
+                );
+                let _ = stream.write_all(body);
+                let _ = stream.flush();
+            });
+        }
+    });
+    Host { url: format!("http://{addr}/api/youtube/stream/abc") }
+}
+
+fn read_headers(stream: &TcpStream) {
+    let mut reader = BufReader::new(stream.try_clone().expect("clone"));
+    loop {
+        let mut line = String::new();
+        if reader.read_line(&mut line).unwrap_or(0) == 0 || line.trim().is_empty() {
+            break;
+        }
+    }
+}
+
+/// A mock app with a managed engine, its sound card, and every event it sent.
+struct Rig {
+    app: App<MockRuntime>,
+    events: Arc<Mutex<Vec<(String, String)>>>,
+    stop: Arc<AtomicBool>,
+}
+
+impl Rig {
+    fn new() -> Self {
+        let (mixer, mut out) = rodio::mixer::mixer(2, 44_100);
+        let stop = Arc::new(AtomicBool::new(false));
+        let halt = Arc::clone(&stop);
+        std::thread::spawn(move || {
+            while !halt.load(Ordering::SeqCst) {
+                // `None` is a mixer with nothing connected yet.
+                if (0..4096).map(|_| out.next()).all(|s| s.is_none()) {
+                    std::thread::sleep(Duration::from_millis(1));
+                }
+            }
+        });
+        let app = mock_app();
+        app.manage(AudioEngine::with_output(mixer));
+        let events = Arc::new(Mutex::new(Vec::new()));
+        for name in ["audio:time", "audio:duration", "audio:play", "audio:pause", "audio:ended", "audio:error"] {
+            let log = Arc::clone(&events);
+            app.listen_any(name, move |e| {
+                log.lock().expect("events").push((name.to_string(), e.payload().to_string()));
+            });
+        }
+        Self { app, events, stop }
+    }
+
+    fn engine(&self) -> tauri::State<'_, AudioEngine> {
+        self.app.state::<AudioEngine>()
+    }
+
+    async fn load(&self, url: &str, autoplay: bool) {
+        load_on(self.app.handle().clone(), url.to_string(), autoplay).await;
+    }
+
+    /// Every event so far, oldest first.
+    fn events(&self) -> Vec<(String, String)> {
+        self.events.lock().expect("events").clone()
+    }
+
+    fn count(&self, name: &str) -> usize {
+        self.events().iter().filter(|(n, _)| n == name).count()
+    }
+
+}
+
+impl Drop for Rig {
+    fn drop(&mut self) {
+        self.stop.store(true, Ordering::SeqCst);
+    }
+}
+
+/// The webview's `invoke('audio_load', ...)`, run to completion. Takes the
+/// handle rather than the rig so a test can run it as a task of its own.
+async fn load_on(app: AppHandle<MockRuntime>, url: String, autoplay: bool) {
+    audio_load(app.clone(), app.state::<AudioEngine>(), url, autoplay, 0.0, None)
+        .await
+        .expect("the load command itself runs");
+}
+
+// --- P03: a superseded load's failure ---------------------------------------
+
+/// The listener clicks song A, which is slow to come, then song B, which plays.
+/// Then A fails. Its failure belongs to nobody any more: before the fix it was
+/// sent as `audio:error`, which the webview pins on the song now playing (B),
+/// and this one (bytes no decoder can read) even carries "try web audio", so
+/// the whole session swapped engines over a song nobody was waiting for.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_superseded_loads_failure_is_not_blamed_on_the_song_now_playing() {
+    let rig = Rig::new();
+    let slow_broken = host(&[Answer::Garbage], Duration::from_millis(1_500));
+    let good = host(&[Answer::Song], Duration::ZERO);
+
+    let a = tokio::spawn(load_on(rig.app.handle().clone(), slow_broken.url.clone(), true));
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    rig.load(&good.url, true).await;
+    a.await.expect("load A");
+
+    let errors: Vec<_> = rig.events().into_iter().filter(|(n, _)| n == "audio:error").collect();
+    assert!(errors.is_empty(), "song B was blamed for song A: {errors:?}");
+    let loaded = rig.engine().current_url.lock().expect("url").clone();
+    assert_eq!(loaded, Some(good.url.clone()), "song B is still the loaded one");
+}
+
+/// The fix does not hide a failure that IS the current song's.
+#[tokio::test(flavor = "multi_thread")]
+async fn the_current_loads_failure_is_still_reported() {
+    let rig = Rig::new();
+    let broken = host(&[Answer::Garbage], Duration::ZERO);
+    rig.load(&broken.url, true).await;
+    assert_eq!(rig.count("audio:error"), 1, "events: {:?}", rig.events());
+}
