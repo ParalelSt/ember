@@ -104,6 +104,9 @@ case "$CMD" in
     # Every id asked about, on a line of its own, since the line above only
     # logs the last one.
     echo "classify-ids ${*:2}" >> "$LOG"
+    # FAKE_CLASSIFY_SLEEP seconds per call, so a browser test can see the
+    # dialog's "Checking which likes are songs" line.
+    sleep "${FAKE_CLASSIFY_SLEEP:-0}"
     node -e '
       const fix = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"));
       const args = process.argv.slice(2);

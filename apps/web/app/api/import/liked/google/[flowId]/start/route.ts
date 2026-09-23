@@ -14,10 +14,11 @@ import { withRequestLog } from '@/lib/logger/withRequestLog';
 const CAP = MAX_TRANSFER_ITEMS.toLocaleString('en-GB');
 const OVER_CAP_MESSAGE = `Ember can transfer up to ${CAP} songs at once, and your YouTube Music likes have more. Ember will take the newest ${CAP}.`;
 
-/** Start: the likes a ready sign-in read become a `kind: 'liked'` transfer.
- *  Every item already names its video, so nothing is searched; the runner
- *  asks YouTube Music whether each one is a song as it goes. The sign-in is gone afterwards (its tokens went when the likes
- *  were read). */
+/** Start: the songs a ready sign-in read become a `kind: 'liked'` transfer.
+ *  YouTube Music already said which likes are songs, before the preview:
+ *  songs are liked by the runner as they are (no search), uploads wait in
+ *  the review list, and likes that are not music are only counted. The
+ *  sign-in is gone afterwards (its tokens went when the likes were read). */
 export const POST = withRequestLog(
   'import/liked/google/[flowId]/start',
   async (_req: NextRequest, ctx: RouteContext<'/api/import/liked/google/[flowId]/start'>) => {

@@ -7,8 +7,10 @@
  *  signs itself out again (lib/import/google/). YouTube names the exact video
  *  for every like, so the import needs no search at all: each item arrives
  *  with its one candidate already filled in. What YouTube does not say is
- *  whether a liked video is a song, so the runner asks YouTube Music about
- *  each one before liking it (lib/import/musicCheck.ts).
+ *  whether a liked video is a song, so before the preview the likes go
+ *  through two passes: the uploader's own category (lib/import/google/
+ *  likes.ts), then YouTube Music's word on each survivor
+ *  (lib/import/musicCheck.ts). Only songs reach the transfer.
  *
  *  Everything here is pure: the parser, and the words the dialog and the
  *  routes say, so the two can never drift apart. */
@@ -16,7 +18,7 @@
 import { MAX_TRANSFER_ITEMS } from '@/lib/import/jobState';
 import { readyItem } from '@/lib/import/records';
 import { field, type ParsedSource, type TransferItem } from '@/lib/import/sources/types';
-import type { MusicVideoType } from '@/lib/import/musicCheck';
+import { likeOutcome, songCandidate, type MusicVideoType } from '@/lib/import/musicCheck';
 import type { Track } from '@/types/track';
 
 /** One liked song: the exact video, plus every artist named (the Track
@@ -28,8 +30,9 @@ export interface LikedSong {
    *  order decides (lib/import/likedAt.ts). Kept because other sources do
    *  say. */
   likedAt: number | null;
-  /** Known before any asking: ATV for an auto-generated Topic channel.
-   *  Null or missing: YouTube Music says what it is during the transfer. */
+  /** What YouTube Music calls it: ATV straight away for an auto-generated
+   *  Topic channel, the rest once YouTube Music has been asked (before the
+   *  preview). Null or missing: not music. */
   videoType?: MusicVideoType | null;
 }
 
@@ -66,6 +69,8 @@ export const GOOGLE_MESSAGES = {
   unreachable: 'Google did not answer. Try again in a moment.',
   quota: "Google's daily limit for this server is used up. Try again tomorrow.",
   readFailed: 'Ember could not read your likes from Google. Press Sign in with Google to try again.',
+  checkFailed:
+    "YouTube Music isn't answering right now, so Ember could not tell which of your likes are songs. Press Sign in with Google to try again in a few minutes.",
   noLikes: 'There are no liked songs on that Google account yet.',
   gone: 'That sign-in is over. Press Sign in with Google to start again.',
   rateLimited: 'That is a lot of sign-ins in an hour. Try again a little later.',
@@ -82,19 +87,44 @@ export const GOOGLE_UNVERIFIED_HINT =
 /** Under the not-configured sentence: the way in that needs no sign-in. */
 export const GOOGLE_FALLBACK_HINT = 'You can still bring your likes over as a playlist link.';
 
-/** The line under the preview: Google hands over every like, and which are
- *  songs is only known as the transfer goes. */
-export const GOOGLE_CHECKING_LINE =
-  'YouTube Music checks each like as the transfer goes: songs are liked, videos that are not music are left out, and uploads it is not sure about wait for a quick check from you.';
+/** A Google account whose likes are all videos, not songs, by the first
+ *  pass (the uploader's own category). */
+export function noMusicMessage(skipped: number): string {
+  return skipped > 0
+    ? `None of the ${skipped} ${skipped === 1 ? 'video' : 'videos'} you liked on that Google account ${skipped === 1 ? 'is' : 'are'} music, so there is nothing to bring over.`
+    : GOOGLE_MESSAGES.noLikes;
+}
 
-/** The liked videos as a transfer source. Every item carries its one ready
- *  candidate, which is what keeps a 3 000-song transfer off the search;
- *  the ones not from a Topic channel are marked for YouTube Music to check. */
+/** Likes that passed the first pass, none of which YouTube Music calls a
+ *  song. */
+export function noSongsMessage(likes: number): string {
+  return `YouTube Music says none of the ${likes} ${likes === 1 ? 'like' : 'likes'} on that Google account ${likes === 1 ? 'is a song' : 'are songs'}, so there is nothing to bring over.`;
+}
+
+/** The waiting line during the second pass. */
+export function checkingLine(done: number, total: number): string {
+  return `Checking which likes are songs: ${done} of ${total}`;
+}
+
+/** Under the preview: uploads that come across only after a yes. */
+export function toCheckLine(n: number): string {
+  return `${n} more ${n === 1 ? 'needs' : 'need'} a quick check: ${n === 1 ? 'an upload' : 'uploads'} YouTube Music is not sure ${n === 1 ? 'is a song' : 'are songs'}.`;
+}
+
+/** The checked likes as a transfer source. Every item carries its one
+ *  ready candidate, which is what keeps a 3 000-song transfer off the
+ *  search. Songs (ATV, OMV) come first, in Google's order, and are liked by
+ *  the runner as they are; an upload (UGC) is created waiting in the review
+ *  list; a like that is not music comes last, already skipped, only so the
+ *  finished transfer can count it. The Liked page never shows it. */
 export function parseYtmusicLiked(songs: LikedSong[], { truncated = false, dropped = 0 } = {}): ParsedSource {
   const kept = songs.slice(0, MAX_TRANSFER_ITEMS);
-  const items: TransferItem[] = kept.map((song, position) => {
+  const outcome = (s: LikedSong) => likeOutcome(s.videoType);
+  const ordered = [...kept.filter((s) => outcome(s) !== 'skipped'), ...kept.filter((s) => outcome(s) === 'skipped')];
+  const items: TransferItem[] = ordered.map((song, position) => {
     const ready = readyItem(song.track, position, READY_REASON);
-    const candidates = ready.candidates.map((c) => (song.videoType ? { ...c, videoType: song.videoType } : { ...c, unchecked: true }));
+    const type = song.videoType ?? null;
+    const status = outcome(song);
     const artists = (song.artists.length ? song.artists : ready.item.artists).map((a) => field(a)).filter(Boolean);
     return {
       ...ready.item,
@@ -102,7 +132,8 @@ export function parseYtmusicLiked(songs: LikedSong[], { truncated = false, dropp
       artists,
       artist: artists.join(', '),
       likedAt: song.likedAt,
-      candidates,
+      candidates: ready.candidates.map((c) => songCandidate(c, type)),
+      ...(status === 'accepted' ? {} : { status }),
     };
   });
   return {

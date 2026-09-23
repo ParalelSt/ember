@@ -1,20 +1,33 @@
 import { describe, expect, it } from 'vitest';
-import { isTopic, isoSeconds, likedSongFromVideo, likesFromPage, songName } from '@/lib/import/google/likes';
+import { isMusic, isoSeconds, isTopic, likedSongFromVideo, musicFromPage, songName } from '@/lib/import/google/likes';
 import { music } from '@/test-utils/fakeGoogle';
 
-// Google keeps one list of likes for YouTube and YouTube Music. Every like
-// is read; YouTube Music says which are songs during the transfer. Only an
-// auto-generated "- Topic" channel is known up front.
+// Google keeps one list of likes for YouTube and YouTube Music. The first
+// pass, which costs nothing: category 10, or an auto-generated "- Topic"
+// channel. YouTube Music checks the survivors next (musicCheck.test.ts).
 
-describe('isTopic', () => {
-  it('an auto-generated Topic channel, whatever its category', () => {
-    expect(isTopic(music('aaaaaaaaaaa', 'Song', 'Nadia Okonkwo - Topic', '24'))).toBe(true);
+describe('isMusic', () => {
+  it('keeps category 10', () => {
+    expect(isMusic(music('aaaaaaaaaaa', 'Song', 'Band', '10'))).toBe(true);
   });
 
-  it('nothing else, not even category 10', () => {
-    expect(isTopic(music('aaaaaaaaaaa', 'Song', 'Band', '10'))).toBe(false);
-    expect(isTopic({ id: 'aaaaaaaaaaa' })).toBe(false);
+  it('keeps a Topic channel whatever its category', () => {
+    expect(isMusic(music('aaaaaaaaaaa', 'Song', 'Nadia Okonkwo - Topic', '24'))).toBe(true);
+  });
+
+  it('leaves out everything else', () => {
+    expect(isMusic(music('aaaaaaaaaaa', 'Speedrun', 'Gamer', '20'))).toBe(false);
+    expect(isMusic(music('aaaaaaaaaaa', 'How to bake', 'Kitchen', '26'))).toBe(false);
+    expect(isMusic({ id: 'aaaaaaaaaaa' })).toBe(false);
     // "Topic" as a word in a name is not the auto-generated suffix.
+    expect(isMusic(music('aaaaaaaaaaa', 'Talk', 'Topic Talks', '22'))).toBe(false);
+  });
+});
+
+describe('isTopic', () => {
+  it('only the auto-generated suffix, not category 10 and not the word', () => {
+    expect(isTopic(music('aaaaaaaaaaa', 'Song', 'Nadia Okonkwo - Topic', '24'))).toBe(true);
+    expect(isTopic(music('aaaaaaaaaaa', 'Song', 'Band', '10'))).toBe(false);
     expect(isTopic(music('aaaaaaaaaaa', 'Talk', 'Topic Talks', '22'))).toBe(false);
   });
 });
@@ -66,11 +79,12 @@ describe('likedSongFromVideo', () => {
     });
     expect(song.artists).toEqual(['Halcyon Drift']);
     expect(song.likedAt).toBeNull();
+    // A Topic channel is official audio: YouTube Music need not be asked.
     expect(song.videoType).toBe('ATV');
   });
 
   it('a video from any other channel waits for YouTube Music to say what it is', () => {
-    // Category 10 is the uploader's word, and the owner's Minecraft video had it.
+    // Category 10 is only the uploader's word, and the owner's Minecraft video had it.
     expect(likedSongFromVideo(music('aaaaaaaaaaa', 'Mob Farm', 'HorseFridge', '10'))!.videoType).toBeNull();
   });
 
@@ -80,23 +94,22 @@ describe('likedSongFromVideo', () => {
   });
 });
 
-describe('likesFromPage', () => {
-  it('keeps every like in order, whatever its category, and lands a double like once', () => {
+describe('musicFromPage', () => {
+  it('keeps music in order, counts what it left out, and lands a double like once', () => {
     const seen = new Set<string>();
-    const first = likesFromPage(
+    const first = musicFromPage(
       [
         music('aaaaaaaaaaa', 'One'),
         music('bbbbbbbbbbb', 'Gaming', 'Gamer', '20'),
         music('ccccccccccc', 'Two', 'Band - Topic', '24'),
         music('aaaaaaaaaaa', 'One again'),
-        music('short', 'Not a video id'),
       ],
       seen,
     );
-    expect(first.map((s) => s.track.sourceId)).toEqual(['aaaaaaaaaaa', 'bbbbbbbbbbb', 'ccccccccccc']);
-    expect(first.map((s) => s.videoType)).toEqual([null, null, 'ATV']);
+    expect(first.songs.map((s) => s.track.sourceId)).toEqual(['aaaaaaaaaaa', 'ccccccccccc']);
+    expect(first.skipped).toBe(1);
     // Across pages too.
-    const second = likesFromPage([music('ccccccccccc', 'Two'), music('ddddddddddd', 'Three')], seen);
-    expect(second.map((s) => s.track.sourceId)).toEqual(['ddddddddddd']);
+    const second = musicFromPage([music('ccccccccccc', 'Two'), music('ddddddddddd', 'Three')], seen);
+    expect(second.songs.map((s) => s.track.sourceId)).toEqual(['ddddddddddd']);
   });
 });

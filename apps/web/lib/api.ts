@@ -154,9 +154,10 @@ export const api = {
       '/import/liked/google',
       { method: 'POST' },
     ),
-  /** How that sign-in stands; `preview` once the likes are read. */
+  /** How that sign-in stands; `checking` while YouTube Music says which
+   *  likes are songs, `preview` once it has. */
   googleLikesStatus: (flowId: string) =>
-    req<{ state: GoogleFlowState; preview?: GooglePreview; message?: string }>(
+    req<{ state: GoogleFlowState; preview?: GooglePreview; checking?: { done: number; total: number }; message?: string }>(
       `/import/liked/google/${encodeURIComponent(flowId)}`,
     ),
   /** Queue the transfer of the likes that sign-in read. */

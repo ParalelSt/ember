@@ -13,12 +13,37 @@ import {
   MAX_FLOWS,
   takeFlow,
 } from '@/lib/import/google/flows';
-import { GOOGLE_MESSAGES } from '@/lib/import/sources/ytmusicLiked';
+import { GOOGLE_MESSAGES, noSongsMessage } from '@/lib/import/sources/ytmusicLiked';
+import { UPLOAD_REASON } from '@/lib/import/musicCheck';
+import { BACKOFF_MS } from '@/lib/import/jobState';
 import { FAKE_ENV, FAKE_REFRESH, FAKE_USER_CODE, fakeGoogle, music, SECRET_MARK } from '@/test-utils/fakeGoogle';
+import {
+  fakeYoutubeMusic,
+  liked16,
+  LIKED16_NOT_MUSIC,
+  LIKED16_SONGS,
+  LIKED16_UPLOADS,
+  type FakeAnswer,
+} from '@/test-utils/fakeYoutubeMusic';
 
 // A sign-in's whole life against a fake Google, with the clock faked: the
 // server polls at Google's interval, reads the likes once, revokes the grant
-// at once, and forgets everything on every way out.
+// at once, and forgets everything on every way out. YouTube Music's check
+// of the likes (`player.py classify`, the one Python call) is a fake too,
+// answering with the helper's own JSON.
+
+const ytm = vi.hoisted(() => ({ classify: null as null | ((ids: string[]) => Promise<unknown>) }));
+vi.mock('@/lib/sources/youtube', () => ({
+  classifyVideos: (ids: string[]) => ytm.classify!(ids),
+}));
+vi.mock('@/lib/logger/server', () => ({ serverLogger: { error: () => {}, warn: () => {}, info: () => {} } }));
+
+/** YouTube Music, answering from a table; anything not in it is no song. */
+function useYoutubeMusic(answers: Record<string, FakeAnswer | FakeAnswer[]> = {}, opts: Parameters<typeof fakeYoutubeMusic>[1] = {}) {
+  const f = fakeYoutubeMusic(answers, opts);
+  ytm.classify = f.classify;
+  return f;
+}
 
 const cfg = googleConfig(FAKE_ENV as unknown as NodeJS.ProcessEnv) as GoogleConfig;
 
@@ -34,6 +59,8 @@ const tick = (ms: number) => vi.advanceTimersByTimeAsync(ms);
 beforeEach(() => {
   vi.useFakeTimers();
   _resetFlows();
+  // By default every like YouTube Music is asked about is an official video.
+  useYoutubeMusic(new Proxy({}, { get: () => 'OMV' }));
 });
 afterEach(() => {
   _resetFlows();
@@ -69,18 +96,17 @@ describe('a sign-in that goes well', () => {
 
     const status = flowStatus('u1', started.flowId)!;
     expect(status.state).toBe('ready');
-    expect(status.preview).toMatchObject({
+    // The vlog (category 22) never got past the first pass.
+    expect(status.preview).toEqual({
       kind: 'ytmusic-liked',
       label: 'Liked songs from YouTube Music',
       order: 'newest-first',
-      // Every like, the vlog too: YouTube Music says which are songs during
-      // the transfer. The Topic one is known already, so two wait for it.
-      count: 3,
-      toCheck: 2,
+      count: 2,
+      toCheck: 0,
+      dropped: 0,
       truncated: false,
       sample: [
         { title: 'First', artist: 'An Artist' },
-        { title: 'A vlog', artist: 'Me' },
         { title: 'Second', artist: 'Band' },
       ],
     });
@@ -96,7 +122,8 @@ describe('a sign-in that goes well', () => {
     await tick(5_000);
     const parsed = takeFlow('u1', flowId)!;
     expect(parsed.items.map((i) => i.title)).toEqual(['First', 'Second']);
-    expect(parsed.items[0].candidates?.[0]).toMatchObject({ score: 100, unchecked: true, track: { sourceId: 'aaaaaaaaaaa' } });
+    expect(parsed.items[0].candidates?.[0]).toMatchObject({ score: 100, videoType: 'OMV', track: { sourceId: 'aaaaaaaaaaa' } });
+    expect(parsed.items.map((i) => i.status)).toEqual([undefined, undefined]);
     expect(takeFlow('u1', flowId)).toBeNull();
     expect(flowStatus('u1', flowId)).toBeNull();
     expect(_flowStats().flows).toBe(0);
@@ -139,6 +166,7 @@ describe('every way a sign-in ends early forgets it', () => {
     ['an account Google blocks', { polls: [{ error: 'org_internal', status: 403 }] }, 'error', GOOGLE_MESSAGES.blocked],
     ['the one scope unticked', { scope: 'openid' }, 'denied', GOOGLE_MESSAGES.noScope],
     ['a used-up quota', { videosError: { status: 403, reason: 'quotaExceeded' } }, 'error', GOOGLE_MESSAGES.quota],
+    ['likes with no music in them', { pages: [[music('aaaaaaaaaaa', 'Vlog', 'Me', '22')]] }, 'error', 'None of the 1 video'],
     ['an account with no likes at all', { pages: [[]] }, 'error', GOOGLE_MESSAGES.noLikes],
   ];
   for (const [name, opts, state, message] of endings) {
@@ -219,6 +247,153 @@ describe('every way a sign-in ends early forgets it', () => {
     await tick(0);
     expect(flowStatus('u1', flowId)).toBeNull();
     expect(_flowStats()).toEqual({ flows: 0, holdingSecrets: 0 });
+  });
+});
+
+// The second pass: YouTube Music says which of the likes that got past the
+// first are songs, while the dialog says "Checking which likes are songs".
+describe('YouTube Music checks the likes before the preview', () => {
+  const gaming = music('gSpeedrun01', 'Any% speedrun, world record', 'Some Gamer', '20');
+  const minecraft = music('gMobFarm001', 'I Built a GIANT Mob Farm in Old Minecraft', 'HorseFridge', '10');
+  const topic = music('gNineStrt01', 'Nine Streets', 'The Quiet Parade - Topic', '24');
+  const upload = music('gGarageDmo1', 'Garage demo, first take', 'The Quiet Parade', '10');
+  const video = music('gPaperLant1', 'Halcyon Drift - Paper Lanterns (Official Video)', 'HalcyonDriftVEVO', '10');
+
+  it('the preview is songs only: no gaming like, no "Music" Minecraft video, an upload counted to check', async () => {
+    const f = useYoutubeMusic({ gMobFarm001: null, gGarageDmo1: 'UGC', gPaperLant1: 'OMV' });
+    useGoogle({ pages: [[gaming, minecraft, topic], [upload, video]] });
+    const { flowId } = await beginFlow('u1', cfg);
+    await tick(5_000);
+    const status = flowStatus('u1', flowId)!;
+    expect(status.preview).toMatchObject({
+      count: 2,
+      toCheck: 1,
+      sample: [
+        { title: 'Nine Streets', artist: 'The Quiet Parade' },
+        { title: 'Paper Lanterns', artist: 'Halcyon Drift' },
+      ],
+    });
+    expect(JSON.stringify(status)).not.toMatch(/speedrun|Mob Farm|Garage/);
+    // Category 20 never reached YouTube Music, and a Topic channel is not asked about.
+    expect(f.asked).toEqual([['gMobFarm001', 'gGarageDmo1', 'gPaperLant1']]);
+    const parsed = takeFlow('u1', flowId)!;
+    expect(parsed.items.map((i) => [i.title, i.status ?? 'pending'])).toEqual([
+      ['Nine Streets', 'pending'],
+      ['Garage demo, first take', 'review'],
+      ['Paper Lanterns', 'pending'],
+      ['I Built a GIANT Mob Farm in Old Minecraft', 'skipped'],
+    ]);
+    expect(parsed.items[1].candidates?.[0]).toMatchObject({ videoType: 'UGC', track: { sourceId: 'gGarageDmo1' } });
+    expect(parsed.items[1].candidates?.[0].reasons).toContain(UPLOAD_REASON);
+  });
+
+  it('says how far it is while it checks, three batches of 8 at a time', async () => {
+    const likes = Array.from({ length: 40 }, (_, i) => music(`vid${String(i).padStart(8, '0')}`, `Like ${i}`));
+    // Every one of them an official video, once let go.
+    const answers: Record<string, FakeAnswer> = Object.fromEntries(likes.map((l) => [l.id!, 'OMV']));
+    const g = useYoutubeMusic(answers, { gated: true });
+    useGoogle({ pages: [likes] });
+    const { flowId } = await beginFlow('u1', cfg);
+    await tick(5_000);
+    expect(flowStatus('u1', flowId)).toEqual({ state: 'reading', checking: { done: 0, total: 40 } });
+    expect(g.waiting).toBe(3);
+    g.release();
+    await tick(0);
+    expect(flowStatus('u1', flowId)).toEqual({ state: 'reading', checking: { done: 8, total: 40 } });
+    while (g.waiting) {
+      g.release();
+      await tick(0);
+    }
+    expect(g.maxInFlight).toBe(3);
+    expect(flowStatus('u1', flowId)?.state).toBe('ready');
+    expect(flowStatus('u1', flowId)?.preview).toMatchObject({ count: 40, toCheck: 0 });
+    // Nothing secret in any of it.
+    expect(_flowStats().holdingSecrets).toBe(0);
+  });
+
+  it("the owner's 16 real likes: 5 songs in the preview, 5 uploads to check, 6 never shown", async () => {
+    const o = liked16();
+    const f = useYoutubeMusic(o.answers);
+    // Plus a gaming like, which the first pass drops before anyone is asked.
+    useGoogle({ pages: [o.videos.slice(0, 8), [...o.videos.slice(8), gaming]] });
+    const { flowId } = await beginFlow('u1', cfg);
+    await tick(5_000);
+    const preview = flowStatus('u1', flowId)!.preview!;
+    expect(preview.count).toBe(5);
+    expect(preview.toCheck).toBe(5);
+    expect(preview.sample.map((s) => s.title)).toEqual(['ZITTI E BUONI', 'Voices', 'Ashes of the Dawn', 'Kradem Bakar', 'Uzalud Sunce Sja']);
+    // The four Topic channels were known already; only the other 12 were asked about.
+    expect(f.asked.flat()).toHaveLength(12);
+    expect(f.asked.flat()).not.toContain('gSpeedrun01');
+
+    const parsed = takeFlow('u1', flowId)!;
+    const title = new Map(o.rows.map((r) => [r.videoId, r.title]));
+    const byStatus = (st: string) => parsed.items.filter((i) => (i.status ?? 'pending') === st).map((i) => title.get(i.candidates![0].track.sourceId)).sort();
+    expect(byStatus('pending')).toEqual(LIKED16_SONGS);
+    expect(byStatus('review')).toEqual(LIKED16_UPLOADS);
+    expect(byStatus('skipped')).toEqual(LIKED16_NOT_MUSIC);
+  });
+
+  it('YouTube Music asking to slow down: the batch waits and is asked again', async () => {
+    const f = useYoutubeMusic({ gPaperLant1: ['busy', 'OMV'] });
+    useGoogle({ pages: [[video]] });
+    const { flowId } = await beginFlow('u1', cfg);
+    await tick(5_000);
+    expect(flowStatus('u1', flowId)).toEqual({ state: 'reading', checking: { done: 0, total: 1 } });
+    await tick(BACKOFF_MS[0]);
+    expect(flowStatus('u1', flowId)?.preview).toMatchObject({ count: 1 });
+    expect(f.asked).toHaveLength(2);
+  });
+
+  it('no answer at all after every backoff ends the sign-in with a sentence, nothing guessed', async () => {
+    useYoutubeMusic({ gPaperLant1: 'busy' });
+    useGoogle({ pages: [[video]] });
+    const { flowId } = await beginFlow('u1', cfg);
+    await tick(5_000 + BACKOFF_MS.reduce((a, b) => a + b, 0));
+    expect(flowStatus('u1', flowId)).toEqual({ state: 'error', message: GOOGLE_MESSAGES.checkFailed });
+    expect(_flowStats().holdingSecrets).toBe(0);
+  });
+
+  it('likes that got past the first pass but none of them songs: nothing to bring over', async () => {
+    useYoutubeMusic({ gMobFarm001: null });
+    useGoogle({ pages: [[minecraft, gaming]] });
+    const { flowId } = await beginFlow('u1', cfg);
+    await tick(5_000);
+    expect(flowStatus('u1', flowId)).toEqual({ state: 'error', message: noSongsMessage(1) });
+  });
+
+  it('cancel during the check stops asking', async () => {
+    const likes = Array.from({ length: 40 }, (_, i) => music(`vid${String(i).padStart(8, '0')}`, `Like ${i}`));
+    const f = useYoutubeMusic({}, { gated: true });
+    useGoogle({ pages: [likes] });
+    const { flowId } = await beginFlow('u1', cfg);
+    await tick(5_000);
+    expect(f.asked).toHaveLength(3);
+    await cancelFlow('u1', flowId);
+    while (f.waiting) {
+      f.release();
+      await tick(0);
+    }
+    expect(f.asked).toHaveLength(3);
+    expect(flowStatus('u1', flowId)).toBeNull();
+    expect(_flowStats()).toEqual({ flows: 0, holdingSecrets: 0 });
+  });
+
+  it('a long check is not cut off at the quarter hour while it keeps moving', async () => {
+    const likes = Array.from({ length: 40 }, (_, i) => music(`vid${String(i).padStart(8, '0')}`, `Like ${i}`));
+    const f = useYoutubeMusic({}, { gated: true });
+    useGoogle({ pages: [likes] });
+    const { flowId } = await beginFlow('u1', cfg);
+    await tick(5_000);
+    for (let i = 0; i < 4; i++) {
+      await tick(10 * 60_000);
+      f.release();
+      await tick(0);
+      expect(flowStatus('u1', flowId)?.state).toBe('reading');
+    }
+    // Stuck for a whole quarter hour: then it is over.
+    await tick(FLOW_TTL_MS);
+    expect(flowStatus('u1', flowId)).toEqual({ state: 'expired', message: GOOGLE_MESSAGES.expired });
   });
 });
 

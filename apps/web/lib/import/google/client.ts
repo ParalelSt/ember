@@ -1,6 +1,6 @@
 import 'server-only';
 import { MAX_TRANSFER_ITEMS } from '@/lib/import/jobState';
-import { likesFromPage, type YoutubeVideo } from '@/lib/import/google/likes';
+import { musicFromPage, type YoutubeVideo } from '@/lib/import/google/likes';
 import type { GoogleFailure, LikedSong } from '@/lib/import/sources/ytmusicLiked';
 
 /** Google's OAuth 2.0 device flow ("TVs and Limited Input devices") and the
@@ -172,23 +172,24 @@ export async function revokeTokens(cfg: GoogleConfig, tokens: { accessToken: str
   return false;
 }
 
-export interface LikedVideos {
-  /** Every liked video, not only songs: YouTube Music says which are songs
-   *  during the transfer. */
+export interface LikedMusic {
   songs: LikedSong[];
+  /** Likes that were not music. */
+  skipped: number;
   /** There was more than one transfer may carry, or more than Ember reads. */
   truncated: boolean;
 }
 
 /** Step three: every like, newest first as Google lists them, paged to the
- *  end, cut at the transfer cap. */
-export async function readLikes(
+ *  end, music only, cut at the transfer cap. */
+export async function readLikedMusic(
   cfg: GoogleConfig,
   accessToken: string,
   { cap = MAX_TRANSFER_ITEMS, maxPages = MAX_LIKE_PAGES, signal }: { cap?: number; maxPages?: number; signal?: AbortSignal } = {},
-): Promise<LikedVideos> {
+): Promise<LikedMusic> {
   const seen = new Set<string>();
   const songs: LikedSong[] = [];
+  let skipped = 0;
   let pageToken = '';
   for (let page = 0; page < maxPages; page++) {
     const q = new URLSearchParams({ myRating: 'like', part: 'snippet,contentDetails', maxResults: '50' });
@@ -204,13 +205,15 @@ export async function readLikes(
     }
     const body = await json(res);
     if (!res.ok) throw new GoogleError(apiFailure(res.status, body));
-    songs.push(...likesFromPage(Array.isArray(body.items) ? (body.items as YoutubeVideo[]) : [], seen));
-    if (songs.length > cap) return { songs: songs.slice(0, cap), truncated: true };
+    const page_ = musicFromPage(Array.isArray(body.items) ? (body.items as YoutubeVideo[]) : [], seen);
+    songs.push(...page_.songs);
+    skipped += page_.skipped;
+    if (songs.length > cap) return { songs: songs.slice(0, cap), skipped, truncated: true };
     pageToken = typeof body.nextPageToken === 'string' ? body.nextPageToken : '';
-    if (!pageToken) return { songs, truncated: false };
+    if (!pageToken) return { songs, skipped, truncated: false };
   }
   // Ran out of pages Ember is willing to read with likes still to go.
-  return { songs, truncated: true };
+  return { songs, skipped, truncated: true };
 }
 
 function apiFailure(status: number, body: Record<string, unknown>): GoogleFailure {

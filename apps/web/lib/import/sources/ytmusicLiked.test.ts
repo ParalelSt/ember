@@ -3,16 +3,22 @@ import { MAX_TRANSFER_ITEMS } from '@/lib/import/jobState';
 import {
   GOOGLE_FORGET_NOTE,
   GOOGLE_MESSAGES,
-  GOOGLE_CHECKING_LINE,
   GOOGLE_MUSIC_ONLY_NOTE,
   GOOGLE_SIGNIN_STEPS,
+  checkingLine,
+  noMusicMessage,
+  noSongsMessage,
   parseYtmusicLiked,
+  toCheckLine,
   YTMUSIC_LIKED_LABEL,
   type LikedSong,
 } from '@/lib/import/sources/ytmusicLiked';
+import type { MusicVideoType } from '@/lib/import/musicCheck';
+import { UPLOAD_REASON } from '@/lib/import/musicCheck';
 import type { Track } from '@/types/track';
 
-function song(videoId: string, title: string, artists = ['Artist One', 'Artist Two']): LikedSong {
+/** A like YouTube Music has already answered for: a song unless told. */
+function song(videoId: string, title: string, artists = ['Artist One', 'Artist Two'], videoType: MusicVideoType | null = 'ATV'): LikedSong {
   const track: Track = {
     id: `youtube:${videoId}`,
     sourceId: videoId,
@@ -26,7 +32,7 @@ function song(videoId: string, title: string, artists = ['Artist One', 'Artist T
     artworkUrl: 'https://lh3.example/large',
     streamUrl: `/api/youtube/stream/${videoId}`,
   };
-  return { track, artists, likedAt: null };
+  return { track, artists, likedAt: null, videoType };
 }
 
 describe('parseYtmusicLiked', () => {
@@ -48,11 +54,27 @@ describe('parseYtmusicLiked', () => {
     expect(item.candidates?.[0].reasons).toEqual(['From your YouTube Music likes']);
   });
 
-  it('marks a like for YouTube Music to check, unless a Topic channel already says it is a song', () => {
-    const [plain, topic] = parseYtmusicLiked([song('aaaaaaaaaaa', 'First'), { ...song('bbbbbbbbbbb', 'Second'), videoType: 'ATV' }]).items;
-    expect(plain.candidates?.[0]).toMatchObject({ unchecked: true, videoType: null });
-    expect(topic.candidates?.[0].unchecked).toBeUndefined();
-    expect(topic.candidates?.[0].videoType).toBe('ATV');
+  it('songs come first and are left for the runner, an upload waits for a look, and a like that is not music is only counted', () => {
+    const parsed = parseYtmusicLiked([
+      song('aaaaaaaaaaa', 'Mob Farm', ['HorseFridge'], null),
+      song('bbbbbbbbbbb', 'Official audio', ['Band'], 'ATV'),
+      song('ccccccccccc', 'Garage demo', ['Band'], 'UGC'),
+      song('ddddddddddd', 'Official video', ['Band'], 'OMV'),
+    ]);
+    expect(parsed.items.map((i) => [i.position, i.title, i.status ?? 'pending'])).toEqual([
+      [0, 'Official audio', 'pending'],
+      [1, 'Garage demo', 'review'],
+      [2, 'Official video', 'pending'],
+      [3, 'Mob Farm', 'skipped'],
+    ]);
+    expect(parsed.items.map((i) => i.candidates?.[0].videoType)).toEqual(['ATV', 'UGC', 'OMV', null]);
+    // The review sheet says why it asks about the upload.
+    expect(parsed.items[1].candidates?.[0].reasons).toEqual(['From your YouTube Music likes', UPLOAD_REASON]);
+  });
+
+  it('a like nobody said anything about is not music', () => {
+    const unsaid = { ...song('aaaaaaaaaaa', 'First'), videoType: undefined };
+    expect(parseYtmusicLiked([unsaid]).items[0].status).toBe('skipped');
   });
 
   it('keeps every artist YouTube Music named, not only the first', () => {
@@ -105,15 +127,22 @@ describe('the words the sign-in says', () => {
     }
   });
 
-  it('says YouTube Music checks the likes as it goes', () => {
-    expect(GOOGLE_CHECKING_LINE).toMatch(/YouTube Music checks each like as the transfer goes/);
-    expect(GOOGLE_CHECKING_LINE).toMatch(/not music are left out/);
-    expect(GOOGLE_CHECKING_LINE).toMatch(/quick check/);
+  it('says how far the check is, and how many uploads need a look, in the singular too', () => {
+    expect(checkingLine(40, 120)).toBe('Checking which likes are songs: 40 of 120');
+    expect(toCheckLine(5)).toBe('5 more need a quick check: uploads YouTube Music is not sure are songs.');
+    expect(toCheckLine(1)).toBe('1 more needs a quick check: an upload YouTube Music is not sure is a song.');
     expect(GOOGLE_MUSIC_ONLY_NOTE).toMatch(/YouTube Music says which of your likes are songs/);
   });
 
+  it('an account with nothing to bring over says why', () => {
+    expect(noMusicMessage(0)).toBe(GOOGLE_MESSAGES.noLikes);
+    expect(noMusicMessage(3)).toContain('None of the 3 videos');
+    expect(noSongsMessage(2)).toBe('YouTube Music says none of the 2 likes on that Google account are songs, so there is nothing to bring over.');
+    expect(noSongsMessage(1)).toContain('the 1 like on that Google account is a song');
+  });
+
   it('have no em dashes', () => {
-    const all = [...GOOGLE_SIGNIN_STEPS, GOOGLE_FORGET_NOTE, ...Object.values(GOOGLE_MESSAGES), GOOGLE_CHECKING_LINE, GOOGLE_MUSIC_ONLY_NOTE];
+    const all = [...GOOGLE_SIGNIN_STEPS, GOOGLE_FORGET_NOTE, ...Object.values(GOOGLE_MESSAGES), GOOGLE_MUSIC_ONLY_NOTE, checkingLine(1, 2), toCheckLine(2), noMusicMessage(2), noSongsMessage(2)];
     for (const line of all) expect(line).not.toContain('\u2014');
   });
 });

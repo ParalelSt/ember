@@ -338,8 +338,9 @@ node tests/import-ui.test.mjs                       # or: npm run test:import-ui
 # Google on :8097 (the app needs GOOGLE_OAUTH_BASE / YOUTUBE_API_BASE pointed
 # there, see the file's header for the whole start line). The fake player's
 # `classify` answers from fixtures/imports/ytm-classify.json, so it covers a
-# like YouTube Music calls a song, an upload the person says yes or no to,
-# and videos left out as not music.
+# gaming like the first pass drops, likes YouTube Music calls songs, uploads
+# the person says yes or no to, and a "Music" Minecraft video left out, none
+# of which ever shows in the preview.
 node tests/transfer-google-ui.test.mjs
 
 # player.py `match` and `ytplaylist`, no server, no network

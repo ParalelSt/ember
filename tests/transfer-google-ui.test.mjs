@@ -1,12 +1,14 @@
 /** Transfer: YouTube Music likes after a Google sign-in, in a real browser,
  *  against a fake Google. Settings > Library > Transfer > Liked songs >
  *  YouTube Music > Sign in with Google > the code > the fake Google's device
- *  page says Allow > preview > Start > the Liked page shows the transfer.
- *  YouTube Music (the fake player's `classify`, from
- *  fixtures/imports/ytm-classify.json) says which likes are songs: official
- *  ones are liked, uploads wait for a yes or no in the review sheet, and the
- *  rest (a gaming video, a Minecraft video YouTube files under "Music", a
- *  video whose lookup fails) are left out and counted.
+ *  page says Allow > "Checking which likes are songs" > preview > Start >
+ *  the Liked page shows the transfer. Two passes before the preview: the
+ *  gaming like (category 20) is dropped at once, then YouTube Music (the
+ *  fake player's `classify`, from fixtures/imports/ytm-classify.json) says
+ *  which of the rest are songs. Official ones are in the preview and liked,
+ *  uploads are counted to check and wait for a yes or no in the review
+ *  sheet, and the rest (a Minecraft video YouTube files under "Music", a
+ *  video whose lookup fails) never show anywhere and are only counted.
  *  Then the two other endings a person can reach: saying no on Google's page,
  *  and closing the dialog halfway.
  *
@@ -17,10 +19,13 @@
  *  and videos?myRating=like) on FAKE_GOOGLE_PORT (8097), and the app is
  *  pointed at it with the base-URL overrides. Needs playwright-core and a
  *  Chromium (CHROME_PATH, or the Playwright cache), the sandbox PocketBase,
- *  and the app started with the fake player and the fake Google:
+ *  and the app started with the fake player and the fake Google. Port 3050
+ *  may be serving apps/web/.next, so build a scratch copy of apps/web (its
+ *  node_modules symlinked) rather than rebuilding that .next, and start it
+ *  on 3051:
  *
- *    cd apps/web && POCKETBASE_URL=http://127.0.0.1:8088 npx next build --webpack
- *    POCKETBASE_URL=http://127.0.0.1:8088 \
+ *    cd <scratch copy of apps/web> && POCKETBASE_URL=http://127.0.0.1:8088 npx next build --webpack
+ *    FAKE_CLASSIFY_SLEEP=3 POCKETBASE_URL=http://127.0.0.1:8088 \
  *      POCKETBASE_ADMIN_EMAIL=admin@ember.com POCKETBASE_ADMIN_PASSWORD=egKa5WNMx3QpuG7 \
  *      PYTHON_BIN=/bin/bash PLAYER_SCRIPT="$PWD/../../tests/fake-player.sh" \
  *      GOOGLE_OAUTH_CLIENT_ID=fake-client.apps.googleusercontent.com \
@@ -32,8 +37,12 @@
  *      DISCORD_FEATURE_WEBHOOK_URL=http://127.0.0.1:8099/feature \
  *      DISCORD_FIX_WEBHOOK_URL=http://127.0.0.1:8099/fix \
  *      npx next start -p 3051 &
- *    APP_URL=http://127.0.0.1:3051 EMBER_LOG_DIR=/tmp/transfer-google-logs \
+ *    APP_URL=http://127.0.0.1:3051 EMBER_LOG_DIR=/tmp/transfer-google-logs FAKE_CLASSIFY_SLEEP=3 \
  *      FAKE_CLIENT_SECRET=GOCSPX-fakeClientSecretForTests node tests/transfer-google-ui.test.mjs
+ *
+ *  FAKE_CLASSIFY_SLEEP (seconds per `classify` call, the same for both) is
+ *  what lets the browser catch the checking line; without it that one
+ *  check is skipped.
  *
  *  The test makes its own throwaway user and deletes it afterwards; it
  *  writes nothing else. SHOT_DIR keeps screenshots. */
@@ -70,7 +79,7 @@ const video = (id, title, channelTitle, categoryId = '10') => ({
 const PAGES = [
   [
     video('gPaperLant1', 'Halcyon Drift - Paper Lanterns (Official Video)', 'HalcyonDriftVEVO'), // OMV
-    video('gSpeedrun01', 'Any% speedrun, world record', 'Some Gamer', '20'), // no type
+    video('gSpeedrun01', 'Any% speedrun, world record', 'Some Gamer', '20'), // Gaming: dropped by the first pass
     video('gNineStrt01', 'Nine Streets', 'The Quiet Parade - Topic', '10'), // Topic: never asked
   ],
   [
@@ -298,27 +307,48 @@ try {
   check('B3 and a waiting line', /Waiting for you to allow Ember/.test((await page.textContent('[data-testid="google-waiting"]')) ?? ''));
   await shot(page, 'code');
 
-  // ── C. The fake Google says Allow; the preview arrives ──
+  // ── C. The fake Google says Allow; YouTube Music checks; the preview arrives ──
+  const classifyCallsBefore = playerCalls('classify').length;
   await answerOnGoogle(page, 'allow');
-  await page.waitForSelector('[data-testid="transfer-preview"]', { timeout: 20_000 });
+  if (process.env.FAKE_CLASSIFY_SLEEP) {
+    const line = await page
+      .waitForFunction(
+        () => /Checking which likes are songs: \d+ of \d+/.test(document.querySelector('[data-testid="google-waiting"]')?.textContent ?? ''),
+        null,
+        { timeout: 20_000 },
+      )
+      .then(() => page.textContent('[data-testid="google-waiting"]'))
+      .catch(() => '');
+    check('C0 while YouTube Music checks, the dialog says how far it is', /^Checking which likes are songs: \d of 5$/.test(line ?? ''), line ?? '');
+  } else {
+    console.log('SKIP  C0 the checking line: start the server and this test with FAKE_CLASSIFY_SLEEP=3');
+  }
+  await page.waitForSelector('[data-testid="transfer-preview"]', { timeout: 30_000 });
   const preview = (await page.textContent('[data-testid="transfer-preview"]')) ?? '';
-  check('C1 the preview names the source and counts every like Google returned', /Liked songs from YouTube Music/.test(preview) && /8 likes/.test(preview), preview);
+  check('C1 the preview names the source and counts only the songs', /Liked songs from YouTube Music/.test(preview) && /3 songs/.test(preview), preview);
   check('C2 newest first, with the music video title cleaned up', /Paper Lanterns, Halcyon Drift/.test(preview), preview);
-  const checking = (await page.textContent('[data-testid="google-checking"]')) ?? '';
-  check('C3 it says YouTube Music checks each like as it goes', /YouTube Music checks each like as the transfer goes/.test(checking), checking);
-  check('C4 the token was revoked the moment the likes were read', google.revoked.includes(REFRESH), JSON.stringify(google.revoked.length));
-  check('C5 the likes were read with the token, before it was revoked, and the secret was sent', google.bearerOk && google.secretOk && google.videoCalls === 2);
+  const dialogText = (await page.textContent('[data-testid="transfer-dialog"]')) ?? '';
+  check('C3 no gaming video, no "Music" Minecraft video, no failed lookup, no upload named in the preview',
+    !/speedrun|Mob Farm|lookup fails|Garage demo|Bricks and Minifigs/.test(dialogText), dialogText);
+  const toCheck = (await page.textContent('[data-testid="google-to-check"]')) ?? '';
+  check('C4 the two uploads are counted as needing a quick check', toCheck === '2 more need a quick check: uploads YouTube Music is not sure are songs.', toCheck);
+  check('C5 the token was revoked the moment the likes were read', google.revoked.includes(REFRESH), JSON.stringify(google.revoked.length));
+  check('C6 the likes were read with the token, before it was revoked, and the secret was sent', google.bearerOk && google.secretOk && google.videoCalls === 2);
+  const calls = playerCalls('classify').length - classifyCallsBefore;
+  const asked = playerCalls('classify-ids').slice(-1)[0] ?? '';
+  check('C7 YouTube Music was asked once, before the preview, never about a Topic channel or the gaming like',
+    calls === 1 && /gMobFarm001/.test(asked) && !/gNineStrt01|gSlowWthr01|gSpeedrun01/.test(asked), `${calls} call(s): ${asked}`);
   await shot(page, 'preview');
 
   // ── D. Start, and the Liked page takes over ──
-  const start = page.getByRole('button', { name: /^Transfer 8 likes$/ });
-  check('D1 Start is on once the preview is there', (await start.count()) === 1 && !(await start.isDisabled()));
-  const classifyCallsBefore = playerCalls('classify').length;
+  const start = page.getByRole('button', { name: /^Transfer 5 songs$/ });
+  check('D1 Start counts the songs and the uploads', (await start.count()) === 1 && !(await start.isDisabled()));
+  const classifyCallsAtStart = playerCalls('classify').length;
   await start.click();
   await page.waitForURL('**/library/liked', { timeout: 20_000 });
   await page.waitForSelector('[data-testid="transfer-result"]', { timeout: 60_000 });
   const result = (await page.textContent('[data-testid="transfer-result"]')) ?? '';
-  check('D2 the summary says it in plain words', result === 'We found 3 songs. 2 need a quick check. 3 likes were not music.', result);
+  check('D2 the summary says it in plain words', result === 'We found 3 songs. 2 need a quick check. 2 likes were not music.', result);
   const likedNow = await likedTitles();
   check('D3 only the official songs were liked', JSON.stringify(likedNow) === JSON.stringify(['Nine Streets', 'Paper Lanterns', 'Slow Weather']),
     JSON.stringify(likedNow));
@@ -326,10 +356,8 @@ try {
   check('D4 the two uploads wait under "Still to sort out", the rest are nowhere',
     /Still to sort out/.test(toSort) && /Garage demo/.test(toSort) && /Bricks and Minifigs/.test(toSort) &&
       !/speedrun|Mob Farm|lookup fails/.test((await page.textContent('body')) ?? ''), toSort);
-  const calls = playerCalls('classify').length - classifyCallsBefore;
-  const asked = playerCalls('classify-ids').slice(-1)[0] ?? '';
-  check('D5 YouTube Music was asked once for the batch, never about a Topic channel',
-    calls === 1 && /gMobFarm001/.test(asked) && !/gNineStrt01|gSlowWthr01/.test(asked), `${calls} call(s): ${asked}`);
+  check('D5 the transfer itself asked YouTube Music nothing more', playerCalls('classify').length === classifyCallsAtStart,
+    `${playerCalls('classify').length - classifyCallsAtStart} more call(s)`);
   await shot(page, 'liked');
 
   // ── D6. The quick check: yes to the demo, no to the satire ad ──
@@ -344,12 +372,12 @@ try {
   await page.waitForSelector('[data-testid="review-done"]', { timeout: 10_000 });
   await page.locator('[data-testid="review-sheet"]').getByRole('button', { name: 'Close' }).click();
   await page.waitForFunction(
-    () => document.querySelector('[data-testid="transfer-result"]')?.textContent === 'We found 4 songs. 4 likes were not music.',
+    () => document.querySelector('[data-testid="transfer-result"]')?.textContent === 'We found 4 songs. 3 likes were not music.',
     null,
     { timeout: 15_000 },
   ).catch(() => {});
   const after = (await page.textContent('[data-testid="transfer-result"]')) ?? '';
-  check('D7 a yes likes the upload, a no counts it as not music', after === 'We found 4 songs. 4 likes were not music.', after);
+  check('D7 a yes likes the upload, a no counts it as not music', after === 'We found 4 songs. 3 likes were not music.', after);
   const likedAfter = await likedTitles();
   check('D8 and the likes now hold the demo, not the ad', likedAfter.includes('Garage demo, first take') && !likedAfter.some((t) => /Bricks/.test(t)),
     JSON.stringify(likedAfter));

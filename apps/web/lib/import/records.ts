@@ -81,14 +81,17 @@ export function itemFromRecord(r: Row): ImportItem {
   };
 }
 
-/** The row for a new pending item. `candidates` is filled in advance only
- *  for a YouTube Music playlist, whose tracks need no search; `likedAt` only
- *  for a transfer, where it decides where the song lands in the likes. */
+/** The row for a new item, pending unless the source already decided it (a
+ *  Google like: an upload to review, or not music). `candidates` is filled
+ *  in advance only for a source that names the exact video, which needs no
+ *  search; `likedAt` only for a transfer, where it decides where the song
+ *  lands in the likes. */
 export function itemRecord(
   jobId: string,
   item: SourceItem,
   candidates: ImportCandidate[] = [],
   likedAt: number | null = null,
+  status: 'pending' | 'review' | 'skipped' = 'pending',
 ): Row {
   return {
     job: jobId,
@@ -99,9 +102,9 @@ export function itemRecord(
     source_duration_ms: item.durationMs ?? 0,
     source_explicit: item.explicit,
     source_uri: item.uri ?? '',
-    status: 'pending',
+    status,
     video_id: '',
-    confidence: 0,
+    confidence: status === 'review' ? (candidates[0]?.score ?? 0) : 0,
     candidates,
   };
 }

@@ -517,10 +517,11 @@ describe('TransferDialog: YouTube Music likes, after a Google sign-in', () => {
     expect(screen.getByTestId('google-unverified-hint')).toHaveTextContent('press Continue');
   });
 
-  it('waiting, reading, then ready: the shared preview card counting likes, the checking line, and Start', async () => {
+  it('waiting, reading, checking which likes are songs, then ready: songs in the card, uploads to check, and Start', async () => {
     api.googleLikesStatus
       .mockResolvedValueOnce({ state: 'waiting' })
       .mockResolvedValueOnce({ state: 'reading' })
+      .mockResolvedValueOnce({ state: 'reading', checking: { done: 40, total: 120 } })
       .mockResolvedValue({ state: 'ready', preview: googlePreview() });
     api.googleLikesStart.mockResolvedValue({ job, playlistId: null, truncated: false, note: null });
     const { onOpenChange } = setup();
@@ -535,22 +536,24 @@ describe('TransferDialog: YouTube Music likes, after a Google sign-in', () => {
     await poll();
     await waitFor(() => expect(screen.getByTestId('google-waiting')).toHaveTextContent('Reading your likes'));
     await poll();
+    await waitFor(() => expect(screen.getByTestId('google-waiting')).toHaveTextContent('Checking which likes are songs: 40 of 120'));
+    await poll();
     await waitFor(() => expect(screen.getByTestId('transfer-preview')).toBeInTheDocument());
     expect(screen.queryByTestId('google-code-panel')).toBeNull();
     const card = screen.getByTestId('transfer-preview');
     expect(card).toHaveTextContent('Liked songs from YouTube Music');
-    expect(card).toHaveTextContent('3 likes');
+    // Songs only: what YouTube Music said is not music is nowhere.
+    expect(card).toHaveTextContent('3 songs');
     expect(card).toHaveTextContent('Paper Lanterns');
-    expect(screen.getByTestId('google-checking')).toHaveTextContent(
-      'YouTube Music checks each like as the transfer goes: songs are liked, videos that are not music are left out, and uploads it is not sure about wait for a quick check from you.',
-    );
+    expect(screen.getByTestId('google-to-check')).toHaveTextContent('2 more need a quick check: uploads YouTube Music is not sure are songs.');
 
     // No more polling once it is ready.
     const calls = api.googleLikesStatus.mock.calls.length;
     await poll();
     expect(api.googleLikesStatus.mock.calls.length).toBe(calls);
 
-    expect(startButton()).toHaveTextContent('Transfer 3 likes');
+    // The songs and the uploads to check both come across.
+    expect(startButton()).toHaveTextContent('Transfer 5 songs');
     fireEvent.click(startButton());
     await waitFor(() => expect(api.googleLikesStart).toHaveBeenCalledWith(FLOW));
     await waitFor(() => expect(push).toHaveBeenCalledWith('/library/liked'));
@@ -559,16 +562,16 @@ describe('TransferDialog: YouTube Music likes, after a Google sign-in', () => {
     expect(api.googleLikesCancel).not.toHaveBeenCalled();
   });
 
-  it('no checking line when every like is from a Topic channel, so already a song', async () => {
+  it('no quick-check line when YouTube Music called every like a song', async () => {
     api.googleLikesStatus.mockResolvedValue({ state: 'ready', preview: googlePreview({ count: 1, toCheck: 0 }) });
     setup();
     toGoogle();
     fireEvent.click(signInButton());
     await waitFor(() => expect(screen.getByTestId('google-code-panel')).toBeInTheDocument());
     await poll();
-    await waitFor(() => expect(screen.getByTestId('transfer-preview')).toHaveTextContent('1 like'));
-    expect(screen.queryByTestId('google-checking')).toBeNull();
-    expect(startButton()).toHaveTextContent(/^Transfer 1 like$/);
+    await waitFor(() => expect(screen.getByTestId('transfer-preview')).toHaveTextContent('1 song'));
+    expect(screen.queryByTestId('google-to-check')).toBeNull();
+    expect(startButton()).toHaveTextContent(/^Transfer 1 song$/);
   });
 
   it('a note on a library over the cap is toasted, not swallowed', async () => {
