@@ -32,5 +32,8 @@ allow = [
   # The window background and title bar follow the page's theme
   # (src/theme.rs).
   "theme_apply",
+  # The Retry button on the page shown when the server is out of reach
+  # (src/connect.rs).
+  "connect_retry",
 ]
 deny = []
