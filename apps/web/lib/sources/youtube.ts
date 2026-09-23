@@ -327,6 +327,7 @@ interface RawArtist {
   albums?: unknown[];
   singles?: unknown[];
   error?: string;
+  reason?: 'not-found' | 'failed';
 }
 
 interface RawAlbumDetail {
@@ -339,6 +340,21 @@ interface RawAlbumDetail {
   totalDurationSec?: number;
   tracks?: RawYoutubeTrack[];
   error?: string;
+  reason?: 'not-found' | 'failed';
+}
+
+/** The helper's `{error, reason}` for an album or artist lookup, as an error
+ *  fit for the browser. Only the helper's own short message is passed on:
+ *  an older helper put ytmusicapi's whole response dump in `error`. */
+function browseError(kind: 'album' | 'artist', result: { error?: string; reason?: string }): PythonError {
+  const notFound = result.reason === 'not-found';
+  const fallback = notFound
+    ? `${kind === 'album' ? 'Album' : 'Artist'} not found`
+    : `Couldn't load this ${kind} from YouTube Music right now`;
+  const short = result.reason && result.error && result.error.length <= 120;
+  const e: PythonError = new Error(short ? result.error : fallback);
+  e.status = notFound ? 404 : 502;
+  return e;
 }
 
 const ALBUM_ID_RE = /^[A-Za-z0-9_-]{8,40}$/;
@@ -350,11 +366,7 @@ export async function getAlbum(browseId: string) {
     throw e;
   }
   const result = await runPython<RawAlbumDetail>(['album', '--', browseId], { timeoutMs: 30000 });
-  if (result?.error) {
-    const e: PythonError = new Error(result.error);
-    e.status = 502;
-    throw e;
-  }
+  if (result?.error) throw browseError('album', result);
   return {
     title: result?.title ?? 'Album',
     artist: result?.artist ?? 'Unknown',
@@ -474,11 +486,7 @@ export async function getArtist(channelId: string) {
     throw e;
   }
   const result = await runPython<RawArtist>(['artist', '--', channelId], { timeoutMs: 30000 });
-  if (result?.error) {
-    const e: PythonError = new Error(result.error);
-    e.status = 502;
-    throw e;
-  }
+  if (result?.error) throw browseError('artist', result);
   return {
     name: result?.name ?? 'Artist',
     description: result?.description ?? null,

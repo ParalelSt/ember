@@ -186,3 +186,42 @@ describe('searchTracks cache', () => {
     await expect(searchTracks('s03 failing query')).rejects.toMatchObject({ status: 502 });
   });
 });
+
+// Album and artist failures used to hand the browser ytmusicapi's whole
+// 1.5 KB response dump, and a missing album was a 502 instead of a 404.
+describe('album and artist errors', () => {
+  const DUMP =
+    "\"Unable to find 'contents' using path ['contents', 'twoColumnBrowseResultsRenderer'] on " +
+    "{'responseContext': {'serviceTrackingParams': []}}, exception: 'contents'\"";
+
+  afterEach(() => {
+    vi.clearAllMocks();
+    nextStdout = '[]';
+  });
+
+  it('a missing album is a short 404', async () => {
+    nextStdout = JSON.stringify({ error: 'Album not found', reason: 'not-found' });
+    const { getAlbum } = await import('./youtube');
+    const err = (await getAlbum('MPREb_zzzzzzzzzzz').catch((e: unknown) => e)) as Error & { status?: number };
+    expect(err.status).toBe(404);
+    expect(err.message).not.toContain('responseContext');
+  });
+
+  it('a missing artist is a short 404', async () => {
+    nextStdout = JSON.stringify({ error: 'Artist not found', reason: 'not-found' });
+    const { getArtist } = await import('./youtube');
+    const err = (await getArtist('UCzzzzzzzzzzzzzzzzzzzzzz').catch((e: unknown) => e)) as Error & { status?: number };
+    expect(err.status).toBe(404);
+  });
+
+  it('never passes a raw helper dump to the browser', async () => {
+    nextStdout = JSON.stringify({ error: DUMP });
+    const { getAlbum, getArtist } = await import('./youtube');
+    for (const call of [() => getAlbum('MPREb_zzzzzzzzzzz'), () => getArtist('UCzzzzzzzzzzzzzzzzzzzzzz')]) {
+      const err = (await call().catch((e: unknown) => e)) as Error & { status?: number };
+      expect(err.status).toBe(502);
+      expect(err.message).not.toContain('responseContext');
+      expect(err.message).not.toContain('Unable to find');
+    }
+  });
+});
