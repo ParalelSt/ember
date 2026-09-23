@@ -97,3 +97,27 @@ describe('webBackend getBufferedToEnd', () => {
     b.destroy();
   });
 });
+
+describe('webBackend seek', () => {
+  it('seeks to the asked time while the element does not know the length yet', () => {
+    // Right after a load the element's duration is NaN. Clamping to it sent
+    // every early seek (the bar knows the length from the catalogue) to 0:00.
+    vi.spyOn(HTMLMediaElement.prototype, 'duration', 'get').mockReturnValue(NaN);
+    const events = makeFakeEvents();
+    const b = createWebBackend(events);
+    b.seek(90);
+    expect(events.onTime).toHaveBeenLastCalledWith(90);
+    b.destroy();
+  });
+
+  it('still clamps to a known length', () => {
+    vi.spyOn(HTMLMediaElement.prototype, 'duration', 'get').mockReturnValue(200);
+    const events = makeFakeEvents();
+    const b = createWebBackend(events);
+    b.seek(500);
+    expect(events.onTime).toHaveBeenLastCalledWith(200);
+    b.seek(-3);
+    expect(events.onTime).toHaveBeenLastCalledWith(0);
+    b.destroy();
+  });
+});
