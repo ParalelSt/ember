@@ -243,7 +243,7 @@ async function uploadAs(who, bytes, fields, filename, type) {
   check('a png renamed to mp3 is refused (415)', fake.status === 415, String(fake.status));
   const long = await uploadAs(boss, makeWav(31), { kind: 'sound' }, 'long.wav', 'audio/wav');
   const longBody = await long.json();
-  check('a 31 s sound is refused in words', long.status === 400 && longBody.error === 'Sounds are 30 seconds at most; upload it as a song', longBody.error);
+  check('a 31 s sound is refused in words', long.status === 400 && longBody.error === 'Sounds are 30 seconds at most; trim it and try again', longBody.error);
   const member = await uploadAs(outsider, makeWav(1), { kind: 'sound' }, 'x.wav', 'audio/wav');
   check('a member cannot upload to the library (403)', member.status === 403);
   const list = await app(outsider, '/api/admin/pranks/sounds');

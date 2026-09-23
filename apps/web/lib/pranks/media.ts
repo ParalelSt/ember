@@ -68,7 +68,7 @@ export function checkPrankDuration(kind: PrankSoundKind, durationSec: number | n
   if (max === null) return null;
   if (durationSec === null) return { ok: false, status: 415, error: 'Could not tell how long that sound is; try an mp3 or m4a' };
   if (durationSec > max + 0.5) {
-    return { ok: false, status: 400, error: `Sounds are ${max} seconds at most; upload it as a song` };
+    return { ok: false, status: 400, error: `Sounds are ${max} seconds at most; trim it and try again` };
   }
   return null;
 }

@@ -125,10 +125,10 @@ describe('POST /api/admin/pranks/sounds', () => {
     expect((await upload(wav(1), { kind: 'sound' }, 'x.wav', 'video/mp4')).status).toBe(415);
   });
 
-  it('caps sounds at 30 s (upload it as a song instead)', async () => {
+  it('caps sounds at 30 s', async () => {
     const res = await upload(wav(31), { kind: 'sound' });
     expect(res.status).toBe(400);
-    expect((await res.json()).error).toBe('Sounds are 30 seconds at most; upload it as a song');
+    expect((await res.json()).error).toBe('Sounds are 30 seconds at most; trim it and try again');
     expect(filesOnDisk()).toEqual([]);
     const song = await upload(wav(31), { kind: 'song' });
     expect(song.status).toBe(201);
