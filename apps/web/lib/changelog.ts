@@ -21,6 +21,16 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    id: 'search-bar-gap',
+    version: '0.6.1',
+    date: '2026-09-23',
+    title: 'A tidier search bar on desktop',
+    summary: 'The search bar on desktop no longer cuts off what\'s under it.',
+    bullets: [
+      'On desktop, the search bar now has a small gap under it, with a soft fade where a scrolled page meets it, instead of content running straight up to its bottom edge.',
+    ],
+  },
+  {
     id: 'admin-pranks-tab',
     version: '0.6.0',
     date: '2026-09-23',
