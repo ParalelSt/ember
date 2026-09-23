@@ -8,6 +8,10 @@ import type { SavedTheme, ThemesList } from '@/lib/theme/saved';
 // bughunt N1: a colour edit is lost when Appearance is left within 0.6s of
 // the last drag (SAVE_DELAY_MS) — the unmount effect cleared the pending
 // save timer without ever flushing it.
+// bughunt N2: switching theme right after an edit could undo the switch on
+// the server, because select() could fire before the flushed save landed.
+// This file covers the client half of both: flush on unmount/pagehide, and
+// leave() awaiting the flush before select() runs.
 
 const api = vi.hoisted(() => ({
   listThemes: vi.fn(),
@@ -21,6 +25,7 @@ const api = vi.hoisted(() => ({
 vi.mock('@/lib/api', () => ({ api }));
 
 const THEME_ID = 'theme0000000001';
+const OTHER_ID = 'theme0000000002';
 
 function mine(over: Partial<SavedTheme> = {}): SavedTheme {
   return {
@@ -97,5 +102,43 @@ describe('N1: a pending edit is flushed, not dropped', () => {
     await settle();
 
     expect(api.updateSavedTheme).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('N2: leaving waits for the flush before switching (client half)', () => {
+  it('use() (switch to another theme) waits for a pending edit-save to land before selecting', async () => {
+    const other: SavedTheme = mine({ id: OTHER_ID, name: 'Other theme' });
+    api.listThemes.mockResolvedValue(list({ mine: [mine(), other] }));
+
+    const order: string[] = [];
+    api.updateSavedTheme.mockImplementation(async () => {
+      order.push('save:start');
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      order.push('save:done');
+      return { theme: mine({ inputs: { ...EMBER_INPUTS, accentHover: EDITED_ACCENT_HOVER } }) };
+    });
+    api.setTheme.mockImplementation(async () => {
+      order.push('switch');
+      return { v: 1, preset: 'ember', custom: other.inputs, name: other.name, themeId: other.id };
+    });
+    useThemeStore.setState({ userId: 'u1' });
+
+    const { result } = renderHook(() => useThemeEditor());
+    await waitFor(() => expect(result.current.list?.mine).toHaveLength(2));
+
+    act(() => {
+      result.current.change('accentHover', EDITED_ACCENT_HOVER);
+    });
+    expect(api.updateSavedTheme).not.toHaveBeenCalled();
+
+    await act(async () => {
+      await result.current.use(other.id);
+    });
+
+    // The flushed save must finish landing before the switch's network call
+    // goes out: if leave() did not await it, 'switch' could fire before
+    // 'save:done', and the save could clobber the switch on the server
+    // (bughunt N2).
+    expect(order).toEqual(['save:start', 'save:done', 'switch']);
   });
 });
