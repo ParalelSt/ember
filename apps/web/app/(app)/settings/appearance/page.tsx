@@ -46,7 +46,7 @@ export default function SettingsAppearance() {
       <div className="flex flex-col gap-stack xl:flex-row xl:items-start">
         <ThemePreview
           vars={derive(editor.inputs).vars}
-          className="h-80 min-w-0 xl:sticky xl:top-0 xl:h-128 xl:flex-1"
+          className="h-96 min-w-0 xl:sticky xl:top-0 xl:h-128 xl:flex-1"
         />
         <div className="flex min-w-0 flex-col gap-block xl:w-96 xl:shrink-0">
           <InspectorTabStrip active={tab} onChange={setTab} />

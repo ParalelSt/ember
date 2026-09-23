@@ -67,7 +67,7 @@ export function ColourRow({ name, label, value, auto, readOnly, onChange, onRese
           onKeyDown={(e) => {
             if (e.key === 'Enter') commit();
           }}
-          className="h-8 w-20 shrink-0 font-mono text-xs"
+          className="h-8 w-24 shrink-0 font-mono text-xs"
         />
         {auto !== undefined && (
           <button

@@ -35,15 +35,17 @@ export function ThemePreview({ vars, className }: ThemePreviewProps) {
       inert
       style={vars as CSSProperties}
       className={cn(
-        'flex min-h-0 flex-col overflow-hidden rounded-lg border border-border bg-background text-foreground',
+        '@container flex min-h-0 flex-col overflow-hidden rounded-lg border border-border bg-background text-foreground',
         className,
       )}
     >
       <div className="flex min-h-0 flex-1">
-        <aside className="hidden w-40 shrink-0 flex-col gap-block border-r border-sidebar-border bg-sidebar p-block text-sidebar-foreground sm:flex">
-          <div className="flex items-center gap-cluster font-bold">
+        {/* A narrow preview gets the sidebar as an icon rail, so the rows
+            keep room for their titles. */}
+        <aside className="flex w-14 shrink-0 flex-col items-center gap-block border-r border-sidebar-border bg-sidebar p-cluster text-sidebar-foreground @lg:w-40 @lg:items-stretch @lg:p-block">
+          <div className="flex h-8 items-center gap-cluster font-bold">
             <FlameIcon className="h-4 w-4 text-ember" />
-            Ember
+            <span className="hidden @lg:inline">Ember</span>
           </div>
           <nav className="flex flex-col gap-inset">
             {NAV.map(({ id, label, Icon, active }) => (
@@ -55,7 +57,7 @@ export function ThemePreview({ vars, className }: ThemePreviewProps) {
                 )}
               >
                 <Icon className="h-4 w-4" />
-                {label}
+                <span className="hidden @lg:inline">{label}</span>
               </div>
             ))}
           </nav>

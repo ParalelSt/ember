@@ -9,7 +9,7 @@ export function ThemeSwatch({ background, accent, className }: { background: str
       aria-hidden
       data-testid="theme-swatch"
       className={cn(
-        'inline-block size-hit shrink-0 rounded-full border border-border bg-(--swatch-bg) shadow-[inset_0_0_0_3px_var(--swatch-ring)]',
+        'block size-hit shrink-0 rounded-full border border-border bg-(--swatch-bg) shadow-[inset_0_0_0_3px_var(--swatch-ring)]',
         className,
       )}
       style={{ ['--swatch-bg' as string]: background, ['--swatch-ring' as string]: accent }}
