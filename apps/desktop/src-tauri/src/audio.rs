@@ -27,7 +27,7 @@ use stream_download::http::reqwest::Client;
 use stream_download::http::HttpStream;
 use stream_download::storage::temp::TempStorageProvider;
 use stream_download::{Settings, StreamDownload, StreamPhase};
-use tauri::{AppHandle, State};
+use tauri::{AppHandle, Runtime, State};
 
 /// Native audio engine state, stored in Tauri managed state.
 ///
@@ -150,6 +150,13 @@ impl AudioEngine {
         }
     }
 
+    /// An engine that plays into `mixer` instead of a device: the tests pull
+    /// its samples themselves, the way the output device would.
+    #[cfg(test)]
+    pub(crate) fn with_output(mixer: Mixer) -> Self {
+        Self { mixer: Some(mixer), ..Self::new_degraded() }
+    }
+
     /// Whether a real output device is attached.
     pub fn has_output(&self) -> bool {
         self.mixer.is_some()
@@ -268,11 +275,11 @@ struct CmdPayload {
     sec: Option<f64>,
 }
 
-fn emit_sec(app: &AppHandle, event: &str, sec: f64) {
+fn emit_sec<R: Runtime>(app: &AppHandle<R>, event: &str, sec: f64) {
     use tauri::Emitter;
     let _ = app.emit(event, SecPayload { sec });
 }
-fn emit_bare(app: &AppHandle, event: &str) {
+fn emit_bare<R: Runtime>(app: &AppHandle<R>, event: &str) {
     use tauri::Emitter;
     let _ = app.emit(event, ());
 }
@@ -282,7 +289,7 @@ fn emit_bare(app: &AppHandle, event: &str) {
 /// never reproduce while you're watching. Recording each load's sequence
 /// number, start offset and outcome means the next bug report explains itself
 /// instead of needing a re-run.
-fn log_audio(app: &AppHandle, level: &str, msg: &str) {
+fn log_audio<R: Runtime>(app: &AppHandle<R>, level: &str, msg: &str) {
     use tauri::Manager;
     if let Some(state) = app.try_state::<crate::applog::LogFile>() {
         if let Ok(path) = state.0.lock() {
@@ -291,7 +298,7 @@ fn log_audio(app: &AppHandle, level: &str, msg: &str) {
     }
 }
 
-fn emit_err(app: &AppHandle, retry: &'static str, message: String) {
+fn emit_err<R: Runtime>(app: &AppHandle<R>, retry: &'static str, message: String) {
     use tauri::Emitter;
     let _ = app.emit("audio:error", ErrPayload { message, retry });
 }
@@ -993,8 +1000,8 @@ pub(crate) async fn open_source_retrying(
 }
 
 #[tauri::command]
-pub async fn audio_load(
-    app: AppHandle,
+pub async fn audio_load<R: Runtime>(
+    app: AppHandle<R>,
     engine: State<'_, AudioEngine>,
     url: String,
     autoplay: bool,
@@ -1006,8 +1013,8 @@ pub async fn audio_load(
 
 /// What `audio_load` does, callable from inside the engine as well: a
 /// backward seek in a forward-only track re-opens the track through here.
-async fn load_track(
-    app: &AppHandle,
+async fn load_track<R: Runtime>(
+    app: &AppHandle<R>,
     engine: &AudioEngine,
     url: String,
     autoplay: bool,
@@ -1043,6 +1050,13 @@ async fn load_track(
         Ok(o) => o,
         Err(e) => {
             log_audio(app, "WARN", &format!("load #{my_seq} {}", e.message));
+            // The webview pins every `audio:error` on the song it has now, so
+            // the failure of a song the listener already moved on from would
+            // stop (or swap the engine under) the one that is playing.
+            if !engine.is_current_load(my_seq) {
+                log_audio(app, "INFO", &format!("load #{my_seq} superseded, failure not reported"));
+                return Ok(());
+            }
             emit_err(app, e.retry, e.message);
             return Ok(());
         }
@@ -1107,7 +1121,7 @@ async fn load_track(
 }
 
 #[tauri::command]
-pub fn audio_play(app: AppHandle, engine: State<'_, AudioEngine>) {
+pub fn audio_play<R: Runtime>(app: AppHandle<R>, engine: State<'_, AudioEngine>) {
     let mut acted = false;
     if let Ok(g) = engine.sink.lock() {
         if let Some(s) = g.as_ref() {
@@ -1124,7 +1138,7 @@ pub fn audio_play(app: AppHandle, engine: State<'_, AudioEngine>) {
 }
 
 #[tauri::command]
-pub fn audio_pause(app: AppHandle, engine: State<'_, AudioEngine>) {
+pub fn audio_pause<R: Runtime>(app: AppHandle<R>, engine: State<'_, AudioEngine>) {
     let mut acted = false;
     if let Ok(g) = engine.sink.lock() {
         if let Some(s) = g.as_ref() {
@@ -1157,7 +1171,7 @@ pub fn audio_stop(engine: State<'_, AudioEngine>) {
 }
 
 #[tauri::command]
-pub fn audio_seek(app: AppHandle, engine: State<'_, AudioEngine>, sec: f64) {
+pub fn audio_seek<R: Runtime>(app: AppHandle<R>, engine: State<'_, AudioEngine>, sec: f64) {
     let total = engine.current_total.lock().ok().and_then(|g| *g);
     let forward_only = engine.forward_only.load(Ordering::SeqCst);
     let (pos, playing) = engine
@@ -1318,8 +1332,8 @@ pub fn audio_set_metadata(
 
 // --- Position timer + end detection -----------------------------------------
 
-fn spawn_position_timer(
-    app: AppHandle,
+fn spawn_position_timer<R: Runtime>(
+    app: AppHandle<R>,
     sink: Arc<Mutex<Option<Sink>>>,
     generation: Arc<AtomicU64>,
     my_gen: u64,
@@ -1400,6 +1414,8 @@ mod fastfail;
 mod stall_repro;
 #[cfg(test)]
 mod luka_repro;
+#[cfg(test)]
+mod transport_repro;
 
 #[cfg(test)]
 mod tests {
