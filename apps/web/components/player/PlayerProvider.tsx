@@ -213,6 +213,11 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
           orderBackup: null,
         });
       },
+      onLoopMode: (mode) => {
+        // The car or the notification's Repeat button. Mirror it; the loop
+        // effect then finds native already there and sends nothing back.
+        if (usePlayerStore.getState().loopMode !== mode) usePlayerStore.getState().setLoopMode(mode);
+      },
       onEnded: () => {
         // The native Android player advances by itself; `ended` only means the
         // whole queue ran out, and there is nothing to load from here.
@@ -706,6 +711,13 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     b.setQueue(queue, index, usePlayerStore.getState().isPlaying);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [queue]);
+
+  // The native Android player repeats (or stops at the end) by itself, so
+  // it has to be told the loop mode. Other backends have no setLoop: the
+  // provider applies the mode itself in onEnded and next/prev.
+  useEffect(() => {
+    backendRef.current?.setLoop?.(loopMode);
+  }, [backendReady, loopMode]);
 
   // The Android backend's setRemoteCommands/setMetadata are no-ops: the native
   // Media3 session owns the lock screen and the car, so this registers nothing

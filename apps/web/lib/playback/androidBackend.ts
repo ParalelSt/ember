@@ -3,6 +3,7 @@
 import { logger } from '@/lib/logger/client';
 import { nativeQueueContext } from '@/lib/autoCache/native';
 import type { Track } from '@/types/track';
+import type { LoopMode } from '@/stores/usePlayerStore';
 import type { OverlayEnd, OverlayHandle, OverlayResult } from '@/lib/pranks/overlayPlayer';
 import type { AudioBackend, AudioBackendEvents, CreateAudioBackend, NativeOverlayOptions } from './types';
 
@@ -15,6 +16,8 @@ interface NativeState {
   duration: number;
   index: number;
   trackId: string | null;
+  /** App builds from before the loop button reached native lack it. */
+  loop?: LoopMode;
 }
 interface EmberPlayerPlugin {
   addListener(event: string, cb: (data: never) => void): unknown;
@@ -32,6 +35,8 @@ interface EmberPlayerPlugin {
   seek(o: { sec: number }): Promise<void>;
   next(): Promise<void>;
   prev(): Promise<void>;
+  /** Absent on app builds from before the loop button reached native. */
+  setRepeat?(o: { mode: LoopMode }): Promise<void>;
   setVolume(o: { v: number }): Promise<void>;
   getState(): Promise<NativeState>;
   /** Only on app builds with the native prank overlay. */
@@ -46,6 +51,7 @@ interface OverlayEvent {
 }
 
 const OVERLAY_ENDS: readonly OverlayEnd[] = ['ended', 'stopped', 'cap', 'error'];
+const LOOP_MODES: readonly LoopMode[] = ['off', 'all', 'one'];
 /** If native never reports the end (the service died), give up this long
  *  after the cap so the receiver is not busy forever. */
 export const OVERLAY_END_GRACE_MS = 5_000;
@@ -75,7 +81,29 @@ export const createAndroidBackend: CreateAudioBackend = (events: AudioBackendEve
   let duration = 0;
   let paused = true;
   let index = -1;
+  /** The loop mode native last reported (null until it first does), and the
+   *  modes sent since that it has not reported yet. A report that matches one
+   *  of those is our own change arriving, not a tap in the car, so it is not
+   *  echoed back: echoing a stale one would fight the listener's latest tap. */
+  let loop: LoopMode | null = null;
+  let loopsInFlight: LoopMode[] = [];
   const p = plugin();
+
+  const onLoop = (l: LoopMode | undefined) => {
+    if (!l || !LOOP_MODES.includes(l) || l === loop) return;
+    const first = loop === null;
+    loop = l;
+    const mine = loopsInFlight.indexOf(l);
+    if (mine >= 0) {
+      loopsInFlight = loopsInFlight.slice(mine + 1);
+      return;
+    }
+    // The first report is only what native had when this WebView started;
+    // the app's own saved mode is sent over it.
+    if (first) return;
+    loopsInFlight = [];
+    events.onLoopMode?.(l);
+  };
 
   const onState = (s: NativeState) => {
     paused = !s.playing;
@@ -89,6 +117,7 @@ export const createAndroidBackend: CreateAudioBackend = (events: AudioBackendEve
     }
     position = s.position;
     events.onTime(s.position);
+    onLoop(s.loop);
     // Re-assert on every event, not only when our own mirror flips: native is
     // the source of truth here, and anything else that writes the store's
     // playing flag (an error toast, a stale closure) would otherwise leave the
@@ -191,6 +220,12 @@ export const createAndroidBackend: CreateAudioBackend = (events: AudioBackendEve
     },
     prev() {
       if (p) call(p.prev());
+    },
+    setLoop(mode) {
+      if (!p?.setRepeat) return;
+      if (mode === (loopsInFlight[loopsInFlight.length - 1] ?? loop)) return;
+      loopsInFlight.push(mode);
+      call(p.setRepeat({ mode }));
     },
     setVolume(v) {
       if (p) call(p.setVolume({ v: Math.max(0, Math.min(1, v)) }));

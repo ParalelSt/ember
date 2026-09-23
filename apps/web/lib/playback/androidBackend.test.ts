@@ -130,3 +130,74 @@ describe('androidBackend: prank overlay', () => {
     expect(n.plugin.stopOverlay).toHaveBeenCalledTimes(1);
   });
 });
+
+// The loop button on a phone. The native player repeats (and stops at the
+// end of the queue) by itself, so it must be told the mode; the car and the
+// notification have their own Repeat button, whose changes come back here.
+describe('androidBackend: loop mode', () => {
+  afterEach(() => {
+    delete (window as unknown as { Capacitor?: unknown }).Capacitor;
+  });
+
+  const state = (loop: string) => ({ playing: true, position: 0, duration: 0, index: 0, trackId: 'a', loop });
+
+  function setup() {
+    const n = installPlugin(false);
+    n.plugin.setRepeat = vi.fn().mockResolvedValue(undefined);
+    const events = { ...makeFakeEvents(), onLoopMode: vi.fn() };
+    const b = createAndroidBackend(events);
+    return { n, events, b };
+  }
+
+  it('sends the loop mode to the native player', () => {
+    const { n, b } = setup();
+    b.setLoop!('all');
+    b.setLoop!('one');
+    expect(n.plugin.setRepeat).toHaveBeenNthCalledWith(1, { mode: 'all' });
+    expect(n.plugin.setRepeat).toHaveBeenNthCalledWith(2, { mode: 'one' });
+  });
+
+  it('does not resend the mode native already has', () => {
+    const { n, b } = setup();
+    n.emit('state', state('all'));
+    b.setLoop!('all');
+    expect(n.plugin.setRepeat).not.toHaveBeenCalled();
+  });
+
+  it('mirrors a change made in the car or notification', () => {
+    const { n, events } = setup();
+    n.emit('state', state('off'));
+    n.emit('state', state('all'));
+    n.emit('state', state('all'));
+    n.emit('state', state('one'));
+    expect(events.onLoopMode.mock.calls).toEqual([['all'], ['one']]);
+  });
+
+  it('the first report only records what native has (the app decides at startup)', () => {
+    const { n, events } = setup();
+    n.emit('state', state('one'));
+    expect(events.onLoopMode).not.toHaveBeenCalled();
+  });
+
+  it('never echoes its own changes back, even several fast taps', () => {
+    const { n, b, events } = setup();
+    n.emit('state', state('off'));
+    b.setLoop!('all');
+    b.setLoop!('one');
+    b.setLoop!('off');
+    n.emit('state', state('all'));
+    n.emit('state', state('one'));
+    n.emit('state', state('off'));
+    expect(events.onLoopMode).not.toHaveBeenCalled();
+    // A car tap after that still gets through.
+    n.emit('state', state('all'));
+    expect(events.onLoopMode).toHaveBeenCalledWith('all');
+  });
+
+  it('an app build without the method is left alone', () => {
+    const n = installPlugin(false);
+    const b = createAndroidBackend(makeFakeEvents());
+    expect(() => b.setLoop!('all')).not.toThrow();
+    n.emit('state', { playing: true, position: 0, duration: 0, index: 0, trackId: 'a' });
+  });
+});
