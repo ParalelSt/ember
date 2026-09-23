@@ -79,9 +79,19 @@ function renderPage() {
 beforeEach(() => {
   vi.clearAllMocks();
   recents.tracks = [];
+  api.search.mockResolvedValue({ tracks: [] });
 });
 
 describe('SearchPage', () => {
+  it('[bughunt W07] shows real tracks under Trending instead of an empty state', async () => {
+    const track = makeTrack({ id: 'youtube:trend', sourceId: 'trend', title: 'Chart Topper' });
+    api.search.mockResolvedValue({ tracks: [track] });
+    renderPage();
+
+    expect(screen.getByText('Trending')).toBeInTheDocument();
+    expect(await screen.findByText('Chart Topper')).toBeInTheDocument();
+  });
+
   it('shows the recent searches as compact TrackRows and removes one on request', async () => {
     const track = makeTrack();
     recents.tracks = [track];
@@ -105,7 +115,9 @@ describe('SearchPage', () => {
 
   it('renders search results through TrackList once the query resolves', async () => {
     const track = makeTrack({ id: 'youtube:b2', sourceId: 'b2', title: 'Second Wind' });
-    api.search.mockResolvedValue({ tracks: [track] });
+    // Distinct from the empty-query (trending) fetch, so the assertion below
+    // can only be satisfied once the real "second wind" search resolves.
+    api.search.mockImplementation((q: string) => Promise.resolve({ tracks: q === 'second wind' ? [track] : [] }));
     renderPage();
 
     fireEvent.change(screen.getByPlaceholderText('What do you want to listen to?'), {
@@ -117,7 +129,7 @@ describe('SearchPage', () => {
 
   it('playing a result also saves it to recent searches', async () => {
     const track = makeTrack({ id: 'youtube:b2', sourceId: 'b2', title: 'Second Wind' });
-    api.search.mockResolvedValue({ tracks: [track] });
+    api.search.mockImplementation((q: string) => Promise.resolve({ tracks: q === 'second wind' ? [track] : [] }));
     renderPage();
 
     fireEvent.change(screen.getByPlaceholderText('What do you want to listen to?'), {

@@ -44,10 +44,13 @@ export function useSearchQuery() {
     return () => clearTimeout(t);
   }, [q]);
 
+  // An empty query still fetches: /api/search answers it with the trending
+  // chart (see the API route), so the empty state has real tracks instead
+  // of a "Trending" heading over nothing.
   const { data, isFetching, error } = useQuery({
     queryKey: QK.search(debouncedQ),
     queryFn: () => api.search(debouncedQ).then((r) => r.tracks),
-    enabled: isOnline && debouncedQ.length > 0,
+    enabled: isOnline,
     retry: false,
   });
 
