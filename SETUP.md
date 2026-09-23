@@ -647,9 +647,9 @@ Then `Ctrl+C` whatever's running and start it again. `./.venv/bin/yt-dlp --versi
 
 **`/auth` shows "PocketBase admin credentials not configured"** — you didn't paste `POCKETBASE_ADMIN_EMAIL` / `POCKETBASE_ADMIN_PASSWORD` into `apps/web/.env.local`. Re-do **Friend setup → 4**. The invite-only check needs them to read the `allowed_emails` collection.
 
-**`/auth` shows "Failed to authenticate as PB admin"** — PocketBase's superuser password doesn't match `POCKETBASE_ADMIN_PASSWORD`. Restart with `./start-static.sh` (or `./update.sh`): that restarts PocketBase with the password from `.env.local`, and its hook brings the superuser in line. `logs/pocketbase.log` says what it did (`[ensure_superuser] ...`).
+**`/auth` shows "Failed to authenticate as PB admin":** PocketBase's superuser password doesn't match `POCKETBASE_ADMIN_PASSWORD`. Restart with `./start-static.sh` (or `./update.sh`): that restarts PocketBase with the password from `.env.local`, and its hook brings the superuser in line. `logs/pocketbase.log` says what it did (`[ensure_superuser] ...`).
 
-**The PocketBase admin UI (`/_/`) says 404 on the public URL** — on purpose. The app's `/pb` proxy never forwards the admin UI or the superuser API to the internet. Open it on the host itself: `http://127.0.0.1:8090/_/`, or from your own computer through an SSH tunnel (`ssh -L 8090:127.0.0.1:8090 you@host`, then http://127.0.0.1:8090/_/).
+**The PocketBase admin UI (`/_/`) says 404 on the public URL:** that is on purpose. The app's `/pb` proxy never forwards the admin UI or the superuser API to the internet. Open it on the host itself: `http://127.0.0.1:8090/_/`, or from your own computer through an SSH tunnel (`ssh -L 8090:127.0.0.1:8090 you@host`, then http://127.0.0.1:8090/_/).
 
 **"Bug reporting not configured" 503 when clicking Report a bug** — the Discord webhook isn't set. Owner: paste your webhook URL into the `DEFAULT_WEBHOOK_URL` constant at the top of `apps/web/app/api/bug-report/route.ts`. Anyone else: set `DISCORD_BUG_REPORT_WEBHOOK_URL` in `apps/web/.env.local`.
 
