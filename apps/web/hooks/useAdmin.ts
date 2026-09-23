@@ -105,3 +105,54 @@ export function useExecuteDeleteAdminInvite() {
     },
   });
 }
+
+// ───── Pranks (temporary page until the /dizajn pick) ─────
+
+const PRANKS_QK = {
+  people: ['admin', 'pranks', 'people'] as const,
+  log: ['admin', 'pranks', 'log'] as const,
+  settings: ['admin', 'pranks', 'settings'] as const,
+};
+
+export function useQueryPrankPeople() {
+  return useQuery({
+    queryKey: PRANKS_QK.people,
+    queryFn: () => api.admin.pranks.people().then((r) => r.people),
+    refetchInterval: 10_000,
+  });
+}
+
+export function useQueryPrankLog() {
+  return useQuery({
+    queryKey: PRANKS_QK.log,
+    queryFn: () => api.admin.pranks.list(),
+    refetchInterval: 3_000,
+  });
+}
+
+export function useQueryPrankSettings() {
+  return useQuery({
+    queryKey: PRANKS_QK.settings,
+    queryFn: () => api.admin.pranks.settings(),
+  });
+}
+
+export function useExecuteSendPrank() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (targetId: string) => api.admin.pranks.send({ targetId, kind: 'ping' }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: PRANKS_QK.log });
+    },
+  });
+}
+
+export function useExecuteSetPranksEnabled() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (enabled: boolean) => api.admin.pranks.setEnabled(enabled),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['admin', 'pranks'] });
+    },
+  });
+}
