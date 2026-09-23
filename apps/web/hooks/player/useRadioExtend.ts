@@ -52,8 +52,24 @@ export function useRadioExtend({
     const currentId = current.id;
     const currentSourceId = current.sourceId;
     const activeContext = context;
+    // Snapshot of the queue this fetch was requested for, so a response that
+    // lands after the user has moved on (new queue, different current track)
+    // can be told apart from one that still applies.
+    const requestQueueIds = queue.map((t) => t.id);
 
     api.getRecommended(currentSourceId).then(({ tracks }) => {
+      const state = usePlayerStore.getState();
+      const stillCurrent = state.queue[state.index]?.id === currentId;
+      const sameQueue =
+        state.queue.length === requestQueueIds.length &&
+        state.queue.every((t, i) => t.id === requestQueueIds[i]);
+      if (!stillCurrent || !sameQueue) {
+        logger.breadcrumb('radio', 'stale-skip', {
+          context: activeContext?.type ?? 'single',
+          seed: currentSourceId,
+        });
+        return;
+      }
       const merged = rankRadioPool({
         pool: tracks,
         queue,
