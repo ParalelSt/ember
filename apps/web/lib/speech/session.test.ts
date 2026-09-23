@@ -52,6 +52,50 @@ describe('createSpeechSession', () => {
     expect(ev.onEnd).toHaveBeenCalledTimes(1);
   });
 
+  it('gives the first-time permission prompts all the time they take: the 15 s cap starts once listening does', async () => {
+    let granted!: () => void;
+    const { adapter, state } = fakeAdapter(() => new Promise<void>((r) => (granted = r)));
+    const ev = makeFakeSpeechEvents();
+    const started = createSpeechSession(adapter, { lang: 'en-US', events: ev }).start();
+    // The person reads two OS dialogs for 40 s.
+    await vi.advanceTimersByTimeAsync(40_000);
+    expect(state.native?.stop).not.toHaveBeenCalled();
+    expect(state.native?.abort).not.toHaveBeenCalled();
+    expect(ev.onEnd).not.toHaveBeenCalled();
+
+    granted();
+    await started;
+    await vi.advanceTimersByTimeAsync(14_999);
+    expect(state.native?.stop).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1);
+    expect(state.native?.stop).toHaveBeenCalledTimes(1);
+  });
+
+  it('still gives up on a start that never answers, after 90 s', async () => {
+    const { adapter, state } = fakeAdapter(() => new Promise<void>(() => {}));
+    const ev = makeFakeSpeechEvents();
+    void createSpeechSession(adapter, { lang: 'en-US', events: ev }).start();
+    await vi.advanceTimersByTimeAsync(89_999);
+    expect(ev.onEnd).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1);
+    expect(state.native?.abort).toHaveBeenCalledTimes(1);
+    expect(ev.onEnd).toHaveBeenCalledTimes(1);
+  });
+
+  it('starts no cap for a listen that ended while its start was still pending', async () => {
+    let granted!: () => void;
+    const { adapter, state } = fakeAdapter(() => new Promise<void>((r) => (granted = r)));
+    const ev = makeFakeSpeechEvents();
+    const session = createSpeechSession(adapter, { lang: 'en-US', events: ev });
+    const started = session.start();
+    session.abort();
+    granted();
+    await started;
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(state.native?.stop).not.toHaveBeenCalled();
+    expect(ev.onEnd).toHaveBeenCalledTimes(1);
+  });
+
   it('does not abort when end arrives inside the grace period', async () => {
     const { adapter, state } = fakeAdapter();
     const ev = makeFakeSpeechEvents();
@@ -68,7 +112,7 @@ describe('createSpeechSession', () => {
   it('uses injected timers', async () => {
     const { adapter, state } = fakeAdapter();
     const timers: Array<() => void> = [];
-    const setT = vi.fn((fn: () => void) => timers.push(fn));
+    const setT = vi.fn<(fn: () => void, ms: number) => number>((fn) => timers.push(fn));
     await createSpeechSession(adapter, {
       lang: 'en-US',
       events: makeFakeSpeechEvents(),
@@ -77,7 +121,7 @@ describe('createSpeechSession', () => {
       clearTimeout: vi.fn(),
     }).start();
     expect(setT).toHaveBeenCalledWith(expect.any(Function), 100);
-    timers[0]();
+    timers[setT.mock.calls.findIndex((c) => c[1] === 100)]();
     expect(state.native?.stop).toHaveBeenCalledTimes(1);
   });
 
