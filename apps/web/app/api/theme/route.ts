@@ -5,7 +5,7 @@ import { withRequestLog } from '@/lib/logger/withRequestLog';
 import { sameDoc, type ThemeDoc } from '@/lib/theme/model';
 import { detach, docFromPreset, docFromSaved, parseSelection } from '@/lib/theme/saved';
 import { openThemesRepo } from '@/lib/theme/themesRepo';
-import { readActive, unreadableResponse, writeActive } from '@/lib/theme/serverActive';
+import { readActive, unreadableResponse, writeActiveIfCurrent, writeActiveLocked } from '@/lib/theme/serverActive';
 
 /** The signed-in person's ACTIVE theme (users.theme), synced across devices
  *  and read by the root layout from the pb_auth cookie for first paint.
@@ -30,7 +30,8 @@ export const GET = withRequestLog('theme', async () => {
     const visible = row !== null && (row.owner === user.id || row.shared);
     const next = visible ? docFromSaved(row) : detach(doc);
     if (sameDoc(next, doc)) return Response.json(doc satisfies ThemeDoc);
-    return Response.json((await writeActive(pb, user.id, next)) satisfies ThemeDoc);
+    const written = await writeActiveIfCurrent(pb, user.id, doc.themeId, next);
+    return Response.json((written ?? doc) satisfies ThemeDoc);
   } catch (e) {
     if (e instanceof UnauthorizedError) return unauthorizedResponse();
     return fromError(e);
@@ -57,7 +58,7 @@ export const PATCH = withRequestLog('theme', async (request: NextRequest) => {
       if (refused) return refused;
       doc = docFromSaved(row);
     }
-    return Response.json((await writeActive(pb, user.id, doc)) satisfies ThemeDoc);
+    return Response.json((await writeActiveLocked(pb, user.id, doc)) satisfies ThemeDoc);
   } catch (e) {
     if (e instanceof UnauthorizedError) return unauthorizedResponse();
     return fromError(e);

@@ -2,10 +2,10 @@ import type { NextRequest } from 'next/server';
 import { requireUser, UnauthorizedError, unauthorizedResponse } from '@/lib/auth';
 import { fromError } from '@/lib/upsertTrack';
 import { withRequestLog } from '@/lib/logger/withRequestLog';
-import { cleanThemeName, isPresetId, isRecordId, validateInputs, THEME_NAME_MAX, type ThemeDoc } from '@/lib/theme/model';
+import { cleanThemeName, isPresetId, isRecordId, validateInputs, THEME_NAME_MAX } from '@/lib/theme/model';
 import { detach, docFromSaved, type SavedTheme } from '@/lib/theme/saved';
 import { openThemesRepo, toSaved, type ThemeRow, type ThemeRowPatch, type ThemesRepo } from '@/lib/theme/themesRepo';
-import { readActive, unreadableResponse, writeActive } from '@/lib/theme/serverActive';
+import { readActive, unreadableResponse, writeActiveIfCurrent } from '@/lib/theme/serverActive';
 
 /** One of my saved themes. Only its creator changes it.
  *
@@ -66,10 +66,7 @@ export const PATCH = withRequestLog('themes/[id]', async (request: NextRequest, 
     if (row instanceof Response) return row;
     const updated = await repo.update(row.id, patch);
 
-    let active: ThemeDoc | undefined;
-    if ((await readActive(pb, user.id)).themeId === updated.id) {
-      active = await writeActive(pb, user.id, docFromSaved(updated));
-    }
+    const active = await writeActiveIfCurrent(pb, user.id, updated.id, docFromSaved(updated));
     return Response.json({ theme: toSaved(updated) satisfies SavedTheme, ...(active ? { active } : {}) });
   } catch (e) {
     if (e instanceof UnauthorizedError) return unauthorizedResponse();
@@ -86,9 +83,8 @@ export const DELETE = withRequestLog('themes/[id]', async (_request: NextRequest
     if (row instanceof Response) return row;
     await repo.remove(row.id);
 
-    let active: ThemeDoc | undefined;
     const current = await readActive(pb, user.id);
-    if (current.themeId === row.id) active = await writeActive(pb, user.id, detach(current));
+    const active = current.themeId === row.id ? await writeActiveIfCurrent(pb, user.id, row.id, detach(current)) : undefined;
     return Response.json({ ok: true, ...(active ? { active } : {}) });
   } catch (e) {
     if (e instanceof UnauthorizedError) return unauthorizedResponse();
