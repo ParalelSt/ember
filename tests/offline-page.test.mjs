@@ -46,8 +46,10 @@ const browser = await chromium.launch({ executablePath: findChrome(), args: ['--
 
 /** One page with the fake plugin injected. `pins`/`files` shape the status;
  *  `art` is trackId -> absolute local art path (status().artFiles). */
-async function open({ plugin = true, pins, files, art = {}, artBytes = null } = {}) {
+async function open({ plugin = true, pins, files, art = {}, artBytes = null, themeScript = null } = {}) {
   const ctx = await browser.newContext();
+  // What MainActivity registers as a document-start script for this page.
+  if (themeScript) await ctx.addInitScript({ content: themeScript });
   await ctx.addInitScript(({ plugin, pins, files, art, artBytes, serverUrl }) => {
     window.__calls = [];
     // The page re-reads local art through fetch to hand the native plugin a
@@ -208,6 +210,31 @@ const twoPins = {
   const { ctx, page } = await open({ plugin: false });
   const text = await page.locator('body').innerText();
   check('without the plugin it falls back to Connecting to server', text.includes('Connecting to server'));
+  await ctx.close();
+}
+
+// 9b. The theme. With nothing published the page keeps its own colours; with
+// the script ThemeColors.script builds (this literal is pinned in
+// ThemeColorsTest.kt) it takes the theme's background and accent.
+{
+  const bgOf = (page, sel) => page.locator(sel).evaluate((e) => getComputedStyle(e).backgroundColor);
+  const plain = await open(twoPins);
+  check('without a theme the page keeps its fallback background', (await bgOf(plain.page, 'body')) === 'rgb(10, 10, 10)');
+  await plain.ctx.close();
+
+  const THEME_SCRIPT =
+    "(function(){var v={'--background':'oklch(0.17 0.03 262)','--ember':'oklch(0.75 0.14 225)'};" +
+    'function a(){var e=document.documentElement;if(!e)return false;' +
+    'for(var k in v)e.style.setProperty(k,v[k]);return true;}' +
+    "if(!a())document.addEventListener('readystatechange',a);})();";
+  const { ctx, page } = await open({ ...twoPins, themeScript: THEME_SCRIPT });
+  const bg = await bgOf(page, 'body');
+  check('the published theme background paints the page', bg !== 'rgb(10, 10, 10)' && /oklch\(0\.17|rgb\(8, 15, 28\)/.test(bg));
+  await page.locator('.row').first().click();
+  const title = await page.locator('.row.on .title').evaluate((e) => getComputedStyle(e).color);
+  check('the playing row takes the theme accent', title !== 'rgb(245, 158, 11)');
+  check('a variable the theme did not send keeps its fallback',
+    (await bgOf(page, '#toggle')) === 'rgb(31, 31, 31)');
   await ctx.close();
 }
 
