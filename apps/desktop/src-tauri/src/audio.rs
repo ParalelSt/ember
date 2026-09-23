@@ -52,8 +52,14 @@ pub struct AudioEngine {
     /// could land after the user clicked play and replace a playing sink with a
     /// paused one. That is the "had to click play several times" bug.
     load_seq: Arc<AtomicU64>,
-    /// Last loaded absolute stream URL (for diagnostics / future recovery).
+    /// Last loaded absolute stream URL: diagnostics, and what a backward seek
+    /// in a forward-only track re-opens (see `plan_seek`).
     current_url: Mutex<Option<String>>,
+    /// The session cookie that URL was loaded with, for the same re-open.
+    current_cookie: Mutex<Option<String>>,
+    /// The loaded track is decoded forward-only (a fragmented stream, see
+    /// `open_decoder`), so its demuxer cannot go back to an earlier packet.
+    forward_only: AtomicBool,
     /// Whether the source behind the loaded sink has failed. Set by the
     /// reader wrapper (see `FailFlagged`) and by a seek the decoder refused,
     /// read by the position timer so a dead stream is reported as an error
@@ -111,6 +117,8 @@ impl AudioEngine {
             generation: Arc::new(AtomicU64::new(0)),
             load_seq: Arc::new(AtomicU64::new(0)),
             current_url: Mutex::new(None),
+            current_cookie: Mutex::new(None),
+            forward_only: AtomicBool::new(false),
             current_total: Mutex::new(None),
             source_failed: Mutex::new(Arc::new(AtomicBool::new(false))),
             volume: Mutex::new(1.0),
@@ -133,6 +141,8 @@ impl AudioEngine {
             generation: Arc::new(AtomicU64::new(0)),
             load_seq: Arc::new(AtomicU64::new(0)),
             current_url: Mutex::new(None),
+            current_cookie: Mutex::new(None),
+            forward_only: AtomicBool::new(false),
             current_total: Mutex::new(None),
             source_failed: Mutex::new(Arc::new(AtomicBool::new(false))),
             volume: Mutex::new(1.0),
@@ -210,6 +220,7 @@ impl AudioEngine {
         if let Ok(mut u) = self.current_url.lock() {
             *u = None;
         }
+        self.forward_only.store(false, Ordering::SeqCst);
         if let Ok(mut d) = self.current_total.lock() {
             *d = None;
         }
@@ -357,6 +368,144 @@ fn build_decoder<R: Read + Seek + Send + Sync + 'static>(
     match byte_len {
         Some(len) => builder.with_byte_len(len).with_seekable(true).build(),
         None => builder.build(),
+    }
+}
+
+/// Whether an mp4 body is FRAGMENTED, judged from its first bytes: `Some`
+/// once it can tell, `None` while it needs more of them.
+///
+/// Fragmented means moof/mdat pairs, one per ~10 s of audio: the layout
+/// googlevideo serves (ftyp, moov with an mvex, sidx, moof, mdat, moof, ...),
+/// so it is what the stream route proxies, and what a host keeps on disk when
+/// yt-dlp could not run its ffmpeg fixup. A remuxed file (ftyp, moov, mdat) is
+/// not. Anything that is not an mp4 at all (webm) is "not fragmented", which
+/// leaves it on the path it always took.
+pub(crate) fn sniff_fragmented(head: &[u8]) -> Option<bool> {
+    let atom_at = |pos: usize| -> Option<(u64, [u8; 4], usize)> {
+        let h = head.get(pos..pos + 8)?;
+        let kind = [h[4], h[5], h[6], h[7]];
+        match u32::from_be_bytes([h[0], h[1], h[2], h[3]]) {
+            1 => {
+                let l = head.get(pos + 8..pos + 16)?;
+                Some((u64::from_be_bytes(l.try_into().ok()?), kind, 16))
+            }
+            size => Some((u64::from(size), kind, 8)),
+        }
+    };
+    let mut pos = 0usize;
+    loop {
+        let (size, kind, header) = atom_at(pos)?;
+        if pos == 0 && &kind != b"ftyp" {
+            return Some(false);
+        }
+        if size < header as u64 {
+            // Zero ("to the end") or a corrupt size: nothing after it to find.
+            return Some(false);
+        }
+        match &kind {
+            b"moof" | b"sidx" => return Some(true),
+            b"mdat" => return Some(false),
+            b"moov" => {
+                // An mvex (movie extends) child is what declares fragments.
+                let end = pos.checked_add(usize::try_from(size).ok()?)?;
+                let body = head.get(pos + header..end)?;
+                let mut child = 0usize;
+                while let Some(h) = body.get(child..child + 8) {
+                    if &h[4..8] == b"mvex" {
+                        return Some(true);
+                    }
+                    let len = u32::from_be_bytes([h[0], h[1], h[2], h[3]]) as usize;
+                    if len < 8 {
+                        break;
+                    }
+                    child += len;
+                }
+            }
+            _ => {}
+        }
+        pos = pos.checked_add(usize::try_from(size).ok()?)?;
+    }
+}
+
+/// Reads the head of `reader` until `sniff_fragmented` can decide, then puts
+/// the reader back at the start. Reads only forwards, so it never asks the
+/// host for anything but the bytes already on their way.
+fn is_fragmented_stream<R: Read + Seek>(reader: &mut R) -> std::io::Result<bool> {
+    /// A moov for a long remuxed track is ~130 KB; past this, give up and
+    /// treat the body the way every body used to be treated.
+    const MAX_HEAD: usize = 2 * 1024 * 1024;
+    let mut head = Vec::new();
+    let mut chunk = [0u8; 16 * 1024];
+    let verdict = loop {
+        if let Some(v) = sniff_fragmented(&head) {
+            break v;
+        }
+        if head.len() >= MAX_HEAD {
+            break false;
+        }
+        let n = reader.read(&mut chunk)?;
+        if n == 0 {
+            break false;
+        }
+        head.extend_from_slice(&chunk[..n]);
+    };
+    reader.seek(std::io::SeekFrom::Start(0))?;
+    Ok(verdict)
+}
+
+/// Builds the decoder a STREAMED load plays from, and says whether it is
+/// forward-only.
+///
+/// A seekable decoder (see `build_decoder`) makes symphonia's mp4 reader walk
+/// every top-level atom before it plays a sample. For a fragmented body that
+/// is one moof per ~10 s, and each hop over a ~160 KB mdat is a seek past what
+/// has arrived, which `StreamDownload` answers with a brand new Range request.
+/// So the old engine made 33 requests in series to open EOugbQC1r0s (5:37),
+/// 43 for TwFXwkKyGSQ (7:21), all before the first note, and over the Funnel
+/// the app talks to, a single one of those round trips taking 3 s ended the
+/// load: "the song stopped arriving while decoding (nothing for 3s)". A
+/// browser plays the same body from one linear request, which is why web
+/// audio could play what the engine could not.
+///
+/// A fragmented body is therefore decoded forward-only, from the one request
+/// already flowing; its segment index still gives the track's length. What it
+/// cannot do is seek backwards, and `plan_seek` re-opens it for that. Every
+/// other body keeps the seekable decoder, whose walk costs one short read.
+pub(crate) fn open_decoder<R: Read + Seek + Send + Sync + 'static>(
+    mut reader: R,
+    byte_len: Option<u64>,
+) -> Result<(rodio::Decoder<R>, bool), rodio::decoder::DecoderError> {
+    // A sniff that fails leaves the reader wherever it stopped; the build
+    // below then reports the same failure the old path would have.
+    let fragmented = byte_len.is_some() && is_fragmented_stream(&mut reader).unwrap_or(false);
+    let len = if fragmented { None } else { byte_len };
+    build_decoder(reader, len).map(|d| (d, fragmented))
+}
+
+/// What `audio_seek` does with a seek.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) enum SeekPlan {
+    /// Hand it to the decoder.
+    InPlace(Duration),
+    /// The decoder cannot go there (a forward-only track, backwards): load the
+    /// track again, starting at this point.
+    Reopen(Duration),
+    /// Nothing can service it honestly (see `seek_target`).
+    Refuse,
+}
+
+/// Decides a seek to `sec` in a track playing at `pos`.
+///
+/// A forward-only decoder asked to go back does not fail the seek, it fails
+/// the NEXT packet ("packet out-of-bounds for a non-seekable stream"), which
+/// rodio reports as the end of the track. So a backward seek there never
+/// reaches it: the engine re-opens the stream at the target instead, which
+/// costs one round trip and some bytes rather than the song.
+pub(crate) fn plan_seek(total: Option<Duration>, forward_only: bool, pos: Duration, sec: f64) -> SeekPlan {
+    match seek_target(total, sec) {
+        None => SeekPlan::Refuse,
+        Some(target) if forward_only && target < pos => SeekPlan::Reopen(target),
+        Some(target) => SeekPlan::InPlace(target),
     }
 }
 
@@ -526,10 +675,19 @@ pub(crate) async fn while_progressing<F: std::future::Future>(
 }
 
 /// Settings for the temp-file-backed download, wired to report progress.
+///
+/// No prefetch. `stream-download` restarts its prefetch after every seek into
+/// bytes it does not have yet, and the prefetch path never wakes the reader
+/// waiting on that seek: a seek to a short range (the last 64 KB of a file,
+/// which is exactly what the decoder reads while it is built) was answered
+/// only when the linear download behind it reached the same spot, i.e. after
+/// the WHOLE body. Measured on a cached 5.4 MB track at 1 MB/s: 7.4 s to a
+/// decoder with the default 256 KB prefetch, 0.7 s without. The reader blocks
+/// until its bytes are there either way, so the prefetch bought nothing.
 pub(crate) fn download_settings(
     progress: Arc<DownloadProgress>,
 ) -> Settings<HttpStream<Client>> {
-    Settings::default().on_progress(move |_stream, state, cancel| {
+    Settings::default().prefetch_bytes(0).on_progress(move |_stream, state, cancel| {
         let cancel = cancel.clone();
         progress.on_stop(Box::new(move || cancel.cancel()));
         progress.record(matches!(state.phase, StreamPhase::Complete));
@@ -555,6 +713,8 @@ pub(crate) struct OpenedSource {
     /// Set if the stream dies later; the position timer reads it to tell a
     /// dead stream from a finished song.
     pub failed: Arc<AtomicBool>,
+    /// Decoded forward-only (see `open_decoder`).
+    pub forward_only: bool,
 }
 
 /// Why a source could not be opened, in words the app log can print, plus
@@ -562,6 +722,9 @@ pub(crate) struct OpenedSource {
 pub(crate) struct OpenError {
     pub message: String,
     pub retry: &'static str,
+    /// The host answered and then went quiet. The one failure worth a second
+    /// attempt on a fresh connection (see `open_source_retrying`).
+    pub stalled: bool,
 }
 
 /// Connects to `url`, buffers enough of it, and builds the decoder.
@@ -580,10 +743,12 @@ pub(crate) async fn open_source(
     url: &str,
     budgets: LoadBudgets,
 ) -> Result<OpenedSource, OpenError> {
-    let host_error = |message: String| OpenError { message, retry: RETRY_NONE };
-    let parsed = url
-        .parse()
-        .map_err(|_| OpenError { message: "bad url".into(), retry: RETRY_WEB_AUDIO })?;
+    let host_error = |message: String| OpenError { message, retry: RETRY_NONE, stalled: false };
+    let parsed = url.parse().map_err(|_| OpenError {
+        message: "bad url".into(),
+        retry: RETRY_WEB_AUDIO,
+        stalled: false,
+    })?;
 
     let stream = match tokio::time::timeout(budgets.connect, HttpStream::new(client, parsed)).await {
         Err(_) => {
@@ -601,8 +766,9 @@ pub(crate) async fn open_source(
 
     // From here the response has started, so every wait is judged on progress.
     let progress = Arc::new(DownloadProgress::started_now());
-    let stalled = |stop: LoadStop, stage: &str| {
-        host_error(match stop {
+    let stalled = |stop: LoadStop, stage: &str| OpenError {
+        stalled: stop == LoadStop::Stalled,
+        ..host_error(match stop {
             LoadStop::Stalled => format!(
                 "the song stopped arriving while {stage} (nothing for {}s)",
                 budgets.stall.as_secs()
@@ -651,8 +817,8 @@ pub(crate) async fn open_source(
     // Fix 3: run blocking decoder I/O off the async runtime. Building the
     // decoder READS (a seekable one reads the tail as well), so it blocks on
     // the same download and is judged the same way.
-    let decoder = match while_progressing(
-        tauri::async_runtime::spawn_blocking(move || build_decoder(reader, byte_len)),
+    let (decoder, forward_only) = match while_progressing(
+        tauri::async_runtime::spawn_blocking(move || open_decoder(reader, byte_len)),
         &progress,
         budgets.stall,
         budgets.progress,
@@ -673,10 +839,11 @@ pub(crate) async fn open_source(
             return Err(OpenError {
                 message: format!("this engine could not decode the song: {e}"),
                 retry: RETRY_WEB_AUDIO,
+                stalled: false,
             })
         }
         Ok(Err(e)) => {
-            return Err(OpenError { message: e.to_string(), retry: RETRY_WEB_AUDIO })
+            return Err(OpenError { message: e.to_string(), retry: RETRY_WEB_AUDIO, stalled: false })
         }
     };
 
@@ -684,7 +851,36 @@ pub(crate) async fn open_source(
         use rodio::Source;
         decoder.total_duration()
     };
-    Ok(OpenedSource { decoder, total, failed })
+    Ok(OpenedSource { decoder, total, failed, forward_only })
+}
+
+/// `open_source`, with one more attempt when the first one STALLED.
+///
+/// A stall is the host answering and then going quiet, which on a relayed
+/// connection is as often a hiccup as a dead source. Before this it ended the
+/// load on the spot ("Couldn't load"), and the only way to try again was to
+/// click the song again. The second attempt is a new request, so the stream
+/// route resolves the song afresh. Anything else (a refusal, a host that never
+/// answered, a link far too slow) would fail the same way twice, so it is
+/// reported at once, as before. `still_wanted` stops a retry for a load the
+/// listener has already moved on from; `on_retry` gets the first failure.
+pub(crate) async fn open_source_retrying(
+    client: Client,
+    url: &str,
+    budgets: LoadBudgets,
+    still_wanted: impl Fn() -> bool,
+    on_retry: impl FnOnce(&str),
+) -> Result<OpenedSource, OpenError> {
+    match open_source(client.clone(), url, budgets).await {
+        Err(first) if first.stalled && still_wanted() => {
+            on_retry(&first.message);
+            open_source(client, url, budgets).await.map_err(|again| OpenError {
+                message: format!("{} (on a second attempt, after: {})", again.message, first.message),
+                ..again
+            })
+        }
+        other => other,
+    }
 }
 
 #[tauri::command]
@@ -696,12 +892,25 @@ pub async fn audio_load(
     start_at: f64,
     cookie: Option<String>,
 ) -> Result<(), String> {
+    load_track(&app, engine.inner(), url, autoplay, start_at, cookie).await
+}
+
+/// What `audio_load` does, callable from inside the engine as well: a
+/// backward seek in a forward-only track re-opens the track through here.
+async fn load_track(
+    app: &AppHandle,
+    engine: &AudioEngine,
+    url: String,
+    autoplay: bool,
+    start_at: f64,
+    cookie: Option<String>,
+) -> Result<(), String> {
     // Claim the load BEFORE any slow work, so a newer request can supersede
     // this one even if this one finishes later.
     let my_seq = engine.claim_load();
     engine.silence_current();
     log_audio(
-        &app,
+        app,
         "INFO",
         &format!("load #{my_seq} start_at={start_at:.1} autoplay={autoplay} url={url}"),
     );
@@ -713,20 +922,28 @@ pub async fn audio_load(
     // that event carries the retry decision the webview needs, and an Err as
     // well would race a second, less informed report through invoke()'s catch.
     let client = http_client(cookie.as_deref())?;
-    let opened = match open_source(client, &url, LoadBudgets::DEFAULT).await {
+    let opened = open_source_retrying(
+        client,
+        &url,
+        LoadBudgets::DEFAULT,
+        || engine.is_current_load(my_seq),
+        |first| log_audio(app, "WARN", &format!("load #{my_seq} {first}; trying once more")),
+    )
+    .await;
+    let opened = match opened {
         Ok(o) => o,
         Err(e) => {
-            log_audio(&app, "WARN", &format!("load #{my_seq} {}", e.message));
-            emit_err(&app, e.retry, e.message);
+            log_audio(app, "WARN", &format!("load #{my_seq} {}", e.message));
+            emit_err(app, e.retry, e.message);
             return Ok(());
         }
     };
-    let OpenedSource { decoder, total, failed } = opened;
+    let OpenedSource { decoder, total, failed, forward_only } = opened;
 
     // Someone asked for a different track while this one was downloading —
     // discard it silently rather than yanking playback back.
     if !engine.is_current_load(my_seq) {
-        log_audio(&app, "INFO", &format!("load #{my_seq} superseded — discarded"));
+        log_audio(app, "INFO", &format!("load #{my_seq} superseded, discarded"));
         return Ok(());
     }
 
@@ -752,28 +969,31 @@ pub async fn audio_load(
 
     *engine.sink.lock().map_err(|_| "lock")? = Some(sink);
     *engine.current_url.lock().map_err(|_| "lock")? = Some(url);
+    *engine.current_cookie.lock().map_err(|_| "lock")? = cookie;
+    engine.forward_only.store(forward_only, Ordering::SeqCst);
     *engine.current_total.lock().map_err(|_| "lock")? = total;
     *engine.source_failed.lock().map_err(|_| "lock")? = Arc::clone(&failed);
 
     log_audio(
-        &app,
+        app,
         "INFO",
         &format!(
-            "load #{my_seq} playing (duration={:.0}s volume={:.2})",
+            "load #{my_seq} playing (duration={:.0}s volume={:.2}{})",
             total.map(|d| d.as_secs_f64()).unwrap_or(0.0),
-            engine.volume()
+            engine.volume(),
+            if forward_only { " forward-only" } else { "" }
         ),
     );
     if let Some(d) = total {
-        emit_sec(&app, "audio:duration", d.as_secs_f64());
+        emit_sec(app, "audio:duration", d.as_secs_f64());
     }
     if autoplay {
-        emit_bare(&app, "audio:play");
+        emit_bare(app, "audio:play");
     }
     engine.set_nowplaying(autoplay);
 
     let (sink_arc, generation) = engine.inner_arc();
-    spawn_position_timer(app, sink_arc, generation, my_gen, failed);
+    spawn_position_timer(app.clone(), sink_arc, generation, my_gen, failed);
     Ok(())
 }
 
@@ -821,6 +1041,7 @@ pub fn audio_stop(engine: State<'_, AudioEngine>) {
     if let Ok(mut u) = engine.current_url.lock() {
         *u = None;
     }
+    engine.forward_only.store(false, Ordering::SeqCst);
     if let Ok(mut d) = engine.current_total.lock() {
         *d = None;
     }
@@ -829,15 +1050,45 @@ pub fn audio_stop(engine: State<'_, AudioEngine>) {
 #[tauri::command]
 pub fn audio_seek(app: AppHandle, engine: State<'_, AudioEngine>, sec: f64) {
     let total = engine.current_total.lock().ok().and_then(|g| *g);
-    let Some(target) = seek_target(total, sec) else {
-        // Refuse rather than restart the song from 0 (see seek_target). The
-        // position timer's next tick puts the slider back where the audio is.
-        log_audio(
-            &app,
-            "WARN",
-            &format!("refused a seek to {sec:.1}s: the decoder reports no duration for this track"),
-        );
-        return;
+    let forward_only = engine.forward_only.load(Ordering::SeqCst);
+    let (pos, playing) = engine
+        .sink
+        .lock()
+        .ok()
+        .and_then(|g| g.as_ref().map(|s| (s.get_pos(), !s.is_paused())))
+        .unwrap_or((Duration::ZERO, false));
+    let target = match plan_seek(total, forward_only, pos, sec) {
+        SeekPlan::InPlace(target) => target,
+        SeekPlan::Refuse => {
+            // Refuse rather than restart the song from 0 (see seek_target).
+            // The position timer's next tick puts the slider back where the
+            // audio is.
+            log_audio(
+                &app,
+                "WARN",
+                &format!("refused a seek to {sec:.1}s: the decoder reports no duration for this track"),
+            );
+            return;
+        }
+        SeekPlan::Reopen(target) => {
+            let url = engine.current_url.lock().ok().and_then(|g| g.clone());
+            let cookie = engine.current_cookie.lock().ok().and_then(|g| g.clone());
+            let Some(url) = url else { return };
+            log_audio(
+                &app,
+                "INFO",
+                &format!("seek back to {sec:.1}s in a forward-only stream: re-opening it there"),
+            );
+            // Off this thread: a load takes a round trip, and a sync command
+            // runs on the main thread.
+            tauri::async_runtime::spawn(async move {
+                use tauri::Manager;
+                let engine = app.state::<AudioEngine>();
+                let _ = load_track(&app, engine.inner(), url, playing, target.as_secs_f64(), cookie)
+                    .await;
+            });
+            return;
+        }
     };
     let mut error = None;
     if let Ok(g) = engine.sink.lock() {
@@ -1036,6 +1287,8 @@ fn spawn_position_timer(
 mod skip_repro;
 #[cfg(test)]
 mod fastfail;
+#[cfg(test)]
+mod stall_repro;
 
 #[cfg(test)]
 mod tests {
