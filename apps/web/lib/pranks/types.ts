@@ -90,3 +90,20 @@ export interface PrankPerson {
   /** Green dot: a fresh heartbeat that says music is playing. */
   listening: boolean;
 }
+
+/** A library entry: a short `sound` played over the music, or a `song`
+ *  a swap plays instead of it. */
+export type PrankSoundKind = 'sound' | 'song';
+
+/** One library file as the admin page sees it. */
+export interface PrankSound {
+  id: string;
+  kind: PrankSoundKind;
+  name: string;
+  durationSec: number;
+  sizeBytes: number;
+  mime: string;
+  created: string;
+  /** Admin preview and what a prank row's streamUrl points at. */
+  url: string;
+}
