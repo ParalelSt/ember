@@ -34,6 +34,7 @@ export const CHANGELOG: ChangelogEntry[] = [
       'Songs you bring over sit below the ones you liked yourself, in the order you liked them.',
       'Liking a song no longer lights up every other song with the same name by a different artist, for artists whose names are not in the Latin alphabet and for songs with no artist listed.',
       'Ember now has a privacy policy and terms, in plain words.',
+      'Radio, song details and downloads work again for the few songs whose YouTube id starts with a dash.',
     ],
   },
   {
