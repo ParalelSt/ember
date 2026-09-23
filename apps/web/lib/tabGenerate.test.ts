@@ -63,13 +63,13 @@ describe('tab generation argv', () => {
   // cleanup, so the dir used to sit under /tmp forever.
   it('sweeps leaked ember-transcribe-* tmp dirs after a SIGKILL timeout', async () => {
     const cp = await import('node:child_process');
-    vi.mocked(cp.spawn).mockImplementationOnce((_cmd: string, args: unknown[]) => {
+    vi.mocked(cp.spawn).mockImplementationOnce(((_cmd: string, args: unknown[]) => {
       lastSpawnArgs = args;
       fakeChild = new FakeChild();
       // No auto-close here: this run hangs until the timeout kills it,
       // same as demucs stuck on a bad file.
-      return fakeChild as unknown as ReturnType<typeof cp.spawn>;
-    });
+      return fakeChild;
+    }) as unknown as typeof cp.spawn);
 
     const leaked = fs.mkdtempSync(path.join(os.tmpdir(), 'ember-transcribe-'));
     expect(fs.existsSync(leaked)).toBe(true);
