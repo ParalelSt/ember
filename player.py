@@ -1021,8 +1021,10 @@ def cmd_classify(args):
     transfer: prints {results: {videoId: "ATV"|"OMV"|"UGC"|null}, failed:
     [videoId, ...], busy: bool}. One anonymous get_song per id (callers keep
     batches at about 8). A video whose lookup raised is null and listed in
-    `failed`; a lookup refused for going too fast sets `busy` and stops the
-    batch there, so the caller backs off and repeats it."""
+    `failed`; a lookup refused for going too fast, or a network/5xx error
+    that says nothing about the video itself, sets `busy` and stops the
+    batch there, so the caller backs off and repeats it instead of the like
+    being counted as not music."""
     results = {}
     failed = []
     busy = False
@@ -1035,7 +1037,7 @@ def cmd_classify(args):
             song = yt.get_song(vid) or {}
         except Exception as e:
             print(f"classify: get_song failed for {vid!r}: {type(e).__name__}: {e}", file=sys.stderr)
-            if BUSY_RE.search(str(e)):
+            if _search_retryable(e):
                 busy = True
                 break
             results[vid] = None
