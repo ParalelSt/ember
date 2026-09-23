@@ -3,6 +3,7 @@ import re
 import sys
 import json
 import time
+import shutil
 import argparse
 import contextlib
 import concurrent.futures
@@ -46,6 +47,19 @@ def _ffmpeg_opts():
     when there is none: yt-dlp then does what it can without it."""
     exe = ffmpeg_exe()
     return {"ffmpeg_location": exe} if exe else {}
+
+
+def _js_runtime_opts():
+    """yt-dlp needs a JS runtime to solve YouTube's signature/n-parameter
+    challenges on some player clients; only `deno` is enabled by default,
+    and most hosts don't have it installed. Without any runtime, yt-dlp
+    warns and falls back to formats/clients that intermittently 403 on the
+    actual media fetch (confirmed locally: same video 403'd with no runtime,
+    succeeded once `node` was enabled). `node` is commonly present already
+    (it runs Ember's own API server), so enable it opportunistically when
+    it's on PATH. Empty when it isn't: no behavior change on a host without
+    Node either, yt-dlp just keeps doing what it does today."""
+    return {"js_runtimes": {"node": {}}} if shutil.which("node") else {}
 
 
 def sanitize_filename(name: str) -> str:
@@ -161,6 +175,42 @@ def ytdlp_search(query: str, limit: int):
     return (info or {}).get("entries") or []
 
 
+def _clean_partials(base: Path):
+    """Remove leftover .part (and .ytdl) files for `base` (an output path
+    without its final extension, e.g. MUSIC_DIR/<videoId> or a human-named
+    file stem) so a retry starts the download fresh instead of resuming a
+    truncated, possibly now-invalid partial."""
+    for pattern in (f"{base.name}*.part", f"{base.name}*.ytdl"):
+        for p in base.parent.glob(pattern):
+            try:
+                p.unlink()
+            except OSError:
+                pass
+
+
+def _is_403(exc) -> bool:
+    return "403" in str(exc)
+
+
+def _download_with_403_retry(run, cleanup):
+    """Run `run()` (a zero-arg callable performing the yt-dlp download).
+    YouTube's signed media URLs intermittently 403 on the very first fetch
+    (observed locally: no JS runtime available made this reliably
+    reproducible, but the URLs are also short-lived and can expire between
+    extraction and fetch even with one). A fresh `extract_info`/`download`
+    call gets newly-signed URLs, so one retry after cleaning up any partial
+    file usually succeeds. Only a DownloadError whose message shows a 403 is
+    retried, and only once: any other error, or a second 403, propagates."""
+    try:
+        return run()
+    except yt_dlp.utils.DownloadError as e:
+        if not _is_403(e):
+            raise
+        print("[download] HTTP 403, cleaning partials and retrying once", file=sys.stderr)
+        cleanup()
+        return run()
+
+
 def download_if_needed(video_id: str, title: str, artist: str) -> Path:
     """Interactive: human-named file, verbose output."""
     file_path = get_local_path(title, artist)
@@ -168,9 +218,10 @@ def download_if_needed(video_id: str, title: str, artist: str) -> Path:
         print(f"Already downloaded: {file_path.name}")
         return file_path
     print(f"Downloading: {title}...")
+    base = file_path.with_suffix('')
     ydl_opts = {
         'format': 'bestaudio/best',
-        'outtmpl': str(file_path.with_suffix('')),
+        'outtmpl': str(base),
         'postprocessors': [{
             'key': 'FFmpegExtractAudio',
             'preferredcodec': 'mp3',
@@ -181,11 +232,16 @@ def download_if_needed(video_id: str, title: str, artist: str) -> Path:
         'quiet': False,
         **_cookie_opts(),
         **_ffmpeg_opts(),
+        **_js_runtime_opts(),
     }
     url = f"https://www.youtube.com/watch?v={video_id}"
-    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-        ydl.download([url])
-    return file_path
+
+    def _attempt():
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            ydl.download([url])
+        return file_path
+
+    return _download_with_403_retry(_attempt, lambda: _clean_partials(base))
 
 def download_by_id(video_id: str) -> Path:
     """API mode: download YouTube's native audio (no transcode) so the first
@@ -195,6 +251,7 @@ def download_by_id(video_id: str) -> Path:
     if cached:
         return cached
 
+    base = MUSIC_DIR / video_id
     outtmpl = str(MUSIC_DIR / f"{video_id}.%(ext)s")
     ydl_opts = {
         # Prefer m4a (AAC) since browsers decode it cleanly without WebM/Opus quirks.
@@ -204,15 +261,19 @@ def download_by_id(video_id: str) -> Path:
         'no_warnings': True,
         **_cookie_opts(),
         **_ffmpeg_opts(),
+        **_js_runtime_opts(),
     }
     url = f"https://www.youtube.com/watch?v={video_id}"
+
     # Belt-and-suspenders: redirect any stray prints from yt-dlp/postprocessors
     # to stderr so stdout stays pure JSON for the Node parent to read.
-    with contextlib.redirect_stdout(sys.stderr):
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(url)
-            file_path = Path(ydl.prepare_filename(info))
-    return file_path
+    def _attempt():
+        with contextlib.redirect_stdout(sys.stderr):
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                info = ydl.extract_info(url)
+                return Path(ydl.prepare_filename(info))
+
+    return _download_with_403_retry(_attempt, lambda: _clean_partials(base))
 
 def play_song(file_path: Path):
     """Play the MP3 (interactive mode only)."""
@@ -334,6 +395,7 @@ def cmd_info(args):
         'skip_download': True,
         **_cookie_opts(),
         **_ffmpeg_opts(),
+        **_js_runtime_opts(),
     }
     with contextlib.redirect_stdout(sys.stderr):
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
