@@ -349,3 +349,7 @@ Suggested order: 0, 1, 2, 3, 4, 8, 5, 7, 9, then 6 if needed. Tasks 1 to 4 give 
 4. **Limits as recommended:** duck 30%, sounds 30 s max, swaps 5 min max, 20 per person per hour, 15 s gap, schedules between 60 s and 2 h, 45 s delivery expiry.
 5. The remaining questions take the plan's recommendations: sounds and swaps only while music is playing; the prank song starts from its beginning while the bar keeps counting; every `is_admin` user may prank, issuer logged; the Android lock-screen length tell is accepted; upload hint mp3/m4a; the desktop log line is accepted.
 6. **Branch:** all of this lands on `plan-23-9` (not `admin-pranks`).
+
+## Owner decision (2026-09-23, later): no song swap
+
+The song swap is dropped. Task 4 is cancelled, and swap disappears from Task 5 (Android does the sound overlay only), from Task 6, from the admin page (Task 8: no swap option in the composer), and from schedules (Task 7: repeating sounds only). `POST /api/admin/pranks` keeps answering 400 for `swap`; remove the swap wording from copy and UI, and from the receiver's comments. Pranks are sound effects over the person's music, the music ducking while they play.
