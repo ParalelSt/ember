@@ -515,6 +515,9 @@ const URL_CACHE = new Map<string, { info: StreamInfo; expires: number }>();
 // Fallback TTL when the upstream URL carries no readable expiry. googlevideo
 // URLs are signed for ~6h, so an hour is still conservative.
 const URL_TTL_MS = 60 * 60 * 1000;
+// Same shape as SEARCH_CACHE above: drop the oldest insertion at the cap
+// (not strict LRU, but TTL evicts stale entries anyway).
+const URL_CACHE_MAX = 500;
 
 /** Cache lifetime for a resolved stream URL. googlevideo URLs embed their own
  *  signed expiry (`expire=<unix seconds>`); trust it minus a 10-min margin.
@@ -557,6 +560,18 @@ export interface LyricsResult {
 
 const LYRICS_CACHE = new Map<string, { result: LyricsResult; expires: number }>();
 const LYRICS_TTL_MS = 60 * 60 * 1000;
+const LYRICS_CACHE_MAX = 500;
+
+/** Shared with URL_CACHE below — both are keyed by an unbounded input
+ *  (every videoId or title+artist ever played), so without a cap they grow
+ *  for the life of the process. Same eviction as SEARCH_CACHE above. */
+function capInsert<V>(map: Map<string, V>, key: string, value: V, max: number): void {
+  if (map.size >= max && !map.has(key)) {
+    const oldest = map.keys().next().value;
+    if (oldest !== undefined) map.delete(oldest);
+  }
+  map.set(key, value);
+}
 
 /** Parse LRC body into sorted {time, text} entries. Tolerates the common
  *  `[mm:ss.xx]` and `[mm:ss]` forms, multiple stamps per line, and metadata
@@ -671,7 +686,7 @@ export async function getLyrics(title: string, artist: string): Promise<LyricsRe
   // useful, fall back to Genius via the Python scraper for the plain text.
   const fromLrclib = await fetchLrclib(cleanTitle, cleanArtist);
   if (fromLrclib) {
-    LYRICS_CACHE.set(cacheKey, { result: fromLrclib, expires: Date.now() + LYRICS_TTL_MS });
+    capInsert(LYRICS_CACHE, cacheKey, { result: fromLrclib, expires: Date.now() + LYRICS_TTL_MS }, LYRICS_CACHE_MAX);
     return fromLrclib;
   }
 
@@ -686,7 +701,7 @@ export async function getLyrics(title: string, artist: string): Promise<LyricsRe
     source: raw?.source ?? 'none',
     url: raw?.url ?? null,
   };
-  LYRICS_CACHE.set(cacheKey, { result, expires: Date.now() + LYRICS_TTL_MS });
+  capInsert(LYRICS_CACHE, cacheKey, { result, expires: Date.now() + LYRICS_TTL_MS }, LYRICS_CACHE_MAX);
   return result;
 }
 
@@ -721,6 +736,6 @@ export async function resolveStreamUrl(videoId: string): Promise<StreamInfo> {
     e.status = 502;
     throw e;
   }
-  URL_CACHE.set(videoId, { info, expires: urlCacheExpiry(info.url) });
+  capInsert(URL_CACHE, videoId, { info, expires: urlCacheExpiry(info.url) }, URL_CACHE_MAX);
   return info;
 }
