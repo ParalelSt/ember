@@ -10,17 +10,13 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 class FakeChild extends EventEmitter {
   stdout = new EventEmitter();
   stderr = new EventEmitter();
-  // Whatever a caller writes to the child's stdin, kept so a test can prove
-  // the credentials went that way and not into argv.
-  stdin = { end: vi.fn((text?: string) => { stdinWrites.push(text ?? ''); }), on: vi.fn() };
   kill = vi.fn();
 }
 
 let lastSpawnArgs: unknown[] | undefined;
 let fakeChild: FakeChild;
-const stdinWrites: string[] = [];
-/** What the next fake run prints. Every test but the liked ones wants the
- *  empty list the player answers a search with. */
+/** What the next fake run prints: the empty list the player answers a
+ *  search with. */
 let nextStdout = '[]';
 let nextStderr = '';
 
@@ -81,106 +77,13 @@ describe('getRecommended', () => {
   });
 });
 
-// The transfer of somebody's own YouTube Music likes. The rule being tested
-// is the one that matters: the pasted headers reach the helper on stdin and
-// appear nowhere else.
-const HEADERS = [
-  'accept: */*',
-  'authorization: SAPISIDHASH 1758500000_s3cr3thash',
-  'cookie: SAPISID=s3cr3tSAPISID; __Secure-3PAPISID=s3cr3t3PAPISID',
-  'x-goog-authuser: 0',
-].join('\n');
-
-const likedSong = (videoId: string, title: string) => ({
-  videoId,
-  title,
-  artists: ['Artist One', 'Artist Two'],
-  artistId: 'UCartist',
-  album: 'An Album',
-  durationSec: 202,
-  artworkUrl: 'https://lh3.example/large',
-  likedAt: null,
-  setVideoId: `set-${videoId}`,
-});
-
-describe('fetchLikedSongs', () => {
+// Anything the helper writes to stderr reaches the terminal and the server
+// log, so a credential in it must not.
+describe('runPython stderr', () => {
   afterEach(() => {
     vi.clearAllMocks();
-    stdinWrites.length = 0;
     nextStdout = '[]';
     nextStderr = '';
-  });
-
-  it('passes the headers on stdin and never in argv', async () => {
-    nextStdout = JSON.stringify({ items: [likedSong('aaaaaaaaaaa', 'First')], count: 1, truncated: false });
-    const { fetchLikedSongs } = await import('./youtube');
-    await fetchLikedSongs(HEADERS);
-
-    expect(lastSpawnArgs).toEqual([expect.stringContaining('player.py'), 'liked', '--auth-stdin']);
-    expect(JSON.stringify(lastSpawnArgs)).not.toContain('s3cr3t');
-    expect(stdinWrites).toEqual([HEADERS]);
-  });
-
-  it('turns the answer into tracks that need no search', async () => {
-    nextStdout = JSON.stringify({
-      items: [likedSong('aaaaaaaaaaa', 'First'), likedSong('bbbbbbbbbbb', 'Second')],
-      count: 2,
-      truncated: false,
-    });
-    const { fetchLikedSongs } = await import('./youtube');
-    const { songs, truncated } = await fetchLikedSongs(HEADERS);
-
-    expect(truncated).toBe(false);
-    expect(songs).toHaveLength(2);
-    expect(songs[0].track).toMatchObject({
-      id: 'youtube:aaaaaaaaaaa',
-      sourceId: 'aaaaaaaaaaa',
-      source: 'youtube',
-      title: 'First',
-      artist: 'Artist One',
-      album: 'An Album',
-      durationSec: 202,
-    });
-    expect(songs[0].artists).toEqual(['Artist One', 'Artist Two']);
-    expect(songs[0].likedAt).toBeNull();
-  });
-
-  it('drops rows with no usable video and keeps the first of a duplicate', async () => {
-    nextStdout = JSON.stringify({
-      items: [
-        likedSong('aaaaaaaaaaa', 'First'),
-        { ...likedSong('aaaaaaaaaaa', 'First again'), setVideoId: 'other' },
-        likedSong('not-an-id', 'Nonsense'),
-        { title: 'No video at all' },
-      ],
-      count: 4,
-      truncated: false,
-    });
-    const { fetchLikedSongs } = await import('./youtube');
-    const { songs } = await fetchLikedSongs(HEADERS);
-    expect(songs.map((s) => s.track.sourceId)).toEqual(['aaaaaaaaaaa']);
-    expect(songs[0].track.title).toBe('First');
-  });
-
-  it('carries the truncation flag through', async () => {
-    nextStdout = JSON.stringify({ items: [likedSong('aaaaaaaaaaa', 'First')], count: 1, truncated: true });
-    const { fetchLikedSongs } = await import('./youtube');
-    expect((await fetchLikedSongs(HEADERS)).truncated).toBe(true);
-  });
-
-  it("makes the helper's auth refusal a 401 with its sentence", async () => {
-    nextStdout = JSON.stringify({ error: 'Ember could not read your YouTube Music library.', kind: 'auth' });
-    const { fetchLikedSongs } = await import('./youtube');
-    await expect(fetchLikedSongs(HEADERS)).rejects.toMatchObject({
-      status: 401,
-      message: 'Ember could not read your YouTube Music library.',
-    });
-  });
-
-  it('makes YouTube Music being down a 502', async () => {
-    nextStdout = JSON.stringify({ error: 'YouTube Music did not answer.', kind: 'network' });
-    const { fetchLikedSongs } = await import('./youtube');
-    await expect(fetchLikedSongs(HEADERS)).rejects.toMatchObject({ status: 502 });
   });
 
   it('redacts a credential that somehow reached the helper stderr', async () => {
@@ -190,11 +93,10 @@ describe('fetchLikedSongs', () => {
       written.push(String(chunk));
       return true;
     }) as typeof process.stderr.write;
-    nextStderr = `liked: giving up\ncookie: SAPISID=s3cr3tSAPISID\n`;
-    nextStdout = JSON.stringify({ items: [], count: 0, truncated: false });
+    nextStderr = `recommended: giving up\ncookie: SAPISID=s3cr3tSAPISID\n`;
     try {
-      const { fetchLikedSongs } = await import('./youtube');
-      await fetchLikedSongs(HEADERS);
+      const { getRecommended } = await import('./youtube');
+      await getRecommended({ seed: 'dQw4w9WgXcQ', country: 'US', limit: 10 });
     } finally {
       process.stderr.write = realWrite;
     }

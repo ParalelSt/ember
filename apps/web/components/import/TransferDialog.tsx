@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState, type ChangeEvent, type CSSProperties } from 'react';
+import { useCallback, useEffect, useRef, useState, type ChangeEvent } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
@@ -13,15 +13,14 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { AlertIcon, ChevronLeftIcon, HeartIcon, LinkIcon, QueueIcon, UploadIcon } from '@/components/icons';
+import { AlertIcon, ChevronLeftIcon, HeartIcon, KeyIcon, LinkIcon, QueueIcon, UploadIcon } from '@/components/icons';
 import { LinkPreview } from '@/components/import/LinkPreview';
 import { api } from '@/lib/api';
 import { QK } from '@/hooks/useLibrary';
 import { IMPORT_QK } from '@/hooks/useImports';
-import { useIsDesktop } from '@/hooks/useIsDesktop';
 import { logger } from '@/lib/logger/client';
 import { parseImportUrl } from '@/lib/import/url';
-import { OVER_CAP_MESSAGE, transferErrorMessage, ytmusicLikedErrorMessage } from '@/lib/import/transferCopy';
+import { googleLikesErrorMessage, OVER_CAP_MESSAGE, transferErrorMessage } from '@/lib/import/transferCopy';
 import {
   routesFor,
   serviceById,
@@ -29,12 +28,17 @@ import {
   type TransferRoute,
   type TransferServiceId,
 } from '@/lib/import/transferRoutes';
-import { YTMUSIC_HEADERS_NOTE } from '@/lib/import/sources/ytmusicLiked';
+import { GOOGLE_FALLBACK_HINT, GOOGLE_MESSAGES, skippedLine } from '@/lib/import/sources/ytmusicLiked';
 import type { JobKind, ImportSourceKind } from '@/lib/import/types';
 import type { TransferPreview } from '@/app/api/import/upload/route';
+import type { GooglePreview } from '@/lib/import/google/flows';
 
 /** Wait this long after typing stops before reading a pasted list or link. */
 const LOOKUP_DELAY_MS = 400;
+
+/** How often the dialog asks the server how a Google sign-in stands. The
+ *  server does the polling of Google itself. */
+export const GOOGLE_POLL_MS = 2_000;
 
 const DESTINATIONS: { id: JobKind; name: string; consequence: string; icon: typeof HeartIcon }[] = [
   {
@@ -68,7 +72,15 @@ type Lookup =
   | { step: 'error'; message: string }
   | { step: 'file'; preview: TransferPreview }
   | { step: 'link'; preview: LinkLookup }
-  | { step: 'ytmusic'; preview: TransferPreview };
+  | { step: 'google'; preview: GooglePreview; flowId: string };
+
+/** A Google sign-in before its likes are read: asking for a code, then
+ *  showing it while the person allows Ember on Google's page. */
+type SignIn =
+  | { step: 'idle' }
+  | { step: 'asking' }
+  | { step: 'code'; flowId: string; userCode: string; verificationUrl: string; reading: boolean }
+  | { step: 'failed'; message: string };
 
 export interface TransferDialogProps {
   open: boolean;
@@ -87,18 +99,21 @@ export interface TransferDialogProps {
 export function TransferDialog({ open, onOpenChange, from = 'settings' }: TransferDialogProps) {
   const router = useRouter();
   const qc = useQueryClient();
-  const isDesktop = useIsDesktop();
   const [destination, setDestination] = useState<JobKind | null>(null);
   const [serviceId, setServiceId] = useState<TransferServiceId | null>(null);
   const [routeId, setRouteId] = useState<string | null>(null);
   const [file, setFile] = useState<File | null>(null);
   const [text, setText] = useState('');
   const [url, setUrl] = useState('');
-  // The pasted YouTube Music request headers: a Google session, kept in
-  // state only as long as the dialog needs it, never logged, never put in a
-  // toast or an error string, and cleared the moment a transfer starts or
-  // the dialog closes.
-  const [secret, setSecret] = useState('');
+  // A Google sign-in in flight. The dialog only ever holds its id and the
+  // code the person types: the tokens stay on the server, which forgets
+  // them once the likes are read.
+  const [signIn, setSignIn] = useState<SignIn>({ step: 'idle' });
+  const [googleConfigured, setGoogleConfigured] = useState<boolean | null>(null);
+  const flowRef = useRef<string | null>(null);
+  // Bumped by every new sign-in and every cancel, so a code that arrives
+  // after the person moved on is cancelled rather than shown.
+  const attempt = useRef(0);
   const [lookup, setLookup] = useState<Lookup>({ step: 'idle' });
   const [starting, setStarting] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
@@ -108,8 +123,17 @@ export function TransferDialog({ open, onOpenChange, from = 'settings' }: Transf
     setFile(null);
     setText('');
     setUrl('');
-    setSecret('');
+    setSignIn({ step: 'idle' });
     setLookup({ step: 'idle' });
+  }, []);
+
+  /** Tell the server to revoke and forget the sign-in in flight, if any.
+   *  Fire and forget: the server's own 15 minutes end it regardless. */
+  const cancelSignIn = useCallback(() => {
+    attempt.current++;
+    const flowId = flowRef.current;
+    flowRef.current = null;
+    if (flowId) void api.googleLikesCancel(flowId).catch(() => {});
   }, []);
 
   /** Forget the source AND what was last asked about, so choosing the same
@@ -117,8 +141,9 @@ export function TransferDialog({ open, onOpenChange, from = 'settings' }: Transf
   const clearSource = useCallback(() => {
     asked.current = '';
     if (fileInput.current) fileInput.current.value = '';
+    cancelSignIn();
     resetSource();
-  }, [resetSource]);
+  }, [resetSource, cancelSignIn]);
 
   // Reset on every fresh open, during render rather than in an effect, so
   // the last run's file or preview never paints. The refs go with it, but
@@ -133,26 +158,33 @@ export function TransferDialog({ open, onOpenChange, from = 'settings' }: Transf
       setStarting(false);
       resetSource();
     } else {
-      // Gone the moment the dialog closes, not just on the next open: those
-      // headers are a Google session.
-      setSecret('');
+      // Stop asking about a sign-in the moment the dialog closes; the effect
+      // below tells the server to forget it.
+      setSignIn({ step: 'idle' });
     }
   }
   useEffect(() => {
-    if (!open) return;
+    // Closing the dialog cancels a sign-in that never reached Start, so the
+    // server revokes it now rather than at its timeout.
+    if (!open) {
+      cancelSignIn();
+      return;
+    }
     asked.current = '';
     if (fileInput.current) fileInput.current.value = '';
-  }, [open]);
+  }, [open, cancelSignIn]);
+  // And so does leaving the page with the dialog still open.
+  useEffect(() => cancelSignIn, [cancelSignIn]);
 
   const service = serviceId ? serviceById(serviceId) : null;
   // What this service can still offer for the chosen destination: the
-  // YouTube Music account read always lands in the likes, so a new playlist
-  // never sees it. One way in is no question at all, so it is taken as read.
+  // Google sign-in always lands in the likes, so a new playlist never sees
+  // it. One way in is no question at all, so it is taken as read.
   const choices = service && destination ? routesFor(service, destination) : [];
   const route: TransferRoute | null = choices.find((r) => r.id === routeId) ?? (choices.length === 1 ? choices[0] : null);
-  // No phone browser has developer tools, so the account read is impossible
-  // here. Said plainly, with the other way in offered rather than a shrug.
-  const deadEnd = route !== null && route.desktopOnly === true && !isDesktop;
+  // A server with no Google client says so, and offers the way in that
+  // needs no sign-in, rather than a button that can only fail.
+  const notSetUp = route?.kind === 'google' && googleConfigured === false;
 
   const readFile = useCallback(async (chosen: File) => {
     const token = `file:${chosen.name}:${chosen.size}:${chosen.lastModified}`;
@@ -206,22 +238,79 @@ export function TransferDialog({ open, onOpenChange, from = 'settings' }: Transf
     }
   }, []);
 
-  // Unlike the other sources, this one is not read as the person types: the
-  // route is rate limited to three reads an hour because each one spends a
-  // signed-in Google session, so Preview is a deliberate click.
-  const readYtmusic = useCallback(async () => {
-    setLookup({ step: 'looking' });
+  const beginSignIn = async () => {
+    cancelSignIn();
+    const mine = attempt.current;
+    setLookup({ step: 'idle' });
+    setSignIn({ step: 'asking' });
     try {
-      const { preview } = await api.ytmusicLikedPreview(secret);
-      setLookup({ step: 'ytmusic', preview });
+      const r = await api.googleLikesBegin();
+      if (attempt.current !== mine) {
+        void api.googleLikesCancel(r.flowId).catch(() => {});
+        return;
+      }
+      flowRef.current = r.flowId;
+      setSignIn({ step: 'code', flowId: r.flowId, userCode: r.userCode, verificationUrl: r.verificationUrl, reading: false });
     } catch (e) {
-      setLookup({ step: 'error', message: ytmusicLikedErrorMessage(e) });
+      if (attempt.current !== mine) return;
+      const message = googleLikesErrorMessage(e);
+      if (message === GOOGLE_MESSAGES.notConfigured) setGoogleConfigured(false);
+      setSignIn({ step: 'failed', message });
     }
-  }, [secret]);
+  };
+
+  // Whether this server can do a Google sign-in at all, asked once the
+  // sign-in is the way in, so an unconfigured server says so up front.
+  const routeKind = route?.kind ?? null;
+  useEffect(() => {
+    if (routeKind !== 'google' || googleConfigured !== null) return;
+    let live = true;
+    api
+      .googleLikesConfig()
+      .then((r) => live && setGoogleConfigured(r.configured))
+      // Unknown is not "no": the button still works and says why if not.
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, [routeKind, googleConfigured]);
+
+  // While the code is up, ask the server how it stands. The server is the
+  // one polling Google, at the interval Google gives.
+  const waitingOn = signIn.step === 'code' ? signIn.flowId : null;
+  useEffect(() => {
+    if (!waitingOn) return;
+    let live = true;
+    const tick = async () => {
+      try {
+        const r = await api.googleLikesStatus(waitingOn);
+        if (!live || flowRef.current !== waitingOn) return;
+        if (r.state === 'ready' && r.preview) {
+          setSignIn({ step: 'idle' });
+          setLookup({ step: 'google', preview: r.preview, flowId: waitingOn });
+        } else if (r.state === 'waiting' || r.state === 'reading') {
+          setSignIn((s) => (s.step === 'code' && s.flowId === waitingOn ? { ...s, reading: r.state === 'reading' } : s));
+        } else {
+          // Over, one way or another: the server has already forgotten it.
+          flowRef.current = null;
+          setSignIn({ step: 'failed', message: r.message ?? GOOGLE_MESSAGES.readFailed });
+        }
+      } catch (e) {
+        if (!live || flowRef.current !== waitingOn) return;
+        flowRef.current = null;
+        setSignIn({ step: 'failed', message: googleLikesErrorMessage(e) });
+      }
+    };
+    const t = setInterval(() => void tick(), GOOGLE_POLL_MS);
+    return () => {
+      live = false;
+      clearInterval(t);
+    };
+  }, [waitingOn]);
 
   // A pasted list and a pasted link both read themselves once typing stops;
   // a chosen file is read at once.
-  const kind = route?.kind ?? null;
+  const kind = routeKind;
   useEffect(() => {
     if (kind === 'paste') {
       const body = text.trim();
@@ -267,20 +356,22 @@ export function TransferDialog({ open, onOpenChange, from = 'settings' }: Transf
 
   // Over the cap, the upload route refuses the start, so the dialog says so
   // here instead of letting someone press Start and be turned away. The
-  // YouTube Music route is different: over the cap it still starts, just
-  // with the newest songs kept, so it never sets overCap.
+  // Google sign-in is different: over the cap it still starts, just with
+  // the newest songs kept, so it never sets overCap.
   const overCap = lookup.step === 'file' && lookup.preview.truncated;
-  const count = lookup.step === 'file' || lookup.step === 'link' || lookup.step === 'ytmusic' ? lookup.preview.count : 0;
-  const empty = (lookup.step === 'file' || lookup.step === 'link' || lookup.step === 'ytmusic') && count === 0 && !overCap;
-  const ready = (lookup.step === 'file' || lookup.step === 'link' || lookup.step === 'ytmusic') && count > 0 && !overCap;
+  const previewed = lookup.step === 'file' || lookup.step === 'link' || lookup.step === 'google';
+  const count = previewed ? lookup.preview.count : 0;
+  const empty = previewed && count === 0 && !overCap;
+  const ready = previewed && count > 0 && !overCap;
 
   const start = async () => {
     if (!ready || !destination || starting) return;
     setStarting(true);
     try {
-      if (lookup.step === 'ytmusic') {
-        const r = await api.ytmusicLikedStart(secret);
-        setSecret('');
+      if (lookup.step === 'google') {
+        const r = await api.googleLikesStart(lookup.flowId);
+        // Started: the server has already dropped the sign-in.
+        flowRef.current = null;
         logger.breadcrumb('import', 'transfer queued', { from, destination, source: r.job.source, total: r.job.total });
         void qc.invalidateQueries({ queryKey: IMPORT_QK.jobs });
         void qc.invalidateQueries({ queryKey: QK.likes });
@@ -300,7 +391,13 @@ export function TransferDialog({ open, onOpenChange, from = 'settings' }: Transf
       onOpenChange(false);
       router.push(r.playlistId ? `/playlist/${r.playlistId}` : '/library/liked');
     } catch (e) {
-      setLookup({ step: 'error', message: lookup.step === 'ytmusic' ? ytmusicLikedErrorMessage(e) : transferErrorMessage(e) });
+      if (lookup.step === 'google') {
+        flowRef.current = null;
+        setLookup({ step: 'idle' });
+        setSignIn({ step: 'failed', message: googleLikesErrorMessage(e) });
+      } else {
+        setLookup({ step: 'error', message: transferErrorMessage(e) });
+      }
     } finally {
       setStarting(false);
     }
@@ -405,18 +502,15 @@ export function TransferDialog({ open, onOpenChange, from = 'settings' }: Transf
               </div>
             )}
 
-            {route && deadEnd && (
-              <div data-testid="transfer-dead-end" className="flex flex-col gap-row rounded-lg border border-border bg-card p-row">
+            {notSetUp && (
+              <div data-testid="google-not-set-up" className="flex flex-col gap-row rounded-lg border border-border bg-card p-row">
                 <div className="flex items-center gap-cluster text-sm font-semibold">
                   <AlertIcon className="h-4 w-4 text-muted-foreground" />
-                  This one needs a computer
+                  {GOOGLE_MESSAGES.notConfigured}
                 </div>
-                <p className="text-xs text-muted-foreground">
-                  Those steps need a desktop browser, and this looks like a phone. Come back to this on a computer, or
-                  bring a playlist over instead.
-                </p>
+                <p className="text-xs text-muted-foreground">{GOOGLE_FALLBACK_HINT}</p>
                 {choices
-                  .filter((r) => r.id !== route.id && !r.desktopOnly)
+                  .filter((r) => r.kind === 'link')
                   .map((r) => (
                     <Button key={r.id} type="button" variant="secondary" size="sm" onClick={() => pickRoute(r.id)} className="self-start">
                       {r.whatYouHave}
@@ -425,7 +519,7 @@ export function TransferDialog({ open, onOpenChange, from = 'settings' }: Transf
               </div>
             )}
 
-            {route && !deadEnd && route.kind === 'file' && (
+            {route && route.kind === 'file' && (
               <div className="flex flex-col gap-cluster">
                 <input
                   ref={fileInput}
@@ -447,7 +541,7 @@ export function TransferDialog({ open, onOpenChange, from = 'settings' }: Transf
               </div>
             )}
 
-            {route && !deadEnd && route.kind === 'paste' && (
+            {route && route.kind === 'paste' && (
               <textarea
                 autoFocus
                 aria-label="Your songs, one a line"
@@ -459,7 +553,7 @@ export function TransferDialog({ open, onOpenChange, from = 'settings' }: Transf
               />
             )}
 
-            {route && !deadEnd && route.kind === 'link' && (
+            {route && route.kind === 'link' && (
               <div className="relative">
                 <LinkIcon className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                 <Input
@@ -473,39 +567,21 @@ export function TransferDialog({ open, onOpenChange, from = 'settings' }: Transf
               </div>
             )}
 
-            {route && !deadEnd && route.kind === 'ytmusic' && (
-              <div className="flex flex-col gap-cluster">
-                <textarea
-                  aria-label="Your YouTube Music request headers"
-                  data-testid="ytmusic-secret"
-                  rows={4}
-                  // A password field, not a text field: this is a Google
-                  // session, so it never appears on screen as itself.
-                  style={{ WebkitTextSecurity: 'disc' } as unknown as CSSProperties}
-                  value={secret}
-                  onChange={(e) => {
-                    setSecret(e.target.value);
-                    if (lookup.step === 'ytmusic' || lookup.step === 'error') setLookup({ step: 'idle' });
-                  }}
-                  placeholder="Paste the request headers here"
-                  className="w-full resize-none rounded-lg border border-border bg-transparent px-row py-cluster text-sm"
-                />
-                <p className="text-xs text-muted-foreground">{YTMUSIC_HEADERS_NOTE}</p>
-                <Button
-                  type="button"
-                  variant="secondary"
-                  size="sm"
-                  disabled={!secret.trim() || lookup.step === 'looking'}
-                  onClick={() => void readYtmusic()}
-                  className="self-start"
-                >
-                  {lookup.step === 'looking' ? 'Reading…' : 'Preview'}
-                </Button>
-              </div>
+            {route && route.kind === 'google' && !notSetUp && lookup.step !== 'google' && (
+              <GoogleSignInPanel signIn={signIn} onSignIn={() => void beginSignIn()} />
             )}
 
             {lookup.step === 'file' && <FilePreviewCard preview={lookup.preview} />}
-            {lookup.step === 'ytmusic' && <FilePreviewCard preview={lookup.preview} />}
+            {lookup.step === 'google' && (
+              <>
+                <FilePreviewCard preview={lookup.preview} />
+                {lookup.preview.skipped > 0 && (
+                  <p data-testid="google-skipped" className="text-xs text-muted-foreground">
+                    {skippedLine(lookup.preview.skipped)}
+                  </p>
+                )}
+              </>
+            )}
             {lookup.step === 'link' && (
               <LinkPreview
                 kind={lookup.preview.kind}
@@ -538,7 +614,7 @@ export function TransferDialog({ open, onOpenChange, from = 'settings' }: Transf
           <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
-          {route && !deadEnd && (
+          {route && !notSetUp && (
             <Button
               type="button"
               disabled={!ready || starting}
@@ -551,6 +627,49 @@ export function TransferDialog({ open, onOpenChange, from = 'settings' }: Transf
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+/** The Google sign-in, one step at a time: the button, then the code to type
+ *  on Google's page with a link to it, then a line while Ember waits. */
+function GoogleSignInPanel({ signIn, onSignIn }: { signIn: SignIn; onSignIn: () => void }) {
+  if (signIn.step === 'code') {
+    const shown = signIn.verificationUrl.replace(/^https?:\/\/(?:www\.)?/, '');
+    return (
+      <div data-testid="google-code-panel" className="flex flex-col items-center gap-row rounded-lg border border-border bg-card p-block text-center">
+        <span className="text-xs text-muted-foreground">Your code</span>
+        <span data-testid="google-user-code" className="select-all font-mono text-3xl font-semibold tracking-[0.2em]">
+          {signIn.userCode}
+        </span>
+        <a
+          data-testid="google-verification-link"
+          href={signIn.verificationUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center gap-cluster rounded-md bg-ember px-row py-cluster text-sm font-medium text-white hover:bg-ember-soft"
+        >
+          <LinkIcon className="h-4 w-4" />
+          Open {shown}
+        </a>
+        <span className="text-xs text-muted-foreground">Type the code there and allow Ember.</span>
+        <p data-testid="google-waiting" role="status" className="text-xs text-muted-foreground">
+          {signIn.reading ? 'Google said yes. Reading your likes…' : 'Waiting for you to allow Ember…'}
+        </p>
+      </div>
+    );
+  }
+  return (
+    <div className="flex flex-col gap-cluster">
+      {signIn.step === 'failed' && (
+        <p role="alert" data-testid="transfer-error" className="text-xs text-destructive">
+          {signIn.message}
+        </p>
+      )}
+      <Button type="button" variant="secondary" disabled={signIn.step === 'asking'} onClick={onSignIn} className="self-start">
+        <KeyIcon className="h-4 w-4" />
+        {signIn.step === 'asking' ? 'Asking Google…' : 'Sign in with Google'}
+      </Button>
+    </div>
   );
 }
 

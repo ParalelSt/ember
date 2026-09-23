@@ -5,7 +5,6 @@ import fs from 'node:fs';
 import type { Track } from '@/types/track';
 import { redactSecrets } from '@/lib/import/redact';
 import { serverLogger } from '@/lib/logger/server';
-import type { LikedSong } from '@/lib/import/sources/ytmusicLiked';
 
 // apps/web is one level deeper than the old apps/api in workspace layout,
 // but both resolve to the same spotify-clone root.
@@ -82,25 +81,14 @@ function pythonReason(stderr: string, code: number | null): string {
   return `the media helper failed (exit ${code ?? '?'})`;
 }
 
-/** One `player.py` run.
- *
- *  `stdin` is for the one thing that must never be an argument: a person's
- *  YouTube Music headers (`ps` shows argv to every process on the host, argv
- *  reaches crash logs, and a shell history keeps it forever). It is written
- *  once and the pipe is closed; nothing about it is logged, and the child's
- *  stderr is redacted on its way to both the terminal and the server log so a
- *  helper that ever echoed a header could not put it there. */
-function runPython<T = unknown>(args: string[], { timeoutMs = 30000, stdin }: { timeoutMs?: number; stdin?: string } = {}): Promise<T> {
+/** One `player.py` run. The child's stderr is redacted on its way to both
+ *  the terminal and the server log, so a helper that ever echoed a
+ *  credential could not put it there. */
+function runPython<T = unknown>(args: string[], { timeoutMs = 30000 }: { timeoutMs?: number } = {}): Promise<T> {
   return new Promise((resolve, reject) => {
     const child = spawn(PYTHON_BIN, [PLAYER_SCRIPT, ...args], {
       env: { ...process.env, MUSIC_DIR, PATH: SUBPROCESS_PATH },
     });
-    if (stdin !== undefined) {
-      // A child that dies before reading breaks the pipe; that is the exit
-      // code's story to tell, not an unhandled EPIPE.
-      child.stdin.on('error', () => {});
-      child.stdin.end(stdin);
-    }
     let stdout = '';
     let stderr = '';
     const reject_ = (e: PythonError) => {
@@ -407,77 +395,6 @@ export async function getYtPlaylist(playlistId: string): Promise<{ name: string;
     name: result?.title ?? 'Imported playlist',
     tracks: dedupeByVideoId(result?.tracks ?? []).map(normalize),
   };
-}
-
-/** What `player.py liked` prints. `error` and `kind` are its only failure
- *  report: it never exits non-zero and never writes a traceback, because the
- *  call it makes is the only one holding somebody's session. */
-interface RawLikedSong {
-  videoId?: string;
-  title?: string;
-  artists?: string[];
-  artistId?: string | null;
-  album?: string | null;
-  durationSec?: number;
-  artworkUrl?: string | null;
-  likedAt?: number | null;
-}
-
-interface RawLikedSongs {
-  items?: RawLikedSong[];
-  count?: number;
-  truncated?: boolean;
-  error?: string;
-  kind?: 'auth' | 'network' | 'parse';
-}
-
-/** How long a whole liked library may take. Thousands of songs are several
- *  paged /browse calls, which is slow but not interactive-slow. */
-const LIKED_TIMEOUT_MS = 120_000;
-
-const LIKED_STATUS: Record<NonNullable<RawLikedSongs['kind']>, number> = {
-  auth: 401,
-  network: 502,
-  parse: 502,
-};
-
-/** The caller's own liked songs on YouTube Music, read once with the request
- *  headers they pasted.
- *
- *  `secret` is a Google session: it goes to the helper on stdin, is held in
- *  this one local, and is never logged, stored or echoed. Failures arrive as
- *  a sentence from player.py, so nothing about the request reaches the
- *  caller either. */
-export async function fetchLikedSongs(secret: string): Promise<{ songs: LikedSong[]; truncated: boolean }> {
-  const result = await runPython<RawLikedSongs>(['liked', '--auth-stdin'], { timeoutMs: LIKED_TIMEOUT_MS, stdin: secret });
-  if (result?.error) {
-    const e: PythonError = new Error(result.error);
-    e.status = LIKED_STATUS[result.kind ?? 'parse'] ?? 502;
-    throw e;
-  }
-  const seen = new Set<string>();
-  const songs: LikedSong[] = [];
-  for (const raw of result?.items ?? []) {
-    const videoId = raw?.videoId ?? '';
-    if (!VIDEO_ID_RE.test(videoId) || seen.has(videoId)) continue;
-    seen.add(videoId);
-    const artists = (raw.artists ?? []).filter((a) => typeof a === 'string' && a.trim());
-    songs.push({
-      track: normalize({
-        videoId,
-        title: raw.title ?? '',
-        artist: artists[0] ?? 'Unknown',
-        artistId: raw.artistId ?? null,
-        album: raw.album ?? null,
-        albumId: null,
-        durationSec: raw.durationSec ?? 0,
-        artworkUrl: raw.artworkUrl ?? '',
-      }),
-      artists,
-      likedAt: typeof raw.likedAt === 'number' && Number.isFinite(raw.likedAt) ? raw.likedAt : null,
-    });
-  }
-  return { songs, truncated: result?.truncated === true };
 }
 
 /** A raw search hit from `player.py match`: the track plus what the scorer

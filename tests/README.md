@@ -334,6 +334,10 @@ node tests/import.test.mjs                          # or: npm run test:import
 # Playlist import in the browser: Tabs dialog, sidebar ring, restart, 503, review sheet
 # (starts its own app on :3034 from the last build, see below)
 node tests/import-ui.test.mjs                       # or: npm run test:import-ui
+# Transfer: YouTube Music likes after a Google sign-in, against its own fake
+# Google on :8097 (the app needs GOOGLE_OAUTH_BASE / YOUTUBE_API_BASE pointed
+# there, see the file's header for the whole start line)
+node tests/transfer-google-ui.test.mjs
 
 # player.py `match` and `ytplaylist`, no server, no network
 .venv/bin/python -m unittest tests/test_player_match.py   # or: npm run test:player-match
@@ -1057,3 +1061,30 @@ fails, with the failed indexes listed separately (`failed`) so the runner
 retries the batch instead of calling those songs not found. It also checks
 `ytplaylist` falling back to yt-dlp when ytmusicapi fails, and reporting
 `private` when both fail. Run it with the repo's venv.
+
+## What `transfer-google-ui.test.mjs` covers
+
+The YouTube Music likes transfer end to end in Chromium, with no Google
+account: the test serves its own fake Google on `FAKE_GOOGLE_PORT` (8097):
+`/oauth/device/code`, `/oauth/token`, `/oauth/revoke`, a `/device` page with
+a code box and Allow / Deny, and `/youtube/v3/videos?myRating=like` (two
+pages: two songs, a gaming video, a Topic-channel song). The app is started
+with `GOOGLE_OAUTH_BASE=http://127.0.0.1:8097/oauth`,
+`YOUTUBE_API_BASE=http://127.0.0.1:8097/youtube/v3`, a fake client id and
+secret, and the fake player.
+
+- **A**: Liked songs, YouTube Music offers "I can sign in to my Google
+  account" first; the steps name google.com/device; no F12 or headers.
+- **B**: Sign in with Google shows the code, a link to the verification URL
+  in a new tab, and the waiting line.
+- **C**: the test opens that link, types the code on the fake page and
+  presses Allow; the preview shows 3 songs, the cleaned-up title, "Left out
+  1 like that is not music", and the fake saw the refresh token revoked
+  right after the two pages were read with the Bearer token.
+- **D**: Transfer 3 songs lands on Liked songs with all three and without
+  the gaming video.
+- **E**: Deny on the fake page shows "You said no on Google's page, so
+  nothing was read." and revokes nothing (there was no token).
+- **F**: closing the dialog mid-sign-in stops the server polling Google.
+- **G**: no response the browser received, no console line and nothing in
+  `EMBER_LOG_DIR` holds a token, device code or the client secret.

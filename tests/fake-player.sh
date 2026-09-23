@@ -95,21 +95,6 @@ case "$CMD" in
       process.stdout.write(JSON.stringify({ results }));
     ' "$FIX" "$@"
     ;;
-  liked)
-    # The caller's own liked songs. The real one reads the request headers on
-    # stdin and nothing from argv, so this one saves what it was given on
-    # stdin ($FAKE_LIKED_STDIN) and a test asserts the credentials went that
-    # way. FAKE_LIKED_ERROR=auth|network|parse answers a failure instead.
-    STDIN_FILE="${FAKE_LIKED_STDIN:-/dev/null}"
-    cat > "$STDIN_FILE"
-    if [ -n "${FAKE_LIKED_ERROR:-}" ]; then
-      printf '{"error": "Ember could not read your YouTube Music likes (fake %s).", "kind": "%s"}' \
-        "$FAKE_LIKED_ERROR" "$FAKE_LIKED_ERROR"
-      exit 0
-    fi
-    FIX="${FAKE_LIKED_FIXTURE:-$(dirname "$0")/fixtures/imports/transfer/ytm-liked.json}"
-    cat "$FIX"
-    ;;
   ytplaylist)
     FIX="${FAKE_PLAYLIST_FIXTURE:-$(dirname "$0")/fixtures/imports/ytm-playlists.json}"
     node -e '

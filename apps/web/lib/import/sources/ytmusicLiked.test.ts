@@ -1,19 +1,16 @@
 import { describe, it, expect } from 'vitest';
 import { MAX_TRANSFER_ITEMS } from '@/lib/import/jobState';
 import {
-  checkPastedHeaders,
-  MAX_HEADERS_CHARS,
-  normalisePastedHeaders,
+  GOOGLE_FORGET_NOTE,
+  GOOGLE_MESSAGES,
+  GOOGLE_SIGNIN_STEPS,
+  noMusicMessage,
   parseYtmusicLiked,
-  YTMUSIC_HEADERS_STEPS,
+  skippedLine,
   YTMUSIC_LIKED_LABEL,
   type LikedSong,
 } from '@/lib/import/sources/ytmusicLiked';
 import type { Track } from '@/types/track';
-
-const SAPISID = 's3cr3tSAPISIDvalue';
-const COOKIE = `SAPISID=${SAPISID}; __Secure-3PAPISID=s3cr3t3PAPISID; HSID=s3cr3tHSID`;
-const HEADERS = ['accept: */*', `cookie: ${COOKIE}`, 'user-agent: Mozilla/5.0', 'x-goog-authuser: 0'].join('\n');
 
 function song(videoId: string, title: string, artists = ['Artist One', 'Artist Two']): LikedSong {
   const track: Track = {
@@ -31,73 +28,6 @@ function song(videoId: string, title: string, artists = ['Artist One', 'Artist T
   };
   return { track, artists, likedAt: null };
 }
-
-describe('checkPastedHeaders', () => {
-  it('accepts a real header block', () => {
-    expect(checkPastedHeaders(HEADERS)).toBeNull();
-  });
-
-  it('asks for a paste when there is none', () => {
-    expect(checkPastedHeaders(undefined)?.error).toContain('Paste your YouTube Music request headers');
-    expect(checkPastedHeaders('   ')?.error).toContain('Paste your YouTube Music request headers');
-    expect(checkPastedHeaders({ secret: HEADERS })?.error).toBeTruthy();
-  });
-
-  it('turns away more text than a header block could be', () => {
-    expect(checkPastedHeaders('x'.repeat(MAX_HEADERS_CHARS + 1))?.error).toContain('more text');
-  });
-
-  it('says so when there is no Cookie line', () => {
-    expect(checkPastedHeaders('accept: */*\nx-goog-authuser: 0')?.error).toContain('no Cookie header');
-  });
-
-  it('spots a signed-out tab, where the Cookie line says nothing about who you are', () => {
-    const out = checkPastedHeaders('cookie: YSC=abc; VISITOR_INFO1_LIVE=def\nx-goog-authuser: 0');
-    expect(out?.error).toContain('signed-out');
-  });
-
-  it('says so when x-goog-authuser is missing', () => {
-    expect(checkPastedHeaders(`cookie: ${COOKIE}`)?.error).toContain('x-goog-authuser');
-  });
-
-  it('never quotes the paste back, whatever is wrong with it', () => {
-    const bad = [`cookie: ${COOKIE}`, 'cookie: YSC=abc\nx-goog-authuser: 0', 'x'.repeat(MAX_HEADERS_CHARS + 1), ''];
-    for (const input of bad) expect(checkPastedHeaders(input)?.error ?? '').not.toContain('s3cr3t');
-  });
-
-  it('accepts what Chrome copies as a fetch call', () => {
-    const chrome = `fetch("https://music.youtube.com/youtubei/v1/browse", {
-  "headers": {
-    "accept": "*/*",
-    "cookie": "${COOKIE}",
-    "x-goog-authuser": "0"
-  },
-  "method": "POST"
-});`;
-    expect(checkPastedHeaders(chrome)).toBeNull();
-  });
-});
-
-describe('normalisePastedHeaders', () => {
-  it('turns a fetch snippet into the lines ytmusicapi reads', () => {
-    const chrome = `{\n  "headers": {\n    "cookie": "${COOKIE}",\n    "x-goog-authuser": "0"\n  }\n}`;
-    expect(normalisePastedHeaders(chrome)).toBe(`cookie: ${COOKIE}\nx-goog-authuser: 0`);
-  });
-
-  it('unescapes what JSON escaped', () => {
-    const chrome = '{\n  "cookie": "SAPISID=a\\"b",\n  "x-goog-authuser": "0"\n}';
-    expect(normalisePastedHeaders(chrome)).toBe('cookie: SAPISID=a"b\nx-goog-authuser: 0');
-  });
-
-  it('leaves an ordinary paste exactly as it is', () => {
-    expect(normalisePastedHeaders(`  ${HEADERS}  `)).toBe(HEADERS);
-  });
-
-  it('leaves a quoted line alone when there is no cookie among them', () => {
-    const text = '"accept": "*/*"\n"user-agent": "Mozilla/5.0"';
-    expect(normalisePastedHeaders(text)).toBe(text);
-  });
-});
 
 describe('parseYtmusicLiked', () => {
   it('names itself and keeps the order the likes came in', () => {
@@ -149,16 +79,34 @@ describe('parseYtmusicLiked', () => {
   });
 });
 
-describe('the steps the dialog renders', () => {
-  it('say where to do it, what to click and what Ember does with it', () => {
-    const all = YTMUSIC_HEADERS_STEPS.join(' ');
-    expect(all).toContain('music.youtube.com');
-    expect(all).toContain('Network');
-    expect(all).toContain('browse');
-    expect(all).toContain('never stores it');
+describe('the words the sign-in says', () => {
+  it('the steps name the button, the page and the yes', () => {
+    const all = GOOGLE_SIGNIN_STEPS.join(' ');
+    expect(all).toContain('Sign in with Google');
+    expect(all).toContain('google.com/device');
+    expect(all).toMatch(/Say yes/);
+    expect(GOOGLE_FORGET_NOTE).toMatch(/signs itself out/);
+  });
+
+  it('every ending is one plain sentence, including the three the owner asked for', () => {
+    expect(GOOGLE_MESSAGES.denied).toBe("You said no on Google's page, so nothing was read.");
+    expect(GOOGLE_MESSAGES.expired).toBe('The code ran out. Press Sign in with Google to get a new one.');
+    expect(GOOGLE_MESSAGES.notConfigured).toBe('This server is not set up for Google sign-in yet.');
+    for (const m of Object.values(GOOGLE_MESSAGES)) {
+      expect(m).toMatch(/^[A-Z].*\.$/);
+      expect(m).not.toMatch(/token|oauth|http|error/i);
+    }
+  });
+
+  it('says how many likes were not music, in the singular too', () => {
+    expect(skippedLine(1)).toBe('Left out 1 like that is not music.');
+    expect(skippedLine(12)).toBe('Left out 12 likes that are not music.');
+    expect(noMusicMessage(0)).toBe(GOOGLE_MESSAGES.noLikes);
+    expect(noMusicMessage(3)).toContain('None of the 3 videos');
   });
 
   it('have no em dashes', () => {
-    expect(YTMUSIC_HEADERS_STEPS.join(' ')).not.toContain('—');
+    const all = [...GOOGLE_SIGNIN_STEPS, GOOGLE_FORGET_NOTE, ...Object.values(GOOGLE_MESSAGES), skippedLine(2), noMusicMessage(2)];
+    for (const line of all) expect(line).not.toContain('\u2014');
   });
 });

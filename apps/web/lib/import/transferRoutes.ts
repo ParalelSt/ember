@@ -4,29 +4,30 @@
  *  "exact", and nobody reads about CSVs unless a file is their way in.
  *
  *  Pure data and sentences, so the dialog holds no copy of its own. The
- *  YouTube Music steps are imported rather than retyped: the parser that
- *  reads what they produce lives beside them. */
+ *  Google sign-in steps are imported rather than retyped: the parser and the
+ *  routes' sentences live beside them. */
 
 import {
-  YTMUSIC_HEADERS_DESKTOP_ONLY,
-  YTMUSIC_HEADERS_STEPS,
+  GOOGLE_FORGET_NOTE,
+  GOOGLE_MUSIC_ONLY_NOTE,
+  GOOGLE_SIGNIN_STEPS,
 } from '@/lib/import/sources/ytmusicLiked';
 import type { JobKind } from '@/lib/import/types';
 
 /** Which real input a way in ends at, and so which route starts it: a file
  *  or a pasted list go through the upload route, a link through the inspect
- *  route, the account read through the YouTube Music likes route. */
-export type TransferRouteKind = 'file' | 'paste' | 'link' | 'ytmusic';
+ *  route, a Google sign-in through the YouTube Music likes routes. */
+export type TransferRouteKind = 'file' | 'paste' | 'link' | 'google';
 
 export type TransferServiceId = 'spotify' | 'ytmusic' | 'apple' | 'other';
 
-/** Everything but the account read looks each song up by its name, which is
+/** Everything but the Google sign-in looks each song up by its name, which is
  *  why a finished transfer has songs to check and songs it never found. */
 export const MATCHED_BY_NAME =
   'Ember looks each song up by name, so a few will need a check afterwards and a few may not be here at all.';
 
 /** Nothing is searched for on this one: the songs arrive already named by
- *  YouTube Music itself. */
+ *  YouTube itself. */
 export const NOTHING_TO_MATCH =
   'These come straight from your account, so there is nothing to look up by name and nothing to check afterwards.';
 
@@ -48,10 +49,7 @@ export interface TransferRoute {
   /** Plain lines under the steps: what this way in cannot do, and how the
    *  songs are found. */
   notes: readonly string[];
-  /** True only for the YouTube Music account read: no phone browser has
-   *  developer tools, so it is an honest dead end there. */
-  desktopOnly?: boolean;
-  /** True only for the YouTube Music account read: it always lands its
+  /** True only for the Google sign-in: it always lands its
    *  songs in the likes, so it makes no sense as a way to build a playlist. */
   likedOnly?: boolean;
 }
@@ -113,6 +111,14 @@ export const TRANSFER_SERVICES: readonly TransferService[] = [
     heading: 'Bring in your YouTube Music songs',
     routes: [
       {
+        id: 'ytmusic-google',
+        kind: 'google',
+        whatYouHave: 'I can sign in to my Google account',
+        steps: GOOGLE_SIGNIN_STEPS,
+        notes: [GOOGLE_FORGET_NOTE, GOOGLE_MUSIC_ONLY_NOTE, NOTHING_TO_MATCH],
+        likedOnly: true,
+      },
+      {
         id: 'ytmusic-link',
         kind: 'link',
         whatYouHave: 'A link to a playlist',
@@ -122,15 +128,6 @@ export const TRANSFER_SERVICES: readonly TransferService[] = [
           'Paste the link below.',
         ],
         notes: [MATCHED_BY_NAME],
-      },
-      {
-        id: 'ytmusic-account',
-        kind: 'ytmusic',
-        whatYouHave: 'I am on a computer and do not mind a technical step',
-        steps: YTMUSIC_HEADERS_STEPS,
-        notes: [YTMUSIC_HEADERS_DESKTOP_ONLY, NOTHING_TO_MATCH],
-        desktopOnly: true,
-        likedOnly: true,
       },
     ],
   },
@@ -181,7 +178,7 @@ export function serviceById(id: TransferServiceId): TransferService {
 }
 
 /** The ways in this service offers for where the songs are going. The
- *  YouTube Music account read always lands in the likes, so it is not
+ *  Google sign-in always lands in the likes, so it is not
  *  offered while a new playlist is the destination. */
 export function routesFor(service: TransferService, destination: JobKind): TransferRoute[] {
   return service.routes.filter((r) => !r.likedOnly || destination === 'liked');

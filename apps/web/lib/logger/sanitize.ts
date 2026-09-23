@@ -7,7 +7,24 @@ import type { ServerLogEntry } from './types';
  *  circuiting on previously-seen objects. */
 
 export const MAX_STRING_LEN = 4096;
-export const SCRUBBED_KEYS = ['password', 'token', 'cookie', 'authorization'];
+export const SCRUBBED_KEYS = [
+  'password',
+  'token',
+  'cookie',
+  'authorization',
+  // Google sign-in (lib/import/google/), in both spellings. Lower case:
+  // keys are compared lowered.
+  'access_token',
+  'refresh_token',
+  'id_token',
+  'device_code',
+  'client_secret',
+  'accesstoken',
+  'refreshtoken',
+  'idtoken',
+  'devicecode',
+  'clientsecret',
+];
 
 const TRUNCATED_MARKER = '…[truncated]';
 const SCRUBBED_MARKER = '[scrubbed]';
@@ -38,10 +55,10 @@ export function scrubText(text: string): string {
   return text
     .split('\n')
     .map((line) => {
-      // Session cookies first (lib/import/redact.ts): a transfer from
-      // YouTube Music puts a Google session through this app, and a cookie
-      // name the generic rules below do not know must not survive into a bug
-      // report.
+      // Google credentials first (lib/import/redact.ts): a transfer from
+      // YouTube Music signs in with Google, and a token, device code or
+      // session cookie the generic rules below do not know must not survive
+      // into a bug report.
       let out = redactSecrets(line, SCRUBBED_MARKER);
       out = out.replace(BEARER_RE, `bearer ${SCRUBBED_MARKER}`);
       out = out.replace(COOKIE_HEADER_RE, (m, name) => `${name}: ${SCRUBBED_MARKER}`);

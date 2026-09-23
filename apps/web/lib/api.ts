@@ -2,6 +2,7 @@ import type { AlbumDetail, ArtistPayload, Playlist, SessionState, Track } from '
 import { logger } from '@/lib/logger/client';
 import type { ImportItem, ImportJob, InspectResult, JobKind } from '@/lib/import/types';
 import type { TransferPreview } from '@/app/api/import/upload/route';
+import type { FlowState as GoogleFlowState, GooglePreview } from '@/lib/import/google/flows';
 import type { TabSummary } from '@/lib/tabSources';
 import type { TabTiming } from '@/lib/tabSync';
 import type { StoredPlugins } from '@/lib/pluginSettings';
@@ -144,17 +145,29 @@ export const api = {
   /** Queue a transfer from an uploaded file or a pasted list. */
   transferStart: (input: { file?: File; text?: string; destination?: JobKind }) =>
     req<{ job: ImportJob; playlistId: string | null }>('/import/upload', { method: 'POST', body: transferBody(input) }),
-  /** Read a YouTube Music account's liked songs from pasted request headers,
-   *  without starting anything. `secret` goes in the JSON body only: never a
-   *  query string, never logged. */
-  ytmusicLikedPreview: (secret: string) =>
-    req<{ preview: TransferPreview }>('/import/liked/ytmusic?preview=1', { method: 'POST', body: { secret } }),
-  /** Queue the transfer of those same liked songs into Ember's likes. */
-  ytmusicLikedStart: (secret: string) =>
-    req<{ job: ImportJob; playlistId: null; truncated: boolean; note: string | null }>('/import/liked/ytmusic', {
-      method: 'POST',
-      body: { secret },
-    }),
+  /** Is Google sign-in set up on this server? */
+  googleLikesConfig: () => req<{ configured: boolean }>('/import/liked/google'),
+  /** A new Google sign-in for the YouTube Music likes: the code to type on
+   *  Google's page. No token ever comes back here, only the flow's id. */
+  googleLikesBegin: () =>
+    req<{ flowId: string; userCode: string; verificationUrl: string; expiresIn: number; interval: number }>(
+      '/import/liked/google',
+      { method: 'POST' },
+    ),
+  /** How that sign-in stands; `preview` once the likes are read. */
+  googleLikesStatus: (flowId: string) =>
+    req<{ state: GoogleFlowState; preview?: GooglePreview; message?: string }>(
+      `/import/liked/google/${encodeURIComponent(flowId)}`,
+    ),
+  /** Queue the transfer of the likes that sign-in read. */
+  googleLikesStart: (flowId: string) =>
+    req<{ job: ImportJob; playlistId: null; truncated: boolean; note: string | null }>(
+      `/import/liked/google/${encodeURIComponent(flowId)}/start`,
+      { method: 'POST' },
+    ),
+  /** Cancel it: the server revokes whatever Google handed out. */
+  googleLikesCancel: (flowId: string) =>
+    req<{ cancelled: boolean }>(`/import/liked/google/${encodeURIComponent(flowId)}`, { method: 'DELETE' }),
   listImportJobs: () => req<{ jobs: ImportJob[] }>('/import/jobs'),
   getImportJob: (id: string) => req<{ job: ImportJob; items: ImportItem[] }>(`/import/jobs/${encodeURIComponent(id)}`),
   updateImportJob: (id: string, action: 'cancel' | 'retry' | 'dismiss') =>

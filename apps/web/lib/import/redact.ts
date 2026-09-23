@@ -1,13 +1,15 @@
 /** Take the credentials out of any text before it is written down.
  *
- *  A transfer from YouTube Music asks the person to paste the request headers
- *  of their own signed-in tab: a Cookie line that is, for two years, their
- *  Google session. Ember holds it for one `player.py liked` call and never
- *  stores it, but a stray log line, a Discord bug report or an error message
- *  quoting the input would outlive the call. So everything that could carry
- *  it goes through here first: the python helper's stderr, every server log
- *  entry (lib/logger/sanitize.ts), and the sentence a failed transfer answers
- *  with.
+ *  A transfer from YouTube Music signs the person in with Google for the
+ *  minute it takes to read their likes (lib/import/google/): the server holds
+ *  an access token, a refresh token and a device code in memory, and the
+ *  host's client secret sits in its env. None of it is ever meant to be
+ *  written anywhere, but a stray log line, a Discord bug report or an error
+ *  message quoting a request would outlive the call. So everything that
+ *  could carry one goes through here first: the python helper's stderr,
+ *  every server log entry (lib/logger/sanitize.ts), and the sentence a failed
+ *  request answers with. Google session cookies are covered too, since a
+ *  helper error can quote a request of its own.
  *
  *  Pure and cheap: plain regex, no dependencies, safe on both sides of the
  *  wire. Over-matching is fine, a missed secret is not. */
@@ -33,6 +35,20 @@ const RULES: [RegExp, string][] = [
   // What YouTube Music actually signs its requests with.
   [/\bSAPISIDHASH\s+\S+/gi, `SAPISIDHASH ${REDACTED}`],
   [/\bBearer\s+[A-Za-z0-9\-._~+/]{8,}=*/gi, `Bearer ${REDACTED}`],
+  // Google OAuth, by field name, however it is quoted or encoded: a token
+  // response, a form body, a query string.
+  [
+    /(["']?\b(?:access_token|refresh_token|id_token|device_code|client_secret|accessToken|refreshToken|idToken|deviceCode|clientSecret)["']?\s*[:=]\s*["']?)[^\s"'&,;}]*/g,
+    `$1${REDACTED}`,
+  ],
+  [/([?&]token=)[^\s&"']*/gi, `$1${REDACTED}`],
+  // And by shape, for one with no name beside it: an access token (ya29.),
+  // a refresh token (1//), a device code (AH-1N...), a client secret
+  // (GOCSPX-).
+  [/\bya29\.[A-Za-z0-9\-_.]+/g, REDACTED],
+  [/(^|[^A-Za-z0-9:])1\/\/[A-Za-z0-9\-_]{8,}/g, `$1${REDACTED}`],
+  [/\bAH-1N[A-Za-z0-9\-_]{8,}/g, REDACTED],
+  [/\bGOCSPX-[A-Za-z0-9\-_]+/g, REDACTED],
 ];
 
 /** Every credential this app can see, replaced by a marker. `marker` exists

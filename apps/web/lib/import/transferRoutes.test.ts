@@ -9,7 +9,7 @@ import {
   SPOTIFY_LINK_CAP,
   TRANSFER_SERVICES,
 } from './transferRoutes';
-import { YTMUSIC_HEADERS_STEPS } from './sources/ytmusicLiked';
+import { GOOGLE_FORGET_NOTE, GOOGLE_SIGNIN_STEPS } from './sources/ytmusicLiked';
 
 describe('the four services a transfer asks about', () => {
   it('names them in plain words, and each has at least one real way in', () => {
@@ -49,27 +49,30 @@ describe('the real limits, said where the path shows up', () => {
     expect(apple.routes[0].notes).toContain(APPLE_ONLY_WAY);
   });
 
-  it('every route but the account read warns that songs are found by name', () => {
+  it('every route but the Google sign-in warns that songs are found by name', () => {
     for (const s of TRANSFER_SERVICES) {
       for (const r of s.routes) {
-        if (r.kind === 'ytmusic') expect(r.notes, r.id).toContain(NOTHING_TO_MATCH);
+        if (r.kind === 'google') expect(r.notes, r.id).toContain(NOTHING_TO_MATCH);
         else expect(r.notes, r.id).toContain(MATCHED_BY_NAME);
       }
     }
   });
 
-  it('the YouTube Music account steps are the ones the parser ships with, word for word', () => {
-    const account = serviceById('ytmusic').routes.find((r) => r.kind === 'ytmusic')!;
-    expect(account.steps).toEqual(YTMUSIC_HEADERS_STEPS);
-    expect(account.desktopOnly).toBe(true);
-    expect(account.likedOnly).toBe(true);
+  it('the Google sign-in steps are the ones the routes ship with, word for word', () => {
+    const google = serviceById('ytmusic').routes.find((r) => r.kind === 'google')!;
+    expect(google.steps).toEqual(GOOGLE_SIGNIN_STEPS);
+    expect(google.notes).toContain(GOOGLE_FORGET_NOTE);
+    expect(google.likedOnly).toBe(true);
+    // Nothing about developer tools or headers survives anywhere.
+    const everything = TRANSFER_SERVICES.flatMap((s) => s.routes.flatMap((r) => [r.whatYouHave, ...r.steps, ...r.notes])).join(' ');
+    expect(everything).not.toMatch(/F12|developer tools|request headers/i);
   });
 });
 
 describe('what a destination leaves on offer', () => {
-  it('the account read is offered for Liked songs only', () => {
+  it('the Google sign-in is offered for Liked songs only, first', () => {
     const ytmusic = serviceById('ytmusic');
-    expect(routesFor(ytmusic, 'liked').map((r) => r.kind)).toEqual(['link', 'ytmusic']);
+    expect(routesFor(ytmusic, 'liked').map((r) => r.kind)).toEqual(['google', 'link']);
     expect(routesFor(ytmusic, 'playlist').map((r) => r.kind)).toEqual(['link']);
   });
 

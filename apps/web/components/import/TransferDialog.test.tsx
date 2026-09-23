@@ -1,9 +1,10 @@
 import type { ComponentProps, PropsWithChildren } from 'react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { RATE_LIMITED_MESSAGE, YTMUSIC_RATE_LIMITED_MESSAGE } from '@/lib/import/transferCopy';
+import { RATE_LIMITED_MESSAGE } from '@/lib/import/transferCopy';
 import { MATCHED_BY_NAME, SPOTIFY_LINK_CAP } from '@/lib/import/transferRoutes';
+import { GOOGLE_MESSAGES } from '@/lib/import/sources/ytmusicLiked';
 
 // The dialog's three plain questions (where they land, where the music is
 // now, what you already have), every route each answer reaches, and every
@@ -33,8 +34,11 @@ const api = vi.hoisted(() => ({
   transferStart: vi.fn(),
   importInspect: vi.fn(),
   importStart: vi.fn(),
-  ytmusicLikedPreview: vi.fn(),
-  ytmusicLikedStart: vi.fn(),
+  googleLikesConfig: vi.fn(),
+  googleLikesBegin: vi.fn(),
+  googleLikesStatus: vi.fn(),
+  googleLikesStart: vi.fn(),
+  googleLikesCancel: vi.fn(),
 }));
 vi.mock('@/lib/api', () => ({ api }));
 
@@ -136,6 +140,8 @@ beforeEach(() => {
   logger.error.mockReset();
   toast.info.mockReset();
   for (const fn of Object.values(api)) fn.mockReset();
+  api.googleLikesConfig.mockResolvedValue({ configured: true });
+  api.googleLikesCancel.mockResolvedValue({ cancelled: true });
 });
 
 describe('TransferDialog: where the songs land', () => {
@@ -419,188 +425,297 @@ describe('TransferDialog: what it says when Ember will not take it', () => {
   });
 });
 
-describe('TransferDialog: YouTube Music likes, straight from the account', () => {
-  const ytPreview = (over: Record<string, unknown> = {}) => ({
-    preview: {
-      kind: 'ytmusic-liked',
-      label: 'Liked songs from YouTube Music',
-      order: 'newest-first',
-      count: 3,
-      dropped: 0,
-      truncated: false,
-      sample: [{ title: 'Paper Lanterns', artist: 'Halcyon Drift' }],
-      ...over,
-    },
+describe('TransferDialog: YouTube Music likes, after a Google sign-in', () => {
+  const FLOW = 'flow_abcdefghijklmnopqrstuv';
+  const googlePreview = (over: Record<string, unknown> = {}) => ({
+    kind: 'ytmusic-liked',
+    label: 'Liked songs from YouTube Music',
+    order: 'newest-first',
+    count: 3,
+    dropped: 0,
+    truncated: false,
+    skipped: 4,
+    sample: [{ title: 'Paper Lanterns', artist: 'Halcyon Drift' }],
+    ...over,
   });
-  const SECRET = 'cookie: SAPISID=some-fake-session-value; other=1\nx-goog-authuser: 0';
+  const begun = {
+    flowId: FLOW,
+    userCode: 'WXYZ-QRST',
+    verificationUrl: 'https://www.google.com/device',
+    expiresIn: 900,
+    interval: 5,
+  };
 
-  function toAccountRoute() {
+  function toGoogle() {
     pick('Liked songs');
     service('YouTube Music');
-    have(/technical step/);
+    have(/sign in to my Google account/);
   }
+  const signInButton = () => screen.getByRole('button', { name: /Sign in with Google/ });
+  /** One of the dialog's polls of the server. */
+  const poll = () => act(() => vi.advanceTimersByTimeAsync(2_000));
 
-  function pasteSecret(value = SECRET) {
-    fireEvent.change(screen.getByLabelText('Your YouTube Music request headers'), { target: { value } });
-  }
+  beforeEach(() => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    api.googleLikesBegin.mockResolvedValue(begun);
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
 
-  const previewButton = () => screen.getByRole('button', { name: /^Preview|^Reading/ });
-
-  it('is only offered once Liked songs is the destination, and asks nothing on its own', () => {
+  it('is only offered once Liked songs is the destination', () => {
     setup();
     pick('A new playlist');
     service('YouTube Music');
-    // One way in left, so no question: straight to the playlist-link steps.
     expect(screen.queryAllByTestId('transfer-have-option')).toHaveLength(0);
-    expect(screen.queryByLabelText('Your YouTube Music request headers')).toBeNull();
+    expect(screen.queryByRole('button', { name: /Sign in with Google/ })).toBeNull();
     expect(screen.getByLabelText('Playlist link')).toBeInTheDocument();
-    expect(api.ytmusicLikedPreview).not.toHaveBeenCalled();
   });
 
-  it('with Liked songs it is one of two answers, and it is the one that needs no name matching', () => {
+  it('with Liked songs it is the first answer, and it needs no name matching', () => {
     setup();
     pick('Liked songs');
     service('YouTube Music');
     expect(screen.getAllByTestId('transfer-have-option').map((o) => o.textContent)).toEqual([
+      'I can sign in to my Google account',
       'A link to a playlist',
-      'I am on a computer and do not mind a technical step',
     ]);
-    have(/technical step/);
+    have(/sign in to my Google account/);
+    expect(steps()).toMatch(/google\.com\/device/);
     expect(steps()).toMatch(/nothing to look up by name/);
+    expect(steps()).toMatch(/signs itself out/);
     expect(steps()).not.toContain(MATCHED_BY_NAME);
+    expect(steps()).not.toMatch(/F12|headers/);
   });
 
-  it('shows the steps, the desktop-only line and the used-once note, and reads nothing until Preview is pressed', () => {
+  it('shows one button, and asks Google for nothing until it is pressed', async () => {
     setup();
-    toAccountRoute();
-    expect(screen.getByText(/Open music\.youtube\.com|music\.youtube\.com in Chrome/)).toBeInTheDocument();
-    expect(screen.getByText(/needs a desktop browser/)).toBeInTheDocument();
-    expect(screen.getByText(/Signing out of YouTube Music afterwards makes them useless/)).toBeInTheDocument();
-    pasteSecret();
-    expect(api.ytmusicLikedPreview).not.toHaveBeenCalled();
-    expect(previewButton()).toBeEnabled();
+    toGoogle();
+    await waitFor(() => expect(api.googleLikesConfig).toHaveBeenCalled());
+    expect(signInButton()).toBeEnabled();
+    expect(api.googleLikesBegin).not.toHaveBeenCalled();
+    // Works on a phone too: there is nothing desktop-only left.
+    setWidth(390);
+    expect(signInButton()).toBeInTheDocument();
   });
 
-  it('Preview reads the account and renders the shared preview card', async () => {
-    api.ytmusicLikedPreview.mockResolvedValue(ytPreview());
+  it('pressing it shows the code large, a link to Google, and a waiting line', async () => {
     setup();
-    toAccountRoute();
-    pasteSecret();
-    fireEvent.click(previewButton());
-    expect(api.ytmusicLikedPreview).toHaveBeenCalledWith(SECRET);
+    toGoogle();
+    fireEvent.click(signInButton());
+    await waitFor(() => expect(screen.getByTestId('google-user-code')).toHaveTextContent('WXYZ-QRST'));
+    const link = screen.getByTestId('google-verification-link');
+    expect(link).toHaveAttribute('href', 'https://www.google.com/device');
+    expect(link).toHaveAttribute('target', '_blank');
+    expect(link).toHaveTextContent('Open google.com/device');
+    expect(screen.getByTestId('google-waiting')).toHaveTextContent('Waiting for you to allow Ember');
+    expect(screen.queryByRole('button', { name: /Sign in with Google/ })).toBeNull();
+  });
+
+  it('waiting, reading, then ready: the shared preview card, the skipped line, and Start', async () => {
+    api.googleLikesStatus
+      .mockResolvedValueOnce({ state: 'waiting' })
+      .mockResolvedValueOnce({ state: 'reading' })
+      .mockResolvedValue({ state: 'ready', preview: googlePreview() });
+    api.googleLikesStart.mockResolvedValue({ job, playlistId: null, truncated: false, note: null });
+    const { onOpenChange } = setup();
+    toGoogle();
+    fireEvent.click(signInButton());
+    await waitFor(() => expect(screen.getByTestId('google-code-panel')).toBeInTheDocument());
+    expect(startButton()).toBeDisabled();
+
+    await poll();
+    expect(api.googleLikesStatus).toHaveBeenCalledWith(FLOW);
+    expect(screen.getByTestId('google-waiting')).toHaveTextContent('Waiting for you to allow Ember');
+    await poll();
+    await waitFor(() => expect(screen.getByTestId('google-waiting')).toHaveTextContent('Reading your likes'));
+    await poll();
     await waitFor(() => expect(screen.getByTestId('transfer-preview')).toBeInTheDocument());
+    expect(screen.queryByTestId('google-code-panel')).toBeNull();
     const card = screen.getByTestId('transfer-preview');
     expect(card).toHaveTextContent('Liked songs from YouTube Music');
     expect(card).toHaveTextContent('3 songs');
     expect(card).toHaveTextContent('Paper Lanterns');
-    expect(startButton()).toBeEnabled();
-    expect(startButton()).toHaveTextContent('Transfer 3 songs');
-  });
+    expect(screen.getByTestId('google-skipped')).toHaveTextContent('Left out 4 likes that are not music.');
 
-  it('Start queues the transfer, lands on Liked songs, and clears the pasted headers', async () => {
-    api.ytmusicLikedPreview.mockResolvedValue(ytPreview());
-    api.ytmusicLikedStart.mockResolvedValue({ job, playlistId: null, truncated: false, note: null });
-    const { onOpenChange } = setup();
-    toAccountRoute();
-    pasteSecret();
-    fireEvent.click(previewButton());
-    await waitFor(() => expect(startButton()).toBeEnabled());
+    // No more polling once it is ready.
+    const calls = api.googleLikesStatus.mock.calls.length;
+    await poll();
+    expect(api.googleLikesStatus.mock.calls.length).toBe(calls);
+
+    expect(startButton()).toHaveTextContent('Transfer 3 songs');
     fireEvent.click(startButton());
-    await waitFor(() => expect(api.ytmusicLikedStart).toHaveBeenCalledWith(SECRET));
+    await waitFor(() => expect(api.googleLikesStart).toHaveBeenCalledWith(FLOW));
     await waitFor(() => expect(push).toHaveBeenCalledWith('/library/liked'));
     expect(onOpenChange).toHaveBeenCalledWith(false);
-    expect(screen.getByLabelText('Your YouTube Music request headers')).toHaveValue('');
+    // Started, so there is nothing left to cancel.
+    expect(api.googleLikesCancel).not.toHaveBeenCalled();
   });
 
-  it('a note on a truncated account is toasted, not swallowed', async () => {
-    api.ytmusicLikedPreview.mockResolvedValue(ytPreview({ truncated: true }));
-    api.ytmusicLikedStart.mockResolvedValue({
-      job,
-      playlistId: null,
-      truncated: true,
-      note: 'Ember can transfer up to 10,000 songs at once, and your YouTube Music library has more. Ember will take the newest 10,000.',
-    });
+  it('a note on a library over the cap is toasted, not swallowed', async () => {
+    api.googleLikesStatus.mockResolvedValue({ state: 'ready', preview: googlePreview({ truncated: true }) });
+    api.googleLikesStart.mockResolvedValue({ job, playlistId: null, truncated: true, note: 'Ember will take the newest 10,000.' });
     setup();
-    toAccountRoute();
-    pasteSecret();
-    fireEvent.click(previewButton());
+    toGoogle();
+    fireEvent.click(signInButton());
+    await waitFor(() => expect(screen.getByTestId('google-code-panel')).toBeInTheDocument());
+    await poll();
     await waitFor(() => expect(startButton()).toBeEnabled());
     fireEvent.click(startButton());
-    await waitFor(() => expect(toast.info).toHaveBeenCalledWith(expect.stringContaining('Ember will take the newest')));
+    await waitFor(() => expect(toast.info).toHaveBeenCalledWith('Ember will take the newest 10,000.'));
   });
 
-  const cases: [string, number, string][] = [
-    ['nothing pasted', 400, 'Paste your YouTube Music request headers first. Open music.youtube.com…'],
-    ['a signed-out cookie', 400, 'That Cookie line is from a signed-out tab. Sign in to music.youtube.com and try again.'],
-    ['signed out or stale headers', 401, 'Your YouTube Music session has expired. Sign in again and paste fresh headers.'],
-    ['no likes on the account', 422, 'There are no liked songs in that YouTube Music account yet.'],
-    ['YouTube Music unreachable', 502, 'Ember could not read your YouTube Music likes. Try again in a moment.'],
+  const endings: [string, string, string][] = [
+    ['denied', 'denied', GOOGLE_MESSAGES.denied],
+    ['the code ran out', 'expired', GOOGLE_MESSAGES.expired],
+    ['a read that failed', 'error', GOOGLE_MESSAGES.quota],
   ];
-  for (const [name, status, message] of cases) {
-    it(`${name}: shown as its own sentence`, async () => {
-      api.ytmusicLikedPreview.mockRejectedValue(refuse(status, message));
+  for (const [name, state, message] of endings) {
+    it(`${name}: its own sentence, and the button again`, async () => {
+      api.googleLikesStatus.mockResolvedValue({ state, message });
       setup();
-      toAccountRoute();
-      pasteSecret();
-      fireEvent.click(previewButton());
+      toGoogle();
+      fireEvent.click(signInButton());
+      await waitFor(() => expect(screen.getByTestId('google-code-panel')).toBeInTheDocument());
+      await poll();
       await waitFor(() => expect(screen.getByTestId('transfer-error')).toHaveTextContent(message));
       expect(screen.getByTestId('transfer-error')).toHaveAttribute('role', 'alert');
+      expect(signInButton()).toBeEnabled();
+      expect(startButton()).toBeDisabled();
+      // The server already forgot it: nothing to cancel on close.
+      expect(api.googleLikesCancel).not.toHaveBeenCalled();
     });
   }
 
-  it('three tries an hour: the 429 reads like a person wrote it', async () => {
-    api.ytmusicLikedPreview.mockRejectedValue(refuse(429, 'Slow down, try again in about 900s.'));
+  it('a sign-in the server no longer knows says so', async () => {
+    api.googleLikesStatus.mockRejectedValue(refuse(404, GOOGLE_MESSAGES.gone));
     setup();
-    toAccountRoute();
-    pasteSecret();
-    fireEvent.click(previewButton());
-    await waitFor(() => expect(screen.getByTestId('transfer-error')).toHaveTextContent(YTMUSIC_RATE_LIMITED_MESSAGE));
-    expect(YTMUSIC_RATE_LIMITED_MESSAGE).toMatch(/three/i);
+    toGoogle();
+    fireEvent.click(signInButton());
+    await waitFor(() => expect(screen.getByTestId('google-code-panel')).toBeInTheDocument());
+    await poll();
+    await waitFor(() => expect(screen.getByTestId('transfer-error')).toHaveTextContent(GOOGLE_MESSAGES.gone));
   });
 
-  it('on a phone it is an honest dead end, offering the playlist link instead', () => {
-    setWidth(390);
+  const refusals: [string, number, string, string][] = [
+    ['too many sign-ins', 429, 'Slow down, try again in about 900s.', GOOGLE_MESSAGES.rateLimited],
+    ['Google unreachable', 502, GOOGLE_MESSAGES.unreachable, GOOGLE_MESSAGES.unreachable],
+    ['a server setup Google refuses', 503, GOOGLE_MESSAGES.setupWrong, GOOGLE_MESSAGES.setupWrong],
+    ['something unrecognised', 500, 'Request failed: 500', GOOGLE_MESSAGES.readFailed],
+  ];
+  for (const [name, status, serverSays, shown] of refusals) {
+    it(`pressing the button when ${name}: a sentence`, async () => {
+      api.googleLikesBegin.mockRejectedValue(refuse(status, serverSays));
+      setup();
+      toGoogle();
+      fireEvent.click(signInButton());
+      await waitFor(() => expect(screen.getByTestId('transfer-error')).toHaveTextContent(shown));
+    });
+  }
+
+  it('a server with no Google client says so up front and offers the playlist link instead', async () => {
+    api.googleLikesConfig.mockResolvedValue({ configured: false });
     setup();
-    toAccountRoute();
-    expect(screen.getByTestId('transfer-dead-end')).toHaveTextContent('This one needs a computer');
-    expect(screen.queryByLabelText('Your YouTube Music request headers')).toBeNull();
-    // Not even a Start to press: there is nothing this phone can read.
+    toGoogle();
+    await waitFor(() => expect(screen.getByTestId('google-not-set-up')).toHaveTextContent('This server is not set up for Google sign-in yet.'));
+    expect(screen.queryByRole('button', { name: /Sign in with Google/ })).toBeNull();
     expect(screen.queryByRole('button', { name: /^Transfer/ })).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'A link to a playlist' }));
-    expect(screen.queryByTestId('transfer-dead-end')).toBeNull();
+    expect(screen.queryByTestId('google-not-set-up')).toBeNull();
     expect(screen.getByLabelText('Playlist link')).toBeInTheDocument();
   });
 
-  it('the pasted headers never reach the logger, and are cleared when the dialog closes', async () => {
-    api.ytmusicLikedPreview.mockRejectedValue(refuse(401, 'Your YouTube Music session has expired.'));
+  it('and says the same when the button finds out the hard way', async () => {
+    api.googleLikesConfig.mockRejectedValue(new Error('offline'));
+    api.googleLikesBegin.mockRejectedValue(refuse(503, GOOGLE_MESSAGES.notConfigured));
+    setup();
+    toGoogle();
+    fireEvent.click(signInButton());
+    await waitFor(() => expect(screen.getByTestId('google-not-set-up')).toBeInTheDocument());
+  });
+
+  it('closing the dialog mid-sign-in cancels it, so the server revokes it now', async () => {
+    const qc = new QueryClient();
     const { rerender } = render(
-      <QueryClientProvider client={new QueryClient()}>
+      <QueryClientProvider client={qc}>
         <TransferDialog open onOpenChange={vi.fn()} />
       </QueryClientProvider>,
     );
-    toAccountRoute();
-    pasteSecret();
-    fireEvent.click(previewButton());
-    await waitFor(() => expect(screen.getByTestId('transfer-error')).toBeInTheDocument());
-
-    const everyLoggedString = [...logger.breadcrumb.mock.calls, ...logger.error.mock.calls]
-      .flat()
-      .map((v) => JSON.stringify(v))
-      .join('\n');
-    expect(everyLoggedString).not.toContain(SECRET);
-    expect(everyLoggedString).not.toContain('some-fake-session-value');
-
+    toGoogle();
+    fireEvent.click(signInButton());
+    await waitFor(() => expect(screen.getByTestId('google-code-panel')).toBeInTheDocument());
     rerender(
-      <QueryClientProvider client={new QueryClient()}>
+      <QueryClientProvider client={qc}>
         <TransferDialog open={false} onOpenChange={vi.fn()} />
       </QueryClientProvider>,
     );
-    rerender(
-      <QueryClientProvider client={new QueryClient()}>
+    await waitFor(() => expect(api.googleLikesCancel).toHaveBeenCalledWith(FLOW));
+    expect(api.googleLikesCancel).toHaveBeenCalledTimes(1);
+    // And stops asking about it.
+    const calls = api.googleLikesStatus.mock.calls.length;
+    await poll();
+    expect(api.googleLikesStatus.mock.calls.length).toBe(calls);
+  });
+
+  it('a code that arrives after the dialog closed is cancelled, never shown', async () => {
+    let answer: (v: typeof begun) => void = () => {};
+    api.googleLikesBegin.mockReturnValue(new Promise((r) => (answer = r)));
+    const qc = new QueryClient();
+    const { rerender } = render(
+      <QueryClientProvider client={qc}>
         <TransferDialog open onOpenChange={vi.fn()} />
       </QueryClientProvider>,
     );
-    toAccountRoute();
-    expect(screen.getByLabelText('Your YouTube Music request headers')).toHaveValue('');
+    toGoogle();
+    fireEvent.click(signInButton());
+    rerender(
+      <QueryClientProvider client={qc}>
+        <TransferDialog open={false} onOpenChange={vi.fn()} />
+      </QueryClientProvider>,
+    );
+    await act(async () => answer(begun));
+    await waitFor(() => expect(api.googleLikesCancel).toHaveBeenCalledWith(FLOW));
+    await poll();
+    expect(api.googleLikesStatus).not.toHaveBeenCalled();
+  });
+
+  it('Back mid-sign-in cancels it too, and so does a ready one left unstarted', async () => {
+    api.googleLikesStatus.mockResolvedValue({ state: 'ready', preview: googlePreview() });
+    setup();
+    toGoogle();
+    fireEvent.click(signInButton());
+    await waitFor(() => expect(screen.getByTestId('google-code-panel')).toBeInTheDocument());
+    await poll();
+    await waitFor(() => expect(screen.getByTestId('transfer-preview')).toBeInTheDocument());
+    fireEvent.click(screen.getByRole('button', { name: /Back/ }));
+    await waitFor(() => expect(api.googleLikesCancel).toHaveBeenCalledWith(FLOW));
+  });
+
+  it('a second press replaces the first sign-in', async () => {
+    api.googleLikesStatus.mockResolvedValue({ state: 'expired', message: GOOGLE_MESSAGES.expired });
+    setup();
+    toGoogle();
+    fireEvent.click(signInButton());
+    await waitFor(() => expect(screen.getByTestId('google-code-panel')).toBeInTheDocument());
+    await poll();
+    await waitFor(() => expect(signInButton()).toBeEnabled());
+    api.googleLikesBegin.mockResolvedValue({ ...begun, flowId: 'flow_second_abcdefghijklmn', userCode: 'NEWC-ODEX' });
+    fireEvent.click(signInButton());
+    await waitFor(() => expect(screen.getByTestId('google-user-code')).toHaveTextContent('NEWC-ODEX'));
+  });
+
+  it('a refusal at Start is a sentence and the button again', async () => {
+    api.googleLikesStatus.mockResolvedValue({ state: 'ready', preview: googlePreview() });
+    api.googleLikesStart.mockRejectedValue(refuse(404, GOOGLE_MESSAGES.gone));
+    setup();
+    toGoogle();
+    fireEvent.click(signInButton());
+    await waitFor(() => expect(screen.getByTestId('google-code-panel')).toBeInTheDocument());
+    await poll();
+    await waitFor(() => expect(startButton()).toBeEnabled());
+    fireEvent.click(startButton());
+    await waitFor(() => expect(screen.getByTestId('transfer-error')).toHaveTextContent(GOOGLE_MESSAGES.gone));
+    expect(signInButton()).toBeEnabled();
+    expect(push).not.toHaveBeenCalled();
   });
 });

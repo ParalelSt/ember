@@ -119,46 +119,66 @@ Each stage merges alone with a changelog entry in `lib/changelog.ts` and the nex
 | 2 | Candidates from `match`, `score()`, confidence, results list split into accepted, review, not found (still inside the dialog) | "Import matching is stricter and shows what needs a look" |
 | 3 | `import_jobs`, `import_items`, runner, resume, pacing, sidebar progress (after dizajn pick) | "Imports run in the background" |
 | 4 | Review screen (after dizajn pick) | "Fix uncertain import matches yourself" |
-| 5 | YT Music browser headers (Liked Music, private), Spotify OAuth (Liked Songs, private, over 100) | "Import your liked songs" |
+| 5 | YT Music likes through a Google sign-in (Liked Music, private), Spotify OAuth (Liked Songs, private, over 100) | "Import your liked songs" |
 | 6 | Manual "Sync now" | later |
 
 ## 11. Transfer your YouTube Music liked songs
 
-Built. `POST /api/import/liked/ytmusic` reads the Liked Music list of the person's own YouTube Music account and turns it into a `kind: 'liked'` import. It is the only source that names the exact video of every song, so nothing is searched for and nothing needs reviewing: the items arrive with their candidate filled in and the runner accepts them as they are.
+Built. The person signs in with Google, Ember reads their likes once with the YouTube Data API, signs itself out again, and turns the likes into a `kind: 'liked'` import. YouTube names the exact video of every like, so nothing is searched for and nothing needs reviewing: the items arrive with their candidate filled in and the runner accepts them as they are. Spotify and Apple Music are unchanged; the YouTube Music playlist link stays as the way in that needs no sign-in.
 
-It needs one thing from the person: the request headers of a signed-in `music.youtube.com` tab, which is what ytmusicapi's own browser setup asks for. That is a desktop-browser job; there are no developer tools on a phone.
+It uses Google's OAuth 2.0 device flow (the "TVs and Limited Input devices" client, https://developers.google.com/youtube/v3/guides/auth/devices) with one scope, `youtube.readonly`. Nobody pastes anything and nobody opens developer tools, and it works the same on a phone.
 
-### What the person does
+### What a friend sees
 
-1. On a computer, open `music.youtube.com` in Chrome, Edge or Firefox, signed in to the right account.
-2. Press F12 to open the developer tools, then choose the **Network** tab.
-3. Play any song, or click Library, so requests appear in the list.
-4. Click a request named **browse** (its address starts with `/youtubei/v1/browse`).
-5. Copy its request headers:
-   - **Firefox:** right-click the request, Copy, **Copy Request Headers**.
-   - **Chrome or Edge:** open the **Headers** pane, find **Request Headers**, and copy everything under it. A "Copy as fetch" paste works too: Ember turns the JSON back into header lines itself.
-6. Paste it into the Transfer dialog's YouTube Music box and start the transfer.
+1. Settings, Library, Transfer, then **Liked songs**, **YouTube Music**, **I can sign in to my Google account**.
+2. One button: **Sign in with Google**. Pressing it shows a short code in large letters (like `ABCD-EFGH`) and a button that opens google.com/device in a new tab, with "Waiting for you to allow Ember..." underneath.
+3. On google.com/device (on the same computer, or on their phone) they type the code and pick their Google account.
+4. While the app is in Testing and they are on the test-user list, Google shows **"Google hasn't verified this app"**. They press **Continue**. (If the owner published the app instead, the same warning appears for everyone; it is expected for a small private app.) If they are not on the test-user list, Google says **"Access blocked"** and Ember says to ask the owner to add their email.
+5. Google asks whether Ember may **"View your YouTube account"**. They press **Continue** (or **Allow**), and Google says they can go back to their device.
+6. Back in Ember, the line changes to "Google said yes. Reading your likes..." and then the usual preview: how many songs, the first few by name, and "Left out N likes that are not music." They press **Transfer N songs** and land on Liked songs with the transfer running.
 
-Ember uses the paste for that one read and keeps no copy of it. Signing out of YouTube Music afterwards makes what was pasted useless to anyone. Cookies otherwise stay valid for about two years, which is why the copy needs doing only once per transfer.
+The endings, each one sentence: "You said no on Google's page, so nothing was read.", "The code ran out. Press Sign in with Google to get a new one.", "This server is not set up for Google sign-in yet." (with the playlist link offered instead), and a few more for Google being down, a used-up daily quota, or an account Google blocks (all in `GOOGLE_MESSAGES`, `apps/web/lib/import/sources/ytmusicLiked.ts`).
 
-The copy above lives in code as `YTMUSIC_HEADERS_STEPS`, `YTMUSIC_HEADERS_NOTE` and `YTMUSIC_HEADERS_DESKTOP_ONLY` (`apps/web/lib/import/sources/ytmusicLiked.ts`), so the dialog and this page cannot drift apart.
+### What the host sets up, once
+
+1. Go to https://console.cloud.google.com and sign in with any Google account. Create a new project (top bar, project picker, **New project**), call it Ember.
+2. **APIs & Services**, **Library**: search for **YouTube Data API v3** and press **Enable**.
+3. **APIs & Services**, **OAuth consent screen** (in newer consoles: **Google Auth Platform**, **Branding** and **Audience**): user type **External**, app name Ember, your email as support and developer contact. Save. On the scopes step you can add `.../auth/youtube.readonly`, or leave it: Ember asks for it itself.
+4. Who may sign in. Pick one:
+   - **Testing** (the default): under **Test users** (or **Audience**, **Test users**) add each friend's Google email, up to 100. Only they can sign in; everyone else sees "Access blocked". Nothing to publish, no review.
+   - **In production**: press **Publish app**. Anyone can sign in, but everyone sees Google's "unverified app" warning and has to press Continue, and Google caps an unverified app at 100 users in total. Google's own verification is not needed for a private group.
+5. **APIs & Services**, **Credentials**, **Create credentials**, **OAuth client ID**. Application type: **TVs and Limited Input devices**. Name it Ember TV. Create. Google shows a **Client ID** (ends in `.apps.googleusercontent.com`) and a **Client secret** (starts with `GOCSPX-`).
+6. Put both in `apps/web/.env.local` on the host:
+
+   ```
+   GOOGLE_OAUTH_CLIENT_ID=1234567890-abc.apps.googleusercontent.com
+   GOOGLE_OAUTH_CLIENT_SECRET=GOCSPX-...
+   ```
+
+7. Restart Ember (`./update.sh`, or however the server is started). In the Transfer dialog the **Sign in with Google** button now works; before this step it says the server is not set up yet and offers the playlist link.
+
+The client secret stays in `.env.local` on the host and is never sent to a browser. Quota: every 50 likes read cost 1 of the 10 000 units Google gives a project a day, so a 10 000-song library costs 200.
 
 ### How it is handled
 
 | Rule | Where |
 |---|---|
-| The paste arrives in the POST body as `secret` and is checked for shape first (a Cookie line, a name that identifies an account, `x-goog-authuser`), so a useless paste costs nothing | `lib/import/sources/ytmusicLiked.ts` |
-| It goes to `player.py liked --auth-stdin` on **stdin**, never in argv (`ps` shows argv to every process on the host) | `lib/sources/youtube.ts`, `runPython({ stdin })` |
-| It is never written to disk: `ytmusicapi.setup(headers_raw=...)` is called without a filepath, so no `browser.json` is ever produced | `player.py` |
-| Nothing derived from it is printed, on any path: every failure is one of three fixed sentences with a `kind` of `auth`, `network` or `parse` | `player.py`, `LIKED_ERRORS` |
-| Anything that could still carry it, the helper's stderr, every server log line, every bug report, the route's own error, goes through `redactSecrets` | `lib/import/redact.ts`, wired into `lib/logger/sanitize.ts` |
-| Three reads an hour per person (`import-secret:<user>`), and at most 10 000 songs per transfer | the route, `MAX_TRANSFER_ITEMS` |
+| `POST /api/import/liked/google` asks Google for a code and answers `{ flowId, userCode, verificationUrl, expiresIn, interval }`; `GET` on the same path answers `{ configured }` | `app/api/import/liked/google/route.ts` |
+| The server polls Google's token endpoint at the interval Google gives (plus 5 s on `slow_down`); the dialog only asks `GET /api/import/liked/google/:flowId` every 2 s for `{ state: waiting, reading, ready, denied, expired, error, preview?, message? }` | `lib/import/google/flows.ts`, `components/import/TransferDialog.tsx` |
+| Likes are read with `videos.list?myRating=like&part=snippet,contentDetails&maxResults=50`, paged to the end, newest first; music only (`categoryId` 10, or an auto-generated "- Topic" channel); at most 10 000 songs and 400 pages | `lib/import/google/client.ts`, `lib/import/google/likes.ts` |
+| The tokens and the device code live in the server's memory only, keyed by an unguessable id tied to the Ember user, never in PocketBase, on disk, in a log, a bug report or a response | `lib/import/google/flows.ts` |
+| The grant is revoked at `oauth2.googleapis.com/revoke` the moment the likes are read, and on cancel (`DELETE /api/import/liked/google/:flowId`, sent when the dialog closes or goes Back), on any error, and at the 15-minute limit | same |
+| `POST /api/import/liked/google/:flowId/start` makes the `kind: 'liked'` job, exactly as the other routes do, and the flow is gone | `app/api/import/liked/google/[flowId]/start/route.ts` |
+| Access tokens (`ya29.`), refresh tokens (`1//`), device codes (`AH-1N`), client secrets (`GOCSPX-`) and any `access_token`, `refresh_token`, `device_code`, `client_secret` field are scrubbed from every log line, bug report and error | `lib/import/redact.ts`, `lib/logger/sanitize.ts` |
+| Ten sign-ins an hour per person, 90 status polls a minute, one sign-in at a time per person, 200 at once on the server | the routes, `MAX_FLOWS` |
 
-YouTube Music does not say when a song was liked, so the like dates are synthesised from the order of the list, newest first, below every like the person already had (`lib/import/likedAt.ts`).
+`GOOGLE_OAUTH_BASE` and `YOUTUBE_API_BASE` point the server at a fake Google for tests.
 
-Python dependencies: none beyond the `ytmusicapi>=1.12.0` already in `requirements.txt`, which `update.sh` installs on the host.
+YouTube does not say when a song was liked, so the like dates are synthesised from the order of the list, newest first, below every like the person already had (`lib/import/likedAt.ts`).
 
-Tests: `tests/test_player_liked.py` (the helper, including that a credential never reaches stdout or stderr), `apps/web/lib/import/redact.test.ts`, `apps/web/lib/import/sources/ytmusicLiked.test.ts`, `apps/web/lib/sources/youtube.test.ts`, the route's own test, and `tests/transfer-ytmusic.test.mjs` against the sandbox with the fake player.
+Tests: `lib/import/google/*.test.ts` (the device flow, the music filter, paging and the cap, the flow store's every ending), `app/api/import/liked/google/route.test.ts` (the four routes, and that no token reaches a response or a log), `lib/import/redact.test.ts`, `components/import/TransferDialog.test.tsx`, and `tests/transfer-google-ui.test.mjs` (a real browser against a fake Google).
+
+This replaced an earlier way in that asked the person to copy the request headers of a signed-in music.youtube.com tab out of the browser's developer tools; that route (`POST /api/import/liked/ytmusic`, `player.py liked`) is gone.
 
 ## Decisions for the owner
 

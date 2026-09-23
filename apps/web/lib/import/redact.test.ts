@@ -90,3 +90,48 @@ describe('scrubText, the door every log entry and bug report goes through', () =
     expect(scrubText('bearer aaaaaaaaaaaaaaaa')).toContain('[scrubbed]');
   });
 });
+
+// The Google sign-in behind a YouTube Music transfer: an access token, a
+// refresh token, a device code and the host's client secret. Invented, but
+// shaped exactly as Google's are.
+describe('Google sign-in credentials', () => {
+  const ACCESS = 'ya29.a0AfH6SMBs3cr3tAccessTokenValue_x-y';
+  const REFRESH = '1//0gs3cr3tRefreshTokenValue-abc_def';
+  const DEVICE = 'AH-1Ng2s3cr3tDeviceCodeValue_xyz';
+  const CLIENT_SECRET = 'GOCSPX-s3cr3tClientSecretValue';
+  const gLeaks = (text: string) => ['s3cr3tAccess', 's3cr3tRefresh', 's3cr3tDevice', 's3cr3tClient'].filter((p) => text.includes(p));
+
+  it('takes every one out of a token response, a form body and a query string', () => {
+    const json = JSON.stringify({ access_token: ACCESS, refresh_token: REFRESH, expires_in: 3599, scope: 'x', token_type: 'Bearer' });
+    expect(gLeaks(redactSecrets(json))).toEqual([]);
+    // Still JSON afterwards, so a scrubbed log entry re-parses.
+    expect(JSON.parse(redactSecrets(json))).toMatchObject({ expires_in: 3599, token_type: 'Bearer' });
+    const form = `client_id=abc.apps.googleusercontent.com&client_secret=${CLIENT_SECRET}&device_code=${DEVICE}&grant_type=x`;
+    expect(gLeaks(redactSecrets(form))).toEqual([]);
+    expect(redactSecrets(form)).toContain('client_id=abc.apps.googleusercontent.com');
+    expect(gLeaks(redactSecrets(`POST https://oauth2.googleapis.com/revoke?token=${REFRESH}`))).toEqual([]);
+  });
+
+  it('takes them out by shape when nothing names them', () => {
+    const line = `poll said ${ACCESS} then ${REFRESH}, code ${DEVICE}, secret ${CLIENT_SECRET}`;
+    expect(gLeaks(redactSecrets(line))).toEqual([]);
+  });
+
+  it('by camelCase name too, the way the server holds them', () => {
+    const held = JSON.stringify({ accessToken: 'plainvalue111', refreshToken: 'plainvalue222', deviceCode: 'plainvalue333' });
+    expect(redactSecrets(held)).not.toMatch(/plainvalue/);
+  });
+
+  it('leaves a URL and the code a person types alone', () => {
+    expect(redactSecrets('open https://www.google.com/device and type ABCD-EFGH')).toBe(
+      'open https://www.google.com/device and type ABCD-EFGH',
+    );
+  });
+
+  it('scrubText and the log walk drop them before a bug report', async () => {
+    const { scrub } = await import('@/lib/logger/sanitize');
+    expect(gLeaks(scrubText(`token response ${JSON.stringify({ access_token: ACCESS, refresh_token: REFRESH })}`))).toEqual([]);
+    const walked = JSON.stringify(scrub({ flow: { accessToken: ACCESS, refresh_token: REFRESH, device_code: DEVICE, clientSecret: CLIENT_SECRET } }));
+    expect(gLeaks(walked)).toEqual([]);
+  });
+});
