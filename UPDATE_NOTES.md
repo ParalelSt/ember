@@ -1,3 +1,39 @@
+# 0.5.0: Bring your liked songs over
+
+**Host, in order: `./update.sh` as usual (it restarts PocketBase, which is
+what the new fields need), then, for YouTube Music, add two lines to
+`apps/web/.env.local` and restart once more.**
+
+1. **`./update.sh`** (a normal rebuild and restart, no new packages).
+   PocketBase's boot hooks add, with nothing to do by hand and nothing
+   removed:
+   - `pb_hooks/ensure_likes_fields.pb.js`: `likes.liked_at` (date) and
+     `likes.origin` (`user` or `import`), filled in for every existing like
+     (`liked_at` = when it was made, `origin` = `user`) on first boot.
+   - `pb_hooks/ensure_imports.pb.js`: `import_jobs.existing`, more values
+     for `import_jobs.source`, and `import_items.liked_at`.
+2. **Google sign-in for YouTube Music (optional, but it is the easy way
+   in for friends).** Without it the YouTube Music choice says the server
+   is not set up and offers a playlist link instead; nothing breaks. With
+   it, anyone can bring their YouTube Music likes over by typing a short
+   code at google.com/device. The Google project (called Ember) is set up
+   once, by the owner; the host only needs its two values:
+
+   ```
+   GOOGLE_OAUTH_CLIENT_ID=...apps.googleusercontent.com
+   GOOGLE_OAUTH_CLIENT_SECRET=GOCSPX-...
+   ```
+
+   in `apps/web/.env.local`, then restart Ember. The secret stays on the
+   host and is never sent to a browser. How the Google project is made is
+   in `docs/imports.md`, section 11.
+3. **`/privacy` and `/terms` are new public pages** (no login needed),
+   because Google's permission screen links to them. Nothing to do; they
+   are what the Google project's Branding page points at.
+4. **Outbound internet** to `oauth2.googleapis.com` and
+   `www.googleapis.com` is what the Google sign-in uses, only while a
+   person is transferring.
+
 # 0.4.0: Guitar tabs, properly
 
 **Host, in order: `./update.sh` as usual, then restart PocketBase once.**

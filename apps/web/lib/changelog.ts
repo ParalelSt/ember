@@ -21,6 +21,22 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    id: 'transfer-liked-songs',
+    version: '0.5.0',
+    date: '2026-09-23',
+    title: 'Bring your liked songs over',
+    summary: 'Move the songs you liked on Spotify, YouTube Music, Apple Music or anywhere else into Ember, from Settings, under Library.',
+    bullets: [
+      'Ember asks two plain questions, where your music is now and what you already have, and then shows only the steps for your answer.',
+      'YouTube Music: sign in with Google using a short code, from any phone or computer. Ember reads your likes once, keeps the songs, and gives the permission back straight away.',
+      'Spotify and Apple Music: upload the list they let you download (or one from a site like Exportify), or paste a public playlist link. Anywhere else: paste a list of songs, one per line.',
+      'You see what Ember found before anything starts, the Liked songs page shows the transfer as it runs, and anything Ember was unsure about waits in a short list for you to check.',
+      'Songs you bring over sit below the ones you liked yourself, in the order you liked them.',
+      'Liking a song no longer lights up every other song with the same name by a different artist, for artists whose names are not in the Latin alphabet and for songs with no artist listed.',
+      'Ember now has a privacy policy and terms, in plain words.',
+    ],
+  },
+  {
     id: 'native-voice-search',
     version: '0.4.0',
     date: '2026-09-22',
