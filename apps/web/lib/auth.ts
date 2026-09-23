@@ -78,6 +78,18 @@ export async function requireUser(): Promise<{ pb: PocketBase; user: AuthedUser 
   };
 }
 
+/** The verified user id behind this request's session, or null: signed out,
+ *  a token PocketBase refuses, or PocketBase unreachable. Never throws. For
+ *  keying throttles on public routes (lib/rateLimit.ts), not for access. */
+export async function verifiedUserId(): Promise<string | null> {
+  try {
+    const record = await verifiedRecord(await createClient());
+    return record?.id ?? null;
+  } catch {
+    return null;
+  }
+}
+
 /** Like requireUser but also asserts is_admin === true. Throws ForbiddenError
  *  otherwise. Callers typically then create an admin-credentials PB client
  *  via createAdminClient() to bypass per-user collection rules. */

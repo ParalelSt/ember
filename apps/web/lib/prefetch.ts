@@ -1,5 +1,5 @@
 import 'server-only';
-import { keyFromRequest, rateLimitResponse, type RateLimitConfig } from '@/lib/rateLimit';
+import { limitCaller, type RateLimitConfig } from '@/lib/rateLimit';
 
 /** The `?prefetch=1` marker the auto cache puts on stream URLs (web fetch,
  *  Android CacheWriter, desktop reqwest), so the host can treat those
@@ -26,11 +26,13 @@ export function isPrefetchRequest(request: Request): boolean {
 }
 
 /** 429 + Retry-After when this listener is over the prefetch limit, else
- *  null. Keyed by the pb_auth cookie hash, falling back to the IP, which is
- *  what native players present. Counts only prefetch requests, so it can
- *  never refuse a normal play. */
-export function prefetchLimitResponse(request: Request): Response | null {
-  return rateLimitResponse(`prefetch:${keyFromRequest(request)}`, PREFETCH_LIMIT);
+ *  null. Keyed like every public limit (lib/rateLimit's callerKey): the
+ *  PocketBase-verified user id, else the client IP, which is what native
+ *  players present. A made-up pb_auth cookie no longer buys a fresh bucket
+ *  (bughunt S04). Counts only prefetch requests, so it can never refuse a
+ *  normal play. */
+export function prefetchLimitResponse(request: Request): Promise<Response | null> {
+  return limitCaller(request, 'prefetch', PREFETCH_LIMIT);
 }
 
 /** The answer to a prefetch that would have had to start a cold download

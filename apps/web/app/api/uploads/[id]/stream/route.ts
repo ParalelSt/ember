@@ -15,7 +15,7 @@ export const GET = withRequestLog('uploads/[id]/stream', async (request: NextReq
     await requireUser();
     const prefetch = isPrefetchRequest(request);
     if (prefetch) {
-      const limited = prefetchLimitResponse(request);
+      const limited = await prefetchLimitResponse(request);
       if (limited) return limited;
     }
     const { id } = await ctx.params;

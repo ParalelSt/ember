@@ -551,8 +551,15 @@ does not stop the music), and those requests are low priority: they only
 start a download when the host is idle, and each listener gets 10 a minute.
 Details in `docs/prefetch.md`.
 
+Searches, album and artist pages and other lookups have their own slots, so
+a slow download never makes a search wait, and import batches have theirs.
+When every slot is taken for too long (15 s for a search, 60 s for a
+download), the caller gets a "busy, try again" answer instead of piling up.
+
 ```bash
 MAX_CONCURRENT_DOWNLOADS=2   # yt-dlp processes at once (default 2)
+PYTHON_MAX_CONCURRENCY=4     # searches and page lookups at once (default 4)
+PYTHON_MAX_BULK=2            # import batches at once (default 2)
 ```
 
 Concurrent requests for the same uncached song share ONE download, so a player

@@ -44,16 +44,19 @@ vi.mock('@/lib/logger/server', () => ({
 
 const { GET } = await import('./route');
 
-let cookieSeq = 0;
-/** Each test is its own listener, so the in-memory limiter never leaks. */
+let listenerSeq = 0;
+/** Each test is its own listener, so the in-memory limiter never leaks. A
+ *  listener is told apart by its address (lib/rateLimit's callerKey: a
+ *  pb_auth cookie counts only once PocketBase verifies it, bughunt S04),
+ *  which is also what a native player presents. */
 function listener() {
-  cookieSeq += 1;
-  return `pb_auth=listener-${cookieSeq}-${Math.random()}`;
+  listenerSeq += 1;
+  return `10.0.${Math.floor(listenerSeq / 250)}.${listenerSeq % 250}`;
 }
 
-function get(videoId: string, { prefetch = true, cookie = listener() } = {}) {
+function get(videoId: string, { prefetch = true, ip = listener() } = {}) {
   const url = `http://localhost/api/youtube/stream/${videoId}${prefetch ? '?prefetch=1' : ''}`;
-  const req = new NextRequest(url, { headers: { cookie } });
+  const req = new NextRequest(url, { headers: { 'x-forwarded-for': ip } });
   return GET(req, { params: Promise.resolve({ videoId }) } as never);
 }
 
@@ -121,13 +124,13 @@ describe('GET /api/youtube/stream/[videoId]?prefetch=1', () => {
   });
 
   it('the 11th prefetch in a minute from one listener is 429 with Retry-After', async () => {
-    const cookie = listener();
+    const ip = listener();
     for (let i = 0; i < 10; i++) {
-      const ok = await get(CACHED_ID, { cookie });
+      const ok = await get(CACHED_ID, { ip });
       expect(ok.status).toBe(200);
       await ok.arrayBuffer();
     }
-    const limited = await get(CACHED_ID, { cookie });
+    const limited = await get(CACHED_ID, { ip });
     expect(limited.status).toBe(429);
     const wait = Number(limited.headers.get('retry-after'));
     expect(wait).toBeGreaterThanOrEqual(1);
@@ -137,14 +140,14 @@ describe('GET /api/youtube/stream/[videoId]?prefetch=1', () => {
   });
 
   it('a normal play is never 429 or 503 by this code', async () => {
-    const cookie = listener();
-    for (let i = 0; i < 11; i++) await (await get(CACHED_ID, { cookie })).arrayBuffer();
+    const ip = listener();
+    for (let i = 0; i < 11; i++) await (await get(CACHED_ID, { ip })).arrayBuffer();
     // Over the prefetch limit, and the host busy for prefetches: a real play still goes through.
     ensureDownloaded.mockResolvedValue(cachedPath);
-    const cached = await get(CACHED_ID, { cookie, prefetch: false });
+    const cached = await get(CACHED_ID, { ip, prefetch: false });
     expect(cached.status).toBe(200);
     expect(cached.headers.get('cache-control')).toBeNull();
-    const cold = await get(COLD_ID, { cookie, prefetch: false });
+    const cold = await get(COLD_ID, { ip, prefetch: false });
     expect(cold.status).toBe(200);
     expect(ensureDownloaded).toHaveBeenCalledWith(COLD_ID, undefined);
   });

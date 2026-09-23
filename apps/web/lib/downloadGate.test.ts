@@ -98,4 +98,28 @@ describe('downloadGate', () => {
     expect(e.retryAfter).toBe(30);
     expect(isBusyError(new Error('x'))).toBe(false);
   });
+
+  it('a waiter that times out leaves the queue with a BusyError, and the slot goes to the next one', async () => {
+    const gate = createDownloadGate(1);
+    const first = await gate.acquire();
+    const late = gate.acquire({ timeoutMs: 10 }).catch((e: unknown) => e);
+    const patient = gate.acquire();
+    expect(gate.waitingCount()).toBe(2);
+    const err = await late;
+    expect(isBusyError(err)).toBe(true);
+    expect(gate.waitingCount()).toBe(1);
+    first();
+    (await patient)();
+    expect(gate.inFlightCount()).toBe(0);
+  });
+
+  it('refuses straight away once maxWaiting callers wait', async () => {
+    const gate = createDownloadGate(1);
+    const first = await gate.acquire();
+    const waiter = gate.acquire({ maxWaiting: 1 });
+    await expect(gate.acquire({ maxWaiting: 1 })).rejects.toBeInstanceOf(BusyError);
+    first();
+    (await waiter)();
+    expect(gate.inFlightCount()).toBe(0);
+  });
 });

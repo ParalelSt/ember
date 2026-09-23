@@ -26,9 +26,11 @@ const { GET } = await import('./route');
 const { UPLOAD_DIR } = await import('@/lib/uploads');
 
 let seq = 0;
-function get(prefetch: boolean, cookie: string) {
+/** Listeners are told apart by address: lib/rateLimit's callerKey trusts a
+ *  pb_auth cookie only once PocketBase verifies it (bughunt S04). */
+function get(prefetch: boolean, ip: string) {
   const url = `http://t/api/uploads/rec1/stream${prefetch ? '?prefetch=1' : ''}`;
-  return GET(new NextRequest(url, { headers: { cookie } }), { params: Promise.resolve({ id: 'rec1' }) } as never);
+  return GET(new NextRequest(url, { headers: { 'x-forwarded-for': ip } }), { params: Promise.resolve({ id: 'rec1' }) } as never);
 }
 
 beforeEach(() => {
@@ -39,19 +41,19 @@ afterAll(() => fs.rmSync(musicDir, { recursive: true, force: true }));
 
 describe('GET /api/uploads/[id]/stream?prefetch=1', () => {
   it('serves the file marked private, no-store', async () => {
-    const res = await get(true, `pb_auth=u-${++seq}`);
+    const res = await get(true, `10.1.0.${++seq}`);
     expect(res.status).toBe(200);
     expect(res.headers.get('cache-control')).toBe('private, no-store');
     expect(await res.text()).toBe('RIFF-UPLOAD');
   });
 
   it('the 11th prefetch in a minute is 429, while a normal play still works', async () => {
-    const cookie = `pb_auth=u-${++seq}`;
-    for (let i = 0; i < 10; i++) expect((await get(true, cookie)).status).toBe(200);
-    const limited = await get(true, cookie);
+    const ip = `10.1.0.${++seq}`;
+    for (let i = 0; i < 10; i++) expect((await get(true, ip)).status).toBe(200);
+    const limited = await get(true, ip);
     expect(limited.status).toBe(429);
     expect(Number(limited.headers.get('retry-after'))).toBeGreaterThanOrEqual(1);
-    const play = await get(false, cookie);
+    const play = await get(false, ip);
     expect(play.status).toBe(200);
     expect(play.headers.get('cache-control')).toBeNull();
   });

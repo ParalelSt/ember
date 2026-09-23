@@ -36,12 +36,18 @@ for the listener's real play.
 | Global download cap | `MAX_CONCURRENT_DOWNLOADS`, default 2 yt-dlp processes | `apps/web/lib/downloadGate.ts` |
 | Prefetch slot rule | a prefetch starts a cold yt-dlp only when no download runs and nobody waits | `downloadGate.tryAcquireIdle` |
 | Busy answer | 503, `Retry-After: 30` | `apps/web/lib/prefetch.ts` |
-| Per-listener limit | 10 prefetches per 60 s, keyed by the `pb_auth` cookie hash, else the IP | `apps/web/lib/prefetch.ts` |
+| Per-listener limit | 10 prefetches per 60 s, keyed by the PocketBase-verified user id, else the IP (the last `X-Forwarded-For` entry) | `apps/web/lib/prefetch.ts`, `lib/rateLimit.ts` `callerKey` |
+| Wait for a slot | a listener's cold download waits up to 60 s (64 at most in line), then 503 and the stream route falls back to live streaming | `ensureDownloaded` in `lib/sources/youtube.ts` |
 
 Joining a download that is already running never takes a slot, so a
 prefetch of the song someone is playing right now just waits for that run.
 The background warm queue (`lib/streamCache.ts`) goes through the same gate
 as a play.
+
+The gate is also the download lane of the Python helper cap (bughunt S04):
+searches and page lookups have their own slots (`PYTHON_MAX_CONCURRENCY`,
+default 4) and import batches theirs (`PYTHON_MAX_BULK`, default 2), so a
+download is counted once, by this gate, and never holds a search slot.
 
 `withRequestLog` logs a 503 at `warn`, like 502 and 504: a busy host is
 expected while clients prefetch, not a bug.
