@@ -60,7 +60,6 @@ export function presenceLine(
 const VERBS: Record<PrankKind, string> = {
   ping: 'pinged',
   sound: 'played a sound for',
-  swap: 'swapped the song for',
 };
 
 const REASONS: Record<string, string> = {
@@ -126,8 +125,6 @@ export function capWords(reason: CapReason, targetName: string, retryAfterSec: n
       return `${targetName} has had ${PRANK_LIMITS.perTargetPerHour} pranks this hour; try again in ${wait}`;
     case 'sound-gap':
       return `Sounds need ${PRANK_LIMITS.soundGapSec} s between them; try again in ${wait}`;
-    case 'swap-active':
-      return `A swap is already running on ${targetName}; try again in ${wait}`;
   }
 }
 

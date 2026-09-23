@@ -1,10 +1,11 @@
 import { checkCaps, normaliseParams, PRANK_LIMITS, type CapReason, type RecentPrank } from './limits';
 import type { PrankParams } from './types';
 
-/** Repeating sounds (plan section 3c, sounds only since the swap was
- *  dropped): every `prank_schedules` row that is due becomes one `pranks`
- *  row, under the same caps as a sound sent by hand. Pure over `TickStore`,
- *  so the tests need no PocketBase; schedulerInstance.ts runs it every 5 s. */
+/** Repeating sounds (plan section 3c; the song-swap prank kind was dropped
+ *  before it shipped, so repeats are sounds only): every `prank_schedules`
+ *  row that is due becomes one `pranks` row, under the same caps as a sound
+ *  sent by hand. Pure over `TickStore`, so the tests need no PocketBase;
+ *  schedulerInstance.ts runs it every 5 s. */
 
 export interface ScheduleRow {
   id: string;

@@ -7,6 +7,9 @@ export const PRANK_LIMITS = {
   /** Music level under a ducking sound. */
   duck: 0.3,
   soundMaxSec: 30,
+  /** Leftover from the swap prank kind, which was dropped before it shipped.
+   *  swapMaxSec still bounds how long a prank's media stays servable;
+   *  swapMinSec is otherwise unused. */
   swapMinSec: 5,
   swapMaxSec: 300,
   volumeMin: 0.1,
@@ -22,7 +25,7 @@ export const PRANK_LIMITS = {
   maxActiveSchedulesPerTarget: 3,
 } as const;
 
-export const PRANK_KINDS: readonly PrankKind[] = ['swap', 'sound', 'ping'];
+export const PRANK_KINDS: readonly PrankKind[] = ['sound', 'ping'];
 
 const clamp = (n: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, n));
 const num = (v: unknown, fallback: number) => (typeof v === 'number' && Number.isFinite(v) ? v : fallback);
@@ -34,12 +37,7 @@ export function normaliseParams(kind: PrankKind, raw: unknown): PrankParams {
   const r = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
   const L = PRANK_LIMITS;
   return {
-    durationSec:
-      kind === 'swap'
-        ? Math.round(clamp(num(r.durationSec, 20), L.swapMinSec, L.swapMaxSec))
-        : kind === 'sound'
-          ? L.soundMaxSec
-          : 0,
+    durationSec: kind === 'sound' ? L.soundMaxSec : 0,
     volume: Math.round(clamp(num(r.volume, 1), L.volumeMin, L.volumeMax) * 100) / 100,
     mode: r.mode === 'duck' ? 'duck' : 'over',
     startFrom: r.startFrom === 'same' ? 'same' : 'start',
@@ -55,7 +53,7 @@ export interface RecentPrank {
 }
 
 export type CapResult = { ok: true } | { ok: false; reason: CapReason; retryAfterSec: number };
-export type CapReason = 'target-hourly' | 'admin-hourly' | 'sound-gap' | 'swap-active';
+export type CapReason = 'target-hourly' | 'admin-hourly' | 'sound-gap';
 
 const HOUR_MS = 60 * 60 * 1000;
 /** Rows nobody heard do not count against a cap: never delivered, or
@@ -96,17 +94,6 @@ export function checkCaps(
     const last = Math.max(0, ...targetRows.filter((p) => p.kind === 'sound').map((p) => p.created));
     if (last > now - L.soundGapSec * 1000) {
       return { ok: false, reason: 'sound-gap', retryAfterSec: secsUntil(last + L.soundGapSec * 1000) };
-    }
-  }
-  if (kind === 'swap') {
-    // Pending or delivered and young enough to still be running.
-    const windowMs = (L.swapMaxSec + L.expirySec) * 1000;
-    const running = targetRows.filter(
-      (p) => p.kind === 'swap' && (p.status === 'pending' || p.status === 'delivered') && p.created > now - windowMs,
-    );
-    if (running.length > 0) {
-      const newest = Math.max(...running.map((p) => p.created));
-      return { ok: false, reason: 'swap-active', retryAfterSec: secsUntil(newest + windowMs) };
     }
   }
   return { ok: true };

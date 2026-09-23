@@ -14,8 +14,10 @@ const HOUR_MS = 60 * 60 * 1000;
 const LOG_SIZE = 200;
 
 /** Send a prank: one `pranks` row, pending for 45 s. This route is the only
- *  writer (the collection's create rule is null). `ping` and `sound` so far
- *  (a sound names a library `soundId`); swaps arrive with the swap engine.
+ *  writer (the collection's create rule is null). `ping` and `sound` are the
+ *  only kinds (a sound names a library `soundId`); a `swap` kind was planned
+ *  and dropped before it shipped, so it is not in `PRANK_KINDS` and falls
+ *  into the generic "unknown kind" 400 below, same as any other bad value.
  *  The media URL the target loads is set here, never taken from the body. */
 export const POST = withRequestLog('admin/pranks', async (req: NextRequest) => {
   try {
@@ -30,9 +32,6 @@ export const POST = withRequestLog('admin/pranks', async (req: NextRequest) => {
     const kind = body?.kind as PrankKind;
     if (!targetId || !PRANK_KINDS.includes(kind)) {
       return Response.json({ error: 'Pick a person and a prank' }, { status: 400 });
-    }
-    if (kind === 'swap') {
-      return Response.json({ error: 'Swaps are not ready yet' }, { status: 400 });
     }
     const soundId = typeof body?.soundId === 'string' ? body.soundId : '';
     if (kind === 'sound' && !soundId) return Response.json({ error: 'Pick a sound' }, { status: 400 });

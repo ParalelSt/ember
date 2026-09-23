@@ -17,12 +17,12 @@ describe('PRANK_LIMITS (owner decisions)', () => {
 });
 
 describe('normaliseParams', () => {
-  it('clamps a swap duration into 5..300 and volume into 0.1..1', () => {
-    expect(normaliseParams('swap', { durationSec: 2, volume: 3 })).toMatchObject({ durationSec: 5, volume: 1 });
-    expect(normaliseParams('swap', { durationSec: 9000, volume: 0 })).toMatchObject({ durationSec: 300, volume: 0.1 });
+  it('clamps volume into 0.1..1', () => {
+    expect(normaliseParams('sound', { volume: 3 })).toMatchObject({ volume: 1 });
+    expect(normaliseParams('sound', { volume: 0 })).toMatchObject({ volume: 0.1 });
   });
-  it('fills defaults: from the start, over the music, 20 s swaps', () => {
-    expect(normaliseParams('swap', undefined)).toEqual({ durationSec: 20, volume: 1, mode: 'over', startFrom: 'start' });
+  it('fills defaults: from the start, over the music', () => {
+    expect(normaliseParams('ping', undefined)).toEqual({ durationSec: 0, volume: 1, mode: 'over', startFrom: 'start' });
   });
   it('keeps the known enum values and drops unknown ones', () => {
     expect(normaliseParams('sound', { mode: 'duck', startFrom: 'same' })).toMatchObject({ mode: 'duck', startFrom: 'same' });
@@ -42,14 +42,14 @@ describe('checkCaps', () => {
 
   it('stops the 21st prank on one person inside an hour', () => {
     const rows = Array.from({ length: 20 }, (_, i) => row('sound', 60 + i * 60));
-    const r = checkCaps('swap', rows, [], NOW);
+    const r = checkCaps('sound', rows, [], NOW);
     expect(r).toMatchObject({ ok: false, reason: 'target-hourly' });
   });
 
   it('forgets pranks older than an hour, and ones that never arrived', () => {
     const old = Array.from({ length: 20 }, () => row('sound', 3700));
     const lost = Array.from({ length: 20 }, () => row('sound', 100, 'expired'));
-    expect(checkCaps('swap', [...old, ...lost], [], NOW)).toEqual({ ok: true });
+    expect(checkCaps('sound', [...old, ...lost], [], NOW)).toEqual({ ok: true });
   });
 
   it('does not count pings against the person', () => {
@@ -61,12 +61,6 @@ describe('checkCaps', () => {
     const r = checkCaps('sound', [row('sound', 10)], [], NOW);
     expect(r).toEqual({ ok: false, reason: 'sound-gap', retryAfterSec: 5 });
     expect(checkCaps('sound', [row('sound', 16)], [], NOW)).toEqual({ ok: true });
-  });
-
-  it('allows one running swap per person', () => {
-    expect(checkCaps('swap', [row('swap', 30, 'delivered')], [], NOW)).toMatchObject({ ok: false, reason: 'swap-active' });
-    expect(checkCaps('swap', [row('swap', 30, 'done')], [], NOW)).toEqual({ ok: true });
-    expect(checkCaps('swap', [row('swap', 400, 'delivered')], [], NOW)).toEqual({ ok: true });
   });
 
   it('caps an admin at 60 an hour, pings included', () => {

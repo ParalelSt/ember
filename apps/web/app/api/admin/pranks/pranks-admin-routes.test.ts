@@ -84,7 +84,7 @@ describe('POST /api/admin/pranks', () => {
     expect((await post({ targetId: 'marko', kind: 'ping' })).status).toBe(429);
   });
 
-  it('validates the body, and holds swaps until the swap engine exists', async () => {
+  it('validates the body, and refuses a swap (dropped before it shipped, not a known kind)', async () => {
     expect((await post({ kind: 'ping' })).status).toBe(400);
     expect((await post({ targetId: 'marko', kind: 'explode' })).status).toBe(400);
     expect((await post({ targetId: 'marko', kind: 'sound' })).status).toBe(400);

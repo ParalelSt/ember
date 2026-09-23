@@ -18,11 +18,12 @@ const APP_VERSION = process.env.NEXT_PUBLIC_APP_VERSION ?? '';
 
 /** Turns an incoming prank into what the player does, and reports back.
  *  Renders nothing and never shows anything: the person on the receiving end
- *  is never told (owner decision). Pings and sounds; swaps were dropped and
- *  are acknowledged as unsupported. A sound plays through a second audio
- *  element (see overlayPlayer) with the music ducked through `onDuck`; on the
- *  native Android engine the app plays and ducks it itself (backend
- *  playOverlay), and an app build too old for that acks it as unsupported. */
+ *  is never told (owner decision). Only pings and sounds exist; a song-swap
+ *  kind was planned then dropped before it shipped. A sound plays through a
+ *  second audio element (see overlayPlayer) with the music ducked through
+ *  `onDuck`; on the native Android engine the app plays and ducks it itself
+ *  (backend playOverlay), and an app build too old for that acks it as
+ *  unsupported. */
 export function PrankReceiver({
   backendRef,
   engineRef,
@@ -116,10 +117,8 @@ export function PrankReceiver({
       const action = decidePrank(row, {
         isPlaying: st.isPlaying && !!b && !b.isPaused(),
         hasTrack: !!st.queue[st.index],
-        position: st.position,
         engine,
         busy: nativeBusyRef.current || (overlayRef.current?.busy() ?? false),
-        pluginHasSwap: false,
         pluginHasOverlay: native,
         now: Date.now(),
       });

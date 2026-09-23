@@ -1,8 +1,11 @@
 import type { Track } from '@/types/track';
 
 /** Shared shapes for admin pranks (docs/superpowers/plans/2026-09-23-admin-pranks.md).
- *  `ping` is a no-op: it proves a person's app is reachable. */
-export type PrankKind = 'swap' | 'sound' | 'ping';
+ *  `ping` is a no-op: it proves a person's app is reachable. A `swap` kind
+ *  was planned (playing a different song in place of the current one) and
+ *  then dropped before it ever shipped; it is not a member of this type, so
+ *  `POST /api/admin/pranks` rejects it through the generic unknown-kind 400. */
+export type PrankKind = 'sound' | 'ping';
 
 export type PrankStatus = 'pending' | 'delivered' | 'skipped' | 'done' | 'expired' | 'cancelled';
 
@@ -10,13 +13,14 @@ export type PrankStatus = 'pending' | 'delivered' | 'skipped' | 'done' | 'expire
 export type PrankEngine = 'web' | 'capacitor' | 'android' | 'tauri-native' | 'native-stub';
 
 export interface PrankParams {
-  /** swap: 5..300 s. sound: ignored (the file's own length). */
+  /** Ignored: a sound always plays for the library file's own length. */
   durationSec: number;
   /** 0.1..1, relative to the target's own volume. */
   volume: number;
-  /** sound only: `duck` plays the music at 30% under it. */
+  /** `duck` plays the music at 30% under it. */
   mode: 'over' | 'duck';
-  /** swap only: where the prank file starts. */
+  /** Unused now that the swap prank kind was dropped; kept in the shape so
+   *  old stored rows and the normaliser stay simple. */
   startFrom: 'start' | 'same';
   /** Set by the server, never by the client. */
   streamUrl?: string;
@@ -37,7 +41,6 @@ export interface PrankRow {
 export type PrankAction =
   | { type: 'skip'; reason: string }
   | { type: 'sound'; url: string; volume: number; duck: boolean }
-  | { type: 'swap'; url: string; startAt: number; durationSec: number }
   | { type: 'ack-only' }
   /** Past its expiry: a prank that arrives late is not a prank, so nothing
    *  happens and nothing is acknowledged. */
@@ -95,8 +98,10 @@ export interface PrankPerson {
   hourCount: number;
 }
 
-/** A library entry: a short `sound` played over the music, or a `song`
- *  a swap plays instead of it. */
+/** A library entry: a short `sound` played over the music, or a longer
+ *  `song` upload meant for the swap prank kind, which was dropped before it
+ *  shipped. Nothing plays a `song` entry today; kept for a possible future
+ *  picker. */
 export type PrankSoundKind = 'sound' | 'song';
 
 /** One library file as the admin page sees it. */

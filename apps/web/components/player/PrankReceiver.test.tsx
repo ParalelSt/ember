@@ -177,12 +177,10 @@ describe('PrankReceiver: sounds', () => {
     expect(overlay.setVolume).toHaveBeenLastCalledWith(0);
   });
 
-  it('pings are still just acknowledged, swaps still unsupported', () => {
+  it('pings are still just acknowledged', () => {
     mount();
     const ping: PrankRow = { ...sound(), id: 'p3', kind: 'ping', streamUrl: null };
     expect(inbox.receive!(ping)).toMatchObject({ status: 'delivered' });
-    const swap: PrankRow = { ...sound(), id: 'p4', kind: 'swap' };
-    expect(inbox.receive!(swap)).toMatchObject({ status: 'skipped', reason: 'engine-unsupported' });
   });
 
   it('a late sound is ignored without a word', () => {

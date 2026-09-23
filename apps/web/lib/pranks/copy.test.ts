@@ -55,7 +55,7 @@ describe('log words', () => {
     expect(logLine({ ...base, status: 'expired' })).toBe('Aron pinged Marko: not delivered: offline, paused, or app too old');
     expect(logLine({ ...base, kind: 'sound', status: 'skipped', reason: 'not-playing' }))
       .toBe('Aron played a sound for Marko: not played: nothing was playing');
-    expect(logLine({ ...base, kind: 'swap', status: 'done', playedSec: 19.6 })).toBe('Aron swapped the song for Marko: done after 20 s');
+    expect(logLine({ ...base, kind: 'sound', status: 'done', playedSec: 19.6 })).toBe('Aron played a sound for Marko: done after 20 s');
   });
 
   it('has words for every reason, and a readable fallback', () => {
