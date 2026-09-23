@@ -720,3 +720,118 @@ export const MOCK_LINED_THRESHOLD = 60;
 
 /** The Songsterr match when Ember could not line it up with confidence. */
 export const MOCK_NOT_LINED_CONFIDENCE = 41;
+
+// ---------- Admin pranks (the "Pranks" section, docs/superpowers/plans/2026-09-23-admin-pranks.md) ----------
+
+export type MockPrankStatus = 'listening' | 'paused' | 'idle' | 'offline';
+
+/** One friend on the admin Pranks page: what they are doing right now, in
+ *  words, never an id. `sinceLabel` is the bare duration ("2 min"); the
+ *  candidates compose it into a full sentence ("for 2 min", "since 4 min
+ *  ago"). Covers every status the People region has to draw. */
+export interface MockPrankPerson {
+  id: string;
+  name: string;
+  status: MockPrankStatus;
+  track?: Track;
+  positionSec?: number;
+  sinceLabel?: string;
+  engine?: string;
+}
+
+export const MOCK_PRANK_PEOPLE: MockPrankPerson[] = [
+  {
+    id: 'pp1',
+    name: 'Luka',
+    status: 'listening',
+    track: makeTrack({ sourceId: 'pr1', title: "Beggin'", artist: 'Måneskin', durationSec: 213 }),
+    positionSec: 118,
+    sinceLabel: '2 min',
+    engine: 'Android',
+  },
+  {
+    id: 'pp2',
+    name: 'Ivana',
+    status: 'listening',
+    track: makeTrack({ sourceId: 'pr2', title: 'Northbound', artist: 'The Nulls', durationSec: 263 }),
+    positionSec: 31,
+    sinceLabel: '30 sec',
+    engine: 'desktop',
+  },
+  {
+    id: 'pp3',
+    name: 'Marko',
+    status: 'paused',
+    track: makeTrack({ sourceId: 'pr3', title: 'Second Nature', artist: 'Field Notes', durationSec: 198 }),
+    positionSec: 45,
+    sinceLabel: '1 min ago',
+    engine: 'web',
+  },
+  { id: 'pp4', name: 'Nina', status: 'idle' },
+  { id: 'pp5', name: 'Toni', status: 'offline', sinceLabel: '12 min ago' },
+];
+
+/** The Compose region's default target: the first person actually
+ *  listening, so the composer previews start filled in rather than empty. */
+export const MOCK_PRANK_TARGET = MOCK_PRANK_PEOPLE[0];
+
+export type MockPrankSoundKind = 'sound' | 'song';
+
+/** One row in the admin's prank library: a short sound effect or a whole
+ *  song to swap in. */
+export interface MockPrankSound {
+  id: string;
+  kind: MockPrankSoundKind;
+  name: string;
+  durationSec: number;
+}
+
+export const MOCK_PRANK_SOUNDS: MockPrankSound[] = [
+  { id: 'snd1', kind: 'sound', name: 'Duck quack', durationSec: 3 },
+  { id: 'snd2', kind: 'sound', name: 'Air horn', durationSec: 4 },
+  { id: 'snd3', kind: 'sound', name: 'Windows XP error', durationSec: 6 },
+  { id: 'snd4', kind: 'sound', name: 'Dial-up modem', durationSec: 12 },
+  { id: 'sng1', kind: 'song', name: 'Baby Shark', durationSec: 132 },
+  { id: 'sng2', kind: 'song', name: 'Never Gonna Give You Up', durationSec: 213 },
+];
+
+/** Catalogue songs the composer's "any song by name" tab can find, beyond
+ *  the uploaded library above (owner decision 3: both sources). */
+export const MOCK_PRANK_CATALOGUE: Track[] = [
+  makeTrack({ sourceId: 'pc1', title: 'Ievan Polkka', artist: 'Loituma', durationSec: 135 }),
+  makeTrack({ sourceId: 'pc2', title: 'The Duck Song', artist: 'Bryant Oden', durationSec: 116 }),
+];
+
+export type MockPrankLogStatus = 'done' | 'delivered' | 'skipped' | 'expired' | 'pending';
+
+/** One row of the admin log, already worded the way `lib/pranks/copy.ts`
+ *  will: a full sentence, never a bare id. */
+export interface MockPrankLogEntry {
+  id: string;
+  time: string;
+  status: MockPrankLogStatus;
+  line: string;
+}
+
+export const MOCK_PRANK_LOG: MockPrankLogEntry[] = [
+  { id: 'lg1', time: '21:03', status: 'done', line: "Aron played “Duck quack” over Luka's “Beggin'” at 21:03, delivered on Android, done after 3 s." },
+  { id: 'lg2', time: '20:41', status: 'done', line: "Aron swapped Ivana's “Northbound” for “Never Gonna Give You Up” at 20:41, delivered on desktop, done after 20 s." },
+  { id: 'lg3', time: '20:12', status: 'skipped', line: 'Aron tried a sound on Marko at 20:12, skipped: paused.' },
+  { id: 'lg4', time: '19:58', status: 'expired', line: 'Aron tried a sound on Toni at 19:58, not delivered: offline.' },
+  { id: 'lg5', time: '19:30', status: 'done', line: "Aron played “Air horn” over Luka's “Golden” at 19:30, delivered on Android, done after 4 s." },
+];
+
+/** The repeating schedule shown in the "repeat running" preview state: a
+ *  sound on Luka every 5 minutes until 22:00, 3 fired so far. */
+export const MOCK_PRANK_SCHEDULE = {
+  personName: 'Luka',
+  soundName: 'Duck quack',
+  intervalMin: 5,
+  untilLabel: '22:00',
+  fired: 3,
+};
+
+/** Frequency caps (plan section 6, owner decision 4): how close Luka is to
+ *  the per-person hourly cap, for the "limits where they bite" requirement. */
+export const MOCK_PRANK_HOUR_COUNT = 18;
+export const MOCK_PRANK_HOUR_CAP = 20;
