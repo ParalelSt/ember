@@ -763,19 +763,26 @@ def ytdlp_playlist(playlist_id):
     return [to_track_json_from_ytdlp(e) for e in entries if e and e.get("id")]
 
 
-def chart_tracks(country):
+def chart_tracks(country, allow_global_fallback=True):
     """The daily chart for a country (ZZ = global), in rank order.
 
     get_charts -> pick the chart playlist by title -> get_playlist, then
     yt-dlp on the same playlist id. Raises when every source fails, so the
     server keeps serving its last good list instead of something that only
-    looks like a chart."""
+    looks like a chart.
+
+    When `allow_global_fallback` is False, a country whose own chart can't
+    be found raises instead of silently substituting the global chart: a
+    blend of several countries must not count the same global chart twice
+    under two different countries' names."""
     picked = None
     try:
         picked = pick_chart_playlist(yt.get_charts(country=country))
     except Exception as e:
         print(f"trending: get_charts failed ({e})", file=sys.stderr)
     if not picked:
+        if not allow_global_fallback:
+            raise RuntimeError(f"trending: no chart playlist found for {country}")
         print("trending: no chart playlist found, using the global daily chart", file=sys.stderr)
         picked = {"playlistId": GLOBAL_DAILY_CHART_ID, "title": "Daily Top Music Videos - Global"}
     playlist_id = picked["playlistId"]
@@ -809,16 +816,22 @@ def normalize_song_key(title, artist):
     return f"{clean(title)}|{clean(artist)}"
 
 
-def fetch_country_charts(countries):
+def fetch_country_charts(countries, allow_global_fallback=True):
     """Each country's daily chart, sequentially with pacing between live
     calls. Returns (successes, failures): successes is [(country, tracks)],
-    failures is the list of countries whose chart could not be fetched."""
+    failures is the list of countries whose chart could not be fetched.
+
+    `allow_global_fallback` should be False whenever more than one country
+    is being blended: otherwise a country with no chart of its own silently
+    gets the global chart under its name, and the blend double-counts the
+    global chart as if it were two countries agreeing."""
     successes, failures = [], []
     for i, country in enumerate(countries):
         if i > 0:
             time.sleep(CHART_FETCH_PACING_SEC)
         try:
-            successes.append((country, chart_tracks(country)["tracks"]))
+            tracks = chart_tracks(country, allow_global_fallback=allow_global_fallback)["tracks"]
+            successes.append((country, tracks))
         except Exception as e:
             print(f"trending: {country} chart failed ({e})", file=sys.stderr)
             failures.append(country)
@@ -870,7 +883,7 @@ def cmd_trending(args):
     fatal). Exits non-zero only when every country failed; the server then
     serves its cached list."""
     countries = [c.strip().upper() for c in (args.countries or "").split(",") if c.strip()] or [args.country]
-    successes, failures = fetch_country_charts(countries)
+    successes, failures = fetch_country_charts(countries, allow_global_fallback=len(countries) == 1)
     if not successes:
         print("ERROR: trending: every country's chart failed", file=sys.stderr)
         sys.exit(1)

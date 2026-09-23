@@ -113,6 +113,22 @@ class TrendingPlaylistPickerTest(unittest.TestCase):
         with self.assertRaises(RuntimeError):
             player.chart_tracks("ZZ")
 
+    def test_allow_global_fallback_false_raises_instead_of_substituting(self):
+        # A missing country chart must not be silently swapped for the
+        # global chart when it will be counted (and labeled) as DE's own.
+        stub = StubYT(charts_error=RuntimeError("HTTP 503"), playlist=load("get_playlist_daily_global.json"))
+        player.yt = stub
+        with self.assertRaises(RuntimeError):
+            player.chart_tracks("DE", allow_global_fallback=False)
+        self.assertEqual(stub.playlist_ids, [])  # never even asked for the global playlist
+
+    def test_allow_global_fallback_true_still_substitutes(self):
+        stub = StubYT(charts_error=RuntimeError("HTTP 503"), playlist=load("get_playlist_daily_global.json"))
+        player.yt = stub
+        chart = player.chart_tracks("DE", allow_global_fallback=True)
+        self.assertEqual(len(chart["tracks"]), 50)
+        self.assertEqual(stub.playlist_ids, [player.GLOBAL_DAILY_CHART_ID])
+
 
 class NormalizeSongKeyTest(unittest.TestCase):
     def test_ignores_case_punctuation_and_spacing(self):
@@ -193,7 +209,7 @@ class FetchCountryChartsTest(unittest.TestCase):
         player.CHART_FETCH_PACING_SEC = self.real_pacing
 
     def test_partial_country_failure_blends_the_rest(self):
-        def fake(country):
+        def fake(country, allow_global_fallback=True):
             if country == "DE":
                 raise RuntimeError("HTTP 503")
             return {"title": None, "playlistId": "p", "source": "ytmusicapi", "tracks": [track(f"{country}1", "T")]}
@@ -203,10 +219,20 @@ class FetchCountryChartsTest(unittest.TestCase):
         self.assertEqual(failures, ["DE"])
 
     def test_all_countries_failing_gives_no_successes(self):
-        player.chart_tracks = lambda country: (_ for _ in ()).throw(RuntimeError("down"))
+        player.chart_tracks = lambda country, allow_global_fallback=True: (_ for _ in ()).throw(RuntimeError("down"))
         successes, failures = player.fetch_country_charts(["US", "GB"])
         self.assertEqual(successes, [])
         self.assertEqual(failures, ["US", "GB"])
+
+    def test_passes_allow_global_fallback_through_to_chart_tracks(self):
+        seen = []
+
+        def fake(country, allow_global_fallback=True):
+            seen.append((country, allow_global_fallback))
+            return {"title": None, "playlistId": "p", "source": "ytmusicapi", "tracks": [track(f"{country}1", "T")]}
+        player.chart_tracks = fake
+        player.fetch_country_charts(["US", "GB"], allow_global_fallback=False)
+        self.assertEqual(seen, [("US", False), ("GB", False)])
 
 
 class CmdTrendingTest(unittest.TestCase):
@@ -230,7 +256,7 @@ class CmdTrendingTest(unittest.TestCase):
         return json.loads(buf.getvalue())
 
     def test_blends_countries_and_reports_which_were_used(self):
-        def fake(country):
+        def fake(country, allow_global_fallback=True):
             return {"title": None, "playlistId": "p", "source": "ytmusicapi", "tracks": [track(f"{country}1", f"{country} Song")]}
         player.chart_tracks = fake
         out = self._run(countries="US,GB,DE")
@@ -238,7 +264,7 @@ class CmdTrendingTest(unittest.TestCase):
         self.assertEqual(len(out["tracks"]), 3)
 
     def test_partial_failure_still_returns_the_successful_countries(self):
-        def fake(country):
+        def fake(country, allow_global_fallback=True):
             if country == "DE":
                 raise RuntimeError("HTTP 503")
             return {"title": None, "playlistId": "p", "source": "ytmusicapi", "tracks": [track(f"{country}1", f"{country} Song")]}
@@ -247,15 +273,43 @@ class CmdTrendingTest(unittest.TestCase):
         self.assertEqual(out["countries"], ["US", "GB"])
 
     def test_every_country_failing_exits_nonzero(self):
-        player.chart_tracks = lambda country: (_ for _ in ()).throw(RuntimeError("down"))
+        player.chart_tracks = lambda country, allow_global_fallback=True: (_ for _ in ()).throw(RuntimeError("down"))
         with self.assertRaises(SystemExit) as ctx:
             self._run(countries="US,GB")
         self.assertEqual(ctx.exception.code, 1)
 
     def test_no_countries_falls_back_to_single_country_arg(self):
-        player.chart_tracks = lambda country: {"title": None, "playlistId": "p", "source": "ytmusicapi", "tracks": [track("z1", "Global Song")]}
+        player.chart_tracks = lambda country, allow_global_fallback=True: {"title": None, "playlistId": "p", "source": "ytmusicapi", "tracks": [track("z1", "Global Song")]}
         out = self._run(countries=None, country="ZZ")
         self.assertEqual(out["countries"], ["ZZ"])
+
+    def test_blend_of_several_countries_does_not_allow_the_global_substitute(self):
+        # DE has no chart of its own here; before the fix chart_tracks would
+        # silently hand back the global chart labeled as DE's, so the blend
+        # double-counted the same global chart under two country names.
+        # Now a country with no chart of its own is skipped like any other
+        # failure instead of standing in for the global chart.
+        seen = []
+
+        def fake(country, allow_global_fallback=True):
+            seen.append((country, allow_global_fallback))
+            if country == "DE":
+                raise RuntimeError("trending: no chart playlist found for DE")
+            return {"title": None, "playlistId": "p", "source": "ytmusicapi", "tracks": [track(f"{country}1", f"{country} Song")]}
+        player.chart_tracks = fake
+        out = self._run(countries="US,DE,GB")
+        self.assertEqual(seen, [("US", False), ("DE", False), ("GB", False)])
+        self.assertEqual(out["countries"], ["US", "GB"])
+
+    def test_a_single_country_still_allows_the_global_substitute(self):
+        seen = []
+
+        def fake(country, allow_global_fallback=True):
+            seen.append(allow_global_fallback)
+            return {"title": None, "playlistId": "p", "source": "ytmusicapi", "tracks": [track("z1", "Global Song")]}
+        player.chart_tracks = fake
+        self._run(countries="DE")
+        self.assertEqual(seen, [True])
 
 
 if __name__ == "__main__":
