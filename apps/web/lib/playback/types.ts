@@ -1,5 +1,6 @@
 import type { OverlayHandle } from '@/lib/pranks/overlayPlayer';
 import type { Track } from '@/types/track';
+import type { LoopMode } from '@/stores/usePlayerStore';
 
 /** Transport commands the OS/remote (lock screen, Bluetooth, media keys) can
  *  invoke. The provider supplies these; a backend wires them to the platform. */
@@ -37,6 +38,9 @@ export interface AudioBackendEvents {
   /** Queue-owning backends only: the native side built a new queue (a tap in
    *  the car, native radio). The provider mirrors it; it must NOT push it back. */
   onQueueReplaced?: (tracks: Track[], index: number) => void;
+  /** Queue-owning backends only: the loop mode was changed outside the app
+   *  (the Repeat button in the car or the notification). */
+  onLoopMode?: (mode: LoopMode) => void;
 }
 
 export interface LoadOptions {
@@ -85,6 +89,9 @@ export interface AudioBackend {
   /** Queue-owning backends only: the native player decides what is next. */
   next?(): void;
   prev?(): void;
+  /** Queue-owning backends only: the native player repeats by itself, so it
+   *  has to be told the loop mode. */
+  setLoop?(mode: LoopMode): void;
   /** Android engine on an app build that has the native overlay (absent on
    *  older builds): a prank sound beside the music, ducked and restored
    *  natively so it works with the screen off. */
