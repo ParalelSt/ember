@@ -165,6 +165,7 @@ check('F9 an invitee signs up', joined.ok, `status ${joined.status}`);
 
 const catalogRow = await asSuper(`/api/collections/tracks/records?filter=${encodeURIComponent(`external_id="${song.id}"`)}`)
   .then((r) => r.json()).then((j) => j.items?.[0]);
+check('F2c playing it filled in the missing artwork', catalogRow?.artwork_url === 'https://i.ytimg.com/vi/x/hq.jpg');
 
 // ── W02: promoting yourself through PocketBase ───────────────────────────
 const self = await pbAs(alice, `/api/collections/users/records/${alice.id}`, { method: 'PATCH', body: JSON.stringify({ is_admin: true }) });

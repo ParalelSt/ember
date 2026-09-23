@@ -3,6 +3,7 @@ import type PocketBase from 'pocketbase';
 import type { ClientResponseError, RecordModel } from 'pocketbase';
 import type { Track } from '@/types/track';
 import { serverLogger } from '@/lib/logger/server';
+import { createCatalogClient } from '@/lib/pocketbase/server';
 
 /** Upserts a Track into the shared `tracks` collection by `external_id`.
  *  Returns the PocketBase record id so callers can use it in relations
@@ -54,6 +55,21 @@ export async function upsertTrack(pb: PocketBase, track: Track): Promise<string>
       return existing.id;
     }
     throw e;
+  }
+}
+
+/** upsertTrack for routes acting for a member (like, play, playlist add).
+ *  Members can read the shared catalog but not write it
+ *  (pb_hooks/ensure_tracks_rules.pb.js), so the row is written with the
+ *  server's admin client. One retry with a fresh sign-in covers a reused
+ *  token that stopped working. */
+export async function upsertCatalogTrack(track: Track): Promise<string> {
+  try {
+    return await upsertTrack(await createCatalogClient(), track);
+  } catch (e) {
+    const status = (e as ClientResponseError | undefined)?.status;
+    if (status !== 401 && status !== 403) throw e;
+    return upsertTrack(await createCatalogClient(true), track);
   }
 }
 

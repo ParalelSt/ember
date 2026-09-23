@@ -2,7 +2,7 @@ import type { NextRequest } from 'next/server';
 import { requireUser, UnauthorizedError, unauthorizedResponse } from '@/lib/auth';
 import { mapTrackRow, type TrackRecord } from '@/lib/mapTrack';
 import type { Track } from '@/types/track';
-import { fromError, jsonError, upsertTrack } from '@/lib/upsertTrack';
+import { fromError, jsonError, upsertCatalogTrack } from '@/lib/upsertTrack';
 import { withRequestLog } from '@/lib/logger/withRequestLog';
 
 export const GET = withRequestLog('likes', async () => {
@@ -33,7 +33,7 @@ export const POST = withRequestLog('likes', async (request: NextRequest) => {
     const track = body?.track;
     if (!track?.id) return jsonError('track required', 400);
 
-    const trackRecordId = await upsertTrack(pb, track);
+    const trackRecordId = await upsertCatalogTrack(track);
 
     try {
       await pb.collection('likes').create({
