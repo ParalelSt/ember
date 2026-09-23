@@ -27,8 +27,8 @@ export function HideTagsSwitch({ checked, onCheckedChange, className }: HideTags
         <span
           aria-hidden="true"
           className={cn(
-            'inline-block h-5 w-5 rounded-full bg-white shadow-soft transition-transform',
-            checked ? 'translate-x-5.5' : 'translate-x-0.5',
+            'block h-5 w-5 rounded-full shadow-soft transition-transform',
+            checked ? 'translate-x-5.5 bg-ember-foreground' : 'translate-x-0.5 bg-foreground',
           )}
         />
       </button>

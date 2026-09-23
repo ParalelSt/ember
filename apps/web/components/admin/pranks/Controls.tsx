@@ -52,7 +52,7 @@ export function SwitchRow({
           on ? 'bg-ember' : 'bg-muted',
         )}
       >
-        <span className={cn('inline-block size-4 rounded-full bg-background transition-transform', on ? 'translate-x-6' : 'translate-x-1')} />
+        <span className={cn('block size-4 rounded-full bg-background transition-transform', on ? 'translate-x-6' : 'translate-x-1')} />
       </button>
     </div>
   );
