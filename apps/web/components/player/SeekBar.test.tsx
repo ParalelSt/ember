@@ -13,16 +13,19 @@ vi.mock('@/components/ui/slider', () => ({
     onValueChange,
     onValueCommitted,
     className,
+    disabled,
   }: {
     value: number[];
     onValueChange?: (v: number[]) => void;
     onValueCommitted?: (v: number[]) => void;
     className?: string;
+    disabled?: boolean;
   }) => (
     <input
       type="range"
       aria-label="progress"
       className={className}
+      disabled={disabled}
       value={value[0]}
       onChange={(e) => onValueChange?.([Number(e.target.value)])}
       onMouseUp={(e) => onValueCommitted?.([Number(e.currentTarget.value)])}
@@ -67,13 +70,16 @@ describe('SeekBar', () => {
     expect(screen.getByText('1:30')).toBeInTheDocument();
   });
 
-  it('sits at zero without a duration', () => {
+  it('sits at zero, disabled, without a duration, and never seeks to 0:00', () => {
+    // With no length there is no way to turn a spot on the bar into a time.
+    // Seeking there used to jump the song back to the start.
     const onSeek = vi.fn();
     render(<SeekBar position={12} duration={0} onSeek={onSeek} labels="below" />);
     expect(slider().value).toBe('0');
+    expect(slider()).toBeDisabled();
     fireEvent.change(slider(), { target: { value: '40' } });
     fireEvent.mouseUp(slider());
-    expect(onSeek).toHaveBeenCalledWith(0);
+    expect(onSeek).not.toHaveBeenCalled();
   });
 
   it('renders both times below the slider for labels="below"', () => {

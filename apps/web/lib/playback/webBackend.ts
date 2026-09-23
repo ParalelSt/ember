@@ -166,7 +166,10 @@ export const createWebBackend: CreateAudioBackend = (events) => {
     },
 
     seek(sec) {
-      const target = Math.max(0, Math.min(sec, a.duration || 0));
+      // Clamp only to a length the element actually knows: right after a load
+      // it is NaN, and clamping to "0" sent every early seek to 0:00.
+      const len = a.duration;
+      const target = Math.max(0, Number.isFinite(len) && len > 0 ? Math.min(sec, len) : sec);
       const from = a.currentTime || 0;
       // A tap on the progress bar/remote command is a "jump"; the ~4 Hz
       // timeupdate-driven onTime() calls above are not seeks at all, so
