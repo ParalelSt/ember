@@ -203,17 +203,17 @@ async fn open_like_audio_load(
 
 /// What the play-through looked like from the position timer's point of view.
 #[derive(Debug)]
-struct Outcome {
+pub(super) struct Outcome {
     /// `sink.empty()`: the engine emits `audio:ended` here.
-    ended: bool,
+    pub(super) ended: bool,
     /// The position the engine would report just before that.
-    last_pos: f64,
+    pub(super) last_pos: f64,
 }
 
 /// Pull samples the way the output mixer does (faster than real time),
 /// optionally asking the sink to seek to `to` once `at` seconds have played.
 /// Stops when the sink runs empty or `wall` elapses.
-fn drive(
+pub(super) fn drive(
     sink: &Sink,
     out: &mut SourcesQueueOutput,
     seek: Option<(f64, f64)>,

@@ -173,13 +173,11 @@ async fn open_with_one_flat_budget(url: &str) -> Duration {
             _ => return started.elapsed(),
         };
     let progress = std::sync::Arc::new(DownloadProgress::started_now());
+    // With the stream-download default prefetch it ran with then.
+    let settings = download_settings(std::sync::Arc::clone(&progress)).prefetch_bytes(256 * 1024);
     let reader = match tokio::time::timeout(
         remaining(),
-        StreamDownload::from_stream(
-            stream,
-            TempStorageProvider::default(),
-            download_settings(std::sync::Arc::clone(&progress)),
-        ),
+        StreamDownload::from_stream(stream, TempStorageProvider::default(), settings),
     )
     .await
     {
@@ -287,7 +285,7 @@ async fn a_download_that_is_simply_too_slow_still_ends() {
 /// webview heard anything. It must now be reported in a couple of seconds.
 #[tokio::test(flavor = "multi_thread")]
 async fn a_host_that_goes_quiet_mid_body_is_reported_within_seconds() {
-    // 8 KB is short of the 256 KB prefetch, so the stall lands while buffering.
+    // 8 KB is short of the moov, so the stall lands while the decoder is built.
     let url = fake_host(Behaviour::AnswersThenStalls { sent: 8 * 1024 });
     let (took, outcome) = open(&url).await;
     let (message, retry) = outcome.expect_err("a body that never arrives cannot open");
@@ -297,14 +295,18 @@ async fn a_host_that_goes_quiet_mid_body_is_reported_within_seconds() {
     assert_eq!(retry, super::RETRY_NONE, "the same host cannot do better for web audio");
 }
 
-/// The same, with enough sent to get past the prefetch so the stall lands in
-/// the DECODER: this is the exact stage the field reports named.
+/// The same host, with the head of the song sent before it goes quiet. This
+/// used to fail too, because building the decoder waited for the WHOLE body
+/// (see `download_settings`); the decoder needs the head and one read of the
+/// tail, so it opens, and a body that then dies mid-song is the position
+/// timer's to report (skip_repro covers that).
 #[tokio::test(flavor = "multi_thread")]
-async fn a_host_that_goes_quiet_after_the_prefetch_is_reported_within_seconds() {
+async fn a_host_that_goes_quiet_after_the_head_does_not_hold_up_the_load() {
     let url = fake_host(Behaviour::AnswersThenStalls { sent: 300 * 1024 });
     let (took, outcome) = open(&url).await;
-    let (message, _) = outcome.expect_err("half a file cannot open");
-    assert!(took < Duration::from_secs(8), "gave up only after {took:?}: {message}");
+    let total = outcome.expect("the head is enough to start");
+    assert_eq!(total.map(|d| d.as_secs()), Some(120));
+    assert!(took < Duration::from_secs(3), "took {took:?}");
 }
 
 /// What it used to cost, on the same host, so the improvement is measured and
@@ -353,11 +355,12 @@ async fn a_host_that_answers_nothing_at_all_is_given_up_on_at_the_connect_budget
 }
 
 /// The guard that matters most: a link that is slow but delivering must still
-/// play. 16 KB every 220 ms takes longer to open than the stall grace allows
-/// for SILENCE, and none of the budgets may fire on it.
+/// play. 4 KB every 220 ms takes longer to open (the moov, then a 64 KB read of
+/// the tail) than the stall grace allows for SILENCE, and none of the budgets
+/// may fire on it.
 #[tokio::test(flavor = "multi_thread")]
 async fn a_slow_but_progressing_download_still_plays() {
-    let url = fake_host(Behaviour::SlowButProgressing { chunk: 16 * 1024, gap_ms: 220 });
+    let url = fake_host(Behaviour::SlowButProgressing { chunk: 4 * 1024, gap_ms: 220 });
     let (took, outcome) = open(&url).await;
     let total = outcome.expect("a slow download is still a download");
 
