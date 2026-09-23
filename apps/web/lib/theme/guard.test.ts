@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { checkTheme, isUnreadable, PAIRS, problems, type Finding, type PairId } from '@/lib/theme/guard';
 import { contrast } from '@/lib/theme/oklch';
 import { INPUT_KEYS, type ThemeInputs } from '@/lib/theme/model';
-import { EMBER_INPUTS, PRESET_BY_ID } from '@/lib/theme/presets';
+import { EMBER_INPUTS, PRESETS, PRESET_BY_ID } from '@/lib/theme/presets';
 
 const finding = (inputs: ThemeInputs, pair: PairId): Finding => checkTheme(inputs).find((f) => f.pair === pair)!;
 const MIDNIGHT = PRESET_BY_ID.midnight.inputs;
@@ -16,6 +16,10 @@ const CASES: Record<PairId, { warn: ThemeInputs; fail: ThemeInputs }> = {
   hover: {
     warn: { ...EMBER_INPUTS, surface: [0.5, 0.005, 260] },
     fail: { ...EMBER_INPUTS, surface: [0.62, 0.005, 260] },
+  },
+  menu: {
+    warn: { ...EMBER_INPUTS, surface: [0.42, 0.005, 260] },
+    fail: { ...EMBER_INPUTS, surface: [0.5, 0.005, 260] },
   },
   muted: {
     warn: { ...EMBER_INPUTS, mutedText: [0.55, 0.005, 260] },
@@ -37,9 +41,9 @@ const CASES: Record<PairId, { warn: ThemeInputs; fail: ThemeInputs }> = {
 };
 
 describe('checkTheme', () => {
-  it('rates all six pairs, each with a plain label', () => {
+  it('rates all seven pairs, each with a plain label', () => {
     const all = checkTheme(EMBER_INPUTS);
-    expect(all.map((f) => f.pair)).toEqual(['text', 'hover', 'muted', 'button', 'accent', 'sidebar']);
+    expect(all.map((f) => f.pair)).toEqual(['text', 'hover', 'menu', 'muted', 'button', 'accent', 'sidebar']);
     for (const f of all) expect(f.label).toMatch(/^[A-Z][a-z ]+$/);
   });
 
@@ -108,5 +112,25 @@ describe('problems / isUnreadable', () => {
     expect(problems(CASES.muted.warn).map((f) => f.pair)).toEqual(['muted']);
     expect(isUnreadable(CASES.muted.warn)).toBe(false);
     expect(isUnreadable(CASES.accent.fail)).toBe(true);
+  });
+
+  // bughunt N9: the guard checked text on surface+0.04 (the hover row) but
+  // not surface+0.1 (--accent, the menu/dropdown highlight row derive.ts
+  // actually paints), so a theme unreadable there sailed through as "ok".
+  it('catches text on the menu-highlight row too, not just the hover row', () => {
+    // A surface light enough to sink surface+0.1 below the fail threshold
+    // while surface+0.04 alone is still fine, so only the missing pair
+    // would have caught it.
+    const badMenu: ThemeInputs = { ...EMBER_INPUTS, surface: [0.46, 0.005, 260] };
+    expect(finding(badMenu, 'hover').level).not.toBe('fail');
+    expect(finding(badMenu, 'menu').level).toBe('fail');
+    expect(isUnreadable(badMenu)).toBe(true);
+  });
+
+  it('every preset stays fully readable, menu highlights included', () => {
+    for (const preset of PRESETS) {
+      expect(problems(preset.inputs), preset.id).toEqual([]);
+      expect(isUnreadable(preset.inputs), preset.id).toBe(false);
+    }
   });
 });
