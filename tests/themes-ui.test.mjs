@@ -17,8 +17,11 @@
  *  Choices a person makes (a preset, a custom theme, sharing, using and
  *  copying someone else's) go through Settings > Appearance in the
  *  browser; the refusals and the collection rules go straight at the
- *  routes and /pb. With SHOT_DIR set, every preset is photographed on Home
- *  and on Appearance at 390 and 1300 wide.
+ *  routes and /pb. Every preset is walked through Home, Appearance, Help
+ *  and Plugins at 390 and 1300 wide: nothing scrolls sideways, and
+ *  everything painted on the accent (text, icons, switch thumbs) stands
+ *  off it, which is what catches a white-on-white play button on Mono.
+ *  With SHOT_DIR set, each of those is photographed.
  *
  *  Needs a sandbox: PocketBase (PB_URL) started with this branch's
  *  pb_hooks (ensure_themes.pb.js), and the app (APP_URL) built from this
@@ -485,12 +488,56 @@ let NIGHT_DRIVE_EMBER;
   await page.context().close();
 }
 
-// ── 7. Every preset on Home and Appearance, phone and desktop ────────────
+// ── 7. Every preset on Home, Appearance, Help, Plugins; phone and desktop ─
+/** Everything painted on the accent, measured in the page: text and icons
+ *  on a .bg-ember element against it, and a switch thumb against the
+ *  .bg-ember track it sits on. Colours go through a 1px canvas so oklch()
+ *  and color-mix() come back as sRGB. Returns the pairs under 3:1. */
+function onAccentProblems() {
+  const ctx = document.createElement('canvas').getContext('2d', { willReadFrequently: true });
+  const rgb = (c) => {
+    ctx.clearRect(0, 0, 1, 1);
+    ctx.fillStyle = '#000';
+    ctx.fillStyle = c;
+    ctx.fillRect(0, 0, 1, 1);
+    return [...ctx.getImageData(0, 0, 1, 1).data].slice(0, 3);
+  };
+  const lum = (c) => {
+    const [r, g, b] = rgb(c).map((v) => {
+      const s = v / 255;
+      return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
+    });
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  };
+  const ratio = (a, b) => {
+    const [hi, lo] = [lum(a), lum(b)].sort((x, y) => y - x);
+    return (hi + 0.05) / (lo + 0.05);
+  };
+  const shown = (el) => el.getClientRects().length > 0 && getComputedStyle(el).visibility !== 'hidden';
+  const label = (el) => (el.getAttribute('aria-label') || el.textContent || el.className).trim().slice(0, 40);
+  const bad = [];
+  for (const el of document.querySelectorAll('.bg-ember')) {
+    if (!shown(el)) continue;
+    const bg = getComputedStyle(el).backgroundColor;
+    if (el.textContent.trim() || el.querySelector('svg')) {
+      const r = ratio(getComputedStyle(el).color, bg);
+      if (r < 3) bad.push(`text on "${label(el)}" ${r.toFixed(2)}:1`);
+    }
+    for (const thumb of el.querySelectorAll(':scope > .bg-ember-foreground')) {
+      const r = ratio(getComputedStyle(thumb).backgroundColor, bg);
+      if (r < 3) bad.push(`thumb on "${label(el)}" ${r.toFixed(2)}:1`);
+    }
+  }
+  return bad;
+}
+
 {
   const who = await member('shots', 'Shots');
   const page = await device(who.cookie);
   if (SHOT_DIR) fs.mkdirSync(SHOT_DIR, { recursive: true });
   const overflow = [];
+  const onAccent = [];
+  let accentChecked = 0;
   for (const preset of PRESETS) {
     await page.setViewportSize({ width: 1300, height: 900 });
     await appearance(page);
@@ -498,7 +545,12 @@ let NIGHT_DRIVE_EMBER;
     await saveLine(page, 'Saved');
     for (const width of [1300, 390]) {
       await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
-      for (const [name, route] of [['home', '/'], ['appearance', '/settings/appearance']]) {
+      for (const [name, route] of [
+        ['home', '/'],
+        ['appearance', '/settings/appearance'],
+        ['help', '/settings/help'],
+        ['plugins', '/settings/plugins'],
+      ]) {
         await page.goto(`${APP_URL}${route}`, { waitUntil: 'networkidle' });
         if (name === 'appearance') await page.getByTestId('theme-count').waitFor({ timeout: 10000 });
         const wide = await page.evaluate(() => {
@@ -506,12 +558,28 @@ let NIGHT_DRIVE_EMBER;
           return el ? el.scrollWidth - el.clientWidth : 0;
         });
         if (wide > 1) overflow.push(`${preset}-${name}-${width}: ${wide}px`);
+        if (name === 'help') await page.getByRole('button', { name: 'Report a bug' }).waitFor({ timeout: 10000 });
+        accentChecked += await page.locator('.bg-ember').count();
+        for (const p of await page.evaluate(onAccentProblems)) onAccent.push(`${preset}-${name}-${width}: ${p}`);
         if (SHOT_DIR) await page.screenshot({ path: path.join(SHOT_DIR, `${preset}-${name}-${width}.png`) });
       }
     }
   }
+  // The check itself can see the bug it is for: on Mono (the last preset
+  // picked), the old play button's text-white on bg-ember is caught.
+  await page.evaluate(() => {
+    const el = document.createElement('button');
+    el.id = 'planted';
+    el.className = 'bg-ember text-white';
+    el.textContent = 'Planted';
+    document.body.append(el);
+  });
+  const planted = await page.evaluate(onAccentProblems);
+  await page.evaluate(() => document.getElementById('planted')?.remove());
+  check('the accent check catches text-white on Mono\'s white accent', planted.some((p) => p.includes('Planted')), JSON.stringify(planted));
   const bg = await rootVar(page, '--background');
-  check('every preset renders Home and Appearance at 390 and 1300 with no sideways scroll', overflow.length === 0, overflow.join(', '));
+  check('every preset renders Home, Appearance, Help and Plugins at 390 and 1300 with no sideways scroll', overflow.length === 0, overflow.join(', '));
+  check(`text, icons and thumbs on the accent read at 3:1 or better in every preset (${accentChecked} accent surfaces)`, accentChecked > 0 && onAccent.length === 0, onAccent.join('; '));
   check('the last preset picked (Mono) is on the page', bg === 'oklch(0 0 0)', bg);
   if (SHOT_DIR) console.log(`screenshots in ${SHOT_DIR}`);
   await page.context().close();
