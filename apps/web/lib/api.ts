@@ -12,6 +12,7 @@ import type {
   PrankParams,
   PrankPerson,
   PrankRow,
+  PrankSchedule,
   PrankSound,
   PrankSoundKind,
   PresenceReport,
@@ -450,6 +451,17 @@ export const api = {
         req<{ sound: PrankSound }>(`/admin/pranks/sounds/${encodeURIComponent(id)}`, { method: 'PATCH', body: { name } }),
       deleteSound: (id: string) =>
         req<{ ok: true }>(`/admin/pranks/sounds/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+      schedules: () => req<{ schedules: PrankSchedule[] }>('/admin/pranks/schedules'),
+      repeat: (body: {
+        targetId: string;
+        soundId: string;
+        intervalSec: number;
+        endsAt: string;
+        params?: Partial<PrankParams>;
+      }) => req<{ schedule: PrankSchedule }>('/admin/pranks/schedules', { method: 'POST', body }),
+      stopRepeat: (id: string) =>
+        req<{ ok: true; cancelled: number }>(`/admin/pranks/schedules/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+      stopAll: () => req<{ stopped: number; cancelled: number }>('/admin/pranks/stop-all', { method: 'POST' }),
     },
   },
 

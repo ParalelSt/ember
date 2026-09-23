@@ -106,13 +106,14 @@ export function useExecuteDeleteAdminInvite() {
   });
 }
 
-// ───── Pranks (temporary page until the /dizajn pick) ─────
+// ───── Pranks ─────
 
 const PRANKS_QK = {
   people: ['admin', 'pranks', 'people'] as const,
   log: ['admin', 'pranks', 'log'] as const,
   settings: ['admin', 'pranks', 'settings'] as const,
   sounds: ['admin', 'pranks', 'sounds'] as const,
+  schedules: ['admin', 'pranks', 'schedules'] as const,
 };
 
 export function useQueryPrankPeople() {
@@ -144,6 +145,7 @@ export function useExecuteSendPrank() {
     mutationFn: (body: Parameters<typeof api.admin.pranks.send>[0]) => api.admin.pranks.send(body),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: PRANKS_QK.log });
+      qc.invalidateQueries({ queryKey: PRANKS_QK.people });
     },
   });
 }
@@ -181,6 +183,56 @@ export function useExecuteDeletePrankSound() {
     mutationFn: (id: string) => api.admin.pranks.deleteSound(id),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: PRANKS_QK.sounds });
+    },
+  });
+}
+
+export function useExecuteRenamePrankSound() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, name }: { id: string; name: string }) => api.admin.pranks.renameSound(id, name),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: PRANKS_QK.sounds });
+    },
+  });
+}
+
+export function useQueryPrankSchedules() {
+  return useQuery({
+    queryKey: PRANKS_QK.schedules,
+    queryFn: () => api.admin.pranks.schedules().then((r) => r.schedules),
+    refetchInterval: 5_000,
+  });
+}
+
+export function useExecuteRepeatPrank() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: Parameters<typeof api.admin.pranks.repeat>[0]) => api.admin.pranks.repeat(body),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: PRANKS_QK.schedules });
+      qc.invalidateQueries({ queryKey: PRANKS_QK.log });
+    },
+  });
+}
+
+export function useExecuteStopRepeat() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.admin.pranks.stopRepeat(id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: PRANKS_QK.schedules });
+      qc.invalidateQueries({ queryKey: PRANKS_QK.log });
+    },
+  });
+}
+
+export function useExecuteStopAllPranks() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => api.admin.pranks.stopAll(),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['admin', 'pranks'] });
     },
   });
 }

@@ -5,9 +5,9 @@ import { mapTrackRow, type TrackRecord } from '@/lib/mapTrack';
 import { rateLimitResponse } from '@/lib/rateLimit';
 import { withRequestLog } from '@/lib/logger/withRequestLog';
 import { personName, presenceLine } from '@/lib/pranks/copy';
-import { parsePbDate, pbDate } from '@/lib/pranks/limits';
+import { hourCount, parsePbDate, pbDate } from '@/lib/pranks/limits';
 import { presenceStore } from '@/lib/pranks/presence';
-import { prankErrorResponse } from '@/lib/pranks/server';
+import { prankErrorResponse, toRecent } from '@/lib/pranks/server';
 import type { PrankPerson } from '@/lib/pranks/types';
 
 /** How far back a play still says "was playing". */
@@ -24,14 +24,23 @@ export const GET = withRequestLog('admin/pranks/people', async () => {
 
     const pb = await createAdminClient();
     const now = Date.now();
-    const [users, plays] = await Promise.all([
+    const [users, plays, recent] = await Promise.all([
       pb.collection('users').getFullList({ sort: 'name' }),
       pb.collection('plays').getList(1, 200, {
         filter: pb.filter('played_at >= {:since}', { since: pbDate(now - PLAY_WINDOW_MS) }),
         sort: '-played_at',
         expand: 'track',
       }),
+      pb.collection('pranks').getFullList({
+        filter: pb.filter('created >= {:since}', { since: pbDate(now - 60 * 60 * 1000) }),
+      }),
     ]);
+    const byTarget = new Map<string, ReturnType<typeof toRecent>[]>();
+    for (const r of recent) {
+      const list = byTarget.get(String(r.target)) ?? [];
+      list.push(toRecent(r, now));
+      byTarget.set(String(r.target), list);
+    }
 
     const lastPlay = new Map<string, { title: string; artist: string; playedAt: number }>();
     for (const p of plays.items) {
@@ -51,6 +60,7 @@ export const GET = withRequestLog('admin/pranks/people', async () => {
         isAdmin: u.is_admin === true,
         line: presenceLine(fresh, store.last(u.id), fresh ? null : (lastPlay.get(u.id) ?? null), now),
         listening: fresh?.isPlaying === true,
+        hourCount: hourCount(byTarget.get(u.id) ?? [], now),
       };
     });
     // Whoever is listening right now first; the rest by name.

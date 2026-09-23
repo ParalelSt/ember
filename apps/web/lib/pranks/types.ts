@@ -89,6 +89,8 @@ export interface PrankPerson {
   line: string;
   /** Green dot: a fresh heartbeat that says music is playing. */
   listening: boolean;
+  /** Pranks they have had this hour, as the hourly cap counts them. */
+  hourCount: number;
 }
 
 /** A library entry: a short `sound` played over the music, or a `song`
@@ -106,4 +108,20 @@ export interface PrankSound {
   created: string;
   /** Admin preview and what a prank row's streamUrl points at. */
   url: string;
+}
+
+/** One active repeat as the admin page sees it. Times are left to the page
+ *  so they read in the admin's own timezone. */
+export interface PrankSchedule {
+  id: string;
+  targetId: string;
+  targetName: string;
+  soundName: string;
+  intervalSec: number;
+  mode: 'over' | 'duck';
+  endsAt: string;
+  nextFireAt: string;
+  fired: number;
+  /** "“Duck quack” for Marko, every 2 min". */
+  line: string;
 }

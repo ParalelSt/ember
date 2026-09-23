@@ -7,9 +7,9 @@ import {
   unauthorizedResponse,
 } from '@/lib/auth';
 import { fromError } from '@/lib/upsertTrack';
-import { logLine } from './copy';
+import { logLine, scheduleLine } from './copy';
 import { isExpired, parsePbDate, type RecentPrank } from './limits';
-import type { PrankKind, PrankLogEntry, PrankStatus } from './types';
+import type { PrankKind, PrankLogEntry, PrankSchedule, PrankStatus } from './types';
 
 /** The catch block every prank route shares. */
 export function prankErrorResponse(e: unknown): Response {
@@ -57,4 +57,25 @@ export function toLogEntry(row: RecordModel, names: Map<string, string>, now: nu
     playedSec,
   };
   return { ...entry, line: logLine(entry) };
+}
+
+/** One active repeat for the admin page. `names` maps user ids to display
+ *  names, `sounds` sound ids to their library names. */
+export function toSchedule(row: RecordModel, names: Map<string, string>, sounds: Map<string, string>): PrankSchedule {
+  const targetName = names.get(String(row.target)) ?? 'someone';
+  const soundName = sounds.get(String(row.sound)) ?? 'a sound';
+  const intervalSec = Number(row.interval_sec) || 0;
+  const params = (row.params ?? {}) as { mode?: unknown };
+  return {
+    id: row.id,
+    targetId: String(row.target),
+    targetName,
+    soundName,
+    intervalSec,
+    mode: params.mode === 'duck' ? 'duck' : 'over',
+    endsAt: String(row.ends_at ?? ''),
+    nextFireAt: String(row.next_fire_at ?? ''),
+    fired: Number(row.fired ?? 0),
+    line: scheduleLine(soundName, targetName, intervalSec),
+  };
 }

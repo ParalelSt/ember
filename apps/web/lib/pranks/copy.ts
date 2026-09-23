@@ -101,6 +101,21 @@ export function logLine(e: {
   return `${e.issuerName} ${VERBS[e.kind]} ${e.targetName}: ${statusWords(e.status, e.reason, e.engine, e.playedSec)}`;
 }
 
+/** "every minute", "every 5 min", "every hour", "every 90 min". */
+export function intervalWords(sec: number): string {
+  const mins = Math.max(1, Math.round(sec / 60));
+  if (mins === 1) return 'every minute';
+  if (mins === 60) return 'every hour';
+  if (mins === 120) return 'every 2 hours';
+  return `every ${mins} min`;
+}
+
+/** The repeat's line, without the stop time (the page adds it in the
+ *  admin's timezone). */
+export function scheduleLine(soundName: string, targetName: string, intervalSec: number): string {
+  return `“${soundName}” for ${targetName}, ${intervalWords(intervalSec)}`;
+}
+
 /** Why the create route said no, for the admin's toast. */
 export function capWords(reason: CapReason, targetName: string, retryAfterSec: number): string {
   const wait = retryAfterSec >= 90 ? `${Math.ceil(retryAfterSec / 60)} min` : `${retryAfterSec} s`;

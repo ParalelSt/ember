@@ -6,8 +6,9 @@ import { describe, expect, it } from 'vitest';
 // The prank library must never leak into a normal surface: search, the
 // uploads library, recent searches, listening history, playlists. Those all
 // read other collections and other directories; this test holds that line by
-// reading the source. Only the admin prank routes and the gated media route
-// may name the collection, the library's directory helpers, or the media URL.
+// reading the source. Only the admin prank routes, the gated media route and
+// the repeat tick may name the collection, the library's directory helpers,
+// or the media URL.
 
 const WEB = path.resolve(__dirname, '..', '..');
 const POCKETBASE = path.resolve(WEB, '..', '..', 'pocketbase');
@@ -32,6 +33,8 @@ const mentioning = (needle: RegExp) => sources.filter((f) => needle.test(fs.read
 
 const ADMIN_PRANKS = /^app\/api\/admin\/pranks\//;
 const MEDIA_ROUTE = /^app\/api\/pranks\/media\//;
+/** The repeat tick turns a schedule's sound into a media URL. */
+const TICK = 'lib/pranks/schedulerInstance.ts';
 
 describe('the prank library stays out of normal surfaces', () => {
   it('scans a real tree', () => {
@@ -44,14 +47,14 @@ describe('the prank library stays out of normal surfaces', () => {
   it('only the admin prank routes and the media route read prank_sounds', () => {
     const readers = mentioning(/prank_sounds/);
     expect(readers.length).toBeGreaterThan(0);
-    for (const f of readers) expect(ADMIN_PRANKS.test(f) || MEDIA_ROUTE.test(f), f).toBe(true);
+    for (const f of readers) expect(ADMIN_PRANKS.test(f) || MEDIA_ROUTE.test(f) || f === TICK, f).toBe(true);
     expect(readers).toContain('app/api/pranks/media/[id]/route.ts');
   });
 
   it('only those routes (and the module itself) touch the library files', () => {
     const users = mentioning(/@\/lib\/pranks\/media|prankDir\(|resolvePrankPath\(/);
     for (const f of users) {
-      expect(ADMIN_PRANKS.test(f) || MEDIA_ROUTE.test(f) || f === 'lib/pranks/media.ts', f).toBe(true);
+      expect(ADMIN_PRANKS.test(f) || MEDIA_ROUTE.test(f) || f === TICK || f === 'lib/pranks/media.ts', f).toBe(true);
     }
   });
 
