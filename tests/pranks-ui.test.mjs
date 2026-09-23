@@ -396,7 +396,7 @@ async function startRepeat() {
   const box = composer.getByRole('checkbox', { name: 'Repeat until a stop time' });
   if (!(await box.isChecked())) await box.check();
   await composer.getByRole('spinbutton', { name: 'Every how many minutes' }).fill('1');
-  await composer.getByLabel('Stop time').fill(hhmm(Date.now() + 10 * 60_000));
+  await composer.getByLabel('Stop time', { exact: true }).fill(hhmm(Date.now() + 10 * 60_000));
   const res = a.page.waitForResponse((r) => r.url().endsWith('/api/admin/pranks/schedules') && r.request().method() === 'POST');
   await composer.getByRole('button', { name: 'Repeat every minute' }).click();
   const r = await res;
