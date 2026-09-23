@@ -21,6 +21,20 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    id: 'themes',
+    version: '0.7.0',
+    date: '2026-09-23',
+    title: 'Make Ember yours',
+    summary: 'Five themes and your own colours, in Settings, under Appearance.',
+    bullets: [
+      'Pick one of five themes: Ember (the red on black you know), Midnight, Forest, Nebula or Mono, which is pure black for OLED phones.',
+      'Or make your own: choose a background, an accent and a text colour and Ember fills in the rest. You see the change on the whole app as you go, and it saves itself.',
+      'If two colours would be hard to read together, Ember tells you and offers a fix. It never changes your colours by itself.',
+      'Keep up to 20 themes of your own, and share any of them with everyone here. Themes others share show up with their name, ready to use or copy.',
+      'Your theme follows your account to the web, the desktop app and your phone, from the very first moment a page loads.',
+    ],
+  },
+  {
     id: 'admin-pranks-tab',
     version: '0.6.0',
     date: '2026-09-23',
