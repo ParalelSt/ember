@@ -60,6 +60,12 @@ export function generatedTabPath(key: string): string {
 
 const running = new Map<string, Promise<void>>();
 const lastError = new Map<string, string>();
+/** Keys whose POST has committed to a job but hasn't reached startGeneration
+ *  yet (still awaiting ensureDownloaded, below `running`'s own entry). Without
+ *  this, a GET that lands during that download sees neither the file nor a
+ *  `running` entry and answers 404 "none" — as if nothing had been asked for,
+ *  while the POST that asked is still in flight. */
+const pending = new Set<string>();
 
 export type GenerationStatus =
   | { status: 'ready' }
@@ -69,10 +75,21 @@ export type GenerationStatus =
 
 export function generationStatus(key: string): GenerationStatus {
   if (fs.existsSync(generatedTabPath(key))) return { status: 'ready' };
-  if (running.has(key)) return { status: 'running' };
+  if (running.has(key) || pending.has(key)) return { status: 'running' };
   const error = lastError.get(key);
   if (error) return { status: 'failed', error };
   return { status: 'none' };
+}
+
+/** Mark `key` as claimed before the (possibly slow) audio fetch starts, so
+ *  concurrent GETs poll as "running" instead of "none". Call `clearPending`
+ *  once `startGeneration` has been called (or the attempt was abandoned). */
+export function markPending(key: string): void {
+  pending.add(key);
+}
+
+export function clearPending(key: string): void {
+  pending.delete(key);
 }
 
 /** Start (or join) the job for `key`. Resolves when the file exists; rejects
