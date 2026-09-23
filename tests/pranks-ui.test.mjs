@@ -288,6 +288,7 @@ const mediaStatus = (who, headers = {}) => fetch(`${APP_URL}${mediaPath}`, { hea
         fx: fx ? { src: fx.src, time: fx.currentTime, volume: fx.volume } : null,
         musicVolume: music ? music.volume : null,
         musicPaused: music ? music.paused : null,
+        musicTime: music ? music.currentTime : null,
       });
     };
     window.__mixTimer = setInterval(tick, 100);
@@ -344,6 +345,15 @@ const mediaStatus = (who, headers = {}) => fetch(`${APP_URL}${mediaPath}`, { hea
   check('the sound is never louder than the music was', during.every((m) => m.fx.volume <= before + 1e-6),
     `${Math.max(...during.map((m) => m.fx.volume))} vs ${before}`);
   check('the music keeps playing throughout', mix.every((m) => m.musicPaused === false));
+  // The song's own clock is untouched: no pause, no seek, no jump. It only
+  // ever moves forward, and over the whole prank by about as much real time
+  // as passed, so the progress bar never shows that anything happened.
+  const times = mix.map((m) => m.musicTime).filter((x) => typeof x === 'number');
+  const forwardOnly = times.every((x, i) => i === 0 || x >= times[i - 1] - 0.05);
+  const wall = (mix.at(-1).at - mix[0].at) / 1000;
+  const moved = times.at(-1) - times[0];
+  check('the song keeps its own time: only forward, at normal speed', forwardOnly && Math.abs(moved - wall) < 1.5,
+    `song moved ${moved.toFixed(1)} s in ${wall.toFixed(1)} s, forward only: ${forwardOnly}`);
 
   const doneLine = await a.page.getByText(`played a sound for ${targetName}: done after`).first()
     .waitFor({ timeout: 8_000 }).then(() => true, () => false);
