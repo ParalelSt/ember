@@ -270,6 +270,169 @@ describe('spacing ratchet', () => {
   });
 });
 
+// The colour ratchet (themes plan section 6). A component never names a
+// colour, it names a token: `bg-ember`, `text-ember-foreground`, `bg-art`,
+// `bg-foreground`. A theme swaps the tokens, so a raw `text-white` on the
+// accent turns invisible the moment someone picks a white accent (Mono), and
+// a raw `bg-black` behind artwork ignores the theme. A raw colour is a
+// Tailwind palette utility (`text-white`, `bg-black/40`, `from-slate-500`,
+// `bg-amber-500`); opacity and variant prefixes (`hover:bg-black/50`) count.
+const RAW_COLOUR =
+  /(?<=^|[\s"'`{(:!])(?:text|bg|border|ring|fill|stroke|from|to|via|shadow|outline|decoration|placeholder|caret|divide|accent)-(?:white|black|slate|gray|zinc|neutral|stone|red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose)(?:-\d{2,3})?(?:\/\d{1,3})?(?=$|[\s"'`})])/g;
+
+/** app/ and components/ source (.ts and .tsx) INCLUDING shadcn's
+ *  components/ui (its overlays are colours too), minus tests. */
+function colourFiles(): string[] {
+  const out: string[] = [];
+  const visit = (dir: string) => {
+    for (const entry of readdirSync(dir)) {
+      const full = join(dir, entry);
+      if (statSync(full).isDirectory()) visit(full);
+      else if (/\.tsx?$/.test(entry) && !/\.test\.tsx?$/.test(entry) && !entry.endsWith('.d.ts')) out.push(full);
+    }
+  };
+  for (const dir of SCAN_DIRS) visit(join(ROOT, dir));
+  return out;
+}
+
+const countRawColour = (text: string) => [...text.matchAll(RAW_COLOUR)].length;
+
+// File (relative to apps/web) -> raw colour classes it may keep, because the
+// colour must stay fixed whatever the theme. Generated from the tree after
+// the Task 4 sweep. Same rules as SPACING_BASELINE: over fails, under fails
+// until the number is lowered, unlisted files must have none. Adding a file
+// here needs a reason in the same shape as the ones below.
+const COLOUR_BASELINE: Record<string, number> = {
+  // Scrims over photos: black veil, white text on it, in every theme. That is
+  // what keeps a label readable over album art.
+  'components/AttachmentPicker.tsx': 2, // bg-black/60 caption strip + text-white
+  'components/page/CollectionHeader.tsx': 2, // "Change cover" hover scrim + text-white
+  'components/import/parts.tsx': 3, // play/pause scrim on a candidate cover + text-white
+  'components/import/ReviewSheet.tsx': 1, // sheet backdrop bg-black/20
+  'components/tabs/TabSourceSheet.tsx': 1, // tap-to-close backdrop bg-black/50
+  'components/ui/dialog.tsx': 1, // shadcn overlay bg-black/10
+  'components/ui/sheet.tsx': 1, // shadcn overlay bg-black/10
+  // Danger stays red in every theme (owner decision 5), so white on it stays.
+  'components/ui/confirm-dialog.tsx': 1, // text-white on bg-destructive
+  // Status colours: severity is semantic, not decorative.
+  'components/BugReportDialog.tsx': 6, // SEVERITY_STYLE low/medium/high
+  // /dizajn candidates (mock data on the design gallery, never in the app):
+  // their scrims mirror the shipped ones above, the rest is mock chrome.
+  'components/library/options/CoverLedShelf.tsx': 3, // cover scrim gradient + title
+  'components/library/options/FeaturedShelf.tsx': 4, // cover scrim gradient + title, subtitle
+  'components/library/options/attachments/AttachmentsSection.tsx': 2, // caption strip, as AttachmentPicker
+  'components/library/options/attachments/index.ts': 8, // mock file thumbnail swatches
+  'components/library/options/changelog/ShellPreview.tsx': 1, // mock dialog backdrop
+  'components/library/options/imports/ImportDialog.tsx': 1, // mock dialog backdrop
+  'components/library/options/imports/ReviewScreens.tsx': 1, // mock sheet backdrop
+  'components/library/options/imports/parts.tsx': 3, // play scrim, as import/parts
+  'components/library/options/mobileplayer/AndroidNavStrip.tsx': 4, // mock Android nav bar
+  'components/library/options/phonesearch/MockKeyboard.tsx': 8, // mock OS keyboard
+  'components/library/options/searchrows/SearchRowsSection.tsx': 1, // mock overlay backdrop
+  'components/library/options/tabs/PasteSection.tsx': 1, // mock dialog backdrop
+  'components/library/options/tabs/TabsSection.tsx': 1, // mock sheet backdrop
+  'components/library/options/trending/TrendingShelves.tsx': 4, // rank-number scrim + text, play scrim + icon
+};
+
+describe('colour ratchet', () => {
+  const files = colourFiles();
+  const counts = new Map(files.map((f) => [relative(ROOT, f), countRawColour(readFileSync(f, 'utf8'))] as const));
+
+  it('matches raw colour classes and nothing else', () => {
+    expect(countRawColour('className="text-white bg-black/40 hover:bg-black/50 from-slate-500 bg-amber-500 ring-white/10"')).toBe(6);
+    expect(countRawColour("cn('fill-white/85', on && 'border-zinc-800')")).toBe(2);
+    expect(
+      countRawColour(
+        'className="bg-ember text-ember-foreground bg-art bg-foreground ring-foreground/10 text-muted-foreground bg-background whitespace-nowrap bg-transparent border-border"',
+      ),
+    ).toBe(0);
+  });
+
+  it('no file has more raw colour than its baseline (unlisted files: none)', () => {
+    const over = [...counts]
+      .filter(([file, n]) => n > (COLOUR_BASELINE[file] ?? 0))
+      .map(([file, n]) => `${file}: ${n} raw colour classes, baseline ${COLOUR_BASELINE[file] ?? 0} (use a token: bg-ember, text-ember-foreground, bg-art, bg-foreground)`);
+    expect(over, over.join('\n')).toEqual([]);
+  });
+
+  it('no file is under its baseline (lower COLOUR_BASELINE when you remove a raw colour)', () => {
+    const under = Object.entries(COLOUR_BASELINE)
+      .filter(([file, allowed]) => (counts.get(file) ?? 0) < allowed)
+      .map(([file, allowed]) => `${file}: baseline ${allowed}, now ${counts.get(file) ?? 0}`);
+    expect(under, under.join('\n')).toEqual([]);
+  });
+
+  // Text on the accent is --ember-foreground: white on red, dark on a light
+  // accent. text-white there is the Mono white-on-white play button.
+  it('never puts text-white on bg-ember (use text-ember-foreground or <Button variant="ember">)', () => {
+    const pattern = /bg-ember(?![-/\w])[^"'`]*text-white|text-white[^"'`]*bg-ember(?![-/\w])/;
+    const hits: Hit[] = [];
+    for (const file of files) {
+      readFileSync(file, 'utf8').split('\n').forEach((text, i) => {
+        if (pattern.test(text)) hits.push({ file, line: i + 1, text: text.trim() });
+      });
+    }
+    expect(hits, formatHits(hits)).toEqual([]);
+  });
+
+  // Hex, rgb() and hsl() colours: brand dots (Spotify green is Spotify
+  // green), mock covers, and the example in the hex field's hint. Nothing else.
+  const LITERAL_COLOUR_ALLOWED: Record<string, string> = {
+    'components/import/parts.tsx': 'SOURCE_DOT brand dots',
+    'components/library/options/imports/parts.tsx': 'SOURCE_DOT brand dots (/dizajn copy)',
+    'app/(app)/dizajn/mock.ts': 'mock covers on the design gallery',
+    'components/settings/appearance/previewData.ts': 'mock covers in the theme preview',
+    'components/settings/appearance/ColourRow.tsx': 'the "#1a2b3c" example in the invalid-hex hint',
+  };
+
+  it('has no hex, rgb() or hsl() colour outside the allowed files', () => {
+    const literal = /#[0-9a-fA-F]{6}\b|\b(?:rgba?|hsla?)\(/;
+    const hits = files
+      .filter((f) => !(relative(ROOT, f) in LITERAL_COLOUR_ALLOWED))
+      .flatMap((file) =>
+        readFileSync(file, 'utf8')
+          .split('\n')
+          .flatMap((text, i) => (literal.test(text) ? [{ file, line: i + 1, text: text.trim() }] : [])),
+      );
+    expect(hits, formatHits(hits)).toEqual([]);
+  });
+
+  it('keeps arbitrary bg-[#...] to the SOURCE_DOT brand dots', () => {
+    const hits = findSubstring(files, 'bg-[#').filter(
+      (h) => !['components/import/parts.tsx', 'components/library/options/imports/parts.tsx'].includes(relative(ROOT, h.file)),
+    );
+    expect(hits, formatHits(hits)).toEqual([]);
+  });
+
+  it('every allowed literal-colour file still has one (drop stale entries)', () => {
+    const literal = /#[0-9a-fA-F]{6}\b|\b(?:rgba?|hsla?)\(/;
+    const stale = Object.keys(LITERAL_COLOUR_ALLOWED).filter((f) => !literal.test(readFileSync(join(ROOT, f), 'utf8')));
+    expect(stale).toEqual([]);
+  });
+});
+
+// globals.css resets `.inline-block { inline-size: auto; }` (see
+// lib/themeCollisions.test.ts for why), and that rule is emitted after every
+// width utility at the same specificity, so it wins: `inline-block w-5` or
+// `inline-block size-4` renders 0px wide when the element is empty (the
+// switch thumbs that vanished). Give a sized element `block` (a flex child
+// needs nothing else) or `inline-flex` instead.
+describe('inline-block with a width', () => {
+  it('never pairs inline-block with a w-* or size-* class on one line', () => {
+    const pattern = /(?<=^|[\s"'`{(:!])inline-block(?=$|[\s"'`})])[^\n]*?(?<=[\s"'`{(:!])(?:w|size)-[\w.[\]/%-]+|(?<=[\s"'`{(:!])(?:w|size)-[\w.[\]/%-]+[^\n]*?(?<=[\s"'`{(:!])inline-block(?=$|[\s"'`})])/;
+    expect(pattern.test("'inline-block h-5 w-5 rounded-full'")).toBe(true);
+    expect(pattern.test("'size-4 inline-block'")).toBe(true);
+    expect(pattern.test('className="mt-6 inline-block text-xs max-w-sm"')).toBe(false);
+    const hits: Hit[] = [];
+    for (const file of allTsxFiles()) {
+      readFileSync(file, 'utf8').split('\n').forEach((text, i) => {
+        if (pattern.test(text)) hits.push({ file, line: i + 1, text: text.trim() });
+      });
+    }
+    expect(hits, formatHits(hits)).toEqual([]);
+  });
+});
+
 // The safe-area inset (Android's system navigation bar, an iPhone's home
 // indicator and notch) is one value in one place: --safe-top / --safe-bottom
 // on :root in globals.css, spent through two utility classes. Before this,
