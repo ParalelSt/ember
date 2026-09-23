@@ -22,17 +22,30 @@ class QueueListener(
     }
 
     private var errorsInARow = 0
+    /** The song the player moved to that has not been heard yet. */
+    private var unheard: MediaItem? = null
 
+    /** Every song that starts is one play in history, car-initiated ones
+     *  included; the web app skips its own history call on Android. But only
+     *  once it is heard: a cold start hands over the saved queue paused, and
+     *  counting that added a play nobody made, and fetched radio that then
+     *  replaced the app's queue and dropped its playlist. */
     override fun onMediaItemTransition(item: MediaItem?, reason: Int) {
-        // Every item start is one play in history, car-initiated ones
-        // included; the web app skips its own history call on Android.
-        val track = item?.let { TrackItems.trackOf(it) } ?: return
-        recordPlay(track)
-        extendQueue()
+        unheard = item
+        if (player.isPlaying) heard()
     }
 
     override fun onIsPlayingChanged(isPlaying: Boolean) {
-        if (isPlaying) errorsInARow = 0
+        if (!isPlaying) return
+        errorsInARow = 0
+        heard()
+    }
+
+    private fun heard() {
+        val track = unheard?.let { TrackItems.trackOf(it) } ?: return
+        unheard = null
+        recordPlay(track)
+        extendQueue()
     }
 
     /** One song that will not play (gone from the server, a dead stream) used

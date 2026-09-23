@@ -1,6 +1,7 @@
 package app.ember.music
 
 import android.os.Looper
+import androidx.media3.common.ForwardingPlayer
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
@@ -32,7 +33,8 @@ class QueueListenerTest {
     private val server = MockWebServer()
     private val played = ArrayList<String>()
     private var errors = 0
-    private val listener = QueueListener(player, recordPlay = { played.add(it.getString("id")) }, extendQueue = {})
+    private var radio = 0
+    private val listener = QueueListener(player, recordPlay = { played.add(it.getString("id")) }, extendQueue = { radio++ })
 
     init {
         player.addListener(listener)
@@ -133,5 +135,55 @@ class QueueListenerTest {
         runUntil { errors >= 2 * QueueListener.MAX_ERRORS_IN_A_ROW }
         runUntil(300) { false }
         assertEquals(2 * QueueListener.MAX_ERRORS_IN_A_ROW, errors)
+    }
+
+    // History and radio (A7).
+
+    /** A cold start hands the player the saved queue, paused. Nobody played
+     *  anything, so nothing goes into history and no radio is fetched: radio
+     *  arriving then replaced the queue in the app and dropped its playlist. */
+    @Test fun `restoring a paused queue records no play`() {
+        start(listOf(item("a", "/a"), item("b", "/b")), play = false)
+        runUntil(300) { false }
+        assertEquals(emptyList<String>(), played)
+    }
+
+    @Test fun `restoring a paused queue on its last song fetches no radio`() {
+        player.setMediaItems(listOf(item("a", "/a"), item("b", "/b")), 1, 0)
+        player.prepare()
+        runUntil(300) { false }
+        assertEquals(0, radio)
+    }
+
+    /** Pressing play is when the song counts, once: pausing and playing again
+     *  is not a second play. */
+    @Test fun `a song counts once when it starts playing`() {
+        start(listOf(item("a", "/a"), item("b", "/b")), play = false)
+        runUntil(300) { false }
+        listener.onIsPlayingChanged(true)
+        listener.onIsPlayingChanged(false)
+        listener.onIsPlayingChanged(true)
+        assertEquals(listOf("a"), played)
+    }
+
+    /** Songs that follow on by themselves while music plays (and a song on
+     *  repeat) still count every time, as before. */
+    @Test fun `each song that follows on while playing counts`() {
+        var playing = true
+        val live = object : ForwardingPlayer(player) { override fun isPlaying() = playing }
+        val l = QueueListener(live, recordPlay = { played.add(it.getString("id")) }, extendQueue = { radio++ })
+        val a = item("a", "/a")
+        val b = item("b", "/b")
+        l.onMediaItemTransition(a, Player.MEDIA_ITEM_TRANSITION_REASON_AUTO)
+        l.onMediaItemTransition(b, Player.MEDIA_ITEM_TRANSITION_REASON_AUTO)
+        l.onMediaItemTransition(b, Player.MEDIA_ITEM_TRANSITION_REASON_REPEAT)
+        assertEquals(listOf("a", "b", "b"), played)
+        // The next song has to load first: it counts once it is heard.
+        playing = false
+        l.onMediaItemTransition(a, Player.MEDIA_ITEM_TRANSITION_REASON_AUTO)
+        assertEquals(3, played.size)
+        playing = true
+        l.onIsPlayingChanged(true)
+        assertEquals(listOf("a", "b", "b", "a"), played)
     }
 }
