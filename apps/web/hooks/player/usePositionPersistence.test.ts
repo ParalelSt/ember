@@ -224,6 +224,30 @@ describe('usePositionPersistence: startAt', () => {
     expect(at).toBe(0);
   });
 
+  it('does not let the previous song\'s playhead leak into the next one', () => {
+    // Song a played to 2:30. b starts, and a pause lands before b's first
+    // trustworthy report: the fallback must be b's own start, not a's 150.
+    const { backend, api } = setup();
+    act(() => api().noteTime(150));
+    act(() => { api().startAt(b.id); });
+    backend!.currentTime = 0.2;
+    backend!.durationSec = 200;
+    act(() => api().persist());
+    expect(storedPosition()).toBe(0);
+  });
+
+  it('a resumed track falls back to where it resumed', () => {
+    usePlayerStore.setState({ queue: [a], index: 0, position: 42 });
+    const { backend, api } = setup();
+    act(() => api().noteTime(150));
+    usePlayerStore.setState({ position: 42 });
+    act(() => { api().startAt(a.id); });
+    backend!.currentTime = 0;
+    backend!.durationSec = 200;
+    act(() => api().persist());
+    expect(storedPosition()).toBe(42);
+  });
+
   it('a requested 0 restarts the track', () => {
     usePlayerStore.setState({ queue: [a], index: 0, position: 42 });
     const { api } = setup();
