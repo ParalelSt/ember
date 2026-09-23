@@ -11,7 +11,11 @@ const MAX_NAME_LEN = 50;
 export const PATCH = withRequestLog('profile', async (req: NextRequest) => {
   try {
     const { user, pb } = await requireUser();
-    const form = await req.formData();
+    // A JSON body (or anything else that isn't multipart) makes formData()
+    // throw rather than reject — without the catch that was an uncaught
+    // exception, a bare 500 instead of a plain "send it as a form" answer.
+    const form = await req.formData().catch(() => null);
+    if (!form) return jsonError('Expected a multipart form body', 400);
 
     const patch = new FormData();
     let hasChange = false;

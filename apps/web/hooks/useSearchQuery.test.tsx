@@ -64,9 +64,19 @@ beforeEach(() => {
   vi.clearAllMocks();
   recents.tracks = [];
   shell.value = 'web';
+  api.search.mockResolvedValue({ tracks: [] });
 });
 
 describe('useSearchQuery', () => {
+  it('[bughunt W07] fetches with an empty query too, so Trending has real tracks', async () => {
+    const track = makeTrack({ id: 'youtube:trend', sourceId: 'trend', title: 'Chart Topper' });
+    api.search.mockResolvedValue({ tracks: [track] });
+    const { result } = renderHook(() => useSearchQuery(), { wrapper });
+
+    await waitFor(() => expect(api.search).toHaveBeenCalledWith(''));
+    await waitFor(() => expect(result.current.data).toEqual([track]));
+  });
+
   it('debounces typing into debouncedQ, trimming whitespace', async () => {
     const { result } = renderHook(() => useSearchQuery(), { wrapper });
 

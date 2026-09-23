@@ -99,6 +99,17 @@ export default async function proxy(req: NextRequest) {
   // PocketBase enforces its own per-collection rules on the other side.
   const isPbProxy = path.startsWith('/pb/');
   if (!user && !isPublicPage && !isPublicApi && !isPbProxy && !isStaticAsset(path)) {
+    // An API call with no session gets a plain 401 JSON body, not a
+    // redirect: fetch() follows redirects and hands the caller the sign-in
+    // page's HTML, which res.json() then chokes on ("Unexpected token '<'",
+    // bughunt W05). Pages still redirect to /auth as before; lib/api.ts's
+    // req() is the one that sends the browser to /auth on a 401.
+    if (path.startsWith('/api/')) {
+      return Response.json(
+        { error: 'Unauthorized' },
+        { status: 401, headers: response.headers },
+      );
+    }
     const url = req.nextUrl.clone();
     url.pathname = '/auth';
     url.searchParams.set('next', path);

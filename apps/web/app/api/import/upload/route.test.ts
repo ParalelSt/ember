@@ -126,6 +126,22 @@ describe('POST /api/import/upload, the gate', () => {
 });
 
 describe('POST /api/import/upload?preview=1', () => {
+  it('[bughunt W06] never touches the hourly import-start limit', async () => {
+    await POST(fileRequest('exportify.csv', fixture('exportify.sample.csv'), '?preview=1'), {});
+    expect(rateLimitKeys).toEqual([]);
+  });
+
+  it('[bughunt W06] many previews in a row still leave a real start free', async () => {
+    for (let i = 0; i < 20; i++) {
+      const res = await POST(fileRequest('exportify.csv', fixture('exportify.sample.csv'), '?preview=1'), {});
+      expect(res.status).toBe(200);
+    }
+    expect(rateLimitKeys).toEqual([]);
+    const started = await POST(fileRequest('YourLibrary.json', fixture('YourLibrary.sample.json')), {});
+    expect(started.status).toBe(201);
+    expect(rateLimitKeys).toEqual(['import-upload:u1']);
+  });
+
   it('says what is in the file without starting anything', async () => {
     const res = await POST(fileRequest('exportify.csv', fixture('exportify.sample.csv'), '?preview=1'), {});
     expect(res.status).toBe(200);

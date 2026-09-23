@@ -3,6 +3,8 @@ import { requireUser, UnauthorizedError, unauthorizedResponse } from '@/lib/auth
 import { fromError, jsonError } from '@/lib/upsertTrack';
 import { withRequestLog } from '@/lib/logger/withRequestLog';
 
+const MAX_NAME_LEN = 200;
+
 /** Build the public artwork URL for a playlist record (routed through the /pb
  *  proxy so the browser stays same-origin). Returns null when no artwork. */
 function artworkUrl(record: { id: string; artwork?: unknown }): string | null {
@@ -36,6 +38,9 @@ export const POST = withRequestLog('playlists', async (request: NextRequest) => 
     const body = (await request.json().catch(() => null)) as { name?: string } | null;
     const name = String(body?.name ?? '').trim();
     if (!name) return jsonError('name required', 400);
+    if (name.length > MAX_NAME_LEN) {
+      return jsonError(`name must be at most ${MAX_NAME_LEN} characters`, 400);
+    }
     const r = await pb.collection('playlists').create({ user: user.id, name });
     return Response.json({
       playlist: {
