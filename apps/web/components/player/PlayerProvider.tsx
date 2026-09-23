@@ -36,6 +36,7 @@ import { createTauriBackend } from '@/lib/playback/tauriBackend';
 import { createAndroidBackend, androidPluginPresent } from '@/lib/playback/androidBackend';
 import type { AudioBackend, AudioBackendEvents, AudioErrorInfo } from '@/lib/playback/types';
 import type { PlaybackContext, Track } from '@/types/track';
+import { PrankReceiver } from './PrankReceiver';
 
 interface PlayerControls {
   current: Track | null;
@@ -632,7 +633,14 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     [current, isPlaying, position, duration, volume, queue, index, context, playTrack, toggle, next, prev, seek, setVolume],
   );
 
-  return <PlayerContext.Provider value={value}>{children}</PlayerContext.Provider>;
+  // Pranks (admin only, never announced) sit beside the tree rather than in
+  // this component, so their store reads don't re-render the whole player.
+  return (
+    <PlayerContext.Provider value={value}>
+      <PrankReceiver backendRef={backendRef} engineRef={backendKindRef} />
+      {children}
+    </PlayerContext.Provider>
+  );
 }
 
 export function usePlayer() {

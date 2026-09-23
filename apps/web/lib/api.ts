@@ -6,6 +6,7 @@ import type { FlowState as GoogleFlowState, GooglePreview } from '@/lib/import/g
 import type { TabSummary } from '@/lib/tabSources';
 import type { TabTiming } from '@/lib/tabSync';
 import type { StoredPlugins } from '@/lib/pluginSettings';
+import type { PrankAck, PrankLogEntry, PrankPerson, PrankRow, PresenceReport } from '@/lib/pranks/types';
 
 export interface AdminUser {
   id: string;
@@ -70,6 +71,20 @@ async function req<T>(path: string, { method = 'GET', body, signal }: ReqOptions
     error.status = res.status;
     throw error;
   }
+  return (await res.json()) as T;
+}
+
+/** Like req, but silent: no client log entry on failure. The target's side
+ *  of pranks goes through this, so nothing on their device (console, bug
+ *  reports) ever mentions one. */
+async function quiet<T>(path: string, { method = 'GET', body }: ReqOptions = {}): Promise<T> {
+  const res = await fetch(`${API_BASE}/api${path}`, {
+    method,
+    headers: body ? { 'Content-Type': 'application/json' } : undefined,
+    body: body ? JSON.stringify(body) : undefined,
+    credentials: 'include',
+  });
+  if (!res.ok) throw Object.assign(new Error(`Request failed: ${res.status}`), { status: res.status });
   return (await res.json()) as T;
 }
 
@@ -402,6 +417,27 @@ export const api = {
       req<{ ok: true; invite: AdminInvite }>('/admin/invites', { method: 'POST', body: { email } }),
     deleteInvite: (id: string) =>
       req<{ ok: true }>(`/admin/invites/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+
+    pranks: {
+      list: (target?: string) =>
+        req<{ pranks: PrankLogEntry[]; enabled: boolean }>(
+          `/admin/pranks${target ? `?target=${encodeURIComponent(target)}` : ''}`,
+        ),
+      send: (body: { targetId: string; kind: 'ping' }) =>
+        req<{ prank: PrankLogEntry }>('/admin/pranks', { method: 'POST', body }),
+      people: () => req<{ people: PrankPerson[] }>('/admin/pranks/people'),
+      settings: () => req<{ enabled: boolean; forcedOff: boolean }>('/admin/pranks/settings'),
+      setEnabled: (enabled: boolean) =>
+        req<{ enabled: boolean; cancelled: number }>('/admin/pranks/settings', { method: 'PATCH', body: { enabled } }),
+    },
+  },
+
+  /** The target's side: quiet on purpose (see quiet()). */
+  pranks: {
+    inbox: () => quiet<{ pranks: PrankRow[] }>('/pranks/inbox'),
+    ack: (id: string, body: PrankAck) =>
+      quiet<{ ok: true }>(`/pranks/${encodeURIComponent(id)}`, { method: 'PATCH', body }),
+    presence: (body: PresenceReport) => quiet<{ ok: true }>('/pranks/presence', { method: 'POST', body }),
   },
 };
 
