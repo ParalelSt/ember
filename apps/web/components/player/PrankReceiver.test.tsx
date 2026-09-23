@@ -124,7 +124,7 @@ describe('PrankReceiver: sounds', () => {
     }
   });
 
-  it('skips on the native Android engine until it has its own overlay', async () => {
+  it('an Android app build without the native overlay acks it as unsupported', async () => {
     mount('android');
     expect(inbox.receive!(sound())).toMatchObject({ status: 'skipped', reason: 'engine-unsupported', engine: 'android' });
     expect(overlay.play).not.toHaveBeenCalled();
@@ -196,5 +196,87 @@ describe('PrankReceiver: sounds', () => {
     void inbox.receive!(sound());
     unmount();
     expect(overlay.destroy).toHaveBeenCalled();
+  });
+});
+
+/** The Android backend's native overlay: each playOverlay returns a handle
+ *  the test settles, like the JS overlay double above. */
+function withNativeOverlay(b: FakeBackend) {
+  let startResolve: (v: boolean) => void = () => {};
+  let finishResolve: (r: OverlayResult) => void = () => {};
+  const playOverlay = vi.fn<NonNullable<AudioBackend['playOverlay']>>(() => ({
+    started: new Promise<boolean>((r) => (startResolve = r)),
+    finished: new Promise<OverlayResult>((r) => (finishResolve = r)),
+  }));
+  const stopOverlay = vi.fn(() => finishResolve({ reason: 'stopped', playedSec: 2 }));
+  Object.assign(b, { playOverlay, stopOverlay });
+  return { playOverlay, stopOverlay, start: (ok = true) => startResolve(ok), finish: (r: OverlayResult) => finishResolve(r) };
+}
+
+describe('PrankReceiver: sounds on the native Android engine', () => {
+  it('hands the relative URL, the share and the duck to native; same acks as the web overlay', async () => {
+    const native = withNativeOverlay(backend);
+    mount('android');
+    const pending = inbox.receive!(sound());
+    expect(native.playOverlay).toHaveBeenCalledWith('/api/pranks/media/s1', { volume: 0.5, duckTo: 0.3, maxSec: 30 });
+    expect(overlay.play).not.toHaveBeenCalled();
+
+    native.start();
+    const receipt = (await pending) as PrankReceipt;
+    expect(receipt.ack).toEqual({ status: 'delivered', engine: 'android', appVersion: expect.any(String) });
+    native.finish({ reason: 'ended', playedSec: 3.2 });
+    expect(await receipt.then).toEqual({ status: 'done', playedSec: 3.2 });
+    // Native ducks and restores the music itself.
+    expect(onDuck).not.toHaveBeenCalled();
+    expect(noise.toast).not.toHaveBeenCalled();
+    expect(noise.log).not.toHaveBeenCalled();
+  });
+
+  it('over mode asks native for no duck', () => {
+    const native = withNativeOverlay(backend);
+    mount('android');
+    void inbox.receive!(sound({ mode: 'over', volume: 1 }));
+    expect(native.playOverlay).toHaveBeenCalledWith('/api/pranks/media/s1', { volume: 1, duckTo: 1, maxSec: 30 });
+  });
+
+  it('a sound native could not start is skipped as a load error', async () => {
+    const native = withNativeOverlay(backend);
+    mount('android');
+    const pending = inbox.receive!(sound());
+    native.start(false);
+    native.finish({ reason: 'error', playedSec: 0 });
+    expect(await pending).toMatchObject({ status: 'skipped', reason: 'error:load', engine: 'android' });
+  });
+
+  it('one sound at a time, and free again once it ends', async () => {
+    const native = withNativeOverlay(backend);
+    mount('android');
+    const pending = inbox.receive!(sound());
+    expect(inbox.receive!({ ...sound(), id: 'p2' })).toMatchObject({ status: 'skipped', reason: 'busy' });
+    native.start();
+    const receipt = (await pending) as PrankReceipt;
+    native.finish({ reason: 'cap', playedSec: 30 });
+    await receipt.then;
+    inbox.receive!({ ...sound(), id: 'p3' });
+    expect(native.playOverlay).toHaveBeenCalledTimes(2);
+  });
+
+  it('pausing the music stops the native sound', async () => {
+    const native = withNativeOverlay(backend);
+    mount('android');
+    const pending = inbox.receive!(sound());
+    native.start();
+    const receipt = (await pending) as PrankReceipt;
+    act(() => usePlayerStore.setState({ isPlaying: false }));
+    expect(native.stopOverlay).toHaveBeenCalled();
+    expect(await receipt.then).toEqual({ status: 'done', playedSec: 2 });
+  });
+
+  it('not while the music is paused', () => {
+    const native = withNativeOverlay(backend);
+    backend.paused = true;
+    mount('android');
+    expect(inbox.receive!(sound())).toMatchObject({ status: 'skipped', reason: 'not-playing' });
+    expect(native.playOverlay).not.toHaveBeenCalled();
   });
 });

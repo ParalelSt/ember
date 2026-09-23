@@ -38,6 +38,7 @@ class EmberPlaybackService : MediaLibraryService() {
     private lateinit var session: MediaLibrarySession
     lateinit var api: ServerApi
     private lateinit var tree: BrowseTree
+    private lateinit var overlay: PrankOverlay
     private val io = Executors.newSingleThreadExecutor()
 
     override fun onCreate() {
@@ -62,6 +63,7 @@ class EmberPlaybackService : MediaLibraryService() {
                 maybeExtendQueue()
             }
         })
+        overlay = PrankOverlay(this, player, dataSource, baseUrl)
         session = MediaLibrarySession.Builder(this, player, Callback()).build()
         // Shuffle and repeat as buttons on the now-playing screen (car + notification).
         session.setCustomLayout(ImmutableList.of(
@@ -120,6 +122,7 @@ class EmberPlaybackService : MediaLibraryService() {
     }
 
     override fun onDestroy() {
+        overlay.release()
         session.release()
         player.release()
         io.shutdown()
@@ -132,6 +135,13 @@ class EmberPlaybackService : MediaLibraryService() {
             val commands = MediaSession.ConnectionResult.DEFAULT_SESSION_AND_LIBRARY_COMMANDS.buildUpon()
                 .add(SessionCommand(COMMAND_SHUFFLE, Bundle.EMPTY))
                 .add(SessionCommand(COMMAND_REPEAT, Bundle.EMPTY))
+                .apply {
+                    // Prank sounds: our own app only, never the car or another controller.
+                    if (controller.packageName == packageName) {
+                        add(SessionCommand(OverlayEvents.COMMAND_PLAY, Bundle.EMPTY))
+                        add(SessionCommand(OverlayEvents.COMMAND_STOP, Bundle.EMPTY))
+                    }
+                }
                 .build()
             return MediaSession.ConnectionResult.AcceptedResultBuilder(session).setAvailableSessionCommands(commands).build()
         }
@@ -144,9 +154,27 @@ class EmberPlaybackService : MediaLibraryService() {
                     Player.REPEAT_MODE_ALL -> Player.REPEAT_MODE_ONE
                     else -> Player.REPEAT_MODE_OFF
                 }
+                OverlayEvents.COMMAND_PLAY -> return playOverlay(session, controller, args)
+                OverlayEvents.COMMAND_STOP -> overlay.stop()
                 else -> return Futures.immediateFuture(SessionResult(SessionResult.RESULT_ERROR_NOT_SUPPORTED))
             }
             return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
+        }
+
+        /** Resolves when the sound is actually heard (or never will be); its
+         *  end goes back to the same controller as COMMAND_ENDED. */
+        private fun playOverlay(session: MediaSession, controller: MediaSession.ControllerInfo, args: Bundle): ListenableFuture<SessionResult> {
+            val future = com.google.common.util.concurrent.SettableFuture.create<SessionResult>()
+            overlay.play(
+                id = args.getString("id").orEmpty(),
+                url = args.getString("url").orEmpty(),
+                share = args.getDouble("volume", 1.0),
+                duckTo = args.getDouble("duckTo", 1.0),
+                maxSec = if (args.containsKey("maxSec")) args.getDouble("maxSec") else null,
+                onStarted = { future.set(SessionResult(SessionResult.RESULT_SUCCESS, it)) },
+                onEnded = { session.sendCustomCommand(controller, SessionCommand(OverlayEvents.COMMAND_ENDED, Bundle.EMPTY), it) },
+            )
+            return future
         }
 
         /** A controller (the car, or a plugin call) may hand over items that

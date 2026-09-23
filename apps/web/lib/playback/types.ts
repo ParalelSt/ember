@@ -1,3 +1,4 @@
+import type { OverlayHandle } from '@/lib/pranks/overlayPlayer';
 import type { Track } from '@/types/track';
 
 /** Transport commands the OS/remote (lock screen, Bluetooth, media keys) can
@@ -44,6 +45,15 @@ export interface LoadOptions {
   startAt?: number;
 }
 
+/** A prank sound played by the native engine beside the music. */
+export interface NativeOverlayOptions {
+  /** 0..1, a share of the music's own level (native keeps it relative). */
+  volume: number;
+  /** The music's multiplier while the sound plays (1 = no duck). */
+  duckTo: number;
+  maxSec: number;
+}
+
 export interface AudioBackend {
   /** Point at a new stream URL (already apiUrl-resolved) and optionally start it. */
   load(url: string, opts: LoadOptions): void;
@@ -75,6 +85,11 @@ export interface AudioBackend {
   /** Queue-owning backends only: the native player decides what is next. */
   next?(): void;
   prev?(): void;
+  /** Android engine on an app build that has the native overlay (absent on
+   *  older builds): a prank sound beside the music, ducked and restored
+   *  natively so it works with the screen off. */
+  playOverlay?(url: string, opts: NativeOverlayOptions): OverlayHandle;
+  stopOverlay?(): void;
   /** Tear down listeners / native resources. */
   destroy(): void;
 }

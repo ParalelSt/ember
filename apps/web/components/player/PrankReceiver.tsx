@@ -18,11 +18,11 @@ const APP_VERSION = process.env.NEXT_PUBLIC_APP_VERSION ?? '';
 
 /** Turns an incoming prank into what the player does, and reports back.
  *  Renders nothing and never shows anything: the person on the receiving end
- *  is never told (owner decision). Pings and sounds so far; swaps arrive in a
- *  later task and are acknowledged as unsupported until then. A sound plays
- *  through a second audio element (see overlayPlayer) with the music ducked
- *  through `onDuck`; the native Android engine gets its own overlay later, so
- *  until then decidePrank skips sounds there as unsupported. */
+ *  is never told (owner decision). Pings and sounds; swaps were dropped and
+ *  are acknowledged as unsupported. A sound plays through a second audio
+ *  element (see overlayPlayer) with the music ducked through `onDuck`; on the
+ *  native Android engine the app plays and ducks it itself (backend
+ *  playOverlay), and an app build too old for that acks it as unsupported. */
 export function PrankReceiver({
   backendRef,
   engineRef,
@@ -51,6 +51,8 @@ export function PrankReceiver({
     onDuckRef.current = onDuck;
   }, [onDuck]);
   const makeOverlayRef = useRef(makeOverlay);
+  /** A sound is playing through the native Android overlay. */
+  const nativeBusyRef = useRef(false);
 
   const playSound = useCallback(
     async (url: string, share: number, duck: boolean, base: Partial<PrankAck>): Promise<PrankAck | PrankReceipt> => {
@@ -79,19 +81,46 @@ export function PrankReceiver({
     [],
   );
 
+  /** Same acks as playSound; native keeps the sound relative to the music's
+   *  level and does the duck and its restore, so onDuck stays out of it. */
+  const playNative = useCallback(
+    async (b: AudioBackend, url: string, share: number, duck: boolean, base: Partial<PrankAck>): Promise<PrankAck | PrankReceipt> => {
+      const handle = b.playOverlay!(url, {
+        volume: share,
+        duckTo: duck ? PRANK_LIMITS.duck : 1,
+        maxSec: PRANK_LIMITS.soundMaxSec,
+      });
+      nativeBusyRef.current = true;
+      const settle = handle.finished.then((r) => {
+        nativeBusyRef.current = false;
+        return r;
+      });
+      if (!(await handle.started)) {
+        await settle;
+        return { status: 'skipped', reason: 'error:load', ...base };
+      }
+      return {
+        ack: { status: 'delivered', ...base },
+        then: settle.then((r): PrankAck => ({ status: 'done', playedSec: r.playedSec })),
+      };
+    },
+    [],
+  );
+
   const receive = useCallback(
     (row: PrankRow): PrankAck | Promise<PrankAck | PrankReceipt> | null => {
       const st = usePlayerStore.getState();
       const b = backendRef.current;
       const engine = engineRef.current;
+      const native = engine === 'android' && typeof b?.playOverlay === 'function';
       const action = decidePrank(row, {
         isPlaying: st.isPlaying && !!b && !b.isPaused(),
         hasTrack: !!st.queue[st.index],
         position: st.position,
         engine,
-        busy: overlayRef.current?.busy() ?? false,
+        busy: nativeBusyRef.current || (overlayRef.current?.busy() ?? false),
         pluginHasSwap: false,
-        pluginHasOverlay: false,
+        pluginHasOverlay: native,
         now: Date.now(),
       });
       const base = { engine, appVersion: APP_VERSION };
@@ -103,18 +132,24 @@ export function PrankReceiver({
         case 'skip':
           return { status: 'skipped', reason: action.reason, ...base };
         case 'sound':
-          return playSound(action.url, action.volume, action.duck, base);
+          // Native resolves the relative URL against its own server base.
+          return native
+            ? playNative(b!, action.url, action.volume, action.duck, base)
+            : playSound(action.url, action.volume, action.duck, base);
         default:
           return { status: 'skipped', reason: 'engine-unsupported', ...base };
       }
     },
-    [backendRef, engineRef, playSound],
+    [backendRef, engineRef, playSound, playNative],
   );
 
   // Pausing the music ends the sound too (and with it the duck).
   useEffect(() => {
-    if (!isPlaying) overlayRef.current?.stop();
-  }, [isPlaying]);
+    if (isPlaying) return;
+    overlayRef.current?.stop();
+    // Native already stops on pause; this covers a pause it never saw.
+    if (nativeBusyRef.current) backendRef.current?.stopOverlay?.();
+  }, [isPlaying, backendRef]);
 
   // The sound follows the person's own volume, mute and party mode.
   useEffect(() => {

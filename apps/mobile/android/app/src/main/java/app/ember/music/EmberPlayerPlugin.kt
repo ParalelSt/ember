@@ -1,12 +1,15 @@
 package app.ember.music
 
 import android.content.ComponentName
+import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.common.Timeline
 import androidx.media3.session.MediaController
+import androidx.media3.session.SessionCommand
+import androidx.media3.session.SessionResult
 import androidx.media3.session.SessionToken
 import com.getcapacitor.JSArray
 import com.getcapacitor.JSObject
@@ -14,6 +17,8 @@ import com.getcapacitor.Plugin
 import com.getcapacitor.PluginCall
 import com.getcapacitor.PluginMethod
 import com.getcapacitor.annotation.CapacitorPlugin
+import com.google.common.util.concurrent.Futures
+import com.google.common.util.concurrent.ListenableFuture
 import com.google.common.util.concurrent.MoreExecutors
 import org.json.JSONArray
 import org.json.JSONObject
@@ -33,7 +38,7 @@ class EmberPlayerPlugin : Plugin() {
 
     override fun load() {
         val token = SessionToken(context, ComponentName(context, EmberPlaybackService::class.java))
-        val future = MediaController.Builder(context, token).buildAsync()
+        val future = MediaController.Builder(context, token).setListener(sessionEvents).buildAsync()
         future.addListener({
             val c = runCatching { future.get() }.getOrNull() ?: return@addListener
             controller = c
@@ -80,6 +85,15 @@ class EmberPlayerPlugin : Plugin() {
         }
     }
 
+    /** The service tells us when a prank sound has ended. */
+    private val sessionEvents = object : MediaController.Listener {
+        override fun onCustomCommand(controller: MediaController, command: SessionCommand, args: Bundle): ListenableFuture<SessionResult> {
+            if (command.customAction != OverlayEvents.COMMAND_ENDED) return Futures.immediateFuture(SessionResult(SessionResult.RESULT_ERROR_NOT_SUPPORTED))
+            notifyListeners("overlay", OverlayEvents.endedJs(args))
+            return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
+        }
+    }
+
     /** ~4 Hz position while playing; the web slider expects that cadence. */
     private fun tick() {
         val c = controller ?: return
@@ -115,6 +129,32 @@ class EmberPlayerPlugin : Plugin() {
     @PluginMethod fun seek(call: PluginCall) = withController { it.seekTo(((call.getDouble("sec") ?: 0.0) * 1000).toLong()); call.resolve() }
     @PluginMethod fun setVolume(call: PluginCall) = withController { it.volume = (call.getDouble("v") ?: 1.0).toFloat().coerceIn(0f, 1f); call.resolve() }
     @PluginMethod fun getState(call: PluginCall) = withController { call.resolve(state(it)) }
+
+    /** A prank sound over the music. Resolves `{ started, reason? }` once it
+     *  is actually heard (or never will be); its end arrives as the `overlay`
+     *  event `{ id, phase: 'ended', reason, playedSec }`. `volume` is a share
+     *  of the music's own level, `duckTo` the music's multiplier meanwhile. */
+    @PluginMethod fun playOverlay(call: PluginCall) {
+        val url = call.getString("url") ?: return call.reject("url required")
+        val args = OverlayEvents.playArgs(
+            call.getString("id").orEmpty(), url,
+            call.getDouble("volume") ?: 1.0, call.getDouble("duckTo") ?: 1.0, call.getDouble("maxSec"),
+        )
+        withController { c ->
+            val f = c.sendCustomCommand(SessionCommand(OverlayEvents.COMMAND_PLAY, Bundle.EMPTY), args)
+            f.addListener({
+                val r = runCatching { f.get() }.getOrNull()
+                call.resolve(
+                    if (r?.resultCode == SessionResult.RESULT_SUCCESS) OverlayEvents.startedJs(r.extras)
+                    else OverlayEvents.startedJs(OverlayEvents.started(false, "error:session")),
+                )
+            }, MoreExecutors.directExecutor())
+        }
+    }
+    @PluginMethod fun stopOverlay(call: PluginCall) = withController {
+        it.sendCustomCommand(SessionCommand(OverlayEvents.COMMAND_STOP, Bundle.EMPTY), Bundle.EMPTY)
+        call.resolve()
+    }
 
     override fun handleOnDestroy() {
         controller?.release(); controller = null
