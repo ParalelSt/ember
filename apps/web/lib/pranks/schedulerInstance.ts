@@ -55,7 +55,7 @@ export function pbTickStore(pb: PocketBase): TickStore {
       }
     },
     async createPrank(p) {
-      await pb.collection('pranks').create({
+      const rec = await pb.collection('pranks').create({
         target: p.target,
         issued_by: p.issuedBy,
         schedule: p.schedule,
@@ -66,6 +66,18 @@ export function pbTickStore(pb: PocketBase): TickStore {
         reason: p.reason,
         expires_at: pbDate(p.expiresAt),
       });
+      return rec.id;
+    },
+    async scheduleActive(id) {
+      try {
+        return (await pb.collection('prank_schedules').getOne(id, q)).active === true;
+      } catch (e) {
+        if (is404(e)) return false;
+        throw e;
+      }
+    },
+    async cancelPrank(id) {
+      await pb.collection('pranks').update(id, { status: 'cancelled' });
     },
     async updateSchedule(id, patch) {
       const data: Record<string, unknown> = {};

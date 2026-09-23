@@ -8,7 +8,10 @@ const MIN = 60_000;
 interface Fake {
   store: TickStore;
   schedules: (ScheduleRow & { active: boolean })[];
-  written: TickPrank[];
+  written: (TickPrank & { id: string })[];
+  /** Runs inside the tick just before it writes (the caps read), or right
+   *  after it wrote: where a Stop pressed mid-tick lands. */
+  hooks: { beforeWrite?: () => void; afterWrite?: () => void };
   history: (RecentPrank & { target: string; issuedBy: string })[];
   playing: Set<string>;
   sounds: Map<string, string>;
@@ -25,20 +28,31 @@ function fake(): Fake {
     sounds: new Map([['quack', '/api/pranks/media/quack']]),
     on: { value: true },
     expiredCalls: [],
+    hooks: {},
     store: null as never,
   };
   f.store = {
     enabled: async () => f.on.value,
     due: async (now) => f.schedules.filter((s) => s.active && s.nextFireAt <= now).map((s) => ({ ...s })),
-    recent: async (target, admin) => ({
-      forTarget: f.history.filter((h) => h.target === target),
-      byAdmin: f.history.filter((h) => h.issuedBy === admin),
-    }),
+    recent: async (target, admin) => {
+      f.hooks.beforeWrite?.();
+      return {
+        forTarget: f.history.filter((h) => h.target === target),
+        byAdmin: f.history.filter((h) => h.issuedBy === admin),
+      };
+    },
     isPlaying: (target) => f.playing.has(target),
     soundUrl: async (id) => f.sounds.get(id) ?? null,
     createPrank: async (row) => {
-      f.written.push(row);
+      const id = `pr${f.written.length + 1}`;
+      f.written.push({ ...row, id });
       f.history.push({ kind: 'sound', status: row.status, reason: row.reason, created: NOW, target: row.target, issuedBy: row.issuedBy });
+      f.hooks.afterWrite?.();
+      return id;
+    },
+    scheduleActive: async (id) => f.schedules.find((s) => s.id === id)?.active === true,
+    cancelPrank: async (id) => {
+      Object.assign(f.written.find((w) => w.id === id)!, { status: 'cancelled' });
     },
     updateSchedule: async (id, patch) => {
       Object.assign(f.schedules.find((s) => s.id === id)!, patch);
@@ -68,6 +82,7 @@ describe('runTick', () => {
     expect(results).toEqual([{ id: 'sc1', result: 'fired' }]);
     expect(expired).toBe(2);
     expect(f.written).toEqual([{
+      id: 'pr1',
       target: 'marko', issuedBy: 'root', schedule: 'sc1', sound: 'quack', status: 'pending', reason: '',
       params: { durationSec: 30, volume: 0.5, mode: 'duck', startFrom: 'start', streamUrl: '/api/pranks/media/quack' },
       expiresAt: NOW + 45_000,
@@ -179,6 +194,40 @@ describe('runTick', () => {
     await runTick(NOW, f.store);
     expect(f.written).toHaveLength(1);
     expect(f.schedules[0].nextFireAt).toBe(NOW + 2 * MIN);
+  });
+});
+
+// Stop (one repeat) and Stop everything, as settings.ts does them: the
+// schedule goes inactive first, then its pending rows are cancelled.
+describe('runTick, with Stop pressed while a tick is running', () => {
+  const stop = () => {
+    f.schedules[0].active = false;
+    for (const w of f.written) if (w.status === 'pending') Object.assign(w, { status: 'cancelled' });
+  };
+
+  it('a Stop that lands after the schedule was read sends no sound', async () => {
+    f.schedules.push(schedule());
+    f.hooks.beforeWrite = stop;
+    await runTick(NOW, f.store);
+    expect(f.written.filter((w) => w.status === 'pending')).toEqual([]);
+  });
+
+  it('a Stop that lands while the row is being written takes it back', async () => {
+    f.schedules.push(schedule());
+    // The cancel pass has already run by the time the row exists; only the
+    // schedule is left saying stop.
+    f.hooks.afterWrite = () => {
+      f.schedules[0].active = false;
+    };
+    await runTick(NOW, f.store);
+    expect(f.written.filter((w) => w.status === 'pending')).toEqual([]);
+  });
+
+  it('never turns a stopped schedule back on while moving it along', async () => {
+    f.schedules.push(schedule());
+    f.hooks.beforeWrite = stop;
+    await runTick(NOW, f.store);
+    expect(f.schedules[0].active).toBe(false);
   });
 });
 

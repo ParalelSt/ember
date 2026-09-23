@@ -66,6 +66,9 @@ export interface ItemResult {
   confidence: number | null;
   candidates: ImportCandidate[];
   likedAt: number | null;
+  /** Transfers only: the like this item made, so a re-match removes that
+   *  one and never a like it found already there. */
+  likeId?: string | null;
 }
 
 export interface JobCounts {
@@ -91,8 +94,10 @@ export interface JobStore {
   /** Put jobs whose runner stopped checking in before `staleBefore` back in
    *  the queue. Returns how many. */
   releaseStale(staleBefore: number): Promise<number>;
-  /** The oldest queued job, now running and held by `runnerId`; or null. */
-  claimNext(runnerId: string, now: number): Promise<RunnerJob | null>;
+  /** The oldest queued job, now running and held by `runnerId`; or null.
+   *  `avoid` is a transfer that just stepped aside: any other queued job
+   *  goes first, and it is taken again only when none is left. */
+  claimNext(runnerId: string, now: number, avoid?: string | null): Promise<RunnerJob | null>;
   getJob(id: string): Promise<RunnerJob | null>;
   updateJob(id: string, patch: JobPatch): Promise<void>;
   /** Pending items from `fromPosition` on, in source order. */
@@ -101,8 +106,9 @@ export interface JobStore {
   /** Add a track at a playlist position. Already there: a no-op. */
   addTrack(playlistId: string, position: number, track: Track): Promise<void>;
   /** Like a track for a transfer. `created` is false when the person had
-   *  already liked it, which the Done summary counts separately. */
-  like(userId: string, track: Track, likedAt: number | null): Promise<{ created: boolean }>;
+   *  already liked it, which the Done summary counts separately; `id` is
+   *  the new like, null when there was none. */
+  like(userId: string, track: Track, likedAt: number | null): Promise<{ created: boolean; id: string | null }>;
   /** Is any other job waiting? A long transfer steps aside when one is. */
   hasOtherQueued(jobId: string): Promise<boolean>;
   counts(jobId: string): Promise<JobCounts>;
@@ -146,12 +152,16 @@ export class ImportRunner {
         this.again = false;
         const released = await store.releaseStale(now() - (this.deps.staleMs ?? STALE_MS));
         if (released) this.deps.log?.('released orphaned imports', { released });
+        // A transfer that stepped aside is the oldest job in the queue, so
+        // without this it would be claimed straight back.
+        let avoid: string | null = null;
         for (;;) {
-          const job = await store.claimNext(runnerId, now());
+          const job = await store.claimNext(runnerId, now(), avoid);
           if (!job) break;
+          avoid = null;
           this.currentJobId = job.id;
           try {
-            await this.runJob(job);
+            if (await this.runJob(job)) avoid = job.id;
           } catch (e) {
             // The store itself failed (PocketBase down or the playlist gone):
             // say so on the job if we still can.
@@ -169,7 +179,9 @@ export class ImportRunner {
     }
   }
 
-  async runJob(job: RunnerJob): Promise<void> {
+  /** Work through one job. True when a transfer stepped aside for a
+   *  waiting job rather than stopping. */
+  async runJob(job: RunnerJob): Promise<boolean> {
     const { store, sleep, now } = this.deps;
     const backoff = this.deps.backoffMs ?? BACKOFF_MS;
     let failures = 0;
@@ -181,7 +193,7 @@ export class ImportRunner {
     for (;;) {
       const fresh = await store.getJob(job.id);
       // Cancelled, deleted with its playlist, or handed back to the queue.
-      if (!fresh || fresh.status !== 'running') return;
+      if (!fresh || fresh.status !== 'running') return false;
 
       const items = await store.pendingItems(job.id, fresh.cursor, BATCH_SIZE);
       if (!items.length) {
@@ -193,7 +205,7 @@ export class ImportRunner {
           error: '',
           retryAt: null,
         });
-        return;
+        return false;
       }
 
       let results: ItemResult[];
@@ -210,7 +222,7 @@ export class ImportRunner {
             error: GAVE_UP_MESSAGE,
             retryAt: null,
           });
-          return;
+          return false;
         }
         await store.updateJob(job.id, {
           status: transition('running', 'backoff'),
@@ -220,7 +232,7 @@ export class ImportRunner {
         await sleep(wait);
         const after = await store.getJob(job.id);
         // Cancelled, or Retry pressed (back to queued) while waiting.
-        if (!after || after.status !== 'paused') return;
+        if (!after || after.status !== 'paused') return false;
         await store.updateJob(job.id, {
           status: transition('paused', 'resume'),
           error: '',
@@ -238,7 +250,8 @@ export class ImportRunner {
       for (const r of results) {
         if (r.status !== 'accepted' || !r.candidates[0]) continue;
         if (job.kind === 'liked') {
-          const { created } = await store.like(job.userId, r.candidates[0].track, r.likedAt);
+          const { created, id } = await store.like(job.userId, r.candidates[0].track, r.likedAt);
+          r.likeId = created ? id : null;
           if (!created) alreadyLiked += 1;
         } else if (job.playlistId) {
           await store.addTrack(job.playlistId, playlistPosition(r.position), r.candidates[0].track);
@@ -254,13 +267,13 @@ export class ImportRunner {
       });
 
       // A transfer can be thousands of songs, so it steps aside now and then
-      // for whoever came after it. The cursor is already saved, and
-      // claimNext still sorts by age, so it comes back once they are done.
+      // for whoever came after it. The cursor is already saved; the next
+      // claim passes over it once, and it comes back when they are done.
       batches += 1;
       if (job.kind === 'liked' && batches % YIELD_AFTER_BATCHES === 0 && (await store.hasOtherQueued(job.id))) {
         this.deps.log?.('transfer yielded to a waiting import', { job: job.id, batches });
         await store.updateJob(job.id, { status: transition('running', 'yield'), heartbeat: null, runner: '' });
-        return;
+        return true;
       }
 
       if (searched) await sleep(pace);

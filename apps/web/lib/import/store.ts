@@ -63,25 +63,25 @@ export async function addTrackAt(pb: PocketBase, playlistId: string, position: n
 /** Like a track for a transfer. The (user, track) unique index makes a
  *  second like of the same song a no-op, which is exactly what a re-run or a
  *  song the person had already liked needs; `created` says which happened so
- *  the Done summary can count them apart. */
+ *  the Done summary can count them apart, and `id` is the new like. */
 export async function likeTrack(
   pb: PocketBase,
   userId: string,
   track: Track,
   likedAt: number | null,
-): Promise<{ created: boolean }> {
+): Promise<{ created: boolean; id: string | null }> {
   const trackId = await upsertTrack(pb, track);
   try {
-    await pb.collection('likes').create({
+    const rec = await pb.collection('likes').create({
       user: userId,
       track: trackId,
       liked_at: pbDate(likedAt ?? Date.now()),
       origin: 'import',
     });
-    return { created: true };
+    return { created: true, id: rec.id };
   } catch (e) {
     if (status(e) !== 400) throw e;
-    return { created: false };
+    return { created: false, id: null };
   }
 }
 
@@ -112,12 +112,16 @@ export function createJobStore(getAdmin: () => Promise<PocketBase>): JobStore {
       return rows.length;
     },
 
-    async claimNext(runnerId, now) {
+    async claimNext(runnerId, now, avoid) {
       const pb = await getPb();
-      const next = await pb
-        .collection('import_jobs')
-        .getList(1, 1, { filter: 'status = "queued"', sort: 'created' })
-        .then((l) => l.items[0]);
+      const oldest = (filter: string) =>
+        pb
+          .collection('import_jobs')
+          .getList(1, 1, { filter, sort: 'created' })
+          .then((l) => l.items[0]);
+      const next =
+        (avoid ? await oldest(`status = "queued" && id != "${esc(avoid)}"`) : undefined) ??
+        (await oldest('status = "queued"'));
       if (!next) return null;
       await pb.collection('import_jobs').update(next.id, {
         status: 'running',
@@ -174,6 +178,9 @@ export function createJobStore(getAdmin: () => Promise<PocketBase>): JobStore {
           video_id: r.videoId ?? '',
           confidence: r.confidence ?? 0,
           candidates: r.candidates,
+          // Only a like this run made: a re-run that finds it already there
+          // keeps the one recorded the first time.
+          ...(r.likeId ? { like_id: r.likeId } : {}),
         });
       }
     },
@@ -350,8 +357,8 @@ export async function attachCover(pb: PocketBase, playlistId: string, coverUrl: 
  *  in place. */
 export async function pickItem(pb: PocketBase, job: ImportJob, item: ImportItem, track: Track): Promise<void> {
   if (job.kind === 'liked') {
-    await pickLiked(pb, job, item, track);
-    await saveResolvedItem(pb, job, item, track);
+    const likeId = await pickLiked(pb, job, item, track);
+    await saveResolvedItem(pb, job, item, track, likeId);
     return;
   }
   const { playlistId } = job;
@@ -387,34 +394,53 @@ export async function pickItem(pb: PocketBase, job: ImportJob, item: ImportItem,
   await saveResolvedItem(pb, job, item, track);
 }
 
-/** Like the picked song for a transfer. A wrong song this same transfer
- *  liked is unliked first: it is only in the likes because Ember guessed it,
- *  so the person correcting the guess expects it gone. A like the person
- *  made themselves (origin `user`) is left alone. */
-async function pickLiked(pb: PocketBase, job: ImportJob, item: ImportItem, track: Track): Promise<void> {
+/** Like the picked song for a transfer. The wrong song is unliked first,
+ *  but only the like this item made (`like_id`): it is only in the likes
+ *  because Ember guessed it, so the person correcting the guess expects it
+ *  gone. A like that was there before (made by hand or by another transfer),
+ *  or an item saved before `like_id` existed, is left alone. While another
+ *  song of this transfer still points at the same video, that song takes
+ *  the like over instead. Returns the item's like from now on. */
+async function pickLiked(pb: PocketBase, job: ImportJob, item: ImportItem, track: Track): Promise<string> {
   const oldVideo = item.videoId;
-  if (oldVideo && oldVideo !== track.sourceId) {
-    try {
-      const oldTrack = await pb.collection('tracks').getFirstListItem(`external_id = "youtube:${esc(oldVideo)}"`);
-      const like = await pb
-        .collection('likes')
-        .getFirstListItem(`user = "${esc(job.userId)}" && track = "${oldTrack.id}" && origin = "import"`);
-      await pb.collection('likes').delete(like.id);
-    } catch (e) {
-      if (status(e) !== 404) throw e;
+  const own = String((await pb.collection('import_items').getOne(item.id)).like_id ?? '');
+  let kept = own;
+  if (own && oldVideo && oldVideo !== track.sourceId) {
+    kept = '';
+    const sharing = (
+      await pb.collection('import_items').getFullList({ filter: `job = "${esc(job.id)}" && video_id = "${esc(oldVideo)}"` })
+    ).filter((r) => r.id !== item.id && (r.status === 'accepted' || r.status === 'resolved'));
+    if (sharing.length) {
+      await pb.collection('import_items').update(sharing[0].id, { like_id: own });
+    } else {
+      try {
+        const like = await pb.collection('likes').getOne(own);
+        if (like.origin === 'import') await pb.collection('likes').delete(own);
+      } catch (e) {
+        // Unliked by hand since.
+        if (status(e) !== 404) throw e;
+      }
     }
   }
-  await likeTrack(pb, job.userId, track, item.likedAt);
+  const liked = await likeTrack(pb, job.userId, track, item.likedAt);
+  return liked.id ?? kept;
 }
 
 /** The item is settled: it points at the picked song, which joins the
  *  candidates when it came from a search so a later re-match still lists
  *  it, and the job's counts are recomputed. */
-async function saveResolvedItem(pb: PocketBase, job: ImportJob, item: ImportItem, track: Track): Promise<void> {
+async function saveResolvedItem(
+  pb: PocketBase,
+  job: ImportJob,
+  item: ImportItem,
+  track: Track,
+  likeId?: string,
+): Promise<void> {
   const known = item.candidates.some((c) => c.track.sourceId === track.sourceId);
   await pb.collection('import_items').update(item.id, {
     status: 'resolved',
     video_id: track.sourceId,
+    ...(likeId !== undefined ? { like_id: likeId } : {}),
     ...(known
       ? {}
       : {
