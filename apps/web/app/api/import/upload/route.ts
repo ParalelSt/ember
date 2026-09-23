@@ -37,11 +37,6 @@ const SAMPLE_SIZE = 5;
 export const POST = withRequestLog('import/upload', async (request: NextRequest) => {
   try {
     const { user } = await requireUser();
-    // Reading a file is cheap; matching thousands of songs afterwards is
-    // not, so the gate is on the hour rather than the ten minutes that
-    // pasted links get.
-    const limited = rateLimitResponse(`import-upload:${user.id}`, { windowMs: 3_600_000, max: 5 });
-    if (limited) return limited;
 
     // The declared length first, so a huge body is turned away before it is
     // buffered; what actually arrives is checked again by the parser.
@@ -56,6 +51,13 @@ export const POST = withRequestLog('import/upload', async (request: NextRequest)
 
     const preview = new URL(request.url).searchParams.get('preview');
     if (preview === '1' || preview === 'true') return Response.json({ preview: previewOf(parsed) });
+
+    // Only a real transfer start counts against the hourly cap. The
+    // TransferDialog fires a preview on every pause in typing, which would
+    // otherwise burn the 5-per-hour limit before the user ever presses
+    // Import (see the branch above, which returns before this line).
+    const limited = rateLimitResponse(`import-upload:${user.id}`, { windowMs: 3_600_000, max: 5 });
+    if (limited) return limited;
 
     if (parsed.truncated) return jsonError(OVER_CAP_MESSAGE, 413);
     if (!parsed.items.length) return jsonError('There are no songs in that.', 422);
