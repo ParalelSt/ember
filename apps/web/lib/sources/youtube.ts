@@ -33,8 +33,10 @@ export type UnavailableReason = 'removed' | 'private' | 'geo' | 'members' | 'ter
 
 /** YouTube's mood, not the video's fate. Checked FIRST, and an unknown
  *  message is transient too: a wrong "unavailable" hides a song from everyone,
- *  a wrong "transient" only costs one more failed play. */
-const TRANSIENT_RE = /HTTP Error \d{3}|not a bot|confirm your age|timed out|Connection reset|Remote end closed|unable to download|Unable to extract|Failed to extract|Requested format is not available|nsig|Temporary failure|Name or service not known/i;
+ *  a wrong "transient" only costs one more failed play. The rate limit starts
+ *  with "Video unavailable. This content isn't available, try again later",
+ *  so it must be caught here before the unavailable rules see it. */
+const TRANSIENT_RE = /HTTP Error \d{3}|not a bot|confirm your age|timed out|Connection reset|Remote end closed|unable to download|Unable to extract|Failed to extract|Requested format is not available|nsig|Temporary failure|Name or service not known|try again later|rate-limited/i;
 
 const UNAVAILABLE_RULES: [RegExp, UnavailableReason][] = [
   [/account associated with this video has been terminated/i, 'terminated'],
