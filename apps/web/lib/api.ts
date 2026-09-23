@@ -89,6 +89,14 @@ async function req<T>(path: string, { method = 'GET', body, signal, expected }: 
     const error = new Error(err.error || `Request failed: ${res.status}`) as Error & { status?: number; body?: unknown };
     error.status = res.status;
     error.body = err;
+    // The session expired or was never there (proxy.ts answers unauth /api/*
+    // with this same 401 JSON, see bughunt W05): send the browser to sign in
+    // rather than let every caller handle it. Skip it on /auth itself so a
+    // failed check-email/etc there doesn't bounce the page against itself.
+    if (res.status === 401 && typeof window !== 'undefined' && !window.location.pathname.startsWith('/auth')) {
+      const next = window.location.pathname + window.location.search;
+      window.location.href = `/auth?next=${encodeURIComponent(next)}`;
+    }
     throw error;
   }
   return (await res.json()) as T;
