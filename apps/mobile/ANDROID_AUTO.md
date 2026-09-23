@@ -60,8 +60,14 @@ media session is ever published, and the capgo plugin is there for the bundled
 offline page, which runs without the native player. Downloads run in their own
 `dataSync` foreground service while Media3 keeps playing.
 
+Downloaded songs play from the phone: when a song starts loading, the
+native player uses the copy the phone downloaded for a pinned playlist (or
+Liked Songs) instead of streaming it, in the car too. The one limit: the
+phone has to have downloaded the list beforehand; the car cannot start a
+download.
+
 Known limits: no like button in the car, live sessions (carlist) are not
-driven from the car, no offline playback. Playback resumption from the system
+driven from the car. Playback resumption from the system
 media panel is not implemented (Android's "No root for client
 com.android.systemui" log line is that probe; harmless).
 
