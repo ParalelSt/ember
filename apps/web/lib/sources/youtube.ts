@@ -243,6 +243,9 @@ export async function searchTracks(query: string, { limit = 30 } = {}): Promise<
   // `-` doesn't get misparsed as a flag by argparse. Flags come first.
   const results = await runPython<RawYoutubeTrack[]>(['search', '--limit', String(limit), '--', query]);
   const tracks = dedupeByVideoId(results).map(normalize);
+  // An empty answer is cheap to ask again and, if search was having a bad
+  // moment, would otherwise read "no results" for the next 5 minutes.
+  if (!tracks.length) return tracks;
 
   // Bound the cache. Drop the oldest insertion when we hit the cap — Map
   // iteration order is insertion order in JS. Not strict LRU (we don't

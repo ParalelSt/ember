@@ -147,3 +147,42 @@ describe('yt-dlp failure classification', () => {
     expect(classifyYtdlpFailure('[youtube] dQw4w9WgXcQ: Video unavailable. This video has been removed by the uploader')).toBe('removed');
   });
 });
+
+// "Nothing found" was cached for 5 minutes, so a moment when search could
+// not answer kept showing no results long after it recovered.
+describe('searchTracks cache', () => {
+  afterEach(() => {
+    vi.clearAllMocks();
+    nextStdout = '[]';
+    nextStderr = '';
+    nextCode = 0;
+  });
+
+  it('does not cache an empty answer', async () => {
+    const { spawn } = await import('node:child_process');
+    const { searchTracks } = await import('./youtube');
+    nextStdout = '[]';
+    expect(await searchTracks('s03 empty query')).toEqual([]);
+    nextStdout = JSON.stringify([{ videoId: 'dQw4w9WgXcQ', title: 'Back', artist: 'Band', durationSec: 200 }]);
+    const again = await searchTracks('s03 empty query');
+    expect(vi.mocked(spawn)).toHaveBeenCalledTimes(2);
+    expect(again.map((t) => t.title)).toEqual(['Back']);
+  });
+
+  it('still caches a real answer', async () => {
+    const { spawn } = await import('node:child_process');
+    const { searchTracks } = await import('./youtube');
+    nextStdout = JSON.stringify([{ videoId: 'dQw4w9WgXcQ', title: 'Song', artist: 'Band', durationSec: 200 }]);
+    await searchTracks('s03 cached query');
+    await searchTracks('s03 cached query');
+    expect(vi.mocked(spawn)).toHaveBeenCalledTimes(1);
+  });
+
+  it('a failed search is an error, not an empty list', async () => {
+    const { searchTracks } = await import('./youtube');
+    nextStdout = '';
+    nextStderr = 'ERROR: search: could not reach YouTube Music or YouTube\n';
+    nextCode = 1;
+    await expect(searchTracks('s03 failing query')).rejects.toMatchObject({ status: 502 });
+  });
+});
