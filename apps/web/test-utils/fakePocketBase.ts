@@ -6,13 +6,15 @@ import type { RecordModel } from 'pocketbase';
  *  getFirstListItem, create, update, delete, and `pb.filter`.
  *
  *  Filters are evaluated for the subset the store writes: `field = "x"`,
- *  `field != "x"`, `field ~ "x"` (contains), `field = true`, joined by
+ *  `field != "x"`, `field ~ "x"` (contains), `field = true`, and `<`, `<=`,
+ *  `>`, `>=` against a string (dates compare as text, as PocketBase's
+ *  sortable date format allows), joined by
  *  `&&` / `||` with parentheses. Anything else throws, so a new filter shape
  *  shows up as a failing test rather than a silently wrong one. */
 
 type Row = RecordModel & Record<string, unknown>;
 
-const COMPARISON = /([A-Za-z_][A-Za-z0-9_]*)\s*(!=|~|=)\s*("(?:[^"\\]|\\.)*"|true|false)/g;
+const COMPARISON = /([A-Za-z_][A-Za-z0-9_]*)\s*(!=|>=|<=|~|=|>|<)\s*("(?:[^"\\]|\\.)*"|true|false)/g;
 
 export function compileFilter(filter: string): (row: Row) => boolean {
   if (!filter.trim()) return () => true;
@@ -27,6 +29,10 @@ export function compileFilter(filter: string): (row: Row) => boolean {
     const left = a ?? (typeof b === 'boolean' ? false : '');
     if (op === '=') return left === b;
     if (op === '!=') return left !== b;
+    if (op === '<') return String(left) < String(b);
+    if (op === '<=') return String(left) <= String(b);
+    if (op === '>') return String(left) > String(b);
+    if (op === '>=') return String(left) >= String(b);
     return String(left).toLowerCase().includes(String(b).toLowerCase());
   };
   const fn = new Function('row', '__cmp', `return (${body});`) as (row: Row, c: typeof cmp) => boolean;

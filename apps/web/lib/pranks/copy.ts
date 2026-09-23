@@ -117,7 +117,7 @@ export function capWords(reason: CapReason, targetName: string, retryAfterSec: n
 }
 
 /** A display name, never an id: name, else the email's local part. */
-export function personName(u: { name?: unknown; email?: unknown }): string {
+export function personName(u: Record<string, unknown>): string {
   const name = typeof u.name === 'string' ? u.name.trim() : '';
   if (name) return name;
   const email = typeof u.email === 'string' ? u.email : '';
