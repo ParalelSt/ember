@@ -130,7 +130,11 @@ export const createWebBackend: CreateAudioBackend = (events) => {
       restoreOnMeta(opts.startAt ?? 0);
       if (opts.autoplay) {
         audioCtx?.resume?.().catch(() => {});
-        a.play().then(() => events.onPlay()).catch(() => events.onPause());
+        // AbortError means a newer load replaced this one, not that playback
+        // stopped: reporting it as a pause flickered the notification.
+        a.play().then(() => events.onPlay()).catch((e: unknown) => {
+          if ((e as { name?: string } | null)?.name !== 'AbortError') events.onPause();
+        });
       }
     },
 
