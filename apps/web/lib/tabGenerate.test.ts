@@ -1,4 +1,5 @@
 import { EventEmitter } from 'node:events';
+import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -66,6 +67,37 @@ describe('tab generation argv', () => {
     const args = lastSpawnArgs as string[];
     expect(args).toContain('--title=-Interlude');
     expect(args).not.toContain('--title');
+  });
+
+  // M2: transcribe.py decodes into tempfile.TemporaryDirectory(prefix=
+  // "ember-transcribe-"), cleaned up by its own `with` block on a normal
+  // exit. A SIGKILL after our timeout gives it no chance to run that
+  // cleanup, so the dir used to sit under /tmp forever.
+  it('sweeps leaked ember-transcribe-* tmp dirs after a SIGKILL timeout', async () => {
+    const cp = await import('node:child_process');
+    vi.mocked(cp.spawn).mockImplementationOnce((_cmd: string, args: unknown[]) => {
+      lastSpawnArgs = args;
+      fakeChild = new FakeChild();
+      // No auto-close here: this run hangs until the timeout kills it,
+      // same as demucs stuck on a bad file.
+      return fakeChild as unknown as ReturnType<typeof cp.spawn>;
+    });
+
+    const leaked = fs.mkdtempSync(path.join(os.tmpdir(), 'ember-transcribe-'));
+    expect(fs.existsSync(leaked)).toBe(true);
+
+    try {
+      vi.useFakeTimers();
+      const { startGeneration, TIMEOUT_MS } = await import('./tabGenerate');
+      const done = startGeneration('youtube-leak', '/tmp/audio.m4a', 'Song').catch(() => {});
+      await vi.advanceTimersByTimeAsync(TIMEOUT_MS + 1000);
+      await done;
+    } finally {
+      vi.useRealTimers();
+      fs.rmSync(leaked, { recursive: true, force: true });
+    }
+
+    expect(fs.existsSync(leaked)).toBe(false);
   });
 });
 

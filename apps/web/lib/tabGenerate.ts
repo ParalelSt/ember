@@ -1,6 +1,7 @@
 import 'server-only';
 import { spawn } from 'node:child_process';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { GENERATED_DIR } from '@/lib/tabs';
 import { queuePythonJob } from '@/lib/pythonJobs';
@@ -23,8 +24,10 @@ const ROOT = path.resolve(process.cwd(), '..', '..');
 const PYTHON_BIN = process.env.PYTHON_BIN ?? path.join(ROOT, '.venv/bin/python');
 const TRANSCRIBE_SCRIPT = process.env.TRANSCRIBE_SCRIPT ?? path.join(ROOT, 'transcribe.py');
 
-/** Demucs on a four-minute song takes a few minutes on this hardware. */
-const TIMEOUT_MS = 10 * 60 * 1000;
+/** Demucs on a four-minute song takes a few minutes on this hardware.
+ *  Exported so tests can advance fake timers past it exactly, rather than
+ *  hardcoding the same number in two places. */
+export const TIMEOUT_MS = 10 * 60 * 1000;
 
 const SOURCE_ID_RE = /^[A-Za-z0-9_-]{1,32}$/;
 
@@ -100,6 +103,30 @@ export function startGeneration(key: string, audioPath: string, title: string): 
   return job;
 }
 
+/** transcribe.py decodes into a `tempfile.TemporaryDirectory(prefix=
+ *  "ember-transcribe-")` under the OS tmp dir, cleaned up by its own `with`
+ *  block on a normal exit. SIGKILL (below, on timeout) gives Python no chance
+ *  to run that cleanup, so the wav dir is left behind. Only one transcription
+ *  job ever runs at a time (the queue in startGeneration above), so any such
+ *  dir still around when a job ends is this job's leftover and safe to sweep. */
+function sweepTranscribeTmpDirs(): void {
+  const tmpRoot = os.tmpdir();
+  let entries: string[];
+  try {
+    entries = fs.readdirSync(tmpRoot);
+  } catch {
+    return;
+  }
+  for (const name of entries) {
+    if (!name.startsWith('ember-transcribe-')) continue;
+    try {
+      fs.rmSync(path.join(tmpRoot, name), { recursive: true, force: true });
+    } catch {
+      // best effort — a stray dir next run is better than crashing this one
+    }
+  }
+}
+
 function runScript(audioPath: string, outPath: string, title: string): Promise<void> {
   return new Promise((resolve, reject) => {
     fs.mkdirSync(GENERATED_DIR, { recursive: true });
@@ -116,6 +143,7 @@ function runScript(audioPath: string, outPath: string, title: string): Promise<v
     let stderr = '';
     const timer = setTimeout(() => {
       child.kill('SIGKILL');
+      sweepTranscribeTmpDirs();
       reject(new Error('transcription timed out'));
     }, TIMEOUT_MS);
     child.stderr.on('data', (d: Buffer) => {
@@ -124,10 +152,15 @@ function runScript(audioPath: string, outPath: string, title: string): Promise<v
     child.stdout.on('data', () => {}); // keep the pipe drained
     child.on('error', (e) => {
       clearTimeout(timer);
+      sweepTranscribeTmpDirs();
       reject(e);
     });
     child.on('close', (code) => {
       clearTimeout(timer);
+      // A clean exit already cleaned up after itself (transcribe.py's own
+      // `with` block); this only matters after a kill or crash, but it's
+      // cheap enough to run unconditionally rather than track which case.
+      sweepTranscribeTmpDirs();
       if (code === 0 && fs.existsSync(outPath)) return resolve();
       // The script's own last line is the useful part; everything above it is
       // a traceback or a model warning.
