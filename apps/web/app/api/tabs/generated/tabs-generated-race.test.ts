@@ -4,7 +4,6 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { NextRequest } from 'next/server';
-import { UnauthorizedError } from '@/lib/auth';
 import { fakePocketBase, type FakePb } from '@/test-utils/fakePocketBase';
 
 // M3: the GET must not answer 404 "none" while a POST is still awaiting the
