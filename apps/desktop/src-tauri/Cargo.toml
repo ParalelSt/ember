@@ -63,6 +63,11 @@ block2 = "0.6"
 [target.'cfg(windows)'.dependencies]
 windows = { version = "0.62", features = ["Foundation", "Foundation_Collections", "Globalization", "Media_SpeechRecognition"] }
 
+# `test` adds tauri's mock app, so the engine tests can call the real audio
+# commands and read the events they emit (src/audio/transport_repro.rs).
+[dev-dependencies]
+tauri = { version = "2", features = ["devtools", "test"] }
+
 [profile.release]
 codegen-units = 1
 lto = true

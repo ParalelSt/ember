@@ -27,7 +27,7 @@ use stream_download::http::reqwest::Client;
 use stream_download::http::HttpStream;
 use stream_download::storage::temp::TempStorageProvider;
 use stream_download::{Settings, StreamDownload, StreamPhase};
-use tauri::{AppHandle, State};
+use tauri::{AppHandle, Runtime, State};
 
 /// Native audio engine state, stored in Tauri managed state.
 ///
@@ -52,6 +52,17 @@ pub struct AudioEngine {
     /// could land after the user clicked play and replace a playing sink with a
     /// paused one. That is the "had to click play several times" bug.
     load_seq: Arc<AtomicU64>,
+    /// The newest load that has finished, installed or failed. A load is in
+    /// flight while this trails `load_seq`.
+    settled_seq: AtomicU64,
+    /// Play or pause, as the listener last asked. A load in flight has no
+    /// sink to act on, so play and pause set this and the load honours it when
+    /// its sink goes in, rather than the autoplay it was started with. Written
+    /// and read under the `sink` lock.
+    want_play: AtomicBool,
+    /// The last track a load was asked for: url, cookie, start. What play
+    /// tries again when that load failed and nothing is loaded.
+    requested: Mutex<Option<(String, Option<String>, f64)>>,
     /// Last loaded absolute stream URL: diagnostics, and what a backward seek
     /// in a forward-only track re-opens (see `plan_seek`).
     current_url: Mutex<Option<String>>,
@@ -116,6 +127,9 @@ impl AudioEngine {
             sink: Arc::new(Mutex::new(None)),
             generation: Arc::new(AtomicU64::new(0)),
             load_seq: Arc::new(AtomicU64::new(0)),
+            settled_seq: AtomicU64::new(0),
+            want_play: AtomicBool::new(false),
+            requested: Mutex::new(None),
             current_url: Mutex::new(None),
             current_cookie: Mutex::new(None),
             forward_only: AtomicBool::new(false),
@@ -140,6 +154,9 @@ impl AudioEngine {
             sink: Arc::new(Mutex::new(None)),
             generation: Arc::new(AtomicU64::new(0)),
             load_seq: Arc::new(AtomicU64::new(0)),
+            settled_seq: AtomicU64::new(0),
+            want_play: AtomicBool::new(false),
+            requested: Mutex::new(None),
             current_url: Mutex::new(None),
             current_cookie: Mutex::new(None),
             forward_only: AtomicBool::new(false),
@@ -148,6 +165,13 @@ impl AudioEngine {
             volume: Mutex::new(1.0),
             controls: Mutex::new(None),
         }
+    }
+
+    /// An engine that plays into `mixer` instead of a device: the tests pull
+    /// its samples themselves, the way the output device would.
+    #[cfg(test)]
+    pub(crate) fn with_output(mixer: Mixer) -> Self {
+        Self { mixer: Some(mixer), ..Self::new_degraded() }
     }
 
     /// Whether a real output device is attached.
@@ -232,6 +256,11 @@ impl AudioEngine {
         self.load_seq.load(Ordering::SeqCst) == seq
     }
 
+    /// Whether the newest load is still connecting, buffering or decoding.
+    fn load_in_flight(&self) -> bool {
+        self.settled_seq.load(Ordering::SeqCst) < self.load_seq.load(Ordering::SeqCst)
+    }
+
     /// Shared handles for the position-polling task.
     fn inner_arc(&self) -> (Arc<Mutex<Option<Sink>>>, Arc<AtomicU64>) {
         (Arc::clone(&self.sink), Arc::clone(&self.generation))
@@ -268,11 +297,11 @@ struct CmdPayload {
     sec: Option<f64>,
 }
 
-fn emit_sec(app: &AppHandle, event: &str, sec: f64) {
+fn emit_sec<R: Runtime>(app: &AppHandle<R>, event: &str, sec: f64) {
     use tauri::Emitter;
     let _ = app.emit(event, SecPayload { sec });
 }
-fn emit_bare(app: &AppHandle, event: &str) {
+fn emit_bare<R: Runtime>(app: &AppHandle<R>, event: &str) {
     use tauri::Emitter;
     let _ = app.emit(event, ());
 }
@@ -282,7 +311,7 @@ fn emit_bare(app: &AppHandle, event: &str) {
 /// never reproduce while you're watching. Recording each load's sequence
 /// number, start offset and outcome means the next bug report explains itself
 /// instead of needing a re-run.
-fn log_audio(app: &AppHandle, level: &str, msg: &str) {
+fn log_audio<R: Runtime>(app: &AppHandle<R>, level: &str, msg: &str) {
     use tauri::Manager;
     if let Some(state) = app.try_state::<crate::applog::LogFile>() {
         if let Ok(path) = state.0.lock() {
@@ -291,7 +320,7 @@ fn log_audio(app: &AppHandle, level: &str, msg: &str) {
     }
 }
 
-fn emit_err(app: &AppHandle, retry: &'static str, message: String) {
+fn emit_err<R: Runtime>(app: &AppHandle<R>, retry: &'static str, message: String) {
     use tauri::Emitter;
     let _ = app.emit("audio:error", ErrPayload { message, retry });
 }
@@ -884,8 +913,8 @@ pub(crate) async fn open_source_retrying(
 }
 
 #[tauri::command]
-pub async fn audio_load(
-    app: AppHandle,
+pub async fn audio_load<R: Runtime>(
+    app: AppHandle<R>,
     engine: State<'_, AudioEngine>,
     url: String,
     autoplay: bool,
@@ -897,8 +926,8 @@ pub async fn audio_load(
 
 /// What `audio_load` does, callable from inside the engine as well: a
 /// backward seek in a forward-only track re-opens the track through here.
-async fn load_track(
-    app: &AppHandle,
+async fn load_track<R: Runtime>(
+    app: &AppHandle<R>,
     engine: &AudioEngine,
     url: String,
     autoplay: bool,
@@ -908,7 +937,14 @@ async fn load_track(
     // Claim the load BEFORE any slow work, so a newer request can supersede
     // this one even if this one finishes later.
     let my_seq = engine.claim_load();
+    let _settled = Settled(&engine.settled_seq, my_seq);
     engine.silence_current();
+    if let Ok(_sink) = engine.sink.lock() {
+        engine.want_play.store(autoplay, Ordering::SeqCst);
+    }
+    if let Ok(mut r) = engine.requested.lock() {
+        *r = Some((url.clone(), cookie.clone(), start_at));
+    }
     log_audio(
         app,
         "INFO",
@@ -934,6 +970,13 @@ async fn load_track(
         Ok(o) => o,
         Err(e) => {
             log_audio(app, "WARN", &format!("load #{my_seq} {}", e.message));
+            // The webview pins every `audio:error` on the song it has now, so
+            // the failure of a song the listener already moved on from would
+            // stop (or swap the engine under) the one that is playing.
+            if !engine.is_current_load(my_seq) {
+                log_audio(app, "INFO", &format!("load #{my_seq} superseded, failure not reported"));
+                return Ok(());
+            }
             emit_err(app, e.retry, e.message);
             return Ok(());
         }
@@ -961,13 +1004,20 @@ async fn load_track(
             let _ = sink.try_seek(target);
         }
     }
-    if autoplay {
-        sink.play();
-    } else {
-        sink.pause();
-    }
-
-    *engine.sink.lock().map_err(|_| "lock")? = Some(sink);
+    // Play or pause as the listener wants NOW: a pause pressed while this
+    // load was on its way used to be dropped (there was no sink to pause),
+    // and the song started anyway.
+    let playing = {
+        let mut slot = engine.sink.lock().map_err(|_| "lock")?;
+        let playing = engine.want_play.load(Ordering::SeqCst);
+        if playing {
+            sink.play();
+        } else {
+            sink.pause();
+        }
+        *slot = Some(sink);
+        playing
+    };
     *engine.current_url.lock().map_err(|_| "lock")? = Some(url);
     *engine.current_cookie.lock().map_err(|_| "lock")? = cookie;
     engine.forward_only.store(forward_only, Ordering::SeqCst);
@@ -987,44 +1037,76 @@ async fn load_track(
     if let Some(d) = total {
         emit_sec(app, "audio:duration", d.as_secs_f64());
     }
-    if autoplay {
+    if playing {
         emit_bare(app, "audio:play");
     }
-    engine.set_nowplaying(autoplay);
+    engine.set_nowplaying(playing);
 
     let (sink_arc, generation) = engine.inner_arc();
     spawn_position_timer(app.clone(), sink_arc, generation, my_gen, failed);
     Ok(())
 }
 
-#[tauri::command]
-pub fn audio_play(app: AppHandle, engine: State<'_, AudioEngine>) {
-    let mut acted = false;
-    if let Ok(g) = engine.sink.lock() {
-        if let Some(s) = g.as_ref() {
-            s.play();
-            emit_bare(&app, "audio:play");
-            acted = true;
-        }
-    }
-    // Only reflect "Playing" in the OS widget when a track actually resumed, and
-    // outside the sink lock (set_nowplaying takes the controls lock).
-    if acted {
-        engine.set_nowplaying(true);
+/// Marks a load finished, however it ends.
+struct Settled<'a>(&'a AtomicU64, u64);
+
+impl Drop for Settled<'_> {
+    fn drop(&mut self) {
+        self.0.fetch_max(self.1, Ordering::SeqCst);
     }
 }
 
 #[tauri::command]
-pub fn audio_pause(app: AppHandle, engine: State<'_, AudioEngine>) {
-    let mut acted = false;
-    if let Ok(g) = engine.sink.lock() {
-        if let Some(s) = g.as_ref() {
-            s.pause();
-            emit_bare(&app, "audio:pause");
-            acted = true;
+pub fn audio_play<R: Runtime>(app: AppHandle<R>, engine: State<'_, AudioEngine>) {
+    let Ok(g) = engine.sink.lock() else { return };
+    engine.want_play.store(true, Ordering::SeqCst);
+    let retry = match g.as_ref() {
+        Some(s) => {
+            s.play();
+            None
         }
+        // The load honours this when its sink goes in.
+        None if engine.load_in_flight() => None,
+        // The last load failed and nothing is loaded: play used to do nothing
+        // at all here, so the song could only be started again by clicking it.
+        None => match engine.requested.lock().ok().and_then(|r| r.clone()) {
+            Some(track) => Some(track),
+            None => return,
+        },
+    };
+    drop(g);
+    emit_bare(&app, "audio:play");
+    // Outside the sink lock: set_nowplaying takes the controls lock.
+    engine.set_nowplaying(true);
+    if let Some((url, cookie, start_at)) = retry {
+        log_audio(&app, "INFO", &format!("play with nothing loaded: loading {url} again"));
+        // Off this thread, as in audio_seek.
+        tauri::async_runtime::spawn(async move {
+            use tauri::Manager;
+            let engine = app.state::<AudioEngine>();
+            let _ = load_track(&app, engine.inner(), url, true, start_at, cookie).await;
+        });
     }
+}
+
+#[tauri::command]
+pub fn audio_pause<R: Runtime>(app: AppHandle<R>, engine: State<'_, AudioEngine>) {
+    let acted = match engine.sink.lock() {
+        Ok(g) => {
+            engine.want_play.store(false, Ordering::SeqCst);
+            match g.as_ref() {
+                Some(s) => {
+                    s.pause();
+                    true
+                }
+                // Kept for the load in flight (see `want_play`).
+                None => engine.load_in_flight(),
+            }
+        }
+        Err(_) => false,
+    };
     if acted {
+        emit_bare(&app, "audio:pause");
         engine.set_nowplaying(false);
     }
 }
@@ -1041,6 +1123,10 @@ pub fn audio_stop(engine: State<'_, AudioEngine>) {
     if let Ok(mut u) = engine.current_url.lock() {
         *u = None;
     }
+    // A stopped player has nothing for play to pick up again.
+    if let Ok(mut r) = engine.requested.lock() {
+        *r = None;
+    }
     engine.forward_only.store(false, Ordering::SeqCst);
     if let Ok(mut d) = engine.current_total.lock() {
         *d = None;
@@ -1048,16 +1134,25 @@ pub fn audio_stop(engine: State<'_, AudioEngine>) {
 }
 
 #[tauri::command]
-pub fn audio_seek(app: AppHandle, engine: State<'_, AudioEngine>, sec: f64) {
+pub fn audio_seek<R: Runtime>(app: AppHandle<R>, engine: State<'_, AudioEngine>, sec: f64) {
     let total = engine.current_total.lock().ok().and_then(|g| *g);
     let forward_only = engine.forward_only.load(Ordering::SeqCst);
-    let (pos, playing) = engine
+    let (pos, playing, spent) = engine
         .sink
         .lock()
         .ok()
-        .and_then(|g| g.as_ref().map(|s| (s.get_pos(), !s.is_paused())))
-        .unwrap_or((Duration::ZERO, false));
-    let target = match plan_seek(total, forward_only, pos, sec) {
+        .and_then(|g| g.as_ref().map(|s| (s.get_pos(), !s.is_paused(), s.empty())))
+        .unwrap_or((Duration::ZERO, false, false));
+    // A sink that has played its source to the end has nothing left to seek
+    // in: rodio accepts the seek and does nothing. That is how "repeat one"
+    // (a seek to 0 and a play, on `audio:ended`) restarted the song into
+    // silence. Loading the track again is the only way back into it.
+    let plan = if spent {
+        SeekPlan::Reopen(Duration::from_secs_f64(sec.max(0.0)))
+    } else {
+        plan_seek(total, forward_only, pos, sec)
+    };
+    let target = match plan {
         SeekPlan::InPlace(target) => target,
         SeekPlan::Refuse => {
             // Refuse rather than restart the song from 0 (see seek_target).
@@ -1074,11 +1169,8 @@ pub fn audio_seek(app: AppHandle, engine: State<'_, AudioEngine>, sec: f64) {
             let url = engine.current_url.lock().ok().and_then(|g| g.clone());
             let cookie = engine.current_cookie.lock().ok().and_then(|g| g.clone());
             let Some(url) = url else { return };
-            log_audio(
-                &app,
-                "INFO",
-                &format!("seek back to {sec:.1}s in a forward-only stream: re-opening it there"),
-            );
+            let why = if spent { "after the track ran out" } else { "back in a forward-only stream" };
+            log_audio(&app, "INFO", &format!("seek to {sec:.1}s {why}: re-opening it there"));
             // Off this thread: a load takes a round trip, and a sync command
             // runs on the main thread.
             tauri::async_runtime::spawn(async move {
@@ -1209,8 +1301,8 @@ pub fn audio_set_metadata(
 
 // --- Position timer + end detection -----------------------------------------
 
-fn spawn_position_timer(
-    app: AppHandle,
+fn spawn_position_timer<R: Runtime>(
+    app: AppHandle<R>,
     sink: Arc<Mutex<Option<Sink>>>,
     generation: Arc<AtomicU64>,
     my_gen: u64,
@@ -1289,6 +1381,8 @@ mod skip_repro;
 mod fastfail;
 #[cfg(test)]
 mod stall_repro;
+#[cfg(test)]
+mod transport_repro;
 
 #[cfg(test)]
 mod tests {
