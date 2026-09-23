@@ -141,3 +141,47 @@ describe('findLikedVariant', () => {
     expect(findLikedVariant(playing, liked)).toBeNull();
   });
 });
+
+/** The bug the owner reported: liking one song lit up the heart on every
+ *  other song with the same title, by artists it shares nothing with. Both
+ *  paths ended with an empty normalized artist, so "title::::" was the whole
+ *  identity. */
+describe('songKey: two songs that only share a title are not the same song', () => {
+  it('keeps artists written in a non-Latin script apart', () => {
+    const kino = track({ id: 'youtube:a', title: 'Звезда', artist: 'Виктор Цой' });
+    const other = track({ id: 'youtube:b', title: 'Звезда', artist: 'Другая Группа' });
+    expect(songKey(kino)).not.toBe(songKey(other));
+    expect(findLikedVariant(other, [kino])).toBeNull();
+    // Japanese and Korean too, and the same artist still collapses variants.
+    const a = track({ id: 'youtube:c', title: 'さよなら', artist: 'ヨルシカ' });
+    const b = track({ id: 'youtube:d', title: 'さよなら', artist: '米津玄師' });
+    expect(songKey(a)).not.toBe(songKey(b));
+    expect(songKey(track({ id: 'youtube:e', title: 'さよなら (Official Video)', artist: 'ヨルシカ' }))).toBe(songKey(a));
+  });
+
+  it('never matches two songs that both have no artist', () => {
+    const one = track({ id: 'youtube:a', title: 'Home', artist: '' });
+    const two = track({ id: 'youtube:b', title: 'Home', artist: '' });
+    expect(songKey(one)).not.toBe(songKey(two));
+    expect(findLikedVariant(two, [one])).toBeNull();
+    // It still matches itself, so the heart on the liked song stays lit.
+    expect(findLikedVariant(one, [one])).toBe(one);
+  });
+
+  it('does not match an artist-less song against a named one of the same title', () => {
+    const named = track({ id: 'youtube:a', title: 'Home', artist: 'Edward Sharpe' });
+    const bare = track({ id: 'youtube:b', title: 'Home', artist: '' });
+    expect(findLikedVariant(bare, [named])).toBeNull();
+    expect(findLikedVariant(named, [bare])).toBeNull();
+  });
+
+  it('still collapses real variants of the same recording', () => {
+    const liked = track({ id: 'youtube:a', title: 'Blinding Lights', artist: 'The Weeknd' });
+    const variant = track({ id: 'youtube:b', title: 'Blinding Lights (Official Video)', artist: 'The Weeknd - Topic' });
+    expect(songKey(variant)).toBe(songKey(liked));
+  });
+
+  it('keeps sharing a key for callers that look a song up by name alone', () => {
+    expect(songKey({ title: 'Home', artist: '' })).toBe(songKey({ title: 'Home', artist: '' }));
+  });
+});
