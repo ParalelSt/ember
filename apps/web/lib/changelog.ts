@@ -31,7 +31,7 @@ export const CHANGELOG: ChangelogEntry[] = [
       'Or make your own: choose a background, an accent and a text colour and Ember fills in the rest. You see the change on the whole app as you go, and it saves itself.',
       'If two colours would be hard to read together, Ember tells you and offers a fix. It never changes your colours by itself.',
       'Keep up to 20 themes of your own, and share any of them with everyone here. Themes others share show up with their name, ready to use or copy.',
-      'Your theme follows your account to the web, the desktop app and your phone, from the very first moment a page loads.',
+      'Your theme follows your account to the web, the desktop app and your phone, from the very first moment a page loads. On your phone the status bar matches it too, and so does the desktop window.',
     ],
   },
   {
