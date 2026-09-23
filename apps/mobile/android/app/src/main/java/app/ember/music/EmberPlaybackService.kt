@@ -133,15 +133,11 @@ class EmberPlaybackService : MediaLibraryService() {
         offline = OfflineStore.shared(this)
         val streams = MediaCache.dataSourceFactory(cache, dataSource)
         player = buildPlayer(this, streams, offline)
-        player.addListener(object : Player.Listener {
-            override fun onMediaItemTransition(item: MediaItem?, reason: Int) {
-                // Every item start is one play in history, car-initiated ones
-                // included; the web app skips its own history call on Android.
-                val track = item?.let { TrackItems.trackOf(it) } ?: return
-                io.execute { runCatching { api.recordPlay(track) }.onFailure { Log.w(TAG, "history: ${it.message}") } }
-                maybeExtendQueue()
-            }
-        })
+        player.addListener(QueueListener(
+            player,
+            recordPlay = { track -> io.execute { runCatching { api.recordPlay(track) }.onFailure { Log.w(TAG, "history: ${it.message}") } } },
+            extendQueue = ::maybeExtendQueue,
+        ))
         overlay = PrankOverlay(this, player, dataSource, baseUrl)
         session = MediaLibrarySession.Builder(this, player, Callback()).build()
         startAutoCache(streams)
