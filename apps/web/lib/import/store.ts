@@ -112,12 +112,16 @@ export function createJobStore(getAdmin: () => Promise<PocketBase>): JobStore {
       return rows.length;
     },
 
-    async claimNext(runnerId, now) {
+    async claimNext(runnerId, now, avoid) {
       const pb = await getPb();
-      const next = await pb
-        .collection('import_jobs')
-        .getList(1, 1, { filter: 'status = "queued"', sort: 'created' })
-        .then((l) => l.items[0]);
+      const oldest = (filter: string) =>
+        pb
+          .collection('import_jobs')
+          .getList(1, 1, { filter, sort: 'created' })
+          .then((l) => l.items[0]);
+      const next =
+        (avoid ? await oldest(`status = "queued" && id != "${esc(avoid)}"`) : undefined) ??
+        (await oldest('status = "queued"'));
       if (!next) return null;
       await pb.collection('import_jobs').update(next.id, {
         status: 'running',

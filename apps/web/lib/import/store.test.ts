@@ -538,3 +538,30 @@ describe('a Google likes transfer, through the store', () => {
     expect(g.freshJob()).toMatchObject({ accepted: 1, review: 0, notMusic: 2 });
   });
 });
+
+describe('claimNext', () => {
+  function queue() {
+    const f = fakePb();
+    f.table('import_jobs').push(
+      { id: 'transfer', created: '1', status: 'queued', kind: 'liked', user: 'u1' },
+      { id: 'playlist', created: '2', status: 'queued', kind: 'playlist', user: 'u1' },
+    );
+    return { f, store: createJobStore(async () => f.pb) };
+  }
+
+  it('takes the oldest queued job', async () => {
+    const q = queue();
+    expect((await q.store.claimNext('r1', 1_000))?.id).toBe('transfer');
+  });
+
+  it('passes over a transfer that just stepped aside while another job waits', async () => {
+    const q = queue();
+    expect((await q.store.claimNext('r1', 1_000, 'transfer'))?.id).toBe('playlist');
+  });
+
+  it('takes the transfer back when nothing else is waiting', async () => {
+    const q = queue();
+    q.f.table('import_jobs')[1].status = 'done';
+    expect((await q.store.claimNext('r1', 1_000, 'transfer'))?.id).toBe('transfer');
+  });
+});

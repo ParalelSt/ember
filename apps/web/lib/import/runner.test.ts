@@ -469,6 +469,84 @@ describe('ImportRunner, a transfer into the likes', () => {
   });
 });
 
+// Two jobs in one queue, oldest first, the way claimNext sorts: a long
+// transfer that started first and a playlist import that arrived after it.
+describe('ImportRunner, a transfer and a playlist import in one queue', () => {
+  function twoJobs() {
+    const mk = (id: string, total: number, liked: boolean): Job => ({
+      id,
+      status: 'queued',
+      cursor: 0,
+      total,
+      source: 'spotify',
+      kind: liked ? 'liked' : 'playlist',
+      playlistId: liked ? null : 'p1',
+      userId: 'u1',
+      existing: 0,
+    });
+    const jobs = [mk('transfer', 200, true), mk('playlist', 10, false)];
+    const items: Item[] = jobs.flatMap((j) =>
+      Array.from({ length: j.total }, (_, i) => ({
+        id: `${j.id}-${i}`,
+        jobId: j.id,
+        position: i,
+        source: source(i),
+        candidates: [],
+        status: 'pending' as ItemStatus,
+        likedAt: null,
+      })),
+    );
+    const finished: string[] = [];
+    const byId = (id: string) => jobs.find((j) => j.id === id)!;
+    const store: JobStore = {
+      releaseStale: vi.fn(async () => 0),
+      claimNext: vi.fn(async (runnerId: string, now: number, avoid?: string | null) => {
+        const queued = jobs.filter((j) => j.status === 'queued');
+        const next = queued.find((j) => j.id !== avoid) ?? queued[0];
+        if (!next) return null;
+        Object.assign(next, { status: 'running', runner: runnerId, heartbeat: now });
+        return { ...next };
+      }),
+      getJob: vi.fn(async (id: string) => ({ ...byId(id) })),
+      updateJob: vi.fn(async (id: string, patch: JobPatch) => {
+        Object.assign(byId(id), patch);
+        if (patch.status === 'done') finished.push(id);
+      }),
+      pendingItems: vi.fn(async (jobId: string, from: number, limit: number) =>
+        items.filter((i) => i.jobId === jobId && i.status === 'pending' && i.position >= from).slice(0, limit),
+      ),
+      saveResults: vi.fn(async (results: ItemResult[]) => {
+        for (const r of results) Object.assign(items.find((i) => i.id === r.itemId)!, { status: r.status });
+      }),
+      addTrack: vi.fn(async () => {}),
+      like: vi.fn(async () => ({ created: true })),
+      hasOtherQueued: vi.fn(async (jobId: string) => jobs.some((j) => j.id !== jobId && j.status === 'queued')),
+      counts: vi.fn(async (jobId: string) => countItems(items.filter((i) => i.jobId === jobId).map((i) => i.status))),
+    };
+    return { jobs, items, finished, store };
+  }
+
+  it('the transfer steps aside after ten batches and the waiting import runs before it carries on', async () => {
+    const q = twoJobs();
+    const matched: string[] = [];
+    const match = vi.fn(async (batch: SourceItem[]) => {
+      const running = q.jobs.find((j) => j.status === 'running')!;
+      matched.push(...batch.map((i) => `${running.id}:${i.position}`));
+      return fakeMatch(batch);
+    });
+    const { r } = runner(q.store, { match });
+    await r.tick();
+
+    expect(q.finished).toEqual(['playlist', 'transfer']);
+    // Ten batches of the transfer, then the whole playlist import, then the
+    // rest of the transfer from its cursor.
+    const firstPlaylist = matched.findIndex((m) => m.startsWith('playlist:'));
+    expect(firstPlaylist).toBe(YIELD_AFTER_BATCHES * 8);
+    expect(matched[firstPlaylist + 10]).toBe(`transfer:${YIELD_AFTER_BATCHES * 8}`);
+    expect(q.jobs.every((j) => j.status === 'done')).toBe(true);
+  });
+});
+
 // The owner's real transfer, which first brought a Minecraft video, a YTP and
 // a satire ad into their Liked songs, and then (with every like read) all
 // their YouTube videos into the preview. Their 16 likes, all filed under

@@ -91,8 +91,10 @@ export interface JobStore {
   /** Put jobs whose runner stopped checking in before `staleBefore` back in
    *  the queue. Returns how many. */
   releaseStale(staleBefore: number): Promise<number>;
-  /** The oldest queued job, now running and held by `runnerId`; or null. */
-  claimNext(runnerId: string, now: number): Promise<RunnerJob | null>;
+  /** The oldest queued job, now running and held by `runnerId`; or null.
+   *  `avoid` is a transfer that just stepped aside: any other queued job
+   *  goes first, and it is taken again only when none is left. */
+  claimNext(runnerId: string, now: number, avoid?: string | null): Promise<RunnerJob | null>;
   getJob(id: string): Promise<RunnerJob | null>;
   updateJob(id: string, patch: JobPatch): Promise<void>;
   /** Pending items from `fromPosition` on, in source order. */
@@ -146,12 +148,16 @@ export class ImportRunner {
         this.again = false;
         const released = await store.releaseStale(now() - (this.deps.staleMs ?? STALE_MS));
         if (released) this.deps.log?.('released orphaned imports', { released });
+        // A transfer that stepped aside is the oldest job in the queue, so
+        // without this it would be claimed straight back.
+        let avoid: string | null = null;
         for (;;) {
-          const job = await store.claimNext(runnerId, now());
+          const job = await store.claimNext(runnerId, now(), avoid);
           if (!job) break;
+          avoid = null;
           this.currentJobId = job.id;
           try {
-            await this.runJob(job);
+            if (await this.runJob(job)) avoid = job.id;
           } catch (e) {
             // The store itself failed (PocketBase down or the playlist gone):
             // say so on the job if we still can.
@@ -169,7 +175,9 @@ export class ImportRunner {
     }
   }
 
-  async runJob(job: RunnerJob): Promise<void> {
+  /** Work through one job. True when a transfer stepped aside for a
+   *  waiting job rather than stopping. */
+  async runJob(job: RunnerJob): Promise<boolean> {
     const { store, sleep, now } = this.deps;
     const backoff = this.deps.backoffMs ?? BACKOFF_MS;
     let failures = 0;
@@ -181,7 +189,7 @@ export class ImportRunner {
     for (;;) {
       const fresh = await store.getJob(job.id);
       // Cancelled, deleted with its playlist, or handed back to the queue.
-      if (!fresh || fresh.status !== 'running') return;
+      if (!fresh || fresh.status !== 'running') return false;
 
       const items = await store.pendingItems(job.id, fresh.cursor, BATCH_SIZE);
       if (!items.length) {
@@ -193,7 +201,7 @@ export class ImportRunner {
           error: '',
           retryAt: null,
         });
-        return;
+        return false;
       }
 
       let results: ItemResult[];
@@ -210,7 +218,7 @@ export class ImportRunner {
             error: GAVE_UP_MESSAGE,
             retryAt: null,
           });
-          return;
+          return false;
         }
         await store.updateJob(job.id, {
           status: transition('running', 'backoff'),
@@ -220,7 +228,7 @@ export class ImportRunner {
         await sleep(wait);
         const after = await store.getJob(job.id);
         // Cancelled, or Retry pressed (back to queued) while waiting.
-        if (!after || after.status !== 'paused') return;
+        if (!after || after.status !== 'paused') return false;
         await store.updateJob(job.id, {
           status: transition('paused', 'resume'),
           error: '',
@@ -254,13 +262,13 @@ export class ImportRunner {
       });
 
       // A transfer can be thousands of songs, so it steps aside now and then
-      // for whoever came after it. The cursor is already saved, and
-      // claimNext still sorts by age, so it comes back once they are done.
+      // for whoever came after it. The cursor is already saved; the next
+      // claim passes over it once, and it comes back when they are done.
       batches += 1;
       if (job.kind === 'liked' && batches % YIELD_AFTER_BATCHES === 0 && (await store.hasOtherQueued(job.id))) {
         this.deps.log?.('transfer yielded to a waiting import', { job: job.id, batches });
         await store.updateJob(job.id, { status: transition('running', 'yield'), heartbeat: null, runner: '' });
-        return;
+        return true;
       }
 
       if (searched) await sleep(pace);
