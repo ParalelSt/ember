@@ -14,6 +14,10 @@
  *  The superuser credentials are the throwaway sandbox's own, passed in the
  *  environment: they are only used against PB_URL directly, to seed a member,
  *  and against the app, to prove the proxy refuses them. */
+import { execSync } from 'node:child_process';
+import fs from 'node:fs';
+import path from 'node:path';
+
 const APP = process.env.APP_URL ?? 'http://127.0.0.1:3053';
 const PB = process.env.PB_URL ?? 'http://127.0.0.1:8086';
 const SU_EMAIL = process.env.EMBER_PB_SUPERUSER_EMAIL;
@@ -105,6 +109,43 @@ const ce = await post('/api/auth/check-email', { email });
 const ceBody = await ce.json().catch(() => ({}));
 check('B6 the server’s own superuser client still works (check-email)', ce.status === 200 && ceBody.status === 'existing',
   `status ${ce.status} ${JSON.stringify(ceBody)}`);
+
+// ── a real browser, through the sign-in form ─────────────────────────────
+// Skipped (with a note) when playwright-core or a Chromium isn't around.
+function findChrome() {
+  if (process.env.CHROME_PATH) return process.env.CHROME_PATH;
+  const root = path.join(process.env.HOME ?? '', 'Library/Caches/ms-playwright');
+  if (!fs.existsSync(root)) return null;
+  for (const d of fs.readdirSync(root).filter((x) => x.startsWith('chromium-')).sort().reverse()) {
+    const found = execSync(
+      `find "${path.join(root, d)}" -maxdepth 6 -type f \\( -name "Google Chrome for Testing" -o -name "Chromium" \\) 2>/dev/null | head -1`,
+      { encoding: 'utf8' },
+    ).trim();
+    if (found) return found;
+  }
+  return null;
+}
+const chromium = await import('playwright-core').then((m) => m.chromium, () => null);
+const chrome = chromium && findChrome();
+if (!chrome) {
+  console.log('SKIP  C (browser): no playwright-core or Chromium; set CHROME_PATH');
+} else {
+  const browser = await chromium.launch({ executablePath: chrome });
+  try {
+    const page = await browser.newPage();
+    await page.goto(`${APP}/auth`);
+    await page.fill('input[type="email"]', email);
+    await page.getByRole('button', { name: 'Continue' }).click();
+    await page.fill('input[type="password"]', PW);
+    await page.locator('button[type="submit"]').click();
+    const signedIn = await page.waitForURL((u) => !u.pathname.startsWith('/auth'), { timeout: 15000 }).then(() => true, () => false);
+    check('C1 signing in through the /auth form in a browser still works', signedIn, page.url());
+    const ui = await page.goto(`${APP}/pb/_/`);
+    check('C2 the PocketBase admin UI is a 404 in the browser', ui?.status() === 404, `status ${ui?.status()}`);
+  } finally {
+    await browser.close();
+  }
+}
 
 const failed = out.filter((c) => !c.pass);
 console.log(`\n${out.length - failed.length}/${out.length} passed`);
