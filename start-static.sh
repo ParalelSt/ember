@@ -14,6 +14,10 @@
 #   POCKETBASE_PORT=8090
 # Either or both may be omitted to keep the defaults. See PORTS.md.
 #
+# PocketBase's superuser comes from POCKETBASE_ADMIN_EMAIL / _PASSWORD there
+# too (or EMBER_PB_SUPERUSER_*), the owner account from EMBER_ADMIN_*. They go
+# to PocketBase's boot hooks only. See SETUP.md, step 4.
+#
 # Production mode (not `next dev`) is used so:
 #   - No dev-origin CSRF check (Tailscale tunnel hostnames work out of the box).
 #   - It's faster and stable to leave running.
@@ -106,6 +110,26 @@ POCKETBASE_PORT="${POCKETBASE_PORT:-}"
 [ -n "$POCKETBASE_PORT" ] || POCKETBASE_PORT="$(read_env POCKETBASE_PORT)"
 POCKETBASE_PORT="${POCKETBASE_PORT:-8090}"
 
+# setting KEY: the exported value, else the one in apps/web/.env.local.
+setting() {
+  local v
+  v="$(printenv "$1" || true)"
+  [ -n "$v" ] || v="$(read_env "$1")"
+  printf '%s' "$v"
+}
+
+# PocketBase's own accounts, for pb_hooks/ensure_superuser.pb.js and
+# ensure_admin.pb.js (bughunt W14: they used to be hardcoded in the public
+# repo). The superuser defaults to the web app's POCKETBASE_ADMIN_* so the
+# two always match; EMBER_PB_SUPERUSER_* override it. Passed to PocketBase
+# alone (see run_service), never to Next or the command line.
+PB_SU_EMAIL="$(setting EMBER_PB_SUPERUSER_EMAIL)"
+[ -n "$PB_SU_EMAIL" ] || PB_SU_EMAIL="$(setting POCKETBASE_ADMIN_EMAIL)"
+PB_SU_PASSWORD="$(setting EMBER_PB_SUPERUSER_PASSWORD)"
+[ -n "$PB_SU_PASSWORD" ] || PB_SU_PASSWORD="$(setting POCKETBASE_ADMIN_PASSWORD)"
+PB_OWNER_EMAIL="$(setting EMBER_ADMIN_EMAIL)"
+PB_OWNER_PASSWORD="$(setting EMBER_ADMIN_PASSWORD)"
+
 # Tell Next where PB is. Overrides whatever's in .env.local so changing
 # POCKETBASE_PORT alone is enough; POCKETBASE_URL stays in sync automatically.
 export POCKETBASE_URL="http://127.0.0.1:${POCKETBASE_PORT}"
@@ -195,6 +219,9 @@ is_watchdog_pid() {
 run_service() {
   case "$1" in
     pocketbase)
+      # This subshell runs PocketBase only, so the accounts go no further.
+      export EMBER_PB_SUPERUSER_EMAIL="$PB_SU_EMAIL" EMBER_PB_SUPERUSER_PASSWORD="$PB_SU_PASSWORD"
+      export EMBER_ADMIN_EMAIL="$PB_OWNER_EMAIL" EMBER_ADMIN_PASSWORD="$PB_OWNER_PASSWORD"
       if [ -n "$WATCHDOG_CMD_PB" ]; then cd "$ROOT" && exec_detached bash -c "$WATCHDOG_CMD_PB"; fi
       cd "$PB_DIR" && exec_detached "$PB" serve --http "127.0.0.1:${POCKETBASE_PORT}"
       ;;
@@ -497,6 +524,10 @@ fi
 if [ -z "$WATCHDOG_CMD_PB" ] && curl -fsS -m 1 "http://127.0.0.1:${POCKETBASE_PORT}/api/health" > /dev/null 2>&1; then
   say "▶ PocketBase already running on :${POCKETBASE_PORT}, skipping start (not supervised)."
 else
+  if [ -z "$PB_SU_EMAIL" ] || [ -z "$PB_SU_PASSWORD" ]; then
+    say "⚠ POCKETBASE_ADMIN_EMAIL / POCKETBASE_ADMIN_PASSWORD are not set in apps/web/.env.local:"
+    say "  PocketBase's superuser is left as it is, and sign-up needs it. See SETUP.md, step 4."
+  fi
   say "▶ starting PocketBase on :${POCKETBASE_PORT}…"
   supervise pocketbase PocketBase "$LOG_DIR/pocketbase.log" &
   SUPERVISORS="$SUPERVISORS $!"
