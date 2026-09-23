@@ -249,6 +249,7 @@ node tests/fake-ug.mjs &                            # port 4331; app needs UG_BA
 MUSIC_DIR="$SB/music" node tests/tabs-fetch.test.mjs # or: npm run test:tabs-fetch (tabs found on Ultimate Guitar: once per song, drawn, follows the song; PB restarted with this branch's pb_hooks)
 node tests/transcribe-timing.test.mjs              # or: npm run test:transcribe-timing (no server needed; python3 or PYTHON_BIN)
 node tests/preferences-ui.test.mjs                  # or: npm run test:preferences-ui (plugin switches across two devices; PB restarted with this branch's pb_hooks)
+node tests/themes-ui.test.mjs                       # or: npm run test:themes-ui (themes: first-paint from the cookie with JS off, saved and shared themes, the /pb rules; PB_URL/APP_URL, default 8089/3051)
 node tests/pranks-ui.test.mjs                       # or: npm run test:pranks-ui (the admin's Control room page and a playing target in a second browser context: ping, upload a sound and play it over the target's ducked music, a repeat every minute landing twice, Stop, Stop everything, the off switch, library and media gate, rules, caps, 45 s expiry; PB restarted with this branch's pb_hooks, the app started with PRANK_TICK_INTERVAL_MS=1000)
 node tests/pranks-realtime.spike.mjs                # or: npm run test:pranks-spike (does PocketBase SSE stream through /pb? under next start it does not: gzip buffers it)
 node tests/android-player-ui.test.mjs               # or: npm run test:android-ui

@@ -66,19 +66,24 @@ function mustRow(rec: Record<string, unknown>): ThemeRow {
   return row;
 }
 
+/** No auto-cancellation: the routes run several reads on this collection
+ *  at once (mine and shared), which the SDK would otherwise cancel as
+ *  duplicates of each other. */
+const q = { requestKey: null };
+
 export function repoFor(pb: PocketBase): ThemesRepo {
   const themes = () => pb.collection('themes');
   return {
     async get(id) {
       try {
-        return toRow(await themes().getOne(id));
+        return toRow(await themes().getOne(id, q));
       } catch (e) {
         if ((e as { status?: number }).status === 404) return null;
         throw e;
       }
     },
     async listMine(owner) {
-      const recs = await themes().getFullList({ filter: pb.filter('owner = {:owner}', { owner }), sort: 'created' });
+      const recs = await themes().getFullList({ filter: pb.filter('owner = {:owner}', { owner }), sort: 'created', ...q });
       return recs.map(toRow).filter((r): r is ThemeRow => r !== null);
     },
     async listShared(exceptOwner) {
@@ -86,6 +91,7 @@ export function repoFor(pb: PocketBase): ThemesRepo {
         filter: pb.filter('shared = true && owner != {:me}', { me: exceptOwner }),
         sort: '-updated',
         expand: 'owner',
+        ...q,
       });
       return page.items.flatMap((rec) => {
         const row = toRow(rec);
@@ -96,17 +102,17 @@ export function repoFor(pb: PocketBase): ThemesRepo {
       });
     },
     async countMine(owner) {
-      const page = await themes().getList(1, 1, { filter: pb.filter('owner = {:owner}', { owner }), skipTotal: false });
+      const page = await themes().getList(1, 1, { filter: pb.filter('owner = {:owner}', { owner }), ...q });
       return page.totalItems;
     },
     async create(row) {
-      return mustRow(await themes().create(row));
+      return mustRow(await themes().create(row, q));
     },
     async update(id, patch) {
-      return mustRow(await themes().update(id, patch));
+      return mustRow(await themes().update(id, patch, q));
     },
     async remove(id) {
-      await themes().delete(id);
+      await themes().delete(id, q);
     },
   };
 }
