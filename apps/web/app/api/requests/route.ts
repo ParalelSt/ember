@@ -5,7 +5,7 @@ import {
   unauthorizedResponse,
 } from "@/lib/auth";
 import { serverLogger } from "@/lib/logger/server";
-import { rateLimitResponse } from "@/lib/rateLimit";
+import { rateLimitResponse, recordRateLimitHit } from "@/lib/rateLimit";
 import { fromError, jsonError } from "@/lib/upsertTrack";
 import { withRequestLog } from "@/lib/logger/withRequestLog";
 import { scrubText } from "@/lib/logger/sanitize";
@@ -72,11 +72,13 @@ function truncate(value: string, max: number): string {
 export const POST = withRequestLog("requests", async (request: NextRequest) => {
   try {
     const { user } = await requireUser();
+    const limitKey = `requests:${user.id}`;
+    const limitCfg = { max: 5, windowMs: 60 * 60 * 1000 };
 
-    const limited = rateLimitResponse(`requests:${user.id}`, {
-      max: 5,
-      windowMs: 60 * 60 * 1000,
-    });
+    // Peek, don't spend: a malformed request or a Discord hiccup shouldn't
+    // burn one of the 5 hourly tries. The quota is only actually charged
+    // (recordRateLimitHit, below) once Discord accepts the message.
+    const limited = rateLimitResponse(limitKey, limitCfg, { consume: false });
     if (limited) return limited;
 
     const parsed = await readReportBody<RequestBody>(request);
@@ -180,6 +182,9 @@ export const POST = withRequestLog("requests", async (request: NextRequest) => {
       });
       return jsonError("Couldn't send the request, please try again", 502);
     }
+
+    // Only charge the hourly quota once the message actually went out.
+    recordRateLimitHit(limitKey, limitCfg);
 
     if (attachmentsDropped) return Response.json({ ok: true, attachmentsDropped });
     return Response.json({ ok: true });

@@ -42,8 +42,18 @@ export interface RateLimitResult {
 
 /** In-memory per-key rate limiter. Loses state on server restart, which is
  *  fine for what it guards: floods, not a determined attacker with many IPs
- *  (the Python helper cap in lib/sources/youtube.ts is the backstop there). */
-export function checkRateLimit(key: string, cfg: RateLimitConfig): RateLimitResult {
+ *  (the Python helper cap in lib/sources/youtube.ts is the backstop there).
+ *
+ *  `consume: false` reads the bucket without recording a hit, for routes
+ *  that must reject an already-over-limit caller up front but only charge
+ *  the quota once the guarded work succeeds (see recordRateLimitHit).
+ *  Defaults to true so existing callers are unchanged. */
+export function checkRateLimit(
+  key: string,
+  cfg: RateLimitConfig,
+  opts: { consume?: boolean } = {},
+): RateLimitResult {
+  const consume = opts.consume ?? true;
   const now = Date.now();
   sweep(now);
   const cutoff = now - cfg.windowMs;
@@ -59,9 +69,22 @@ export function checkRateLimit(key: string, cfg: RateLimitConfig): RateLimitResu
     return { ok: false, retryAfter: Math.max(1, retryAfter), remaining: 0 };
   }
 
-  bucket.hits.push(now);
+  if (consume) bucket.hits.push(now);
   buckets.set(key, bucket);
   return { ok: true, retryAfter: 0, remaining: cfg.max - bucket.hits.length };
+}
+
+/** Records a hit without checking the limit first, for a caller that
+ *  already confirmed (checkRateLimit/rateLimitResponse with consume:false)
+ *  it is under the cap and now charges it because the work succeeded. */
+export function recordRateLimitHit(key: string, cfg: RateLimitConfig): void {
+  const now = Date.now();
+  const cutoff = now - cfg.windowMs;
+  const bucket = buckets.get(key) ?? { hits: [], windowMs: cfg.windowMs };
+  bucket.windowMs = cfg.windowMs;
+  bucket.hits = bucket.hits.filter((t) => t > cutoff);
+  bucket.hits.push(now);
+  buckets.set(key, bucket);
 }
 
 /** The caller's IP address: the LAST X-Forwarded-For entry.
@@ -96,8 +119,12 @@ export async function callerKey(request: Request): Promise<string> {
 
 /** Convenience helper for routes — returns a Response if the caller is over
  *  the limit, otherwise null so the handler continues. */
-export function rateLimitResponse(key: string, cfg: RateLimitConfig): Response | null {
-  const r = checkRateLimit(key, cfg);
+export function rateLimitResponse(
+  key: string,
+  cfg: RateLimitConfig,
+  opts: { consume?: boolean } = {},
+): Response | null {
+  const r = checkRateLimit(key, cfg, opts);
   if (r.ok) return null;
   return Response.json(
     { error: `Slow down — try again in about ${r.retryAfter}s.` },

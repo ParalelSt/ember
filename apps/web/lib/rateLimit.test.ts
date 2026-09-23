@@ -9,7 +9,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const auth = vi.hoisted(() => ({ userId: null as string | null }));
 vi.mock('@/lib/auth', () => ({ verifiedUserId: async () => auth.userId }));
 
-const { callerKey, checkRateLimit, clientIp, _bucketCount, _resetBuckets } = await import('./rateLimit');
+const { callerKey, checkRateLimit, clientIp, rateLimitResponse, recordRateLimitHit, _bucketCount, _resetBuckets } = await import('./rateLimit');
 
 function req(headers: Record<string, string>): Request {
   return new Request('http://ember.test/api/youtube/search?q=x', { headers });
@@ -88,5 +88,37 @@ describe('bucket eviction', () => {
     const r = checkRateLimit('x', { windowMs: 60_000, max: 3 });
     expect(r.ok).toBe(false);
     expect(r.retryAfter).toBeGreaterThan(0);
+  });
+});
+
+const quotaCfg = { windowMs: 60_000, max: 2 };
+
+describe('rateLimit consume:false / recordRateLimitHit', () => {
+  it('consume:false does not use up the quota, even repeatedly', () => {
+    const key = `peek-${Math.random()}`;
+    expect(checkRateLimit(key, quotaCfg, { consume: false }).ok).toBe(true);
+    expect(checkRateLimit(key, quotaCfg, { consume: false }).ok).toBe(true);
+    expect(checkRateLimit(key, quotaCfg, { consume: false }).ok).toBe(true);
+    // Real quota (max 2) is still fully available.
+    expect(checkRateLimit(key, quotaCfg).ok).toBe(true);
+    expect(checkRateLimit(key, quotaCfg).ok).toBe(true);
+    expect(checkRateLimit(key, quotaCfg).ok).toBe(false);
+  });
+
+  it('recordRateLimitHit charges the quota so a later check sees it', () => {
+    const key = `record-${Math.random()}`;
+    recordRateLimitHit(key, quotaCfg);
+    recordRateLimitHit(key, quotaCfg);
+    expect(checkRateLimit(key, quotaCfg, { consume: false }).ok).toBe(false);
+  });
+
+  it('rateLimitResponse with consume:false still rejects an already-over-limit caller', () => {
+    const key = `resp-${Math.random()}`;
+    recordRateLimitHit(key, quotaCfg);
+    recordRateLimitHit(key, quotaCfg);
+    const res = rateLimitResponse(key, quotaCfg, { consume: false });
+    expect(res?.status).toBe(429);
+    // Checking again did not add a third hit; the bucket is still exactly 2.
+    expect(checkRateLimit(key, quotaCfg, { consume: false }).ok).toBe(false);
   });
 });
