@@ -1,23 +1,29 @@
-/** Admin pranks (plan Tasks 1 to 3): two browser contexts, an admin and a
- *  target.
+/** Admin pranks (plan Tasks 1 to 3, 7 and 8): two browser contexts, an
+ *  admin on the Control room page and a target.
  *
  *      npm i -D playwright-core
  *      PB_URL=http://127.0.0.1:8089 APP_URL=http://127.0.0.1:3051 node tests/pranks-ui.test.mjs
  *
  *  The target plays an uploaded song; the admin page shows what they play in
- *  words; a Ping from the admin page reaches the target and is acknowledged
- *  within a couple of seconds, with nothing shown on the target's side. The
- *  admin uploads a short generated sound from the page and sends it: the
+ *  words; a ping reaches the target and is acknowledged within a couple of
+ *  seconds, with nothing shown on the target's side. The admin uploads a
+ *  short generated sound from the page, picks the target and sends it: the
  *  target's page plays it on a second audio element while the music element
- *  drops to 30% and comes back, and the log says done. The library refuses
- *  a renamed image and a too-long sound; its media URL answers only admins
- *  and the target of a live prank. The target cannot read acknowledged rows
- *  or write any. Members get 403, the switch gives 409, the hourly cap and
- *  the 15 s sound gap 429, a sound for a paused person is skipped, and a
- *  ping to someone offline reads as expired after 45 s.
+ *  drops to 30% and comes back, and the log says done. A repeat started
+ *  while the target is paused logs a skip that does not count against the
+ *  hour, and its Stop ends it; with the music back on, a repeat every minute
+ *  lands twice (ducking each time), Stop everything ends it for good, and
+ *  the page's off switch blocks sending. The library refuses a renamed image
+ *  and a too-long sound; its media URL answers only admins and the target of
+ *  a live prank. The target cannot read acknowledged rows or write any.
+ *  Members get 403, the switch gives 409, the hourly cap and the 15 s sound
+ *  gap 429, a sound for a paused person is skipped, and a ping to someone
+ *  offline reads as expired after 45 s.
  *
  *  Needs a sandbox: PocketBase (PB_URL) with pb_hooks/ensure_pranks.pb.js
- *  loaded, and the app (APP_URL) built from this tree with MUSIC_DIR set.
+ *  loaded, and the app (APP_URL) built from this tree with MUSIC_DIR set and
+ *  PRANK_TICK_INTERVAL_MS=1000 (the repeat tick every second rather than
+ *  every 5 s; the 60 s between plays is real, so the run takes about 3 min).
  *  Set CHROME_PATH to pick a browser. */
 import { execSync } from 'node:child_process';
 import fs from 'node:fs';
@@ -169,20 +175,23 @@ for (let i = 0; i < 20 && !line.startsWith('Playing'); i++) {
 check('the admin sees what the target plays, in words', line.startsWith(`Playing “${song.title}” by Test Band`) && line.endsWith('in the browser'), line);
 check('the people line carries no ids', !line.includes(song.id) && !line.includes('upload:'));
 
-// ── admin pings from the page ─────────────────────────────────────────────
+// ── the Control room, and a ping ──────────────────────────────────────────
 const a = await context(boss);
 await a.page.goto(`${APP_URL}/admin/pranks`, { waitUntil: 'networkidle' });
-check('the admin page says it is temporary', await a.page.getByText(/Temporary page/).isVisible());
+const regions = await Promise.all(['People', 'Compose', 'Sound library', 'Log']
+  .map((h) => a.page.getByRole('heading', { name: h, exact: true }).isVisible()));
+check('the admin page is the Control room: people, compose, library, log', regions.every(Boolean), regions.join(' '));
+check('the page offers no song swap', !/swap/i.test((await a.page.textContent('body')) ?? ''));
 const targetName = `Target ${run}`;
 const personLine = await a.page.locator('li', { hasText: targetName }).getByTestId('presence-line').textContent({ timeout: 10_000 }).catch(() => '');
 check('the admin page shows the target playing', (personLine ?? '').startsWith('Playing'), personLine ?? '');
 
-const created = a.page.waitForResponse((r) => r.url().endsWith('/api/admin/pranks') && r.request().method() === 'POST');
-await a.page.getByRole('button', { name: `Ping ${targetName}` }).click();
-const createdRes = await created;
+// The page sends sounds only; a ping (the reachability check) goes straight
+// to the route.
+const createdRes = await app(boss, '/api/admin/pranks', { method: 'POST', body: JSON.stringify({ targetId: target.id, kind: 'ping' }) });
 const sentAt = Date.now();
 const prank = (await createdRes.json()).prank;
-check('Ping creates a prank (201)', createdRes.status() === 201);
+check('Ping creates a prank (201)', createdRes.status === 201);
 
 let row = null;
 while (Date.now() - sentAt < 8_000) {
@@ -286,9 +295,17 @@ const mediaStatus = (who, headers = {}) => fetch(`${APP_URL}${mediaPath}`, { hea
   await t.page.waitForTimeout(400);
   const before = await t.page.evaluate(() => window.__mix.at(-1).musicVolume);
 
-  await a.page.getByRole('combobox', { name: 'Sound to play' }).selectOption(snd.id);
+  // Pick the target: the composer fills in with what they play and the
+  // hourly limit line.
+  await a.page.getByRole('button', { name: `Pick ${targetName}` }).click();
+  const composer = a.page.getByTestId('prank-composer');
+  check('the composer fills in for the picked person', await composer.getByText(`Send a sound to ${targetName}`).isVisible()
+    && ((await composer.textContent()) ?? '').includes('Playing'));
+  const limitBefore = (await a.page.getByTestId('prank-limit').textContent()) ?? '';
+  check('it shows the limit line', /^\d+ of 20 this hour for /.test(limitBefore), limitBefore);
+  await composer.getByRole('radio', { name: new RegExp(soundName) }).click();
   const sentRes = a.page.waitForResponse((r) => r.url().endsWith('/api/admin/pranks') && r.request().method() === 'POST');
-  await a.page.getByRole('button', { name: `Play the sound for ${targetName}` }).click();
+  await composer.getByRole('button', { name: 'Send', exact: true }).click();
   const soundRes = await sentRes;
   const soundSentAt = Date.now();
   const soundPrank = (await soundRes.json()).prank;
@@ -363,6 +380,146 @@ const mediaStatus = (who, headers = {}) => fetch(`${APP_URL}${mediaPath}`, { hea
   check('and the log says why, in words', pausedLine.endsWith('not played: nothing was playing'), pausedLine);
   const noFx = await t.page.evaluate(() => ![...document.querySelectorAll('audio')].some((x) => x.src.includes('/api/pranks/media/')));
   check('nothing played on the paused page', noFx);
+}
+
+// ── repeats ───────────────────────────────────────────────────────────────
+// The app runs with PRANK_TICK_INTERVAL_MS=1000 (the tick every second
+// instead of every 5 s) so a fire lands within a second of being due; the
+// 60 s minimum between plays is the real one.
+const pbList = (collection, filter) => fetch(`${PB_URL}/api/collections/${collection}/records?perPage=200&filter=${encodeURIComponent(filter)}`,
+  { headers: pbHeaders }).then((r) => r.json()).then((b) => b.items ?? []);
+const hourCount = async () => (await app(boss, '/api/admin/pranks/people').then((r) => r.json()))
+  .people?.find((p) => p.id === target.id)?.hourCount;
+const hhmm = (ms) => { const d = new Date(ms); return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`; };
+async function startRepeat() {
+  const composer = a.page.getByTestId('prank-composer');
+  const box = composer.getByRole('checkbox', { name: 'Repeat until a stop time' });
+  if (!(await box.isChecked())) await box.check();
+  await composer.getByRole('spinbutton', { name: 'Every how many minutes' }).fill('1');
+  await composer.getByLabel('Stop time').fill(hhmm(Date.now() + 10 * 60_000));
+  const res = a.page.waitForResponse((r) => r.url().endsWith('/api/admin/pranks/schedules') && r.request().method() === 'POST');
+  await composer.getByRole('button', { name: 'Repeat every minute' }).click();
+  const r = await res;
+  return { status: r.status(), schedule: (await r.json()).schedule };
+}
+{
+  // Still paused from above: a repeat that finds nothing playing logs a skip
+  // and does not count against the hour.
+  const countBefore = await hourCount();
+  const first = await startRepeat();
+  check('the page starts a repeat every minute (201)', first.status === 201 && first.schedule?.intervalSec === 60,
+    `${first.status} ${first.schedule?.line}`);
+  const banner = await a.page.getByRole('list', { name: 'Repeats running' }).getByText(first.schedule.line).first()
+    .waitFor({ timeout: 8_000 }).then(() => true, () => false);
+  check('it shows as running, in words', banner);
+  let skipped = [];
+  for (let i = 0; i < 40 && skipped.length === 0; i++) {
+    skipped = await pbList('pranks', `schedule = "${first.schedule.id}"`);
+    if (skipped.length === 0) await sleep(250);
+  }
+  check('a fire while their music is paused is skipped as not playing', skipped.length === 1
+    && skipped[0].status === 'skipped' && skipped[0].reason === 'not-playing', JSON.stringify(skipped.map((r) => [r.status, r.reason])));
+  check('and does not count against their hour', (await hourCount()) === countBefore, `${countBefore} -> ${await hourCount()}`);
+  const skipLine = await a.page.getByText('nothing was playing (repeat)').first().waitFor({ timeout: 8_000 }).then(() => true, () => false);
+  check('the log shows the skipped repeat, in words', skipLine);
+  await a.page.getByRole('button', { name: `Stop ${first.schedule.line}` }).first().click();
+  let stopped = null;
+  for (let i = 0; i < 20; i++) {
+    stopped = await fetch(`${PB_URL}/api/collections/prank_schedules/records/${first.schedule.id}`, { headers: pbHeaders }).then((r) => r.json());
+    if (stopped.active === false) break;
+    await sleep(250);
+  }
+  check('Stop on a repeat ends it', stopped?.active === false);
+
+  // Music back on, then a repeat that lands twice.
+  await t.page.evaluate(() => [...document.querySelectorAll('audio')].find((x) => x.src && !x.src.includes('/api/pranks/media/'))?.play());
+  let line = '';
+  for (let i = 0; i < 20 && !line.startsWith('Playing'); i++) {
+    line = (await app(boss, '/api/admin/pranks/people').then((r) => r.json())).people?.find((p) => p.id === target.id)?.line ?? '';
+    if (!line.startsWith('Playing')) await sleep(500);
+  }
+  check('the target is playing again', line.startsWith('Playing'), line);
+
+  await t.page.evaluate(() => {
+    window.__mix = [];
+    window.__mixTimer = setInterval(() => {
+      const all = [...document.querySelectorAll('audio')];
+      const fx = all.find((x) => x.src.includes('/api/pranks/media/'));
+      const music = all.find((x) => x.src && !x.src.includes('/api/pranks/media/'));
+      window.__mix.push({ at: Date.now(), fx: !!fx, musicVolume: music ? music.volume : null });
+    }, 100);
+  });
+  await t.page.waitForTimeout(400);
+  const level = await t.page.evaluate(() => window.__mix.at(-1).musicVolume);
+
+  const second = await startRepeat();
+  const startedAt = Date.now();
+  check('a second repeat starts (201)', second.status === 201, String(second.status));
+  let plays = [];
+  while (Date.now() - startedAt < 100_000) {
+    plays = await pbList('pranks', `schedule = "${second.schedule.id}"`);
+    if (plays.filter((r) => r.status === 'done').length >= 2) break;
+    await sleep(1000);
+  }
+  const done = plays.filter((r) => r.status === 'done').sort((x, y) => x.created.localeCompare(y.created));
+  check('two plays land from the repeat, both heard to the end', done.length === 2 && done.every((r) => r.played_sec >= 3),
+    JSON.stringify(plays.map((r) => [r.status, r.reason, r.played_sec])));
+  const apart = done.length === 2 ? (Date.parse(done[1].created.replace(' ', 'T')) - Date.parse(done[0].created.replace(' ', 'T'))) / 1000 : 0;
+  check('a minute apart', apart >= 58 && apart <= 70, `${apart.toFixed(1)} s`);
+
+  await t.page.waitForTimeout(600);
+  const mix = await t.page.evaluate(() => { clearInterval(window.__mixTimer); return window.__mix; });
+  const runs = [];
+  for (let i = 0; i < mix.length; i++) {
+    if (mix[i].fx && !mix[i - 1]?.fx) runs.push({ from: i, to: i });
+    if (mix[i].fx) runs.at(-1).to = i;
+  }
+  check('the target page played the sound twice', runs.length === 2, `${runs.length} runs`);
+  const duckedEach = runs.every((r) => Math.min(...mix.slice(r.from + 3, r.to + 1).map((m) => m.musicVolume ?? 1)) < level * 0.5);
+  check('the music went down under each play', duckedEach);
+  check('and came back after', Math.abs((mix.at(-1).musicVolume ?? 0) - level) < 0.005 && !mix.at(-1).fx, `${mix.at(-1).musicVolume} vs ${level}`);
+  const repeatDone = await a.page.getByText(`played a sound for ${targetName}: done after`).nth(2)
+    .waitFor({ timeout: 8_000 }).then(() => true, () => false);
+  check('the log lists the repeat plays as done', repeatDone);
+
+  // Stop everything: the repeat ends and even a due fire no longer plays.
+  const stopRes = a.page.waitForResponse((r) => r.url().endsWith('/api/admin/pranks/stop-all'));
+  await a.page.getByRole('button', { name: 'Stop everything' }).click();
+  const stopBody = await (await stopRes).json();
+  const after = await fetch(`${PB_URL}/api/collections/prank_schedules/records/${second.schedule.id}`, { headers: pbHeaders }).then((r) => r.json());
+  check('Stop everything ends the repeat', stopBody.stopped >= 1 && after.active === false, JSON.stringify(stopBody));
+  const gone = await a.page.getByRole('list', { name: 'Repeats running' }).waitFor({ state: 'detached', timeout: 8_000 })
+    .then(() => true, () => false);
+  check('and the page shows nothing running', gone);
+  await fetch(`${PB_URL}/api/collections/prank_schedules/records/${second.schedule.id}`, { method: 'PATCH', headers: pbHeaders,
+    body: JSON.stringify({ next_fire_at: new Date(Date.now() - 1000).toISOString().replace('T', ' ') }) });
+  await sleep(3000);
+  const later = await pbList('pranks', `schedule = "${second.schedule.id}"`);
+  check('a stopped repeat never fires again, even when due', later.length === plays.length, `${plays.length} -> ${later.length}`);
+}
+
+// ── the off switch, from the page ─────────────────────────────────────────
+{
+  const sw = a.page.getByRole('switch', { name: 'Pranks on or off' });
+  const offRes = a.page.waitForResponse((r) => r.url().endsWith('/api/admin/pranks/settings') && r.request().method() === 'PATCH');
+  await sw.click();
+  await offRes;
+  const isOff = await a.page.getByText('Nobody can be pranked right now.').waitFor({ timeout: 8_000 }).then(() => true, () => false);
+  check('the page switches pranks off', isOff && (await sw.getAttribute('aria-checked')) === 'false');
+  const composer = a.page.getByTestId('prank-composer');
+  const box = composer.getByRole('checkbox', { name: 'Repeat until a stop time' });
+  if (await box.isChecked()) await box.uncheck().catch(() => {});
+  check('while off the page cannot send', await composer.getByRole('button', { name: /^(Send|Repeat .*)$/ }).isDisabled());
+  const direct = await app(boss, '/api/admin/pranks', { method: 'POST', body: JSON.stringify({ targetId: target.id, kind: 'sound', soundId: snd.id }) });
+  check('and the route refuses a sound (409)', direct.status === 409);
+  const rep = await app(boss, '/api/admin/pranks/schedules', { method: 'POST', body: JSON.stringify({
+    targetId: target.id, soundId: snd.id, intervalSec: 60, endsAt: new Date(Date.now() + 10 * 60_000).toISOString() }) });
+  check('and a repeat (409)', rep.status === 409);
+  const onRes = a.page.waitForResponse((r) => r.url().endsWith('/api/admin/pranks/settings') && r.request().method() === 'PATCH');
+  await sw.click();
+  await onRes;
+  const isOn = await a.page.getByText('Every admin can send a sound to a friend.').waitFor({ timeout: 8_000 }).then(() => true, () => false);
+  check('and back on', isOn);
 }
 
 // ── delete from the library ───────────────────────────────────────────────
