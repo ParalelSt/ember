@@ -24,7 +24,65 @@ const PUBLIC_API_PREFIXES = ['/api/youtube/stream/', '/api/search', '/api/tracks
   // version and a proxied installer — no user data.
   '/api/desktop/'];
 
+/** PocketBase routes only a superuser uses (as PocketBase itself sees the
+ *  path, after the /pb prefix): the admin UI, superuser sign-in and
+ *  management, settings, backups, logs and the collection definitions. The
+ *  server's own admin client reaches PocketBase directly on POCKETBASE_URL,
+ *  so nothing legitimate asks for these through /pb. next.config.ts keeps the
+ *  same list out of its /pb rewrite for paths this proxy's matcher skips. */
+const PB_SUPERUSER_ROUTES = [
+  /^\/_(\/|$)/,
+  /^\/api\/(admins|settings|backups|logs)(\/|$)/,
+  /^\/api\/collections\/_superusers(\/|$)/,
+  /^\/api\/collections(\/[^/]*)?\/?$/,
+];
+
+/** The path as a server would finally route it: percent-decoded until
+ *  stable, backslashes and repeated slashes folded, dot segments resolved
+ *  (never above the root), lower-cased. null when the encoding is broken. */
+function normalizePath(raw: string): string | null {
+  let p = raw;
+  for (let i = 0; i < 5; i++) {
+    let decoded: string;
+    try {
+      decoded = decodeURIComponent(p);
+    } catch {
+      return null;
+    }
+    if (decoded === p) break;
+    p = decoded;
+  }
+  const parts: string[] = [];
+  for (const seg of p.replace(/\\/g, '/').split('/')) {
+    if (seg === '' || seg === '.') continue;
+    if (seg === '..') parts.pop();
+    else parts.push(seg);
+  }
+  const trailing = /[/\\]$/.test(p) && parts.length > 0 ? '/' : '';
+  return ('/' + parts.join('/') + trailing).toLowerCase();
+}
+
+/** True for a /pb request that would reach PocketBase's superuser surface
+ *  (bughunt W14). Checks every spelling that still lands on the same route:
+ *  encoded letters or slashes, doubled slashes, dot segments, other case. */
+export function isBlockedPbPath(path: string): boolean {
+  const full = normalizePath(path);
+  const rawPb = /^\/pb(\/|$)/i.test(path);
+  const normPb = full !== null && /^\/pb(\/|$)/.test(full);
+  if (!rawPb && !normPb) return false;
+  // What PocketBase would be asked for once the rewrite drops the prefix.
+  const targets = [rawPb ? normalizePath(path.slice(3) || '/') : null, normPb ? full.slice(3) || '/' : null];
+  if (full === null || (rawPb && targets[0] === null)) return true;
+  return targets.some((t) => t !== null && PB_SUPERUSER_ROUTES.some((re) => re.test(t)));
+}
+
 export default async function proxy(req: NextRequest) {
+  // The superuser surface never goes through the public app (bughunt W14):
+  // anyone who reached it could try the superuser password from the internet.
+  if (isBlockedPbPath(req.nextUrl.pathname)) {
+    return new NextResponse('Not found', { status: 404 });
+  }
+
   // Per-request id, attached to outgoing responses + any server log lines.
   // Set on both the forwarded request (so route handlers in withRequestLog
   // can read it back via req.headers) and the response (so the client's
