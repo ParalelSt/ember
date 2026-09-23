@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import type { DownloadButtonProps } from '@/components/library/DownloadButton';
 import { pinIdFor, type CollectionRef } from '@/lib/collections';
-import { cancelDownload, downloadPlaylist, isStale, pinList, playableFor, removeDownload } from '@/lib/offline';
+import { cancelDownload, downloadPlaylist, isStale, pinList, playableFor, removeDownload, type DownloadResult } from '@/lib/offline';
 import { nativeOfflinePresent, useNativeOfflinePresent, useOfflineDownloadAllowed } from '@/lib/offlineNative';
 import { useOfflineStore } from '@/stores/useOfflineStore';
 import { useOnline } from '@/lib/useOnline';
@@ -41,13 +41,18 @@ export function useOfflinePin(ref: CollectionRef, name: string, tracks: Track[])
   const save = () =>
     ref.kind === 'playlist'
       ? downloadPlaylist({ id: ref.id, name, created_at: '', artwork_url: null }, tracks)
-      : pinList(id, name, tracks);
+      : pinList(id, name, tracks).then(() => null);
+
+  /** ", 3 of 40 couldn't be saved": the tracks a browser-storage download
+   *  skipped because they failed. Empty when nothing did. */
+  const failedNote = (r: DownloadResult | null) =>
+    r?.failed ? `, ${r.failed} of ${r.saved + r.failed} couldn't be saved` : '';
 
   const onDownload = async () => {
     try {
-      await save();
+      const result = await save();
       const skipped = tracks.length - playableFor(tracks).length;
-      const note = skipped > 0 ? `, ${skipped} unavailable skipped` : '';
+      const note = (skipped > 0 ? `, ${skipped} unavailable skipped` : '') + failedNote(result);
       // Native pin() resolves as soon as the pin is recorded, before a
       // single byte lands, so promising "Downloaded" there is a lie.
       toast.success(`${nativeOfflinePresent() ? `Downloading "${name}"` : `Downloaded "${name}"`}${note}`);
@@ -60,9 +65,10 @@ export function useOfflinePin(ref: CollectionRef, name: string, tracks: Track[])
 
   const onUpdate = async () => {
     try {
-      await save();
-      setStale(false);
-      toast.success(`Updated "${name}"`);
+      const result = await save();
+      // Tracks that failed are still missing from the offline copy.
+      setStale(!!result?.failed);
+      toast.success(`Updated "${name}"${failedNote(result)}`);
     } catch (e) {
       if ((e as Error).name !== 'AbortError') {
         toast.error(`Couldn't download "${name}", please try again.`);
