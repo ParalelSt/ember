@@ -8,7 +8,7 @@
 # Referenced from capabilities/default.json.
 [[permission]]
 identifier = "allow-ember-commands"
-description = "Ember's own IPC commands: native audio, Discord presence, log forwarding, and voice search."
+description = "Ember's own IPC commands: native audio, Discord presence, log forwarding, voice search, and the window following the theme."
 
 [permission.commands]
 allow = [
@@ -29,5 +29,8 @@ allow = [
   "speech_start",
   "speech_stop",
   "speech_abort",
+  # The window background and title bar follow the page's theme
+  # (src/theme.rs).
+  "theme_apply",
 ]
 deny = []
