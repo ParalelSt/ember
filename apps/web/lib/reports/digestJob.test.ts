@@ -278,16 +278,46 @@ describe('runDigest', () => {
     rmSync(markerPath(new Date(now)));
   });
 
-  it('writes the day marker even when the post failed, so it cannot retry every minute', async () => {
-    const now = Date.now();
-    vi.mocked(serverLogger.entriesSince).mockResolvedValue([entry()]);
-    fetchMock.mockRejectedValue(new Error('network down'));
+  // A failed post used to mark the day sent anyway, so one Discord hiccup at
+  // 08:00 lost the whole day's digest. It retries now, spaced out and capped.
+  it('does not mark the day sent when the post failed, and retries it later', async () => {
+    const t0 = new Date(2026, 8, 14, 9, 0).getTime();
+    vi.mocked(serverLogger.entriesSince).mockResolvedValue([entry({ ts: t0 - 60_000 })]);
+    fetchMock.mockRejectedValueOnce(new Error('network down'));
+    try {
+      const first = await runDigest({ now: t0, writeMarker: true });
+      expect(first).toMatchObject({ posted: false, reason: 'post-failed' });
+      expect(await markerExists(new Date(t0))).toBe(false);
 
-    const result = await runDigest({ now, writeMarker: true });
+      // The next minute's tick: too soon, nothing is read, posted or summarized.
+      const soon = await runDigest({ now: t0 + 60_000, writeMarker: true });
+      expect(soon).toMatchObject({ posted: false, reason: 'retry-later' });
+      expect(fetchMock).toHaveBeenCalledTimes(1);
 
-    expect(result.posted).toBe(false);
-    expect(await markerExists(new Date(now))).toBe(true);
-    rmSync(markerPath(new Date(now)));
+      const later = await runDigest({ now: t0 + 31 * 60_000, writeMarker: true });
+      expect(later.posted).toBe(true);
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      expect(await markerExists(new Date(t0))).toBe(true);
+    } finally {
+      rmSync(markerPath(new Date(t0)), { force: true });
+    }
+  });
+
+  it('gives up for the day after 3 failed posts, so a dead webhook cannot spam', async () => {
+    const t0 = new Date(2026, 8, 15, 9, 0).getTime();
+    vi.mocked(serverLogger.entriesSince).mockResolvedValue([entry({ ts: t0 - 60_000 })]);
+    fetchMock.mockResolvedValue(new Response('nope', { status: 500 }));
+    try {
+      for (let i = 0; i < 3; i++) {
+        const r = await runDigest({ now: t0 + i * 31 * 60_000, writeMarker: true });
+        expect(r).toMatchObject({ posted: false, reason: 'post-failed' });
+      }
+      expect(fetchMock).toHaveBeenCalledTimes(3);
+      // Marked done: the scheduler's shouldRunNow stops calling for today.
+      expect(await markerExists(new Date(t0))).toBe(true);
+    } finally {
+      rmSync(markerPath(new Date(t0)), { force: true });
+    }
   });
 
   it('honours an explicit window', async () => {

@@ -35,11 +35,11 @@ async function runBootSweep(): Promise<void> {
     await Promise.all(
       entries
         // Both the daily log files and the digest's own "already sent today"
-        // markers (digestJob.ts's markerPath) live in this directory and
+        // and "failed today" markers (digestJob.ts) live in this directory and
         // share the same YYYY-MM-DD naming, so one sweep with the same age
         // rule retires both; without this the markers never got deleted and
         // accumulated forever, one file a day.
-        .filter((name) => /^(errors|digest)-\d{4}-\d{2}-\d{2}\.(jsonl|sent)$/.test(name))
+        .filter((name) => /^(errors|digest)-\d{4}-\d{2}-\d{2}\.(jsonl|sent|failed)$/.test(name))
         .map(async (name) => {
           const dateMs = parseFileDate(name);
           if (dateMs && dateMs < cutoffMs) {
@@ -53,7 +53,7 @@ async function runBootSweep(): Promise<void> {
 }
 
 function parseFileDate(name: string): number | null {
-  const m = name.match(/^(?:errors|digest)-(\d{4})-(\d{2})-(\d{2})\.(?:jsonl|sent)$/);
+  const m = name.match(/^(?:errors|digest)-(\d{4})-(\d{2})-(\d{2})\.(?:jsonl|sent|failed)$/);
   if (!m) return null;
   const [, y, mo, d] = m;
   return Date.UTC(Number(y), Number(mo) - 1, Number(d));
