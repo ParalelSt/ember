@@ -227,6 +227,9 @@ if [ "$MODE" = "no-start" ]; then
   echo "✓ code updated and dependencies installed."
   echo "  Now restart your services yourself — and make sure POCKETBASE"
   echo "  actually restarts, or new collections/fields won't be created."
+  echo "  Give PocketBase EMBER_PB_SUPERUSER_EMAIL / EMBER_PB_SUPERUSER_PASSWORD"
+  echo "  (the same values as POCKETBASE_ADMIN_* in apps/web/.env.local), or its"
+  echo "  superuser is left as it is. See SETUP.md, step 4."
   exit 0
 fi
 

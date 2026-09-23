@@ -64,15 +64,27 @@ run ./update.sh", that is the fix.
 
 Drop the **PocketBase** binary from step 1 into the `pocketbase/` folder if you haven't already.
 
-### 4. Nothing to do — the PB super-admin auto-creates
+### 4. Choose the PocketBase superuser password
 
-When you run the app in step 5, the `ensure_superuser.pb.js` hook bundled in `pocketbase/pb_hooks/` runs on PB boot and creates the super-admin `admin@ember.com` / `egKa5WNMx3QpuG7` (the values pre-filled in your `.env.local` from `.env.example`). No `/_/` setup needed.
+PocketBase has a superuser (the `/_/` admin UI login), and the web server signs in as it to read the invite list. Set its password in `apps/web/.env.local`:
 
-If you'd rather use different credentials, edit BOTH:
-- `pocketbase/pb_hooks/ensure_superuser.pb.js` — the `SU_EMAIL` / `SU_PASSWORD` constants at the top.
-- `apps/web/.env.local` — the matching `POCKETBASE_ADMIN_EMAIL` / `POCKETBASE_ADMIN_PASSWORD`.
+```bash
+POCKETBASE_ADMIN_EMAIL=admin@ember.com
+POCKETBASE_ADMIN_PASSWORD=<a long random password>
+```
 
-Then restart PB so the hook picks up the new values.
+Make one with `openssl rand -base64 24 | tr -d '/+='` (letters and digits only: quotes and `#` confuse the env file). Never use a password that has ever been in this repo; the repo is public.
+
+`./start-static.sh` passes these two values to PocketBase as `EMBER_PB_SUPERUSER_EMAIL` / `EMBER_PB_SUPERUSER_PASSWORD`, and the `ensure_superuser.pb.js` hook then creates the superuser, or changes its password to match, on every PocketBase boot. So `.env.local` is the one place to set or change it: edit, restart, done. If you start PocketBase by hand (with `npm run dev`), pass them yourself:
+
+```bash
+cd pocketbase
+EMBER_PB_SUPERUSER_EMAIL=admin@ember.com EMBER_PB_SUPERUSER_PASSWORD='<same password>' ./pocketbase serve
+```
+
+Without them, the hook changes nothing and only logs a warning: an existing superuser keeps its password, so a missing variable can never lock you out.
+
+**Optional, the owner account.** Add `EMBER_ADMIN_EMAIL` / `EMBER_ADMIN_PASSWORD` to `.env.local` and the `ensure_admin.pb.js` hook creates that app account with `is_admin = true` on a fresh database. It is only a first password: once the account exists the hook never touches it again, so change it in the app afterwards.
 
 ### 5. Start the app
 
@@ -606,7 +618,7 @@ http://127.0.0.1:8090/_/ → `users` collection → click the user → toggle `i
 
 The admin dashboard lets you view every user and track, delete either, toggle is_admin on others, and read recent server errors. Standard CRUD is in PB's admin UI at `/_/`.
 
-**Hardcoded owner account.** The hook at `pocketbase/pb_hooks/ensure_admin.pb.js` pre-creates a user record with a hardcoded email + password and `is_admin = true` on every fresh PB boot — so the project owner can sign into any self-hosted deployment without anyone setting them up. The credentials at the top of the file are the project owner's; friends self-hosting can edit them to swap in their own email + password. Treat the password like a real secret — anyone with this file *and* a deployment URL can sign in as admin.
+**Owner account.** `pocketbase/pb_hooks/ensure_admin.pb.js` creates the owner's account with `is_admin = true` when `EMBER_ADMIN_EMAIL` / `EMBER_ADMIN_PASSWORD` are set and the account doesn't exist yet (see **Friend setup, step 4**). It never changes an existing account's password. Nothing is hardcoded: the repo is public.
 
 ---
 
@@ -614,10 +626,10 @@ The admin dashboard lets you view every user and track, delete either, toggle is
 
 ```bash
 rm -rf pocketbase/pb_data
-cd pocketbase && ./pocketbase serve
+./start-static.sh
 ```
 
-After the restart, you'll need to recreate the PB admin account at `/_/` again and re-paste the creds into `.env.local`.
+The superuser comes back from `POCKETBASE_ADMIN_EMAIL` / `POCKETBASE_ADMIN_PASSWORD` in `.env.local` (and the owner account from `EMBER_ADMIN_*`, if set). Starting PocketBase by hand instead, pass them as shown in **Friend setup, step 4**.
 
 ---
 
@@ -634,6 +646,10 @@ Then `Ctrl+C` whatever's running and start it again. `./.venv/bin/yt-dlp --versi
 **`./.venv/bin/python: command not found`** — you skipped the venv step. Go back to **Friend setup → 3**.
 
 **`/auth` shows "PocketBase admin credentials not configured"** — you didn't paste `POCKETBASE_ADMIN_EMAIL` / `POCKETBASE_ADMIN_PASSWORD` into `apps/web/.env.local`. Re-do **Friend setup → 4**. The invite-only check needs them to read the `allowed_emails` collection.
+
+**`/auth` shows "Failed to authenticate as PB admin"** — PocketBase's superuser password doesn't match `POCKETBASE_ADMIN_PASSWORD`. Restart with `./start-static.sh` (or `./update.sh`): that restarts PocketBase with the password from `.env.local`, and its hook brings the superuser in line. `logs/pocketbase.log` says what it did (`[ensure_superuser] ...`).
+
+**The PocketBase admin UI (`/_/`) says 404 on the public URL** — on purpose. The app's `/pb` proxy never forwards the admin UI or the superuser API to the internet. Open it on the host itself: `http://127.0.0.1:8090/_/`, or from your own computer through an SSH tunnel (`ssh -L 8090:127.0.0.1:8090 you@host`, then http://127.0.0.1:8090/_/).
 
 **"Bug reporting not configured" 503 when clicking Report a bug** — the Discord webhook isn't set. Owner: paste your webhook URL into the `DEFAULT_WEBHOOK_URL` constant at the top of `apps/web/app/api/bug-report/route.ts`. Anyone else: set `DISCORD_BUG_REPORT_WEBHOOK_URL` in `apps/web/.env.local`.
 
