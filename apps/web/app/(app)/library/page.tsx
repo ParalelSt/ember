@@ -59,7 +59,9 @@ export default function LibraryPage() {
 
   return (
     <div>
-      <div className="mb-6 flex items-center justify-between gap-4">
+      {/* Wraps: on a narrow phone the buttons drop under the title instead
+          of running off the right edge. */}
+      <div className="mb-6 flex flex-wrap items-center justify-between gap-x-block gap-y-cluster">
         <PageTitle>Your library</PageTitle>
         <div className="flex shrink-0 items-center gap-1">
           <Button

@@ -161,7 +161,7 @@ const SPACING_BASELINE: Record<string, number> = {
   'app/(app)/admin/users/page.tsx': 8,
   'app/(app)/dizajn/sve/page.tsx': 45,
   'app/(app)/library/loading.tsx': 5,
-  'app/(app)/library/page.tsx': 7,
+  'app/(app)/library/page.tsx': 6,
   'app/(app)/page.tsx': 1,
   'app/(app)/playlist/[id]/page.tsx': 2,
   'app/(app)/search/loading.tsx': 8,
