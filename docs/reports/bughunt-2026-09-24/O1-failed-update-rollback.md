@@ -1,0 +1,11 @@
+# O1. A failed update left Ember down, with no way back
+**What you'd notice:** `./update.sh` hits a network hiccup during `npm ci`, or the new version doesn't build, and Ember stays down until someone fixes it by hand. The site is simply gone.
+**Why it happened:** the update stopped Ember, then installed and built the new version in place. Any error after that exited on the spot: the old dependencies and the old build were already deleted, and nothing started Ember again.
+**What changed:** the old `node_modules` and build are now moved aside instead of deleted, and only thrown away once the new version has built. If anything fails after the pull (install, build, Ctrl+C, the SSH window closing mid-build), `update.sh` puts back the previous commit, dependencies and build, starts that version again, and says `UPDATE FAILED: <step>` / "The update did NOT go through". The build now runs in `update.sh` itself (same command, same moment: after the stop), and Ember then starts on that build with `./start-static.sh --no-build`. Building next to the running app was checked and ruled out: Next 16's `distDir` rewrites `tsconfig.json`, and two copies plus a build may not fit in the host's memory. Files: `update.sh`, `start-static.sh` (`--no-build`), `deploy/ember.service`, `SETUP.md`, `.gitignore`.
+**Compare:** before = `9b71ff8`, after = `eddeec9`.
+- Test: `bash tests/update-script.test.sh` (section "failed updates roll back": failing npm, failing build, the same inside tmux, a hangup mid-build, and a good update).
+  - Before: `FAIL  the site is up again on the previous version`, `FAIL  the code is back at the previous commit`, `FAIL  the site serves the previous build again`. 69/84.
+  - After: 84/84. `bash tests/watchdog.test.sh` 124/124.
+- Try it yourself: no safe way on the sandbox; the test runs the real script against a throwaway copy.
+**What changes for you:** a good update looks and behaves the same (Ember is down for the install and build, a few minutes, as before). A failed one now ends with the old version running. While an update runs it needs up to about 1 GB of extra disk for the set-aside copies.
+**Risk:** medium: it changes the update's order of steps. Every path (success, npm failure, build failure, tmux, systemd, hangup) is covered by the test above.
