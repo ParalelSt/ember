@@ -147,7 +147,7 @@ export function SearchDropdown({ open, onClose, field, body }: SearchDropdownPro
   };
 
   return (
-    <div className="shrink-0 px-page-lg pt-page-lg pb-block">
+    <div className="shrink-0 px-page-lg pt-page-lg">
       {/* Lines the box up with the page's own content column. */}
       <div className="mx-auto max-w-(--content-max)">
         <div

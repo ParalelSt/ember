@@ -1,19 +1,18 @@
-/** The desktop search bar's bottom gap, in a real browser (owner's report:
- *  "the pc navbar is missing a portion at the bottom"; picked candidate,
- *  see app/(app)/dizajn/sve: Gap with a fade). Two pieces, both real app
- *  chrome now, not a /dizajn candidate:
+/** The desktop search bar's top-of-page fade, in a real browser (owner's
+ *  report: "the pc navbar is missing a portion at the bottom"). A padded
+ *  16px gap was tried first and rejected by the owner (it pushed the page
+ *  and its scrollbar down), so now:
  *
- *    - SearchDropdown.tsx's wrapper carries `pb-block` (16px) under the
- *      pill, so a scrolled page's content no longer runs up against its
- *      bottom edge.
+ *    - SearchDropdown.tsx's wrapper has no bottom padding: the scroller
+ *      starts right under the pill, as before.
  *    - app/(app)/layout.tsx draws a short fade at the top of
  *      `data-app-scroller`, pointer-events-none, so content fades out as
  *      it slides under the bar instead of being cut off mid-line.
  *
- *  Checked at 1280 and 1920 wide: the measured pill-to-scroller gap is
- *  16px, the fade exists and does not intercept clicks. At 390 (phone: the
- *  search bar is not in flow there, see SearchOverlayContainer.tsx) the
- *  fade is absent. No width overflows horizontally.
+ *  Checked at 1280 and 1920 wide: no gap between the pill and the
+ *  scroller, the fade exists and does not intercept clicks. At 390 (phone:
+ *  the search bar is not in flow there, see SearchOverlayContainer.tsx)
+ *  the fade is absent. No width overflows horizontally.
  *
  *      node tests/searchbar-gap-ui.test.mjs
  *
@@ -92,7 +91,7 @@ try {
     check(at('pill and scroller found'), !!m, JSON.stringify(m));
     if (m) {
       // 2px tolerance for subpixel rounding.
-      check(at('16px gap between the pill bottom and the scroller top'), Math.abs(m.gap - 16) <= 2, `${m.gap}`);
+      check(at('no gap between the pill bottom and the scroller top (owner rejected the padded gap)'), Math.abs(m.gap) <= 2, `${m.gap}`);
       check(at('the fade exists'), m.fadePresent, JSON.stringify(m));
       check(at('the fade is visible on desktop'), m.fadeVisible, JSON.stringify(m));
       check(at('the fade does not intercept clicks'), m.fadePointerEvents === 'none', `${m.fadePointerEvents}`);
