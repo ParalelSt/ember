@@ -40,6 +40,10 @@ public class MainActivity extends BridgeActivity {
         injectBridgeIntoErrorPage();
         publishSafeAreaInsets();
         applyStoredTheme();
+        BackButton.INSTANCE.install(this, () -> getBridge() == null ? null : getBridge().getWebView(), () -> {
+            moveTaskToBack(true);
+            return kotlin.Unit.INSTANCE;
+        });
     }
 
     /**

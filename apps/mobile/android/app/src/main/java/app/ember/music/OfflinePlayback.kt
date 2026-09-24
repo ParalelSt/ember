@@ -28,15 +28,23 @@ class OfflinePlayback(
     var stalled = false
         private set
 
+    /** This error is the connection being gone, which these rules own: the
+     *  queue listener's skip-on-error (QueueListener) stands aside for it. */
+    fun handles(error: PlaybackException): Boolean = error.errorCode in NETWORK_ERRORS && !isOnline()
+
+    /** Offline, this song cannot load, so the player is moved past it at
+     *  once: it is never heard, and never counts as a play. */
+    fun skips(item: MediaItem): Boolean = !isOnline() && !playableOffline(item)
+
     override fun onPlayerError(error: PlaybackException) {
-        if (error.errorCode in NETWORK_ERRORS && !isOnline()) skipAhead()
+        if (handles(error)) skipAhead()
     }
 
     /** Pre-empt: an auto-advance (or a tap, or the car's Next) onto a song
      *  that cannot load offline moves on before it errors. */
     override fun onMediaItemTransition(item: MediaItem?, reason: Int) {
         if (item == null) return
-        if (!isOnline() && !playableOffline(item)) skipAhead()
+        if (skips(item)) skipAhead()
         // A song that can play (picked by hand, say) ends a stall.
         else setStalled(false)
     }

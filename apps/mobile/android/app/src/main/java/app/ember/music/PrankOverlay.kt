@@ -1,6 +1,7 @@
 package app.ember.music
 
 import android.content.Context
+import android.media.AudioManager
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -191,7 +192,7 @@ class PrankOverlay(
             onStarted(OverlayEvents.started(false, "error:url"))
             return
         }
-        if (!music.playWhenReady) {
+        if (!musicAudible()) {
             onStarted(OverlayEvents.started(false, "not-playing"))
             return
         }
@@ -204,6 +205,17 @@ class PrankOverlay(
             prepare()
             play()
         }
+    }
+
+    /** Play left on is not the music playing: through a call Android only
+     *  holds it (play stays on, the music is suppressed), and the sound, which
+     *  never asks Android for the speaker, would play into the call. Some call
+     *  apps never hold the music at all, so a phone in a call is out too. */
+    private fun musicAudible(): Boolean {
+        val mode = (context.getSystemService(Context.AUDIO_SERVICE) as AudioManager).mode
+        return music.playWhenReady &&
+            music.playbackSuppressionReason == Player.PLAYBACK_SUPPRESSION_REASON_NONE &&
+            mode == AudioManager.MODE_NORMAL
     }
 
     fun stop() = finish("stopped")

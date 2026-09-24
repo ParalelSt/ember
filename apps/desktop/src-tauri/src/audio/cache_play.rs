@@ -12,7 +12,9 @@ use std::time::Duration;
 use tauri::test::{mock_app, MockRuntime};
 use tauri::{App, Listener, Manager};
 
-use super::{audio_load, audio_play, audio_seek, AudioEngine};
+use souvlaki::MediaPlayback;
+
+use super::{audio_load, audio_play, audio_seek, audio_set_metadata, AudioEngine};
 use crate::cache::tests::{host, Host, Reply, TempDir};
 use crate::cache::{AudioCache, PrefetchOutcome};
 
@@ -220,4 +222,77 @@ async fn repeat_one_on_a_cached_song_plays_the_cached_copy_again() {
     assert!(rig.playing(), "the repeat did not play: {:?}", rig.events.lock().expect("events"));
     assert_eq!(rig.count("audio:error"), 0);
     assert_eq!(source.requests.load(Ordering::SeqCst), 1, "only the prefetch reached the host");
+}
+
+// --- L5 on top of the cache: the OS media widget -----------------------------
+
+impl Rig {
+    fn set_metadata(&self, title: &str) {
+        let app = self.app.handle().clone();
+        audio_set_metadata(app.state::<AudioEngine>(), title.into(), "Artist".into(), "Album".into(), String::new());
+    }
+
+    fn widget(&self) -> super::Widget {
+        self.app.state::<AudioEngine>().widget()
+    }
+}
+
+fn about_two_minutes(d: Option<Duration>) -> bool {
+    d.is_some_and(|d| (119.0..=121.0).contains(&d.as_secs_f64()))
+}
+
+/// The page names the song before the engine has opened it: the widget gets
+/// the length of the cached file once it is open, not "unknown".
+#[tokio::test(flavor = "multi_thread")]
+async fn the_os_widget_gets_the_cached_songs_length() {
+    let rig = Rig::new();
+    let source = song_host();
+    rig.seed(&source).await;
+
+    rig.set_metadata("Cached song");
+    assert_eq!(rig.widget().duration, None, "nothing is loaded yet");
+    rig.load(&format!("cache:{KEY}")).await;
+
+    let w = rig.widget();
+    assert_eq!(w.title.as_deref(), Some("Cached song"));
+    assert!(about_two_minutes(w.duration), "duration {:?}", w.duration);
+    assert!(matches!(w.playback, Some(MediaPlayback::Playing { progress: Some(_) })), "{:?}", w.playback);
+}
+
+/// The other order: the song is open (a cached one opens at once) before
+/// the page names it.
+#[tokio::test(flavor = "multi_thread")]
+async fn metadata_after_a_cached_load_still_has_its_length() {
+    let rig = Rig::new();
+    let source = song_host();
+    rig.seed(&source).await;
+    rig.load(&format!("cache:{KEY}")).await;
+    rig.set_metadata("Cached song");
+    assert!(about_two_minutes(rig.widget().duration), "{:?}", rig.widget());
+}
+
+/// A seek moves the widget's scrubber with it; the end of the song (the end
+/// of the queue, if nothing else is loaded) shows as Stopped.
+#[tokio::test(flavor = "multi_thread")]
+async fn the_widget_follows_a_seek_and_stops_at_the_end() {
+    let rig = Rig::new();
+    let source = song_host();
+    rig.seed(&source).await;
+    rig.load(&format!("cache:{KEY}")).await;
+
+    let app = rig.app.handle().clone();
+    audio_seek(app.clone(), app.state::<AudioEngine>(), 90.0);
+    match rig.widget().playback {
+        Some(MediaPlayback::Playing { progress: Some(p) }) => {
+            assert!(p.0.as_secs_f64() >= 89.0, "the widget still thinks it is at {:?}", p.0)
+        }
+        other => panic!("not playing with a position: {other:?}"),
+    }
+
+    let started = std::time::Instant::now();
+    while rig.count("audio:ended") == 0 && started.elapsed() < Duration::from_secs(60) {
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    assert_eq!(rig.count("audio:ended"), 1);
+    assert_eq!(rig.widget().playback, Some(MediaPlayback::Stopped));
 }

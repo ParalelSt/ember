@@ -7,7 +7,7 @@
 //! drains itself, standing in for the sound card, as fast as it will go: a
 //! two minute song plays through in seconds.
 //!
-//! Bughunt 2026-09-24, P02, P03 and P07. See docs/reports/bughunt-2026-09-24/.
+//! Bughunt 2026-09-24, P02, P03, P07 and A8. See docs/reports/bughunt-2026-09-24/.
 
 use std::io::{BufRead, BufReader, Write};
 use std::net::{TcpListener, TcpStream};
@@ -18,7 +18,7 @@ use std::time::{Duration, Instant};
 use tauri::test::{mock_app, MockRuntime};
 use tauri::{App, AppHandle, Listener, Manager};
 
-use super::{audio_load, audio_pause, audio_play, audio_seek, AudioEngine};
+use super::{audio_load, audio_pause, audio_play, audio_seek, audio_stop, AudioEngine};
 
 /// 120 s of AAC in a plain m4a: a cached song, decoded seekable.
 const TRACK: &[u8] = include_bytes!("../../test-fixtures/tone-faststart.m4a");
@@ -319,4 +319,24 @@ async fn repeat_one_plays_the_song_again_after_it_ends() {
         rig.until(Duration::from_secs(60), |r| r.count("audio:ended") == 2).await,
         "the repeat should reach the end again"
     );
+}
+
+// --- A8: stop around a load --------------------------------------------------
+
+/// Stop, pressed while the song is still on its way. Stop dropped the sink,
+/// but there was none yet: the load went on, put its sink in and played the
+/// song the listener had just stopped.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_stop_during_a_slow_load_is_kept() {
+    let rig = Rig::new();
+    let slow = host(&[Answer::Song], Duration::from_millis(1_500));
+    let load = tokio::spawn(load_on(rig.app.handle().clone(), slow.url.clone(), true));
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    audio_stop(rig.engine());
+    load.await.expect("load");
+
+    assert_eq!(rig.sink(), None, "stop was pressed during the load, yet a sink went in");
+    assert_eq!(rig.count("audio:play"), 0, "audio:play after stop: {:?}", rig.events());
+    assert!(!rig.engine().load_in_flight(), "nothing is loading after a stop");
+    assert_eq!(rig.engine().widget().playback, Some(souvlaki::MediaPlayback::Stopped), "the OS widget says stopped");
 }

@@ -1,9 +1,11 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Ember",
-  "version": "0.4.5",
+  "version": "0.4.6",
   "identifier": "app.ember.desktop",
-  "build": {},
+  "build": {
+    "frontendDist": "offline"
+  },
   "app": {
     "withGlobalTauri": true,
     "windows": [

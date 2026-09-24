@@ -6,6 +6,7 @@
 // emits `audio:*` events back to the webview.
 
 mod applog;
+mod connect;
 mod audio;
 mod cache;
 mod discord;
@@ -14,6 +15,15 @@ mod theme;
 mod update;
 
 use tauri::Manager;
+
+/// Whether EMBER_DEVTOOLS=1 should open devtools on launch (bughunt L4):
+/// only in a debug build, and only when the env var is exactly "1". Pure and
+/// parameterized (rather than reading `cfg!`/`env::var` itself) so the
+/// decision is unit testable independent of which profile `cargo test`
+/// itself happens to run as.
+fn wants_devtools_on_launch(is_debug_build: bool, env_val: Option<&str>) -> bool {
+    is_debug_build && env_val == Some("1")
+}
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -44,6 +54,7 @@ pub fn run() {
         .manage(discord::DiscordPresence::default())
         .manage(applog::LogFile(std::sync::Mutex::new(log_path.clone())))
         .manage(speech::new_backend(log_path.as_deref()))
+        .manage(connect::Retry::default())
         // Runs in the webview BEFORE the page loads. Forwards the things that
         // are otherwise invisible in a packaged app: console errors/warnings,
         // uncaught exceptions, rejected promises, and the status of every
@@ -149,6 +160,13 @@ pub fn run() {
                 }
             }
 
+            // The server may be out of reach (offline, down, tailnet not up
+            // yet): the window then shows a Retry page instead of staying
+            // dead. See connect.rs.
+            let connect_handle = app.handle().clone();
+            let connect_log = log_path.clone();
+            tauri::async_runtime::spawn(connect::watch(connect_handle, connect_log));
+
             // Check for a new desktop build in the background. Never blocks
             // startup, and a failure is logged rather than surfaced — see
             // update.rs. EMBER_NO_UPDATE=1 opts out (used by CI's smoke test,
@@ -162,9 +180,14 @@ pub fn run() {
             }
 
             // Devtools: right-click → Inspect Element works in release too when
-            // the `devtools` feature is on. EMBER_DEVTOOLS=1 opens it on launch.
-            #[cfg(feature = "devtools")]
-            if std::env::var("EMBER_DEVTOOLS").as_deref() == Ok("1") {
+            // the `devtools` feature is on (see Cargo.toml). EMBER_DEVTOOLS=1
+            // additionally opens it on launch, but only in debug builds: there
+            // is no crate-level "devtools" feature to gate on (bughunt L4,
+            // clippy flagged the old `#[cfg(feature = "devtools")]` here as
+            // unexpected/dead code, so EMBER_DEVTOOLS=1 silently did nothing),
+            // and auto-opening in a shipped release build is not the intended
+            // behavior anyway.
+            if wants_devtools_on_launch(cfg!(debug_assertions), std::env::var("EMBER_DEVTOOLS").ok().as_deref()) {
                 if let Some(w) = app.get_webview_window("main") {
                     w.open_devtools();
                 }
@@ -198,6 +221,7 @@ pub fn run() {
             speech::speech_stop,
             speech::speech_abort,
             theme::theme_apply,
+            connect::connect_retry,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Ember desktop");
@@ -298,6 +322,27 @@ const APP_LOG_SCRIPT: &str = r#"
   send('info', 'webview logging active @ ' + location.href + ' | bridge at load: ' + (bridge() ? 'yes' : 'no'));
 })();
 "#;
+
+#[cfg(test)]
+mod devtools_tests {
+    use super::wants_devtools_on_launch;
+
+    #[test]
+    fn opens_in_a_debug_build_when_asked() {
+        assert!(wants_devtools_on_launch(true, Some("1")));
+    }
+
+    #[test]
+    fn stays_closed_in_a_release_build_even_when_asked() {
+        assert!(!wants_devtools_on_launch(false, Some("1")));
+    }
+
+    #[test]
+    fn stays_closed_in_a_debug_build_when_not_asked() {
+        assert!(!wants_devtools_on_launch(true, None));
+        assert!(!wants_devtools_on_launch(true, Some("0")));
+    }
+}
 
 #[cfg(test)]
 mod capability_tests {
