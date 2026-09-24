@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { SectionHeader } from '@/components/page/SectionHeader';
+import { ApplyBar } from '@/components/settings/appearance/ApplyBar';
 import { ColourEditor } from '@/components/settings/appearance/ColourEditor';
 import { InspectorPanel, InspectorTabStrip, type InspectorTab } from '@/components/settings/appearance/InspectorTabs';
 import { ShareTheme, type ShareTarget } from '@/components/settings/appearance/ShareTheme';
@@ -16,12 +17,13 @@ import { THEME_CAP } from '@/lib/theme/saved';
 
 /** Settings > Appearance, the "Preview + inspector" layout: a live preview
  *  of the app next to one panel with three tabs (Themes, Colours, Share).
- *  Below xl the panel drops under the preview. Every change shows on the
- *  whole app at once and saves itself. */
+ *  Below xl the panel drops under the preview. Picking a theme or changing
+ *  a colour shows only in the preview; Apply makes it the theme of the
+ *  whole app (and saves it), Back to current drops it. */
 export default function SettingsAppearance() {
   const editor = useThemeEditor();
   const [tab, setTab] = useState<InspectorTab>('themes');
-  const { selection, list, status } = editor;
+  const { selection, active, list, status } = editor;
 
   const shareTarget: ShareTarget =
     selection.kind === 'mine'
@@ -35,9 +37,9 @@ export default function SettingsAppearance() {
   const base = PRESET_BY_ID[selection.base];
   const hint =
     selection.kind === 'preset'
-      ? 'Change a colour and it is saved as a new theme in My themes.'
+      ? 'Change a colour and apply it, and it is saved as a new theme in My themes.'
       : selection.kind === 'loose'
-        ? `Change a colour and ${selection.name} is saved to My themes.`
+        ? `Change a colour and apply it, and ${selection.name} is saved to My themes.`
         : null;
 
   return (
@@ -49,6 +51,16 @@ export default function SettingsAppearance() {
           className="h-96 min-w-0 xl:sticky xl:top-0 xl:h-128 xl:flex-1"
         />
         <div className="flex min-w-0 flex-col gap-block xl:w-96 xl:shrink-0">
+          {editor.dirty && (
+            <ApplyBar
+              name={selection.name}
+              edited={editor.edited}
+              canApply={editor.canApply}
+              applying={editor.applying}
+              onApply={() => void editor.apply()}
+              onDiscard={editor.discard}
+            />
+          )}
           <InspectorTabStrip active={tab} onChange={setTab} />
           <p
             role="status"
@@ -69,15 +81,17 @@ export default function SettingsAppearance() {
 
           <InspectorPanel id="themes" active={tab}>
             <ThemeLibrary
-              activePreset={selection.kind === 'preset' ? selection.base : null}
-              activeThemeId={selection.kind === 'mine' || selection.kind === 'others' ? selection.key : null}
+              shownPreset={selection.kind === 'preset' ? selection.base : null}
+              shownThemeId={selection.kind === 'mine' || selection.kind === 'others' ? selection.key : null}
+              inUsePreset={active.kind === 'preset' ? active.base : null}
+              inUseThemeId={active.kind === 'mine' || active.kind === 'others' ? active.key : null}
               mine={list?.mine ?? null}
               shared={list?.shared ?? null}
               cap={list?.cap ?? THEME_CAP}
               loadFailed={editor.loadFailed}
-              looseName={selection.kind === 'loose' ? selection.name : null}
-              onPickPreset={(id) => void editor.pickPreset(id)}
-              onUse={(id) => void editor.use(id)}
+              looseName={active.kind === 'loose' ? active.name : null}
+              onPickPreset={editor.pickPreset}
+              onUse={editor.use}
               onNew={() => {
                 void editor.create().then((made) => made && setTab('colours'));
               }}

@@ -10,8 +10,8 @@ import { docFromSaved, type SavedTheme, type SharedTheme, type ThemeSelection } 
 vi.mock('next/link', () => ({ default: ({ children, ...rest }: ComponentProps<'a'>) => <a {...rest}>{children}</a> }));
 
 // A small in-memory /api/themes + /api/theme, so the page runs its real
-// flows (optimistic select, autosave, adopt) against something that answers
-// like the routes do.
+// flows (the draft in the preview, Apply's optimistic select, adopt)
+// against something that answers like the routes do.
 const server = vi.hoisted(() => ({
   mine: [] as SavedTheme[],
   shared: [] as SharedTheme[],
@@ -110,7 +110,7 @@ const LUKA: SharedTheme = {
 
 function start(doc: ThemeDoc = DEFAULT_THEME) {
   server.active = doc;
-  useThemeStore.setState({ doc, preview: null, userId: 'u1', loaded: true });
+  useThemeStore.setState({ doc, draft: null, userId: 'u1', loaded: true });
   return render(<SettingsAppearance />);
 }
 
@@ -122,6 +122,9 @@ function typeHex(label: string, hex: string) {
   fireEvent.blur(field);
 }
 const status = () => screen.getByTestId('save-status');
+const applyButton = () => screen.getByRole('button', { name: 'Apply' });
+const apply = () => fireEvent.click(applyButton());
+const previewVar = (name: string) => screen.getByTestId('theme-preview').style.getPropertyValue(name);
 const SLOW = { timeout: 3000 };
 
 beforeEach(() => {
@@ -134,7 +137,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  useThemeStore.setState({ doc: DEFAULT_THEME, preview: null, userId: null });
+  useThemeStore.setState({ doc: DEFAULT_THEME, draft: null, userId: null });
 });
 
 describe('Settings > Appearance', () => {
@@ -151,32 +154,63 @@ describe('Settings > Appearance', () => {
     expect(screen.getByRole('switch', { name: 'Share with everyone' })).toBeInTheDocument();
   });
 
-  it('picking a preset applies and saves it', async () => {
+  it('picking a preset shows it in the preview only; Apply applies and saves it', async () => {
     start();
     await screen.findByTestId('theme-count');
-    const midnight = screen.getByRole('radio', { name: /Midnight/ });
-    fireEvent.click(midnight);
-    expect(useThemeStore.getState().doc).toEqual({ v: 1, preset: 'midnight' });
-    expect(api.setTheme).toHaveBeenCalledWith({ preset: 'midnight' });
-    await waitFor(() => expect(status()).toHaveTextContent('Saved'));
+    expect(screen.queryByTestId('apply-bar')).toBeNull();
+
+    fireEvent.click(screen.getByRole('radio', { name: /Midnight/ }));
+    // The preview carries the chosen colours on its own wrapper...
+    expect(previewVar('--ember')).toBe(formatOklch(MIDNIGHT.accent));
     expect(screen.getByRole('radio', { name: /Midnight/ })).toHaveAttribute('aria-checked', 'true');
+    // ...and nothing else moved: the active theme, the account, the "In use" tag.
+    expect(useThemeStore.getState().doc).toEqual(DEFAULT_THEME);
+    expect(api.setTheme).not.toHaveBeenCalled();
+    expect(within(screen.getByRole('radio', { name: /Ember/ })).getByTestId('in-use')).toBeInTheDocument();
+    expect(screen.getByTestId('apply-bar')).toHaveTextContent('Midnight shows in the preview only.');
+    expect(screen.getByRole('button', { name: 'Back to current' })).toBeInTheDocument();
+
+    apply();
+    await waitFor(() => expect(useThemeStore.getState().doc).toEqual({ v: 1, preset: 'midnight' }));
+    expect(api.setTheme).toHaveBeenCalledWith({ preset: 'midnight' });
+    await waitFor(() => expect(status()).toHaveTextContent('Applied'));
+    expect(screen.queryByTestId('apply-bar')).toBeNull();
+    expect(within(screen.getByRole('radio', { name: /Midnight/ })).getByTestId('in-use')).toBeInTheDocument();
     expect(screen.getByRole('radio', { name: /Ember/ })).toHaveAttribute('aria-checked', 'false');
-    // The preview carries the chosen colours on its own wrapper.
-    expect(screen.getByTestId('theme-preview').style.getPropertyValue('--ember')).toBe(formatOklch(MIDNIGHT.accent));
+  });
+
+  it('Back to current puts the preview back on the theme in use', async () => {
+    start({ v: 1, preset: 'forest' });
+    await screen.findByTestId('theme-count');
+    fireEvent.click(screen.getByRole('radio', { name: /Mono/ }));
+    tab('Colours');
+    typeHex('Accent', '#3aa0ff');
+    expect(screen.getByTestId('apply-bar')).toHaveTextContent('Your changes to Mono show in the preview only.');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Back to current' }));
+    expect(screen.queryByTestId('apply-bar')).toBeNull();
+    expect(previewVar('--ember')).toBe(formatOklch(PRESET_BY_ID.forest.inputs.accent));
+    expect(hexField('Accent').value).toBe(oklchToHex(PRESET_BY_ID.forest.inputs.accent));
+    expect(api.setTheme).not.toHaveBeenCalled();
+    expect(api.createTheme).not.toHaveBeenCalled();
   });
 
   describe('My themes', () => {
-    it('New saves a copy of what is showing, puts it in use and opens Colours', async () => {
+    it('New saves a copy of what is showing, shows it in the preview and opens Colours', async () => {
       start({ v: 1, preset: 'forest' });
       await screen.findByTestId('theme-count');
       fireEvent.click(screen.getByRole('button', { name: /New/ }));
       await waitFor(() => expect(screen.getByRole('tab', { name: 'Colours' })).toHaveAttribute('aria-selected', 'true'));
       expect(api.createTheme).toHaveBeenCalledWith({ name: 'New theme', base: 'forest', inputs: PRESET_BY_ID.forest.inputs });
       const made = server.mine[0]!;
-      expect(useThemeStore.getState().doc.themeId).toBe(made.id);
+      // Saved to the list, not put in use: that is Apply's job.
+      expect(useThemeStore.getState().doc).toEqual({ v: 1, preset: 'forest' });
+      expect(api.setTheme).not.toHaveBeenCalled();
       tab('Themes');
       expect(screen.getByTestId('theme-count')).toHaveTextContent('1 of 20');
-      expect(screen.getByRole('button', { name: 'Use New theme' })).toHaveAttribute('aria-pressed', 'true');
+      expect(screen.getByRole('button', { name: 'Preview New theme' })).toHaveAttribute('aria-pressed', 'true');
+      apply();
+      await waitFor(() => expect(useThemeStore.getState().doc.themeId).toBe(made.id));
     });
 
     it('rename, duplicate and delete', async () => {
@@ -228,24 +262,32 @@ describe('Settings > Appearance', () => {
       expect(screen.getByRole('button', { name: /New/ })).toBeDisabled();
       expect(screen.getByText(/That is the most you can keep \(20\)/)).toBeInTheDocument();
 
-      // Editing a preset would make a 21st theme: refused, in plain words.
+      // Applying an edited preset would make a 21st theme: refused, in plain words.
       tab('Colours');
       typeHex('Accent', '#3aa0ff');
-      await waitFor(() => expect(status()).toHaveTextContent('Not saved: You can keep up to 20 themes. Delete one to make room.'), SLOW);
+      apply();
+      await waitFor(() => expect(status()).toHaveTextContent('Not applied: You can keep up to 20 themes. Delete one to make room.'), SLOW);
+      expect(screen.getByTestId('apply-bar')).toBeInTheDocument();
     });
   });
 
   describe('Shared by others', () => {
-    it('lists them by name, Use puts one in use, Copy makes one of mine', async () => {
+    it('lists them by name, Preview shows one, Apply puts it in use, Copy makes one of mine', async () => {
       server.shared = [LUKA];
       start();
       const row = (await screen.findByText('Cold brew')).closest('[data-testid="shared-theme"]') as HTMLElement;
       expect(within(row).getByText('by Luka')).toBeInTheDocument();
 
-      fireEvent.click(within(row).getByRole('button', { name: 'Use Cold brew' }));
-      expect(api.setTheme).toHaveBeenCalledWith({ themeId: LUKA.id });
+      fireEvent.click(within(row).getByRole('button', { name: 'Preview Cold brew' }));
+      expect(within(row).getByRole('button', { name: 'Preview Cold brew' })).toHaveTextContent('Showing');
+      expect(previewVar('--background')).toBe(formatOklch(LUKA.inputs.background));
+      expect(api.setTheme).not.toHaveBeenCalled();
+      expect(useThemeStore.getState().doc).toEqual(DEFAULT_THEME);
+
+      apply();
+      await waitFor(() => expect(api.setTheme).toHaveBeenCalledWith({ themeId: LUKA.id }));
       expect(useThemeStore.getState().doc.themeId).toBe(LUKA.id);
-      await waitFor(() => expect(within(row).getByRole('button', { name: 'Use Cold brew' })).toHaveTextContent('In use'));
+      await waitFor(() => expect(within(row).getByTestId('in-use')).toBeInTheDocument());
 
       // Read-only on Colours, with the way to a copy.
       tab('Colours');
@@ -300,7 +342,7 @@ describe('Settings > Appearance', () => {
   });
 
   describe('Colours', () => {
-    it('a Basic re-fills the auto rows, a More row pins, Reset unpins, and it all autosaves', async () => {
+    it('a Basic re-fills the auto rows, a More row pins, Reset unpins; the preview follows, Apply saves', async () => {
       const t = saved();
       server.mine = [t];
       start(docFromSaved(t));
@@ -309,14 +351,20 @@ describe('Settings > Appearance', () => {
 
       const surfaceBefore = hexField('Surface').value;
       typeHex('Background', '#303848');
-      // Live at once: the page's preview and the whole app (the store's preview).
+      // Live at once in the page's preview; the app and the account wait for Apply.
       expect(hexField('Surface').value).not.toBe(surfaceBefore);
-      expect(useThemeStore.getState().preview?.custom?.background).toBeDefined();
-      await waitFor(() => expect(api.updateSavedTheme).toHaveBeenCalledTimes(1), SLOW);
-      await waitFor(() => expect(status()).toHaveTextContent('Saved'));
+      expect(oklchToHex(useThemeStore.getState().draft!.edit!.inputs.background)).toBe('#303848');
+      expect(useThemeStore.getState().doc).toEqual(docFromSaved(t));
+      await new Promise((r) => setTimeout(r, 900));
+      expect(api.updateSavedTheme).not.toHaveBeenCalled();
+
+      apply();
+      await waitFor(() => expect(api.updateSavedTheme).toHaveBeenCalledTimes(1));
+      await waitFor(() => expect(status()).toHaveTextContent('Applied'));
       const sent = vi.mocked(api.updateSavedTheme).mock.calls[0]![1].inputs!;
       expect(oklchToHex(sent.background)).toBe('#303848');
       expect(useThemeStore.getState().doc.custom?.background).toEqual(sent.background);
+      expect(screen.queryByTestId('apply-bar')).toBeNull();
 
       // Pin Surface by hand; a Background change leaves it alone.
       const pill = () => screen.getByRole('button', { name: /Surface/ });
@@ -332,20 +380,24 @@ describe('Settings > Appearance', () => {
       expect(hexField('Surface').value).not.toBe('#404040');
     });
 
-    it('a preset edit is saved as a new theme of mine', async () => {
+    it('a preset edit is saved as a new theme of mine on Apply, not before', async () => {
       start({ v: 1, preset: 'midnight' });
       await screen.findByTestId('theme-count');
       tab('Colours');
-      expect(screen.getByText('Change a colour and it is saved as a new theme in My themes.')).toBeInTheDocument();
+      expect(screen.getByText('Change a colour and apply it, and it is saved as a new theme in My themes.')).toBeInTheDocument();
       typeHex('Accent', '#3aa0ff');
-      await waitFor(() => expect(status()).toHaveTextContent('Saved as My Midnight'), SLOW);
+      await new Promise((r) => setTimeout(r, 900));
+      expect(api.createTheme).not.toHaveBeenCalled();
+      expect(server.mine).toHaveLength(0);
+      apply();
+      await waitFor(() => expect(status()).toHaveTextContent('Applied. Saved as My Midnight.'), SLOW);
       expect(api.createTheme).toHaveBeenCalledWith(expect.objectContaining({ name: 'My Midnight', base: 'midnight' }));
       const made = server.mine[0]!;
       expect(useThemeStore.getState().doc.themeId).toBe(made.id);
       expect(hexField('Accent').value).toBe('#3aa0ff');
     });
 
-    it('an unreadable pair shows with Fix it and blocks the save until fixed', async () => {
+    it('an unreadable pair shows with Fix it and blocks Apply until fixed', async () => {
       const t = saved();
       server.mine = [t];
       start(docFromSaved(t));
@@ -359,19 +411,25 @@ describe('Settings > Appearance', () => {
       expect(finding).toHaveAttribute('data-level', 'fail');
       expect(finding).toHaveTextContent('hard to read');
       expect(status()).toHaveTextContent('Not saved: accent links on the background is hard to read.');
-      // Shown live, never saved, never adjusted.
-      expect(useThemeStore.getState().preview?.custom?.accent).toBeDefined();
-      await new Promise((r) => setTimeout(r, 900));
+      // Shown in the preview, never saved, never adjusted, and Apply is off.
+      expect(previewVar('--ember')).not.toBe(formatOklch(NIGHT_DRIVE.accent));
+      expect(applyButton()).toBeDisabled();
+      apply();
+      await new Promise((r) => setTimeout(r, 300));
       expect(api.updateSavedTheme).not.toHaveBeenCalled();
       expect(hexField('Accent').value).toBe('#141c2c');
 
+      // Fix it moves the draft, still unsaved; then Apply is on.
       fireEvent.click(within(finding).getByRole('button', { name: 'Fix it' }));
-      await waitFor(() => expect(api.updateSavedTheme).toHaveBeenCalledTimes(1));
       expect(screen.queryAllByTestId('finding').filter((f) => f.getAttribute('data-level') === 'fail')).toHaveLength(0);
-      await waitFor(() => expect(status()).toHaveTextContent('Saved'));
+      expect(api.updateSavedTheme).not.toHaveBeenCalled();
+      expect(applyButton()).toBeEnabled();
+      apply();
+      await waitFor(() => expect(api.updateSavedTheme).toHaveBeenCalledTimes(1));
+      await waitFor(() => expect(status()).toHaveTextContent('Applied'));
     });
 
-    it('Reset to the base preset asks first, then saves the preset\'s colours', async () => {
+    it('Reset to the base preset asks first, then Apply saves the preset\'s colours', async () => {
       const t = saved();
       server.mine = [t];
       start(docFromSaved(t));
@@ -380,6 +438,8 @@ describe('Settings > Appearance', () => {
       fireEvent.click(screen.getByRole('button', { name: 'Reset to Midnight' }));
       expect(screen.getByTestId('reset-confirm')).toHaveTextContent('Reset every colour to Midnight?');
       fireEvent.click(screen.getByRole('button', { name: 'Reset' }));
+      expect(api.updateSavedTheme).not.toHaveBeenCalled();
+      apply();
       await waitFor(() => expect(api.updateSavedTheme).toHaveBeenCalledWith(t.id, { inputs: MIDNIGHT }));
       await waitFor(() => expect(screen.getByRole('button', { name: 'Reset to Midnight' })).toBeDisabled());
     });
@@ -395,15 +455,24 @@ describe('Settings > Appearance', () => {
     });
   });
 
-  it('leaving the page drops the live draft', async () => {
+  it('leaving the page applies nothing and keeps the draft for when you come back', async () => {
     const t = saved();
     server.mine = [t];
     const { unmount } = start(docFromSaved(t));
     await screen.findByText('Night drive');
     tab('Colours');
-    typeHex('Accent', '#141c2c');
-    expect(useThemeStore.getState().preview).not.toBeNull();
+    typeHex('Accent', '#3aa0ff');
     act(() => unmount());
-    expect(useThemeStore.getState().preview).toBeNull();
+    await new Promise((r) => setTimeout(r, 900));
+    expect(api.updateSavedTheme).not.toHaveBeenCalled();
+    expect(api.setTheme).not.toHaveBeenCalled();
+    expect(useThemeStore.getState().doc).toEqual(docFromSaved(t));
+
+    render(<SettingsAppearance />);
+    expect(await screen.findByTestId('apply-bar')).toHaveTextContent('Your changes to Night drive show in the preview only.');
+    tab('Colours');
+    expect(hexField('Accent').value).toBe('#3aa0ff');
+    apply();
+    await waitFor(() => expect(api.updateSavedTheme).toHaveBeenCalledTimes(1));
   });
 });

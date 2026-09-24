@@ -3,8 +3,20 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { api } from '@/lib/api';
-import { DEFAULT_THEME, parseThemeDoc, sameDoc, type ThemeDoc } from '@/lib/theme/model';
+import type { MoreKey } from '@/lib/theme/editor';
+import { DEFAULT_THEME, parseThemeDoc, sameDoc, type ThemeDoc, type ThemeInputs } from '@/lib/theme/model';
 import { docFromPreset, type ThemeSelection } from '@/lib/theme/saved';
+
+/** What Settings > Appearance is trying out and has not applied: the theme
+ *  picked (`target`, a doc shaped like the active one: a preset, or a saved
+ *  theme's colours copied in) and, once colours are changed, the edit, tied
+ *  to the selection it was made on (`key`, see lib/theme/editor.ts). Only
+ *  the page's preview pane shows it; the app keeps the active theme until
+ *  Apply. */
+export interface ThemeDraft {
+  target: ThemeDoc;
+  edit: { key: string; inputs: ThemeInputs; pinned: ReadonlySet<MoreKey> } | null;
+}
 
 /** The active theme (Settings > Appearance), following the account the same
  *  way the plugin switches in useSettingsStore do: the account is the
@@ -16,11 +28,12 @@ import { docFromPreset, type ThemeSelection } from '@/lib/theme/saved';
 interface ThemeState {
   /** The active theme. Persisted. */
   doc: ThemeDoc;
-  /** An unsaved draft the Appearance page is showing live (colours being
-   *  dragged, a theme that fails the readability guard). Wins over `doc` on
-   *  the page while set. Not persisted. */
-  preview: ThemeDoc | null;
-  setPreview: (doc: ThemeDoc | null) => void;
+  /** Appearance's unapplied draft. Never painted on the app (ThemeApplier
+   *  reads `doc` only). Kept in memory for the session, so leaving
+   *  Appearance and coming back shows it again with Apply; not persisted,
+   *  and sign-out drops it. */
+  draft: ThemeDraft | null;
+  setDraft: (draft: ThemeDraft | null) => void;
 
   /** Make a preset or a saved theme (mine or shared) the active one.
    *  Optimistic: a preset applies at once, a saved theme too when the
@@ -74,8 +87,8 @@ export const useThemeStore = create<ThemeState>()(
   persist(
     (set, get) => ({
       doc: DEFAULT_THEME,
-      preview: null,
-      setPreview: (preview) => set({ preview }),
+      draft: null,
+      setDraft: (draft) => set({ draft }),
 
       select: async (selection, optimistic) => {
         const prev = get().doc;
@@ -128,7 +141,7 @@ export const useThemeStore = create<ThemeState>()(
 
       resetThemeSync: () => {
         editedDuringLoad = false;
-        set({ userId: null, loaded: false, preview: null });
+        set({ userId: null, loaded: false, draft: null });
       },
 
       hydrateFromServer: (doc) => {

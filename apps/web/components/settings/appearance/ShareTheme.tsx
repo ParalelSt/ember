@@ -29,13 +29,13 @@ export function ShareTheme({
         : `Only you see ${target.name}. Turn this on and everyone on this Ember server can use it or copy it, labelled with your name. Only you can change it.`;
       break;
     case 'preset':
-      line = `${target.name} is a preset, so everyone has it already. Change a colour to make a theme of your own, then share that.`;
+      line = `${target.name} is a preset, so everyone has it already. Change a colour and apply it to make a theme of your own, then share that.`;
       break;
     case 'others':
       line = `${target.name} is shared by ${target.owner}. Only ${target.owner} can change who sees it.`;
       break;
     case 'loose':
-      line = `${target.name} is not in My themes. Change a colour to save it there, then share it.`;
+      line = `${target.name} is not in My themes. Change a colour and apply it to save it there, then share it.`;
       break;
   }
 
