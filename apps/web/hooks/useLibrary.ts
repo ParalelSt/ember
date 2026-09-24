@@ -8,6 +8,7 @@ import { useOfflineStore } from '@/stores/useOfflineStore';
 import { logger } from '@/lib/logger/client';
 import { LIKED_PIN, RECENT_PIN, pinLiked, pinList, playableFor } from '@/lib/offline';
 import { nativeOfflinePresent } from '@/lib/offlineNative';
+import { songKey } from '@/lib/songKey';
 import type { Playlist, Track } from '@/types/track';
 
 export const QK = {
@@ -123,12 +124,31 @@ function sameTrackIds(a: string[], b: string[]): boolean {
   return sa.every((id, i) => id === sb[i]);
 }
 
+/** Like and unlike requests go out one at a time per song (bughunt X7). A
+ *  quick double tap used to send both at once: the unlike could reach the
+ *  server first, find nothing to remove, and then the like landed, leaving
+ *  the song liked. Keyed by song, so unliking one version and liking another
+ *  keep their order too. */
+const likeChains = new Map<string, Promise<unknown>>();
+let likesInFlight = 0;
+
+function oneAtATime<T>(key: string, run: () => Promise<T>): Promise<T> {
+  const next = (likeChains.get(key) ?? Promise.resolve()).catch(() => undefined).then(run);
+  likeChains.set(key, next);
+  const done = () => {
+    if (likeChains.get(key) === next) likeChains.delete(key);
+  };
+  next.then(done, done);
+  return next;
+}
+
 export function useExecuteToggleLike() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async ({ track, wasLiked }: { track: Track; wasLiked: boolean }) =>
-      wasLiked ? api.unlike(track.id) : api.like(track),
+      oneAtATime(songKey(track), () => (wasLiked ? api.unlike(track.id) : api.like(track))),
     onMutate: async ({ track, wasLiked }) => {
+      likesInFlight += 1;
       await qc.cancelQueries({ queryKey: QK.likes });
       const prev = qc.getQueryData<Track[]>(QK.likes) ?? [];
       const next = wasLiked ? prev.filter((t) => t.id !== track.id) : [track, ...prev];
@@ -139,6 +159,10 @@ export function useExecuteToggleLike() {
       if (ctx?.prev) qc.setQueryData(QK.likes, ctx.prev);
     },
     onSettled: () => {
+      // Refetch once the last tap is through: an earlier one's answer would
+      // flash the heart back to where the next tap already moved it.
+      likesInFlight -= 1;
+      if (likesInFlight > 0) return;
       qc.invalidateQueries({ queryKey: QK.likes });
       // Liked songs are pinned for offline: keep the native download synced
       // with every like/unlike so it never drifts (re-pin only downloads

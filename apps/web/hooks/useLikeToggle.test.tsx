@@ -106,4 +106,42 @@ describe('useLikeToggle', () => {
     expect(api.like).not.toHaveBeenCalled();
     expect(api.unlike).not.toHaveBeenCalled();
   });
+
+  // Bughunt X7: a quick double tap sent the like and the unlike together.
+  // The unlike could reach the server first, find nothing to remove, and the
+  // like then landed: the song stayed liked.
+  it('a quick double tap waits for the like before sending the unlike', async () => {
+    const fresh = makeTrack({ id: 'youtube:d4', sourceId: 'd4', title: 'Double Tap' });
+    let serverLiked = false;
+    let finishLike: () => void = () => {};
+    let finishUnlike: () => void = () => {};
+    api.listLikes.mockImplementation(async () => ({ tracks: serverLiked ? [fresh] : [] }));
+    api.like.mockImplementation(() => new Promise((resolve) => {
+      finishLike = () => { serverLiked = true; resolve({ ok: true }); };
+    }));
+    api.unlike.mockImplementation(() => new Promise((resolve) => {
+      finishUnlike = () => { serverLiked = false; resolve({ ok: true }); };
+    }));
+
+    const { result } = setup(fresh);
+    await waitFor(() => expect(api.listLikes).toHaveBeenCalled());
+    await act(async () => { result.current.toggle(); });
+    await waitFor(() => expect(result.current.liked).toBe(true));
+    await act(async () => { result.current.toggle(); });
+    await waitFor(() => expect(result.current.liked).toBe(false));
+
+    // Both taps are in; only the like has gone out.
+    await waitFor(() => expect(api.like).toHaveBeenCalledTimes(1));
+    expect(api.unlike).not.toHaveBeenCalled();
+
+    await act(async () => { finishLike(); });
+    await waitFor(() => expect(api.unlike).toHaveBeenCalledWith(fresh.id));
+    // The heart does not flash back to liked in between.
+    expect(result.current.liked).toBe(false);
+
+    await act(async () => { finishUnlike(); });
+    await waitFor(() => expect(api.listLikes.mock.calls.length).toBeGreaterThan(1));
+    expect(serverLiked).toBe(false);
+    expect(result.current.liked).toBe(false);
+  });
 });
