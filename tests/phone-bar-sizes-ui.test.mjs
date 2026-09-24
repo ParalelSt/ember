@@ -63,7 +63,9 @@ function measure() {
   for (const frame of section.querySelectorAll('[data-testid="mobileplayer-frame"]')) {
     const bar = frame.querySelector('[data-testid="phone-player-bar"]');
     const scale = bar.getBoundingClientRect().width / bar.offsetWidth;
-    const btns = bar.querySelectorAll('button');
+    // The title row is an "Open player" button of its own (bughunt O9); the
+    // controls are the rest.
+    const btns = [...bar.querySelectorAll('button')].filter((b) => b.dataset.testid !== 'phone-player-title-row');
     const btn = btns[0];
     const disc = bar.querySelector('[data-testid="phone-play-disc"]');
     const svg = btn.querySelector('svg');

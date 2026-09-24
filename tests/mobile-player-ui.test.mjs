@@ -236,8 +236,11 @@ for (const [w, h] of [[390, 844], [360, 740]]) {
 
   check(at(`the song name gets a box of at least ${MIN_NAME_PX[w]}px`),
     m.marquee.w >= MIN_NAME_PX[w], `${m.marquee.w}px of ${w}`);
+  // The title row is itself a button, "Open player" (bughunt O9: keyboard and
+  // screen-reader users could not reach the full-screen view), then the controls.
   check(at('the bar\'s controls are play then next: no previous or queue'),
-    m.buttons.length === 2 && m.buttons[0] === 'Pause' && m.buttons[1] === 'Next', JSON.stringify(m.buttons));
+    m.buttons.length === 3 && m.buttons[0] === 'Open player' && m.buttons[1] === 'Pause' && m.buttons[2] === 'Next',
+    JSON.stringify(m.buttons));
   check(at('next is a 48px hit box right of play, 24px glyph, on the same row'),
     !!m.next && m.next.w === 48 && m.next.h === 48 && m.next.x >= m.play.x + m.play.w
       && Math.abs(m.next.y - m.play.y) <= 1 && m.nextGlyph && m.nextGlyph.w === 24,
@@ -288,7 +291,7 @@ for (const [w, h] of [[390, 844], [360, 740]]) {
   if (SHOTS) await page.screenshot({ path: path.join(SHOTS, `phone-${w}-long.png`) });
 
   // ---- play only plays; everything else opens the full-screen view -----
-  const playBtn = page.locator('[data-testid="phone-player-bar"] button').first();
+  const playBtn = page.locator('[data-testid="phone-player-bar"] button:is([aria-label="Pause"], [aria-label="Play"])');
   await playBtn.click();
   await page.waitForTimeout(400);
   let t = await page.evaluate(measure);
