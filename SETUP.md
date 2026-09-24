@@ -255,9 +255,12 @@ add `DISCORD_CRASH_WEBHOOK_URL=...` to `apps/web/.env.local`.
 | `errors-YYYY-MM-DD.jsonl` | The web app's own server error log (uncaught errors land here too). |
 | `watchdog.pid` | The running watchdog's pid, used by `update.sh`. Removed on a clean stop. |
 | `ember.lock` | pid and start time of the running watchdog. Left behind only by an unclean shutdown. |
+| `next.pid`, `pocketbase.pid` | The pid of each service the watchdog started. If the watchdog is killed outright and a service outlives it, the next start stops that leftover first. Removed on a clean stop. |
 | `crash-report.state` | The hourly post count for the rate limit. |
 
 Starting a second copy while one is running refuses with the running pid.
+It also refuses when another program already listens on the web or PocketBase
+port, naming its pid (a PocketBase you started by hand is still used as it is).
 
 ---
 
