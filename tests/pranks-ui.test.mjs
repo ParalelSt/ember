@@ -376,18 +376,28 @@ const mediaStatus = (who, headers = {}) => fetch(`${APP_URL}${mediaPath}`, { hea
   if (gap > 0) await sleep(gap);
   const paused = await app(boss, '/api/admin/pranks', { method: 'POST', body: JSON.stringify({ targetId: target.id, kind: 'sound', soundId: snd.id }) });
   const pausedPrank = (await paused.json()).prank;
-  let prow = null;
-  const pausedAt = Date.now();
-  while (Date.now() - pausedAt < 15_000) {
-    prow = await pbRow(pausedPrank.id);
-    if (prow.status !== 'pending') break;
-    await sleep(250);
-  }
-  check('a sound for someone whose music is paused is skipped', prow?.status === 'skipped' && prow?.reason === 'not-playing',
+  // A device where nothing plays neither plays the sound nor answers for it
+  // (bughunt N6: an idle tab used to mark it skipped and swallow it for the
+  // device that was playing). It stays pending, then expires unheard.
+  await sleep(6_000);
+  let prow = await pbRow(pausedPrank.id);
+  check('a sound for someone whose music is paused is left waiting, not played', prow?.status === 'pending',
     `${prow?.status} ${prow?.reason}`);
-  const log = await app(boss, `/api/admin/pranks?target=${target.id}`).then((r) => r.json());
-  const pausedLine = log.pranks?.find((p) => p.id === pausedPrank.id)?.line ?? '';
-  check('and the log says why, in words', pausedLine.endsWith('not played: nothing was playing'), pausedLine);
+  const pausedLog = async () => (await app(boss, `/api/admin/pranks?target=${target.id}`).then((r) => r.json()))
+    .pranks?.find((p) => p.id === pausedPrank.id);
+  const waitingLine = (await pausedLog())?.line ?? '';
+  check('and the log says it is waiting, in words', waitingLine.endsWith('waiting for their app'), waitingLine);
+  // Wait out its 45 s so it cannot be picked up when the music comes back on
+  // below, where it would take the place of the repeat's first play.
+  let pausedEntry = null;
+  const pausedAt = Date.now();
+  while (Date.now() - pausedAt < 55_000) {
+    pausedEntry = await pausedLog();
+    if (pausedEntry?.status === 'expired') break;
+    await sleep(1000);
+  }
+  check('nobody playing it, it expires and the log says so', pausedEntry?.status === 'expired'
+    && (pausedEntry?.line ?? '').endsWith('not delivered: offline, paused, or app too old'), pausedEntry?.line);
   const noFx = await t.page.evaluate(() => ![...document.querySelectorAll('audio')].some((x) => x.src.includes('/api/pranks/media/')));
   check('nothing played on the paused page', noFx);
 }
