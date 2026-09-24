@@ -28,6 +28,13 @@ onAfterBootstrap((e) => {
       dao.saveCollection(existing);
       console.log("[ensure_uploads] uploads updates are server-only now");
     }
+    // A required uploader made deleting that member fail (bughunt X4).
+    const uploader = existing.schema.getFieldByName("uploader");
+    if (uploader && uploader.required) {
+      uploader.required = false;
+      dao.saveCollection(existing);
+      console.log("[ensure_uploads] uploader is optional now");
+    }
     return;
   }
 
@@ -60,9 +67,9 @@ onAfterBootstrap((e) => {
       {
         name: "uploader",
         type: "relation",
-        required: true,
-        // Keep the song when its uploader leaves — other people's playlists
-        // may point at it.
+        // Keep the song when its uploader leaves (other people's playlists
+        // may point at it): the link is emptied, so it can't be required.
+        required: false,
         options: { collectionId: users.id, maxSelect: 1, cascadeDelete: false },
       },
       { name: "title", type: "text", required: true, options: { max: 200 } },
