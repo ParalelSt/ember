@@ -5,6 +5,7 @@ import { cn } from '@/lib/utils';
 import { formatTime } from '@/lib/format';
 import { dragReducer, edgeScrollSpeed, idleDrag, isActive, snapToBeat, type DragEvent, type Snap } from '@/lib/tabDrag';
 import { logger } from '@/lib/logger/client';
+import { buildTimeline, type TabTimeline } from '@/lib/tabTimeline';
 import {
   displaySettings,
   scoreInfo,
@@ -58,6 +59,10 @@ export interface LiveTabScoreProps {
   duration: number;
   onSeek: (sec: number) => void;
   onScore?: (info: ScoreInfo) => void;
+  /** The tab's bars, signatures, sections and tempo map on its own clock
+   *  (lib/tabTimeline.ts), once AlphaTab has worked them out: the practice
+   *  tools (metronome, loop) are built on it. */
+  onTimeline?: (timeline: TabTimeline) => void;
   /** The element that scrolls the page vertically (the app's content
    *  scroller) and how much of its top the sticky toolbar covers. */
   getPageScroller?: () => HTMLElement | null;
@@ -262,6 +267,7 @@ export function LiveTabScore(props: LiveTabScoreProps) {
         api.midiLoaded?.on?.(() => {
           fed.current = null;
           readAnchors();
+          emitTimeline();
         });
 
         api.playerPositionChanged.on((e: any) => {
@@ -344,6 +350,16 @@ export function LiveTabScore(props: LiveTabScoreProps) {
       points.current = timing && bars ? syncPoints(timing, barStartsMs(bars)) : [];
     }
     readAnchorsRef.current = readAnchors;
+
+    function emitTimeline() {
+      const bars = apiRef.current?.tickCache?.masterBars;
+      if (cancelled || !Array.isArray(bars) || bars.length === 0) return;
+      try {
+        live.current.onTimeline?.(buildTimeline(bars));
+      } catch {
+        // No timeline only means no practice tools for this file.
+      }
+    }
 
     function followBeat(beat: any, hiddenOnly = false, instant = false) {
       const bounds = api?.renderer?.boundsLookup?.findBeat?.(beat);

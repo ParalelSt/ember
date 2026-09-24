@@ -393,6 +393,24 @@ describe('LiveTabScore sync', () => {
     await waitFor(() => expect(api.seeks).toHaveLength(3));
   });
 
+  it('hands the page the tab timeline (bars and tempo) once the score is loaded', async () => {
+    const onTimeline = vi.fn();
+    const { api } = await mount({ onTimeline });
+    expect(onTimeline).not.toHaveBeenCalled();
+    api.tickCache.masterBars = [
+      { start: 0, end: 3840, tempoChanges: [{ tick: 0, tempo: 96 }], masterBar: { index: 0, timeSignatureNumerator: 4, timeSignatureDenominator: 4, section: { text: 'Intro' } } },
+      { start: 3840, end: 7680, tempoChanges: [{ tick: 3840, tempo: 96 }], masterBar: { index: 1, timeSignatureNumerator: 4, timeSignatureDenominator: 4 } },
+    ];
+    api.midiLoaded.fire();
+    expect(onTimeline).toHaveBeenCalledTimes(1);
+    const t = onTimeline.mock.calls[0][0];
+    expect(t.bars.map((b: { index: number; startMs: number; section: string | null }) => [b.index, b.startMs, b.section])).toEqual([
+      [0, 0, 'Intro'],
+      [1, 2500, null],
+    ]);
+    expect(t.tempos[0]).toEqual({ tick: 0, bpm: 96 });
+  });
+
   it('nothing is sought before AlphaTab can take a seek', async () => {
     at.ready = false;
     const { api } = await mount({ position: 30 });

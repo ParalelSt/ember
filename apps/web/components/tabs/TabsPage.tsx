@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Button, buttonVariants } from '@/components/ui/button';
@@ -11,7 +11,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { ChevronDownIcon, MoreIcon, PlayIcon } from '@/components/icons';
+import { ChevronDownIcon, ClockIcon, MoreIcon, PlayIcon } from '@/components/icons';
 import { EmptyState } from '@/components/page/EmptyState';
 import { usePlayer } from '@/components/player/PlayerProvider';
 import { LiveTabScore } from '@/components/tabs/LiveTabScore';
@@ -30,7 +30,18 @@ import {
   type TabSummary,
 } from '@/lib/tabSources';
 import { chooseTab, confidencePercent, loadPick, savePick, sheetRows } from '@/lib/tabPick';
-import { clampOffset, isLinedUp, loadLocalOffsetMs, saveLocalOffsetMs } from '@/lib/tabSync';
+import {
+  clampOffset,
+  isLinedUp,
+  loadLocalOffsetMs,
+  saveLocalOffsetMs,
+  songSecToTabMs,
+  syncPoints,
+  tabMsToSongSecAligned,
+} from '@/lib/tabSync';
+import { barStartsOf, bpmAtMs, steadyBeats, tabBeats, tempoSteps, type Click, type TabTimeline } from '@/lib/tabTimeline';
+import { clickContext } from '@/lib/metronome';
+import { useMetronome } from '@/hooks/useMetronome';
 import {
   beatClockOf,
   formatOffset,
@@ -48,6 +59,10 @@ const STAFF_KEY = 'ember.tabs.staff';
 const SCROLL_KEY = 'ember.tabs.scroll';
 const OFFSET_UNIT_KEY = 'ember.tabs.offsetUnit';
 const trackKey = (tabId: string) => `ember.tab.track.${tabId}`;
+const bpmKey = (tabId: string) => `ember.tab.bpm.${tabId}`;
+/** The metronome override's bounds, as a tab's own tempo is kept. */
+const MIN_BPM = 20;
+const MAX_BPM = 400;
 
 function readPref<T extends string>(key: string, allowed: readonly T[], fallback: T): T {
   try {
@@ -207,6 +222,61 @@ function TabsSheet({ song, sources, onBack }: { song: TabSong; sources: TabSourc
   // a nudge counted in beats. Null until the score is drawn, or when the
   // file has no tempo.
   const beatClock = beatClockOf(info?.tempo, info?.signature);
+
+  // The tab's bars and tempo map on its own clock (LiveTabScore reads them
+  // out of AlphaTab), and the way between that clock and the song's: the
+  // alignment's bar anchors when there is one, then the nudge.
+  const [drawnTimeline, setDrawnTimeline] = useState<{ tabId: string; timeline: TabTimeline } | null>(null);
+  const timeline = tab && drawnTimeline?.tabId === tab.id ? drawnTimeline.timeline : null;
+  const points = useMemo(() => (timing && timeline ? syncPoints(timing, barStartsOf(timeline)) : []), [timing, timeline]);
+  const toSongSec = (tabMs: number) => tabMsToSongSecAligned(tabMs, points, offsetMs);
+  const toTabMs = (sec: number) => songSecToTabMs(sec, points, offsetMs);
+
+  // The metronome (lib/metronome.ts): on the tab's own beats, following its
+  // tempo changes, unless the listener set a tempo of their own because the
+  // tab's is wrong (kept per tab on this device).
+  const [metronomeOn, setMetronomeOn] = useState(false);
+  const [bpmChoice, setBpmChoice] = useState<{ tabId: string; bpm: number | null } | null>(null);
+  const savedBpm = (tabId: string): number | null => {
+    try {
+      const n = Number(window.localStorage.getItem(bpmKey(tabId)));
+      return n >= MIN_BPM && n <= MAX_BPM ? n : null;
+    } catch {
+      return null;
+    }
+  };
+  const bpmOverride = tab ? (bpmChoice?.tabId === tab.id ? bpmChoice.bpm : savedBpm(tab.id)) : null;
+  const setBpmOverride = (bpm: number | null) => {
+    if (!tab) return;
+    const v = bpm !== null && bpm >= MIN_BPM && bpm <= MAX_BPM ? Math.round(bpm * 10) / 10 : null;
+    setBpmChoice({ tabId: tab.id, bpm: v });
+    try {
+      if (v === null) window.localStorage.removeItem(bpmKey(tab.id));
+      else window.localStorage.setItem(bpmKey(tab.id), String(v));
+    } catch {
+      // Not remembering the tempo is not worth an error.
+    }
+  };
+  const tabBpmNow = timeline ? bpmAtMs(timeline, toTabMs(position)) : (info?.tempo ?? null);
+  const metronomeBeats = (fromSec: number, toSec: number): Click[] => {
+    if (!timeline) return [];
+    if (bpmOverride) {
+      return steadyBeats(toSongSec(0), bpmOverride, timeline.bars[0]?.numerator ?? 4, fromSec, toSec);
+    }
+    return tabBeats(timeline, toTabMs(fromSec), toTabMs(toSec)).map((c) => ({ at: toSongSec(c.at), accent: c.accent }));
+  };
+  useMetronome({
+    on: metronomeOn && !!timeline,
+    running: follows && isPlaying,
+    position,
+    rate: 1,
+    beats: metronomeBeats,
+  });
+  const toggleMetronome = () => {
+    // The click's AudioContext is made on this gesture, as browsers ask.
+    if (!metronomeOn) clickContext();
+    setMetronomeOn((v) => !v);
+  };
 
   const stickyRef = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -374,6 +444,25 @@ function TabsSheet({ song, sources, onBack }: { song: TabSong; sources: TabSourc
                 Sync
                 <span className="tabular-nums font-normal">{formatOffset(offsetMs, offsetUnit, beatClock)}</span>
               </button>
+              <button
+                type="button"
+                aria-pressed={metronomeOn}
+                aria-label="Metronome"
+                disabled={!timeline}
+                onClick={toggleMetronome}
+                title={
+                  timeline
+                    ? 'Clicks on the beat, following the tab’s tempo'
+                    : 'The metronome starts once the tab is drawn'
+                }
+                className={cn(chip, metronomeOn ? chipOn : chipOff, 'disabled:opacity-50')}
+              >
+                <ClockIcon className="size-3.5" />
+                {!phone && 'Metronome'}
+                {(bpmOverride ?? tabBpmNow) && (
+                  <span className="tabular-nums font-normal">{Math.round(bpmOverride ?? tabBpmNow ?? 0)}</span>
+                )}
+              </button>
             </TabsToolbar>
             {syncOpen && (
               <SyncRow
@@ -385,6 +474,14 @@ function TabsSheet({ song, sources, onBack }: { song: TabSong; sources: TabSourc
                 canShare={tab.canDelete && !tab.id.startsWith('generated:')}
                 onChange={changeOffset}
                 onShare={() => sources.saveOffset(tab.id, offsetMs).then(() => changeOffset(null))}
+              />
+            )}
+            {metronomeOn && timeline && (
+              <MetronomeRow
+                tabBpm={tabBpmNow}
+                steps={tempoSteps(timeline)}
+                override={bpmOverride}
+                onOverride={setBpmOverride}
               />
             )}
           </div>
@@ -414,6 +511,7 @@ function TabsSheet({ song, sources, onBack }: { song: TabSong; sources: TabSourc
             duration={duration}
             onSeek={seek}
             onScore={(next) => setDrawn({ tabId: tab.id, info: next })}
+            onTimeline={(next) => setDrawnTimeline({ tabId: tab.id, timeline: next })}
             getPageScroller={() => stickyRef.current?.closest<HTMLElement>('[data-app-scroller]') ?? null}
             getTopInset={() => {
               // The toolbar, plus the desktop top bar it sticks under
@@ -610,6 +708,69 @@ function SyncRow({
           </span>
         )}
       </div>
+    </div>
+  );
+}
+
+/** The metronome's tempo: the tab's (which changes where the tab does), or
+ *  one the listener sets because the tab's is wrong. */
+function MetronomeRow({
+  tabBpm,
+  steps,
+  override,
+  onOverride,
+}: {
+  /** The tab's tempo at the playhead. */
+  tabBpm: number | null;
+  /** Every tempo the tab plays at, in order. */
+  steps: number[];
+  override: number | null;
+  onOverride: (bpm: number | null) => void;
+}) {
+  const [draft, setDraft] = useState<string | null>(null);
+  const shown = draft ?? (override !== null ? String(override) : '');
+  const tabText = tabBpm ? `${Math.round(tabBpm)} bpm` : 'no tempo';
+  return (
+    <div data-testid="tab-metronome" className="mt-cluster flex flex-wrap items-center gap-row text-xs text-muted-foreground">
+      <span data-testid="tab-metronome-status">
+        {override !== null
+          ? `Clicking at ${override} bpm; the tab says ${tabText} here.`
+          : `Follows the tab: ${tabText} here${steps.length > 1 ? ` (tempo changes ${steps.join(' → ')})` : ''}.`}
+      </span>
+      <label className="flex items-center gap-inset">
+        <span>Set bpm</span>
+        <input
+          type="number"
+          inputMode="decimal"
+          min={MIN_BPM}
+          max={MAX_BPM}
+          step={1}
+          value={shown}
+          placeholder={tabBpm ? String(Math.round(tabBpm)) : ''}
+          onChange={(e) => {
+            const raw = e.target.value;
+            setDraft(raw);
+            const n = Number(raw);
+            if (raw.trim() === '') onOverride(null);
+            else if (Number.isFinite(n) && n >= MIN_BPM && n <= MAX_BPM) onOverride(n);
+          }}
+          onBlur={() => setDraft(null)}
+          className="h-7 w-20 rounded-md border border-border bg-background px-cluster text-right text-xs tabular-nums text-foreground"
+          aria-label="Metronome bpm"
+        />
+      </label>
+      {override !== null && (
+        <Button
+          size="sm"
+          variant="ghost"
+          onClick={() => {
+            setDraft(null);
+            onOverride(null);
+          }}
+        >
+          Use the tab’s tempo
+        </Button>
+      )}
     </div>
   );
 }

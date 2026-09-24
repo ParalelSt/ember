@@ -189,11 +189,13 @@ export function tickToMs(tempos: TempoChange[], tick: number): number {
   let from = 0;
   for (const c of tempos) {
     if (c.tick > tick) break;
-    ms += (c.tick - from) * (60_000 / (bpm * TICKS_PER_QUARTER));
+    // Multiplied out before dividing: whole bars come out as whole ms
+    // (the metronome compares beat times against window edges).
+    ms += ((c.tick - from) * 60_000) / (bpm * TICKS_PER_QUARTER);
     bpm = c.bpm;
     from = c.tick;
   }
-  return ms + (tick - from) * (60_000 / (bpm * TICKS_PER_QUARTER));
+  return ms + ((tick - from) * 60_000) / (bpm * TICKS_PER_QUARTER);
 }
 
 /** The pieces of AlphaTab's `MidiTickLookup` a click needs. */
@@ -235,11 +237,12 @@ const MAX_EXTRAPOLATION_MS = 1000;
 
 /** The song time right now. The player's position arrives a few times a
  *  second; the cursor is fed every 50 ms, so between reports it moves on by
- *  the wall clock while playing. Paused, it holds still. */
-export function estimateSongSec(anchor: Anchor, now: number, playing: boolean): number {
+ *  the wall clock while playing, at the playback speed (`rate` 0.5: half a
+ *  second of song per second). Paused, it holds still. */
+export function estimateSongSec(anchor: Anchor, now: number, playing: boolean, rate = 1): number {
   if (!playing) return anchor.sec;
   const elapsed = Math.max(0, Math.min(now - anchor.at, MAX_EXTRAPOLATION_MS));
-  return anchor.sec + elapsed / 1000;
+  return anchor.sec + (elapsed / 1000) * (rate > 0 ? rate : 1);
 }
 
 /** The cursor is fed at most this often (docs/tabs-rebuild.md section 4). */

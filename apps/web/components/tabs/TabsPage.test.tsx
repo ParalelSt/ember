@@ -7,6 +7,7 @@ import type { Track } from '@/types/track';
 import { useSettingsStore } from '@/stores/useSettingsStore';
 import type { LiveTabScoreProps } from './LiveTabScore';
 import { TabsPage } from './TabsPage';
+import { buildTimeline } from '@/lib/tabTimeline';
 
 // The page around the score: which tab it picks, what the header says, the
 // empty states, the toolbar toggles and following the player. The score
@@ -148,6 +149,7 @@ beforeEach(() => {
   })) as unknown as typeof window.matchMedia;
   player.current = SONG;
   player.isPlaying = true;
+  player.position = 12;
   score.last = null;
   api.getTrackTabs.mockResolvedValue({ tabs: [] });
   api.getGeneratedTab.mockResolvedValue({ status: 'none' });
@@ -242,6 +244,59 @@ describe('TabsPage source selection', () => {
     expect(screen.getByTestId('tab-score')).toHaveAttribute('data-offset', '2500');
     expect(screen.getByTestId('tab-sync-beat')).toHaveTextContent('1 beat = 500 ms at 120 bpm, 3/4');
     expect(window.localStorage.getItem('ember.tabs.offsetUnit')).toBe('beats');
+  });
+});
+
+describe('TabsPage metronome', () => {
+  /** Two bars at 96, then two at 140 (AlphaTab's tick lookup). */
+  const timeline = () =>
+    buildTimeline([
+      { start: 0, end: 3840, tempoChanges: [{ tick: 0, tempo: 96 }], masterBar: { index: 0, timeSignatureNumerator: 4, timeSignatureDenominator: 4 } },
+      { start: 3840, end: 7680, tempoChanges: [{ tick: 3840, tempo: 96 }], masterBar: { index: 1 } },
+      { start: 7680, end: 11520, tempoChanges: [{ tick: 7680, tempo: 140 }], masterBar: { index: 2 } },
+    ]);
+
+  it('follows the tab tempo, and takes a tempo of the listener when the tab is wrong', async () => {
+    api.getTrackTabs.mockResolvedValue({ tabs: [tab({})] });
+    player.position = 1;
+    wrap(<TabsPage trackId="upload:song1" />);
+    const chip = await screen.findByRole('button', { name: /Metronome/ });
+    // Nothing to click on until the tab is drawn.
+    expect(chip).toBeDisabled();
+    act(() => score.last!.onTimeline!(timeline()));
+    expect(chip).toBeEnabled();
+    expect(chip).toHaveTextContent('96');
+    fireEvent.click(chip);
+    expect(chip).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByTestId('tab-metronome-status')).toHaveTextContent('Follows the tab: 96 bpm here (tempo changes 96 → 140).');
+
+    fireEvent.change(screen.getByLabelText('Metronome bpm'), { target: { value: '104' } });
+    expect(screen.getByTestId('tab-metronome-status')).toHaveTextContent('Clicking at 104 bpm; the tab says 96 bpm here.');
+    expect(chip).toHaveTextContent('104');
+    expect(window.localStorage.getItem('ember.tab.bpm.f1')).toBe('104');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Use the tab’s tempo' }));
+    expect(screen.getByTestId('tab-metronome-status')).toHaveTextContent('Follows the tab');
+    expect(window.localStorage.getItem('ember.tab.bpm.f1')).toBeNull();
+  });
+
+  it('shows the tempo where the song is: past the change it is 140', async () => {
+    api.getTrackTabs.mockResolvedValue({ tabs: [tab({})] });
+    // 7680 ticks at 96 bpm is 5 s.
+    player.position = 6;
+    wrap(<TabsPage trackId="upload:song1" />);
+    await screen.findByTestId('tab-score');
+    act(() => score.last!.onTimeline!(timeline()));
+    expect(screen.getByRole('button', { name: /Metronome/ })).toHaveTextContent('140');
+  });
+
+  it('a tempo set before for this tab is remembered', async () => {
+    window.localStorage.setItem('ember.tab.bpm.f1', '88');
+    api.getTrackTabs.mockResolvedValue({ tabs: [tab({})] });
+    wrap(<TabsPage trackId="upload:song1" />);
+    await screen.findByTestId('tab-score');
+    act(() => score.last!.onTimeline!(timeline()));
+    expect(screen.getByRole('button', { name: /Metronome/ })).toHaveTextContent('88');
   });
 });
 
