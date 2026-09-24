@@ -14,6 +14,7 @@ import { formatBytes, formatCount } from '@/lib/format';
 import type { PinStatus } from '@/lib/offlineNative';
 import type { Track } from '@/types/track';
 import { SectionHeader } from '@/components/page/SectionHeader';
+import { AutoCacheSettings } from '@/components/settings/AutoCacheSettings';
 
 /** What the user can do about a pin that failed for good. The native side
  *  records the reason of the FIRST failure per pin (see OfflineDownloadService). */
@@ -110,6 +111,11 @@ export default function DownloadsSettingsPage() {
       >
         Clear all downloads
       </Button>
+
+      <div className="flex flex-col gap-block">
+        <SectionHeader title="Automatic caching" />
+        <AutoCacheSettings />
+      </div>
 
       <ConfirmDialog
         open={pendingClear}

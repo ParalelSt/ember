@@ -6,6 +6,9 @@ import { usePlayer } from '@/components/player/PlayerProvider';
 import { usePlayerStore } from '@/stores/usePlayerStore';
 import { useOfflineStore } from '@/stores/useOfflineStore';
 import { localArtFor } from '@/lib/offlineNative';
+import { isPlayableOffline } from '@/lib/playback/queueNav';
+import { useAutoCacheStore } from '@/stores/useAutoCacheStore';
+import { cn } from '@/lib/utils';
 import type { Track } from '@/types/track';
 
 interface Props {
@@ -22,6 +25,14 @@ export function QueueSheet({ open, onOpenChange }: Props) {
   // Downloaded tracks keep their art locally, so the queue still shows
   // thumbnails offline instead of a blank box from the dead remote URL.
   const artworkSrcFor = (track: Track) => localArtFor(track, artFiles) ?? track.artworkUrl ?? null;
+  // Offline, songs with no copy on this device are dimmed: they will be
+  // skipped until the connection is back.
+  const online = useAutoCacheStore((s) => s.online);
+  const cachedIds = useAutoCacheStore((s) => s.cachedIds);
+  const webFiles = useOfflineStore((s) => s.webFiles);
+  const trackFiles = useOfflineStore((s) => s.trackFiles);
+  const pinned = online ? null : new Set([...Object.keys(webFiles), ...Object.keys(trackFiles)]);
+  const outOfReach = (track: Track) => !!pinned && !isPlayableOffline(track, cachedIds, pinned);
 
   const current = queue[index] ?? null;
   const upcoming = queue.slice(index + 1);
@@ -67,7 +78,7 @@ export function QueueSheet({ open, onOpenChange }: Props) {
                     showDuration
                     artworkFallback={null}
                     artworkSrc={artworkSrcFor(t)}
-                    className="hover:bg-sidebar-accent/60"
+                    className={cn('hover:bg-sidebar-accent/60', outOfReach(t) && 'opacity-50')}
                     onPlay={() => playTrack(t, queue, context)}
                   />
                 ))}

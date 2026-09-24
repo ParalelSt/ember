@@ -41,3 +41,59 @@ describe('webBackend load(autoplay)', () => {
     b.destroy();
   });
 });
+
+describe('webBackend getBufferedToEnd', () => {
+  function withElement(state: {
+    src?: string;
+    duration?: number;
+    ranges?: Array<[number, number]>;
+    networkState?: number;
+    currentTime?: number;
+  }) {
+    const b = createWebBackend(makeFakeEvents());
+    const a = document.querySelector('audio') as HTMLAudioElement;
+    if (state.src !== undefined) a.src = state.src;
+    const ranges = state.ranges ?? [];
+    Object.defineProperty(a, 'duration', { configurable: true, get: () => state.duration ?? NaN });
+    Object.defineProperty(a, 'currentTime', { configurable: true, get: () => state.currentTime ?? 0, set: () => {} });
+    Object.defineProperty(a, 'networkState', { configurable: true, get: () => state.networkState ?? 1 });
+    Object.defineProperty(a, 'buffered', {
+      configurable: true,
+      get: () => ({ length: ranges.length, start: (i: number) => ranges[i][0], end: (i: number) => ranges[i][1] }),
+    });
+    return b;
+  }
+
+  it('is null with nothing loaded or no known duration', () => {
+    const empty = withElement({});
+    expect(empty.getBufferedToEnd?.()).toBeNull();
+    empty.destroy();
+    const noDur = withElement({ src: 'http://h/s/a' });
+    expect(noDur.getBufferedToEnd?.()).toBeNull();
+    noDur.destroy();
+  });
+
+  it('is true for a local blob copy', () => {
+    const b = withElement({ src: 'blob:http://h/x' });
+    expect(b.getBufferedToEnd?.()).toBe(true);
+    b.destroy();
+  });
+
+  it('is true once a range covers the playhead to the end', () => {
+    const b = withElement({ src: 'http://h/s/a', duration: 200, ranges: [[0, 200]], currentTime: 30 });
+    expect(b.getBufferedToEnd?.()).toBe(true);
+    b.destroy();
+  });
+
+  it('is false while the browser is still fetching the rest', () => {
+    const b = withElement({ src: 'http://h/s/a', duration: 200, ranges: [[0, 80]], networkState: 2 });
+    expect(b.getBufferedToEnd?.()).toBe(false);
+    b.destroy();
+  });
+
+  it('is null when the browser stopped buffering short of the end (it cannot tell)', () => {
+    const b = withElement({ src: 'http://h/s/a', duration: 200, ranges: [[0, 80]], networkState: 1 });
+    expect(b.getBufferedToEnd?.()).toBeNull();
+    b.destroy();
+  });
+});

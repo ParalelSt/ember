@@ -3,6 +3,10 @@
 import { logger } from '@/lib/logger/client';
 import type { AudioBackend, CreateAudioBackend } from './types';
 
+/** HTMLMediaElement.NETWORK_LOADING, spelled out: some DOMs (and test
+ *  environments) do not expose the constant on the class. */
+const NETWORK_LOADING = 2;
+
 export const createWebBackend: CreateAudioBackend = (events) => {
   // --- Audio element (DOM-attached; Firefox Android only surfaces lock-screen
   // controls for a media element it can see in the document). preload='auto' so
@@ -222,6 +226,23 @@ export const createWebBackend: CreateAudioBackend = (events) => {
       navigator.mediaSession.setActionHandler('seekto', (e) => {
         if (typeof e.seekTime === 'number') cmds.seek(e.seekTime);
       });
+    },
+
+    getBufferedToEnd() {
+      if (!a.src) return null;
+      // A local copy (a pinned or auto-cached blob) is all on this device.
+      if (a.src.startsWith('blob:')) return true;
+      const dur = a.duration;
+      if (!Number.isFinite(dur) || dur <= 0) return null;
+      const b = a.buffered;
+      for (let i = 0; i < b.length; i++) {
+        if (b.start(i) <= (a.currentTime || 0) + 0.5 && b.end(i) >= dur - 0.5) return true;
+      }
+      // Still fetching: a prefetch now would compete with it. Not fetching
+      // but not complete either means the browser chose to stop buffering
+      // (it caps how far ahead it reads), which it may never resume: that is
+      // "cannot tell", and the policy falls back to play time.
+      return a.networkState === NETWORK_LOADING ? false : null;
     },
 
     getCurrentTime: () => a.currentTime || 0,

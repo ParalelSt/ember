@@ -12,7 +12,7 @@ import { PLUGIN_KEYS, type PluginKey, type StoredPlugins } from '@/lib/pluginSet
  *  signed in, AuthProvider calls loadPlugins and the account's values win
  *  over this device's cache. localStorage stays as that cache, so the UI
  *  does not flicker on load and still reads right offline or signed out.
- *  autoReportEnabled is per device only. */
+ *  autoReportEnabled and the auto cache switches are per device only. */
 interface SettingsState {
   /** Party-size volume slider plugin: widens the slider and lifts the
    *  audio cap from 0.85 to 1.0 with a linear curve. Off by default; the
@@ -29,6 +29,14 @@ interface SettingsState {
    *  default so nobody who already uses tabs loses them on update. */
   tabsEnabled: boolean;
   setTabsEnabled: (on: boolean) => Promise<void>;
+  /** Quietly save the current song and the next two on this device, so a
+   *  dropped connection does not stop the music (hooks/player/useAutoCache).
+   *  Per device, not synced: it is about this device's storage and network. */
+  autoCacheEnabled: boolean;
+  setAutoCacheEnabled: (on: boolean) => void;
+  /** Let the auto cache run on mobile data too. Off by default. */
+  autoCacheOnMetered: boolean;
+  setAutoCacheOnMetered: (on: boolean) => void;
 
   /** The signed-in user the plugin switches are synced with (null when
    *  signed out: toggles then stay on this device). Not persisted. */
@@ -73,6 +81,10 @@ export const useSettingsStore = create<SettingsState>()(
         setAutoReportEnabled: (autoReportEnabled) => set({ autoReportEnabled }),
         tabsEnabled: true,
         setTabsEnabled: (on) => savePlugin('tabsEnabled', on),
+        autoCacheEnabled: true,
+        setAutoCacheEnabled: (autoCacheEnabled) => set({ autoCacheEnabled }),
+        autoCacheOnMetered: false,
+        setAutoCacheOnMetered: (autoCacheOnMetered) => set({ autoCacheOnMetered }),
 
         pluginsUserId: null,
         pluginsLoaded: false,
@@ -120,6 +132,8 @@ export const useSettingsStore = create<SettingsState>()(
         partyVolume: s.partyVolume,
         autoReportEnabled: s.autoReportEnabled,
         tabsEnabled: s.tabsEnabled,
+        autoCacheEnabled: s.autoCacheEnabled,
+        autoCacheOnMetered: s.autoCacheOnMetered,
       }),
     },
   ),

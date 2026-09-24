@@ -282,6 +282,10 @@ node tests/stream-range.test.mjs                    # or: npm run test:stream-ra
 node tests/stream-fastfail.test.mjs                 # or: npm run test:stream-fastfail (starts its own server)
 node tests/stream-prefetch.test.mjs                 # or: npm run test:stream-prefetch (fake yt-dlp server, see its header)
 
+# Offline in the browser (app 3053 + PB 8086 by default; APP_URL / PB_URL to change)
+node tests/offline-web-ui.test.mjs                  # or: npm run test:offline-web-ui (pinned downloads play offline)
+node tests/auto-cache-ui.test.mjs                   # or: npm run test:auto-cache-ui (auto cache: offline mid-queue)
+
 # Custom uploads (MUSIC_DIR must match the server's)
 MUSIC_DIR="$SB/music" node tests/uploads.test.mjs   # or: npm run test:uploads
 node tests/uploads-ui.test.mjs                      # or: npm run test:uploads-ui
@@ -667,6 +671,19 @@ URL behaves once it no longer matches the client that resolved it:
   `apps/desktop/src-tauri/src/audio/skip_repro.rs`.
 - **A cached track answers 206 with the right bytes**, which is why the fault
   only touches tracks the stale yt-dlp could not cache.
+
+## What `auto-cache-ui.test.mjs` covers
+
+The web auto cache (`apps/web/lib/autoCache/README.md`) in a real browser: a
+playlist of three uploaded songs (A 20 s, B 8 s, C 8 s), the play-time gates
+lowered through `localStorage['ember.autoCache.test']`, A played. B and C land
+in OPFS `cache/audio` (asked for with `?prefetch=1`, no `.part` left); then
+the connection drops mid-A with every stream request refused. The offline pill
+shows in the desktop bar (and the whole sentence in the phone bar), B plays
+from its cached `blob:` copy, and with C's file deleted under the player the
+end of B stalls: "Offline, nothing cached ahead", paused, one toast. Back
+online, the badge goes and the song it stopped at is loaded, paused.
+`SHOTS_DIR=<dir>` saves the three states.
 
 ## What `stream-prefetch.test.mjs` covers
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isUnavailable, nextIndex, nextPlayable, prevIndex, wrapPoint, type QueueNavState } from './queueNav';
+import { isPlayableOffline, isUnavailable, nextIndex, nextPlayable, nextPlayableOffline, prevIndex, wrapPoint, type QueueNavState } from './queueNav';
 
 /** A queue of `n` placeholder entries; only the length is read. */
 function q(n: number) {
@@ -215,5 +215,51 @@ describe('nextPlayable', () => {
 
   it('returns -1 for an empty queue', () => {
     expect(nextPlayable([], 0, 1, true).index).toBe(-1);
+  });
+});
+
+describe('isPlayableOffline', () => {
+  const cached = new Set(['a']);
+  const pinned = new Set(['p']);
+  it('is true for an auto-cached or a pinned track', () => {
+    expect(isPlayableOffline({ id: 'a' }, cached, pinned)).toBe(true);
+    expect(isPlayableOffline({ id: 'p' }, cached, pinned)).toBe(true);
+  });
+  it('is false for a track with no local copy, an unavailable one, or none', () => {
+    expect(isPlayableOffline({ id: 'x' }, cached, pinned)).toBe(false);
+    expect(isPlayableOffline({ id: 'a', unavailableAt: '2026-01-01' }, cached, pinned)).toBe(false);
+    expect(isPlayableOffline(null, cached, pinned)).toBe(false);
+  });
+});
+
+describe('nextPlayableOffline', () => {
+  const q = [
+    { id: 'a' },
+    { id: 'b' },
+    { id: 'c', unavailableAt: '2026-01-01' },
+    { id: 'd' },
+    { id: 'e' },
+  ];
+  it('walks past uncached and unavailable tracks to the next local copy', () => {
+    const r = nextPlayableOffline(q, 1, 1, false, new Set(['e']), new Set());
+    expect(r.index).toBe(4);
+    expect(r.skipped.map((t) => t.id)).toEqual(['c']);
+    expect(r.uncached.map((t) => t.id)).toEqual(['b', 'd']);
+  });
+  it('a pinned copy counts too', () => {
+    expect(nextPlayableOffline(q, 1, 1, false, new Set(), new Set(['d'])).index).toBe(3);
+  });
+  it('finds nothing at the end of the queue without wrap', () => {
+    const r = nextPlayableOffline(q, 3, 1, false, new Set(['a']), new Set());
+    expect(r.index).toBe(-1);
+    expect(r.uncached.map((t) => t.id)).toEqual(['d', 'e']);
+  });
+  it('wraps under loop-all and gives up after one lap', () => {
+    expect(nextPlayableOffline(q, 3, 1, true, new Set(['a']), new Set()).index).toBe(0);
+    expect(nextPlayableOffline(q, 0, 1, true, new Set(), new Set()).index).toBe(-1);
+  });
+  it('an out-of-range start without wrap, or an empty queue, is -1', () => {
+    expect(nextPlayableOffline(q, 9, 1, false, new Set(['a']), new Set()).index).toBe(-1);
+    expect(nextPlayableOffline([], 0, 1, true, new Set(), new Set()).index).toBe(-1);
   });
 });

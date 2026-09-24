@@ -14,6 +14,7 @@ import { toast } from 'sonner';
 import { usePlayerStore } from '@/stores/usePlayerStore';
 import { useSettingsStore } from '@/stores/useSettingsStore';
 import { useOfflineStore } from '@/stores/useOfflineStore';
+import { useAutoCacheStore } from '@/stores/useAutoCacheStore';
 import { localArtFor, localSrcFor } from '@/lib/offlineNative';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { useExecuteRecordPlay, useQueryHistory, useQueryLikes } from '@/hooks/useLibrary';
@@ -22,8 +23,10 @@ import { apiUrl } from '@/lib/api';
 import { logger } from '@/lib/logger/client';
 import { detectShell } from '@/lib/playback/detectShell';
 import { chooseDuration } from '@/lib/playback/chooseDuration';
-import { isUnavailable, nextIndex, nextPlayable, prevIndex } from '@/lib/playback/queueNav';
+import { isUnavailable, nextIndex, nextPlayable, nextPlayableOffline, prevIndex } from '@/lib/playback/queueNav';
 import { useAvailabilityProbe } from '@/hooks/player/useAvailabilityProbe';
+import { useAutoCache } from '@/hooks/player/useAutoCache';
+import type { BackendKind } from '@/lib/autoCache/select';
 import { useDiscordPresence } from '@/hooks/player/useDiscordPresence';
 import { usePositionPersistence } from '@/hooks/player/usePositionPersistence';
 import { useRadioExtend } from '@/hooks/player/useRadioExtend';
@@ -76,6 +79,16 @@ function toastSkipped(skipped: Track[]) {
   }
 }
 
+/** The one toast of an offline stall (see goTo). */
+export const OFFLINE_STALL_TOAST = "Offline: no more cached songs. Playback resumes when you're back online.";
+
+/** Ids with a downloaded copy the current engine can play offline: browser
+ *  storage (blob: URLs) and the Android plugin's files. */
+function pinnedIds(): Set<string> {
+  const { webFiles, trackFiles } = useOfflineStore.getState();
+  return new Set([...Object.keys(webFiles), ...Object.keys(trackFiles)]);
+}
+
 /** Player provider — owns a swappable AudioBackend (web <audio> today, native
  *  bridge in the shells) and orchestrates playback, persistence-on-write merges,
  *  radio mode, Discord, and remote/media controls. The backend is ref-held and
@@ -104,7 +117,10 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   /** Which engine is live, and whether we've already swapped away from a
    *  broken native one (only ever done once — a fallback loop would be worse
    *  than the original fault). */
-  const backendKindRef = useRef<'web' | 'capacitor' | 'android' | 'tauri-native' | 'native-stub'>('web');
+  const backendKindRef = useRef<BackendKind>('web');
+  /** The engine chosen at startup, as state, so the auto cache can pick the
+   *  adapter that goes with it once there is one. */
+  const [initialKind, setInitialKind] = useState<BackendKind | null>(null);
   const fellBackRef = useRef(false);
   /** Track id currently handed to the backend — guards redundant re-loads. */
   const loadedTrackRef = useRef<string | null>(null);
@@ -115,6 +131,11 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   /** Track id we have already swapped from its local file to the stream, so a
    *  stream that also fails cannot bounce back and forth. */
   const streamFallbackRef = useRef<string | null>(null);
+  /** Track id whose loaded src is an auto-cached copy (a blob: URL from the
+   *  cache adapter). A copy that will not play is dropped from the cache. */
+  const cacheSrcTrackRef = useRef<string | null>(null);
+  /** The offline stall toast is shown once per offline spell, not per skip. */
+  const offlineToastShownRef = useRef(false);
   const eventsRef = useRef<AudioBackendEvents | null>(null);
   /** When the store's queue/index last changed BECAUSE the native player said
    *  so. The queue-push effect and the load-on-id-change effect both skip
@@ -151,7 +172,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
   // Stable callback, so the backend's one-time event object can close over
   // it: asks the server whether a failing track has actually died.
-  const probeAvailability = useAvailabilityProbe(nextRef);
+  const offlineFailRef = useRef<((failed: { id: string }) => void) | null>(null);
+  const probeAvailability = useAvailabilityProbe(nextRef, offlineFailRef);
 
   // Build the backend once, on first client render. Events map straight to the
   // store writes the old element listeners performed.
@@ -287,6 +309,15 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         // to, so the normal error handling stands.
         const st = usePlayerStore.getState();
         const track = st.queue[st.index];
+        // An auto-cached copy that will not play (evicted under us, or a bad
+        // file) is dropped, so neither the player nor the offline skip counts
+        // on it again. The stream fallback below still applies.
+        if (track && cacheSrcTrackRef.current === track.id) {
+          cacheSrcTrackRef.current = null;
+          logger.error('playback', 'cached copy would not play, dropping it', { trackId: track.id });
+          void useAutoCacheStore.getState().adapter.evict([track.id])
+            .then(() => useAutoCacheStore.getState().refresh());
+        }
         const online = typeof navigator === 'undefined' || navigator.onLine;
         if (track && online && localSrcTrackRef.current === track.id && streamFallbackRef.current !== track.id) {
           streamFallbackRef.current = track.id;
@@ -332,6 +363,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       : create === createAndroidBackend ? 'android'
       : create === createTauriBackend ? 'tauri-native' : 'native-stub';
     backendRef.current = create(events);
+    setInitialKind(backendKindRef.current);
     // lib/logger has no ref to backendKindRef, so the provider is the one
     // place that pushes it into the context envelope (see logger.setContext).
     logger.setContext({ backendKind: backendKindRef.current });
@@ -470,16 +502,24 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     const readsBlobs = backendKindRef.current === 'web' || backendKindRef.current === 'capacitor';
     // A downloaded copy plays even online: instant, and no data used.
     const local = localSrcFor(track, downloads.trackFiles) ?? (readsBlobs ? webCopy : null);
-    localSrcTrackRef.current = local ? track.id : null;
+    // Then an auto-cached copy, same reasons. The adapter only hands out a
+    // source this engine can load (a blob: URL for web audio); an engine
+    // with its own cache (desktop) gets the key and opens the file itself,
+    // with the stream URL as its fallback.
+    const cache = useAutoCacheStore.getState().adapter;
+    const cachedSrc = local ? null : cache.localSrcFor(track.id);
+    const cacheKey = !local && cache.has(track.id) ? track.id : undefined;
+    localSrcTrackRef.current = local || cachedSrc ? track.id : null;
+    cacheSrcTrackRef.current = cachedSrc ? track.id : null;
     // Only a fresh LOCAL load re-arms the one-shot stream fallback; the
     // fallback's own load is not local, so it cannot re-arm itself.
-    if (local) streamFallbackRef.current = null;
+    if (local || cachedSrc) streamFallbackRef.current = null;
     logger.breadcrumb('playback', 'load', {
       trackId: track.id,
       backend: backendKindRef.current,
-      source: local ? 'local' : 'stream',
+      source: local ? 'local' : cachedSrc || cacheKey ? 'cache' : 'stream',
     });
-    b.load(local ?? apiUrl(track.streamUrl), { autoplay, startAt });
+    b.load(local ?? cachedSrc ?? apiUrl(track.streamUrl), { autoplay, startAt, ...(cacheKey ? { cacheKey } : {}) });
     // Set metadata in the same synchronous turn so the notification carries
     // across a track boundary (Firefox Android tears it down otherwise).
     // Local art (the same downloaded copy) wins over the remote artworkUrl.
@@ -525,8 +565,47 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
    *  `step`, wrapping under loop-all), toasting whatever it skips over. Used
    *  by next/prev instead of jumping straight to `target` so an unavailable
    *  track never becomes "current" even for an instant. */
-  const goTo = useCallback((target: number, step: 1 | -1) => {
+  /** Offline with nothing playable ahead. Still playing (a Next pressed
+   *  mid-song): the song carries on and only the toast says why nothing
+   *  happened. Stopped: a stall, remembered with the song to come back to.
+   *  One toast per offline spell, whatever happens. */
+  const stallOffline = useCallback((targetId: string | null) => {
+    const b = backendRef.current;
+    const stopped = !b || b.isPaused();
+    logger.breadcrumb('playback', 'offline: nothing cached ahead', { trackId: targetId, stopped });
+    if (!offlineToastShownRef.current) {
+      offlineToastShownRef.current = true;
+      toast(OFFLINE_STALL_TOAST);
+    }
+    if (stopped) {
+      setIsPlaying(false);
+      useAutoCacheStore.getState().setStalled(true, targetId);
+    }
+  }, [setIsPlaying]);
+
+  const goTo = useCallback((target: number, step: 1 | -1, stallId?: string) => {
     const st = usePlayerStore.getState();
+    const ac = useAutoCacheStore.getState();
+    // Offline, only a track with a copy on this device can play: walk past
+    // the rest (not flagged, just out of reach). Nothing left means a stall
+    // (see stallOffline); the connection coming back loads the song we
+    // stopped at (see the effect below).
+    if (!ac.online && backendKindRef.current !== 'android') {
+      const cached = new Set(ac.adapter.entries().keys());
+      const r = nextPlayableOffline(st.queue, target, step, st.loopMode === 'all', cached, pinnedIds());
+      toastSkipped(r.skipped);
+      if (r.index < 0) {
+        stallOffline(stallId ?? r.uncached[0]?.id ?? null);
+        return;
+      }
+      if (ac.offlineStalled) ac.setStalled(false);
+      if (r.uncached.length > 0) {
+        logger.breadcrumb('playback', 'offline: skipped uncached', { count: r.uncached.length });
+      }
+      loadAndPlay(st.queue[r.index], true);
+      setIndex(r.index);
+      return;
+    }
     const r = nextPlayable(st.queue, target, step, st.loopMode === 'all');
     toastSkipped(r.skipped);
     if (r.index < 0) {
@@ -535,7 +614,44 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     }
     loadAndPlay(st.queue[r.index], true);
     setIndex(r.index);
-  }, [loadAndPlay, setIndex]);
+  }, [loadAndPlay, setIndex, stallOffline]);
+
+  // The current song failed while offline (useAvailabilityProbe): move to the
+  // next song with a local copy; with none, stall on the failed song itself,
+  // since that is the one to load again when the connection returns.
+  useEffect(() => {
+    offlineFailRef.current = (failed) => {
+      const st = usePlayerStore.getState();
+      const move = nextIndex({ queue: st.queue, index: st.index, loopMode: st.loopMode, context: st.context, baseCount: st.baseCount });
+      if (!move) stallOffline(failed.id);
+      else goTo(move.index, 1, failed.id);
+    };
+  }, [goTo, stallOffline]);
+
+  useAutoCache({ backendRef, backendKind: initialKind });
+
+  // Back online: the badge clears, prefetching resumes (useAutoCache), and a
+  // stall is undone by loading the song we stopped at, PAUSED: autoplay is
+  // refused without a gesture, and a song starting on its own after minutes
+  // of silence would be a surprise anyway. The listener presses play.
+  useEffect(() => useAutoCacheStore.subscribe((s, prev) => {
+    if (s.online === prev.online || !s.online) return;
+    offlineToastShownRef.current = false;
+    if (!s.offlineStalled) return;
+    const id = s.stalledTrackId;
+    s.setStalled(false);
+    toast('Back online', { duration: 2500 });
+    if (!id || backendKindRef.current === 'android') return;
+    const st = usePlayerStore.getState();
+    const i = st.queue.findIndex((t) => t.id === id);
+    if (i < 0) return;
+    logger.breadcrumb('playback', 'online: loading the stalled song paused', { trackId: id });
+    // The stalled song may be the one that failed to load: its failed load
+    // must not count as "already loaded".
+    loadedTrackRef.current = null;
+    loadAndPlay(st.queue[i], false);
+    setIndex(i);
+  }), [loadAndPlay, setIndex]);
 
   const next = useCallback(() => {
     userInteracted.current = true;
@@ -543,11 +659,16 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     // gone), so it decides what comes next: loop, radio tail and all.
     if (backendKindRef.current === 'android') { backendRef.current?.next?.(); return; }
     const move = nextIndex(navState());
-    if (!move) return;
+    if (!move) {
+      // The end of the queue, offline: radio cannot extend it, so say why
+      // the music stopped.
+      if (!useAutoCacheStore.getState().online) stallOffline(null);
+      return;
+    }
     // goTo, not loadAndPlay: it walks past anything unavailable before it
     // can become "current" even for an instant.
     goTo(move.index, 1);
-  }, [goTo, navState]);
+  }, [goTo, navState, stallOffline]);
 
   const prev = useCallback(() => {
     userInteracted.current = true;

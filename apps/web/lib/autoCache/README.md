@@ -132,3 +132,99 @@ Result shapes are JSON as written above: `{ "kind": "start", "id": ... }`,
 Android and desktop ports read this file from here (copy it into their test
 resources with a build step, or commit a copy plus a test asserting it is
 byte-identical); the vitest suite `policy.test.ts` runs every case.
+
+## Driving it: `CacheAdapter` and `useAutoCache`
+
+`hooks/player/useAutoCache.ts` (mounted once by `PlayerProvider`) runs the
+policy on every platform through one interface, `CacheAdapter` in
+`adapter.ts`. `driver.ts` holds the loop (framework-free); the hook wires it
+to the stores and decides when to tick: on a track change, play/pause, queue
+and loop changes, a settings change, a connection change, and every 5 s while
+a song plays (the 15 s and "fully buffered" gates are crossed by the clock).
+
+```ts
+export type CacheAdapterKind = 'opfs' | 'tauri' | 'android-native' | 'none';
+export interface CacheEntry { bytes: number; lastUsedAt: number }
+export interface CacheStats { bytes: number; count: number; cap: number }
+
+export interface CacheAdapter {
+  readonly kind: CacheAdapterKind;
+  readonly writesThrough: boolean;
+  ready(): Promise<boolean>;
+  has(id: string): boolean;
+  localSrcFor(id: string): string | null;
+  prefetch(track: Track, signal: AbortSignal): Promise<FetchResult>;
+  touch(id: string): void;
+  evict(ids: string[]): Promise<void>;
+  entries(): ReadonlyMap<string, CacheEntry>;
+  stats(): CacheStats;
+  clear(): Promise<void>;
+  subscribe?(listener: () => void): () => void;
+}
+```
+
+What each member must do:
+
+| Member | Contract |
+|---|---|
+| `kind` | which store this is; `'none'` makes Settings say caching is not available |
+| `writesThrough` | true when the player itself keeps the current track (Android SimpleCache, the desktop stream temp file); the driver then passes `requestCurrent = false` |
+| `ready()` | load the index; resolve false (never reject) when the device or shell cannot cache, for example an old app without the cache commands |
+| `has(id)` | sync, from memory: fully on disk |
+| `localSrcFor(id)` | sync: a URL the CURRENT engine can load, else null. OPFS returns a blob: URL; desktop and Android return null |
+| `prefetch(track, signal)` | download `apiUrl(track.streamUrl)` with `?prefetch=1` (`withPrefetchParam`), write it under the id, and resolve the `FetchResult` for `onResult` (`resultForStatus` maps 429/503 with Retry-After, 410 and other errors). Never reject. On abort, clean up and resolve anything: an aborted result is ignored |
+| `touch(id)` | lastUsedAt = now; no-op for an unknown id |
+| `evict(ids)` | delete these (unknown ids ignored). The driver only asks for what `evictToFit` returned, so never the current track or the window |
+| `entries()` | sync snapshot id -> `{ bytes, lastUsedAt }`; feeds `cached`, `sizes` and the eviction order |
+| `stats()` | totals and the cap (web: min(250 MB, half the quota); desktop 500 MB; Android 300 MB) |
+| `clear()` | delete everything auto-cached; never pinned downloads |
+| `subscribe` | optional: for adapters whose contents change outside the driver (the native Android cache); the hook refreshes the UI on each call |
+
+The driver downloads at most one id at a time, evicts with `evictToFit`
+before each write (the expected size is `durationSec` x 20 kB/s, else the
+policy default), trims again by the real size after a download, cancels the
+download in flight when the policy says `abort` or a device gate (disabled,
+offline, battery, metered) closes, and sets one timer for a `backoff` wake.
+
+### Plugging a platform in
+
+`select.ts` maps the engine PlayerProvider picked to an adapter:
+`web` and `capacitor` get OPFS (`opfsAdapter.ts`), everything else
+`noneAdapter` until its adapter lands. A new platform adds one `case` there.
+
+How the player uses the adapter (`PlayerProvider.loadAndPlay`, web and
+desktop engines; the Android engine owns its own queue and never asks):
+
+1. a pinned download (`lib/offline*`) wins;
+2. else `adapter.localSrcFor(id)`, when non-null, is the URL handed to
+   `AudioBackend.load`;
+3. `LoadOptions.cacheKey` is set to the track id whenever `adapter.has(id)`
+   and no pinned copy was used. The URL is then the stream URL (step 2 gave
+   null), so an engine with its own cache (desktop) opens the cached file by
+   the key and keeps the URL as its fallback. Web audio ignores `cacheKey`.
+
+`AudioBackend.getBufferedToEnd?()` feeds `bufferedToEnd`: true once the
+current track is fully downloaded, false while it still is, null when the
+engine cannot tell (absent reads as null). Web audio reads `audio.buffered`.
+
+### Offline behaviour (web and desktop engines)
+
+`useAutoCacheStore.online` (event driven, optimistic at load) is the one
+connection signal. Offline, Next and auto-advance use
+`queueNav.nextPlayableOffline`: only tracks that are auto-cached or pinned can
+be landed on; the rest are skipped without being flagged. Nothing left means a
+stall: one toast per offline spell, `offlineStalled = true` (the badge says
+"Offline, nothing cached ahead"), no retry loop. A Next pressed mid-song with
+nothing ahead only toasts; the song carries on. A song that fails while
+offline (its stream gave out, or its cached file vanished; a broken cached
+copy is evicted) moves on the same way, and stalls on itself when nothing is
+ahead. When the connection returns, the stall clears and the song it stopped
+at is loaded paused; the listener presses play. The availability probe asks
+the server nothing while offline.
+
+### Tests
+
+`adapter.test.ts`, `opfsAdapter.test.ts` (fake OPFS in
+`test-utils/fakeOpfs.ts`), `hooks/player/useAutoCache.test.tsx` (fake adapter,
+fake timers), `components/player/PlayerProvider.autoCache.test.tsx`, and the
+browser test `tests/auto-cache-ui.test.mjs`.

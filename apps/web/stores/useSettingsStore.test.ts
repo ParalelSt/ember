@@ -45,7 +45,33 @@ describe('useSettingsStore tabsEnabled', () => {
   it('persists only the values, never the sync state', async () => {
     getPlugins.mockResolvedValue({ partyVolume: false, tabsEnabled: true });
     await useSettingsStore.getState().loadPlugins('u1');
-    expect(Object.keys(stored()).sort()).toEqual(['autoReportEnabled', 'partyVolume', 'tabsEnabled']);
+    expect(Object.keys(stored()).sort()).toEqual([
+      'autoCacheEnabled', 'autoCacheOnMetered', 'autoReportEnabled', 'partyVolume', 'tabsEnabled',
+    ]);
+  });
+});
+
+describe('useSettingsStore auto cache switches', () => {
+  it('cache upcoming songs is on by default, mobile data off', () => {
+    expect(useSettingsStore.getState().autoCacheEnabled).toBe(true);
+    expect(useSettingsStore.getState().autoCacheOnMetered).toBe(false);
+  });
+
+  it('both persist on this device', () => {
+    useSettingsStore.getState().setAutoCacheEnabled(false);
+    useSettingsStore.getState().setAutoCacheOnMetered(true);
+    expect(stored()).toMatchObject({ autoCacheEnabled: false, autoCacheOnMetered: true });
+  });
+
+  it('never follow the account: an account load leaves them alone and saves nothing for them', async () => {
+    useSettingsStore.getState().setAutoCacheEnabled(false);
+    getPlugins.mockResolvedValue({ partyVolume: true, tabsEnabled: true, autoCacheEnabled: true });
+    await useSettingsStore.getState().loadPlugins('u1');
+    expect(useSettingsStore.getState().autoCacheEnabled).toBe(false);
+    for (const [patch] of updatePlugins.mock.calls) {
+      expect(patch).not.toHaveProperty('autoCacheEnabled');
+      expect(patch).not.toHaveProperty('autoCacheOnMetered');
+    }
   });
 });
 

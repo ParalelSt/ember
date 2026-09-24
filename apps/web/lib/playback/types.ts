@@ -43,6 +43,12 @@ export interface LoadOptions {
   autoplay: boolean;
   /** Resume position in seconds (0 = from start). */
   startAt?: number;
+  /** Set to the track id when the auto cache holds this track
+   *  (CacheAdapter.has). An engine that keeps its own cache (the desktop Rust
+   *  engine) opens the cached copy by this key and keeps `url` as the
+   *  fallback; engines that play a URL the adapter already resolved (web
+   *  audio and a blob: URL) ignore it. */
+  cacheKey?: string;
 }
 
 /** A prank sound played by the native engine beside the music. */
@@ -76,6 +82,12 @@ export interface AudioBackend {
   /** Current track duration in seconds (0 if unknown). */
   getDuration(): number;
   isPaused(): boolean;
+  /** Has the current track been fully downloaded (buffered to its end)?
+   *  null = this engine cannot tell. The auto cache waits for true (or, on
+   *  null, for a fallback play time) before it downloads anything else, so a
+   *  prefetch never competes with the song the listener is waiting on.
+   *  Optional: absent reads as null. */
+  getBufferedToEnd?(): boolean | null;
   /** True while a load/seek-restore is settling — callers must not persist
    *  position during this window (the element reports transient values). */
   isTransitioning(): boolean;

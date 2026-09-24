@@ -64,3 +64,14 @@ prefetch-started yt-dlp, all behind the cap of two.
   `app/api/uploads/[id]/stream/route.prefetch.test.ts`
 - `tests/stream-prefetch.test.mjs` (`npm run test:stream-prefetch`), against a
   real server with the fake yt-dlp; its header says how to start one.
+
+## Where the clients keep the songs
+
+- Browser: the Origin Private File System, `cache/audio/` next to pinned
+  downloads (`apps/web/lib/autoCache/opfsAdapter.ts`). Never Cache Storage:
+  `RegisterSW` empties Cache Storage on every start, so audio there would be
+  gone on the next visit.
+- Desktop and Android: their own cache directories (Tasks 7 and 6).
+
+The client contract (which songs, when, one at a time, backoff) is in
+`apps/web/lib/autoCache/README.md`.

@@ -121,3 +121,51 @@ export function nextPlayable<T extends Availability>(
   }
   return { index: -1, skipped };
 }
+
+/* ── Offline ──────────────────────────────────────────────────────────
+ *  With the connection gone, only a track with a copy on this device can
+ *  play: an auto-cached one or a pinned download. The rest are skipped,
+ *  not flagged: they are fine, just out of reach until the network is back.
+ */
+
+/** Can this track play with no network? `cached` holds auto-cached ids,
+ *  `pinned` ids with a downloaded copy. */
+export function isPlayableOffline(
+  track: (Availability & { id: string }) | null | undefined,
+  cached: ReadonlySet<string>,
+  pinned: ReadonlySet<string>,
+): boolean {
+  if (!track || isUnavailable(track)) return false;
+  return cached.has(track.id) || pinned.has(track.id);
+}
+
+/** `nextPlayable` for when the device is offline: also walks past tracks
+ *  with no local copy. `skipped` still lists only the unavailable ones (the
+ *  ones worth a toast); `uncached` lists the tracks passed over for want of
+ *  a copy, in walk order, so the caller knows which one to come back to. */
+export function nextPlayableOffline<T extends Availability & { id: string }>(
+  queue: readonly T[],
+  start: number,
+  step: 1 | -1,
+  wrap: boolean,
+  cached: ReadonlySet<string>,
+  pinned: ReadonlySet<string>,
+): { index: number; skipped: T[]; uncached: T[] } {
+  const len = queue.length;
+  const skipped: T[] = [];
+  const uncached: T[] = [];
+  if (len === 0) return { index: -1, skipped, uncached };
+  if (!wrap && (start < 0 || start >= len)) return { index: -1, skipped, uncached };
+
+  let i = ((start % len) + len) % len;
+  for (let steps = 0; steps < len; steps++) {
+    const track = queue[i];
+    if (isUnavailable(track)) skipped.push(track);
+    else if (isPlayableOffline(track, cached, pinned)) return { index: i, skipped, uncached };
+    else uncached.push(track);
+    const nextI = i + step;
+    if (!wrap && (nextI < 0 || nextI >= len)) break;
+    i = ((nextI % len) + len) % len;
+  }
+  return { index: -1, skipped, uncached };
+}
