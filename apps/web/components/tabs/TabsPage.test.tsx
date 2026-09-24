@@ -413,6 +413,40 @@ describe('TabsPage search links', () => {
     );
   });
 
+  it('a click on a Find one link opens that site’s search for the song', async () => {
+    const open = vi.spyOn(window, 'open').mockReturnValue(null);
+    wrap(<TabsPage trackId="upload:song1" />);
+    fireEvent.click(await screen.findByRole('link', { name: 'Ultimate Guitar' }));
+    expect(open).toHaveBeenLastCalledWith(
+      'https://www.ultimate-guitar.com/search.php?search_type=title&value=Coastline+Copper+Sky',
+      '_blank',
+      'noopener,noreferrer',
+    );
+    fireEvent.click(screen.getByRole('link', { name: 'Guitar Pro files' }));
+    expect(open.mock.lastCall?.[0]).toContain('https://duckduckgo.com/?q=Coastline+Copper+Sky+');
+    fireEvent.click(screen.getByRole('link', { name: 'Songsterr' }));
+    expect(open).toHaveBeenLastCalledWith('https://www.songsterr.com/?pattern=Coastline+Copper+Sky', '_blank', 'noopener,noreferrer');
+    expect(open).toHaveBeenCalledTimes(3);
+    open.mockRestore();
+  });
+
+  it('in the desktop app the Find one links go to the system browser', async () => {
+    const invoke = vi.fn(async () => null);
+    (window as unknown as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__ = { invoke };
+    const open = vi.spyOn(window, 'open').mockReturnValue(null);
+    try {
+      wrap(<TabsPage trackId="upload:song1" />);
+      fireEvent.click(await screen.findByRole('link', { name: 'Songsterr' }));
+      await waitFor(() =>
+        expect(invoke).toHaveBeenCalledWith('open_external', { url: 'https://www.songsterr.com/?pattern=Coastline+Copper+Sky' }),
+      );
+      expect(open).not.toHaveBeenCalled();
+    } finally {
+      delete (window as unknown as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__;
+      open.mockRestore();
+    }
+  });
+
   it('generating comes after adding a file, marked rough', async () => {
     wrap(<TabsPage trackId="upload:song1" />);
     const generate = await screen.findByRole('button', { name: 'Generate a tab (rough)' });

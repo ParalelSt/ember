@@ -54,6 +54,8 @@ import {
 } from '@/lib/tabOffset';
 import { tabSearchLinks, type TabSearchLink } from '@/lib/tabSearchLinks';
 import { TOOLS_MISSING_SHORT } from '@/lib/tabToolsText';
+import { openExternal } from '@/lib/openExternal';
+import { announceOpen } from '@/components/ExternalLinks';
 
 const TAB_ACCEPT = '.gp,.gp3,.gp4,.gp5,.gpx,.musicxml,.xml,.mxl';
 const STAFF_KEY = 'ember.tabs.staff';
@@ -360,7 +362,7 @@ function TabsSheet({ song, sources, onBack }: { song: TabSong; sources: TabSourc
         )}
         <DropdownMenuSeparator />
         {searchLinks.map((l) => (
-          <MenuItem key={l.id} label={l.menuLabel} onClick={() => window.open(l.url, '_blank', 'noopener,noreferrer')} />
+          <MenuItem key={l.id} label={l.menuLabel} onClick={() => openLink(l.url)} />
         ))}
         {tab?.canDelete && !tab.id.startsWith('generated:') && (
           <>
@@ -557,6 +559,12 @@ function TabsSheet({ song, sources, onBack }: { song: TabSong; sources: TabSourc
       />
     </div>
   );
+}
+
+/** Open a link out of Ember: a new tab, or the system browser in the
+ *  desktop app, where the webview drops new-tab links (lib/openExternal.ts). */
+function openLink(url: string): void {
+  void openExternal(url).then(announceOpen);
 }
 
 /** The tab page's menus never run off the screen (docs/tabs-v3.md section
@@ -838,6 +846,10 @@ function NoTab({
               target="_blank"
               rel="noopener noreferrer"
               data-link={l.id}
+              onClick={(e) => {
+                e.preventDefault();
+                openLink(l.url);
+              }}
               className={cn(chip, chipOff)}
             >
               {l.label}
@@ -882,6 +894,10 @@ function NoTab({
                 href={m.url}
                 target="_blank"
                 rel="noreferrer noopener"
+                onClick={(e) => {
+                  e.preventDefault();
+                  openLink(m.url);
+                }}
                 className="flex items-center gap-row rounded-md px-row py-cluster transition-colors hover:bg-card"
               >
                 <div className="min-w-0 flex-1">

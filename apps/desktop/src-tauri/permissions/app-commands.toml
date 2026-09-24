@@ -8,7 +8,7 @@
 # Referenced from capabilities/default.json.
 [[permission]]
 identifier = "allow-ember-commands"
-description = "Ember's own IPC commands: native audio, the auto cache of upcoming songs, Discord presence, log forwarding, voice search, and the window following the theme."
+description = "Ember's own IPC commands: native audio, the auto cache of upcoming songs, Discord presence, log forwarding, voice search, the window following the theme, and links opening in the system browser."
 
 [permission.commands]
 allow = [
@@ -48,5 +48,8 @@ allow = [
   # The Retry button on the page shown when the server is out of reach
   # (src/connect.rs).
   "connect_retry",
+  # Links out of the app (the tab page's "Find one", any new-tab link) open
+  # in the system browser: the webview itself drops them (src/external.rs).
+  "open_external",
 ]
 deny = []
