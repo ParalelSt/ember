@@ -18,6 +18,8 @@ import {
 import { Artwork } from '@/components/primitives/Artwork';
 import { PlayButton } from '@/components/primitives/PlayButton';
 import { CollectionHeader } from '@/components/page/CollectionHeader';
+import { CollectionCover } from '@/components/primitives/CollectionCover';
+import { Eyebrow } from '@/components/page/Eyebrow';
 import { ActionBar } from '@/components/page/ActionBar';
 import { TrackList } from '@/components/track/TrackList';
 import { formatCount, formatTime } from '@/lib/format';
@@ -99,35 +101,53 @@ export function allState(selected: number, total: number): boolean | 'mixed' {
 }
 
 /** The playlist page's header, the real CollectionHeader and ActionBar,
- *  with `actions` after Play and Shuffle. */
-export function CopyPageHeader({ actions }: { actions?: ReactNode }) {
+ *  with `actions` after Play and Shuffle. CollectionHeader switches to its
+ *  side-by-side shape on the md: breakpoint, which the phone frame (drawn
+ *  inside a desktop-wide /dizajn) would hit, so `phone` draws the same
+ *  pieces in the phone's stacked shape instead. */
+export function CopyPageHeader({ actions, phone = false }: { actions?: ReactNode; phone?: boolean }) {
+  const cover = { src: MOCK_COPY_PLAYLISTS[0].cover, icon: null };
+  const meta = ['Aron', '15 songs', '58 min'];
+  const bar = (
+    <ActionBar>
+      <PlayButton />
+      <Button variant="ghost" size="icon" aria-label="Shuffle play" className="size-12 rounded-full text-muted-foreground">
+        <ShuffleIcon className="size-5" />
+      </Button>
+      {actions}
+    </ActionBar>
+  );
+  if (phone) {
+    return (
+      <div data-testid="collection-header" className="flex flex-col items-start gap-stack">
+        <CollectionCover {...cover} className="size-art-hero rounded-2xl" />
+        <div className="w-full min-w-0">
+          <Eyebrow>Playlist</Eyebrow>
+          <h1 className="mt-cluster text-4xl font-bold leading-tight tracking-tight">{MOCK_COPY_SOURCE_NAME}</h1>
+          <div className="text-meta mt-cluster">{meta.join(' · ')}</div>
+          <div className="mt-stack">{bar}</div>
+        </div>
+      </div>
+    );
+  }
   return (
-    <CollectionHeader
-      eyebrow="Playlist"
-      title={MOCK_COPY_SOURCE_NAME}
-      meta={['Aron', '15 songs', '58 min']}
-      cover={{ src: MOCK_COPY_PLAYLISTS[0].cover, icon: null }}
-    >
-      <ActionBar>
-        <PlayButton />
-        <Button variant="ghost" size="icon" aria-label="Shuffle play" className="size-12 rounded-full text-muted-foreground">
-          <ShuffleIcon className="size-5" />
-        </Button>
-        {actions}
-      </ActionBar>
+    <CollectionHeader eyebrow="Playlist" title={MOCK_COPY_SOURCE_NAME} meta={meta} cover={cover}>
+      {bar}
     </CollectionHeader>
   );
 }
 
 /** The list as it is today, the real TrackList, for the "not selecting"
- *  state. */
-export function BrowseList({ tracks }: { tracks: Track[] }) {
+ *  state. `nowLiked`: songs just copied into Liked songs, whose hearts are
+ *  on now. */
+export function BrowseList({ tracks, nowLiked = [] }: { tracks: Track[]; nowLiked?: Track[] }) {
+  const likedIds = nowLiked.length ? new Set([...LIKED_IDS, ...nowLiked.flatMap((t) => [t.id, songKey(t)])]) : LIKED_IDS;
   return (
     <TrackList
       tracks={tracks}
       currentId={null}
       isPlaying={false}
-      likedIds={LIKED_IDS}
+      likedIds={likedIds}
       onPlay={noop}
       onToggle={noop}
       onLike={noop}
@@ -209,7 +229,7 @@ export function SortButton({
       aria-expanded={open}
       aria-label={`Sort (${key.label})`}
       data-testid="copy-sort"
-      className="inline-flex h-10 items-center gap-inset rounded-full px-row text-sm font-medium text-muted-foreground hover:bg-card hover:text-foreground"
+      className="inline-flex h-10 shrink-0 items-center gap-inset whitespace-nowrap rounded-full px-row text-sm font-medium text-muted-foreground hover:bg-card hover:text-foreground"
     >
       <SortIcon className="size-4" />
       {key.label}
@@ -646,7 +666,7 @@ export function ResultPanel({
       {open && plan.skipped.length > 0 && (
         <ul data-testid="copy-skipped" className="flex flex-col gap-inset rounded-md bg-card px-row py-cluster">
           {plan.skipped.map((s) => (
-            <li key={s.track.id} className="min-w-0 truncate text-xs text-muted-foreground">
+            <li key={s.track.id} className="min-w-0 break-words text-xs text-muted-foreground">
               <span className="font-medium text-foreground">{s.track.title}</span> · {s.track.artist}: {skipLine(s)}
             </li>
           ))}

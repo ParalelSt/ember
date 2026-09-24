@@ -101,6 +101,7 @@ export function CopyDialog({ phone, step }: { phone: boolean; step: CopyStepId }
   const content = (
     <div data-testid="copy-candidate-copy-dialog" className="flex flex-col gap-stack">
       <CopyPageHeader
+        phone={phone}
         actions={
           <PillButton onClick={flow.enter} testId="copy-enter">
             <CopyToIcon className="size-4" />
@@ -108,7 +109,7 @@ export function CopyDialog({ phone, step }: { phone: boolean; step: CopyStepId }
           </PillButton>
         }
       />
-      <BrowseList tracks={flow.tracks} />
+      <BrowseList tracks={flow.tracks} nowLiked={flow.result?.destination.kind === 'liked' ? flow.result.plan.add : undefined} />
     </div>
   );
 

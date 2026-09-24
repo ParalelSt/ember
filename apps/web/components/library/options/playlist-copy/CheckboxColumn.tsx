@@ -41,6 +41,7 @@ export function CheckboxColumn({ phone, step }: { phone: boolean; step: CopyStep
   const content = (
     <div data-testid="copy-candidate-checkbox-bar" className="flex flex-col gap-stack">
       <CopyPageHeader
+        phone={phone}
         actions={
           <PillButton onClick={flow.selecting ? flow.exit : flow.enter} active={flow.selecting} testId="copy-enter">
             <SelectIcon className="size-4" />
@@ -101,7 +102,7 @@ export function CheckboxColumn({ phone, step }: { phone: boolean; step: CopyStep
           </div>
         ) : (
           <div className="pt-cluster">
-            <BrowseList tracks={flow.tracks} />
+            <BrowseList tracks={flow.tracks} nowLiked={flow.result?.destination.kind === 'liked' ? flow.result.plan.add : undefined} />
           </div>
         )}
       </div>

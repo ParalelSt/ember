@@ -95,12 +95,12 @@ export function TapSelect({ phone, step }: { phone: boolean; step: CopyStepId })
           <SelectionBar flow={flow} phone={false} />
         </div>
       )}
-      <CopyPageHeader />
+      <CopyPageHeader phone={phone} />
       <div ref={listRef} className={cn(flow.result && 'pb-section')}>
         {!flow.selecting && (
           <div className="flex items-center justify-between gap-row border-b border-border px-row pb-cluster">
             <span data-testid="copy-hint" className="min-w-0 truncate text-sm text-muted-foreground">
-              {phone ? 'Press and hold a song to select it' : 'Click a cover to select songs'}
+              {phone ? 'Hold a song to select it' : 'Click a cover to select songs'}
             </span>
             <SortButton sort={flow.sort} open={flow.sortOpen} onClick={() => flow.setSortOpen(!flow.sortOpen)} />
           </div>

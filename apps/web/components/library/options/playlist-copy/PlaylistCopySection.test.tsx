@@ -171,4 +171,11 @@ describe('PlaylistCopySection', () => {
     const liked = rows.filter((r) => within(r).queryByRole('button', { name: 'Unlike' }));
     expect(liked.map((r) => within(r).getByTestId('track-row-title').textContent)).toEqual(['Slow Static', 'Harbor Lights', 'Звезда']);
   });
+
+  it('after copying into Liked songs, every song on the page shows its heart', () => {
+    render(<PlaylistCopySection option="checkbox-bar" step="result" />);
+    const rows = within(shells()[0]).getAllByTestId('track-row');
+    expect(rows).toHaveLength(15);
+    for (const r of rows) expect(within(r).getByRole('button', { name: 'Unlike' })).toBeInTheDocument();
+  });
 });

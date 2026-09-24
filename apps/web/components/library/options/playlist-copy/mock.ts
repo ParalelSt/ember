@@ -67,7 +67,7 @@ export const MOCK_COPY_SOURCE_NAME = 'Late Night Drive';
 export const MOCK_COPY_SOURCE: CopyTrack[] = [
   added(SLOW_STATIC, 0),
   added(HARBOR, 2),
-  added(track('sn01', 'Second Nature', 'Field Notes', 'Margins', 198, null), 3),
+  added(track('sn01', 'Second Nature', 'Field Notes', 'Margins', 198, 5), 3),
   added(NORTHBOUND, 5),
   added(HOME_SHARPE, 8),
   added(track('lt01', 'Low Tide', 'Aftertone', 'Low Light', 176, 0), 11),
