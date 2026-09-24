@@ -1,3 +1,11 @@
+# 0.7.7: App fixes (batch 3)
+
+**Host: `./update.sh` as usual (no new packages, no settings, no database
+changes).** This release is the Android and desktop apps: the web side only
+gets the changelog entry. The fixes need the new apps, 0.4.6 (Android
+versionCode 11), which the `v0.4.6` tag builds. Background:
+`docs/reports/bughunt-2026-09-24/` A3, A4, A6, A7, A8, A9, A12, L4 and L5.
+
 # 0.7.6: Playback fixes (batch 2)
 
 **Host: `./update.sh` as usual (no new packages, no settings, no database

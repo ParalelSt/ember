@@ -21,6 +21,24 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    id: 'app-fixes-3',
+    version: '0.7.7',
+    date: '2026-09-24',
+    title: 'App fixes',
+    summary: 'The Android and desktop apps handle the awkward moments better: broken songs, the car, calls, Back, and no connection.',
+    bullets: [
+      'On Android and in the car, a song that will not play is skipped and the next one starts, instead of the music stopping. Without a connection, the app still plays what is saved on the phone, as before.',
+      'In the car, tapping a song plays the rest of the list you tapped it in, not another tab.',
+      'Opening the Android app no longer adds a play you did not make, or drops the playlist you were in.',
+      'Back on Android closes the player or search, or goes to the previous page, instead of closing the app.',
+      'Prank sounds never play during a phone call.',
+      'The desktop app shows a Retry page when it cannot reach Ember at launch, and loads Ember by itself once it can.',
+      'The desktop media widget (Now Playing, the Windows media overlay) shows a scrubber and the song length, and says Stopped when the music runs out.',
+      'Clearing the queue on the desktop app while a song is still loading keeps it quiet.',
+      'These fixes need the new app version, 0.4.6.',
+    ],
+  },
+  {
     id: 'playback-fixes-2',
     version: '0.7.6',
     date: '2026-09-24',
