@@ -17,7 +17,9 @@
  *  Choices a person makes (a preset, a custom theme, sharing, using and
  *  copying someone else's) go through Settings > Appearance in the
  *  browser; the refusals and the collection rules go straight at the
- *  routes and /pb. Every preset is walked through Home, Appearance, Help
+ *  routes and /pb. A pick or a colour change shows only in the page's
+ *  preview until Apply (feature F1): the page chrome keeps the theme in use
+ *  and nothing reaches the account before Apply. Every preset is walked through Home, Appearance, Help
  *  and Plugins at 390 and 1300 wide: nothing scrolls sideways, and
  *  everything painted on the accent (text, icons, switch thumbs) stands
  *  off it, which is what catches a white-on-white play button on Mono.
@@ -25,8 +27,10 @@
  *
  *  Needs a sandbox: PocketBase (PB_URL) started with this branch's
  *  pb_hooks (ensure_themes.pb.js), and the app (APP_URL) built from this
- *  tree pointed at it with the PB admin credentials. Set CHROME_PATH to
- *  pick a browser. */
+ *  tree pointed at it with the PB admin credentials. The superuser comes
+ *  from EMBER_PB_SUPERUSER_EMAIL / EMBER_PB_SUPERUSER_PASSWORD (bughunt
+ *  W14; the old sandbox default when unset). Set CHROME_PATH to pick a
+ *  browser. */
 import { execSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -105,7 +109,10 @@ function findChrome() {
 async function adminToken() {
   for (const p of ['/api/collections/_superusers/auth-with-password', '/api/admins/auth-with-password']) {
     const res = await fetch(`${PB_URL}${p}`, { method: 'POST', headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ identity: 'admin@ember.com', password: 'egKa5WNMx3QpuG7' }) });
+      body: JSON.stringify({
+        identity: process.env.EMBER_PB_SUPERUSER_EMAIL ?? 'admin@ember.com',
+        password: process.env.EMBER_PB_SUPERUSER_PASSWORD ?? 'egKa5WNMx3QpuG7',
+      }) });
     if (res.ok) return (await res.json()).token;
   }
   throw new Error('could not authenticate as PB admin');
@@ -222,6 +229,25 @@ async function saveLine(page, text, timeout = 8000) {
 
 const tab = (page, name) => page.getByRole('tab', { name, exact: true }).click();
 
+/** The --background (or any token) the preview pane paints. */
+const previewVar = (page, name) =>
+  page.getByTestId('theme-preview').evaluate((el, n) => getComputedStyle(el).getPropertyValue(n).trim(), name);
+
+/** Press Apply and wait for the page to say so: the draft in the preview
+ *  becomes the theme in use. Returns the save line (null if it never said
+ *  `text`). */
+async function applyDraft(page, text = 'Applied') {
+  await page.getByRole('button', { name: 'Apply', exact: true }).click();
+  return saveLine(page, text);
+}
+
+/** Pick a preset and apply it (a pick alone is only a preview). Picking the
+ *  one already in use leaves nothing to apply. */
+async function usePreset(page, name) {
+  await page.getByRole('radio', { name }).click();
+  if (await page.getByTestId('apply-bar').count()) await applyDraft(page);
+}
+
 async function typeHex(page, label, hex) {
   const field = page.getByLabel(`${label} hex`, { exact: true });
   await field.fill(hex);
@@ -248,12 +274,34 @@ const aron = await member('aron', 'Aron');
 
 // ── 2. A preset on the account paints from the first byte ────────────────
 {
-  // Device A picks Midnight in Settings > Appearance.
+  // Device A picks Midnight in Settings > Appearance: the preview only.
   const a = await device(aron.cookie);
   await appearance(a);
   await a.getByRole('radio', { name: /Midnight/ }).click();
-  check('Appearance: picking Midnight says Saved', (await saveLine(a, 'Saved')) === 'Saved');
   check('Appearance: Midnight is the checked preset', (await a.getByRole('radio', { name: /Midnight/ }).getAttribute('aria-checked')) === 'true');
+  const previewBg = await previewVar(a, '--background');
+  check('F1: picking Midnight paints the preview Midnight', previewBg === MIDNIGHT.background, previewBg);
+  await a.waitForTimeout(800);
+  const chromeBg = await rootVar(a, '--background');
+  check('F1: without Apply, the page chrome\'s --background is still Ember\'s', sameColour(chromeBg, TOKENS['--background']), chromeBg);
+  check('F1: without Apply, the account is still on Ember', JSON.stringify((await call(aron, 'GET', '/theme')).body) === '{"v":1,"preset":"ember"}');
+  check('F1: the Apply bar says it shows in the preview only', (await a.getByTestId('apply-bar').textContent())?.includes('Midnight shows in the preview only.'));
+
+  // Leaving and coming back keeps the draft, still unapplied.
+  await a.getByRole('link', { name: 'Home' }).first().click();
+  await a.waitForURL(`${APP_URL}/`);
+  await a.getByRole('link', { name: 'Settings' }).first().click();
+  await a.getByRole('link', { name: 'Appearance' }).first().click();
+  await a.getByTestId('theme-count').waitFor({ timeout: 10000 });
+  check('F1: back on Appearance, the draft is still there with Apply', (await a.getByTestId('apply-bar').count()) === 1
+    && (await a.getByRole('radio', { name: /Midnight/ }).getAttribute('aria-checked')) === 'true');
+  check('F1: and leaving applied nothing', sameColour(await rootVar(a, '--background'), TOKENS['--background'])
+    && JSON.stringify((await call(aron, 'GET', '/theme')).body) === '{"v":1,"preset":"ember"}');
+
+  check('Appearance: Apply says Applied', (await applyDraft(a)) === 'Applied');
+  const appliedBg = await rootVar(a, '--background');
+  check('F1: after Apply, the page chrome\'s --background is Midnight\'s', appliedBg === MIDNIGHT.background, appliedBg);
+  check('the Apply bar is gone', (await a.getByTestId('apply-bar').count()) === 0);
   check('GET /api/theme says Midnight', JSON.stringify((await call(aron, 'GET', '/theme')).body) === '{"v":1,"preset":"midnight"}');
 
   await a.goto(`${APP_URL}/`, { waitUntil: 'networkidle' });
@@ -328,20 +376,22 @@ let NIGHT_DRIVE_EMBER;
 {
   const page = await device(aron.cookie);
   await appearance(page);
-  await page.getByRole('radio', { name: /Midnight/ }).click();
-  await saveLine(page, 'Saved');
+  await usePreset(page, /Midnight/);
   await tab(page, 'Colours');
   await typeHex(page, 'Accent', VIOLET);
-  // Live on the whole app before anything is saved.
-  const live = await rootVar(page, '--ember');
-  check('a colour change shows on the whole app at once', live !== MIDNIGHT.ember && live.startsWith('oklch('), live);
-  check('editing a preset saves a new theme of mine', (await saveLine(page, 'Saved as My Midnight')) === 'Saved as My Midnight');
+  // In the preview only: the app keeps Midnight and nothing is saved.
+  const live = await previewVar(page, '--ember');
+  check('a colour change shows in the preview at once', live !== MIDNIGHT.ember && live.startsWith('oklch('), live);
+  await page.waitForTimeout(1200);
+  check('F1: but not on the app', (await rootVar(page, '--ember')) === MIDNIGHT.ember);
+  check('F1: and no theme is made before Apply', ((await call(aron, 'GET', '/themes')).body?.mine ?? []).length === 0);
+  check('applying an edited preset saves a new theme of mine', (await applyDraft(page, 'Applied. Saved as My Midnight.')) === 'Applied. Saved as My Midnight.');
 
   await tab(page, 'Themes');
   await page.getByRole('button', { name: 'Rename My Midnight' }).click();
   await page.getByLabel('New name for My Midnight').fill('Night drive');
   await page.getByRole('button', { name: 'Save', exact: true }).click();
-  await page.getByRole('button', { name: 'Use Night drive' }).waitFor({ timeout: 5000 });
+  await page.getByRole('button', { name: 'Preview Night drive' }).waitFor({ timeout: 5000 });
   check('the count reads 1 of 20', (await page.getByTestId('theme-count').textContent()) === '1 of 20');
 
   const mineNow = await call(aron, 'GET', '/themes');
@@ -357,15 +407,20 @@ let NIGHT_DRIVE_EMBER;
   await tab(page, 'Colours');
   await typeHex(page, 'Accent', MURKY_HEX);
   const blocked = await saveLine(page, 'Not saved: accent links on the background is hard to read.');
-  check('Appearance: an unreadable pair blocks the save in plain words', !!blocked, String(blocked));
+  check('Appearance: an unreadable pair blocks Apply in plain words', !!blocked, String(blocked));
+  check('F1: with Apply turned off', await page.getByRole('button', { name: 'Apply', exact: true }).isDisabled());
   const finding = page.getByTestId('finding').filter({ hasText: 'Accent links on the background' });
   check('with the finding and its Fix it', (await finding.getAttribute('data-level')) === 'fail' && (await finding.getByRole('button', { name: 'Fix it' }).count()) === 1);
   await page.waitForTimeout(1200);
   const untouched = (await call(aron, 'GET', '/themes')).body?.mine?.find((t) => t.id === nightDrive.id);
   check('nothing reached the account', JSON.stringify(untouched?.inputs) === JSON.stringify(nightDrive.inputs));
-  // Back to the saved colours, so the rest runs on Night drive.
-  await typeHex(page, 'Accent', VIOLET);
-  await saveLine(page, 'Saved');
+  // Fix it works on the draft: Apply comes back on. Then Back to current,
+  // so the rest runs on Night drive as saved.
+  await finding.getByRole('button', { name: 'Fix it' }).click();
+  check('F1: Fix it in the draft turns Apply back on', await page.getByRole('button', { name: 'Apply', exact: true }).isEnabled());
+  await page.getByRole('button', { name: 'Back to current' }).click();
+  check('F1: Back to current drops the draft', (await page.getByTestId('apply-bar').count()) === 0
+    && (await previewVar(page, '--ember')) === NIGHT_DRIVE_EMBER, await previewVar(page, '--ember'));
   nightDrive = (await call(aron, 'GET', '/themes')).body?.mine?.find((t) => t.id === nightDrive.id);
   NIGHT_DRIVE_EMBER = css(nightDrive.inputs.accent);
 
@@ -426,8 +481,8 @@ let NIGHT_DRIVE_EMBER;
   await appearance(lp);
   const row = lp.getByTestId('shared-theme').filter({ hasText: 'Night drive' });
   check('Luka\'s Appearance lists it by Aron', (await row.getByText('by Aron').count()) === 1);
-  await row.getByRole('button', { name: 'Use Night drive' }).click();
-  await saveLine(lp, 'Saved');
+  await row.getByRole('button', { name: 'Preview Night drive' }).click();
+  await applyDraft(lp);
   const lukaUses = await call(luka, 'GET', '/theme');
   check('Luka uses it from the page', lukaUses.body?.themeId === nightDrive.id, JSON.stringify(lukaUses.body));
   const lukaEmber = await rootVar(lp, '--ember');
@@ -541,8 +596,7 @@ function onAccentProblems() {
   for (const preset of PRESETS) {
     await page.setViewportSize({ width: 1300, height: 900 });
     await appearance(page);
-    await page.getByRole('radio', { name: new RegExp(`^${preset}`, 'i') }).click();
-    await saveLine(page, 'Saved');
+    await usePreset(page, new RegExp(`^${preset}`, 'i'));
     for (const width of [1300, 390]) {
       await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
       for (const [name, route] of [
