@@ -175,7 +175,16 @@ Stop the tunnel later: `tailscale funnel reset`.
 ./update.sh            # pull, install if needed, rebuild, restart everything
 ./update.sh --check    # just show what's new, change nothing
 ./update.sh --no-start # update the code only (hosts running Ember via systemd)
+./update.sh --here     # restart Ember in this window, even outside tmux
 ```
+
+**Where Ember runs afterwards.** Run `./update.sh` inside tmux and Ember
+restarts right there, as before. Run it from a plain SSH window and Ember
+restarts in the background, in a tmux session called `ember`, and
+`update.sh` finishes, so closing the window no longer stops Ember. See it
+with `tmux attach -t ember` (leave again with Ctrl+B, then D). This needs
+tmux (`sudo apt install tmux`); without it `update.sh` stops before changing
+anything and tells you so.
 
 Every run also installs Ember's own ffmpeg (`imageio-ffmpeg`) if it is missing
 and relinks it to `.venv/bin/ffmpeg`, so the host never needs a system ffmpeg.
