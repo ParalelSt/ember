@@ -697,3 +697,51 @@ describe('LiveTabScore keyboard', () => {
     expect(onSeek).not.toHaveBeenCalled();
   });
 });
+
+describe('LiveTabScore resize', () => {
+  /** Luka's report, 2026-09-24: "ResizeObserver loop completed with
+   *  undelivered notifications" on /tabs. Our observer re-drew the score
+   *  INSIDE its callback, which changes the host's size while the browser is
+   *  still delivering size changes (AlphaTab observes the same element), so
+   *  the browser gave up on the rest for that frame and raised the error,
+   *  which then went out as an automatic report. The re-draw belongs in the
+   *  next frame. */
+  it('re-draws on a width change in the next frame, not inside the observer callback', async () => {
+    const callbacks: (() => void)[] = [];
+    vi.stubGlobal(
+      'ResizeObserver',
+      class {
+        constructor(cb: () => void) {
+          callbacks.push(cb);
+        }
+        observe() {}
+        unobserve() {}
+        disconnect() {}
+      },
+    );
+    let width = 800;
+    Object.defineProperty(HTMLElement.prototype, 'clientWidth', { configurable: true, get: () => width });
+    const frames: FrameRequestCallback[] = [];
+    const raf = vi.spyOn(window, 'requestAnimationFrame').mockImplementation((cb) => {
+      frames.push(cb);
+      return frames.length;
+    });
+    try {
+      const { api } = await mount();
+      await waitFor(() => expect(callbacks.length).toBeGreaterThan(0));
+      api.render.mockClear();
+      frames.length = 0;
+
+      width = 500;
+      callbacks.forEach((cb) => cb());
+      expect(api.render).not.toHaveBeenCalled();
+
+      frames.splice(0).forEach((f) => f(0));
+      expect(api.render).toHaveBeenCalledTimes(1);
+    } finally {
+      raf.mockRestore();
+      vi.unstubAllGlobals();
+      Object.defineProperty(HTMLElement.prototype, 'clientWidth', { configurable: true, get: () => 800 });
+    }
+  });
+});

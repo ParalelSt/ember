@@ -191,3 +191,32 @@ describe('ClientLogger: previous-session archive', () => {
     expect(previous.filter((e) => e.category === 'test')).toHaveLength(2);
   });
 });
+
+describe('ClientLogger: benign browser errors', () => {
+  /** "ResizeObserver loop completed with undelivered notifications" is the
+   *  browser saying it will deliver some size changes a frame late. Nothing
+   *  broke, yet as an error it went out as an automatic report (Luka,
+   *  2026-09-24) and used up one of the session's three. */
+  it('keeps a ResizeObserver loop as a warn breadcrumb, not an error', async () => {
+    vi.resetModules();
+    const auto = vi.fn();
+    vi.doMock('@/lib/autoReport', () => ({ maybeAutoReport: auto }));
+    const { logger: fresh } = await import('./client');
+    fresh.boot();
+    for (const message of [
+      'ResizeObserver loop completed with undelivered notifications.',
+      'ResizeObserver loop limit exceeded',
+    ]) {
+      window.dispatchEvent(new ErrorEvent('error', { message }));
+      const entry = fresh.snapshot().current.at(-1)!;
+      expect(entry).toMatchObject({ kind: 'breadcrumb', level: 'warn', category: 'js', message });
+    }
+    expect(auto).not.toHaveBeenCalled();
+
+    // A real error still is one.
+    window.dispatchEvent(new ErrorEvent('error', { message: 'x is not a function' }));
+    expect(fresh.snapshot().current.at(-1)).toMatchObject({ kind: 'error', message: 'x is not a function' });
+    expect(auto).toHaveBeenCalledTimes(1);
+    vi.doUnmock('@/lib/autoReport');
+  });
+});

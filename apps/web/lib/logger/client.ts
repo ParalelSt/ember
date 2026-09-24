@@ -17,6 +17,10 @@ const RING_MAX = 400;
 const STORAGE_KEY = 'ember.logs.last';
 const STORAGE_MAX_BYTES = 256 * 1024; // ~256 KB
 const CONSOLE_DEDUPE_MS = 1000;
+/** Window errors that are the browser's notices, not faults: Chrome's and
+ *  older browsers' wording for a ResizeObserver whose callback changed a size
+ *  it was still reporting on. */
+const BENIGN_ERRORS = /^ResizeObserver loop (completed with undelivered notifications|limit exceeded)/;
 
 class ClientLogger {
   private current: LogEntry[] = [];
@@ -53,7 +57,15 @@ class ClientLogger {
 
     // Global JS exceptions.
     window.addEventListener('error', (e) => {
-      this.error('js', e.message || 'window error', { filename: e.filename, lineno: e.lineno, colno: e.colno }, e.error);
+      const data = { filename: e.filename, lineno: e.lineno, colno: e.colno };
+      // The browser deferring some size changes to the next frame. Nothing
+      // broke, so it stays a breadcrumb: as an error it went out as an
+      // automatic report and used up one of the session's three.
+      if (BENIGN_ERRORS.test(e.message ?? '')) {
+        this.warn('js', e.message, data);
+        return;
+      }
+      this.error('js', e.message || 'window error', data, e.error);
     });
     window.addEventListener('unhandledrejection', (e) => {
       const reason = e.reason;
