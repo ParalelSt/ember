@@ -114,6 +114,21 @@ describe('an auto-cached copy', () => {
     expect(engine.load).toHaveBeenLastCalledWith(`blob:cache/${A.id}`, expect.objectContaining({ autoplay: true, cacheKey: A.id }));
   });
 
+  it('an engine with its own cache (desktop) gets the key beside the stream URL', () => {
+    cached.set(A.id, { bytes: 1, lastUsedAt: 1 });
+    useAutoCacheStore.setState({ adapter: { ...fakeAdapter, kind: 'tauri', writesThrough: true, localSrcFor: () => null } });
+    mount();
+    fireEvent.click(screen.getByText('play'));
+    expect(engine.load).toHaveBeenLastCalledWith(A.streamUrl, expect.objectContaining({ autoplay: true, cacheKey: A.id }));
+  });
+
+  it('a song the cache does not hold streams with no key', () => {
+    useAutoCacheStore.setState({ adapter: { ...fakeAdapter, kind: 'tauri', writesThrough: true, localSrcFor: () => null } });
+    mount();
+    fireEvent.click(screen.getByText('play'));
+    expect(engine.load).toHaveBeenLastCalledWith(A.streamUrl, expect.not.objectContaining({ cacheKey: expect.anything() }));
+  });
+
   it('a pinned download still wins over it', () => {
     cached.set(A.id, { bytes: 1, lastUsedAt: 1 });
     useOfflineStore.setState({ webFiles: { [A.id]: 'blob:pinned/a' } });

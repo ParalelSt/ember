@@ -59,6 +59,10 @@ export interface CacheAdapter {
    *  Android cache, a desktop clear from another window): call `listener`
    *  after each change. Returns the unsubscribe. Optional. */
   subscribe?(listener: () => void): () => void;
+  /** For adapters whose totals live outside the page (desktop, Android):
+   *  re-read them, then call the `subscribe` listeners. Settings calls it on
+   *  open so the storage line is current. Optional. */
+  reload?(): Promise<void>;
 }
 
 const EMPTY = new Map<string, CacheEntry>();

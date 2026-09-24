@@ -13,6 +13,9 @@ interface AutoCacheState {
   adapter: CacheAdapter;
   /** True once `adapter.ready()` resolved true. */
   supported: boolean;
+  /** Not supported because the installed app (desktop or Android) is older
+   *  than the auto cache: Settings says to update it. */
+  needsAppUpdate: boolean;
   /** Ids fully cached, as of the last change. */
   cachedIds: ReadonlySet<string>;
   stats: CacheStats;
@@ -28,7 +31,7 @@ interface AutoCacheState {
   /** Stops the download in flight; set by useAutoCache while it runs. */
   cancelInFlight: (() => void) | null;
 
-  setAdapter: (adapter: CacheAdapter, supported: boolean) => void;
+  setAdapter: (adapter: CacheAdapter, supported: boolean, needsAppUpdate?: boolean) => void;
   /** Re-reads ids and stats from the adapter. */
   refresh: () => void;
   setInFlight: (id: string | null) => void;
@@ -45,6 +48,7 @@ const EMPTY_STATS: CacheStats = { bytes: 0, count: 0, cap: 0 };
 export const useAutoCacheStore = create<AutoCacheState>()((set, get) => ({
   adapter: noneAdapter,
   supported: false,
+  needsAppUpdate: false,
   cachedIds: new Set(),
   stats: EMPTY_STATS,
   inFlight: null,
@@ -53,8 +57,8 @@ export const useAutoCacheStore = create<AutoCacheState>()((set, get) => ({
   stalledTrackId: null,
   cancelInFlight: null,
 
-  setAdapter: (adapter, supported) => {
-    set({ adapter, supported });
+  setAdapter: (adapter, supported, needsAppUpdate = false) => {
+    set({ adapter, supported, needsAppUpdate: !supported && needsAppUpdate });
     get().refresh();
   },
   refresh: () => {

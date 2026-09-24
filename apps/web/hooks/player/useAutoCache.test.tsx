@@ -12,6 +12,9 @@ import type { CacheAdapter, CacheEntry } from '@/lib/autoCache/adapter';
 import type { FetchResult } from '@/lib/autoCache/policy';
 import type { Track } from '@/types/track';
 import { TICK_MS, useAutoCache } from './useAutoCache';
+import { createAndroidCacheAdapter } from '@/lib/autoCache/androidAdapter';
+import type { NativeCacheState } from '@/lib/autoCache/native';
+import type { BackendKind } from '@/lib/autoCache/select';
 
 vi.mock('@/lib/logger/client', () => ({ logger: { breadcrumb: vi.fn(), error: vi.fn() } }));
 
@@ -240,6 +243,86 @@ describe('useAutoCache', () => {
     await advance(TICK_MS * 2);
     expect(useAutoCacheStore.getState().supported).toBe(false);
     expect(adapter.prefetch).not.toHaveBeenCalled();
+    hook.unmount();
+  });
+
+  it('an app engine whose adapter is not ready says the app needs updating', async () => {
+    adapter.ready.mockResolvedValue(false);
+    const backendRef = { current: backend };
+    const hook = renderHook(() => useAutoCache({
+      backendRef,
+      backendKind: 'tauri-native',
+      createAdapter: () => adapter as unknown as CacheAdapter,
+    }));
+    await act(async () => {});
+    expect(useAutoCacheStore.getState().supported).toBe(false);
+    expect(useAutoCacheStore.getState().needsAppUpdate).toBe(true);
+    hook.unmount();
+  });
+});
+
+describe('useAutoCache on the Android engine', () => {
+  function native() {
+    let cb: ((s: NativeCacheState) => void) | null = null;
+    const deps = {
+      available: () => true,
+      stats: vi.fn(async () => ({ bytes: 4_000_000, count: 1, cap: 300 * 1024 * 1024 })),
+      clear: vi.fn(async () => null),
+      setSettings: vi.fn(async () => true),
+      subscribeState: (f: (s: NativeCacheState) => void) => {
+        cb = f;
+        f({ cachedIds: [], offline: false, offlineStalled: false });
+        return () => { cb = null; };
+      },
+    };
+    return {
+      deps,
+      emit: (s: Partial<NativeCacheState>) => act(() => { cb?.({ cachedIds: [], offline: false, offlineStalled: false, ...s }); }),
+      live: () => cb !== null,
+    };
+  }
+
+  async function mountAndroid(n: ReturnType<typeof native>) {
+    const a = createAndroidCacheAdapter(n.deps);
+    const hook = renderHook(() => useAutoCache({
+      backendRef: { current: backend },
+      backendKind: 'android' as BackendKind,
+      createAdapter: () => a,
+    }));
+    await act(async () => {});
+    return hook;
+  }
+
+  it('hands the settings to native now and whenever they change, and never downloads from JS', async () => {
+    const n = native();
+    const hook = await mountAndroid(n);
+    expect(n.deps.setSettings).toHaveBeenLastCalledWith({ enabled: true, onMetered: false });
+    act(() => { useSettingsStore.setState({ autoCacheOnMetered: true }); });
+    expect(n.deps.setSettings).toHaveBeenLastCalledWith({ enabled: true, onMetered: true });
+    act(() => { useSettingsStore.setState({ autoCacheEnabled: false }); });
+    expect(n.deps.setSettings).toHaveBeenLastCalledWith({ enabled: false, onMetered: true });
+    expect(useAutoCacheStore.getState().supported).toBe(true);
+    expect(useAutoCacheStore.getState().stats.bytes).toBe(4_000_000);
+    hook.unmount();
+    expect(n.live()).toBe(false);
+  });
+
+  it('mirrors the native offline state into the badge store', async () => {
+    const n = native();
+    const hook = await mountAndroid(n);
+
+    await n.emit({ cachedIds: [B.id], offline: true });
+    expect(useAutoCacheStore.getState().online).toBe(false);
+    expect(useAutoCacheStore.getState().offlineStalled).toBe(false);
+    expect(useAutoCacheStore.getState().cachedIds.has(B.id)).toBe(true);
+
+    await n.emit({ cachedIds: [B.id], offline: true, offlineStalled: true });
+    expect(useAutoCacheStore.getState().offlineStalled).toBe(true);
+    expect(useAutoCacheStore.getState().stalledTrackId).toBe(A.id);
+
+    await n.emit({ cachedIds: [B.id], offline: false, offlineStalled: false });
+    expect(useAutoCacheStore.getState().online).toBe(true);
+    expect(useAutoCacheStore.getState().offlineStalled).toBe(false);
     hook.unmount();
   });
 });

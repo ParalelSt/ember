@@ -11,7 +11,8 @@
  *  - the offline badge shows, and B plays from its cached blob: copy;
  *  - with C's file deleted under the player, the end of B stalls with
  *    "Offline, nothing cached ahead";
- *  - back online, the badge goes away.
+ *  - back online, the badge goes away;
+ *  - Settings > Downloads shows the cache size and Clear empties it.
  *
  *  Needs a built app and a PocketBase (defaults: app 3053, PB 8086). Set
  *  CHROME_PATH to pick a browser. SHOTS_DIR=<dir> saves screenshots. */
@@ -121,7 +122,7 @@ for (const track of [A, B, C]) {
 const fileName = (id) => `${encodeURIComponent(id)}.bin`;
 
 const browser = await chromium.launch({ executablePath: findChrome(), headless: true, args: ['--autoplay-policy=no-user-gesture-required'] });
-const ctx = await browser.newContext({ viewport: { width: 1200, height: 900 }, deviceScaleFactor: 1 });
+const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 }, deviceScaleFactor: 1 });
 await ctx.addCookies([{ name: 'pb_auth', value: cookie, domain: '127.0.0.1', path: '/' }]);
 await ctx.addInitScript(() => {
   localStorage.setItem('ember.autoCache.test', JSON.stringify({ minPlayedSec: 2, bufferFallbackSec: 3 }));
@@ -193,7 +194,7 @@ try {
   // The desktop pill reads "Offline"; the whole state is its label.
   const badgeText = (await badge.count()) ? await badge.getAttribute('aria-label') : '';
   check('the offline badge shows', /Offline, playing cached songs/.test(badgeText), badgeText || 'no badge');
-  await shot('auto-cache-offline-playing.png');
+  await shot('auto-cache-offline-1280.png');
   const summary = await page.getByTestId('player-bar').innerText().catch(() => '');
   check('the song keeps its place beside the pill', summary.includes('Cache A'), summary.split('\n').slice(0, 3).join(' / '));
   // The phone bar spells the state out in place of the artist.
@@ -203,8 +204,8 @@ try {
     return t.includes('Offline, playing cached songs') ? t : null;
   }, 5_000);
   check('the phone bar says it too', !!phone, (phone ?? '').replace(/\n/g, ' / '));
-  await shot('auto-cache-offline-phone.png');
-  await page.setViewportSize({ width: 1200, height: 900 });
+  await shot('auto-cache-offline-390.png');
+  await page.setViewportSize({ width: 1280, height: 900 });
 
   await seekNearEnd();
   const onB = await waitFor(async () => {
@@ -242,6 +243,27 @@ try {
   const resumed = await audioState();
   check('the song it stopped at is loaded, paused', !!resumed && resumed.paused && resumed.src.includes(`/api/uploads/`),
     JSON.stringify(resumed));
+
+  // Settings > Downloads: the two switches, the space used and Clear.
+  await page.goto(`${APP_URL}/settings/downloads`, { waitUntil: 'networkidle' });
+  const rows = page.getByTestId('auto-cache-settings');
+  await rows.waitFor({ timeout: 10_000 });
+  const statsText = await page.getByTestId('auto-cache-stats').innerText().catch(() => '');
+  check('Settings shows the cache size', /Cached: .*\d+ songs?/.test(statsText), statsText || 'no stats line');
+  const clearBtn = page.getByRole('button', { name: 'Clear cached songs' });
+  check('Settings has a Clear button', (await clearBtn.count()) === 1 && (await clearBtn.isEnabled()));
+  await rows.scrollIntoViewIfNeeded();
+  await shot('auto-cache-settings-1280.png');
+  await page.setViewportSize({ width: 390, height: 844 });
+  await rows.scrollIntoViewIfNeeded();
+  await shot('auto-cache-settings-390.png');
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await clearBtn.click();
+  const cleared = await waitFor(async () => {
+    const t = await page.getByTestId('auto-cache-stats').innerText().catch(() => '');
+    return /Cached: .*0 songs/.test(t) ? t : null;
+  }, 5_000);
+  check('Clear empties the cache', !!cleared && (await cachedFiles()).length === 0, cleared ?? 'still cached');
 } catch (e) {
   check('test ran to the end', false, e.message.split('\n')[0]);
 } finally {

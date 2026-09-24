@@ -189,8 +189,19 @@ offline, battery, metered) closes, and sets one timer for a `backoff` wake.
 ### Plugging a platform in
 
 `select.ts` maps the engine PlayerProvider picked to an adapter:
-`web` and `capacitor` get OPFS (`opfsAdapter.ts`), everything else
-`noneAdapter` until its adapter lands. A new platform adds one `case` there.
+
+| Engine | Adapter | Notes |
+|---|---|---|
+| `web`, `capacitor` | `opfsAdapter.ts` | blob: URLs the audio element plays; `noneAdapter` without OPFS |
+| `tauri-native` | `tauriAdapter.ts` | the shell's `cache_*` commands; `localSrcFor` is null, the engine opens the file by `LoadOptions.cacheKey` |
+| `android` | `androidAdapter.ts` | a mirror of the native player's own cache: never downloads (`prefetch` resolves failed) or evicts; `useAutoCache` runs no driver, only hands the settings down (`setNativeAutoCache`) and mirrors `offline` / `offlineStalled` into `useAutoCacheStore` |
+| anything else | `noneAdapter` | |
+
+An app engine (`tauri-native`, `android`) whose adapter resolves `ready()`
+false is an app build from before the auto cache: `useAutoCacheStore.needsAppUpdate`
+is set and Settings says to update the app. When a broken desktop engine
+falls back to web audio, the provider switches the adapter to OPFS too.
+A new platform adds one `case` there.
 
 How the player uses the adapter (`PlayerProvider.loadAndPlay`, web and
 desktop engines; the Android engine owns its own queue and never asks):

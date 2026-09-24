@@ -7,10 +7,10 @@
  *  (apps/desktop/src-tauri/src/cache.rs): a directory under the OS cache dir,
  *  capped at 500 MB and 100 songs, least recently played evicted first.
  *
- *  Playback: `localSrcFor(id)` returns `cache:<id>`, which tauriBackend.load
- *  hands to the engine as the song's cache key, and the engine opens its file
- *  (streaming from where it came from if the file will not decode). Passing
- *  `LoadOptions.cacheKey = track.id` beside the stream URL does the same.
+ *  Playback: `localSrcFor` is always null. PlayerProvider passes
+ *  `LoadOptions.cacheKey = track.id` beside the stream URL whenever `has(id)`,
+ *  and the engine opens its cached file by that key (streaming the URL if the
+ *  file will not decode).
  *
  *  An older desktop build has no `cache_*` commands: the ACL refuses them (or
  *  the bridge never answers), `ready()` resolves false, `kind` becomes
@@ -19,30 +19,12 @@
 import { invoke as tauriInvoke } from '@tauri-apps/api/core';
 import { apiUrl } from '@/lib/api';
 import { detectShell } from '@/lib/playback/detectShell';
-import { sessionCookie, TAURI_CACHE_PREFIX, toAbsolute } from '@/lib/playback/tauriBackend';
-import type { Track } from '@/types/track';
+import { sessionCookie, toAbsolute } from '@/lib/playback/tauriBackend';
+import { withPrefetchParam, type CacheAdapter, type CacheEntry, type CacheStats } from './adapter';
+import type { FetchResult } from './policy';
 
-export type PrefetchResult =
-  | { kind: 'done'; bytes: number }
-  | { kind: 'retry-after'; status: 429 | 503; seconds: number | null }
-  | { kind: 'gone' }
-  | { kind: 'failed' };
-
-/** The plan's `CacheAdapter` (Task 5 defines it in ./adapter.ts). Declared
- *  here with the same shape so this file stands alone until the branches
- *  meet; on merge, replace it with `import type { CacheAdapter } from './adapter'`. */
-export interface CacheAdapter {
-  kind: 'opfs' | 'tauri' | 'android-native' | 'none';
-  ready(): Promise<boolean>;
-  has(id: string): boolean;
-  localSrcFor(id: string): string | null;
-  prefetch(track: Track, signal: AbortSignal): Promise<PrefetchResult>;
-  touch(id: string): void;
-  evict(ids: string[]): Promise<void>;
-  stats(): { bytes: number; count: number; cap: number };
-  clear(): Promise<void>;
-  writesThrough: boolean;
-}
+/** Kept as a name for the tests and callers that speak of prefetch results. */
+export type PrefetchResult = FetchResult;
 
 /** Matches CAP_BYTES in cache.rs; replaced by the shell's own figure once
  *  `cache_stats` answers. */
@@ -75,7 +57,7 @@ interface RawStats { bytes: number; count: number; cap: number; maxFiles?: numbe
  *  running, which the policy's one-at-a-time rule makes rare) and
  *  `cancelled` (the driver aborted it and ignores the answer) count as
  *  failed; so does anything this build does not recognise. */
-export function mapPrefetchOutcome(raw: unknown): PrefetchResult {
+export function mapPrefetchOutcome(raw: unknown): FetchResult {
   const o = raw as Partial<RawOutcome> | null;
   switch (o?.kind) {
     case 'done': {
@@ -103,19 +85,43 @@ export function mapPrefetchOutcome(raw: unknown): PrefetchResult {
  *  relative URL means nothing to it. */
 export function prefetchUrlFor(streamUrl: string): string {
   const base = /^https?:\/\//i.test(streamUrl) ? streamUrl : apiUrl(streamUrl);
-  const abs = toAbsolute(base);
-  return abs + (abs.includes('?') ? '&' : '?') + 'prefetch=1';
+  return withPrefetchParam(toAbsolute(base));
 }
 
-export function createTauriCacheAdapter(deps: TauriCacheDeps = {}): CacheAdapter & { refresh(): Promise<void> } {
+interface RawEntry { key?: unknown; bytes?: unknown; lastUsedMs?: unknown }
+
+function toEntries(raw: unknown): Map<string, CacheEntry> {
+  const m = new Map<string, CacheEntry>();
+  if (!Array.isArray(raw)) return m;
+  for (const r of raw as RawEntry[]) {
+    if (typeof r?.key !== 'string') continue;
+    const bytes = typeof r.bytes === 'number' && r.bytes >= 0 ? r.bytes : 0;
+    const lastUsedAt = typeof r.lastUsedMs === 'number' ? r.lastUsedMs : 0;
+    m.set(r.key, { bytes, lastUsedAt });
+  }
+  return m;
+}
+
+export type TauriCacheAdapter = CacheAdapter & {
+  /** Re-reads the shell's entries and totals. */
+  reload(): Promise<void>;
+};
+
+export function createTauriCacheAdapter(deps: TauriCacheDeps = {}): TauriCacheAdapter {
   const call: Invoke = deps.invoke ?? (tauriInvoke as Invoke);
   const isTauri = deps.isTauri ?? (() => detectShell() === 'tauri');
   const readyTimeoutMs = deps.readyTimeoutMs ?? READY_TIMEOUT_MS;
 
   let state: 'unknown' | 'ok' | 'unavailable' = 'unknown';
   let readyPromise: Promise<boolean> | null = null;
-  let keys = new Set<string>();
-  let snapshot = { bytes: 0, count: 0, cap: TAURI_CACHE_CAP_BYTES };
+  let entries = new Map<string, CacheEntry>();
+  let snapshot: CacheStats = { bytes: 0, count: 0, cap: TAURI_CACHE_CAP_BYTES };
+  const listeners = new Set<() => void>();
+  const notify = () => {
+    for (const l of listeners) {
+      try { l(); } catch { /* one bad listener must not stop the rest */ }
+    }
+  };
 
   const withTimeout = <T,>(p: Promise<T>): Promise<T> => {
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -127,22 +133,23 @@ export function createTauriCacheAdapter(deps: TauriCacheDeps = {}): CacheAdapter
     ]).finally(() => clearTimeout(timer));
   };
 
-  /** Re-reads the shell's keys and totals: the source of truth, since the
+  /** Re-reads the shell's entries and totals: the source of truth, since the
    *  engine touches, and a prefetch may evict, without the page asking. */
   const refresh = async (): Promise<void> => {
-    const [ids, stats] = await Promise.all([call<string[]>('cache_keys'), call<RawStats>('cache_stats')]);
-    keys = new Set(Array.isArray(ids) ? ids.filter((k) => typeof k === 'string') : []);
+    const [raw, stats] = await Promise.all([call<unknown>('cache_entries'), call<RawStats>('cache_stats')]);
+    entries = toEntries(raw);
     snapshot = {
       bytes: typeof stats?.bytes === 'number' ? stats.bytes : 0,
-      count: typeof stats?.count === 'number' ? stats.count : keys.size,
+      count: typeof stats?.count === 'number' ? stats.count : entries.size,
       cap: typeof stats?.cap === 'number' ? stats.cap : TAURI_CACHE_CAP_BYTES,
     };
+    notify();
   };
   const refreshQuietly = () => refresh().catch(() => {});
 
   const available = () => state === 'ok';
 
-  const adapter: CacheAdapter & { refresh(): Promise<void> } = {
+  const adapter: TauriCacheAdapter = {
     get kind() {
       return state === 'unavailable' ? 'none' : 'tauri';
     },
@@ -160,7 +167,7 @@ export function createTauriCacheAdapter(deps: TauriCacheDeps = {}): CacheAdapter
             state = 'ok';
             return true;
           } catch {
-            // "Command cache_keys not allowed by ACL": a desktop build from
+            // "Command cache_entries not allowed by ACL": a desktop build from
             // before the auto cache. Settings says to update the app.
             state = 'unavailable';
             return false;
@@ -170,9 +177,10 @@ export function createTauriCacheAdapter(deps: TauriCacheDeps = {}): CacheAdapter
       return readyPromise;
     },
 
-    has: (id) => available() && keys.has(id),
+    has: (id) => available() && entries.has(id),
 
-    localSrcFor: (id) => (available() && keys.has(id) ? TAURI_CACHE_PREFIX + id : null),
+    // The engine opens the file by LoadOptions.cacheKey, not by a URL.
+    localSrcFor: () => null,
 
     async prefetch(track, signal) {
       if (!available() || signal.aborted || !track.streamUrl) return { kind: 'failed' };
@@ -188,7 +196,7 @@ export function createTauriCacheAdapter(deps: TauriCacheDeps = {}): CacheAdapter
         });
         const result = mapPrefetchOutcome(raw);
         if (result.kind === 'done') {
-          keys.add(track.id);
+          entries.set(track.id, { bytes: result.bytes, lastUsedAt: Date.now() });
           // The shell may have evicted older songs to make room.
           await refreshQuietly();
         }
@@ -201,7 +209,10 @@ export function createTauriCacheAdapter(deps: TauriCacheDeps = {}): CacheAdapter
     },
 
     touch(id) {
-      if (!available() || !keys.has(id)) return;
+      if (!available()) return;
+      const e = entries.get(id);
+      if (!e) return;
+      entries.set(id, { ...e, lastUsedAt: Date.now() });
       void call('cache_touch', { key: id }).catch(() => {});
     },
 
@@ -212,9 +223,11 @@ export function createTauriCacheAdapter(deps: TauriCacheDeps = {}): CacheAdapter
       } catch {
         // Left as it was; the refresh below reports what is really there.
       }
-      for (const id of ids) keys.delete(id);
+      for (const id of ids) entries.delete(id);
       await refreshQuietly();
     },
+
+    entries: () => entries,
 
     stats: () => ({ ...snapshot }),
 
@@ -225,12 +238,19 @@ export function createTauriCacheAdapter(deps: TauriCacheDeps = {}): CacheAdapter
       } catch {
         // Same as evict: the refresh tells the truth.
       }
-      keys = new Set();
+      entries = new Map();
       snapshot = { ...snapshot, bytes: 0, count: 0 };
       await refreshQuietly();
     },
 
-    refresh,
+    subscribe(listener) {
+      listeners.add(listener);
+      return () => listeners.delete(listener);
+    },
+
+    async reload() {
+      if (available()) await refreshQuietly();
+    },
   };
   return adapter;
 }

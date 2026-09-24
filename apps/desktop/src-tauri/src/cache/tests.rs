@@ -409,6 +409,13 @@ fn evict_clear_path_and_stats() {
     let cache = AudioCache::open_with(dir.0.clone(), 1_000, 10).expect("open");
 
     assert_eq!(cache.stats(), CacheStats { bytes: 5, count: 2, cap: 1_000, max_files: 10 });
+    assert_eq!(
+        cache.entries(),
+        vec![
+            EntrySummary { key: "youtube:a".into(), bytes: 3, last_used_ms: 1 },
+            EntrySummary { key: "youtube:b".into(), bytes: 2, last_used_ms: 2 },
+        ]
+    );
     assert_eq!(cache.path_for("youtube:a"), Some(dir.0.join(&a.file)));
     assert_eq!(cache.path_for("youtube:nope"), None);
 

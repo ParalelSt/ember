@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { useSettingsStore } from '@/stores/useSettingsStore';
@@ -9,6 +9,7 @@ import { formatBytes, formatCount } from '@/lib/format';
 import { cn } from '@/lib/utils';
 
 export const AUTO_CACHE_UNAVAILABLE_TEXT = 'Automatic caching is not available in this browser or app version.';
+export const AUTO_CACHE_UPDATE_APP_TEXT = 'Automatic caching needs a newer version of the Ember app. Update the app to turn it on.';
 
 /** One switch row, the same shape as the other settings switches. */
 function SwitchRow({
@@ -61,9 +62,18 @@ export function AutoCacheSettings() {
   const onMetered = useSettingsStore((s) => s.autoCacheOnMetered);
   const setOnMetered = useSettingsStore((s) => s.setAutoCacheOnMetered);
   const supported = useAutoCacheStore((s) => s.supported);
+  const needsAppUpdate = useAutoCacheStore((s) => s.needsAppUpdate);
+  const adapter = useAutoCacheStore((s) => s.adapter);
   const stats = useAutoCacheStore((s) => s.stats);
   const clear = useAutoCacheStore((s) => s.clear);
   const [clearing, setClearing] = useState(false);
+
+  // The desktop and Android caches change outside this page (the engine
+  // evicts, native prefetches with the screen off): re-read the totals on open.
+  useEffect(() => {
+    if (!supported || !adapter.reload) return;
+    void adapter.reload().then(() => useAutoCacheStore.getState().refresh(), () => {});
+  }, [adapter, supported]);
 
   const onClear = async () => {
     setClearing(true);
@@ -103,7 +113,9 @@ export function AutoCacheSettings() {
           </Button>
         </div>
       ) : (
-        <p className="text-meta" data-testid="auto-cache-unavailable">{AUTO_CACHE_UNAVAILABLE_TEXT}</p>
+        <p className="text-meta" data-testid="auto-cache-unavailable">
+          {needsAppUpdate ? AUTO_CACHE_UPDATE_APP_TEXT : AUTO_CACHE_UNAVAILABLE_TEXT}
+        </p>
       )}
     </div>
   );

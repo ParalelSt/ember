@@ -229,7 +229,11 @@ against the same `policy.cases.json`).
   skipped in play order. With nothing ahead, playback pauses and the state
   says `offlineStalled`. When the phone has a validated network again the
   song is loaded, paused.
-- **Web side:** `lib/autoCache/native.ts`. Plugin methods on `EmberPlayer`:
+- **Web side:** `lib/autoCache/native.ts` (the bridge) and
+  `lib/autoCache/androidAdapter.ts` (the cache as Settings and the badge see
+  it). No JS download ever runs on this engine: the page hands the two
+  settings down whenever they change and mirrors `offline` and
+  `offlineStalled` into the Offline badge. Plugin methods on `EmberPlayer`:
   `setAutoCache({ enabled, onMetered })` (kept across restarts),
   `cacheStats()` and `clearCache()` (both `{ bytes, count, cap }`), and the
   `state` event gains `cachedIds`, `offlineStalled` and `offline`. Older app

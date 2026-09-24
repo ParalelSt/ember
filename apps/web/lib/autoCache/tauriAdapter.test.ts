@@ -24,7 +24,7 @@ function shell(answers: Record<string, (args?: Record<string, unknown>) => unkno
   const calls: Array<{ cmd: string; args?: Record<string, unknown> }> = [];
   let keys: string[] = ['youtube:a'];
   const defaults: Record<string, (args?: Record<string, unknown>) => unknown> = {
-    cache_keys: () => keys,
+    cache_entries: () => keys.map((key, i) => ({ key, bytes: 100, lastUsedMs: 1000 + i })),
     cache_stats: () => ({ bytes: keys.length * 100, count: keys.length, cap: 524288000, maxFiles: 100 }),
     cache_prefetch: () => ({ kind: 'done', bytes: 100 }),
     cache_evict: (args) => {
@@ -67,8 +67,8 @@ describe('tauriCacheAdapter: an older or absent shell', () => {
 
   it('a desktop build without the cache commands reads as unavailable, and everything is a no-op', async () => {
     const s = shell({
-      cache_keys: () => {
-        throw new Error('Command cache_keys not allowed by ACL');
+      cache_entries: () => {
+        throw new Error('Command cache_entries not allowed by ACL');
       },
     });
     const a = createTauriCacheAdapter({ invoke: s.invoke, isTauri: () => true });
@@ -82,7 +82,7 @@ describe('tauriCacheAdapter: an older or absent shell', () => {
     a.touch('youtube:a');
     await a.evict(['youtube:a']);
     await a.clear();
-    expect(s.calls.map((c) => c.cmd).filter((c) => c !== 'cache_keys' && c !== 'cache_stats')).toEqual([]);
+    expect(s.calls.map((c) => c.cmd).filter((c) => c !== 'cache_entries' && c !== 'cache_stats')).toEqual([]);
   });
 
   it('a bridge that never answers gives up after the timeout instead of hanging', async () => {
@@ -110,9 +110,11 @@ describe('tauriCacheAdapter: a current shell', () => {
     expect(a.writesThrough).toBe(true);
     expect(a.has('youtube:a')).toBe(true);
     expect(a.has('youtube:b')).toBe(false);
-    expect(a.localSrcFor('youtube:a')).toBe('cache:youtube:a');
+    // The engine opens the file by LoadOptions.cacheKey, never by a URL.
+    expect(a.localSrcFor('youtube:a')).toBeNull();
     expect(a.localSrcFor('youtube:b')).toBeNull();
     expect(a.stats()).toEqual({ bytes: 100, count: 1, cap: 524288000 });
+    expect([...a.entries()]).toEqual([['youtube:a', { bytes: 100, lastUsedAt: 1000 }]]);
   });
 
   it('asks the shell once however often ready() is called', async () => {
@@ -120,7 +122,7 @@ describe('tauriCacheAdapter: a current shell', () => {
     const a = createTauriCacheAdapter({ invoke: s.invoke, isTauri: () => true });
     await Promise.all([a.ready(), a.ready()]);
     await a.ready();
-    expect(s.calls.filter((c) => c.cmd === 'cache_keys')).toHaveLength(1);
+    expect(s.calls.filter((c) => c.cmd === 'cache_entries')).toHaveLength(1);
   });
 
   it('prefetches the absolute stream URL with the prefetch marker, the track id and the session', async () => {
@@ -218,6 +220,22 @@ describe('tauriCacheAdapter: a current shell', () => {
     a.touch('youtube:a');
     a.touch('youtube:zzz');
     expect(s.calls.filter((c) => c.cmd === 'cache_touch').map((c) => c.args)).toEqual([{ key: 'youtube:a' }]);
+    expect(a.entries().get('youtube:a')!.lastUsedAt).toBeGreaterThan(1000);
+  });
+
+  it('tells subscribers after the shell contents are re-read', async () => {
+    const s = shell();
+    const a = createTauriCacheAdapter({ invoke: s.invoke, isTauri: () => true });
+    await a.ready();
+    const seen = vi.fn();
+    const off = a.subscribe!(seen);
+    s.setKeys(['youtube:a', 'youtube:b']);
+    await a.reload();
+    expect(seen).toHaveBeenCalledTimes(1);
+    expect(a.has('youtube:b')).toBe(true);
+    off();
+    await a.reload();
+    expect(seen).toHaveBeenCalledTimes(1);
   });
 });
 

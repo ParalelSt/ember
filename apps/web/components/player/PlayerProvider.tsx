@@ -118,8 +118,9 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
    *  broken native one (only ever done once — a fallback loop would be worse
    *  than the original fault). */
   const backendKindRef = useRef<BackendKind>('web');
-  /** The engine chosen at startup, as state, so the auto cache can pick the
-   *  adapter that goes with it once there is one. */
+  /** The engine in use, as state, so the auto cache can pick the adapter
+   *  that goes with it: set at startup, and again when a broken desktop
+   *  engine falls back to web audio (which cannot open the Rust cache). */
   const [initialKind, setInitialKind] = useState<BackendKind | null>(null);
   const fellBackRef = useRef(false);
   /** Track id currently handed to the backend — guards redundant re-loads. */
@@ -418,6 +419,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     try { backendRef.current?.destroy(); } catch { /* already broken */ }
     backendRef.current = createWebBackend(eventsRef.current!);
     backendKindRef.current = 'web';
+    setInitialKind('web');
     logger.setContext({ backendKind: 'web' });
     // partyVolume lives in the settings store, not the player store.
     const st = usePlayerStore.getState();

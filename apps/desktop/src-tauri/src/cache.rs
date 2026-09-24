@@ -128,6 +128,16 @@ pub struct Entry {
     pub url: Option<String>,
 }
 
+/// What `cache_entries` answers per song: the web side's policy sizes its
+/// room check and orders eviction by these, so it needs the real numbers.
+#[derive(Clone, Debug, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EntrySummary {
+    pub key: String,
+    pub bytes: u64,
+    pub last_used_ms: u64,
+}
+
 #[derive(Serialize, Deserialize)]
 struct IndexFile {
     v: u32,
@@ -157,6 +167,17 @@ impl Index {
         let mut k: Vec<String> = self.entries.keys().cloned().collect();
         k.sort();
         k
+    }
+
+    /// Every entry as the web side's policy needs it, sorted by key.
+    pub fn summaries(&self) -> Vec<EntrySummary> {
+        let mut v: Vec<EntrySummary> = self
+            .entries
+            .values()
+            .map(|e| EntrySummary { key: e.key.clone(), bytes: e.bytes, last_used_ms: e.last_used_ms })
+            .collect();
+        v.sort_by(|a, b| a.key.cmp(&b.key));
+        v
     }
 
     pub fn insert(&mut self, entry: Entry) {
@@ -426,6 +447,10 @@ impl AudioCache {
 
     pub fn keys(&self) -> Vec<String> {
         relock(&self.index).keys()
+    }
+
+    pub fn entries(&self) -> Vec<EntrySummary> {
+        relock(&self.index).summaries()
     }
 
     /// The file holding `key`, if it is cached and still on disk.
@@ -703,6 +728,12 @@ pub async fn cache_has(cache: State<'_, AudioCache>, key: String) -> Result<bool
 pub async fn cache_keys(cache: State<'_, AudioCache>) -> Result<Vec<String>, String> {
     cache.root()?;
     Ok(cache.keys())
+}
+
+#[tauri::command]
+pub async fn cache_entries(cache: State<'_, AudioCache>) -> Result<Vec<EntrySummary>, String> {
+    cache.root()?;
+    Ok(cache.entries())
 }
 
 #[tauri::command]

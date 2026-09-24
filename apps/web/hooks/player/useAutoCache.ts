@@ -9,6 +9,7 @@ import type { CacheAdapter } from '@/lib/autoCache/adapter';
 import { watchConditions, type Conditions } from '@/lib/autoCache/conditions';
 import { createAutoCacheDriver, type AutoCacheDriver, type TestOverrides } from '@/lib/autoCache/driver';
 import { createCacheAdapter, type BackendKind } from '@/lib/autoCache/select';
+import { isAndroidCacheAdapter, type AndroidCacheAdapter } from '@/lib/autoCache/androidAdapter';
 import type { AudioBackend } from '@/lib/playback/types';
 
 /** How often the policy looks again while a song plays: the 15 s and
@@ -40,6 +41,46 @@ interface Options {
   createAdapter?: (kind: BackendKind) => CacheAdapter;
 }
 
+/** Engines that come with an app shell: when their adapter is not ready, the
+ *  shell predates the auto cache and updating the app turns it on. */
+const APP_ENGINES: readonly BackendKind[] = ['android', 'tauri-native'];
+
+/** Android: the native player caches and decides by itself, so there is no
+ *  JS driver. The page hands the device settings down whenever they change,
+ *  and mirrors native's offline state into the store the badge reads.
+ *  Returns the unsubscribes. */
+function followNative(adapter: AndroidCacheAdapter): Array<() => void> {
+  const push = () => {
+    const s = useSettingsStore.getState();
+    void adapter.pushSettings({ enabled: s.autoCacheEnabled, onMetered: s.autoCacheOnMetered });
+  };
+  let lastOffline: boolean | null = null;
+  const sync = () => {
+    const store = useAutoCacheStore.getState();
+    store.refresh();
+    const n = adapter.nativeState();
+    // Native knows about a validated network even with the WebView asleep.
+    // Only its changes are applied, so the page's own online/offline events
+    // still count in between.
+    if (n.offline !== lastOffline) {
+      lastOffline = n.offline;
+      if (store.online === n.offline) store.setOnline(!n.offline);
+    }
+    if (n.offlineStalled !== useAutoCacheStore.getState().offlineStalled) {
+      const p = usePlayerStore.getState();
+      useAutoCacheStore.getState().setStalled(n.offlineStalled, p.queue[p.index]?.id ?? null);
+    }
+  };
+  push();
+  sync();
+  return [
+    useSettingsStore.subscribe((s, prev) => {
+      if (s.autoCacheEnabled !== prev.autoCacheEnabled || s.autoCacheOnMetered !== prev.autoCacheOnMetered) push();
+    }),
+    adapter.subscribe!(sync),
+  ];
+}
+
 /** The auto cache: keeps the current song and the next two on this device
  *  (lib/autoCache: policy.ts decides, the adapter stores, driver.ts runs
  *  it). Also owns the connection state the player's offline behaviour reads
@@ -66,9 +107,14 @@ export function useAutoCache({ backendRef, backendKind, createAdapter = createCa
     void adapter.ready().then((ok) => {
       if (disposed) return;
       const store = useAutoCacheStore.getState();
-      store.setAdapter(adapter, ok);
+      store.setAdapter(adapter, ok, !ok && APP_ENGINES.includes(backendKind));
       logger.breadcrumb('cache', 'auto cache ready', { kind: adapter.kind, supported: ok });
       if (!ok) return;
+
+      if (isAndroidCacheAdapter(adapter)) {
+        unsubscribe = followNative(adapter);
+        return;
+      }
 
       const driver = createAutoCacheDriver({
         adapter,
@@ -119,6 +165,7 @@ export function useAutoCache({ backendRef, backendKind, createAdapter = createCa
     return () => {
       disposed = true;
       for (const u of unsubscribe) u();
+      if (isAndroidCacheAdapter(adapter)) adapter.dispose();
       if (timer) clearInterval(timer);
       driverRef.current?.dispose();
       driverRef.current = null;

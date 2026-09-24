@@ -183,6 +183,7 @@ pub fn run() {
             cache::cache_cancel,
             cache::cache_has,
             cache::cache_keys,
+            cache::cache_entries,
             cache::cache_path,
             cache::cache_touch,
             cache::cache_evict,

@@ -26,6 +26,7 @@ allow = [
   "cache_cancel",
   "cache_has",
   "cache_keys",
+  "cache_entries",
   "cache_path",
   "cache_touch",
   "cache_evict",
