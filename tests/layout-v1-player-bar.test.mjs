@@ -158,7 +158,10 @@ try {
 
     if (width >= 1280) {
       const want = ['Like', 'Add to playlist', `Share ${TRACK.title}`];
-      const missing = want.filter((n) => !m.labels.includes(n));
+      // The heart reads "Unlike" when the seed user already likes a song with
+      // the same title and artist (the variant rule), as on a shared sandbox.
+      const labels = m.labels.map((n) => (n === 'Unlike' ? 'Like' : n));
+      const missing = want.filter((n) => !labels.includes(n));
       check(`${width}px: like, add and share still sit beside the title`, missing.length === 0, missing.length ? `missing ${missing.join(', ')}` : '');
     } else {
       // Share (and, below lg, lyrics and tabs) moved into the "More" menu.
