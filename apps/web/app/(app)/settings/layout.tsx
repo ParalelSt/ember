@@ -6,7 +6,10 @@ export default function SettingsLayout({ children }: { children: ReactNode }) {
   return (
     <div>
       <PageTitle className="mb-6">Settings</PageTitle>
-      <div className="flex flex-col md:flex-row gap-6 md:gap-10">
+      {/* Side nav from lg only: at md the sidebar already takes 240px, and a
+          second column left the page ~230px (bughunt V8). Below lg the tabs
+          are the row across the top that phones use. */}
+      <div className="flex flex-col lg:flex-row gap-6 lg:gap-10">
         <SettingsTabs />
         <div className="flex-1 min-w-0">{children}</div>
       </div>

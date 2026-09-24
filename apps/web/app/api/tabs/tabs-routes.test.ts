@@ -345,4 +345,14 @@ describe('/api/tabs/generated/[trackId] rows', () => {
     expect((await generated.GET(req('/api/tabs/generated/upload%3Aup1'), trackCtx('upload:up1'))).status).toBe(401);
     expect((await generated.POST(req('/api/tabs/generated/upload%3Aup1', { method: 'POST' }), trackCtx('upload:up1'))).status).toBe(401);
   });
+
+  // Bughunt V13: "nothing yet" is an ordinary answer, not an error, so the
+  // tab page's status probe no longer puts a red 404 in the console.
+  it('answers 204 with no body when nothing was asked for yet', async () => {
+    gen.status = 'none';
+    as(ALICE);
+    const res = await generated.GET(req('/api/tabs/generated/upload%3Aup9'), trackCtx('upload:up9'));
+    expect(res.status).toBe(204);
+    expect(await res.text()).toBe('');
+  });
 });

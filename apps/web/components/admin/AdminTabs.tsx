@@ -14,8 +14,8 @@ const TABS = [
 export function AdminTabs() {
   const path = usePathname();
   return (
-    <nav className="md:w-48 shrink-0">
-      <ul className="flex md:flex-col gap-1 overflow-x-auto md:overflow-visible">
+    <nav className="lg:w-48 shrink-0">
+      <ul className="flex lg:flex-col gap-1 overflow-x-auto lg:overflow-visible">
         {TABS.map(({ href, label }) => {
           const active = path.startsWith(href);
           return (

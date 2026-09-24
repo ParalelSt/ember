@@ -151,7 +151,7 @@ function silentWav(seconds = 2, sampleRate = 8000) {
   check('a traversal-shaped id is 400', bad2.status === 400, `status ${bad2.status}`);
 
   const none = await as(alice, `/api/tabs/generated/${encodeURIComponent(trackId)}`);
-  check('GET before any job is 404', none.status === 404, `status ${none.status}`);
+  check('GET before any job is 204 (nothing yet)', none.status === 204, `status ${none.status}`);
 
   const first = await as(alice, `/api/tabs/generated/${encodeURIComponent(trackId)}`, { method: 'POST' });
   check('the first POST starts a job (202)', first.status === 202, `status ${first.status}`);

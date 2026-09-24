@@ -23,8 +23,9 @@ import {
 /** A guitar tab generated from the track's own recording.
  *
  *  GET : the alphaTex if it exists (200, text/plain), 202 while a job is
- *         running, 409 with the reason if the last attempt failed, 404 if
- *         nothing has been asked for yet.
+ *         running, 409 with the reason if the last attempt failed, 204 if
+ *         nothing has been asked for yet (an ordinary answer, so the tab
+ *         page's probe logs no error in the browser).
  *  POST: start it. 200 if it already exists, 202 once the job is queued.
  *
  *  Generated tabs are shared by everyone on the server, like the audio they
@@ -122,7 +123,7 @@ export const GET = withRequestLog('tabs/generated/[trackId]', async (_req: NextR
     }
     if (status.status === 'running') return Response.json(status, { status: 202 });
     if (status.status === 'failed') return Response.json(status, { status: 409 });
-    return Response.json(status, { status: 404 });
+    return new Response(null, { status: 204 });
   } catch (e) {
     if (e instanceof UnauthorizedError) return unauthorizedResponse();
     return fromError(e);

@@ -6,7 +6,7 @@ import path from 'node:path';
 import { NextRequest } from 'next/server';
 import { fakePocketBase, type FakePb } from '@/test-utils/fakePocketBase';
 
-// M3: the GET must not answer 404 "none" while a POST is still awaiting the
+// M3: the GET must not answer "none" (204) while a POST is still awaiting the
 // download (ensureDownloaded), before it ever reaches startGeneration. Unlike
 // tabs-routes.test.ts, lib/tabGenerate is NOT mocked here — the race lives in
 // its real generationStatus/pending bookkeeping, not in the job runner.
@@ -48,17 +48,17 @@ beforeEach(() => {
 afterAll(() => fs.rmSync(musicDir, { recursive: true, force: true }));
 
 describe('GET /api/tabs/generated/[trackId] while a POST is still downloading', () => {
-  it('answers "running", not 404 "none", while ensureDownloaded is in flight', async () => {
+  it('answers "running", not "none", while ensureDownloaded is in flight', async () => {
     const trackId = 'youtube:AAAAAAAAAAA';
     const postDone = generated.POST(req(`/api/tabs/generated/${encodeURIComponent(trackId)}`, { method: 'POST' }), trackCtx(trackId));
 
     // Let the POST run up to (and start waiting on) ensureDownloaded before
-    // polling — without the fix this is exactly the window that reads 404.
+    // polling — without the fix this is exactly the window that reads "none".
     await Promise.resolve();
     await Promise.resolve();
 
     const pollRes = await generated.GET(req(`/api/tabs/generated/${encodeURIComponent(trackId)}`), trackCtx(trackId));
-    expect(pollRes.status).not.toBe(404);
+    expect(pollRes.status).toBe(202);
     const body = await pollRes.json();
     expect(body.status).toBe('running');
 

@@ -124,9 +124,11 @@ export function AddToPlaylistMenu({
           <PlusIcon className="h-3.5 w-3.5" /> New playlist
         </DropdownMenuItem>
         {playlists.length > 0 && <DropdownMenuSeparator />}
+        {/* The item is a flex row, and an ellipsis never shows on a flex
+            box's bare text: the name gets its own box to truncate. */}
         {playlists.map((p) => (
-          <DropdownMenuItem key={p.id} onClick={() => add(p.id, p.name)} className="truncate">
-            {p.name}
+          <DropdownMenuItem key={p.id} onClick={() => add(p.id, p.name)} title={p.name}>
+            <span className="min-w-0 truncate">{p.name}</span>
           </DropdownMenuItem>
         ))}
       </DropdownMenuContent>

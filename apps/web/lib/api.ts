@@ -34,6 +34,9 @@ export interface AdminUser {
 export interface AdminTrack extends Track {
   /** PocketBase internal record id — used in admin PATCH / DELETE URLs. */
   recordId: string;
+  /** An uploaded song whose upload was deleted: the catalog row is kept
+   *  (playlists may hold it) but there is nothing left to stream. */
+  missing?: true;
 }
 
 export interface AdminInvite {
@@ -301,7 +304,9 @@ export const api = {
     req<{ tab: TabFile }>(`/tabs/files/${id}`, { method: 'PATCH', body: { offsetMs } }),
   deleteTabFile: (id: string) => req<{ ok: true }>(`/tabs/files/${id}`, { method: 'DELETE' }),
   /** A tab generated from the recording itself. GET is a status probe: the
-   *  alphaTex body is fetched by the tab page straight from the URL. */
+   *  alphaTex body is fetched by the tab page straight from the URL. The
+   *  server answers 204 for "none"; anything else unexpected reads as none
+   *  too. */
   getGeneratedTab: async (trackId: string): Promise<{ status: 'ready' | 'running' | 'failed' | 'none'; error?: string }> => {
     const res = await fetch(`${API_BASE}/api/tabs/generated/${encodeURIComponent(trackId)}`, { credentials: 'include' });
     if (res.status === 200) return { status: 'ready' };

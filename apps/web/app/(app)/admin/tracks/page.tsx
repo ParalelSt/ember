@@ -142,7 +142,13 @@ function TrackRow({ track, onDelete }: { track: AdminTrack; onDelete: () => void
         <div className="truncate text-xs text-muted-foreground">{track.artist}</div>
       </div>
       <div className="truncate text-sm text-muted-foreground">{track.album ?? ''}</div>
-      <div className="text-xs text-muted-foreground uppercase">{track.source}</div>
+      {track.missing ? (
+        <div className="text-xs font-semibold uppercase text-destructive" title="The uploaded file was deleted: this song no longer plays">
+          Missing
+        </div>
+      ) : (
+        <div className="text-xs text-muted-foreground uppercase">{track.source}</div>
+      )}
       <Button
         variant="ghost"
         size="icon"
