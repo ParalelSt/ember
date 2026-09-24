@@ -142,7 +142,8 @@ characters), base preset, the eight inputs, and a `shared` flag.
   checked by `POST /api/themes` (409 with "You can keep up to 20 themes.
   Delete one to make room.") and again in the PocketBase hook. The New
   button is disabled at the cap.
-- **Sharing**: a theme with "Share with everyone" on is listed for everyone
+- **Sharing**: a theme with its share switch on (on its row in My themes)
+  is listed for everyone
   on this server, labelled with its creator ("by Luka"). Anyone can use it
   as it is or copy it into their own list; only its creator can edit,
   rename, unshare or delete it.
@@ -162,8 +163,9 @@ characters), base preset, the eight inputs, and a `shared` flag.
 
 `app/(app)/settings/appearance/page.tsx`, composed from presentational
 pieces in `components/settings/appearance/` and the `useThemeEditor` hook: a
-live preview of real app pieces on mock data next to an inspector with three
-tabs, Themes, Colours and Share.
+live preview of real app pieces on mock data next to an inspector with two
+tabs, Themes and Colours. Sharing has no tab of its own: it is set per
+theme, on each row of My themes (bughunt F3).
 
 **Fits the window on desktop** (bughunt F2). From xl (1280 wide) the preview
 and the inspector fill what is left of the page scroller under the heading,
@@ -228,8 +230,18 @@ The other flows:
   not in any list; changing a colour and applying saves it to My themes
   under its own name.
 - **Reset** puts the base preset's colours back into the draft.
-- **Share tab**: the "Share with everyone" switch, for one of mine only
-  (the one the preview shows). It saves at once.
+- **Sharing, per theme** (bughunt F3, the owner's call: one switch for
+  "whichever theme is selected" made no sense). Each row in My themes has
+  its own small switch, labelled "Share <name> with everyone", and a shared
+  row carries a **Shared** tag, so the list shows at a glance which are
+  shared. A line under the My themes heading says who sees them ("Shared
+  themes appear for everyone under Shared by others."). Toggling saves that
+  theme at once (`PATCH /api/themes/:id` with `shared`, the hook's
+  `setShared(id, shared)`); it is a list change, separate from the draft and
+  Apply, and leaves the theme in use alone. A failure says so on the status
+  line ("Not shared: ..." or "Still shared: ...") and the switch stays as it
+  was. Presets and other people's themes have no switch. Unsharing leaves
+  anyone using it a kept copy, as above.
 
 **Unreadable colours.** A pair at `fail` turns Apply off and shows "Not
 saved: <pair> is hard to read." Fix it changes the draft (not the saved
