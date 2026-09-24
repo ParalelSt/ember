@@ -1,13 +1,14 @@
 import type { NextRequest } from 'next/server';
 import { requireUser, UnauthorizedError, unauthorizedResponse } from '@/lib/auth';
 import { fromError } from '@/lib/upsertTrack';
-import { loadSession, assertHost } from '@/lib/sessions';
+import { loadSession, assertHost, sessionsClient } from '@/lib/sessions';
 import { withRequestLog } from '@/lib/logger/withRequestLog';
 
 /** Host ends the session — guests' polls see active=false. */
 export const POST = withRequestLog('sessions/[id]/end', async (_req: NextRequest, ctx: RouteContext<'/api/sessions/[id]/end'>) => {
   try {
-    const { pb, user } = await requireUser();
+    const { user } = await requireUser();
+    const pb = await sessionsClient();
     const { id } = await ctx.params;
     const session = await loadSession(pb, id);
     assertHost(session, user.id);

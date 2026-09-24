@@ -7,6 +7,7 @@ import {
   backfillTabRows,
   canDelete,
   canView,
+  deletePrivateTabs,
   findTabs,
   hintsFor,
   mapTab,
@@ -290,5 +291,19 @@ describe('recordGenerated', () => {
     );
     const found = await findTabs(pb, BOB, { title: 'Riff', artist: 'Me' });
     expect(found.map((r) => mapTab(r, BOB))).toMatchObject([{ kind: 'generated', canDelete: false }]);
+  });
+});
+
+describe('deleting a member (bughunt X10)', () => {
+  it('removes only their private tabs; shared ones and other people’s stay', async () => {
+    const { pb, rows } = fakePocketBase({
+      tabs: [
+        { id: 'mine-private', user: 'alice', shared: false, kind: 'file', file: 'a.gp5' },
+        { id: 'mine-shared', user: 'alice', shared: true, kind: 'file', file: 'b.gp5' },
+        { id: 'bobs-private', user: 'bob', shared: false, kind: 'file', file: 'c.gp5' },
+      ],
+    });
+    expect(await deletePrivateTabs(pb, 'alice')).toBe(1);
+    expect(rows.get('tabs')!.map((r) => r.id)).toEqual(['mine-shared', 'bobs-private']);
   });
 });

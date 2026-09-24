@@ -1,7 +1,7 @@
 import type { NextRequest } from 'next/server';
 import { requireUser, UnauthorizedError, unauthorizedResponse } from '@/lib/auth';
 import { fromError, jsonError } from '@/lib/upsertTrack';
-import { newSessionCode, addMember } from '@/lib/sessions';
+import { newSessionCode, addMember, sessionsClient } from '@/lib/sessions';
 import { withRequestLog } from '@/lib/logger/withRequestLog';
 
 /** Start a carlist session. Optionally seeds the queue from one of the
@@ -9,6 +9,7 @@ import { withRequestLog } from '@/lib/logger/withRequestLog';
 export const POST = withRequestLog('sessions', async (request: NextRequest) => {
   try {
     const { pb, user } = await requireUser();
+    const server = await sessionsClient();
     const body = (await request.json().catch(() => null)) as
       | { name?: string; seedPlaylistId?: string }
       | null;
@@ -18,7 +19,7 @@ export const POST = withRequestLog('sessions', async (request: NextRequest) => {
     let session = null;
     for (let attempt = 0; attempt < 5 && !session; attempt++) {
       try {
-        session = await pb.collection('sessions').create({
+        session = await server.collection('sessions').create({
           code: newSessionCode(),
           name,
           host: user.id,
@@ -31,7 +32,7 @@ export const POST = withRequestLog('sessions', async (request: NextRequest) => {
     }
     if (!session) return jsonError('Could not create the session — try again.', 500);
 
-    await addMember(pb, session.id, user.id);
+    await addMember(server, session.id, user.id);
 
     if (body?.seedPlaylistId) {
       const seedId = body.seedPlaylistId.replace(/[^a-zA-Z0-9]/g, '');
@@ -47,7 +48,7 @@ export const POST = withRequestLog('sessions', async (request: NextRequest) => {
       });
       let position = 1;
       for (const item of items) {
-        await pb.collection('session_tracks').create({
+        await server.collection('session_tracks').create({
           session: session.id,
           track: item.track,
           position: position++,

@@ -2,6 +2,7 @@ import 'server-only';
 import type PocketBase from 'pocketbase';
 import type { RecordModel } from 'pocketbase';
 import { ForbiddenError } from '@/lib/auth';
+import { createCatalogClient } from '@/lib/pocketbase/server';
 
 /** Unambiguous join-code alphabet (no 0/O/1/I). */
 const CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -14,18 +15,44 @@ export function newSessionCode(): string {
   return code;
 }
 
+/** The client every carlist route reads and writes session rows with.
+ *  Members cannot write those rows themselves, nor see a carlist they have
+ *  not joined (bughunt X2, pb_hooks/ensure_sessions.pb.js), so each route
+ *  checks host or membership first and then uses the server's own login. */
+export function sessionsClient(): Promise<PocketBase> {
+  return createCatalogClient();
+}
+
 interface StatusError extends Error {
   status?: number;
 }
 
 export async function loadSession(pb: PocketBase, id: string): Promise<RecordModel> {
   try {
-    return await pb.collection('sessions').getOne(id, { expand: 'host' });
+    return await pb.collection('sessions').getOne(id);
   } catch {
     const e: StatusError = new Error('Session not found.');
     e.status = 404;
     throw e;
   }
+}
+
+/** Display names by user id, for the carlist screen: the name field only,
+ *  never an email (bughunt X8). Members cannot read each other's user rows,
+ *  so this needs the server client. A member without a name is left out. */
+export async function displayNames(pb: PocketBase, ids: string[]): Promise<Map<string, string>> {
+  const unique = [...new Set(ids.filter(Boolean))];
+  const names = new Map<string, string>();
+  if (unique.length === 0) return names;
+  const rows = await pb.collection('users').getFullList({
+    filter: unique.map((id) => pb.filter('id = {:id}', { id })).join(' || '),
+    fields: 'id,name',
+  });
+  for (const r of rows) {
+    const name = String(r.name ?? '').trim();
+    if (name) names.set(r.id, name);
+  }
+  return names;
 }
 
 export function assertActive(session: RecordModel): void {
