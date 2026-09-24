@@ -116,9 +116,24 @@ const probe = async (page) => {
     if (!btn || !scroller) return null;
     const b = btn.getBoundingClientRect();
     const s = scroller.getBoundingClientRect();
+    // The part of a control a person can actually see: clipped by every
+    // scrolling or overflow-hidden box it sits in (a row scrolled out of an
+    // inner list, like a playlist's Recommended songs, is not under anything).
+    const visibleRect = (el) => {
+      const r = el.getBoundingClientRect();
+      let { left, right, top, bottom } = r;
+      for (let p = el.parentElement; p && p !== scroller; p = p.parentElement) {
+        const cs = getComputedStyle(p);
+        if (cs.overflowX === 'visible' && cs.overflowY === 'visible') continue;
+        const pr = p.getBoundingClientRect();
+        left = Math.max(left, pr.left); right = Math.min(right, pr.right);
+        top = Math.max(top, pr.top); bottom = Math.min(bottom, pr.bottom);
+      }
+      return { left, right, top, bottom, width: Math.max(0, right - left), height: Math.max(0, bottom - top) };
+    };
     const hits = [...scroller.querySelectorAll('button, a[href], input, select, textarea, [role="button"]')]
       .filter((el) => el !== btn)
-      .map((el) => ({ el, r: el.getBoundingClientRect() }))
+      .map((el) => ({ el, r: visibleRect(el) }))
       .filter(({ r }) => r.width > 0 && r.height > 0)
       .filter(({ r }) => r.left < b.right - 1 && r.right > b.left + 1 && r.top < b.bottom - 1 && r.bottom > b.top + 1)
       .map(({ el, r }) => `${el.tagName.toLowerCase()} "${(el.getAttribute('aria-label') || el.textContent || '').trim().slice(0, 30)}" @${Math.round(r.top)}`);
