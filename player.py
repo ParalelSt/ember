@@ -754,6 +754,7 @@ def ytdlp_playlist(playlist_id):
         'quiet': True,
         'no_warnings': True,
         **_cookie_opts(),
+        **_ffmpeg_opts(),
     }
     url = f"https://www.youtube.com/playlist?list={playlist_id}"
     with contextlib.redirect_stdout(sys.stderr):
@@ -905,6 +906,7 @@ def _ytdlp_playlist(playlist_id):
         'quiet': True,
         'no_warnings': True,
         **_cookie_opts(),
+        **_ffmpeg_opts(),
     }
     with contextlib.redirect_stdout(sys.stderr):
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
