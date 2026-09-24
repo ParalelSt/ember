@@ -67,3 +67,14 @@ describe('req() [bughunt W05]: 401 sends the browser to sign in', () => {
     expect(window.location.href).toBe(before);
   });
 });
+
+describe('getGeneratedTab [bughunt V13]', () => {
+  it.each([
+    [200, 'ready'],
+    [202, 'running'],
+    [204, 'none'],
+  ])('reads a %i as "%s"', async (status, expected) => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(status === 204 ? null : '{}', { status })));
+    await expect(api.getGeneratedTab('upload:u1')).resolves.toEqual({ status: expected });
+  });
+});
