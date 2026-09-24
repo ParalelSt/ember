@@ -92,3 +92,6 @@ apps/desktop/.keys/
 
 # Written by update.sh after a successful npm ci.
 .node_modules.stamp
+# update.sh sets the old node_modules and build aside here until the new
+# ones work (bughunt O1); never commit or stash them.
+*.update-prev

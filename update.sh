@@ -118,7 +118,9 @@ require_lsof() {
   fi
 }
 
+STOPPED=0
 stop_everything() {
+  STOPPED=1
   require_lsof
   stop_watchdog
   stop_on_port "$PORT" "the web app"
@@ -192,9 +194,14 @@ fi
 # so an SSH hangup never reaches it). Only the ports are passed to tmux:
 # everything else comes from apps/web/.env.local, and a running tmux server
 # would not see this shell's environment anyway.
+# It serves the build this script just made (--no-build); only when there
+# is none at all (a rollback on a host that never had one) does start-static
+# build. LAUNCH_RC is the exit status once Ember is up: 1 after a rollback.
 launch_ember() {
+  local flag="--no-build"
+  [ -f "$ROOT/apps/web/.next/BUILD_ID" ] || flag=""
   if [ "$RELAUNCH" = here ]; then
-    exec "$ROOT/start-static.sh"
+    exec "$ROOT/start-static.sh" $flag
   fi
   local cmd pid where look
   if [ "$RELAUNCH" = systemd ]; then
@@ -206,7 +213,7 @@ launch_ember() {
   else
     # When the watchdog stops (Ctrl+C), a shell stays in the window, like a
     # tmux window where it was started by hand.
-    cmd="PORT=$(printf %q "$PORT") POCKETBASE_PORT=$(printf %q "$PB_PORT") $(printf %q "$ROOT/start-static.sh"); exec \"\${SHELL:-/bin/sh}\""
+    cmd="PORT=$(printf %q "$PORT") POCKETBASE_PORT=$(printf %q "$PB_PORT") $(printf %q "$ROOT/start-static.sh") $flag; exec \"\${SHELL:-/bin/sh}\""
     if tmux has-session -t "=$TMUX_SESSION" 2>/dev/null; then
       tmux new-window -t "$TMUX_SESSION:" -c "$ROOT" "$cmd"
     else
@@ -224,7 +231,11 @@ launch_ember() {
       echo
       echo "      $look"
       echo
-      exit 0
+      if [ "${LAUNCH_RC:-0}" != 0 ]; then
+        echo "  The update did NOT go through: this is the previous version. Fix the"
+        echo "  error above (or send it to whoever maintains Ember), then ./update.sh again."
+      fi
+      exit "${LAUNCH_RC:-0}"
     fi
     sleep 0.2
   done
@@ -275,8 +286,87 @@ if ! git diff --quiet || ! git diff --cached --quiet; then
   fi
 fi
 
+# ── from the pull on, a failure puts the previous version back (O1) ─────
+# A failed install or build used to leave Ember stopped on half-new code.
+# The build can't go to a separate folder while the old one keeps serving
+# (Next's distDir would rewrite tsconfig.json, and two copies of Ember plus
+# a build may not fit in the host's memory), so the risky steps still run
+# with Ember stopped, as before. But what they replace, node_modules and the
+# old build, is moved aside instead of deleted, and any failure after this
+# point (or Ctrl+C, or the SSH window closing) puts back the previous
+# commit, dependencies and build, and starts that version again. The copies
+# set aside are deleted only once the new build has succeeded.
+PREV="$(git rev-parse HEAD)"
+ASIDE=""
+FAIL_STEP=""
+ARMED=0
+
+# set_aside PATH (relative to ROOT): moves it to PATH.update-prev. A path
+# that does not exist yet is noted too, so a rollback removes what appears.
+set_aside() {
+  rm -rf "$1.update-prev"
+  if [ -e "$1" ]; then mv "$1" "$1.update-prev"; fi
+  ASIDE="$ASIDE $1"
+}
+
+# shellcheck disable=SC2329  # called from roll_back
+restore_aside() {
+  local p
+  for p in $ASIDE; do
+    # The build cache was lent to the new build; give it back.
+    if [ "$p" = apps/web/.next ] && [ -d "$p/cache" ] && [ -d "$p.update-prev" ] && [ ! -e "$p.update-prev/cache" ]; then
+      mv "$p/cache" "$p.update-prev/cache"
+    fi
+    rm -rf "$p"
+    if [ -e "$p.update-prev" ]; then mv "$p.update-prev" "$p"; fi
+  done
+  ASIDE=""
+}
+
+discard_aside() {
+  local p
+  for p in $ASIDE; do rm -rf "$p.update-prev"; done
+  ASIDE=""
+}
+
+fail() { FAIL_STEP="$1"; exit 1; }
+
+# shellcheck disable=SC2329  # called from the EXIT trap
+roll_back() {
+  set +e
+  trap '' INT TERM HUP
+  echo
+  echo "✗ UPDATE FAILED: ${FAIL_STEP:-an unexpected error (see above)}."
+  if [ "$(git rev-parse HEAD)" != "$PREV" ]; then
+    echo "▶ putting back the previous version ($(git rev-parse --short "$PREV"))…"
+    git reset --hard --quiet "$PREV"
+  fi
+  restore_aside
+  if [ "$STOPPED" = 0 ]; then
+    echo "  Ember was not stopped: it still runs the previous version."
+    exit 1
+  fi
+  if [ "$MODE" = "no-start" ]; then
+    echo "  Ember was stopped for the install and stays stopped (--no-start)."
+    exit 1
+  fi
+  echo "▶ restarting the previous version…"
+  # Back to default signals: an ignored one would stay ignored in start-static.
+  trap - INT TERM HUP
+  LAUNCH_RC=1
+  launch_ember
+}
+
+# shellcheck disable=SC2329  # called from a trap
+on_exit() {
+  if [ "$ARMED" = 1 ] && [ "$1" != 0 ]; then roll_back; fi
+}
+trap 'on_exit $?' EXIT
+trap 'fail "interrupted"' INT TERM HUP
+ARMED=1
+
 echo "▶ pulling…"
-git pull --ff-only --quiet origin main
+git pull --ff-only --quiet origin main || fail "git pull failed"
 
 # Install against what is ACTUALLY on disk, not against what changed in this
 # pull. Comparing the two commits' lockfiles looks right but silently does the
@@ -291,8 +381,12 @@ if [ ! -d "$ROOT/node_modules" ] || [ ! -f "$STAMP" ] || [ "$(cat "$STAMP")" != 
   # running web app is not left without its dependencies, crashing, and
   # being restarted and reported by the watchdog while the install runs.
   stop_everything
+  # npm ci empties every workspace's node_modules as well as the root's.
+  set_aside node_modules
+  for ws in apps/*/; do set_aside "${ws}node_modules"; done
+  set_aside .node_modules.stamp
   echo "▶ installing dependencies — npm ci…"
-  npm ci
+  npm ci || fail "installing dependencies (npm ci) failed"
   echo "$LOCK_SHA" > "$STAMP"
 else
   echo "▶ dependencies already match the lockfile — skipping npm ci"
@@ -317,9 +411,12 @@ fi
 link_ffmpeg
 
 if [ "$MODE" = "no-start" ]; then
+  discard_aside
+  ARMED=0
   echo
   echo "✓ code updated and dependencies installed."
-  echo "  Now restart your services yourself (systemd: systemctl --user restart ember)."
+  echo "  Now build and restart it yourself: ./start-static.sh builds first."
+  echo "  (Under systemd, plain ./update.sh does all of this for you.)"
   echo "  Make sure POCKETBASE"
   echo "  actually restarts, or new collections/fields won't be created."
   echo "  Give PocketBase EMBER_PB_SUPERUSER_EMAIL / EMBER_PB_SUPERUSER_PASSWORD"
@@ -329,6 +426,23 @@ if [ "$MODE" = "no-start" ]; then
 fi
 
 stop_everything
+
+# The build replaces apps/web/.next, which the old version was serving; set
+# the old one aside, but lend the new build its cache so it stays as fast.
+echo "▶ building the web app (production, webpack)…"
+set_aside apps/web/.next
+if [ -d apps/web/.next.update-prev/cache ]; then
+  mkdir -p apps/web/.next
+  mv apps/web/.next.update-prev/cache apps/web/.next/cache
+fi
+# --webpack opts out of Turbopack, which refuses to follow the .venv/bin/python
+# symlink that escapes the project root (see start-static.sh).
+( cd "$ROOT/apps/web" && npx next build --webpack ) || fail "the build failed"
+
+# Past the last step that can fail: keep the new version.
+discard_aside
+ARMED=0
+trap - INT TERM HUP
 
 # Say plainly what is now running. "I ran the update and nothing changed" is
 # otherwise indistinguishable from a rebuild of the same commit.

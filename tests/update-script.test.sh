@@ -81,11 +81,14 @@ http.createServer((_q, r) => r.end(body())).listen(Number(port), '127.0.0.1');
 EOF
 
 mkdir -p "$TMP/bin"
-# npm: records the call and whether Ember was up; fails when FAKE_NPM_FAIL=1.
+# npm: records the call and whether Ember was up; fails half way when
+# FAKE_NPM_FAIL=1.
 cat >"$TMP/bin/npm" <<'EOF'
 #!/usr/bin/env bash
 if curl -fsS -m 1 "http://127.0.0.1:$PORT/" >/dev/null 2>&1; then up=web-up; else up=web-down; fi
 echo "npm $* ($up)" >>"$FAKE_LOG"
+# Like the real npm ci: every node_modules goes first.
+[ "$1" = ci ] && rm -rf node_modules apps/*/node_modules
 if [ "${FAKE_NPM_FAIL:-0}" = 1 ]; then
   echo "npm ERR! network ETIMEDOUT"
   mkdir -p node_modules && echo half >node_modules/partial
@@ -94,13 +97,16 @@ fi
 mkdir -p node_modules && echo "$(git hash-object package-lock.json)" >node_modules/installed-from
 EOF
 # npx: `npx next build` writes a new BUILD_ID the way next build does (the
-# old output is wiped first); fails half way when FAKE_BUILD_FAIL=1.
+# old output is wiped first, the cache kept); fails half way when
+# FAKE_BUILD_FAIL=1, takes 30 s when FAKE_BUILD_SLOW=1.
 cat >"$TMP/bin/npx" <<'EOF'
 #!/usr/bin/env bash
 if curl -fsS -m 1 "http://127.0.0.1:$PORT/" >/dev/null 2>&1; then up=web-up; else up=web-down; fi
 echo "npx $* ($up)" >>"$FAKE_LOG"
 if [ "$1 $2" = "next build" ]; then
   mkdir -p .next && find .next -mindepth 1 -maxdepth 1 ! -name cache -exec rm -rf {} +
+  echo compiling >.next/trace
+  [ "${FAKE_BUILD_SLOW:-0}" = 1 ] && { touch "$FAKE_LOG.building"; sleep 30; }
   if [ "${FAKE_BUILD_FAIL:-0}" = 1 ]; then echo "Type error: Build failed"; exit 1; fi
   git rev-parse --short HEAD >.next/BUILD_ID
 fi
@@ -167,7 +173,7 @@ new_host() {
   pkill -f "$TMP/host" 2>/dev/null
   pkill -f "$TMP/serve.mjs" 2>/dev/null
   sleep 0.3
-  rm -rf "$HOST" "$ORIGIN" "$TMP/seed" "$FAKE_TMUX_SESSION" "$FAKE_SYSTEMD_ACTIVE"
+  rm -rf "$HOST" "$ORIGIN" "$TMP/seed" "$FAKE_TMUX_SESSION" "$FAKE_SYSTEMD_ACTIVE" "$FAKE_LOG.building"
   : >"$FAKE_LOG"; : >"$FAKE_TMUX_OUT"; : >"$POSTS"
   mkdir -p "$TMP/seed/scripts" "$TMP/seed/apps/web"
   cp "$REPO/start-static.sh" "$REPO/update.sh" "$TMP/seed/"
@@ -175,7 +181,7 @@ new_host() {
   [ -f "$REPO/scripts/read-env.mjs" ] && cp "$REPO/scripts/read-env.mjs" "$TMP/seed/scripts/"
   echo '{"name":"web","version":"0.0.1"}' >"$TMP/seed/apps/web/package.json"
   echo '{"lock":1}' >"$TMP/seed/package-lock.json"
-  printf 'logs/\nnode_modules/\n.node_modules.stamp\n.next/\n*.update-prev/\n' >"$TMP/seed/.gitignore"
+  printf 'logs/\nnode_modules/\n.node_modules.stamp\n.next/\n*.update-prev\n' >"$TMP/seed/.gitignore"
   (
     cd "$TMP/seed" || exit 1
     git init -q . && git checkout -q -b main && git add -A &&
@@ -376,6 +382,93 @@ check "it restarts Ember through systemd" file_has "$FAKE_LOG" "systemctl --user
 check "not in tmux" file_lacks "$FAKE_LOG" "tmux new"
 check "Ember serves the new version" wait_until 20 served "$WEB_PORT" "$V2_SHORT"
 check "it says how to check on it" file_has "$TMP/update.out" "systemctl --user status ember"
+stop_ember
+
+# ── 5. a failed update puts the previous version back (bughunt O1) ──────
+echo "── failed updates roll back"
+file_is() { [ "$(cat "$1" 2>/dev/null)" = "$2" ]; }
+no_aside_left() { [ -z "$(find "$HOST" -maxdepth 3 -name '*.update-prev' 2>/dev/null)" ]; }
+clean_checkout() { [ -z "$(git -C "$HOST" status --porcelain)" ]; }
+unset FAKE_UNIT_DIR FAKE_UNIT_EXEC
+
+# npm ci fails (a network error) after Ember was stopped for it.
+NEW_LOCK=1 new_host
+V1_LOCK="$(cat "$HOST/.node_modules.stamp")"
+PATH="$TMP/bin:$BASE_PATH"
+start_ember
+FAKE_NPM_FAIL=1 run_update
+check "failed npm ci: update.sh finishes" update_returned 60
+reap_update
+check "and exits 1" [ "$UPD_RC" = 1 ]
+check "it says the update failed and was rolled back" file_has "$TMP/update.out" "UPDATE FAILED"
+check "npm ci did run (with Ember stopped, as before)" file_has "$FAKE_LOG" "npm ci (web-down)"
+check "the code is back at the previous commit" head_is "$V1"
+check "the previous node_modules are back" file_is "$HOST/node_modules/installed-from" v1-deps
+check "without the half-installed files" [ ! -e "$HOST/node_modules/partial" ]
+check "the install stamp is the previous one" file_is "$HOST/.node_modules.stamp" "$V1_LOCK"
+check "the site is up again on the previous version" wait_until 20 served "$WEB_PORT" "$V1_SHORT"
+check "PocketBase is up again" port_up "$PB_PORT"
+check "the rolled-back Ember runs in tmux" watchdog_up
+check "nothing set aside is left behind" no_aside_left
+check "the checkout is clean" clean_checkout
+stop_ember
+
+# The build fails after the old build was cleared.
+new_host
+PATH="$TMP/bin:$BASE_PATH"
+start_ember
+FAKE_BUILD_FAIL=1 run_update
+check "failed build: update.sh finishes" update_returned 60
+reap_update
+check "and exits 1" [ "$UPD_RC" = 1 ]
+check "it names the step that failed" file_has "$TMP/update.out" "the build failed"
+check "the code is back at the previous commit" head_is "$V1"
+check "the site serves the previous build again" wait_until 20 served "$WEB_PORT" "$V1_SHORT"
+check "the previous build was restored, not rebuilt" [ "$(grep -c 'next build' "$FAKE_LOG")" = 1 ]
+check "the build cache survived" file_is "$HOST/apps/web/.next/cache/webpack" warm
+check "nothing set aside is left behind" no_aside_left
+check "no crash post" [ "$(posts_matching 'crashed')" = 0 ]
+stop_ember
+
+# The same inside tmux: the previous version comes back in this window.
+new_host
+PATH="$TMP/bin:$BASE_PATH"
+start_ember
+TMUX="/tmp/fake-tmux-socket,1,0" FAKE_BUILD_FAIL=1 run_update
+check "failed build inside tmux: the previous version runs in this window" wait_until 60 watchdog_is_update
+check "serving the previous build" wait_until 20 served "$WEB_PORT" "$V1_SHORT"
+check "at the previous commit" head_is "$V1"
+stop_ember
+
+# The SSH window closes in the middle of the build.
+new_host
+PATH="$TMP/bin:$BASE_PATH"
+start_ember
+FAKE_BUILD_SLOW=1 run_update
+wait_until 40 test -f "$FAKE_LOG.building"
+close_terminal
+check "hangup mid-build: update.sh finishes" update_returned 40
+check "the site comes back on the previous version" wait_until 20 served "$WEB_PORT" "$V1_SHORT"
+check "at the previous commit" head_is "$V1"
+stop_ember
+
+# A good update with new dependencies: exactly one install, one build, both
+# with Ember stopped, then the new version.
+NEW_LOCK=1 new_host
+PATH="$TMP/bin:$BASE_PATH"
+start_ember
+run_update
+check "good update: update.sh finishes" update_returned 60
+reap_update
+check "and exits 0" [ "$UPD_RC" = 0 ]
+check "the new version is served" wait_until 20 served "$WEB_PORT" "$V2_SHORT"
+check "one npm ci, with Ember stopped" [ "$(grep -c 'npm ci (web-down)' "$FAKE_LOG")" = 1 ]
+check "one build, with Ember stopped" [ "$(grep -c 'next build --webpack (web-down)' "$FAKE_LOG")" = 1 ]
+check "node_modules match the new lockfile" file_is "$HOST/node_modules/installed-from" "$(git -C "$HOST" hash-object package-lock.json)"
+check "the stamp matches it too" file_is "$HOST/.node_modules.stamp" "$(git -C "$HOST" hash-object package-lock.json)"
+check "the build cache was kept for the build" file_is "$HOST/apps/web/.next/cache/webpack" warm
+check "nothing set aside is left behind" no_aside_left
+check "the checkout is clean" clean_checkout
 stop_ember
 
 echo

@@ -2,7 +2,10 @@
 #
 # Launcher for the persistent-tunnel mode (Tailscale Funnel).
 #
-#   ./start-static.sh
+#   ./start-static.sh              build the web app, then start everything
+#   ./start-static.sh --no-build   start everything on the existing build
+#                                  (update.sh builds before it restarts Ember,
+#                                  and deploy/ember.service uses this)
 #
 # Assumes `tailscale funnel --bg $PORT` is already running (see SETUP.md).
 # Starts:
@@ -61,6 +64,12 @@ WATCHDOG_RECOVERED_AFTER="${WATCHDOG_RECOVERED_AFTER:-60}"
 WATCHDOG_CMD_NEXT="${WATCHDOG_CMD_NEXT:-}"
 WATCHDOG_CMD_PB="${WATCHDOG_CMD_PB:-}"
 WATCHDOG_SKIP_BUILD="${WATCHDOG_SKIP_BUILD:-0}"
+for arg in "$@"; do
+  case "$arg" in
+    --no-build) WATCHDOG_SKIP_BUILD=1 ;;
+    *) echo "usage: $0 [--no-build]"; exit 1 ;;
+  esac
+done
 ROTATE_BYTES=$((5 * 1024 * 1024))
 # How long a service gets to exit after SIGTERM before SIGKILL. Kept under
 # update.sh's 20 s wait for the watchdog, so a planned stop finishes inside it.
