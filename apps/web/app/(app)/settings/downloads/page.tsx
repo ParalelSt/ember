@@ -68,7 +68,9 @@ export default function DownloadsSettingsPage() {
       <header>
         <SectionHeader title="Downloads" />
         <p className="text-meta">
-          Playlists pinned for offline playback are stored on this device.
+          {native
+            ? 'Playlists pinned for offline playback are stored on this device.'
+            : 'Plays offline while Ember stays open in this tab. A reload or a fully offline launch needs the internet back first.'}
         </p>
       </header>
 
