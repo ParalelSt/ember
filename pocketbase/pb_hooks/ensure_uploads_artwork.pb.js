@@ -39,6 +39,12 @@ onAfterBootstrap((e) => {
     }),
   );
 
-  dao.saveCollection(uploads);
-  console.log("[ensure_uploads_artwork] added artwork_ext to uploads");
+  // A failed save must not stop PocketBase from booting: warn and carry on,
+  // same as ensure_superuser (bughunt X11).
+  try {
+    dao.saveCollection(uploads);
+    console.log("[ensure_uploads_artwork] added artwork_ext to uploads");
+  } catch (err) {
+    console.warn("[ensure_uploads_artwork] could not save the uploads collection: " + err);
+  }
 });

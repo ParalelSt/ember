@@ -47,6 +47,12 @@ onAfterBootstrap((e) => {
 
   if (added === 0) return;
 
-  dao.saveCollection(users);
-  console.log("[ensure_privacy_fields] added " + added + " privacy field(s) to users");
+  // A failed save must not stop PocketBase from booting: warn and carry on,
+  // same as ensure_superuser (bughunt X11).
+  try {
+    dao.saveCollection(users);
+    console.log("[ensure_privacy_fields] added " + added + " privacy field(s) to users");
+  } catch (err) {
+    console.warn("[ensure_privacy_fields] could not save the users collection: " + err);
+  }
 });

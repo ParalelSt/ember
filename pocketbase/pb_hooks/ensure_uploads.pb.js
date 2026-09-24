@@ -22,18 +22,28 @@ onAfterBootstrap((e) => {
     // edit the row, filename included (bughunt W08).
     // Rules come back from Go as string pointers, so compare the JSON form
     // (same as ensure_tabs).
+    // A failed save must not stop PocketBase from booting: warn and carry
+    // on, same as ensure_superuser (bughunt X11).
     const rule = existing.updateRule;
     if ((rule === null || rule === undefined ? null : JSON.parse(JSON.stringify(rule))) !== null) {
       existing.updateRule = null;
-      dao.saveCollection(existing);
-      console.log("[ensure_uploads] uploads updates are server-only now");
+      try {
+        dao.saveCollection(existing);
+        console.log("[ensure_uploads] uploads updates are server-only now");
+      } catch (err) {
+        console.warn("[ensure_uploads] could not close the update rule: " + err);
+      }
     }
     // A required uploader made deleting that member fail (bughunt X4).
     const uploader = existing.schema.getFieldByName("uploader");
     if (uploader && uploader.required) {
       uploader.required = false;
-      dao.saveCollection(existing);
-      console.log("[ensure_uploads] uploader is optional now");
+      try {
+        dao.saveCollection(existing);
+        console.log("[ensure_uploads] uploader is optional now");
+      } catch (err) {
+        console.warn("[ensure_uploads] could not make uploader optional: " + err);
+      }
     }
     return;
   }
