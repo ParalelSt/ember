@@ -142,6 +142,7 @@ export function LiveTabScore(props: LiveTabScoreProps) {
     let cancelled = false;
     let api: any = null;
     let observer: ResizeObserver | null = null;
+    let relayout = 0;
     let settled = false;
     let lastBeat: any = null;
     // A file that passed the upload sniff and is still malformed can leave
@@ -288,17 +289,25 @@ export function LiveTabScore(props: LiveTabScoreProps) {
         api.renderScore(score, [index]);
 
         // Re-lay out when the column changes width (window resize, the
-        // lyrics panel opening).
+        // lyrics panel opening). In the next frame, not in the callback: a
+        // re-draw changes the host's size while the browser is still handing
+        // out size changes (AlphaTab observes the same element), and the
+        // browser answers that with "ResizeObserver loop completed with
+        // undelivered notifications", which went out as a bug report.
         let lastWidth = host.clientWidth;
         observer = new ResizeObserver(() => {
           const w = host.clientWidth;
           if (w > 0 && Math.abs(w - lastWidth) > 8) {
             lastWidth = w;
-            try {
-              api.render();
-            } catch {
-              // A failed re-render leaves the previous one on screen.
-            }
+            cancelAnimationFrame(relayout);
+            relayout = requestAnimationFrame(() => {
+              if (cancelled) return;
+              try {
+                api.render();
+              } catch {
+                // A failed re-render leaves the previous one on screen.
+              }
+            });
           }
         });
         observer.observe(host);
@@ -374,6 +383,7 @@ export function LiveTabScore(props: LiveTabScoreProps) {
     return () => {
       cancelled = true;
       clearTimeout(timer);
+      cancelAnimationFrame(relayout);
       observer?.disconnect();
       try {
         api?.destroy();

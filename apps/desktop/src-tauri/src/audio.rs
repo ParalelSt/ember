@@ -564,6 +564,10 @@ pub(crate) enum LoadStop {
     Stalled,
     /// Bytes keep coming, but far too slowly to play.
     TooSlow,
+    /// The reader jumped to bytes that had not arrived (the decoder reading
+    /// the tail of a remuxed file), and the request for them was not answered
+    /// within the connect budget.
+    Unanswered,
 }
 
 /// Whether a source that has been quiet for `quiet` should be called dead.
@@ -573,6 +577,31 @@ pub(crate) enum LoadStop {
 /// nothing is a stall after that.
 pub(crate) fn is_stalled(quiet: Duration, complete: bool, grace: Duration) -> bool {
     !complete && quiet > grace
+}
+
+/// `is_stalled`, for a reader that may be blocked in a seek: `seek_wait` is
+/// how long it has been waiting there, if it is.
+///
+/// A seek to bytes that have not arrived is a NEW request, and until its
+/// response starts nothing arrives, by design: the reader stops reading the
+/// response it had while it waits. On a shared link that answer queues behind
+/// every byte already in flight to this client, the old response's included,
+/// so a silence far longer than `grace` is what a busy link looks like, not a
+/// dead source (Luka, 2026-09-24: two loads of a 6 MB song, and the 64 KB tail
+/// read waited more than 3 s, twice). The host's answer is judged like any
+/// answer to a request, on `request_grace`, and from whichever is later: the
+/// seek or the last chunk.
+pub(crate) fn is_stalled_during(
+    quiet: Duration,
+    seek_wait: Option<Duration>,
+    complete: bool,
+    grace: Duration,
+    request_grace: Duration,
+) -> bool {
+    match seek_wait {
+        Some(waited) => !complete && quiet.min(waited) > request_grace.max(grace),
+        None => is_stalled(quiet, complete, grace),
+    }
 }
 
 /// When the download last moved, shared between `stream-download`'s progress
@@ -591,7 +620,14 @@ pub(crate) struct DownloadProgress {
     /// carries on, reconnecting every few seconds forever (that is its retry
     /// behaviour), with a temp file and a thread to go with it.
     stop: Mutex<Option<Box<dyn Fn() + Send + Sync>>>,
+    /// Milliseconds after `started` at which the reader began waiting in a
+    /// seek, or `NOT_SEEKING` (see `SeekWatched`).
+    seek_from_ms: AtomicU64,
+    /// How long the host gets to answer the request a seek makes.
+    request_grace: Duration,
 }
+
+const NOT_SEEKING: u64 = u64::MAX;
 
 impl DownloadProgress {
     /// Starts the clock now — call it when the headers land, so the first
@@ -602,6 +638,35 @@ impl DownloadProgress {
             last_ms: AtomicU64::new(0),
             complete: AtomicBool::new(false),
             stop: Mutex::new(None),
+            seek_from_ms: AtomicU64::new(NOT_SEEKING),
+            request_grace: CONNECT_BUDGET,
+        }
+    }
+
+    /// The same, giving the request a seek makes `grace` to be answered.
+    pub(crate) fn with_request_grace(self, grace: Duration) -> Self {
+        Self { request_grace: grace, ..self }
+    }
+
+    fn now_ms(&self) -> u64 {
+        self.started.elapsed().as_millis().min(u64::from(u32::MAX) as u128) as u64
+    }
+
+    /// The reader is about to seek (see `SeekWatched`).
+    pub(crate) fn seek_started(&self) {
+        self.seek_from_ms.store(self.now_ms(), Ordering::SeqCst);
+    }
+
+    /// The seek has its bytes.
+    pub(crate) fn seek_finished(&self) {
+        self.seek_from_ms.store(NOT_SEEKING, Ordering::SeqCst);
+    }
+
+    /// How long the reader has been waiting in a seek, if it is.
+    pub(crate) fn seek_wait(&self) -> Option<Duration> {
+        match self.seek_from_ms.load(Ordering::SeqCst) {
+            NOT_SEEKING => None,
+            from => Some(Duration::from_millis(self.now_ms().saturating_sub(from))),
         }
     }
 
@@ -640,7 +705,40 @@ impl DownloadProgress {
     }
 
     pub(crate) fn is_stalled(&self, grace: Duration) -> bool {
-        is_stalled(self.quiet_for(), self.complete.load(Ordering::SeqCst), grace)
+        is_stalled_during(
+            self.quiet_for(),
+            self.seek_wait(),
+            self.complete.load(Ordering::SeqCst),
+            grace,
+            self.request_grace,
+        )
+    }
+}
+
+/// A reader that tells `DownloadProgress` while it waits in a seek.
+///
+/// `StreamDownload::seek` to bytes it does not have yet sends a Range request
+/// and blocks until the first of them arrive; a seek into bytes it has returns
+/// at once. So "blocked in a seek" is exactly "waiting on the host to answer a
+/// new request", which is judged on the request budget, not the stall one
+/// (see `is_stalled_during`).
+pub(crate) struct SeekWatched<R> {
+    pub(crate) inner: R,
+    pub(crate) progress: Arc<DownloadProgress>,
+}
+
+impl<R: Read> Read for SeekWatched<R> {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        self.inner.read(buf)
+    }
+}
+
+impl<R: Seek> Seek for SeekWatched<R> {
+    fn seek(&mut self, pos: std::io::SeekFrom) -> std::io::Result<u64> {
+        self.progress.seek_started();
+        let out = self.inner.seek(pos);
+        self.progress.seek_finished();
+        out
     }
 }
 
@@ -664,7 +762,11 @@ pub(crate) async fn while_progressing<F: std::future::Future>(
             out = &mut fut => return Ok(out),
             _ = tick.tick() => {
                 if progress.is_stalled(grace) {
-                    return Err(LoadStop::Stalled);
+                    return Err(if progress.seek_wait().is_some() {
+                        LoadStop::Unanswered
+                    } else {
+                        LoadStop::Stalled
+                    });
                 }
                 if tokio::time::Instant::now() >= deadline {
                     return Err(LoadStop::TooSlow);
@@ -703,7 +805,7 @@ fn seek_target(total: Option<Duration>, sec: f64) -> Option<Duration> {
 
 /// The reader a load decodes from: a temp-file-backed HTTP download that
 /// remembers whether it ever failed.
-type StreamReader = FailFlagged<StreamDownload<TempStorageProvider>>;
+type StreamReader = FailFlagged<SeekWatched<StreamDownload<TempStorageProvider>>>;
 
 /// A source that is ready to play.
 pub(crate) struct OpenedSource {
@@ -765,9 +867,9 @@ pub(crate) async fn open_source(
     };
 
     // From here the response has started, so every wait is judged on progress.
-    let progress = Arc::new(DownloadProgress::started_now());
+    let progress = Arc::new(DownloadProgress::started_now().with_request_grace(budgets.connect));
     let stalled = |stop: LoadStop, stage: &str| OpenError {
-        stalled: stop == LoadStop::Stalled,
+        stalled: matches!(stop, LoadStop::Stalled | LoadStop::Unanswered),
         ..host_error(match stop {
             LoadStop::Stalled => format!(
                 "the song stopped arriving while {stage} (nothing for {}s)",
@@ -776,6 +878,10 @@ pub(crate) async fn open_source(
             LoadStop::TooSlow => {
                 format!("the song was still {stage} after {}s", budgets.progress.as_secs())
             }
+            LoadStop::Unanswered => format!(
+                "the host did not answer a request for more of the song while {stage} (nothing for {}s)",
+                budgets.connect.as_secs()
+            ),
         })
     };
 
@@ -812,7 +918,10 @@ pub(crate) async fn open_source(
     let download = reader.cancellation_token();
     // One flag per load: the reader sets it if the stream ever fails.
     let failed = Arc::new(AtomicBool::new(false));
-    let reader = FailFlagged { inner: reader, failed: Arc::clone(&failed) };
+    let reader = FailFlagged {
+        inner: SeekWatched { inner: reader, progress: Arc::clone(&progress) },
+        failed: Arc::clone(&failed),
+    };
 
     // Fix 3: run blocking decoder I/O off the async runtime. Building the
     // decoder READS (a seekable one reads the tail as well), so it blocks on
@@ -1289,6 +1398,8 @@ mod skip_repro;
 mod fastfail;
 #[cfg(test)]
 mod stall_repro;
+#[cfg(test)]
+mod luka_repro;
 
 #[cfg(test)]
 mod tests {

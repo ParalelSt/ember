@@ -92,8 +92,10 @@ export class PoliteFetcher {
     this.blocked.set(site, { until: this.now() + this.backoffMs, status });
   }
 
-  /** GET a page as text, queued behind every other request to the site. */
-  getText(site: string, url: string): Promise<string> {
+  /** GET a page as text, queued behind every other request to the site.
+   *  `accept` lists error statuses whose body is still the page wanted (a
+   *  site that serves "no results" as a 404). */
+  getText(site: string, url: string, opts: { accept?: number[] } = {}): Promise<string> {
     const run = async () => {
       const until = this.backoffUntil(site);
       if (until) throw new SiteBackoffError(site, until, this.blocked.get(site)?.status ?? null);
@@ -115,7 +117,7 @@ export class PoliteFetcher {
         this.backOff(site, res.status);
         throw new SiteBackoffError(site, this.now() + this.backoffMs, res.status);
       }
-      if (!res.ok) throw new FetchStatusError(res.status, url);
+      if (!res.ok && !opts.accept?.includes(res.status)) throw new FetchStatusError(res.status, url);
       return res.text();
     };
     const prev = this.tail.get(site) ?? Promise.resolve();
