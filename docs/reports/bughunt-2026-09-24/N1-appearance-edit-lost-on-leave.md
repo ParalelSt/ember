@@ -11,3 +11,6 @@
 - Screenshots: none, not visual (a save either lands on the server or doesn't).
 - Try it yourself: on Settings > Appearance, drag a colour slider once, then immediately press the browser back button. Come back to Appearance: the colour should have kept your change.
 **Risk:** low, additive (an extra flush point); the flush logic itself already existed and is exercised elsewhere.
+
+**Changed by F1 (owner's request):** Appearance no longer saves anything by itself. A colour edit (or a pick) now shows only in the page's preview until you press Apply, so there is no waiting save left to flush: the unmount and pagehide flush is gone, and leaving the page applies and saves nothing. The edit is not lost either: it stays in memory for the session, and coming back to Appearance shows it again with Apply. The two N1 tests in `apps/web/hooks/useThemeEditor.test.tsx` now check exactly that (unmount and pagehide send nothing; remounting shows the same draft with Apply on). See `F1-theme-apply-button.md`.
+- Try it yourself now: change a colour in Settings > Appearance, press back, then open Appearance again: the change is still in the preview with Apply, and the rest of the app never changed.
