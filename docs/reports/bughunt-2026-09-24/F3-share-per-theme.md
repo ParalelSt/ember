@@ -1,0 +1,29 @@
+# F3. Sharing is set per theme, on each row of My themes
+**Status:** done (owner's request: "I want the share toggle to be per theme based because this way it makes no sense lol").
+
+**What you'd notice:** in Settings > Appearance the Share tab is gone; the inspector has Themes and Colours. In the Themes tab each of your own themes has a small switch on its row, next to rename, duplicate and delete ("Share Night drive with everyone" to a screen reader and on hover). A shared theme carries a **Shared** tag next to its name, so you can see at a glance which ones are shared. A line under the My themes heading says who sees them: "Shared themes appear for everyone under Shared by others." Flipping a switch saves that theme straight away; it has nothing to do with the preview or Apply.
+
+**Before:** one "Share with everyone" switch in its own Share tab, acting on whichever of your themes the preview happened to show. To share a second theme you had to pick it first (which changed the preview), then go to the Share tab. The list only said "Shared with everyone" or "Only you" in small grey text.
+
+**What changed:**
+- `useThemeEditor.setShared(id, shared)` now takes the theme's id instead of reading the selection, and `sharing` is the set of ids with a save on its way (one busy switch per row). It saves through the same `PATCH /api/themes/:id` with `shared`, updates that row, and says "Shared Night drive with everyone." or "Late shift is only yours now." on the status line. On failure: "Not shared: check your connection and try again." (or "Still shared: ..."), in the error tone, and the switch stays as it was. It never touches the draft or the theme in use.
+- `ThemeLibrary`: each `MyThemeRow` gets a `ShareSwitch` (`role="switch"`, a small track in the same hit box as the icon buttons) and a `SharedTag`; a `share-explainer` line under the My themes heading. Presets and Shared by others rows get no switch. The subline reads "Everyone can use it" or "Only you".
+- `InspectorTabs`: the `share` tab is gone. `ShareTheme.tsx` is deleted; the page no longer builds a share target.
+- F1 (preview first, Apply) and F2 (fits the window) are untouched: the Apply bar, the queue, the scrolling inspector panel and its classes are as they were.
+- Unsharing keeps the kept-copy behaviour: the server side is unchanged, and `themes-ui` still checks that Luka keeps Night drive's colours after Aron unshares it.
+- Spacing tokens and theme colours only (`bg-ember`, `bg-ember/15`, `bg-muted`, `text-ember`).
+- Docs: `docs/themes.md` sections 4 and 5. The 0.7.0 changelog bullet ("share any of them with everyone here") does not mention the tab, so it is unchanged.
+
+Files: `apps/web/hooks/useThemeEditor.ts`, `apps/web/components/settings/appearance/ThemeLibrary.tsx`, `InspectorTabs.tsx`, `ShareTheme.tsx` (deleted), `apps/web/app/(app)/settings/appearance/page.tsx` and `page.test.tsx`, `tests/themes-ui.test.mjs`, `tests/appearance-fit-ui.test.mjs` (a comment), `tests/README.md`, `docs/themes.md`.
+
+**Compare:** before = `3c71b3c`, after = this branch (`theme-share-row`).
+- Unit: `cd apps/web && npx vitest run "app/(app)/settings/appearance"`. The new tests on the old code: `Tests 6 failed | 14 passed (20)` (the Share tab still there, no switch on any row, no Shared tag, no error line for a failed row). After: `Tests 20 passed (20)`. The new tests: each row has its own switch and shared rows carry the tag; toggling one row PATCHes only that theme's `shared`, leaves the other row, the draft and the theme in use alone and shows no Apply; a draft picked before sharing is still there after; a failed save shows "Not shared: ..." in the error tone with the switch unchanged; presets and Shared by others have no switch. Full `npx vitest run`: `Test Files 269 passed (269)`, `Tests 3012 passed (3012)`. `tsc --noEmit` and eslint on the changed files: clean.
+- Browser (app 3055 on a `next build --webpack` of this branch with `POCKETBASE_URL=http://127.0.0.1:8084`, PocketBase 8084 over a scratch copy of the hooks and migrations with `--automigrate=0`, superuser from `EMBER_PB_SUPERUSER_*`): `node tests/themes-ui.test.mjs`: `78/78 checks passed`. Its sharing step now uses Night drive's row switch: no Share tab, the explainer line, the row unshared with no tag, one click shares it (the route says `shared: true`), the row gets the Shared tag, nothing to apply; Luka sees it under Shared by others by Aron with no switch for it, uses it, copies it; Aron unshares it from the same row switch and Luka keeps a copy of its colours. `node tests/appearance-fit-ui.test.mjs`: `34/34 checks passed` (F2 intact).
+- Screenshots at 1512x830 with a song in the player bar, Themes tab, two of my themes (Night drive shared, Late shift not), inspector scrolled to My themes: before `shots/F3-before.png` (Share tab in the strip, "Shared with everyone" as grey text only), after `shots/F3-after.png` (Themes and Colours only, the explainer line, Night drive with a Shared tag and its switch on, Late shift with its switch off).
+- Try it yourself: on the sandbox, Settings > Appearance, make two themes (New twice). Flip the switch on one row: a Shared tag appears on that row only, the preview does not change and no Apply shows. Sign in as someone else: it is under Shared by others with your name. Flip it off: it leaves their list, and if they were using it they keep its colours.
+
+**Left as is:**
+- The status line between the tabs and the list carries the share result and errors, as it did for the Share tab.
+- The longer "who sees it" wording from the Share tab ("labelled with your name, only you can change it") is now one short line; the rest is in docs/themes.md.
+
+**Risk:** low. One control moved from a tab to each row; the route, the server rules and the kept-copy behaviour are unchanged, and both browser suites pass.
