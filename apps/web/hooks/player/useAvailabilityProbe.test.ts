@@ -18,11 +18,11 @@ vi.mock('@tanstack/react-query', () => ({
 const dead = makeTrack({ id: 'youtube:dead', sourceId: 'dead', title: 'Gone' });
 const live = makeTrack({ id: 'youtube:live', sourceId: 'live', title: 'Still Here' });
 
-function setup(queue = [dead, live], index = 0) {
+function setup(queue = [dead, live], index = 0, signedIn = true) {
   usePlayerStore.setState({ queue, index });
   const next = vi.fn();
   const nextRef = { current: next };
-  const { result } = renderHook(() => useAvailabilityProbe(nextRef));
+  const { result } = renderHook(() => useAvailabilityProbe(nextRef, signedIn));
   return { probe: result.current, next };
 }
 
@@ -125,5 +125,16 @@ describe('useAvailabilityProbe', () => {
     await waitFor(() => expect(api.getTrackAvailability).toHaveBeenCalled());
     expect(next).not.toHaveBeenCalled();
     expect(usePlayerStore.getState().queue).toEqual([live]);
+  });
+});
+
+describe('useAvailabilityProbe [bughunt V5]: signed out', () => {
+  it('does not ask the server (the answer needs a session), just says it would not load', async () => {
+    const { probe, next } = setup([dead, live], 0, false);
+    const stillPlayable = vi.fn();
+    probe(stillPlayable);
+    await waitFor(() => expect(stillPlayable).toHaveBeenCalledTimes(1));
+    expect(api.getTrackAvailability).not.toHaveBeenCalled();
+    expect(next).not.toHaveBeenCalled();
   });
 });

@@ -1,7 +1,9 @@
 'use client';
 
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { usePathname } from 'next/navigation';
 import { createClient } from '@/lib/pocketbase/client';
+import { onSessionExpired } from '@/lib/sessionExpired';
 import { usePrivacyStore } from '@/stores/usePrivacyStore';
 import { useChangelogStore } from '@/stores/useChangelogStore';
 import { useSettingsStore } from '@/stores/useSettingsStore';
@@ -41,8 +43,22 @@ const AuthContext = createContext<AuthValue | null>(null);
 
 export function AuthProvider({ children, initialUser }: { children: ReactNode; initialUser: AuthUser | null }) {
   const [pb] = useState(() => createClient());
-  const [user, setUser] = useState<AuthUser | null>(initialUser);
+  const [sessionUser, setUser] = useState<AuthUser | null>(initialUser);
   const [loading, setLoading] = useState(initialUser === null);
+  // Nobody is signed in on the sign-in page (proxy.ts sends a live session
+  // away from it), so nothing signed-in loads there, whatever the cookie
+  // still claims (bughunt V5).
+  const user = usePathname() === '/auth' ? null : sessionUser;
+
+  // An API call answered 401: the session is dead. Clearing the store
+  // rewrites the cookie and turns user null, which stops every signed-in
+  // fetch rather than letting each collect its own 401 (bughunt V5).
+  useEffect(
+    () => onSessionExpired(() => {
+      if (pb.authStore.token || pb.authStore.record) pb.authStore.clear();
+    }),
+    [pb],
+  );
 
   useEffect(() => {
     // Sync local user state with the SDK on every auth change. The SDK

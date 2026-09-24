@@ -37,9 +37,8 @@ vi.mock('@/hooks/useLibrary', () => ({
   useExecuteRecordPlay: () => ({ mutate: vi.fn() }),
 }));
 
-vi.mock('@/hooks/useLyrics', () => ({
-  useQueryLyrics: () => ({ data: undefined }),
-}));
+const lyrics = vi.hoisted(() => vi.fn((track: unknown, enabled: boolean) => ({ data: enabled ? track : undefined })));
+vi.mock('@/hooks/useLyrics', () => ({ useQueryLyrics: lyrics }));
 
 // Discord presence, radio-extend, shortcuts, remote commands and the
 // availability probe are each unit-tested on their own
@@ -122,5 +121,14 @@ describe('PlayerProvider', () => {
 
     expect(usePlayerStore.getState().isPlaying).toBe(false);
     expect(usePlayerStore.getState().position).toBe(77);
+  });
+});
+
+describe('PlayerProvider [bughunt V5]: signed out', () => {
+  it('never looks up lyrics for the loaded song (the lookup needs a session)', () => {
+    usePlayerStore.setState({ queue: [makeTrack({ id: TRACK_ID })], index: 0 });
+    render(<PlayerProvider><span /></PlayerProvider>);
+    expect(lyrics).toHaveBeenCalled();
+    for (const call of lyrics.mock.calls) expect(call[1]).toBe(false);
   });
 });

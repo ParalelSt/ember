@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import PocketBase from 'pocketbase';
 import { serverLogger } from '@/lib/logger/server';
+import { PUBLIC_PATHS, isPublicPage as isPublicPath } from '@/lib/publicPaths';
 
 // Middleware runs server-side, so it needs an absolute URL. The public
 // NEXT_PUBLIC_POCKETBASE_URL may be the relative `/pb` proxy path; fall back to
@@ -11,13 +12,8 @@ const RAW_PB_URL =
   'http://127.0.0.1:8090';
 const PB_URL = /^https?:\/\//.test(RAW_PB_URL) ? RAW_PB_URL : 'http://127.0.0.1:8090';
 
-// Public routes (no session required). Auth + stream are open; everything
-// else under the (app) shell requires a session. /track is public so shared
-// song links unfurl (Discord/Messenger crawlers can't log in) and logged-out
-// friends land on the track page instead of the auth wall. /privacy and
-// /terms are linked from Google's permission screen for the YouTube Music
-// transfer, and Google requires them to load for anyone.
-export const PUBLIC_PATHS = ['/auth', '/manifest.webmanifest', '/sw.js', '/track', '/privacy', '/terms'];
+// Public pages live in lib/publicPaths.ts (lib/api.ts reads the same list).
+export { PUBLIC_PATHS };
 const PUBLIC_API_PREFIXES = ['/api/youtube/stream/', '/api/search', '/api/tracks', '/api/youtube/search', '/api/youtube/trending', '/api/youtube/recommended', '/api/youtube/artist', '/api/youtube/album', '/api/youtube/track/', '/api/auth/',
   // The desktop updater runs in Rust with no browser session, so its feed and
   // the asset proxy must be reachable without one. They expose the latest
@@ -86,6 +82,15 @@ export function isBlockedPbPath(path: string): boolean {
   return targets.some((t) => t !== null && PB_SUPERUSER_ROUTES.some((re) => re.test(t)));
 }
 
+/** A Cookie header without the named cookie. */
+function withoutCookie(header: string, name: string): string {
+  return header
+    .split(';')
+    .map((part) => part.trim())
+    .filter((part) => part && !part.startsWith(`${name}=`))
+    .join('; ');
+}
+
 export default async function proxy(req: NextRequest) {
   // The superuser surface never goes through the public app (bughunt W14):
   // anyone who reached it could try the superuser password from the internet.
@@ -101,8 +106,6 @@ export default async function proxy(req: NextRequest) {
   const reqId = Math.random().toString(36).slice(2, 10);
   const requestHeaders = new Headers(req.headers);
   requestHeaders.set('x-request-id', reqId);
-  const response = NextResponse.next({ request: { headers: requestHeaders } });
-  response.headers.set('x-request-id', reqId);
 
   // Load the user from the pb_auth cookie. PocketBase's exportToCookie /
   // loadFromCookie round-trip means we don't need to manually parse the JWT.
@@ -113,22 +116,23 @@ export default async function proxy(req: NextRequest) {
     serverLogger.error('middleware', 'loadFromCookie threw', undefined, e, { reqId, route: req.nextUrl.pathname });
   }
 
+  // The TLS terminates at the tunnel; trust X-Forwarded-Proto for the
+  // original scheme so we match Secure correctly behind Tailscale Funnel
+  // / Cloudflare Tunnel / any reverse proxy.
+  const fwdProto = req.headers.get('x-forwarded-proto');
+  const isHttps = (fwdProto === 'https') || req.nextUrl.protocol === 'https:';
+  const cookieOpts = { httpOnly: false, secure: isHttps, sameSite: 'lax' } as const;
+  const setCookies: string[] = [];
+  /** PocketBase could not be asked at all (down, unreachable): the session
+   *  may be fine, so an API call must not hear "signed out". */
+  let checkFailed = false;
+
   // If the token is close to expiring, refresh and write the new cookie back
   // so subsequent requests don't re-hit the same code path.
   if (pb.authStore.isValid) {
     try {
       await pb.collection('users').authRefresh();
-      // The TLS terminates at the tunnel; trust X-Forwarded-Proto for the
-      // original scheme so we match Secure correctly behind Tailscale Funnel
-      // / Cloudflare Tunnel / any reverse proxy.
-      const fwdProto = req.headers.get('x-forwarded-proto');
-      const isHttps = (fwdProto === 'https') || req.nextUrl.protocol === 'https:';
-      const refreshed = pb.authStore.exportToCookie({
-        httpOnly: false,
-        secure: isHttps,
-        sameSite: 'lax',
-      });
-      response.headers.append('set-cookie', refreshed);
+      setCookies.push(pb.authStore.exportToCookie(cookieOpts));
     } catch (e) {
       // An expired or invalid token is ROUTINE — someone came back after a
       // fortnight, or the server was reinstalled. Logging it as an error fills
@@ -142,15 +146,28 @@ export default async function proxy(req: NextRequest) {
           reqId,
           route: req.nextUrl.pathname,
         });
+        checkFailed = true;
       }
       pb.authStore.clear();
+      if (expiredSession) {
+        // A session PocketBase refuses is dead for good (bughunt V5): drop
+        // the cookie in the browser, and keep it from this request's render,
+        // whose root layout would otherwise paint a signed-in shell from it
+        // and set every signed-in fetch off into a 401.
+        setCookies.push(pb.authStore.exportToCookie(cookieOpts));
+        requestHeaders.set('cookie', withoutCookie(req.headers.get('cookie') ?? '', 'pb_auth'));
+      }
     }
   }
+
+  const response = NextResponse.next({ request: { headers: requestHeaders } });
+  response.headers.set('x-request-id', reqId);
+  for (const c of setCookies) response.headers.append('set-cookie', c);
 
   const user = pb.authStore.record;
   const path = req.nextUrl.pathname;
 
-  const isPublicPage = PUBLIC_PATHS.some((p) => path === p || path.startsWith(p + '/'));
+  const isPublicPage = isPublicPath(path);
   const isPublicApi = path.startsWith('/api/') && PUBLIC_API_PREFIXES.some((p) => path.startsWith(p));
   // /pb/* is the same-origin proxy to PocketBase; it must stay open to anons
   // so the sign-in / sign-up endpoints work before there's a session.
@@ -163,6 +180,12 @@ export default async function proxy(req: NextRequest) {
     // bughunt W05). Pages still redirect to /auth as before; lib/api.ts's
     // req() is the one that sends the browser to /auth on a 401.
     if (path.startsWith('/api/')) {
+      if (checkFailed) {
+        return Response.json(
+          { error: 'Could not check your session, try again' },
+          { status: 503, headers: response.headers },
+        );
+      }
       return Response.json(
         { error: 'Unauthorized' },
         { status: 401, headers: response.headers },
@@ -171,7 +194,9 @@ export default async function proxy(req: NextRequest) {
     const url = req.nextUrl.clone();
     url.pathname = '/auth';
     url.searchParams.set('next', path);
-    return NextResponse.redirect(url);
+    const redirect = NextResponse.redirect(url);
+    for (const c of setCookies) redirect.headers.append('set-cookie', c);
+    return redirect;
   }
 
   if (user && path === '/auth') {

@@ -118,10 +118,23 @@ function isOnline(): boolean {
   return typeof navigator === 'undefined' || navigator.onLine !== false;
 }
 
+/** A 401 means the session is gone, never a bug (bughunt V5). */
+function isUnauthorized(entry: LogEntry): boolean {
+  const data = entry.data as { status?: unknown } | undefined;
+  return data?.status === 401;
+}
+
+/** The sign-in page: whatever fails there comes from a session that is
+ *  gone or never was, and the report route needs one anyway. */
+function onSignInPage(): boolean {
+  return window.location.pathname === '/auth' || window.location.pathname.startsWith('/auth/');
+}
+
 export function maybeAutoReport(entry: LogEntry): void {
   try {
     if (typeof window === 'undefined') return;
     if (entry.kind !== 'error' || entry.level !== 'error') return;
+    if (isUnauthorized(entry) || onSignInPage()) return;
     if (!useSettingsStore.getState().autoReportEnabled) return;
     if (!isSignedIn()) return;
     if (useUiStore.getState().bugReportOpen) return;
@@ -142,7 +155,7 @@ export function maybeAutoReport(entry: LogEntry): void {
       // fingerprint to fill the cap. reserve() below is the actual
       // race-safe cap check; these are just cheap early exits.
       if (!useSettingsStore.getState().autoReportEnabled) return;
-      if (!isSignedIn()) return;
+      if (!isSignedIn() || onSignInPage()) return;
       if (useUiStore.getState().bugReportOpen) return;
       if (!isOnline()) return;
       if (!reserve(fp)) return;
