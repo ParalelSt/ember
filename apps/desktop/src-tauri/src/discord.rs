@@ -8,7 +8,7 @@
 // build time, else disabled (silent no-op: exactly like the server side).
 //
 // The card carries a time bar (Listening + start/end timestamps), so every
-// update needs the real playhead: `start = now - position`. That is also why
+// update needs the real playhead: `start = received - position`. That is also why
 // updates cannot simply be dropped when they come too fast for Discord: a
 // seek that gets dropped leaves the bar lying. Same-track updates inside the
 // rate-limit window are kept as `pending` and flushed once the window ends, so
@@ -34,11 +34,26 @@ struct Presence {
     artwork_url: Option<String>,
     position_sec: f64,
     duration_sec: f64,
+    /// When the webview sent it. The playhead is true AT this moment, and an
+    /// update can wait out the rate-limit window before it is sent.
+    received_ms: u128,
 }
 
 impl Presence {
     fn key(&self) -> String {
         format!("{}|{}", self.title, self.artist)
+    }
+
+    /// Discord's start/end, in unix seconds: the bar is drawn from wall-clock
+    /// timestamps, so "start" is when the song would have begun for the
+    /// playhead to be where it is. Taken from when the update was RECEIVED,
+    /// not when it is sent: a queued one used to be anchored to the flush,
+    /// which left the bar behind by however long it had waited (up to 15s).
+    fn timestamps(&self) -> (i64, Option<i64>) {
+        let received_sec = (self.received_ms / 1000) as i64;
+        let started = received_sec - self.position_sec.round() as i64;
+        let end = (self.duration_sec > 0.0).then(|| started + self.duration_sec.round() as i64);
+        (started, end)
     }
 }
 
@@ -142,10 +157,11 @@ pub fn discord_update(
         artwork_url,
         position_sec: position_sec.unwrap_or(0.0).max(0.0),
         duration_sec: duration_sec.unwrap_or(0.0).max(0.0),
+        received_ms: now_ms(),
     };
     let key = presence.key();
     let same_track = key == st.last_key;
-    let now = now_ms();
+    let now = presence.received_ms;
     let since_last = now.saturating_sub(st.last_update_ms);
 
     // Repeats of the SAME track (seeks, resumes) wait out the window; a track
@@ -214,14 +230,12 @@ fn send(st: &mut DiscordState, app: &tauri::AppHandle, app_id: &str, presence: P
     };
     let large_text = trim(presence.album.as_deref().unwrap_or(&presence.title), 128);
 
-    // The bar is drawn from wall-clock timestamps, so anchor "start" to where
-    // the playhead is NOW rather than to when the track was first loaded,
-    // that is what makes a seek show up.
-    let now_sec = (now / 1000) as i64;
-    let started = now_sec - presence.position_sec.round() as i64;
+    // Anchored to where the playhead is rather than to when the track was
+    // first loaded: that is what makes a seek show up.
+    let (started, end) = presence.timestamps();
     let mut timestamps = Timestamps::new().start(started);
-    if presence.duration_sec > 0.0 {
-        timestamps = timestamps.end(started + presence.duration_sec.round() as i64);
+    if let Some(end) = end {
+        timestamps = timestamps.end(end);
     }
 
     // Scoped so the &mut borrow of st.client ends before we touch other fields.
@@ -260,5 +274,58 @@ fn send(st: &mut DiscordState, app: &tauri::AppHandle, app_id: &str, presence: P
             let _ = c.close();
         }
         st.client = None;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn presence(position_sec: f64, duration_sec: f64, received_ms: u128) -> Presence {
+        Presence {
+            title: "Second".into(),
+            artist: "The Nulls".into(),
+            album: None,
+            artwork_url: None,
+            position_sec,
+            duration_sec,
+            received_ms,
+        }
+    }
+
+    fn secs(ms: u128) -> i64 {
+        (ms / 1000) as i64
+    }
+
+    #[test]
+    fn a_new_song_at_zero_starts_now() {
+        let now = now_ms();
+        let (start, end) = presence(0.0, 240.0, now).timestamps();
+        assert_eq!(start, secs(now));
+        assert_eq!(end, Some(secs(now) + 240));
+    }
+
+    #[test]
+    fn a_seek_starts_the_bar_that_far_back() {
+        let now = now_ms();
+        let (start, _) = presence(60.0, 240.0, now).timestamps();
+        assert_eq!(start, secs(now) - 60);
+    }
+
+    #[test]
+    fn a_queued_update_keeps_the_moment_it_was_sent() {
+        // A seek at 0:30, sent 15s ago and held back by the rate limit. When
+        // it finally goes out the song is at 0:45, and the bar must say so:
+        // anchoring it to the flush moment put the card 15s behind.
+        let sent = now_ms() - u128::from(RATE_LIMIT_MS as u64);
+        let (start, end) = presence(30.0, 240.0, sent).timestamps();
+        assert_eq!(start, secs(sent) - 30);
+        assert_eq!(end, Some(secs(sent) - 30 + 240));
+    }
+
+    #[test]
+    fn no_length_means_no_end() {
+        let (_, end) = presence(0.0, 0.0, now_ms()).timestamps();
+        assert_eq!(end, None);
     }
 }
