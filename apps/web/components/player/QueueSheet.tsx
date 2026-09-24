@@ -69,6 +69,7 @@ export function QueueSheet({ open, onOpenChange }: Props) {
                     artworkSrc={artworkSrcFor(t)}
                     className="hover:bg-sidebar-accent/60"
                     onPlay={() => playTrack(t, queue, context)}
+                    trailingPlayControl
                   />
                 ))}
               </div>

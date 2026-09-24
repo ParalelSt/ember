@@ -99,7 +99,18 @@ export function PhonePlayerBar({
         onClick={openUnlessButton}
         className="flex cursor-pointer items-center gap-block pl-block pr-block pt-row pb-cluster"
       >
-        <div data-testid="phone-player-title-row" className="flex min-w-0 flex-1 items-center gap-row">
+        {/* A real button, not just a div inside a clickable row: a keyboard
+            or screen-reader user could not reach "open the full-screen
+            view" any other way (the row's own onClick fires on a mouse
+            click only, and a plain div is invisible to Tab). Reset to
+            plain flex/text styling so it looks exactly like the div did. */}
+        <button
+          type="button"
+          data-testid="phone-player-title-row"
+          onClick={onOpen}
+          aria-label="Open player"
+          className="flex min-w-0 flex-1 items-center gap-row text-left"
+        >
           <Artwork src={artSrc} className="size-art-bar shrink-0 rounded-md bg-art" />
           {/* min-w-0 flex-1: the marquee's box is sized by the row, never by
               the title inside it, which is what keeps measuring it stable. */}
@@ -109,7 +120,7 @@ export function PhonePlayerBar({
               {track.artist}
             </div>
           </div>
-        </div>
+        </button>
 
         {/* Hit boxes touch: the glyphs' own margins space them. */}
         <div className="flex shrink-0 items-center">

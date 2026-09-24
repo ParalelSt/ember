@@ -45,6 +45,7 @@ export default function SearchPage() {
             onPlay={() => trackActions.onPlay(t)}
             onRemove={() => removeRecentTrack.mutate(t.id)}
             removeLabel={`Remove "${t.title}" from recent searches`}
+            trailingPlayControl
           />
         ))}
       </div>
