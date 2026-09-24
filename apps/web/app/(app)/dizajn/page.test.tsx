@@ -15,8 +15,9 @@ describe('DizajnPage', () => {
   it('has nothing open to pick and links to the full gallery', () => {
     render(<DizajnPage />);
     expect(screen.getByText(/Nothing to pick right now/)).toBeInTheDocument();
+    expect(screen.getByText(/Preview \+ inspector/)).toBeInTheDocument();
     expect(screen.queryByRole('radiogroup')).toBeNull();
-    expect(screen.queryByTestId('plainwords-dialog')).toBeNull();
+    expect(screen.queryByTestId('themes-section')).toBeNull();
     expect(screen.getByRole('link', { name: 'the full gallery' })).toHaveAttribute('href', '/dizajn/sve');
   });
 });

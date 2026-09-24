@@ -162,7 +162,7 @@ export function CreatePlaylistDialog({ open, onOpenChange, onCreate, initialTrac
               <Button
                 type="submit"
                 disabled={busy || !name.trim()}
-                className="bg-ember hover:bg-ember-soft text-white"
+                variant="ember"
               >
                 {busy
                   ? 'Creating…'

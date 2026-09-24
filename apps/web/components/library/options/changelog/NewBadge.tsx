@@ -8,7 +8,7 @@ export interface NewBadgeProps {
 
 // Pill shared by both styles so they differ only in what moves.
 const PILL =
-  'inline-flex items-center rounded-full bg-ember px-1.5 py-0.5 text-[10px] font-bold uppercase leading-none tracking-wider text-white';
+  'inline-flex items-center rounded-full bg-ember px-1.5 py-0.5 text-[10px] font-bold uppercase leading-none tracking-wider text-ember-foreground';
 
 /** Presentational only: the "New" tag on an unread changelog entry point.
  *  'pulse' animates the pill itself; 'dot' keeps the pill still and pulses

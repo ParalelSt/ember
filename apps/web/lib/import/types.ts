@@ -81,6 +81,9 @@ export interface ImportJob {
   missing: number;
   /** Transfers only: accepted songs the person had already liked. */
   existing: number;
+  /** Google likes transfers only: likes YouTube Music said were not music,
+   *  plus uploads the person said no to in the review. */
+  notMusic?: number;
   /** A sentence for the banner when paused or failed. */
   error: string | null;
   /** Paused by a backoff: when it tries again (ISO). */

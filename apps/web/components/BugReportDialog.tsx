@@ -161,7 +161,7 @@ export function BugReportDialog() {
             </p>
           </div>
           <DialogFooter>
-            <Button type="button" onClick={close} className="bg-ember hover:bg-ember-soft text-white">
+            <Button type="button" onClick={close} variant="ember">
               Done
             </Button>
           </DialogFooter>
@@ -200,7 +200,7 @@ export function BugReportDialog() {
             <Button
               type="submit"
               disabled={busy || attachmentProblem(files) !== null}
-              className="bg-ember hover:bg-ember-soft text-white"
+              variant="ember"
             >
               {busy ? 'Sending…' : 'Send report'}
             </Button>

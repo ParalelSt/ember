@@ -52,4 +52,6 @@ export {
   Paperclip as AttachIcon,
   Film as VideoIcon,
   ImageUp as ImageUploadIcon,
+  Pencil as EditIcon,
+  Copy as CopyIcon,
 } from 'lucide-react';

@@ -21,6 +21,30 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    id: 'themes',
+    version: '0.7.0',
+    date: '2026-09-23',
+    title: 'Make Ember yours',
+    summary: 'Five themes and your own colours, in Settings, under Appearance.',
+    bullets: [
+      'Pick one of five themes: Ember (the red on black you know), Midnight, Forest, Nebula or Mono, which is pure black for OLED phones.',
+      'Or make your own: choose a background, an accent and a text colour and Ember fills in the rest. You see the change on the whole app as you go, and it saves itself.',
+      'If two colours would be hard to read together, Ember tells you and offers a fix. It never changes your colours by itself.',
+      'Keep up to 20 themes of your own, and share any of them with everyone here. Themes others share show up with their name, ready to use or copy.',
+      'Your theme follows your account to the web, the desktop app and your phone, from the very first moment a page loads. On your phone the status bar matches it too, and so does the desktop window.',
+    ],
+  },
+  {
+    id: 'admin-pranks-tab',
+    version: '0.6.0',
+    date: '2026-09-23',
+    title: 'A Pranks tab for admins',
+    summary: 'Admins get a new Pranks tab in the admin pages.',
+    bullets: [
+      'Admins get a new Pranks tab in the admin pages, alongside the other admin tools.',
+    ],
+  },
+  {
     id: 'desktop-stream-stall',
     version: '0.5.1',
     date: '2026-09-23',
@@ -46,6 +70,7 @@ export const CHANGELOG: ChangelogEntry[] = [
       'Songs you bring over sit below the ones you liked yourself, in the order you liked them.',
       'Liking a song no longer lights up every other song with the same name by a different artist, for artists whose names are not in the Latin alphabet and for songs with no artist listed.',
       'Ember now has a privacy policy and terms, in plain words.',
+      'Radio, song details and downloads work again for the few songs whose YouTube id starts with a dash.',
     ],
   },
   {

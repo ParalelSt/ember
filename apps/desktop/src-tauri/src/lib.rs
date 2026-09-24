@@ -9,6 +9,7 @@ mod applog;
 mod audio;
 mod discord;
 mod speech;
+mod theme;
 mod update;
 
 use tauri::Manager;
@@ -68,6 +69,18 @@ pub fn run() {
                         &format!("media controls unavailable: {e}"),
                     );
                 }
+            }
+            // The window's background and title bar on the last theme the
+            // page reported, before the remote page arrives, so a dark theme
+            // never opens on a white window. See theme.rs.
+            match theme::apply_stored(app.handle()) {
+                Ok(true) => applog::write_line(log_path.as_ref(), "INFO", "stored theme applied"),
+                Ok(false) => {}
+                Err(e) => applog::write_line(
+                    log_path.as_ref(),
+                    "WARN",
+                    &format!("stored theme not applied: {e}"),
+                ),
             }
             // One line saying whether voice search can work here; CI's Windows
             // smoke test reads it. Asked off the main thread: the backends may
@@ -142,6 +155,7 @@ pub fn run() {
             speech::speech_start,
             speech::speech_stop,
             speech::speech_abort,
+            theme::theme_apply,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Ember desktop");

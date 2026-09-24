@@ -79,7 +79,7 @@ export function CandidateRow({ candidate: c, keyHint, selected = false, best = f
         </div>
       )}
       <div className="relative shrink-0">
-        <Artwork src={c.artworkUrl} size="sm" className="rounded-md bg-black" />
+        <Artwork src={c.artworkUrl} size="sm" className="rounded-md bg-art" />
         <button
           type="button"
           aria-label={`Preview "${c.title}"`}

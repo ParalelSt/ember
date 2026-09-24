@@ -1,10 +1,15 @@
 /** A page of `videos.list?myRating=like` turned into liked songs. Pure, so
- *  the music-only rule and the title cleanup are fixture tests.
+ *  the first music filter and the title cleanup are fixture tests.
  *
  *  Google keeps one list of likes for YouTube and YouTube Music, so it holds
- *  every video a person ever liked. Music is what `categoryId` "10" says, plus
- *  anything from an auto-generated "Artist - Topic" channel (YouTube Music's
- *  own uploads, which are sometimes filed under another category). */
+ *  every video a person ever liked. The first pass, here, costs nothing:
+ *  keep what `categoryId` "10" says is music, plus anything from an
+ *  auto-generated "Artist - Topic" channel (YouTube Music's own uploads,
+ *  which are sometimes filed under another category). That drops most of a
+ *  person's likes at once. It is only the uploader's word, though (the
+ *  owner's Minecraft video said "Music"), so the survivors go through a
+ *  second pass before the preview: YouTube Music itself says which are
+ *  songs (lib/import/musicCheck.ts). A Topic channel needs no asking. */
 
 import type { LikedSong } from '@/lib/import/sources/ytmusicLiked';
 import type { Track } from '@/types/track';
@@ -33,9 +38,14 @@ const NOISE_RE =
 /** "Artist - Title", with a hyphen, an en dash or an em dash between. */
 const ARTIST_TITLE_RE = /^(.+?)\s+[-\u2013\u2014]\s+(.+)$/;
 
+/** From an auto-generated Topic channel: official audio, a song for sure. */
+export function isTopic(video: YoutubeVideo): boolean {
+  return TOPIC_RE.test(video.snippet?.channelTitle ?? '');
+}
+
+/** The first pass: what the uploader filed under Music, or a Topic channel. */
 export function isMusic(video: YoutubeVideo): boolean {
-  const s = video.snippet;
-  return s?.categoryId === MUSIC_CATEGORY_ID || TOPIC_RE.test(s?.channelTitle ?? '');
+  return video.snippet?.categoryId === MUSIC_CATEGORY_ID || isTopic(video);
 }
 
 /** ISO 8601 duration ("PT3M22S", "PT1H2M") in seconds; 0 when unreadable. */
@@ -83,7 +93,9 @@ export function likedSongFromVideo(video: YoutubeVideo): LikedSong | null {
     artworkUrl: artwork(video),
     streamUrl: `/api/youtube/stream/${videoId}`,
   };
-  return { track, artists: [artist], likedAt: null };
+  // A Topic channel is YouTube Music's own official audio (ATV) already;
+  // anything else waits for YouTube Music to say (null).
+  return { track, artists: [artist], likedAt: null, videoType: isTopic(video) ? 'ATV' : null };
 }
 
 /** Sorts one page into songs to keep and a count of what was left out.

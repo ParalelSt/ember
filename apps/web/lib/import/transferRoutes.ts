@@ -29,7 +29,7 @@ export const MATCHED_BY_NAME =
 /** Nothing is searched for on this one: the songs arrive already named by
  *  YouTube itself. */
 export const NOTHING_TO_MATCH =
-  'These come straight from your account, so there is nothing to look up by name and nothing to check afterwards.';
+  'These come straight from your account, so there is nothing to look up by name. Only uploads YouTube Music is not sure are songs wait for a quick check.';
 
 /** Ember reads a Spotify playlist through Spotify's own embed, and the
  *  embed stops at 100 songs. */
@@ -172,6 +172,24 @@ export const TRANSFER_SERVICES: readonly TransferService[] = [
     ],
   },
 ];
+
+/** Which services can fill the Liked songs for now. The owner has opened
+ *  only YouTube Music (its Google sign-in brings the exact songs over); the
+ *  others stay listed, crossed out, until they are opened again here. A new
+ *  playlist can still come from any of them. */
+export const LIKED_SERVICES_OPEN: readonly TransferServiceId[] = ['ytmusic'];
+
+/** Every service, for when nothing is held back. */
+export const ALL_SERVICES: readonly TransferServiceId[] = ['spotify', 'ytmusic', 'apple', 'other'];
+
+/** Whether a service card can be picked for this destination. */
+export function serviceOpen(
+  id: TransferServiceId,
+  destination: 'liked' | 'playlist',
+  likedOpen: readonly TransferServiceId[] = LIKED_SERVICES_OPEN,
+): boolean {
+  return destination !== 'liked' || likedOpen.includes(id);
+}
 
 export function serviceById(id: TransferServiceId): TransferService {
   return TRANSFER_SERVICES.find((s) => s.id === id) ?? TRANSFER_SERVICES[0];

@@ -249,9 +249,12 @@ node tests/fake-ug.mjs &                            # port 4331; app needs UG_BA
 MUSIC_DIR="$SB/music" node tests/tabs-fetch.test.mjs # or: npm run test:tabs-fetch (tabs found on Ultimate Guitar: once per song, drawn, follows the song; PB restarted with this branch's pb_hooks)
 node tests/transcribe-timing.test.mjs              # or: npm run test:transcribe-timing (no server needed; python3 or PYTHON_BIN)
 node tests/preferences-ui.test.mjs                  # or: npm run test:preferences-ui (plugin switches across two devices; PB restarted with this branch's pb_hooks)
+node tests/themes-ui.test.mjs                       # or: npm run test:themes-ui (themes: Settings > Appearance picks, a custom theme, sharing and a second person using it, first paint from the cookie with JS off, the /pb rules; SHOT_DIR=dir saves every preset on Home and Appearance at 390 and 1300; PB_URL/APP_URL, default 8089/3051)
+node tests/pranks-ui.test.mjs                       # or: npm run test:pranks-ui (the admin's Control room page and a playing target in a second browser context: ping, upload a sound and play it over the target's ducked music, a repeat every minute landing twice, Stop, Stop everything, the off switch, library and media gate, rules, caps, 45 s expiry; PB restarted with this branch's pb_hooks, the app started with PRANK_TICK_INTERVAL_MS=1000)
+node tests/pranks-realtime.spike.mjs                # or: npm run test:pranks-spike (does PocketBase SSE stream through /pb? under next start it does not: gzip buffers it)
 node tests/android-player-ui.test.mjs               # or: npm run test:android-ui
 node tests/offline-android-ui.test.mjs              # or: npm run test:offline-ui
-node tests/offline-page.test.mjs                    # or: npm run test:offline-page (no server needed)
+node tests/offline-page.test.mjs                    # or: npm run test:offline-page (no server needed; also checks the page takes the theme variables Android publishes, docs/themes.md)
 node tests/resume-position.test.mjs                 # or: npm run test:resume
 node tests/playback-position.test.mjs               # or: npm run test:position
 node tests/public-origin.test.mjs                   # or: npm run test:origin
@@ -336,11 +339,18 @@ node tests/import.test.mjs                          # or: npm run test:import
 node tests/import-ui.test.mjs                       # or: npm run test:import-ui
 # Transfer: YouTube Music likes after a Google sign-in, against its own fake
 # Google on :8097 (the app needs GOOGLE_OAUTH_BASE / YOUTUBE_API_BASE pointed
-# there, see the file's header for the whole start line)
+# there, see the file's header for the whole start line). The fake player's
+# `classify` answers from fixtures/imports/ytm-classify.json, so it covers a
+# gaming like the first pass drops, likes YouTube Music calls songs, uploads
+# the person says yes or no to, and a "Music" Minecraft video left out, none
+# of which ever shows in the preview.
 node tests/transfer-google-ui.test.mjs
 
 # player.py `match` and `ytplaylist`, no server, no network
 .venv/bin/python -m unittest tests/test_player_match.py   # or: npm run test:player-match
+# player.py `classify` (YouTube Music's type per liked video), from the
+# owner's 16 real likes in fixtures/imports/ytm-get-song-liked16.json
+.venv/bin/python -m unittest tests/test_player_classify.py
 ```
 
 Exit code 0 = everything passed; each check prints PASS/FAIL with detail.

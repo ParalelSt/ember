@@ -97,7 +97,7 @@ export function LyricsBody({ active, onClose, showHeader = true }: Props) {
       {current && (
         <div className="px-4 py-3 border-b border-sidebar-border flex items-center gap-3">
           {current.artworkUrl && (
-            <Artwork src={current.artworkUrl} size="sm" className="rounded shrink-0 bg-black" />
+            <Artwork src={current.artworkUrl} size="sm" className="rounded shrink-0 bg-art" />
           )}
           <div className="min-w-0">
             <div className="truncate text-sm font-semibold">{current.title}</div>
@@ -193,7 +193,7 @@ export function LyricsBody({ active, onClose, showHeader = true }: Props) {
               <Button type="button" variant="ghost" onClick={() => setReportOpen(false)} disabled={submitting}>
                 Cancel
               </Button>
-              <Button type="submit" disabled={submitting || !note.trim()} className="bg-ember hover:bg-ember-soft text-white">
+              <Button type="submit" disabled={submitting || !note.trim()} variant="ember">
                 Send
               </Button>
             </DialogFooter>

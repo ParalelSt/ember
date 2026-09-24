@@ -124,7 +124,7 @@ export function ReplaceTrackDialog({ track, open, onOpenChange, onConfirm }: Pro
                   <Artwork
                     src={c.artworkUrl}
                     size="xs"
-                    className={c.artworkUrl ? 'rounded shrink-0 bg-black' : 'rounded shrink-0 bg-card'}
+                    className={c.artworkUrl ? 'rounded shrink-0 bg-art' : 'rounded shrink-0 bg-card'}
                   />
                   <div className="min-w-0 flex-1">
                     <div className="truncate text-sm font-medium">{c.title}</div>

@@ -73,7 +73,7 @@ export default function SettingsProfile() {
           src={displayedAvatar}
           name={name}
           email={user?.email}
-          className="h-20 w-20 cover-placeholder text-2xl text-white"
+          className="h-20 w-20 cover-placeholder text-2xl text-ember-foreground"
         />
         <div className="flex flex-col gap-2">
           <Button type="button" variant="outline" size="sm" onClick={() => fileRef.current?.click()}>
@@ -103,7 +103,7 @@ export default function SettingsProfile() {
         </p>
       </div>
 
-      <Button type="submit" disabled={busy} className="mt-6 bg-ember hover:bg-ember-soft text-white">
+      <Button type="submit" disabled={busy} variant="ember" className="mt-6">
         Save changes
       </Button>
     </form>

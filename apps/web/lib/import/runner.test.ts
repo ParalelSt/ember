@@ -20,6 +20,13 @@ import {
 } from '@/lib/import/jobState';
 import type { ImportCandidate, MatchResult, SourceItem } from '@/lib/import/types';
 import type { Track } from '@/types/track';
+import type { TransferItem } from '@/lib/import/sources/types';
+import { checkLikes, GOOGLE_LIKES_SOURCE_ID } from '@/lib/import/musicCheck';
+import { musicFromPage } from '@/lib/import/google/likes';
+import { parseYtmusicLiked } from '@/lib/import/sources/ytmusicLiked';
+import { jobFromRecord } from '@/lib/import/records';
+import { plainTransferResult } from '@/lib/import/transferCopy';
+import { fakeYoutubeMusic, liked16, LIKED16_NOT_MUSIC, LIKED16_SONGS, LIKED16_UPLOADS } from '@/test-utils/fakeYoutubeMusic';
 
 // The runner against an in-memory PocketBase: jobs, items and the
 // playlist's tracks are plain arrays, the matcher and the clock are fakes.
@@ -82,6 +89,9 @@ interface StoreOpts {
   alreadyLiked?: string[];
   /** Another job is waiting, so a transfer may step aside. */
   othersQueued?: boolean;
+  /** The items a source handed over, some already decided (a Google like:
+   *  an upload in review, or not music and skipped). */
+  items?: TransferItem[];
 }
 
 function memoryStore(total: number, opts: StoreOpts = {}) {
@@ -100,9 +110,9 @@ function memoryStore(total: number, opts: StoreOpts = {}) {
     id: `i${i}`,
     jobId: 'j1',
     position: i,
-    source: source(i),
-    candidates: opts.ready ? [cand(`vid${i}`, 100)] : [],
-    status: 'pending',
+    source: opts.items ? opts.items[i] : source(i),
+    candidates: opts.items ? (opts.items[i].candidates ?? []) : opts.ready ? [cand(`vid${i}`, 100)] : [],
+    status: opts.items?.[i].status ?? 'pending',
     likedAt: opts.liked ? 1_700_000_000_000 - i * 1000 : null,
   }));
   const playlist: { position: number; track: Track }[] = [];
@@ -456,5 +466,46 @@ describe('ImportRunner, a transfer into the likes', () => {
     await r.tick();
     expect(sleeps).toEqual([PACE_MS, BACKOFF_MS[0], PACE_MS * 2, PACE_MS * 2, PACE_MS * 2]);
     expect(PACE_MS * 2).toBeLessThanOrEqual(MAX_PACE_MS);
+  });
+});
+
+// The owner's real transfer, which first brought a Minecraft video, a YTP and
+// a satire ad into their Liked songs, and then (with every like read) all
+// their YouTube videos into the preview. Their 16 likes, all filed under
+// Music by the uploaders, with what YouTube Music's get_song said about each
+// (tests/fixtures/imports/ytm-get-song-liked16.json), through the whole
+// path: Google's page, both passes, the parser, the runner and the summary.
+describe("ImportRunner, the owner's 16 real Google likes", () => {
+  it('5 official songs liked, 5 uploads waiting for a look, 6 left out, and the sentence says so', async () => {
+    const o = liked16();
+    const ytm = fakeYoutubeMusic(o.answers);
+    const first = musicFromPage(o.videos, new Set());
+    expect(first.songs).toHaveLength(16);
+    const checked = await checkLikes(first.songs, { classify: ytm.classify, sleep: async () => {}, live: () => true });
+    const parsed = parseYtmusicLiked(checked!);
+
+    const m = memoryStore(parsed.items.length, { liked: true, items: parsed.items });
+    const match = vi.fn(fakeMatch);
+    const { r, sleeps } = runner(m.store, { match });
+    await r.tick();
+    expect(m.job.status).toBe('done');
+    // The runner searched nothing and asked nobody: YouTube Music had
+    // already answered, before the preview.
+    expect(match).not.toHaveBeenCalled();
+    expect(sleeps).toEqual([]);
+
+    const title = new Map(o.rows.map((row) => [row.videoId, row.title]));
+    const titles = (st: ItemStatus) => m.items.filter((i) => i.status === st).map((i) => title.get(i.candidates[0].track.sourceId)).sort();
+    expect(titles('accepted')).toEqual(LIKED16_SONGS);
+    expect(titles('review')).toEqual(LIKED16_UPLOADS);
+    expect(titles('skipped')).toEqual(LIKED16_NOT_MUSIC);
+    // Only the official ones reach the likes.
+    expect(m.likes.map((l) => title.get(l.track.sourceId)).sort()).toEqual(LIKED16_SONGS);
+
+    const job = jobFromRecord({ ...m.job, source_id: GOOGLE_LIKES_SOURCE_ID });
+    expect(job).toMatchObject({ accepted: 5, review: 5, missing: 0, notMusic: 6 });
+    expect(plainTransferResult({ found: job.accepted, check: job.review, notFound: job.missing, notMusic: job.notMusic })).toBe(
+      'We found 5 songs. 5 need a quick check. 6 likes were not music.',
+    );
   });
 });

@@ -43,6 +43,7 @@ const api = vi.hoisted(() => ({
 vi.mock('@/lib/api', () => ({ api }));
 
 const { TransferDialog } = await import('./TransferDialog');
+const { ALL_SERVICES, LIKED_SERVICES_OPEN } = await import('@/lib/import/transferRoutes');
 
 const LINK = 'https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M';
 const YT_LINK = 'https://music.youtube.com/playlist?list=PLabc123def456';
@@ -85,7 +86,7 @@ function setup() {
   const qc = new QueryClient();
   render(
     <QueryClientProvider client={qc}>
-      <TransferDialog open onOpenChange={onOpenChange} />
+      <TransferDialog open onOpenChange={onOpenChange} likedServicesOpen={ALL_SERVICES} />
     </QueryClientProvider>,
   );
   return { onOpenChange };
@@ -434,7 +435,7 @@ describe('TransferDialog: YouTube Music likes, after a Google sign-in', () => {
     count: 3,
     dropped: 0,
     truncated: false,
-    skipped: 4,
+    toCheck: 2,
     sample: [{ title: 'Paper Lanterns', artist: 'Halcyon Drift' }],
     ...over,
   });
@@ -516,10 +517,11 @@ describe('TransferDialog: YouTube Music likes, after a Google sign-in', () => {
     expect(screen.getByTestId('google-unverified-hint')).toHaveTextContent('press Continue');
   });
 
-  it('waiting, reading, then ready: the shared preview card, the skipped line, and Start', async () => {
+  it('waiting, reading, checking which likes are songs, then ready: songs in the card, uploads to check, and Start', async () => {
     api.googleLikesStatus
       .mockResolvedValueOnce({ state: 'waiting' })
       .mockResolvedValueOnce({ state: 'reading' })
+      .mockResolvedValueOnce({ state: 'reading', checking: { done: 40, total: 120 } })
       .mockResolvedValue({ state: 'ready', preview: googlePreview() });
     api.googleLikesStart.mockResolvedValue({ job, playlistId: null, truncated: false, note: null });
     const { onOpenChange } = setup();
@@ -534,26 +536,42 @@ describe('TransferDialog: YouTube Music likes, after a Google sign-in', () => {
     await poll();
     await waitFor(() => expect(screen.getByTestId('google-waiting')).toHaveTextContent('Reading your likes'));
     await poll();
+    await waitFor(() => expect(screen.getByTestId('google-waiting')).toHaveTextContent('Checking which likes are songs: 40 of 120'));
+    await poll();
     await waitFor(() => expect(screen.getByTestId('transfer-preview')).toBeInTheDocument());
     expect(screen.queryByTestId('google-code-panel')).toBeNull();
     const card = screen.getByTestId('transfer-preview');
     expect(card).toHaveTextContent('Liked songs from YouTube Music');
+    // Songs only: what YouTube Music said is not music is nowhere.
     expect(card).toHaveTextContent('3 songs');
     expect(card).toHaveTextContent('Paper Lanterns');
-    expect(screen.getByTestId('google-skipped')).toHaveTextContent('Left out 4 likes that are not music.');
+    expect(screen.getByTestId('google-to-check')).toHaveTextContent('2 more need a quick check: uploads YouTube Music is not sure are songs.');
 
     // No more polling once it is ready.
     const calls = api.googleLikesStatus.mock.calls.length;
     await poll();
     expect(api.googleLikesStatus.mock.calls.length).toBe(calls);
 
-    expect(startButton()).toHaveTextContent('Transfer 3 songs');
+    // The songs and the uploads to check both come across.
+    expect(startButton()).toHaveTextContent('Transfer 5 songs');
     fireEvent.click(startButton());
     await waitFor(() => expect(api.googleLikesStart).toHaveBeenCalledWith(FLOW));
     await waitFor(() => expect(push).toHaveBeenCalledWith('/library/liked'));
     expect(onOpenChange).toHaveBeenCalledWith(false);
     // Started, so there is nothing left to cancel.
     expect(api.googleLikesCancel).not.toHaveBeenCalled();
+  });
+
+  it('no quick-check line when YouTube Music called every like a song', async () => {
+    api.googleLikesStatus.mockResolvedValue({ state: 'ready', preview: googlePreview({ count: 1, toCheck: 0 }) });
+    setup();
+    toGoogle();
+    fireEvent.click(signInButton());
+    await waitFor(() => expect(screen.getByTestId('google-code-panel')).toBeInTheDocument());
+    await poll();
+    await waitFor(() => expect(screen.getByTestId('transfer-preview')).toHaveTextContent('1 song'));
+    expect(screen.queryByTestId('google-to-check')).toBeNull();
+    expect(startButton()).toHaveTextContent(/^Transfer 1 song$/);
   });
 
   it('a note on a library over the cap is toasted, not swallowed', async () => {
@@ -721,5 +739,51 @@ describe('TransferDialog: YouTube Music likes, after a Google sign-in', () => {
     await waitFor(() => expect(screen.getByTestId('transfer-error')).toHaveTextContent(GOOGLE_MESSAGES.gone));
     expect(signInButton()).toBeEnabled();
     expect(push).not.toHaveBeenCalled();
+  });
+});
+
+describe('TransferDialog: only YouTube Music fills the Liked songs for now', () => {
+  function setupDefault() {
+    const qc = new QueryClient();
+    render(
+      <QueryClientProvider client={qc}>
+        <TransferDialog open onOpenChange={vi.fn()} />
+      </QueryClientProvider>,
+    );
+  }
+
+  it('is the default, with YouTube Music the one service open', () => {
+    expect(LIKED_SERVICES_OPEN).toEqual(['ytmusic']);
+  });
+
+  it('crosses out and disables every other service for Liked songs, and says why', () => {
+    setupDefault();
+    pick('Liked songs');
+    const cards = screen.getAllByTestId('transfer-service-card');
+    const byId = Object.fromEntries(cards.map((c) => [c.dataset.service, c as HTMLButtonElement]));
+    expect(byId.ytmusic).toBeEnabled();
+    for (const id of ['spotify', 'apple', 'other']) {
+      expect(byId[id]).toBeDisabled();
+      expect(byId[id]).toHaveClass('line-through');
+    }
+    expect(screen.getByTestId('transfer-services-held-back')).toHaveTextContent('For now only YouTube Music');
+    // A crossed-out card does nothing when pressed.
+    fireEvent.click(byId.spotify);
+    expect(screen.queryAllByTestId('transfer-have-option')).toHaveLength(0);
+    expect(screen.getAllByTestId('transfer-service-card')).toHaveLength(4);
+  });
+
+  it('YouTube Music still opens its choices', () => {
+    setupDefault();
+    pick('Liked songs');
+    service('YouTube Music');
+    expect(screen.getAllByTestId('transfer-have-option').length).toBeGreaterThan(0);
+  });
+
+  it('a new playlist can still come from any service', () => {
+    setupDefault();
+    pick('A new playlist');
+    for (const card of screen.getAllByTestId('transfer-service-card')) expect(card).toBeEnabled();
+    expect(screen.queryByTestId('transfer-services-held-back')).toBeNull();
   });
 });

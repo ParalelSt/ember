@@ -22,16 +22,24 @@ import { logger } from '@/lib/logger/client';
 import { parseImportUrl } from '@/lib/import/url';
 import { googleLikesErrorMessage, OVER_CAP_MESSAGE, transferErrorMessage } from '@/lib/import/transferCopy';
 import {
+  LIKED_SERVICES_OPEN,
   routesFor,
   serviceById,
+  serviceOpen,
   TRANSFER_SERVICES,
   type TransferRoute,
   type TransferServiceId,
 } from '@/lib/import/transferRoutes';
-import { GOOGLE_FALLBACK_HINT, GOOGLE_MESSAGES, GOOGLE_UNVERIFIED_HINT, skippedLine } from '@/lib/import/sources/ytmusicLiked';
+import {
+  checkingLine,
+  GOOGLE_FALLBACK_HINT,
+  GOOGLE_MESSAGES,
+  GOOGLE_UNVERIFIED_HINT,
+  toCheckLine,
+} from '@/lib/import/sources/ytmusicLiked';
 import type { JobKind, ImportSourceKind } from '@/lib/import/types';
 import type { TransferPreview } from '@/app/api/import/upload/route';
-import type { GooglePreview } from '@/lib/import/google/flows';
+import type { CheckProgress, GooglePreview } from '@/lib/import/google/flows';
 
 /** Wait this long after typing stops before reading a pasted list or link. */
 const LOOKUP_DELAY_MS = 400;
@@ -79,7 +87,15 @@ type Lookup =
 type SignIn =
   | { step: 'idle' }
   | { step: 'asking' }
-  | { step: 'code'; flowId: string; userCode: string; verificationUrl: string; reading: boolean }
+  | {
+      step: 'code';
+      flowId: string;
+      userCode: string;
+      verificationUrl: string;
+      reading: boolean;
+      /** Set once YouTube Music is checking which likes are songs. */
+      checking: CheckProgress | null;
+    }
   | { step: 'failed'; message: string };
 
 export interface TransferDialogProps {
@@ -87,6 +103,9 @@ export interface TransferDialogProps {
   onOpenChange: (open: boolean) => void;
   /** Where the dialog was opened from, for the breadcrumb only. */
   from?: string;
+  /** Services that may fill the Liked songs; the rest show crossed out.
+   *  Defaults to what is open for now (`LIKED_SERVICES_OPEN`). */
+  likedServicesOpen?: readonly TransferServiceId[];
 }
 
 /** Bring songs liked somewhere else into Ember, asked in plain words. Three
@@ -96,7 +115,12 @@ export interface TransferDialogProps {
  *  the person already has in hand. Only the steps for that one combination
  *  show, so nobody reads about CSVs unless a file is their way in. Nothing
  *  starts until Ember has read the source and shown a preview of it. */
-export function TransferDialog({ open, onOpenChange, from = 'settings' }: TransferDialogProps) {
+export function TransferDialog({
+  open,
+  onOpenChange,
+  from = 'settings',
+  likedServicesOpen = LIKED_SERVICES_OPEN,
+}: TransferDialogProps) {
   const router = useRouter();
   const qc = useQueryClient();
   const [destination, setDestination] = useState<JobKind | null>(null);
@@ -250,7 +274,14 @@ export function TransferDialog({ open, onOpenChange, from = 'settings' }: Transf
         return;
       }
       flowRef.current = r.flowId;
-      setSignIn({ step: 'code', flowId: r.flowId, userCode: r.userCode, verificationUrl: r.verificationUrl, reading: false });
+      setSignIn({
+        step: 'code',
+        flowId: r.flowId,
+        userCode: r.userCode,
+        verificationUrl: r.verificationUrl,
+        reading: false,
+        checking: null,
+      });
     } catch (e) {
       if (attempt.current !== mine) return;
       const message = googleLikesErrorMessage(e);
@@ -289,7 +320,9 @@ export function TransferDialog({ open, onOpenChange, from = 'settings' }: Transf
           setSignIn({ step: 'idle' });
           setLookup({ step: 'google', preview: r.preview, flowId: waitingOn });
         } else if (r.state === 'waiting' || r.state === 'reading') {
-          setSignIn((s) => (s.step === 'code' && s.flowId === waitingOn ? { ...s, reading: r.state === 'reading' } : s));
+          setSignIn((s) =>
+            s.step === 'code' && s.flowId === waitingOn ? { ...s, reading: r.state === 'reading', checking: r.checking ?? null } : s,
+          );
         } else {
           // Over, one way or another: the server has already forgotten it.
           flowRef.current = null;
@@ -360,7 +393,9 @@ export function TransferDialog({ open, onOpenChange, from = 'settings' }: Transf
   // the newest songs kept, so it never sets overCap.
   const overCap = lookup.step === 'file' && lookup.preview.truncated;
   const previewed = lookup.step === 'file' || lookup.step === 'link' || lookup.step === 'google';
-  const count = previewed ? lookup.preview.count : 0;
+  // A Google preview counts songs and the uploads to check separately; both
+  // come across, so the button counts both.
+  const count = !previewed ? 0 : lookup.step === 'google' ? lookup.preview.count + lookup.preview.toCheck : lookup.preview.count;
   const empty = previewed && count === 0 && !overCap;
   const ready = previewed && count > 0 && !overCap;
 
@@ -453,18 +488,32 @@ export function TransferDialog({ open, onOpenChange, from = 'settings' }: Transf
 
             {!service && (
               <div className="grid gap-row md:grid-cols-2">
-                {TRANSFER_SERVICES.map((s) => (
-                  <button
-                    key={s.id}
-                    type="button"
-                    data-testid="transfer-service-card"
-                    data-service={s.id}
-                    onClick={() => pickService(s.id)}
-                    className="rounded-lg border border-border bg-card p-block text-left text-sm font-semibold transition-colors hover:border-ember hover:bg-accent/60"
-                  >
-                    {s.name}
-                  </button>
-                ))}
+                {TRANSFER_SERVICES.map((s) => {
+                  const open = destination ? serviceOpen(s.id, destination, likedServicesOpen) : true;
+                  return (
+                    <button
+                      key={s.id}
+                      type="button"
+                      data-testid="transfer-service-card"
+                      data-service={s.id}
+                      data-open={open ? 'true' : 'false'}
+                      disabled={!open}
+                      onClick={() => pickService(s.id)}
+                      className={
+                        open
+                          ? 'rounded-lg border border-border bg-card p-block text-left text-sm font-semibold transition-colors hover:border-ember hover:bg-accent/60'
+                          : 'cursor-not-allowed rounded-lg border border-border bg-card p-block text-left text-sm font-semibold text-muted-foreground line-through opacity-50'
+                      }
+                    >
+                      {s.name}
+                    </button>
+                  );
+                })}
+                {destination === 'liked' && TRANSFER_SERVICES.some((s) => !likedServicesOpen.includes(s.id)) && (
+                  <p data-testid="transfer-services-held-back" className="text-xs text-muted-foreground md:col-span-2">
+                    For now only YouTube Music can fill your Liked songs. The others can still make a new playlist.
+                  </p>
+                )}
               </div>
             )}
 
@@ -575,9 +624,9 @@ export function TransferDialog({ open, onOpenChange, from = 'settings' }: Transf
             {lookup.step === 'google' && (
               <>
                 <FilePreviewCard preview={lookup.preview} />
-                {lookup.preview.skipped > 0 && (
-                  <p data-testid="google-skipped" className="text-xs text-muted-foreground">
-                    {skippedLine(lookup.preview.skipped)}
+                {lookup.preview.toCheck > 0 && (
+                  <p data-testid="google-to-check" className="text-xs text-muted-foreground">
+                    {toCheckLine(lookup.preview.toCheck)}
                   </p>
                 )}
               </>
@@ -619,9 +668,9 @@ export function TransferDialog({ open, onOpenChange, from = 'settings' }: Transf
               type="button"
               disabled={!ready || starting}
               onClick={() => void start()}
-              className="bg-ember text-white hover:bg-ember-soft"
+              variant="ember"
             >
-              {starting ? 'Starting…' : ready ? `Transfer ${count} songs` : 'Transfer'}
+              {starting ? 'Starting…' : ready ? `Transfer ${count} ${count === 1 ? 'song' : 'songs'}` : 'Transfer'}
             </Button>
           )}
         </DialogFooter>
@@ -646,7 +695,7 @@ function GoogleSignInPanel({ signIn, onSignIn }: { signIn: SignIn; onSignIn: () 
           href={signIn.verificationUrl}
           target="_blank"
           rel="noopener noreferrer"
-          className="inline-flex items-center gap-cluster rounded-md bg-ember px-row py-cluster text-sm font-medium text-white hover:bg-ember-soft"
+          className="inline-flex items-center gap-cluster rounded-md bg-ember px-row py-cluster text-sm font-medium text-ember-foreground hover:bg-ember-soft"
         >
           <LinkIcon className="h-4 w-4" />
           Open {shown}
@@ -656,7 +705,11 @@ function GoogleSignInPanel({ signIn, onSignIn }: { signIn: SignIn; onSignIn: () 
           {GOOGLE_UNVERIFIED_HINT}
         </span>
         <p data-testid="google-waiting" role="status" className="text-xs text-muted-foreground">
-          {signIn.reading ? 'Google said yes. Reading your likes…' : 'Waiting for you to allow Ember…'}
+          {signIn.checking
+            ? checkingLine(signIn.checking.done, signIn.checking.total)
+            : signIn.reading
+              ? 'Google said yes. Reading your likes…'
+              : 'Waiting for you to allow Ember…'}
         </p>
       </div>
     );
@@ -678,7 +731,8 @@ function GoogleSignInPanel({ signIn, onSignIn }: { signIn: SignIn; onSignIn: () 
 
 /** What Ember read out of the file or the pasted list, before anything is
  *  started: how many songs, where they came from, and the first few by name
- *  so an obviously wrong file is obvious. */
+ *  so an obviously wrong file is obvious. A Google sign-in shows only the
+ *  likes YouTube Music calls songs. */
 function FilePreviewCard({ preview }: { preview: TransferPreview }) {
   return (
     <div data-testid="transfer-preview" className="rounded-lg border border-border bg-card p-row">

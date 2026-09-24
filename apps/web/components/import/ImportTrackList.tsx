@@ -51,7 +51,7 @@ function PlaceholderRow({
         {pending ? (
           <div className={cn('size-art-xs shrink-0 rounded bg-muted', next && 'animate-pulse')} />
         ) : (
-          <Artwork src={art} size="xs" className="grid shrink-0 place-items-center rounded bg-black text-foreground/20">
+          <Artwork src={art} size="xs" className="grid shrink-0 place-items-center rounded bg-art text-foreground/20">
             <MusicIcon className="h-4 w-4" />
           </Artwork>
         )}

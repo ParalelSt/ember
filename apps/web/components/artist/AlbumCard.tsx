@@ -26,7 +26,7 @@ export function AlbumCard({ album, className }: Props) {
       <Artwork
         src={cover}
         loading="lazy"
-        className="aspect-square w-full rounded-lg bg-black shadow-soft"
+        className="aspect-square w-full rounded-lg bg-art shadow-soft"
       />
       <div className="mt-3 truncate text-sm font-semibold">{album.title}</div>
       {year && <div className="mt-1 text-xs text-muted-foreground">{year}</div>}

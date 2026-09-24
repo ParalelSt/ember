@@ -111,7 +111,7 @@ function ProfileRow({ className }: { className?: string }) {
   return (
     <div className={cn('border-t border-sidebar-border px-2 py-3', className)}>
       <div className="flex min-w-0 items-center gap-3 rounded-md px-2 py-2">
-        <div className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-ember text-xs font-bold text-white">A</div>
+        <div className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-ember text-xs font-bold text-ember-foreground">A</div>
         <div className="truncate text-xs text-sidebar-foreground/70">Aron</div>
       </div>
     </div>
@@ -239,7 +239,7 @@ function MockPlayerBar({ phone }: { phone: boolean }) {
         )}
       >
         <div className="flex min-w-0 items-center gap-3">
-          <Artwork src={t.artworkUrl} size="sm" className="shrink-0 rounded-md bg-black" />
+          <Artwork src={t.artworkUrl} size="sm" className="shrink-0 rounded-md bg-art" />
           <div className="min-w-0 flex-1">
             <div className="truncate text-sm font-semibold">{t.title}</div>
             <div className="truncate text-xs text-muted-foreground">{t.artist}</div>

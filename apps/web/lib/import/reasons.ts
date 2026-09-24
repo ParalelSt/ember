@@ -3,6 +3,8 @@
  *  needs a look. Pure: shared by the sheet and the playlist rows. */
 
 import type { ImportCandidate, ImportItem } from '@/lib/import/types';
+import { UPLOAD_REASON } from '@/lib/import/musicCheck';
+import { READY_REASON } from '@/lib/import/sources/ytmusicLiked';
 
 const GOOD = new Set([
   'Same title',
@@ -13,6 +15,7 @@ const GOOD = new Set([
   'Length close',
   'Official audio',
   'From the playlist itself',
+  READY_REASON,
 ]);
 
 /** Reasons that only restate the type badge. */
@@ -48,6 +51,7 @@ export function reviewFlag(item: ImportItem): string | null {
   if (item.status !== 'review') return null;
   const [best, second] = item.candidates;
   if (!best) return null;
+  if (best.reasons.includes(UPLOAD_REASON)) return 'Is this a song? YouTube Music only knows it as an upload';
   if (second && best.score - second.score <= TIED_WITHIN) return 'Two versions are almost tied';
   const against = best.reasons.filter((r) => !reasonIsGood(r) && r !== 'Music video');
   if (!against.length) return 'Not sure enough to add it by itself';

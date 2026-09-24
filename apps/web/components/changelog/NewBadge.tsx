@@ -9,7 +9,7 @@ export function NewBadge({ className }: { className?: string }) {
     <span
       data-testid="new-badge"
       className={cn(
-        'ember-new-pulse inline-flex shrink-0 items-center rounded-full bg-ember px-1.5 py-0.5 text-[10px] font-bold uppercase leading-none tracking-wider text-white',
+        'ember-new-pulse inline-flex shrink-0 items-center rounded-full bg-ember px-1.5 py-0.5 text-[10px] font-bold uppercase leading-none tracking-wider text-ember-foreground',
         className,
       )}
     >

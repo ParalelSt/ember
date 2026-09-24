@@ -204,7 +204,13 @@ export function createJobStore(getAdmin: () => Promise<PocketBase>): JobStore {
  *  one (Exportify's `Added At`, Last.fm's `date`). */
 /** `candidates` is filled only by a source that names the exact video (the
  *  person's own YouTube Music likes), so those items skip the matcher. */
-export type NewImportItem = SourceItem & { likedAt?: number | null; candidates?: ImportCandidate[] };
+export type NewImportItem = SourceItem & {
+  likedAt?: number | null;
+  candidates?: ImportCandidate[];
+  /** Decided before the job starts (a Google like: an upload to review, or
+   *  not music). The runner only works through pending items. */
+  status?: 'review' | 'skipped';
+};
 
 export interface NewImport {
   userId: string;
@@ -247,6 +253,9 @@ export async function createImportJob(
   const rows: { item: NewImportItem; candidates: ImportCandidate[] }[] = n.tracks
     ? n.tracks.map((t, i) => readyItem(t, i))
     : (n.items ?? []).map((item) => ({ item, candidates: item.candidates ?? [] }));
+  // Uploads a Google likes transfer created waiting for a look count from
+  // the start, so the banner is right before the runner gets to it.
+  const review = rows.filter((r) => r.item.status === 'review').length;
   const likedAt = kind === 'liked' ? await transferDates(pb, n, rows.length) : null;
 
   const playlist =
@@ -271,7 +280,7 @@ export async function createImportJob(
     // nothing pending and call it done. Queued at the end.
     status: 'paused',
     accepted: 0,
-    review: 0,
+    review,
     missing: 0,
     existing: 0,
     ...(playlist ? { playlist: playlist.id } : {}),
@@ -284,7 +293,11 @@ export async function createImportJob(
       await Promise.all(
         rows
           .slice(i, i + 10)
-          .map((r) => pb.collection('import_items').create(itemRecord(job.id, r.item, r.candidates, likedAt?.[r.item.position] ?? null))),
+          .map((r) =>
+            pb
+              .collection('import_items')
+              .create(itemRecord(job.id, r.item, r.candidates, likedAt?.[r.item.position] ?? null, r.item.status)),
+          ),
       );
     }
     const queued = await pb.collection('import_jobs').update(job.id, { status: 'queued' });

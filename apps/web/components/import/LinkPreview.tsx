@@ -22,7 +22,7 @@ export function LinkPreview({ kind, name, coverUrl, count, truncated }: LinkPrev
       <div className="flex items-start gap-block md:items-center">
         <Artwork
           src={coverUrl}
-          className="grid size-20 shrink-0 place-items-center rounded-md bg-black text-foreground/20 shadow-soft md:size-24"
+          className="grid size-20 shrink-0 place-items-center rounded-md bg-art text-foreground/20 shadow-soft md:size-24"
         >
           <MusicIcon className="h-6 w-6" />
         </Artwork>

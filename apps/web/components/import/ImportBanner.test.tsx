@@ -82,6 +82,13 @@ describe('ImportBanner', () => {
     expect(screen.queryByTestId('import-count-added')).toBeNull();
   });
 
+  it('a finished Google likes transfer also says how many likes were not music', () => {
+    setup(job({ kind: 'liked', source: 'ytmusic', playlistId: null, status: 'done', total: 16, cursor: 16, accepted: 5, review: 5, missing: 0, notMusic: 6 }), 5);
+    expect(screen.getByTestId('transfer-result')).toHaveTextContent('We found 5 songs. 5 need a quick check. 6 likes were not music.');
+    // Review walks the uploads waiting for a yes or no.
+    expect(screen.getByRole('button', { name: /Review/ })).toBeEnabled();
+  });
+
   it('a playlist import keeps its four counters, unchanged', () => {
     setup(job({ status: 'done' }));
     expect(screen.queryByTestId('transfer-result')).toBeNull();

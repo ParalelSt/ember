@@ -162,7 +162,7 @@ export function CandidateRow({
         </div>
       )}
       <div className="relative shrink-0">
-        <Artwork src={c.track.artworkUrl} size="sm" className="grid place-items-center rounded-md bg-black text-foreground/20">
+        <Artwork src={c.track.artworkUrl} size="sm" className="grid place-items-center rounded-md bg-art text-foreground/20">
           <MusicIcon className="h-4 w-4" />
         </Artwork>
         <button

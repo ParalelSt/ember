@@ -189,7 +189,7 @@ export function RequestDialog({ open, onOpenChange }: RequestDialogProps) {
             <Button
               type="submit"
               disabled={!canSend}
-              className="bg-ember hover:bg-ember-soft text-white"
+              variant="ember"
             >
               {busy ? 'Sending…' : 'Send'}
             </Button>

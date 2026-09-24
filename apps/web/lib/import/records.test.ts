@@ -56,6 +56,17 @@ describe('import records', () => {
       existing: 38,
     });
     expect(j).toMatchObject({ kind: 'liked', playlistId: null, userId: 'u1', source: 'csv', existing: 38 });
+    // Only a Google likes transfer counts likes that were not music.
+    expect(j.notMusic).toBeUndefined();
+  });
+
+  it('a Google likes transfer counts the likes it got through that were not music', () => {
+    const row = { id: 'j4', kind: 'liked', source: 'ytmusic', source_id: 'ytmusic-liked', status: 'done', total: 16, cursor: 16 };
+    expect(jobFromRecord({ ...row, accepted: 5, review: 5, missing: 0 }).notMusic).toBe(6);
+    // A person saying no to an upload makes one more.
+    expect(jobFromRecord({ ...row, accepted: 5, review: 4, missing: 0 }).notMusic).toBe(7);
+    // A YouTube Music playlist link into the likes is not one.
+    expect(jobFromRecord({ ...row, source_id: 'PLabc', accepted: 5, review: 5 }).notMusic).toBeUndefined();
   });
 
   it('reads and writes an item liked_at, and leaves it empty when there is none', () => {

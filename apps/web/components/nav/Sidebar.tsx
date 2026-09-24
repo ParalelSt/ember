@@ -96,7 +96,7 @@ export function Sidebar() {
               src={avatarUrl}
               name={displayName}
               email={user.email}
-              className="h-7 w-7 bg-ember text-white text-xs"
+              className="h-7 w-7 bg-ember text-ember-foreground text-xs"
             />
             <div className="text-xs text-sidebar-foreground/70 truncate" title={user.email}>
               {displayName || user.email}

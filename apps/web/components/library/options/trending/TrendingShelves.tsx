@@ -88,7 +88,7 @@ function RankedCard({ entry, rank }: { entry: MockChartEntry; rank: number }) {
   return (
     <div data-testid="chart-entry" className="group relative cursor-pointer rounded-xl bg-card p-block transition-colors hover:bg-card/80">
       <div className="relative">
-        <Artwork src={t.artworkUrl} className="aspect-square w-full rounded-lg bg-black shadow-soft" />
+        <Artwork src={t.artworkUrl} className="aspect-square w-full rounded-lg bg-art shadow-soft" />
         <div className="pointer-events-none absolute inset-x-0 bottom-0 h-1/2 rounded-b-lg bg-linear-to-t from-black/70 to-transparent" />
         <span
           data-testid="chart-rank"
@@ -125,7 +125,7 @@ export function ChartRow({ entry, rank }: { entry: MockChartEntry; rank: number 
         {rank}
       </span>
       <div className="relative">
-        <Artwork src={t.artworkUrl} size="sm" className="rounded-md bg-black" />
+        <Artwork src={t.artworkUrl} size="sm" className="rounded-md bg-art" />
         <button
           type="button"
           aria-label={`Play ${t.title}`}
@@ -180,7 +180,7 @@ function HeroListShelf({ chart, phone }: { chart: MockChartEntry[]; phone: boole
         <div className={cn('relative flex w-full items-center', phone ? 'gap-block p-block' : 'gap-stack p-stack')}>
           <Artwork
             src={t.artworkUrl}
-            className={cn('shrink-0 rounded-lg bg-black shadow-soft', phone ? 'size-28' : 'size-art-md')}
+            className={cn('shrink-0 rounded-lg bg-art shadow-soft', phone ? 'size-28' : 'size-art-md')}
           />
           <div className="min-w-0 flex-1">
             <div className="text-eyebrow flex items-center gap-cluster text-ember">

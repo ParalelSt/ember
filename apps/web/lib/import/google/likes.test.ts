@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { isMusic, isoSeconds, likedSongFromVideo, musicFromPage, songName } from '@/lib/import/google/likes';
+import { isMusic, isoSeconds, isTopic, likedSongFromVideo, musicFromPage, songName } from '@/lib/import/google/likes';
 import { music } from '@/test-utils/fakeGoogle';
 
-// Google keeps one list of likes for YouTube and YouTube Music. Only music
-// comes across: category 10, or an auto-generated "- Topic" channel.
+// Google keeps one list of likes for YouTube and YouTube Music. The first
+// pass, which costs nothing: category 10, or an auto-generated "- Topic"
+// channel. YouTube Music checks the survivors next (musicCheck.test.ts).
 
 describe('isMusic', () => {
   it('keeps category 10', () => {
@@ -20,6 +21,14 @@ describe('isMusic', () => {
     expect(isMusic({ id: 'aaaaaaaaaaa' })).toBe(false);
     // "Topic" as a word in a name is not the auto-generated suffix.
     expect(isMusic(music('aaaaaaaaaaa', 'Talk', 'Topic Talks', '22'))).toBe(false);
+  });
+});
+
+describe('isTopic', () => {
+  it('only the auto-generated suffix, not category 10 and not the word', () => {
+    expect(isTopic(music('aaaaaaaaaaa', 'Song', 'Nadia Okonkwo - Topic', '24'))).toBe(true);
+    expect(isTopic(music('aaaaaaaaaaa', 'Song', 'Band', '10'))).toBe(false);
+    expect(isTopic(music('aaaaaaaaaaa', 'Talk', 'Topic Talks', '22'))).toBe(false);
   });
 });
 
@@ -70,6 +79,13 @@ describe('likedSongFromVideo', () => {
     });
     expect(song.artists).toEqual(['Halcyon Drift']);
     expect(song.likedAt).toBeNull();
+    // A Topic channel is official audio: YouTube Music need not be asked.
+    expect(song.videoType).toBe('ATV');
+  });
+
+  it('a video from any other channel waits for YouTube Music to say what it is', () => {
+    // Category 10 is only the uploader's word, and the owner's Minecraft video had it.
+    expect(likedSongFromVideo(music('aaaaaaaaaaa', 'Mob Farm', 'HorseFridge', '10'))!.videoType).toBeNull();
   });
 
   it('a video id that is not one is no song', () => {

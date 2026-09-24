@@ -63,7 +63,7 @@ export function PhoneTrackRow({ track, index, trailing, dim }: { track: Track; i
     >
       <div className="grid h-8 w-8 place-items-center justify-self-center text-sm tabular-nums text-muted-foreground">{index + 1}</div>
       <div className="flex min-w-0 items-center gap-row">
-        <Artwork src={track.artworkUrl} size="xs" className="grid shrink-0 place-items-center rounded bg-black text-foreground/20">
+        <Artwork src={track.artworkUrl} size="xs" className="grid shrink-0 place-items-center rounded bg-art text-foreground/20">
           <MusicIcon className="h-4 w-4" />
         </Artwork>
         <div className="min-w-0">
@@ -199,7 +199,7 @@ function DoneSummary({ phone, resolved, onReview }: { phone: boolean; resolved: 
         </div>
       </div>
       <div className="flex items-center gap-cluster">
-        <Button onClick={onReview} className={cn('bg-ember text-white hover:bg-ember-soft', phone && 'flex-1')} disabled={c.review === 0}>
+        <Button onClick={onReview} variant="ember" className={cn(phone && 'flex-1')} disabled={c.review === 0}>
           <ReviewIcon className="h-4 w-4" />
           Review
         </Button>

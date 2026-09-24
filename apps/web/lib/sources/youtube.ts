@@ -5,6 +5,7 @@ import fs from 'node:fs';
 import type { Track } from '@/types/track';
 import { redactSecrets } from '@/lib/import/redact';
 import { serverLogger } from '@/lib/logger/server';
+import { parseMusicCheck, type MusicCheck, type RawMusicCheck } from '@/lib/import/musicCheck';
 
 // apps/web is one level deeper than the old apps/api in workspace layout,
 // but both resolve to the same spotify-clone root.
@@ -449,6 +450,16 @@ export async function searchMatchCandidates(
         explicit: typeof r.isExplicit === 'boolean' ? r.isExplicit : null,
       })),
   );
+}
+
+/** YouTube Music's own type for each liked video (8 or fewer per call, from
+ *  the import runner): ATV, OMV, UGC or null. Throws when YouTube Music asks
+ *  to slow down, so the runner backs off; one video failing is only listed
+ *  in `failed`. */
+export async function classifyVideos(videoIds: string[]): Promise<MusicCheck> {
+  if (!videoIds.length) return { types: new Map(), failed: [] };
+  const raw = await runPython<RawMusicCheck>(['classify', '--', ...videoIds], { timeoutMs: 60000 });
+  return parseMusicCheck(raw, videoIds);
 }
 
 export async function getArtist(channelId: string) {

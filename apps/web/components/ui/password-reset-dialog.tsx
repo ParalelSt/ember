@@ -126,7 +126,8 @@ export function PasswordResetDialog({
             type="button"
             onClick={handleSubmit}
             disabled={!valid || busy}
-            className={cn('bg-ember hover:bg-ember-soft text-white', busy && 'opacity-70')}
+            variant="ember"
+            className={cn(busy && 'opacity-70')}
           >
             {busy ? '…' : 'Save'}
           </Button>

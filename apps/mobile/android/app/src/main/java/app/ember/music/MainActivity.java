@@ -1,5 +1,7 @@
 package app.ember.music;
 
+import android.content.Context;
+import android.content.SharedPreferences;
 import android.net.Uri;
 import android.os.Bundle;
 import android.webkit.WebView;
@@ -24,15 +26,65 @@ public class MainActivity extends BridgeActivity {
     private ScriptHandler insetScript;
     /** The script last published, so identical insets are a no-op. */
     private String publishedInsets = "";
+    /** The document-start script giving the offline page the theme's
+     *  variables, so a new theme replaces it rather than piling up. */
+    private ScriptHandler themeScript;
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
         registerPlugin(EmberPlayerPlugin.class);
         registerPlugin(EmberOfflinePlugin.class);
         registerPlugin(EmberSpeechPlugin.class);
+        registerPlugin(EmberThemePlugin.class);
         super.onCreate(savedInstanceState);
         injectBridgeIntoErrorPage();
         publishSafeAreaInsets();
+        applyStoredTheme();
+    }
+
+    /**
+     * The last theme the page reported (EmberThemePlugin), applied before the
+     * page loads: the blank between the splash and the first byte is the
+     * theme's background, not white or black, and the bars match it. A phone
+     * that never reported one opens on Ember's background. The splash itself
+     * stays the brand red on black.
+     */
+    private void applyStoredTheme() {
+        SharedPreferences prefs = getSharedPreferences(ThemeColors.PREFS, Context.MODE_PRIVATE);
+        Integer color = ThemeColors.parseHex(prefs.getString(ThemeColors.KEY_BACKGROUND, null));
+        if (color == null) color = ThemeColors.parseHex(ThemeColors.DEFAULT_BACKGROUND);
+        applyTheme(color, prefs.getString(ThemeColors.KEY_VARS, null));
+    }
+
+    /**
+     * Paint the chrome in one theme and hand its variables to the offline
+     * page (a different origin, so it never sees the account or the cookie).
+     * Main thread only; EmberThemePlugin calls it on every theme change.
+     */
+    public void applyTheme(int background, String varsJson) {
+        try {
+            WebView webView = getBridge() == null ? null : getBridge().getWebView();
+            ThemeColors.applyToWindow(this, webView, background);
+            publishThemeToErrorPage(webView, ThemeColors.script(ThemeColors.parseVars(varsJson)));
+        } catch (Exception e) {
+            // An unthemed window is still a working app.
+            Logger.error("theme apply failed", e);
+        }
+    }
+
+    private void publishThemeToErrorPage(WebView webView, String js) {
+        String errorUrl = getBridge() == null ? null : getBridge().getErrorUrl();
+        if (webView == null || errorUrl == null || !WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) return;
+        if (themeScript != null) {
+            themeScript.remove();
+            themeScript = null;
+        }
+        themeScript = WebViewCompat.addDocumentStartJavaScript(webView, js, Collections.singleton(errorOrigin(errorUrl)));
+    }
+
+    /** The origin the bundled offline page is served from (https://localhost). */
+    private static String errorOrigin(String errorUrl) {
+        return Uri.parse(errorUrl).buildUpon().path(null).fragment(null).clearQuery().build().toString();
     }
 
     /**
@@ -119,7 +171,7 @@ public class MainActivity extends BridgeActivity {
             if (p != null) exported.add(p);
         }
         if (exported.isEmpty()) return;
-        String origin = Uri.parse(errorUrl).buildUpon().path(null).fragment(null).clearQuery().build().toString();
+        String origin = errorOrigin(errorUrl);
         try {
             // Same pieces, in the same order, as Capacitor's own JSInjector.
             String js =

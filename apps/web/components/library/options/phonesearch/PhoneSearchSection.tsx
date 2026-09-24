@@ -202,7 +202,7 @@ function MiniStrip({ track, position }: { track: Track; position: number }) {
       data-testid="phonesearch-mini-strip"
       className="relative mx-cluster mb-cluster flex items-center gap-row overflow-hidden rounded-lg bg-surface-2 py-inset pl-cluster pr-inset shadow-soft ring-1 ring-foreground/10"
     >
-      <Artwork src={track.artworkUrl} size="xs" className="shrink-0 rounded-md bg-black" />
+      <Artwork src={track.artworkUrl} size="xs" className="shrink-0 rounded-md bg-art" />
       <div className="min-w-0 flex-1">
         <div className="truncate text-sm font-semibold">{track.title}</div>
         <div className="truncate text-xs text-muted-foreground">{track.artist}</div>

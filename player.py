@@ -963,6 +963,48 @@ def cmd_match(args):
         results.append([to_candidate_json(h) for h in hits])
     json.dump({"results": results, "failed": failed}, sys.stdout)
 
+# YouTube Music's own word on what a video is. Anything else (no type, an
+# unplayable video, a podcast episode) is not a song Ember brings over.
+MUSIC_VIDEO_TYPES = {
+    "MUSIC_VIDEO_TYPE_ATV": "ATV",  # official audio, from a "Topic" channel
+    "MUSIC_VIDEO_TYPE_OMV": "OMV",  # official music video
+    "MUSIC_VIDEO_TYPE_UGC": "UGC",  # someone's upload: may or may not be a song
+}
+CLASSIFY_ID_RE = re.compile(r"^[A-Za-z0-9_-]{11}$")
+# YouTube Music telling Ember to slow down, as opposed to one video failing.
+BUSY_RE = re.compile(r"\b(429|503)\b|too many requests|service unavailable|rate.?limit", re.I)
+
+
+def cmd_classify(args):
+    """What YouTube Music calls each liked video, for the Google likes
+    transfer: prints {results: {videoId: "ATV"|"OMV"|"UGC"|null}, failed:
+    [videoId, ...], busy: bool}. One anonymous get_song per id (callers keep
+    batches at about 8). A video whose lookup raised is null and listed in
+    `failed`; a lookup refused for going too fast sets `busy` and stops the
+    batch there, so the caller backs off and repeats it."""
+    results = {}
+    failed = []
+    busy = False
+    for vid in args.video_ids:
+        if not CLASSIFY_ID_RE.match(vid):
+            results[vid] = None
+            failed.append(vid)
+            continue
+        try:
+            song = yt.get_song(vid) or {}
+        except Exception as e:
+            print(f"classify: get_song failed for {vid!r}: {type(e).__name__}: {e}", file=sys.stderr)
+            if BUSY_RE.search(str(e)):
+                busy = True
+                break
+            results[vid] = None
+            failed.append(vid)
+            continue
+        details = song.get("videoDetails") or {}
+        results[vid] = MUSIC_VIDEO_TYPES.get(details.get("musicVideoType") or "")
+    json.dump({"results": results, "failed": failed, "busy": busy}, sys.stdout)
+
+
 def cmd_interactive():
     """Original behavior: prompt → search → download → play."""
     query = input("Search for a song: ")
@@ -1020,6 +1062,9 @@ def main():
     p_match.add_argument("--title-only", action="store_true", help="Search the title alone, ignore_spelling on")
     p_match.add_argument("queries", nargs="+")
 
+    p_classify = sub.add_parser("classify", help="YouTube Music's type (ATV, OMV, UGC or null) per videoId. Prints JSON.")
+    p_classify.add_argument("video_ids", nargs="+")
+
     args = parser.parse_args()
 
     if args.cmd == "search":
@@ -1044,6 +1089,8 @@ def main():
         cmd_ytplaylist(args)
     elif args.cmd == "match":
         cmd_match(args)
+    elif args.cmd == "classify":
+        cmd_classify(args)
     else:
         cmd_interactive()
 

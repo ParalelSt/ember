@@ -50,19 +50,24 @@ export interface TransferResultCounts {
   notFound: number;
   /** Songs the person already had liked. Left out when there are none. */
   existing?: number;
+  /** Google likes only: liked videos that were not music. */
+  notMusic?: number;
 }
 
 /** What a finished transfer says, as a sentence rather than four counters:
- *  "We found 812 songs. 41 need a quick check, 6 we could not find." The
- *  one route that never searches by name (YouTube Music, after a Google
- *  sign-in) has nothing to check, so it gets a sentence of its own. */
-export function plainTransferResult({ found, check, notFound, existing = 0 }: TransferResultCounts): string {
+ *  "We found 812 songs. 41 need a quick check, 6 we could not find." A
+ *  transfer of Google likes also says how many likes were not music, in a
+ *  sentence of its own: "We found 9 songs. 3 need a quick check. 7 likes
+ *  were not music." */
+export function plainTransferResult({ found, check, notFound, existing = 0, notMusic = 0 }: TransferResultCounts): string {
   const bits: string[] = [];
   if (check > 0) bits.push(`${check} ${check === 1 ? 'needs' : 'need'} a quick check`);
   if (notFound > 0) bits.push(`${notFound} we could not find`);
   if (existing > 0) bits.push(`${existing} you already had`);
-  const tail = bits.length > 0 ? ` ${bits.join(', ')}.` : '';
+  const tail =
+    (bits.length > 0 ? ` ${bits.join(', ')}.` : '') +
+    (notMusic > 0 ? ` ${notMusic} ${notMusic === 1 ? 'like was' : 'likes were'} not music.` : '');
   if (found === 0) return `We found none of your songs.${tail}`;
   const songs = `${found} ${found === 1 ? 'song' : 'songs'}`;
-  return bits.length === 0 ? `We found all ${songs}. Nothing to check.` : `We found ${songs}.${tail}`;
+  return tail === '' ? `We found all ${songs}. Nothing to check.` : `We found ${songs}.${tail}`;
 }

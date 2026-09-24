@@ -24,6 +24,10 @@ export interface TransferItem extends SourceItem {
   /** Filled by sources that name the exact YouTube video, so no search is
    *  needed. */
   candidates?: ImportCandidate[];
+  /** Created already decided instead of pending: a Google like YouTube
+   *  Music calls an upload waits in the review list, and one that is not
+   *  music is skipped (counted, never shown). */
+  status?: 'review' | 'skipped';
 }
 
 export interface ParsedSource {

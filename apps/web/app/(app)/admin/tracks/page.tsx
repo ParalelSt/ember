@@ -131,7 +131,7 @@ function TrackRow({ track, onDelete }: { track: AdminTrack; onDelete: () => void
 
   return (
     <div className="grid grid-cols-[40px_minmax(0,2fr)_minmax(0,1.2fr)_60px_auto] gap-3 items-center px-3 py-2 rounded-md hover:bg-card transition-colors">
-      <div className="relative h-10 w-10 rounded bg-black overflow-hidden shrink-0">
+      <div className="relative h-10 w-10 rounded bg-art overflow-hidden shrink-0">
         {track.artworkUrl && (
           // eslint-disable-next-line @next/next/no-img-element
           <img src={track.artworkUrl} alt="" className="absolute inset-0 h-full w-full object-cover" />
@@ -187,7 +187,7 @@ function TrackRow({ track, onDelete }: { track: AdminTrack; onDelete: () => void
               onClick={save}
               disabled={busy}
               size="sm"
-              className="bg-ember hover:bg-ember-soft text-white"
+              variant="ember"
             >
               {busy ? '…' : 'Save'}
             </Button>

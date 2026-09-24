@@ -41,7 +41,7 @@ export function TrackCard({ track, active = false, playing = false, onActivate, 
         src={track.artworkUrl}
         loading="lazy"
         className={cn(
-          'aspect-square w-full rounded-lg bg-black shadow-soft',
+          'aspect-square w-full rounded-lg bg-art shadow-soft',
           !track.artworkUrl && artworkFallback && 'grid place-items-center text-foreground/20',
         )}
       >

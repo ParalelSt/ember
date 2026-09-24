@@ -9,7 +9,16 @@ import {
   YOUTUBE_READONLY_SCOPE,
   type GoogleConfig,
 } from '@/lib/import/google/client';
-import { noMusicMessage, parseYtmusicLiked, GOOGLE_MESSAGES, type GoogleFailure } from '@/lib/import/sources/ytmusicLiked';
+import {
+  noMusicMessage,
+  noSongsMessage,
+  parseYtmusicLiked,
+  GOOGLE_MESSAGES,
+  type GoogleFailure,
+} from '@/lib/import/sources/ytmusicLiked';
+import { checkLikes } from '@/lib/import/musicCheck';
+import { classifyVideos } from '@/lib/sources/youtube';
+import { serverLogger } from '@/lib/logger/server';
 import type { ParsedSource } from '@/lib/import/sources/types';
 import type { TransferPreview } from '@/app/api/import/upload/route';
 
@@ -17,7 +26,10 @@ import type { TransferPreview } from '@/app/api/import/upload/route';
  *
  *  A flow is one person's one sign-in: the device code Google handed out,
  *  then (for the minute it takes to read the likes) their access and refresh
- *  tokens, then the list of songs read. The tokens are revoked and dropped
+ *  tokens, then the list of songs read. Reading is two passes, both before
+ *  the preview: Google's likes filtered by the uploader's category (free),
+ *  then YouTube Music asked about each survivor (lib/import/musicCheck.ts),
+ *  which the dialog shows as "Checking which likes are songs: 40 of 120". The tokens are revoked and dropped
  *  the moment the likes are read, and on cancel, on any error, and at the
  *  15-minute limit. None of it is ever written to PocketBase, to disk, to a
  *  log or into a response: the routes only ever see a flow's state, its
@@ -43,9 +55,18 @@ const MIN_INTERVAL_MS = 1_000;
 /** Consecutive hiccups while polling before giving up. */
 const MAX_TRANSIENT = 5;
 
+/** `count` and `sample` are songs only (YouTube Music's ATV and OMV):
+ *  what gets liked straight away. Likes that are not music are in neither. */
 export interface GooglePreview extends TransferPreview {
-  /** Likes left out because they were not music. */
-  skipped: number;
+  /** Uploads (UGC) YouTube Music is not sure are songs: they come across
+   *  waiting in the review list. */
+  toCheck: number;
+}
+
+/** How far the second pass is: likes answered of those that need asking. */
+export interface CheckProgress {
+  done: number;
+  total: number;
 }
 
 interface Flow {
@@ -59,7 +80,7 @@ interface Flow {
   intervalMs: number;
   transient: number;
   parsed: ParsedSource | null;
-  skipped: number;
+  checking: CheckProgress | null;
   poll: ReturnType<typeof setTimeout> | null;
   deadline: ReturnType<typeof setTimeout> | null;
   abort: AbortController;
@@ -110,6 +131,7 @@ function end(flow: Flow, state: Exclude<FlowState, 'waiting' | 'reading' | 'read
   flow.state = state;
   flow.message = message;
   flow.parsed = null;
+  flow.checking = null;
   if (flow.deadline) clearTimeout(flow.deadline);
   flow.deadline = timer(() => drop(flow), ENDED_GRACE_MS);
   return forget(flow);
@@ -120,6 +142,16 @@ function drop(flow: Flow): void {
   flow.deadline = null;
   if (alive(flow)) flows().delete(flow.id);
   void forget(flow);
+}
+
+/** The flow ends at `ms` from now: an unfinished sign-in as expired, a
+ *  ready one just dropped. */
+function expireIn(flow: Flow, ms: number): void {
+  if (flow.deadline) clearTimeout(flow.deadline);
+  flow.deadline = timer(() => {
+    if (flow.state === 'waiting' || flow.state === 'reading') void end(flow, 'expired', GOOGLE_MESSAGES.expired);
+    else drop(flow);
+  }, ms);
 }
 
 function schedulePoll(flow: Flow): void {
@@ -179,12 +211,36 @@ async function read(flow: Flow): Promise<void> {
   await revokeTokens(flow.cfg, tokens);
   if (!alive(flow) || flow.state !== 'reading') return;
   if (!result.songs.length) return end(flow, 'error', noMusicMessage(result.skipped));
-  flow.parsed = parseYtmusicLiked(result.songs, { truncated: result.truncated });
-  flow.skipped = result.skipped;
+
+  // The second pass. A fresh quarter of an hour for it, pushed on each time
+  // a batch comes back, so a long list is never cut off while it moves.
+  const live = () => alive(flow) && flow.state === 'reading';
+  expireIn(flow, FLOW_TTL_MS);
+  let checked;
+  try {
+    checked = await checkLikes(result.songs, {
+      classify: classifyVideos,
+      sleep: (ms) => new Promise((r) => timer(r, ms)),
+      live,
+      onProgress: (done, total) => {
+        if (!live()) return;
+        flow.checking = { done, total };
+        if (done > 0) expireIn(flow, FLOW_TTL_MS);
+      },
+      log: (message, data) => serverLogger.warn('import', message, data),
+    });
+  } catch {
+    if (live()) return end(flow, 'error', GOOGLE_MESSAGES.checkFailed);
+    return;
+  }
+  if (!checked || !live()) return;
+  const parsed = parseYtmusicLiked(checked, { truncated: result.truncated });
+  if (parsed.items.every((i) => i.status === 'skipped')) return end(flow, 'error', noSongsMessage(parsed.items.length));
+  flow.parsed = parsed;
+  flow.checking = null;
   flow.state = 'ready';
   // A fresh quarter of an hour to look at the preview and press Start.
-  if (flow.deadline) clearTimeout(flow.deadline);
-  flow.deadline = timer(() => drop(flow), FLOW_TTL_MS);
+  expireIn(flow, FLOW_TTL_MS);
 }
 
 export interface StartedFlow {
@@ -219,16 +275,13 @@ export async function beginFlow(userId: string, cfg: GoogleConfig): Promise<Star
     intervalMs: Math.max(MIN_INTERVAL_MS, code.interval * 1000),
     transient: 0,
     parsed: null,
-    skipped: 0,
+    checking: null,
     poll: null,
     deadline: null,
     abort: new AbortController(),
   };
   flows().set(flow.id, flow);
-  flow.deadline = timer(() => {
-    if (flow.state === 'waiting' || flow.state === 'reading') void end(flow, 'expired', GOOGLE_MESSAGES.expired);
-    else drop(flow);
-  }, expiresIn * 1000);
+  expireIn(flow, expiresIn * 1000);
   schedulePoll(flow);
   return {
     flowId: flow.id,
@@ -247,6 +300,8 @@ function mine(userId: string, flowId: string): Flow | null {
 export interface FlowStatus {
   state: FlowState;
   preview?: GooglePreview;
+  /** While reading: how far YouTube Music's check of the likes is. */
+  checking?: CheckProgress;
   message?: string;
 }
 
@@ -257,20 +312,22 @@ export function flowStatus(userId: string, flowId: string): FlowStatus | null {
   if (!flow) return null;
   if (flow.state === 'ready' && flow.parsed) {
     const p = flow.parsed;
+    const songs = p.items.filter((i) => !i.status);
     return {
       state: 'ready',
       preview: {
         kind: p.kind,
         label: p.label,
         order: p.order,
-        count: p.items.length,
+        count: songs.length,
         dropped: p.dropped,
         truncated: p.truncated,
-        sample: p.items.slice(0, SAMPLE_SIZE).map((i) => ({ title: i.title, artist: i.artist })),
-        skipped: flow.skipped,
+        sample: songs.slice(0, SAMPLE_SIZE).map((i) => ({ title: i.title, artist: i.artist })),
+        toCheck: p.items.filter((i) => i.status === 'review').length,
       },
     };
   }
+  if (flow.state === 'reading' && flow.checking) return { state: 'reading', checking: { ...flow.checking } };
   return flow.message ? { state: flow.state, message: flow.message } : { state: flow.state };
 }
 

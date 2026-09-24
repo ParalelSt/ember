@@ -81,7 +81,7 @@ export function StartSessionDialog({ open, onOpenChange }: DialogProps) {
           </select>
         </div>
         <DialogFooter>
-          <Button onClick={() => void start()} disabled={busy} className="bg-ember hover:bg-ember-soft text-white">
+          <Button onClick={() => void start()} disabled={busy} variant="ember">
             {busy ? 'Starting…' : 'Go live'}
           </Button>
         </DialogFooter>
@@ -129,7 +129,7 @@ export function JoinSessionDialog({ open, onOpenChange }: DialogProps) {
           className="mt-2 tracking-[0.3em] text-center uppercase"
         />
         <DialogFooter>
-          <Button onClick={() => void join()} disabled={busy || !code.trim()} className="bg-ember hover:bg-ember-soft text-white">
+          <Button onClick={() => void join()} disabled={busy || !code.trim()} variant="ember">
             {busy ? 'Joining…' : 'Join'}
           </Button>
         </DialogFooter>

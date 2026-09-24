@@ -105,3 +105,134 @@ export function useExecuteDeleteAdminInvite() {
     },
   });
 }
+
+// ───── Pranks ─────
+
+const PRANKS_QK = {
+  people: ['admin', 'pranks', 'people'] as const,
+  log: ['admin', 'pranks', 'log'] as const,
+  settings: ['admin', 'pranks', 'settings'] as const,
+  sounds: ['admin', 'pranks', 'sounds'] as const,
+  schedules: ['admin', 'pranks', 'schedules'] as const,
+};
+
+export function useQueryPrankPeople() {
+  return useQuery({
+    queryKey: PRANKS_QK.people,
+    queryFn: () => api.admin.pranks.people().then((r) => r.people),
+    refetchInterval: 10_000,
+  });
+}
+
+export function useQueryPrankLog() {
+  return useQuery({
+    queryKey: PRANKS_QK.log,
+    queryFn: () => api.admin.pranks.list(),
+    refetchInterval: 3_000,
+  });
+}
+
+export function useQueryPrankSettings() {
+  return useQuery({
+    queryKey: PRANKS_QK.settings,
+    queryFn: () => api.admin.pranks.settings(),
+  });
+}
+
+export function useExecuteSendPrank() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: Parameters<typeof api.admin.pranks.send>[0]) => api.admin.pranks.send(body),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: PRANKS_QK.log });
+      qc.invalidateQueries({ queryKey: PRANKS_QK.people });
+    },
+  });
+}
+
+export function useExecuteSetPranksEnabled() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (enabled: boolean) => api.admin.pranks.setEnabled(enabled),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['admin', 'pranks'] });
+    },
+  });
+}
+
+export function useQueryPrankSounds() {
+  return useQuery({
+    queryKey: PRANKS_QK.sounds,
+    queryFn: () => api.admin.pranks.sounds().then((r) => r.sounds),
+  });
+}
+
+export function useExecuteUploadPrankSound() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: Parameters<typeof api.admin.pranks.uploadSound>[0]) => api.admin.pranks.uploadSound(input),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: PRANKS_QK.sounds });
+    },
+  });
+}
+
+export function useExecuteDeletePrankSound() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.admin.pranks.deleteSound(id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: PRANKS_QK.sounds });
+    },
+  });
+}
+
+export function useExecuteRenamePrankSound() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, name }: { id: string; name: string }) => api.admin.pranks.renameSound(id, name),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: PRANKS_QK.sounds });
+    },
+  });
+}
+
+export function useQueryPrankSchedules() {
+  return useQuery({
+    queryKey: PRANKS_QK.schedules,
+    queryFn: () => api.admin.pranks.schedules().then((r) => r.schedules),
+    refetchInterval: 5_000,
+  });
+}
+
+export function useExecuteRepeatPrank() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: Parameters<typeof api.admin.pranks.repeat>[0]) => api.admin.pranks.repeat(body),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: PRANKS_QK.schedules });
+      qc.invalidateQueries({ queryKey: PRANKS_QK.log });
+    },
+  });
+}
+
+export function useExecuteStopRepeat() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.admin.pranks.stopRepeat(id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: PRANKS_QK.schedules });
+      qc.invalidateQueries({ queryKey: PRANKS_QK.log });
+    },
+  });
+}
+
+export function useExecuteStopAllPranks() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => api.admin.pranks.stopAll(),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['admin', 'pranks'] });
+    },
+  });
+}

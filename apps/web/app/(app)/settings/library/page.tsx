@@ -27,7 +27,8 @@ export default function SettingsLibrary() {
         </div>
         <Button
           onClick={() => setTransferOpen(true)}
-          className="shrink-0 bg-ember text-white hover:bg-ember-soft"
+          variant="ember"
+          className="shrink-0"
           data-testid="settings-transfer-button"
         >
           <UploadIcon className="h-4 w-4" />

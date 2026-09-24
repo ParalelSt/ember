@@ -11,6 +11,10 @@ import { VersionLog } from '@/components/VersionLog';
 import { RegisterSW } from '@/components/RegisterSW';
 import { BugReportDialog } from '@/components/BugReportDialog';
 import { Toaster } from '@/components/ui/sonner';
+import { ThemeApplier } from '@/components/providers/ThemeApplier';
+import { themeFromRecord } from '@/lib/theme/fromRecord';
+import { htmlProps, themeColor } from '@/lib/theme/css';
+import { DEFAULT_THEME, type ThemeDoc } from '@/lib/theme/model';
 import './globals.css';
 
 const inter = Inter({
@@ -30,16 +34,25 @@ export const metadata: Metadata = {
   },
 };
 
-export const viewport: Viewport = {
-  themeColor: [
-    { media: '(prefers-color-scheme: dark)', color: '#0e1014' },
-    { color: '#ff5a3a' },
-  ],
-  width: 'device-width',
-  initialScale: 1,
-  userScalable: false,
-  viewportFit: 'cover',
-};
+/** The signed-in person's active theme from the pb_auth cookie record
+ *  (lib/theme/fromRecord.ts); null when signed out, so signed-out pages
+ *  (/auth, /privacy, /terms) are Ember. */
+async function cookieTheme(): Promise<ThemeDoc | null> {
+  const pb = await createClient();
+  return pb.authStore.isValid ? themeFromRecord(pb.authStore.record) : null;
+}
+
+/** theme-color is the theme's background, so the browser's bars match the
+ *  page from the first byte (ThemeApplier keeps it current after that). */
+export async function generateViewport(): Promise<Viewport> {
+  return {
+    themeColor: themeColor((await cookieTheme()) ?? DEFAULT_THEME),
+    width: 'device-width',
+    initialScale: 1,
+    userScalable: false,
+    viewportFit: 'cover',
+  };
+}
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
   const pb = await createClient();
@@ -54,9 +67,13 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         isAdmin: pb.authStore.record.is_admin === true,
       }
     : null;
+  // The theme goes into the first HTML byte as inline variables on <html>:
+  // no theme script, nothing to race, no flash. Ember adds nothing at all.
+  const theme = initialUser ? themeFromRecord(pb.authStore.record) : null;
+  const html = htmlProps(inter.variable, theme ?? DEFAULT_THEME);
 
   return (
-    <html lang="en" className={`${inter.variable} dark`} suppressHydrationWarning>
+    <html lang="en" className={html.className} style={html.style as React.CSSProperties} suppressHydrationWarning>
       <body className="min-h-screen bg-background text-foreground antialiased">
         {/* Portrait-only on phones — shown over the app when a phone is turned
             landscape (the layout is built for portrait). CSS-gated in
@@ -67,6 +84,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         </div>
         <QueryProvider>
           <AuthProvider initialUser={initialUser}>
+            <ThemeApplier initial={theme} stripped={initialUser !== null && theme === null} />
             <LoggerInit />
             <VersionLog />
             <RegisterSW />

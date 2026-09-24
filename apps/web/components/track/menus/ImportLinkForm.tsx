@@ -147,7 +147,7 @@ export function ImportLinkForm({ onCancel, onCreated }: ImportLinkFormProps) {
         <Button type="button" variant="ghost" onClick={onCancel}>
           Cancel
         </Button>
-        <Button type="button" disabled={!preview || creating} onClick={() => void create()} className="bg-ember text-white hover:bg-ember-soft">
+        <Button type="button" disabled={!preview || creating} onClick={() => void create()} variant="ember">
           {creating ? 'Creating…' : preview ? `Create, import ${preview.count} songs` : 'Create'}
         </Button>
       </DialogFooter>

@@ -1,51 +1,12 @@
 import type { NextRequest } from 'next/server';
 import fs from 'node:fs';
-import path from 'node:path';
-import { Readable } from 'node:stream';
 import { requireUser, UnauthorizedError, unauthorizedResponse } from '@/lib/auth';
 import { createAdminClient } from '@/lib/pocketbase/server';
-import { MIME_BY_EXT, resolveUploadPath } from '@/lib/uploads';
+import { resolveUploadPath } from '@/lib/uploads';
+import { serveFile } from '@/lib/serveFile';
 import { withRequestLog } from '@/lib/logger/withRequestLog';
 
-/** Serves a member-uploaded song with Range support, so seeking works and
- *  the browser can start playing before the whole file arrives. */
-function serveFile(filePath: string, range: string | null): Response {
-  const mime = MIME_BY_EXT[path.extname(filePath).toLowerCase()] ?? 'application/octet-stream';
-  const stat = fs.statSync(filePath);
-
-  const match = range ? /^bytes=(\d*)-(\d*)$/.exec(range) : null;
-  if (match) {
-    const start = match[1] ? parseInt(match[1], 10) : 0;
-    const end = match[2] ? parseInt(match[2], 10) : stat.size - 1;
-    if (start >= stat.size || end >= stat.size || start > end) {
-      return new Response('range not satisfiable', {
-        status: 416,
-        headers: { 'Content-Range': `bytes */${stat.size}` },
-      });
-    }
-    const stream = fs.createReadStream(filePath, { start, end });
-    return new Response(Readable.toWeb(stream) as ReadableStream, {
-      status: 206,
-      headers: {
-        'Content-Range': `bytes ${start}-${end}/${stat.size}`,
-        'Accept-Ranges': 'bytes',
-        'Content-Length': String(end - start + 1),
-        'Content-Type': mime,
-      },
-    });
-  }
-
-  const stream = fs.createReadStream(filePath);
-  return new Response(Readable.toWeb(stream) as ReadableStream, {
-    status: 200,
-    headers: {
-      'Content-Length': String(stat.size),
-      'Content-Type': mime,
-      'Accept-Ranges': 'bytes',
-    },
-  });
-}
-
+/** Serves a member-uploaded song, with Range support (lib/serveFile). */
 export const GET = withRequestLog('uploads/[id]/stream', async (request: NextRequest, ctx: RouteContext<'/api/uploads/[id]/stream'>) => {
   try {
     await requireUser();

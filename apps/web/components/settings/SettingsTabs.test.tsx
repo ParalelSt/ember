@@ -10,7 +10,12 @@ describe('SettingsTabs', () => {
   it('lists Library, where Transfer lives, and marks the open tab', () => {
     render(<SettingsTabs />);
     const tabs = screen.getAllByRole('link');
-    expect(tabs.map((t) => t.textContent)).toEqual(['Profile', 'Library', 'Downloads', 'Plugins', 'Help']);
+    expect(tabs.map((t) => t.textContent)).toEqual(['Profile', 'Appearance', 'Library', 'Downloads', 'Plugins', 'Help']);
     expect(screen.getByRole('link', { name: 'Library' })).toHaveAttribute('href', '/settings/library');
+  });
+
+  it('has Appearance right after Profile', () => {
+    render(<SettingsTabs />);
+    expect(screen.getByRole('link', { name: 'Appearance' })).toHaveAttribute('href', '/settings/appearance');
   });
 });

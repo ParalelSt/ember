@@ -70,7 +70,22 @@ describe('plainTransferResult', () => {
     expect(plainTransferResult({ found: 0, check: 0, notFound: 0 })).toBe('We found none of your songs.');
   });
 
+  it('a Google likes transfer says how many likes were not music, in a sentence of its own', () => {
+    expect(plainTransferResult({ found: 9, check: 3, notFound: 0, notMusic: 7 })).toBe(
+      'We found 9 songs. 3 need a quick check. 7 likes were not music.',
+    );
+    // Not "all 9 songs": some likes were left out.
+    expect(plainTransferResult({ found: 9, check: 0, notFound: 0, notMusic: 1 })).toBe('We found 9 songs. 1 like was not music.');
+    expect(plainTransferResult({ found: 9, check: 0, notFound: 0, existing: 2, notMusic: 4 })).toBe(
+      'We found 9 songs. 2 you already had. 4 likes were not music.',
+    );
+    expect(plainTransferResult({ found: 0, check: 0, notFound: 0, notMusic: 16 })).toBe(
+      'We found none of your songs. 16 likes were not music.',
+    );
+    expect(plainTransferResult({ found: 9, check: 0, notFound: 0, notMusic: 0 })).toBe('We found all 9 songs. Nothing to check.');
+  });
+
   it('has no em dashes', () => {
-    expect(plainTransferResult({ found: 3, check: 1, notFound: 1, existing: 1 })).not.toContain('\u2014');
+    expect(plainTransferResult({ found: 3, check: 1, notFound: 1, existing: 1, notMusic: 2 })).not.toContain('\u2014');
   });
 });

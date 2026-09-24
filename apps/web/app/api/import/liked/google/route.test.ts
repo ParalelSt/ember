@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { NextRequest } from 'next/server';
 import { FAKE_ENV, FAKE_REFRESH, FAKE_USER_CODE, fakeGoogle, music, SECRET_MARK } from '@/test-utils/fakeGoogle';
 import { GOOGLE_MESSAGES } from '@/lib/import/sources/ytmusicLiked';
+import { fakeYoutubeMusic, type FakeAnswer } from '@/test-utils/fakeYoutubeMusic';
 
 // The four Google sign-in routes end to end, against a fake Google, with the
 // real flow store and the real request logger; only the user, PocketBase and
@@ -39,6 +40,12 @@ const createImportJob = vi.fn(async (_pb: unknown, n: Record<string, unknown>) =
 vi.mock('@/lib/import/store', () => ({
   createImportJob: (pb: unknown, n: Record<string, unknown>) => createImportJob(pb, n),
 }));
+// YouTube Music's check (`player.py classify`): every like it is asked about
+// is an official video, unless a test says otherwise.
+const ytm = vi.hoisted(() => ({ answers: {} as Record<string, FakeAnswer> }));
+vi.mock('@/lib/sources/youtube', () => ({
+  classifyVideos: (ids: string[]) => fakeYoutubeMusic(new Proxy(ytm.answers, { get: (t, id: string) => (id in t ? t[id] : 'OMV') })).classify(ids),
+}));
 
 const collection = await import('./route');
 const one = await import('./[flowId]/route');
@@ -72,6 +79,7 @@ const tick = (ms: number) => vi.advanceTimersByTimeAsync(ms);
 
 let savedEnv: NodeJS.ProcessEnv;
 beforeEach(() => {
+  ytm.answers = {};
   savedEnv = { ...process.env };
   Object.assign(process.env, FAKE_ENV);
   vi.useFakeTimers();
@@ -141,11 +149,20 @@ describe('POST /api/import/liked/google', () => {
 });
 
 describe('GET /api/import/liked/google/:flowId, through every state', () => {
-  it('waiting, then reading, then ready with the preview', async () => {
+  it('waiting, then reading, then checking, then ready with the preview of songs only', async () => {
     const g = fakeGoogle({
       polls: [pending, 'token'],
-      pages: [[music('aaaaaaaaaaa', 'First'), music('bbbbbbbbbbb', 'Vlog', 'Me', '22'), music('ccccccccccc', 'Second', 'Band - Topic', '24')]],
+      pages: [
+        [
+          music('aaaaaaaaaaa', 'First'),
+          music('bbbbbbbbbbb', 'Vlog', 'Me', '22'),
+          music('ccccccccccc', 'Second', 'Band - Topic', '24'),
+          music('ddddddddddd', 'Mob Farm', 'HorseFridge', '10'),
+          music('eeeeeeeeeee', 'Garage demo', 'Band', '10'),
+        ],
+      ],
     });
+    ytm.answers = { ddddddddddd: null, eeeeeeeeeee: 'UGC' };
     let release: () => void = () => {};
     const gate = new Promise<void>((r) => (release = r));
     vi.stubGlobal(
@@ -166,7 +183,15 @@ describe('GET /api/import/liked/google/:flowId, through every state', () => {
     await tick(0);
     const ready = (await status(flowId)).body as unknown as { state: string; preview: Record<string, unknown> };
     expect(ready.state).toBe('ready');
-    expect(ready.preview).toMatchObject({ count: 2, skipped: 1, label: 'Liked songs from YouTube Music', sample: [{ title: 'First' }, { title: 'Second' }] });
+    // The vlog went at the first pass, the Minecraft video at the second;
+    // the upload is counted to check.
+    expect(ready.preview).toMatchObject({
+      count: 2,
+      toCheck: 1,
+      label: 'Liked songs from YouTube Music',
+      sample: [{ title: 'First' }, { title: 'Second' }],
+    });
+    expect(JSON.stringify(ready)).not.toMatch(/Vlog|Mob Farm|Garage/);
     expect(g.revoked).toEqual([FAKE_REFRESH]);
   });
 
@@ -209,7 +234,7 @@ describe('POST /api/import/liked/google/:flowId/start', () => {
     const [n] = newImports as { items: { title: string; candidates: { track: { sourceId: string }; score: number }[] }[] }[];
     expect(n).toMatchObject({ kind: 'liked', source: 'ytmusic', sourceId: 'ytmusic-liked', order: 'newest-first', name: 'Liked songs from YouTube Music' });
     expect(n.items.map((i) => i.title)).toEqual(['First', 'Second']);
-    expect(n.items[0].candidates[0]).toMatchObject({ score: 100, track: { sourceId: 'aaaaaaaaaaa' } });
+    expect(n.items[0].candidates[0]).toMatchObject({ score: 100, videoType: 'OMV', track: { sourceId: 'aaaaaaaaaaa' } });
     // Once only: the sign-in is gone.
     expect((await startJob(body.flowId)).status).toBe(404);
     expect((await status(body.flowId)).status).toBe(404);

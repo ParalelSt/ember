@@ -2,17 +2,20 @@ import type PocketBase from 'pocketbase';
 import type { RecordModel } from 'pocketbase';
 
 /** An in-memory stand-in for the PocketBase admin client, enough for
- *  lib/tabStore.ts and the tab routes: getList, getFullList, getOne,
- *  getFirstListItem, create, update, delete, and `pb.filter`.
+ *  lib/tabStore.ts and the tab and theme routes: getList, getFullList,
+ *  getOne, getFirstListItem, create, update, delete, and `pb.filter`, with
+ *  a one-field `sort` and a lookup-by-id `expand`.
  *
  *  Filters are evaluated for the subset the store writes: `field = "x"`,
- *  `field != "x"`, `field ~ "x"` (contains), `field = true`, joined by
+ *  `field != "x"`, `field ~ "x"` (contains), `field = true`, and `<`, `<=`,
+ *  `>`, `>=` against a string (dates compare as text, as PocketBase's
+ *  sortable date format allows), joined by
  *  `&&` / `||` with parentheses. Anything else throws, so a new filter shape
  *  shows up as a failing test rather than a silently wrong one. */
 
 type Row = RecordModel & Record<string, unknown>;
 
-const COMPARISON = /([A-Za-z_][A-Za-z0-9_]*)\s*(!=|~|=)\s*("(?:[^"\\]|\\.)*"|true|false)/g;
+const COMPARISON = /([A-Za-z_][A-Za-z0-9_]*)\s*(!=|>=|<=|~|=|>|<)\s*("(?:[^"\\]|\\.)*"|true|false)/g;
 
 export function compileFilter(filter: string): (row: Row) => boolean {
   if (!filter.trim()) return () => true;
@@ -27,6 +30,10 @@ export function compileFilter(filter: string): (row: Row) => boolean {
     const left = a ?? (typeof b === 'boolean' ? false : '');
     if (op === '=') return left === b;
     if (op === '!=') return left !== b;
+    if (op === '<') return String(left) < String(b);
+    if (op === '<=') return String(left) <= String(b);
+    if (op === '>') return String(left) > String(b);
+    if (op === '>=') return String(left) >= String(b);
     return String(left).toLowerCase().includes(String(b).toLowerCase());
   };
   const fn = new Function('row', '__cmp', `return (${body});`) as (row: Row, c: typeof cmp) => boolean;
@@ -53,17 +60,40 @@ export function fakePocketBase(initial: Record<string, Partial<Row>[]> = {}): Fa
   };
   const notFound = () => Object.assign(new Error('not found'), { status: 404 });
 
+  /** `sort: 'field'` or `'-field'` (one field, compared as text). */
+  const sorted = (items: Row[], sort?: string) => {
+    if (!sort) return items;
+    const desc = sort.startsWith('-');
+    const field = desc ? sort.slice(1) : sort;
+    return [...items].sort((a, b) => String(a[field] ?? '').localeCompare(String(b[field] ?? '')) * (desc ? -1 : 1));
+  };
+  /** `expand: 'a,b'`: each named field's id looked up in every table. */
+  const expanded = (items: Row[], expand?: string) => {
+    if (!expand) return items;
+    const fields = expand.split(',').map((f) => f.trim());
+    return items.map((row) => {
+      const out: Record<string, unknown> = {};
+      for (const f of fields) {
+        const id = row[f];
+        for (const list of rows.values()) {
+          const hit = list.find((r) => r.id === id);
+          if (hit) out[f] = hit;
+        }
+      }
+      return { ...row, expand: { ...((row.expand as Record<string, unknown> | undefined) ?? {}), ...out } } as Row;
+    });
+  };
+
   const collection = (name: string) => ({
-    async getList(page: number, perPage: number, opts: { filter?: string; sort?: string } = {}) {
+    async getList(page: number, perPage: number, opts: { filter?: string; sort?: string; expand?: string } = {}) {
       calls.push({ op: 'getList', collection: name, arg: opts.filter });
-      let items = table(name).filter(compileFilter(opts.filter ?? ''));
-      if (opts.sort === '-created') items = [...items].sort((a, b) => String(b.created).localeCompare(String(a.created)));
-      items = items.slice((page - 1) * perPage, page * perPage);
-      return { page, perPage, totalItems: items.length, totalPages: 1, items };
+      const all = sorted(table(name).filter(compileFilter(opts.filter ?? '')), opts.sort);
+      const items = expanded(all.slice((page - 1) * perPage, page * perPage), opts.expand);
+      return { page, perPage, totalItems: all.length, totalPages: Math.max(1, Math.ceil(all.length / perPage)), items };
     },
-    async getFullList(opts: { filter?: string } = {}) {
+    async getFullList(opts: { filter?: string; sort?: string; expand?: string } = {}) {
       calls.push({ op: 'getFullList', collection: name, arg: opts.filter });
-      return table(name).filter(compileFilter(opts.filter ?? ''));
+      return expanded(sorted(table(name).filter(compileFilter(opts.filter ?? '')), opts.sort), opts.expand);
     },
     async getFirstListItem(filter: string) {
       calls.push({ op: 'getFirstListItem', collection: name, arg: filter });

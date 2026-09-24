@@ -90,7 +90,7 @@ export function NowPlayingSummary({
       className={cn('flex items-center gap-3 min-w-0 flex-1 cursor-pointer md:cursor-default', className)}
     >
       {artSrc && (
-        <Artwork src={artSrc} size="sm" className="rounded-md bg-black shrink-0" />
+        <Artwork src={artSrc} size="sm" className="rounded-md bg-art shrink-0" />
       )}
       <div className="min-w-0 flex-1">
         <div className="truncate text-sm font-semibold" title={track?.title ?? ''}>

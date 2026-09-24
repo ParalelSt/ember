@@ -138,7 +138,7 @@ export function ReviewSheet({ phone, source, index, showAll, onShowAll, onPick, 
               <Button variant="ghost" onClick={onSkip} className={cn(phone && 'flex-1')}>
                 Skip {!phone && <Kbd>S</Kbd>}
               </Button>
-              <Button onClick={() => onPick(item.id, item.candidates![0].id)} className={cn('bg-ember text-white hover:bg-ember-soft', phone && 'flex-1')}>
+              <Button onClick={() => onPick(item.id, item.candidates![0].id)} variant="ember" className={cn(phone && 'flex-1')}>
                 Use best match
               </Button>
             </div>
@@ -201,7 +201,8 @@ export function ReviewPage({ phone, source, choices, resolved, onChoose, onAccep
         <Button
           onClick={onAcceptAll}
           disabled={open.length === 0}
-          className={cn('bg-ember text-white hover:bg-ember-soft', phone && 'w-full')}
+          variant="ember"
+          className={cn(phone && 'w-full')}
         >
           <CheckIcon className="h-4 w-4" />
           Accept all ({open.length})

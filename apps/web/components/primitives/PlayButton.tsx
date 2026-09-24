@@ -49,11 +49,12 @@ export function PlayButton({
   return (
     <Button
       size="icon"
+      variant="ember"
       onClick={onClick}
       disabled={disabled}
       aria-label={label ?? (playing ? 'Pause' : 'Play')}
       className={cn(
-        'rounded-full bg-ember hover:bg-ember-soft text-white shadow-glow',
+        'rounded-full shadow-glow',
         BOX[size],
         className,
       )}

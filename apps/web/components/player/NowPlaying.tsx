@@ -246,7 +246,7 @@ export function NowPlaying() {
         <div className="flex-1 grid place-items-center py-4">
           <Artwork
             src={art}
-            className="w-full max-w-sm aspect-square rounded-2xl bg-black shadow-2xl ring-1 ring-white/10"
+            className="w-full max-w-sm aspect-square rounded-2xl bg-art shadow-2xl ring-1 ring-foreground/10"
           >
             <div className="h-full w-full grid place-items-center text-foreground/20">
               <MusicIcon className="h-20 w-20" />

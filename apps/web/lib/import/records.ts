@@ -5,6 +5,7 @@
 import type { Track } from '@/types/track';
 import type { ImportCandidate, ImportItem, ImportJob, ImportSourceKind, JobKind, SourceItem } from '@/lib/import/types';
 import type { ItemStatus, JobStatus } from '@/lib/import/jobState';
+import { GOOGLE_LIKES_SOURCE_ID, notMusicCount } from '@/lib/import/musicCheck';
 
 type Row = Record<string, unknown>;
 
@@ -26,6 +27,7 @@ export function pbMillis(v: unknown): number | null {
 
 export function jobFromRecord(r: Row): ImportJob {
   const retryAt = str(r.retry_at);
+  const counts = { cursor: num(r.cursor), accepted: num(r.accepted), review: num(r.review), missing: num(r.missing) };
   return {
     id: str(r.id),
     userId: str(r.user),
@@ -45,6 +47,7 @@ export function jobFromRecord(r: Row): ImportJob {
     error: str(r.error) || null,
     retryAt: retryAt ? new Date(retryAt.replace(' ', 'T')).toISOString() : null,
     dismissed: r.dismissed === true,
+    ...(str(r.source_id) === GOOGLE_LIKES_SOURCE_ID ? { notMusic: notMusicCount(counts) } : {}),
   };
 }
 
@@ -78,14 +81,17 @@ export function itemFromRecord(r: Row): ImportItem {
   };
 }
 
-/** The row for a new pending item. `candidates` is filled in advance only
- *  for a YouTube Music playlist, whose tracks need no search; `likedAt` only
- *  for a transfer, where it decides where the song lands in the likes. */
+/** The row for a new item, pending unless the source already decided it (a
+ *  Google like: an upload to review, or not music). `candidates` is filled
+ *  in advance only for a source that names the exact video, which needs no
+ *  search; `likedAt` only for a transfer, where it decides where the song
+ *  lands in the likes. */
 export function itemRecord(
   jobId: string,
   item: SourceItem,
   candidates: ImportCandidate[] = [],
   likedAt: number | null = null,
+  status: 'pending' | 'review' | 'skipped' = 'pending',
 ): Row {
   return {
     job: jobId,
@@ -96,9 +102,9 @@ export function itemRecord(
     source_duration_ms: item.durationMs ?? 0,
     source_explicit: item.explicit,
     source_uri: item.uri ?? '',
-    status: 'pending',
+    status,
     video_id: '',
-    confidence: 0,
+    confidence: status === 'review' ? (candidates[0]?.score ?? 0) : 0,
     candidates,
   };
 }

@@ -6,6 +6,19 @@ import type { FlowState as GoogleFlowState, GooglePreview } from '@/lib/import/g
 import type { TabSummary } from '@/lib/tabSources';
 import type { TabTiming } from '@/lib/tabSync';
 import type { StoredPlugins } from '@/lib/pluginSettings';
+import type { PresetId, ThemeDoc, ThemeInputs } from '@/lib/theme/model';
+import type { SavedTheme, ThemeSelection, ThemesList } from '@/lib/theme/saved';
+import type {
+  PrankAck,
+  PrankLogEntry,
+  PrankParams,
+  PrankPerson,
+  PrankRow,
+  PrankSchedule,
+  PrankSound,
+  PrankSoundKind,
+  PresenceReport,
+} from '@/lib/pranks/types';
 
 export interface AdminUser {
   id: string;
@@ -37,9 +50,13 @@ interface ReqOptions {
   method?: string;
   body?: unknown;
   signal?: AbortSignal;
+  /** Statuses that are an answer, not a fault (a cap reached, a refusal
+   *  with reasons): logged as a warning, so they never trigger a silent
+   *  crash report. The error still throws, carrying the response body. */
+  expected?: number[];
 }
 
-async function req<T>(path: string, { method = 'GET', body, signal }: ReqOptions = {}): Promise<T> {
+async function req<T>(path: string, { method = 'GET', body, signal, expected }: ReqOptions = {}): Promise<T> {
   let res: Response;
   // A FormData body carries its own multipart boundary: setting the header
   // by hand would strip it and the upload would arrive unreadable.
@@ -63,13 +80,30 @@ async function req<T>(path: string, { method = 'GET', body, signal }: ReqOptions
     // lets triage line up this client-side entry with the matching
     // server-side withRequestLog entry for the same request.
     const reqId = res.headers.get('x-request-id') || undefined;
-    logger.error('api', `${method} ${path} → ${res.status}`, { method, path, status: res.status, body: err.error, reqId });
+    const entry = { method, path, status: res.status, body: err.error, reqId };
+    if (expected?.includes(res.status)) logger.warn('api', `${method} ${path} → ${res.status}`, entry);
+    else logger.error('api', `${method} ${path} → ${res.status}`, entry);
     // Attach the HTTP status so callers can branch on it (e.g. 400 = duplicate
     // → friendly "already in playlist" toast instead of the raw server text).
-    const error = new Error(err.error || `Request failed: ${res.status}`) as Error & { status?: number };
+    const error = new Error(err.error || `Request failed: ${res.status}`) as Error & { status?: number; body?: unknown };
     error.status = res.status;
+    error.body = err;
     throw error;
   }
+  return (await res.json()) as T;
+}
+
+/** Like req, but silent: no client log entry on failure. The target's side
+ *  of pranks goes through this, so nothing on their device (console, bug
+ *  reports) ever mentions one. */
+async function quiet<T>(path: string, { method = 'GET', body }: ReqOptions = {}): Promise<T> {
+  const res = await fetch(`${API_BASE}/api${path}`, {
+    method,
+    headers: body ? { 'Content-Type': 'application/json' } : undefined,
+    body: body ? JSON.stringify(body) : undefined,
+    credentials: 'include',
+  });
+  if (!res.ok) throw Object.assign(new Error(`Request failed: ${res.status}`), { status: res.status });
   return (await res.json()) as T;
 }
 
@@ -154,9 +188,10 @@ export const api = {
       '/import/liked/google',
       { method: 'POST' },
     ),
-  /** How that sign-in stands; `preview` once the likes are read. */
+  /** How that sign-in stands; `checking` while YouTube Music says which
+   *  likes are songs, `preview` once it has. */
   googleLikesStatus: (flowId: string) =>
-    req<{ state: GoogleFlowState; preview?: GooglePreview; message?: string }>(
+    req<{ state: GoogleFlowState; preview?: GooglePreview; checking?: { done: number; total: number }; message?: string }>(
       `/import/liked/google/${encodeURIComponent(flowId)}`,
     ),
   /** Queue the transfer of the likes that sign-in read. */
@@ -333,6 +368,31 @@ export const api = {
       body: patch,
     }),
 
+  // Themes (Settings > Appearance). The active theme follows the account;
+  // saved themes are a list per person, each optionally shared with
+  // everyone. 409 (the cap) and 422 (unreadable colours, with `findings`
+  // on error.body) are answers the page shows, not faults.
+  getTheme: () => req<ThemeDoc>('/theme'),
+  setTheme: (selection: ThemeSelection) =>
+    req<ThemeDoc>('/theme', { method: 'PATCH', body: selection, expected: [404, 422] }),
+  listThemes: () => req<ThemesList>('/themes'),
+  createTheme: (theme: { name: string; base: PresetId; inputs: ThemeInputs; shared?: boolean }) =>
+    req<{ theme: SavedTheme }>('/themes', { method: 'POST', body: theme, expected: [409, 422] }),
+  duplicateTheme: (id: string, name?: string) =>
+    req<{ theme: SavedTheme }>('/themes', {
+      method: 'POST',
+      body: name === undefined ? { duplicateOf: id } : { duplicateOf: id, name },
+      expected: [404, 409],
+    }),
+  updateSavedTheme: (id: string, patch: { name?: string; base?: PresetId; inputs?: ThemeInputs; shared?: boolean }) =>
+    req<{ theme: SavedTheme; active?: ThemeDoc }>(`/themes/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      body: patch,
+      expected: [422],
+    }),
+  deleteSavedTheme: (id: string) =>
+    req<{ ok: true; active?: ThemeDoc }>(`/themes/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+
   updateProfile: async ({
     name,
     avatar,
@@ -401,6 +461,50 @@ export const api = {
       req<{ ok: true; invite: AdminInvite }>('/admin/invites', { method: 'POST', body: { email } }),
     deleteInvite: (id: string) =>
       req<{ ok: true }>(`/admin/invites/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+
+    pranks: {
+      list: (target?: string) =>
+        req<{ pranks: PrankLogEntry[]; enabled: boolean }>(
+          `/admin/pranks${target ? `?target=${encodeURIComponent(target)}` : ''}`,
+        ),
+      send: (body: { targetId: string; kind: 'ping' | 'sound'; soundId?: string; params?: Partial<PrankParams> }) =>
+        req<{ prank: PrankLogEntry }>('/admin/pranks', { method: 'POST', body }),
+      people: () => req<{ people: PrankPerson[] }>('/admin/pranks/people'),
+      settings: () => req<{ enabled: boolean; forcedOff: boolean }>('/admin/pranks/settings'),
+      setEnabled: (enabled: boolean) =>
+        req<{ enabled: boolean; cancelled: number }>('/admin/pranks/settings', { method: 'PATCH', body: { enabled } }),
+      sounds: () => req<{ sounds: PrankSound[] }>('/admin/pranks/sounds'),
+      uploadSound: (input: { file: File; kind: PrankSoundKind; name?: string }) => {
+        const form = new FormData();
+        form.append('file', input.file);
+        form.append('kind', input.kind);
+        if (input.name) form.append('name', input.name);
+        return req<{ sound: PrankSound }>('/admin/pranks/sounds', { method: 'POST', body: form });
+      },
+      renameSound: (id: string, name: string) =>
+        req<{ sound: PrankSound }>(`/admin/pranks/sounds/${encodeURIComponent(id)}`, { method: 'PATCH', body: { name } }),
+      deleteSound: (id: string) =>
+        req<{ ok: true }>(`/admin/pranks/sounds/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+      schedules: () => req<{ schedules: PrankSchedule[] }>('/admin/pranks/schedules'),
+      repeat: (body: {
+        targetId: string;
+        soundId: string;
+        intervalSec: number;
+        endsAt: string;
+        params?: Partial<PrankParams>;
+      }) => req<{ schedule: PrankSchedule }>('/admin/pranks/schedules', { method: 'POST', body }),
+      stopRepeat: (id: string) =>
+        req<{ ok: true; cancelled: number }>(`/admin/pranks/schedules/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+      stopAll: () => req<{ stopped: number; cancelled: number }>('/admin/pranks/stop-all', { method: 'POST' }),
+    },
+  },
+
+  /** The target's side: quiet on purpose (see quiet()). */
+  pranks: {
+    inbox: () => quiet<{ pranks: PrankRow[] }>('/pranks/inbox'),
+    ack: (id: string, body: PrankAck) =>
+      quiet<{ ok: true }>(`/pranks/${encodeURIComponent(id)}`, { method: 'PATCH', body }),
+    presence: (body: PresenceReport) => quiet<{ ok: true }>('/pranks/presence', { method: 'POST', body }),
   },
 };
 
