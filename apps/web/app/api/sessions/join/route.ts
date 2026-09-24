@@ -1,13 +1,13 @@
 import type { NextRequest } from 'next/server';
 import { requireUser, UnauthorizedError, unauthorizedResponse } from '@/lib/auth';
 import { fromError, jsonError } from '@/lib/upsertTrack';
-import { addMember } from '@/lib/sessions';
+import { addMember, sessionsClient } from '@/lib/sessions';
 import { withRequestLog } from '@/lib/logger/withRequestLog';
 
 /** Resolve a join code to a live session. */
 export const POST = withRequestLog('sessions/join', async (request: NextRequest) => {
   try {
-    const { pb, user } = await requireUser();
+    const { user } = await requireUser();
     const body = (await request.json().catch(() => null)) as { code?: string } | null;
     const code = String(body?.code ?? '')
       .trim()
@@ -15,6 +15,9 @@ export const POST = withRequestLog('sessions/join', async (request: NextRequest)
       .replace(/[^A-Z0-9]/g, '');
     if (!code) return jsonError('Enter a join code.', 400);
     try {
+      // Server client: a carlist you have not joined is hidden from you, and
+      // this is how you join it.
+      const pb = await sessionsClient();
       const session = await pb
         .collection('sessions')
         .getFirstListItem(`code = "${code}" && active = true`);

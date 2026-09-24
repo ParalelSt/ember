@@ -1,13 +1,14 @@
 import type { NextRequest } from 'next/server';
 import { requireUser, UnauthorizedError, unauthorizedResponse } from '@/lib/auth';
 import { fromError } from '@/lib/upsertTrack';
-import { loadSession, assertActive, assertMember } from '@/lib/sessions';
+import { loadSession, assertActive, assertMember, sessionsClient } from '@/lib/sessions';
 import { withRequestLog } from '@/lib/logger/withRequestLog';
 
 /** Anyone in the session can skip — queues a command the host executes. */
 export const POST = withRequestLog('sessions/[id]/skip', async (_req: NextRequest, ctx: RouteContext<'/api/sessions/[id]/skip'>) => {
   try {
-    const { pb, user } = await requireUser();
+    const { user } = await requireUser();
+    const pb = await sessionsClient();
     const { id } = await ctx.params;
     const session = await loadSession(pb, id);
     assertActive(session);

@@ -2,6 +2,7 @@ import 'server-only';
 import type PocketBase from 'pocketbase';
 import type { RecordModel } from 'pocketbase';
 import { ForbiddenError } from '@/lib/auth';
+import { createCatalogClient } from '@/lib/pocketbase/server';
 
 /** Unambiguous join-code alphabet (no 0/O/1/I). */
 const CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -12,6 +13,14 @@ export function newSessionCode(): string {
     code += CODE_CHARS[Math.floor(Math.random() * CODE_CHARS.length)];
   }
   return code;
+}
+
+/** The client every carlist route reads and writes session rows with.
+ *  Members cannot write those rows themselves, nor see a carlist they have
+ *  not joined (bughunt X2, pb_hooks/ensure_sessions.pb.js), so each route
+ *  checks host or membership first and then uses the server's own login. */
+export function sessionsClient(): Promise<PocketBase> {
+  return createCatalogClient();
 }
 
 interface StatusError extends Error {

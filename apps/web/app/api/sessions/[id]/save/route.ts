@@ -1,7 +1,7 @@
 import type { NextRequest } from 'next/server';
 import { requireUser, UnauthorizedError, unauthorizedResponse } from '@/lib/auth';
 import { fromError } from '@/lib/upsertTrack';
-import { loadSession, assertMember } from '@/lib/sessions';
+import { loadSession, assertMember, sessionsClient } from '@/lib/sessions';
 import { withRequestLog } from '@/lib/logger/withRequestLog';
 
 /** Copy the session queue into a normal playlist owned by the caller —
@@ -9,13 +9,14 @@ import { withRequestLog } from '@/lib/logger/withRequestLog';
 export const POST = withRequestLog('sessions/[id]/save', async (request: NextRequest, ctx: RouteContext<'/api/sessions/[id]/save'>) => {
   try {
     const { pb, user } = await requireUser();
+    const server = await sessionsClient();
     const { id } = await ctx.params;
-    const session = await loadSession(pb, id);
-    await assertMember(pb, session, user.id);
+    const session = await loadSession(server, id);
+    await assertMember(server, session, user.id);
     const body = (await request.json().catch(() => null)) as { name?: string } | null;
     const name = String(body?.name ?? '').trim() || String(session.name);
 
-    const items = await pb.collection('session_tracks').getFullList({
+    const items = await server.collection('session_tracks').getFullList({
       filter: `session = "${session.id}"`,
       sort: 'position',
     });

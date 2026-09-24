@@ -69,7 +69,8 @@ export async function createAdminClient() {
 let catalogToken: { token: string; expires: number } | null = null;
 const CATALOG_TOKEN_TTL_MS = 10 * 60_000;
 
-/** Admin client for writes to the shared tracks catalog. Pass fresh=true to
+/** Admin client for writes to the shared tracks catalog, and for the carlist
+ *  routes (lib/sessions.ts sessionsClient, polled every 2 s). Pass fresh=true to
  *  drop the reused token (after a 401/403, e.g. the admin password changed).
  *  A new PocketBase instance per call, so concurrent requests never share an
  *  auth store or cancel each other's requests. */

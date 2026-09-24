@@ -1,13 +1,14 @@
 import type { NextRequest } from 'next/server';
 import { requireUser, UnauthorizedError, unauthorizedResponse } from '@/lib/auth';
 import { fromError, jsonError } from '@/lib/upsertTrack';
-import { loadSession, assertHost } from '@/lib/sessions';
+import { loadSession, assertHost, sessionsClient } from '@/lib/sessions';
 import { withRequestLog } from '@/lib/logger/withRequestLog';
 
 /** Host publishes which queue position is playing (drives guests' screens). */
 export const POST = withRequestLog('sessions/[id]/now', async (request: NextRequest, ctx: RouteContext<'/api/sessions/[id]/now'>) => {
   try {
-    const { pb, user } = await requireUser();
+    const { user } = await requireUser();
+    const pb = await sessionsClient();
     const { id } = await ctx.params;
     const session = await loadSession(pb, id);
     assertHost(session, user.id);

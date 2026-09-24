@@ -40,6 +40,9 @@ vi.mock('@/lib/sessions', () => ({
   loadSession: async () => ({ id: 's1', host: 'u1', ended_at: '' }),
   assertActive: () => undefined,
   assertMember: async () => undefined,
+  // Carlist rows go through the server client (bughunt X2); for this test
+  // only the catalog write matters.
+  sessionsClient: async () => memberPb,
 }));
 vi.mock('@/lib/logger/withRequestLog', () => ({
   withRequestLog: (_route: string, handler: unknown) => handler,
