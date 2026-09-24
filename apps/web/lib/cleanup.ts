@@ -193,6 +193,13 @@ export async function runCleanup(pb: PocketBase, { dryRun = false } = {}): Promi
 
     // external_id is "youtube:<videoId>"; the cache is keyed by videoId.
     const videoId = externalId.split(':')[1] ?? '';
+    // Someone is fetching it right now (a play waiting on the download gate,
+    // or an auto-cache prefetch): not stale, and its file may still be
+    // mid-write. Checked here, after the awaits above, like the orphan sweep.
+    if (videoId && isDownloading(videoId)) {
+      report.protectedCount += 1;
+      continue;
+    }
     const file = videoId ? cachedFileFor(videoId) : null;
 
     if (file) {
