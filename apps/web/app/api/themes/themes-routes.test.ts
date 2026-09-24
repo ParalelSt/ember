@@ -279,16 +279,41 @@ describe('PATCH/DELETE /api/themes/[id]', () => {
     expect(themes()[0]).toMatchObject({ name: 'Night drive', inputs: MIDNIGHT, shared: false });
   });
 
-  it('keeps my active copy in step with edits, and keeps the colours when I delete it', async () => {
+  it('keeps my active copy in step with edits, and falls back to its base preset when I delete it [bughunt V10]', async () => {
     const id = seedTheme(ME, 'Night drive', MIDNIGHT);
     await themeRoute.PATCH(req({ themeId: id }), undefined as never);
     const edited = await (await oneRoute.PATCH(req({ inputs: FOREST }), ctx(id))).json();
     expect(edited.active).toEqual({ v: 1, preset: 'midnight', custom: FOREST, name: 'Night drive', themeId: id });
     expect(userRow(ME).theme).toEqual(edited.active);
 
+    // Deleting my own theme is a choice to stop using it: no kept copy
+    // (that is for someone else's theme vanishing under me).
     const deleted = await (await oneRoute.DELETE(req(), ctx(id))).json();
-    expect(deleted).toEqual({ ok: true, active: { v: 1, preset: 'midnight', custom: FOREST, name: 'Night drive' } });
+    expect(deleted).toEqual({ ok: true, active: { v: 1, preset: 'midnight' } });
     expect(themes()).toHaveLength(0);
     expect(userRow(ME).theme).toEqual(deleted.active);
+    expect(await (await themeRoute.GET(req(), undefined as never)).json()).toEqual({ v: 1, preset: 'midnight' });
+  });
+
+  it('leaves my active theme alone when I delete one I am not using [bughunt V10]', async () => {
+    const using = seedTheme(ME, 'Night drive', MIDNIGHT);
+    const other = seedTheme(ME, 'Cold brew', FOREST, false, 'forest');
+    await themeRoute.PATCH(req({ themeId: using }), undefined as never);
+    const deleted = await (await oneRoute.DELETE(req(), ctx(other))).json();
+    expect(deleted).toEqual({ ok: true });
+    expect(userRow(ME).theme).toMatchObject({ themeId: using, name: 'Night drive' });
+  });
+
+  it('others using my shared theme still keep their copy when I delete it [bughunt V10]', async () => {
+    const id = seedTheme(ME, 'Night drive', FOREST, true);
+    await themeRoute.PATCH(req({ themeId: id }), undefined as never);
+    as(IVA);
+    await themeRoute.PATCH(req({ themeId: id }), undefined as never);
+    as(ME);
+    expect(await (await oneRoute.DELETE(req(), ctx(id))).json()).toEqual({ ok: true, active: { v: 1, preset: 'midnight' } });
+    as(IVA);
+    expect(await (await themeRoute.GET(req(), undefined as never)).json()).toEqual({
+      v: 1, preset: 'midnight', custom: FOREST, name: 'Night drive',
+    });
   });
 });

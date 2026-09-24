@@ -3,7 +3,7 @@ import { requireUser, UnauthorizedError, unauthorizedResponse } from '@/lib/auth
 import { fromError } from '@/lib/upsertTrack';
 import { withRequestLog } from '@/lib/logger/withRequestLog';
 import { cleanThemeName, isPresetId, isRecordId, validateInputs, THEME_NAME_MAX } from '@/lib/theme/model';
-import { detach, docFromSaved, type SavedTheme } from '@/lib/theme/saved';
+import { docFromPreset, docFromSaved, type SavedTheme } from '@/lib/theme/saved';
 import { openThemesRepo, toSaved, type ThemeRow, type ThemeRowPatch, type ThemesRepo } from '@/lib/theme/themesRepo';
 import { readActive, unreadableResponse, writeActiveIfCurrent } from '@/lib/theme/serverActive';
 
@@ -13,9 +13,10 @@ import { readActive, unreadableResponse, writeActiveIfCurrent } from '@/lib/them
  *            colours, share with everyone or stop sharing. When it is my
  *            active theme, the active copy follows and comes back as
  *            `active` so the client can refresh its cookie.
- *  DELETE -> gone. If it was my active theme I keep its colours (the link
- *            is dropped, `active` returned). Anyone else using it keeps
- *            their copy too: GET /api/theme detaches theirs on next load. */
+ *  DELETE -> gone. If it was my active theme I go back to its base
+ *            preset (`active` returned): deleting it was my choice, so
+ *            there is nothing to keep (bughunt V10). Anyone else using it
+ *            keeps a copy: GET /api/theme detaches theirs on next load. */
 
 type Ctx = RouteContext<'/api/themes/[id]'>;
 
@@ -84,7 +85,7 @@ export const DELETE = withRequestLog('themes/[id]', async (_request: NextRequest
     await repo.remove(row.id);
 
     const current = await readActive(pb, user.id);
-    const active = current.themeId === row.id ? await writeActiveIfCurrent(pb, user.id, row.id, detach(current)) : undefined;
+    const active = current.themeId === row.id ? await writeActiveIfCurrent(pb, user.id, row.id, docFromPreset(row.base)) : undefined;
     return Response.json({ ok: true, ...(active ? { active } : {}) });
   } catch (e) {
     if (e instanceof UnauthorizedError) return unauthorizedResponse();

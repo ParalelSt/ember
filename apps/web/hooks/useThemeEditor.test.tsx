@@ -142,3 +142,18 @@ describe('N2: leaving waits for the flush before switching (client half)', () =>
     expect(order).toEqual(['save:start', 'save:done', 'switch']);
   });
 });
+
+describe('V10: deleting the theme in use', () => {
+  it('selects the preset the server falls back to', async () => {
+    api.deleteSavedTheme.mockResolvedValue({ ok: true, active: { v: 1, preset: 'midnight' } });
+    const { result } = renderHook(() => useThemeEditor());
+    await waitFor(() => expect(result.current.list).not.toBeNull());
+    expect(result.current.selection.kind).toBe('mine');
+
+    await act(() => result.current.remove(THEME_ID));
+
+    expect(result.current.selection).toMatchObject({ kind: 'preset', key: 'preset:midnight' });
+    expect(result.current.list?.mine).toEqual([]);
+    expect(useThemeStore.getState().doc).toEqual({ v: 1, preset: 'midnight' });
+  });
+});
