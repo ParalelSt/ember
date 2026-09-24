@@ -51,9 +51,17 @@ writeFileSync(confPath, JSON.stringify(conf, null, 2) + "\n");
 
 // The capability must list the SAME origin, or the remote page gets no IPC
 // access and every invoke() (native audio, discord, logging) silently fails.
+//
+// It must NOT also list localhost:3000 unconditionally (bughunt L3): that
+// used to be added every time "for dev convenience", which meant a signed
+// build shipped to point at the real server (build-signed.sh, build-mac.sh
+// with no --local) still granted full IPC — native audio, Discord presence,
+// log reading — to anything answering on the user's own machine at
+// localhost:3000. `npm run dev` and `build-mac.sh --local` already resolve
+// `url` to http://localhost:3000, so `origin` alone still covers them.
 const cap = JSON.parse(readFileSync(capPath, "utf8"));
 const origin = new URL(url).origin;
-cap.remote = { urls: Array.from(new Set(["http://localhost:3000", origin])) };
+cap.remote = { urls: [origin] };
 writeFileSync(capPath, JSON.stringify(cap, null, 2) + "\n");
 
 console.log(`[set-url] main window will load: ${url}`);
