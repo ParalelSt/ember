@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { describe, it, expect, vi } from 'vitest';
+import { afterEach, describe, it, expect, vi } from 'vitest';
 import type { NextRequest } from 'next/server';
 
 vi.mock('@/lib/logger/server', () => ({ serverLogger: { error: vi.fn() } }));
@@ -143,5 +143,72 @@ describe('proxy [bughunt W14]: the PocketBase superuser surface is not proxied',
     for (const p of ['/api/admin/users', '/_next/static/x.js', '/admin', '/api/settings']) {
       expect(isBlockedPbPath(p), p).toBe(false);
     }
+  });
+});
+
+// A pb_auth cookie whose token PocketBase refuses (revoked, or signed by a
+// reinstalled server) but whose expiry is still ahead, so it looks valid
+// until PocketBase is asked (bughunt V5).
+function futureToken(): string {
+  const b64 = (o: object) => Buffer.from(JSON.stringify(o)).toString('base64url');
+  return `${b64({ alg: 'HS256', typ: 'JWT' })}.${b64({ id: 'u1', type: 'auth', collectionId: '_pb_users_auth_', exp: Math.floor(Date.now() / 1000) + 3600 })}.bad`;
+}
+const staleCookie = () => `theme=x; pb_auth=${encodeURIComponent(JSON.stringify({ token: futureToken(), record: { id: 'u1' } }))}`;
+
+function pocketBaseAnswers(status: number) {
+  vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ code: status, message: 'nope', data: {} }), {
+    status,
+    headers: { 'content-type': 'application/json' },
+  })));
+}
+
+const clearsAuthCookie = (res: Response) =>
+  res.headers.getSetCookie().some((c) => /^pb_auth=/.test(c) && /Expires=Thu, 01 Jan 1970/.test(c));
+
+describe('proxy [bughunt V5]: a session PocketBase refuses is dropped, not carried along', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('clears the cookie on /auth and hides it from the page render', async () => {
+    pocketBaseAnswers(401);
+    const res = await proxy(req('/auth', { cookie: staleCookie() }));
+    expect(res.status).toBe(200);
+    expect(clearsAuthCookie(res)).toBe(true);
+    // The root layout reads the forwarded request's cookies: the dead
+    // session must not reach it, or it renders a signed-in shell.
+    const forwarded = res.headers.get('x-middleware-request-cookie') ?? '';
+    expect(forwarded).not.toContain('pb_auth');
+    expect(forwarded).toContain('theme=x');
+  });
+
+  it('clears the cookie on the redirect to sign in', async () => {
+    pocketBaseAnswers(401);
+    const res = await proxy(req('/library', { cookie: staleCookie() }));
+    expect(res.status).toBe(307);
+    expect(clearsAuthCookie(res)).toBe(true);
+  });
+
+  it('clears the cookie on the 401 an API call gets', async () => {
+    pocketBaseAnswers(403);
+    const res = await proxy(req('/api/likes', { cookie: staleCookie() }));
+    expect(res.status).toBe(401);
+    expect(clearsAuthCookie(res)).toBe(true);
+  });
+
+  it('keeps public pages open with the refused cookie', async () => {
+    pocketBaseAnswers(401);
+    for (const path of ['/privacy', '/terms', '/track/abc123']) {
+      const res = await proxy(req(path, { cookie: staleCookie() }));
+      expect(res.status, path).toBe(200);
+      expect(clearsAuthCookie(res), path).toBe(true);
+    }
+  });
+
+  it('keeps the cookie, and answers 503 not 401, when PocketBase is unreachable', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => { throw new TypeError('fetch failed'); }));
+    const res = await proxy(req('/api/likes', { cookie: staleCookie() }));
+    // A 401 tells the browser the session is gone and it signs out; an
+    // outage must not cost anyone their session.
+    expect(res.status).toBe(503);
+    expect(clearsAuthCookie(res)).toBe(false);
   });
 });

@@ -33,6 +33,7 @@ import { isUnavailable } from '@/lib/playback/queueNav';
 export function useAvailabilityProbe(
   nextRef: RefObject<() => void>,
   onOfflineRef?: RefObject<((failed: { id: string }) => void) | null>,
+  signedIn = true,
 ) {
   const qc = useQueryClient();
 
@@ -41,6 +42,12 @@ export function useAvailabilityProbe(
     const cur = st.queue[st.index];
     if (!cur || isUnavailable(cur)) return;
     const erroredId = cur.id;
+    // Signed out (a shared /track page) the server won't answer: it just
+    // would not load (bughunt V5).
+    if (!signedIn) {
+      onStillPlayable?.(cur);
+      return;
+    }
 
     if (typeof navigator !== 'undefined' && navigator.onLine === false) {
       logger.breadcrumb('playback', 'probe-skipped-offline', { trackId: erroredId });
@@ -78,5 +85,5 @@ export function useAvailabilityProbe(
       // than leaving the player silent with no explanation.
       onStillPlayable?.(cur);
     });
-  }, [qc, nextRef, onOfflineRef]);
+  }, [qc, nextRef, onOfflineRef, signedIn]);
 }

@@ -18,6 +18,7 @@ const authStore = {
 vi.mock('@/lib/pocketbase/client', () => ({
   createClient: () => ({ authStore, collection: () => ({ authRefresh: vi.fn(async () => ({})) }), files: { getURL: () => '' } }),
 }));
+vi.mock('next/navigation', () => ({ usePathname: () => '/' }));
 vi.mock('@/stores/usePrivacyStore', () => ({ usePrivacyStore: { getState: () => ({ load: vi.fn() }) } }));
 vi.mock('@/stores/useChangelogStore', () => ({ useChangelogStore: { getState: () => ({ load: vi.fn() }), setState: vi.fn() } }));
 vi.mock('@/stores/useSettingsStore', () => ({

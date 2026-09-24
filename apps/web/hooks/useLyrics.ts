@@ -2,6 +2,7 @@
 
 import { useQuery } from '@tanstack/react-query';
 import type { Track } from '@/types/track';
+import { sessionExpired } from '@/lib/sessionExpired';
 
 export interface LyricsLine {
   /** Seconds from start of track. */
@@ -21,6 +22,7 @@ async function fetchLyrics(title: string, artist: string): Promise<LyricsResult>
   const qs = new URLSearchParams({ title, artist });
   const res = await fetch(`/api/lyrics?${qs.toString()}`, { credentials: 'include' });
   if (!res.ok) {
+    if (res.status === 401) sessionExpired();
     const err = (await res.json().catch(() => ({ error: res.statusText }))) as { error?: string };
     throw new Error(err.error || `Request failed: ${res.status}`);
   }

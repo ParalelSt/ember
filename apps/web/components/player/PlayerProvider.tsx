@@ -163,8 +163,9 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const current = queue[index] ?? null;
 
   // Ambient lyrics prefetch — fires the moment a track becomes current, so the
-  // panel has data ready when opened (React Query caches it).
-  useQueryLyrics(current, true);
+  // panel has data ready when opened (React Query caches it). The lookup
+  // needs a session: signed out it only collected 401s (bughunt V5).
+  useQueryLyrics(current, !!user);
 
   const partyVolume = useSettingsStore((s) => s.partyVolume);
   const muted = usePlayerStore((s) => s.muted);
@@ -178,7 +179,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   // Stable callback, so the backend's one-time event object can close over
   // it: asks the server whether a failing track has actually died.
   const offlineFailRef = useRef<((failed: { id: string }) => void) | null>(null);
-  const probeAvailability = useAvailabilityProbe(nextRef, offlineFailRef);
+  const probeAvailability = useAvailabilityProbe(nextRef, offlineFailRef, !!user);
 
   // Build the backend once, on first client render. Events map straight to the
   // store writes the old element listeners performed.

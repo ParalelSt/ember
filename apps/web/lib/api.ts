@@ -1,6 +1,8 @@
 import type { AlbumDetail, ArtistPayload, CollectionTrack, Playlist, SessionState, Track } from '@/types/track';
 import type { CopyOutcome } from '@/lib/playlistCopy';
 import { logger } from '@/lib/logger/client';
+import { isPublicPage } from '@/lib/publicPaths';
+import { sessionExpired } from '@/lib/sessionExpired';
 import type { ImportItem, ImportJob, InspectResult, JobKind } from '@/lib/import/types';
 import type { TransferPreview } from '@/app/api/import/upload/route';
 import type { FlowState as GoogleFlowState, GooglePreview } from '@/lib/import/google/flows';
@@ -82,7 +84,9 @@ async function req<T>(path: string, { method = 'GET', body, signal, expected }: 
     // server-side withRequestLog entry for the same request.
     const reqId = res.headers.get('x-request-id') || undefined;
     const entry = { method, path, status: res.status, body: err.error, reqId };
-    if (expected?.includes(res.status)) logger.warn('api', `${method} ${path} → ${res.status}`, entry);
+    // A 401 is an answer too (the session is gone), not a fault: as an error
+    // it sent an automatic bug report per call (bughunt V5).
+    if (res.status === 401 || expected?.includes(res.status)) logger.warn('api', `${method} ${path} → ${res.status}`, entry);
     else logger.error('api', `${method} ${path} → ${res.status}`, entry);
     // Attach the HTTP status so callers can branch on it (e.g. 400 = duplicate
     // → friendly "already in playlist" toast instead of the raw server text).
@@ -90,12 +94,16 @@ async function req<T>(path: string, { method = 'GET', body, signal, expected }: 
     error.status = res.status;
     error.body = err;
     // The session expired or was never there (proxy.ts answers unauth /api/*
-    // with this same 401 JSON, see bughunt W05): send the browser to sign in
-    // rather than let every caller handle it. Skip it on /auth itself so a
-    // failed check-email/etc there doesn't bounce the page against itself.
-    if (res.status === 401 && typeof window !== 'undefined' && !window.location.pathname.startsWith('/auth')) {
-      const next = window.location.pathname + window.location.search;
-      window.location.href = `/auth?next=${encodeURIComponent(next)}`;
+    // with this same 401 JSON, see bughunt W05): drop it, so every other
+    // signed-in fetch stops (bughunt V5), and send the browser to sign in
+    // rather than let every caller handle it. Public pages (/auth itself,
+    // /track, /privacy, /terms) stay where they are: they work signed out.
+    if (res.status === 401 && typeof window !== 'undefined') {
+      sessionExpired();
+      if (!isPublicPage(window.location.pathname)) {
+        const next = window.location.pathname + window.location.search;
+        window.location.href = `/auth?next=${encodeURIComponent(next)}`;
+      }
     }
     throw error;
   }
@@ -112,7 +120,10 @@ async function quiet<T>(path: string, { method = 'GET', body }: ReqOptions = {})
     body: body ? JSON.stringify(body) : undefined,
     credentials: 'include',
   });
-  if (!res.ok) throw Object.assign(new Error(`Request failed: ${res.status}`), { status: res.status });
+  if (!res.ok) {
+    if (res.status === 401) sessionExpired();
+    throw Object.assign(new Error(`Request failed: ${res.status}`), { status: res.status });
+  }
   return (await res.json()) as T;
 }
 

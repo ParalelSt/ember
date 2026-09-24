@@ -1223,3 +1223,26 @@ and the owner account exist.
 - **X7**: liking or unliking twice is harmless.
 - **X1**: `/api/auth/check-email` answers 429 once one caller floods it (this
   spends the allowance for 10 minutes, so a rerun needs a restarted app).
+
+## What `stale-session-ui.test.mjs` covers
+
+Bughunt V5: a session PocketBase refuses (revoked, or a reinstalled server)
+used to reach /auth as a signed-in shell, fire about ten signed-in calls into
+401s and send automatic bug reports. Needs a throwaway PocketBase (this
+checkout's hooks, a scratch copy of its migrations, `--automigrate=0`) and the
+app built against it:
+
+```bash
+EMBER_PB_SUPERUSER_EMAIL=su@sandbox.test EMBER_PB_SUPERUSER_PASSWORD=<sandbox password> \
+PB_URL=http://127.0.0.1:8084 APP_URL=http://127.0.0.1:3055 node tests/stale-session-ui.test.mjs
+```
+
+- **V5a/b**: a refused cookie on /auth, or on /library (sent to /auth): zero
+  401s, zero bug-report POSTs, no lyrics lookup for the song left in the
+  player, and the cookie is gone.
+- **V5c**: signing out with a song loaded: no lyrics lookups or 401s after.
+- **P**: /privacy and /terms load signed out and with a refused cookie.
+- **G**: a good session stays on /library with no 401s.
+
+Bug reports are answered in the browser (never reach the server) and lyrics
+are stubbed, so nothing leaves the machine.
