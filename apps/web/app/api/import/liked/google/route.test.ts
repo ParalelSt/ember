@@ -18,6 +18,9 @@ vi.mock('@/lib/auth', () => ({
     if (!currentUser) throw new UnauthorizedError('no');
     return { user: currentUser, pb: {} };
   },
+  // The request logger (withRequestLog) resolves its userId through this,
+  // not through requireUser: same currentUser fixture, never throws.
+  verifiedUserId: async () => currentUser?.id ?? null,
   UnauthorizedError,
   unauthorizedResponse: () => Response.json({ error: 'Unauthorized' }, { status: 401 }),
 }));
