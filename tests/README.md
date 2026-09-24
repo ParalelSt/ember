@@ -1179,3 +1179,37 @@ APP_URL=http://127.0.0.1:3053 PB_URL=http://127.0.0.1:8086 node tests/pb-admin-e
 `watchdog.test.sh` scenario 9 checks that `start-static.sh` hands those
 values (from the environment or `.env.local`) to PocketBase alone, never to
 Next or a command line.
+
+## What `access-control-2-ui.test.mjs` covers
+
+Bughunt round 3 (X1, X2, X4, X7, X8, X10): carlists, deleting a member, tabs
+and the invite check, over HTTP against a throwaway PocketBase (this
+checkout's hooks and migrations, a fresh data dir) and the app built against
+it, both sharing one `MUSIC_DIR`:
+
+```bash
+EMBER_PB_SUPERUSER_EMAIL=su@sandbox.test EMBER_PB_SUPERUSER_PASSWORD=<sandbox password> \
+EMBER_ADMIN_EMAIL=owner@sandbox.test EMBER_ADMIN_PASSWORD=<sandbox password> \
+MUSIC_DIR="$SB/music" PB_URL=http://127.0.0.1:8084 APP_URL=http://127.0.0.1:3055 \
+node tests/access-control-2-ui.test.mjs
+```
+
+PocketBase must have booted with the same `EMBER_*` values, so the superuser
+and the owner account exist.
+
+- **F**: a carlist end to end (start, join with the code, both add songs, the
+  guest skips and the host receives it, now playing, keep as a playlist,
+  end), a member reading their own carlist through `/pb`, an admin deleting
+  a member, a tab deleted in the app with its file, and the sign-in page's
+  email check.
+- **X2**: a signed-in member without the code cannot list join codes, open
+  the carlist, put themselves on the roster, skip, queue or read the queue
+  through `/pb`; even a member writes the queue only through the app.
+- **X4**: an admin deletes a member who uploaded a song, queued one and
+  skipped; the upload and the queued song stay.
+- **X8**: the queue and the host show names, never an email address.
+- **X10**: tab rows cannot be deleted around the app; deleting a member keeps
+  the tabs they shared.
+- **X7**: liking or unliking twice is harmless.
+- **X1**: `/api/auth/check-email` answers 429 once one caller floods it (this
+  spends the allowance for 10 minutes, so a rerun needs a restarted app).
