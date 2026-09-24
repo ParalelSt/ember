@@ -31,7 +31,10 @@ export const POST = withRequestLog('admin/users/[id]/password', async (req: Next
       passwordConfirm: pw,
     });
 
-    serverLogger.error('admin', 'password-reset', {
+    // An audit trail entry, not a problem: info stays off the digest (see
+    // lib/reports/digest.ts), while still keeping the "who reset whose
+    // password" record on disk for triage or review.
+    serverLogger.info('admin', 'password-reset', {
       target: target.email,
       targetId: target.id,
       by: actor.email,

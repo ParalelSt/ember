@@ -22,6 +22,11 @@ export function groupForDigest(entries: ServerLogEntry[], sinceMs: number): Dige
 
   for (const e of entries) {
     if (e.ts <= sinceMs) continue;
+    // 'info' is for routine/expected events worth keeping on disk (an admin
+    // audit action, a rate-limited automatic report) but not a "problem":
+    // never counted, and never promoted to visibility by an 'error' in the
+    // same fingerprint the way 'warn' can be.
+    if (e.level === 'info') continue;
     const fp = fingerprint(e);
     const existing = groups.get(fp);
     if (!existing) {
