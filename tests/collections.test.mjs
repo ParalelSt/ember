@@ -5,9 +5,13 @@
  *
  *  Framework-free so a plain Node test can import it. */
 import { strict as assert } from 'node:assert';
+import { register } from 'node:module';
 
 // Imported untranspiled: Node 24 strips types, which is why lib/collections.ts
 // must stay erasable TypeScript (no enums, namespaces or parameter properties).
+// ts-stub-loader also resolves collections.ts's extension-free relative
+// import of './format' (webpack allows it; node's own resolver does not).
+register('./ts-stub-loader.mjs', import.meta.url);
 const c = await import('../apps/web/lib/collections.ts');
 
 const out = [];
