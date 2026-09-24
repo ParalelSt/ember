@@ -207,10 +207,13 @@ try {
 
   // 4. Admin Tracks: catalog rows whose upload is gone.
   {
-    const rows = await pbGet(`collections/tracks/records?perPage=200&filter=${encodeURIComponent('source="upload"')}`);
+    // Only the rows the page's first page shows (50 a page, newest first):
+    // on a sandbox other suites have filled, older upload rows sit on page 2.
+    const firstPage = await pbGet('collections/tracks/records?perPage=50&sort=-created');
+    const rows = { totalItems: (await pbGet(`collections/tracks/records?perPage=1&filter=${encodeURIComponent('source="upload"')}`)).totalItems };
     const present = [];
     const gone = [];
-    for (const r of rows.items ?? []) {
+    for (const r of (firstPage.items ?? []).filter((t) => t.source === 'upload')) {
       const up = await fetch(`${PB}/api/collections/uploads/records/${r.source_id}`, { headers: { Authorization: auth.token } });
       (up.ok ? present : gone).push(r.title);
     }
