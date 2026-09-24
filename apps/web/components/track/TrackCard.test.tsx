@@ -71,6 +71,15 @@ describe('TrackCard', () => {
     expect(onActivate).not.toHaveBeenCalled();
   });
 
+  // O8: the play button was hidden with opacity alone (hover only), so a
+  // keyboard user tabbing onto the card could not see it before pressing it.
+  it('reveals the play button on keyboard focus, not just hover', () => {
+    render(<TrackCard track={track} onActivate={() => {}} />);
+    const button = screen.getByRole('button', { name: 'Play' });
+    expect(button.className).toContain('group-focus-within:opacity-100');
+    expect(button.className).toContain('focus-visible:opacity-100');
+  });
+
   it('renders the fallback node when the track has no artwork', () => {
     const fallback = <span data-testid="artwork-fallback">No Artwork</span>;
     render(

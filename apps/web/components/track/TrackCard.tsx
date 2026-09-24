@@ -74,7 +74,7 @@ export function TrackCard({ track, active = false, playing = false, onActivate, 
           // idle cards reveal it on hover.
           active && playing
             ? 'opacity-100 translate-y-0'
-            : 'opacity-0 translate-y-2 group-hover:opacity-100 group-hover:translate-y-0',
+            : 'opacity-0 translate-y-2 group-hover:opacity-100 group-hover:translate-y-0 group-focus-within:opacity-100 group-focus-within:translate-y-0 focus-visible:opacity-100 focus-visible:translate-y-0',
         )}
       />
     </div>
