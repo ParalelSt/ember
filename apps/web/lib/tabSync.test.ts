@@ -41,11 +41,16 @@ describe('song time and the tab clock', () => {
     for (const offset of [-4000, 0, 2500]) expect(tabMsToSongSec(songToTabMs(42, offset), offset)).toBeCloseTo(42);
   });
 
-  it('clamps the nudge to +-10 s in 100 ms steps', () => {
-    expect(clampOffset(1234)).toBe(1200);
-    expect(clampOffset(99_000)).toBe(MAX_OFFSET_MS);
-    expect(clampOffset(-99_000)).toBe(-MAX_OFFSET_MS);
+  it('keeps the nudge in 10 ms steps, far past the old 10 s limit', () => {
+    expect(clampOffset(1234)).toBe(1230);
+    expect(clampOffset(1236)).toBe(1240);
+    expect(clampOffset(99_000)).toBe(99_000);
+    expect(clampOffset(-245_500)).toBe(-245_500);
+    expect(MAX_OFFSET_MS).toBe(30 * 60 * 1000);
+    expect(clampOffset(99_000_000)).toBe(MAX_OFFSET_MS);
+    expect(clampOffset(-99_000_000)).toBe(-MAX_OFFSET_MS);
     expect(clampOffset(Number.NaN)).toBe(0);
+    expect(Object.is(clampOffset(-1), 0)).toBe(true);
   });
 });
 

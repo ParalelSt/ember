@@ -23,6 +23,9 @@ export interface ScoreTrackInfo {
 
 export interface ScoreInfo {
   tempo: number | null;
+  /** The first bar's time signature; null when the file does not say
+   *  (AlphaTab then plays it as 4/4). */
+  signature: { numerator: number; denominator: number } | null;
   /** 'D minor'; null for C major, which is also what an unmarked file
    *  reads as, so it says nothing. */
   key: string | null;
@@ -106,7 +109,10 @@ export function scoreInfo(score: any): ScoreInfo {
       tab: staves.some((s) => s?.showTablature === true),
     };
   });
-  return { tempo, key, tracks };
+  const num = Number(first?.timeSignatureNumerator);
+  const den = Number(first?.timeSignatureDenominator);
+  const signature = num > 0 && den > 0 ? { numerator: Math.round(num), denominator: Math.round(den) } : null;
+  return { tempo, signature, key, tracks };
 }
 /* eslint-enable @typescript-eslint/no-explicit-any */
 

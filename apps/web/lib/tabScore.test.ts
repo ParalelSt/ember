@@ -36,12 +36,18 @@ describe('reading a score for the header and picker', () => {
   it('reads tempo, key, instruments and tunings', () => {
     expect(scoreInfo(COPPER_SKY)).toEqual({
       tempo: 96,
+      signature: null,
       key: 'D minor',
       tracks: [
         { index: 0, name: 'Guitar', instrument: 'Distortion guitar', tuning: 'Drop D', strings: 'D A D G B E', tab: true },
         { index: 1, name: 'Bass', instrument: 'Bass', tuning: 'Drop D', strings: 'D A D G', tab: true },
       ],
     });
+  });
+
+  it('reads the first bar\'s time signature for counting beats', () => {
+    const info = scoreInfo({ ...COPPER_SKY, masterBars: [{ timeSignatureNumerator: 6, timeSignatureDenominator: 8 }] });
+    expect(info.signature).toEqual({ numerator: 6, denominator: 8 });
   });
 
   it('builds the approved meta line for the shown track', () => {
@@ -56,7 +62,7 @@ describe('reading a score for the header and picker', () => {
   });
 
   it('survives an empty or odd score', () => {
-    expect(scoreInfo(null)).toEqual({ tempo: null, key: null, tracks: [] });
+    expect(scoreInfo(null)).toEqual({ tempo: null, signature: null, key: null, tracks: [] });
     expect(scoreInfo({ tracks: [{}] }).tracks[0]).toMatchObject({ name: 'Track 1', tuning: '', strings: '' });
   });
 });

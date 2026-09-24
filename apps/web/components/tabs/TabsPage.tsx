@@ -30,12 +30,23 @@ import {
   type TabSummary,
 } from '@/lib/tabSources';
 import { chooseTab, confidencePercent, loadPick, savePick, sheetRows } from '@/lib/tabPick';
-import { clampOffset, isLinedUp, loadLocalOffsetMs, MAX_OFFSET_MS, saveLocalOffsetMs } from '@/lib/tabSync';
+import { clampOffset, isLinedUp, loadLocalOffsetMs, saveLocalOffsetMs } from '@/lib/tabSync';
+import {
+  beatClockOf,
+  formatOffset,
+  nudgeSteps,
+  offsetFromInput,
+  offsetInUnit,
+  sliderSpanSec,
+  type BeatClock,
+  type OffsetUnit,
+} from '@/lib/tabOffset';
 import { tabSearchLinks, type TabSearchLink } from '@/lib/tabSearchLinks';
 
 const TAB_ACCEPT = '.gp,.gp3,.gp4,.gp5,.gpx,.musicxml,.xml,.mxl';
 const STAFF_KEY = 'ember.tabs.staff';
 const SCROLL_KEY = 'ember.tabs.scroll';
+const OFFSET_UNIT_KEY = 'ember.tabs.offsetUnit';
 const trackKey = (tabId: string) => `ember.tab.track.${tabId}`;
 
 function readPref<T extends string>(key: string, allowed: readonly T[], fallback: T): T {
@@ -185,6 +196,17 @@ function TabsSheet({ song, sources, onBack }: { song: TabSong; sources: TabSourc
     saveLocalOffsetMs(offsetId, v);
   };
   const [syncOpen, setSyncOpen] = useState(false);
+  const [offsetUnit, setOffsetUnitState] = useState<OffsetUnit>(() =>
+    readPref(OFFSET_UNIT_KEY, ['seconds', 'beats'] as const, 'seconds'),
+  );
+  const setOffsetUnit = (u: OffsetUnit) => {
+    setOffsetUnitState(u);
+    writePref(OFFSET_UNIT_KEY, u);
+  };
+  // What a beat is for this tab (its opening tempo and time signature), for
+  // a nudge counted in beats. Null until the score is drawn, or when the
+  // file has no tempo.
+  const beatClock = beatClockOf(info?.tempo, info?.signature);
 
   const stickyRef = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -350,15 +372,15 @@ function TabsSheet({ song, sources, onBack }: { song: TabSong; sources: TabSourc
                 className={cn(chip, syncOpen || offsetMs !== 0 ? chipOn : chipOff)}
               >
                 Sync
-                <span className="tabular-nums font-normal">
-                  {offsetMs > 0 ? '+' : ''}
-                  {(offsetMs / 1000).toFixed(1)}s
-                </span>
+                <span className="tabular-nums font-normal">{formatOffset(offsetMs, offsetUnit, beatClock)}</span>
               </button>
             </TabsToolbar>
             {syncOpen && (
               <SyncRow
                 offsetMs={offsetMs}
+                unit={offsetUnit}
+                clock={beatClock}
+                onUnitChange={setOffsetUnit}
                 shared={tab.offsetMs}
                 canShare={tab.canDelete && !tab.id.startsWith('generated:')}
                 onChange={changeOffset}
@@ -490,40 +512,104 @@ function SourceChip({
 }
 
 /** The nudge: slide the tab against the recording. Kept on this device;
- *  whoever added the tab can save it for everyone. */
+ *  whoever added the tab can save it for everyone. A slider for the rough
+ *  place, steps and a box for the exact one, in seconds or in beats of the
+ *  tab (its tempo and time signature, lib/tabOffset.ts). */
 function SyncRow({
   offsetMs,
+  unit,
+  clock,
+  onUnitChange,
   shared,
   canShare,
   onChange,
   onShare,
 }: {
   offsetMs: number;
+  unit: OffsetUnit;
+  clock: BeatClock | null;
+  onUnitChange: (unit: OffsetUnit) => void;
   shared: number;
   canShare: boolean;
   onChange: (ms: number | null) => void;
   onShare: () => void;
 }) {
+  const shown: OffsetUnit = unit === 'beats' && clock ? 'beats' : 'seconds';
+  const span = sliderSpanSec(offsetMs);
+  const value = offsetInUnit(offsetMs, shown, clock);
+  // The box keeps what is being typed ("-", "1.") until it reads as a
+  // number; it shows the nudge again whenever the nudge changes elsewhere.
+  const [draft, setDraft] = useState<{ text: string; for: string } | null>(null);
+  const key = `${offsetMs}|${shown}`;
+  const text = draft && draft.for === key ? draft.text : String(value);
+  const commit = (raw: string) => {
+    const ms = offsetFromInput(raw, shown, clock);
+    setDraft({ text: raw, for: ms === null ? key : `${clampOffset(ms)}|${shown}` });
+    if (ms !== null && ms !== offsetMs) onChange(ms);
+  };
   return (
-    <div data-testid="tab-sync" className="mt-cluster flex flex-wrap items-center gap-row text-xs text-muted-foreground">
-      <input
-        type="range"
-        min={-MAX_OFFSET_MS / 1000}
-        max={MAX_OFFSET_MS / 1000}
-        step={0.1}
-        value={offsetMs / 1000}
-        onChange={(e) => onChange(Number(e.target.value) * 1000)}
-        className="min-w-40 flex-1 accent-ember"
-        aria-label="Tab timing offset in seconds"
-      />
-      <Button size="sm" variant="ghost" onClick={() => onChange(0)}>
-        Reset
-      </Button>
-      {canShare && offsetMs !== shared && (
-        <Button size="sm" variant="outline" onClick={onShare}>
-          Save for everyone
+    <div data-testid="tab-sync" className="mt-cluster flex flex-col gap-cluster text-xs text-muted-foreground">
+      <div className="flex flex-wrap items-center gap-row">
+        <input
+          type="range"
+          min={-span}
+          max={span}
+          step={0.01}
+          value={offsetMs / 1000}
+          onChange={(e) => onChange(Number(e.target.value) * 1000)}
+          className="min-w-40 flex-1 accent-ember"
+          aria-label="Tab timing offset in seconds"
+        />
+        <div className="flex shrink-0 items-center gap-inset">
+          <input
+            type="number"
+            inputMode="decimal"
+            step={shown === 'beats' ? 0.25 : 0.01}
+            value={text}
+            onChange={(e) => commit(e.target.value)}
+            className="h-7 w-24 rounded-md border border-border bg-background px-cluster text-right text-xs tabular-nums text-foreground"
+            aria-label={shown === 'beats' ? 'Tab timing offset in beats' : 'Tab timing offset, exact seconds'}
+          />
+          <div className="flex items-center rounded-full bg-muted p-inset" role="group" aria-label="Offset unit">
+            {(['seconds', 'beats'] as const).map((u) => (
+              <button
+                key={u}
+                type="button"
+                aria-pressed={shown === u}
+                disabled={u === 'beats' && !clock}
+                title={u === 'beats' && !clock ? 'This tab has no tempo to count beats by' : undefined}
+                onClick={() => onUnitChange(u)}
+                className={cn(
+                  'rounded-full px-row py-inset text-xs font-medium transition-colors disabled:opacity-40',
+                  shown === u ? 'bg-background text-foreground shadow-soft' : 'text-muted-foreground hover:text-foreground',
+                )}
+              >
+                {u === 'seconds' ? 's' : 'beats'}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+      <div className="flex flex-wrap items-center gap-inset">
+        {nudgeSteps(shown, clock).map((s) => (
+          <Button key={s.label} size="sm" variant="ghost" className="tabular-nums" onClick={() => onChange(clampOffset(offsetMs + s.ms))}>
+            {s.label}
+          </Button>
+        ))}
+        <Button size="sm" variant="ghost" onClick={() => onChange(0)}>
+          Reset
         </Button>
-      )}
+        {canShare && offsetMs !== shared && (
+          <Button size="sm" variant="outline" onClick={onShare}>
+            Save for everyone
+          </Button>
+        )}
+        {shown === 'beats' && clock && (
+          <span className="tabular-nums" data-testid="tab-sync-beat">
+            1 beat = {Math.round((60_000 / clock.bpm) * (4 / clock.denominator))} ms at {Math.round(clock.bpm)} bpm, {clock.numerator}/{clock.denominator}
+          </span>
+        )}
+      </div>
     </div>
   );
 }

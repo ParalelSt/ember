@@ -187,11 +187,14 @@ describe('PATCH /api/tabs/files/[id] (the shared sync nudge)', () => {
     expect((await patch(id, { offsetMs: 500 })).status).toBe(200);
   });
 
-  it('only a number within +-10 s', async () => {
+  it('only a number within +-30 min (a tab minutes into a live set saves)', async () => {
     const id = await aliceUploads();
     expect((await patch(id, { offsetMs: 'soon' })).status).toBe(400);
-    expect((await patch(id, { offsetMs: 60_000 })).status).toBe(400);
+    expect((await patch(id, { offsetMs: 2 * 60 * 60 * 1000 })).status).toBe(400);
     expect((await patch(id, {})).status).toBe(400);
+    const far = await patch(id, { offsetMs: -185_250 });
+    expect(far.status).toBe(200);
+    expect((await far.json()).tab.offsetMs).toBe(-185_250);
   });
 
   it('someone else’s private tab is a 404, and 401 without a user', async () => {

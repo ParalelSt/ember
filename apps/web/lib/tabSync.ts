@@ -5,15 +5,21 @@
 
 /** How far a tab may be nudged against the recording, in milliseconds.
  *  Intros, count-ins and silence at the top of a file differ from the
- *  release, and no amount of cleverness can guess by how much. */
-export const MAX_OFFSET_MS = 10_000;
+ *  release, and no amount of cleverness can guess by how much. A tab of
+ *  one song inside a long live set or a medley can start minutes in, so
+ *  the reach is half an hour rather than the old ten seconds. */
+export const MAX_OFFSET_MS = 30 * 60 * 1000;
+
+/** The nudge's resolution: fine enough to line up a fast riff by ear. */
+export const OFFSET_STEP_MS = 10;
 
 /** MIDI ticks per quarter note in AlphaTab's timeline. */
 export const TICKS_PER_QUARTER = 960;
 
 export function clampOffset(ms: number): number {
   if (!Number.isFinite(ms)) return 0;
-  return Math.max(-MAX_OFFSET_MS, Math.min(MAX_OFFSET_MS, Math.round(ms / 100) * 100));
+  const v = Math.round(ms / OFFSET_STEP_MS) * OFFSET_STEP_MS;
+  return Math.max(-MAX_OFFSET_MS, Math.min(MAX_OFFSET_MS, v)) || 0;
 }
 
 /** Song time (seconds) to the tab's clock (milliseconds). A positive offset

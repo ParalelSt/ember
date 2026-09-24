@@ -1,6 +1,6 @@
 import type { ComponentProps, ReactNode } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { TabSummary } from '@/lib/tabSources';
 import type { Track } from '@/types/track';
@@ -202,6 +202,47 @@ describe('TabsPage source selection', () => {
     expect(screen.getByTestId('tab-score')).toHaveAttribute('data-offset', '2500');
     expect(window.localStorage.getItem('ember.tab.offset.f1')).toBe('2.5');
   });
+
+  it('takes an exact nudge far past the old 10 s, typed or stepped', async () => {
+    api.getTrackTabs.mockResolvedValue({ tabs: [tab({})] });
+    wrap(<TabsPage trackId="upload:song1" />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Sync' }));
+    fireEvent.change(screen.getByLabelText('Tab timing offset, exact seconds'), { target: { value: '-95.25' } });
+    expect(screen.getByTestId('tab-score')).toHaveAttribute('data-offset', '-95250');
+    expect(window.localStorage.getItem('ember.tab.offset.f1')).toBe('-95.25');
+    // The slider widened to show it.
+    const slider = screen.getByLabelText('Tab timing offset in seconds');
+    expect(Number(slider.getAttribute('min'))).toBeLessThanOrEqual(-95.25);
+    fireEvent.click(screen.getByRole('button', { name: '+0.1 s' }));
+    expect(screen.getByTestId('tab-score')).toHaveAttribute('data-offset', '-95150');
+    expect(screen.getByRole('button', { name: 'Sync' })).toHaveTextContent('-95.15 s');
+  });
+
+  it('counts the nudge in beats of the tab: its tempo and time signature', async () => {
+    api.getTrackTabs.mockResolvedValue({ tabs: [tab({})] });
+    wrap(<TabsPage trackId="upload:song1" />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Sync' }));
+    // No score drawn yet: no tempo, so no beats.
+    expect(screen.getByRole('button', { name: 'beats' })).toBeDisabled();
+    act(() =>
+      score.last!.onScore?.({
+        tempo: 120,
+        signature: { numerator: 3, denominator: 4 },
+        key: null,
+        tracks: [{ index: 0, name: 'Guitar', instrument: 'Guitar', tuning: '', strings: '', tab: true }],
+      }),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'beats' }));
+    fireEvent.change(screen.getByLabelText('Tab timing offset in beats'), { target: { value: '8' } });
+    // 8 quarter notes at 120 bpm.
+    expect(screen.getByTestId('tab-score')).toHaveAttribute('data-offset', '4000');
+    expect(screen.getByRole('button', { name: 'Sync' })).toHaveTextContent('+8 beats');
+    // A bar of 3/4 is three beats.
+    fireEvent.click(screen.getByRole('button', { name: '-1 bar' }));
+    expect(screen.getByTestId('tab-score')).toHaveAttribute('data-offset', '2500');
+    expect(screen.getByTestId('tab-sync-beat')).toHaveTextContent('1 beat = 500 ms at 120 bpm, 3/4');
+    expect(window.localStorage.getItem('ember.tabs.offsetUnit')).toBe('beats');
+  });
 });
 
 describe('TabsPage turned off', () => {
@@ -347,10 +388,10 @@ describe('TabsPage toolbar and layout', () => {
   it('shows the instruments the score reports, and switches between them', async () => {
     wrap(<TabsPage trackId="upload:song1" />);
     await screen.findByTestId('tab-score');
-    const { act } = await import('@testing-library/react');
     act(() =>
       score.last!.onScore!({
         tempo: 96,
+        signature: null,
         key: 'D minor',
         tracks: [
           { index: 0, name: 'Guitar', instrument: 'Distortion guitar', tuning: 'Drop D', strings: 'D A D G B E', tab: true },
