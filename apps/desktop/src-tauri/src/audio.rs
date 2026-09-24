@@ -1486,7 +1486,8 @@ mod fastfail;
 mod stall_repro;
 #[cfg(test)]
 mod luka_repro;
-#[cfg(test)]
+// Needs tauri's `test` feature, which is off on Windows (see Cargo.toml).
+#[cfg(all(test, not(windows)))]
 mod transport_repro;
 
 #[cfg(test)]

@@ -65,7 +65,10 @@ windows = { version = "0.62", features = ["Foundation", "Foundation_Collections"
 
 # `test` adds tauri's mock app, so the engine tests can call the real audio
 # commands and read the events they emit (src/audio/transport_repro.rs).
-[dev-dependencies]
+# Not on Windows: a test binary built with it dies at start there with
+# STATUS_ENTRYPOINT_NOT_FOUND (it lacks the common-controls manifest), which
+# broke the v0.4.2 Windows CI job. Those tests run on macOS and Linux.
+[target.'cfg(not(windows))'.dev-dependencies]
 tauri = { version = "2", features = ["devtools", "test"] }
 
 [profile.release]
