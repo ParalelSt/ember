@@ -115,7 +115,9 @@ try {
     );
     check(
       "390px: the email isn't clipped to a sliver",
-      info.emailScrollW !== null && info.emailScrollW <= info.emailClientW + 1,
+      // Before the fix the box was 42px ("voic..."). An address wider than a
+      // phone row still ends in an ellipsis, so a wide box passes too.
+      info.emailScrollW !== null && (info.emailScrollW <= info.emailClientW + 1 || info.emailClientW >= 200),
       `scrollWidth=${info.emailScrollW} clientWidth=${info.emailClientW}`,
     );
     await page.screenshot({ path: process.env.W09_SHOT ?? '/tmp/w09.png' });
