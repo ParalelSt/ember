@@ -75,7 +75,7 @@ POCKETBASE_ADMIN_PASSWORD=<a long random password>
 
 Make one with `openssl rand -base64 24 | tr -d '/+='` (letters and digits only: quotes and `#` confuse the env file). Never use a password that has ever been in this repo; the repo is public.
 
-`./start-static.sh` passes these two values to PocketBase as `EMBER_PB_SUPERUSER_EMAIL` / `EMBER_PB_SUPERUSER_PASSWORD`, and the `ensure_superuser.pb.js` hook then creates the superuser, or changes its password to match, on every PocketBase boot. So `.env.local` is the one place to set or change it: edit, restart, done. If you start PocketBase by hand (with `npm run dev`), pass them yourself:
+`./start-static.sh` reads them with the web app's own env loader (so PocketBase and the app always get the same value, quotes and all) and passes them to PocketBase as `EMBER_PB_SUPERUSER_EMAIL` / `EMBER_PB_SUPERUSER_PASSWORD`, and the `ensure_superuser.pb.js` hook then creates the superuser, or changes its password to match, on every PocketBase boot. So `.env.local` is the one place to set or change it: edit, restart, done. If you start PocketBase by hand (with `npm run dev`), pass them yourself:
 
 ```bash
 cd pocketbase

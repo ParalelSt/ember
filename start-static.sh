@@ -89,9 +89,31 @@ if [ -z "$WATCHDOG_CMD_PB" ]; then
   PB="$(pick_bin "$PB_DIR/pocketbase")" || { echo "✗ PocketBase binary missing in $PB_DIR (see SETUP.md prereqs)"; exit 1; }
 fi
 
-# Read PORT + POCKETBASE_PORT out of apps/web/.env.local without sourcing the
-# whole file (sourcing would expose every secret in there to this shell).
+# Settings come out of apps/web/.env* through Next's own env loader
+# (scripts/read-env.mjs), so PocketBase gets exactly the value the web app
+# sees, whatever quotes, `#` or `$` a password has (bughunt O3). Without
+# Next installed yet, a simple reader of .env.local stands in, loudly.
+# Neither sources the file (that would expose every secret to this shell).
+ENV_READER="$ROOT/scripts/read-env.mjs"
+USE_NEXT_ENV=0
+if command -v node >/dev/null 2>&1 && node "$ENV_READER" "$ROOT/apps/web" --check 2>/dev/null; then
+  USE_NEXT_ENV=1
+elif [ -f "$ENV_FILE" ]; then
+  echo "⚠ can't read apps/web/.env.local the way the web app does (node or Next is not installed);"
+  echo "  using a simple reader instead: a value with \$, #, quotes or spaces may reach PocketBase"
+  echo "  differently from the app. Run npm ci, then start again."
+fi
+
 read_env() {
+  local key="$1" v
+  if [ "$USE_NEXT_ENV" = 1 ] && v="$(node "$ENV_READER" "$ROOT/apps/web" "$key")"; then
+    printf '%s' "${v%.}"
+    return 0
+  fi
+  read_env_simple "$key"
+}
+
+read_env_simple() {
   local key="$1"
   [ -f "$ENV_FILE" ] || return 0
   # `|| true` catches grep's no-match exit (1) so pipefail doesn't kill the
@@ -129,6 +151,19 @@ PB_SU_PASSWORD="$(setting EMBER_PB_SUPERUSER_PASSWORD)"
 [ -n "$PB_SU_PASSWORD" ] || PB_SU_PASSWORD="$(setting POCKETBASE_ADMIN_PASSWORD)"
 PB_OWNER_EMAIL="$(setting EMBER_ADMIN_EMAIL)"
 PB_OWNER_PASSWORD="$(setting EMBER_ADMIN_PASSWORD)"
+
+# Both sides now agree, but a `$` or `#` can still make the password in use
+# shorter than the line in the file (`ab$cd` is "ab"). Say so, without the value.
+if [ "$USE_NEXT_ENV" = 1 ] && [ -z "$(printenv POCKETBASE_ADMIN_PASSWORD || true)" ]; then
+  raw_su_password="$(read_env_simple POCKETBASE_ADMIN_PASSWORD)"
+  if [ -n "$raw_su_password" ] && [ "$raw_su_password" != "$(read_env POCKETBASE_ADMIN_PASSWORD)" ]; then
+    echo "⚠ POCKETBASE_ADMIN_PASSWORD in apps/web/.env.local has a \$, # or quote that the env file"
+    echo "  treats specially, so the password in use is not exactly the text after the =."
+    echo "  PocketBase and the app still get the same one; to avoid surprises use letters and"
+    echo "  digits only (SETUP.md, step 4)."
+  fi
+  unset raw_su_password
+fi
 
 # Tell Next where PB is. Overrides whatever's in .env.local so changing
 # POCKETBASE_PORT alone is enough; POCKETBASE_URL stays in sync automatically.

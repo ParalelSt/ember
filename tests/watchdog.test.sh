@@ -130,6 +130,10 @@ new_root() {
   mkdir -p "$ROOT_DIR/scripts"
   cp "$REPO/start-static.sh" "$REPO/update.sh" "$ROOT_DIR/"
   cp "$REPO/scripts/crash-report.mjs" "$ROOT_DIR/scripts/"
+  [ -f "$REPO/scripts/read-env.mjs" ] && cp "$REPO/scripts/read-env.mjs" "$ROOT_DIR/scripts/"
+  # Next (and its @next/env) for reading .env.local; start-static.sh only
+  # reads from it, and rm -rf removes the link, never what it points to.
+  ln -s "$REPO/node_modules" "$ROOT_DIR/node_modules"
   : >"$POSTS"
 }
 
@@ -329,6 +333,8 @@ check "nothing left running after recovery and stop" wait_until 5 no_leftovers
 # ── 8. update.sh stops Ember before npm ci ───────────────────────────────
 echo "── update.sh stops Ember before an npm ci"
 new_root
+# update.sh installs into this root's node_modules: never the real one.
+rm -f "$ROOT_DIR/node_modules"
 HEALTHY_PORT="$(free_port)"
 PB_FAKE_PORT="$(free_port)"
 export PORT="$HEALTHY_PORT" POCKETBASE_PORT="$PB_FAKE_PORT"
@@ -413,6 +419,75 @@ start_watchdog
 check "with nothing configured it warns and still starts" wait_until 10 file_has "$TMP/run.out" "POCKETBASE_ADMIN_PASSWORD are not set"
 check "PocketBase gets empty values (its hooks then change nothing)" \
   wait_until 5 grep -qsx 'EMBER_PB_SUPERUSER_PASSWORD=' "$TMP/pb.env"
+check "SIGTERM stops it" stop_and_wait TERM
+check "nothing left running" wait_until 5 no_leftovers
+
+# ── 10. PocketBase and Next read .env.local the same way (bughunt O3) ────
+echo "── one .env.local parser for PocketBase and the web app"
+# What `next start` itself does with apps/web/.env* (next/dist/server/config.js
+# calls loadEnvConfig(dir, false)): the fake Next records the value it would
+# see, the fake PocketBase the one start-static.sh handed it.
+cat >"$TMP/next-env.mjs" <<'EOF'
+import { createRequire } from 'node:module';
+import path from 'node:path';
+const dir = path.resolve(process.argv[2]);
+const key = process.argv[3];
+const next = createRequire(path.join(dir, 'package.json')).resolve('next/package.json');
+const { loadEnvConfig } = createRequire(next)('@next/env');
+loadEnvConfig(dir, false, { info() {}, error() {} });
+process.stdout.write(process.env[key] ?? '');
+EOF
+HEALTHY_PORT="$(free_port)"
+export PORT="$HEALTHY_PORT"
+unset EMBER_PB_SUPERUSER_EMAIL EMBER_PB_SUPERUSER_PASSWORD EMBER_ADMIN_EMAIL EMBER_ADMIN_PASSWORD POCKETBASE_ADMIN_EMAIL POCKETBASE_ADMIN_PASSWORD
+# shellcheck disable=SC2016  # expanded by the service's own bash -c
+export WATCHDOG_CMD_PB='printf %s "$EMBER_PB_SUPERUSER_PASSWORD" >"$O3_PB"; exec node "$O3_STAY"'
+# shellcheck disable=SC2016
+export WATCHDOG_CMD_NEXT='node "$O3_NEXT_ENV" apps/web POCKETBASE_ADMIN_PASSWORD >"$O3_NEXT"; exec node "$O3_HEALTHY" "$PORT"'
+export O3_PB="$TMP/o3-pb.val" O3_NEXT="$TMP/o3-next.val" O3_STAY="$TMP/stay.mjs" O3_HEALTHY="$TMP/healthy.mjs" O3_NEXT_ENV="$TMP/next-env.mjs"
+same_password() { [ -s "$O3_NEXT" ] && cmp -s "$O3_PB" "$O3_NEXT"; }
+not_printed() { [ -n "$1" ] && ! grep -qF -- "$1" "$TMP/run.out" "$ROOT_DIR/logs/watchdog.log"; }
+# Each case: a name, the line(s) for .env.local, and optionally for .env.
+o3_case() {
+  local name="$1" local_env="$2" base_env="${3:-}" secret
+  new_root
+  mkdir -p "$ROOT_DIR/apps/web"
+  printf 'POCKETBASE_ADMIN_EMAIL=su@o3.test\n%s\n' "$local_env" >"$ROOT_DIR/apps/web/.env.local"
+  [ -n "$base_env" ] && printf '%s\n' "$base_env" >"$ROOT_DIR/apps/web/.env"
+  rm -f "$O3_PB" "$O3_NEXT"
+  start_watchdog
+  wait_until 10 port_up "$HEALTHY_PORT"
+  wait_until 5 test -f "$O3_PB"
+  check "$name: PocketBase gets the password the web app sees" same_password
+  secret="$(cat "$O3_NEXT" 2>/dev/null)"
+  check "$name: the password is not printed" not_printed "$secret"
+  stop_and_wait TERM
+}
+# shellcheck disable=SC2016
+o3_case 'a $ and a # in the value' 'POCKETBASE_ADMIN_PASSWORD=Xy7$abc#def"q'
+check "a \$ that shortens the password is pointed out" file_has "$TMP/run.out" "not exactly the text after the ="
+o3_case 'double quotes around a #' 'POCKETBASE_ADMIN_PASSWORD="Pass # word 2026"'
+o3_case 'a trailing comment' 'POCKETBASE_ADMIN_PASSWORD=Plain-Pass-2026 # set on the host'
+o3_case 'an export prefix' 'export POCKETBASE_ADMIN_PASSWORD=Exported-Line-2026'
+# shellcheck disable=SC2016
+o3_case 'single quotes around a $' "POCKETBASE_ADMIN_PASSWORD='Lit\$eral-2026'"
+o3_case 'only in apps/web/.env' 'EMBER_UNRELATED=1' 'POCKETBASE_ADMIN_PASSWORD=From-Dot-Env-2026'
+unset O3_PB O3_NEXT
+
+# Without Next installed (a fresh clone before npm ci) the simple reader is
+# the fallback, and it says so rather than quietly guessing.
+new_root
+rm -f "$ROOT_DIR/node_modules"
+mkdir -p "$ROOT_DIR/apps/web"
+printf 'POCKETBASE_ADMIN_EMAIL=su@o3.test\nPOCKETBASE_ADMIN_PASSWORD=Simple-Pass-2026\n' >"$ROOT_DIR/apps/web/.env.local"
+export WATCHDOG_CMD_PB="env | grep '^EMBER_PB' | sort >'$TMP/pb.env'; exec node '$TMP/stay.mjs'"
+export WATCHDOG_CMD_NEXT="exec node '$TMP/healthy.mjs' $HEALTHY_PORT"
+rm -f "$TMP/pb.env"
+start_watchdog
+check "without Next installed it still starts" wait_until 10 port_up "$HEALTHY_PORT"
+check "and warns that it used the simple reader" file_has "$TMP/run.out" "simple reader"
+check "a plain password still reaches PocketBase" \
+  wait_until 5 grep -qsx 'EMBER_PB_SUPERUSER_PASSWORD=Simple-Pass-2026' "$TMP/pb.env"
 check "SIGTERM stops it" stop_and_wait TERM
 check "nothing left running" wait_until 5 no_leftovers
 

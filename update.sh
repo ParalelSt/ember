@@ -30,8 +30,17 @@ case "${1:-}" in
 esac
 
 ENV_FILE="$ROOT/apps/web/.env.local"
+# Same reader as start-static.sh: Next's own env loader when Next is
+# installed (bughunt O3), else a simple one that says so.
+ENV_READER="$ROOT/scripts/read-env.mjs"
 read_env() {
+  local v
+  if command -v node >/dev/null 2>&1 && v="$(node "$ENV_READER" "$ROOT/apps/web" "$1" 2>/dev/null)"; then
+    printf '%s' "${v%.}"
+    return 0
+  fi
   [ -f "$ENV_FILE" ] || return 0
+  echo "⚠ read $1 from apps/web/.env.local with the simple reader (Next is not installed)" >&2
   { grep -E "^${1}=" "$ENV_FILE" || true; } | tail -1 | cut -d= -f2- | tr -d '\r"'"'"
 }
 # Same precedence as start-static.sh: an exported port wins over .env.local.
