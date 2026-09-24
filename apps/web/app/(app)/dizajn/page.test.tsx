@@ -2,6 +2,7 @@ import type { ComponentProps } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import DizajnPage from './page';
+import { TOPBAR_OPTIONS } from '@/components/library/options/topbar';
 
 // next/link reads the app router context, which no test renders (see
 // components/OnlineOnly.test.tsx).
@@ -12,12 +13,12 @@ vi.mock('next/link', () => ({
 }));
 
 describe('DizajnPage', () => {
-  it('has nothing open to pick and links to the full gallery', () => {
+  it('shows the desktop top bar candidates and links to the full gallery', () => {
     render(<DizajnPage />);
-    expect(screen.getByText(/Nothing to pick right now/)).toBeInTheDocument();
-    expect(screen.getByText(/Preview \+ inspector/)).toBeInTheDocument();
-    expect(screen.queryByRole('radiogroup')).toBeNull();
-    expect(screen.queryByTestId('themes-section')).toBeNull();
+    expect(screen.getByRole('heading', { name: 'Desktop top bar' })).toBeInTheDocument();
+    const sections = screen.getAllByTestId('topbar-section');
+    expect(sections.map((s) => s.getAttribute('data-candidate'))).toEqual(TOPBAR_OPTIONS.map((c) => c.id));
+    expect(screen.getAllByTestId('topbar-recommended-badge')).toHaveLength(1);
     expect(screen.getByRole('link', { name: 'the full gallery' })).toHaveAttribute('href', '/dizajn/sve');
   });
 });
