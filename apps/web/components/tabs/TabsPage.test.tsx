@@ -49,6 +49,7 @@ const api = vi.hoisted(() => ({
   findTabsOnline: vi.fn(),
   getTabAlignment: vi.fn(),
   lineTabUp: vi.fn(),
+  getTabTools: vi.fn(),
 }));
 vi.mock('@/lib/api', () => ({ api }));
 
@@ -159,6 +160,7 @@ beforeEach(() => {
   api.findTabsOnline.mockResolvedValue({ status: 'cached', searchedAt: '2026-09-19T10:00:00Z', added: 0 });
   api.getTabAlignment.mockResolvedValue({ status: 'none' });
   api.lineTabUp.mockResolvedValue({ status: 'running' });
+  api.getTabTools.mockResolvedValue({ generate: { available: true, missing: [] } });
 });
 
 describe('TabsPage source selection', () => {
@@ -321,6 +323,43 @@ describe('TabsPage empty states', () => {
     fireEvent.click(generate);
     await waitFor(() => expect(api.generateTab).toHaveBeenCalledWith('upload:song1', 'Copper Sky', 'Coastline'));
     expect(await screen.findByText(/Transcribing the recording/)).toBeInTheDocument();
+  });
+
+  it('a server without the optional tab tools greys Generate out and says why', async () => {
+    api.getTabTools.mockResolvedValue({
+      generate: {
+        available: false,
+        missing: ['basic_pitch'],
+        code: 'tools-missing',
+        message: 'Generating a tab needs the optional tab tools on the server (Basic Pitch), and this server does not have them installed.',
+      },
+    });
+    wrap(<TabsPage trackId="upload:song1" />);
+    const generate = await screen.findByRole('button', { name: 'Generate a tab (rough)' });
+    await waitFor(() => expect(generate).toBeDisabled());
+    expect(screen.getByTestId('tabs-generate-unavailable')).toHaveTextContent('needs the optional tab tools on the server');
+    fireEvent.click(generate);
+    expect(api.generateTab).not.toHaveBeenCalled();
+    // The Add a file path is untouched.
+    expect(screen.getByRole('button', { name: 'Add a file' })).toBeEnabled();
+    // The menu item says so too.
+    const item = screen.getByRole('menuitem', { name: /Generate a tab: needs the optional tab tools/ });
+    expect(item).toBeDisabled();
+  });
+
+  it('a job that failed on a missing Python module reads in words, not as a traceback', async () => {
+    api.getGeneratedTab.mockResolvedValue({ status: 'failed', error: "ModuleNotFoundError: No module named 'basic_pitch'" });
+    wrap(<TabsPage trackId="upload:song1" />);
+    expect(await screen.findByText(/needs the optional tab tools on the server/)).toBeInTheDocument();
+    expect(screen.queryByText(/ModuleNotFoundError/)).toBeNull();
+  });
+
+  it('a refused start (503 tools-missing) shows the reason and asks the server again', async () => {
+    api.generateTab.mockRejectedValue(new Error("No module named 'basic_pitch'"));
+    wrap(<TabsPage trackId="upload:song1" />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Generate a tab (rough)' }));
+    expect(await screen.findByText(/needs the optional tab tools on the server/)).toBeInTheDocument();
+    await waitFor(() => expect(api.getTabTools).toHaveBeenCalledTimes(2));
   });
 
   it('an upload that is not playing and has no tab yet is named from the uploads, and offers to generate', async () => {

@@ -7,6 +7,7 @@ import { QK, useQueryTrack } from '@/hooks/useLibrary';
 import { canGenerateFor, drawableTabs, type GeneratedStatus, type TabSummary } from '@/lib/tabSources';
 import { isLinedUp, type TabTiming } from '@/lib/tabSync';
 import type { TabMatch } from '@/lib/songsterr';
+import { friendlyGenerateError, TOOLS_MISSING_MESSAGE } from '@/lib/tabToolsText';
 import type { Track } from '@/types/track';
 
 /** The song a tab page is for: enough to look tabs up and to title the
@@ -60,6 +61,9 @@ export interface TabSourcesState {
   generated: GeneratedStatus;
   generatedError: string | null;
   canGenerate: boolean;
+  /** Why "Generate a tab" cannot work on this server (the optional tab
+   *  tools are not installed), or null when it can or is not known yet. */
+  generateUnavailable: string | null;
   loading: boolean;
   generate: () => void;
   generating: boolean;
@@ -143,6 +147,18 @@ export function useTabSources(song: TabSong | null): TabSourcesState {
     // Poll only while a job is running; a finished or absent tab does not change.
     refetchInterval: (q) => (q.state.data?.status === 'running' ? 5000 : false),
   });
+  // Whether the server has the optional tools a generation needs. Asked
+  // once in a while, not per song: it is the same answer for every song.
+  const toolsQuery = useQuery({
+    queryKey: ['tab-tools'],
+    queryFn: () => api.getTabTools(),
+    enabled: canGenerate,
+    staleTime: 5 * 60 * 1000,
+    retry: false,
+  });
+  const tools = toolsQuery.data?.generate;
+  const generateUnavailable =
+    tools && !tools.available ? (tools.message ?? TOOLS_MISSING_MESSAGE) : null;
   const matchesQuery = useQuery({
     queryKey: ['tabs', id],
     queryFn: () => api.getTabs(title, artist).then((r) => r.matches),
@@ -176,6 +192,9 @@ export function useTabSources(song: TabSong | null): TabSourcesState {
     mutationFn: () => api.generateTab(id, title, artist),
     // The job is queued: show it running now (the poll takes over from
     // here) rather than flashing the empty state until the next fetch.
+    // Turned away because the tools are missing: ask the server again, so
+    // the button greys out with the reason.
+    onError: () => void qc.invalidateQueries({ queryKey: ['tab-tools'] }),
     onSuccess: (r) => {
       qc.setQueryData(['generated-tab', id], { status: r.status });
       void qc.invalidateQueries({ queryKey: ['track-tabs', id] });
@@ -213,12 +232,13 @@ export function useTabSources(song: TabSong | null): TabSourcesState {
     tabs: song ? drawableTabs(tabsQuery.data ?? [], generated, { id, title, artist }) : [],
     matches: matchesQuery.data ?? [],
     generated,
-    generatedError: generatedQuery.data?.error ?? null,
+    generatedError: friendlyGenerateError(generatedQuery.data?.error ?? null),
     canGenerate,
+    generateUnavailable,
     loading: !!song && (tabsQuery.isLoading || (canGenerate && generatedQuery.isLoading)),
     generate: () => generate.mutate(),
     generating: generate.isPending,
-    generateError: generate.error ? (generate.error as Error).message : null,
+    generateError: generate.error ? friendlyGenerateError((generate.error as Error).message) : null,
     upload: (file) => upload.mutate(file),
     uploading: upload.isPending,
     uploadError: upload.error ? (upload.error as Error).message : null,

@@ -59,6 +59,107 @@ export function generatedTabPath(key: string): string {
   return path.join(GENERATED_DIR, generatedTabFile(key));
 }
 
+// ── can this host generate at all? ─────────────────────────────────────
+
+export interface GeneratorStatus {
+  /** transcribe.py can run here. */
+  available: boolean;
+  /** Python modules (and "ffmpeg", "python") it lacks, by import name. */
+  missing: string[];
+}
+
+/** How long an answer is kept: installing the tools takes effect without a
+ *  restart (each job is a fresh Python), so this is not forever. */
+export const TOOLS_TTL_MS = 5 * 60 * 1000;
+
+interface CheckRun {
+  code: number | null;
+  stdout: string;
+}
+
+let toolsCache: { at: number; value: GeneratorStatus } | null = null;
+let toolsInflight: Promise<GeneratorStatus> | null = null;
+
+/** For tests: forget the last answer. */
+export function resetGeneratorStatus(): void {
+  toolsCache = null;
+  toolsInflight = null;
+}
+
+function runCheck(): Promise<CheckRun> {
+  return new Promise((resolve) => {
+    let stdout = '';
+    let child: ReturnType<typeof spawn>;
+    try {
+      child = spawn(PYTHON_BIN, [TRANSCRIBE_SCRIPT, '--check'], {
+        env: { ...process.env, PATH: `${path.dirname(PYTHON_BIN)}:${process.env.PATH ?? ''}` },
+      });
+    } catch {
+      resolve({ code: null, stdout: '' });
+      return;
+    }
+    const timer = setTimeout(() => child.kill('SIGKILL'), 30_000);
+    child.stdout?.on('data', (d: Buffer) => {
+      stdout += d.toString();
+    });
+    child.stderr?.on('data', () => {});
+    child.on('error', () => {
+      clearTimeout(timer);
+      resolve({ code: null, stdout: '' });
+    });
+    child.on('close', (code) => {
+      clearTimeout(timer);
+      resolve({ code, stdout });
+    });
+  });
+}
+
+/** `transcribe.py --check`'s answer, or null when it gave none. */
+export function readCheck(run: CheckRun): GeneratorStatus | null {
+  const line = run.stdout.trim().split('\n').pop() ?? '';
+  try {
+    const j = JSON.parse(line) as { ok?: unknown; missing?: unknown };
+    if (typeof j.ok !== 'boolean') return null;
+    const missing = Array.isArray(j.missing) ? j.missing.filter((m): m is string => typeof m === 'string').slice(0, 20) : [];
+    return { available: j.ok, missing };
+  } catch {
+    return null;
+  }
+}
+
+/** The last answer while it is fresh, else null (no await, so a route
+ *  that has one answers at once). */
+export function cachedGeneratorStatus(now: () => number = Date.now): GeneratorStatus | null {
+  return toolsCache && now() - toolsCache.at < TOOLS_TTL_MS ? toolsCache.value : null;
+}
+
+/** Whether "Generate a tab" can work on this host (the page greys it out
+ *  when not): transcribe.py's own `--check`, which looks for Basic Pitch
+ *  and the rest without loading them. Cached for TOOLS_TTL_MS. A check that
+ *  gives no answer at all does not block: the job then says what failed. */
+export async function generatorStatus(deps: { run?: () => Promise<CheckRun>; now?: () => number } = {}): Promise<GeneratorStatus> {
+  const now = deps.now ?? Date.now;
+  if (toolsCache && now() - toolsCache.at < TOOLS_TTL_MS) return toolsCache.value;
+  if (toolsInflight) return toolsInflight;
+  const job = (async (): Promise<GeneratorStatus> => {
+    // The sandbox's stand-in (tests/fake-transcribe.sh) needs nothing.
+    if (!deps.run && !TRANSCRIBE_SCRIPT.endsWith('.py')) return { available: true, missing: [] };
+    if (!deps.run && !fs.existsSync(PYTHON_BIN)) return { available: false, missing: ['python'] };
+    const answer = readCheck(await (deps.run ?? runCheck)());
+    return answer ?? { available: true, missing: [] };
+  })()
+    .then((value) => {
+      toolsCache = { at: now(), value };
+      if (!value.available) warnOptionalDepsOnce();
+      return value;
+    })
+    .finally(() => {
+      toolsInflight = null;
+    });
+  toolsInflight = job;
+  return job;
+}
+
 const running = new Map<string, Promise<void>>();
 const lastError = new Map<string, string>();
 /** Keys whose POST has committed to a job but hasn't reached startGeneration

@@ -2,6 +2,7 @@
 """Turn a recording into a guitar tab (alphaTex) that AlphaTab can render.
 
     .venv/bin/python transcribe.py <audio> <out.alphatex> [--skip-separation] [--title T]
+    .venv/bin/python transcribe.py --check     # can this host generate tabs?
 
 Pipeline: ffmpeg decodes to wav -> Demucs keeps the guitar stem (optional) ->
 Basic Pitch turns it into note events -> librosa tracks the beats of the mix ->
@@ -15,6 +16,7 @@ Prints one JSON line on success. Exits 1 with one line on stderr on failure.
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import json
 import os
 import subprocess
@@ -30,6 +32,39 @@ SLOTS_PER_BEAT = 4          # 16th notes
 BEATS_PER_BAR = 4           # 4/4
 FALLBACK_BPM = 120.0
 DURATION_TOKEN = {16: "1", 8: "2", 4: "4", 2: "8", 1: "16"}   # slots -> alphaTex duration
+
+
+# What generating a tab needs beyond the app's own requirements.txt: Basic
+# Pitch and the packages it runs on (it is installed with --no-deps, so pip
+# never pulled them in), plus one model backend. These are optional: a host
+# without them runs Ember fine and only loses "Generate a tab". `--check`
+# looks for them without importing any (tensorflow alone takes seconds).
+REQUIRED_MODULES = ["basic_pitch", "librosa", "pretty_midi", "resampy", "mir_eval", "sklearn"]
+MODEL_BACKENDS = ["onnxruntime", "tensorflow", "tflite_runtime", "coremltools"]
+
+
+def _present(name: str, find_spec) -> bool:
+    try:
+        return find_spec(name) is not None
+    except (ImportError, ValueError):
+        return False
+
+
+def missing_modules(find_spec=importlib.util.find_spec) -> list[str]:
+    """The optional modules this host lacks, by import name. No backend at
+    all reads as a missing onnxruntime, the one the install notes use."""
+    missing = [m for m in REQUIRED_MODULES if not _present(m, find_spec)]
+    if not any(_present(b, find_spec) for b in MODEL_BACKENDS):
+        missing.append("onnxruntime")
+    return missing
+
+
+def check() -> dict:
+    """What `--check` prints: {"ok", "missing"}, ffmpeg included."""
+    missing = missing_modules()
+    if ffmpeg_exe() is None:
+        missing.append("ffmpeg")
+    return {"ok": not missing, "missing": missing}
 
 
 def fail(msg: str) -> None:
@@ -225,6 +260,9 @@ def track_beats(wav: str):
 
 
 def main() -> None:
+    if sys.argv[1:] == ["--check"]:
+        print(json.dumps(check()))
+        return
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("audio")
     ap.add_argument("out")

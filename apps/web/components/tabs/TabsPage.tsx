@@ -53,6 +53,7 @@ import {
   type OffsetUnit,
 } from '@/lib/tabOffset';
 import { tabSearchLinks, type TabSearchLink } from '@/lib/tabSearchLinks';
+import { TOOLS_MISSING_SHORT } from '@/lib/tabToolsText';
 
 const TAB_ACCEPT = '.gp,.gp3,.gp4,.gp5,.gpx,.musicxml,.xml,.mxl';
 const STAFF_KEY = 'ember.tabs.staff';
@@ -309,8 +310,12 @@ function TabsSheet({ song, sources, onBack }: { song: TabSong; sources: TabSourc
       ? [
           {
             id: 'generate',
-            label: busyGenerating ? 'Transcribing…' : 'Generate a tab (rough)',
-            disabled: busyGenerating,
+            label: busyGenerating
+              ? 'Transcribing…'
+              : sources.generateUnavailable
+                ? `Generate a tab: ${TOOLS_MISSING_SHORT.toLowerCase()}`
+                : 'Generate a tab (rough)',
+            disabled: busyGenerating || !!sources.generateUnavailable,
             variant: 'ghost' as const,
             onClick: sources.generate,
           },
@@ -330,8 +335,14 @@ function TabsSheet({ song, sources, onBack }: { song: TabSong; sources: TabSourc
         <MenuItem label="Add a Guitar Pro or MusicXML file" onClick={addFile} />
         {sources.canGenerate && !ownGenerated && (
           <MenuItem
-            label={busyGenerating ? 'Transcribing…' : 'Generate a tab from the recording'}
-            disabled={busyGenerating}
+            label={
+              busyGenerating
+                ? 'Transcribing…'
+                : sources.generateUnavailable
+                  ? `Generate a tab: ${TOOLS_MISSING_SHORT.toLowerCase()}`
+                  : 'Generate a tab from the recording'
+            }
+            disabled={busyGenerating || !!sources.generateUnavailable}
             onClick={sources.generate}
           />
         )}
@@ -790,7 +801,9 @@ function NoTab({
     loading: sources.loading,
     generated: sources.generated,
     generating: sources.generating,
-    generateError: sources.generateError ?? sources.generatedError,
+    generateError: sources.generatedError,
+    startError: sources.generateError,
+    generateUnavailable: sources.generateUnavailable,
     canGenerate: sources.canGenerate,
     matches: sources.matches,
     searchingOnline: sources.searchingOnline,
@@ -837,16 +850,27 @@ function NoTab({
           {sources.uploading ? 'Adding…' : 'Add a file'}
         </Button>
         {state.canGenerate && (
-          <Button variant="ghost" onClick={sources.generate}>
+          <Button
+            variant="ghost"
+            onClick={sources.generate}
+            disabled={!!state.unavailable}
+            title={state.unavailable ?? undefined}
+            aria-describedby={state.unavailable ? 'tabs-generate-unavailable' : undefined}
+          >
             Generate a tab (rough)
           </Button>
         )}
       </div>
       <p className="text-meta max-w-md">
-        {state.canGenerate
+        {state.canGenerate && !state.unavailable
           ? 'A file is a Guitar Pro or MusicXML tab, shared with everyone here. Generating listens to the recording and writes a guitar tab: a few minutes, rough in places, so it is the last resort.'
           : 'A file is a Guitar Pro or MusicXML tab, shared with everyone here.'}
       </p>
+      {state.unavailable && (
+        <p id="tabs-generate-unavailable" data-testid="tabs-generate-unavailable" role="note" className="text-meta max-w-md">
+          {state.unavailable}
+        </p>
+      )}
       {state.failed && <p className="text-sm text-destructive">{state.failed}</p>}
       {state.songsterr.length > 0 && (
         <div className="mt-block w-full max-w-md text-left">

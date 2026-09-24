@@ -29,13 +29,25 @@ vi.mock('@/lib/songsterr', async (importOriginal) => {
 });
 
 // No yt-dlp and no transcriber in a unit test: the job is a promise we own.
-const gen = { status: 'none' as string, job: Promise.resolve() };
+const gen = {
+  status: 'none' as string,
+  error: undefined as string | undefined,
+  job: Promise.resolve(),
+  started: 0,
+  tools: { available: true, missing: [] as string[] },
+};
 vi.mock('@/lib/tabGenerate', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/lib/tabGenerate')>();
   return {
     ...actual,
-    generationStatus: () => (gen.status === 'ready' ? { status: 'ready' } : { status: gen.status }),
-    startGeneration: () => gen.job,
+    generationStatus: () =>
+      gen.status === 'ready' ? { status: 'ready' } : gen.status === 'failed' ? { status: 'failed', error: gen.error } : { status: gen.status },
+    startGeneration: () => {
+      gen.started++;
+      return gen.job;
+    },
+    generatorStatus: async () => gen.tools,
+    cachedGeneratorStatus: () => null,
   };
 });
 vi.mock('@/lib/sources/youtube', () => ({ ensureDownloaded: async () => '/tmp/audio.m4a' }));
@@ -45,6 +57,7 @@ const one = await import('./files/[id]/route');
 const download = await import('./files/[id]/download/route');
 const songsterr = await import('./route');
 const generated = await import('./generated/[trackId]/route');
+const tools = await import('./tools/route');
 const { TAB_DIR, GENERATED_DIR } = await import('@/lib/tabs');
 const { resetBackfill } = await import('@/lib/tabStore');
 
@@ -74,7 +87,10 @@ beforeEach(() => {
   search.mockReset();
   search.mockResolvedValue([]);
   gen.status = 'none';
+  gen.error = undefined;
+  gen.started = 0;
   gen.job = Promise.resolve();
+  gen.tools = { available: true, missing: [] };
   fs.rmSync(musicDir, { recursive: true, force: true });
 });
 
@@ -343,8 +359,44 @@ describe('/api/tabs/generated/[trackId] rows', () => {
     expect(store.rows.get('tabs')).toHaveLength(1);
   });
 
+  it('a host without the optional tab tools answers 503 in words, and starts nothing', async () => {
+    gen.tools = { available: false, missing: ['basic_pitch', 'onnxruntime'] };
+    as(ALICE);
+    const res = await generated.POST(req('/api/tabs/generated/youtube%3Avid9?title=One', { method: 'POST' }), trackCtx('youtube:vid9'));
+    expect(res.status).toBe(503);
+    const body = await res.json();
+    expect(body).toMatchObject({ code: 'tools-missing', missing: ['basic_pitch', 'onnxruntime'] });
+    expect(body.error).toContain('optional tab tools on the server');
+    expect(body.error).not.toMatch(/ModuleNotFoundError/);
+    expect(gen.started).toBe(0);
+    expect((await tools.GET(req('/api/tabs/tools'), undefined as never)).status).toBe(200);
+    expect(await (await tools.GET(req('/api/tabs/tools'), undefined as never)).json()).toMatchObject({
+      generate: { available: false, code: 'tools-missing', missing: ['basic_pitch', 'onnxruntime'] },
+    });
+    gen.tools = { available: true, missing: [] };
+    expect(await (await tools.GET(req('/api/tabs/tools'), undefined as never)).json()).toEqual({ generate: { available: true, missing: [] } });
+  });
+
+  it('a job that failed on a missing module reads as the friendly message', async () => {
+    gen.status = 'failed';
+    gen.error = "ModuleNotFoundError: No module named 'basic_pitch'";
+    as(BOB);
+    const res = await generated.GET(req('/api/tabs/generated/upload%3Aup7'), trackCtx('upload:up7'));
+    expect(res.status).toBe(409);
+    const body = await res.json();
+    expect(body).toMatchObject({ status: 'failed', code: 'tools-missing' });
+    expect(body.error).toContain('optional tab tools');
+    // Any other failure keeps its own reason.
+    gen.error = 'the recording is too quiet to transcribe';
+    expect(await (await generated.GET(req('/api/tabs/generated/upload%3Aup7'), trackCtx('upload:up7'))).json()).toEqual({
+      status: 'failed',
+      error: 'the recording is too quiet to transcribe',
+    });
+  });
+
   it('401 without a user', async () => {
     as(null);
+    expect((await tools.GET(req('/api/tabs/tools'), undefined as never)).status).toBe(401);
     expect((await generated.GET(req('/api/tabs/generated/upload%3Aup1'), trackCtx('upload:up1'))).status).toBe(401);
     expect((await generated.POST(req('/api/tabs/generated/upload%3Aup1', { method: 'POST' }), trackCtx('upload:up1'))).status).toBe(401);
   });

@@ -176,7 +176,7 @@ describe('empty states', () => {
   });
 
   it('offers to generate a YouTube or uploaded song', () => {
-    expect(emptyStateFor(base)).toEqual({ kind: 'empty', canGenerate: true, failed: null, songsterr: [] });
+    expect(emptyStateFor(base)).toEqual({ kind: 'empty', canGenerate: true, failed: null, unavailable: null, songsterr: [] });
   });
 
   it('a running job, or the click that starts one, shows the transcribing state', () => {
@@ -197,8 +197,29 @@ describe('empty states', () => {
       kind: 'empty',
       canGenerate: false,
       failed: null,
+      unavailable: null,
       songsterr: [match],
     });
+  });
+
+  it('a server without the tab tools: the reason, once, never the raw Python error', () => {
+    const why = 'Generating a tab needs the optional tab tools on the server';
+    expect(emptyStateFor({ ...base, generateUnavailable: why })).toMatchObject({ canGenerate: true, unavailable: why, failed: null });
+    // A job that failed on the missing module before the page knew.
+    const failed = emptyStateFor({ ...base, generated: 'failed', generateError: "ModuleNotFoundError: No module named 'basic_pitch'" });
+    expect(failed).toMatchObject({ unavailable: null });
+    expect(failed.kind === 'empty' && failed.failed).toContain('optional tab tools on the server');
+    expect(failed.kind === 'empty' && failed.failed).not.toContain('ModuleNotFoundError');
+    expect(emptyStateFor({ ...base, generated: 'failed', generateError: "No module named 'basic_pitch'", generateUnavailable: why })).toMatchObject({
+      failed: null,
+      unavailable: why,
+    });
+    // Not offered at all: nothing to explain.
+    expect(emptyStateFor({ ...base, canGenerate: false, generateUnavailable: why })).toMatchObject({ unavailable: null });
+  });
+
+  it('a request that could not start a job says why', () => {
+    expect(emptyStateFor({ ...base, startError: 'Too many requests' })).toMatchObject({ failed: 'Too many requests' });
   });
 
   it('generating is offered only for recordings Ember has', () => {
