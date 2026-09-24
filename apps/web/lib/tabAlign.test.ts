@@ -2,8 +2,14 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { afterAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fakePocketBase, type FakePb } from '@/test-utils/fakePocketBase';
+
+const errorSpy = vi.fn();
+const warnSpy = vi.fn();
+vi.mock('@/lib/logger/server', () => ({
+  serverLogger: { error: (...args: unknown[]) => errorSpy(...args), warn: (...args: unknown[]) => warnSpy(...args) },
+}));
 
 /** Lining a tab up (lib/tabAlign.ts): the job around align.py. The script
  *  itself is tested on real audio in tests/test_align.py; here it stands in
@@ -35,6 +41,7 @@ const TEX = `\\title "Copper Tide"
 const { alignmentStatus, alignTab, alreadyTried, audioForTrack, autoAlignQueue, MAX_AUTO_ALIGN, resetAlignment } =
   await import('./tabAlign');
 const { FETCHED_DIR } = await import('./tabs');
+const { resetOptionalDepsWarning } = await import('./tabOptionalDeps');
 
 let store: FakePb;
 function row(extra: Record<string, unknown> = {}) {
@@ -52,6 +59,9 @@ function row(extra: Record<string, unknown> = {}) {
 
 beforeEach(() => {
   resetAlignment();
+  resetOptionalDepsWarning();
+  errorSpy.mockClear();
+  warnSpy.mockClear();
   fs.rmSync(CALLS, { force: true });
   writeScript(`printf '%s' '${JSON.stringify(TIMING)}' > "$3"`);
   store = fakePocketBase({
@@ -105,6 +115,19 @@ describe('lining a tab up', () => {
     // A failure counts as a try: the automatic pass never listens twice.
     expect(String(store.rows.get('tabs')![0].aligned_at)).toMatch(/^\d{4}-/);
     expect(alreadyTried(store.rows.get('tabs')![0])).toBe(true);
+  });
+
+  it('numpy missing on the host logs one warn, not an error per tab, and the tab still fails cleanly', async () => {
+    writeScript("echo \"ModuleNotFoundError: No module named 'numpy'\" >&2\nexit 1");
+    const tab = store.rows.get('tabs')![0];
+    expect(await alignTab(store.pb, tab)).toBeNull();
+    expect(alignmentStatus(store.rows.get('tabs')![0])).toEqual({
+      status: 'failed',
+      error: "ModuleNotFoundError: No module named 'numpy'",
+    });
+    expect(errorSpy).not.toHaveBeenCalled();
+    expect(warnSpy).toHaveBeenCalledTimes(1);
+    expect(warnSpy).toHaveBeenCalledWith('tabs', 'tab alignment is off: numpy/basic_pitch not installed, see SETUP.md');
   });
 
   it('lines up the tabs Ember fetched, Songsterr first, once each, four at most', () => {

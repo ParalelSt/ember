@@ -5,6 +5,7 @@ import path from 'node:path';
 import { GENERATED_DIR } from '@/lib/tabs';
 import { queuePythonJob } from '@/lib/pythonJobs';
 import { serverLogger } from '@/lib/logger/server';
+import { isOptionalDepMissing, warnOptionalDepsOnce } from '@/lib/tabOptionalDeps';
 
 /** Guitar tabs generated from the recording itself.
  *
@@ -86,7 +87,11 @@ export function startGeneration(key: string, audioPath: string, title: string): 
     .catch((e: unknown) => {
       const reason = e instanceof Error ? e.message : String(e);
       lastError.set(key, reason);
-      serverLogger.error('tabs', 'generation failed', { key, reason });
+      if (isOptionalDepMissing(reason)) {
+        warnOptionalDepsOnce();
+      } else {
+        serverLogger.error('tabs', 'generation failed', { key, reason });
+      }
       throw e;
     })
     .finally(() => running.delete(key));
