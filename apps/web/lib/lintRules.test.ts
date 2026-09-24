@@ -328,6 +328,7 @@ const COLOUR_BASELINE: Record<string, number> = {
   'components/library/options/imports/parts.tsx': 3, // play scrim, as import/parts
   'components/library/options/mobileplayer/AndroidNavStrip.tsx': 4, // mock Android nav bar
   'components/library/options/phonesearch/MockKeyboard.tsx': 8, // mock OS keyboard
+  'components/library/options/playlist-copy/parts.tsx': 1, // mock dialog and sheet backdrop
   'components/library/options/searchrows/SearchRowsSection.tsx': 1, // mock overlay backdrop
   'components/library/options/tabs/PasteSection.tsx': 1, // mock dialog backdrop
   'components/library/options/tabs/TabsSection.tsx': 1, // mock sheet backdrop

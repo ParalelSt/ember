@@ -57,6 +57,9 @@ export interface ShellPreviewProps {
   topBarRight?: ReactNode;
   /** Phone: an unread dot on the menu button. */
   menuDot?: boolean;
+  /** Phone: replaces the whole top bar (a selection mode's contextual bar,
+   *  the Playlist copy "Tap to select" candidate). */
+  topBar?: ReactNode;
   /** Absolutely positioned over the content column (below the phone top
    *  bar), for a popover. */
   overlay?: ReactNode;
@@ -365,6 +368,7 @@ export function ShellPreview({
   contentCorner,
   topBarRight,
   menuDot,
+  topBar,
   overlay,
   playlists,
   playlistsTop,
@@ -401,7 +405,8 @@ export function ShellPreview({
         {/* Everything above the player bar, in one box so a phone `sheet`
             can cover exactly this much and no more. */}
         <div className="relative flex min-h-0 flex-1 flex-col">
-          {phone && (
+          {phone && topBar}
+          {phone && !topBar && (
             <MockTopBar topBarRight={topBarRight} menuDot={menuDot} onMenu={() => onDrawerOpenChange?.(true)} />
           )}
           <div className="relative min-h-0 flex-1">
