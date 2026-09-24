@@ -11,15 +11,17 @@ vi.mock('@/components/ui/slider', () => ({
     max,
     disabled,
     onValueChange,
+    thumbLabel,
   }: {
     value: number[];
     max?: number;
     disabled?: boolean;
     onValueChange?: (v: number[]) => void;
+    thumbLabel?: string;
   }) => (
     <input
       type="range"
-      aria-label="volume"
+      aria-label={thumbLabel ?? 'volume'}
       max={max}
       disabled={disabled}
       value={value[0]}
@@ -29,7 +31,7 @@ vi.mock('@/components/ui/slider', () => ({
 }));
 
 function slider() {
-  return screen.getByLabelText('volume') as HTMLInputElement;
+  return screen.getByRole('slider') as HTMLInputElement;
 }
 
 describe('VolumeControl', () => {
@@ -72,5 +74,12 @@ describe('VolumeControl', () => {
       <VolumeControl volume={0.5} muted={false} max={0.85} onChange={vi.fn()} onToggleMute={vi.fn()} />,
     );
     expect(slider()).toHaveAttribute('max', '85');
+  });
+
+  // O10: the volume slider had no accessible name either, same gap as the
+  // seek bar (bughunt O10).
+  it('names the thumb "Volume"', () => {
+    render(<VolumeControl volume={0.5} muted={false} onChange={vi.fn()} onToggleMute={vi.fn()} />);
+    expect(slider()).toHaveAccessibleName('Volume');
   });
 });

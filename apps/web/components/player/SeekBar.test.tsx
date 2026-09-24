@@ -14,16 +14,21 @@ vi.mock('@/components/ui/slider', () => ({
     onValueCommitted,
     className,
     disabled,
+    thumbLabel,
+    getAriaValueText,
   }: {
     value: number[];
     onValueChange?: (v: number[]) => void;
     onValueCommitted?: (v: number[]) => void;
     className?: string;
     disabled?: boolean;
+    thumbLabel?: string;
+    getAriaValueText?: (formatted: string, value: number, index: number) => string;
   }) => (
     <input
       type="range"
-      aria-label="progress"
+      aria-label={thumbLabel ?? 'progress'}
+      aria-valuetext={getAriaValueText ? getAriaValueText(String(value[0]), value[0], 0) : undefined}
       className={className}
       disabled={disabled}
       value={value[0]}
@@ -34,7 +39,7 @@ vi.mock('@/components/ui/slider', () => ({
 }));
 
 function slider() {
-  return screen.getByLabelText('progress') as HTMLInputElement;
+  return screen.getByRole('slider') as HTMLInputElement;
 }
 
 describe('SeekBar', () => {
@@ -94,5 +99,20 @@ describe('SeekBar', () => {
     );
     expect(container.querySelectorAll('span')).toHaveLength(0);
     expect(container.firstElementChild).toHaveClass('md:hidden', 'px-3', '-mt-1');
+  });
+
+  // O10: the slider had no accessible name (a screen reader just said
+  // "slider"), and its default value readout was a bare percentage, which
+  // says nothing about where in the song that percentage lands.
+  it('names the thumb "Seek" and reads out a time instead of a percentage', () => {
+    render(<SeekBar position={30} duration={120} onSeek={vi.fn()} labels="inline" />);
+    expect(slider()).toHaveAccessibleName('Seek');
+    expect(slider()).toHaveAttribute('aria-valuetext', '0:30 of 2:00');
+  });
+
+  it('reads out the dragged time, not the committed one, while scrubbing', () => {
+    render(<SeekBar position={30} duration={120} onSeek={vi.fn()} labels="inline" />);
+    fireEvent.change(slider(), { target: { value: '75' } });
+    expect(slider()).toHaveAttribute('aria-valuetext', '1:30 of 2:00');
   });
 });
