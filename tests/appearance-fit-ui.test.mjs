@@ -12,7 +12,7 @@
  *  At 1280x720, 1440x800, 1512x830 and 1920x1000, with a song in the player
  *  bar and the page scroller at the top: the preview, its mini player row
  *  included, ends at or above the player bar and inside the scroller; the
- *  Apply bar and the Themes/Colours/Share tabs are inside the scroller; and
+ *  Apply bar and the Themes/Colours tabs are inside the scroller; and
  *  the inspector's list (the Colours tab, the longest) scrolls inside its
  *  own panel while the page scroller stays at 0, and the next tab opens at
  *  its top. At 390 the stacked layout stays, with nothing scrolling

@@ -9,7 +9,8 @@
  *  with JavaScript OFF shows it (nothing but HTML and CSS produced it), on
  *  this device and on a fresh one. A cached theme on a device never
  *  flashes before the account's. Saved themes: create, the cap, the
- *  unreadable refusal, sharing with a second person who sees it (by name)
+ *  unreadable refusal, sharing from the theme's own row switch (bughunt
+ *  F3, there is no Share tab) with a second person who sees it (by name)
  *  and can use it but not change it, unsharing leaving them their copy,
  *  and the collection rules straight through /pb. Back to Ember clears
  *  every override; signed-out pages are Ember whatever is cached.
@@ -457,13 +458,20 @@ let NIGHT_DRIVE_EMBER;
 
   const ap = await device(aron.cookie);
   await appearance(ap);
-  await tab(ap, 'Share');
-  const toggle = ap.getByRole('switch', { name: 'Share with everyone' });
+  // Bughunt F3: no Share tab; each of my themes has its own switch on its row.
+  check('F3: the inspector has no Share tab', (await ap.getByRole('tab', { name: 'Share', exact: true }).count()) === 0);
+  check('F3: My themes says who sees shared themes',
+    (await ap.getByTestId('share-explainer').textContent())?.includes('Shared themes appear for everyone under Shared by others.'));
+  const aronRow = ap.getByTestId('my-theme').filter({ hasText: 'Night drive' });
+  const toggle = aronRow.getByRole('switch', { name: 'Share Night drive with everyone' });
+  check('F3: the row starts unshared, with no Shared tag',
+    (await toggle.getAttribute('aria-checked')) === 'false' && (await aronRow.getByTestId('shared-tag').count()) === 0);
   await toggle.click();
-  await ap.waitForFunction(() => document.querySelector('[role="switch"]')?.getAttribute('aria-checked') === 'true', null, { timeout: 5000 }).catch(() => {});
+  await ap.waitForFunction(() => document.querySelector('[role="switch"][aria-label="Share Night drive with everyone"]')?.getAttribute('aria-checked') === 'true', null, { timeout: 5000 }).catch(() => {});
   const shared = await call(aron, 'GET', '/themes');
-  check('Aron shares it with everyone from the Share tab', shared.body?.mine?.find((t) => t.id === nightDrive.id)?.shared === true);
-  check('the Share tab says who sees it', (await ap.getByTestId('share-line').textContent())?.startsWith('Everyone on this Ember server sees Night drive'));
+  check('Aron shares it with everyone from its row switch', shared.body?.mine?.find((t) => t.id === nightDrive.id)?.shared === true);
+  check('the row now carries a Shared tag', (await aronRow.getByTestId('shared-tag').textContent()) === 'Shared');
+  check('F3: sharing is not a theme change (nothing to apply)', (await ap.getByTestId('apply-bar').count()) === 0);
 
   const after = await call(luka, 'GET', '/themes');
   const seen = after.body?.shared?.find((t) => t.id === nightDrive.id);
@@ -480,7 +488,9 @@ let NIGHT_DRIVE_EMBER;
   const lp = await device(luka.cookie);
   await appearance(lp);
   const row = lp.getByTestId('shared-theme').filter({ hasText: 'Night drive' });
-  check('Luka\'s Appearance lists it by Aron', (await row.getByText('by Aron').count()) === 1);
+  check('Luka\'s Appearance lists it under Shared by others, by Aron',
+    (await lp.getByRole('region', { name: 'Shared by others' }).getByTestId('shared-theme').filter({ hasText: 'Night drive' }).getByText('by Aron').count()) === 1);
+  check('with no share switch of his for it', (await lp.getByRole('switch', { name: 'Share Night drive with everyone' }).count()) === 0);
   await row.getByRole('button', { name: 'Preview Night drive' }).click();
   await applyDraft(lp);
   const lukaUses = await call(luka, 'GET', '/theme');
@@ -489,8 +499,6 @@ let NIGHT_DRIVE_EMBER;
   check('Luka\'s page paints Aron\'s theme', lukaEmber === NIGHT_DRIVE_EMBER, lukaEmber);
   await tab(lp, 'Colours');
   check('and sees it read-only', (await lp.getByTestId('read-only-note').textContent())?.includes('Only Aron can change it'));
-  await tab(lp, 'Share');
-  check('with sharing not his to change', await lp.getByRole('switch', { name: 'Share with everyone' }).isDisabled());
   await tab(lp, 'Themes');
 
   await lp.getByRole('button', { name: 'Copy Night drive to my themes' }).click();
@@ -499,8 +507,8 @@ let NIGHT_DRIVE_EMBER;
   check('Luka copies it into his own themes from the page', !!copied && copied.shared === false, JSON.stringify(copied));
 
   await toggle.click();
-  await ap.waitForFunction(() => document.querySelector('[role="switch"]')?.getAttribute('aria-checked') === 'false', null, { timeout: 5000 }).catch(() => {});
-  check('Aron unshares it from the Share tab', (await call(aron, 'GET', '/themes')).body?.mine?.find((t) => t.id === nightDrive.id)?.shared === false);
+  await ap.waitForFunction(() => document.querySelector('[role="switch"][aria-label="Share Night drive with everyone"]')?.getAttribute('aria-checked') === 'false', null, { timeout: 5000 }).catch(() => {});
+  check('Aron unshares it from its row switch', (await call(aron, 'GET', '/themes')).body?.mine?.find((t) => t.id === nightDrive.id)?.shared === false);
   await ap.context().close();
   const kept = await call(luka, 'GET', '/theme');
   check('unshared: Luka keeps a copy of its colours', !kept.body?.themeId && JSON.stringify(kept.body?.custom?.accent) === JSON.stringify(nightDrive.inputs.accent), JSON.stringify(kept.body));
