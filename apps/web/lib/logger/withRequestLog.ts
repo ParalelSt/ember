@@ -2,7 +2,7 @@ import 'server-only';
 import { randomUUID } from 'node:crypto';
 import type { NextRequest } from 'next/server';
 import { serverLogger, requestContext } from './server';
-import { createClient } from '@/lib/pocketbase/server';
+import { verifiedUserId } from '@/lib/auth';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type RouteHandler<Ctx = any> = (req: NextRequest, ctx: Ctx) => Promise<Response> | Response;
@@ -13,17 +13,14 @@ type RouteHandler<Ctx = any> = (req: NextRequest, ctx: Ctx) => Promise<Response>
  *  normally (see below), so an actual failure stays visible. */
 const QUIET_429_ROUTES = new Set(['bug-report', 'requests']);
 
-/** Best-effort current user id, read the same way requireUser() does (via
- *  the pb_auth cookie) but without throwing when there isn't one: logging
- *  must never be the reason a request fails. */
+/** Best-effort current user id, verified the same way requireUser() does
+ *  (PocketBase's answer to the session token, not the cookie's editable
+ *  copy; bughunt L1: a member could otherwise make their errors show up
+ *  under another member's id) but without throwing when there isn't one:
+ *  logging must never be the reason a request fails. */
 async function resolveUserId(): Promise<string | undefined> {
-  try {
-    const pb = await createClient();
-    const id = pb.authStore.record?.id;
-    return typeof id === 'string' ? id : undefined;
-  } catch {
-    return undefined;
-  }
+  const id = await verifiedUserId();
+  return id ?? undefined;
 }
 
 /** Reads the `error` field out of a JSON response body without consuming
