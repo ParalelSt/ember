@@ -17,8 +17,10 @@ export interface LyricsResult {
   synced?: LyricsLine[];
 }
 
-async function fetchLyrics(title: string, artist: string): Promise<LyricsResult> {
+async function fetchLyrics(title: string, artist: string, durationSec: number): Promise<LyricsResult> {
   const qs = new URLSearchParams({ title, artist });
+  // Lets the server pick the synced lyrics of this version, not a live cut.
+  if (durationSec > 0) qs.set('durationSec', String(Math.round(durationSec)));
   const res = await fetch(`/api/lyrics?${qs.toString()}`, { credentials: 'include' });
   if (!res.ok) {
     const err = (await res.json().catch(() => ({ error: res.statusText }))) as { error?: string };
@@ -35,7 +37,7 @@ export function useQueryLyrics(track: Track | null, enabled: boolean) {
     // React Query cache entries from the Genius-only era so users see
     // synced lyrics without having to hard-refresh first.
     queryKey: ['lyrics', 'v2', track?.id ?? null],
-    queryFn: () => fetchLyrics(track!.title, track!.artist),
+    queryFn: () => fetchLyrics(track!.title, track!.artist, track!.durationSec ?? 0),
     enabled: enabled && !!track,
     staleTime: 60 * 60 * 1000,
     retry: false,

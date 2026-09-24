@@ -10,7 +10,8 @@ import type { Track } from '@/types/track';
  *
  *  Desktop app → the LOCAL Discord client, so each listener's own profile
  *  shows what they're playing. Everywhere else → the server route, which can
- *  only reach the host's Discord (browsers have no way to do presence).
+ *  only reach the owner's Discord (browsers have no way to do presence) and
+ *  ignores everyone else.
  *  camelCase args are converted to the Rust command's snake_case by Tauri.
  *
  *  The card has a time bar, so the playhead travels with every update: a seek
@@ -26,7 +27,7 @@ export function publishDiscordPresence(
   // only thing standing between "hidden" and broadcasting. When sharing is
   // off we still publish a CLEAR, otherwise whatever was showing when they
   // flipped the switch would stay pinned to their profile.
-  const { shareDiscord } = usePrivacyStore.getState();
+  const { shareDiscord, loaded } = usePrivacyStore.getState();
   if (!shareDiscord) {
     track = null;
     isPlaying = false;
@@ -47,5 +48,9 @@ export function publishDiscordPresence(
     }).catch(() => {});
     return;
   }
+  // Signed out (the switches only load with a session): the route needs one,
+  // and api.ts answers its 401 by sending the page to /auth, which would
+  // bounce a visitor off a public /track page.
+  if (!loaded) return;
   void api.updateDiscord(track, isPlaying, position, duration).catch(() => {});
 }
