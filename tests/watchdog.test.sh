@@ -491,6 +491,71 @@ check "a plain password still reaches PocketBase" \
 check "SIGTERM stops it" stop_and_wait TERM
 check "nothing left running" wait_until 5 no_leftovers
 
+# ── 11. busy ports and leftovers of a killed watchdog (bughunt O5) ───────
+echo "── ports already in use"
+listener_on() { lsof -ti tcp:"$1" -sTCP:LISTEN 2>/dev/null | head -1; }
+watchdog_exits() { wait_until "$1" not_running "$WD"; }
+HEALTHY_PORT="$(free_port)"
+PB_FAKE_PORT="$(free_port)"
+export PORT="$HEALTHY_PORT" POCKETBASE_PORT="$PB_FAKE_PORT"
+export WATCHDOG_CMD_PB="exec node '$TMP/healthy.mjs' $PB_FAKE_PORT"
+export WATCHDOG_CMD_NEXT="exec node '$TMP/healthy.mjs' $HEALTHY_PORT"
+
+# Another program on the web port: refuse plainly, touch nothing.
+new_root
+node "$TMP/healthy.mjs" "$HEALTHY_PORT" >/dev/null 2>&1 &
+STRANGER=$!
+wait_until 5 port_up "$HEALTHY_PORT"
+start_watchdog
+check "a busy web port: start-static refuses and exits" watchdog_exits 10
+reap_watchdog
+check "it says which port and which process" file_has "$TMP/run.out" "port $HEALTHY_PORT is already in use (pid $STRANGER"
+check "the other program is left alone" kill -0 "$STRANGER"
+check "no crash loop and no crash post" [ "$(posts_matching 'crashed')" = 0 ]
+check "no lock left behind by the refusal" file_missing "$ROOT_DIR/logs/ember.lock"
+check "PocketBase was not started either" port_down "$PB_FAKE_PORT"
+kill "$STRANGER" 2>/dev/null; wait "$STRANGER" 2>/dev/null
+
+# Another program on the PocketBase port: the same.
+new_root
+node "$TMP/healthy.mjs" "$PB_FAKE_PORT" >/dev/null 2>&1 &
+STRANGER=$!
+wait_until 5 port_up "$PB_FAKE_PORT"
+start_watchdog
+check "a busy PocketBase port: start-static refuses and exits" watchdog_exits 10
+reap_watchdog
+check "it names the PocketBase port" file_has "$TMP/run.out" "port $PB_FAKE_PORT is already in use (pid $STRANGER"
+check "the web app was not started" port_down "$HEALTHY_PORT"
+kill "$STRANGER" 2>/dev/null; wait "$STRANGER" 2>/dev/null
+
+# The watchdog is SIGKILLed and both services outlive it. The next start
+# stops those leftovers and supervises fresh ones instead of crash-looping.
+new_root
+start_watchdog
+wait_until 10 port_up "$HEALTHY_PORT"
+wait_until 10 port_up "$PB_FAKE_PORT"
+OLD_NEXT="$(listener_on "$HEALTHY_PORT")"
+OLD_PB="$(listener_on "$PB_FAKE_PORT")"
+check "the service pids are recorded" sh -c "[ -n '$OLD_NEXT' ] && grep -qx '$OLD_NEXT' '$ROOT_DIR/logs/next.pid' && grep -qx '$OLD_PB' '$ROOT_DIR/logs/pocketbase.pid'"
+kill -KILL "$WD"; wait "$WD" 2>/dev/null; WD=""
+sleep 1
+check "both services outlive the killed watchdog" sh -c "kill -0 '$OLD_NEXT' && kill -0 '$OLD_PB'"
+: >"$POSTS"
+start_watchdog
+check "the next start stops the old web app" wait_until 20 not_running "$OLD_NEXT"
+check "and the old PocketBase" wait_until 5 not_running "$OLD_PB"
+check "it says it stopped leftovers" file_has "$TMP/run.out" "left running by a previous run"
+check "fresh services come up" wait_until 10 port_up "$HEALTHY_PORT"
+wait_until 10 port_up "$PB_FAKE_PORT"
+NEW_NEXT="$(listener_on "$HEALTHY_PORT")"
+check "the web port is served by the new, supervised service" sh -c "[ -n '$NEW_NEXT' ] && [ '$NEW_NEXT' != '$OLD_NEXT' ] && grep -qx '$NEW_NEXT' '$ROOT_DIR/logs/next.pid'"
+sleep 2
+check "no crash loop: no crash post" [ "$(posts_matching 'crashed')" = 0 ]
+check "the watchdog is still running" kill -0 "$WD"
+check "SIGTERM stops it" stop_and_wait TERM
+check "service pid files removed on a clean stop" sh -c "[ ! -e '$ROOT_DIR/logs/next.pid' ] && [ ! -e '$ROOT_DIR/logs/pocketbase.pid' ]"
+check "nothing left running" wait_until 5 no_leftovers
+
 echo
 echo "$((TOTAL - FAILED))/$TOTAL passed"
 [ "$FAILED" = 0 ]

@@ -318,6 +318,9 @@ supervise() {
     # the process substitution is created inside the forked child.
     run_service "$SUP_NAME" > >(tee -a "$SUP_LOG") 2>&1 &
     SUP_CHILD=$!
+    # For the next start, in case this watchdog is killed outright and the
+    # service outlives it (see clear_leftover).
+    echo "$SUP_CHILD" >"$LOG_DIR/$SUP_NAME.pid" 2>/dev/null
     # A stop that landed between the fork and the line above found no child
     # to signal; deliver it now, or the wait below would sit until the
     # service exits by itself.
@@ -480,7 +483,7 @@ stop_supervisors() {
 }
 
 release_lock() {
-  rm -f "$PID_FILE" "$LOCK_FILE"
+  rm -f "$PID_FILE" "$LOCK_FILE" "$LOG_DIR/next.pid" "$LOG_DIR/pocketbase.pid"
 }
 
 # Every planned stop ends here: Ctrl+C, SIGTERM (update.sh, systemd, kill) and
@@ -536,6 +539,71 @@ if [ -f "$LOCK_FILE" ]; then
   UNCLEAN_SINCE="${UNCLEAN_SINCE:-an unknown time}"
 fi
 
+# ── the ports must be free (bughunt O5) ──────────────────────────────────
+# A service started on a busy port only crash-loops (EADDRINUSE) while the
+# old process keeps serving. The services run detached, so a watchdog that
+# was killed outright leaves them running; this is the only copy left (the
+# lock check above) so those are stopped here. Anything else is refused.
+
+port_pids() { lsof -ti tcp:"$1" -sTCP:LISTEN 2>/dev/null | tr '\n' ' ' || true; }
+
+# Did the previous run start PID as service NAME? logs/NAME.pid holds the pid
+# it started; the service runs in a process group of its own (exec_detached),
+# so anything it forked shares that group id.
+is_leftover() {
+  local pid="$1" name="$2" recorded pgid
+  recorded="$(tr -dc '0-9' 2>/dev/null <"$LOG_DIR/$name.pid" || true)"
+  [ -n "$recorded" ] || return 1
+  [ "$pid" = "$recorded" ] && return 0
+  pgid="$(ps -o pgid= -p "$pid" 2>/dev/null | tr -d ' ' || true)"
+  [ "$pgid" = "$recorded" ]
+}
+
+# clear_leftover PORT NAME LABEL: stops what listens on PORT if all of it is
+# the previous run's NAME. Leaves anything else for the check below.
+clear_leftover() {
+  local port="$1" name="$2" label="$3" pids pid
+  pids="$(port_pids "$port")"
+  [ -n "${pids// /}" ] || return 0
+  for pid in $pids; do is_leftover "$pid" "$name" || return 0; done
+  say "▶ stopping the $label left running by a previous run (pid ${pids% })"
+  # shellcheck disable=SC2086
+  kill $pids 2>/dev/null || true
+  for _ in $(seq 1 50); do
+    [ -z "$(port_pids "$port" | tr -d ' ')" ] && return 0
+    sleep 0.2
+  done
+  say "  still up after 10s: forcing"
+  # shellcheck disable=SC2086
+  kill -9 $pids 2>/dev/null || true
+  sleep 0.5
+}
+
+# refuse_busy PORT LABEL: exits with a plain message if PORT is taken.
+refuse_busy() {
+  local port="$1" label="$2" pids pid what
+  pids="$(port_pids "$port")"
+  [ -n "${pids// /}" ] || return 0
+  pid="${pids%% *}"
+  what="$(ps -p "$pid" -o command= 2>/dev/null | cut -c1-70 || true)"
+  echo "✗ port $port is already in use (pid $pid: ${what:-unknown}), so $label can't start there."
+  echo "  If it is an old Ember that outlived its watchdog: kill $pid, then start again."
+  echo "  Otherwise stop that program, or give Ember another port in apps/web/.env.local (PORTS.md)."
+  exit 1
+}
+
+clear_leftover "$PORT" next "web app"
+clear_leftover "$POCKETBASE_PORT" pocketbase "PocketBase"
+refuse_busy "$PORT" "the web app"
+# A PocketBase someone started by hand is used as it is (see below), as long
+# as it answers; anything else on its port is refused like the web port.
+PB_ALREADY_UP=0
+if [ -z "$WATCHDOG_CMD_PB" ] && curl -fsS -m 1 "http://127.0.0.1:${POCKETBASE_PORT}/api/health" > /dev/null 2>&1; then
+  PB_ALREADY_UP=1
+else
+  refuse_busy "$POCKETBASE_PORT" "PocketBase"
+fi
+
 printf 'pid=%s\nstarted=%s\n' "$$" "$(date '+%Y-%m-%d %H:%M:%S %Z')" >"$LOCK_FILE"
 echo "$$" >"$PID_FILE"
 say "▶ watchdog started (pid $$)"
@@ -556,7 +624,7 @@ fi
 
 # Skip starting PB if it's already running and no watchdog owns it (e.g. the
 # user started it manually). Avoids a port-conflict crash loop.
-if [ -z "$WATCHDOG_CMD_PB" ] && curl -fsS -m 1 "http://127.0.0.1:${POCKETBASE_PORT}/api/health" > /dev/null 2>&1; then
+if [ "$PB_ALREADY_UP" = 1 ]; then
   say "▶ PocketBase already running on :${POCKETBASE_PORT}, skipping start (not supervised)."
 else
   if [ -z "$PB_SU_EMAIL" ] || [ -z "$PB_SU_PASSWORD" ]; then
