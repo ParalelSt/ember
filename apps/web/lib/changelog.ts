@@ -21,6 +21,17 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    id: 'pb-admin-exposure',
+    version: '0.5.2',
+    date: '2026-09-24',
+    title: 'Security fix for the server’s database admin area',
+    summary: 'Security fix for the server’s database admin area.',
+    bullets: [
+      'The database’s admin sign-in page and controls could be reached from the public web address. They can no longer be reached that way.',
+      'Signing in, playlists, likes and everything else you use every day works exactly as before.',
+    ],
+  },
+  {
     id: 'desktop-stream-stall',
     version: '0.5.1',
     date: '2026-09-23',
