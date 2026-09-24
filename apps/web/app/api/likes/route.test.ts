@@ -67,11 +67,14 @@ describe('GET /api/likes', () => {
 
   it('returns the expanded tracks', async () => {
     getFullList.mockResolvedValueOnce([
-      { expand: { track: { id: 't1', external_id: 'youtube:abcdefghijk', source: 'youtube', source_id: 'abcdefghijk', title: 'Song' } } },
+      { liked_at: '2026-06-02 10:00:00.000Z', created: '2026-06-01 10:00:00.000Z', expand: { track: { id: 't1', external_id: 'youtube:abcdefghijk', source: 'youtube', source_id: 'abcdefghijk', title: 'Song' } } },
+      { liked_at: '', created: '2026-05-01 10:00:00.000Z', expand: { track: { id: 't2', external_id: 'youtube:bbbbbbbbbbb', source: 'youtube', source_id: 'bbbbbbbbbbb', title: 'Old' } } },
       { expand: { track: null } },
     ]);
-    const body = (await (await GET(request(null), {})).json()) as { tracks: Track[] };
-    expect(body.tracks.map((t) => t.id)).toEqual(['youtube:abcdefghijk']);
+    const body = (await (await GET(request(null), {})).json()) as { tracks: (Track & { addedAt: string })[] };
+    expect(body.tracks.map((t) => t.id)).toEqual(['youtube:abcdefghijk', 'youtube:bbbbbbbbbbb']);
+    // addedAt is when it was liked, or the row's created before liked_at existed.
+    expect(body.tracks.map((t) => t.addedAt)).toEqual(['2026-06-02 10:00:00.000Z', '2026-05-01 10:00:00.000Z']);
   });
 });
 

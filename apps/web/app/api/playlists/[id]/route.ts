@@ -1,6 +1,7 @@
 import type { NextRequest } from 'next/server';
 import { requireUser, UnauthorizedError, unauthorizedResponse } from '@/lib/auth';
 import { mapTrackRow, type TrackRecord } from '@/lib/mapTrack';
+import type { CollectionTrack } from '@/types/track';
 import { fromError } from '@/lib/upsertTrack';
 import { withRequestLog } from '@/lib/logger/withRequestLog';
 
@@ -17,9 +18,11 @@ export const GET = withRequestLog('playlists/[id]', async (_req: NextRequest, ct
       expand: 'track',
     });
 
-    const tracks = items
-      .map((i) => mapTrackRow(((i.expand?.track as unknown) ?? null) as TrackRecord | null))
-      .filter(Boolean);
+    // addedAt: when the song landed in this playlist, for "Date added".
+    const tracks = items.flatMap((i): CollectionTrack[] => {
+      const track = mapTrackRow(((i.expand?.track as unknown) ?? null) as TrackRecord | null);
+      return track ? [{ ...track, addedAt: String(i.created ?? '') }] : [];
+    });
 
     const artworkFile = typeof playlistRec.artwork === 'string' ? playlistRec.artwork : '';
     return Response.json({

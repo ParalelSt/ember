@@ -1,4 +1,5 @@
-import type { AlbumDetail, ArtistPayload, Playlist, SessionState, Track } from '@/types/track';
+import type { AlbumDetail, ArtistPayload, CollectionTrack, Playlist, SessionState, Track } from '@/types/track';
+import type { CopyOutcome } from '@/lib/playlistCopy';
 import { logger } from '@/lib/logger/client';
 import type { ImportItem, ImportJob, InspectResult, JobKind } from '@/lib/import/types';
 import type { TransferPreview } from '@/app/api/import/upload/route';
@@ -136,7 +137,11 @@ export const api = {
   listPlaylists: () => req<{ playlists: Playlist[] }>('/playlists'),
   createPlaylist: (name: string) =>
     req<{ playlist: Playlist }>('/playlists', { method: 'POST', body: { name } }),
-  getPlaylist: (id: string) => req<{ playlist: Playlist; tracks: Track[] }>(`/playlists/${id}`),
+  getPlaylist: (id: string) => req<{ playlist: Playlist; tracks: CollectionTrack[] }>(`/playlists/${id}`),
+  /** Copy songs into a playlist: the server skips the ones already there
+   *  (lib/playlistCopy's rule) and says which. */
+  bulkAddToPlaylist: (id: string, tracks: Track[]) =>
+    req<CopyOutcome>(`/playlists/${id}/tracks/bulk`, { method: 'POST', body: { tracks } }),
   addToPlaylist: (id: string, track: Track) =>
     req<{ ok: true }>(`/playlists/${id}/tracks`, { method: 'POST', body: { track } }),
   removeFromPlaylist: (id: string, trackId: string) =>
@@ -246,7 +251,12 @@ export const api = {
     return (await res.json()) as { playlist: Playlist };
   },
 
-  listLikes: () => req<{ tracks: Track[] }>('/likes'),
+  listLikes: () => req<{ tracks: CollectionTrack[] }>('/likes'),
+  /** Like many songs at once (copying into Liked songs). `confirmed` is the
+   *  member's yes to "this likes every one of them": the route refuses
+   *  without it. */
+  bulkLike: (tracks: Track[]) =>
+    req<CopyOutcome>('/likes/bulk', { method: 'POST', body: { tracks, confirmed: true } }),
   like: (track: Track) => req<{ ok: true }>('/likes', { method: 'POST', body: { track } }),
   unlike: (trackId: string) =>
     req<{ ok: true }>(`/likes/${encodeURIComponent(trackId)}`, { method: 'DELETE' }),

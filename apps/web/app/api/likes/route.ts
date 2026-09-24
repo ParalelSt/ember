@@ -1,7 +1,7 @@
 import type { NextRequest } from 'next/server';
 import { requireUser, UnauthorizedError, unauthorizedResponse } from '@/lib/auth';
 import { mapTrackRow, type TrackRecord } from '@/lib/mapTrack';
-import type { Track } from '@/types/track';
+import type { CollectionTrack, Track } from '@/types/track';
 import { fromError, jsonError, upsertTrack } from '@/lib/upsertTrack';
 import { withRequestLog } from '@/lib/logger/withRequestLog';
 
@@ -16,9 +16,12 @@ export const GET = withRequestLog('likes', async () => {
       sort: '-liked_at,-created',
       expand: 'track',
     });
-    const tracks = records
-      .map((r) => mapTrackRow(((r.expand?.track as unknown) ?? null) as TrackRecord | null))
-      .filter(Boolean);
+    // addedAt: when it was liked (a transfer backdates liked_at; a row from
+    // before the backfill only has `created`), for "Date added".
+    const tracks = records.flatMap((r): CollectionTrack[] => {
+      const track = mapTrackRow(((r.expand?.track as unknown) ?? null) as TrackRecord | null);
+      return track ? [{ ...track, addedAt: String(r.liked_at || r.created || '') }] : [];
+    });
     return Response.json({ tracks });
   } catch (e) {
     if (e instanceof UnauthorizedError) return unauthorizedResponse();

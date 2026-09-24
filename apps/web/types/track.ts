@@ -21,6 +21,11 @@ export interface Track {
   unavailableReason?: string | null;
 }
 
+/** A song in a playlist or in Liked songs, with when it landed there (the
+ *  playlist row's `created`, the like's `liked_at`). The list routes add it
+ *  for "Date added" sorting; everything else ignores it. */
+export type CollectionTrack = Track & { addedAt: string };
+
 export interface Playlist {
   id: string;
   name: string;

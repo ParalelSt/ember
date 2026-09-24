@@ -1,6 +1,6 @@
 'use client';
 
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { usePlayerStore } from '@/stores/usePlayerStore';
@@ -140,23 +140,27 @@ export function useExecuteToggleLike() {
     },
     onSettled: () => {
       qc.invalidateQueries({ queryKey: QK.likes });
-      // Liked songs are pinned for offline: keep the native download synced
-      // with every like/unlike so it never drifts (re-pin only downloads
-      // what's missing and drops what's no longer liked).
-      if (!nativeOfflinePresent()) return;
-      const pin = useOfflineStore.getState().pins.find((p) => p.id === LIKED_PIN);
-      if (!pin) return;
-      const likes = qc.getQueryData<Track[]>(QK.likes) ?? [];
-      // A re-pin restarts the download service, which flashes its "Preparing
-      // downloads" notification even when there is nothing to do. onSettled
-      // fires after the invalidated refetch too, so skip the call whenever the
-      // pinned set already matches.
-      // Compare against the playable set: pinList drops unavailable tracks,
-      // so the raw likes would never match once one liked song is dead.
-      if (sameTrackIds(pin.trackIds, playableFor(likes).map((t) => t.id))) return;
-      void pinLiked(likes);
+      syncLikedPin(qc);
     },
   });
+}
+
+/** Liked songs are pinned for offline: keep the native download synced with
+ *  every like/unlike so it never drifts (re-pin only downloads what's
+ *  missing and drops what's no longer liked). */
+function syncLikedPin(qc: QueryClient) {
+  if (!nativeOfflinePresent()) return;
+  const pin = useOfflineStore.getState().pins.find((p) => p.id === LIKED_PIN);
+  if (!pin) return;
+  const likes = qc.getQueryData<Track[]>(QK.likes) ?? [];
+  // A re-pin restarts the download service, which flashes its "Preparing
+  // downloads" notification even when there is nothing to do. onSettled
+  // fires after the invalidated refetch too, so skip the call whenever the
+  // pinned set already matches.
+  // Compare against the playable set: pinList drops unavailable tracks,
+  // so the raw likes would never match once one liked song is dead.
+  if (sameTrackIds(pin.trackIds, playableFor(likes).map((t) => t.id))) return;
+  void pinLiked(likes);
 }
 
 export function useExecuteRecordPlay() {
@@ -275,6 +279,34 @@ export function useExecuteReplaceInPlaylist() {
     onSuccess: (_d, { id, trackId, track }) => {
       qc.invalidateQueries({ queryKey: QK.playlist(id) });
       logger.breadcrumb('library', 'playlist.replace', { playlistId: id, from: trackId, to: track.id });
+    },
+  });
+}
+
+/** Copy songs into a playlist (the Copy to… bar). The server skips the ones
+ *  already there and answers `{ added, skipped }`. */
+export function useExecuteBulkAddToPlaylist() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, tracks }: { id: string; tracks: Track[] }) => api.bulkAddToPlaylist(id, tracks),
+    onSuccess: (outcome, { id }) => {
+      qc.invalidateQueries({ queryKey: QK.playlist(id) });
+      qc.invalidateQueries({ queryKey: QK.playlists });
+      logger.breadcrumb('library', 'playlist.bulkAdd', { playlistId: id, added: outcome.added, skipped: outcome.skipped.length });
+    },
+  });
+}
+
+/** Copy songs into Liked songs, which likes every one of them. Only call it
+ *  after the member said yes to that (the route refuses otherwise). */
+export function useExecuteBulkLike() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (tracks: Track[]) => api.bulkLike(tracks),
+    onSuccess: async (outcome) => {
+      logger.breadcrumb('library', 'likes.bulk', { added: outcome.added, skipped: outcome.skipped.length });
+      await qc.invalidateQueries({ queryKey: QK.likes });
+      syncLikedPin(qc);
     },
   });
 }
