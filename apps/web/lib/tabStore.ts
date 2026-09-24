@@ -1,4 +1,5 @@
 import 'server-only';
+import fs from 'node:fs/promises';
 import path from 'node:path';
 import type PocketBase from 'pocketbase';
 import type { RecordModel } from 'pocketbase';
@@ -12,6 +13,7 @@ import {
 } from '@/lib/songsterr';
 import type { TabKind, TabOnlineSource, TabSummary } from '@/lib/tabSources';
 import { readTiming } from '@/lib/tabSync';
+import { rowPaths } from '@/lib/tabs';
 
 /** The one tab store (docs/tabs-rebuild.md section 3): PocketBase `tabs`,
  *  a row per tab, for files people add and tabs Ember generates alike.
@@ -277,6 +279,24 @@ export async function addedByNames(pb: PocketBase, rows: RecordModel[]): Promise
     }),
   );
   return names;
+}
+
+/** Before a member is deleted: their private tabs go, row and files, since
+ *  nobody else could ever open them. Shared tabs stay for everyone and just
+ *  stop naming them (the relation is optional, bughunt X10). */
+export async function deletePrivateTabs(pb: PocketBase, userId: string): Promise<number> {
+  const rows = await pb.collection('tabs').getFullList({
+    filter: pb.filter('user = {:id} && shared = false', { id: userId }),
+  });
+  for (const row of rows) {
+    await pb.collection('tabs').delete(row.id);
+    for (const full of rowPaths(row)) {
+      await fs.unlink(full).catch((err) => {
+        serverLogger.error('api', 'tab file delete failed', { path: full }, err);
+      });
+    }
+  }
+  return rows.length;
 }
 
 /** Every row for a song regardless of who can see it: hints are public
