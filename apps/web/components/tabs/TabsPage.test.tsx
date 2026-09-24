@@ -325,6 +325,25 @@ describe('TabsPage toolbar and layout', () => {
     expect(window.localStorage.getItem('ember.tabs.staff')).toBe('score-tab');
   });
 
+  // The desktop top bar is sticky in the same page scroller
+  // (components/nav/DesktopTopBar), so the toolbar sticks just under it and
+  // the score's follow-scroll keeps the playing bar clear of both.
+  it('sticks the toolbar under the top bar, and counts the bar in the score top inset', async () => {
+    wrap(<TabsPage trackId="upload:song1" />);
+    await screen.findByTestId('tab-score');
+    const sticky = screen.getByTestId('tabs-sticky');
+    expect(sticky.className).toMatch(/(^|\s)sticky(\s|$)/);
+    expect(sticky.className).toContain('top-(--ember-topbar-h,0px)');
+    const rect = vi.spyOn(sticky, 'getBoundingClientRect').mockReturnValue({ height: 50 } as DOMRect);
+    // No bar (a phone): the toolbar alone.
+    expect(score.last!.getTopInset!()).toBe(50);
+    // The layout publishes the bar's height; happy-dom does not inherit
+    // custom properties, so set it where the page reads it.
+    sticky.style.setProperty('--ember-topbar-h', '80px');
+    expect(score.last!.getTopInset!()).toBe(130);
+    rect.mockRestore();
+  });
+
   it('shows the instruments the score reports, and switches between them', async () => {
     wrap(<TabsPage trackId="upload:song1" />);
     await screen.findByTestId('tab-score');
