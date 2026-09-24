@@ -23,13 +23,14 @@ const GONE_STATUSES = new Set([401, 403, 404, 410]);
  *    so refreshes and repeat polls are safe; a track added twice to one
  *    session queues once on the host — accepted v1 limitation);
  *  - consumes guest commands (skip → player.next());
- *  - publishes the playing index so guests' screens track it;
+ *  - publishes which SESSION row is playing so guests' screens track it;
  *  - drops the hosting flag (which also suppresses radio auto-extend) once
  *    the session has ended, is gone, or is no longer ours.
  *  Autoplay note: the very first track still needs one tap on the host phone
  *  (browser gesture policy) — after that, advances are automatic. */
 export function useSessionHost() {
-  const { next, index } = usePlayer();
+  const { next } = usePlayer();
+  const currentId = usePlayerStore((s) => s.queue[s.index]?.id ?? null);
   const hostingId = useSessionStore((s) => s.hostingSessionId);
   const { data: state, error } = useQuerySession(hostingId);
 
@@ -89,11 +90,32 @@ export function useSessionHost() {
     return () => clearInterval(timer);
   }, [sessionId]);
 
-  // Publish the playing position (guests highlight the right row).
+  // Publish the playing position (guests highlight the right row). Guests
+  // index the session queue, not this player's queue, so translate: the row
+  // of the playing song (its first, as a repeat queues once here). A song
+  // from outside the session publishes nothing.
+  const nowIndex = state?.session.nowIndex;
+  const row = state && currentId ? state.queue.findIndex((q) => q.track.id === currentId) : -1;
   useEffect(() => {
-    if (!sessionId || index < 0) return;
-    api.publishSessionNow(sessionId, index).catch(() => {});
-  }, [sessionId, index]);
+    if (!sessionId || row < 0 || row === nowIndex) return;
+    api.publishSessionNow(sessionId, row).catch(() => {});
+  }, [sessionId, row, nowIndex]);
+}
+
+/** Start hosting on this device. Whatever is playing keeps playing, but the
+ *  rest of the old queue goes: the group's songs come next, and a guest's
+ *  Skip only ever skips the song in front of everyone. */
+export function startHosting(sessionId: string) {
+  const { queue, index } = usePlayerStore.getState();
+  const playing = queue[index];
+  usePlayerStore.setState({
+    queue: playing ? [playing] : [],
+    index: playing ? 0 : -1,
+    baseCount: 0,
+    shuffle: false,
+    orderBackup: null,
+  });
+  useSessionStore.getState().setHostingSessionId(sessionId);
 }
 
 /** Session page: a host looking at their own live session claims the host

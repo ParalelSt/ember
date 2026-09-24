@@ -25,10 +25,13 @@ vi.mock('@/components/player/PlayerProvider', () => ({
   usePlayer: () => ({ next, index: usePlayerStore.getState().index }),
 }));
 
-const { useSessionHost } = await import('./useSessionHost');
+const { useSessionHost, startHosting } = await import('./useSessionHost');
 
 const a = makeTrack({ id: 'youtube:a', sourceId: 'a', title: 'A' });
 const b = makeTrack({ id: 'youtube:b', sourceId: 'b', title: 'B' });
+const mine1 = makeTrack({ id: 'youtube:m1', sourceId: 'm1', title: 'Mine 1' });
+const mine2 = makeTrack({ id: 'youtube:m2', sourceId: 'm2', title: 'Mine 2' });
+const mine3 = makeTrack({ id: 'youtube:m3', sourceId: 'm3', title: 'Mine 3' });
 
 function state(over: Partial<SessionState['session']> = {}, tracks: Track[] = [a, b]): SessionState {
   return {
@@ -103,5 +106,62 @@ describe('useSessionHost (app-level, no session page open)', () => {
     });
     expect(api.getSession).not.toHaveBeenCalled();
     expect(api.consumeSessionCommands).not.toHaveBeenCalled();
+  });
+});
+
+/** Starting a carlist while your own music is queued: guests read the
+ *  published position as a row of the SESSION queue, so it has to be one,
+ *  and their songs have to come next, not after your leftovers. Bughunt X5. */
+describe('carlist started with music already queued', () => {
+  it('drops the leftover queue at start but keeps the playing song', () => {
+    usePlayerStore.setState({ queue: [mine1, mine2, mine3], index: 1, shuffle: true, orderBackup: [mine3, mine1, mine2] });
+    useSessionStore.setState({ hostingSessionId: null });
+    startHosting('s1');
+    const st = usePlayerStore.getState();
+    expect(st.queue.map((t) => t.id)).toEqual(['youtube:m2']);
+    expect(st.index).toBe(0);
+    // Turning shuffle off must not bring the old queue back.
+    expect(st.orderBackup).toBeNull();
+    expect(useSessionStore.getState().hostingSessionId).toBe('s1');
+  });
+
+  it("queues the group's songs right after the playing song", async () => {
+    usePlayerStore.setState({ queue: [mine1, mine2, mine3], index: 1 });
+    startHosting('s1');
+    api.getSession.mockResolvedValue(state());
+    renderHook(() => useSessionHost(), { wrapper });
+    await waitFor(() =>
+      expect(usePlayerStore.getState().queue.map((t) => t.id)).toEqual(['youtube:m2', 'youtube:a', 'youtube:b']),
+    );
+  });
+
+  it('publishes the session row of the playing song, not the player index', async () => {
+    // Player: [own song, a, b], playing a (player index 1 = session row 0).
+    usePlayerStore.setState({ queue: [mine1, a, b], index: 1 });
+    api.getSession.mockResolvedValue(state({ nowIndex: 1 }));
+    renderHook(() => useSessionHost(), { wrapper });
+    await waitFor(() => expect(api.publishSessionNow).toHaveBeenCalled());
+    expect(api.publishSessionNow).toHaveBeenLastCalledWith('s1', 0);
+    expect(api.publishSessionNow).not.toHaveBeenCalledWith('s1', 1);
+  });
+
+  it('publishes nothing while a song outside the session plays', async () => {
+    usePlayerStore.setState({ queue: [mine1, a, b], index: 0 });
+    api.getSession.mockResolvedValue(state());
+    renderHook(() => useSessionHost(), { wrapper });
+    await waitFor(() => expect(api.getSession).toHaveBeenCalled());
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(100);
+    });
+    expect(api.publishSessionNow).not.toHaveBeenCalled();
+  });
+
+  it('points a song the group added twice at its first row', async () => {
+    // The host queues a repeat once, where it first appears (prev from b).
+    usePlayerStore.setState({ queue: [mine1, a, b], index: 1 });
+    api.getSession.mockResolvedValue(state({ nowIndex: 1 }, [a, b, a]));
+    renderHook(() => useSessionHost(), { wrapper });
+    await waitFor(() => expect(api.publishSessionNow).toHaveBeenCalledWith('s1', 0));
+    expect(api.publishSessionNow).toHaveBeenCalledTimes(1);
   });
 });
