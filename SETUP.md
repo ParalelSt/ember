@@ -199,6 +199,16 @@ nothing, with no error explaining why. `update.sh` always restarts PocketBase.
 It refuses to run if you have uncommitted changes, and only runs `npm ci` when
 `package-lock.json` actually changed.
 
+**If an update fails** (the install, the build, Ctrl+C, or the SSH window
+closing half way), `update.sh` puts the previous version back: the previous
+commit, its `node_modules` and its build, and starts it again. It ends with
+`UPDATE FAILED: <which step>` and "The update did NOT go through", and Ember
+keeps working on the old version until the error is fixed. Ember is still
+down while the install and build run, as before: a few minutes per update.
+While it runs, the previous `node_modules` and build wait next to the new ones
+as `*.update-prev` (roughly 1 GB more disk), and are deleted once the new
+version has built.
+
 ### Crash logging
 
 `./start-static.sh` stays in the foreground as a **watchdog** over PocketBase
@@ -297,8 +307,10 @@ journalctl --user -u ember -f     # its output (also in logs/)
 ./update.sh                       # updates, then restarts it through systemd
 ```
 
-The unit runs `./start-static.sh`, so the watchdog, crash reports and logs all
-work as described above. `systemctl --user stop ember` is a planned stop (no
+The unit runs `./start-static.sh --no-build`, so the watchdog, crash reports
+and logs all work as described above, and it serves the build `./update.sh`
+last made instead of rebuilding at every boot. After changing code by hand,
+build before restarting: `(cd apps/web && npx next build --webpack) && systemctl --user restart ember`. `systemctl --user stop ember` is a planned stop (no
 crash report): systemd signals the watchdog, which stops both services, and
 the unit gives it 35 s to do so.
 ---

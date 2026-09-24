@@ -11,6 +11,9 @@
 #   systemctl --user enable --now ember
 #   sudo loginctl enable-linger "$USER"   # keeps it running while nobody is logged in
 #
+# It serves the existing build (--no-build): ./update.sh builds before it
+# restarts the unit, so a boot is quick and never waits on a build.
+#
 # Day to day:
 #   systemctl --user status ember       is it running?
 #   journalctl --user -u ember -f       its output (also in logs/*.log)
@@ -34,7 +37,7 @@ StartLimitBurst=5
 [Service]
 Type=simple
 WorkingDirectory=%h/ember
-ExecStart=%h/ember/start-static.sh
+ExecStart=%h/ember/start-static.sh --no-build
 # systemd's own PATH has no nvm or ~/.local; node, npx, lsof, curl and git
 # must all be found here.
 Environment=PATH=%h/.nvm/versions/node/v24.13.0/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin

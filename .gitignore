@@ -128,3 +128,6 @@ apps/web/components/library/options/
 apps/web/lib/spacing.ts
 apps/web/lib/spacing.test.ts
 tests/phone-bar-sizes-ui.test.mjs
+# update.sh sets the old node_modules and build aside here until the new
+# ones work (bughunt O1); never commit or stash them.
+*.update-prev
