@@ -188,7 +188,7 @@ function silentWav(seconds = 2, sampleRate = 8000) {
   check('the finished tab has one row in the tabs store', (rows.items ?? []).length === 1, `${(rows.items ?? []).length} row(s)`);
   check('the row is a shared generated alphaTex, named after the song, owned by who asked',
     row?.kind === 'generated' && row?.format === 'alphatex' && row?.shared === true && row?.user === alice.id
-      && row?.song_key === `${upTitle.toLowerCase()}::gen tester`,
+      && row?.song_key === `${upTitle.toLowerCase()}::::gen tester`,
     JSON.stringify(row ?? {}).slice(0, 200));
   const bobSees = await fetch(`${PB}/api/collections/tabs/records?filter=${filter}`, { headers: { Authorization: bob.token } })
     .then((r) => r.json());
