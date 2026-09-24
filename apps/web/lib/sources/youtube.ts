@@ -336,6 +336,65 @@ export async function ensureDownloaded(videoId: string, opts: { prefetch?: boole
     });
 
   inFlight.set(videoId, job);
+  // A fresh download gets its loudness measured right away, in the
+  // background, so its next play (usually the listener's real one, after a
+  // prefetch) already has a gain. Never delays the file itself.
+  job.then(() => { void measureLoudness(videoId); }, () => {});
+  return job;
+}
+
+/** Loudness normalization (loudness.py). A downloaded song is measured once
+ *  with ffmpeg's ebur128 and its gain, in dB, lands beside it as
+ *  `<videoId>.loudness.json`. The audio file is never changed: the player
+ *  applies the gain as a volume multiplier. */
+export function loudnessSidecarPath(videoId: string): string {
+  return path.join(MUSIC_DIR, `${videoId}.loudness.json`);
+}
+
+/** The stored gain in dB, or null when this song has not been measured. */
+export function readTrackGain(videoId: string): number | null {
+  if (!VIDEO_ID_RE.test(videoId)) return null;
+  try {
+    const raw = JSON.parse(fs.readFileSync(loudnessSidecarPath(videoId), 'utf8')) as { gainDb?: unknown };
+    return typeof raw.gainDb === 'number' && Number.isFinite(raw.gainDb) ? raw.gainDb : null;
+  } catch {
+    return null;
+  }
+}
+
+/** One measurement at a time: it is a full decode of the song, and nobody is
+ *  waiting on it (a song without a gain just plays unchanged). */
+const LOUDNESS_LANE = createSemaphore(1, { queueTimeoutMs: 300_000, maxQueue: 256 });
+const measuring = new Map<string, Promise<number | null>>();
+/** A song ffmpeg could not read is not retried on every request. */
+const measureFailedAt = new Map<string, number>();
+const MEASURE_RETRY_MS = 10 * 60_000;
+
+/** Measure a downloaded song's loudness (once; concurrent callers share the
+ *  run) and resolve with its gain in dB. Null, without spawning anything,
+ *  when the song is not fully on disk yet or failed to measure recently.
+ *  Never rejects. */
+export function measureLoudness(videoId: string): Promise<number | null> {
+  const known = readTrackGain(videoId);
+  if (known !== null) return Promise.resolve(known);
+  const running = measuring.get(videoId);
+  if (running) return running;
+  if (isDownloading(videoId) || !findCachedFile(videoId)) return Promise.resolve(null);
+  const failedAt = measureFailedAt.get(videoId);
+  if (failedAt !== undefined && Date.now() - failedAt < MEASURE_RETRY_MS) return Promise.resolve(null);
+
+  const job = LOUDNESS_LANE.run(() => spawnPython<{ gainDb?: unknown }>(['loudness', '--', videoId], 120_000))
+    .then((r) => {
+      measureFailedAt.delete(videoId);
+      return typeof r?.gainDb === 'number' && Number.isFinite(r.gainDb) ? r.gainDb : null;
+    })
+    .catch((e: unknown) => {
+      // A full queue is the host being busy, not the song being bad.
+      if (!(e instanceof BusyError)) measureFailedAt.set(videoId, Date.now());
+      return null;
+    })
+    .finally(() => measuring.delete(videoId));
+  measuring.set(videoId, job);
   return job;
 }
 
