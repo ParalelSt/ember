@@ -298,3 +298,45 @@ const APP_LOG_SCRIPT: &str = r#"
   send('info', 'webview logging active @ ' + location.href + ' | bridge at load: ' + (bridge() ? 'yes' : 'no'));
 })();
 "#;
+
+#[cfg(test)]
+mod capability_tests {
+    // bughunt L3: the checked-in capability used to grant IPC (native audio,
+    // Discord presence, log reading) to http://localhost:3000 unconditionally,
+    // even in the file a signed release build ships with if for any reason
+    // scripts/set-url.mjs's rewrite is skipped. That script now writes ONLY
+    // the origin EMBER_APP_URL points at, and this checked-in default must
+    // stay just as narrow, so a shipped build never trusts an unrelated
+    // localhost:3000 on the user's machine.
+    const DEFAULT_CAPABILITY: &str =
+        include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/capabilities/default.json"));
+
+    /// The exact string a compromised or merely nosy local process could bind
+    /// to on the user's own machine. Built from parts so this file itself
+    /// does not read as "the capability grants access to X", which would
+    /// make the assertion below trivially true no matter what the JSON says.
+    fn local_dev_origin() -> String {
+        format!("http://{}:{}", "localhost", 3000)
+    }
+
+    #[test]
+    fn shipped_capability_does_not_trust_the_local_dev_server() {
+        let cap: serde_json::Value = serde_json::from_str(DEFAULT_CAPABILITY).expect("valid JSON");
+        let urls = cap["remote"]["urls"].as_array().expect("remote.urls array");
+        let origin = local_dev_origin();
+        assert!(
+            !urls.iter().any(|u| u.as_str() == Some(origin.as_str())),
+            "capabilities/default.json must not grant IPC to the local dev server in a shipped build: {urls:?}"
+        );
+    }
+
+    #[test]
+    fn shipped_capability_still_grants_the_real_server() {
+        let cap: serde_json::Value = serde_json::from_str(DEFAULT_CAPABILITY).expect("valid JSON");
+        let urls = cap["remote"]["urls"].as_array().expect("remote.urls array");
+        assert!(
+            urls.iter().any(|u| u.as_str().is_some_and(|s| s.contains("ember.tailf4de41.ts.net"))),
+            "capabilities/default.json must still grant IPC to the real Ember server: {urls:?}"
+        );
+    }
+}
