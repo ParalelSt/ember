@@ -14,6 +14,15 @@ import { SessionHostBridge } from '@/components/session/SessionHostBridge';
 import { hydrateOfflineStore } from '@/lib/offline';
 import { useUiStore } from '@/stores/useUiStore';
 import { useChangelog } from '@/hooks/useChangelog';
+import { useIsDesktop } from '@/hooks/useIsDesktop';
+import { cn } from '@/lib/utils';
+// PREVIEW ONLY: the desktop top bar candidates, switchable live. Delete with
+// components/nav/TopBarPreviewSwitch.tsx once the owner picks one.
+import {
+  TopBarPreviewSwitch,
+  useTopBarPreview,
+  useTopBarPreviewInit,
+} from '@/components/nav/TopBarPreviewSwitch';
 
 export default function AppShellLayout({ children }: { children: ReactNode }) {
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -21,6 +30,15 @@ export default function AppShellLayout({ children }: { children: ReactNode }) {
   const [scrollerH, setScrollerH] = useState(0);
   const setSearchOpen = useUiStore((s) => s.setSearchOpen);
   const { hasNew } = useChangelog();
+  const isDesktop = useIsDesktop();
+  useTopBarPreviewInit();
+  const pickedMode = useTopBarPreview((s) => s.mode);
+  const barH = useTopBarPreview((s) => s.barH);
+  // PREVIEW ONLY. Modes 1 to 3 (desktop): the search bar is `sticky top-0`
+  // INSIDE the scroller, so the scrollbar runs the whole column. Mode 4 and
+  // every phone: the layout as it is, bar in flow above the scroller.
+  const mode = isDesktop ? pickedMode : 4;
+  const barInScroller = mode !== 4;
 
   // Hydrate the offline store on app boot. On Android this subscribes to the
   // native EmberOffline plugin's pins/trackFiles; elsewhere it reads OPFS
@@ -62,7 +80,11 @@ export default function AppShellLayout({ children }: { children: ReactNode }) {
           className="relative flex-1 min-h-0 flex flex-col"
           style={
             scrollerH
-              ? ({ ['--ember-scroller-h' as string]: `${scrollerH}px` } as React.CSSProperties)
+              ? ({
+                  ['--ember-scroller-h' as string]: `${scrollerH}px`,
+                  // PREVIEW ONLY: the in-scroller bar's height (0 in mode 4).
+                  ['--ember-topbar-h' as string]: `${barInScroller ? barH : 0}px`,
+                } as React.CSSProperties)
               : undefined
           }
         >
@@ -70,7 +92,7 @@ export default function AppShellLayout({ children }: { children: ReactNode }) {
               everything the page itself draws, with its results hanging
               under it. Phone: nothing in flow, just the full-screen sheet
               when it is open. */}
-          <SearchOverlayContainer />
+          {!barInScroller && <SearchOverlayContainer />}
           {/* The OUTER scroller owns the scrollbar — so it lives on the far
               right edge of the viewport, past the LyricsPanel. Inside, a
               flex row holds <main> (grows tall, drives the scroll) and the
@@ -87,15 +109,30 @@ export default function AppShellLayout({ children }: { children: ReactNode }) {
                 it sits over the page's own top padding. bg-background
                 (never a hardcoded colour) so it holds under every theme;
                 pointer-events-none so it never blocks a click. */}
-            <div className="sticky top-0 z-10 hidden h-0 overflow-visible md:block">
-              <div
-                data-testid="app-scroller-fade"
-                aria-hidden
-                className="pointer-events-none h-stack bg-linear-to-b from-background to-transparent"
-              />
-            </div>
-            <div className="flex min-w-0 min-h-full">
-              <main className="flex-1 min-w-0 p-page md:p-page-lg">
+            {barInScroller ? (
+              // PREVIEW ONLY: the bar itself (SearchDropdown draws its box,
+              // covers and band per mode), sticky at the scroller's top.
+              <SearchOverlayContainer />
+            ) : (
+              <div className="sticky top-0 z-10 hidden h-0 overflow-visible md:block">
+                <div
+                  data-testid="app-scroller-fade"
+                  aria-hidden
+                  className="pointer-events-none h-stack bg-linear-to-b from-background to-transparent"
+                />
+              </div>
+            )}
+            {/* With the bar in the scroller, the row fills what is left
+                under it, so a short page does not scroll by the bar's
+                height. */}
+            <div
+              className="flex min-w-0 min-h-full"
+              style={barInScroller ? { minHeight: 'calc(100% - var(--ember-topbar-h, 0px))' } : undefined}
+            >
+              {/* Modes 2 and 3 (PREVIEW ONLY): the bar already carries a
+                  16px band under the pill, so the page's own top padding
+                  drops to 16 and the heading stays 32px under the pill. */}
+              <main className={cn('flex-1 min-w-0 p-page md:p-page-lg', (mode === 2 || mode === 3) && 'md:pt-block')}>
                 {/* pb-section: room past the page's last row, so scrolled
                     to the end nothing is left under Back to top. */}
                 <div className="mx-auto max-w-(--content-max) pb-section">{children}</div>
@@ -107,6 +144,7 @@ export default function AppShellLayout({ children }: { children: ReactNode }) {
               the scroller's own bottom edge whether or not the player bar
               is showing. */}
           <BackToTop scrollRef={scrollerRef} />
+          <TopBarPreviewSwitch />
         </div>
         <PlayerBar />
         <MobileNav onSearchClick={() => setSearchOpen(true)} />

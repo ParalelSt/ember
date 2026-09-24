@@ -329,7 +329,7 @@ function TabsSheet({ song, sources, onBack }: { song: TabSong; sources: TabSourc
           <div
             ref={stickyRef}
             data-testid="tabs-sticky"
-            className="sticky top-0 z-20 mt-block border-b border-border bg-background/95 py-cluster backdrop-blur"
+            className="sticky top-(--ember-topbar-h,0px) z-20 mt-block border-b border-border bg-background/95 py-cluster backdrop-blur"
           >
             <TabsToolbar
               phone={phone}
@@ -393,7 +393,14 @@ function TabsSheet({ song, sources, onBack }: { song: TabSong; sources: TabSourc
             onSeek={seek}
             onScore={(next) => setDrawn({ tabId: tab.id, info: next })}
             getPageScroller={() => stickyRef.current?.closest<HTMLElement>('[data-app-scroller]') ?? null}
-            getTopInset={() => stickyRef.current?.getBoundingClientRect().height ?? 0}
+            getTopInset={() => {
+              // The toolbar, plus the in-scroller top bar above it (PREVIEW
+              // ONLY, TopBarPreviewSwitch: `--ember-topbar-h` is 0 in mode 4).
+              const el = stickyRef.current;
+              if (!el) return 0;
+              const bar = parseFloat(getComputedStyle(el).getPropertyValue('--ember-topbar-h')) || 0;
+              return el.getBoundingClientRect().height + bar;
+            }}
             className="mt-block"
           />
         </>
