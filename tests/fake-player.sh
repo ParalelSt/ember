@@ -173,6 +173,18 @@ case "$CMD" in
       process.stdout.write(JSON.stringify(out));
     ' "$VIDEO_ID"
     ;;
+  loudness)
+    # loudness.py stand-in: a downloaded song gets FAKE_GAIN_DB (default -3)
+    # written beside it, the same sidecar the real one writes.
+    OUT="$MUSIC_DIR/$VIDEO_ID.m4a"
+    if [ ! -f "$OUT" ]; then
+      echo "ERROR: loudness: $VIDEO_ID is not downloaded" >&2
+      exit 1
+    fi
+    printf '{"lufs": -11.0, "peakDb": -0.5, "gainDb": %s, "targetLufs": -14.0}' "${FAKE_GAIN_DB:--3}" \
+      > "$MUSIC_DIR/$VIDEO_ID.loudness.json"
+    cat "$MUSIC_DIR/$VIDEO_ID.loudness.json"
+    ;;
   *)
     printf '{"error": "fake-player: unsupported command %s"}' "$CMD" >&2
     exit 1
