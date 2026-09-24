@@ -6,6 +6,13 @@
 #   ./update.sh --no-start   do everything except bring services back up
 #                            (for hosts running Ember under systemd)
 #   ./update.sh --check      show what would change, touch nothing
+#   ./update.sh --here       restart Ember in this terminal even outside tmux
+#
+# WHERE EMBER RUNS AFTERWARDS. Run from inside tmux (or screen), Ember is
+# restarted right there, in the foreground, as always. Run from a plain SSH
+# shell, it is restarted in the background in a tmux session named "ember"
+# (`tmux attach -t ember` to see it): started in this terminal, it would
+# stop the moment the SSH window closes (bughunt O2).
 #
 # WHY THIS EXISTS, and not just `git pull && ./start-static.sh`:
 # start-static.sh deliberately SKIPS starting PocketBase when it's already
@@ -21,13 +28,17 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$ROOT"
 
 MODE="start"
-case "${1:-}" in
-  --no-start) MODE="no-start" ;;
-  --check)    MODE="check" ;;
-  --force)    MODE="force" ;;
-  "")         ;;
-  *) echo "usage: $0 [--no-start|--check|--force]"; exit 1 ;;
-esac
+HERE=0
+for arg in "$@"; do
+  case "$arg" in
+    --no-start) MODE="no-start" ;;
+    --check)    MODE="check" ;;
+    --force)    MODE="force" ;;
+    --here)     HERE=1 ;;
+    "")         ;;
+    *) echo "usage: $0 [--no-start|--check|--force] [--here]"; exit 1 ;;
+  esac
+done
 
 ENV_FILE="$ROOT/apps/web/.env.local"
 # Same reader as start-static.sh: Next's own env loader when Next is
@@ -147,6 +158,65 @@ fi
 
 [ "$MODE" = "check" ] || require_lsof
 
+# Where Ember is restarted at the end (see the top of this file). Decided
+# before anything changes, so a host without tmux hears it now, not after
+# Ember has been stopped.
+TMUX_SESSION="ember"
+if [ -n "${TMUX:-}" ] || [ -n "${STY:-}" ] || [ "$HERE" = 1 ]; then
+  RELAUNCH="here"
+else
+  RELAUNCH="tmux"
+fi
+if [ "$RELAUNCH" = tmux ] && { [ "$MODE" = start ] || [ "$MODE" = force ]; } \
+   && ! command -v tmux >/dev/null 2>&1; then
+  echo "✗ NOT UPDATED: tmux is not installed."
+  echo "  update.sh restarts Ember inside tmux, so it keeps running after you close"
+  echo "  this window. Install it, then run the update again:"
+  echo
+  echo "      sudo apt install tmux && ./update.sh"
+  echo
+  echo "  Or keep Ember in this window (closing the window then stops Ember):"
+  echo
+  echo "      ./update.sh --here"
+  echo
+  exit 1
+fi
+
+# launch_ember: the last step. Here, or in the tmux session in the background
+# (the tmux server, not this terminal, is then its parent, so an SSH hangup
+# never reaches it). Only the ports are passed along: everything else comes
+# from apps/web/.env.local, and a running tmux server would not see this
+# shell's environment anyway.
+launch_ember() {
+  if [ "$RELAUNCH" = here ]; then
+    exec "$ROOT/start-static.sh"
+  fi
+  local cmd pid
+  # When the watchdog stops (Ctrl+C), a shell stays in the window, like a
+  # tmux window where it was started by hand.
+  cmd="PORT=$(printf %q "$PORT") POCKETBASE_PORT=$(printf %q "$PB_PORT") $(printf %q "$ROOT/start-static.sh"); exec \"\${SHELL:-/bin/sh}\""
+  if tmux has-session -t "=$TMUX_SESSION" 2>/dev/null; then
+    tmux new-window -t "$TMUX_SESSION:" -c "$ROOT" "$cmd"
+  else
+    tmux new-session -d -s "$TMUX_SESSION" -c "$ROOT" "$cmd"
+  fi
+  for _ in $(seq 1 75); do
+    pid="$(tr -dc '0-9' 2>/dev/null <"$ROOT/logs/watchdog.pid" || true)"
+    if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null \
+       && ps -p "$pid" -o command= 2>/dev/null | grep -q 'start-static'; then
+      echo "✓ Ember is running in the background, in tmux session \"$TMUX_SESSION\" (watchdog pid $pid)."
+      echo "  It keeps running when you close this window. To watch it:"
+      echo
+      echo "      tmux attach -t $TMUX_SESSION      (leave it running again: Ctrl+B, then D)"
+      echo
+      exit 0
+    fi
+    sleep 0.2
+  done
+  echo "✗ Ember did not start in tmux. See why: tmux attach -t $TMUX_SESSION"
+  exit 1
+}
+
 echo "▶ fetching…"
 git fetch --quiet origin main
 LOCAL="$(git rev-parse HEAD)"
@@ -255,4 +325,4 @@ else
 fi
 
 echo "▶ restarting (PocketBase reboots, so pb_hooks run)…"
-exec "$ROOT/start-static.sh"
+launch_ember

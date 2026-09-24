@@ -62,6 +62,7 @@
     "test:android-native-log": "node tests/android-native-log.mjs",
     "test:android-call": "bash tests/android-auto-call.sh",
     "test:watchdog": "bash tests/watchdog.test.sh",
+    "test:update-script": "bash tests/update-script.test.sh",
     "test:crash-report": "node tests/crash-report.test.mjs",
     "test:import": "node tests/import.test.mjs",
     "test:import-ui": "node tests/import-ui.test.mjs",
