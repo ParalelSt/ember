@@ -29,12 +29,30 @@ interface StatusError extends Error {
 
 export async function loadSession(pb: PocketBase, id: string): Promise<RecordModel> {
   try {
-    return await pb.collection('sessions').getOne(id, { expand: 'host' });
+    return await pb.collection('sessions').getOne(id);
   } catch {
     const e: StatusError = new Error('Session not found.');
     e.status = 404;
     throw e;
   }
+}
+
+/** Display names by user id, for the carlist screen: the name field only,
+ *  never an email (bughunt X8). Members cannot read each other's user rows,
+ *  so this needs the server client. A member without a name is left out. */
+export async function displayNames(pb: PocketBase, ids: string[]): Promise<Map<string, string>> {
+  const unique = [...new Set(ids.filter(Boolean))];
+  const names = new Map<string, string>();
+  if (unique.length === 0) return names;
+  const rows = await pb.collection('users').getFullList({
+    filter: unique.map((id) => pb.filter('id = {:id}', { id })).join(' || '),
+    fields: 'id,name',
+  });
+  for (const r of rows) {
+    const name = String(r.name ?? '').trim();
+    if (name) names.set(r.id, name);
+  }
+  return names;
 }
 
 export function assertActive(session: RecordModel): void {

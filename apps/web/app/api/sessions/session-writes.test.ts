@@ -15,6 +15,7 @@ const SESSION = { id: 's1', code: 'ABC234', name: 'Trip', host: 'u1', active: tr
 const SESSION_COLLECTIONS = ['sessions', 'session_tracks', 'session_commands', 'session_members'];
 
 const serverWrites: string[] = [];
+const userQueries: Row[] = [];
 const memberWrites: string[] = [];
 
 function fakePb(kind: 'server' | 'member') {
@@ -22,6 +23,7 @@ function fakePb(kind: 'server' | 'member') {
   const refused = (name: string) => kind === 'member' && SESSION_COLLECTIONS.includes(name);
   const deny = (status: number) => Promise.reject(Object.assign(new Error('refused'), { status }));
   return {
+    filter: (raw: string, params: Record<string, string>) => raw.replace('{:id}', `"${params.id}"`),
     collection: (name: string) => ({
       getOne: async (id: string): Promise<Row> => {
         if (refused(name)) return deny(404);
@@ -34,10 +36,28 @@ function fakePb(kind: 'server' | 'member') {
         if (name === 'session_tracks') return { id: 'st1', position: 2 };
         return { id: 'row1' };
       },
-      getFullList: async (): Promise<Row[]> => {
+      getFullList: async (opts: Row = {}): Promise<Row[]> => {
         if (refused(name)) return [];
+        if (name === 'users') {
+          userQueries.push(opts);
+          // The server client can read every field; the route must ask for
+          // names only.
+          const all = [
+            { id: 'u1', name: 'Hana', email: 'hana@ember.test' },
+            { id: 'u2', name: '', email: 'nia@ember.test' },
+          ];
+          const fields = String(opts.fields ?? '').split(',').filter(Boolean);
+          return all.map((u) => (fields.length ? Object.fromEntries(fields.map((f) => [f, u[f as keyof typeof u]])) : u));
+        }
         if (name === 'session_commands') return [{ id: 'c1', type: 'skip' }];
-        if (name === 'session_tracks' || name === 'playlist_tracks') return [{ id: 'st1', track: 't1', position: 1 }];
+        if (name === 'session_tracks') {
+          const t = { id: 'trk', external_id: 'youtube:abcdefghijk', source: 'youtube', source_id: 'abcdefghijk', title: 'Song' };
+          return [
+            { id: 'st1', track: 't1', position: 1, added_by: 'u1', expand: { track: t } },
+            { id: 'st2', track: 't1', position: 2, added_by: 'u2', expand: { track: t } },
+          ];
+        }
+        if (name === 'playlist_tracks') return [{ id: 'pt1', track: 't1', position: 1 }];
         return [];
       },
       create: async (data: Row): Promise<Row> => {
@@ -98,6 +118,7 @@ const route = async (p: Promise<{ POST?: unknown; GET?: unknown }>, method: 'POS
 beforeEach(() => {
   serverWrites.length = 0;
   memberWrites.length = 0;
+  userQueries.length = 0;
   caller.id = 'u1';
 });
 
@@ -142,6 +163,16 @@ describe('carlist routes write through the server (X2)', () => {
     const end = await route(import('./[id]/end/route'));
     expect((await end(req(), ctx)).status).toBe(200);
     expect(serverWrites).toEqual(['delete:session_commands', 'update:sessions', 'update:sessions']);
+  });
+
+  it('names people by their name only, never their email (X8)', async () => {
+    caller.id = 'u2';
+    const GET = await route(import('./[id]/route'), 'GET');
+    const body = await (await GET(req(), ctx)).json();
+    expect(body.session.hostName).toBe('Hana');
+    expect(body.queue.map((i: { addedByName: string }) => i.addedByName)).toEqual(['Hana', 'someone']);
+    expect(JSON.stringify(body)).not.toContain('@ember.test');
+    expect(userQueries).toEqual([expect.objectContaining({ fields: 'id,name' })]);
   });
 
   it('someone who never joined is still refused', async () => {

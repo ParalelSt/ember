@@ -66,8 +66,8 @@ async function signIn(email, password) {
   return { id: auth.record.id, email, token: auth.token, record: auth.record, cookie: cookieOf(auth.token, auth.record) };
 }
 
-async function member(name) {
-  const email = `${name.toLowerCase()}-${Date.now()}-${Math.floor(Math.random() * 1e5)}@ember.test`;
+async function member(name, label = name) {
+  const email = `${label.toLowerCase()}-${Date.now()}-${Math.floor(Math.random() * 1e5)}@ember.test`;
   await asSuper('/api/collections/users/records', {
     method: 'POST',
     body: JSON.stringify({ email, password: PW, passwordConfirm: PW, name, verified: true }),
@@ -170,7 +170,17 @@ check('F4 the guest sees the queue', state.status === 200 && !!queued, `status $
 // X8: names, not "someone" / "host".
 check('X8a the queue shows who else added a song', hostQueued?.addedByName === 'Hana' && queued?.addedByName === 'Gus', `host's song by ${JSON.stringify(hostQueued?.addedByName)}`);
 check('X8b the carlist shows the host by name', state.json?.session?.hostName === 'Hana', `hostName ${JSON.stringify(state.json?.session?.hostName)}`);
-check('X8c no email address reaches other members', !JSON.stringify(state.json ?? {}).includes('@ember.test'));
+const nia = await member('', 'nia'); // never set a name
+await as(nia, '/api/sessions/join', { method: 'POST', body: JSON.stringify({ code }) });
+const niaSong = mkTrack('Nameless Song');
+await as(nia, `/api/sessions/${sid}/tracks`, { method: 'POST', body: JSON.stringify({ track: niaSong }) });
+const state2 = await asJson(gus, `/api/sessions/${sid}`);
+const niaQueued = (state2.json?.queue ?? []).find((i) => i.track?.id === niaSong.id);
+check(
+  'X8c no email address reaches other members, even for someone with no name',
+  !!niaQueued && !JSON.stringify(state2.json ?? {}).includes('@ember.test'),
+  `nameless member shows as ${JSON.stringify(niaQueued?.addedByName)}`,
+);
 
 const skipped = await as(gus, `/api/sessions/${sid}/skip`, { method: 'POST' });
 check('F5 the guest skips', skipped.status === 201, `status ${skipped.status}`);
