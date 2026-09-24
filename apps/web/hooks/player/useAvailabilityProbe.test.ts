@@ -126,4 +126,39 @@ describe('useAvailabilityProbe', () => {
     expect(next).not.toHaveBeenCalled();
     expect(usePlayerStore.getState().queue).toEqual([live]);
   });
+
+  it('offline: asks nobody, flags nothing, says nothing, and moves on', () => {
+    Object.defineProperty(navigator, 'onLine', { configurable: true, get: () => false });
+    try {
+      const { probe, next } = setup();
+      const onStillPlayable = vi.fn();
+      probe(onStillPlayable);
+
+      expect(api.getTrackAvailability).not.toHaveBeenCalled();
+      expect(next).toHaveBeenCalledTimes(1);
+      expect(onStillPlayable).not.toHaveBeenCalled();
+      expect(usePlayerStore.getState().queue[0].unavailableAt).toBeUndefined();
+      expect(logger.breadcrumb).toHaveBeenCalledWith('playback', 'probe-skipped-offline', { trackId: 'youtube:dead' });
+    } finally {
+      Object.defineProperty(navigator, 'onLine', { configurable: true, get: () => true });
+    }
+  });
+});
+
+describe('useAvailabilityProbe offline, with a handler', () => {
+  it('hands the failed track to it instead of calling Next', () => {
+    Object.defineProperty(navigator, 'onLine', { configurable: true, get: () => false });
+    try {
+      usePlayerStore.setState({ queue: [dead, live], index: 0 });
+      const next = vi.fn();
+      const onOffline = vi.fn();
+      const { result } = renderHook(() => useAvailabilityProbe({ current: next }, { current: onOffline }));
+      result.current();
+      expect(onOffline).toHaveBeenCalledWith(dead);
+      expect(next).not.toHaveBeenCalled();
+      expect(api.getTrackAvailability).not.toHaveBeenCalled();
+    } finally {
+      Object.defineProperty(navigator, 'onLine', { configurable: true, get: () => true });
+    }
+  });
 });

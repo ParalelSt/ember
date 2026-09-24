@@ -22,8 +22,18 @@ import { isUnavailable } from '@/lib/playback/queueNav';
  *  this track, so it failed for some passing reason (a download the host could
  *  not make, a stream that stopped) and the listener is owed a word about the
  *  song they are looking at. It is the ONLY place that says so, precisely so a
- *  track that turns out to be dead gets the skip message instead, never both. */
-export function useAvailabilityProbe(nextRef: RefObject<() => void>) {
+ *  track that turns out to be dead gets the skip message instead, never both.
+ *
+ *  Offline there is nobody to ask: the failure is the connection, not the
+ *  track. The probe then flags nothing and hands the track to
+ *  `onOfflineRef` (PlayerProvider: play the next song with a copy on this
+ *  device, or stop with the offline badge and come back to this one when the
+ *  connection returns), or calls plain Next without one. Asking anyway used to end in
+ *  "Couldn't load" for every song in the queue. */
+export function useAvailabilityProbe(
+  nextRef: RefObject<() => void>,
+  onOfflineRef?: RefObject<((failed: { id: string }) => void) | null>,
+) {
   const qc = useQueryClient();
 
   return useCallback((onStillPlayable?: (track: { title: string }) => void) => {
@@ -31,6 +41,13 @@ export function useAvailabilityProbe(nextRef: RefObject<() => void>) {
     const cur = st.queue[st.index];
     if (!cur || isUnavailable(cur)) return;
     const erroredId = cur.id;
+
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+      logger.breadcrumb('playback', 'probe-skipped-offline', { trackId: erroredId });
+      if (onOfflineRef?.current) onOfflineRef.current(cur);
+      else nextRef.current();
+      return;
+    }
 
     api.getTrackAvailability(erroredId).then(({ unavailable, reason }) => {
       if (!unavailable) {
@@ -61,5 +78,5 @@ export function useAvailabilityProbe(nextRef: RefObject<() => void>) {
       // than leaving the player silent with no explanation.
       onStillPlayable?.(cur);
     });
-  }, [qc, nextRef]);
+  }, [qc, nextRef, onOfflineRef]);
 }

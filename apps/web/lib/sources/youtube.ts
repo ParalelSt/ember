@@ -6,6 +6,7 @@ import type { Track } from '@/types/track';
 import { redactSecrets } from '@/lib/import/redact';
 import { serverLogger } from '@/lib/logger/server';
 import { parseMusicCheck, type MusicCheck, type RawMusicCheck } from '@/lib/import/musicCheck';
+import { BusyError, downloadGate, type Release } from '@/lib/downloadGate';
 
 // apps/web is one level deeper than the old apps/api in workspace layout,
 // but both resolve to the same spotify-clone root.
@@ -220,7 +221,14 @@ export function isDownloading(videoId: string): boolean {
   return inFlight.has(videoId);
 }
 
-export async function ensureDownloaded(videoId: string): Promise<string> {
+/** Returns the path of a finished download, starting one when needed.
+ *
+ *  A cold download holds one slot of the global download gate
+ *  (lib/downloadGate) for as long as yt-dlp runs; joining one already in
+ *  flight never takes a slot. `prefetch` marks a low-priority caller (the
+ *  auto cache fetching upcoming songs): it may start a cold download only
+ *  when the host is idle, and gets a BusyError instead of waiting. */
+export async function ensureDownloaded(videoId: string, opts: { prefetch?: boolean } = {}): Promise<string> {
   if (!VIDEO_ID_RE.test(videoId)) {
     const e: PythonError = new Error('invalid videoId');
     e.status = 400;
@@ -238,8 +246,23 @@ export async function ensureDownloaded(videoId: string): Promise<string> {
   const already = findCachedFile(videoId);
   if (already) return already;
 
-  const job = runPython<{ filePath: string }>(['download', '--', videoId], { timeoutMs: 180000 })
-    .then((result) => result.filePath)
+  let slot: Release | null = null;
+  if (opts.prefetch) {
+    slot = downloadGate.tryAcquireIdle();
+    if (!slot) throw new BusyError(30);
+  }
+
+  const job = (async () => {
+    // Registered in inFlight below before this first await, so a caller that
+    // arrives while we wait for a slot joins this run instead of queueing.
+    const release = slot ?? (await downloadGate.acquire());
+    try {
+      const result = await runPython<{ filePath: string }>(['download', '--', videoId], { timeoutMs: 180000 });
+      return result.filePath;
+    } finally {
+      release();
+    }
+  })()
     .finally(() => {
       // Clear on failure too, so a transient error doesn't poison the track
       // until the process restarts.

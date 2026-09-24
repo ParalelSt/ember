@@ -85,6 +85,18 @@ describe('withRequestLog', () => {
     expect(data).toMatchObject({ status: 502, error: 'upstream failed' });
   });
 
+  it('a 503 (a busy host refusing a prefetch) is logged at warn, never error', async () => {
+    const handler = vi.fn(async () =>
+      Response.json({ error: 'Host is busy, try again shortly.', cause: 'busy' }, { status: 503, headers: { 'Retry-After': '30' } }),
+    );
+    const res = await withRequestLog('stream/route', handler)(makeReq() as never, {});
+
+    expect(res.status).toBe(503);
+    expect(errorSpy).not.toHaveBeenCalled();
+    expect(warnSpy).toHaveBeenCalledTimes(1);
+    expect(warnSpy.mock.calls[0][2]).toMatchObject({ status: 503, error: 'Host is busy, try again shortly.' });
+  });
+
   it('a 200 response logs nothing', async () => {
     const handler = vi.fn(async () => Response.json({ ok: true }));
     const wrapped = withRequestLog('quiet/route', handler);

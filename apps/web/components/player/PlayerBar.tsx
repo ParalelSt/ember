@@ -15,6 +15,7 @@ import { AddToPlaylistMenu } from '@/components/track/menus/AddToPlaylistMenu';
 import { ShareButton } from '@/components/track/ShareButton';
 import { QueueSheet } from '@/components/player/QueueSheet';
 import { NowPlayingSummary } from '@/components/player/NowPlayingSummary';
+import { OfflineBadge } from '@/components/player/OfflineBadge';
 import { PhonePlayerBar, PLAYER_BAR_CHROME } from '@/components/player/PhonePlayerBar';
 import { SeekBar } from '@/components/player/SeekBar';
 import { TransportControls } from '@/components/player/TransportControls';
@@ -120,6 +121,7 @@ export function PlayerBar() {
           and wider window, and the phone bar owns that gesture. */}
       <div className="flex items-center gap-3 min-w-0">
         <NowPlayingSummary track={current} size="sm" />
+        <OfflineBadge />
         {current && user && (
           <div className="hidden sm:flex items-center gap-1 shrink-0">
             <LikeButton liked={isLiked} onToggle={toggleLike} />

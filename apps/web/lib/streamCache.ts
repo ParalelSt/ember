@@ -38,13 +38,43 @@ let running = false;
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-/** Ask for a track to be cached. Cheap, idempotent, never throws. */
-export function queueCacheWarm(videoId: string): void {
+/** Wakes the drain loop out of a backoff wait, so a job queued (or pulled
+ *  forward) with a short delay does not sit behind a 90 s sleep. */
+let wake: (() => void) | null = null;
+function sleepUntilWoken(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    const timer = setTimeout(done, ms);
+    function done() {
+      clearTimeout(timer);
+      if (wake === done) wake = null;
+      resolve();
+    }
+    wake = done;
+  });
+}
+
+/** Ask for a track to be cached. Cheap, idempotent, never throws.
+ *
+ *  `delayMs` defaults to WARM_DELAY_MS (hang back while someone streams it).
+ *  A refused prefetch passes 0: nobody is streaming that track, and the
+ *  client comes back after its Retry-After hoping to find it on disk. A
+ *  shorter delay also pulls an already-queued job forward. */
+export function queueCacheWarm(videoId: string, opts: { delayMs?: number } = {}): void {
   if (process.env.STREAM_CACHE_WARM === '0') return;
-  if (queued.has(videoId) || findCachedFile(videoId)) return;
+  if (findCachedFile(videoId)) return;
+  const readyAt = Date.now() + Math.max(0, opts.delayMs ?? WARM_DELAY_MS);
+  if (queued.has(videoId)) {
+    const job = queue.find((j) => j.videoId === videoId && j.attempt === 0);
+    if (job && readyAt < job.readyAt) {
+      job.readyAt = readyAt;
+      wake?.();
+    }
+    return;
+  }
   if (queue.length >= MAX_QUEUE) return;
   queued.add(videoId);
-  queue.push({ videoId, attempt: 0, readyAt: Date.now() + WARM_DELAY_MS });
+  queue.push({ videoId, attempt: 0, readyAt });
+  wake?.();
   void drain();
 }
 
@@ -58,7 +88,7 @@ async function drain(): Promise<void> {
       if (idx === -1) {
         // Everything is still backing off — wait for the soonest.
         const soonest = Math.min(...queue.map((j) => j.readyAt));
-        await sleep(Math.max(1_000, soonest - now));
+        await sleepUntilWoken(Math.max(1_000, soonest - now));
         continue;
       }
 
