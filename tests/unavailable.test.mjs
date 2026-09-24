@@ -269,14 +269,15 @@ const REPL_BBB = 'bbbbbbbbbbb';
 const REPL_EEE = 'eeeeeeeeeee';
 const REPL_FFF = 'fffffffffff';
 
-// fff's title ("Dead Song (Live)", see fake-player.sh) shares DEAD's songKey
-// even though the fake search lists it last: it must be hoisted to the
-// front, ahead of bbb and eee which only share DEAD's title-less bucket.
+// fff's title is "Dead Song (Live)" (see fake-player.sh). songKey now folds
+// variantMarkers in (lib/songKey.ts): "(Live)" makes fff a different
+// recording from DEAD's "Dead Song", so they no longer share a songKey and
+// fff is not hoisted; the fake search's own order (bbb, eee, fff) stands.
 const repl1 = await call(`/api/tracks/${encodeURIComponent(`youtube:${DEAD}`)}/replacements`).then((r) => r.json());
 const repl1Ids = (repl1.candidates ?? []).map((t) => t.id);
 check(
-  'B2 candidates in order fff (same songKey, hoisted), bbb, eee',
-  JSON.stringify(repl1Ids) === JSON.stringify([`youtube:${REPL_FFF}`, `youtube:${REPL_BBB}`, `youtube:${REPL_EEE}`]),
+  'B2 candidates in fake-search order: bbb, eee, fff (fff is a live take, not the same songKey)',
+  JSON.stringify(repl1Ids) === JSON.stringify([`youtube:${REPL_BBB}`, `youtube:${REPL_EEE}`, `youtube:${REPL_FFF}`]),
   JSON.stringify(repl1Ids),
 );
 

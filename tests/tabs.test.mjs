@@ -156,7 +156,7 @@ const pbLegacy = await pbAs(bob, `/api/collections/tabs/records/${legacy.id}`).t
 check('P5 PocketBase hides it from another member too', pbLegacy === 404, `status ${pbLegacy}`);
 const legacyRow = await pbAdmin(`/api/collections/tabs/records/${legacy.id}`).then((r) => r.json());
 check('P6 the store fields were filled in, shared left off',
-  legacyRow.kind === 'file' && legacyRow.format === 'gp5' && legacyRow.song_key === 'legacy riff::oldband' && legacyRow.shared === false,
+  legacyRow.kind === 'file' && legacyRow.format === 'gp5' && legacyRow.song_key === 'legacy riff::::oldband' && legacyRow.shared === false,
   `${legacyRow.kind} ${legacyRow.format} ${legacyRow.song_key} shared=${legacyRow.shared}`);
 await pbAdmin(`/api/collections/tabs/records/${legacy.id}`, { method: 'DELETE' });
 

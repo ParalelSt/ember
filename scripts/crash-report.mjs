@@ -70,11 +70,12 @@ export function extractDefaultWebhook(routeFile) {
 
 /** Order: crash webhook, then bug-report webhook, from the process env, then
  *  the same two from apps/web/.env.local (the watchdog does not load that file
- *  into its env), then the bug-report route's built-in default. */
+ *  into its env), then the built-in default shared with the bug-report route
+ *  and the daily digest (lib/reports/discord.ts). */
 export function resolveWebhook({
   env = process.env,
   envFile = path.join(ROOT, 'apps/web/.env.local'),
-  routeFile = path.join(ROOT, 'apps/web/app/api/bug-report/route.ts'),
+  routeFile = path.join(ROOT, 'apps/web/lib/reports/discord.ts'),
 } = {}) {
   if (env.DISCORD_CRASH_WEBHOOK_URL) return env.DISCORD_CRASH_WEBHOOK_URL;
   if (env.DISCORD_BUG_REPORT_WEBHOOK_URL) return env.DISCORD_BUG_REPORT_WEBHOOK_URL;
