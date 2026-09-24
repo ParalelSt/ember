@@ -3,10 +3,19 @@ import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 
 // createClient talks to next/headers' cookies(), which throws outside a
-// real request scope. The wrapper only needs it for best-effort userId
-// resolution, so stub it the same way every call site would see "no user".
+// real request scope. lib/auth's verifiedUserId() is what the wrapper now
+// uses for best-effort userId resolution (bughunt L1), so stub the
+// PocketBase client it calls through to, the same way every call site would
+// see "no user" by default. Individual tests override the mock per-call to
+// exercise the verified-vs-cookie distinction.
+const authRefresh = vi.fn(async () => {
+  throw Object.assign(new Error('no session'), { status: 401 });
+});
 vi.mock('@/lib/pocketbase/server', () => ({
-  createClient: vi.fn(async () => ({ authStore: { record: null } })),
+  createClient: vi.fn(async () => ({
+    authStore: { token: null, isValid: false, record: null, save: vi.fn(), clear: vi.fn() },
+    collection: () => ({ authRefresh }),
+  })),
 }));
 
 // Spy on the append instead of hitting the filesystem: same as any other
@@ -193,6 +202,40 @@ describe('withRequestLog and non-JSON bodies', () => {
     // the wrapper neither consumed nor cloned the body
     expect(res.bodyUsed).toBe(false);
     expect(await res.text()).toBe('ab');
+  });
+});
+
+describe('withRequestLog userId comes from the verified record, not the cookie copy', () => {
+  // bughunt L1: the pb_auth cookie carries a JSON copy of the user record
+  // that the browser can edit freely. Only the token is trustworthy; the id
+  // must come from PocketBase's answer to that token (verifiedUserId in
+  // lib/auth.ts), same as requireUser() does, never from the editable copy.
+  it('logs the token-verified id even when the cookie copy claims a different one', async () => {
+    const { createClient } = await import('@/lib/pocketbase/server');
+    vi.mocked(createClient).mockResolvedValueOnce({
+      authStore: {
+        token: 'tok-l1-test',
+        isValid: true,
+        // a member edited this in devtools to look like someone else
+        record: { id: 'forged-other-user-id' },
+        save: vi.fn(),
+        clear: vi.fn(),
+      },
+      collection: () => ({
+        authRefresh: async () => ({ record: { id: 'real-verified-user-id', is_admin: false } }),
+      }),
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as any);
+
+    const handler = vi.fn(async () => {
+      throw new Error('boom');
+    });
+    const wrapped = withRequestLog('l1/route', handler);
+    await wrapped(makeReq() as never, {});
+
+    expect(errorSpy).toHaveBeenCalledTimes(1);
+    const [, , , , ctx] = errorSpy.mock.calls[0];
+    expect(ctx).toMatchObject({ userId: 'real-verified-user-id' });
   });
 });
 

@@ -15,6 +15,15 @@ mod update;
 
 use tauri::Manager;
 
+/// Whether EMBER_DEVTOOLS=1 should open devtools on launch (bughunt L4):
+/// only in a debug build, and only when the env var is exactly "1". Pure and
+/// parameterized (rather than reading `cfg!`/`env::var` itself) so the
+/// decision is unit testable independent of which profile `cargo test`
+/// itself happens to run as.
+fn wants_devtools_on_launch(is_debug_build: bool, env_val: Option<&str>) -> bool {
+    is_debug_build && env_val == Some("1")
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     // Logging FIRST. It used to come after the audio engine, so anything that
@@ -139,9 +148,14 @@ pub fn run() {
             }
 
             // Devtools: right-click → Inspect Element works in release too when
-            // the `devtools` feature is on. EMBER_DEVTOOLS=1 opens it on launch.
-            #[cfg(feature = "devtools")]
-            if std::env::var("EMBER_DEVTOOLS").as_deref() == Ok("1") {
+            // the `devtools` feature is on (see Cargo.toml). EMBER_DEVTOOLS=1
+            // additionally opens it on launch, but only in debug builds: there
+            // is no crate-level "devtools" feature to gate on (bughunt L4,
+            // clippy flagged the old `#[cfg(feature = "devtools")]` here as
+            // unexpected/dead code, so EMBER_DEVTOOLS=1 silently did nothing),
+            // and auto-opening in a shipped release build is not the intended
+            // behavior anyway.
+            if wants_devtools_on_launch(cfg!(debug_assertions), std::env::var("EMBER_DEVTOOLS").ok().as_deref()) {
                 if let Some(w) = app.get_webview_window("main") {
                     w.open_devtools();
                 }
@@ -266,3 +280,66 @@ const APP_LOG_SCRIPT: &str = r#"
   send('info', 'webview logging active @ ' + location.href + ' | bridge at load: ' + (bridge() ? 'yes' : 'no'));
 })();
 "#;
+
+#[cfg(test)]
+mod devtools_tests {
+    use super::wants_devtools_on_launch;
+
+    #[test]
+    fn opens_in_a_debug_build_when_asked() {
+        assert!(wants_devtools_on_launch(true, Some("1")));
+    }
+
+    #[test]
+    fn stays_closed_in_a_release_build_even_when_asked() {
+        assert!(!wants_devtools_on_launch(false, Some("1")));
+    }
+
+    #[test]
+    fn stays_closed_in_a_debug_build_when_not_asked() {
+        assert!(!wants_devtools_on_launch(true, None));
+        assert!(!wants_devtools_on_launch(true, Some("0")));
+    }
+}
+
+#[cfg(test)]
+mod capability_tests {
+    // bughunt L3: the checked-in capability used to grant IPC (native audio,
+    // Discord presence, log reading) to http://localhost:3000 unconditionally,
+    // even in the file a signed release build ships with if for any reason
+    // scripts/set-url.mjs's rewrite is skipped. That script now writes ONLY
+    // the origin EMBER_APP_URL points at, and this checked-in default must
+    // stay just as narrow, so a shipped build never trusts an unrelated
+    // localhost:3000 on the user's machine.
+    const DEFAULT_CAPABILITY: &str =
+        include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/capabilities/default.json"));
+
+    /// The exact string a compromised or merely nosy local process could bind
+    /// to on the user's own machine. Built from parts so this file itself
+    /// does not read as "the capability grants access to X", which would
+    /// make the assertion below trivially true no matter what the JSON says.
+    fn local_dev_origin() -> String {
+        format!("http://{}:{}", "localhost", 3000)
+    }
+
+    #[test]
+    fn shipped_capability_does_not_trust_the_local_dev_server() {
+        let cap: serde_json::Value = serde_json::from_str(DEFAULT_CAPABILITY).expect("valid JSON");
+        let urls = cap["remote"]["urls"].as_array().expect("remote.urls array");
+        let origin = local_dev_origin();
+        assert!(
+            !urls.iter().any(|u| u.as_str() == Some(origin.as_str())),
+            "capabilities/default.json must not grant IPC to the local dev server in a shipped build: {urls:?}"
+        );
+    }
+
+    #[test]
+    fn shipped_capability_still_grants_the_real_server() {
+        let cap: serde_json::Value = serde_json::from_str(DEFAULT_CAPABILITY).expect("valid JSON");
+        let urls = cap["remote"]["urls"].as_array().expect("remote.urls array");
+        assert!(
+            urls.iter().any(|u| u.as_str().is_some_and(|s| s.contains("ember.tailf4de41.ts.net"))),
+            "capabilities/default.json must still grant IPC to the real Ember server: {urls:?}"
+        );
+    }
+}
