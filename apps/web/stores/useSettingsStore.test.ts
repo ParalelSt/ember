@@ -46,8 +46,22 @@ describe('useSettingsStore tabsEnabled', () => {
     getPlugins.mockResolvedValue({ partyVolume: false, tabsEnabled: true });
     await useSettingsStore.getState().loadPlugins('u1');
     expect(Object.keys(stored()).sort()).toEqual([
-      'autoCacheEnabled', 'autoCacheOnMetered', 'autoReportEnabled', 'partyVolume', 'tabsEnabled',
+      'autoCacheEnabled', 'autoCacheOnMetered', 'autoReportEnabled', 'normalizeVolume', 'partyVolume', 'tabsEnabled',
     ]);
+  });
+});
+
+describe('useSettingsStore normalizeVolume', () => {
+  it('is on by default', () => {
+    expect(useSettingsStore.getState().normalizeVolume).toBe(true);
+  });
+
+  it('persists and follows the account like the other plugin switches', async () => {
+    useSettingsStore.setState({ pluginsUserId: 'u1' });
+    await useSettingsStore.getState().setNormalizeVolume(false);
+    expect(useSettingsStore.getState().normalizeVolume).toBe(false);
+    expect(stored().normalizeVolume).toBe(false);
+    expect(updatePlugins).toHaveBeenCalledWith({ normalizeVolume: false });
   });
 });
 
@@ -83,10 +97,10 @@ describe('useSettingsStore plugin sync', () => {
   });
 
   it('load applies the account values', async () => {
-    getPlugins.mockResolvedValue({ partyVolume: true, tabsEnabled: false });
+    getPlugins.mockResolvedValue({ partyVolume: true, tabsEnabled: false, normalizeVolume: false });
     await useSettingsStore.getState().loadPlugins('u1');
     expect(useSettingsStore.getState()).toMatchObject({
-      partyVolume: true, tabsEnabled: false, pluginsLoaded: true, pluginsUserId: 'u1',
+      partyVolume: true, tabsEnabled: false, normalizeVolume: false, pluginsLoaded: true, pluginsUserId: 'u1',
     });
     expect(updatePlugins).not.toHaveBeenCalled();
   });
@@ -103,13 +117,13 @@ describe('useSettingsStore plugin sync', () => {
     useSettingsStore.setState({ tabsEnabled: false, partyVolume: true });
     getPlugins.mockResolvedValue({});
     await useSettingsStore.getState().loadPlugins('u1');
-    expect(updatePlugins).toHaveBeenCalledWith({ partyVolume: true, tabsEnabled: false });
+    expect(updatePlugins).toHaveBeenCalledWith({ partyVolume: true, tabsEnabled: false, normalizeVolume: true });
     expect(useSettingsStore.getState()).toMatchObject({ partyVolume: true, tabsEnabled: false });
   });
 
   it('first load migrates only the missing keys', async () => {
     useSettingsStore.setState({ tabsEnabled: false, partyVolume: true });
-    getPlugins.mockResolvedValue({ tabsEnabled: true });
+    getPlugins.mockResolvedValue({ tabsEnabled: true, normalizeVolume: true });
     await useSettingsStore.getState().loadPlugins('u1');
     expect(updatePlugins).toHaveBeenCalledWith({ partyVolume: true });
     expect(useSettingsStore.getState()).toMatchObject({ partyVolume: true, tabsEnabled: true });
@@ -173,7 +187,7 @@ describe('useSettingsStore plugin sync', () => {
   });
 
   it('sign-out stops syncing and keeps the values as the local fallback', async () => {
-    getPlugins.mockResolvedValue({ partyVolume: true, tabsEnabled: false });
+    getPlugins.mockResolvedValue({ partyVolume: true, tabsEnabled: false, normalizeVolume: true });
     await useSettingsStore.getState().loadPlugins('u1');
     useSettingsStore.getState().resetPluginSync();
     expect(useSettingsStore.getState()).toMatchObject({

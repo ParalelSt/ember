@@ -33,6 +33,8 @@ import { usePositionPersistence } from '@/hooks/player/usePositionPersistence';
 import { useRadioExtend } from '@/hooks/player/useRadioExtend';
 import { useKeyboardShortcuts } from '@/hooks/player/useKeyboardShortcuts';
 import { useRemoteCommands } from '@/hooks/player/useRemoteCommands';
+import { useTrackGain } from '@/hooks/player/useTrackGain';
+import { dbToLinear } from '@/lib/playback/normalization';
 import { createWebBackend } from '@/lib/playback/webBackend';
 import { createCapacitorBackend } from '@/lib/playback/capacitorBackend';
 import { createNativeBackend, nativeBackendReady } from '@/lib/playback/nativeBridge';
@@ -170,6 +172,15 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const partyVolume = useSettingsStore((s) => s.partyVolume);
   const muted = usePlayerStore((s) => s.muted);
   const loopMode = usePlayerStore((s) => s.loopMode);
+
+  // Volume normalization: the current song's measured gain as a multiplier
+  // for setVolume. Not on the native Android engine, which moves between
+  // songs by itself (see AudioBackend.setVolume).
+  const normalizeVolume = useSettingsStore((s) => s.normalizeVolume);
+  const normalizeOn = normalizeVolume && initialKind !== null && initialKind !== 'android';
+  const trackGainDb = useTrackGain(current?.id, queue[index + 1]?.id, normalizeOn);
+  const normGain = normalizeOn ? dbToLinear(trackGainDb) : 1;
+  const normGainRef = useRef(1);
 
   // The stored playhead: who owns it, when it is written, where a track
   // resumes. Called here, before the backend is built, because the backend's
@@ -402,10 +413,11 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const duckRef = useRef(1);
   useEffect(() => {
     duckRef.current = duck;
+    normGainRef.current = normGain;
     const b = backendRef.current;
     if (!b) return;
-    b.setVolume(musicLevel(volume, muted, duck), { gain: partyVolume ? 2 : 1 });
-  }, [backendReady, volume, partyVolume, muted, duck]);
+    b.setVolume(musicLevel(volume, muted, duck), { gain: partyVolume ? 2 : 1, normGain });
+  }, [backendReady, volume, partyVolume, muted, duck, normGain]);
 
   // When party mode turns OFF, snap volume back under the normal 0.85 cap so the
   // slider thumb doesn't stick at the right edge.
@@ -434,7 +446,10 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     // partyVolume lives in the settings store, not the player store.
     const st = usePlayerStore.getState();
     const party = useSettingsStore.getState().partyVolume;
-    backendRef.current.setVolume(musicLevel(st.volume, st.muted, duckRef.current), { gain: party ? 2 : 1 });
+    backendRef.current.setVolume(musicLevel(st.volume, st.muted, duckRef.current), {
+      gain: party ? 2 : 1,
+      normGain: normGainRef.current,
+    });
   }, []);
 
   const fallbackToWebAudio = useCallback((reason: string) => {

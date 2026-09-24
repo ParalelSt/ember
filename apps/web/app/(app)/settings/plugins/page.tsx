@@ -16,6 +16,8 @@ export default function SettingsPlugins() {
   const setPartyVolume = useSettingsStore((s) => s.setPartyVolume);
   const tabsEnabled = useSettingsStore((s) => s.tabsEnabled);
   const setTabsEnabled = useSettingsStore((s) => s.setTabsEnabled);
+  const normalizeVolume = useSettingsStore((s) => s.normalizeVolume);
+  const setNormalizeVolume = useSettingsStore((s) => s.setNormalizeVolume);
 
   return (
     <section className="max-w-2xl">
@@ -25,6 +27,13 @@ export default function SettingsPlugins() {
       </p>
 
       <div className="mt-6 flex flex-col gap-3">
+        <PluginToggle
+          name="Normalize volume"
+          description="Plays every song at about the same loudness, so a quiet older song is not drowned out by a loud new one. Songs are measured once after they are first played. Not yet in the Android app."
+          on={normalizeVolume}
+          onToggle={() => void setNormalizeVolume(!normalizeVolume)}
+        />
+
         <PluginToggle
           name="Party-size volume slider"
           tag="PC only"

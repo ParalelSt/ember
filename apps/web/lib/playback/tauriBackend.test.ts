@@ -154,3 +154,24 @@ describe('tauriBackend', () => {
     expect(events.onTime).toHaveBeenCalledWith(91);
   });
 });
+
+describe('tauriBackend setVolume with normalization', () => {
+  const lastAmplitude = () =>
+    invoked.filter((c) => c.cmd === 'audio_set_volume').at(-1)?.args?.amplitude as number;
+
+  it('multiplies the curve by the song gain, capped at 1 outside party mode', () => {
+    const b = createTauriBackend(makeFakeEvents());
+    b.setVolume(0.64, { normGain: 0.5 });
+    expect(lastAmplitude()).toBeCloseTo(0.256, 5);
+    b.setVolume(1, { normGain: 2 });
+    expect(lastAmplitude()).toBe(1);
+    b.setVolume(0.64);
+    expect(lastAmplitude()).toBeCloseTo(0.512, 5);
+  });
+
+  it('party mode amplifies the normalized level', () => {
+    const b = createTauriBackend(makeFakeEvents());
+    b.setVolume(0.5, { gain: 2, normGain: 0.5 });
+    expect(lastAmplitude()).toBeCloseTo(0.5, 5);
+  });
+});

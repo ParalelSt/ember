@@ -148,6 +148,10 @@ export const api = {
   getTrack: (videoId: string) => req<{ track: Track }>(`/youtube/track/${encodeURIComponent(videoId)}`),
   getTrackAvailability: (id: string) =>
     req<{ unavailable: boolean; reason: string | null }>(`/tracks/${encodeURIComponent(id)}/availability`),
+  /** Volume normalization gain in dB (null: not measured yet). Quiet: it is
+   *  asked on every song change, and offline that failing is expected. */
+  getTrackGain: (id: string) =>
+    quiet<{ gainDb: number | null }>(`/tracks/${encodeURIComponent(id)}/loudness`),
   getReplacements: (id: string) =>
     req<{ candidates: Track[] }>(`/tracks/${encodeURIComponent(id)}/replacements`),
   saveToServer: (videoId: string) =>

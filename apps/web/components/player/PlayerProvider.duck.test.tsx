@@ -44,14 +44,14 @@ beforeEach(() => {
 describe('PlayerProvider: ducking', () => {
   it('scales the music to 30% of the slider while ducked and restores it after', () => {
     render(<PlayerProvider>{null}</PlayerProvider>);
-    expect(lastVolume()).toEqual([0.8, { gain: 1 }]);
+    expect(lastVolume()).toEqual([0.8, { gain: 1, normGain: 1 }]);
 
     act(() => receiver.onDuck!(0.3));
     expect(lastVolume()![0]).toBeCloseTo(0.24);
-    expect(lastVolume()![1]).toEqual({ gain: 1 });
+    expect(lastVolume()![1]).toEqual({ gain: 1, normGain: 1 });
 
     act(() => receiver.onDuck!(1));
-    expect(lastVolume()).toEqual([0.8, { gain: 1 }]);
+    expect(lastVolume()).toEqual([0.8, { gain: 1, normGain: 1 }]);
   });
 
   it('a slider move while ducked stays ducked; mute still wins', () => {
@@ -63,7 +63,7 @@ describe('PlayerProvider: ducking', () => {
     expect(lastVolume()![0]).toBe(0);
     act(() => receiver.onDuck!(1));
     act(() => usePlayerStore.setState({ muted: false }));
-    expect(lastVolume()).toEqual([0.5, { gain: 1 }]);
+    expect(lastVolume()).toEqual([0.5, { gain: 1, normGain: 1 }]);
   });
 
   it('keeps the party gain while ducked', () => {
@@ -72,6 +72,6 @@ describe('PlayerProvider: ducking', () => {
     render(<PlayerProvider>{null}</PlayerProvider>);
     act(() => receiver.onDuck!(0.3));
     expect(lastVolume()![0]).toBeCloseTo(0.3);
-    expect(lastVolume()![1]).toEqual({ gain: 2 });
+    expect(lastVolume()![1]).toEqual({ gain: 2, normGain: 1 });
   });
 });

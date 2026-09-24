@@ -126,9 +126,11 @@ export const createTauriBackend: CreateAudioBackend = (events) => {
       events.onTime(target); // optimistic, mirrors web backend
     },
     setVolume(v, opts) {
-      // Same curve as the web backend: party (gain>1) = linear + amplify, else pow 1.5.
+      // Same curve as the web backend: party (gain>1) = linear + amplify, else
+      // pow 1.5 capped at 1. Normalization multiplies either.
       const gain = opts?.gain ?? 1;
-      const amplitude = gain > 1 ? Math.min(1, v) * gain : Math.pow(v, 1.5);
+      const norm = opts?.normGain ?? 1;
+      const amplitude = gain > 1 ? Math.min(1, v) * gain * norm : Math.min(1, Math.pow(v, 1.5) * norm);
       void invoke('audio_set_volume', { amplitude }).catch(() => {});
     },
     setMetadata(track: Track | null) {

@@ -8,9 +8,9 @@ import { PLUGIN_KEYS, type PluginKey, type StoredPlugins } from '@/lib/pluginSet
 /** Persisted user-level toggles. Anything that changes how the app
  *  behaves between sessions lives here so the choice survives reloads.
  *
- *  Plugin switches (partyVolume, tabsEnabled) also follow the account: when
- *  signed in, AuthProvider calls loadPlugins and the account's values win
- *  over this device's cache. localStorage stays as that cache, so the UI
+ *  Plugin switches (partyVolume, tabsEnabled, normalizeVolume) also follow
+ *  the account: when signed in, AuthProvider calls loadPlugins and the
+ *  account's values win over this device's cache. localStorage stays as that cache, so the UI
  *  does not flicker on load and still reads right offline or signed out.
  *  autoReportEnabled and the auto cache switches are per device only. */
 interface SettingsState {
@@ -29,6 +29,11 @@ interface SettingsState {
    *  default so nobody who already uses tabs loses them on update. */
   tabsEnabled: boolean;
   setTabsEnabled: (on: boolean) => Promise<void>;
+  /** Volume normalization (lib/playback/normalization): each song plays at
+   *  about the same loudness, using the gain the server measured for it. On
+   *  by default. */
+  normalizeVolume: boolean;
+  setNormalizeVolume: (on: boolean) => Promise<void>;
   /** Quietly save the current song and the next two on this device, so a
    *  dropped connection does not stop the music (hooks/player/useAutoCache).
    *  Per device, not synced: it is about this device's storage and network. */
@@ -81,6 +86,8 @@ export const useSettingsStore = create<SettingsState>()(
         setAutoReportEnabled: (autoReportEnabled) => set({ autoReportEnabled }),
         tabsEnabled: true,
         setTabsEnabled: (on) => savePlugin('tabsEnabled', on),
+        normalizeVolume: true,
+        setNormalizeVolume: (on) => savePlugin('normalizeVolume', on),
         autoCacheEnabled: true,
         setAutoCacheEnabled: (autoCacheEnabled) => set({ autoCacheEnabled }),
         autoCacheOnMetered: false,
@@ -132,6 +139,7 @@ export const useSettingsStore = create<SettingsState>()(
         partyVolume: s.partyVolume,
         autoReportEnabled: s.autoReportEnabled,
         tabsEnabled: s.tabsEnabled,
+        normalizeVolume: s.normalizeVolume,
         autoCacheEnabled: s.autoCacheEnabled,
         autoCacheOnMetered: s.autoCacheOnMetered,
       }),

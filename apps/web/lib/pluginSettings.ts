@@ -3,7 +3,7 @@
  *  follow the account across devices. Adding a plugin means adding its key
  *  here and a default in stores/useSettingsStore.ts; no schema change. */
 
-export const PLUGIN_KEYS = ['partyVolume', 'tabsEnabled'] as const;
+export const PLUGIN_KEYS = ['partyVolume', 'tabsEnabled', 'normalizeVolume'] as const;
 
 export type PluginKey = (typeof PLUGIN_KEYS)[number];
 
