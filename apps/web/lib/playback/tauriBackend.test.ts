@@ -108,6 +108,32 @@ describe('tauriBackend', () => {
     expect(backend.isPaused()).toBe(false);
   });
 
+  it('passes the track id as the cache key, so the engine can play its cached copy', () => {
+    const backend = createTauriBackend(makeFakeEvents());
+    backend.load('/api/youtube/stream/abc', { autoplay: true, cacheKey: 'youtube:abc' });
+
+    const load = invoked.find((i) => i.cmd === 'audio_load');
+    expect(load?.args).toMatchObject({
+      url: `${window.location.origin}/api/youtube/stream/abc`,
+      cacheKey: 'youtube:abc',
+    });
+  });
+
+  it('turns the cache adapter stand-in into a cache key the engine resolves itself', () => {
+    const backend = createTauriBackend(makeFakeEvents());
+    backend.load('cache:youtube:abc', { autoplay: true });
+
+    const load = invoked.find((i) => i.cmd === 'audio_load');
+    expect(load?.args).toMatchObject({ url: 'cache:youtube:abc', cacheKey: 'youtube:abc' });
+  });
+
+  it('sends no cache key when there is none', () => {
+    const backend = createTauriBackend(makeFakeEvents());
+    backend.load('/api/youtube/stream/abc', { autoplay: false });
+
+    expect(invoked.find((i) => i.cmd === 'audio_load')?.args).toMatchObject({ cacheKey: null });
+  });
+
   it('forwards a seek unclamped when the engine reported no duration, leaving the engine to judge it', async () => {
     const events = makeFakeEvents();
     const backend = createTauriBackend(events);

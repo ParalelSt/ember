@@ -60,9 +60,9 @@ pub struct AudioEngine {
     /// its sink goes in, rather than the autoplay it was started with. Written
     /// and read under the `sink` lock.
     want_play: AtomicBool,
-    /// The last track a load was asked for: url, cookie, start. What play
-    /// tries again when that load failed and nothing is loaded.
-    requested: Mutex<Option<(String, Option<String>, f64)>>,
+    /// The last track a load was asked for: url, cookie, start, cache key.
+    /// What play tries again when that load failed and nothing is loaded.
+    requested: Mutex<Option<Requested>>,
     /// Last loaded absolute stream URL: diagnostics, and what a backward seek
     /// in a forward-only track re-opens (see `plan_seek`).
     current_url: Mutex<Option<String>>,
@@ -267,6 +267,9 @@ impl AudioEngine {
     }
 }
 
+/// A load as it was asked for: url, cookie, start, cache key.
+type Requested = (String, Option<String>, f64, Option<String>);
+
 // --- Event payloads ---------------------------------------------------------
 
 #[derive(Clone, Serialize)]
@@ -335,7 +338,7 @@ fn emit_err<R: Runtime>(app: &AppHandle<R>, retry: &'static str, message: String
 /// fail here while playing fine in any browser. Sending the session makes the
 /// native engine as capable as the webview without opening uploads to the
 /// whole internet.
-fn http_client(cookie: Option<&str>) -> Result<Client, String> {
+pub(crate) fn http_client(cookie: Option<&str>) -> Result<Client, String> {
     let mut builder = Client::builder();
     if let Some(cookie) = cookie.filter(|c| !c.is_empty()) {
         let mut headers = HeaderMap::new();
@@ -1029,12 +1032,53 @@ pub async fn audio_load<R: Runtime>(
     autoplay: bool,
     start_at: f64,
     cookie: Option<String>,
+    cache_key: Option<String>,
 ) -> Result<(), String> {
-    load_track(&app, engine.inner(), url, autoplay, start_at, cookie).await
+    load_track(&app, engine.inner(), url, autoplay, start_at, cookie, cache_key).await
+}
+
+/// A decoder over a file in the auto cache (see cache.rs).
+///
+/// Seekable, with the file's length: a local seek costs nothing, so the
+/// forward-only treatment streamed fragmented bodies get is not needed.
+pub(crate) type CachedDecoder = rodio::Decoder<FailFlagged<std::io::BufReader<std::fs::File>>>;
+
+pub(crate) fn open_cached(
+    path: &std::path::Path,
+) -> Result<(CachedDecoder, Option<Duration>, Arc<AtomicBool>), String> {
+    let file = std::fs::File::open(path).map_err(|e| format!("could not open the cached copy: {e}"))?;
+    let len = file.metadata().map_err(|e| format!("could not read the cached copy: {e}"))?.len();
+    let failed = Arc::new(AtomicBool::new(false));
+    let reader = FailFlagged { inner: std::io::BufReader::new(file), failed: Arc::clone(&failed) };
+    let decoder = build_decoder(reader, Some(len))
+        .map_err(|e| format!("the cached copy could not be decoded: {e}"))?;
+    let total = {
+        use rodio::Source;
+        decoder.total_duration()
+    };
+    Ok((decoder, total, failed))
+}
+
+/// The cached file for `cache_key`, when the auto cache has one.
+fn cached_path_for<R: Runtime>(app: &AppHandle<R>, cache_key: Option<&str>) -> Option<(String, std::path::PathBuf)> {
+    use tauri::Manager;
+    let key = cache_key?;
+    let cache = app.try_state::<crate::cache::AudioCache>()?;
+    cache.path_for(key).map(|p| (key.to_string(), p))
+}
+
+/// Whether `url` is something the streaming path can fetch. The web side may
+/// send `cache:<id>` instead of a URL for a cached track (see tauriAdapter.ts).
+fn is_http_url(url: &str) -> bool {
+    url.starts_with("http://") || url.starts_with("https://")
 }
 
 /// What `audio_load` does, callable from inside the engine as well: a
 /// backward seek in a forward-only track re-opens the track through here.
+///
+/// `cache_key` is the Ember track id. When the auto cache holds it, the song
+/// plays from that file (online or not: it is instant and costs no data);
+/// otherwise, or when the file cannot be decoded, it streams `url`.
 async fn load_track<R: Runtime>(
     app: &AppHandle<R>,
     engine: &AudioEngine,
@@ -1042,6 +1086,7 @@ async fn load_track<R: Runtime>(
     autoplay: bool,
     start_at: f64,
     cookie: Option<String>,
+    cache_key: Option<String>,
 ) -> Result<(), String> {
     // Claim the load BEFORE any slow work, so a newer request can supersede
     // this one even if this one finishes later.
@@ -1052,13 +1097,66 @@ async fn load_track<R: Runtime>(
         engine.want_play.store(autoplay, Ordering::SeqCst);
     }
     if let Ok(mut r) = engine.requested.lock() {
-        *r = Some((url.clone(), cookie.clone(), start_at));
+        *r = Some((url.clone(), cookie.clone(), start_at, cache_key.clone()));
     }
     log_audio(
         app,
         "INFO",
         &format!("load #{my_seq} start_at={start_at:.1} autoplay={autoplay} url={url}"),
     );
+    {
+        use tauri::Manager;
+        if let Some(cache) = app.try_state::<crate::cache::AudioCache>() {
+            cache.set_playing(cache_key.clone());
+        }
+    }
+
+    // The auto cache first. A copy that will not open is deleted (it would
+    // fail the same way next time) and the song streams instead, once.
+    let mut stream_url = url.clone();
+    let mut from_cache = None;
+    if let Some((key, path)) = cached_path_for(app, cache_key.as_deref()) {
+        let opened = tauri::async_runtime::spawn_blocking(move || open_cached(&path))
+            .await
+            .map_err(|e| e.to_string())
+            .and_then(|r| r);
+        match opened {
+            Ok(o) => {
+                use tauri::Manager;
+                if let Some(cache) = app.try_state::<crate::cache::AudioCache>() {
+                    cache.touch(&key);
+                }
+                log_audio(app, "INFO", &format!("load #{my_seq} from the auto cache ({key})"));
+                from_cache = Some(o);
+            }
+            Err(e) => {
+                use tauri::Manager;
+                if let Some(cache) = app.try_state::<crate::cache::AudioCache>() {
+                    if !is_http_url(&stream_url) {
+                        if let Some(source) = cache.source_url(&key) {
+                            stream_url = source;
+                        }
+                    }
+                    let _ = cache.evict(std::slice::from_ref(&key));
+                }
+                log_audio(
+                    app,
+                    "WARN",
+                    &format!("load #{my_seq} cached copy of {key} unusable ({e}); deleted it, streaming instead"),
+                );
+            }
+        }
+    } else if !is_http_url(&stream_url) {
+        // A `cache:<id>` request whose copy has gone since the page looked
+        // (cleared, evicted): stream from where that copy came from, if known.
+        use tauri::Manager;
+        if let Some(source) = cache_key
+            .as_deref()
+            .and_then(|k| app.try_state::<crate::cache::AudioCache>().and_then(|c| c.source_url(k)))
+        {
+            stream_url = source;
+        }
+    }
 
     // Everything from "connect" to "we have a decoder", with the budgets that
     // keep a dead source from costing half a minute (see `open_source`).
@@ -1066,15 +1164,31 @@ async fn load_track<R: Runtime>(
     // A failure there is REPORTED through `audio:error` and then returns Ok:
     // that event carries the retry decision the webview needs, and an Err as
     // well would race a second, less informed report through invoke()'s catch.
-    let client = http_client(cookie.as_deref())?;
-    let opened = open_source_retrying(
-        client,
-        &url,
-        LoadBudgets::DEFAULT,
-        || engine.is_current_load(my_seq),
-        |first| log_audio(app, "WARN", &format!("load #{my_seq} {first}; trying once more")),
-    )
-    .await;
+    type Playable = (Box<dyn rodio::Source + Send>, Option<Duration>, Arc<AtomicBool>, bool);
+    let opened: Result<Playable, OpenError> = match from_cache {
+        Some((decoder, total, failed)) => Ok((Box::new(decoder), total, failed, false)),
+        None if !is_http_url(&stream_url) => Err(OpenError {
+            message: "the song is not in the cache and has no stream URL".into(),
+            retry: RETRY_NONE,
+            stalled: false,
+        }),
+        None => {
+            let client = http_client(cookie.as_deref())?;
+            open_source_retrying(
+                client,
+                &stream_url,
+                LoadBudgets::DEFAULT,
+                || engine.is_current_load(my_seq),
+                |first| log_audio(app, "WARN", &format!("load #{my_seq} {first}; trying once more")),
+            )
+            .await
+            .map(|o| {
+                let OpenedSource { decoder, total, failed, forward_only } = o;
+                let source: Box<dyn rodio::Source + Send> = Box::new(decoder);
+                (source, total, failed, forward_only)
+            })
+        }
+    };
     let opened = match opened {
         Ok(o) => o,
         Err(e) => {
@@ -1090,7 +1204,7 @@ async fn load_track<R: Runtime>(
             return Ok(());
         }
     };
-    let OpenedSource { decoder, total, failed, forward_only } = opened;
+    let (decoder, total, failed, forward_only) = opened;
 
     // Someone asked for a different track while this one was downloading —
     // discard it silently rather than yanking playback back.
@@ -1127,7 +1241,10 @@ async fn load_track<R: Runtime>(
         *slot = Some(sink);
         playing
     };
-    *engine.current_url.lock().map_err(|_| "lock")? = Some(url);
+    // What was actually asked of the host, so a backward seek in a
+    // forward-only track re-opens the same thing (a cached track is never
+    // forward-only). The same as `url` unless that was a `cache:` request.
+    *engine.current_url.lock().map_err(|_| "lock")? = Some(stream_url);
     *engine.current_cookie.lock().map_err(|_| "lock")? = cookie;
     engine.forward_only.store(forward_only, Ordering::SeqCst);
     *engine.current_total.lock().map_err(|_| "lock")? = total;
@@ -1187,13 +1304,13 @@ pub fn audio_play<R: Runtime>(app: AppHandle<R>, engine: State<'_, AudioEngine>)
     emit_bare(&app, "audio:play");
     // Outside the sink lock: set_nowplaying takes the controls lock.
     engine.set_nowplaying(true);
-    if let Some((url, cookie, start_at)) = retry {
+    if let Some((url, cookie, start_at, cache_key)) = retry {
         log_audio(&app, "INFO", &format!("play with nothing loaded: loading {url} again"));
         // Off this thread, as in audio_seek.
         tauri::async_runtime::spawn(async move {
             use tauri::Manager;
             let engine = app.state::<AudioEngine>();
-            let _ = load_track(&app, engine.inner(), url, true, start_at, cookie).await;
+            let _ = load_track(&app, engine.inner(), url, true, start_at, cookie, cache_key).await;
         });
     }
 }
@@ -1279,7 +1396,8 @@ pub fn audio_seek<R: Runtime>(app: AppHandle<R>, engine: State<'_, AudioEngine>,
             tauri::async_runtime::spawn(async move {
                 use tauri::Manager;
                 let engine = app.state::<AudioEngine>();
-                let _ = load_track(&app, engine.inner(), url, playing, target.as_secs_f64(), cookie)
+                // No cache key: only a streamed track is ever forward-only.
+                let _ = load_track(&app, engine.inner(), url, playing, target.as_secs_f64(), cookie, None)
                     .await;
             });
             return;
@@ -1489,6 +1607,9 @@ mod luka_repro;
 // Needs tauri's `test` feature, which is off on Windows (see Cargo.toml).
 #[cfg(all(test, not(windows)))]
 mod transport_repro;
+// Same: drives `audio_load` on the mock app.
+#[cfg(all(test, not(windows)))]
+mod cache_play;
 
 #[cfg(test)]
 mod tests {
@@ -1609,6 +1730,36 @@ mod tests {
         let engine = AudioEngine::new_degraded();
         let seq = engine.claim_load();
         assert!(engine.is_current_load(seq));
+    }
+
+    /// A cached copy opens as a seekable decoder that knows the song's
+    /// length. Runs everywhere, Windows included (no mock app needed).
+    #[test]
+    fn a_cached_file_opens_seekable_with_its_duration() {
+        let dir = crate::cache::tests::TempDir::new("open-cached");
+        let path = dir.0.join("song.bin");
+        std::fs::write(&path, include_bytes!("../test-fixtures/tone-faststart.m4a")).expect("write");
+        let (_decoder, total, failed) = open_cached(&path).expect("opens");
+        let secs = total.map(|d| d.as_secs_f64()).unwrap_or(0.0);
+        assert!((119.0..=121.0).contains(&secs), "duration {secs}");
+        assert!(!failed.load(Ordering::SeqCst));
+    }
+
+    #[test]
+    fn an_unreadable_cached_file_is_an_error_not_a_panic() {
+        let dir = crate::cache::tests::TempDir::new("open-garbage");
+        let garbage = dir.0.join("garbage.bin");
+        std::fs::write(&garbage, [0u8; 4096]).expect("write");
+        assert!(open_cached(&garbage).is_err());
+        assert!(open_cached(&dir.0.join("missing.bin")).is_err());
+    }
+
+    #[test]
+    fn only_http_urls_reach_the_streaming_path() {
+        assert!(is_http_url("http://h/api/youtube/stream/a"));
+        assert!(is_http_url("https://h/api/uploads/x/stream"));
+        assert!(!is_http_url("cache:youtube:a"));
+        assert!(!is_http_url("file:///etc/passwd"));
     }
 
     /// Public routes must keep working with no session attached.

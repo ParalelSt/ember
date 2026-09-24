@@ -88,6 +88,34 @@ The server URL is baked in from the repo variable `EMBER_APP_URL`
 your PC" on first run — *More info* → *Run anyway*. Silencing that needs an
 Authenticode certificate, which costs real money per year.
 
+## Auto cache of upcoming songs
+
+So a dropped connection does not stop the music, the web app keeps the next
+two songs of the queue on disk (what and when is decided by
+`apps/web/lib/autoCache/policy.ts`; the desktop storage is
+`src-tauri/src/cache.rs`, reached through `apps/web/lib/autoCache/tauriAdapter.ts`).
+
+| OS | Folder |
+|---|---|
+| macOS | `~/Library/Caches/app.ember.desktop/audio-cache` |
+| Windows | `%LOCALAPPDATA%\app.ember.desktop\cache\audio-cache` |
+| Linux | `~/.cache/app.ember.desktop/audio-cache` |
+
+Capped at 500 MB and 100 songs; the least recently played song goes first,
+never the one playing. Each download is written to a `.part` file and renamed
+only once complete, and `index.json` (also written via a temp file) records
+each song's size and when it was last played. Settings > Downloads shows the
+size and clears it. When a cached copy exists, `audio_load` plays the file
+instead of streaming (its `cacheKey` argument is the track id); a copy that
+will not decode is deleted and the song streams.
+
+Commands (all in `permissions/app-commands.toml`): `cache_prefetch` (`url`,
+`key`, `cookie`), `cache_cancel`, `cache_has` (`key`), `cache_keys`,
+`cache_path` (`key`), `cache_touch` (`key`), `cache_evict` (`keys`),
+`cache_stats`, `cache_clear`. An older build refuses them ("not allowed by
+ACL"), which the web app reads as "automatic caching unavailable, update the
+app".
+
 ## Voice search
 
 The mic in the search box uses the operating system's own recognizer; the

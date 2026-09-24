@@ -6,15 +6,29 @@ import { logger } from '@/lib/logger/client';
 import type { Track } from '@/types/track';
 import type { AudioBackend, CreateAudioBackend, RemoteCommands } from './types';
 
+/** What `tauriCacheAdapter.localSrcFor` hands the provider for a song in the
+ *  desktop auto cache: `cache:<track id>`. Not a URL the engine fetches; it
+ *  tells the engine to open its cached file (and, should that file be
+ *  unreadable, to stream from the URL it was cached from). */
+export const TAURI_CACHE_PREFIX = 'cache:';
+
 /** Resolve a possibly-relative stream URL (e.g. "/api/youtube/stream/<id>") to an
  *  absolute URL against the webview's origin (the host the shell loaded), because
  *  the Rust engine — outside the webview — needs an absolute URL to stream. */
-function toAbsolute(url: string): string {
+export function toAbsolute(url: string): string {
   try {
     return new URL(url, window.location.origin).href;
   } catch {
     return url;
   }
+}
+
+/** Just the pb_auth cookie, not the whole jar: the engine has no business
+ *  with anything else the page has set. */
+export function sessionCookie(): string | null {
+  if (typeof document === 'undefined') return null;
+  const m = /(?:^|;\s*)pb_auth=([^;]*)/.exec(document.cookie);
+  return m ? `pb_auth=${m[1]}` : null;
 }
 
 export const createTauriBackend: CreateAudioBackend = (events) => {
@@ -71,22 +85,20 @@ export const createTauriBackend: CreateAudioBackend = (events) => {
     else if (kind === 'seek' && typeof sec === 'number') cmds.seek(sec);
   });
 
-  /** Just the pb_auth cookie, not the whole jar — the engine has no business
-   *  with anything else the page has set. */
-  const sessionCookie = (): string | null => {
-    if (typeof document === 'undefined') return null;
-    const m = /(?:^|;\s*)pb_auth=([^;]*)/.exec(document.cookie);
-    return m ? `pb_auth=${m[1]}` : null;
-  };
-
   const backend: AudioBackend = {
     load(url, opts) {
       armTransition();
       duration = 0;
       curTime = opts.startAt ?? 0;
       paused = !opts.autoplay;
+      // A cached song arrives either as `opts.cacheKey` beside its stream URL
+      // or as the `cache:<id>` stand-in; either way the engine gets the id.
+      const fromCache = url.startsWith(TAURI_CACHE_PREFIX);
+      const cacheKey = opts.cacheKey ?? (fromCache ? url.slice(TAURI_CACHE_PREFIX.length) : undefined);
       void invoke('audio_load', {
-        url: toAbsolute(url),
+        url: fromCache ? url : toAbsolute(url),
+        // An older desktop build ignores the extra argument and streams.
+        cacheKey: cacheKey ?? null,
         autoplay: opts.autoplay,
         startAt: opts.startAt ?? 0,
         // The Rust engine fetches over plain HTTP with no browser session, so
