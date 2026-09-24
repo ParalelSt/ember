@@ -57,7 +57,7 @@ const SHORT_TITLE = 'Short One';
 // test asserts script(0, 0, 48, 0) is byte-for-byte this, so the two halves
 // of the fix cannot drift apart.
 const NATIVE_INSET_SCRIPT =
-  "(function(){var v={'--ember-inset-top':'0px','--ember-inset-right':'0px','--ember-inset-bottom':'48px','--ember-inset-left':'0px'};function a(){var e=document.documentElement;if(!e)return false;for(var k in v)e.style.setProperty(k,v[k]);return true;}if(!a())document.addEventListener('readystatechange',a);})();";
+  "(function(){var w=window;w.__emberInsets={'--ember-inset-top':'0px','--ember-inset-right':'0px','--ember-inset-bottom':'48px','--ember-inset-left':'0px'};function a(){var e=document.documentElement;if(!e)return false;var v=w.__emberInsets;for(var k in v)if(e.style.getPropertyValue(k)!==v[k])e.style.setProperty(k,v[k]);if(!w.__emberInsetsWatch&&w.MutationObserver){w.__emberInsetsWatch=new MutationObserver(a);w.__emberInsetsWatch.observe(e,{attributes:true,attributeFilter:['style']});}return true;}if(!a())document.addEventListener('readystatechange',a);})();";
 
 function findChrome() {
   if (process.env.CHROME_PATH) return process.env.CHROME_PATH;

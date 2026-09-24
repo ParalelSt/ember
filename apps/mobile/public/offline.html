@@ -11,6 +11,8 @@
       theme's variables (ThemeColors.kt) with the pre-theme look as fallback.
     -->
     <style>
+      /* Insets: Android 15 draws its bars over this page with env() at 0, so MainActivity publishes them as --ember-inset-*. The title clears the clock, the bar the buttons. */
+      :root { --safe-top: max(env(safe-area-inset-top, 0px), var(--ember-inset-top, 0px)); --safe-bottom: max(env(safe-area-inset-bottom, 0px), var(--ember-inset-bottom, 0px)); }
       html, body {
         margin: 0;
         min-height: 100%;
@@ -18,12 +20,10 @@
         color: var(--foreground, #ededed);
         font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
       }
-      body { padding: 0 0 96px; }
+      body { padding: 0 0 calc(96px + var(--safe-bottom)); }
       header {
         display: flex; align-items: center; justify-content: space-between;
-        /* viewport-fit=cover puts the page under the status bar, so keep the
-           title clear of the clock. */
-        padding: calc(env(safe-area-inset-top, 0px) + 20px) 20px 8px;
+        padding: calc(var(--safe-top) + 20px) 20px 8px;
       }
       .brand { font-size: 28px; font-weight: 600; letter-spacing: -0.02em; }
       .msg { font-size: 15px; opacity: 0.6; }
@@ -45,7 +45,7 @@
       .bar {
         position: fixed; left: 0; right: 0; bottom: 0;
         display: none; align-items: center; gap: 12px;
-        padding: 12px 16px calc(env(safe-area-inset-bottom, 0px) + 12px);
+        padding: 12px 16px calc(var(--safe-bottom) + 12px);
         background: var(--sidebar, #141414); border-top: 1px solid var(--border, #262626);
       }
       .bar.on { display: flex; }

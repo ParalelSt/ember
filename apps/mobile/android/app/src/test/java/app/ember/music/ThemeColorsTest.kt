@@ -140,4 +140,34 @@ class ThemeColorsTest {
         assertTrue(bars.isAppearanceLightStatusBars)
         assertTrue(bars.isAppearanceLightNavigationBars)
     }
+
+    @Test
+    fun `applyToWindow turns off the navigation bar scrim so the strip is the app's colour`() {
+        val activity = Robolectric.buildActivity(Activity::class.java).setup().get()
+        ThemeColors.applyToWindow(activity, null, ThemeColors.parseHex("#080f1c")!!)
+        assertFalse(activity.window.isNavigationBarContrastEnforced)
+    }
+}
+
+/** The same window on SDK 35, where the bars are transparent and drawn over
+ *  the page: applyToWindow leaves their colour alone (the page's own padded
+ *  bars show through) but still sets the icons and drops the scrim. */
+@RunWith(RobolectricTestRunner::class)
+@Config(sdk = [35])
+class ThemeColorsSdk35Test {
+    @Test
+    fun `on 35 only the icons and the scrim change, not the bar colours`() {
+        val activity = Robolectric.buildActivity(Activity::class.java).setup().get()
+        val window = activity.window
+        @Suppress("DEPRECATION")
+        val before = window.navigationBarColor
+        val midnight = ThemeColors.parseHex("#080f1c")!!
+        ThemeColors.applyToWindow(activity, null, midnight)
+        assertEquals(midnight, (window.decorView.background as ColorDrawable).color)
+        @Suppress("DEPRECATION")
+        assertEquals(before, window.navigationBarColor)
+        assertFalse(window.isNavigationBarContrastEnforced)
+        ThemeColors.applyToWindow(activity, null, ThemeColors.parseHex("#ffffff")!!)
+        assertTrue(WindowInsetsControllerCompat(window, window.decorView).isAppearanceLightNavigationBars)
+    }
 }

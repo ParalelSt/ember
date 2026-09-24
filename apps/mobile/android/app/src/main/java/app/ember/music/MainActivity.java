@@ -5,9 +5,6 @@ import android.content.SharedPreferences;
 import android.net.Uri;
 import android.os.Bundle;
 import android.webkit.WebView;
-import androidx.core.graphics.Insets;
-import androidx.core.view.ViewCompat;
-import androidx.core.view.WindowInsetsCompat;
 import androidx.webkit.ScriptHandler;
 import androidx.webkit.WebViewCompat;
 import androidx.webkit.WebViewFeature;
@@ -15,6 +12,7 @@ import com.getcapacitor.BridgeActivity;
 import com.getcapacitor.JSExport;
 import com.getcapacitor.Logger;
 import com.getcapacitor.PluginHandle;
+import com.getcapacitor.WebViewListener;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -96,36 +94,36 @@ public class MainActivity extends BridgeActivity {
      * SafeAreaInsets).
      *
      * The app targets SDK 35, so Android 15 draws the status bar and the
-     * three-button navigation bar OVER the WebView; the WebView does not
-     * report either through env(safe-area-inset-*), so without this the
-     * bottom nav sits under the system buttons. Below SDK 35 the decor
-     * still fits the system windows, the WebView is laid out inside them
-     * and these insets arrive as 0 — which is correct there, and means
-     * nothing about those devices changes.
+     * navigation bar (three buttons or the gesture pill) OVER the WebView;
+     * the WebView does not report either through env(safe-area-inset-*), so
+     * without this the page's bottom controls sit under the system buttons.
+     * Below SDK 35 the decor still fits the system windows, the WebView is
+     * laid out inside them and these insets arrive as 0, which is correct
+     * there.
      *
      * Deliberately NOT Capacitor's own android.adjustMarginsForEdgeToEdge:
-     * that sets margins on the WebView, which letterboxes the page instead
-     * of telling it where the edges are, and still leaves env() at 0.
+     * that sets margins on the WebView, which letterboxes the page (the
+     * strips under the bars show the window, not the page's own bars), and
+     * its listener returns the insets consumed, so the page learns nothing
+     * and a sheet or the offline page cannot stand off the bars itself.
      */
     private void publishSafeAreaInsets() {
         if (getBridge() == null || getBridge().getWebView() == null) return;
         final WebView webView = getBridge().getWebView();
-        ViewCompat.setOnApplyWindowInsetsListener(webView, (v, windowInsets) -> {
-            Insets i = windowInsets.getInsets(WindowInsetsCompat.Type.systemBars() | WindowInsetsCompat.Type.displayCutout());
-            float density = getResources().getDisplayMetrics().density;
-            applySafeAreaInsets(
-                SafeAreaInsets.script(
-                    SafeAreaInsets.cssPx(i.top, density),
-                    SafeAreaInsets.cssPx(i.right, density),
-                    SafeAreaInsets.cssPx(i.bottom, density),
-                    SafeAreaInsets.cssPx(i.left, density)
-                )
-            );
-            // Returned unconsumed on purpose: consuming them would hide the
-            // insets from anything Capacitor or a plugin adds to the view.
-            return windowInsets;
+        SafeAreaInsets.install(webView, () -> getResources().getDisplayMetrics().density, js -> {
+            applySafeAreaInsets(js);
+            return kotlin.Unit.INSTANCE;
         });
-        ViewCompat.requestApplyInsets(webView);
+        // Every finished load gets the last insets again, on top of the
+        // document-start script: a WebView without DOCUMENT_START_SCRIPT, or
+        // a load that committed before the script was registered, still ends
+        // up with them, and they are only ever sent again when they change.
+        getBridge().addWebViewListener(new WebViewListener() {
+            @Override
+            public void onPageLoaded(WebView view) {
+                if (!publishedInsets.isEmpty()) evaluateInsets(view, publishedInsets);
+            }
+        });
     }
 
     /**
@@ -137,8 +135,8 @@ public class MainActivity extends BridgeActivity {
         if (js.equals(publishedInsets)) return;
         publishedInsets = js;
         WebView webView = getBridge().getWebView();
+        evaluateInsets(webView, js);
         try {
-            webView.evaluateJavascript(js, null);
             if (!WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) return;
             if (insetScript != null) {
                 insetScript.remove();
@@ -149,6 +147,14 @@ public class MainActivity extends BridgeActivity {
             // A page with no insets published still renders; it just sits
             // under the system bars, which is where it sat before. Never
             // take the app down for it.
+            Logger.error("safe-area inset publish failed", e);
+        }
+    }
+
+    private static void evaluateInsets(WebView webView, String js) {
+        try {
+            webView.evaluateJavascript(js, null);
+        } catch (Exception e) {
             Logger.error("safe-area inset publish failed", e);
         }
     }

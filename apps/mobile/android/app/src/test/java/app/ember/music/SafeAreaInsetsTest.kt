@@ -51,8 +51,22 @@ class SafeAreaInsetsTest {
         // Registered as a document-start script, it can run before <html>
         // exists, so it must have a second chance at it.
         assertTrue(js, js.contains("readystatechange"))
-        // Self-contained: it leaks no globals into the page.
+        // Self-contained: its only globals are the values and the one watcher.
         assertTrue(js, js.startsWith("(function(){"))
+        assertTrue(js, js.endsWith("})();"))
+    }
+
+    @Test
+    fun `puts the properties back when something rewrites the root element's style`() {
+        val js = SafeAreaInsets.script(0, 0, 48, 0)
+        // The values are kept where a later run (new insets) replaces them,
+        // and one observer, installed once, restores them from there.
+        assertTrue(js, js.contains("w.__emberInsets={"))
+        assertTrue(js, js.contains("new MutationObserver(a)"))
+        assertTrue(js, js.contains("attributeFilter:['style']"))
+        assertTrue(js, js.contains("if(!w.__emberInsetsWatch"))
+        // It only writes what differs, so its own write does not loop.
+        assertTrue(js, js.contains("if(e.style.getPropertyValue(k)!==v[k])"))
     }
 
     @Test
@@ -63,17 +77,21 @@ class SafeAreaInsetsTest {
 
     /**
      * The exact script a 48dp navigation bar produces. The browser half of
-     * this fix, tests/mobile-player-ui.test.mjs, runs this same literal in a
-     * real Chromium tab and asserts the bar and the bottom nav lift by 48px,
+     * this fix, tests/mobile-player-ui.test.mjs and
+     * tests/android-insets-ui.test.mjs, run this same literal in a real
+     * Chromium tab and assert the bars, sheets and nav lift by 48px,
      * so the two ends of the contract are pinned to one string.
      */
     @Test
     fun `the 48dp navigation bar script is exactly what the browser test runs`() {
         assertEquals(
-            "(function(){var v={'--ember-inset-top':'0px','--ember-inset-right':'0px'," +
+            "(function(){var w=window;w.__emberInsets={'--ember-inset-top':'0px','--ember-inset-right':'0px'," +
                 "'--ember-inset-bottom':'48px','--ember-inset-left':'0px'};" +
-                "function a(){var e=document.documentElement;if(!e)return false;" +
-                "for(var k in v)e.style.setProperty(k,v[k]);return true;}" +
+                "function a(){var e=document.documentElement;if(!e)return false;var v=w.__emberInsets;" +
+                "for(var k in v)if(e.style.getPropertyValue(k)!==v[k])e.style.setProperty(k,v[k]);" +
+                "if(!w.__emberInsetsWatch&&w.MutationObserver){w.__emberInsetsWatch=new MutationObserver(a);" +
+                "w.__emberInsetsWatch.observe(e,{attributes:true,attributeFilter:['style']});}" +
+                "return true;}" +
                 "if(!a())document.addEventListener('readystatechange',a);})();",
             SafeAreaInsets.script(0, 0, 48, 0),
         )

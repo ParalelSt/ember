@@ -109,7 +109,8 @@ object ThemeColors {
      * background (what shows before the first byte and behind a loading
      * page), the bar icons, and below SDK 35 the bars themselves. On 35 the
      * bars are transparent and drawn over the page, so the page's own
-     * background already is the bar colour and only the icons need setting.
+     * bars (padded by the insets SafeAreaInsets publishes) are the bar
+     * colour and only the icons and the contrast scrim need setting.
      * Main thread only.
      */
     @JvmStatic
@@ -126,6 +127,14 @@ object ThemeColors {
             window.statusBarColor = background
             @Suppress("DEPRECATION")
             window.navigationBarColor = background
+        }
+        // On 35 the three-button bar is transparent and Android lays a
+        // translucent scrim over it for contrast, so the strip under the
+        // buttons reads as a grey band instead of the page's own bar colour
+        // (the page pads its bottom bars by the inset, so what shows there
+        // is always the app's chrome). The icons already follow the theme.
+        if (Build.VERSION.SDK_INT >= 29) {
+            window.isNavigationBarContrastEnforced = false
         }
     }
 }

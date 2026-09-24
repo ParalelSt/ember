@@ -238,6 +238,42 @@ const twoPins = {
   await ctx.close();
 }
 
+// 9c. The safe-area insets. On Android 15 the status bar and the navigation
+// buttons are drawn over this page too; MainActivity publishes them on every
+// origin with SafeAreaInsets.script (this literal is pinned in
+// SafeAreaInsetsTest.kt, with the 24px status bar put in), and the header and
+// the fixed player bar stand off them. With nothing published nothing moves.
+{
+  const INSET_SCRIPT =
+    "(function(){var w=window;w.__emberInsets={'--ember-inset-top':'0px','--ember-inset-right':'0px','--ember-inset-bottom':'48px','--ember-inset-left':'0px'};function a(){var e=document.documentElement;if(!e)return false;var v=w.__emberInsets;for(var k in v)if(e.style.getPropertyValue(k)!==v[k])e.style.setProperty(k,v[k]);if(!w.__emberInsetsWatch&&w.MutationObserver){w.__emberInsetsWatch=new MutationObserver(a);w.__emberInsetsWatch.observe(e,{attributes:true,attributeFilter:['style']});}return true;}if(!a())document.addEventListener('readystatechange',a);})();"
+      .replace("'--ember-inset-top':'0px'", "'--ember-inset-top':'24px'");
+  const pads = (page) => page.evaluate(() => {
+    const bar = document.querySelector('.bar').getBoundingClientRect();
+    return {
+      header: getComputedStyle(document.querySelector('header')).paddingTop,
+      bar: getComputedStyle(document.querySelector('.bar')).paddingBottom,
+      body: getComputedStyle(document.body).paddingBottom,
+      barBottom: bar.bottom,
+      nowBottom: document.querySelector('.bar .now').getBoundingClientRect().bottom,
+      h: innerHeight,
+    };
+  });
+  const plain = await open(twoPins);
+  await plain.page.locator('.row').first().click();
+  const p0 = await pads(plain.page);
+  check('without insets the header and bar keep their own padding', p0.header === '20px' && p0.bar === '12px' && p0.body === '96px', JSON.stringify(p0));
+  await plain.ctx.close();
+
+  const { ctx, page } = await open({ ...twoPins, themeScript: INSET_SCRIPT });
+  await page.locator('.row').first().click();
+  const p = await pads(page);
+  check('the header clears the status bar', p.header === '44px', p.header);
+  check('the player bar pads itself above the navigation buttons', p.bar === '60px' && p.barBottom === p.h, JSON.stringify(p));
+  check('the playing song in the bar sits above the navigation buttons', p.nowBottom <= p.h - 48, `${p.nowBottom} vs ${p.h - 48}`);
+  check('the list scrolls clear of the taller bar', p.body === '144px', p.body);
+  await ctx.close();
+}
+
 // 10. The copy carries no em dashes (repo rule) and the page stays small.
 {
   const source = fs.readFileSync(PAGE, 'utf8');
