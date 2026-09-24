@@ -21,6 +21,18 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    id: 'floating-top-bar',
+    version: '0.7.1',
+    date: '2026-09-24',
+    title: 'A cleaner top bar on desktop',
+    summary: 'The page scrolls under the search bar, which now floats clear of what is under it.',
+    bullets: [
+      'On a computer, the page now slides away under the search bar as you scroll, and the scroll bar runs from the very top of the window.',
+      'Whatever scrolls under the search bar fades out a little below it, so it never looks cut off.',
+      'Nothing moves when you are at the top of a page, and phones stay exactly as they were.',
+    ],
+  },
+  {
     id: 'themes',
     version: '0.7.0',
     date: '2026-09-23',
