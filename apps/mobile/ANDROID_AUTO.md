@@ -66,6 +66,13 @@ Liked Songs) instead of streaming it, in the car too. The one limit: the
 phone has to have downloaded the list beforehand; the car cannot start a
 download.
 
+The auto cache also runs in the car: the current song and the next two are
+kept on the phone (300 MB, least recently used out first, cleared from
+Settings, never on mobile data unless "Also on mobile data" is on). When the
+connection drops, songs on the phone keep playing and the rest are skipped;
+with nothing ahead the player pauses, and it reloads (paused) once the
+network is back. See README.md, "Auto cache".
+
 Known limits: no like button in the car, live sessions (carlist) are not
 driven from the car. Playback resumption from the system
 media panel is not implemented (Android's "No root for client

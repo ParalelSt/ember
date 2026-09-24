@@ -23,6 +23,24 @@ import com.google.common.util.concurrent.MoreExecutors
 import org.json.JSONArray
 import org.json.JSONObject
 
+/** `cachedIds`, `offlineStalled`, `offline` from the service's session
+ *  extras; an older service (none published yet) reads as nothing cached,
+ *  online. */
+internal fun cacheState(extras: Bundle): Triple<List<String>, Boolean, Boolean> = Triple(
+    extras.getStringArrayList(EmberPlaybackService.EXTRA_CACHED_IDS)?.toList() ?: emptyList(),
+    extras.getBoolean(EmberPlaybackService.EXTRA_OFFLINE_STALLED, false),
+    extras.getBoolean(EmberPlaybackService.EXTRA_OFFLINE, false),
+)
+
+/** setQueue's optional `context: { type }` and `baseCount`, as the service's
+ *  COMMAND_QUEUE_CONTEXT args. Missing means no curated base (the car's
+ *  default). */
+internal fun queueContextArgs(data: JSONObject): Bundle = Bundle().apply {
+    val ctx = data.optJSONObject("context")
+    putString("contextType", ctx?.takeIf { it.has("type") && !it.isNull("type") }?.optString("type"))
+    putInt("baseCount", data.optInt("baseCount", 0).coerceAtLeast(0))
+}
+
 /** The web UI's handle on the native player. Commands in, state out.
  *
  *  Everything goes through a Media3 MediaController, the same door the car
@@ -61,6 +79,11 @@ class EmberPlayerPlugin : Plugin() {
         put("trackId", c.currentMediaItem?.mediaId)
         put("shuffle", c.shuffleModeEnabled)
         put("repeat", c.repeatMode)
+        cacheState(c.sessionExtras).let { (ids, stalled, offline) ->
+            put("cachedIds", JSArray(ids))
+            put("offlineStalled", stalled)
+            put("offline", offline)
+        }
     }
 
     private val listener = object : Player.Listener {
@@ -85,8 +108,14 @@ class EmberPlayerPlugin : Plugin() {
         }
     }
 
-    /** The service tells us when a prank sound has ended. */
+    /** The service tells us when a prank sound has ended, and publishes the
+     *  auto cache state (which queued songs are on the phone, offline stall)
+     *  as session extras. */
     private val sessionEvents = object : MediaController.Listener {
+        override fun onExtrasChanged(controller: MediaController, extras: Bundle) {
+            notifyListeners("state", state(controller))
+        }
+
         override fun onCustomCommand(controller: MediaController, command: SessionCommand, args: Bundle): ListenableFuture<SessionResult> {
             if (command.customAction != OverlayEvents.COMMAND_ENDED) return Futures.immediateFuture(SessionResult(SessionResult.RESULT_ERROR_NOT_SUPPORTED))
             notifyListeners("overlay", OverlayEvents.endedJs(args))
@@ -106,8 +135,13 @@ class EmberPlayerPlugin : Plugin() {
         val index = call.getInt("index") ?: 0
         val play = call.getBoolean("play") ?: true
         val items = (0 until tracks.length()).map { TrackItems.toMediaItem(tracks.getJSONObject(it), ServerConfig.baseUrl(context)) }
+        // Optional (newer web builds): where the queue came from, so the
+        // native prefetch window wraps loop-all where the web player does.
+        val queueContext = queueContextArgs(call.data)
         withController { c ->
             queueFromJs = System.currentTimeMillis()
+            // Sent first: the service applies it before the items arrive.
+            c.sendCustomCommand(SessionCommand(EmberPlaybackService.COMMAND_QUEUE_CONTEXT, Bundle.EMPTY), queueContext)
             val current = (0 until c.mediaItemCount).map { c.getMediaItemAt(it).mediaId }
             val wanted = items.map { it.mediaId }
             val sameStart = wanted.size >= current.size && current.isNotEmpty() && wanted.subList(0, current.size) == current
@@ -154,6 +188,39 @@ class EmberPlayerPlugin : Plugin() {
     @PluginMethod fun stopOverlay(call: PluginCall) = withController {
         it.sendCustomCommand(SessionCommand(OverlayEvents.COMMAND_STOP, Bundle.EMPTY), Bundle.EMPTY)
         call.resolve()
+    }
+
+    /** Auto cache settings, from the web app's device settings
+     *  (`autoCacheEnabled`, `autoCacheOnMetered`). The service keeps them
+     *  across restarts, so the car and the screen-off player follow them with
+     *  the WebView gone. Resolves `{ enabled, onMetered }` as applied. */
+    @PluginMethod fun setAutoCache(call: PluginCall) {
+        val args = Bundle()
+        call.getBoolean("enabled")?.let { args.putBoolean("enabled", it) }
+        (call.getBoolean("onMetered") ?: call.getBoolean("allowMetered"))?.let { args.putBoolean("onMetered", it) }
+        sendForExtras(call, EmberPlaybackService.COMMAND_AUTO_CACHE, args) { e ->
+            JSObject().put("enabled", e.getBoolean("enabled")).put("onMetered", e.getBoolean("onMetered"))
+        }
+    }
+
+    /** `{ bytes, count, cap }`: bytes on disk, whole songs, and the cap. */
+    @PluginMethod fun cacheStats(call: PluginCall) =
+        sendForExtras(call, EmberPlaybackService.COMMAND_CACHE_STATS, Bundle.EMPTY, ::statsJs)
+
+    /** Empties the auto cache (pinned downloads are untouched); resolves the
+     *  stats after. */
+    @PluginMethod fun clearCache(call: PluginCall) =
+        sendForExtras(call, EmberPlaybackService.COMMAND_CACHE_CLEAR, Bundle.EMPTY, ::statsJs)
+
+    private fun statsJs(e: Bundle): JSObject =
+        JSObject().put("bytes", e.getLong("bytes")).put("count", e.getInt("count")).put("cap", e.getLong("cap"))
+
+    private fun sendForExtras(call: PluginCall, command: String, args: Bundle, map: (Bundle) -> JSObject) = withController { c ->
+        val f = c.sendCustomCommand(SessionCommand(command, Bundle.EMPTY), args)
+        f.addListener({
+            val r = runCatching { f.get() }.getOrNull()
+            if (r?.resultCode == SessionResult.RESULT_SUCCESS) call.resolve(map(r.extras)) else call.reject("$command failed")
+        }, MoreExecutors.directExecutor())
     }
 
     override fun handleOnDestroy() {

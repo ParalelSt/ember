@@ -7,7 +7,18 @@ android {
     kotlinOptions { jvmTarget = '21' }
     // Robolectric: real Bundle/Uri/org.json in JVM tests instead of stubs, and
     // Media3 builders touch android.* classes in plain JVM unit tests too.
-    testOptions { unitTests.includeAndroidResources = true }
+    testOptions {
+        unitTests.includeAndroidResources = true
+        // The auto cache policy's shared case table lives with the web port
+        // (apps/web/lib/autoCache/policy.cases.json). AutoCachePolicyTest reads
+        // it from there, never from a copy, so the two ports test against one
+        // file; declaring it an input reruns the tests when it changes.
+        unitTests.all { test ->
+            def cases = file('../../../web/lib/autoCache/policy.cases.json')
+            test.inputs.file(cases)
+            test.systemProperty 'ember.autoCacheCases', cases.absolutePath
+        }
+    }
     compileSdk rootProject.ext.compileSdkVersion
     defaultConfig {
         applicationId "app.ember.music"
@@ -79,6 +90,9 @@ dependencies {
     implementation "androidx.media3:media3-exoplayer:$media3Version"
     implementation "androidx.media3:media3-session:$media3Version"
     implementation "androidx.media3:media3-datasource-okhttp:$media3Version"
+    // Auto cache (AutoCacher.kt): SimpleCache, CacheWriter and its index database.
+    implementation "androidx.media3:media3-datasource:$media3Version"
+    implementation "androidx.media3:media3-database:$media3Version"
 }
 
 apply from: 'capacitor.build.gradle'
