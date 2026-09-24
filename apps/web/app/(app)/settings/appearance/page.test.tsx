@@ -18,6 +18,7 @@ const server = vi.hoisted(() => ({
   active: null as ThemeDoc | null,
   nextId: 0,
   failCreate: null as null | { status: number; body: unknown },
+  failUpdate: null as null | { status: number; body: unknown },
 }));
 
 function apiError(status: number, body: { error: string; findings?: unknown }) {
@@ -61,6 +62,7 @@ vi.mock('@/lib/api', () => {
         return { theme: t };
       }),
       updateSavedTheme: vi.fn(async (tid: string, patch: Partial<SavedTheme>) => {
+        if (server.failUpdate) throw apiError(server.failUpdate.status, server.failUpdate.body as { error: string });
         const t = { ...server.mine.find((x) => x.id === tid)!, ...patch };
         server.mine = server.mine.map((x) => (x.id === tid ? t : x));
         const active = server.active?.themeId === tid ? (server.active = docFromSaved(t)) : undefined;
@@ -133,6 +135,7 @@ beforeEach(() => {
   server.active = null;
   server.nextId = 0;
   server.failCreate = null;
+  server.failUpdate = null;
   vi.clearAllMocks();
 });
 
@@ -141,17 +144,17 @@ afterEach(() => {
 });
 
 describe('Settings > Appearance', () => {
-  it('shows the preview and three tabs, Themes first', async () => {
+  it('shows the preview and two tabs, Themes first; there is no Share tab (F3)', async () => {
     start();
     expect(screen.getByTestId('theme-preview')).toBeInTheDocument();
-    expect(screen.getAllByRole('tab').map((t) => t.textContent)).toEqual(['Themes', 'Colours', 'Share']);
+    expect(screen.getAllByRole('tab').map((t) => t.textContent)).toEqual(['Themes', 'Colours']);
+    expect(screen.queryByRole('tab', { name: 'Share' })).toBeNull();
     expect(screen.getByRole('radiogroup', { name: 'Presets' })).toBeInTheDocument();
     expect(await screen.findByTestId('theme-count')).toHaveTextContent('0 of 20');
 
     tab('Colours');
     expect(screen.getAllByTestId('colour-row')).toHaveLength(8);
-    tab('Share');
-    expect(screen.getByRole('switch', { name: 'Share with everyone' })).toBeInTheDocument();
+    expect(screen.queryByRole('switch')).toBeNull();
   });
 
   it('keeps the Apply bar and tabs out of the part that scrolls, which holds every tab panel (F2)', async () => {
@@ -161,7 +164,7 @@ describe('Settings > Appearance', () => {
     expect(scroll).toHaveClass('xl:min-h-0', 'xl:flex-1', 'xl:overflow-y-auto');
     expect(scroll).not.toContainElement(screen.getByRole('tablist'));
     expect(scroll).not.toContainElement(screen.getByTestId('in-use-bar'));
-    for (const name of ['Themes', 'Colours', 'Share']) {
+    for (const name of ['Themes', 'Colours']) {
       tab(name);
       // Keyed on the tab: each tab gets a fresh one, opened at its top.
       expect(screen.getByTestId('inspector-scroll')).toContainElement(screen.getByRole('tabpanel'));
@@ -322,42 +325,90 @@ describe('Settings > Appearance', () => {
     });
   });
 
-  describe('Share', () => {
-    it('turns sharing on and off for one of mine, with who sees it', async () => {
-      const t = saved();
-      server.mine = [t];
-      start(docFromSaved(t));
+  describe('Share, per theme on its row (F3)', () => {
+    const LATE: SavedTheme = saved({ id: 'mine00000000002', name: 'Late shift', shared: true });
+    const shareSwitch = (name: string) => screen.getByRole('switch', { name: `Share ${name} with everyone` });
+    const myRow = (name: string) => shareSwitch(name).closest('[data-testid="my-theme"]') as HTMLElement;
+
+    it('each of my rows has its own switch, and shared ones carry a Shared tag', async () => {
+      server.mine = [saved(), LATE];
+      start();
       await screen.findByText('Night drive');
-      tab('Share');
-      const toggle = screen.getByRole('switch', { name: 'Share with everyone' });
-      expect(toggle).toBeEnabled();
-      expect(toggle).toHaveAttribute('aria-checked', 'false');
-      expect(screen.getByTestId('share-line')).toHaveTextContent('Only you see Night drive.');
-
-      fireEvent.click(toggle);
-      await waitFor(() => expect(toggle).toHaveAttribute('aria-checked', 'true'));
-      expect(api.updateSavedTheme).toHaveBeenCalledWith(t.id, { shared: true });
-      expect(screen.getByTestId('share-line')).toHaveTextContent('Everyone on this Ember server sees Night drive');
-
-      fireEvent.click(toggle);
-      await waitFor(() => expect(toggle).toHaveAttribute('aria-checked', 'false'));
-      expect(api.updateSavedTheme).toHaveBeenLastCalledWith(t.id, { shared: false });
+      expect(screen.getByTestId('share-explainer')).toHaveTextContent(
+        'Shared themes appear for everyone under Shared by others.',
+      );
+      expect(shareSwitch('Night drive')).toHaveAttribute('aria-checked', 'false');
+      expect(shareSwitch('Late shift')).toHaveAttribute('aria-checked', 'true');
+      expect(within(myRow('Night drive')).queryByTestId('shared-tag')).toBeNull();
+      expect(within(myRow('Late shift')).getByTestId('shared-tag')).toHaveTextContent('Shared');
     });
 
-    it('is off for a preset and for someone else\'s theme', async () => {
-      server.shared = [LUKA];
-      const { unmount } = start({ v: 1, preset: 'mono' });
-      await screen.findByText('Cold brew');
-      tab('Share');
-      expect(screen.getByRole('switch', { name: 'Share with everyone' })).toBeDisabled();
-      expect(screen.getByTestId('share-line')).toHaveTextContent('Mono is a preset');
-      unmount();
+    it('toggling a row saves that theme alone, at once, without touching the draft or the theme in use', async () => {
+      const t = saved();
+      server.mine = [t, LATE];
+      start(docFromSaved(LATE));
+      await screen.findByText('Night drive');
 
-      start(docFromSaved(LUKA));
+      fireEvent.click(shareSwitch('Night drive'));
+      await waitFor(() => expect(shareSwitch('Night drive')).toHaveAttribute('aria-checked', 'true'));
+      expect(api.updateSavedTheme).toHaveBeenCalledTimes(1);
+      expect(api.updateSavedTheme).toHaveBeenCalledWith(t.id, { shared: true });
+      expect(within(myRow('Night drive')).getByTestId('shared-tag')).toBeInTheDocument();
+      expect(shareSwitch('Late shift')).toHaveAttribute('aria-checked', 'true');
+      expect(status()).toHaveTextContent('Shared Night drive with everyone.');
+
+      fireEvent.click(shareSwitch('Late shift'));
+      await waitFor(() => expect(shareSwitch('Late shift')).toHaveAttribute('aria-checked', 'false'));
+      expect(api.updateSavedTheme).toHaveBeenLastCalledWith(LATE.id, { shared: false });
+      expect(shareSwitch('Night drive')).toHaveAttribute('aria-checked', 'true');
+      expect(status()).toHaveTextContent('Late shift is only yours now.');
+
+      // A list change, not a theme change: nothing to apply, nothing selected.
+      expect(useThemeStore.getState().draft).toBeNull();
+      expect(api.setTheme).not.toHaveBeenCalled();
+      expect(screen.queryByRole('button', { name: 'Apply' })).toBeNull();
+    });
+
+    it('keeps a draft as it was while a row is shared', async () => {
+      const t = saved();
+      server.mine = [t, LATE];
+      start();
+      await screen.findByText('Night drive');
+      fireEvent.click(screen.getByRole('radio', { name: /Midnight/ }));
+      expect(applyButton()).toBeEnabled();
+
+      fireEvent.click(shareSwitch('Night drive'));
+      await waitFor(() => expect(shareSwitch('Night drive')).toHaveAttribute('aria-checked', 'true'));
+      expect(useThemeStore.getState().draft?.target).toEqual({ v: 1, preset: 'midnight' });
+      expect(applyButton()).toBeEnabled();
+    });
+
+    it('says so when the save fails, and the switch stays as it was', async () => {
+      const t = saved();
+      server.mine = [t];
+      server.failUpdate = { status: 500, body: { error: 'boom' } };
+      start();
+      await screen.findByText('Night drive');
+
+      fireEvent.click(shareSwitch('Night drive'));
+      await waitFor(() => expect(status()).toHaveTextContent('Not shared: check your connection and try again.'));
+      expect(status()).toHaveAttribute('data-tone', 'error');
+      expect(shareSwitch('Night drive')).toHaveAttribute('aria-checked', 'false');
+      expect(shareSwitch('Night drive')).toBeEnabled();
+      expect(within(myRow('Night drive')).queryByTestId('shared-tag')).toBeNull();
+    });
+
+    it('presets and other people\'s themes have no share switch', async () => {
+      server.mine = [saved()];
+      server.shared = [LUKA];
+      start();
       await screen.findByText('Cold brew');
-      tab('Share');
-      expect(screen.getByRole('switch', { name: 'Share with everyone' })).toBeDisabled();
-      expect(screen.getByTestId('share-line')).toHaveTextContent('Cold brew is shared by Luka. Only Luka can change who sees it.');
+      expect(screen.getAllByRole('switch')).toHaveLength(1);
+      const presets = screen.getByRole('radiogroup', { name: 'Presets' });
+      expect(within(presets).queryByRole('switch')).toBeNull();
+      const others = screen.getByRole('region', { name: 'Shared by others' });
+      expect(within(others).queryByRole('switch')).toBeNull();
+      expect(screen.queryByRole('switch', { name: /Cold brew/ })).toBeNull();
     });
   });
 
