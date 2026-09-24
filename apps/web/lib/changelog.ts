@@ -21,6 +21,20 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    id: 'playback-reliability',
+    version: '0.7.2',
+    date: '2026-09-24',
+    title: 'Songs start reliably in the desktop app again',
+    summary: 'Fewer songs stall or fail to start, especially on slower connections.',
+    bullets: [
+      'Fewer stalls on slower connections: the desktop app now waits for the song a little longer before it gives up.',
+      'A song now loads once instead of twice when you press play, skip or it moves on to the next one.',
+      'Pressing pause while a song is still loading is respected, and pressing play after a song failed to load tries it again.',
+      'Guitar tabs: the score redraws cleanly when you resize the window, and songs with no tabs online no longer show up as errors.',
+      'The desktop fixes need the new desktop app (0.4.2).',
+    ],
+  },
+  {
     id: 'floating-top-bar',
     version: '0.7.1',
     date: '2026-09-24',

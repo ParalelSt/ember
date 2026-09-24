@@ -1,3 +1,24 @@
+# 0.7.2: Songs start reliably in the desktop app again
+
+**Host, in order: `./update.sh` as usual, then (once, if not done before)
+the guitar tab packages below, then restart the web app.**
+
+1. **`./update.sh`** (a normal rebuild and restart, no new packages). The
+   web fix (a song loads once, not twice) reaches every desktop app at its
+   next page load. The engine fixes need the new desktop app, 0.4.2, which
+   the `v0.4.2` tag builds.
+2. **Guitar tab packages, one time** (SETUP.md, "Generated guitar tabs").
+   Without them every tab found online logs "lining the tab up failed" as a
+   server error, and those errors show up in every bug report.
+
+   ```bash
+   .venv/bin/pip install 'setuptools<80'
+   .venv/bin/pip install --no-deps basic-pitch
+   .venv/bin/pip install onnxruntime librosa pretty_midi 'resampy<0.4.3' mir_eval scikit-learn typing-extensions
+   ```
+
+   `update.sh` does not install these. See `docs/reports/luka-2026-09-24.md`.
+
 # 0.6.0: Admin pranks (plan-23-9)
 
 **Host, in order: `./update.sh` as usual, then a new Android APK for the
