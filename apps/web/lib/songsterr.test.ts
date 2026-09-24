@@ -1,4 +1,6 @@
 // @vitest-environment node
+import fs from 'node:fs';
+import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   clearSongsterrCache,
@@ -42,6 +44,14 @@ describe('parseSongs', () => {
         { instrument: 'Electric Guitar', tuning: [64, 59, 55, 50, 45, 38], difficulty: null },
       ],
     });
+  });
+
+  it('keeps only the song for a Japanese title (it used to keep every hit: the title had no words)', () => {
+    const raw = JSON.parse(fs.readFileSync(path.resolve(__dirname, '../../../tests/fixtures/songsterr-yomi/search.json'), 'utf8'));
+    const songs = parseSongs(raw, '黄泉より聴こゆ、皇国の燈と焔の少女', 'Imperial Circus Dead Decadence');
+    expect(songs.length).toBeGreaterThan(0);
+    expect(songs.every((s) => s.title.includes('黄泉より聴こゆ') || /yomi/i.test(s.title))).toBe(true);
+    expect(songs.map((s) => s.songId)).not.toContain(449165); // "Uta", same band, another song
   });
 
   it('reads anything that is not an array as no songs', () => {

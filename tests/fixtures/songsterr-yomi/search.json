@@ -1,0 +1,775 @@
+[
+ {
+  "songId": 460015,
+  "artistId": 53242,
+  "artist": "Imperial Circus Dead Decadence",
+  "title": "黄泉より聴こゆ、皇国の燈と焔の少女 / Yomi Yori Kikoyu, Kokoku no Tou to Honoo no Shoujo",
+  "hasChords": false,
+  "hasPlayer": true,
+  "tracks": [
+   {
+    "instrumentId": 30,
+    "instrument": "Distortion Guitar",
+    "views": 7897,
+    "name": "Left, lead",
+    "tuning": [
+     62,
+     57,
+     53,
+     48,
+     43,
+     36
+    ],
+    "difficulty": 6,
+    "hash": "guitar_dWDt4WnC"
+   },
+   {
+    "instrumentId": 30,
+    "instrument": "Distortion Guitar",
+    "views": 1106,
+    "name": "Right",
+    "tuning": [
+     62,
+     57,
+     53,
+     48,
+     43,
+     36
+    ],
+    "difficulty": 6,
+    "hash": "guitar_B5zQCWJp"
+   },
+   {
+    "instrumentId": 30,
+    "instrument": "Distortion Guitar",
+    "views": 96,
+    "name": "Mid (extra rhythm)",
+    "tuning": [
+     62,
+     57,
+     53,
+     48,
+     43,
+     36
+    ],
+    "difficulty": 2,
+    "hash": "guitar_xOawgrZW"
+   },
+   {
+    "instrumentId": 26,
+    "instrument": "Electric Guitar (jazz)",
+    "views": 148,
+    "name": "Clean",
+    "tuning": [
+     62,
+     57,
+     53,
+     48,
+     43,
+     36
+    ],
+    "difficulty": 2,
+    "hash": "guitar_t59uxVZJ"
+   },
+   {
+    "instrumentId": 1024,
+    "instrument": "Drums",
+    "views": 46,
+    "name": "",
+    "difficulty": 7,
+    "hash": "drums_YKaRhWNb"
+   },
+   {
+    "instrumentId": 33,
+    "instrument": "Electric Bass (finger)",
+    "views": 44,
+    "name": "",
+    "tuning": [
+     41,
+     36,
+     31,
+     24
+    ],
+    "difficulty": 4,
+    "hash": "drums_NUiR7M8R"
+   }
+  ],
+  "defaultTrack": 0,
+  "popularTrack": 0,
+  "isJunk": false,
+  "popularTrackGuitar": 0,
+  "popularTrackBass": 5,
+  "popularTrackDrum": 4
+ },
+ {
+  "songId": 455684,
+  "artistId": 53242,
+  "artist": "Imperial Circus Dead Decadence",
+  "title": "黄泉より聴こゆ、皇国の燈と焔の少女。",
+  "hasChords": false,
+  "hasPlayer": true,
+  "tracks": [
+   {
+    "instrumentId": 30,
+    "instrument": "Distortion Guitar",
+    "views": 348,
+    "name": "Track 1",
+    "tuning": [
+     64,
+     59,
+     55,
+     50,
+     45,
+     40,
+     35
+    ],
+    "difficulty": 6,
+    "hash": "guitar_XdNQocna"
+   }
+  ],
+  "defaultTrack": 0,
+  "popularTrack": 0,
+  "isJunk": false,
+  "popularTrackGuitar": 0
+ },
+ {
+  "songId": 656292,
+  "artistId": 53242,
+  "artist": "Imperial Circus Dead Decadence",
+  "title": "黄泉より聴こゆ、皇国の燈と焔の少女。-殯-",
+  "hasChords": false,
+  "hasPlayer": true,
+  "tracks": [
+   {
+    "instrumentId": 1024,
+    "instrument": "Drums",
+    "views": 124,
+    "name": "",
+    "difficulty": 7,
+    "hash": "drums_7zoNc3rV"
+   },
+   {
+    "instrumentId": 33,
+    "instrument": "Electric Bass (finger)",
+    "views": 14,
+    "name": "",
+    "tuning": [
+     41,
+     36,
+     31,
+     24
+    ],
+    "difficulty": 4,
+    "hash": "bass_GVWWgpmP"
+   },
+   {
+    "instrumentId": 30,
+    "instrument": "Distortion Guitar",
+    "views": 86,
+    "name": "",
+    "tuning": [
+     62,
+     57,
+     53,
+     48,
+     43,
+     36
+    ],
+    "difficulty": 5,
+    "hash": "guitar_i7Z70mc8"
+   },
+   {
+    "instrumentId": 30,
+    "instrument": "Distortion Guitar",
+    "views": 391,
+    "name": "",
+    "tuning": [
+     62,
+     57,
+     53,
+     48,
+     43,
+     36
+    ],
+    "difficulty": 4,
+    "hash": "guitar_E4OXTkOE"
+   }
+  ],
+  "defaultTrack": 3,
+  "popularTrack": 3,
+  "isJunk": false,
+  "popularTrackGuitar": 3,
+  "popularTrackBass": 1,
+  "popularTrackDrum": 0
+ },
+ {
+  "songId": 3091963,
+  "artistId": 53242,
+  "artist": "Imperial Circus Dead Decadence",
+  "title": "黄泉より聴こゆ、皇国の燈と焔の少女",
+  "hasChords": false,
+  "hasPlayer": true,
+  "tracks": [
+   {
+    "instrumentId": 30,
+    "instrument": "Distortion Guitar",
+    "views": 115,
+    "name": "",
+    "tuning": [
+     62,
+     57,
+     53,
+     48,
+     43,
+     36
+    ],
+    "difficulty": 6,
+    "hash": "guitar_BlK50dLL"
+   },
+   {
+    "instrumentId": 30,
+    "instrument": "Distortion Guitar",
+    "views": 39,
+    "name": "",
+    "tuning": [
+     62,
+     57,
+     53,
+     48,
+     43,
+     36
+    ],
+    "difficulty": 3,
+    "hash": "guitar_7O2kfNBI"
+   },
+   {
+    "instrumentId": 33,
+    "instrument": "Electric Bass (finger)",
+    "views": 4,
+    "name": "",
+    "tuning": [
+     41,
+     36,
+     31,
+     24
+    ],
+    "difficulty": 4,
+    "hash": "bass_73T1XWLC"
+   },
+   {
+    "instrumentId": 1024,
+    "instrument": "Drums",
+    "views": 253,
+    "name": "",
+    "difficulty": 7,
+    "hash": "drums_dJWp3NTk"
+   }
+  ],
+  "defaultTrack": 3,
+  "popularTrack": 3,
+  "isJunk": false,
+  "popularTrackGuitar": 0,
+  "popularTrackBass": 2,
+  "popularTrackDrum": 3
+ },
+ {
+  "songId": 4548901,
+  "artistId": 53242,
+  "artist": "Imperial Circus Dead Decadence",
+  "title": "黄泉より聴こゆ、皇国の燈と焔の少女。(AI)",
+  "hasChords": false,
+  "hasPlayer": true,
+  "tracks": [
+   {
+    "instrumentId": 29,
+    "instrument": "Overdriven Guitar",
+    "views": 0,
+    "name": "Overdriven Guitar (regenerated)",
+    "tuning": [
+     62,
+     57,
+     53,
+     48,
+     43,
+     36
+    ],
+    "difficulty": 6,
+    "hash": "drums_F7Q3tDow"
+   },
+   {
+    "instrumentId": 30,
+    "instrument": "Distortion Guitar",
+    "views": 21,
+    "name": "Distortion Guitar (regenerated)",
+    "tuning": [
+     62,
+     57,
+     53,
+     48,
+     43,
+     36
+    ],
+    "difficulty": 3,
+    "hash": "guitar_GQndh88m"
+   }
+  ],
+  "defaultTrack": 1,
+  "popularTrack": 1,
+  "isJunk": false,
+  "popularTrackGuitar": 1
+ },
+ {
+  "songId": 5569756,
+  "artistId": 889110,
+  "artist": "Imperial Circus Dead Decadance - Benji Kun",
+  "title": "黄泉より聴こゆ、皇国の燈と焔の少女",
+  "hasChords": false,
+  "hasPlayer": true,
+  "tracks": [
+   {
+    "instrumentId": 30,
+    "instrument": "Distortion Guitar",
+    "views": 393,
+    "name": "",
+    "tuning": [
+     62,
+     57,
+     53,
+     48,
+     43,
+     36
+    ],
+    "difficulty": 6,
+    "hash": "guitar_XCxJiv90"
+   }
+  ],
+  "defaultTrack": 0,
+  "popularTrack": 0,
+  "isJunk": false,
+  "popularTrackGuitar": 0
+ },
+ {
+  "songId": 455547,
+  "artistId": 53242,
+  "artist": "Imperial Circus Dead Decadence",
+  "title": "Yomi Yori Kikoyu, Kokoku no Tou to Honoo no Shoujo",
+  "hasChords": false,
+  "hasPlayer": true,
+  "tracks": [
+   {
+    "instrumentId": 27,
+    "instrument": "Electric Guitar (clean)",
+    "views": 327,
+    "name": "",
+    "tuning": [
+     62,
+     57,
+     53,
+     48,
+     43,
+     36
+    ],
+    "difficulty": 2,
+    "hash": "guitar_NSDHNWCD"
+   },
+   {
+    "instrumentId": 30,
+    "instrument": "Distortion Guitar",
+    "views": 2297,
+    "name": "harmonious",
+    "tuning": [
+     62,
+     57,
+     53,
+     48,
+     43,
+     36
+    ],
+    "difficulty": 2,
+    "hash": "guitar_DXv10i2Q"
+   },
+   {
+    "instrumentId": 30,
+    "instrument": "Distortion Guitar",
+    "views": 24532,
+    "name": "KIM",
+    "tuning": [
+     62,
+     57,
+     53,
+     48,
+     43,
+     36
+    ],
+    "difficulty": 4,
+    "hash": "guitar_6rkMoEs0"
+   },
+   {
+    "instrumentId": 30,
+    "instrument": "Distortion Guitar",
+    "views": 153,
+    "name": "Rhythm",
+    "tuning": [
+     62,
+     57,
+     53,
+     48,
+     43,
+     36
+    ],
+    "difficulty": 2,
+    "hash": "guitar_Wk9fhRJI"
+   },
+   {
+    "instrumentId": 34,
+    "instrument": "Electric Bass (pick)",
+    "views": 676,
+    "name": "",
+    "tuning": [
+     45,
+     41,
+     36,
+     31,
+     24
+    ],
+    "difficulty": 4,
+    "hash": "guitar_ld4xWavh"
+   },
+   {
+    "instrumentId": 1024,
+    "instrument": "Drums",
+    "views": 1239,
+    "name": "Shuhei",
+    "difficulty": 7,
+    "hash": "drums_xuqdBp7x"
+   }
+  ],
+  "defaultTrack": 2,
+  "popularTrack": 2,
+  "isJunk": false,
+  "popularTrackGuitar": 2,
+  "popularTrackBass": 4,
+  "popularTrackDrum": 5
+ },
+ {
+  "songId": 449165,
+  "artistId": 53242,
+  "artist": "Imperial Circus Dead Decadence",
+  "title": "Uta",
+  "hasChords": false,
+  "hasPlayer": true,
+  "tracks": [
+   {
+    "instrumentId": 30,
+    "instrument": "Distortion Guitar",
+    "views": 2667,
+    "name": "Left Guitar",
+    "tuning": [
+     64,
+     59,
+     55,
+     50,
+     45,
+     40,
+     35
+    ],
+    "difficulty": 3,
+    "hash": "guitar_RyGZl3BI"
+   },
+   {
+    "instrumentId": 29,
+    "instrument": "Overdriven Guitar",
+    "views": 891,
+    "name": "Right Guitar",
+    "tuning": [
+     64,
+     59,
+     55,
+     50,
+     45,
+     40,
+     35
+    ],
+    "difficulty": 3,
+    "hash": "guitar_JeaRizOF"
+   },
+   {
+    "instrumentId": 29,
+    "instrument": "Overdriven Guitar",
+    "views": 6048,
+    "name": "Lead Guitar",
+    "tuning": [
+     64,
+     59,
+     55,
+     50,
+     45,
+     40
+    ],
+    "difficulty": 7,
+    "hash": "guitar_v2U4bajG"
+   },
+   {
+    "instrumentId": 30,
+    "instrument": "Distortion Guitar",
+    "views": 248,
+    "name": "Lead 2",
+    "tuning": [
+     64,
+     59,
+     55,
+     50,
+     45,
+     40
+    ],
+    "difficulty": 7,
+    "hash": "guitar_8bvYKWja"
+   },
+   {
+    "instrumentId": 52,
+    "instrument": "Choir Aahs",
+    "views": 36,
+    "name": "",
+    "tuning": [
+     64,
+     59,
+     55,
+     50,
+     45,
+     40,
+     35
+    ],
+    "hash": "other_pKfKI7VL"
+   },
+   {
+    "instrumentId": 11,
+    "instrument": "Vibraphone",
+    "views": 124,
+    "name": "",
+    "tuning": [
+     62,
+     57,
+     53,
+     48,
+     43,
+     36
+    ],
+    "hash": "other_Vh17Wgzg"
+   },
+   {
+    "instrumentId": 48,
+    "instrument": "String Ensemble 1",
+    "views": 17,
+    "name": "Strings",
+    "tuning": [
+     64,
+     59,
+     55,
+     50,
+     45,
+     40
+    ],
+    "hash": "other_NPyl5phl"
+   },
+   {
+    "instrumentId": 6,
+    "instrument": "Harpsichord",
+    "views": 9,
+    "name": "Harpsicord",
+    "tuning": [
+     64,
+     59,
+     55,
+     50,
+     45,
+     40
+    ],
+    "hash": "other_PmimMwtG"
+   },
+   {
+    "instrumentId": 60,
+    "instrument": "French Horn",
+    "views": 6,
+    "name": "",
+    "tuning": [
+     64,
+     59,
+     55,
+     50,
+     45,
+     40
+    ],
+    "hash": "other_Jar0OTJt"
+   },
+   {
+    "instrumentId": 19,
+    "instrument": "Church Organ",
+    "views": 45,
+    "name": "",
+    "tuning": [
+     64,
+     59,
+     55,
+     50,
+     45,
+     40
+    ],
+    "hash": "other_N1hfduS8"
+   },
+   {
+    "instrumentId": 0,
+    "instrument": "Acoustic Grand Piano",
+    "views": 12,
+    "name": "",
+    "tuning": [
+     64,
+     59,
+     55,
+     50,
+     45,
+     40
+    ],
+    "hash": "other_dUh4wbx7"
+   },
+   {
+    "instrumentId": 25,
+    "instrument": "Acoustic Guitar (steel)",
+    "views": 834,
+    "name": "MUTE ME",
+    "tuning": [
+     62,
+     57,
+     53,
+     48,
+     43,
+     36
+    ],
+    "difficulty": 5,
+    "hash": "guitar_5yjrRRm2"
+   },
+   {
+    "instrumentId": 1024,
+    "instrument": "Drums",
+    "views": 151,
+    "name": "",
+    "difficulty": 6,
+    "hash": "other_JIe7aII2"
+   }
+  ],
+  "defaultTrack": 2,
+  "popularTrack": 2,
+  "isJunk": false,
+  "popularTrackGuitar": 2,
+  "popularTrackDrum": 12
+ },
+ {
+  "songId": 521522,
+  "artistId": 53242,
+  "artist": "Imperial Circus Dead Decadence",
+  "title": "禊祓の神産は宣い、禍祓の贖罪は誓う。",
+  "hasChords": false,
+  "hasPlayer": true,
+  "tracks": [
+   {
+    "instrumentId": 30,
+    "instrument": "Distortion Guitar",
+    "views": 15778,
+    "name": "Distortion Guitar | Lead Guitar (Right)",
+    "tuning": [
+     62,
+     57,
+     53,
+     48,
+     43,
+     36
+    ],
+    "difficulty": 6,
+    "hash": "guitar_caFNQ3FY"
+   },
+   {
+    "instrumentId": 30,
+    "instrument": "Distortion Guitar",
+    "views": 6065,
+    "name": "Distortion Guitar | Rhythm Guitar (Left)",
+    "tuning": [
+     62,
+     57,
+     53,
+     48,
+     43,
+     36
+    ],
+    "difficulty": 5,
+    "hash": "guitar_TfIvervR"
+   },
+   {
+    "instrumentId": 1024,
+    "instrument": "Drums",
+    "views": 419,
+    "name": "",
+    "difficulty": 7,
+    "hash": "guitar_qDMFiK9L"
+   }
+  ],
+  "defaultTrack": 0,
+  "popularTrack": 0,
+  "isJunk": false,
+  "popularTrackGuitar": 0,
+  "popularTrackDrum": 2
+ },
+ {
+  "songId": 399168,
+  "artistId": 53242,
+  "artist": "Imperial Circus Dead Decadence",
+  "title": "劇愛の呼声が溺哀の叫声を喰らう",
+  "hasChords": false,
+  "hasPlayer": true,
+  "tracks": [
+   {
+    "instrumentId": 30,
+    "instrument": "Distortion Guitar",
+    "views": 7398,
+    "name": "Main",
+    "tuning": [
+     62,
+     57,
+     53,
+     48,
+     43,
+     36
+    ],
+    "difficulty": 4,
+    "hash": "guitar_BDzxPHJT"
+   },
+   {
+    "instrumentId": 30,
+    "instrument": "Distortion Guitar",
+    "views": 3304,
+    "name": "Solo",
+    "tuning": [
+     62,
+     57,
+     53,
+     48,
+     43,
+     36
+    ],
+    "difficulty": 5,
+    "hash": "guitar_jrQ0j2Lc"
+   },
+   {
+    "instrumentId": 1024,
+    "instrument": "Drums",
+    "views": 144,
+    "name": "",
+    "difficulty": 7,
+    "hash": "drums_AhqP0si6"
+   }
+  ],
+  "defaultTrack": 0,
+  "popularTrack": 0,
+  "isJunk": false,
+  "popularTrackGuitar": 0,
+  "popularTrackDrum": 2
+ }
+]

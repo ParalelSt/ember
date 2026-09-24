@@ -168,6 +168,20 @@ function summary(r: UgResult) {
 
 // ── the search ────────────────────────────────────────────────────────────
 
+/** Until this build, a title in a non-Latin script (Japanese, Cyrillic,
+ *  Greek) had no words to match on (lib/tabFetch/ug.ts words), so every
+ *  such song was recorded as "none" on both sites whatever they had. */
+export const ANY_SCRIPT_MATCH_SINCE = Date.parse('2026-09-25T00:00:00.000Z');
+
+/** A "none" recorded for a non-Latin title before titles in any script
+ *  could match: not an answer, so the song is searched once more. */
+export function staleNone(lookup: Record<string, unknown> | null): boolean {
+  if (!lookup || lookup.status !== 'none') return false;
+  if (!/[^\x00-\x7f]/.test(String(lookup.query ?? ''))) return false;
+  const at = Date.parse(String(lookup.searched_at ?? '').replace(' ', 'T'));
+  return !Number.isFinite(at) || at < ANY_SCRIPT_MATCH_SINCE;
+}
+
 const inflight = new Map<string, Promise<OnlineResult>>();
 
 /** For tests: forget searches in flight. */
@@ -228,7 +242,7 @@ async function search(pb: PocketBase, song: OnlineSong, key: string, opts: { aga
       .filter(Boolean)
       .sort()
       .pop() ?? null;
-  const todo = sites.filter((site) => opts.again || !lookups.get(site));
+  const todo = sites.filter((site) => opts.again || !lookups.get(site) || staleNone(lookups.get(site) ?? null));
   if (todo.length === 0) return { status: 'cached', searchedAt: latest(), added: 0 };
 
   const ctx = (site: OnlineSite): SiteContext => ({

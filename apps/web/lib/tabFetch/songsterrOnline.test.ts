@@ -9,7 +9,7 @@ import { fakePocketBase, type FakePb } from '@/test-utils/fakePocketBase';
 import { findTabs, mapTab, songKeyOf } from '@/lib/tabStore';
 import { pickerLabel, sourceChipLabel } from '@/lib/tabSources';
 import { PoliteFetcher } from './polite';
-import { findOnline, resetOnline } from './online';
+import { findOnline, resetOnline, staleNone } from './online';
 
 /** Songsterr found online (docs/tabs-v3.md stage 4) against a site that
  *  serves tests/fixtures/songsterr (Songsterr's shapes, invented content)
@@ -232,5 +232,89 @@ describe('a Songsterr row on the page', () => {
     expect(sourceChipLabel(mapTab(row, VIEWER), 'Bass')).toBe('From Songsterr, Bass, lined up');
     row.timing = { offset_ms: 1350, bpm: 97, confidence: 0.2, bars: [] };
     expect(sourceChipLabel(mapTab(row, VIEWER))).toBe('From Songsterr, not lined up yet');
+  });
+});
+
+describe('a song with a Japanese title (tests/fixtures/songsterr-yomi)', () => {
+  // Songsterr's real answers for the song (metadata only), with the
+  // invented parts of tests/fixtures/songsterr standing in for its notes.
+  const YOMI = path.resolve(__dirname, '../../../../tests/fixtures/songsterr-yomi');
+  const JP = { title: '黄泉より聴こゆ、皇国の燈と焔の少女', artist: 'Imperial Circus Dead Decadence', trackId: 'youtube:yomi12345ab' };
+  const PARTS: Record<string, string> = { '0': 'part-1.json', '1': 'part-2.json', '3': 'part-1.json', '5': 'part-3.json' };
+
+  function yomiSite() {
+    const urls: string[] = [];
+    let now = 9_000_000;
+    const fetchFn = (async (url: string) => {
+      urls.push(url);
+      if (url.startsWith(`${BASE}/api/songs`)) return new Response(read(YOMI, 'search.json'));
+      if (url.startsWith(`${BASE}/a/wsa/`) && url.endsWith('-tab-s460015')) return new Response(read(YOMI, 'song.html'));
+      const m = new RegExp(`^${CDN}/460015/7547158/v0-3-2-oSEG8HeSIhlC305k/(\\d+)\\.json$`).exec(url);
+      if (m && PARTS[m[1]]) return new Response(read(SS, PARTS[m[1]]));
+      return new Response('not found', { status: 404 });
+    }) as unknown as typeof fetch;
+    const fetcher = new PoliteFetcher({ fetch: fetchFn, now: () => now, sleep: async (ms) => void (now += ms) });
+    return { fetcher, urls };
+  }
+
+  it('imports it: the search matches the title, and the tab is stored and drawable', async () => {
+    const s = yomiSite();
+    const res = await findOnline(fake.pb, JP, deps(s as never));
+    expect(res).toMatchObject({ status: 'found', added: 1 });
+    // The query is the title as it is, percent-encoded once.
+    expect(s.urls[0]).toBe(`${BASE}/api/songs?pattern=${encodeURIComponent('Imperial Circus Dead Decadence 黄泉より聴こゆ、皇国の燈と焔の少女')}`);
+    expect(s.urls[1]).toMatch(/-tab-s460015$/);
+    expect(s.urls.slice(2).map((u) => u.split('/').pop())).toEqual(['0.json', '1.json', '3.json', '5.json']);
+
+    const [row] = tabs();
+    expect(row).toMatchObject({ source_site: 'songsterr', source_id: '460015', song_key: songKeyOf(JP), title: JP.title });
+    const tex = fs.readFileSync(path.join(dir, String(row.file)), 'utf8');
+    const imp = new alphaTab.importer.AlphaTexImporter();
+    imp.initFromString(tex, new alphaTab.Settings());
+    expect(imp.readScore().tracks).toHaveLength(4);
+    expect(lookups()[0]).toMatchObject({ site: 'songsterr', status: 'found' });
+    // And the page finds it by the song.
+    const rows = await findTabs(fake.pb, VIEWER, { title: JP.title, artist: JP.artist });
+    expect(rows.map((r) => r.source_id)).toEqual(['460015']);
+  });
+});
+
+describe('a "none" recorded before titles in any script could match', () => {
+  const old = (query: string, searched_at: string) =>
+    ({ id: `l${query.length}`, song_key: '', site: 'songsterr', status: 'none', query, searched_at, results: [] }) as never;
+
+  it('is searched once more for a non-Latin title, not for a Latin one or a fresh answer', () => {
+    expect(staleNone(old('Imperial Circus Dead Decadence 黄泉より聴こゆ', '2026-09-20 10:00:00.000Z'))).toBe(true);
+    expect(staleNone(old('Кино Группа крови', '2026-09-01T00:00:00.000Z'))).toBe(true);
+    expect(staleNone(old('Night Ferry Copper Tide', '2026-09-20 10:00:00.000Z'))).toBe(false);
+    expect(staleNone(old('Imperial Circus Dead Decadence 黄泉より聴こゆ', '2026-10-01 10:00:00.000Z'))).toBe(false);
+    expect(staleNone({ ...(old('黄泉', '2026-09-01T00:00:00Z') as object), status: 'found' } as never)).toBe(false);
+    expect(staleNone(null)).toBe(false);
+  });
+
+  it('the song is found on the next opening, without "Search online again"', async () => {
+    const JP = { title: '黄泉より聴こゆ、皇国の燈と焔の少女', artist: 'Imperial Circus Dead Decadence', trackId: 'youtube:yomi12345ab' };
+    fake.rows.get('tab_lookups')!.push({
+      id: 'old1', collectionId: 'tab_lookups', collectionName: 'tab_lookups', created: '',
+      song_key: songKeyOf(JP), site: 'songsterr', status: 'none', query: `${JP.artist} ${JP.title}`,
+      searched_at: '2026-09-20 10:00:00.000Z', results: [],
+    } as never);
+    const YOMI = path.resolve(__dirname, '../../../../tests/fixtures/songsterr-yomi');
+    const urls: string[] = [];
+    const fetchFn = (async (url: string) => {
+      urls.push(url);
+      if (url.startsWith(`${BASE}/api/songs`)) return new Response(read(YOMI, 'search.json'));
+      if (url.endsWith('-tab-s460015')) return new Response(read(YOMI, 'song.html'));
+      if (/\/(0|1|3)\.json$/.test(url)) return new Response(read(SS, 'part-1.json'));
+      if (/\/5\.json$/.test(url)) return new Response(read(SS, 'part-3.json'));
+      return new Response('not found', { status: 404 });
+    }) as unknown as typeof fetch;
+    let now = 1;
+    const fetcher = new PoliteFetcher({ fetch: fetchFn, now: () => now, sleep: async (ms) => void (now += ms) });
+    expect(await findOnline(fake.pb, JP, { ...deps({ fetcher } as never) })).toMatchObject({ status: 'found', added: 1 });
+    expect(lookups()).toHaveLength(1);
+    expect(lookups()[0]).toMatchObject({ id: 'old1', status: 'found' });
+    // Now it is a real answer: the next opening asks nobody.
+    expect(await findOnline(fake.pb, JP, { ...deps({ fetcher } as never) })).toMatchObject({ status: 'cached' });
   });
 });

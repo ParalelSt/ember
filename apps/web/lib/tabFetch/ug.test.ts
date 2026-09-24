@@ -13,8 +13,10 @@ import {
   readJsStore,
   sameSong,
   stripUgMarks,
+  titleForms,
   toResult,
   ugQuery,
+  words,
   ugSearchUrl,
   ugTabToAlphaTex,
   ugTuningToScientific,
@@ -121,6 +123,33 @@ describe('search results', () => {
     expect(sameSong(r({ artistName: 'Quiet Engine' }), 'Harbour Lights', 'The Lantern Keepers')).toBe(false);
     expect(sameSong(r({ songName: 'Harbour Lights Reprise' }), 'Harbour Lights', 'The Lantern Keepers')).toBe(false);
     expect(sameSong(r({ songName: 'Harbour Lights (acoustic)' }), 'Harbour Lights', 'The Lantern Keepers')).toBe(true);
+  });
+
+  it('matches titles in any script, and either side of "original / romanized"', () => {
+    const jp = '黄泉より聴こゆ、皇国の燈と焔の少女';
+    const icdd = 'Imperial Circus Dead Decadence';
+    expect(words(jp)).toEqual(['黄泉より聴こゆ', '皇国の燈と焔の少女']);
+    expect(sameSong({ songName: jp, artistName: icdd }, jp, icdd)).toBe(true);
+    expect(sameSong({ songName: `${jp}。`, artistName: icdd }, jp, icdd)).toBe(true);
+    expect(sameSong({ songName: `${jp} / Yomi Yori Kikoyu, Kokoku no Tou to Honoo no Shoujo`, artistName: icdd }, jp, icdd)).toBe(true);
+    expect(sameSong({ songName: `${jp} / Yomi Yori Kikoyu`, artistName: icdd }, 'Yomi Yori Kikoyu', icdd)).toBe(true);
+    // A longer title is another song, in Japanese too; so is another band's.
+    expect(sameSong({ songName: `${jp}。-殯-`, artistName: icdd }, jp, icdd)).toBe(false);
+    expect(sameSong({ songName: '禊祓の神産は宣い、禍祓の贖罪は誓う。', artistName: icdd }, jp, icdd)).toBe(false);
+    expect(sameSong({ songName: jp, artistName: 'Someone Else' }, jp, icdd)).toBe(false);
+    // Cyrillic, Greek and accents have words as well.
+    expect(sameSong({ songName: 'Группа крови', artistName: 'Кино' }, 'Группа крови', 'Кино')).toBe(true);
+    expect(sameSong({ songName: 'Kärleken är evig', artistName: 'Lena' }, 'Karleken ar evig', 'Lena')).toBe(true);
+    // Spacing differences are the same letters.
+    expect(sameSong({ songName: 'Yomiyori Kikoyu', artistName: icdd }, 'Yomi yori Kikoyu', icdd)).toBe(true);
+    // A title with no words at all still matches nothing.
+    expect(sameSong({ songName: '!!!', artistName: icdd }, '!!!', icdd)).toBe(false);
+  });
+
+  it('splits "original / romanized" titles, not a plain slash', () => {
+    expect(titleForms('A / B')).toEqual(['A / B', 'A', 'B']);
+    expect(titleForms('歌／Uta')).toEqual(['歌／Uta', '歌', 'Uta']);
+    expect(titleForms('AC/DC Live')).toEqual(['AC/DC Live']);
   });
 
   it('searches "artist title" without version noise, tabs and bass tabs in one request', () => {

@@ -4,8 +4,10 @@ import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import * as alphaTab from '@coderline/alphatab';
 import {
+  chooseSongsterrSongs,
   chooseSongsterrTracks,
   midiName,
+  parseSongsterrSearch,
   parseSongsterrPage,
   partUrl,
   playOrder,
@@ -330,5 +332,42 @@ describe('conversion details', () => {
     const score = importTex(r.alphaTex);
     expect(score.title).toBe('Say "hi"');
     expect(score.artist).toBe('Back\\slash');
+  });
+});
+
+// ── a song with a Japanese title (tests/fixtures/songsterr-yomi) ───────────
+
+describe('a Songsterr song with a non-Latin title', () => {
+  const YOMI = path.resolve(__dirname, '../../../tests/fixtures/songsterr-yomi');
+  const yomi = (name: string) => fs.readFileSync(path.join(YOMI, name), 'utf8');
+  const SONG = { title: '黄泉より聴こゆ、皇国の燈と焔の少女', artist: 'Imperial Circus Dead Decadence' };
+
+  it('finds the song in the real search answer (it used to find nothing)', () => {
+    const hits = parseSongsterrSearch(JSON.parse(yomi('search.json')))!;
+    expect(hits.length).toBeGreaterThan(5);
+    const picks = chooseSongsterrSongs(hits, SONG);
+    // The most played tab first: its title is "original / romanized".
+    expect(picks[0]).toMatchObject({ songId: 460015 });
+    expect(picks.map((p) => p.songId)).toEqual(expect.arrayContaining([460015, 3091963, 455684]));
+    // Another band's tab of it (a cover channel) and variants are not it.
+    expect(picks.map((p) => p.songId)).not.toContain(656292);
+    expect(picks.map((p) => p.songId)).not.toContain(4922375);
+    expect(picks.map((p) => p.songId)).not.toContain(521522);
+  });
+
+  it('the romanized title finds the same songs', () => {
+    const hits = parseSongsterrSearch(JSON.parse(yomi('search.json')))!;
+    const picks = chooseSongsterrSongs(hits, { ...SONG, title: 'Yomi Yori Kikoyu, Kokoku no Tou to Honoo no Shoujo' });
+    expect(picks.map((p) => p.songId).slice(0, 2)).toEqual([460015, 455547]);
+  });
+
+  it('reads the song page: guitars and bass, drums left out', () => {
+    const page = parseSongsterrPage(yomi('song.html'))!;
+    expect(page).toMatchObject({ songId: 460015, revisionId: 7547158, image: 'v0-3-2-oSEG8HeSIhlC305k', restricted: false });
+    expect(chooseSongsterrTracks(page.tracks).map((t) => t.partId)).toEqual([0, 1, 3, 5]);
+    // The page URL has an ASCII slug; Songsterr resolves on the id.
+    expect(songsterrPageUrl('https://www.songsterr.com', page)).toBe(
+      'https://www.songsterr.com/a/wsa/imperial-circus-dead-decadence-yomi-yori-kikoyu-kokoku-no-tou-to-honoo-no-shoujo-tab-s460015',
+    );
   });
 });

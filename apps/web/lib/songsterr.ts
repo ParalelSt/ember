@@ -53,11 +53,15 @@ function base(): string {
  *  the track's TITLE: variants ("... (Remastered)", live versions) still pass,
  *  pure noise does not. */
 function words(s: string): string[] {
+  // Letters of any script: a Japanese or Cyrillic title has words too
+  // (lib/tabFetch/ug.ts words has the story).
   return s
     .toLowerCase()
+    .normalize('NFKD')
+    .replace(/\p{M}/gu, '')
     .replace(/\(.*?\)|\[.*?\]/g, ' ')
-    .split(/[^a-z0-9]+/)
-    .filter((w) => w.length > 2);
+    .split(/[^\p{L}\p{N}]+/u)
+    .filter((w) => w.length > 2 || (w.length > 0 && /[^\x00-\x7f]/.test(w)));
 }
 
 export function relevant(match: { title: string; artist: string }, title: string, artist: string): boolean {
