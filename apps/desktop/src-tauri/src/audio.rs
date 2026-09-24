@@ -97,6 +97,17 @@ pub struct AudioEngine {
     /// before `current_total` is known, so re-sending it there would send
     /// `duration: None` and leave the OS widget with no scrubber.
     nowplaying_meta: Mutex<Option<(String, String, String, String)>>,
+    /// What the OS widget was last told, kept whether or not media controls
+    /// exist, so tests (which have none) can check it.
+    widget: Mutex<Widget>,
+}
+
+/// The OS Now Playing widget's state as last sent.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub(crate) struct Widget {
+    pub playback: Option<MediaPlayback>,
+    pub title: Option<String>,
+    pub duration: Option<Duration>,
 }
 
 impl AudioEngine {
@@ -144,6 +155,7 @@ impl AudioEngine {
             volume: Mutex::new(1.0),
             controls: Mutex::new(None),
             nowplaying_meta: Mutex::new(None),
+            widget: Mutex::new(Widget::default()),
         })
     }
 
@@ -172,6 +184,7 @@ impl AudioEngine {
             volume: Mutex::new(1.0),
             controls: Mutex::new(None),
             nowplaying_meta: Mutex::new(None),
+            widget: Mutex::new(Widget::default()),
         }
     }
 
@@ -197,6 +210,9 @@ impl AudioEngine {
     }
 
     fn set_playback(&self, pb: MediaPlayback) {
+        if let Ok(mut w) = self.widget.lock() {
+            w.playback = Some(pb.clone());
+        }
         if let Ok(mut g) = self.controls.lock() {
             if let Some(c) = g.as_mut() {
                 let _ = c.set_playback(pb);
@@ -213,6 +229,10 @@ impl AudioEngine {
         let Ok(meta_guard) = self.nowplaying_meta.lock() else { return };
         let Some((title, artist, album, artwork_url)) = meta_guard.as_ref() else { return };
         let duration = self.current_total.lock().ok().and_then(|g| *g);
+        if let Ok(mut w) = self.widget.lock() {
+            w.title = Some(title.clone());
+            w.duration = duration;
+        }
         if let Ok(mut g) = self.controls.lock() {
             if let Some(c) = g.as_mut() {
                 let _ = c.set_metadata(MediaMetadata {
@@ -291,6 +311,12 @@ impl AudioEngine {
     /// Whether the newest load is still connecting, buffering or decoding.
     fn load_in_flight(&self) -> bool {
         self.settled_seq.load(Ordering::SeqCst) < self.load_seq.load(Ordering::SeqCst)
+    }
+
+    /// What the OS widget was last told.
+    #[cfg(test)]
+    pub(crate) fn widget(&self) -> Widget {
+        self.widget.lock().map(|w| w.clone()).unwrap_or_default()
     }
 
     /// Shared handles for the position-polling task.
@@ -1312,10 +1338,12 @@ async fn load_track<R: Runtime>(
     );
     if let Some(d) = total {
         emit_sec(app, "audio:duration", d.as_secs_f64());
-        // Refresh the OS widget's metadata now that a duration is known
-        // (bughunt L5): audio_set_metadata usually ran before this point.
-        engine.push_metadata();
     }
+    // Refresh the OS widget's metadata now that this song's length is known
+    // (bughunt L5): audio_set_metadata usually ran before this point. Also
+    // when the length is unknown: metadata set just before this load went
+    // out with the previous song's length, which must not stay on the widget.
+    engine.push_metadata();
     if playing {
         emit_bare(app, "audio:play");
     }
@@ -1483,6 +1511,7 @@ pub fn audio_seek<R: Runtime>(app: AppHandle<R>, engine: State<'_, AudioEngine>,
         }
     };
     let mut error = None;
+    let mut moved = false;
     if let Ok(g) = engine.sink.lock() {
         if let Some(s) = g.as_ref() {
             match s.try_seek(target) {
@@ -1492,9 +1521,18 @@ pub fn audio_seek<R: Runtime>(app: AppHandle<R>, engine: State<'_, AudioEngine>,
                 // slider into "play the next song"; surfacing it lets the
                 // webview keep the song and retry it on web audio.
                 Err(e) => error = Some(e.to_string()),
-                Ok(()) => emit_sec(&app, "audio:time", target.as_secs_f64()), // optimistic
+                Ok(()) => {
+                    emit_sec(&app, "audio:time", target.as_secs_f64()); // optimistic
+                    moved = true;
+                }
             }
         }
+    }
+    // The OS widget's scrubber runs on from the last position it was sent,
+    // so it has to hear about a seek too. Outside the sink lock, which
+    // set_nowplaying takes itself.
+    if moved {
+        engine.set_nowplaying(playing);
     }
     if let Some(message) = error {
         // Mark the source failed as well, so the position timer does not call

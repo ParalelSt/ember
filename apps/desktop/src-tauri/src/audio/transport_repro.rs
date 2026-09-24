@@ -338,4 +338,5 @@ async fn a_stop_during_a_slow_load_is_kept() {
     assert_eq!(rig.sink(), None, "stop was pressed during the load, yet a sink went in");
     assert_eq!(rig.count("audio:play"), 0, "audio:play after stop: {:?}", rig.events());
     assert!(!rig.engine().load_in_flight(), "nothing is loading after a stop");
+    assert_eq!(rig.engine().widget().playback, Some(souvlaki::MediaPlayback::Stopped), "the OS widget says stopped");
 }
