@@ -73,4 +73,26 @@ describe('NowPlaying', () => {
     // The view stays open underneath: the sheet is on top of it.
     expect(usePlayerStore.getState().nowPlayingOpen).toBe(true);
   });
+
+  // Bughunt V6: the top buttons floated (absolute, no background) over a
+  // scroller that filled the whole sheet, so scrolled content slid under
+  // them. They now sit in a row of their own, and the scroller only takes
+  // the space below it (the overlap itself is measured in a real browser by
+  // tests/layout-v6-nowplaying-header.test.mjs).
+  it('keeps Close and Queue in a row above the scroller, not floating over it', () => {
+    render(<NowPlaying />);
+    const view = screen.getByTestId('now-playing');
+    const scroller = view.querySelector('.overflow-y-auto') as HTMLElement;
+    expect(scroller).toHaveClass('min-h-0', 'flex-1');
+    for (const name of ['Close', 'Queue']) {
+      const button = within(view).getByRole('button', { name });
+      expect(scroller.contains(button)).toBe(false);
+      expect(button).not.toHaveClass('absolute');
+      // The row comes before the scroller in the sheet's column.
+      expect(button.compareDocumentPosition(scroller) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    }
+    const row = within(view).getByRole('button', { name: 'Close' }).parentElement!;
+    expect(row).toHaveClass('flex', 'shrink-0');
+    expect(row).not.toHaveClass('absolute');
+  });
 });

@@ -182,60 +182,57 @@ export function NowPlaying() {
         <div className="absolute inset-0 bg-linear-to-b from-background/40 via-background/70 to-background" />
       </div>
 
-      {/* Floating close affordance. Anchored to the dialog (not the
-          scroller) so it stays at the very top of the viewport regardless
-          of scroll position — no boxy sticky-header bar above the artwork,
-          and still reachable when the user has scrolled into the lyrics
-          card below. Sits flush against the safe-area inset on iOS. */}
-      <Button
-        variant="ghost"
-        size="icon"
-        onClick={() => setOpen(false)}
-        aria-label="Close"
-        className="absolute z-20 left-3 h-10 w-10 text-foreground/80 hover:text-foreground"
-        style={{ top: 'calc(var(--safe-top) + 1rem)' }}
-      >
-        <ChevronDownIcon className="h-6 w-6" />
-      </Button>
-      {/* Top right: guitar tabs (when the plugin is on) and the queue. */}
+      {/* Top row: close on the left, guitar tabs (when the plugin is on)
+          and the queue on the right. A row of its own above the scroller,
+          not floating over it, so scrolled content stops at the row's edge
+          instead of sliding under the buttons (bughunt V6). No background:
+          the blurred artwork shows through it as before, and it stays put
+          whatever the scroll position. Sits flush against the safe-area
+          inset on iOS. */}
       <div
-        className="absolute z-20 right-3 flex items-center gap-inset"
-        style={{ top: 'calc(var(--safe-top) + 1rem)' }}
+        className="flex shrink-0 items-center justify-between px-row"
+        style={{ paddingTop: 'calc(var(--safe-top) + 1rem)' }}
       >
-        {tabsEnabled && (
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={openTabs}
-            aria-label="Guitar tabs"
-            title="Guitar tabs"
-            className="h-10 w-10 text-foreground/80 hover:text-foreground"
-          >
-            <TabsIcon className="h-5 w-5" />
-          </Button>
-        )}
         <Button
           variant="ghost"
           size="icon"
-          onClick={() => setQueueOpen(true)}
-          aria-label="Queue"
-          title="Queue"
+          onClick={() => setOpen(false)}
+          aria-label="Close"
           className="h-10 w-10 text-foreground/80 hover:text-foreground"
         >
-          <QueueIcon className="h-5 w-5" />
+          <ChevronDownIcon className="h-6 w-6" />
         </Button>
+        <div className="flex items-center gap-inset">
+          {tabsEnabled && (
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={openTabs}
+              aria-label="Guitar tabs"
+              title="Guitar tabs"
+              className="h-10 w-10 text-foreground/80 hover:text-foreground"
+            >
+              <TabsIcon className="h-5 w-5" />
+            </Button>
+          )}
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => setQueueOpen(true)}
+            aria-label="Queue"
+            title="Queue"
+            className="h-10 w-10 text-foreground/80 hover:text-foreground"
+          >
+            <QueueIcon className="h-5 w-5" />
+          </Button>
+        </div>
       </div>
       <QueueSheet open={queueOpen} onOpenChange={setQueueOpen} />
 
       <div
         ref={scrollerRef}
-        className="relative h-full overflow-y-auto px-6"
-        style={{
-          // Padding-top clears the floating close button (its top offset
-          // + button height) so artwork doesn't slide under the chevron.
-          paddingTop: 'calc(var(--safe-top) + 3rem)',
-          paddingBottom: 'calc(var(--safe-bottom) + 1.5rem)',
-        }}
+        className="relative min-h-0 flex-1 overflow-y-auto px-6"
+        style={{ paddingBottom: 'calc(var(--safe-bottom) + 1.5rem)' }}
       >
       {/* "Player" pane — sized to fill the first viewport so the artwork-
           centered look is preserved. Lyrics live BELOW this wrapper so
