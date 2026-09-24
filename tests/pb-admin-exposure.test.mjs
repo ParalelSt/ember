@@ -98,7 +98,10 @@ const like = await fetch(`${APP}/api/likes`, { method: 'POST', headers: { ...jso
 check('B3 liking a song still works', like.status >= 200 && like.status < 300, `status ${like.status}`);
 const likes = await fetch(`${APP}/api/likes`, { headers: { cookie }, redirect: 'manual' });
 const likesText = await likes.text();
-check('B4 the like shows up in the member’s likes', likes.status === 200 && likesText.includes('W14 Song'), `status ${likes.status}`);
+// Match on the video id, not the title: the shared catalog is server-owned
+// (bughunt W03), so on a sandbox where another suite already stored this
+// video the like carries that row's title, not the one sent here.
+check('B4 the like shows up in the member’s likes', likes.status === 200 && likesText.includes('dQw4w9WgXcQ'), `status ${likes.status}`);
 
 const own = await fetch(`${APP}/pb/api/collections/likes/records?perPage=5`, { headers: { Authorization: authBody.token } });
 check('B5 reading own records through /pb still works', own.status === 200, `status ${own.status}`);
