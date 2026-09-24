@@ -8,10 +8,13 @@ import { notifyShell, shellTheme, SHELL_NOTIFY_DELAY_MS } from '@/lib/theme/nati
 import { DEFAULT_THEME, sameDoc, type ThemeDoc } from '@/lib/theme/model';
 import { logger } from '@/lib/logger/client';
 
-/** Keeps the live page in step with the theme store: the only writer of the
- *  theme on <html> after the server's first paint (lib/theme/css.ts does
- *  the writing), and the one caller of notifyShell, so the Android bars
- *  and the desktop window follow whatever the page shows. Signed out, the
+/** Keeps the live page in step with the ACTIVE theme (the store's `doc`):
+ *  the only writer of the theme on <html> after the server's first paint
+ *  (lib/theme/css.ts does the writing), and the one caller of notifyShell,
+ *  so the Android bars and the desktop window follow whatever the page
+ *  shows. Appearance's unapplied draft is never painted here: it lives in
+ *  the page's own preview pane until Apply makes it the active theme, so
+ *  the shells hear about a theme only once it is applied. Signed out, the
  *  page is Ember whatever this device has cached, so one friend's theme
  *  never colours the sign-in page on a shared computer. Renders nothing.
  *
@@ -35,8 +38,7 @@ export function ThemeApplier({ initial, stripped = false }: { initial: ThemeDoc 
     let last: ThemeDoc | null = null;
     let shellTimer: ReturnType<typeof setTimeout> | undefined;
     const apply = () => {
-      const { preview, doc } = useThemeStore.getState();
-      const shown = signedIn ? (preview ?? doc) : DEFAULT_THEME;
+      const shown = signedIn ? useThemeStore.getState().doc : DEFAULT_THEME;
       if (last && sameDoc(last, shown)) return;
       last = shown;
       applyToDocument(shown);

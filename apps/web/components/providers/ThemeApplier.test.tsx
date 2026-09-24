@@ -49,14 +49,15 @@ describe('ThemeApplier', () => {
     expect(warn).toHaveBeenCalledWith('theme', 'cookie record stripped');
   });
 
-  it('follows store changes, a draft preview first, and clears everything for Ember', () => {
+  it('follows the active theme, never an unapplied draft, and clears everything for Ember', () => {
     render(<ThemeApplier initial={{ v: 1, preset: 'ember' }} />);
     expect(bg()).toBe('');
     act(() => useThemeStore.setState({ doc: MIDNIGHT }));
     expect(bg()).toBe(bgOf('midnight'));
-    act(() => useThemeStore.getState().setPreview({ v: 1, preset: 'forest' }));
-    expect(bg()).toBe(bgOf('forest'));
-    act(() => useThemeStore.getState().setPreview(null));
+    // Appearance's draft lives in its preview pane only (feature F1).
+    act(() => useThemeStore.getState().setDraft({ target: { v: 1, preset: 'forest' }, edit: null }));
+    expect(bg()).toBe(bgOf('midnight'));
+    act(() => useThemeStore.getState().setDraft(null));
     expect(bg()).toBe(bgOf('midnight'));
     act(() => useThemeStore.setState({ doc: { v: 1, preset: 'ember' } }));
     expect(document.documentElement.getAttribute('style') ?? '').toBe('');
@@ -95,17 +96,34 @@ describe('ThemeApplier', () => {
       expect(sent()).toEqual(['#080f1c']);
     });
 
-    it('sends only the last of a burst of changes, as a colour drag makes', () => {
+    it('sends only the last of a burst of changes', () => {
       render(<ThemeApplier initial={MIDNIGHT} />);
       act(() => {
-        useThemeStore.getState().setPreview({ v: 1, preset: 'forest' });
+        useThemeStore.setState({ doc: { v: 1, preset: 'forest' } });
         vi.advanceTimersByTime(SHELL_NOTIFY_DELAY_MS / 3);
-        useThemeStore.getState().setPreview({ v: 1, preset: 'nebula' });
+        useThemeStore.setState({ doc: { v: 1, preset: 'nebula' } });
         vi.advanceTimersByTime(SHELL_NOTIFY_DELAY_MS / 3);
-        useThemeStore.getState().setPreview({ v: 1, preset: 'mono' });
+        useThemeStore.setState({ doc: { v: 1, preset: 'mono' } });
       });
       act(() => vi.advanceTimersByTime(SHELL_NOTIFY_DELAY_MS));
       expect(sent()).toEqual(['#000000']);
+    });
+
+    it('hears nothing about a draft that was never applied (feature F1)', () => {
+      render(<ThemeApplier initial={MIDNIGHT} />);
+      act(() => vi.advanceTimersByTime(SHELL_NOTIFY_DELAY_MS));
+      expect(sent()).toEqual(['#080f1c']);
+      act(() => {
+        useThemeStore.getState().setDraft({ target: { v: 1, preset: 'mono' }, edit: null });
+        vi.advanceTimersByTime(SHELL_NOTIFY_DELAY_MS * 2);
+      });
+      expect(sent()).toEqual(['#080f1c']);
+      // Apply is what makes it the active theme; then the shell follows.
+      act(() => {
+        useThemeStore.setState({ doc: { v: 1, preset: 'mono' }, draft: null });
+        vi.advanceTimersByTime(SHELL_NOTIFY_DELAY_MS);
+      });
+      expect(sent()).toEqual(['#080f1c', '#000000']);
     });
 
     it('gives the shell Ember when signed out, like the page', () => {

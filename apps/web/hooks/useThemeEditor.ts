@@ -2,17 +2,13 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '@/lib/api';
-import { useThemeStore } from '@/stores/useThemeStore';
+import { useThemeStore, type ThemeDraft } from '@/stores/useThemeStore';
 import { applyChange, isMoreKey, pinnedOf, refill, selectionOf, uniqueName, type MoreKey, type Selection } from '@/lib/theme/editor';
 import { problems, type Finding } from '@/lib/theme/guard';
-import { cleanThemeName, INPUT_KEYS, sameInputs, THEME_NAME_MAX, type PresetId, type ThemeDoc, type ThemeInputKey, type ThemeInputs } from '@/lib/theme/model';
+import { cleanThemeName, INPUT_KEYS, sameInputs, THEME_NAME_MAX, type PresetId, type ThemeInputKey, type ThemeInputs } from '@/lib/theme/model';
 import type { Oklch } from '@/lib/theme/oklch';
 import { PRESET_BY_ID } from '@/lib/theme/presets';
-import { docFromSaved, THEME_CAP, type SavedTheme, type ThemesList } from '@/lib/theme/saved';
-
-/** How long colour edits wait before saving: a picker fires on every drag
- *  step. Picks, Fix it and Reset save at once. */
-export const SAVE_DELAY_MS = 600;
+import { docFromPreset, docFromSaved, THEME_CAP, type SavedTheme, type ThemesList } from '@/lib/theme/saved';
 
 export type SaveTone = 'idle' | 'saving' | 'saved' | 'blocked' | 'error';
 export interface SaveStatus {
@@ -21,15 +17,9 @@ export interface SaveStatus {
 }
 
 const IDLE: SaveStatus = { tone: 'idle', text: '' };
-const SAVING: SaveStatus = { tone: 'saving', text: 'Saving' };
+const APPLYING: SaveStatus = { tone: 'saving', text: 'Applying' };
+const APPLIED: SaveStatus = { tone: 'saved', text: 'Applied' };
 const SAVED: SaveStatus = { tone: 'saved', text: 'Saved' };
-
-/** The edit in progress, tied to the selection it was made on. */
-interface Draft {
-  key: string;
-  inputs: ThemeInputs;
-  pinned: Set<MoreKey>;
-}
 
 type ApiError = Error & { status?: number; body?: { error?: string; findings?: { label: string }[] } };
 
@@ -49,39 +39,39 @@ function refusal(e: unknown): string {
 }
 
 /** Settings > Appearance: the active theme from the store, the saved and
- *  shared lists from /api/themes, and a draft of the colours being edited.
- *  The draft shows live on the whole app (the store's preview) and saves
- *  after a short pause: to my theme when one of mine is in use, or as a new
- *  theme of mine when a preset or a kept copy is. A draft with an
- *  unreadable pair is shown but never saved, and never changed silently. */
+ *  shared lists from /api/themes, and the draft (the store's `draft`): the
+ *  theme picked and the colours changed, shown only in the page's preview
+ *  pane. Nothing reaches the app or the account until `apply`:
+ *  - a preset or a saved theme picked as it is becomes the active one;
+ *  - edits to one of mine save its colours, then it becomes the active one;
+ *  - edits to a preset (or a kept copy) save a new theme of mine, "My
+ *    Midnight", which becomes the active one.
+ *  A draft with an unreadable pair cannot be applied and is never changed
+ *  silently. Leaving the page applies nothing; the draft stays in the store
+ *  for the session, so coming back shows it again with Apply. */
 export function useThemeEditor() {
   const doc = useThemeStore((s) => s.doc);
+  const draft = useThemeStore((s) => s.draft);
   const [list, setListState] = useState<ThemesList | null>(null);
   const [loadFailed, setLoadFailed] = useState(false);
-  const [draft, setDraftState] = useState<Draft | null>(null);
   const [status, setStatus] = useState<SaveStatus>(IDLE);
   const [notice, setNotice] = useState<string | null>(null);
   const [sharing, setSharing] = useState(false);
+  const [applying, setApplying] = useState(false);
 
-  // The async save path reads these, not render-time values: a save that
-  // finishes after more edits must see the newest list and draft.
+  // The async paths read these, not render-time values: an apply that
+  // finishes after more edits must see the newest list.
   const listRef = useRef<ThemesList | null>(null);
-  const draftRef = useRef<Draft | null>(null);
-  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Every call that writes the active theme (apply, delete) runs through
+  // this queue, one after another: an apply that saves colours and then
+  // switches must land before a later one switches again, or the late save
+  // could put back the theme the person just moved off (bughunt N2; the
+  // server half is the per-account lock in lib/theme/serverActive.ts).
   const queue = useRef<Promise<void>>(Promise.resolve());
-  // The save currently running through `queue`, if any: set while a save
-  // started by schedule()'s timer or by flush() is still in flight, null
-  // once it settles. leave() (below) uses this to wait for a save already
-  // past its timer, not just one still ticking (bughunt N2).
-  const outstanding = useRef<Promise<void> | null>(null);
 
   const setList = useCallback((next: ThemesList | null) => {
     listRef.current = next;
     setListState(next);
-  }, []);
-  const setDraft = useCallback((next: Draft | null) => {
-    draftRef.current = next;
-    setDraftState(next);
   }, []);
   const editList = useCallback(
     (fn: (l: ThemesList) => ThemesList) => {
@@ -98,6 +88,18 @@ export function useThemeEditor() {
     [editList],
   );
 
+  /** Store a draft, or none when it would show exactly the active theme. */
+  const putDraft = useCallback((next: ThemeDraft | null) => {
+    const store = useThemeStore.getState();
+    if (next) {
+      const l = listRef.current;
+      const sel = selectionOf(next.target, l);
+      const edited = next.edit !== null && next.edit.key === sel.key && !sameInputs(next.edit.inputs, sel.inputs);
+      if (!edited && sel.key === selectionOf(store.doc, l).key) next = null;
+    }
+    store.setDraft(next);
+  }, []);
+
   useEffect(() => {
     let live = true;
     api
@@ -109,161 +111,36 @@ export function useThemeEditor() {
     };
   }, [setList]);
 
-  const selection = selectionOf(doc, list);
-  const current = draft && draft.key === selection.key ? draft : null;
+  /** The active theme, and what the page shows: the draft's pick, else the
+   *  active theme. */
+  const active = selectionOf(doc, list);
+  const selection = selectionOf(draft?.target ?? doc, list);
+  const current = draft?.edit && draft.edit.key === selection.key ? draft.edit : null;
   const inputs = current?.inputs ?? selection.inputs;
-  const pinned = current?.pinned ?? pinnedOf(selection.inputs);
-  const dirty = current !== null && !sameInputs(current.inputs, selection.inputs);
+  const pinned: ReadonlySet<MoreKey> = current?.pinned ?? pinnedOf(selection.inputs);
+  const edited = current !== null && !sameInputs(current.inputs, selection.inputs);
+  /** The draft differs from the active theme: Apply and Back to current show. */
+  const dirty = edited || selection.key !== active.key;
   const editable = selection.kind === 'mine' || selection.kind === 'preset' || selection.kind === 'loose';
 
-  // The draft on the whole app while it differs from what is saved;
-  // leaving the page drops it.
-  const previewDoc: ThemeDoc | null = dirty
-    ? {
-        v: 1,
-        preset: selection.base,
-        custom: inputs,
-        name: selection.name,
-        ...(selection.kind === 'mine' ? { themeId: selection.key } : {}),
-      }
-    : null;
-  const previewKey = previewDoc ? JSON.stringify(previewDoc) : '';
-  useEffect(() => {
-    useThemeStore.getState().setPreview(previewKey ? (JSON.parse(previewKey) as ThemeDoc) : null);
-  }, [previewKey]);
-  useEffect(
-    () => () => {
-      if (timer.current) clearTimeout(timer.current);
-      useThemeStore.getState().setPreview(null);
-    },
-    [],
-  );
+  const findings = problems(inputs);
+  const failing = dirty ? findings.find((f) => f.level === 'fail') : undefined;
+  const canApply =
+    dirty && !failing && selection.kind !== 'pending' && (list !== null || (selection.kind === 'preset' && !edited));
 
-  const save = useCallback(
-    async (d: Draft | null) => {
-      if (!d) return;
-      const isCurrent = () => selectionOf(useThemeStore.getState().doc, listRef.current).key === d.key;
-      const report = (next: SaveStatus) => {
-        if (isCurrent()) setStatus(next);
-      };
-      const mine = listRef.current?.mine.find((t) => t.id === d.key);
-      const sel: Selection = selectionOf(useThemeStore.getState().doc, listRef.current);
-      // A preset or a kept copy only turns into a new theme while it is
-      // still the one showing; an edit to one of mine is saved even when
-      // the person has just switched away (see flush).
-      if (!mine && (sel.key !== d.key || (sel.kind !== 'preset' && sel.kind !== 'loose'))) return;
-      if (sameInputs(d.inputs, mine?.inputs ?? sel.inputs)) {
-        if (mine) report(SAVED);
-        return;
-      }
-      const fail = problems(d.inputs).find((f) => f.level === 'fail');
-      if (fail) {
-        report({ tone: 'blocked', text: unreadableLine(fail.label) });
-        return;
-      }
-      report(SAVING);
-      if (mine) {
-        try {
-          const res = await api.updateSavedTheme(mine.id, { inputs: d.inputs });
-          putMine(res.theme);
-          if (res.active && useThemeStore.getState().doc.themeId === mine.id) useThemeStore.getState().adopt(res.active);
-          report(SAVED);
-        } catch (e) {
-          report({ tone: 'error', text: `Not saved: ${refusal(e)}` });
-        }
-        return;
-      }
-      const taken = listRef.current?.mine.map((t) => t.name) ?? [];
-      const name = uniqueName(sel.kind === 'preset' ? `My ${sel.name}` : sel.name, taken);
-      try {
-        const { theme } = await api.createTheme({ name, base: sel.base, inputs: d.inputs });
-        putMine(theme);
-        if (!isCurrent()) return;
-        // Carry the draft (and anything changed while this was in flight)
-        // over to the new theme, in the same render as the selection moves.
-        const pending = useThemeStore.getState().select({ themeId: theme.id }, docFromSaved(theme));
-        if (draftRef.current?.key === d.key) setDraft({ ...draftRef.current, key: theme.id });
-        const ok = await pending;
-        setStatus(
-          ok
-            ? { tone: 'saved', text: `Saved as ${theme.name}` }
-            : { tone: 'error', text: `Saved as ${theme.name}, but could not switch to it.` },
-        );
-      } catch (e) {
-        report({ tone: 'error', text: `Not saved: ${refusal(e)}` });
-      }
-    },
-    [putMine, setDraft],
-  );
+  const edit = (next: { inputs: ThemeInputs; pinned: ReadonlySet<MoreKey> }) => {
+    if (!editable) return;
+    const store = useThemeStore.getState();
+    putDraft({ target: store.draft?.target ?? store.doc, edit: { key: selection.key, ...next } });
+    setStatus(IDLE);
+  };
 
-  const runSave = useCallback(() => {
-    const d = draftRef.current;
-    const run: Promise<void> = queue.current.then(() => save(d)).catch(() => {});
-    queue.current = run;
-    outstanding.current = run;
-    run.then(
-      () => {
-        if (outstanding.current === run) outstanding.current = null;
-      },
-      () => {
-        if (outstanding.current === run) outstanding.current = null;
-      },
-    );
-    return run;
-  }, [save]);
-
-  const schedule = useCallback(
-    (delay: number) => {
-      if (timer.current) clearTimeout(timer.current);
-      timer.current = setTimeout(() => {
-        timer.current = null;
-        void runSave();
-      }, delay);
-    },
-    [runSave],
-  );
-
-  /** A save that is waiting goes now: used before switching themes, so an
-   *  edit to one of mine is not lost to the switch. Returns the save so a
-   *  caller can wait for it to land before doing anything that reads or
-   *  overwrites the same active theme (leave, below). */
-  const flush = useCallback((): Promise<void> => {
-    if (!timer.current) return Promise.resolve();
-    clearTimeout(timer.current);
-    timer.current = null;
-    return runSave();
-  }, [runSave]);
-
-  // Leaving Appearance (navigating away, closing the tab) must not drop a
-  // colour edit still waiting out SAVE_DELAY_MS: flush it on unmount and on
-  // pagehide, which fires for both cases (bughunt N1).
-  useEffect(() => {
-    const onPageHide = () => {
-      flush();
-    };
-    window.addEventListener('pagehide', onPageHide);
-    return () => {
-      window.removeEventListener('pagehide', onPageHide);
-      flush();
-    };
-  }, [flush]);
-
-  const edit = useCallback(
-    (next: { inputs: ThemeInputs; pinned: Set<MoreKey> }, delay: number) => {
-      if (!editable) return;
-      setDraft({ key: selection.key, ...next });
-      setStatus(IDLE);
-      schedule(delay);
-    },
-    [editable, schedule, selection.key, setDraft],
-  );
-
-  const change = (key: ThemeInputKey, value: Oklch) => edit(applyChange(inputs, pinned, key, value), SAVE_DELAY_MS);
+  const change = (key: ThemeInputKey, value: Oklch) => edit(applyChange(inputs, pinned, key, value));
 
   const unpin = (key: MoreKey) => {
     const next = new Set(pinned);
     next.delete(key);
-    edit({ inputs: refill(inputs, next), pinned: next }, SAVE_DELAY_MS);
+    edit({ inputs: refill(inputs, next), pinned: next });
   };
 
   const fix = (finding: Finding) => {
@@ -271,63 +148,118 @@ export function useThemeEditor() {
     const moved = INPUT_KEYS.find((k) => !sameInputs({ ...inputs, [k]: finding.fix![k] }, inputs));
     const next = new Set(pinned);
     if (moved && isMoreKey(moved)) next.add(moved);
-    edit({ inputs: finding.fix, pinned: next }, 0);
+    edit({ inputs: finding.fix, pinned: next });
   };
 
   const reset = () => {
     const base = PRESET_BY_ID[selection.base].inputs;
-    edit({ inputs: base, pinned: pinnedOf(base) }, 0);
+    edit({ inputs: base, pinned: pinnedOf(base) });
   };
 
-  /** Drops the draft and, crucially, waits for an edit-save still in
-   *  flight before anything else touches the active theme: switching while
-   *  that save is still going is what lets the switch's write land first
-   *  and then get overwritten by the stale save behind it (bughunt N2).
-   *  Returns the flush to await, or undefined when there was nothing
-   *  pending, so a caller with no draft to save (picking a preset with a
-   *  clean page) keeps switching the instant it is clicked, `await`-free. */
-  const leave = (): Promise<void> | undefined => {
-    if (timer.current) flush();
-    const pending = outstanding.current ?? undefined;
-    setDraft(null);
+  /** Show a preset in the preview. Nothing is applied or saved. */
+  const pickPreset = (preset: PresetId) => {
     setNotice(null);
     setStatus(IDLE);
-    return pending;
+    putDraft({ target: docFromPreset(preset), edit: null });
   };
 
-  const pickPreset = async (preset: PresetId) => {
-    const pending = leave();
-    if (pending) await pending;
-    const saved = await useThemeStore.getState().select({ preset });
-    setStatus(saved ? SAVED : { tone: 'error', text: `Not saved: ${refusal(null)}` });
-  };
-
-  const use = async (id: string) => {
+  /** Show a saved theme (mine or shared) in the preview. */
+  const use = (id: string) => {
     const l = listRef.current;
     const row = l?.mine.find((t) => t.id === id) ?? l?.shared.find((t) => t.id === id);
     if (!row) return;
-    const pending = leave();
-    if (pending) await pending;
-    const saved = await useThemeStore.getState().select({ themeId: id }, docFromSaved(row));
-    if (saved) setStatus(SAVED);
-    else {
-      setStatus({ tone: 'error', text: `Not saved: ${refusal(null)}` });
-      api.listThemes().then(setList, () => {});
-    }
+    setNotice(null);
+    setStatus(IDLE);
+    putDraft({ target: docFromSaved(row), edit: null });
   };
 
-  /** New: a copy of what is showing, saved to my list and put in use. */
+  /** Back to current: drop the draft, the preview shows the active theme. */
+  const discard = () => {
+    setNotice(null);
+    setStatus(IDLE);
+    putDraft(null);
+  };
+
+  /** Runs one apply: save what needs saving, then make it the active theme.
+   *  `sel` and `edits` are what the page showed when Apply was pressed. */
+  const runApply = useCallback(
+    async (sel: Selection, edits: ThemeInputs | null, snapshot: ThemeDraft | null) => {
+      const store = () => useThemeStore.getState();
+      let made: SavedTheme | null = null;
+      let ok = true;
+      try {
+        if (edits && sel.kind === 'mine') {
+          const res = await api.updateSavedTheme(sel.key, { inputs: edits });
+          putMine(res.theme);
+          // In use already: the server moved the active copy along with it.
+          if (res.active) store().adopt(res.active);
+          else ok = (await store().select({ themeId: res.theme.id }, docFromSaved(res.theme))) !== null;
+        } else if (edits && (sel.kind === 'preset' || sel.kind === 'loose')) {
+          const taken = listRef.current?.mine.map((t) => t.name) ?? [];
+          const name = uniqueName(sel.kind === 'preset' ? `My ${sel.name}` : sel.name, taken);
+          made = (await api.createTheme({ name, base: sel.base, inputs: edits })).theme;
+          putMine(made);
+          ok = (await store().select({ themeId: made.id }, docFromSaved(made))) !== null;
+        } else if (sel.kind === 'preset') {
+          ok = (await store().select({ preset: sel.base })) !== null;
+        } else if (sel.kind === 'mine' || sel.kind === 'others') {
+          ok = (await store().select({ themeId: sel.key }, docFromSaved(sel.theme))) !== null;
+          if (!ok) api.listThemes().then(setList, () => {});
+        }
+      } catch (e) {
+        setStatus({ tone: 'error', text: `Not applied: ${refusal(e)}` });
+        return;
+      }
+      if (!ok) {
+        setStatus({
+          tone: 'error',
+          text: made ? `Saved as ${made.name}, but could not switch to it.` : `Not applied: ${refusal(null)}`,
+        });
+        return;
+      }
+      // Done with the draft, unless it changed while this was in flight:
+      // then it stays, and an edit made to a preset follows it into the new
+      // theme it was just saved as.
+      const now = store().draft;
+      if (now === snapshot) putDraft(null);
+      else if (made && now?.edit?.key === sel.key) putDraft({ target: docFromSaved(made), edit: { ...now.edit, key: made.id } });
+      else putDraft(now);
+      setStatus(made ? { tone: 'saved', text: `Applied. Saved as ${made.name}.` } : APPLIED);
+    },
+    [putDraft, putMine, setList],
+  );
+
+  /** Make the draft the active theme, site-wide and on the account. */
+  const apply = (): Promise<void> => {
+    if (!canApply) return queue.current;
+    const snapshot = useThemeStore.getState().draft;
+    const sel = selection;
+    const edits = edited ? inputs : null;
+    setNotice(null);
+    setStatus(APPLYING);
+    setApplying(true);
+    const run = queue.current.then(() => runApply(sel, edits, snapshot)).catch(() => {});
+    queue.current = run;
+    run.then(() => {
+      if (queue.current === run) setApplying(false);
+    });
+    return run;
+  };
+
+  /** New: a copy of what is showing, saved to my list and shown in the
+   *  preview, ready to edit or apply. */
   const create = async (): Promise<boolean> => {
     const l = listRef.current;
     if (!l) return false;
-    const from = inputs;
-    const base = selection.base;
-    const pending = leave();
-    if (pending) await pending;
+    setNotice(null);
     try {
-      const { theme } = await api.createTheme({ name: uniqueName('New theme', l.mine.map((t) => t.name)), base, inputs: from });
+      const { theme } = await api.createTheme({
+        name: uniqueName('New theme', l.mine.map((t) => t.name)),
+        base: selection.base,
+        inputs,
+      });
       putMine(theme);
-      await useThemeStore.getState().select({ themeId: theme.id }, docFromSaved(theme));
+      putDraft({ target: docFromSaved(theme), edit: null });
       setStatus({ tone: 'saved', text: `Saved as ${theme.name}` });
       return true;
     } catch (e) {
@@ -360,16 +292,24 @@ export function useThemeEditor() {
     }
   };
 
-  const remove = async (id: string) => {
+  /** Delete one of mine. Queued behind any apply still running, which may
+   *  be switching to it; deleting the one in use goes back to its base
+   *  preset (the server's `active`, bughunt V10). */
+  const remove = (id: string): Promise<void> => {
     setNotice(null);
-    if (selection.key === id) flush();
-    try {
-      const res = await api.deleteSavedTheme(id);
-      editList((l) => ({ ...l, mine: l.mine.filter((t) => t.id !== id) }));
-      if (res.active) useThemeStore.getState().adopt(res.active);
-    } catch (e) {
-      setNotice(`Not deleted: ${refusal(e)}`);
-    }
+    const run = queue.current.then(async () => {
+      try {
+        const res = await api.deleteSavedTheme(id);
+        editList((l) => ({ ...l, mine: l.mine.filter((t) => t.id !== id) }));
+        if (res.active) useThemeStore.getState().adopt(res.active);
+        const d = useThemeStore.getState().draft;
+        putDraft(d?.target.themeId === id ? null : d);
+      } catch (e) {
+        setNotice(`Not deleted: ${refusal(e)}`);
+      }
+    });
+    queue.current = run;
+    return run;
   };
 
   const setShared = async (shared: boolean) => {
@@ -386,18 +326,22 @@ export function useThemeEditor() {
     }
   };
 
-  const findings = problems(inputs);
-  const failing = dirty ? findings.find((f) => f.level === 'fail') : undefined;
   const shownStatus: SaveStatus = failing ? { tone: 'blocked', text: unreadableLine(failing.label) } : status;
 
   return {
+    /** What the page shows (the draft's pick, else the active theme). */
     selection,
+    /** The active theme. */
+    active,
     list,
     loadFailed,
     inputs,
     pinned,
     findings,
     dirty,
+    edited,
+    canApply,
+    applying,
     editable,
     status: shownStatus,
     notice,
@@ -408,6 +352,8 @@ export function useThemeEditor() {
     reset,
     pickPreset,
     use,
+    apply,
+    discard,
     create,
     rename,
     duplicate: (id: string) => copy(id, 'Duplicated'),

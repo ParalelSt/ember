@@ -15,10 +15,14 @@ const ROW = 'flex items-center gap-row rounded-md border px-row py-inset';
 const rowState = (active: boolean) => (active ? 'border-ember bg-card' : 'border-transparent hover:bg-card');
 
 export interface ThemeLibraryProps {
-  /** The preset in use, when no saved theme is. */
-  activePreset: PresetId | null;
-  /** The saved theme in use (mine or shared). */
-  activeThemeId: string | null;
+  /** The preset the preview shows, when no saved theme is. */
+  shownPreset: PresetId | null;
+  /** The saved theme the preview shows (mine or shared). */
+  shownThemeId: string | null;
+  /** The preset in use on the app, when no saved theme is. */
+  inUsePreset: PresetId | null;
+  /** The saved theme in use on the app (mine or shared). */
+  inUseThemeId: string | null;
   /** Null while the list loads. */
   mine: SavedTheme[] | null;
   shared: SharedTheme[] | null;
@@ -26,7 +30,9 @@ export interface ThemeLibraryProps {
   loadFailed?: boolean;
   /** In use but in no list: a copy kept after its original went away. */
   looseName?: string | null;
+  /** Show a preset in the preview (nothing is applied). */
   onPickPreset: (id: PresetId) => void;
+  /** Show a saved theme in the preview (nothing is applied). */
   onUse: (id: string) => void;
   onNew: () => void;
   /** Resolves to an error line, or null once renamed. */
@@ -38,9 +44,10 @@ export interface ThemeLibraryProps {
 
 /** The Themes tab: the five presets, my saved themes (new, rename,
  *  duplicate, delete, with the count against the cap) and everyone else's
- *  shared themes (use, or copy into mine). Props in, callbacks out. */
+ *  shared themes (preview, or copy into mine). The one the preview shows is
+ *  outlined; the one in use says "In use". Props in, callbacks out. */
 export function ThemeLibrary(props: ThemeLibraryProps) {
-  const { activePreset, activeThemeId, mine, shared, cap, loadFailed, looseName } = props;
+  const { shownPreset, shownThemeId, inUsePreset, inUseThemeId, mine, shared, cap, loadFailed, looseName } = props;
   const full = mine !== null && mine.length >= cap;
 
   return (
@@ -48,7 +55,7 @@ export function ThemeLibrary(props: ThemeLibraryProps) {
       {looseName && (
         <p data-testid="loose-theme" className="text-sm text-muted-foreground">
           In use: <span className="font-medium text-foreground">{looseName}</span>, kept after its original went
-          away. Change a colour to save it to My themes.
+          away. Change a colour and apply it to save it to My themes.
         </p>
       )}
 
@@ -59,14 +66,17 @@ export function ThemeLibrary(props: ThemeLibraryProps) {
             key={p.id}
             type="button"
             role="radio"
-            aria-checked={p.id === activePreset}
+            aria-checked={p.id === shownPreset}
             data-preset={p.id}
             onClick={() => props.onPickPreset(p.id)}
-            className={cn(ROW, 'text-left transition-colors', rowState(p.id === activePreset))}
+            className={cn(ROW, 'text-left transition-colors', rowState(p.id === shownPreset))}
           >
             <ThemeSwatch {...swatch(p.inputs)} />
             <span className="min-w-0 flex-1">
-              <span className="block text-sm font-medium">{p.name}</span>
+              <span className="flex items-center gap-cluster text-sm font-medium">
+                {p.name}
+                {p.id === inUsePreset && <InUse />}
+              </span>
               <span className="block truncate text-xs text-muted-foreground">{p.description}</span>
             </span>
           </button>
@@ -96,13 +106,14 @@ export function ThemeLibrary(props: ThemeLibraryProps) {
         {mine === null ? (
           <p className="text-sm text-muted-foreground">{loadFailed ? 'Could not load your themes.' : 'Loading your themes.'}</p>
         ) : mine.length === 0 ? (
-          <p className="text-sm text-muted-foreground">None yet. Change a colour, or press New, to make one.</p>
+          <p className="text-sm text-muted-foreground">None yet. Change a colour and apply it, or press New, to make one.</p>
         ) : (
           mine.map((t) => (
             <MyThemeRow
               key={t.id}
               theme={t}
-              active={t.id === activeThemeId}
+              active={t.id === shownThemeId}
+              inUse={t.id === inUseThemeId}
               onUse={() => props.onUse(t.id)}
               onRename={(name) => props.onRename(t.id, name)}
               onDuplicate={() => props.onDuplicate(t.id)}
@@ -119,10 +130,13 @@ export function ThemeLibrary(props: ThemeLibraryProps) {
           <p className="text-sm text-muted-foreground">Nobody has shared a theme yet.</p>
         ) : (
           shared.map((t) => (
-            <div key={t.id} data-testid="shared-theme" className={cn(ROW, rowState(t.id === activeThemeId))}>
+            <div key={t.id} data-testid="shared-theme" className={cn(ROW, rowState(t.id === shownThemeId))}>
               <ThemeSwatch {...swatch(t.inputs)} />
               <div className="min-w-0 flex-1">
-                <div className="truncate text-sm font-medium">{t.name}</div>
+                <div className="flex min-w-0 items-center gap-cluster text-sm font-medium">
+                  <span className="truncate">{t.name}</span>
+                  {t.id === inUseThemeId && <InUse />}
+                </div>
                 <div className="truncate text-xs text-muted-foreground">by {t.ownerName}</div>
               </div>
               <div className="flex shrink-0 items-center gap-cluster">
@@ -138,10 +152,10 @@ export function ThemeLibrary(props: ThemeLibraryProps) {
                 <Button
                   size="xs"
                   onClick={() => props.onUse(t.id)}
-                  disabled={t.id === activeThemeId}
-                  aria-label={`Use ${t.name}`}
+                  disabled={t.id === shownThemeId}
+                  aria-label={`Preview ${t.name}`}
                 >
-                  {t.id === activeThemeId ? 'In use' : 'Use'}
+                  {t.id === shownThemeId ? 'Showing' : 'Preview'}
                 </Button>
               </div>
             </div>
@@ -155,6 +169,7 @@ export function ThemeLibrary(props: ThemeLibraryProps) {
 function MyThemeRow({
   theme,
   active,
+  inUse,
   canDuplicate,
   onUse,
   onRename,
@@ -162,7 +177,10 @@ function MyThemeRow({
   onDelete,
 }: {
   theme: SavedTheme;
+  /** The preview shows it. */
   active: boolean;
+  /** The app uses it. */
+  inUse: boolean;
   canDuplicate: boolean;
   onUse: () => void;
   onRename: (name: string) => Promise<string | null>;
@@ -245,12 +263,15 @@ function MyThemeRow({
         type="button"
         onClick={onUse}
         aria-pressed={active}
-        aria-label={`Use ${theme.name}`}
+        aria-label={`Preview ${theme.name}`}
         className="flex min-w-0 flex-1 items-center gap-row text-left"
       >
         <ThemeSwatch {...swatch(theme.inputs)} />
         <span className="min-w-0 flex-1">
-          <span className="block truncate text-sm font-medium">{theme.name}</span>
+          <span className="flex min-w-0 items-center gap-cluster text-sm font-medium">
+            <span className="truncate">{theme.name}</span>
+            {inUse && <InUse />}
+          </span>
           <span className="block text-xs text-muted-foreground">
             {theme.shared ? 'Shared with everyone' : 'Only you'}
           </span>
@@ -272,6 +293,15 @@ function MyThemeRow({
         </IconAction>
       </div>
     </div>
+  );
+}
+
+/** The tag on the theme the app uses now. */
+function InUse() {
+  return (
+    <span data-testid="in-use" className="shrink-0 rounded-full bg-muted px-cluster text-xs font-normal text-muted-foreground">
+      In use
+    </span>
   );
 }
 

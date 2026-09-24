@@ -146,9 +146,38 @@ describe('useThemeStore', () => {
   });
 
   it('sign-out keeps the cached theme and drops any draft', async () => {
-    useThemeStore.setState({ userId: 'u1', loaded: true, doc: SAVED, preview: { v: 1, preset: 'mono' } });
+    useThemeStore.setState({ userId: 'u1', loaded: true, doc: SAVED, draft: { target: { v: 1, preset: 'mono' }, edit: null } });
     useThemeStore.getState().resetThemeSync();
-    expect(useThemeStore.getState()).toMatchObject({ userId: null, loaded: false, preview: null, doc: SAVED });
+    expect(useThemeStore.getState()).toMatchObject({ userId: null, loaded: false, draft: null, doc: SAVED });
+  });
+
+  describe('the Appearance draft (feature F1)', () => {
+    const DRAFT = { target: { v: 1, preset: 'midnight' } as ThemeDoc, edit: null };
+
+    it('holds a draft without touching the active theme, the account or the cookie', () => {
+      useThemeStore.setState({ userId: 'u1', doc: SAVED });
+      useThemeStore.getState().setDraft(DRAFT);
+      expect(useThemeStore.getState().draft).toEqual(DRAFT);
+      expect(useThemeStore.getState().doc).toEqual(SAVED);
+      expect(setTheme).not.toHaveBeenCalled();
+      expect(cookie).not.toHaveBeenCalled();
+    });
+
+    it('never persists the draft: a reload starts from the active theme', async () => {
+      useThemeStore.setState({ userId: 'u1' });
+      await useThemeStore.getState().select({ preset: 'forest' });
+      useThemeStore.getState().setDraft(DRAFT);
+      expect(stored()).toEqual({ doc: { v: 1, preset: 'forest' } });
+    });
+
+    it('keeps the draft through an apply of something else until the page drops it', async () => {
+      useThemeStore.setState({ userId: 'u1' });
+      useThemeStore.getState().setDraft(DRAFT);
+      await useThemeStore.getState().select({ preset: 'nebula' });
+      expect(useThemeStore.getState().draft).toEqual(DRAFT);
+      useThemeStore.getState().setDraft(null);
+      expect(useThemeStore.getState().draft).toBeNull();
+    });
   });
 
   it('a server-painted doc wins over the cache; null leaves the cache', () => {
