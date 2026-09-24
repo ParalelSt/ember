@@ -150,7 +150,10 @@ function sectionHeadings(): (string | null)[] {
     .map((h) => h.textContent);
 }
 
-describe('DizajnPage', () => {
+// The archive renders every past /dizajn candidate at once, which takes a
+// few seconds when the whole suite runs in parallel: allow 20 s per test
+// instead of 5 so a busy machine doesn't fail it.
+describe('DizajnPage', { timeout: 20_000 }, () => {
   it('renders every section with no network', () => {
     render(<DizajnPage />);
 
