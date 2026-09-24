@@ -347,7 +347,7 @@ export const api = {
   recordPlay: (track: Track) => req<{ ok: true }>('/history', { method: 'POST', body: { track } }),
 
   updateDiscord: (track: Track | null, isPlaying: boolean, positionSec = 0, durationSec = 0) =>
-    req<{ ok: true; shared: boolean }>('/discord/update', {
+    req<{ ok: true; shared: boolean; owner: boolean }>('/discord/update', {
       method: 'POST',
       body: { track, isPlaying, positionSec, durationSec },
     }),

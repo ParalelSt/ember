@@ -49,6 +49,11 @@ describe('proxy [bughunt W05]: unauthenticated /api/* gets 401 JSON, not a redir
     expect(res.headers.get('location')).toBeNull();
   });
 
+  it('answers the Discord presence route with 401 when there is no session [bughunt X3]', async () => {
+    const res = await proxy(req('/api/discord/update'));
+    expect(res.status).toBe(401);
+  });
+
   it('leaves the /pb proxy path open with no session', async () => {
     const res = await proxy(req('/pb/api/collections/users/auth-with-password'));
     expect(res.status).toBe(200);
