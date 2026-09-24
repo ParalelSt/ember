@@ -110,6 +110,11 @@ export interface AudioBackend {
    *  natively so it works with the screen off. */
   playOverlay?(url: string, opts: NativeOverlayOptions): OverlayHandle;
   stopOverlay?(): void;
+  /** Playback speed with the pitch kept (the tab page's practice speed,
+   *  docs/tabs-rebuild.md decision 3). Web audio only for now: engines
+   *  without it (desktop native, Android Media3) play at full speed and the
+   *  page hides its speed control. Optional: absent means unsupported. */
+  setRate?(rate: number): void;
   /** Tear down listeners / native resources. */
   destroy(): void;
 }

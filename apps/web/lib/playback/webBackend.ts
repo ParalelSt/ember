@@ -248,6 +248,18 @@ export const createWebBackend: CreateAudioBackend = (events) => {
       return a.networkState === NETWORK_LOADING ? false : null;
     },
 
+    setRate(rate) {
+      const r = Number.isFinite(rate) && rate > 0 ? Math.min(4, Math.max(0.25, rate)) : 1;
+      // Pitch kept, in every engine's spelling. The default rate too: a new
+      // src resets playbackRate to it.
+      const el = a as HTMLAudioElement & { webkitPreservesPitch?: boolean; mozPreservesPitch?: boolean };
+      el.preservesPitch = true;
+      el.webkitPreservesPitch = true;
+      el.mozPreservesPitch = true;
+      a.defaultPlaybackRate = r;
+      a.playbackRate = r;
+    },
+
     getCurrentTime: () => a.currentTime || 0,
     getDuration: () => a.duration || 0,
     isPaused: () => a.paused,

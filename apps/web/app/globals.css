@@ -338,6 +338,13 @@ body:has([data-copy-bar]) [data-back-to-top] { bottom: calc(16rem + var(--safe-b
   fill: var(--ember);
   stroke: var(--ember);
 }
+/* The practice loop's bars (api.highlightPlaybackRange in
+   components/tabs/LiveTabScore.tsx): AlphaTab lays the blocks out and
+   leaves their colour to the page. */
+.at-selection div {
+  background: color-mix(in oklab, var(--ember) 14%, transparent);
+  border-radius: 2px;
+}
 
 /* "What's new" New tag (components/changelog/NewBadge.tsx). .ember-new-pulse
    breathes the whole pill (opacity plus an ember glow ring); .ember-new-dot

@@ -121,3 +121,30 @@ describe('webBackend seek', () => {
     b.destroy();
   });
 });
+
+describe('webBackend setRate (practice speed)', () => {
+  it('slows the element with the pitch kept, and keeps the speed across a new src', () => {
+    const b = createWebBackend(makeFakeEvents());
+    const el = document.querySelector('audio') as HTMLAudioElement & { webkitPreservesPitch?: boolean };
+    b.setRate!(0.75);
+    expect(el.playbackRate).toBe(0.75);
+    expect(el.defaultPlaybackRate).toBe(0.75);
+    expect(el.preservesPitch).toBe(true);
+    expect(el.webkitPreservesPitch).toBe(true);
+    b.setRate!(1);
+    expect(el.playbackRate).toBe(1);
+    b.destroy();
+  });
+
+  it('refuses nonsense: zero, negative or NaN is full speed', () => {
+    const b = createWebBackend(makeFakeEvents());
+    const el = document.querySelector('audio') as HTMLAudioElement;
+    b.setRate!(Number.NaN);
+    expect(el.playbackRate).toBe(1);
+    b.setRate!(-2);
+    expect(el.playbackRate).toBe(1);
+    b.setRate!(0.1);
+    expect(el.playbackRate).toBe(0.25);
+    b.destroy();
+  });
+});

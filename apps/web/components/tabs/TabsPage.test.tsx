@@ -33,6 +33,9 @@ const player = vi.hoisted(() => ({
   duration: 180,
   seek: vi.fn(),
   playTrack: vi.fn(),
+  rate: 1,
+  setRate: vi.fn(),
+  canSetRate: true,
 }));
 vi.mock('@/components/player/PlayerProvider', () => ({ usePlayer: () => player }));
 
@@ -89,6 +92,9 @@ vi.mock('@/components/tabs/LiveTabScore', () => ({
         data-scale={p.scale}
         data-follows={String(p.follows)}
         data-offset={p.offsetMs}
+        data-rate={p.rate}
+        data-highlight={p.highlight ? `${p.highlight.start}-${p.highlight.end}` : ''}
+        data-picking={String(!!p.onBarPick)}
       />
     );
   },
@@ -151,6 +157,8 @@ beforeEach(() => {
   player.current = SONG;
   player.isPlaying = true;
   player.position = 12;
+  player.rate = 1;
+  player.canSetRate = true;
   score.last = null;
   api.getTrackTabs.mockResolvedValue({ tabs: [] });
   api.getGeneratedTab.mockResolvedValue({ status: 'none' });
@@ -299,6 +307,110 @@ describe('TabsPage metronome', () => {
     await screen.findByTestId('tab-score');
     act(() => score.last!.onTimeline!(timeline()));
     expect(screen.getByRole('button', { name: /Metronome/ })).toHaveTextContent('88');
+  });
+});
+
+describe('TabsPage practice', () => {
+  /** Eight bars of 4/4 at 120: "Intro" at bar 1, "Verse" at 3, "Chorus" at 7. */
+  const timeline = () =>
+    buildTimeline(
+      [0, 1, 2, 3, 4, 5, 6, 7].map((i) => ({
+        start: i * 3840,
+        end: (i + 1) * 3840,
+        tempoChanges: [{ tick: i * 3840, tempo: 120 }],
+        masterBar: {
+          index: i,
+          timeSignatureNumerator: 4,
+          timeSignatureDenominator: 4,
+          section: ({ 0: { text: 'Intro' }, 2: { text: 'Verse' }, 6: { text: 'Chorus' } } as Record<number, { text: string }>)[i] ?? null,
+        },
+      })),
+    );
+
+  async function open() {
+    api.getTrackTabs.mockResolvedValue({ tabs: [tab({})] });
+    wrap(<TabsPage trackId="upload:song1" />);
+    await screen.findByTestId('tab-score');
+    act(() => score.last!.onTimeline!(timeline()));
+    fireEvent.click(screen.getByRole('button', { name: /Practice/ }));
+    return screen.getByTestId('tab-practice');
+  }
+
+  it('slows the song down by percent, pitch kept by the player, and back to full speed on leaving', async () => {
+    api.getTrackTabs.mockResolvedValue({ tabs: [tab({})] });
+    const view = wrap(<TabsPage trackId="upload:song1" />);
+    await screen.findByTestId('tab-score');
+    fireEvent.click(screen.getByRole('button', { name: /Practice/ }));
+    fireEvent.click(screen.getByRole('button', { name: '75%' }));
+    expect(player.setRate).toHaveBeenLastCalledWith(0.75);
+    expect(screen.getByRole('button', { name: /Practice/ })).toHaveTextContent('75%');
+    view.unmount();
+    expect(player.setRate).toHaveBeenLastCalledWith(1);
+  });
+
+  it('or by tempo: 90 bpm of a 120 bpm tab is 75%', async () => {
+    const row = await open();
+    fireEvent.change(within(row).getByLabelText('Speed in bpm'), { target: { value: '90' } });
+    expect(player.setRate).toHaveBeenLastCalledWith(0.75);
+    fireEvent.change(within(row).getByLabelText('Speed in percent'), { target: { value: '50' } });
+    expect(player.setRate).toHaveBeenLastCalledWith(0.5);
+  });
+
+  it('the cursor and the metronome get the speed the player plays at', async () => {
+    player.rate = 0.6;
+    api.getTrackTabs.mockResolvedValue({ tabs: [tab({})] });
+    wrap(<TabsPage trackId="upload:song1" />);
+    expect(await screen.findByTestId('tab-score')).toHaveAttribute('data-rate', '0.6');
+  });
+
+  it('an engine that cannot change speed says so instead', async () => {
+    player.canSetRate = false;
+    const row = await open();
+    expect(within(row).getByTestId('tab-speed-unavailable')).toBeInTheDocument();
+    expect(within(row).queryByRole('button', { name: '75%' })).toBeNull();
+    expect(player.setRate).not.toHaveBeenCalled();
+  });
+
+  it('loops a section: marked on the score, named on the chip', async () => {
+    const row = await open();
+    expect(within(row).getByRole('button', { name: 'Loop' })).toBeDisabled();
+    fireEvent.change(within(row).getByLabelText('Loop a section'), { target: { value: '1' } });
+    expect(within(row).getByRole('button', { name: 'Loop' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByTestId('tab-score')).toHaveAttribute('data-highlight', '2-5');
+    expect(screen.getByRole('button', { name: /Practice/ })).toHaveTextContent('Bars 3–6');
+    expect((within(row).getByLabelText('Loop from bar') as HTMLInputElement).value).toBe('3');
+    expect((within(row).getByLabelText('Loop to bar') as HTMLInputElement).value).toBe('6');
+    // Off keeps the bars for next time, and takes the mark away.
+    fireEvent.click(within(row).getByRole('button', { name: 'Loop' }));
+    expect(screen.getByTestId('tab-score')).toHaveAttribute('data-highlight', '');
+    fireEvent.click(within(row).getByRole('button', { name: 'Loop' }));
+    expect(screen.getByTestId('tab-score')).toHaveAttribute('data-highlight', '2-5');
+    fireEvent.click(within(row).getByRole('button', { name: 'Clear' }));
+    expect(screen.getByTestId('tab-score')).toHaveAttribute('data-highlight', '');
+  });
+
+  it('loops bars typed in, and seeks to the loop when it starts outside it', async () => {
+    player.position = 1;
+    const row = await open();
+    fireEvent.change(within(row).getByLabelText('Loop from bar'), { target: { value: '5' } });
+    fireEvent.change(within(row).getByLabelText('Loop to bar'), { target: { value: '6' } });
+    expect(screen.getByTestId('tab-score')).toHaveAttribute('data-highlight', '4-5');
+    // Bar 5 starts 8 s into the tab, which starts with the song.
+    await waitFor(() => expect(player.seek).toHaveBeenLastCalledWith(8));
+  });
+
+  it('picks the loop on the tab with two clicks', async () => {
+    const row = await open();
+    fireEvent.click(within(row).getByRole('button', { name: 'Pick on the tab' }));
+    expect(screen.getByTestId('tab-loop-picking')).toHaveTextContent('Click the first bar');
+    expect(screen.getByTestId('tab-score')).toHaveAttribute('data-picking', 'true');
+    act(() => score.last!.onBarPick!(6));
+    expect(screen.getByTestId('tab-loop-picking')).toHaveTextContent('Now click its last bar');
+    act(() => score.last!.onBarPick!(3));
+    expect(screen.queryByTestId('tab-loop-picking')).toBeNull();
+    expect(screen.getByTestId('tab-score')).toHaveAttribute('data-picking', 'false');
+    expect(screen.getByTestId('tab-score')).toHaveAttribute('data-highlight', '3-6');
+    expect(within(row).getByRole('button', { name: 'Loop' })).toHaveAttribute('aria-pressed', 'true');
   });
 });
 

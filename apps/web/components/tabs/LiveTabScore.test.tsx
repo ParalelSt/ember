@@ -72,6 +72,9 @@ interface FakeApi {
   seeks: number[];
   midiLoaded: Emitter;
   isReadyForPlayback: boolean;
+  playbackSpeed: number;
+  highlightPlaybackRange: ReturnType<typeof vi.fn>;
+  clearPlaybackRangeHighlight: ReturnType<typeof vi.fn>;
 }
 
 vi.mock('@coderline/alphatab', () => {
@@ -133,6 +136,9 @@ vi.mock('@coderline/alphatab', () => {
     seeks: number[] = [];
     midiLoaded = new Emitter();
     isReadyForPlayback = at.ready;
+    playbackSpeed = 1;
+    highlightPlaybackRange = vi.fn();
+    clearPlaybackRangeHighlight = vi.fn();
     // A seek, as AlphaTab's own transport takes one: its cursor snaps there.
     set timePosition(ms: number) {
       this.seeks.push(ms);
@@ -391,6 +397,64 @@ describe('LiveTabScore sync', () => {
     await waitFor(() => expect(api.seeks).toHaveLength(2));
     api.midiLoaded.fire();
     await waitFor(() => expect(api.seeks).toHaveLength(3));
+  });
+
+  it('at a practice speed the line runs on at that speed between reports, and glides at it', async () => {
+    const { view, api, p } = await mount({ position: 30, playing: true, rate: 0.5 });
+    await waitFor(() => expect(api.playbackSpeed).toBe(0.5));
+    await waitFor(() => expect(api.seeks).toHaveLength(1));
+    // Half a second of wall clock is a quarter second of song.
+    await new Promise((r) => setTimeout(r, 500));
+    const last = api.player.output.updatePosition.mock.lastCall?.[0] as number;
+    expect(last).toBeGreaterThan(30_150);
+    expect(last).toBeLessThan(30_450);
+    view.rerender(<LiveTabScore {...p} position={30} playing rate={1} />);
+    await waitFor(() => expect(api.playbackSpeed).toBe(1));
+  });
+
+  it('marks the loop’s bars on the score, and clears the mark', async () => {
+    const beat = (bar: number, i: number) => ({ id: `b${bar}.${i}` });
+    at.score = {
+      tempo: 96,
+      masterBars: [{}],
+      tracks: [
+        {
+          index: 0,
+          name: 'Guitar',
+          playbackInfo: { program: 30 },
+          staves: [
+            {
+              tuning: [64, 59, 55, 50, 45, 40],
+              showTablature: true,
+              bars: [0, 1, 2, 3].map((bar) => ({ voices: [{ beats: [beat(bar, 0), beat(bar, 1), beat(bar, 2)] }] })),
+            },
+          ],
+        },
+      ],
+    };
+    const { view, api, p } = await mount({ highlight: { start: 1, end: 2 } });
+    await waitFor(() => expect(api.highlightPlaybackRange).toHaveBeenCalled());
+    expect(api.highlightPlaybackRange).toHaveBeenLastCalledWith({ id: 'b1.0' }, { id: 'b2.2' });
+    // A new layout draws the score afresh: the mark goes on again.
+    api.highlightPlaybackRange.mockClear();
+    api.postRenderFinished.fire();
+    expect(api.highlightPlaybackRange).toHaveBeenCalledTimes(1);
+    view.rerender(<LiveTabScore {...p} highlight={null} />);
+    await waitFor(() => expect(api.clearPlaybackRangeHighlight).toHaveBeenCalled());
+  });
+
+  it('while choosing a loop, a click on the score picks its bar instead of seeking', async () => {
+    const onBarPick = vi.fn();
+    const onSeek = vi.fn();
+    const { view, api, p } = await mount({ onBarPick, onSeek });
+    api.beatMouseDown.fire({ playbackStart: 0, voice: { bar: { index: 3, masterBar: { index: 3 } } } });
+    expect(onBarPick).toHaveBeenCalledWith(3);
+    expect(onSeek).not.toHaveBeenCalled();
+    // Done choosing: clicks seek again.
+    view.rerender(<LiveTabScore {...p} onBarPick={null} />);
+    api.beatMouseDown.fire(await bar2Beat());
+    expect(onSeek).toHaveBeenCalled();
+    expect(onBarPick).toHaveBeenCalledTimes(1);
   });
 
   it('hands the page the tab timeline (bars and tempo) once the score is loaded', async () => {

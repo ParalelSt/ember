@@ -11,7 +11,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { ChevronDownIcon, ClockIcon, MoreIcon, PlayIcon } from '@/components/icons';
+import { ChevronDownIcon, ClockIcon, MoreIcon, PlayIcon, RepeatIcon } from '@/components/icons';
 import { EmptyState } from '@/components/page/EmptyState';
 import { usePlayer } from '@/components/player/PlayerProvider';
 import { LiveTabScore } from '@/components/tabs/LiveTabScore';
@@ -42,6 +42,21 @@ import {
 import { barStartsOf, bpmAtMs, steadyBeats, tabBeats, tempoSteps, type Click, type TabTimeline } from '@/lib/tabTimeline';
 import { clickContext } from '@/lib/metronome';
 import { useMetronome } from '@/hooks/useMetronome';
+import { usePracticeLoop } from '@/hooks/usePracticeLoop';
+import {
+  barCount,
+  bpmAtRate,
+  loopSpanMs,
+  normalizeRange,
+  pickBar,
+  rangeLabel,
+  rateFromBpm,
+  rateFromPercent,
+  sectionRanges,
+  SPEED_PRESETS,
+  type BarRange,
+  type SectionRange,
+} from '@/lib/tabPractice';
 import {
   beatClockOf,
   formatOffset,
@@ -144,7 +159,7 @@ export function TabsPage({ trackId }: { trackId: string }) {
 
 function TabsSheet({ song, sources, onBack }: { song: TabSong; sources: TabSourcesState; onBack: () => void }) {
   const phone = usePhone();
-  const { current, isPlaying, position, duration, seek, playTrack } = usePlayer();
+  const { current, isPlaying, position, duration, seek, playTrack, rate, setRate, canSetRate } = usePlayer();
   const follows = current?.id === song.id;
 
   // Which tab is drawn: the listener's own pick for this song when they
@@ -268,11 +283,53 @@ function TabsSheet({ song, sources, onBack }: { song: TabSong; sources: TabSourc
     }
     return tabBeats(timeline, toTabMs(fromSec), toTabMs(toSec)).map((c) => ({ at: toSongSec(c.at), accent: c.accent }));
   };
+  // ── practice: speed and loop (lib/tabPractice.ts) ───────────────────────
+  // The speed is the page's while its song plays here: back to full speed
+  // when the song changes or the page closes. Web audio only for now.
+  const [speed, setSpeed] = useState(1);
+  useEffect(() => {
+    if (!follows || !canSetRate) return;
+    setRate(speed);
+    return () => setRate(1);
+  }, [follows, canSetRate, speed, setRate]);
+  const playRate = follows && canSetRate ? rate : 1;
+
+  const [practiceOpen, setPracticeOpen] = useState(false);
+  const [loop, setLoop] = useState<{ tabId: string; range: BarRange; on: boolean } | null>(null);
+  const loopRange = tab && timeline && loop?.tabId === tab.id ? normalizeRange(loop.range, timeline) : null;
+  const loopOn = !!loopRange && !!loop?.on;
+  const setLoopRange = (range: BarRange | null, on = true) => {
+    if (!tab) return;
+    setLoop(range ? { tabId: tab.id, range, on } : null);
+  };
+  // Two clicks on the score choose the loop's bars.
+  const [picking, setPicking] = useState<{ tabId: string; first: number | null } | null>(null);
+  const pickingNow = tab && picking?.tabId === tab.id ? picking : null;
+  const onBarPick = (bar: number) => {
+    if (!tab) return;
+    const next = pickBar(pickingNow?.first ?? null, bar);
+    if (next.range) {
+      setLoopRange(next.range, true);
+      setPicking(null);
+    } else {
+      setPicking({ tabId: tab.id, first: next.picking });
+    }
+  };
+  const loopMs = loopOn && timeline ? loopSpanMs(timeline, loopRange) : null;
+  usePracticeLoop({
+    span: loopMs ? { startSec: toSongSec(loopMs.startMs), endSec: toSongSec(loopMs.endMs) } : null,
+    follows,
+    running: follows && isPlaying,
+    position,
+    rate: playRate,
+    seek,
+  });
+
   useMetronome({
     on: metronomeOn && !!timeline,
     running: follows && isPlaying,
     position,
-    rate: 1,
+    rate: playRate,
     beats: metronomeBeats,
   });
   const toggleMetronome = () => {
@@ -459,6 +516,19 @@ function TabsSheet({ song, sources, onBack }: { song: TabSong; sources: TabSourc
               </button>
               <button
                 type="button"
+                aria-pressed={practiceOpen}
+                aria-label="Practice"
+                onClick={() => setPracticeOpen((v) => !v)}
+                title="Loop a section and slow it down"
+                className={cn(chip, practiceOpen || loopOn || speed !== 1 ? chipOn : chipOff)}
+              >
+                <RepeatIcon className="size-3.5" />
+                {!phone && 'Practice'}
+                {speed !== 1 && canSetRate && <span className="tabular-nums font-normal">{Math.round(speed * 100)}%</span>}
+                {loopOn && loopRange && <span className="font-normal">{rangeLabel(loopRange)}</span>}
+              </button>
+              <button
+                type="button"
                 aria-pressed={metronomeOn}
                 aria-label="Metronome"
                 disabled={!timeline}
@@ -487,6 +557,27 @@ function TabsSheet({ song, sources, onBack }: { song: TabSong; sources: TabSourc
                 canShare={tab.canDelete && !tab.id.startsWith('generated:')}
                 onChange={changeOffset}
                 onShare={() => sources.saveOffset(tab.id, offsetMs).then(() => changeOffset(null))}
+              />
+            )}
+            {practiceOpen && (
+              <PracticeRow
+                timeline={!!timeline}
+                barTotal={timeline ? barCount(timeline) : 0}
+                sections={timeline ? sectionRanges(timeline) : []}
+                canSetRate={canSetRate}
+                speed={speed}
+                onSpeed={setSpeed}
+                tabBpm={tabBpmNow}
+                range={loopRange}
+                loopOn={loopOn}
+                onLoopOn={(on) => loopRange && setLoopRange(loopRange, on)}
+                onRange={(r) => setLoopRange(r, loop?.on ?? true)}
+                onClear={() => {
+                  setLoopRange(null);
+                  setPicking(null);
+                }}
+                picking={pickingNow ? (pickingNow.first === null ? 'first' : 'last') : null}
+                onPick={() => (pickingNow ? setPicking(null) : tab && setPicking({ tabId: tab.id, first: null }))}
               />
             )}
             {metronomeOn && timeline && (
@@ -525,6 +616,9 @@ function TabsSheet({ song, sources, onBack }: { song: TabSong; sources: TabSourc
             onSeek={seek}
             onScore={(next) => setDrawn({ tabId: tab.id, info: next })}
             onTimeline={(next) => setDrawnTimeline({ tabId: tab.id, timeline: next })}
+            rate={playRate}
+            highlight={loopOn || pickingNow ? loopRange : null}
+            onBarPick={pickingNow ? onBarPick : null}
             getPageScroller={() => stickyRef.current?.closest<HTMLElement>('[data-app-scroller]') ?? null}
             getTopInset={() => {
               // The toolbar, plus the desktop top bar it sticks under
@@ -724,6 +818,192 @@ function SyncRow({
         {shown === 'beats' && clock && (
           <span className="tabular-nums" data-testid="tab-sync-beat">
             1 beat = {Math.round((60_000 / clock.bpm) * (4 / clock.denominator))} ms at {Math.round(clock.bpm)} bpm, {clock.numerator}/{clock.denominator}
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/** Practice: the speed (pitch kept) and a loop over a section or a range
+ *  of bars (lib/tabPractice.ts). */
+function PracticeRow({
+  timeline,
+  barTotal,
+  sections,
+  canSetRate,
+  speed,
+  onSpeed,
+  tabBpm,
+  range,
+  loopOn,
+  onLoopOn,
+  onRange,
+  onClear,
+  picking,
+  onPick,
+}: {
+  /** The score is drawn, so its bars are known. */
+  timeline: boolean;
+  barTotal: number;
+  sections: SectionRange[];
+  canSetRate: boolean;
+  speed: number;
+  onSpeed: (rate: number) => void;
+  /** The tab's tempo at the playhead. */
+  tabBpm: number | null;
+  range: BarRange | null;
+  loopOn: boolean;
+  onLoopOn: (on: boolean) => void;
+  onRange: (range: BarRange) => void;
+  onClear: () => void;
+  /** Choosing bars on the score: the next click is the first or the last. */
+  picking: 'first' | 'last' | null;
+  onPick: () => void;
+}) {
+  const percent = Math.round(speed * 100);
+  const heard = bpmAtRate(tabBpm, speed);
+  const [bpmDraft, setBpmDraft] = useState<string | null>(null);
+  const [percentDraft, setPercentDraft] = useState<string | null>(null);
+  const sectionValue = range ? sections.findIndex((x) => x.start === range.start && x.end === range.end) : -1;
+  const barInput = (label: string, value: number | undefined, set: (bar: number) => void) => (
+    <input
+      type="number"
+      inputMode="numeric"
+      min={1}
+      max={Math.max(1, barTotal)}
+      step={1}
+      value={value === undefined ? '' : value + 1}
+      disabled={!timeline}
+      onChange={(e) => {
+        const n = Math.round(Number(e.target.value));
+        if (Number.isFinite(n) && n >= 1) set(n - 1);
+      }}
+      className="h-7 w-16 rounded-md border border-border bg-background px-cluster text-right text-xs tabular-nums text-foreground disabled:opacity-50"
+      aria-label={label}
+    />
+  );
+  return (
+    <div data-testid="tab-practice" className="mt-cluster flex flex-col gap-cluster text-xs text-muted-foreground">
+      <div className="flex flex-wrap items-center gap-row" role="group" aria-label="Speed">
+        <span className="font-medium text-foreground">Speed</span>
+        {canSetRate ? (
+          <>
+            <div className="flex flex-wrap items-center gap-inset">
+              {SPEED_PRESETS.map((p) => (
+                <button
+                  key={p}
+                  type="button"
+                  aria-pressed={percent === p}
+                  onClick={() => {
+                    setPercentDraft(null);
+                    setBpmDraft(null);
+                    onSpeed(rateFromPercent(p));
+                  }}
+                  className={cn(chip, percent === p ? chipOn : chipOff, 'tabular-nums')}
+                >
+                  {p}%
+                </button>
+              ))}
+            </div>
+            <label className="flex items-center gap-inset">
+              <input
+                type="number"
+                inputMode="numeric"
+                min={50}
+                max={125}
+                step={5}
+                value={percentDraft ?? String(percent)}
+                onChange={(e) => {
+                  setPercentDraft(e.target.value);
+                  setBpmDraft(null);
+                  const n = Number(e.target.value);
+                  if (Number.isFinite(n) && n >= 50 && n <= 125) onSpeed(rateFromPercent(n));
+                }}
+                onBlur={() => setPercentDraft(null)}
+                className="h-7 w-16 rounded-md border border-border bg-background px-cluster text-right text-xs tabular-nums text-foreground"
+                aria-label="Speed in percent"
+              />
+              <span>%</span>
+            </label>
+            {tabBpm ? (
+              <label className="flex items-center gap-inset">
+                <span>=</span>
+                <input
+                  type="number"
+                  inputMode="numeric"
+                  min={1}
+                  step={1}
+                  value={bpmDraft ?? String(heard ?? '')}
+                  onChange={(e) => {
+                    setBpmDraft(e.target.value);
+                    setPercentDraft(null);
+                    const r = rateFromBpm(Number(e.target.value), tabBpm);
+                    if (r !== null) onSpeed(r);
+                  }}
+                  onBlur={() => setBpmDraft(null)}
+                  className="h-7 w-16 rounded-md border border-border bg-background px-cluster text-right text-xs tabular-nums text-foreground"
+                  aria-label="Speed in bpm"
+                />
+                <span>bpm (the tab: {Math.round(tabBpm)})</span>
+              </label>
+            ) : null}
+          </>
+        ) : (
+          <span data-testid="tab-speed-unavailable">
+            Slowing down works in the browser for now; this app plays at full speed.
+          </span>
+        )}
+      </div>
+      <div className="flex flex-wrap items-center gap-row" role="group" aria-label="Loop">
+        <button
+          type="button"
+          aria-pressed={loopOn}
+          aria-label="Loop"
+          disabled={!range}
+          onClick={() => onLoopOn(!loopOn)}
+          title={range ? `Loop ${rangeLabel(range).toLowerCase()}` : 'Choose bars or a section to loop first'}
+          className={cn(chip, loopOn ? chipOn : chipOff, 'disabled:opacity-50')}
+        >
+          <RepeatIcon className="size-3.5" />
+          Loop
+        </button>
+        {sections.length > 0 && (
+          <select
+            aria-label="Loop a section"
+            value={sectionValue >= 0 ? String(sectionValue) : ''}
+            onChange={(e) => {
+              const sct = sections[Number(e.target.value)];
+              if (sct) onRange({ start: sct.start, end: sct.end });
+            }}
+            className="h-7 rounded-md border border-border bg-background px-cluster text-xs text-foreground"
+          >
+            <option value="">Section…</option>
+            {sections.map((sct, i) => (
+              <option key={`${sct.start}:${sct.name}`} value={String(i)}>
+                {sct.name} ({rangeLabel(sct).toLowerCase()})
+              </option>
+            ))}
+          </select>
+        )}
+        <span className="flex items-center gap-inset">
+          <span>Bars</span>
+          {barInput('Loop from bar', range?.start, (b) => onRange({ start: b, end: Math.max(b, range?.end ?? b) }))}
+          <span>to</span>
+          {barInput('Loop to bar', range?.end, (b) => onRange({ start: Math.min(b, range?.start ?? b), end: b }))}
+          {barTotal > 0 && <span>of {barTotal}</span>}
+        </span>
+        <Button size="sm" variant={picking ? 'outline' : 'ghost'} disabled={!timeline} onClick={onPick}>
+          {picking ? 'Cancel picking' : 'Pick on the tab'}
+        </Button>
+        {range && (
+          <Button size="sm" variant="ghost" onClick={onClear}>
+            Clear
+          </Button>
+        )}
+        {picking && (
+          <span role="status" data-testid="tab-loop-picking" className="text-ember">
+            {picking === 'first' ? 'Click the first bar of the loop.' : 'Now click its last bar.'}
           </span>
         )}
       </div>

@@ -58,6 +58,13 @@ interface PlayerControls {
   prev: () => void;
   seek: (sec: number) => void;
   setVolume: (v: number) => void;
+  /** Playback speed, pitch kept (the tab page's practice speed). 1 as
+   *  recorded. */
+  rate: number;
+  setRate: (rate: number) => void;
+  /** The engine playing now can change speed (web audio; not the desktop's
+   *  native engine or Android's Media3 yet). */
+  canSetRate: boolean;
 }
 
 const PlayerContext = createContext<PlayerControls | null>(null);
@@ -740,6 +747,21 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     backendRef.current?.seek(sec);
   }, []);
 
+  // Practice speed (the tab page). Kept here so a swap to web audio (a
+  // native engine that failed) carries it over.
+  const [rate, setRateState] = useState(1);
+  const setRate = useCallback((next: number) => {
+    const r = Number.isFinite(next) && next > 0 ? next : 1;
+    setRateState(r);
+    backendRef.current?.setRate?.(r);
+  }, []);
+  useEffect(() => {
+    backendRef.current?.setRate?.(rate);
+    // Only on a new engine: setRate itself applies every change.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [backendReady, initialKind]);
+  const canSetRate = initialKind === 'web' || initialKind === 'capacitor';
+
   const playTrack = useCallback((track: Track, list?: Track[], nextContext?: PlaybackContext | null) => {
     userInteracted.current = true;
     // Tapping a search result plays just that song then flows into radio — not
@@ -809,9 +831,9 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const value = useMemo<PlayerControls>(
     () => ({
       current, isPlaying, position, duration, volume, queue, index, context,
-      playTrack, toggle, next, prev, seek, setVolume,
+      playTrack, toggle, next, prev, seek, setVolume, rate, setRate, canSetRate,
     }),
-    [current, isPlaying, position, duration, volume, queue, index, context, playTrack, toggle, next, prev, seek, setVolume],
+    [current, isPlaying, position, duration, volume, queue, index, context, playTrack, toggle, next, prev, seek, setVolume, rate, setRate, canSetRate],
   );
 
   // Pranks (admin only, never announced) sit beside the tree rather than in

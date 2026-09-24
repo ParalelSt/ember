@@ -124,3 +124,24 @@ Each stage: tests (unit in vitest next to the code, sandbox in `tests/*.test.mjs
 - `lib/tabStore.ts` is the store: lookup by `song_key` (unknown artist on either side does not veto a title match) or exact `track_key`, visibility and delete checks mirroring the rules, `orderSources` for file > generated > Songsterr, `recordGenerated`, `hintsFor`.
 - Generated tabs: a row (`kind: generated`, shared, `user` = who asked) is written when the job finishes, or on the first GET of a tab generated before the store.
 - Hints: `lib/songsterr.ts` parses Songsterr's `tracks[].tuning` and `difficulty`. They are stored on every row of the song; a song with a row answers from them without searching. A song with no row keeps only the in-memory cache (there is no row to hold them). `SONGSTERR_BASE` points the sandbox at `tests/fake-songsterr.mjs`.
+
+## Stage 4 as built (practice tools)
+
+- Timeline: `LiveTabScore` hands the page the tab's bars (play order, time
+  signature, section marker) and tempo map from AlphaTab's tick lookup
+  (`lib/tabTimeline.ts`). Tab time to song time goes through the alignment's
+  bar anchors and the sync nudge, like the cursor.
+- Sync nudge: up to 30 minutes either way in 10 ms steps, typed or stepped,
+  in seconds or in beats of the tab (`lib/tabOffset.ts`).
+- Metronome: Web Audio clicks scheduled ahead against Ember's playhead
+  (`lib/metronome.ts`, `hooks/useMetronome.ts`) on the tab's beats, so it
+  follows every tempo change; a bpm of the listener's replaces the tab's when
+  the tab is wrong (kept per tab on the device).
+- Speed: `AudioBackend.setRate` (web audio: `playbackRate` with
+  `preservesPitch`), 50% to 125%, set by percent or by the bpm heard. The
+  cursor and the metronome run at the same speed. Engines without `setRate`
+  (desktop native, Android Media3) play at full speed and the page says so.
+- Loop: a section marker, typed bars, or two clicks on the score; marked with
+  AlphaTab's `highlightPlaybackRange`; `hooks/usePracticeLoop.ts` jumps back
+  when the playhead runs over the end, and leaves a seek elsewhere alone.
+- Not built: count-in, and a standalone player where a synth plays the tab.
