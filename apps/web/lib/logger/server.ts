@@ -2,7 +2,7 @@ import { AsyncLocalStorage } from 'node:async_hooks';
 import 'server-only';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
-import type { ServerLogEntry } from './types';
+import type { LogLevel, ServerLogEntry } from './types';
 
 // Logs live at <repo-root>/logs/errors-YYYY-MM-DD.jsonl.
 // apps/web is two directories deep in the workspace; resolve via cwd then up.
@@ -78,7 +78,7 @@ export const requestContext = new AsyncLocalStorage<ServerLogContext>();
 
 
 function writeEntry(
-  level: 'error' | 'warn',
+  level: LogLevel,
   category: string,
   message: string,
   data?: unknown,
@@ -118,6 +118,14 @@ export const serverLogger = {
    *  same footing as an actual server bug. */
   warn(category: string, message: string, data?: unknown, err?: unknown, ctx?: ServerLogContext): void {
     writeEntry('warn', category, message, data, err, ctx);
+  },
+
+  /** Same shape again, one level below warn(): routine/expected events worth
+   *  keeping on disk for context (an admin audit action, a rate-limited
+   *  automatic report) but not a "problem" — the digest (lib/reports/digest.ts)
+   *  skips 'info' entries entirely, so these never show up as noise. */
+  info(category: string, message: string, data?: unknown, err?: unknown, ctx?: ServerLogContext): void {
+    writeEntry('info', category, message, data, err, ctx);
   },
 
   /** Returns server entries with ts > timestampMs. Reads today's + yesterday's

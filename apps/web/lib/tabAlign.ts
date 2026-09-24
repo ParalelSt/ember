@@ -13,6 +13,7 @@ import { parseTrackKey } from '@/lib/tabGenerate';
 import { ensureDownloaded, findCachedFile } from '@/lib/sources/youtube';
 import { resolveUploadPath } from '@/lib/uploads';
 import { readTiming, type TabTiming } from '@/lib/tabSync';
+import { isOptionalDepMissing, warnOptionalDepsOnce } from '@/lib/tabOptionalDeps';
 
 /** Lining a tab up with the recording (docs/tabs-v3.md section 3).
  *
@@ -89,7 +90,11 @@ export function alignTab(pb: PocketBase, row: RecordModel, deps: AlignDeps = {})
     .catch(async (e: unknown) => {
       const reason = e instanceof Error ? e.message : String(e);
       lastError.set(row.id, reason.slice(0, 200));
-      serverLogger.error('tabs', 'lining the tab up failed', { tab: row.id, reason });
+      if (isOptionalDepMissing(reason)) {
+        warnOptionalDepsOnce();
+      } else {
+        serverLogger.error('tabs', 'lining the tab up failed', { tab: row.id, reason });
+      }
       // Remember the attempt even when it failed, so the automatic pass
       // never tries the same tab twice; "Line it up" still does.
       await markTried(pb, row, deps).catch(() => undefined);

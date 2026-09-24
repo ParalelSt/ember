@@ -14,7 +14,7 @@ vi.mock('@/lib/pocketbase/server', () => ({
 vi.mock('./server', async () => {
   const { AsyncLocalStorage } = await import('node:async_hooks');
   return {
-    serverLogger: { error: vi.fn(), warn: vi.fn() },
+    serverLogger: { error: vi.fn(), warn: vi.fn(), info: vi.fn() },
     // the real thing: the request-context test below reads it back
     requestContext: new AsyncLocalStorage<{ reqId?: string; route?: string; userId?: string }>(),
   };
@@ -29,10 +29,12 @@ function makeReq(headers: Record<string, string> = {}, method = 'GET'): Request 
 
 const errorSpy = vi.mocked(serverLogger.error);
 const warnSpy = vi.mocked(serverLogger.warn);
+const infoSpy = vi.mocked(serverLogger.info);
 
 beforeEach(() => {
   errorSpy.mockClear();
   warnSpy.mockClear();
+  infoSpy.mockClear();
 });
 
 describe('withRequestLog', () => {
@@ -119,6 +121,38 @@ describe('withRequestLog', () => {
     expect(message).toContain('429');
     expect(data).toMatchObject({ status: 429 });
     expect(ctx).toMatchObject({ route: 'limited/route' });
+  });
+
+  it('a 429 on bug-report logs at info, not warn, so it stays out of the digest', async () => {
+    const handler = vi.fn(async () => Response.json({ error: 'rate limited' }, { status: 429 }));
+    const wrapped = withRequestLog('bug-report', handler);
+    await wrapped(makeReq() as never, {});
+
+    expect(errorSpy).not.toHaveBeenCalled();
+    expect(warnSpy).not.toHaveBeenCalled();
+    expect(infoSpy).toHaveBeenCalledTimes(1);
+    const [category, message, data] = infoSpy.mock.calls[0];
+    expect(category).toBe('api');
+    expect(message).toContain('429');
+    expect(data).toMatchObject({ status: 429 });
+  });
+
+  it('a 429 on requests also logs at info', async () => {
+    const handler = vi.fn(async () => Response.json({ error: 'rate limited' }, { status: 429 }));
+    const wrapped = withRequestLog('requests', handler);
+    await wrapped(makeReq() as never, {});
+
+    expect(warnSpy).not.toHaveBeenCalled();
+    expect(infoSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('a real 5xx on bug-report still logs at error, not info', async () => {
+    const handler = vi.fn(async () => Response.json({ error: 'boom' }, { status: 500 }));
+    const wrapped = withRequestLog('bug-report', handler);
+    await wrapped(makeReq() as never, {});
+
+    expect(infoSpy).not.toHaveBeenCalled();
+    expect(errorSpy).toHaveBeenCalledTimes(1);
   });
 
   it('a 4xx other than 429 is not logged', async () => {

@@ -59,6 +59,18 @@ describe('groupForDigest', () => {
     expect(group.count).toBe(3);
   });
 
+  it('excludes info-level entries entirely, even alongside errors that would otherwise share a fingerprint', () => {
+    const info = serverEntry({ ts: SINCE + 1000, level: 'info', message: 'password-reset' });
+    expect(groupForDigest([info], SINCE)).toEqual([]);
+  });
+
+  it('does not let an info entry inflate an error group it happens to share a fingerprint with', () => {
+    const info = serverEntry({ ts: SINCE + 1000, level: 'info', message: 'same message' });
+    const err = serverEntry({ ts: SINCE + 2000, level: 'error', message: 'same message' });
+    const [group] = groupForDigest([info, err], SINCE);
+    expect(group.count).toBe(1);
+  });
+
   it('keeps distinct fingerprints as separate groups', () => {
     const a = serverEntry({ route: '/api/a', ts: SINCE + 1000 });
     const b = serverEntry({ route: '/api/b', ts: SINCE + 1000 });
