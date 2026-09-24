@@ -102,6 +102,12 @@ pub async fn watch(app: AppHandle, log_path: Option<std::path::PathBuf>) {
     let Some(window) = app.get_webview_window("main") else { return };
     let dev_url = if tauri::is_dev() { app.config().build.dev_url.clone() } else { None };
     log("WARN", &format!("can't reach {server} at launch: showing the retry page"));
+    // The page being replaced owns the native engine. If it did load after
+    // all (a server slower than the probe's 10 s), a song it started, one
+    // from the auto cache plays at once, would play on under the retry page
+    // with nothing to stop it, and the page that comes back would not know
+    // about it. The auto cache itself is left as it is.
+    crate::audio::audio_stop(app.state::<crate::audio::AudioEngine>());
     if let Err(e) = window.navigate(fallback_url(dev_url.as_ref())) {
         log("WARN", &format!("retry page not shown: {e}"));
     }
