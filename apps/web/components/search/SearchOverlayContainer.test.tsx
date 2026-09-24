@@ -309,6 +309,21 @@ describe('SearchOverlayContainer, desktop dropdown', () => {
     expect(style).toMatch(/max-height:\s*min\(28rem/);
   });
 
+  // The box sits in the desktop top bar, sticky INSIDE the page scroller
+  // (components/nav/DesktopTopBar), so `--ember-scroller-h` includes the
+  // bar. The panel starts at the bar's bottom: without taking the bar's
+  // height off, the list would run under the player bar.
+  it('takes the top bar off the room the panel may fill', () => {
+    renderOverlay();
+
+    const style = panel()!.getAttribute('style') ?? '';
+    for (const prop of ['min-height', 'max-height']) {
+      expect(style).toMatch(
+        new RegExp(`${prop}:\\s*min\\(28rem, calc\\(var\\(--ember-scroller-h, 60vh\\) - var\\(--ember-topbar-h, 0px\\) - 2rem\\)\\)`),
+      );
+    }
+  });
+
   it('opens and focuses the box on the "/" shortcut, then hands focus back on Escape', async () => {
     useUiStore.setState({ searchOpen: false });
     renderOverlay();

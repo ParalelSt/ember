@@ -18,12 +18,16 @@ const ROW_STOP = '[data-testid="track-row-play"]';
 
 /** As tall as a dropdown should get, and never taller than the space
  *  between the box and the player bar. `--ember-scroller-h` is the content
- *  column's scroller height, published by app/(app)/layout.tsx; the panel
- *  starts where that scroller starts, so subtracting one page gutter keeps
- *  its bottom edge clear of the player bar at every window size. The `vh`
- *  fallback only ever applies for the first frame, before the layout's
- *  ResizeObserver has measured. */
-const PANEL_H_CLAMP = 'min(28rem, calc(var(--ember-scroller-h, 60vh) - 2rem))';
+ *  column's scroller height and `--ember-topbar-h` the height of the top
+ *  bar this box sits in, sticky at the scroller's top (components/nav/
+ *  DesktopTopBar); both are published by app/(app)/layout.tsx. The panel
+ *  starts at the bar's bottom, so the room under it is the one less the
+ *  other, and subtracting one page gutter keeps its bottom edge clear of
+ *  the player bar at every window size. The `vh` fallback only ever
+ *  applies for the first frame, before the layout's ResizeObserver has
+ *  measured. */
+export const PANEL_H_CLAMP =
+  'min(28rem, calc(var(--ember-scroller-h, 60vh) - var(--ember-topbar-h, 0px) - 2rem))';
 
 /** The panel used to fill this same cap every time it held the Trending
  *  block (a heading plus a full results list), even with an empty query.

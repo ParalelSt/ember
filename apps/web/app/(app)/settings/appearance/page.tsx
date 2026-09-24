@@ -55,7 +55,7 @@ export default function SettingsAppearance() {
       >
         <ThemePreview
           vars={derive(editor.inputs).vars}
-          className="h-96 min-w-0 xl:sticky xl:top-0 xl:h-full xl:max-h-128 xl:flex-1"
+          className="h-96 min-w-0 xl:sticky xl:top-(--ember-topbar-h,0px) xl:h-full xl:max-h-128 xl:flex-1"
         />
         <div className="flex min-w-0 flex-col gap-block xl:h-full xl:w-96 xl:shrink-0">
           <ApplyBar

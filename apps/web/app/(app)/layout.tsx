@@ -1,11 +1,12 @@
 'use client';
 
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { Sidebar } from '@/components/nav/Sidebar';
 import { TopBar } from '@/components/nav/TopBar';
 import { MobileNav } from '@/components/nav/MobileNav';
 import { Drawer } from '@/components/nav/Drawer';
 import { BackToTop } from '@/components/nav/BackToTop';
+import { DesktopTopBar } from '@/components/nav/DesktopTopBar';
 import { PlayerBar } from '@/components/player/PlayerBar';
 import { NowPlaying } from '@/components/player/NowPlaying';
 import { LyricsPanel } from '@/components/player/LyricsPanel';
@@ -13,13 +14,19 @@ import { SearchOverlayContainer } from '@/components/search/SearchOverlayContain
 import { hydrateOfflineStore } from '@/lib/offline';
 import { useUiStore } from '@/stores/useUiStore';
 import { useChangelog } from '@/hooks/useChangelog';
+import { useIsDesktop } from '@/hooks/useIsDesktop';
 
 export default function AppShellLayout({ children }: { children: ReactNode }) {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const scrollerRef = useRef<HTMLDivElement>(null);
   const [scrollerH, setScrollerH] = useState(0);
+  const [barH, setBarH] = useState(0);
   const setSearchOpen = useUiStore((s) => s.setSearchOpen);
+  const searchOpen = useUiStore((s) => s.searchOpen);
   const { hasNew } = useChangelog();
+  // Desktop: the search bar lives INSIDE the scroller (DesktopTopBar).
+  // Phone: the search sheet stays outside it, as before.
+  const isDesktop = useIsDesktop();
 
   // Hydrate the offline store on app boot. On Android this subscribes to the
   // native EmberOffline plugin's pins/trackFiles; elsewhere it reads OPFS
@@ -53,29 +60,40 @@ export default function AppShellLayout({ children }: { children: ReactNode }) {
       <div className="flex-1 min-h-0 flex flex-col min-w-0">
         <TopBar onMenu={() => setDrawerOpen(true)} menuDot={hasNew} />
         {/* The content column. --ember-scroller-h is published HERE rather
-            than on the scroller itself so both children can read it: the
-            LyricsPanel inside sizes itself to it, and the search dropdown
-            above caps its panel with it so the results never reach past the
-            player bar. */}
+            than on the scroller itself so everything in the column can read
+            it: the LyricsPanel sizes itself to it, and the search dropdown
+            caps its panel with it so the results never reach past the
+            player bar. --ember-topbar-h is the desktop top bar's height
+            (0 on a phone and on /search): the things that stick to the
+            scroller's top (lyrics, the tabs toolbar, the Appearance
+            preview) stick just under the bar instead. */}
         <div
           className="flex-1 min-h-0 flex flex-col"
           style={
-            scrollerH
-              ? ({ ['--ember-scroller-h' as string]: `${scrollerH}px` } as React.CSSProperties)
-              : undefined
+            {
+              ...(scrollerH ? { ['--ember-scroller-h' as string]: `${scrollerH}px` } : null),
+              ['--ember-topbar-h' as string]: `${isDesktop ? barH : 0}px`,
+            } as CSSProperties
           }
         >
-          {/* Desktop: the search box, a real one, in the page above
-              everything the page itself draws, with its results hanging
-              under it. Phone: nothing in flow, just the full-screen sheet
-              when it is open. */}
-          <SearchOverlayContainer />
-          {/* The OUTER scroller owns the scrollbar — so it lives on the far
-              right edge of the viewport, past the LyricsPanel. Inside, a
-              flex row holds <main> (grows tall, drives the scroll) and the
-              LyricsPanel (sticky to the top of the scroller's viewport). */}
+          {/* Phone: nothing in flow, just the full-screen sheet when it is
+              open (the TopBar above has the search button). */}
+          {!isDesktop && <SearchOverlayContainer />}
+          {/* The OUTER scroller owns the scrollbar, from the very top of
+              the column to its bottom, on the far right edge of the
+              viewport past the LyricsPanel. Inside: the desktop top bar
+              (sticky, the page scrolls under it), then a flex row holding
+              <main> (grows tall, drives the scroll) and the LyricsPanel
+              (sticky just under the bar). */}
           <div ref={scrollerRef} data-app-scroller className="flex-1 min-h-0 overflow-y-auto">
-            <div className="flex min-w-0 min-h-full">
+            {isDesktop && (
+              <DesktopTopBar raised={searchOpen} onHeightChange={setBarH}>
+                <SearchOverlayContainer />
+              </DesktopTopBar>
+            )}
+            {/* Fills what is left under the bar, so a short page does not
+                scroll by the bar's height. */}
+            <div className="flex min-w-0 min-h-[calc(100%-var(--ember-topbar-h,0px))]">
               <main className="flex-1 min-w-0 p-page md:p-page-lg">
                 <div className="mx-auto max-w-(--content-max)">{children}</div>
               </main>
