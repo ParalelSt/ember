@@ -1392,9 +1392,23 @@ pub fn audio_seek<R: Runtime>(app: AppHandle<R>, engine: State<'_, AudioEngine>,
             return;
         }
         SeekPlan::Reopen(target) => {
-            let url = engine.current_url.lock().ok().and_then(|g| g.clone());
-            let cookie = engine.current_cookie.lock().ok().and_then(|g| g.clone());
-            let Some(url) = url else { return };
+            // A spent track re-opens what was asked for, cache key included,
+            // so a song played from the auto cache comes from that copy again
+            // (its `cache:` request is not something the stream path can fetch).
+            // A forward-only track is always a streamed one: no cache key.
+            let reopen = if spent {
+                engine
+                    .requested
+                    .lock()
+                    .ok()
+                    .and_then(|r| r.clone())
+                    .map(|(url, cookie, _, key)| (url, cookie, key))
+            } else {
+                let url = engine.current_url.lock().ok().and_then(|g| g.clone());
+                let cookie = engine.current_cookie.lock().ok().and_then(|g| g.clone());
+                url.map(|u| (u, cookie, None))
+            };
+            let Some((url, cookie, cache_key)) = reopen else { return };
             let why = if spent { "after the track ran out" } else { "back in a forward-only stream" };
             log_audio(&app, "INFO", &format!("seek to {sec:.1}s {why}: re-opening it there"));
             // Off this thread: a load takes a round trip, and a sync command
@@ -1402,8 +1416,7 @@ pub fn audio_seek<R: Runtime>(app: AppHandle<R>, engine: State<'_, AudioEngine>,
             tauri::async_runtime::spawn(async move {
                 use tauri::Manager;
                 let engine = app.state::<AudioEngine>();
-                // No cache key: only a streamed track is ever forward-only.
-                let _ = load_track(&app, engine.inner(), url, playing, target.as_secs_f64(), cookie, None)
+                let _ = load_track(&app, engine.inner(), url, playing, target.as_secs_f64(), cookie, cache_key)
                     .await;
             });
             return;

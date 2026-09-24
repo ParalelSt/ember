@@ -12,7 +12,7 @@ use std::time::Duration;
 use tauri::test::{mock_app, MockRuntime};
 use tauri::{App, Listener, Manager};
 
-use super::{audio_load, AudioEngine};
+use super::{audio_load, audio_play, audio_seek, AudioEngine};
 use crate::cache::tests::{host, Host, Reply, TempDir};
 use crate::cache::{AudioCache, PrefetchOutcome};
 
@@ -44,7 +44,7 @@ impl Rig {
         app.manage(AudioEngine::with_output(mixer));
         app.manage(AudioCache::open(dir.0.join("audio-cache")).expect("cache"));
         let events = Arc::new(Mutex::new(Vec::new()));
-        for name in ["audio:duration", "audio:play", "audio:error"] {
+        for name in ["audio:duration", "audio:play", "audio:error", "audio:ended"] {
             let log = Arc::clone(&events);
             app.listen_any(name, move |e| {
                 log.lock().expect("events").push((name.to_string(), e.payload().to_string()));
@@ -190,4 +190,34 @@ async fn without_a_cache_key_the_song_streams_as_before() {
 
     assert!(rig.playing());
     assert!(source.requests.load(Ordering::SeqCst) > 1, "an old web build streams even when cached");
+}
+
+/// Repeat one on a song from the auto cache (P02 on top of the cache): the
+/// webview answers `audio:ended` with a seek to 0 and a play. The spent sink
+/// re-opens the track, and that must be the cached copy again: its `cache:`
+/// request is nothing the stream path can fetch.
+#[tokio::test(flavor = "multi_thread")]
+async fn repeat_one_on_a_cached_song_plays_the_cached_copy_again() {
+    let rig = Rig::new();
+    let source = song_host();
+    rig.seed(&source).await;
+    rig.load(&format!("cache:{KEY}")).await;
+
+    let started = std::time::Instant::now();
+    while rig.count("audio:ended") == 0 && started.elapsed() < Duration::from_secs(60) {
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    assert_eq!(rig.count("audio:ended"), 1, "the song should play through first");
+
+    let app = rig.app.handle().clone();
+    audio_seek(app.clone(), app.state::<AudioEngine>(), 0.0);
+    audio_play(app.clone(), app.state::<AudioEngine>());
+
+    let started = std::time::Instant::now();
+    while !rig.playing() && started.elapsed() < Duration::from_secs(10) {
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    assert!(rig.playing(), "the repeat did not play: {:?}", rig.events.lock().expect("events"));
+    assert_eq!(rig.count("audio:error"), 0);
+    assert_eq!(source.requests.load(Ordering::SeqCst), 1, "only the prefetch reached the host");
 }
