@@ -17,4 +17,13 @@ object LoopModes {
         Player.REPEAT_MODE_ONE -> "one"
         else -> "off"
     }
+
+    /** The player's repeat mode as the auto cache's window sees it: loop-all
+     *  wraps the window to the top of the queue, loop-one keeps it on the
+     *  song. What the loop button sends (setRepeat) lands here. */
+    fun forCache(repeat: Int): AutoCachePolicy.LoopMode = when (repeat) {
+        Player.REPEAT_MODE_ALL -> AutoCachePolicy.LoopMode.ALL
+        Player.REPEAT_MODE_ONE -> AutoCachePolicy.LoopMode.ONE
+        else -> AutoCachePolicy.LoopMode.OFF
+    }
 }

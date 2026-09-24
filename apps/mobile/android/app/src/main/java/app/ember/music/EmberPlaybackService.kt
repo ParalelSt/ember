@@ -207,11 +207,7 @@ class EmberPlaybackService : MediaLibraryService() {
         return AutoCacher.Snapshot(
             queue = order.map { policyTrack(player.getMediaItemAt(it)) },
             index = index,
-            loopMode = when (player.repeatMode) {
-                Player.REPEAT_MODE_ALL -> AutoCachePolicy.LoopMode.ALL
-                Player.REPEAT_MODE_ONE -> AutoCachePolicy.LoopMode.ONE
-                else -> AutoCachePolicy.LoopMode.OFF
-            },
+            loopMode = LoopModes.forCache(player.repeatMode),
             contextType = queueContextType,
             baseCount = queueBaseCount,
             playedSec = player.currentPosition / 1000.0,

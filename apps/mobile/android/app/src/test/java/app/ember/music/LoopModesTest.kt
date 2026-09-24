@@ -29,6 +29,13 @@ class LoopModesTest {
         assertEquals("off", LoopModes.fromRepeat(42))
     }
 
+    @Test fun `the loop button's mode is what the auto cache window wraps on`() {
+        assertEquals(AutoCachePolicy.LoopMode.OFF, LoopModes.forCache(LoopModes.toRepeat("off")!!))
+        assertEquals(AutoCachePolicy.LoopMode.ALL, LoopModes.forCache(LoopModes.toRepeat("all")!!))
+        assertEquals(AutoCachePolicy.LoopMode.ONE, LoopModes.forCache(LoopModes.toRepeat("one")!!))
+        assertEquals(AutoCachePolicy.LoopMode.OFF, LoopModes.forCache(42))
+    }
+
     @Test fun `round trips`() {
         for (m in listOf("off", "all", "one")) assertEquals(m, LoopModes.fromRepeat(LoopModes.toRepeat(m)!!))
     }
