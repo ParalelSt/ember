@@ -9,10 +9,12 @@ import {
   QueueIcon,
   RepeatIcon,
   RepeatOneIcon,
+  ShareIcon,
 } from '@/components/icons';
+import { DropdownMenuItem, DropdownMenuSeparator } from '@/components/ui/dropdown-menu';
 import { LikeButton } from '@/components/primitives/LikeButton';
 import { AddToPlaylistMenu } from '@/components/track/menus/AddToPlaylistMenu';
-import { ShareButton } from '@/components/track/ShareButton';
+import { ShareButton, shareTrack } from '@/components/track/ShareButton';
 import { QueueSheet } from '@/components/player/QueueSheet';
 import { NowPlayingSummary } from '@/components/player/NowPlayingSummary';
 import { PhonePlayerBar, PLAYER_BAR_CHROME } from '@/components/player/PhonePlayerBar';
@@ -108,6 +110,31 @@ export function PlayerBar() {
     </Button>
   );
 
+  // Below xl the title's column cannot also hold add and share, so they
+  // move into a "More" menu (the add-to-playlist menu with a ... trigger);
+  // below lg lyrics and tabs join them, since the right column then keeps
+  // only the queue and mute. Each item carries the breakpoint its bar
+  // button comes back at.
+  const canShare = current.source === 'youtube';
+  const moreItems = (
+    <>
+      {canShare && (
+        <DropdownMenuItem onClick={() => void shareTrack(current)}>
+          <ShareIcon className="h-3.5 w-3.5" /> Share
+        </DropdownMenuItem>
+      )}
+      <DropdownMenuItem onClick={onLyricsClick} className="lg:hidden">
+        <LyricsIcon className="h-3.5 w-3.5" /> {lyricsOpen ? 'Close lyrics' : 'Lyrics'}
+      </DropdownMenuItem>
+      {tabsEnabled && (
+        <DropdownMenuItem onClick={() => router.push(tabsHref(current.id))} className="lg:hidden">
+          <TabsIcon className="h-3.5 w-3.5" /> Guitar tabs
+        </DropdownMenuItem>
+      )}
+      <DropdownMenuSeparator className={canShare ? undefined : 'lg:hidden'} />
+    </>
+  );
+
   // MobileNav stays mounted but `md:hidden` on this breakpoint, so it
   // contributes no height and no safe-area lift here: this footer is the
   // bottom-most visible element on a desktop-width window and must carry
@@ -115,7 +142,11 @@ export function PlayerBar() {
   // phone bar above leaves the inset to MobileNav instead).
   return (
     <footer data-testid="player-bar" className={cn(PLAYER_BAR_CHROME, 'safe-area-bottom')}>
-    <div className="px-4 pt-3 pb-2 grid grid-cols-[1fr_auto_1fr] md:grid-cols-[1fr_2fr_1fr] gap-4 items-center">
+    {/* The title's column has a floor at every width (13.5rem, 16.5rem,
+        20rem), so the song name always keeps at least ~75px, 120px and
+        140px; from about 1600 wide the old 1fr / 2fr / 1fr split is back
+        unchanged. Below lg the right column is just queue + mute (auto). */}
+    <div className="px-4 pt-3 pb-2 grid grid-cols-[1fr_auto_1fr] md:grid-cols-[minmax(13.5rem,1fr)_1fr_auto] lg:grid-cols-[minmax(16.5rem,1fr)_2fr_1fr] xl:grid-cols-[minmax(20rem,1fr)_2fr_1fr] gap-4 items-center">
       {/* Now playing. No tap-to-open here: this bar only renders on an md
           and wider window, and the phone bar owns that gesture. */}
       <div className="flex items-center gap-3 min-w-0">
@@ -123,8 +154,9 @@ export function PlayerBar() {
         {current && user && (
           <div className="hidden sm:flex items-center gap-1 shrink-0">
             <LikeButton liked={isLiked} onToggle={toggleLike} />
-            <AddToPlaylistMenu track={current} />
-            <ShareButton track={current} />
+            <AddToPlaylistMenu track={current} triggerClassName="max-xl:hidden" />
+            <ShareButton track={current} className="max-xl:hidden" />
+            <AddToPlaylistMenu track={current} more={moreItems} triggerClassName="xl:hidden" />
           </div>
         )}
       </div>
@@ -154,7 +186,7 @@ export function PlayerBar() {
           variant="ghost"
           size="icon"
           className={cn(
-            'hidden md:inline-flex h-8 w-8 hover:text-foreground',
+            'hidden lg:inline-flex h-8 w-8 hover:text-foreground',
             lyricsOpen ? 'text-ember hover:text-ember' : 'text-muted-foreground',
           )}
           onClick={onLyricsClick}
@@ -172,7 +204,7 @@ export function PlayerBar() {
             variant="ghost"
             size="icon"
             className={cn(
-              'hidden md:inline-flex h-8 w-8 hover:text-foreground',
+              'hidden lg:inline-flex h-8 w-8 hover:text-foreground',
               tabsOpen ? 'text-ember hover:text-ember' : 'text-muted-foreground',
             )}
             onClick={() => router.push(tabsHref(current.id))}
@@ -200,7 +232,8 @@ export function PlayerBar() {
           onChange={setVolume}
           onToggleMute={toggleMuted}
           className="hidden md:flex"
-          sliderClassName={partyVolume ? 'w-40' : 'w-29.5'}
+          // Mute only below lg; a shorter slider below xl.
+          sliderClassName={cn('hidden lg:block', partyVolume ? 'w-29.5 xl:w-40' : 'w-20 xl:w-29.5')}
         />
       </div>
     </div>

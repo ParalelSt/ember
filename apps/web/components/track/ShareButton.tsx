@@ -35,41 +35,47 @@ function legacyCopy(text: string): boolean {
 
 /** Share a track URL — native share sheet where available (phones, secure
  *  context), clipboard otherwise, legacy execCommand as the final fallback.
- *  YouTube tracks only: Jamendo has no stable share id. */
+ *  Also the player bar's "More" menu item, where there is no room for the
+ *  button. */
+export async function shareTrack(track: Track): Promise<void> {
+  const url = `${window.location.origin}/track/${track.sourceId}`;
+  const title = `${track.title} — ${track.artist}`;
+
+  // 1. Native share sheet (mobile). Requires a secure context.
+  if (navigator.share) {
+    try {
+      await navigator.share({ url, title });
+      return;
+    } catch (err) {
+      // AbortError = user dismissed the sheet → done, don't also copy.
+      if ((err as Error)?.name === 'AbortError') return;
+      // Any other share failure → fall through to copy.
+    }
+  }
+
+  // 2. Async Clipboard API (secure context only).
+  if (navigator.clipboard?.writeText) {
+    try {
+      await navigator.clipboard.writeText(url);
+      toast.success('Link copied');
+      return;
+    } catch {
+      // Fall through to the legacy path.
+    }
+  }
+
+  // 3. Legacy copy — works over plain http / older browsers.
+  if (legacyCopy(url)) toast.success('Link copied');
+  else toast.error("Couldn't copy — open over the https link to share");
+}
+
+/** The share button. YouTube tracks only: Jamendo has no stable share id. */
 export function ShareButton({ track, className }: Props) {
   if (track.source !== 'youtube') return null;
 
-  const share = async (e: React.MouseEvent) => {
+  const share = (e: React.MouseEvent) => {
     e.stopPropagation();
-    const url = `${window.location.origin}/track/${track.sourceId}`;
-    const title = `${track.title} — ${track.artist}`;
-
-    // 1. Native share sheet (mobile). Requires a secure context.
-    if (navigator.share) {
-      try {
-        await navigator.share({ url, title });
-        return;
-      } catch (err) {
-        // AbortError = user dismissed the sheet → done, don't also copy.
-        if ((err as Error)?.name === 'AbortError') return;
-        // Any other share failure → fall through to copy.
-      }
-    }
-
-    // 2. Async Clipboard API (secure context only).
-    if (navigator.clipboard?.writeText) {
-      try {
-        await navigator.clipboard.writeText(url);
-        toast.success('Link copied');
-        return;
-      } catch {
-        // Fall through to the legacy path.
-      }
-    }
-
-    // 3. Legacy copy — works over plain http / older browsers.
-    if (legacyCopy(url)) toast.success('Link copied');
-    else toast.error("Couldn't copy — open over the https link to share");
+    void shareTrack(track);
   };
 
   return (

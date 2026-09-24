@@ -1,9 +1,10 @@
-import type { ComponentProps } from 'react';
+import type { ComponentProps, PropsWithChildren, ReactNode } from 'react';
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import { PlayerBar } from './PlayerBar';
 import { usePlayerStore } from '@/stores/usePlayerStore';
 import { useSettingsStore } from '@/stores/useSettingsStore';
+import { useUiStore } from '@/stores/useUiStore';
 import type { Track } from '@/types/track';
 
 const TRACK: Track = {
@@ -45,8 +46,24 @@ vi.mock('@/hooks/useLikeToggle', () => ({ useLikeToggle: () => ({ liked: false, 
 // only ever holds one transport (see hooks/useIsDesktop).
 const desktop = vi.hoisted(() => ({ value: true }));
 vi.mock('@/hooks/useIsDesktop', () => ({ useIsDesktop: () => desktop.value }));
-vi.mock('@/components/track/menus/AddToPlaylistMenu', () => ({ AddToPlaylistMenu: () => null }));
-vi.mock('@/components/track/ShareButton', () => ({ ShareButton: () => null }));
+// The add menu draws its trigger's class and, for the "More" variant, the
+// items the bar hands it; the menu primitives render inline (no portal).
+vi.mock('@/components/track/menus/AddToPlaylistMenu', () => ({
+  AddToPlaylistMenu: ({ more, triggerClassName }: { more?: ReactNode; triggerClassName?: string }) => (
+    <div data-testid={more ? 'more-menu' : 'add-menu'} className={triggerClassName}>{more}</div>
+  ),
+}));
+const shareTrack = vi.hoisted(() => vi.fn());
+vi.mock('@/components/track/ShareButton', () => ({
+  ShareButton: ({ className }: { className?: string }) => <button type="button" aria-label="Share" className={className} />,
+  shareTrack,
+}));
+vi.mock('@/components/ui/dropdown-menu', () => ({
+  DropdownMenuItem: ({ children, onClick, className }: PropsWithChildren<{ onClick?: () => void; className?: string }>) => (
+    <div role="menuitem" onClick={onClick} className={className}>{children}</div>
+  ),
+  DropdownMenuSeparator: ({ className }: { className?: string }) => <hr className={className} />,
+}));
 vi.mock('@/components/player/QueueSheet', () => ({ QueueSheet: () => null }));
 vi.mock('next/navigation', () => ({
   usePathname: () => '/',
@@ -97,18 +114,17 @@ describe('PlayerBar', () => {
     expect(screen.getAllByRole('button', { name: 'Pause' })).toHaveLength(1);
   });
 
-  // The desktop bar must be pixel-for-pixel what it was before the phone bar
-  // was split out of it: same footer, same grid, same three columns in the
-  // same order, same control sizes. Only its display gate and the safe-area
-  // class (0 on a desktop browser) are new.
-  describe('the md layout is untouched', () => {
+  // The desktop bar keeps the footer, the three columns in the same order and
+  // the control sizes it had before the phone bar was split out of it. The
+  // grid's columns changed for bughunt V1 (the title's floor, below).
+  describe('the md layout', () => {
     it('keeps the footer and the grid it always had', () => {
       const footer = desktopBar();
       expect(footer.tagName).toBe('FOOTER');
       expect(footer).toHaveClass('shrink-0', 'bg-sidebar', 'border-t', 'border-sidebar-border', 'flex', 'flex-col');
       const grid = footer.firstElementChild!;
       expect(grid.className).toBe(
-        'px-4 pt-3 pb-2 grid grid-cols-[1fr_auto_1fr] md:grid-cols-[1fr_2fr_1fr] gap-4 items-center',
+        'px-4 pt-3 pb-2 grid grid-cols-[1fr_auto_1fr] md:grid-cols-[minmax(13.5rem,1fr)_1fr_auto] lg:grid-cols-[minmax(16.5rem,1fr)_2fr_1fr] xl:grid-cols-[minmax(20rem,1fr)_2fr_1fr] gap-4 items-center',
       );
       expect(grid.children).toHaveLength(3);
     });
@@ -146,6 +162,47 @@ describe('PlayerBar', () => {
       expect(footer.children).toHaveLength(1);
       // The scrolling title belongs only to the phone bar.
       expect(footer.querySelectorAll('[data-testid="marquee"]')).toHaveLength(0);
+    });
+  });
+
+  // Bughunt V1: on a narrow desktop window the title had no room left.
+  describe('below xl, the title keeps its room', () => {
+    it('keeps add and share beside the title from xl up only', () => {
+      const [left] = [...desktopBar().firstElementChild!.children] as HTMLElement[];
+      expect(within(left).getByTestId('add-menu')).toHaveClass('max-xl:hidden');
+      expect(within(left).getByRole('button', { name: 'Share' })).toHaveClass('max-xl:hidden');
+      expect(within(left).getByTestId('more-menu')).toHaveClass('xl:hidden');
+    });
+
+    it('puts share, and below lg lyrics and tabs, in the More menu', () => {
+      const more = within(desktopBar()).getByTestId('more-menu');
+      const items = within(more).getAllByRole('menuitem');
+      expect(items.map((i) => i.textContent?.trim())).toEqual(['Share', 'Lyrics', 'Guitar tabs']);
+      expect(items[0]).not.toHaveClass('lg:hidden');
+      expect(items[1]).toHaveClass('lg:hidden');
+      expect(items[2]).toHaveClass('lg:hidden');
+
+      fireEvent.click(items[0]);
+      expect(shareTrack).toHaveBeenCalledWith(TRACK);
+      useUiStore.getState().setLyricsOpen(false);
+      fireEvent.click(items[1]);
+      expect(useUiStore.getState().lyricsOpen).toBe(true);
+      useUiStore.getState().setLyricsOpen(false);
+    });
+
+    it('leaves only queue and mute on the right below lg', () => {
+      const [, , right] = [...desktopBar().firstElementChild!.children] as HTMLElement[];
+      expect(within(right).getByRole('button', { name: 'Lyrics' })).toHaveClass('hidden', 'lg:inline-flex');
+      expect(within(right).getByRole('button', { name: 'Guitar tabs' })).toHaveClass('hidden', 'lg:inline-flex');
+      // The volume slider's box: gone below lg, shorter below xl.
+      const slider = right.querySelector('input[type="range"]')!.parentElement!;
+      expect(slider).toHaveClass('hidden', 'lg:block', 'w-20', 'xl:w-29.5');
+    });
+
+    it('leaves the tabs item out of the More menu when the plugin is off', () => {
+      useSettingsStore.setState({ tabsEnabled: false });
+      const more = within(desktopBar()).getByTestId('more-menu');
+      expect(within(more).getAllByRole('menuitem').map((i) => i.textContent?.trim())).toEqual(['Share', 'Lyrics']);
     });
   });
 
