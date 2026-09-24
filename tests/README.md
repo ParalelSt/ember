@@ -280,6 +280,7 @@ node tests/stream-source.test.mjs                   # or: npm run test:stream
 node tests/stream-fallback.test.mjs                 # or: npm run test:stream-fallback
 node tests/stream-range.test.mjs                    # or: npm run test:stream-range
 node tests/stream-fastfail.test.mjs                 # or: npm run test:stream-fastfail (starts its own server)
+node tests/stream-prefetch.test.mjs                 # or: npm run test:stream-prefetch (fake yt-dlp server, see its header)
 
 # Custom uploads (MUSIC_DIR must match the server's)
 MUSIC_DIR="$SB/music" node tests/uploads.test.mjs   # or: npm run test:uploads
@@ -666,6 +667,22 @@ URL behaves once it no longer matches the client that resolved it:
   `apps/desktop/src-tauri/src/audio/skip_repro.rs`.
 - **A cached track answers 206 with the right bytes**, which is why the fault
   only touches tracks the stale yt-dlp could not cache.
+
+## What `stream-prefetch.test.mjs` covers
+
+The host side of the auto cache (`docs/prefetch.md`): requests marked
+`?prefetch=1` are low priority. Against a server running the fake yt-dlp with
+3 s downloads (the header has the command):
+
+- **A cached song**: ten prefetches in a minute are served `private, no-store`,
+  the 11th is 429 with Retry-After, and a normal play from the same listener
+  still works.
+- **A cold song while another download runs** is refused with 503 and
+  `Retry-After: 30`; the song is warmed at once, and the retry is served from
+  disk without a second download.
+- **A cold song on an idle host** is downloaded and served.
+- **The global cap**: three cold plays at once run two at a time.
+- **An upload** (needs PocketBase) shares the same per-listener limit.
 
 ## What `stream-fastfail.test.mjs` covers
 

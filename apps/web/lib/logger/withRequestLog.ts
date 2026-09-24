@@ -49,8 +49,8 @@ async function readErrorField(res: Response): Promise<string | undefined> {
  *     500 JSON response (routes that already catch their own errors and
  *     return JSON never hit this path: see fromError in lib/upsertTrack).
  *   - a 5xx response the handler returned -> level 'error' (502/504, which
- *     are usually yt-dlp/python being flaky rather than our bug, log at
- *     'warn' instead).
+ *     are usually yt-dlp/python being flaky rather than our bug, and 503,
+ *     a busy host refusing a prefetch, log at 'warn' instead).
  *   - a 429 (rate limited) response -> level 'warn'.
  * 2xx/3xx/4xx (other than 429) are not logged here. This never changes the
  * response a route produces: the wrapper only observes and rethrows/returns
@@ -88,7 +88,9 @@ export function withRequestLog<Ctx = unknown>(
         route: name,
         userId,
       });
-    } else if (res.status === 502 || res.status === 504) {
+    } else if (res.status === 502 || res.status === 503 || res.status === 504) {
+      // 503 is the stream route telling a prefetch the host is busy
+      // (lib/downloadGate): expected under load, so a warning, not a bug.
       const error = await readErrorField(res);
       serverLogger.warn(
         'api',

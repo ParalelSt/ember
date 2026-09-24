@@ -532,6 +532,17 @@ Ember downloads the track and serves the file instead. A 403 that survives all
 of that means YouTube is blocking the host's IP — fix that with cookies (see
 the yt-dlp cookie env vars above).
 
+**At most two downloads at once.** However many listeners hit uncached songs,
+the host runs no more than two yt-dlp processes; the rest wait their turn. The
+apps also save the next couple of songs ahead of time (so a dropped connection
+does not stop the music), and those requests are low priority: they only
+start a download when the host is idle, and each listener gets 10 a minute.
+Details in `docs/prefetch.md`.
+
+```bash
+MAX_CONCURRENT_DOWNLOADS=2   # yt-dlp processes at once (default 2)
+```
+
 Concurrent requests for the same uncached song share ONE download, so a player
 opening several byte-range connections doesn't start several yt-dlp runs. And
 if a download fails outright, Ember falls back to streaming live rather than
