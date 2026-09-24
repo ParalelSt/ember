@@ -52,11 +52,13 @@ const TABLE: Record<JobStatus, Partial<Record<JobEvent, JobStatus>>> = {
 };
 
 export class InvalidTransition extends Error {
-  constructor(
-    readonly from: JobStatus,
-    readonly event: JobEvent,
-  ) {
+  readonly from: JobStatus;
+  readonly event: JobEvent;
+
+  constructor(from: JobStatus, event: JobEvent) {
     super(`an import that is ${from} cannot ${event}`);
+    this.from = from;
+    this.event = event;
   }
 }
 
