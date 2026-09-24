@@ -207,11 +207,16 @@ try {
   const pasteLikes = await liked(pasteUser);
   check('D3 songs with no date of their own land below the likes made in Ember', pasteLikes[0] === 'realLike001', JSON.stringify(pasteLikes));
 
-  // ── E. Uploads are rate limited per user, by the hour ──
+  // ── E. Starts are rate limited per user, by the hour; previews are free ──
+  // (bughunt W06: a preview fires on every pause in typing, so it no longer
+  // spends the 5-per-hour limit.)
   const limitUser = await user('transfer-limit');
-  const tries = [];
-  for (let i = 0; i < 6; i++) tries.push((await postJson(limitUser, '/api/import/upload?preview=1', { text: `A${i} - B${i}` })).status);
-  check('E1 the sixth upload within the hour is a 429', tries.filter((s) => s === 200).length === 5 && tries[5] === 429, JSON.stringify(tries));
+  const previews = [];
+  for (let i = 0; i < 6; i++) previews.push((await postJson(limitUser, '/api/import/upload?preview=1', { text: `A${i} - B${i}` })).status);
+  check('E1 previews never spend the hourly limit', previews.every((s) => s === 200), JSON.stringify(previews));
+  const starts = [];
+  for (let i = 0; i < 6; i++) starts.push((await postJson(limitUser, '/api/import/upload', { text: `A${i} - B${i}` })).status);
+  check('E2 the sixth start within the hour is a 429', starts.filter((s) => s === 201).length === 5 && starts[5] === 429, JSON.stringify(starts));
 } finally {
   for (const id of created) {
     await fetch(`${PB}/api/collections/users/records/${id}`, { method: 'DELETE', headers: { Authorization: tok } }).catch(() => {});
