@@ -1,5 +1,5 @@
 import type { ComponentProps } from 'react';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { TrackShelf } from './TrackShelf';
 import { SHELF_ROW_COUNT } from '@/lib/layout';
@@ -151,6 +151,41 @@ describe('TrackShelf', () => {
         />,
       );
       expect(screen.getAllByRole('listitem')).toHaveLength(expected);
+    });
+  });
+
+  // Bughunt V8: the grid's own width decides the columns. happy-dom lays
+  // nothing out, so the width the grid would get is stubbed.
+  describe('columns from the width the shelf actually gets', () => {
+    afterEach(() => {
+      // Back to happy-dom's own (zero) width.
+      delete (HTMLElement.prototype as { clientWidth?: number }).clientWidth;
+    });
+    const gridWidth = (px: number) =>
+      Object.defineProperty(HTMLElement.prototype, 'clientWidth', { get: () => px, configurable: true });
+
+    it.each([
+      // viewport, grid width, cards in the row
+      [768, 464, 3], // tablet beside the sidebar: was 5 cards of 80px
+      [390, 342, 2], // phone, as before
+      [1280, 976, 6], // desktop, as before
+    ])('at %ipx a %ipx grid shows %i cards, and draws that many columns', (vw, px, expected) => {
+      setWidth(vw);
+      gridWidth(px);
+      render(
+        <TrackShelf title="Trending" tracks={makeTracks(10)} showAllHref="/?focus=trending" renderCard={renderCard} />,
+      );
+      expect(screen.getAllByRole('listitem')).toHaveLength(expected);
+      expect(screen.getByRole('list').style.gridTemplateColumns).toBe(`repeat(${expected}, minmax(0, 1fr))`);
+    });
+
+    it('keeps 4 cards at 1280 with the lyrics panel open (528px)', () => {
+      setWidth(1280);
+      gridWidth(528);
+      render(
+        <TrackShelf title="Trending" tracks={makeTracks(10)} showAllHref="/?focus=trending" renderCard={renderCard} lyricsOpen />,
+      );
+      expect(screen.getAllByRole('listitem')).toHaveLength(4);
     });
   });
 });

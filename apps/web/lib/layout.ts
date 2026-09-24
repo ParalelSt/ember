@@ -36,8 +36,25 @@ export function gridColsClass(variant: ShelfVariant): string {
   return `grid-cols-${c.base} sm:grid-cols-${c.sm} md:grid-cols-${c.md} lg:grid-cols-${c.lg}`;
 }
 
+// Columns by the width the shelf's grid actually gets (bughunt V8), widest
+// first. The window width alone lied at tablet sizes: at 768 the sidebar
+// leaves ~460px, and 5 columns made 80px cards. Tuned so the phone (342px:
+// 2) and the desktop (976px at 1280: 6; 528px with the lyrics panel open:
+// 4) keep the counts they always had. `lyrics` tops out at 4, as before.
+const SHELF_COLUMNS: Record<ShelfVariant, ReadonlyArray<readonly [minWidth: number, columns: number]>> = {
+  default: [[840, 6], [700, 5], [560, 4], [420, 3], [0, 2]],
+  lyrics: [[500, 4], [380, 3], [0, 2]],
+};
+
+/** How many columns a shelf grid of this width (px) gets. */
+export function columnsForWidth(variant: ShelfVariant, width: number): number {
+  return SHELF_COLUMNS[variant].find(([min]) => width >= min)![1];
+}
+
 /** How many cards fit in one row at a given viewport width, matching the
- *  breakpoint checks TrackRow's useResponsiveRowCount used to do inline. */
+ *  breakpoint checks TrackRow's useResponsiveRowCount used to do inline.
+ *  Now only the guess before the shelf has measured itself (and in tests,
+ *  where nothing has a width). */
 export function visibleCount(variant: ShelfVariant, width: number): number {
   const c = SHELF_ROW_COUNT[variant];
   if (width >= BREAKPOINTS.lg) return c.lg;
