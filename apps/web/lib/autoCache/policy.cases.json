@@ -1,0 +1,875 @@
+{
+  "version": 1,
+  "notes": [
+    "Shared contract for the auto cache prefetch policy. Read by apps/web/lib/autoCache/policy.test.ts and mirrored by the Android and desktop ports; see README.md next to this file.",
+    "Every case input is defaults.input shallow-merged with case.input (a key in case.input replaces the default whole, arrays and maps included).",
+    "Sets are JSON arrays (cached). Maps are JSON objects keyed by track id (backoffUntil, attempts, sizes, expectedBytes, lastUsed).",
+    "policy cases: expectedDesired = desiredIds(input), expectedAction = nextAction(input). wakeAtMs appears only on reason backoff.",
+    "onResult cases: steps run in order; each step feeds the previous step's backoffUntil and attempts back into the input and may override nowMs.",
+    "evictionOrder cases: expected = evictionOrder(input, lastUsed). evictToFit cases: expected = evictToFit(input, lastUsed, incomingBytes)."
+  ],
+  "defaults": {
+    "input": {
+      "queue": [
+        { "id": "youtube:a", "streamUrl": "/api/youtube/stream/a" },
+        { "id": "youtube:b", "streamUrl": "/api/youtube/stream/b" },
+        { "id": "youtube:c", "streamUrl": "/api/youtube/stream/c" },
+        { "id": "youtube:d", "streamUrl": "/api/youtube/stream/d" },
+        { "id": "youtube:e", "streamUrl": "/api/youtube/stream/e" },
+        { "id": "youtube:f", "streamUrl": "/api/youtube/stream/f" }
+      ],
+      "index": 1,
+      "loopMode": "off",
+      "context": null,
+      "baseCount": 0,
+      "playedSec": 20,
+      "bufferedToEnd": true,
+      "playing": true,
+      "online": true,
+      "metered": false,
+      "saveData": false,
+      "batterySaver": false,
+      "enabled": true,
+      "allowMetered": false,
+      "requestCurrent": true,
+      "cached": [],
+      "inFlight": null,
+      "bytes": 0,
+      "cap": 262144000,
+      "sizes": {},
+      "expectedBytes": {},
+      "backoffUntil": {},
+      "attempts": {},
+      "nowMs": 1000000
+    }
+  },
+  "policy": [
+    {
+      "name": "plain queue mid-way: current first, then the next two",
+      "input": { "index": 2 },
+      "expectedDesired": ["youtube:c", "youtube:d", "youtube:e"],
+      "expectedAction": { "kind": "start", "id": "youtube:c" }
+    },
+    {
+      "name": "plain queue, current already cached: the next track starts",
+      "input": { "cached": ["youtube:b"] },
+      "expectedDesired": ["youtube:b", "youtube:c", "youtube:d"],
+      "expectedAction": { "kind": "start", "id": "youtube:c" }
+    },
+    {
+      "name": "requestCurrent false (Android, desktop): the current track is never requested",
+      "input": { "requestCurrent": false },
+      "expectedDesired": ["youtube:b", "youtube:c", "youtube:d"],
+      "expectedAction": { "kind": "start", "id": "youtube:c" }
+    },
+    {
+      "name": "requestCurrent false and both next tracks cached: nothing",
+      "input": { "requestCurrent": false, "cached": ["youtube:c", "youtube:d"] },
+      "expectedDesired": ["youtube:b", "youtube:c", "youtube:d"],
+      "expectedAction": { "kind": "idle", "reason": "nothing" }
+    },
+    {
+      "name": "last track with loop off: window of 1",
+      "input": { "index": 5, "cached": ["youtube:f"] },
+      "expectedDesired": ["youtube:f"],
+      "expectedAction": { "kind": "idle", "reason": "nothing" }
+    },
+    {
+      "name": "last track with loop off, current uncached (web): the current track starts",
+      "input": { "index": 5 },
+      "expectedDesired": ["youtube:f"],
+      "expectedAction": { "kind": "start", "id": "youtube:f" }
+    },
+    {
+      "name": "last track with loop all: wraps to 0 and 1",
+      "input": { "index": 5, "loopMode": "all", "cached": ["youtube:f"] },
+      "expectedDesired": ["youtube:f", "youtube:a", "youtube:b"],
+      "expectedAction": { "kind": "start", "id": "youtube:a" }
+    },
+    {
+      "name": "second to last with loop all: next is the last, then the wrap",
+      "input": { "index": 4, "loopMode": "all" },
+      "expectedDesired": ["youtube:e", "youtube:f", "youtube:a"],
+      "expectedAction": { "kind": "start", "id": "youtube:e" }
+    },
+    {
+      "name": "playlist context past baseCount with loop all: wraps into the playlist, not the radio tail",
+      "input": { "index": 4, "loopMode": "all", "context": { "type": "playlist" }, "baseCount": 3 },
+      "expectedDesired": ["youtube:e", "youtube:a", "youtube:b"],
+      "expectedAction": { "kind": "start", "id": "youtube:e" }
+    },
+    {
+      "name": "playlist context at the last curated track with loop all: wraps to the playlist start",
+      "input": { "index": 2, "loopMode": "all", "context": { "type": "playlist" }, "baseCount": 3 },
+      "expectedDesired": ["youtube:c", "youtube:a", "youtube:b"],
+      "expectedAction": { "kind": "start", "id": "youtube:c" }
+    },
+    {
+      "name": "playlist context at the last curated track with loop off: walks on into the radio tail",
+      "input": { "index": 2, "context": { "type": "playlist" }, "baseCount": 3 },
+      "expectedDesired": ["youtube:c", "youtube:d", "youtube:e"],
+      "expectedAction": { "kind": "start", "id": "youtube:c" }
+    },
+    {
+      "name": "radio context with baseCount and loop all: the whole queue is the loop",
+      "input": { "index": 4, "loopMode": "all", "context": { "type": "radio" }, "baseCount": 3 },
+      "expectedDesired": ["youtube:e", "youtube:f", "youtube:a"],
+      "expectedAction": { "kind": "start", "id": "youtube:e" }
+    },
+    {
+      "name": "loop one looks ahead like off",
+      "input": { "loopMode": "one" },
+      "expectedDesired": ["youtube:b", "youtube:c", "youtube:d"],
+      "expectedAction": { "kind": "start", "id": "youtube:b" }
+    },
+    {
+      "name": "loop one on the last track: window of 1, no wrap",
+      "input": { "index": 5, "loopMode": "one" },
+      "expectedDesired": ["youtube:f"],
+      "expectedAction": { "kind": "start", "id": "youtube:f" }
+    },
+    {
+      "name": "near the end of a radio queue with loop off: the window is shorter until radio extends",
+      "input": { "index": 4, "context": { "type": "radio" }, "cached": ["youtube:e"] },
+      "expectedDesired": ["youtube:e", "youtube:f"],
+      "expectedAction": { "kind": "start", "id": "youtube:f" }
+    },
+    {
+      "name": "unavailable next: skipped, the one after taken",
+      "input": {
+        "cached": ["youtube:b"],
+        "queue": [
+          { "id": "youtube:a", "streamUrl": "/api/youtube/stream/a" },
+          { "id": "youtube:b", "streamUrl": "/api/youtube/stream/b" },
+          { "id": "youtube:c", "streamUrl": "/api/youtube/stream/c", "unavailableAt": "2026-09-01T00:00:00Z" },
+          { "id": "youtube:d", "streamUrl": "/api/youtube/stream/d" },
+          { "id": "youtube:e", "streamUrl": "/api/youtube/stream/e" },
+          { "id": "youtube:f", "streamUrl": "/api/youtube/stream/f" }
+        ]
+      },
+      "expectedDesired": ["youtube:b", "youtube:d", "youtube:e"],
+      "expectedAction": { "kind": "start", "id": "youtube:d" }
+    },
+    {
+      "name": "two unavailable in a row: both skipped",
+      "input": {
+        "queue": [
+          { "id": "youtube:a", "streamUrl": "/api/youtube/stream/a" },
+          { "id": "youtube:b", "streamUrl": "/api/youtube/stream/b" },
+          { "id": "youtube:c", "streamUrl": "/api/youtube/stream/c", "unavailableAt": "2026-09-01T00:00:00Z" },
+          { "id": "youtube:d", "streamUrl": "/api/youtube/stream/d", "unavailableAt": "2026-09-01T00:00:00Z" },
+          { "id": "youtube:e", "streamUrl": "/api/youtube/stream/e" },
+          { "id": "youtube:f", "streamUrl": "/api/youtube/stream/f" }
+        ]
+      },
+      "expectedDesired": ["youtube:b", "youtube:e", "youtube:f"],
+      "expectedAction": { "kind": "start", "id": "youtube:b" }
+    },
+    {
+      "name": "empty unavailableAt means available",
+      "input": {
+        "queue": [
+          { "id": "youtube:a", "streamUrl": "/api/youtube/stream/a" },
+          { "id": "youtube:b", "streamUrl": "/api/youtube/stream/b" },
+          { "id": "youtube:c", "streamUrl": "/api/youtube/stream/c", "unavailableAt": "" },
+          { "id": "youtube:d", "streamUrl": "/api/youtube/stream/d", "unavailableAt": null }
+        ]
+      },
+      "expectedDesired": ["youtube:b", "youtube:c", "youtube:d"],
+      "expectedAction": { "kind": "start", "id": "youtube:b" }
+    },
+    {
+      "name": "unavailable last track with loop all: the walk wraps past it",
+      "input": {
+        "index": 4,
+        "loopMode": "all",
+        "queue": [
+          { "id": "youtube:a", "streamUrl": "/api/youtube/stream/a" },
+          { "id": "youtube:b", "streamUrl": "/api/youtube/stream/b" },
+          { "id": "youtube:c", "streamUrl": "/api/youtube/stream/c" },
+          { "id": "youtube:d", "streamUrl": "/api/youtube/stream/d" },
+          { "id": "youtube:e", "streamUrl": "/api/youtube/stream/e" },
+          { "id": "youtube:f", "streamUrl": "/api/youtube/stream/f", "unavailableAt": "2026-09-01T00:00:00Z" }
+        ]
+      },
+      "expectedDesired": ["youtube:e", "youtube:a", "youtube:b"],
+      "expectedAction": { "kind": "start", "id": "youtube:e" }
+    },
+    {
+      "name": "unavailable last track with loop off: the window ends at the current track",
+      "input": {
+        "index": 4,
+        "queue": [
+          { "id": "youtube:a", "streamUrl": "/api/youtube/stream/a" },
+          { "id": "youtube:b", "streamUrl": "/api/youtube/stream/b" },
+          { "id": "youtube:c", "streamUrl": "/api/youtube/stream/c" },
+          { "id": "youtube:d", "streamUrl": "/api/youtube/stream/d" },
+          { "id": "youtube:e", "streamUrl": "/api/youtube/stream/e" },
+          { "id": "youtube:f", "streamUrl": "/api/youtube/stream/f", "unavailableAt": "2026-09-01T00:00:00Z" }
+        ]
+      },
+      "expectedDesired": ["youtube:e"],
+      "expectedAction": { "kind": "start", "id": "youtube:e" }
+    },
+    {
+      "name": "current track unavailable: left out of the window, the next two still come",
+      "input": {
+        "queue": [
+          { "id": "youtube:a", "streamUrl": "/api/youtube/stream/a" },
+          { "id": "youtube:b", "streamUrl": "/api/youtube/stream/b", "unavailableAt": "2026-09-01T00:00:00Z" },
+          { "id": "youtube:c", "streamUrl": "/api/youtube/stream/c" },
+          { "id": "youtube:d", "streamUrl": "/api/youtube/stream/d" },
+          { "id": "youtube:e", "streamUrl": "/api/youtube/stream/e" }
+        ]
+      },
+      "expectedDesired": ["youtube:c", "youtube:d"],
+      "expectedAction": { "kind": "start", "id": "youtube:c" }
+    },
+    {
+      "name": "track without streamUrl skipped: the one after takes its slot",
+      "input": {
+        "cached": ["youtube:b"],
+        "queue": [
+          { "id": "youtube:a", "streamUrl": "/api/youtube/stream/a" },
+          { "id": "youtube:b", "streamUrl": "/api/youtube/stream/b" },
+          { "id": "youtube:c", "streamUrl": null },
+          { "id": "youtube:d", "streamUrl": "/api/youtube/stream/d" },
+          { "id": "youtube:e", "streamUrl": "/api/youtube/stream/e" },
+          { "id": "youtube:f", "streamUrl": "/api/youtube/stream/f" }
+        ]
+      },
+      "expectedDesired": ["youtube:b", "youtube:d", "youtube:e"],
+      "expectedAction": { "kind": "start", "id": "youtube:d" }
+    },
+    {
+      "name": "empty or missing streamUrl counts as no streamUrl",
+      "input": {
+        "queue": [
+          { "id": "youtube:a", "streamUrl": "/api/youtube/stream/a" },
+          { "id": "youtube:b", "streamUrl": "/api/youtube/stream/b" },
+          { "id": "youtube:c", "streamUrl": "" },
+          { "id": "youtube:d" },
+          { "id": "youtube:e", "streamUrl": "/api/youtube/stream/e" },
+          { "id": "youtube:f", "streamUrl": "/api/youtube/stream/f" }
+        ]
+      },
+      "expectedDesired": ["youtube:b", "youtube:e", "youtube:f"],
+      "expectedAction": { "kind": "start", "id": "youtube:b" }
+    },
+    {
+      "name": "the same id twice in the queue is listed once and takes one slot",
+      "input": {
+        "index": 0,
+        "queue": [
+          { "id": "youtube:a", "streamUrl": "/api/youtube/stream/a" },
+          { "id": "youtube:b", "streamUrl": "/api/youtube/stream/b" },
+          { "id": "youtube:a", "streamUrl": "/api/youtube/stream/a" },
+          { "id": "youtube:c", "streamUrl": "/api/youtube/stream/c" }
+        ]
+      },
+      "expectedDesired": ["youtube:a", "youtube:b", "youtube:c"],
+      "expectedAction": { "kind": "start", "id": "youtube:a" }
+    },
+    {
+      "name": "two tracks with loop all: the wrap does not repeat the current track",
+      "input": {
+        "index": 0,
+        "loopMode": "all",
+        "queue": [
+          { "id": "youtube:a", "streamUrl": "/api/youtube/stream/a" },
+          { "id": "youtube:b", "streamUrl": "/api/youtube/stream/b" }
+        ]
+      },
+      "expectedDesired": ["youtube:a", "youtube:b"],
+      "expectedAction": { "kind": "start", "id": "youtube:a" }
+    },
+    {
+      "name": "single track with loop all: just the current track",
+      "input": {
+        "index": 0,
+        "loopMode": "all",
+        "cached": ["youtube:a"],
+        "queue": [{ "id": "youtube:a", "streamUrl": "/api/youtube/stream/a" }]
+      },
+      "expectedDesired": ["youtube:a"],
+      "expectedAction": { "kind": "idle", "reason": "nothing" }
+    },
+    {
+      "name": "every other track unavailable with loop all: the walk stops after one lap",
+      "input": {
+        "loopMode": "all",
+        "cached": ["youtube:b"],
+        "queue": [
+          { "id": "youtube:a", "streamUrl": "/api/youtube/stream/a", "unavailableAt": "2026-09-01T00:00:00Z" },
+          { "id": "youtube:b", "streamUrl": "/api/youtube/stream/b" },
+          { "id": "youtube:c", "streamUrl": "/api/youtube/stream/c", "unavailableAt": "2026-09-01T00:00:00Z" }
+        ]
+      },
+      "expectedDesired": ["youtube:b"],
+      "expectedAction": { "kind": "idle", "reason": "nothing" }
+    },
+    {
+      "name": "empty queue: nothing to do",
+      "input": { "queue": [], "index": -1 },
+      "expectedDesired": [],
+      "expectedAction": { "kind": "idle", "reason": "nothing" }
+    },
+    {
+      "name": "index out of range: nothing to do",
+      "input": { "index": 6 },
+      "expectedDesired": [],
+      "expectedAction": { "kind": "idle", "reason": "nothing" }
+    },
+    {
+      "name": "disabled",
+      "input": { "enabled": false },
+      "expectedDesired": ["youtube:b", "youtube:c", "youtube:d"],
+      "expectedAction": { "kind": "idle", "reason": "disabled" }
+    },
+    {
+      "name": "disabled wins over every other gate",
+      "input": { "enabled": false, "online": false, "batterySaver": true, "metered": true, "inFlight": "youtube:z" },
+      "expectedDesired": ["youtube:b", "youtube:c", "youtube:d"],
+      "expectedAction": { "kind": "idle", "reason": "disabled" }
+    },
+    {
+      "name": "offline",
+      "input": { "online": false },
+      "expectedDesired": ["youtube:b", "youtube:c", "youtube:d"],
+      "expectedAction": { "kind": "idle", "reason": "offline" }
+    },
+    {
+      "name": "offline wins over battery saver and metered",
+      "input": { "online": false, "batterySaver": true, "metered": true },
+      "expectedDesired": ["youtube:b", "youtube:c", "youtube:d"],
+      "expectedAction": { "kind": "idle", "reason": "offline" }
+    },
+    {
+      "name": "battery saver",
+      "input": { "batterySaver": true },
+      "expectedDesired": ["youtube:b", "youtube:c", "youtube:d"],
+      "expectedAction": { "kind": "idle", "reason": "battery" }
+    },
+    {
+      "name": "battery saver wins over metered, even with allowMetered",
+      "input": { "batterySaver": true, "metered": true, "allowMetered": true },
+      "expectedDesired": ["youtube:b", "youtube:c", "youtube:d"],
+      "expectedAction": { "kind": "idle", "reason": "battery" }
+    },
+    {
+      "name": "metered without allowMetered",
+      "input": { "metered": true },
+      "expectedDesired": ["youtube:b", "youtube:c", "youtube:d"],
+      "expectedAction": { "kind": "idle", "reason": "metered" }
+    },
+    {
+      "name": "metered with allowMetered",
+      "input": { "metered": true, "allowMetered": true },
+      "expectedDesired": ["youtube:b", "youtube:c", "youtube:d"],
+      "expectedAction": { "kind": "start", "id": "youtube:b" }
+    },
+    {
+      "name": "metered unknown (null) is treated as not metered",
+      "input": { "metered": null },
+      "expectedDesired": ["youtube:b", "youtube:c", "youtube:d"],
+      "expectedAction": { "kind": "start", "id": "youtube:b" }
+    },
+    {
+      "name": "save-data",
+      "input": { "saveData": true },
+      "expectedDesired": ["youtube:b", "youtube:c", "youtube:d"],
+      "expectedAction": { "kind": "idle", "reason": "metered" }
+    },
+    {
+      "name": "save-data wins over allowMetered",
+      "input": { "saveData": true, "metered": true, "allowMetered": true },
+      "expectedDesired": ["youtube:b", "youtube:c", "youtube:d"],
+      "expectedAction": { "kind": "idle", "reason": "metered" }
+    },
+    {
+      "name": "metered wins over busy",
+      "input": { "metered": true, "inFlight": "youtube:c" },
+      "expectedDesired": ["youtube:b", "youtube:c", "youtube:d"],
+      "expectedAction": { "kind": "idle", "reason": "metered" }
+    },
+    {
+      "name": "not settled at 10 s even when fully buffered",
+      "input": { "playedSec": 10, "bufferedToEnd": true },
+      "expectedDesired": ["youtube:b", "youtube:c", "youtube:d"],
+      "expectedAction": { "kind": "idle", "reason": "not-settled" }
+    },
+    {
+      "name": "not settled at 14.9 s",
+      "input": { "playedSec": 14.9, "bufferedToEnd": true },
+      "expectedDesired": ["youtube:b", "youtube:c", "youtube:d"],
+      "expectedAction": { "kind": "idle", "reason": "not-settled" }
+    },
+    {
+      "name": "settled at 15 s with bufferedToEnd true",
+      "input": { "playedSec": 15, "bufferedToEnd": true, "cached": ["youtube:b"] },
+      "expectedDesired": ["youtube:b", "youtube:c", "youtube:d"],
+      "expectedAction": { "kind": "start", "id": "youtube:c" }
+    },
+    {
+      "name": "bufferedToEnd null at 44 s: waits for the fallback",
+      "input": { "playedSec": 44, "bufferedToEnd": null },
+      "expectedDesired": ["youtube:b", "youtube:c", "youtube:d"],
+      "expectedAction": { "kind": "idle", "reason": "not-settled" }
+    },
+    {
+      "name": "bufferedToEnd null at 45 s: the fallback lets it start",
+      "input": { "playedSec": 45, "bufferedToEnd": null, "cached": ["youtube:b"] },
+      "expectedDesired": ["youtube:b", "youtube:c", "youtube:d"],
+      "expectedAction": { "kind": "start", "id": "youtube:c" }
+    },
+    {
+      "name": "bufferedToEnd false at 60 s: never competes with the current track",
+      "input": { "playedSec": 60, "bufferedToEnd": false },
+      "expectedDesired": ["youtube:b", "youtube:c", "youtube:d"],
+      "expectedAction": { "kind": "idle", "reason": "not-settled" }
+    },
+    {
+      "name": "paused does not block a settled prefetch",
+      "input": { "playing": false, "cached": ["youtube:b"] },
+      "expectedDesired": ["youtube:b", "youtube:c", "youtube:d"],
+      "expectedAction": { "kind": "start", "id": "youtube:c" }
+    },
+    {
+      "name": "in-flight id in window: busy",
+      "input": { "inFlight": "youtube:c", "cached": ["youtube:b"] },
+      "expectedDesired": ["youtube:b", "youtube:c", "youtube:d"],
+      "expectedAction": { "kind": "idle", "reason": "busy" }
+    },
+    {
+      "name": "in-flight current track: busy",
+      "input": { "inFlight": "youtube:b" },
+      "expectedDesired": ["youtube:b", "youtube:c", "youtube:d"],
+      "expectedAction": { "kind": "idle", "reason": "busy" }
+    },
+    {
+      "name": "busy wins over not-settled (the download keeps going after a seek)",
+      "input": { "inFlight": "youtube:d", "playedSec": 3, "bufferedToEnd": false },
+      "expectedDesired": ["youtube:b", "youtube:c", "youtube:d"],
+      "expectedAction": { "kind": "idle", "reason": "busy" }
+    },
+    {
+      "name": "in-flight id left the window: abort",
+      "input": { "inFlight": "youtube:a" },
+      "expectedDesired": ["youtube:b", "youtube:c", "youtube:d"],
+      "expectedAction": { "kind": "abort", "id": "youtube:a" }
+    },
+    {
+      "name": "in-flight id left the window after a skip, even while not settled",
+      "input": { "index": 4, "inFlight": "youtube:c", "playedSec": 1 },
+      "expectedDesired": ["youtube:e", "youtube:f"],
+      "expectedAction": { "kind": "abort", "id": "youtube:c" }
+    },
+    {
+      "name": "backoff active: the next id in the window starts instead",
+      "input": { "cached": ["youtube:b"], "backoffUntil": { "youtube:c": 1005000 } },
+      "expectedDesired": ["youtube:b", "youtube:c", "youtube:d"],
+      "expectedAction": { "kind": "start", "id": "youtube:d" }
+    },
+    {
+      "name": "backoff active on everything left: idle backoff with the earliest wake time",
+      "input": { "cached": ["youtube:b"], "backoffUntil": { "youtube:c": 1030000, "youtube:d": 1015000 } },
+      "expectedDesired": ["youtube:b", "youtube:c", "youtube:d"],
+      "expectedAction": { "kind": "idle", "reason": "backoff", "wakeAtMs": 1015000 }
+    },
+    {
+      "name": "backoff ending exactly now has expired",
+      "input": { "cached": ["youtube:b"], "backoffUntil": { "youtube:c": 1000000 } },
+      "expectedDesired": ["youtube:b", "youtube:c", "youtube:d"],
+      "expectedAction": { "kind": "start", "id": "youtube:c" }
+    },
+    {
+      "name": "backoff on an id outside the window is ignored",
+      "input": { "cached": ["youtube:b"], "backoffUntil": { "youtube:a": 9000000 } },
+      "expectedDesired": ["youtube:b", "youtube:c", "youtube:d"],
+      "expectedAction": { "kind": "start", "id": "youtube:c" }
+    },
+    {
+      "name": "attempts exhausted: skipped for the session, the next id starts",
+      "input": { "cached": ["youtube:b"], "attempts": { "youtube:c": 3 } },
+      "expectedDesired": ["youtube:b", "youtube:c", "youtube:d"],
+      "expectedAction": { "kind": "start", "id": "youtube:d" }
+    },
+    {
+      "name": "attempts under the limit still start",
+      "input": { "cached": ["youtube:b"], "attempts": { "youtube:c": 2 } },
+      "expectedDesired": ["youtube:b", "youtube:c", "youtube:d"],
+      "expectedAction": { "kind": "start", "id": "youtube:c" }
+    },
+    {
+      "name": "attempts exhausted on everything left: nothing (not backoff)",
+      "input": {
+        "cached": ["youtube:b"],
+        "attempts": { "youtube:c": 3, "youtube:d": 3 },
+        "backoffUntil": { "youtube:c": 1060000, "youtube:d": 1060000 }
+      },
+      "expectedDesired": ["youtube:b", "youtube:c", "youtube:d"],
+      "expectedAction": { "kind": "idle", "reason": "nothing" }
+    },
+    {
+      "name": "cap reached for the second id but not the first: the first starts",
+      "input": {
+        "cached": ["youtube:b"],
+        "sizes": { "youtube:b": 5000000 },
+        "bytes": 5000000,
+        "cap": 20000000,
+        "expectedBytes": { "youtube:c": 4000000, "youtube:d": 30000000 }
+      },
+      "expectedDesired": ["youtube:b", "youtube:c", "youtube:d"],
+      "expectedAction": { "kind": "start", "id": "youtube:c" }
+    },
+    {
+      "name": "cap reached for the second id once the first is on disk: idle cap",
+      "input": {
+        "cached": ["youtube:b", "youtube:c"],
+        "sizes": { "youtube:b": 5000000, "youtube:c": 4000000 },
+        "bytes": 9000000,
+        "cap": 20000000,
+        "expectedBytes": { "youtube:d": 30000000 }
+      },
+      "expectedDesired": ["youtube:b", "youtube:c", "youtube:d"],
+      "expectedAction": { "kind": "idle", "reason": "cap" }
+    },
+    {
+      "name": "first id too big, second fits: the second starts",
+      "input": {
+        "cached": ["youtube:b"],
+        "bytes": 5000000,
+        "cap": 20000000,
+        "expectedBytes": { "youtube:c": 30000000, "youtube:d": 4000000 }
+      },
+      "expectedDesired": ["youtube:b", "youtube:c", "youtube:d"],
+      "expectedAction": { "kind": "start", "id": "youtube:d" }
+    },
+    {
+      "name": "unknown expected size is 6 MiB: one byte short of room is cap",
+      "input": { "cached": ["youtube:b", "youtube:c", "youtube:d"], "index": 2, "bytes": 1000, "cap": 6292455 },
+      "expectedDesired": ["youtube:c", "youtube:d", "youtube:e"],
+      "expectedAction": { "kind": "idle", "reason": "cap" }
+    },
+    {
+      "name": "unknown expected size is 6 MiB: exactly enough room starts",
+      "input": { "cached": ["youtube:b", "youtube:c", "youtube:d"], "index": 2, "bytes": 1000, "cap": 6292456 },
+      "expectedDesired": ["youtube:c", "youtube:d", "youtube:e"],
+      "expectedAction": { "kind": "start", "id": "youtube:e" }
+    },
+    {
+      "name": "full cache of old songs: evictable sizes count as room",
+      "input": {
+        "cached": ["youtube:b", "youtube:x", "youtube:y"],
+        "sizes": { "youtube:b": 5000000, "youtube:x": 100000000, "youtube:y": 100000000 },
+        "bytes": 205000000,
+        "cap": 210000000
+      },
+      "expectedDesired": ["youtube:b", "youtube:c", "youtube:d"],
+      "expectedAction": { "kind": "start", "id": "youtube:c" }
+    },
+    {
+      "name": "full cache without per-entry sizes: nothing counts as reclaimable",
+      "input": {
+        "cached": ["youtube:b", "youtube:x", "youtube:y"],
+        "bytes": 205000000,
+        "cap": 210000000
+      },
+      "expectedDesired": ["youtube:b", "youtube:c", "youtube:d"],
+      "expectedAction": { "kind": "idle", "reason": "cap" }
+    },
+    {
+      "name": "window entries are not reclaimable: the cap holds",
+      "input": {
+        "cached": ["youtube:b", "youtube:c"],
+        "sizes": { "youtube:b": 100000000, "youtube:c": 100000000 },
+        "bytes": 200000000,
+        "cap": 205000000
+      },
+      "expectedDesired": ["youtube:b", "youtube:c", "youtube:d"],
+      "expectedAction": { "kind": "idle", "reason": "cap" }
+    },
+    {
+      "name": "backoff and cap both hold something back: backoff wins",
+      "input": {
+        "cached": ["youtube:b"],
+        "bytes": 5000000,
+        "cap": 20000000,
+        "expectedBytes": { "youtube:d": 30000000 },
+        "backoffUntil": { "youtube:c": 1020000 }
+      },
+      "expectedDesired": ["youtube:b", "youtube:c", "youtube:d"],
+      "expectedAction": { "kind": "idle", "reason": "backoff", "wakeAtMs": 1020000 }
+    },
+    {
+      "name": "everything cached: nothing",
+      "input": { "cached": ["youtube:b", "youtube:c", "youtube:d"] },
+      "expectedDesired": ["youtube:b", "youtube:c", "youtube:d"],
+      "expectedAction": { "kind": "idle", "reason": "nothing" }
+    }
+  ],
+  "onResult": [
+    {
+      "name": "429 with Retry-After 7: backoff 7 s, one attempt used",
+      "input": {},
+      "steps": [
+        {
+          "id": "youtube:c",
+          "result": { "kind": "retry-after", "status": 429, "seconds": 7 },
+          "expected": { "backoffUntil": { "youtube:c": 1007000 }, "attempts": { "youtube:c": 1 }, "drop": false }
+        }
+      ]
+    },
+    {
+      "name": "503 with no Retry-After: 30 s default",
+      "input": {},
+      "steps": [
+        {
+          "id": "youtube:c",
+          "result": { "kind": "retry-after", "status": 503, "seconds": null },
+          "expected": { "backoffUntil": { "youtube:c": 1030000 }, "attempts": { "youtube:c": 1 }, "drop": false }
+        }
+      ]
+    },
+    {
+      "name": "503 with Retry-After 900: capped at 120 s",
+      "input": {},
+      "steps": [
+        {
+          "id": "youtube:c",
+          "result": { "kind": "retry-after", "status": 503, "seconds": 900 },
+          "expected": { "backoffUntil": { "youtube:c": 1120000 }, "attempts": { "youtube:c": 1 }, "drop": false }
+        }
+      ]
+    },
+    {
+      "name": "503 with a negative Retry-After: treated as absent, 30 s",
+      "input": {},
+      "steps": [
+        {
+          "id": "youtube:c",
+          "result": { "kind": "retry-after", "status": 503, "seconds": -5 },
+          "expected": { "backoffUntil": { "youtube:c": 1030000 }, "attempts": { "youtube:c": 1 }, "drop": false }
+        }
+      ]
+    },
+    {
+      "name": "429 with no Retry-After: follows the 15/30/60/120 schedule",
+      "input": {},
+      "steps": [
+        {
+          "id": "youtube:c",
+          "result": { "kind": "retry-after", "status": 429, "seconds": null },
+          "expected": { "backoffUntil": { "youtube:c": 1015000 }, "attempts": { "youtube:c": 1 }, "drop": false }
+        }
+      ]
+    },
+    {
+      "name": "Retry-After 0: retry allowed at once, still one attempt used",
+      "input": {},
+      "steps": [
+        {
+          "id": "youtube:c",
+          "result": { "kind": "retry-after", "status": 429, "seconds": 0 },
+          "expected": { "backoffUntil": { "youtube:c": 1000000 }, "attempts": { "youtube:c": 1 }, "drop": false }
+        }
+      ]
+    },
+    {
+      "name": "failed: 15, then 30, then 60 s, and the third failure drops the id",
+      "input": {},
+      "steps": [
+        {
+          "id": "youtube:c",
+          "result": { "kind": "failed" },
+          "expected": { "backoffUntil": { "youtube:c": 1015000 }, "attempts": { "youtube:c": 1 }, "drop": false }
+        },
+        {
+          "id": "youtube:c",
+          "nowMs": 1015000,
+          "result": { "kind": "failed" },
+          "expected": { "backoffUntil": { "youtube:c": 1045000 }, "attempts": { "youtube:c": 2 }, "drop": false }
+        },
+        {
+          "id": "youtube:c",
+          "nowMs": 1045000,
+          "result": { "kind": "failed" },
+          "expected": { "backoffUntil": { "youtube:c": 1105000 }, "attempts": { "youtube:c": 3 }, "drop": true }
+        }
+      ]
+    },
+    {
+      "name": "busy answers use attempts too: a third one drops the id",
+      "input": { "attempts": { "youtube:c": 2 }, "backoffUntil": { "youtube:c": 990000 } },
+      "steps": [
+        {
+          "id": "youtube:c",
+          "result": { "kind": "retry-after", "status": 503, "seconds": 30 },
+          "expected": { "backoffUntil": { "youtube:c": 1030000 }, "attempts": { "youtube:c": 3 }, "drop": true }
+        }
+      ]
+    },
+    {
+      "name": "410 drops the id immediately and marks it exhausted",
+      "input": { "backoffUntil": { "youtube:c": 990000 }, "attempts": { "youtube:c": 1 } },
+      "steps": [
+        {
+          "id": "youtube:c",
+          "result": { "kind": "gone" },
+          "expected": { "backoffUntil": {}, "attempts": { "youtube:c": 3 }, "drop": true }
+        }
+      ]
+    },
+    {
+      "name": "done resets attempts and backoff",
+      "input": { "backoffUntil": { "youtube:c": 990000 }, "attempts": { "youtube:c": 2 } },
+      "steps": [
+        {
+          "id": "youtube:c",
+          "result": { "kind": "done", "bytes": 4000000 },
+          "expected": { "backoffUntil": {}, "attempts": {}, "drop": false }
+        }
+      ]
+    },
+    {
+      "name": "other ids in the ledger are left alone",
+      "input": { "backoffUntil": { "youtube:d": 1200000 }, "attempts": { "youtube:d": 1 } },
+      "steps": [
+        {
+          "id": "youtube:c",
+          "result": { "kind": "failed" },
+          "expected": {
+            "backoffUntil": { "youtube:c": 1015000, "youtube:d": 1200000 },
+            "attempts": { "youtube:c": 1, "youtube:d": 1 },
+            "drop": false
+          }
+        },
+        {
+          "id": "youtube:d",
+          "nowMs": 1200000,
+          "result": { "kind": "done", "bytes": 1 },
+          "expected": { "backoffUntil": { "youtube:c": 1015000 }, "attempts": { "youtube:c": 1 }, "drop": false }
+        }
+      ]
+    },
+    {
+      "name": "a failure then a success then a failure starts the schedule over",
+      "input": {},
+      "steps": [
+        {
+          "id": "youtube:c",
+          "result": { "kind": "failed" },
+          "expected": { "backoffUntil": { "youtube:c": 1015000 }, "attempts": { "youtube:c": 1 }, "drop": false }
+        },
+        {
+          "id": "youtube:c",
+          "nowMs": 1015000,
+          "result": { "kind": "done", "bytes": 3000000 },
+          "expected": { "backoffUntil": {}, "attempts": {}, "drop": false }
+        },
+        {
+          "id": "youtube:c",
+          "nowMs": 2000000,
+          "result": { "kind": "failed" },
+          "expected": { "backoffUntil": { "youtube:c": 2015000 }, "attempts": { "youtube:c": 1 }, "drop": false }
+        }
+      ]
+    }
+  ],
+  "evictionOrder": [
+    {
+      "name": "LRU order: least recently used first",
+      "input": { "cached": ["youtube:x", "youtube:y", "youtube:z"] },
+      "lastUsed": { "youtube:x": 300, "youtube:y": 100, "youtube:z": 200 },
+      "expected": ["youtube:y", "youtube:z", "youtube:x"]
+    },
+    {
+      "name": "current and window excluded",
+      "input": { "cached": ["youtube:a", "youtube:b", "youtube:c", "youtube:d", "youtube:e"] },
+      "lastUsed": { "youtube:a": 500, "youtube:b": 1, "youtube:c": 2, "youtube:d": 3, "youtube:e": 400 },
+      "expected": ["youtube:e", "youtube:a"]
+    },
+    {
+      "name": "unknown lastUsed treated as oldest, ties broken by id",
+      "input": { "cached": ["youtube:z", "youtube:y", "youtube:x"] },
+      "lastUsed": { "youtube:y": 5 },
+      "expected": ["youtube:x", "youtube:z", "youtube:y"]
+    },
+    {
+      "name": "equal lastUsed broken by id",
+      "input": { "cached": ["youtube:q", "youtube:p"] },
+      "lastUsed": { "youtube:q": 7, "youtube:p": 7 },
+      "expected": ["youtube:p", "youtube:q"]
+    },
+    {
+      "name": "current track protected even when it cannot be streamed",
+      "input": {
+        "cached": ["youtube:b", "youtube:x"],
+        "queue": [
+          { "id": "youtube:a", "streamUrl": "/api/youtube/stream/a" },
+          { "id": "youtube:b", "streamUrl": "/api/youtube/stream/b", "unavailableAt": "2026-09-01T00:00:00Z" },
+          { "id": "youtube:c", "streamUrl": "/api/youtube/stream/c" }
+        ]
+      },
+      "lastUsed": { "youtube:b": 1, "youtube:x": 2 },
+      "expected": ["youtube:x"]
+    },
+    {
+      "name": "the loop-all wrap is part of the window",
+      "input": { "index": 5, "loopMode": "all", "cached": ["youtube:a", "youtube:b", "youtube:c", "youtube:f"] },
+      "lastUsed": {},
+      "expected": ["youtube:c"]
+    },
+    {
+      "name": "nothing cached: nothing to evict",
+      "input": { "cached": [] },
+      "lastUsed": { "youtube:x": 1 },
+      "expected": []
+    }
+  ],
+  "evictToFit": [
+    {
+      "name": "already fits: evict nothing",
+      "input": { "cached": ["youtube:x"], "sizes": { "youtube:x": 5000000 }, "bytes": 5000000, "cap": 20000000 },
+      "lastUsed": { "youtube:x": 1 },
+      "incomingBytes": 6000000,
+      "expected": { "evict": [], "fits": true }
+    },
+    {
+      "name": "evicts the oldest until the new file fits",
+      "input": {
+        "cached": ["youtube:b", "youtube:x", "youtube:y", "youtube:z"],
+        "sizes": { "youtube:b": 4000000, "youtube:x": 5000000, "youtube:y": 5000000, "youtube:z": 5000000 },
+        "bytes": 19000000,
+        "cap": 20000000
+      },
+      "lastUsed": { "youtube:x": 30, "youtube:y": 10, "youtube:z": 20 },
+      "incomingBytes": 6000000,
+      "expected": { "evict": ["youtube:y"], "fits": true }
+    },
+    {
+      "name": "evicts two when one is not enough",
+      "input": {
+        "cached": ["youtube:b", "youtube:x", "youtube:y", "youtube:z"],
+        "sizes": { "youtube:b": 4000000, "youtube:x": 5000000, "youtube:y": 5000000, "youtube:z": 5000000 },
+        "bytes": 19000000,
+        "cap": 20000000
+      },
+      "lastUsed": { "youtube:x": 30, "youtube:y": 10, "youtube:z": 20 },
+      "incomingBytes": 11000000,
+      "expected": { "evict": ["youtube:y", "youtube:z"], "fits": true }
+    },
+    {
+      "name": "cannot fit without touching the window: evict nothing",
+      "input": {
+        "cached": ["youtube:b", "youtube:c", "youtube:x"],
+        "sizes": { "youtube:b": 8000000, "youtube:c": 8000000, "youtube:x": 2000000 },
+        "bytes": 18000000,
+        "cap": 20000000
+      },
+      "lastUsed": { "youtube:x": 1 },
+      "incomingBytes": 6000000,
+      "expected": { "evict": [], "fits": false }
+    }
+  ]
+}
