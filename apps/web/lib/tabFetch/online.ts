@@ -291,7 +291,10 @@ async function searchUg(c: SiteContext): Promise<SiteResult> {
       .collection('tabs')
       .getFullList({ filter: c.pb.filter('song_key = {:k} && kind = "fetched" && source_site = {:s}', { k: key, s: UG_SITE }) });
 
-    const html = await fetcher.getText(UG_SITE, ugSearchUrl(base, query));
+    // UG serves a search with no results as its usual page under a 404:
+    // the page decides, not the status (a 404 with no page data is still
+    // "unreadable" below).
+    const html = await fetcher.getText(UG_SITE, ugSearchUrl(base, query), { accept: [404] });
     const results = parseUgSearch(html);
     if (!results) {
       // A page without the data: a block or captcha page served as a 200.

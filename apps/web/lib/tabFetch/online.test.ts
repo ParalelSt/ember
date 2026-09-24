@@ -23,13 +23,13 @@ const findOnline = (...[pb, song, opts]: Parameters<typeof findOnlineAll>) => fi
 /** A site that serves the fixtures and records every URL asked for.
  *  `search` overrides the search page; `status` answers every request
  *  with that status instead. */
-function site(opts: { search?: string; status?: number } = {}) {
+function site(opts: { search?: string; status?: number; searchStatus?: number } = {}) {
   const urls: string[] = [];
   let now = 5_000_000;
   const fetchFn = (async (url: string) => {
     urls.push(url);
     if (opts.status) return new Response('slow down', { status: opts.status });
-    if (url.includes('/search.php')) return new Response(opts.search ?? fixture('search.html'));
+    if (url.includes('/search.php')) return new Response(opts.search ?? fixture('search.html'), { status: opts.searchStatus ?? 200 });
     const id = /-(\d+)$/.exec(new URL(url).pathname)?.[1];
     const file = id && path.join(FIXTURES, `tab-${id}.html`);
     if (file && fs.existsSync(file)) return new Response(fs.readFileSync(file, 'utf8'));
@@ -175,6 +175,26 @@ describe('finding a tab online, once per song', () => {
     expect(tabs()).toHaveLength(0);
     expect((await findOnline(fake.pb, SONG, { fetcher: s.fetcher, dir })).status).toBe('cached');
     expect(s.urls).toHaveLength(1);
+  });
+
+  /** Ultimate Guitar answers a search with no results with its normal page
+   *  (results: [], not_found) under a 404 status (checked 2026-09-24). Read
+   *  as a failure, every obscure song logged "ultimate guitar tab search
+   *  failed" and, not being remembered, asked again on the next visit
+   *  (Luka's reports, 2026-09-24). */
+  it('a no-results page UG serves as a 404 is "none", remembered, and logs no failure', async () => {
+    const s = site({ search: fixture('search-empty.html'), searchStatus: 404 });
+    const res = await findOnline(fake.pb, SONG, { fetcher: s.fetcher, dir });
+    expect(res).toMatchObject({ status: 'none', added: 0 });
+    expect(lookups()[0]).toMatchObject({ status: 'none' });
+    expect((await findOnline(fake.pb, SONG, { fetcher: s.fetcher, dir })).status).toBe('cached');
+    expect(s.urls).toHaveLength(1);
+  });
+
+  it('a 404 without UG\'s page data is still a failure, not "none"', async () => {
+    const s = site({ search: 'not found', searchStatus: 404 });
+    expect(await findOnline(fake.pb, SONG, { fetcher: s.fetcher, dir })).toMatchObject({ status: 'failed' });
+    expect(lookups()).toHaveLength(0);
   });
 
   it('a page with no notes spends its turn; the next candidate gets the other', async () => {
