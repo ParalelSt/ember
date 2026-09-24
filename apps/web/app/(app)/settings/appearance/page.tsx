@@ -5,7 +5,6 @@ import { SectionHeader } from '@/components/page/SectionHeader';
 import { ApplyBar } from '@/components/settings/appearance/ApplyBar';
 import { ColourEditor } from '@/components/settings/appearance/ColourEditor';
 import { InspectorPanel, InspectorTabStrip, type InspectorTab } from '@/components/settings/appearance/InspectorTabs';
-import { ShareTheme, type ShareTarget } from '@/components/settings/appearance/ShareTheme';
 import { ThemeLibrary } from '@/components/settings/appearance/ThemeLibrary';
 import { ThemePreview } from '@/components/settings/appearance/ThemePreview';
 import { useScrollerOffset } from '@/hooks/useScrollerOffset';
@@ -17,7 +16,8 @@ import { PRESET_BY_ID } from '@/lib/theme/presets';
 import { THEME_CAP } from '@/lib/theme/saved';
 
 /** Settings > Appearance, the "Preview + inspector" layout: a live preview
- *  of the app next to one panel with three tabs (Themes, Colours, Share).
+ *  of the app next to one panel with two tabs (Themes, Colours). Sharing is
+ *  per theme, a switch on each row of My themes (bughunt F3).
  *  Below xl the panel drops under the preview. From xl the two fill what
  *  is left of the window under the heading (bughunt F2: at 1512x830 the
  *  preview's player row and the inspector ran past the player bar): the
@@ -31,15 +31,6 @@ export default function SettingsAppearance() {
   const [tab, setTab] = useState<InspectorTab>('themes');
   const { selection, active, list, status } = editor;
   const [fitRef, fitTop] = useScrollerOffset<HTMLDivElement>();
-
-  const shareTarget: ShareTarget =
-    selection.kind === 'mine'
-      ? { kind: 'mine', name: selection.name, shared: selection.theme.shared }
-      : selection.kind === 'others'
-        ? { kind: 'others', name: selection.name, owner: selection.theme.ownerName }
-        : selection.kind === 'preset'
-          ? { kind: 'preset', name: selection.name }
-          : { kind: 'loose', name: selection.name };
 
   const base = PRESET_BY_ID[selection.base];
   const hint =
@@ -124,6 +115,8 @@ export default function SettingsAppearance() {
                 onDuplicate={(id) => void editor.duplicate(id)}
                 onDelete={(id) => void editor.remove(id)}
                 onCopyShared={(id) => void editor.copyShared(id)}
+                sharing={editor.sharing}
+                onShare={(id, shared) => void editor.setShared(id, shared)}
               />
             </InspectorPanel>
 
@@ -145,9 +138,6 @@ export default function SettingsAppearance() {
               />
             </InspectorPanel>
 
-            <InspectorPanel id="share" active={tab}>
-              <ShareTheme target={shareTarget} busy={editor.sharing} onChange={(shared) => void editor.setShared(shared)} />
-            </InspectorPanel>
           </div>
         </div>
       </div>

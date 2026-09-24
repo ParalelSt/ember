@@ -1,15 +1,15 @@
 import type { ReactNode } from 'react';
 import { cn } from '@/lib/utils';
 
-export type InspectorTab = 'themes' | 'colours' | 'share';
+export type InspectorTab = 'themes' | 'colours';
 
 export const INSPECTOR_TABS: { id: InspectorTab; label: string }[] = [
   { id: 'themes', label: 'Themes' },
   { id: 'colours', label: 'Colours' },
-  { id: 'share', label: 'Share' },
 ];
 
-/** The inspector's three tabs as pills. */
+/** The inspector's tabs as pills. Sharing is not a tab: each of my themes
+ *  has its own switch in the Themes tab (bughunt F3). */
 export function InspectorTabStrip({ active, onChange }: { active: InspectorTab; onChange: (id: InspectorTab) => void }) {
   return (
     <div role="tablist" aria-label="Appearance" className="flex gap-inset overflow-x-auto">

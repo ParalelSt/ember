@@ -19,7 +19,6 @@ export interface SaveStatus {
 const IDLE: SaveStatus = { tone: 'idle', text: '' };
 const APPLYING: SaveStatus = { tone: 'saving', text: 'Applying' };
 const APPLIED: SaveStatus = { tone: 'saved', text: 'Applied' };
-const SAVED: SaveStatus = { tone: 'saved', text: 'Saved' };
 
 type ApiError = Error & { status?: number; body?: { error?: string; findings?: { label: string }[] } };
 
@@ -56,7 +55,8 @@ export function useThemeEditor() {
   const [loadFailed, setLoadFailed] = useState(false);
   const [status, setStatus] = useState<SaveStatus>(IDLE);
   const [notice, setNotice] = useState<string | null>(null);
-  const [sharing, setSharing] = useState(false);
+  // My themes with a share change on its way (one switch per row).
+  const [sharing, setSharing] = useState<ReadonlySet<string>>(() => new Set());
   const [applying, setApplying] = useState(false);
 
   // The async paths read these, not render-time values: an apply that
@@ -312,17 +312,33 @@ export function useThemeEditor() {
     return run;
   };
 
-  const setShared = async (shared: boolean) => {
-    if (selection.kind !== 'mine') return;
-    setSharing(true);
+  /** Share one of my themes with everyone, or stop sharing it. Each row in
+   *  My themes has its own switch (bughunt F3); it saves at once through
+   *  `PATCH /api/themes/:id` and leaves the draft and the theme in use
+   *  alone. Unsharing leaves anyone using it a kept copy (the server's job,
+   *  see docs/themes.md). */
+  const setShared = async (id: string, shared: boolean) => {
+    const row = listRef.current?.mine.find((t) => t.id === id);
+    if (!row) return;
+    setSharing((s) => new Set(s).add(id));
     try {
-      const res = await api.updateSavedTheme(selection.key, { shared });
+      const res = await api.updateSavedTheme(id, { shared });
       putMine(res.theme);
-      setStatus(SAVED);
+      setStatus({
+        tone: 'saved',
+        text: res.theme.shared ? `Shared ${res.theme.name} with everyone.` : `${res.theme.name} is only yours now.`,
+      });
     } catch (e) {
-      setStatus({ tone: 'error', text: `Not saved: ${refusal(e)}` });
+      setStatus({
+        tone: 'error',
+        text: shared ? `Not shared: ${refusal(e)}` : `Still shared: ${refusal(e)}`,
+      });
     } finally {
-      setSharing(false);
+      setSharing((s) => {
+        const next = new Set(s);
+        next.delete(id);
+        return next;
+      });
     }
   };
 

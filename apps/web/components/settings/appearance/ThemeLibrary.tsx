@@ -40,11 +40,17 @@ export interface ThemeLibraryProps {
   onDuplicate: (id: string) => void;
   onDelete: (id: string) => void;
   onCopyShared: (id: string) => void;
+  /** My themes with a share change on its way. */
+  sharing?: ReadonlySet<string>;
+  /** Share one of mine with everyone, or stop. Saves at once. */
+  onShare: (id: string, shared: boolean) => void;
 }
 
 /** The Themes tab: the five presets, my saved themes (new, rename,
- *  duplicate, delete, with the count against the cap) and everyone else's
- *  shared themes (preview, or copy into mine). The one the preview shows is
+ *  duplicate, delete, share, with the count against the cap) and everyone
+ *  else's shared themes (preview, or copy into mine). Each of mine has its
+ *  own share switch (bughunt F3); presets and other people's themes have
+ *  none. The one the preview shows is
  *  outlined; the one in use says "In use". Props in, callbacks out. */
 export function ThemeLibrary(props: ThemeLibraryProps) {
   const { shownPreset, shownThemeId, inUsePreset, inUseThemeId, mine, shared, cap, loadFailed, looseName } = props;
@@ -98,6 +104,9 @@ export function ThemeLibrary(props: ThemeLibraryProps) {
             New
           </Button>
         </div>
+        <p data-testid="share-explainer" className="text-xs text-muted-foreground">
+          Shared themes appear for everyone under Shared by others.
+        </p>
         {full && (
           <p className="text-xs text-muted-foreground">
             That is the most you can keep ({cap}). Delete one to make room.
@@ -119,6 +128,8 @@ export function ThemeLibrary(props: ThemeLibraryProps) {
               onDuplicate={() => props.onDuplicate(t.id)}
               onDelete={() => props.onDelete(t.id)}
               canDuplicate={!full}
+              sharing={props.sharing?.has(t.id) ?? false}
+              onShare={(on) => props.onShare(t.id, on)}
             />
           ))
         )}
@@ -175,6 +186,8 @@ function MyThemeRow({
   onRename,
   onDuplicate,
   onDelete,
+  sharing,
+  onShare,
 }: {
   theme: SavedTheme;
   /** The preview shows it. */
@@ -186,6 +199,9 @@ function MyThemeRow({
   onRename: (name: string) => Promise<string | null>;
   onDuplicate: () => void;
   onDelete: () => void;
+  /** A share change is on its way. */
+  sharing: boolean;
+  onShare: (shared: boolean) => void;
 }) {
   const [mode, setMode] = useState<'idle' | 'rename' | 'delete'>('idle');
   const [name, setName] = useState(theme.name);
@@ -270,14 +286,16 @@ function MyThemeRow({
         <span className="min-w-0 flex-1">
           <span className="flex min-w-0 items-center gap-cluster text-sm font-medium">
             <span className="truncate">{theme.name}</span>
+            {theme.shared && <SharedTag />}
             {inUse && <InUse />}
           </span>
           <span className="block text-xs text-muted-foreground">
-            {theme.shared ? 'Shared with everyone' : 'Only you'}
+            {theme.shared ? 'Everyone can use it' : 'Only you'}
           </span>
         </span>
       </button>
       <div className="flex shrink-0 items-center">
+        <ShareSwitch name={theme.name} checked={theme.shared} busy={sharing} onChange={onShare} />
         <IconAction label={`Rename ${theme.name}`} onClick={() => {
             setName(theme.name);
             setMode('rename');
@@ -293,6 +311,59 @@ function MyThemeRow({
         </IconAction>
       </div>
     </div>
+  );
+}
+
+/** The tag on each of my themes that everyone can see. */
+function SharedTag() {
+  return (
+    <span data-testid="shared-tag" className="shrink-0 rounded-full bg-ember/15 px-cluster text-xs font-normal text-ember">
+      Shared
+    </span>
+  );
+}
+
+/** One of my themes' share switch: on, everyone on this server sees it
+ *  under Shared by others. A small track in a full-size hit box. */
+function ShareSwitch({
+  name,
+  checked,
+  busy,
+  onChange,
+}: {
+  name: string;
+  checked: boolean;
+  busy: boolean;
+  onChange: (shared: boolean) => void;
+}) {
+  const label = `Share ${name} with everyone`;
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      aria-label={label}
+      title={label}
+      aria-busy={busy || undefined}
+      disabled={busy}
+      onClick={() => onChange(!checked)}
+      className="grid size-hit place-items-center rounded-full disabled:opacity-50 md:size-8"
+    >
+      <span
+        aria-hidden="true"
+        className={cn(
+          'relative block h-4 w-7 rounded-full transition-colors',
+          checked ? 'bg-ember' : 'bg-muted',
+        )}
+      >
+        <span
+          className={cn(
+            'absolute left-0 top-0.5 size-3 rounded-full transition-transform',
+            checked ? 'translate-x-3.5 bg-ember-foreground' : 'translate-x-0.5 bg-foreground',
+          )}
+        />
+      </span>
+    </button>
   );
 }
 
