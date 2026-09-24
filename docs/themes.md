@@ -109,7 +109,7 @@ expects nothing above `ok`, so a preset cannot ship unreadable.
 Each finding can offer a fix: one input's lightness moved in 0.02 steps (at
 most 20) until the pair goes up a level, chroma and hue untouched. The page
 shows the finding with a "Fix it" button. Nothing is adjusted silently. A
-`fail` blocks saving (the draft still shows on the page); a `warn` never
+`fail` blocks Apply (the draft still shows in the preview); a `warn` never
 blocks.
 
 ## 4. Where a theme lives
@@ -128,7 +128,9 @@ On the client, `stores/useThemeStore.ts` (zustand, persisted as
 optimistic `select`, rolled back on failure unless something newer replaced
 it, and the cookie rewritten after every change so a hard reload is already
 right. `components/providers/ThemeApplier.tsx` is the only writer of the
-theme on the live page after first paint. Signed-out pages (`/auth`,
+theme on the live page after first paint, and it paints the active theme
+only: Appearance's unapplied draft lives in the store too, but only the
+page's preview pane shows it. Signed-out pages (`/auth`,
 `/privacy`, `/terms`) are always Ember, whatever the device cached, so one
 friend's theme never colours the sign-in page on a shared computer.
 
@@ -161,42 +163,68 @@ characters), base preset, the eight inputs, and a `shared` flag.
 `app/(app)/settings/appearance/page.tsx`, composed from presentational
 pieces in `components/settings/appearance/` and the `useThemeEditor` hook: a
 live preview of real app pieces on mock data next to an inspector with three
-tabs, Themes, Colours and Share. Every change shows on the whole app at once
-and saves itself.
+tabs, Themes, Colours and Share.
 
-The flows:
+**Try in the preview, then Apply** (feature F1, the owner's call). Picking a
+preset, one of my themes or a shared theme, and changing colours, all change
+only the preview pane. The rest of the app, the page around the preview
+included, keeps the theme in use, and nothing is saved. While what the
+preview shows differs from the theme in use, a bar at the top of the
+inspector (`ApplyBar`, sticky so it stays in reach while the colours scroll)
+says what is showing and offers **Apply** and **Back to current**:
 
-- **Pick a preset**: it is the active theme at once.
-- **Edit a preset**: the first colour change saves a new theme in My themes
-  named "My <preset>" ("My Midnight", then "My Midnight 2" if taken) and
-  switches to it. Further edits save to that theme.
-- **Edit one of mine**: saves to it. If it is shared, everyone using it gets
-  the change on their next load.
+- **Apply** makes it the theme of the whole app and saves it through the
+  same routes as before. What it saves depends on what is showing:
+  - a preset or a saved theme as it is: `PATCH /api/theme` selects it;
+  - one of mine with changed colours: `PATCH /api/themes/:id` saves the
+    colours first, then it is selected (or, when it was already in use, the
+    server's `active` copy is adopted);
+  - a preset (or a kept copy) with changed colours: `POST /api/themes`
+    saves a new theme named "My <preset>" ("My Midnight", then "My Midnight
+    2" if taken), which is then selected. Nothing is made before Apply.
+- **Back to current** drops the draft; the preview shows the theme in use
+  again.
+
+The draft is the store's `draft` (`{ target, edit }`, see
+`stores/useThemeStore.ts`): the theme picked and, once a colour changes, the
+edit, tied to the selection it was made on. It is in memory only: leaving
+Appearance applies and saves **nothing** (there is no flush on unmount or
+on `pagehide` any more, bughunt N1 as changed by F1), and coming back to
+Appearance in the same session shows the draft again with Apply. A reload
+or sign-out drops it.
+
+In the Themes tab the theme the preview shows is outlined (a checked radio
+for a preset, a pressed row for one of mine, "Showing" for a shared one),
+and the one the app uses carries an **In use** tag.
+
+The other flows:
+
 - **Someone else's shared theme**: read-only. "Copy to my themes" makes an
   editable copy.
-- **New**: a copy of whatever is showing (preset, mine, shared or a kept
-  copy), saved as "New theme" and put in use, then the Colours tab opens.
-- **Duplicate, rename, delete** on each of mine.
+- **New**: a copy of whatever the preview shows (preset, mine, shared, a
+  kept copy, or the draft's changed colours), saved to My themes as "New
+  theme" and shown in the preview, then the Colours tab opens. Apply puts it
+  in use.
+- **Duplicate, rename, delete** on each of mine act at once; they are list
+  changes, not a theme change. Deleting the theme in use goes back to its
+  base preset (bughunt V10); a draft of the deleted theme goes with it.
 - **A kept copy** ("In use: X, kept after its original went away") is what
   is left when someone else's theme in use was deleted or unshared. It is
-  not in any list; changing a colour saves it to My themes under its own
-  name.
-- **Reset** puts the base preset's colours back.
-- **Share tab**: the "Share with everyone" switch, for one of mine only.
+  not in any list; changing a colour and applying saves it to My themes
+  under its own name.
+- **Reset** puts the base preset's colours back into the draft.
+- **Share tab**: the "Share with everyone" switch, for one of mine only
+  (the one the preview shows). It saves at once.
 
-**Autosave.** A colour change waits **600 ms** (`SAVE_DELAY_MS` in
-`hooks/useThemeEditor.ts`) after the last change, so dragging a picker is
-one save. Fix it and Reset save at once. Leaving the page drops an unsaved
-draft.
+**Unreadable colours.** A pair at `fail` turns Apply off and shows "Not
+saved: <pair> is hard to read." Fix it changes the draft (not the saved
+theme), so the preview shows the fix and Apply comes back on.
 
-**The switch rule.** Switching to another theme within those 600 ms flushes
-the waiting save, but what happens depends on what was being edited:
-
-- an edit to **one of mine** is saved anyway, so nothing typed into your own
-  theme is lost to a quick switch;
-- an edit to a **preset** (or a kept copy) is **dropped**: it would have
-  made a new "My <preset>" theme, and turning an abandoned tweak into a
-  saved theme the person just walked away from is worse than losing it.
+**One apply at a time.** Every apply (and every delete) runs through one
+queue in the hook, so an apply that saves colours and then selects always
+lands before a later one selects something else. With the per-account lock
+on the server (`lib/theme/serverActive.ts`), a late save can never put back
+a theme the person just moved off (bughunt N2).
 
 ## 6. Lint: the colour ratchet and the inline-block rule
 
@@ -232,8 +260,9 @@ element `block` (a flex child needs nothing) or `inline-flex` instead.
 
 Both shells load the server's page, so the page is themed with nothing
 native. What the shells paint is the chrome around it. `ThemeApplier`
-calls `notifyShell` (`lib/theme/native.ts`) 150 ms after the shown theme
-settles, so a colour drag is one native call. It sends the background as
+calls `notifyShell` (`lib/theme/native.ts`) 150 ms after the active theme
+settles, so the shells change only when a theme is applied (or arrives from
+the account), never for a draft in the Appearance preview. It sends the background as
 hex, the scheme, and on Android every derived variable. A plain browser, an
 APK from before themes (no `EmberTheme` plugin) and a desktop build without
 the command are all no-ops, and a rejected call is swallowed. Signed out,
@@ -282,14 +311,17 @@ from the cookie by `generateViewport` and kept current by
 - Unit (`apps/web`, vitest): `lib/theme/*.test.ts` (colour maths,
   derivation against `globals.css`, presets, guard, model, saved themes,
   the applier's CSS, `native.test.ts` for both shells and the no-op cases),
-  `stores/useThemeStore.test.ts`, the theme routes, `ThemeApplier.test.tsx`
-  (including the 150 ms shell notify), the Appearance page and
-  `lib/lintRules.test.ts`.
+  `stores/useThemeStore.test.ts` (including the draft), the theme routes,
+  `ThemeApplier.test.tsx` (including the 150 ms shell notify, and that a
+  draft never reaches the page or the shell), `hooks/useThemeEditor.test.tsx`
+  (the draft, Apply, Back to current, leaving, the readability block, N2,
+  V10), the Appearance page and `lib/lintRules.test.ts`.
 - Android (JVM, Robolectric): `ThemeColorsTest.kt`, run with
   `cd apps/mobile/android && ./gradlew testDebugUnitTest --tests 'app.ember.music.Theme*'`
   (needs JDK 21).
 - Desktop: `cd apps/desktop/src-tauri && cargo test --lib theme`.
 - Browser: `tests/themes-ui.test.mjs` (two devices, sharing, first paint
-  with JavaScript off, `SHOT_DIR` screenshots of every preset) and
+  with JavaScript off, a picked preset staying in the preview until Apply,
+  `SHOT_DIR` screenshots of every preset) and
   `tests/offline-page.test.mjs` (the offline page keeps its fallbacks and
   takes the exact script `ThemeColorsTest` pins).
