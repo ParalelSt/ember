@@ -198,8 +198,15 @@ const fakeJwt = `${b64({ alg: 'HS256', typ: 'JWT' })}.${b64({ id: boss.id, type:
 const fake = cookieOf(fakeJwt, { ...boss.record, is_admin: true });
 const fakeRes = await as(fake, `/api/admin/users/${carol.id}.js`, { method: 'PATCH', body: JSON.stringify({ name: 'forged' }) });
 check('W01c a made-up token cannot reach admin code', fakeRes.status === 307 || fakeRes.status === 401, `status ${fakeRes.status}`);
+// Signed out, an API path answers 401 JSON (bughunt W05); a `.js` suffix must
+// not slip past the proxy's session check and get something else.
 const anonJs = await fetch(`${APP}/api/playlists/x.js`, { redirect: 'manual' });
-check('W01d signed out, /api/…/x.js is sent to sign-in like any API path', anonJs.status === 307, `status ${anonJs.status}`);
+const anonPlain = await fetch(`${APP}/api/playlists/x`, { redirect: 'manual' });
+check(
+  'W01d signed out, /api/…/x.js is refused like any API path',
+  anonJs.status === 401 && anonPlain.status === 401 && (anonJs.headers.get('content-type') ?? '').includes('json'),
+  `status ${anonJs.status} (plain ${anonPlain.status})`,
+);
 
 // ── W03: rewriting the shared catalog ────────────────────────────────────
 const renamed = catalogRow
