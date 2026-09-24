@@ -21,6 +21,19 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    id: 'playlist-copy',
+    version: '0.7.3',
+    date: '2026-09-24',
+    title: 'Copy songs between playlists',
+    summary: 'Pick songs in a playlist or Liked songs and copy them anywhere, with duplicates skipped.',
+    bullets: [
+      'Select: tap Select above the songs, then tick them one by one or Select all.',
+      'Sort any playlist by title, artist, date added or duration, either way round. Each playlist remembers its sort on your device.',
+      'Copy to another playlist, a new one, or Liked songs. Copying into Liked songs likes every song, and Ember asks first.',
+      'Songs already there are skipped, including another upload of the same song. Different songs that only share a title are both copied.',
+    ],
+  },
+  {
     id: 'playback-reliability',
     version: '0.7.2',
     date: '2026-09-24',
