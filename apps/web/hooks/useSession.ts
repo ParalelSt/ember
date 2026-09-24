@@ -9,11 +9,13 @@ const POLL_MS = 2000;
 
 export const sessionKey = (id: string) => ['session', id] as const;
 
-/** Live session state — polls every 2s while the page is open. */
-export function useQuerySession(id: string) {
+/** Live session state, polled every 2s. The session page and the app-level
+ *  host (useSessionHost) share this cache entry; `null` switches it off. */
+export function useQuerySession(id: string | null) {
   return useQuery({
-    queryKey: sessionKey(id),
-    queryFn: () => api.getSession(id),
+    queryKey: sessionKey(id ?? ''),
+    queryFn: () => api.getSession(id!),
+    enabled: !!id,
     refetchInterval: POLL_MS,
     refetchIntervalInBackground: true,
   });

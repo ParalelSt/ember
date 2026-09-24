@@ -5,6 +5,7 @@ import { createClient } from '@/lib/pocketbase/client';
 import { usePrivacyStore } from '@/stores/usePrivacyStore';
 import { useChangelogStore } from '@/stores/useChangelogStore';
 import { useSettingsStore } from '@/stores/useSettingsStore';
+import { useSessionStore } from '@/stores/useSessionStore';
 import { registerThemeCookieWriter, useThemeStore } from '@/stores/useThemeStore';
 import { parseThemeDoc, sameDoc } from '@/lib/theme/model';
 import { logger } from '@/lib/logger/client';
@@ -154,6 +155,8 @@ export function AuthProvider({ children, initialUser }: { children: ReactNode; i
       signOut: async () => {
         logger.breadcrumb('auth', 'signout', { userId: user?.id });
         pb.authStore.clear();
+        // A carlist hosted by this account is not the next account's.
+        useSessionStore.getState().setHostingSessionId(null);
         // Hard-navigate so the queue / liked / history caches from the
         // signed-out user can't leak into the next session. The persisted
         // settings (ember.settings.v1) + zustand player slice survive

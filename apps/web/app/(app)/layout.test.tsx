@@ -19,6 +19,7 @@ vi.mock('@/components/player/PlayerBar', () => ({ PlayerBar: () => null }));
 vi.mock('@/components/player/NowPlaying', () => ({ NowPlaying: () => null }));
 vi.mock('@/components/player/LyricsPanel', () => ({ LyricsPanel: () => null }));
 vi.mock('@/components/search/SearchOverlayContainer', () => ({ SearchOverlayContainer: () => null }));
+vi.mock('@/components/session/SessionHostBridge', () => ({ SessionHostBridge: () => null }));
 vi.mock('@/lib/offline', () => ({ hydrateOfflineStore: vi.fn().mockResolvedValue(undefined) }));
 vi.mock('@/stores/useUiStore', () => ({ useUiStore: (selector: (s: { setSearchOpen: () => void }) => unknown) => selector({ setSearchOpen: vi.fn() }) }));
 vi.mock('@/hooks/useChangelog', () => ({ useChangelog: () => ({ hasNew: false }) }));

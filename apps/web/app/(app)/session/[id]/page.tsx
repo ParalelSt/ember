@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { TrackSearchPicker } from '@/components/track/menus/TrackSearchPicker';
 import { NextIcon, MusicIcon } from '@/components/icons';
 import { useQuerySession, useExecuteAddToSession, useExecuteSkipSession, useExecuteEndSession, useExecuteSaveSession } from '@/hooks/useSession';
-import { useSessionHost } from '@/hooks/useSessionHost';
+import { useClaimSessionHost } from '@/hooks/useSessionHost';
 import type { SessionQueueItem, Track } from '@/types/track';
 import { cn } from '@/lib/utils';
 import { EmptyState } from '@/components/page/EmptyState';
@@ -22,8 +22,9 @@ export default function SessionPage({ params }: { params: Promise<{ id: string }
   const save = useExecuteSaveSession(id);
   const [saved, setSaved] = useState(false);
 
-  // No-op for guests; hosts mirror the queue into their player.
-  useSessionHost(data);
+  // No-op for guests. The host's queue mirror and skip handling run from
+  // the app shell (SessionHostBridge), so they survive leaving this page.
+  useClaimSessionHost(data);
 
   if (error) {
     return <EmptyState>Session not found.</EmptyState>;
