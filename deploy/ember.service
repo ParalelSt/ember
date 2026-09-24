@@ -1,34 +1,48 @@
-# systemd user unit for the Ember API + web bundle.
+# systemd user unit: Ember (PocketBase + the web app) under start-static.sh's
+# watchdog, started at boot, with no terminal or tmux involved. Use this OR
+# tmux, not both. See SETUP.md, "Run Ember at boot (systemd, optional)".
 #
-# Install:
+# Install, as the user that owns the Ember folder (not root):
 #   mkdir -p ~/.config/systemd/user
 #   cp deploy/ember.service ~/.config/systemd/user/
+#   # Ember not in ~/ember? Fix WorkingDirectory and ExecStart below.
+#   # `which node` not in PATH below? Add its folder to PATH.
 #   systemctl --user daemon-reload
 #   systemctl --user enable --now ember
-#   systemctl --user status ember
-#   journalctl --user -u ember -f       # follow logs
+#   sudo loginctl enable-linger "$USER"   # keeps it running while nobody is logged in
 #
-# To survive logout (so it keeps running when you SSH out):
-#   sudo loginctl enable-linger aron
+# Day to day:
+#   systemctl --user status ember       is it running?
+#   journalctl --user -u ember -f       its output (also in logs/*.log)
+#   ./update.sh                         updates, then restarts it through systemd
 #
-# Edit Environment / paths below if your install location, Node binary, or
-# user differ.
+# Stopping: systemd sends SIGTERM to the watchdog alone (KillMode=mixed). The
+# watchdog stops both services itself, giving each STOP_GRACE (8 s) before a
+# SIGKILL, and does not report that as a crash. Its worst case is both
+# services stuck, 2 x 14 s; TimeoutStopSec is above that, and only then does
+# systemd SIGKILL whatever is left in the unit.
+#
+# Restarts: the watchdog restarts a crashed service itself. systemd restarts
+# the watchdog only if it fails (a failed build, a busy port), every 30 s, and
+# gives up after 5 tries in 10 minutes.
 
 [Unit]
-Description=Ember music app (API + static web)
-After=network-online.target
-Wants=network-online.target
+Description=Ember (PocketBase + web app, supervised by start-static.sh)
+StartLimitIntervalSec=600
+StartLimitBurst=5
 
 [Service]
 Type=simple
-WorkingDirectory=%h/spotify-clone
-Environment=NODE_ENV=production
-Environment=PORT=4040
-Environment=HOST=0.0.0.0
-# If your `node` isn't on PATH for systemd, hard-code it here:
-ExecStart=%h/.nvm/versions/node/v24.13.0/bin/node apps/api/src/index.js
+WorkingDirectory=%h/ember
+ExecStart=%h/ember/start-static.sh
+# systemd's own PATH has no nvm or ~/.local; node, npx, lsof, curl and git
+# must all be found here.
+Environment=PATH=%h/.nvm/versions/node/v24.13.0/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin
+KillMode=mixed
+KillSignal=SIGTERM
+TimeoutStopSec=35
 Restart=on-failure
-RestartSec=3
+RestartSec=30
 StandardOutput=journal
 StandardError=journal
 

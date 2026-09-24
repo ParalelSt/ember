@@ -174,7 +174,7 @@ Stop the tunnel later: `tailscale funnel reset`.
 ```bash
 ./update.sh            # pull, install if needed, rebuild, restart everything
 ./update.sh --check    # just show what's new, change nothing
-./update.sh --no-start # update the code only (hosts running Ember via systemd)
+./update.sh --no-start # update the code only; restart Ember yourself
 ./update.sh --here     # restart Ember in this window, even outside tmux
 ```
 
@@ -184,7 +184,8 @@ restarts in the background, in a tmux session called `ember`, and
 `update.sh` finishes, so closing the window no longer stops Ember. See it
 with `tmux attach -t ember` (leave again with Ctrl+B, then D). This needs
 tmux (`sudo apt install tmux`); without it `update.sh` stops before changing
-anything and tells you so.
+anything and tells you so. If systemd runs Ember (see **Run Ember at boot**
+below), `update.sh` restarts it through systemd instead, and needs no tmux.
 
 Every run also installs Ember's own ffmpeg (`imageio-ffmpeg`) if it is missing
 and relinks it to `.venv/bin/ffmpeg`, so the host never needs a system ffmpeg.
@@ -271,6 +272,35 @@ Starting a second copy while one is running refuses with the running pid.
 It also refuses when another program already listens on the web or PocketBase
 port, naming its pid (a PocketBase you started by hand is still used as it is).
 
+
+### Run Ember at boot (systemd, optional)
+
+Instead of tmux, systemd can run Ember: it then starts when the machine boots,
+with nobody logged in, and survives any SSH window. Use one or the other, not
+both. On Linux, as the user that owns the Ember folder:
+
+```bash
+mkdir -p ~/.config/systemd/user
+cp deploy/ember.service ~/.config/systemd/user/
+nano ~/.config/systemd/user/ember.service   # only if Ember is not in ~/ember, or node is not in the PATH line
+systemctl --user daemon-reload
+systemctl --user enable --now ember
+sudo loginctl enable-linger "$USER"        # keep it running while you are logged out
+```
+
+Stop the tmux copy first (Ctrl+C in it), or the unit refuses to start because
+the ports are taken. Then:
+
+```bash
+systemctl --user status ember     # is it running?
+journalctl --user -u ember -f     # its output (also in logs/)
+./update.sh                       # updates, then restarts it through systemd
+```
+
+The unit runs `./start-static.sh`, so the watchdog, crash reports and logs all
+work as described above. `systemctl --user stop ember` is a planned stop (no
+crash report): systemd signals the watchdog, which stops both services, and
+the unit gives it 35 s to do so.
 ---
 
 ## Project-owner-only setup
