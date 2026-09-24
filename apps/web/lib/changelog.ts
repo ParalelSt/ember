@@ -21,6 +21,23 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    id: 'playback-fixes-2',
+    version: '0.7.6',
+    date: '2026-09-24',
+    title: 'Playback fixes',
+    summary: 'Repeat, shuffle and seeking behave the way you expect, on the desktop app and on Android.',
+    bullets: [
+      'Repeat one on the desktop app plays the song again, with sound, instead of sitting silent at 0:00.',
+      'The loop button on Android now really loops (one song or the whole list), and the Repeat button in the car or the notification shows on it.',
+      'On Android, turning shuffle on or off or removing another song no longer restarts the song that is playing, and tapping a song starts it once, without a stutter.',
+      'Seeking right after a song starts goes where you tapped instead of back to 0:00.',
+      'Radio no longer mixes in songs meant for the queue you just left.',
+      'A new song no longer starts at the time the previous one was at after you reopen the app, and shuffle starts off after a reload so turning it off always puts the list back in order.',
+      'Skipping around in a song is more reliable in the desktop app and some browsers.',
+      'The desktop and Android fixes need the new app version, 0.4.5.',
+    ],
+  },
+  {
     id: 'security-fixes-1',
     version: '0.7.5',
     date: '2026-09-24',

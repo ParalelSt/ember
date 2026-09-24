@@ -1,3 +1,12 @@
+# 0.7.6: Playback fixes (batch 2)
+
+**Host: `./update.sh` as usual (no new packages, no settings, no database
+changes).** The web fixes reach everyone at their next page load. Repeat one
+on the desktop app, and the loop button, shuffle and taps on Android, need
+the new apps, 0.4.5 (Android versionCode 10), which the `v0.4.5` tag builds.
+Background: `docs/reports/bughunt-2026-09-24/` P02, P04, P05, P06, P08, P10,
+P11 and P12.
+
 # 0.7.5: Security fixes (batch 1)
 
 **Host, in order. Do all of it: the code fix alone is not enough, because
