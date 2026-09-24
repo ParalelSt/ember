@@ -1,3 +1,12 @@
+# 0.7.8: Server fixes (batch 4)
+
+**Host: run `./update.sh` as usual (no new packages, no settings, no database
+changes).** The server fixes take effect once it restarts. The Android menu
+and sheets clearing the phone's buttons need the new apps, 0.4.7 (Android
+versionCode 12), which the `v0.4.7` tag builds. Background:
+`docs/reports/bughunt-2026-09-24/` S01, S02, S03, S05 to S12 and T3, and
+`docs/reports/android-nav-overlap.md`.
+
 # 0.7.7: App fixes (batch 3)
 
 **Host: `./update.sh` as usual (no new packages, no settings, no database

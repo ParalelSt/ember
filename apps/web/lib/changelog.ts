@@ -21,6 +21,21 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    id: 'server-fixes-4',
+    version: '0.7.8',
+    date: '2026-09-24',
+    title: 'Server fixes',
+    summary: 'Fewer songs greyed out by mistake, imports that finish, clearer search errors, and Android controls that stay clear of the phone\'s buttons.',
+    bullets: [
+      'When YouTube briefly limits the server, songs no longer turn grey as if they were gone for good.',
+      'A playlist or likes import no longer gets stuck on one odd song or a short network hiccup.',
+      'When search cannot reach YouTube, you see an error instead of "no results", and the next search tries again. Your own uploads still show up.',
+      'Old cached songs that nothing uses any more get cleaned up, so the server does not slowly fill up.',
+      'On Android, the menu and the sheets that slide up now sit above the phone\'s buttons instead of under them.',
+      'The Android fix needs the new app version, 0.4.7.',
+    ],
+  },
+  {
     id: 'app-fixes-3',
     version: '0.7.7',
     date: '2026-09-24',
