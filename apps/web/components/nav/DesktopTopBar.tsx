@@ -16,6 +16,12 @@ interface Props {
   children: ReactNode;
 }
 
+/** The cover stops short of the lyrics panel (`--ember-lyrics-w`, 0 when
+ *  it is closed), which has its own background and sticks just under the
+ *  bar: while the search panel is open the bar is lifted over the panel,
+ *  and a full-width cover would then hide the panel's top. */
+const COVER_BOX = { right: 'var(--ember-lyrics-w, 0px)' } as const;
+
 /** The desktop top bar, the "floating pill": the search box sits `sticky
  *  top-0` INSIDE the page scroller (`[data-app-scroller]`), so the
  *  scrollbar runs the full height of the content column and the page
@@ -63,7 +69,12 @@ export function DesktopTopBar({ raised, onHeightChange, children }: Props) {
       className={cn('sticky top-0', raised ? 'z-40' : 'z-20')}
     >
       {scrolled && height > 0 && (
-        <div aria-hidden data-testid="topbar-cover" className="pointer-events-none absolute inset-0">
+        <div
+          aria-hidden
+          data-testid="topbar-cover"
+          className="pointer-events-none absolute inset-y-0 left-0"
+          style={COVER_BOX}
+        >
           <div className="h-full bg-background" />
           <div data-testid="topbar-band" className="h-block bg-background" />
           <div className="h-stack bg-linear-to-b from-background to-transparent" />

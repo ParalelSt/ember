@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { act, render, screen } from '@testing-library/react';
 import AppShellLayout from './layout';
 import { LyricsPanel } from '@/components/player/LyricsPanel';
 import { useUiStore } from '@/stores/useUiStore';
@@ -14,7 +14,10 @@ vi.mock('@/components/nav/BackToTop', () => ({ BackToTop: () => <button type="bu
 vi.mock('@/components/player/PlayerBar', () => ({ PlayerBar: () => <footer data-testid="player-bar" /> }));
 vi.mock('@/components/player/NowPlaying', () => ({ NowPlaying: () => null }));
 vi.mock('@/components/player/LyricsBody', () => ({ LyricsBody: () => <div>lyrics</div> }));
-vi.mock('@/components/player/LyricsPanel', () => ({ LyricsPanel: () => <aside data-testid="lyrics" /> }));
+vi.mock('@/components/player/LyricsPanel', () => ({
+  LYRICS_PANEL_W: 'min(28rem, 40vw)',
+  LyricsPanel: () => <aside data-testid="lyrics" />,
+}));
 vi.mock('@/components/search/SearchOverlayContainer', () => ({
   SearchOverlayContainer: () => <div role="search" data-testid="search-box" />,
 }));
@@ -75,6 +78,15 @@ describe('app shell, desktop top bar', () => {
     expect(column.style.getPropertyValue('--ember-topbar-h')).toBe(`${BAR_H}px`);
   });
 
+  it('publishes the lyrics panel width while it is open, so the bar cover stops short of it', () => {
+    renderShell();
+    const column = () => scroller().parentElement!;
+    expect(column().style.getPropertyValue('--ember-lyrics-w')).toBe('0px');
+    act(() => useUiStore.setState({ lyricsOpen: true }));
+    expect(column().style.getPropertyValue('--ember-lyrics-w')).toBe('min(28rem, 40vw)');
+    act(() => useUiStore.setState({ lyricsOpen: false }));
+  });
+
   it('lifts the bar over the lyrics panel while the search panel is open', () => {
     useUiStore.setState({ searchOpen: true });
     renderShell();
@@ -98,7 +110,10 @@ describe('app shell, phone', () => {
 
 describe('LyricsPanel under the bar', () => {
   it('sticks just under the bar and is that much shorter than the scroller', async () => {
-    const { LyricsPanel: Real } = await vi.importActual<{ LyricsPanel: typeof LyricsPanel }>(
+    const { LyricsPanel: Real, LYRICS_PANEL_W: width } = await vi.importActual<{
+      LyricsPanel: typeof LyricsPanel;
+      LYRICS_PANEL_W: string;
+    }>(
       '@/components/player/LyricsPanel',
     );
     useUiStore.setState({ lyricsOpen: true });
@@ -106,6 +121,9 @@ describe('LyricsPanel under the bar', () => {
     const aside = document.querySelector<HTMLElement>('aside[aria-label="Lyrics"]')!;
     expect(aside.className).toMatch(/\bsticky\b/);
     expect(aside.className).toMatch(/\bz-30\b/);
+    // The width the layout hands the bar's cover (happy-dom drops a min()
+    // width from the style, so the constant is checked instead).
+    expect(width).toBe('min(28rem, 40vw)');
     expect(aside.style.top).toBe('var(--ember-topbar-h, 0px)');
     expect(aside.style.height).toBe('calc(var(--ember-scroller-h, 100dvh) - var(--ember-topbar-h, 0px))');
     useUiStore.setState({ lyricsOpen: false });

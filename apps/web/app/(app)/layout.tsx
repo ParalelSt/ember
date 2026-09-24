@@ -9,7 +9,7 @@ import { BackToTop } from '@/components/nav/BackToTop';
 import { DesktopTopBar } from '@/components/nav/DesktopTopBar';
 import { PlayerBar } from '@/components/player/PlayerBar';
 import { NowPlaying } from '@/components/player/NowPlaying';
-import { LyricsPanel } from '@/components/player/LyricsPanel';
+import { LYRICS_PANEL_W, LyricsPanel } from '@/components/player/LyricsPanel';
 import { SearchOverlayContainer } from '@/components/search/SearchOverlayContainer';
 import { hydrateOfflineStore } from '@/lib/offline';
 import { useUiStore } from '@/stores/useUiStore';
@@ -23,6 +23,7 @@ export default function AppShellLayout({ children }: { children: ReactNode }) {
   const [barH, setBarH] = useState(0);
   const setSearchOpen = useUiStore((s) => s.setSearchOpen);
   const searchOpen = useUiStore((s) => s.searchOpen);
+  const lyricsOpen = useUiStore((s) => s.lyricsOpen);
   const { hasNew } = useChangelog();
   // Desktop: the search bar lives INSIDE the scroller (DesktopTopBar).
   // Phone: the search sheet stays outside it, as before.
@@ -66,13 +67,15 @@ export default function AppShellLayout({ children }: { children: ReactNode }) {
             player bar. --ember-topbar-h is the desktop top bar's height
             (0 on a phone and on /search): the things that stick to the
             scroller's top (lyrics, the tabs toolbar, the Appearance
-            preview) stick just under the bar instead. */}
+            preview) stick just under the bar instead, and the bar's cover
+            stops short of the lyrics panel (--ember-lyrics-w). */}
         <div
           className="flex-1 min-h-0 flex flex-col"
           style={
             {
               ...(scrollerH ? { ['--ember-scroller-h' as string]: `${scrollerH}px` } : null),
               ['--ember-topbar-h' as string]: `${isDesktop ? barH : 0}px`,
+              ['--ember-lyrics-w' as string]: isDesktop && lyricsOpen ? LYRICS_PANEL_W : '0px',
             } as CSSProperties
           }
         >

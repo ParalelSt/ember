@@ -64,7 +64,10 @@ describe('DesktopTopBar', () => {
     expect(bar).toHaveAttribute('data-scrolled');
     const cover = screen.getByTestId('topbar-cover');
     expect(cover.className).toMatch(/\babsolute\b/);
-    expect(cover.className).toMatch(/\binset-0\b/);
+    expect(cover.className).toMatch(/\binset-y-0\b/);
+    expect(cover.className).toMatch(/\bleft-0\b/);
+    // Stops short of the lyrics panel, which the layout sizes.
+    expect(cover.style.right).toBe('var(--ember-lyrics-w, 0px)');
     expect(cover.className).toMatch(/\bpointer-events-none\b/);
     expect(cover).toHaveAttribute('aria-hidden');
     // Theme tokens only: the page background, never a literal colour.
