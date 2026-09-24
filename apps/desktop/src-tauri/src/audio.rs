@@ -21,7 +21,7 @@ use std::time::Duration;
 use rodio::mixer::Mixer;
 use rodio::{OutputStreamBuilder, Sink};
 use serde::Serialize;
-use souvlaki::{MediaControlEvent, MediaControls, MediaMetadata, MediaPlayback, PlatformConfig};
+use souvlaki::{MediaControlEvent, MediaControls, MediaMetadata, MediaPlayback, MediaPosition, PlatformConfig};
 use stream_download::http::reqwest::header::{HeaderMap, HeaderValue, COOKIE};
 use stream_download::http::reqwest::Client;
 use stream_download::http::HttpStream;
@@ -91,6 +91,12 @@ pub struct AudioEngine {
     /// On macOS `MediaControls` is a zero-sized unit struct (state lives in
     /// global MPNowPlayingInfoCenter/MPRemoteCommandCenter), so it is Send+Sync.
     controls: Mutex<Option<MediaControls>>,
+    /// The last metadata the webview asked to show (title, artist, album,
+    /// artwork_url). Kept so the duration can be added to it once the
+    /// decoder reports one (bughunt L5): `audio_set_metadata` usually runs
+    /// before `current_total` is known, so re-sending it there would send
+    /// `duration: None` and leave the OS widget with no scrubber.
+    nowplaying_meta: Mutex<Option<(String, String, String, String)>>,
 }
 
 impl AudioEngine {
@@ -137,6 +143,7 @@ impl AudioEngine {
             source_failed: Mutex::new(Arc::new(AtomicBool::new(false))),
             volume: Mutex::new(1.0),
             controls: Mutex::new(None),
+            nowplaying_meta: Mutex::new(None),
         })
     }
 
@@ -164,6 +171,7 @@ impl AudioEngine {
             source_failed: Mutex::new(Arc::new(AtomicBool::new(false))),
             volume: Mutex::new(1.0),
             controls: Mutex::new(None),
+            nowplaying_meta: Mutex::new(None),
         }
     }
 
@@ -179,20 +187,41 @@ impl AudioEngine {
         self.mixer.is_some()
     }
 
-    /// Reflect play/paused state in the OS Now Playing widget. No-op if media
-    /// controls failed to initialize.
+    /// Reflect play/paused state in the OS Now Playing widget, including the
+    /// current position: without it (bughunt L5) the widget knows only
+    /// Playing/Paused and never a position, so it has no scrubber. No-op if
+    /// media controls failed to initialize.
     fn set_nowplaying(&self, playing: bool) {
-        self.set_playback(if playing {
-            MediaPlayback::Playing { progress: None }
-        } else {
-            MediaPlayback::Paused { progress: None }
-        });
+        let pos = self.sink.lock().ok().and_then(|g| g.as_ref().map(|s| s.get_pos()));
+        self.set_playback(nowplaying_state(playing, pos));
     }
 
     fn set_playback(&self, pb: MediaPlayback) {
         if let Ok(mut g) = self.controls.lock() {
             if let Some(c) = g.as_mut() {
                 let _ = c.set_playback(pb);
+            }
+        }
+    }
+
+    /// Re-sends the last metadata the webview set, with `duration` filled in
+    /// from `current_total` (bughunt L5). Called both from `audio_set_metadata`
+    /// (which usually runs before the decoder has reported a duration) and
+    /// from `load_track` once it has one, so the widget picks up the
+    /// duration without the webview needing to ask again.
+    fn push_metadata(&self) {
+        let Ok(meta_guard) = self.nowplaying_meta.lock() else { return };
+        let Some((title, artist, album, artwork_url)) = meta_guard.as_ref() else { return };
+        let duration = self.current_total.lock().ok().and_then(|g| *g);
+        if let Ok(mut g) = self.controls.lock() {
+            if let Some(c) = g.as_mut() {
+                let _ = c.set_metadata(MediaMetadata {
+                    title: Some(title),
+                    artist: Some(artist),
+                    album: Some(album),
+                    cover_url: if artwork_url.is_empty() { None } else { Some(artwork_url) },
+                    duration,
+                });
             }
         }
     }
@@ -838,6 +867,19 @@ fn seek_target(total: Option<Duration>, sec: f64) -> Option<Duration> {
     Some(Duration::from_secs_f64(sec.max(0.0)))
 }
 
+/// Pure state mapping for the OS Now Playing widget (bughunt L5), factored
+/// out of `set_nowplaying` so it can be unit tested without a real souvlaki
+/// backend (headless test/CI machines have none, so `AudioEngine::controls`
+/// is always `None` there). `pos` is `None` when nothing is loaded.
+fn nowplaying_state(playing: bool, pos: Option<Duration>) -> MediaPlayback {
+    let progress = pos.map(MediaPosition);
+    if playing {
+        MediaPlayback::Playing { progress }
+    } else {
+        MediaPlayback::Paused { progress }
+    }
+}
+
 /// The reader a load decodes from: a temp-file-backed HTTP download that
 /// remembers whether it ever failed.
 type StreamReader = FailFlagged<SeekWatched<StreamDownload<TempStorageProvider>>>;
@@ -1270,6 +1312,9 @@ async fn load_track<R: Runtime>(
     );
     if let Some(d) = total {
         emit_sec(app, "audio:duration", d.as_secs_f64());
+        // Refresh the OS widget's metadata now that a duration is known
+        // (bughunt L5): audio_set_metadata usually ran before this point.
+        engine.push_metadata();
     }
     if playing {
         emit_bare(app, "audio:play");
@@ -1540,18 +1585,10 @@ pub fn audio_set_metadata(
     album: String,
     artwork_url: String,
 ) {
-    if let Ok(mut g) = engine.controls.lock() {
-        if let Some(c) = g.as_mut() {
-            // MediaMetadata borrows &str; the local Strings outlive this call.
-            let _ = c.set_metadata(MediaMetadata {
-                title: Some(&title),
-                artist: Some(&artist),
-                album: Some(&album),
-                cover_url: if artwork_url.is_empty() { None } else { Some(&artwork_url) },
-                ..Default::default()
-            });
-        }
+    if let Ok(mut m) = engine.nowplaying_meta.lock() {
+        *m = Some((title, artist, album, artwork_url));
     }
+    engine.push_metadata();
 }
 
 // --- Position timer + end detection -----------------------------------------
@@ -1605,6 +1642,14 @@ fn spawn_position_timer<R: Runtime>(
                     emit_err(&app, RETRY_WEB_AUDIO, format!("the stream stopped at {pos:.1}s"));
                 } else {
                     emit_bare(&app, "audio:ended");
+                    // Tell the OS widget too (bughunt L5): a track that ran
+                    // out on its own left it stuck on "Playing" forever,
+                    // since only the explicit audio_stop command used to set
+                    // Stopped. If the webview loads another track right
+                    // after, that load's own set_nowplaying supersedes this;
+                    // if this was the end of the queue, it now says so.
+                    use tauri::Manager;
+                    app.state::<AudioEngine>().set_playback(MediaPlayback::Stopped);
                 }
                 break;
             }
@@ -1794,6 +1839,33 @@ mod tests {
         assert!(is_http_url("https://h/api/uploads/x/stream"));
         assert!(!is_http_url("cache:youtube:a"));
         assert!(!is_http_url("file:///etc/passwd"));
+    }
+
+    // bughunt L5: the OS Now Playing widget got Playing/Paused with no
+    // position, so it had no scrubber. `nowplaying_state` is the pure
+    // mapping `set_nowplaying` delegates to; tested directly since a real
+    // souvlaki backend is unavailable on headless test machines.
+    #[test]
+    fn nowplaying_state_carries_position_when_playing() {
+        let got = nowplaying_state(true, Some(Duration::from_secs(42)));
+        assert_eq!(
+            got,
+            MediaPlayback::Playing { progress: Some(MediaPosition(Duration::from_secs(42))) }
+        );
+    }
+
+    #[test]
+    fn nowplaying_state_carries_position_when_paused() {
+        let got = nowplaying_state(false, Some(Duration::from_millis(1500)));
+        assert_eq!(
+            got,
+            MediaPlayback::Paused { progress: Some(MediaPosition(Duration::from_millis(1500))) }
+        );
+    }
+
+    #[test]
+    fn nowplaying_state_has_no_position_when_nothing_is_loaded() {
+        assert_eq!(nowplaying_state(false, None), MediaPlayback::Paused { progress: None });
     }
 
     /// Public routes must keep working with no session attached.
