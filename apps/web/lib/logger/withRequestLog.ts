@@ -7,6 +7,12 @@ import { createClient } from '@/lib/pocketbase/server';
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type RouteHandler<Ctx = any> = (req: NextRequest, ctx: Ctx) => Promise<Response> | Response;
 
+/** Routes where a 429 is the automatic-report quota doing its job, not a
+ *  problem worth a human's attention: keep it out of the digest by logging
+ *  it at 'info' instead of 'warn'. A real 5xx from these routes still logs
+ *  normally (see below), so an actual failure stays visible. */
+const QUIET_429_ROUTES = new Set(['bug-report', 'requests']);
+
 /** Best-effort current user id, read the same way requireUser() does (via
  *  the pb_auth cookie) but without throwing when there isn't one: logging
  *  must never be the reason a request fails. */
@@ -51,7 +57,10 @@ async function readErrorField(res: Response): Promise<string | undefined> {
  *   - a 5xx response the handler returned -> level 'error' (502/504, which
  *     are usually yt-dlp/python being flaky rather than our bug, log at
  *     'warn' instead).
- *   - a 429 (rate limited) response -> level 'warn'.
+ *   - a 429 (rate limited) response -> level 'warn', except on
+ *     QUIET_429_ROUTES (bug-report, requests): a client that has used up its
+ *     automatic-report quota getting a 429 back is expected, not noteworthy,
+ *     so those log at 'info' instead and never reach the digest.
  * 2xx/3xx/4xx (other than 429) are not logged here. This never changes the
  * response a route produces: the wrapper only observes and rethrows/returns
  * exactly what the handler gave it, except for the uncaught-throw case.
@@ -83,7 +92,8 @@ export function withRequestLog<Ctx = unknown>(
 
     const durationMs = Date.now() - start;
     if (res.status === 429) {
-      serverLogger.warn('api', `${method} ${name} -> 429`, { status: 429, durationMs }, undefined, {
+      const level = QUIET_429_ROUTES.has(name) ? 'info' : 'warn';
+      serverLogger[level]('api', `${method} ${name} -> 429`, { status: 429, durationMs }, undefined, {
         reqId,
         route: name,
         userId,
