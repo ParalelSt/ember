@@ -21,6 +21,19 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    id: 'auto-cache-offline',
+    version: '0.7.4',
+    date: '2026-09-24',
+    title: 'Keeps playing when the internet drops',
+    summary: 'Keeps playing when the internet drops: Ember saves the next couple of songs as you listen, so a dropped connection does not stop the music.',
+    bullets: [
+      'While a song plays, Ember quietly saves it and the next two on your device. They play from there, even online, so they start at once and use no data.',
+      'Offline, songs that were not saved are skipped and an Offline badge shows in the player. When nothing saved is left, the music pauses and picks up again once you are back online.',
+      'It waits for Wi-Fi by default. Settings > Downloads has the switch, "Also on mobile data", how much space it uses, and a button to clear it.',
+      'In the desktop and Android apps it needs the new app version, 0.4.3. On Android it keeps working with the screen off and in the car.',
+    ],
+  },
+  {
     id: 'playlist-copy',
     version: '0.7.3',
     date: '2026-09-24',

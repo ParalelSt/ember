@@ -1,3 +1,30 @@
+# 0.7.4: Keeps playing when the internet drops (auto cache)
+
+**Host, in order: `./update.sh` as usual, then (optional) one env line.
+The desktop app and the APK need the new shells, 0.4.3, which the `v0.4.3`
+tag builds.**
+
+1. **`./update.sh`** (a normal rebuild and restart, no new packages, no
+   database changes). From now on the host runs at most two yt-dlp
+   downloads at once, whatever the number of listeners; the rest wait their
+   turn. The apps' "save the next songs" requests carry `?prefetch=1` and
+   are low priority: they only start a download when the host is idle
+   (otherwise `503` with `Retry-After: 30`, logged as a warning, not an
+   error) and each listener gets 10 a minute (`429`). Details in
+   `docs/prefetch.md`.
+2. **Optional: `MAX_CONCURRENT_DOWNLOADS`** in `apps/web/.env.local`, then
+   restart the web app. Leave it out and the cap is 2, which is right for a
+   handful of friends; raise it only if the host has spare CPU and plays
+   queue up behind each other.
+
+   ```
+   MAX_CONCURRENT_DOWNLOADS=2
+   ```
+3. **New shells, 0.4.3** (desktop app, and the APK with versionCode 8). The
+   browser gets the auto cache at its next page load. An older desktop app
+   or APK keeps playing as before and Settings > Downloads says to update
+   the app.
+
 # 0.7.2: Songs start reliably in the desktop app again
 
 **Host, in order: `./update.sh` as usual, then (once, if not done before)

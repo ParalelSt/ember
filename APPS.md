@@ -195,7 +195,30 @@ one), the app falls back to a small bundled page listing what is already
 downloaded, with lock-screen controls, instead of a blank screen. See
 `apps/mobile/README.md`'s "Offline (Android only)" section for the file
 layout, the plugin surface, and how to test it (including an emulator
-airplane-mode recipe). iOS and desktop do not have this yet.
+airplane-mode recipe). iOS and desktop do not have pinned downloads yet;
+in a browser, Download keeps songs in the browser's own storage (OPFS) and
+they play from there.
+
+## Auto cache of upcoming songs (web 0.7.4, shells 0.4.3)
+
+Every platform keeps the song playing and the next two on the device, so a
+dropped connection does not stop the music. Offline, songs without a copy
+are skipped with an Offline badge; when nothing is left the music pauses
+and the song it stopped at is loaded (paused) once the network is back.
+One policy decides what and when (`apps/web/lib/autoCache/policy.ts`,
+mirrored in Kotlin); the host treats these downloads as low priority
+(`?prefetch=1`, see `docs/prefetch.md`).
+
+| Platform | Where | Cap | Needs |
+|---|---|---|---|
+| Browser | OPFS `cache/audio/` | 250 MB or half the browser's quota | nothing (a browser without OPFS says "not available") |
+| Desktop app | OS cache dir, `audio-cache` (see `apps/desktop/README.md`) | 500 MB, 100 songs | desktop app 0.4.3 |
+| Android app | Media3 cache, `media3-audio` in the app cache (see `apps/mobile/README.md`) | 300 MB | APK 0.4.3 (versionCode 8); keeps working with the screen off and in Android Auto |
+
+Settings > Downloads has "Cache upcoming songs" (on by default), "Also on
+mobile data" (off by default), the space used and "Clear cached songs". An
+older desktop app or APK shows "update the app" there instead and plays as
+before. Pinned downloads are a separate store and are never evicted by it.
 
 ## Installing
 
