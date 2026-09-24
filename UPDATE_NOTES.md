@@ -1,3 +1,70 @@
+# 0.7.5: Security fixes (batch 1)
+
+**Host, in order. Do all of it: the code fix alone is not enough, because
+the old database admin password is in the public repo's history. The
+desktop app needs the new shell, 0.4.4, which the `v0.4.4` tag builds (the
+APK only gets a version bump). Background: `docs/reports/bughunt-2026-09-24/W14-pocketbase-admin-exposed.md`.**
+
+1. **Make a new password** for PocketBase's admin (the "superuser"):
+   `openssl rand -base64 24 | tr -d '/+='`
+2. **Put it in `apps/web/.env.local`.** Keep the email exactly as it is, so
+   the existing superuser gets the new password instead of a second account
+   being made:
+
+   ```
+   POCKETBASE_ADMIN_EMAIL=admin@ember.com
+   POCKETBASE_ADMIN_PASSWORD=<the new password>
+   ```
+   PocketBase and the web app now both read these two lines
+   (`start-static.sh` hands them to PocketBase), so they cannot drift apart.
+   Nothing else in `.env.local` changes. (Only for a brand-new database:
+   `EMBER_ADMIN_EMAIL` / `EMBER_ADMIN_PASSWORD` create your own Ember admin
+   account if it does not exist yet; an existing account is never touched.)
+3. **`./update.sh`**. It rebuilds the app and restarts PocketBase, which is
+   what applies the new database rules and hooks (admin role, uploads,
+   shared song details, carlists) and sets the new password. Check:
+   `grep ensure_superuser logs/pocketbase.log | tail -3` should say
+   `updated the superuser password for admin@ember.com`.
+4. **Check the OLD password no longer works** (this reads it from git
+   history, so nobody has to type it):
+
+   ```
+   OLD=$(git show e482ce8:apps/web/.env.example | sed -n 's/^POCKETBASE_ADMIN_PASSWORD=//p')
+   [ -n "$OLD" ] && curl -s -o /dev/null -w '%{http_code}\n' -X POST http://127.0.0.1:8090/api/admins/auth-with-password \
+     -H 'content-type: application/json' -d "{\"identity\":\"admin@ember.com\",\"password\":\"$OLD\"}"
+   ```
+   `400` is good: the old password is dead. `200` means step 2 or 3 did not
+   take. (Use your `POCKETBASE_PORT` if it is not 8090.) Then open
+   `https://<your-funnel-url>/pb/_/` in a browser: it should say "Not
+   found". And sign in to Ember normally: that proves the app has the new
+   password too.
+5. **Your own Ember admin account.** If its password was never changed
+   since the first install, the old one is public too. Check:
+
+   ```
+   OLDA=$(git show e482ce8:pocketbase/pb_hooks/ensure_admin.pb.js | sed -n 's/.*ADMIN_PASSWORD = "\([^"]*\)".*/\1/p')
+   EMAIL=$(git show e482ce8:pocketbase/pb_hooks/ensure_admin.pb.js | sed -n 's/.*ADMIN_EMAIL = "\([^"]*\)".*/\1/p')
+   curl -s -o /dev/null -w '%{http_code}\n' -X POST http://127.0.0.1:8090/api/collections/users/auth-with-password \
+     -H 'content-type: application/json' -d "{\"identity\":\"$EMAIL\",\"password\":\"$OLDA\"}"
+   ```
+   `200` means change it now (Ember, Admin, Users, Reset password on your
+   row). `400` means it was already changed.
+6. **Consider making the GitHub repo private** (the repo, Settings, Danger
+   Zone, Change visibility). It does not un-leak the old passwords, but the
+   next mistake of this kind stays private.
+7. **Look for signs someone got in**: the three `sqlite3` checks in step 7
+   of the W14 report. Only `admin@ember.com` should be a superuser, only
+   people you made admin should be admins, and a `200` on
+   `/api/admins/auth-with-password` from any address other than
+   `127.0.0.1` means someone was in.
+
+Also in this update, no action needed: searches and song lookups now take
+turns (at most 4 at once, `PYTHON_MAX_CONCURRENCY`) and the public search,
+album, artist and song routes have per-caller limits; downloads keep the
+`MAX_CONCURRENT_DOWNLOADS` cap from 0.7.4. The PocketBase admin screen now
+opens only on the host itself (`http://127.0.0.1:8090/_/`) or through an
+SSH tunnel (`SETUP.md`, Troubleshooting).
+
 # 0.7.4: Keeps playing when the internet drops (auto cache)
 
 **Host, in order: `./update.sh` as usual, then (optional) one env line.

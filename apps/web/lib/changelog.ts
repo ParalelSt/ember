@@ -21,6 +21,19 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    id: 'security-fixes-1',
+    version: '0.7.5',
+    date: '2026-09-24',
+    title: 'Security fixes',
+    summary: 'Security fixes: Ember checks more carefully who is asking before it lets anything change.',
+    bullets: [
+      'The server now confirms your sign-in with the database on every request, and only the server can change shared song details, uploads, admin rights and carlists.',
+      'The database admin screen is no longer reachable from the internet, and its password now lives only in the host\'s settings, not in the code.',
+      'Busy moments are handled better: searches and song lookups take turns instead of piling up, and a sign-in link can only send you back to a page on Ember.',
+      'The desktop app gets its part of the fix in the new app version, 0.4.4. Nothing changes in how you use Ember.',
+    ],
+  },
+  {
     id: 'auto-cache-offline',
     version: '0.7.4',
     date: '2026-09-24',
