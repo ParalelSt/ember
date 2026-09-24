@@ -1047,7 +1047,7 @@ describe('DizajnPage', () => {
         // The size presets are gone: the bar takes no size or style.
         expect(bar.dataset.size).toBeUndefined();
         expect(bar.dataset.playStyle).toBeUndefined();
-        expect(within(bar).getAllByRole('button').map((b) => b.getAttribute('aria-label'))).toEqual(['Pause', 'Next']);
+        expect(within(bar).getAllByRole('button').map((b) => b.getAttribute('aria-label'))).toEqual(['Open player', 'Pause', 'Next']);
         for (const name of ['Previous', 'Queue']) {
           expect(within(bar).queryByRole('button', { name })).toBeNull();
         }
