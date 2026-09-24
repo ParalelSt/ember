@@ -1,5 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { api } from './api';
+import { logger } from '@/lib/logger/client';
+import { onSessionExpired } from './sessionExpired';
 
 // req() is the shared fetch wrapper every api.* call goes through; exercise
 // it via api.getPlaylists (a plain GET with no body) rather than reaching
@@ -65,5 +67,59 @@ describe('req() [bughunt W05]: 401 sends the browser to sign in', () => {
 
     await expect(api.listPlaylists()).rejects.toMatchObject({ status: 401 });
     expect(window.location.href).toBe(before);
+  });
+});
+
+const unauthorized = () => vi.fn().mockResolvedValue({
+  ok: false,
+  status: 401,
+  headers: new Headers(),
+  json: async () => ({ error: 'Unauthorized' }),
+});
+
+describe('req() [bughunt V5]: a 401 drops the dead session', () => {
+  afterEach(() => {
+    document.cookie = 'pb_auth=; Path=/; Max-Age=0';
+    vi.mocked(logger.error).mockClear();
+    vi.mocked(logger.warn).mockClear();
+  });
+
+  it('tells the app the session is gone and clears the cookie, even on /auth', async () => {
+    for (const where of ['/library', '/auth']) {
+      setLocation(where);
+      document.cookie = 'pb_auth=stale; Path=/';
+      const expired = vi.fn();
+      const off = onSessionExpired(expired);
+      vi.stubGlobal('fetch', unauthorized());
+      await expect(api.listLikes()).rejects.toMatchObject({ status: 401 });
+      off();
+      expect(expired, where).toHaveBeenCalledTimes(1);
+      expect(document.cookie, where).not.toContain('pb_auth=stale');
+    }
+  });
+
+  it('logs a 401 as a warning, never an error (errors send automatic bug reports)', async () => {
+    vi.stubGlobal('fetch', unauthorized());
+    await expect(api.getPrivacy()).rejects.toMatchObject({ status: 401 });
+    expect(logger.error).not.toHaveBeenCalled();
+    expect(logger.warn).toHaveBeenCalled();
+  });
+
+  it('does not bounce a public page to sign in', async () => {
+    for (const where of ['/track/abc123', '/privacy', '/terms']) {
+      setLocation(where);
+      vi.stubGlobal('fetch', unauthorized());
+      await expect(api.listLikes()).rejects.toMatchObject({ status: 401 });
+      expect(window.location.href, where).toBe(where);
+    }
+  });
+
+  it('the silent prank calls drop the session on a 401 too', async () => {
+    const expired = vi.fn();
+    const off = onSessionExpired(expired);
+    vi.stubGlobal('fetch', unauthorized());
+    await expect(api.pranks.inbox()).rejects.toMatchObject({ status: 401 });
+    off();
+    expect(expired).toHaveBeenCalledTimes(1);
   });
 });

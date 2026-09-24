@@ -571,7 +571,20 @@ def cmd_album(args):
     artists = info.get("artists") or []
     primary = artists[0] if artists else {}
     tracks_raw = info.get("tracks") or []
-    tracks = [to_track_json(t) for t in tracks_raw if t.get("videoId")]
+    covers = info.get("thumbnails") or []
+    cover = covers[-1].get("url") if covers else None
+    tracks = []
+    for t in tracks_raw:
+        if not t.get("videoId"):
+            continue
+        track = to_track_json(t)
+        # get_album hands each song the album only as a title string and no
+        # art of its own: fill both from the album, or a song played from
+        # here has no cover and no album link (bughunt V4).
+        track["album"] = track["album"] or info.get("title")
+        track["albumId"] = track["albumId"] or args.browse_id
+        track["artworkUrl"] = track["artworkUrl"] or cover
+        tracks.append(track)
 
     out = {
         "title": info.get("title"),

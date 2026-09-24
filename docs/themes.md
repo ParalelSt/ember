@@ -152,8 +152,9 @@ characters), base preset, the eight inputs, and a `shared` flag.
 - **Nothing breaks under anyone.** Using a saved or shared theme copies its
   colours onto `users.theme`. If the original is deleted or unshared, the
   people using it keep a copy: `GET /api/theme` drops the link on their next
-  load and the colours stay; the owner deleting their own active theme gets
-  the same, straight away.
+  load and the colours stay. The owner deleting their own active theme goes
+  back to that theme's base preset straight away (bughunt V10): they chose
+  to delete it, so there is nothing to keep.
 
 ## 5. Settings > Appearance
 
@@ -177,8 +178,9 @@ The flows:
   copy), saved as "New theme" and put in use, then the Colours tab opens.
 - **Duplicate, rename, delete** on each of mine.
 - **A kept copy** ("In use: X, kept after its original went away") is what
-  is left when the theme in use was deleted or unshared. It is not in any
-  list; changing a colour saves it to My themes under its own name.
+  is left when someone else's theme in use was deleted or unshared. It is
+  not in any list; changing a colour saves it to My themes under its own
+  name.
 - **Reset** puts the base preset's colours back.
 - **Share tab**: the "Share with everyone" switch, for one of mine only.
 

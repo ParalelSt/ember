@@ -23,7 +23,7 @@ import { isUnavailable } from '@/lib/playback/queueNav';
  *  not make, a stream that stopped) and the listener is owed a word about the
  *  song they are looking at. It is the ONLY place that says so, precisely so a
  *  track that turns out to be dead gets the skip message instead, never both. */
-export function useAvailabilityProbe(nextRef: RefObject<() => void>) {
+export function useAvailabilityProbe(nextRef: RefObject<() => void>, signedIn = true) {
   const qc = useQueryClient();
 
   return useCallback((onStillPlayable?: (track: { title: string }) => void) => {
@@ -31,6 +31,12 @@ export function useAvailabilityProbe(nextRef: RefObject<() => void>) {
     const cur = st.queue[st.index];
     if (!cur || isUnavailable(cur)) return;
     const erroredId = cur.id;
+    // Signed out (a shared /track page) the server won't answer: it just
+    // would not load (bughunt V5).
+    if (!signedIn) {
+      onStillPlayable?.(cur);
+      return;
+    }
 
     api.getTrackAvailability(erroredId).then(({ unavailable, reason }) => {
       if (!unavailable) {
@@ -61,5 +67,5 @@ export function useAvailabilityProbe(nextRef: RefObject<() => void>) {
       // than leaving the player silent with no explanation.
       onStillPlayable?.(cur);
     });
-  }, [qc, nextRef]);
+  }, [qc, nextRef, signedIn]);
 }

@@ -27,12 +27,18 @@ vi.mock('@/stores/useThemeStore', () => ({
 }));
 vi.mock('@/lib/logger/client', () => ({ logger: { error: vi.fn(), breadcrumb: vi.fn(), warn: vi.fn() } }));
 
+const pathname = vi.hoisted(() => ({ current: '/library' }));
+vi.mock('next/navigation', () => ({ usePathname: () => pathname.current }));
+
 const { AuthProvider, useAuth } = await import('./AuthProvider');
+const { sessionExpired } = await import('@/lib/sessionExpired');
 
 const user = { id: 'u1', email: 'a@b.c', name: 'A', avatarUrl: null, isAdmin: false };
 
 beforeEach(() => {
   useSessionStore.setState({ hostingSessionId: 's1' });
+  pathname.current = '/library';
+  authStore.clear.mockClear();
 });
 
 describe('AuthProvider sign-out', () => {
@@ -48,5 +54,24 @@ describe('AuthProvider sign-out', () => {
     });
     expect(authStore.clear).toHaveBeenCalled();
     expect(useSessionStore.getState().hostingSessionId).toBeNull();
+  });
+});
+
+describe('AuthProvider [bughunt V5]: a dead session is dropped', () => {
+  it('clears the auth store when an API call finds the session gone', () => {
+    render(<AuthProvider initialUser={user}><span /></AuthProvider>);
+    act(() => sessionExpired());
+    expect(authStore.clear).toHaveBeenCalled();
+  });
+
+  it('has no signed-in user on the sign-in page, so nothing signed-in loads there', () => {
+    pathname.current = '/auth';
+    let seen: unknown = 'unset';
+    function Grab() {
+      seen = useAuth().user;
+      return null;
+    }
+    render(<AuthProvider initialUser={user}><Grab /></AuthProvider>);
+    expect(seen).toBeNull();
   });
 });

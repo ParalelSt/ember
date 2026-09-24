@@ -148,3 +148,30 @@ describe('maybeAutoReport: sends', () => {
     expect(fetchMock).toHaveBeenCalledTimes(3);
   });
 });
+
+describe('maybeAutoReport [bughunt V5]: a lost session is not a bug', () => {
+  afterEach(() => window.history.replaceState(null, '', '/'));
+
+  it('never reports a 401 answer', async () => {
+    const fetchMock = mockFetch();
+    maybeAutoReport(errorEntry({ category: 'api', message: 'GET /likes → 401', data: { method: 'GET', path: '/likes', status: 401 } }));
+    await vi.advanceTimersByTimeAsync(3000);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('never reports from the sign-in page', async () => {
+    window.history.replaceState(null, '', '/auth?next=%2Flibrary');
+    const fetchMock = mockFetch();
+    maybeAutoReport(errorEntry({ category: 'api', message: 'GET /privacy → 500', data: { status: 500 } }));
+    await vi.advanceTimersByTimeAsync(3000);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('still reports other errors elsewhere', async () => {
+    window.history.replaceState(null, '', '/library');
+    const fetchMock = mockFetch();
+    maybeAutoReport(errorEntry({ category: 'api', message: 'GET /likes → 500', data: { status: 500 } }));
+    await vi.advanceTimersByTimeAsync(3000);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+});

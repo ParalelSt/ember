@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { FlameIcon } from '@/components/icons';
+import { safeNext } from '@/lib/safeNext';
 
 type Stage =
   | { kind: 'email' }
@@ -16,11 +17,9 @@ export default function AuthPage() {
   const { signIn, signUp } = useAuth();
   const router = useRouter();
   const search = useSearchParams();
-  // Only same-origin paths: must start with a single '/' ('//' is a
-  // protocol-relative external URL). Anything else → home. Keeps ?next=
-  // from being usable as an open redirect.
-  const rawNext = search.get('next') ?? '/';
-  const next = rawNext.startsWith('/') && !rawNext.startsWith('//') ? rawNext : '/';
+  // Only a page on this site, anything else goes home: keeps ?next= from
+  // being usable as an open redirect (bughunt V2, lib/safeNext.ts).
+  const next = safeNext(search.get('next'), typeof window === 'undefined' ? 'http://localhost' : window.location.origin);
 
   const [stage, setStage] = useState<Stage>({ kind: 'email' });
   const [email, setEmail] = useState('');
