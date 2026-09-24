@@ -53,11 +53,18 @@ export const GET = withRequestLog('search', async (request: NextRequest) => {
 
     // Songs members uploaded to this server rank above YouTube: they're
     // deliberately here, and often they're the reason someone searched.
-    const [uploads, tracks] = await Promise.all([
+    const [uploads, youtube] = await Promise.all([
       searchUploadsSafely(q),
-      youtubeSearch(q, { limit: 30 }),
+      youtubeSearch(q, { limit: 30 }).then(
+        (tracks) => ({ tracks, error: null }),
+        (error: unknown) => ({ tracks: [] as Track[], error }),
+      ),
     ]);
-    return Response.json({ tracks: [...uploads, ...tracks] });
+    // A YouTube outage is an error (bughunt S03), but only when there is
+    // nothing else to show: uploads that match still come back, so a member's
+    // own songs never vanish from search because YouTube is unreachable.
+    if (youtube.error && uploads.length === 0) throw youtube.error;
+    return Response.json({ tracks: [...uploads, ...youtube.tracks] });
   } catch (e) {
     return fromError(e);
   }
