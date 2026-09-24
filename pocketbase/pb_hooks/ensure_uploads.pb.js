@@ -19,15 +19,26 @@ onAfterBootstrap((e) => {
   }
   if (existing) {
     // Installs from before updates went server-only still let the uploader
-    // edit the row, filename included (bughunt W08).
+    // edit the row, filename included (bughunt W08). Installs from before
+    // deletes went server-only still let the uploader delete their own row
+    // through /pb directly, orphaning the audio and cover files on disk
+    // (bughunt L2): the delete route already removes those files, a raw PB
+    // delete does not.
     // Rules come back from Go as string pointers, so compare the JSON form
     // (same as ensure_tabs).
-    const rule = existing.updateRule;
-    if ((rule === null || rule === undefined ? null : JSON.parse(JSON.stringify(rule))) !== null) {
+    const asJson = (rule) => (rule === null || rule === undefined ? null : JSON.parse(JSON.stringify(rule)));
+    let changed = false;
+    if (asJson(existing.updateRule) !== null) {
       existing.updateRule = null;
-      dao.saveCollection(existing);
+      changed = true;
       console.log("[ensure_uploads] uploads updates are server-only now");
     }
+    if (asJson(existing.deleteRule) !== null) {
+      existing.deleteRule = null;
+      changed = true;
+      console.log("[ensure_uploads] uploads deletes are server-only now");
+    }
+    if (changed) dao.saveCollection(existing);
     return;
   }
 
@@ -43,14 +54,16 @@ onAfterBootstrap((e) => {
     name: "uploads",
     type: "base",
     // Anyone signed in can find and play an upload — uploads are a shared
-    // library. Only the uploader (or an admin) can remove one. Nobody edits
-    // one directly: filename and artwork_ext name files on disk that the
-    // delete route removes, so only the server may set them.
+    // library. Only the uploader (or an admin) can remove one, but even they
+    // must go through the delete route: it also removes the audio and cover
+    // files on disk, which a raw PB delete would leave orphaned. Nobody
+    // edits one directly either: filename and artwork_ext name files on
+    // disk, so only the server may set them.
     listRule: '@request.auth.id != ""',
     viewRule: '@request.auth.id != ""',
     createRule: null, // server-only: the API route writes with admin creds
     updateRule: null,
-    deleteRule: "uploader = @request.auth.id",
+    deleteRule: null, // server-only: the API route deletes with admin creds
     indexes: [
       "CREATE INDEX idx_uploads_uploader ON uploads (uploader)",
       "CREATE INDEX idx_uploads_title ON uploads (title)",
