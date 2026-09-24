@@ -87,14 +87,24 @@ describe('android: one setQueue per queue change', () => {
     render(<PlayerProvider><Grab /></PlayerProvider>);
     native.setQueue.mockClear();
     act(() => { player!.playTrack(C, [B, C, D], { type: 'album', id: 'x' } as never); });
-    expect(native.setQueue.mock.calls).toEqual([[[B, C, D], 1, true]]);
+    expect(native.setQueue.mock.calls).toEqual([[[B, C, D], 1, true, { context: { type: 'album', id: 'x' }, baseCount: 3 }]]);
+  });
+
+  it('that one send carries the new list\'s origin, not the old queue\'s (the auto cache wraps loop-all on it)', () => {
+    usePlayerStore.setState({ context: { type: 'playlist', playlistId: 'old' } as never, baseCount: 40 });
+    render(<PlayerProvider><Grab /></PlayerProvider>);
+    native.setQueue.mockClear();
+    act(() => { player!.playTrack(C, [B, C, D], { type: 'album', id: 'x' } as never); });
+    const origin = native.setQueue.mock.calls[0][3];
+    expect(origin).toEqual({ context: { type: 'album', id: 'x' }, baseCount: 3 });
+    expect(usePlayerStore.getState().baseCount).toBe(3);
   });
 
   it('a search tap hands native the one song once', () => {
     render(<PlayerProvider><Grab /></PlayerProvider>);
     native.setQueue.mockClear();
     act(() => { player!.playTrack(C, [B, C, D], { type: 'search', query: 'c' } as never); });
-    expect(native.setQueue.mock.calls).toEqual([[[C], 0, true]]);
+    expect(native.setQueue.mock.calls).toEqual([[[C], 0, true, { context: { type: 'search', query: 'c' }, baseCount: 1 }]]);
   });
 
   it('shuffle hands native the new order once, same song at the same index', () => {

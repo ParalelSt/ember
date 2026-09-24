@@ -1,6 +1,7 @@
 'use client';
 
 import { usePlayerStore } from '@/stores/usePlayerStore';
+import type { PlaybackContext } from '@/types/track';
 
 /** The Android app's auto cache, as the web side sees it.
  *
@@ -160,12 +161,19 @@ export function subscribeNativeCacheState(cb: (s: NativeCacheState) => void): ()
   };
 }
 
+/** Where a queue came from: the store's `context` and `baseCount`. */
+export interface QueueOrigin {
+  context: PlaybackContext | null;
+  baseCount: number;
+}
+
 /** Where the queue came from, for the native prefetch window (loop-all wraps
- *  at the end of a playlist, not its radio tail). Read at call time: the
- *  provider sets the store right after handing the queue over, and the
- *  follow-up setQueue then carries the fresh values. */
-export function nativeQueueContext(): { context: { type: string } | null; baseCount: number } {
-  const st = usePlayerStore.getState();
+ *  at the end of a playlist, not its radio tail). Read from the store at call
+ *  time, unless `origin` says otherwise: a tap in a new list hands native the
+ *  list BEFORE the store holds it (the user-gesture token must survive), and
+ *  that one setQueue is the only one, so it carries the new list's origin. */
+export function nativeQueueContext(origin?: QueueOrigin): { context: { type: string } | null; baseCount: number } {
+  const st = origin ?? usePlayerStore.getState();
   return {
     context: st.context ? { type: st.context.type } : null,
     baseCount: Number.isFinite(st.baseCount) && st.baseCount > 0 ? st.baseCount : 0,

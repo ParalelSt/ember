@@ -27,6 +27,7 @@ import { isUnavailable, nextIndex, nextPlayable, nextPlayableOffline, prevIndex 
 import { useAvailabilityProbe } from '@/hooks/player/useAvailabilityProbe';
 import { useAutoCache } from '@/hooks/player/useAutoCache';
 import type { BackendKind } from '@/lib/autoCache/select';
+import type { QueueOrigin } from '@/lib/autoCache/native';
 import { useDiscordPresence } from '@/hooks/player/useDiscordPresence';
 import { usePositionPersistence } from '@/hooks/player/usePositionPersistence';
 import { useRadioExtend } from '@/hooks/player/useRadioExtend';
@@ -458,10 +459,12 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   // Load + (optionally) play a track. Must run from a user gesture for autoplay
   // (React 19 effects are async and lose the activation token). The first call
   // restores the persisted position; later calls start fresh (see
-  // usePositionPersistence). `list` is the queue about to be set, for the
-  // native Android player: without it, a tap in a new list was first sent as
-  // a one-song queue and then again as the whole list.
-  const loadAndPlay = useCallback((track: Track | null, autoplay: boolean, list?: Track[]) => {
+  // usePositionPersistence). `next` is the queue about to be set and where it
+  // came from, for the native Android player: without it, a tap in a new list
+  // was first sent as a one-song queue and then again as the whole list, and
+  // the one send it now gets must carry the new list's context and baseCount
+  // (the auto cache's loop-all wrap), which the store does not hold yet.
+  const loadAndPlay = useCallback((track: Track | null, autoplay: boolean, next?: QueueOrigin & { list: Track[] }) => {
     let b = backendRef.current;
     if (!b) return;
     if (!track) {
@@ -480,7 +483,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     if (backendKindRef.current === 'android' && b.setQueue) {
       // The native player owns the queue: hand it the whole thing and the
       // index to start at. It diffs, so an unchanged queue never restarts.
-      let queue = list ?? usePlayerStore.getState().queue;
+      let queue = next?.list ?? usePlayerStore.getState().queue;
       let idx = queue.findIndex((t) => t.id === track.id);
       if (idx < 0) { queue = [track]; idx = 0; }
       loadedTrackRef.current = track.id;
@@ -491,7 +494,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       positions.startAt(track.id);
       setDuration(chooseDuration(track.durationSec ?? 0, null));
       sentQueueRef.current = queue;
-      b.setQueue(queue, idx, autoplay);
+      if (next) b.setQueue(queue, idx, autoplay, { context: next.context, baseCount: next.baseCount });
+      else b.setQueue(queue, idx, autoplay);
       return;
     }
     loadedTrackRef.current = track.id;
@@ -759,13 +763,15 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
     // Synchronously start so the user-gesture token survives (React 19 effects
     // are async).
-    loadAndPlay(track, true, queueList);
+    const context: PlaybackContext = nextContext ?? { type: 'single' };
+    // Size of the curated list, before radio extends it.
+    const baseCount = queueList.length;
+    loadAndPlay(track, true, { list: queueList, context, baseCount });
     usePlayerStore.setState({
       queue: queueList,
       index: i,
-      context: nextContext ?? { type: 'single' },
-      // Size of the curated list, before radio extends it.
-      baseCount: queueList.length,
+      context,
+      baseCount,
       // A new queue invalidates any shuffle snapshot — without this, turning
       // shuffle off later would restore a PREVIOUS list's order. Callers that
       // want a shuffled start (the playlist Shuffle button) set it right after.

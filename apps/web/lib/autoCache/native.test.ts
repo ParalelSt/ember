@@ -130,6 +130,14 @@ describe('androidBackend.setQueue carries the queue context', () => {
     expect(n.plugin.setQueue).toHaveBeenCalledWith({ tracks: [], index: 0, play: true, context: { type: 'playlist' }, baseCount: 12 });
   });
 
+  it('a queue origin passed in wins over the store (a tap sends before the store has the new list)', () => {
+    const n = install({ setQueue: vi.fn().mockResolvedValue(undefined) });
+    usePlayerStore.setState({ context: { type: 'playlist', playlistId: 'p1', playlistName: 'Road' }, baseCount: 12 });
+    const b = createAndroidBackend(makeFakeEvents());
+    b.setQueue!([], 0, true, { context: { type: 'album', albumId: 'a1' } as never, baseCount: 3 });
+    expect(n.plugin.setQueue).toHaveBeenCalledWith({ tracks: [], index: 0, play: true, context: { type: 'album' }, baseCount: 3 });
+  });
+
   it('no context means none, and a bad baseCount means 0', () => {
     usePlayerStore.setState({ context: null, baseCount: -4 });
     expect(nativeQueueContext()).toEqual({ context: null, baseCount: 0 });

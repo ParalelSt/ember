@@ -1,6 +1,7 @@
 import type { OverlayHandle } from '@/lib/pranks/overlayPlayer';
 import type { Track } from '@/types/track';
 import type { LoopMode } from '@/stores/usePlayerStore';
+import type { QueueOrigin } from '@/lib/autoCache/native';
 
 /** Transport commands the OS/remote (lock screen, Bluetooth, media keys) can
  *  invoke. The provider supplies these; a backend wires them to the platform. */
@@ -97,7 +98,7 @@ export interface AudioBackend {
   isTransitioning(): boolean;
   /** Queue-owning backends only. Hands the whole queue over; the backend diffs
    *  it against what it has so an append never restarts playback. */
-  setQueue?(tracks: Track[], index: number, play: boolean): void;
+  setQueue?(tracks: Track[], index: number, play: boolean, origin?: QueueOrigin): void;
   /** Queue-owning backends only: the native player decides what is next. */
   next?(): void;
   prev?(): void;

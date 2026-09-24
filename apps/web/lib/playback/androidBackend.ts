@@ -198,9 +198,9 @@ export const createAndroidBackend: CreateAudioBackend = (events: AudioBackendEve
     // Single-track load is not how this backend works; the provider calls
     // setQueue for queue-owning backends. Kept as a harmless no-op.
     load() {},
-    setQueue(tracks, i, play) {
+    setQueue(tracks, i, play, origin) {
       if (!p) return;
-      call(p.setQueue({ tracks, index: i, play, ...nativeQueueContext() }));
+      call(p.setQueue({ tracks, index: i, play, ...nativeQueueContext(origin) }));
     },
     play() {
       if (p) call(p.play());
