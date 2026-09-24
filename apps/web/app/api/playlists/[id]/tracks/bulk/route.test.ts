@@ -43,6 +43,7 @@ const catalog = new Map<string, Track>();
 let failCreateFor: string | null = null;
 
 const pb = {
+  autoCancellation: vi.fn(),
   collection: (name: string) => {
     if (name === 'playlists') {
       return {
@@ -159,6 +160,8 @@ describe('POST /api/playlists/[id]/tracks/bulk', () => {
     const res = await POST(request({ tracks: [NORTH, other, HOME_A] }), ctx('mine'));
     expect(res.status).toBe(201);
     expect(await res.json()).toEqual({ added: 3, skipped: [] });
+    // Parallel writes: the SDK must not cancel one as a repeat of another.
+    expect(pb.autoCancellation).toHaveBeenCalledWith(false);
     expect(inPlaylist('mine').slice(3)).toEqual([
       ['youtube:north', 4],
       ['youtube:other', 5],

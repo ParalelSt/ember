@@ -44,6 +44,10 @@ export const POST = withRequestLog(
       // number rejects 0.
       const start = rows.reduce((max, r) => Math.max(max, Number(r.position) || 0), 0) + 1;
 
+      // The writes below run 4 at a time, and the SDK would cancel a request
+      // that repeats one still in flight (same method and path): off for
+      // this request's own client.
+      pb.autoCancellation(false);
       const plan = planCopy(parsed.tracks, there);
       const results = await mapLimit(plan.add, 4, async (track, i) => {
         const trackRecordId = await upsertTrack(pb, track);

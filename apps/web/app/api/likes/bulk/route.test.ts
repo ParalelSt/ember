@@ -37,6 +37,7 @@ const listFilters: string[] = [];
 const record = (tr: Track) => ({ id: tr.id, external_id: tr.id, source: tr.source, source_id: tr.sourceId, title: tr.title, artist: tr.artist });
 
 const pb = {
+  autoCancellation: vi.fn(),
   collection: () => ({
     getFullList: vi.fn(async (opts: { filter: string }) => {
       listFilters.push(opts.filter);
@@ -124,6 +125,7 @@ describe('POST /api/likes/bulk', () => {
   it('only reads and writes the signed-in member', async () => {
     const res = await POST(request({ tracks: [NORTH], confirmed: true }), {});
     expect(await res.json()).toEqual({ added: 1, skipped: [] });
+    expect(pb.autoCancellation).toHaveBeenCalledWith(false);
     expect(listFilters).toEqual(['user = "u1"']);
     expect(mine().map((l) => l.track)).toContain('youtube:north');
     expect(likes.every((l) => l.user === 'u1' || l.user === 'u2')).toBe(true);

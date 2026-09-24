@@ -31,6 +31,10 @@ export const POST = withRequestLog('likes/bulk', async (request: NextRequest) =>
       .map((r) => mapTrackRow(((r.expand?.track as unknown) ?? null) as TrackRecord | null))
       .filter((t): t is Track => !!t);
 
+    // The writes below run 4 at a time, and the SDK would cancel a request
+    // that repeats one still in flight (same method and path): off for
+    // this request's own client.
+    pb.autoCancellation(false);
     const plan = planCopy(parsed.tracks, liked);
     // The first picked song gets the newest time, so the batch reads in the
     // picked order at the top of Liked songs (newest first).
