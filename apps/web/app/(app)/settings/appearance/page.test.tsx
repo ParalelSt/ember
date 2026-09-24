@@ -154,6 +154,24 @@ describe('Settings > Appearance', () => {
     expect(screen.getByRole('switch', { name: 'Share with everyone' })).toBeInTheDocument();
   });
 
+  it('keeps the Apply bar and tabs out of the part that scrolls, which holds every tab panel (F2)', async () => {
+    start();
+    await screen.findByTestId('theme-count');
+    const scroll = screen.getByTestId('inspector-scroll');
+    expect(scroll).toHaveClass('xl:min-h-0', 'xl:flex-1', 'xl:overflow-y-auto');
+    expect(scroll).not.toContainElement(screen.getByRole('tablist'));
+    expect(scroll).not.toContainElement(screen.getByTestId('in-use-bar'));
+    for (const name of ['Themes', 'Colours', 'Share']) {
+      tab(name);
+      // Keyed on the tab: each tab gets a fresh one, opened at its top.
+      expect(screen.getByTestId('inspector-scroll')).toContainElement(screen.getByRole('tabpanel'));
+    }
+    // From xl the row is as tall as what is left of the page scroller.
+    expect(screen.getByTestId('appearance-fit').className).toContain(
+      'xl:h-[calc(var(--ember-scroller-h)-var(--appearance-top)-var(--spacing-block))]',
+    );
+  });
+
   it('picking a preset shows it in the preview only; Apply applies and saves it', async () => {
     start();
     await screen.findByTestId('theme-count');
