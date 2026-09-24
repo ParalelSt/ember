@@ -127,7 +127,9 @@ try {
   await page.goto(`${APP_URL}/playlist/${pl.id}`, { waitUntil: 'networkidle' });
   await page.getByText('Offline One').first().waitFor({ timeout: 15_000 });
 
-  await page.getByTitle('Save this collection for offline playback').click();
+  // The web button's tooltip says the copy lasts while the tab stays open
+  // (bughunt O7); only Android's says "Save this collection...". Find it by name.
+  await page.getByRole('button', { name: 'Download for offline' }).click();
   const toast = page.locator('[data-sonner-toast]').filter({ hasText: /Offline Mix/ }).first();
   await toast.waitFor({ timeout: 30_000 });
   const toastText = (await toast.innerText()).replace(/\s+/g, ' ').trim();
