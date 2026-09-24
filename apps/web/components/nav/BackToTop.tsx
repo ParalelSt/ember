@@ -43,6 +43,8 @@ export function BackToTop({ scrollRef }: Props) {
       onClick={onClick}
       aria-label="Back to top"
       title="Back to top"
+      // globals.css lifts it over the Copy to… bar while that is showing.
+      data-back-to-top
       className={cn(
         'fixed right-6 z-40 size-10 rounded-full bg-ember hover:bg-ember-soft text-ember-foreground shadow-glow',
         'flex items-center justify-center',

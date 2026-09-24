@@ -154,7 +154,8 @@ export function CopySongsBar({ source, selecting, picked, onClear, onDone }: Cop
 
   return (
     <>
-      <div className="sticky bottom-block z-20 mt-stack flex justify-center">
+      {/* data-copy-bar: globals.css lifts Back to top over it. */}
+      <div data-copy-bar className="sticky bottom-block z-20 mt-stack flex justify-center">
         <div
           data-testid="copy-bar"
           className="w-full max-w-2xl rounded-xl border border-border bg-popover px-block py-row text-popover-foreground shadow-soft"

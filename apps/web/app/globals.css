@@ -228,6 +228,16 @@
   .safe-area-top    { padding-top: var(--safe-top); }
 }
 
+/* The Copy to… bar (components/track/menus/CopySongsBar) sticks to the
+   bottom of the page scroller while songs are being picked. Back to top
+   floats at the same height on the right, so it steps up over the bar
+   instead of covering Copy to…: 16rem clears the phone bar, 12rem the
+   desktop one. */
+body:has([data-copy-bar]) [data-back-to-top] { bottom: 16rem; }
+@media (min-width: 48rem) {
+  body:has([data-copy-bar]) [data-back-to-top] { bottom: 12rem; }
+}
+
 /* Marquee for overflowing titles (full-screen NowPlaying). Continuous
    one-direction loop: two copies of the text scroll left and the second
    seamlessly takes the first's place. --marquee-shift is the negative
