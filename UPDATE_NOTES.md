@@ -1,3 +1,11 @@
+# 0.7.9: Web app fixes (batch 5)
+
+**Host: run `./update.sh` as usual (no new packages, no settings, no database
+changes).** Web only: the apps stay at 0.4.7. The fixes take effect once the
+server restarts and reach everyone at their next page load. Background:
+`docs/reports/bughunt-2026-09-24/` W04, W05, V5, W06, W07, W09 to W13, M1,
+M2 and M3.
+
 # 0.7.8: Server fixes (batch 4)
 
 **Host: run `./update.sh` as usual (no new packages, no settings, no database

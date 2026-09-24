@@ -21,6 +21,24 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    id: 'web-fixes-5',
+    version: '0.7.9',
+    date: '2026-09-24',
+    title: 'Web app fixes',
+    summary: 'Big uploads work, an expired sign-in takes you to sign in, Search shows what is trending, and long names wrap.',
+    bullets: [
+      'Uploading a song file bigger than about 12 MB works again, up to the 50 MB limit.',
+      'When your sign-in has expired, the app takes you to the sign-in page instead of showing errors, and brings you back to where you were.',
+      'The Search page shows real trending songs before you type anything.',
+      'Long playlist, album and artist names wrap onto a few lines instead of running off the page.',
+      'On a phone, Settings brings the tab you are on into view, and Admin > Users stacks each person neatly.',
+      'Looking at a transfer preview, or a feature or fix request that did not go through, no longer uses up your hourly tries.',
+      'A playlist name that is too long gets a plain message instead of a raw error.',
+      'Downloading a song with a non-English title works.',
+      'Guitar tab generation shows as working right away, and leaves no junk files behind if it gets stuck.',
+    ],
+  },
+  {
     id: 'server-fixes-4',
     version: '0.7.8',
     date: '2026-09-24',
