@@ -207,6 +207,38 @@ Evidence to collect, since the interesting state is not on screen:
 `run-as app.ember.music ls -l files/offline/audio files/offline/art` for what
 actually reached disk.
 
+## Auto cache (Android only)
+
+Separate from pins: while a queue plays, the native player keeps the
+current song and the next two on the phone, so a dropped connection does
+not stop the music at once. It lives in the playback service
+(`AutoCacher.kt`, `MediaCache.kt`), so it works with the screen off and in
+Android Auto, and runs the same policy as the web and desktop apps
+(`AutoCachePolicy.kt`, a port of `apps/web/lib/autoCache/policy.ts`, tested
+against the same `policy.cases.json`).
+
+- **Where:** a Media3 `SimpleCache` in `cache/media3-audio`, capped at 300 MB,
+  least recently used out first. Every streamed song is written through as it
+  plays; `CacheWriter` fetches the next two (`?prefetch=1`, one at a time,
+  after 15 s of the current song and once it is buffered). Pinned downloads
+  stay in `files/offline` and are never evicted by this.
+- **When not:** setting off, offline, battery saver, Data Saver, or mobile
+  data unless "Also on mobile data" is on (default off). Busy (503) and
+  rate-limited (429) answers back off as the server asks; 410 drops the song.
+- **Offline:** songs on the phone (cached whole, or pinned) play; others are
+  skipped in play order. With nothing ahead, playback pauses and the state
+  says `offlineStalled`. When the phone has a validated network again the
+  song is loaded, paused.
+- **Web side:** `lib/autoCache/native.ts`. Plugin methods on `EmberPlayer`:
+  `setAutoCache({ enabled, onMetered })` (kept across restarts),
+  `cacheStats()` and `clearCache()` (both `{ bytes, count, cap }`), and the
+  `state` event gains `cachedIds`, `offlineStalled` and `offline`. Older app
+  builds lack the methods and the wrapper does nothing.
+- **Tests:** `./gradlew testDebugUnitTest` runs every shared case
+  (`AutoCachePolicy*CaseTest`, read from the web folder, never copied) plus
+  `AutoCacherTest`, `MediaCacheTest`, `OfflineSkipTest`,
+  `ServiceAutoCacheTest`.
+
 ## Voice search (Android)
 
 The mic in the search box uses Android's own `SpeechRecognizer` (the default

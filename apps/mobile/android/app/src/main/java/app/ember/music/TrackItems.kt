@@ -37,6 +37,8 @@ object TrackItems {
         return MediaItem.Builder()
             .setMediaId(track.getString("id"))
             .setUri(uri)
+            // The load key: how the player finds a downloaded copy (OfflineAudio).
+            .setCustomCacheKey(track.getString("id"))
             .setMediaMetadata(meta)
             .build()
     }

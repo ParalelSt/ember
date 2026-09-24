@@ -1,6 +1,7 @@
 'use client';
 
 import { logger } from '@/lib/logger/client';
+import { nativeQueueContext } from '@/lib/autoCache/native';
 import type { Track } from '@/types/track';
 import type { OverlayEnd, OverlayHandle, OverlayResult } from '@/lib/pranks/overlayPlayer';
 import type { AudioBackend, AudioBackendEvents, CreateAudioBackend, NativeOverlayOptions } from './types';
@@ -17,7 +18,15 @@ interface NativeState {
 }
 interface EmberPlayerPlugin {
   addListener(event: string, cb: (data: never) => void): unknown;
-  setQueue(o: { tracks: Track[]; index: number; play: boolean }): Promise<void>;
+  /** `context`/`baseCount` feed the native auto cache's window; older app
+   *  builds ignore them. */
+  setQueue(o: {
+    tracks: Track[];
+    index: number;
+    play: boolean;
+    context?: { type: string } | null;
+    baseCount?: number;
+  }): Promise<void>;
   play(): Promise<void>;
   pause(): Promise<void>;
   seek(o: { sec: number }): Promise<void>;
@@ -162,7 +171,7 @@ export const createAndroidBackend: CreateAudioBackend = (events: AudioBackendEve
     load() {},
     setQueue(tracks, i, play) {
       if (!p) return;
-      call(p.setQueue({ tracks, index: i, play }));
+      call(p.setQueue({ tracks, index: i, play, ...nativeQueueContext() }));
     },
     play() {
       if (p) call(p.play());
