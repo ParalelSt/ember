@@ -9,11 +9,21 @@ import org.json.JSONObject
 /** What the service does as the player moves through the queue: history, the
  *  car's radio, and skipping a song that will not play. Its own class so it
  *  can be tested on a real ExoPlayer (QueueListenerTest); the service passes
- *  in the network calls. */
+ *  in the network calls.
+ *
+ *  Offline, the auto cache's rules (OfflinePlayback) decide instead: a
+ *  network error goes to the next song that is on the phone, or pauses and
+ *  flags the stall when none is ahead. The two hooks below are how this
+ *  listener asks them, so a song is never skipped twice and a song skipped
+ *  offline is never counted as played. */
 class QueueListener(
     private val player: Player,
     private val recordPlay: (JSONObject) -> Unit,
     private val extendQueue: () -> Unit,
+    /** The offline rules own this error (OfflinePlayback.handles). */
+    private val offlineHandles: (PlaybackException) -> Boolean = { false },
+    /** Offline, this song is skipped at once (OfflinePlayback.skips). */
+    private val offlineSkips: (MediaItem) -> Boolean = { false },
 ) : Player.Listener {
     companion object {
         /** Songs that fail back to back before the player gives up, so a
@@ -42,7 +52,11 @@ class QueueListener(
     }
 
     private fun heard() {
-        val track = unheard?.let { TrackItems.trackOf(it) } ?: return
+        val item = unheard ?: return
+        // Moved past offline before a note of it plays (the offline rules run
+        // in their own listener, which may see this event after this one).
+        if (offlineSkips(item)) return
+        val track = TrackItems.trackOf(item) ?: return
         unheard = null
         recordPlay(track)
         extendQueue()
@@ -55,6 +69,9 @@ class QueueListener(
     override fun onPlayerError(error: PlaybackException) {
         val failed = player.currentMediaItem?.mediaId
         if (!player.playWhenReady) return
+        // No connection: the offline rules pick the next song on the phone
+        // (or pause). Online, a broken song is skipped here, 404s included.
+        if (offlineHandles(error)) return
         errorsInARow++
         if (errorsInARow >= MAX_ERRORS_IN_A_ROW || !player.hasNextMediaItem()) {
             Log.w(EmberPlaybackService.TAG, "gave up after $errorsInARow failed song(s), last $failed: ${error.errorCodeName}")

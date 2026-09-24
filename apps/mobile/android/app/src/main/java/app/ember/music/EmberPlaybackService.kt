@@ -137,6 +137,9 @@ class EmberPlaybackService : MediaLibraryService() {
             player,
             recordPlay = { track -> io.execute { runCatching { api.recordPlay(track) }.onFailure { Log.w(TAG, "history: ${it.message}") } } },
             extendQueue = ::maybeExtendQueue,
+            // Read at call time: offlinePlayback is set up in startAutoCache below.
+            offlineHandles = { offlinePlayback.handles(it) },
+            offlineSkips = { offlinePlayback.skips(it) },
         ))
         overlay = PrankOverlay(this, player, dataSource, baseUrl)
         session = MediaLibrarySession.Builder(this, player, Callback()).build()
