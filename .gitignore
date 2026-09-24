@@ -92,3 +92,7 @@ apps/desktop/.keys/
 
 # Written by update.sh after a successful npm ci.
 .node_modules.stamp
+
+# worktrees symlink node_modules into the main checkout; a symlink is a file,
+# so the directory-only pattern above does not catch it
+node_modules
