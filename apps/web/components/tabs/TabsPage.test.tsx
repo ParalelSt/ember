@@ -1,12 +1,13 @@
 import type { ComponentProps, ReactNode } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { TabSummary } from '@/lib/tabSources';
 import type { Track } from '@/types/track';
 import { useSettingsStore } from '@/stores/useSettingsStore';
 import type { LiveTabScoreProps } from './LiveTabScore';
 import { TabsPage } from './TabsPage';
+import { buildTimeline } from '@/lib/tabTimeline';
 
 // The page around the score: which tab it picks, what the header says, the
 // empty states, the toolbar toggles and following the player. The score
@@ -32,6 +33,9 @@ const player = vi.hoisted(() => ({
   duration: 180,
   seek: vi.fn(),
   playTrack: vi.fn(),
+  rate: 1,
+  setRate: vi.fn(),
+  canSetRate: true,
 }));
 vi.mock('@/components/player/PlayerProvider', () => ({ usePlayer: () => player }));
 
@@ -48,6 +52,7 @@ const api = vi.hoisted(() => ({
   findTabsOnline: vi.fn(),
   getTabAlignment: vi.fn(),
   lineTabUp: vi.fn(),
+  getTabTools: vi.fn(),
 }));
 vi.mock('@/lib/api', () => ({ api }));
 
@@ -87,6 +92,9 @@ vi.mock('@/components/tabs/LiveTabScore', () => ({
         data-scale={p.scale}
         data-follows={String(p.follows)}
         data-offset={p.offsetMs}
+        data-rate={p.rate}
+        data-highlight={p.highlight ? `${p.highlight.start}-${p.highlight.end}` : ''}
+        data-picking={String(!!p.onBarPick)}
       />
     );
   },
@@ -148,6 +156,9 @@ beforeEach(() => {
   })) as unknown as typeof window.matchMedia;
   player.current = SONG;
   player.isPlaying = true;
+  player.position = 12;
+  player.rate = 1;
+  player.canSetRate = true;
   score.last = null;
   api.getTrackTabs.mockResolvedValue({ tabs: [] });
   api.getGeneratedTab.mockResolvedValue({ status: 'none' });
@@ -157,6 +168,7 @@ beforeEach(() => {
   api.findTabsOnline.mockResolvedValue({ status: 'cached', searchedAt: '2026-09-19T10:00:00Z', added: 0 });
   api.getTabAlignment.mockResolvedValue({ status: 'none' });
   api.lineTabUp.mockResolvedValue({ status: 'running' });
+  api.getTabTools.mockResolvedValue({ generate: { available: true, missing: [] } });
 });
 
 describe('TabsPage source selection', () => {
@@ -202,6 +214,204 @@ describe('TabsPage source selection', () => {
     expect(screen.getByTestId('tab-score')).toHaveAttribute('data-offset', '2500');
     expect(window.localStorage.getItem('ember.tab.offset.f1')).toBe('2.5');
   });
+
+  it('takes an exact nudge far past the old 10 s, typed or stepped', async () => {
+    api.getTrackTabs.mockResolvedValue({ tabs: [tab({})] });
+    wrap(<TabsPage trackId="upload:song1" />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Sync' }));
+    fireEvent.change(screen.getByLabelText('Tab timing offset, exact seconds'), { target: { value: '-95.25' } });
+    expect(screen.getByTestId('tab-score')).toHaveAttribute('data-offset', '-95250');
+    expect(window.localStorage.getItem('ember.tab.offset.f1')).toBe('-95.25');
+    // The slider widened to show it.
+    const slider = screen.getByLabelText('Tab timing offset in seconds');
+    expect(Number(slider.getAttribute('min'))).toBeLessThanOrEqual(-95.25);
+    fireEvent.click(screen.getByRole('button', { name: '+0.1 s' }));
+    expect(screen.getByTestId('tab-score')).toHaveAttribute('data-offset', '-95150');
+    expect(screen.getByRole('button', { name: 'Sync' })).toHaveTextContent('-95.15 s');
+  });
+
+  it('counts the nudge in beats of the tab: its tempo and time signature', async () => {
+    api.getTrackTabs.mockResolvedValue({ tabs: [tab({})] });
+    wrap(<TabsPage trackId="upload:song1" />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Sync' }));
+    // No score drawn yet: no tempo, so no beats.
+    expect(screen.getByRole('button', { name: 'beats' })).toBeDisabled();
+    act(() =>
+      score.last!.onScore?.({
+        tempo: 120,
+        signature: { numerator: 3, denominator: 4 },
+        key: null,
+        tracks: [{ index: 0, name: 'Guitar', instrument: 'Guitar', tuning: '', strings: '', tab: true }],
+      }),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'beats' }));
+    fireEvent.change(screen.getByLabelText('Tab timing offset in beats'), { target: { value: '8' } });
+    // 8 quarter notes at 120 bpm.
+    expect(screen.getByTestId('tab-score')).toHaveAttribute('data-offset', '4000');
+    expect(screen.getByRole('button', { name: 'Sync' })).toHaveTextContent('+8 beats');
+    // A bar of 3/4 is three beats.
+    fireEvent.click(screen.getByRole('button', { name: '-1 bar' }));
+    expect(screen.getByTestId('tab-score')).toHaveAttribute('data-offset', '2500');
+    expect(screen.getByTestId('tab-sync-beat')).toHaveTextContent('1 beat = 500 ms at 120 bpm, 3/4');
+    expect(window.localStorage.getItem('ember.tabs.offsetUnit')).toBe('beats');
+  });
+});
+
+describe('TabsPage metronome', () => {
+  /** Two bars at 96, then two at 140 (AlphaTab's tick lookup). */
+  const timeline = () =>
+    buildTimeline([
+      { start: 0, end: 3840, tempoChanges: [{ tick: 0, tempo: 96 }], masterBar: { index: 0, timeSignatureNumerator: 4, timeSignatureDenominator: 4 } },
+      { start: 3840, end: 7680, tempoChanges: [{ tick: 3840, tempo: 96 }], masterBar: { index: 1 } },
+      { start: 7680, end: 11520, tempoChanges: [{ tick: 7680, tempo: 140 }], masterBar: { index: 2 } },
+    ]);
+
+  it('follows the tab tempo, and takes a tempo of the listener when the tab is wrong', async () => {
+    api.getTrackTabs.mockResolvedValue({ tabs: [tab({})] });
+    player.position = 1;
+    wrap(<TabsPage trackId="upload:song1" />);
+    const chip = await screen.findByRole('button', { name: /Metronome/ });
+    // Nothing to click on until the tab is drawn.
+    expect(chip).toBeDisabled();
+    act(() => score.last!.onTimeline!(timeline()));
+    expect(chip).toBeEnabled();
+    expect(chip).toHaveTextContent('96');
+    fireEvent.click(chip);
+    expect(chip).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByTestId('tab-metronome-status')).toHaveTextContent('Follows the tab: 96 bpm here (tempo changes 96 → 140).');
+
+    fireEvent.change(screen.getByLabelText('Metronome bpm'), { target: { value: '104' } });
+    expect(screen.getByTestId('tab-metronome-status')).toHaveTextContent('Clicking at 104 bpm; the tab says 96 bpm here.');
+    expect(chip).toHaveTextContent('104');
+    expect(window.localStorage.getItem('ember.tab.bpm.f1')).toBe('104');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Use the tab’s tempo' }));
+    expect(screen.getByTestId('tab-metronome-status')).toHaveTextContent('Follows the tab');
+    expect(window.localStorage.getItem('ember.tab.bpm.f1')).toBeNull();
+  });
+
+  it('shows the tempo where the song is: past the change it is 140', async () => {
+    api.getTrackTabs.mockResolvedValue({ tabs: [tab({})] });
+    // 7680 ticks at 96 bpm is 5 s.
+    player.position = 6;
+    wrap(<TabsPage trackId="upload:song1" />);
+    await screen.findByTestId('tab-score');
+    act(() => score.last!.onTimeline!(timeline()));
+    expect(screen.getByRole('button', { name: /Metronome/ })).toHaveTextContent('140');
+  });
+
+  it('a tempo set before for this tab is remembered', async () => {
+    window.localStorage.setItem('ember.tab.bpm.f1', '88');
+    api.getTrackTabs.mockResolvedValue({ tabs: [tab({})] });
+    wrap(<TabsPage trackId="upload:song1" />);
+    await screen.findByTestId('tab-score');
+    act(() => score.last!.onTimeline!(timeline()));
+    expect(screen.getByRole('button', { name: /Metronome/ })).toHaveTextContent('88');
+  });
+});
+
+describe('TabsPage practice', () => {
+  /** Eight bars of 4/4 at 120: "Intro" at bar 1, "Verse" at 3, "Chorus" at 7. */
+  const timeline = () =>
+    buildTimeline(
+      [0, 1, 2, 3, 4, 5, 6, 7].map((i) => ({
+        start: i * 3840,
+        end: (i + 1) * 3840,
+        tempoChanges: [{ tick: i * 3840, tempo: 120 }],
+        masterBar: {
+          index: i,
+          timeSignatureNumerator: 4,
+          timeSignatureDenominator: 4,
+          section: ({ 0: { text: 'Intro' }, 2: { text: 'Verse' }, 6: { text: 'Chorus' } } as Record<number, { text: string }>)[i] ?? null,
+        },
+      })),
+    );
+
+  async function open() {
+    api.getTrackTabs.mockResolvedValue({ tabs: [tab({})] });
+    wrap(<TabsPage trackId="upload:song1" />);
+    await screen.findByTestId('tab-score');
+    act(() => score.last!.onTimeline!(timeline()));
+    fireEvent.click(screen.getByRole('button', { name: /Practice/ }));
+    return screen.getByTestId('tab-practice');
+  }
+
+  it('slows the song down by percent, pitch kept by the player, and back to full speed on leaving', async () => {
+    api.getTrackTabs.mockResolvedValue({ tabs: [tab({})] });
+    const view = wrap(<TabsPage trackId="upload:song1" />);
+    await screen.findByTestId('tab-score');
+    fireEvent.click(screen.getByRole('button', { name: /Practice/ }));
+    fireEvent.click(screen.getByRole('button', { name: '75%' }));
+    expect(player.setRate).toHaveBeenLastCalledWith(0.75);
+    expect(screen.getByRole('button', { name: /Practice/ })).toHaveTextContent('75%');
+    view.unmount();
+    expect(player.setRate).toHaveBeenLastCalledWith(1);
+  });
+
+  it('or by tempo: 90 bpm of a 120 bpm tab is 75%', async () => {
+    const row = await open();
+    fireEvent.change(within(row).getByLabelText('Speed in bpm'), { target: { value: '90' } });
+    expect(player.setRate).toHaveBeenLastCalledWith(0.75);
+    fireEvent.change(within(row).getByLabelText('Speed in percent'), { target: { value: '50' } });
+    expect(player.setRate).toHaveBeenLastCalledWith(0.5);
+  });
+
+  it('the cursor and the metronome get the speed the player plays at', async () => {
+    player.rate = 0.6;
+    api.getTrackTabs.mockResolvedValue({ tabs: [tab({})] });
+    wrap(<TabsPage trackId="upload:song1" />);
+    expect(await screen.findByTestId('tab-score')).toHaveAttribute('data-rate', '0.6');
+  });
+
+  it('an engine that cannot change speed says so instead', async () => {
+    player.canSetRate = false;
+    const row = await open();
+    expect(within(row).getByTestId('tab-speed-unavailable')).toBeInTheDocument();
+    expect(within(row).queryByRole('button', { name: '75%' })).toBeNull();
+    expect(player.setRate).not.toHaveBeenCalled();
+  });
+
+  it('loops a section: marked on the score, named on the chip', async () => {
+    const row = await open();
+    expect(within(row).getByRole('button', { name: 'Loop' })).toBeDisabled();
+    fireEvent.change(within(row).getByLabelText('Loop a section'), { target: { value: '1' } });
+    expect(within(row).getByRole('button', { name: 'Loop' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByTestId('tab-score')).toHaveAttribute('data-highlight', '2-5');
+    expect(screen.getByRole('button', { name: /Practice/ })).toHaveTextContent('Bars 3–6');
+    expect((within(row).getByLabelText('Loop from bar') as HTMLInputElement).value).toBe('3');
+    expect((within(row).getByLabelText('Loop to bar') as HTMLInputElement).value).toBe('6');
+    // Off keeps the bars for next time, and takes the mark away.
+    fireEvent.click(within(row).getByRole('button', { name: 'Loop' }));
+    expect(screen.getByTestId('tab-score')).toHaveAttribute('data-highlight', '');
+    fireEvent.click(within(row).getByRole('button', { name: 'Loop' }));
+    expect(screen.getByTestId('tab-score')).toHaveAttribute('data-highlight', '2-5');
+    fireEvent.click(within(row).getByRole('button', { name: 'Clear' }));
+    expect(screen.getByTestId('tab-score')).toHaveAttribute('data-highlight', '');
+  });
+
+  it('loops bars typed in, and seeks to the loop when it starts outside it', async () => {
+    player.position = 1;
+    const row = await open();
+    fireEvent.change(within(row).getByLabelText('Loop from bar'), { target: { value: '5' } });
+    fireEvent.change(within(row).getByLabelText('Loop to bar'), { target: { value: '6' } });
+    expect(screen.getByTestId('tab-score')).toHaveAttribute('data-highlight', '4-5');
+    // Bar 5 starts 8 s into the tab, which starts with the song.
+    await waitFor(() => expect(player.seek).toHaveBeenLastCalledWith(8));
+  });
+
+  it('picks the loop on the tab with two clicks', async () => {
+    const row = await open();
+    fireEvent.click(within(row).getByRole('button', { name: 'Pick on the tab' }));
+    expect(screen.getByTestId('tab-loop-picking')).toHaveTextContent('Click the first bar');
+    expect(screen.getByTestId('tab-score')).toHaveAttribute('data-picking', 'true');
+    act(() => score.last!.onBarPick!(6));
+    expect(screen.getByTestId('tab-loop-picking')).toHaveTextContent('Now click its last bar');
+    act(() => score.last!.onBarPick!(3));
+    expect(screen.queryByTestId('tab-loop-picking')).toBeNull();
+    expect(screen.getByTestId('tab-score')).toHaveAttribute('data-picking', 'false');
+    expect(screen.getByTestId('tab-score')).toHaveAttribute('data-highlight', '3-6');
+    expect(within(row).getByRole('button', { name: 'Loop' })).toHaveAttribute('aria-pressed', 'true');
+  });
 });
 
 describe('TabsPage turned off', () => {
@@ -225,6 +435,43 @@ describe('TabsPage empty states', () => {
     fireEvent.click(generate);
     await waitFor(() => expect(api.generateTab).toHaveBeenCalledWith('upload:song1', 'Copper Sky', 'Coastline'));
     expect(await screen.findByText(/Transcribing the recording/)).toBeInTheDocument();
+  });
+
+  it('a server without the optional tab tools greys Generate out and says why', async () => {
+    api.getTabTools.mockResolvedValue({
+      generate: {
+        available: false,
+        missing: ['basic_pitch'],
+        code: 'tools-missing',
+        message: 'Generating a tab needs the optional tab tools on the server (Basic Pitch), and this server does not have them installed.',
+      },
+    });
+    wrap(<TabsPage trackId="upload:song1" />);
+    const generate = await screen.findByRole('button', { name: 'Generate a tab (rough)' });
+    await waitFor(() => expect(generate).toBeDisabled());
+    expect(screen.getByTestId('tabs-generate-unavailable')).toHaveTextContent('needs the optional tab tools on the server');
+    fireEvent.click(generate);
+    expect(api.generateTab).not.toHaveBeenCalled();
+    // The Add a file path is untouched.
+    expect(screen.getByRole('button', { name: 'Add a file' })).toBeEnabled();
+    // The menu item says so too.
+    const item = screen.getByRole('menuitem', { name: /Generate a tab: needs the optional tab tools/ });
+    expect(item).toBeDisabled();
+  });
+
+  it('a job that failed on a missing Python module reads in words, not as a traceback', async () => {
+    api.getGeneratedTab.mockResolvedValue({ status: 'failed', error: "ModuleNotFoundError: No module named 'basic_pitch'" });
+    wrap(<TabsPage trackId="upload:song1" />);
+    expect(await screen.findByText(/needs the optional tab tools on the server/)).toBeInTheDocument();
+    expect(screen.queryByText(/ModuleNotFoundError/)).toBeNull();
+  });
+
+  it('a refused start (503 tools-missing) shows the reason and asks the server again', async () => {
+    api.generateTab.mockRejectedValue(new Error("No module named 'basic_pitch'"));
+    wrap(<TabsPage trackId="upload:song1" />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Generate a tab (rough)' }));
+    expect(await screen.findByText(/needs the optional tab tools on the server/)).toBeInTheDocument();
+    await waitFor(() => expect(api.getTabTools).toHaveBeenCalledTimes(2));
   });
 
   it('an upload that is not playing and has no tab yet is named from the uploads, and offers to generate', async () => {
@@ -276,6 +523,40 @@ describe('TabsPage search links', () => {
       'href',
       'https://www.songsterr.com/?pattern=Coastline+Copper+Sky',
     );
+  });
+
+  it('a click on a Find one link opens that site’s search for the song', async () => {
+    const open = vi.spyOn(window, 'open').mockReturnValue(null);
+    wrap(<TabsPage trackId="upload:song1" />);
+    fireEvent.click(await screen.findByRole('link', { name: 'Ultimate Guitar' }));
+    expect(open).toHaveBeenLastCalledWith(
+      'https://www.ultimate-guitar.com/search.php?search_type=title&value=Coastline+Copper+Sky',
+      '_blank',
+      'noopener,noreferrer',
+    );
+    fireEvent.click(screen.getByRole('link', { name: 'Guitar Pro files' }));
+    expect(open.mock.lastCall?.[0]).toContain('https://duckduckgo.com/?q=Coastline+Copper+Sky+');
+    fireEvent.click(screen.getByRole('link', { name: 'Songsterr' }));
+    expect(open).toHaveBeenLastCalledWith('https://www.songsterr.com/?pattern=Coastline+Copper+Sky', '_blank', 'noopener,noreferrer');
+    expect(open).toHaveBeenCalledTimes(3);
+    open.mockRestore();
+  });
+
+  it('in the desktop app the Find one links go to the system browser', async () => {
+    const invoke = vi.fn(async () => null);
+    (window as unknown as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__ = { invoke };
+    const open = vi.spyOn(window, 'open').mockReturnValue(null);
+    try {
+      wrap(<TabsPage trackId="upload:song1" />);
+      fireEvent.click(await screen.findByRole('link', { name: 'Songsterr' }));
+      await waitFor(() =>
+        expect(invoke).toHaveBeenCalledWith('open_external', { url: 'https://www.songsterr.com/?pattern=Coastline+Copper+Sky' }),
+      );
+      expect(open).not.toHaveBeenCalled();
+    } finally {
+      delete (window as unknown as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__;
+      open.mockRestore();
+    }
   });
 
   it('generating comes after adding a file, marked rough', async () => {
@@ -347,10 +628,10 @@ describe('TabsPage toolbar and layout', () => {
   it('shows the instruments the score reports, and switches between them', async () => {
     wrap(<TabsPage trackId="upload:song1" />);
     await screen.findByTestId('tab-score');
-    const { act } = await import('@testing-library/react');
     act(() =>
       score.last!.onScore!({
         tempo: 96,
+        signature: null,
         key: 'D minor',
         tracks: [
           { index: 0, name: 'Guitar', instrument: 'Distortion guitar', tuning: 'Drop D', strings: 'D A D G B E', tab: true },

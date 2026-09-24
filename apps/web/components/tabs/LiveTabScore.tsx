@@ -5,6 +5,8 @@ import { cn } from '@/lib/utils';
 import { formatTime } from '@/lib/format';
 import { dragReducer, edgeScrollSpeed, idleDrag, isActive, snapToBeat, type DragEvent, type Snap } from '@/lib/tabDrag';
 import { logger } from '@/lib/logger/client';
+import { buildTimeline, type TabTimeline } from '@/lib/tabTimeline';
+import type { BarRange } from '@/lib/tabPractice';
 import {
   displaySettings,
   scoreInfo,
@@ -58,6 +60,18 @@ export interface LiveTabScoreProps {
   duration: number;
   onSeek: (sec: number) => void;
   onScore?: (info: ScoreInfo) => void;
+  /** The tab's bars, signatures, sections and tempo map on its own clock
+   *  (lib/tabTimeline.ts), once AlphaTab has worked them out: the practice
+   *  tools (metronome, loop) are built on it. */
+  onTimeline?: (timeline: TabTimeline) => void;
+  /** Playback speed (1: as recorded). The playhead between the player's
+   *  reports runs on at this speed, and AlphaTab animates the line at it. */
+  rate?: number;
+  /** Bars to mark on the score (the practice loop), by score bar index. */
+  highlight?: BarRange | null;
+  /** While set, a click on the score picks the bar it landed on (choosing
+   *  a loop) instead of seeking. */
+  onBarPick?: ((bar: number) => void) | null;
   /** The element that scrolls the page vertically (the app's content
    *  scroller) and how much of its top the sticky toolbar covers. */
   getPageScroller?: () => HTMLElement | null;
@@ -124,6 +138,8 @@ export function LiveTabScore(props: LiveTabScoreProps) {
   const followPlayhead = useRef<() => void>(() => {});
   /** Read the bar anchors again (a new score, a fresh alignment). */
   const readAnchorsRef = useRef<() => void>(() => {});
+  /** Mark the practice loop's bars on the score (or clear the mark). */
+  const highlightRef = useRef<() => void>(() => {});
   /** The last position fed to AlphaTab; null makes the next feed a seek. */
   const fed = useRef<Fed | null>(null);
   /** Song time against tab time at every bar, from the alignment and
@@ -225,6 +241,8 @@ export function LiveTabScore(props: LiveTabScoreProps) {
           // playing beat again, and place the line afresh on the next feed.
           fed.current = null;
           if (lastBeat) followBeat(lastBeat, !live.current.playing);
+          // A new layout drew the score afresh: mark the loop on it again.
+          highlightRef.current();
         });
         api.error.on((e: any) => {
           settled = true;
@@ -262,6 +280,7 @@ export function LiveTabScore(props: LiveTabScoreProps) {
         api.midiLoaded?.on?.(() => {
           fed.current = null;
           readAnchors();
+          emitTimeline();
         });
 
         api.playerPositionChanged.on((e: any) => {
@@ -272,6 +291,11 @@ export function LiveTabScore(props: LiveTabScoreProps) {
         // the player.
         api.beatMouseDown.on((beat: any) => {
           const p2 = live.current;
+          if (p2.onBarPick && beat) {
+            const bar = barIndexOf(beat);
+            if (bar !== null) p2.onBarPick(bar);
+            return;
+          }
           if (!p2.follows || !api.tickCache || !beat) return;
           try {
             p2.onSeek(beatToSongSec(api.tickCache, beat, p2.offsetMs, points.current));
@@ -322,6 +346,24 @@ export function LiveTabScore(props: LiveTabScoreProps) {
     refollow.current = () => {
       if (lastBeat) followBeat(lastBeat);
     };
+    highlightRef.current = () => {
+      const a = apiRef.current;
+      if (!a || cancelled) return;
+      const h = live.current.highlight ?? null;
+      try {
+        if (!h) {
+          a.clearPlaybackRangeHighlight?.();
+          return;
+        }
+        const bars: any[] = a.tracks?.[0]?.staves?.[0]?.bars ?? [];
+        const first = bars[h.start]?.voices?.[0]?.beats?.[0];
+        const lastBeats: any[] = bars[h.end]?.voices?.[0]?.beats ?? [];
+        const last = lastBeats[lastBeats.length - 1];
+        if (first && last) a.highlightPlaybackRange?.(first, last);
+      } catch {
+        // An unmarked loop still loops.
+      }
+    };
     followPlayhead.current = () => {
       try {
         const tracks = new Set<number>((api?.tracks ?? []).map((t: any) => t.index));
@@ -344,6 +386,16 @@ export function LiveTabScore(props: LiveTabScoreProps) {
       points.current = timing && bars ? syncPoints(timing, barStartsMs(bars)) : [];
     }
     readAnchorsRef.current = readAnchors;
+
+    function emitTimeline() {
+      const bars = apiRef.current?.tickCache?.masterBars;
+      if (cancelled || !Array.isArray(bars) || bars.length === 0) return;
+      try {
+        live.current.onTimeline?.(buildTimeline(bars));
+      } catch {
+        // No timeline only means no practice tools for this file.
+      }
+    }
 
     function followBeat(beat: any, hiddenOnly = false, instant = false) {
       const bounds = api?.renderer?.boundsLookup?.findBeat?.(beat);
@@ -396,6 +448,7 @@ export function LiveTabScore(props: LiveTabScoreProps) {
       points.current = [];
       refollow.current = () => {};
       followPlayhead.current = () => {};
+      highlightRef.current = () => {};
       fed.current = null;
       endMs.current = Infinity;
       setSynced(false);
@@ -465,6 +518,26 @@ export function LiveTabScore(props: LiveTabScoreProps) {
     api.renderTracks([t]);
   }, [track, status]);
 
+  // ── practice: the loop's mark and the speed ─────────────────────────────
+  const hlStart = props.highlight?.start ?? null;
+  const hlEnd = props.highlight?.end ?? null;
+  useEffect(() => {
+    highlightRef.current();
+  }, [hlStart, hlEnd, track, status]);
+
+  const rate = props.rate ?? 1;
+  useEffect(() => {
+    const api = apiRef.current;
+    if (!api || !synced) return;
+    try {
+      // AlphaTab times its line's glide between beats by this; the handler
+      // it forwards the speed to is inert (Ember's player owns the speed).
+      api.playbackSpeed = rate;
+    } catch {
+      // A line that glides at the wrong speed still lands on the beat.
+    }
+  }, [rate, synced]);
+
   // ── transport: mirror Ember into AlphaTab ───────────────────────────────
   // Its cursor only animates while it believes playback runs, so a score
   // left stopped sits still whatever position it is fed.
@@ -500,7 +573,7 @@ export function LiveTabScore(props: LiveTabScoreProps) {
       const output = outputRef.current;
       const api = apiRef.current;
       if (!output || !api) return;
-      const tabMs = songSecToTabMs(estimateSongSec(anchor.current, now, p.playing), points.current, p.offsetMs);
+      const tabMs = songSecToTabMs(estimateSongSec(anchor.current, now, p.playing, p.rate ?? 1), points.current, p.offsetMs);
       try {
         if (!api.isReadyForPlayback) {
           // No score in the player yet: it cannot seek, and whatever it
@@ -604,6 +677,13 @@ export function LiveTabScore(props: LiveTabScoreProps) {
   };
 
   const seekTo = (beat: unknown) => {
+    // Choosing a loop: the click picks the bar instead.
+    const pick = live.current.onBarPick;
+    if (pick) {
+      const bar = barIndexOf(beat);
+      if (bar !== null) pick(bar);
+      return;
+    }
     const sec = beatSec(beat);
     if (sec !== null && live.current.follows) live.current.onSeek(sec);
   };
@@ -800,6 +880,13 @@ export function LiveTabScore(props: LiveTabScoreProps) {
       )}
     </div>
   );
+}
+
+/** The score bar a beat is in (0-based), or null. */
+function barIndexOf(beat: any): number | null {
+  const bar = beat?.voice?.bar;
+  const i = typeof bar?.index === 'number' ? bar.index : bar?.masterBar?.index;
+  return typeof i === 'number' && i >= 0 ? i : null;
 }
 
 /** The host's box in the viewport: bounds from AlphaTab are relative to it. */

@@ -1,3 +1,4 @@
+import { friendlyGenerateError, isToolsMissing } from '@/lib/tabToolsText';
 import type { TabMatch } from '@/lib/songsterr';
 import { isLinedUp, type TabTiming } from '@/lib/tabSync';
 
@@ -213,8 +214,12 @@ export type EmptyState =
       kind: 'empty';
       /** "Generate a tab" is offered (YouTube and uploaded songs). */
       canGenerate: boolean;
-      /** The last generation failed, with its reason. */
+      /** The last generation failed, with its reason (in words: a missing
+       *  Python module reads as lib/tabToolsText.ts's message). */
       failed: string | null;
+      /** This server cannot generate at all (the optional tab tools are not
+       *  installed): the button is shown greyed out, with this. */
+      unavailable: string | null;
       /** Songsterr has this song: link out, since that is all there is. */
       songsterr: TabMatch[];
     };
@@ -228,14 +233,23 @@ export function emptyStateFor(input: {
   matches: TabMatch[];
   /** The online search for this song is running. */
   searchingOnline?: boolean;
+  /** Why generating cannot work on this server, when it cannot. */
+  generateUnavailable?: string | null;
+  /** Starting a job failed (the request itself, not the job). */
+  startError?: string | null;
 }): EmptyState {
   if (input.loading) return { kind: 'loading' };
   if (input.generated === 'running' || input.generating) return { kind: 'generating' };
   if (input.searchingOnline) return { kind: 'searching' };
+  const unavailable = input.canGenerate ? (input.generateUnavailable ?? null) : null;
+  const raw = input.generated === 'failed' ? (input.generateError ?? 'The last attempt failed.') : (input.startError ?? null);
+  const failed = friendlyGenerateError(raw);
   return {
     kind: 'empty',
     canGenerate: input.canGenerate,
-    failed: input.generated === 'failed' ? (input.generateError ?? 'The last attempt failed.') : null,
+    // Said once: the greyed-out button already explains a missing tool.
+    failed: unavailable && failed && isToolsMissing(failed) ? null : failed,
+    unavailable,
     songsterr: input.matches,
   };
 }

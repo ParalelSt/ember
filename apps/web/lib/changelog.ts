@@ -21,6 +21,21 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    id: 'tabs-practice',
+    version: '0.7.11',
+    date: '2026-09-24',
+    title: 'Guitar tab practice',
+    summary: 'Loop a section, slow it down, click along with a metronome that follows the tab, and line the tab up by any amount.',
+    bullets: [
+      'Practice on the tab page: loop a section or a range of bars (pick them with two clicks on the tab), and slow the song down to 50% without changing its pitch. The tab and the metronome follow. Slowing down works in the browser for now.',
+      'A metronome that follows the tab\'s tempo, tempo changes included. If the tab\'s tempo is wrong, set your own.',
+      'Sync moves the tab by up to half an hour instead of 10 seconds, to the hundredth of a second, or by beats and bars of the tab.',
+      'Songsterr tabs for songs with Japanese (or other non-English) titles are found and imported now.',
+      'The Find one links (Ultimate Guitar, Guitar Pro files, Songsterr) open again, in your browser on the desktop app too (with the next desktop app update).',
+      'When the server does not have the optional tab tools installed, Generate a tab says so and is greyed out, instead of failing with an error.',
+    ],
+  },
+  {
     id: 'normalize-volume',
     version: '0.7.10',
     date: '2026-09-24',

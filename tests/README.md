@@ -248,6 +248,7 @@ node tests/session-authorization.test.mjs           # or: npm run test:sessions
 node tests/fake-songsterr.mjs &                     # port 4330; app needs SONGSTERR_BASE=http://127.0.0.1:4330
 node tests/tabs.test.mjs                            # or: npm run test:tabs
 node tests/tabs-ui.test.mjs                         # or: npm run test:tabs-ui
+node tests/tabs-practice-ui.test.mjs                # or: npm run test:tabs-practice-ui (0.7.10 practice: the sync nudge past 10 s and in beats, the metronome's clicks on the tab's beats through a 120 to 60 bpm change (a recording AudioContext, no sound card), 50% speed with the pitch kept, a one-bar loop playing over and over, a section loop, and the Find one links opening each site's search; PB_URL/APP_URL like tabs-ui)
 node tests/tabs-sync.test.mjs                       # or: npm run test:tabs-sync
 node tests/tabs-generate.test.mjs                   # or: npm run test:tabs-generate
 MUSIC_DIR="$SB/music" node tests/tabs-text.test.mjs # or: npm run test:tabs-text (pasted text tabs: route, chain, tab page follows the song, search links; PB restarted with this branch's pb_hooks)

@@ -9,11 +9,14 @@ import { resolveUploadPath } from '@/lib/uploads';
 import { withRequestLog } from '@/lib/logger/withRequestLog';
 import { serverLogger } from '@/lib/logger/server';
 import { recordGenerated } from '@/lib/tabStore';
+import { isToolsMissing, TOOLS_MISSING_CODE, TOOLS_MISSING_MESSAGE } from '@/lib/tabToolsText';
 import {
   clearPending,
   generatedTabFile,
   generatedTabPath,
+  cachedGeneratorStatus,
   generationStatus,
+  generatorStatus,
   markPending,
   parseTrackKey,
   startGeneration,
@@ -24,8 +27,12 @@ import {
  *
  *  GET : the alphaTex if it exists (200, text/plain), 202 while a job is
  *         running, 409 with the reason if the last attempt failed, 404 if
- *         nothing has been asked for yet.
- *  POST: start it. 200 if it already exists, 202 once the job is queued.
+ *         nothing has been asked for yet. A job that failed because the
+ *         optional tab tools are not installed says so in words, with
+ *         `code: "tools-missing"`, never the raw Python error.
+ *  POST: start it. 200 if it already exists, 202 once the job is queued,
+ *        503 `tools-missing` when this host cannot generate at all (the
+ *        page asks /api/tabs/tools first and greys the button out).
  *
  *  Generated tabs are shared by everyone on the server, like the audio they
  *  come from, so there is no ownership check beyond being signed in.
@@ -121,7 +128,12 @@ export const GET = withRequestLog('tabs/generated/[trackId]', async (_req: NextR
       });
     }
     if (status.status === 'running') return Response.json(status, { status: 202 });
-    if (status.status === 'failed') return Response.json(status, { status: 409 });
+    if (status.status === 'failed') {
+      if (isToolsMissing(status.error)) {
+        return Response.json({ status: 'failed', error: TOOLS_MISSING_MESSAGE, code: TOOLS_MISSING_CODE }, { status: 409 });
+      }
+      return Response.json(status, { status: 409 });
+    }
     return Response.json(status, { status: 404 });
   } catch (e) {
     if (e instanceof UnauthorizedError) return unauthorizedResponse();
@@ -145,6 +157,17 @@ export const POST = withRequestLog('tabs/generated/[trackId]', async (request: N
     if (generationStatus(key.key).status === 'ready') {
       await ensureRow(key, trackId, user.id, said);
       return Response.json({ status: 'ready' });
+    }
+
+    // No tools, no job: say so plainly instead of queueing one that fails
+    // with a ModuleNotFoundError. Checked before the rate limit, so asking
+    // on a host without them costs the member nothing.
+    const tools = cachedGeneratorStatus() ?? (await generatorStatus());
+    if (!tools.available) {
+      return Response.json(
+        { error: TOOLS_MISSING_MESSAGE, code: TOOLS_MISSING_CODE, missing: tools.missing },
+        { status: 503 },
+      );
     }
 
     // A job costs minutes of CPU, so this is per member and deliberately low.

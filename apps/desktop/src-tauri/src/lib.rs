@@ -10,6 +10,7 @@ mod connect;
 mod audio;
 mod cache;
 mod discord;
+mod external;
 mod speech;
 mod theme;
 mod update;
@@ -222,6 +223,7 @@ pub fn run() {
             speech::speech_abort,
             theme::theme_apply,
             connect::connect_retry,
+            external::open_external,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Ember desktop");

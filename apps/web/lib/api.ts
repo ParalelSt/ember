@@ -316,13 +316,22 @@ export const api = {
   deleteTabFile: (id: string) => req<{ ok: true }>(`/tabs/files/${id}`, { method: 'DELETE' }),
   /** A tab generated from the recording itself. GET is a status probe: the
    *  alphaTex body is fetched by the tab page straight from the URL. */
-  getGeneratedTab: async (trackId: string): Promise<{ status: 'ready' | 'running' | 'failed' | 'none'; error?: string }> => {
+  getGeneratedTab: async (
+    trackId: string,
+  ): Promise<{ status: 'ready' | 'running' | 'failed' | 'none'; error?: string; code?: string }> => {
     const res = await fetch(`${API_BASE}/api/tabs/generated/${encodeURIComponent(trackId)}`, { credentials: 'include' });
     if (res.status === 200) return { status: 'ready' };
     if (res.status === 202) return { status: 'running' };
-    if (res.status === 409) return { status: 'failed', error: (await res.json().catch(() => ({}))).error };
+    if (res.status === 409) {
+      const body = await res.json().catch(() => ({}));
+      return { status: 'failed', error: body.error, code: body.code };
+    }
     return { status: 'none' };
   },
+  /** What this server can do for tabs beyond drawing them: whether the
+   *  optional tools that generate one are installed. */
+  getTabTools: () =>
+    req<{ generate: { available: boolean; missing: string[]; code?: string; message?: string } }>('/tabs/tools'),
   /** Look for the song's tab online (Ultimate Guitar). Once per song: the
    *  server answers "cached" when it was searched before; `again` searches
    *  anew (the ⋯ menu's "Search online again"). */

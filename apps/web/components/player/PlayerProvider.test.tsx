@@ -124,6 +124,42 @@ describe('PlayerProvider', () => {
   });
 });
 
+describe('PlayerProvider practice speed', () => {
+  function Speed() {
+    const { rate, setRate, canSetRate } = usePlayer();
+    return (
+      <div>
+        <span data-testid="rate">{rate}</span>
+        <span data-testid="can">{String(canSetRate)}</span>
+        <button onClick={() => setRate(0.75)}>slower</button>
+        <button onClick={() => setRate(Number.NaN)}>junk</button>
+      </div>
+    );
+  }
+
+  it('hands the speed to a web audio engine, and says it can', () => {
+    const setRate = vi.fn();
+    (fake as { setRate?: unknown }).setRate = setRate;
+    try {
+      render(
+        <PlayerProvider>
+          <Speed />
+        </PlayerProvider>,
+      );
+      expect(screen.getByTestId('can')).toHaveTextContent('true');
+      // A new engine starts at the current speed.
+      expect(setRate).toHaveBeenLastCalledWith(1);
+      fireEvent.click(screen.getByText('slower'));
+      expect(setRate).toHaveBeenLastCalledWith(0.75);
+      expect(screen.getByTestId('rate')).toHaveTextContent('0.75');
+      fireEvent.click(screen.getByText('junk'));
+      expect(setRate).toHaveBeenLastCalledWith(1);
+    } finally {
+      delete (fake as { setRate?: unknown }).setRate;
+    }
+  });
+});
+
 describe('PlayerProvider [bughunt V5]: signed out', () => {
   it('never looks up lyrics for the loaded song (the lookup needs a session)', () => {
     usePlayerStore.setState({ queue: [makeTrack({ id: TRACK_ID })], index: 0 });

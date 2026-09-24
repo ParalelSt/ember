@@ -473,8 +473,16 @@ Spotify has changed the embed page's shape: file a bug report. The parser is
 ### Generated guitar tabs (optional)
 
 The tabs button in the player can write a guitar tab from the song's own
-recording. It needs extra Python packages in `.venv`; without them the
-button reports that transcription failed and everything else keeps working.
+recording. It needs extra Python packages in `.venv`; without them the tab
+page greys out "Generate a tab" and says the server needs the optional tab
+tools, and everything else keeps working. To see what this host lacks:
+
+```bash
+.venv/bin/python transcribe.py --check    # {"ok": false, "missing": ["basic_pitch", ...]}
+```
+
+The app asks the same thing through `GET /api/tabs/tools` (kept for five
+minutes, so installing takes effect without a restart). To install:
 
 ```bash
 .venv/bin/pip install 'setuptools<80'

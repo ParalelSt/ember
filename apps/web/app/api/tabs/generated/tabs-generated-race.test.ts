@@ -32,16 +32,21 @@ vi.mock('@/lib/sources/youtube', () => ({
 }));
 
 const generated = await import('./[trackId]/route');
+const tabGenerate = await import('@/lib/tabGenerate');
 
 const ALICE = { id: 'alice', email: 'a@x', isAdmin: false };
 const req = (url: string, init?: ConstructorParameters<typeof NextRequest>[1]) => new NextRequest(`http://t${url}`, init);
 const trackCtx = (trackId: string) => ({ params: Promise.resolve({ trackId: encodeURIComponent(trackId) }) }) as never;
 
-beforeEach(() => {
+beforeEach(async () => {
   store = fakePocketBase({ tabs: [], uploads: [], tracks: [], users: [] });
   requireUser.mockReset();
   requireUser.mockResolvedValue({ user: ALICE });
   releaseDownload = undefined;
+  // This host can generate (transcribe.py --check said so, and it is
+  // remembered): the POST goes straight on to the download.
+  tabGenerate.resetGeneratorStatus();
+  await tabGenerate.generatorStatus({ run: async () => ({ code: 0, stdout: '{"ok": true, "missing": []}' }) });
   fs.rmSync(musicDir, { recursive: true, force: true });
 });
 

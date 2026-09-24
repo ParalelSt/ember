@@ -180,25 +180,53 @@ export function ugQuery(title: string, artist: string): string {
   return `${known ? `${a} ` : ''}${t || title.trim()}`.slice(0, 200);
 }
 
-function words(s: string): string[] {
+/** The words of a title or a name, in any script: letters and digits of
+ *  every alphabet (Japanese, Cyrillic, Greek, accented Latin), split on
+ *  anything else. It used to keep [a-z0-9] only, so a title in Japanese had
+ *  no words at all and no search result could ever be "this song": every
+ *  such song was recorded as "nothing on Songsterr". Single letters go
+ *  (noise in Latin titles) unless they are not ASCII (one kanji is a word). */
+export function words(s: string): string[] {
   return s
     .toLowerCase()
     .normalize('NFKD')
     .replace(/\p{M}/gu, '')
     .replace(/\(.*?\)|\[.*?\]/g, ' ')
-    .split(/[^a-z0-9]+/)
-    .filter((w) => w.length > 1 && w !== 'the');
+    .split(/[^\p{L}\p{N}]+/u)
+    .filter((w) => w && (w.length > 1 || /[^\x00-\x7f]/.test(w)) && w !== 'the');
+}
+
+/** A title and, when it is written "original / romanized" (Songsterr's way
+ *  with Japanese titles: "黄泉より聴こゆ… / Yomi Yori Kikoyu…"), each side. */
+export function titleForms(title: string): string[] {
+  const parts = title
+    .split(/\s+[/／]\s+|／/)
+    .map((p) => p.trim())
+    .filter(Boolean);
+  return parts.length > 1 ? [title, ...parts] : [title];
+}
+
+/** The same title: the same words, or the same letters once spacing and
+ *  punctuation are gone ("Yomiyori" and "Yomi yori"). */
+function sameTitle(a: string, b: string): boolean {
+  const want = words(a);
+  const got = words(b);
+  if (want.length === 0 || got.length === 0) return false;
+  const w = new Set(want);
+  const g = new Set(got);
+  if (w.size === g.size && [...w].every((x) => g.has(x))) return true;
+  return want.join('') === got.join('');
 }
 
 /** Is this result the song asked for? The title's words must be the same
  *  (anything in brackets aside: UG's search is loose, a longer title is
- *  another song), and a known artist must share a word (another band's song
- *  of the same name is not this one). */
+ *  another song; either side of an "original / romanized" title will do),
+ *  and a known artist must share a word (another band's song of the same
+ *  name is not this one). */
 export function sameSong(r: Pick<UgResult, 'songName' | 'artistName'>, title: string, artist: string): boolean {
-  const want = new Set(words(ugQuery(title, '')));
-  if (want.size === 0) return false;
-  const got = new Set(words(r.songName));
-  if (got.size !== want.size || ![...want].every((w) => got.has(w))) return false;
+  const wanted = titleForms(title).map((t) => ugQuery(t, ''));
+  const offered = titleForms(r.songName);
+  if (!wanted.some((w) => offered.some((o) => sameTitle(w, o)))) return false;
   const a = words(artist.replace(/\s*-\s*topic\s*$/i, ''));
   if (a.length === 0 || /^unknown( artist)?$/i.test(artist.trim())) return true;
   const ra = new Set(words(r.artistName));

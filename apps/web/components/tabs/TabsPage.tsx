@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Button, buttonVariants } from '@/components/ui/button';
@@ -11,7 +11,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { ChevronDownIcon, MoreIcon, PlayIcon } from '@/components/icons';
+import { ChevronDownIcon, ClockIcon, MoreIcon, PlayIcon, RepeatIcon } from '@/components/icons';
 import { EmptyState } from '@/components/page/EmptyState';
 import { usePlayer } from '@/components/player/PlayerProvider';
 import { LiveTabScore } from '@/components/tabs/LiveTabScore';
@@ -30,13 +30,57 @@ import {
   type TabSummary,
 } from '@/lib/tabSources';
 import { chooseTab, confidencePercent, loadPick, savePick, sheetRows } from '@/lib/tabPick';
-import { clampOffset, isLinedUp, loadLocalOffsetMs, MAX_OFFSET_MS, saveLocalOffsetMs } from '@/lib/tabSync';
+import {
+  clampOffset,
+  isLinedUp,
+  loadLocalOffsetMs,
+  saveLocalOffsetMs,
+  songSecToTabMs,
+  syncPoints,
+  tabMsToSongSecAligned,
+} from '@/lib/tabSync';
+import { barStartsOf, bpmAtMs, steadyBeats, tabBeats, tempoSteps, type Click, type TabTimeline } from '@/lib/tabTimeline';
+import { clickContext } from '@/lib/metronome';
+import { useMetronome } from '@/hooks/useMetronome';
+import { usePracticeLoop } from '@/hooks/usePracticeLoop';
+import {
+  barCount,
+  bpmAtRate,
+  loopSpanMs,
+  normalizeRange,
+  pickBar,
+  rangeLabel,
+  rateFromBpm,
+  rateFromPercent,
+  sectionRanges,
+  SPEED_PRESETS,
+  type BarRange,
+  type SectionRange,
+} from '@/lib/tabPractice';
+import {
+  beatClockOf,
+  formatOffset,
+  nudgeSteps,
+  offsetFromInput,
+  offsetInUnit,
+  sliderSpanSec,
+  type BeatClock,
+  type OffsetUnit,
+} from '@/lib/tabOffset';
 import { tabSearchLinks, type TabSearchLink } from '@/lib/tabSearchLinks';
+import { TOOLS_MISSING_SHORT } from '@/lib/tabToolsText';
+import { openExternal } from '@/lib/openExternal';
+import { announceOpen } from '@/components/ExternalLinks';
 
 const TAB_ACCEPT = '.gp,.gp3,.gp4,.gp5,.gpx,.musicxml,.xml,.mxl';
 const STAFF_KEY = 'ember.tabs.staff';
 const SCROLL_KEY = 'ember.tabs.scroll';
+const OFFSET_UNIT_KEY = 'ember.tabs.offsetUnit';
 const trackKey = (tabId: string) => `ember.tab.track.${tabId}`;
+const bpmKey = (tabId: string) => `ember.tab.bpm.${tabId}`;
+/** The metronome override's bounds, as a tab's own tempo is kept. */
+const MIN_BPM = 20;
+const MAX_BPM = 400;
 
 function readPref<T extends string>(key: string, allowed: readonly T[], fallback: T): T {
   try {
@@ -115,7 +159,7 @@ export function TabsPage({ trackId }: { trackId: string }) {
 
 function TabsSheet({ song, sources, onBack }: { song: TabSong; sources: TabSourcesState; onBack: () => void }) {
   const phone = usePhone();
-  const { current, isPlaying, position, duration, seek, playTrack } = usePlayer();
+  const { current, isPlaying, position, duration, seek, playTrack, rate, setRate, canSetRate } = usePlayer();
   const follows = current?.id === song.id;
 
   // Which tab is drawn: the listener's own pick for this song when they
@@ -185,6 +229,114 @@ function TabsSheet({ song, sources, onBack }: { song: TabSong; sources: TabSourc
     saveLocalOffsetMs(offsetId, v);
   };
   const [syncOpen, setSyncOpen] = useState(false);
+  const [offsetUnit, setOffsetUnitState] = useState<OffsetUnit>(() =>
+    readPref(OFFSET_UNIT_KEY, ['seconds', 'beats'] as const, 'seconds'),
+  );
+  const setOffsetUnit = (u: OffsetUnit) => {
+    setOffsetUnitState(u);
+    writePref(OFFSET_UNIT_KEY, u);
+  };
+  // What a beat is for this tab (its opening tempo and time signature), for
+  // a nudge counted in beats. Null until the score is drawn, or when the
+  // file has no tempo.
+  const beatClock = beatClockOf(info?.tempo, info?.signature);
+
+  // The tab's bars and tempo map on its own clock (LiveTabScore reads them
+  // out of AlphaTab), and the way between that clock and the song's: the
+  // alignment's bar anchors when there is one, then the nudge.
+  const [drawnTimeline, setDrawnTimeline] = useState<{ tabId: string; timeline: TabTimeline } | null>(null);
+  const timeline = tab && drawnTimeline?.tabId === tab.id ? drawnTimeline.timeline : null;
+  const points = useMemo(() => (timing && timeline ? syncPoints(timing, barStartsOf(timeline)) : []), [timing, timeline]);
+  const toSongSec = (tabMs: number) => tabMsToSongSecAligned(tabMs, points, offsetMs);
+  const toTabMs = (sec: number) => songSecToTabMs(sec, points, offsetMs);
+
+  // The metronome (lib/metronome.ts): on the tab's own beats, following its
+  // tempo changes, unless the listener set a tempo of their own because the
+  // tab's is wrong (kept per tab on this device).
+  const [metronomeOn, setMetronomeOn] = useState(false);
+  const [bpmChoice, setBpmChoice] = useState<{ tabId: string; bpm: number | null } | null>(null);
+  const savedBpm = (tabId: string): number | null => {
+    try {
+      const n = Number(window.localStorage.getItem(bpmKey(tabId)));
+      return n >= MIN_BPM && n <= MAX_BPM ? n : null;
+    } catch {
+      return null;
+    }
+  };
+  const bpmOverride = tab ? (bpmChoice?.tabId === tab.id ? bpmChoice.bpm : savedBpm(tab.id)) : null;
+  const setBpmOverride = (bpm: number | null) => {
+    if (!tab) return;
+    const v = bpm !== null && bpm >= MIN_BPM && bpm <= MAX_BPM ? Math.round(bpm * 10) / 10 : null;
+    setBpmChoice({ tabId: tab.id, bpm: v });
+    try {
+      if (v === null) window.localStorage.removeItem(bpmKey(tab.id));
+      else window.localStorage.setItem(bpmKey(tab.id), String(v));
+    } catch {
+      // Not remembering the tempo is not worth an error.
+    }
+  };
+  const tabBpmNow = timeline ? bpmAtMs(timeline, toTabMs(position)) : (info?.tempo ?? null);
+  const metronomeBeats = (fromSec: number, toSec: number): Click[] => {
+    if (!timeline) return [];
+    if (bpmOverride) {
+      return steadyBeats(toSongSec(0), bpmOverride, timeline.bars[0]?.numerator ?? 4, fromSec, toSec);
+    }
+    return tabBeats(timeline, toTabMs(fromSec), toTabMs(toSec)).map((c) => ({ at: toSongSec(c.at), accent: c.accent }));
+  };
+  // ── practice: speed and loop (lib/tabPractice.ts) ───────────────────────
+  // The speed is the page's while its song plays here: back to full speed
+  // when the song changes or the page closes. Web audio only for now.
+  const [speed, setSpeed] = useState(1);
+  useEffect(() => {
+    if (!follows || !canSetRate) return;
+    setRate(speed);
+    return () => setRate(1);
+  }, [follows, canSetRate, speed, setRate]);
+  const playRate = follows && canSetRate ? rate : 1;
+
+  const [practiceOpen, setPracticeOpen] = useState(false);
+  const [loop, setLoop] = useState<{ tabId: string; range: BarRange; on: boolean } | null>(null);
+  const loopRange = tab && timeline && loop?.tabId === tab.id ? normalizeRange(loop.range, timeline) : null;
+  const loopOn = !!loopRange && !!loop?.on;
+  const setLoopRange = (range: BarRange | null, on = true) => {
+    if (!tab) return;
+    setLoop(range ? { tabId: tab.id, range, on } : null);
+  };
+  // Two clicks on the score choose the loop's bars.
+  const [picking, setPicking] = useState<{ tabId: string; first: number | null } | null>(null);
+  const pickingNow = tab && picking?.tabId === tab.id ? picking : null;
+  const onBarPick = (bar: number) => {
+    if (!tab) return;
+    const next = pickBar(pickingNow?.first ?? null, bar);
+    if (next.range) {
+      setLoopRange(next.range, true);
+      setPicking(null);
+    } else {
+      setPicking({ tabId: tab.id, first: next.picking });
+    }
+  };
+  const loopMs = loopOn && timeline ? loopSpanMs(timeline, loopRange) : null;
+  usePracticeLoop({
+    span: loopMs ? { startSec: toSongSec(loopMs.startMs), endSec: toSongSec(loopMs.endMs) } : null,
+    follows,
+    running: follows && isPlaying,
+    position,
+    rate: playRate,
+    seek,
+  });
+
+  useMetronome({
+    on: metronomeOn && !!timeline,
+    running: follows && isPlaying,
+    position,
+    rate: playRate,
+    beats: metronomeBeats,
+  });
+  const toggleMetronome = () => {
+    // The click's AudioContext is made on this gesture, as browsers ask.
+    if (!metronomeOn) clickContext();
+    setMetronomeOn((v) => !v);
+  };
 
   const stickyRef = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -217,8 +369,12 @@ function TabsSheet({ song, sources, onBack }: { song: TabSong; sources: TabSourc
       ? [
           {
             id: 'generate',
-            label: busyGenerating ? 'Transcribing…' : 'Generate a tab (rough)',
-            disabled: busyGenerating,
+            label: busyGenerating
+              ? 'Transcribing…'
+              : sources.generateUnavailable
+                ? `Generate a tab: ${TOOLS_MISSING_SHORT.toLowerCase()}`
+                : 'Generate a tab (rough)',
+            disabled: busyGenerating || !!sources.generateUnavailable,
             variant: 'ghost' as const,
             onClick: sources.generate,
           },
@@ -238,8 +394,14 @@ function TabsSheet({ song, sources, onBack }: { song: TabSong; sources: TabSourc
         <MenuItem label="Add a Guitar Pro or MusicXML file" onClick={addFile} />
         {sources.canGenerate && !ownGenerated && (
           <MenuItem
-            label={busyGenerating ? 'Transcribing…' : 'Generate a tab from the recording'}
-            disabled={busyGenerating}
+            label={
+              busyGenerating
+                ? 'Transcribing…'
+                : sources.generateUnavailable
+                  ? `Generate a tab: ${TOOLS_MISSING_SHORT.toLowerCase()}`
+                  : 'Generate a tab from the recording'
+            }
+            disabled={busyGenerating || !!sources.generateUnavailable}
             onClick={sources.generate}
           />
         )}
@@ -257,7 +419,7 @@ function TabsSheet({ song, sources, onBack }: { song: TabSong; sources: TabSourc
         )}
         <DropdownMenuSeparator />
         {searchLinks.map((l) => (
-          <MenuItem key={l.id} label={l.menuLabel} onClick={() => window.open(l.url, '_blank', 'noopener,noreferrer')} />
+          <MenuItem key={l.id} label={l.menuLabel} onClick={() => openLink(l.url)} />
         ))}
         {tab?.canDelete && !tab.id.startsWith('generated:') && (
           <>
@@ -350,19 +512,80 @@ function TabsSheet({ song, sources, onBack }: { song: TabSong; sources: TabSourc
                 className={cn(chip, syncOpen || offsetMs !== 0 ? chipOn : chipOff)}
               >
                 Sync
-                <span className="tabular-nums font-normal">
-                  {offsetMs > 0 ? '+' : ''}
-                  {(offsetMs / 1000).toFixed(1)}s
-                </span>
+                <span className="tabular-nums font-normal">{formatOffset(offsetMs, offsetUnit, beatClock)}</span>
+              </button>
+              <button
+                type="button"
+                aria-pressed={practiceOpen}
+                aria-label="Practice"
+                onClick={() => setPracticeOpen((v) => !v)}
+                title="Loop a section and slow it down"
+                className={cn(chip, practiceOpen || loopOn || speed !== 1 ? chipOn : chipOff)}
+              >
+                <RepeatIcon className="size-3.5" />
+                {!phone && 'Practice'}
+                {speed !== 1 && canSetRate && <span className="tabular-nums font-normal">{Math.round(speed * 100)}%</span>}
+                {loopOn && loopRange && <span className="font-normal">{rangeLabel(loopRange)}</span>}
+              </button>
+              <button
+                type="button"
+                aria-pressed={metronomeOn}
+                aria-label="Metronome"
+                disabled={!timeline}
+                onClick={toggleMetronome}
+                title={
+                  timeline
+                    ? 'Clicks on the beat, following the tab’s tempo'
+                    : 'The metronome starts once the tab is drawn'
+                }
+                className={cn(chip, metronomeOn ? chipOn : chipOff, 'disabled:opacity-50')}
+              >
+                <ClockIcon className="size-3.5" />
+                {!phone && 'Metronome'}
+                {(bpmOverride ?? tabBpmNow) && (
+                  <span className="tabular-nums font-normal">{Math.round(bpmOverride ?? tabBpmNow ?? 0)}</span>
+                )}
               </button>
             </TabsToolbar>
             {syncOpen && (
               <SyncRow
                 offsetMs={offsetMs}
+                unit={offsetUnit}
+                clock={beatClock}
+                onUnitChange={setOffsetUnit}
                 shared={tab.offsetMs}
                 canShare={tab.canDelete && !tab.id.startsWith('generated:')}
                 onChange={changeOffset}
                 onShare={() => sources.saveOffset(tab.id, offsetMs).then(() => changeOffset(null))}
+              />
+            )}
+            {practiceOpen && (
+              <PracticeRow
+                timeline={!!timeline}
+                barTotal={timeline ? barCount(timeline) : 0}
+                sections={timeline ? sectionRanges(timeline) : []}
+                canSetRate={canSetRate}
+                speed={speed}
+                onSpeed={setSpeed}
+                tabBpm={tabBpmNow}
+                range={loopRange}
+                loopOn={loopOn}
+                onLoopOn={(on) => loopRange && setLoopRange(loopRange, on)}
+                onRange={(r) => setLoopRange(r, loop?.on ?? true)}
+                onClear={() => {
+                  setLoopRange(null);
+                  setPicking(null);
+                }}
+                picking={pickingNow ? (pickingNow.first === null ? 'first' : 'last') : null}
+                onPick={() => (pickingNow ? setPicking(null) : tab && setPicking({ tabId: tab.id, first: null }))}
+              />
+            )}
+            {metronomeOn && timeline && (
+              <MetronomeRow
+                tabBpm={tabBpmNow}
+                steps={tempoSteps(timeline)}
+                override={bpmOverride}
+                onOverride={setBpmOverride}
               />
             )}
           </div>
@@ -392,6 +615,10 @@ function TabsSheet({ song, sources, onBack }: { song: TabSong; sources: TabSourc
             duration={duration}
             onSeek={seek}
             onScore={(next) => setDrawn({ tabId: tab.id, info: next })}
+            onTimeline={(next) => setDrawnTimeline({ tabId: tab.id, timeline: next })}
+            rate={playRate}
+            highlight={loopOn || pickingNow ? loopRange : null}
+            onBarPick={pickingNow ? onBarPick : null}
             getPageScroller={() => stickyRef.current?.closest<HTMLElement>('[data-app-scroller]') ?? null}
             getTopInset={() => {
               // The toolbar, plus the desktop top bar it sticks under
@@ -426,6 +653,12 @@ function TabsSheet({ song, sources, onBack }: { song: TabSong; sources: TabSourc
       />
     </div>
   );
+}
+
+/** Open a link out of Ember: a new tab, or the system browser in the
+ *  desktop app, where the webview drops new-tab links (lib/openExternal.ts). */
+function openLink(url: string): void {
+  void openExternal(url).then(announceOpen);
 }
 
 /** The tab page's menus never run off the screen (docs/tabs-v3.md section
@@ -490,38 +723,351 @@ function SourceChip({
 }
 
 /** The nudge: slide the tab against the recording. Kept on this device;
- *  whoever added the tab can save it for everyone. */
+ *  whoever added the tab can save it for everyone. A slider for the rough
+ *  place, steps and a box for the exact one, in seconds or in beats of the
+ *  tab (its tempo and time signature, lib/tabOffset.ts). */
 function SyncRow({
   offsetMs,
+  unit,
+  clock,
+  onUnitChange,
   shared,
   canShare,
   onChange,
   onShare,
 }: {
   offsetMs: number;
+  unit: OffsetUnit;
+  clock: BeatClock | null;
+  onUnitChange: (unit: OffsetUnit) => void;
   shared: number;
   canShare: boolean;
   onChange: (ms: number | null) => void;
   onShare: () => void;
 }) {
+  const shown: OffsetUnit = unit === 'beats' && clock ? 'beats' : 'seconds';
+  const span = sliderSpanSec(offsetMs);
+  const value = offsetInUnit(offsetMs, shown, clock);
+  // The box keeps what is being typed ("-", "1.") until it reads as a
+  // number; it shows the nudge again whenever the nudge changes elsewhere.
+  const [draft, setDraft] = useState<{ text: string; for: string } | null>(null);
+  const key = `${offsetMs}|${shown}`;
+  const text = draft && draft.for === key ? draft.text : String(value);
+  const commit = (raw: string) => {
+    const ms = offsetFromInput(raw, shown, clock);
+    setDraft({ text: raw, for: ms === null ? key : `${clampOffset(ms)}|${shown}` });
+    if (ms !== null && ms !== offsetMs) onChange(ms);
+  };
   return (
-    <div data-testid="tab-sync" className="mt-cluster flex flex-wrap items-center gap-row text-xs text-muted-foreground">
-      <input
-        type="range"
-        min={-MAX_OFFSET_MS / 1000}
-        max={MAX_OFFSET_MS / 1000}
-        step={0.1}
-        value={offsetMs / 1000}
-        onChange={(e) => onChange(Number(e.target.value) * 1000)}
-        className="min-w-40 flex-1 accent-ember"
-        aria-label="Tab timing offset in seconds"
-      />
-      <Button size="sm" variant="ghost" onClick={() => onChange(0)}>
-        Reset
-      </Button>
-      {canShare && offsetMs !== shared && (
-        <Button size="sm" variant="outline" onClick={onShare}>
-          Save for everyone
+    <div data-testid="tab-sync" className="mt-cluster flex flex-col gap-cluster text-xs text-muted-foreground">
+      <div className="flex flex-wrap items-center gap-row">
+        <input
+          type="range"
+          min={-span}
+          max={span}
+          step={0.01}
+          value={offsetMs / 1000}
+          onChange={(e) => onChange(Number(e.target.value) * 1000)}
+          className="min-w-40 flex-1 accent-ember"
+          aria-label="Tab timing offset in seconds"
+        />
+        <div className="flex shrink-0 items-center gap-inset">
+          <input
+            type="number"
+            inputMode="decimal"
+            step={shown === 'beats' ? 0.25 : 0.01}
+            value={text}
+            onChange={(e) => commit(e.target.value)}
+            className="h-7 w-24 rounded-md border border-border bg-background px-cluster text-right text-xs tabular-nums text-foreground"
+            aria-label={shown === 'beats' ? 'Tab timing offset in beats' : 'Tab timing offset, exact seconds'}
+          />
+          <div className="flex items-center rounded-full bg-muted p-inset" role="group" aria-label="Offset unit">
+            {(['seconds', 'beats'] as const).map((u) => (
+              <button
+                key={u}
+                type="button"
+                aria-pressed={shown === u}
+                disabled={u === 'beats' && !clock}
+                title={u === 'beats' && !clock ? 'This tab has no tempo to count beats by' : undefined}
+                onClick={() => onUnitChange(u)}
+                className={cn(
+                  'rounded-full px-row py-inset text-xs font-medium transition-colors disabled:opacity-40',
+                  shown === u ? 'bg-background text-foreground shadow-soft' : 'text-muted-foreground hover:text-foreground',
+                )}
+              >
+                {u === 'seconds' ? 's' : 'beats'}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+      <div className="flex flex-wrap items-center gap-inset">
+        {nudgeSteps(shown, clock).map((s) => (
+          <Button key={s.label} size="sm" variant="ghost" className="tabular-nums" onClick={() => onChange(clampOffset(offsetMs + s.ms))}>
+            {s.label}
+          </Button>
+        ))}
+        <Button size="sm" variant="ghost" onClick={() => onChange(0)}>
+          Reset
+        </Button>
+        {canShare && offsetMs !== shared && (
+          <Button size="sm" variant="outline" onClick={onShare}>
+            Save for everyone
+          </Button>
+        )}
+        {shown === 'beats' && clock && (
+          <span className="tabular-nums" data-testid="tab-sync-beat">
+            1 beat = {Math.round((60_000 / clock.bpm) * (4 / clock.denominator))} ms at {Math.round(clock.bpm)} bpm, {clock.numerator}/{clock.denominator}
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/** Practice: the speed (pitch kept) and a loop over a section or a range
+ *  of bars (lib/tabPractice.ts). */
+function PracticeRow({
+  timeline,
+  barTotal,
+  sections,
+  canSetRate,
+  speed,
+  onSpeed,
+  tabBpm,
+  range,
+  loopOn,
+  onLoopOn,
+  onRange,
+  onClear,
+  picking,
+  onPick,
+}: {
+  /** The score is drawn, so its bars are known. */
+  timeline: boolean;
+  barTotal: number;
+  sections: SectionRange[];
+  canSetRate: boolean;
+  speed: number;
+  onSpeed: (rate: number) => void;
+  /** The tab's tempo at the playhead. */
+  tabBpm: number | null;
+  range: BarRange | null;
+  loopOn: boolean;
+  onLoopOn: (on: boolean) => void;
+  onRange: (range: BarRange) => void;
+  onClear: () => void;
+  /** Choosing bars on the score: the next click is the first or the last. */
+  picking: 'first' | 'last' | null;
+  onPick: () => void;
+}) {
+  const percent = Math.round(speed * 100);
+  const heard = bpmAtRate(tabBpm, speed);
+  const [bpmDraft, setBpmDraft] = useState<string | null>(null);
+  const [percentDraft, setPercentDraft] = useState<string | null>(null);
+  const sectionValue = range ? sections.findIndex((x) => x.start === range.start && x.end === range.end) : -1;
+  const barInput = (label: string, value: number | undefined, set: (bar: number) => void) => (
+    <input
+      type="number"
+      inputMode="numeric"
+      min={1}
+      max={Math.max(1, barTotal)}
+      step={1}
+      value={value === undefined ? '' : value + 1}
+      disabled={!timeline}
+      onChange={(e) => {
+        const n = Math.round(Number(e.target.value));
+        if (Number.isFinite(n) && n >= 1) set(n - 1);
+      }}
+      className="h-7 w-16 rounded-md border border-border bg-background px-cluster text-right text-xs tabular-nums text-foreground disabled:opacity-50"
+      aria-label={label}
+    />
+  );
+  return (
+    <div data-testid="tab-practice" className="mt-cluster flex flex-col gap-cluster text-xs text-muted-foreground">
+      <div className="flex flex-wrap items-center gap-row" role="group" aria-label="Speed">
+        <span className="font-medium text-foreground">Speed</span>
+        {canSetRate ? (
+          <>
+            <div className="flex flex-wrap items-center gap-inset">
+              {SPEED_PRESETS.map((p) => (
+                <button
+                  key={p}
+                  type="button"
+                  aria-pressed={percent === p}
+                  onClick={() => {
+                    setPercentDraft(null);
+                    setBpmDraft(null);
+                    onSpeed(rateFromPercent(p));
+                  }}
+                  className={cn(chip, percent === p ? chipOn : chipOff, 'tabular-nums')}
+                >
+                  {p}%
+                </button>
+              ))}
+            </div>
+            <label className="flex items-center gap-inset">
+              <input
+                type="number"
+                inputMode="numeric"
+                min={50}
+                max={125}
+                step={5}
+                value={percentDraft ?? String(percent)}
+                onChange={(e) => {
+                  setPercentDraft(e.target.value);
+                  setBpmDraft(null);
+                  const n = Number(e.target.value);
+                  if (Number.isFinite(n) && n >= 50 && n <= 125) onSpeed(rateFromPercent(n));
+                }}
+                onBlur={() => setPercentDraft(null)}
+                className="h-7 w-16 rounded-md border border-border bg-background px-cluster text-right text-xs tabular-nums text-foreground"
+                aria-label="Speed in percent"
+              />
+              <span>%</span>
+            </label>
+            {tabBpm ? (
+              <label className="flex items-center gap-inset">
+                <span>=</span>
+                <input
+                  type="number"
+                  inputMode="numeric"
+                  min={1}
+                  step={1}
+                  value={bpmDraft ?? String(heard ?? '')}
+                  onChange={(e) => {
+                    setBpmDraft(e.target.value);
+                    setPercentDraft(null);
+                    const r = rateFromBpm(Number(e.target.value), tabBpm);
+                    if (r !== null) onSpeed(r);
+                  }}
+                  onBlur={() => setBpmDraft(null)}
+                  className="h-7 w-16 rounded-md border border-border bg-background px-cluster text-right text-xs tabular-nums text-foreground"
+                  aria-label="Speed in bpm"
+                />
+                <span>bpm (the tab: {Math.round(tabBpm)})</span>
+              </label>
+            ) : null}
+          </>
+        ) : (
+          <span data-testid="tab-speed-unavailable">
+            Slowing down works in the browser for now; this app plays at full speed.
+          </span>
+        )}
+      </div>
+      <div className="flex flex-wrap items-center gap-row" role="group" aria-label="Loop">
+        <button
+          type="button"
+          aria-pressed={loopOn}
+          aria-label="Loop"
+          disabled={!range}
+          onClick={() => onLoopOn(!loopOn)}
+          title={range ? `Loop ${rangeLabel(range).toLowerCase()}` : 'Choose bars or a section to loop first'}
+          className={cn(chip, loopOn ? chipOn : chipOff, 'disabled:opacity-50')}
+        >
+          <RepeatIcon className="size-3.5" />
+          Loop
+        </button>
+        {sections.length > 0 && (
+          <select
+            aria-label="Loop a section"
+            value={sectionValue >= 0 ? String(sectionValue) : ''}
+            onChange={(e) => {
+              const sct = sections[Number(e.target.value)];
+              if (sct) onRange({ start: sct.start, end: sct.end });
+            }}
+            className="h-7 rounded-md border border-border bg-background px-cluster text-xs text-foreground"
+          >
+            <option value="">Section…</option>
+            {sections.map((sct, i) => (
+              <option key={`${sct.start}:${sct.name}`} value={String(i)}>
+                {sct.name} ({rangeLabel(sct).toLowerCase()})
+              </option>
+            ))}
+          </select>
+        )}
+        <span className="flex items-center gap-inset">
+          <span>Bars</span>
+          {barInput('Loop from bar', range?.start, (b) => onRange({ start: b, end: Math.max(b, range?.end ?? b) }))}
+          <span>to</span>
+          {barInput('Loop to bar', range?.end, (b) => onRange({ start: Math.min(b, range?.start ?? b), end: b }))}
+          {barTotal > 0 && <span>of {barTotal}</span>}
+        </span>
+        <Button size="sm" variant={picking ? 'outline' : 'ghost'} disabled={!timeline} onClick={onPick}>
+          {picking ? 'Cancel picking' : 'Pick on the tab'}
+        </Button>
+        {range && (
+          <Button size="sm" variant="ghost" onClick={onClear}>
+            Clear
+          </Button>
+        )}
+        {picking && (
+          <span role="status" data-testid="tab-loop-picking" className="text-ember">
+            {picking === 'first' ? 'Click the first bar of the loop.' : 'Now click its last bar.'}
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/** The metronome's tempo: the tab's (which changes where the tab does), or
+ *  one the listener sets because the tab's is wrong. */
+function MetronomeRow({
+  tabBpm,
+  steps,
+  override,
+  onOverride,
+}: {
+  /** The tab's tempo at the playhead. */
+  tabBpm: number | null;
+  /** Every tempo the tab plays at, in order. */
+  steps: number[];
+  override: number | null;
+  onOverride: (bpm: number | null) => void;
+}) {
+  const [draft, setDraft] = useState<string | null>(null);
+  const shown = draft ?? (override !== null ? String(override) : '');
+  const tabText = tabBpm ? `${Math.round(tabBpm)} bpm` : 'no tempo';
+  return (
+    <div data-testid="tab-metronome" className="mt-cluster flex flex-wrap items-center gap-row text-xs text-muted-foreground">
+      <span data-testid="tab-metronome-status">
+        {override !== null
+          ? `Clicking at ${override} bpm; the tab says ${tabText} here.`
+          : `Follows the tab: ${tabText} here${steps.length > 1 ? ` (tempo changes ${steps.join(' → ')})` : ''}.`}
+      </span>
+      <label className="flex items-center gap-inset">
+        <span>Set bpm</span>
+        <input
+          type="number"
+          inputMode="decimal"
+          min={MIN_BPM}
+          max={MAX_BPM}
+          step={1}
+          value={shown}
+          placeholder={tabBpm ? String(Math.round(tabBpm)) : ''}
+          onChange={(e) => {
+            const raw = e.target.value;
+            setDraft(raw);
+            const n = Number(raw);
+            if (raw.trim() === '') onOverride(null);
+            else if (Number.isFinite(n) && n >= MIN_BPM && n <= MAX_BPM) onOverride(n);
+          }}
+          onBlur={() => setDraft(null)}
+          className="h-7 w-20 rounded-md border border-border bg-background px-cluster text-right text-xs tabular-nums text-foreground"
+          aria-label="Metronome bpm"
+        />
+      </label>
+      {override !== null && (
+        <Button
+          size="sm"
+          variant="ghost"
+          onClick={() => {
+            setDraft(null);
+            onOverride(null);
+          }}
+        >
+          Use the tab’s tempo
         </Button>
       )}
     </div>
@@ -543,7 +1089,9 @@ function NoTab({
     loading: sources.loading,
     generated: sources.generated,
     generating: sources.generating,
-    generateError: sources.generateError ?? sources.generatedError,
+    generateError: sources.generatedError,
+    startError: sources.generateError,
+    generateUnavailable: sources.generateUnavailable,
     canGenerate: sources.canGenerate,
     matches: sources.matches,
     searchingOnline: sources.searchingOnline,
@@ -578,6 +1126,10 @@ function NoTab({
               target="_blank"
               rel="noopener noreferrer"
               data-link={l.id}
+              onClick={(e) => {
+                e.preventDefault();
+                openLink(l.url);
+              }}
               className={cn(chip, chipOff)}
             >
               {l.label}
@@ -590,16 +1142,27 @@ function NoTab({
           {sources.uploading ? 'Adding…' : 'Add a file'}
         </Button>
         {state.canGenerate && (
-          <Button variant="ghost" onClick={sources.generate}>
+          <Button
+            variant="ghost"
+            onClick={sources.generate}
+            disabled={!!state.unavailable}
+            title={state.unavailable ?? undefined}
+            aria-describedby={state.unavailable ? 'tabs-generate-unavailable' : undefined}
+          >
             Generate a tab (rough)
           </Button>
         )}
       </div>
       <p className="text-meta max-w-md">
-        {state.canGenerate
+        {state.canGenerate && !state.unavailable
           ? 'A file is a Guitar Pro or MusicXML tab, shared with everyone here. Generating listens to the recording and writes a guitar tab: a few minutes, rough in places, so it is the last resort.'
           : 'A file is a Guitar Pro or MusicXML tab, shared with everyone here.'}
       </p>
+      {state.unavailable && (
+        <p id="tabs-generate-unavailable" data-testid="tabs-generate-unavailable" role="note" className="text-meta max-w-md">
+          {state.unavailable}
+        </p>
+      )}
       {state.failed && <p className="text-sm text-destructive">{state.failed}</p>}
       {state.songsterr.length > 0 && (
         <div className="mt-block w-full max-w-md text-left">
@@ -611,6 +1174,10 @@ function NoTab({
                 href={m.url}
                 target="_blank"
                 rel="noreferrer noopener"
+                onClick={(e) => {
+                  e.preventDefault();
+                  openLink(m.url);
+                }}
                 className="flex items-center gap-row rounded-md px-row py-cluster transition-colors hover:bg-card"
               >
                 <div className="min-w-0 flex-1">

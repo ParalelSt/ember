@@ -7,6 +7,7 @@ import { QueryProvider } from '@/components/providers/QueryProvider';
 import { PlayerProvider } from '@/components/player/PlayerProvider';
 import { AppErrorBoundary } from '@/components/AppErrorBoundary';
 import { LoggerInit } from '@/components/LoggerInit';
+import { ExternalLinks } from '@/components/ExternalLinks';
 import { VersionLog } from '@/components/VersionLog';
 import { RegisterSW } from '@/components/RegisterSW';
 import { BugReportDialog } from '@/components/BugReportDialog';
@@ -86,6 +87,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
           <AuthProvider initialUser={initialUser}>
             <ThemeApplier initial={theme} stripped={initialUser !== null && theme === null} />
             <LoggerInit />
+            <ExternalLinks />
             <VersionLog />
             <RegisterSW />
             <PlayerProvider>

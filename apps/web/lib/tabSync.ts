@@ -5,15 +5,21 @@
 
 /** How far a tab may be nudged against the recording, in milliseconds.
  *  Intros, count-ins and silence at the top of a file differ from the
- *  release, and no amount of cleverness can guess by how much. */
-export const MAX_OFFSET_MS = 10_000;
+ *  release, and no amount of cleverness can guess by how much. A tab of
+ *  one song inside a long live set or a medley can start minutes in, so
+ *  the reach is half an hour rather than the old ten seconds. */
+export const MAX_OFFSET_MS = 30 * 60 * 1000;
+
+/** The nudge's resolution: fine enough to line up a fast riff by ear. */
+export const OFFSET_STEP_MS = 10;
 
 /** MIDI ticks per quarter note in AlphaTab's timeline. */
 export const TICKS_PER_QUARTER = 960;
 
 export function clampOffset(ms: number): number {
   if (!Number.isFinite(ms)) return 0;
-  return Math.max(-MAX_OFFSET_MS, Math.min(MAX_OFFSET_MS, Math.round(ms / 100) * 100));
+  const v = Math.round(ms / OFFSET_STEP_MS) * OFFSET_STEP_MS;
+  return Math.max(-MAX_OFFSET_MS, Math.min(MAX_OFFSET_MS, v)) || 0;
 }
 
 /** Song time (seconds) to the tab's clock (milliseconds). A positive offset
@@ -183,11 +189,13 @@ export function tickToMs(tempos: TempoChange[], tick: number): number {
   let from = 0;
   for (const c of tempos) {
     if (c.tick > tick) break;
-    ms += (c.tick - from) * (60_000 / (bpm * TICKS_PER_QUARTER));
+    // Multiplied out before dividing: whole bars come out as whole ms
+    // (the metronome compares beat times against window edges).
+    ms += ((c.tick - from) * 60_000) / (bpm * TICKS_PER_QUARTER);
     bpm = c.bpm;
     from = c.tick;
   }
-  return ms + (tick - from) * (60_000 / (bpm * TICKS_PER_QUARTER));
+  return ms + ((tick - from) * 60_000) / (bpm * TICKS_PER_QUARTER);
 }
 
 /** The pieces of AlphaTab's `MidiTickLookup` a click needs. */
@@ -229,11 +237,12 @@ const MAX_EXTRAPOLATION_MS = 1000;
 
 /** The song time right now. The player's position arrives a few times a
  *  second; the cursor is fed every 50 ms, so between reports it moves on by
- *  the wall clock while playing. Paused, it holds still. */
-export function estimateSongSec(anchor: Anchor, now: number, playing: boolean): number {
+ *  the wall clock while playing, at the playback speed (`rate` 0.5: half a
+ *  second of song per second). Paused, it holds still. */
+export function estimateSongSec(anchor: Anchor, now: number, playing: boolean, rate = 1): number {
   if (!playing) return anchor.sec;
   const elapsed = Math.max(0, Math.min(now - anchor.at, MAX_EXTRAPOLATION_MS));
-  return anchor.sec + elapsed / 1000;
+  return anchor.sec + (elapsed / 1000) * (rate > 0 ? rate : 1);
 }
 
 /** The cursor is fed at most this often (docs/tabs-rebuild.md section 4). */
