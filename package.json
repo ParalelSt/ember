@@ -32,6 +32,7 @@
     "test:sessions": "node tests/session-authorization.test.mjs",
     "test:tabs": "node tests/tabs.test.mjs",
     "test:tabs-ui": "node tests/tabs-ui.test.mjs",
+    "test:tabs-practice-ui": "node tests/tabs-practice-ui.test.mjs",
     "test:tabs-sync": "node tests/tabs-sync.test.mjs",
     "test:tabs-generate": "node tests/tabs-generate.test.mjs",
     "test:tabs-text": "node tests/tabs-text.test.mjs",
