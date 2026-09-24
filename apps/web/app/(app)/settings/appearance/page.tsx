@@ -51,16 +51,16 @@ export default function SettingsAppearance() {
           className="h-96 min-w-0 xl:sticky xl:top-0 xl:h-128 xl:flex-1"
         />
         <div className="flex min-w-0 flex-col gap-block xl:w-96 xl:shrink-0">
-          {editor.dirty && (
-            <ApplyBar
-              name={selection.name}
-              edited={editor.edited}
-              canApply={editor.canApply}
-              applying={editor.applying}
-              onApply={() => void editor.apply()}
-              onDiscard={editor.discard}
-            />
-          )}
+          <ApplyBar
+            dirty={editor.dirty}
+            name={selection.name}
+            inUseName={active.name}
+            edited={editor.edited}
+            canApply={editor.canApply}
+            applying={editor.applying}
+            onApply={() => void editor.apply()}
+            onDiscard={editor.discard}
+          />
           <InspectorTabStrip active={tab} onChange={setTab} />
           <p
             role="status"

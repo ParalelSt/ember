@@ -169,9 +169,12 @@ tabs, Themes, Colours and Share.
 preset, one of my themes or a shared theme, and changing colours, all change
 only the preview pane. The rest of the app, the page around the preview
 included, keeps the theme in use, and nothing is saved. While what the
-preview shows differs from the theme in use, a bar at the top of the
-inspector (`ApplyBar`, sticky so it stays in reach while the colours scroll)
-says what is showing and offers **Apply** and **Back to current**:
+preview shows differs from the theme in use, the bar at the top of the
+inspector (`ApplyBar`) says what is showing and offers **Apply** and **Back
+to current**; it sticks to the top of the page so it stays in reach while
+the colours scroll. With nothing to apply the same bar says which theme is
+in use, at the same height, so the list under it does not jump when a pick
+brings the buttons in.
 
 - **Apply** makes it the theme of the whole app and saves it through the
   same routes as before. What it saves depends on what is showing:

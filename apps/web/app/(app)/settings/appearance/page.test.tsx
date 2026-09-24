@@ -158,6 +158,7 @@ describe('Settings > Appearance', () => {
     start();
     await screen.findByTestId('theme-count');
     expect(screen.queryByTestId('apply-bar')).toBeNull();
+    expect(screen.getByTestId('in-use-bar')).toHaveTextContent('In use: Ember.');
 
     fireEvent.click(screen.getByRole('radio', { name: /Midnight/ }));
     // The preview carries the chosen colours on its own wrapper...
@@ -175,6 +176,7 @@ describe('Settings > Appearance', () => {
     expect(api.setTheme).toHaveBeenCalledWith({ preset: 'midnight' });
     await waitFor(() => expect(status()).toHaveTextContent('Applied'));
     expect(screen.queryByTestId('apply-bar')).toBeNull();
+    expect(screen.getByTestId('in-use-bar')).toHaveTextContent('In use: Midnight.');
     expect(within(screen.getByRole('radio', { name: /Midnight/ })).getByTestId('in-use')).toBeInTheDocument();
     expect(screen.getByRole('radio', { name: /Ember/ })).toHaveAttribute('aria-checked', 'false');
   });
