@@ -1,6 +1,6 @@
 'use client';
 
-import { use, useEffect, useRef, useState, type ChangeEvent } from 'react';
+import { use, useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -12,6 +12,7 @@ import { TrashIcon } from '@/components/icons';
 import { CollectionPage } from '@/components/library/CollectionPage';
 import { ReplaceTrackDialog } from '@/components/track/menus/ReplaceTrackDialog';
 import { TrackMenu } from '@/components/track/menus/TrackMenu';
+import { CopySongsBar } from '@/components/track/menus/CopySongsBar';
 import { ImportBanner } from '@/components/import/ImportBanner';
 import { ImportTrackList } from '@/components/import/ImportTrackList';
 import { ReviewSheet } from '@/components/import/ReviewSheet';
@@ -24,6 +25,10 @@ import type { ImportItem } from '@/lib/import/types';
 import { useTrackActions } from '@/hooks/useTrackActions';
 import { countLabel, pinIdFor } from '@/lib/collections';
 import { useCollectionPlayback } from '@/hooks/useCollectionPlayback';
+import { useCollectionSort } from '@/hooks/useCollectionSort';
+import { useTrackSelection } from '@/hooks/useTrackSelection';
+import { DEFAULT_PLAYLIST_SORT, sortCollection } from '@/lib/playlistCopy';
+import { formatAddedDate } from '@/lib/format';
 import { useOfflinePin } from '@/hooks/useOfflinePin';
 import { localArtFor } from '@/lib/offlineNative';
 import { useOfflineStore } from '@/stores/useOfflineStore';
@@ -37,9 +42,12 @@ import {
   useQueryPlaylist,
   QK,
 } from '@/hooks/useLibrary';
-import type { Track } from '@/types/track';
+import type { CollectionTrack, Track } from '@/types/track';
 import { EmptyState } from '@/components/page/EmptyState';
 import { SectionHeader } from '@/components/page/SectionHeader';
+
+const NO_TRACKS: CollectionTrack[] = [];
+const addedLabel = (t: Track) => formatAddedDate((t as CollectionTrack).addedAt);
 
 export default function PlaylistPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
@@ -58,10 +66,15 @@ export default function PlaylistPage({ params }: { params: Promise<{ id: string 
 
   // Hooks must run before the early returns below. `data` may be undefined
   // here on first render.
-  const tracks = data?.tracks ?? [];
+  const rawTracks = data?.tracks ?? NO_TRACKS;
   const name = data?.playlist.name ?? '';
   const ref = { kind: 'playlist', id } as const;
   const context = { type: 'playlist' as const, playlistId: id, playlistName: name };
+  // Sort is a view, remembered on this device per playlist: Play and
+  // Shuffle follow the order on screen.
+  const [sort, setSort] = useCollectionSort(`playlist:${id}`, DEFAULT_PLAYLIST_SORT);
+  const tracks = useMemo(() => sortCollection(rawTracks, sort, DEFAULT_PLAYLIST_SORT), [rawTracks, sort]);
+  const selection = useTrackSelection(tracks);
   const playback = useCollectionPlayback(tracks, context);
   const download = useOfflinePin(ref, name, tracks);
   const trackActions = useTrackActions();
@@ -240,6 +253,18 @@ export default function PlaylistPage({ params }: { params: Promise<{ id: string 
       }}
       onReplaceTrack={setPendingReplace}
       emptyMessage="No tracks yet."
+      sort={{ value: sort, onChange: setSort }}
+      selection={selection}
+      addedLabel={addedLabel}
+      selectionBar={
+        <CopySongsBar
+          source={{ kind: 'playlist', id }}
+          selecting={selection.selecting}
+          picked={selection.picked}
+          onClear={selection.clear}
+          onDone={selection.exit}
+        />
+      }
     >
       <input
         ref={fileInputRef}

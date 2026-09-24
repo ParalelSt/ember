@@ -1,11 +1,12 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { CollectionPage } from '@/components/library/CollectionPage';
 import { ReplaceTrackDialog } from '@/components/track/menus/ReplaceTrackDialog';
 import { renderTrackMenu, TrackMenu } from '@/components/track/menus/TrackMenu';
+import { CopySongsBar } from '@/components/track/menus/CopySongsBar';
 import { TransferBlock } from '@/components/import/TransferBlock';
 import { ReviewSheet } from '@/components/import/ReviewSheet';
 import { useImportActions, useLikedImportJob } from '@/hooks/useImports';
@@ -17,19 +18,30 @@ import { useAuth } from '@/components/providers/AuthProvider';
 import { contextFor, countLabel, iconFor, titleFor } from '@/lib/collections';
 import { useOnline } from '@/lib/useOnline';
 import { useCollectionPlayback } from '@/hooks/useCollectionPlayback';
+import { useCollectionSort } from '@/hooks/useCollectionSort';
+import { useTrackSelection } from '@/hooks/useTrackSelection';
+import { DEFAULT_LIKED_SORT, sortCollection } from '@/lib/playlistCopy';
+import { formatAddedDate } from '@/lib/format';
 import { useOfflinePin } from '@/hooks/useOfflinePin';
 import { useExecuteReplaceLike, useQueryLikes, QK } from '@/hooks/useLibrary';
 import { EmptyState } from '@/components/page/EmptyState';
 import type { ImportItem } from '@/lib/import/types';
-import type { Track } from '@/types/track';
+import type { CollectionTrack, Track } from '@/types/track';
 
 const REF = { kind: 'liked' } as const;
+const NO_TRACKS: CollectionTrack[] = [];
+const addedLabel = (t: Track) => formatAddedDate((t as Partial<CollectionTrack>).addedAt);
 
 export default function LikedPage() {
   const { user } = useAuth();
   const isOnline = useOnline();
-  const { data: tracks = [], isLoading, isError } = useQueryLikes();
+  const { data: rawTracks = NO_TRACKS, isLoading, isError } = useQueryLikes();
   const context = contextFor(REF);
+  // Sort is a view, remembered on this device: Play and Shuffle follow the
+  // order on screen.
+  const [sort, setSort] = useCollectionSort('liked', DEFAULT_LIKED_SORT);
+  const tracks = useMemo(() => sortCollection(rawTracks, sort, DEFAULT_LIKED_SORT), [rawTracks, sort]);
+  const selection = useTrackSelection(tracks);
   const playback = useCollectionPlayback(tracks, context);
   const download = useOfflinePin(REF, titleFor(REF), tracks);
   const trackActions = useTrackActions();
@@ -99,6 +111,18 @@ export default function LikedPage() {
       download={download}
       hideActions={offlineEmpty}
       onReplaceTrack={setPendingReplace}
+      sort={{ value: sort, onChange: setSort }}
+      selection={selection}
+      addedLabel={addedLabel}
+      selectionBar={
+        <CopySongsBar
+          source={REF}
+          selecting={selection.selecting}
+          picked={selection.picked}
+          onClear={selection.clear}
+          onDone={selection.exit}
+        />
+      }
       banner={
         showTransfer ? (
           <TransferBlock

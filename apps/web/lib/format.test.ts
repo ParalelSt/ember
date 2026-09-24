@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { formatAgo, formatBytes, formatCount, formatTime, formatTotalDuration } from './format';
+import { formatAddedDate, formatAgo, formatBytes, formatCount, formatTime, formatTotalDuration } from './format';
 
 describe('formatTime', () => {
   it('formats whole seconds as m:ss', () => {
@@ -121,5 +121,19 @@ describe('formatAgo', () => {
       const iso = new Date(now - 20_000).toISOString();
       expect(formatAgo(iso)).toBe('now');
     });
+  });
+});
+
+describe('formatAddedDate', () => {
+  const now = Date.parse('2026-09-24T12:00:00Z');
+  it('day and month this year, with the year before it', () => {
+    expect(formatAddedDate('2026-06-12 10:00:00.000Z', now)).toBe('12 Jun');
+    expect(formatAddedDate('2026-06-12T10:00:00.000Z', now)).toBe('12 Jun');
+    expect(formatAddedDate('2025-12-31 23:59:59.000Z', now)).toBe('31 Dec 2025');
+  });
+  it('empty for nothing or nonsense', () => {
+    expect(formatAddedDate('', now)).toBe('');
+    expect(formatAddedDate(undefined, now)).toBe('');
+    expect(formatAddedDate('not a date', now)).toBe('');
   });
 });

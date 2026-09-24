@@ -48,3 +48,19 @@ export function formatAgo(iso: string, now: number = Date.now()): string {
   if (mins === 1) return '1 min ago';
   return `${mins} min ago`;
 }
+
+/** "12 Jun" for a date this year, "12 Jun 2025" before it: when a song was
+ *  added to a playlist or liked. Takes PocketBase's `2026-06-12 10:00:00.000Z`
+ *  as well as ISO. Empty for a missing or unreadable date. */
+export function formatAddedDate(value: string | null | undefined, now: number = Date.now()): string {
+  if (!value) return '';
+  const d = new Date(value.replace(' ', 'T'));
+  if (Number.isNaN(d.getTime())) return '';
+  const sameYear = d.getUTCFullYear() === new Date(now).getUTCFullYear();
+  return d.toLocaleDateString('en-GB', {
+    day: 'numeric',
+    month: 'short',
+    ...(sameYear ? {} : { year: 'numeric' }),
+    timeZone: 'UTC',
+  });
+}

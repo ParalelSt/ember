@@ -1,6 +1,6 @@
 'use client';
 
-import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
+import { useMutation, useQueries, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { usePlayerStore } from '@/stores/usePlayerStore';
@@ -67,6 +67,25 @@ export function useQueryPlaylist(id: string) {
     queryKey: QK.playlist(id),
     queryFn: () => api.getPlaylist(id),
   });
+}
+
+/** The songs of several playlists at once (the Copy to… picker's "N already
+ *  there"), sharing the cache with each playlist's own page. `enabled`
+ *  holds the fetches until the picker opens. Missing ids are still
+ *  loading. */
+export function useQueryPlaylistTracks(ids: string[], enabled: boolean): Map<string, Track[]> {
+  const results = useQueries({
+    queries: ids.map((id) => ({
+      queryKey: QK.playlist(id),
+      queryFn: () => api.getPlaylist(id),
+      enabled,
+    })),
+  });
+  const out = new Map<string, Track[]>();
+  results.forEach((r, i) => {
+    if (r.data) out.set(ids[i], r.data.tracks);
+  });
+  return out;
 }
 
 export function useQueryTrending() {
