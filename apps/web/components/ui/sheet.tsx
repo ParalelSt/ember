@@ -36,6 +36,16 @@ function SheetOverlay({ className, ...props }: SheetPrimitive.Backdrop.Props) {
   )
 }
 
+/** Every sheet stands off the edges it touches by the safe-area inset
+ *  (--safe-top / --safe-bottom, globals.css): on Android the status bar and
+ *  the system navigation buttons are drawn over the page, so without this a
+ *  bottom sheet's last row and a side drawer's header and footer sit under
+ *  them. Padding, not a margin, so the sheet's own background fills the
+ *  strip under the bar. Attribute-scoped, so a call site's `p-0` does not
+ *  cancel it. 0 wherever there is no inset (every desktop browser). */
+export const SHEET_SAFE_AREA =
+  "data-[side=bottom]:pb-(--safe-bottom) data-[side=top]:pt-(--safe-top) data-[side=left]:pt-(--safe-top) data-[side=left]:pb-(--safe-bottom) data-[side=right]:pt-(--safe-top) data-[side=right]:pb-(--safe-bottom)"
+
 function SheetContent({
   className,
   children,
@@ -54,6 +64,7 @@ function SheetContent({
         data-side={side}
         className={cn(
           "fixed z-50 flex flex-col gap-4 bg-popover bg-clip-padding text-sm text-popover-foreground shadow-lg transition duration-200 ease-in-out data-ending-style:opacity-0 data-starting-style:opacity-0 data-[side=bottom]:inset-x-0 data-[side=bottom]:bottom-0 data-[side=bottom]:h-auto data-[side=bottom]:border-t data-[side=bottom]:data-ending-style:translate-y-[2.5rem] data-[side=bottom]:data-starting-style:translate-y-[2.5rem] data-[side=left]:inset-y-0 data-[side=left]:left-0 data-[side=left]:h-full data-[side=left]:w-3/4 data-[side=left]:border-r data-[side=left]:data-ending-style:translate-x-[-2.5rem] data-[side=left]:data-starting-style:translate-x-[-2.5rem] data-[side=right]:inset-y-0 data-[side=right]:right-0 data-[side=right]:h-full data-[side=right]:w-3/4 data-[side=right]:border-l data-[side=right]:data-ending-style:translate-x-[2.5rem] data-[side=right]:data-starting-style:translate-x-[2.5rem] data-[side=top]:inset-x-0 data-[side=top]:top-0 data-[side=top]:h-auto data-[side=top]:border-b data-[side=top]:data-ending-style:translate-y-[-2.5rem] data-[side=top]:data-starting-style:translate-y-[-2.5rem] data-[side=left]:sm:max-w-sm data-[side=right]:sm:max-w-sm",
+          SHEET_SAFE_AREA,
           className
         )}
         {...props}
@@ -66,6 +77,8 @@ function SheetContent({
               <Button
                 variant="ghost"
                 className="absolute top-3 right-3"
+                // Below the status bar on a sheet that reaches the top.
+                style={side === "bottom" ? undefined : { top: "calc(var(--safe-top) + 0.75rem)" }}
                 size="icon-sm"
               />
             }

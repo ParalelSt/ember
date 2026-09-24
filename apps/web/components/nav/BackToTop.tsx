@@ -49,7 +49,9 @@ export function BackToTop({ scrollRef }: Props) {
         'fixed right-6 z-40 size-10 rounded-full bg-ember hover:bg-ember-soft text-ember-foreground shadow-glow',
         'flex items-center justify-center',
         'transition-all duration-200',
-        'bottom-41.5 md:bottom-28',
+        // Above the player bar and the nav, which grow by the safe-area inset
+        // on a phone whose system buttons are drawn over the page.
+        'bottom-[calc(10.375rem+var(--safe-bottom))] md:bottom-[calc(7rem+var(--safe-bottom))]',
         visible
           ? 'opacity-100 translate-y-0 pointer-events-auto'
           : 'opacity-0 translate-y-2 pointer-events-none',

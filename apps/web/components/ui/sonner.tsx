@@ -36,6 +36,11 @@ const Toaster = ({ ...props }: ToasterProps) => {
           "--border-radius": "var(--radius)",
         } as React.CSSProperties
       }
+      // Off the bottom edge by the safe-area inset as well as sonner's own
+      // gap (16px on a phone, 24px wider), so a toast never lands under
+      // Android's system navigation buttons.
+      offset={{ bottom: "calc(var(--safe-bottom) + 24px)" }}
+      mobileOffset={{ bottom: "calc(var(--safe-bottom) + 16px)" }}
       toastOptions={{
         classNames: {
           toast: "cn-toast",

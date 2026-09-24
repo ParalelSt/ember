@@ -246,7 +246,7 @@ function BottomSheet({
 }) {
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent side="bottom" showCloseButton={!!title} data-testid={testId} className="max-h-[85svh] gap-block rounded-t-2xl safe-area-bottom">
+      <SheetContent side="bottom" showCloseButton={!!title} data-testid={testId} className="max-h-[85svh] gap-block rounded-t-2xl">
         <div className="flex min-h-0 flex-col gap-block px-block pt-block pb-stack">
           {title ? (
             <SheetTitle className="pr-section text-base font-semibold">{title}</SheetTitle>

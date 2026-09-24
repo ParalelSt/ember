@@ -208,7 +208,7 @@ export function ReviewSheet({
           className={cn(
             'fixed z-50 flex flex-col bg-popover text-sm text-popover-foreground shadow-soft ring-1 ring-foreground/10 outline-none transition duration-200 ease-out',
             'data-ending-style:opacity-0 data-starting-style:opacity-0',
-            'max-md:inset-x-0 max-md:bottom-0 max-md:max-h-[88dvh] max-md:rounded-t-2xl max-md:data-starting-style:translate-y-8 max-md:data-ending-style:translate-y-8',
+            'max-md:inset-x-0 max-md:bottom-0 max-md:pb-(--safe-bottom) max-md:max-h-[88dvh] max-md:rounded-t-2xl max-md:data-starting-style:translate-y-8 max-md:data-ending-style:translate-y-8',
             'md:inset-y-0 md:right-0 md:w-[26rem] md:data-starting-style:translate-x-8 md:data-ending-style:translate-x-8',
           )}
         >

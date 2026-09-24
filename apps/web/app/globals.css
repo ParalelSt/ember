@@ -232,10 +232,10 @@
    bottom of the page scroller while songs are being picked. Back to top
    floats at the same height on the right, so it steps up over the bar
    instead of covering Copy to…: 16rem clears the phone bar, 12rem the
-   desktop one. */
-body:has([data-copy-bar]) [data-back-to-top] { bottom: 16rem; }
+   desktop one, each plus the safe-area inset the bars below it grow by. */
+body:has([data-copy-bar]) [data-back-to-top] { bottom: calc(16rem + var(--safe-bottom)); }
 @media (min-width: 48rem) {
-  body:has([data-copy-bar]) [data-back-to-top] { bottom: 12rem; }
+  body:has([data-copy-bar]) [data-back-to-top] { bottom: calc(12rem + var(--safe-bottom)); }
 }
 
 /* Marquee for overflowing titles (full-screen NowPlaying). Continuous

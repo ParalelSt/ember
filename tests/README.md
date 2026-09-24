@@ -331,6 +331,16 @@ node tests/marquee-ui.test.mjs                      # or: npm run test:marquee-u
 PB_URL=http://127.0.0.1:8091 APP_URL=http://127.0.0.1:3005 \
 node tests/mobile-player-ui.test.mjs                # or: npm run test:mobile-player
 
+# Android's system navigation buttons (three-button or the gesture pill)
+# never cover a control: at 390x844 with the shell's own inset script (48px
+# navigation bar, 24px status bar), the bottom nav, the phone player bar,
+# Back to top, the playlist Copy to… bar and its sheet, the hamburger drawer
+# and the queue sheet all stand clear of both bars; the inset survives a
+# client-side navigation and a rewrite of <html>'s style; with no inset
+# nothing moves. Creates and deletes its own member. SHOT_DIR keeps
+# screenshots. PB_URL / APP_URL, default 8086 / 3053.
+node tests/android-insets-ui.test.mjs               # or: npm run test:android-insets-ui
+
 # The phone bar's shipped sizes on /dizajn (Balanced, a 36px play disc in a
 # 48px hit box): measured in the gallery's frames and must equal the numbers
 # the section quotes; the old size pickers are gone. Signs in as

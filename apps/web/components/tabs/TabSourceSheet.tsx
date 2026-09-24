@@ -279,7 +279,7 @@ export function TabSourceSheet(p: TabSourceSheetProps) {
       <div
         role="dialog"
         aria-label="Choose a tab"
-        className="flex min-h-0 min-w-0 flex-1 flex-col rounded-t-2xl border-t border-border bg-sidebar text-sidebar-foreground shadow-soft"
+        className="safe-area-bottom flex min-h-0 min-w-0 flex-1 flex-col rounded-t-2xl border-t border-border bg-sidebar text-sidebar-foreground shadow-soft"
       >
         <div aria-hidden className="mx-auto mt-cluster h-1 w-10 shrink-0 rounded-full bg-muted" />
         {body}

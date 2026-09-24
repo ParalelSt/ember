@@ -481,4 +481,54 @@ describe('safe-area insets', () => {
     uses('components/player/NowPlaying.tsx', 'var(--safe-top)');
     uses('components/player/NowPlaying.tsx', 'var(--safe-bottom)');
   });
+
+  // Everything else that touches the bottom (or the top) of the screen on a
+  // phone. The first fix lifted only the nav and the bar, so on the
+  // friend's Android 15 phone the hamburger drawer's account row, the queue
+  // and Copy to… sheets, the import review sheet, toasts and the offline
+  // page still sat under the system buttons.
+  it('is what every sheet spends, on each edge it touches', () => {
+    const sheet = readFileSync(join(ROOT, 'components/ui/sheet.tsx'), 'utf8');
+    for (const token of [
+      'data-[side=bottom]:pb-(--safe-bottom)',
+      'data-[side=top]:pt-(--safe-top)',
+      'data-[side=left]:pt-(--safe-top)',
+      'data-[side=left]:pb-(--safe-bottom)',
+      'data-[side=right]:pt-(--safe-top)',
+      'data-[side=right]:pb-(--safe-bottom)',
+    ]) expect(sheet, token).toContain(token);
+    // Spent by SheetContent itself, after its base classes and before the
+    // call site's, and scoped by the side attribute, so a call site's `p-0`
+    // (Drawer, QueueSheet) cannot cancel it.
+    expect(sheet).toMatch(/sm:max-w-sm",\s*SHEET_SAFE_AREA,\s*className/);
+    // The close button drops below the status bar on a sheet that reaches it.
+    expect(sheet).toContain('calc(var(--safe-top) + 0.75rem)');
+  });
+
+  it('is what the other bottom surfaces spend', () => {
+    const uses = (file: string, token: string) =>
+      expect(readFileSync(join(ROOT, file), 'utf8'), file).toContain(token);
+    uses('components/import/ReviewSheet.tsx', 'max-md:pb-(--safe-bottom)');
+    uses('components/tabs/TabSourceSheet.tsx', 'safe-area-bottom');
+    uses('components/nav/BackToTop.tsx', 'bottom-[calc(10.375rem+var(--safe-bottom))]');
+    uses('components/nav/BackToTop.tsx', 'md:bottom-[calc(7rem+var(--safe-bottom))]');
+    uses('components/ui/sonner.tsx', 'mobileOffset={{ bottom: "calc(var(--safe-bottom) + 16px)" }}');
+    uses('components/ui/sonner.tsx', 'offset={{ bottom: "calc(var(--safe-bottom) + 24px)" }}');
+    expect(occurrences('body:has([data-copy-bar]) [data-back-to-top] { bottom: calc(16rem + var(--safe-bottom)); }')).toBe(1);
+    expect(occurrences('body:has([data-copy-bar]) [data-back-to-top] { bottom: calc(12rem + var(--safe-bottom)); }')).toBe(1);
+  });
+
+  // The bundled offline page (apps/mobile/public/offline.html) is its own
+  // document on its own origin: it cannot use globals.css, so it carries the
+  // same rule and spends it on its header and its fixed player bar.
+  it('is what the Android offline page spends too', () => {
+    const offline = readFileSync(join(ROOT, '../mobile/public/offline.html'), 'utf8');
+    expect(offline).toContain('--safe-top: max(env(safe-area-inset-top, 0px), var(--ember-inset-top, 0px));');
+    expect(offline).toContain('--safe-bottom: max(env(safe-area-inset-bottom, 0px), var(--ember-inset-bottom, 0px));');
+    expect(offline).toContain('padding: calc(var(--safe-top) + 20px) 20px 8px;');
+    expect(offline).toContain('padding: 12px 16px calc(var(--safe-bottom) + 12px);');
+    expect(offline).toContain('body { padding: 0 0 calc(96px + var(--safe-bottom)); }');
+    // No env()-only inset left behind for the page to fall back on.
+    expect(offline.split('env(safe-area-inset-').length - 1).toBe(2);
+  });
 });

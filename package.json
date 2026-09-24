@@ -63,6 +63,7 @@
     "test:voice-ui": "node tests/voice-search-ui.test.mjs",
     "test:marquee-ui": "node tests/marquee-ui.test.mjs",
     "test:mobile-player": "node tests/mobile-player-ui.test.mjs",
+    "test:android-insets-ui": "node tests/android-insets-ui.test.mjs",
     "test:phone-bar-sizes": "node tests/phone-bar-sizes-ui.test.mjs",
     "test:attachments-ui": "node tests/attachments-ui.test.mjs",
     "test:android-native-log": "node tests/android-native-log.mjs",
