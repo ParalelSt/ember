@@ -172,7 +172,7 @@ impl Drop for Rig {
 /// The webview's `invoke('audio_load', ...)`, run to completion. Takes the
 /// handle rather than the rig so a test can run it as a task of its own.
 async fn load_on(app: AppHandle<MockRuntime>, url: String, autoplay: bool) {
-    audio_load(app.clone(), app.state::<AudioEngine>(), url, autoplay, 0.0, None)
+    audio_load(app.clone(), app.state::<AudioEngine>(), url, autoplay, 0.0, None, None)
         .await
         .expect("the load command itself runs");
 }

@@ -7,6 +7,7 @@
 
 mod applog;
 mod audio;
+mod cache;
 mod discord;
 mod speech;
 mod theme;
@@ -49,6 +50,37 @@ pub fn run() {
         // /api and /pb request (which is what you need when login fails).
         .append_invoke_initialization_script(APP_LOG_SCRIPT)
         .setup(move |app| {
+            // The auto cache of upcoming songs (cache.rs). Opened here because
+            // the OS cache dir comes from the app's path resolver. A failure
+            // still manages a cache, one that says why it cannot store
+            // anything, so the web side shows "unavailable" rather than the
+            // commands failing on missing state.
+            let cache = match app.path().app_cache_dir() {
+                Ok(dir) => cache::AudioCache::open(dir.join(cache::DIR_NAME)),
+                Err(e) => Err(format!("no cache directory: {e}")),
+            };
+            let cache = match cache {
+                Ok(c) => {
+                    let s = c.stats();
+                    applog::write_line(
+                        log_path.as_ref(),
+                        "INFO",
+                        &format!(
+                            "audio cache at {} ({} songs, {} MB)",
+                            c.location().map(|p| p.display().to_string()).unwrap_or_default(),
+                            s.count,
+                            s.bytes / (1024 * 1024)
+                        ),
+                    );
+                    c
+                }
+                Err(e) => {
+                    applog::write_line(log_path.as_ref(), "WARN", &format!("audio cache unavailable: {e}"));
+                    cache::AudioCache::unavailable(e)
+                }
+            };
+            app.manage(cache);
+
             // Initialize OS media controls (macOS Now Playing / Linux MPRIS /
             // Windows SMTC). Non-fatal: playback still works without them, so a
             // failure is logged and swallowed rather than aborting startup.
@@ -147,6 +179,15 @@ pub fn run() {
             audio::audio_seek,
             audio::audio_set_volume,
             audio::audio_set_metadata,
+            cache::cache_prefetch,
+            cache::cache_cancel,
+            cache::cache_has,
+            cache::cache_keys,
+            cache::cache_path,
+            cache::cache_touch,
+            cache::cache_evict,
+            cache::cache_stats,
+            cache::cache_clear,
             discord::discord_update,
             applog::log_event,
             applog::log_path,

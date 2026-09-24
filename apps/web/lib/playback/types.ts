@@ -43,6 +43,9 @@ export interface LoadOptions {
   autoplay: boolean;
   /** Resume position in seconds (0 = from start). */
   startAt?: number;
+  /** The Ember track id. The desktop engine plays its auto-cached copy when
+   *  it has one (and streams the URL otherwise); other backends ignore it. */
+  cacheKey?: string;
 }
 
 /** A prank sound played by the native engine beside the music. */

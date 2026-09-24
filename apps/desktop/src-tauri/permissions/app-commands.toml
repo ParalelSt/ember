@@ -8,7 +8,7 @@
 # Referenced from capabilities/default.json.
 [[permission]]
 identifier = "allow-ember-commands"
-description = "Ember's own IPC commands: native audio, Discord presence, log forwarding, voice search, and the window following the theme."
+description = "Ember's own IPC commands: native audio, the auto cache of upcoming songs, Discord presence, log forwarding, voice search, and the window following the theme."
 
 [permission.commands]
 allow = [
@@ -19,6 +19,18 @@ allow = [
   "audio_seek",
   "audio_set_volume",
   "audio_set_metadata",
+  # The auto cache of upcoming songs (src/cache.rs). Without these the remote
+  # page gets "not allowed by ACL", which the web app reads as an older build
+  # and shows "automatic caching unavailable, update the app".
+  "cache_prefetch",
+  "cache_cancel",
+  "cache_has",
+  "cache_keys",
+  "cache_path",
+  "cache_touch",
+  "cache_evict",
+  "cache_stats",
+  "cache_clear",
   "discord_update",
   "log_event",
   "log_path",
