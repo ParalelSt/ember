@@ -13,7 +13,13 @@ const SHOW_AFTER_PX = 400;
 
 /** Floating "Back to top" pill that appears after the user has scrolled
  *  the main area past SHOW_AFTER_PX. Useful after expanding a song box
- *  that grew the page well below the fold. */
+ *  that grew the page well below the fold.
+ *
+ *  Placed against the bottom of the scroller's column (app/(app)/layout.tsx
+ *  gives it a `relative` parent), not the window, so it sits the same step
+ *  above the scroller's edge with or without the player bar. The page ends
+ *  with `pb-section` of room, more than this lift plus the button, so at
+ *  the end of any page the last controls clear it. */
 export function BackToTop({ scrollRef }: Props) {
   const [visible, setVisible] = useState(false);
 
@@ -44,10 +50,10 @@ export function BackToTop({ scrollRef }: Props) {
       aria-label="Back to top"
       title="Back to top"
       className={cn(
-        'fixed right-6 z-40 size-10 rounded-full bg-ember hover:bg-ember-soft text-ember-foreground shadow-glow',
+        'absolute right-6 z-40 size-10 rounded-full bg-ember hover:bg-ember-soft text-ember-foreground shadow-glow',
         'flex items-center justify-center',
         'transition-all duration-200',
-        'bottom-41.5 md:bottom-28',
+        'bottom-cluster md:bottom-block',
         visible
           ? 'opacity-100 translate-y-0 pointer-events-auto'
           : 'opacity-0 translate-y-2 pointer-events-none',
