@@ -440,3 +440,33 @@ describe('TrackRow (trailingPlayControl)', () => {
     expect(button).toHaveAttribute('aria-label', '"Midnight Drive" is unavailable');
   });
 });
+
+describe('TrackRow select mode', () => {
+  it('a tick box takes the play column, and the row, title, cover and artist all just toggle', () => {
+    const onSelect = vi.fn();
+    const onPlay = vi.fn();
+    render(<TrackRow track={track} onPlay={onPlay} onSelect={onSelect} selected={false} addedLabel="12 Jun" trailing={<button type="button">More</button>} />);
+    const box = screen.getByRole('checkbox', { name: 'Select Midnight Drive' });
+    expect(box).toHaveAttribute('aria-checked', 'false');
+    expect(screen.queryByRole('button', { name: 'Play' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'More' })).toBeNull();
+    expect(screen.queryByRole('link')).toBeNull();
+    expect(screen.getByTestId('track-row-added')).toHaveTextContent('12 Jun');
+
+    fireEvent.click(box);
+    fireEvent.click(screen.getByTestId('track-row'));
+    fireEvent.click(screen.getByText('Midnight Drive'));
+    fireEvent.doubleClick(screen.getByTestId('track-row'));
+    // The box's own click does not also reach the row: one toggle each, and
+    // a double click (dblclick alone here) plays nothing.
+    expect(onSelect).toHaveBeenCalledTimes(3);
+    expect(onPlay).not.toHaveBeenCalled();
+  });
+
+  it('marks a picked row', () => {
+    render(<TrackRow track={track} onSelect={() => {}} selected />);
+    expect(screen.getByRole('checkbox')).toHaveAttribute('aria-checked', 'true');
+    expect(screen.getByTestId('track-row')).toHaveAttribute('data-selected', 'true');
+    expect(screen.getByTestId('track-row').className).toContain('bg-ember/10');
+  });
+});

@@ -54,4 +54,10 @@ export {
   ImageUp as ImageUploadIcon,
   Pencil as EditIcon,
   Copy as CopyIcon,
+  CopyPlus as CopyToIcon,
+  ArrowUpDown as SortIcon,
+  ArrowUp as ArrowUpIcon,
+  ArrowDown as ArrowDownIcon,
+  Minus as MinusIcon,
+  SquareCheck as SelectIcon,
 } from 'lucide-react';

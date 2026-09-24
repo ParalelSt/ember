@@ -50,6 +50,11 @@ interface Props extends TrackActions {
    *  Only the search overlay passes it; default off leaves every other list
    *  exactly as it was. */
   trailingPlayControl?: boolean;
+  /** Select mode: every row turns into a tick box (TrackRow's `onSelect`).
+   *  Omit, or pass `selecting: false`, for the plain list. */
+  selection?: { selecting: boolean; isSelected: (id: string) => boolean; toggle: (id: string) => void };
+  /** "12 Jun" for a row, shown in select mode on a wide list. */
+  addedLabel?: (track: Track) => string | undefined;
 }
 
 /** Presentational only: the rows of a collection, album, artist or search
@@ -63,6 +68,8 @@ export function TrackList({
   trailing,
   onReplace,
   trailingPlayControl = false,
+  selection,
+  addedLabel,
   currentId,
   isPlaying,
   likedIds,
@@ -104,6 +111,9 @@ export function TrackList({
           trailingPlayControl={trailingPlayControl}
           unavailable={unavailable}
           onReplace={unavailable && onReplace ? () => onReplace(t) : undefined}
+          onSelect={selection?.selecting ? () => selection.toggle(t.id) : undefined}
+          selected={selection?.selecting ? selection.isSelected(t.id) : false}
+          addedLabel={selection?.selecting ? addedLabel?.(t) : undefined}
         />
         );
       })}

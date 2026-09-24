@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Artwork } from '@/components/primitives/Artwork';
+import { Checkbox } from '@/components/primitives/Checkbox';
 import { LikeButton } from '@/components/primitives/LikeButton';
 import { CloseIcon, PauseIcon, PlayIcon, RefreshIcon, TrashIcon } from '@/components/icons';
 import { formatTime } from '@/lib/format';
@@ -82,6 +83,15 @@ export interface TrackRowProps {
    *  whole line. Default off, so every other caller keeps the leading play
    *  cell and the whole-row tint it has always had. */
   trailingPlayControl?: boolean;
+  /** Select mode (copying songs to another playlist): the play column
+   *  turns into a tick box, a click anywhere on the row toggles it, and
+   *  nothing on the row plays, follows a link or opens a menu. `list`
+   *  density only. */
+  onSelect?: () => void;
+  selected?: boolean;
+  /** When the song was added ("12 Jun"), shown in select mode on a wide
+   *  row, where the menu and heart were. */
+  addedLabel?: string;
   density?: TrackRowDensity;
   tone?: TrackRowTone;
   className?: string;
@@ -110,11 +120,15 @@ export function TrackRow({
   artworkFallback,
   artworkSrc,
   trailingPlayControl = false,
+  onSelect,
+  selected = false,
+  addedLabel,
   density = 'list',
   tone = 'default',
   className,
 }: TrackRowProps) {
   const compact = density === 'compact';
+  const selecting = !!onSelect && !compact && !trailingPlayControl;
   const showTime = showDuration ?? !compact;
   // An unavailable track can't actually start (the server has confirmed
   // yt-dlp can't fetch it), so clicking it explains why instead of
@@ -138,7 +152,7 @@ export function TrackRow({
     <Artwork
       src={resolvedArtworkUrl}
       size="xs"
-      onClick={compact ? undefined : playOrToast}
+      onClick={compact || selecting ? undefined : playOrToast}
       className={cn(
         'rounded shrink-0 bg-art',
         !resolvedArtworkUrl && 'grid place-items-center text-foreground/20',
@@ -260,7 +274,9 @@ export function TrackRow({
     <div
       data-testid="track-row"
       data-unavailable={unavailable ? 'true' : undefined}
-      onDoubleClick={playOrToast}
+      data-selected={selecting ? String(selected) : undefined}
+      onClick={selecting ? onSelect : undefined}
+      onDoubleClick={selecting ? undefined : playOrToast}
       className={cn(
         // The 5-column desktop shape (adds the album + duration columns)
         // only kicks in once the row's own container is wide enough, not
@@ -282,10 +298,14 @@ export function TrackRow({
           : 'grid-cols-[40px_minmax(0,1fr)_auto] @3xl:grid-cols-[40px_minmax(0,1fr)_minmax(0,1fr)_60px_auto]',
         active && !trailingPlayControl && 'text-ember',
         unavailable && 'opacity-60',
+        selecting && selected && 'bg-ember/10 hover:bg-ember/15',
         className,
       )}
     >
-      {!trailingPlayControl && (
+      {selecting && (
+        <Checkbox checked={selected} onChange={onSelect} label={`Select ${track.title}`} className="justify-self-center" />
+      )}
+      {!trailingPlayControl && !selecting && (
         <div className="relative grid place-items-center h-8 w-8 justify-self-center">
           {showRank && !active && (
             <span className="pointer-events-none absolute inset-0 grid place-items-center text-sm tabular-nums text-muted-foreground group-hover:opacity-0 transition-opacity">
@@ -310,7 +330,7 @@ export function TrackRow({
         <div className="min-w-0">
           <div
             data-testid="track-row-title"
-            onClick={playOrToast}
+            onClick={selecting ? undefined : playOrToast}
             className={cn('truncate text-sm font-semibold', emberTitle, unavailable && 'text-muted-foreground')}
           >
             {track.title}
@@ -325,7 +345,7 @@ export function TrackRow({
             )}
           </div>
           <div className="truncate text-xs text-muted-foreground">
-            {track.artistId ? (
+            {track.artistId && !selecting ? (
               // stopPropagation so following the artist link never counts as
               // a click on the row.
               <Link href={`/artist/${track.artistId}`} onClick={(e) => e.stopPropagation()} className="hover:underline">
@@ -347,13 +367,22 @@ export function TrackRow({
       <div data-testid="track-row-album-cell" className="hidden @3xl:block truncate text-sm text-muted-foreground">{showAlbum ? track.album : ''}</div>
       <div className="hidden @3xl:block text-sm text-muted-foreground text-right tabular-nums">{showTime ? duration : ''}</div>
 
-      <div className="flex items-center gap-1">
-        {playControl}
-        {trailing}
-        {like}
-        {replace}
-        {remove}
-      </div>
+      {selecting ? (
+        // Where the menu and heart were: the duration on a narrow row (its
+        // own column is hidden there), the date added on a wide one.
+        <div className="text-right text-sm tabular-nums text-muted-foreground">
+          <span className="@3xl:hidden">{showTime ? duration : ''}</span>
+          <span data-testid="track-row-added" className="hidden w-20 truncate @3xl:block">{addedLabel ?? ''}</span>
+        </div>
+      ) : (
+        <div className="flex items-center gap-1">
+          {playControl}
+          {trailing}
+          {like}
+          {replace}
+          {remove}
+        </div>
+      )}
     </div>
   );
 }
