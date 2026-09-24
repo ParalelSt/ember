@@ -45,7 +45,15 @@ onAfterBootstrap((e) => {
       changed = true;
       console.log("[ensure_uploads] uploader is optional now");
     }
-    if (changed) dao.saveCollection(existing);
+    // A failed save must not stop PocketBase from booting: warn and carry
+    // on, same as ensure_superuser (bughunt X11).
+    if (changed) {
+      try {
+        dao.saveCollection(existing);
+      } catch (err) {
+        console.warn("[ensure_uploads] could not update the uploads rules: " + err);
+      }
+    }
     return;
   }
 

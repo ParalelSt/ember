@@ -138,6 +138,26 @@ describe('GET/PATCH /api/theme', () => {
     expect(userRow(ME).theme).toEqual(doc);
   });
 
+  it('keeps a copy of a shared theme even when its owner vanishes (bughunt X12: themes.owner cascadeDelete)', async () => {
+    // PocketBase deletes a row's owner-relation cascade at the DB layer when
+    // that user is deleted (admin/users/[id] DELETE), never through
+    // /api/themes/[id]. Model that here by removing the row directly rather
+    // than through oneRoute.DELETE, and check the exact same kept-copy path
+    // GET /api/theme already runs for a deleted or unshared theme still
+    // protects the people using it.
+    const shared = seedTheme(LUKA, 'Cold brew', FOREST, true, 'forest');
+    await themeRoute.PATCH(req({ themeId: shared }), undefined as never);
+    expect(userRow(ME).theme).toMatchObject({ themeId: shared });
+
+    const i = themes().findIndex((t) => t.id === shared);
+    themes().splice(i, 1); // the cascade PocketBase runs when LUKA's account is deleted
+
+    const doc = await (await themeRoute.GET(req(), undefined as never)).json();
+    expect(doc).toEqual({ v: 1, preset: 'forest', custom: FOREST, name: 'Cold brew' });
+    expect(userRow(ME).theme).toEqual(doc);
+    expect(userRow(ME).theme).not.toHaveProperty('themeId');
+  });
+
   it('keeps a copy of the colours when the theme in use is unshared or deleted', async () => {
     const a = seedTheme(LUKA, 'Cold brew', FOREST, true, 'forest');
     const b = seedTheme(LUKA, 'Campfire', MIDNIGHT, true);

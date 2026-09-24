@@ -171,17 +171,35 @@ onAfterBootstrap((e) => {
     changed = true;
   }
 
+  // The admin UI re-serializes an index's SQL when the collection is
+  // re-saved from there (backtick-quoted identifiers, whitespace), so a
+  // plain string match against NEW_INDEXES stops seeing an index that is
+  // still there under a different spelling and tries to create it again,
+  // which SQLite refuses (name collision) and used to crash boot entirely
+  // (bughunt X11). Compare by index name instead.
+  const indexName = (sql) => {
+    const m = /CREATE\s+(?:UNIQUE\s+)?INDEX\s+(?:IF\s+NOT\s+EXISTS\s+)?`?(\w+)`?/i.exec(sql);
+    return m ? m[1] : sql;
+  };
   const indexes = tabs.indexes || [];
+  const existingNames = new Set(indexes.map(indexName));
   for (const idx of NEW_INDEXES) {
-    if (indexes.indexOf(idx) >= 0) continue;
+    if (existingNames.has(indexName(idx))) continue;
     indexes.push(idx);
     changed = true;
   }
   tabs.indexes = indexes;
 
   if (changed) {
-    dao.saveCollection(tabs);
-    console.log("[ensure_tabs] tabs store up to date (song_key, kind, shared, hints, pasted, fetched, timing, aligned_at)");
+    // A failed save (a stray schema edit from the admin UI PocketBase itself
+    // rejects, say) must not stop PocketBase from booting: warn and carry on,
+    // same as ensure_superuser.
+    try {
+      dao.saveCollection(tabs);
+      console.log("[ensure_tabs] tabs store up to date (song_key, kind, shared, hints, pasted, fetched, timing, aligned_at)");
+    } catch (err) {
+      console.warn("[ensure_tabs] could not update the tabs collection: " + err);
+    }
   }
 
   let lookups = null;

@@ -43,6 +43,13 @@ onAfterBootstrap((e) => {
 
   if (added === 0) return;
 
-  dao.saveCollection(users);
-  console.log("[ensure_changelog_fields] added " + added + " changelog field(s) to users");
+  // A failed save (the admin UI having reshaped the users collection some
+  // way this doesn't expect) must not stop PocketBase from booting: warn
+  // and carry on, same as ensure_superuser (bughunt X11).
+  try {
+    dao.saveCollection(users);
+    console.log("[ensure_changelog_fields] added " + added + " changelog field(s) to users");
+  } catch (err) {
+    console.warn("[ensure_changelog_fields] could not save the users collection: " + err);
+  }
 });

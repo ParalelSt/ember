@@ -46,8 +46,14 @@ onAfterBootstrap((e) => {
         options: { maxSize: 4000 },
       }),
     );
-    dao.saveCollection(users);
-    console.log("[ensure_themes] added the theme field to users");
+    // A failed save must not stop PocketBase from booting: warn and carry
+    // on, same as ensure_superuser (bughunt X11).
+    try {
+      dao.saveCollection(users);
+      console.log("[ensure_themes] added the theme field to users");
+    } catch (err) {
+      console.warn("[ensure_themes] could not save the users collection: " + err);
+    }
   }
 
   try {

@@ -34,6 +34,12 @@ onAfterBootstrap((e) => {
       options: { maxSize: 20000 },
     }),
   );
-  dao.saveCollection(users);
-  console.log("[ensure_plugin_settings] added the plugins field to users");
+  // A failed save must not stop PocketBase from booting: warn and carry on,
+  // same as ensure_superuser (bughunt X11).
+  try {
+    dao.saveCollection(users);
+    console.log("[ensure_plugin_settings] added the plugins field to users");
+  } catch (err) {
+    console.warn("[ensure_plugin_settings] could not save the users collection: " + err);
+  }
 });
