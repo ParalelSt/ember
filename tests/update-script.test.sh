@@ -125,10 +125,27 @@ case "$1" in
 esac
 exit 0
 EOF
+# systemctl --user: is-active answers from a flag file; start runs the
+# unit's command the way systemd would (see unit_command), detached.
+cat >"$TMP/bin/systemctl" <<'EOF'
+#!/usr/bin/env bash
+echo "systemctl $*" >>"$FAKE_LOG"
+[ "$1" = --user ] && shift
+case "$1" in
+  is-active) [ -f "$FAKE_SYSTEMD_ACTIVE" ]; exit ;;
+  start|restart)
+    cd "$FAKE_UNIT_DIR" || exit 1
+    # shellcheck disable=SC2086,SC2016
+    perl -e 'setpgrp(0, 0); exec { $ARGV[0] } @ARGV' -- $FAKE_UNIT_EXEC </dev/null >>"$FAKE_TMUX_OUT" 2>&1 &
+    touch "$FAKE_SYSTEMD_ACTIVE"
+    exit 0 ;;
+esac
+exit 0
+EOF
 chmod +x "$TMP/bin/"*
 # A directory with the fakes but no tmux, for a host without it.
 mkdir -p "$TMP/bin-notmux"
-cp "$TMP/bin/npm" "$TMP/bin/npx" "$TMP/bin-notmux/"
+cp "$TMP/bin/npm" "$TMP/bin/npx" "$TMP/bin/systemctl" "$TMP/bin-notmux/"
 
 node "$REPO/tests/fake-discord.mjs" "$POSTS" 0 >"$TMP/sink.out" 2>&1 &
 SINK_PID=$!
@@ -138,6 +155,7 @@ export DISCORD_CRASH_WEBHOOK_URL="http://127.0.0.1:${SINK_PORT}/hook"
 unset DISCORD_BUG_REPORT_WEBHOOK_URL TMUX STY
 export WATCHDOG_BACKOFF="0 0 0" WATCHDOG_MAX_CRASHES=3 WATCHDOG_WINDOW=60 SKIP_YTDLP_UPGRADE=1
 export FAKE_LOG="$TMP/fake.log" FAKE_TMUX_SESSION="$TMP/tmux.session" FAKE_TMUX_OUT="$TMP/tmux.out"
+export FAKE_SYSTEMD_ACTIVE="$TMP/systemd.active"
 BASE_PATH="$PATH"
 
 HOST="$TMP/host"
@@ -149,7 +167,7 @@ new_host() {
   pkill -f "$TMP/host" 2>/dev/null
   pkill -f "$TMP/serve.mjs" 2>/dev/null
   sleep 0.3
-  rm -rf "$HOST" "$ORIGIN" "$TMP/seed" "$FAKE_TMUX_SESSION"
+  rm -rf "$HOST" "$ORIGIN" "$TMP/seed" "$FAKE_TMUX_SESSION" "$FAKE_SYSTEMD_ACTIVE"
   : >"$FAKE_LOG"; : >"$FAKE_TMUX_OUT"; : >"$POSTS"
   mkdir -p "$TMP/seed/scripts" "$TMP/seed/apps/web"
   cp "$REPO/start-static.sh" "$REPO/update.sh" "$TMP/seed/"
@@ -291,6 +309,73 @@ start_ember
 run_update --here
 check "--here updates and keeps Ember in this window" wait_until 40 watchdog_is_update
 check "--here serves the new version" wait_until 10 served "$WEB_PORT" "$V2_SHORT"
+stop_ember
+
+# ── 4. deploy/ember.service runs Ember (bughunt O6) ─────────────────────
+echo "── the systemd unit"
+UNIT="$REPO/deploy/ember.service"
+unit_value() { sed -n "s/^$1=//p" "$UNIT" | tail -1; }
+UNIT_WD="$(unit_value WorkingDirectory)"
+# The unit's command with its Ember folder mapped onto the test host.
+unit_command() { local e; e="$(unit_value ExecStart)"; printf '%s' "${e//$UNIT_WD/$HOST}"; }
+unit_paths_exist() {
+  local w
+  for w in $(unit_command); do
+    case "$w" in
+      /*) [ -e "$w" ] || return 1 ;;
+      */*) [ -e "$HOST/$w" ] || return 1 ;;
+    esac
+  done
+}
+STOP_GRACE="$(sed -n 's/^STOP_GRACE=//p' "$REPO/start-static.sh")"
+TIMEOUT_STOP="$(unit_value TimeoutStopSec)"
+new_host
+check "the unit runs start-static.sh" file_has "$UNIT" "^ExecStart=.*start-static.sh"
+check "every file its command names exists" unit_paths_exist
+check "systemd stops only the watchdog, which stops the services (KillMode=mixed)" file_has "$UNIT" "^KillMode=mixed$"
+# The watchdog's worst case: both services ignore SIGTERM, each supervisor
+# waits STOP_GRACE + 6 s, one after the other.
+check "TimeoutStopSec leaves the watchdog its whole grace ($TIMEOUT_STOP s > 2 x $((STOP_GRACE + 6)) s)" \
+  [ "${TIMEOUT_STOP:-0}" -gt $(( 2 * (STOP_GRACE + 6) )) ]
+check "no leftover of the old API server" file_lacks "$UNIT" "apps/api"
+
+# Start it the way systemd does (in the unit's folder, a process group of
+# its own) and stop it the way KillMode=mixed does: SIGTERM to the main pid.
+PATH="$TMP/bin:$BASE_PATH"
+# shellcheck disable=SC2016,SC2046
+( cd "$HOST" && exec perl -e 'setpgrp(0, 0); exec { $ARGV[0] } @ARGV or exit 127' -- $(unit_command) ) </dev/null >"$TMP/unit.out" 2>&1 &
+UNIT_PID=$!
+check "the unit's command brings Ember up" wait_until 20 port_up "$WEB_PORT"
+check "its main process is the watchdog" wait_until 5 sh -c "[ \"\$(tr -dc 0-9 2>/dev/null <'$HOST/logs/watchdog.pid')\" = '$UNIT_PID' ]"
+STARTED="$(date +%s)"
+kill -TERM "$UNIT_PID" 2>/dev/null
+check "SIGTERM to the main process stops everything within TimeoutStopSec" wait_until "${TIMEOUT_STOP:-1}" not_running "$UNIT_PID"
+wait "$UNIT_PID" 2>/dev/null
+UNIT_RC=$?
+check "and it exits 0, so Restart=on-failure does not restart it" [ "$UNIT_RC" = 0 ]
+check "within TimeoutStopSec" [ $(( $(date +%s) - STARTED )) -le "${TIMEOUT_STOP:-0}" ]
+check "the web app is stopped" port_down "$WEB_PORT"
+check "PocketBase is stopped" port_down "$PB_PORT"
+check "a clean stop: no lock left" sh -c "[ ! -e '$HOST/logs/ember.lock' ]"
+check "no crash post" [ "$(posts_matching 'crashed')" = 0 ]
+stop_ember
+
+# ./update.sh on a host where systemd runs Ember: back through systemd, not
+# tmux, and no tmux needed.
+new_host
+PATH="$TMP/bin-notmux:$BASE_PATH"
+export FAKE_UNIT_DIR="$HOST" FAKE_UNIT_EXEC
+FAKE_UNIT_EXEC="$(unit_command)"
+start_ember
+touch "$FAKE_SYSTEMD_ACTIVE"
+run_update
+check "under systemd, update.sh needs no tmux and finishes" update_returned 40
+reap_update
+check "and exits 0" [ "$UPD_RC" = 0 ]
+check "it restarts Ember through systemd" file_has "$FAKE_LOG" "systemctl --user start ember"
+check "not in tmux" file_lacks "$FAKE_LOG" "tmux new"
+check "Ember serves the new version" wait_until 20 served "$WEB_PORT" "$V2_SHORT"
+check "it says how to check on it" file_has "$TMP/update.out" "systemctl --user status ember"
 stop_ember
 
 echo

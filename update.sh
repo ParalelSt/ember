@@ -4,7 +4,6 @@
 #
 #   ./update.sh              pull, install, build, restart everything
 #   ./update.sh --no-start   do everything except bring services back up
-#                            (for hosts running Ember under systemd)
 #   ./update.sh --check      show what would change, touch nothing
 #   ./update.sh --here       restart Ember in this terminal even outside tmux
 #
@@ -12,7 +11,9 @@
 # restarted right there, in the foreground, as always. Run from a plain SSH
 # shell, it is restarted in the background in a tmux session named "ember"
 # (`tmux attach -t ember` to see it): started in this terminal, it would
-# stop the moment the SSH window closes (bughunt O2).
+# stop the moment the SSH window closes (bughunt O2). On a host where systemd
+# runs Ember (deploy/ember.service is active), it is restarted through
+# systemd instead, from anywhere (bughunt O6).
 #
 # WHY THIS EXISTS, and not just `git pull && ./start-static.sh`:
 # start-static.sh deliberately SKIPS starting PocketBase when it's already
@@ -162,7 +163,11 @@ fi
 # before anything changes, so a host without tmux hears it now, not after
 # Ember has been stopped.
 TMUX_SESSION="ember"
-if [ -n "${TMUX:-}" ] || [ -n "${STY:-}" ] || [ "$HERE" = 1 ]; then
+SYSTEMD_UNIT="ember.service"
+if [ "$HERE" != 1 ] && command -v systemctl >/dev/null 2>&1 \
+   && systemctl --user is-active --quiet "$SYSTEMD_UNIT" 2>/dev/null; then
+  RELAUNCH="systemd"
+elif [ -n "${TMUX:-}" ] || [ -n "${STY:-}" ] || [ "$HERE" = 1 ]; then
   RELAUNCH="here"
 else
   RELAUNCH="tmux"
@@ -182,38 +187,48 @@ if [ "$RELAUNCH" = tmux ] && { [ "$MODE" = start ] || [ "$MODE" = force ]; } \
   exit 1
 fi
 
-# launch_ember: the last step. Here, or in the tmux session in the background
-# (the tmux server, not this terminal, is then its parent, so an SSH hangup
-# never reaches it). Only the ports are passed along: everything else comes
-# from apps/web/.env.local, and a running tmux server would not see this
-# shell's environment anyway.
+# launch_ember: the last step. Here; through systemd; or in the tmux session
+# in the background (the tmux server, not this terminal, is then its parent,
+# so an SSH hangup never reaches it). Only the ports are passed to tmux:
+# everything else comes from apps/web/.env.local, and a running tmux server
+# would not see this shell's environment anyway.
 launch_ember() {
   if [ "$RELAUNCH" = here ]; then
     exec "$ROOT/start-static.sh"
   fi
-  local cmd pid
-  # When the watchdog stops (Ctrl+C), a shell stays in the window, like a
-  # tmux window where it was started by hand.
-  cmd="PORT=$(printf %q "$PORT") POCKETBASE_PORT=$(printf %q "$PB_PORT") $(printf %q "$ROOT/start-static.sh"); exec \"\${SHELL:-/bin/sh}\""
-  if tmux has-session -t "=$TMUX_SESSION" 2>/dev/null; then
-    tmux new-window -t "$TMUX_SESSION:" -c "$ROOT" "$cmd"
+  local cmd pid where look
+  if [ "$RELAUNCH" = systemd ]; then
+    # The stop above ended the watchdog cleanly (exit 0), so systemd did not
+    # restart it by itself; start the unit again.
+    systemctl --user start "$SYSTEMD_UNIT"
+    where="through systemd"
+    look="systemctl --user status ember      (its output: journalctl --user -u ember -f)"
   else
-    tmux new-session -d -s "$TMUX_SESSION" -c "$ROOT" "$cmd"
+    # When the watchdog stops (Ctrl+C), a shell stays in the window, like a
+    # tmux window where it was started by hand.
+    cmd="PORT=$(printf %q "$PORT") POCKETBASE_PORT=$(printf %q "$PB_PORT") $(printf %q "$ROOT/start-static.sh"); exec \"\${SHELL:-/bin/sh}\""
+    if tmux has-session -t "=$TMUX_SESSION" 2>/dev/null; then
+      tmux new-window -t "$TMUX_SESSION:" -c "$ROOT" "$cmd"
+    else
+      tmux new-session -d -s "$TMUX_SESSION" -c "$ROOT" "$cmd"
+    fi
+    where="in the background, in tmux session \"$TMUX_SESSION\""
+    look="tmux attach -t $TMUX_SESSION      (leave it running again: Ctrl+B, then D)"
   fi
   for _ in $(seq 1 75); do
     pid="$(tr -dc '0-9' 2>/dev/null <"$ROOT/logs/watchdog.pid" || true)"
     if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null \
        && ps -p "$pid" -o command= 2>/dev/null | grep -q 'start-static'; then
-      echo "✓ Ember is running in the background, in tmux session \"$TMUX_SESSION\" (watchdog pid $pid)."
-      echo "  It keeps running when you close this window. To watch it:"
+      echo "✓ Ember is running $where (watchdog pid $pid)."
+      echo "  It keeps running when you close this window. To check on it:"
       echo
-      echo "      tmux attach -t $TMUX_SESSION      (leave it running again: Ctrl+B, then D)"
+      echo "      $look"
       echo
       exit 0
     fi
     sleep 0.2
   done
-  echo "✗ Ember did not start in tmux. See why: tmux attach -t $TMUX_SESSION"
+  echo "✗ Ember did not start. See why: $look"
   exit 1
 }
 
@@ -304,7 +319,8 @@ link_ffmpeg
 if [ "$MODE" = "no-start" ]; then
   echo
   echo "✓ code updated and dependencies installed."
-  echo "  Now restart your services yourself — and make sure POCKETBASE"
+  echo "  Now restart your services yourself (systemd: systemctl --user restart ember)."
+  echo "  Make sure POCKETBASE"
   echo "  actually restarts, or new collections/fields won't be created."
   echo "  Give PocketBase EMBER_PB_SUPERUSER_EMAIL / EMBER_PB_SUPERUSER_PASSWORD"
   echo "  (the same values as POCKETBASE_ADMIN_* in apps/web/.env.local), or its"
