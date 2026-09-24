@@ -191,17 +191,24 @@ export const createWebBackend: CreateAudioBackend = (events) => {
 
     setVolume(v, opts) {
       const gain = opts?.gain ?? 1;
+      const norm = opts?.normGain ?? 1;
       const party = gain > 1;
-      // Party: linear (slider drives output 1:1 up to 1.0). Normal: power 1.5.
-      a.volume = party ? Math.min(1, v) : Math.pow(v, 1.5);
       if (party) {
+        // Party: linear (slider drives output 1:1 up to 1.0), then the graph
+        // amplifies, normalization included.
         const g = ensureGraph();
         if (g) {
+          a.volume = Math.min(1, v);
           audioCtx?.resume?.().catch(() => {});
-          g.gain.value = gain;
+          g.gain.value = gain * norm;
+        } else {
+          a.volume = Math.min(1, v * norm);
         }
-      } else if (gainNode) {
-        gainNode.gain.value = 1;
+      } else {
+        // Normal: power 1.5, then normalization. The element cannot go past
+        // 1.0, so a quiet song's boost runs out at the top of the slider.
+        a.volume = Math.min(1, Math.pow(v, 1.5) * norm);
+        if (gainNode) gainNode.gain.value = 1;
       }
     },
 

@@ -27,7 +27,7 @@ export interface FakeBackend extends AudioBackend {
   pause: Mock<() => void>;
   stop: Mock<() => void>;
   seek: Mock<(sec: number) => void>;
-  setVolume: Mock<(v: number, opts?: { gain?: number }) => void>;
+  setVolume: Mock<(v: number, opts?: { gain?: number; normGain?: number }) => void>;
   setMetadata: Mock<(track: Track | null) => void>;
   setRemoteCommands: Mock<(cmds: RemoteCommands) => void>;
   destroy: Mock<() => void>;

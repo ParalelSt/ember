@@ -24,6 +24,7 @@
     "test:stream-fastfail": "node tests/stream-fastfail.test.mjs",
     "test:stream-range": "node tests/stream-range.test.mjs",
     "test:stream-prefetch": "node tests/stream-prefetch.test.mjs",
+    "test:loudness": "node tests/loudness.test.mjs",
     "test:offline-web-ui": "node tests/offline-web-ui.test.mjs",
     "test:auto-cache-ui": "node tests/auto-cache-ui.test.mjs",
     "test:desktop-logger": "node tests/desktop-logger.test.mjs",

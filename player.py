@@ -12,6 +12,7 @@ import requests
 from ytmusicapi import YTMusic
 import yt_dlp
 from ffmpeg_path import ffmpeg_exe
+import loudness
 
 # ============= CONFIG =============
 # MUSIC_DIR resolves relative to this script (not cwd) so the Express API can
@@ -1120,6 +1121,9 @@ def main():
     p_match.add_argument("--title-only", action="store_true", help="Search the title alone, ignore_spelling on")
     p_match.add_argument("queries", nargs="+")
 
+    p_loud = sub.add_parser("loudness", help="Measure a downloaded song's loudness, write its gain sidecar. Prints JSON.")
+    p_loud.add_argument("video_id", nargs="?")
+
     p_classify = sub.add_parser("classify", help="YouTube Music's type (ATV, OMV, UGC or null) per videoId. Prints JSON.")
     p_classify.add_argument("video_ids", nargs="+")
 
@@ -1149,6 +1153,8 @@ def main():
         cmd_match(args)
     elif args.cmd == "classify":
         cmd_classify(args)
+    elif args.cmd == "loudness":
+        sys.exit(loudness.main([args.video_id] if args.video_id else []))
     else:
         cmd_interactive()
 

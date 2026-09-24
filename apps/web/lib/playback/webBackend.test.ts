@@ -121,3 +121,40 @@ describe('webBackend seek', () => {
     b.destroy();
   });
 });
+
+describe('webBackend setVolume with normalization', () => {
+  const element = () => document.body.querySelector('audio') as HTMLAudioElement;
+
+  it('multiplies the curved volume by the song gain', () => {
+    const b = createWebBackend(makeFakeEvents());
+    b.setVolume(0.64, { normGain: 0.5 });
+    // 0.64^1.5 = 0.512, halved by a -6 dB song.
+    expect(element().volume).toBeCloseTo(0.256, 5);
+    b.destroy();
+  });
+
+  it('no gain, or a gain of 1, is the plain curve', () => {
+    const b = createWebBackend(makeFakeEvents());
+    b.setVolume(0.64);
+    expect(element().volume).toBeCloseTo(0.512, 5);
+    b.setVolume(0.64, { normGain: 1 });
+    expect(element().volume).toBeCloseTo(0.512, 5);
+    b.destroy();
+  });
+
+  it('a boost is capped at full volume', () => {
+    const b = createWebBackend(makeFakeEvents());
+    b.setVolume(1, { normGain: 2 });
+    expect(element().volume).toBe(1);
+    b.setVolume(0.25, { normGain: 2 });
+    expect(element().volume).toBeCloseTo(0.25, 5);
+    b.destroy();
+  });
+
+  it('party mode without Web Audio falls back to the element', () => {
+    const b = createWebBackend(makeFakeEvents());
+    b.setVolume(0.8, { gain: 2, normGain: 0.5 });
+    expect(element().volume).toBeCloseTo(0.4, 5);
+    b.destroy();
+  });
+});

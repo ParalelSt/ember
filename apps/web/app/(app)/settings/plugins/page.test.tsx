@@ -32,6 +32,15 @@ describe('Settings > Plugins', () => {
     );
   });
 
+  it('has a Normalize volume toggle, on by default, bound to normalizeVolume', () => {
+    render(<SettingsPlugins />);
+    const toggle = screen.getByRole('button', { name: 'Turn off Normalize volume' });
+    expect(toggle).toHaveAttribute('aria-pressed', 'true');
+    fireEvent.click(toggle);
+    expect(useSettingsStore.getState().normalizeVolume).toBe(false);
+    expect(screen.getByRole('button', { name: 'Turn on Normalize volume' })).toHaveAttribute('aria-pressed', 'false');
+  });
+
   it('leaves TikTok window as a Coming soon placeholder', () => {
     render(<SettingsPlugins />);
     expect(screen.getByText('TikTok window')).toBeInTheDocument();

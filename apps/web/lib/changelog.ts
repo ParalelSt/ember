@@ -21,6 +21,18 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    id: 'normalize-volume',
+    version: '0.7.10',
+    date: '2026-09-24',
+    title: 'Every song at the same volume',
+    summary: 'Songs now play at about the same loudness, so you do not have to reach for the volume when a quiet one comes on.',
+    bullets: [
+      'Each song is measured once after it is first played, and loud ones are turned down (quiet ones up) to match.',
+      'The song itself is never changed. Turn it off in Settings > Plugins > Normalize volume.',
+      'Works in the browser and the desktop app. The Android app does not have it yet.',
+    ],
+  },
+  {
     id: 'web-fixes-5',
     version: '0.7.9',
     date: '2026-09-24',

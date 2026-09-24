@@ -74,8 +74,13 @@ export interface AudioBackend {
   /** Pause and release the current source (null-track / clear). */
   stop(): void;
   seek(sec: number): void;
-  /** v in 0..1. gain > 1 is party-mode boost (web: Web Audio; native may clamp). */
-  setVolume(v: number, opts?: { gain?: number }): void;
+  /** v in 0..1. gain > 1 is party-mode boost (web: Web Audio; native may clamp).
+   *  normGain is the current song's volume normalization, a linear multiplier
+   *  (lib/playback/normalization; 1 = unchanged). Applied after the volume
+   *  curve and never past full volume outside party mode. The Android engine
+   *  ignores it: it moves between songs natively, where a per-song level set
+   *  from here would land on the wrong song. */
+  setVolume(v: number, opts?: { gain?: number; normGain?: number }): void;
   /** Lock-screen / notification metadata. web → MediaMetadata; native → OS.
    *  `localArtSrc` overrides `track.artworkUrl` when a downloaded copy has its
    *  own local art (already convertFileSrc-resolved by the caller). */
