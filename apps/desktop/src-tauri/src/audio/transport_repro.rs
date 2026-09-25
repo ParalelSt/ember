@@ -7,7 +7,7 @@
 //! drains itself, standing in for the sound card, as fast as it will go: a
 //! two minute song plays through in seconds.
 //!
-//! Bughunt 2026-09-24, P02, P03, P07 and A8. See docs/reports/bughunt-2026-09-24/.
+//! Bughunt 2026-09-24, P02, P03, P07 and A8.
 
 use std::io::{BufRead, BufReader, Write};
 use std::net::{TcpListener, TcpStream};

@@ -435,7 +435,7 @@ Nothing to configure. Worth knowing:
 
 The in-player **Lyrics** button (mic icon next to Queue) hits Genius directly — no API key needed. `player.py:cmd_lyrics` uses Genius's public search endpoint to find the song page, then scrapes the lyrics from the page HTML. Works out of the box.
 
-For the planned AI fallback (when Genius has nothing) see **[LYRICS_AI.md](LYRICS_AI.md)**.
+For the planned AI fallback (when Genius has nothing) see **[docs/LYRICS_AI.md](docs/LYRICS_AI.md)**.
 
 ### Spotify playlist import (no setup)
 

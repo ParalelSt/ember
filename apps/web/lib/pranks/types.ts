@@ -1,6 +1,6 @@
 import type { Track } from '@/types/track';
 
-/** Shared shapes for admin pranks (docs/superpowers/plans/2026-09-23-admin-pranks.md).
+/** Shared shapes for admin pranks.
  *  `ping` is a no-op: it proves a person's app is reachable. A `swap` kind
  *  was planned (playing a different song in place of the current one) and
  *  then dropped before it ever shipped; it is not a member of this type, so

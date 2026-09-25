@@ -16,8 +16,8 @@
 //     can never lock the owner out.
 //
 // The credentials used to be hardcoded here and put back on every boot. The
-// repo is public, so that password is public forever: see
-// docs/reports/bughunt-2026-09-24/W14-pocketbase-admin-exposed.md.
+// repo is public, so that password would have been public forever
+// (bughunt W14). Fixed by reading both from env instead.
 
 onAfterBootstrap((e) => {
   const email = ($os.getenv("EMBER_PB_SUPERUSER_EMAIL") || "").trim();

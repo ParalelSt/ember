@@ -1,7 +1,6 @@
 /// <reference path="../pb_data/types.d.ts" />
 
-// Themes (docs/superpowers/plans/2026-09-23-themes.md, with the owner's
-// decisions): a saved list of named custom themes per person, any of which
+// Themes: a saved list of named custom themes per person, any of which
 // can be shared with everyone on this server, plus the ACTIVE theme on the
 // user row.
 //

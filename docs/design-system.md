@@ -1,7 +1,7 @@
 # Ember design system pass
 
-A plan, not code. It builds on the deslop refactor (`docs/DESLOP.md`,
-`docs/deslop/CHANGES.md`): the helpers in `lib/`, the tokens and type
+A plan, not code. It builds on the earlier "deslop" refactor (internal,
+not part of this repo): the helpers in `lib/`, the tokens and type
 utilities in `app/globals.css`, the presentational components under
 `components/{primitives,page,track,library,nav}` and the style lint in
 `lib/lintRules.test.ts` all stay and get extended. Nothing here changes
@@ -409,7 +409,7 @@ Sweep the rest onto the tokens and turn the guard rails on.
   settings and admin pages, `admin/tracks` and `session` rows onto
   `TrackRow`; `lintRules.test.ts` (baseline emptied, bans unconditional);
   `eslint.config.mjs` layering rules; `README.md` layout tree,
-  `tests/README.md`, `docs/deslop/CHANGES.md` gets a section per stage.
+  `tests/README.md` gets a section per stage.
 - Tests: the lint test at zero is the test; `admin/tracks` and session
   rows get a render test each; `npm run lint` shows the same 9 errors.
 - `/dizajn`: a "Type" section (every utility as a specimen) next to the
@@ -429,8 +429,8 @@ sonnet worker, one stage per run, each ending with the two commits above.
   theme's values are still out of scope there too (the plumbing for one
   ships, no light preset does).
 - New features: sticky action bar on scroll, drag to reorder, filter
-  chips, "Show all" on library shelves, anything in
-  `docs/deslop/design-options.md` beyond the layout the pages already have.
+  chips, "Show all" on library shelves, anything beyond the layout the
+  pages already have.
 - The library shelf choice (Editorial, Dense list, Featured mix,
   Cover-led): already on `/dizajn`, a separate decision; stage 3 only puts
   the four options on `Section`.
@@ -440,4 +440,4 @@ sonnet worker, one stage per run, each ending with the two commits above.
   layout, `PlayerProvider`, the search overlay's provisional chrome
   (`SearchOverlay.tsx:44`) beyond its rows and spacing.
 - The 9 pre-existing eslint errors and the React 18/19 hoisting follow-up
-  in `docs/DESLOP.md`.
+  from the earlier deslop refactor.

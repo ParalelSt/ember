@@ -1,6 +1,6 @@
 //! Luka's stalls, 2026-09-24: "the song stopped arriving while decoding
 //! (nothing for 3s) (on a second attempt, after: ...)", right after
-//! `ended, load (x2)`. See docs/reports/luka-2026-09-24.md.
+//! `ended, load (x2)`.
 //!
 //! The other harnesses throttle each connection on its own, so two loads can
 //! never get in each other's way there. A real listener has ONE link to the

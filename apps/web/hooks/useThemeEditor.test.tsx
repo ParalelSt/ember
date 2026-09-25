@@ -6,8 +6,7 @@ import { EMBER_INPUTS, PRESET_BY_ID } from '@/lib/theme/presets';
 import { docFromSaved, type SavedTheme, type ThemesList } from '@/lib/theme/saved';
 import type { ThemeDoc } from '@/lib/theme/model';
 
-// Feature F1 (docs/reports/bughunt-2026-09-24/F1-theme-apply-button.md):
-// picking a theme or changing a colour is a draft shown only in the page's
+// Feature F1: picking a theme or changing a colour is a draft shown only in the page's
 // preview; Apply is the one thing that saves it and makes it the active
 // theme. This file covers the hook's half: what each action sends (or does
 // not), Discard, leaving the page, the readability block, and the two

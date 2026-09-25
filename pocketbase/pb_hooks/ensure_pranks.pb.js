@@ -1,8 +1,7 @@
 /// <reference path="../pb_data/types.d.ts" />
 
-// Admin pranks (docs/superpowers/plans/2026-09-23-admin-pranks.md): creates
-// the prank collections on boot if they don't exist yet, same zero-setup
-// pattern as ensure_sessions.
+// Admin pranks: creates the prank collections on boot if they don't exist
+// yet, same zero-setup pattern as ensure_sessions.
 //
 //   prank_sounds     the admin library (short sounds and swap songs)
 //   prank_schedules  repeating pranks, turned into pranks rows by a server tick

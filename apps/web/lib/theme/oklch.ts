@@ -1,5 +1,4 @@
-/** OKLCH colour maths for themes (docs/superpowers/plans/2026-09-23-themes.md
- *  section 1d). Plain TS, no dependencies: sRGB <-> OKLab with Björn
+/** OKLCH colour maths for themes. Plain TS, no dependencies: sRGB <-> OKLab with Björn
  *  Ottosson's matrices, a chroma-reducing gamut map for hex output, and the
  *  WCAG 2.x contrast ratio. */
 

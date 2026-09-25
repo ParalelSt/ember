@@ -12,7 +12,7 @@
 # Both ports come from the environment, else apps/web/.env.local:
 #   PORT=3000
 #   POCKETBASE_PORT=8090
-# Either or both may be omitted to keep the defaults. See PORTS.md.
+# Either or both may be omitted to keep the defaults. See docs/PORTS.md.
 #
 # PocketBase's superuser comes from POCKETBASE_ADMIN_EMAIL / _PASSWORD there
 # too (or EMBER_PB_SUPERUSER_*), the owner account from EMBER_ADMIN_*. They go

@@ -1,7 +1,7 @@
 /// <reference path="../pb_data/types.d.ts" />
 
 // Two fields on `likes`, for songs brought in from another platform
-// (docs/superpowers plan "Transfer", section 2.2):
+// (see the Transfer feature):
 //
 //   liked_at  (date)    when the song was liked. PocketBase's own `created`
 //                       cannot be set through the API, so a transfer could

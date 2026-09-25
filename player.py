@@ -304,7 +304,6 @@ def cmd_search(args):
     # Run songs + videos in parallel. Songs come first in the merged list
     # (music-aware metadata). Videos backfill rare tracks that aren't in
     # YouTube Music's songs catalog (niche / doujin / fan-uploaded).
-    # See docs/superpowers/specs/2026-06-09-search-songs-videos-merge-design.md.
     songs, videos = [], []
     # A backend that could not be asked (network, busy) as opposed to one
     # that crashed parsing this query. If nothing is found and any backend
