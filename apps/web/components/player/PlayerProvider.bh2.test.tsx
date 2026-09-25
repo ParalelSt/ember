@@ -76,8 +76,11 @@ const C = makeTrack({ id: 'youtube:c', sourceId: 'c', streamUrl: '/s/c', duratio
 const D = makeTrack({ id: 'youtube:d', sourceId: 'd', streamUrl: '/s/d', durationSec: 200 });
 
 let controls: ReturnType<typeof usePlayer> | null = null;
+const keep = (c: ReturnType<typeof usePlayer>) => {
+  controls = c;
+};
 function Grab() {
-  controls = usePlayer();
+  keep(usePlayer());
   return null;
 }
 
