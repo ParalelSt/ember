@@ -77,6 +77,9 @@ pub struct AudioEngine {
     /// waiting on the host for the bytes it seeks to, and the position it
     /// would report is the one being left.
     seeks_running: AtomicU64,
+    /// The generation (see `generation`) of the sink the latest seek is on:
+    /// only that sink's timer holds back, not the next song's.
+    seek_generation: AtomicU64,
     /// The webview's tag for its latest `audio_load` (bughunt 2026-09-25 D5),
     /// and the tag of the load whose sink is in. Every position, end and
     /// playback error carries the tag of the load it is about, so the webview
@@ -181,6 +184,7 @@ impl AudioEngine {
             want_play: AtomicBool::new(false),
             pending_seek: Mutex::new(None),
             seeks_running: AtomicU64::new(0),
+            seek_generation: AtomicU64::new(0),
             asked_token: Mutex::new(None),
             installed_token: Mutex::new(None),
             current_download: Mutex::new(None),
@@ -215,6 +219,7 @@ impl AudioEngine {
             want_play: AtomicBool::new(false),
             pending_seek: Mutex::new(None),
             seeks_running: AtomicU64::new(0),
+            seek_generation: AtomicU64::new(0),
             asked_token: Mutex::new(None),
             installed_token: Mutex::new(None),
             current_download: Mutex::new(None),
@@ -1452,6 +1457,10 @@ async fn load_claimed<R: Runtime>(
             sink.pause();
         }
         *slot = Some(Arc::clone(&sink));
+        // Settled now, under the lock, rather than when this function
+        // returns: a seek in between would find a load "in flight", be kept
+        // for it, and never be taken.
+        engine.settled_seq.fetch_max(my_seq, Ordering::SeqCst);
         if let Ok(mut t) = engine.installed_token.lock() {
             *t = token;
         }
@@ -1695,6 +1704,7 @@ fn seek_in_place<R: Runtime>(
     playing: bool,
     token: Option<u64>,
 ) {
+    engine.seek_generation.store(engine.generation.load(Ordering::SeqCst), Ordering::SeqCst);
     engine.seeks_running.fetch_add(1, Ordering::SeqCst);
     let app = app.clone();
     tauri::async_runtime::spawn_blocking(move || {
@@ -1853,7 +1863,9 @@ fn spawn_position_timer<R: Runtime>(
             }
             let seeking = {
                 use tauri::Manager;
-                app.state::<AudioEngine>().seeks_running.load(Ordering::SeqCst) > 0
+                let engine = app.state::<AudioEngine>();
+                engine.seeks_running.load(Ordering::SeqCst) > 0
+                    && engine.seek_generation.load(Ordering::SeqCst) == my_gen
             };
             let (pos, empty, paused) = {
                 let g = match sink.lock() {
