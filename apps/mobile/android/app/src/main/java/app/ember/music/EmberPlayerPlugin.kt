@@ -72,6 +72,11 @@ internal class QueueEcho {
     }
 }
 
+/** The app's Previous button, as everywhere else in Ember (the web player,
+ *  the notification, the car): past the first 3 s it starts the song over,
+ *  before that it goes to the song before. It used to always go back a song. */
+internal fun previous(player: Player) = player.seekToPrevious()
+
 /** The web UI's handle on the native player. Commands in, state out.
  *
  *  Everything goes through a Media3 MediaController, the same door the car
@@ -190,7 +195,7 @@ class EmberPlayerPlugin : Plugin() {
     @PluginMethod fun play(call: PluginCall) = withController { it.play(); call.resolve() }
     @PluginMethod fun pause(call: PluginCall) = withController { it.pause(); call.resolve() }
     @PluginMethod fun next(call: PluginCall) = withController { it.seekToNextMediaItem(); call.resolve() }
-    @PluginMethod fun prev(call: PluginCall) = withController { it.seekToPreviousMediaItem(); call.resolve() }
+    @PluginMethod fun prev(call: PluginCall) = withController { previous(it); call.resolve() }
     @PluginMethod fun seek(call: PluginCall) = withController { it.seekTo(((call.getDouble("sec") ?: 0.0) * 1000).toLong()); call.resolve() }
     @PluginMethod fun setVolume(call: PluginCall) = withController { it.volume = (call.getDouble("v") ?: 1.0).toFloat().coerceIn(0f, 1f); call.resolve() }
     /** The loop button: "off", "all" or "one". Native repeats by itself, so
