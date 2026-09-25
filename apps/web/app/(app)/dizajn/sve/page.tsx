@@ -474,7 +474,7 @@ export default function DizajnPage() {
         <div data-testid="tabs-v3-block" className="mb-section">
           <h3 className="font-semibold">Tabs v3: found online</h3>
           <p className="text-meta mt-inset mb-block">
-            Preview of the planned design, not built yet (docs/tabs-v3.md). Ember looks for the song on
+            Preview of the planned design, not built yet. Ember looks for the song on
             Songsterr and Ultimate Guitar, draws the best match and lines it up with the recording. Two
             ways to pick between the tabs it found, and the four states the page can be in. The sources,
             ratings and votes are made up; the score is real AlphaTab drawing the bundled original riff.
@@ -489,7 +489,7 @@ export default function DizajnPage() {
 
         <h3 className="font-semibold">Where the tab lives</h3>
         <p className="text-meta mt-inset mb-block">
-          Where tabs live once they look like Songsterr (docs/tabs-rebuild.md), each inside the whole app
+          Where tabs live once they look like Songsterr, each inside the whole app
           shell. Sheet page is the owner&apos;s pick, with Horizontal as a toggle inside it; Side panel and
           Stage stay here to compare. The score is real: AlphaTab drawing a bundled sample riff with the
           viewer&apos;s settings. Tracks, Tab + Score and Horizontal work in the preview; speed, loop and
@@ -595,7 +595,7 @@ export default function DizajnPage() {
       <section className="mb-12">
         <h2 className="text-section-title mb-1">Spacing scale</h2>
         <p className="text-meta mb-4">
-          The spacing tokens in globals.css (docs/design-system.md section 2). Each ruler is drawn
+          The spacing tokens in globals.css. Each ruler is drawn
           with the token&apos;s own width utility, so it is the real value, not a picture of it.
         </p>
         <div data-testid="spacing-scale" className="flex flex-col gap-cluster">

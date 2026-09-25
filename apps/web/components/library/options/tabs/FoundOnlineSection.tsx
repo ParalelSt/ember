@@ -512,7 +512,7 @@ export interface FoundOnlineSectionProps {
   state: TabsV3State;
 }
 
-/** Tabs v3 (docs/tabs-v3.md): the tab page once Ember finds tabs online
+/** Tabs v3: the tab page once Ember finds tabs online
  *  and lines them up with the recording, in the whole shell, desktop and
  *  phone, plus a 1:1 full-screen view. Mock sources, a real AlphaTab score
  *  from the bundled original riff; nothing is fetched and every action is

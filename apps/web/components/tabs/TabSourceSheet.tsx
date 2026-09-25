@@ -8,7 +8,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
 import { groupRows, type TabSheetRow } from '@/lib/tabPick';
 
-/** The Source sheet (docs/tabs-v3.md section 6, candidate B, the owner's
+/** The Source sheet (candidate B, the owner's
  *  pick): every tab Ember has for a song, in rank order, as a side sheet on
  *  desktop and a bottom sheet on phone. Choosing one draws it.
  *

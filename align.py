@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Line a tab up with a recording (docs/tabs-v3.md section 3).
+"""Line a tab up with a recording.
 
     .venv/bin/python align.py <audio> <plan.json> <out.json>
 

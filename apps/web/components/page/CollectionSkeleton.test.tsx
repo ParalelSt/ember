@@ -6,7 +6,7 @@ import { CollectionHeader, HEADER_CLASSES, HEADER_VARIANTS } from './CollectionH
 const cover = { src: null, icon: null } as const;
 
 // The skeleton stands in for the header during a route load, so it must
-// share the header's geometry exactly (docs/design-system.md section 3).
+// share the header's geometry exactly.
 describe('CollectionSkeleton', () => {
   it('uses the same root classes as CollectionHeader', () => {
     render(

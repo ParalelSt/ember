@@ -1,4 +1,4 @@
-/** UI check for the tab page (/tabs/[trackId], docs/tabs-rebuild.md stage 3):
+/** UI check for the tab page (/tabs/[trackId]):
  *  a tab someone else shared, drawn by AlphaTab and synced to Ember's real
  *  playback, opened from the player bar and from Now playing on a phone,
  *  and the empty state that generates one.
@@ -483,7 +483,7 @@ const trackPath = (id) => `/tabs/${encodeURIComponent(id)}`;
   await page.context().close();
 }
 
-// ── nothing overflows (docs/tabs-v3.md section 5) ─────────────────────────
+// ── nothing overflows ──────────────────────────────────────────────────────
 // A long song name, a member with a 60-character name, a file with six
 // long-named tracks and seven pasted tabs: eight lines in the picker. At
 // 390, 1280 and 1920 every chip, menu item and picker line ends inside the
@@ -549,7 +549,7 @@ const trackPath = (id) => `/tabs/${encodeURIComponent(id)}`;
     await page.keyboard.press('Escape');
     await page.waitForTimeout(300);
 
-    // The Source sheet (docs/tabs-v3.md stage 6): the same eight tabs, a
+    // The Source sheet: the same eight tabs, a
     // card each, inside a side sheet on desktop and a bottom sheet on phone.
     await page.getByRole('button', { name: 'Choose a tab' }).click();
     await page.getByTestId('tab-source-row').first().waitFor({ timeout: 10_000 }).catch(() => {});

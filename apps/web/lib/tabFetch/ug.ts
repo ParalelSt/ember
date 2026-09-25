@@ -1,5 +1,5 @@
-/** Ultimate Guitar's public pages, read the way a browser reads them
- *  (docs/tabs-v3.md section 1). Pure: no fetch, no Node. lib/tabFetch/online.ts
+/** Ultimate Guitar's public pages, read the way a browser reads them.
+ *  Pure: no fetch, no Node. lib/tabFetch/online.ts
  *  does the asking.
  *
  *  Both the search page and a tab page carry their data as JSON in
@@ -47,7 +47,7 @@ export interface UgTabPage extends UgResult {
   text: string;
 }
 
-/** "Enough votes" for a rating to count (docs/tabs-v3.md section 1: the Tab
+/** "Enough votes" for a rating to count (the Tab
  *  with the most votes and rating 4+). */
 export const MIN_VOTES = 5;
 export const MIN_RATING = 4;

@@ -83,8 +83,7 @@ export const GENERATED_DIR = path.join(TAB_DIR, 'generated');
 /** Where a tab found online lives: MUSIC_DIR/tabs/fetched, `<stem>.alphatex`
  *  (what AlphaTab loads) beside `<stem>.txt` (the tab text as the site gave
  *  it, marks removed) or `<stem>.json` (Songsterr's parts), so a better
- *  converter can redo the alphaTex without asking the site again.
- *  docs/tabs-v3.md section 2. */
+ *  converter can redo the alphaTex without asking the site again. */
 export const FETCHED_DIR = path.join(TAB_DIR, 'fetched');
 
 const STORED_ALPHATEX = /^[A-Za-z0-9_-]+\.alphatex$/;

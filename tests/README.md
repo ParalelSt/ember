@@ -415,7 +415,7 @@ sandbox (PB_URL, APP_URL; MUSIC_DIR for the on-disk checks):
 
 ## What `tabs-fetch.test.mjs` covers
 
-Tabs Ember finds online (docs/tabs-v3.md stage 3) against `tests/fake-ug.mjs`,
+Tabs Ember finds online against `tests/fake-ug.mjs`,
 which serves `tests/fixtures/ug` (Ultimate Guitar's page shape with invented
 content, built by `tests/fixtures/ug/build.mjs`) and counts every request
 (`GET /__calls`). The fake finds only queries containing "ugfetch", so other
@@ -450,8 +450,8 @@ missing page, 429/403 and block pages staying quiet, the store order and
 labels) and `app/api/tabs/tabs-online-route.test.ts` (the route with a fake
 site on `UG_BASE`).
 
-`tabs-ui.test.mjs` also has a **nothing overflows** section (docs/tabs-v3.md
-section 5): a long song name, a member with a 60-character name, a file with
+`tabs-ui.test.mjs` also has a **nothing overflows** section: a long song name,
+a member with a 60-character name, a file with
 six long-named tracks and seven pasted tabs, at 390, 1280 and 1920 wide. Title,
 meta line, chip and toolbar row, every ⋯ menu item and all eight picker lines
 end inside the window, every picker line keeps its whole text as a tooltip,

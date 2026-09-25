@@ -3,7 +3,7 @@ import { fireEvent, render, screen, within } from '@testing-library/react';
 import type { TabSheetRow } from '@/lib/tabPick';
 import { TabSourceSheet } from './TabSourceSheet';
 
-/** The Source sheet (docs/tabs-v3.md section 6): what each kind of source
+/** The Source sheet: what each kind of source
  *  looks like, what it says about the alignment, which actions a row
  *  offers, and the side sheet against the bottom sheet. Rows come in ready
  *  made (lib/tabPick.test.ts covers how they are worked out). */

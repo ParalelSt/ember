@@ -161,7 +161,7 @@ prank sound to reach the app there.**
    an older APK still receives a prank but logs "their app cannot do that
    yet" instead of playing it. Web and desktop (through the desktop app's
    webview overlay) already work once the host is updated.
-3. See `docs/pranks.md` for what the feature does, its limits, and the
+3. See the prank feature's internal docs for what the feature does, its limits, and the
    `PRANK_TICK_DISABLED` / `PRANK_TICK_INTERVAL_MS` env settings.
 
 # 0.5.0: Bring your liked songs over

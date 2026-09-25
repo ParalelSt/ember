@@ -4,7 +4,7 @@ Plan only. Unreleased 0.3.3 work on `tabs-rebuild`. Paths are relative to `apps/
 
 ## 1. Why
 
-Research verdict (`docs/tabs-rebuild.md:34-36`): no free legal API gives notes for popular songs. Songsterr's public API is metadata and a link-out (`:23`); Ultimate Guitar has no API and forbids automation (`:24`), so Ember never fetches UG. The user copies and pastes. (Superseded by the owner's decision in `docs/tabs-v3.md`: Ember now fetches UG's free text tabs itself, once per song.) Today the chain is file, generated, Songsterr link (`lib/tabSources.ts:41-47`), and generating is the only easy path. This plan adds two cheap real sources and pushes generated to the end.
+Research verdict: no free legal API gives notes for popular songs. Songsterr's public API is metadata and a link-out; Ultimate Guitar has no API and forbids automation, so Ember never fetches UG. The user copies and pastes. (Superseded by the owner's later decision: Ember now fetches UG's free text tabs itself, once per song.) Today the chain is file, generated, Songsterr link (`lib/tabSources.ts:41-47`), and generating is the only easy path. This plan adds two cheap real sources and pushes generated to the end.
 
 ## 2. The text tab parser (`lib/tabText.ts`, pure, shared by client preview and server)
 
@@ -49,7 +49,7 @@ Generated stays a button, never automatic, and its empty-state copy says it is t
 
 ## 5. Storage
 
-Like a file (`docs/tabs-rebuild.md:43-53`): one `tabs` row, `kind: pasted`, `format: alphatex` (the format list at `pocketbase/pb_hooks/ensure_tabs.pb.js:11-13` already names alphatex), `shared: true`, `user` = who pasted. On disk in `MUSIC_DIR/tabs`: `<stem>.alphatex` (what AlphaTab loads through the unchanged download route, `app/api/tabs/files/[id]/download/route.ts`) and `<stem>.txt` (the original paste). `resolveRowPath` (`lib/tabs.ts:85-90`) already resolves non-generated rows in `TAB_DIR`. Delete (`files/[id]/route.ts:25-33`) removes both files; same rule as files: whoever pasted, or an admin. Sync nudge shared via the existing PATCH. Because the source text is kept, `Re-parse` (menu item, and a script for admins when the parser improves) rewrites the `.alphatex`; changing the tempo later is a re-parse with a new tempo.
+Like a file: one `tabs` row, `kind: pasted`, `format: alphatex` (the format list at `pocketbase/pb_hooks/ensure_tabs.pb.js:11-13` already names alphatex), `shared: true`, `user` = who pasted. On disk in `MUSIC_DIR/tabs`: `<stem>.alphatex` (what AlphaTab loads through the unchanged download route, `app/api/tabs/files/[id]/download/route.ts`) and `<stem>.txt` (the original paste). `resolveRowPath` (`lib/tabs.ts:85-90`) already resolves non-generated rows in `TAB_DIR`. Delete (`files/[id]/route.ts:25-33`) removes both files; same rule as files: whoever pasted, or an admin. Sync nudge shared via the existing PATCH. Because the source text is kept, `Re-parse` (menu item, and a script for admins when the parser improves) rewrites the `.alphatex`; changing the tempo later is a re-parse with a new tempo.
 
 New route `POST /api/tabs/text` (JSON: text, title, artist, trackId, tempo, tuning override), 256 KB cap, same rate limit as files (`files/route.ts:56`). It parses server side with the same module, so the saved tab equals the preview.
 
@@ -57,7 +57,7 @@ New route `POST /api/tabs/text` (JSON: text, title, artist, trackId, tempo, tuni
 
 "Paste a tab" appears in the empty state beside "Add a file" (`TabsPage.tsx:405-410`) and in the ⋯ menu above "Add a Guitar Pro or MusicXML file" (`:186`). The empty state also gets the three search links as a row of chips and moves "Generate a tab" last with the word rough. The dialog: textarea, the report line ("6 strings, Drop D, 24 bars, 2 lines skipped"), a tempo row (number field, Tap along to the playing song, Fit to song length = bars x 4 x 60 / duration), a live AlphaTab preview from the alphaTex, Save.
 
-Per `docs/design-system.md:11-15`, two candidates go on `/dizajn` under "Guitar tabs" before the real UI, as a picker like `TABS_LAYOUTS` (`components/library/options/tabs/index.ts`):
+Per the app's design system, two candidates go on `/dizajn` under "Guitar tabs" before the real UI, as a picker like `TABS_LAYOUTS` (`components/library/options/tabs/index.ts`):
 
 - A. Paste dialog: a modal, textarea left, preview right, report and tempo row between them, Save in the footer. Phone: stacked. Recommended.
 - B. Inline editor: the empty state turns into an editor on the tab page itself, textarea on top, preview below where the score will sit, Save in the sticky toolbar. Phone: same, stacked.

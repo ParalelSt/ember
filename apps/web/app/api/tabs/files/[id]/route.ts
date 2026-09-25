@@ -39,8 +39,8 @@ export const DELETE = withRequestLog('tabs/files/[id]', async (_req: NextRequest
   }
 });
 
-/** Save a tab's sync nudge for everyone (`offset_ms`, docs/tabs-rebuild.md
- *  section 3). Same permission as delete: whoever added it, or an admin.
+/** Save a tab's sync nudge for everyone (`offset_ms`).
+ *  Same permission as delete: whoever added it, or an admin.
  *  Everyone else keeps their own nudge on their device. */
 export const PATCH = withRequestLog('tabs/files/[id]', async (request: NextRequest, ctx: RouteContext<'/api/tabs/files/[id]'>) => {
   try {

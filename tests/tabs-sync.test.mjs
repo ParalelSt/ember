@@ -1,5 +1,5 @@
 /** STRICT verification that the tab page (/tabs/[trackId]) stays in sync
- *  with Ember's real playback (docs/tabs-rebuild.md section 4, lib/tabSync.ts).
+ *  with Ember's real playback (lib/tabSync.ts).
  *  Three owner requirements, each a group of checks:
  *
  *   1. The tab follows the song: the cursor stays inside the visible

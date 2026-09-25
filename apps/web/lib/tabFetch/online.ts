@@ -32,8 +32,8 @@ import {
 } from '@/lib/songsterrPart';
 import { DEFAULT_GAP_MS, FetchStatusError, PoliteFetcher, SiteBackoffError } from '@/lib/tabFetch/polite';
 
-/** Ember looks for a song's tab online (docs/tabs-v3.md, stages 3 and 4),
- *  once per song, and keeps what it found in the shared store:
+/** Ember looks for a song's tab online, once per song,
+ *  and keeps what it found in the shared store:
  *
  *   - Songsterr first: the song page's state and the notes of its guitar
  *     and bass parts (lib/songsterrPart.ts), one multi-track alphaTex, a

@@ -111,8 +111,8 @@ function usePhone(): boolean {
   return useSyncExternalStore(subscribeWidth, () => window.matchMedia(PHONE_QUERY).matches, () => false);
 }
 
-/** `/tabs/[trackId]`: the Sheet page approved on /dizajn (docs/tabs-rebuild.md
- *  section 6, option A). Header, sticky toolbar, the score filling the
+/** `/tabs/[trackId]`: the Sheet page approved on /dizajn
+ *  (option A). Header, sticky toolbar, the score filling the
  *  content column, and the player bar left visible below, since the page
  *  has no transport of its own. */
 export function TabsPage({ trackId }: { trackId: string }) {
@@ -186,7 +186,7 @@ function TabsSheet({ song, sources, onBack }: { song: TabSong; sources: TabSourc
     writePref(SCROLL_KEY, s);
   };
 
-  // Where the tab sits in the recording (docs/tabs-v3.md section 3): the
+  // Where the tab sits in the recording: the
   // search that found it starts the job, this asks how it went.
   const align = useTabAlignment(tab);
   const timing = isLinedUp(align.timing) ? align.timing : null;
@@ -353,7 +353,7 @@ function TabsSheet({ song, sources, onBack }: { song: TabSong; sources: TabSourc
     sources.remove(id);
   };
 
-  // The Source sheet (docs/tabs-v3.md section 6, candidate B): every tab
+  // The Source sheet (candidate B): every tab
   // for the song in rank order, with what it is, how well it matched the
   // recording, and the actions that apply to it.
   const rows = sheetRows(sources.tabs, { chosenId, aligning: sources.liningUp });
@@ -661,8 +661,8 @@ function openLink(url: string): void {
   void openExternal(url).then(announceOpen);
 }
 
-/** The tab page's menus never run off the screen (docs/tabs-v3.md section
- *  5): at most the viewport less a margin, whatever the trigger's width. */
+/** The tab page's menus never run off the screen: at most the
+ *  viewport less a margin, whatever the trigger's width. */
 const MENU_CLASS = 'w-max min-w-56 max-w-[calc(100vw-2rem)]';
 
 /** One line of a menu: cut with an ellipsis when too long, whole in the

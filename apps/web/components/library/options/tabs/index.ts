@@ -5,7 +5,7 @@ import type { TabsScroll, TabsStaff } from '@/lib/tabScore';
 export type { TabsScroll, TabsStaff } from '@/lib/tabScore';
 export type TabsLayout = 'sheet' | 'side-panel' | 'stage';
 
-/** Where the tab lives (docs/tabs-rebuild.md section 6), in picker order.
+/** Where the tab lives, in picker order.
  *  `id` is what persists to localStorage; `badge` marks the owner's pick;
  *  `description` is the line under the preview. */
 export const TABS_LAYOUTS: (PickerOption & { id: TabsLayout; badge?: string })[] = [
@@ -62,7 +62,7 @@ export const TABS_PASTE: (PickerOption & { id: TabsPaste; badge?: string })[] = 
 
 export type TabsV3Picker = 'menu' | 'sheet';
 
-/** How the found-online tabs are picked (docs/tabs-v3.md section 6), in
+/** How the found-online tabs are picked, in
  *  picker order. The owner picks one before stage 6 builds it. */
 export const TABS_V3_PICKER: (PickerOption & { id: TabsV3Picker; badge?: string })[] = [
   {

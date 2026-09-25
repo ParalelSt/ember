@@ -1,4 +1,4 @@
-/** The tab store (docs/tabs-rebuild.md stage 1).
+/** The tab store.
  *
  *      node tests/fake-songsterr.mjs &      # port 4330
  *      node tests/tabs.test.mjs             # or: npm run test:tabs

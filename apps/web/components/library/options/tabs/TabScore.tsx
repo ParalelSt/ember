@@ -37,7 +37,7 @@ let alphaTabModule: Promise<any> | null = null;
 const loadAlphaTab = () => (alphaTabModule ??= import('@coderline/alphatab'));
 
 /** The real score, drawn by AlphaTab from the bundled sample, with the
- *  settings the tab page uses (docs/tabs-rebuild.md section 4): tab staff
+ *  settings the tab page uses: tab staff
  *  with rhythm stems and beams, Tab or Tab + Score, Ember's dark colours,
  *  page or horizontal layout. The cursor is placed on a fixed beat in bar 2
  *  so the preview shows what playback looks like; nothing plays. */

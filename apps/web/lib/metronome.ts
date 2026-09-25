@@ -1,4 +1,4 @@
-/** The tab page's metronome (docs/tabs-rebuild.md section 4: "Small Web
+/** The tab page's metronome ("Small Web
  *  Audio click from the score tempo map"). AlphaTab's own metronome only
  *  sounds through its synthesizer, which Ember does not use, so the clicks
  *  are scheduled here against Ember's playhead: a short look ahead every
