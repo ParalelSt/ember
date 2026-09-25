@@ -3,12 +3,7 @@ import { requireUser, UnauthorizedError, unauthorizedResponse } from '@/lib/auth
 import { rateLimitResponse } from '@/lib/rateLimit';
 import { fromError, jsonError } from '@/lib/upsertTrack';
 import { withRequestLog } from '@/lib/logger/withRequestLog';
-
-// Same channel as bug reports so the project owner gets every report in
-// one place. Same env-var override pattern (see bug-report/route.ts).
-const DEFAULT_WEBHOOK_URL =
-  'https://discord.com/api/webhooks/1512120864391565333/wbnK9NOCeqbHNPK_k8UcdFxRZKztm0LfBR1OfKIQ2txf1zAPwF4mp4kII1S3SA7MIUPY';
-const WEBHOOK_URL = process.env.DISCORD_BUG_REPORT_WEBHOOK_URL || DEFAULT_WEBHOOK_URL;
+import { postToDiscord, webhookUrl } from '@/lib/reports/discord';
 
 const MAX_NOTE_LEN = 1000;
 const MAX_LYRICS_LEN = 4000;
@@ -31,8 +26,12 @@ export const POST = withRequestLog('lyrics-report', async (request: NextRequest)
     });
     if (limited) return limited;
 
-    if (!WEBHOOK_URL) {
-      return jsonError('Lyrics reporting not configured — no Discord webhook set.', 503);
+    // Read per call, not at module load: same reasoning as webhookUrl()'s
+    // own doc comment (lib/reports/discord.ts) — a route module can be
+    // evaluated well before a test sets the env var for its case.
+    const webhook = webhookUrl();
+    if (!webhook) {
+      return jsonError('Lyrics reporting is not configured on this server.', 503);
     }
 
     const body = (await request.json().catch(() => null)) as RequestBody | null;
@@ -63,7 +62,7 @@ export const POST = withRequestLog('lyrics-report', async (request: NextRequest)
       form.append('files[0]', fileBlob, 'lyrics.txt');
     }
 
-    const discordRes = await fetch(WEBHOOK_URL, { method: 'POST', body: form });
+    const discordRes = await postToDiscord(webhook, { method: 'POST', body: form });
     if (!discordRes.ok) {
       const text = await discordRes.text().catch(() => '');
       return jsonError(

@@ -269,9 +269,9 @@ These steps are for **you** as the owner of the deployment everyone uses. Friend
 
 There's a "Report a bug" button under `/settings/help`. It POSTs the user's session diagnostics to a Discord webhook.
 
-The webhook URL ships baked into source (you committed it). Friends self-hosting inherit your channel by default. To use a different one for testing, set `DISCORD_BUG_REPORT_WEBHOOK_URL` in `apps/web/.env.local` — the env var wins over the source default.
+Set `DISCORD_BUG_REPORT_WEBHOOK_URL` in `apps/web/.env.local` to your webhook URL. There is no built-in default: a hardcoded one used to ship in source, a public secret scanner found it, and Discord deleted it. Webhooks are env-only now and must never be committed. Without this set, "Report a bug" returns a 503.
 
-Server-side error logs live at `logs/errors-YYYY-MM-DD.jsonl` (gitignored, auto-deleted after 2 days). The Discord channel is your long-term archive. If the baked-in webhook ever gets abused, delete + recreate it in Discord and rebuild.
+Server-side error logs live at `logs/errors-YYYY-MM-DD.jsonl` (gitignored, auto-deleted after 2 days). The Discord channel is your long-term archive. If your webhook ever gets abused, delete + recreate it in Discord and update the env var.
 
 #### What a report contains
 
@@ -378,11 +378,10 @@ It answers `{"posted": true, "groups": [...]}`, or `{"posted": false,
 ### Feature and fix requests → your Discord channels
 
 There's a "Send a request" button next to Report a bug under `/settings/help`.
-Like bug reports, the two channel webhooks ship in source
-(`DEFAULT_WEBHOOKS` in `apps/web/app/api/requests/route.ts`), so friends
-self-hosting send to your channels too. To send somewhere else, set
-`DISCORD_FEATURE_WEBHOOK_URL` and `DISCORD_FIX_WEBHOOK_URL` in
-`apps/web/.env.local`; the env vars win.
+Set `DISCORD_FEATURE_WEBHOOK_URL` and `DISCORD_FIX_WEBHOOK_URL` in
+`apps/web/.env.local` to your own channels. Env-only, like the bug-report
+webhook below: without them, sending a request returns a 503 instead of
+posting anywhere.
 
 ### Desktop auto-update
 
@@ -677,7 +676,7 @@ Then `Ctrl+C` whatever's running and start it again. `./.venv/bin/yt-dlp --versi
 
 **The PocketBase admin UI (`/_/`) says 404 on the public URL:** that is on purpose. The app's `/pb` proxy never forwards the admin UI or the superuser API to the internet. Open it on the host itself: `http://127.0.0.1:8090/_/`, or from your own computer through an SSH tunnel (`ssh -L 8090:127.0.0.1:8090 you@host`, then http://127.0.0.1:8090/_/).
 
-**"Bug reporting not configured" 503 when clicking Report a bug** — the Discord webhook isn't set. Owner: paste your webhook URL into the `DEFAULT_WEBHOOK_URL` constant at the top of `apps/web/app/api/bug-report/route.ts`. Anyone else: set `DISCORD_BUG_REPORT_WEBHOOK_URL` in `apps/web/.env.local`.
+**"Bug reporting not configured" 503 when clicking Report a bug** — the Discord webhook isn't set. Set `DISCORD_BUG_REPORT_WEBHOOK_URL` in `apps/web/.env.local`, then `./update.sh`. There is no built-in default anymore (ask the project owner for the URL if you don't have your own).
 
 **Friends can't reach your Tailscale Funnel URL after switching wifi** — Tailscale Funnel binding can get stale when your network changes. On the hosting machine:
 

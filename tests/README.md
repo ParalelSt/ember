@@ -142,8 +142,9 @@ app were already stopped when `npm ci` began.
 
 `crash-report.test.mjs` (34 checks): webhook resolution order (crash env var,
 bug-report env var, `.env.local`, then `DEFAULT_WEBHOOK_URL` extracted from a
-fixture copy of the route, plus a check that the real route still has one to
-extract), log-tail scrubbing of a bearer token and cookies, the rate-limit
+fixture copy of the route, plus a check that the real `discord.ts` no longer
+defines one to extract, env-only now), log-tail scrubbing of a bearer token
+and cookies, the rate-limit
 state (10 an hour, one mute notice, then silence), the multipart post (embed
 title/text/footer, no mentions, last 50 lines attached, an empty log attaching
 nothing, the title scrubbed too), the poster surviving two SIGHUPs and a SIGINT
