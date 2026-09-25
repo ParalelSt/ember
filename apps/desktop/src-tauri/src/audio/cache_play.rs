@@ -69,7 +69,7 @@ impl Rig {
 
     async fn load(&self, url: &str) {
         let app = self.app.handle().clone();
-        audio_load(app.clone(), app.state::<AudioEngine>(), url.to_string(), true, 0.0, None, Some(KEY.into()))
+        audio_load(app.clone(), app.state::<AudioEngine>(), url.to_string(), true, 0.0, None, Some(KEY.into()), None)
             .await
             .expect("the load command itself runs");
     }
@@ -184,6 +184,7 @@ async fn without_a_cache_key_the_song_streams_as_before() {
         format!("{}/api/youtube/stream/abc", source.base),
         true,
         0.0,
+        None,
         None,
         None,
     )

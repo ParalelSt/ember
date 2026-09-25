@@ -177,7 +177,7 @@ describe('tauriBackend at the end of a song (bughunt 2026-09-25 D1)', () => {
     const backend = createTauriBackend(events);
     backend.load('/api/youtube/stream/a', { autoplay: true });
     await emit('audio:play');
-    events.onEnded.mockImplementation(() => backend.load('/api/youtube/stream/b', { autoplay: true }));
+    vi.mocked(events.onEnded).mockImplementation(() => backend.load('/api/youtube/stream/b', { autoplay: true }));
 
     await emit('audio:ended');
 
@@ -190,7 +190,7 @@ describe('tauriBackend at the end of a song (bughunt 2026-09-25 D1)', () => {
     const backend = createTauriBackend(events);
     backend.load('/api/youtube/stream/a', { autoplay: true });
     await emit('audio:play');
-    events.onEnded.mockImplementation(() => { backend.seek(0); backend.play(); });
+    vi.mocked(events.onEnded).mockImplementation(() => { backend.seek(0); backend.play(); });
 
     await emit('audio:ended');
 
@@ -203,11 +203,68 @@ describe('tauriBackend at the end of a song (bughunt 2026-09-25 D1)', () => {
     const backend = createTauriBackend(events);
     // An early end runs the provider's error path, which may destroy this
     // backend and hand the song to web audio.
-    events.onEnded.mockImplementation(() => backend.destroy());
+    vi.mocked(events.onEnded).mockImplementation(() => backend.destroy());
 
     await emit('audio:ended');
 
     expect(events.onPause).not.toHaveBeenCalled();
+  });
+});
+
+describe('tauriBackend and reports about the song it just left (bughunt 2026-09-25 D5)', () => {
+  const tokens = () => invoked.filter((i) => i.cmd === 'audio_load').map((i) => i.args?.token);
+
+  it('tags every load, so the engine can say which one a report is about', () => {
+    const backend = createTauriBackend(makeFakeEvents());
+    backend.load('/api/youtube/stream/a', { autoplay: true });
+    backend.load('/api/youtube/stream/b', { autoplay: true });
+    expect(tokens()).toEqual([1, 2]);
+  });
+
+  it("drops the previous song's playhead that arrives after the next load", async () => {
+    const events = makeFakeEvents();
+    const backend = createTauriBackend(events);
+    backend.load('/api/youtube/stream/a', { autoplay: true });
+    await emit('audio:time', { sec: 149, token: 1 });
+    vi.mocked(events.onTime).mockClear();
+    backend.load('/api/youtube/stream/b', { autoplay: true });
+
+    // Sent by song A's timer a moment before the engine saw the load of B.
+    // Taken as B's, it put the slider at 2:30 of a song that had not
+    // started, and was saved as where B resumes.
+    await emit('audio:time', { sec: 150, token: 1 });
+
+    expect(events.onTime).not.toHaveBeenCalled();
+    expect(backend.getCurrentTime()).toBe(0);
+    expect(backend.isTransitioning()).toBe(true);
+
+    await emit('audio:time', { sec: 0.25, token: 2 });
+    expect(events.onTime).toHaveBeenCalledWith(0.25);
+  });
+
+  it("drops the previous song's end, which would skip the next song", async () => {
+    const events = makeFakeEvents();
+    const backend = createTauriBackend(events);
+    backend.load('/api/youtube/stream/a', { autoplay: true });
+    backend.load('/api/youtube/stream/b', { autoplay: true });
+
+    await emit('audio:ended', { token: 1 });
+    await emit('audio:error', { message: 'playback stalled at 41.0s', retry: 'web-audio', token: 1 });
+
+    expect(events.onEnded).not.toHaveBeenCalled();
+    expect(events.onError).not.toHaveBeenCalled();
+  });
+
+  it('takes untagged reports as before (an older desktop build)', async () => {
+    const events = makeFakeEvents();
+    const backend = createTauriBackend(events);
+    backend.load('/api/youtube/stream/a', { autoplay: true });
+
+    await emit('audio:time', { sec: 3 });
+    await emit('audio:ended');
+
+    expect(events.onTime).toHaveBeenCalledWith(3);
+    expect(events.onEnded).toHaveBeenCalledTimes(1);
   });
 });
 

@@ -176,7 +176,7 @@ impl Drop for Rig {
 /// The webview's `invoke('audio_load', ...)`, run to completion. Takes the
 /// handle rather than the rig so a test can run it as a task of its own.
 async fn load_on(app: AppHandle<MockRuntime>, url: String, autoplay: bool) {
-    audio_load(app.clone(), app.state::<AudioEngine>(), url, autoplay, 0.0, None, None)
+    audio_load(app.clone(), app.state::<AudioEngine>(), url, autoplay, 0.0, None, None, None)
         .await
         .expect("the load command itself runs");
 }
@@ -506,4 +506,43 @@ async fn a_seek_does_not_wait_for_the_host() {
     // And the seek still happens, once the bytes are there.
     let moved = rig.until(Duration::from_secs(10), |r| sink_pos(r).is_some_and(|p| p >= 99.0)).await;
     assert!(moved, "the seek never landed: {:?}", sink_pos(&rig));
+}
+
+/// D5. Every report about a load's playback carries the webview's tag for
+/// that load, so the webview can drop one that was already on its way when
+/// it loaded the next song: the old song's playhead (or its end) used to be
+/// taken for the new one's.
+#[tokio::test(flavor = "multi_thread")]
+async fn reports_carry_the_tag_of_the_load_they_are_about() {
+    let rig = Rig::new();
+    let song = host(&[Answer::Song], Duration::ZERO);
+    let app = rig.app.handle().clone();
+    audio_load(app.clone(), app.state::<AudioEngine>(), song.url.clone(), true, 0.0, None, None, Some(7))
+        .await
+        .expect("load");
+    assert!(rig.until(Duration::from_secs(60), |r| r.count("audio:ended") == 1).await);
+
+    let events = rig.events();
+    let about = |name: &str| -> Vec<Option<u64>> {
+        events
+            .iter()
+            .filter(|(n, _)| n == name)
+            .map(|(_, p)| serde_json::from_str::<serde_json::Value>(p).ok().and_then(|v| v["token"].as_u64()))
+            .collect()
+    };
+    let times = about("audio:time");
+    assert!(!times.is_empty() && times.iter().all(|t| *t == Some(7)), "audio:time tags: {times:?}");
+    assert_eq!(about("audio:ended"), vec![Some(7)]);
+}
+
+/// A webview that sends no tag (every web build before this one) gets
+/// reports without one, which it reads as before.
+#[tokio::test(flavor = "multi_thread")]
+async fn an_untagged_load_reports_untagged() {
+    let rig = Rig::new();
+    let song = host(&[Answer::Song], Duration::ZERO);
+    rig.load(&song.url, true).await;
+    assert!(rig.until(Duration::from_secs(5), |r| r.count("audio:time") > 0).await);
+    let tagged = rig.events().iter().filter(|(_, p)| p.contains("token")).count();
+    assert_eq!(tagged, 0, "{:?}", rig.events());
 }

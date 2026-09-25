@@ -74,6 +74,14 @@ pub struct AudioEngine {
     /// waiting on the host for the bytes it seeks to, and the position it
     /// would report is the one being left.
     seeks_running: AtomicU64,
+    /// The webview's tag for its latest `audio_load` (bughunt 2026-09-25 D5),
+    /// and the tag of the load whose sink is in. Every position, end and
+    /// playback error carries the tag of the load it is about, so the webview
+    /// can drop one that was already on its way when it loaded the next song
+    /// (it used to take the old song's playhead, or its end, as the new
+    /// one's). `None` for a webview that sends none; it then checks nothing.
+    asked_token: Mutex<Option<u64>>,
+    installed_token: Mutex<Option<u64>>,
     /// The last track a load was asked for: url, cookie, start, cache key.
     /// What play tries again when that load failed and nothing is loaded.
     requested: Mutex<Option<Requested>>,
@@ -162,6 +170,8 @@ impl AudioEngine {
             want_play: AtomicBool::new(false),
             pending_seek: Mutex::new(None),
             seeks_running: AtomicU64::new(0),
+            asked_token: Mutex::new(None),
+            installed_token: Mutex::new(None),
             requested: Mutex::new(None),
             current_url: Mutex::new(None),
             current_cookie: Mutex::new(None),
@@ -193,6 +203,8 @@ impl AudioEngine {
             want_play: AtomicBool::new(false),
             pending_seek: Mutex::new(None),
             seeks_running: AtomicU64::new(0),
+            asked_token: Mutex::new(None),
+            installed_token: Mutex::new(None),
             requested: Mutex::new(None),
             current_url: Mutex::new(None),
             current_cookie: Mutex::new(None),
@@ -368,6 +380,14 @@ type Requested = (String, Option<String>, f64, Option<String>);
 #[derive(Clone, Serialize)]
 struct SecPayload {
     sec: f64,
+    /// The load this is about (see `AudioEngine::asked_token`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    token: Option<u64>,
+}
+#[derive(Clone, Serialize)]
+struct TokenPayload {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    token: Option<u64>,
 }
 /// Whether the webview should try this track again on web audio.
 ///
@@ -384,6 +404,8 @@ const RETRY_NONE: &str = "none";
 struct ErrPayload {
     message: String,
     retry: &'static str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    token: Option<u64>,
 }
 /// An OS media-button press forwarded to the webview. `kind` is one of
 /// play/pause/toggle/next/prev/seek; `sec` is set only for seek.
@@ -393,9 +415,9 @@ struct CmdPayload {
     sec: Option<f64>,
 }
 
-fn emit_sec<R: Runtime>(app: &AppHandle<R>, event: &str, sec: f64) {
+fn emit_sec<R: Runtime>(app: &AppHandle<R>, event: &str, sec: f64, token: Option<u64>) {
     use tauri::Emitter;
-    let _ = app.emit(event, SecPayload { sec });
+    let _ = app.emit(event, SecPayload { sec, token });
 }
 fn emit_bare<R: Runtime>(app: &AppHandle<R>, event: &str) {
     use tauri::Emitter;
@@ -417,8 +439,13 @@ fn log_audio<R: Runtime>(app: &AppHandle<R>, level: &str, msg: &str) {
 }
 
 fn emit_err<R: Runtime>(app: &AppHandle<R>, retry: &'static str, message: String) {
+    emit_err_about(app, retry, message, None);
+}
+
+/// `emit_err` for a failure of one particular load's playback.
+fn emit_err_about<R: Runtime>(app: &AppHandle<R>, retry: &'static str, message: String, token: Option<u64>) {
     use tauri::Emitter;
-    let _ = app.emit("audio:error", ErrPayload { message, retry });
+    let _ = app.emit("audio:error", ErrPayload { message, retry, token });
 }
 
 // --- Commands ---------------------------------------------------------------
@@ -1139,7 +1166,11 @@ pub async fn audio_load<R: Runtime>(
     start_at: f64,
     cookie: Option<String>,
     cache_key: Option<String>,
+    token: Option<u64>,
 ) -> Result<(), String> {
+    if let Ok(mut t) = engine.asked_token.lock() {
+        *t = token;
+    }
     load_track(&app, engine.inner(), url, autoplay, start_at, cookie, cache_key).await
 }
 
@@ -1237,6 +1268,8 @@ async fn load_claimed<R: Runtime>(
         return Ok(());
     }
     engine.silence_current();
+    // A re-open or a retry is the same song the webview asked for last.
+    let token = engine.asked_token.lock().ok().and_then(|t| *t);
     if let Ok(mut r) = engine.requested.lock() {
         *r = Some((url.clone(), cookie.clone(), start_at, cache_key.clone()));
     }
@@ -1388,6 +1421,9 @@ async fn load_claimed<R: Runtime>(
             sink.pause();
         }
         *slot = Some(Arc::clone(&sink));
+        if let Ok(mut t) = engine.installed_token.lock() {
+            *t = token;
+        }
         // A seek that came in after the start was decided and before the
         // sink went in found nothing to seek either.
         (playing, engine.pending_seek.lock().ok().and_then(|mut p| p.take()))
@@ -1412,7 +1448,7 @@ async fn load_claimed<R: Runtime>(
         ),
     );
     if let Some(d) = total {
-        emit_sec(app, "audio:duration", d.as_secs_f64());
+        emit_sec(app, "audio:duration", d.as_secs_f64(), token);
     }
     // Refresh the OS widget's metadata now that this song's length is known
     // (bughunt L5): audio_set_metadata usually ran before this point. Also
@@ -1425,10 +1461,10 @@ async fn load_claimed<R: Runtime>(
     engine.set_nowplaying(playing);
 
     let (sink_arc, generation) = engine.inner_arc();
-    spawn_position_timer(app.clone(), sink_arc, generation, my_gen, Arc::clone(&failed));
+    spawn_position_timer(app.clone(), sink_arc, generation, my_gen, Arc::clone(&failed), token);
     if let Some(sec) = late_seek {
         if let Some(target) = seek_target(total, sec) {
-            seek_in_place(app, engine, sink, failed, target, playing);
+            seek_in_place(app, engine, sink, failed, target, playing, token);
         }
     }
     Ok(())
@@ -1606,7 +1642,8 @@ pub fn audio_seek<R: Runtime>(app: AppHandle<R>, engine: State<'_, AudioEngine>,
         }
     };
     let failed = engine.source_failed.lock().map(|f| Arc::clone(&f)).unwrap_or_default();
-    seek_in_place(&app, engine.inner(), sink, failed, target, playing);
+    let token = engine.installed_token.lock().ok().and_then(|t| *t);
+    seek_in_place(&app, engine.inner(), sink, failed, target, playing, token);
 }
 
 /// Hands a seek to the decoder, off the calling thread.
@@ -1624,6 +1661,7 @@ fn seek_in_place<R: Runtime>(
     failed: Arc<AtomicBool>,
     target: Duration,
     playing: bool,
+    token: Option<u64>,
 ) {
     engine.seeks_running.fetch_add(1, Ordering::SeqCst);
     let app = app.clone();
@@ -1643,7 +1681,7 @@ fn seek_in_place<R: Runtime>(
         }
         match result {
             Ok(()) => {
-                emit_sec(&app, "audio:time", target.as_secs_f64()); // optimistic
+                emit_sec(&app, "audio:time", target.as_secs_f64(), token); // optimistic
                 // The OS widget's scrubber runs on from the last position it
                 // was sent, so it has to hear about a seek too.
                 engine.set_nowplaying(playing);
@@ -1659,7 +1697,7 @@ fn seek_in_place<R: Runtime>(
                 failed.store(true, Ordering::SeqCst);
                 let sec = target.as_secs_f64();
                 log_audio(&app, "WARN", &format!("seek to {sec:.1}s failed: {e}"));
-                emit_err(&app, RETRY_WEB_AUDIO, format!("seek failed: {e}"));
+                emit_err_about(&app, RETRY_WEB_AUDIO, format!("seek failed: {e}"), token);
             }
         }
     });
@@ -1757,6 +1795,7 @@ fn spawn_position_timer<R: Runtime>(
     generation: Arc<AtomicU64>,
     my_gen: u64,
     failed: Arc<AtomicBool>,
+    token: Option<u64>,
 ) {
     tauri::async_runtime::spawn(async move {
         let mut interval = tokio::time::interval(Duration::from_millis(250));
@@ -1805,7 +1844,7 @@ fn spawn_position_timer<R: Runtime>(
             if !seeking {
                 seeking_for = 0;
             }
-            emit_sec(&app, "audio:time", pos);
+            emit_sec(&app, "audio:time", pos, token);
             if empty {
                 // The player has stopped (D1): play or a seek from here
                 // starts the song again, and only play makes it sound.
@@ -1829,9 +1868,12 @@ fn spawn_position_timer<R: Runtime>(
                         "WARN",
                         &format!("the stream failed at {pos:.1}s: reporting an error, not the end"),
                     );
-                    emit_err(&app, RETRY_WEB_AUDIO, format!("the stream stopped at {pos:.1}s"));
+                    emit_err_about(&app, RETRY_WEB_AUDIO, format!("the stream stopped at {pos:.1}s"), token);
                 } else {
-                    emit_bare(&app, "audio:ended");
+                    {
+                        use tauri::Emitter;
+                        let _ = app.emit("audio:ended", TokenPayload { token });
+                    }
                     // Tell the OS widget too (bughunt L5): a track that ran
                     // out on its own left it stuck on "Playing" forever,
                     // since only the explicit audio_stop command used to set
@@ -1854,7 +1896,7 @@ fn spawn_position_timer<R: Runtime>(
                         "WARN",
                         &format!("playback stalled at {pos:.1}s — source starved, giving up"),
                     );
-                    emit_err(&app, RETRY_WEB_AUDIO, format!("playback stalled at {pos:.1}s"));
+                    emit_err_about(&app, RETRY_WEB_AUDIO, format!("playback stalled at {pos:.1}s"), token);
                     break;
                 }
             } else {
