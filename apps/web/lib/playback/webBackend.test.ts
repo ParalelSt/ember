@@ -185,3 +185,48 @@ describe('webBackend setRate (practice speed)', () => {
     b.destroy();
   });
 });
+
+describe('webBackend play() before the song has loaded (bughunt 2026-09-25 P7)', () => {
+  // Play pressed while a load is still settling (a cold start resuming a
+  // song at 1:35 on a slow connection) rebuilds the element. It rebuilt at
+  // the last playhead the element had reported, which for a load that has
+  // not reported yet is 0 (or the previous song's time): the resume was lost.
+  function element() {
+    const all = document.body.querySelectorAll('audio');
+    return all[all.length - 1] as HTMLAudioElement;
+  }
+
+  it('keeps the pending resume position', () => {
+    vi.spyOn(HTMLMediaElement.prototype, 'play').mockImplementation(() => Promise.resolve());
+    vi.spyOn(HTMLMediaElement.prototype, 'duration', 'get').mockReturnValue(200);
+    let now = 0;
+    const b = createWebBackend(makeFakeEvents());
+    const a = element();
+    Object.defineProperty(a, 'currentTime', { configurable: true, get: () => now, set: (v: number) => { now = v; } });
+    b.load('/s/a', { autoplay: false, startAt: 95 });
+    // Nothing has loaded yet (readyState 0): play rebuilds the element.
+    b.play();
+    a.dispatchEvent(new Event('loadedmetadata'));
+    expect(now).toBe(95);
+    b.destroy();
+  });
+
+  it('does not hand the previous song\'s playhead to the next one', () => {
+    vi.spyOn(HTMLMediaElement.prototype, 'play').mockImplementation(() => Promise.resolve());
+    vi.spyOn(HTMLMediaElement.prototype, 'duration', 'get').mockReturnValue(200);
+    let now = 0;
+    const b = createWebBackend(makeFakeEvents());
+    const a = element();
+    Object.defineProperty(a, 'currentTime', { configurable: true, get: () => now, set: (v: number) => { now = v; } });
+    b.load('/s/a', { autoplay: true });
+    a.dispatchEvent(new Event('loadedmetadata'));
+    now = 150;
+    a.dispatchEvent(new Event('timeupdate'));
+    b.load('/s/b', { autoplay: false, startAt: 0 });
+    now = 0;
+    b.play();
+    a.dispatchEvent(new Event('loadedmetadata'));
+    expect(now).toBe(0);
+    b.destroy();
+  });
+});

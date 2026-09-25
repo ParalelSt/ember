@@ -71,8 +71,11 @@ export const createWebBackend: CreateAudioBackend = (events) => {
   // on the new track's loadedmetadata and seeks it to the previous song's
   // position (same leak fixed in the pre-seam provider on test-branch).
   let pendingMeta: (() => void) | null = null;
+  /** Where pendingMeta will put the playhead. */
+  let pendingTarget = 0;
   const restoreOnMeta = (restoreTo: number) => {
     if (pendingMeta) a.removeEventListener('loadedmetadata', pendingMeta);
+    pendingTarget = restoreTo;
     const onMetaOnce = () => {
       pendingMeta = null;
       if (restoreTo > 1 && restoreTo < (a.duration || Infinity)) {
@@ -128,6 +131,9 @@ export const createWebBackend: CreateAudioBackend = (events) => {
     load(url, opts) {
       armTransition();
       lastUrl = url;
+      // The playhead is this song's from here on: the previous song's last
+      // report must not be where a rebuild (play() below) resumes it.
+      lastKnownTime = opts.startAt ?? 0;
       // Setting .src queues a load; no explicit a.load() (it forces a harder
       // reset that tears the notification down on a track advance).
       a.src = url;
@@ -151,11 +157,15 @@ export const createWebBackend: CreateAudioBackend = (events) => {
         return;
       }
       // Suspended / errored: the error handler dropped the src. Rebuild from the
-      // last URL and resume from the last known position.
+      // last URL and resume from the last known position. A load whose
+      // metadata has not arrived yet has not reported a playhead at all: it
+      // resumes where that load was going to start (a cold start's saved
+      // position), not at 0.
       if (!lastUrl) return;
+      const resumeAt = pendingMeta ? pendingTarget : lastKnownTime;
       armTransition();
       a.src = lastUrl;
-      restoreOnMeta(lastKnownTime);
+      restoreOnMeta(resumeAt);
       a.play().then(() => events.onPlay()).catch(() => {});
     },
 
