@@ -121,6 +121,9 @@ class EmberPlaybackService : MediaLibraryService() {
     private lateinit var tree: BrowseTree
     private lateinit var overlay: PrankOverlay
     private val io = Executors.newSingleThreadExecutor()
+    /** Loudness lookups, apart from `io`: a slow browse list must not hold
+     *  back the next song's level (and the other way round). */
+    private val gainIo = Executors.newSingleThreadExecutor()
     /** Prefetch downloads and cache clearing, one at a time. */
     private val cacheIo = Executors.newSingleThreadExecutor()
     private val handler = Handler(Looper.getMainLooper())
@@ -158,7 +161,7 @@ class EmberPlaybackService : MediaLibraryService() {
         savedQueue = SavedQueue(java.io.File(filesDir, "native-queue.json"))
         player.addListener(savedQueue.Saver(player, io))
         overlay = PrankOverlay(this, player, dataSource, baseUrl)
-        normalizer = Normalizer(player, GainStore(getSharedPreferences(NORMALIZE_PREFS, MODE_PRIVATE)), api::trackGain, io) { handler.post(it) }
+        normalizer = Normalizer(player, GainStore(getSharedPreferences(NORMALIZE_PREFS, MODE_PRIVATE)), api::trackGain, gainIo) { handler.post(it) }
         normalizer.setEnabled(getSharedPreferences(NORMALIZE_PREFS, MODE_PRIVATE).getBoolean("enabled", true))
         // The session (the app, the notification, the car) sets the person's
         // level; the player underneath adds the song's gain (Normalizer).
@@ -365,6 +368,7 @@ class EmberPlaybackService : MediaLibraryService() {
         session.release()
         player.release()
         io.shutdown()
+        gainIo.shutdown()
         super.onDestroy()
     }
 

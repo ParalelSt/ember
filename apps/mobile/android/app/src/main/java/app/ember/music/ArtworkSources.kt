@@ -29,11 +29,12 @@ object ArtworkSources {
     fun dataSourceFactory(context: Context, baseUrl: String, authed: DataSource.Factory, plain: DataSource.Factory): DataSource.Factory =
         DefaultDataSource.Factory(context, ByHost(baseUrl, authed, plain))
 
+    /** One per process, like the service's cache: a service created again
+     *  must not leave another thread behind. */
+    private val decodeThread by lazy { MoreExecutors.listeningDecorator(Executors.newSingleThreadExecutor()) }
+
     fun bitmapLoader(context: Context, baseUrl: String, authed: DataSource.Factory, plain: DataSource.Factory): BitmapLoader =
-        CacheBitmapLoader(DataSourceBitmapLoader(
-            MoreExecutors.listeningDecorator(Executors.newSingleThreadExecutor()),
-            dataSourceFactory(context, baseUrl, authed, plain),
-        ))
+        CacheBitmapLoader(DataSourceBitmapLoader(decodeThread, dataSourceFactory(context, baseUrl, authed, plain)))
 
     class ByHost(private val baseUrl: String, private val authed: DataSource.Factory, private val plain: DataSource.Factory) : DataSource.Factory {
         override fun createDataSource(): DataSource = object : DataSource {

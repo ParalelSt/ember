@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { createAndroidBackend, NATIVE_QUEUE_WAIT_MS, OVERLAY_END_GRACE_MS } from './androidBackend';
+import { createAndroidBackend, OVERLAY_END_GRACE_MS } from './androidBackend';
 import { makeFakeEvents } from '@/test-utils/fakeBackend';
 
 // The native prank overlay as the web side sees it: calls forwarded to the
@@ -282,13 +282,31 @@ describe('androidBackend: a page starting while native already plays', () => {
     expect(n.plugin.setQueue).toHaveBeenCalledTimes(1);
   });
 
-  it('native never answering: the saved queue goes over after a short wait', () => {
+  it('a slow answer is waited for, however slow: native playing is never guessed empty', async () => {
     vi.useFakeTimers();
-    const n = installPlugin(false); // getState never settles
+    const n = installPlugin(false);
+    let answer: (s: unknown) => void = () => {};
+    n.plugin.getState = vi.fn(() => new Promise((r) => (answer = r)));
+    n.plugin.getQueue = vi.fn().mockResolvedValue({ tracks: [t('x')], index: 0 });
+    const events = { ...makeFakeEvents(), onQueueReplaced: vi.fn() };
+    const b = createAndroidBackend(events);
+    b.setQueue!([t('a')], 0, false);
+    vi.advanceTimersByTime(30_000);
+    expect(n.plugin.setQueue).not.toHaveBeenCalled();
+    answer({ playing: true, position: 3, duration: 100, index: 0, trackId: 'x' });
+    await vi.runAllTimersAsync();
+    expect(n.plugin.setQueue).not.toHaveBeenCalled();
+    expect(events.onQueueReplaced).toHaveBeenCalledWith([t('x')], 0);
+    // The late answer still reaches the page as native's state.
+    expect(events.onTime).toHaveBeenCalledWith(3);
+  });
+
+  it('a bridge that fails to answer sends the saved queue', async () => {
+    const n = installPlugin(false);
+    n.plugin.getState = vi.fn().mockRejectedValue(new Error('bridge'));
     const b = createAndroidBackend(makeFakeEvents());
     b.setQueue!([t('a')], 0, false);
-    expect(n.plugin.setQueue).not.toHaveBeenCalled();
-    vi.advanceTimersByTime(NATIVE_QUEUE_WAIT_MS);
+    await flush();
     expect(n.plugin.setQueue).toHaveBeenCalledTimes(1);
   });
 });

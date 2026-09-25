@@ -61,8 +61,6 @@ const LOOP_MODES: readonly LoopMode[] = ['off', 'all', 'one'];
 /** If native never reports the end (the service died), give up this long
  *  after the cap so the receiver is not busy forever. */
 export const OVERLAY_END_GRACE_MS = 5_000;
-/** A saved queue waits at most this long for native to say what it has. */
-export const NATIVE_QUEUE_WAIT_MS = 2_000;
 
 function plugin(): EmberPlayerPlugin | null {
   if (typeof window === 'undefined') return null;
@@ -179,7 +177,8 @@ export const createAndroidBackend: CreateAudioBackend = (events: AudioBackendEve
    *  restoring its saved queue sends one before it has heard from native)
    *  waits until native has said what it has. Native playing something:
    *  this page takes native's queue instead. Native empty (a fresh start):
-   *  the saved queue goes over, paused, as before. A tap (play) never waits. */
+   *  the saved queue goes over, paused, as before. A tap (play) never waits.
+   *  A bridge that fails to answer sends the saved queue. */
   type Held = { tracks: Track[]; i: number; origin?: QueueOrigin; startSec?: number };
   let settled = !p;
   let held: Held | null = null;
@@ -193,7 +192,6 @@ export const createAndroidBackend: CreateAudioBackend = (events: AudioBackendEve
     settled = true;
     const h = held;
     held = null;
-    clearTimeout(waitTimer);
     const nativeHas = !!s && s.index >= 0 && !!s.trackId;
     if (h && nativeHas) {
       const same = (a: Track[], b: Track[]) => a.length === b.length && a.every((t, k) => t.id === b[k]?.id);
@@ -209,7 +207,10 @@ export const createAndroidBackend: CreateAudioBackend = (events: AudioBackendEve
     }
     if (s) onState(s);
   };
-  const waitTimer = p ? setTimeout(() => settle(null, null), NATIVE_QUEUE_WAIT_MS) : undefined;
+  // No time limit: a slow answer (the player service still binding on a
+  // busy cold start) is exactly when native may already be playing, and
+  // guessing "empty" then pushed the saved queue over it. Only a failed
+  // call means there is nothing to protect.
   if (p) {
     // Catch up on whatever native is already doing: the UI may have been
     // re-created while the car kept playing.
