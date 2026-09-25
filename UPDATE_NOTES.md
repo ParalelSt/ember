@@ -1,3 +1,23 @@
+# Unreleased: Security fixes (audit 2026-09-25)
+
+**Host: run `./update.sh` as usual (no new packages, no settings, no
+database changes).** It restarts PocketBase, which is what matters here:
+two new `pb_hooks` files do the work on boot, and the log should then show
+`[ensure_owner_rules] ... an update can no longer change the owner` once
+per collection. What changes:
+
+- A member's list filter or sort through `/pb` may no longer join into
+  related records (`likes_via_track...`, `uploader.name`...). Before, any
+  member could read another member's likes, history and private playlist
+  names that way (S1).
+- An update through `/pb` can no longer hand a playlist, like, play or
+  recent search to someone else, or move a song into someone else's
+  playlist (S2).
+- Sign-in and password-reset attempts through `/pb` are limited to 20 per
+  15 minutes per address (S4). Someone locked out waits 15 minutes.
+- Android (needs a new APK): the native player sends the session cookie to
+  the Ember server only, never to a stream on another host (S3).
+
 # 0.7.9: Web app fixes (batch 5)
 
 **Host: run `./update.sh` as usual (no new packages, no settings, no database

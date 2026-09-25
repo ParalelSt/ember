@@ -1191,6 +1191,41 @@ APP_URL=http://127.0.0.1:3053 PB_URL=http://127.0.0.1:8086 node tests/pb-admin-e
 values (from the environment or `.env.local`) to PocketBase alone, never to
 Next or a command line.
 
+## What `pb-rbac.test.mjs` and `pb-filter-guard.test.mjs` cover
+
+Security audit 2026-09-25. `pb-rbac.test.mjs` talks to PocketBase alone,
+exactly as a member (or a signed-out caller) could through `/pb`. It needs
+a throwaway PocketBase from this checkout, never a copy of real data:
+
+```bash
+SB=$(mktemp -d) && mkdir -p "$SB/empty"
+./pocketbase/pocketbase migrate up --dir "$SB/data" --migrationsDir pocketbase/pb_migrations --hooksDir "$SB/empty"
+EMBER_PB_SUPERUSER_EMAIL=su@sandbox.test EMBER_PB_SUPERUSER_PASSWORD=<sandbox password> \
+  ./pocketbase/pocketbase serve --http 127.0.0.1:8148 --dir "$SB/data" \
+  --migrationsDir pocketbase/pb_migrations --hooksDir pocketbase/pb_hooks --automigrate=0 &
+PB_URL=http://127.0.0.1:8148 EMBER_PB_SUPERUSER_EMAIL=su@sandbox.test \
+  EMBER_PB_SUPERUSER_PASSWORD=<sandbox password> node tests/pb-rbac.test.mjs
+```
+
+- **S1**: a filter or sort that joins into related records is refused (400)
+  to members and signed-out callers, on lists and realtime subscriptions:
+  likes, history and playlist rows through the `tracks` catalog, private
+  playlist names, name and `is_admin` through a shared upload, a joined sort,
+  a join hidden behind a quoted string. What the app sends (own-field
+  filters, the prank inbox filter and subscription, a dot inside a quoted
+  value) still works, and so does the superuser.
+- **S2**: an update cannot hand a playlist, like, play or recent search to
+  someone else (nor with `user+`), or move a playlist row into someone
+  else's playlist; renaming and reordering your own still work.
+- **G1 to G7**: the older guards: no self-made admin, no editing someone
+  else's account, no sign-up with `is_admin`, users, invites, plays and the
+  admin-only collections stay closed.
+
+`pb-filter-guard.test.mjs` needs nothing: it runs the parser the hook uses
+(`pocketbase/pb_hooks/lib/filterGuard.js`) over the edge cases. The proxy's
+sign-in throttle (S4) is in `apps/web/proxy.test.ts`, and the Android cookie
+scope (S3) in `ServerApiCookieScopeTest`.
+
 ## What `access-control-2-ui.test.mjs` covers
 
 Bughunt round 3 (X1, X2, X4, X7, X8, X10): carlists, deleting a member, tabs
