@@ -22,8 +22,8 @@ Branch: `bughunt2/desktop-playback` (from `main` at `b750003`, web 0.7.11 / shel
 
 How to run the tests:
 
-- Rust: `cd apps/desktop/src-tauri && cargo test --lib` (macOS/Linux; the engine tests need tauri's `test` feature). After: **153 passed, 0 failed, 3 ignored** (main was 143 passed, 3 ignored). Run twice, stable. `cargo clippy --lib --tests`: no new warnings.
-- Web: `cd apps/web && npx vitest run lib/playback components/player hooks/player`: **40 files, 406 passed**. Full unit suite (`npx vitest run`): **293 files, 3428 passed**.
+- Rust: `cd apps/desktop/src-tauri && cargo test --lib` (macOS/Linux; the engine tests need tauri's `test` feature). After: **154 passed, 0 failed, 3 ignored** (main was 143 passed, 3 ignored). Stable across runs. `cargo clippy --lib --tests`: no new warnings.
+- Web: `cd apps/web && npx vitest run lib/playback components/player hooks/player`: **40 files, 408 passed**. Full unit suite (`npx vitest run`): **293 files, 3430 passed**.
 
 Not tried in the real desktop app (no GUI build from this sandbox). Every fix is covered by a test that drives the real engine commands on tauri's mock app against a local fake host, or by the web backend/provider unit tests.
 
@@ -195,10 +195,20 @@ Not tried in the real desktop app (no GUI build from this sandbox). Every fix is
 
 ---
 
+## Review round
+
+A separate review of the diff found gaps in these fixes, all closed in `089975c`:
+
+- D7: Space and the OS media keys call the engine's play directly, not the provider's toggle, so `userInteracted` stayed false and a fallback after such a play loaded the song paused. Now any real `onPlay` counts. Test: `PlayerProvider.fallbackAutoplay.test.tsx` "resumed with Space or a media key", before `expected { autoplay: false, startAt: 42 } to match object { autoplay: true }`.
+- D2: a seek applied right after the install skipped `plan_seek`, so a backward one in a forward-only track would end the song. It is now planned like any seek (re-open when needed). A seek taken by a load that is then overtaken is handed back to the newer load.
+- D5: a load failure, the load's `audio:play` and `audio:duration` now carry the token too, and the web backend drops stale duration and play (a stale length also clamped seeks). Test: `tauriBackend.test.ts` "drops the previous song's length and play", before `expected "vi.fn()" to not be called at all`.
+- D3: when a slow seek landed, the OS widget was told the play state from when the seek began; a pause in between left it on "Playing". Test: `cargo test --lib a_pause_during_a_slow_seek_leaves_the_widget_paused`, before `widget: Some(Playing { progress: Some(MediaPosition(100s)) })`.
+- D1: the end of a song cleared `want_play` even when a newer load had just set it (a click right as the old song ended could load the new one paused). It now checks that no load is in flight.
+
 ## Test results (final)
 
-- `cargo test --lib` (apps/desktop/src-tauri, shared target dir): 153 passed, 0 failed, 3 ignored. Twice.
+- `cargo test --lib` (apps/desktop/src-tauri, shared target dir): 154 passed, 0 failed, 3 ignored.
 - `cargo clippy --lib --tests`: only warnings that exist on `main`.
-- `npx vitest run lib/playback components/player hooks/player` (apps/web): 40 files, 406 tests passed. Full `npx vitest run`: 293 files, 3428 passed.
+- `npx vitest run lib/playback components/player hooks/player` (apps/web): 40 files, 408 tests passed. Full `npx vitest run`: 293 files, 3430 passed.
 - `npx tsc --noEmit`: no errors in changed files (the `RouteContext` errors are pre-existing, generated route types).
 - `npx eslint` on the changed web files: clean except errors that already exist on `main` (`PlayerProvider.tsx` ref writes during render).
