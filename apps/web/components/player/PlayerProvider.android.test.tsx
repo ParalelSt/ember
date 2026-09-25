@@ -140,3 +140,33 @@ describe('android: volume normalization', () => {
     for (const c of fake.setVolume.mock.calls) expect(c[1]?.normGain ?? 1).toBe(1);
   });
 });
+
+describe('android: a queue native built by itself', () => {
+  it('native radio appended keeps the playlist it came from and the shuffle, with its way back', () => {
+    usePlayerStore.setState({
+      queue: [B, A], index: 1, context: { type: 'album', id: 'x' } as never,
+      shuffle: true, orderBackup: [A, B],
+    });
+    render(<PlayerProvider><div /></PlayerProvider>);
+    act(() => { ev!.onQueueReplaced!([B, A, C, D], 1); });
+    const st = usePlayerStore.getState();
+    expect(st.queue.map((t) => t.id)).toEqual([B.id, A.id, C.id, D.id]);
+    expect(st.context).toEqual({ type: 'album', id: 'x' });
+    expect(st.shuffle).toBe(true);
+    // Unshuffle still restores the order, radio at the end.
+    act(() => { usePlayerStore.getState().toggleShuffle(); });
+    expect(usePlayerStore.getState().queue.map((t) => t.id)).toEqual([A.id, B.id, C.id, D.id]);
+    expect(usePlayerStore.getState().index).toBe(0);
+  });
+
+  it('a new list from the car drops the playlist and the shuffle', () => {
+    usePlayerStore.setState({ queue: [B, A], index: 0, shuffle: true, orderBackup: [A, B], context: { type: 'album', id: 'x' } as never });
+    render(<PlayerProvider><div /></PlayerProvider>);
+    act(() => { ev!.onQueueReplaced!([C, D], 0); });
+    const st = usePlayerStore.getState();
+    expect(st.queue.map((t) => t.id)).toEqual([C.id, D.id]);
+    expect(st.context).toBeNull();
+    expect(st.shuffle).toBe(false);
+    expect(st.orderBackup).toBeNull();
+  });
+});

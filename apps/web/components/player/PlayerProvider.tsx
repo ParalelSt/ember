@@ -229,10 +229,26 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         nativeChangeAt.current = Date.now();
         const at = Math.max(0, Math.min(i, tracks.length - 1));
         loadedTrackRef.current = tracks[at]?.id ?? null;
+        const st = usePlayerStore.getState();
+        // Native radio only adds songs after ours: the playlist this came
+        // from and the shuffle (with its way back) still hold.
+        const appended = tracks.length > st.queue.length && st.queue.every((t, k) => t.id === tracks[k]?.id);
+        if (appended) {
+          const added = tracks.slice(st.queue.length);
+          usePlayerStore.setState({
+            queue: tracks,
+            index: at,
+            orderBackup: st.orderBackup ? [...st.orderBackup, ...added] : null,
+          });
+          return;
+        }
+        // A new list (a tap in the car): not this page's shuffle either, or
+        // the shuffle button would show on with nothing to undo.
         usePlayerStore.setState({
           queue: tracks,
           index: at,
           context: null,
+          shuffle: false,
           orderBackup: null,
         });
       },
