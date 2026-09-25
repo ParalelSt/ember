@@ -54,6 +54,32 @@ interface PlayerState {
   setNowPlayingOpen: (b: boolean) => void;
 }
 
+/** The queue put back in its pre-shuffle order, as it is NOW: the snapshot
+ *  only decides the order. A song removed since stays removed, a song added
+ *  since (a carlist session's picks, add-to-queue) stays, after the original
+ *  ones in the order it was added, and every song is the queue's current copy
+ *  (an unavailable flag set while shuffled is kept). A song listed twice is
+ *  matched copy by copy. `index` follows the playing entry. */
+export function restoreOrder(original: Track[], queue: Track[], index: number): { queue: Track[]; index: number } {
+  const positions = new Map<string, number[]>();
+  queue.forEach((t, i) => {
+    const list = positions.get(t.id);
+    if (list) list.push(i);
+    else positions.set(t.id, [i]);
+  });
+  const order: number[] = [];
+  for (const t of original) {
+    const i = positions.get(t.id)?.shift();
+    if (i !== undefined) order.push(i);
+  }
+  const placed = new Set(order);
+  queue.forEach((_, i) => {
+    if (!placed.has(i)) order.push(i);
+  });
+  const at = order.indexOf(index);
+  return { queue: order.map((i) => queue[i]), index: at >= 0 ? at : index };
+}
+
 /** Persisted slices: queue, index, position, volume, context. isPlaying +
  *  duration are derived from the audio element each session. */
 export const usePlayerStore = create<PlayerState>()(
@@ -90,9 +116,8 @@ export const usePlayerStore = create<PlayerState>()(
         if (s.shuffle) {
           const original = s.orderBackup;
           if (!original) return { shuffle: false, orderBackup: null };
-          const current = s.queue[s.index];
-          const index = current ? original.findIndex((t) => t.id === current.id) : s.index;
-          return { shuffle: false, orderBackup: null, queue: original, index: index >= 0 ? index : s.index };
+          const { queue, index } = restoreOrder(original, s.queue, s.index);
+          return { shuffle: false, orderBackup: null, queue, index };
         }
         if (s.queue.length < 2) return { shuffle: true, orderBackup: s.queue.slice() };
         const backup = s.queue.slice();
