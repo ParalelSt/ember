@@ -40,6 +40,10 @@ export const createTauriBackend: CreateAudioBackend = (events) => {
   let transitionTimer: ReturnType<typeof setTimeout> | null = null;
   let cmds: RemoteCommands | null = null;
   const unlisteners: UnlistenFn[] = [];
+  let destroyed = false;
+  /** Bumped by every load and play: how `audio:ended` tells whether the
+   *  provider moved on (next song, repeat one) or had nothing left. */
+  let asked = 0;
 
   const armTransition = () => {
     transitioning = true;
@@ -48,8 +52,13 @@ export const createTauriBackend: CreateAudioBackend = (events) => {
   };
 
   // Wire Rust → events. listen() is async; we push unlisteners as they resolve.
+  // One that resolves after destroy() is dropped at once (bughunt
+  // 2026-09-25 D6): it used to be kept, and a dead engine's events drove the
+  // player beside its replacement.
   const sub = <T,>(name: string, fn: (p: T) => void) => {
-    listen<T>(name, (e) => fn(e.payload)).then((u) => unlisteners.push(u)).catch(() => {});
+    listen<T>(name, (e) => { if (!destroyed) fn(e.payload); })
+      .then((u) => { if (destroyed) u(); else unlisteners.push(u); })
+      .catch(() => {});
   };
   sub<{ sec: number }>('audio:time', ({ sec }) => {
     curTime = sec;
@@ -57,7 +66,18 @@ export const createTauriBackend: CreateAudioBackend = (events) => {
     events.onTime(sec);
   });
   sub<{ sec: number }>('audio:duration', ({ sec }) => { duration = sec; events.onDuration(sec); });
-  sub<Record<string, never>>('audio:ended', () => events.onEnded());
+  sub<Record<string, never>>('audio:ended', () => {
+    const before = asked;
+    events.onEnded();
+    // Nothing followed the end: the queue ran out, and the engine has
+    // stopped. A browser reports a pause here, the engine does not, so the
+    // player said "playing" over silence (bughunt 2026-09-25 D1). Only when
+    // nothing followed, so an auto-advance does not flicker to paused.
+    if (!destroyed && asked === before) {
+      paused = true;
+      events.onPause();
+    }
+  });
   sub<Record<string, never>>('audio:play', () => { paused = false; events.onPlay(); });
   sub<Record<string, never>>('audio:pause', () => { paused = true; events.onPause(); });
   // `retry` is the engine's own verdict on whether web audio could do better:
@@ -87,6 +107,7 @@ export const createTauriBackend: CreateAudioBackend = (events) => {
 
   const backend: AudioBackend = {
     load(url, opts) {
+      asked++;
       armTransition();
       duration = 0;
       curTime = opts.startAt ?? 0;
@@ -113,7 +134,7 @@ export const createTauriBackend: CreateAudioBackend = (events) => {
         // verdict, and do not reject.
       }).catch(() => events.onError({ canRetryOnWebAudio: true }));
     },
-    play() { paused = false; void invoke('audio_play').catch(() => {}); },
+    play() { asked++; paused = false; void invoke('audio_play').catch(() => {}); },
     pause() { paused = true; void invoke('audio_pause').catch(() => {}); },
     stop() { void invoke('audio_stop').catch(() => {}); },
     seek(sec) {
@@ -147,6 +168,7 @@ export const createTauriBackend: CreateAudioBackend = (events) => {
     isPaused: () => paused,
     isTransitioning: () => transitioning,
     destroy() {
+      destroyed = true;
       if (transitionTimer) clearTimeout(transitionTimer);
       void invoke('audio_stop').catch(() => {});
       for (const u of unlisteners) { try { u(); } catch { /* noop */ } }

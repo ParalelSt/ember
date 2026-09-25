@@ -155,6 +155,77 @@ describe('tauriBackend', () => {
   });
 });
 
+describe('tauriBackend at the end of a song (bughunt 2026-09-25 D1)', () => {
+  it('reports a pause when nothing followed the end: the queue ran out', async () => {
+    const events = makeFakeEvents();
+    const backend = createTauriBackend(events);
+    backend.load('/api/youtube/stream/abc', { autoplay: true });
+    await emit('audio:play');
+
+    // The provider's onEnded found nothing next and did nothing. A browser
+    // reports 'pause' at the end; the engine said nothing, so the play
+    // button stayed on "pause" over silence.
+    await emit('audio:ended');
+
+    expect(events.onEnded).toHaveBeenCalledTimes(1);
+    expect(events.onPause).toHaveBeenCalledTimes(1);
+    expect(backend.isPaused()).toBe(true);
+  });
+
+  it('reports no pause when the provider moved on to the next song', async () => {
+    const events = makeFakeEvents();
+    const backend = createTauriBackend(events);
+    backend.load('/api/youtube/stream/a', { autoplay: true });
+    await emit('audio:play');
+    events.onEnded.mockImplementation(() => backend.load('/api/youtube/stream/b', { autoplay: true }));
+
+    await emit('audio:ended');
+
+    expect(events.onPause).not.toHaveBeenCalled();
+    expect(backend.isPaused()).toBe(false);
+  });
+
+  it('reports no pause on repeat one (a seek to 0 and a play)', async () => {
+    const events = makeFakeEvents();
+    const backend = createTauriBackend(events);
+    backend.load('/api/youtube/stream/a', { autoplay: true });
+    await emit('audio:play');
+    events.onEnded.mockImplementation(() => { backend.seek(0); backend.play(); });
+
+    await emit('audio:ended');
+
+    expect(events.onPause).not.toHaveBeenCalled();
+    expect(backend.isPaused()).toBe(false);
+  });
+
+  it('reports nothing once it has been swapped out for web audio', async () => {
+    const events = makeFakeEvents();
+    const backend = createTauriBackend(events);
+    // An early end runs the provider's error path, which may destroy this
+    // backend and hand the song to web audio.
+    events.onEnded.mockImplementation(() => backend.destroy());
+
+    await emit('audio:ended');
+
+    expect(events.onPause).not.toHaveBeenCalled();
+  });
+});
+
+describe('tauriBackend teardown (bughunt 2026-09-25 D6)', () => {
+  it('drops a listener that finished registering after destroy', async () => {
+    const events = makeFakeEvents();
+    const backend = createTauriBackend(events);
+    // Destroyed before any listen() promise resolved (a fast unmount, or a
+    // swap to web audio during startup): those listeners were never removed,
+    // so the dead engine's events kept driving the player.
+    backend.destroy();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(listeners.size).toBe(0);
+  });
+});
+
 describe('tauriBackend setVolume with normalization', () => {
   const lastAmplitude = () =>
     invoked.filter((c) => c.cmd === 'audio_set_volume').at(-1)?.args?.amplitude as number;
