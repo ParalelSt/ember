@@ -266,7 +266,15 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         // listener sees, so run the error path instead: it keeps the song and
         // retries it. Without a known duration there is nothing to compare
         // against, so the event is taken at face value.
-        if (dur > 0 && pos < dur - ENDED_SLACK_SEC) {
+        // Web audio's own length is the file's real one (read from the file
+        // itself, so a stream that died still reports the whole song): an
+        // end at it is a finished song even when the catalog's length, which
+        // wins in chooseDuration when the two are far apart, is longer. The
+        // desktop decoder's length is only a guess, so it does not count.
+        const kind = backendKindRef.current;
+        const engineDur = kind === 'web' || kind === 'capacitor' ? backendRef.current?.getDuration() ?? 0 : 0;
+        const endedAtEngineEnd = Number.isFinite(engineDur) && engineDur > 0 && pos >= engineDur - ENDED_SLACK_SEC;
+        if (dur > 0 && pos < dur - ENDED_SLACK_SEC && !endedAtEngineEnd) {
           logger.error('playback', 'the engine ended a track early', {
             trackId: cur?.id ?? null,
             position: Math.round(pos),
@@ -592,13 +600,14 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [backendReady, current?.id]);
 
-  /** The loop and next/prev rules live in lib/playback/queueNav. Loop mode,
-   *  context and baseCount are read at call time so a stale closure can't
-   *  navigate by the wrong mode. */
+  /** The loop and next/prev rules live in lib/playback/queueNav. Everything,
+   *  the queue and index included, is read at call time: two skips in one
+   *  task (a guest session's batch of skip commands, media keys) used to both
+   *  start from the last render's index and land on the same song. */
   const navState = useCallback(() => {
     const st = usePlayerStore.getState();
-    return { queue, index, loopMode: st.loopMode, context: st.context, baseCount: st.baseCount };
-  }, [queue, index]);
+    return { queue: st.queue, index: st.index, loopMode: st.loopMode, context: st.context, baseCount: st.baseCount };
+  }, []);
 
   /** Advance to the first playable track at/after `target` (walking by
    *  `step`, wrapping under loop-all), toasting whatever it skips over. Used
@@ -756,7 +765,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   // The Android backend's setRemoteCommands/setMetadata are no-ops: the native
   // Media3 session owns the lock screen and the car, so this registers nothing
   // twice.
-  useRemoteCommands({ backendRef, backendReady, current, nextRef, prevRef });
+  useRemoteCommands({ backendRef, backendReady, engine: initialKind, current, nextRef, prevRef });
 
   const seek = useCallback((sec: number) => {
     backendRef.current?.seek(sec);
