@@ -40,6 +40,7 @@ export const createTauriBackend: CreateAudioBackend = (events) => {
   let transitionTimer: ReturnType<typeof setTimeout> | null = null;
   let cmds: RemoteCommands | null = null;
   const unlisteners: UnlistenFn[] = [];
+  let destroyed = false;
 
   const armTransition = () => {
     transitioning = true;
@@ -48,8 +49,16 @@ export const createTauriBackend: CreateAudioBackend = (events) => {
   };
 
   // Wire Rust → events. listen() is async; we push unlisteners as they resolve.
+  // One that resolves after destroy() is dropped at once, and a dead backend
+  // reports nothing: left wired, it fed the provider every engine event a
+  // second time (React's dev double mount: one "ended" skipped two songs).
   const sub = <T,>(name: string, fn: (p: T) => void) => {
-    listen<T>(name, (e) => fn(e.payload)).then((u) => unlisteners.push(u)).catch(() => {});
+    listen<T>(name, (e) => { if (!destroyed) fn(e.payload); })
+      .then((u) => {
+        if (destroyed) u();
+        else unlisteners.push(u);
+      })
+      .catch(() => {});
   };
   sub<{ sec: number }>('audio:time', ({ sec }) => {
     curTime = sec;
@@ -147,6 +156,7 @@ export const createTauriBackend: CreateAudioBackend = (events) => {
     isPaused: () => paused,
     isTransitioning: () => transitioning,
     destroy() {
+      destroyed = true;
       if (transitionTimer) clearTimeout(transitionTimer);
       void invoke('audio_stop').catch(() => {});
       for (const u of unlisteners) { try { u(); } catch { /* noop */ } }
