@@ -268,6 +268,16 @@ describe('tauriBackend and reports about the song it just left (bughunt 2026-09-
   });
 });
 
+describe('tauriBackend stop', () => {
+  it('reports paused after stop, so an OS toggle key asks the engine to play, not pause', async () => {
+    const backend = createTauriBackend(makeFakeEvents());
+    backend.load('/api/youtube/stream/a', { autoplay: true });
+    await emit('audio:play');
+    backend.stop();
+    expect(backend.isPaused()).toBe(true);
+  });
+});
+
 describe('tauriBackend teardown (bughunt 2026-09-25 D6)', () => {
   it('drops a listener that finished registering after destroy', async () => {
     const events = makeFakeEvents();

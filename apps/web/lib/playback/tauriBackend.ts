@@ -155,7 +155,7 @@ export const createTauriBackend: CreateAudioBackend = (events) => {
     },
     play() { asked++; paused = false; void invoke('audio_play').catch(() => {}); },
     pause() { paused = true; void invoke('audio_pause').catch(() => {}); },
-    stop() { void invoke('audio_stop').catch(() => {}); },
+    stop() { paused = true; void invoke('audio_stop').catch(() => {}); },
     seek(sec) {
       const target = Math.max(0, Math.min(sec, duration || sec));
       if (Math.abs(target - curTime) > 2.5) {
