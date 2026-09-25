@@ -1,5 +1,7 @@
 package app.ember.music
 
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
@@ -24,14 +26,25 @@ class QueueListener(
     private val offlineHandles: (PlaybackException) -> Boolean = { false },
     /** Offline, this song is skipped at once (OfflinePlayback.skips). */
     private val offlineSkips: (MediaItem) -> Boolean = { false },
+    /** Runs a retry after a delay (the main thread's handler; tests step it). */
+    private val retryLater: (Long, Runnable) -> Unit = { ms, r -> Handler(Looper.getMainLooper()).postDelayed(r, ms) },
 ) : Player.Listener {
     companion object {
         /** Songs that fail back to back before the player gives up, so a
          *  queue where nothing plays (no network, signed out) cannot spin. */
         const val MAX_ERRORS_IN_A_ROW = 5
+        /** The connection gave out, not the song: the phone could not reach
+         *  the server at all, or it stopped answering. */
+        val TRANSPORT_ERRORS = setOf(
+            PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED,
+            PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT,
+        )
+        /** Waits before each new try of the same song; then it stops there. */
+        val TRANSPORT_RETRY_MS = longArrayOf(2_000, 5_000, 10_000, 20_000, 30_000)
     }
 
     private var errorsInARow = 0
+    private var transportRetries = 0
     /** The song the player moved to that has not been heard yet. */
     private var unheard: MediaItem? = null
 
@@ -41,6 +54,7 @@ class QueueListener(
      *  counting that added a play nobody made, and fetched radio that then
      *  replaced the app's queue and dropped its playlist. */
     override fun onMediaItemTransition(item: MediaItem?, reason: Int) {
+        transportRetries = 0
         unheard = item
         if (player.isPlaying) heard()
     }
@@ -48,6 +62,7 @@ class QueueListener(
     override fun onIsPlayingChanged(isPlaying: Boolean) {
         if (!isPlaying) return
         errorsInARow = 0
+        transportRetries = 0
         heard()
     }
 
@@ -72,6 +87,27 @@ class QueueListener(
         // No connection: the offline rules pick the next song on the phone
         // (or pause). Online, a broken song is skipped here, 404s included.
         if (offlineHandles(error)) return
+        // The phone says it is online, but the connection gave out: a weak
+        // signal (a tunnel, a dead zone, which does not make Android drop
+        // the network) or the server out of reach. That is not the song's
+        // fault, and skipping burned through the queue, a song a minute,
+        // then stopped. Try the same song again from where it was instead,
+        // a few times, then stop on it: play (or the network coming back)
+        // picks it up.
+        if (error.errorCode in TRANSPORT_ERRORS) {
+            if (transportRetries >= TRANSPORT_RETRY_MS.size) {
+                Log.w(EmberPlaybackService.TAG, "gave up on the connection for $failed: ${error.errorCodeName}")
+                transportRetries = 0
+                return
+            }
+            val item = player.currentMediaItem
+            val wait = TRANSPORT_RETRY_MS[transportRetries++]
+            Log.w(EmberPlaybackService.TAG, "retrying $failed in ${wait}ms: ${error.errorCodeName}")
+            retryLater(wait, Runnable {
+                if (player.playbackState == Player.STATE_IDLE && player.playWhenReady && player.currentMediaItem == item) player.prepare()
+            })
+            return
+        }
         errorsInARow++
         if (errorsInARow >= MAX_ERRORS_IN_A_ROW || !player.hasNextMediaItem()) {
             Log.w(EmberPlaybackService.TAG, "gave up after $errorsInARow failed song(s), last $failed: ${error.errorCodeName}")

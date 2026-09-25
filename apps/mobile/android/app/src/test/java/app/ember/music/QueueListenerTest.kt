@@ -283,4 +283,61 @@ class QueueListenerTest {
         l.onMediaItemTransition(item("c", "/c"), Player.MEDIA_ITEM_TRANSITION_REASON_SEEK)
         assertEquals(listOf("a", "c"), played)
     }
+
+    // Online, but the connection gives out (a tunnel, a dead zone, the
+    // server out of reach): the song is tried again, not skipped.
+
+    private val retries = ArrayList<Pair<Long, Runnable>>()
+    private fun withRetries() {
+        player.removeListener(listener)
+        player.addListener(QueueListener(
+            player,
+            recordPlay = { played.add(it.getString("id")) },
+            extendQueue = { radio++ },
+            retryLater = { ms, r -> retries.add(ms to r) },
+        ))
+    }
+
+    @Test fun `online, a connection that gives out retries the same song instead of skipping it`() {
+        serve()
+        withRetries()
+        start(listOf(unreachable("a"), song("b")))
+        runUntil(10_000) { errors >= 1 }
+        runUntil(300) { false }
+        assertEquals("still on the song", 0, player.currentMediaItemIndex)
+        assertEquals(1, retries.size)
+        assertFalse("b was never tried", synchronized(asked) { "b" in asked })
+        // The retry loads the same song again.
+        retries.removeAt(0).second.run()
+        assertEquals(Player.STATE_BUFFERING, player.playbackState)
+        assertEquals(0, player.currentMediaItemIndex)
+    }
+
+    @Test fun `a connection that stays down stops on the song after the retries`() {
+        serve()
+        withRetries()
+        start(listOf(unreachable("a"), song("b")))
+        repeat(QueueListener.TRANSPORT_RETRY_MS.size) {
+            runUntil(10_000) { retries.isNotEmpty() }
+            retries.removeAt(0).second.run()
+        }
+        val before = errors
+        runUntil(10_000) { errors > before }
+        runUntil(300) { false }
+        assertTrue("no more retries", retries.isEmpty())
+        assertEquals(0, player.currentMediaItemIndex)
+        assertEquals(Player.STATE_IDLE, player.playbackState)
+        assertFalse(synchronized(asked) { "b" in asked })
+    }
+
+    @Test fun `a retry is dropped when the song was changed meanwhile`() {
+        serve()
+        withRetries()
+        start(listOf(unreachable("a"), song("b")))
+        runUntil(10_000) { retries.isNotEmpty() }
+        player.seekTo(1, 0)
+        player.prepare()
+        retries.removeAt(0).second.run()
+        assertEquals(1, player.currentMediaItemIndex)
+    }
 }
