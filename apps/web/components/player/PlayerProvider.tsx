@@ -55,6 +55,9 @@ interface PlayerControls {
   index: number;
   context: PlaybackContext | null;
   playTrack: (track: Track, list?: Track[], context?: PlaybackContext | null) => void;
+  /** Jump to the song at `index` of the queue as it is (the queue sheet):
+   *  the queue, its context, the shuffle and the loop point all stay. */
+  playAt: (index: number) => void;
   toggle: () => void;
   next: () => void;
   prev: () => void;
@@ -831,6 +834,15 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     // same transition.
   }, [loadAndPlay]);
 
+  const playAt = useCallback((i: number) => {
+    userInteracted.current = true;
+    const st = usePlayerStore.getState();
+    if (i < 0 || i >= st.queue.length) return;
+    // goTo walks past an unavailable song (and, offline, one with no copy
+    // here), exactly like Next does.
+    goTo(i, 1);
+  }, [goTo]);
+
   useKeyboardShortcuts({ backendRef });
 
   // b.play()/b.pause() both fire the backend's onPlay/onPause, which is
@@ -855,9 +867,9 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const value = useMemo<PlayerControls>(
     () => ({
       current, isPlaying, position, duration, volume, queue, index, context,
-      playTrack, toggle, next, prev, seek, setVolume, rate, setRate, canSetRate,
+      playTrack, playAt, toggle, next, prev, seek, setVolume, rate, setRate, canSetRate,
     }),
-    [current, isPlaying, position, duration, volume, queue, index, context, playTrack, toggle, next, prev, seek, setVolume, rate, setRate, canSetRate],
+    [current, isPlaying, position, duration, volume, queue, index, context, playTrack, playAt, toggle, next, prev, seek, setVolume, rate, setRate, canSetRate],
   );
 
   // Pranks (admin only, never announced) sit beside the tree rather than in

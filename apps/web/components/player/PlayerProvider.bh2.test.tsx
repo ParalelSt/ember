@@ -181,3 +181,42 @@ describe('P5: a real end with a catalog length longer than the file', () => {
     expect(usePlayerStore.getState().index).toBe(0);
   });
 });
+
+describe('P9: a tap on a song in the queue jumps to it and keeps the queue', () => {
+  const S = makeTrack({ id: 'youtube:s', sourceId: 's', streamUrl: '/s/s' });
+
+  it('keeps a search-started queue (radio tail) instead of collapsing it to one song', () => {
+    usePlayerStore.setState({
+      queue: [S, A, B, C], index: 0, context: { type: 'search', query: 'x' } as never, baseCount: 1,
+    });
+    render(<PlayerProvider><Grab /></PlayerProvider>);
+    web().load.mockClear();
+    act(() => controls!.playAt(2));
+    const s = usePlayerStore.getState();
+    expect(s.queue.map((t) => t.id)).toEqual([S.id, A.id, B.id, C.id]);
+    expect(s.index).toBe(2);
+    expect(s.baseCount).toBe(1);
+    expect(web().load.mock.calls.map((c) => c[0])).toEqual(['/s/b']);
+  });
+
+  it('keeps shuffle on, with its original order to go back to', () => {
+    const original = [A, B, C, D];
+    usePlayerStore.setState({
+      queue: [A, D, B, C], index: 0, shuffle: true, orderBackup: original,
+      context: { type: 'playlist', playlistId: 'p' } as never, baseCount: 4,
+    });
+    render(<PlayerProvider><Grab /></PlayerProvider>);
+    act(() => controls!.playAt(3));
+    const s = usePlayerStore.getState();
+    expect(s.index).toBe(3);
+    expect(s.shuffle).toBe(true);
+    expect(s.orderBackup).toBe(original);
+  });
+
+  it('plays the tapped copy of a song that is in the queue twice', () => {
+    usePlayerStore.setState({ queue: [A, B, A, C], index: 1 });
+    render(<PlayerProvider><Grab /></PlayerProvider>);
+    act(() => controls!.playAt(2));
+    expect(usePlayerStore.getState().index).toBe(2);
+  });
+});
