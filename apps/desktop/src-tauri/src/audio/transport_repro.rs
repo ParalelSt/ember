@@ -546,3 +546,23 @@ async fn an_untagged_load_reports_untagged() {
     let tagged = rig.events().iter().filter(|(_, p)| p.contains("token")).count();
     assert_eq!(tagged, 0, "{:?}", rig.events());
 }
+
+/// D2, the other half: a second seek right after one that re-opens the song
+/// (here, after its end) goes to that load, not to the sink it replaces.
+/// It used to start a second re-open of its own.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_seek_right_after_a_reopen_joins_it() {
+    let rig = Rig::new();
+    let song = host(&[Answer::Song], Duration::ZERO);
+    rig.load(&song.url, false).await;
+    rig.play();
+    assert!(rig.until(Duration::from_secs(60), |r| r.count("audio:ended") == 1).await);
+
+    rig.seek(10.0);
+    rig.seek(50.0);
+    let landed = rig
+        .until(Duration::from_secs(10), |r| sink_pos(r).is_some_and(|p| (49.0..51.0).contains(&p)))
+        .await;
+    assert!(landed, "the song is at {:?}, not the second seek's 50s", sink_pos(&rig));
+    assert_eq!(rig.engine().load_seq.load(Ordering::SeqCst), 2, "one load, one re-open");
+}

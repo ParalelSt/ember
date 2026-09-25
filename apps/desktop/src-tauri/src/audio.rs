@@ -1575,20 +1575,17 @@ pub fn audio_seek<R: Runtime>(app: AppHandle<R>, engine: State<'_, AudioEngine>,
     let forward_only = engine.forward_only.load(Ordering::SeqCst);
     let loaded = {
         let Ok(g) = engine.sink.lock() else { return };
-        match g.as_ref() {
-            Some(s) => Some((Arc::clone(s), s.get_pos(), !s.is_paused(), s.empty())),
-            None => {
-                // Nothing to seek yet: a load is on its way. Dropping the seek
-                // started the song at 0:00 with the slider snapping back (D2);
-                // the load starts where this asks instead.
-                if engine.load_in_flight() {
-                    if let Ok(mut p) = engine.pending_seek.lock() {
-                        *p = Some(sec.max(0.0));
-                    }
-                }
-                None
+        if engine.load_in_flight() {
+            // A load is on its way, and whatever sink is in now (a re-open
+            // that has not started yet leaves the old one) is about to go.
+            // Dropping the seek started the song at 0:00 with the slider
+            // snapping back (D2); the load starts where this asks instead.
+            if let Ok(mut p) = engine.pending_seek.lock() {
+                *p = Some(sec.max(0.0));
             }
+            return;
         }
+        g.as_ref().map(|s| (Arc::clone(s), s.get_pos(), !s.is_paused(), s.empty()))
     };
     let Some((sink, pos, playing, spent)) = loaded else { return };
     // A sink that has played its source to the end has nothing left to seek
