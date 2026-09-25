@@ -142,7 +142,10 @@ class EmberPlaybackService : MediaLibraryService() {
             offlineSkips = { offlinePlayback.skips(it) },
         ))
         overlay = PrankOverlay(this, player, dataSource, baseUrl)
-        session = MediaLibrarySession.Builder(this, player, Callback()).build()
+        session = MediaLibrarySession.Builder(this, player, Callback())
+            // Covers on the Ember server need the cookie; others must not get it.
+            .setBitmapLoader(ArtworkSources.bitmapLoader(this, baseUrl, dataSource, OkHttpDataSource.Factory(okhttp3.OkHttpClient())))
+            .build()
         startAutoCache(streams)
         // Shuffle and repeat as buttons on the now-playing screen (car + notification).
         session.setCustomLayout(ImmutableList.of(

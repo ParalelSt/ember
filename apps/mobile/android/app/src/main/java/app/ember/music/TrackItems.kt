@@ -22,7 +22,10 @@ object TrackItems {
     fun toMediaItem(track: JSONObject, baseUrl: String): MediaItem {
         val stream = str(track, "streamUrl")
         val uri = if (stream.startsWith("http")) stream else baseUrl + stream
+        // An upload's cover is relative (/api/uploads/<id>/art), like its
+        // stream; left relative, nothing could ever load it.
         val artwork = str(track, "artworkUrl").takeIf { it.isNotBlank() }
+            ?.let { if (it.startsWith("/") && !it.startsWith("//")) baseUrl + it else it }
         val extras = Bundle().apply { putString(EXTRA_TRACK, track.toString()) }
         val meta = MediaMetadata.Builder()
             .setTitle(str(track, "title"))
