@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { createAndroidBackend, OVERLAY_END_GRACE_MS } from './androidBackend';
+import { createAndroidBackend, NATIVE_QUEUE_WAIT_MS, OVERLAY_END_GRACE_MS } from './androidBackend';
 import { makeFakeEvents } from '@/test-utils/fakeBackend';
 
 // The native prank overlay as the web side sees it: calls forwarded to the
@@ -199,5 +199,96 @@ describe('androidBackend: loop mode', () => {
     const b = createAndroidBackend(makeFakeEvents());
     expect(() => b.setLoop!('all')).not.toThrow();
     n.emit('state', { playing: true, position: 0, duration: 0, index: 0, trackId: 'a' });
+  });
+});
+
+describe('androidBackend: a page starting while native already plays', () => {
+  afterEach(() => {
+    delete (window as unknown as { Capacitor?: unknown }).Capacitor;
+    vi.useRealTimers();
+  });
+
+  const t = (id: string) => ({ id, title: id }) as never;
+  const flush = () => new Promise((r) => setTimeout(r, 0));
+
+  /** A plugin whose getState/getQueue answer with what native has. */
+  function withNative(state: Record<string, unknown>, queue: { tracks: unknown[]; index: number } | null) {
+    const n = installPlugin(false);
+    n.plugin.getState = vi.fn().mockResolvedValue(state);
+    if (queue) n.plugin.getQueue = vi.fn().mockResolvedValue(queue);
+    const events = { ...makeFakeEvents(), onQueueReplaced: vi.fn(), onQueueIndex: vi.fn() };
+    const b = createAndroidBackend(events);
+    return { n, b, events };
+  }
+
+  it('takes native\'s queue instead of pushing the saved one over it (the music no longer jumps back)', async () => {
+    const { n, b, events } = withNative(
+      { playing: true, position: 40, duration: 200, index: 1, trackId: 'y' },
+      { tracks: [t('x'), t('y'), t('z')], index: 1 },
+    );
+    // The provider restores the saved queue, paused, before native answers.
+    b.setQueue!([t('a'), t('b')], 1, false);
+    await flush();
+    expect(n.plugin.setQueue).not.toHaveBeenCalled();
+    expect(events.onQueueReplaced).toHaveBeenCalledWith([t('x'), t('y'), t('z')], 1);
+    // Already at native's index: no second move on top.
+    expect(events.onQueueIndex).not.toHaveBeenCalled();
+  });
+
+  it('same queue, native moved on: nothing is sent, the page follows native\'s index', async () => {
+    const { n, b, events } = withNative(
+      { playing: true, position: 5, duration: 200, index: 2, trackId: 'c' },
+      { tracks: [t('a'), t('b'), t('c')], index: 2 },
+    );
+    b.setQueue!([t('a'), t('b'), t('c')], 0, false);
+    await flush();
+    expect(n.plugin.setQueue).not.toHaveBeenCalled();
+    expect(events.onQueueReplaced).not.toHaveBeenCalled();
+    expect(events.onQueueIndex).toHaveBeenCalledWith(2);
+  });
+
+  it('native empty (a fresh start): the saved queue goes over, paused, as before', async () => {
+    const { n, b } = withNative({ playing: false, position: 0, duration: 0, index: -1, trackId: null }, { tracks: [], index: -1 });
+    b.setQueue!([t('a'), t('b')], 1, false);
+    await flush();
+    expect(n.plugin.setQueue).toHaveBeenCalledTimes(1);
+    expect(n.plugin.setQueue).toHaveBeenCalledWith(expect.objectContaining({ tracks: [t('a'), t('b')], index: 1, play: false }));
+  });
+
+  it('a tap never waits, and drops the saved queue still waiting', async () => {
+    const { n, b } = withNative(
+      { playing: true, position: 5, duration: 200, index: 0, trackId: 'x' },
+      { tracks: [t('x')], index: 0 },
+    );
+    b.setQueue!([t('a')], 0, false);
+    b.setQueue!([t('c'), t('d')], 1, true);
+    expect(n.plugin.setQueue).toHaveBeenCalledTimes(1);
+    expect(n.plugin.setQueue).toHaveBeenCalledWith(expect.objectContaining({ tracks: [t('c'), t('d')], index: 1, play: true }));
+    await flush();
+    expect(n.plugin.setQueue).toHaveBeenCalledTimes(1);
+  });
+
+  it('an app build without getQueue keeps the saved queue when it is what native plays', async () => {
+    const { n, b } = withNative({ playing: true, position: 5, duration: 200, index: 1, trackId: 'b' }, null);
+    b.setQueue!([t('a'), t('b')], 0, false);
+    await flush();
+    expect(n.plugin.setQueue).not.toHaveBeenCalled();
+  });
+
+  it('an app build without getQueue, playing something else: the saved queue goes over as before', async () => {
+    const { n, b } = withNative({ playing: true, position: 5, duration: 200, index: 0, trackId: 'q' }, null);
+    b.setQueue!([t('a'), t('b')], 0, false);
+    await flush();
+    expect(n.plugin.setQueue).toHaveBeenCalledTimes(1);
+  });
+
+  it('native never answering: the saved queue goes over after a short wait', () => {
+    vi.useFakeTimers();
+    const n = installPlugin(false); // getState never settles
+    const b = createAndroidBackend(makeFakeEvents());
+    b.setQueue!([t('a')], 0, false);
+    expect(n.plugin.setQueue).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(NATIVE_QUEUE_WAIT_MS);
+    expect(n.plugin.setQueue).toHaveBeenCalledTimes(1);
   });
 });
