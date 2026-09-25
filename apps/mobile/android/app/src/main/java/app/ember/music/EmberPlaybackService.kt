@@ -102,6 +102,10 @@ class EmberPlaybackService : MediaLibraryService() {
                 .setMediaSourceFactory(DefaultMediaSourceFactory(context).setDataSourceFactory(OfflineAudio.dataSourceFactory(context, streams, offline)))
                 .setAudioAttributes(AudioAttributes.Builder().setUsage(C.USAGE_MEDIA).setContentType(C.AUDIO_CONTENT_TYPE_MUSIC).build(), true)
                 .setHandleAudioBecomingNoisy(true)
+                // Screen off, Android lets the CPU and Wi-Fi sleep; the audio
+                // output alone does not keep the stream's download going,
+                // and the song ran dry mid-way. Held only while it plays.
+                .setWakeMode(C.WAKE_MODE_NETWORK)
                 .build()
     }
 

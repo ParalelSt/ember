@@ -63,6 +63,9 @@
     <!-- The auto cache and the offline skip watch for a validated network
          (NetworkWatch), and never prefetch on mobile data unless allowed. -->
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <!-- The player keeps the CPU and Wi-Fi awake while it streams with the
+         screen off (ExoPlayer's WAKE_MODE_NETWORK), and only then. -->
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
     <!-- Both foreground services need the generic permission (declared once),
          plus the typed one Android 14+ requires for their service type:
          mediaPlayback for EmberPlaybackService, dataSync for
