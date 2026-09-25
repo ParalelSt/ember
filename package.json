@@ -31,6 +31,8 @@
     "test:auth": "node tests/authorization.test.mjs",
     "test:collections": "node tests/collections.test.mjs",
     "test:sessions": "node tests/session-authorization.test.mjs",
+    "test:pb-rbac": "node tests/pb-rbac.test.mjs",
+    "test:pb-filter-guard": "node tests/pb-filter-guard.test.mjs",
     "test:tabs": "node tests/tabs.test.mjs",
     "test:tabs-ui": "node tests/tabs-ui.test.mjs",
     "test:tabs-practice-ui": "node tests/tabs-practice-ui.test.mjs",
