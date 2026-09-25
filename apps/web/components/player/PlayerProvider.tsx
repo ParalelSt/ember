@@ -472,7 +472,13 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     const track = st.queue[st.index];
     if (track) {
       positions.requestStartAt(resumeAt);
-      loadAndPlayRef.current?.(track, true);
+      // Play only if the listener has asked for anything, the same rule as
+      // the launch load: a restored song whose paused launch load failed
+      // used to start playing by itself (bughunt 2026-09-25 D7). The song
+      // counts as not loaded yet: it is not, on this engine, and a paused
+      // load of a "loaded" song is skipped.
+      loadedTrackRef.current = null;
+      loadAndPlayRef.current?.(track, userInteracted.current);
     }
     // `positions` is a stable object of stable callbacks, so this callback's
     // identity does not change: it is listed to satisfy the deps rule, not
