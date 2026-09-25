@@ -64,5 +64,11 @@ class ServerApi(val baseUrl: String, private val cookies: () -> String?) {
     fun search(q: String): List<JSONObject> = tracks(getJson("/api/search?q=" + java.net.URLEncoder.encode(q, "UTF-8")))
     fun recommended(seedSourceId: String): List<JSONObject> =
         tracks(getJson("/api/youtube/recommended?seed=" + java.net.URLEncoder.encode(seedSourceId, "UTF-8")))
+    /** The song's normalization gain in dB; null when not measured yet. */
+    fun trackGain(id: String): Double? {
+        val json = getJson("/api/tracks/" + java.net.URLEncoder.encode(id, "UTF-8") + "/loudness")
+        if (!json.has("gainDb") || json.isNull("gainDb")) return null
+        return json.optDouble("gainDb").takeIf { !it.isNaN() }
+    }
     fun recordPlay(track: JSONObject) = postJson("/api/history", JSONObject().put("track", track))
 }

@@ -38,6 +38,8 @@ interface EmberPlayerPlugin {
   /** Absent on app builds from before the loop button reached native. */
   setRepeat?(o: { mode: LoopMode }): Promise<void>;
   setVolume(o: { v: number }): Promise<void>;
+  /** Absent on app builds from before native volume normalization. */
+  setNormalize?(o: { enabled: boolean }): Promise<void>;
   getState(): Promise<NativeState>;
   /** What native is playing from. Absent on app builds from before it. */
   getQueue?(): Promise<{ tracks: Track[]; index: number }>;
@@ -282,6 +284,9 @@ export const createAndroidBackend: CreateAudioBackend = (events: AudioBackendEve
     },
     setVolume(v) {
       if (p) call(p.setVolume({ v: Math.max(0, Math.min(1, v)) }));
+    },
+    setNormalize(enabled) {
+      if (p?.setNormalize) call(p.setNormalize({ enabled }));
     },
     setMetadata() {
       /* Media3 draws the notification from the queue itself */

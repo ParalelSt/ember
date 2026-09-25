@@ -7,6 +7,7 @@ import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { render, act } from '@testing-library/react';
 import { PlayerProvider, usePlayer } from './PlayerProvider';
 import { usePlayerStore } from '@/stores/usePlayerStore';
+import { useSettingsStore } from '@/stores/useSettingsStore';
 import { makeFakeBackend, makeTrack } from '@/test-utils/fakeBackend';
 import type { AudioBackendEvents } from '@/lib/playback/types';
 
@@ -14,7 +15,7 @@ vi.mock('@/lib/api', () => ({ api: {}, apiUrl: (u: string) => u }));
 vi.mock('@/lib/playback/detectShell', () => ({ detectShell: () => 'capacitor' }));
 
 const fake = makeFakeBackend();
-const native = vi.hoisted(() => ({ setQueue: vi.fn(), setLoop: vi.fn(), next: vi.fn(), prev: vi.fn() }));
+const native = vi.hoisted(() => ({ setQueue: vi.fn(), setLoop: vi.fn(), next: vi.fn(), prev: vi.fn(), setNormalize: vi.fn() }));
 let ev: AudioBackendEvents | null = null;
 vi.mock('@/lib/playback/androidBackend', () => ({
   androidPluginPresent: () => true,
@@ -125,5 +126,17 @@ describe('android: one setQueue per queue change', () => {
     native.setQueue.mockClear();
     act(() => { usePlayerStore.setState({ queue: [B, C], index: 1 }); });
     expect(native.setQueue.mock.calls).toEqual([[[B, C], 1, true]]);
+  });
+});
+
+describe('android: volume normalization', () => {
+  it('hands native the setting at startup and on every change, and no per-song gain', () => {
+    useSettingsStore.setState({ normalizeVolume: true });
+    render(<PlayerProvider><div /></PlayerProvider>);
+    expect(native.setNormalize).toHaveBeenLastCalledWith(true);
+    act(() => { useSettingsStore.setState({ normalizeVolume: false }); });
+    expect(native.setNormalize).toHaveBeenLastCalledWith(false);
+    // Native applies the gain per song itself; setVolume carries none.
+    for (const c of fake.setVolume.mock.calls) expect(c[1]?.normGain ?? 1).toBe(1);
   });
 });

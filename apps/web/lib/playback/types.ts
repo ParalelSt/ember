@@ -79,8 +79,13 @@ export interface AudioBackend {
    *  (lib/playback/normalization; 1 = unchanged). Applied after the volume
    *  curve and never past full volume outside party mode. The Android engine
    *  ignores it: it moves between songs natively, where a per-song level set
-   *  from here would land on the wrong song. */
+   *  from here would land on the wrong song. It normalizes by itself instead
+   *  (setNormalize). */
   setVolume(v: number, opts?: { gain?: number; normGain?: number }): void;
+  /** Queue-owning backends only (Android): volume normalization on or off.
+   *  The engine looks up and applies each song's gain itself, as it moves
+   *  between songs. Absent (or a no-op on an older app build) elsewhere. */
+  setNormalize?(enabled: boolean): void;
   /** Lock-screen / notification metadata. web → MediaMetadata; native → OS.
    *  `localArtSrc` overrides `track.artworkUrl` when a downloaded copy has its
    *  own local art (already convertFileSrc-resolved by the caller). */

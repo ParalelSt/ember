@@ -47,11 +47,14 @@ class EmberPlaybackService : MediaLibraryService() {
         /** Where the queue came from (`contextType`, `baseCount`), for
          *  loop-all's wrap point in the prefetch window. */
         const val COMMAND_QUEUE_CONTEXT = "ember.queueContext"
+        /** Volume normalization on or off (`enabled`), the web app's setting. */
+        const val COMMAND_NORMALIZE = "ember.normalize"
         /** Session extras the plugin mirrors into its state. */
         const val EXTRA_CACHED_IDS = "cachedIds"
         const val EXTRA_OFFLINE_STALLED = "offlineStalled"
         const val EXTRA_OFFLINE = "offline"
         private const val PREFS = "ember.autoCache"
+        private const val NORMALIZE_PREFS = "ember.normalize"
         private const val TICK_MS = 5_000L
         /** Buffered this far ahead, the song is not waiting on the network. */
         private const val SETTLED_AHEAD_MS = 30_000L
@@ -103,6 +106,7 @@ class EmberPlaybackService : MediaLibraryService() {
     }
 
     private lateinit var player: ExoPlayer
+    private lateinit var normalizer: Normalizer
     private lateinit var session: MediaLibrarySession
     lateinit var api: ServerApi
     private lateinit var tree: BrowseTree
@@ -142,7 +146,11 @@ class EmberPlaybackService : MediaLibraryService() {
             offlineSkips = { offlinePlayback.skips(it) },
         ))
         overlay = PrankOverlay(this, player, dataSource, baseUrl)
-        session = MediaLibrarySession.Builder(this, player, Callback())
+        normalizer = Normalizer(player, GainStore(getSharedPreferences(NORMALIZE_PREFS, MODE_PRIVATE)), api::trackGain, io) { handler.post(it) }
+        normalizer.setEnabled(getSharedPreferences(NORMALIZE_PREFS, MODE_PRIVATE).getBoolean("enabled", true))
+        // The session (the app, the notification, the car) sets the person's
+        // level; the player underneath adds the song's gain (Normalizer).
+        session = MediaLibrarySession.Builder(this, LevelPlayer(player, normalizer), Callback())
             // Covers on the Ember server need the cookie; others must not get it.
             .setBitmapLoader(ArtworkSources.bitmapLoader(this, baseUrl, dataSource, OkHttpDataSource.Factory(okhttp3.OkHttpClient())))
             .build()
@@ -364,6 +372,7 @@ class EmberPlaybackService : MediaLibraryService() {
                         add(SessionCommand(COMMAND_CACHE_STATS, Bundle.EMPTY))
                         add(SessionCommand(COMMAND_CACHE_CLEAR, Bundle.EMPTY))
                         add(SessionCommand(COMMAND_QUEUE_CONTEXT, Bundle.EMPTY))
+                        add(SessionCommand(COMMAND_NORMALIZE, Bundle.EMPTY))
                     }
                 }
                 .build()
@@ -389,6 +398,11 @@ class EmberPlaybackService : MediaLibraryService() {
                 }
                 COMMAND_CACHE_STATS -> return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS, cacheStats()))
                 COMMAND_CACHE_CLEAR -> return clearCache()
+                COMMAND_NORMALIZE -> {
+                    val on = args.getBoolean("enabled", true)
+                    getSharedPreferences(NORMALIZE_PREFS, MODE_PRIVATE).edit().putBoolean("enabled", on).apply()
+                    normalizer.setEnabled(on)
+                }
                 COMMAND_QUEUE_CONTEXT -> {
                     queueContextType = args.getString("contextType")
                     queueBaseCount = args.getInt("baseCount", 0).coerceAtLeast(0)

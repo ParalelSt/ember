@@ -198,6 +198,15 @@ class EmberPlayerPlugin : Plugin() {
     @PluginMethod fun prev(call: PluginCall) = withController { previous(it); call.resolve() }
     @PluginMethod fun seek(call: PluginCall) = withController { it.seekTo(((call.getDouble("sec") ?: 0.0) * 1000).toLong()); call.resolve() }
     @PluginMethod fun setVolume(call: PluginCall) = withController { it.volume = (call.getDouble("v") ?: 1.0).toFloat().coerceIn(0f, 1f); call.resolve() }
+    /** Volume normalization on or off (the web app's setting). Native
+     *  applies each song's gain itself as it moves between songs. */
+    @PluginMethod fun setNormalize(call: PluginCall) {
+        val args = Bundle().apply { putBoolean("enabled", call.getBoolean("enabled") ?: true) }
+        withController { c ->
+            c.sendCustomCommand(SessionCommand(EmberPlaybackService.COMMAND_NORMALIZE, Bundle.EMPTY), args)
+            call.resolve()
+        }
+    }
     /** The loop button: "off", "all" or "one". Native repeats by itself, so
      *  loop-one and loop-all only work once it has been told. */
     @PluginMethod fun setRepeat(call: PluginCall) {

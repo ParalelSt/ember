@@ -182,7 +182,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
   // Volume normalization: the current song's measured gain as a multiplier
   // for setVolume. Not on the native Android engine, which moves between
-  // songs by itself (see AudioBackend.setVolume).
+  // songs by itself and applies the gain there (setNormalize, below).
   const normalizeVolume = useSettingsStore((s) => s.normalizeVolume);
   const normalizeOn = normalizeVolume && initialKind !== null && initialKind !== 'android';
   const trackGainDb = useTrackGain(current?.id, queue[index + 1]?.id, normalizeOn);
@@ -745,6 +745,12 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     b.setQueue(queue, index, usePlayerStore.getState().isPlaying);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [queue]);
+
+  // The native Android player normalizes by itself (it moves between songs
+  // without this page), so it only needs the setting.
+  useEffect(() => {
+    backendRef.current?.setNormalize?.(normalizeVolume);
+  }, [backendReady, initialKind, normalizeVolume]);
 
   // The native Android player repeats (or stops at the end) by itself, so
   // it has to be told the loop mode. Other backends have no setLoop: the
