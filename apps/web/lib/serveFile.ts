@@ -12,10 +12,19 @@ export function serveFile(filePath: string, range: string | null, headers: Recor
   const stat = fs.statSync(filePath);
 
   const match = range ? /^bytes=(\d*)-(\d*)$/.exec(range) : null;
-  if (match) {
-    const start = match[1] ? parseInt(match[1], 10) : 0;
-    const end = match[2] ? parseInt(match[2], 10) : stat.size - 1;
-    if (start >= stat.size || end >= stat.size || start > end) {
+  if (match && (match[1] || match[2])) {
+    let start: number;
+    let end: number;
+    if (!match[1]) {
+      // bytes=-N is the LAST N bytes, not the first ones.
+      start = Math.max(0, stat.size - parseInt(match[2], 10));
+      end = stat.size - 1;
+    } else {
+      start = parseInt(match[1], 10);
+      // An end past the file is clamped to it (RFC 9110), not refused.
+      end = Math.min(match[2] ? parseInt(match[2], 10) : stat.size - 1, stat.size - 1);
+    }
+    if (start >= stat.size || start > end) {
       return new Response('range not satisfiable', {
         status: 416,
         headers: { ...headers, 'Content-Range': `bytes */${stat.size}` },
