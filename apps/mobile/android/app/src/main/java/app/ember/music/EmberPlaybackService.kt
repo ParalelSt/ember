@@ -111,6 +111,7 @@ class EmberPlaybackService : MediaLibraryService() {
 
     private lateinit var player: ExoPlayer
     private lateinit var normalizer: Normalizer
+    private lateinit var savedQueue: SavedQueue
     private lateinit var session: MediaLibrarySession
     lateinit var api: ServerApi
     private lateinit var tree: BrowseTree
@@ -149,6 +150,8 @@ class EmberPlaybackService : MediaLibraryService() {
             offlineHandles = { offlinePlayback.handles(it) },
             offlineSkips = { offlinePlayback.skips(it) },
         ))
+        savedQueue = SavedQueue(java.io.File(filesDir, "native-queue.json"))
+        player.addListener(savedQueue.Saver(player, io))
         overlay = PrankOverlay(this, player, dataSource, baseUrl)
         normalizer = Normalizer(player, GainStore(getSharedPreferences(NORMALIZE_PREFS, MODE_PRIVATE)), api::trackGain, io) { handler.post(it) }
         normalizer.setEnabled(getSharedPreferences(NORMALIZE_PREFS, MODE_PRIVATE).getBoolean("enabled", true))
@@ -430,6 +433,20 @@ class EmberPlaybackService : MediaLibraryService() {
                 onStarted = { future.set(SessionResult(SessionResult.RESULT_SUCCESS, it)) },
                 onEnded = { session.sendCustomCommand(controller, SessionCommand(OverlayEvents.COMMAND_ENDED, Bundle.EMPTY), it) },
             )
+            return future
+        }
+
+        /** Play with nothing loaded: Android had closed the app, and the car,
+         *  a headset or the steering wheel wants the music back. The last
+         *  queue picks up where it was (SavedQueue); with none saved, play
+         *  does nothing, as before. */
+        override fun onPlaybackResumption(mediaSession: MediaSession, controller: MediaSession.ControllerInfo): ListenableFuture<MediaSession.MediaItemsWithStartPosition> {
+            val future = com.google.common.util.concurrent.SettableFuture.create<MediaSession.MediaItemsWithStartPosition>()
+            io.execute {
+                val saved = runCatching { savedQueue.resume(api.baseUrl) }.getOrNull()
+                Log.i(TAG, "resume for ${controller.packageName}: ${saved?.mediaItems?.size ?: 0} item(s)")
+                if (saved != null) future.set(saved) else future.setException(UnsupportedOperationException("no saved queue"))
+            }
             return future
         }
 
