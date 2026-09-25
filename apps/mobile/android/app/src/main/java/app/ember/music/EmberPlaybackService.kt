@@ -97,9 +97,13 @@ class EmberPlaybackService : MediaLibraryService() {
         /** The music player: streams (through the auto cache, see MediaCache),
          *  or the downloaded copy when there is one (OfflineAudio). Its own
          *  function so tests build the same one. */
-        fun buildPlayer(context: Context, streams: DataSource.Factory, offline: OfflineStore): ExoPlayer =
+        fun buildPlayer(context: Context, streams: DataSource.Factory, offline: OfflineStore, online: () -> Boolean = { true }): ExoPlayer =
             ExoPlayer.Builder(context)
-                .setMediaSourceFactory(DefaultMediaSourceFactory(context).setDataSourceFactory(OfflineAudio.dataSourceFactory(context, streams, offline)))
+                .setMediaSourceFactory(
+                    DefaultMediaSourceFactory(context)
+                        .setDataSourceFactory(OfflineAudio.dataSourceFactory(context, streams, offline))
+                        .setLoadErrorHandlingPolicy(PatientLoadErrors(online)),
+                )
                 .setAudioAttributes(AudioAttributes.Builder().setUsage(C.USAGE_MEDIA).setContentType(C.AUDIO_CONTENT_TYPE_MUSIC).build(), true)
                 .setHandleAudioBecomingNoisy(true)
                 // Screen off, Android lets the CPU and Wi-Fi sleep; the audio
@@ -141,7 +145,8 @@ class EmberPlaybackService : MediaLibraryService() {
         cache = MediaCache.shared(this)
         offline = OfflineStore.shared(this)
         val streams = MediaCache.dataSourceFactory(cache, dataSource)
-        player = buildPlayer(this, streams, offline)
+        // Asked live on each failed load; the network watch starts just below.
+        player = buildPlayer(this, streams, offline) { !::net.isInitialized || net.current().online }
         player.addListener(QueueListener(
             player,
             recordPlay = { track -> io.execute { runCatching { api.recordPlay(track) }.onFailure { Log.w(TAG, "history: ${it.message}") } } },
