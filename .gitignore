@@ -109,3 +109,11 @@ apps/desktop/.keys/
 # worktrees symlink node_modules into the main checkout; a symlink is a file,
 # so the directory-only pattern above does not catch it
 node_modules
+
+# AI assistant instruction files stay local, never published
+CLAUDE.md
+AGENTS.md
+GEMINI.md
+.codex/
+.cursor/
+docs/TESTING.md
