@@ -293,6 +293,10 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       // state event so the store converges on what the car is actually doing.
       // Only a real flip writes the flag or leaves a breadcrumb.
       onPlay: () => {
+        // Something real is playing, so the listener has asked for music:
+        // Space and the OS media keys start it without going through
+        // toggle(), and the web-audio fallback must not then load it paused.
+        userInteracted.current = true;
         const cur = usePlayerStore.getState();
         if (cur.isPlaying) return;
         setIsPlaying(true);

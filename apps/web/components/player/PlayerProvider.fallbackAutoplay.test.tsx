@@ -120,6 +120,14 @@ describe('the web-audio fallback (D7)', () => {
     expect(webEngine.load.mock.calls[0][1]).toMatchObject({ autoplay: false });
   });
 
+  it('plays on web audio when the listener resumed with Space or a media key', () => {
+    // Those call the engine's play() directly, not the provider's toggle.
+    act(() => nativeEvents!.onPlay());
+    act(() => nativeEvents!.onError({ canRetryOnWebAudio: true }));
+
+    expect(webEngine.load.mock.calls[0][1]).toMatchObject({ autoplay: true });
+  });
+
   it('plays on web audio when the listener had asked for the song', () => {
     act(() => cap.player!.playTrack(TRACK, [TRACK]));
     act(() => nativeEvents!.onError({ canRetryOnWebAudio: true }));

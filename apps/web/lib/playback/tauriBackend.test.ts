@@ -255,6 +255,23 @@ describe('tauriBackend and reports about the song it just left (bughunt 2026-09-
     expect(events.onError).not.toHaveBeenCalled();
   });
 
+  it("drops the previous song's length and play", async () => {
+    const events = makeFakeEvents();
+    const backend = createTauriBackend(events);
+    backend.load('/api/youtube/stream/a', { autoplay: true });
+    backend.load('/api/youtube/stream/b', { autoplay: false });
+
+    await emit('audio:duration', { sec: 30, token: 1 });
+    await emit('audio:play', { token: 1 });
+
+    expect(events.onDuration).not.toHaveBeenCalled();
+    expect(events.onPlay).not.toHaveBeenCalled();
+    expect(backend.isPaused()).toBe(true);
+    // A's 30 s length would have clamped a seek into B.
+    backend.seek(100);
+    expect(invoked.filter((i) => i.cmd === 'audio_seek').at(-1)?.args).toEqual({ sec: 100 });
+  });
+
   it('takes untagged reports as before (an older desktop build)', async () => {
     const events = makeFakeEvents();
     const backend = createTauriBackend(events);

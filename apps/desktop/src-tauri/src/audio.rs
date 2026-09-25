@@ -1405,7 +1405,9 @@ async fn load_claimed<R: Runtime>(
                 log_audio(app, "INFO", &format!("load #{my_seq} superseded, failure not reported"));
                 return Ok(());
             }
-            emit_err(app, e.retry, e.message);
+            // Tagged, so the webview can tell it from a failure of a load it
+            // has sent since and the engine has not claimed yet.
+            emit_err_about(app, e.retry, e.message, token);
             return Ok(());
         }
     };
@@ -1432,7 +1434,8 @@ async fn load_claimed<R: Runtime>(
     sink.append(decoder);
     // A seek pressed while this was on its way wins over where it was asked
     // to start (D2): the slider already shows it.
-    let start_at = engine.pending_seek.lock().ok().and_then(|mut p| p.take()).unwrap_or(start_at);
+    let early_seek = engine.pending_seek.lock().ok().and_then(|mut p| p.take());
+    let start_at = early_seek.unwrap_or(start_at);
     if start_at > 1.0 {
         // Same guard as audio_seek: a decoder that reports no length would
         // clamp this to 0, so resuming a proxied track just starts it over.
@@ -1448,6 +1451,11 @@ async fn load_claimed<R: Runtime>(
         // Checked again under the lock: a stop or a newer load that came in
         // since the check above would otherwise get this sink anyway.
         if !engine.is_current_load(my_seq) {
+            // A seek taken above may have been meant for the load that
+            // overtook this one: hand it back.
+            if let (Some(sec), Ok(mut p)) = (early_seek, engine.pending_seek.lock()) {
+                p.get_or_insert(sec);
+            }
             return Ok(());
         }
         let playing = engine.want_play.load(Ordering::SeqCst);
@@ -1499,15 +1507,26 @@ async fn load_claimed<R: Runtime>(
     // out with the previous song's length, which must not stay on the widget.
     engine.push_metadata();
     if playing {
-        emit_bare(app, "audio:play");
+        use tauri::Emitter;
+        let _ = app.emit("audio:play", TokenPayload { token });
     }
     engine.set_nowplaying(playing);
 
     let (sink_arc, generation) = engine.inner_arc();
     spawn_position_timer(app.clone(), sink_arc, generation, my_gen, Arc::clone(&failed), token);
     if let Some(sec) = late_seek {
-        if let Some(target) = seek_target(total, sec) {
-            seek_in_place(app, engine, sink, failed, target, playing, token);
+        // Planned like any seek: a backward one in a forward-only track
+        // cannot be done in place (it would end the song), it re-opens.
+        match plan_seek(total, forward_only, sink.get_pos(), sec) {
+            SeekPlan::InPlace(target) => seek_in_place(app, engine, sink, failed, target, token),
+            SeekPlan::Reopen(target) => {
+                let url = engine.current_url.lock().ok().and_then(|g| g.clone());
+                let cookie = engine.current_cookie.lock().ok().and_then(|g| g.clone());
+                if let Some(url) = url {
+                    spawn_load(app, engine, (url, cookie, target.as_secs_f64(), None), playing);
+                }
+            }
+            SeekPlan::Refuse => {}
         }
     }
     Ok(())
@@ -1684,7 +1703,7 @@ pub fn audio_seek<R: Runtime>(app: AppHandle<R>, engine: State<'_, AudioEngine>,
     };
     let failed = engine.source_failed.lock().map(|f| Arc::clone(&f)).unwrap_or_default();
     let token = engine.installed_token.lock().ok().and_then(|t| *t);
-    seek_in_place(&app, engine.inner(), sink, failed, target, playing, token);
+    seek_in_place(&app, engine.inner(), sink, failed, target, token);
 }
 
 /// Hands a seek to the decoder, off the calling thread.
@@ -1701,7 +1720,6 @@ fn seek_in_place<R: Runtime>(
     sink: Arc<Sink>,
     failed: Arc<AtomicBool>,
     target: Duration,
-    playing: bool,
     token: Option<u64>,
 ) {
     engine.seek_generation.store(engine.generation.load(Ordering::SeqCst), Ordering::SeqCst);
@@ -1725,8 +1743,10 @@ fn seek_in_place<R: Runtime>(
             Ok(()) => {
                 emit_sec(&app, "audio:time", target.as_secs_f64(), token); // optimistic
                 // The OS widget's scrubber runs on from the last position it
-                // was sent, so it has to hear about a seek too.
-                engine.set_nowplaying(playing);
+                // was sent, so it has to hear about a seek too. Playing or
+                // not as the sink is NOW: a pause may have come in while the
+                // seek waited on the host.
+                engine.set_nowplaying(!sink.is_paused());
             }
             // A seek the decoder cannot service leaves the source unable to
             // read its next packet, which rodio reports as the end of the
@@ -1895,8 +1915,10 @@ fn spawn_position_timer<R: Runtime>(
                 {
                     use tauri::Manager;
                     let engine = app.state::<AudioEngine>();
+                    // Not when a newer load has begun: it set want_play for
+                    // itself (under this lock) before it bumped the generation.
                     if let Ok(_g) = sink.lock() {
-                        if generation.load(Ordering::SeqCst) == my_gen {
+                        if generation.load(Ordering::SeqCst) == my_gen && !engine.load_in_flight() {
                             engine.want_play.store(false, Ordering::SeqCst);
                         }
                     };

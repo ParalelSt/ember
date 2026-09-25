@@ -77,7 +77,11 @@ export const createTauriBackend: CreateAudioBackend = (events) => {
     transitioning = false;
     events.onTime(sec);
   });
-  sub<{ sec: number }>('audio:duration', ({ sec }) => { duration = sec; events.onDuration(sec); });
+  sub<{ sec: number; token?: number }>('audio:duration', (p) => {
+    if (stale(p)) return;
+    duration = p.sec;
+    events.onDuration(p.sec);
+  });
   sub<{ token?: number } | null>('audio:ended', (p) => {
     if (stale(p)) return;
     const before = asked;
@@ -91,7 +95,11 @@ export const createTauriBackend: CreateAudioBackend = (events) => {
       events.onPause();
     }
   });
-  sub<Record<string, never>>('audio:play', () => { paused = false; events.onPlay(); });
+  sub<{ token?: number } | null>('audio:play', (p) => {
+    if (stale(p)) return;
+    paused = false;
+    events.onPlay();
+  });
   sub<Record<string, never>>('audio:pause', () => { paused = true; events.onPause(); });
   // `retry` is the engine's own verdict on whether web audio could do better:
   // 'none' means the host could not deliver the song at all, so swapping

@@ -663,3 +663,23 @@ async fn a_paused_load_makes_no_sound() {
     stop.store(true, Ordering::SeqCst);
     assert_eq!(heard.load(Ordering::SeqCst), 0, "samples heard from loads meant to stay paused");
 }
+
+/// Review of D3: the OS widget heard about a seek with the play state from
+/// when the seek began. Pause pressed while the seek waited on the host left
+/// the widget saying "Playing" over a paused song.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_pause_during_a_slow_seek_leaves_the_widget_paused() {
+    let rig = Rig::new();
+    let song = trickle_host(Duration::from_secs(2));
+    rig.load(&song.url, true).await;
+    rig.seek(100.0);
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    rig.pause();
+    assert!(rig.until(Duration::from_secs(10), |r| sink_pos(r).is_some_and(|p| p >= 99.0)).await, "the seek lands");
+    tokio::time::sleep(Duration::from_millis(200)).await;
+    assert!(
+        matches!(rig.engine().widget().playback, Some(souvlaki::MediaPlayback::Paused { .. })),
+        "widget: {:?}",
+        rig.engine().widget().playback
+    );
+}
