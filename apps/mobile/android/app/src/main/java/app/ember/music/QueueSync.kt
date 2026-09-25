@@ -38,13 +38,15 @@ object QueueSync {
     }
 
     /** Applies the plan to [player]: the MediaController in the app, the
-     *  ExoPlayer itself in tests. */
-    fun apply(player: Player, items: List<MediaItem>, index: Int) {
+     *  ExoPlayer itself in tests. [startMs] is where a song that has to
+     *  start does start (the app restoring its saved queue resumes where the
+     *  listener was); a song that keeps playing keeps its own position. */
+    fun apply(player: Player, items: List<MediaItem>, index: Int, startMs: Long = 0) {
         val current = (0 until player.mediaItemCount).map { player.getMediaItemAt(it).mediaId }
         val at = player.currentMediaItemIndex
         when (val p = plan(current, at, items.map { it.mediaId }, index)) {
             Plan.Keep -> {}
-            is Plan.Seek -> player.seekTo(p.index, 0)
+            is Plan.Seek -> player.seekTo(p.index, startMs)
             is Plan.Around -> {
                 // Never touching the playing item itself is what keeps it going.
                 // The side after it first, so the indices before it still hold.
@@ -52,7 +54,7 @@ object QueueSync {
                 p.appendFrom?.let { player.addMediaItems(items.subList(it, items.size)) }
                 if (p.before) player.replaceMediaItems(0, at, items.subList(0, index))
             }
-            is Plan.Load -> { player.setMediaItems(items, p.index, 0); player.prepare() }
+            is Plan.Load -> { player.setMediaItems(items, p.index, startMs); player.prepare() }
         }
     }
 }

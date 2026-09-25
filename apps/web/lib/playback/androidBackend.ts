@@ -29,6 +29,8 @@ interface EmberPlayerPlugin {
     play: boolean;
     context?: { type: string } | null;
     baseCount?: number;
+    /** Where the song starts; older app builds ignore it (start at 0). */
+    startSec?: number;
   }): Promise<void>;
   play(): Promise<void>;
   pause(): Promise<void>;
@@ -178,11 +180,13 @@ export const createAndroidBackend: CreateAudioBackend = (events: AudioBackendEve
    *  waits until native has said what it has. Native playing something:
    *  this page takes native's queue instead. Native empty (a fresh start):
    *  the saved queue goes over, paused, as before. A tap (play) never waits. */
-  type Held = { tracks: Track[]; i: number; origin?: QueueOrigin };
+  type Held = { tracks: Track[]; i: number; origin?: QueueOrigin; startSec?: number };
   let settled = !p;
   let held: Held | null = null;
   const send = (h: Held, play: boolean) => {
-    if (p) call(p.setQueue({ tracks: h.tracks, index: h.i, play, ...nativeQueueContext(h.origin) }));
+    if (!p) return;
+    const at = h.startSec && h.startSec > 0 ? { startSec: h.startSec } : {};
+    call(p.setQueue({ tracks: h.tracks, index: h.i, play, ...nativeQueueContext(h.origin), ...at }));
   };
   const settle = (s: NativeState | null, q: { tracks: Track[]; index: number } | null) => {
     if (settled) return;
@@ -247,15 +251,15 @@ export const createAndroidBackend: CreateAudioBackend = (events: AudioBackendEve
     // Single-track load is not how this backend works; the provider calls
     // setQueue for queue-owning backends. Kept as a harmless no-op.
     load() {},
-    setQueue(tracks, i, play, origin) {
+    setQueue(tracks, i, play, origin, startSec) {
       if (!p) return;
       if (!settled && !play) {
-        held = { tracks, i, origin };
+        held = { tracks, i, origin, startSec };
         return;
       }
       // Anything the listener did replaces a saved queue still waiting.
       held = null;
-      send({ tracks, i, origin }, play);
+      send({ tracks, i, origin, startSec }, play);
     },
     play() {
       if (p) call(p.play());

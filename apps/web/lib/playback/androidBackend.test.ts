@@ -292,3 +292,20 @@ describe('androidBackend: a page starting while native already plays', () => {
     expect(n.plugin.setQueue).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('androidBackend: start position', () => {
+  afterEach(() => {
+    delete (window as unknown as { Capacitor?: unknown }).Capacitor;
+  });
+
+  it('passes a start position with a queue, and none for 0', async () => {
+    const n = installPlugin(false);
+    n.plugin.getState = vi.fn().mockResolvedValue({ playing: false, position: 0, duration: 0, index: -1, trackId: null });
+    const b = createAndroidBackend(makeFakeEvents());
+    b.setQueue!([{ id: 'a' } as never], 0, false, undefined, 95);
+    await new Promise((r) => setTimeout(r, 0));
+    expect(n.plugin.setQueue).toHaveBeenLastCalledWith(expect.objectContaining({ play: false, startSec: 95 }));
+    b.setQueue!([{ id: 'b' } as never], 0, true, undefined, 0);
+    expect((n.plugin.setQueue as ReturnType<typeof vi.fn>).mock.calls.at(-1)?.[0]).not.toHaveProperty('startSec');
+  });
+});

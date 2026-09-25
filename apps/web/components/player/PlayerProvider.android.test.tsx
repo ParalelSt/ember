@@ -170,3 +170,26 @@ describe('android: a queue native built by itself', () => {
     expect(st.orderBackup).toBeNull();
   });
 });
+
+describe('android: where a restored song starts', () => {
+  it('a cold start restoring the saved queue resumes where the listener was', () => {
+    usePlayerStore.setState({ queue: [A, B], index: 1, position: 95 });
+    render(<PlayerProvider><div /></PlayerProvider>);
+    // One send at a cold start (the opening render used to send it too).
+    expect(native.setQueue).toHaveBeenCalledTimes(1);
+    const [tracks, i, play, , startSec] = native.setQueue.mock.calls[0];
+    expect(tracks).toEqual([A, B]);
+    expect(i).toBe(1);
+    expect(play).toBe(false);
+    expect(startSec).toBe(95);
+  });
+
+  it('a song picked by hand starts from the top', () => {
+    usePlayerStore.setState({ queue: [A, B], index: 1, position: 95 });
+    render(<PlayerProvider><Grab /></PlayerProvider>);
+    native.setQueue.mockClear();
+    act(() => { player!.playTrack(C, [B, C, D], { type: 'album', id: 'x' } as never); });
+    expect(native.setQueue.mock.calls[0][4]).toBeUndefined();
+    expect(usePlayerStore.getState().position).toBe(0);
+  });
+});

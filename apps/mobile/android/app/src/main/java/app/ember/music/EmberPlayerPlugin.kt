@@ -177,6 +177,8 @@ class EmberPlayerPlugin : Plugin() {
         val tracks = call.getArray("tracks") ?: JSArray()
         val index = call.getInt("index") ?: 0
         val play = call.getBoolean("play") ?: true
+        // Optional (newer web builds): where the song starts, in seconds.
+        val startMs = ((call.getDouble("startSec") ?: 0.0).coerceAtLeast(0.0) * 1000).toLong()
         val items = (0 until tracks.length()).map { TrackItems.toMediaItem(tracks.getJSONObject(it), ServerConfig.baseUrl(context)) }
         // Optional (newer web builds): where the queue came from, so the
         // native prefetch window wraps loop-all where the web player does.
@@ -187,7 +189,7 @@ class EmberPlayerPlugin : Plugin() {
             c.sendCustomCommand(SessionCommand(EmberPlaybackService.COMMAND_QUEUE_CONTEXT, Bundle.EMPTY), queueContext)
             // Never restarts the song that plays when it is still the one asked for.
             echo.applying = true
-            try { QueueSync.apply(c, items, index) } finally { echo.applying = false }
+            try { QueueSync.apply(c, items, index, startMs) } finally { echo.applying = false }
             if (play) c.play()
             call.resolve()
         }

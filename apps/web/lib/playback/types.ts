@@ -107,8 +107,10 @@ export interface AudioBackend {
    *  position during this window (the element reports transient values). */
   isTransitioning(): boolean;
   /** Queue-owning backends only. Hands the whole queue over; the backend diffs
-   *  it against what it has so an append never restarts playback. */
-  setQueue?(tracks: Track[], index: number, play: boolean, origin?: QueueOrigin): void;
+   *  it against what it has so an append never restarts playback.
+   *  `startSec` is where a song that has to start does start (a cold start
+   *  restoring the saved queue); a song already playing keeps its place. */
+  setQueue?(tracks: Track[], index: number, play: boolean, origin?: QueueOrigin, startSec?: number): void;
   /** Queue-owning backends only: the native player decides what is next. */
   next?(): void;
   prev?(): void;
