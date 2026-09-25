@@ -429,14 +429,28 @@ async fn a_seek_during_a_slow_load_is_kept() {
 /// while it is built) is answered at once, and any other Range request only
 /// after `mid_delay`, the time a busy link takes to answer.
 fn trickle_host(mid_delay: Duration) -> Host {
+    trickle_host_with(mid_delay, false)
+}
+
+/// `trickle_host`, where the first Range request into the middle is answered
+/// at once with a little of the song and then nothing more, and every later
+/// one (the download reconnecting) not at all: a link that dropped while the
+/// song was arriving.
+fn stalling_host() -> Host {
+    trickle_host_with(Duration::ZERO, true)
+}
+
+fn trickle_host_with(mid_delay: Duration, mid_stalls: bool) -> Host {
     let listener = TcpListener::bind("127.0.0.1:0").expect("bind");
     let addr = listener.local_addr().expect("addr");
     let requests = Arc::new(AtomicUsize::new(0));
     let count = Arc::clone(&requests);
+    let mids = Arc::new(AtomicUsize::new(0));
     std::thread::spawn(move || {
         for conn in listener.incoming() {
             let Ok(mut stream) = conn else { continue };
             let count = Arc::clone(&count);
+            let mids = Arc::clone(&mids);
             std::thread::spawn(move || {
                 let mut reader = BufReader::new(stream.try_clone().expect("clone"));
                 let mut range = None;
@@ -463,8 +477,25 @@ fn trickle_host(mid_delay: Duration) -> Host {
                         std::thread::sleep(Duration::from_secs(60));
                     }
                     Some(start) => {
-                        if start < total.saturating_sub(64 * 1024) {
+                        let mid = start < total.saturating_sub(64 * 1024);
+                        if mid {
                             std::thread::sleep(mid_delay);
+                        }
+                        if mid && mid_stalls {
+                            if mids.fetch_add(1, Ordering::SeqCst) > 0 {
+                                std::thread::sleep(Duration::from_secs(60));
+                                return;
+                            }
+                            let _ = write!(
+                                stream,
+                                "HTTP/1.1 206 Partial Content\r\nContent-Type: audio/mp4\r\nAccept-Ranges: bytes\r\nContent-Range: bytes {start}-{}/{total}\r\nContent-Length: {}\r\n\r\n",
+                                total - 1,
+                                total - start
+                            );
+                            let _ = stream.write_all(&TRACK[start..(start + 32 * 1024).min(total)]);
+                            let _ = stream.flush();
+                            std::thread::sleep(Duration::from_secs(60));
+                            return;
                         }
                         let start = start.min(total);
                         let _ = write!(
@@ -565,4 +596,70 @@ async fn a_seek_right_after_a_reopen_joins_it() {
         .await;
     assert!(landed, "the song is at {:?}, not the second seek's 50s", sink_pos(&rig));
     assert_eq!(rig.engine().load_seq.load(Ordering::SeqCst), 2, "one load, one re-open");
+}
+
+/// D8. The song playing stops arriving (the link dropped) and the listener
+/// skips to the next one. The audio thread was still blocked reading the
+/// old song's stream, which waits for bytes as long as its download keeps
+/// retrying, and every sink shares that thread: the next song stayed silent
+/// until the watchdog gave up on it too and the app swapped to web audio.
+#[tokio::test(flavor = "multi_thread")]
+async fn the_next_song_plays_when_the_one_before_starved() {
+    let rig = Rig::new();
+    let dead = stalling_host();
+    rig.load(&dead.url, true).await;
+    // Plays what arrived, then blocks in a read that is never answered.
+    assert!(rig.until(Duration::from_secs(10), |r| latest_time_after(&r.events(), 0) > 5.0).await);
+    tokio::time::sleep(Duration::from_millis(500)).await;
+
+    let good = host(&[Answer::Song], Duration::ZERO);
+    let mark = rig.events().len();
+    rig.load(&good.url, true).await;
+
+    let plays = rig.until(Duration::from_secs(5), |r| latest_time_after(&r.events(), mark) > 5.0).await;
+    assert!(plays, "the next song is stuck at {:.1}s", latest_time_after(&rig.events(), mark));
+}
+
+/// D9. A load meant to stay paused (the song restored at launch) or to
+/// resume part way in built a sink that was already playing, and paused or
+/// seeked it only afterwards: the start of the song leaked out in between,
+/// a click at launch, and on a busy machine whole seconds of it.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_paused_load_makes_no_sound() {
+    let (mixer, mut out) = rodio::mixer::mixer(2, 44_100);
+    let heard = Arc::new(AtomicUsize::new(0));
+    let stop = Arc::new(AtomicBool::new(false));
+    {
+        let heard = Arc::clone(&heard);
+        let stop = Arc::clone(&stop);
+        std::thread::spawn(move || {
+            while !stop.load(Ordering::SeqCst) {
+                let mut any = false;
+                for _ in 0..4096 {
+                    match out.next() {
+                        Some(s) if s.abs() > 1e-4 => {
+                            heard.fetch_add(1, Ordering::SeqCst);
+                            any = true;
+                        }
+                        Some(_) => any = true,
+                        None => {}
+                    }
+                }
+                if !any {
+                    std::thread::sleep(Duration::from_millis(1));
+                }
+            }
+        });
+    }
+    let app = mock_app();
+    app.manage(AudioEngine::with_output(mixer));
+    let song = host(&[Answer::Song], Duration::ZERO);
+    for start_at in [0.0, 60.0] {
+        audio_load(app.handle().clone(), app.state::<AudioEngine>(), song.url.clone(), false, start_at, None, None, None)
+            .await
+            .expect("load");
+    }
+    tokio::time::sleep(Duration::from_millis(200)).await;
+    stop.store(true, Ordering::SeqCst);
+    assert_eq!(heard.load(Ordering::SeqCst), 0, "samples heard from loads meant to stay paused");
 }

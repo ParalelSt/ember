@@ -32,6 +32,9 @@ use tauri::{AppHandle, Runtime, State};
 /// The loaded sink, shared with the position timer.
 type SharedSink = Arc<Mutex<Option<Arc<Sink>>>>;
 
+/// Stops a streamed load's download.
+pub(crate) type DownloadStop = Box<dyn Fn() + Send + Sync>;
+
 /// Native audio engine state, stored in Tauri managed state.
 ///
 /// `rodio::OutputStream` (cpal `Stream`) is `!Send + !Sync`, so it cannot live in
@@ -82,6 +85,14 @@ pub struct AudioEngine {
     /// one's). `None` for a webview that sends none; it then checks nothing.
     asked_token: Mutex<Option<u64>>,
     installed_token: Mutex<Option<u64>>,
+    /// Stops the download behind the loaded sink (a streamed one).
+    ///
+    /// Every sink plays on the one audio thread, and a stream that has
+    /// stopped arriving blocks that thread in its read for as long as its
+    /// download keeps retrying: dropping the sink does not end the read, so
+    /// the next song stayed silent behind it (D8). Stopping the download
+    /// does: the read returns an error and the source ends.
+    current_download: Mutex<Option<DownloadStop>>,
     /// The last track a load was asked for: url, cookie, start, cache key.
     /// What play tries again when that load failed and nothing is loaded.
     requested: Mutex<Option<Requested>>,
@@ -172,6 +183,7 @@ impl AudioEngine {
             seeks_running: AtomicU64::new(0),
             asked_token: Mutex::new(None),
             installed_token: Mutex::new(None),
+            current_download: Mutex::new(None),
             requested: Mutex::new(None),
             current_url: Mutex::new(None),
             current_cookie: Mutex::new(None),
@@ -205,6 +217,7 @@ impl AudioEngine {
             seeks_running: AtomicU64::new(0),
             asked_token: Mutex::new(None),
             installed_token: Mutex::new(None),
+            current_download: Mutex::new(None),
             requested: Mutex::new(None),
             current_url: Mutex::new(None),
             current_cookie: Mutex::new(None),
@@ -340,12 +353,21 @@ impl AudioEngine {
                 sink.stop();
             }
         }
+        self.stop_download();
         if let Ok(mut u) = self.current_url.lock() {
             *u = None;
         }
         self.forward_only.store(false, Ordering::SeqCst);
         if let Ok(mut d) = self.current_total.lock() {
             *d = None;
+        }
+    }
+
+    /// Stops the download behind the sink that just went (see
+    /// `current_download`).
+    fn stop_download(&self) {
+        if let Some(stop) = self.current_download.lock().ok().and_then(|mut d| d.take()) {
+            stop();
         }
     }
 
@@ -982,6 +1004,8 @@ pub(crate) struct OpenedSource {
     pub failed: Arc<AtomicBool>,
     /// Decoded forward-only (see `open_decoder`).
     pub forward_only: bool,
+    /// Stops the download (see `AudioEngine::current_download`).
+    pub stop: DownloadStop,
 }
 
 /// Why a source could not be opened, in words the app log can print, plus
@@ -1125,7 +1149,8 @@ pub(crate) async fn open_source(
         use rodio::Source;
         decoder.total_duration()
     };
-    Ok(OpenedSource { decoder, total, failed, forward_only })
+    let stop: DownloadStop = Box::new(move || download.cancel());
+    Ok(OpenedSource { decoder, total, failed, forward_only, stop })
 }
 
 /// `open_source`, with one more attempt when the first one STALLED.
@@ -1158,6 +1183,7 @@ pub(crate) async fn open_source_retrying(
 }
 
 #[tauri::command]
+#[allow(clippy::too_many_arguments)] // the webview's invoke arguments, one each
 pub async fn audio_load<R: Runtime>(
     app: AppHandle<R>,
     engine: State<'_, AudioEngine>,
@@ -1338,9 +1364,9 @@ async fn load_claimed<R: Runtime>(
     // A failure there is REPORTED through `audio:error` and then returns Ok:
     // that event carries the retry decision the webview needs, and an Err as
     // well would race a second, less informed report through invoke()'s catch.
-    type Playable = (Box<dyn rodio::Source + Send>, Option<Duration>, Arc<AtomicBool>, bool);
+    type Playable = (Box<dyn rodio::Source + Send>, Option<Duration>, Arc<AtomicBool>, bool, Option<DownloadStop>);
     let opened: Result<Playable, OpenError> = match from_cache {
-        Some((decoder, total, failed)) => Ok((Box::new(decoder), total, failed, false)),
+        Some((decoder, total, failed)) => Ok((Box::new(decoder), total, failed, false, None)),
         None if !is_http_url(&stream_url) => Err(OpenError {
             message: "the song is not in the cache and has no stream URL".into(),
             retry: RETRY_NONE,
@@ -1357,9 +1383,9 @@ async fn load_claimed<R: Runtime>(
             )
             .await
             .map(|o| {
-                let OpenedSource { decoder, total, failed, forward_only } = o;
+                let OpenedSource { decoder, total, failed, forward_only, stop } = o;
                 let source: Box<dyn rodio::Source + Send> = Box::new(decoder);
-                (source, total, failed, forward_only)
+                (source, total, failed, forward_only, Some(stop))
             })
         }
     };
@@ -1378,7 +1404,7 @@ async fn load_claimed<R: Runtime>(
             return Ok(());
         }
     };
-    let (decoder, total, failed, forward_only) = opened;
+    let (decoder, total, failed, forward_only, stop) = opened;
 
     // Someone asked for a different track while this one was downloading —
     // discard it silently rather than yanking playback back.
@@ -1393,6 +1419,11 @@ async fn load_claimed<R: Runtime>(
     let my_gen = engine.generation.fetch_add(1, Ordering::SeqCst) + 1;
 
     let sink = Arc::new(engine.new_sink()?);
+    // Held paused until play or pause is decided below: a new sink starts
+    // playing, so the start of the song (and on a slow run, far more of it)
+    // sounded before the seek to where it resumes, or before a launch load
+    // meant to stay paused was paused.
+    sink.pause();
     sink.append(decoder);
     // A seek pressed while this was on its way wins over where it was asked
     // to start (D2): the slider already shows it.
@@ -1423,6 +1454,9 @@ async fn load_claimed<R: Runtime>(
         *slot = Some(Arc::clone(&sink));
         if let Ok(mut t) = engine.installed_token.lock() {
             *t = token;
+        }
+        if let Ok(mut d) = engine.current_download.lock() {
+            *d = stop;
         }
         // A seek that came in after the start was decided and before the
         // sink went in found nothing to seek either.
@@ -1555,6 +1589,7 @@ pub fn audio_stop(engine: State<'_, AudioEngine>) {
             sink.stop();
         }
     }
+    engine.stop_download();
     if let Ok(mut u) = engine.current_url.lock() {
         *u = None;
     }
