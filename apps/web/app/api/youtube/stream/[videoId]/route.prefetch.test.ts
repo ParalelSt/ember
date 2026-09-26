@@ -24,9 +24,13 @@ vi.mock('@/lib/sources/youtube', () => ({
   hasCachedStreamUrl: () => false,
   invalidateStreamUrl: () => {},
   isDownloading: () => false,
+  isTooLargeError: () => false,
   isUnavailableError: (e: unknown) => !!(e as { unavailableReason?: string } | undefined)?.unavailableReason,
   resolveStreamUrl: (...a: unknown[]) => resolveStreamUrl(...a),
 }));
+// A signed-in member: fetching a song not on disk takes one (security audit
+// 2026-09-25, M2; route.access.test.ts covers the signed-out side).
+vi.mock('@/lib/auth', () => ({ verifiedUserId: async () => 'prefetch-member' }));
 const queueCacheWarm = vi.fn();
 vi.mock('@/lib/streamCache', () => ({ queueCacheWarm: (...a: unknown[]) => queueCacheWarm(...a) }));
 const markTrackUnavailable = vi.fn(async () => {});

@@ -15,6 +15,9 @@ const PB_URL = /^https?:\/\//.test(RAW_PB_URL) ? RAW_PB_URL : 'http://127.0.0.1:
 
 // Public pages live in lib/publicPaths.ts (lib/api.ts reads the same list).
 export { PUBLIC_PATHS };
+// /api/youtube/stream/ is public for songs already on disk (shared /track
+// links); the route itself refuses to fetch anything new for a caller who is
+// not signed in (lib/downloadAccess, security audit 2026-09-25, M2).
 const PUBLIC_API_PREFIXES = ['/api/youtube/stream/', '/api/search', '/api/tracks', '/api/youtube/search', '/api/youtube/trending', '/api/youtube/recommended', '/api/youtube/artist', '/api/youtube/album', '/api/youtube/track/', '/api/discord/', '/api/auth/',
   // The desktop updater runs in Rust with no browser session, so its feed and
   // the asset proxy must be reachable without one. They expose the latest

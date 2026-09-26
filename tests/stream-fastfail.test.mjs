@@ -15,8 +15,9 @@
  *  server that is still working from one that never will, so an answer that
  *  never comes is what the freeze was made of.
  *
- *  Starts its own app server from the existing build in apps/web. No
- *  PocketBase needed: the stream route's writes are fire-and-forget.
+ *  Starts its own app server from the existing build in apps/web. Needs the
+ *  sandbox PocketBase for one signed-in member (POCKETBASE_URL, PB_URL,
+ *  PB_ADMIN_PASSWORD); the stream route's own writes are fire-and-forget.
  *
  *  Env: APP_PORT (default 3038), ORIGIN_PORT (default 4462), SB (scratch dir).
  */
@@ -26,6 +27,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { memberCookie } from './sandbox-member.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const WEB = path.join(ROOT, 'apps/web');
@@ -90,6 +92,12 @@ const origin = http.createServer((req, res) => {
 });
 origin.on('connection', (s) => { sockets.add(s); s.on('close', () => sockets.delete(s)); });
 
+/** Songs not on disk are fetched for members only (security audit M2), so
+ *  this now needs the sandbox PocketBase too: PB_URL, PB_ADMIN_PASSWORD, and
+ *  POCKETBASE_URL for the app it starts. */
+let memberPromise = null;
+const member = () => (memberPromise ??= memberCookie({ label: 'fastfail' }));
+
 async function startApp() {
   const child = spawn('npx', ['next', 'start', '-p', PORT, '-H', '127.0.0.1'], {
     cwd: WEB,
@@ -136,7 +144,7 @@ async function play(id, capMs) {
   const started = Date.now();
   let res;
   try {
-    res = await fetch(`${APP_URL}/api/youtube/stream/${id}`, { signal: AbortSignal.timeout(capMs) });
+    res = await fetch(`${APP_URL}/api/youtube/stream/${id}`, { headers: { cookie: await member() }, signal: AbortSignal.timeout(capMs) });
   } catch (e) {
     return { headersMs: Date.now() - started, answered: false, error: String(e) };
   }

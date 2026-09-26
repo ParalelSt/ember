@@ -43,7 +43,9 @@ export function rateLimitResponse(
 }
 
 /** Limits for the public routes that start a Python helper (bughunt S04).
- *  Generous: a person browsing, even quickly, stays far below them. */
+ *  Generous: a person browsing, even quickly, stays far below them. Fetching
+ *  a song that is not on disk is members only, with its own per-member
+ *  budget: lib/downloadAccess. */
 export const PUBLIC_PYTHON_LIMITS = {
   /** Typed searches; the search box debounces 250 ms. */
   search: { windowMs: 60_000, max: 40 },
@@ -51,8 +53,6 @@ export const PUBLIC_PYTHON_LIMITS = {
   browse: { windowMs: 60_000, max: 60 },
   /** "More like this" from a seed song. */
   recommended: { windowMs: 60_000, max: 30 },
-  /** Songs not on disk yet, each a yt-dlp download. */
-  streamFetch: { windowMs: 60_000, max: 60 },
 } satisfies Record<string, RateLimitConfig>;
 
 /** rateLimitResponse keyed on callerKey, for public routes. */

@@ -8,6 +8,7 @@ import { serverLogger } from '@/lib/logger/server';
 import { parseMusicCheck, type MusicCheck, type RawMusicCheck } from '@/lib/import/musicCheck';
 import { downloadGate, type Release } from '@/lib/downloadGate';
 import { BusyError, createSemaphore, type Semaphore } from '@/lib/semaphore';
+import { exceedsMediaLimits, isTooLargeMessage } from '@/lib/mediaLimits';
 
 // apps/web is one level deeper than the old apps/api in workspace layout,
 // but both resolve to the same spotify-clone root.
@@ -60,6 +61,20 @@ export function isUnavailableError(e: unknown): e is Error & { status: 410; unav
 interface PythonError extends Error {
   status?: number;
   unavailableReason?: UnavailableReason;
+  tooLarge?: boolean;
+}
+
+/** The video is over the host's length or size cap (lib/mediaLimits): a
+ *  definite no for this video, never retried, never streamed live instead. */
+export function isTooLargeError(e: unknown): e is Error & { status: 413; tooLarge: true } {
+  return (e as { tooLarge?: boolean } | undefined)?.tooLarge === true;
+}
+
+function tooLargeError(message: string): PythonError {
+  const e: PythonError = new Error(message);
+  e.status = 413;
+  e.tooLarge = true;
+  return e;
 }
 
 // Prepend the venv's bin/ to PATH so yt-dlp can find ffmpeg: update.sh links
@@ -175,7 +190,9 @@ function spawnPython<T>(args: string[], timeoutMs: number): Promise<T> {
         // sentence, not a Python traceback — those leak absolute server paths
         // and tell the listener nothing. The full stderr still goes to the
         // server log via reject_ below.
-        const e: PythonError = new Error(pythonReason(stderr, code));
+        const why = pythonReason(stderr, code);
+        if (isTooLargeMessage(why)) return reject_(tooLargeError(why));
+        const e: PythonError = new Error(why);
         e.status = 502;
         const reason = classifyYtdlpFailure(e.message);
         if (reason) { e.status = 410; e.unavailableReason = reason; }
@@ -648,6 +665,9 @@ interface StreamInfo {
   /** Headers yt-dlp used to resolve the format URL (notably User-Agent). The
    *  proxy must replay these when fetching googlevideo or it gets a 403. */
   httpHeaders?: Record<string, string>;
+  durationSec?: number | null;
+  filesize?: number | null;
+  isLive?: boolean | null;
 }
 
 const URL_CACHE = new Map<string, { info: StreamInfo; expires: number }>();
@@ -860,6 +880,9 @@ export async function resolveStreamUrl(videoId: string): Promise<StreamInfo> {
     e.status = 502;
     throw e;
   }
+  // Proxy mode streams this live, so the length cap has to hold here too.
+  const over = exceedsMediaLimits(info);
+  if (over) throw tooLargeError(over);
   URL_CACHE.set(videoId, { info, expires: urlCacheExpiry(info.url) });
   return info;
 }

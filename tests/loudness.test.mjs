@@ -19,6 +19,7 @@
  */
 import fs from 'node:fs';
 import path from 'node:path';
+import { memberCookie } from './sandbox-member.mjs';
 
 const APP = process.env.LOUDNESS_APP_URL ?? 'http://127.0.0.1:3060';
 const LOG = process.env.FAKE_PLAYER_LOG ?? '/tmp/ember-loudness-test/calls.log';
@@ -56,7 +57,9 @@ await new Promise((r) => setTimeout(r, 500));
 check('A4 no measurement for a song that is not on disk', calls('loudness', MISSING) === 0);
 
 // ── a fresh download is measured in the background ────────────────────────
-const play = await fetch(`${APP}/api/youtube/stream/${FRESH}`);
+// Songs not on disk are fetched for members only (security audit M2).
+const cookie = await memberCookie({ label: 'loudness' });
+const play = await fetch(`${APP}/api/youtube/stream/${FRESH}`, { headers: { cookie } });
 await play.arrayBuffer();
 check('B1 the song plays', play.status === 200, `status ${play.status}`);
 const fresh = await waitForGain(`youtube:${FRESH}`);
@@ -64,7 +67,7 @@ check('B2 its gain appears without anyone asking for a measurement', fresh.body.
 check('B3 a measured gain is cacheable', /max-age/.test(fresh.cache ?? ''), fresh.cache ?? 'none');
 check('B4 the sidecar sits beside the audio', fs.existsSync(path.join(MUSIC, `${FRESH}.loudness.json`)));
 await gain(`youtube:${FRESH}`);
-await fetch(`${APP}/api/youtube/stream/${FRESH}`).then((r) => r.arrayBuffer());
+await fetch(`${APP}/api/youtube/stream/${FRESH}`, { headers: { cookie } }).then((r) => r.arrayBuffer());
 check('B5 measured exactly once', calls('loudness', FRESH) === 1, `${calls('loudness', FRESH)} run(s)`);
 
 // ── a song downloaded before this existed is measured when first asked ────

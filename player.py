@@ -245,6 +245,43 @@ def download_if_needed(video_id: str, title: str, artist: str) -> Path:
 
     return _download_with_403_retry(_attempt, lambda: _clean_partials(base))
 
+class TooLargeError(Exception):
+    """The video is over the host's length or size cap. Its message starts
+    with "too long" / "too large", which the Node side (lib/mediaLimits.ts)
+    recognises and answers with a 413 instead of retrying or streaming live."""
+
+
+def media_limits():
+    """(max seconds, max bytes) for one download, from the same env vars the
+    Node side reads: EMBER_MAX_TRACK_MINUTES (default 20) and
+    EMBER_MAX_DOWNLOAD_MB (default 60). Every download runs with the host's
+    bandwidth, disk and YouTube cookies (security audit 2026-09-25, M2)."""
+    def positive(name, fallback):
+        try:
+            value = float(os.environ.get(name, "") or fallback)
+        except ValueError:
+            value = fallback
+        return value if value > 0 else fallback
+    return (int(positive("EMBER_MAX_TRACK_MINUTES", 20) * 60),
+            int(positive("EMBER_MAX_DOWNLOAD_MB", 60) * 1024 * 1024))
+
+
+def check_media_limits(info, max_sec, max_bytes):
+    """Raise TooLargeError when yt-dlp's facts about a video (before or after
+    format selection) put it over the caps. Unknown facts pass; the size cap
+    on the download itself still holds."""
+    if info.get("is_live") or info.get("live_status") in ("is_live", "is_upcoming"):
+        raise TooLargeError("too long: live streams cannot be played")
+    duration = info.get("duration")
+    if duration and duration > max_sec:
+        raise TooLargeError(
+            f"too long: {int(-(-duration // 60))} min is over the {max_sec // 60} min limit")
+    size = info.get("filesize") or info.get("filesize_approx")
+    if size and size > max_bytes:
+        raise TooLargeError(
+            f"too large: {int(-(-size // 1048576))} MB is over the {max_bytes // 1048576} MB limit")
+
+
 def download_by_id(video_id: str) -> Path:
     """API mode: download YouTube's native audio (no transcode) so the first
     frames aren't clipped by mp3 encoder priming. Files are saved as
@@ -255,12 +292,23 @@ def download_by_id(video_id: str) -> Path:
 
     base = MUSIC_DIR / video_id
     outtmpl = str(MUSIC_DIR / f"{video_id}.%(ext)s")
+    max_sec, max_bytes = media_limits()
+
+    def _limits(info, *, incomplete=False):
+        # Called before format selection (duration, live status) and again
+        # with the chosen format (its size). Raising stops the download.
+        check_media_limits(info, max_sec, max_bytes)
+        return None
+
     ydl_opts = {
         # Prefer m4a (AAC) since browsers decode it cleanly without WebM/Opus quirks.
         'format': 'bestaudio[ext=m4a]/bestaudio[ext=webm]/bestaudio',
         'outtmpl': outtmpl,
         'quiet': True,
         'no_warnings': True,
+        'match_filter': _limits,
+        # A size the format did not declare is still capped while it downloads.
+        'max_filesize': max_bytes,
         **_cookie_opts(),
         **_ffmpeg_opts(),
         **_js_runtime_opts(),
@@ -273,7 +321,13 @@ def download_by_id(video_id: str) -> Path:
         with contextlib.redirect_stdout(sys.stderr):
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 info = ydl.extract_info(url)
-                return Path(ydl.prepare_filename(info))
+                path = Path(ydl.prepare_filename(info))
+        # yt-dlp skips a download over max_filesize with a note, not an
+        # error, which would hand back a path with nothing at it.
+        if not path.exists():
+            _clean_partials(base)
+            raise TooLargeError(f"too large: over the {max_bytes // 1048576} MB limit")
+        return path
 
     return _download_with_403_retry(_attempt, lambda: _clean_partials(base))
 
@@ -388,7 +442,12 @@ def cmd_download(args):
         print("[download] called without a video_id", file=sys.stderr)
         json.dump({"error": "video_id required"}, sys.stdout)
         return
-    file_path = download_by_id(args.video_id)
+    try:
+        file_path = download_by_id(args.video_id)
+    except TooLargeError as e:
+        # One ERROR line, which is what the Node side reads.
+        print(f"ERROR: {e}", file=sys.stderr)
+        sys.exit(1)
     json.dump({"filePath": str(file_path.resolve())}, sys.stdout)
 
 def cmd_info(args):
@@ -416,6 +475,7 @@ def cmd_info(args):
         "ext": info.get("ext"),
         "filesize": info.get("filesize") or info.get("filesize_approx"),
         "durationSec": info.get("duration"),
+        "isLive": bool(info.get("is_live") or info.get("live_status") in ("is_live", "is_upcoming")),
         "title": info.get("title"),
         # The headers yt-dlp used to fetch this format (notably User-Agent).
         # googlevideo URLs are signed for the client that resolved them, so the

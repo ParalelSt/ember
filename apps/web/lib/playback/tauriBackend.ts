@@ -102,9 +102,9 @@ export const createTauriBackend: CreateAudioBackend = (events) => {
         autoplay: opts.autoplay,
         startAt: opts.startAt ?? 0,
         // The Rust engine fetches over plain HTTP with no browser session, so
-        // authenticated routes 401 there. /api/youtube/stream/... is public,
-        // but member uploads are not — without this an uploaded song fails on
-        // desktop while playing fine in a browser. Only pb_auth is forwarded.
+        // authenticated routes 401 there: member uploads, and any YouTube
+        // song the host has not downloaded yet (only songs on disk are
+        // public). Only pb_auth is forwarded.
         cookie: sessionCookie(),
         // A rejection here means the COMMAND could not run at all (the
         // capability denied it, no output device): the engine is the problem,

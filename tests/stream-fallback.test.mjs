@@ -18,6 +18,7 @@
  */
 import http from 'node:http';
 import fs from 'node:fs';
+import { memberCookie } from './sandbox-member.mjs';
 
 const APP = process.env.STREAM_APP_URL ?? 'http://127.0.0.1:3009';
 const LOG = process.env.FAKE_PLAYER_LOG ?? '/tmp/ember-fallback-test/calls.log';
@@ -43,7 +44,9 @@ const origin = http.createServer((req, res) => {
 });
 await new Promise((r) => origin.listen(ORIGIN_PORT, '127.0.0.1', r));
 
-const res = await fetch(`${APP}/api/youtube/stream/${VIDEO}`);
+// Songs not on disk are fetched for members only (security audit M2).
+const cookie = await memberCookie({ label: 'stream-fallback' });
+const res = await fetch(`${APP}/api/youtube/stream/${VIDEO}`, { headers: { cookie } });
 const body = Buffer.from(await res.arrayBuffer());
 
 check('A1 playback still works when the download 403s', res.status === 200, `status ${res.status}`);
@@ -53,7 +56,7 @@ check('A4 then fell back to resolving a live URL', calls('info').length >= 1, `$
 
 // An explicit "save this to disk" request has nowhere to fall back to, so it
 // must fail honestly rather than pretending it saved something.
-const dl = await fetch(`${APP}/api/youtube/stream/${VIDEO}?download=1`);
+const dl = await fetch(`${APP}/api/youtube/stream/${VIDEO}?download=1`, { headers: { cookie } });
 check('B1 an explicit download request fails loudly instead of silently proxying',
   dl.status >= 400, `status ${dl.status}`);
 

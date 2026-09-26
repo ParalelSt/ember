@@ -45,8 +45,19 @@ class DownloadByIdTest(unittest.TestCase):
         follows the given side_effect list/exception."""
         ydl_cm = mock.MagicMock()
         ydl = ydl_cm.__enter__.return_value
-        ydl.extract_info.side_effect = extract_info_side_effect
-        ydl.prepare_filename.return_value = str(player.MUSIC_DIR / f"{self.video_id}.m4a")
+        target = player.MUSIC_DIR / f"{self.video_id}.m4a"
+        steps = iter(extract_info_side_effect)
+
+        def extract_info(*_a, **_k):
+            step = next(steps)
+            if isinstance(step, BaseException):
+                raise step
+            # A successful download leaves the file behind, as yt-dlp does.
+            target.write_bytes(b"audio")
+            return step
+
+        ydl.extract_info.side_effect = extract_info
+        ydl.prepare_filename.return_value = str(target)
         return ydl_cm, ydl
 
     def test_403_then_success_retries_once_and_returns_file(self):

@@ -18,6 +18,7 @@
  *      npx next start -p 3008
  */
 import fs from 'node:fs';
+import { memberCookie } from './sandbox-member.mjs';
 
 const APP = process.env.STREAM_APP_URL ?? 'http://127.0.0.1:3008';
 const LOG = process.env.FAKE_PLAYER_LOG ?? '/tmp/ember-stream-test/calls.log';
@@ -34,7 +35,9 @@ const calls = (cmd) => {
   return fs.readFileSync(LOG, 'utf8').trim().split('\n').filter((l) => l.startsWith(`${cmd} `));
 };
 
-const stream = (id, headers = {}) => fetch(`${APP}/api/youtube/stream/${id}`, { headers });
+// Songs not on disk are fetched for members only (security audit M2).
+const cookie = await memberCookie({ label: 'stream-source' });
+const stream = (id, headers = {}) => fetch(`${APP}/api/youtube/stream/${id}`, { headers: { cookie, ...headers } });
 
 // ── one play of an uncached song downloads it, then serves the file ───────
 const first = await stream(VIDEO);

@@ -19,6 +19,11 @@ if [ "$CMD" = download ] || [ "$CMD" = info ]; then
     echo "ERROR: [youtube] $VIDEO_ID: Video unavailable. This video has been removed by the uploader" >&2
     exit 1
   fi
+  # Over the host's length cap, as player.py refuses it (security audit M2).
+  if [ "$CMD" = download ] && listed "$VIDEO_ID" "${FAKE_TOO_LONG_FILE:-}"; then
+    echo "ERROR: too long: 60 min is over the 20 min limit" >&2
+    exit 1
+  fi
   if listed "$VIDEO_ID" "${FAKE_TRANSIENT_FILE:-}"; then
     if [ "$CMD" = download ]; then echo "ERROR: unable to download video data: HTTP Error 403: Forbidden" >&2
     else echo "ERROR: [youtube] $VIDEO_ID: Sign in to confirm you're not a bot. Use --cookies-from-browser" >&2; fi
