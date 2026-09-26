@@ -4,6 +4,7 @@ import { useSettingsStore } from '@/stores/useSettingsStore';
 import { cn } from '@/lib/utils';
 import { SectionHeader } from '@/components/page/SectionHeader';
 import { EqualizerPanel } from '@/components/settings/EqualizerPanel';
+import { usePartyEligible } from '@/hooks/usePartyEligible';
 
 const PLACEHOLDERS = [
   {
@@ -15,6 +16,10 @@ const PLACEHOLDERS = [
 export default function SettingsPlugins() {
   const partyVolume = useSettingsStore((s) => s.partyVolume);
   const setPartyVolume = useSettingsStore((s) => s.setPartyVolume);
+  // Desktop only: a mouse-driven browser or the Tauri app. Hidden entirely on
+  // a phone, a tablet or the Android app rather than shown disabled — there
+  // is nothing there for it to affect (see lib/playback/partyDevice).
+  const partyEligible = usePartyEligible();
   const tabsEnabled = useSettingsStore((s) => s.tabsEnabled);
   const setTabsEnabled = useSettingsStore((s) => s.setTabsEnabled);
   const normalizeVolume = useSettingsStore((s) => s.normalizeVolume);
@@ -37,13 +42,15 @@ export default function SettingsPlugins() {
 
         <EqualizerPanel className="rounded-2xl bg-card p-block shadow-soft" />
 
-        <PluginToggle
-          name="Party-size volume slider"
-          tag="PC only"
-          description="Wider slider in the player bar and removes the 85% cap so the audio can go all the way to max. Visible on desktop — phones don't show the volume slider at all."
-          on={partyVolume}
-          onToggle={() => void setPartyVolume(!partyVolume)}
-        />
+        {partyEligible && (
+          <PluginToggle
+            name="Party-size volume slider"
+            tag="PC only"
+            description="Wider slider in the player bar and removes the 85% cap so the audio can go all the way to max. Desktop only — hidden on phones, tablets and the Android app."
+            on={partyVolume}
+            onToggle={() => void setPartyVolume(!partyVolume)}
+          />
+        )}
 
         <PluginToggle
           name="Songsterr integration"
