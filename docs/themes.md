@@ -268,7 +268,7 @@ shadcn's `components/ui` included, against `COLOUR_BASELINE`:
   lowered, and an unlisted file must have none;
 - each entry says why the colour must stay fixed: scrims over photos (a
   black veil keeps a label readable over any cover), danger red, bug-report
-  severity, and mock chrome on `/dizajn`;
+  severity, and mock chrome reviewed locally;
 - `text-white` next to `bg-ember` is banned outright (use
   `text-ember-foreground` or `<Button variant="ember">`);
 - hex, `rgb()` and `hsl()` literals are allowed only in the files named in

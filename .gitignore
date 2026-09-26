@@ -121,3 +121,10 @@ docs/tabs-rebuild.md
 docs/tabs-v3.md
 docs/design-system.md
 docs/pranks.md
+
+# Internal design gallery: reviewed locally, never shipped or published.
+apps/web/app/(app)/dizajn/
+apps/web/components/library/options/
+apps/web/lib/spacing.ts
+apps/web/lib/spacing.test.ts
+tests/phone-bar-sizes-ui.test.mjs

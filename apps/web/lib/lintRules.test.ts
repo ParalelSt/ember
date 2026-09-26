@@ -159,7 +159,6 @@ const SPACING_BASELINE: Record<string, number> = {
   'app/(app)/admin/layout.tsx': 3,
   'app/(app)/admin/tracks/page.tsx': 14,
   'app/(app)/admin/users/page.tsx': 8,
-  'app/(app)/dizajn/sve/page.tsx': 45,
   'app/(app)/library/loading.tsx': 5,
   'app/(app)/library/page.tsx': 7,
   'app/(app)/page.tsx': 1,
@@ -187,17 +186,6 @@ const SPACING_BASELINE: Record<string, number> = {
   'components/changelog/WhatsNewLink.tsx': 3,
   'components/library/CollectionCard.tsx': 4,
   'components/library/CollectionShelf.tsx': 5,
-  'components/library/options/CoverLedShelf.tsx': 5,
-  'components/library/options/DenseListShelf.tsx': 6,
-  'components/library/options/EditorialGridShelf.tsx': 7,
-  'components/library/options/FeaturedShelf.tsx': 9,
-  'components/library/options/changelog/ChangelogPage.tsx': 5,
-  'components/library/options/changelog/ChangelogPanel.tsx': 11,
-  'components/library/options/changelog/ChangelogSection.tsx': 15,
-  'components/library/options/changelog/HideTagsSwitch.tsx': 1,
-  'components/library/options/changelog/NewBadge.tsx': 3,
-  'components/library/options/changelog/Placements.tsx': 21,
-  'components/library/options/changelog/ShellPreview.tsx': 54,
   'components/nav/CollectionNavList.tsx': 5,
   'components/nav/Drawer.tsx': 18,
   'components/nav/MobileNav.tsx': 2,
@@ -316,22 +304,6 @@ const COLOUR_BASELINE: Record<string, number> = {
   'components/ui/confirm-dialog.tsx': 1, // text-white on bg-destructive
   // Status colours: severity is semantic, not decorative.
   'components/BugReportDialog.tsx': 6, // SEVERITY_STYLE low/medium/high
-  // /dizajn candidates (mock data on the design gallery, never in the app):
-  // their scrims mirror the shipped ones above, the rest is mock chrome.
-  'components/library/options/CoverLedShelf.tsx': 3, // cover scrim gradient + title
-  'components/library/options/FeaturedShelf.tsx': 4, // cover scrim gradient + title, subtitle
-  'components/library/options/attachments/AttachmentsSection.tsx': 2, // caption strip, as AttachmentPicker
-  'components/library/options/attachments/index.ts': 8, // mock file thumbnail swatches
-  'components/library/options/changelog/ShellPreview.tsx': 1, // mock dialog backdrop
-  'components/library/options/imports/ImportDialog.tsx': 1, // mock dialog backdrop
-  'components/library/options/imports/ReviewScreens.tsx': 1, // mock sheet backdrop
-  'components/library/options/imports/parts.tsx': 3, // play scrim, as import/parts
-  'components/library/options/mobileplayer/AndroidNavStrip.tsx': 4, // mock Android nav bar
-  'components/library/options/phonesearch/MockKeyboard.tsx': 8, // mock OS keyboard
-  'components/library/options/searchrows/SearchRowsSection.tsx': 1, // mock overlay backdrop
-  'components/library/options/tabs/PasteSection.tsx': 1, // mock dialog backdrop
-  'components/library/options/tabs/TabsSection.tsx': 1, // mock sheet backdrop
-  'components/library/options/trending/TrendingShelves.tsx': 4, // rank-number scrim + text, play scrim + icon
 };
 
 describe('colour ratchet', () => {
@@ -379,8 +351,6 @@ describe('colour ratchet', () => {
   // green), mock covers, and the example in the hex field's hint. Nothing else.
   const LITERAL_COLOUR_ALLOWED: Record<string, string> = {
     'components/import/parts.tsx': 'SOURCE_DOT brand dots',
-    'components/library/options/imports/parts.tsx': 'SOURCE_DOT brand dots (/dizajn copy)',
-    'app/(app)/dizajn/mock.ts': 'mock covers on the design gallery',
     'components/settings/appearance/previewData.ts': 'mock covers in the theme preview',
     'components/settings/appearance/ColourRow.tsx': 'the "#1a2b3c" example in the invalid-hex hint',
   };
@@ -399,7 +369,7 @@ describe('colour ratchet', () => {
 
   it('keeps arbitrary bg-[#...] to the SOURCE_DOT brand dots', () => {
     const hits = findSubstring(files, 'bg-[#').filter(
-      (h) => !['components/import/parts.tsx', 'components/library/options/imports/parts.tsx'].includes(relative(ROOT, h.file)),
+      (h) => !['components/import/parts.tsx'].includes(relative(ROOT, h.file)),
     );
     expect(hits, formatHits(hits)).toEqual([]);
   });
@@ -475,7 +445,6 @@ describe('safe-area insets', () => {
     // spends the class itself there instead.
     uses('components/player/PlayerBar.tsx', 'PLAYER_BAR_CHROME');
     uses('components/player/PlayerBar.tsx', 'safe-area-bottom');
-    uses('components/library/options/mobileplayer/MobilePlayerSection.tsx', 'PLAYER_BAR_CHROME');
     uses('components/nav/MobileNav.tsx', 'safe-area-bottom');
     uses('components/nav/TopBar.tsx', 'var(--safe-top)');
     uses('components/player/NowPlaying.tsx', 'var(--safe-top)');
