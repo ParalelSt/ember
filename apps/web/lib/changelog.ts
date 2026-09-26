@@ -21,6 +21,20 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    id: 'playback-security-fixes',
+    version: '0.7.12',
+    date: '2026-09-26',
+    title: 'Steadier playback, safer accounts',
+    summary: 'A round of playback fixes on the web, desktop and Android apps, plus security fixes that keep each account\'s things private.',
+    bullets: [
+      'Queue: tapping a song in the queue no longer throws the rest away, turning shuffle off keeps added and removed songs right, and quick skips no longer land on the same song.',
+      'Desktop app (0.4.9): seeking far ahead no longer freezes the window, the end of the queue shows paused, and a song after a dropped connection plays again.',
+      'Android app (0.4.9): opening the app mid-song keeps playing what was playing, a weak signal retries instead of skipping, the car resumes where you were, and every song plays at the same volume.',
+      'Your likes, history and private playlists can only be seen by you, and sign-in attempts are limited.',
+      'Playing a song the server does not have yet needs you to be signed in. Shared links still play songs the server already has.',
+    ],
+  },
+  {
     id: 'tabs-practice',
     version: '0.7.11',
     date: '2026-09-24',

@@ -223,7 +223,10 @@ run_service() {
       export EMBER_PB_SUPERUSER_EMAIL="$PB_SU_EMAIL" EMBER_PB_SUPERUSER_PASSWORD="$PB_SU_PASSWORD"
       export EMBER_ADMIN_EMAIL="$PB_OWNER_EMAIL" EMBER_ADMIN_PASSWORD="$PB_OWNER_PASSWORD"
       if [ -n "$WATCHDOG_CMD_PB" ]; then cd "$ROOT" && exec_detached bash -c "$WATCHDOG_CMD_PB"; fi
-      cd "$PB_DIR" && exec_detached "$PB" serve --http "127.0.0.1:${POCKETBASE_PORT}"
+      # --automigrate=0: the boot hooks create and change collections, and
+      # with automigrate on PocketBase wrote a migration file for each change.
+      # Two in the same second got the same name and crashed the boot.
+      cd "$PB_DIR" && exec_detached "$PB" serve --http "127.0.0.1:${POCKETBASE_PORT}" --automigrate=0
       ;;
     next)
       if [ -n "$WATCHDOG_CMD_NEXT" ]; then cd "$ROOT" && exec_detached bash -c "$WATCHDOG_CMD_NEXT"; fi

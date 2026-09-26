@@ -341,7 +341,7 @@ async fn a_stop_during_a_slow_load_is_kept() {
     assert_eq!(rig.engine().widget().playback, Some(souvlaki::MediaPlayback::Stopped), "the OS widget says stopped");
 }
 
-// --- Bughunt 2026-09-25 (docs/reports/bughunt-2026-09-25/desktop-playback.md)
+// --- Bughunt 2026-09-25
 
 /// The loaded sink's position, or None when nothing is loaded.
 fn sink_pos(rig: &Rig) -> Option<f64> {
