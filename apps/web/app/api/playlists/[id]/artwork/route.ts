@@ -2,14 +2,19 @@ import type { NextRequest } from 'next/server';
 import { requireUser, UnauthorizedError, unauthorizedResponse } from '@/lib/auth';
 import { fromError, jsonError } from '@/lib/upsertTrack';
 import { withRequestLog } from '@/lib/logger/withRequestLog';
+import { notFound, ownerOnly, playlistAccess } from '@/lib/playlistAccess';
 
 export const PATCH = withRequestLog('playlists/[id]/artwork', async (
   request: NextRequest,
   ctx: { params: Promise<{ id: string }> },
 ) => {
   try {
-    const { pb } = await requireUser();
+    const { pb, user } = await requireUser();
     const { id } = await ctx.params;
+    // The cover is the owner's to change, collaborative or not.
+    const access = await playlistAccess(pb, user.id, id);
+    if (!access) return notFound();
+    if (access.role !== 'owner') return ownerOnly();
 
     const incoming = await request.formData();
     const file = incoming.get('artwork');

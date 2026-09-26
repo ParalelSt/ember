@@ -6,8 +6,10 @@ import { planCopy } from '@/lib/playlistCopy';
 import { fromError, jsonError, upsertCatalogTrack } from '@/lib/upsertTrack';
 import { withRequestLog } from '@/lib/logger/withRequestLog';
 import type { Track } from '@/types/track';
+import { notFound, playlistAccess } from '@/lib/playlistAccess';
 
-/** Copy songs into one of the member's playlists. Body `{ tracks: Track[] }`
+/** Copy songs into one of the member's playlists (their own, or a
+ *  collaborative one they were added to). Body `{ tracks: Track[] }`
  *  (1 to 500). The server decides what is a duplicate: it reads the
  *  playlist's rows and runs lib/playlistCopy's `planCopy` itself, so a stale
  *  page, a second tab or a race can never add a song twice. Answers
@@ -21,20 +23,17 @@ export const POST = withRequestLog(
       const parsed = readBulkTracks(await request.json().catch(() => null));
       if ('error' in parsed) return jsonError(parsed.error, 400);
 
-      // The cookie-scoped client only reads the caller's own playlists, and
-      // the owner is checked again here, so "not yours" and "doesn't exist"
-      // get the same answer (as the single add does).
-      let owner: unknown;
-      try {
-        owner = (await pb.collection('playlists').getOne(id)).user;
-      } catch {
-        owner = null;
-      }
-      if (owner !== user.id) return jsonError('That playlist doesn’t exist, or isn’t yours', 404);
+      // The owner or a member (lib/playlistAccess.ts); "not yours" and
+      // "doesn't exist" get the same answer (as the single add does).
+      const access = await playlistAccess(pb, user.id, id);
+      if (!access) return notFound();
+      const { db } = access;
 
-      const rows = await pb.collection('playlist_tracks').getFullList({
+      const rows = await db.collection('playlist_tracks').getFullList({
         filter: `playlist = "${id}"`,
-        sort: 'position',
+        // Two members adding at once can share a position: `created` breaks
+      // the tie the same way the move route does.
+      sort: 'position,created',
         expand: 'track',
       });
       const there = rows
@@ -47,12 +46,14 @@ export const POST = withRequestLog(
       // The writes below run 4 at a time, and the SDK would cancel a request
       // that repeats one still in flight (same method and path): off for
       // this request's own client.
-      pb.autoCancellation(false);
+      db.autoCancellation(false);
       const plan = planCopy(parsed.tracks, there);
       const results = await mapLimit(plan.add, 4, async (track, i) => {
         const trackRecordId = await upsertCatalogTrack(track);
         try {
-          await pb.collection('playlist_tracks').create({ playlist: id, track: trackRecordId, position: start + i });
+          await db
+            .collection('playlist_tracks')
+            .create({ playlist: id, track: trackRecordId, position: start + i, added_by: user.id });
           return null;
         } catch (e) {
           // The unique (playlist, track) index is the last fence: someone

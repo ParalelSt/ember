@@ -1234,6 +1234,63 @@ PB_URL=http://127.0.0.1:8148 EMBER_PB_SUPERUSER_EMAIL=su@sandbox.test \
 sign-in throttle (S4) is in `apps/web/proxy.test.ts`, and the Android cookie
 scope (S3) in `ServerApiCookieScopeTest`.
 
+## What `collab-rbac.test.mjs` and `collab-ui.test.mjs` cover
+
+Collaborative playlists (docs/collaborative-playlists.md), against a
+throwaway PocketBase from this checkout (a fresh data dir, never a copy of
+real data) and the app built against it:
+
+```bash
+SB=$(mktemp -d) && mkdir -p "$SB/empty" "$SB/music"
+./pocketbase/pocketbase migrate up --dir "$SB/data" --migrationsDir pocketbase/pb_migrations --hooksDir "$SB/empty"
+EMBER_PB_SUPERUSER_EMAIL=su@sandbox.test EMBER_PB_SUPERUSER_PASSWORD=<sandbox password> \
+  ./pocketbase/pocketbase serve --http 127.0.0.1:8198 --dir "$SB/data" \
+  --migrationsDir pocketbase/pb_migrations --hooksDir pocketbase/pb_hooks --automigrate=0 &
+cd apps/web && POCKETBASE_URL=http://127.0.0.1:8198 npx next build --webpack
+POCKETBASE_URL=http://127.0.0.1:8198 POCKETBASE_ADMIN_EMAIL=su@sandbox.test \
+  POCKETBASE_ADMIN_PASSWORD=<sandbox password> MUSIC_DIR="$SB/music" \
+  DISCORD_BUG_REPORT_WEBHOOK_URL=http://127.0.0.1:1/none DISCORD_FEATURE_WEBHOOK_URL=http://127.0.0.1:1/none \
+  DISCORD_FIX_WEBHOOK_URL=http://127.0.0.1:1/none npx next start -p 3170 &
+cd ../.. && export PB_URL=http://127.0.0.1:8198 APP_URL=http://127.0.0.1:3170 \
+  EMBER_PB_SUPERUSER_EMAIL=su@sandbox.test EMBER_PB_SUPERUSER_PASSWORD=<sandbox password>
+node tests/collab-rbac.test.mjs   # or: npm run test:collab-rbac
+node tests/collab-ui.test.mjs     # or: npm run test:collab-ui (SHOT_DIR keeps screenshots)
+```
+
+`collab-rbac.test.mjs`, for an owner, a member, an outsider and an Ember
+admin who is not on the playlist:
+
+- **P** (PocketBase through its API, what `/pb` exposes): nobody but the
+  owner views, lists or writes the playlist or its songs, collaborative or
+  not; a member's realtime subscription hears nothing of it (the owner's
+  does); `playlist_members` is closed to every client, the owner included;
+  no client makes a playlist collaborative, sets an invite code (a link
+  hijack) or names someone else in `added_by` (plain or `added_by+`);
+  renaming and adding to your own still work; S1 joins through the new
+  relations are refused; S2 holds.
+- **A** (the app's routes): the member reads it (owner's name, who added
+  each song, no email, no invite code), adds, reorders (rows renumbered
+  1..n), removes, copies in; cannot rename, delete, change the cover, turn
+  collaboration off, touch the link, add people or list the server; the
+  outsider and the admin get 404 from all 15 routes and change nothing;
+  signed out is 401; the owner's picker has names only unless the owner is
+  an admin; the owner's cover upload still passes the hooks; turning
+  collaboration off locks members out and back on lets them in again.
+- **L** (the invite link): malformed codes refused, joins once, harmless
+  twice, dies when replaced, turned off, or with collaboration off; removing
+  someone replaces it, so they cannot rejoin with the old one. A member can
+  leave while collaboration is off and stays out when it comes back on.
+- **D**: deleting a member who added a song keeps the song, added by no one.
+
+`collab-ui.test.mjs` (playwright-core): the owner at 1280 turns it on in
+the Collaborate sheet, adds the member through the name picker and makes a
+link; the member at 390 sees "Shared by" and the people mark in the library,
+the header, who added each song, no cover button, a menu with only "Who can
+edit" and "Leave playlist", and moves a song up from the row's + menu; the
+owner's open page follows within the 5 s poll and moves it back down from
+the desktop More menu; the outsider joins through the link; the member
+leaves. Nothing scrolls sideways at 390.
+
 ## M2 to M5 of the same audit
 
 - **M2**: `stream-access.test.mjs` (a song on disk plays signed out; any

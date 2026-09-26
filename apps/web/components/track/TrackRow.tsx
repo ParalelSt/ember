@@ -6,10 +6,11 @@ import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Artwork } from '@/components/primitives/Artwork';
 import { Checkbox } from '@/components/primitives/Checkbox';
+import { Avatar } from '@/components/primitives/Avatar';
 import { LikeButton } from '@/components/primitives/LikeButton';
 import { CloseIcon, PauseIcon, PlayIcon, RefreshIcon, TrashIcon } from '@/components/icons';
 import { formatTime } from '@/lib/format';
-import type { Track } from '@/types/track';
+import type { PlaylistPerson, Track } from '@/types/track';
 import { cn } from '@/lib/utils';
 
 export type TrackRowDensity = 'list' | 'compact';
@@ -92,6 +93,10 @@ export interface TrackRowProps {
   /** When the song was added ("12 Jun"), shown in select mode on a wide
    *  row, where the menu and heart were. */
   addedLabel?: string;
+  /** Who put this song in a collaborative playlist: a small picture after
+   *  the artist, and the name too where the row is wide enough. `list`
+   *  density only. */
+  addedBy?: Pick<PlaylistPerson, 'name' | 'avatarUrl'> | null;
   density?: TrackRowDensity;
   tone?: TrackRowTone;
   className?: string;
@@ -123,6 +128,7 @@ export function TrackRow({
   onSelect,
   selected = false,
   addedLabel,
+  addedBy,
   density = 'list',
   tone = 'default',
   className,
@@ -345,6 +351,23 @@ export function TrackRow({
             )}
           </div>
           <div className="truncate text-xs text-muted-foreground">
+            {/* Who added it leads the line, so a narrow row cuts the
+                artist rather than the picture; the name follows the artist
+                where the row is wide enough. */}
+            {addedBy && (
+              <span
+                data-testid="track-row-added-by"
+                title={`Added by ${addedBy.name}`}
+                aria-label={`Added by ${addedBy.name}`}
+                className="mr-inset inline-flex align-text-bottom"
+              >
+                <Avatar
+                  src={addedBy.avatarUrl}
+                  name={addedBy.name}
+                  className="size-3.5 bg-ember text-[8px] text-ember-foreground"
+                />
+              </span>
+            )}
             {track.artistId && !selecting ? (
               // stopPropagation so following the artist link never counts as
               // a click on the row.
@@ -353,6 +376,11 @@ export function TrackRow({
               </Link>
             ) : (
               track.artist
+            )}
+            {addedBy && (
+              <span aria-hidden="true" className="hidden @md:inline">
+                {` · added by ${addedBy.name}`}
+              </span>
             )}
           </div>
         </div>

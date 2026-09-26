@@ -77,24 +77,61 @@ export interface CollectionSummary {
   icon: CollectionIcon | null;
   artworkUrl: string | null;
   downloaded: boolean;
+  /** A collaborative playlist: `owner` yours, `member` someone else's that
+   *  was shared with you. Absent for everything else. */
+  sharing?: 'owner' | 'member';
 }
 
 /** Pure: no queries, no store reads. A system collection's subtitle is
  *  always its item count ("3 songs"); a playlist's subtitle flips to
- *  "Downloaded" once pinned, matching the badge, otherwise "Playlist". */
+ *  "Downloaded" once pinned, matching the badge, otherwise "Playlist". A
+ *  playlist shared with you always says whose it is ("Shared by Olga"), and
+ *  your own collaborative one says "Collaborative" until it is pinned. */
 export function toSummary(
   ref: CollectionRef,
-  meta: { name?: string; count?: number; artworkUrl?: string | null; downloaded?: boolean } = {},
+  meta: {
+    name?: string;
+    count?: number;
+    artworkUrl?: string | null;
+    downloaded?: boolean;
+    /** Only for a collaborative playlist. */
+    sharing?: { role: 'owner' | 'member'; ownerName?: string | null };
+  } = {},
 ): CollectionSummary {
-  const { name, count, artworkUrl = null, downloaded = false } = meta;
+  const { name, count, artworkUrl = null, downloaded = false, sharing } = meta;
+  const playlistSubtitle =
+    sharing?.role === 'member'
+      ? `Shared by ${sharing.ownerName || 'someone'}`
+      : downloaded
+        ? 'Downloaded'
+        : sharing?.role === 'owner'
+          ? 'Collaborative'
+          : 'Playlist';
   return {
     ref,
     title: titleFor(ref, name),
-    subtitle: ref.kind === 'playlist' ? (downloaded ? 'Downloaded' : 'Playlist') : countLabel(count ?? 0),
+    subtitle: ref.kind === 'playlist' ? playlistSubtitle : countLabel(count ?? 0),
     href: hrefFor(ref),
     pinId: pinIdFor(ref),
     icon: iconFor(ref),
     artworkUrl,
     downloaded,
+    ...(ref.kind === 'playlist' && sharing ? { sharing: sharing.role } : {}),
   };
+}
+
+/** A playlist's sharing, for toSummary and the nav rows: only a
+ *  collaborative one has any. */
+export function sharingOf(p: { collaborative?: boolean; role?: 'owner' | 'member'; owner_name?: string | null }):
+  | { role: 'owner' | 'member'; ownerName?: string | null }
+  | undefined {
+  if (p.role === 'member') return { role: 'member', ownerName: p.owner_name };
+  return p.collaborative ? { role: 'owner' } : undefined;
+}
+
+/** The nav rows' words for a collaborative playlist, or undefined. */
+export function sharedLabel(p: { collaborative?: boolean; role?: 'owner' | 'member'; owner_name?: string | null }): string | undefined {
+  const s = sharingOf(p);
+  if (!s) return undefined;
+  return s.role === 'member' ? `Shared by ${s.ownerName || 'someone'}` : 'Collaborative';
 }

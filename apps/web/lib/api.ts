@@ -1,5 +1,6 @@
 import type { AlbumDetail, ArtistPayload, CollectionTrack, Playlist, SessionState, Track } from '@/types/track';
 import type { CopyOutcome } from '@/lib/playlistCopy';
+import type { CandidatePerson, CollabState } from '@/lib/collab';
 import { logger } from '@/lib/logger/client';
 import { isPublicPage } from '@/lib/publicPaths';
 import { sessionExpired } from '@/lib/sessionExpired';
@@ -170,7 +171,37 @@ export const api = {
   listPlaylists: () => req<{ playlists: Playlist[] }>('/playlists'),
   createPlaylist: (name: string) =>
     req<{ playlist: Playlist }>('/playlists', { method: 'POST', body: { name } }),
-  getPlaylist: (id: string) => req<{ playlist: Playlist; tracks: CollectionTrack[] }>(`/playlists/${id}`),
+  // 404 is an answer (deleted, or no longer shared with you), not a fault.
+  getPlaylist: (id: string) =>
+    req<{ playlist: Playlist; tracks: CollectionTrack[] }>(`/playlists/${id}`, { expected: [404] }),
+  renamePlaylist: (id: string, name: string) =>
+    req<{ playlist: { id: string; name: string } }>(`/playlists/${id}`, { method: 'PATCH', body: { name }, expected: [403, 404] }),
+  /** Move one song to a new 0-based place in the playlist's own order. */
+  movePlaylistTrack: (id: string, trackId: string, to: number) =>
+    req<{ ok: true }>(`/playlists/${id}/tracks/move`, { method: 'POST', body: { trackId, to }, expected: [404] }),
+  // Collaborative playlists (docs/collaborative-playlists.md).
+  getPlaylistCollab: (id: string) => req<CollabState>(`/playlists/${id}/collab`, { expected: [404] }),
+  setPlaylistCollaborative: (id: string, collaborative: boolean) =>
+    req<CollabState>(`/playlists/${id}/collab`, { method: 'PATCH', body: { collaborative }, expected: [403, 404] }),
+  newPlaylistInvite: (id: string) =>
+    req<{ inviteCode: string }>(`/playlists/${id}/invite`, { method: 'POST', expected: [403, 404, 409] }),
+  stopPlaylistInvite: (id: string) =>
+    req<{ inviteCode: null }>(`/playlists/${id}/invite`, { method: 'DELETE', expected: [403, 404] }),
+  addPlaylistMember: (id: string, userId: string) =>
+    req<{ members: CollabState['members'] }>(`/playlists/${id}/members`, {
+      method: 'POST',
+      body: { userId },
+      expected: [403, 404, 409],
+    }),
+  /** The owner removes someone, or a member removes themselves (leave). */
+  removePlaylistMember: (id: string, userId: string) =>
+    req<{ ok: true; inviteCode?: string }>(`/playlists/${id}/members/${encodeURIComponent(userId)}`, {
+      method: 'DELETE',
+      expected: [403, 404],
+    }),
+  listPlaylistPeople: (id: string) => req<{ people: CandidatePerson[] }>(`/playlists/${id}/people`, { expected: [403, 404] }),
+  joinPlaylist: (code: string) =>
+    req<{ playlistId: string; joined: boolean }>('/playlists/join', { method: 'POST', body: { code }, expected: [404, 409] }),
   /** Copy songs into a playlist: the server skips the ones already there
    *  (lib/playlistCopy's rule) and says which. */
   bulkAddToPlaylist: (id: string, tracks: Track[]) =>

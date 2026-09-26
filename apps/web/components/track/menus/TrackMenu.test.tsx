@@ -4,8 +4,8 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import type { Track } from '@/types/track';
 
 vi.mock('./AddToPlaylistMenu', () => ({
-  AddToPlaylistMenu: ({ onRematch }: { onRematch?: () => void }) => (
-    <button type="button" data-rematch={!!onRematch}>
+  AddToPlaylistMenu: ({ onRematch, moves }: { onRematch?: () => void; moves?: object }) => (
+    <button type="button" data-rematch={!!onRematch} data-moves={!!moves}>
       Add to playlist
     </button>
   ),
@@ -54,5 +54,29 @@ describe('TrackMenu re-match', () => {
     expect(screen.queryByRole('button', { name: 'More' })).toBeNull();
     expect(screen.queryByText(/Re-match/)).toBeNull();
     expect(screen.getByRole('button', { name: 'Add to playlist' })).toHaveAttribute('data-rematch', 'false');
+  });
+});
+
+describe('TrackMenu moves (a playlist in its own order)', () => {
+  it('offers Move up and Move down (phones get them in the add-to-playlist menu)', () => {
+    const up = vi.fn();
+    const down = vi.fn();
+    render(<TrackMenu track={track} moves={{ up, down }} />);
+    expect(screen.getByRole('button', { name: 'Add to playlist' })).toHaveAttribute('data-moves', 'true');
+    fireEvent.click(screen.getByRole('menuitem', { name: /Move up/ }));
+    fireEvent.click(screen.getByRole('menuitem', { name: /Move down/ }));
+    expect(up).toHaveBeenCalledTimes(1);
+    expect(down).toHaveBeenCalledTimes(1);
+  });
+
+  it('the first song cannot move up, the last cannot move down', () => {
+    render(<TrackMenu track={track} moves={{ down: vi.fn() }} />);
+    expect(screen.queryByRole('menuitem', { name: /Move up/ })).toBeNull();
+    expect(screen.getByRole('menuitem', { name: /Move down/ })).toBeInTheDocument();
+  });
+
+  it('no possible move and no re-match: no More menu', () => {
+    render(<TrackMenu track={track} moves={{}} />);
+    expect(screen.queryByRole('button', { name: 'More' })).toBeNull();
   });
 });

@@ -35,45 +35,71 @@ interface Row {
   playlist: string;
   track: string;
   position: number;
+  added_by?: string;
 }
 
-const playlists: Record<string, { id: string; user: string }> = {};
+const playlists: Record<string, { id: string; user: string; collaborative?: boolean }> = {};
 let rows: Row[] = [];
 const catalog = new Map<string, Track>();
 let failCreateFor: string | null = null;
+/** "playlist:user" pairs on playlist_members. */
+const members = new Set<string>();
+const notFoundErr = () => Object.assign(new Error('not found'), { status: 404 });
 
-const pb = {
-  autoCancellation: vi.fn(),
-  collection: (name: string) => {
-    if (name === 'playlists') {
+/** `member`: the caller's own session, which PocketBase only lets read the
+ *  caller's playlists. `server`: the app's admin client, which reads all. */
+function fakePb(kind: 'member' | 'server') {
+  return {
+    kind,
+    autoCancellation: vi.fn(),
+    filter: (raw: string, params: Record<string, string>) => raw.replace(/\{:(\w+)\}/g, (_m, k: string) => `"${params[k]}"`),
+    collection: (name: string) => {
+      if (name === 'playlists') {
+        return {
+          getOne: vi.fn(async (id: string) => {
+            const p = playlists[id];
+            if (!p || (kind === 'member' && p.user !== 'u1')) throw notFoundErr();
+            return p;
+          }),
+        };
+      }
+      if (name === 'playlist_members') {
+        return {
+          getFirstListItem: vi.fn(async (filter: string) => {
+            const [, p, u] = /playlist = "(.+)" && user = "(.+)"/.exec(filter) ?? [];
+            if (kind !== 'server' || !members.has(`${p}:${u}`)) throw notFoundErr();
+            return { id: 'm1' };
+          }),
+        };
+      }
       return {
-        getOne: vi.fn(async (id: string) => {
-          // The cookie-scoped client cannot read someone else's playlist.
-          const p = playlists[id];
-          if (!p || p.user !== 'u1') throw Object.assign(new Error('not found'), { status: 404 });
-          return p;
+        getFullList: vi.fn(async (opts: { filter: string }) => {
+          const id = /playlist = "(.+)"/.exec(opts.filter)?.[1];
+          // PocketBase's rule: the member session sees only its own rows.
+          if (kind === 'member' && playlists[id ?? '']?.user !== 'u1') return [];
+          return rows
+            .filter((r) => r.playlist === id)
+            .sort((a, b) => a.position - b.position)
+            .map((r) => ({ ...r, expand: { track: record(catalog.get(r.track)!) } }));
+        }),
+        create: vi.fn(async (data: Row) => {
+          if (kind === 'member' && playlists[data.playlist]?.user !== 'u1') {
+            throw Object.assign(new Error('Failed to create record.'), { status: 400 });
+          }
+          if (failCreateFor && data.track === failCreateFor) throw Object.assign(new Error('Failed to create record.'), { status: 400 });
+          if (rows.some((r) => r.playlist === data.playlist && r.track === data.track)) {
+            throw Object.assign(new Error('Failed to create record.'), { status: 400 });
+          }
+          rows.push(data);
+          return { id: `row${rows.length}` };
         }),
       };
-    }
-    return {
-      getFullList: vi.fn(async (opts: { filter: string }) => {
-        const id = /playlist = "(.+)"/.exec(opts.filter)?.[1];
-        return rows
-          .filter((r) => r.playlist === id)
-          .sort((a, b) => a.position - b.position)
-          .map((r) => ({ ...r, expand: { track: record(catalog.get(r.track)!) } }));
-      }),
-      create: vi.fn(async (data: Row) => {
-        if (failCreateFor && data.track === failCreateFor) throw Object.assign(new Error('Failed to create record.'), { status: 400 });
-        if (rows.some((r) => r.playlist === data.playlist && r.track === data.track)) {
-          throw Object.assign(new Error('Failed to create record.'), { status: 400 });
-        }
-        rows.push(data);
-        return { id: `row${rows.length}` };
-      }),
-    };
-  },
-};
+    },
+  };
+}
+const pb = fakePb('member');
+const server = fakePb('server');
+vi.mock('@/lib/pocketbase/server', () => ({ createCatalogClient: async () => server }));
 
 const requireUserMock = vi.fn(async () => ({ pb, user: { id: 'u1', email: 'dev@ember.test', isAdmin: false } }));
 class UnauthorizedError extends Error {}
@@ -128,6 +154,7 @@ beforeEach(() => {
   rows = [];
   catalog.clear();
   failCreateFor = null;
+  members.clear();
   requireUserMock.mockClear();
   seed('mine', 'u1', [SLOW, HARBOR_VIDEO, HOME_B]);
   seed('theirs', 'u2', [SLOW]);
@@ -208,6 +235,37 @@ describe('POST /api/playlists/[id]/tracks/bulk', () => {
   it('two artist-less uploads with the same title are both added', async () => {
     const res = await POST(request({ tracks: [t('upload:a', 'Home', ''), t('upload:b', 'Home', '')] }), ctx('mine'));
     expect(await res.json()).toEqual({ added: 2, skipped: [] });
+  });
+
+  it('marks every song it adds as added by the caller', async () => {
+    await POST(request({ tracks: [NORTH] }), ctx('mine'));
+    expect(rows.find((r) => r.track === 'youtube:north')?.added_by).toBe('u1');
+  });
+
+  it('a member copies into a collaborative playlist, through the server client', async () => {
+    seed('shared', 'u2', [SLOW]);
+    playlists.shared.collaborative = true;
+    members.add('shared:u1');
+    const res = await POST(request({ tracks: [NORTH, SLOW] }), ctx('shared'));
+    expect(res.status).toBe(201);
+    expect(await res.json()).toMatchObject({ added: 1 });
+    expect(inPlaylist('shared')).toEqual([['youtube:slow', 1], ['youtube:north', 2]]);
+    expect(rows.find((r) => r.playlist === 'shared' && r.track === 'youtube:north')?.added_by).toBe('u1');
+  });
+
+  it('404 for a member once the owner turns collaboration off, and nothing is written', async () => {
+    seed('shared', 'u2', [SLOW]);
+    playlists.shared.collaborative = false;
+    members.add('shared:u1');
+    expect((await POST(request({ tracks: [NORTH] }), ctx('shared'))).status).toBe(404);
+    expect(inPlaylist('shared')).toEqual([['youtube:slow', 1]]);
+  });
+
+  it('404 on a collaborative playlist the caller is not a member of', async () => {
+    seed('shared', 'u2', [SLOW]);
+    playlists.shared.collaborative = true;
+    expect((await POST(request({ tracks: [NORTH] }), ctx('shared'))).status).toBe(404);
+    expect(inPlaylist('shared')).toEqual([['youtube:slow', 1]]);
   });
 
   it('only keeps the Track fields it knows', async () => {

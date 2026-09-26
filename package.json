@@ -33,6 +33,8 @@
     "test:sessions": "node tests/session-authorization.test.mjs",
     "test:pb-rbac": "node tests/pb-rbac.test.mjs",
     "test:pb-filter-guard": "node tests/pb-filter-guard.test.mjs",
+    "test:collab-rbac": "node tests/collab-rbac.test.mjs",
+    "test:collab-ui": "node tests/collab-ui.test.mjs",
     "test:tabs": "node tests/tabs.test.mjs",
     "test:tabs-ui": "node tests/tabs-ui.test.mjs",
     "test:tabs-practice-ui": "node tests/tabs-practice-ui.test.mjs",

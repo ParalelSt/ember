@@ -2,16 +2,15 @@ import type { NextRequest } from 'next/server';
 import { requireUser, UnauthorizedError, unauthorizedResponse } from '@/lib/auth';
 import { fromError, jsonError } from '@/lib/upsertTrack';
 import { withRequestLog } from '@/lib/logger/withRequestLog';
+import { serverLogger } from '@/lib/logger/server';
+import { artworkUrl, collabClient, sharedWith } from '@/lib/playlistAccess';
+import type { Playlist } from '@/types/track';
 
 const MAX_NAME_LEN = 200;
 
-/** Build the public artwork URL for a playlist record (routed through the /pb
- *  proxy so the browser stays same-origin). Returns null when no artwork. */
-function artworkUrl(record: { id: string; artwork?: unknown }): string | null {
-  const file = typeof record.artwork === 'string' ? record.artwork : '';
-  return file ? `/pb/api/files/playlists/${record.id}/${file}` : null;
-}
-
+/** Your own playlists, newest first, then the collaborative ones other
+ *  people added you to (newest share first, `role: 'member'`, with the
+ *  owner's name). */
 export const GET = withRequestLog('playlists', async () => {
   try {
     const { pb, user } = await requireUser();
@@ -19,13 +18,22 @@ export const GET = withRequestLog('playlists', async () => {
       filter: `user = "${user.id}"`,
       sort: '-created',
     });
-    const playlists = records.map((r) => ({
+    const own: Playlist[] = records.map((r) => ({
       id: r.id,
       name: String(r.name ?? ''),
       created_at: String(r.created ?? ''),
       artwork_url: artworkUrl(r as { id: string; artwork?: unknown }),
+      collaborative: r.collaborative === true,
+      role: 'owner',
     }));
-    return Response.json({ playlists });
+    // A server that cannot sign in as its admin still lists your own.
+    let shared: Playlist[] = [];
+    try {
+      shared = await sharedWith(await collabClient(), user.id);
+    } catch (e) {
+      serverLogger.error('api', 'shared playlists lookup failed', { userId: user.id }, e instanceof Error ? e : undefined);
+    }
+    return Response.json({ playlists: [...own, ...shared] });
   } catch (e) {
     if (e instanceof UnauthorizedError) return unauthorizedResponse();
     return fromError(e);
@@ -48,6 +56,8 @@ export const POST = withRequestLog('playlists', async (request: NextRequest) => 
         name: String(r.name ?? ''),
         created_at: String(r.created ?? ''),
         artwork_url: artworkUrl(r as { id: string; artwork?: unknown }),
+        collaborative: false,
+        role: 'owner',
       },
     }, { status: 201 });
   } catch (e) {
