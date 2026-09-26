@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from 'next/server';
 import PocketBase from 'pocketbase';
 import { serverLogger } from '@/lib/logger/server';
 import { PUBLIC_PATHS, isPublicPage as isPublicPath } from '@/lib/publicPaths';
+import { checkRateLimit, clientIp, type RateLimitConfig } from '@/lib/rateLimitCore';
 
 // Middleware runs server-side, so it needs an absolute URL. The public
 // NEXT_PUBLIC_POCKETBASE_URL may be the relative `/pb` proxy path; fall back to
@@ -14,6 +15,9 @@ const PB_URL = /^https?:\/\//.test(RAW_PB_URL) ? RAW_PB_URL : 'http://127.0.0.1:
 
 // Public pages live in lib/publicPaths.ts (lib/api.ts reads the same list).
 export { PUBLIC_PATHS };
+// /api/youtube/stream/ is public for songs already on disk (shared /track
+// links); the route itself refuses to fetch anything new for a caller who is
+// not signed in (lib/downloadAccess, security audit 2026-09-25, M2).
 const PUBLIC_API_PREFIXES = ['/api/youtube/stream/', '/api/search', '/api/tracks', '/api/youtube/search', '/api/youtube/trending', '/api/youtube/recommended', '/api/youtube/artist', '/api/youtube/album', '/api/youtube/track/', '/api/discord/', '/api/auth/',
   // The desktop updater runs in Rust with no browser session, so its feed and
   // the asset proxy must be reachable without one. They expose the latest
@@ -82,6 +86,24 @@ export function isBlockedPbPath(path: string): boolean {
   return targets.some((t) => t !== null && PB_SUPERUSER_ROUTES.some((re) => re.test(t)));
 }
 
+/** PocketBase's password and account-recovery endpoints, as PocketBase sees
+ *  the path after the /pb prefix. PocketBase 0.22 has no rate limit of its
+ *  own, so without this anyone could guess a member's (or the owner's)
+ *  password as fast as the server answers (security audit 2026-09-25, S4). */
+const PB_AUTH_ROUTE = /^\/api\/collections\/[^/]+\/(auth-with-password|auth-with-oauth2|request-[a-z-]+|confirm-[a-z-]+)\/?$/;
+
+/** Per client IP, across all of those endpoints: a person signing in, even
+ *  fumbling, or resetting a password stays far below it. */
+export const PB_AUTH_LIMIT: RateLimitConfig = { windowMs: 15 * 60_000, max: 20 };
+
+/** True for a /pb request to one of PocketBase's sign-in or recovery
+ *  endpoints, however the path is spelled. */
+export function isPbAuthPath(path: string): boolean {
+  const full = normalizePath(path);
+  if (full === null || !/^\/pb(\/|$)/.test(full)) return false;
+  return PB_AUTH_ROUTE.test(full.slice(3));
+}
+
 /** A Cookie header without the named cookie. */
 function withoutCookie(header: string, name: string): string {
   return header
@@ -96,6 +118,19 @@ export default async function proxy(req: NextRequest) {
   // anyone who reached it could try the superuser password from the internet.
   if (isBlockedPbPath(req.nextUrl.pathname)) {
     return new NextResponse('Not found', { status: 404 });
+  }
+
+  // Sign-in and recovery attempts through /pb, counted per client IP. The
+  // body is PocketBase's own error shape, so the sign-in form shows the
+  // message as it shows any other PocketBase error.
+  if (req.method === 'POST' && isPbAuthPath(req.nextUrl.pathname)) {
+    const limit = checkRateLimit(`pb-auth:${clientIp(req)}`, PB_AUTH_LIMIT);
+    if (!limit.ok) {
+      return Response.json(
+        { code: 429, message: `Too many attempts. Try again in about ${Math.ceil(limit.retryAfter / 60)} min.`, data: {} },
+        { status: 429, headers: { 'Retry-After': String(limit.retryAfter) } },
+      );
+    }
   }
 
   // Per-request id, attached to outgoing responses + any server log lines.

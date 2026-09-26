@@ -1,5 +1,7 @@
 package app.ember.music
 
+import okhttp3.HttpUrl
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.Interceptor
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -17,7 +19,15 @@ import java.util.concurrent.TimeUnit
  *  background; a 401 gets one retry with a freshly read cookie, which covers
  *  "signed in again on the phone while the car was open". */
 class ServerApi(val baseUrl: String, private val cookies: () -> String?) {
+    private val server = baseUrl.toHttpUrlOrNull()
+
+    /** The cookie is the whole Ember session, so it goes to the Ember server
+     *  and nowhere else (security audit 2026-09-25, S3). This client also
+     *  plays whatever stream URL a track carries, and the player service is
+     *  exported for the car: any app on the phone can hand it a track whose
+     *  streamUrl points at its own server, which used to receive pb_auth. */
     private val cookieAuth = Interceptor { chain ->
+        if (!isServer(chain.request().url)) return@Interceptor chain.proceed(chain.request())
         val first = chain.request().withCookie(cookies())
         val res = chain.proceed(first)
         if (res.code != 401) return@Interceptor res
@@ -32,6 +42,10 @@ class ServerApi(val baseUrl: String, private val cookies: () -> String?) {
         .connectTimeout(15, TimeUnit.SECONDS)
         .readTimeout(30, TimeUnit.SECONDS)
         .build()
+
+    /** Same scheme, host and port as baseUrl. */
+    fun isServer(url: HttpUrl): Boolean =
+        server != null && url.scheme == server.scheme && url.host == server.host && url.port == server.port
 
     private fun Request.withCookie(cookie: String?): Request =
         if (cookie.isNullOrBlank()) this else newBuilder().header("Cookie", cookie).build()

@@ -49,6 +49,15 @@ const RELEASES = () => [
       { id: 107, name: 'Ember-v0.3.0-linux-x86_64.AppImage.sig', size: 10 },
     ],
   },
+  {
+    tag_name: 'v0.2.0',
+    name: 'Ember v0.2.0',
+    body: 'Notes for 0.2.0',
+    draft: false,
+    prerelease: false,
+    published_at: '2026-08-01T10:00:00Z',
+    assets: [{ id: 201, name: 'Ember-v0.2.0-windows-x64-setup.exe', size: 10 }],
+  },
 ];
 
 const github = http.createServer((req, res) => {
@@ -76,7 +85,7 @@ const github = http.createServer((req, res) => {
       res.writeHead(200, { 'content-type': 'application/octet-stream' });
       return res.end(SIGNATURE);
     }
-    if ([101, 102, 104, 106].includes(id)) {
+    if ([101, 102, 104, 106, 201].includes(id)) {
       res.writeHead(200, {
         'content-type': 'application/octet-stream',
         'content-length': String(INSTALLER.length),
@@ -136,6 +145,20 @@ const tokened = seen.slice(before).filter((r) => r.auth?.includes('test-token'))
 check('E2 the token is attached server-side', tokened.length > 0);
 check('E3 bad asset id rejected', (await fetch(`${APP}/api/desktop/asset/abc`)).status === 400);
 check('E4 unknown asset → 404', (await fetch(`${APP}/api/desktop/asset/999`)).status === 404);
+
+// Only the latest release's updater files, and GitHub is never asked for
+// anything else with the host's token (security audit 2026-09-25, M3).
+{
+  const upstreamBefore = seen.length;
+  const dmg = await fetch(`${APP}/api/desktop/asset/101`);
+  check('E5 a hand-download installer (.dmg) is not proxied', dmg.status === 404, `status ${dmg.status}`);
+  const old = await fetch(`${APP}/api/desktop/asset/201`);
+  check('E6 an older release asset is not proxied', old.status === 404, `status ${old.status}`);
+  const asked = seen.slice(upstreamBefore).filter((r) => /\/releases\/assets\/(101|201|999)$/.test(r.url));
+  check('E7 GitHub was never asked for them', asked.length === 0, asked.map((r) => r.url).join(','));
+  const sig = await fetch(`${APP}/api/desktop/asset/103`);
+  check('E8 the update bundle .sig is still served', sig.status === 200 && (await sig.text()) === SIGNATURE, `status ${sig.status}`);
+}
 
 // ── reachable without a session (the updater has none) ────────────────────
 check('F1 feed needs no login', (await feed('darwin', 'aarch64', '0.2.0')).status === 200);

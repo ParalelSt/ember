@@ -372,9 +372,18 @@ class EmberPlaybackService : MediaLibraryService() {
         super.onDestroy()
     }
 
+    /** Who may connect: see ControllerPolicy (security audit 2026-09-25, M4). */
+    private val gate by lazy { ControllerGate(this) }
+    private fun allowed(controller: MediaSession.ControllerInfo): ControllerPolicy.Verdict =
+        gate.verdict(controller.packageName, controller.uid, controller.isTrusted)
+
     inner class Callback : MediaLibrarySession.Callback {
         override fun onConnect(session: MediaSession, controller: MediaSession.ControllerInfo): MediaSession.ConnectionResult {
-            Log.i(TAG, "connect from ${controller.packageName} (legacy=${controller.controllerVersion == MediaSession.ControllerInfo.LEGACY_CONTROLLER_VERSION})")
+            val verdict = allowed(controller)
+            Log.i(TAG, "connect from ${controller.packageName} uid=${controller.uid} (legacy=${controller.controllerVersion == MediaSession.ControllerInfo.LEGACY_CONTROLLER_VERSION}) -> $verdict")
+            // Any app on the phone can bind to an exported service; only the
+            // system, the car, the Assistant and Ember itself get in.
+            if (!verdict.allowed) return MediaSession.ConnectionResult.reject()
             val commands = MediaSession.ConnectionResult.DEFAULT_SESSION_AND_LIBRARY_COMMANDS.buildUpon()
                 .add(SessionCommand(COMMAND_SHUFFLE, Bundle.EMPTY))
                 .add(SessionCommand(COMMAND_REPEAT, Bundle.EMPTY))
@@ -467,6 +476,9 @@ class EmberPlaybackService : MediaLibraryService() {
 
         override fun onGetLibraryRoot(session: MediaLibrarySession, browser: MediaSession.ControllerInfo, params: LibraryParams?): ListenableFuture<LibraryResult<MediaItem>> {
             Log.i(TAG, "root for ${browser.packageName} recent=${params?.isRecent} suggested=${params?.isSuggested}")
+            // onConnect already refused strangers; the library is the part
+            // worth a second look, so check again before handing out the root.
+            if (!allowed(browser).allowed) return Futures.immediateFuture(LibraryResult.ofError(LibraryResult.RESULT_ERROR_PERMISSION_DENIED))
             return Futures.immediateFuture(LibraryResult.ofItem(tree.root(), params))
         }
         override fun onGetChildren(session: MediaLibrarySession, browser: MediaSession.ControllerInfo, parentId: String, page: Int, pageSize: Int, params: LibraryParams?): ListenableFuture<LibraryResult<ImmutableList<MediaItem>>> {

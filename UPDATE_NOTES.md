@@ -1,6 +1,32 @@
-# Next release: bug-report webhook now needs an env var
+# 0.7.12: Security, playback and bug-report fixes (apps 0.4.9)
 
-**Host: before this update, set `DISCORD_BUG_REPORT_WEBHOOK_URL` in `apps/web/.env.local`, then run `./update.sh` as usual.** The webhook URL that used to be baked into source was found by a public secret scanner and Discord deleted it. Bug reports, lyrics reports and the daily digest all need `DISCORD_BUG_REPORT_WEBHOOK_URL` now; there is no built-in default. Ask the owner for the URL if you don't have your own. Feature/fix requests are unaffected (`DISCORD_FEATURE_WEBHOOK_URL` / `DISCORD_FIX_WEBHOOK_URL` already worked this way). Without the env var set, the affected features return a clear "not configured" error instead of posting anywhere.
+**Host, before updating:** set `DISCORD_BUG_REPORT_WEBHOOK_URL` in
+`apps/web/.env.local` (ask the owner for the URL). The webhook that used to be
+built into the code was found by a public secret scanner and Discord deleted
+it, so bug reports, lyrics reports and the daily digest need this line now.
+Without it they answer "not configured" instead of posting.
+
+**Then run `./update.sh` as usual (no new packages, no database changes).**
+It restarts PocketBase, which applies the security rules on boot: the log
+should show `[ensure_owner_rules]` once per collection. PocketBase now starts
+with `--automigrate=0`, so it no longer writes migration files by itself
+(that could crash it on start).
+
+What changes:
+
+- Security: members can no longer read another member's likes, history or
+  private playlist names, or move their records into someone else's account.
+  Sign-in and password reset are limited to 20 tries per 15 minutes.
+- Playing a song the server does not have yet needs a signed-in member.
+  Shared links still play songs the server already has. There is a limit of
+  60 new songs a minute per member. No length or size cap (opt in with
+  `EMBER_MAX_TRACK_MINUTES` / `EMBER_MAX_DOWNLOAD_MB` if ever needed).
+- The desktop update route only serves update files.
+- Playback fixes for the web player, the desktop app and the Android app,
+  and same-volume-for-every-song on Android.
+- The Android fixes (session cookie, player access, no plain http except to
+  your own http server) need the new apps, 0.4.9 (Android versionCode 14),
+  which the `v0.4.9` tag builds.
 
 # 0.7.9: Web app fixes (batch 5)
 

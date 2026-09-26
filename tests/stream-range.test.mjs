@@ -25,6 +25,7 @@
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
+import { memberCookie } from './sandbox-member.mjs';
 
 const APP = process.env.STREAM_APP_URL ?? 'http://127.0.0.1:3009';
 const MUSIC = process.env.MUSIC_DIR ?? '/tmp/ember-range-test/music';
@@ -60,7 +61,9 @@ const origin = http.createServer((req, res) => {
 await new Promise((r) => origin.listen(ORIGIN_PORT, '127.0.0.1', r));
 
 // 1. Playback starts: the download fails, the route proxies the live stream.
-const first = await fetch(`${APP}/api/youtube/stream/${PROXIED}`);
+// Songs not on disk are fetched for members only (security audit M2).
+const cookie = await memberCookie({ label: 'stream-range' });
+const first = await fetch(`${APP}/api/youtube/stream/${PROXIED}`, { headers: { cookie } });
 const firstBody = Buffer.from(await first.arrayBuffer());
 check('A1 a fresh play still works through the live proxy', first.status === 200, `status ${first.status}`);
 check('A2 the bytes came from the origin', firstBody.equals(AUDIO), firstBody.toString().slice(0, 40));
@@ -68,7 +71,7 @@ check('A2 the bytes came from the origin', firstBody.equals(AUDIO), firstBody.to
 // 2. The same track, now asked for from the middle: a refill after a dropped
 //    chunk, or a seek in any browser.
 const ranged = await fetch(`${APP}/api/youtube/stream/${PROXIED}`, {
-  headers: { Range: `bytes=${Math.floor(AUDIO.length / 2)}-` },
+  headers: { cookie, Range: `bytes=${Math.floor(AUDIO.length / 2)}-` },
 });
 const rangedBody = await ranged.text();
 check(

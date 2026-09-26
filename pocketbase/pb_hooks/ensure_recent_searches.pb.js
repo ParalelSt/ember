@@ -30,7 +30,8 @@ onAfterBootstrap((e) => {
     listRule: "user = @request.auth.id",
     viewRule: "user = @request.auth.id",
     createRule: '@request.auth.id != "" && user = @request.auth.id',
-    updateRule: "user = @request.auth.id",
+    // An update may not hand the row to someone else (ensure_owner_rules).
+    updateRule: "user = @request.auth.id && (@request.data.user:isset = false || @request.data.user = @request.auth.id)",
     deleteRule: "user = @request.auth.id",
     indexes: [
       "CREATE UNIQUE INDEX idx_recent_searches_user_track ON recent_searches (user, track)",

@@ -23,6 +23,7 @@
  *  PB_URL (default http://127.0.0.1:8086; SKIP_UPLOADS=1 skips that part). */
 import fs from 'node:fs';
 import path from 'node:path';
+import { memberCookie } from './sandbox-member.mjs';
 
 const APP = process.env.APP_URL ?? 'http://127.0.0.1:3053';
 const MUSIC = process.env.MUSIC_DIR ?? '/tmp/ember-prefetch-test/music';
@@ -42,9 +43,20 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const run = `${process.pid.toString(36)}${Date.now().toString(36)}`.slice(-7);
 const vid = (tag) => `${tag}${run}`.padEnd(11, 'x').slice(0, 11);
 
-/** Every call is its own "listener" unless it names one, keyed by IP. */
-const stream = (id, { prefetch = true, ip = '10.9.0.1' } = {}) =>
-  fetch(`${APP}/api/youtube/stream/${id}${prefetch ? '?prefetch=1' : ''}`, { headers: { 'x-forwarded-for': ip } });
+/** Every call is its own "listener" unless it names one, keyed by IP.
+ *  A song not on disk is fetched for members only (security audit M2), so
+ *  from step 2 on each listener address is also a signed-in member of its
+ *  own; step 1 (a song on disk) stays signed out, which must still work. */
+const members = new Map();
+async function signIn(ip) {
+  if (!members.has(ip)) members.set(ip, await memberCookie({ pb: PB_URL, label: `prefetch-${ip.replace(/\./g, '-')}` }));
+  return members.get(ip);
+}
+const stream = async (id, { prefetch = true, ip = '10.9.0.1', member = true } = {}) => {
+  const headers = { 'x-forwarded-for': ip };
+  if (member) headers.cookie = await signIn(ip);
+  return fetch(`${APP}/api/youtube/stream/${id}${prefetch ? '?prefetch=1' : ''}`, { headers });
+};
 
 const downloadsOf = (id) =>
   (fs.existsSync(LOG) ? fs.readFileSync(LOG, 'utf8') : '').split('\n').filter((l) => l === `download ${id}`).length;
@@ -60,18 +72,18 @@ fs.mkdirSync(MUSIC, { recursive: true });
   const statuses = [];
   let privateHeader = true;
   for (let i = 0; i < 10; i++) {
-    const res = await stream(cached, { ip });
+    const res = await stream(cached, { ip, member: false });
     statuses.push(res.status);
     if (res.headers.get('cache-control') !== 'private, no-store') privateHeader = false;
     await res.arrayBuffer();
   }
   check('ten prefetches of a cached song are served', statuses.every((s) => s === 200), statuses.join(','));
   check('a prefetched file is private, no-store', privateHeader);
-  const limited = await stream(cached, { ip });
+  const limited = await stream(cached, { ip, member: false });
   const retry = Number(limited.headers.get('retry-after'));
   check('the 11th prefetch in a minute is 429', limited.status === 429, String(limited.status));
   check('the 429 carries Retry-After', retry >= 1 && retry <= 60, String(retry));
-  const play = await stream(cached, { ip, prefetch: false });
+  const play = await stream(cached, { ip, prefetch: false, member: false });
   check('a normal play from the same listener still works', play.status === 200 && (await play.text()) === 'CACHED-AUDIO');
   check('a normal play is not marked no-store', play.headers.get('cache-control') !== 'private, no-store');
 }
@@ -80,6 +92,10 @@ fs.mkdirSync(MUSIC, { recursive: true });
 {
   const playing = vid('pp');
   const wanted = vid('pw');
+  // Both listeners signed in up front, so the busy check below is timed
+  // against the download, not a PocketBase round trip.
+  await signIn('10.9.2.1');
+  await signIn('10.9.2.2');
   const playReq = stream(playing, { prefetch: false, ip: '10.9.2.1' });
   await sleep(500);
   const busy = await stream(wanted, { ip: '10.9.2.2' });
@@ -120,6 +136,7 @@ async function isStillDownloading(id) {
 // 4. The global cap: three cold plays, two at a time.
 {
   const ids = [vid('g1'), vid('g2'), vid('g3')];
+  for (let i = 0; i < 3; i++) await signIn(`10.9.4.${i}`);
   const t0 = Date.now();
   const done = await Promise.all(ids.map(async (id, i) => {
     const res = await stream(id, { prefetch: false, ip: `10.9.4.${i}` });

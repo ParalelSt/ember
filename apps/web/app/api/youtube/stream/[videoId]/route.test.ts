@@ -19,7 +19,7 @@ vi.mock('@/lib/trackAvailability', () => ({
 vi.mock('@/lib/upsertTrack', () => ({ fromError: (e: Error) => new Response(String(e?.message), { status: 500 }) }));
 vi.mock('@/lib/sources/youtube', () => ({
   ensureDownloaded: vi.fn(), findCachedFile: () => file, hasCachedStreamUrl: () => false,
-  invalidateStreamUrl: vi.fn(), isDownloading: () => false, isUnavailableError: () => false, resolveStreamUrl: vi.fn(),
+  invalidateStreamUrl: vi.fn(), isDownloading: () => false, isTooLargeError: () => false, isUnavailableError: () => false, resolveStreamUrl: vi.fn(),
 }));
 
 import { GET } from './route';

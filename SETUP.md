@@ -387,7 +387,11 @@ posting anywhere.
 
 The desktop apps check this server on launch and install new builds
 themselves. They ask `/api/desktop/update/...`; the server answers from the
-GitHub Release and streams the installer back.
+GitHub Release and streams the installer back. That download route
+(`/api/desktop/asset/<id>`) is public, so it only serves the latest published
+release's update files (the macOS `.app.tar.gz`, the Windows `-setup.exe`,
+the Linux `.AppImage`, their `.sig`, `latest.json`); any other asset of the
+repo is a 404 and GitHub is never asked for it.
 
 Because the repo is private, the server needs a read-only token — and it stays
 on the host, never inside the shipped app:
@@ -568,6 +572,22 @@ MAX_CONCURRENT_DOWNLOADS=2   # yt-dlp processes at once (default 2)
 PYTHON_MAX_CONCURRENCY=4     # searches and page lookups at once (default 4)
 PYTHON_MAX_BULK=2            # import batches at once (default 2)
 ```
+
+**Only members fetch new songs.** A song already on the host plays for anyone
+(a shared `/track` link works for a friend who is not signed in), but getting
+one the host does not have yet, which runs yt-dlp with the host's YouTube
+cookies, takes a signed-in account. Each member can start 60 new downloads a
+minute and 600 an hour. There is no length or size cap by default (this is
+meant for a host used by trusted friends); live streams are always refused,
+not as a cap but because they never end, so downloading or proxying one could
+never finish. Set either of these if you want a cap:
+
+```bash
+EMBER_MAX_TRACK_MINUTES=20   # longest video the host fetches (unset/0 = unlimited)
+EMBER_MAX_DOWNLOAD_MB=60     # biggest audio file it downloads (unset/0 = unlimited)
+```
+
+Songs already on disk are never affected by these.
 
 Concurrent requests for the same uncached song share ONE download, so a player
 opening several byte-range connections doesn't start several yt-dlp runs. And

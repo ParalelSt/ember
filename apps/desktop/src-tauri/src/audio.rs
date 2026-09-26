@@ -480,9 +480,10 @@ fn emit_err_about<R: Runtime>(app: &AppHandle<R>, retry: &'static str, message: 
 /// Builds the HTTP client used to pull audio.
 ///
 /// `cookie` carries the webview's `pb_auth` session. Without it only PUBLIC
-/// routes work: `/api/youtube/stream/...` is public, but member uploads
-/// (`/api/uploads/<id>/stream`) require a session, so an uploaded song would
-/// fail here while playing fine in any browser. Sending the session makes the
+/// routes work: `/api/youtube/stream/...` serves songs already on the host to
+/// anyone, but a song it has to fetch first, and member uploads
+/// (`/api/uploads/<id>/stream`), require a session, so they would fail here
+/// while playing fine in any browser. Sending the session makes the
 /// native engine as capable as the webview without opening uploads to the
 /// whole internet.
 pub(crate) fn http_client(cookie: Option<&str>) -> Result<Client, String> {
