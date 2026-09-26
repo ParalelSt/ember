@@ -96,6 +96,7 @@ dependencies {
 }
 
 apply from: 'capacitor.build.gradle'
+apply from: 'network-security.gradle'
 
 try {
     def servicesJSON = file('google-services.json')

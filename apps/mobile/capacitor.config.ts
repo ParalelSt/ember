@@ -14,7 +14,11 @@ import type { CapacitorConfig } from '@capacitor/cli';
  *       the phone itself, not your Mac. On a real device you MUST set
  *       EMBER_APP_URL to one of:
  *         • the Tailscale funnel URL:  https://ember.<tailnet>.ts.net   (preferred, https)
- *         • your Mac's LAN IP:         http://192.168.x.x:3000          (http, needs cleartext)
+ *         • your Mac's LAN IP:         http://192.168.x.x:3000          (http, see below)
+ *
+ *   Cleartext HTTP is off on Android except to THIS host when it is http://
+ *   (android/app/network-security.gradle generates the config from the URL
+ *   at build time). An https server gets no cleartext at all.
  *
  *   Set it before `cap sync` / `cap run`, e.g.:
  *       EMBER_APP_URL="https://ember.<tailnet>.ts.net" npx cap sync
@@ -31,9 +35,10 @@ const config: CapacitorConfig = {
   webDir: 'public',
   server: {
     url: serverUrl,
-    // Needed for an http:// dev URL (localhost / LAN IP). Harmless for https
-    // funnel URLs. When true, `cap sync` adds android:usesCleartextTraffic.
-    cleartext: true,
+    // Only meaningful for an http:// server. On Android the real switch is
+    // the generated network security config, which allows cleartext to this
+    // server's host alone (security audit 2026-09-25, M5).
+    cleartext: serverUrl.startsWith('http://'),
     // With no network the server's pages cannot load at all, so a cold start
     // would sit on "Connecting to server…" forever even with downloads on the
     // phone. Capacitor loads this bundled page instead when the remote URL
@@ -41,9 +46,9 @@ const config: CapacitorConfig = {
     errorPath: 'offline.html',
   },
   android: {
-    // Allow the webview to load mixed content during development (e.g. http
-    // assets). Not for production — prefer the https Tailscale funnel there.
-    allowMixedContent: true,
+    // An https page never loads http content (MainActivity enforces it too,
+    // via WebSecurity.lockDown). An http server is not affected.
+    allowMixedContent: false,
   },
 };
 

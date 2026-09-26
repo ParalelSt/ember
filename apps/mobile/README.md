@@ -30,15 +30,15 @@ cannot reach `localhost`** — on the phone, localhost is the phone itself.
 On a real device, set `EMBER_APP_URL` to one of:
 
 - **Tailscale funnel URL (preferred, https):** `https://ember.<tailnet>.ts.net`
-- **Mac LAN IP (http, needs cleartext):** `http://192.168.x.x:3000`
+- **Mac LAN IP (http, allowed to that host only):** `http://192.168.x.x:3000`
 
 ```bash
 EMBER_APP_URL="https://ember.<tailnet>.ts.net" npm run sync
 ```
 
 > Tailscale is the preferred path because the funnel serves **https**. The
-> http LAN-IP path also works (cleartext is enabled — see below), but https is
-> preferred for production-like behavior and to avoid mixed-content issues.
+> http LAN-IP path also works (cleartext to that one host, see below), but
+> https is preferred: plain http can be read and changed on the way.
 
 ## Scripts
 
@@ -69,16 +69,20 @@ projects, so re-run `sync` whenever you change `EMBER_APP_URL`.
 
 ## Android cleartext
 
-For an `http://` dev URL (localhost / LAN IP), cleartext is enabled:
+Cleartext HTTP is **off** for every host, with one exception: when the URL
+the APK is built for is `http://` (a LAN or Tailscale IP, or the emulator's
+`http://10.0.2.2:3010`), that host, and only that host, may use plain http.
+`android/app/network-security.gradle` writes the network security config
+from `assets/capacitor.config.json` (what `npx cap sync` bakes in) on every
+build, and the manifest points at it. An `https://` server (the Tailscale
+Funnel) gets no cleartext exception at all. Mixed content (http resources on
+an https page) is refused (`allowMixedContent: false`, and `MainActivity`
+sets the WebView to never allow it).
 
-- `capacitor.config.ts` sets `server.cleartext: true` and
-  `android.allowMixedContent: true`.
-- `android/app/src/main/AndroidManifest.xml` declares
-  `android:usesCleartextTraffic="true"` so cleartext http works in all build
-  types (not just debug). The `INTERNET` permission is already present.
-
-Cleartext to an http LAN URL works, but the **https Tailscale funnel URL is
-preferred**.
+So a phone built for one http server cannot fetch http from anything else;
+to point it at another server, rebuild with that URL as usual. Android 6
+(API 23) has no per-host config: there, cleartext stays allowed as before.
+Tests: `NetworkSecurityTest`.
 
 ## Offline (Android only)
 

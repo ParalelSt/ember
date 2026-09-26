@@ -35,6 +35,7 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(EmberSpeechPlugin.class);
         registerPlugin(EmberThemePlugin.class);
         super.onCreate(savedInstanceState);
+        WebSecurity.INSTANCE.lockDown(getBridge() == null ? null : getBridge().getWebView());
         injectBridgeIntoErrorPage();
         publishSafeAreaInsets();
         applyStoredTheme();
