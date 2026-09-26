@@ -106,6 +106,27 @@ export function useExecuteDeleteAdminInvite() {
   });
 }
 
+// ───── Backups ─────
+
+const BACKUPS_QK = ['admin', 'backups'] as const;
+
+export function useQueryAdminBackups() {
+  return useQuery({
+    queryKey: BACKUPS_QK,
+    queryFn: () => api.admin.backups(),
+  });
+}
+
+export function useExecuteBackupNow() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => api.admin.backupNow(),
+    onSuccess: (status) => {
+      qc.setQueryData(BACKUPS_QK, status);
+    },
+  });
+}
+
 // ───── Pranks ─────
 
 const PRANKS_QK = {

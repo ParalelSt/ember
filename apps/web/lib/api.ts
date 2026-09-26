@@ -43,6 +43,16 @@ export interface AdminInvite {
   created: string;
 }
 
+/** GET /api/admin/backups (lib/backups.ts). */
+export interface AdminBackupsStatus {
+  backups: { name: string; size: number; modified: string; auto: boolean }[];
+  /** Null when PocketBase's settings could not be read. */
+  schedule: { cron: string; keep: number; s3: boolean } | null;
+  /** Free space on pb_data's disk; null when the OS will not say. */
+  disk: { free: number; total: number; low: boolean } | null;
+  memberFiles: { files: number; bytes: number };
+}
+
 // Cookies handle auth (PocketBase `pb_auth` cookie) — no manual Bearer headers.
 // API_BASE stays empty for the web build (same-origin); a Capacitor/native
 // shell can set NEXT_PUBLIC_API_BASE_URL to the server's URL.
@@ -503,6 +513,10 @@ export const api = {
       req<{ ok: true; invite: AdminInvite }>('/admin/invites', { method: 'POST', body: { email } }),
     deleteInvite: (id: string) =>
       req<{ ok: true }>(`/admin/invites/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+
+    backups: () => req<AdminBackupsStatus>('/admin/backups'),
+    backupNow: () =>
+      req<AdminBackupsStatus>('/admin/backups', { method: 'POST', expected: [409] }),
 
     pranks: {
       list: (target?: string) =>
