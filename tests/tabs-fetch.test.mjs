@@ -289,7 +289,7 @@ console.log('\n=== First opening ===\n');
   await page.locator('footer').getByRole('button', { name: 'Guitar tabs' }).first().click();
   await page.waitForURL((u) => u.pathname === trackPath(song.id), { timeout: 10_000, waitUntil: 'commit' }).catch(() => {});
   const searching = await page.getByTestId('tabs-searching').waitFor({ timeout: 5000 }).then(() => true, () => false);
-  check('the page says it is finding a tab online', searching);
+  check('the page says it is looking (Looking on Songsterr)', searching);
   await scoreReady(page).catch(() => {});
   await page.waitForTimeout(1200);
 
@@ -391,10 +391,12 @@ console.log('\n=== Opening again ===\n');
 {
   const page = await newPage(listener);
   await page.goto(`${APP_URL}${trackPath(missing.id)}`, { waitUntil: 'networkidle' });
-  const empty = await page.getByTestId('tabs-empty').waitFor({ timeout: 15_000 }).then(() => true, () => false);
-  check('nothing online: the page falls back to its empty state', empty);
+  // The empty state once Ember is done looking (not its "Looking on Songsterr" state).
+  const settled = page.locator('[data-testid="tabs-empty"]:not([data-state="searching"])');
+  const empty = await settled.waitFor({ timeout: 15_000 }).then(() => true, () => false);
+  check('nothing online: the page falls back to its empty state', empty, (await settled.getAttribute('data-state').catch(() => null)) ?? '');
   await page.reload({ waitUntil: 'networkidle' });
-  await page.getByTestId('tabs-empty').waitFor({ timeout: 15_000 }).catch(() => {});
+  await settled.waitFor({ timeout: 15_000 }).catch(() => {});
   const c = await calls();
   check('and that song was searched once only', c.searches.filter((s) => s.q.includes(`Nothing Online ${run}`)).length === 1);
   await page.context().close();

@@ -1,15 +1,18 @@
 /** UI check for the tab page (/tabs/[trackId]):
  *  a tab someone else shared, drawn by AlphaTab and synced to Ember's real
  *  playback, opened from the player bar and from Now playing on a phone,
- *  and the empty state that generates one.
+ *  and the empty state (the Songsterr list, the sites, still looking, Add a
+ *  file) with no tab generation anywhere.
  *
  *      npm i -D playwright-core
  *      node tests/tabs-ui.test.mjs        # or: npm run test:tabs-ui
  *
  *  Needs a sandbox: PocketBase (PB_URL), the app (APP_URL) built from this
- *  tree with MUSIC_DIR set and TRANSCRIBE_SCRIPT=tests/fake-transcribe.sh
- *  (the empty state generates a tab). Songs are uploaded wavs, so no
- *  yt-dlp and no network. Set CHROME_PATH to pick a browser. */
+ *  tree with MUSIC_DIR set and SONGSTERR_BASE at tests/fake-songsterr.mjs
+ *  (its "zzfail" 503 leaves the app's online Songsterr search backed off for
+ *  an hour, so run tabs-fetch.test.mjs against the same app first). Songs
+ *  are uploaded wavs, so no yt-dlp and no network. SHOT_DIR=dir saves the
+ *  empty states. Set CHROME_PATH to pick a browser. */
 import { execSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -342,26 +345,227 @@ const trackPath = (id) => `/tabs/${encodeURIComponent(id)}`;
   await page.context().close();
 }
 
-// ── the empty state: generate a tab ───────────────────────────────────────
+// ── the empty state: the Songsterr list ───────────────────────────────────
+// No tab to draw: Songsterr's versions of the song to open there, or, when
+// Songsterr has nothing, the places people post tabs; Add a file under
+// either, and "Looking on Songsterr…" while Ember is still asking.
+// tests/fake-songsterr.mjs answers any title with one song that has no
+// notes to fetch (it cannot be drawn: the list) and a title with "zzfail"
+// with a 503 (nothing on Songsterr: the sites). Generating a tab is gone:
+// nothing offers it, and a generated row an older server left is never
+// drawn. SHOT_DIR=dir saves each state, dark and light, desktop and phone.
 {
-  const page = await newPage({ width: 1300, height: 950 });
-  await page.goto(`${APP_URL}${trackPath(bare.id)}`, { waitUntil: 'networkidle' });
-  const generate = page.getByRole('button', { name: 'Generate a tab' });
-  await generate.waitFor({ timeout: 15_000 }).catch(() => {});
-  check('no tab: the page offers Generate a tab', (await generate.count()) > 0);
-  check('no tab: and Add a file', (await page.getByRole('button', { name: 'Add a file' }).count()) > 0);
-  if (await generate.count()) {
-    await generate.click();
-    const busy = await page.getByText(/Transcribing the recording/).waitFor({ timeout: 10_000 }).then(() => true, () => false);
-    check('it shows the transcribing state', busy);
+  const SHOT_DIR = process.env.SHOT_DIR ?? null;
+  const none = await uploadSong(`Tab Page zzfail ${run}`);
+  const looking = await uploadSong(`Tab Page Looking ${run}`);
+  const q = (s) => encodeURIComponent(`${s.artist} ${s.title}`).replace(/%20/g, '+');
+  const settled = (page, state) => page.locator(`[data-testid="tabs-empty"][data-state="${state}"]`).waitFor({ timeout: 20_000 }).then(() => true, () => false);
+  const noGenerate = async (page) => !/Generat|Transcrib/i.test(await page.locator('main').innerText().catch(() => ''));
+
+  // A member on a light theme (a custom one, made the way Settings >
+  // Appearance makes one), signed in again so the cookie carries it.
+  const lightEmail = `tabsui-light-${run}@ember.test`;
+  await fetch(`${PB_URL}/api/collections/users/records`, { method: 'POST',
+    headers: { 'content-type': 'application/json', Authorization: token },
+    body: JSON.stringify({ email: lightEmail, password: PASSWORD, passwordConfirm: PASSWORD, name: 'Tab Light', verified: true }) });
+  const signIn = () => fetch(`${PB_URL}/api/collections/users/auth-with-password`, { method: 'POST',
+    headers: { 'content-type': 'application/json' }, body: JSON.stringify({ identity: lightEmail, password: PASSWORD }) })
+    .then((r) => r.json()).then((a) => encodeURIComponent(JSON.stringify({ token: a.token, record: a.record })));
+  let light = await signIn();
+  const LIGHT = { background: [0.97, 0.004, 80], surface: [0.93, 0.005, 80], text: [0.22, 0.01, 260], mutedText: [0.47, 0.01, 260],
+    accent: [0.6, 0.2, 28], accentHover: [0.68, 0.16, 28], border: [0, 0, 0], sidebar: [0.94, 0.005, 80] };
+  const made = await fetch(`${APP_URL}/api/themes`, { method: 'POST', headers: { 'content-type': 'application/json', cookie: `pb_auth=${light}` },
+    body: JSON.stringify({ name: 'Light', base: 'ember', inputs: LIGHT }) }).then((r) => r.json()).catch(() => null);
+  const used = made?.theme?.id ?? made?.id;
+  const applied = used
+    ? (await fetch(`${APP_URL}/api/theme`, { method: 'PATCH', headers: { 'content-type': 'application/json', cookie: `pb_auth=${light}` },
+      body: JSON.stringify({ themeId: used }) })).ok
+    : false;
+  check('a light theme for the screenshots', applied, JSON.stringify(made).slice(0, 160));
+  light = await signIn();
+
+  async function pageAs(cookie, viewport) {
+    const ctx = await browser.newContext({ viewport });
+    await ctx.addCookies([{ name: 'pb_auth', value: cookie, domain: new URL(APP_URL).hostname, path: '/' }]);
+    const page = await ctx.newPage();
+    page.on('console', (m) => { if (m.type() === 'error') consoleErrors.push(m.text()); });
+    page.on('pageerror', (e) => consoleErrors.push(`pageerror: ${e.message}`));
+    await ctx.route(/ultimate-guitar\.com|duckduckgo\.com|songsterr\.com/, (r) => r.fulfill({ status: 200, body: 'ok' }));
+    return page;
+  }
+  const shoot = async (page, name) => {
+    if (!SHOT_DIR) return;
+    fs.mkdirSync(SHOT_DIR, { recursive: true });
+    await page.waitForTimeout(400);
+    await page.screenshot({ path: path.join(SHOT_DIR, `${name}.png`) });
+  };
+  const DESKTOP = { width: 1300, height: 950 };
+  const PHONE = { width: 390, height: 844 };
+
+  // Songsterr has the song, Ember could not draw it: the list.
+  {
+    const page = await pageAs(listener, DESKTOP);
+    await page.goto(`${APP_URL}${trackPath(bare.id)}`, { waitUntil: 'networkidle' });
+    check('Songsterr has it: the list', await settled(page, 'matches'));
+    check('the list says how many', (await page.getByRole('heading', { name: '1 tab on Songsterr' }).count()) === 1);
+    const rows = page.getByTestId('tabs-empty-match');
+    const row = await rows.first().evaluate((a) => ({ href: a.getAttribute('href'), target: a.getAttribute('target'), rel: a.getAttribute('rel'), text: a.textContent ?? '' })).catch(() => null);
+    check('each version links to its Songsterr page, in a new tab with noopener',
+      (await rows.count()) === 1 && /^https:\/\/www\.songsterr\.com\/a\/wsa\/.+-tab-s\d+$/.test(row?.href ?? '') && row?.target === '_blank' && /noopener/.test(row?.rel ?? ''), row?.href ?? '');
+    check('a version names its instruments and chords, and says Open',
+      /Electric Guitar \(distortion\)/.test(row?.text ?? '') && /chords/.test(row?.text ?? '') && /Open$/.test(row?.text ?? ''), row?.text ?? '');
+    check('one version: no Best match badge', (await page.getByText('Best match').count()) === 0);
+    const other = await page.getByTestId('tab-search-links').locator('a').evaluateAll((as) => as.map((a) => [a.dataset.link, a.getAttribute('href')])).catch(() => []);
+    check('under it: search Ultimate Guitar or Guitar Pro files for another version',
+      other.length === 2 && other[0][0] === 'ultimate-guitar' && other[0][1] === `https://www.ultimate-guitar.com/search.php?search_type=title&value=${q(bare)}`
+        && other[1][0] === 'guitar-pro' && other[1][1] === `https://duckduckgo.com/?q=${q(bare)}+(gp5+OR+gpx+OR+"guitar+pro")`, JSON.stringify(other));
+    check('no Generate anywhere on the page', await noGenerate(page));
+    await page.getByRole('button', { name: 'Tab options' }).click();
+    await page.getByRole('menuitem').first().waitFor({ timeout: 5000 }).catch(() => {});
+    const items = await page.getByRole('menuitem').allInnerTexts().catch(() => []);
+    check('the ⋯ menu offers no Generate', items.length > 0 && !items.some((t) => /Generat/i.test(t)), items.join(' | '));
+    await page.keyboard.press('Escape');
+    await shoot(page, 'empty-matches-dark-desktop');
+
+    const popup = page.context().waitForEvent('page', { timeout: 5000 }).catch(() => null);
+    await rows.first().click();
+    const opened = await popup;
+    check('a click opens the version on Songsterr', !!opened && opened.url() === row?.href, opened?.url() ?? 'nothing opened');
+    await opened?.close();
+
+    // Add a file, from the empty state itself: the tab is drawn at once.
+    await page.locator('input[aria-label="Tab file"]').setInputFiles({ name: 'mine.gp', mimeType: 'application/octet-stream', buffer: await makeGp() });
     await scoreReady(page).catch(() => {});
     const chip = await page.getByTestId('tab-source-chip').textContent().catch(() => '');
-    check('the generated tab appears when the job finishes', /Generated from the recording/.test(chip ?? ''), chip ?? '');
+    check('Add a file: the file is drawn, with its chip', /File added by you, shared/.test(chip ?? ''), chip ?? '');
     const s = await surface(page);
-    check('AlphaTab draws the generated alphaTex', Boolean(s && s.w > 100 && s.h > 50), s ? `${s.w}x${s.h}` : 'none');
+    check('AlphaTab draws it', Boolean(s && s.w > 100 && s.h > 50), s ? `${s.w}x${s.h}` : 'none');
     check('a song that is not playing says so', (await page.getByText(/This song is not playing/).count()) > 0);
+    await page.context().close();
   }
-  await page.context().close();
+
+  // Nothing on Songsterr: the places people post tabs.
+  {
+    const page = await pageAs(listener, DESKTOP);
+    await page.goto(`${APP_URL}${trackPath(none.id)}`, { waitUntil: 'networkidle' });
+    check('nothing on Songsterr: the sites', await settled(page, 'none'));
+    check('it says so', (await page.getByRole('heading', { name: 'Nothing on Songsterr' }).count()) === 1);
+    const sites = await page.getByTestId('tabs-empty-site').evaluateAll((as) => as.map((a) => ({ link: a.dataset.link, href: a.getAttribute('href'), target: a.getAttribute('target'), text: a.textContent ?? '' }))).catch(() => []);
+    check('Ultimate Guitar and Guitar Pro files, searching for the song, in a new tab',
+      sites.length === 2 && sites[0].link === 'ultimate-guitar' && sites[0].href === `https://www.ultimate-guitar.com/search.php?search_type=title&value=${q(none)}`
+        && sites[1].link === 'guitar-pro' && sites.every((x) => x.target === '_blank' && /Search$/.test(x.text)), JSON.stringify(sites).slice(0, 300));
+    check('no Songsterr version and no "another version" line', (await page.getByTestId('tabs-empty-match').count()) === 0 && (await page.getByTestId('tab-search-links').count()) === 0);
+    check('Add a file is there', await page.getByRole('button', { name: 'Add a file' }).isEnabled().catch(() => false));
+    check('no Generate here either', await noGenerate(page));
+    const popup = page.context().waitForEvent('page', { timeout: 5000 }).catch(() => null);
+    await page.getByTestId('tabs-empty-site').first().click();
+    const opened = await popup;
+    check('a site opens its search for the song', !!opened && opened.url().includes('www.ultimate-guitar.com') && opened.url().includes('zzfail'), opened?.url() ?? 'nothing opened');
+    await opened?.close();
+    await shoot(page, 'empty-none-dark-desktop');
+    await page.context().close();
+  }
+
+  // Still looking: Songsterr's answer held back until the page has shown it.
+  const hold = async (page) => {
+    let release = () => {};
+    const gate = new Promise((r) => (release = r));
+    await page.route(/\/api\/tabs\?title=/, async (r) => { await gate; await r.continue(); });
+    return () => release();
+  };
+  {
+    const page = await pageAs(listener, DESKTOP);
+    const release = await hold(page);
+    await page.goto(`${APP_URL}${trackPath(looking.id)}`, { waitUntil: 'domcontentloaded' });
+    check('still looking: Looking on Songsterr…', await settled(page, 'searching'));
+    const status = await page.getByRole('status').filter({ hasText: 'Looking on Songsterr' }).count();
+    check('said as a status, over a list of placeholders',
+      status === 1 && (await page.locator('[data-testid="tabs-empty-list"][aria-busy="true"] li').count()) === 3);
+    check('Add a file already offered', await page.getByRole('button', { name: 'Add a file' }).isEnabled().catch(() => false));
+    await shoot(page, 'empty-searching-dark-desktop');
+    release();
+    check('then the list, once Songsterr answers', await settled(page, 'matches'));
+    await page.context().close();
+  }
+
+  // Phone: the rows end in a chevron, and nothing runs off the side.
+  {
+    const page = await pageAs(listener, PHONE);
+    await page.goto(`${APP_URL}${trackPath(looking.id)}`, { waitUntil: 'networkidle' });
+    await settled(page, 'matches');
+    const end = await page.getByTestId('tabs-empty-match').first().evaluate((a) => a.lastElementChild?.tagName.toLowerCase()).catch(() => null);
+    check('phone: a chevron instead of Open', end === 'svg' && (await page.getByText('Open', { exact: true }).count()) === 0, String(end));
+    const scroll = await page.evaluate(() => ({ sw: document.documentElement.scrollWidth, iw: window.innerWidth }));
+    check('phone: no sideways page scroll', scroll.sw <= scroll.iw, `${scroll.sw} in ${scroll.iw}`);
+    await shoot(page, 'empty-matches-dark-phone');
+    await page.goto(`${APP_URL}${trackPath(none.id)}`, { waitUntil: 'networkidle' });
+    await settled(page, 'none');
+    await shoot(page, 'empty-none-dark-phone');
+    const release = await hold(page);
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    await settled(page, 'searching');
+    await shoot(page, 'empty-searching-dark-phone');
+    release();
+    await page.context().close();
+  }
+
+  // The light theme, desktop and phone, every state.
+  for (const [viewport, tag] of [[DESKTOP, 'desktop'], [PHONE, 'phone']]) {
+    const page = await pageAs(light, viewport);
+    await page.goto(`${APP_URL}${trackPath(looking.id)}`, { waitUntil: 'networkidle' });
+    check(`light ${tag}: the list`, await settled(page, 'matches'));
+    const bg = await page.evaluate(() => getComputedStyle(document.body).backgroundColor);
+    const lum = (() => { const m = bg.match(/[\d.]+/g)?.map(Number) ?? []; return m.length >= 3 ? (m[0] + m[1] + m[2]) / 3 : 0; })();
+    check(`light ${tag}: the page is light`, bg.startsWith('oklch') ? Number(bg.match(/oklch\(([\d.]+)/)?.[1] ?? 0) > 0.8 : lum > 200, bg);
+    await shoot(page, `empty-matches-light-${tag}`);
+    await page.goto(`${APP_URL}${trackPath(none.id)}`, { waitUntil: 'networkidle' });
+    await settled(page, 'none');
+    await shoot(page, `empty-none-light-${tag}`);
+    const release = await hold(page);
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    await settled(page, 'searching');
+    await shoot(page, `empty-searching-light-${tag}`);
+    release();
+    await page.context().close();
+  }
+
+  // A generated tab an older server left: kept, never drawn or served.
+  {
+    const gen = await uploadSong(`Tab Page Generated ${run}`);
+    const sharedFile = (await (await fetch(`${APP_URL}/api/tabs/files?kind=all&trackId=${encodeURIComponent(song.id)}`, { headers: { cookie: `pb_auth=${listener}` } })).json()).tabs?.[0];
+    const row = await fetch(`${PB_URL}/api/collections/tabs/records`, { method: 'POST',
+      headers: { 'content-type': 'application/json', Authorization: token },
+      body: JSON.stringify({ title: gen.title, artist: gen.artist, instrument: 'Guitar', file: 'upload-old.alphatex', kind: 'generated',
+        format: 'alphatex', shared: true, song_key: '', track_key: gen.id, offset_ms: 0 }) }).then((r) => r.json());
+    const onSong = await fetch(`${PB_URL}/api/collections/tabs/records`, { method: 'POST',
+      headers: { 'content-type': 'application/json', Authorization: token },
+      body: JSON.stringify({ title: song.title, artist: song.artist, instrument: 'Guitar', file: 'upload-old2.alphatex', kind: 'generated',
+        format: 'alphatex', shared: true, song_key: '', track_key: song.id, offset_ms: 0 }) }).then((r) => r.json());
+    check('seeded two generated rows', !!row.id && !!onSong.id && !!sharedFile, JSON.stringify(row).slice(0, 120));
+    const as = (u) => fetch(`${APP_URL}${u}`, { headers: { cookie: `pb_auth=${listener}` } });
+    const listed = (await (await as(`/api/tabs/files?kind=all&trackId=${encodeURIComponent(gen.id)}`)).json()).tabs ?? [];
+    check('the store lists no generated tab', listed.length === 0, JSON.stringify(listed).slice(0, 120));
+    check('a stale download link to one is a 410', (await as(`/api/tabs/files/${row.id}/download`)).status === 410);
+    check('the old generate route is gone (404)', (await as(`/api/tabs/generated/${encodeURIComponent(gen.id)}`)).status === 404);
+    check('and so is the tools probe (404)', (await as('/api/tabs/tools')).status === 404);
+
+    const page = await pageAs(listener, DESKTOP);
+    await page.goto(`${APP_URL}${trackPath(gen.id)}`, { waitUntil: 'networkidle' });
+    check('a song whose only tab was generated: the empty state, no score',
+      (await page.locator('[data-testid="tabs-empty"]:not([data-state="searching"])').waitFor({ timeout: 20_000 }).then(() => true, () => false))
+        && (await page.getByTestId('tab-score').count()) === 0);
+    // This device picked the generated tab back when it was drawn.
+    await page.evaluate(([k, v]) => window.localStorage.setItem(k, v), [`ember.tab.pick.${song.id}`, onSong.id]);
+    await page.goto(`${APP_URL}${trackPath(song.id)}`, { waitUntil: 'networkidle' });
+    await scoreReady(page).catch(() => {});
+    const chip = await page.getByTestId('tab-source-chip').textContent().catch(() => '');
+    check('a stale pick of a generated tab falls back to the shared file', /File added by Tab Sharer/.test(chip ?? ''), chip ?? '');
+    await page.getByRole('button', { name: 'Choose a tab' }).click();
+    await page.getByTestId('tab-source-row').first().waitFor({ timeout: 10_000 }).catch(() => {});
+    const sheet = await page.getByTestId('tab-source-sheet').innerText().catch(() => '');
+    check('the Source sheet lists no generated tab and no Generate', !/Generat|rough/i.test(sheet), sheet.replace(/\s+/g, ' ').slice(0, 160));
+    await page.context().close();
+  }
 }
 
 // ── every shape of tab draws, with no console error ───────────────────────
@@ -569,8 +773,7 @@ const trackPath = (id) => `/tabs/${encodeURIComponent(id)}`;
   }
 }
 
-// The status probe for a generated tab answers 404 for "none yet"; that is
-// the API's shape, not an error.
+// A 404 in the browser (an image or lyrics miss) is not an error of the page.
 const noisy = consoleErrors.filter((e) => !/favicon|404/.test(e));
 check('no unexpected console errors', noisy.length === 0, noisy.slice(0, 2).join(' | '));
 

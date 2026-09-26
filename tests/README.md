@@ -176,7 +176,7 @@ with `PATH=/usr/bin:/bin`: pip is asked for `imageio-ffmpeg`,
 skipped, and a missing binary is a warning while the update carries on. Then it
 runs `tests/test_ffmpeg_path.py` (9 unittests): `ffmpeg_path.py` finds the
 bundled binary with an empty `PATH`, falls back to `PATH`, says "ffmpeg is
-missing: run ./update.sh" when there is none, `transcribe.py`'s decode works
+missing: run ./update.sh" when there is none, `align.py`'s decode works
 with an empty `PATH` and fails with that message without ffmpeg, and every
 yt-dlp option set in `player.py` carries `ffmpeg_location`.
 
@@ -248,14 +248,12 @@ node tests/authorization.test.mjs                   # or: npm run test:auth
 node tests/session-authorization.test.mjs           # or: npm run test:sessions
 node tests/fake-songsterr.mjs &                     # port 4330; app needs SONGSTERR_BASE=http://127.0.0.1:4330
 node tests/tabs.test.mjs                            # or: npm run test:tabs
-node tests/tabs-ui.test.mjs                         # or: npm run test:tabs-ui
+node tests/tabs-ui.test.mjs                         # or: npm run test:tabs-ui (run after tabs-fetch against the same app: its "zzfail" song backs the online Songsterr search off for an hour; SHOT_DIR saves the empty states, dark and light, desktop and phone)
 node tests/tabs-practice-ui.test.mjs                # or: npm run test:tabs-practice-ui (0.7.10 practice: the sync nudge past 10 s and in beats, the metronome's clicks on the tab's beats through a 120 to 60 bpm change (a recording AudioContext, no sound card), 50% speed with the pitch kept, a one-bar loop playing over and over, a section loop, and the Find one links opening each site's search; PB_URL/APP_URL like tabs-ui)
 node tests/tabs-sync.test.mjs                       # or: npm run test:tabs-sync
-node tests/tabs-generate.test.mjs                   # or: npm run test:tabs-generate
 MUSIC_DIR="$SB/music" node tests/tabs-text.test.mjs # or: npm run test:tabs-text (pasted text tabs: route, chain, tab page follows the song, search links; PB restarted with this branch's pb_hooks)
 node tests/fake-ug.mjs &                            # port 4331; app needs UG_BASE=http://127.0.0.1:4331
 MUSIC_DIR="$SB/music" node tests/tabs-fetch.test.mjs # or: npm run test:tabs-fetch (tabs found on Ultimate Guitar: once per song, drawn, follows the song; PB restarted with this branch's pb_hooks)
-node tests/transcribe-timing.test.mjs              # or: npm run test:transcribe-timing (no server needed; python3 or PYTHON_BIN)
 node tests/preferences-ui.test.mjs                  # or: npm run test:preferences-ui (plugin switches across two devices; PB restarted with this branch's pb_hooks)
 node tests/themes-ui.test.mjs                       # or: npm run test:themes-ui (themes: Settings > Appearance picks, a custom theme, sharing from the row switch (F3) and a second person using it, first paint from the cookie with JS off, the /pb rules; SHOT_DIR=dir saves every preset on Home and Appearance at 390 and 1300; PB_URL/APP_URL, default 8089/3051)
 node tests/appearance-fit-ui.test.mjs               # or: npm run test:appearance-fit-ui (bughunt F2: Settings > Appearance fits at 1280x720, 1440x800, 1512x830 and 1920x1000 with the player bar showing: preview and its player row above the bar, Apply bar and tabs in view, the Colours list scrolling in its own panel with the page at 0; 390 stacked with nothing sideways; SHOT_DIR + SHOT_TAG save the 1512x830 window; PB_URL/APP_URL, default 8084/3055)
@@ -409,10 +407,10 @@ sandbox (PB_URL, APP_URL; MUSIC_DIR for the on-disk checks):
   (read through `tests/tabs-measure.mjs`, shared with `tabs-sync.test.mjs`)
   while playing and after a seek from the player bar, and stays in view;
   the tab picker lists the file, then the text tab.
-- **Search links**: the empty state's Ultimate Guitar, Guitar Pro files and
-  Songsterr chips carry the right URLs and open a new tab with noopener,
-  and the ⋯ menu has the same three (never clicked); Generate comes after
-  Add a file, marked rough.
+- **Search links**: the empty state's Ultimate Guitar and Guitar Pro files
+  links and Songsterr's versions carry the right URLs and open a new tab
+  with noopener (never clicked); Add a file is its only button (no
+  Generate).
 
 ## What `tabs-fetch.test.mjs` covers
 
@@ -450,6 +448,20 @@ two openings sharing one search, "again", "none", a page with no notes, a
 missing page, 429/403 and block pages staying quiet, the store order and
 labels) and `app/api/tabs/tabs-online-route.test.ts` (the route with a fake
 site on `UG_BASE`).
+
+`tabs-ui.test.mjs` also walks the **empty state** (the "Songsterr list"):
+a song the fake Songsterr knows but Ember cannot draw lists its version
+(link to its Songsterr page, instruments, Open; a click opens it), with
+"Not the version you want?" links under Add a file; a "zzfail" song (a 503:
+nothing on Songsterr) lists Ultimate Guitar and Guitar Pro files instead;
+Songsterr's answer held back shows "Looking on Songsterr…" as a status over
+placeholder rows, then the list; phone rows end in a chevron; Add a file
+from the empty state draws the file at once; no Generate on the page or in
+the ⋯ menu; a generated row an older server left is never listed, drawn or
+served (410), the old `/api/tabs/generated` and `/api/tabs/tools` routes
+are 404, and a stale pick of one falls back to the shared file.
+`SHOT_DIR` saves every state in the dark and a light theme, at 1300 and
+390 wide.
 
 `tabs-ui.test.mjs` also has a **nothing overflows** section: a long song name,
 a member with a 60-character name, a file with

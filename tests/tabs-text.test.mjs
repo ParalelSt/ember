@@ -3,8 +3,9 @@
  *  side, the chain lists it after files, sharing and delete follow the file
  *  rules, and in the browser the tab page draws it with the "Text tab
  *  pasted by" chip and follows the song (cursor bar against the real audio
- *  time, measured with tests/tabs-measure.mjs). Also: the search links of
- *  the empty state and the tab menu carry the right URLs (never clicked).
+ *  time, measured with tests/tabs-measure.mjs). Also: the links of the
+ *  empty state carry the right URLs (never clicked), and it offers no
+ *  Generate.
  *
  *      node tests/tabs-text.test.mjs        # or: npm run test:tabs-text
  *
@@ -324,26 +325,28 @@ async function measure(page) {
   await page.context().close();
 }
 
-// A song with no tab: the search chips, and generating last and rough.
+// A song with no tab: the empty state's links carry the right URLs (never
+// clicked), and Add a file is its one action (no Generate any more).
 {
   const page = await newPage({ width: 1440, height: 900 });
   await page.goto(`${APP_URL}${trackPath(bare.id)}`, { waitUntil: 'networkidle' });
-  await page.getByTestId('tab-search-links').waitFor({ timeout: 15_000 }).catch(() => {});
-  const links = await page.getByTestId('tab-search-links').locator('a').evaluateAll((as) =>
-    as.map((a) => ({ text: a.textContent, href: a.getAttribute('href'), target: a.getAttribute('target'), rel: a.getAttribute('rel') })),
+  await page.locator('[data-testid="tabs-empty"]:not([data-state="searching"])').waitFor({ timeout: 15_000 }).catch(() => {});
+  const links = await page.locator('[data-testid="tabs-empty-site"], [data-testid="tab-search-links"] a').evaluateAll((as) =>
+    as.map((a) => ({ link: a.dataset.link, href: a.getAttribute('href'), target: a.getAttribute('target'), rel: a.getAttribute('rel') })),
   ).catch(() => []);
   const q = encodeURIComponent(`${bare.artist} ${bare.title}`).replace(/%20/g, '+');
-  const byText = Object.fromEntries(links.map((l) => [l.text, l]));
-  check('Ultimate Guitar search link', byText['Ultimate Guitar']?.href === `https://www.ultimate-guitar.com/search.php?search_type=title&value=${q}`, byText['Ultimate Guitar']?.href);
-  check('Guitar Pro files search link', byText['Guitar Pro files']?.href === `https://duckduckgo.com/?q=${q}+(gp5+OR+gpx+OR+"guitar+pro")`, byText['Guitar Pro files']?.href);
-  check('Songsterr link', /^https:\/\/www\.songsterr\.com\//.test(byText.Songsterr?.href ?? ''), byText.Songsterr?.href);
-  check('every search link opens a new tab with noopener', links.length === 3 && links.every((l) => l.target === '_blank' && /noopener/.test(l.rel ?? '')));
+  const byLink = Object.fromEntries(links.map((l) => [l.link, l]));
+  check('Ultimate Guitar search link', byLink['ultimate-guitar']?.href === `https://www.ultimate-guitar.com/search.php?search_type=title&value=${q}`, byLink['ultimate-guitar']?.href);
+  check('Guitar Pro files search link', byLink['guitar-pro']?.href === `https://duckduckgo.com/?q=${q}+(gp5+OR+gpx+OR+"guitar+pro")`, byLink['guitar-pro']?.href);
+  const versions = await page.getByTestId('tabs-empty-match').evaluateAll((as) => as.map((a) => ({ href: a.getAttribute('href'), target: a.getAttribute('target'), rel: a.getAttribute('rel') }))).catch(() => []);
+  check('Songsterr versions link to songsterr.com', versions.every((v) => /^https:\/\/www\.songsterr\.com\//.test(v.href ?? '')), JSON.stringify(versions).slice(0, 160));
+  check('every link opens a new tab with noopener', links.length === 2 && [...links, ...versions].every((l) => l.target === '_blank' && /noopener/.test(l.rel ?? '')));
   const buttons = await page.getByTestId('tabs-empty').getByRole('button').allInnerTexts();
-  check('Add a file comes before Generate a tab (rough)', buttons.indexOf('Add a file') >= 0 && buttons.indexOf('Add a file') < buttons.indexOf('Generate a tab (rough)'), buttons.join(' | '));
+  check('Add a file is the only action: no Generate', buttons.length === 1 && buttons[0].trim() === 'Add a file', buttons.join(' | '));
   await page.context().close();
 }
 
-// The generated-tab status probe answers 404 for "none yet": the API's shape.
+// A 404 in the browser (an image or lyrics miss) is not an error of the page.
 const noisy = consoleErrors.filter((e) => !/favicon|404/.test(e));
 check('no unexpected console errors', noisy.length === 0, noisy.slice(0, 2).join(' | '));
 
