@@ -53,7 +53,7 @@ export const CHANGELOG: ChangelogEntry[] = [
     bullets: [
       'A backup of the whole database is made every night at 04:00, and the last 7 are kept.',
       'Admin > Backups lists them with a Download button for each, has Back up now, and warns when the disk is getting full.',
-      'Uploaded songs, tabs and prank sounds can be downloaded there as one file too.',
+      'Uploaded songs and tabs can be downloaded there as one file too.',
     ],
   },
   {
@@ -141,7 +141,6 @@ export const CHANGELOG: ChangelogEntry[] = [
       'In the car, tapping a song plays the rest of the list you tapped it in, not another tab.',
       'Opening the Android app no longer adds a play you did not make, or drops the playlist you were in.',
       'Back on Android closes the player or search, or goes to the previous page, instead of closing the app.',
-      'Prank sounds never play during a phone call.',
       'The desktop app shows a Retry page when it cannot reach Ember at launch, and loads Ember by itself once it can.',
       'The desktop media widget (Now Playing, the Windows media overlay) shows a scrubber and the song length, and says Stopped when the music runs out.',
       'Clearing the queue on the desktop app while a song is still loading keeps it quiet.',
