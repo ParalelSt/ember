@@ -254,7 +254,7 @@ describe('finding a tab online, once per song', () => {
 });
 
 describe('fetched rows in the store', () => {
-  it('list after pasted, before generated, with their source and labels', async () => {
+  it('list after pasted, with their source and labels (a generated row is left out)', async () => {
     const s = site();
     await findOnline(fake.pb, SONG, { fetcher: s.fetcher, dir });
     fake.rows.get('tabs')!.push(
@@ -264,7 +264,7 @@ describe('fetched rows in the store', () => {
     // The bass row is the newer one; the guitar tab still leads.
     fake.rows.get('tabs')!.find((r) => r.source_id === '9100011')!.created = '2030-01-01 00:00:00';
     const rows = await findTabs(fake.pb, VIEWER, { title: SONG.title, artist: SONG.artist });
-    expect(rows.map((r) => r.kind)).toEqual(['pasted', 'fetched', 'fetched', 'generated']);
+    expect(rows.map((r) => r.kind)).toEqual(['pasted', 'fetched', 'fetched']);
     expect(rows.filter((r) => r.kind === 'fetched').map((r) => r.source_id)).toEqual(['9100001', '9100011']);
 
     const guitar = mapTab(rows.find((r) => r.source_id === '9100001')!, VIEWER);

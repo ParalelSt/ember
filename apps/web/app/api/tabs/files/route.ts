@@ -14,8 +14,9 @@ import { addedByNames, findTabs, formatOf, mapTab, songKeyOf } from '@/lib/tabSt
  *  GET  : every file tab you can see (shared ones and your own), files
  *         first, newest first. `?title=&artist=` (and optionally `trackId=`)
  *         narrows to the ones for that song, by song_key, which is what the
- *         tab page asks for. `kind=all` adds generated tabs (the whole
- *         source chain the page picks from); the default is files only.
+ *         tab page asks for. `kind=all` adds pasted tabs and tabs found
+ *         online (the whole source chain the page picks from); the default
+ *         is files only. Generated tabs from older servers are never listed.
  *  POST : multipart `file`, plus optional title/artist/instrument/trackId.
  *         The new tab is shared with everyone on the server; its uploader
  *         (and admins) can delete it.

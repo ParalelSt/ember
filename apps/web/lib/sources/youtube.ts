@@ -118,9 +118,9 @@ function pythonReason(stderr: string, code: number | null): string {
  *  A job only holds a slot while its own process runs and never waits on
  *  another lane while holding one, so a download that falls back to a stream
  *  lookup (interactive) cannot deadlock: the download's gate slot is already
- *  released by then. Transcription for tabs (lib/tabGenerate.ts) spawns its
- *  own processes and stays outside: it is signed-in only and limited to 5 an
- *  hour per user. */
+ *  released by then. Lining a tab up (lib/tabAlign.ts) spawns its own
+ *  processes and stays outside: one job at a time (lib/pythonJobs.ts) and
+ *  rate limited per member. */
 export type PythonLane = 'interactive' | 'bulk';
 
 function envCap(name: string, fallback: number): number {

@@ -5,7 +5,7 @@ import { jsonError } from '@/lib/upsertTrack';
 import { rateLimitResponse } from '@/lib/rateLimit';
 import { serverLogger } from '@/lib/logger/server';
 import { withRequestLog } from '@/lib/logger/withRequestLog';
-import { canView } from '@/lib/tabStore';
+import { canView, isRetired } from '@/lib/tabStore';
 import { alignmentStatus, alignTab } from '@/lib/tabAlign';
 
 /** Lining a tab up with the recording.
@@ -24,7 +24,8 @@ import { alignmentStatus, alignTab } from '@/lib/tabAlign';
 async function rowFor(tabId: string, viewer: { id: string; isAdmin: boolean }) {
   const pb = await createAdminClient();
   const row = await pb.collection('tabs').getOne(tabId).catch(() => null);
-  if (!row || !(canView(row, viewer) || viewer.isAdmin)) return { pb, row: null };
+  // A generated tab (older servers) is never drawn, so there is nothing to line up.
+  if (!row || isRetired(row) || !(canView(row, viewer) || viewer.isAdmin)) return { pb, row: null };
   return { pb, row };
 }
 

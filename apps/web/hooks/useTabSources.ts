@@ -4,10 +4,9 @@ import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { QK, useQueryTrack } from '@/hooks/useLibrary';
-import { canGenerateFor, drawableTabs, type GeneratedStatus, type TabSummary } from '@/lib/tabSources';
+import { drawableTabs, type TabSummary } from '@/lib/tabSources';
 import { isLinedUp, type TabTiming } from '@/lib/tabSync';
 import type { TabMatch } from '@/lib/songsterr';
-import { friendlyGenerateError, TOOLS_MISSING_MESSAGE } from '@/lib/tabToolsText';
 import type { Track } from '@/types/track';
 
 /** The song a tab page is for: enough to look tabs up and to title the
@@ -58,16 +57,9 @@ export interface TabSourcesState {
   tabs: TabSummary[];
   /** Songsterr link-outs for the song. */
   matches: TabMatch[];
-  generated: GeneratedStatus;
-  generatedError: string | null;
-  canGenerate: boolean;
-  /** Why "Generate a tab" cannot work on this server (the optional tab
-   *  tools are not installed), or null when it can or is not known yet. */
-  generateUnavailable: string | null;
+  /** Songsterr has not answered yet. */
+  matchesLoading: boolean;
   loading: boolean;
-  generate: () => void;
-  generating: boolean;
-  generateError: string | null;
   upload: (file: File) => void;
   uploading: boolean;
   uploadError: string | null;
@@ -117,14 +109,13 @@ function stillWaiting(asked: Record<string, { was: number | null; at: number }>,
 }
 
 /** The source chain for one song, plus the
- *  flows that add to it: generate from the recording, add a file, delete,
- *  and save the sync nudge for everyone. */
+ *  flows that add to it: search online, add a file, delete, and save the
+ *  sync nudge for everyone. */
 export function useTabSources(song: TabSong | null): TabSourcesState {
   const qc = useQueryClient();
   const id = song?.id ?? '';
   const title = song?.title ?? '';
   const artist = song?.artist ?? '';
-  const canGenerate = !!song && canGenerateFor(id);
   const tabsKey = ['track-tabs', id, title, artist];
 
   // Tabs the listener asked to line up from the Source sheet. While one is
@@ -140,25 +131,6 @@ export function useTabSources(song: TabSong | null): TabSourcesState {
     refetchInterval: (q) => (stillWaiting(waiting, q.state.data).length > 0 ? 4000 : false),
   });
   const liningUp = stillWaiting(waiting, tabsQuery.data);
-  const generatedQuery = useQuery({
-    queryKey: ['generated-tab', id],
-    queryFn: () => api.getGeneratedTab(id),
-    enabled: canGenerate,
-    // Poll only while a job is running; a finished or absent tab does not change.
-    refetchInterval: (q) => (q.state.data?.status === 'running' ? 5000 : false),
-  });
-  // Whether the server has the optional tools a generation needs. Asked
-  // once in a while, not per song: it is the same answer for every song.
-  const toolsQuery = useQuery({
-    queryKey: ['tab-tools'],
-    queryFn: () => api.getTabTools(),
-    enabled: canGenerate,
-    staleTime: 5 * 60 * 1000,
-    retry: false,
-  });
-  const tools = toolsQuery.data?.generate;
-  const generateUnavailable =
-    tools && !tools.available ? (tools.message ?? TOOLS_MISSING_MESSAGE) : null;
   const matchesQuery = useQuery({
     queryKey: ['tabs', id],
     queryFn: () => api.getTabs(title, artist).then((r) => r.matches),
@@ -186,20 +158,7 @@ export function useTabSources(song: TabSong | null): TabSourcesState {
 
   const refresh = () => {
     void qc.invalidateQueries({ queryKey: ['track-tabs', id] });
-    void qc.invalidateQueries({ queryKey: ['generated-tab', id] });
   };
-  const generate = useMutation({
-    mutationFn: () => api.generateTab(id, title, artist),
-    // The job is queued: show it running now (the poll takes over from
-    // here) rather than flashing the empty state until the next fetch.
-    // Turned away because the tools are missing: ask the server again, so
-    // the button greys out with the reason.
-    onError: () => void qc.invalidateQueries({ queryKey: ['tab-tools'] }),
-    onSuccess: (r) => {
-      qc.setQueryData(['generated-tab', id], { status: r.status });
-      void qc.invalidateQueries({ queryKey: ['track-tabs', id] });
-    },
-  });
   const upload = useMutation({
     mutationFn: (file: File) => api.uploadTabFile(file, { title, artist, trackId: id }),
     onSuccess: refresh,
@@ -224,21 +183,11 @@ export function useTabSources(song: TabSong | null): TabSourcesState {
       setWaiting((m) => Object.fromEntries(Object.entries(m).filter(([k]) => k !== tabId))),
   });
 
-  // A job that finishes is drawable at once: drawableTabs stands in for its
-  // row until the next fetch of the chain brings the real one.
-  const generated: GeneratedStatus = generatedQuery.data?.status ?? 'none';
-
   return {
-    tabs: song ? drawableTabs(tabsQuery.data ?? [], generated, { id, title, artist }) : [],
+    tabs: song ? drawableTabs(tabsQuery.data ?? []) : [],
     matches: matchesQuery.data ?? [],
-    generated,
-    generatedError: friendlyGenerateError(generatedQuery.data?.error ?? null),
-    canGenerate,
-    generateUnavailable,
-    loading: !!song && (tabsQuery.isLoading || (canGenerate && generatedQuery.isLoading)),
-    generate: () => generate.mutate(),
-    generating: generate.isPending,
-    generateError: generate.error ? friendlyGenerateError((generate.error as Error).message) : null,
+    matchesLoading: !!song && !!title && matchesQuery.isLoading,
+    loading: !!song && tabsQuery.isLoading,
     upload: (file) => upload.mutate(file),
     uploading: upload.isPending,
     uploadError: upload.error ? (upload.error as Error).message : null,
@@ -248,7 +197,7 @@ export function useTabSources(song: TabSong | null): TabSourcesState {
     searchOnlineAgain: () => searchAgain.mutate(),
     searchAgainResult: againResult(searchAgain.isPending, searchAgain.isError, searchAgain.data),
     lineUp: (tabId) => {
-      if (!tabId || tabId.startsWith('generated:')) return;
+      if (!tabId) return;
       const was = (tabsQuery.data ?? []).find((t) => t.id === tabId)?.timing?.confidence ?? null;
       setWaiting((m) => ({ ...m, [tabId]: { was, at: Date.now() } }));
       lineUpOne.mutate(tabId);
@@ -273,11 +222,10 @@ export interface TabAlignment {
 /** The alignment of the tab on screen: what the
  *  server worked out, whether a job is running now (asked again every few
  *  seconds while it is), and the button that runs it again. Every kind of
- *  tab can be lined up now (stage 7 ranks them by how well they match); a
- *  generated tab with no row of its own yet is the one exception. */
+ *  tab can be lined up (stage 7 ranks them by how well they match). */
 export function useTabAlignment(tab: TabSummary | null): TabAlignment {
   const qc = useQueryClient();
-  const id = tab && !tab.id.startsWith('generated:') ? tab.id : '';
+  const id = tab?.id ?? '';
   const known = isLinedUp(tab?.timing);
   const query = useQuery({
     queryKey: ['tab-align', id],

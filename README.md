@@ -20,7 +20,7 @@ Setup and hosting: **[SETUP.md](SETUP.md)**. Native builds, signing, Discord id:
 - **Playlist import** from Spotify and YouTube Music links.
 - **Custom uploads**: members add their own audio files; everyone on the server can play them.
 - **Lyrics**: synced lyrics from LRCLib with look-ahead highlighting, plain lyrics from Genius as fallback.
-- **Guitar tabs**: a tab generated from the recording itself (Basic Pitch, optional Demucs guitar stem), your own Guitar Pro / MusicXML files rendered by AlphaTab with the cursor following the song, and Songsterr links for everything else. Transport controls and a sync nudge live inside the viewer.
+- **Guitar tabs**: tabs found on Songsterr and Ultimate Guitar, pasted text tabs and your own Guitar Pro / MusicXML files, rendered by AlphaTab with the cursor following the song and lined up with the recording (`align.py`). When there is none, the page lists the song's Songsterr versions to open there and the places to look by hand. A sync nudge, practice loops and a metronome live on the tab page.
 - **Live sessions ("carlist")**: a shared queue several people add to, in sync.
 - **Friends listening**: see what other members played recently.
 - **Discord Rich Presence**: "Listening to Ember" with a time bar that follows the playhead, from the desktop app on your own Discord; web and phone go through the host's.
@@ -45,8 +45,7 @@ spotify-clone/
       components/
         primitives/               # Artwork, PlayButton, LikeButton (props in, no hooks/stores)
         page/                     # PageTitle, SectionHeader, Eyebrow, EmptyState, CollectionHeader
-        player/                   # PlayerProvider, PlayerBar, NowPlaying, QueueSheet,
-                                  #   TabsDialog + TabViewer (generated guitar tabs)
+        player/                   # PlayerProvider, PlayerBar, NowPlaying, QueueSheet
         nav/                      # Sidebar, TopBar, MobileNav, Drawer, NavLinks
         track/                    # TrackShelf, TrackRow, TrackList; menus/ (TrackMenu, AddToPlaylistMenu, dialogs, data-aware)
         library/                  # CollectionPage, CollectionCard, CollectionShelf, DownloadButton
@@ -87,7 +86,7 @@ spotify-clone/
     pb_migrations/            # older schema as JS migrations
     pb_data/                  # SQLite + files (gitignored, per host)
   player.py                   # YouTube bridge: search, info, download, lyrics, …
-  transcribe.py               # recording → guitar tab (alphaTex) for the tab viewer
+  align.py                    # lines a tab up with the recording (optional librosa)
   my_music/                   # server-side audio cache; uploads/ and tabs/ beneath it
   tests/                      # runnable checks against a sandbox copy (see tests/README.md)
   start-static.sh             # production launcher (PocketBase + Next behind the Funnel)

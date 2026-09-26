@@ -1,5 +1,5 @@
 /** Text tabs (the ASCII kind people paste from Ultimate Guitar and forums)
- *  to alphaTex, the format generated tabs already use, so AlphaTab draws
+ *  to alphaTex, the format tabs found online use too, so AlphaTab draws
  *  them and the tab page syncs them like any other tab.
  *  docs/tab-sources.md section 2.
  *

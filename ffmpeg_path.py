@@ -1,4 +1,4 @@
-"""Where ffmpeg is, for player.py (yt-dlp) and transcribe.py (decoding).
+"""Where ffmpeg is, for player.py (yt-dlp) and align.py (decoding).
 
 Ember brings its own ffmpeg: the `imageio-ffmpeg` pip package ships a static
 binary, so a host never installs one by hand. The system ffmpeg on PATH is

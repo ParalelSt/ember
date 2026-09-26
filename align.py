@@ -25,8 +25,8 @@ with Ember's ffmpeg (ffmpeg_path.py) unless it is already a wav.
    recording (against chance), and how much better the tab's pitches match
    the recording's chroma than the same tab in the other eleven keys.
 
-The recording's tempo comes from librosa's beat tracker (transcribe.py's
-track_beats), for the report only.
+The recording's tempo comes from librosa's beat tracker, for the report
+only.
 
 Writes `out.json`: {offset_ms, bpm, confidence, bars: [{bar, ms}], scores}
 and prints it as one line. Exits 1 with one line on stderr on failure.
@@ -169,8 +169,8 @@ def audio_chroma(y: np.ndarray) -> np.ndarray:
 
 
 def recording_tempo(y: np.ndarray) -> float:
-    """The recording's tempo from librosa's beat tracker (transcribe.py's
-    track_beats), or 0 when it finds no beat."""
+    """The recording's tempo from librosa's beat tracker, or 0 when it finds
+    no beat."""
     import librosa
     tempo, _ = librosa.beat.beat_track(y=y, sr=SR)
     t = float(np.atleast_1d(tempo)[0]) if np.size(tempo) else 0.0

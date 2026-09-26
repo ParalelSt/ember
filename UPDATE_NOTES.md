@@ -181,23 +181,21 @@ tag builds.**
 # 0.7.2: Songs start reliably in the desktop app again
 
 **Host, in order: `./update.sh` as usual, then (once, if not done before)
-the guitar tab packages below, then restart the web app.**
+the tab alignment package below, then restart the web app.**
 
 1. **`./update.sh`** (a normal rebuild and restart, no new packages). The
    web fix (a song loads once, not twice) reaches every desktop app at its
    next page load. The engine fixes need the new desktop app, 0.4.2, which
    the `v0.4.2` tag builds.
-2. **Guitar tab packages, one time** (SETUP.md, "Generated guitar tabs").
-   Without them every tab found online logs "lining the tab up failed" as a
-   server error, and those errors show up in every bug report.
+2. **Tab alignment package, one time** (SETUP.md, "Lining tabs up with the
+   recording"). Without it every tab found online logs "lining the tab up
+   failed" as a server error, and those errors show up in every bug report.
 
    ```bash
-   .venv/bin/pip install 'setuptools<80'
-   .venv/bin/pip install --no-deps basic-pitch
-   .venv/bin/pip install onnxruntime librosa pretty_midi 'resampy<0.4.3' mir_eval scikit-learn typing-extensions
+   .venv/bin/pip install librosa
    ```
 
-   `update.sh` does not install these (see internal notes on the "luka"
+   `update.sh` does not install it (see internal notes on the "luka"
    playback repro).
 
 # 0.6.0: Admin pranks (plan-23-9)
@@ -262,12 +260,12 @@ what the new fields need), then, for YouTube Music, add two lines to
    every run installs it into `.venv` if missing and relinks
    `.venv/bin/ffmpeg` to it (an upgrade of the package renames the binary,
    so the link is redone each run). **No system ffmpeg install is needed
-   any more**: `player.py` (yt-dlp) and `transcribe.py` (tab generation)
+   any more**: `player.py` (yt-dlp) and `align.py` (lining tabs up)
    find it through `ffmpeg_path.py`, and a system ffmpeg on `PATH` is only
    the fallback. Check it with
    `./.venv/bin/python ffmpeg_path.py`, which prints the binary it will
    use. If pip cannot reach the network, update.sh prints a warning and
-   carries on: tab generation and some downloads will fail until it can.
+   carries on: lining tabs up and some downloads will fail until it can.
    If you install Python packages by hand instead, re-run
    `./.venv/bin/pip install -r requirements.txt`.
 2. **Restart PocketBase once** so its boot hooks run. Nothing to do by
@@ -693,8 +691,7 @@ What's in it:
   on Songsterr (links out; they block embedding).
 - **Generated guitar tabs**: the tabs dialog can now write a tab from the
   song's own recording, no Guitar Pro file needed. Rough in places, in time
-  with the song. Needs the optional Python packages from SETUP.md
-  ("Generated guitar tabs"); without them the button just reports a failure.
+  with the song. (Since removed: tabs are now found online instead.)
 - **Android app: native player + Android Auto**: browse playlists, likes,
   recents and uploads, search and voice, shuffle/repeat, radio at the end of
   the queue, all from the car. Reinstall the APK (older APKs keep working

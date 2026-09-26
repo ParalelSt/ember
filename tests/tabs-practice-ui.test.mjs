@@ -1,7 +1,8 @@
 /** UI check for the tab page's practice tools (as built): the sync nudge
  *  past 10 s and in beats, the metronome on the
  *  tab's beats through a tempo change, the speed (pitch kept) and the loop,
- *  and the "Find one" links of a song with no tab.
+ *  and the links out of a song with no tab (the places to look, and
+ *  Songsterr's versions).
  *
  *      node tests/tabs-practice-ui.test.mjs
  *
@@ -264,13 +265,26 @@ const trackPath = (id) => `/tabs/${encodeURIComponent(id)}`;
   const page = await newPage({ width: 1300, height: 950 });
   await page.context().route(/ultimate-guitar\.com|duckduckgo\.com|songsterr\.com/, (r) => r.fulfill({ status: 200, body: 'ok' }));
   await page.goto(`${APP_URL}${trackPath(bare.id)}`, { waitUntil: 'networkidle' });
-  await page.getByTestId('tab-search-links').waitFor({ timeout: 20_000 }).catch(() => {});
-  for (const [name, host] of [['Ultimate Guitar', 'www.ultimate-guitar.com'], ['Guitar Pro files', 'duckduckgo.com'], ['Songsterr', 'www.songsterr.com']]) {
+  await page.locator('[data-testid="tabs-empty"]:not([data-state="searching"])').waitFor({ timeout: 20_000 }).catch(() => {});
+  // The places to look by hand: rows when Songsterr has nothing, the line
+  // under Songsterr's versions when it has some.
+  const place = (id) => page.locator(`[data-testid="tabs-empty-site"][data-link="${id}"], [data-testid="tab-search-links"] a[data-link="${id}"]`).first();
+  for (const [id, name, host] of [['ultimate-guitar', 'Ultimate Guitar', 'www.ultimate-guitar.com'], ['guitar-pro', 'Guitar Pro files', 'duckduckgo.com']]) {
     const popup = page.context().waitForEvent('page', { timeout: 5000 }).catch(() => null);
-    await page.getByTestId('tab-search-links').getByRole('link', { name }).click();
+    await place(id).click();
     const opened = await popup;
     const url = opened ? opened.url() : '';
     check(`Find one: ${name} opens its search for the song`, url.includes(host) && /Practice(\+|%20)Tester/.test(url), url);
+    await opened?.close();
+  }
+  // Songsterr: a version of the song opens its page there.
+  const versions = page.getByTestId('tabs-empty-match');
+  if (await versions.count()) {
+    const popup = page.context().waitForEvent('page', { timeout: 5000 }).catch(() => null);
+    await versions.first().click();
+    const opened = await popup;
+    const url = opened ? opened.url() : '';
+    check('Find one: a Songsterr version opens its page', url.includes('www.songsterr.com') && /practice-bare/i.test(url), url);
     await opened?.close();
   }
   await page.close();

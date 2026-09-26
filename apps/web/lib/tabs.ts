@@ -77,7 +77,9 @@ export function ensureTabDir(): void {
   fs.mkdirSync(TAB_DIR, { recursive: true });
 }
 
-/** Where a generated tab's alphaTex lives: MUSIC_DIR/tabs/generated. */
+/** Where an older server kept tabs it generated from the recording:
+ *  MUSIC_DIR/tabs/generated. Nothing writes here any more; the files stay
+ *  (so does their row, never listed) and a delete still removes them. */
 export const GENERATED_DIR = path.join(TAB_DIR, 'generated');
 
 /** Where a tab found online lives: MUSIC_DIR/tabs/fetched, `<stem>.alphatex`
@@ -89,8 +91,9 @@ export const FETCHED_DIR = path.join(TAB_DIR, 'fetched');
 const STORED_ALPHATEX = /^[A-Za-z0-9_-]+\.alphatex$/;
 
 /** The file behind a tab row: a file someone added sits in TAB_DIR, a
- *  generated one in GENERATED_DIR, a fetched one in FETCHED_DIR. Generated
- *  and fetched names are checked against a plain `<stem>.alphatex` shape. */
+ *  fetched one in FETCHED_DIR, an old generated one in GENERATED_DIR.
+ *  Generated and fetched names are checked against a plain
+ *  `<stem>.alphatex` shape. */
 export function resolveRowPath(row: { [key: string]: unknown }): string | null {
   const filename = String(row.file ?? '');
   if (row.kind !== 'generated' && row.kind !== 'fetched') return resolveTabPath(filename);

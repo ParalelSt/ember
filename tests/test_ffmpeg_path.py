@@ -80,13 +80,24 @@ class ResolverTest(unittest.TestCase):
         self.assertIn("ffmpeg is missing: run ./update.sh", r.stderr)
 
 
-class TranscribeDecodeTest(unittest.TestCase):
+try:
+    import numpy  # type: ignore  # noqa: F401
+    import librosa  # type: ignore  # noqa: F401
+    HAS_ALIGN_DEPS = True
+except ImportError:
+    HAS_ALIGN_DEPS = False
+
+
+@unittest.skipUnless(HAS_ALIGN_DEPS, "align.py's numpy/librosa are not installed in this Python")
+class AlignDecodeTest(unittest.TestCase):
+    """align.py decodes anything that is not a wav with Ember's ffmpeg."""
+
     def test_decode_message_when_missing(self):
-        transcribe = importlib.import_module("transcribe")
-        with mock.patch.object(transcribe, "ffmpeg_exe", return_value=None), \
+        align = importlib.import_module("align")
+        with mock.patch.object(align, "ffmpeg_exe", return_value=None), \
                 mock.patch("sys.stderr") as err:
             with self.assertRaises(SystemExit) as cm:
-                transcribe.decode("in.m4a", "out.wav")
+                align.load_audio("in.m4a")
         self.assertEqual(cm.exception.code, 1)
         written = "".join(c.args[0] for c in err.write.call_args_list)
         self.assertIn("ffmpeg is missing: run ./update.sh", written)
@@ -94,13 +105,13 @@ class TranscribeDecodeTest(unittest.TestCase):
     @unittest.skipUnless(HAS_BUNDLED, "imageio-ffmpeg is not installed in this Python")
     def test_decode_works_with_empty_path(self):
         with tempfile.TemporaryDirectory() as tmp:
-            src = os.path.join(tmp, "tone.wav")
-            dst = os.path.join(tmp, "mix.wav")
+            # A wav under another name, so align.py takes the ffmpeg path.
+            src = os.path.join(tmp, "tone.audio")
             _write_wav(src)
-            code = f"import transcribe; transcribe.decode({src!r}, {dst!r})"
+            code = f"import align; y = align.load_audio({src!r}); print(len(y))"
             r = run_py(code)
             self.assertEqual(r.returncode, 0, r.stderr)
-            self.assertGreater(os.path.getsize(dst), 44)
+            self.assertGreater(int(r.stdout.strip().splitlines()[-1]), 1000)
 
 
 class PlayerOptsTest(unittest.TestCase):

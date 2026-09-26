@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type ComponentProps } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Button, buttonVariants } from '@/components/ui/button';
@@ -11,8 +11,19 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { ChevronDownIcon, ClockIcon, MoreIcon, PlayIcon, RepeatIcon } from '@/components/icons';
+import {
+  ChevronDownIcon,
+  ChevronRightIcon,
+  ClockIcon,
+  MoreIcon,
+  PlayIcon,
+  RepeatIcon,
+  SearchIcon,
+  TabsIcon,
+  UploadIcon,
+} from '@/components/icons';
 import { EmptyState } from '@/components/page/EmptyState';
+import { Skeleton } from '@/components/ui/skeleton';
 import { usePlayer } from '@/components/player/PlayerProvider';
 import { LiveTabScore } from '@/components/tabs/LiveTabScore';
 import { TabSheetHeader, TabSourceChip } from '@/components/tabs/TabSheetHeader';
@@ -22,13 +33,8 @@ import { useTabAlignment, useTabSong, useTabSources, type TabSong, type TabSourc
 import { useSettingsStore } from '@/stores/useSettingsStore';
 import { cn } from '@/lib/utils';
 import { metaLine, scoreScale, type ScoreInfo, type TabsScroll, type TabsStaff } from '@/lib/tabScore';
-import {
-  emptyStateFor,
-  followTrackChange,
-  localOffsetId,
-  sourceChipLabel,
-  type TabSummary,
-} from '@/lib/tabSources';
+import { emptyStateFor, followTrackChange, sourceChipLabel, type TabSummary } from '@/lib/tabSources';
+import type { TabMatch } from '@/lib/songsterr';
 import { chooseTab, confidencePercent, loadPick, savePick, sheetRows } from '@/lib/tabPick';
 import {
   clampOffset,
@@ -68,7 +74,6 @@ import {
   type OffsetUnit,
 } from '@/lib/tabOffset';
 import { tabSearchLinks, type TabSearchLink } from '@/lib/tabSearchLinks';
-import { TOOLS_MISSING_SHORT } from '@/lib/tabToolsText';
 import { openExternal } from '@/lib/openExternal';
 import { announceOpen } from '@/components/ExternalLinks';
 
@@ -220,7 +225,7 @@ function TabsSheet({ song, sources, onBack }: { song: TabSong; sources: TabSourc
 
   // The sync nudge: this device's own if it has one, else the tab's shared one.
   const [localOffset, setLocalOffset] = useState<{ id: string; ms: number | null } | null>(null);
-  const offsetId = tab ? localOffsetId(tab) : '';
+  const offsetId = tab?.id ?? '';
   const local = localOffset?.id === offsetId ? localOffset.ms : tab ? loadLocalOffsetMs(offsetId) : null;
   const offsetMs = local ?? tab?.offsetMs ?? 0;
   const changeOffset = (ms: number | null) => {
@@ -343,8 +348,6 @@ function TabsSheet({ song, sources, onBack }: { song: TabSong; sources: TabSourc
 
   const meta = metaLine(song.artist, tab ? info : null, trackIndex);
   const addFile = () => fileRef.current?.click();
-  const ownGenerated = sources.tabs.some((t) => t.kind === 'generated' && t.trackId === song.id);
-  const busyGenerating = sources.generated === 'running' || sources.generating;
   // Links for the listener to open; Ember's own search is useTabSources'.
   const searchLinks = tabSearchLinks(song, sources.matches);
   const removeTab = (id: string) => {
@@ -365,21 +368,6 @@ function TabsSheet({ song, sources, onBack }: { song: TabSong; sources: TabSourc
       onClick: sources.searchOnlineAgain,
     },
     { id: 'add-file', label: sources.uploading ? 'Adding…' : 'Add a file', disabled: sources.uploading, onClick: addFile },
-    ...(sources.canGenerate && !ownGenerated
-      ? [
-          {
-            id: 'generate',
-            label: busyGenerating
-              ? 'Transcribing…'
-              : sources.generateUnavailable
-                ? `Generate a tab: ${TOOLS_MISSING_SHORT.toLowerCase()}`
-                : 'Generate a tab (rough)',
-            disabled: busyGenerating || !!sources.generateUnavailable,
-            variant: 'ghost' as const,
-            onClick: sources.generate,
-          },
-        ]
-      : []),
   ];
 
   const actions = (
@@ -392,19 +380,6 @@ function TabsSheet({ song, sources, onBack }: { song: TabSong; sources: TabSourc
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className={MENU_CLASS}>
         <MenuItem label="Add a Guitar Pro or MusicXML file" onClick={addFile} />
-        {sources.canGenerate && !ownGenerated && (
-          <MenuItem
-            label={
-              busyGenerating
-                ? 'Transcribing…'
-                : sources.generateUnavailable
-                  ? `Generate a tab: ${TOOLS_MISSING_SHORT.toLowerCase()}`
-                  : 'Generate a tab from the recording'
-            }
-            disabled={busyGenerating || !!sources.generateUnavailable}
-            onClick={sources.generate}
-          />
-        )}
         <MenuItem
           label={sources.searchingOnline ? 'Searching online…' : 'Search online again'}
           disabled={sources.searchingOnline}
@@ -421,7 +396,7 @@ function TabsSheet({ song, sources, onBack }: { song: TabSong; sources: TabSourc
         {searchLinks.map((l) => (
           <MenuItem key={l.id} label={l.menuLabel} onClick={() => openLink(l.url)} />
         ))}
-        {tab?.canDelete && !tab.id.startsWith('generated:') && (
+        {tab?.canDelete && (
           <>
             <DropdownMenuSeparator />
             <MenuItem
@@ -554,7 +529,7 @@ function TabsSheet({ song, sources, onBack }: { song: TabSong; sources: TabSourc
                 clock={beatClock}
                 onUnitChange={setOffsetUnit}
                 shared={tab.offsetMs}
-                canShare={tab.canDelete && !tab.id.startsWith('generated:')}
+                canShare={tab.canDelete}
                 onChange={changeOffset}
                 onShare={() => sources.saveOffset(tab.id, offsetMs).then(() => changeOffset(null))}
               />
@@ -632,7 +607,7 @@ function TabsSheet({ song, sources, onBack }: { song: TabSong; sources: TabSourc
           />
         </>
       ) : (
-        <NoTab sources={sources} searchLinks={searchLinks} onAddFile={addFile} />
+        <NoTab sources={sources} searchLinks={searchLinks} phone={phone} onAddFile={addFile} />
       )}
       <TabSourceSheet
         open={sheetOpen}
@@ -685,10 +660,10 @@ function MenuItem({
   );
 }
 
-/** "File added by Aron, shared", "Text tab pasted by Aron, shared", "From
- *  Songsterr, Rhythm Guitar, lined up" or "Generated from the recording,
- *  rough", with how sure the alignment is when there is one. Clicking it
- *  opens the Source sheet: every tab for the song. */
+/** "File added by Aron, shared", "Text tab pasted by Aron, shared" or
+ *  "From Songsterr, Rhythm Guitar, lined up", with how sure the alignment
+ *  is when there is one. Clicking it opens the Source sheet: every tab for
+ *  the song. */
 function SourceChip({
   tab,
   instrument,
@@ -1074,124 +1049,199 @@ function MetronomeRow({
   );
 }
 
-/** No tab to draw: search for one by hand, add a file, or (the last resort)
- *  generate a rough one from the recording. */
+/** What each place to look by hand holds, under its name in the list. */
+const SITE_NOTES: Record<TabSearchLink['id'], string> = {
+  'ultimate-guitar': 'Text and Guitar Pro tabs, rated by players',
+  'guitar-pro': 'A web search for .gp and .gpx files',
+  songsterr: 'Search Songsterr yourself',
+};
+
+const FILE_NOTE = 'A Guitar Pro or MusicXML tab. Everyone here gets it.';
+
+/** "Guitar, Bass, Drums, chords": what a Songsterr version holds. */
+function matchInstruments(m: TabMatch): string {
+  return [m.instruments.join(', '), m.hasChords ? 'chords' : ''].filter(Boolean).join(', ');
+}
+
+/** The card's heading and the line under it, per state. */
+function emptyHead(state: EmptyStateView): { title: string; sub: string } {
+  if (state.kind === 'searching') return { title: 'Looking on Songsterr…', sub: 'This takes a few seconds.' };
+  if (state.kind === 'none') return { title: 'Nothing on Songsterr', sub: 'Try the places people post tabs, then add the file here.' };
+  const n = state.matches.length;
+  return n === 1
+    ? {
+        title: '1 tab on Songsterr',
+        sub: 'Ember could not draw it here. Open it on Songsterr, or get its Guitar Pro file and add it below.',
+      }
+    : {
+        title: `${n} tabs on Songsterr`,
+        sub: 'Ember could not draw these here. Open one on Songsterr, or get its Guitar Pro file and add it below.',
+      };
+}
+
+type EmptyStateView = ReturnType<typeof emptyStateFor>;
+
+/** A link out of Ember that opens through lib/openExternal (the desktop
+ *  app drops plain new-tab links). */
+function OutLink({ href, className, children, ...rest }: ComponentProps<'a'>) {
+  return (
+    <a
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+      onClick={(e) => {
+        e.preventDefault();
+        if (href) openLink(href);
+      }}
+      className={className}
+      {...rest}
+    >
+      {children}
+    </a>
+  );
+}
+
+/** The end of a row: "Open"/"Search" on a wide screen, a chevron on a phone. */
+function RowEnd({ phone, label }: { phone: boolean; label: string }) {
+  return phone ? (
+    <ChevronRightIcon aria-hidden className="size-4 shrink-0 text-muted-foreground" />
+  ) : (
+    <span className={cn(chip, chipOff, 'group-hover:bg-background group-hover:text-foreground')}>{label}</span>
+  );
+}
+
+const ROW = 'group flex min-w-0 items-center gap-row px-block py-row transition-colors hover:bg-muted/60';
+
+/** One Songsterr version: the tab icon, its title, what it holds, Open. */
+function MatchRow({ match, best, phone }: { match: TabMatch; best: boolean; phone: boolean }) {
+  return (
+    <li>
+      <OutLink href={match.url} data-testid="tabs-empty-match" className={ROW}>
+        <span aria-hidden className="grid size-10 shrink-0 place-items-center rounded-lg bg-ember/15 text-ember">
+          <TabsIcon className="size-5" />
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="flex min-w-0 items-center gap-cluster">
+            <span title={match.title} className="min-w-0 truncate text-sm font-medium">
+              {match.title}
+            </span>
+            {best && (
+              <span className="inline-flex shrink-0 items-center whitespace-nowrap rounded-full bg-ember/15 px-cluster py-inset text-[11px] font-medium leading-none text-ember">
+                Best match
+              </span>
+            )}
+          </span>
+          <span className="block truncate text-xs text-muted-foreground">{matchInstruments(match)}</span>
+        </span>
+        <RowEnd phone={phone} label="Open" />
+      </OutLink>
+    </li>
+  );
+}
+
+/** A place to look by hand, drawn like a Songsterr row. */
+function SiteRow({ link, phone }: { link: TabSearchLink; phone: boolean }) {
+  return (
+    <li>
+      <OutLink href={link.url} data-testid="tabs-empty-site" data-link={link.id} className={ROW}>
+        <span aria-hidden className="grid size-10 shrink-0 place-items-center rounded-lg bg-muted text-muted-foreground">
+          <SearchIcon className="size-4" />
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block truncate text-sm font-medium">{link.label}</span>
+          <span className="block truncate text-xs text-muted-foreground">{SITE_NOTES[link.id]}</span>
+        </span>
+        <RowEnd phone={phone} label="Search" />
+      </OutLink>
+    </li>
+  );
+}
+
+function SkeletonRows() {
+  return (
+    <>
+      {[0, 1, 2].map((i) => (
+        <li key={i} aria-hidden className="flex items-center gap-row px-block py-row">
+          <Skeleton className="size-10 shrink-0 rounded-lg" />
+          <div className="flex min-w-0 flex-1 flex-col gap-inset">
+            <Skeleton className="h-3.5 w-2/5" />
+            <Skeleton className="h-3 w-1/4" />
+          </div>
+        </li>
+      ))}
+    </>
+  );
+}
+
+/** No tab to draw (the "Songsterr list" the owner picked): Songsterr's
+ *  versions of the song to open there, or the places people post tabs when
+ *  Songsterr has none, with Add a file below either. While Ember is still
+ *  asking, the list is a skeleton. */
 function NoTab({
   sources,
   searchLinks,
+  phone,
   onAddFile,
 }: {
   sources: TabSourcesState;
   searchLinks: TabSearchLink[];
+  phone: boolean;
   onAddFile: () => void;
 }) {
   const state = emptyStateFor({
     loading: sources.loading,
-    generated: sources.generated,
-    generating: sources.generating,
-    generateError: sources.generatedError,
-    startError: sources.generateError,
-    generateUnavailable: sources.generateUnavailable,
-    canGenerate: sources.canGenerate,
-    matches: sources.matches,
     searchingOnline: sources.searchingOnline,
+    matchesLoading: sources.matchesLoading,
+    matches: sources.matches,
   });
-  if (state.kind === 'loading') return <EmptyState>Looking for a tab…</EmptyState>;
-  if (state.kind === 'searching') {
-    return (
-      <EmptyState>
-        <span role="status" data-testid="tabs-searching">
-          Finding a tab online…
-        </span>
-      </EmptyState>
-    );
-  }
-  if (state.kind === 'generating') {
-    return (
-      <EmptyState>
-        <span role="status">Transcribing the recording… this takes a few minutes.</span>
-      </EmptyState>
-    );
-  }
+  const head = emptyHead(state);
+  // Ultimate Guitar and Guitar Pro files: Songsterr has its own rows.
+  const otherSites = searchLinks.filter((l) => l.id !== 'songsterr');
+  const searching = state.kind === 'searching';
   return (
-    <div data-testid="tabs-empty" className="mt-section flex flex-col items-center gap-block text-center">
-      <p className="text-muted-foreground">No tab for this song yet.</p>
-      <div className="flex flex-col items-center gap-cluster">
-        <div className="text-eyebrow">Find one</div>
-        <div data-testid="tab-search-links" className="flex flex-wrap justify-center gap-cluster">
-          {searchLinks.map((l) => (
-            <a
-              key={l.id}
-              href={l.url}
-              target="_blank"
-              rel="noopener noreferrer"
-              data-link={l.id}
-              onClick={(e) => {
-                e.preventDefault();
-                openLink(l.url);
-              }}
-              className={cn(chip, chipOff)}
-            >
-              {l.label}
-            </a>
-          ))}
-        </div>
-      </div>
-      <div className="flex flex-wrap justify-center gap-cluster">
-        <Button variant="outline" onClick={onAddFile} disabled={sources.uploading}>
+    <div data-testid="tabs-empty" data-state={state.kind} className="mt-stack flex max-w-2xl flex-col gap-stack">
+      <section className="overflow-hidden rounded-2xl border border-border bg-card/60">
+        <header className="px-block pb-row pt-block">
+          <h2
+            role={searching ? 'status' : undefined}
+            data-testid={searching ? 'tabs-searching' : undefined}
+            className="text-lg font-semibold"
+          >
+            {head.title}
+          </h2>
+          <p className="text-meta mt-inset">{head.sub}</p>
+        </header>
+        <ul data-testid="tabs-empty-list" aria-busy={searching || undefined} className="divide-y divide-border border-t border-border">
+          {state.kind === 'matches' &&
+            state.matches.map((m, i) => <MatchRow key={m.id} match={m} best={i === 0 && state.matches.length > 1} phone={phone} />)}
+          {state.kind === 'none' && otherSites.map((l) => <SiteRow key={l.id} link={l} phone={phone} />)}
+          {searching && <SkeletonRows />}
+        </ul>
+      </section>
+      <div className="flex flex-wrap items-center gap-x-block gap-y-cluster">
+        <Button variant="ember" onClick={onAddFile} disabled={sources.uploading}>
+          <UploadIcon className="size-4" />
           {sources.uploading ? 'Adding…' : 'Add a file'}
         </Button>
-        {state.canGenerate && (
-          <Button
-            variant="ghost"
-            onClick={sources.generate}
-            disabled={!!state.unavailable}
-            title={state.unavailable ?? undefined}
-            aria-describedby={state.unavailable ? 'tabs-generate-unavailable' : undefined}
-          >
-            Generate a tab (rough)
-          </Button>
-        )}
+        <p className="text-meta min-w-0 flex-1 basis-56">{FILE_NOTE}</p>
       </div>
-      <p className="text-meta max-w-md">
-        {state.canGenerate && !state.unavailable
-          ? 'A file is a Guitar Pro or MusicXML tab, shared with everyone here. Generating listens to the recording and writes a guitar tab: a few minutes, rough in places, so it is the last resort.'
-          : 'A file is a Guitar Pro or MusicXML tab, shared with everyone here.'}
-      </p>
-      {state.unavailable && (
-        <p id="tabs-generate-unavailable" data-testid="tabs-generate-unavailable" role="note" className="text-meta max-w-md">
-          {state.unavailable}
-        </p>
-      )}
-      {state.failed && <p className="text-sm text-destructive">{state.failed}</p>}
-      {state.songsterr.length > 0 && (
-        <div className="mt-block w-full max-w-md text-left">
-          <div className="text-eyebrow mb-cluster">On Songsterr</div>
-          <div className="flex flex-col gap-inset">
-            {state.songsterr.map((m) => (
-              <a
-                key={m.id}
-                href={m.url}
-                target="_blank"
-                rel="noreferrer noopener"
-                onClick={(e) => {
-                  e.preventDefault();
-                  openLink(m.url);
-                }}
-                className="flex items-center gap-row rounded-md px-row py-cluster transition-colors hover:bg-card"
+      {state.kind !== 'none' && otherSites.length > 0 && (
+        <p data-testid="tab-search-links" className="text-meta">
+          Not the version you want? Search{' '}
+          {otherSites.map((l, i) => (
+            <span key={l.id}>
+              {i > 0 && ' or '}
+              <OutLink
+                href={l.url}
+                data-link={l.id}
+                className="font-medium text-foreground underline decoration-border underline-offset-4 hover:decoration-foreground"
               >
-                <div className="min-w-0 flex-1">
-                  <div className="truncate text-sm font-medium">{m.title}</div>
-                  <div className="truncate text-xs text-muted-foreground">
-                    {m.artist}
-                    {m.instruments.length > 0 && ` · ${m.instruments.join(', ')}`}
-                  </div>
-                </div>
-                <span className="shrink-0 text-xs text-muted-foreground">Opens Songsterr</span>
-              </a>
-            ))}
-          </div>
-        </div>
+                {l.label}
+              </OutLink>
+            </span>
+          ))}
+          .
+        </p>
       )}
     </div>
   );

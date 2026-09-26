@@ -9,10 +9,10 @@ import {
   canView,
   findTabs,
   hintsFor,
+  isRetired,
   mapTab,
   matchesQuery,
   orderSources,
-  recordGenerated,
   resetBackfill,
   songKeyOf,
   sortTabs,
@@ -78,7 +78,7 @@ describe('visibility and delete permission', () => {
     expect(canDelete(shared, ALICE)).toBe(true);
     expect(canDelete(shared, BOB)).toBe(false);
     expect(canDelete(shared, ADMIN)).toBe(true);
-    // A generated tab recorded after the fact has nobody to name.
+    // An old generated tab can have nobody to name.
     expect(canDelete(orphan, BOB)).toBe(false);
     expect(canDelete(orphan, ADMIN)).toBe(true);
   });
@@ -87,44 +87,40 @@ describe('visibility and delete permission', () => {
     expect(mapTab(shared, ALICE)).toMatchObject({ mine: true, canDelete: true, shared: true, kind: 'file' });
     expect(mapTab(shared, BOB)).toMatchObject({ mine: false, canDelete: false });
     expect(mapTab(shared, BOB).downloadUrl).toBe('/api/tabs/files/t1/download');
-    expect(mapTab(row({ ...orphan, track_key: 'upload:x1', file: 'upload-x1.alphatex' }), BOB)).toMatchObject({
-      kind: 'generated',
-      format: 'alphatex',
-      downloadUrl: '/api/tabs/generated/upload%3Ax1',
-    });
+  });
+
+  it('a generated row (older servers) is retired; every other kind is not', () => {
+    expect(isRetired(orphan)).toBe(true);
+    for (const kind of ['file', 'pasted', 'fetched', '', undefined]) expect(isRetired(row({ id: 'x', kind }))).toBe(false);
   });
 });
 
 describe('source priority', () => {
-  it('sorts files before generated tabs, newest first inside each', () => {
+  it('sorts files newest first', () => {
     const sorted = sortTabs([
-      row({ id: 'g', kind: 'generated', created: '2026-09-03' }),
       row({ id: 'f-old', kind: 'file', created: '2026-09-01' }),
       row({ id: 'f-new', kind: 'file', created: '2026-09-02' }),
     ]);
-    expect(sorted.map((r) => r.id)).toEqual(['f-new', 'f-old', 'g']);
+    expect(sorted.map((r) => r.id)).toEqual(['f-new', 'f-old']);
   });
 
-  it('orders the chain file > generated > Songsterr link', () => {
-    const g = mapTab(row({ id: 'g', kind: 'generated', track_key: 'upload:x', file: 'upload-x.alphatex' }), ALICE);
+  it('orders the chain file > Songsterr link', () => {
     const f = mapTab(row({ id: 'f', kind: 'file', file: 'a.gp5' }), ALICE);
     const link = { id: 42, artist: 'A', title: 'B', hasChords: false, instruments: [], url: 'https://x' };
-    expect(orderSources([g, f], [link]).map((s) => s.type)).toEqual(['file', 'generated', 'songsterr']);
+    expect(orderSources([f], [link]).map((s) => s.type)).toEqual(['file', 'songsterr']);
     expect(orderSources([], [link]).map((s) => s.type)).toEqual(['songsterr']);
   });
 
-  it('a pasted text tab sits between files and generated tabs', () => {
+  it('a pasted text tab sits after files, before Songsterr', () => {
     const sorted = sortTabs([
-      row({ id: 'g', kind: 'generated', created: '2026-09-05' }),
       row({ id: 'p', kind: 'pasted', created: '2026-09-04' }),
       row({ id: 'f', kind: 'file', created: '2026-09-01' }),
     ]);
-    expect(sorted.map((r) => r.id)).toEqual(['f', 'p', 'g']);
-    const g = mapTab(row({ id: 'g', kind: 'generated', track_key: 'upload:x', file: 'upload-x.alphatex' }), ALICE);
+    expect(sorted.map((r) => r.id)).toEqual(['f', 'p']);
     const p = mapTab(row({ id: 'p', kind: 'pasted', file: 'abc.alphatex', format: 'alphatex' }), ALICE);
     const f = mapTab(row({ id: 'f', kind: 'file', file: 'a.gp5' }), ALICE);
     const link = { id: 42, artist: 'A', title: 'B', hasChords: false, instruments: [], url: 'https://x' };
-    expect(orderSources([g, p, f], [link]).map((s) => s.type)).toEqual(['file', 'pasted', 'generated', 'songsterr']);
+    expect(orderSources([p, f], [link]).map((s) => s.type)).toEqual(['file', 'pasted', 'songsterr']);
   });
 
   it('a pasted row maps to kind pasted, loaded through the file download route', () => {
@@ -153,15 +149,33 @@ describe('findTabs', () => {
   it('finds a song by song_key and hides private tabs of other members', async () => {
     const { pb } = seed();
     const q = { title: 'Master of Puppets (Remastered)', artist: 'Metallica' };
-    expect((await findTabs(pb, ALICE, q)).map((r) => r.id)).toEqual(['a-shared', 'a-private', 'gen']);
-    expect((await findTabs(pb, BOB, q)).map((r) => r.id)).toEqual(['a-shared', 'gen']);
+    expect((await findTabs(pb, ALICE, q)).map((r) => r.id)).toEqual(['a-shared', 'a-private']);
+    expect((await findTabs(pb, BOB, q)).map((r) => r.id)).toEqual(['a-shared']);
+  });
+
+  it('never lists a generated tab: not by song, not by its own track, not in the library', async () => {
+    const { pb, rows } = seed();
+    expect((await findTabs(pb, BOB, { title: 'Master of Puppets', artist: 'Metallica' })).map((r) => r.id)).not.toContain('gen');
+    expect(await findTabs(pb, BOB, { trackId: 'youtube:abc' })).toEqual([]);
+    expect((await findTabs(pb, ADMIN, {})).map((r) => r.id)).not.toContain('gen');
+    // Kept in the store all the same.
+    expect(rows.get('tabs')!.some((r) => r.id === 'gen')).toBe(true);
+  });
+
+  it('never lists a generated tab even if the query string lets it through', async () => {
+    const { pb } = seed();
+    const getList = pb.collection('tabs').getList.bind(pb.collection('tabs'));
+    const all = await getList(1, 200, {});
+    vi.spyOn(pb, 'collection').mockReturnValue({ ...pb.collection('tabs'), getList: async () => all } as never);
+    const ids = (await findTabs(pb, BOB, { title: 'Master of Puppets', artist: 'Metallica' })).map((r) => r.id);
+    expect(ids).toEqual(['a-shared']);
   });
 
   it('narrows by kind', async () => {
     const { pb } = seed();
     const q = { title: 'Master of Puppets', artist: 'Metallica' };
     expect((await findTabs(pb, BOB, q, { kind: 'file' })).map((r) => r.id)).toEqual(['a-shared']);
-    expect((await findTabs(pb, BOB, q, { kind: 'generated' })).map((r) => r.id)).toEqual(['gen']);
+    expect(await findTabs(pb, BOB, q, { kind: 'pasted' })).toEqual([]);
   });
 
   it('with no song lists every tab you can see', async () => {
@@ -256,39 +270,5 @@ describe('Songsterr hints', () => {
     const { pb } = fakePocketBase({ tabs: [] });
     const search = vi.fn().mockResolvedValue([SONG]);
     expect(await hintsFor(pb, 'Master of Puppets', 'Metallica', search)).toEqual([SONG]);
-  });
-});
-
-describe('recordGenerated', () => {
-  it('creates one shared generated row per track, with hints', async () => {
-    const { pb, rows } = fakePocketBase({ tabs: [] });
-    const search = vi.fn().mockResolvedValue([SONG]);
-    const g = { trackId: 'youtube:abc', title: 'Master of Puppets', artist: 'Metallica', userId: 'alice', file: 'youtube-abc.alphatex' };
-
-    const first = await recordGenerated(pb, g, search);
-    const again = await recordGenerated(pb, { ...g, userId: 'bob' }, search);
-
-    expect(again.id).toBe(first.id);
-    expect(rows.get('tabs')).toHaveLength(1);
-    expect(rows.get('tabs')![0]).toMatchObject({
-      kind: 'generated',
-      format: 'alphatex',
-      shared: true,
-      user: 'alice',
-      track_key: 'youtube:abc',
-      song_key: 'master of puppets::::metallica',
-    });
-    expect(rows.get('tabs')![0].hints).toMatchObject({ songs: [SONG] });
-  });
-
-  it('is found by song afterwards, by anyone', async () => {
-    const { pb } = fakePocketBase({ tabs: [] });
-    await recordGenerated(
-      pb,
-      { trackId: 'upload:u1', title: 'Riff', artist: 'Me', userId: null, file: 'upload-u1.alphatex' },
-      vi.fn().mockResolvedValue(null),
-    );
-    const found = await findTabs(pb, BOB, { title: 'Riff', artist: 'Me' });
-    expect(found.map((r) => mapTab(r, BOB))).toMatchObject([{ kind: 'generated', canDelete: false }]);
   });
 });

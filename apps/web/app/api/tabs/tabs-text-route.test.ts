@@ -105,7 +105,7 @@ describe('POST /api/tabs/text', () => {
     expect(fs.readFileSync(path.join(TAB_DIR, file), 'utf8')).toContain('\\tuning (E4 B3 G3 D3 A2 D2)');
   });
 
-  it('another member sees it in the chain, after files and before generated, and can download the alphaTex', async () => {
+  it('another member sees it in the chain after files (a generated row is left out), and can download the alphaTex', async () => {
     as(ALICE);
     const id = (await (await post({ text: RIFF, title: 'Copper Sky', artist: 'Coastline', trackId: 'upload:u1' })).json()).tab.id;
     store.rows.get('tabs')!.push(
@@ -116,7 +116,7 @@ describe('POST /api/tabs/text', () => {
     );
     as(BOB);
     const { tabs } = await (await files.GET(req('/api/tabs/files?kind=all&trackId=upload%3Au1&title=Copper%20Sky&artist=Coastline'), undefined as never)).json();
-    expect(tabs.map((t: { kind: string }) => t.kind)).toEqual(['file', 'pasted', 'generated']);
+    expect(tabs.map((t: { kind: string }) => t.kind)).toEqual(['file', 'pasted']);
     expect(tabs[1]).toMatchObject({ id, mine: false, canDelete: false, downloadUrl: `/api/tabs/files/${id}/download` });
 
     const dl = await download.GET(req(`/api/tabs/files/${id}/download`), idCtx(id));

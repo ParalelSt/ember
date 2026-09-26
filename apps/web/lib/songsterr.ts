@@ -5,9 +5,9 @@ import { serverLogger } from '@/lib/logger/server';
  *
  *  Songsterr tells us which song a tab is for, which instruments it has and
  *  how they are tuned. Never the notes: those are its licensed content, and
- *  its player refuses to be embedded. So this is used two ways: a link-out
- *  list in the tabs dialog, and hints (tuning, instruments) stored on the
- *  tab rows for the transcriber.
+ *  its player refuses to be embedded. So this is used two ways: the link-out
+ *  list of the tab page's empty state, and hints (tuning, instruments)
+ *  stored on the song's tab rows.
  *
  *  SONGSTERR_BASE points the sandbox at tests/fake-songsterr.mjs, so no test
  *  needs the internet. */
