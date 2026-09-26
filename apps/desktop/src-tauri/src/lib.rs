@@ -10,6 +10,7 @@ mod connect;
 mod audio;
 mod cache;
 mod discord;
+mod eq;
 mod external;
 mod speech;
 mod theme;
@@ -202,6 +203,7 @@ pub fn run() {
             audio::audio_pause,
             audio::audio_seek,
             audio::audio_set_volume,
+            audio::audio_set_eq,
             audio::audio_set_metadata,
             cache::cache_prefetch,
             cache::cache_cancel,

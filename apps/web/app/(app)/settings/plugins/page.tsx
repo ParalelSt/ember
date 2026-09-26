@@ -3,6 +3,7 @@
 import { useSettingsStore } from '@/stores/useSettingsStore';
 import { cn } from '@/lib/utils';
 import { SectionHeader } from '@/components/page/SectionHeader';
+import { EqualizerPanel } from '@/components/settings/EqualizerPanel';
 
 const PLACEHOLDERS = [
   {
@@ -33,6 +34,8 @@ export default function SettingsPlugins() {
           on={normalizeVolume}
           onToggle={() => void setNormalizeVolume(!normalizeVolume)}
         />
+
+        <EqualizerPanel className="rounded-2xl bg-card p-block shadow-soft" />
 
         <PluginToggle
           name="Party-size volume slider"

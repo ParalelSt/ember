@@ -47,6 +47,7 @@ vi.mock('@/lib/offlineNative', () => ({ useTrackArtSrc: () => null }));
 vi.mock('@/lib/useBackDismiss', () => ({ useBackDismiss: () => {} }));
 const Stub = vi.hoisted(() => () => null);
 vi.mock('@/components/player/QueueSheet', () => ({ QueueSheet: Stub }));
+vi.mock('@/components/player/EqualizerSheet', () => ({ EqualizerSheet: Stub }));
 vi.mock('@/components/player/SeekBar', () => ({ SeekBar: Stub }));
 vi.mock('@/components/player/VolumeControl', () => ({ VolumeControl: Stub }));
 vi.mock('@/components/player/LyricsBody', () => ({ LyricsBody: Stub }));

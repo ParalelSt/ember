@@ -122,6 +122,10 @@ pub struct AudioEngine {
     /// start at rodio's default of 1.0 — i.e. the user sets 20%, the next song
     /// blasts at full. Applied in `new_sink`.
     volume: Mutex<f32>,
+    /// The equalizer every song plays through (src/eq.rs). Shared with the
+    /// `Equalized` wrapper of the loaded song, which picks a change up at
+    /// once, so it outlives track changes the way `volume` does.
+    eq: Arc<crate::eq::EqControl>,
     /// OS media controls (macOS Now Playing / Windows SMTC / Linux MPRIS).
     /// `None` if init failed — playback still works without OS controls.
     /// On macOS `MediaControls` is a zero-sized unit struct (state lives in
@@ -195,6 +199,7 @@ impl AudioEngine {
             current_total: Mutex::new(None),
             source_failed: Mutex::new(Arc::new(AtomicBool::new(false))),
             volume: Mutex::new(1.0),
+            eq: Arc::new(crate::eq::EqControl::new()),
             controls: Mutex::new(None),
             nowplaying_meta: Mutex::new(None),
             widget: Mutex::new(Widget::default()),
@@ -230,6 +235,7 @@ impl AudioEngine {
             current_total: Mutex::new(None),
             source_failed: Mutex::new(Arc::new(AtomicBool::new(false))),
             volume: Mutex::new(1.0),
+            eq: Arc::new(crate::eq::EqControl::new()),
             controls: Mutex::new(None),
             nowplaying_meta: Mutex::new(None),
             widget: Mutex::new(Widget::default()),
@@ -323,6 +329,16 @@ impl AudioEngine {
                 s.set_volume(clamped);
             }
         }
+    }
+
+    /// Change the equalizer; the song playing now follows at once.
+    pub fn set_eq(&self, settings: crate::eq::EqSettings) {
+        self.eq.set(settings);
+    }
+
+    /// The equalizer as last set.
+    pub fn eq(&self) -> crate::eq::EqSettings {
+        self.eq.get()
     }
 
     /// Take a ticket for a load that is about to start.
@@ -1432,7 +1448,9 @@ async fn load_claimed<R: Runtime>(
     // sounded before the seek to where it resumes, or before a launch load
     // meant to stay paused was paused.
     sink.pause();
-    sink.append(decoder);
+    // Through the equalizer, which passes the samples through untouched
+    // while it is off.
+    sink.append(crate::eq::Equalized::new(decoder, Arc::clone(&engine.eq)));
     // A seek pressed while this was on its way wins over where it was asked
     // to start (D2): the slider already shows it.
     let early_seek = engine.pending_seek.lock().ok().and_then(|mut p| p.take());
@@ -1774,6 +1792,15 @@ pub fn audio_set_volume(engine: State<'_, AudioEngine>, amplitude: f32) {
     engine.set_volume(amplitude);
 }
 
+/// The equalizer (src/eq.rs): on or off and the five band gains in dB
+/// (60 Hz, 230 Hz, 910 Hz, 3.6 kHz, 14 kHz), each held to -12..+12. The
+/// engine adds its own pre-amp so a boost cannot clip. Desktop builds before
+/// this command reject it as unknown; the webview ignores that.
+#[tauri::command]
+pub fn audio_set_eq(engine: State<'_, AudioEngine>, enabled: bool, bands: Vec<f32>) {
+    engine.set_eq(crate::eq::EqSettings::from_command(enabled, &bands));
+}
+
 // --- OS media controls (souvlaki) -------------------------------------------
 
 /// Initialize OS media controls and route their transport-button presses to the
@@ -1988,6 +2015,9 @@ mod transport_repro;
 // Same: drives `audio_load` on the mock app.
 #[cfg(all(test, not(windows)))]
 mod cache_play;
+// Same: drives `audio_load` and `audio_set_eq` on the mock app.
+#[cfg(all(test, not(windows)))]
+mod eq_play;
 
 #[cfg(test)]
 mod tests {
@@ -2061,6 +2091,17 @@ mod tests {
         // Whatever a later load builds its sink with, it reads this value.
         engine.set_volume(0.45);
         assert!((engine.volume() - 0.45).abs() < f32::EPSILON);
+    }
+
+    /// The equalizer is kept on the engine, not on a sink, so it holds from
+    /// one song to the next; a fresh engine starts with it off.
+    #[test]
+    fn the_equalizer_survives_track_changes() {
+        let engine = AudioEngine::new_degraded();
+        assert!(!engine.eq().enabled);
+        engine.set_eq(crate::eq::EqSettings::from_command(true, &[3.0, 0.0, 0.0, 0.0, -2.0]));
+        engine.silence_current();
+        assert_eq!(engine.eq(), crate::eq::EqSettings::from_command(true, &[3.0, 0.0, 0.0, 0.0, -2.0]));
     }
 
     /// Party mode amplifies above 1.0, so only the negative side is clamped.

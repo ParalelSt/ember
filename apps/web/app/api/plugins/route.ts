@@ -7,7 +7,8 @@ import { parsePluginPatch, readStoredPlugins, type StoredPlugins } from '@/lib/p
 /** Per-user plugin switches (Settings > Plugins), synced across devices.
  *
  *  GET   → the stored switches; a missing key was never saved
- *  PATCH → { partyVolume?: boolean, tabsEnabled?: boolean }, merged in
+ *  PATCH → { partyVolume?: boolean, tabsEnabled?: boolean, normalizeVolume?:
+ *          boolean, equalizer?: { enabled, bands } }, merged in
  *
  *  Same shape as api/changelog. The field is added on boot by
  *  pb_hooks/ensure_plugin_settings.pb.js; the keys live in
@@ -29,7 +30,10 @@ export const PATCH = withRequestLog('plugins', async (request: NextRequest) => {
     const { pb, user } = await requireUser();
     const patch = parsePluginPatch(await request.json().catch(() => null));
     if (!patch) {
-      return Response.json({ error: 'Expected known plugin keys with true or false' }, { status: 400 });
+      return Response.json(
+        { error: 'Expected known plugin keys with true or false (equalizer: { enabled, bands[5] })' },
+        { status: 400 },
+      );
     }
 
     // Merge into what is stored, keeping keys this build does not know about

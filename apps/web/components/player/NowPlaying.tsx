@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import {
-  ChevronDownIcon, MusicIcon, QueueIcon,
+  ChevronDownIcon, EqualizerIcon, MusicIcon, QueueIcon,
   RepeatIcon, RepeatOneIcon, ShuffleIcon, TabsIcon,
 } from '@/components/icons';
 import { Artwork } from '@/components/primitives/Artwork';
@@ -14,6 +14,7 @@ import { ShareButton } from '@/components/track/ShareButton';
 import { LyricsBody } from '@/components/player/LyricsBody';
 import { NowPlayingSummary } from '@/components/player/NowPlayingSummary';
 import { QueueSheet } from '@/components/player/QueueSheet';
+import { EqualizerSheet } from '@/components/player/EqualizerSheet';
 import { SeekBar } from '@/components/player/SeekBar';
 import { TransportControls } from '@/components/player/TransportControls';
 import { useBackDismiss } from '@/lib/useBackDismiss';
@@ -52,6 +53,9 @@ export function NowPlaying() {
   // The queue: the phone bar has no queue button of its own any more, so
   // this is where phones reach it. The sheet portals above this view.
   const [queueOpen, setQueueOpen] = useState(false);
+  // The equalizer, lit while it is on.
+  const [eqOpen, setEqOpen] = useState(false);
+  const eqOn = useSettingsStore((s) => s.equalizer.enabled);
 
   const router = useRouter();
   // The tab page for this song, full screen on phones like everything else.
@@ -197,7 +201,8 @@ export function NowPlaying() {
       >
         <ChevronDownIcon className="h-6 w-6" />
       </Button>
-      {/* Top right: guitar tabs (when the plugin is on) and the queue. */}
+      {/* Top right: guitar tabs (when the plugin is on), the equalizer and
+          the queue. */}
       <div
         className="absolute z-20 right-3 flex items-center gap-inset"
         style={{ top: 'calc(var(--safe-top) + 1rem)' }}
@@ -217,6 +222,16 @@ export function NowPlaying() {
         <Button
           variant="ghost"
           size="icon"
+          onClick={() => setEqOpen(true)}
+          aria-label="Equalizer"
+          title="Equalizer"
+          className={cn('h-10 w-10', eqOn ? 'text-ember hover:text-ember' : 'text-foreground/80 hover:text-foreground')}
+        >
+          <EqualizerIcon className="h-5 w-5" />
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon"
           onClick={() => setQueueOpen(true)}
           aria-label="Queue"
           title="Queue"
@@ -226,6 +241,7 @@ export function NowPlaying() {
         </Button>
       </div>
       <QueueSheet open={queueOpen} onOpenChange={setQueueOpen} />
+      <EqualizerSheet open={eqOpen} onOpenChange={setEqOpen} />
 
       <div
         ref={scrollerRef}

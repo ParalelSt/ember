@@ -2,6 +2,7 @@ import type { OverlayHandle } from '@/lib/pranks/overlayPlayer';
 import type { Track } from '@/types/track';
 import type { LoopMode } from '@/stores/usePlayerStore';
 import type { QueueOrigin } from '@/lib/autoCache/native';
+import type { EqSettings } from './eq';
 
 /** Transport commands the OS/remote (lock screen, Bluetooth, media keys) can
  *  invoke. The provider supplies these; a backend wires them to the platform. */
@@ -86,6 +87,12 @@ export interface AudioBackend {
    *  The engine looks up and applies each song's gain itself, as it moves
    *  between songs. Absent (or a no-op on an older app build) elsewhere. */
   setNormalize?(enabled: boolean): void;
+  /** The equalizer (lib/playback/eq): on or off and the five band gains.
+   *  Web audio builds its filter graph the first time it is switched on;
+   *  the desktop engine and the Android player filter natively and keep it
+   *  across songs themselves. Optional: an engine without one (or an older
+   *  app build, which ignores the call) plays unequalized. */
+  setEq?(eq: EqSettings): void;
   /** Lock-screen / notification metadata. web → MediaMetadata; native → OS.
    *  `localArtSrc` overrides `track.artworkUrl` when a downloaded copy has its
    *  own local art (already convertFileSrc-resolved by the caller). */

@@ -184,6 +184,11 @@ export const createTauriBackend: CreateAudioBackend = (events) => {
       const amplitude = gain > 1 ? Math.min(1, v) * gain * norm : Math.min(1, Math.pow(v, 1.5) * norm);
       void invoke('audio_set_volume', { amplitude }).catch(() => {});
     },
+    setEq(eq) {
+      // The engine filters the samples itself and keeps the setting across
+      // songs. Desktop builds before the equalizer reject the command.
+      void invoke('audio_set_eq', { enabled: eq.enabled, bands: eq.bands }).catch(() => {});
+    },
     setMetadata(track: Track | null) {
       void invoke('audio_set_metadata', {
         title: track?.title ?? '',

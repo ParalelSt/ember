@@ -209,6 +209,18 @@ class EmberPlayerPlugin : Plugin() {
             call.resolve()
         }
     }
+    /** The equalizer (the web app's setting): `enabled` and `bands`, five
+     *  gains in dB for 60 Hz, 230 Hz, 910 Hz, 3.6 kHz and 14 kHz. The service
+     *  keeps it on disk and filters every song itself (Equalizer.kt). */
+    @PluginMethod fun setEqualizer(call: PluginCall) {
+        val arr = call.getArray("bands")
+        val bands = arr?.let { a -> (0 until a.length()).map { a.optDouble(it) } }
+        val args = EqSettings.toBundle(EqSettings.of(call.getBoolean("enabled") ?: false, bands))
+        withController { c ->
+            c.sendCustomCommand(SessionCommand(EmberPlaybackService.COMMAND_EQUALIZER, Bundle.EMPTY), args)
+            call.resolve()
+        }
+    }
     /** The loop button: "off", "all" or "one". Native repeats by itself, so
      *  loop-one and loop-all only work once it has been told. */
     @PluginMethod fun setRepeat(call: PluginCall) {

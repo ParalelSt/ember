@@ -1,6 +1,7 @@
 'use client';
 
 import { logger } from '@/lib/logger/client';
+import { autoPreampDb, DEFAULT_EQ, EQ_BANDS, EQ_PEAK_Q, eqActive, type EqSettings } from './eq';
 import type { AudioBackend, CreateAudioBackend } from './types';
 
 /** HTMLMediaElement.NETWORK_LOADING, spelled out: some DOMs (and test
@@ -21,12 +22,26 @@ export const createWebBackend: CreateAudioBackend = (events) => {
   a.style.pointerEvents = 'none';
   if (typeof document !== 'undefined') document.body.appendChild(a);
 
-  // --- Web Audio gain graph (party mode > 1.0). Built on demand only — calling
-  // createMediaElementSource() permanently re-routes the element, which breaks
-  // native MediaSession + background playback, so normal playback stays on the
-  // bare element. Desktop party mode only; phones never build it.
+  // --- Web Audio graph: the equalizer and party mode's gain > 1.0. Built on
+  // demand only, the first time either is switched on: calling
+  // createMediaElementSource() permanently re-routes the element, which on
+  // phones can cost native MediaSession + background playback (a context the
+  // OS suspends with the screen off takes the music with it). So normal
+  // playback stays on the bare element, the equalizer is off by default and
+  // Settings warns about it on a phone browser. Once built, the graph stays
+  // until the page reloads: switched off, the filters sit at 0 dB and the
+  // pre-amp at 1, which is the bare element's sound.
+  //
+  //   element -> 60 Hz low shelf -> 230 / 910 / 3.6k peaking -> 14k high shelf
+  //           -> eq pre-amp (auto headroom) -> party gain -> speakers
+  //
+  // The element's own volume (the slider curve times normalization) still
+  // applies before all of it.
   let audioCtx: AudioContext | null = null;
   let gainNode: GainNode | null = null;
+  let eqFilters: BiquadFilterNode[] = [];
+  let eqPre: GainNode | null = null;
+  let eq: EqSettings = DEFAULT_EQ;
   const ensureGraph = (): GainNode | null => {
     if (gainNode) return gainNode;
     if (typeof window === 'undefined') return null;
@@ -37,16 +52,43 @@ export const createWebBackend: CreateAudioBackend = (events) => {
     try {
       const ctx = new Ctor();
       const source = ctx.createMediaElementSource(a);
+      const filters = EQ_BANDS.map((freq, i) => {
+        const f = ctx.createBiquadFilter();
+        f.type = i === 0 ? 'lowshelf' : i === EQ_BANDS.length - 1 ? 'highshelf' : 'peaking';
+        f.frequency.value = freq;
+        f.Q.value = EQ_PEAK_Q;
+        f.gain.value = 0;
+        return f;
+      });
+      const pre = ctx.createGain();
       const gain = ctx.createGain();
-      source.connect(gain);
+      let node: AudioNode = source;
+      for (const f of filters) {
+        node.connect(f);
+        node = f;
+      }
+      node.connect(pre);
+      pre.connect(gain);
       gain.connect(ctx.destination);
       audioCtx = ctx;
+      eqFilters = filters;
+      eqPre = pre;
       gainNode = gain;
+      applyEq();
       return gain;
     } catch (e) {
       logger.error('audio', 'web audio init failed', undefined, e as Error);
       return null;
     }
+  };
+  /** Puts the current settings on the graph, if there is one. */
+  const applyEq = () => {
+    if (!eqPre || !audioCtx) return;
+    const on = eqActive(eq);
+    eqFilters.forEach((f, i) => {
+      f.gain.value = on ? eq.bands[i] ?? 0 : 0;
+    });
+    eqPre.gain.value = on ? Math.pow(10, autoPreampDb(eq.bands, audioCtx.sampleRate || 48000) / 20) : 1;
   };
 
   // --- Transition + recovery state.
@@ -220,6 +262,14 @@ export const createWebBackend: CreateAudioBackend = (events) => {
         a.volume = Math.min(1, Math.pow(v, 1.5) * norm);
         if (gainNode) gainNode.gain.value = 1;
       }
+    },
+
+    setEq(next) {
+      eq = next;
+      // Nothing to build for an equalizer that changes nothing: a phone that
+      // never switches it on keeps the bare element.
+      if (eqActive(next) && ensureGraph()) audioCtx?.resume?.().catch(() => {});
+      applyEq();
     },
 
     setMetadata(track, localArtSrc) {

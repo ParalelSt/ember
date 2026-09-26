@@ -18,6 +18,8 @@ allow = [
   "audio_pause",
   "audio_seek",
   "audio_set_volume",
+  # The equalizer (src/eq.rs).
+  "audio_set_eq",
   "audio_set_metadata",
   # The auto cache of upcoming songs (src/cache.rs). Without these the remote
   # page gets "not allowed by ACL", which the web app reads as an older build

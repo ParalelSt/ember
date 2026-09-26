@@ -35,6 +35,7 @@ import { useKeyboardShortcuts } from '@/hooks/player/useKeyboardShortcuts';
 import { useRemoteCommands } from '@/hooks/player/useRemoteCommands';
 import { useTrackGain } from '@/hooks/player/useTrackGain';
 import { dbToLinear } from '@/lib/playback/normalization';
+import { eqForDevice, eqNeedsConsent } from '@/lib/playback/eqDevice';
 import { createWebBackend } from '@/lib/playback/webBackend';
 import { createCapacitorBackend } from '@/lib/playback/capacitorBackend';
 import { createNativeBackend, nativeBackendReady } from '@/lib/playback/nativeBridge';
@@ -797,6 +798,17 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     backendRef.current?.setNormalize?.(normalizeVolume);
   }, [backendReady, initialKind, normalizeVolume]);
+
+  // The equalizer, on every engine: web audio builds its filters the first
+  // time it is switched on, the desktop engine and the Android player keep
+  // it natively across songs. Sent again when the engine changes (a native
+  // engine that fell back to web audio). A phone on web audio only applies
+  // it once it was chosen there (lib/playback/eqDevice).
+  const equalizer = useSettingsStore((s) => s.equalizer);
+  const eqChosenHere = useSettingsStore((s) => s.eqChosenHere);
+  useEffect(() => {
+    backendRef.current?.setEq?.(eqForDevice(equalizer, eqNeedsConsent(initialKind), eqChosenHere));
+  }, [backendReady, initialKind, equalizer, eqChosenHere]);
 
   // The native Android player repeats (or stops at the end) by itself, so
   // it has to be told the loop mode. Other backends have no setLoop: the
