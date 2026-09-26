@@ -18,7 +18,7 @@ import { PlaylistNavList } from '@/components/nav/PlaylistNavList';
 import { Avatar } from '@/components/primitives/Avatar';
 import { FlameIcon, PlusIcon } from '@/components/icons';
 import { BASE_NAV, ADMIN_NAV_ITEM } from '@/lib/nav';
-import { hrefFor, systemCollections } from '@/lib/collections';
+import { hrefFor, sharedLabel, systemCollections } from '@/lib/collections';
 import { useUiStore } from '@/stores/useUiStore';
 
 export function Sidebar() {
@@ -79,6 +79,7 @@ export function Sidebar() {
               name: p.name,
               href: hrefFor({ kind: 'playlist', id: p.id }),
               importState: importStates[p.id],
+              sharedLabel: sharedLabel(p),
             }))}
             activePath={pathname}
             authed={!!user}

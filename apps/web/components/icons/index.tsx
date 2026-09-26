@@ -60,4 +60,6 @@ export {
   ArrowDown as ArrowDownIcon,
   Minus as MinusIcon,
   SquareCheck as SelectIcon,
+  Users as PeopleIcon,
+  UserPlus as AddPersonIcon,
 } from 'lucide-react';

@@ -8,7 +8,17 @@ import { useOfflineStore } from '@/stores/useOfflineStore';
 import { logger } from '@/lib/logger/client';
 import { LIKED_PIN, RECENT_PIN, pinLiked, pinList, playableFor } from '@/lib/offline';
 import { nativeOfflinePresent } from '@/lib/offlineNative';
-import type { Playlist, Track } from '@/types/track';
+import { moveItem } from '@/lib/collab';
+import type { CollectionTrack, Playlist, Track } from '@/types/track';
+
+/** How often an open collaborative playlist asks for other people's
+ *  changes, and how often the playlist list does (someone may have shared
+ *  a playlist with you). Polling, like carlists (hooks/useSession), since
+ *  PocketBase's realtime stream does not come through the /pb proxy under
+ *  `next start` (tests/pranks-realtime.spike.mjs). Only while the page is
+ *  visible. */
+export const COLLAB_POLL_MS = 5_000;
+export const PLAYLISTS_POLL_MS = 30_000;
 
 export const QK = {
   likes: ['likes'] as const,
@@ -59,6 +69,7 @@ export function useQueryPlaylists() {
     queryKey: QK.playlists,
     queryFn: () => api.listPlaylists().then((r) => r.playlists),
     enabled: !!user,
+    refetchInterval: PLAYLISTS_POLL_MS,
   });
 }
 
@@ -66,6 +77,9 @@ export function useQueryPlaylist(id: string) {
   return useQuery({
     queryKey: QK.playlist(id),
     queryFn: () => api.getPlaylist(id),
+    // A collaborative playlist follows the other people's edits. Stops once
+    // it fails (deleted, or you were removed): the page says so instead.
+    refetchInterval: (q) => (q.state.status !== 'error' && q.state.data?.playlist.collaborative ? COLLAB_POLL_MS : false),
   });
 }
 
@@ -302,6 +316,40 @@ export function useExecuteReplaceInPlaylist() {
       qc.invalidateQueries({ queryKey: QK.playlist(id) });
       logger.breadcrumb('library', 'playlist.replace', { playlistId: id, from: trackId, to: track.id });
     },
+  });
+}
+
+export function useExecuteRenamePlaylist() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, name }: { id: string; name: string }) => api.renamePlaylist(id, name),
+    onSuccess: (_d, { id }) => {
+      qc.invalidateQueries({ queryKey: QK.playlist(id) });
+      qc.invalidateQueries({ queryKey: QK.playlists });
+    },
+  });
+}
+
+/** Move one song within the playlist's own order. The cache moves first,
+ *  so the row jumps at once; a failure puts it back. `from` and `to` are
+ *  places in the server's order (the page only offers moves while the list
+ *  is shown in that order). */
+export function useExecuteMovePlaylistTrack() {
+  const qc = useQueryClient();
+  type Data = { playlist: Playlist; tracks: CollectionTrack[] };
+  return useMutation({
+    mutationFn: ({ id, trackId, to }: { id: string; trackId: string; from: number; to: number }) =>
+      api.movePlaylistTrack(id, trackId, to),
+    onMutate: async ({ id, from, to }) => {
+      await qc.cancelQueries({ queryKey: QK.playlist(id) });
+      const prev = qc.getQueryData<Data>(QK.playlist(id));
+      if (prev) qc.setQueryData<Data>(QK.playlist(id), { ...prev, tracks: moveItem(prev.tracks, from, to) });
+      return { prev };
+    },
+    onError: (_e, { id }, ctx) => {
+      if (ctx?.prev) qc.setQueryData(QK.playlist(id), ctx.prev);
+    },
+    onSettled: (_d, _e, { id }) => qc.invalidateQueries({ queryKey: QK.playlist(id) }),
   });
 }
 

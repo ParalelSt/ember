@@ -1,12 +1,21 @@
 import Link from 'next/link';
 import { ProgressRing } from '@/components/primitives/ProgressRing';
+import { PeopleIcon } from '@/components/icons';
 import { cn } from '@/lib/utils';
 import type { NavImportState } from '@/lib/import/nav';
 
 export type { NavImportState };
 
 export interface PlaylistNavListProps {
-  items: { id: string; name: string; href: string; importState?: NavImportState }[];
+  items: {
+    id: string;
+    name: string;
+    href: string;
+    importState?: NavImportState;
+    /** A collaborative playlist: "Collaborative" (yours) or "Shared by
+     *  Olga", shown as a small people mark and its tooltip. */
+    sharedLabel?: string;
+  }[];
   /** Signed-out users see "Sign in to create" instead of an (always empty) list. */
   authed: boolean;
   /** Highlights the open playlist. */
@@ -54,9 +63,10 @@ export function PlaylistNavList({ items, authed, activePath, onNavigate }: Playl
           onClick={onNavigate}
           data-testid={p.importState ? 'import-nav-row' : undefined}
           data-import={p.importState?.kind}
+          title={p.sharedLabel ? `${p.name}, ${p.sharedLabel}` : undefined}
           className={cn(
             'px-3 py-2 rounded-md text-sm truncate transition-colors',
-            p.importState && 'flex items-center gap-cluster',
+            (p.importState || p.sharedLabel) && 'flex items-center gap-cluster',
             activePath === p.href
               ? 'bg-sidebar-accent text-sidebar-accent-foreground'
               : 'text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent/60',
@@ -66,6 +76,11 @@ export function PlaylistNavList({ items, authed, activePath, onNavigate }: Playl
             <>
               <span className="min-w-0 flex-1 truncate">{p.name}</span>
               <ImportTail state={p.importState} />
+            </>
+          ) : p.sharedLabel ? (
+            <>
+              <span className="min-w-0 flex-1 truncate">{p.name}</span>
+              <PeopleIcon data-testid="nav-shared" aria-label={p.sharedLabel} className="size-3.5 shrink-0 text-sidebar-foreground/55" />
             </>
           ) : (
             p.name

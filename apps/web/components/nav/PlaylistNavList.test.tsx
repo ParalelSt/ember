@@ -56,3 +56,20 @@ describe('PlaylistNavList import states', () => {
     expect(b).toHaveTextContent('Import failed');
   });
 });
+
+describe('PlaylistNavList shared playlists', () => {
+  it('a collaborative playlist wears a people mark that says whose it is', () => {
+    render(
+      <PlaylistNavList
+        authed
+        items={[
+          { id: 'p1', name: 'Road trip', href: '/playlist/p1', sharedLabel: 'Shared by Olga' },
+          { id: 'p2', name: 'Gym', href: '/playlist/p2' },
+        ]}
+      />,
+    );
+    expect(screen.getByTestId('nav-shared')).toHaveAttribute('aria-label', 'Shared by Olga');
+    expect(screen.getByRole('link', { name: /Road trip/ })).toHaveAttribute('title', 'Road trip, Shared by Olga');
+    expect(screen.getAllByTestId('nav-shared')).toHaveLength(1);
+  });
+});

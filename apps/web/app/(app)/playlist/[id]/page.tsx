@@ -5,11 +5,15 @@ import { useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
-import { Button } from '@/components/ui/button';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { TrackSearchPicker } from '@/components/track/menus/TrackSearchPicker';
-import { TrashIcon } from '@/components/icons';
 import { CollectionPage } from '@/components/library/CollectionPage';
+import { PlaylistMenu } from '@/components/library/PlaylistMenu';
+import { RenamePlaylistDialog } from '@/components/library/RenamePlaylistDialog';
+import { CollaborateSheet } from '@/components/library/CollaborateSheet';
+import { useAuth } from '@/components/providers/AuthProvider';
+import { useCollaborateSheet } from '@/hooks/useCollaborateSheet';
+import { api } from '@/lib/api';
 import { ReplaceTrackDialog } from '@/components/track/menus/ReplaceTrackDialog';
 import { TrackMenu } from '@/components/track/menus/TrackMenu';
 import { CopySongsBar } from '@/components/track/menus/CopySongsBar';
@@ -27,7 +31,7 @@ import { countLabel, pinIdFor } from '@/lib/collections';
 import { useCollectionPlayback } from '@/hooks/useCollectionPlayback';
 import { useCollectionSort } from '@/hooks/useCollectionSort';
 import { useTrackSelection } from '@/hooks/useTrackSelection';
-import { DEFAULT_PLAYLIST_SORT, sortCollection } from '@/lib/playlistCopy';
+import { DEFAULT_PLAYLIST_SORT, sameSort, sortCollection } from '@/lib/playlistCopy';
 import { formatAddedDate } from '@/lib/format';
 import { useOfflinePin } from '@/hooks/useOfflinePin';
 import { localArtFor } from '@/lib/offlineNative';
@@ -36,7 +40,9 @@ import { useOnline } from '@/lib/useOnline';
 import {
   useExecuteAddToPlaylist,
   useExecuteDeletePlaylist,
+  useExecuteMovePlaylistTrack,
   useExecuteRemoveFromPlaylist,
+  useExecuteRenamePlaylist,
   useExecuteReplaceInPlaylist,
   useExecuteUpdatePlaylistArtwork,
   useQueryPlaylist,
@@ -48,6 +54,7 @@ import { SectionHeader } from '@/components/page/SectionHeader';
 
 const NO_TRACKS: CollectionTrack[] = [];
 const addedLabel = (t: Track) => formatAddedDate((t as CollectionTrack).addedAt);
+const addedBy = (t: Track) => (t as CollectionTrack).addedBy;
 
 export default function PlaylistPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
@@ -58,7 +65,14 @@ export default function PlaylistPage({ params }: { params: Promise<{ id: string 
   const addToPlaylist = useExecuteAddToPlaylist();
   const updateArtwork = useExecuteUpdatePlaylistArtwork();
   const replaceInPlaylist = useExecuteReplaceInPlaylist();
+  const renamePlaylist = useExecuteRenamePlaylist();
+  const moveTrack = useExecuteMovePlaylistTrack();
+  const { user } = useAuth();
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
+  const [confirmLeaveOpen, setConfirmLeaveOpen] = useState(false);
+  const [renameOpen, setRenameOpen] = useState(false);
+  const [collabOpen, setCollabOpen] = useState(false);
+  const collabSheet = useCollaborateSheet(id, collabOpen);
   const [pendingRemove, setPendingRemove] = useState<Track | null>(null);
   const [pendingReplace, setPendingReplace] = useState<Track | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -137,16 +151,38 @@ export default function PlaylistPage({ params }: { params: Promise<{ id: string 
   if (isLoading || !data) return <EmptyState>Loading…</EmptyState>;
 
   const { playlist } = data;
+  // An older server says nothing about roles: it only ever served owners.
+  const isOwner = (playlist.role ?? 'owner') === 'owner';
+  const collaborative = playlist.collaborative === true;
   const showImport = !!job && !job.dismissed;
   const toReview = items.filter((i) => i.status === 'review' || i.status === 'missing').length;
   const importing = !!job && isActive(job.status);
   const meta = job
     ? [`From ${SOURCE_NAME[job.source]}`, importing ? `${job.cursor} of ${job.total} songs` : countLabel(tracks.length)]
     : [countLabel(tracks.length)];
+  if (!isOwner) meta.unshift(`By ${playlist.owner_name || 'someone'}`);
+
+  // Move up / down: only while the list is shown in the playlist's own
+  // order (the default sort), so "up" means up on screen too.
+  const inOwnOrder = sameSort(sort, DEFAULT_PLAYLIST_SORT) && !showImport && !selection.selecting;
+  const movesFor = (t: Track) => {
+    if (!inOwnOrder) return undefined;
+    const at = rawTracks.findIndex((x) => x.id === t.id);
+    if (at < 0) return undefined;
+    const move = (to: number) =>
+      moveTrack.mutate(
+        { id, trackId: t.id, from: at, to },
+        { onError: (e) => toast.error(`Couldn't move "${t.title}": ${(e as Error).message}`) },
+      );
+    return {
+      up: at > 0 ? () => move(at - 1) : undefined,
+      down: at < rawTracks.length - 1 ? () => move(at + 1) : undefined,
+    };
+  };
 
   const trailing = (t: Track) => {
     const item = job ? itemForTrack(items, t) : null;
-    return <TrackMenu track={t} onRematch={item ? () => review.openRematch(item) : undefined} />;
+    return <TrackMenu track={t} onRematch={item ? () => review.openRematch(item) : undefined} moves={movesFor(t)} />;
   };
 
   const act = (action: 'cancel' | 'retry' | 'dismiss') =>
@@ -185,6 +221,19 @@ export default function PlaylistPage({ params }: { params: Promise<{ id: string 
     }
   };
 
+  const handleLeave = async () => {
+    if (!user) return;
+    try {
+      await api.removePlaylistMember(id, user.id);
+      toast.success(`You left "${playlist.name}"`);
+      await qc.invalidateQueries({ queryKey: QK.playlists });
+      router.push('/library');
+    } catch (e) {
+      toast.error(`Couldn't leave the playlist: ${(e as Error).message}`);
+      throw e; // keep the dialog open on failure
+    }
+  };
+
   const handleConfirmRemove = async () => {
     const track = pendingRemove;
     if (!track) return;
@@ -200,12 +249,13 @@ export default function PlaylistPage({ params }: { params: Promise<{ id: string 
 
   return (
     <CollectionPage
-      eyebrow="Playlist"
+      eyebrow={collaborative ? 'Collaborative playlist' : 'Playlist'}
       title={playlist.name}
       meta={meta}
       cover={{ src: localCoverSrc ?? playlist.artwork_url, icon: null }}
-      onCoverClick={() => fileInputRef.current?.click()}
-      coverLabel="Change playlist cover"
+      // The cover is the owner's to change.
+      onCoverClick={isOwner ? () => fileInputRef.current?.click() : undefined}
+      coverLabel={isOwner ? 'Change playlist cover' : undefined}
       coverBusy={updateArtwork.isPending}
       tracks={tracks}
       context={context}
@@ -243,9 +293,13 @@ export default function PlaylistPage({ params }: { params: Promise<{ id: string 
         ) : undefined
       }
       actions={
-        <Button variant="ghost" size="icon" onClick={() => setConfirmDeleteOpen(true)} aria-label="Delete playlist">
-          <TrashIcon className="h-4 w-4" />
-        </Button>
+        <PlaylistMenu
+          role={isOwner ? 'owner' : 'member'}
+          onCollaborate={() => setCollabOpen(true)}
+          onRename={() => setRenameOpen(true)}
+          onDelete={() => setConfirmDeleteOpen(true)}
+          onLeave={() => setConfirmLeaveOpen(true)}
+        />
       }
       onRemoveTrack={(trackId) => {
         const track = tracks.find((t) => t.id === trackId);
@@ -256,6 +310,7 @@ export default function PlaylistPage({ params }: { params: Promise<{ id: string 
       sort={{ value: sort, onChange: setSort }}
       selection={selection}
       addedLabel={addedLabel}
+      addedBy={collaborative ? addedBy : undefined}
       selectionBar={
         <CopySongsBar
           source={{ kind: 'playlist', id }}
@@ -288,6 +343,33 @@ export default function PlaylistPage({ params }: { params: Promise<{ id: string 
         variant="destructive"
         onConfirm={handleDelete}
       />
+
+      <ConfirmDialog
+        open={confirmLeaveOpen}
+        onOpenChange={setConfirmLeaveOpen}
+        title={`Leave "${playlist.name}"?`}
+        description={`It leaves your library. The songs you added stay in it. ${playlist.owner_name || 'The owner'} can add you again.`}
+        confirmLabel="Leave"
+        variant="destructive"
+        onConfirm={handleLeave}
+      />
+
+      <RenamePlaylistDialog
+        open={renameOpen}
+        onOpenChange={setRenameOpen}
+        name={playlist.name}
+        onRename={(next) =>
+          renamePlaylist.mutateAsync({ id, name: next }).then(
+            () => toast.success('Renamed'),
+            (e: unknown) => {
+              toast.error(`Couldn't rename it: ${(e as Error).message}`);
+              throw e;
+            },
+          )
+        }
+      />
+
+      <CollaborateSheet open={collabOpen} onOpenChange={setCollabOpen} {...collabSheet} />
 
       <ConfirmDialog
         open={!!pendingRemove}

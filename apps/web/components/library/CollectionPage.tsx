@@ -12,7 +12,7 @@ import { ActionBar } from '@/components/page/ActionBar';
 import { DownloadButton, type DownloadButtonProps } from '@/components/library/DownloadButton';
 import type { CollectionCoverProps } from '@/components/primitives/CollectionCover';
 import { cn } from '@/lib/utils';
-import type { PlaybackContext, Track } from '@/types/track';
+import type { PlaybackContext, PlaylistPerson, Track } from '@/types/track';
 import { EmptyState } from '@/components/page/EmptyState';
 
 // Same shape as hooks/useCollectionPlayback's CollectionPlayback, restated
@@ -80,6 +80,8 @@ export interface CollectionPageProps {
   selectionBar?: ReactNode;
   /** "12 Jun" for a row, in select mode on a wide list. */
   addedLabel?: (track: Track) => string | undefined;
+  /** Who added each song, on a collaborative playlist. */
+  addedBy?: (track: Track) => PlaylistPerson | null | undefined;
 }
 
 /** Presentational only: the header, action bar and track list shared by
@@ -115,6 +117,7 @@ export function CollectionPage({
   selection,
   selectionBar,
   addedLabel,
+  addedBy,
 }: CollectionPageProps) {
   // No empty action bar (offline, nothing to play or download): the header
   // would still reserve its stack gap above it.
@@ -220,6 +223,7 @@ export function CollectionPage({
               trailing={trailing}
               selection={canSelect ? selection : undefined}
               addedLabel={addedLabel}
+              addedBy={addedBy}
               {...trackActions}
             />
           </div>

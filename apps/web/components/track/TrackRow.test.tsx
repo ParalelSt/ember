@@ -470,3 +470,21 @@ describe('TrackRow select mode', () => {
     expect(screen.getByTestId('track-row').className).toContain('bg-ember/10');
   });
 });
+
+describe('TrackRow added by (collaborative playlists)', () => {
+  it('shows who added the song: their picture before the artist, the name after it', () => {
+    render(<TrackRow track={track} addedBy={{ name: 'Mia', avatarUrl: null }} />);
+    const by = screen.getByTestId('track-row-added-by');
+    expect(by).toHaveAttribute('aria-label', 'Added by Mia');
+    // The picture is the initial when there is no photo.
+    expect(by).toHaveTextContent(/^M$/);
+    const line = by.parentElement!;
+    expect(line.firstElementChild).toBe(by);
+    expect(line).toHaveTextContent('MThe Nulls · added by Mia');
+  });
+
+  it('nothing on a plain playlist', () => {
+    render(<TrackRow track={track} />);
+    expect(screen.queryByTestId('track-row-added-by')).toBeNull();
+  });
+});

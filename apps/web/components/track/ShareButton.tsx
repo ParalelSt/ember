@@ -14,7 +14,7 @@ interface Props {
 /** Last-resort copy for non-secure contexts (e.g. http://<LAN-IP>), where
  *  navigator.share and navigator.clipboard are both unavailable. Uses the
  *  legacy execCommand path via a throwaway textarea. */
-function legacyCopy(text: string): boolean {
+export function legacyCopy(text: string): boolean {
   try {
     const ta = document.createElement('textarea');
     ta.value = text;

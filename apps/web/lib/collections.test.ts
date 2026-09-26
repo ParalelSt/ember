@@ -10,6 +10,8 @@ import {
   systemCollections,
   titleFor,
   toSummary,
+  sharingOf,
+  sharedLabel,
 } from './collections';
 
 describe('hrefFor', () => {
@@ -154,5 +156,32 @@ describe('toSummary', () => {
     const summary = toSummary({ kind: 'liked' }, { count: 5, downloaded: true });
     expect(summary.subtitle).toBe('5 songs');
     expect(summary.downloaded).toBe(true);
+  });
+
+  it('a playlist shared with you says whose it is, pinned or not', () => {
+    const shared = { role: 'member' as const, ownerName: 'Olga' };
+    expect(toSummary({ kind: 'playlist', id: 'p1' }, { name: 'Trip', sharing: shared }).subtitle).toBe('Shared by Olga');
+    const pinned = toSummary({ kind: 'playlist', id: 'p1' }, { name: 'Trip', sharing: shared, downloaded: true });
+    expect(pinned.subtitle).toBe('Shared by Olga');
+    expect(pinned.sharing).toBe('member');
+  });
+
+  it('your own collaborative playlist says Collaborative until it is pinned', () => {
+    const own = { role: 'owner' as const };
+    expect(toSummary({ kind: 'playlist', id: 'p1' }, { sharing: own }).subtitle).toBe('Collaborative');
+    expect(toSummary({ kind: 'playlist', id: 'p1' }, { sharing: own, downloaded: true }).subtitle).toBe('Downloaded');
+    expect(toSummary({ kind: 'playlist', id: 'p1' }).sharing).toBeUndefined();
+  });
+});
+
+describe('sharingOf / sharedLabel', () => {
+  it('only a collaborative playlist has any sharing', () => {
+    expect(sharingOf({ role: 'owner', collaborative: false })).toBeUndefined();
+    expect(sharingOf({})).toBeUndefined();
+    expect(sharingOf({ role: 'owner', collaborative: true })).toEqual({ role: 'owner' });
+    expect(sharingOf({ role: 'member', collaborative: true, owner_name: 'Olga' })).toEqual({ role: 'member', ownerName: 'Olga' });
+    expect(sharedLabel({ role: 'member', owner_name: 'Olga' })).toBe('Shared by Olga');
+    expect(sharedLabel({ role: 'owner', collaborative: true })).toBe('Collaborative');
+    expect(sharedLabel({ role: 'owner' })).toBeUndefined();
   });
 });

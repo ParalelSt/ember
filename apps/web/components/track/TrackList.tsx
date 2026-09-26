@@ -4,7 +4,7 @@ import type { ReactNode } from 'react';
 import { TrackRow } from './TrackRow';
 import { EmptyState } from '@/components/page/EmptyState';
 import { songKey } from '@/lib/songKey';
-import type { PlaybackContext, Track } from '@/types/track';
+import type { PlaybackContext, PlaylistPerson, Track } from '@/types/track';
 
 /** What a page has to hand a track list: who is playing, what is liked, and
  *  the three callbacks. `hooks/useTrackActions` produces exactly this, and
@@ -55,6 +55,8 @@ interface Props extends TrackActions {
   selection?: { selecting: boolean; isSelected: (id: string) => boolean; toggle: (id: string) => void };
   /** "12 Jun" for a row, shown in select mode on a wide list. */
   addedLabel?: (track: Track) => string | undefined;
+  /** Who added a song, on a collaborative playlist (TrackRow's `addedBy`). */
+  addedBy?: (track: Track) => PlaylistPerson | null | undefined;
 }
 
 /** Presentational only: the rows of a collection, album, artist or search
@@ -70,6 +72,7 @@ export function TrackList({
   trailingPlayControl = false,
   selection,
   addedLabel,
+  addedBy,
   currentId,
   isPlaying,
   likedIds,
@@ -114,6 +117,7 @@ export function TrackList({
           onSelect={selection?.selecting ? () => selection.toggle(t.id) : undefined}
           selected={selection?.selecting ? selection.isSelected(t.id) : false}
           addedLabel={selection?.selecting ? addedLabel?.(t) : undefined}
+          addedBy={addedBy?.(t)}
         />
         );
       })}

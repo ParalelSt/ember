@@ -3,7 +3,7 @@
 import { useMemo } from 'react';
 import { useQueryHistory, useQueryLikes, useQueryPlaylists, useQueryUploads } from '@/hooks/useLibrary';
 import { useOfflineStore } from '@/stores/useOfflineStore';
-import { SYSTEM_COLLECTIONS, toSummary, type CollectionSummary, type SystemKind } from '@/lib/collections';
+import { SYSTEM_COLLECTIONS, sharingOf, toSummary, type CollectionSummary, type SystemKind } from '@/lib/collections';
 
 export interface UseCollectionsResult {
   system: CollectionSummary[];
@@ -44,7 +44,7 @@ export function useCollections(): UseCollectionsResult {
       playlistData.map((p) =>
         toSummary(
           { kind: 'playlist', id: p.id },
-          { name: p.name, artworkUrl: p.artwork_url, downloaded: downloadedIds.has(p.id) },
+          { name: p.name, artworkUrl: p.artwork_url, downloaded: downloadedIds.has(p.id), sharing: sharingOf(p) },
         ),
       ),
     [playlistData, downloadedIds],

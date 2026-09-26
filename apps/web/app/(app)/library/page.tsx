@@ -105,12 +105,13 @@ export default function LibraryPage() {
       <CollectionShelf
         title="Playlists"
         size="md"
-        items={playlists.map(({ title, subtitle, href, artworkUrl, downloaded }) => ({
+        items={playlists.map(({ title, subtitle, href, artworkUrl, downloaded, sharing }) => ({
           title,
           subtitle,
           href,
           cover: { src: artworkUrl, icon: null },
           badge: downloaded ? ('downloaded' as const) : undefined,
+          shared: !!sharing,
           size: 'md' as const,
         }))}
         empty={<EmptyState>No playlists yet</EmptyState>}
