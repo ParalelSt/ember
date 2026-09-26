@@ -51,6 +51,19 @@ same Google-supplied template. What an app supplies is content and capabilities:
   `res/xml/automotive_app_desc.xml`, the `com.google.android.gms.car.application`
   meta-data.
 
+**Who may connect.** The service is exported (the car binds to it from its
+own process), so `ControllerPolicy` decides who gets in: Ember itself, the
+system, anything signed with the platform key (SystemUI's media controls,
+Bluetooth, the Automotive media centre), Android Auto, the Google app
+(Assistant), Assistant on Automotive and Wear OS when signed with Google's
+keys (from UAMP's `allowed_media_browser_callers.xml`), those same media
+packages when preinstalled, and apps Android already trusts for media
+control (notification listeners the user enabled). Any other app is refused
+in `onConnect` and gets no library root; logcat shows
+`connect from <package> uid=<uid> -> UNKNOWN`. If a real car or watch is
+refused, that line names the package: add it (with its key) to
+`KNOWN_APPS`. Tests: `ControllerPolicyTest`, `ServiceControllerGateTest`.
+
 The APK also ships the offline downloads plugin (`EmberOffline` +
 `OfflineDownloadService`) and the capgo `MediaSession` plugin, both registered
 in `MainActivity`. They coexist with the native player rather than competing
