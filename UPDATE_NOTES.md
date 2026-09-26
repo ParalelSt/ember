@@ -1,3 +1,25 @@
+# Next release: Automatic database backups
+
+**Host: nothing to do. Run `./update.sh` as usual (no new packages).**
+Backups start by themselves: when PocketBase restarts, the log shows
+`[ensure_backups] automatic backups: '0 4 * * *', keeping the last 7`, and
+from then on a backup is made every night at 04:00 (server time) in
+`pocketbase/pb_data/backups`. If you had already set a schedule in
+PocketBase's admin UI, yours is kept.
+
+- **Admin → Backups** lists the backups with their size and date,
+  **Download** for each, **Back up now**, and a warning when disk space is
+  low.
+- **Download member files** there gets uploaded songs, covers, tabs and
+  prank sounds, which are not in the database backups. Cached YouTube songs
+  are left out (they download again).
+- The backups are on the same disk as everything else, so they do not help
+  if that disk dies. **Download one now, and again now and then, and keep it
+  on another machine or drive.** Keep a copy of `apps/web/.env.local` there
+  too.
+- Optional: `EMBER_BACKUP_CRON` / `EMBER_BACKUP_KEEP` in
+  `apps/web/.env.local` change the schedule. Restoring: SETUP.md, "Backups".
+
 # 0.7.12: Security, playback and bug-report fixes (apps 0.4.9)
 
 **Host, before updating:** set `DISCORD_BUG_REPORT_WEBHOOK_URL` in
