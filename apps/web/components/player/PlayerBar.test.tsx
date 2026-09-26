@@ -202,3 +202,18 @@ describe('PlayerBar', () => {
     });
   });
 });
+
+describe('PlayerBar: cast button', () => {
+  it('sits in the desktop bar when a cast device is around, and not otherwise', async () => {
+    const { useCastStore } = await import('@/stores/useCastStore');
+    desktop.value = true;
+    useCastStore.setState({ path: 'google', availability: 'none', connection: 'idle', deviceName: null });
+    const { unmount } = render(<PlayerBar />);
+    expect(screen.queryByTestId('cast-button')).toBeNull();
+    unmount();
+    useCastStore.setState({ availability: 'available' });
+    render(<PlayerBar />);
+    expect(screen.getByTestId('cast-button')).toBeInTheDocument();
+    useCastStore.setState({ path: null, availability: 'none' });
+  });
+});

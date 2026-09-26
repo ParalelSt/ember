@@ -24,6 +24,16 @@ const PUBLIC_API_PREFIXES = ['/api/youtube/stream/', '/api/search', '/api/tracks
   // version and a proxied installer — no user data.
   '/api/desktop/'];
 
+/** An upload's audio or cover asked for with a signed cast link (`?st=`):
+ *  a Chromecast has no session to send. Let through to the route, which
+ *  checks the link (lib/streamToken) and refuses anything else it would
+ *  refuse a signed-out caller. Only these two paths: a link is never a
+ *  sign-in anywhere else. */
+const UPLOAD_MEDIA_PATH = /^\/api\/uploads\/[A-Za-z0-9]{1,40}\/(stream|art)$/;
+export function isSignedMediaRequest(path: string, params: URLSearchParams): boolean {
+  return UPLOAD_MEDIA_PATH.test(path) && !!params.get('st');
+}
+
 /** Next's own files and the images in public/. Scripts are not on the list:
  *  the only public one, /sw.js, is in PUBLIC_PATHS, and a blanket `.js` rule
  *  let any path ending in .js (an API route included) skip the sign-in check
@@ -203,7 +213,8 @@ export default async function proxy(req: NextRequest) {
   const path = req.nextUrl.pathname;
 
   const isPublicPage = isPublicPath(path);
-  const isPublicApi = path.startsWith('/api/') && PUBLIC_API_PREFIXES.some((p) => path.startsWith(p));
+  const isPublicApi = (path.startsWith('/api/') && PUBLIC_API_PREFIXES.some((p) => path.startsWith(p)))
+    || isSignedMediaRequest(path, req.nextUrl.searchParams);
   // /pb/* is the same-origin proxy to PocketBase; it must stay open to anons
   // so the sign-in / sign-up endpoints work before there's a session.
   // PocketBase enforces its own per-collection rules on the other side.

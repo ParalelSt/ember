@@ -434,6 +434,29 @@ Nothing to configure. Worth knowing:
 - Only the uploader (or an admin) can delete an upload; the 14-day cleanup
   never touches them.
 
+### Casting (Chromecast, Google speakers, Android TV)
+
+The Cast button (player bar on a computer, full-screen player on a phone)
+shows up when a cast device is on the same network: Chrome and the Android
+app use Google Cast, Safari uses AirPlay. The desktop app has no Cast button
+(its window cannot reach Cast devices). Nothing is needed on the TV side:
+songs play on Google's Default Media Receiver.
+
+A TV fetches the song itself and has no Ember sign-in, so the server hands
+it short-lived signed links: one song each, six hours, and a new download
+counts against the member who cast it, exactly like their own play. Worth
+knowing:
+
+- The TV must reach the server at the address friends use. With Tailscale
+  Funnel that is automatic; behind another proxy, set `PUBLIC_ORIGIN` in
+  `apps/web/.env.local` to that address (e.g. `https://ember.example.ts.net`).
+- The links are signed with `STREAM_TOKEN_SECRET` from `apps/web/.env.local`
+  when set (32+ characters, e.g. `openssl rand -hex 32`). Without it the
+  server makes one and keeps it in `MUSIC_DIR/.stream-token-secret`.
+  Changing or deleting it stops links already handed out.
+- The equalizer and volume leveling do not apply while casting. The volume
+  slider sets the TV's volume.
+
 ### Lyrics
 
 The in-player **Lyrics** button (mic icon next to Queue) hits Genius directly — no API key needed. `player.py:cmd_lyrics` uses Genius's public search endpoint to find the song page, then scrapes the lyrics from the page HTML. Works out of the box.

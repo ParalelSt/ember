@@ -134,6 +134,9 @@ export interface AudioBackend {
    *  without it (desktop native, Android Media3) play at full speed and the
    *  page hides its speed control. Optional: absent means unsupported. */
   setRate?(rate: number): void;
+  /** Web audio only: the page's own audio element, which Safari can send to
+   *  an AirPlay speaker or TV as it is (lib/cast/controller). */
+  mediaElement?(): HTMLMediaElement | null;
   /** Tear down listeners / native resources. */
   destroy(): void;
 }

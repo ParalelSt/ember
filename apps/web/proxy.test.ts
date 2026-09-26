@@ -272,3 +272,29 @@ describe('proxy [audit S4]: PocketBase sign-in and recovery are throttled per IP
     expect(isPbAuthPath('/api/auth/check-email')).toBe(false);
   });
 });
+
+describe('proxy: signed cast links (lib/streamToken)', () => {
+  it('lets an upload\'s stream or cover through with a link, for the route to check', async () => {
+    expect((await proxy(req('/api/uploads/abc123/stream?st=anything'))).status).toBe(200);
+    expect((await proxy(req('/api/uploads/abc123/art?st=anything'))).status).toBe(200);
+  });
+
+  it('without a link those stay behind sign-in', async () => {
+    expect((await proxy(req('/api/uploads/abc123/stream'))).status).toBe(401);
+    expect((await proxy(req('/api/uploads/abc123/art?st='))).status).toBe(401);
+  });
+
+  it('a link is never a sign-in for any other route', async () => {
+    for (const p of [
+      '/api/likes?st=x',
+      '/api/uploads?st=x',
+      '/api/uploads/abc123?st=x',
+      '/api/uploads/abc123/stream/extra?st=x',
+      '/api/uploads/abc%2F..%2F..%2Flikes/stream?st=x',
+      '/api/cast/sign?st=x',
+      '/api/playlists?st=x',
+    ]) {
+      expect((await proxy(req(p))).status, p).toBe(401);
+    }
+  });
+});

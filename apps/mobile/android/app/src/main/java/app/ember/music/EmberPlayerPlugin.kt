@@ -4,6 +4,7 @@ import android.content.ComponentName
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.view.ContextThemeWrapper
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.common.Timeline
@@ -11,12 +12,19 @@ import androidx.media3.session.MediaController
 import androidx.media3.session.SessionCommand
 import androidx.media3.session.SessionResult
 import androidx.media3.session.SessionToken
+import androidx.mediarouter.app.MediaRouteChooserDialog
+import androidx.mediarouter.app.MediaRouteControllerDialog
+import androidx.mediarouter.media.MediaRouteSelector
+import androidx.mediarouter.media.MediaRouter
 import com.getcapacitor.JSArray
 import com.getcapacitor.JSObject
 import com.getcapacitor.Plugin
 import com.getcapacitor.PluginCall
 import com.getcapacitor.PluginMethod
 import com.getcapacitor.annotation.CapacitorPlugin
+import com.google.android.gms.cast.framework.CastContext
+import com.google.android.gms.cast.framework.CastState
+import com.google.android.gms.cast.framework.CastStateListener
 import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.ListenableFuture
 import com.google.common.util.concurrent.MoreExecutors
@@ -72,6 +80,21 @@ internal class QueueEcho {
     }
 }
 
+/** `{ available, connecting, connected, deviceName }`, the web app's Cast
+ *  button state (lib/cast/controller), from the Cast framework's state. */
+internal fun castStateJs(state: Int, deviceName: String?): JSObject = JSObject().apply {
+    put("available", state != CastState.NO_DEVICES_AVAILABLE)
+    put("connecting", state == CastState.CONNECTING)
+    put("connected", state == CastState.CONNECTED)
+    put("deviceName", if (state == CastState.CONNECTED) deviceName else null)
+}
+
+/** Whether the volume slider's [v] goes to the cast device. Only a change
+ *  does: the page sends its level again when it starts (a WebView brought
+ *  back mid-cast) and that must not reset a volume set on the TV itself.
+ *  [last] is the level last received, null for none yet. */
+internal fun castVolumeToSend(last: Double?, v: Double): Boolean = last != null && last != v
+
 /** The app's Previous button, as everywhere else in Ember (the web player,
  *  the notification, the car): past the first 3 s it starts the song over,
  *  before that it goes to the song before. It used to always go back a song. */
@@ -90,6 +113,7 @@ class EmberPlayerPlugin : Plugin() {
     private val echo = QueueEcho()
 
     override fun load() {
+        main.post { startCast() }
         val token = SessionToken(context, ComponentName(context, EmberPlaybackService::class.java))
         val future = MediaController.Builder(context, token).setListener(sessionEvents).buildAsync()
         // On the main thread, like every read of `controller` and `pending`.
@@ -199,7 +223,24 @@ class EmberPlayerPlugin : Plugin() {
     @PluginMethod fun next(call: PluginCall) = withController { it.seekToNextMediaItem(); call.resolve() }
     @PluginMethod fun prev(call: PluginCall) = withController { previous(it); call.resolve() }
     @PluginMethod fun seek(call: PluginCall) = withController { it.seekTo(((call.getDouble("sec") ?: 0.0) * 1000).toLong()); call.resolve() }
-    @PluginMethod fun setVolume(call: PluginCall) = withController { it.volume = (call.getDouble("v") ?: 1.0).toFloat().coerceIn(0f, 1f); call.resolve() }
+    /** The volume slider. While casting it sets the TV's (or speaker's) own
+     *  volume, like the volume keys do. */
+    private var lastVolume: Double? = null
+
+    @PluginMethod fun setVolume(call: PluginCall) {
+        val v = (call.getDouble("v") ?: 1.0).coerceIn(0.0, 1.0)
+        main.post {
+            val cast = castContext?.sessionManager?.currentCastSession?.takeIf { it.isConnected }
+            val send = castVolumeToSend(lastVolume, v)
+            lastVolume = v
+            if (cast != null) {
+                if (send) runCatching { cast.volume = v }.onFailure { android.util.Log.w(EmberPlaybackService.TAG, "cast volume: ${it.message}") }
+                call.resolve()
+            } else {
+                withController { it.volume = v.toFloat(); call.resolve() }
+            }
+        }
+    }
     /** Volume normalization on or off (the web app's setting). Native
      *  applies each song's gain itself as it moves between songs. */
     @PluginMethod fun setNormalize(call: PluginCall) {
@@ -297,7 +338,82 @@ class EmberPlayerPlugin : Plugin() {
         }, MoreExecutors.directExecutor())
     }
 
+    // ── Casting ─────────────────────────────────────────────────────────
+    // The player service does the casting itself (CastSwitch); the app only
+    // needs the Cast button: whether a device is around, what is connected,
+    // and the picker.
+
+    private var castContext: CastContext? = null
+    private val castListener = CastStateListener { notifyListeners("cast", castJs()) }
+    /** Looking for devices costs battery: only while the app is on screen. */
+    private val routeCallback = object : MediaRouter.Callback() {}
+    private var discovering = false
+
+    private fun startCast() {
+        // The Task-based getSharedInstance needs an executor and a callback for
+        // what is, on the main thread, an immediate answer.
+        @Suppress("DEPRECATION")
+        val ctx = runCatching { CastContext.getSharedInstance(context) }.getOrNull() ?: return
+        castContext = ctx
+        ctx.addCastStateListener(castListener)
+        discover(true)
+        notifyListeners("cast", castJs())
+    }
+
+    private fun discover(on: Boolean) {
+        val selector = castContext?.mergedSelector ?: return
+        val router = runCatching { MediaRouter.getInstance(context) }.getOrNull() ?: return
+        if (on && !discovering) router.addCallback(selector, routeCallback, MediaRouter.CALLBACK_FLAG_REQUEST_DISCOVERY)
+        if (!on && discovering) router.removeCallback(routeCallback)
+        discovering = on
+    }
+
+    private fun castJs(): JSObject {
+        val ctx = castContext ?: return castStateJs(CastState.NO_DEVICES_AVAILABLE, null)
+        return castStateJs(ctx.castState, ctx.sessionManager.currentCastSession?.castDevice?.friendlyName)
+    }
+
+    /** `{ available, connecting, connected, deviceName }`. Nothing is
+     *  available on a phone without Google Play services. */
+    @PluginMethod fun getCastState(call: PluginCall) {
+        main.post { call.resolve(castJs()) }
+    }
+
+    /** The Cast device picker, or, while casting, the device's controls
+     *  (its volume, and Stop casting). */
+    @PluginMethod fun showCastPicker(call: PluginCall) {
+        main.post {
+            val ctx = castContext ?: return@post call.reject("Casting is not available on this phone")
+            val act = activity ?: return@post call.reject("the app is not on screen")
+            // The app's own theme clears view backgrounds for the WebView;
+            // the dialogs get a plain one.
+            val themed = ContextThemeWrapper(act, androidx.appcompat.R.style.Theme_AppCompat_DayNight)
+            runCatching {
+                if (ctx.sessionManager.currentCastSession?.isConnected == true) {
+                    MediaRouteControllerDialog(themed).show()
+                } else {
+                    MediaRouteChooserDialog(themed).apply { routeSelector = ctx.mergedSelector ?: MediaRouteSelector.EMPTY }.show()
+                }
+            }.onFailure { return@post call.reject("could not open the cast picker: ${it.message}") }
+            call.resolve()
+        }
+    }
+
+    override fun handleOnResume() {
+        super.handleOnResume()
+        main.post { discover(true) }
+    }
+
+    override fun handleOnPause() {
+        super.handleOnPause()
+        main.post { discover(false) }
+    }
+
     override fun handleOnDestroy() {
         controller?.release(); controller = null
+        main.post {
+            discover(false)
+            castContext?.removeCastStateListener(castListener)
+        }
     }
 }

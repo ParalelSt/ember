@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import type { Track } from '@/types/track';
 import { NowPlaying } from './NowPlaying';
 import { usePlayerStore } from '@/stores/usePlayerStore';
@@ -92,5 +92,24 @@ describe('NowPlaying', () => {
     fireEvent.click(within(panel).getByRole('button', { name: 'Bass boost' }));
     expect(useSettingsStore.getState().equalizer).toEqual({ enabled: true, bands: [7, 4, 0, 0, 0] });
     expect(usePlayerStore.getState().nowPlayingOpen).toBe(true);
+  });
+});
+
+describe('NowPlaying: casting', () => {
+  it('has the cast button when a device is around, and says where the music plays while casting', async () => {
+    const { useCastStore } = await import('@/stores/useCastStore');
+    useCastStore.setState({ path: 'android', availability: 'none', connection: 'idle', deviceName: null });
+    const { rerender } = render(<NowPlaying />);
+    const view = screen.getByTestId('now-playing');
+    expect(within(view).queryByTestId('cast-button')).toBeNull();
+    act(() => useCastStore.setState({ availability: 'available' }));
+    rerender(<NowPlaying />);
+    expect(within(view).getByRole('button', { name: 'Cast' })).toBeInTheDocument();
+    expect(within(view).queryByTestId('cast-note')).toBeNull();
+    act(() => useCastStore.setState({ connection: 'connected', deviceName: 'Living Room TV' }));
+    rerender(<NowPlaying />);
+    expect(within(view).getByRole('button', { name: 'Casting to Living Room TV' })).toBeInTheDocument();
+    expect(within(view).getByTestId('cast-note')).toHaveTextContent('Playing on Living Room TV');
+    useCastStore.setState({ path: null, availability: 'none', connection: 'idle', deviceName: null });
   });
 });
