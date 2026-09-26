@@ -36,21 +36,31 @@ SUMMARY = """
 
 
 class ComputeGainTest(unittest.TestCase):
+    # The same cases as apps/web/lib/loudnessPolicy.test.ts: the server
+    # recomputes stored gains in TypeScript and must agree with this.
+    def test_target_is_where_a_typical_song_already_sits(self):
+        self.assertEqual(loudness.TARGET_LUFS, -9.0)
+        self.assertEqual(loudness.compute_gain(-9.0, 1.0), 0.0)
+
     def test_loud_master_is_turned_down_to_target(self):
-        self.assertEqual(loudness.compute_gain(-8.0, 0.5), -6.0)
+        self.assertEqual(loudness.compute_gain(-6.0, 2.0), -3.0)
+
+    def test_cut_is_never_more_than_a_few_db(self):
+        self.assertEqual(loudness.compute_gain(-2.0, 3.0), loudness.MIN_GAIN_DB)
+        self.assertEqual(loudness.MIN_GAIN_DB, -5.0)
 
     def test_quiet_song_is_boosted_to_target_when_peak_allows(self):
-        self.assertEqual(loudness.compute_gain(-18.0, -8.0), 4.0)
+        self.assertEqual(loudness.compute_gain(-13.0, -8.0), 4.0)
 
     def test_boost_is_held_under_the_true_peak_ceiling(self):
         # Wants +4, but the peak at -3 dBTP only has 2 dB left before -1.
-        self.assertEqual(loudness.compute_gain(-18.0, -3.0), 2.0)
+        self.assertEqual(loudness.compute_gain(-13.0, -3.0), 2.0)
 
     def test_hot_peak_never_turns_a_quiet_song_down(self):
-        self.assertEqual(loudness.compute_gain(-18.0, 0.3), 0.0)
+        self.assertEqual(loudness.compute_gain(-13.0, 0.3), 0.0)
 
     def test_cut_is_not_limited_by_peak(self):
-        self.assertEqual(loudness.compute_gain(-5.0, 1.2), -9.0)
+        self.assertEqual(loudness.compute_gain(-5.0, 1.2), -4.0)
 
     def test_clamped_to_range(self):
         self.assertEqual(loudness.compute_gain(10.0, 2.0), loudness.MIN_GAIN_DB)
@@ -60,12 +70,36 @@ class ComputeGainTest(unittest.TestCase):
         self.assertEqual(loudness.compute_gain(-70.0, -math.inf), 0.0)
         self.assertEqual(loudness.compute_gain(-math.inf, -math.inf), 0.0)
         self.assertEqual(loudness.compute_gain(math.nan, 0.0), 0.0)
+        self.assertEqual(loudness.compute_gain(None, None), 0.0)
 
-    def test_unknown_peak_still_boosts(self):
-        self.assertEqual(loudness.compute_gain(-16.0, math.nan), 2.0)
+    def test_unknown_peak_is_never_boosted(self):
+        # No limiter anywhere in the players: a boost must be known not to clip.
+        self.assertEqual(loudness.compute_gain(-16.0, math.nan), 0.0)
+        self.assertEqual(loudness.compute_gain(-16.0, None), 0.0)
+        # A cut needs no peak.
+        self.assertEqual(loudness.compute_gain(-7.0, None), -2.0)
 
-    def test_on_target_is_zero(self):
-        self.assertEqual(loudness.compute_gain(-14.0, -1.0), 0.0)
+    def test_never_negative_zero(self):
+        self.assertEqual(str(loudness.compute_gain(-9.001, 5.0)), "0.0")
+
+    def test_measured_sample_keeps_the_library_level(self):
+        """39 real songs from the owner's library (measured 2026-09-26):
+        integrated loudness and true peak. Under the old -14 LUFS policy 35
+        of them were turned down, by 4.8 dB at the median. Now a typical
+        song is untouched and the average is within half a dB."""
+        sample = [
+            (-12.1, 1.0), (-7.6, 1.7), (-17.5, -6.6), (-21.1, -1.4), (-13.2, 0.4), (-9.8, 0.7),
+            (-7.9, 1.7), (-8.0, 1.2), (-9.9, 0.7), (-21.7, -7.8), (-8.9, 1.0), (-9.6, 1.0),
+            (-6.9, 2.0), (-9.6, 1.4), (-5.7, 3.4), (-10.3, 2.6), (-9.5, 0.7), (-8.8, 1.6),
+            (-5.8, 2.5), (-13.8, -1.6), (-8.0, 2.6), (-10.7, 1.3), (-8.6, 1.0), (-7.9, 1.1),
+            (-13.1, -0.4), (-7.5, 0.9), (-6.2, 1.6), (-13.6, 0.4), (-20.0, -0.9), (-10.6, -0.2),
+            (-7.9, 3.1), (-11.8, -1.2), (-6.6, 2.1), (-9.2, 1.4), (-7.7, 1.7), (-6.2, 1.8),
+            (-7.6, 2.2), (-12.8, -3.5), (-6.3, 2.5),
+        ]
+        gains = sorted(loudness.compute_gain(l, p) for l, p in sample)
+        self.assertEqual(gains[len(gains) // 2], 0.0)
+        self.assertGreater(sum(gains) / len(gains), -0.5)
+        self.assertGreaterEqual(gains[0], -3.5)
 
 
 class ParseTest(unittest.TestCase):
@@ -131,6 +165,18 @@ class AnalyzeTest(unittest.TestCase):
         with mock.patch.object(loudness, "measure") as m:
             self.assertEqual(loudness.analyze(vid, self.dir), first)
             m.assert_not_called()
+
+    def test_old_policy_sidecar_answers_with_the_current_gain(self):
+        vid = "oldpolicy00"
+        (self.dir / f"{vid}.m4a").write_text("AUDIO")
+        (self.dir / f"{vid}.loudness.json").write_text(json.dumps(
+            {"lufs": -8.0, "peakDb": 1.2, "gainDb": -6.0, "targetLufs": -14.0}))
+        with mock.patch.object(loudness, "measure") as m:
+            result = loudness.analyze(vid, self.dir)
+            m.assert_not_called()
+        self.assertEqual(result["gainDb"], -1.0)
+        self.assertEqual(result["targetLufs"], loudness.TARGET_LUFS)
+        self.assertEqual(result["lufs"], -8.0)
 
     def test_corrupt_sidecar_is_measured_again(self):
         vid = "corrupttone"

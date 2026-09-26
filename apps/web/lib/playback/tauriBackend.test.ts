@@ -314,12 +314,14 @@ describe('tauriBackend setVolume with normalization', () => {
   const lastAmplitude = () =>
     invoked.filter((c) => c.cmd === 'audio_set_volume').at(-1)?.args?.amplitude as number;
 
-  it('multiplies the curve by the song gain, capped at 1 outside party mode', () => {
+  it('multiplies the curve by the song gain, and really boosts a quiet song', () => {
     const b = createTauriBackend(makeFakeEvents());
     b.setVolume(0.64, { normGain: 0.5 });
     expect(lastAmplitude()).toBeCloseTo(0.256, 5);
+    // rodio amplifies past 1.0: a quiet song at the top of the slider still
+    // comes up (the server keeps its peak under -1 dBTP).
     b.setVolume(1, { normGain: 2 });
-    expect(lastAmplitude()).toBe(1);
+    expect(lastAmplitude()).toBe(2);
     b.setVolume(0.64);
     expect(lastAmplitude()).toBeCloseTo(0.512, 5);
   });
@@ -328,6 +330,26 @@ describe('tauriBackend setVolume with normalization', () => {
     const b = createTauriBackend(makeFakeEvents());
     b.setVolume(0.5, { gain: 2, normGain: 0.5 });
     expect(lastAmplitude()).toBeCloseTo(0.5, 5);
+  });
+
+  it('a gain that changes mid-song fades in steps instead of jumping', () => {
+    vi.useFakeTimers();
+    try {
+      const b = createTauriBackend(makeFakeEvents());
+      b.setVolume(1, { normGain: 1 });
+      const before = invoked.filter((c) => c.cmd === 'audio_set_volume').length;
+      b.setVolume(1, { normGain: 0.5, rampMs: 400 });
+      vi.advanceTimersByTime(200);
+      const mid = lastAmplitude();
+      expect(mid).toBeLessThan(1);
+      expect(mid).toBeGreaterThan(0.5);
+      vi.advanceTimersByTime(300);
+      expect(lastAmplitude()).toBeCloseTo(0.5, 6);
+      expect(invoked.filter((c) => c.cmd === 'audio_set_volume').length - before).toBeGreaterThan(10);
+      b.destroy();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 

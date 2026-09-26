@@ -157,6 +157,39 @@ describe('webBackend setVolume with normalization', () => {
     expect(element().volume).toBeCloseTo(0.4, 5);
     b.destroy();
   });
+
+  it('a gain that arrives mid-song fades in over rampMs instead of jumping', () => {
+    vi.useFakeTimers();
+    try {
+      const b = createWebBackend(makeFakeEvents());
+      b.setVolume(1, { normGain: 1 });
+      expect(element().volume).toBe(1);
+      b.setVolume(1, { normGain: 0.5, rampMs: 400 });
+      // Nothing jumps: the element is still where it was.
+      expect(element().volume).toBe(1);
+      vi.advanceTimersByTime(200);
+      expect(element().volume).toBeLessThan(0.95);
+      expect(element().volume).toBeGreaterThan(0.55);
+      // The slider mid-fade applies at once and does not cut the fade short.
+      b.setVolume(0.64, { normGain: 0.5 });
+      expect(element().volume).toBeLessThan(0.512);
+      expect(element().volume).toBeGreaterThan(0.256);
+      vi.advanceTimersByTime(300);
+      expect(element().volume).toBeCloseTo(0.256, 5);
+      b.destroy();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('a new song gets its gain at once (no rampMs): no fade across songs', () => {
+    const b = createWebBackend(makeFakeEvents());
+    b.setVolume(1, { normGain: 0.5 });
+    expect(element().volume).toBeCloseTo(0.5, 5);
+    b.setVolume(1, { normGain: 1 });
+    expect(element().volume).toBe(1);
+    b.destroy();
+  });
 });
 
 describe('webBackend setRate (practice speed)', () => {

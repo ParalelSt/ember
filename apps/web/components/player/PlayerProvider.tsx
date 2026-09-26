@@ -34,7 +34,7 @@ import { useRadioExtend } from '@/hooks/player/useRadioExtend';
 import { useKeyboardShortcuts } from '@/hooks/player/useKeyboardShortcuts';
 import { useRemoteCommands } from '@/hooks/player/useRemoteCommands';
 import { useTrackGain } from '@/hooks/player/useTrackGain';
-import { dbToLinear } from '@/lib/playback/normalization';
+import { cachedTrackGain, dbToLinear, GAIN_RAMP_MS } from '@/lib/playback/normalization';
 import { eqForDevice, eqNeedsConsent } from '@/lib/playback/eqDevice';
 import { isPartyEligible } from '@/lib/playback/partyDevice';
 import { usePartyEligible } from '@/hooks/usePartyEligible';
@@ -491,15 +491,34 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   // every engine gets that through the same setVolume.
   const [duck, setDuck] = useState(1);
   const duckRef = useRef(1);
-  useEffect(() => {
-    duckRef.current = duck;
-    normGainRef.current = normGain;
+  /** The song the engine's normalization gain was last set for. */
+  const normTrackRef = useRef<string | null>(null);
+  /** Hands the engine the slider, party gain and a song's normalization
+   *  gain. A gain for a new song lands at once (loadAndPlay sends it before
+   *  the song makes a sound); a different gain for the same song (it arrived
+   *  after the song started, or the setting was switched) fades in over
+   *  GAIN_RAMP_MS instead of jumping, while the song is playing. */
+  const pushVolume = useCallback((trackId: string | null, norm: number) => {
     const b = backendRef.current;
     if (!b) return;
+    // Paused, nothing is heard: no need to fade.
+    const rampMs = trackId === normTrackRef.current && norm !== normGainRef.current && !b.isPaused() ? GAIN_RAMP_MS : 0;
+    normTrackRef.current = trackId;
+    normGainRef.current = norm;
+    const st = usePlayerStore.getState();
+    // Party mode is desktop-only (lib/playback/partyDevice): an ineligible
+    // device plays as if it were off, so its engine never builds a graph for it.
+    const party = useSettingsStore.getState().partyVolume && isPartyEligible();
     // A cast device gets the listener's own level only: nothing else in the
     // page (a sound ducking the music) turns the TV down.
-    b.setVolume(musicLevel(volume, muted, castingRef.current ? 1 : duck), { gain: partyActive ? 2 : 1, normGain });
-  }, [backendReady, volume, partyActive, muted, duck, normGain]);
+    const duckLevel = castingRef.current ? 1 : duckRef.current;
+    b.setVolume(musicLevel(st.volume, st.muted, duckLevel), { gain: party ? 2 : 1, normGain: norm, ...(rampMs ? { rampMs } : {}) });
+  }, []);
+  useEffect(() => {
+    duckRef.current = duck;
+    pushVolume(current?.id ?? null, normGain);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [backendReady, volume, partyActive, muted, duck, normGain, current?.id]);
 
   // When party mode turns OFF (or this device was never eligible for it),
   // snap volume back under the normal 0.85 cap so the slider thumb doesn't
@@ -658,12 +677,17 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       backend: backendKindRef.current,
       source: local ? 'local' : cachedSrc || cacheKey ? 'cache' : 'stream',
     });
+    // The new song's gain, when it is already known, goes to the engine
+    // BEFORE the load: the render that would set it comes after the audio may
+    // have started, and until then the previous song's gain was on it.
+    const norm = useSettingsStore.getState().normalizeVolume ? dbToLinear(cachedTrackGain(track.id)) : 1;
+    pushVolume(track.id, norm);
     b.load(local ?? cachedSrc ?? apiUrl(track.streamUrl), { autoplay, startAt, ...(cacheKey ? { cacheKey } : {}) });
     // Set metadata in the same synchronous turn so the notification carries
     // across a track boundary (Firefox Android tears it down otherwise).
     // Local art (the same downloaded copy) wins over the remote artworkUrl.
     b.setMetadata(track, localArtFor(track, downloads.artFiles));
-  }, [positions, swapToWebAudio]);
+  }, [positions, swapToWebAudio, pushVolume]);
 
   loadAndPlayRef.current = loadAndPlay;
   fallbackToWebAudioRef.current = fallbackToWebAudio;

@@ -5,6 +5,7 @@ import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { logger } from '@/lib/logger/client';
 import type { Track } from '@/types/track';
 import type { AudioBackend, CreateAudioBackend, RemoteCommands } from './types';
+import { createGainRamp } from './gainRamp';
 
 /** What `tauriCacheAdapter.localSrcFor` hands the provider for a song in the
  *  desktop auto cache: `cache:<track id>`. Not a URL the engine fetches; it
@@ -41,6 +42,22 @@ export const createTauriBackend: CreateAudioBackend = (events) => {
   let cmds: RemoteCommands | null = null;
   const unlisteners: UnlistenFn[] = [];
   let destroyed = false;
+
+  // Volume: the same curve as the web backend (party, gain > 1: linear, then
+  // amplified; else power 1.5), times the song's normalization gain. rodio
+  // amplifies past 1.0, so a quiet song's boost is real here; the server
+  // holds every boost under the song's true peak, so it never clips. A gain
+  // that changes mid-song fades (gainRamp), one IPC call per step.
+  let level = 1;
+  let partyGain = 1;
+  let volumeSet = false;
+  const applyVolume = () => {
+    if (!volumeSet || destroyed) return;
+    const n = norm.value();
+    const amplitude = partyGain > 1 ? Math.min(1, level) * partyGain * n : Math.pow(Math.min(1, Math.max(0, level)), 1.5) * n;
+    void invoke('audio_set_volume', { amplitude }).catch(() => {});
+  };
+  const norm = createGainRamp(() => applyVolume());
   /** Bumped by every load and play: how `audio:ended` tells whether the
    *  provider moved on (next song, repeat one) or had nothing left. */
   let asked = 0;
@@ -177,12 +194,11 @@ export const createTauriBackend: CreateAudioBackend = (events) => {
       events.onTime(target); // optimistic, mirrors web backend
     },
     setVolume(v, opts) {
-      // Same curve as the web backend: party (gain>1) = linear + amplify, else
-      // pow 1.5 capped at 1. Normalization multiplies either.
-      const gain = opts?.gain ?? 1;
-      const norm = opts?.normGain ?? 1;
-      const amplitude = gain > 1 ? Math.min(1, v) * gain * norm : Math.min(1, Math.pow(v, 1.5) * norm);
-      void invoke('audio_set_volume', { amplitude }).catch(() => {});
+      volumeSet = true;
+      level = v;
+      partyGain = opts?.gain ?? 1;
+      norm.set(opts?.normGain ?? 1, opts?.rampMs ?? 0);
+      applyVolume();
     },
     setEq(eq) {
       // The engine filters the samples itself and keeps the setting across
@@ -204,6 +220,7 @@ export const createTauriBackend: CreateAudioBackend = (events) => {
     isTransitioning: () => transitioning,
     destroy() {
       destroyed = true;
+      norm.cancel();
       if (transitionTimer) clearTimeout(transitionTimer);
       void invoke('audio_stop').catch(() => {});
       for (const u of unlisteners) { try { u(); } catch { /* noop */ } }

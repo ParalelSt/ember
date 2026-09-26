@@ -140,6 +140,8 @@ class EmberPlaybackService : MediaLibraryService() {
     private val castIo = Executors.newSingleThreadExecutor()
     /** The player that plays now: the phone's, or the cast device's. */
     private val active: Player get() = castSwitch?.active ?: player
+    /** A quiet song's boost past full volume (LoudnessBooster). */
+    private lateinit var booster: LoudnessBooster
     /** The equalizer in the player's audio sink; its settings live on disk. */
     private val equalizer = EqualizerProcessor()
     private lateinit var savedQueue: SavedQueue
@@ -189,7 +191,13 @@ class EmberPlaybackService : MediaLibraryService() {
         savedQueue = SavedQueue(java.io.File(filesDir, "native-queue.json"))
         player.addListener(savedQueue.Saver(player, io))
         overlay = PrankOverlay(this, player, dataSource, baseUrl)
-        normalizer = Normalizer(player, GainStore(getSharedPreferences(NORMALIZE_PREFS, MODE_PRIVATE)), api::trackGain, gainIo) { handler.post(it) }
+        booster = LoudnessBooster(player)
+        normalizer = Normalizer(
+            player, GainStore(getSharedPreferences(NORMALIZE_PREFS, MODE_PRIVATE)), api::trackGain, gainIo,
+            main = { handler.post(it) },
+            booster = booster,
+            delay = { ms, r -> handler.postDelayed(r, ms) },
+        )
         normalizer.setEnabled(getSharedPreferences(NORMALIZE_PREFS, MODE_PRIVATE).getBoolean("enabled", true))
         // The session (the app, the notification, the car) sets the person's
         // level; the player underneath adds the song's gain (Normalizer).
@@ -446,6 +454,8 @@ class EmberPlaybackService : MediaLibraryService() {
         // The SimpleCache stays open: it is one per process (MediaCache), and
         // a service started again in this process reuses it.
         overlay.release()
+        normalizer.release()
+        booster.release()
         session.release()
         castPlayer?.setSessionAvailabilityListener(null)
         castPlayer?.release()

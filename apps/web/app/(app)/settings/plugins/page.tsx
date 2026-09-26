@@ -35,7 +35,7 @@ export default function SettingsPlugins() {
       <div className="mt-6 flex flex-col gap-3">
         <PluginToggle
           name="Normalize volume"
-          description="Plays every song at about the same loudness, so a quiet older song is not drowned out by a loud new one. Songs are measured once after they are first played. Not yet in the Android app."
+          description="Evens out the loudness between songs without making the app quieter: extra-loud songs come down a little, quiet ones come up where they can. Songs are measured once after they are first played."
           on={normalizeVolume}
           onToggle={() => void setNormalizeVolume(!normalizeVolume)}
         />
