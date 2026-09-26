@@ -21,6 +21,18 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    id: 'collaborative-playlists',
+    version: '0.7.13',
+    date: '2026-09-26',
+    title: 'Collaborative playlists',
+    summary: 'Share a playlist with friends on this server so they can add, remove and reorder its songs.',
+    bullets: [
+      'Open a playlist\'s menu and pick Collaborate: turn it on, add people by name, or send an invite link that adds whoever opens it. Turn the link off or make a new one any time.',
+      'Shared playlists show up in your library marked "Shared by" the owner, and every song shows who added it.',
+      'Everyone can add, remove and reorder songs (Move up and Move down in a song\'s menu). Only the owner can rename it, change the cover, delete it or stop sharing. Anyone can leave.',
+    ],
+  },
+  {
     id: 'tabs-no-generate',
     version: '0.7.13',
     date: '2026-09-26',

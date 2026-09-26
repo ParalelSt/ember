@@ -1,4 +1,4 @@
-# 0.7.13: Backups, equalizer, tabs without generation (apps 0.4.10)
+# 0.7.13: Backups, equalizer, collaborative playlists, tabs without generation (apps 0.4.10)
 
 **Host: run `./update.sh` as usual (no new packages).** The equalizer in the
 desktop and Android apps needs the new apps, 0.4.10 (Android versionCode 15),
