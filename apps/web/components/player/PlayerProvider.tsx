@@ -34,7 +34,7 @@ import { useRadioExtend } from '@/hooks/player/useRadioExtend';
 import { useKeyboardShortcuts } from '@/hooks/player/useKeyboardShortcuts';
 import { useRemoteCommands } from '@/hooks/player/useRemoteCommands';
 import { useTrackGain } from '@/hooks/player/useTrackGain';
-import { dbToLinear } from '@/lib/playback/normalization';
+import { cachedTrackGain, dbToLinear, GAIN_RAMP_MS } from '@/lib/playback/normalization';
 import { eqForDevice, eqNeedsConsent } from '@/lib/playback/eqDevice';
 import { createWebBackend } from '@/lib/playback/webBackend';
 import { createCapacitorBackend } from '@/lib/playback/capacitorBackend';
@@ -450,13 +450,29 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   // every engine gets that through the same setVolume.
   const [duck, setDuck] = useState(1);
   const duckRef = useRef(1);
-  useEffect(() => {
-    duckRef.current = duck;
-    normGainRef.current = normGain;
+  /** The song the engine's normalization gain was last set for. */
+  const normTrackRef = useRef<string | null>(null);
+  /** Hands the engine the slider, party gain and a song's normalization
+   *  gain. A gain for a new song lands at once (loadAndPlay sends it before
+   *  the song makes a sound); a different gain for the same song (it arrived
+   *  after the song started, or the setting was switched) fades in over
+   *  GAIN_RAMP_MS instead of jumping, while the song is playing. */
+  const pushVolume = useCallback((trackId: string | null, norm: number) => {
     const b = backendRef.current;
     if (!b) return;
-    b.setVolume(musicLevel(volume, muted, duck), { gain: partyVolume ? 2 : 1, normGain });
-  }, [backendReady, volume, partyVolume, muted, duck, normGain]);
+    // Paused, nothing is heard: no need to fade.
+    const rampMs = trackId === normTrackRef.current && norm !== normGainRef.current && !b.isPaused() ? GAIN_RAMP_MS : 0;
+    normTrackRef.current = trackId;
+    normGainRef.current = norm;
+    const st = usePlayerStore.getState();
+    const party = useSettingsStore.getState().partyVolume;
+    b.setVolume(musicLevel(st.volume, st.muted, duckRef.current), { gain: party ? 2 : 1, normGain: norm, ...(rampMs ? { rampMs } : {}) });
+  }, []);
+  useEffect(() => {
+    duckRef.current = duck;
+    pushVolume(current?.id ?? null, normGain);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [backendReady, volume, partyVolume, muted, duck, normGain, current?.id]);
 
   // When party mode turns OFF, snap volume back under the normal 0.85 cap so the
   // slider thumb doesn't stick at the right edge.
@@ -602,12 +618,17 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       backend: backendKindRef.current,
       source: local ? 'local' : cachedSrc || cacheKey ? 'cache' : 'stream',
     });
+    // The new song's gain, when it is already known, goes to the engine
+    // BEFORE the load: the render that would set it comes after the audio may
+    // have started, and until then the previous song's gain was on it.
+    const norm = useSettingsStore.getState().normalizeVolume ? dbToLinear(cachedTrackGain(track.id)) : 1;
+    pushVolume(track.id, norm);
     b.load(local ?? cachedSrc ?? apiUrl(track.streamUrl), { autoplay, startAt, ...(cacheKey ? { cacheKey } : {}) });
     // Set metadata in the same synchronous turn so the notification carries
     // across a track boundary (Firefox Android tears it down otherwise).
     // Local art (the same downloaded copy) wins over the remote artworkUrl.
     b.setMetadata(track, localArtFor(track, downloads.artFiles));
-  }, [positions, swapToWebAudio]);
+  }, [positions, swapToWebAudio, pushVolume]);
 
   loadAndPlayRef.current = loadAndPlay;
   fallbackToWebAudioRef.current = fallbackToWebAudio;

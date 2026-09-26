@@ -5,14 +5,16 @@ import { api } from '@/lib/api';
 /** Volume normalization on the listener's side.
  *
  *  The server measures each downloaded song once (loudness.py) and hands out
- *  a gain in dB that brings it to about -14 LUFS. The player turns that into
- *  a volume multiplier (every engine's setVolume takes it as `normGain`), so
- *  switching from a loud modern master to a quiet older song does not need
- *  the volume slider. A song with no measurement plays unchanged. */
+ *  a gain in dB (lib/loudnessPolicy): 0 for a typical song, a few dB down for
+ *  a loud master, up for a quiet one as far as its peaks allow. The player
+ *  turns that into a volume multiplier (every engine's setVolume takes it as
+ *  `normGain`), so switching from a loud modern master to a quiet older song
+ *  does not need the volume slider. A song with no measurement plays
+ *  unchanged, which is also where a typical measured song plays. */
 
-/** The same bounds loudness.py clamps to, applied again here so a bad value
- *  from anywhere can never blast or mute a song. */
-export const MIN_GAIN_DB = -12;
+/** The same bounds as the server's policy (lib/loudnessPolicy), applied
+ *  again here so a bad value from anywhere can never blast or mute a song. */
+export const MIN_GAIN_DB = -5;
 export const MAX_GAIN_DB = 6;
 
 /** dB to a linear amplitude multiplier; anything not a number is 1. */
@@ -22,10 +24,18 @@ export function dbToLinear(db: number | null | undefined): number {
   return Math.pow(10, clamped / 20);
 }
 
+/** How long a change of gain in the middle of a song takes (the gain came
+ *  after the song started, or the setting was switched): a fade, never a
+ *  jump. A new song gets its gain at once, before it makes a sound. */
+export const GAIN_RAMP_MS = 400;
+
 /** Only YouTube songs are measured (they are the ones on the server's disk). */
 const MEASURABLE_RE = /^youtube:[A-Za-z0-9_-]{11}$/;
 
-const STORAGE_KEY = 'ember.trackGains.v1';
+/** v2: gains for the -9 LUFS policy. v1 held the old -14 LUFS
+ *  gains, 4 to 8 dB too quiet, kept for good: it is dropped on sight. */
+const STORAGE_KEY = 'ember.trackGains.v2';
+const OLD_STORAGE_KEYS = ['ember.trackGains.v1'];
 /** Enough for a big library; the oldest entries go first. */
 const MAX_ENTRIES = 2000;
 
@@ -40,6 +50,7 @@ function store(): Map<string, number> {
   if (gains) return gains;
   gains = new Map();
   try {
+    if (typeof localStorage !== 'undefined') for (const k of OLD_STORAGE_KEYS) localStorage.removeItem(k);
     const raw = typeof localStorage !== 'undefined' ? localStorage.getItem(STORAGE_KEY) : null;
     const parsed: unknown = raw ? JSON.parse(raw) : null;
     if (parsed && typeof parsed === 'object') {

@@ -77,12 +77,16 @@ export interface AudioBackend {
   seek(sec: number): void;
   /** v in 0..1. gain > 1 is party-mode boost (web: Web Audio; native may clamp).
    *  normGain is the current song's volume normalization, a linear multiplier
-   *  (lib/playback/normalization; 1 = unchanged). Applied after the volume
-   *  curve and never past full volume outside party mode. The Android engine
-   *  ignores it: it moves between songs natively, where a per-song level set
-   *  from here would land on the wrong song. It normalizes by itself instead
-   *  (setNormalize). */
-  setVolume(v: number, opts?: { gain?: number; normGain?: number }): void;
+   *  (lib/playback/normalization; 1 = unchanged), applied after the volume
+   *  curve. A boost (> 1) goes past full volume only where the engine can
+   *  amplify (the desktop engine, a web audio graph that is already built);
+   *  the server holds every boost under the song's true peak, so it never
+   *  clips. rampMs > 0 fades to a new normGain instead of jumping (the gain
+   *  changed mid-song); the slider and party gain always apply at once.
+   *  The Android engine ignores normGain: it moves between songs natively,
+   *  where a per-song level set from here would land on the wrong song. It
+   *  normalizes by itself instead (setNormalize). */
+  setVolume(v: number, opts?: { gain?: number; normGain?: number; rampMs?: number }): void;
   /** Queue-owning backends only (Android): volume normalization on or off.
    *  The engine looks up and applies each song's gain itself, as it moves
    *  between songs. Absent (or a no-op on an older app build) elsewhere. */

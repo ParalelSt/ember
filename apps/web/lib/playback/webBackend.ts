@@ -2,6 +2,7 @@
 
 import { logger } from '@/lib/logger/client';
 import { autoPreampDb, DEFAULT_EQ, EQ_BANDS, EQ_PEAK_Q, eqActive, type EqSettings } from './eq';
+import { createGainRamp } from './gainRamp';
 import type { AudioBackend, CreateAudioBackend } from './types';
 
 /** HTMLMediaElement.NETWORK_LOADING, spelled out: some DOMs (and test
@@ -35,8 +36,9 @@ export const createWebBackend: CreateAudioBackend = (events) => {
   //   element -> 60 Hz low shelf -> 230 / 910 / 3.6k peaking -> 14k high shelf
   //           -> eq pre-amp (auto headroom) -> party gain -> speakers
   //
-  // The element's own volume (the slider curve times normalization) still
-  // applies before all of it.
+  // Normalization rides on the party gain node when the graph exists (it can
+  // lift a quiet song past the element's 1.0); on the bare element it is part
+  // of the element's volume, which cannot go past 1.0.
   let audioCtx: AudioContext | null = null;
   let gainNode: GainNode | null = null;
   let eqFilters: BiquadFilterNode[] = [];
@@ -90,6 +92,45 @@ export const createWebBackend: CreateAudioBackend = (events) => {
     });
     eqPre.gain.value = on ? Math.pow(10, autoPreampDb(eq.bands, audioCtx.sampleRate || 48000) / 20) : 1;
   };
+
+  // --- Volume: the slider value (0..1, muted and ducked by the caller),
+  // party mode's gain, and the song's normalization gain, which fades
+  // (gainRamp) when it changes in the middle of a song.
+  let level = 1;
+  let partyGain = 1;
+  /** Nothing is touched before the first setVolume. */
+  let volumeSet = false;
+  const applyVolume = () => {
+    if (!volumeSet) return;
+    const n = norm.value();
+    if (partyGain > 1) {
+      // Party: linear (slider drives output 1:1 up to 1.0), then the graph
+      // amplifies, normalization included.
+      const g = ensureGraph();
+      if (g) {
+        a.volume = Math.min(1, level);
+        audioCtx?.resume?.().catch(() => {});
+        g.gain.value = partyGain * n;
+      } else {
+        a.volume = Math.min(1, level * n);
+      }
+      return;
+    }
+    // Normal: power 1.5. With a graph already built (the equalizer), the
+    // song's gain goes on the graph, so a quiet song really comes up (its
+    // boost is held under its true peak by the server: nothing clips). The
+    // bare element cannot go past 1.0, so there a boost only uses the room
+    // the slider leaves. The graph is never built just for this: on phones
+    // it can cost background playback.
+    const curved = Math.pow(Math.max(0, level), 1.5);
+    if (gainNode) {
+      a.volume = Math.min(1, curved);
+      gainNode.gain.value = n;
+    } else {
+      a.volume = Math.min(1, curved * n);
+    }
+  };
+  const norm = createGainRamp(() => applyVolume());
 
   // --- Transition + recovery state.
   let transitioning = false;
@@ -242,26 +283,11 @@ export const createWebBackend: CreateAudioBackend = (events) => {
     },
 
     setVolume(v, opts) {
-      const gain = opts?.gain ?? 1;
-      const norm = opts?.normGain ?? 1;
-      const party = gain > 1;
-      if (party) {
-        // Party: linear (slider drives output 1:1 up to 1.0), then the graph
-        // amplifies, normalization included.
-        const g = ensureGraph();
-        if (g) {
-          a.volume = Math.min(1, v);
-          audioCtx?.resume?.().catch(() => {});
-          g.gain.value = gain * norm;
-        } else {
-          a.volume = Math.min(1, v * norm);
-        }
-      } else {
-        // Normal: power 1.5, then normalization. The element cannot go past
-        // 1.0, so a quiet song's boost runs out at the top of the slider.
-        a.volume = Math.min(1, Math.pow(v, 1.5) * norm);
-        if (gainNode) gainNode.gain.value = 1;
-      }
+      volumeSet = true;
+      level = v;
+      partyGain = opts?.gain ?? 1;
+      norm.set(opts?.normGain ?? 1, opts?.rampMs ?? 0);
+      applyVolume();
     },
 
     setEq(next) {
@@ -270,6 +296,8 @@ export const createWebBackend: CreateAudioBackend = (events) => {
       // never switches it on keeps the bare element.
       if (eqActive(next) && ensureGraph()) audioCtx?.resume?.().catch(() => {});
       applyEq();
+      // A graph built just now takes the song's gain over from the element.
+      applyVolume();
     },
 
     setMetadata(track, localArtSrc) {
@@ -334,6 +362,7 @@ export const createWebBackend: CreateAudioBackend = (events) => {
 
     destroy() {
       if (transitionTimer) clearTimeout(transitionTimer);
+      norm.cancel();
       a.removeEventListener('error', onError);
       a.removeEventListener('timeupdate', onTime);
       a.removeEventListener('loadedmetadata', onLoadedMeta);
