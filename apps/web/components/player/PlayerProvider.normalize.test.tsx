@@ -170,4 +170,31 @@ describe('PlayerProvider: volume normalization', () => {
     expect(v).toBe(0.8);
     expect(opts?.gain).toBe(2);
   });
+
+  // Party mode is desktop-only (lib/playback/partyDevice). Normalization
+  // sends a new song's volume before its audio loads; on a touch device
+  // that must carry party's gain as off too, or the engine would build a
+  // Web Audio graph for it.
+  it('on a touch device, no volume it sends carries party gain, not even before a load', async () => {
+    vi.stubGlobal('matchMedia', (q: string) => ({ matches: q === '(pointer: coarse)' }) as MediaQueryList);
+    try {
+      useSettingsStore.setState({ partyVolume: true });
+      let controls: ReturnType<typeof usePlayer> | null = null;
+      function Grab() {
+        controls = usePlayer();
+        return null;
+      }
+      render(<PlayerProvider><Grab /></PlayerProvider>);
+      await waitFor(() => expect(lastOpts()?.normGain).toBeCloseTo(0.631, 3));
+      await waitFor(() => expect(getTrackGain).toHaveBeenCalledWith(QUIET.id));
+      await act(async () => {});
+      act(() => controls!.next());
+      expect(fake.load).toHaveBeenCalled();
+      expect(fake.setVolume.mock.calls.length).toBeGreaterThan(0);
+      for (const [, opts] of fake.setVolume.mock.calls) expect(opts?.gain ?? 1).toBe(1);
+      expect(lastOpts()?.normGain).toBeCloseTo(1.585, 3);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
 });

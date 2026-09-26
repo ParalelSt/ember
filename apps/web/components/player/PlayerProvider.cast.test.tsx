@@ -3,6 +3,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, render } from '@testing-library/react';
 import { PlayerProvider, usePlayer } from './PlayerProvider';
 import { usePlayerStore } from '@/stores/usePlayerStore';
+import { useSettingsStore } from '@/stores/useSettingsStore';
+import { resetTrackGainsForTests } from '@/lib/playback/normalization';
 import { makeFakeBackend, makeTrack } from '@/test-utils/fakeBackend';
 import type { AudioBackendEvents } from '@/lib/playback/types';
 import type { CastMedia, CastRemote, CastRemoteStatus } from '@/lib/playback/castBackend';
@@ -12,7 +14,8 @@ import type { CastMedia, CastRemote, CastRemoteStatus } from '@/lib/playback/cas
 // slider drives the TV, the stopped local engine can no longer move the
 // player, and the song comes back paused where the TV left it.
 
-vi.mock('@/lib/api', () => ({ api: { getTrackGain: async () => ({ gainDb: null }) }, apiUrl: (u: string) => u }));
+const gains = vi.hoisted(() => ({} as Record<string, number | null>));
+vi.mock('@/lib/api', () => ({ api: { getTrackGain: async (id: string) => ({ gainDb: gains[id] ?? null }) }, apiUrl: (u: string) => u }));
 vi.mock('@/lib/playback/detectShell', () => ({ detectShell: () => 'web' }));
 const web = makeFakeBackend();
 let webEvents: AudioBackendEvents | null = null;
@@ -85,6 +88,10 @@ beforeEach(() => {
   controls = null;
   web.currentTime = 0;
   web.paused = true;
+  for (const k of Object.keys(gains)) delete gains[k];
+  window.localStorage.clear();
+  resetTrackGainsForTests();
+  useSettingsStore.setState({ normalizeVolume: true, partyVolume: false });
   usePlayerStore.setState({ queue: [A, B], index: 0, position: 0, isPlaying: false, duration: 0, volume: 0.8, muted: false, loopMode: 'off', context: null });
 });
 
@@ -235,5 +242,32 @@ describe('PlayerProvider: casting', () => {
     render(<PlayerProvider><Grab /></PlayerProvider>);
     await flush();
     expect(remote.load).toHaveBeenCalled();
+  });
+
+  // Normalization is off on the TV (it plays the file as it is) and back on
+  // here: a song's gain never moves the TV's volume, and the local engine
+  // gets the playing song's gain back, before its audio loads.
+  it('normalization: never moves the TV, and is back on the local engine after', async () => {
+    gains[A.id] = -4;
+    gains[B.id] = 4;
+    await startPlayingAt(0);
+    await flush();
+    expect(web.setVolume.mock.calls.at(-1)?.[1]?.normGain).toBeCloseTo(0.631, 3);
+    const remote = fakeRemote();
+    act(() => castSessionStarted(remote, 'TV'));
+    await flush();
+    act(() => controls!.playTrack(B, [A, B]));
+    await flush();
+    await flush();
+    expect(remote.setVolume).not.toHaveBeenCalled();
+    const order: string[] = [];
+    web.setVolume.mockImplementation((_v, o) => { order.push(`vol:${o?.normGain?.toFixed(3)}`); });
+    web.load.mockImplementation((url: string) => { order.push(`load:${url}`); });
+    act(() => castSessionEnded());
+    const loadAt = order.findIndex((e) => e === 'load:/s/b');
+    expect(loadAt).toBeGreaterThan(-1);
+    expect(order.slice(0, loadAt).at(-1)).toBe('vol:1.585');
+    web.setVolume.mockImplementation(() => {});
+    web.load.mockImplementation(() => {});
   });
 });
