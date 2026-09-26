@@ -18,10 +18,42 @@ import kotlin.math.roundToInt
  *  normal song never goes through it. The server holds every boost under the
  *  song's true peak, so the enhancer's own limiter has nothing to do. A
  *  phone whose enhancer will not start just plays without the boost, at no
- *  less than full volume. */
-class LoudnessBooster(private val player: ExoPlayer) : Booster, Player.Listener {
-    private var fx: LoudnessEnhancer? = null
+ *  less than full volume.
+ *
+ *  While casting ([setSuspended]) the phone's player is stopped and the TV
+ *  plays the file as it is: the effect is let go of entirely, and made again
+ *  on the player's (possibly new) audio session, at the latest boost, once
+ *  the music is back on the phone.
+ *
+ *  [sessionId] and [openEffect] are the player's audio session and the
+ *  enhancer on it; tests stand in for both. */
+class LoudnessBooster(
+    private val player: ExoPlayer,
+    private val sessionId: () -> Int = { player.audioSessionId },
+    private val openEffect: (Int) -> Effect = { EnhancerEffect(LoudnessEnhancer(it)) },
+) : Booster, Player.Listener {
+    /** The part of LoudnessEnhancer this uses. */
+    interface Effect {
+        fun setTargetGain(mb: Int)
+        fun setEnabled(on: Boolean)
+        fun release()
+    }
+
+    private class EnhancerEffect(private val e: LoudnessEnhancer) : Effect {
+        override fun setTargetGain(mb: Int) = e.setTargetGain(mb)
+        override fun setEnabled(on: Boolean) { e.enabled = on }
+        override fun release() = e.release()
+    }
+
+    private var fx: Effect? = null
     private var targetMb = 0
+
+    /** True while casting: no effect on the phone's (stopped) player. */
+    var suspended = false
+        private set
+
+    /** Whether an effect is on the player's session right now. */
+    val attached: Boolean get() = fx != null
 
     init {
         player.addListener(this)
@@ -34,6 +66,14 @@ class LoudnessBooster(private val player: ExoPlayer) : Booster, Player.Listener 
         push()
     }
 
+    /** Casting started (true) or ended (false). The boost asked for in the
+     *  meantime is kept and lands when the music comes back. */
+    fun setSuspended(on: Boolean) {
+        if (on == suspended) return
+        suspended = on
+        if (on) drop() else push()
+    }
+
     override fun onAudioSessionIdChanged(audioSessionId: Int) {
         // A new session: the old effect is on audio nobody plays any more.
         drop()
@@ -41,28 +81,32 @@ class LoudnessBooster(private val player: ExoPlayer) : Booster, Player.Listener 
     }
 
     private fun push() {
+        if (suspended) return
         if (targetMb <= 0) {
-            fx?.let { runCatching { it.enabled = false } }
+            fx?.let { runCatching { it.setEnabled(false) } }
             return
         }
         val e = fx ?: open() ?: return
         runCatching {
             e.setTargetGain(targetMb)
-            e.enabled = true
+            e.setEnabled(true)
         }.onFailure { Log.w(EmberPlaybackService.TAG, "loudness boost: ${it.message}") }
     }
 
-    private fun open(): LoudnessEnhancer? {
-        val id = player.audioSessionId
+    private fun open(): Effect? {
+        val id = sessionId()
         if (id == C.AUDIO_SESSION_ID_UNSET || id == 0) return null
-        return runCatching { LoudnessEnhancer(id) }
+        return runCatching { openEffect(id) }
             .onFailure { Log.w(EmberPlaybackService.TAG, "no loudness enhancer: ${it.message}") }
             .getOrNull()
             ?.also { fx = it }
     }
 
     private fun drop() {
-        fx?.let { runCatching { it.release() } }
+        fx?.let {
+            runCatching { it.setEnabled(false) }
+            runCatching { it.release() }
+        }
         fx = null
     }
 

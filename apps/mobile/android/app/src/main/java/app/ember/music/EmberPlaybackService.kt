@@ -247,6 +247,10 @@ class EmberPlaybackService : MediaLibraryService() {
             player, queue, baseUrl,
             whenApplied = queue::afterPending,
             later = { ms, fn -> handler.postDelayed(fn, ms) },
+            // The TV plays the file as it is: no boost on the phone's stopped
+            // player while it does, and the boost back on the phone's audio
+            // session once the music is.
+            onCasting = booster::setSuspended,
         ) { p -> session.player = if (p === queue) queue else levelPlayer }
         cast.setSessionAvailabilityListener(object : SessionAvailabilityListener {
             override fun onCastSessionAvailable() {

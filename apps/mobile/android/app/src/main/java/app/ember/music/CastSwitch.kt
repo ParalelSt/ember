@@ -21,13 +21,18 @@ import androidx.media3.common.Timeline
  *  app an empty queue, and the app would take that as the queue being
  *  cleared. [whenApplied] runs its argument once the TV player has been
  *  handed everything asked of it so far (CastQueuePlayer.afterPending);
- *  [later] schedules the give-up for a TV that never reports its queue. */
+ *  [later] schedules the give-up for a TV that never reports its queue.
+ *
+ *  [onCasting] hears the moment the phone's player stops for the TV (true)
+ *  and the moment it has the queue back (false): what sits on the phone's
+ *  audio output (the loudness booster) lets go while the TV plays. */
 class CastSwitch(
     private val local: Player,
     private val remote: Player,
     private val baseUrl: String,
     private val whenApplied: (() -> Unit) -> Unit = { it() },
     private val later: (Long, () -> Unit) -> Unit = { _, fn -> fn() },
+    private val onCasting: (Boolean) -> Unit = {},
     private val onActive: (Player) -> Unit,
 ) {
     companion object {
@@ -91,6 +96,7 @@ class CastSwitch(
         lastRemote = s
         val token = ++handover
         local.stop()
+        onCasting(true)
         if (s == null) {
             moveSession(token)
             return
@@ -112,6 +118,7 @@ class CastSwitch(
         casting = true
         lastRemote = snapshot(remote)
         local.stop()
+        onCasting(true)
         moveSession(++handover)
     }
 
@@ -129,6 +136,7 @@ class CastSwitch(
             local.repeatMode = s.repeatMode
             local.prepare()
         }
+        onCasting(false)
         if (sessionOn !== local) {
             sessionOn = local
             onActive(local)

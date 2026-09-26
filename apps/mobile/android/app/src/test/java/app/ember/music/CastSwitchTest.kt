@@ -162,4 +162,51 @@ class CastSwitchTest {
         assertEquals(30_000L, tv.currentPosition)
         assertSame(tv, switch.active)
     }
+
+    @Test fun `the phone's audio effects let go while casting and come back after`() {
+        val casting = ArrayList<Boolean>()
+        val sw = CastSwitch(phone, tv, base, onCasting = { casting.add(it) }) { }
+        phone.setMediaItems(listOf(song("aaaaaaaaaaa")), 0, 5_000)
+        sw.toRemote()
+        assertEquals(listOf(true), casting)
+        sw.toRemote()
+        assertEquals(listOf(true), casting)
+        sw.toLocal()
+        assertEquals(listOf(true, false), casting)
+        // The queue is already back on the phone when it hears so.
+        assertEquals(1, phone.mediaItemCount)
+        sw.toLocal()
+        assertEquals(listOf(true, false), casting)
+    }
+
+    @Test fun `a session already running when the service starts counts as casting`() {
+        val casting = ArrayList<Boolean>()
+        val sw = CastSwitch(phone, tv, base, onCasting = { casting.add(it) }) { }
+        sw.adoptRemote()
+        assertEquals(listOf(true), casting)
+    }
+
+    @Test fun `the loudness booster is off while casting, with the real switch`() {
+        val made = ArrayList<Boolean>()
+        var fx: LoudnessBooster.Effect? = null
+        val booster = LoudnessBooster(phone, { 5 }) {
+            object : LoudnessBooster.Effect {
+                override fun setTargetGain(mb: Int) {}
+                override fun setEnabled(on: Boolean) { made.add(on) }
+                override fun release() {}
+            }.also { fx = it }
+        }
+        val sw = CastSwitch(phone, tv, base, onCasting = booster::setSuspended) { }
+        phone.setMediaItems(listOf(song("aaaaaaaaaaa")), 0, 0)
+        booster.setBoost(1.4f)
+        assertTrue(booster.attached)
+        sw.toRemote()
+        assertFalse(booster.attached)
+        assertEquals(false, made.last())
+        sw.toLocal()
+        assertTrue(booster.attached)
+        assertEquals(true, made.last())
+        assertTrue(fx != null)
+        booster.release()
+    }
 }
