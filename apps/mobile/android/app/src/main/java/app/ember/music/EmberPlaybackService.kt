@@ -13,6 +13,7 @@ import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.common.Timeline
+import androidx.media3.common.audio.AudioProcessor
 import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.cache.SimpleCache
 import androidx.media3.datasource.okhttp.OkHttpDataSource
@@ -49,6 +50,9 @@ class EmberPlaybackService : MediaLibraryService() {
         const val COMMAND_QUEUE_CONTEXT = "ember.queueContext"
         /** Volume normalization on or off (`enabled`), the web app's setting. */
         const val COMMAND_NORMALIZE = "ember.normalize"
+        /** The equalizer (`enabled`, `bands`: five dB gains), the web app's
+         *  setting. Kept on disk, so the car follows it too. */
+        const val COMMAND_EQUALIZER = "ember.equalizer"
         /** Session extras the plugin mirrors into its state. */
         const val EXTRA_CACHED_IDS = "cachedIds"
         const val EXTRA_OFFLINE_STALLED = "offlineStalled"
@@ -95,10 +99,17 @@ class EmberPlaybackService : MediaLibraryService() {
         }
 
         /** The music player: streams (through the auto cache, see MediaCache),
-         *  or the downloaded copy when there is one (OfflineAudio). Its own
-         *  function so tests build the same one. */
-        fun buildPlayer(context: Context, streams: DataSource.Factory, offline: OfflineStore, online: () -> Boolean = { true }): ExoPlayer =
-            ExoPlayer.Builder(context)
+         *  or the downloaded copy when there is one (OfflineAudio), through
+         *  the equalizer [eq] when given (Equalizer.kt). Its own function so
+         *  tests build the same one. */
+        fun buildPlayer(
+            context: Context,
+            streams: DataSource.Factory,
+            offline: OfflineStore,
+            eq: AudioProcessor? = null,
+            online: () -> Boolean = { true },
+        ): ExoPlayer =
+            (if (eq != null) ExoPlayer.Builder(context, EqualizerProcessor.renderers(context, eq)) else ExoPlayer.Builder(context))
                 .setMediaSourceFactory(
                     DefaultMediaSourceFactory(context)
                         .setDataSourceFactory(OfflineAudio.dataSourceFactory(context, streams, offline))
@@ -115,6 +126,8 @@ class EmberPlaybackService : MediaLibraryService() {
 
     private lateinit var player: ExoPlayer
     private lateinit var normalizer: Normalizer
+    /** The equalizer in the player's audio sink; its settings live on disk. */
+    private val equalizer = EqualizerProcessor()
     private lateinit var savedQueue: SavedQueue
     private lateinit var session: MediaLibrarySession
     lateinit var api: ServerApi
@@ -149,7 +162,8 @@ class EmberPlaybackService : MediaLibraryService() {
         offline = OfflineStore.shared(this)
         val streams = MediaCache.dataSourceFactory(cache, dataSource)
         // Asked live on each failed load; the network watch starts just below.
-        player = buildPlayer(this, streams, offline) { !::net.isInitialized || net.current().online }
+        equalizer.settings = EqSettings.load(EqSettings.prefs(this))
+        player = buildPlayer(this, streams, offline, equalizer) { !::net.isInitialized || net.current().online }
         player.addListener(QueueListener(
             player,
             recordPlay = { track -> io.execute { runCatching { api.recordPlay(track) }.onFailure { Log.w(TAG, "history: ${it.message}") } } },
@@ -398,6 +412,7 @@ class EmberPlaybackService : MediaLibraryService() {
                         add(SessionCommand(COMMAND_CACHE_CLEAR, Bundle.EMPTY))
                         add(SessionCommand(COMMAND_QUEUE_CONTEXT, Bundle.EMPTY))
                         add(SessionCommand(COMMAND_NORMALIZE, Bundle.EMPTY))
+                        add(SessionCommand(COMMAND_EQUALIZER, Bundle.EMPTY))
                     }
                 }
                 .build()
@@ -427,6 +442,11 @@ class EmberPlaybackService : MediaLibraryService() {
                     val on = args.getBoolean("enabled", true)
                     getSharedPreferences(NORMALIZE_PREFS, MODE_PRIVATE).edit().putBoolean("enabled", on).apply()
                     normalizer.setEnabled(on)
+                }
+                COMMAND_EQUALIZER -> {
+                    val eq = EqSettings.fromBundle(args)
+                    EqSettings.save(EqSettings.prefs(this@EmberPlaybackService), eq)
+                    equalizer.settings = eq
                 }
                 COMMAND_QUEUE_CONTEXT -> {
                     queueContextType = args.getString("contextType")
