@@ -51,17 +51,27 @@ beforeEach(() => {
 });
 
 describe('readTrackGain', () => {
-  it('reads a stored gain', () => {
-    sidecar('readgain001', JSON.stringify({ lufs: -8, gainDb: -6 }));
-    expect(readTrackGain('readgain001')).toBe(-6);
+  it('works the gain out from the stored measurement, with today\'s policy', () => {
+    // Written under the old -14 LUFS target, which cut this song by 6 dB.
+    sidecar('readgain001', JSON.stringify({ lufs: -8, peakDb: 1.2, gainDb: -6, targetLufs: -14 }));
+    expect(readTrackGain('readgain001')).toBe(-1);
+    sidecar('readgain005', JSON.stringify({ lufs: -13, peakDb: -8, gainDb: 1 }));
+    expect(readTrackGain('readgain005')).toBe(4);
+    // A silent file: measured, nothing to do.
+    sidecar('readgain006', JSON.stringify({ lufs: null, peakDb: null, gainDb: 0 }));
+    expect(readTrackGain('readgain006')).toBe(0);
   });
 
-  it('is null for no sidecar, a corrupt one, a non-number, or a bad id', () => {
+  it('is null for no sidecar, a corrupt one, one with no measurement, or a bad id', () => {
     expect(readTrackGain('readgain002')).toBeNull();
     sidecar('readgain003', '{nope');
     expect(readTrackGain('readgain003')).toBeNull();
     sidecar('readgain004', JSON.stringify({ gainDb: 'loud' }));
     expect(readTrackGain('readgain004')).toBeNull();
+    sidecar('readgain007', JSON.stringify({ gainDb: -6 }));
+    expect(readTrackGain('readgain007')).toBeNull();
+    sidecar('readgain008', 'null');
+    expect(readTrackGain('readgain008')).toBeNull();
     expect(readTrackGain('../../etc/x')).toBeNull();
   });
 });
@@ -80,7 +90,7 @@ describe('measureLoudness', () => {
 
   it('answers from the sidecar without spawning', async () => {
     audio('measure0002');
-    sidecar('measure0002', JSON.stringify({ gainDb: 2 }));
+    sidecar('measure0002', JSON.stringify({ lufs: -11, peakDb: -5, gainDb: 3 }));
     expect(await measureLoudness('measure0002')).toBe(2);
     expect(loudnessRuns()).toHaveLength(0);
   });

@@ -7,6 +7,13 @@ and the gain that brings it to TARGET_LUFS is written to a small sidecar,
 volume multiplier, so a loud modern master and a quiet 80s one play at about
 the same level.
 
+The target is the level a typical song in the library already has (the
+median of a measured sample was -9.2 LUFS), not Spotify's -14: the player
+cannot push a song past full volume on every engine, so aiming at -14 turned
+almost every song down by 4 to 8 dB and made the whole app quieter. Aimed at
+-9, a typical song plays unchanged, loud masters come down a few dB at most,
+and quiet songs come up as far as their peaks allow.
+
     .venv/bin/python loudness.py <videoId>     # prints the sidecar JSON
 """
 from __future__ import annotations
@@ -21,10 +28,12 @@ from pathlib import Path
 
 from ffmpeg_path import ffmpeg_exe
 
-# Spotify's and YouTube's reference level.
-TARGET_LUFS = -14.0
-# Never cut or boost more than this, whatever the measurement says.
-MIN_GAIN_DB = -12.0
+# About where a modern song already sits: normalizing never makes the app
+# quieter overall (see the module docstring).
+TARGET_LUFS = -9.0
+# Never cut or boost more than this, whatever the measurement says. A cut of
+# a few dB is enough to tame a loud master; more made songs sound muffled.
+MIN_GAIN_DB = -5.0
 MAX_GAIN_DB = 6.0
 # A boost may lift the true peak up to here and no further.
 PEAK_CEILING_DB = -1.0
@@ -55,20 +64,24 @@ def parse_ebur128(stderr: str) -> tuple[float, float]:
     return lufs, peak
 
 
-def compute_gain(lufs: float, peak: float | None) -> float:
+def compute_gain(lufs: float | None, peak: float | None) -> float:
     """dB to apply so the song plays at TARGET_LUFS.
 
     Clamped to MIN_GAIN_DB..MAX_GAIN_DB. A boost is also held back so the
     true peak stays under PEAK_CEILING_DB (never below 0: a quiet song with a
-    hot peak just is not boosted). Silence, or a measurement that is not a
-    number, gets 0."""
-    if not math.isfinite(lufs) or lufs <= SILENCE_LUFS:
+    hot peak just is not boosted), and a song whose peak is unknown is never
+    boosted: the players have no limiter, so a boost must be known not to
+    clip. Silence, or a measurement that is not a number, gets 0.
+
+    Mirrored in apps/web/lib/loudnessPolicy.ts (the server recomputes every
+    stored gain with it, so changing the policy needs no re-measuring)."""
+    if lufs is None or not math.isfinite(lufs) or lufs <= SILENCE_LUFS:
         return 0.0
     gain = min(MAX_GAIN_DB, max(MIN_GAIN_DB, TARGET_LUFS - lufs))
-    if gain > 0 and peak is not None and not math.isnan(peak):
-        headroom = PEAK_CEILING_DB - peak if math.isfinite(peak) else 0.0
+    if gain > 0:
+        headroom = PEAK_CEILING_DB - peak if peak is not None and math.isfinite(peak) else 0.0
         gain = max(0.0, min(gain, headroom))
-    return round(gain, 2)
+    return round(gain, 2) + 0.0  # + 0.0: never -0.0
 
 
 def measure(path: Path, exe: str | None = None, timeout: float = 120) -> tuple[float, float]:
@@ -102,15 +115,20 @@ def sidecar_path(video_id: str, base: Path | None = None) -> Path:
 
 def analyze(video_id: str, base: Path | None = None) -> dict:
     """Measure the cached song and write its sidecar. Returns what was written.
-    An existing sidecar is returned as is: a video's audio never changes."""
+    An existing sidecar is not measured again (a video's audio never
+    changes), but its gain is worked out afresh from the stored measurement,
+    so a sidecar written under an older policy answers with today's gain."""
     if not VIDEO_ID_RE.match(video_id):
         raise ValueError("invalid videoId")
     base = base or music_dir()
     side = sidecar_path(video_id, base)
     if side.exists():
         try:
-            return json.loads(side.read_text())
-        except (OSError, ValueError):
+            stored = json.loads(side.read_text())
+            if isinstance(stored, dict) and "lufs" in stored:
+                return {**stored, "gainDb": compute_gain(stored.get("lufs"), stored.get("peakDb")),
+                        "targetLufs": TARGET_LUFS}
+        except (OSError, ValueError, TypeError):
             pass  # unreadable: measure again and overwrite it
     audio = cached_file(video_id, base)
     if not audio:

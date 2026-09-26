@@ -9,6 +9,7 @@ import { parseMusicCheck, type MusicCheck, type RawMusicCheck } from '@/lib/impo
 import { downloadGate, type Release } from '@/lib/downloadGate';
 import { BusyError, createSemaphore, type Semaphore } from '@/lib/semaphore';
 import { exceedsMediaLimits, isTooLargeMessage } from '@/lib/mediaLimits';
+import { gainForMeasurement } from '@/lib/loudnessPolicy';
 
 // apps/web is one level deeper than the old apps/api in workspace layout,
 // but both resolve to the same spotify-clone root.
@@ -368,12 +369,20 @@ export function loudnessSidecarPath(videoId: string): string {
   return path.join(MUSIC_DIR, `${videoId}.loudness.json`);
 }
 
-/** The stored gain in dB, or null when this song has not been measured. */
+/** The song's gain in dB, or null when it has not been measured.
+ *
+ *  Worked out from the stored measurement (lufs, peakDb) with today's policy
+ *  (lib/loudnessPolicy), not read from the sidecar's gainDb: sidecars written
+ *  under the first policy hold gains for a -14 LUFS target that turned nearly every
+ *  song down 4 to 8 dB. A sidecar with no measurement in it counts as not
+ *  measured (loudness.py measures it again). */
 export function readTrackGain(videoId: string): number | null {
   if (!VIDEO_ID_RE.test(videoId)) return null;
   try {
-    const raw = JSON.parse(fs.readFileSync(loudnessSidecarPath(videoId), 'utf8')) as { gainDb?: unknown };
-    return typeof raw.gainDb === 'number' && Number.isFinite(raw.gainDb) ? raw.gainDb : null;
+    const raw = JSON.parse(fs.readFileSync(loudnessSidecarPath(videoId), 'utf8')) as { lufs?: unknown; peakDb?: unknown };
+    // lufs is null for a silent file (loudness.py stores -inf as null).
+    if (!raw || typeof raw !== 'object' || !(typeof raw.lufs === 'number' || raw.lufs === null)) return null;
+    return gainForMeasurement(raw.lufs, raw.peakDb);
   } catch {
     return null;
   }

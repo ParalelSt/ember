@@ -188,7 +188,12 @@ case "$CMD" in
       echo "ERROR: loudness: $VIDEO_ID is not downloaded" >&2
       exit 1
     fi
-    printf '{"lufs": -11.0, "peakDb": -0.5, "gainDb": %s, "targetLufs": -14.0}' "${FAKE_GAIN_DB:--3}" \
+    # The server works the gain out from lufs/peakDb (lib/loudnessPolicy), so
+    # the fake measurement is the one that gives FAKE_GAIN_DB: a cut from the
+    # -9 LUFS target, with a hot peak (cuts ignore it).
+    GAIN="${FAKE_GAIN_DB:--3}"
+    LUFS=$(awk -v g="$GAIN" 'BEGIN { printf "%.2f", -9 - g }')
+    printf '{"lufs": %s, "peakDb": 1.0, "gainDb": %s, "targetLufs": -9.0}' "$LUFS" "$GAIN" \
       > "$MUSIC_DIR/$VIDEO_ID.loudness.json"
     cat "$MUSIC_DIR/$VIDEO_ID.loudness.json"
     ;;
