@@ -65,6 +65,21 @@ class ServerApi(val baseUrl: String, private val cookies: () -> String?) {
         }
     }
 
+    /** POST that answers JSON. */
+    fun postForJson(path: String, body: JSONObject): JSONObject {
+        val req = Request.Builder().url(baseUrl + path)
+            .post(body.toString().toRequestBody("application/json".toMediaType())).build()
+        http.newCall(req).execute().use { res ->
+            if (!res.isSuccessful) throw IOException("POST $path -> ${res.code}")
+            return JSONObject(res.body?.string().orEmpty())
+        }
+    }
+
+    /** Signed links a cast device can play without the cookie (the server's
+     *  lib/streamToken), for up to 500 track ids. */
+    fun castLinks(ids: List<String>): Map<String, CastLink> =
+        CastItems.parseSignResponse(postForJson("/api/cast/sign", JSONObject().put("ids", JSONArray(ids))))
+
     private fun tracks(json: JSONObject, key: String = "tracks"): List<JSONObject> {
         val arr: JSONArray = json.optJSONArray(key) ?: JSONArray()
         return (0 until arr.length()).map { arr.getJSONObject(it) }

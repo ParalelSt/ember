@@ -93,6 +93,9 @@ dependencies {
     // Auto cache (AutoCacher.kt): SimpleCache, CacheWriter and its index database.
     implementation "androidx.media3:media3-datasource:$media3Version"
     implementation "androidx.media3:media3-database:$media3Version"
+    // Casting (CastSupport.kt): CastPlayer and, through it, the Google Cast
+    // framework and androidx.mediarouter for the device picker.
+    implementation "androidx.media3:media3-cast:$media3Version"
 }
 
 apply from: 'capacitor.build.gradle'

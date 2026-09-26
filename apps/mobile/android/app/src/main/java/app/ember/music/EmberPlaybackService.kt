@@ -8,6 +8,8 @@ import android.os.Looper
 import android.os.PowerManager
 import android.util.Log
 import android.webkit.CookieManager
+import androidx.media3.cast.CastPlayer
+import androidx.media3.cast.SessionAvailabilityListener
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
@@ -24,6 +26,7 @@ import androidx.media3.session.MediaLibraryService
 import androidx.media3.session.MediaSession
 import androidx.media3.session.SessionCommand
 import androidx.media3.session.SessionResult
+import com.google.android.gms.cast.framework.CastContext
 import com.google.common.collect.ImmutableList
 import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.ListenableFuture
@@ -126,6 +129,17 @@ class EmberPlaybackService : MediaLibraryService() {
 
     private lateinit var player: ExoPlayer
     private lateinit var normalizer: Normalizer
+    /** The session's player when nothing is cast: the ExoPlayer at the
+     *  person's level times the song's gain. */
+    private lateinit var levelPlayer: LevelPlayer
+    /** Casting (CastSupport.kt): null on a phone without Google Play
+     *  services, where there is nothing to cast with. */
+    private var castPlayer: CastPlayer? = null
+    private var castSwitch: CastSwitch? = null
+    /** Signing cast links: a network call, never behind a slow browse list. */
+    private val castIo = Executors.newSingleThreadExecutor()
+    /** The player that plays now: the phone's, or the cast device's. */
+    private val active: Player get() = castSwitch?.active ?: player
     /** The equalizer in the player's audio sink; its settings live on disk. */
     private val equalizer = EqualizerProcessor()
     private lateinit var savedQueue: SavedQueue
@@ -166,7 +180,7 @@ class EmberPlaybackService : MediaLibraryService() {
         player = buildPlayer(this, streams, offline, equalizer) { !::net.isInitialized || net.current().online }
         player.addListener(QueueListener(
             player,
-            recordPlay = { track -> io.execute { runCatching { api.recordPlay(track) }.onFailure { Log.w(TAG, "history: ${it.message}") } } },
+            recordPlay = ::recordPlay,
             extendQueue = ::maybeExtendQueue,
             // Read at call time: offlinePlayback is set up in startAutoCache below.
             offlineHandles = { offlinePlayback.handles(it) },
@@ -179,11 +193,13 @@ class EmberPlaybackService : MediaLibraryService() {
         normalizer.setEnabled(getSharedPreferences(NORMALIZE_PREFS, MODE_PRIVATE).getBoolean("enabled", true))
         // The session (the app, the notification, the car) sets the person's
         // level; the player underneath adds the song's gain (Normalizer).
-        session = MediaLibrarySession.Builder(this, LevelPlayer(player, normalizer), Callback())
+        levelPlayer = LevelPlayer(player, normalizer)
+        session = MediaLibrarySession.Builder(this, levelPlayer, Callback())
             // Covers on the Ember server need the cookie; others must not get it.
             .setBitmapLoader(ArtworkSources.bitmapLoader(this, baseUrl, dataSource, OkHttpDataSource.Factory(okhttp3.OkHttpClient())))
             .build()
         startAutoCache(streams)
+        startCasting(baseUrl)
         // Shuffle and repeat as buttons on the now-playing screen (car + notification).
         session.setCustomLayout(ImmutableList.of(
             androidx.media3.session.CommandButton.Builder().setDisplayName("Shuffle").setIconResId(android.R.drawable.ic_menu_rotate).setSessionCommand(SessionCommand(COMMAND_SHUFFLE, Bundle.EMPTY)).build(),
@@ -192,6 +208,49 @@ class EmberPlaybackService : MediaLibraryService() {
     }
 
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaLibrarySession = session
+
+    private fun recordPlay(track: org.json.JSONObject) {
+        io.execute { runCatching { api.recordPlay(track) }.onFailure { Log.w(TAG, "history: ${it.message}") } }
+    }
+
+    // ── Casting ─────────────────────────────────────────────────────────
+
+    /** Chromecast, Google speakers, Android TV. When a Cast session starts
+     *  (the app's Cast button, or the system's output switcher), the queue
+     *  moves to a CastPlayer and the session follows it, so the app, the
+     *  notification and the lock screen control the TV. The equalizer and
+     *  volume normalization live in the ExoPlayer and do not apply there. */
+    private fun startCasting(baseUrl: String) {
+        // The Task-based getSharedInstance needs an executor and a callback for
+        // what is, on the main thread, an immediate answer.
+        @Suppress("DEPRECATION")
+        val ctx = runCatching { CastContext.getSharedInstance(this) }
+            .onFailure { Log.i(TAG, "no Cast on this phone: ${it.message}") }
+            .getOrNull() ?: return
+        val cast = runCatching { CastPlayer(ctx, CastConverter()) }
+            .onFailure { Log.w(TAG, "cast player: ${it.message}") }
+            .getOrNull() ?: return
+        val signer = CastSigner({ ids -> api.castLinks(ids) })
+        val queue = CastQueuePlayer(cast, signer, baseUrl, castIo) { handler.post(it) }
+        // History and radio go on while the TV plays; a song the TV cannot
+        // play is skipped, as on the phone.
+        queue.addListener(QueueListener(queue, recordPlay = ::recordPlay, extendQueue = ::maybeExtendQueue))
+        val switch = CastSwitch(player, queue, baseUrl) { p -> session.player = if (p === queue) queue else levelPlayer }
+        cast.setSessionAvailabilityListener(object : SessionAvailabilityListener {
+            override fun onCastSessionAvailable() {
+                Log.i(TAG, "cast session started: the queue moves to the TV")
+                switch.toRemote()
+            }
+            override fun onCastSessionUnavailable() {
+                Log.i(TAG, "cast session ended: the queue comes back to the phone")
+                switch.toLocal()
+            }
+        })
+        castPlayer = cast
+        castSwitch = switch
+        // A session already running (the service started again mid-cast).
+        if (cast.isCastSessionAvailable) switch.adoptRemote()
+    }
 
     // ── Auto cache and offline playback ─────────────────────────────────
 
@@ -331,6 +390,8 @@ class EmberPlaybackService : MediaLibraryService() {
      *  wins by arriving first, in which case this sees a non-last item and
      *  does nothing. */
     private fun maybeExtendQueue() {
+        // The phone's player, or the TV's while casting.
+        val player = active
         if (player.repeatMode != Player.REPEAT_MODE_OFF) return
         if (player.currentMediaItemIndex != player.mediaItemCount - 1) return
         val current = player.currentMediaItem?.let { TrackItems.trackOf(it) } ?: return
@@ -368,7 +429,8 @@ class EmberPlaybackService : MediaLibraryService() {
 
     override fun onTaskRemoved(rootIntent: Intent?) {
         // Swiped away from recents while paused: nothing to keep alive.
-        if (!player.playWhenReady || player.mediaItemCount == 0) stopSelf()
+        val p = active
+        if (!p.playWhenReady || p.mediaItemCount == 0) stopSelf()
     }
 
     override fun onDestroy() {
@@ -380,6 +442,9 @@ class EmberPlaybackService : MediaLibraryService() {
         // a service started again in this process reuses it.
         overlay.release()
         session.release()
+        castPlayer?.setSessionAvailabilityListener(null)
+        castPlayer?.release()
+        castIo.shutdown()
         player.release()
         io.shutdown()
         gainIo.shutdown()
@@ -420,6 +485,7 @@ class EmberPlaybackService : MediaLibraryService() {
         }
 
         override fun onCustomCommand(session: MediaSession, controller: MediaSession.ControllerInfo, command: SessionCommand, args: Bundle): ListenableFuture<SessionResult> {
+            val player = active
             when (command.customAction) {
                 COMMAND_SHUFFLE -> player.shuffleModeEnabled = !player.shuffleModeEnabled
                 COMMAND_REPEAT -> player.repeatMode = when (player.repeatMode) {
