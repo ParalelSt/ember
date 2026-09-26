@@ -9,7 +9,9 @@ import { NextRequest } from 'next/server';
 // 2026-09-25, M2). On main anyone could: every uncached id was a yt-dlp run
 // with the owner's cookies. Now a song on disk is public (shared /track
 // links), anything else takes a signed-in member, within a per-member budget,
-// and nothing over the length cap is downloaded or streamed live.
+// and a video player.py refuses (a live stream, or one over an opted-in
+// length/size cap; there is no cap by default) is never downloaded or
+// streamed live.
 
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ember-access-'));
 const CACHED_ID = 'cachedacc01';

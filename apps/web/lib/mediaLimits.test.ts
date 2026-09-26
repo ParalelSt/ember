@@ -2,27 +2,34 @@ import { describe, expect, it } from 'vitest';
 import { exceedsMediaLimits, isTooLargeMessage, mediaLimits, tooLargeResponse } from './mediaLimits';
 
 describe('mediaLimits', () => {
-  it('defaults to 20 minutes and 60 MB', () => {
-    expect(mediaLimits({})).toEqual({ maxSec: 1200, maxBytes: 60 * 1024 * 1024 });
+  it('defaults to unlimited', () => {
+    expect(mediaLimits({})).toEqual({ maxSec: 0, maxBytes: 0 });
   });
 
-  it('follows the env, and ignores nonsense', () => {
+  it('follows the env when it opts into a cap, and ignores nonsense', () => {
     expect(mediaLimits({ EMBER_MAX_TRACK_MINUTES: '90', EMBER_MAX_DOWNLOAD_MB: '300' })).toEqual({ maxSec: 5400, maxBytes: 300 * 1024 * 1024 });
-    expect(mediaLimits({ EMBER_MAX_TRACK_MINUTES: '-1', EMBER_MAX_DOWNLOAD_MB: 'lots' })).toEqual({ maxSec: 1200, maxBytes: 60 * 1024 * 1024 });
+    expect(mediaLimits({ EMBER_MAX_TRACK_MINUTES: '-1', EMBER_MAX_DOWNLOAD_MB: 'lots' })).toEqual({ maxSec: 0, maxBytes: 0 });
+    expect(mediaLimits({ EMBER_MAX_TRACK_MINUTES: '0', EMBER_MAX_DOWNLOAD_MB: '0' })).toEqual({ maxSec: 0, maxBytes: 0 });
   });
 
   const limits = mediaLimits({});
+  const capped = mediaLimits({ EMBER_MAX_TRACK_MINUTES: '20', EMBER_MAX_DOWNLOAD_MB: '60' });
 
-  it('passes a normal song and unknown facts', () => {
+  it('passes a normal song, an hour-long song and unknown facts when unlimited', () => {
     expect(exceedsMediaLimits({ durationSec: 240, filesize: 4_000_000 }, limits)).toBeNull();
-    expect(exceedsMediaLimits({ durationSec: 1200 }, limits)).toBeNull();
+    expect(exceedsMediaLimits({ durationSec: 3600 }, limits)).toBeNull();
+    expect(exceedsMediaLimits({ filesize: 200 * 1024 * 1024 }, limits)).toBeNull();
     expect(exceedsMediaLimits({}, limits)).toBeNull();
   });
 
-  it('refuses a long video, a huge file and a live stream', () => {
-    expect(exceedsMediaLimits({ durationSec: 1201 }, limits)).toBe('too long: 21 min is over the 20 min limit');
-    expect(exceedsMediaLimits({ filesize: 61 * 1024 * 1024 }, limits)).toBe('too large: 61 MB is over the 60 MB limit');
+  it('always refuses a live stream, cap or no cap (it can never finish)', () => {
     expect(exceedsMediaLimits({ isLive: true }, limits)).toMatch(/^too long: live/);
+    expect(exceedsMediaLimits({ isLive: true }, capped)).toMatch(/^too long: live/);
+  });
+
+  it('refuses a long video and a huge file only when the opt-in cap is set', () => {
+    expect(exceedsMediaLimits({ durationSec: 1201 }, capped)).toBe('too long: 21 min is over the 20 min limit');
+    expect(exceedsMediaLimits({ filesize: 61 * 1024 * 1024 }, capped)).toBe('too large: 61 MB is over the 60 MB limit');
   });
 
   it('recognises its own messages only', () => {

@@ -578,16 +578,17 @@ PYTHON_MAX_BULK=2            # import batches at once (default 2)
 (a shared `/track` link works for a friend who is not signed in), but getting
 one the host does not have yet, which runs yt-dlp with the host's YouTube
 cookies, takes a signed-in account. Each member can start 60 new downloads a
-minute and 600 an hour. Videos longer than 20 minutes (or bigger than 60 MB,
-or live streams) are refused with "too long to play", and never streamed live
-instead. Raise the caps if your library has long mixes:
+minute and 600 an hour. There is no length or size cap by default (this is
+meant for a host used by trusted friends); live streams are always refused,
+not as a cap but because they never end, so downloading or proxying one could
+never finish. Set either of these if you want a cap:
 
 ```bash
-EMBER_MAX_TRACK_MINUTES=20   # longest video the host fetches (default 20)
-EMBER_MAX_DOWNLOAD_MB=60     # biggest audio file it downloads (default 60)
+EMBER_MAX_TRACK_MINUTES=20   # longest video the host fetches (unset/0 = unlimited)
+EMBER_MAX_DOWNLOAD_MB=60     # biggest audio file it downloads (unset/0 = unlimited)
 ```
 
-Songs already on disk are never affected by these caps.
+Songs already on disk are never affected by these.
 
 Concurrent requests for the same uncached song share ONE download, so a player
 opening several byte-range connections doesn't start several yt-dlp runs. And

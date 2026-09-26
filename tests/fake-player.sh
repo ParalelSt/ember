@@ -19,7 +19,9 @@ if [ "$CMD" = download ] || [ "$CMD" = info ]; then
     echo "ERROR: [youtube] $VIDEO_ID: Video unavailable. This video has been removed by the uploader" >&2
     exit 1
   fi
-  # Over the host's length cap, as player.py refuses it (security audit M2).
+  # Simulates player.py's "too long" refusal (a live stream, or an opted-in
+  # EMBER_MAX_TRACK_MINUTES/EMBER_MAX_DOWNLOAD_MB cap), so a test can check
+  # the 413/no-live-fallback handling without either being true here.
   if [ "$CMD" = download ] && listed "$VIDEO_ID" "${FAKE_TOO_LONG_FILE:-}"; then
     echo "ERROR: too long: 60 min is over the 20 min limit" >&2
     exit 1

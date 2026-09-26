@@ -98,7 +98,7 @@ spotify-clone/
 
 1. The browser only ever talks to `/api/*` and `/pb/*` on the app's own origin. No client-side calls to YouTube.
 2. `GET /api/search` and the `youtube/*` routes spawn `player.py`; results become the canonical `Track` shape (`id` = `<source>:<sourceId>`, source `youtube` or `upload`).
-3. `GET /api/youtube/stream/<videoId>` downloads the track once with yt-dlp and serves the file from `my_music/` from then on, with Range support so seeking works. Fetching a song the host does not have takes a signed-in member (songs on disk are public, for shared links), and videos over 20 minutes are refused (`EMBER_MAX_TRACK_MINUTES`, SETUP.md). If the download fails (stale yt-dlp is the usual reason) it falls back to proxying YouTube live, which the native players tolerate badly: **keep yt-dlp current** (`./update.sh`).
+3. `GET /api/youtube/stream/<videoId>` downloads the track once with yt-dlp and serves the file from `my_music/` from then on, with Range support so seeking works. Fetching a song the host does not have takes a signed-in member (songs on disk are public, for shared links); there is no length cap by default, only a live stream is refused, since it never ends (`EMBER_MAX_TRACK_MINUTES` opts a host back into one, SETUP.md). If the download fails (stale yt-dlp is the usual reason) it falls back to proxying YouTube live, which the native players tolerate badly: **keep yt-dlp current** (`./update.sh`).
 4. The web app plays through a swappable audio backend: a plain `<audio>` element in browsers and on phones, the Rust engine in the desktop app.
 5. Plays, likes and playlists go through their `/api/*` routes; PocketBase rules keep members' rows to themselves.
 

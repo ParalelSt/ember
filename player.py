@@ -246,38 +246,43 @@ def download_if_needed(video_id: str, title: str, artist: str) -> Path:
     return _download_with_403_retry(_attempt, lambda: _clean_partials(base))
 
 class TooLargeError(Exception):
-    """The video is over the host's length or size cap. Its message starts
-    with "too long" / "too large", which the Node side (lib/mediaLimits.ts)
-    recognises and answers with a 413 instead of retrying or streaming live."""
+    """The video is over an opted-in length or size cap, or is a live stream
+    (which never finishes, so it can never be "downloaded"). Its message
+    starts with "too long" / "too large", which the Node side
+    (lib/mediaLimits.ts) recognises and answers with a 413 instead of
+    retrying or streaming live."""
 
 
 def media_limits():
-    """(max seconds, max bytes) for one download, from the same env vars the
-    Node side reads: EMBER_MAX_TRACK_MINUTES (default 20) and
-    EMBER_MAX_DOWNLOAD_MB (default 60). Every download runs with the host's
-    bandwidth, disk and YouTube cookies (security audit 2026-09-25, M2)."""
-    def positive(name, fallback):
+    """(max seconds, max bytes) for one download, or 0 for either when it is
+    unlimited (the default: these are trusted friends, not the public).
+    EMBER_MAX_TRACK_MINUTES / EMBER_MAX_DOWNLOAD_MB opt back into a cap when
+    set to a positive number (security audit 2026-09-25, M2; cap removed
+    2026-09-26, the owner does not want one for a friends-only host)."""
+    def opt_in(name):
         try:
-            value = float(os.environ.get(name, "") or fallback)
+            value = float(os.environ.get(name, "") or 0)
         except ValueError:
-            value = fallback
-        return value if value > 0 else fallback
-    return (int(positive("EMBER_MAX_TRACK_MINUTES", 20) * 60),
-            int(positive("EMBER_MAX_DOWNLOAD_MB", 60) * 1024 * 1024))
+            value = 0
+        return value if value > 0 else 0
+    return (int(opt_in("EMBER_MAX_TRACK_MINUTES") * 60),
+            int(opt_in("EMBER_MAX_DOWNLOAD_MB") * 1024 * 1024))
 
 
 def check_media_limits(info, max_sec, max_bytes):
-    """Raise TooLargeError when yt-dlp's facts about a video (before or after
-    format selection) put it over the caps. Unknown facts pass; the size cap
-    on the download itself still holds."""
+    """Raise TooLargeError for a live stream (it has no end, so proxying or
+    downloading it could never finish, regardless of any cap) or, only when
+    max_sec/max_bytes are set (opt-in), for a video yt-dlp's facts (before or
+    after format selection) say is over them. 0 means no cap. Unknown facts
+    pass; a set size cap still holds on the download itself via max_filesize."""
     if info.get("is_live") or info.get("live_status") in ("is_live", "is_upcoming"):
         raise TooLargeError("too long: live streams cannot be played")
     duration = info.get("duration")
-    if duration and duration > max_sec:
+    if max_sec and duration and duration > max_sec:
         raise TooLargeError(
             f"too long: {int(-(-duration // 60))} min is over the {max_sec // 60} min limit")
     size = info.get("filesize") or info.get("filesize_approx")
-    if size and size > max_bytes:
+    if max_bytes and size and size > max_bytes:
         raise TooLargeError(
             f"too large: {int(-(-size // 1048576))} MB is over the {max_bytes // 1048576} MB limit")
 
@@ -307,8 +312,9 @@ def download_by_id(video_id: str) -> Path:
         'quiet': True,
         'no_warnings': True,
         'match_filter': _limits,
-        # A size the format did not declare is still capped while it downloads.
-        'max_filesize': max_bytes,
+        # A size the format did not declare is still capped while it
+        # downloads, but only when EMBER_MAX_DOWNLOAD_MB opts into a cap.
+        'max_filesize': max_bytes or None,
         **_cookie_opts(),
         **_ffmpeg_opts(),
         **_js_runtime_opts(),
@@ -323,10 +329,13 @@ def download_by_id(video_id: str) -> Path:
                 info = ydl.extract_info(url)
                 path = Path(ydl.prepare_filename(info))
         # yt-dlp skips a download over max_filesize with a note, not an
-        # error, which would hand back a path with nothing at it.
+        # error, which would hand back a path with nothing at it. Only
+        # reachable when EMBER_MAX_DOWNLOAD_MB opted into a cap.
         if not path.exists():
             _clean_partials(base)
-            raise TooLargeError(f"too large: over the {max_bytes // 1048576} MB limit")
+            if max_bytes:
+                raise TooLargeError(f"too large: over the {max_bytes // 1048576} MB limit")
+            raise RuntimeError("download produced no file")
         return path
 
     return _download_with_403_retry(_attempt, lambda: _clean_partials(base))

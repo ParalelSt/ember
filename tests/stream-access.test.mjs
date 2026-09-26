@@ -3,10 +3,11 @@
  *      node tests/stream-access.test.mjs
  *
  *  On main, /api/youtube/stream/<id> was public: anyone on the internet could
- *  make the host run yt-dlp for any video, with the owner's YouTube cookies,
- *  and nothing capped the length. Now a song already on disk plays for
- *  anyone (shared /track links), anything else takes a signed-in member, and
- *  a video over the length cap is refused without a live-stream fallback.
+ *  make the host run yt-dlp for any video, with the owner's YouTube cookies.
+ *  Now a song already on disk plays for anyone (shared /track links),
+ *  anything else takes a signed-in member, and a video player.py refuses
+ *  (a live stream always, or one over an opted-in length/size cap) comes
+ *  back as 413 without a live-stream fallback. There is no cap by default.
  *
  *  Sandbox: PocketBase plus an app started with the fake player, e.g.
  *
@@ -69,7 +70,7 @@ const long = vid('ml');
 fs.appendFileSync(TOO_LONG, `${long}\n`);
 const tooLong = await stream(long, { cookie });
 const tooLongBody = await tooLong.json().catch(() => null);
-check('B3 a video over the length cap is 413', tooLong.status === 413 && tooLongBody?.cause === 'too-long', `${tooLong.status} ${JSON.stringify(tooLongBody)}`);
+check('B3 a refused video (live, or over an opted-in cap) is 413', tooLong.status === 413 && tooLongBody?.cause === 'too-long', `${tooLong.status} ${JSON.stringify(tooLongBody)}`);
 check('B4 and is not streamed live instead', calls('info', long) === 0, `info calls ${calls('info', long)}`);
 const dlLong = await fetch(`${APP}/api/youtube/download/${long}`, { method: 'POST', headers: { cookie } });
 check('B5 the download route says 413 for it too', dlLong.status === 413, String(dlLong.status));

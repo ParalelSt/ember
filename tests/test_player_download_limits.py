@@ -1,6 +1,8 @@
-"""player.py's length and size caps on downloads (security audit 2026-09-25,
-M2). No network: yt_dlp.YoutubeDL is replaced before player.py is imported,
-and the fake calls the match_filter the way yt-dlp does.
+"""player.py's length/size caps on downloads: none by default (removed
+2026-09-26, the host is friends only), opt-in via EMBER_MAX_TRACK_MINUTES /
+EMBER_MAX_DOWNLOAD_MB, and a live stream is always refused since it has no
+end to reach. No network: yt_dlp.YoutubeDL is replaced before player.py is
+imported, and the fake calls the match_filter the way yt-dlp does.
 
     .venv/bin/python -m unittest tests/test_player_download_limits.py
 """
@@ -73,41 +75,51 @@ class LimitsTest(unittest.TestCase):
     def test_a_normal_song_downloads(self):
         path = self.run_download(FakeYDL({"duration": 240}, {"filesize": 4_000_000}))
         self.assertTrue(path.exists())
-        # The size cap is also handed to yt-dlp for sizes a format does not declare.
-        self.assertEqual(FakeYDL.last_opts["max_filesize"], 60 * 1024 * 1024)
+        # No cap by default: yt-dlp gets no max_filesize at all.
+        self.assertIsNone(FakeYDL.last_opts["max_filesize"])
 
-    def test_an_hour_long_video_is_refused_before_download(self):
+    def test_an_hour_long_video_downloads_with_no_cap_set(self):
+        path = self.run_download(FakeYDL({"duration": 3600}, {"filesize": 200 * 1024 * 1024}))
+        self.assertTrue(path.exists())
+
+    def test_a_live_stream_is_refused_even_with_no_cap(self):
+        with self.assertRaisesRegex(player.TooLargeError, r"^too long: live"):
+            self.run_download(FakeYDL({"live_status": "is_live"}))
+
+    def test_the_caps_are_off_by_default(self):
+        self.assertEqual(player.media_limits(), (0, 0))
+
+    def test_an_hour_long_video_is_refused_once_the_env_opts_in(self):
+        os.environ["EMBER_MAX_TRACK_MINUTES"] = "20"
         with self.assertRaisesRegex(player.TooLargeError, r"^too long: 60 min is over the 20 min limit"):
             self.run_download(FakeYDL({"duration": 3600}))
         self.assertFalse((player.MUSIC_DIR / f"{VIDEO}.m4a").exists())
 
-    def test_a_live_stream_is_refused(self):
-        with self.assertRaisesRegex(player.TooLargeError, r"^too long: live"):
-            self.run_download(FakeYDL({"live_status": "is_live"}))
-
-    def test_a_huge_format_is_refused(self):
+    def test_a_huge_format_is_refused_once_the_env_opts_in(self):
+        os.environ["EMBER_MAX_DOWNLOAD_MB"] = "60"
         with self.assertRaisesRegex(player.TooLargeError, r"^too large"):
             self.run_download(FakeYDL({"duration": 600}, {"filesize_approx": 200 * 1024 * 1024}))
         self.assertFalse((player.MUSIC_DIR / f"{VIDEO}.m4a").exists())
 
-    def test_a_download_yt_dlp_skipped_for_size_is_refused(self):
+    def test_a_download_yt_dlp_skipped_for_size_is_refused_once_opted_in(self):
+        os.environ["EMBER_MAX_DOWNLOAD_MB"] = "60"
         with self.assertRaisesRegex(player.TooLargeError, r"^too large"):
             self.run_download(FakeYDL({"duration": 600}, write=False))
 
-    def test_the_caps_follow_the_env(self):
+    def test_the_opted_in_caps_follow_the_env(self):
         os.environ["EMBER_MAX_TRACK_MINUTES"] = "90"
         os.environ["EMBER_MAX_DOWNLOAD_MB"] = "300"
         path = self.run_download(FakeYDL({"duration": 3600}, {"filesize": 100 * 1024 * 1024}))
         self.assertTrue(path.exists())
 
-    def test_cmd_download_prints_one_error_line_and_fails(self):
+    def test_cmd_download_prints_one_error_line_and_fails_for_a_live_stream(self):
         err = io.StringIO()
-        with mock.patch.object(player.yt_dlp, "YoutubeDL", FakeYDL({"duration": 7200})):
+        with mock.patch.object(player.yt_dlp, "YoutubeDL", FakeYDL({"live_status": "is_live"})):
             with redirect_stderr(err), redirect_stdout(io.StringIO()):
                 with self.assertRaises(SystemExit) as exit_:
                     player.cmd_download(SimpleNamespace(video_id=VIDEO))
         self.assertEqual(exit_.exception.code, 1)
-        self.assertIn("ERROR: too long: 120 min is over the 20 min limit", err.getvalue())
+        self.assertIn("ERROR: too long: live streams cannot be played", err.getvalue())
 
 
 if __name__ == "__main__":

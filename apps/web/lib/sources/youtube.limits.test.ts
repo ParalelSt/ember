@@ -5,10 +5,11 @@ import os from 'node:os';
 import path from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 
-// The length and size cap (security audit 2026-09-25, M2) as the helper
-// wrapper sees it: player.py's "too long" refusal becomes a 413 the stream
-// route will not retry or stream live, and a live stream URL for a video over
-// the cap is refused before anyone fetches it.
+// No length/size cap by default (removed 2026-09-26; the host is friends
+// only): player.py's "too long" refusal still becomes a 413 the stream route
+// will not retry or stream live, and a live stream URL is always refused
+// before anyone fetches it, since it has no end to reach. The env vars still
+// opt a host back into a cap if it wants one.
 
 class FakeChild extends EventEmitter {
   stdout = new EventEmitter();
@@ -63,13 +64,12 @@ describe('the media cap in lib/sources/youtube', () => {
     expect((e as { status: number }).status).toBe(502);
   });
 
-  it('a live URL for an hour-long video is refused', async () => {
+  it('an hour-long video resolves fine with no cap set', async () => {
     answer({ url: 'https://rr1.googlevideo.com/x', ext: 'm4a', durationSec: 3600 });
-    const e = await resolveStreamUrl('limitlive01').catch((x: unknown) => x);
-    expect(isTooLargeError(e)).toBe(true);
+    expect((await resolveStreamUrl('limitlive01')).url).toBe('https://rr1.googlevideo.com/x');
   });
 
-  it('a live stream is refused', async () => {
+  it('a live stream is refused (it never ends, cap or no cap)', async () => {
     answer({ url: 'https://rr1.googlevideo.com/x', ext: 'm4a', durationSec: null, isLive: true });
     expect(isTooLargeError(await resolveStreamUrl('limitlive02').catch((x: unknown) => x))).toBe(true);
   });
@@ -77,5 +77,12 @@ describe('the media cap in lib/sources/youtube', () => {
   it('a normal song resolves', async () => {
     answer({ url: 'https://rr1.googlevideo.com/x', ext: 'm4a', durationSec: 240, filesize: 4_000_000 });
     expect((await resolveStreamUrl('limitlive03')).url).toBe('https://rr1.googlevideo.com/x');
+  });
+
+  it('an hour-long video is refused once EMBER_MAX_TRACK_MINUTES opts in', async () => {
+    vi.stubEnv('EMBER_MAX_TRACK_MINUTES', '20');
+    answer({ url: 'https://rr1.googlevideo.com/x', ext: 'm4a', durationSec: 3600 });
+    const e = await resolveStreamUrl('limitlive04').catch((x: unknown) => x);
+    expect(isTooLargeError(e)).toBe(true);
   });
 });
