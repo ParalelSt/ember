@@ -46,6 +46,9 @@ export interface CastRemote {
  *  needs the cookie) mean nothing to a TV, so it signs its own. */
 export interface CastBackend extends AudioBackend {
   loadTrack(track: Track, opts: LoadOptions): void;
+  /** Follow what the device already plays (a session joined after a
+   *  reload), without loading anything. */
+  adopt(): void;
 }
 
 /** Plays on a Chromecast / Google speaker / Android TV through [remote].
@@ -73,6 +76,9 @@ export function createCastBackend(
   /** Whether this load has been heard playing: only then is an idle
    *  "finished" its real end. */
   let started = false;
+  /** The level last handed in. The first one is only noted: the device
+   *  keeps its own volume until the listener moves the slider. */
+  let level: number | null = null;
 
   const onStatus = (s: CastRemoteStatus) => {
     if (loading) return;
@@ -133,6 +139,13 @@ export function createCastBackend(
           events.onError({ canRetryOnWebAudio: false });
         });
     },
+    adopt() {
+      seq++;
+      loading = false;
+      const s = remote.status();
+      started = s.state !== 'idle';
+      onStatus(s);
+    },
     // The provider hands cast engines the track (loadTrack); a URL alone
     // could not be played by the device.
     load() {},
@@ -155,8 +168,15 @@ export function createCastBackend(
       remote.seek(time);
       events.onTime(time);
     },
+    // Only a change is passed on: the provider sends the level again on
+    // every song (normalization), and that must not keep resetting a volume
+    // someone set on the TV itself.
     setVolume(v) {
-      remote.setVolume(Math.max(0, Math.min(1, Number.isFinite(v) ? v : 0)));
+      const next = Math.max(0, Math.min(1, Number.isFinite(v) ? v : 0));
+      const first = level === null;
+      if (next === level) return;
+      level = next;
+      if (!first) remote.setVolume(next);
     },
     setMetadata() {
       /* the TV shows what came with the song (CastMedia) */

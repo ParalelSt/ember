@@ -107,9 +107,8 @@ describe('PlayerProvider: casting', () => {
     expect(web.stop).toHaveBeenCalled();
     expect(resolveCastMedia).toHaveBeenCalledWith(A);
     expect(remote.load).toHaveBeenCalledWith(expect.objectContaining({ url: expect.stringContaining(A.id) }), { startAt: 42, autoplay: true });
-    // The slider's level, as the device's volume.
-    expect(remote.setVolume).toHaveBeenCalled();
-    expect(remote.setVolume.mock.calls.at(-1)![0]).toBeGreaterThan(0);
+    // Starting to cast leaves the TV's own volume alone.
+    expect(remote.setVolume).not.toHaveBeenCalled();
     expect(controls!.canSetRate).toBe(false);
   });
 
@@ -190,12 +189,44 @@ describe('PlayerProvider: casting', () => {
     expect(web.setVolume).toHaveBeenCalled();
   });
 
-  it('a session joined after a reload follows the TV instead of restarting it', async () => {
+  it('a session joined after a reload follows the TV as it is: no reload, no volume change', async () => {
     render(<PlayerProvider><Grab /></PlayerProvider>);
     const remote = fakeRemote({ state: 'playing', time: 120, duration: 200, contentId: 'https://ember.example/api/youtube/stream/aaaaaaaaaaa?st=x' });
     act(() => castSessionStarted(remote, 'TV', true));
     await flush();
-    expect(remote.load).toHaveBeenCalledWith(expect.anything(), { startAt: 120, autoplay: true });
+    expect(remote.load).not.toHaveBeenCalled();
+    expect(remote.setVolume).not.toHaveBeenCalled();
+    expect(usePlayerStore.getState().isPlaying).toBe(true);
+    expect(usePlayerStore.getState().position).toBe(120);
+    // And the queue goes on from there.
+    act(() => remote.emit({ state: 'playing', time: 199 }));
+    act(() => remote.emit({ state: 'idle', idleReason: 'finished' }));
+    await flush();
+    expect(usePlayerStore.getState().index).toBe(1);
+    expect(remote.load).toHaveBeenCalledWith(expect.objectContaining({ title: 'B' }), { startAt: 0, autoplay: true });
+  });
+
+  it('a joined session playing another song gets this page\'s song', async () => {
+    render(<PlayerProvider><Grab /></PlayerProvider>);
+    const remote = fakeRemote({ state: 'playing', time: 120, duration: 200, contentId: 'https://ember.example/api/youtube/stream/zzzzzzzzzzz?st=x' });
+    act(() => castSessionStarted(remote, 'TV', true));
+    await flush();
+    expect(remote.load).toHaveBeenCalledWith(expect.objectContaining({ title: 'A' }), { startAt: 0, autoplay: true });
+  });
+
+  it('repeat one plays the song again on the TV (the receiver unloads a finished song)', async () => {
+    await startPlayingAt(0);
+    act(() => usePlayerStore.setState({ loopMode: 'one' }));
+    const remote = fakeRemote();
+    act(() => castSessionStarted(remote, 'TV'));
+    await flush();
+    act(() => remote.emit({ state: 'playing', time: 199, duration: 200 }));
+    act(() => remote.emit({ state: 'idle', time: 0, idleReason: 'finished' }));
+    await flush();
+    expect(usePlayerStore.getState().index).toBe(0);
+    expect(remote.load).toHaveBeenCalledTimes(2);
+    expect(remote.load).toHaveBeenLastCalledWith(expect.objectContaining({ title: 'A' }), { startAt: 0, autoplay: true });
+    expect(remote.seek).not.toHaveBeenCalled();
   });
 
   it('a session that started before the player was ready is picked up', async () => {

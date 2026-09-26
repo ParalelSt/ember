@@ -78,7 +78,7 @@ describe('cast controller: Chrome (Google Cast)', () => {
     setCastSessionListener({ start, end });
     await requestCast();
     expect(sdk.loads).toBe(1);
-    expect(fake.ctx.setOptions).toHaveBeenCalledWith({ receiverApplicationId: 'CC1AD845', autoJoinPolicy: 'origin_scoped' });
+    expect(fake.ctx.setOptions).toHaveBeenCalledWith({ receiverApplicationId: 'CC1AD845', autoJoinPolicy: 'tab_and_origin_scoped' });
     expect(fake.ctx.requestSession).toHaveBeenCalled();
     expect(window.localStorage.getItem('ember.cast.used')).toBe('1');
 

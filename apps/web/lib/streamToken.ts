@@ -88,7 +88,6 @@ function secret(): Buffer {
   } catch {
     /* not made yet */
   }
-  const fresh = randomBytes(32).toString('hex');
   const readBack = () => {
     try {
       return fs.readFileSync(file, 'utf8').trim();
@@ -96,27 +95,32 @@ function secret(): Buffer {
       return '';
     }
   };
+  const fresh = randomBytes(32).toString('hex');
+  // Written whole to a temp file first, then put in place in one step, so
+  // nobody ever reads a half-written secret: link() fails when the file is
+  // there already (another process won the race: use theirs), and rename()
+  // replaces one that is there but unusable (empty or cut short), which
+  // would otherwise end every link on every restart.
+  const tmp = `${file}.${process.pid}.${randomBytes(4).toString('hex')}.tmp`;
   try {
     fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(tmp, fresh, { mode: 0o600, flag: 'wx' });
     try {
-      // 'wx': two processes starting at once must not each write their own.
-      fs.writeFileSync(file, fresh, { mode: 0o600, flag: 'wx' });
+      fs.linkSync(tmp, file);
     } catch (e) {
-      // A file that is there but unusable (empty or cut short by a crash
-      // mid-write) is replaced, or every restart would end the links; one
-      // another process just wrote is used as it is (below).
-      if ((e as NodeJS.ErrnoException).code !== 'EEXIST' || readBack().length >= 32) throw e;
-      fs.writeFileSync(file, fresh, { mode: 0o600 });
-      fs.chmodSync(file, 0o600);
+      if ((e as NodeJS.ErrnoException).code !== 'EEXIST') throw e;
+      if (readBack().length < 32) fs.renameSync(tmp, file);
     }
-    cachedSecret = Buffer.from(readBack().length >= 32 ? readBack() : fresh, 'utf8');
+    const kept = readBack();
+    cachedSecret = Buffer.from(kept.length >= 32 ? kept : fresh, 'utf8');
   } catch (e) {
-    const winner = readBack();
-    if (winner.length >= 32) {
-      cachedSecret = Buffer.from(winner, 'utf8');
-    } else {
-      serverLogger.error('stream-token', 'could not keep the stream token secret on disk; cast links end on restart', { file }, e);
-      cachedSecret = Buffer.from(fresh, 'utf8');
+    serverLogger.error('stream-token', 'could not keep the stream token secret on disk; cast links end on restart', { file }, e);
+    cachedSecret = Buffer.from(fresh, 'utf8');
+  } finally {
+    try {
+      fs.unlinkSync(tmp);
+    } catch {
+      /* moved into place, or never made */
     }
   }
   return cachedSecret;

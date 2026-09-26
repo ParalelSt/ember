@@ -319,6 +319,14 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
           return;
         }
         if (state.loopMode === 'one' && cur) {
+          // A cast receiver unloads a finished song: there is nothing left
+          // to seek in, so it gets the song again.
+          if (isCastBackend(backendRef.current)) {
+            loadedTrackRef.current = null;
+            positions.requestStartAt(0);
+            loadAndPlayRef.current?.(cur, true);
+            return;
+          }
           backendRef.current?.seek(0);
           backendRef.current?.play();
           return;
@@ -480,7 +488,9 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     normGainRef.current = normGain;
     const b = backendRef.current;
     if (!b) return;
-    b.setVolume(musicLevel(volume, muted, duck), { gain: partyVolume ? 2 : 1, normGain });
+    // A cast device gets the listener's own level only: nothing else in the
+    // page (a sound ducking the music) turns the TV down.
+    b.setVolume(musicLevel(volume, muted, castingRef.current ? 1 : duck), { gain: partyVolume ? 2 : 1, normGain });
   }, [backendReady, volume, partyVolume, muted, duck, normGain]);
 
   // When party mode turns OFF, snap volume back under the normal 0.85 cap so the
@@ -688,10 +698,20 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     );
     backendRef.current = cast;
     setCasting(true);
+    // The cast engine only passes on the level once the listener MOVES the
+    // slider: starting to cast (or reloading the page) never resets the TV.
     applyVolume(cast);
     logger.breadcrumb('playback', 'cast started', { resumed: opts.resumed });
     const st = usePlayerStore.getState();
     const track = st.queue[st.index];
+    // Joined a session already playing this song (the page was reloaded):
+    // follow the TV as it is, no reload, no re-buffering.
+    if (track && opts.resumed && remoteNow && remoteNow.state !== 'idle' && isSameSong(remoteNow.contentId, track)) {
+      loadedTrackRef.current = track.id;
+      setDuration(chooseDuration(track.durationSec ?? 0, remoteNow.duration || null));
+      cast.adopt();
+      return;
+    }
     if (track) {
       positions.requestStartAt(plan.startAt);
       loadedTrackRef.current = null;
@@ -700,7 +720,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     if (!opts.resumed) {
       toast(`Playing on ${deviceName}`, { description: 'The equalizer and volume leveling are off while casting.' });
     }
-  }, [applyVolume, loadAndPlay, positions]);
+  }, [applyVolume, loadAndPlay, positions, setDuration]);
 
   /** The session ended: the song comes back here, paused where the TV was. */
   const stopCasting = useCallback(() => {

@@ -76,7 +76,7 @@ export function makeFakeCastGlobals() {
     },
     chrome: {
       cast: {
-        AutoJoinPolicy: { ORIGIN_SCOPED: 'origin_scoped' },
+        AutoJoinPolicy: { ORIGIN_SCOPED: 'origin_scoped', TAB_AND_ORIGIN_SCOPED: 'tab_and_origin_scoped' },
         Image: class { constructor(public url: string) {} },
         media: {
           DEFAULT_MEDIA_RECEIVER_APP_ID: 'CC1AD845',

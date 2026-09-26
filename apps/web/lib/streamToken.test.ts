@@ -146,6 +146,18 @@ describe('stream tokens: the secret', () => {
     }
   });
 
+  it('a secret another process already kept is used, and no temp file is left behind', () => {
+    vi.stubEnv('STREAM_TOKEN_SECRET', '');
+    fs.writeFileSync(secretFilePath(), 'z'.repeat(64), { mode: 0o600 });
+    _resetStreamTokenSecret();
+    const { token } = signStreamToken({ trackId: YT, userId: 'u1', scope: 'stream' });
+    expect(fs.readFileSync(secretFilePath(), 'utf8')).toBe('z'.repeat(64));
+    vi.stubEnv('STREAM_TOKEN_SECRET', 'z'.repeat(64));
+    _resetStreamTokenSecret();
+    expect(verifyStreamToken(token, { trackId: YT, scope: 'stream' })).toEqual({ userId: 'u1' });
+    expect(fs.readdirSync(dir).filter((f) => f.endsWith('.tmp'))).toEqual([]);
+  });
+
   it('a too-short STREAM_TOKEN_SECRET is not used', () => {
     vi.stubEnv('STREAM_TOKEN_SECRET', 'short');
     _resetStreamTokenSecret();

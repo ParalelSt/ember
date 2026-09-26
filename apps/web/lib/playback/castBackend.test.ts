@@ -149,8 +149,35 @@ describe('cast backend', () => {
     expect(remote.seek).toHaveBeenCalledWith(30);
     expect(events.onTime).toHaveBeenCalledWith(30);
     expect(remote.stop).toHaveBeenCalled();
-    // The device's own level: party gain and normalization do not apply.
-    expect(remote.setVolume.mock.calls.map((c) => c[0])).toEqual([0.4, 1, 0]);
+    // The first level is only noted (the TV keeps its own volume); changes
+    // go over as the device's own level, without party gain or normalization.
+    expect(remote.setVolume.mock.calls.map((c) => c[0])).toEqual([1, 0]);
+  });
+
+  it('the same level again (a new song) never resets the TV\'s volume', () => {
+    const b = createCastBackend(events, remote, async () => media());
+    b.setVolume(0.5);
+    b.setVolume(0.5, { normGain: 0.7 });
+    b.setVolume(0.5, { normGain: 1.2 });
+    expect(remote.setVolume).not.toHaveBeenCalled();
+    b.setVolume(0.6);
+    expect(remote.setVolume).toHaveBeenCalledWith(0.6);
+  });
+
+  it('adopt follows what the device plays, without loading', () => {
+    const b = createCastBackend(events, fakeRemote(), async () => media());
+    const r = fakeRemote();
+    const c = createCastBackend(events, r, async () => media());
+    r.emit({ state: 'playing', time: 50, duration: 200 });
+    c.adopt();
+    expect(r.load).not.toHaveBeenCalled();
+    expect(events.onPlay).toHaveBeenCalled();
+    expect(c.getCurrentTime()).toBe(50);
+    expect(c.isTransitioning()).toBe(false);
+    // Heard playing: its end is a real end.
+    r.emit({ state: 'idle', idleReason: 'finished' });
+    expect(events.onEnded).toHaveBeenCalledTimes(1);
+    b.destroy();
   });
 
   it('destroy stops listening, and a load in flight lands nowhere', async () => {

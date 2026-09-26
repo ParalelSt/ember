@@ -156,8 +156,9 @@ function setUpGoogle(g: GCastGlobals): void {
   const ctx = f.CastContext.getInstance();
   ctx.setOptions({
     receiverApplicationId: g.chrome.cast.media.DEFAULT_MEDIA_RECEIVER_APP_ID,
-    // Rejoin a session this site started, after a reload or in another tab.
-    autoJoinPolicy: g.chrome.cast.AutoJoinPolicy.ORIGIN_SCOPED,
+    // Rejoin a session this tab started, after a reload. Not other tabs:
+    // two pages both driving one TV would each move it to their own queue.
+    autoJoinPolicy: g.chrome.cast.AutoJoinPolicy.TAB_AND_ORIGIN_SCOPED,
   });
   try {
     window.localStorage.setItem(USED_KEY, '1');

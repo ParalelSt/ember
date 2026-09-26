@@ -40,7 +40,7 @@ export interface GCastGlobals {
   };
   chrome: {
     cast: {
-      AutoJoinPolicy: { ORIGIN_SCOPED: string };
+      AutoJoinPolicy: { ORIGIN_SCOPED: string; TAB_AND_ORIGIN_SCOPED: string };
       Image: new (url: string) => unknown;
       media: {
         DEFAULT_MEDIA_RECEIVER_APP_ID: string;
