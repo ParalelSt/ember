@@ -320,6 +320,10 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       // state event so the store converges on what the car is actually doing.
       // Only a real flip writes the flag or leaves a breadcrumb.
       onPlay: () => {
+        // Something real is playing, so the listener has asked for music:
+        // Space and the OS media keys start it without going through
+        // toggle(), and the web-audio fallback must not then load it paused.
+        userInteracted.current = true;
         const cur = usePlayerStore.getState();
         if (cur.isPlaying) return;
         setIsPlaying(true);
@@ -499,7 +503,13 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     const track = st.queue[st.index];
     if (track) {
       positions.requestStartAt(resumeAt);
-      loadAndPlayRef.current?.(track, true);
+      // Play only if the listener has asked for anything, the same rule as
+      // the launch load: a restored song whose paused launch load failed
+      // used to start playing by itself (bughunt 2026-09-25 D7). The song
+      // counts as not loaded yet: it is not, on this engine, and a paused
+      // load of a "loaded" song is skipped.
+      loadedTrackRef.current = null;
+      loadAndPlayRef.current?.(track, userInteracted.current);
     }
     // `positions` is a stable object of stable callbacks, so this callback's
     // identity does not change: it is listed to satisfy the deps rule, not

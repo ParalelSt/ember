@@ -69,7 +69,7 @@ impl Rig {
 
     async fn load(&self, url: &str) {
         let app = self.app.handle().clone();
-        audio_load(app.clone(), app.state::<AudioEngine>(), url.to_string(), true, 0.0, None, Some(KEY.into()))
+        audio_load(app.clone(), app.state::<AudioEngine>(), url.to_string(), true, 0.0, None, Some(KEY.into()), None)
             .await
             .expect("the load command itself runs");
     }
@@ -186,6 +186,7 @@ async fn without_a_cache_key_the_song_streams_as_before() {
         0.0,
         None,
         None,
+        None,
     )
     .await
     .expect("load");
@@ -282,6 +283,14 @@ async fn the_widget_follows_a_seek_and_stops_at_the_end() {
 
     let app = rig.app.handle().clone();
     audio_seek(app.clone(), app.state::<AudioEngine>(), 90.0);
+    // The seek lands off the calling thread (bughunt 2026-09-25 D3), so the
+    // widget hears about it a moment later.
+    let started = std::time::Instant::now();
+    while started.elapsed() < Duration::from_secs(5)
+        && !matches!(rig.widget().playback, Some(MediaPlayback::Playing { progress: Some(p) }) if p.0.as_secs_f64() >= 89.0)
+    {
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
     match rig.widget().playback {
         Some(MediaPlayback::Playing { progress: Some(p) }) => {
             assert!(p.0.as_secs_f64() >= 89.0, "the widget still thinks it is at {:?}", p.0)

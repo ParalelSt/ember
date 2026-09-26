@@ -176,7 +176,7 @@ impl Drop for Rig {
 /// The webview's `invoke('audio_load', ...)`, run to completion. Takes the
 /// handle rather than the rig so a test can run it as a task of its own.
 async fn load_on(app: AppHandle<MockRuntime>, url: String, autoplay: bool) {
-    audio_load(app.clone(), app.state::<AudioEngine>(), url, autoplay, 0.0, None, None)
+    audio_load(app.clone(), app.state::<AudioEngine>(), url, autoplay, 0.0, None, None, None)
         .await
         .expect("the load command itself runs");
 }
@@ -339,4 +339,347 @@ async fn a_stop_during_a_slow_load_is_kept() {
     assert_eq!(rig.count("audio:play"), 0, "audio:play after stop: {:?}", rig.events());
     assert!(!rig.engine().load_in_flight(), "nothing is loading after a stop");
     assert_eq!(rig.engine().widget().playback, Some(souvlaki::MediaPlayback::Stopped), "the OS widget says stopped");
+}
+
+// --- Bughunt 2026-09-25 (docs/reports/bughunt-2026-09-25/desktop-playback.md)
+
+/// The loaded sink's position, or None when nothing is loaded.
+fn sink_pos(rig: &Rig) -> Option<f64> {
+    let engine = rig.engine();
+    let g = engine.sink.lock().expect("sink");
+    g.as_ref().map(|s| s.get_pos().as_secs_f64())
+}
+
+/// D1. The last song in the queue plays to its end, and the listener presses
+/// play. A web browser starts the song again; the desktop engine played its
+/// used-up sink, which does nothing, and said "playing" over the silence.
+#[tokio::test(flavor = "multi_thread")]
+async fn play_after_the_song_ran_out_plays_it_again() {
+    let rig = Rig::new();
+    let song = host(&[Answer::Song], Duration::ZERO);
+    rig.load(&song.url, true).await;
+    assert!(
+        rig.until(Duration::from_secs(60), |r| r.count("audio:ended") == 1).await,
+        "the song should play through first"
+    );
+
+    let mark = rig.events().len();
+    rig.play();
+
+    let again = rig.until(Duration::from_secs(20), |r| latest_time_after(&r.events(), mark) > 5.0).await;
+    assert!(again, "play after the end stayed silent at {:.1}s", latest_time_after(&rig.events(), mark));
+}
+
+/// D1, repeat one after the fix: the webview's seek to 0 and play re-open the
+/// song once, not twice (play must see the seek's load and leave it be).
+#[tokio::test(flavor = "multi_thread")]
+async fn repeat_one_reopens_the_song_once() {
+    let rig = Rig::new();
+    let song = host(&[Answer::Song], Duration::ZERO);
+    rig.load(&song.url, true).await;
+    assert!(rig.until(Duration::from_secs(60), |r| r.count("audio:ended") == 1).await);
+
+    rig.seek(0.0);
+    rig.play();
+    let mark = rig.events().len();
+    assert!(rig.until(Duration::from_secs(20), |r| latest_time_after(&r.events(), mark) > 5.0).await);
+    let loads = rig.engine().load_seq.load(Ordering::SeqCst);
+    assert_eq!(loads, 2, "one load, one re-open");
+}
+
+/// D1: at the end of the queue the engine has stopped. Dragging the slider
+/// there moves it, as in a browser, but does not start the song by itself.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_seek_after_the_song_ran_out_does_not_start_it() {
+    let rig = Rig::new();
+    let song = host(&[Answer::Song], Duration::ZERO);
+    rig.load(&song.url, true).await;
+    assert!(rig.until(Duration::from_secs(60), |r| r.count("audio:ended") == 1).await);
+
+    rig.seek(30.0);
+    let reloaded = rig
+        .until(Duration::from_secs(10), |r| r.sink().is_some_and(|(sound_left, paused)| sound_left && paused))
+        .await;
+    assert!(reloaded, "the seek re-opens the song (paused, not played through): {:?}", rig.sink());
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    assert_eq!(rig.sink().map(|(_, paused)| paused), Some(true), "it waits, paused, for play");
+    let pos = sink_pos(&rig).unwrap_or(0.0);
+    assert!((29.0..31.0).contains(&pos), "at the slider's spot: {pos:.1}");
+}
+
+/// D2. The listener clicks a song and, while it is still on its way, clicks
+/// 1:00 on the progress bar (the bar is live: the catalog knows the length).
+/// There was no sink to seek, the seek was dropped, and the song started at
+/// 0:00 with the slider jumping back.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_seek_during_a_slow_load_is_kept() {
+    let rig = Rig::new();
+    let slow = host(&[Answer::Song], Duration::from_millis(1_500));
+    let load = tokio::spawn(load_on(rig.app.handle().clone(), slow.url.clone(), false));
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    rig.seek(60.0);
+    load.await.expect("load");
+
+    let settled = rig.until(Duration::from_secs(5), |r| sink_pos(r).is_some_and(|p| p >= 59.0)).await;
+    assert!(settled, "the song started at {:?}s, not at the 60s asked for", sink_pos(&rig));
+}
+
+/// A host for a song that is still arriving: the first response sends the
+/// head of the file and then nothing more, the tail (what the decoder reads
+/// while it is built) is answered at once, and any other Range request only
+/// after `mid_delay`, the time a busy link takes to answer.
+fn trickle_host(mid_delay: Duration) -> Host {
+    trickle_host_with(mid_delay, false)
+}
+
+/// `trickle_host`, where the first Range request into the middle is answered
+/// at once with a little of the song and then nothing more, and every later
+/// one (the download reconnecting) not at all: a link that dropped while the
+/// song was arriving.
+fn stalling_host() -> Host {
+    trickle_host_with(Duration::ZERO, true)
+}
+
+fn trickle_host_with(mid_delay: Duration, mid_stalls: bool) -> Host {
+    let listener = TcpListener::bind("127.0.0.1:0").expect("bind");
+    let addr = listener.local_addr().expect("addr");
+    let requests = Arc::new(AtomicUsize::new(0));
+    let count = Arc::clone(&requests);
+    let mids = Arc::new(AtomicUsize::new(0));
+    std::thread::spawn(move || {
+        for conn in listener.incoming() {
+            let Ok(mut stream) = conn else { continue };
+            let count = Arc::clone(&count);
+            let mids = Arc::clone(&mids);
+            std::thread::spawn(move || {
+                let mut reader = BufReader::new(stream.try_clone().expect("clone"));
+                let mut range = None;
+                loop {
+                    let mut line = String::new();
+                    if reader.read_line(&mut line).unwrap_or(0) == 0 || line.trim().is_empty() {
+                        break;
+                    }
+                    let l = line.trim().to_lowercase();
+                    if let Some(spec) = l.strip_prefix("range: bytes=") {
+                        range = spec.split('-').next().and_then(|s| s.parse::<usize>().ok());
+                    }
+                }
+                count.fetch_add(1, Ordering::SeqCst);
+                let total = TRACK.len();
+                match range {
+                    None => {
+                        let _ = write!(
+                            stream,
+                            "HTTP/1.1 200 OK\r\nContent-Type: audio/mp4\r\nAccept-Ranges: bytes\r\nContent-Length: {total}\r\n\r\n"
+                        );
+                        let _ = stream.write_all(&TRACK[..96 * 1024]);
+                        let _ = stream.flush();
+                        std::thread::sleep(Duration::from_secs(60));
+                    }
+                    Some(start) => {
+                        let mid = start < total.saturating_sub(64 * 1024);
+                        if mid {
+                            std::thread::sleep(mid_delay);
+                        }
+                        if mid && mid_stalls {
+                            if mids.fetch_add(1, Ordering::SeqCst) > 0 {
+                                std::thread::sleep(Duration::from_secs(60));
+                                return;
+                            }
+                            let _ = write!(
+                                stream,
+                                "HTTP/1.1 206 Partial Content\r\nContent-Type: audio/mp4\r\nAccept-Ranges: bytes\r\nContent-Range: bytes {start}-{}/{total}\r\nContent-Length: {}\r\n\r\n",
+                                total - 1,
+                                total - start
+                            );
+                            let _ = stream.write_all(&TRACK[start..(start + 32 * 1024).min(total)]);
+                            let _ = stream.flush();
+                            std::thread::sleep(Duration::from_secs(60));
+                            return;
+                        }
+                        let start = start.min(total);
+                        let _ = write!(
+                            stream,
+                            "HTTP/1.1 206 Partial Content\r\nContent-Type: audio/mp4\r\nAccept-Ranges: bytes\r\nContent-Range: bytes {start}-{}/{total}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                            total - 1,
+                            total - start
+                        );
+                        let _ = stream.write_all(&TRACK[start..]);
+                        let _ = stream.flush();
+                    }
+                }
+            });
+        }
+    });
+    Host { url: format!("http://{addr}/api/youtube/stream/abc"), requests }
+}
+
+/// D3. A seek past what has arrived makes the engine ask the host for those
+/// bytes, and `audio_seek` waited for the answer. It is a plain (sync) tauri
+/// command, which runs on the app's main thread: the whole window froze for
+/// as long as the host took, seconds on a slow link.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_seek_does_not_wait_for_the_host() {
+    let rig = Rig::new();
+    let song = trickle_host(Duration::from_secs(3));
+    rig.load(&song.url, false).await;
+    assert!(rig.sink().is_some(), "loaded: {:?}", rig.events());
+
+    let app = rig.app.handle().clone();
+    let started = Instant::now();
+    let call = tokio::task::spawn_blocking(move || {
+        audio_seek(app.clone(), app.state::<AudioEngine>(), 100.0);
+    });
+    let _ = tokio::time::timeout(Duration::from_secs(15), call).await;
+    let took = started.elapsed();
+    assert!(took < Duration::from_millis(500), "audio_seek held its caller for {took:?}");
+
+    // And the seek still happens, once the bytes are there.
+    let moved = rig.until(Duration::from_secs(10), |r| sink_pos(r).is_some_and(|p| p >= 99.0)).await;
+    assert!(moved, "the seek never landed: {:?}", sink_pos(&rig));
+}
+
+/// D5. Every report about a load's playback carries the webview's tag for
+/// that load, so the webview can drop one that was already on its way when
+/// it loaded the next song: the old song's playhead (or its end) used to be
+/// taken for the new one's.
+#[tokio::test(flavor = "multi_thread")]
+async fn reports_carry_the_tag_of_the_load_they_are_about() {
+    let rig = Rig::new();
+    let song = host(&[Answer::Song], Duration::ZERO);
+    let app = rig.app.handle().clone();
+    audio_load(app.clone(), app.state::<AudioEngine>(), song.url.clone(), true, 0.0, None, None, Some(7))
+        .await
+        .expect("load");
+    assert!(rig.until(Duration::from_secs(60), |r| r.count("audio:ended") == 1).await);
+
+    let events = rig.events();
+    let about = |name: &str| -> Vec<Option<u64>> {
+        events
+            .iter()
+            .filter(|(n, _)| n == name)
+            .map(|(_, p)| serde_json::from_str::<serde_json::Value>(p).ok().and_then(|v| v["token"].as_u64()))
+            .collect()
+    };
+    let times = about("audio:time");
+    assert!(!times.is_empty() && times.iter().all(|t| *t == Some(7)), "audio:time tags: {times:?}");
+    assert_eq!(about("audio:ended"), vec![Some(7)]);
+}
+
+/// A webview that sends no tag (every web build before this one) gets
+/// reports without one, which it reads as before.
+#[tokio::test(flavor = "multi_thread")]
+async fn an_untagged_load_reports_untagged() {
+    let rig = Rig::new();
+    let song = host(&[Answer::Song], Duration::ZERO);
+    rig.load(&song.url, true).await;
+    assert!(rig.until(Duration::from_secs(5), |r| r.count("audio:time") > 0).await);
+    let tagged = rig.events().iter().filter(|(_, p)| p.contains("token")).count();
+    assert_eq!(tagged, 0, "{:?}", rig.events());
+}
+
+/// D2, the other half: a second seek right after one that re-opens the song
+/// (here, after its end) goes to that load, not to the sink it replaces.
+/// It used to start a second re-open of its own.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_seek_right_after_a_reopen_joins_it() {
+    let rig = Rig::new();
+    let song = host(&[Answer::Song], Duration::ZERO);
+    rig.load(&song.url, false).await;
+    rig.play();
+    assert!(rig.until(Duration::from_secs(60), |r| r.count("audio:ended") == 1).await);
+
+    rig.seek(10.0);
+    rig.seek(50.0);
+    let landed = rig
+        .until(Duration::from_secs(10), |r| sink_pos(r).is_some_and(|p| (49.0..51.0).contains(&p)))
+        .await;
+    assert!(landed, "the song is at {:?}, not the second seek's 50s", sink_pos(&rig));
+    assert_eq!(rig.engine().load_seq.load(Ordering::SeqCst), 2, "one load, one re-open");
+}
+
+/// D8. The song playing stops arriving (the link dropped) and the listener
+/// skips to the next one. The audio thread was still blocked reading the
+/// old song's stream, which waits for bytes as long as its download keeps
+/// retrying, and every sink shares that thread: the next song stayed silent
+/// until the watchdog gave up on it too and the app swapped to web audio.
+#[tokio::test(flavor = "multi_thread")]
+async fn the_next_song_plays_when_the_one_before_starved() {
+    let rig = Rig::new();
+    let dead = stalling_host();
+    rig.load(&dead.url, true).await;
+    // Plays what arrived, then blocks in a read that is never answered.
+    assert!(rig.until(Duration::from_secs(10), |r| latest_time_after(&r.events(), 0) > 5.0).await);
+    tokio::time::sleep(Duration::from_millis(500)).await;
+
+    let good = host(&[Answer::Song], Duration::ZERO);
+    let mark = rig.events().len();
+    rig.load(&good.url, true).await;
+
+    let plays = rig.until(Duration::from_secs(5), |r| latest_time_after(&r.events(), mark) > 5.0).await;
+    assert!(plays, "the next song is stuck at {:.1}s", latest_time_after(&rig.events(), mark));
+}
+
+/// D9. A load meant to stay paused (the song restored at launch) or to
+/// resume part way in built a sink that was already playing, and paused or
+/// seeked it only afterwards: the start of the song leaked out in between,
+/// a click at launch, and on a busy machine whole seconds of it.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_paused_load_makes_no_sound() {
+    let (mixer, mut out) = rodio::mixer::mixer(2, 44_100);
+    let heard = Arc::new(AtomicUsize::new(0));
+    let stop = Arc::new(AtomicBool::new(false));
+    {
+        let heard = Arc::clone(&heard);
+        let stop = Arc::clone(&stop);
+        std::thread::spawn(move || {
+            while !stop.load(Ordering::SeqCst) {
+                let mut any = false;
+                for _ in 0..4096 {
+                    match out.next() {
+                        Some(s) if s.abs() > 1e-4 => {
+                            heard.fetch_add(1, Ordering::SeqCst);
+                            any = true;
+                        }
+                        Some(_) => any = true,
+                        None => {}
+                    }
+                }
+                if !any {
+                    std::thread::sleep(Duration::from_millis(1));
+                }
+            }
+        });
+    }
+    let app = mock_app();
+    app.manage(AudioEngine::with_output(mixer));
+    let song = host(&[Answer::Song], Duration::ZERO);
+    for start_at in [0.0, 60.0] {
+        audio_load(app.handle().clone(), app.state::<AudioEngine>(), song.url.clone(), false, start_at, None, None, None)
+            .await
+            .expect("load");
+    }
+    tokio::time::sleep(Duration::from_millis(200)).await;
+    stop.store(true, Ordering::SeqCst);
+    assert_eq!(heard.load(Ordering::SeqCst), 0, "samples heard from loads meant to stay paused");
+}
+
+/// Review of D3: the OS widget heard about a seek with the play state from
+/// when the seek began. Pause pressed while the seek waited on the host left
+/// the widget saying "Playing" over a paused song.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_pause_during_a_slow_seek_leaves_the_widget_paused() {
+    let rig = Rig::new();
+    let song = trickle_host(Duration::from_secs(2));
+    rig.load(&song.url, true).await;
+    rig.seek(100.0);
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    rig.pause();
+    assert!(rig.until(Duration::from_secs(10), |r| sink_pos(r).is_some_and(|p| p >= 99.0)).await, "the seek lands");
+    tokio::time::sleep(Duration::from_millis(200)).await;
+    assert!(
+        matches!(rig.engine().widget().playback, Some(souvlaki::MediaPlayback::Paused { .. })),
+        "widget: {:?}",
+        rig.engine().widget().playback
+    );
 }

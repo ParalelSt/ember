@@ -29,6 +29,12 @@ use stream_download::storage::temp::TempStorageProvider;
 use stream_download::{Settings, StreamDownload, StreamPhase};
 use tauri::{AppHandle, Runtime, State};
 
+/// The loaded sink, shared with the position timer.
+type SharedSink = Arc<Mutex<Option<Arc<Sink>>>>;
+
+/// Stops a streamed load's download.
+pub(crate) type DownloadStop = Box<dyn Fn() + Send + Sync>;
+
 /// Native audio engine state, stored in Tauri managed state.
 ///
 /// `rodio::OutputStream` (cpal `Stream`) is `!Send + !Sync`, so it cannot live in
@@ -41,8 +47,10 @@ pub struct AudioEngine {
     /// starts (see `new_degraded`) and the webview falls back to web audio.
     mixer: Option<Mixer>,
     /// Current playback sink. `Arc<Mutex<..>>` so the position-polling task can
-    /// share access. `None` when nothing is loaded.
-    sink: Arc<Mutex<Option<Sink>>>,
+    /// share access. `None` when nothing is loaded. The sink itself is in an
+    /// `Arc` so a seek can run on it without holding this lock (see
+    /// `seek_in_place`).
+    sink: SharedSink,
     /// Monotonic load counter. Each `audio_load` bumps it; the position timer
     /// captures its value and exits once a newer load supersedes it.
     generation: Arc<AtomicU64>,
@@ -60,6 +68,34 @@ pub struct AudioEngine {
     /// its sink goes in, rather than the autoplay it was started with. Written
     /// and read under the `sink` lock.
     want_play: AtomicBool,
+    /// A seek asked for while a load was in flight, which the load starts at
+    /// instead of its own start (bughunt 2026-09-25 D2). Written and read
+    /// under the `sink` lock, cleared by every new load.
+    pending_seek: Mutex<Option<f64>>,
+    /// Seeks handed to the decoder and not yet done. The position timer
+    /// neither reports nor judges a stall while one runs: the decoder is
+    /// waiting on the host for the bytes it seeks to, and the position it
+    /// would report is the one being left.
+    seeks_running: AtomicU64,
+    /// The generation (see `generation`) of the sink the latest seek is on:
+    /// only that sink's timer holds back, not the next song's.
+    seek_generation: AtomicU64,
+    /// The webview's tag for its latest `audio_load` (bughunt 2026-09-25 D5),
+    /// and the tag of the load whose sink is in. Every position, end and
+    /// playback error carries the tag of the load it is about, so the webview
+    /// can drop one that was already on its way when it loaded the next song
+    /// (it used to take the old song's playhead, or its end, as the new
+    /// one's). `None` for a webview that sends none; it then checks nothing.
+    asked_token: Mutex<Option<u64>>,
+    installed_token: Mutex<Option<u64>>,
+    /// Stops the download behind the loaded sink (a streamed one).
+    ///
+    /// Every sink plays on the one audio thread, and a stream that has
+    /// stopped arriving blocks that thread in its read for as long as its
+    /// download keeps retrying: dropping the sink does not end the read, so
+    /// the next song stayed silent behind it (D8). Stopping the download
+    /// does: the read returns an error and the source ends.
+    current_download: Mutex<Option<DownloadStop>>,
     /// The last track a load was asked for: url, cookie, start, cache key.
     /// What play tries again when that load failed and nothing is loaded.
     requested: Mutex<Option<Requested>>,
@@ -146,6 +182,12 @@ impl AudioEngine {
             load_seq: Arc::new(AtomicU64::new(0)),
             settled_seq: AtomicU64::new(0),
             want_play: AtomicBool::new(false),
+            pending_seek: Mutex::new(None),
+            seeks_running: AtomicU64::new(0),
+            seek_generation: AtomicU64::new(0),
+            asked_token: Mutex::new(None),
+            installed_token: Mutex::new(None),
+            current_download: Mutex::new(None),
             requested: Mutex::new(None),
             current_url: Mutex::new(None),
             current_cookie: Mutex::new(None),
@@ -175,6 +217,12 @@ impl AudioEngine {
             load_seq: Arc::new(AtomicU64::new(0)),
             settled_seq: AtomicU64::new(0),
             want_play: AtomicBool::new(false),
+            pending_seek: Mutex::new(None),
+            seeks_running: AtomicU64::new(0),
+            seek_generation: AtomicU64::new(0),
+            asked_token: Mutex::new(None),
+            installed_token: Mutex::new(None),
+            current_download: Mutex::new(None),
             requested: Mutex::new(None),
             current_url: Mutex::new(None),
             current_cookie: Mutex::new(None),
@@ -282,6 +330,23 @@ impl AudioEngine {
         self.load_seq.fetch_add(1, Ordering::SeqCst) + 1
     }
 
+    /// Everything a load must settle the moment it is asked for, before any
+    /// awaiting: its ticket, whether it should play, and that a seek meant for
+    /// an earlier load is void. Separate from the load itself so a command
+    /// that starts one in the background (a re-open, a retry) makes it visible
+    /// to the next command at once: play pressed right after such a seek then
+    /// finds a load in flight and leaves it be, instead of starting a second.
+    fn begin_load(&self, autoplay: bool) -> u64 {
+        let seq = self.claim_load();
+        if let Ok(_sink) = self.sink.lock() {
+            self.want_play.store(autoplay, Ordering::SeqCst);
+            if let Ok(mut p) = self.pending_seek.lock() {
+                *p = None;
+            }
+        }
+        seq
+    }
+
     /// Cut the sound of whatever is playing right now. A new load takes a
     /// second or two to connect, buffer and decode, and until this the old
     /// track kept playing over that gap — pressing skip left the previous
@@ -293,12 +358,21 @@ impl AudioEngine {
                 sink.stop();
             }
         }
+        self.stop_download();
         if let Ok(mut u) = self.current_url.lock() {
             *u = None;
         }
         self.forward_only.store(false, Ordering::SeqCst);
         if let Ok(mut d) = self.current_total.lock() {
             *d = None;
+        }
+    }
+
+    /// Stops the download behind the sink that just went (see
+    /// `current_download`).
+    fn stop_download(&self) {
+        if let Some(stop) = self.current_download.lock().ok().and_then(|mut d| d.take()) {
+            stop();
         }
     }
 
@@ -320,7 +394,7 @@ impl AudioEngine {
     }
 
     /// Shared handles for the position-polling task.
-    fn inner_arc(&self) -> (Arc<Mutex<Option<Sink>>>, Arc<AtomicU64>) {
+    fn inner_arc(&self) -> (SharedSink, Arc<AtomicU64>) {
         (Arc::clone(&self.sink), Arc::clone(&self.generation))
     }
 }
@@ -333,6 +407,14 @@ type Requested = (String, Option<String>, f64, Option<String>);
 #[derive(Clone, Serialize)]
 struct SecPayload {
     sec: f64,
+    /// The load this is about (see `AudioEngine::asked_token`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    token: Option<u64>,
+}
+#[derive(Clone, Serialize)]
+struct TokenPayload {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    token: Option<u64>,
 }
 /// Whether the webview should try this track again on web audio.
 ///
@@ -349,6 +431,8 @@ const RETRY_NONE: &str = "none";
 struct ErrPayload {
     message: String,
     retry: &'static str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    token: Option<u64>,
 }
 /// An OS media-button press forwarded to the webview. `kind` is one of
 /// play/pause/toggle/next/prev/seek; `sec` is set only for seek.
@@ -358,9 +442,9 @@ struct CmdPayload {
     sec: Option<f64>,
 }
 
-fn emit_sec<R: Runtime>(app: &AppHandle<R>, event: &str, sec: f64) {
+fn emit_sec<R: Runtime>(app: &AppHandle<R>, event: &str, sec: f64, token: Option<u64>) {
     use tauri::Emitter;
-    let _ = app.emit(event, SecPayload { sec });
+    let _ = app.emit(event, SecPayload { sec, token });
 }
 fn emit_bare<R: Runtime>(app: &AppHandle<R>, event: &str) {
     use tauri::Emitter;
@@ -382,8 +466,13 @@ fn log_audio<R: Runtime>(app: &AppHandle<R>, level: &str, msg: &str) {
 }
 
 fn emit_err<R: Runtime>(app: &AppHandle<R>, retry: &'static str, message: String) {
+    emit_err_about(app, retry, message, None);
+}
+
+/// `emit_err` for a failure of one particular load's playback.
+fn emit_err_about<R: Runtime>(app: &AppHandle<R>, retry: &'static str, message: String, token: Option<u64>) {
     use tauri::Emitter;
-    let _ = app.emit("audio:error", ErrPayload { message, retry });
+    let _ = app.emit("audio:error", ErrPayload { message, retry, token });
 }
 
 // --- Commands ---------------------------------------------------------------
@@ -920,6 +1009,8 @@ pub(crate) struct OpenedSource {
     pub failed: Arc<AtomicBool>,
     /// Decoded forward-only (see `open_decoder`).
     pub forward_only: bool,
+    /// Stops the download (see `AudioEngine::current_download`).
+    pub stop: DownloadStop,
 }
 
 /// Why a source could not be opened, in words the app log can print, plus
@@ -1063,7 +1154,8 @@ pub(crate) async fn open_source(
         use rodio::Source;
         decoder.total_duration()
     };
-    Ok(OpenedSource { decoder, total, failed, forward_only })
+    let stop: DownloadStop = Box::new(move || download.cancel());
+    Ok(OpenedSource { decoder, total, failed, forward_only, stop })
 }
 
 /// `open_source`, with one more attempt when the first one STALLED.
@@ -1096,6 +1188,7 @@ pub(crate) async fn open_source_retrying(
 }
 
 #[tauri::command]
+#[allow(clippy::too_many_arguments)] // the webview's invoke arguments, one each
 pub async fn audio_load<R: Runtime>(
     app: AppHandle<R>,
     engine: State<'_, AudioEngine>,
@@ -1104,7 +1197,11 @@ pub async fn audio_load<R: Runtime>(
     start_at: f64,
     cookie: Option<String>,
     cache_key: Option<String>,
+    token: Option<u64>,
 ) -> Result<(), String> {
+    if let Ok(mut t) = engine.asked_token.lock() {
+        *t = token;
+    }
     load_track(&app, engine.inner(), url, autoplay, start_at, cookie, cache_key).await
 }
 
@@ -1161,12 +1258,49 @@ async fn load_track<R: Runtime>(
 ) -> Result<(), String> {
     // Claim the load BEFORE any slow work, so a newer request can supersede
     // this one even if this one finishes later.
-    let my_seq = engine.claim_load();
+    let my_seq = engine.begin_load(autoplay);
+    load_claimed(app, engine, my_seq, url, autoplay, start_at, cookie, cache_key).await
+}
+
+/// Starts a load from a sync command: claimed here, run in the background.
+/// A sync command runs on the main thread, and a load takes a round trip.
+fn spawn_load<R: Runtime>(
+    app: &AppHandle<R>,
+    engine: &AudioEngine,
+    track: Requested,
+    autoplay: bool,
+) {
+    let (url, cookie, start_at, cache_key) = track;
+    let seq = engine.begin_load(autoplay);
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        use tauri::Manager;
+        let engine = app.state::<AudioEngine>();
+        let _ = load_claimed(&app, engine.inner(), seq, url, autoplay, start_at, cookie, cache_key).await;
+    });
+}
+
+/// The load itself, for a ticket `begin_load` has already taken.
+#[allow(clippy::too_many_arguments)]
+async fn load_claimed<R: Runtime>(
+    app: &AppHandle<R>,
+    engine: &AudioEngine,
+    my_seq: u64,
+    url: String,
+    autoplay: bool,
+    start_at: f64,
+    cookie: Option<String>,
+    cache_key: Option<String>,
+) -> Result<(), String> {
     let _settled = Settled(&engine.settled_seq, my_seq);
-    engine.silence_current();
-    if let Ok(_sink) = engine.sink.lock() {
-        engine.want_play.store(autoplay, Ordering::SeqCst);
+    // A load started in the background can be overtaken before it runs;
+    // silencing then would cut off the newer one.
+    if !engine.is_current_load(my_seq) {
+        return Ok(());
     }
+    engine.silence_current();
+    // A re-open or a retry is the same song the webview asked for last.
+    let token = engine.asked_token.lock().ok().and_then(|t| *t);
     if let Ok(mut r) = engine.requested.lock() {
         *r = Some((url.clone(), cookie.clone(), start_at, cache_key.clone()));
     }
@@ -1235,9 +1369,9 @@ async fn load_track<R: Runtime>(
     // A failure there is REPORTED through `audio:error` and then returns Ok:
     // that event carries the retry decision the webview needs, and an Err as
     // well would race a second, less informed report through invoke()'s catch.
-    type Playable = (Box<dyn rodio::Source + Send>, Option<Duration>, Arc<AtomicBool>, bool);
+    type Playable = (Box<dyn rodio::Source + Send>, Option<Duration>, Arc<AtomicBool>, bool, Option<DownloadStop>);
     let opened: Result<Playable, OpenError> = match from_cache {
-        Some((decoder, total, failed)) => Ok((Box::new(decoder), total, failed, false)),
+        Some((decoder, total, failed)) => Ok((Box::new(decoder), total, failed, false, None)),
         None if !is_http_url(&stream_url) => Err(OpenError {
             message: "the song is not in the cache and has no stream URL".into(),
             retry: RETRY_NONE,
@@ -1254,9 +1388,9 @@ async fn load_track<R: Runtime>(
             )
             .await
             .map(|o| {
-                let OpenedSource { decoder, total, failed, forward_only } = o;
+                let OpenedSource { decoder, total, failed, forward_only, stop } = o;
                 let source: Box<dyn rodio::Source + Send> = Box::new(decoder);
-                (source, total, failed, forward_only)
+                (source, total, failed, forward_only, Some(stop))
             })
         }
     };
@@ -1271,11 +1405,13 @@ async fn load_track<R: Runtime>(
                 log_audio(app, "INFO", &format!("load #{my_seq} superseded, failure not reported"));
                 return Ok(());
             }
-            emit_err(app, e.retry, e.message);
+            // Tagged, so the webview can tell it from a failure of a load it
+            // has sent since and the engine has not claimed yet.
+            emit_err_about(app, e.retry, e.message, token);
             return Ok(());
         }
     };
-    let (decoder, total, failed, forward_only) = opened;
+    let (decoder, total, failed, forward_only, stop) = opened;
 
     // Someone asked for a different track while this one was downloading —
     // discard it silently rather than yanking playback back.
@@ -1289,8 +1425,17 @@ async fn load_track<R: Runtime>(
     // generation number.
     let my_gen = engine.generation.fetch_add(1, Ordering::SeqCst) + 1;
 
-    let sink = engine.new_sink()?;
+    let sink = Arc::new(engine.new_sink()?);
+    // Held paused until play or pause is decided below: a new sink starts
+    // playing, so the start of the song (and on a slow run, far more of it)
+    // sounded before the seek to where it resumes, or before a launch load
+    // meant to stay paused was paused.
+    sink.pause();
     sink.append(decoder);
+    // A seek pressed while this was on its way wins over where it was asked
+    // to start (D2): the slider already shows it.
+    let early_seek = engine.pending_seek.lock().ok().and_then(|mut p| p.take());
+    let start_at = early_seek.unwrap_or(start_at);
     if start_at > 1.0 {
         // Same guard as audio_seek: a decoder that reports no length would
         // clamp this to 0, so resuming a proxied track just starts it over.
@@ -1301,11 +1446,16 @@ async fn load_track<R: Runtime>(
     // Play or pause as the listener wants NOW: a pause pressed while this
     // load was on its way used to be dropped (there was no sink to pause),
     // and the song started anyway.
-    let playing = {
+    let (playing, late_seek) = {
         let mut slot = engine.sink.lock().map_err(|_| "lock")?;
         // Checked again under the lock: a stop or a newer load that came in
         // since the check above would otherwise get this sink anyway.
         if !engine.is_current_load(my_seq) {
+            // A seek taken above may have been meant for the load that
+            // overtook this one: hand it back.
+            if let (Some(sec), Ok(mut p)) = (early_seek, engine.pending_seek.lock()) {
+                p.get_or_insert(sec);
+            }
             return Ok(());
         }
         let playing = engine.want_play.load(Ordering::SeqCst);
@@ -1314,8 +1464,20 @@ async fn load_track<R: Runtime>(
         } else {
             sink.pause();
         }
-        *slot = Some(sink);
-        playing
+        *slot = Some(Arc::clone(&sink));
+        // Settled now, under the lock, rather than when this function
+        // returns: a seek in between would find a load "in flight", be kept
+        // for it, and never be taken.
+        engine.settled_seq.fetch_max(my_seq, Ordering::SeqCst);
+        if let Ok(mut t) = engine.installed_token.lock() {
+            *t = token;
+        }
+        if let Ok(mut d) = engine.current_download.lock() {
+            *d = stop;
+        }
+        // A seek that came in after the start was decided and before the
+        // sink went in found nothing to seek either.
+        (playing, engine.pending_seek.lock().ok().and_then(|mut p| p.take()))
     };
     // What was actually asked of the host, so a backward seek in a
     // forward-only track re-opens the same thing (a cached track is never
@@ -1337,7 +1499,7 @@ async fn load_track<R: Runtime>(
         ),
     );
     if let Some(d) = total {
-        emit_sec(app, "audio:duration", d.as_secs_f64());
+        emit_sec(app, "audio:duration", d.as_secs_f64(), token);
     }
     // Refresh the OS widget's metadata now that this song's length is known
     // (bughunt L5): audio_set_metadata usually ran before this point. Also
@@ -1345,12 +1507,28 @@ async fn load_track<R: Runtime>(
     // out with the previous song's length, which must not stay on the widget.
     engine.push_metadata();
     if playing {
-        emit_bare(app, "audio:play");
+        use tauri::Emitter;
+        let _ = app.emit("audio:play", TokenPayload { token });
     }
     engine.set_nowplaying(playing);
 
     let (sink_arc, generation) = engine.inner_arc();
-    spawn_position_timer(app.clone(), sink_arc, generation, my_gen, failed);
+    spawn_position_timer(app.clone(), sink_arc, generation, my_gen, Arc::clone(&failed), token);
+    if let Some(sec) = late_seek {
+        // Planned like any seek: a backward one in a forward-only track
+        // cannot be done in place (it would end the song), it re-opens.
+        match plan_seek(total, forward_only, sink.get_pos(), sec) {
+            SeekPlan::InPlace(target) => seek_in_place(app, engine, sink, failed, target, token),
+            SeekPlan::Reopen(target) => {
+                let url = engine.current_url.lock().ok().and_then(|g| g.clone());
+                let cookie = engine.current_cookie.lock().ok().and_then(|g| g.clone());
+                if let Some(url) = url {
+                    spawn_load(app, engine, (url, cookie, target.as_secs_f64(), None), playing);
+                }
+            }
+            SeekPlan::Refuse => {}
+        }
+    }
     Ok(())
 }
 
@@ -1367,16 +1545,24 @@ impl Drop for Settled<'_> {
 pub fn audio_play<R: Runtime>(app: AppHandle<R>, engine: State<'_, AudioEngine>) {
     let Ok(g) = engine.sink.lock() else { return };
     engine.want_play.store(true, Ordering::SeqCst);
+    let requested = || engine.requested.lock().ok().and_then(|r| r.clone());
     let retry = match g.as_ref() {
-        Some(s) => {
+        Some(s) if !s.empty() => {
             s.play();
             None
         }
         // The load honours this when its sink goes in.
-        None if engine.load_in_flight() => None,
+        _ if engine.load_in_flight() => None,
+        // The song played to its end (the last one in the queue): a used-up
+        // sink plays nothing, so play said "playing" over silence (D1). A
+        // browser starts the song again from the top; so does this.
+        Some(_) => match requested() {
+            Some((url, cookie, _, key)) => Some((url, cookie, 0.0, key)),
+            None => return,
+        },
         // The last load failed and nothing is loaded: play used to do nothing
         // at all here, so the song could only be started again by clicking it.
-        None => match engine.requested.lock().ok().and_then(|r| r.clone()) {
+        None => match requested() {
             Some(track) => Some(track),
             None => return,
         },
@@ -1385,14 +1571,9 @@ pub fn audio_play<R: Runtime>(app: AppHandle<R>, engine: State<'_, AudioEngine>)
     emit_bare(&app, "audio:play");
     // Outside the sink lock: set_nowplaying takes the controls lock.
     engine.set_nowplaying(true);
-    if let Some((url, cookie, start_at, cache_key)) = retry {
-        log_audio(&app, "INFO", &format!("play with nothing loaded: loading {url} again"));
-        // Off this thread, as in audio_seek.
-        tauri::async_runtime::spawn(async move {
-            use tauri::Manager;
-            let engine = app.state::<AudioEngine>();
-            let _ = load_track(&app, engine.inner(), url, true, start_at, cookie, cache_key).await;
-        });
+    if let Some(track) = retry {
+        log_audio(&app, "INFO", &format!("play with nothing to play: loading {} again", track.0));
+        spawn_load(&app, engine.inner(), track, true);
     }
 }
 
@@ -1429,10 +1610,14 @@ pub fn audio_stop(engine: State<'_, AudioEngine>) {
     engine.generation.fetch_add(1, Ordering::SeqCst);
     if let Ok(mut guard) = engine.sink.lock() {
         engine.want_play.store(false, Ordering::SeqCst);
+        if let Ok(mut p) = engine.pending_seek.lock() {
+            *p = None;
+        }
         if let Some(sink) = guard.take() {
             sink.stop();
         }
     }
+    engine.stop_download();
     if let Ok(mut u) = engine.current_url.lock() {
         *u = None;
     }
@@ -1451,12 +1636,21 @@ pub fn audio_stop(engine: State<'_, AudioEngine>) {
 pub fn audio_seek<R: Runtime>(app: AppHandle<R>, engine: State<'_, AudioEngine>, sec: f64) {
     let total = engine.current_total.lock().ok().and_then(|g| *g);
     let forward_only = engine.forward_only.load(Ordering::SeqCst);
-    let (pos, playing, spent) = engine
-        .sink
-        .lock()
-        .ok()
-        .and_then(|g| g.as_ref().map(|s| (s.get_pos(), !s.is_paused(), s.empty())))
-        .unwrap_or((Duration::ZERO, false, false));
+    let loaded = {
+        let Ok(g) = engine.sink.lock() else { return };
+        if engine.load_in_flight() {
+            // A load is on its way, and whatever sink is in now (a re-open
+            // that has not started yet leaves the old one) is about to go.
+            // Dropping the seek started the song at 0:00 with the slider
+            // snapping back (D2); the load starts where this asks instead.
+            if let Ok(mut p) = engine.pending_seek.lock() {
+                *p = Some(sec.max(0.0));
+            }
+            return;
+        }
+        g.as_ref().map(|s| (Arc::clone(s), s.get_pos(), !s.is_paused(), s.empty()))
+    };
+    let Some((sink, pos, playing, spent)) = loaded else { return };
     // A sink that has played its source to the end has nothing left to seek
     // in: rodio accepts the seek and does nothing. That is how "repeat one"
     // (a seek to 0 and a play, on `audio:ended`) restarted the song into
@@ -1499,50 +1693,76 @@ pub fn audio_seek<R: Runtime>(app: AppHandle<R>, engine: State<'_, AudioEngine>,
             let Some((url, cookie, cache_key)) = reopen else { return };
             let why = if spent { "after the track ran out" } else { "back in a forward-only stream" };
             log_audio(&app, "INFO", &format!("seek to {sec:.1}s {why}: re-opening it there"));
-            // Off this thread: a load takes a round trip, and a sync command
-            // runs on the main thread.
-            tauri::async_runtime::spawn(async move {
-                use tauri::Manager;
-                let engine = app.state::<AudioEngine>();
-                let _ = load_track(&app, engine.inner(), url, playing, target.as_secs_f64(), cookie, cache_key)
-                    .await;
-            });
+            // A spent sink is not paused, but the player it belongs to has
+            // stopped: it plays again only if play is pressed (repeat one does,
+            // right after this seek), as a browser does after the end.
+            let autoplay = if spent { engine.want_play.load(Ordering::SeqCst) } else { playing };
+            spawn_load(&app, engine.inner(), (url, cookie, target.as_secs_f64(), cache_key), autoplay);
             return;
         }
     };
-    let mut error = None;
-    let mut moved = false;
-    if let Ok(g) = engine.sink.lock() {
-        if let Some(s) = g.as_ref() {
-            match s.try_seek(target) {
-                // A seek the decoder cannot service leaves the source unable to
-                // read its next packet, which rodio reports as the end of the
-                // track. Discarding this error is what turned a drag of the
-                // slider into "play the next song"; surfacing it lets the
-                // webview keep the song and retry it on web audio.
-                Err(e) => error = Some(e.to_string()),
-                Ok(()) => {
-                    emit_sec(&app, "audio:time", target.as_secs_f64()); // optimistic
-                    moved = true;
-                }
+    let failed = engine.source_failed.lock().map(|f| Arc::clone(&f)).unwrap_or_default();
+    let token = engine.installed_token.lock().ok().and_then(|t| *t);
+    seek_in_place(&app, engine.inner(), sink, failed, target, token);
+}
+
+/// Hands a seek to the decoder, off the calling thread.
+///
+/// rodio's `try_seek` waits for the audio thread to carry the seek out, and
+/// the decoder there waits on the host for any bytes it has not got: a Range
+/// request, seconds on a slow link. `audio_seek` is a sync command, which
+/// tauri runs on the main thread, so the whole window froze for that long
+/// (D3). The seek now waits on a blocking thread of its own, and reports
+/// back only if its sink is still the one loaded.
+fn seek_in_place<R: Runtime>(
+    app: &AppHandle<R>,
+    engine: &AudioEngine,
+    sink: Arc<Sink>,
+    failed: Arc<AtomicBool>,
+    target: Duration,
+    token: Option<u64>,
+) {
+    engine.seek_generation.store(engine.generation.load(Ordering::SeqCst), Ordering::SeqCst);
+    engine.seeks_running.fetch_add(1, Ordering::SeqCst);
+    let app = app.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        use tauri::Manager;
+        let result = sink.try_seek(target);
+        let engine = app.state::<AudioEngine>();
+        engine.seeks_running.fetch_sub(1, Ordering::SeqCst);
+        let current = engine
+            .sink
+            .lock()
+            .ok()
+            .and_then(|g| g.as_ref().map(|s| Arc::ptr_eq(s, &sink)))
+            .unwrap_or(false);
+        if !current {
+            return;
+        }
+        match result {
+            Ok(()) => {
+                emit_sec(&app, "audio:time", target.as_secs_f64(), token); // optimistic
+                // The OS widget's scrubber runs on from the last position it
+                // was sent, so it has to hear about a seek too. Playing or
+                // not as the sink is NOW: a pause may have come in while the
+                // seek waited on the host.
+                engine.set_nowplaying(!sink.is_paused());
+            }
+            // A seek the decoder cannot service leaves the source unable to
+            // read its next packet, which rodio reports as the end of the
+            // track. Discarding this error is what turned a drag of the
+            // slider into "play the next song"; surfacing it lets the
+            // webview keep the song and retry it on web audio.
+            Err(e) => {
+                // Mark the source failed as well, so the position timer does
+                // not call the resulting empty sink an end of track a tick later.
+                failed.store(true, Ordering::SeqCst);
+                let sec = target.as_secs_f64();
+                log_audio(&app, "WARN", &format!("seek to {sec:.1}s failed: {e}"));
+                emit_err_about(&app, RETRY_WEB_AUDIO, format!("seek failed: {e}"), token);
             }
         }
-    }
-    // The OS widget's scrubber runs on from the last position it was sent,
-    // so it has to hear about a seek too. Outside the sink lock, which
-    // set_nowplaying takes itself.
-    if moved {
-        engine.set_nowplaying(playing);
-    }
-    if let Some(message) = error {
-        // Mark the source failed as well, so the position timer does not call
-        // the resulting empty sink an end of track a tick later.
-        if let Ok(f) = engine.source_failed.lock() {
-            f.store(true, Ordering::SeqCst);
-        }
-        log_audio(&app, "WARN", &format!("seek to {sec:.1}s failed: {message}"));
-        emit_err(&app, RETRY_WEB_AUDIO, format!("seek failed: {message}"));
-    }
+    });
 }
 
 #[tauri::command]
@@ -1633,10 +1853,11 @@ pub fn audio_set_metadata(
 
 fn spawn_position_timer<R: Runtime>(
     app: AppHandle<R>,
-    sink: Arc<Mutex<Option<Sink>>>,
+    sink: SharedSink,
     generation: Arc<AtomicU64>,
     my_gen: u64,
     failed: Arc<AtomicBool>,
+    token: Option<u64>,
 ) {
     tauri::async_runtime::spawn(async move {
         let mut interval = tokio::time::interval(Duration::from_millis(250));
@@ -1648,12 +1869,24 @@ fn spawn_position_timer<R: Runtime>(
         const STALL_TICKS: u32 = 24; // 24 × 250ms = 6s of no progress
         let mut last_pos = f64::NAN;
         let mut stalled_for: u32 = 0;
+        // A seek holds the reports back for at most this long (25 s, the
+        // budget a host gets to answer any request): one that never returns
+        // (an output device that stopped pulling samples) must not switch
+        // the watchdog off for good.
+        const SEEK_TICKS: u32 = 100;
+        let mut seeking_for: u32 = 0;
 
         loop {
             interval.tick().await;
             if generation.load(Ordering::SeqCst) != my_gen {
                 break; // superseded by a newer load / stop
             }
+            let seeking = {
+                use tauri::Manager;
+                let engine = app.state::<AudioEngine>();
+                engine.seeks_running.load(Ordering::SeqCst) > 0
+                    && engine.seek_generation.load(Ordering::SeqCst) == my_gen
+            };
             let (pos, empty, paused) = {
                 let g = match sink.lock() {
                     Ok(g) => g,
@@ -1664,8 +1897,32 @@ fn spawn_position_timer<R: Runtime>(
                     None => break,
                 }
             };
-            emit_sec(&app, "audio:time", pos);
+            if seeking && !empty && seeking_for < SEEK_TICKS {
+                // The position is the one being left, and a seek waiting on
+                // the host is not a starved source (see `seeks_running`).
+                seeking_for += 1;
+                stalled_for = 0;
+                last_pos = f64::NAN;
+                continue;
+            }
+            if !seeking {
+                seeking_for = 0;
+            }
+            emit_sec(&app, "audio:time", pos, token);
             if empty {
+                // The player has stopped (D1): play or a seek from here
+                // starts the song again, and only play makes it sound.
+                {
+                    use tauri::Manager;
+                    let engine = app.state::<AudioEngine>();
+                    // Not when a newer load has begun: it set want_play for
+                    // itself (under this lock) before it bumped the generation.
+                    if let Ok(_g) = sink.lock() {
+                        if generation.load(Ordering::SeqCst) == my_gen && !engine.load_in_flight() {
+                            engine.want_play.store(false, Ordering::SeqCst);
+                        }
+                    };
+                }
                 // An empty sink means the SOURCE ran out, which happens both
                 // when the song finished and when the stream under it died ,
                 // rodio cannot tell those apart, so the flag does. Saying
@@ -1677,9 +1934,12 @@ fn spawn_position_timer<R: Runtime>(
                         "WARN",
                         &format!("the stream failed at {pos:.1}s: reporting an error, not the end"),
                     );
-                    emit_err(&app, RETRY_WEB_AUDIO, format!("the stream stopped at {pos:.1}s"));
+                    emit_err_about(&app, RETRY_WEB_AUDIO, format!("the stream stopped at {pos:.1}s"), token);
                 } else {
-                    emit_bare(&app, "audio:ended");
+                    {
+                        use tauri::Emitter;
+                        let _ = app.emit("audio:ended", TokenPayload { token });
+                    }
                     // Tell the OS widget too (bughunt L5): a track that ran
                     // out on its own left it stuck on "Playing" forever,
                     // since only the explicit audio_stop command used to set
@@ -1702,7 +1962,7 @@ fn spawn_position_timer<R: Runtime>(
                         "WARN",
                         &format!("playback stalled at {pos:.1}s — source starved, giving up"),
                     );
-                    emit_err(&app, RETRY_WEB_AUDIO, format!("playback stalled at {pos:.1}s"));
+                    emit_err_about(&app, RETRY_WEB_AUDIO, format!("playback stalled at {pos:.1}s"), token);
                     break;
                 }
             } else {

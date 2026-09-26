@@ -41,6 +41,19 @@ export const createTauriBackend: CreateAudioBackend = (events) => {
   let cmds: RemoteCommands | null = null;
   const unlisteners: UnlistenFn[] = [];
   let destroyed = false;
+  /** Bumped by every load and play: how `audio:ended` tells whether the
+   *  provider moved on (next song, repeat one) or had nothing left. */
+  let asked = 0;
+  /** Tag of the latest load. The engine (desktop builds after 0.4.8) puts the tag of
+   *  the load a position, end or playback error is about on each report, so
+   *  one that was already on its way when the next song was loaded is
+   *  dropped here rather than taken as the new song's (bughunt 2026-09-25
+   *  D5). An untagged report (an older engine) is taken as before. */
+  let token = 0;
+  const stale = (p: unknown) => {
+    const t = (p as { token?: unknown } | null)?.token;
+    return typeof t === 'number' && t !== token;
+  };
 
   const armTransition = () => {
     transitioning = true;
@@ -60,20 +73,44 @@ export const createTauriBackend: CreateAudioBackend = (events) => {
       })
       .catch(() => {});
   };
-  sub<{ sec: number }>('audio:time', ({ sec }) => {
+  sub<{ sec: number; token?: number }>('audio:time', (p) => {
+    if (stale(p)) return;
+    const { sec } = p;
     curTime = sec;
     transitioning = false;
     events.onTime(sec);
   });
-  sub<{ sec: number }>('audio:duration', ({ sec }) => { duration = sec; events.onDuration(sec); });
-  sub<Record<string, never>>('audio:ended', () => events.onEnded());
-  sub<Record<string, never>>('audio:play', () => { paused = false; events.onPlay(); });
+  sub<{ sec: number; token?: number }>('audio:duration', (p) => {
+    if (stale(p)) return;
+    duration = p.sec;
+    events.onDuration(p.sec);
+  });
+  sub<{ token?: number } | null>('audio:ended', (p) => {
+    if (stale(p)) return;
+    const before = asked;
+    events.onEnded();
+    // Nothing followed the end: the queue ran out, and the engine has
+    // stopped. A browser reports a pause here, the engine does not, so the
+    // player said "playing" over silence (bughunt 2026-09-25 D1). Only when
+    // nothing followed, so an auto-advance does not flicker to paused.
+    if (!destroyed && asked === before) {
+      paused = true;
+      events.onPause();
+    }
+  });
+  sub<{ token?: number } | null>('audio:play', (p) => {
+    if (stale(p)) return;
+    paused = false;
+    events.onPlay();
+  });
   sub<Record<string, never>>('audio:pause', () => { paused = true; events.onPause(); });
   // `retry` is the engine's own verdict on whether web audio could do better:
   // 'none' means the host could not deliver the song at all, so swapping
   // engines only asks the same server the same question. Anything else (an
   // older engine sends no field at all) keeps the old "try web audio" answer.
-  sub<{ message: string; retry?: string }>('audio:error', ({ message, retry }) => {
+  sub<{ message: string; retry?: string; token?: number }>('audio:error', (p) => {
+    if (stale(p)) return;
+    const { message, retry } = p;
     logger.error('audio', message || 'native audio error');
     curTime = 0;
     // Nothing is playing now. Left at "playing", the provider's toggle sent
@@ -96,6 +133,8 @@ export const createTauriBackend: CreateAudioBackend = (events) => {
 
   const backend: AudioBackend = {
     load(url, opts) {
+      asked++;
+      token++;
       armTransition();
       duration = 0;
       curTime = opts.startAt ?? 0;
@@ -115,6 +154,9 @@ export const createTauriBackend: CreateAudioBackend = (events) => {
         // but member uploads are not — without this an uploaded song fails on
         // desktop while playing fine in a browser. Only pb_auth is forwarded.
         cookie: sessionCookie(),
+        // Ignored by desktop builds up to 0.4.8, whose reports then
+        // carry no tag and are all taken as before.
+        token,
         // A rejection here means the COMMAND could not run at all (the
         // capability denied it, no output device): the engine is the problem,
         // not the song, so web audio is exactly the right answer. Failures the
@@ -122,9 +164,9 @@ export const createTauriBackend: CreateAudioBackend = (events) => {
         // verdict, and do not reject.
       }).catch(() => events.onError({ canRetryOnWebAudio: true }));
     },
-    play() { paused = false; void invoke('audio_play').catch(() => {}); },
+    play() { asked++; paused = false; void invoke('audio_play').catch(() => {}); },
     pause() { paused = true; void invoke('audio_pause').catch(() => {}); },
-    stop() { void invoke('audio_stop').catch(() => {}); },
+    stop() { paused = true; void invoke('audio_stop').catch(() => {}); },
     seek(sec) {
       const target = Math.max(0, Math.min(sec, duration || sec));
       if (Math.abs(target - curTime) > 2.5) {
