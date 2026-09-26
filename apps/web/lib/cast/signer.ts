@@ -11,10 +11,14 @@ const REUSE_MARGIN_SEC = 60 * 60;
 
 const cache = new Map<string, { item: CastItem; origin: string; expiresAt: number }>();
 
-/** Tests only. */
-export function _clearCastSignCache(): void {
+/** Forgets every link: they were signed for whoever was signed in when the
+ *  session started, and a next session may be someone else's. */
+export function clearCastSignCache(): void {
   cache.clear();
 }
+
+/** Tests only. */
+export const _clearCastSignCache = clearCastSignCache;
 
 /** What the TV gets for [track]: the signed stream, its content type, and
  *  title, artist, album and a cover the device can load by itself (an

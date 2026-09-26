@@ -26,7 +26,8 @@ vi.mock('@/lib/cast/controller', () => ({ initCast: vi.fn(), setCastMediaElement
 const resolveCastMedia = vi.fn(async (t: { id: string; title: string; artist: string }): Promise<CastMedia> => ({
   url: `https://ember.example/s/${t.id}?st=x`, contentType: 'audio/mp4', title: t.title, artist: t.artist, album: null, artworkUrl: null,
 }));
-vi.mock('@/lib/cast/signer', () => ({ resolveCastMedia: (t: never) => resolveCastMedia(t) }));
+const clearCastSignCache = vi.fn();
+vi.mock('@/lib/cast/signer', () => ({ resolveCastMedia: (t: never) => resolveCastMedia(t), clearCastSignCache: () => clearCastSignCache() }));
 vi.mock('@/components/providers/AuthProvider', () => ({ useAuth: () => ({ user: null }) }));
 vi.mock('@/hooks/useLibrary', () => ({
   useQueryHistory: () => ({ data: [] }),
@@ -181,6 +182,8 @@ describe('PlayerProvider: casting', () => {
     act(() => castSessionEnded());
     expect(web.load).toHaveBeenCalledWith('/s/a', expect.objectContaining({ autoplay: false, startAt: 95 }));
     expect(usePlayerStore.getState().isPlaying).toBe(false);
+    // Links were signed for whoever cast: gone with the session.
+    expect(clearCastSignCache).toHaveBeenCalled();
     // The local engine counts again.
     act(() => webEvents!.onPlay());
     expect(usePlayerStore.getState().isPlaying).toBe(true);

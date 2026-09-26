@@ -89,19 +89,29 @@ function secret(): Buffer {
     /* not made yet */
   }
   const fresh = randomBytes(32).toString('hex');
+  const readBack = () => {
+    try {
+      return fs.readFileSync(file, 'utf8').trim();
+    } catch {
+      return '';
+    }
+  };
   try {
     fs.mkdirSync(path.dirname(file), { recursive: true });
-    // 'wx': two processes starting at once must not each write their own.
-    fs.writeFileSync(file, fresh, { mode: 0o600, flag: 'wx' });
-    cachedSecret = Buffer.from(fresh, 'utf8');
+    try {
+      // 'wx': two processes starting at once must not each write their own.
+      fs.writeFileSync(file, fresh, { mode: 0o600, flag: 'wx' });
+    } catch (e) {
+      // A file that is there but unusable (empty or cut short by a crash
+      // mid-write) is replaced, or every restart would end the links; one
+      // another process just wrote is used as it is (below).
+      if ((e as NodeJS.ErrnoException).code !== 'EEXIST' || readBack().length >= 32) throw e;
+      fs.writeFileSync(file, fresh, { mode: 0o600 });
+      fs.chmodSync(file, 0o600);
+    }
+    cachedSecret = Buffer.from(readBack().length >= 32 ? readBack() : fresh, 'utf8');
   } catch (e) {
-    const winner = (() => {
-      try {
-        return fs.readFileSync(file, 'utf8').trim();
-      } catch {
-        return '';
-      }
-    })();
+    const winner = readBack();
     if (winner.length >= 32) {
       cachedSecret = Buffer.from(winner, 'utf8');
     } else {

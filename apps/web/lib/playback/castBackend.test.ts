@@ -68,6 +68,25 @@ describe('cast backend', () => {
     expect(remote.load.mock.calls[0][0].url).toContain(B.id);
   });
 
+  it('a pause (or play) pressed while the song is signed decides how it starts', async () => {
+    let release!: (m: CastMedia) => void;
+    const b = createCastBackend(events, remote, () => new Promise<CastMedia>((r) => { release = r; }));
+    b.loadTrack(A, { autoplay: true, startAt: 10 });
+    b.pause();
+    b.seek(20);
+    expect(remote.pause).not.toHaveBeenCalled();
+    release(media());
+    await flush();
+    expect(remote.load).toHaveBeenCalledWith(media(), { startAt: 20, autoplay: false });
+
+    b.loadTrack(A, { autoplay: false });
+    b.play();
+    release(media());
+    await flush();
+    expect(remote.load).toHaveBeenLastCalledWith(media(), { startAt: 0, autoplay: true });
+    expect(remote.play).not.toHaveBeenCalled();
+  });
+
   it('mirrors the receiver: time, duration, play and pause', async () => {
     const b = createCastBackend(events, remote, async () => media());
     b.loadTrack(A, { autoplay: true });

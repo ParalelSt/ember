@@ -132,6 +132,20 @@ describe('stream tokens: the secret', () => {
     expect(verifyStreamToken(token, { trackId: YT, scope: 'stream' })).toEqual({ userId: 'u1' });
   });
 
+  it('an empty or cut-short secret file is replaced, and the new one is kept', () => {
+    vi.stubEnv('STREAM_TOKEN_SECRET', '');
+    for (const junk of ['', 'abc']) {
+      fs.writeFileSync(secretFilePath(), junk, { mode: 0o644 });
+      _resetStreamTokenSecret();
+      const { token } = signStreamToken({ trackId: YT, userId: 'u1', scope: 'stream' });
+      const kept = fs.readFileSync(secretFilePath(), 'utf8');
+      expect(kept.length).toBeGreaterThanOrEqual(64);
+      expect(fs.statSync(secretFilePath()).mode & 0o777).toBe(0o600);
+      _resetStreamTokenSecret();
+      expect(verifyStreamToken(token, { trackId: YT, scope: 'stream' })).toEqual({ userId: 'u1' });
+    }
+  });
+
   it('a too-short STREAM_TOKEN_SECRET is not used', () => {
     vi.stubEnv('STREAM_TOKEN_SECRET', 'short');
     _resetStreamTokenSecret();

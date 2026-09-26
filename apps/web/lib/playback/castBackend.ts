@@ -117,7 +117,9 @@ export function createCastBackend(
       paused = !opts.autoplay;
       events.onTime(time);
       void resolveMedia(track)
-        .then((media) => (mine === seq ? remote.load(media, { startAt: time, autoplay: opts.autoplay }) : undefined))
+        // Where the listener is NOW, and whether they paused or pressed play
+        // while the link was being signed.
+        .then((media) => (mine === seq ? remote.load(media, { startAt: time, autoplay: !paused }) : undefined))
         .then(() => {
           if (mine !== seq) return;
           loading = false;
@@ -134,13 +136,15 @@ export function createCastBackend(
     // The provider hands cast engines the track (loadTrack); a URL alone
     // could not be played by the device.
     load() {},
+    // While a song is still being signed there is nothing on the TV to
+    // play or pause: the load then starts it (or not) as asked.
     play() {
       paused = false;
-      remote.play();
+      if (!loading) remote.play();
     },
     pause() {
       paused = true;
-      remote.pause();
+      if (!loading) remote.pause();
     },
     stop() {
       paused = true;

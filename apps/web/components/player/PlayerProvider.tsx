@@ -46,7 +46,7 @@ import { createCastBackend, isCastBackend, type CastRemote } from '@/lib/playbac
 import { castHandover, gateEvents, isSameSong, localHandover } from '@/lib/playback/castSwitch';
 import { setCastSessionListener } from '@/lib/cast/session';
 import { initCast, setCastMediaElement } from '@/lib/cast/controller';
-import { resolveCastMedia } from '@/lib/cast/signer';
+import { clearCastSignCache, resolveCastMedia } from '@/lib/cast/signer';
 import type { PlaybackContext, Track } from '@/types/track';
 import { musicLevel } from '@/lib/pranks/mix';
 import { PrankReceiver } from './PrankReceiver';
@@ -712,6 +712,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     localBackendRef.current = null;
     backendRef.current = local;
     try { cast?.destroy(); } catch { /* the session is gone anyway */ }
+    // Links belong to whoever cast; the next session may be someone else.
+    clearCastSignCache();
     setCasting(false);
     setIsPlaying(false);
     logger.breadcrumb('playback', 'cast ended');
