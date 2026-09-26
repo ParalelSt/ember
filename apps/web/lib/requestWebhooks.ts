@@ -1,10 +1,10 @@
 // Kept out of the route file: Next.js only allows route handlers (GET, POST,
 // config) as exports from app/api/**/route.ts.
 
-// Built-in channels, the same way the bug-report webhook ships in source, so
-// every copy of Ember (friends self-hosting too) sends requests to the owner
-// without extra setup. PASTE the two Discord webhook URLs between the quotes.
-// DISCORD_FEATURE_WEBHOOK_URL / DISCORD_FIX_WEBHOOK_URL in .env.local win.
+// Webhooks are env-only, never committed (see lib/reports/discord.ts's doc
+// comment): DISCORD_FEATURE_WEBHOOK_URL / DISCORD_FIX_WEBHOOK_URL in
+// apps/web/.env.local. This stays empty on purpose; resolveWebhook() below
+// treats an unset kind as "not configured" and callers return a 503.
 export const DEFAULT_WEBHOOKS: Record<"feature" | "fix", string> = {
   feature: "",
   fix: "",

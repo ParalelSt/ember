@@ -18,7 +18,7 @@ import {
   postToDiscord,
   DISCORD_FIELD_CHARS,
   remainingEmbedBudget,
-  usingDefaultWebhook,
+  webhookConfigured,
   webhookUrl,
   type EmbedField as EmbedFieldT,
 } from "@/lib/reports/discord";
@@ -52,10 +52,11 @@ const SEVERITY_COLORS = {
 } as const;
 
 /** Test suites sign in as throwaway `@ember.test` accounts. A sandbox started
- *  without its own webhook must never forward their reports to the real
- *  channel; the host always sets DISCORD_BUG_REPORT_WEBHOOK_URL explicitly. */
+ *  without its own webhook must never forward their reports anywhere; the
+ *  host always sets DISCORD_BUG_REPORT_WEBHOOK_URL explicitly when it wants
+ *  real reporting. */
 function isSandboxReporter(email: string): boolean {
-  return usingDefaultWebhook() && email.toLowerCase().endsWith("@ember.test");
+  return !webhookConfigured() && email.toLowerCase().endsWith("@ember.test");
 }
 
 /** One compact line for the Discord embed: the full per-field breakdown
@@ -132,10 +133,17 @@ export const POST = withRequestLog('bug-report', async (request: NextRequest) =>
       : rateLimitResponse(`bug-report:${user.id}`, { windowMs: 30 * 1000, max: 1 });
     if (limited) return limited;
 
+    // Checked before the webhook itself: a sandbox with no webhook of its
+    // own has nowhere to send a test account's report anyway, so this skips
+    // straight past the AI triage call and the "not configured" error below.
+    if (isSandboxReporter(user.email)) {
+      return Response.json({ ok: true, skipped: "test account" });
+    }
+
     const webhook = webhookUrl();
     if (!webhook) {
       return jsonError(
-        "Bug reporting not configured. Paste a Discord webhook URL into DEFAULT_WEBHOOK_URL in app/api/bug-report/route.ts, or set DISCORD_BUG_REPORT_WEBHOOK_URL in .env.local.",
+        "Bug reporting not configured on this server. Ask the owner to set DISCORD_BUG_REPORT_WEBHOOK_URL in apps/web/.env.local.",
         503,
       );
     }
@@ -321,9 +329,6 @@ export const POST = withRequestLog('bug-report', async (request: NextRequest) =>
       return form;
     };
 
-    if (isSandboxReporter(user.email)) {
-      return Response.json({ ok: true, skipped: "test account", triage });
-    }
     let discordRes = await postToDiscord(webhook, { method: "POST", body: buildForm(true) });
     let failText = discordRes.ok ? "" : await discordRes.text().catch(() => "");
     // Discord's size limit can be lower than ours (it depends on the

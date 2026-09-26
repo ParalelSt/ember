@@ -65,14 +65,13 @@ const FIXTURE_ROUTE = 'tests/fixtures/crash-report/bug-report-route.txt';
     resolveWebhook({ env: {}, envFile: missing, routeFile: FIXTURE_ROUTE }) === 'http://127.0.0.1:9/fixture-default-hook',
   );
   check('a missing route file resolves to empty, not a throw', extractDefaultWebhook(path.join(TMP, 'none.ts')) === '');
-  // The default webhook moved out of the route file and into lib/reports/discord.ts
-  // (shared with the daily digest) when the report libs were restructured; the
-  // route still reads it indirectly through webhookUrl(). Baking a default in is
-  // deliberate (docs/feature-requests.md): self-hosted copies report to the
-  // project owner's channel until DISCORD_BUG_REPORT_WEBHOOK_URL overrides it.
+  // Webhooks are env-only now (the hardcoded default was removed after a
+  // public secret scanner found it and Discord deleted that webhook): the
+  // real lib/reports/discord.ts no longer defines DEFAULT_WEBHOOK_URL at
+  // all, so extraction against it must come back empty, not a live URL.
   check(
-    'the real webhook default lives in lib/reports/discord.ts',
-    /^https:\/\//.test(extractDefaultWebhook('apps/web/lib/reports/discord.ts')),
+    'no real webhook default lives in lib/reports/discord.ts anymore',
+    extractDefaultWebhook('apps/web/lib/reports/discord.ts') === '',
   );
 }
 

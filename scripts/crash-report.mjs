@@ -55,9 +55,13 @@ export function readEnvFile(file) {
   return out;
 }
 
-/** The bug-report route keeps the owner's webhook as a literal in source. It
- *  is read from that file at runtime rather than copied here, so there is one
- *  place to rotate it. */
+/** Historically the bug-report route kept a hardcoded fallback webhook in
+ *  source (lib/reports/discord.ts's DEFAULT_WEBHOOK_URL); that literal was
+ *  removed after a public secret scanner found it and Discord deleted the
+ *  webhook. Webhooks are env-only now, so this extraction normally finds
+ *  nothing and resolveWebhook() falls through to ''. Kept for whichever repo
+ *  file still defines the constant (tests exercise it against a fixture),
+ *  and because it's a harmless no-op against current source. */
 export function extractDefaultWebhook(routeFile) {
   try {
     const src = fs.readFileSync(routeFile, 'utf8');
@@ -69,9 +73,11 @@ export function extractDefaultWebhook(routeFile) {
 }
 
 /** Order: crash webhook, then bug-report webhook, from the process env, then
- *  the same two from apps/web/.env.local (the watchdog does not load that file
- *  into its env), then the built-in default shared with the bug-report route
- *  and the daily digest (lib/reports/discord.ts). */
+ *  the same two from apps/web/.env.local (the watchdog does not load that
+ *  file into its env), then extractDefaultWebhook's fixture-only fallback
+ *  (see its doc comment; on real source this is always ''). No env or file
+ *  webhook configured means no crash reports go out, which main() logs and
+ *  treats as a normal, expected outcome, not an error. */
 export function resolveWebhook({
   env = process.env,
   envFile = path.join(ROOT, 'apps/web/.env.local'),

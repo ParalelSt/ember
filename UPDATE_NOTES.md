@@ -1,3 +1,7 @@
+# Next release: bug-report webhook now needs an env var
+
+**Host: before this update, set `DISCORD_BUG_REPORT_WEBHOOK_URL` in `apps/web/.env.local`, then run `./update.sh` as usual.** The webhook URL that used to be baked into source was found by a public secret scanner and Discord deleted it. Bug reports, lyrics reports and the daily digest all need `DISCORD_BUG_REPORT_WEBHOOK_URL` now; there is no built-in default. Ask the owner for the URL if you don't have your own. Feature/fix requests are unaffected (`DISCORD_FEATURE_WEBHOOK_URL` / `DISCORD_FIX_WEBHOOK_URL` already worked this way). Without the env var set, the affected features return a clear "not configured" error instead of posting anywhere.
+
 # 0.7.9: Web app fixes (batch 5)
 
 **Host: run `./update.sh` as usual (no new packages, no settings, no database

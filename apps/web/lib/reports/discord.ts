@@ -1,27 +1,25 @@
 /** The one Discord channel every report goes to, and the field-splitting
  *  every long code block needs to survive Discord's caps. Shared by the
- *  bug-report route and the daily digest so the baked-in webhook URL and the
- *  1024-char chunking exist exactly once. */
-
-// Default webhook so every deployment, including friends self-hosting, sends
-// reports to the project owner's Discord channel. The env var still wins for
-// local testing. Webhook URLs are low-sensitivity (write-only, channel-
-// scoped); if this one ever gets abused, delete + recreate it in Discord
-// (Server Settings, Integrations, Webhooks) and rebuild.
-const DEFAULT_WEBHOOK_URL =
-  'https://discord.com/api/webhooks/1512120864391565333/wbnK9NOCeqbHNPK_k8UcdFxRZKztm0LfBR1OfKIQ2txf1zAPwF4mp4kII1S3SA7MIUPY';
+ *  bug-report route and the daily digest so the 1024-char chunking exists
+ *  exactly once.
+ *
+ *  Webhook URLs come from the environment ONLY (DISCORD_BUG_REPORT_WEBHOOK_URL).
+ *  Never hardcode one here again: a webhook baked into source is a secret in
+ *  a public repo, and a scanner will find it (this is what happened to the
+ *  one that used to live in this file). If reporting isn't configured,
+ *  webhookUrl() returns '' and callers must degrade cleanly, not crash. */
 
 /** Read on every call rather than captured at module load: the digest runs
  *  from a timer long after boot, and tests set the variable per case. */
 export function webhookUrl(): string {
-  return process.env.DISCORD_BUG_REPORT_WEBHOOK_URL || DEFAULT_WEBHOOK_URL;
+  return process.env.DISCORD_BUG_REPORT_WEBHOOK_URL || '';
 }
 
-/** True when no deployment-specific webhook was configured, so anything sent
- *  lands in the project owner's channel. Sandboxes use this to refuse to
- *  forward test traffic there. */
-export function usingDefaultWebhook(): boolean {
-  return !process.env.DISCORD_BUG_REPORT_WEBHOOK_URL;
+/** True when this deployment has its own webhook configured. Sandboxes use
+ *  the inverse of this to refuse to forward test traffic anywhere: with no
+ *  webhook set, webhookUrl() is empty and there's nowhere to forward to. */
+export function webhookConfigured(): boolean {
+  return !!process.env.DISCORD_BUG_REPORT_WEBHOOK_URL;
 }
 
 /** Discord's per-field value cap. */
