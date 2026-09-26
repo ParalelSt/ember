@@ -21,6 +21,42 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    id: 'tabs-no-generate',
+    version: '0.7.13',
+    date: '2026-09-26',
+    title: 'Tabs without the rough ones',
+    summary: 'Ember no longer writes guitar tabs from the recording. A song with no tab now lists its versions on Songsterr and the places to find one.',
+    bullets: [
+      'Generate a tab is gone: those tabs were too rough to play from. Tabs it made before are no longer shown.',
+      'A song with no tab lists its versions on Songsterr to open there, or, when Songsterr has none, Ultimate Guitar and Guitar Pro files to search.',
+      'Add a file sits right under the list, so a Guitar Pro or MusicXML file you find is one click away.',
+    ],
+  },
+  {
+    id: 'equalizer',
+    version: '0.7.13',
+    date: '2026-09-26',
+    title: 'Equalizer',
+    summary: 'Shape the sound with a preset or five bands, and it follows your account to every device.',
+    bullets: [
+      'Settings > Plugins and the full-screen player have an equalizer: Flat, Bass boost, Treble boost, Vocal, Acoustic, Electronic and Loudness, or your own curve on five bands.',
+      'Boosts never clip: the song is turned down by as much as the curve goes up.',
+      'Works in the desktop app and the Android app (the car too) once they are updated. In a phone browser it can stop the music with the screen off, so it only turns on there when you switch it on there.',
+    ],
+  },
+  {
+    id: 'database-backups',
+    version: '0.7.13',
+    date: '2026-09-26',
+    title: 'Automatic backups',
+    summary: 'The server now backs up every account, playlist and like every night, and the owner can download a copy at any time.',
+    bullets: [
+      'A backup of the whole database is made every night at 04:00, and the last 7 are kept.',
+      'Admin > Backups lists them with a Download button for each, has Back up now, and warns when the disk is getting full.',
+      'Uploaded songs, tabs and prank sounds can be downloaded there as one file too.',
+    ],
+  },
+  {
     id: 'playback-security-fixes',
     version: '0.7.12',
     date: '2026-09-26',

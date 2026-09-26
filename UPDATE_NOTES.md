@@ -1,4 +1,15 @@
-# Next release: Automatic database backups
+# 0.7.13: Backups, equalizer, tabs without generation (apps 0.4.10)
+
+**Host: run `./update.sh` as usual (no new packages).** The equalizer in the
+desktop and Android apps needs the new apps, 0.4.10 (Android versionCode 15),
+which the `v0.4.10` tag builds.
+
+- **Guitar tabs:** "Generate a tab" is gone. Optional clean-up of the
+  packages only it used: `.venv/bin/pip uninstall basic-pitch onnxruntime
+  pretty_midi resampy mir_eval demucs` (keep librosa, it lines tabs up).
+  `my_music/tabs/generated/` can be deleted by hand.
+
+## Automatic database backups
 
 **Host: nothing to do. Run `./update.sh` as usual (no new packages).**
 Backups start by themselves: when PocketBase restarts, the log shows

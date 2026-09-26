@@ -1,6 +1,6 @@
 [package]
 name = "ember-desktop"
-version = "0.4.9"
+version = "0.4.10"
 description = "Ember desktop shell"
 authors = ["Ember"]
 edition = "2021"

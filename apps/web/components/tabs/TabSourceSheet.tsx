@@ -14,7 +14,7 @@ import { groupRows, type TabSheetRow } from '@/lib/tabPick';
  *
  *  Presentational: rows come from lib/tabPick.ts sheetRows(), actions are
  *  callbacks. The design gallery renders the very same component with mock
- *  rows (components/library/options/tabs/FoundOnlineSection.tsx). */
+ *  rows. */
 
 /** One button under the list: "Search online again", "Add a file"... */
 export interface TabSheetAction {
