@@ -24,6 +24,7 @@ import { CastButton } from '@/components/player/CastButton';
 import { usePlayer } from '@/components/player/PlayerProvider';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { useIsDesktop } from '@/hooks/useIsDesktop';
+import { usePartyEligible } from '@/hooks/usePartyEligible';
 import { useLikeToggle } from '@/hooks/useLikeToggle';
 import { usePlayerStore } from '@/stores/usePlayerStore';
 import { useSettingsStore } from '@/stores/useSettingsStore';
@@ -42,6 +43,10 @@ export function PlayerBar() {
   const { liked: isLiked, toggle: toggleLike } = useLikeToggle(current);
   const openNowPlaying = usePlayerStore((s) => s.setNowPlayingOpen);
   const partyVolume = useSettingsStore((s) => s.partyVolume);
+  // Desktop-only: a mouse-driven browser or Tauri, never a touch device or
+  // the Android app, regardless of window width. See lib/playback/partyDevice.
+  const partyEligible = usePartyEligible();
+  const partyActive = partyVolume && partyEligible;
   const tabsEnabled = useSettingsStore((s) => s.tabsEnabled);
   const [queueOpen, setQueueOpen] = useState(false);
   const lyricsOpen = useUiStore((s) => s.lyricsOpen);
@@ -202,11 +207,11 @@ export function PlayerBar() {
         <VolumeControl
           volume={volume}
           muted={muted}
-          max={partyVolume ? 1 : 0.85}
+          max={partyActive ? 1 : 0.85}
           onChange={setVolume}
           onToggleMute={toggleMuted}
           className="hidden md:flex"
-          sliderClassName={partyVolume ? 'w-40' : 'w-29.5'}
+          sliderClassName={partyActive ? 'w-40' : 'w-29.5'}
         />
       </div>
     </div>

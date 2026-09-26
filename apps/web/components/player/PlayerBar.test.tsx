@@ -45,6 +45,10 @@ vi.mock('@/hooks/useLikeToggle', () => ({ useLikeToggle: () => ({ liked: false, 
 // only ever holds one transport (see hooks/useIsDesktop).
 const desktop = vi.hoisted(() => ({ value: true }));
 vi.mock('@/hooks/useIsDesktop', () => ({ useIsDesktop: () => desktop.value }));
+// Party mode (the wider, uncapped slider) is desktop-only: a mouse browser or
+// Tauri, never a touch device or the Android app. See lib/playback/partyDevice.
+const partyEligible = vi.hoisted(() => ({ value: true }));
+vi.mock('@/hooks/usePartyEligible', () => ({ usePartyEligible: () => partyEligible.value }));
 vi.mock('@/components/track/menus/AddToPlaylistMenu', () => ({ AddToPlaylistMenu: () => null }));
 vi.mock('@/components/track/ShareButton', () => ({ ShareButton: () => null }));
 vi.mock('@/components/player/QueueSheet', () => ({ QueueSheet: () => null }));
@@ -61,8 +65,8 @@ vi.mock('next/link', () => ({
 // base-ui's Slider reaches the repo root's hoisted React 18 through its own
 // copy and cannot render under happy-dom (see SeekBar.test.tsx).
 vi.mock('@/components/ui/slider', () => ({
-  Slider: ({ className }: { className?: string }) => (
-    <input type="range" aria-label="progress" className={className} readOnly />
+  Slider: ({ className, max }: { className?: string; max?: number }) => (
+    <input type="range" aria-label="progress" className={className} data-max={max} readOnly />
   ),
 }));
 
@@ -76,8 +80,13 @@ const desktopBar = () => {
 
 beforeEach(() => {
   desktop.value = true;
+  partyEligible.value = true;
   useSettingsStore.setState({ tabsEnabled: true, partyVolume: false });
 });
+
+/** The volume slider is the last "progress"-labelled input: SeekBar's own
+ *  slider sits in the middle column, ahead of it in the DOM. */
+const volumeSlider = () => screen.getAllByLabelText('progress').at(-1) as HTMLElement;
 
 describe('PlayerBar', () => {
   it('renders exactly one bar, the one the window calls for', () => {
@@ -199,6 +208,37 @@ describe('PlayerBar', () => {
       expect(usePlayerStore.getState().nowPlayingOpen).toBe(false);
       fireEvent.click(screen.getByTestId('phone-player-row'));
       expect(usePlayerStore.getState().nowPlayingOpen).toBe(true);
+    });
+  });
+
+  describe('party mode is desktop-only', () => {
+    it('caps the slider at 85% off, and lifts it to 100% (wider track) with the plugin on, on an eligible device', () => {
+      const { unmount } = render(<PlayerBar />);
+      expect(volumeSlider()).toHaveAttribute('data-max', '85');
+      expect(volumeSlider().parentElement).toHaveClass('w-29.5');
+      unmount();
+
+      useSettingsStore.setState({ partyVolume: true });
+      render(<PlayerBar />);
+      expect(volumeSlider()).toHaveAttribute('data-max', '100');
+      expect(volumeSlider().parentElement).toHaveClass('w-40');
+    });
+
+    it('stays capped at 85% with the plugin on when this device is not party-eligible (touch, or the Android app)', () => {
+      useSettingsStore.setState({ partyVolume: true });
+      partyEligible.value = false;
+      desktopBar();
+      expect(volumeSlider()).toHaveAttribute('data-max', '85');
+      expect(volumeSlider().parentElement).toHaveClass('w-29.5');
+    });
+
+    it('has no volume slider at all on a phone, eligible or not (only the seek bar remains)', () => {
+      desktop.value = false;
+      useSettingsStore.setState({ partyVolume: true });
+      partyEligible.value = true;
+      render(<PlayerBar />);
+      expect(screen.getAllByLabelText('progress')).toHaveLength(1);
+      expect(document.querySelector('.w-40, .w-29\\.5')).toBeNull();
     });
   });
 });

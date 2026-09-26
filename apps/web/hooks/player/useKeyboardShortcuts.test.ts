@@ -102,6 +102,17 @@ describe('useKeyboardShortcuts', () => {
     expect(usePlayerStore.getState().volume).toBeCloseTo(1);
   });
 
+  it('stays at the 0.85 ceiling with party mode on when this device is not party-eligible (touch)', () => {
+    const original = window.matchMedia;
+    window.matchMedia = ((q: string) => ({ matches: q === '(pointer: coarse)' })) as typeof window.matchMedia;
+    useSettingsStore.setState({ partyVolume: true });
+    usePlayerStore.setState({ volume: 0.84 });
+    setup();
+    press({ key: 'ArrowUp' });
+    expect(usePlayerStore.getState().volume).toBeCloseTo(0.85);
+    window.matchMedia = original;
+  });
+
   it('M toggles mute', () => {
     setup();
     expect(press({ key: 'm' })).toBe(false);

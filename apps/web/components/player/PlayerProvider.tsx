@@ -36,6 +36,8 @@ import { useRemoteCommands } from '@/hooks/player/useRemoteCommands';
 import { useTrackGain } from '@/hooks/player/useTrackGain';
 import { dbToLinear } from '@/lib/playback/normalization';
 import { eqForDevice, eqNeedsConsent } from '@/lib/playback/eqDevice';
+import { isPartyEligible } from '@/lib/playback/partyDevice';
+import { usePartyEligible } from '@/hooks/usePartyEligible';
 import { createWebBackend } from '@/lib/playback/webBackend';
 import { createCapacitorBackend } from '@/lib/playback/capacitorBackend';
 import { createNativeBackend, nativeBackendReady } from '@/lib/playback/nativeBridge';
@@ -195,6 +197,12 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   useQueryLyrics(current, !!user);
 
   const partyVolume = useSettingsStore((s) => s.partyVolume);
+  // Party mode is desktop-only (Tauri, or a mouse-driven web browser): see
+  // lib/playback/partyDevice. A phone, tablet or the Android app must behave
+  // exactly as if the account's partyVolume were off, even when it is on
+  // from another, eligible device.
+  const partyEligible = usePartyEligible();
+  const partyActive = partyVolume && partyEligible;
   const muted = usePlayerStore((s) => s.muted);
   const loopMode = usePlayerStore((s) => s.loopMode);
 
@@ -490,16 +498,17 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     if (!b) return;
     // A cast device gets the listener's own level only: nothing else in the
     // page (a sound ducking the music) turns the TV down.
-    b.setVolume(musicLevel(volume, muted, castingRef.current ? 1 : duck), { gain: partyVolume ? 2 : 1, normGain });
-  }, [backendReady, volume, partyVolume, muted, duck, normGain]);
+    b.setVolume(musicLevel(volume, muted, castingRef.current ? 1 : duck), { gain: partyActive ? 2 : 1, normGain });
+  }, [backendReady, volume, partyActive, muted, duck, normGain]);
 
-  // When party mode turns OFF, snap volume back under the normal 0.85 cap so the
-  // slider thumb doesn't stick at the right edge.
+  // When party mode turns OFF (or this device was never eligible for it),
+  // snap volume back under the normal 0.85 cap so the slider thumb doesn't
+  // stick at the right edge.
   useEffect(() => {
-    if (!partyVolume && volume > 0.85) {
+    if (!partyActive && volume > 0.85) {
       setStoreVolume(0.85);
     }
-  }, [partyVolume, volume, setStoreVolume]);
+  }, [partyActive, volume, setStoreVolume]);
 
   /** Swap a failing native engine for plain web audio, once, and resume.
    *
@@ -519,7 +528,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     logger.setContext({ backendKind: 'web' });
     // partyVolume lives in the settings store, not the player store.
     const st = usePlayerStore.getState();
-    const party = useSettingsStore.getState().partyVolume;
+    const party = useSettingsStore.getState().partyVolume && isPartyEligible();
     backendRef.current.setVolume(musicLevel(st.volume, st.muted, duckRef.current), {
       gain: party ? 2 : 1,
       normGain: normGainRef.current,
@@ -662,7 +671,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   /** The level the music plays at, for an engine that just took over. */
   const applyVolume = useCallback((b: AudioBackend) => {
     const st = usePlayerStore.getState();
-    const party = useSettingsStore.getState().partyVolume;
+    const party = useSettingsStore.getState().partyVolume && isPartyEligible();
     b.setVolume(musicLevel(st.volume, st.muted, duckRef.current), { gain: party ? 2 : 1, normGain: normGainRef.current });
   }, []);
 
