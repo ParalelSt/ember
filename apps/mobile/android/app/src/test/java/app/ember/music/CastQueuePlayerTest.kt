@@ -128,6 +128,26 @@ class CastQueuePlayerTest {
         assertEquals(300, fromStart.size)
     }
 
+    @Test fun `a jump or a removal sent while the new queue is signed lands on the new queue`() {
+        queue.setMediaItems(listOf(yt(1), yt(2)), 0, 0)
+        runIo()
+        // A new list, then (before its links are back) a jump to its third
+        // song and the first one removed: both mean places in the NEW list.
+        queue.setMediaItems(listOf(yt(3), yt(4), yt(5)), 0, 0)
+        queue.seekTo(2, 7_000)
+        queue.removeMediaItem(0)
+        queue.seekToPreviousMediaItem()
+        assertEquals(listOf(yt(1), yt(2)).map { it.mediaId }, ids())
+        assertEquals(0, tv.currentMediaItemIndex)
+        runIo()
+        assertEquals(listOf(yt(4), yt(5)).map { it.mediaId }, ids())
+        assertEquals(yt(4).mediaId, tv.currentMediaItem!!.mediaId)
+        assertFalse(queue.pending)
+        // With nothing waiting, a jump is immediate.
+        queue.seekTo(1, 0)
+        assertEquals(1, tv.currentMediaItemIndex)
+    }
+
     @Test fun `everything else reaches the TV untouched`() {
         queue.setMediaItems(listOf(yt(1), yt(2)), 0, 0)
         runIo()

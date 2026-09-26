@@ -244,6 +244,7 @@ class EmberPlaybackService : MediaLibraryService() {
             override fun onCastSessionUnavailable() {
                 Log.i(TAG, "cast session ended: the queue comes back to the phone")
                 switch.toLocal()
+                signer.clear()
             }
         })
         castPlayer = cast

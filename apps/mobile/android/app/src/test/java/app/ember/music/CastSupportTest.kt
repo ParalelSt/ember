@@ -129,6 +129,13 @@ class CastSupportTest {
         assertEquals(listOf("youtube:aaaaaaaaaaa"), signer.missing(listOf("youtube:aaaaaaaaaaa")))
     }
 
+    @Test fun `links are forgotten when a session ends`() {
+        val signer = CastSigner({ ids -> ids.associateWith { CastLink("https://x/$it", null, "audio/mp4", Long.MAX_VALUE) } })
+        signer.sign(listOf("youtube:aaaaaaaaaaa"))
+        signer.clear()
+        assertEquals(listOf("youtube:aaaaaaaaaaa"), signer.missing(listOf("youtube:aaaaaaaaaaa")))
+    }
+
     @Test fun `a long queue is signed in calls of at most 500`() {
         val sizes = ArrayList<Int>()
         val signer = CastSigner({ ids -> sizes.add(ids.size); emptyMap() })

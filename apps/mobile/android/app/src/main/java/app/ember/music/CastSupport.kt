@@ -150,6 +150,10 @@ class CastSigner(
 
     private val links = ConcurrentHashMap<String, CastLink>()
 
+    /** Forgets every link: they were signed for whoever was signed in when
+     *  the session started, and the next session may be someone else's. */
+    fun clear() = links.clear()
+
     fun fresh(id: String): CastLink? = links[id]?.takeIf { it.expiresAtSec - nowSec() > REUSE_MARGIN_SEC }
 
     /** The signable ids among [ids] with no fresh link yet. */

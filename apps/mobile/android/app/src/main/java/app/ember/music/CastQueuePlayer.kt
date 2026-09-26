@@ -114,6 +114,24 @@ class CastQueuePlayer(
     override fun replaceMediaItems(fromIndex: Int, toIndex: Int, mediaItems: List<MediaItem>) =
         enqueue(mediaItems.toList()) { super.replaceMediaItems(fromIndex, toIndex, it) }
 
+    // Moves by index wait behind queue changes still being signed. The app's
+    // MediaController already shows the queue it asked for (Media3 masks its
+    // own changes), so an index it sends means a place in THAT queue: applied
+    // before the queue lands, it would hit the wrong song.
+    private fun ordered(fn: () -> Unit) = if (ops.isEmpty() && !signing) fn() else enqueue(emptyList()) { fn() }
+
+    override fun seekTo(mediaItemIndex: Int, positionMs: Long) = ordered { super.seekTo(mediaItemIndex, positionMs) }
+    override fun seekTo(positionMs: Long) = ordered { super.seekTo(positionMs) }
+    override fun seekToDefaultPosition(mediaItemIndex: Int) = ordered { super.seekToDefaultPosition(mediaItemIndex) }
+    override fun seekToNext() = ordered { super.seekToNext() }
+    override fun seekToPrevious() = ordered { super.seekToPrevious() }
+    override fun seekToNextMediaItem() = ordered { super.seekToNextMediaItem() }
+    override fun seekToPreviousMediaItem() = ordered { super.seekToPreviousMediaItem() }
+    override fun removeMediaItem(index: Int) = ordered { super.removeMediaItem(index) }
+    override fun removeMediaItems(fromIndex: Int, toIndex: Int) = ordered { super.removeMediaItems(fromIndex, toIndex) }
+    override fun moveMediaItem(currentIndex: Int, newIndex: Int) = ordered { super.moveMediaItem(currentIndex, newIndex) }
+    override fun moveMediaItems(fromIndex: Int, toIndex: Int, newIndex: Int) = ordered { super.moveMediaItems(fromIndex, toIndex, newIndex) }
+
     override fun setPlayWhenReady(playWhenReady: Boolean) {
         wantPlay = playWhenReady
         super.setPlayWhenReady(playWhenReady)
