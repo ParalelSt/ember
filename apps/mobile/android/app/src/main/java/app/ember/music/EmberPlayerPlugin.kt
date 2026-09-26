@@ -365,7 +365,9 @@ class EmberPlayerPlugin : Plugin() {
 
     /** `{ available, connecting, connected, deviceName }`. Nothing is
      *  available on a phone without Google Play services. */
-    @PluginMethod fun getCastState(call: PluginCall) = main.post { call.resolve(castJs()) }
+    @PluginMethod fun getCastState(call: PluginCall) {
+        main.post { call.resolve(castJs()) }
+    }
 
     /** The Cast device picker, or, while casting, the device's controls
      *  (its volume, and Stop casting). */
