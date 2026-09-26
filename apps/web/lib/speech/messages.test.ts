@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { speechErrorMessage } from './messages';
+import { micUnavailableMessage, MSG_IOS_UNSUPPORTED, MSG_UPDATE_APP, MSG_WEB_UNSUPPORTED, speechErrorMessage } from './messages';
 
 describe('speechErrorMessage', () => {
   it.each([
@@ -22,5 +22,21 @@ describe('speechErrorMessage', () => {
     ['aborted', 'tauri', undefined, null],
   ] as const)('%s in %s (%s)', (kind, shell, reason, expected) => {
     expect(speechErrorMessage(kind, shell, reason)).toBe(expected);
+  });
+});
+
+describe('micUnavailableMessage', () => {
+  it('points a browser at Chrome', () => {
+    expect(micUnavailableMessage('web', false)).toBe(MSG_WEB_UNSUPPORTED);
+  });
+
+  it('tells an old Android or desktop app to update', () => {
+    expect(micUnavailableMessage('capacitor', false)).toBe(MSG_UPDATE_APP);
+    expect(micUnavailableMessage('tauri', false)).toBe(MSG_UPDATE_APP);
+  });
+
+  // Updating would not help: the iPhone app has no recognizer yet.
+  it('says plainly that the iPhone app has no voice search', () => {
+    expect(micUnavailableMessage('capacitor', true)).toBe(MSG_IOS_UNSUPPORTED);
   });
 });

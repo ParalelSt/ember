@@ -20,6 +20,7 @@
     "deploy": "npm run build && systemctl --user restart ember && echo '\u2713 rebuilt + ember restarted'",
     "test:update": "node tests/desktop-update.test.mjs",
     "test:stream": "node tests/stream-source.test.mjs",
+    "test:ios-ats": "node tests/ios-ats.test.mjs",
     "test:stream-fallback": "node tests/stream-fallback.test.mjs",
     "test:stream-fastfail": "node tests/stream-fastfail.test.mjs",
     "test:stream-range": "node tests/stream-range.test.mjs",
