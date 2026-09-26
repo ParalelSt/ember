@@ -24,15 +24,40 @@ export interface Track {
 /** A song in a playlist or in Liked songs, with when it landed there (the
  *  playlist row's `created`, the like's `liked_at`). The list routes add it
  *  for "Date added" sorting; everything else ignores it. */
-export type CollectionTrack = Track & { addedAt: string };
+export type CollectionTrack = Track & {
+  addedAt: string;
+  /** Who put it in a collaborative playlist (GET /api/playlists/:id sets it
+   *  only when the playlist is collaborative). Null: not known, e.g. their
+   *  account was deleted. */
+  addedBy?: PlaylistPerson | null;
+};
+
+/** Someone as other members see them: a name and a picture, never an email
+ *  address. */
+export interface PlaylistPerson {
+  id: string;
+  name: string;
+  avatarUrl: string | null;
+}
+
+/** `owner`: your own playlist. `member`: someone else's collaborative
+ *  playlist you were added to. */
+export type PlaylistRole = 'owner' | 'member';
 
 export interface Playlist {
   id: string;
   name: string;
   created_at: string;
   artwork_url: string | null;
-  /** Set on a playlist made by an import (only on GET /api/playlists/:id). */
+  /** Set on a playlist made by an import (only on GET /api/playlists/:id,
+   *  and only for its owner). */
   import_job?: string | null;
+  /** The owner lets members add, remove and reorder its songs. */
+  collaborative?: boolean;
+  /** Absent from an older server: treat as `owner`. */
+  role?: PlaylistRole;
+  /** The owner's name, on a playlist shared with you (`role: 'member'`). */
+  owner_name?: string | null;
 }
 
 export interface AlbumSummary {

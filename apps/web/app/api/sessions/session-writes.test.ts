@@ -104,7 +104,7 @@ beforeEach(() => {
 describe('carlist routes write through the server (X2)', () => {
   it('the host starts one, seeded from a playlist', async () => {
     const POST = await route(import('./route'));
-    const res = await POST(req({ name: 'Trip', seedPlaylistId: 'p1' }));
+    const res = await POST(req({ name: 'Trip', seedPlaylistId: 'playlist0000001' }));
     expect(res.status).toBe(201);
     expect(serverWrites).toEqual(['create:sessions', 'create:session_members', 'create:session_tracks']);
   });

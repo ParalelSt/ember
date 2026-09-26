@@ -4,42 +4,44 @@ import { fromError, jsonError, upsertCatalogTrack } from '@/lib/upsertTrack';
 import { mapTrackRow, type TrackRecord } from '@/lib/mapTrack';
 import type { Track } from '@/types/track';
 import { withRequestLog } from '@/lib/logger/withRequestLog';
+import { notFound, playlistAccess } from '@/lib/playlistAccess';
 
 export const POST = withRequestLog('playlists/[id]/tracks/[trackId]/replace', async (
   request: NextRequest,
   ctx: RouteContext<'/api/playlists/[id]/tracks/[trackId]/replace'>,
 ) => {
   try {
-    const { pb } = await requireUser();
+    const { pb, user } = await requireUser();
     const { id, trackId } = await ctx.params;
     const body = (await request.json().catch(() => null)) as { track?: Track } | null;
     const replacement = body?.track;
     if (!replacement?.id) return jsonError('track required', 400);
     if (replacement.id === trackId) return jsonError('that is the same track', 400);
 
-    try {
-      await pb.collection('playlists').getOne(id);
-    } catch {
-      return jsonError('That playlist doesn’t exist, or isn’t yours', 404);
-    }
+    // Owner or member (lib/playlistAccess.ts); anyone else: 404.
+    const access = await playlistAccess(pb, user.id, id);
+    if (!access) return notFound();
+    const { db } = access;
 
     const oldRec = await pb.collection('tracks').getFirstListItem(`external_id = "${esc(trackId)}"`);
-    const junction = await pb
+    const junction = await db
       .collection('playlist_tracks')
-      .getFirstListItem(`playlist = "${esc(id)}" && track = "${oldRec.id}"`);
+      .getFirstListItem(`playlist = "${id}" && track = "${oldRec.id}"`);
     const newRecId = await upsertCatalogTrack(replacement);
 
     // Already in the playlist: keep that copy where it sits and drop the dead
     // row, so a replace never creates a duplicate.
     let merged = false;
     try {
-      await pb.collection('playlist_tracks').getFirstListItem(`playlist = "${esc(id)}" && track = "${newRecId}"`);
+      await db
+        .collection('playlist_tracks')
+        .getFirstListItem(`playlist = "${id}" && track = "${newRecId}"`);
       merged = true;
     } catch {
       /* absent: swap in place */
     }
-    if (merged) await pb.collection('playlist_tracks').delete(junction.id);
-    else await pb.collection('playlist_tracks').update(junction.id, { track: newRecId });
+    if (merged) await db.collection('playlist_tracks').delete(junction.id);
+    else await db.collection('playlist_tracks').update(junction.id, { track: newRecId });
 
     const row = await pb.collection('tracks').getOne(newRecId);
     return Response.json({ ok: true, merged, track: mapTrackRow(row as unknown as TrackRecord) });

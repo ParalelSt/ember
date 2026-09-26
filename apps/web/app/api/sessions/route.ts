@@ -3,6 +3,7 @@ import { requireUser, UnauthorizedError, unauthorizedResponse } from '@/lib/auth
 import { fromError, jsonError } from '@/lib/upsertTrack';
 import { newSessionCode, addMember, sessionsClient } from '@/lib/sessions';
 import { withRequestLog } from '@/lib/logger/withRequestLog';
+import { playlistAccess } from '@/lib/playlistAccess';
 
 /** Start a carlist session. Optionally seeds the queue from one of the
  *  caller's playlists. Returns {session:{id, code, name}}. */
@@ -36,13 +37,14 @@ export const POST = withRequestLog('sessions', async (request: NextRequest) => {
 
     if (body?.seedPlaylistId) {
       const seedId = body.seedPlaylistId.replace(/[^a-zA-Z0-9]/g, '');
-      // Seeding reads a playlist's tracks, so it has to be one of yours —
-      // otherwise a session id doubles as a peek into someone else's library.
-      const seed = await pb.collection('playlists').getOne(seedId).catch(() => null);
-      if (!seed || seed.user !== user.id) {
+      // Seeding reads a playlist's tracks, so it has to be one you can open
+      // (yours, or a collaborative one you are a member of), otherwise a
+      // session id doubles as a peek into someone else's library.
+      const access = await playlistAccess(pb, user.id, seedId);
+      if (!access) {
         return jsonError("That playlist doesn't exist, or isn't yours.", 404);
       }
-      const items = await pb.collection('playlist_tracks').getFullList({
+      const items = await access.db.collection('playlist_tracks').getFullList({
         filter: `playlist = "${seedId}"`,
         sort: 'position',
       });

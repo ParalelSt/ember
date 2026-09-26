@@ -3,27 +3,23 @@ import { requireUser, UnauthorizedError, unauthorizedResponse } from '@/lib/auth
 import type { Track } from '@/types/track';
 import { fromError, jsonError, upsertCatalogTrack } from '@/lib/upsertTrack';
 import { withRequestLog } from '@/lib/logger/withRequestLog';
+import { notFound, playlistAccess } from '@/lib/playlistAccess';
 
 export const POST = withRequestLog('playlists/[id]/tracks', async (request: NextRequest, ctx: RouteContext<'/api/playlists/[id]/tracks'>) => {
   try {
-    const { pb } = await requireUser();
+    const { pb, user } = await requireUser();
     const { id } = await ctx.params;
     const body = (await request.json().catch(() => null)) as { track?: Track } | null;
     const track = body?.track;
     if (!track?.id) return jsonError('track required', 400);
 
-    // PocketBase's collection rules already stop someone writing into a
-    // playlist that isn't theirs — but they surface it as 400 "Failed to
-    // create record.", which is both the wrong status and a raw internal
-    // message for the user. Check ownership up front and say so plainly.
-    // (The cookie-scoped client can only read the caller's own playlists, so a
-    // miss here means "not yours" or "doesn't exist" — same answer either way,
-    // and it doesn't reveal whether someone else's playlist exists.)
-    try {
-      await pb.collection('playlists').getOne(id);
-    } catch {
-      return jsonError('That playlist doesn’t exist, or isn’t yours', 404);
-    }
+    // The owner, or a member of a collaborative playlist. Anyone else gets
+    // the same 404 as a playlist that does not exist, so it does not reveal
+    // whether someone else's playlist exists. (PocketBase's rules would
+    // also refuse the owner-session write below, but as a raw 400.)
+    const access = await playlistAccess(pb, user.id, id);
+    if (!access) return notFound();
+    const { db } = access;
 
     const trackRecordId = await upsertCatalogTrack(track);
 
@@ -32,7 +28,7 @@ export const POST = withRequestLog('playlists/[id]/tracks', async (request: Next
     // validator on number fields rejects 0 as "missing".
     let nextPosition = 1;
     try {
-      const last = await pb
+      const last = await db
         .collection('playlist_tracks')
         .getFirstListItem(`playlist = "${id}"`, { sort: '-position' });
       nextPosition = (Number(last.position) || 0) + 1;
@@ -40,10 +36,11 @@ export const POST = withRequestLog('playlists/[id]/tracks', async (request: Next
       // empty playlist — keep 1
     }
 
-    await pb.collection('playlist_tracks').create({
+    await db.collection('playlist_tracks').create({
       playlist: id,
       track: trackRecordId,
       position: nextPosition,
+      added_by: user.id,
     });
     return Response.json({ ok: true }, { status: 201 });
   } catch (e) {
