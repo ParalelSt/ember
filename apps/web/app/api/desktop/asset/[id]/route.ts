@@ -1,4 +1,4 @@
-import { fetchAsset } from '@/lib/desktopUpdate';
+import { fetchAsset, updaterAsset } from '@/lib/desktopUpdate';
 import { limitCaller } from '@/lib/rateLimit';
 import { serverLogger } from '@/lib/logger/server';
 import { withRequestLog } from '@/lib/logger/withRequestLog';
@@ -7,9 +7,11 @@ import { withRequestLog } from '@/lib/logger/withRequestLog';
  *  desktop updater can download from a PRIVATE repo without ever holding a
  *  token itself.
  *
- *  Only numeric asset ids are accepted, and they're passed straight to the
- *  releases endpoint of one fixed repo — there's no path here for a caller to
- *  reach anything else. */
+ *  Public (the updater has no session), so it serves exactly what the
+ *  updater needs and nothing else: an asset of the LATEST published release
+ *  whose name is an update bundle, its .sig or latest.json. Any other id, an
+ *  older release's, a draft's, a hand-download installer's, is a 404 before
+ *  GitHub is asked (security audit 2026-09-25, M3). */
 const MAX_ID = Number.MAX_SAFE_INTEGER;
 
 export const GET = withRequestLog('desktop/asset/[id]', async (request: Request, ctx: RouteContext<'/api/desktop/asset/[id]'>) => {
@@ -28,7 +30,10 @@ export const GET = withRequestLog('desktop/asset/[id]', async (request: Request,
     return new Response('bad asset id', { status: 400 });
   }
 
-  const upstream = await fetchAsset(assetId);
+  const asset = await updaterAsset(assetId);
+  if (!asset) return new Response('asset unavailable', { status: 404 });
+
+  const upstream = await fetchAsset(asset.id);
   if (!upstream || !upstream.ok) {
     serverLogger.error('update', 'asset proxy failed', { assetId, status: upstream?.status });
     return new Response('asset unavailable', { status: 404 });

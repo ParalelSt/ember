@@ -388,7 +388,11 @@ self-hosting send to your channels too. To send somewhere else, set
 
 The desktop apps check this server on launch and install new builds
 themselves. They ask `/api/desktop/update/...`; the server answers from the
-GitHub Release and streams the installer back.
+GitHub Release and streams the installer back. That download route
+(`/api/desktop/asset/<id>`) is public, so it only serves the latest published
+release's update files (the macOS `.app.tar.gz`, the Windows `-setup.exe`,
+the Linux `.AppImage`, their `.sig`, `latest.json`); any other asset of the
+repo is a 404 and GitHub is never asked for it.
 
 Because the repo is private, the server needs a read-only token — and it stays
 on the host, never inside the shipped app:

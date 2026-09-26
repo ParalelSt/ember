@@ -30,7 +30,7 @@ export interface UpdateManifest {
   notes?: string;
 }
 
-interface ReleaseAsset {
+export interface ReleaseAsset {
   id: number;
   name: string;
   size: number;
@@ -84,6 +84,30 @@ async function latestRelease(): Promise<Release | null> {
     cache = { at: Date.now(), release: null };
     return null;
   }
+}
+
+/** The files of a release the updater itself ever needs: each platform's
+ *  update bundle, its signature, and a latest.json manifest. Installers a
+ *  person downloads by hand (.dmg, .msi, .deb) are not among them. */
+const UPDATER_ASSET_NAMES: RegExp[] = [
+  /macos-[\w.-]+\.app\.tar\.gz(\.sig)?$/,
+  /windows-(x64|arm64)-setup\.exe(\.sig)?$/,
+  /linux-[\w.-]+\.AppImage(\.sig)?$/,
+  /^latest\.json$/,
+];
+
+export function isUpdaterAssetName(name: string): boolean {
+  return UPDATER_ASSET_NAMES.some((re) => re.test(name));
+}
+
+/** The asset with this id when it belongs to the latest published release
+ *  AND is one the updater needs, else null. The asset proxy asks this first,
+ *  so the host's token only ever fetches the current update's own files,
+ *  never an arbitrary id from the repo (security audit 2026-09-25, M3). */
+export async function updaterAsset(id: number): Promise<ReleaseAsset | null> {
+  const release = await latestRelease();
+  const asset = release?.assets?.find((a) => a.id === id);
+  return asset && isUpdaterAssetName(asset.name) ? asset : null;
 }
 
 /** Which asset a given platform updates FROM. Note these are not the files a
@@ -148,7 +172,8 @@ async function fetchAssetText(id: number): Promise<string | null> {
 }
 
 /** Raw asset bytes from GitHub, with the host's token. Used by the manifest
- *  (for .sig files) and by the asset-proxy route (for installers). */
+ *  (for .sig files) and by the asset-proxy route (for installers), which
+ *  checks the id with updaterAsset first. */
 export async function fetchAsset(id: number): Promise<Response | null> {
   if (!TOKEN) return null;
   try {
