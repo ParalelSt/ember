@@ -83,7 +83,7 @@ Not in v1. Manual "Sync now" (add new source tracks at the end, never remove or 
 
 ## 8. UI
 
-Entry point (decided): the create-playlist dialog (`apps/web/components/track/menus/CreatePlaylistDialog.tsx`) opens with a choice at the top: "Start empty" (today's flow) or "Import from a link". Import: paste a Spotify or YouTube Music link, preview (name, cover, song count), Create; the playlist appears at once and fills in the background with progress in the sidebar. The separate sidebar "Import playlist" button and ImportPlaylistDialog are removed, so there is one way in. Candidates for how the choice looks go on `/dizajn` inside `ShellPreview`, under `components/library/options/imports/`, picked before any UI is built.
+Entry point (decided): the create-playlist dialog (`apps/web/components/track/menus/CreatePlaylistDialog.tsx`) opens with a choice at the top: "Start empty" (today's flow) or "Import from a link". Import: paste a Spotify or YouTube Music link, preview (name, cover, song count), Create; the playlist appears at once and fills in the background with progress in the sidebar. The separate sidebar "Import playlist" button and ImportPlaylistDialog are removed, so there is one way in. Candidates for how the choice looks are reviewed locally inside `ShellPreview`, under `components/library/options/imports/`, picked before any UI is built.
 
 Import flow candidates (all start from the create-playlist dialog):
 
@@ -117,8 +117,8 @@ Each stage merges alone with a changelog entry in `lib/changelog.ts` and the nex
 |---|---|---|
 | 1 | Embed-page Spotify source, oEmbed preview, drop client credentials, rewrite SETUP.md section | "Spotify playlist import works again, no keys needed" |
 | 2 | Candidates from `match`, `score()`, confidence, results list split into accepted, review, not found (still inside the dialog) | "Import matching is stricter and shows what needs a look" |
-| 3 | `import_jobs`, `import_items`, runner, resume, pacing, sidebar progress (after dizajn pick) | "Imports run in the background" |
-| 4 | Review screen (after dizajn pick) | "Fix uncertain import matches yourself" |
+| 3 | `import_jobs`, `import_items`, runner, resume, pacing, sidebar progress (after design pick) | "Imports run in the background" |
+| 4 | Review screen (after design pick) | "Fix uncertain import matches yourself" |
 | 5 | YT Music likes through a Google sign-in (Liked Music, private), Spotify OAuth (Liked Songs, private, over 100) | "Import your liked songs" |
 | 6 | Manual "Sync now" | later |
 

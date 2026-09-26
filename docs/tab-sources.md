@@ -59,7 +59,7 @@ New route `POST /api/tabs/text` (JSON: text, title, artist, trackId, tempo, tuni
 
 "Paste a tab" appears in the empty state beside "Add a file" (`TabsPage.tsx:405-410`) and in the ⋯ menu above "Add a Guitar Pro or MusicXML file" (`:186`). The empty state also gets the three search links as a row of chips and moves "Generate a tab" last with the word rough. The dialog: textarea, the report line ("6 strings, Drop D, 24 bars, 2 lines skipped"), a tempo row (number field, Tap along to the playing song, Fit to song length = bars x 4 x 60 / duration), a live AlphaTab preview from the alphaTex, Save.
 
-Per the app's design system, two candidates go on `/dizajn` under "Guitar tabs" before the real UI, as a picker like `TABS_LAYOUTS` (`components/library/options/tabs/index.ts`):
+Per the app's design system, two candidates are reviewed locally (design options are reviewed locally, not in the tracked app) under "Guitar tabs" before the real UI, as a picker like `TABS_LAYOUTS` (`components/library/options/tabs/index.ts`):
 
 - A. Paste dialog: a modal, textarea left, preview right, report and tempo row between them, Save in the footer. Phone: stacked. Recommended.
 - B. Inline editor: the empty state turns into an editor on the tab page itself, textarea on top, preview below where the score will sit, Save in the sticky toolbar. Phone: same, stacked.
@@ -82,7 +82,7 @@ Each lands on its own, tests green, with a bullet added to the 0.3.3 entry (`lib
 | 1. Search links | `lib/tabSearchLinks.ts`, chips in the empty state and menu | No tab yet? One click searches Ultimate Guitar, Guitar Pro files or Songsterr for the song |
 | 2. Parser | `lib/tabText.ts`, fixtures, unit tests, no UI | none (internal) |
 | 3. Store and route | kind pasted, `POST /api/tabs/text`, chain order, chip labels, sandbox test | none yet |
-| 4. Design | Candidates A and B on `/dizajn`; owner picks by name | none |
+| 4. Design | Candidates A and B, reviewed locally; owner picks by name | none |
 | 5. Paste UI | The chosen dialog, tempo tap and fit, preview, browser test | Paste a text tab from anywhere and Ember turns it into a real tab that follows the song |
 | 6. Later | Rhythm letters, guitar + bass in one paste, chord names as beat text, admin re-parse script | as they land |
 

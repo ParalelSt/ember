@@ -52,7 +52,7 @@ exactly like this today; it just now also overrides the blend.
 
 ## Shelf design
 
-Three candidates for the reworked shelf are on `/dizajn` ("Trending shelf"): Ranked cards, Chart list, Hero + list. Each has "Show all" opening the full chart as a collection page, and an "Updated 3 hours ago" note for stale data. The live shelf is unchanged until the owner picks one.
+Three candidates for the reworked shelf are reviewed locally ("Trending shelf"): Ranked cards, Chart list, Hero + list. Each has "Show all" opening the full chart as a collection page, and an "Updated 3 hours ago" note for stale data. The live shelf is unchanged until the owner picks one.
 
 ## As built: country blend (0.3.6)
 

@@ -90,7 +90,7 @@ Offline or cold server: PocketBase rows and `catalog.json` serve as they are wit
 
 Home gains a "Your mixes" tile row and three browse rows; two new pages: `/mix/[id]` (a personal mix, play, shuffle, add to playlist) and `/genre/[slug]` (a chart or browse playlist, reusing the collection page the trending "Show all" opens). Each tile shows a generated cover (the top 4 artworks) and a one-line reason ("Because you play Gojira").
 
-The owner requires options on `/dizajn` before any of this is built, next to "Trending shelf" (`components/library/options/trending/index.ts:12-25`):
+The owner requires options reviewed locally before any of this is built, next to "Trending shelf" (`components/library/options/trending/index.ts:12-25`):
 
 Home layout candidates:
 1. Mix tiles first: one big square-tile row of mixes at the top, browse rows below as small round genre chips.
@@ -114,7 +114,7 @@ Mix page candidates:
 
 | Stage | Ships | Tier | Changelog |
 |---|---|---|---|
-| 1 | `/dizajn` candidates for Home layout and mix page, owner picks | sonnet | none (gallery only) |
+| 1 | Candidates for Home layout and mix page, reviewed locally, owner picks | sonnet | none (gallery only) |
 | 2 | Catalog: `player.py genres`, `lib/mixes/catalog.ts`, `/api/mixes/catalog`, genre chart row, `/genre/[slug]` in the picked design | opus | "Genre charts: Pop, Rock, Metal, EDM and more, updated daily" |
 | 3 | No-call mixes: `mixes` collection, On repeat, Back again, Friends mix, Popular on this server, `/mix/[id]` | sonnet | "Your mixes: On repeat, Back again and a Friends mix" |
 | 4 | Seeded mixes: `player.py mixes`, nightly job, Daily Mix, genre mixes, New to you, artist mixes, artist tagging | opus | "Daily Mix, genre mixes and New to you, built overnight from what you play" |

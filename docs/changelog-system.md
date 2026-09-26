@@ -1,6 +1,6 @@
 # Changelog system (version tracked)
 
-Plan only. The UI candidates on /dizajn (`components/library/options/changelog/`) sit on top of this.
+Plan only. The UI candidates, reviewed locally (`components/library/options/changelog/`), sit on top of this.
 
 ## 1. What the version is today
 

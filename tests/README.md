@@ -341,11 +341,6 @@ node tests/mobile-player-ui.test.mjs                # or: npm run test:mobile-pl
 # screenshots. PB_URL / APP_URL, default 8086 / 3053.
 node tests/android-insets-ui.test.mjs               # or: npm run test:android-insets-ui
 
-# The phone bar's shipped sizes on /dizajn (Balanced, a 36px play disc in a
-# 48px hit box): measured in the gallery's frames and must equal the numbers
-# the section quotes; the old size pickers are gone. Signs in as
-# EMBER_EMAIL / EMBER_PASSWORD; writes nothing. SHOT_DIR keeps screenshots.
-node tests/phone-bar-sizes-ui.test.mjs              # or: npm run test:phone-bar-sizes
 
 # Screenshots and clips on Report a bug and Send a request: attaches a
 # generated PNG and a 2 s webm (made with ffmpeg), checks the thumbnails and
