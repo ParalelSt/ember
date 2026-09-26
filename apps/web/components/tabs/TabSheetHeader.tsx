@@ -26,7 +26,7 @@ export interface TabSheetHeaderProps {
   meta: string;
   /** The source chip (TabSourceChip), or nothing while there is no tab. */
   chip?: ReactNode;
-  /** Top-right actions (add a file, generate, delete). */
+  /** Top-right actions (add a file, search again, delete). */
   actions?: ReactNode;
   onBack?: () => void;
 }

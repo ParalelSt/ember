@@ -41,6 +41,7 @@ beforeEach(() => {
     tabs: [
       { id: 'shared1', kind: 'fetched', shared: true, file: 'a.alphatex' },
       { id: 'mine1', kind: 'pasted', shared: false, user: 'someone', file: 'b.alphatex' },
+      { id: 'gen1', kind: 'generated', shared: true, file: 'upload-u1.alphatex', track_key: 'upload:u1' },
     ],
   });
   requireUser.mockReset();
@@ -94,5 +95,12 @@ describe('/api/tabs/align', () => {
     expect(last!.status).toBe(429);
     status = { status: 'running' };
     expect((await post({ tabId: 'shared1' })).status).toBe(202);
+  });
+
+  it('a generated tab (older servers) is never lined up: it does not exist for the page', async () => {
+    as(member({ isAdmin: true }));
+    expect((await get('?tabId=gen1')).status).toBe(404);
+    expect((await post({ tabId: 'gen1' })).status).toBe(404);
+    expect(started).toEqual([]);
   });
 });

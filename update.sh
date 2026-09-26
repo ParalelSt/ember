@@ -106,7 +106,7 @@ stop_everything() {
 
 # Ember brings its own ffmpeg: the imageio-ffmpeg package ships a static
 # binary. Install it if missing, then link it to .venv/bin/ffmpeg so anything
-# that looks ffmpeg up by PATH finds it too (player.py and transcribe.py ask
+# that looks ffmpeg up by PATH finds it too (player.py and align.py ask
 # ffmpeg_path.py directly). Relinked every run: an upgrade of the package
 # renames the binary. A host never installs ffmpeg by hand.
 link_ffmpeg() {
@@ -117,7 +117,7 @@ link_ffmpeg() {
   local exe
   exe="$("$venv/python" -c 'import imageio_ffmpeg; print(imageio_ffmpeg.get_ffmpeg_exe())' 2>/dev/null || true)"
   if [ -z "$exe" ] || [ ! -x "$exe" ]; then
-    echo "  ⚠ imageio-ffmpeg has no ffmpeg binary for this machine; tab generation and some downloads will fail"
+    echo "  ⚠ imageio-ffmpeg has no ffmpeg binary for this machine; lining tabs up and some downloads will fail"
     return 0
   fi
   ln -sfn "$exe" "$venv/ffmpeg"

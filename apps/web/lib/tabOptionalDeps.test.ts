@@ -17,8 +17,13 @@ describe('isOptionalDepMissing', () => {
     expect(isOptionalDepMissing("ModuleNotFoundError: No module named 'numpy'")).toBe(true);
   });
 
-  it('recognises a missing basic_pitch as an optional-dep failure', () => {
-    expect(isOptionalDepMissing("ModuleNotFoundError: No module named 'basic_pitch'")).toBe(true);
+  it('recognises a missing librosa or scipy as an optional-dep failure', () => {
+    expect(isOptionalDepMissing("ModuleNotFoundError: No module named 'librosa'")).toBe(true);
+    expect(isOptionalDepMissing("ModuleNotFoundError: No module named 'scipy'")).toBe(true);
+  });
+
+  it('no longer counts the removed tab generator as optional (nothing asks for it)', () => {
+    expect(isOptionalDepMissing("ModuleNotFoundError: No module named 'basic_pitch'")).toBe(false);
   });
 
   it('does not treat an unrelated failure as an optional-dep failure', () => {
@@ -34,6 +39,6 @@ describe('warnOptionalDepsOnce', () => {
     warnOptionalDepsOnce();
 
     expect(warnSpy).toHaveBeenCalledTimes(1);
-    expect(warnSpy).toHaveBeenCalledWith('tabs', 'tab alignment is off: numpy/basic_pitch not installed, see SETUP.md');
+    expect(warnSpy).toHaveBeenCalledWith('tabs', 'tab alignment is off: numpy/librosa not installed, see SETUP.md');
   });
 });

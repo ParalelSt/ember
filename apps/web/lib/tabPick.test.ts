@@ -76,13 +76,10 @@ const ug = (id: string, confidence?: number, over: Partial<TabSummary> = {}) =>
 const pasted = (id: string, confidence?: number) =>
   tab({ id, kind: 'pasted', format: 'alphatex', ...(confidence === undefined ? {} : { timing: timing(confidence) }) });
 
-const generated = (id: string, confidence?: number) =>
-  tab({ id, kind: 'generated', addedBy: null, format: 'alphatex', ...(confidence === undefined ? {} : { timing: timing(confidence) }) });
-
 describe('sourceRank', () => {
-  it('is file, Songsterr, Ultimate Guitar, pasted, generated', () => {
-    const order = [tab({ id: 'f' }), songsterr('s'), ug('u'), pasted('p'), generated('g')];
-    expect(order.map(sourceRank)).toEqual([0, 1, 2, 3, 4]);
+  it('is file, Songsterr, Ultimate Guitar, pasted', () => {
+    const order = [tab({ id: 'f' }), songsterr('s'), ug('u'), pasted('p')];
+    expect(order.map(sourceRank)).toEqual([0, 1, 2, 3]);
   });
 });
 
@@ -112,15 +109,15 @@ describe('the tab Ember draws', () => {
   });
 
   it('with nothing lined up it is the best source, file first', () => {
-    const tabs = [generated('g'), pasted('p'), ug('u'), songsterr('s'), tab({ id: 'f' })];
-    expect(rankTabs(tabs).map((t) => t.id)).toEqual(['f', 's', 'u', 'p', 'g']);
+    const tabs = [pasted('p'), ug('u'), songsterr('s'), tab({ id: 'f' })];
+    expect(rankTabs(tabs).map((t) => t.id)).toEqual(['f', 's', 'u', 'p']);
     expect(chooseTab(tabs, null).reason).toBe('the best source for this song, not lined up yet');
   });
 
   it('a listener’s own pick wins over every score', () => {
-    const tabs = [songsterr('s', 0.94), generated('g')];
-    const choice = chooseTab(tabs, 'g');
-    expect(choice.tab?.id).toBe('g');
+    const tabs = [songsterr('s', 0.94), pasted('p')];
+    const choice = chooseTab(tabs, 'p');
+    expect(choice.tab?.id).toBe('p');
     expect(choice.byUser).toBe(true);
     expect(choice.reason).toBe('your pick');
   });
@@ -162,7 +159,6 @@ describe('the Source sheet’s rows', () => {
       ug('u'),
       ug('b', undefined, { id: 'b', source: { ...ug('b').source!, part: 'bass', version: 1 } }),
       pasted('p'),
-      generated('g'),
     ]);
     expect(rows.map((r) => r.type)).toEqual([
       'Guitar Pro file',
@@ -171,7 +167,6 @@ describe('the Source sheet’s rows', () => {
       'Text tab',
       'Bass tab',
       'Pasted text tab',
-      'Generated, rough',
     ]);
   });
 
@@ -231,22 +226,20 @@ describe('the Source sheet’s rows', () => {
       // A fetched row has no uploader, so canDelete is an admin's alone
       // (lib/tabStore.ts): the sheet just follows the row.
       ug('fetched-admin', undefined, { canDelete: true }),
-      generated('generated:upload:song1'),
     ]);
     expect(rows.map((r) => [r.id, r.canDelete])).toEqual([
       ['mine', true],
       ['theirs', false],
       ['fetched-admin', true],
-      ['generated:upload:song1', false],
     ]);
   });
 
-  it('offers Line it up on every real row, never on a generated stand-in', () => {
-    const rows = sheetRows([tab({ id: 'f' }), songsterr('s'), generated('generated:upload:song1')]);
+  it('offers Line it up on every row', () => {
+    const rows = sheetRows([tab({ id: 'f' }), songsterr('s'), pasted('p')]);
     expect(rows.map((r) => [r.id, r.canLineUp])).toEqual([
       ['f', true],
       ['s', true],
-      ['generated:upload:song1', false],
+      ['p', true],
     ]);
   });
 

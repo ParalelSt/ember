@@ -12,7 +12,7 @@ import { ratingLabel, type TabSummary } from '@/lib/tabSources';
  *      within MIN_SCORE_GAP of it counts as matching just as well, and
  *      among those the source rank decides (a file someone chose for this
  *      song, then Songsterr's notes, then Ultimate Guitar's text, then a
- *      pasted tab, then the generated one).
+ *      pasted tab).
  *
  *  The gap is what stops a re-alignment that scores a point better from
  *  flipping the choice from one run to the next.
@@ -24,8 +24,7 @@ import { ratingLabel, type TabSummary } from '@/lib/tabSources';
 export function sourceRank(tab: TabSummary): number {
   if (tab.kind === 'file') return 0;
   if (tab.kind === 'fetched') return tab.source?.site === 'songsterr' ? 1 : 2;
-  if (tab.kind === 'pasted') return 3;
-  return 4;
+  return 3;
 }
 
 /** How well this tab matched the recording, 0 to 1. A tab align.py could
@@ -102,7 +101,7 @@ export interface TabSheetRow {
   id: string;
   group: TabSheetGroup;
   groupLabel: string;
-  /** "Tab with rhythm", "Text tab", "Guitar Pro file", "Generated, rough". */
+  /** "Tab with rhythm", "Text tab", "Guitar Pro file". */
   type: string;
   /** What tells this tab from the song's others. */
   name: string;
@@ -125,10 +124,6 @@ export interface TabSheetRow {
   aligning: boolean;
 }
 
-/** A generated tab that has no row yet (lib/tabSources.ts generatedStandIn)
- *  cannot be deleted or lined up: there is nothing on the server to name. */
-const isStandIn = (tab: TabSummary) => tab.id.startsWith('generated:');
-
 function groupOf(tab: TabSummary): TabSheetGroup {
   if (tab.kind !== 'fetched') return 'server';
   return tab.source?.site === 'songsterr' ? 'songsterr' : 'ug';
@@ -136,7 +131,6 @@ function groupOf(tab: TabSummary): TabSheetGroup {
 
 /** "Tab with rhythm", "Bass tab", "MusicXML file"... */
 export function tabTypeLabel(tab: TabSummary): string {
-  if (tab.kind === 'generated') return 'Generated, rough';
   if (tab.kind === 'pasted') return 'Pasted text tab';
   if (tab.kind === 'fetched') {
     if (tab.source?.site === 'songsterr') return 'Tab with rhythm';
@@ -146,7 +140,6 @@ export function tabTypeLabel(tab: TabSummary): string {
 }
 
 function nameOf(tab: TabSummary): string {
-  if (tab.kind === 'generated') return 'Generated from the recording';
   const version = tab.kind === 'fetched' ? (tab.source?.version ?? 1) : 1;
   return version > 1 ? `${tab.title} (ver ${version})` : tab.title;
 }
@@ -158,7 +151,7 @@ function instrumentsOf(tab: TabSummary): string[] {
 }
 
 function addedByOf(tab: TabSummary): string | null {
-  if (tab.kind === 'fetched' || tab.kind === 'generated') return null;
+  if (tab.kind === 'fetched') return null;
   const who = tab.mine ? 'you' : (tab.addedBy ?? 'someone');
   return `${tab.kind === 'pasted' ? 'pasted' : 'added'} by ${who}`;
 }
@@ -200,8 +193,8 @@ export function sheetRows(tabs: TabSummary[], o: SheetRowsOptions = {}): TabShee
       badge: choice.tab?.id === tab.id ? (choice.byUser ? PICK_BADGE : ordered.length > 1 ? BEST_BADGE : null) : null,
       addedBy: addedByOf(tab),
       drawn: choice.tab?.id === tab.id,
-      canDelete: tab.canDelete && !isStandIn(tab),
-      canLineUp: !isStandIn(tab),
+      canDelete: tab.canDelete,
+      canLineUp: true,
       aligning: busy,
     };
   });

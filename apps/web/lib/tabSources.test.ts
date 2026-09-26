@@ -1,11 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
-  canGenerateFor,
   drawableTabs,
   emptyStateFor,
   followTrackChange,
   isTabsPathFor,
-  localOffsetId,
   orderSources,
   pickTab,
   pickerLabel,
@@ -40,34 +38,27 @@ function tab(over: Partial<TabSummary>): TabSummary {
 
 const match = { id: 1, artist: 'Coastline', title: 'Copper Sky', hasChords: false, instruments: ['Guitar'], url: 'https://songsterr/1' };
 
+/** A tab generated from the recording by an older server, as a cached
+ *  answer from before this build could still hand it over. */
+const oldGenerated = (over: Partial<TabSummary> = {}) =>
+  tab({ id: 'g', kind: 'generated' as never, trackId: song.id, downloadUrl: '/api/tabs/generated/upload%3Asong1', ...over });
+
 describe('the source chain on the page', () => {
-  it('a file beats a generated tab, whatever order they arrive in', () => {
-    const gen = tab({ id: 'g', kind: 'generated', trackId: song.id });
+  it('a generated tab is never drawn, whatever order it arrives in', () => {
     const file = tab({ id: 'f' });
-    const tabs = drawableTabs([gen, file], 'ready', song);
-    expect(tabs.map((t) => t.id)).toEqual(['f', 'g']);
-    expect(pickTab(tabs, null)?.id).toBe('f');
+    expect(drawableTabs([oldGenerated(), file]).map((t) => t.id)).toEqual(['f']);
+    expect(drawableTabs([oldGenerated()])).toEqual([]);
+    expect(pickTab(drawableTabs([oldGenerated(), file]), null)?.id).toBe('f');
   });
 
-  it('the generated tab of this very recording comes before one of another recording', () => {
-    const other = tab({ id: 'other', kind: 'generated', trackId: 'youtube:elsewhere' });
-    const own = tab({ id: 'own', kind: 'generated', trackId: song.id });
-    expect(drawableTabs([other, own], 'none', song).map((t) => t.id)).toEqual(['own', 'other']);
-  });
-
-  it('a generated tab ready on disk without a row yet stands in for it', () => {
-    const tabs = drawableTabs([], 'ready', song);
-    expect(tabs).toHaveLength(1);
-    expect(tabs[0]).toMatchObject({ kind: 'generated', trackId: song.id, downloadUrl: '/api/tabs/generated/upload%3Asong1' });
-  });
-
-  it('no stand-in while generating, failed, or never asked for', () => {
-    for (const s of ['running', 'failed', 'none'] as const) expect(drawableTabs([], s, song)).toEqual([]);
+  it('a stale pick of a generated tab falls back to the first real tab', () => {
+    expect(pickTab(drawableTabs([oldGenerated(), tab({ id: 'f' })]), 'g')?.id).toBe('f');
+    expect(pickTab(drawableTabs([oldGenerated()]), 'g')).toBeNull();
   });
 
   it('the listener’s pick wins while it exists, else the first in the chain', () => {
-    const tabs = [tab({ id: 'f' }), tab({ id: 'g', kind: 'generated' })];
-    expect(pickTab(tabs, 'g')?.id).toBe('g');
+    const tabs = [tab({ id: 'f' }), tab({ id: 'p', kind: 'pasted' })];
+    expect(pickTab(tabs, 'p')?.id).toBe('p');
     expect(pickTab(tabs, 'deleted')?.id).toBe('f');
     expect(pickTab([], null)).toBeNull();
   });
@@ -86,10 +77,6 @@ describe('the source chip', () => {
     expect(sourceChipLabel(tab({ addedBy: null }))).toBe('File added by someone, shared');
   });
 
-  it('a generated tab says where it came from, and that it is rough', () => {
-    expect(sourceChipLabel(tab({ kind: 'generated' }))).toBe('Generated from the recording, rough');
-  });
-
   it('a pasted text tab names who pasted it', () => {
     expect(sourceChipLabel(tab({ kind: 'pasted', format: 'alphatex' }))).toBe('Text tab pasted by Mira, shared');
     expect(sourceChipLabel(tab({ kind: 'pasted', mine: true }))).toBe('Text tab pasted by you, shared');
@@ -99,21 +86,15 @@ describe('the source chip', () => {
     expect(pickerLabel(tab({ instrument: 'Guitar' }))).toBe('Guitar Pro file, Mira, Guitar');
     expect(pickerLabel(tab({ format: 'musicxml' }))).toBe('MusicXML file, Mira');
     expect(pickerLabel(tab({ kind: 'pasted', instrument: 'Guitar' }))).toBe('Text tab, Mira, Guitar');
-    expect(pickerLabel(tab({ kind: 'generated', instrument: 'Guitar' }))).toBe('Generated, rough');
   });
 });
 
 describe('pasted text tabs in the chain', () => {
-  it('file, then pasted, then generated, whatever order they arrive in', () => {
-    const gen = tab({ id: 'g', kind: 'generated', trackId: song.id });
+  it('file, then pasted, whatever order they arrive in', () => {
     const pasted = tab({ id: 'p', kind: 'pasted' });
     const file = tab({ id: 'f' });
-    expect(drawableTabs([gen, pasted, file], 'ready', song).map((t) => t.id)).toEqual(['f', 'p', 'g']);
-    expect(pickTab(drawableTabs([gen, pasted], 'ready', song), null)?.id).toBe('p');
-  });
-
-  it('keeps its own sync nudge key (its row id)', () => {
-    expect(localOffsetId(tab({ id: 'p', kind: 'pasted', trackId: song.id }))).toBe('p');
+    expect(drawableTabs([oldGenerated(), pasted, file]).map((t) => t.id)).toEqual(['f', 'p']);
+    expect(pickTab(drawableTabs([oldGenerated(), pasted]), null)?.id).toBe('p');
   });
 });
 
@@ -135,13 +116,12 @@ describe('tabs found online in the chain', () => {
       ...over,
     });
 
-  it('file, then pasted, then fetched, then generated', () => {
-    const gen = tab({ id: 'g', kind: 'generated', trackId: song.id });
+  it('file, then pasted, then fetched', () => {
     const pasted = tab({ id: 'p', kind: 'pasted' });
     const file = tab({ id: 'f' });
-    expect(drawableTabs([gen, ug(), pasted, file], 'ready', song).map((t) => t.id)).toEqual(['f', 'p', 'u', 'g']);
-    expect(pickTab(drawableTabs([gen, ug()], 'ready', song), null)?.id).toBe('u');
-    expect(orderSources([gen, ug(), file], []).map((x) => x.type)).toEqual(['file', 'fetched', 'generated']);
+    expect(drawableTabs([oldGenerated(), ug(), pasted, file]).map((t) => t.id)).toEqual(['f', 'p', 'u']);
+    expect(pickTab(drawableTabs([oldGenerated(), ug()]), null)?.id).toBe('u');
+    expect(orderSources([oldGenerated(), ug(), file], [match]).map((x) => x.type)).toEqual(['file', 'fetched', 'songsterr']);
   });
 
   it('the chip names the site and says it is not lined up yet', () => {
@@ -156,76 +136,26 @@ describe('tabs found online in the chain', () => {
     expect(ratingLabel(ug({}, { rating: null }).source!)).toBe('');
   });
 
-  it('keeps its own sync nudge key (its row id)', () => {
-    expect(localOffsetId(ug({ trackId: song.id }))).toBe('u');
-  });
-
-  it('while the online search runs with nothing to draw: Finding a tab online', () => {
-    const base = { loading: false, generated: 'none' as const, generating: false, generateError: null, canGenerate: true, matches: [] };
-    expect(emptyStateFor({ ...base, searchingOnline: true })).toEqual({ kind: 'searching' });
-    expect(emptyStateFor({ ...base, loading: true, searchingOnline: true })).toEqual({ kind: 'loading' });
-    expect(emptyStateFor({ ...base, searchingOnline: false }).kind).toBe('empty');
-  });
 });
 
-describe('empty states', () => {
-  const base = { loading: false, generated: 'none' as const, generating: false, generateError: null, canGenerate: true, matches: [] };
+describe('empty states (the Songsterr list)', () => {
+  const base = { loading: false, searchingOnline: false, matchesLoading: false, matches: [] };
 
-  it('loading first', () => {
-    expect(emptyStateFor({ ...base, loading: true }).kind).toBe('loading');
+  it('still looking while the store, Songsterr or the online search has not answered', () => {
+    expect(emptyStateFor({ ...base, loading: true })).toEqual({ kind: 'searching' });
+    expect(emptyStateFor({ ...base, matchesLoading: true })).toEqual({ kind: 'searching' });
+    expect(emptyStateFor({ ...base, searchingOnline: true })).toEqual({ kind: 'searching' });
+    // Songsterr answered, but the online search may still bring a tab to draw.
+    expect(emptyStateFor({ ...base, searchingOnline: true, matches: [match] })).toEqual({ kind: 'searching' });
   });
 
-  it('offers to generate a YouTube or uploaded song', () => {
-    expect(emptyStateFor(base)).toEqual({ kind: 'empty', canGenerate: true, failed: null, unavailable: null, songsterr: [] });
+  it('Songsterr has the song: its versions, in its order', () => {
+    const two = { ...match, id: 2, title: 'Copper Sky (Live)' };
+    expect(emptyStateFor({ ...base, matches: [match, two] })).toEqual({ kind: 'matches', matches: [match, two] });
   });
 
-  it('a running job, or the click that starts one, shows the transcribing state', () => {
-    expect(emptyStateFor({ ...base, generated: 'running' }).kind).toBe('generating');
-    expect(emptyStateFor({ ...base, generating: true }).kind).toBe('generating');
-  });
-
-  it('a failed job says why, and still offers to try again', () => {
-    expect(emptyStateFor({ ...base, generated: 'failed', generateError: 'No audio' })).toMatchObject({
-      kind: 'empty',
-      canGenerate: true,
-      failed: 'No audio',
-    });
-  });
-
-  it('Songsterr only: the link-out is all there is', () => {
-    expect(emptyStateFor({ ...base, canGenerate: false, matches: [match] })).toEqual({
-      kind: 'empty',
-      canGenerate: false,
-      failed: null,
-      unavailable: null,
-      songsterr: [match],
-    });
-  });
-
-  it('a server without the tab tools: the reason, once, never the raw Python error', () => {
-    const why = 'Generating a tab needs the optional tab tools on the server';
-    expect(emptyStateFor({ ...base, generateUnavailable: why })).toMatchObject({ canGenerate: true, unavailable: why, failed: null });
-    // A job that failed on the missing module before the page knew.
-    const failed = emptyStateFor({ ...base, generated: 'failed', generateError: "ModuleNotFoundError: No module named 'basic_pitch'" });
-    expect(failed).toMatchObject({ unavailable: null });
-    expect(failed.kind === 'empty' && failed.failed).toContain('optional tab tools on the server');
-    expect(failed.kind === 'empty' && failed.failed).not.toContain('ModuleNotFoundError');
-    expect(emptyStateFor({ ...base, generated: 'failed', generateError: "No module named 'basic_pitch'", generateUnavailable: why })).toMatchObject({
-      failed: null,
-      unavailable: why,
-    });
-    // Not offered at all: nothing to explain.
-    expect(emptyStateFor({ ...base, canGenerate: false, generateUnavailable: why })).toMatchObject({ unavailable: null });
-  });
-
-  it('a request that could not start a job says why', () => {
-    expect(emptyStateFor({ ...base, startError: 'Too many requests' })).toMatchObject({ failed: 'Too many requests' });
-  });
-
-  it('generating is offered only for recordings Ember has', () => {
-    expect(canGenerateFor('youtube:abc')).toBe(true);
-    expect(canGenerateFor('upload:abc')).toBe(true);
-    expect(canGenerateFor('jamendo:1')).toBe(false);
+  it('nothing on Songsterr', () => {
+    expect(emptyStateFor(base)).toEqual({ kind: 'none' });
   });
 });
 
@@ -254,10 +184,5 @@ describe('routes', () => {
     expect(followTrackChange('upload:a', null, 'upload:a')).toBeNull();
     expect(followTrackChange('upload:a', 'upload:a', 'upload:a')).toBeNull();
     expect(followTrackChange('upload:a', 'upload:a', null)).toBeNull();
-  });
-
-  it('a generated tab keeps its nudge under the old viewer key', () => {
-    expect(localOffsetId(tab({ id: 'rowid', kind: 'generated', trackId: 'upload:a' }))).toBe('generated:upload:a');
-    expect(localOffsetId(tab({ id: 'rowid' }))).toBe('rowid');
   });
 });

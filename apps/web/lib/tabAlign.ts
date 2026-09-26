@@ -9,7 +9,7 @@ import { serverLogger } from '@/lib/logger/server';
 import { queuePythonJob } from '@/lib/pythonJobs';
 import { buildTabPlan } from '@/lib/tabPlan';
 import { resolveRowPath } from '@/lib/tabs';
-import { parseTrackKey } from '@/lib/tabGenerate';
+import { parseTrackKey } from '@/lib/trackKey';
 import { ensureDownloaded, findCachedFile } from '@/lib/sources/youtube';
 import { resolveUploadPath } from '@/lib/uploads';
 import { readTiming, type TabTiming } from '@/lib/tabSync';
@@ -20,12 +20,12 @@ import { isOptionalDepMissing, warnOptionalDepsOnce } from '@/lib/tabOptionalDep
  *  align.py (repo root) does the listening; this module decides WHEN it
  *  runs: after a tab is fetched, or when someone presses "Line it up",
  *  once per tab, one Python job at a time for the whole server
- *  (lib/pythonJobs.ts, shared with the transcriber). It never blocks a
+ *  (lib/pythonJobs.ts). It never blocks a
  *  page: the route starts it and answers, the page asks how it went.
  *
  *  What goes in: the tab as AlphaTab plays it (lib/tabPlan.ts, bars and
- *  notes on the tab's own clock) and the song's audio file, downloaded the
- *  way a transcription would if it is not cached yet. What comes out is
+ *  notes on the tab's own clock) and the song's audio file, downloaded if
+ *  it is not cached yet. What comes out is
  *  the row's `timing` (offset_ms, bpm, confidence, bars), which the tab
  *  page maps its cursor through (lib/tabSync.ts). */
 
@@ -128,10 +128,9 @@ export function alreadyTried(row: RecordModel): boolean {
 
 /** A row's source rank, the same order lib/tabPick.ts ranks the drawn tab
  *  in: a file, then Songsterr's notes, then Ultimate Guitar's text, then a
- *  pasted tab, then the generated one. */
+ *  pasted tab. */
 function rowRank(row: RecordModel): number {
   const kind = String(row.kind ?? 'file');
-  if (kind === 'generated') return 4;
   if (kind === 'pasted') return 3;
   if (kind === 'fetched') return row.source_site === 'songsterr' ? 1 : 2;
   return 0;

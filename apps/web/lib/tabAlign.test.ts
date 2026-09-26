@@ -127,7 +127,7 @@ describe('lining a tab up', () => {
     });
     expect(errorSpy).not.toHaveBeenCalled();
     expect(warnSpy).toHaveBeenCalledTimes(1);
-    expect(warnSpy).toHaveBeenCalledWith('tabs', 'tab alignment is off: numpy/basic_pitch not installed, see SETUP.md');
+    expect(warnSpy).toHaveBeenCalledWith('tabs', 'tab alignment is off: numpy/librosa not installed, see SETUP.md');
   });
 
   it('lines up the tabs Ember fetched, Songsterr first, once each, four at most', () => {

@@ -334,8 +334,8 @@ describe('the nudge kept on this device', () => {
   });
 
   it('reads a nudge the old viewer wrote', () => {
-    window.localStorage.setItem('ember.tab.offset.generated:upload:x', '-2.3');
-    expect(loadLocalOffsetMs('generated:upload:x')).toBe(-2300);
+    window.localStorage.setItem('ember.tab.offset.oldtab', '-2.3');
+    expect(loadLocalOffsetMs('oldtab')).toBe(-2300);
   });
 
   it('is null when there is none, or it was cleared', () => {

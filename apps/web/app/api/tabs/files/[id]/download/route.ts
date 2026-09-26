@@ -4,7 +4,7 @@ import { requireUser, UnauthorizedError, unauthorizedResponse } from '@/lib/auth
 import { createAdminClient } from '@/lib/pocketbase/server';
 import { fromError, jsonError } from '@/lib/upsertTrack';
 import { resolveRowPath } from '@/lib/tabs';
-import { canView } from '@/lib/tabStore';
+import { canView, isRetired } from '@/lib/tabStore';
 import { withRequestLog } from '@/lib/logger/withRequestLog';
 
 /** The bytes of a tab you can see (shared, or your own): AlphaTab loads
@@ -12,7 +12,10 @@ import { withRequestLog } from '@/lib/logger/withRequestLog';
  *
  *  Whole-file only: a Guitar Pro file is a couple of hundred KB and the
  *  renderer needs all of it before it can draw anything, so Range serving
- *  would buy nothing. */
+ *  would buy nothing.
+ *
+ *  A tab generated from the recording by an older server is no longer
+ *  served: a stale link to one gets a plain 410, never the rough notes. */
 export const GET = withRequestLog('tabs/files/[id]/download', async (_req: NextRequest, ctx: RouteContext<'/api/tabs/files/[id]/download'>) => {
   try {
     const { user } = await requireUser();
@@ -21,6 +24,7 @@ export const GET = withRequestLog('tabs/files/[id]/download', async (_req: NextR
 
     const row = await pb.collection('tabs').getOne(id).catch(() => null);
     if (!row || !canView(row, user)) return jsonError('That tab does not exist.', 404);
+    if (isRetired(row)) return jsonError('That tab is no longer available.', 410);
 
     const full = resolveRowPath(row);
     if (!full || !fs.existsSync(full)) return jsonError('That tab file is missing.', 404);

@@ -1,15 +1,16 @@
 /// <reference path="../pb_data/types.d.ts" />
 
-// The one tab store: a row per tab, whether
-// someone added a Guitar Pro / MusicXML file or Ember generated one from the
-// recording. Files stay on disk in MUSIC_DIR/tabs (generated ones in
-// MUSIC_DIR/tabs/generated); the row is the metadata.
+// The one tab store: a row per tab, whether someone added a Guitar Pro /
+// MusicXML file, pasted a text tab, or Ember found one online. Files stay
+// on disk in MUSIC_DIR/tabs; the row is the metadata. Older servers also
+// generated tabs from the recording (MUSIC_DIR/tabs/generated, kind
+// "generated"); those rows are kept but the app no longer lists them.
 //
 //   song_key   normalized "title::artist" (apps/web/lib/songKey.ts), the lookup
 //   track_key  the app's compound track id it was added for, e.g. youtube:abc
 //   kind       "file", "pasted" (a text tab, stored as alphatex beside the
 //              original .txt), "fetched" (a text tab Ember found online)
-//              or "generated"
+//              or "generated" (older servers; never listed now)
 //   format     gp3, gp4, gp5, gpx, gp, musicxml, mxl or alphatex
 //   shared     visible to every signed-in member; new rows are shared
 //   offset_ms  sync nudge against the recording, shared by everyone
@@ -143,8 +144,8 @@ onAfterBootstrap((e) => {
     }
   }
 
-  // Generated tabs belong to no uploader (a lazily recorded one has nobody
-  // to name), so the relation is optional now.
+  // Some rows belong to no uploader (a fetched tab, or an old generated
+  // one recorded lazily), so the relation is optional now.
   const user = tabs.schema.getFieldByName("user");
   if (user && user.required) {
     user.required = false;

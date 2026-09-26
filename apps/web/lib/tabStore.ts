@@ -14,7 +14,11 @@ import type { TabKind, TabOnlineSource, TabSummary } from '@/lib/tabSources';
 import { readTiming } from '@/lib/tabSync';
 
 /** The one tab store: PocketBase `tabs`,
- *  a row per tab, for files people add and tabs Ember generates alike.
+ *  a row per tab: files people add, text tabs they paste, tabs Ember finds
+ *  online.
+ *
+ *  Rows of kind "generated" (tabs older servers wrote from the recording)
+ *  are kept, untouched, but never listed: they were too rough to draw.
  *
  *  Everything here takes the ADMIN client, which bypasses the collection's
  *  rules, so visibility and delete permission are enforced here, mirroring
@@ -65,8 +69,13 @@ export function formatOf(filename: string): string {
   return path.extname(filename).replace('.', '').toLowerCase();
 }
 
+/** A tab generated from the recording by an older server: kept on disk
+ *  and in the store, but no longer listed, drawn or lined up. */
+export function isRetired(row: RecordModel): boolean {
+  return row.kind === 'generated';
+}
+
 export function kindOf(row: RecordModel): TabKind {
-  if (row.kind === 'generated') return 'generated';
   if (row.kind === 'pasted') return 'pasted';
   if (row.kind === 'fetched') return 'fetched';
   return 'file';
@@ -92,7 +101,7 @@ export function matchesQuery(row: RecordModel, q: TabQuery): boolean {
   return !rowKey.artist || !want.artist || rowKey.artist === want.artist;
 }
 
-const RANK: Record<TabKind, number> = { file: 0, pasted: 1, fetched: 2, generated: 3 };
+const RANK: Record<TabKind, number> = { file: 0, pasted: 1, fetched: 2 };
 
 /** Among tabs found online: Songsterr's first (real rhythm, every
  *  instrument), then guitar before bass (the page draws the first, and a
@@ -105,7 +114,7 @@ function fetchedOrder(a: RecordModel, b: RecordModel): number {
 }
 
 /** Files first, then pasted text tabs, then tabs found online (guitar
- *  first), then generated; newest first inside each. */
+ *  first); newest first inside each. */
 export function sortTabs(rows: RecordModel[]): RecordModel[] {
   const rank = (r: RecordModel) => RANK[kindOf(r)];
   return [...rows].sort(
@@ -163,10 +172,7 @@ export function mapTab(row: RecordModel, viewer: TabViewer, addedBy: string | nu
     canDelete: canDelete(row, viewer),
     offsetMs: Number(row.offset_ms) || 0,
     addedBy,
-    downloadUrl:
-      kind === 'generated' && trackId
-        ? `/api/tabs/generated/${encodeURIComponent(trackId)}`
-        : `/api/tabs/files/${row.id}/download`,
+    downloadUrl: `/api/tabs/files/${row.id}/download`,
     // Every kind can be lined up with the recording now (a later
     // stage ranks them against each other), so the timing always rides
     // along; only a tab found online has a site behind it.
@@ -214,7 +220,8 @@ export function backfillTabRows(pb: PocketBase): Promise<void> {
 }
 
 /** Tabs the viewer may see, optionally for one song or track, sorted files
- *  first. With no title and no track, every visible tab (the library). */
+ *  first. With no title and no track, every visible tab (the library).
+ *  Never a generated one (isRetired). */
 export async function findTabs(
   pb: PocketBase,
   viewer: TabViewer,
@@ -227,7 +234,7 @@ export async function findTabs(
   // An artist alone names no song.
   if (forSong && !q.title && !q.trackId) return [];
 
-  const parts = [pb.filter('(shared = true || user = {:me})', { me: viewer.id })];
+  const parts = [pb.filter('(shared = true || user = {:me})', { me: viewer.id }), 'kind != "generated"'];
   if (forSong) {
     const or: string[] = [];
     // Rows with no key yet (from before the store) are matched in TS below.
@@ -235,10 +242,9 @@ export async function findTabs(
     if (q.trackId) or.push(pb.filter('track_key = {:id}', { id: q.trackId }));
     parts.push(`(${or.join(' || ')})`);
   }
-  if (opts.kind === 'generated') parts.push('kind = "generated"');
   if (opts.kind === 'pasted') parts.push('kind = "pasted"');
   if (opts.kind === 'fetched') parts.push('kind = "fetched"');
-  if (opts.kind === 'file') parts.push('kind != "generated" && kind != "pasted" && kind != "fetched"');
+  if (opts.kind === 'file') parts.push('kind != "pasted" && kind != "fetched"');
 
   const rows = await pb.collection('tabs').getList(1, 200, { filter: parts.join(' && '), sort: '-created' });
   // The filter narrows; this decides. Contains-matching on the title can
@@ -247,6 +253,7 @@ export async function findTabs(
     rows.items.filter(
       (r) =>
         canView(r, viewer) &&
+        !isRetired(r) &&
         (!forSong || matchesQuery(r, q)) &&
         (!opts.kind || kindOf(r) === opts.kind),
     ),
@@ -311,37 +318,4 @@ export async function hintsFor(
     }
   }
   return songs;
-}
-
-/** The row for a generated tab, created if it is missing. Generated tabs
- *  are shared like the audio they come from; `userId` is whoever asked for
- *  it (null when recorded after the fact for a tab already on disk). */
-export async function recordGenerated(
-  pb: PocketBase,
-  g: { trackId: string; title: string; artist: string; userId: string | null; file: string },
-  search: typeof searchSongsterr = searchSongsterr,
-): Promise<RecordModel> {
-  const existing = await pb
-    .collection('tabs')
-    .getList(1, 1, { filter: pb.filter('track_key = {:id} && kind = "generated"', { id: g.trackId }) });
-  if (existing.items[0]) return existing.items[0];
-
-  const created = await pb.collection('tabs').create({
-    user: g.userId,
-    title: g.title.slice(0, 200) || 'Untitled',
-    artist: g.artist.slice(0, 200),
-    instrument: 'Guitar',
-    file: g.file,
-    kind: 'generated',
-    format: 'alphatex',
-    shared: true,
-    song_key: songKeyOf(g),
-    track_key: g.trackId,
-    offset_ms: 0,
-  });
-  // Best effort: the tab works without hints.
-  await hintsFor(pb, g.title, g.artist, search).catch((e) => {
-    serverLogger.error('tabs', 'hints for generated tab failed', { trackId: g.trackId }, e);
-  });
-  return created;
 }
