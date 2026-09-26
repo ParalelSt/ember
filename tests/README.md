@@ -1226,6 +1226,27 @@ PB_URL=http://127.0.0.1:8148 EMBER_PB_SUPERUSER_EMAIL=su@sandbox.test \
 sign-in throttle (S4) is in `apps/web/proxy.test.ts`, and the Android cookie
 scope (S3) in `ServerApiCookieScopeTest`.
 
+## M2 to M5 of the same audit
+
+- **M2**: `stream-access.test.mjs` (a song on disk plays signed out; any
+  fetch of a new song is 401 signed out, a made-up cookie too; a member plays
+  it; a video over the length cap is 413 and never proxied live). Needs the
+  fake player with `FAKE_TOO_LONG_FILE` (ids listed there fail like
+  player.py's cap). The stream tests that download (`stream-source`,
+  `stream-range`, `stream-fallback`, `stream-prefetch`, `stream-fastfail`,
+  `loudness`) now sign a member in through `sandbox-member.mjs`, so they need
+  the sandbox PocketBase too: `PB_URL` and `PB_ADMIN_PASSWORD` (its
+  superuser), and the app started with `POCKETBASE_URL`. Unit side:
+  `route.access.test.ts`, `lib/mediaLimits.test.ts`,
+  `lib/sources/youtube.limits.test.ts`, `tests/test_player_download_limits.py`.
+- **M3**: `desktop-update.test.mjs` E5 to E8 and
+  `app/api/desktop/asset/[id]/route.test.ts`: only the latest release's
+  updater files are proxied, GitHub is never asked for anything else.
+- **M4**: `ControllerPolicyTest`, `ServiceControllerGateTest` (Android unit
+  tests): who may connect to the playback service.
+- **M5**: `NetworkSecurityTest`: cleartext off, the only exception the
+  configured http server, no mixed content.
+
 ## What `access-control-2-ui.test.mjs` covers
 
 Bughunt round 3 (X1, X2, X4, X7, X8, X10): carlists, deleting a member, tabs
