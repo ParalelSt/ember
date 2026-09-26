@@ -80,7 +80,8 @@ class ServerApi(val baseUrl: String, private val cookies: () -> String?) {
         tracks(getJson("/api/youtube/recommended?seed=" + java.net.URLEncoder.encode(seedSourceId, "UTF-8")))
     /** The song's normalization gain in dB; null when not measured yet. */
     fun trackGain(id: String): Double? {
-        val json = getJson("/api/tracks/" + java.net.URLEncoder.encode(id, "UTF-8") + "/loudness")
+        // ?v=2: the -9 LUFS policy, past any answer cached for the old -14 one.
+        val json = getJson("/api/tracks/" + java.net.URLEncoder.encode(id, "UTF-8") + "/loudness?v=2")
         if (!json.has("gainDb") || json.isNull("gainDb")) return null
         return json.optDouble("gainDb").takeIf { !it.isNaN() }
     }
