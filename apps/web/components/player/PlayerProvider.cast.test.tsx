@@ -189,7 +189,7 @@ describe('PlayerProvider: casting', () => {
 
   it('a session joined after a reload follows the TV instead of restarting it', async () => {
     render(<PlayerProvider><Grab /></PlayerProvider>);
-    const remote = fakeRemote({ state: 'playing', time: 120, duration: 200 });
+    const remote = fakeRemote({ state: 'playing', time: 120, duration: 200, contentId: 'https://ember.example/api/youtube/stream/aaaaaaaaaaa?st=x' });
     act(() => castSessionStarted(remote, 'TV', true));
     await flush();
     expect(remote.load).toHaveBeenCalledWith(expect.anything(), { startAt: 120, autoplay: true });

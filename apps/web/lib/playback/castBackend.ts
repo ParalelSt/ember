@@ -23,6 +23,8 @@ export interface CastRemoteStatus {
   time: number;
   duration: number;
   idleReason: 'finished' | 'error' | 'interrupted' | 'cancelled' | null;
+  /** The URL the receiver has loaded, when it has one (a signed stream). */
+  contentId?: string | null;
 }
 
 /** A cast session as the backend drives it. The Google Cast adapter

@@ -43,7 +43,7 @@ import { createTauriBackend } from '@/lib/playback/tauriBackend';
 import { createAndroidBackend, androidPluginPresent } from '@/lib/playback/androidBackend';
 import type { AudioBackend, AudioBackendEvents, AudioErrorInfo } from '@/lib/playback/types';
 import { createCastBackend, isCastBackend, type CastRemote } from '@/lib/playback/castBackend';
-import { castHandover, gateEvents, localHandover } from '@/lib/playback/castSwitch';
+import { castHandover, gateEvents, isSameSong, localHandover } from '@/lib/playback/castSwitch';
 import { setCastSessionListener } from '@/lib/cast/session';
 import { initCast, setCastMediaElement } from '@/lib/cast/controller';
 import { resolveCastMedia } from '@/lib/cast/signer';
@@ -663,11 +663,15 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const startCasting = useCallback((remote: CastRemote, deviceName: string, opts: { resumed: boolean }) => {
     const local = backendRef.current;
     if (!local || castingRef.current || !rawEventsRef.current) return;
+    const st0 = usePlayerStore.getState();
+    const playing = st0.queue[st0.index];
+    const remoteNow = opts.resumed ? remote.status() : null;
     const plan = castHandover({
       localTime: local.getCurrentTime(),
       localPaused: local.isPaused(),
       resumed: opts.resumed,
-      remote: opts.resumed ? remote.status() : null,
+      remote: remoteNow,
+      sameSong: !!playing && isSameSong(remoteNow?.contentId, playing),
     });
     castingRef.current = true;
     local.stop();

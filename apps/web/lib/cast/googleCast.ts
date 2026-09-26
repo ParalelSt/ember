@@ -143,6 +143,7 @@ export function googleRemote(g: GCastGlobals, session: GCastSession): CastRemote
       time: Number(player.currentTime) || 0,
       duration: Number(player.duration) || 0,
       idleReason: state === 'idle' && reason ? IDLE_REASONS[reason] ?? null : null,
+      contentId: typeof player.mediaInfo?.contentId === 'string' ? player.mediaInfo.contentId : null,
     };
   };
   const emit = () => {
