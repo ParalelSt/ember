@@ -103,6 +103,28 @@ describe('PATCH /api/plugins', () => {
     expect(update).not.toHaveBeenCalled();
   });
 
+  it('saves the equalizer beside the switches, clamped, and keeps it on a later switch PATCH', async () => {
+    row = { plugins: { tabsEnabled: true } };
+    const res = await PATCH(request({ equalizer: { enabled: true, bands: [20, 0, 0, 0, -3] } }), undefined as never);
+    expect(res.status).toBe(200);
+    const eq = { enabled: true, bands: [12, 0, 0, 0, -3] };
+    expect(await res.json()).toEqual({ tabsEnabled: true, equalizer: eq });
+    await PATCH(request({ partyVolume: true }), undefined as never);
+    expect(await (await GET(request(null), undefined as never)).json()).toEqual({
+      tabsEnabled: true,
+      partyVolume: true,
+      equalizer: eq,
+    });
+  });
+
+  it('400 for equalizer settings that are not settings', async () => {
+    for (const equalizer of [true, { enabled: true }, { enabled: true, bands: [0, 0, 0] }]) {
+      const res = await PATCH(request({ equalizer }), undefined as never);
+      expect(res.status, JSON.stringify(equalizer)).toBe(400);
+    }
+    expect(update).not.toHaveBeenCalled();
+  });
+
   it('never writes a field other than plugins', async () => {
     const res = await PATCH(request({ tabsEnabled: true, is_admin: true }), undefined as never);
     expect(res.status).toBe(400);

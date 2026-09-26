@@ -4,6 +4,7 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { api } from '@/lib/api';
 import { PLUGIN_KEYS, type PluginKey, type StoredPlugins } from '@/lib/pluginSettings';
+import { DEFAULT_EQ, parseEq, sameEq, type EqSettings } from '@/lib/playback/eq';
 
 /** Persisted user-level toggles. Anything that changes how the app
  *  behaves between sessions lives here so the choice survives reloads.
@@ -12,6 +13,8 @@ import { PLUGIN_KEYS, type PluginKey, type StoredPlugins } from '@/lib/pluginSet
  *  the account: when signed in, AuthProvider calls loadPlugins and the
  *  account's values win over this device's cache. localStorage stays as that cache, so the UI
  *  does not flicker on load and still reads right offline or signed out.
+ *  The equalizer follows the account the same way (its own `equalizer`
+ *  key in the same field).
  *  autoReportEnabled and the auto cache switches are per device only. */
 interface SettingsState {
   /** Party-size volume slider plugin: widens the slider and lifts the
@@ -34,6 +37,15 @@ interface SettingsState {
    *  by default. */
   normalizeVolume: boolean;
   setNormalizeVolume: (on: boolean) => Promise<void>;
+  /** The equalizer (lib/playback/eq): on or off and five band gains. Off
+   *  and flat by default: on a phone browser, web audio's filter graph can
+   *  stop the music with the screen off. */
+  equalizer: EqSettings;
+  /** Applied at once; saved to the account a moment after the last change,
+   *  so dragging a slider sends one save, not dozens. A failed save keeps
+   *  the local value (a slider snapping back mid-drag would be worse); the
+   *  next change or sign-in tries again. */
+  setEqualizer: (eq: EqSettings) => void;
   /** Quietly save the current song and the next two on this device, so a
    *  dropped connection does not stop the music (hooks/player/useAutoCache).
    *  Per device, not synced: it is about this device's storage and network. */
@@ -57,7 +69,11 @@ interface SettingsState {
 
 /** Plugin keys toggled while a load was in flight: the load must not
  *  overwrite them, their own PATCH carries the newer value. */
-const editedDuringLoad = new Set<PluginKey>();
+const editedDuringLoad = new Set<PluginKey | 'equalizer'>();
+
+/** How long the equalizer waits after the last change before it saves. */
+export const EQ_SAVE_DELAY_MS = 600;
+let eqSaveTimer: ReturnType<typeof setTimeout> | null = null;
 
 export const useSettingsStore = create<SettingsState>()(
   persist(
@@ -88,6 +104,20 @@ export const useSettingsStore = create<SettingsState>()(
         setTabsEnabled: (on) => savePlugin('tabsEnabled', on),
         normalizeVolume: true,
         setNormalizeVolume: (on) => savePlugin('normalizeVolume', on),
+        equalizer: DEFAULT_EQ,
+        setEqualizer: (next) => {
+          const eq = parseEq(next);
+          if (!eq || sameEq(eq, get().equalizer)) return;
+          editedDuringLoad.add('equalizer');
+          set({ equalizer: eq });
+          if (!get().pluginsUserId) return;
+          if (eqSaveTimer) clearTimeout(eqSaveTimer);
+          eqSaveTimer = setTimeout(() => {
+            eqSaveTimer = null;
+            if (!get().pluginsUserId) return;
+            void api.updatePlugins({ equalizer: get().equalizer }).catch(() => {});
+          }, EQ_SAVE_DELAY_MS);
+        },
         autoCacheEnabled: true,
         setAutoCacheEnabled: (autoCacheEnabled) => set({ autoCacheEnabled }),
         autoCacheOnMetered: false,
@@ -117,6 +147,13 @@ export const useSettingsStore = create<SettingsState>()(
             if (typeof value === 'boolean') fromAccount[key] = value;
             else migrate[key] = get()[key];
           }
+          // The equalizer goes up only when this device has changed it: an
+          // account without one is already at the default.
+          if (!editedDuringLoad.has('equalizer')) {
+            const eq = parseEq(stored.equalizer);
+            if (eq) fromAccount.equalizer = eq;
+            else if (!sameEq(get().equalizer, DEFAULT_EQ)) migrate.equalizer = get().equalizer;
+          }
           set({ ...fromAccount, pluginsLoaded: true });
 
           if (Object.keys(migrate).length > 0) {
@@ -128,18 +165,27 @@ export const useSettingsStore = create<SettingsState>()(
 
         resetPluginSync: () => {
           editedDuringLoad.clear();
+          if (eqSaveTimer) clearTimeout(eqSaveTimer);
+          eqSaveTimer = null;
           set({ pluginsUserId: null, pluginsLoaded: false });
         },
       };
     },
     {
       name: 'ember.settings.v1',
+      // A stored equalizer that is not valid settings (hand-edited, or from
+      // a build that stored it differently) falls back to the default.
+      merge: (persisted, current) => {
+        const p = (persisted ?? {}) as Partial<SettingsState>;
+        return { ...current, ...p, equalizer: parseEq(p.equalizer) ?? current.equalizer };
+      },
       // Only the values: the sync state belongs to this page load.
       partialize: (s) => ({
         partyVolume: s.partyVolume,
         autoReportEnabled: s.autoReportEnabled,
         tabsEnabled: s.tabsEnabled,
         normalizeVolume: s.normalizeVolume,
+        equalizer: s.equalizer,
         autoCacheEnabled: s.autoCacheEnabled,
         autoCacheOnMetered: s.autoCacheOnMetered,
       }),

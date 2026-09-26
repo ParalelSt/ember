@@ -3,6 +3,7 @@ import { fireEvent, render, screen, within } from '@testing-library/react';
 import type { Track } from '@/types/track';
 import { NowPlaying } from './NowPlaying';
 import { usePlayerStore } from '@/stores/usePlayerStore';
+import { useSettingsStore } from '@/stores/useSettingsStore';
 
 // The phone bar keeps only play/pause, so the full-screen view is where a
 // phone reaches previous, next and the queue. These pin that they are here.
@@ -43,6 +44,14 @@ vi.mock('@/lib/useBackDismiss', () => ({ useBackDismiss: () => {} }));
 vi.mock('@/components/player/QueueSheet', () => ({
   QueueSheet: ({ open }: { open: boolean }) => (open ? <div data-testid="queue-sheet" /> : null),
 }));
+// base-ui's dialog brings the root's second React into a test render (see
+// QueueSheet.test.tsx), so the sheet is a plain box that shows while open.
+vi.mock('@/components/ui/sheet', () => ({
+  Sheet: ({ open, children }: { open: boolean; children: React.ReactNode }) => (open ? <div>{children}</div> : null),
+  SheetContent: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+  SheetHeader: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+  SheetTitle: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+}));
 const Stub = vi.hoisted(() => () => null);
 vi.mock('@/components/player/SeekBar', () => ({ SeekBar: Stub }));
 vi.mock('@/components/player/LyricsBody', () => ({ LyricsBody: Stub }));
@@ -71,6 +80,17 @@ describe('NowPlaying', () => {
     fireEvent.click(within(screen.getByTestId('now-playing')).getByRole('button', { name: 'Queue' }));
     expect(screen.getByTestId('queue-sheet')).toBeInTheDocument();
     // The view stays open underneath: the sheet is on top of it.
+    expect(usePlayerStore.getState().nowPlayingOpen).toBe(true);
+  });
+
+  it('has an Equalizer button that opens the equalizer in a sheet, and it works there', async () => {
+    useSettingsStore.setState({ equalizer: { enabled: false, bands: [0, 0, 0, 0, 0] } });
+    render(<NowPlaying />);
+    expect(screen.queryByTestId('equalizer')).toBeNull();
+    fireEvent.click(within(screen.getByTestId('now-playing')).getByRole('button', { name: 'Equalizer' }));
+    const panel = await screen.findByTestId('equalizer');
+    fireEvent.click(within(panel).getByRole('button', { name: 'Bass boost' }));
+    expect(useSettingsStore.getState().equalizer).toEqual({ enabled: true, bands: [7, 4, 0, 0, 0] });
     expect(usePlayerStore.getState().nowPlayingOpen).toBe(true);
   });
 });

@@ -15,7 +15,9 @@ vi.mock('@/lib/api', () => ({ api: {}, apiUrl: (u: string) => u }));
 vi.mock('@/lib/playback/detectShell', () => ({ detectShell: () => 'capacitor' }));
 
 const fake = makeFakeBackend();
-const native = vi.hoisted(() => ({ setQueue: vi.fn(), setLoop: vi.fn(), next: vi.fn(), prev: vi.fn(), setNormalize: vi.fn() }));
+const native = vi.hoisted(() => ({
+  setQueue: vi.fn(), setLoop: vi.fn(), next: vi.fn(), prev: vi.fn(), setNormalize: vi.fn(), setEq: vi.fn(),
+}));
 let ev: AudioBackendEvents | null = null;
 vi.mock('@/lib/playback/androidBackend', () => ({
   androidPluginPresent: () => true,
@@ -138,6 +140,18 @@ describe('android: volume normalization', () => {
     expect(native.setNormalize).toHaveBeenLastCalledWith(false);
     // Native applies the gain per song itself; setVolume carries none.
     for (const c of fake.setVolume.mock.calls) expect(c[1]?.normGain ?? 1).toBe(1);
+  });
+});
+
+describe('android: equalizer', () => {
+  it('hands native the setting at startup and on every change', () => {
+    const off = { enabled: false, bands: [0, 0, 0, 0, 0] };
+    const vocal = { enabled: true, bands: [-2, -1, 3, 4, 1] };
+    useSettingsStore.setState({ equalizer: off });
+    render(<PlayerProvider><div /></PlayerProvider>);
+    expect(native.setEq).toHaveBeenLastCalledWith(off);
+    act(() => { useSettingsStore.getState().setEqualizer(vocal); });
+    expect(native.setEq).toHaveBeenLastCalledWith(vocal);
   });
 });
 

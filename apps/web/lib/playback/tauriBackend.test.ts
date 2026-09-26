@@ -330,3 +330,14 @@ describe('tauriBackend setVolume with normalization', () => {
     expect(lastAmplitude()).toBeCloseTo(0.5, 5);
   });
 });
+
+describe('tauriBackend equalizer', () => {
+  it('sends the switch and the five gains to the engine', () => {
+    const b = createTauriBackend(makeFakeEvents());
+    b.setEq!({ enabled: true, bands: [7, 4, 0, 0, 0] });
+    expect(invoked.filter((c) => c.cmd === 'audio_set_eq').at(-1)?.args).toEqual({
+      enabled: true,
+      bands: [7, 4, 0, 0, 0],
+    });
+  });
+});

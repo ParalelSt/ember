@@ -798,6 +798,15 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     backendRef.current?.setNormalize?.(normalizeVolume);
   }, [backendReady, initialKind, normalizeVolume]);
 
+  // The equalizer, on every engine: web audio builds its filters the first
+  // time it is switched on, the desktop engine and the Android player keep
+  // it natively across songs. Sent again when the engine changes (a native
+  // engine that fell back to web audio).
+  const equalizer = useSettingsStore((s) => s.equalizer);
+  useEffect(() => {
+    backendRef.current?.setEq?.(equalizer);
+  }, [backendReady, initialKind, equalizer]);
+
   // The native Android player repeats (or stops at the end) by itself, so
   // it has to be told the loop mode. Other backends have no setLoop: the
   // provider applies the mode itself in onEnded and next/prev.

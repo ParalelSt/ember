@@ -42,6 +42,8 @@ interface EmberPlayerPlugin {
   setVolume(o: { v: number }): Promise<void>;
   /** Absent on app builds from before native volume normalization. */
   setNormalize?(o: { enabled: boolean }): Promise<void>;
+  /** Absent on app builds from before the native equalizer. */
+  setEqualizer?(o: { enabled: boolean; bands: number[] }): Promise<void>;
   getState(): Promise<NativeState>;
   /** What native is playing from. Absent on app builds from before it. */
   getQueue?(): Promise<{ tracks: Track[]; index: number }>;
@@ -292,6 +294,11 @@ export const createAndroidBackend: CreateAudioBackend = (events: AudioBackendEve
     },
     setNormalize(enabled) {
       if (p?.setNormalize) call(p.setNormalize({ enabled }));
+    },
+    setEq(eq) {
+      // Native keeps it (the car and the screen-off player follow it with
+      // this WebView gone). An older app build has no such method.
+      if (p?.setEqualizer) call(p.setEqualizer({ enabled: eq.enabled, bands: eq.bands }));
     },
     setMetadata() {
       /* Media3 draws the notification from the queue itself */

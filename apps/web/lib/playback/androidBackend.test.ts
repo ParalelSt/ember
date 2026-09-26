@@ -327,3 +327,32 @@ describe('androidBackend: start position', () => {
     expect((n.plugin.setQueue as ReturnType<typeof vi.fn>).mock.calls.at(-1)?.[0]).not.toHaveProperty('startSec');
   });
 });
+
+describe('androidBackend: equalizer', () => {
+  afterEach(() => {
+    delete (window as unknown as { Capacitor?: unknown }).Capacitor;
+  });
+
+  it('forwards the setting to an app build that has the native equalizer', () => {
+    const n = installPlugin(false);
+    n.plugin.setEqualizer = vi.fn().mockResolvedValue(undefined);
+    const b = createAndroidBackend(makeFakeEvents());
+    b.setEq!({ enabled: true, bands: [-2, -1, 3, 4, 1] });
+    expect(n.plugin.setEqualizer).toHaveBeenCalledWith({ enabled: true, bands: [-2, -1, 3, 4, 1] });
+  });
+
+  it('an older app build without it is left alone, and nothing throws', () => {
+    installPlugin(false);
+    const b = createAndroidBackend(makeFakeEvents());
+    expect(() => b.setEq!({ enabled: true, bands: [1, 0, 0, 0, 0] })).not.toThrow();
+  });
+
+  it('a rejected call never reaches the player', async () => {
+    const n = installPlugin(false);
+    n.plugin.setEqualizer = vi.fn().mockRejectedValue(new Error('not implemented'));
+    const b = createAndroidBackend(makeFakeEvents());
+    b.setEq!({ enabled: false, bands: [0, 0, 0, 0, 0] });
+    await Promise.resolve();
+    expect(n.plugin.setEqualizer).toHaveBeenCalled();
+  });
+});

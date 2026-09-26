@@ -46,6 +46,7 @@ export {
   Upload as UploadIcon,
   MessageSquarePlus as RequestIcon,
   Link2 as LinkIcon,
+  SlidersVertical as EqualizerIcon,
   ChevronRight as ChevronRightIcon,
   CircleAlert as AlertIcon,
   ListChecks as ReviewIcon,

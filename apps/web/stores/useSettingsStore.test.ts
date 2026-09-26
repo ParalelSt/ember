@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const getPlugins = vi.fn();
 const updatePlugins = vi.fn();
@@ -46,7 +46,8 @@ describe('useSettingsStore tabsEnabled', () => {
     getPlugins.mockResolvedValue({ partyVolume: false, tabsEnabled: true });
     await useSettingsStore.getState().loadPlugins('u1');
     expect(Object.keys(stored()).sort()).toEqual([
-      'autoCacheEnabled', 'autoCacheOnMetered', 'autoReportEnabled', 'normalizeVolume', 'partyVolume', 'tabsEnabled',
+      'autoCacheEnabled', 'autoCacheOnMetered', 'autoReportEnabled', 'equalizer', 'normalizeVolume', 'partyVolume',
+      'tabsEnabled',
     ]);
   });
 });
@@ -198,5 +199,95 @@ describe('useSettingsStore plugin sync', () => {
     // Signing back in loads again.
     await useSettingsStore.getState().loadPlugins('u1');
     expect(getPlugins).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('useSettingsStore equalizer', () => {
+  const bass = { enabled: true, bands: [7, 4, 0, 0, 0] };
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('is off and flat by default', () => {
+    expect(useSettingsStore.getState().equalizer).toEqual({ enabled: false, bands: [0, 0, 0, 0, 0] });
+  });
+
+  it('applies at once, clamped, and persists on this device', () => {
+    useSettingsStore.getState().setEqualizer({ enabled: true, bands: [30, 0, 0, 0, -1.2] });
+    expect(useSettingsStore.getState().equalizer).toEqual({ enabled: true, bands: [12, 0, 0, 0, -1] });
+    expect(stored().equalizer).toEqual({ enabled: true, bands: [12, 0, 0, 0, -1] });
+  });
+
+  it('ignores settings that are not settings', () => {
+    useSettingsStore.getState().setEqualizer({ enabled: true, bands: [1, 2] });
+    expect(useSettingsStore.getState().equalizer.bands).toEqual([0, 0, 0, 0, 0]);
+  });
+
+  it('signed out, it stays on this device and calls nothing', () => {
+    vi.useFakeTimers();
+    useSettingsStore.getState().setEqualizer(bass);
+    vi.advanceTimersByTime(5000);
+    expect(updatePlugins).not.toHaveBeenCalled();
+  });
+
+  it('signed in, a drag of changes saves once, the last value, after a pause', async () => {
+    getPlugins.mockResolvedValue({});
+    await useSettingsStore.getState().loadPlugins('u1');
+    updatePlugins.mockClear();
+    vi.useFakeTimers();
+    for (const g of [1, 2, 3, 4]) useSettingsStore.getState().setEqualizer({ enabled: true, bands: [g, 0, 0, 0, 0] });
+    expect(updatePlugins).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(600);
+    expect(updatePlugins).toHaveBeenCalledTimes(1);
+    expect(updatePlugins).toHaveBeenCalledWith({ equalizer: { enabled: true, bands: [4, 0, 0, 0, 0] } });
+  });
+
+  it('a failed save keeps the local value', async () => {
+    getPlugins.mockResolvedValue({});
+    await useSettingsStore.getState().loadPlugins('u1');
+    updatePlugins.mockRejectedValue(new Error('offline'));
+    vi.useFakeTimers();
+    useSettingsStore.getState().setEqualizer(bass);
+    await vi.advanceTimersByTimeAsync(600);
+    expect(useSettingsStore.getState().equalizer).toEqual(bass);
+  });
+
+  it('the account value wins on load', async () => {
+    useSettingsStore.setState({ equalizer: { enabled: false, bands: [0, 0, 0, 0, 3] } });
+    getPlugins.mockResolvedValue({ equalizer: bass });
+    await useSettingsStore.getState().loadPlugins('u1');
+    expect(useSettingsStore.getState().equalizer).toEqual(bass);
+    expect(updatePlugins.mock.calls.some(([patch]) => 'equalizer' in (patch as object))).toBe(false);
+  });
+
+  it('first load writes a changed device equalizer up, but never an untouched default', async () => {
+    getPlugins.mockResolvedValue({});
+    await useSettingsStore.getState().loadPlugins('u1');
+    expect(updatePlugins).toHaveBeenCalledWith({ partyVolume: false, tabsEnabled: true, normalizeVolume: true });
+
+    useSettingsStore.setState(initial, true);
+    updatePlugins.mockClear();
+    useSettingsStore.setState({ equalizer: bass });
+    await useSettingsStore.getState().loadPlugins('u2');
+    expect(updatePlugins).toHaveBeenCalledWith({
+      partyVolume: false, tabsEnabled: true, normalizeVolume: true, equalizer: bass,
+    });
+  });
+
+  it('a change made while the load is in flight is not overwritten by it', async () => {
+    let resolve!: (v: unknown) => void;
+    getPlugins.mockImplementation(() => new Promise((r) => { resolve = r; }));
+    const loading = useSettingsStore.getState().loadPlugins('u1');
+    useSettingsStore.getState().setEqualizer(bass);
+    resolve({ equalizer: { enabled: false, bands: [0, 0, 0, 0, 0] } });
+    await loading;
+    expect(useSettingsStore.getState().equalizer).toEqual(bass);
+  });
+
+  it('a stored value that is not settings falls back to the default', async () => {
+    window.localStorage.setItem('ember.settings.v1', JSON.stringify({ state: { equalizer: { enabled: true } }, version: 0 }));
+    await useSettingsStore.persist.rehydrate();
+    expect(useSettingsStore.getState().equalizer).toEqual({ enabled: false, bands: [0, 0, 0, 0, 0] });
   });
 });

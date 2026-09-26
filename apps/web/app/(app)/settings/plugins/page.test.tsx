@@ -41,6 +41,14 @@ describe('Settings > Plugins', () => {
     expect(screen.getByRole('button', { name: 'Turn on Normalize volume' })).toHaveAttribute('aria-pressed', 'false');
   });
 
+  it('has the equalizer, off by default, with its presets and five bands', () => {
+    render(<SettingsPlugins />);
+    const panel = screen.getByTestId('equalizer');
+    expect(screen.getByRole('button', { name: 'Turn on Equalizer' })).toHaveAttribute('aria-pressed', 'false');
+    expect(panel.querySelectorAll('input[type="range"]')).toHaveLength(5);
+    expect(screen.getByRole('group', { name: 'Presets' })).toBeInTheDocument();
+  });
+
   it('leaves TikTok window as a Coming soon placeholder', () => {
     render(<SettingsPlugins />);
     expect(screen.getByText('TikTok window')).toBeInTheDocument();
