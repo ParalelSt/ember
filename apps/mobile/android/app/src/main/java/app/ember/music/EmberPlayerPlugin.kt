@@ -89,6 +89,12 @@ internal fun castStateJs(state: Int, deviceName: String?): JSObject = JSObject()
     put("deviceName", if (state == CastState.CONNECTED) deviceName else null)
 }
 
+/** Whether the volume slider's [v] goes to the cast device. Only a change
+ *  does: the page sends its level again when it starts (a WebView brought
+ *  back mid-cast) and that must not reset a volume set on the TV itself.
+ *  [last] is the level last received, null for none yet. */
+internal fun castVolumeToSend(last: Double?, v: Double): Boolean = last != null && last != v
+
 /** The app's Previous button, as everywhere else in Ember (the web player,
  *  the notification, the car): past the first 3 s it starts the song over,
  *  before that it goes to the song before. It used to always go back a song. */
@@ -219,12 +225,16 @@ class EmberPlayerPlugin : Plugin() {
     @PluginMethod fun seek(call: PluginCall) = withController { it.seekTo(((call.getDouble("sec") ?: 0.0) * 1000).toLong()); call.resolve() }
     /** The volume slider. While casting it sets the TV's (or speaker's) own
      *  volume, like the volume keys do. */
+    private var lastVolume: Double? = null
+
     @PluginMethod fun setVolume(call: PluginCall) {
         val v = (call.getDouble("v") ?: 1.0).coerceIn(0.0, 1.0)
         main.post {
             val cast = castContext?.sessionManager?.currentCastSession?.takeIf { it.isConnected }
+            val send = castVolumeToSend(lastVolume, v)
+            lastVolume = v
             if (cast != null) {
-                runCatching { cast.volume = v }.onFailure { android.util.Log.w(EmberPlaybackService.TAG, "cast volume: ${it.message}") }
+                if (send) runCatching { cast.volume = v }.onFailure { android.util.Log.w(EmberPlaybackService.TAG, "cast volume: ${it.message}") }
                 call.resolve()
             } else {
                 withController { it.volume = v.toFloat(); call.resolve() }

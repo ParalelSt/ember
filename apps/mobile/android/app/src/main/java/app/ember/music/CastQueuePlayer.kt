@@ -120,6 +120,9 @@ class CastQueuePlayer(
     // before the queue lands, it would hit the wrong song.
     private fun ordered(fn: () -> Unit) = if (ops.isEmpty() && !signing) fn() else enqueue(emptyList()) { fn() }
 
+    /** Runs [fn] once everything asked of this player so far is applied. */
+    fun afterPending(fn: () -> Unit) = ordered(fn)
+
     override fun seekTo(mediaItemIndex: Int, positionMs: Long) = ordered { super.seekTo(mediaItemIndex, positionMs) }
     override fun seekTo(positionMs: Long) = ordered { super.seekTo(positionMs) }
     override fun seekToDefaultPosition(mediaItemIndex: Int) = ordered { super.seekToDefaultPosition(mediaItemIndex) }

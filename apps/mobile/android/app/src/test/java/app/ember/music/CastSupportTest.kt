@@ -136,6 +136,14 @@ class CastSupportTest {
         assertEquals(listOf("youtube:aaaaaaaaaaa"), signer.missing(listOf("youtube:aaaaaaaaaaa")))
     }
 
+    @Test fun `only a change of the slider reaches the cast device`() {
+        // The first level after the app starts (a WebView back mid-cast) is only noted.
+        assertFalse(castVolumeToSend(null, 0.8))
+        assertFalse(castVolumeToSend(0.8, 0.8))
+        assertTrue(castVolumeToSend(0.8, 0.5))
+        assertTrue(castVolumeToSend(0.5, 0.0))
+    }
+
     @Test fun `a long queue is signed in calls of at most 500`() {
         val sizes = ArrayList<Int>()
         val signer = CastSigner({ ids -> sizes.add(ids.size); emptyMap() })

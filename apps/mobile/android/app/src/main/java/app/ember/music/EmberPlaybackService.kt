@@ -235,7 +235,11 @@ class EmberPlaybackService : MediaLibraryService() {
         // History and radio go on while the TV plays; a song the TV cannot
         // play is skipped, as on the phone.
         queue.addListener(QueueListener(queue, recordPlay = ::recordPlay, extendQueue = ::maybeExtendQueue))
-        val switch = CastSwitch(player, queue, baseUrl) { p -> session.player = if (p === queue) queue else levelPlayer }
+        val switch = CastSwitch(
+            player, queue, baseUrl,
+            whenApplied = queue::afterPending,
+            later = { ms, fn -> handler.postDelayed(fn, ms) },
+        ) { p -> session.player = if (p === queue) queue else levelPlayer }
         cast.setSessionAvailabilityListener(object : SessionAvailabilityListener {
             override fun onCastSessionAvailable() {
                 Log.i(TAG, "cast session started: the queue moves to the TV")
