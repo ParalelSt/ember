@@ -380,10 +380,13 @@ POCKETBASE_ADMIN_EMAIL=su@w14.test
 POCKETBASE_ADMIN_PASSWORD=Fake-Su-Pass-2026
 EMBER_ADMIN_EMAIL=owner@w14.test
 EMBER_ADMIN_PASSWORD="Fake-Owner-Pass-2026"
+EMBER_BACKUP_CRON=30 3 * * *
+EMBER_BACKUP_KEEP=5
 EOF
 HEALTHY_PORT="$(free_port)"
 export PORT="$HEALTHY_PORT"
 unset EMBER_PB_SUPERUSER_EMAIL EMBER_PB_SUPERUSER_PASSWORD EMBER_ADMIN_EMAIL EMBER_ADMIN_PASSWORD POCKETBASE_ADMIN_EMAIL POCKETBASE_ADMIN_PASSWORD
+unset EMBER_BACKUP_CRON EMBER_BACKUP_KEEP
 export WATCHDOG_CMD_PB="env | grep '^EMBER_' | sort >'$TMP/pb.env'; exec node '$TMP/stay.mjs'"
 export WATCHDOG_CMD_NEXT="env | grep '^EMBER_' | sort >'$TMP/next.env'; exec node '$TMP/healthy.mjs' $HEALTHY_PORT"
 start_watchdog
@@ -392,6 +395,8 @@ check "PocketBase gets the superuser from the app's POCKETBASE_ADMIN_*" \
   wait_until 5 grep -qsx 'EMBER_PB_SUPERUSER_PASSWORD=Fake-Su-Pass-2026' "$TMP/pb.env"
 check "and the superuser email" grep -qsx 'EMBER_PB_SUPERUSER_EMAIL=su@w14.test' "$TMP/pb.env"
 check "PocketBase gets the owner account (quotes stripped)" grep -qsx 'EMBER_ADMIN_PASSWORD=Fake-Owner-Pass-2026' "$TMP/pb.env"
+check "PocketBase gets the backup schedule (spaces kept)" grep -qsxF 'EMBER_BACKUP_CRON=30 3 * * *' "$TMP/pb.env"
+check "and the backup keep count" grep -qsx 'EMBER_BACKUP_KEEP=5' "$TMP/pb.env"
 check "Next gets none of them" sh -c "[ -f '$TMP/next.env' ] && [ ! -s '$TMP/next.env' ]"
 check "no password on any command line" sh -c "! ps -eo command | grep -v grep | grep -q 'Fake-Su-Pass-2026'"
 check "SIGTERM stops it" stop_and_wait TERM

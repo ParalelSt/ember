@@ -653,6 +653,53 @@ TRENDING_COUNTRY=DE      # a single chart country code; overrides TRENDING_COUNT
 
 An unknown code falls back to the global chart (`ZZ`).
 
+### Backups
+
+The database (accounts, playlists, likes, settings, avatars, playlist
+artwork) is backed up **automatically every night at 04:00 server time**,
+keeping the last 7. It uses PocketBase's own backups: each one is a zip of
+`pocketbase/pb_data` in `pocketbase/pb_data/backups`. Nothing to set up;
+`pocketbase/pb_hooks/ensure_backups.pb.js` turns it on the first time
+PocketBase starts with it.
+
+**These backups sit on the same disk as the database.** They cover a bad
+update or a deleted playlist, not a dead disk. Download one now and then and
+keep it somewhere else: **Admin → Backups** lists them (name, size, date)
+with **Download** for each, and **Back up now** for a fresh one. The page
+warns when disk space runs low.
+
+**Not in the database backups:** uploaded songs and their covers, tabs and
+prank sounds live in `my_music/` (`uploads/`, `tabs/`, `pranks/`).
+**Admin → Backups → Download member files** streams them as one `.tar.gz`.
+The cached YouTube songs in `my_music/` are left out: they download again
+the next time someone plays them. Also keep a copy of `apps/web/.env.local`
+(your passwords and keys) somewhere safe; it is never in any backup.
+
+Change the schedule in PocketBase's admin UI (http://127.0.0.1:8090/_/ →
+Settings → Backups); your choice is kept from then on, including turning it
+off. Or set it in `apps/web/.env.local`, which wins on every start:
+
+```bash
+# cron, server time; "off" turns automatic backups off
+EMBER_BACKUP_CRON=0 4 * * *
+# how many automatic backups to keep
+EMBER_BACKUP_KEEP=7
+```
+
+(Comments on their own line: `start-static.sh` passes the whole line after
+`=` to PocketBase.)
+
+**Restoring** replaces the whole database with the backup:
+
+- Backup still on the host: PocketBase admin UI → Settings → Backups →
+  **Restore** on the one you want. PocketBase restarts with it.
+- A downloaded copy: the same page has **Upload backup**, then Restore. Or by
+  hand: stop Ember (Ctrl+C), `mv pocketbase/pb_data pocketbase/pb_data.old`,
+  `mkdir pocketbase/pb_data && unzip <backup>.zip -d pocketbase/pb_data`,
+  then `./start-static.sh`.
+- Member files: `tar -xzf ember-files-<date>.tar.gz`, then copy the folders
+  inside `ember-files/` into `my_music/` (or your `MUSIC_DIR`).
+
 ### Adding more invitees
 
 http://127.0.0.1:8090/_/ → `allowed_emails` collection → **New record** → enter the email → save. The user can now register at `/auth` on their next visit. No restart, no code change.
@@ -668,6 +715,8 @@ The admin dashboard lets you view every user and track, delete either, toggle is
 ---
 
 ## Reset the database (wipes all users + data)
+
+Download a backup first (**Admin → Backups**) if you might want anything back.
 
 ```bash
 rm -rf pocketbase/pb_data

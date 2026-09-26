@@ -1304,3 +1304,30 @@ PB_URL=http://127.0.0.1:8084 APP_URL=http://127.0.0.1:3055 node tests/stale-sess
 
 Bug reports are answered in the browser (never reach the server) and lyrics
 are stubbed, so nothing leaves the machine.
+
+## What `pb-backups.test.mjs` covers
+
+Nightly database backups (`pocketbase/pb_hooks/ensure_backups.pb.js`,
+SETUP.md "Backups"). Boots its own PocketBase (`PB_BIN`, port `PB_PORT`,
+default 8158) on temp data dirs made with `migrate up` and an empty hooks
+dir, then `serve` with the real hooks and `--automigrate=0`:
+
+- **B1/B2**: a fresh install gets `0 4 * * *`, keep 7, logged once; a second
+  boot changes nothing; a backup made now is listed and its zip is in
+  `pb_data/backups`.
+- **B3**: a schedule the owner changes later in the admin UI, or turns off,
+  survives reboots.
+- **B4**: a host that already had its own schedule keeps it on the first boot
+  with the hook.
+- **B5**: `EMBER_BACKUP_CRON` / `EMBER_BACKUP_KEEP` win, `off` turns them off,
+  a bad cron or keep count is ignored with a warning and PocketBase still
+  boots.
+- **B6**: with `EMBER_BACKUP_CRON="* * * * *"` a scheduled `@auto_` backup
+  appears within a minute (skip with `BACKUPS_QUICK=1`).
+
+The web side (admin-only routes, name checks, streamed downloads, the member
+files archive, the Admin > Backups page) is in the vitest suite:
+`apps/web/lib/backups.test.ts`, `apps/web/app/api/admin/backups/`,
+`apps/web/app/(app)/admin/backups/page.test.tsx`. `watchdog.test.sh`
+scenario 9 checks that `start-static.sh` hands `EMBER_BACKUP_*` from
+`.env.local` to PocketBase.

@@ -129,6 +129,10 @@ PB_SU_PASSWORD="$(setting EMBER_PB_SUPERUSER_PASSWORD)"
 [ -n "$PB_SU_PASSWORD" ] || PB_SU_PASSWORD="$(setting POCKETBASE_ADMIN_PASSWORD)"
 PB_OWNER_EMAIL="$(setting EMBER_ADMIN_EMAIL)"
 PB_OWNER_PASSWORD="$(setting EMBER_ADMIN_PASSWORD)"
+# Optional backup schedule overrides for pb_hooks/ensure_backups.pb.js (see
+# SETUP.md, "Backups"). Empty means: leave PocketBase's own setting alone.
+PB_BACKUP_CRON="$(setting EMBER_BACKUP_CRON)"
+PB_BACKUP_KEEP="$(setting EMBER_BACKUP_KEEP)"
 
 # Tell Next where PB is. Overrides whatever's in .env.local so changing
 # POCKETBASE_PORT alone is enough; POCKETBASE_URL stays in sync automatically.
@@ -222,6 +226,7 @@ run_service() {
       # This subshell runs PocketBase only, so the accounts go no further.
       export EMBER_PB_SUPERUSER_EMAIL="$PB_SU_EMAIL" EMBER_PB_SUPERUSER_PASSWORD="$PB_SU_PASSWORD"
       export EMBER_ADMIN_EMAIL="$PB_OWNER_EMAIL" EMBER_ADMIN_PASSWORD="$PB_OWNER_PASSWORD"
+      export EMBER_BACKUP_CRON="$PB_BACKUP_CRON" EMBER_BACKUP_KEEP="$PB_BACKUP_KEEP"
       if [ -n "$WATCHDOG_CMD_PB" ]; then cd "$ROOT" && exec_detached bash -c "$WATCHDOG_CMD_PB"; fi
       # --automigrate=0: the boot hooks create and change collections, and
       # with automigrate on PocketBase wrote a migration file for each change.
