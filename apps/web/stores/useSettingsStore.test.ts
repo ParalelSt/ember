@@ -46,8 +46,8 @@ describe('useSettingsStore tabsEnabled', () => {
     getPlugins.mockResolvedValue({ partyVolume: false, tabsEnabled: true });
     await useSettingsStore.getState().loadPlugins('u1');
     expect(Object.keys(stored()).sort()).toEqual([
-      'autoCacheEnabled', 'autoCacheOnMetered', 'autoReportEnabled', 'equalizer', 'normalizeVolume', 'partyVolume',
-      'tabsEnabled',
+      'autoCacheEnabled', 'autoCacheOnMetered', 'autoReportEnabled', 'eqChosenHere', 'eqUnsavedFor', 'equalizer',
+      'normalizeVolume', 'partyVolume', 'tabsEnabled',
     ]);
   });
 });
@@ -204,6 +204,7 @@ describe('useSettingsStore plugin sync', () => {
 
 describe('useSettingsStore equalizer', () => {
   const bass = { enabled: true, bands: [7, 4, 0, 0, 0] };
+  const sameBass = (v: unknown) => JSON.stringify(v) === JSON.stringify(bass);
 
   afterEach(() => {
     vi.useRealTimers();
@@ -283,6 +284,68 @@ describe('useSettingsStore equalizer', () => {
     resolve({ equalizer: { enabled: false, bands: [0, 0, 0, 0, 0] } });
     await loading;
     expect(useSettingsStore.getState().equalizer).toEqual(bass);
+  });
+
+  it('any change on this device marks it chosen here, even to the value it had; kept on this device', () => {
+    expect(useSettingsStore.getState().eqChosenHere).toBe(false);
+    useSettingsStore.getState().setEqualizer({ enabled: false, bands: [0, 0, 0, 0, 0] });
+    expect(useSettingsStore.getState().eqChosenHere).toBe(true);
+    expect(stored().eqChosenHere).toBe(true);
+  });
+
+  it('an account value never marks it chosen here', async () => {
+    getPlugins.mockResolvedValue({ equalizer: bass });
+    await useSettingsStore.getState().loadPlugins('u1');
+    expect(useSettingsStore.getState().eqChosenHere).toBe(false);
+  });
+
+  it('a pending save belongs to the account it was made under', async () => {
+    getPlugins.mockResolvedValue({});
+    await useSettingsStore.getState().loadPlugins('u1');
+    vi.useFakeTimers();
+    useSettingsStore.getState().setEqualizer(bass);
+    updatePlugins.mockClear();
+    getPlugins.mockResolvedValue({ equalizer: { enabled: false, bands: [0, 0, 0, 0, 0] } });
+    await useSettingsStore.getState().loadPlugins('u2');
+    await vi.advanceTimersByTimeAsync(2000);
+    expect(updatePlugins.mock.calls.some(([patch]) => sameBass((patch as { equalizer?: unknown }).equalizer))).toBe(false);
+  });
+
+  it('a change that never reached the server is sent at the next load instead of losing to the account', async () => {
+    getPlugins.mockResolvedValue({ equalizer: { enabled: false, bands: [0, 0, 0, 0, 0] } });
+    await useSettingsStore.getState().loadPlugins('u1');
+    updatePlugins.mockRejectedValue(new Error('offline'));
+    vi.useFakeTimers();
+    useSettingsStore.getState().setEqualizer(bass);
+    await vi.advanceTimersByTimeAsync(600);
+    expect(useSettingsStore.getState().eqUnsavedFor).toBe('u1');
+    vi.useRealTimers();
+    // A reload: the account still has the old value.
+    useSettingsStore.getState().resetPluginSync();
+    updatePlugins.mockReset();
+    updatePlugins.mockImplementation(async (patch: unknown) => patch);
+    await useSettingsStore.getState().loadPlugins('u1');
+    expect(useSettingsStore.getState().equalizer).toEqual(bass);
+    expect(updatePlugins).toHaveBeenCalledWith(expect.objectContaining({ equalizer: bass }));
+    expect(useSettingsStore.getState().eqUnsavedFor).toBeNull();
+  });
+
+  it('another account signing in on this device takes its own value, not the unsaved one', async () => {
+    useSettingsStore.setState({ equalizer: bass, eqUnsavedFor: 'u1' });
+    const theirs = { enabled: true, bands: [0, 0, 0, 4, 7] };
+    getPlugins.mockResolvedValue({ equalizer: theirs });
+    await useSettingsStore.getState().loadPlugins('u2');
+    expect(useSettingsStore.getState().equalizer).toEqual(theirs);
+  });
+
+  it('a saved change clears the unsaved mark', async () => {
+    getPlugins.mockResolvedValue({});
+    await useSettingsStore.getState().loadPlugins('u1');
+    vi.useFakeTimers();
+    useSettingsStore.getState().setEqualizer(bass);
+    expect(useSettingsStore.getState().eqUnsavedFor).toBe('u1');
+    await vi.advanceTimersByTimeAsync(600);
+    expect(useSettingsStore.getState().eqUnsavedFor).toBeNull();
   });
 
   it('a stored value that is not settings falls back to the default', async () => {

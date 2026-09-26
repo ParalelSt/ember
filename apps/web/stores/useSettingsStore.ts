@@ -43,9 +43,20 @@ interface SettingsState {
   equalizer: EqSettings;
   /** Applied at once; saved to the account a moment after the last change,
    *  so dragging a slider sends one save, not dozens. A failed save keeps
-   *  the local value (a slider snapping back mid-drag would be worse); the
-   *  next change or sign-in tries again. */
+   *  the local value (a slider snapping back mid-drag would be worse) and is
+   *  remembered (eqUnsavedFor): the next load for that account sends it up
+   *  instead of taking the account's older value. Any call counts as this
+   *  device choosing the equalizer (eqChosenHere). */
   setEqualizer: (eq: EqSettings) => void;
+  /** The equalizer has been set on THIS device. Per device, never synced:
+   *  a phone browser only builds web audio's filter graph (which can stop
+   *  the music with the screen off) once its listener has chosen it there,
+   *  not because the account has it on from another device
+   *  (lib/playback/eqDevice). */
+  eqChosenHere: boolean;
+  /** The account whose equalizer change has not reached the server yet
+   *  (the save failed, or the page closed first), or null. */
+  eqUnsavedFor: string | null;
   /** Quietly save the current song and the next two on this device, so a
    *  dropped connection does not stop the music (hooks/player/useAutoCache).
    *  Per device, not synced: it is about this device's storage and network. */
@@ -74,6 +85,10 @@ const editedDuringLoad = new Set<PluginKey | 'equalizer'>();
 /** How long the equalizer waits after the last change before it saves. */
 export const EQ_SAVE_DELAY_MS = 600;
 let eqSaveTimer: ReturnType<typeof setTimeout> | null = null;
+const cancelEqSave = () => {
+  if (eqSaveTimer) clearTimeout(eqSaveTimer);
+  eqSaveTimer = null;
+};
 
 export const useSettingsStore = create<SettingsState>()(
   persist(
@@ -107,17 +122,29 @@ export const useSettingsStore = create<SettingsState>()(
         equalizer: DEFAULT_EQ,
         setEqualizer: (next) => {
           const eq = parseEq(next);
-          if (!eq || sameEq(eq, get().equalizer)) return;
+          if (!eq) return;
+          if (!get().eqChosenHere) set({ eqChosenHere: true });
+          if (sameEq(eq, get().equalizer)) return;
           editedDuringLoad.add('equalizer');
-          set({ equalizer: eq });
-          if (!get().pluginsUserId) return;
-          if (eqSaveTimer) clearTimeout(eqSaveTimer);
+          const userId = get().pluginsUserId;
+          set({ equalizer: eq, eqUnsavedFor: userId });
+          if (!userId) return;
+          cancelEqSave();
           eqSaveTimer = setTimeout(() => {
             eqSaveTimer = null;
-            if (!get().pluginsUserId) return;
-            void api.updatePlugins({ equalizer: get().equalizer }).catch(() => {});
+            // Only to the account the change was made under.
+            if (get().pluginsUserId !== userId) return;
+            const sent = get().equalizer;
+            api.updatePlugins({ equalizer: sent }).then(
+              () => {
+                if (get().eqUnsavedFor === userId && sameEq(get().equalizer, sent)) set({ eqUnsavedFor: null });
+              },
+              () => {},
+            );
           }, EQ_SAVE_DELAY_MS);
         },
+        eqChosenHere: false,
+        eqUnsavedFor: null,
         autoCacheEnabled: true,
         setAutoCacheEnabled: (autoCacheEnabled) => set({ autoCacheEnabled }),
         autoCacheOnMetered: false,
@@ -129,6 +156,7 @@ export const useSettingsStore = create<SettingsState>()(
         loadPlugins: async (userId) => {
           if (get().pluginsUserId === userId) return;
           editedDuringLoad.clear();
+          cancelEqSave();
           set({ pluginsUserId: userId, pluginsLoaded: false });
           let stored: StoredPlugins;
           try {
@@ -148,10 +176,13 @@ export const useSettingsStore = create<SettingsState>()(
             else migrate[key] = get()[key];
           }
           // The equalizer goes up only when this device has changed it: an
-          // account without one is already at the default.
+          // account without one is already at the default. A change this
+          // account made here that never reached the server wins over the
+          // account's older value.
           if (!editedDuringLoad.has('equalizer')) {
             const eq = parseEq(stored.equalizer);
-            if (eq) fromAccount.equalizer = eq;
+            if (get().eqUnsavedFor === userId) migrate.equalizer = get().equalizer;
+            else if (eq) fromAccount.equalizer = eq;
             else if (!sameEq(get().equalizer, DEFAULT_EQ)) migrate.equalizer = get().equalizer;
           }
           set({ ...fromAccount, pluginsLoaded: true });
@@ -159,14 +190,21 @@ export const useSettingsStore = create<SettingsState>()(
           if (Object.keys(migrate).length > 0) {
             // Never saved on the account: this device's value becomes the
             // account's. A failure just means the next load tries again.
-            await api.updatePlugins(migrate).catch(() => {});
+            const sentEq = migrate.equalizer;
+            await api.updatePlugins(migrate).then(
+              () => {
+                if (sentEq && get().eqUnsavedFor === userId && sameEq(get().equalizer, sentEq)) {
+                  set({ eqUnsavedFor: null });
+                }
+              },
+              () => {},
+            );
           }
         },
 
         resetPluginSync: () => {
           editedDuringLoad.clear();
-          if (eqSaveTimer) clearTimeout(eqSaveTimer);
-          eqSaveTimer = null;
+          cancelEqSave();
           set({ pluginsUserId: null, pluginsLoaded: false });
         },
       };
@@ -186,6 +224,8 @@ export const useSettingsStore = create<SettingsState>()(
         tabsEnabled: s.tabsEnabled,
         normalizeVolume: s.normalizeVolume,
         equalizer: s.equalizer,
+        eqChosenHere: s.eqChosenHere,
+        eqUnsavedFor: s.eqUnsavedFor,
         autoCacheEnabled: s.autoCacheEnabled,
         autoCacheOnMetered: s.autoCacheOnMetered,
       }),

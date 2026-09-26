@@ -3,25 +3,13 @@
 import { useSyncExternalStore } from 'react';
 import { useSettingsStore } from '@/stores/useSettingsStore';
 import { autoPreampDb, clampBand, EQ_BANDS, EQ_MAX_DB, EQ_PRESETS, presetFor } from '@/lib/playback/eq';
-import { detectShell } from '@/lib/playback/detectShell';
-import { androidPluginPresent } from '@/lib/playback/androidBackend';
+import { eqForDevice, phoneWebAudio } from '@/lib/playback/eqDevice';
 import { cn } from '@/lib/utils';
 
 const BAND_LABELS = EQ_BANDS.map((f) => (f >= 1000 ? `${f / 1000} kHz` : `${f} Hz`));
 
 export const formatDb = (db: number) => (db > 0 ? `+${db} dB` : `${db} dB`);
 
-/** Whether this page plays through the browser's own audio on a phone: the
- *  equalizer then needs a Web Audio graph, which can stop the music when the
- *  screen turns off. The desktop app and the Android app's native player
- *  filter natively and have no such problem. */
-function phoneWebAudio(): boolean {
-  if (typeof window === 'undefined') return false;
-  const shell = detectShell();
-  if (shell === 'tauri') return false;
-  if (shell === 'capacitor' && androidPluginPresent()) return false;
-  return window.matchMedia?.('(pointer: coarse)').matches ?? false;
-}
 const noSubscribe = () => () => {};
 
 interface Props {
@@ -33,11 +21,16 @@ interface Props {
  *  full-screen player opens. Picking a preset or moving a band switches the
  *  equalizer on: a change nobody can hear would read as broken. */
 export function EqualizerPanel({ className }: Props) {
-  const eq = useSettingsStore((s) => s.equalizer);
+  const account = useSettingsStore((s) => s.equalizer);
+  const chosenHere = useSettingsStore((s) => s.eqChosenHere);
   const setEqualizer = useSettingsStore((s) => s.setEqualizer);
   // Server render and first paint say no, then the device answers: no
   // hydration mismatch.
   const risky = useSyncExternalStore(noSubscribe, phoneWebAudio, () => false);
+  // A phone browser shows (and plays) it off until it is chosen here, even
+  // when the account has it on from another device.
+  const eq = eqForDevice(account, risky, chosenHere);
+  const elsewhere = account.enabled && !eq.enabled;
   const preset = presetFor(eq.bands);
   const preamp = eq.enabled ? autoPreampDb(eq.bands) : 0;
 
@@ -74,6 +67,7 @@ export function EqualizerPanel({ className }: Props) {
         <p className="rounded-lg bg-muted px-row py-cluster text-xs text-muted-foreground" role="note">
           In a phone browser the equalizer can stop the music when the screen turns off, and switching it back off
           fully takes a reload. The Ember app does not have this problem.
+          {elsewhere && ' It is on for your other devices; switch it on to use it here too.'}
         </p>
       )}
 

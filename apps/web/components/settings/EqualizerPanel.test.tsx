@@ -5,6 +5,7 @@ import { autoPreampDb } from '@/lib/playback/eq';
 
 const shell = vi.hoisted(() => ({ kind: 'web' as 'web' | 'capacitor' | 'tauri', plugin: false }));
 vi.mock('@/lib/playback/detectShell', () => ({ detectShell: () => shell.kind }));
+// eqDevice asks androidBackend whether the native player is there.
 vi.mock('@/lib/playback/androidBackend', () => ({ androidPluginPresent: () => shell.plugin }));
 
 const { EqualizerPanel, formatDb } = await import('./EqualizerPanel');
@@ -19,7 +20,7 @@ function coarsePointer(coarse: boolean) {
 
 beforeEach(() => {
   useSettingsStore.setState(initial, true);
-  useSettingsStore.setState({ equalizer: OFF, pluginsUserId: null });
+  useSettingsStore.setState({ equalizer: OFF, pluginsUserId: null, eqChosenHere: false });
   shell.kind = 'web';
   shell.plugin = false;
   coarsePointer(false);
@@ -80,6 +81,19 @@ describe('EqualizerPanel', () => {
     coarsePointer(true);
     render(<EqualizerPanel />);
     expect(screen.getByRole('note')).toHaveTextContent(/screen turns off/);
+  });
+
+  it('in a phone browser, the account being on elsewhere shows off until switched on here', () => {
+    coarsePointer(true);
+    useSettingsStore.setState({ equalizer: { enabled: true, bands: [7, 4, 0, 0, 0] } });
+    render(<EqualizerPanel />);
+    expect(screen.getByRole('note')).toHaveTextContent(/on for your other devices/);
+    expect(screen.getByRole('button', { name: 'Bass boost' })).toHaveAttribute('aria-pressed', 'false');
+    fireEvent.click(screen.getByRole('button', { name: 'Turn on Equalizer' }));
+    expect(useSettingsStore.getState().eqChosenHere).toBe(true);
+    expect(eq()).toEqual({ enabled: true, bands: [7, 4, 0, 0, 0] });
+    expect(screen.getByRole('button', { name: 'Turn off Equalizer' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('note')).not.toHaveTextContent(/other devices/);
   });
 
   it('does not warn on a computer, in the desktop app, or in the Android app', () => {

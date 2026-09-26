@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, render } from '@testing-library/react';
 import { PlayerProvider } from './PlayerProvider';
 import { usePlayerStore } from '@/stores/usePlayerStore';
@@ -47,8 +47,12 @@ beforeEach(() => {
   vi.clearAllMocks();
   shell.kind = 'web';
   desktopEvents = null;
-  useSettingsStore.setState({ equalizer: OFF, pluginsUserId: null });
+  useSettingsStore.setState({ equalizer: OFF, pluginsUserId: null, eqChosenHere: false });
   usePlayerStore.setState({ queue: [A], index: 0, position: 0, isPlaying: false, duration: 0, volume: 0.8, muted: false });
+});
+
+afterEach(() => {
+  vi.unstubAllGlobals();
 });
 
 describe('PlayerProvider: equalizer', () => {
@@ -59,6 +63,15 @@ describe('PlayerProvider: equalizer', () => {
     expect(web.setEq).toHaveBeenLastCalledWith(BASS);
     act(() => useSettingsStore.getState().setEqualizer({ ...BASS, enabled: false }));
     expect(web.setEq).toHaveBeenLastCalledWith({ ...BASS, enabled: false });
+  });
+
+  it('a phone browser keeps it off until it is chosen there, whatever the account says', () => {
+    vi.stubGlobal('matchMedia', (q: string) => ({ matches: q === '(pointer: coarse)' }) as MediaQueryList);
+    useSettingsStore.setState({ equalizer: BASS });
+    render(<PlayerProvider>{null}</PlayerProvider>);
+    expect(web.setEq).toHaveBeenLastCalledWith({ ...BASS, enabled: false });
+    act(() => useSettingsStore.getState().setEqualizer(BASS));
+    expect(web.setEq).toHaveBeenLastCalledWith(BASS);
   });
 
   it('the desktop engine gets it, and so does web audio when the engine falls back to it', () => {
