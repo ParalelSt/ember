@@ -126,3 +126,75 @@ describe('capacitorBackend.setMetadata', () => {
     expect(setPlaybackState).toHaveBeenCalledWith({ playbackState: 'none' });
   });
 });
+
+describe('capacitorBackend in the iPhone app', () => {
+  let plugin: {
+    setMetadata: ReturnType<typeof vi.fn>;
+    setPlaybackState: ReturnType<typeof vi.fn>;
+    setActionHandler: ReturnType<typeof vi.fn>;
+    setPositionState: ReturnType<typeof vi.fn>;
+  };
+
+  beforeEach(() => {
+    plugin = {
+      setMetadata: vi.fn().mockResolvedValue(undefined),
+      setPlaybackState: vi.fn().mockResolvedValue(undefined),
+      setActionHandler: vi.fn(),
+      setPositionState: vi.fn().mockResolvedValue(undefined),
+    };
+    (window as unknown as { Capacitor: unknown }).Capacitor = {
+      isNativePlatform: () => true,
+      getPlatform: () => 'ios',
+      Plugins: { MediaSession: plugin },
+    };
+  });
+
+  afterEach(() => {
+    delete (window as unknown as { Capacitor?: unknown }).Capacitor;
+    vi.clearAllMocks();
+  });
+
+  // The plugin's iOS side resolves setActionHandler once, which the bridge
+  // hands straight to the handler: registering would press play, pause, next
+  // and previous at once. iOS uses the web media session instead.
+  it('never touches the native media-session plugin', () => {
+    const backend = createCapacitorBackend(makeFakeEvents());
+    const cmds = { play: vi.fn(), pause: vi.fn(), next: vi.fn(), prev: vi.fn(), seek: vi.fn() };
+    backend.setRemoteCommands(cmds);
+    backend.setMetadata(makeTrack({ title: 'On iPhone' }));
+    backend.destroy();
+    expect(plugin.setActionHandler).not.toHaveBeenCalled();
+    expect(plugin.setMetadata).not.toHaveBeenCalled();
+    expect(plugin.setPlaybackState).not.toHaveBeenCalled();
+  });
+
+  it('still hands metadata and remote commands to the web media session', () => {
+    const backend = createCapacitorBackend(makeFakeEvents());
+    const cmds = { play: vi.fn(), pause: vi.fn(), next: vi.fn(), prev: vi.fn(), seek: vi.fn() };
+    const track = makeTrack({ title: 'On iPhone' });
+    backend.setRemoteCommands(cmds);
+    backend.setMetadata(track, null);
+    expect(webFake.setRemoteCommands).toHaveBeenCalledWith(cmds);
+    expect(webFake.setMetadata).toHaveBeenCalledWith(track, null);
+  });
+});
+
+describe('capacitorBackend volume', () => {
+  afterEach(() => vi.clearAllMocks());
+
+  // Party mode's gain would build a Web Audio graph, which stops the music
+  // with the screen off on a phone. It is a desktop feature.
+  it('drops party gain above 1.0', () => {
+    const backend = createCapacitorBackend(makeFakeEvents());
+    backend.setVolume(0.7, { gain: 2, normGain: 0.8 });
+    expect(webFake.setVolume).toHaveBeenLastCalledWith(0.7, { gain: 1, normGain: 0.8 });
+  });
+
+  it('passes normal volume through untouched', () => {
+    const backend = createCapacitorBackend(makeFakeEvents());
+    backend.setVolume(0.5, { gain: 1, normGain: 1.2 });
+    expect(webFake.setVolume).toHaveBeenLastCalledWith(0.5, { gain: 1, normGain: 1.2 });
+    backend.setVolume(0.4);
+    expect(webFake.setVolume).toHaveBeenLastCalledWith(0.4, undefined);
+  });
+});

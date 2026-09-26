@@ -4,6 +4,7 @@ import type { SpeechErrorKind, SpeechUnavailableReason } from './types';
 export const MSG_PERMISSION = 'Allow microphone access to use voice search.';
 export const MSG_WEB_UNSUPPORTED = "Voice search isn't supported in this browser: try Chrome.";
 export const MSG_UPDATE_APP = 'Update the Ember app to use voice search.';
+export const MSG_IOS_UNSUPPORTED = "Voice search isn't in the iPhone app yet.";
 export const MSG_NO_RECOGNIZER = "Voice search isn't available on this device.";
 export const MSG_NETWORK = 'Voice search needs an internet connection right now.';
 export const MSG_SPEECH_SETTING_OFF =
@@ -29,4 +30,13 @@ export function speechErrorMessage(
     case 'aborted':
       return null;
   }
+}
+
+/** What the mic button says where no recognizer fits: a browser gets
+ *  pointed at Chrome, an app from before voice search is told to update,
+ *  and the iPhone app (no native recognizer yet, and updating would not
+ *  help) says so plainly. */
+export function micUnavailableMessage(shell: Shell, iosApp: boolean): string {
+  if (shell === 'web') return MSG_WEB_UNSUPPORTED;
+  return iosApp ? MSG_IOS_UNSUPPORTED : MSG_UPDATE_APP;
 }

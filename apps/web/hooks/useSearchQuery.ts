@@ -14,7 +14,8 @@ import {
 import { useTrackActions } from '@/hooks/useTrackActions';
 import { useOnline } from '@/lib/useOnline';
 import { detectShell } from '@/lib/playback/detectShell';
-import { MSG_UPDATE_APP, MSG_WEB_UNSUPPORTED } from '@/lib/speech/messages';
+import { isIosApp } from '@/lib/playback/nativePlatform';
+import { micUnavailableMessage } from '@/lib/speech/messages';
 import type { PlaybackContext, Track } from '@/types/track';
 
 /** Everything the search page and the search overlay need, pulled into one
@@ -61,7 +62,7 @@ export function useSearchQuery() {
     if (!voice.supported) {
       // Inside the apps a missing recognizer means a shell from before voice
       // search, never "use another browser".
-      toast.message(detectShell() === 'web' ? MSG_WEB_UNSUPPORTED : MSG_UPDATE_APP);
+      toast.message(micUnavailableMessage(detectShell(), isIosApp()));
       return;
     }
     voice.toggle();
