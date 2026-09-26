@@ -1,4 +1,4 @@
-/** Dragging the tab's playback line (docs/tabs-rebuild.md section 4): the
+/** Dragging the tab's playback line: the
  *  pieces that can be tested without a browser. A press on the line starts
  *  it; moving past a few pixels turns it into a drag, where a ghost line
  *  snaps to the nearest beat; releasing seeks the song there once. Escape

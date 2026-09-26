@@ -1,6 +1,6 @@
 /// <reference path="../pb_data/types.d.ts" />
 
-// The one tab store (docs/tabs-rebuild.md section 3): a row per tab, whether
+// The one tab store: a row per tab, whether
 // someone added a Guitar Pro / MusicXML file or Ember generated one from the
 // recording. Files stay on disk in MUSIC_DIR/tabs (generated ones in
 // MUSIC_DIR/tabs/generated); the row is the metadata.
@@ -8,8 +8,8 @@
 //   song_key   normalized "title::artist" (apps/web/lib/songKey.ts), the lookup
 //   track_key  the app's compound track id it was added for, e.g. youtube:abc
 //   kind       "file", "pasted" (a text tab, stored as alphatex beside the
-//              original .txt), "fetched" (a text tab Ember found online,
-//              docs/tabs-v3.md) or "generated"
+//              original .txt), "fetched" (a text tab Ember found online)
+//              or "generated"
 //   format     gp3, gp4, gp5, gpx, gp, musicxml, mxl or alphatex
 //   shared     visible to every signed-in member; new rows are shared
 //   offset_ms  sync nudge against the recording, shared by everyone
@@ -17,11 +17,10 @@
 //   source_*   where a fetched tab was found: site ("songsterr", "ug"), page
 //              URL, the site's id, rating and votes, and source_meta (JSON:
 //              part, version, the site's tuning, the parse report)
-//   timing     where the tab sits in the recording, as align.py heard it
-//              (docs/tabs-v3.md section 3): { offset_ms, bpm, confidence,
-//              bars: [{ bar, ms }] }
+//   timing     where the tab sits in the recording, as align.py heard it:
+//              { offset_ms, bpm, confidence, bars: [{ bar, ms }] }
 //   aligned_at when align.py last ran for this tab, worked or not, so the
-//              automatic pass listens to a tab once (docs/tabs-v3.md 7)
+//              automatic pass listens to a tab once
 //
 // tab_lookups: one row per song and site that Ember has searched online, so
 // a song is searched once and never again on its own (the "Search online
@@ -133,7 +132,7 @@ onAfterBootstrap((e) => {
     changed = true;
   }
 
-  // Pasted text tabs (docs/tab-sources.md) and fetched ones (docs/tabs-v3.md)
+  // Pasted text tabs (docs/tab-sources.md) and fetched ones
   // arrived after the select did: add the values to an older collection.
   const kind = tabs.schema.getFieldByName("kind");
   if (kind) {

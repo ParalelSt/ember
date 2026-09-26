@@ -13,7 +13,7 @@ import {
 import type { TabKind, TabOnlineSource, TabSummary } from '@/lib/tabSources';
 import { readTiming } from '@/lib/tabSync';
 
-/** The one tab store (docs/tabs-rebuild.md section 3): PocketBase `tabs`,
+/** The one tab store: PocketBase `tabs`,
  *  a row per tab, for files people add and tabs Ember generates alike.
  *
  *  Everything here takes the ADMIN client, which bypasses the collection's
@@ -167,8 +167,8 @@ export function mapTab(row: RecordModel, viewer: TabViewer, addedBy: string | nu
       kind === 'generated' && trackId
         ? `/api/tabs/generated/${encodeURIComponent(trackId)}`
         : `/api/tabs/files/${row.id}/download`,
-    // Every kind can be lined up with the recording now (docs/tabs-v3.md
-    // stage 7 ranks them against each other), so the timing always rides
+    // Every kind can be lined up with the recording now (a later
+    // stage ranks them against each other), so the timing always rides
     // along; only a tab found online has a site behind it.
     timing: readTiming(row.timing),
     ...(kind === 'fetched' ? { source: onlineSourceOf(row) } : {}),

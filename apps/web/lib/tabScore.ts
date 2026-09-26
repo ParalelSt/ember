@@ -192,7 +192,7 @@ export function staveProfileOf(at: any, staff: TabsStaff, hasTab: boolean) {
   return staff === 'tab' && hasTab ? at.StaveProfile.Tab : at.StaveProfile.ScoreTab;
 }
 
-/** The settings every drawn tab shares (docs/tabs-rebuild.md section 4):
+/** The settings every drawn tab shares:
  *  tab staff with rhythm under the numbers, Tab or Tab + Score, Ember's
  *  colours, page or horizontal layout, and the score's own title block
  *  hidden because the page header shows it. `at` is the AlphaTab module.

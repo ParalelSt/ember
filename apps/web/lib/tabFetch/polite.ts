@@ -1,4 +1,4 @@
-/** Asking a tab site politely (docs/tabs-v3.md section 1): one queue per
+/** Asking a tab site politely: one queue per
  *  site for the whole server, a gap between requests, a browser
  *  User-Agent, and a long pause when the site says slow down.
  *

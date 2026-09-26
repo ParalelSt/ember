@@ -31,7 +31,7 @@ export interface CollectionHeaderProps {
 }
 
 /** The header's geometry as class strings, exported so CollectionSkeleton
- *  sketches the identical stack (docs/design-system.md section 3): cover
+ *  sketches the identical stack: cover
  *  to text `stack` 24, eyebrow to title and title to meta `cluster` 8, a
  *  description `block` 16 under the meta, and the action bar `stack` 24
  *  under that, inside the text column ("Beside"), so on desktop its bottom

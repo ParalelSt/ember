@@ -1,5 +1,5 @@
 /** The arithmetic between Ember's playback and a tab drawn by AlphaTab in
- *  external media mode (docs/tabs-rebuild.md section 4). Ember owns the
+ *  external media mode. Ember owns the
  *  time axis; AlphaTab only draws. Everything here is pure so it can be
  *  unit tested without a score, a browser or a player. */
 
@@ -35,8 +35,8 @@ export function tabMsToSongSec(tabMs: number, offsetMs: number): number {
 
 // ── a tab lined up with the recording ─────────────────────────────────────
 
-/** Where a tab sits in the recording, as align.py found it (docs/tabs-v3.md
- *  section 3), stored on the tab row as `timing`. */
+/** Where a tab sits in the recording, as align.py found it,
+ *  stored on the tab row as `timing`. */
 export interface TabTiming {
   /** Where the tab's first bar starts in the song. */
   offsetMs: number;
@@ -245,7 +245,7 @@ export function estimateSongSec(anchor: Anchor, now: number, playing: boolean, r
   return anchor.sec + (elapsed / 1000) * (rate > 0 ? rate : 1);
 }
 
-/** The cursor is fed at most this often (docs/tabs-rebuild.md section 4). */
+/** The cursor is fed at most this often. */
 export const FEED_INTERVAL_MS = 50;
 
 /** The last position fed to the cursor (tab ms) and when (performance.now). */

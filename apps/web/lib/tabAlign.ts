@@ -15,7 +15,7 @@ import { resolveUploadPath } from '@/lib/uploads';
 import { readTiming, type TabTiming } from '@/lib/tabSync';
 import { isOptionalDepMissing, warnOptionalDepsOnce } from '@/lib/tabOptionalDeps';
 
-/** Lining a tab up with the recording (docs/tabs-v3.md section 3).
+/** Lining a tab up with the recording.
  *
  *  align.py (repo root) does the listening; this module decides WHEN it
  *  runs: after a tab is fetched, or when someone presses "Line it up",
@@ -120,7 +120,7 @@ export const MAX_AUTO_ALIGN = 4;
 
 /** Has this tab been through align.py already? A row is marked the first
  *  time a job finishes for it, whether it worked or not, so the automatic
- *  pass never listens to the same tab twice (docs/tabs-v3.md stage 7). The
+ *  pass never listens to the same tab twice. The
  *  "Line it up" button ignores this. */
 export function alreadyTried(row: RecordModel): boolean {
   return !!row.aligned_at || !!readTiming(row.timing);

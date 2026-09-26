@@ -1,5 +1,4 @@
-/** The tab's own timeline for the practice tools (docs/tabs-rebuild.md
- *  section 4, stage 4): its bars in playing order with their time
+/** The tab's own timeline for the practice tools: its bars in playing order with their time
  *  signatures, section markers and tempo, read once from AlphaTab's tick
  *  lookup, and the beats a metronome clicks on. Pure data and arithmetic;
  *  the page turns tab time into song time through lib/tabSync.ts. */

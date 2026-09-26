@@ -11,7 +11,7 @@ import { pickerLabel, sourceChipLabel } from '@/lib/tabSources';
 import { PoliteFetcher } from './polite';
 import { findOnline, resetOnline, staleNone } from './online';
 
-/** Songsterr found online (docs/tabs-v3.md stage 4) against a site that
+/** Songsterr found online against a site that
  *  serves tests/fixtures/songsterr (Songsterr's shapes, invented content)
  *  and, for the both-sites checks, tests/fixtures/ug. */
 const SS = path.resolve(__dirname, '../../../../tests/fixtures/songsterr');

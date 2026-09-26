@@ -4,11 +4,11 @@ import { isLinedUp, type TabTiming } from '@/lib/tabSync';
 
 /** The tab store's shapes and the source chain, without the server: the
  *  routes (lib/tabStore.ts) build these, the tab page (/tabs/[trackId])
- *  picks from them. docs/tabs-rebuild.md section 3. */
+ *  picks from them. */
 
 /** Where a tab came from: a Guitar Pro or MusicXML file someone added, a
  *  text tab someone pasted (kept as alphaTex beside the original text), a
- *  text tab Ember found online (docs/tabs-v3.md), or one Ember generated
+ *  text tab Ember found online, or one Ember generated
  *  from the recording. docs/tab-sources.md section 4. */
 export type TabKind = 'file' | 'pasted' | 'fetched' | 'generated';
 
@@ -159,7 +159,7 @@ export function ratingLabel(source: TabOnlineSource): string {
 }
 
 /** A tab found online that align.py has not lined up with the recording
- *  (or not confidently, docs/tabs-v3.md section 3) starts at the song's
+ *  (or not confidently) starts at the song's
  *  start plus the nudge, at the tab's own tempo. Said calmly on the chip. */
 export const NOT_LINED_UP = 'not lined up yet';
 export const LINED_UP = 'lined up';
@@ -207,8 +207,8 @@ export function pickerLabel(tab: TabSummary): string {
 export type EmptyState =
   | { kind: 'loading' }
   | { kind: 'generating' }
-  /** Ember is looking for the song on the tab sites (docs/tabs-v3.md
-   *  section 6: "Finding a tab online"). */
+  /** Ember is looking for the song on the tab sites
+   *  ("Finding a tab online"). */
   | { kind: 'searching' }
   | {
       kind: 'empty';

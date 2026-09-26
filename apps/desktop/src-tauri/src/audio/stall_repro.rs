@@ -2,7 +2,7 @@
 //!
 //! Reported from the Windows desktop app on 2026-09-22 and 2026-09-23 for
 //! youtube:OuB-iWbGJqw, EOugbQC1r0s, TwFXwkKyGSQ and fLgidPGdi3w, with no
-//! error on the host. See docs/reports/2026-09-22-stream-stall-nier.md.
+//! error on the host.
 //!
 //! The load never got as far as playing: it failed while the DECODER was being
 //! built. These tests serve the engine a body shaped like the real one (see

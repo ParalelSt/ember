@@ -1,8 +1,7 @@
 import { isLinedUp } from '@/lib/tabSync';
 import { ratingLabel, type TabSummary } from '@/lib/tabSources';
 
-/** Which of a song's tabs Ember draws, and the rows the Source sheet lists
- *  (docs/tabs-v3.md stages 6 and 7).
+/** Which of a song's tabs Ember draws, and the rows the Source sheet lists.
  *
  *  The rule, in one sentence: the tab that matches the recording best wins,
  *  and when two match about equally well the better source wins.

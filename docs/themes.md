@@ -2,9 +2,8 @@
 
 How Ember's colours can change: five presets, the person's own themes, a
 saved list that can be shared, and the native shells following along.
-Shipped in 0.7.0 ("Make Ember yours"). The design history is in the themes
-plan (`docs/superpowers/plans/2026-09-23-themes.md`, not committed); this file
-describes what is in the tree.
+Shipped in 0.7.0 ("Make Ember yours"). This file describes what is in the
+tree; the original design plan was local-only and is not part of the repo.
 
 ## 1. The model: eight inputs, 34 variables
 

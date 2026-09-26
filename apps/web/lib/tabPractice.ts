@@ -1,4 +1,4 @@
-/** The tab page's practice tools (docs/tabs-rebuild.md section 4, stage 4):
+/** The tab page's practice tools:
  *  a loop over a range of bars or a section, and a slower playback speed.
  *  Pure arithmetic over the tab timeline (lib/tabTimeline.ts); the page
  *  turns tab time into song time and does the seeking. */

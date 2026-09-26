@@ -236,5 +236,4 @@ would not pass store review. Sideload/direct download only.
 ## iOS — not yet
 
 Needs Xcode on the Mac (`npx cap add ios`, native speech/audio plugins,
-Apple Developer account for anything beyond a 7-day dev install). See
-docs/superpowers/specs — Part 3b.
+Apple Developer account for anything beyond a 7-day dev install).

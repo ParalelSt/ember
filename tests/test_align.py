@@ -1,4 +1,4 @@
-"""align.py against recordings made up in the test (docs/tabs-v3.md section 3).
+"""align.py against recordings made up in the test.
 
     .venv/bin/python -m unittest tests/test_align.py      # or: npm run test:align
 

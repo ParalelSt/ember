@@ -1,4 +1,4 @@
-/** Ember's own ffmpeg (docs/tabs-v3.md section 4): update.sh installs
+/** Ember's own ffmpeg: update.sh installs
  *  imageio-ffmpeg and links its binary to .venv/bin/ffmpeg, and the Python
  *  resolver (ffmpeg_path.py) finds it with nothing on PATH.
  *

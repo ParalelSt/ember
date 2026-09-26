@@ -1,6 +1,6 @@
 import { tempoMap, tickToMs } from '@/lib/tabSync';
 
-/** What align.py needs to know of a tab (docs/tabs-v3.md section 3): where
+/** What align.py needs to know of a tab: where
  *  each bar starts and where every note sounds, on the tab's own clock, as
  *  AlphaTab plays it. Built with the installed AlphaTab so the times are
  *  exactly the ones the tab page's cursor walks through (the same tick

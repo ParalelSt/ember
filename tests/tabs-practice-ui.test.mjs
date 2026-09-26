@@ -1,5 +1,5 @@
-/** UI check for the tab page's practice tools (docs/tabs-rebuild.md, stage 4
- *  as built): the sync nudge past 10 s and in beats, the metronome on the
+/** UI check for the tab page's practice tools (as built): the sync nudge
+ *  past 10 s and in beats, the metronome on the
  *  tab's beats through a tempo change, the speed (pitch kept) and the loop,
  *  and the "Find one" links of a song with no tab.
  *

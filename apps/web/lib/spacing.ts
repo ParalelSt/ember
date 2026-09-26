@@ -1,4 +1,4 @@
-/** The spacing scale (docs/design-system.md section 2) as data, for the
+/** The spacing scale as data, for the
  *  /dizajn "Spacing scale" rulers. The tokens themselves live in
  *  app/globals.css `@theme` as `--spacing-<name>`; lib/spacing.test.ts
  *  checks both against the spec's table. `ruler` is a literal width class

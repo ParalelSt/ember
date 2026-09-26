@@ -13,8 +13,8 @@
 // Unset EMBER_ADMIN_EMAIL: nothing happens but a warning. start-static.sh
 // reads both from the environment or apps/web/.env.local.
 //
-// The email and first password used to be hardcoded here, in a public repo:
-// see docs/reports/bughunt-2026-09-24/W14-pocketbase-admin-exposed.md.
+// The email and first password used to be hardcoded here, in a public repo,
+// exposing the admin password (bughunt W14). Fixed by reading both from env.
 
 onAfterBootstrap((e) => {
   const email = ($os.getenv("EMBER_ADMIN_EMAIL") || "").trim();

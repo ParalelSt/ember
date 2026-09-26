@@ -81,7 +81,7 @@ export interface TabSourcesState {
    *  line. Null before or while it runs. */
   searchAgainResult: 'found' | 'none' | 'failed' | null;
   /** Line one of the song's tabs up with the recording, from the Source
-   *  sheet's row (docs/tabs-v3.md stage 6). */
+   *  sheet's row. */
   lineUp: (tabId: string) => void;
   /** Tabs whose "Line it up" is still running. */
   liningUp: string[];
@@ -116,7 +116,7 @@ function stillWaiting(asked: Record<string, { was: number | null; at: number }>,
     .map(([tabId]) => tabId);
 }
 
-/** The source chain for one song (docs/tabs-rebuild.md section 3), plus the
+/** The source chain for one song, plus the
  *  flows that add to it: generate from the recording, add a file, delete,
  *  and save the sync nudge for everyone. */
 export function useTabSources(song: TabSong | null): TabSourcesState {
@@ -168,8 +168,8 @@ export function useTabSources(song: TabSong | null): TabSourcesState {
 
   // Look online once per song: the server remembers it was searched and
   // answers "cached" after that, so this costs a site request only the
-  // first time any listener opens the song (docs/tabs-v3.md, owner's
-  // decision 2). Asked after the store answered, so the page draws what it
+  // first time any listener opens the song (the owner's
+  // decision). Asked after the store answered, so the page draws what it
   // has at once.
   const online = useQuery({
     queryKey: ['tabs-online', id, title, artist],
@@ -270,7 +270,7 @@ export interface TabAlignment {
   lineUp: () => void;
 }
 
-/** The alignment of the tab on screen (docs/tabs-v3.md section 3): what the
+/** The alignment of the tab on screen: what the
  *  server worked out, whether a job is running now (asked again every few
  *  seconds while it is), and the button that runs it again. Every kind of
  *  tab can be lined up now (stage 7 ranks them by how well they match); a

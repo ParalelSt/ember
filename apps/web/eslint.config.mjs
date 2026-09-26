@@ -2,8 +2,8 @@ import { defineConfig, globalIgnores } from "eslint/config";
 import nextVitals from "eslint-config-next/core-web-vitals";
 import nextTs from "eslint-config-next/typescript";
 
-// Decoupling rules (docs/DESLOP.md section b): the presentational component
-// folders below take data as props and hand events back as callbacks; they
+// Decoupling rules: the presentational component folders below take data
+// as props and hand events back as callbacks; they
 // do not reach into hooks, stores, react-query or the player context on
 // their own. `components/player/**` is the one folder excluded from this
 // restriction, since PlayerBar/NowPlaying and friends are where player

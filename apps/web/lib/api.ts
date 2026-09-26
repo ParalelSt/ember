@@ -340,8 +340,8 @@ export const api = {
       method: 'POST',
       body: { trackId, title, artist, again },
     }),
-  /** How a tab's alignment with the recording stands (docs/tabs-v3.md
-   *  section 3), and starting it ("Line it up"). */
+  /** How a tab's alignment with the recording stands,
+   *  and starting it ("Line it up"). */
   getTabAlignment: (tabId: string) =>
     req<{ status: 'ready' | 'running' | 'failed' | 'none'; timing?: TabTiming; error?: string }>(
       `/tabs/align?tabId=${encodeURIComponent(tabId)}`,

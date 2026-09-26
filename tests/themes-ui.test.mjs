@@ -1,5 +1,4 @@
-/** Themes follow the account and paint from the first HTML byte
- *  (docs/superpowers/plans/2026-09-23-themes.md, Task 2).
+/** Themes follow the account and paint from the first HTML byte.
  *
  *      npm i -D playwright-core
  *      node tests/themes-ui.test.mjs        # or: npm run test:themes-ui

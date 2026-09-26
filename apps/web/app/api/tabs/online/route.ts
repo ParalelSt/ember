@@ -9,7 +9,7 @@ import { findOnline } from '@/lib/tabFetch/online';
 import { alignInBackground, autoAlignQueue } from '@/lib/tabAlign';
 import { findTabs } from '@/lib/tabStore';
 
-/** Look for a song's tab online (docs/tabs-v3.md, stage 3).
+/** Look for a song's tab online.
  *
  *  POST JSON { trackId, title, artist, again? }. The tab page asks once
  *  when it opens; the server answers from the store when the song was
@@ -46,7 +46,7 @@ export const POST = withRequestLog('tabs/online', async (request: NextRequest) =
 
     // Every candidate for the song is lined up with the recording in the
     // background, best source first and at most MAX_AUTO_ALIGN of them, so
-    // stage 7 can rank them against each other (docs/tabs-v3.md). Once per
+    // stage 7 can rank them against each other. Once per
     // tab: a row that has been through align.py is left alone, whatever
     // came of it, until someone presses "Line it up".
     void findTabs(pb, user, song)

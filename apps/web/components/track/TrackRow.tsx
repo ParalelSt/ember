@@ -201,7 +201,7 @@ export function TrackRow({
   // hover reveals it; opacity-0 still leaves it clickable and in the tab
   // order, which is what makes keyboard focus able to reveal it at all.
   // `size-hit md:size-8` is the app's touch convention (40px phone / 32px
-  // desktop, docs/design-system.md section 2); 40px is also the xs artwork
+  // desktop); 40px is also the xs artwork
   // height, so a compact row keeps its height on a phone.
   const playControl = trailingPlayControl ? (
     <Button

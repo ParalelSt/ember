@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { SPACING_SCALE } from './spacing';
 
-// docs/design-system.md section 2, restated here on purpose: this test pins
+// Restated here on purpose: this test pins
 // the spec's numbers, so a token (or the gallery's table) drifting from
 // them fails instead of silently redefining the scale.
 const SPEC: Record<string, number> = {

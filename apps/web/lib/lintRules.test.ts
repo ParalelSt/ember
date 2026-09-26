@@ -115,7 +115,7 @@ describe('style lint', () => {
   }
 });
 
-// The spacing ratchet (docs/design-system.md section 6). A raw spacing
+// The spacing ratchet. A raw spacing
 // class is a margin, padding, gap or space-* utility with a number (or px)
 // instead of a scale token: `mb-6` rather than `mb-stack`. Allowed: `-0`,
 // `-auto`, and negative margins for scroll bleed (`-mx-1`, which the

@@ -6,7 +6,7 @@ import { cn } from '@/lib/utils';
 /** Presentational only: a tick box for picking songs. `mixed` is the Select
  *  all box's "some selected". The press never reaches the row underneath
  *  (a row in select mode toggles on its own click). A 40px hit box on a
- *  phone, 32px on desktop (docs/design-system.md section 2). */
+ *  phone, 32px on desktop. */
 export function Checkbox({
   checked,
   onChange,

@@ -1,4 +1,4 @@
-/** Songsterr's tab data to alphaTex (docs/tabs-v3.md, stage 4). Pure: no
+/** Songsterr's tab data to alphaTex. Pure: no
  *  fetching, no server, so the unit tests drive it with fixtures.
  *
  *  What a browser gets from Songsterr, checked live on 2026-09-19:

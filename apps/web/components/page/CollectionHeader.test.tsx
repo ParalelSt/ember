@@ -110,7 +110,7 @@ describe('CollectionHeader', () => {
     expect(screen.getByRole('button', { name: 'Play' })).toBeInTheDocument();
   });
 
-  // docs/design-system.md section 3, Rhythm "Even" with actions "Beside":
+  // Rhythm "Even" with actions "Beside":
   // cover to text stack 24, eyebrow to title and title to meta cluster 8,
   // description block 16, meta to action bar stack 24, and no outer margin.
   describe('stack geometry', () => {

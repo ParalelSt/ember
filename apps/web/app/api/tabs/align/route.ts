@@ -8,7 +8,7 @@ import { withRequestLog } from '@/lib/logger/withRequestLog';
 import { canView } from '@/lib/tabStore';
 import { alignmentStatus, alignTab } from '@/lib/tabAlign';
 
-/** Lining a tab up with the recording (docs/tabs-v3.md section 3).
+/** Lining a tab up with the recording.
  *
  *  GET  ?tabId=…  how it stands: ready (with the timing), running, failed
  *                 (with the reason) or none.

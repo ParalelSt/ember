@@ -35,7 +35,7 @@ else
   echo "No Developer ID certificate — building UNSIGNED."
 fi
 
-# Notarize only if credentials were stored once (see APPS.md).
+# Notarize only if credentials were stored once (see docs/APPS.md).
 if xcrun notarytool history --keychain-profile "AC_PASSWORD" >/dev/null 2>&1; then
   export APPLE_KEYCHAIN_PROFILE="AC_PASSWORD"
   echo "Notarizing (profile AC_PASSWORD)"

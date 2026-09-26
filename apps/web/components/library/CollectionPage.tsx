@@ -83,8 +83,8 @@ export interface CollectionPageProps {
 }
 
 /** Presentational only: the header, action bar and track list shared by
- *  every collection page, laid out as one stack (docs/design-system.md
- *  section 3): the header with the action bar in its text column, then
+ *  every collection page, laid out as one stack: the header with the
+ *  action bar in its text column, then
  *  `stack` 24, then the list. Play/shuffle/download logic lives in the hooks
  *  the caller passes in (`playback`, `download`); this component just
  *  wires their output to buttons. */

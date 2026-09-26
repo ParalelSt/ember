@@ -80,7 +80,7 @@ export interface LiveTabScoreProps {
 }
 
 /** A tab drawn by AlphaTab, its cursor walking in time with the song Ember
- *  is playing (docs/tabs-rebuild.md section 4).
+ *  is playing.
  *
  *  AlphaTab ships a synthesizer, and it is not used: Ember plays the real
  *  recording. The score is loaded in `EnabledExternalMedia` mode, where
@@ -91,7 +91,7 @@ export interface LiveTabScoreProps {
  *  layout) goes to AlphaTab as a seek, so the line jumps there rather than
  *  sliding over, and is brought into view even while paused.
  *
- *  A tab lined up with the recording (docs/tabs-v3.md section 3) is fed
+ *  A tab lined up with the recording is fed
  *  through its bar anchors instead: song time to tab time piecewise over
  *  them (lib/tabSync.ts songSecToTabMs), the nudge still on top, and every
  *  seek (a click, a drag, the arrow keys) back the same way.

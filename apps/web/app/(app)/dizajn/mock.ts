@@ -607,7 +607,7 @@ export const MOCK_IMPORT_PROGRESS = { done: 18, total: MOCK_IMPORT_ITEMS.length 
 export function importArt(i: number): string {
   return IMPORT_ART[i % IMPORT_ART.length];
 }
-/** Tabs v3 on /dizajn (docs/tabs-v3.md): every tab Ember could find for the
+/** Tabs v3 on /dizajn: every tab Ember could find for the
  *  now-playing "Copper Sky" by Coastline (an invented song), in the rank
  *  order the picker lists them. Nothing here is fetched; the names, ratings
  *  and votes are made up. One long name and one long instrument list prove
@@ -715,7 +715,7 @@ export const MOCK_TAB_SOURCES: MockTabSource[] = [
   },
 ];
 
-/** Confidence under this reads "not lined up yet" (docs/tabs-v3.md 3). */
+/** Confidence under this reads "not lined up yet". */
 export const MOCK_LINED_THRESHOLD = 60;
 
 /** The Songsterr match when Ember could not line it up with confidence. */

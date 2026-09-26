@@ -70,7 +70,7 @@
      art-sm and art-md. */
   --spacing-art-bar: 3.5rem;
 
-  /* The spacing scale (docs/design-system.md section 2). Six steps plus the
+  /* The spacing scale. Six steps plus the
      page gutter, generating gap-*, mb-*, mt-*, px-*, py-* and size-hit the
      same way the art tokens above generate size-art-*. Stage 1 put the
      collection page stack (CollectionHeader, ActionBar, CollectionPage,

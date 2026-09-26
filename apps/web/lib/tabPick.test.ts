@@ -12,7 +12,7 @@ import {
   statusLabel,
 } from '@/lib/tabPick';
 
-/** Which tab Ember draws (docs/tabs-v3.md stage 7) and how the Source sheet
+/** Which tab Ember draws and how the Source sheet
  *  lists them (stage 6). Pure: every case here is rows in, rows out. */
 
 function tab(over: Partial<TabSummary> & { id: string }): TabSummary {

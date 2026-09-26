@@ -32,8 +32,7 @@ What changes:
 
 **Host: run `./update.sh` as usual (no new packages, no settings, no database
 changes).** Web only: the apps stay at 0.4.7. The fixes take effect once the
-server restarts and reach everyone at their next page load. Background:
-`docs/reports/bughunt-2026-09-24/` W04, W05, V5, W06, W07, W09 to W13, M1,
+server restarts and reach everyone at their next page load. Background: internal bughunt notes W04, W05, V5, W06, W07, W09 to W13, M1,
 M2 and M3.
 
 # 0.7.8: Server fixes (batch 4)
@@ -41,17 +40,17 @@ M2 and M3.
 **Host: run `./update.sh` as usual (no new packages, no settings, no database
 changes).** The server fixes take effect once it restarts. The Android menu
 and sheets clearing the phone's buttons need the new apps, 0.4.7 (Android
-versionCode 12), which the `v0.4.7` tag builds. Background:
-`docs/reports/bughunt-2026-09-24/` S01, S02, S03, S05 to S12 and T3, and
-`docs/reports/android-nav-overlap.md`.
+versionCode 12), which the `v0.4.7` tag builds. Background: internal
+bughunt notes S01, S02, S03, S05 to S12, T3, and an Android nav-overlap
+fix.
 
 # 0.7.7: App fixes (batch 3)
 
 **Host: `./update.sh` as usual (no new packages, no settings, no database
 changes).** This release is the Android and desktop apps: the web side only
 gets the changelog entry. The fixes need the new apps, 0.4.6 (Android
-versionCode 11), which the `v0.4.6` tag builds. Background:
-`docs/reports/bughunt-2026-09-24/` A3, A4, A6, A7, A8, A9, A12, L4 and L5.
+versionCode 11), which the `v0.4.6` tag builds. Background: internal
+bughunt notes A3, A4, A6, A7, A8, A9, A12, L4 and L5.
 
 # 0.7.6: Playback fixes (batch 2)
 
@@ -59,15 +58,16 @@ versionCode 11), which the `v0.4.6` tag builds. Background:
 changes).** The web fixes reach everyone at their next page load. Repeat one
 on the desktop app, and the loop button, shuffle and taps on Android, need
 the new apps, 0.4.5 (Android versionCode 10), which the `v0.4.5` tag builds.
-Background: `docs/reports/bughunt-2026-09-24/` P02, P04, P05, P06, P08, P10,
-P11 and P12.
+Background: internal bughunt notes P02, P04, P05, P06, P08, P10, P11 and
+P12.
 
 # 0.7.5: Security fixes (batch 1)
 
 **Host, in order. Do all of it: the code fix alone is not enough, because
 the old database admin password is in the public repo's history. The
 desktop app needs the new shell, 0.4.4, which the `v0.4.4` tag builds (the
-APK only gets a version bump). Background: `docs/reports/bughunt-2026-09-24/W14-pocketbase-admin-exposed.md`.**
+APK only gets a version bump). Background: the PocketBase admin password
+was exposed in the public repo's history (internal bughunt note W14).**
 
 1. **Make a new password** for PocketBase's admin (the "superuser"):
    `openssl rand -base64 24 | tr -d '/+='`
@@ -175,7 +175,8 @@ the guitar tab packages below, then restart the web app.**
    .venv/bin/pip install onnxruntime librosa pretty_midi 'resampy<0.4.3' mir_eval scikit-learn typing-extensions
    ```
 
-   `update.sh` does not install these. See `docs/reports/luka-2026-09-24.md`.
+   `update.sh` does not install these (see internal notes on the "luka"
+   playback repro).
 
 # 0.6.0: Admin pranks (plan-23-9)
 
@@ -190,7 +191,7 @@ prank sound to reach the app there.**
    an older APK still receives a prank but logs "their app cannot do that
    yet" instead of playing it. Web and desktop (through the desktop app's
    webview overlay) already work once the host is updated.
-3. See `docs/pranks.md` for what the feature does, its limits, and the
+3. See the prank feature's internal docs for what the feature does, its limits, and the
    `PRANK_TICK_DISABLED` / `PRANK_TICK_INTERVAL_MS` env settings.
 
 # 0.5.0: Bring your liked songs over

@@ -60,7 +60,7 @@ export const cursorRect = (page) =>
   });
 
 /** The visible band the cursor must stay in: below the sticky toolbar,
- *  above the player bar (docs/tabs-rebuild.md section 4, followScroll). */
+ *  above the player bar (followScroll). */
 export const viewBand = (page) =>
   page.evaluate(() => {
     const sticky = document.querySelector('[data-testid="tabs-sticky"]')?.getBoundingClientRect();

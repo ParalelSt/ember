@@ -180,7 +180,7 @@ function silentWav(seconds = 2, sampleRate = 8000) {
   const jobsAfter = fs.readFileSync(log, 'utf8').trim().split('\n').filter(Boolean);
   check('still one job', jobsAfter.length === 1, `${jobsAfter.length} job(s)`);
 
-  // ── the store row (docs/tabs-rebuild.md stage 1) ─────────────────────────
+  // ── the store row ──────────────────────────────────────────────────────
   const filter = encodeURIComponent(`track_key = "${trackId}"`);
   const rows = await fetch(`${PB}/api/collections/tabs/records?filter=${filter}`, { headers: { Authorization: tok } })
     .then((r) => r.json());

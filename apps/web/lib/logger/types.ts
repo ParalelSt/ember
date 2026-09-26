@@ -1,5 +1,5 @@
-/** Shared types for the bug-report logging system. See
- *  docs/superpowers/specs/2026-06-04-bug-report-logging-design.md. */
+/** Shared types for the bug-report logging system (see internal design
+ *  notes on the logging design, 2026-06-04). */
 
 export type LogKind = 'error' | 'breadcrumb';
 // 'warn' added for withRequestLog (T2): 429s and 502/504 upstream failures

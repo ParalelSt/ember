@@ -1,4 +1,4 @@
-/** Tabs found online (docs/tabs-v3.md stages 3 to 5) in a real sandbox,
+/** Tabs found online in a real sandbox,
  *  against tests/fake-songsterr.mjs (which also serves the fake Ultimate
  *  Guitar under /ug):
  *
@@ -256,7 +256,7 @@ const scoreReady = (page) =>
 const trackPath = (id) => `/tabs/${encodeURIComponent(id)}`;
 const chipText = async (page) => ((await page.getByTestId('tab-source-chip').textContent().catch(() => '')) ?? '').trim();
 
-// ── the Source sheet (docs/tabs-v3.md stage 6) ────────────────────────────
+// ── the Source sheet ───────────────────────────────────────────────────────
 /** Open the sheet from the source chip and wait for its first row. */
 async function openSheet(page) {
   await page.getByRole('button', { name: 'Choose a tab' }).click();
