@@ -32,7 +32,7 @@ const { _resetBuckets } = await import('@/lib/rateLimit');
 const { verifyStreamToken } = await import('@/lib/streamToken');
 
 function post(body: unknown) {
-  return POST(new NextRequest('http://localhost:3000/api/cast/sign', { method: 'POST', body: JSON.stringify(body) }));
+  return POST(new NextRequest('http://localhost:3000/api/cast/sign', { method: 'POST', body: JSON.stringify(body) }), {} as never);
 }
 const tokenOf = (url: string) => new URL(url).searchParams.get('st');
 

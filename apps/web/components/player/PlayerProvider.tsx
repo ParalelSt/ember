@@ -42,6 +42,11 @@ import { createNativeBackend, nativeBackendReady } from '@/lib/playback/nativeBr
 import { createTauriBackend } from '@/lib/playback/tauriBackend';
 import { createAndroidBackend, androidPluginPresent } from '@/lib/playback/androidBackend';
 import type { AudioBackend, AudioBackendEvents, AudioErrorInfo } from '@/lib/playback/types';
+import { createCastBackend, isCastBackend, type CastRemote } from '@/lib/playback/castBackend';
+import { castHandover, gateEvents, localHandover } from '@/lib/playback/castSwitch';
+import { setCastSessionListener } from '@/lib/cast/session';
+import { initCast, setCastMediaElement } from '@/lib/cast/controller';
+import { resolveCastMedia } from '@/lib/cast/signer';
 import type { PlaybackContext, Track } from '@/types/track';
 import { musicLevel } from '@/lib/pranks/mix';
 import { PrankReceiver } from './PrankReceiver';
@@ -152,6 +157,15 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   /** The offline stall toast is shown once per offline spell, not per skip. */
   const offlineToastShownRef = useRef(false);
   const eventsRef = useRef<AudioBackendEvents | null>(null);
+  /** The provider's own event handlers, ungated: a cast engine gets them
+   *  through its own gate (see startCasting). */
+  const rawEventsRef = useRef<AudioBackendEvents | null>(null);
+  /** Casting (Google Cast, from a browser): the local engine waits in
+   *  localBackendRef, stopped, while a cast engine plays on the TV. The
+   *  queue, next, loop and radio stay here, as always. */
+  const castingRef = useRef(false);
+  const localBackendRef = useRef<AudioBackend | null>(null);
+  const [casting, setCasting] = useState(false);
   /** When the store's queue/index last changed BECAUSE the native player said
    *  so. The queue-push effect and the load-on-id-change effect both skip
    *  changes inside this window, or a car tap would bounce straight back. A
@@ -418,13 +432,21 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     } else if (shell !== 'web' && nativeBackendReady(shell)) {
       create = shell === 'tauri' ? createTauriBackend : createNativeBackend;
     }
-    eventsRef.current = events;
+    // The local engine's events stop counting while a cast engine plays:
+    // a late pause or error from the stopped element must not reach the
+    // player (see startCasting).
+    rawEventsRef.current = events;
+    eventsRef.current = gateEvents(events, () => !castingRef.current);
     backendKindRef.current = create === createWebBackend ? 'web'
       : create === createCapacitorBackend ? 'capacitor'
       : create === createAndroidBackend ? 'android'
       : create === createTauriBackend ? 'tauri-native' : 'native-stub';
-    backendRef.current = create(events);
+    backendRef.current = create(eventsRef.current);
     setInitialKind(backendKindRef.current);
+    // Casting: AirPlay (Safari) moves the web engine's own element; the
+    // controller finds out which way this page can cast at all.
+    setCastMediaElement(backendRef.current.mediaElement?.() ?? null);
+    initCast();
     // lib/logger has no ref to backendKindRef, so the provider is the one
     // place that pushes it into the context envelope (see logger.setContext).
     logger.setContext({ backendKind: backendKindRef.current });
@@ -439,6 +461,9 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     });
     setBackendReady(true);
     return () => {
+      setCastMediaElement(null);
+      localBackendRef.current?.destroy();
+      localBackendRef.current = null;
       backendRef.current?.destroy();
       backendRef.current = null;
     };
@@ -541,6 +566,18 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     // click play a few times" bug. A silent re-load of the track that's already
     // loaded is never useful, so drop it.
     if (!autoplay && loadedTrackRef.current === track.id) return;
+    // A cast device plays the TRACK: it signs its own link, since neither a
+    // cached copy's blob: URL nor a cookie-bound stream reaches a TV.
+    if (castingRef.current && isCastBackend(b)) {
+      loadedTrackRef.current = track.id;
+      localSrcTrackRef.current = null;
+      cacheSrcTrackRef.current = null;
+      const startAt = positions.startAt(track.id);
+      setDuration(chooseDuration(track.durationSec ?? 0, null));
+      logger.breadcrumb('playback', 'load', { trackId: track.id, backend: 'cast', source: 'cast' });
+      b.loadTrack(track, { autoplay, startAt });
+      return;
+    }
     if (backendKindRef.current === 'android' && b.setQueue) {
       // The native player owns the queue: hand it the whole thing and the
       // index to start at. It diffs, so an unchanged queue never restarts.
@@ -611,6 +648,86 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
   loadAndPlayRef.current = loadAndPlay;
   fallbackToWebAudioRef.current = fallbackToWebAudio;
+
+  /** The level the music plays at, for an engine that just took over. */
+  const applyVolume = useCallback((b: AudioBackend) => {
+    const st = usePlayerStore.getState();
+    const party = useSettingsStore.getState().partyVolume;
+    b.setVolume(musicLevel(st.volume, st.muted, duckRef.current), { gain: party ? 2 : 1, normGain: normGainRef.current });
+  }, []);
+
+  /** A Google Cast session started (or the page joined one): the song moves
+   *  to the TV, from where it is. The local engine stops and waits. The
+   *  volume slider now sets the TV's volume; the equalizer and volume
+   *  normalization do not apply there. */
+  const startCasting = useCallback((remote: CastRemote, deviceName: string, opts: { resumed: boolean }) => {
+    const local = backendRef.current;
+    if (!local || castingRef.current || !rawEventsRef.current) return;
+    const plan = castHandover({
+      localTime: local.getCurrentTime(),
+      localPaused: local.isPaused(),
+      resumed: opts.resumed,
+      remote: opts.resumed ? remote.status() : null,
+    });
+    castingRef.current = true;
+    local.stop();
+    localBackendRef.current = local;
+    const resolve = (t: Track) => {
+      const st = usePlayerStore.getState();
+      const at = st.queue.findIndex((q) => q.id === t.id);
+      return resolveCastMedia(t, at >= 0 ? st.queue.slice(at + 1, at + 5) : []);
+    };
+    const cast = createCastBackend(
+      gateEvents(rawEventsRef.current, () => castingRef.current && backendRef.current === cast),
+      remote,
+      resolve,
+    );
+    backendRef.current = cast;
+    setCasting(true);
+    applyVolume(cast);
+    logger.breadcrumb('playback', 'cast started', { resumed: opts.resumed });
+    const st = usePlayerStore.getState();
+    const track = st.queue[st.index];
+    if (track) {
+      positions.requestStartAt(plan.startAt);
+      loadedTrackRef.current = null;
+      loadAndPlay(track, plan.autoplay);
+    }
+    if (!opts.resumed) {
+      toast(`Playing on ${deviceName}`, { description: 'The equalizer and volume leveling are off while casting.' });
+    }
+  }, [applyVolume, loadAndPlay, positions]);
+
+  /** The session ended: the song comes back here, paused where the TV was. */
+  const stopCasting = useCallback(() => {
+    if (!castingRef.current) return;
+    const cast = backendRef.current;
+    const local = localBackendRef.current;
+    const plan = localHandover(cast?.getCurrentTime() ?? 0);
+    castingRef.current = false;
+    localBackendRef.current = null;
+    backendRef.current = local;
+    try { cast?.destroy(); } catch { /* the session is gone anyway */ }
+    setCasting(false);
+    setIsPlaying(false);
+    logger.breadcrumb('playback', 'cast ended');
+    if (!local) return;
+    applyVolume(local);
+    const st = usePlayerStore.getState();
+    const track = st.queue[st.index];
+    if (track) {
+      positions.requestStartAt(plan.startAt);
+      loadedTrackRef.current = null;
+      loadAndPlay(track, plan.autoplay);
+    }
+  }, [applyVolume, loadAndPlay, positions, setIsPlaying]);
+
+  // Google Cast sessions (lib/cast/session). Registered once the engine
+  // exists, so a session the page joined while starting up is picked up.
+  useEffect(() => {
+    if (!backendReady) return;
+    return setCastSessionListener({ start: startCasting, end: stopCasting });
+  }, [backendReady, startCasting, stopCasting]);
 
   // Drives load+autoplay on track changes nobody loaded yet: cold-load
   // hydration of a persisted queue, and index changes that did not go through
@@ -839,7 +956,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     // Only on a new engine: setRate itself applies every change.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [backendReady, initialKind]);
-  const canSetRate = initialKind === 'web' || initialKind === 'capacitor';
+  const canSetRate = (initialKind === 'web' || initialKind === 'capacitor') && !casting;
 
   const playTrack = useCallback((track: Track, list?: Track[], nextContext?: PlaybackContext | null) => {
     userInteracted.current = true;

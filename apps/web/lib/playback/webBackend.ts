@@ -331,6 +331,7 @@ export const createWebBackend: CreateAudioBackend = (events) => {
     getDuration: () => a.duration || 0,
     isPaused: () => a.paused,
     isTransitioning: () => transitioning,
+    mediaElement: () => a,
 
     destroy() {
       if (transitionTimer) clearTimeout(transitionTimer);

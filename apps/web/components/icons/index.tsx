@@ -47,6 +47,8 @@ export {
   MessageSquarePlus as RequestIcon,
   Link2 as LinkIcon,
   SlidersVertical as EqualizerIcon,
+  Cast as CastIcon,
+  Airplay as AirplayIcon,
   ChevronRight as ChevronRightIcon,
   CircleAlert as AlertIcon,
   ListChecks as ReviewIcon,
