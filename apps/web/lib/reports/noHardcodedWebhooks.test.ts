@@ -63,7 +63,8 @@ describe('no hardcoded Discord webhook URLs', () => {
 
   it('sanity check: the pattern itself would catch a real-looking URL', () => {
     // A fabricated but realistically-shaped id/token, not a real webhook.
-    const text = 'https://discord.com/api/webhooks/9876543210987654321/aBcDeFgHiJkLmNoPqRsTuVwXyZ01234567890abcdefghijkl';
+    // Built from pieces so this file never holds the literal shape itself.
+    const text = ['https://discord.com/api/webhooks', '9876543210987654', 'x'.repeat(40)].join('/');
     WEBHOOK_PATTERN.lastIndex = 0;
     const m = WEBHOOK_PATTERN.exec(text);
     expect(m).not.toBeNull();
