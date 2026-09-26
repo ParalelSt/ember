@@ -19,8 +19,7 @@ interface Props {
 export function QueueSheet({ open, onOpenChange }: Props) {
   const queue = usePlayerStore((s) => s.queue);
   const index = usePlayerStore((s) => s.index);
-  const context = usePlayerStore((s) => s.context);
-  const { playTrack } = usePlayer();
+  const { playAt } = usePlayer();
   const artFiles = useOfflineStore((s) => s.artFiles);
   // Downloaded tracks keep their art locally, so the queue still shows
   // thumbnails offline instead of a blank box from the dead remote URL.
@@ -79,7 +78,10 @@ export function QueueSheet({ open, onOpenChange }: Props) {
                     artworkFallback={null}
                     artworkSrc={artworkSrcFor(t)}
                     className={cn('hover:bg-sidebar-accent/60', outOfReach(t) && 'opacity-50')}
-                    onPlay={() => playTrack(t, queue, context)}
+                    // A jump inside the queue, not a new queue: playTrack
+                    // would collapse a search-started queue to one song,
+                    // turn shuffle off and move the loop point.
+                    onPlay={() => playAt(index + 1 + i)}
                   />
                 ))}
               </div>

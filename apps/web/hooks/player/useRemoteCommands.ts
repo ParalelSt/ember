@@ -16,12 +16,17 @@ import type { Track } from '@/types/track';
 export function useRemoteCommands({
   backendRef,
   backendReady,
+  engine = null,
   current,
   nextRef,
   prevRef,
 }: {
   backendRef: RefObject<AudioBackend | null>;
   backendReady: boolean;
+  /** Which engine is live. A change (the desktop engine swapped for web
+   *  audio) builds a new backend, which needs the commands wired again:
+   *  without it the media keys went dead for the rest of the session. */
+  engine?: string | null;
   current: Track | null;
   nextRef: RefObject<() => void>;
   prevRef: RefObject<() => void>;
@@ -48,7 +53,7 @@ export function useRemoteCommands({
       prev: () => prevRef.current(),
       seek: (sec) => b.seek(sec),
     });
-    // The three refs are stable ref objects, so backendReady is still the only
-    // thing that can re-register the commands, exactly as before.
-  }, [backendReady, backendRef, nextRef, prevRef]);
+    // The three refs are stable ref objects: only a backend being built
+    // (backendReady, then an engine swap) re-registers the commands.
+  }, [backendReady, engine, backendRef, nextRef, prevRef]);
 }

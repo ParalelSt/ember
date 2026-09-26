@@ -279,7 +279,10 @@ export function useExecuteRemoveFromPlaylist() {
           // Removing the playing track itself: index now points at the next
           // song and the player's id-effect advances to it automatically.
           if (index > queue.length - 1) index = queue.length - 1;
-          usePlayerStore.setState({ queue, index });
+          // The playlist part of the queue (where loop-all wraps) is one
+          // shorter when the song came from it, not from the radio tail.
+          const baseCount = removeIdx < s.baseCount ? s.baseCount - 1 : s.baseCount;
+          usePlayerStore.setState({ queue, index, baseCount });
         }
       }
       return { prev, id };
