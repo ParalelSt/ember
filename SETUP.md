@@ -56,8 +56,8 @@ python3 -m venv .venv
 *(Windows: `python -m venv .venv` then `.venv\Scripts\pip install -r requirements.txt`.)*
 
 **No ffmpeg install needed.** `imageio-ffmpeg` (in `requirements.txt`) ships a
-static ffmpeg binary; `player.py` (yt-dlp) and `transcribe.py` (tab
-generation) find it through `ffmpeg_path.py`, and every `./update.sh` installs
+static ffmpeg binary; `player.py` (yt-dlp) and `align.py` (lining tabs up)
+find it through `ffmpeg_path.py`, and every `./update.sh` installs
 the package if missing and links the binary to `.venv/bin/ffmpeg`. A system
 ffmpeg on `PATH` is only the fallback. If something says "ffmpeg is missing:
 run ./update.sh", that is the fix.
@@ -473,32 +473,19 @@ Spotify has changed the embed page's shape: file a bug report. The parser is
 `apps/web/lib/import/embed.ts`, tested against a saved page in
 `tests/fixtures/imports/`.
 
-### Generated guitar tabs (optional)
+### Lining tabs up with the recording (optional)
 
-The tabs button in the player can write a guitar tab from the song's own
-recording. It needs extra Python packages in `.venv`; without them the tab
-page greys out "Generate a tab" and says the server needs the optional tab
-tools, and everything else keeps working. To see what this host lacks:
-
-```bash
-.venv/bin/python transcribe.py --check    # {"ok": false, "missing": ["basic_pitch", ...]}
-```
-
-The app asks the same thing through `GET /api/tabs/tools` (kept for five
-minutes, so installing takes effect without a restart). To install:
+Ember lines a tab up with the song it plays (`align.py`: it listens to the
+recording and moves the tab's bars to where they actually sound). It needs
+librosa in `.venv` (which brings numpy, scipy and soundfile); without it
+every tab is still drawn, from the song's start plus the sync nudge, and the
+server logs one "tab alignment is off" warning. To install:
 
 ```bash
-.venv/bin/pip install 'setuptools<80'
-.venv/bin/pip install --no-deps basic-pitch
-.venv/bin/pip install onnxruntime librosa pretty_midi 'resampy<0.4.3' mir_eval scikit-learn typing-extensions
-# Optional but recommended: separates the guitar from the mix first. ~2GB.
-.venv/bin/pip install demucs
+.venv/bin/pip install librosa
 ```
 
-The first generation with Demucs downloads its model (~80MB). A four-minute
-song takes a few minutes of CPU with Demucs, seconds without; jobs run one
-at a time and the result is kept in `my_music/tabs/generated/`, so each
-song is only transcribed once. Delete a file there to regenerate it.
+Jobs run one at a time, about twenty seconds for a four-minute song.
 
 ### Keep yt-dlp and ytmusicapi updated  ← do this when things break
 

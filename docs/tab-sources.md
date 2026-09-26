@@ -2,6 +2,8 @@
 
 Plan only. Unreleased 0.3.3 work on `tabs-rebuild`. Paths are relative to `apps/web/` unless they start with `docs/`, `tests/` or the repo root.
 
+> **Later: generating is gone.** Tabs generated from the recording (`transcribe.py`, Basic Pitch) were removed as too rough. The chain is now file, pasted, found online (Songsterr, Ultimate Guitar); a song with none shows its Songsterr versions to open there, or the places to look by hand, and Add a file. Rows of kind `generated` stay in the store but are never listed, drawn or served. The plan below is kept as it was written.
+
 ## 1. Why
 
 Research verdict: no free legal API gives notes for popular songs. Songsterr's public API is metadata and a link-out; Ultimate Guitar has no API and forbids automation, so Ember never fetches UG. The user copies and pastes. (Superseded by the owner's later decision: Ember now fetches UG's free text tabs itself, once per song.) Today the chain is file, generated, Songsterr link (`lib/tabSources.ts:41-47`), and generating is the only easy path. This plan adds two cheap real sources and pushes generated to the end.
