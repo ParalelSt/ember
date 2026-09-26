@@ -7,6 +7,7 @@ import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { render, act } from '@testing-library/react';
 import { PlayerProvider, usePlayer } from './PlayerProvider';
 import { usePlayerStore } from '@/stores/usePlayerStore';
+import { useSettingsStore } from '@/stores/useSettingsStore';
 import { makeFakeBackend, makeTrack } from '@/test-utils/fakeBackend';
 import type { AudioBackendEvents } from '@/lib/playback/types';
 
@@ -14,7 +15,7 @@ vi.mock('@/lib/api', () => ({ api: {}, apiUrl: (u: string) => u }));
 vi.mock('@/lib/playback/detectShell', () => ({ detectShell: () => 'capacitor' }));
 
 const fake = makeFakeBackend();
-const native = vi.hoisted(() => ({ setQueue: vi.fn(), setLoop: vi.fn(), next: vi.fn(), prev: vi.fn() }));
+const native = vi.hoisted(() => ({ setQueue: vi.fn(), setLoop: vi.fn(), next: vi.fn(), prev: vi.fn(), setNormalize: vi.fn() }));
 let ev: AudioBackendEvents | null = null;
 vi.mock('@/lib/playback/androidBackend', () => ({
   androidPluginPresent: () => true,
@@ -125,5 +126,70 @@ describe('android: one setQueue per queue change', () => {
     native.setQueue.mockClear();
     act(() => { usePlayerStore.setState({ queue: [B, C], index: 1 }); });
     expect(native.setQueue.mock.calls).toEqual([[[B, C], 1, true]]);
+  });
+});
+
+describe('android: volume normalization', () => {
+  it('hands native the setting at startup and on every change, and no per-song gain', () => {
+    useSettingsStore.setState({ normalizeVolume: true });
+    render(<PlayerProvider><div /></PlayerProvider>);
+    expect(native.setNormalize).toHaveBeenLastCalledWith(true);
+    act(() => { useSettingsStore.setState({ normalizeVolume: false }); });
+    expect(native.setNormalize).toHaveBeenLastCalledWith(false);
+    // Native applies the gain per song itself; setVolume carries none.
+    for (const c of fake.setVolume.mock.calls) expect(c[1]?.normGain ?? 1).toBe(1);
+  });
+});
+
+describe('android: a queue native built by itself', () => {
+  it('native radio appended keeps the playlist it came from and the shuffle, with its way back', () => {
+    usePlayerStore.setState({
+      queue: [B, A], index: 1, context: { type: 'album', id: 'x' } as never,
+      shuffle: true, orderBackup: [A, B],
+    });
+    render(<PlayerProvider><div /></PlayerProvider>);
+    act(() => { ev!.onQueueReplaced!([B, A, C, D], 1); });
+    const st = usePlayerStore.getState();
+    expect(st.queue.map((t) => t.id)).toEqual([B.id, A.id, C.id, D.id]);
+    expect(st.context).toEqual({ type: 'album', id: 'x' });
+    expect(st.shuffle).toBe(true);
+    // Unshuffle still restores the order, radio at the end.
+    act(() => { usePlayerStore.getState().toggleShuffle(); });
+    expect(usePlayerStore.getState().queue.map((t) => t.id)).toEqual([A.id, B.id, C.id, D.id]);
+    expect(usePlayerStore.getState().index).toBe(0);
+  });
+
+  it('a new list from the car drops the playlist and the shuffle', () => {
+    usePlayerStore.setState({ queue: [B, A], index: 0, shuffle: true, orderBackup: [A, B], context: { type: 'album', id: 'x' } as never });
+    render(<PlayerProvider><div /></PlayerProvider>);
+    act(() => { ev!.onQueueReplaced!([C, D], 0); });
+    const st = usePlayerStore.getState();
+    expect(st.queue.map((t) => t.id)).toEqual([C.id, D.id]);
+    expect(st.context).toBeNull();
+    expect(st.shuffle).toBe(false);
+    expect(st.orderBackup).toBeNull();
+  });
+});
+
+describe('android: where a restored song starts', () => {
+  it('a cold start restoring the saved queue resumes where the listener was', () => {
+    usePlayerStore.setState({ queue: [A, B], index: 1, position: 95 });
+    render(<PlayerProvider><div /></PlayerProvider>);
+    // One send at a cold start (the opening render used to send it too).
+    expect(native.setQueue).toHaveBeenCalledTimes(1);
+    const [tracks, i, play, , startSec] = native.setQueue.mock.calls[0];
+    expect(tracks).toEqual([A, B]);
+    expect(i).toBe(1);
+    expect(play).toBe(false);
+    expect(startSec).toBe(95);
+  });
+
+  it('a song picked by hand starts from the top', () => {
+    usePlayerStore.setState({ queue: [A, B], index: 1, position: 95 });
+    render(<PlayerProvider><Grab /></PlayerProvider>);
+    native.setQueue.mockClear();
+    act(() => { player!.playTrack(C, [B, C, D], { type: 'album', id: 'x' } as never); });
+    expect(native.setQueue.mock.calls[0][4]).toBeUndefined();
+    expect(usePlayerStore.getState().position).toBe(0);
   });
 });

@@ -283,4 +283,20 @@ class QueueListenerTest {
         l.onMediaItemTransition(item("c", "/c"), Player.MEDIA_ITEM_TRANSITION_REASON_SEEK)
         assertEquals(listOf("a", "c"), played)
     }
+
+    // Online, but the connection gives out (a tunnel, a dead zone, the
+    // server out of reach): not the song's fault, so it is not skipped. The
+    // service's player retries for minutes first (PatientLoadErrorsTest);
+    // this plain player gives up fast, which is what reaches the listener.
+
+    @Test fun `online, a connection that gives out stays on the song instead of skipping it`() {
+        serve()
+        withOfflineRules(online = { true }, onPhone = emptySet())
+        start(listOf(unreachable("a"), song("b")))
+        runUntil(10_000) { errors >= 1 }
+        runUntil(300) { false }
+        assertEquals("still on the song", 0, player.currentMediaItemIndex)
+        assertFalse("b was never tried", synchronized(asked) { "b" in asked })
+        assertTrue("play stays on, for when the network is back", player.playWhenReady)
+    }
 }

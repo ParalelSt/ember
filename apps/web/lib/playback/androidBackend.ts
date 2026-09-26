@@ -1,7 +1,7 @@
 'use client';
 
 import { logger } from '@/lib/logger/client';
-import { nativeQueueContext } from '@/lib/autoCache/native';
+import { nativeQueueContext, type QueueOrigin } from '@/lib/autoCache/native';
 import type { Track } from '@/types/track';
 import type { LoopMode } from '@/stores/usePlayerStore';
 import type { OverlayEnd, OverlayHandle, OverlayResult } from '@/lib/pranks/overlayPlayer';
@@ -29,6 +29,8 @@ interface EmberPlayerPlugin {
     play: boolean;
     context?: { type: string } | null;
     baseCount?: number;
+    /** Where the song starts; older app builds ignore it (start at 0). */
+    startSec?: number;
   }): Promise<void>;
   play(): Promise<void>;
   pause(): Promise<void>;
@@ -38,7 +40,11 @@ interface EmberPlayerPlugin {
   /** Absent on app builds from before the loop button reached native. */
   setRepeat?(o: { mode: LoopMode }): Promise<void>;
   setVolume(o: { v: number }): Promise<void>;
+  /** Absent on app builds from before native volume normalization. */
+  setNormalize?(o: { enabled: boolean }): Promise<void>;
   getState(): Promise<NativeState>;
+  /** What native is playing from. Absent on app builds from before it. */
+  getQueue?(): Promise<{ tracks: Track[]; index: number }>;
   /** Only on app builds with the native prank overlay. */
   playOverlay?(o: NativeOverlayOptions & { id: string; url: string }): Promise<{ started: boolean; reason?: string }>;
   stopOverlay?(): Promise<void>;
@@ -162,9 +168,57 @@ export const createAndroidBackend: CreateAudioBackend = (events: AudioBackendEve
         events.onError();
       }) as (d: never) => void),
     );
+  }
+
+  /** A page that starts while native already plays (reopened after the car,
+   *  or after the app was swiped away while the music went on) must not push
+   *  its saved queue over what native is doing: that jumped the music back
+   *  to whatever this page last saw. So a paused hand-over (only a page
+   *  restoring its saved queue sends one before it has heard from native)
+   *  waits until native has said what it has. Native playing something:
+   *  this page takes native's queue instead. Native empty (a fresh start):
+   *  the saved queue goes over, paused, as before. A tap (play) never waits.
+   *  A bridge that fails to answer sends the saved queue. */
+  type Held = { tracks: Track[]; i: number; origin?: QueueOrigin; startSec?: number };
+  let settled = !p;
+  let held: Held | null = null;
+  const send = (h: Held, play: boolean) => {
+    if (!p) return;
+    const at = h.startSec && h.startSec > 0 ? { startSec: h.startSec } : {};
+    call(p.setQueue({ tracks: h.tracks, index: h.i, play, ...nativeQueueContext(h.origin), ...at }));
+  };
+  const settle = (s: NativeState | null, q: { tracks: Track[]; index: number } | null) => {
+    if (settled) return;
+    settled = true;
+    const h = held;
+    held = null;
+    const nativeHas = !!s && s.index >= 0 && !!s.trackId;
+    if (h && nativeHas) {
+      const same = (a: Track[], b: Track[]) => a.length === b.length && a.every((t, k) => t.id === b[k]?.id);
+      if (q && q.tracks.length > 0 && !same(q.tracks, h.tracks)) {
+        index = q.index;
+        events.onQueueReplaced?.(q.tracks, q.index);
+      } else if (!q && h.tracks[s!.index]?.id !== s!.trackId) {
+        // An app build that cannot say its queue: the saved one it is.
+        send(h, false);
+      }
+    } else if (h) {
+      send(h, false);
+    }
+    if (s) onState(s);
+  };
+  // No time limit: a slow answer (the player service still binding on a
+  // busy cold start) is exactly when native may already be playing, and
+  // guessing "empty" then pushed the saved queue over it. Only a failed
+  // call means there is nothing to protect.
+  if (p) {
     // Catch up on whatever native is already doing: the UI may have been
     // re-created while the car kept playing.
-    void p.getState().then(onState).catch(() => {});
+    void (async () => {
+      const s = await p.getState();
+      const q = typeof p.getQueue === 'function' ? await p.getQueue().catch(() => null) : null;
+      settle(s, q);
+    })().catch(() => settle(null, null));
   }
 
   const overlay: Pick<AudioBackend, 'playOverlay' | 'stopOverlay'> = nativeOverlay
@@ -198,9 +252,15 @@ export const createAndroidBackend: CreateAudioBackend = (events: AudioBackendEve
     // Single-track load is not how this backend works; the provider calls
     // setQueue for queue-owning backends. Kept as a harmless no-op.
     load() {},
-    setQueue(tracks, i, play, origin) {
+    setQueue(tracks, i, play, origin, startSec) {
       if (!p) return;
-      call(p.setQueue({ tracks, index: i, play, ...nativeQueueContext(origin) }));
+      if (!settled && !play) {
+        held = { tracks, i, origin, startSec };
+        return;
+      }
+      // Anything the listener did replaces a saved queue still waiting.
+      held = null;
+      send({ tracks, i, origin, startSec }, play);
     },
     play() {
       if (p) call(p.play());
@@ -229,6 +289,9 @@ export const createAndroidBackend: CreateAudioBackend = (events: AudioBackendEve
     },
     setVolume(v) {
       if (p) call(p.setVolume({ v: Math.max(0, Math.min(1, v)) }));
+    },
+    setNormalize(enabled) {
+      if (p?.setNormalize) call(p.setNormalize({ enabled }));
     },
     setMetadata() {
       /* Media3 draws the notification from the queue itself */

@@ -79,8 +79,13 @@ export interface AudioBackend {
    *  (lib/playback/normalization; 1 = unchanged). Applied after the volume
    *  curve and never past full volume outside party mode. The Android engine
    *  ignores it: it moves between songs natively, where a per-song level set
-   *  from here would land on the wrong song. */
+   *  from here would land on the wrong song. It normalizes by itself instead
+   *  (setNormalize). */
   setVolume(v: number, opts?: { gain?: number; normGain?: number }): void;
+  /** Queue-owning backends only (Android): volume normalization on or off.
+   *  The engine looks up and applies each song's gain itself, as it moves
+   *  between songs. Absent (or a no-op on an older app build) elsewhere. */
+  setNormalize?(enabled: boolean): void;
   /** Lock-screen / notification metadata. web → MediaMetadata; native → OS.
    *  `localArtSrc` overrides `track.artworkUrl` when a downloaded copy has its
    *  own local art (already convertFileSrc-resolved by the caller). */
@@ -102,8 +107,10 @@ export interface AudioBackend {
    *  position during this window (the element reports transient values). */
   isTransitioning(): boolean;
   /** Queue-owning backends only. Hands the whole queue over; the backend diffs
-   *  it against what it has so an append never restarts playback. */
-  setQueue?(tracks: Track[], index: number, play: boolean, origin?: QueueOrigin): void;
+   *  it against what it has so an append never restarts playback.
+   *  `startSec` is where a song that has to start does start (a cold start
+   *  restoring the saved queue); a song already playing keeps its place. */
+  setQueue?(tracks: Track[], index: number, play: boolean, origin?: QueueOrigin, startSec?: number): void;
   /** Queue-owning backends only: the native player decides what is next. */
   next?(): void;
   prev?(): void;

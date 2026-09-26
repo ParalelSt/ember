@@ -47,11 +47,14 @@ class EmberPlaybackService : MediaLibraryService() {
         /** Where the queue came from (`contextType`, `baseCount`), for
          *  loop-all's wrap point in the prefetch window. */
         const val COMMAND_QUEUE_CONTEXT = "ember.queueContext"
+        /** Volume normalization on or off (`enabled`), the web app's setting. */
+        const val COMMAND_NORMALIZE = "ember.normalize"
         /** Session extras the plugin mirrors into its state. */
         const val EXTRA_CACHED_IDS = "cachedIds"
         const val EXTRA_OFFLINE_STALLED = "offlineStalled"
         const val EXTRA_OFFLINE = "offline"
         private const val PREFS = "ember.autoCache"
+        private const val NORMALIZE_PREFS = "ember.normalize"
         private const val TICK_MS = 5_000L
         /** Buffered this far ahead, the song is not waiting on the network. */
         private const val SETTLED_AHEAD_MS = 30_000L
@@ -94,20 +97,33 @@ class EmberPlaybackService : MediaLibraryService() {
         /** The music player: streams (through the auto cache, see MediaCache),
          *  or the downloaded copy when there is one (OfflineAudio). Its own
          *  function so tests build the same one. */
-        fun buildPlayer(context: Context, streams: DataSource.Factory, offline: OfflineStore): ExoPlayer =
+        fun buildPlayer(context: Context, streams: DataSource.Factory, offline: OfflineStore, online: () -> Boolean = { true }): ExoPlayer =
             ExoPlayer.Builder(context)
-                .setMediaSourceFactory(DefaultMediaSourceFactory(context).setDataSourceFactory(OfflineAudio.dataSourceFactory(context, streams, offline)))
+                .setMediaSourceFactory(
+                    DefaultMediaSourceFactory(context)
+                        .setDataSourceFactory(OfflineAudio.dataSourceFactory(context, streams, offline))
+                        .setLoadErrorHandlingPolicy(PatientLoadErrors(online)),
+                )
                 .setAudioAttributes(AudioAttributes.Builder().setUsage(C.USAGE_MEDIA).setContentType(C.AUDIO_CONTENT_TYPE_MUSIC).build(), true)
                 .setHandleAudioBecomingNoisy(true)
+                // Screen off, Android lets the CPU and Wi-Fi sleep; the audio
+                // output alone does not keep the stream's download going,
+                // and the song ran dry mid-way. Held only while it plays.
+                .setWakeMode(C.WAKE_MODE_NETWORK)
                 .build()
     }
 
     private lateinit var player: ExoPlayer
+    private lateinit var normalizer: Normalizer
+    private lateinit var savedQueue: SavedQueue
     private lateinit var session: MediaLibrarySession
     lateinit var api: ServerApi
     private lateinit var tree: BrowseTree
     private lateinit var overlay: PrankOverlay
     private val io = Executors.newSingleThreadExecutor()
+    /** Loudness lookups, apart from `io`: a slow browse list must not hold
+     *  back the next song's level (and the other way round). */
+    private val gainIo = Executors.newSingleThreadExecutor()
     /** Prefetch downloads and cache clearing, one at a time. */
     private val cacheIo = Executors.newSingleThreadExecutor()
     private val handler = Handler(Looper.getMainLooper())
@@ -132,7 +148,8 @@ class EmberPlaybackService : MediaLibraryService() {
         cache = MediaCache.shared(this)
         offline = OfflineStore.shared(this)
         val streams = MediaCache.dataSourceFactory(cache, dataSource)
-        player = buildPlayer(this, streams, offline)
+        // Asked live on each failed load; the network watch starts just below.
+        player = buildPlayer(this, streams, offline) { !::net.isInitialized || net.current().online }
         player.addListener(QueueListener(
             player,
             recordPlay = { track -> io.execute { runCatching { api.recordPlay(track) }.onFailure { Log.w(TAG, "history: ${it.message}") } } },
@@ -141,8 +158,17 @@ class EmberPlaybackService : MediaLibraryService() {
             offlineHandles = { offlinePlayback.handles(it) },
             offlineSkips = { offlinePlayback.skips(it) },
         ))
+        savedQueue = SavedQueue(java.io.File(filesDir, "native-queue.json"))
+        player.addListener(savedQueue.Saver(player, io))
         overlay = PrankOverlay(this, player, dataSource, baseUrl)
-        session = MediaLibrarySession.Builder(this, player, Callback()).build()
+        normalizer = Normalizer(player, GainStore(getSharedPreferences(NORMALIZE_PREFS, MODE_PRIVATE)), api::trackGain, gainIo) { handler.post(it) }
+        normalizer.setEnabled(getSharedPreferences(NORMALIZE_PREFS, MODE_PRIVATE).getBoolean("enabled", true))
+        // The session (the app, the notification, the car) sets the person's
+        // level; the player underneath adds the song's gain (Normalizer).
+        session = MediaLibrarySession.Builder(this, LevelPlayer(player, normalizer), Callback())
+            // Covers on the Ember server need the cookie; others must not get it.
+            .setBitmapLoader(ArtworkSources.bitmapLoader(this, baseUrl, dataSource, OkHttpDataSource.Factory(okhttp3.OkHttpClient())))
+            .build()
         startAutoCache(streams)
         // Shuffle and repeat as buttons on the now-playing screen (car + notification).
         session.setCustomLayout(ImmutableList.of(
@@ -342,6 +368,7 @@ class EmberPlaybackService : MediaLibraryService() {
         session.release()
         player.release()
         io.shutdown()
+        gainIo.shutdown()
         super.onDestroy()
     }
 
@@ -361,6 +388,7 @@ class EmberPlaybackService : MediaLibraryService() {
                         add(SessionCommand(COMMAND_CACHE_STATS, Bundle.EMPTY))
                         add(SessionCommand(COMMAND_CACHE_CLEAR, Bundle.EMPTY))
                         add(SessionCommand(COMMAND_QUEUE_CONTEXT, Bundle.EMPTY))
+                        add(SessionCommand(COMMAND_NORMALIZE, Bundle.EMPTY))
                     }
                 }
                 .build()
@@ -386,6 +414,11 @@ class EmberPlaybackService : MediaLibraryService() {
                 }
                 COMMAND_CACHE_STATS -> return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS, cacheStats()))
                 COMMAND_CACHE_CLEAR -> return clearCache()
+                COMMAND_NORMALIZE -> {
+                    val on = args.getBoolean("enabled", true)
+                    getSharedPreferences(NORMALIZE_PREFS, MODE_PRIVATE).edit().putBoolean("enabled", on).apply()
+                    normalizer.setEnabled(on)
+                }
                 COMMAND_QUEUE_CONTEXT -> {
                     queueContextType = args.getString("contextType")
                     queueBaseCount = args.getInt("baseCount", 0).coerceAtLeast(0)
@@ -409,6 +442,20 @@ class EmberPlaybackService : MediaLibraryService() {
                 onStarted = { future.set(SessionResult(SessionResult.RESULT_SUCCESS, it)) },
                 onEnded = { session.sendCustomCommand(controller, SessionCommand(OverlayEvents.COMMAND_ENDED, Bundle.EMPTY), it) },
             )
+            return future
+        }
+
+        /** Play with nothing loaded: Android had closed the app, and the car,
+         *  a headset or the steering wheel wants the music back. The last
+         *  queue picks up where it was (SavedQueue); with none saved, play
+         *  does nothing, as before. */
+        override fun onPlaybackResumption(mediaSession: MediaSession, controller: MediaSession.ControllerInfo): ListenableFuture<MediaSession.MediaItemsWithStartPosition> {
+            val future = com.google.common.util.concurrent.SettableFuture.create<MediaSession.MediaItemsWithStartPosition>()
+            io.execute {
+                val saved = runCatching { savedQueue.resume(api.baseUrl) }.getOrNull()
+                Log.i(TAG, "resume for ${controller.packageName}: ${saved?.mediaItems?.size ?: 0} item(s)")
+                if (saved != null) future.set(saved) else future.setException(UnsupportedOperationException("no saved queue"))
+            }
             return future
         }
 

@@ -41,6 +41,42 @@ internal fun queueContextArgs(data: JSONObject): Bundle = Bundle().apply {
     putInt("baseCount", data.optInt("baseCount", 0).coerceAtLeast(0))
 }
 
+/** `{ index, tracks }`: the native queue as the web app holds it. Both the
+ *  `queue` event and getQueue send this. */
+internal fun queueJs(items: List<MediaItem>, index: Int): JSObject = JSObject().apply {
+    put("index", if (items.isEmpty()) -1 else index)
+    put("tracks", JSArray(TrackItems.toJson(items).toString()))
+}
+
+/** Which native queue changes are news to the web app. The app's own
+ *  setQueue comes back as timeline events (several while QueueSync applies
+ *  one, then the service's confirmation); those are not. Anything else is:
+ *  a tap in the car, or native radio, however soon after the app's last
+ *  send. A time window used to decide this, and it swallowed native radio
+ *  that landed within 1.5 s of a tap, which left the app one queue behind. */
+internal class QueueEcho {
+    /** Ids of the queue the web app has: the one it last sent, or the one it
+     *  was last told about. */
+    private var known: List<String>? = null
+    /** True while QueueSync applies the app's queue: the steps in between
+     *  are neither the old queue nor the new one. */
+    var applying = false
+
+    fun sent(ids: List<String>) { known = ids }
+
+    /** True when [ids] must be reported (and it is then what the app has). */
+    fun isNews(ids: List<String>): Boolean {
+        if (applying || ids == known) return false
+        known = ids
+        return true
+    }
+}
+
+/** The app's Previous button, as everywhere else in Ember (the web player,
+ *  the notification, the car): past the first 3 s it starts the song over,
+ *  before that it goes to the song before. It used to always go back a song. */
+internal fun previous(player: Player) = player.seekToPrevious()
+
 /** The web UI's handle on the native player. Commands in, state out.
  *
  *  Everything goes through a Media3 MediaController, the same door the car
@@ -50,26 +86,35 @@ class EmberPlayerPlugin : Plugin() {
     private var controller: MediaController? = null
     private val main = Handler(Looper.getMainLooper())
     private val pending = ArrayList<(MediaController) -> Unit>()
-    /** Set while a queue change came from JS, so the resulting timeline event
-     *  is not reported back as "the native side built a queue". */
-    private var queueFromJs = 0L
+    /** Keeps the app's own queue changes from being reported back to it. */
+    private val echo = QueueEcho()
 
     override fun load() {
         val token = SessionToken(context, ComponentName(context, EmberPlaybackService::class.java))
         val future = MediaController.Builder(context, token).setListener(sessionEvents).buildAsync()
+        // On the main thread, like every read of `controller` and `pending`.
         future.addListener({
             val c = runCatching { future.get() }.getOrNull() ?: return@addListener
             controller = c
             c.addListener(listener)
             pending.forEach { it(c) }; pending.clear()
             tick()
-        }, MoreExecutors.directExecutor())
+        }, main::post)
     }
 
+    /** Plugin methods run on Capacitor's own thread. Checking `controller`
+     *  there raced the connection landing on the main thread: a call queued
+     *  just after `pending` was drained (the startup setQueue, getState) was
+     *  never run and its promise never settled. Deciding on the main thread
+     *  keeps the two in order. */
     private fun withController(fn: (MediaController) -> Unit) {
-        val c = controller
-        if (c != null) main.post { fn(c) } else pending.add(fn)
+        main.post {
+            val c = controller
+            if (c != null) fn(c) else pending.add(fn)
+        }
     }
+
+    private fun items(c: MediaController): List<MediaItem> = (0 until c.mediaItemCount).map { c.getMediaItemAt(it) }
 
     private fun state(c: MediaController): JSObject = JSObject().apply {
         put("playing", c.isPlaying || (c.playWhenReady && c.playbackState == Player.STATE_BUFFERING))
@@ -99,13 +144,10 @@ class EmberPlayerPlugin : Plugin() {
         }
         override fun onTimelineChanged(timeline: Timeline, reason: Int) {
             if (reason != Player.TIMELINE_CHANGE_REASON_PLAYLIST_CHANGED) return
-            if (System.currentTimeMillis() - queueFromJs < 1500) return
             val c = controller ?: return
-            val items = (0 until c.mediaItemCount).map { c.getMediaItemAt(it) }
-            notifyListeners("queue", JSObject().apply {
-                put("index", c.currentMediaItemIndex)
-                put("tracks", JSArray(TrackItems.toJson(items).toString()))
-            })
+            val items = items(c)
+            if (!echo.isNews(items.map { it.mediaId })) return
+            notifyListeners("queue", queueJs(items, c.currentMediaItemIndex))
         }
     }
 
@@ -135,16 +177,19 @@ class EmberPlayerPlugin : Plugin() {
         val tracks = call.getArray("tracks") ?: JSArray()
         val index = call.getInt("index") ?: 0
         val play = call.getBoolean("play") ?: true
+        // Optional (newer web builds): where the song starts, in seconds.
+        val startMs = ((call.getDouble("startSec") ?: 0.0).coerceAtLeast(0.0) * 1000).toLong()
         val items = (0 until tracks.length()).map { TrackItems.toMediaItem(tracks.getJSONObject(it), ServerConfig.baseUrl(context)) }
         // Optional (newer web builds): where the queue came from, so the
         // native prefetch window wraps loop-all where the web player does.
         val queueContext = queueContextArgs(call.data)
         withController { c ->
-            queueFromJs = System.currentTimeMillis()
+            echo.sent(items.map { it.mediaId })
             // Sent first: the service applies it before the items arrive.
             c.sendCustomCommand(SessionCommand(EmberPlaybackService.COMMAND_QUEUE_CONTEXT, Bundle.EMPTY), queueContext)
             // Never restarts the song that plays when it is still the one asked for.
-            QueueSync.apply(c, items, index)
+            echo.applying = true
+            try { QueueSync.apply(c, items, index, startMs) } finally { echo.applying = false }
             if (play) c.play()
             call.resolve()
         }
@@ -152,9 +197,18 @@ class EmberPlayerPlugin : Plugin() {
     @PluginMethod fun play(call: PluginCall) = withController { it.play(); call.resolve() }
     @PluginMethod fun pause(call: PluginCall) = withController { it.pause(); call.resolve() }
     @PluginMethod fun next(call: PluginCall) = withController { it.seekToNextMediaItem(); call.resolve() }
-    @PluginMethod fun prev(call: PluginCall) = withController { it.seekToPreviousMediaItem(); call.resolve() }
+    @PluginMethod fun prev(call: PluginCall) = withController { previous(it); call.resolve() }
     @PluginMethod fun seek(call: PluginCall) = withController { it.seekTo(((call.getDouble("sec") ?: 0.0) * 1000).toLong()); call.resolve() }
     @PluginMethod fun setVolume(call: PluginCall) = withController { it.volume = (call.getDouble("v") ?: 1.0).toFloat().coerceIn(0f, 1f); call.resolve() }
+    /** Volume normalization on or off (the web app's setting). Native
+     *  applies each song's gain itself as it moves between songs. */
+    @PluginMethod fun setNormalize(call: PluginCall) {
+        val args = Bundle().apply { putBoolean("enabled", call.getBoolean("enabled") ?: true) }
+        withController { c ->
+            c.sendCustomCommand(SessionCommand(EmberPlaybackService.COMMAND_NORMALIZE, Bundle.EMPTY), args)
+            call.resolve()
+        }
+    }
     /** The loop button: "off", "all" or "one". Native repeats by itself, so
      *  loop-one and loop-all only work once it has been told. */
     @PluginMethod fun setRepeat(call: PluginCall) {
@@ -162,6 +216,15 @@ class EmberPlayerPlugin : Plugin() {
         withController { it.repeatMode = mode; call.resolve() }
     }
     @PluginMethod fun getState(call: PluginCall) = withController { call.resolve(state(it)) }
+    /** `{ index, tracks }`: what native is playing from. A page that starts
+     *  while the music already plays (reopened after the car, or after the
+     *  app was swiped away) takes this instead of pushing its saved queue
+     *  over it. */
+    @PluginMethod fun getQueue(call: PluginCall) = withController { c ->
+        val items = items(c)
+        echo.sent(items.map { it.mediaId })
+        call.resolve(queueJs(items, c.currentMediaItemIndex))
+    }
 
     /** A prank sound over the music. Resolves `{ started, reason? }` once it
      *  is actually heard (or never will be); its end arrives as the `overlay`

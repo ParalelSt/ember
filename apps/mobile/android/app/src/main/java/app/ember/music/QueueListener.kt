@@ -29,6 +29,12 @@ class QueueListener(
         /** Songs that fail back to back before the player gives up, so a
          *  queue where nothing plays (no network, signed out) cannot spin. */
         const val MAX_ERRORS_IN_A_ROW = 5
+        /** The connection gave out, not the song: the phone could not reach
+         *  the server at all, or it stopped answering. */
+        val TRANSPORT_ERRORS = setOf(
+            PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED,
+            PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT,
+        )
     }
 
     private var errorsInARow = 0
@@ -72,6 +78,17 @@ class QueueListener(
         // No connection: the offline rules pick the next song on the phone
         // (or pause). Online, a broken song is skipped here, 404s included.
         if (offlineHandles(error)) return
+        // The phone says it is online, but the connection gave out: a weak
+        // signal (a tunnel, a dead zone, which does not make Android drop
+        // the network) or the server out of reach. That is not the song's
+        // fault, and skipping burned through the queue, a song per outage,
+        // then stopped. The player has already kept trying for minutes
+        // (PatientLoadErrors); it stops on this song, and play, or the
+        // network coming back (OfflinePlayback.onNetwork), picks it up.
+        if (error.errorCode in TRANSPORT_ERRORS) {
+            Log.w(EmberPlaybackService.TAG, "connection gave out on $failed, staying on it: ${error.errorCodeName}")
+            return
+        }
         errorsInARow++
         if (errorsInARow >= MAX_ERRORS_IN_A_ROW || !player.hasNextMediaItem()) {
             Log.w(EmberPlaybackService.TAG, "gave up after $errorsInARow failed song(s), last $failed: ${error.errorCodeName}")

@@ -185,7 +185,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
   // Volume normalization: the current song's measured gain as a multiplier
   // for setVolume. Not on the native Android engine, which moves between
-  // songs by itself (see AudioBackend.setVolume).
+  // songs by itself and applies the gain there (setNormalize, below).
   const normalizeVolume = useSettingsStore((s) => s.normalizeVolume);
   const normalizeOn = normalizeVolume && initialKind !== null && initialKind !== 'android';
   const trackGainDb = useTrackGain(current?.id, queue[index + 1]?.id, normalizeOn);
@@ -232,10 +232,26 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         nativeChangeAt.current = Date.now();
         const at = Math.max(0, Math.min(i, tracks.length - 1));
         loadedTrackRef.current = tracks[at]?.id ?? null;
+        const st = usePlayerStore.getState();
+        // Native radio only adds songs after ours: the playlist this came
+        // from and the shuffle (with its way back) still hold.
+        const appended = tracks.length > st.queue.length && st.queue.every((t, k) => t.id === tracks[k]?.id);
+        if (appended) {
+          const added = tracks.slice(st.queue.length);
+          usePlayerStore.setState({
+            queue: tracks,
+            index: at,
+            orderBackup: st.orderBackup ? [...st.orderBackup, ...added] : null,
+          });
+          return;
+        }
+        // A new list (a tap in the car): not this page's shuffle either, or
+        // the shuffle button would show on with nothing to undo.
         usePlayerStore.setState({
           queue: tracks,
           index: at,
           context: null,
+          shuffle: false,
           orderBackup: null,
         });
       },
@@ -521,14 +537,20 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       let idx = queue.findIndex((t) => t.id === track.id);
       if (idx < 0) { queue = [track]; idx = 0; }
       loadedTrackRef.current = track.id;
-      // Native starts the item it is given from the top, so hand the stored
-      // playhead to THIS track at 0: nothing later can resume it at the
-      // previous song's timestamp (see usePositionPersistence).
-      positions.requestStartAt(0);
-      positions.startAt(track.id);
+      // A song picked or moved to starts from the top: hand the stored
+      // playhead to THIS track at 0, so nothing later can resume it at the
+      // previous song's timestamp (see usePositionPersistence). The saved
+      // queue restored at a cold start (autoplay off) resumes where the
+      // listener was instead, as on web and desktop; it used to go back to
+      // 0:00 whenever Android had closed the app. Native only applies it
+      // when it has to start the song (not when it is already playing it).
+      if (autoplay) positions.requestStartAt(0);
+      const startSec = positions.startAt(track.id);
       setDuration(chooseDuration(track.durationSec ?? 0, null));
       sentQueueRef.current = queue;
-      if (next) b.setQueue(queue, idx, autoplay, { context: next.context, baseCount: next.baseCount });
+      const origin = next ? { context: next.context, baseCount: next.baseCount } : undefined;
+      if (startSec > 0) b.setQueue(queue, idx, autoplay, origin, startSec);
+      else if (origin) b.setQueue(queue, idx, autoplay, origin);
       else b.setQueue(queue, idx, autoplay);
       return;
     }
@@ -750,13 +772,21 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   // that arrived from native are flagged and skipped, or they would bounce,
   // and so is a queue playTrack has just handed over itself.
   useEffect(() => {
-    if (backendKindRef.current !== 'android' || fromNative()) return;
+    // Not before the first load: the page's opening render would send the
+    // saved queue here, and then the cold-start load sends it again.
+    if (!backendReady || backendKindRef.current !== 'android' || fromNative()) return;
     const b = backendRef.current;
     if (!b?.setQueue || !current || queue === sentQueueRef.current) return;
     sentQueueRef.current = queue;
     b.setQueue(queue, index, usePlayerStore.getState().isPlaying);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [queue]);
+
+  // The native Android player normalizes by itself (it moves between songs
+  // without this page), so it only needs the setting.
+  useEffect(() => {
+    backendRef.current?.setNormalize?.(normalizeVolume);
+  }, [backendReady, initialKind, normalizeVolume]);
 
   // The native Android player repeats (or stops at the end) by itself, so
   // it has to be told the loop mode. Other backends have no setLoop: the

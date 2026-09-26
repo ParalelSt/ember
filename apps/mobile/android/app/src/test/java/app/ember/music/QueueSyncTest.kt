@@ -118,4 +118,18 @@ class QueueSyncTest {
         assertEquals(1, player.currentMediaItemIndex)
         assertEquals(0L, player.currentPosition)
     }
+
+    /** The app restoring its saved queue after the process died: the song
+     *  resumes where the listener was, not from 0:00. */
+    @Test fun `a song that has to start can start where the listener was`() {
+        QueueSync.apply(player, items("abc"), 1, startMs = 95_000)
+        assertEquals(1, player.currentMediaItemIndex)
+        assertEquals(95_000L, player.currentPosition)
+    }
+
+    @Test fun `a start position never moves a song that keeps playing`() {
+        playing("ab", 1)
+        QueueSync.apply(player, items("abcd"), 1, startMs = 95_000)
+        assertKeptPlaying("abcd", 1)
+    }
 }
