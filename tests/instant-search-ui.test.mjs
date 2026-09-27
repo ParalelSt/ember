@@ -545,7 +545,8 @@ check('the phone sheet fills the 390px viewport edge to edge',
 
 // Option A: a back arrow left of the box closes; the X inside only clears,
 // shows only with text, and is the only X on the sheet.
-const sheetXs = () => page.locator('[data-slot="dialog-content"] svg.lucide-x').count();
+// Counted in the box itself: recents rows have their own remove X.
+const sheetXs = () => input.locator('xpath=..').locator('svg.lucide-x').count();
 check('the phone sheet has its back arrow',
   await page.getByRole('button', { name: 'Close search' }).first().isVisible()
     && (await page.locator('[data-slot="dialog-content"] button[aria-label="Close search"] svg.lucide-chevron-left').count()) === 1);

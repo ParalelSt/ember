@@ -147,7 +147,9 @@ export function SearchOverlay({
         aria-label="Search"
         className={cn(
           'pl-11 rounded-full bg-card border-0',
-          isSheet ? 'h-11 pr-11 text-base' : cn('h-12', hasText ? 'pr-20' : 'pr-12'),
+          // The sheet's box is the only thing on screen to type in: the
+          // caret is focus enough, no ring (as in the picked design).
+          isSheet ? 'h-11 pr-11 text-base focus-visible:ring-0' : cn('h-12', hasText ? 'pr-20' : 'pr-12'),
         )}
       />
       {clearButton}
