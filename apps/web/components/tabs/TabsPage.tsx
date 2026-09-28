@@ -75,6 +75,7 @@ import {
 } from '@/lib/tabOffset';
 import { tabSearchLinks, type TabSearchLink } from '@/lib/tabSearchLinks';
 import { openExternal } from '@/lib/openExternal';
+import { leavePage } from '@/lib/inAppHistory';
 import { announceOpen } from '@/components/ExternalLinks';
 
 const TAB_ACCEPT = '.gp,.gp3,.gp4,.gp5,.gpx,.musicxml,.xml,.mxl';
@@ -136,10 +137,9 @@ export function TabsPage({ trackId }: { trackId: string }) {
     if (next) router.replace(next);
   }, [currentId, trackId, router]);
 
-  const onBack = () => {
-    if (window.history.length > 1) router.back();
-    else router.push('/');
-  };
+  // Back to the page before when it was Ember's, else home: the same as a
+  // second click on the player bar's tabs button (lib/inAppHistory).
+  const onBack = () => leavePage(router);
 
   if (!tabsEnabled) {
     return (
