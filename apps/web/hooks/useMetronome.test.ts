@@ -5,7 +5,7 @@ import { steadyBeats } from '@/lib/tabTimeline';
 
 /** A fake AudioContext whose clock is the (fake) wall clock, recording
  *  when each oscillator is told to start. */
-const audio = vi.hoisted(() => ({ starts: [] as { at: number; freq: number }[], made: 0 }));
+const audio = vi.hoisted(() => ({ starts: [] as { at: number; freq: number }[], made: 0, closed: 0 }));
 
 class FakeAudioContext {
   state = 'running';
@@ -17,6 +17,11 @@ class FakeAudioContext {
     return performance.now() / 1000;
   }
   resume() {
+    return Promise.resolve();
+  }
+  close() {
+    this.state = 'closed';
+    audio.closed++;
     return Promise.resolve();
   }
   createOscillator() {
@@ -37,6 +42,7 @@ class FakeAudioContext {
 beforeEach(() => {
   vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval', 'setTimeout', 'clearTimeout', 'performance', 'Date'] });
   audio.starts = [];
+  audio.closed = 0;
   (window as unknown as { AudioContext: unknown }).AudioContext = FakeAudioContext;
 });
 afterEach(() => {
@@ -102,5 +108,27 @@ describe('useMetronome', () => {
     run({ beats: () => { throw new Error('no tick lookup'); } });
     expect(() => vi.advanceTimersByTime(200)).not.toThrow();
     expect(audio.starts).toEqual([]);
+  });
+
+  it('the page closing stops the clicks and closes the AudioContext', () => {
+    const { unmount } = run({ position: 9.9 });
+    vi.advanceTimersByTime(300);
+    expect(audio.starts.length).toBeGreaterThan(0);
+    const made = audio.made;
+    unmount();
+    expect(audio.closed).toBe(1);
+    const before = audio.starts.length;
+    vi.advanceTimersByTime(5000);
+    expect(audio.starts.length).toBe(before);
+    expect(vi.getTimerCount()).toBe(0);
+    // Turned on again later, a fresh context is made on that gesture.
+    run({ position: 9.9 });
+    expect(audio.made).toBe(made + 1);
+  });
+
+  it('never turned on: nothing is left running when the page closes', () => {
+    const { unmount } = run({ on: false });
+    unmount();
+    expect(vi.getTimerCount()).toBe(0);
   });
 });
