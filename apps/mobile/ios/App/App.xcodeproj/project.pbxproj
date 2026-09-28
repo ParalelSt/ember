@@ -8,6 +8,10 @@
 
 /* Begin PBXBuildFile section */
 		08E975C8A5D06F0A08801E58 /* EmberViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A90818C98E416CA18E7BF59 /* EmberViewController.swift */; };
+		0E9F918A74C5AC2D5F1AFA34 /* AudioRoute.swift in Sources */ = {isa = PBXBuildFile; fileRef = 07D6AA1950DE0E612EE93589 /* AudioRoute.swift */; };
+		A46F83B8F793FD80AC818ECE /* AudioRoute.swift in Sources */ = {isa = PBXBuildFile; fileRef = 07D6AA1950DE0E612EE93589 /* AudioRoute.swift */; };
+		49BB7847A6F3E34850928566 /* EmberAudioRoutePlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 46F944E69708469E0DDAB724 /* EmberAudioRoutePlugin.swift */; };
+		C6A4D3947722C7F081F89281 /* AudioRouteTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C15BB424A55A6300DDB37B6E /* AudioRouteTests.swift */; };
 		0C6342BC6C79B32A100509BC /* EmberThemePlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 548069038F6BC4DA53CAD38C /* EmberThemePlugin.swift */; };
 		16C9078868E885590F48B87D /* ShellTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 63472E279E42789B00B334E6 /* ShellTheme.swift */; };
 		2FAD9763203C412B000D30F8 /* config.xml in Resources */ = {isa = PBXBuildFile; fileRef = 2FAD9762203C412B000D30F8 /* config.xml */; };
@@ -52,6 +56,9 @@
 		504EC3111FED79650016851F /* Base */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; name = Base; path = Base.lproj/LaunchScreen.storyboard; sourceTree = "<group>"; };
 		504EC3131FED79650016851F /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		50B271D01FEDC1A000F3C39B /* public */ = {isa = PBXFileReference; lastKnownFileType = folder; path = public; sourceTree = "<group>"; };
+		07D6AA1950DE0E612EE93589 /* AudioRoute.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = AudioRoute.swift; sourceTree = "<group>"; };
+		46F944E69708469E0DDAB724 /* EmberAudioRoutePlugin.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = EmberAudioRoutePlugin.swift; sourceTree = "<group>"; };
+		C15BB424A55A6300DDB37B6E /* AudioRouteTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = AudioRouteTests.swift; sourceTree = "<group>"; };
 		548069038F6BC4DA53CAD38C /* EmberThemePlugin.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = EmberThemePlugin.swift; sourceTree = "<group>"; };
 		63472E279E42789B00B334E6 /* ShellTheme.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = ShellTheme.swift; sourceTree = "<group>"; };
 		AF277DCFFFF123FFC6DF26C7 /* Pods_App.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_App.framework; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -124,6 +131,8 @@
 				3E9C912BE26A11862D6DF445 /* AudioSession.swift */,
 				63472E279E42789B00B334E6 /* ShellTheme.swift */,
 				548069038F6BC4DA53CAD38C /* EmberThemePlugin.swift */,
+				07D6AA1950DE0E612EE93589 /* AudioRoute.swift */,
+				46F944E69708469E0DDAB724 /* EmberAudioRoutePlugin.swift */,
 				0A90818C98E416CA18E7BF59 /* EmberViewController.swift */,
 			);
 			path = App;
@@ -150,6 +159,7 @@
 			isa = PBXGroup;
 			children = (
 				4709D502CA23E54AD409E620 /* ShellThemeTests.swift */,
+				C15BB424A55A6300DDB37B6E /* AudioRouteTests.swift */,
 				0F017B12126F8C7234D78F43 /* AudioSessionTests.swift */,
 				DBDC0D8C3AEFEF00C8C7C3D0 /* InfoPlistTests.swift */,
 			);
@@ -323,6 +333,8 @@
 				98CFF6342D0FAEFE22E70EAF /* AudioSession.swift in Sources */,
 				47561E52FBD4355819A5B675 /* ShellTheme.swift in Sources */,
 				0C6342BC6C79B32A100509BC /* EmberThemePlugin.swift in Sources */,
+				0E9F918A74C5AC2D5F1AFA34 /* AudioRoute.swift in Sources */,
+				49BB7847A6F3E34850928566 /* EmberAudioRoutePlugin.swift in Sources */,
 				08E975C8A5D06F0A08801E58 /* EmberViewController.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -332,6 +344,8 @@
 			buildActionMask = 2147483647;
 			files = (
 				EBFA72AFB8687019CE02A1DA /* ShellThemeTests.swift in Sources */,
+				C6A4D3947722C7F081F89281 /* AudioRouteTests.swift in Sources */,
+				A46F83B8F793FD80AC818ECE /* AudioRoute.swift in Sources */,
 				4F7BFA9EF919979BECFD764E /* AudioSessionTests.swift in Sources */,
 				BF566D31A299FD6F98632388 /* InfoPlistTests.swift in Sources */,
 				16C9078868E885590F48B87D /* ShellTheme.swift in Sources */,
