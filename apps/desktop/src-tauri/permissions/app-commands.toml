@@ -8,7 +8,7 @@
 # Referenced from capabilities/default.json.
 [[permission]]
 identifier = "allow-ember-commands"
-description = "Ember's own IPC commands: native audio, the auto cache of upcoming songs, Discord presence, log forwarding, voice search, the window following the theme, and links opening in the system browser."
+description = "Ember's own IPC commands: native audio and its output device, the auto cache of upcoming songs, Discord presence, log forwarding, voice search, the window following the theme, and links opening in the system browser."
 
 [permission.commands]
 allow = [
@@ -21,6 +21,10 @@ allow = [
   # The equalizer (src/eq.rs).
   "audio_set_eq",
   "audio_set_metadata",
+  # Choosing the output device (src/output.rs). Without these the remote
+  # page gets "not allowed by ACL" and the output picker stays empty.
+  "audio_outputs",
+  "audio_set_output",
   # The auto cache of upcoming songs (src/cache.rs). Without these the remote
   # page gets "not allowed by ACL", which the web app reads as an older build
   # and shows "automatic caching unavailable, update the app".
