@@ -1,9 +1,16 @@
 package app.ember.music
 
 import android.content.ComponentName
+import android.content.Context
+import android.content.Intent
+import android.media.AudioDeviceCallback
+import android.media.AudioDeviceInfo
+import android.media.AudioManager
+import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.provider.Settings
 import android.view.ContextThemeWrapper
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
@@ -14,6 +21,7 @@ import androidx.media3.session.SessionResult
 import androidx.media3.session.SessionToken
 import androidx.mediarouter.app.MediaRouteChooserDialog
 import androidx.mediarouter.app.MediaRouteControllerDialog
+import androidx.mediarouter.app.SystemOutputSwitcherDialogController
 import androidx.mediarouter.media.MediaRouteSelector
 import androidx.mediarouter.media.MediaRouter
 import com.getcapacitor.JSArray
@@ -95,6 +103,58 @@ internal fun castStateJs(state: Int, deviceName: String?): JSObject = JSObject()
  *  [last] is the level last received, null for none yet. */
 internal fun castVolumeToSend(last: Double?, v: Double): Boolean = last != null && last != v
 
+/** getOutputs' answer and the `outputs` event: `{ outputs: [{ id, name,
+ *  kind }], currentId, preferredId, systemSwitcher }`. Ids are strings (the
+ *  web app keeps them opaque); a missing current or pinned output is null,
+ *  not an absent key. */
+internal fun outputsJs(s: OutputSnapshot): JSObject = JSObject().apply {
+    val list = JSArray()
+    s.outputs.forEach { o -> list.put(JSObject().put("id", o.id.toString()).put("name", o.name).put("kind", o.kind)) }
+    put("outputs", list)
+    put("currentId", s.currentId?.toString() ?: JSONObject.NULL)
+    put("preferredId", s.preferredId?.toString() ?: JSONObject.NULL)
+    put("systemSwitcher", s.systemSwitcher)
+}
+
+/** The pinned output from the service's session extras: an id, or null for
+ *  automatic (-1, or a service that has published none yet). */
+internal fun pinnedOutput(extras: Bundle): Int? =
+    extras.getInt(EmberPlaybackService.EXTRA_OUTPUT_PREFERRED, -1).takeIf { it >= 0 }
+
+/** setOutput's `id`: null (or missing) is automatic; a string or number is
+ *  a device id; anything else is no output at all (Result failure). */
+internal fun outputIdArg(data: JSONObject): Result<Int?> {
+    val raw = data.opt("id")
+    if (raw == null || raw == JSONObject.NULL) return Result.success(null)
+    val id = raw.toString().toIntOrNull()?.takeIf { it >= 0 } ?: return Result.failure(IllegalArgumentException("no such output"))
+    return Result.success(id)
+}
+
+/** showOutputSwitcher's answer: `{ shown: true }` for Android's own output
+ *  switcher, `{ shown: true, fallback: "bluetooth-settings" }` when only the
+ *  Bluetooth settings could open, `{ shown: false }` when nothing did. */
+internal fun switcherJs(shown: Boolean, fallbackOpened: Boolean): JSObject = when {
+    shown -> JSObject().put("shown", true)
+    fallbackOpened -> JSObject().put("shown", true).put("fallback", "bluetooth-settings")
+    else -> JSObject().put("shown", false)
+}
+
+/** getCastDevices' answer and the `castDevices` event: `{ devices: [{ id,
+ *  name, description, selected, connecting }] }`. */
+internal fun castDevicesJs(devices: List<CastDevice>): JSObject = JSObject().apply {
+    val list = JSArray()
+    devices.forEach { d ->
+        list.put(JSObject().apply {
+            put("id", d.id)
+            put("name", d.name)
+            put("description", d.description ?: JSONObject.NULL)
+            put("selected", d.selected)
+            put("connecting", d.connecting)
+        })
+    }
+    put("devices", list)
+}
+
 /** The app's Previous button, as everywhere else in Ember (the web player,
  *  the notification, the car): past the first 3 s it starts the song over,
  *  before that it goes to the song before. It used to always go back a song. */
@@ -122,8 +182,13 @@ class EmberPlayerPlugin : Plugin() {
             controller = c
             c.addListener(listener)
             pending.forEach { it(c) }; pending.clear()
+            // The service may have kept a pin from before this page (a
+            // WebView brought back while the music played).
+            pinned = pinnedOutput(c.sessionExtras)
+            emitOutputs()
             tick()
         }, main::post)
+        main.post { watchOutputs(true) }
     }
 
     /** Plugin methods run on Capacitor's own thread. Checking `controller`
@@ -181,6 +246,8 @@ class EmberPlayerPlugin : Plugin() {
     private val sessionEvents = object : MediaController.Listener {
         override fun onExtrasChanged(controller: MediaController, extras: Bundle) {
             notifyListeners("state", state(controller))
+            pinned = pinnedOutput(extras)
+            emitOutputs()
         }
 
         override fun onCustomCommand(controller: MediaController, command: SessionCommand, args: Bundle): ListenableFuture<SessionResult> {
@@ -344,10 +411,27 @@ class EmberPlayerPlugin : Plugin() {
     // and the picker.
 
     private var castContext: CastContext? = null
-    private val castListener = CastStateListener { notifyListeners("cast", castJs()) }
-    /** Looking for devices costs battery: only while the app is on screen. */
-    private val routeCallback = object : MediaRouter.Callback() {}
+    private val castListener = CastStateListener {
+        notifyListeners("cast", castJs())
+        emitCastDevices()
+    }
+    /** Looking for devices costs battery: only while the app is on screen.
+     *  Every route change is news to the in-app picker: a cast device found
+     *  or lost (`castDevices`), and, as the phone's own routes (Bluetooth,
+     *  the speaker) come in unfiltered, a change of output (`outputs`). */
+    private val routeCallback = object : MediaRouter.Callback() {
+        override fun onRouteAdded(router: MediaRouter, route: MediaRouter.RouteInfo) = routesChanged()
+        override fun onRouteRemoved(router: MediaRouter, route: MediaRouter.RouteInfo) = routesChanged()
+        override fun onRouteChanged(router: MediaRouter, route: MediaRouter.RouteInfo) = routesChanged()
+        override fun onRouteSelected(router: MediaRouter, selectedRoute: MediaRouter.RouteInfo, reason: Int, requestedRoute: MediaRouter.RouteInfo) = routesChanged()
+        override fun onRouteUnselected(router: MediaRouter, route: MediaRouter.RouteInfo, reason: Int) = routesChanged()
+    }
     private var discovering = false
+
+    private fun routesChanged() {
+        emitCastDevices()
+        emitOutputs()
+    }
 
     private fun startCast() {
         // The Task-based getSharedInstance needs an executor and a callback for
@@ -363,7 +447,9 @@ class EmberPlayerPlugin : Plugin() {
     private fun discover(on: Boolean) {
         val selector = castContext?.mergedSelector ?: return
         val router = runCatching { MediaRouter.getInstance(context) }.getOrNull() ?: return
-        if (on && !discovering) router.addCallback(selector, routeCallback, MediaRouter.CALLBACK_FLAG_REQUEST_DISCOVERY)
+        if (on && !discovering) {
+            router.addCallback(selector, routeCallback, MediaRouter.CALLBACK_FLAG_REQUEST_DISCOVERY or MediaRouter.CALLBACK_FLAG_UNFILTERED_EVENTS)
+        }
         if (!on && discovering) router.removeCallback(routeCallback)
         discovering = on
     }
@@ -399,9 +485,184 @@ class EmberPlayerPlugin : Plugin() {
         }
     }
 
+    // ── In-app cast device list ─────────────────────────────────────────
+    // The Spotify-style picker lists cast devices next to the phone's own
+    // outputs, from the routes the discovery above finds. Picking one does
+    // what the Cast dialog does (route.select()): the Cast framework starts
+    // the session and the service moves the queue over (CastSwitch).
+
+    private var lastCastDevices: String? = null
+
+    /** The router's routes with what the picker needs of each. Empty on a
+     *  phone without Cast. */
+    private fun castRoutes(): List<Pair<MediaRouter.RouteInfo, CastRoute>> {
+        val selector = castContext?.mergedSelector ?: return emptyList()
+        val router = runCatching { MediaRouter.getInstance(context) }.getOrNull() ?: return emptyList()
+        return runCatching {
+            router.routes.map { r ->
+                r to CastRoute(
+                    id = r.id, name = r.name, description = r.description,
+                    enabled = r.isEnabled, isDefault = r.isDefault, isBluetooth = r.isBluetooth, isSystem = r.isSystemRoute,
+                    matchesSelector = r.matchesSelector(selector), selected = r.isSelected, connectionState = r.connectionState,
+                )
+            }
+        }.onFailure { android.util.Log.w(EmberPlaybackService.TAG, "cast routes: ${it.message}") }.getOrDefault(emptyList())
+    }
+
+    private fun castDevices(): List<CastDevice> = CastDevices.list(castRoutes().map { it.second })
+
+    /** The `castDevices` event, only when the list is not what was last sent. */
+    private fun emitCastDevices() {
+        val js = castDevicesJs(castDevices())
+        val text = js.toString()
+        if (text == lastCastDevices) return
+        lastCastDevices = text
+        notifyListeners("castDevices", js)
+    }
+
+    /** `{ devices: [{ id, name, description, selected, connecting }] }`:
+     *  the cast devices found while the app is on screen. */
+    @PluginMethod fun getCastDevices(call: PluginCall) {
+        main.post { call.resolve(castDevicesJs(castDevices())) }
+    }
+
+    /** Casts to the device with `id` (from getCastDevices). */
+    @PluginMethod fun selectCastDevice(call: PluginCall) {
+        val id = call.getString("id") ?: return call.reject("no such cast device")
+        main.post {
+            if (castContext == null) return@post call.reject("Casting is not available on this phone")
+            val routes = castRoutes()
+            val listed = CastDevices.list(routes.map { it.second }).map { it.id }.toSet()
+            val route = routes.firstOrNull { it.second.id == id && id in listed }?.first
+                ?: return@post call.reject("no such cast device")
+            runCatching { route.select() }.onFailure { return@post call.reject("could not cast: ${it.message}") }
+            call.resolve()
+        }
+    }
+
+    /** Ends the cast session; the music comes back to the phone (CastSwitch). */
+    @PluginMethod fun stopCasting(call: PluginCall) {
+        main.post {
+            runCatching { castContext?.sessionManager?.endCurrentSession(true) }
+                .onFailure { android.util.Log.w(EmberPlaybackService.TAG, "stop casting: ${it.message}") }
+            call.resolve()
+        }
+    }
+
+    // ── Audio output ────────────────────────────────────────────────────
+    // The phone's own outputs (speaker, wired, Bluetooth, USB, HDMI) for the
+    // app's device picker. The list is read here; the choice is kept by the
+    // service, which owns the player (COMMAND_OUTPUT, OutputPreference), and
+    // comes back through its session extras.
+
+    /** The output the service has pinned, null for automatic. */
+    private var pinned: Int? = null
+    private var lastOutputs: String? = null
+    private val audio: AudioManager? get() = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager?
+    private val mediaAttributes by lazy {
+        android.media.AudioAttributes.Builder()
+            .setUsage(android.media.AudioAttributes.USAGE_MEDIA)
+            .setContentType(android.media.AudioAttributes.CONTENT_TYPE_MUSIC)
+            .build()
+    }
+
+    /** Headphones plugged in, a headset connected or gone: a new list. */
+    private val deviceWatch = object : AudioDeviceCallback() {
+        override fun onAudioDevicesAdded(addedDevices: Array<out AudioDeviceInfo>?) = emitOutputs()
+        override fun onAudioDevicesRemoved(removedDevices: Array<out AudioDeviceInfo>?) = emitOutputs()
+    }
+
+    private fun watchOutputs(on: Boolean) {
+        runCatching {
+            if (on) audio?.registerAudioDeviceCallback(deviceWatch, main) else audio?.unregisterAudioDeviceCallback(deviceWatch)
+        }.onFailure { android.util.Log.w(EmberPlaybackService.TAG, "output watch: ${it.message}") }
+    }
+
+    /** What AudioManager reports now, as the picker shows it. Nothing
+     *  here may take the app down on an odd phone: a call that fails reads
+     *  as nothing known. */
+    private fun outputSnapshot(): OutputSnapshot {
+        val am = audio
+        val sdk = Build.VERSION.SDK_INT
+        val devices = runCatching {
+            am?.getDevices(AudioManager.GET_DEVICES_OUTPUTS)?.map {
+                OutputInfo(it.id, it.type, it.productName?.toString(), if (sdk >= 28) it.address else null, it.isSink)
+            }
+        }.onFailure { android.util.Log.w(EmberPlaybackService.TAG, "outputs: ${it.message}") }.getOrNull().orEmpty()
+        // Android says where media goes from 13 (API 33); below, a guess.
+        val routed = if (sdk >= 33) runCatching {
+            am?.getAudioDevicesForAttributes(mediaAttributes)?.map { RoutedOutput(it.id, it.type, it.address) }
+        }.getOrNull() else null
+        return AudioOutputs.snapshot(devices, pinned, routed, sdk, Build.MODEL)
+    }
+
+    /** The `outputs` event, only when it differs from the last one sent. */
+    private fun emitOutputs() {
+        val js = outputsJs(outputSnapshot())
+        val text = js.toString()
+        if (text == lastOutputs) return
+        lastOutputs = text
+        notifyListeners("outputs", js)
+    }
+
+    /** `{ outputs: [{ id, name, kind }], currentId, preferredId,
+     *  systemSwitcher }`. While casting, still the phone's own outputs: the
+     *  app shows the cast device apart. */
+    @PluginMethod fun getOutputs(call: PluginCall) {
+        main.post { call.resolve(outputsJs(outputSnapshot())) }
+    }
+
+    /** Plays on the output with `id` (from getOutputs), or, for null, where
+     *  Android would (automatic). Resolves the new getOutputs answer. */
+    @PluginMethod fun setOutput(call: PluginCall) {
+        val id = outputIdArg(call.data).getOrElse { return call.reject("no such output") }
+        main.post {
+            if (id != null && outputSnapshot().outputs.none { it.id == id }) return@post call.reject("no such output")
+            withController { c ->
+                val args = Bundle().apply { putInt("deviceId", id ?: -1) }
+                val f = c.sendCustomCommand(SessionCommand(EmberPlaybackService.COMMAND_OUTPUT, Bundle.EMPTY), args)
+                f.addListener({
+                    val r = runCatching { f.get() }.getOrNull()
+                    when (r?.resultCode) {
+                        SessionResult.RESULT_SUCCESS -> {
+                            // The answer carries the pin; the session extras
+                            // saying the same may not have landed yet.
+                            pinned = pinnedOutput(r.extras)
+                            call.resolve(outputsJs(outputSnapshot()))
+                            emitOutputs()
+                        }
+                        SessionResult.RESULT_ERROR_BAD_VALUE -> call.reject("no such output")
+                        else -> call.reject("could not switch the output")
+                    }
+                }, main::post)
+            }
+        }
+    }
+
+    /** Android's own output switcher (the media output dialog, which also
+     *  lists cast devices), on Android 11 and up. Where there is none, the
+     *  Bluetooth settings instead. */
+    @PluginMethod fun showOutputSwitcher(call: PluginCall) {
+        main.post {
+            val ctx = activity ?: context
+            val shown = runCatching { SystemOutputSwitcherDialogController.showDialog(ctx) }
+                .onFailure { android.util.Log.w(EmberPlaybackService.TAG, "output switcher: ${it.message}") }
+                .getOrDefault(false)
+            val fallback = !shown && runCatching {
+                ctx.startActivity(Intent(Settings.ACTION_BLUETOOTH_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            }.isSuccess
+            call.resolve(switcherJs(shown, fallback))
+        }
+    }
+
     override fun handleOnResume() {
         super.handleOnResume()
-        main.post { discover(true) }
+        main.post {
+            discover(true)
+            // Back on screen after a trip to the settings or the switcher.
+            emitOutputs()
+            emitCastDevices()
+        }
     }
 
     override fun handleOnPause() {
@@ -414,6 +675,7 @@ class EmberPlayerPlugin : Plugin() {
         main.post {
             discover(false)
             castContext?.removeCastStateListener(castListener)
+            watchOutputs(false)
         }
     }
 }

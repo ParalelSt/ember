@@ -2,6 +2,9 @@ package app.ember.music
 
 import android.content.Context
 import android.content.Intent
+import android.media.AudioDeviceCallback
+import android.media.AudioDeviceInfo
+import android.media.AudioManager
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -56,10 +59,15 @@ class EmberPlaybackService : MediaLibraryService() {
         /** The equalizer (`enabled`, `bands`: five dB gains), the web app's
          *  setting. Kept on disk, so the car follows it too. */
         const val COMMAND_EQUALIZER = "ember.equalizer"
+        /** The audio output the app's picker pinned (`deviceId`: an
+         *  AudioDeviceInfo id, -1 for Android's own routing). */
+        const val COMMAND_OUTPUT = "ember.output"
         /** Session extras the plugin mirrors into its state. */
         const val EXTRA_CACHED_IDS = "cachedIds"
         const val EXTRA_OFFLINE_STALLED = "offlineStalled"
         const val EXTRA_OFFLINE = "offline"
+        /** The pinned output's AudioDeviceInfo id, -1 for none (automatic). */
+        const val EXTRA_OUTPUT_PREFERRED = "outputPreferredId"
         private const val PREFS = "ember.autoCache"
         private const val NORMALIZE_PREFS = "ember.normalize"
         private const val TICK_MS = 5_000L
@@ -165,6 +173,9 @@ class EmberPlaybackService : MediaLibraryService() {
     private var queueBaseCount = 0
     private var publishedExtras: Triple<List<String>, Boolean, Boolean>? = null
     private val tickLoop = Runnable { cacheTick() }
+    /** The output the app's picker pinned (AudioOutputs.kt). */
+    private val output = OutputPreference(route = ::routeTo, publish = ::publishExtras)
+    private val audioManager: AudioManager? get() = getSystemService(AUDIO_SERVICE) as AudioManager?
 
     override fun onCreate() {
         super.onCreate()
@@ -208,6 +219,7 @@ class EmberPlaybackService : MediaLibraryService() {
             .build()
         startAutoCache(streams)
         startCasting(baseUrl)
+        watchOutputs()
         // Shuffle and repeat as buttons on the now-playing screen (car + notification).
         session.setCustomLayout(ImmutableList.of(
             androidx.media3.session.CommandButton.Builder().setDisplayName("Shuffle").setIconResId(android.R.drawable.ic_menu_rotate).setSessionCommand(SessionCommand(COMMAND_SHUFFLE, Bundle.EMPTY)).build(),
@@ -267,6 +279,38 @@ class EmberPlaybackService : MediaLibraryService() {
         castSwitch = switch
         // A session already running (the service started again mid-cast).
         if (cast.isCastSessionAvailable) switch.adoptRemote()
+    }
+
+    // ── Audio output ────────────────────────────────────────────────────
+
+    /** Points the phone's player at the output with [id] (the app's picker),
+     *  or back at Android's own routing for null. Only the ExoPlayer: the
+     *  cast device plays on its own, and the level and cast players wrap
+     *  this one. The audio session id stays the same, so the equalizer, the
+     *  loudness booster and normalization carry on. False when no output
+     *  with that id is connected. */
+    private fun routeTo(id: Int?): Boolean {
+        val device = if (id == null) null else {
+            val devices = runCatching { audioManager?.getDevices(AudioManager.GET_DEVICES_OUTPUTS) }.getOrNull()
+            devices?.firstOrNull { it.id == id } ?: return false
+        }
+        return runCatching { player.setPreferredAudioDevice(device) }
+            .onFailure { Log.w(TAG, "output: ${it.message}") }
+            .isSuccess
+    }
+
+    /** A pinned output that is unplugged or disconnected lets go, so the
+     *  music follows Android's routing again (and a device that comes back
+     *  gets a new id, so it could not be pinned again anyway). */
+    private val deviceWatch = object : AudioDeviceCallback() {
+        override fun onAudioDevicesRemoved(removedDevices: Array<out AudioDeviceInfo>?) {
+            output.onRemoved(removedDevices.orEmpty().map { it.id })
+        }
+    }
+
+    private fun watchOutputs() {
+        runCatching { audioManager?.registerAudioDeviceCallback(deviceWatch, handler) }
+            .onFailure { Log.w(TAG, "output watch: ${it.message}") }
     }
 
     // ── Auto cache and offline playback ─────────────────────────────────
@@ -362,10 +406,21 @@ class EmberPlaybackService : MediaLibraryService() {
         val next = Triple(ids, offlinePlayback.stalled, !net.current().online)
         if (next == publishedExtras) return
         publishedExtras = next
+        publishExtras()
+    }
+
+    /** All the session extras at once: setSessionExtras replaces the lot, so
+     *  the cache state and the pinned output always go together. */
+    private fun publishExtras() {
+        if (!::session.isInitialized) return
+        val cacheState = publishedExtras
         session.setSessionExtras(Bundle().apply {
-            putStringArrayList(EXTRA_CACHED_IDS, ArrayList(ids))
-            putBoolean(EXTRA_OFFLINE_STALLED, next.second)
-            putBoolean(EXTRA_OFFLINE, next.third)
+            if (cacheState != null) {
+                putStringArrayList(EXTRA_CACHED_IDS, ArrayList(cacheState.first))
+                putBoolean(EXTRA_OFFLINE_STALLED, cacheState.second)
+                putBoolean(EXTRA_OFFLINE, cacheState.third)
+            }
+            putInt(EXTRA_OUTPUT_PREFERRED, output.extra)
         })
     }
 
@@ -452,6 +507,7 @@ class EmberPlaybackService : MediaLibraryService() {
 
     override fun onDestroy() {
         handler.removeCallbacks(tickLoop)
+        runCatching { audioManager?.unregisterAudioDeviceCallback(deviceWatch) }
         autoCacher.cancel()
         net.stop()
         cacheIo.shutdown()
@@ -497,6 +553,7 @@ class EmberPlaybackService : MediaLibraryService() {
                         add(SessionCommand(COMMAND_QUEUE_CONTEXT, Bundle.EMPTY))
                         add(SessionCommand(COMMAND_NORMALIZE, Bundle.EMPTY))
                         add(SessionCommand(COMMAND_EQUALIZER, Bundle.EMPTY))
+                        add(SessionCommand(COMMAND_OUTPUT, Bundle.EMPTY))
                     }
                 }
                 .build()
@@ -532,6 +589,15 @@ class EmberPlaybackService : MediaLibraryService() {
                     val eq = EqSettings.fromBundle(args)
                     EqSettings.save(EqSettings.prefs(this@EmberPlaybackService), eq)
                     equalizer.settings = eq
+                }
+                COMMAND_OUTPUT -> {
+                    // Answers with the pin as it now stands, so the app's
+                    // picker does not wait for the session extras.
+                    val ok = output.set(args.getInt("deviceId", -1))
+                    val extras = Bundle().apply { putInt(EXTRA_OUTPUT_PREFERRED, output.extra) }
+                    return Futures.immediateFuture(
+                        if (ok) SessionResult(SessionResult.RESULT_SUCCESS, extras) else SessionResult(SessionResult.RESULT_ERROR_BAD_VALUE, extras),
+                    )
                 }
                 COMMAND_QUEUE_CONTEXT -> {
                     queueContextType = args.getString("contextType")

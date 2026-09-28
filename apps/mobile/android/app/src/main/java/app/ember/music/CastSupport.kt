@@ -22,10 +22,18 @@ import java.util.concurrent.ConcurrentHashMap
  *  cover on the TV, and there is no receiver app of our own to host. The
  *  framework's own media session and notification are off: Media3's session
  *  (the lock screen, the notification, the app, the car) follows the
- *  CastPlayer instead, so there is one set of controls, not two. */
+ *  CastPlayer instead, so there is one set of controls, not two.
+ *
+ *  Remote-to-local on: Android 13+'s output switcher (the media output
+ *  dialog, with MediaTransferReceiver in the manifest) can then move a cast
+ *  session back to the phone. That ends the Cast session, which the service
+ *  already handles: CastSwitch.toLocal brings the TV's queue back to the
+ *  phone's player, paused where the TV was, as for any other way casting
+ *  stops. */
 class EmberCastOptions : OptionsProvider {
     override fun getCastOptions(context: Context): CastOptions = CastOptions.Builder()
         .setReceiverApplicationId(CastMediaControlIntent.DEFAULT_MEDIA_RECEIVER_APPLICATION_ID)
+        .setRemoteToLocalEnabled(true)
         .setStopReceiverApplicationWhenEndingSession(true)
         .setResumeSavedSession(false)
         .setEnableReconnectionService(false)

@@ -50,6 +50,13 @@
         <meta-data
             android:name="com.google.android.gms.cast.framework.OPTIONS_PROVIDER_CLASS_NAME"
             android:value="app.ember.music.EmberCastOptions" />
+        <!-- Lists Ember's cast devices in Android 13+'s own output switcher
+             (the media output dialog), and lets it move a cast session back
+             to the phone (EmberCastOptions: remote-to-local). From
+             androidx.mediarouter. -->
+        <receiver
+            android:name="androidx.mediarouter.media.MediaTransferReceiver"
+            android:exported="true" />
 
         <!-- Pinned downloads keep running with the app closed, so they need a
              foreground service; dataSync is the type Android 14+ expects for
