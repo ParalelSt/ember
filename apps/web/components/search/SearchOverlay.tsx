@@ -116,7 +116,13 @@ export function SearchOverlay({
       onClick={clear}
       aria-label="Clear search"
       className={cn(
-        'absolute top-1/2 -translate-y-1/2 h-9 w-9 rounded-full text-muted-foreground hover:text-foreground',
+        // The shared Button's press feedback (active:…:translate-y-px)
+        // sets the same `translate` CSS property this uses for vertical
+        // centering, so pressing it was clobbering the centering and
+        // shoving the icon down. `!` pins the centering translate so it
+        // wins over the press state; the ghost variant's hover/active
+        // color change is still the press feedback, just no movement.
+        'absolute top-1/2 -translate-y-1/2 active:!-translate-y-1/2 active:text-foreground h-9 w-9 rounded-full text-muted-foreground hover:text-foreground',
         isSheet ? 'right-1' : 'right-10',
       )}
     >
