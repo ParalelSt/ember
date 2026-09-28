@@ -9,6 +9,8 @@
 /* Begin PBXBuildFile section */
 		08E975C8A5D06F0A08801E58 /* EmberViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A90818C98E416CA18E7BF59 /* EmberViewController.swift */; };
 		0C6342BC6C79B32A100509BC /* EmberThemePlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 548069038F6BC4DA53CAD38C /* EmberThemePlugin.swift */; };
+		0E6CFB91D5EED551B800D071 /* SpokenDurationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = EA10F4C7F176EA2B603B1A97 /* SpokenDurationTests.swift */; };
+		11125A376706504CCECB9803 /* LockScreenControlsUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 81BF2D3847191A75BD8FE602 /* LockScreenControlsUITests.swift */; };
 		16C9078868E885590F48B87D /* ShellTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 63472E279E42789B00B334E6 /* ShellTheme.swift */; };
 		2FAD9763203C412B000D30F8 /* config.xml in Resources */ = {isa = PBXBuildFile; fileRef = 2FAD9762203C412B000D30F8 /* config.xml */; };
 		47561E52FBD4355819A5B675 /* ShellTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 63472E279E42789B00B334E6 /* ShellTheme.swift */; };
@@ -24,11 +26,19 @@
 		B48D7F6CDDD418A6B43E497A /* AudioSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3E9C912BE26A11862D6DF445 /* AudioSession.swift */; };
 		BD8C3C13982DC0AC458A5364 /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = D7B5E10F216402496BC318F7 /* Foundation.framework */; };
 		BF566D31A299FD6F98632388 /* InfoPlistTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DBDC0D8C3AEFEF00C8C7C3D0 /* InfoPlistTests.swift */; };
+		C9F708089D576C4DB4030183 /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = D7B5E10F216402496BC318F7 /* Foundation.framework */; };
 		EBFA72AFB8687019CE02A1DA /* ShellThemeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4709D502CA23E54AD409E620 /* ShellThemeTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
 		18334A7120154A2FC74AD924 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 504EC2FC1FED79650016851F /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 504EC3031FED79650016851F;
+			remoteInfo = App;
+		};
+		D7569979C88706AD36925AFB /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = 504EC2FC1FED79650016851F /* Project object */;
 			proxyType = 1;
@@ -54,10 +64,13 @@
 		50B271D01FEDC1A000F3C39B /* public */ = {isa = PBXFileReference; lastKnownFileType = folder; path = public; sourceTree = "<group>"; };
 		548069038F6BC4DA53CAD38C /* EmberThemePlugin.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = EmberThemePlugin.swift; sourceTree = "<group>"; };
 		63472E279E42789B00B334E6 /* ShellTheme.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = ShellTheme.swift; sourceTree = "<group>"; };
+		81BF2D3847191A75BD8FE602 /* LockScreenControlsUITests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = LockScreenControlsUITests.swift; sourceTree = "<group>"; };
+		98D064F5E8A53E07AC249B8A /* AppUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = AppUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		AF277DCFFFF123FFC6DF26C7 /* Pods_App.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_App.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		AF51FD2D460BCFE21FA515B2 /* Pods-App.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-App.release.xcconfig"; path = "Pods/Target Support Files/Pods-App/Pods-App.release.xcconfig"; sourceTree = "<group>"; };
 		D7B5E10F216402496BC318F7 /* Foundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Foundation.framework; path = Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS18.0.sdk/System/Library/Frameworks/Foundation.framework; sourceTree = DEVELOPER_DIR; };
 		DBDC0D8C3AEFEF00C8C7C3D0 /* InfoPlistTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = InfoPlistTests.swift; sourceTree = "<group>"; };
+		EA10F4C7F176EA2B603B1A97 /* SpokenDurationTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SpokenDurationTests.swift; sourceTree = "<group>"; };
 		FC68EB0AF532CFC21C3344DD /* Pods-App.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-App.debug.xcconfig"; path = "Pods/Target Support Files/Pods-App/Pods-App.debug.xcconfig"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -67,6 +80,14 @@
 			buildActionMask = 2147483647;
 			files = (
 				A084ECDBA7D38E1E42DFC39D /* Pods_App.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		CFB828DC8DC480EEBFAE300B /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				C9F708089D576C4DB4030183 /* Foundation.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -98,6 +119,7 @@
 				7F8756D8B27F46E3366F6CEA /* Pods */,
 				27E2DDA53C4D2A4D1A88CE4A /* Frameworks */,
 				FE613671D49F8CBB27068032 /* AppTests */,
+				CB9009B2099D795D93C28563 /* AppUITests */,
 			);
 			sourceTree = "<group>";
 		};
@@ -106,6 +128,7 @@
 			children = (
 				504EC3041FED79650016851F /* App.app */,
 				353D9B57AD655FFF2551E1A8 /* AppTests.xctest */,
+				98D064F5E8A53E07AC249B8A /* AppUITests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -146,6 +169,16 @@
 			name = Pods;
 			sourceTree = "<group>";
 		};
+		CB9009B2099D795D93C28563 /* AppUITests */ = {
+			isa = PBXGroup;
+			children = (
+				81BF2D3847191A75BD8FE602 /* LockScreenControlsUITests.swift */,
+				EA10F4C7F176EA2B603B1A97 /* SpokenDurationTests.swift */,
+			);
+			name = AppUITests;
+			path = AppUITests;
+			sourceTree = "<group>";
+		};
 		FE613671D49F8CBB27068032 /* AppTests */ = {
 			isa = PBXGroup;
 			children = (
@@ -179,6 +212,24 @@
 			productName = App;
 			productReference = 504EC3041FED79650016851F /* App.app */;
 			productType = "com.apple.product-type.application";
+		};
+		77BC354461B2922B3665934E /* AppUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 86E650496E76E46987C3E71A /* Build configuration list for PBXNativeTarget "AppUITests" */;
+			buildPhases = (
+				889DB8DE90F6E49A51BA736B /* Sources */,
+				CFB828DC8DC480EEBFAE300B /* Frameworks */,
+				B701792B0437C34F84C2233A /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				983D5AE6C0B43287E1F4EAF2 /* PBXTargetDependency */,
+			);
+			name = AppUITests;
+			productName = AppUITests;
+			productReference = 98D064F5E8A53E07AC249B8A /* AppUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
 		};
 		BD7EC2B21015074E144E27BE /* AppTests */ = {
 			isa = PBXNativeTarget;
@@ -229,6 +280,7 @@
 			targets = (
 				504EC3031FED79650016851F /* App */,
 				BD7EC2B21015074E144E27BE /* AppTests */,
+				77BC354461B2922B3665934E /* AppUITests */,
 			);
 		};
 /* End PBXProject section */
@@ -251,6 +303,13 @@
 				50379B232058CBB4000EE86E /* capacitor.config.json in Resources */,
 				504EC30D1FED79650016851F /* Main.storyboard in Resources */,
 				2FAD9763203C412B000D30F8 /* config.xml in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		B701792B0437C34F84C2233A /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -339,6 +398,15 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		889DB8DE90F6E49A51BA736B /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				11125A376706504CCECB9803 /* LockScreenControlsUITests.swift in Sources */,
+				0E6CFB91D5EED551B800D071 /* SpokenDurationTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
@@ -347,6 +415,12 @@
 			name = App;
 			target = 504EC3031FED79650016851F /* App */;
 			targetProxy = 18334A7120154A2FC74AD924 /* PBXContainerItemProxy */;
+		};
+		983D5AE6C0B43287E1F4EAF2 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			name = App;
+			target = 504EC3031FED79650016851F /* App */;
+			targetProxy = D7569979C88706AD36925AFB /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -536,6 +610,41 @@
 			};
 			name = Release;
 		};
+		52823F4E0339A98E6BBE3053 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_ENABLE_OBJC_WEAK = NO;
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = 8B8D2GSC9U;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 14.0;
+				PRODUCT_BUNDLE_IDENTIFIER = app.ember.music.uitests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+				TEST_TARGET_NAME = App;
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		7284036055FB312B30CC552A /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_ENABLE_OBJC_WEAK = NO;
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = 8B8D2GSC9U;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 14.0;
+				PRODUCT_BUNDLE_IDENTIFIER = app.ember.music.uitests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+				TEST_TARGET_NAME = App;
+			};
+			name = Debug;
+		};
 		D976BFF4A940DA184F09ECAE /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -581,6 +690,15 @@
 			buildConfigurations = (
 				D976BFF4A940DA184F09ECAE /* Release */,
 				410AA5DC0D2380E97B98AA83 /* Debug */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		86E650496E76E46987C3E71A /* Build configuration list for PBXNativeTarget "AppUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				52823F4E0339A98E6BBE3053 /* Release */,
+				7284036055FB312B30CC552A /* Debug */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
