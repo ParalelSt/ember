@@ -294,6 +294,26 @@ mobile data" (off by default), the space used and "Clear cached songs". An
 older desktop app or APK shows "update the app" there instead and plays as
 before. Pinned downloads are a separate store and are never evicted by it.
 
+## Audio outputs (the Devices button)
+
+One Devices button (speaker icon) in the desktop player bar and the phone's
+full-screen player lists where the music can play, lights the one in use,
+and switches it; cast devices are in the same list. It only shows when there
+is a choice. Web: `apps/web/lib/outputs` (one provider per platform) and
+`components/player/DevicesButton.tsx`.
+
+| Platform | Lists | Switches | Needs |
+|---|---|---|---|
+| Android app | the phone's outputs from AudioManager (speaker, wired, Bluetooth, USB, HDMI) and cast devices from MediaRouter | pins one on the native player (`ExoPlayer.setPreferredAudioDevice`); "More devices" opens Android's Output Switcher (API 30+, Bluetooth settings below); a TV row starts casting | the APK with `getOutputs` on the EmberPlayer plugin |
+| iPhone app | the route in use (AVAudioSession) | "AirPlay or Bluetooth" opens iOS's route picker (AVRoutePickerView, `EmberAudioRoute` plugin) | the iOS build with the plugin |
+| Desktop app | the native engine's devices (cpal) plus "System default" | moves the rodio output without stopping the song; remembered in `<app config dir>/audio-output.json`; an unplugged device falls back to the default and the music returns when it is back | `audio_outputs` / `audio_set_output` (`src-tauri/src/output.rs`) |
+| Browser | speakers the page may name (`enumerateDevices`) | `HTMLMediaElement.setSinkId` (and `AudioContext.setSinkId` once the equalizer is on); remembered in this browser | Chrome or Edge on a computer; "Show all speakers" asks for the microphone once (Chrome names speakers only then); Firefox's own prompt where it has `selectAudioOutput` |
+
+An older app build lacks the new calls: the picker then shows only what it
+could before (casting), and nothing fails. The equalizer, volume leveling
+and the loudness boost keep working after a switch on every platform (they
+are on the player, not on the device).
+
 ## Installing
 
 **Android (sideload):** send the APK (Discord/Drive/USB) → open it on the

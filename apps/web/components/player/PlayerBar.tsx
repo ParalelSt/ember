@@ -20,7 +20,7 @@ import { PhonePlayerBar, PLAYER_BAR_CHROME } from '@/components/player/PhonePlay
 import { SeekBar } from '@/components/player/SeekBar';
 import { TransportControls } from '@/components/player/TransportControls';
 import { VolumeControl } from '@/components/player/VolumeControl';
-import { CastButton } from '@/components/player/CastButton';
+import { DevicesButton } from '@/components/player/DevicesButton';
 import { usePlayer } from '@/components/player/PlayerProvider';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { useIsDesktop } from '@/hooks/useIsDesktop';
@@ -191,9 +191,9 @@ export function PlayerBar() {
             <TabsIcon className="h-4 w-4" />
           </Button>
         )}
-        {/* Cast (Chromecast, Google speakers, Android TV; AirPlay in
-            Safari): only when a device is around. */}
-        <CastButton className="hidden md:inline-flex h-8 w-8" />
+        {/* Devices: where the music plays (this computer's outputs, and
+            cast devices when there are any). Only when there is a choice. */}
+        <DevicesButton variant="bar" className="hidden md:inline-flex h-8 w-8" />
         <Button
           variant="ghost"
           size="icon"

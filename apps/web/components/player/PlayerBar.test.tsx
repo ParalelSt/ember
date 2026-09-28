@@ -52,6 +52,20 @@ vi.mock('@/hooks/usePartyEligible', () => ({ usePartyEligible: () => partyEligib
 vi.mock('@/components/track/menus/AddToPlaylistMenu', () => ({ AddToPlaylistMenu: () => null }));
 vi.mock('@/components/track/ShareButton', () => ({ ShareButton: () => null }));
 vi.mock('@/components/player/QueueSheet', () => ({ QueueSheet: () => null }));
+// base-ui's menu brings the root's second React into a test render (see
+// QueueSheet.test.tsx): the Devices menu is a plain box here.
+vi.mock('@/components/ui/dropdown-menu', () => {
+  const Box = ({ children, ...rest }: { children?: React.ReactNode }) => <div {...rest}>{children}</div>;
+  return {
+    DropdownMenu: Box,
+    DropdownMenuTrigger: ({ children, ...rest }: ComponentProps<'button'>) => <button {...rest}>{children}</button>,
+    DropdownMenuContent: () => null,
+    DropdownMenuGroup: Box,
+    DropdownMenuLabel: Box,
+    DropdownMenuItem: Box,
+    DropdownMenuSeparator: () => null,
+  };
+});
 vi.mock('next/navigation', () => ({
   usePathname: () => '/',
   useRouter: () => ({ push: vi.fn() }),
@@ -243,17 +257,27 @@ describe('PlayerBar', () => {
   });
 });
 
-describe('PlayerBar: cast button', () => {
-  it('sits in the desktop bar when a cast device is around, and not otherwise', async () => {
+describe('PlayerBar: devices button', () => {
+  it('sits in the desktop bar when there is a choice (a cast device around, or outputs to switch), and not otherwise', async () => {
     const { useCastStore } = await import('@/stores/useCastStore');
+    const { useOutputStore } = await import('@/stores/useOutputStore');
     desktop.value = true;
     useCastStore.setState({ path: 'google', availability: 'none', connection: 'idle', deviceName: null });
     const { unmount } = render(<PlayerBar />);
-    expect(screen.queryByTestId('cast-button')).toBeNull();
+    expect(screen.queryByTestId('devices-button')).toBeNull();
     unmount();
     useCastStore.setState({ availability: 'available' });
-    render(<PlayerBar />);
-    expect(screen.getByTestId('cast-button')).toBeInTheDocument();
+    const second = render(<PlayerBar />);
+    expect(screen.getByTestId('devices-button')).toBeInTheDocument();
+    second.unmount();
     useCastStore.setState({ path: null, availability: 'none' });
+    useOutputStore.setState({
+      platform: 'desktop',
+      devices: [{ id: 'system-default', name: 'System default', kind: 'computer' }],
+      currentId: 'system-default',
+    });
+    render(<PlayerBar />);
+    expect(screen.getByTestId('devices-button')).toBeInTheDocument();
+    useOutputStore.setState({ platform: null, devices: [], currentId: null });
   });
 });

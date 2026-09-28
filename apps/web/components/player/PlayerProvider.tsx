@@ -49,6 +49,7 @@ import { castHandover, gateEvents, isSameSong, localHandover } from '@/lib/playb
 import { setCastSessionListener } from '@/lib/cast/session';
 import { initCast, setCastMediaElement } from '@/lib/cast/controller';
 import { clearCastSignCache, resolveCastMedia } from '@/lib/cast/signer';
+import { _resetOutputs, initOutputs } from '@/lib/outputs/controller';
 import type { PlaybackContext, Track } from '@/types/track';
 import { musicLevel } from '@/lib/pranks/mix';
 import { PrankReceiver } from './PrankReceiver';
@@ -181,6 +182,9 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const loadAndPlayRef = useRef<((t: Track | null, autoplay: boolean) => void) | null>(null);
   const fallbackToWebAudioRef = useRef<((reason: string) => void) | null>(null);
   const [backendReady, setBackendReady] = useState(false);
+  /** The page's own engine, even while a cast engine stands in for it: the
+   *  one whose output the Devices picker moves. */
+  const localEngine = useCallback(() => localBackendRef.current ?? backendRef.current, []);
 
   const userInteracted = useRef(false);
 
@@ -463,6 +467,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     // controller finds out which way this page can cast at all.
     setCastMediaElement(backendRef.current.mediaElement?.() ?? null);
     initCast();
+    // The Devices button: where this engine can send its sound.
+    initOutputs({ kind: backendKindRef.current, localBackend: localEngine });
     // lib/logger has no ref to backendKindRef, so the provider is the one
     // place that pushes it into the context envelope (see logger.setContext).
     logger.setContext({ backendKind: backendKindRef.current });
@@ -478,6 +484,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     setBackendReady(true);
     return () => {
       setCastMediaElement(null);
+      _resetOutputs();
       localBackendRef.current?.destroy();
       localBackendRef.current = null;
       backendRef.current?.destroy();
@@ -545,6 +552,9 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     backendKindRef.current = 'web';
     setInitialKind('web');
     logger.setContext({ backendKind: 'web' });
+    // A different engine picks its output differently (the desktop app's
+    // web view has none to pick).
+    initOutputs({ kind: 'web', localBackend: localEngine });
     // partyVolume lives in the settings store, not the player store.
     const st = usePlayerStore.getState();
     const party = useSettingsStore.getState().partyVolume && isPartyEligible();
@@ -552,7 +562,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       gain: party ? 2 : 1,
       normGain: normGainRef.current,
     });
-  }, []);
+  }, [localEngine]);
 
   const fallbackToWebAudio = useCallback((reason: string) => {
     if (backendKindRef.current === 'web' || fellBackRef.current) return;

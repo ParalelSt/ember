@@ -73,6 +73,9 @@ export const createWebBackend: CreateAudioBackend = (events) => {
       pre.connect(gain);
       gain.connect(ctx.destination);
       audioCtx = ctx;
+      // Once the graph exists the element plays into it, so the output
+      // device is the context's, not the element's (see setOutputDevice).
+      if (sinkId) void applyContextSink(ctx, sinkId);
       eqFilters = filters;
       eqPre = pre;
       gainNode = gain;
@@ -82,6 +85,17 @@ export const createWebBackend: CreateAudioBackend = (events) => {
       logger.error('audio', 'web audio init failed', undefined, e as Error);
       return null;
     }
+  };
+  // --- Output device (lib/outputs): '' is the system default. The element
+  // and, once the graph exists, the audio context both take it: with the
+  // graph built, the element's own sink no longer decides where it sounds.
+  let sinkId = '';
+  const applyContextSink = (ctx: AudioContext, id: string): Promise<void> => {
+    const withSink = ctx as AudioContext & { setSinkId?: (id: string) => Promise<void> };
+    if (typeof withSink.setSinkId !== 'function') return Promise.resolve();
+    return withSink.setSinkId(id).catch((e: unknown) => {
+      logger.error('audio', 'audio context would not change output', undefined, e as Error);
+    });
   };
   /** Puts the current settings on the graph, if there is one. */
   const applyEq = () => {
@@ -354,6 +368,18 @@ export const createWebBackend: CreateAudioBackend = (events) => {
       a.defaultPlaybackRate = r;
       a.playbackRate = r;
     },
+
+    async setOutputDevice(deviceId) {
+      const el = a as HTMLAudioElement & { setSinkId?: (id: string) => Promise<void> };
+      if (typeof el.setSinkId !== 'function') throw new Error('this browser cannot pick an output device');
+      // The element first: it is what refuses a device the page may not use,
+      // and nothing is changed then.
+      await el.setSinkId(deviceId);
+      sinkId = deviceId;
+      if (audioCtx) await applyContextSink(audioCtx, deviceId);
+    },
+
+    outputDevice: () => sinkId,
 
     getCurrentTime: () => a.currentTime || 0,
     getDuration: () => a.duration || 0,

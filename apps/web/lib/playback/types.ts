@@ -141,6 +141,13 @@ export interface AudioBackend {
   /** Web audio only: the page's own audio element, which Safari can send to
    *  an AirPlay speaker or TV as it is (lib/cast/controller). */
   mediaElement?(): HTMLMediaElement | null;
+  /** Web audio in a browser with HTMLMediaElement.setSinkId (Chrome on a
+   *  computer): the output device the sound goes to, '' for the system
+   *  default (lib/outputs). Rejects when the browser refuses the device.
+   *  Absent elsewhere: other engines pick their output natively. */
+  setOutputDevice?(deviceId: string): Promise<void>;
+  /** The device setOutputDevice last applied ('' = the system default). */
+  outputDevice?(): string;
   /** Tear down listeners / native resources. */
   destroy(): void;
 }

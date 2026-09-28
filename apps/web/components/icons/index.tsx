@@ -65,4 +65,15 @@ export {
   SquareCheck as SelectIcon,
   Users as PeopleIcon,
   UserPlus as AddPersonIcon,
+  // The Devices picker (components/player/DevicesButton).
+  MonitorSpeaker as DevicesIcon,
+  Speaker as SpeakerIcon,
+  Headphones as HeadphonesIcon,
+  Bluetooth as BluetoothIcon,
+  Smartphone as PhoneIcon,
+  Laptop as LaptopIcon,
+  Tv as TvIcon,
+  Car as CarIcon,
+  Usb as UsbIcon,
+  Square as StopIcon,
 } from 'lucide-react';

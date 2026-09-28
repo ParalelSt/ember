@@ -17,7 +17,7 @@ import { QueueSheet } from '@/components/player/QueueSheet';
 import { EqualizerSheet } from '@/components/player/EqualizerSheet';
 import { SeekBar } from '@/components/player/SeekBar';
 import { TransportControls } from '@/components/player/TransportControls';
-import { CastButton, CastNote } from '@/components/player/CastButton';
+import { DevicesButton, PlayingOnNote } from '@/components/player/DevicesButton';
 import { useBackDismiss } from '@/lib/useBackDismiss';
 import { useTrackArtSrc } from '@/lib/offlineNative';
 import { usePlayer } from '@/components/player/PlayerProvider';
@@ -202,13 +202,14 @@ export function NowPlaying() {
       >
         <ChevronDownIcon className="h-6 w-6" />
       </Button>
-      {/* Top right: cast (when a device is around), guitar tabs (when the
-          plugin is on), the equalizer and the queue. */}
+      {/* Top right: devices (speakers, headphones, cast devices; when there
+          is a choice), guitar tabs (when the plugin is on), the equalizer
+          and the queue. */}
       <div
         className="absolute z-20 right-3 flex items-center gap-inset"
         style={{ top: 'calc(var(--safe-top) + 1rem)' }}
       >
-        <CastButton className="h-10 w-10" iconClassName="h-5 w-5" />
+        <DevicesButton variant="full" className="h-10 w-10" iconClassName="h-5 w-5" />
         {tabsEnabled && (
           <Button
             variant="ghost"
@@ -303,7 +304,7 @@ export function NowPlaying() {
           left={shuffleButton}
           right={loopButton}
         />
-        <CastNote className="mt-block" />
+        <PlayingOnNote className="mt-block" />
       </div>
 
       {/* Lyrics card — sits BELOW the min-h-full player pane so the

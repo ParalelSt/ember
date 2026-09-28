@@ -98,6 +98,29 @@ export async function requestCast(): Promise<void> {
   }
 }
 
+/** Stops casting: the Devices picker's "Stop casting", or a speaker on this
+ *  device picked while casting. The music comes back here (the player's
+ *  hand-back, as when the TV ends the session). AirPlay has no call for it:
+ *  its own picker moves it back. */
+export async function stopCast(): Promise<void> {
+  const { path, connection } = useCastStore.getState();
+  if (connection === 'idle') return;
+  try {
+    if (path === 'android') {
+      const p = androidCastPlugin() as (AndroidCastPlugin & { stopCasting?: () => Promise<void> }) | null;
+      // An app build from before the Devices picker: the device's own
+      // controls have "Stop casting".
+      if (typeof p?.stopCasting === 'function') await p.stopCasting();
+      else await p?.showCastPicker();
+    } else if (path === 'google') {
+      castGlobals()?.cast.framework.CastContext.getInstance().endCurrentSession(true);
+    }
+  } catch (e) {
+    logger.error('cast', 'could not stop casting', { path }, e instanceof Error ? e : new Error(String(e)));
+    toast.error('Could not stop casting. Try again.');
+  }
+}
+
 // ── Google Cast (Chrome) ────────────────────────────────────────────────
 
 let googleReady: Promise<GCastGlobals | null> | null = null;

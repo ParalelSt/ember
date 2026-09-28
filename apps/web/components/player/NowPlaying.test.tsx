@@ -95,21 +95,45 @@ describe('NowPlaying', () => {
   });
 });
 
-describe('NowPlaying: casting', () => {
-  it('has the cast button when a device is around, and says where the music plays while casting', async () => {
+describe('NowPlaying: devices', () => {
+  it('has the devices button when a cast device is around, and says where the music plays while casting', async () => {
     const { useCastStore } = await import('@/stores/useCastStore');
     useCastStore.setState({ path: 'android', availability: 'none', connection: 'idle', deviceName: null });
     const { rerender } = render(<NowPlaying />);
     const view = screen.getByTestId('now-playing');
-    expect(within(view).queryByTestId('cast-button')).toBeNull();
+    expect(within(view).queryByTestId('devices-button')).toBeNull();
     act(() => useCastStore.setState({ availability: 'available' }));
     rerender(<NowPlaying />);
-    expect(within(view).getByRole('button', { name: 'Cast' })).toBeInTheDocument();
-    expect(within(view).queryByTestId('cast-note')).toBeNull();
+    expect(within(view).getByRole('button', { name: 'Devices' })).toBeInTheDocument();
+    expect(within(view).queryByTestId('playing-on')).toBeNull();
     act(() => useCastStore.setState({ connection: 'connected', deviceName: 'Living Room TV' }));
     rerender(<NowPlaying />);
-    expect(within(view).getByRole('button', { name: 'Casting to Living Room TV' })).toBeInTheDocument();
-    expect(within(view).getByTestId('cast-note')).toHaveTextContent('Playing on Living Room TV');
+    expect(within(view).getByRole('button', { name: 'Devices: playing on Living Room TV' })).toBeInTheDocument();
+    expect(within(view).getByTestId('playing-on')).toHaveTextContent('Playing on Living Room TV');
     useCastStore.setState({ path: null, availability: 'none', connection: 'idle', deviceName: null });
+  });
+
+  it('says "Playing on Pixel Buds" when the phone plays through headphones, and nothing on its own speaker', async () => {
+    const { useOutputStore } = await import('@/stores/useOutputStore');
+    useOutputStore.setState({
+      platform: 'android',
+      devices: [
+        { id: '2', name: 'This phone', kind: 'phone' },
+        { id: '9', name: 'Pixel Buds', kind: 'bluetooth' },
+      ],
+      currentId: '9',
+      currentName: 'Pixel Buds',
+      currentKind: 'bluetooth',
+      systemPicker: 'android-switcher',
+    });
+    const { rerender } = render(<NowPlaying />);
+    const view = screen.getByTestId('now-playing');
+    expect(within(view).getByTestId('playing-on')).toHaveTextContent('Playing on Pixel Buds');
+    expect(within(view).getByRole('button', { name: 'Devices: playing on Pixel Buds' })).toBeInTheDocument();
+    act(() => useOutputStore.setState({ currentId: '2', currentName: 'This phone', currentKind: 'phone' }));
+    rerender(<NowPlaying />);
+    expect(within(view).queryByTestId('playing-on')).toBeNull();
+    expect(within(view).getByRole('button', { name: 'Devices' })).toBeInTheDocument();
+    useOutputStore.setState({ platform: null, devices: [], currentId: null, currentName: null, currentKind: null, systemPicker: null });
   });
 });
