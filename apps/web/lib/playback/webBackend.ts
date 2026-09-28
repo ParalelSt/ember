@@ -3,7 +3,7 @@
 import { logger } from '@/lib/logger/client';
 import { autoPreampDb, DEFAULT_EQ, EQ_BANDS, EQ_PEAK_Q, eqActive, type EqSettings } from './eq';
 import { createGainRamp } from './gainRamp';
-import type { AudioBackend, CreateAudioBackend } from './types';
+import type { AudioBackend, CreateAudioBackend, RemoteCommands } from './types';
 
 /** HTMLMediaElement.NETWORK_LOADING, spelled out: some DOMs (and test
  *  environments) do not expose the constant on the class. */
@@ -203,7 +203,50 @@ export const createWebBackend: CreateAudioBackend = (events) => {
     events.onPause();
     setMediaState('paused');
   };
+  // --- Lock-screen / remote transport. WebKit (the iPhone app's WKWebView,
+  // Safari) only tells the OS about the page's action handlers when they are
+  // set while the element is playing: handlers registered before the first
+  // play leave the lock screen on its defaults, which are -15 s / +15 s skip
+  // buttons instead of previous / next (checked on the iOS 26 simulator:
+  // mediaremoted gets NextTrack and PreviousTrack only after a 'playing'
+  // re-registration). So the commands are kept and put back on every
+  // 'playing'; other browsers take the same calls as a no-op.
+  let remote: RemoteCommands | null = null;
+  const applyRemoteCommands = () => {
+    if (!remote || typeof navigator === 'undefined' || !('mediaSession' in navigator)) return;
+    const cmds = remote;
+    const handlers: [MediaSessionAction, MediaSessionActionHandler][] = [
+      ['play', () => cmds.play()],
+      ['pause', () => cmds.pause()],
+      ['previoustrack', () => cmds.prev()],
+      ['nexttrack', () => cmds.next()],
+      ['seekto', (e) => {
+        if (typeof e.seekTime !== 'number') return;
+        // The lock screen's scrubber belongs to the song it was showing. A
+        // seek that arrives while the next song is still loading was meant
+        // for the one before: iOS sends a second one when a scrub to the end
+        // lets go, and it landed on the new song and skipped it too.
+        if (transitioning) {
+          logger.breadcrumb('playback', 'remote seek dropped: a new song is loading', { to: e.seekTime });
+          return;
+        }
+        cmds.seek(e.seekTime);
+      }],
+    ];
+    for (const [action, handler] of handlers) {
+      // An engine that does not know one action throws for it; the others
+      // must still be set.
+      try {
+        navigator.mediaSession.setActionHandler(action, handler);
+      } catch {
+        /* unsupported action */
+      }
+    }
+  };
+  const onPlaying = () => applyRemoteCommands();
+
   a.addEventListener('error', onError);
+  a.addEventListener('playing', onPlaying);
   a.addEventListener('timeupdate', onTime);
   a.addEventListener('loadedmetadata', onLoadedMeta);
   a.addEventListener('ended', onEnded);
@@ -316,14 +359,8 @@ export const createWebBackend: CreateAudioBackend = (events) => {
     },
 
     setRemoteCommands(cmds) {
-      if (typeof navigator === 'undefined' || !('mediaSession' in navigator)) return;
-      navigator.mediaSession.setActionHandler('play', cmds.play);
-      navigator.mediaSession.setActionHandler('pause', cmds.pause);
-      navigator.mediaSession.setActionHandler('previoustrack', cmds.prev);
-      navigator.mediaSession.setActionHandler('nexttrack', cmds.next);
-      navigator.mediaSession.setActionHandler('seekto', (e) => {
-        if (typeof e.seekTime === 'number') cmds.seek(e.seekTime);
-      });
+      remote = cmds;
+      applyRemoteCommands();
     },
 
     getBufferedToEnd() {
@@ -364,16 +401,22 @@ export const createWebBackend: CreateAudioBackend = (events) => {
     destroy() {
       if (transitionTimer) clearTimeout(transitionTimer);
       norm.cancel();
+      remote = null;
       a.removeEventListener('error', onError);
+      a.removeEventListener('playing', onPlaying);
       a.removeEventListener('timeupdate', onTime);
       a.removeEventListener('loadedmetadata', onLoadedMeta);
       a.removeEventListener('ended', onEnded);
       a.removeEventListener('play', onPlay);
       a.removeEventListener('pause', onPause);
       if (typeof navigator !== 'undefined' && 'mediaSession' in navigator) {
-        (['play', 'pause', 'previoustrack', 'nexttrack', 'seekto'] as const).forEach((act) =>
-          navigator.mediaSession.setActionHandler(act, null),
-        );
+        (['play', 'pause', 'previoustrack', 'nexttrack', 'seekto'] as const).forEach((act) => {
+          try {
+            navigator.mediaSession.setActionHandler(act, null);
+          } catch {
+            /* unsupported action, never set */
+          }
+        });
       }
       a.pause();
       a.removeAttribute('src');

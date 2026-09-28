@@ -120,6 +120,28 @@ xcrun simctl install booted ~/Library/Developer/Xcode/DerivedData/App-*/Build/Pr
 xcrun simctl launch booted app.ember.music
 ```
 
+Lock screen UI test (`AppUITests`, its own scheme so the `App` scheme and CI
+stay server-free). It drives SpringBoard for real: locks the simulator,
+presses the lock screen's play, pause, previous and next, drags its
+scrubber, lets a song end with the screen off, then unlocks and checks
+Ember's own player. Needs a sandbox server (never the live one) seeded by
+`tests/ios-lockscreen-seed.mjs`; a Debug build loads the server from
+`EMBER_TEST_SERVER_URL` instead of `capacitor.config.json`:
+
+```bash
+PB_ADMIN_PASSWORD=<sandbox superuser> APP_URL=http://127.0.0.1:3190 PB_URL=http://127.0.0.1:8218 \
+  node tests/ios-lockscreen-seed.mjs
+cd apps/mobile/ios/App
+TEST_RUNNER_EMBER_TEST_SERVER_URL=http://127.0.0.1:3190 TEST_RUNNER_EMBER_TEST_SHOTS=/tmp/lock-shots \
+xcodebuild -workspace App.xcworkspace -scheme AppUITests -configuration Debug \
+  -destination 'platform=iOS Simulator,name=iPhone 17' -test-timeouts-enabled YES test
+```
+
+About 80 seconds. Without `EMBER_TEST_SERVER_URL` the lock screen test
+skips. The simulator's Control Center has no media module and its lock
+screen draws neither the artwork nor the button glyphs (they are there to
+VoiceOver and to taps): artwork and Control Center are for a real phone.
+
 **What the iPhone app is.** No native player: songs play through the page's
 web audio backend inside WKWebView (`capacitorBackend`, with no plugin on
 iOS). What the shell adds:
@@ -129,8 +151,13 @@ iOS). What the shell adds:
   music keeps going with the screen locked or the app in the background and
   the silent switch does not mute it. The lock screen and Control Center
   show title, artist, artwork and play/pause/next/previous/seek from
-  `navigator.mediaSession`, which WKWebView publishes itself. Checked on the
-  iOS 26 simulator: plays locked, and the next song starts while locked.
+  `navigator.mediaSession`, which WKWebView publishes itself. WebKit only
+  passes the page's action handlers on while the element is playing, so
+  `webBackend` sets them again on every `playing` (before that the lock
+  screen had skip 15 s buttons instead of previous/next), and it drops a
+  lock-screen seek that arrives while the next song loads (a scrub to the
+  end used to skip the following song too). Checked on the iOS 26
+  simulator by the lock screen UI test below.
 - **No npm plugins on iOS** (`ios.includePlugins: []` in
   `capacitor.config.ts`): the media-session plugin's iOS half fires every
   handler the moment it is registered and never delivers the real buttons.
