@@ -494,6 +494,18 @@ for (const size of [{ width: 1280, height: 800 }, { width: 1440, height: 900 }])
       && walk[2] === walk[0] && walk[3] === 'What do you want to listen to?',
     JSON.stringify(walk));
 
+  // The X in the box: only with text, before the mic, and it only clears.
+  await input.focus();
+  const clearBtn = page.getByRole('search').getByRole('button', { name: 'Clear search' });
+  const withText = await clearBtn.isVisible()
+    && await page.getByRole('search').getByRole('button', { name: 'Search by voice' }).isVisible();
+  await clearBtn.click();
+  await page.waitForTimeout(200);
+  check(`the X clears the box, keeps the caret and the dropdown at ${label}`,
+    withText && (await input.inputValue()) === '' && await page.locator(PANEL).isVisible()
+      && await input.evaluate((el) => el === document.activeElement)
+      && !(await clearBtn.isVisible().catch(() => false)));
+
   await page.keyboard.press('Escape');
   await page.waitForTimeout(200);
 
@@ -511,8 +523,8 @@ for (const size of [{ width: 1280, height: 800 }, { width: 1440, height: 900 }])
   await page.getByRole('link', { name: 'Home' }).first().waitFor({ timeout: 10000 });
 }
 
-// The phone keeps today's full-screen sheet, modal and all: on a phone
-// there is nothing behind it worth reaching.
+// The phone keeps a full-screen sheet, modal and all: on a phone there is
+// nothing behind it worth reaching.
 await page.setViewportSize({ width: 390, height: 844 });
 await page.goto(`${APP}/`, { waitUntil: 'networkidle' });
 await openWithResults('yes sir');
@@ -527,13 +539,36 @@ check('the phone still gets the modal full-screen sheet, not the dropdown',
   JSON.stringify(sheetMarks));
 
 const sheetBox = await page.locator('[data-slot="dialog-content"]').boundingBox();
-check('the phone sheet stays inside the 390px viewport',
-  !!sheetBox && sheetBox.x >= 0 && sheetBox.x + sheetBox.width <= 390,
+check('the phone sheet fills the 390px viewport edge to edge',
+  !!sheetBox && sheetBox.x === 0 && sheetBox.width === 390,
   sheetBox ? `left=${sheetBox.x} right=${sheetBox.x + sheetBox.width}` : 'no sheet');
 
-check('the phone sheet still has its close button',
-  await page.getByRole('button', { name: 'Close search' }).first().isVisible());
+// Option A: a back arrow left of the box closes; the X inside only clears,
+// shows only with text, and is the only X on the sheet.
+// Counted in the box itself: recents rows have their own remove X.
+const sheetXs = () => input.locator('xpath=..').locator('svg.lucide-x').count();
+check('the phone sheet has its back arrow',
+  await page.getByRole('button', { name: 'Close search' }).first().isVisible()
+    && (await page.locator('[data-slot="dialog-content"] button[aria-label="Close search"] svg.lucide-chevron-left').count()) === 1);
+check('typing on the phone shows exactly one X, the clear one', (await sheetXs()) === 1
+  && await page.getByRole('button', { name: 'Clear search' }).isVisible());
 
+await page.getByRole('button', { name: 'Clear search' }).click();
+await page.waitForTimeout(200);
+check('the phone X clears without closing, caret still in the box',
+  (await input.inputValue()) === ''
+    && await page.locator('[data-slot="dialog-content"]').isVisible()
+    && await input.evaluate((el) => el === document.activeElement));
+check('the empty phone box shows the mic and no X',
+  (await sheetXs()) === 0 && await page.getByRole('button', { name: 'Search by voice' }).isVisible());
+
+await input.fill('yes sir');
+await page.getByRole('button', { name: 'Close search' }).click();
+await page.waitForTimeout(300);
+check('the phone back arrow closes the sheet',
+  !(await page.locator('[data-slot="dialog-content"]').isVisible().catch(() => false)));
+
+await openWithResults('yes sir');
 await page.keyboard.press('Escape');
 await page.waitForTimeout(300);
 check('the phone sheet still closes on Escape',

@@ -1,3 +1,8 @@
+# 0.7.14: Search clear button
+
+**Host: run `./update.sh` as usual (no new packages, no settings, no database
+changes).** Web only: the apps stay at 0.4.10.
+
 # 0.7.13: Backups, equalizer, collaborative playlists, tabs without generation (apps 0.4.10)
 
 **Host: run `./update.sh` as usual (no new packages).** The equalizer in the

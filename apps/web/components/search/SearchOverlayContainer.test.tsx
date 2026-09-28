@@ -390,6 +390,58 @@ describe('SearchOverlayContainer, desktop dropdown', () => {
     expect(useUiStore.getState().searchOpen).toBe(false);
   });
 
+  it('shows no clear X with an empty box, just the mic', () => {
+    renderOverlay();
+
+    expect(screen.queryByRole('button', { name: 'Clear search' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Search by voice' })).toBeInTheDocument();
+  });
+
+  it('shows a clear X before the mic once there is text, and keeps the mic', () => {
+    renderOverlay();
+    fireEvent.change(box(), { target: { value: 'daft' } });
+
+    const clear = screen.getByRole('button', { name: 'Clear search' });
+    const mic = screen.getByRole('button', { name: 'Search by voice' });
+    // Inside the box, left of the mic.
+    expect(screen.getByRole('search')).toContainElement(clear);
+    expect(clear.compareDocumentPosition(mic) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(clear.className).toMatch(/right-10/);
+    expect(mic.className).toMatch(/right-1(\s|$)/);
+  });
+
+  it('clears the box on the X, keeping focus in it and the panel open', async () => {
+    renderOverlay();
+    await waitFor(() => expect(box()).toHaveFocus());
+    fireEvent.change(box(), { target: { value: 'daft' } });
+
+    const clear = screen.getByRole('button', { name: 'Clear search' });
+    // Pressing it must not pull focus out of the box.
+    expect(fireEvent.mouseDown(clear)).toBe(false);
+    fireEvent.pointerDown(clear);
+    fireEvent.click(clear);
+
+    expect(box()).toHaveValue('');
+    expect(box()).toHaveFocus();
+    expect(useUiStore.getState().searchOpen).toBe(true);
+    expect(panel()).toBeInTheDocument();
+    // Gone with the text, mic still there; typing again just works.
+    expect(screen.queryByRole('button', { name: 'Clear search' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Search by voice' })).toBeInTheDocument();
+    fireEvent.change(box(), { target: { value: 'd' } });
+    expect(box()).toHaveValue('d');
+    expect(panel()).toBeInTheDocument();
+  });
+
+  it('still closes on Escape with text in the box, text kept', () => {
+    renderOverlay();
+    fireEvent.change(box(), { target: { value: 'daft' } });
+
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(useUiStore.getState().searchOpen).toBe(false);
+    expect(box()).toHaveValue('daft');
+  });
+
   it('stands down on /search, which is the search UI already', () => {
     pathname.value = '/search';
     renderOverlay();
@@ -399,7 +451,8 @@ describe('SearchOverlayContainer, desktop dropdown', () => {
   });
 });
 
-// The phone shape is exactly what it was: a full-screen modal sheet.
+// The phone shape: a full-screen modal sheet with a back arrow left of the
+// box (closes) and an X inside it that only ever clears.
 describe('SearchOverlayContainer, phone sheet', () => {
   beforeEach(() => {
     desktop.value = false;
@@ -413,12 +466,64 @@ describe('SearchOverlayContainer, phone sheet', () => {
     expect(panel()).toBeNull();
   });
 
-  it('keeps its close button, and its box takes focus on open', async () => {
+  it('closes on the back arrow, and its box takes focus on open', async () => {
     renderOverlay();
 
     await waitFor(() => expect(box()).toHaveFocus());
+    const back = screen.getByRole('button', { name: 'Close search' });
+    // A back arrow left of the box, not an X inside it.
+    expect(back.querySelector('.lucide-chevron-left')).not.toBeNull();
+    expect(back.querySelector('.lucide-x')).toBeNull();
+    expect(back.compareDocumentPosition(box()) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    fireEvent.click(back);
+    expect(useUiStore.getState().searchOpen).toBe(false);
+  });
+
+  it('keeps the typed text when the back arrow closes it, same as before', () => {
+    renderOverlay();
+    fireEvent.change(box(), { target: { value: 'daft' } });
+
     fireEvent.click(screen.getByRole('button', { name: 'Close search' }));
     expect(useUiStore.getState().searchOpen).toBe(false);
+    expect(box()).toHaveValue('daft');
+  });
+
+  it('still closes on the Android back gesture', () => {
+    renderOverlay();
+
+    fireEvent(window, new PopStateEvent('popstate'));
+    expect(useUiStore.getState().searchOpen).toBe(false);
+  });
+
+  it('shows the mic and no X while empty, then only the clear X with text', () => {
+    renderOverlay();
+    const sheet = screen.getByTestId('search-sheet');
+
+    expect(screen.getByRole('button', { name: 'Search by voice' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Clear search' })).toBeNull();
+    expect(sheet.querySelectorAll('.lucide-x')).toHaveLength(0);
+
+    fireEvent.change(box(), { target: { value: 'daft' } });
+    expect(screen.getByRole('button', { name: 'Clear search' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Search by voice' })).toBeNull();
+    // Never two X icons: the only X is the one that clears.
+    expect(sheet.querySelectorAll('.lucide-x')).toHaveLength(1);
+    expect(screen.getByRole('button', { name: 'Clear search' }).querySelector('.lucide-x')).not.toBeNull();
+  });
+
+  it('clears on the X without closing, focus kept in the box', async () => {
+    renderOverlay();
+    await waitFor(() => expect(box()).toHaveFocus());
+    fireEvent.change(box(), { target: { value: 'daft' } });
+
+    const clear = screen.getByRole('button', { name: 'Clear search' });
+    expect(fireEvent.mouseDown(clear)).toBe(false);
+    fireEvent.click(clear);
+
+    expect(box()).toHaveValue('');
+    expect(box()).toHaveFocus();
+    expect(useUiStore.getState().searchOpen).toBe(true);
+    expect(screen.getByRole('button', { name: 'Search by voice' })).toBeInTheDocument();
   });
 
   // (Whether a closed sheet renders nothing is base-ui's Dialog doing its

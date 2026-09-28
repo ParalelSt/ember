@@ -205,7 +205,7 @@ const SPACING_BASELINE: Record<string, number> = {
   'components/player/SeekBar.tsx': 2,
   'components/player/TransportControls.tsx': 2,
   'components/player/VolumeControl.tsx': 1,
-  'components/search/SearchOverlay.tsx': 3,
+  'components/search/SearchOverlay.tsx': 2,
   'components/search/SearchOverlayContainer.tsx': 2,
   'components/session/SessionDialogs.tsx': 4,
   'components/settings/PrivacyToggles.tsx': 8,
