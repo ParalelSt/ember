@@ -40,7 +40,7 @@ vi.mock('@/components/ui/sheet', () => ({
   SheetTitle: ({ children }: { children: ReactNode }) => <h2>{children}</h2>,
 }));
 
-import { DevicesButton, PlayingOnNote } from './DevicesButton';
+import { DevicesButton } from './DevicesButton';
 import { useOutputStore } from '@/stores/useOutputStore';
 import { useCastStore } from '@/stores/useCastStore';
 
@@ -162,22 +162,31 @@ describe('DevicesButton', () => {
   });
 });
 
-describe('PlayingOnNote', () => {
-  it('names a headset, not the phone', () => {
+describe('DevicesButton, full player', () => {
+  it('labels itself with a headset, not the phone', () => {
     useOutputStore.setState({ platform: 'ios', devices: [], currentId: 'r', currentName: 'AirPods Pro', currentKind: 'bluetooth', systemPicker: 'ios-route-picker' });
-    const { rerender } = render(<PlayingOnNote />);
-    expect(screen.getByTestId('playing-on')).toHaveTextContent('Playing on AirPods Pro');
+    const { rerender } = render(<DevicesButton variant="full" />);
+    expect(screen.getByTestId('devices-button')).toHaveTextContent('AirPods Pro');
     useOutputStore.setState({ currentName: 'iPhone', currentKind: 'phone' });
-    rerender(<PlayingOnNote />);
-    expect(screen.queryByTestId('playing-on')).toBeNull();
+    rerender(<DevicesButton variant="full" />);
+    expect(screen.getByTestId('devices-button')).toHaveTextContent(/^Devices$/);
   });
 
-  it('while casting, says the equalizer and leveling are off (not for AirPlay, which keeps the page’s audio)', () => {
+  it('while casting, the sheet says the equalizer and leveling are off (not for AirPlay, which keeps the page’s audio)', () => {
     useCastStore.setState({ path: 'android', availability: 'available', connection: 'connected', deviceName: 'Living Room TV' });
-    const { rerender } = render(<PlayingOnNote />);
-    expect(screen.getByTestId('playing-on')).toHaveTextContent('Playing on Living Room TV. The equalizer and volume leveling are off while casting.');
+    const { rerender } = render(<DevicesButton variant="full" />);
+    expect(screen.getByTestId('devices-button')).toHaveTextContent('Living Room TV');
+    fireEvent.click(screen.getByTestId('devices-button'));
+    expect(screen.getByTestId('casting-note')).toHaveTextContent('The equalizer and volume leveling are off while casting.');
     useCastStore.setState({ path: 'airplay', deviceName: 'AirPlay' });
-    rerender(<PlayingOnNote />);
-    expect(screen.getByTestId('playing-on')).toHaveTextContent('Playing over AirPlay.');
+    rerender(<DevicesButton variant="full" />);
+    expect(screen.getByTestId('devices-button')).toHaveTextContent('AirPlay');
+    expect(screen.queryByTestId('casting-note')).toBeNull();
+  });
+
+  it('says Connecting while it connects', () => {
+    useCastStore.setState({ path: 'google', availability: 'available', connection: 'connecting' });
+    render(<DevicesButton variant="full" />);
+    expect(screen.getByTestId('devices-button')).toHaveTextContent('Connecting');
   });
 });

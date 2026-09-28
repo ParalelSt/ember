@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, type ComponentType } from 'react';
-import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -47,13 +46,16 @@ import {
 } from '@/lib/outputs/rows';
 import { useCastStore } from '@/stores/useCastStore';
 import { useOutputStore } from '@/stores/useOutputStore';
+import { PlayerToolButton } from '@/components/player/PlayerToolButton';
 import { cn } from '@/lib/utils';
 
 /** Where the music plays: one button (Spotify's device picker) in the
  *  desktop player bar and the phone's full-screen player. It lists this
  *  device's outputs (speakers, headphones; lib/outputs), the platform's own
  *  picker where it has one, and the cast devices, with the one playing lit.
- *  The bar opens a menu above it; the phone opens a sheet from the bottom. */
+ *  The bar opens a menu above it; the phone's is a labelled tool (the label
+ *  names the output when it is not the phone itself) that opens a sheet
+ *  from the bottom. */
 
 const ICONS: Record<DeviceRow['icon'], ComponentType<{ className?: string }>> = {
   computer: LaptopIcon,
@@ -123,8 +125,8 @@ function RowBody({ row }: { row: DeviceRow }) {
 }
 
 interface Props {
-  /** `bar`: the desktop player bar (a menu); `full`: the phone's full-screen
-   *  player (a sheet). */
+  /** `bar`: the desktop player bar (a menu); `full`: the tool row of the
+   *  phone's full-screen player (a sheet). */
   variant: 'bar' | 'full';
   className?: string;
   iconClassName?: string;
@@ -145,14 +147,14 @@ export function DevicesButton({ variant, className, iconClassName }: Props) {
     setOpen(false);
     runAction(row.action);
   };
-  const buttonClass = cn(
-    lit ? 'text-ember hover:text-ember' : variant === 'full' ? 'text-foreground/80 hover:text-foreground' : 'text-muted-foreground hover:text-foreground',
-    cast.connection === 'connecting' && 'animate-pulse',
-    className,
-  );
   const icon = <DevicesIcon className={iconClassName ?? 'h-4 w-4'} />;
 
   if (variant === 'bar') {
+    const buttonClass = cn(
+      lit ? 'text-ember hover:text-ember' : 'text-muted-foreground hover:text-foreground',
+      cast.connection === 'connecting' && 'animate-pulse',
+      className,
+    );
     return (
       <DropdownMenu open={open} onOpenChange={onOpenChange}>
         <DropdownMenuTrigger
@@ -186,24 +188,30 @@ export function DevicesButton({ variant, className, iconClassName }: Props) {
     );
   }
 
+  const on = playingOn(out, cast);
+  const casting = cast.connection === 'connected';
   return (
     <>
-      <Button
-        variant="ghost"
-        size="icon"
+      <PlayerToolButton
+        label={on ?? (cast.connection === 'connecting' ? 'Connecting' : 'Devices')}
+        ariaLabel={label}
         onClick={() => onOpenChange(true)}
-        aria-label={label}
-        title={label}
+        lit={lit}
         data-testid="devices-button"
-        className={buttonClass}
+        className={cn(cast.connection === 'connecting' && 'animate-pulse', className)}
       >
         {icon}
-      </Button>
+      </PlayerToolButton>
       <Sheet open={open} onOpenChange={onOpenChange}>
         <SheetContent side="bottom" className="max-h-[85vh] overflow-y-auto rounded-t-2xl p-0" data-testid="devices-list">
           <SheetHeader className="px-block pt-block pb-0">
             <SheetTitle className="text-base">Devices</SheetTitle>
           </SheetHeader>
+          {casting && cast.path !== 'airplay' && (
+            <p data-testid="casting-note" role="note" className="px-block text-xs text-muted-foreground">
+              The equalizer and volume leveling are off while casting.
+            </p>
+          )}
           <div className="flex flex-col gap-block px-cluster pb-stack">
             {sections.map((section) => (
               <div key={section.key} className="flex flex-col">
@@ -226,23 +234,5 @@ export function DevicesButton({ variant, className, iconClassName }: Props) {
         </SheetContent>
       </Sheet>
     </>
-  );
-}
-
-/** "Playing on Pixel Buds" under the full-screen player: casting, or a
- *  speaker or headset that is not the phone itself. */
-export function PlayingOnNote({ className }: { className?: string }) {
-  const { out, cast } = useSummaries();
-  const on = playingOn(out, cast);
-  if (!on) return null;
-  const casting = cast.connection === 'connected';
-  return (
-    <p data-testid="playing-on" className={cn('text-xs text-ember text-center', className)}>
-      {casting && cast.path === 'airplay'
-        ? 'Playing over AirPlay.'
-        : casting
-          ? `Playing on ${on}. The equalizer and volume leveling are off while casting.`
-          : `Playing on ${on}`}
-    </p>
   );
 }

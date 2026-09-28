@@ -45,6 +45,20 @@ vi.mock('@/components/providers/AuthProvider', () => ({ useAuth: () => ({ user: 
 vi.mock('@/hooks/useLikeToggle', () => ({ useLikeToggle: () => ({ liked: false, toggle: () => {} }) }));
 vi.mock('@/lib/offlineNative', () => ({ useTrackArtSrc: () => null }));
 vi.mock('@/lib/useBackDismiss', () => ({ useBackDismiss: () => {} }));
+// base-ui's menu brings the root's second React into a test render (see
+// QueueSheet.test.tsx): the full player's More menu is a plain box.
+vi.mock('@/components/ui/dropdown-menu', () => {
+  const Box = ({ children }: { children?: React.ReactNode }) => <div>{children}</div>;
+  return {
+    DropdownMenu: Box,
+    DropdownMenuTrigger: ({ children, ...rest }: React.ComponentProps<'button'>) => <button {...rest}>{children}</button>,
+    DropdownMenuContent: () => null,
+    DropdownMenuItem: Box,
+    DropdownMenuGroup: Box,
+    DropdownMenuLabel: Box,
+    DropdownMenuSeparator: () => null,
+  };
+});
 const Stub = vi.hoisted(() => () => null);
 vi.mock('@/components/player/QueueSheet', () => ({ QueueSheet: Stub }));
 vi.mock('@/components/player/EqualizerSheet', () => ({ EqualizerSheet: Stub }));
