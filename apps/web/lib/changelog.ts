@@ -21,6 +21,17 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    id: 'search-clear-button',
+    version: '0.7.14',
+    date: '2026-09-28',
+    title: 'Clear the search box',
+    summary: 'A clear button (X) now appears in the search box while you type, and on phones a back arrow closes search.',
+    bullets: [
+      'Type in the search box and an X shows up next to the mic: tap it to empty the box and keep typing.',
+      'On phones, search opens full screen with a back arrow on the left to close it. The X inside the box only clears, so there is never a second X.',
+    ],
+  },
+  {
     id: 'collaborative-playlists',
     version: '0.7.13',
     date: '2026-09-26',
