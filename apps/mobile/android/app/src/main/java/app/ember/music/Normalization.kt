@@ -254,7 +254,17 @@ class Normalizer(
 /** The player the session (and so the app, the notification and the car)
  *  sees. Its volume is the person's level; the player underneath plays at
  *  that times the song's gain (Normalizer). */
-class LevelPlayer(player: Player, private val normalizer: Normalizer) : ForwardingPlayer(player) {
+class LevelPlayer(
+    player: Player,
+    private val normalizer: Normalizer,
+    /** Shuffle from a controller (the car, a head unit over Bluetooth): the
+     *  service reorders the queue instead (QueueShuffle). Null: as is. */
+    private val onShuffle: ((Boolean) -> Unit)? = null,
+) : ForwardingPlayer(player) {
     override fun setVolume(volume: Float) = normalizer.setUserLevel(volume)
     override fun getVolume(): Float = normalizer.userLevel
+    override fun setShuffleModeEnabled(shuffleModeEnabled: Boolean) {
+        val fn = onShuffle
+        if (fn != null) fn(shuffleModeEnabled) else super.setShuffleModeEnabled(shuffleModeEnabled)
+    }
 }

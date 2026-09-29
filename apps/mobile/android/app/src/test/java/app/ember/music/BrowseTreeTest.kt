@@ -19,7 +19,8 @@ class BrowseTreeTest {
         server.start()
         val tree = BrowseTree(ServerApi(server.url("/").toString().trimEnd('/')) { "pb_auth=x" })
         val root = tree.children(BrowseTree.ROOT).map { it.mediaId }
-        assertEquals(listOf(BrowseTree.PLAYLISTS, BrowseTree.LIKED, BrowseTree.RECENT, BrowseTree.UPLOADS), root)
+        assertEquals(listOf(BrowseTree.HOME, BrowseTree.LIKED, BrowseTree.PLAYLISTS, BrowseTree.LIBRARY), root)
+        assertTrue(tree.children(BrowseTree.ROOT).all { it.mediaMetadata.isBrowsable == true })
         val playlists = tree.children(BrowseTree.PLAYLISTS)
         assertEquals("playlist:p1", playlists[0].mediaId)
         assertTrue(playlists[0].mediaMetadata.isBrowsable == true)
@@ -48,6 +49,7 @@ class BrowseTreeTest {
         server.start()
         val tree = BrowseTree(ServerApi(server.url("/").toString().trimEnd('/')) { "pb_auth=x" })
         val shown = tree.children(BrowseTree.UPLOADS)
+        assertEquals("uploads|upload:2", shown[1].mediaId)
         assertEquals("Two", tree.trackById("upload:2")!!.getString("title"))
         assertEquals(listOf("upload:2", "upload:3"), tree.queueFor(shown[1].mediaId).map { it.getString("id") })
         assertEquals(listOf("upload:2"), tree.queueFor("upload:2").map { it.getString("id") })

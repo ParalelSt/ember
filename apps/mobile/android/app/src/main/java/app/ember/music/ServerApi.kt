@@ -101,4 +101,15 @@ class ServerApi(val baseUrl: String, private val cookies: () -> String?) {
         return json.optDouble("gainDb").takeIf { !it.isNaN() }
     }
     fun recordPlay(track: JSONObject) = postJson("/api/history", JSONObject().put("track", track))
+
+    /** The car's heart button: like (the whole track, the server files it in
+     *  the catalog) and unlike (by the track's id). Both are idempotent on
+     *  the server. */
+    fun like(track: JSONObject) = postJson("/api/likes", JSONObject().put("track", track))
+    fun unlike(id: String) {
+        val req = Request.Builder().url(baseUrl + "/api/likes/" + java.net.URLEncoder.encode(id, "UTF-8").replace("+", "%20")).delete().build()
+        http.newCall(req).execute().use { res ->
+            if (!res.isSuccessful) throw IOException("DELETE /api/likes -> ${res.code}")
+        }
+    }
 }

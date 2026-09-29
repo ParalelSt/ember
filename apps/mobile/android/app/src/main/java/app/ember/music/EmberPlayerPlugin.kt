@@ -57,11 +57,29 @@ internal fun queueContextArgs(data: JSONObject): Bundle = Bundle().apply {
     putInt("baseCount", data.optInt("baseCount", 0).coerceAtLeast(0))
 }
 
-/** `{ index, tracks }`: the native queue as the web app holds it. Both the
- *  `queue` event and getQueue send this. */
-internal fun queueJs(items: List<MediaItem>, index: Int): JSObject = JSObject().apply {
+/** `{ index, tracks, shuffle }`: the native queue as the web app holds it,
+ *  and whether it is shuffled (the car's Shuffle button reorders it). Both
+ *  the `queue` event and getQueue send this. */
+internal fun queueJs(items: List<MediaItem>, index: Int, shuffle: Boolean = false): JSObject = JSObject().apply {
     put("index", if (items.isEmpty()) -1 else index)
     put("tracks", JSArray(TrackItems.toJson(items).toString()))
+    put("shuffle", shuffle)
+}
+
+/** Whether native's queue is shuffled: the service's session extra, or,
+ *  from an older service without one, the player's flag. */
+internal fun shuffleOf(extras: Bundle, playerFlag: Boolean): Boolean =
+    if (extras.containsKey(EmberPlaybackService.EXTRA_SHUFFLE)) extras.getBoolean(EmberPlaybackService.EXTRA_SHUFFLE) else playerFlag
+
+/** setShuffle's args for the service: `on`, `order` (the song ids from
+ *  before shuffling) when the app sent one, and `restore` (off: native puts
+ *  the order back, for a page that never had it). */
+internal fun shuffleArgs(data: JSONObject): Bundle = Bundle().apply {
+    putBoolean("on", data.optBoolean("on", false))
+    putBoolean("restore", data.optBoolean("restore", false))
+    data.optJSONArray("order")?.let { arr ->
+        putStringArrayList("order", ArrayList((0 until arr.length()).map { arr.optString(it) }.filter { it.isNotEmpty() }))
+    }
 }
 
 /** Which native queue changes are news to the web app. The app's own
@@ -211,7 +229,7 @@ class EmberPlayerPlugin : Plugin() {
         put("duration", if (c.duration > 0) c.duration / 1000.0 else 0.0)
         put("index", if (c.mediaItemCount == 0) -1 else c.currentMediaItemIndex)
         put("trackId", c.currentMediaItem?.mediaId)
-        put("shuffle", c.shuffleModeEnabled)
+        put("shuffle", shuffleOf(c.sessionExtras, c.shuffleModeEnabled))
         put("repeat", c.repeatMode)
         put("loop", LoopModes.fromRepeat(c.repeatMode))
         cacheState(c.sessionExtras).let { (ids, stalled, offline) ->
@@ -236,7 +254,7 @@ class EmberPlayerPlugin : Plugin() {
             val c = controller ?: return
             val items = items(c)
             if (!echo.isNews(items.map { it.mediaId })) return
-            notifyListeners("queue", queueJs(items, c.currentMediaItemIndex))
+            notifyListeners("queue", queueJs(items, c.currentMediaItemIndex, shuffleOf(c.sessionExtras, c.shuffleModeEnabled)))
         }
     }
 
@@ -270,7 +288,8 @@ class EmberPlayerPlugin : Plugin() {
         val play = call.getBoolean("play") ?: true
         // Optional (newer web builds): where the song starts, in seconds.
         val startMs = ((call.getDouble("startSec") ?: 0.0).coerceAtLeast(0.0) * 1000).toLong()
-        val items = (0 until tracks.length()).map { TrackItems.toMediaItem(tracks.getJSONObject(it), ServerConfig.baseUrl(context)) }
+        val art = ArtworkUris.authority(context.packageName)
+        val items = (0 until tracks.length()).map { TrackItems.toMediaItem(tracks.getJSONObject(it), ServerConfig.baseUrl(context), art) }
         // Optional (newer web builds): where the queue came from, so the
         // native prefetch window wraps loop-all where the web player does.
         val queueContext = queueContextArgs(call.data)
@@ -335,6 +354,17 @@ class EmberPlayerPlugin : Plugin() {
         val mode = LoopModes.toRepeat(call.getString("mode")) ?: return call.reject("mode must be off, all or one")
         withController { it.repeatMode = mode; call.resolve() }
     }
+    /** The app's shuffle button: `on`, and `order` (the song ids before it
+     *  shuffled). The app reorders its queue itself and sends it with
+     *  setQueue; this keeps native's flag (the car's button shows it) and
+     *  the way back for when the car turns shuffle off. */
+    @PluginMethod fun setShuffle(call: PluginCall) {
+        val args = shuffleArgs(call.data)
+        withController { c ->
+            c.sendCustomCommand(SessionCommand(EmberPlaybackService.COMMAND_SHUFFLE_STATE, Bundle.EMPTY), args)
+            call.resolve()
+        }
+    }
     @PluginMethod fun getState(call: PluginCall) = withController { call.resolve(state(it)) }
     /** `{ index, tracks }`: what native is playing from. A page that starts
      *  while the music already plays (reopened after the car, or after the
@@ -343,7 +373,7 @@ class EmberPlayerPlugin : Plugin() {
     @PluginMethod fun getQueue(call: PluginCall) = withController { c ->
         val items = items(c)
         echo.sent(items.map { it.mediaId })
-        call.resolve(queueJs(items, c.currentMediaItemIndex))
+        call.resolve(queueJs(items, c.currentMediaItemIndex, shuffleOf(c.sessionExtras, c.shuffleModeEnabled)))
     }
 
     /** A prank sound over the music. Resolves `{ started, reason? }` once it
