@@ -562,6 +562,123 @@ def _browse_error(kind, e):
     return {"error": f"Couldn't load this {kind} from YouTube Music right now", "reason": "failed"}
 
 
+def _text_of(node):
+    """Plain text of a YT Music {runs:[{text}]} / {simpleText} node."""
+    if not isinstance(node, dict):
+        return ""
+    if "simpleText" in node:
+        return node["simpleText"] or ""
+    return "".join(r.get("text", "") for r in node.get("runs") or [])
+
+
+def _find_key(obj, key):
+    """First value stored under `key` anywhere in a nested dict/list."""
+    if isinstance(obj, dict):
+        if key in obj:
+            return obj[key]
+        for v in obj.values():
+            found = _find_key(v, key)
+            if found is not None:
+                return found
+    elif isinstance(obj, list):
+        for v in obj:
+            found = _find_key(v, key)
+            if found is not None:
+                return found
+    return None
+
+
+def _thumbs_of(node):
+    """Thumbnail list from any of the wrappers YT Music uses around one."""
+    if not isinstance(node, dict):
+        return []
+    for wrap in ("musicThumbnailRenderer", "croppedSquareThumbnailRenderer"):
+        if wrap in node:
+            return _thumbs_of(node[wrap])
+    inner = node.get("thumbnail")
+    if isinstance(inner, dict):
+        return inner.get("thumbnails") or []
+    return node.get("thumbnails") or []
+
+
+# Header fields that carry the artist picture, best (square avatar) first.
+_HEADER_THUMB_KEYS = ("foregroundThumbnail", "thumbnail", "croppedSquareThumbnail")
+
+
+def artist_from_browse(response):
+    """Parse an artist page from the raw browse response, whichever header
+    renderer YouTube used (musicImmersiveHeaderRenderer for most artists,
+    musicVisualHeaderRenderer for channel-style pages, musicResponsiveHeaderRenderer
+    and others). Returns a get_artist-shaped dict, or None with no usable name."""
+    header_wrap = (response or {}).get("header") or {}
+    header = next((v for k, v in header_wrap.items()
+                   if k.endswith("Renderer") and isinstance(v, dict)), None)
+    if header is None:
+        return None
+    name = _text_of(header.get("title")).strip()
+    if not name:
+        return None
+
+    thumbs = []
+    for key in _HEADER_THUMB_KEYS:
+        thumbs = _thumbs_of(header.get(key))
+        if thumbs:
+            break
+
+    description = _text_of(header.get("description")).strip() or None
+    if not description:
+        shelf = _find_key(response.get("contents"), "musicDescriptionShelfRenderer")
+        if isinstance(shelf, dict):
+            description = _text_of(shelf.get("description")).strip() or None
+
+    info = {"name": name, "description": description, "thumbnails": thumbs,
+            "songs": {}, "albums": {}, "singles": {}}
+
+    # Sections (songs / albums / singles). Best effort: an unparsable layout
+    # just leaves them empty, the name/picture/search songs still show.
+    try:
+        contents = response.get("contents") or {}
+        sections = _find_key(contents, "sectionListRenderer")
+        sections = (sections or {}).get("contents") or []
+        first = sections[0] if sections else {}
+        if "musicShelfRenderer" in first:
+            from ytmusicapi.parsers.playlists import parse_playlist_items
+            info["songs"] = {"results": parse_playlist_items(first["musicShelfRenderer"]["contents"])}
+        info.update({k: v for k, v in yt.parser.parse_channel_contents(sections).items()
+                     if k in ("albums", "singles")})
+    except Exception as e:
+        print(f"artist: section parse skipped: {type(e).__name__}: {e}", file=sys.stderr)
+    return info
+
+
+def _artist_fallback(channel_id):
+    """get_artist blew up on a layout it doesn't know. Try the raw browse
+    response first; if no header parses, take the page title from its
+    microformat and look that name up in an artists search for the picture."""
+    name, micro_thumbs = None, []
+    try:
+        response = yt._send_request("browse", {"browseId": channel_id})
+        info = artist_from_browse(response)
+        if info:
+            return info
+        micro = response.get("microformat")
+        name = (_find_key(micro, "title") or "").split(" - ")[0].strip()
+        micro_thumbs = _thumbs_of({"thumbnail": _find_key(micro, "thumbnail")})
+    except Exception as e:
+        print(f"artist: raw browse fallback failed: {type(e).__name__}: {e}", file=sys.stderr)
+    if not name:
+        return None
+    try:
+        for r in yt.search(name, filter="artists", limit=10) or []:
+            if r.get("browseId") == channel_id:
+                return {"name": r.get("artist") or name, "description": None,
+                        "thumbnails": r.get("thumbnails") or micro_thumbs}
+        return {"name": name, "description": None, "thumbnails": micro_thumbs}
+    except Exception as e:
+        print(f"artist: search fallback failed: {type(e).__name__}: {e}", file=sys.stderr)
+    return {"name": name, "description": None, "thumbnails": micro_thumbs}
+
+
 def cmd_artist(args):
     """Resolve a YT Music artist channelId to the artist profile + their
     top songs. The user clicks an artist name in a track row, which routes
@@ -570,8 +687,12 @@ def cmd_artist(args):
         info = yt.get_artist(channelId=args.channel_id)
     except Exception as e:
         print(f"artist failed: {type(e).__name__}: {e}", file=sys.stderr)
-        json.dump(_browse_error("artist", e), sys.stdout)
-        return
+        # A missing page stays a 404; only a layout ytmusicapi can't parse
+        # (e.g. KeyError 'musicImmersiveHeaderRenderer') gets the fallback.
+        info = None if BROWSE_MISSING_RE.search(str(e)) else _artist_fallback(args.channel_id)
+        if not info:
+            json.dump(_browse_error("artist", e), sys.stdout)
+            return
 
     # Pull top tracks from search rather than yt.get_artist()['songs']: the
     # latter returns no duration_seconds OR length, while search returns
