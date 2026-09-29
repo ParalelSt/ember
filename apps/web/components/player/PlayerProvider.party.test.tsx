@@ -58,13 +58,13 @@ describe('PlayerProvider: party mode is desktop-only', () => {
   it('forces gain: 1 on a touch (coarse-pointer) browser even though partyVolume is on', () => {
     coarsePointer(true);
     render(<PlayerProvider>{null}</PlayerProvider>);
-    expect(lastVolume()).toEqual([0.8, { gain: 1, normGain: 1 }]);
+    expect(lastVolume()).toEqual([1, { gain: 1, normGain: 1 }]);
   });
 
   it('forces gain: 1 on the Android app (Capacitor) even though partyVolume is on', () => {
     shell.kind = 'capacitor';
     render(<PlayerProvider>{null}</PlayerProvider>);
-    expect(lastVolume()).toEqual([0.8, { gain: 1, normGain: 1 }]);
+    expect(lastVolume()).toEqual([1, { gain: 1, normGain: 1 }]);
   });
 
   it('applies gain: 2 on the Tauri desktop app regardless of pointer', () => {
@@ -80,6 +80,28 @@ describe('PlayerProvider: party mode is desktop-only', () => {
     render(<PlayerProvider>{null}</PlayerProvider>);
     expect(usePlayerStore.getState().volume).toBe(1);
     expect(lastVolume()).toEqual([1, { gain: 1, normGain: 1 }]);
+  });
+
+  it('phone: any stored volume plays at full (1) and the stored value is not rewritten', () => {
+    coarsePointer(true);
+    usePlayerStore.setState({ volume: 0.3 });
+    render(<PlayerProvider>{null}</PlayerProvider>);
+    expect(lastVolume()).toEqual([1, { gain: 1, normGain: 1 }]);
+    expect(usePlayerStore.getState().volume).toBe(0.3);
+  });
+
+  it('phone: muted stays silent', () => {
+    shell.kind = 'capacitor';
+    usePlayerStore.setState({ volume: 0.3, muted: true });
+    render(<PlayerProvider>{null}</PlayerProvider>);
+    expect(lastVolume()).toEqual([0, { gain: 1, normGain: 1 }]);
+    usePlayerStore.setState({ muted: false });
+  });
+
+  it('desktop keeps its stored level', () => {
+    usePlayerStore.setState({ volume: 0.3 });
+    render(<PlayerProvider>{null}</PlayerProvider>);
+    expect(lastVolume()).toEqual([0.3, { gain: 2, normGain: 1 }]);
   });
 
   it('leaves a stored volume alone on an eligible device', () => {

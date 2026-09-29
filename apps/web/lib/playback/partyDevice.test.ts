@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 const shell = vi.hoisted(() => ({ kind: 'web' as 'web' | 'capacitor' | 'tauri' }));
 vi.mock('./detectShell', () => ({ detectShell: () => shell.kind }));
 
-const { isPartyEligible } = await import('./partyDevice');
+const { isPartyEligible, appVolume } = await import('./partyDevice');
 
 const coarse = (on: boolean) =>
   vi.stubGlobal('matchMedia', (q: string) => ({ matches: on && q === '(pointer: coarse)' }) as MediaQueryList);
@@ -46,5 +46,21 @@ describe('isPartyEligible', () => {
     delete globalThis.window;
     expect(isPartyEligible()).toBe(false);
     globalThis.window = original;
+  });
+});
+
+describe('appVolume', () => {
+  it('is the stored volume where a volume slider exists (desktop)', () => {
+    coarse(false);
+    expect(appVolume(0.4)).toBe(0.4);
+  });
+
+  it('is always 1 on a touch browser and on Capacitor, whatever is stored', () => {
+    coarse(true);
+    expect(appVolume(0.4)).toBe(1);
+    expect(appVolume(0)).toBe(1);
+    shell.kind = 'capacitor';
+    coarse(false);
+    expect(appVolume(0.85)).toBe(1);
   });
 });

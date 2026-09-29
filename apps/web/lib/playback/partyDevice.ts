@@ -25,3 +25,19 @@ export function isPartyEligible(): boolean {
   if (shell === 'tauri') return true;
   return !coarsePointer();
 }
+
+/** Whether this device shows the in-app volume slider: the same devices that
+ *  can run party mode (desktop app, mouse-driven browser). A phone, tablet or
+ *  the Android app has none, so its loudness is the hardware buttons' job. */
+export const hasVolumeSlider = isPartyEligible;
+
+/** The slider value the app plays at. Without an in-app slider it is always
+ *  1 (full), whatever value is stored: a phone can never raise a stale stored
+ *  volume (an old 0.85 cap, a lower level synced from desktop), so the
+ *  hardware volume is the only control. Applied at use time; the stored value
+ *  is never rewritten, so desktop keeps its own level. Muted and ducking are
+ *  applied on top by musicLevel, and cast is unaffected: a constant 1 is never
+ *  a change, so nothing is sent to the TV (its volume stays its own). */
+export function appVolume(stored: number): number {
+  return hasVolumeSlider() ? stored : 1;
+}

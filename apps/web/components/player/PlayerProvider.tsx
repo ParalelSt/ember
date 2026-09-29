@@ -36,7 +36,7 @@ import { useRemoteCommands } from '@/hooks/player/useRemoteCommands';
 import { useTrackGain } from '@/hooks/player/useTrackGain';
 import { cachedTrackGain, dbToLinear, GAIN_RAMP_MS } from '@/lib/playback/normalization';
 import { eqForDevice, eqNeedsConsent } from '@/lib/playback/eqDevice';
-import { isPartyEligible } from '@/lib/playback/partyDevice';
+import { appVolume, isPartyEligible } from '@/lib/playback/partyDevice';
 import { usePartyEligible } from '@/hooks/usePartyEligible';
 import { createWebBackend } from '@/lib/playback/webBackend';
 import { createCapacitorBackend } from '@/lib/playback/capacitorBackend';
@@ -556,7 +556,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     // A cast device gets the listener's own level only: nothing else in the
     // page (a sound ducking the music) turns the TV down.
     const duckLevel = castingRef.current ? 1 : duckRef.current;
-    b.setVolume(musicLevel(st.volume, st.muted, duckLevel), { gain: party ? 2 : 1, normGain: norm, ...(rampMs ? { rampMs } : {}) });
+    b.setVolume(musicLevel(appVolume(st.volume), st.muted, duckLevel), { gain: party ? 2 : 1, normGain: norm, ...(rampMs ? { rampMs } : {}) });
   }, []);
   useEffect(() => {
     duckRef.current = duck;
@@ -592,7 +592,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     // partyVolume lives in the settings store, not the player store.
     const st = usePlayerStore.getState();
     const party = useSettingsStore.getState().partyVolume && isPartyEligible();
-    backendRef.current.setVolume(musicLevel(st.volume, st.muted, duckRef.current), {
+    backendRef.current.setVolume(musicLevel(appVolume(st.volume), st.muted, duckRef.current), {
       gain: party ? 2 : 1,
       normGain: normGainRef.current,
     });
@@ -740,7 +740,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const applyVolume = useCallback((b: AudioBackend) => {
     const st = usePlayerStore.getState();
     const party = useSettingsStore.getState().partyVolume && isPartyEligible();
-    b.setVolume(musicLevel(st.volume, st.muted, duckRef.current), { gain: party ? 2 : 1, normGain: normGainRef.current });
+    b.setVolume(musicLevel(appVolume(st.volume), st.muted, duckRef.current), { gain: party ? 2 : 1, normGain: normGainRef.current });
   }, []);
 
   /** A Google Cast session started (or the page joined one): the song moves
