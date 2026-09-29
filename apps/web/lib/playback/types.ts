@@ -38,8 +38,16 @@ export interface AudioBackendEvents {
    *  item on its own (auto-advance, a skip from the car). */
   onQueueIndex?: (index: number) => void;
   /** Queue-owning backends only: the native side built a new queue (a tap in
-   *  the car, native radio). The provider mirrors it; it must NOT push it back. */
-  onQueueReplaced?: (tracks: Track[], index: number) => void;
+   *  the car, native radio, the car's Shuffle button reordering it). The
+   *  provider mirrors it; it must NOT push it back. `shuffle` is whether
+   *  native's queue is shuffled now (app builds from before it leave it out). */
+  onQueueReplaced?: (tracks: Track[], index: number, info?: { shuffle?: boolean }) => void;
+  /** Queue-owning backends only: shuffle was turned on or off outside the
+   *  app (the car's or the notification's Shuffle button). Native reorders
+   *  its queue itself; the new order arrives as onQueueReplaced. `initial`:
+   *  native was already shuffled when this page started, so the queue the
+   *  page has is the shuffled one (no way back here; native keeps it). */
+  onShuffle?: (on: boolean, info?: { initial?: boolean }) => void;
   /** Queue-owning backends only: the loop mode was changed outside the app
    *  (the Repeat button in the car or the notification). */
   onLoopMode?: (mode: LoopMode) => void;
@@ -77,12 +85,16 @@ export interface AudioBackend {
   seek(sec: number): void;
   /** v in 0..1. gain > 1 is party-mode boost (web: Web Audio; native may clamp).
    *  normGain is the current song's volume normalization, a linear multiplier
-   *  (lib/playback/normalization; 1 = unchanged). Applied after the volume
-   *  curve and never past full volume outside party mode. The Android engine
-   *  ignores it: it moves between songs natively, where a per-song level set
-   *  from here would land on the wrong song. It normalizes by itself instead
-   *  (setNormalize). */
-  setVolume(v: number, opts?: { gain?: number; normGain?: number }): void;
+   *  (lib/playback/normalization; 1 = unchanged), applied after the volume
+   *  curve. A boost (> 1) goes past full volume only where the engine can
+   *  amplify (the desktop engine, a web audio graph that is already built);
+   *  the server holds every boost under the song's true peak, so it never
+   *  clips. rampMs > 0 fades to a new normGain instead of jumping (the gain
+   *  changed mid-song); the slider and party gain always apply at once.
+   *  The Android engine ignores normGain: it moves between songs natively,
+   *  where a per-song level set from here would land on the wrong song. It
+   *  normalizes by itself instead (setNormalize). */
+  setVolume(v: number, opts?: { gain?: number; normGain?: number; rampMs?: number }): void;
   /** Queue-owning backends only (Android): volume normalization on or off.
    *  The engine looks up and applies each song's gain itself, as it moves
    *  between songs. Absent (or a no-op on an older app build) elsewhere. */
@@ -124,6 +136,13 @@ export interface AudioBackend {
   /** Queue-owning backends only: the native player repeats by itself, so it
    *  has to be told the loop mode. */
   setLoop?(mode: LoopMode): void;
+  /** Queue-owning backends only: the shuffle button. The queue itself is
+   *  reordered here and handed over with setQueue; native only keeps the
+   *  flag (the car's Shuffle button shows it) and `order`, the song ids from
+   *  before shuffling, so the car can turn it off again. `restore` (off
+   *  only): this page never had that order (the car shuffled before it
+   *  opened), so native puts its queue back itself. */
+  setShuffle?(on: boolean, order?: string[], restore?: boolean): void;
   /** Android engine on an app build that has the native overlay (absent on
    *  older builds): a prank sound beside the music, ducked and restored
    *  natively so it works with the screen off. */
@@ -134,6 +153,16 @@ export interface AudioBackend {
    *  without it (desktop native, Android Media3) play at full speed and the
    *  page hides its speed control. Optional: absent means unsupported. */
   setRate?(rate: number): void;
+  /** Web audio only: the page's own audio element, which Safari can send to
+   *  an AirPlay speaker or TV as it is (lib/cast/controller). */
+  mediaElement?(): HTMLMediaElement | null;
+  /** Web audio in a browser with HTMLMediaElement.setSinkId (Chrome on a
+   *  computer): the output device the sound goes to, '' for the system
+   *  default (lib/outputs). Rejects when the browser refuses the device.
+   *  Absent elsewhere: other engines pick their output natively. */
+  setOutputDevice?(deviceId: string): Promise<void>;
+  /** The device setOutputDevice last applied ('' = the system default). */
+  outputDevice?(): string;
   /** Tear down listeners / native resources. */
   destroy(): void;
 }

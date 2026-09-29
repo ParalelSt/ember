@@ -123,12 +123,27 @@ describe('webBackend equalizer', () => {
     b.destroy();
   });
 
-  it('keeps the element volume path: the slider curve times normalization', () => {
+  it('with the graph built, the song gain rides on it, so a quiet song really comes up', () => {
     const b = createWebBackend(makeFakeEvents());
     b.setEq!(BASS);
     b.setVolume(0.64, { normGain: 0.5 });
-    expect(element().volume).toBeCloseTo(0.256, 5);
-    expect((contexts[0].chain()[6] as FakeGain).gain.value).toBe(1);
+    // The element keeps the slider curve; the graph's gain node has the song's.
+    expect(element().volume).toBeCloseTo(0.512, 5);
+    expect((contexts[0].chain()[6] as FakeGain).gain.value).toBe(0.5);
+    // A boost past what the element could do at the top of the slider.
+    b.setVolume(1, { normGain: 2 });
+    expect(element().volume).toBe(1);
+    expect((contexts[0].chain()[6] as FakeGain).gain.value).toBe(2);
+    b.destroy();
+  });
+
+  it('switching the equalizer on moves the song gain from the element to the graph', () => {
+    const b = createWebBackend(makeFakeEvents());
+    b.setVolume(1, { normGain: 0.5 });
+    expect(element().volume).toBeCloseTo(0.5, 5);
+    b.setEq!(BASS);
+    expect(element().volume).toBe(1);
+    expect((contexts[0].chain()[6] as FakeGain).gain.value).toBe(0.5);
     b.destroy();
   });
 

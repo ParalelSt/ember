@@ -4,19 +4,27 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import {
-  ChevronDownIcon, EqualizerIcon, MusicIcon, QueueIcon,
-  RepeatIcon, RepeatOneIcon, ShuffleIcon, TabsIcon,
+  ChevronDownIcon, EqualizerIcon, LibraryIcon, MicIcon, MoreIcon, MusicIcon, PlusIcon, QueueIcon,
+  RepeatIcon, RepeatOneIcon, ShareIcon, ShuffleIcon, TabsIcon,
 } from '@/components/icons';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { Artwork } from '@/components/primitives/Artwork';
 import { LikeButton } from '@/components/primitives/LikeButton';
 import { AddToPlaylistMenu } from '@/components/track/menus/AddToPlaylistMenu';
-import { ShareButton } from '@/components/track/ShareButton';
+import { ShareButton, canShare, shareTrack } from '@/components/track/ShareButton';
 import { LyricsBody } from '@/components/player/LyricsBody';
 import { NowPlayingSummary } from '@/components/player/NowPlayingSummary';
 import { QueueSheet } from '@/components/player/QueueSheet';
 import { EqualizerSheet } from '@/components/player/EqualizerSheet';
 import { SeekBar } from '@/components/player/SeekBar';
 import { TransportControls } from '@/components/player/TransportControls';
+import { DevicesButton } from '@/components/player/DevicesButton';
+import { PlayerToolButton } from '@/components/player/PlayerToolButton';
 import { useBackDismiss } from '@/lib/useBackDismiss';
 import { useTrackArtSrc } from '@/lib/offlineNative';
 import { usePlayer } from '@/components/player/PlayerProvider';
@@ -25,8 +33,19 @@ import { useLikeToggle } from '@/hooks/useLikeToggle';
 import { usePlayerStore } from '@/stores/usePlayerStore';
 import { useSettingsStore } from '@/stores/useSettingsStore';
 import { useUiStore } from '@/stores/useUiStore';
+import { useCastStore } from '@/stores/useCastStore';
+import { contextTitle } from '@/lib/playback/contextTitle';
+import { isUnavailable } from '@/lib/playback/queueNav';
 import { cn } from '@/lib/utils';
 import { tabsHref } from '@/lib/tabSources';
+
+/** One row of the full-screen player's More menu. */
+interface MoreItem {
+  key: string;
+  label: string;
+  Icon: typeof MoreIcon;
+  onSelect: () => void;
+}
 
 /** Full-screen "Now Playing" view — phones only. Slides up over the app shell
  *  with large artwork up top and transport controls at the bottom, like the
@@ -48,7 +67,9 @@ export function NowPlaying() {
   const cycleLoopMode = usePlayerStore((s) => s.cycleLoopMode);
   const shuffle = usePlayerStore((s) => s.shuffle);
   const toggleShuffle = usePlayerStore((s) => s.toggleShuffle);
-  const isPlaylist = usePlayerStore((s) => s.context?.type === 'playlist');
+  const context = usePlayerStore((s) => s.context);
+  const isPlaylist = context?.type === 'playlist';
+  const title = contextTitle(context);
   const tabsEnabled = useSettingsStore((s) => s.tabsEnabled);
   // The queue: the phone bar has no queue button of its own any more, so
   // this is where phones reach it. The sheet portals above this view.
@@ -56,16 +77,20 @@ export function NowPlaying() {
   // The equalizer, lit while it is on.
   const [eqOpen, setEqOpen] = useState(false);
   const eqOn = useSettingsStore((s) => s.equalizer.enabled);
+  // A Cast receiver plays the stream itself, with no equalizer: the EQ tool
+  // goes while casting (AirPlay keeps this page's audio, and its filters).
+  const eqAvailable = useCastStore((s) => !(s.connection === 'connected' && s.path !== 'airplay'));
+  // The More menu, and the like row's add-to-playlist menu it can open.
+  const [moreOpen, setMoreOpen] = useState(false);
+  const [addOpen, setAddOpen] = useState(false);
 
   const router = useRouter();
-  // The tab page for this song, full screen on phones like everything else.
-  // Closing this view pops the history entry useBackDismiss pushed, and a
+  // Leaving for another page (the tab page, the artist, the album). Closing
+  // this view pops the history entry useBackDismiss pushed, and a
   // navigation issued before that back lands is undone by it. So close
   // first and navigate once the pop has happened (or shortly after, if the
   // entry was already gone).
-  const openTabs = () => {
-    if (!current) return;
-    const href = tabsHref(current.id);
+  const closeThenGo = (href: string) => {
     let done = false;
     const go = () => {
       if (done) return;
@@ -77,9 +102,19 @@ export function NowPlaying() {
     setOpen(false);
     window.setTimeout(go, 400);
   };
+  // The tab page for this song, full screen on phones like everything else.
+  const openTabs = () => {
+    if (current) closeThenGo(tabsHref(current.id));
+  };
 
   const scrollerRef = useRef<HTMLDivElement | null>(null);
   const lyricsRef = useRef<HTMLDivElement | null>(null);
+
+  // The playlist menu opens from the like row's +, in the player pane above
+  // the lyrics: bring it into view when More opens it from further down.
+  useEffect(() => {
+    if (addOpen) scrollerRef.current?.scrollTo?.({ top: 0 });
+  }, [addOpen]);
 
   // Close on Escape; lock body scroll while open.
   useEffect(() => {
@@ -124,6 +159,31 @@ export function NowPlaying() {
   // A downloaded copy's own local art wins over the remote artworkUrl, shared
   // with NowPlayingSummary's player-bar thumbnail.
   const art = useTrackArtSrc(current);
+
+  // The More menu: what fits no button on the player. Add to playlist also
+  // has the like row's +, which is where its menu opens; share joins here
+  // only when the like row (signed-in only) is not there to carry it.
+  const moreItems: MoreItem[] = [];
+  if (current && user && !isUnavailable(current)) {
+    moreItems.push({
+      key: 'add',
+      label: 'Add to playlist',
+      Icon: PlusIcon,
+      onSelect: () => setAddOpen(true),
+    });
+  }
+  if (current?.artistId) {
+    const href = `/artist/${encodeURIComponent(current.artistId)}`;
+    moreItems.push({ key: 'artist', label: 'Go to artist', Icon: MicIcon, onSelect: () => closeThenGo(href) });
+  }
+  if (current?.albumId) {
+    const href = `/album/${encodeURIComponent(current.albumId)}`;
+    moreItems.push({ key: 'album', label: 'Go to album', Icon: LibraryIcon, onSelect: () => closeThenGo(href) });
+  }
+  if (current && !user && canShare(current)) {
+    const track = current;
+    moreItems.push({ key: 'share', label: 'Share', Icon: ShareIcon, onSelect: () => void shareTrack(track) });
+  }
 
   // Pinned left, mirroring the loop button on the right: keeping both OUT of
   // the flex flow is what keeps prev/play/next centered. Playlists only:
@@ -186,11 +246,11 @@ export function NowPlaying() {
         <div className="absolute inset-0 bg-linear-to-b from-background/40 via-background/70 to-background" />
       </div>
 
-      {/* Floating close affordance. Anchored to the dialog (not the
-          scroller) so it stays at the very top of the viewport regardless
-          of scroll position — no boxy sticky-header bar above the artwork,
-          and still reachable when the user has scrolled into the lyrics
-          card below. Sits flush against the safe-area inset on iOS. */}
+      {/* The top row floats: anchored to the dialog (not the scroller) so
+          the close chevron and the More menu stay at the very top of the
+          viewport regardless of scroll position, and are still reachable
+          from the lyrics card below. The "Playing from" title between them
+          sits in the scroller and scrolls away with the player. */}
       <Button
         variant="ghost"
         size="icon"
@@ -201,45 +261,34 @@ export function NowPlaying() {
       >
         <ChevronDownIcon className="h-6 w-6" />
       </Button>
-      {/* Top right: guitar tabs (when the plugin is on), the equalizer and
-          the queue. */}
-      <div
-        className="absolute z-20 right-3 flex items-center gap-inset"
-        style={{ top: 'calc(var(--safe-top) + 1rem)' }}
-      >
-        {tabsEnabled && (
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={openTabs}
-            aria-label="Guitar tabs"
-            title="Guitar tabs"
-            className="h-10 w-10 text-foreground/80 hover:text-foreground"
-          >
-            <TabsIcon className="h-5 w-5" />
-          </Button>
-        )}
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={() => setEqOpen(true)}
-          aria-label="Equalizer"
-          title="Equalizer"
-          className={cn('h-10 w-10', eqOn ? 'text-ember hover:text-ember' : 'text-foreground/80 hover:text-foreground')}
-        >
-          <EqualizerIcon className="h-5 w-5" />
-        </Button>
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={() => setQueueOpen(true)}
-          aria-label="Queue"
-          title="Queue"
-          className="h-10 w-10 text-foreground/80 hover:text-foreground"
-        >
-          <QueueIcon className="h-5 w-5" />
-        </Button>
-      </div>
+      {moreItems.length > 0 && (
+        <div className="absolute z-20 right-3" style={{ top: 'calc(var(--safe-top) + 1rem)' }}>
+          <DropdownMenu open={moreOpen} onOpenChange={setMoreOpen}>
+            <DropdownMenuTrigger
+              aria-label="More"
+              title="More"
+              data-testid="now-playing-more"
+              className="inline-flex h-10 w-10 items-center justify-center rounded-md text-foreground/80 transition-colors hover:bg-accent hover:text-foreground"
+            >
+              <MoreIcon className="h-5 w-5" />
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="min-w-52">
+              {moreItems.map(({ key, label, Icon, onSelect }) => (
+                <DropdownMenuItem
+                  key={key}
+                  onClick={() => {
+                    setMoreOpen(false);
+                    onSelect();
+                  }}
+                  className="gap-row py-cluster"
+                >
+                  <Icon className="h-4 w-4" /> {label}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+      )}
       <QueueSheet open={queueOpen} onOpenChange={setQueueOpen} />
       <EqualizerSheet open={eqOpen} onOpenChange={setEqOpen} />
 
@@ -247,9 +296,8 @@ export function NowPlaying() {
         ref={scrollerRef}
         className="relative h-full overflow-y-auto px-6"
         style={{
-          // Padding-top clears the floating close button (its top offset
-          // + button height) so artwork doesn't slide under the chevron.
-          paddingTop: 'calc(var(--safe-top) + 3rem)',
+          // Padding-top lines the title up with the floating buttons.
+          paddingTop: 'calc(var(--safe-top) + 1rem)',
           paddingBottom: 'calc(var(--safe-bottom) + 1.5rem)',
         }}
       >
@@ -257,6 +305,14 @@ export function NowPlaying() {
           centered look is preserved. Lyrics live BELOW this wrapper so
           they push the scroller into overflow and become scroll-reachable. */}
       <div className="flex flex-col min-h-full">
+
+        {/* "Playing from playlist / Road trip", between the chevron and More. */}
+        <div data-testid="context-title" className="mx-hit flex h-10 min-w-0 flex-col items-center justify-center text-center">
+          <div className="max-w-full truncate text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
+            {title.kicker}
+          </div>
+          {title.name && <div className="max-w-full truncate text-sm font-semibold">{title.name}</div>}
+        </div>
 
         {/* Artwork — fills the upper space, centered. */}
         <div className="flex-1 grid place-items-center py-4">
@@ -281,7 +337,7 @@ export function NowPlaying() {
           {current && user && (
             <div className="flex items-center gap-1 shrink-0">
               <LikeButton size="md" liked={isLiked} onToggle={toggleLike} />
-              <AddToPlaylistMenu track={current} />
+              <AddToPlaylistMenu track={current} open={addOpen} onOpenChange={setAddOpen} />
               <ShareButton track={current} className="h-10 w-10" />
             </div>
           )}
@@ -301,6 +357,27 @@ export function NowPlaying() {
           left={shuffleButton}
           right={loopButton}
         />
+
+        {/* The tools, each an icon over a label: where the music plays (the
+            label names the output when it is not the phone), guitar tabs
+            (when the plugin is on), the equalizer (not while casting) and
+            the queue. Equal columns, however many there are. */}
+        <div data-testid="tool-row" className="mt-block grid grid-flow-col auto-cols-fr gap-inset">
+          <DevicesButton variant="full" iconClassName="h-5 w-5" />
+          {tabsEnabled && (
+            <PlayerToolButton label="Tabs" ariaLabel="Guitar tabs" onClick={openTabs}>
+              <TabsIcon className="h-5 w-5" />
+            </PlayerToolButton>
+          )}
+          {eqAvailable && (
+            <PlayerToolButton label="EQ" ariaLabel="Equalizer" lit={eqOn} onClick={() => setEqOpen(true)}>
+              <EqualizerIcon className="h-5 w-5" />
+            </PlayerToolButton>
+          )}
+          <PlayerToolButton label="Queue" onClick={() => setQueueOpen(true)}>
+            <QueueIcon className="h-5 w-5" />
+          </PlayerToolButton>
+        </div>
       </div>
 
       {/* Lyrics card — sits BELOW the min-h-full player pane so the

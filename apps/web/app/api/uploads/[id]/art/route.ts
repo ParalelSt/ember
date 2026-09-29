@@ -4,19 +4,23 @@ import { createAdminClient } from '@/lib/pocketbase/server';
 import { hasUploadArt, resolveUploadPath } from '@/lib/uploads';
 import { COVER_MIME, coverFilename } from '@/lib/uploads/cover';
 import { withRequestLog } from '@/lib/logger/withRequestLog';
+import { streamTokenUser } from '@/lib/streamToken';
 
 /** Serves the cover extracted from a member upload's tag at upload time.
  *
  *  Auth matches the stream route: uploads are a shared library, so any signed
- *  in member may see them, and nobody else may. Unlike the stream route there
+ *  in member may see them, and nobody else may, except a cast device holding
+ *  a signed link for this cover. Unlike the stream route there
  *  is no Range handling: these are small images the browser wants whole.
  *
  *  The bytes for a given upload never change (a new cover would mean a new
  *  upload), so this is cached hard; `private` because it sits behind auth. */
-export const GET = withRequestLog('uploads/[id]/art', async (_request: Request, ctx: RouteContext<'/api/uploads/[id]/art'>) => {
+export const GET = withRequestLog('uploads/[id]/art', async (request: Request, ctx: RouteContext<'/api/uploads/[id]/art'>) => {
   try {
-    await requireUser();
     const { id } = await ctx.params;
+    // A TV showing the cover while it casts has no cookie: a signed link for
+    // THIS upload's cover (lib/streamToken) is enough.
+    if (!streamTokenUser(request, `upload:${id}`, 'art')) await requireUser();
 
     const pb = await createAdminClient();
     const row = await pb.collection('uploads').getOne(id).catch(() => null);

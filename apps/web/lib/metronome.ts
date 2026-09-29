@@ -107,3 +107,18 @@ export function clickContext(): AudioContext | null {
     return null;
   }
 }
+
+/** Close the clicks' AudioContext when the tab page goes: an open context
+ *  keeps the audio device busy and would play the clicks already handed to
+ *  it (up to LOOKAHEAD_SEC). The next gesture that turns the metronome on
+ *  makes a new one (clickContext). */
+export function releaseClickContext(): void {
+  const ctx = shared;
+  shared = null;
+  if (!ctx || ctx.state === 'closed') return;
+  try {
+    void Promise.resolve(ctx.close?.()).catch(() => {});
+  } catch {
+    // A context that cannot close is going with the page anyway.
+  }
+}

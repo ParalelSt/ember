@@ -40,13 +40,13 @@ export interface ShortcutState {
   hasCurrent: boolean;
   /** The current volume, so the volume step can be clamped here. */
   volume: number;
-  /** Volume ceiling: party mode raises it to 1, otherwise 0.85. */
+  /** Volume ceiling: defaults to 1 (the slider's top: full output). */
   ceiling?: number;
 }
 
 export const SEEK_STEP_SEC = 5;
 export const VOLUME_STEP = 0.05;
-export const DEFAULT_VOLUME_CEILING = 0.85;
+export const DEFAULT_VOLUME_CEILING = 1;
 
 /** Typing beats shortcuts: Space in a search box must type a space. */
 export function isTypingTarget(el: TypingTarget | null | undefined): boolean {

@@ -356,3 +356,120 @@ describe('androidBackend: equalizer', () => {
     expect(n.plugin.setEqualizer).toHaveBeenCalled();
   });
 });
+
+// The car's Shuffle button (and a head unit's over Bluetooth) reorders the
+// native queue; the flag comes here so the shuffle button shows it, and the
+// app's own shuffle goes to native so the car's button shows that.
+describe('androidBackend: shuffle', () => {
+  afterEach(() => {
+    delete (window as unknown as { Capacitor?: unknown }).Capacitor;
+  });
+
+  const state = (shuffle: boolean) => ({ playing: true, position: 0, duration: 0, index: 0, trackId: 'a', loop: 'off', shuffle });
+
+  function setup(withMethod = true) {
+    const n = installPlugin(false);
+    if (withMethod) n.plugin.setShuffle = vi.fn().mockResolvedValue(undefined);
+    const events = { ...makeFakeEvents(), onShuffle: vi.fn(), onQueueReplaced: vi.fn() };
+    const b = createAndroidBackend(events);
+    return { n, events, b };
+  }
+
+  it('mirrors the car turning shuffle on and off', () => {
+    const { n, events } = setup();
+    n.emit('state', state(false));
+    n.emit('state', state(true));
+    n.emit('state', state(true));
+    n.emit('state', state(false));
+    expect(events.onShuffle.mock.calls).toEqual([[true], [false]]);
+  });
+
+  it('a page that starts on a queue the car shuffled shows shuffle on, with no way back of its own', () => {
+    const { n, events } = setup();
+    n.emit('state', state(true));
+    expect(events.onShuffle.mock.calls).toEqual([[true, { initial: true }]]);
+  });
+
+  it('an unshuffled start says nothing, and the page\'s default is not sent over the car\'s shuffle', () => {
+    const { n, events, b } = setup();
+    b.setShuffle!(false);
+    expect(n.plugin.setShuffle).not.toHaveBeenCalled();
+    n.emit('state', state(false));
+    expect(events.onShuffle).not.toHaveBeenCalled();
+  });
+
+  it('sends the app\'s shuffle with the order to go back to, and never echoes it', () => {
+    const { n, events, b } = setup();
+    n.emit('state', state(false));
+    b.setShuffle!(true, ['a', 'b', 'c']);
+    b.setShuffle!(false);
+    expect(n.plugin.setShuffle).toHaveBeenNthCalledWith(1, { on: true, order: ['a', 'b', 'c'] });
+    expect(n.plugin.setShuffle).toHaveBeenNthCalledWith(2, { on: false });
+    n.emit('state', state(true));
+    n.emit('state', state(false));
+    expect(events.onShuffle).not.toHaveBeenCalled();
+    // What native reported itself is not sent back.
+    n.emit('state', state(true));
+    expect(events.onShuffle).toHaveBeenCalledWith(true);
+    b.setShuffle!(true);
+    expect(n.plugin.setShuffle).toHaveBeenCalledTimes(2);
+  });
+
+  it('a new list shuffled while shuffle is on sends its own order', () => {
+    const { n, b } = setup();
+    n.emit('state', state(false));
+    b.setShuffle!(true, ['a', 'b']);
+    b.setShuffle!(true, ['a', 'b']);
+    b.setShuffle!(true, ['x', 'y']);
+    expect(n.plugin.setShuffle).toHaveBeenCalledTimes(2);
+    expect(n.plugin.setShuffle).toHaveBeenLastCalledWith({ on: true, order: ['x', 'y'] });
+  });
+
+  it('off asks native to put the order back only when told to', () => {
+    const { n, b } = setup();
+    n.emit('state', state(true));
+    b.setShuffle!(false, undefined, true);
+    expect(n.plugin.setShuffle).toHaveBeenLastCalledWith({ on: false, restore: true });
+    b.setShuffle!(true, ['a']);
+    b.setShuffle!(false);
+    expect(n.plugin.setShuffle).toHaveBeenLastCalledWith({ on: false });
+  });
+
+  it('a reordered queue from native carries the flag', () => {
+    const { n, events } = setup();
+    n.emit('state', state(false));
+    const tracks = [{ id: 'b' }, { id: 'a' }];
+    n.emit('queue', { tracks, index: 0, shuffle: true });
+    expect(events.onQueueReplaced).toHaveBeenCalledWith(tracks, 0, { shuffle: true });
+    // The flag in the queue event counts as the report when the state event
+    // has not carried it yet.
+    expect(events.onShuffle).toHaveBeenCalledWith(true);
+  });
+
+  it('an app build without setShuffle: its player flag means nothing and nothing is sent', () => {
+    const { n, events, b } = setup(false);
+    n.emit('state', state(false));
+    n.emit('state', state(true));
+    n.emit('queue', { tracks: [], index: -1, shuffle: true });
+    expect(events.onShuffle).not.toHaveBeenCalled();
+    expect(events.onQueueReplaced).toHaveBeenCalledWith([], -1, undefined);
+    expect(() => b.setShuffle!(true, ['a'])).not.toThrow();
+  });
+});
+
+describe('androidBackend: volume', () => {
+  afterEach(() => {
+    delete (window as unknown as { Capacitor?: unknown }).Capacitor;
+  });
+
+  it('the slider top reaches ExoPlayer as 1 (full output), not a capped value', () => {
+    const n = installPlugin(false);
+    const b = createAndroidBackend(makeFakeEvents());
+    b.setVolume(1);
+    expect(n.plugin.setVolume).toHaveBeenLastCalledWith({ v: 1 });
+    b.setVolume(0.6);
+    expect(n.plugin.setVolume).toHaveBeenLastCalledWith({ v: 0.6 });
+    b.setVolume(1.4);
+    expect(n.plugin.setVolume).toHaveBeenLastCalledWith({ v: 1 });
+  });
+});

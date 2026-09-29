@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { useSettingsStore } from '@/stores/useSettingsStore';
 import SettingsPlugins from './page';
@@ -6,10 +6,16 @@ import SettingsPlugins from './page';
 // The Songsterr card is a real toggle bound to tabsEnabled, tagged Work in
 // progress. TikTok stays a Coming soon placeholder.
 
+// Party mode's toggle is desktop-only: hidden entirely on a phone, tablet or
+// the Android app. See lib/playback/partyDevice and hooks/usePartyEligible.
+const partyEligible = vi.hoisted(() => ({ value: true }));
+vi.mock('@/hooks/usePartyEligible', () => ({ usePartyEligible: () => partyEligible.value }));
+
 const initial = useSettingsStore.getState();
 
 beforeEach(() => {
   useSettingsStore.setState(initial, true);
+  partyEligible.value = true;
 });
 
 describe('Settings > Plugins', () => {
@@ -54,5 +60,28 @@ describe('Settings > Plugins', () => {
     expect(screen.getByText('TikTok window')).toBeInTheDocument();
     expect(screen.getByText('Coming soon')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /TikTok window/ })).toBeNull();
+  });
+
+  describe('the party-size volume slider toggle is desktop-only', () => {
+    it('shows it, bound to partyVolume, on an eligible device', () => {
+      render(<SettingsPlugins />);
+      const toggle = screen.getByRole('button', { name: 'Turn on Party-size volume slider' });
+      expect(toggle).toHaveAttribute('aria-pressed', 'false');
+      fireEvent.click(toggle);
+      expect(useSettingsStore.getState().partyVolume).toBe(true);
+      expect(screen.getByRole('button', { name: 'Turn off Party-size volume slider' })).toHaveAttribute(
+        'aria-pressed',
+        'true',
+      );
+    });
+
+    it('hides it entirely on a phone, tablet or the Android app', () => {
+      partyEligible.value = false;
+      render(<SettingsPlugins />);
+      expect(screen.queryByText('Party-size volume slider')).toBeNull();
+      expect(
+        screen.queryByRole('button', { name: /Party-size volume slider/ }),
+      ).toBeNull();
+    });
   });
 });

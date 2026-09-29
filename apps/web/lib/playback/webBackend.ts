@@ -2,7 +2,8 @@
 
 import { logger } from '@/lib/logger/client';
 import { autoPreampDb, DEFAULT_EQ, EQ_BANDS, EQ_PEAK_Q, eqActive, type EqSettings } from './eq';
-import type { AudioBackend, CreateAudioBackend } from './types';
+import { createGainRamp } from './gainRamp';
+import type { AudioBackend, CreateAudioBackend, RemoteCommands } from './types';
 
 /** HTMLMediaElement.NETWORK_LOADING, spelled out: some DOMs (and test
  *  environments) do not expose the constant on the class. */
@@ -35,8 +36,9 @@ export const createWebBackend: CreateAudioBackend = (events) => {
   //   element -> 60 Hz low shelf -> 230 / 910 / 3.6k peaking -> 14k high shelf
   //           -> eq pre-amp (auto headroom) -> party gain -> speakers
   //
-  // The element's own volume (the slider curve times normalization) still
-  // applies before all of it.
+  // Normalization rides on the party gain node when the graph exists (it can
+  // lift a quiet song past the element's 1.0); on the bare element it is part
+  // of the element's volume, which cannot go past 1.0.
   let audioCtx: AudioContext | null = null;
   let gainNode: GainNode | null = null;
   let eqFilters: BiquadFilterNode[] = [];
@@ -71,6 +73,9 @@ export const createWebBackend: CreateAudioBackend = (events) => {
       pre.connect(gain);
       gain.connect(ctx.destination);
       audioCtx = ctx;
+      // Once the graph exists the element plays into it, so the output
+      // device is the context's, not the element's (see setOutputDevice).
+      if (sinkId) void applyContextSink(ctx, sinkId);
       eqFilters = filters;
       eqPre = pre;
       gainNode = gain;
@@ -81,6 +86,17 @@ export const createWebBackend: CreateAudioBackend = (events) => {
       return null;
     }
   };
+  // --- Output device (lib/outputs): '' is the system default. The element
+  // and, once the graph exists, the audio context both take it: with the
+  // graph built, the element's own sink no longer decides where it sounds.
+  let sinkId = '';
+  const applyContextSink = (ctx: AudioContext, id: string): Promise<void> => {
+    const withSink = ctx as AudioContext & { setSinkId?: (id: string) => Promise<void> };
+    if (typeof withSink.setSinkId !== 'function') return Promise.resolve();
+    return withSink.setSinkId(id).catch((e: unknown) => {
+      logger.error('audio', 'audio context would not change output', undefined, e as Error);
+    });
+  };
   /** Puts the current settings on the graph, if there is one. */
   const applyEq = () => {
     if (!eqPre || !audioCtx) return;
@@ -90,6 +106,45 @@ export const createWebBackend: CreateAudioBackend = (events) => {
     });
     eqPre.gain.value = on ? Math.pow(10, autoPreampDb(eq.bands, audioCtx.sampleRate || 48000) / 20) : 1;
   };
+
+  // --- Volume: the slider value (0..1, muted and ducked by the caller),
+  // party mode's gain, and the song's normalization gain, which fades
+  // (gainRamp) when it changes in the middle of a song.
+  let level = 1;
+  let partyGain = 1;
+  /** Nothing is touched before the first setVolume. */
+  let volumeSet = false;
+  const applyVolume = () => {
+    if (!volumeSet) return;
+    const n = norm.value();
+    if (partyGain > 1) {
+      // Party: linear (slider drives output 1:1 up to 1.0), then the graph
+      // amplifies, normalization included.
+      const g = ensureGraph();
+      if (g) {
+        a.volume = Math.min(1, level);
+        audioCtx?.resume?.().catch(() => {});
+        g.gain.value = partyGain * n;
+      } else {
+        a.volume = Math.min(1, level * n);
+      }
+      return;
+    }
+    // Normal: power 1.5. With a graph already built (the equalizer), the
+    // song's gain goes on the graph, so a quiet song really comes up (its
+    // boost is held under its true peak by the server: nothing clips). The
+    // bare element cannot go past 1.0, so there a boost only uses the room
+    // the slider leaves. The graph is never built just for this: on phones
+    // it can cost background playback.
+    const curved = Math.pow(Math.max(0, level), 1.5);
+    if (gainNode) {
+      a.volume = Math.min(1, curved);
+      gainNode.gain.value = n;
+    } else {
+      a.volume = Math.min(1, curved * n);
+    }
+  };
+  const norm = createGainRamp(() => applyVolume());
 
   // --- Transition + recovery state.
   let transitioning = false;
@@ -162,7 +217,50 @@ export const createWebBackend: CreateAudioBackend = (events) => {
     events.onPause();
     setMediaState('paused');
   };
+  // --- Lock-screen / remote transport. WebKit (the iPhone app's WKWebView,
+  // Safari) only tells the OS about the page's action handlers when they are
+  // set while the element is playing: handlers registered before the first
+  // play leave the lock screen on its defaults, which are -15 s / +15 s skip
+  // buttons instead of previous / next (checked on the iOS 26 simulator:
+  // mediaremoted gets NextTrack and PreviousTrack only after a 'playing'
+  // re-registration). So the commands are kept and put back on every
+  // 'playing'; other browsers take the same calls as a no-op.
+  let remote: RemoteCommands | null = null;
+  const applyRemoteCommands = () => {
+    if (!remote || typeof navigator === 'undefined' || !('mediaSession' in navigator)) return;
+    const cmds = remote;
+    const handlers: [MediaSessionAction, MediaSessionActionHandler][] = [
+      ['play', () => cmds.play()],
+      ['pause', () => cmds.pause()],
+      ['previoustrack', () => cmds.prev()],
+      ['nexttrack', () => cmds.next()],
+      ['seekto', (e) => {
+        if (typeof e.seekTime !== 'number') return;
+        // The lock screen's scrubber belongs to the song it was showing. A
+        // seek that arrives while the next song is still loading was meant
+        // for the one before: iOS sends a second one when a scrub to the end
+        // lets go, and it landed on the new song and skipped it too.
+        if (transitioning) {
+          logger.breadcrumb('playback', 'remote seek dropped: a new song is loading', { to: e.seekTime });
+          return;
+        }
+        cmds.seek(e.seekTime);
+      }],
+    ];
+    for (const [action, handler] of handlers) {
+      // An engine that does not know one action throws for it; the others
+      // must still be set.
+      try {
+        navigator.mediaSession.setActionHandler(action, handler);
+      } catch {
+        /* unsupported action */
+      }
+    }
+  };
+  const onPlaying = () => applyRemoteCommands();
+
   a.addEventListener('error', onError);
+  a.addEventListener('playing', onPlaying);
   a.addEventListener('timeupdate', onTime);
   a.addEventListener('loadedmetadata', onLoadedMeta);
   a.addEventListener('ended', onEnded);
@@ -242,26 +340,11 @@ export const createWebBackend: CreateAudioBackend = (events) => {
     },
 
     setVolume(v, opts) {
-      const gain = opts?.gain ?? 1;
-      const norm = opts?.normGain ?? 1;
-      const party = gain > 1;
-      if (party) {
-        // Party: linear (slider drives output 1:1 up to 1.0), then the graph
-        // amplifies, normalization included.
-        const g = ensureGraph();
-        if (g) {
-          a.volume = Math.min(1, v);
-          audioCtx?.resume?.().catch(() => {});
-          g.gain.value = gain * norm;
-        } else {
-          a.volume = Math.min(1, v * norm);
-        }
-      } else {
-        // Normal: power 1.5, then normalization. The element cannot go past
-        // 1.0, so a quiet song's boost runs out at the top of the slider.
-        a.volume = Math.min(1, Math.pow(v, 1.5) * norm);
-        if (gainNode) gainNode.gain.value = 1;
-      }
+      volumeSet = true;
+      level = v;
+      partyGain = opts?.gain ?? 1;
+      norm.set(opts?.normGain ?? 1, opts?.rampMs ?? 0);
+      applyVolume();
     },
 
     setEq(next) {
@@ -270,6 +353,8 @@ export const createWebBackend: CreateAudioBackend = (events) => {
       // never switches it on keeps the bare element.
       if (eqActive(next) && ensureGraph()) audioCtx?.resume?.().catch(() => {});
       applyEq();
+      // A graph built just now takes the song's gain over from the element.
+      applyVolume();
     },
 
     setMetadata(track, localArtSrc) {
@@ -288,14 +373,8 @@ export const createWebBackend: CreateAudioBackend = (events) => {
     },
 
     setRemoteCommands(cmds) {
-      if (typeof navigator === 'undefined' || !('mediaSession' in navigator)) return;
-      navigator.mediaSession.setActionHandler('play', cmds.play);
-      navigator.mediaSession.setActionHandler('pause', cmds.pause);
-      navigator.mediaSession.setActionHandler('previoustrack', cmds.prev);
-      navigator.mediaSession.setActionHandler('nexttrack', cmds.next);
-      navigator.mediaSession.setActionHandler('seekto', (e) => {
-        if (typeof e.seekTime === 'number') cmds.seek(e.seekTime);
-      });
+      remote = cmds;
+      applyRemoteCommands();
     },
 
     getBufferedToEnd() {
@@ -327,23 +406,43 @@ export const createWebBackend: CreateAudioBackend = (events) => {
       a.playbackRate = r;
     },
 
+    async setOutputDevice(deviceId) {
+      const el = a as HTMLAudioElement & { setSinkId?: (id: string) => Promise<void> };
+      if (typeof el.setSinkId !== 'function') throw new Error('this browser cannot pick an output device');
+      // The element first: it is what refuses a device the page may not use,
+      // and nothing is changed then.
+      await el.setSinkId(deviceId);
+      sinkId = deviceId;
+      if (audioCtx) await applyContextSink(audioCtx, deviceId);
+    },
+
+    outputDevice: () => sinkId,
+
     getCurrentTime: () => a.currentTime || 0,
     getDuration: () => a.duration || 0,
     isPaused: () => a.paused,
     isTransitioning: () => transitioning,
+    mediaElement: () => a,
 
     destroy() {
       if (transitionTimer) clearTimeout(transitionTimer);
+      norm.cancel();
+      remote = null;
       a.removeEventListener('error', onError);
+      a.removeEventListener('playing', onPlaying);
       a.removeEventListener('timeupdate', onTime);
       a.removeEventListener('loadedmetadata', onLoadedMeta);
       a.removeEventListener('ended', onEnded);
       a.removeEventListener('play', onPlay);
       a.removeEventListener('pause', onPause);
       if (typeof navigator !== 'undefined' && 'mediaSession' in navigator) {
-        (['play', 'pause', 'previoustrack', 'nexttrack', 'seekto'] as const).forEach((act) =>
-          navigator.mediaSession.setActionHandler(act, null),
-        );
+        (['play', 'pause', 'previoustrack', 'nexttrack', 'seekto'] as const).forEach((act) => {
+          try {
+            navigator.mediaSession.setActionHandler(act, null);
+          } catch {
+            /* unsupported action, never set */
+          }
+        });
       }
       a.pause();
       a.removeAttribute('src');

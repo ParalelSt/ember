@@ -40,14 +40,17 @@ class SavedQueue(private val file: File) {
     }.getOrNull()
 
     /** The playable items and where to start, for onPlaybackResumption. */
-    fun resume(baseUrl: String): MediaSession.MediaItemsWithStartPosition? {
+    fun resume(baseUrl: String, artAuthority: String? = null): MediaSession.MediaItemsWithStartPosition? {
         val s = load() ?: return null
-        val items = s.tracks.mapNotNull { runCatching { TrackItems.toMediaItem(it, baseUrl) }.getOrNull() }
+        val items = s.tracks.mapNotNull { runCatching { TrackItems.toMediaItem(it, baseUrl, artAuthority) }.getOrNull() }
         if (items.size != s.tracks.size) return null
         return MediaSession.MediaItemsWithStartPosition(items, s.index, s.positionMs)
     }
 
     companion object {
+        /** In the app's files dir; the media button receiver looks for it too. */
+        const val FILE_NAME = "native-queue.json"
+
         /** What [player] has now; null when there is nothing to keep. */
         fun snapshotOf(player: Player): Snapshot? {
             val items = (0 until player.mediaItemCount).map { player.getMediaItemAt(it) }

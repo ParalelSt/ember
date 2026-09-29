@@ -34,14 +34,22 @@ import { useRadioExtend } from '@/hooks/player/useRadioExtend';
 import { useKeyboardShortcuts } from '@/hooks/player/useKeyboardShortcuts';
 import { useRemoteCommands } from '@/hooks/player/useRemoteCommands';
 import { useTrackGain } from '@/hooks/player/useTrackGain';
-import { dbToLinear } from '@/lib/playback/normalization';
+import { cachedTrackGain, dbToLinear, GAIN_RAMP_MS } from '@/lib/playback/normalization';
 import { eqForDevice, eqNeedsConsent } from '@/lib/playback/eqDevice';
+import { appVolume, isPartyEligible } from '@/lib/playback/partyDevice';
+import { usePartyEligible } from '@/hooks/usePartyEligible';
 import { createWebBackend } from '@/lib/playback/webBackend';
 import { createCapacitorBackend } from '@/lib/playback/capacitorBackend';
 import { createNativeBackend, nativeBackendReady } from '@/lib/playback/nativeBridge';
 import { createTauriBackend } from '@/lib/playback/tauriBackend';
 import { createAndroidBackend, androidPluginPresent } from '@/lib/playback/androidBackend';
 import type { AudioBackend, AudioBackendEvents, AudioErrorInfo } from '@/lib/playback/types';
+import { createCastBackend, isCastBackend, type CastRemote } from '@/lib/playback/castBackend';
+import { castHandover, gateEvents, isSameSong, localHandover } from '@/lib/playback/castSwitch';
+import { setCastSessionListener } from '@/lib/cast/session';
+import { initCast, setCastMediaElement } from '@/lib/cast/controller';
+import { clearCastSignCache, resolveCastMedia } from '@/lib/cast/signer';
+import { _resetOutputs, initOutputs } from '@/lib/outputs/controller';
 import type { PlaybackContext, Track } from '@/types/track';
 import { musicLevel } from '@/lib/pranks/mix';
 import { PrankReceiver } from './PrankReceiver';
@@ -91,6 +99,20 @@ function toastSkipped(skipped: Track[]) {
   } else if (skipped.length > 1) {
     toast(`Skipped ${skipped.length} unavailable songs`);
   }
+}
+
+/** Whether [b] holds exactly the songs of [a] (each as often), in any
+ *  order: a reorder, not a new list. */
+export function sameSongs(a: Track[], b: Track[]): boolean {
+  if (a.length !== b.length || a.length === 0) return false;
+  const count = new Map<string, number>();
+  for (const t of a) count.set(t.id, (count.get(t.id) ?? 0) + 1);
+  for (const t of b) {
+    const n = count.get(t.id);
+    if (!n) return false;
+    count.set(t.id, n - 1);
+  }
+  return true;
 }
 
 /** The one toast of an offline stall (see goTo). */
@@ -152,6 +174,15 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   /** The offline stall toast is shown once per offline spell, not per skip. */
   const offlineToastShownRef = useRef(false);
   const eventsRef = useRef<AudioBackendEvents | null>(null);
+  /** The provider's own event handlers, ungated: a cast engine gets them
+   *  through its own gate (see startCasting). */
+  const rawEventsRef = useRef<AudioBackendEvents | null>(null);
+  /** Casting (Google Cast, from a browser): the local engine waits in
+   *  localBackendRef, stopped, while a cast engine plays on the TV. The
+   *  queue, next, loop and radio stay here, as always. */
+  const castingRef = useRef(false);
+  const localBackendRef = useRef<AudioBackend | null>(null);
+  const [casting, setCasting] = useState(false);
   /** When the store's queue/index last changed BECAUSE the native player said
    *  so. The queue-push effect and the load-on-id-change effect both skip
    *  changes inside this window, or a car tap would bounce straight back. A
@@ -165,6 +196,9 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const loadAndPlayRef = useRef<((t: Track | null, autoplay: boolean) => void) | null>(null);
   const fallbackToWebAudioRef = useRef<((reason: string) => void) | null>(null);
   const [backendReady, setBackendReady] = useState(false);
+  /** The page's own engine, even while a cast engine stands in for it: the
+   *  one whose output the Devices picker moves. */
+  const localEngine = useCallback(() => localBackendRef.current ?? backendRef.current, []);
 
   const userInteracted = useRef(false);
 
@@ -181,6 +215,12 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   useQueryLyrics(current, !!user);
 
   const partyVolume = useSettingsStore((s) => s.partyVolume);
+  // Party mode is desktop-only (Tauri, or a mouse-driven web browser): see
+  // lib/playback/partyDevice. A phone, tablet or the Android app must behave
+  // exactly as if the account's partyVolume were off, even when it is on
+  // from another, eligible device.
+  const partyEligible = usePartyEligible();
+  const partyActive = partyVolume && partyEligible;
   const muted = usePlayerStore((s) => s.muted);
   const loopMode = usePlayerStore((s) => s.loopMode);
 
@@ -229,11 +269,24 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
           setIndex(i);
         }
       },
-      onQueueReplaced: (tracks, i) => {
+      onQueueReplaced: (tracks, i, info) => {
         nativeChangeAt.current = Date.now();
         const at = Math.max(0, Math.min(i, tracks.length - 1));
         loadedTrackRef.current = tracks[at]?.id ?? null;
         const st = usePlayerStore.getState();
+        // The same songs in another order: the car's Shuffle button (native
+        // reorders the queue itself). The list it came from still holds; the
+        // shuffle flag and its way back follow native's.
+        if (sameSongs(st.queue, tracks)) {
+          const on = info?.shuffle ?? st.shuffle;
+          usePlayerStore.setState({
+            queue: tracks,
+            index: at,
+            shuffle: on,
+            orderBackup: !on ? null : st.shuffle ? st.orderBackup : st.queue.slice(),
+          });
+          return;
+        }
         // Native radio only adds songs after ours: the playlist this came
         // from and the shuffle (with its way back) still hold.
         const appended = tracks.length > st.queue.length && st.queue.every((t, k) => t.id === tracks[k]?.id);
@@ -255,6 +308,16 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
           shuffle: false,
           orderBackup: null,
         });
+      },
+      onShuffle: (on, info) => {
+        // The car's or the notification's Shuffle button. Native says so
+        // before it sends the reordered queue, so the queue here is still the
+        // order to go back to. A page that starts on a queue native had
+        // already shuffled has no such order: native keeps it, and puts it
+        // back itself when shuffle goes off.
+        const st = usePlayerStore.getState();
+        if (st.shuffle === on) return;
+        usePlayerStore.setState({ shuffle: on, orderBackup: on && !info?.initial ? st.queue.slice() : null });
       },
       onLoopMode: (mode) => {
         // The car or the notification's Repeat button. Mirror it; the loop
@@ -305,6 +368,14 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
           return;
         }
         if (state.loopMode === 'one' && cur) {
+          // A cast receiver unloads a finished song: there is nothing left
+          // to seek in, so it gets the song again.
+          if (isCastBackend(backendRef.current)) {
+            loadedTrackRef.current = null;
+            positions.requestStartAt(0);
+            loadAndPlayRef.current?.(cur, true);
+            return;
+          }
           backendRef.current?.seek(0);
           backendRef.current?.play();
           return;
@@ -418,13 +489,23 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     } else if (shell !== 'web' && nativeBackendReady(shell)) {
       create = shell === 'tauri' ? createTauriBackend : createNativeBackend;
     }
-    eventsRef.current = events;
+    // The local engine's events stop counting while a cast engine plays:
+    // a late pause or error from the stopped element must not reach the
+    // player (see startCasting).
+    rawEventsRef.current = events;
+    eventsRef.current = gateEvents(events, () => !castingRef.current);
     backendKindRef.current = create === createWebBackend ? 'web'
       : create === createCapacitorBackend ? 'capacitor'
       : create === createAndroidBackend ? 'android'
       : create === createTauriBackend ? 'tauri-native' : 'native-stub';
-    backendRef.current = create(events);
+    backendRef.current = create(eventsRef.current);
     setInitialKind(backendKindRef.current);
+    // Casting: AirPlay (Safari) moves the web engine's own element; the
+    // controller finds out which way this page can cast at all.
+    setCastMediaElement(backendRef.current.mediaElement?.() ?? null);
+    initCast();
+    // The Devices button: where this engine can send its sound.
+    initOutputs({ kind: backendKindRef.current, localBackend: localEngine });
     // lib/logger has no ref to backendKindRef, so the provider is the one
     // place that pushes it into the context envelope (see logger.setContext).
     logger.setContext({ backendKind: backendKindRef.current });
@@ -439,6 +520,10 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     });
     setBackendReady(true);
     return () => {
+      setCastMediaElement(null);
+      _resetOutputs();
+      localBackendRef.current?.destroy();
+      localBackendRef.current = null;
       backendRef.current?.destroy();
       backendRef.current = null;
     };
@@ -450,21 +535,40 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   // every engine gets that through the same setVolume.
   const [duck, setDuck] = useState(1);
   const duckRef = useRef(1);
-  useEffect(() => {
-    duckRef.current = duck;
-    normGainRef.current = normGain;
+  /** The song the engine's normalization gain was last set for. */
+  const normTrackRef = useRef<string | null>(null);
+  /** Hands the engine the slider, party gain and a song's normalization
+   *  gain. A gain for a new song lands at once (loadAndPlay sends it before
+   *  the song makes a sound); a different gain for the same song (it arrived
+   *  after the song started, or the setting was switched) fades in over
+   *  GAIN_RAMP_MS instead of jumping, while the song is playing. */
+  const pushVolume = useCallback((trackId: string | null, norm: number) => {
     const b = backendRef.current;
     if (!b) return;
-    b.setVolume(musicLevel(volume, muted, duck), { gain: partyVolume ? 2 : 1, normGain });
-  }, [backendReady, volume, partyVolume, muted, duck, normGain]);
-
-  // When party mode turns OFF, snap volume back under the normal 0.85 cap so the
-  // slider thumb doesn't stick at the right edge.
+    // Paused, nothing is heard: no need to fade.
+    const rampMs = trackId === normTrackRef.current && norm !== normGainRef.current && !b.isPaused() ? GAIN_RAMP_MS : 0;
+    normTrackRef.current = trackId;
+    normGainRef.current = norm;
+    const st = usePlayerStore.getState();
+    // Party mode is desktop-only (lib/playback/partyDevice): an ineligible
+    // device plays as if it were off, so its engine never builds a graph for it.
+    const party = useSettingsStore.getState().partyVolume && isPartyEligible();
+    // A cast device gets the listener's own level only: nothing else in the
+    // page (a sound ducking the music) turns the TV down.
+    const duckLevel = castingRef.current ? 1 : duckRef.current;
+    b.setVolume(musicLevel(appVolume(st.volume), st.muted, duckLevel), { gain: party ? 2 : 1, normGain: norm, ...(rampMs ? { rampMs } : {}) });
+  }, []);
   useEffect(() => {
-    if (!partyVolume && volume > 0.85) {
-      setStoreVolume(0.85);
-    }
-  }, [partyVolume, volume, setStoreVolume]);
+    duckRef.current = duck;
+    pushVolume(current?.id ?? null, normGain);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [backendReady, volume, partyActive, muted, duck, normGain, current?.id]);
+
+  // Volume mapping, same slider range 0..1 in both modes:
+  //   normal: engine level = v^1.5, so the top (v = 1) is full output.
+  //   party (desktop, opted in): linear, then gain 2, so the top is 2x full.
+  // Turning party off therefore needs no snap: every v plays at v^1.5, which
+  // is never louder than the v * 2 it played at in party mode.
 
   /** Swap a failing native engine for plain web audio, once, and resume.
    *
@@ -482,14 +586,17 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     backendKindRef.current = 'web';
     setInitialKind('web');
     logger.setContext({ backendKind: 'web' });
+    // A different engine picks its output differently (the desktop app's
+    // web view has none to pick).
+    initOutputs({ kind: 'web', localBackend: localEngine });
     // partyVolume lives in the settings store, not the player store.
     const st = usePlayerStore.getState();
-    const party = useSettingsStore.getState().partyVolume;
-    backendRef.current.setVolume(musicLevel(st.volume, st.muted, duckRef.current), {
+    const party = useSettingsStore.getState().partyVolume && isPartyEligible();
+    backendRef.current.setVolume(musicLevel(appVolume(st.volume), st.muted, duckRef.current), {
       gain: party ? 2 : 1,
       normGain: normGainRef.current,
     });
-  }, []);
+  }, [localEngine]);
 
   const fallbackToWebAudio = useCallback((reason: string) => {
     if (backendKindRef.current === 'web' || fellBackRef.current) return;
@@ -541,6 +648,18 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     // click play a few times" bug. A silent re-load of the track that's already
     // loaded is never useful, so drop it.
     if (!autoplay && loadedTrackRef.current === track.id) return;
+    // A cast device plays the TRACK: it signs its own link, since neither a
+    // cached copy's blob: URL nor a cookie-bound stream reaches a TV.
+    if (castingRef.current && isCastBackend(b)) {
+      loadedTrackRef.current = track.id;
+      localSrcTrackRef.current = null;
+      cacheSrcTrackRef.current = null;
+      const startAt = positions.startAt(track.id);
+      setDuration(chooseDuration(track.durationSec ?? 0, null));
+      logger.breadcrumb('playback', 'load', { trackId: track.id, backend: 'cast', source: 'cast' });
+      b.loadTrack(track, { autoplay, startAt });
+      return;
+    }
     if (backendKindRef.current === 'android' && b.setQueue) {
       // The native player owns the queue: hand it the whole thing and the
       // index to start at. It diffs, so an unchanged queue never restarts.
@@ -602,15 +721,116 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       backend: backendKindRef.current,
       source: local ? 'local' : cachedSrc || cacheKey ? 'cache' : 'stream',
     });
+    // The new song's gain, when it is already known, goes to the engine
+    // BEFORE the load: the render that would set it comes after the audio may
+    // have started, and until then the previous song's gain was on it.
+    const norm = useSettingsStore.getState().normalizeVolume ? dbToLinear(cachedTrackGain(track.id)) : 1;
+    pushVolume(track.id, norm);
     b.load(local ?? cachedSrc ?? apiUrl(track.streamUrl), { autoplay, startAt, ...(cacheKey ? { cacheKey } : {}) });
     // Set metadata in the same synchronous turn so the notification carries
     // across a track boundary (Firefox Android tears it down otherwise).
     // Local art (the same downloaded copy) wins over the remote artworkUrl.
     b.setMetadata(track, localArtFor(track, downloads.artFiles));
-  }, [positions, swapToWebAudio]);
+  }, [positions, swapToWebAudio, pushVolume]);
 
   loadAndPlayRef.current = loadAndPlay;
   fallbackToWebAudioRef.current = fallbackToWebAudio;
+
+  /** The level the music plays at, for an engine that just took over. */
+  const applyVolume = useCallback((b: AudioBackend) => {
+    const st = usePlayerStore.getState();
+    const party = useSettingsStore.getState().partyVolume && isPartyEligible();
+    b.setVolume(musicLevel(appVolume(st.volume), st.muted, duckRef.current), { gain: party ? 2 : 1, normGain: normGainRef.current });
+  }, []);
+
+  /** A Google Cast session started (or the page joined one): the song moves
+   *  to the TV, from where it is. The local engine stops and waits. The
+   *  volume slider now sets the TV's volume; the equalizer and volume
+   *  normalization do not apply there. */
+  const startCasting = useCallback((remote: CastRemote, deviceName: string, opts: { resumed: boolean }) => {
+    const local = backendRef.current;
+    if (!local || castingRef.current || !rawEventsRef.current) return;
+    const st0 = usePlayerStore.getState();
+    const playing = st0.queue[st0.index];
+    const remoteNow = opts.resumed ? remote.status() : null;
+    const plan = castHandover({
+      localTime: local.getCurrentTime(),
+      localPaused: local.isPaused(),
+      resumed: opts.resumed,
+      remote: remoteNow,
+      sameSong: !!playing && isSameSong(remoteNow?.contentId, playing),
+    });
+    castingRef.current = true;
+    local.stop();
+    localBackendRef.current = local;
+    const resolve = (t: Track) => {
+      const st = usePlayerStore.getState();
+      const at = st.queue.findIndex((q) => q.id === t.id);
+      return resolveCastMedia(t, at >= 0 ? st.queue.slice(at + 1, at + 5) : []);
+    };
+    const cast = createCastBackend(
+      gateEvents(rawEventsRef.current, () => castingRef.current && backendRef.current === cast),
+      remote,
+      resolve,
+    );
+    backendRef.current = cast;
+    setCasting(true);
+    // The cast engine only passes on the level once the listener MOVES the
+    // slider: starting to cast (or reloading the page) never resets the TV.
+    applyVolume(cast);
+    logger.breadcrumb('playback', 'cast started', { resumed: opts.resumed });
+    const st = usePlayerStore.getState();
+    const track = st.queue[st.index];
+    // Joined a session already playing this song (the page was reloaded):
+    // follow the TV as it is, no reload, no re-buffering.
+    if (track && opts.resumed && remoteNow && remoteNow.state !== 'idle' && isSameSong(remoteNow.contentId, track)) {
+      loadedTrackRef.current = track.id;
+      setDuration(chooseDuration(track.durationSec ?? 0, remoteNow.duration || null));
+      cast.adopt();
+      return;
+    }
+    if (track) {
+      positions.requestStartAt(plan.startAt);
+      loadedTrackRef.current = null;
+      loadAndPlay(track, plan.autoplay);
+    }
+    if (!opts.resumed) {
+      toast(`Playing on ${deviceName}`, { description: 'The equalizer and volume leveling are off while casting.' });
+    }
+  }, [applyVolume, loadAndPlay, positions, setDuration]);
+
+  /** The session ended: the song comes back here, paused where the TV was. */
+  const stopCasting = useCallback(() => {
+    if (!castingRef.current) return;
+    const cast = backendRef.current;
+    const local = localBackendRef.current;
+    const plan = localHandover(cast?.getCurrentTime() ?? 0);
+    castingRef.current = false;
+    localBackendRef.current = null;
+    backendRef.current = local;
+    try { cast?.destroy(); } catch { /* the session is gone anyway */ }
+    // Links belong to whoever cast; the next session may be someone else.
+    clearCastSignCache();
+    setCasting(false);
+    setIsPlaying(false);
+    logger.breadcrumb('playback', 'cast ended');
+    if (!local) return;
+    applyVolume(local);
+    const st = usePlayerStore.getState();
+    const track = st.queue[st.index];
+    if (track) {
+      positions.requestStartAt(plan.startAt);
+      loadedTrackRef.current = null;
+      loadAndPlay(track, plan.autoplay);
+    }
+  }, [applyVolume, loadAndPlay, positions, setIsPlaying]);
+
+  // Google Cast sessions (lib/cast/session). Registered once the engine
+  // exists, so a session the page joined while starting up is picked up.
+  useEffect(() => {
+    if (!backendReady) return;
+    return setCastSessionListener({ start: startCasting, end: stopCasting });
+  }, [backendReady, startCasting, stopCasting]);
 
   // Drives load+autoplay on track changes nobody loaded yet: cold-load
   // hydration of a persisted queue, and index changes that did not go through
@@ -810,6 +1030,25 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     backendRef.current?.setEq?.(eqForDevice(equalizer, eqNeedsConsent(initialKind), eqChosenHere));
   }, [backendReady, initialKind, equalizer, eqChosenHere]);
 
+  // The shuffle button, for the native Android player: the queue it
+  // reorders goes over with setQueue (above); native keeps the flag, which
+  // the car's Shuffle button shows, and the order to go back to. A change
+  // native reported itself is not sent back (the backend drops it).
+  // A new list shuffled while shuffle was already on sends its own order.
+  // Off from a page that never had the order (the car shuffled before it
+  // opened) asks native to put the queue back; any other off must not, or
+  // a new list would be put in the old one's order.
+  const shuffleOn = usePlayerStore((s) => s.shuffle);
+  const orderBackup = usePlayerStore((s) => s.orderBackup);
+  const lastShuffle = useRef<{ on: boolean; hadOrder: boolean }>({ on: false, hadOrder: false });
+  useEffect(() => {
+    if (!backendReady) return;
+    const prev = lastShuffle.current;
+    lastShuffle.current = { on: shuffleOn, hadOrder: !!orderBackup };
+    const restore = !shuffleOn && prev.on && !prev.hadOrder;
+    backendRef.current?.setShuffle?.(shuffleOn, shuffleOn && orderBackup ? orderBackup.map((t) => t.id) : undefined, restore);
+  }, [backendReady, shuffleOn, orderBackup]);
+
   // The native Android player repeats (or stops at the end) by itself, so
   // it has to be told the loop mode. Other backends have no setLoop: the
   // provider applies the mode itself in onEnded and next/prev.
@@ -839,7 +1078,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     // Only on a new engine: setRate itself applies every change.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [backendReady, initialKind]);
-  const canSetRate = initialKind === 'web' || initialKind === 'capacitor';
+  const canSetRate = (initialKind === 'web' || initialKind === 'capacitor') && !casting;
 
   const playTrack = useCallback((track: Track, list?: Track[], nextContext?: PlaybackContext | null) => {
     userInteracted.current = true;

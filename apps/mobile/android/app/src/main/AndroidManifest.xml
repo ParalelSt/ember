@@ -45,6 +45,51 @@
         </service>
         <meta-data android:name="com.google.android.gms.car.application" android:resource="@xml/automotive_app_desc" />
 
+        <!-- Media buttons with the app closed (the car's play button over
+             Bluetooth, a headset, a mirroring app's steering-wheel keys):
+             Android sends them here, and it starts the player service to
+             resume the saved queue (EmberMediaButtonReceiver). Media3 wants
+             exactly one MEDIA_BUTTON receiver in the app, so the old
+             androidx.media one that @capgo/capacitor-media-session brings is
+             removed, and so is its service's MEDIA_BUTTON filter (the
+             receiver would otherwise start that service instead). -->
+        <receiver
+            android:name=".EmberMediaButtonReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MEDIA_BUTTON" />
+            </intent-filter>
+        </receiver>
+        <receiver
+            android:name="androidx.media.session.MediaButtonReceiver"
+            tools:node="remove" />
+        <service android:name="com.capgo.mediasession.MediaSessionService">
+            <intent-filter tools:node="remove">
+                <action android:name="android.intent.action.MEDIA_BUTTON" />
+            </intent-filter>
+        </service>
+
+        <!-- Covers on the Ember server for the car's lists (ArtworkProvider):
+             exported because Android Auto reads them from its own process;
+             it answers only the callers the player service lets in. -->
+        <provider
+            android:name=".ArtworkProvider"
+            android:authorities="${applicationId}.artwork"
+            android:exported="true" />
+
+        <!-- Casting (CastSupport.kt): Google's Default Media Receiver, with
+             Media3's session as the only one. -->
+        <meta-data
+            android:name="com.google.android.gms.cast.framework.OPTIONS_PROVIDER_CLASS_NAME"
+            android:value="app.ember.music.EmberCastOptions" />
+        <!-- Lists Ember's cast devices in Android 13+'s own output switcher
+             (the media output dialog), and lets it move a cast session back
+             to the phone (EmberCastOptions: remote-to-local). From
+             androidx.mediarouter. -->
+        <receiver
+            android:name="androidx.mediarouter.media.MediaTransferReceiver"
+            android:exported="true" />
+
         <!-- Pinned downloads keep running with the app closed, so they need a
              foreground service; dataSync is the type Android 14+ expects for
              "fetching files the user asked for". -->

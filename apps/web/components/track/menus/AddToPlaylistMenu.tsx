@@ -25,13 +25,31 @@ import { cn } from '@/lib/utils';
 /** `onRematch`: the track came from an import, so on phones (where the row
  *  has no room for a separate More button) this menu also offers "Wrong
  *  song? Re-match". `moves` does the same for Move up / Move down on a
- *  playlist shown in its own order. */
-export function AddToPlaylistMenu({ track, onRematch, moves }: { track: Track; onRematch?: () => void; moves?: TrackMoves }) {
+ *  playlist shown in its own order. `open`/`onOpenChange` let a parent open
+ *  the menu from elsewhere (the full-screen player's More menu). */
+export function AddToPlaylistMenu({
+  track,
+  onRematch,
+  moves,
+  open: openProp,
+  onOpenChange,
+}: {
+  track: Track;
+  onRematch?: () => void;
+  moves?: TrackMoves;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+}) {
   const { user } = useAuth();
   const { data: playlists = [] } = useQueryPlaylists();
   const addToPlaylist = useExecuteAddToPlaylist();
   const createPlaylist = useExecuteCreatePlaylist();
-  const [open, setOpen] = useState(false);
+  const [openState, setOpenState] = useState(false);
+  const open = openProp ?? openState;
+  const setOpen = (next: boolean) => {
+    setOpenState(next);
+    onOpenChange?.(next);
+  };
   const [createOpen, setCreateOpen] = useState(false);
 
   if (!user) return null;

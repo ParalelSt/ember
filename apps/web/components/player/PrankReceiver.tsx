@@ -8,6 +8,7 @@ import { apiUrl } from '@/lib/api';
 import { decidePrank } from '@/lib/pranks/decide';
 import { PRANK_LIMITS } from '@/lib/pranks/limits';
 import { overlayLevel } from '@/lib/pranks/mix';
+import { appVolume } from '@/lib/playback/partyDevice';
 import { createOverlayPlayer, type OverlayPlayer } from '@/lib/pranks/overlayPlayer';
 import type { PrankAck, PrankEngine, PrankRow } from '@/lib/pranks/types';
 import type { AudioBackend } from '@/lib/playback/types';
@@ -60,7 +61,7 @@ export function PrankReceiver({
       const overlay = (overlayRef.current ??= makeOverlayRef.current());
       const st = usePlayerStore.getState();
       const handle = overlay.play(apiUrl(url), {
-        volume: overlayLevel(share, st.volume, st.muted, useSettingsStore.getState().partyVolume),
+        volume: overlayLevel(share, appVolume(st.volume), st.muted, useSettingsStore.getState().partyVolume),
         maxSec: PRANK_LIMITS.soundMaxSec,
       });
       shareRef.current = share;
@@ -153,7 +154,7 @@ export function PrankReceiver({
   // The sound follows the person's own volume, mute and party mode.
   useEffect(() => {
     const share = shareRef.current;
-    if (share !== null) overlayRef.current?.setVolume(overlayLevel(share, volume, muted, party));
+    if (share !== null) overlayRef.current?.setVolume(overlayLevel(share, appVolume(volume), muted, party));
   }, [volume, muted, party]);
 
   useEffect(

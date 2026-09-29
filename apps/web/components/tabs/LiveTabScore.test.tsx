@@ -827,3 +827,51 @@ describe('LiveTabScore resize', () => {
     }
   });
 });
+
+describe('LiveTabScore closing', () => {
+  it('the page closing destroys AlphaTab once and stops feeding its cursor', async () => {
+    const { view, api } = await mount({ playing: true, position: 3 });
+    const destroy = vi.spyOn(api as unknown as { destroy: () => void }, 'destroy');
+    await waitFor(() => expect(api.player.output.updatePosition).toHaveBeenCalled());
+    view.unmount();
+    expect(destroy).toHaveBeenCalledTimes(1);
+    const fed = api.player.output.updatePosition.mock.calls.length;
+    const seeks = api.seeks.length;
+    await new Promise((r) => setTimeout(r, 200));
+    expect(api.player.output.updatePosition.mock.calls.length).toBe(fed);
+    expect(api.seeks.length).toBe(seeks);
+    expect(api.play).not.toHaveBeenCalledAfter(destroy);
+  });
+
+  it('a layout change still loading when the page closes is not drawn on the destroyed score', async () => {
+    const { view, api, p } = await mount();
+    const destroy = vi.spyOn(api as unknown as { destroy: () => void }, 'destroy');
+    api.render.mockClear();
+    api.updateSettings.mockClear();
+    view.rerender(<LiveTabScore {...p} staff="score-tab" />);
+    view.unmount();
+    expect(destroy).toHaveBeenCalledTimes(1);
+    await new Promise((r) => setTimeout(r, 50));
+    expect(api.updateSettings).not.toHaveBeenCalled();
+    expect(api.render).not.toHaveBeenCalled();
+  });
+
+  it('closing mid-download stops the download', async () => {
+    let signal: AbortSignal | undefined;
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = vi.fn((_url: RequestInfo | URL, init?: RequestInit) => {
+      signal = init?.signal ?? undefined;
+      return new Promise<Response>(() => {});
+    }) as typeof fetch;
+    try {
+      const view = render(<LiveTabScore {...props()} />);
+      await waitFor(() => expect(signal).toBeDefined());
+      expect(signal!.aborted).toBe(false);
+      view.unmount();
+      expect(signal!.aborted).toBe(true);
+      expect(at.apis).toHaveLength(0);
+    } finally {
+      globalThis.fetch = realFetch;
+    }
+  });
+});

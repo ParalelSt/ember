@@ -8,7 +8,7 @@ webview at a running Ember server.
 - App ID: `app.ember.music`
 - App name: `Ember`
 - Capacitor: 6.2.x
-- Platforms: `android/` (generated), `ios/` (NOT yet generated — needs Xcode)
+- Platforms: `android/`, `ios/` (iPhone app; build, signing and TestFlight in [docs/APPS.md](../../docs/APPS.md#ios-iphone-app))
 
 ## Configuration
 
@@ -295,21 +295,18 @@ the SDK. One-time setup:
 3. Ensure `android/local.properties` has `sdk.dir=/Users/<you>/Library/Android/sdk`
    (Android Studio usually writes this on first open).
 
-### iOS (one-time, AFTER installing Xcode)
+### iOS
 
-The `ios/` project does **not exist yet** because full **Xcode** is not
-installed (only CommandLineTools). CocoaPods is installed. After installing
-Xcode from the App Store and running `sudo xcode-select -s /Applications/Xcode.app`,
-generate the iOS project once:
+The `ios/` project is checked in. With Xcode and CocoaPods installed:
 
 ```bash
 cd apps/mobile
-npx cap add ios
-npx cap sync ios
+EMBER_APP_URL="https://ember.<tailnet>.ts.net" npx cap sync ios
+npm run open:ios
 ```
 
-Then `npm run open:ios` to open it in Xcode. Remember to set `EMBER_APP_URL`
-(the Tailscale funnel URL) before syncing for a physical iPhone.
+Playback, lock screen, ATS, the native tests and TestFlight:
+[docs/APPS.md, "iOS (iPhone app)"](../../docs/APPS.md#ios-iphone-app).
 
 ## Monorepo note (rare `cap` resolution issue)
 

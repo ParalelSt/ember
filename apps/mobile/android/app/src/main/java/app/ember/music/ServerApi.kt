@@ -65,6 +65,21 @@ class ServerApi(val baseUrl: String, private val cookies: () -> String?) {
         }
     }
 
+    /** POST that answers JSON. */
+    fun postForJson(path: String, body: JSONObject): JSONObject {
+        val req = Request.Builder().url(baseUrl + path)
+            .post(body.toString().toRequestBody("application/json".toMediaType())).build()
+        http.newCall(req).execute().use { res ->
+            if (!res.isSuccessful) throw IOException("POST $path -> ${res.code}")
+            return JSONObject(res.body?.string().orEmpty())
+        }
+    }
+
+    /** Signed links a cast device can play without the cookie (the server's
+     *  lib/streamToken), for up to 500 track ids. */
+    fun castLinks(ids: List<String>): Map<String, CastLink> =
+        CastItems.parseSignResponse(postForJson("/api/cast/sign", JSONObject().put("ids", JSONArray(ids))))
+
     private fun tracks(json: JSONObject, key: String = "tracks"): List<JSONObject> {
         val arr: JSONArray = json.optJSONArray(key) ?: JSONArray()
         return (0 until arr.length()).map { arr.getJSONObject(it) }
@@ -80,9 +95,21 @@ class ServerApi(val baseUrl: String, private val cookies: () -> String?) {
         tracks(getJson("/api/youtube/recommended?seed=" + java.net.URLEncoder.encode(seedSourceId, "UTF-8")))
     /** The song's normalization gain in dB; null when not measured yet. */
     fun trackGain(id: String): Double? {
-        val json = getJson("/api/tracks/" + java.net.URLEncoder.encode(id, "UTF-8") + "/loudness")
+        // ?v=2: the -9 LUFS policy, past any answer cached for the old -14 one.
+        val json = getJson("/api/tracks/" + java.net.URLEncoder.encode(id, "UTF-8") + "/loudness?v=2")
         if (!json.has("gainDb") || json.isNull("gainDb")) return null
         return json.optDouble("gainDb").takeIf { !it.isNaN() }
     }
     fun recordPlay(track: JSONObject) = postJson("/api/history", JSONObject().put("track", track))
+
+    /** The car's heart button: like (the whole track, the server files it in
+     *  the catalog) and unlike (by the track's id). Both are idempotent on
+     *  the server. */
+    fun like(track: JSONObject) = postJson("/api/likes", JSONObject().put("track", track))
+    fun unlike(id: String) {
+        val req = Request.Builder().url(baseUrl + "/api/likes/" + java.net.URLEncoder.encode(id, "UTF-8").replace("+", "%20")).delete().build()
+        http.newCall(req).execute().use { res ->
+            if (!res.isSuccessful) throw IOException("DELETE /api/likes -> ${res.code}")
+        }
+    }
 }

@@ -3,7 +3,7 @@
 # Builds the native shells that wrap the live Ember web server:
 #   • apps/desktop  — Tauri 2 desktop app (macOS / Linux / Windows)
 #   • apps/mobile   — Capacitor 6 Android app (debug APK)
-#   • iOS           — deferred (disabled stub, see bottom of file)
+#   • iOS           : Capacitor iPhone app; gated on vars.BUILD_IOS (job 3)
 #
 # apps/web is NOT built here; it is deployed separately. The native shells load a
 # REMOTE server URL (server.url / set-url.mjs model), so no web `dist` is bundled.
@@ -369,27 +369,150 @@ jobs:
           if-no-files-found: error
 
   # ---------------------------------------------------------------------------
-  # 3. iOS (Capacitor) — DEFERRED. Intentionally disabled.
+  # 3. iOS (Capacitor): iPhone app, TestFlight on tags.
   #
-  #    Building/signing an iOS app requires all of the following, none of which
-  #    are set up yet:
-  #      • a macos-latest runner with Xcode,
-  #      • an Apple Developer Program account,
-  #      • a signing certificate (.p12) + provisioning profile imported into the
-  #        runner keychain (typically via apple-actions/import-codesign-certs),
-  #      • the iOS Capacitor platform added to apps/mobile (`npx cap add ios`),
-  #        which does not currently exist in the repo.
+  #    Off unless the repo VARIABLE BUILD_IOS is 'true' (macOS minutes are
+  #    billed at 10x). Then, every run: unit tests on a simulator and an
+  #    unsigned device build, so a broken iOS project shows up early.
   #
-  #    When ready, enable by setting `if: true` and filling in the signing steps.
+  #    With all three App Store Connect secrets it also signs (automatic,
+  #    cloud-managed distribution certificate, nothing to import) and keeps
+  #    the .ipa as the `ember-ios-ipa` artifact; on a v* tag it uploads that
+  #    build to TestFlight. Missing secrets: signing and upload are skipped
+  #    with a notice, and the job still passes, so a release never breaks.
+  #
+  #      • APP_STORE_CONNECT_API_KEY_ID     the key's ID (e.g. ABC123DEFG)
+  #      • APP_STORE_CONNECT_API_ISSUER_ID  the issuer ID (a UUID)
+  #      • APP_STORE_CONNECT_API_KEY        base64 of AuthKey_<ID>.p8
+  #                                         (make with: base64 -i AuthKey_<ID>.p8)
+  #    The key needs the App Manager role; the App Store Connect app record
+  #    for app.ember.music must exist before the first upload (docs/APPS.md).
+  #
+  #    Version: apps/web/package.json (same as the release tag); build number:
+  #    the workflow run number, which only ever goes up, as TestFlight needs.
   # ---------------------------------------------------------------------------
-  # Gated on a repo variable rather than a constant `if: false`, which
-  # actionlint flags. Set BUILD_IOS=true once Apple signing is configured.
   ios:
     if: vars.BUILD_IOS == 'true'
     runs-on: macos-latest
+    env:
+      TEAM_ID: 8B8D2GSC9U
     steps:
-      - name: Placeholder
-        run: echo "iOS build is deferred; see workflow comments."
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install dependencies (workspace root)
+        run: npm ci
+
+      # Bakes the server URL into ios/App/App/capacitor.config.json (which the
+      # ATS build phase reads) and runs pod install. CocoaPods is preinstalled
+      # on GitHub's macOS runners.
+      - name: Capacitor sync (ios)
+        working-directory: apps/mobile
+        env:
+          EMBER_APP_URL: ${{ vars.EMBER_APP_URL || 'http://localhost:3000' }}
+        run: node ../../node_modules/@capacitor/cli/bin/capacitor sync ios
+
+      - name: Version and build number
+        run: |
+          echo "IOS_VERSION=$(node -p "require('./apps/web/package.json').version")" >> "$GITHUB_ENV"
+          echo "IOS_BUILD=${{ github.run_number }}" >> "$GITHUB_ENV"
+
+      # ATS script (plain http only to the configured server).
+      - name: ATS script test
+        run: node tests/ios-ats.test.mjs
+
+      - name: Unit tests (simulator)
+        working-directory: apps/mobile/ios/App
+        run: |
+          set -euo pipefail
+          # Whichever iPhone simulator this runner image has.
+          UDID=$(xcrun simctl list devices available -j | python3 -c '
+          import json, sys
+          devs = json.load(sys.stdin)["devices"]
+          ios = [d for rt, ds in devs.items() if "iOS" in rt for d in ds if d["name"].startswith("iPhone")]
+          print(ios[-1]["udid"])')
+          xcodebuild -workspace App.xcworkspace -scheme App -configuration Debug \
+            -destination "id=$UDID" CODE_SIGNING_ALLOWED=NO test
+
+      # Mirror the secrets into env and branch on that: `secrets` is not
+      # allowed in a step-level `if:` (see the Android job).
+      - name: Configure App Store Connect key
+        env:
+          ASC_KEY_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_API_ISSUER_ID }}
+          ASC_KEY_B64: ${{ secrets.APP_STORE_CONNECT_API_KEY }}
+        run: |
+          if [ -z "$ASC_KEY_ID" ] || [ -z "$ASC_ISSUER_ID" ] || [ -z "$ASC_KEY_B64" ]; then
+            echo "::notice::No App Store Connect API key configured: unsigned iOS build only, no TestFlight upload."
+            exit 0
+          fi
+          KEY_PATH="$RUNNER_TEMP/AuthKey_${ASC_KEY_ID}.p8"
+          echo "$ASC_KEY_B64" | base64 --decode > "$KEY_PATH"
+          chmod 600 "$KEY_PATH"
+          {
+            echo "ASC_KEY_PATH=$KEY_PATH"
+            echo "ASC_KEY_ID=$ASC_KEY_ID"
+            echo "ASC_ISSUER_ID=$ASC_ISSUER_ID"
+          } >> "$GITHUB_ENV"
+          echo "App Store Connect key configured."
+
+      # Unsigned archive; the export below signs it. Also the compile check
+      # for a device build when there are no secrets.
+      - name: Archive (device, unsigned)
+        working-directory: apps/mobile/ios/App
+        run: |
+          xcodebuild -workspace App.xcworkspace -scheme App -configuration Release \
+            -destination 'generic/platform=iOS' -archivePath "$RUNNER_TEMP/Ember.xcarchive" \
+            CODE_SIGNING_ALLOWED=NO MARKETING_VERSION="$IOS_VERSION" CURRENT_PROJECT_VERSION="$IOS_BUILD" \
+            archive
+
+      - name: Sign and export .ipa
+        if: env.ASC_KEY_PATH != ''
+        run: |
+          set -euo pipefail
+          cat > "$RUNNER_TEMP/export.plist" <<EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0"><dict>
+            <key>method</key><string>app-store-connect</string>
+            <key>destination</key><string>export</string>
+            <key>teamID</key><string>$TEAM_ID</string>
+            <key>signingStyle</key><string>automatic</string>
+            <key>manageAppVersionAndBuildNumber</key><false/>
+          </dict></plist>
+          EOF
+          xcodebuild -exportArchive -archivePath "$RUNNER_TEMP/Ember.xcarchive" \
+            -exportPath "$RUNNER_TEMP/export" -exportOptionsPlist "$RUNNER_TEMP/export.plist" \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$ASC_KEY_PATH" -authenticationKeyID "$ASC_KEY_ID" \
+            -authenticationKeyIssuerID "$ASC_ISSUER_ID"
+          mkdir -p dist-ios
+          cp "$RUNNER_TEMP/export/App.ipa" "dist-ios/Ember-${IOS_VERSION}-${IOS_BUILD}.ipa"
+
+      - name: Upload .ipa artifact
+        if: env.ASC_KEY_PATH != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: ember-ios-ipa
+          path: dist-ios/*.ipa
+          if-no-files-found: error
+
+      # Tags only: a branch push or a manual run never lands on testers' phones.
+      - name: Upload to TestFlight
+        if: env.ASC_KEY_PATH != '' && startsWith(github.ref, 'refs/tags/')
+        run: |
+          set -euo pipefail
+          # altool looks for AuthKey_<ID>.p8 in ./private_keys (among others).
+          mkdir -p private_keys
+          cp "$ASC_KEY_PATH" private_keys/
+          xcrun altool --upload-app --type ios --file dist-ios/*.ipa \
+            --apiKey "$ASC_KEY_ID" --apiIssuer "$ASC_ISSUER_ID"
+          rm -rf private_keys
 
   # ---------------------------------------------------------------------------
   # 4. Release — one asset per build, clearly named.

@@ -12,6 +12,7 @@ mod cache;
 mod discord;
 mod eq;
 mod external;
+mod output;
 mod speech;
 mod theme;
 mod update;
@@ -115,6 +116,37 @@ pub fn run() {
                     );
                 }
             }
+            // The output device (src/output.rs): every change of the device
+            // playing goes to the webview as `audio:outputs`, the router logs
+            // into the app log, and the device chosen last session is taken
+            // up again (played on at once if it is plugged in, and as soon as
+            // it appears if it is not).
+            if let Some(router) = state.outputs() {
+                let outputs_handle = app.handle().clone();
+                router.set_listener(Box::new(move |snapshot| {
+                    use tauri::Emitter;
+                    let _ = outputs_handle.emit("audio:outputs", snapshot);
+                }));
+                let outputs_log = log_path.clone();
+                router.set_logger(Box::new(move |level, msg| {
+                    applog::write_line(outputs_log.as_ref(), level, &format!("audio: {msg}"));
+                }));
+                match app.path().app_config_dir() {
+                    Ok(dir) => {
+                        let preferred = output::load_preferred(&dir);
+                        if let Some(p) = &preferred {
+                            applog::write_line(log_path.as_ref(), "INFO", &format!("audio output chosen last time: {p}"));
+                        }
+                        router.set_store_dir(dir);
+                        router.prefer(preferred);
+                    }
+                    Err(e) => applog::write_line(
+                        log_path.as_ref(),
+                        "WARN",
+                        &format!("no config directory, the output device choice will not be kept: {e}"),
+                    ),
+                }
+            }
             // The window's background and title bar on the last theme the
             // page reported, before the remote page arrives, so a dark theme
             // never opens on a white window. See theme.rs.
@@ -205,6 +237,8 @@ pub fn run() {
             audio::audio_set_volume,
             audio::audio_set_eq,
             audio::audio_set_metadata,
+            output::audio_outputs,
+            output::audio_set_output,
             cache::cache_prefetch,
             cache::cache_cancel,
             cache::cache_has,

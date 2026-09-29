@@ -18,6 +18,10 @@ interface NativeState {
   trackId: string | null;
   /** App builds from before the loop button reached native lack it. */
   loop?: LoopMode;
+  /** Whether native's queue is shuffled (the car's Shuffle button, or ours).
+   *  App builds from before the car's shuffle reached the app report the
+   *  player's own flag, which the app never set. */
+  shuffle?: boolean;
 }
 interface EmberPlayerPlugin {
   addListener(event: string, cb: (data: never) => void): unknown;
@@ -39,6 +43,8 @@ interface EmberPlayerPlugin {
   prev(): Promise<void>;
   /** Absent on app builds from before the loop button reached native. */
   setRepeat?(o: { mode: LoopMode }): Promise<void>;
+  /** Absent on app builds from before the car's shuffle reached the app. */
+  setShuffle?(o: { on: boolean; order?: string[]; restore?: boolean }): Promise<void>;
   setVolume(o: { v: number }): Promise<void>;
   /** Absent on app builds from before native volume normalization. */
   setNormalize?(o: { enabled: boolean }): Promise<void>;
@@ -95,7 +101,38 @@ export const createAndroidBackend: CreateAudioBackend = (events: AudioBackendEve
    *  echoed back: echoing a stale one would fight the listener's latest tap. */
   let loop: LoopMode | null = null;
   let loopsInFlight: LoopMode[] = [];
+  /** The same for shuffle: native's last report, and our sends not yet
+   *  reported back. Only an app build with setShuffle reports a shuffle
+   *  that means anything, so an older one is never listened to. */
+  let shuffled: boolean | null = null;
+  let shufflesInFlight: boolean[] = [];
+  /** The order last sent with shuffle on: a new list shuffled (shuffle
+   *  already on) sends its own order, or the car's off would put the new
+   *  list in the old one's order. */
+  let orderSent = '';
   const p = plugin();
+  const nativeShuffle = !!p && typeof p.setShuffle === 'function';
+
+  const onShuffleReport = (on: boolean | undefined) => {
+    if (!nativeShuffle || typeof on !== 'boolean' || on === shuffled) return;
+    const first = shuffled === null;
+    shuffled = on;
+    const mine = shufflesInFlight.indexOf(on);
+    if (mine >= 0) {
+      shufflesInFlight = shufflesInFlight.slice(mine + 1);
+      return;
+    }
+    // The first report is what native had before this page (the car
+    // shuffled while the app was closed). Unlike the loop mode, the page has
+    // no shuffle of its own to send over it (a reload starts unshuffled), so
+    // a shuffled native is mirrored; an unshuffled one is what the page has.
+    if (first) {
+      if (on) events.onShuffle?.(true, { initial: true });
+      return;
+    }
+    shufflesInFlight = [];
+    events.onShuffle?.(on);
+  };
 
   const onLoop = (l: LoopMode | undefined) => {
     if (!l || !LOOP_MODES.includes(l) || l === loop) return;
@@ -126,6 +163,7 @@ export const createAndroidBackend: CreateAudioBackend = (events: AudioBackendEve
     position = s.position;
     events.onTime(s.position);
     onLoop(s.loop);
+    onShuffleReport(s.shuffle);
     // Re-assert on every event, not only when our own mirror flips: native is
     // the source of truth here, and anything else that writes the store's
     // playing flag (an error toast, a stale closure) would otherwise leave the
@@ -158,9 +196,13 @@ export const createAndroidBackend: CreateAudioBackend = (events: AudioBackendEve
     }
     call(p.addListener('state', onState as (d: never) => void));
     call(
-      p.addListener('queue', ((d: { tracks: Track[]; index: number }) => {
+      p.addListener('queue', ((d: { tracks: Track[]; index: number; shuffle?: boolean }) => {
         index = d.index;
-        events.onQueueReplaced?.(d.tracks, d.index);
+        // The flag comes first from native (session extras before the
+        // queue); a report of it here is only news when the state event has
+        // not carried it yet.
+        if (nativeShuffle && typeof d.shuffle === 'boolean') onShuffleReport(d.shuffle);
+        events.onQueueReplaced?.(d.tracks, d.index, nativeShuffle && typeof d.shuffle === 'boolean' ? { shuffle: d.shuffle } : undefined);
       }) as (d: never) => void),
     );
     call(p.addListener('ended', (() => events.onEnded()) as (d: never) => void));
@@ -288,6 +330,19 @@ export const createAndroidBackend: CreateAudioBackend = (events: AudioBackendEve
       if (mode === (loopsInFlight[loopsInFlight.length - 1] ?? loop)) return;
       loopsInFlight.push(mode);
       call(p.setRepeat({ mode }));
+    },
+    setShuffle(on, order, restore) {
+      if (!p?.setShuffle) return;
+      // Native's own report (the car's button) coming back through the store,
+      // or the page's unshuffled start before native has said anything: a
+      // send then would unshuffle what the car shuffled.
+      const last = shufflesInFlight.length > 0 ? shufflesInFlight[shufflesInFlight.length - 1] : (shuffled ?? false);
+      const key = on && order ? order.join('\u0000') : '';
+      const newOrder = on && !!order && key !== orderSent;
+      if (on === last && !newOrder) return;
+      if (on !== last) shufflesInFlight.push(on);
+      orderSent = on && order ? key : '';
+      call(p.setShuffle(on && order ? { on, order } : !on && restore ? { on, restore: true } : { on }));
     },
     setVolume(v) {
       if (p) call(p.setVolume({ v: Math.max(0, Math.min(1, v)) }));

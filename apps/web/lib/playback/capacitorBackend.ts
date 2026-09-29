@@ -1,6 +1,7 @@
 'use client';
 
 import { createWebBackend } from './webBackend';
+import { isIosApp } from './nativePlatform';
 import type { AudioBackendEvents, CreateAudioBackend, RemoteCommands } from './types';
 import type { Track } from '@/types/track';
 
@@ -27,8 +28,18 @@ interface MediaSessionPlugin {
   setPositionState(options: { duration?: number; playbackRate?: number; position?: number }): Promise<void>;
 }
 
+/** The native plugin, or null where the plain web media session is used.
+ *
+ *  Never on iOS: the plugin's iOS side resolves setActionHandler once, which
+ *  the bridge delivers to the handler right away (so registering 'play',
+ *  'pause', 'nexttrack' and 'previoustrack' would fire all four), and it
+ *  reports the real lock-screen commands as events nobody listens to. The
+ *  iPhone app leaves the plugin out (capacitor.config.ts, ios.includePlugins)
+ *  and WKWebView publishes navigator.mediaSession to the lock screen itself;
+ *  this check covers a build that has it anyway. */
 function plugin(): MediaSessionPlugin | null {
   if (typeof window === 'undefined') return null;
+  if (isIosApp()) return null;
   const cap = (window as unknown as {
     Capacitor?: { Plugins?: { MediaSession?: MediaSessionPlugin } };
   }).Capacitor;
@@ -74,11 +85,14 @@ async function toDataUrl(src: string): Promise<string | null> {
 /** Guards against a slow read for a track the user has already skipped past. */
 let artToken = 0;
 
-/** Capacitor (Android app) backend — the web <audio> pipeline unchanged, plus
- *  the native media-session plugin mirroring metadata / playback state /
- *  position and receiving the notification's transport commands. On Android
- *  the plugin runs a foreground service while state is 'playing', which is
- *  what keeps audio alive across app-switch / screen-off. */
+/** Capacitor backend — the web <audio> pipeline unchanged, plus (Android
+ *  builds without the native player) the native media-session plugin
+ *  mirroring metadata / playback state / position and receiving the
+ *  notification's transport commands. On Android the plugin runs a
+ *  foreground service while state is 'playing', which is what keeps audio
+ *  alive across app-switch / screen-off. The iPhone app runs this backend
+ *  with no plugin: background audio comes from the app's audio session
+ *  (AppDelegate) and the lock screen from navigator.mediaSession. */
 export const createCapacitorBackend: CreateAudioBackend = (events) => {
   let duration = 0;
   let position = 0;
@@ -121,6 +135,14 @@ export const createCapacitorBackend: CreateAudioBackend = (events) => {
 
   return {
     ...web,
+
+    // Party mode (gain above 1.0) is a desktop feature. On a phone WebView
+    // it would route the element through a Web Audio graph, and a graph the
+    // OS suspends with the screen off takes the music with it; on iOS the
+    // element's volume cannot be set from the page at all.
+    setVolume(v, opts) {
+      web.setVolume(v, opts && (opts.gain ?? 1) > 1 ? { ...opts, gain: 1 } : opts);
+    },
 
     setMetadata(track: Track | null, localArtSrc?: string | null) {
       // Claim the session for this call first: a pending art read for the

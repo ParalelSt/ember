@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import {
@@ -20,15 +20,18 @@ import { PhonePlayerBar, PLAYER_BAR_CHROME } from '@/components/player/PhonePlay
 import { SeekBar } from '@/components/player/SeekBar';
 import { TransportControls } from '@/components/player/TransportControls';
 import { VolumeControl } from '@/components/player/VolumeControl';
+import { DevicesButton } from '@/components/player/DevicesButton';
 import { usePlayer } from '@/components/player/PlayerProvider';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { useIsDesktop } from '@/hooks/useIsDesktop';
+import { usePartyEligible } from '@/hooks/usePartyEligible';
 import { useLikeToggle } from '@/hooks/useLikeToggle';
 import { usePlayerStore } from '@/stores/usePlayerStore';
 import { useSettingsStore } from '@/stores/useSettingsStore';
 import { useUiStore } from '@/stores/useUiStore';
 import { cn } from '@/lib/utils';
 import { isTabsPathFor, tabsHref } from '@/lib/tabSources';
+import { leavePage, notePathname } from '@/lib/inAppHistory';
 
 export function PlayerBar() {
   const { current, isPlaying, position, duration, volume, toggle, next, prev, seek, setVolume } = usePlayer();
@@ -41,6 +44,10 @@ export function PlayerBar() {
   const { liked: isLiked, toggle: toggleLike } = useLikeToggle(current);
   const openNowPlaying = usePlayerStore((s) => s.setNowPlayingOpen);
   const partyVolume = useSettingsStore((s) => s.partyVolume);
+  // Desktop-only: a mouse-driven browser or Tauri, never a touch device or
+  // the Android app, regardless of window width. See lib/playback/partyDevice.
+  const partyEligible = usePartyEligible();
+  const partyActive = partyVolume && partyEligible;
   const tabsEnabled = useSettingsStore((s) => s.tabsEnabled);
   const [queueOpen, setQueueOpen] = useState(false);
   const lyricsOpen = useUiStore((s) => s.lyricsOpen);
@@ -55,6 +62,11 @@ export function PlayerBar() {
   const onLyricsClick = () => setLyricsOpen(!lyricsOpen);
   const router = useRouter();
   const pathname = usePathname();
+  // Every page the app shows passes through here: closing the tab page
+  // goes Back only when the page before it was Ember's (lib/inAppHistory).
+  useEffect(() => {
+    notePathname(pathname);
+  }, [pathname]);
 
   // Only render the bar once playback has actually started. Avoids the
   // "Nothing playing" placeholder strip and ensures the bar pops in the moment
@@ -166,9 +178,13 @@ export function PlayerBar() {
         >
           <LyricsIcon className="h-4 w-4" />
         </Button>
-        {/* Guitar tabs: the tab page for the playing song. Phones reach it
-            from the full-screen NowPlaying view. Hidden entirely when the
-            Songsterr integration plugin is switched off in Settings. */}
+        {/* Guitar tabs: the tab page for the playing song, and a second
+            click closes it again (Back to where the listener was, or home
+            when they came in from outside Ember). Closing unmounts the
+            page, which stops everything it ran; the music plays on.
+            Phones reach it from the full-screen NowPlaying view. Hidden
+            entirely when the Songsterr integration plugin is switched off
+            in Settings. */}
         {tabsEnabled && (
           <Button
             variant="ghost"
@@ -177,14 +193,17 @@ export function PlayerBar() {
               'hidden md:inline-flex h-8 w-8 hover:text-foreground',
               tabsOpen ? 'text-ember hover:text-ember' : 'text-muted-foreground',
             )}
-            onClick={() => router.push(tabsHref(current.id))}
+            onClick={() => (tabsOpen ? leavePage(router) : router.push(tabsHref(current.id)))}
             aria-label="Guitar tabs"
             aria-pressed={tabsOpen}
-            title="Guitar tabs"
+            title={tabsOpen ? 'Close guitar tabs' : 'Guitar tabs'}
           >
             <TabsIcon className="h-4 w-4" />
           </Button>
         )}
+        {/* Devices: where the music plays (this computer's outputs, and
+            cast devices when there are any). Only when there is a choice. */}
+        <DevicesButton variant="bar" className="hidden md:inline-flex h-8 w-8" />
         <Button
           variant="ghost"
           size="icon"
@@ -198,11 +217,11 @@ export function PlayerBar() {
         <VolumeControl
           volume={volume}
           muted={muted}
-          max={partyVolume ? 1 : 0.85}
+          max={1}
           onChange={setVolume}
           onToggleMute={toggleMuted}
           className="hidden md:flex"
-          sliderClassName={partyVolume ? 'w-40' : 'w-29.5'}
+          sliderClassName={partyActive ? 'w-40' : 'w-29.5'}
         />
       </div>
     </div>

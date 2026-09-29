@@ -93,6 +93,15 @@ dependencies {
     // Auto cache (AutoCacher.kt): SimpleCache, CacheWriter and its index database.
     implementation "androidx.media3:media3-datasource:$media3Version"
     implementation "androidx.media3:media3-database:$media3Version"
+    // Casting (CastSupport.kt): CastPlayer and, through it, the Google Cast
+    // framework and androidx.mediarouter for the device picker.
+    implementation "androidx.media3:media3-cast:$media3Version"
+    // The phone's output picker (EmberPlayerPlugin.showOutputSwitcher):
+    // SystemOutputSwitcherDialogController, which opens Android's own output
+    // switcher on each Android version that has one, and the
+    // MediaTransferReceiver that lists cast devices in it. media3-cast only
+    // brings in mediarouter 1.3.0, which has neither.
+    implementation "androidx.mediarouter:mediarouter:$mediarouterVersion"
 }
 
 apply from: 'capacitor.build.gradle'

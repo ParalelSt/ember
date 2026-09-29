@@ -50,6 +50,16 @@ const config: CapacitorConfig = {
     // via WebSecurity.lockDown). An http server is not affected.
     allowMixedContent: false,
   },
+  ios: {
+    // No npm plugins on iOS. The one this package has, the media-session
+    // plugin, is Android's lock-screen bridge; its iOS half fires every
+    // action handler the moment it is registered and never delivers the real
+    // lock-screen buttons. WKWebView publishes navigator.mediaSession to the
+    // lock screen by itself, and the app's own plugins (EmberTheme) are
+    // registered in EmberViewController. Plain http is limited the same way
+    // as on Android, by ios/App/scripts/configure-ats.sh at build time.
+    includePlugins: [],
+  },
 };
 
 export default config;

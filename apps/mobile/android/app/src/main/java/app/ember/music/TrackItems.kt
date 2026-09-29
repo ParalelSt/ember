@@ -19,24 +19,14 @@ object TrackItems {
     private fun str(track: JSONObject, key: String): String =
         if (track.isNull(key)) "" else track.optString(key)
 
-    fun toMediaItem(track: JSONObject, baseUrl: String): MediaItem {
+    /** [artAuthority]: ArtworkProvider's, to hand a cover on the Ember server
+     *  out as a content URI the car can load (ArtworkUris); null keeps the
+     *  https address (tests, and callers that never reach the car). */
+    fun toMediaItem(track: JSONObject, baseUrl: String, artAuthority: String? = null): MediaItem {
         val stream = str(track, "streamUrl")
         val uri = if (stream.startsWith("http")) stream else baseUrl + stream
-        // An upload's cover is relative (/api/uploads/<id>/art), like its
-        // stream; left relative, nothing could ever load it.
-        val artwork = str(track, "artworkUrl").takeIf { it.isNotBlank() }
-            ?.let { if (it.startsWith("/") && !it.startsWith("//")) baseUrl + it else it }
         val extras = Bundle().apply { putString(EXTRA_TRACK, track.toString()) }
-        val meta = MediaMetadata.Builder()
-            .setTitle(str(track, "title"))
-            .setArtist(str(track, "artist"))
-            .setAlbumTitle(str(track, "album").takeIf { it.isNotBlank() })
-            .setArtworkUri(artwork?.let { Uri.parse(it) })
-            .setIsBrowsable(false)
-            .setIsPlayable(true)
-            .setMediaType(MediaMetadata.MEDIA_TYPE_MUSIC)
-            .setExtras(extras)
-            .build()
+        val meta = metadata(track, baseUrl, artAuthority).setExtras(extras).build()
         return MediaItem.Builder()
             .setMediaId(track.getString("id"))
             .setUri(uri)
@@ -44,6 +34,30 @@ object TrackItems {
             .setCustomCacheKey(track.getString("id"))
             .setMediaMetadata(meta)
             .build()
+    }
+
+    /** Title, artist, album, cover and length, without the track JSON: what
+     *  the car's browse lists need (the JSON stays in BrowseTree). */
+    fun metadata(track: JSONObject, baseUrl: String, artAuthority: String? = null): MediaMetadata.Builder {
+        // An upload's cover is relative (/api/uploads/<id>/art), like its
+        // stream; left relative, nothing could ever load it.
+        val raw = str(track, "artworkUrl").takeIf { it.isNotBlank() }
+        val artwork = raw?.let { art ->
+            artAuthority?.let { ArtworkUris.contentUriFor(art, baseUrl, it) }
+                ?: Uri.parse(if (art.startsWith("/") && !art.startsWith("//")) baseUrl + art else art)
+        }
+        // The catalog's length, so a head unit shows the song's length (and a
+        // progress bar) before the stream has said how long it is.
+        val durationMs = track.optDouble("durationSec", 0.0).takeIf { !it.isNaN() && it > 0 }?.let { (it * 1000).toLong() }
+        return MediaMetadata.Builder()
+            .setTitle(str(track, "title"))
+            .setArtist(str(track, "artist"))
+            .setAlbumTitle(str(track, "album").takeIf { it.isNotBlank() })
+            .setArtworkUri(artwork)
+            .setDurationMs(durationMs)
+            .setIsBrowsable(false)
+            .setIsPlayable(true)
+            .setMediaType(MediaMetadata.MEDIA_TYPE_MUSIC)
     }
 
     fun trackOf(item: MediaItem): JSONObject? =

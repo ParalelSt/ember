@@ -160,9 +160,11 @@ export const api = {
   getTrackAvailability: (id: string) =>
     req<{ unavailable: boolean; reason: string | null }>(`/tracks/${encodeURIComponent(id)}/availability`),
   /** Volume normalization gain in dB (null: not measured yet). Quiet: it is
-   *  asked on every song change, and offline that failing is expected. */
+   *  asked on every song change, and offline that failing is expected.
+   *  `?v=2` (the -9 LUFS policy) steps around answers under the old policy
+   *  that the browser may still hold for a day. */
   getTrackGain: (id: string) =>
-    quiet<{ gainDb: number | null }>(`/tracks/${encodeURIComponent(id)}/loudness`),
+    quiet<{ gainDb: number | null }>(`/tracks/${encodeURIComponent(id)}/loudness?v=2`),
   getReplacements: (id: string) =>
     req<{ candidates: Track[] }>(`/tracks/${encodeURIComponent(id)}/replacements`),
   saveToServer: (videoId: string) =>

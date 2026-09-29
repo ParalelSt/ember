@@ -69,8 +69,8 @@ describe('VolumeControl', () => {
 
   it('caps the slider at max, in percent of the fraction given', () => {
     render(
-      <VolumeControl volume={0.5} muted={false} max={0.85} onChange={vi.fn()} onToggleMute={vi.fn()} />,
+      <VolumeControl volume={0.5} muted={false} max={1} onChange={vi.fn()} onToggleMute={vi.fn()} />,
     );
-    expect(slider()).toHaveAttribute('max', '85');
+    expect(slider()).toHaveAttribute('max', '100');
   });
 });

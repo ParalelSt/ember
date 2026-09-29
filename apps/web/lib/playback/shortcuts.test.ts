@@ -89,11 +89,15 @@ describe('shortcutFor: volume', () => {
     expect(volumeOf(down)).toBeCloseTo(0.45, 5);
   });
 
-  it('clamps to the normal 0.85 ceiling', () => {
-    expect(volumeOf(press({ key: 'ArrowUp' }, { volume: 0.83 }))).toBeCloseTo(0.85, 5);
+  it('clamps to 1 (full output) by default', () => {
+    expect(volumeOf(press({ key: 'ArrowUp' }, { volume: 0.97 }))).toBeCloseTo(1, 5);
   });
 
-  it('clamps to 1 in party mode', () => {
+  it('clamps to an explicit ceiling', () => {
+    expect(volumeOf(press({ key: 'ArrowUp' }, { volume: 0.83, ceiling: 0.85 }))).toBeCloseTo(0.85, 5);
+  });
+
+  it('clamps to 1 with ceiling 1', () => {
     expect(volumeOf(press({ key: 'ArrowUp' }, { volume: 0.98, ceiling: 1 }))).toBeCloseTo(1, 5);
   });
 

@@ -6,20 +6,21 @@
 // A ~250ms polling task emits position + end-of-track events back to the webview.
 //
 // Crate API notes (verified against current docs):
-//   * rodio 0.21: `OutputStreamBuilder::open_default_stream()` returns an
-//     `OutputStream` that must be kept alive; `.mixer()` -> `&Mixer`;
-//     `Sink::connect_new(mixer)` builds a Sink. Sink keeps `append/play/pause/
-//     stop/set_volume/get_pos/try_seek/empty`. (0.22 renamed Sink->Player.)
+//   * rodio 0.21: `Sink::connect_new(mixer)` builds a Sink. Sink keeps
+//     `append/play/pause/stop/set_volume/get_pos/try_seek/empty`. (0.22
+//     renamed Sink->Player.) The mixer every sink connects to is the master
+//     mixer of src/output.rs, not a device's own: the device under it can
+//     change while a song plays (see that file).
 //   * stream-download 0.24: `StreamDownload::new_http(url, storage, settings)` is
 //     async and yields a blocking `Read + Seek` reader.
 
 use std::io::{Read, Seek};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use std::sync::{mpsc, Arc, Mutex};
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use rodio::mixer::Mixer;
-use rodio::{OutputStreamBuilder, Sink};
+use rodio::Sink;
 use serde::Serialize;
 use souvlaki::{MediaControlEvent, MediaControls, MediaMetadata, MediaPlayback, MediaPosition, PlatformConfig};
 use stream_download::http::reqwest::header::{HeaderMap, HeaderValue, COOKIE};
@@ -38,14 +39,20 @@ pub(crate) type DownloadStop = Box<dyn Fn() + Send + Sync>;
 /// Native audio engine state, stored in Tauri managed state.
 ///
 /// `rodio::OutputStream` (cpal `Stream`) is `!Send + !Sync`, so it cannot live in
-/// Tauri's managed state directly. Instead we keep it alive on a dedicated parked
-/// thread and store a cloned `Mixer` (which IS `Send + Sync + Clone`) here. New
-/// `Sink`s are built from that mixer on demand.
+/// Tauri's managed state directly. It lives on the output router's thread
+/// (src/output.rs), and this holds the router's master `Mixer` (which IS
+/// `Send + Sync + Clone`) plus a handle on the router. New `Sink`s are built
+/// from that mixer on demand.
 pub struct AudioEngine {
-    /// Output mixer cloned off the (thread-pinned) OutputStream. Used to build
-    /// sinks. `None` when no output device could be opened — the app still
-    /// starts (see `new_degraded`) and the webview falls back to web audio.
+    /// The master mixer (see src/output.rs). Used to build sinks; the output
+    /// device under it can change without any sink noticing. `None` when no
+    /// output device could be opened: the app still starts (see
+    /// `new_degraded`) and the webview falls back to web audio.
     mixer: Option<Mixer>,
+    /// The output router: lists devices and switches between them. `None`
+    /// for a degraded engine and for the tests' engine (`with_output`), which
+    /// have no device to switch.
+    outputs: Option<crate::output::OutputRouter>,
     /// Current playback sink. `Arc<Mutex<..>>` so the position-polling task can
     /// share access. `None` when nothing is loaded. The sink itself is in an
     /// `Arc` so a seek can run on it without holding this lock (see
@@ -152,35 +159,18 @@ pub(crate) struct Widget {
 
 impl AudioEngine {
     pub fn new() -> Result<Self, String> {
-        // Open the output stream on a dedicated thread and keep it alive there
-        // forever (the cpal Stream is !Send, so it must not cross threads). The
-        // thread hands back a cloned Mixer, then parks holding the stream.
-        let (tx, rx) = mpsc::channel::<Result<Mixer, String>>();
-        std::thread::Builder::new()
-            .name("ember-audio-output".into())
-            .spawn(move || match OutputStreamBuilder::open_default_stream() {
-                Ok(stream) => {
-                    let _ = tx.send(Ok(stream.mixer().clone()));
-                    // Keep `stream` alive for the lifetime of the process.
-                    // Use a loop to guard against spurious wakeups from park().
-                    loop {
-                        std::thread::park();
-                    }
-                    #[allow(unreachable_code)]
-                    drop(stream);
-                }
-                Err(e) => {
-                    let _ = tx.send(Err(e.to_string()));
-                }
-            })
-            .map_err(|e| e.to_string())?;
-
-        let mixer = rx
-            .recv()
-            .map_err(|_| "audio output thread exited".to_string())??;
+        // The output router opens the system default output on a thread of
+        // its own and keeps every stream there (the cpal Stream is !Send, so
+        // it must not cross threads). It hands back the master mixer, which
+        // the songs play into whichever device is under it (src/output.rs).
+        let (mixer, router) = crate::output::start(
+            Box::new(crate::output::CpalBackend),
+            crate::output::RouterConfig::for_this_os(),
+        )?;
 
         Ok(Self {
             mixer: Some(mixer),
+            outputs: Some(router),
             sink: Arc::new(Mutex::new(None)),
             generation: Arc::new(AtomicU64::new(0)),
             load_seq: Arc::new(AtomicU64::new(0)),
@@ -217,6 +207,7 @@ impl AudioEngine {
     pub fn new_degraded() -> Self {
         Self {
             mixer: None,
+            outputs: None,
             sink: Arc::new(Mutex::new(None)),
             generation: Arc::new(AtomicU64::new(0)),
             load_seq: Arc::new(AtomicU64::new(0)),
@@ -252,6 +243,11 @@ impl AudioEngine {
     /// Whether a real output device is attached.
     pub fn has_output(&self) -> bool {
         self.mixer.is_some()
+    }
+
+    /// The output router, when there is a device to route to.
+    pub fn outputs(&self) -> Option<&crate::output::OutputRouter> {
+        self.outputs.as_ref()
     }
 
     /// Reflect play/paused state in the OS Now Playing widget, including the
