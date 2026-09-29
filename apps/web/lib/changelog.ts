@@ -21,6 +21,54 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    id: 'car-and-steering-wheel',
+    version: '0.7.15',
+    date: '2026-09-29',
+    title: 'Better in the car',
+    summary: 'Android Auto gets Home, Liked, Playlists and Library tabs with covers for your uploads, and the steering-wheel buttons work even after Android closed the app.',
+    bullets: [
+      'In Android Auto: new Home and Library tabs, long lists in pages, covers for uploaded songs, and a heart to like the song that plays. Offline, your downloaded songs are there.',
+      'Shuffle and Repeat in the car show whether they are on, and shuffle from the car now shows in the app too.',
+      'Steering-wheel and headset buttons: press once to play or pause, twice to skip, three times to go back. Play picks up where you left off, even when the app was closed.',
+      'Needs the new Android app, 0.4.11.',
+    ],
+  },
+  {
+    id: 'devices-and-full-player',
+    version: '0.7.15',
+    date: '2026-09-29',
+    title: 'Choose where the music plays',
+    summary: 'A Devices button lists your speakers, headphones and cast devices, and the full-screen player on phones is tidier.',
+    bullets: [
+      'Devices shows your speakers, headphones and cast devices and switches between them. On Android it also opens Android’s own output switcher, on iPhone the AirPlay and Bluetooth picker. In the desktop app the song keeps playing through the switch and your choice is remembered.',
+      'The full-screen player shows where the music is playing from, keeps song actions in a ⋯ menu, and puts Devices, Tabs, EQ and Queue in one labelled row under the controls.',
+      'Clicking the guitar tabs button again closes the tab page and stops its metronome, loop and slowdown. Your music keeps playing.',
+    ],
+  },
+  {
+    id: 'cast-to-tv',
+    version: '0.7.15',
+    date: '2026-09-29',
+    title: 'Cast to your TV',
+    summary: 'Play Ember on a Chromecast, Google speaker or Android TV from Chrome or the Android app, and over AirPlay from Safari.',
+    bullets: [
+      'Pick a TV or speaker under Devices, and the song carries on there from where it was. Next, loop and radio keep working, and the TV shows the song, artist and cover.',
+      'The equalizer and volume leveling are off while casting. The desktop app does not cast.',
+    ],
+  },
+  {
+    id: 'full-volume',
+    version: '0.7.15',
+    date: '2026-09-29',
+    title: 'Louder and steadier volume',
+    summary: 'Phones always play at full volume, and Normalize volume no longer makes things quieter.',
+    bullets: [
+      'On phones, the app now always plays at full level and your phone’s volume buttons set the loudness. On a computer the volume slider reaches full volume without party mode.',
+      'Normalize volume keeps a typical song as loud as before, turns only extra-loud songs down a little, and brings quiet songs up, including on Android. Level changes fade instead of jumping.',
+      'The party-size volume slider only shows on computers.',
+    ],
+  },
+  {
     id: 'search-clear-button',
     version: '0.7.14',
     date: '2026-09-28',

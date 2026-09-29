@@ -1,3 +1,17 @@
+# 0.7.15: Car, devices, casting, full volume (apps 0.4.11)
+
+**Host: run `./update.sh` as usual (no new packages, no database changes).**
+Nothing to set: cast links are signed with a secret the server makes by itself
+(`MUSIC_DIR/.stream-token-secret`); `STREAM_TOKEN_SECRET` in
+`apps/web/.env.local` is optional, and `PUBLIC_ORIGIN` is only needed behind a
+proxy other than Tailscale Funnel.
+
+- The car features, the Devices button on Android and casting from the phone
+  need the new Android app, 0.4.11 (versionCode 16). The desktop app's speaker
+  choice needs desktop 0.4.11. The `v0.4.11` tag builds both.
+- The iPhone app is built by the same tag only once TestFlight is set up
+  (docs/APPS.md); until then nothing changes for iPhones.
+
 # 0.7.14: Search clear button
 
 **Host: run `./update.sh` as usual (no new packages, no settings, no database
