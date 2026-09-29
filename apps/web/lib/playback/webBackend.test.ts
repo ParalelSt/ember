@@ -263,3 +263,103 @@ describe('webBackend play() before the song has loaded (bughunt 2026-09-25 P7)',
     b.destroy();
   });
 });
+
+describe('webBackend remote commands (lock screen)', () => {
+  /** A navigator.mediaSession that records every handler set on it. */
+  function fakeMediaSession() {
+    const handlers = new Map<string, ((d: { action: string; seekTime?: number }) => void) | null>();
+    const setActionHandler = vi.fn((action: string, h: ((d: { action: string; seekTime?: number }) => void) | null) => {
+      handlers.set(action, h);
+    });
+    Object.defineProperty(navigator, 'mediaSession', {
+      configurable: true,
+      value: { setActionHandler, metadata: null, playbackState: 'none' },
+    });
+    return { handlers, setActionHandler };
+  }
+  const cmds = () => ({ play: vi.fn(), pause: vi.fn(), next: vi.fn(), prev: vi.fn(), seek: vi.fn() });
+
+  afterEach(() => {
+    delete (navigator as unknown as { mediaSession?: unknown }).mediaSession;
+  });
+
+  it('sets play, pause, previous, next and seek', () => {
+    const { handlers } = fakeMediaSession();
+    const b = createWebBackend(makeFakeEvents());
+    const c = cmds();
+    b.setRemoteCommands(c);
+    expect([...handlers.keys()].sort()).toEqual(['nexttrack', 'pause', 'play', 'previoustrack', 'seekto']);
+    handlers.get('nexttrack')!({ action: 'nexttrack' });
+    handlers.get('previoustrack')!({ action: 'previoustrack' });
+    handlers.get('seekto')!({ action: 'seekto', seekTime: 12 });
+    expect(c.next).toHaveBeenCalledTimes(1);
+    expect(c.prev).toHaveBeenCalledTimes(1);
+    expect(c.seek).toHaveBeenCalledWith(12);
+    b.destroy();
+  });
+
+  it('sets them again every time the element starts playing', () => {
+    // WebKit (the iPhone app, Safari) ignores handlers set before the element
+    // plays: the lock screen then shows skip 15 s instead of previous/next.
+    const { setActionHandler, handlers } = fakeMediaSession();
+    const b = createWebBackend(makeFakeEvents());
+    const c = cmds();
+    b.setRemoteCommands(c);
+    setActionHandler.mockClear();
+    const a = b.mediaElement!() as HTMLAudioElement;
+    a.dispatchEvent(new Event('playing'));
+    expect(setActionHandler.mock.calls.map(([action]) => action).sort()).toEqual(
+      ['nexttrack', 'pause', 'play', 'previoustrack', 'seekto'],
+    );
+    // A later song (auto-advance) plays: set again.
+    setActionHandler.mockClear();
+    a.dispatchEvent(new Event('playing'));
+    expect(setActionHandler).toHaveBeenCalledTimes(5);
+    handlers.get('nexttrack')!({ action: 'nexttrack' });
+    expect(c.next).toHaveBeenCalledTimes(1);
+    b.destroy();
+  });
+
+  it('does nothing on playing before commands exist, or after destroy', () => {
+    const { setActionHandler } = fakeMediaSession();
+    const b = createWebBackend(makeFakeEvents());
+    const a = b.mediaElement!() as HTMLAudioElement;
+    a.dispatchEvent(new Event('playing'));
+    expect(setActionHandler).not.toHaveBeenCalled();
+    b.setRemoteCommands(cmds());
+    b.destroy();
+    setActionHandler.mockClear();
+    a.dispatchEvent(new Event('playing'));
+    expect(setActionHandler).not.toHaveBeenCalled();
+  });
+
+  it('drops a lock-screen seek that arrives while the next song is loading', () => {
+    // A scrub to the end finishes the song; iOS then sends a second seek
+    // for the same spot, which used to land on the next song and skip it.
+    vi.spyOn(HTMLMediaElement.prototype, 'play').mockImplementation(() => Promise.resolve());
+    const { handlers } = fakeMediaSession();
+    const b = createWebBackend(makeFakeEvents());
+    const c = cmds();
+    b.setRemoteCommands(c);
+    b.load('/s/next', { autoplay: true });
+    handlers.get('seekto')!({ action: 'seekto', seekTime: 20 });
+    expect(c.seek).not.toHaveBeenCalled();
+    // The new song's metadata is in: its own scrubber is on the lock screen.
+    (b.mediaElement!() as HTMLAudioElement).dispatchEvent(new Event('loadedmetadata'));
+    handlers.get('seekto')!({ action: 'seekto', seekTime: 7 });
+    expect(c.seek).toHaveBeenCalledWith(7);
+    b.destroy();
+  });
+
+  it('still sets the other actions when one is not supported', () => {
+    const { setActionHandler, handlers } = fakeMediaSession();
+    setActionHandler.mockImplementation((action: string, h) => {
+      if (action === 'seekto') throw new TypeError('seekto is not supported');
+      handlers.set(action, h);
+    });
+    const b = createWebBackend(makeFakeEvents());
+    expect(() => b.setRemoteCommands(cmds())).not.toThrow();
+    expect([...handlers.keys()].sort()).toEqual(['nexttrack', 'pause', 'play', 'previoustrack']);
+    b.destroy();
+  });
+});

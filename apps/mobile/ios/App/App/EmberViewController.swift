@@ -10,6 +10,20 @@ class EmberViewController: CAPBridgeViewController {
         bridge?.registerPluginInstance(EmberAudioRoutePlugin())
     }
 
+    #if DEBUG
+    /// Debug builds only: the UI tests (AppUITests) point the app at a
+    /// throwaway local server through the launch environment, so they need
+    /// no `cap sync` to a test URL. A release build always loads the server
+    /// from capacitor.config.json.
+    override open func instanceDescriptor() -> InstanceDescriptor {
+        let descriptor = super.instanceDescriptor()
+        if let url = ProcessInfo.processInfo.environment["EMBER_TEST_SERVER_URL"], !url.isEmpty {
+            descriptor.serverURL = url
+        }
+        return descriptor
+    }
+    #endif
+
     override open func viewDidLoad() {
         super.viewDidLoad()
         // Before the first byte arrives the web view is blank: paint it with
