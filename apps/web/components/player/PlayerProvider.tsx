@@ -564,14 +564,11 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [backendReady, volume, partyActive, muted, duck, normGain, current?.id]);
 
-  // When party mode turns OFF (or this device was never eligible for it),
-  // snap volume back under the normal 0.85 cap so the slider thumb doesn't
-  // stick at the right edge.
-  useEffect(() => {
-    if (!partyActive && volume > 0.85) {
-      setStoreVolume(0.85);
-    }
-  }, [partyActive, volume, setStoreVolume]);
+  // Volume mapping, same slider range 0..1 in both modes:
+  //   normal: engine level = v^1.5, so the top (v = 1) is full output.
+  //   party (desktop, opted in): linear, then gain 2, so the top is 2x full.
+  // Turning party off therefore needs no snap: every v plays at v^1.5, which
+  // is never louder than the v * 2 it played at in party mode.
 
   /** Swap a failing native engine for plain web audio, once, and resume.
    *

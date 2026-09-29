@@ -2,9 +2,7 @@
 
 import { useEffect, type RefObject } from 'react';
 import { usePlayerStore } from '@/stores/usePlayerStore';
-import { useSettingsStore } from '@/stores/useSettingsStore';
 import { shortcutFor, type TypingTarget } from '@/lib/playback/shortcuts';
-import { isPartyEligible } from '@/lib/playback/partyDevice';
 import type { AudioBackend } from '@/lib/playback/types';
 
 /** Global keyboard shortcuts. The map itself is pure (lib/playback/shortcuts);
@@ -29,7 +27,6 @@ export function useKeyboardShortcuts({
         {
           hasCurrent: Boolean(st.queue[st.index]),
           volume: st.volume,
-          ceiling: useSettingsStore.getState().partyVolume && isPartyEligible() ? 1 : 0.85,
         },
       );
       if (!action || action.type === 'ignore') return;

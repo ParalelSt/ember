@@ -179,6 +179,9 @@ describe('mix', () => {
   it('the sound is a share of what the music plays at, never louder', () => {
     // Same curve as the web backend: power 1.5, linear in party mode.
     expect(elementLevel(0.64, false, false)).toBeCloseTo(0.512);
+    expect(elementLevel(1, false, false)).toBe(1);
+    // party's top (linear, then gain 2) is above normal's top
+    expect(elementLevel(1, false, true) * 2).toBeGreaterThan(elementLevel(1, false, false));
     expect(elementLevel(0.64, false, true)).toBeCloseTo(0.64);
     expect(overlayLevel(1, 0.64, false, false)).toBeCloseTo(0.512);
     expect(overlayLevel(0.5, 0.64, false, false)).toBeCloseTo(0.256);

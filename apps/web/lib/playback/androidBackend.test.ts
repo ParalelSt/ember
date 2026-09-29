@@ -456,3 +456,20 @@ describe('androidBackend: shuffle', () => {
     expect(() => b.setShuffle!(true, ['a'])).not.toThrow();
   });
 });
+
+describe('androidBackend: volume', () => {
+  afterEach(() => {
+    delete (window as unknown as { Capacitor?: unknown }).Capacitor;
+  });
+
+  it('the slider top reaches ExoPlayer as 1 (full output), not a capped value', () => {
+    const n = installPlugin(false);
+    const b = createAndroidBackend(makeFakeEvents());
+    b.setVolume(1);
+    expect(n.plugin.setVolume).toHaveBeenLastCalledWith({ v: 1 });
+    b.setVolume(0.6);
+    expect(n.plugin.setVolume).toHaveBeenLastCalledWith({ v: 0.6 });
+    b.setVolume(1.4);
+    expect(n.plugin.setVolume).toHaveBeenLastCalledWith({ v: 1 });
+  });
+});

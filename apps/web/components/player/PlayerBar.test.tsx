@@ -226,9 +226,9 @@ describe('PlayerBar', () => {
   });
 
   describe('party mode is desktop-only', () => {
-    it('caps the slider at 85% off, and lifts it to 100% (wider track) with the plugin on, on an eligible device', () => {
+    it('reaches 100% with the plugin off, and gets a wider track with the plugin on, on an eligible device', () => {
       const { unmount } = render(<PlayerBar />);
-      expect(volumeSlider()).toHaveAttribute('data-max', '85');
+      expect(volumeSlider()).toHaveAttribute('data-max', '100');
       expect(volumeSlider().parentElement).toHaveClass('w-29.5');
       unmount();
 
@@ -238,11 +238,11 @@ describe('PlayerBar', () => {
       expect(volumeSlider().parentElement).toHaveClass('w-40');
     });
 
-    it('stays capped at 85% with the plugin on when this device is not party-eligible (touch, or the Android app)', () => {
+    it('still reaches 100% (narrow track) with the plugin on when this device is not party-eligible (touch, or the Android app)', () => {
       useSettingsStore.setState({ partyVolume: true });
       partyEligible.value = false;
       desktopBar();
-      expect(volumeSlider()).toHaveAttribute('data-max', '85');
+      expect(volumeSlider()).toHaveAttribute('data-max', '100');
       expect(volumeSlider().parentElement).toHaveClass('w-29.5');
     });
 

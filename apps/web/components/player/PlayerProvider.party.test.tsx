@@ -10,7 +10,7 @@ import { makeFakeBackend } from '@/test-utils/fakeBackend';
 // as if party mode were off" half of that: a phone, tablet or Capacitor build
 // gets gain: 1 from the engine even when the account's partyVolume is on
 // (saved from another, eligible device), and a stored volume above the
-// normal 0.85 cap gets snapped back down.
+// normal-mode range is untouched (no snap).
 
 vi.mock('@/lib/api', () => ({ api: {}, apiUrl: (u: string) => u }));
 const shell = vi.hoisted(() => ({ kind: 'web' as 'web' | 'capacitor' | 'tauri' }));
@@ -74,14 +74,15 @@ describe('PlayerProvider: party mode is desktop-only', () => {
     expect(lastVolume()).toEqual([0.8, { gain: 2, normGain: 1 }]);
   });
 
-  it('snaps a stored volume above 0.85 back down on a device that is not party-eligible', () => {
+  it('leaves a stored 0.97 alone on a device that is not party-eligible (top of the slider is full output)', () => {
     coarsePointer(true);
-    usePlayerStore.setState({ volume: 0.97 });
+    usePlayerStore.setState({ volume: 1 });
     render(<PlayerProvider>{null}</PlayerProvider>);
-    expect(usePlayerStore.getState().volume).toBe(0.85);
+    expect(usePlayerStore.getState().volume).toBe(1);
+    expect(lastVolume()).toEqual([1, { gain: 1, normGain: 1 }]);
   });
 
-  it('leaves a stored volume above 0.85 alone on an eligible device', () => {
+  it('leaves a stored volume alone on an eligible device', () => {
     usePlayerStore.setState({ volume: 0.97 });
     render(<PlayerProvider>{null}</PlayerProvider>);
     expect(usePlayerStore.getState().volume).toBe(0.97);

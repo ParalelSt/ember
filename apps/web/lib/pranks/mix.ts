@@ -9,7 +9,7 @@ export function musicLevel(volume: number, muted: boolean, duck: number): number
 }
 
 /** The loudness the music element actually plays at for a slider value:
- *  the same curve as webBackend.setVolume (power 1.5, linear in party mode). */
+ *  the same curve as webBackend.setVolume (power 1.5 up to full output at the slider's top, linear in party mode). */
 export function elementLevel(volume: number, muted: boolean, party: boolean): number {
   if (muted) return 0;
   const v = clamp01(volume);

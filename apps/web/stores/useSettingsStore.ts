@@ -18,8 +18,8 @@ import { DEFAULT_EQ, parseEq, sameEq, type EqSettings } from '@/lib/playback/eq'
  *  autoReportEnabled and the auto cache switches are per device only. */
 interface SettingsState {
   /** Party-size volume slider plugin: widens the slider and lifts the
-   *  audio cap from 0.85 to 1.0 with a linear curve. Off by default; the
-   *  normal player uses a gentler power-1.5 curve. */
+   *  audio past full output (gain 2) with a linear curve. Off by default; the
+   *  normal player uses a gentler power-1.5 curve whose top is full output. */
   partyVolume: boolean;
   setPartyVolume: (on: boolean) => Promise<void>;
   /** Silent crash reports (lib/autoReport.ts): on by default so hosts learn

@@ -217,7 +217,7 @@ export function PlayerBar() {
         <VolumeControl
           volume={volume}
           muted={muted}
-          max={partyActive ? 1 : 0.85}
+          max={1}
           onChange={setVolume}
           onToggleMute={toggleMuted}
           className="hidden md:flex"

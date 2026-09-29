@@ -91,25 +91,25 @@ describe('useKeyboardShortcuts', () => {
     expect(usePlayerStore.getState().volume).toBeCloseTo(0.55);
   });
 
-  it('volume stops at the 0.85 ceiling, or 1 in party mode', () => {
-    usePlayerStore.setState({ volume: 0.84 });
+  it('volume stops at 1 (full output) with party mode off or on', () => {
+    usePlayerStore.setState({ volume: 0.98 });
     setup();
     press({ key: 'ArrowUp' });
-    expect(usePlayerStore.getState().volume).toBeCloseTo(0.85);
+    expect(usePlayerStore.getState().volume).toBeCloseTo(1);
     useSettingsStore.setState({ partyVolume: true });
     usePlayerStore.setState({ volume: 0.99 });
     press({ key: 'ArrowUp' });
     expect(usePlayerStore.getState().volume).toBeCloseTo(1);
   });
 
-  it('stays at the 0.85 ceiling with party mode on when this device is not party-eligible (touch)', () => {
+  it('reaches 1 with party mode on when this device is not party-eligible (touch)', () => {
     const original = window.matchMedia;
     window.matchMedia = ((q: string) => ({ matches: q === '(pointer: coarse)' })) as typeof window.matchMedia;
     useSettingsStore.setState({ partyVolume: true });
-    usePlayerStore.setState({ volume: 0.84 });
+    usePlayerStore.setState({ volume: 0.98 });
     setup();
     press({ key: 'ArrowUp' });
-    expect(usePlayerStore.getState().volume).toBeCloseTo(0.85);
+    expect(usePlayerStore.getState().volume).toBeCloseTo(1);
     window.matchMedia = original;
   });
 

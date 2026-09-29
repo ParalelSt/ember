@@ -151,6 +151,15 @@ describe('webBackend setVolume with normalization', () => {
     b.destroy();
   });
 
+  it('normal mode: the slider top plays the element at full output (1), curve below', () => {
+    const b = createWebBackend(makeFakeEvents());
+    b.setVolume(1, { normGain: 1 });
+    expect(element().volume).toBe(1);
+    b.setVolume(0.5, { normGain: 1 });
+    expect(element().volume).toBeCloseTo(Math.pow(0.5, 1.5), 5);
+    b.destroy();
+  });
+
   it('party mode without Web Audio falls back to the element', () => {
     const b = createWebBackend(makeFakeEvents());
     b.setVolume(0.8, { gain: 2, normGain: 0.5 });
