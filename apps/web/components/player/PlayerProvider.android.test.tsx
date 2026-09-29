@@ -5,7 +5,7 @@
 import { useEffect } from 'react';
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { render, act } from '@testing-library/react';
-import { PlayerProvider, usePlayer } from './PlayerProvider';
+import { PlayerProvider, sameSongs, usePlayer } from './PlayerProvider';
 import { usePlayerStore } from '@/stores/usePlayerStore';
 import { useSettingsStore } from '@/stores/useSettingsStore';
 import { makeFakeBackend, makeTrack } from '@/test-utils/fakeBackend';
@@ -16,7 +16,7 @@ vi.mock('@/lib/playback/detectShell', () => ({ detectShell: () => 'capacitor' })
 
 const fake = makeFakeBackend();
 const native = vi.hoisted(() => ({
-  setQueue: vi.fn(), setLoop: vi.fn(), next: vi.fn(), prev: vi.fn(), setNormalize: vi.fn(), setEq: vi.fn(),
+  setQueue: vi.fn(), setLoop: vi.fn(), next: vi.fn(), prev: vi.fn(), setNormalize: vi.fn(), setEq: vi.fn(), setShuffle: vi.fn(),
 }));
 let ev: AudioBackendEvents | null = null;
 vi.mock('@/lib/playback/androidBackend', () => ({
@@ -205,5 +205,85 @@ describe('android: where a restored song starts', () => {
     act(() => { player!.playTrack(C, [B, C, D], { type: 'album', id: 'x' } as never); });
     expect(native.setQueue.mock.calls[0][4]).toBeUndefined();
     expect(usePlayerStore.getState().position).toBe(0);
+  });
+});
+
+describe('android: the car\'s Shuffle button', () => {
+  it('shuffle on from the car: the button shows it, and the order before is the way back', () => {
+    usePlayerStore.setState({ queue: [A, B, C, D], index: 0, context: { type: 'album', id: 'x' } as never });
+    render(<PlayerProvider><div /></PlayerProvider>);
+    native.setQueue.mockClear();
+    native.setShuffle.mockClear();
+    // Native says "shuffle on" first, then sends the reordered queue.
+    act(() => { ev!.onShuffle!(true); });
+    act(() => { ev!.onQueueReplaced!([A, D, B, C], 0, { shuffle: true }); });
+    const st = usePlayerStore.getState();
+    expect(st.shuffle).toBe(true);
+    expect(st.queue.map((t) => t.id)).toEqual([A.id, D.id, B.id, C.id]);
+    expect(st.context).toEqual({ type: 'album', id: 'x' });
+    expect(native.setQueue).not.toHaveBeenCalled();
+    // The app's shuffle button then turns it off: the order comes back.
+    act(() => { usePlayerStore.getState().toggleShuffle(); });
+    expect(usePlayerStore.getState().queue.map((t) => t.id)).toEqual([A.id, B.id, C.id, D.id]);
+    // The page had the order: it put the queue back itself.
+    expect(native.setShuffle).toHaveBeenLastCalledWith(false, undefined, false);
+  });
+
+  it('shuffle off from the car takes native\'s restored order', () => {
+    usePlayerStore.setState({ queue: [A, D, B, C], index: 1, shuffle: true, orderBackup: [A, B, C, D] });
+    render(<PlayerProvider><div /></PlayerProvider>);
+    act(() => { ev!.onShuffle!(false); });
+    act(() => { ev!.onQueueReplaced!([A, B, C, D], 3, { shuffle: false }); });
+    const st = usePlayerStore.getState();
+    expect(st.shuffle).toBe(false);
+    expect(st.orderBackup).toBeNull();
+    expect(st.queue.map((t) => t.id)).toEqual([A.id, B.id, C.id, D.id]);
+    expect(st.index).toBe(3);
+  });
+
+  it('the reordered queue alone (flag in it) is enough', () => {
+    usePlayerStore.setState({ queue: [A, B, C], index: 0 });
+    render(<PlayerProvider><div /></PlayerProvider>);
+    act(() => { ev!.onQueueReplaced!([A, C, B], 0, { shuffle: true }); });
+    const st = usePlayerStore.getState();
+    expect(st.shuffle).toBe(true);
+    expect(st.orderBackup!.map((t) => t.id)).toEqual([A.id, B.id, C.id]);
+  });
+
+  it('a page opening on a queue the car shuffled shows shuffle on, and off asks native for the order', () => {
+    usePlayerStore.setState({ queue: [A, C, B], index: 0 });
+    render(<PlayerProvider><div /></PlayerProvider>);
+    act(() => { ev!.onShuffle!(true, { initial: true }); });
+    expect(usePlayerStore.getState().shuffle).toBe(true);
+    expect(usePlayerStore.getState().orderBackup).toBeNull();
+    native.setShuffle.mockClear();
+    act(() => { usePlayerStore.getState().toggleShuffle(); });
+    expect(native.setShuffle).toHaveBeenLastCalledWith(false, undefined, true);
+  });
+
+  it('a new list after a shuffled one: off, with no order put back', () => {
+    usePlayerStore.setState({ queue: [B, A], index: 0, shuffle: true, orderBackup: [A, B] });
+    render(<PlayerProvider><Grab /></PlayerProvider>);
+    native.setShuffle.mockClear();
+    act(() => { player!.playTrack(C, [C, D], { type: 'album', id: 'y' } as never); });
+    expect(native.setShuffle).toHaveBeenLastCalledWith(false, undefined, false);
+  });
+
+  it('the app\'s own shuffle tells native, with the order to go back to', () => {
+    usePlayerStore.setState({ queue: [A, B, C, D], index: 0, isPlaying: true });
+    render(<PlayerProvider><div /></PlayerProvider>);
+    native.setShuffle.mockClear();
+    act(() => { usePlayerStore.getState().toggleShuffle(); });
+    expect(native.setShuffle).toHaveBeenLastCalledWith(true, [A.id, B.id, C.id, D.id], false);
+  });
+});
+
+describe('sameSongs', () => {
+  it('is a reorder of the same songs, each as often', () => {
+    expect(sameSongs([A, B, C], [C, A, B])).toBe(true);
+    expect(sameSongs([A, B, A], [A, A, B])).toBe(true);
+    expect(sameSongs([A, B, A], [A, B, B])).toBe(false);
+    expect(sameSongs([A, B], [A, B, C])).toBe(false);
+    expect(sameSongs([], [])).toBe(false);
   });
 });

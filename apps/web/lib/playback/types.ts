@@ -38,8 +38,16 @@ export interface AudioBackendEvents {
    *  item on its own (auto-advance, a skip from the car). */
   onQueueIndex?: (index: number) => void;
   /** Queue-owning backends only: the native side built a new queue (a tap in
-   *  the car, native radio). The provider mirrors it; it must NOT push it back. */
-  onQueueReplaced?: (tracks: Track[], index: number) => void;
+   *  the car, native radio, the car's Shuffle button reordering it). The
+   *  provider mirrors it; it must NOT push it back. `shuffle` is whether
+   *  native's queue is shuffled now (app builds from before it leave it out). */
+  onQueueReplaced?: (tracks: Track[], index: number, info?: { shuffle?: boolean }) => void;
+  /** Queue-owning backends only: shuffle was turned on or off outside the
+   *  app (the car's or the notification's Shuffle button). Native reorders
+   *  its queue itself; the new order arrives as onQueueReplaced. `initial`:
+   *  native was already shuffled when this page started, so the queue the
+   *  page has is the shuffled one (no way back here; native keeps it). */
+  onShuffle?: (on: boolean, info?: { initial?: boolean }) => void;
   /** Queue-owning backends only: the loop mode was changed outside the app
    *  (the Repeat button in the car or the notification). */
   onLoopMode?: (mode: LoopMode) => void;
@@ -128,6 +136,13 @@ export interface AudioBackend {
   /** Queue-owning backends only: the native player repeats by itself, so it
    *  has to be told the loop mode. */
   setLoop?(mode: LoopMode): void;
+  /** Queue-owning backends only: the shuffle button. The queue itself is
+   *  reordered here and handed over with setQueue; native only keeps the
+   *  flag (the car's Shuffle button shows it) and `order`, the song ids from
+   *  before shuffling, so the car can turn it off again. `restore` (off
+   *  only): this page never had that order (the car shuffled before it
+   *  opened), so native puts its queue back itself. */
+  setShuffle?(on: boolean, order?: string[], restore?: boolean): void;
   /** Android engine on an app build that has the native overlay (absent on
    *  older builds): a prank sound beside the music, ducked and restored
    *  natively so it works with the screen off. */

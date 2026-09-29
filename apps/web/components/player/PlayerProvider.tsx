@@ -101,6 +101,20 @@ function toastSkipped(skipped: Track[]) {
   }
 }
 
+/** Whether [b] holds exactly the songs of [a] (each as often), in any
+ *  order: a reorder, not a new list. */
+export function sameSongs(a: Track[], b: Track[]): boolean {
+  if (a.length !== b.length || a.length === 0) return false;
+  const count = new Map<string, number>();
+  for (const t of a) count.set(t.id, (count.get(t.id) ?? 0) + 1);
+  for (const t of b) {
+    const n = count.get(t.id);
+    if (!n) return false;
+    count.set(t.id, n - 1);
+  }
+  return true;
+}
+
 /** The one toast of an offline stall (see goTo). */
 export const OFFLINE_STALL_TOAST = "Offline: no more cached songs. Playback resumes when you're back online.";
 
@@ -255,11 +269,24 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
           setIndex(i);
         }
       },
-      onQueueReplaced: (tracks, i) => {
+      onQueueReplaced: (tracks, i, info) => {
         nativeChangeAt.current = Date.now();
         const at = Math.max(0, Math.min(i, tracks.length - 1));
         loadedTrackRef.current = tracks[at]?.id ?? null;
         const st = usePlayerStore.getState();
+        // The same songs in another order: the car's Shuffle button (native
+        // reorders the queue itself). The list it came from still holds; the
+        // shuffle flag and its way back follow native's.
+        if (sameSongs(st.queue, tracks)) {
+          const on = info?.shuffle ?? st.shuffle;
+          usePlayerStore.setState({
+            queue: tracks,
+            index: at,
+            shuffle: on,
+            orderBackup: !on ? null : st.shuffle ? st.orderBackup : st.queue.slice(),
+          });
+          return;
+        }
         // Native radio only adds songs after ours: the playlist this came
         // from and the shuffle (with its way back) still hold.
         const appended = tracks.length > st.queue.length && st.queue.every((t, k) => t.id === tracks[k]?.id);
@@ -281,6 +308,16 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
           shuffle: false,
           orderBackup: null,
         });
+      },
+      onShuffle: (on, info) => {
+        // The car's or the notification's Shuffle button. Native says so
+        // before it sends the reordered queue, so the queue here is still the
+        // order to go back to. A page that starts on a queue native had
+        // already shuffled has no such order: native keeps it, and puts it
+        // back itself when shuffle goes off.
+        const st = usePlayerStore.getState();
+        if (st.shuffle === on) return;
+        usePlayerStore.setState({ shuffle: on, orderBackup: on && !info?.initial ? st.queue.slice() : null });
       },
       onLoopMode: (mode) => {
         // The car or the notification's Repeat button. Mirror it; the loop
@@ -995,6 +1032,25 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     backendRef.current?.setEq?.(eqForDevice(equalizer, eqNeedsConsent(initialKind), eqChosenHere));
   }, [backendReady, initialKind, equalizer, eqChosenHere]);
+
+  // The shuffle button, for the native Android player: the queue it
+  // reorders goes over with setQueue (above); native keeps the flag, which
+  // the car's Shuffle button shows, and the order to go back to. A change
+  // native reported itself is not sent back (the backend drops it).
+  // A new list shuffled while shuffle was already on sends its own order.
+  // Off from a page that never had the order (the car shuffled before it
+  // opened) asks native to put the queue back; any other off must not, or
+  // a new list would be put in the old one's order.
+  const shuffleOn = usePlayerStore((s) => s.shuffle);
+  const orderBackup = usePlayerStore((s) => s.orderBackup);
+  const lastShuffle = useRef<{ on: boolean; hadOrder: boolean }>({ on: false, hadOrder: false });
+  useEffect(() => {
+    if (!backendReady) return;
+    const prev = lastShuffle.current;
+    lastShuffle.current = { on: shuffleOn, hadOrder: !!orderBackup };
+    const restore = !shuffleOn && prev.on && !prev.hadOrder;
+    backendRef.current?.setShuffle?.(shuffleOn, shuffleOn && orderBackup ? orderBackup.map((t) => t.id) : undefined, restore);
+  }, [backendReady, shuffleOn, orderBackup]);
 
   // The native Android player repeats (or stops at the end) by itself, so
   // it has to be told the loop mode. Other backends have no setLoop: the
