@@ -161,6 +161,8 @@ export function LiveTabScore(props: LiveTabScoreProps) {
     let relayout = 0;
     let settled = false;
     let lastBeat: any = null;
+    // The page closing mid-download stops the download too.
+    const abort = new AbortController();
     // A file that passed the upload sniff and is still malformed can leave
     // AlphaTab with neither event: cap the wait.
     const timer = setTimeout(() => {
@@ -174,7 +176,7 @@ export function LiveTabScore(props: LiveTabScoreProps) {
       try {
         const [at, res]: [any, Response] = await Promise.all([
           import('@coderline/alphatab'),
-          fetch(url, { credentials: 'same-origin' }),
+          fetch(url, { credentials: 'same-origin', signal: abort.signal }),
         ]);
         if (!res.ok) throw new Error(`Could not load that tab (${res.status}).`);
         const bytes = new Uint8Array(await res.arrayBuffer());
@@ -434,6 +436,7 @@ export function LiveTabScore(props: LiveTabScoreProps) {
 
     return () => {
       cancelled = true;
+      abort.abort();
       clearTimeout(timer);
       cancelAnimationFrame(relayout);
       observer?.disconnect();
@@ -464,8 +467,12 @@ export function LiveTabScore(props: LiveTabScoreProps) {
     }
     const api = apiRef.current;
     if (!api) return;
+    // The page (or this file) can go while AlphaTab is being fetched: a
+    // destroyed score must not be laid out again.
+    let cancelled = false;
     (async () => {
       const at: any = await import('@coderline/alphatab');
+      if (cancelled || apiRef.current !== api) return;
       // Only the fields that change. `resources` is left alone: AlphaTab
       // keeps a RenderingResources instance there, and a plain object in
       // its place makes the next render throw.
@@ -489,6 +496,9 @@ export function LiveTabScore(props: LiveTabScoreProps) {
       // A new layout starts at the left.
       if (scrollerRef.current) scrollerRef.current.scrollLeft = 0;
     })();
+    return () => {
+      cancelled = true;
+    };
   }, [staff, scroll, scale]);
 
   // ── the alignment ───────────────────────────────────────────────────────

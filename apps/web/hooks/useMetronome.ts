@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useLayoutEffect, useRef } from 'react';
-import { clickContext, clockJumped, LOOKAHEAD_SEC, planClicks, playClick, SCHEDULE_MS } from '@/lib/metronome';
+import { clickContext, clockJumped, LOOKAHEAD_SEC, planClicks, playClick, releaseClickContext, SCHEDULE_MS } from '@/lib/metronome';
 import { estimateSongSec, type Anchor } from '@/lib/tabSync';
 import type { Click } from '@/lib/tabTimeline';
 
@@ -58,4 +58,8 @@ export function useMetronome({ on, running, position, rate, beats }: MetronomeOp
     const id = window.setInterval(tick, SCHEDULE_MS);
     return () => window.clearInterval(id);
   }, [on, running]);
+
+  // The page closing: close the clicks' AudioContext with it, so nothing
+  // scheduled still sounds and no audio device is left held open.
+  useEffect(() => releaseClickContext, []);
 }

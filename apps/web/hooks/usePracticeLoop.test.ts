@@ -62,4 +62,12 @@ describe('usePracticeLoop', () => {
     vi.advanceTimersByTime(2000);
     expect(paused.seek).not.toHaveBeenCalled();
   });
+
+  it('the page closing stops the loop: no jump back, no timer left', () => {
+    const { seek, unmount } = run({ position: 9.9 });
+    unmount();
+    vi.advanceTimersByTime(5000);
+    expect(seek).not.toHaveBeenCalled();
+    expect(vi.getTimerCount()).toBe(0);
+  });
 });

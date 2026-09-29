@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import {
@@ -31,6 +31,7 @@ import { useSettingsStore } from '@/stores/useSettingsStore';
 import { useUiStore } from '@/stores/useUiStore';
 import { cn } from '@/lib/utils';
 import { isTabsPathFor, tabsHref } from '@/lib/tabSources';
+import { leavePage, notePathname } from '@/lib/inAppHistory';
 
 export function PlayerBar() {
   const { current, isPlaying, position, duration, volume, toggle, next, prev, seek, setVolume } = usePlayer();
@@ -61,6 +62,11 @@ export function PlayerBar() {
   const onLyricsClick = () => setLyricsOpen(!lyricsOpen);
   const router = useRouter();
   const pathname = usePathname();
+  // Every page the app shows passes through here: closing the tab page
+  // goes Back only when the page before it was Ember's (lib/inAppHistory).
+  useEffect(() => {
+    notePathname(pathname);
+  }, [pathname]);
 
   // Only render the bar once playback has actually started. Avoids the
   // "Nothing playing" placeholder strip and ensures the bar pops in the moment
@@ -172,9 +178,13 @@ export function PlayerBar() {
         >
           <LyricsIcon className="h-4 w-4" />
         </Button>
-        {/* Guitar tabs: the tab page for the playing song. Phones reach it
-            from the full-screen NowPlaying view. Hidden entirely when the
-            Songsterr integration plugin is switched off in Settings. */}
+        {/* Guitar tabs: the tab page for the playing song, and a second
+            click closes it again (Back to where the listener was, or home
+            when they came in from outside Ember). Closing unmounts the
+            page, which stops everything it ran; the music plays on.
+            Phones reach it from the full-screen NowPlaying view. Hidden
+            entirely when the Songsterr integration plugin is switched off
+            in Settings. */}
         {tabsEnabled && (
           <Button
             variant="ghost"
@@ -183,10 +193,10 @@ export function PlayerBar() {
               'hidden md:inline-flex h-8 w-8 hover:text-foreground',
               tabsOpen ? 'text-ember hover:text-ember' : 'text-muted-foreground',
             )}
-            onClick={() => router.push(tabsHref(current.id))}
+            onClick={() => (tabsOpen ? leavePage(router) : router.push(tabsHref(current.id)))}
             aria-label="Guitar tabs"
             aria-pressed={tabsOpen}
-            title="Guitar tabs"
+            title={tabsOpen ? 'Close guitar tabs' : 'Guitar tabs'}
           >
             <TabsIcon className="h-4 w-4" />
           </Button>
