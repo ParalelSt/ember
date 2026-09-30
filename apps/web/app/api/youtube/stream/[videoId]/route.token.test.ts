@@ -29,7 +29,7 @@ let member: string | null = null;
 vi.mock('@/lib/auth', () => ({ verifiedUserId: async () => member }));
 vi.mock('@/lib/streamCache', () => ({ queueCacheWarm: vi.fn() }));
 vi.mock('@/lib/trackAvailability', () => ({
-  clearTrackUnavailable: vi.fn(), listUnavailableIds: async () => new Set<string>(), markTrackUnavailable: vi.fn(),
+  clearTrackUnavailable: vi.fn(), listUnavailableIds: async () => new Set<string>(), freshUnavailableMark: async () => null, markTrackUnavailable: vi.fn(),
 }));
 vi.mock('@/lib/logger/withRequestLog', () => ({ withRequestLog: (_r: string, h: unknown) => h }));
 vi.mock('@/lib/logger/server', () => ({ serverLogger: { error: vi.fn(), warn: vi.fn(), info: vi.fn() } }));
@@ -37,6 +37,7 @@ vi.mock('@/lib/upsertTrack', () => ({ fromError: (e: Error) => Response.json({ e
 
 vi.stubEnv('STREAM_TOKEN_SECRET', 's'.repeat(48));
 const { GET } = await import('./route');
+const { _resetFailureMemo } = await import('@/lib/sources/failureMemo');
 const { _resetBuckets } = await import('@/lib/rateLimit');
 const { signStreamToken, _resetStreamTokenSecret } = await import('@/lib/streamToken');
 
@@ -49,6 +50,7 @@ const tokenFor = (videoId: string, userId = 'caster', opts: { nowMs?: number; sc
   signStreamToken({ trackId: `youtube:${videoId}`, userId, scope: opts.scope ?? 'stream', nowMs: opts.nowMs }).token;
 
 beforeEach(() => {
+  _resetFailureMemo();
   member = null;
   _resetBuckets();
   _resetStreamTokenSecret();

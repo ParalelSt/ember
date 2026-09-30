@@ -2,6 +2,7 @@ import type { NextRequest } from 'next/server';
 import { getRecommended } from '@/lib/sources/youtube';
 import { fromError } from '@/lib/upsertTrack';
 import { listUnavailableIds } from '@/lib/trackAvailability';
+import { unavailableTrackIds } from '@/lib/sources/failureMemo';
 import { withRequestLog } from '@/lib/logger/withRequestLog';
 import { getTrendingChart, resolveTrendingCountry } from '@/lib/trending';
 import { limitCaller, PUBLIC_PYTHON_LIMITS } from '@/lib/rateLimit';
@@ -23,7 +24,11 @@ export const GET = withRequestLog('youtube/recommended', async (request: NextReq
     const raw = seed && VIDEO_ID_RE.test(seed)
       ? await getRecommended({ seed, country })
       : (await getTrendingChart()).tracks.slice(0, 30);
-    const tracks = raw.filter((t) => !dead.has(t.id));
+    // Radio never queues a song the host knows will not play: flagged in the
+    // database, or found gone by this process (a radio song nobody saved has
+    // no row to flag, and is exactly the kind radio keeps suggesting).
+    const gone = unavailableTrackIds();
+    const tracks = raw.filter((t) => !dead.has(t.id) && !gone.has(t.id));
     return Response.json({ tracks });
   } catch (e) {
     return fromError(e);
