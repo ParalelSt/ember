@@ -24,6 +24,15 @@ class QueueListener(
     private val offlineHandles: (PlaybackException) -> Boolean = { false },
     /** Offline, this song is skipped at once (OfflinePlayback.skips). */
     private val offlineSkips: (MediaItem) -> Boolean = { false },
+    /** A song that would not play, and what was done about it: the web app
+     *  says which song and why, and greys it in the queue
+     *  (UnplayableNotices). Before, the only trace was a logcat line. */
+    private val onUnplayable: (UnplayableNotice) -> Unit = {},
+    /** The LAST song failed: ask radio for more, and call back with whether
+     *  it added any. False when radio will not try (repeat on, not a YouTube
+     *  song). Radio used to run only once a song was heard, so a dead song
+     *  at the end of the queue stopped the music with no word. */
+    private val extendAfterFailure: (done: (Boolean) -> Unit) -> Boolean = { false },
 ) : Player.Listener {
     companion object {
         /** Songs that fail back to back before the player gives up, so a
@@ -73,7 +82,8 @@ class QueueListener(
      *  phone. Move on to the next one instead. A paused player stays put: the
      *  skip happens once play is pressed and the song fails again. */
     override fun onPlayerError(error: PlaybackException) {
-        val failed = player.currentMediaItem?.mediaId
+        val item = player.currentMediaItem
+        val failed = item?.mediaId
         if (!player.playWhenReady) return
         // No connection: the offline rules pick the next song on the phone
         // (or pause). Online, a broken song is skipped here, 404s included.
@@ -90,14 +100,44 @@ class QueueListener(
             return
         }
         errorsInARow++
-        if (errorsInARow >= MAX_ERRORS_IN_A_ROW || !player.hasNextMediaItem()) {
-            Log.w(EmberPlaybackService.TAG, "gave up after $errorsInARow failed song(s), last $failed: ${error.errorCodeName}")
+        val title = item?.let(::titleOf).orEmpty()
+        fun report(outcome: String) {
+            val notice = Unplayable.notice(failed.orEmpty(), title, error, outcome)
+            Log.w(EmberPlaybackService.TAG, "$outcome $failed (${notice.kind}${notice.reason?.let { ", $it" } ?: ""}): ${error.errorCodeName}")
+            if (failed != null) onUnplayable(notice)
+        }
+        if (errorsInARow >= MAX_ERRORS_IN_A_ROW) {
             // The next try (play pressed, a song picked) gets every try again.
             errorsInARow = 0
+            report(Unplayable.GAVE_UP)
             return
         }
-        Log.w(EmberPlaybackService.TAG, "skipping $failed: ${error.errorCodeName}")
+        if (!player.hasNextMediaItem()) {
+            // A song YouTube no longer has, at the end of the queue: radio may
+            // find what comes next. The count of failures in a row carries on
+            // through radio's songs, so a run of dead ones still stops.
+            val gone = Unplayable.kindOf(Unplayable.httpFailure(error)?.first) == Unplayable.UNAVAILABLE
+            val waiting = gone && extendAfterFailure { added ->
+                if (added && player.currentMediaItem?.mediaId == failed && player.hasNextMediaItem()) {
+                    report(Unplayable.SKIPPED)
+                    player.seekToNextMediaItem()
+                    player.prepare()
+                } else {
+                    errorsInARow = 0
+                    report(Unplayable.STOPPED)
+                }
+            }
+            if (!waiting) {
+                errorsInARow = 0
+                report(Unplayable.STOPPED)
+            }
+            return
+        }
+        report(Unplayable.SKIPPED)
         player.seekToNextMediaItem()
         player.prepare()
     }
+
+    private fun titleOf(item: MediaItem): String =
+        item.mediaMetadata.title?.toString() ?: TrackItems.trackOf(item)?.optString("title").orEmpty()
 }

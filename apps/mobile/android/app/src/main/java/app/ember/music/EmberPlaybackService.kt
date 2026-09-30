@@ -257,6 +257,8 @@ class EmberPlaybackService : MediaLibraryService() {
             // Read at call time: offlinePlayback is set up in startAutoCache below.
             offlineHandles = { offlinePlayback.handles(it) },
             offlineSkips = { offlinePlayback.skips(it) },
+            onUnplayable = UnplayableNotices::record,
+            extendAfterFailure = ::extendAfterFailure,
         ))
         savedQueue = SavedQueue(java.io.File(filesDir, SavedQueue.FILE_NAME))
         player.addListener(savedQueue.Saver(player, io))
@@ -483,7 +485,7 @@ class EmberPlaybackService : MediaLibraryService() {
         val queue = CastQueuePlayer(cast, signer, baseUrl, castIo) { handler.post(it) }
         // History and radio go on while the TV plays; a song the TV cannot
         // play is skipped, as on the phone.
-        queue.addListener(QueueListener(queue, recordPlay = ::recordPlay, extendQueue = ::maybeExtendQueue))
+        queue.addListener(QueueListener(queue, recordPlay = ::recordPlay, extendQueue = ::maybeExtendQueue, onUnplayable = UnplayableNotices::record))
         queue.addListener(buttonWatch)
         val switch = CastSwitch(
             player, queue, baseUrl,
@@ -561,6 +563,10 @@ class EmberPlaybackService : MediaLibraryService() {
             main = { handler.post(it) },
             snapshot = ::cacheSnapshot,
             onCached = { publishCacheState() },
+            // A prefetch the host answered 410: the song is gone before the
+            // player gets to it. The app greys it in its queue (no message:
+            // nothing has been skipped yet).
+            onGone = { id, error -> UnplayableNotices.record(Unplayable.notice(id, titleInQueue(id), error, Unplayable.FLAGGED)) },
         )
         val prefs = getSharedPreferences(PREFS, MODE_PRIVATE)
         // Defaults per the owner: on, but never on mobile data unless asked.
@@ -702,17 +708,51 @@ class EmberPlaybackService : MediaLibraryService() {
         if (player.currentMediaItemIndex != player.mediaItemCount - 1) return
         val current = player.currentMediaItem?.let { TrackItems.trackOf(it) } ?: return
         if (current.optString("source") != "youtube") return
-        val seed = current.optString("sourceId")
+        fetchRadio(player, current) {}
+    }
+
+    /** The last song would not play (YouTube no longer has it): radio looks
+     *  for what comes next, seeded by the song before it (a dead video makes
+     *  a poor seed), and the listener moves on to what it finds. */
+    private fun extendAfterFailure(done: (Boolean) -> Unit): Boolean {
+        val player = active
+        if (player.repeatMode != Player.REPEAT_MODE_OFF) return false
+        if (player.currentMediaItemIndex != player.mediaItemCount - 1) return false
+        val tracks = (0 until player.mediaItemCount).mapNotNull { TrackItems.trackOf(player.getMediaItemAt(it)) }
+        val seed = tracks.dropLast(1).lastOrNull { it.optString("source") == "youtube" }
+            ?: tracks.lastOrNull()?.takeIf { it.optString("source") == "youtube" }
+            ?: return false
+        fetchRadio(player, seed, done)
+        return true
+    }
+
+    /** Recommendations seeded by [seed], minus anything already queued,
+     *  appended; [done] hears on the main thread whether any were. The host
+     *  leaves out songs it knows will not play. */
+    private fun fetchRadio(player: Player, seed: org.json.JSONObject, done: (Boolean) -> Unit) {
         val queued = (0 until player.mediaItemCount).map { player.getMediaItemAt(it).mediaId }.toSet()
         io.execute {
-            val more = runCatching { api.recommended(seed) }
+            val more = runCatching { api.recommended(seed.optString("sourceId")) }
                 .getOrElse { Log.w(TAG, "radio: ${it.message}"); emptyList() }
-                .filter { it.optString("id") !in queued }
+                .filter { it.optString("id") !in queued && it.optString("unavailableAt").isEmpty() }
                 .take(20)
                 .map { TrackItems.toMediaItem(it, api.baseUrl, artAuthority) }
-            Log.i(TAG, "radio after ${current.optString("title")}: +${more.size}")
-            if (more.isNotEmpty()) android.os.Handler(mainLooper).post { player.addMediaItems(more) }
+            Log.i(TAG, "radio after ${seed.optString("title")}: +${more.size}")
+            android.os.Handler(mainLooper).post {
+                if (more.isNotEmpty()) player.addMediaItems(more)
+                done(more.isNotEmpty())
+            }
         }
+    }
+
+    /** A queued song's title, for a message about it. */
+    private fun titleInQueue(id: String): String {
+        val player = active
+        for (i in 0 until player.mediaItemCount) {
+            val item = player.getMediaItemAt(i)
+            if (item.mediaId == id) return item.mediaMetadata.title?.toString().orEmpty()
+        }
+        return ""
     }
 
     /** Run a browse fetch off the main thread and turn it into a LibraryResult.

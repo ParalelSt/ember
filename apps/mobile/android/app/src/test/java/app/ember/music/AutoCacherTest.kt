@@ -42,6 +42,7 @@ class AutoCacherTest {
     private val jobs = ArrayList<Runnable>()
     private var now = 1_000_000L
     private val onCached = ArrayList<String>()
+    private val gone = ArrayList<UnplayableNotice>()
     private val queue = listOf("a", "b", "c", "d", "e", "f").map {
         AutoCachePolicy.Track("youtube:$it", "https://ember.test/api/youtube/stream/$it")
     }
@@ -60,6 +61,7 @@ class AutoCacherTest {
         clock = { now },
         snapshot = { snap },
         onCached = { onCached.add(it) },
+        onGone = { id, e -> gone.add(Unplayable.notice(id, "", e, Unplayable.FLAGGED)) },
     )
 
     /** Run the download the executor was handed. */
@@ -121,6 +123,31 @@ class AutoCacherTest {
         now += 3_600_000
         assertEquals(AutoCachePolicy.Action.Idle("nothing"), cacher.tick())
         assertEquals(1, created.size)
+    }
+
+    /** The song is greyed in the app's queue before the player gets to it,
+     *  with the host's reason from the 410 body. */
+    @Test fun `a 410 is passed on with the host's reason`() {
+        cached.add("youtube:d")
+        next = {
+            it.outcome = {
+                throw HttpDataSource.InvalidResponseCodeException(
+                    410, "Gone", null, emptyMap(), DataSpec(Uri.parse("https://ember.test/x")),
+                    """{"unavailable":true,"reason":"geo"}""".toByteArray(),
+                )
+            }
+        }
+        cacher.tick()
+        runJob()
+        assertEquals(listOf(UnplayableNotice("youtube:c", "", Unplayable.UNAVAILABLE, "geo", Unplayable.FLAGGED)), gone)
+    }
+
+    @Test fun `other failures are not reported as gone`() {
+        cached.add("youtube:d")
+        next = { it.outcome = answer(502) }
+        cacher.tick()
+        runJob()
+        assertTrue(gone.isEmpty())
     }
 
     @Test fun `three failures drop the id`() {

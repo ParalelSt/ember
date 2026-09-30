@@ -299,4 +299,103 @@ class QueueListenerTest {
         assertFalse("b was never tried", synchronized(asked) { "b" in asked })
         assertTrue("play stays on, for when the network is back", player.playWhenReady)
     }
+
+    // Songs the host says are gone (410, the 2026-09-30 report: radio songs
+    // YouTube no longer has). Each one is reported, with the host's reason,
+    // so the app can say which song and why instead of skipping in silence.
+
+    private val notices = ArrayList<UnplayableNotice>()
+
+    /** A host that answers 410 with its JSON body for [gone], 502 for
+     *  [broken], and "still loading" for anything else. */
+    private fun host(gone: Map<String, String> = emptyMap(), broken: Set<String> = emptySet()) {
+        server.dispatcher = object : Dispatcher() {
+            override fun dispatch(request: RecordedRequest): MockResponse {
+                val id = request.path.orEmpty().trimStart('/').substringBefore('?')
+                synchronized(asked) { asked.add(id) }
+                gone[id]?.let { reason ->
+                    return MockResponse().setResponseCode(410).setHeader("Content-Type", "application/json")
+                        .setBody("""{"error":"[youtube] $id: This video is not available","unavailable":true,"reason":"$reason"}""")
+                }
+                if (id in broken) return MockResponse().setResponseCode(502).setBody("""{"error":"could not be loaded","cause":"stream-failed"}""")
+                return MockResponse().setSocketPolicy(SocketPolicy.NO_RESPONSE)
+            }
+        }
+    }
+
+    private fun reporting(extend: ((Boolean) -> Unit) -> Boolean = { false }): QueueListener {
+        player.removeListener(listener)
+        val l = QueueListener(
+            player, recordPlay = { played.add(it.getString("id")) }, extendQueue = { radio++ },
+            onUnplayable = { notices.add(it) }, extendAfterFailure = extend,
+        )
+        player.addListener(l)
+        return l
+    }
+
+    @Test fun `a song the host says is gone is skipped and reported with its reason`() {
+        host(gone = mapOf("gone" to "removed"))
+        reporting()
+        start(listOf(song("gone"), song("next")))
+        runUntil(10_000) { player.currentMediaItemIndex == 1 && player.playbackState == Player.STATE_BUFFERING }
+        assertEquals(1, player.currentMediaItemIndex)
+        assertEquals(listOf(UnplayableNotice("gone", "gone", Unplayable.UNAVAILABLE, "removed", Unplayable.SKIPPED)), notices)
+    }
+
+    @Test fun `a song that would not load right now is reported as such`() {
+        host(broken = setOf("broken"))
+        reporting()
+        start(listOf(song("broken"), song("next")))
+        runUntil(20_000) { player.currentMediaItemIndex == 1 && player.playbackState == Player.STATE_BUFFERING }
+        assertEquals(listOf(UnplayableNotice("broken", "broken", Unplayable.TRANSIENT, null, Unplayable.SKIPPED)), notices)
+    }
+
+    @Test fun `five in a row gives up, and says so`() {
+        host(gone = (1..6).associate { "g$it" to "unavailable" })
+        reporting()
+        start((1..6).map { song("g$it") })
+        runUntil(20_000) { notices.any { it.outcome == Unplayable.GAVE_UP } }
+        runUntil(300) { false }
+        assertEquals(List(4) { Unplayable.SKIPPED } + Unplayable.GAVE_UP, notices.map { it.outcome })
+        assertEquals("g5", notices.last().trackId)
+        assertEquals(Player.STATE_IDLE, player.playbackState)
+    }
+
+    @Test fun `the last song gone asks radio, and the player moves on to what it found`() {
+        host(gone = mapOf("last" to "unavailable"))
+        var asks = 0
+        reporting { done ->
+            asks++
+            // What the service does: append radio's songs, then say so.
+            player.addMediaItem(song("fromRadio"))
+            done(true)
+            true
+        }
+        start(listOf(song("last")))
+        runUntil(10_000) { player.currentMediaItemIndex == 1 && player.playbackState == Player.STATE_BUFFERING }
+        assertEquals(1, asks)
+        assertEquals(1, player.currentMediaItemIndex)
+        assertEquals(listOf(Unplayable.SKIPPED), notices.map { it.outcome })
+        assertTrue(player.playWhenReady)
+    }
+
+    @Test fun `the last song gone and radio finding nothing stops there, and says so`() {
+        host(gone = mapOf("last" to "private"))
+        reporting { done -> done(false); true }
+        start(listOf(song("last")))
+        runUntil(10_000) { notices.isNotEmpty() }
+        runUntil(300) { false }
+        assertEquals(listOf(UnplayableNotice("last", "last", Unplayable.UNAVAILABLE, "private", Unplayable.STOPPED)), notices)
+        assertEquals(0, player.currentMediaItemIndex)
+    }
+
+    @Test fun `the last song failing for a passing reason does not ask radio`() {
+        host(broken = setOf("last"))
+        var asks = 0
+        reporting { asks++; true }
+        start(listOf(song("last")))
+        runUntil(20_000) { notices.isNotEmpty() }
+        assertEquals(0, asks)
+        assertEquals(listOf(Unplayable.STOPPED), notices.map { it.outcome })
+    }
 }

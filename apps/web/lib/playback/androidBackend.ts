@@ -6,6 +6,7 @@ import type { Track } from '@/types/track';
 import type { LoopMode } from '@/stores/usePlayerStore';
 import type { OverlayEnd, OverlayHandle, OverlayResult } from '@/lib/pranks/overlayPlayer';
 import type { AudioBackend, AudioBackendEvents, CreateAudioBackend, NativeOverlayOptions } from './types';
+import type { UnplayableNotice, UnplayableOutcome } from './unplayable';
 
 /** JS surface of the EmberPlayer Capacitor plugin (apps/mobile, Kotlin).
  *  Reached through the bridge Capacitor injects, never imported from npm:
@@ -56,6 +57,9 @@ interface EmberPlayerPlugin {
   /** Only on app builds with the native prank overlay. */
   playOverlay?(o: NativeOverlayOptions & { id: string; url: string }): Promise<{ started: boolean; reason?: string }>;
   stopOverlay?(): Promise<void>;
+  /** App builds that report failed songs themselves (the `unplayable`
+   *  event). Hands over the ones held while no page was listening. */
+  drainUnplayable?(): Promise<{ notices?: unknown[] }>;
 }
 interface OverlayEvent {
   id: string;
@@ -65,6 +69,28 @@ interface OverlayEvent {
 }
 
 const OVERLAY_ENDS: readonly OverlayEnd[] = ['ended', 'stopped', 'cap', 'error'];
+const OUTCOMES: readonly UnplayableOutcome[] = ['skipped', 'stopped', 'gave-up', 'flagged'];
+
+/** One `unplayable` entry from native, checked field by field: a malformed
+ *  one is dropped rather than shown as a broken sentence. */
+export function parseNotice(raw: unknown): UnplayableNotice | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const r = raw as Record<string, unknown>;
+  if (typeof r.trackId !== 'string' || !r.trackId) return null;
+  const outcome = OUTCOMES.find((o) => o === r.outcome);
+  if (!outcome) return null;
+  return {
+    trackId: r.trackId,
+    title: typeof r.title === 'string' ? r.title : '',
+    kind: r.kind === 'unavailable' ? 'unavailable' : 'transient',
+    reason: typeof r.reason === 'string' && r.reason ? r.reason : null,
+    outcome,
+  };
+}
+
+function parseNotices(d: { notices?: unknown } | null | undefined): UnplayableNotice[] {
+  return Array.isArray(d?.notices) ? d.notices.map(parseNotice).filter((n): n is UnplayableNotice => n !== null) : [];
+}
 const LOOP_MODES: readonly LoopMode[] = ['off', 'all', 'one'];
 /** If native never reports the end (the service died), give up this long
  *  after the cap so the receiver is not busy forever. */
@@ -112,6 +138,7 @@ export const createAndroidBackend: CreateAudioBackend = (events: AudioBackendEve
   let orderSent = '';
   const p = plugin();
   const nativeShuffle = !!p && typeof p.setShuffle === 'function';
+  const nativeExplains = !!p && typeof p.drainUnplayable === 'function';
 
   const onShuffleReport = (on: boolean | undefined) => {
     if (!nativeShuffle || typeof on !== 'boolean' || on === shuffled) return;
@@ -150,8 +177,13 @@ export const createAndroidBackend: CreateAudioBackend = (events: AudioBackendEve
     events.onLoopMode?.(l);
   };
 
+  /** The song native last said it was on: the one a bare `error` (an app
+   *  build that does not explain failures) is about. */
+  let trackId: string | null = null;
+
   const onState = (s: NativeState) => {
     paused = !s.playing;
+    trackId = s.trackId ?? null;
     if (s.index !== index) {
       index = s.index;
       events.onQueueIndex?.(s.index);
@@ -209,9 +241,19 @@ export const createAndroidBackend: CreateAudioBackend = (events: AudioBackendEve
     call(
       p.addListener('error', ((d: { message?: string }) => {
         logger.error('audio', d?.message || 'native player error');
-        events.onError();
+        events.onError({ trackId, nativeExplains });
       }) as (d: never) => void),
     );
+    if (nativeExplains) {
+      const deliver = (d: { notices?: unknown } | null | undefined) => {
+        const notices = parseNotices(d);
+        if (notices.length) events.onUnplayable?.(notices);
+      };
+      call(p.addListener('unplayable', deliver as (d: never) => void));
+      // Songs that failed while no page was listening (the app closed, the
+      // WebView re-created): native kept them for this moment.
+      void p.drainUnplayable!().then(deliver, () => {});
+    }
   }
 
   /** A page that starts while native already plays (reopened after the car,
