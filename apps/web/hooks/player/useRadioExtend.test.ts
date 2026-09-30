@@ -17,6 +17,7 @@ const rec1 = makeTrack({ id: 'youtube:r1', sourceId: 'r1', title: 'Rec One' });
 const rec2 = makeTrack({ id: 'youtube:r2', sourceId: 'r2', title: 'Rec Two' });
 
 interface Props {
+  onExtended?: (added: number, forTrackId: string) => void;
   current: Track | null;
   queue: Track[];
   index: number;
@@ -137,8 +138,47 @@ describe('useRadioExtend', () => {
     const { rerender } = setup();
     await waitFor(() => expect(logger.error).toHaveBeenCalled());
     expect(logger.error.mock.calls[0][1]).toBe('recommended fetch failed');
-    // The guard is cleared in finally(), so the next render can try again.
+    // The guard is cleared once the answer is in, so the next render can try again.
     rerender({ ...base, queue: [seed] });
     await waitFor(() => expect(api.getRecommended).toHaveBeenCalledTimes(2));
+  });
+});
+
+describe('useRadioExtend: songs found unavailable (the 2026-09-30 report)', () => {
+  const dead = (t: Track) => ({ ...t, unavailableAt: '2026-09-30T10:00:00Z', unavailableReason: 'unavailable' });
+
+  it('extends when everything after the current song is dead, not only at the very end', async () => {
+    const queue = [seed, dead(rec1)];
+    setup({ queue, index: 0 });
+    await waitFor(() => expect(api.getRecommended).toHaveBeenCalledTimes(1));
+  });
+
+  it('still waits while a playable song is ahead', () => {
+    setup({ queue: [seed, dead(rec1), rec2], index: 0 });
+    expect(api.getRecommended).not.toHaveBeenCalled();
+  });
+
+  it('seeds from the last song that plays when the current one is dead', async () => {
+    const gone = dead(makeTrack({ id: 'youtube:gone', sourceId: 'gone', title: 'Gone' }));
+    setup({ current: gone, queue: [seed, gone], index: 1 });
+    await waitFor(() => expect(api.getRecommended).toHaveBeenCalledWith('seed'));
+  });
+
+  it('never queues a song the queue already knows is dead', async () => {
+    api.getRecommended.mockResolvedValue({ tracks: [dead(rec1), rec2] });
+    setup();
+    await waitFor(() => expect(usePlayerStore.getState().queue).toHaveLength(2));
+    expect(usePlayerStore.getState().queue.map((t) => t.id)).toEqual(['youtube:seed', 'youtube:r2']);
+  });
+
+  it('reports every finished fetch with what it added, failures as 0', async () => {
+    const onExtended = vi.fn();
+    setup({ onExtended });
+    await waitFor(() => expect(onExtended).toHaveBeenCalledWith(2, 'youtube:seed'));
+    api.getRecommended.mockRejectedValueOnce(new Error('offline'));
+    const other = makeTrack({ id: 'youtube:other', sourceId: 'other', title: 'Other Song' });
+    usePlayerStore.setState({ queue: [other], index: 0 });
+    setup({ onExtended, current: other, queue: [other] });
+    await waitFor(() => expect(onExtended).toHaveBeenCalledWith(0, 'youtube:other'));
   });
 });

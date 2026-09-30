@@ -263,7 +263,7 @@ describe('TrackRow (unavailable)', () => {
     render(<TrackRow track={dead} unavailable onPlay={onPlay} />);
     fireEvent.click(screen.getByText('Midnight Drive'));
     expect(onPlay).not.toHaveBeenCalled();
-    expect(toast.message).toHaveBeenCalledWith('"Midnight Drive" is unavailable on YouTube');
+    expect(toast.message).toHaveBeenCalledWith('Couldn\'t play "Midnight Drive": removed from YouTube.');
   });
 
   it('still plays a normal row on click', () => {

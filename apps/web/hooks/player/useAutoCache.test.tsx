@@ -58,12 +58,13 @@ function makeFakeAdapter() {
 let adapter: ReturnType<typeof makeFakeAdapter>;
 let backend: FakeBackend & { buffered: boolean | null };
 
-async function mount() {
+async function mount(onGone?: (id: string) => void) {
   const backendRef = { current: backend };
   const hook = renderHook(() => useAutoCache({
     backendRef,
     backendKind: 'web',
     createAdapter: () => adapter as unknown as CacheAdapter,
+    onGone,
   }));
   await act(async () => {});
   return hook;
@@ -164,6 +165,18 @@ describe('useAutoCache', () => {
     expect(adapter.prefetch).toHaveBeenCalledTimes(3);
     await advance(10_000);
     expect(adapter.started()).toEqual([A.id, B.id, C.id, A.id]);
+    hook.unmount();
+  });
+
+  it('tells the player about a 410, so the song is greyed before it is reached', async () => {
+    const onGone = vi.fn();
+    const hook = await mount(onGone);
+    backend.currentTime = 20;
+    await advance(TICK_MS);
+    await adapter.finish({ kind: 'gone' });
+    expect(onGone).toHaveBeenCalledWith(A.id);
+    await adapter.finish({ kind: 'failed' });
+    expect(onGone).toHaveBeenCalledTimes(1);
     hook.unmount();
   });
 

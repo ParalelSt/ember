@@ -11,15 +11,18 @@ import {
   type ReactNode,
 } from 'react';
 import { toast } from 'sonner';
-import { usePlayerStore } from '@/stores/usePlayerStore';
+import { flagQueueUnavailable, usePlayerStore } from '@/stores/usePlayerStore';
 import { useSettingsStore } from '@/stores/useSettingsStore';
 import { useOfflineStore } from '@/stores/useOfflineStore';
 import { useAutoCacheStore } from '@/stores/useAutoCacheStore';
+import { useSessionStore } from '@/stores/useSessionStore';
 import { localArtFor, localSrcFor } from '@/lib/offlineNative';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { useExecuteRecordPlay, useQueryHistory, useQueryLikes } from '@/hooks/useLibrary';
 import { useQueryLyrics } from '@/hooks/useLyrics';
-import { apiUrl } from '@/lib/api';
+import { api, apiUrl } from '@/lib/api';
+import { MAX_FAILURES_IN_A_ROW, reasonPhrase, type UnplayableNotice } from '@/lib/playback/unplayable';
+import { createUnplayableNotifier, documentVisibility, type UnplayableNotifier } from '@/lib/playback/unplayableNotifier';
 import { logger } from '@/lib/logger/client';
 import { detectShell } from '@/lib/playback/detectShell';
 import { chooseDuration } from '@/lib/playback/chooseDuration';
@@ -90,15 +93,29 @@ const PlayerContext = createContext<PlayerControls | null>(null);
  *  second, and a desktop decoder's duration is a second opinion at best). */
 const ENDED_SLACK_SEC = 5;
 
-/** Toast for tracks passed over on the way to a playable one. One skip names
- *  the track; more than one just gives the count (naming several would be
- *  noise). No-op on an empty list. */
-function toastSkipped(skipped: Track[]) {
-  if (skipped.length === 1) {
-    toast(`Skipped: "${skipped[0].title}" is unavailable`);
-  } else if (skipped.length > 1) {
-    toast(`Skipped ${skipped.length} unavailable songs`);
-  }
+/** Whether radio will look for more songs at the end of the queue (the same
+ *  rules as useRadioExtend): not while loop-all wraps the queue, not while
+ *  hosting a group session whose queue is exactly what the group added. */
+function radioCanExtend(loopMode: string): boolean {
+  return loopMode !== 'all' && !useSessionStore.getState().hostingSessionId;
+}
+
+/** The notices for tracks passed over on the way to a playable one (already
+ *  known unavailable, greyed in the queue). */
+function skippedNotices(skipped: Track[]): UnplayableNotice[] {
+  return skipped.map((t) => ({
+    trackId: t.id, title: t.title, kind: 'unavailable', reason: t.unavailableReason ?? null, outcome: 'skipped',
+  }));
+}
+
+/** Messages about songs that could not be played, for every engine: one
+ *  at a time on screen, one summary for the ones that failed while the app
+ *  was in the background (lib/playback/unplayableNotifier). */
+function createNotifier(): UnplayableNotifier {
+  return createUnplayableNotifier({
+    show: (message, tone) => { if (tone === 'error') toast.error(message); else toast(message); },
+    ...documentVisibility(),
+  });
 }
 
 /** Whether [b] holds exactly the songs of [a] (each as often), in any
@@ -201,6 +218,28 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const localEngine = useCallback(() => localBackendRef.current ?? backendRef.current, []);
 
   const userInteracted = useRef(false);
+  const notifierRef = useRef<UnplayableNotifier | null>(null);
+  /** Say why these songs did not play (see createNotifier). */
+  const announce = useCallback((notices: UnplayableNotice[]) => {
+    if (!notices.length) return;
+    notifierRef.current ??= createNotifier();
+    notifierRef.current.report(notices);
+  }, []);
+  useEffect(() => () => {
+    notifierRef.current?.dispose();
+    notifierRef.current = null;
+  }, []);
+  /** Songs that failed back to back since one last played a second: past
+   *  MAX_FAILURES_IN_A_ROW the player stops instead of racing through a
+   *  queue where nothing plays (radio would keep refilling it). */
+  const failStreakRef = useRef(0);
+  /** A dead song at the end of the queue, waiting for radio to find the
+   *  next one: what to say, and whether to move on, once radio answers. */
+  const awaitingRadioRef = useRef<UnplayableNotice | null>(null);
+  /** The lists that draw the unavailable badge (the probe owns them). */
+  const refreshFlaggedListsRef = useRef<() => void>(() => {});
+  /** The dead-song handler, as a latest-callback ref for the backend events. */
+  const deadCurrentRef = useRef<(track: { id: string; title: string }, reason: string | null) => void>(() => {});
 
   // Latest-callback refs so remote commands / onEnded call current logic
   // without re-registering handlers or rebuilding the backend.
@@ -241,7 +280,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   // Stable callback, so the backend's one-time event object can close over
   // it: asks the server whether a failing track has actually died.
   const offlineFailRef = useRef<((failed: { id: string }) => void) | null>(null);
-  const probeAvailability = useAvailabilityProbe(nextRef, offlineFailRef, !!user);
+  const probeAvailability = useAvailabilityProbe(nextRef, offlineFailRef, !!user, refreshFlaggedListsRef);
 
   // Build the backend once, on first client render. Events map straight to the
   // store writes the old element listeners performed.
@@ -249,6 +288,12 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     if (backendRef.current) return;
     const events: AudioBackendEvents = {
       onTime: (sec) => {
+        // The song is really playing (the playhead moved past the start), so
+        // the run of failed songs is over. Not on 'play': web audio reports
+        // that for every load, even one the host then answers 410, which
+        // reset the count on every dead song and let a radio full of them
+        // skip on forever (seen live on the sandbox, 2026-09-30).
+        if (sec >= 1 && !backendRef.current?.isTransitioning()) failStreakRef.current = 0;
         setPosition(sec);
         positions.noteTime(sec);
       },
@@ -412,6 +457,16 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         logger.breadcrumb('playback', 'pause', { trackId: cur.queue[cur.index]?.id ?? null });
       },
       onError: (info) => handleError(info),
+      // The Android player says which songs it could not play and what it
+      // did (it has already skipped them): grey them in the queue, say why.
+      onUnplayable: (notices) => {
+        let flagged = false;
+        for (const n of notices) {
+          if (n.kind === 'unavailable' && flagQueueUnavailable(n.trackId, n.reason ?? null)) flagged = true;
+        }
+        if (flagged) refreshFlaggedListsRef.current();
+        announce(notices);
+      },
     };
     // The error path, named so `onEnded` can run it for an "ended" that is
     // really a failure (see there). Declared after `events` and hoisted, so
@@ -434,7 +489,13 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         }
         // The Android player owns playback and keeps going (or advances) after
         // a bad item; forcing "paused" here left the bar stuck until reload.
-        if (backendKindRef.current === 'android') return;
+        // An app build that explains its failures (onUnplayable) needs
+        // nothing more; an older one only says "error", so the page asks the
+        // host about the song it was on and says why it was skipped.
+        if (backendKindRef.current === 'android') {
+          if (!info?.nativeExplains && info?.trackId) explainNativeFailure(info.trackId);
+          return;
+        }
         // A downloaded file that will not play (deleted under us, or a
         // half-written one) must not cost the song: stream it instead, once,
         // from where the playhead was. Offline there is nothing to fall back
@@ -473,8 +534,25 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         // If the server has nothing against it, the song simply would not
         // load, and the listener gets told that instead of watching a player
         // that has quietly stopped.
-        probeAvailability((track) => toast.error(`Couldn't load "${track.title}"`));
+        probeAvailability(
+          (track) => announce([{ trackId: track.id, title: track.title, kind: 'transient', outcome: 'stopped' }]),
+          (track, reason) => deadCurrentRef.current(track, reason),
+        );
       }
+    }
+    /** An older Android app build's bare "error": the native player has
+     *  moved on (or stopped at the end), so all that is left to do is ask
+     *  the host why and say so. */
+    function explainNativeFailure(trackId: string) {
+      const st = usePlayerStore.getState();
+      const track = st.queue.find((t) => t.id === trackId);
+      if (!track || isUnavailable(track)) return;
+      api.getTrackAvailability(trackId).then(({ unavailable, reason }) => {
+        const now = usePlayerStore.getState();
+        const outcome = now.queue[now.index]?.id !== trackId ? 'skipped' : 'stopped';
+        if (unavailable && flagQueueUnavailable(trackId, reason)) refreshFlaggedListsRef.current();
+        announce([{ trackId, title: track.title, kind: unavailable ? 'unavailable' : 'transient', reason, outcome }]);
+      }).catch(() => {});
     }
     // Per-shell backend: tauri has a native engine (Part 5); capacitor keeps
     // web audio but mirrors the session to the native media-session plugin
@@ -897,7 +975,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     if (!ac.online && backendKindRef.current !== 'android') {
       const cached = new Set(ac.adapter.entries().keys());
       const r = nextPlayableOffline(st.queue, target, step, st.loopMode === 'all', cached, pinnedIds());
-      toastSkipped(r.skipped);
+      announce(skippedNotices(r.skipped));
       if (r.index < 0) {
         stallOffline(stallId ?? r.uncached[0]?.id ?? null);
         return;
@@ -911,14 +989,14 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       return;
     }
     const r = nextPlayable(st.queue, target, step, st.loopMode === 'all');
-    toastSkipped(r.skipped);
+    announce(skippedNotices(r.skipped));
     if (r.index < 0) {
-      toast.error('Nothing left to play');
+      toast.error("Nothing left to play: the songs left in the queue aren't available.");
       return;
     }
     loadAndPlay(st.queue[r.index], true);
     setIndex(r.index);
-  }, [loadAndPlay, setIndex, stallOffline]);
+  }, [announce, loadAndPlay, setIndex, stallOffline]);
 
   // The current song failed while offline (useAvailabilityProbe): move to the
   // next song with a local copy; with none, stall on the failed song itself,
@@ -932,7 +1010,17 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     };
   }, [goTo, stallOffline]);
 
-  useAutoCache({ backendRef, backendKind: initialKind });
+  // A prefetch the host answered 410: the song is gone before we get to it.
+  // Grey it in the queue now (with the host's reason), so next/prev walk
+  // past it and it never becomes "current" at all. No message yet: nothing
+  // has been skipped. Stable (refs only), so the cache is not rebuilt.
+  const onPrefetchGone = useCallback((id: string) => {
+    const flag = (reason: string | null) => {
+      if (flagQueueUnavailable(id, reason)) refreshFlaggedListsRef.current();
+    };
+    api.getTrackAvailability(id).then(({ reason }) => flag(reason), () => flag(null));
+  }, []);
+  useAutoCache({ backendRef, backendKind: initialKind, onGone: onPrefetchGone });
 
   // Back online: the badge clears, prefetching resumes (useAutoCache), and a
   // stall is undone by loading the song we stopped at, PAUSED: autoplay is
@@ -994,7 +1082,53 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     prevRef.current = prev;
   }, [prev]);
 
-  useRadioExtend({ current, queue, index, history, liked, context, loopMode });
+  /** The song playing turned out to be gone (the host said so). Say why and
+   *  move on, unless too many in a row have failed (then stop, and say that).
+   *  At the end of the queue, radio (useRadioExtend) is already fetching a
+   *  successor, since nothing playable is left: wait for it. */
+  useEffect(() => { deadCurrentRef.current = (track, reason) => {
+    const notice: UnplayableNotice = { trackId: track.id, title: track.title, kind: 'unavailable', reason, outcome: 'skipped' };
+    failStreakRef.current += 1;
+    if (failStreakRef.current >= MAX_FAILURES_IN_A_ROW) {
+      failStreakRef.current = 0;
+      awaitingRadioRef.current = null;
+      setIsPlaying(false);
+      announce([{ ...notice, outcome: 'gave-up' }]);
+      return;
+    }
+    const st = usePlayerStore.getState();
+    const move = nextIndex(navState());
+    if (move && nextPlayable(st.queue, move.index, 1, st.loopMode === 'all').index >= 0) {
+      announce([notice]);
+      nextRef.current();
+      return;
+    }
+    if (radioCanExtend(st.loopMode)) {
+      awaitingRadioRef.current = notice;
+      return;
+    }
+    announce([{ ...notice, outcome: 'stopped' }]);
+  }; }, [announce, navState, setIsPlaying]);
+  const onRadioExtended = useCallback((added: number, forTrackId: string) => {
+    const waiting = awaitingRadioRef.current;
+    if (!waiting) return;
+    const st = usePlayerStore.getState();
+    // The listener moved on while radio looked: nothing to wait for.
+    if (st.queue[st.index]?.id !== waiting.trackId) {
+      awaitingRadioRef.current = null;
+      return;
+    }
+    // An answer for an earlier song, or one that found nothing playable yet.
+    if (forTrackId !== waiting.trackId) return;
+    awaitingRadioRef.current = null;
+    if (added > 0 && nextPlayable(st.queue, st.index + 1, 1, false).index >= 0) {
+      announce([waiting]);
+      nextRef.current();
+    } else {
+      announce([{ ...waiting, outcome: 'stopped' }]);
+    }
+  }, [announce]);
+  useRadioExtend({ current, queue, index, history, liked, context, loopMode, onExtended: onRadioExtended });
 
   useDiscordPresence({ current, isPlaying, position, duration });
 
@@ -1094,10 +1228,10 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     if (isUnavailable(track)) {
       const r = nextPlayable(queueList, Math.max(i, 0), 1, false);
       if (r.index < 0) {
-        toast.error(`"${track.title}" is unavailable`);
+        toast.error(`Couldn't play "${track.title}": ${reasonPhrase(track.unavailableReason)}.`);
         return;
       }
-      toastSkipped(r.skipped);
+      announce(skippedNotices(r.skipped));
       track = queueList[r.index];
       i = r.index;
     }
@@ -1123,7 +1257,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     // source, and the backend's onPlay event records 'play' once it actually
     // starts: logging 'play' here too would be a third, earlier copy of the
     // same transition.
-  }, [loadAndPlay]);
+  }, [announce, loadAndPlay]);
 
   const playAt = useCallback((i: number) => {
     userInteracted.current = true;

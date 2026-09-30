@@ -107,7 +107,7 @@ describe('a song the host cannot serve', () => {
   it('tells the listener which song would not load', () => {
     act(() => nativeEvents!.onError({ canRetryOnWebAudio: false }));
 
-    expect(toast.error).toHaveBeenCalledWith('Couldn\'t load "Unloadable Song"');
+    expect(toast.error).toHaveBeenCalledWith('Couldn\'t load "Unloadable Song" right now. Press play to try again.');
   });
 
   it('leaves a track the server calls dead to the skip message instead', () => {

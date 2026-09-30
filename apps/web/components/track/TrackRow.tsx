@@ -12,6 +12,7 @@ import { CloseIcon, PauseIcon, PlayIcon, RefreshIcon, TrashIcon } from '@/compon
 import { formatTime } from '@/lib/format';
 import type { PlaylistPerson, Track } from '@/types/track';
 import { cn } from '@/lib/utils';
+import { reasonLabel, reasonPhrase } from '@/lib/playback/unplayable';
 
 export type TrackRowDensity = 'list' | 'compact';
 /** Which palette the row sits in. The queue sheet paints its own sidebar
@@ -23,18 +24,6 @@ const SUBTLE: Record<TrackRowTone, string> = {
   sidebar: 'text-sidebar-foreground/55',
 };
 
-/** Words for `unavailableReason` codes, shown as the badge's `title`
- *  tooltip so a listener can see why without opening the replace dialog. */
-function reasonLabel(reason: string | null | undefined): string {
-  switch (reason) {
-    case 'removed': return 'Removed from YouTube';
-    case 'private': return 'Made private';
-    case 'geo': return 'Blocked in this country';
-    case 'members': return 'Members only';
-    case 'terminated': return 'Channel closed';
-    default: return 'Not available';
-  }
-}
 
 export interface TrackRowProps {
   track: Track;
@@ -62,8 +51,10 @@ export interface TrackRowProps {
   trailing?: ReactNode;
   /** The server has confirmed this track can no longer be streamed. Greys
    *  the row, badges the title, disables its play cell, and turns a click
-   *  into an explanation instead of silent nothing. `list` density only:
-   *  compact rows (queue sheet, recents, picker) are unchanged. */
+   *  into an explanation instead of silent nothing. A compact row (the
+   *  queue sheet) is greyed too, with the reason in small type after the
+   *  title, so a song radio could not play stays visible in the queue with
+   *  its why, instead of silently vanishing. */
   unavailable?: boolean;
   /** Opens the find-replacement flow. Only rendered on an unavailable row,
    *  and only where a replacement is actionable (a playlist, or Liked). */
@@ -142,7 +133,7 @@ export function TrackRow({
   const playOrToast = onPlay
     ? () => {
         if (unavailable) {
-          toast.message(`"${track.title}" is unavailable on YouTube`);
+          toast.message(`Couldn't play "${track.title}": ${reasonPhrase(track.unavailableReason)}.`);
           return;
         }
         onPlay();
@@ -249,11 +240,13 @@ export function TrackRow({
   if (compact) {
     return (
       <div
-        onClick={onPlay}
+        onClick={playOrToast}
+        data-unavailable={unavailable ? 'true' : undefined}
         className={cn(
           'group flex items-center gap-3 px-3 py-2 rounded-md transition-colors',
           onPlay && 'cursor-pointer hover:bg-card',
           active && !trailingPlayControl && 'text-ember',
+          unavailable && 'opacity-60',
           className,
         )}
       >
@@ -262,6 +255,11 @@ export function TrackRow({
           <div data-testid="track-row-title" className={cn('truncate text-sm font-medium', emberTitle)}>
             {track.title}
           </div>
+          {unavailable && (
+            <div data-testid="unavailable-reason" className={cn('truncate text-[11px]', SUBTLE[tone])}>
+              {reasonLabel(track.unavailableReason)}
+            </div>
+          )}
           {/* Plain text, not a link: these rows sit inside a sheet, a
               recents list and a picker, where a stray navigation would
               throw away what the user was doing. */}

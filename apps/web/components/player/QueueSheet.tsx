@@ -6,7 +6,7 @@ import { usePlayer } from '@/components/player/PlayerProvider';
 import { usePlayerStore } from '@/stores/usePlayerStore';
 import { useOfflineStore } from '@/stores/useOfflineStore';
 import { localArtFor } from '@/lib/offlineNative';
-import { isPlayableOffline } from '@/lib/playback/queueNav';
+import { isPlayableOffline, isUnavailable } from '@/lib/playback/queueNav';
 import { useAutoCacheStore } from '@/stores/useAutoCacheStore';
 import { cn } from '@/lib/utils';
 import type { Track } from '@/types/track';
@@ -56,6 +56,7 @@ export function QueueSheet({ open, onOpenChange }: Props) {
                 tone="sidebar"
                 showDuration
                 active
+                unavailable={isUnavailable(current)}
                 artworkFallback={null}
                 artworkSrc={artworkSrcFor(current)}
               />
@@ -75,6 +76,9 @@ export function QueueSheet({ open, onOpenChange }: Props) {
                     density="compact"
                     tone="sidebar"
                     showDuration
+                    // Greyed with its reason, not dropped: a song that could
+                    // not play stays where it was, and says why.
+                    unavailable={isUnavailable(t)}
                     artworkFallback={null}
                     artworkSrc={artworkSrcFor(t)}
                     className={cn('hover:bg-sidebar-accent/60', outOfReach(t) && 'opacity-50')}

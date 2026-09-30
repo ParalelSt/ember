@@ -39,6 +39,9 @@ interface Options {
   backendKind: BackendKind | null;
   /** Tests inject an adapter; production picks one per engine. */
   createAdapter?: (kind: BackendKind) => CacheAdapter;
+  /** The host answered a prefetch 410: the song is gone. Read at call time,
+   *  so a new function never rebuilds the cache. */
+  onGone?: (id: string) => void;
 }
 
 /** Engines that come with an app shell: when their adapter is not ready, the
@@ -85,7 +88,9 @@ function followNative(adapter: AndroidCacheAdapter): Array<() => void> {
  *  (lib/autoCache: policy.ts decides, the adapter stores, driver.ts runs
  *  it). Also owns the connection state the player's offline behaviour reads
  *  (`useAutoCacheStore.online`). Mounted once, by PlayerProvider. */
-export function useAutoCache({ backendRef, backendKind, createAdapter = createCacheAdapter }: Options): void {
+export function useAutoCache({ backendRef, backendKind, createAdapter = createCacheAdapter, onGone }: Options): void {
+  const onGoneRef = useRef(onGone);
+  useEffect(() => { onGoneRef.current = onGone; }, [onGone]);
   const conditionsRef = useRef<Conditions>({ online: true, metered: null, saveData: false, batterySaver: false });
   const driverRef = useRef<AutoCacheDriver | null>(null);
 
@@ -134,6 +139,7 @@ export function useAutoCache({ backendRef, backendKind, createAdapter = createCa
         overrides: readTestOverrides(),
         onCacheChange: () => useAutoCacheStore.getState().refresh(),
         onInFlight: (id) => useAutoCacheStore.getState().setInFlight(id),
+        onGone: (id) => onGoneRef.current?.(id),
         log: (event, data) => logger.breadcrumb('cache', `prefetch ${event}`, data),
       });
       driverRef.current = driver;

@@ -3,6 +3,7 @@ import type { Track } from '@/types/track';
 import type { LoopMode } from '@/stores/usePlayerStore';
 import type { QueueOrigin } from '@/lib/autoCache/native';
 import type { EqSettings } from './eq';
+import type { UnplayableNotice } from './unplayable';
 
 /** Transport commands the OS/remote (lock screen, Bluetooth, media keys) can
  *  invoke. The provider supplies these; a backend wires them to the platform. */
@@ -23,6 +24,12 @@ export interface AudioErrorInfo {
    *  answer. Absent means "try it", which is what every backend but the native
    *  one has always meant. */
   canRetryOnWebAudio?: boolean;
+  /** Android only: the song that was playing when the native player failed
+   *  (it has already moved on by itself by the time this arrives). */
+  trackId?: string | null;
+  /** Android only: the app build reports failed songs itself, with the
+   *  host's reason (`onUnplayable`), so the page need not ask. */
+  nativeExplains?: boolean;
 }
 
 /** Backend → provider callbacks. The backend owns the player; it reports state
@@ -51,6 +58,11 @@ export interface AudioBackendEvents {
   /** Queue-owning backends only: the loop mode was changed outside the app
    *  (the Repeat button in the car or the notification). */
   onLoopMode?: (mode: LoopMode) => void;
+  /** Queue-owning backends only (Android): songs the native player could not
+   *  play and what it did about each (skipped, stopped, gave up), with the
+   *  host's reason. Several at once are the ones that failed while the app
+   *  was in the background, held by native until it came back. */
+  onUnplayable?: (notices: UnplayableNotice[]) => void;
 }
 
 export interface LoadOptions {

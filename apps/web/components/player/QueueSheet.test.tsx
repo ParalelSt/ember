@@ -31,4 +31,21 @@ describe('QueueSheet', () => {
     expect(player.playAt).toHaveBeenCalledWith(2);
     expect(player.playTrack).not.toHaveBeenCalled();
   });
+
+  it('keeps a song that could not play in the queue, greyed, with its reason', () => {
+    const a = makeTrack({ id: 'youtube:a', title: 'Alpha' });
+    const gone = makeTrack({ id: 'youtube:g', title: 'Gone Song', unavailableAt: '2026-09-30T10:00:00Z', unavailableReason: 'removed' });
+    const c = makeTrack({ id: 'youtube:c', title: 'Charlie' });
+    usePlayerStore.setState({ queue: [a, gone, c], index: 0, context: null });
+    render(<QueueSheet open onOpenChange={() => {}} />);
+    const row = screen.getByText('Gone Song').closest('[data-unavailable]');
+    expect(row).toHaveAttribute('data-unavailable', 'true');
+    expect(row).toHaveClass('opacity-60');
+    expect(screen.getByTestId('unavailable-reason')).toHaveTextContent('Removed from YouTube');
+    // A tap explains instead of jumping.
+    player.playAt.mockClear();
+    fireEvent.click(screen.getByText('Gone Song'));
+    expect(player.playAt).not.toHaveBeenCalled();
+    expect(screen.getByText('Charlie').closest('[data-unavailable]')).toBeNull();
+  });
 });
