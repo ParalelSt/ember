@@ -2,14 +2,19 @@
 
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { TrackRow } from '@/components/track/TrackRow';
+import { CouldntPlaySection, couldntPlayEntries } from '@/components/player/CouldntPlaySection';
 import { usePlayer } from '@/components/player/PlayerProvider';
 import { usePlayerStore } from '@/stores/usePlayerStore';
 import { useOfflineStore } from '@/stores/useOfflineStore';
 import { localArtFor } from '@/lib/offlineNative';
 import { isPlayableOffline, isUnavailable } from '@/lib/playback/queueNav';
 import { useAutoCacheStore } from '@/stores/useAutoCacheStore';
+import { useUnplayableStore } from '@/stores/useUnplayableStore';
 import { cn } from '@/lib/utils';
 import type { Track } from '@/types/track';
+
+/** The sheet's section headings: "Couldn't play", "Now playing", "Next up". */
+const SECTION_LABEL = 'px-3 text-[11px] uppercase tracking-widest text-sidebar-foreground/55 mb-1.5';
 
 interface Props {
   open: boolean;
@@ -35,6 +40,9 @@ export function QueueSheet({ open, onOpenChange }: Props) {
 
   const current = queue[index] ?? null;
   const upcoming = queue.slice(index + 1);
+  // This session's songs that could not play, still in this queue.
+  const couldntPlay = useUnplayableStore((s) => s.couldntPlay);
+  const failed = couldntPlayEntries(couldntPlay, queue, current?.id ?? null);
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -44,11 +52,11 @@ export function QueueSheet({ open, onOpenChange }: Props) {
         </SheetHeader>
 
         <div className="flex-1 overflow-y-auto px-2 py-3 flex flex-col gap-3">
+          <CouldntPlaySection entries={failed} artworkSrcFor={artworkSrcFor} labelClassName={SECTION_LABEL} />
+
           {current && (
             <div>
-              <div className="px-3 text-[11px] uppercase tracking-widest text-sidebar-foreground/55 mb-1.5">
-                Now playing
-              </div>
+              <div className={SECTION_LABEL}>Now playing</div>
               {/* No onPlay: the current row is a label, not a control. */}
               <TrackRow
                 track={current}
@@ -65,9 +73,7 @@ export function QueueSheet({ open, onOpenChange }: Props) {
 
           {upcoming.length > 0 && (
             <div>
-              <div className="px-3 text-[11px] uppercase tracking-widest text-sidebar-foreground/55 mb-1.5">
-                Next up · {upcoming.length}
-              </div>
+              <div className={SECTION_LABEL}>Next up · {upcoming.length}</div>
               <div className="flex flex-col">
                 {upcoming.map((t, i) => (
                   <TrackRow

@@ -253,6 +253,30 @@ describe('TrackRow (unavailable)', () => {
     expect(container.firstElementChild?.className).toContain('opacity-60');
   });
 
+  it('puts the small UNAVAILABLE pill next to the title, and cuts the title before the pill', () => {
+    render(<TrackRow track={{ ...dead, title: 'A very long title that will not fit in a phone row at all' }} unavailable />);
+    const title = screen.getByTestId('track-row-title');
+    const badge = screen.getByTestId('unavailable-badge');
+    expect(badge.parentElement).toBe(title);
+    expect(badge.previousElementSibling).toHaveClass('truncate');
+    expect(badge).toHaveClass('shrink-0', 'rounded-full', 'border', 'uppercase');
+    expect(title).toHaveClass('text-muted-foreground');
+  });
+
+  it('a compact row (the queue sheet) is greyed with the same pill', () => {
+    const { container } = render(<TrackRow track={dead} density="compact" tone="sidebar" unavailable onPlay={vi.fn()} />);
+    const badge = screen.getByTestId('unavailable-badge');
+    expect(badge).toHaveTextContent('Unavailable');
+    expect(badge).toHaveAttribute('title', 'Removed from YouTube');
+    expect(badge.parentElement).toBe(screen.getByTestId('track-row-title'));
+    expect(container.firstElementChild?.className).toContain('opacity-60');
+  });
+
+  it('a compact row of a song that plays has no pill', () => {
+    render(<TrackRow track={track} density="compact" onPlay={vi.fn()} />);
+    expect(screen.queryByTestId('unavailable-badge')).toBeNull();
+  });
+
   it('falls back to a generic reason when the code is unknown', () => {
     render(<TrackRow track={{ ...dead, unavailableReason: 'weird' }} unavailable />);
     expect(screen.getByTestId('unavailable-badge')).toHaveAttribute('title', 'Not available');

@@ -52,9 +52,9 @@ export interface TrackRowProps {
   /** The server has confirmed this track can no longer be streamed. Greys
    *  the row, badges the title, disables its play cell, and turns a click
    *  into an explanation instead of silent nothing. A compact row (the
-   *  queue sheet) is greyed too, with the reason in small type after the
-   *  title, so a song radio could not play stays visible in the queue with
-   *  its why, instead of silently vanishing. */
+   *  queue sheet) is greyed the same way, with the same small pill, so a
+   *  song radio could not play stays visible in the queue instead of
+   *  silently vanishing. The pill's tooltip gives the reason. */
   unavailable?: boolean;
   /** Opens the find-replacement flow. Only rendered on an unavailable row,
    *  and only where a replacement is actionable (a playlist, or Liked). */
@@ -237,6 +237,21 @@ export function TrackRow({
    *  which of the two it is. */
   const emberTitle = trailingPlayControl && active && 'text-ember';
 
+  /** The small "UNAVAILABLE" pill after a greyed title (the owner's pick,
+   *  /dizajn/unplayable option B). Never cut: the title gives way first. */
+  const unavailablePill = unavailable ? (
+    <span
+      data-testid="unavailable-badge"
+      title={reasonLabel(track.unavailableReason)}
+      className={cn(
+        'shrink-0 rounded-full border px-1.5 text-[10px] font-semibold uppercase tracking-wider',
+        compact ? cn('border-sidebar-border', SUBTLE[tone]) : 'text-muted-foreground',
+      )}
+    >
+      Unavailable
+    </span>
+  ) : null;
+
   if (compact) {
     return (
       <div
@@ -252,14 +267,10 @@ export function TrackRow({
       >
         {artwork}
         <div className="min-w-0 flex-1">
-          <div data-testid="track-row-title" className={cn('truncate text-sm font-medium', emberTitle)}>
-            {track.title}
+          <div data-testid="track-row-title" className={cn('flex min-w-0 items-center gap-cluster text-sm font-medium', emberTitle)}>
+            <span className="truncate">{track.title}</span>
+            {unavailablePill}
           </div>
-          {unavailable && (
-            <div data-testid="unavailable-reason" className={cn('truncate text-[11px]', SUBTLE[tone])}>
-              {reasonLabel(track.unavailableReason)}
-            </div>
-          )}
           {/* Plain text, not a link: these rows sit inside a sheet, a
               recents list and a picker, where a stray navigation would
               throw away what the user was doing. */}
@@ -335,18 +346,10 @@ export function TrackRow({
           <div
             data-testid="track-row-title"
             onClick={selecting ? undefined : playOrToast}
-            className={cn('truncate text-sm font-semibold', emberTitle, unavailable && 'text-muted-foreground')}
+            className={cn('flex min-w-0 items-center gap-cluster text-sm font-semibold', emberTitle, unavailable && 'text-muted-foreground')}
           >
-            {track.title}
-            {unavailable && (
-              <span
-                data-testid="unavailable-badge"
-                title={reasonLabel(track.unavailableReason)}
-                className="ml-2 rounded-full border px-1.5 text-[10px] uppercase tracking-wider text-muted-foreground align-middle"
-              >
-                Unavailable
-              </span>
-            )}
+            <span className="truncate">{track.title}</span>
+            {unavailablePill}
           </div>
           <div className="truncate text-xs text-muted-foreground">
             {/* Who added it leads the line, so a narrow row cuts the

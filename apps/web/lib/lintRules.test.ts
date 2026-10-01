@@ -201,7 +201,7 @@ const SPACING_BASELINE: Record<string, number> = {
   'components/player/NowPlaying.tsx': 8,
   'components/player/NowPlayingSummary.tsx': 2,
   'components/player/PlayerBar.tsx': 8,
-  'components/player/QueueSheet.tsx': 11,
+  'components/player/QueueSheet.tsx': 9,
   'components/player/SeekBar.tsx': 2,
   'components/player/TransportControls.tsx': 2,
   'components/player/VolumeControl.tsx': 1,
