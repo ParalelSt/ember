@@ -19,7 +19,10 @@ import type { Track } from '@/types/track';
  *
  *  A track the server has confirmed is gone loses "Add to playlist": it
  *  would only put a dead entry in another list. Share still works, since
- *  the link identifies the song rather than the upload.
+ *  the link identifies the song rather than the upload, except on a phone:
+ *  there the row's room goes to the title and its UNAVAILABLE pill (with
+ *  every button, a phone row had about 60px left for both, and the pill
+ *  read "UNAVA..."). Share is still there on a wider window.
  *
  *  `onRematch` is set on a playlist track that came from an import: a
  *  "More" menu offers "Wrong song? Re-match", which reopens that song's
@@ -37,7 +40,7 @@ export function TrackMenu({ track, onRematch, moves }: { track: Track; onRematch
   return (
     <>
       {!isUnavailable(track) && <AddToPlaylistMenu track={track} onRematch={onRematch} moves={moves} />}
-      <ShareButton track={track} />
+      <ShareButton track={track} className={isUnavailable(track) ? 'max-md:hidden' : undefined} />
       {(onRematch || canMove) && (
         <DropdownMenu>
           <DropdownMenuTrigger

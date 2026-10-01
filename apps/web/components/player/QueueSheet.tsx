@@ -46,7 +46,11 @@ export function QueueSheet({ open, onOpenChange }: Props) {
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent side="right" className="w-96 max-w-[90vw] flex flex-col bg-sidebar text-sidebar-foreground border-sidebar-border p-0">
+      {/* Width named under the sheet's own side variant: its default
+          (data-[side=right]:w-3/4) outranks a plain w-96, which left the
+          queue at three quarters of a phone, too narrow for "Couldn't play"'s
+          reason lines. 90% of a phone, as in the owner's pick. */}
+      <SheetContent side="right" className="data-[side=right]:w-96 max-w-[90vw] flex flex-col bg-sidebar text-sidebar-foreground border-sidebar-border p-0">
         <SheetHeader className="px-4 py-4 border-b border-sidebar-border">
           <SheetTitle className="text-base">Queue</SheetTitle>
         </SheetHeader>

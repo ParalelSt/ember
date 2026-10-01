@@ -10,7 +10,9 @@ vi.mock('./AddToPlaylistMenu', () => ({
     </button>
   ),
 }));
-vi.mock('../ShareButton', () => ({ ShareButton: () => <button type="button">Share</button> }));
+vi.mock('../ShareButton', () => ({
+  ShareButton: ({ className }: { className?: string }) => <button type="button" className={className}>Share</button>,
+}));
 vi.mock('@/components/ui/dropdown-menu', () => ({
   DropdownMenu: ({ children }: PropsWithChildren) => <div>{children}</div>,
   DropdownMenuTrigger: ({ children, ...rest }: ComponentProps<'button'>) => <button {...rest}>{children}</button>,
@@ -78,5 +80,20 @@ describe('TrackMenu moves (a playlist in its own order)', () => {
   it('no possible move and no re-match: no More menu', () => {
     render(<TrackMenu track={track} moves={{}} />);
     expect(screen.queryByRole('button', { name: 'More' })).toBeNull();
+  });
+});
+
+describe('TrackMenu on a song that is gone', () => {
+  const gone: Track = { ...track, unavailableAt: '2026-10-01T10:00:00Z', unavailableReason: 'removed' };
+
+  it('drops Add to playlist, and Share on a phone (the room goes to the UNAVAILABLE pill)', () => {
+    render(<TrackMenu track={gone} />);
+    expect(screen.queryByRole('button', { name: 'Add to playlist' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Share' })).toHaveClass('max-md:hidden');
+  });
+
+  it('a song that plays keeps Share everywhere', () => {
+    render(<TrackMenu track={track} />);
+    expect(screen.getByRole('button', { name: 'Share' })).not.toHaveClass('max-md:hidden');
   });
 });
