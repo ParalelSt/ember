@@ -21,6 +21,20 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    id: 'songs-that-cannot-play',
+    version: '0.7.16',
+    date: '2026-10-01',
+    title: 'Know when a song cannot play',
+    summary: 'When a song is gone from YouTube or will not load, the player bar says which one and why, then carries on with the next.',
+    bullets: [
+      'The mini player shows “Skipped: <song>” and the reason (removed, made private, blocked in your country) for a few seconds, then the song playing again. Several in a row become “Skipped 3 songs”. The full-screen player and the desktop bar say the same.',
+      "The queue lists the songs that could not play at the top, under “Couldn't play”, each with its reason. In playlists and albums those songs are greyed with an UNAVAILABLE label.",
+      'A song that will not load right now waits with “Tap to retry”. After 5 songs in a row fail, playback stops instead of racing through the queue. Songs skipped while the app was in the background come back as one message.',
+      'Radio no longer stops at a song that is gone: it finds the next one. On Android this needs the new app, 0.4.12.',
+      "Fixed some artist pages failing to load. They now open with the artist's name and picture.",
+    ],
+  },
+  {
     id: 'car-and-steering-wheel',
     version: '0.7.15',
     date: '2026-09-29',

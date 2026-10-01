@@ -1,3 +1,13 @@
+# 0.7.16: Songs that cannot play, artist pages (apps 0.4.12)
+
+**Host: run `./update.sh` as usual (no new packages, no database changes).**
+It also updates yt-dlp, which fixes most "403 Forbidden" download errors.
+The server now remembers songs YouTube refuses and answers at once instead of
+downloading them again; those are logged as info, so the daily digest only
+counts real problems. The full Android messages and radio after a dead last
+song need the new Android app, 0.4.12 (versionCode 17), which the `v0.4.12`
+tag builds.
+
 # 0.7.15: Car, devices, casting, full volume (apps 0.4.11)
 
 **Host: run `./update.sh` as usual (no new packages, no database changes).**
