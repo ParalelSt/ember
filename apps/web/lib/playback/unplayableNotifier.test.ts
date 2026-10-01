@@ -29,13 +29,15 @@ describe('unplayable notifier', () => {
   it('on screen, a skip is shown at once, as info', () => {
     const s = setup();
     s.notifier.report([n('a')]);
-    expect(s.show).toHaveBeenCalledWith('Couldn\'t play "A": removed from YouTube. Skipped to the next song.', 'info');
+    expect(s.show).toHaveBeenCalledWith('Couldn\'t play "A": removed from YouTube. Skipped to the next song.', 'info', {
+      notices: [n('a')], away: false,
+    });
   });
 
   it('a stop is shown as an error', () => {
     const s = setup();
     s.notifier.report([n('a', { outcome: 'stopped' })]);
-    expect(s.show).toHaveBeenCalledWith(expect.any(String), 'error');
+    expect(s.show).toHaveBeenCalledWith(expect.any(String), 'error', expect.anything());
   });
 
   it('in the background nothing is shown; coming back shows ONE summary', () => {
@@ -47,9 +49,14 @@ describe('unplayable notifier', () => {
     expect(s.show).not.toHaveBeenCalled();
     s.comeBack();
     expect(s.show).toHaveBeenCalledTimes(1);
-    expect(s.show).toHaveBeenCalledWith('Couldn\'t play 3 songs ("A", "B" and 1 more): they\'re not available on YouTube. Playback stopped.', 'error');
+    expect(s.show).toHaveBeenCalledWith('Couldn\'t play 3 songs ("A", "B" and 1 more): they\'re not available on YouTube. Playback stopped.', 'error', {
+      notices: [n('a'), n('b'), n('c', { outcome: 'gave-up' })], away: true,
+    });
     s.comeBack();
     expect(s.show).toHaveBeenCalledTimes(1);
+    // Back on screen, the next one is an ordinary message again.
+    s.notifier.report([n('d')]);
+    expect(s.show.mock.calls[1][2]).toEqual({ notices: [n('d')], away: false });
   });
 
   it('a batch handed over on return (the Android player\'s) is one message', () => {
@@ -57,6 +64,13 @@ describe('unplayable notifier', () => {
     s.notifier.report([n('a'), n('b')]);
     expect(s.show).toHaveBeenCalledTimes(1);
     expect(s.show.mock.calls[0][0]).toMatch(/^Couldn't play 2 songs/);
+    expect(s.show.mock.calls[0][2].away).toBe(false);
+  });
+
+  it('a batch native held while no page listened is said as "while you were away"', () => {
+    const s = setup();
+    s.notifier.report([n('a'), n('b')], { away: true });
+    expect(s.show.mock.calls[0][2]).toEqual({ notices: [n('a'), n('b')], away: true });
   });
 
   it('the same song is not announced twice in a row (a loop-all lap)', () => {

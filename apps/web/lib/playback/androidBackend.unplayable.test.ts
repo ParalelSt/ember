@@ -39,13 +39,15 @@ describe('androidBackend: songs native could not play', () => {
     ]);
   });
 
-  it('picks up the ones held while no page was listening', async () => {
+  it('picks up the ones held while no page was listening, marked as away', async () => {
     installPlugin({ explains: true, held: [notice, { ...notice, trackId: 'youtube:b', outcome: 'gave-up' }] });
     const events = makeFakeEvents();
     events.onUnplayable = vi.fn();
     createAndroidBackend(events);
     await vi.waitFor(() => expect(events.onUnplayable).toHaveBeenCalledTimes(1));
     expect((events.onUnplayable as ReturnType<typeof vi.fn>).mock.calls[0][0]).toHaveLength(2);
+    // Said as "while you were away" in the bar.
+    expect((events.onUnplayable as ReturnType<typeof vi.fn>).mock.calls[0][1]).toEqual({ away: true });
   });
 
   it('a bare error says which song native was on, and whether native explains it', () => {

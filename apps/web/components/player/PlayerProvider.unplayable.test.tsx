@@ -6,11 +6,16 @@
  *  The report behind this (2026-09-30): radio queued songs YouTube had taken
  *  down; the Android app skipped them with no word, and at the end of the
  *  queue it just stopped. The real probe (useAvailabilityProbe) and the real
- *  radio (useRadioExtend) run here; only the server's answers are faked. */
+ *  radio (useRadioExtend) run here; only the server's answers are faked.
+ *
+ *  Said in the player bar itself (stores/useUnplayableStore), never as a
+ *  toast: `messages()` is every sentence the bar's message has carried. */
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { render, act, waitFor } from '@testing-library/react';
 import { PlayerProvider, usePlayer } from './PlayerProvider';
 import { usePlayerStore } from '@/stores/usePlayerStore';
+import { resetUnplayableStore, useUnplayableStore } from '@/stores/useUnplayableStore';
+import { barLines } from '@/lib/playback/unplayableBar';
 import { makeFakeBackend, makeTrack } from '@/test-utils/fakeBackend';
 import type { AudioBackendEvents } from '@/lib/playback/types';
 import type { Track } from '@/types/track';
@@ -79,7 +84,16 @@ function setQueue(queue: Track[], index: number) {
 }
 const loadedUrls = () => engine.load.mock.calls.map((c) => c[0]);
 const current = () => { const s = usePlayerStore.getState(); return s.queue[s.index]; };
-const messages = () => [...toast.mock.calls, ...toast.error.mock.calls].map((c) => c[0]);
+/** Every sentence the bar's message carried (a burst grows one message). */
+const said: string[] = [];
+let unsubscribe = () => {};
+const messages = () => [...said];
+/** What the bar shows now, or null for the song. */
+const bar = () => { const m = useUnplayableStore.getState().message; return m ? barLines(m) : null; };
+const noToasts = () => {
+  expect(toast).not.toHaveBeenCalled();
+  expect(toast.error).not.toHaveBeenCalled();
+};
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -90,8 +104,15 @@ beforeEach(() => {
   // Radio has nothing new unless a test says so.
   api.getRecommended.mockResolvedValue({ tracks: [] });
   Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'visible' });
+  said.length = 0;
+  resetUnplayableStore();
+  unsubscribe = useUnplayableStore.subscribe((st, prev) => {
+    if (st.message && st.message !== prev.message) said.push(barLines(st.message).announcement);
+  });
 });
 afterEach(() => {
+  unsubscribe();
+  resetUnplayableStore();
   Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'visible' });
 });
 
@@ -104,6 +125,10 @@ describe('web and desktop: the song playing turns out to be gone', () => {
 
     await waitFor(() => expect(current().id).toBe(NEXT.id));
     expect(messages()).toContain('Couldn\'t play "Radio Song One": not available on YouTube. Skipped to the next song.');
+    expect(bar()).toMatchObject({ top: 'Skipped: Radio Song One', bottom: 'Not available on YouTube', sticky: false });
+    noToasts();
+    // The queue sheet lists it under "Couldn't play".
+    expect(useUnplayableStore.getState().couldntPlay.map((n) => n.trackId)).toEqual([GONE.id]);
     const flagged = usePlayerStore.getState().queue[1];
     expect(flagged.id).toBe(GONE.id);
     expect(flagged.unavailableAt).toBeTruthy();
@@ -123,9 +148,25 @@ describe('web and desktop: the song playing turns out to be gone', () => {
     setQueue([KLINCEK, NEXT], 0);
     render(<PlayerProvider>{null}</PlayerProvider>);
     act(() => events!.onError());
-    await waitFor(() => expect(toast.error).toHaveBeenCalledWith('Couldn\'t load "Klinček stoji pod oblokom" right now. Press play to try again.'));
+    await waitFor(() => expect(messages()).toContain('Couldn\'t load "Klinček stoji pod oblokom" right now. Press play to try again.'));
+    expect(bar()).toMatchObject({ top: "Couldn't load Klinček stoji pod oblokom right now", bottom: 'Tap to retry', sticky: true, retry: true });
+    noToasts();
     expect(current().id).toBe(KLINCEK.id);
     expect(current().unavailableAt).toBeUndefined();
+  });
+
+  it('the bar\'s retry loads the song again and the message gives way', async () => {
+    setQueue([KLINCEK, NEXT], 0);
+    let retry: () => void = () => {};
+    function Grab() { retry = usePlayer().retry; return null; }
+    render(<PlayerProvider><Grab /></PlayerProvider>);
+    act(() => events!.onError());
+    await waitFor(() => expect(bar()?.retry).toBe(true));
+    const loads = engine.load.mock.calls.length;
+    act(() => retry());
+    expect(bar()).toBeNull();
+    expect(engine.load.mock.calls.length).toBe(loads + 1);
+    expect(engine.load.mock.calls.at(-1)![0]).toBe(KLINCEK.streamUrl);
   });
 
   it('five dead songs in a row: stops with a message instead of racing through the queue', async () => {
@@ -138,9 +179,32 @@ describe('web and desktop: the song playing turns out to be gone', () => {
       act(() => events!.onError());
       if (i < 4) await waitFor(() => expect(current().id).not.toBe(before));
     }
-    await waitFor(() => expect(toast.error).toHaveBeenCalledWith(expect.stringMatching(/^Couldn't play "Dead 4": removed from YouTube\. Several songs in a row wouldn't play, so playback stopped\.$/)));
+    await waitFor(() => expect(bar()?.top).toBe('Playback stopped'));
+    expect(bar()).toMatchObject({ bottom: "5 songs in a row couldn't play", sticky: true });
+    // The four skips and the stop were one burst: one message, one sentence.
+    expect(messages().at(-1)).toMatch(/^Couldn't play 5 songs \("Dead 0", "Dead 1" and 3 more\).*Playback stopped\.$/);
+    noToasts();
     expect(current().id).toBe(dead[4].id);
     expect(usePlayerStore.getState().isPlaying).toBe(false);
+  });
+
+  it('"Playback stopped" stays until the listener acts: play clears it', async () => {
+    const dead = Array.from({ length: 6 }, (_, i) => song(`dead${String(i).padStart(7, '0')}`, `Dead ${i}`));
+    for (const t of dead) verdict[t.id] = { unavailable: true, reason: 'removed' };
+    setQueue(dead, 0);
+    let toggle: () => void = () => {};
+    function Grab() { toggle = usePlayer().toggle; return null; }
+    render(<PlayerProvider><Grab /></PlayerProvider>);
+    for (let i = 0; i < 5; i++) {
+      const before = current().id;
+      act(() => events!.onError());
+      if (i < 4) await waitFor(() => expect(current().id).not.toBe(before));
+    }
+    await waitFor(() => expect(bar()?.top).toBe('Playback stopped'));
+    await new Promise((r) => setTimeout(r, 50));
+    expect(bar()?.top).toBe('Playback stopped');
+    act(() => toggle());
+    expect(bar()).toBeNull();
   });
 
   it('web audio says "play" for every load: that alone does not reset the count', async () => {
@@ -154,7 +218,7 @@ describe('web and desktop: the song playing turns out to be gone', () => {
       act(() => events!.onError());
       if (i < 4) await waitFor(() => expect(current().id).not.toBe(before));
     }
-    await waitFor(() => expect(toast.error).toHaveBeenCalledWith(expect.stringMatching(/playback stopped\.$/)));
+    await waitFor(() => expect(bar()?.top).toBe('Playback stopped'));
     expect(current().id).toBe(dead[4].id);
   });
 
@@ -169,7 +233,8 @@ describe('web and desktop: the song playing turns out to be gone', () => {
       act(() => events!.onError());
       await waitFor(() => expect(current().id).not.toBe(before));
     }
-    expect(toast.error).not.toHaveBeenCalledWith(expect.stringMatching(/playback stopped/));
+    expect(messages().some((m) => /playback stopped/.test(m))).toBe(false);
+    expect(bar()?.top).not.toBe('Playback stopped');
   });
 });
 
@@ -199,7 +264,9 @@ describe('the last song is gone: radio finds the next one', () => {
     verdict[GONE.id] = { unavailable: true, reason: 'removed' };
     render(<PlayerProvider>{null}</PlayerProvider>);
     act(() => events!.onError());
-    await waitFor(() => expect(toast.error).toHaveBeenCalledWith('Couldn\'t play "Radio Song One": removed from YouTube. Nothing left to play.'));
+    await waitFor(() => expect(messages()).toContain('Couldn\'t play "Radio Song One": removed from YouTube. Nothing left to play.'));
+    expect(bar()).toMatchObject({ top: "Couldn't play: Radio Song One", bottom: 'Removed from YouTube · Nothing left to play', sticky: true });
+    noToasts();
     expect(current().id).toBe(GONE.id);
   });
 });
@@ -237,18 +304,33 @@ describe('android: the native player reports what it could not play', () => {
     ]));
     expect(usePlayerStore.getState().queue[1].unavailableAt).toBeTruthy();
     expect(messages()).toEqual(['Couldn\'t play "Radio Song One": not available on YouTube. Skipped to the next song.']);
+    expect(bar()).toMatchObject({ top: 'Skipped: Radio Song One', bottom: 'Not available on YouTube' });
+    noToasts();
     expect(api.getTrackAvailability).not.toHaveBeenCalled();
   });
 
-  it('several held while the app was away: one summary', () => {
+  it('several held while the app was away: one summary, "while you were away"', () => {
+    setQueue([KLINCEK, GONE, NEXT], 0);
+    render(<PlayerProvider>{null}</PlayerProvider>);
+    act(() => events!.onUnplayable!([
+      { trackId: GONE.id, title: GONE.title, kind: 'unavailable', reason: 'removed', outcome: 'skipped' },
+      { trackId: KLINCEK.id, title: KLINCEK.title, kind: 'unavailable', reason: 'removed', outcome: 'skipped' },
+    ], { away: true }));
+    expect(messages()).toEqual(['While you were away: Couldn\'t play 2 songs ("Radio Song One" and "Klinček stoji pod oblokom"): they\'re not available on YouTube. They were skipped.']);
+    expect(bar()).toMatchObject({ top: 'Skipped 2 songs', bottom: 'While you were away · Removed from YouTube', sticky: false });
+    noToasts();
+  });
+
+  it('several at once that stopped native: one message, kept until acted on', () => {
     setQueue([KLINCEK, GONE, NEXT], 0);
     render(<PlayerProvider>{null}</PlayerProvider>);
     act(() => events!.onUnplayable!([
       { trackId: GONE.id, title: GONE.title, kind: 'unavailable', reason: 'removed', outcome: 'skipped' },
       { trackId: NEXT.id, title: NEXT.title, kind: 'unavailable', reason: 'removed', outcome: 'stopped' },
     ]));
-    expect(toast.error).toHaveBeenCalledTimes(1);
-    expect(toast.error).toHaveBeenCalledWith('Couldn\'t play 2 songs ("Radio Song One" and "Plays Fine"): they\'re not available on YouTube. Playback stopped.');
+    expect(messages()).toEqual(['Couldn\'t play 2 songs ("Radio Song One" and "Plays Fine"): they\'re not available on YouTube. Playback stopped.']);
+    expect(bar()).toMatchObject({ top: "Couldn't play: Plays Fine", sticky: true });
+    noToasts();
   });
 
   it('while the page is hidden nothing shows; coming back shows it once', () => {
@@ -260,7 +342,17 @@ describe('android: the native player reports what it could not play', () => {
     expect(messages()).toEqual([]);
     Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'visible' });
     act(() => { document.dispatchEvent(new Event('visibilitychange')); });
-    expect(messages()).toEqual(['Couldn\'t play 2 songs ("Radio Song One" and "Plays Fine"): they wouldn\'t load. They were skipped.']);
+    expect(messages()).toEqual(['While you were away: Couldn\'t play 2 songs ("Radio Song One" and "Plays Fine"): they wouldn\'t load. They were skipped.']);
+    expect(bar()).toMatchObject({ top: 'Skipped 2 songs', bottom: "While you were away · They wouldn't play" });
+  });
+
+  it('the queue\'s "Couldn\'t play" list fills even while the page is hidden', () => {
+    setQueue([KLINCEK, GONE, NEXT], 0);
+    render(<PlayerProvider>{null}</PlayerProvider>);
+    Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'hidden' });
+    act(() => events!.onUnplayable!([{ trackId: GONE.id, title: GONE.title, kind: 'unavailable', reason: 'removed', outcome: 'skipped' }]));
+    expect(bar()).toBeNull();
+    expect(useUnplayableStore.getState().couldntPlay.map((n) => n.trackId)).toEqual([GONE.id]);
   });
 
   it('an older app build (a bare "error"): the page asks the host about the song native was on', async () => {
@@ -279,5 +371,21 @@ describe('android: the native player reports what it could not play', () => {
     render(<PlayerProvider>{null}</PlayerProvider>);
     act(() => events!.onError({ trackId: GONE.id, nativeExplains: true }));
     expect(api.getTrackAvailability).not.toHaveBeenCalled();
+  });
+});
+
+describe('the queue\'s "Couldn\'t play" list and a new queue', () => {
+  it('starting a new queue clears it, and the bar\'s message', async () => {
+    setQueue([KLINCEK, GONE, NEXT], 1);
+    verdict[GONE.id] = { unavailable: true, reason: 'removed' };
+    let playTrack: (t: Track, list?: Track[]) => void = () => {};
+    function Grab() { playTrack = usePlayer().playTrack; return null; }
+    render(<PlayerProvider><Grab /></PlayerProvider>);
+    act(() => events!.onError());
+    await waitFor(() => expect(useUnplayableStore.getState().couldntPlay).toHaveLength(1));
+    expect(bar()).not.toBeNull();
+    act(() => playTrack(KLINCEK, [KLINCEK, NEXT]));
+    expect(useUnplayableStore.getState().couldntPlay).toEqual([]);
+    expect(bar()).toBeNull();
   });
 });

@@ -16,8 +16,10 @@ import { stoppedPlayback, summarizeUnplayable, unplayableMessage, type Unplayabl
  *  tell whether the page is on screen. */
 
 export interface NotifierDeps {
-  /** tone 'error' when playback stopped, 'info' when it carried on. */
-  show: (message: string, tone: 'info' | 'error') => void;
+  /** tone 'error' when playback stopped, 'info' when it carried on. The
+   *  detail is what the player bar draws from (lib/playback/unplayableBar):
+   *  the songs, and `away` for the ones held while the page was hidden. */
+  show: (message: string, tone: 'info' | 'error', detail: { notices: UnplayableNotice[]; away: boolean }) => void;
   isHidden: () => boolean;
   /** Subscribe to "the page is on screen again"; returns an unsubscribe. */
   onVisible: (fn: () => void) => () => void;
@@ -25,10 +27,10 @@ export interface NotifierDeps {
 }
 
 export interface UnplayableNotifier {
-  /** Several notices in one report (the Android player holds the ones from
-   *  while the app was away and hands them over together) become one
-   *  summary. */
-  report(notices: readonly UnplayableNotice[]): void;
+  /** Several notices in one report become one summary. `away`: they failed
+   *  while no page was listening (the Android player holds those and hands
+   *  them over together when the app comes back). */
+  report(notices: readonly UnplayableNotice[], opts?: { away?: boolean }): void;
   dispose(): void;
 }
 
@@ -38,6 +40,8 @@ export const REPEAT_QUIET_MS = 10 * 60 * 1000;
 export function createUnplayableNotifier(deps: NotifierDeps): UnplayableNotifier {
   const now = deps.now ?? Date.now;
   const pending: UnplayableNotice[] = [];
+  /** Something in `pending` failed while the listener was not looking. */
+  let away = false;
   const announced = new Map<string, number>();
 
   /** Drops what needs no word, and skips of a song announced recently (a
@@ -52,30 +56,34 @@ export function createUnplayableNotifier(deps: NotifierDeps): UnplayableNotifier
     });
   }
 
-  function say(notices: UnplayableNotice[]) {
+  function say(notices: UnplayableNotice[], wasAway: boolean) {
     const t = now();
     for (const n of notices) announced.set(n.trackId, t);
     const message = notices.length === 1 ? unplayableMessage(notices[0]) : summarizeUnplayable(notices);
-    if (message) deps.show(message, stoppedPlayback(notices) ? 'error' : 'info');
+    if (message) deps.show(message, stoppedPlayback(notices) ? 'error' : 'info', { notices, away: wasAway });
   }
 
   function flush() {
     if (pending.length === 0 || deps.isHidden()) return;
+    const wasAway = away;
+    away = false;
     const batch = fresh(pending.splice(0));
-    if (batch.length) say(batch);
+    if (batch.length) say(batch, wasAway);
   }
 
   const unsubscribe = deps.onVisible(flush);
 
   return {
-    report(notices) {
+    report(notices, opts) {
       pending.push(...notices);
+      if (opts?.away || deps.isHidden()) away = true;
       // Hidden: kept for the one summary on the way back (flush on visible).
       flush();
     },
     dispose() {
       unsubscribe();
       pending.length = 0;
+      away = false;
     },
   };
 }

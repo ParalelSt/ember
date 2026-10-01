@@ -19,6 +19,7 @@ import { AddToPlaylistMenu } from '@/components/track/menus/AddToPlaylistMenu';
 import { ShareButton, canShare, shareTrack } from '@/components/track/ShareButton';
 import { LyricsBody } from '@/components/player/LyricsBody';
 import { NowPlayingSummary } from '@/components/player/NowPlayingSummary';
+import { UnplayableMessage, useUnplayableMessage } from '@/components/player/UnplayableMessage';
 import { QueueSheet } from '@/components/player/QueueSheet';
 import { EqualizerSheet } from '@/components/player/EqualizerSheet';
 import { SeekBar } from '@/components/player/SeekBar';
@@ -60,8 +61,10 @@ export function NowPlaying() {
   useBackDismiss(open, close);
   const focus = useUiStore((s) => s.nowPlayingFocus);
   const setFocus = useUiStore((s) => s.setNowPlayingFocus);
-  const { current, isPlaying, position, duration, toggle, next, prev, seek } = usePlayer();
+  const { current, isPlaying, position, duration, toggle, next, prev, seek, retry } = usePlayer();
   const { user } = useAuth();
+  // A song that could not play: the title area says so, as the bar does.
+  const unplayable = useUnplayableMessage();
   const { liked: isLiked, toggle: toggleLike } = useLikeToggle(current);
   const loopMode = usePlayerStore((s) => s.loopMode);
   const cycleLoopMode = usePlayerStore((s) => s.cycleLoopMode);
@@ -328,12 +331,17 @@ export function NowPlaying() {
 
         {/* Title + artist + like */}
         <div className="flex items-end justify-between gap-4">
-          <NowPlayingSummary
-            track={current}
-            size="lg"
-            marquee={open}
-            onArtistNavigate={() => setOpen(false)}
-          />
+          {/* A song that could not play: said here too, as in the bar. */}
+          {unplayable ? (
+            <UnplayableMessage size="player" onRetry={retry} onOpenQueue={() => setQueueOpen(true)} />
+          ) : (
+            <NowPlayingSummary
+              track={current}
+              size="lg"
+              marquee={open}
+              onArtistNavigate={() => setOpen(false)}
+            />
+          )}
           {current && user && (
             <div className="flex items-center gap-1 shrink-0">
               <LikeButton size="md" liked={isLiked} onToggle={toggleLike} />

@@ -245,14 +245,17 @@ export const createAndroidBackend: CreateAudioBackend = (events: AudioBackendEve
       }) as (d: never) => void),
     );
     if (nativeExplains) {
-      const deliver = (d: { notices?: unknown } | null | undefined) => {
+      const deliver = (d: { notices?: unknown } | null | undefined, away: boolean) => {
         const notices = parseNotices(d);
-        if (notices.length) events.onUnplayable?.(notices);
+        if (!notices.length) return;
+        if (away) events.onUnplayable?.(notices, { away: true });
+        else events.onUnplayable?.(notices);
       };
-      call(p.addListener('unplayable', deliver as (d: never) => void));
+      call(p.addListener('unplayable', ((d: { notices?: unknown }) => deliver(d, false)) as (d: never) => void));
       // Songs that failed while no page was listening (the app closed, the
-      // WebView re-created): native kept them for this moment.
-      void p.drainUnplayable!().then(deliver, () => {});
+      // WebView re-created): native kept them for this moment, and the bar
+      // says them as "while you were away".
+      void p.drainUnplayable!().then((d) => deliver(d, true), () => {});
     }
   }
 

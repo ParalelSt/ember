@@ -60,9 +60,9 @@ export interface AudioBackendEvents {
   onLoopMode?: (mode: LoopMode) => void;
   /** Queue-owning backends only (Android): songs the native player could not
    *  play and what it did about each (skipped, stopped, gave up), with the
-   *  host's reason. Several at once are the ones that failed while the app
-   *  was in the background, held by native until it came back. */
-  onUnplayable?: (notices: UnplayableNotice[]) => void;
+   *  host's reason. `away`: the ones that failed while no page was
+   *  listening, held by native and handed over when the app came back. */
+  onUnplayable?: (notices: UnplayableNotice[], opts?: { away?: boolean }) => void;
 }
 
 export interface LoadOptions {

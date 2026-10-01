@@ -23,6 +23,14 @@ import { useQueryLyrics } from '@/hooks/useLyrics';
 import { api, apiUrl } from '@/lib/api';
 import { MAX_FAILURES_IN_A_ROW, reasonPhrase, type UnplayableNotice } from '@/lib/playback/unplayable';
 import { createUnplayableNotifier, documentVisibility, type UnplayableNotifier } from '@/lib/playback/unplayableNotifier';
+import {
+  clearCouldntPlay,
+  dismissUnplayable,
+  forgetCouldntPlay,
+  recordCouldntPlay,
+  settleUnplayable,
+  showUnplayable,
+} from '@/stores/useUnplayableStore';
 import { logger } from '@/lib/logger/client';
 import { detectShell } from '@/lib/playback/detectShell';
 import { chooseDuration } from '@/lib/playback/chooseDuration';
@@ -56,6 +64,7 @@ import { _resetOutputs, initOutputs } from '@/lib/outputs/controller';
 import type { PlaybackContext, Track } from '@/types/track';
 import { musicLevel } from '@/lib/pranks/mix';
 import { PrankReceiver } from './PrankReceiver';
+import { UnplayableAnnouncer } from './UnplayableMessage';
 
 interface PlayerControls {
   current: Track | null;
@@ -82,6 +91,9 @@ interface PlayerControls {
   /** The engine playing now can change speed (web audio; not the desktop's
    *  native engine or Android's Media3 yet). */
   canSetRate: boolean;
+  /** Load the current song again (the bar's "Couldn't load ... right now,
+   *  tap to retry"). */
+  retry: () => void;
 }
 
 const PlayerContext = createContext<PlayerControls | null>(null);
@@ -108,12 +120,13 @@ function skippedNotices(skipped: Track[]): UnplayableNotice[] {
   }));
 }
 
-/** Messages about songs that could not be played, for every engine: one
- *  at a time on screen, one summary for the ones that failed while the app
- *  was in the background (lib/playback/unplayableNotifier). */
+/** Messages about songs that could not be played, for every engine: said
+ *  in the player bar itself (stores/useUnplayableStore), never as a toast;
+ *  one summary for the ones that failed while the app was in the background
+ *  (lib/playback/unplayableNotifier). */
 function createNotifier(): UnplayableNotifier {
   return createUnplayableNotifier({
-    show: (message, tone) => { if (tone === 'error') toast.error(message); else toast(message); },
+    show: (_message, _tone, { notices, away }) => showUnplayable(notices, { away }),
     ...documentVisibility(),
   });
 }
@@ -220,10 +233,13 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const userInteracted = useRef(false);
   const notifierRef = useRef<UnplayableNotifier | null>(null);
   /** Say why these songs did not play (see createNotifier). */
-  const announce = useCallback((notices: UnplayableNotice[]) => {
+  const announce = useCallback((notices: UnplayableNotice[], opts?: { away?: boolean }) => {
     if (!notices.length) return;
+    // The queue's "Couldn't play" list is kept at once, even in the
+    // background; the bar's message waits for the listener (the notifier).
+    recordCouldntPlay(notices);
     notifierRef.current ??= createNotifier();
-    notifierRef.current.report(notices);
+    notifierRef.current.report(notices, opts);
   }, []);
   useEffect(() => () => {
     notifierRef.current?.dispose();
@@ -293,7 +309,13 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         // that for every load, even one the host then answers 410, which
         // reset the count on every dead song and let a radio full of them
         // skip on forever (seen live on the sandbox, 2026-09-30).
-        if (sec >= 1 && !backendRef.current?.isTransitioning()) failStreakRef.current = 0;
+        if (sec >= 1 && !backendRef.current?.isTransitioning()) {
+          failStreakRef.current = 0;
+          // A song that would not load earlier plays after all.
+          const st = usePlayerStore.getState();
+          const playingId = st.queue[st.index]?.id;
+          if (playingId) forgetCouldntPlay(playingId);
+        }
         setPosition(sec);
         positions.noteTime(sec);
       },
@@ -459,13 +481,13 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       onError: (info) => handleError(info),
       // The Android player says which songs it could not play and what it
       // did (it has already skipped them): grey them in the queue, say why.
-      onUnplayable: (notices) => {
+      onUnplayable: (notices, opts) => {
         let flagged = false;
         for (const n of notices) {
           if (n.kind === 'unavailable' && flagQueueUnavailable(n.trackId, n.reason ?? null)) flagged = true;
         }
         if (flagged) refreshFlaggedListsRef.current();
-        announce(notices);
+        announce(notices, opts);
       },
     };
     // The error path, named so `onEnded` can run it for an "ended" that is
@@ -1289,12 +1311,53 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     [setStoreVolume],
   );
 
+  // The listener's own play, pause, next, previous and picks answer the
+  // bar's message about a song that could not play, so it gives way to the
+  // song (and a stop that waited for them is over). Only these: the
+  // provider's own skips past a dead song call the plain versions, which
+  // must not wipe the "Skipped" they have just put up.
+  const userPlayTrack = useCallback((track: Track, list?: Track[], nextContext?: PlaybackContext | null) => {
+    dismissUnplayable();
+    // A new queue: what could not play in the old one is not about it.
+    clearCouldntPlay();
+    playTrack(track, list, nextContext);
+  }, [playTrack]);
+  const userPlayAt = useCallback((i: number) => { dismissUnplayable(); playAt(i); }, [playAt]);
+  const userToggle = useCallback(() => { dismissUnplayable(); toggle(); }, [toggle]);
+  const userNext = useCallback(() => { dismissUnplayable(); next(); }, [next]);
+  const userPrev = useCallback(() => { dismissUnplayable(); prev(); }, [prev]);
+  const retry = useCallback(() => {
+    dismissUnplayable();
+    userInteracted.current = true;
+    const st = usePlayerStore.getState();
+    const track = st.queue[st.index];
+    if (!track) return;
+    // The native player keeps the song it failed on: play asks it again.
+    if (backendKindRef.current === 'android') {
+      backendRef.current?.play();
+      return;
+    }
+    loadAndPlay(track, true);
+  }, [loadAndPlay]);
+
+  // Playback moved on without the app's buttons (the lock screen, the car,
+  // the native player): a message that stopped the music is over once
+  // another song is current or the music starts again.
+  const wasPlayingRef = useRef(isPlaying);
+  const currentId = current?.id ?? null;
+  useEffect(() => {
+    const started = isPlaying && !wasPlayingRef.current;
+    wasPlayingRef.current = isPlaying;
+    settleUnplayable(currentId, started);
+  }, [currentId, isPlaying]);
+
   const value = useMemo<PlayerControls>(
     () => ({
       current, isPlaying, position, duration, volume, queue, index, context,
-      playTrack, playAt, toggle, next, prev, seek, setVolume, rate, setRate, canSetRate,
+      playTrack: userPlayTrack, playAt: userPlayAt, toggle: userToggle, next: userNext, prev: userPrev,
+      seek, setVolume, rate, setRate, canSetRate, retry,
     }),
-    [current, isPlaying, position, duration, volume, queue, index, context, playTrack, playAt, toggle, next, prev, seek, setVolume, rate, setRate, canSetRate],
+    [current, isPlaying, position, duration, volume, queue, index, context, userPlayTrack, userPlayAt, userToggle, userNext, userPrev, seek, setVolume, rate, setRate, canSetRate, retry],
   );
 
   // Pranks (admin only, never announced) sit beside the tree rather than in
@@ -1302,6 +1365,9 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   return (
     <PlayerContext.Provider value={value}>
       <PrankReceiver backendRef={backendRef} engineRef={backendKindRef} onDuck={setDuck} />
+      {/* Songs that could not play, said once for screen readers; the bar
+          and the full-screen player show it (components/player/UnplayableMessage). */}
+      <UnplayableAnnouncer />
       {children}
     </PlayerContext.Provider>
   );

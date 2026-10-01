@@ -18,6 +18,8 @@ import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { render, act } from '@testing-library/react';
 import { PlayerProvider } from './PlayerProvider';
 import { usePlayerStore } from '@/stores/usePlayerStore';
+import { resetUnplayableStore, useUnplayableStore } from '@/stores/useUnplayableStore';
+import { barLines } from '@/lib/playback/unplayableBar';
 import { makeFakeBackend, makeTrack } from '@/test-utils/fakeBackend';
 import type { AudioBackendEvents, LoadOptions } from '@/lib/playback/types';
 
@@ -72,6 +74,7 @@ vi.mock('@/hooks/player/useAvailabilityProbe', () => ({
 const TRACK = makeTrack({ id: 'youtube:one', title: 'Unloadable Song', durationSec: 200 });
 
 beforeEach(() => {
+  resetUnplayableStore();
   vi.clearAllMocks();
   nativeEvents = null;
   probeState.stillPlayable = true;
@@ -104,10 +107,16 @@ describe('a song the host cannot serve', () => {
     expect(usePlayerStore.getState().isPlaying).toBe(false);
   });
 
-  it('tells the listener which song would not load', () => {
+  it('tells the listener which song would not load, in the player bar', () => {
     act(() => nativeEvents!.onError({ canRetryOnWebAudio: false }));
 
-    expect(toast.error).toHaveBeenCalledWith('Couldn\'t load "Unloadable Song" right now. Press play to try again.');
+    const m = useUnplayableStore.getState().message;
+    expect(m && barLines(m)).toMatchObject({
+      top: 'Couldn\'t load Unloadable Song right now',
+      bottom: 'Tap to retry',
+      announcement: 'Couldn\'t load "Unloadable Song" right now. Press play to try again.',
+    });
+    expect(toast.error).not.toHaveBeenCalled();
   });
 
   it('leaves a track the server calls dead to the skip message instead', () => {
@@ -116,6 +125,7 @@ describe('a song the host cannot serve', () => {
 
     // One message per failure: the probe flags and skips that case itself.
     expect(toast.error).not.toHaveBeenCalled();
+    expect(useUnplayableStore.getState().message).toBeNull();
   });
 
   it('keeps the playhead where the listener was, so a retry resumes', () => {
