@@ -253,6 +253,41 @@ describe('TrackRow (unavailable)', () => {
     expect(container.firstElementChild?.className).toContain('opacity-60');
   });
 
+  it('puts the small UNAVAILABLE pill by the title: beside it on a wide row, before the artist on a narrow one', () => {
+    render(<TrackRow track={{ ...dead, title: 'A very long title that will not fit in a phone row at all' }} unavailable />);
+    const title = screen.getByTestId('track-row-title');
+    const badge = screen.getByTestId('unavailable-badge');
+    // One grid: the title (truncating) on top, then the pill and the artist
+    // line. On a narrow row the title spans the width and the pill takes the
+    // artist's line; from @md the title keeps one column and the pill sits
+    // beside it, the artist line spanning under both.
+    const grid = title.parentElement!;
+    expect(grid).toHaveClass('grid', 'grid-cols-[minmax(0,auto)_minmax(0,1fr)]', '@md:grid-cols-[minmax(0,max-content)_minmax(0,1fr)]');
+    expect(title).toHaveClass('truncate', 'col-span-2', '@md:col-span-1', 'text-muted-foreground');
+    expect(title.nextElementSibling).toBe(badge);
+    expect(badge.nextElementSibling).toHaveClass('truncate', 'hidden', '@md:block', '@md:col-span-2');
+    expect(badge).toHaveClass('shrink-0', 'rounded-full', 'border', 'uppercase');
+  });
+
+  it('a song that plays keeps the plain title block', () => {
+    render(<TrackRow track={track} />);
+    expect(screen.getByTestId('track-row-title').parentElement).not.toHaveClass('grid');
+  });
+
+  it('a compact row (the queue sheet) is greyed with the same pill', () => {
+    const { container } = render(<TrackRow track={dead} density="compact" tone="sidebar" unavailable onPlay={vi.fn()} />);
+    const badge = screen.getByTestId('unavailable-badge');
+    expect(badge).toHaveTextContent('Unavailable');
+    expect(badge).toHaveAttribute('title', 'Removed from YouTube');
+    expect(badge.parentElement).toBe(screen.getByTestId('track-row-title'));
+    expect(container.firstElementChild?.className).toContain('opacity-60');
+  });
+
+  it('a compact row of a song that plays has no pill', () => {
+    render(<TrackRow track={track} density="compact" onPlay={vi.fn()} />);
+    expect(screen.queryByTestId('unavailable-badge')).toBeNull();
+  });
+
   it('falls back to a generic reason when the code is unknown', () => {
     render(<TrackRow track={{ ...dead, unavailableReason: 'weird' }} unavailable />);
     expect(screen.getByTestId('unavailable-badge')).toHaveAttribute('title', 'Not available');
@@ -263,7 +298,7 @@ describe('TrackRow (unavailable)', () => {
     render(<TrackRow track={dead} unavailable onPlay={onPlay} />);
     fireEvent.click(screen.getByText('Midnight Drive'));
     expect(onPlay).not.toHaveBeenCalled();
-    expect(toast.message).toHaveBeenCalledWith('"Midnight Drive" is unavailable on YouTube');
+    expect(toast.message).toHaveBeenCalledWith('Couldn\'t play "Midnight Drive": removed from YouTube.');
   });
 
   it('still plays a normal row on click', () => {

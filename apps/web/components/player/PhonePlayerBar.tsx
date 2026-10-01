@@ -4,6 +4,7 @@ import type { MouseEvent } from 'react';
 import { MarqueeText } from '@/components/player/MarqueeText';
 import { OfflineBadge } from '@/components/player/OfflineBadge';
 import { SeekBar } from '@/components/player/SeekBar';
+import { UnplayableMessage, useUnplayableMessage } from '@/components/player/UnplayableMessage';
 import { Artwork } from '@/components/primitives/Artwork';
 import { Button } from '@/components/ui/button';
 import { NextIcon, PauseIcon, PlayIcon } from '@/components/icons';
@@ -58,6 +59,10 @@ export interface PhonePlayerBarProps {
   /** Opens the full-screen view: a tap anywhere on the row except the two
    *  buttons. Previous and the queue live there. */
   onOpen: () => void;
+  /** The bar's message about a song that could not play: a tap on a
+   *  passing failure tries it again, any other opens the queue. */
+  onRetry?: () => void;
+  onOpenQueue?: () => void;
 }
 
 /**
@@ -82,6 +87,8 @@ export function PhonePlayerBar({
   onSeek,
   onNext,
   onOpen,
+  onRetry,
+  onOpenQueue,
 }: PhonePlayerBarProps) {
   // Prefer a downloaded copy's own local art over the remote URL, the same
   // way the desktop bar's NowPlayingSummary does.
@@ -89,6 +96,9 @@ export function PhonePlayerBar({
   // Offline, the artist line gives way to the offline state: same height,
   // so the bar never jumps.
   const online = useAutoCacheStore((s) => s.online);
+  // A song that could not play: the bar says so in place of the song for a
+  // few seconds (or until the listener acts, when the music stopped).
+  const unplayable = useUnplayableMessage();
 
   // The whole row opens the full-screen view, except the buttons: pressing
   // play must only play, and next only skip.
@@ -105,19 +115,25 @@ export function PhonePlayerBar({
         className="flex cursor-pointer items-center gap-block pl-block pr-block pt-row pb-cluster"
       >
         <div data-testid="phone-player-title-row" className="flex min-w-0 flex-1 items-center gap-row">
-          <Artwork src={artSrc} className="size-art-bar shrink-0 rounded-md bg-art" />
-          {/* min-w-0 flex-1: the marquee's box is sized by the row, never by
-              the title inside it, which is what keeps measuring it stable. */}
-          <div className="min-w-0 flex-1">
-            <MarqueeText text={track.title} className="text-base font-semibold" />
-            {online ? (
-              <div className="truncate text-sm text-muted-foreground" title={track.artist}>
-                {track.artist}
+          {unplayable ? (
+            <UnplayableMessage size="bar" onRetry={onRetry} onOpenQueue={onOpenQueue} />
+          ) : (
+            <>
+              <Artwork src={artSrc} className="size-art-bar shrink-0 rounded-md bg-art" />
+              {/* min-w-0 flex-1: the marquee's box is sized by the row, never by
+                  the title inside it, which is what keeps measuring it stable. */}
+              <div className="min-w-0 flex-1">
+                <MarqueeText text={track.title} className="text-base font-semibold" />
+                {online ? (
+                  <div className="truncate text-sm text-muted-foreground" title={track.artist}>
+                    {track.artist}
+                  </div>
+                ) : (
+                  <OfflineBadge inline className="flex" />
+                )}
               </div>
-            ) : (
-              <OfflineBadge inline className="flex" />
-            )}
-          </div>
+            </>
+          )}
         </div>
 
         {/* Hit boxes touch: the glyphs' own margins space them. */}

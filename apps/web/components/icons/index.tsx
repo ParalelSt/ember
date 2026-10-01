@@ -51,6 +51,8 @@ export {
   Airplay as AirplayIcon,
   ChevronRight as ChevronRightIcon,
   CircleAlert as AlertIcon,
+  // A song that could not play (the player bar's message, the queue).
+  TriangleAlert as WarningIcon,
   ListChecks as ReviewIcon,
   Paperclip as AttachIcon,
   Film as VideoIcon,

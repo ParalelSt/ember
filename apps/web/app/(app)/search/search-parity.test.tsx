@@ -100,10 +100,10 @@ function renderWith(ui: React.ReactElement) {
 }
 
 // TrackRow (density="list", what TrackList uses) renders the title in a
-// plain div (no heading role); this class is how it's found in both the
+// plain div (no heading role); its test id is how it's found in both the
 // page and the overlay without relying on a11y roles that don't exist here.
 function resultTitles(container: HTMLElement): (string | null)[] {
-  return Array.from(container.querySelectorAll('.truncate.text-sm.font-semibold')).map(
+  return Array.from(container.querySelectorAll('[data-testid="track-row-title"]')).map(
     (el) => el.textContent,
   );
 }

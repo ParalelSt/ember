@@ -36,7 +36,7 @@ vi.mock('@/lib/streamCache', () => ({ queueCacheWarm: (...a: unknown[]) => queue
 const markTrackUnavailable = vi.fn(async () => {});
 vi.mock('@/lib/trackAvailability', () => ({
   clearTrackUnavailable: vi.fn(),
-  listUnavailableIds: async () => new Set<string>(),
+  listUnavailableIds: async () => new Set<string>(), freshUnavailableMark: async () => null,
   markTrackUnavailable: (...a: unknown[]) => markTrackUnavailable(...(a as [])),
 }));
 vi.mock('@/lib/logger/withRequestLog', () => ({
@@ -47,6 +47,7 @@ vi.mock('@/lib/logger/server', () => ({
 }));
 
 const { GET } = await import('./route');
+const { _resetFailureMemo } = await import('@/lib/sources/failureMemo');
 
 let listenerSeq = 0;
 /** Each test is its own listener, so the in-memory limiter never leaks. A
@@ -65,6 +66,7 @@ function get(videoId: string, { prefetch = true, ip = listener() } = {}) {
 }
 
 beforeEach(() => {
+  _resetFailureMemo();
   ensureDownloaded.mockReset();
   resolveStreamUrl.mockReset();
   queueCacheWarm.mockReset();

@@ -36,13 +36,14 @@ let member: string | null = null;
 vi.mock('@/lib/auth', () => ({ verifiedUserId: async () => member }));
 vi.mock('@/lib/streamCache', () => ({ queueCacheWarm: vi.fn() }));
 vi.mock('@/lib/trackAvailability', () => ({
-  clearTrackUnavailable: vi.fn(), listUnavailableIds: async () => new Set<string>(), markTrackUnavailable: vi.fn(),
+  clearTrackUnavailable: vi.fn(), listUnavailableIds: async () => new Set<string>(), freshUnavailableMark: async () => null, markTrackUnavailable: vi.fn(),
 }));
 vi.mock('@/lib/logger/withRequestLog', () => ({ withRequestLog: (_r: string, h: unknown) => h }));
 vi.mock('@/lib/logger/server', () => ({ serverLogger: { error: vi.fn(), warn: vi.fn(), info: vi.fn() } }));
 vi.mock('@/lib/upsertTrack', () => ({ fromError: (e: Error) => Response.json({ error: e.message }, { status: 500 }) }));
 
 const { GET } = await import('./route');
+const { _resetFailureMemo } = await import('@/lib/sources/failureMemo');
 const { POST: DOWNLOAD } = await import('../../download/[videoId]/route');
 const { _resetBuckets } = await import('@/lib/rateLimit');
 
@@ -59,6 +60,7 @@ function download(videoId: string) {
 const cold = (n: number) => `coldacc${String(n).padStart(4, '0')}`;
 
 beforeEach(() => {
+  _resetFailureMemo();
   member = null;
   _resetBuckets();
   ensureDownloaded.mockReset();

@@ -173,3 +173,20 @@ describe('useAvailabilityProbe [bughunt V5]: signed out', () => {
     expect(next).not.toHaveBeenCalled();
   });
 });
+
+describe('useAvailabilityProbe: flags the provider makes itself', () => {
+  it('hands out the list refresh, for songs the Android player or a prefetch found gone', () => {
+    const refreshRef = { current: () => {} };
+    renderHook(() => useAvailabilityProbe({ current: vi.fn() }, undefined, true, refreshRef));
+    refreshRef.current();
+    expect(invalidateQueries).toHaveBeenCalledTimes(3);
+  });
+
+  it('a dead song still playing goes to the provider\'s handler, with the reason, instead of Next', async () => {
+    const { probe, next } = setup();
+    const onDead = vi.fn();
+    probe(undefined, onDead);
+    await waitFor(() => expect(onDead).toHaveBeenCalledWith(expect.objectContaining({ id: 'youtube:dead' }), 'removed'));
+    expect(next).not.toHaveBeenCalled();
+  });
+});

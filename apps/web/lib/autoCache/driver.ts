@@ -51,6 +51,9 @@ export interface DriverDeps {
   /** The adapter's contents changed (a download landed, something was evicted). */
   onCacheChange?: () => void;
   onInFlight?: (id: string | null) => void;
+  /** The host answered 410 for this track: YouTube no longer has it. The
+   *  player greys it in the queue before it is reached. */
+  onGone?: (id: string) => void;
   log?: (event: string, data: Record<string, unknown>) => void;
 }
 
@@ -182,6 +185,7 @@ export function createAutoCacheDriver(deps: DriverDeps): AutoCacheDriver {
     backoffUntil = ledger.backoffUntil;
     attempts = ledger.attempts;
     log('result', { id, result: result.kind, drop: ledger.drop });
+    if (result.kind === 'gone') deps.onGone?.(id);
     if (result.kind === 'done') {
       // The real size can beat the estimate (a long upload): trim back under the cap.
       const trim = evictToFit(buildInput(), lastUsedMap(), 0);

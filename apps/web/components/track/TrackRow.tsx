@@ -12,6 +12,7 @@ import { CloseIcon, PauseIcon, PlayIcon, RefreshIcon, TrashIcon } from '@/compon
 import { formatTime } from '@/lib/format';
 import type { PlaylistPerson, Track } from '@/types/track';
 import { cn } from '@/lib/utils';
+import { reasonLabel, reasonPhrase } from '@/lib/playback/unplayable';
 
 export type TrackRowDensity = 'list' | 'compact';
 /** Which palette the row sits in. The queue sheet paints its own sidebar
@@ -23,18 +24,6 @@ const SUBTLE: Record<TrackRowTone, string> = {
   sidebar: 'text-sidebar-foreground/55',
 };
 
-/** Words for `unavailableReason` codes, shown as the badge's `title`
- *  tooltip so a listener can see why without opening the replace dialog. */
-function reasonLabel(reason: string | null | undefined): string {
-  switch (reason) {
-    case 'removed': return 'Removed from YouTube';
-    case 'private': return 'Made private';
-    case 'geo': return 'Blocked in this country';
-    case 'members': return 'Members only';
-    case 'terminated': return 'Channel closed';
-    default: return 'Not available';
-  }
-}
 
 export interface TrackRowProps {
   track: Track;
@@ -62,8 +51,10 @@ export interface TrackRowProps {
   trailing?: ReactNode;
   /** The server has confirmed this track can no longer be streamed. Greys
    *  the row, badges the title, disables its play cell, and turns a click
-   *  into an explanation instead of silent nothing. `list` density only:
-   *  compact rows (queue sheet, recents, picker) are unchanged. */
+   *  into an explanation instead of silent nothing. A compact row (the
+   *  queue sheet) is greyed the same way, with the same small pill, so a
+   *  song radio could not play stays visible in the queue instead of
+   *  silently vanishing. The pill's tooltip gives the reason. */
   unavailable?: boolean;
   /** Opens the find-replacement flow. Only rendered on an unavailable row,
    *  and only where a replacement is actionable (a playlist, or Liked). */
@@ -142,7 +133,7 @@ export function TrackRow({
   const playOrToast = onPlay
     ? () => {
         if (unavailable) {
-          toast.message(`"${track.title}" is unavailable on YouTube`);
+          toast.message(`Couldn't play "${track.title}": ${reasonPhrase(track.unavailableReason)}.`);
           return;
         }
         onPlay();
@@ -246,21 +237,43 @@ export function TrackRow({
    *  which of the two it is. */
   const emberTitle = trailingPlayControl && active && 'text-ember';
 
+  /** The small "UNAVAILABLE" pill by a greyed title (the owner's pick,
+   *  /dizajn/unplayable option B). Never cut: the title gives way first. */
+  const unavailablePill = unavailable ? (
+    <span
+      data-testid="unavailable-badge"
+      title={reasonLabel(track.unavailableReason)}
+      className={cn(
+        'shrink-0 rounded-full border px-inset font-semibold uppercase',
+        compact
+          ? cn('border-sidebar-border text-[10px] tracking-wider', SUBTLE[tone])
+          // Never wider than the row: on the narrowest one it cuts rather
+          // than spilling under the buttons.
+          : 'min-w-0 max-w-full justify-self-start truncate text-[10px] tracking-wide text-muted-foreground',
+      )}
+    >
+      Unavailable
+    </span>
+  ) : null;
+
   if (compact) {
     return (
       <div
-        onClick={onPlay}
+        onClick={playOrToast}
+        data-unavailable={unavailable ? 'true' : undefined}
         className={cn(
           'group flex items-center gap-3 px-3 py-2 rounded-md transition-colors',
           onPlay && 'cursor-pointer hover:bg-card',
           active && !trailingPlayControl && 'text-ember',
+          unavailable && 'opacity-60',
           className,
         )}
       >
         {artwork}
         <div className="min-w-0 flex-1">
-          <div data-testid="track-row-title" className={cn('truncate text-sm font-medium', emberTitle)}>
-            {track.title}
+          <div data-testid="track-row-title" className={cn('flex min-w-0 items-center gap-cluster text-sm font-medium', emberTitle)}>
+            <span className="truncate">{track.title}</span>
+            {unavailablePill}
           </div>
           {/* Plain text, not a link: these rows sit inside a sheet, a
               recents list and a picker, where a stray navigation would
@@ -333,24 +346,25 @@ export function TrackRow({
 
       <div data-testid="track-row-title-cell" className="flex items-center gap-3 min-w-0">
         {artwork}
-        <div className="min-w-0">
+        <div
+          className={cn(
+            'min-w-0',
+            // The pill sits beside the title where the row has room; on a
+            // narrow one (a phone row's buttons leave about 100px) it takes
+            // the artist's line instead, so the title and the pill both read
+            // in full.
+            unavailable && 'grid grid-cols-[minmax(0,auto)_minmax(0,1fr)] items-center gap-x-cluster @md:grid-cols-[minmax(0,max-content)_minmax(0,1fr)]',
+          )}
+        >
           <div
             data-testid="track-row-title"
             onClick={selecting ? undefined : playOrToast}
-            className={cn('truncate text-sm font-semibold', emberTitle, unavailable && 'text-muted-foreground')}
+            className={cn('truncate text-sm font-semibold', emberTitle, unavailable && 'col-span-2 text-muted-foreground @md:col-span-1')}
           >
             {track.title}
-            {unavailable && (
-              <span
-                data-testid="unavailable-badge"
-                title={reasonLabel(track.unavailableReason)}
-                className="ml-2 rounded-full border px-1.5 text-[10px] uppercase tracking-wider text-muted-foreground align-middle"
-              >
-                Unavailable
-              </span>
-            )}
           </div>
-          <div className="truncate text-xs text-muted-foreground">
+          {unavailablePill}
+          <div className={cn('truncate text-xs text-muted-foreground', unavailable && 'hidden @md:col-span-2 @md:block')}>
             {/* Who added it leads the line, so a narrow row cuts the
                 artist rather than the picture; the name follows the artist
                 where the row is wide enough. */}

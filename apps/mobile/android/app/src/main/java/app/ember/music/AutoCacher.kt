@@ -24,6 +24,9 @@ class AutoCacher(
     private val snapshot: () -> Snapshot?,
     /** A download finished: the cached set changed. */
     private val onCached: (String) -> Unit = {},
+    /** The host answered 410 for this song (YouTube no longer has it), with
+     *  the failure, whose body carries the host's reason. */
+    private val onGone: (String, Throwable?) -> Unit = { _, _ -> },
 ) {
     /** What the cache holds. */
     interface Store {
@@ -173,6 +176,7 @@ class AutoCacher(
         attempts = ledger.attempts
         Log.i(TAG, "prefetch ${r.id}: $result${if (ledger.drop) " (dropped for this session)" else ""}")
         if (result is AutoCachePolicy.Result.Done) onCached(r.id)
+        if (result is AutoCachePolicy.Result.Gone) onGone(r.id, out.exceptionOrNull())
         tick()
     }
 

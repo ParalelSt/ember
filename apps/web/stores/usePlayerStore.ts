@@ -155,3 +155,21 @@ export const usePlayerStore = create<PlayerState>()(
     },
   ),
 );
+
+/** Marks every queue entry for this song unavailable (greyed in the queue,
+ *  walked past by next/prev), in the shuffle's way back too, so turning
+ *  shuffle off does not bring back an unmarked copy. False when the song is
+ *  not in the queue (the listener moved on). An entry already marked keeps
+ *  its date; a new reason still lands. */
+export function flagQueueUnavailable(id: string, reason: string | null, at: string = new Date().toISOString()): boolean {
+  const st = usePlayerStore.getState();
+  if (!st.queue.some((t) => t.id === id)) return false;
+  const mark = (t: Track): Track => (
+    t.id === id ? { ...t, unavailableAt: t.unavailableAt || at, unavailableReason: reason ?? t.unavailableReason ?? null } : t
+  );
+  usePlayerStore.setState((s) => ({
+    queue: s.queue.map(mark),
+    orderBackup: s.orderBackup ? s.orderBackup.map(mark) : null,
+  }));
+  return true;
+}

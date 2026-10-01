@@ -2,14 +2,19 @@
 
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { TrackRow } from '@/components/track/TrackRow';
+import { CouldntPlaySection, couldntPlayEntries } from '@/components/player/CouldntPlaySection';
 import { usePlayer } from '@/components/player/PlayerProvider';
 import { usePlayerStore } from '@/stores/usePlayerStore';
 import { useOfflineStore } from '@/stores/useOfflineStore';
 import { localArtFor } from '@/lib/offlineNative';
-import { isPlayableOffline } from '@/lib/playback/queueNav';
+import { isPlayableOffline, isUnavailable } from '@/lib/playback/queueNav';
 import { useAutoCacheStore } from '@/stores/useAutoCacheStore';
+import { useUnplayableStore } from '@/stores/useUnplayableStore';
 import { cn } from '@/lib/utils';
 import type { Track } from '@/types/track';
+
+/** The sheet's section headings: "Couldn't play", "Now playing", "Next up". */
+const SECTION_LABEL = 'px-3 text-[11px] uppercase tracking-widest text-sidebar-foreground/55 mb-1.5';
 
 interface Props {
   open: boolean;
@@ -35,20 +40,27 @@ export function QueueSheet({ open, onOpenChange }: Props) {
 
   const current = queue[index] ?? null;
   const upcoming = queue.slice(index + 1);
+  // This session's songs that could not play, still in this queue.
+  const couldntPlay = useUnplayableStore((s) => s.couldntPlay);
+  const failed = couldntPlayEntries(couldntPlay, queue, current?.id ?? null);
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent side="right" className="w-96 max-w-[90vw] flex flex-col bg-sidebar text-sidebar-foreground border-sidebar-border p-0">
+      {/* Width named under the sheet's own side variant: its default
+          (data-[side=right]:w-3/4) outranks a plain w-96, which left the
+          queue at three quarters of a phone, too narrow for "Couldn't play"'s
+          reason lines. 90% of a phone, as in the owner's pick. */}
+      <SheetContent side="right" className="data-[side=right]:w-96 max-w-[90vw] flex flex-col bg-sidebar text-sidebar-foreground border-sidebar-border p-0">
         <SheetHeader className="px-4 py-4 border-b border-sidebar-border">
           <SheetTitle className="text-base">Queue</SheetTitle>
         </SheetHeader>
 
         <div className="flex-1 overflow-y-auto px-2 py-3 flex flex-col gap-3">
+          <CouldntPlaySection entries={failed} artworkSrcFor={artworkSrcFor} labelClassName={SECTION_LABEL} />
+
           {current && (
             <div>
-              <div className="px-3 text-[11px] uppercase tracking-widest text-sidebar-foreground/55 mb-1.5">
-                Now playing
-              </div>
+              <div className={SECTION_LABEL}>Now playing</div>
               {/* No onPlay: the current row is a label, not a control. */}
               <TrackRow
                 track={current}
@@ -56,6 +68,7 @@ export function QueueSheet({ open, onOpenChange }: Props) {
                 tone="sidebar"
                 showDuration
                 active
+                unavailable={isUnavailable(current)}
                 artworkFallback={null}
                 artworkSrc={artworkSrcFor(current)}
               />
@@ -64,9 +77,7 @@ export function QueueSheet({ open, onOpenChange }: Props) {
 
           {upcoming.length > 0 && (
             <div>
-              <div className="px-3 text-[11px] uppercase tracking-widest text-sidebar-foreground/55 mb-1.5">
-                Next up · {upcoming.length}
-              </div>
+              <div className={SECTION_LABEL}>Next up · {upcoming.length}</div>
               <div className="flex flex-col">
                 {upcoming.map((t, i) => (
                   <TrackRow
@@ -75,6 +86,9 @@ export function QueueSheet({ open, onOpenChange }: Props) {
                     density="compact"
                     tone="sidebar"
                     showDuration
+                    // Greyed with its reason, not dropped: a song that could
+                    // not play stays where it was, and says why.
+                    unavailable={isUnavailable(t)}
                     artworkFallback={null}
                     artworkSrc={artworkSrcFor(t)}
                     className={cn('hover:bg-sidebar-accent/60', outOfReach(t) && 'opacity-50')}

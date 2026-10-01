@@ -1,8 +1,8 @@
 'use client';
 
-import { useCallback, type RefObject } from 'react';
+import { useCallback, useEffect, type RefObject } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { usePlayerStore } from '@/stores/usePlayerStore';
+import { flagQueueUnavailable, usePlayerStore } from '@/stores/usePlayerStore';
 import { QK } from '@/hooks/useLibrary';
 import { api } from '@/lib/api';
 import { logger } from '@/lib/logger/client';
@@ -34,10 +34,27 @@ export function useAvailabilityProbe(
   nextRef: RefObject<() => void>,
   onOfflineRef?: RefObject<((failed: { id: string }) => void) | null>,
   signedIn = true,
+  /** Filled with the list refresh below, for the songs the provider flags
+   *  itself (the Android player's reports, a prefetch answered 410). */
+  refreshRef?: RefObject<() => void>,
 ) {
   const qc = useQueryClient();
 
-  return useCallback((onStillPlayable?: (track: { title: string }) => void) => {
+  /** The lists that draw the unavailable badge (liked, history, playlists),
+   *  refetched after a flag. Also handed out through `refreshRef`. */
+  const refreshLists = useCallback(() => {
+    qc.invalidateQueries({ queryKey: QK.likes });
+    qc.invalidateQueries({ queryKey: QK.history });
+    qc.invalidateQueries({ queryKey: ['playlist'] });
+  }, [qc]);
+
+  /** `onDead`, when given, decides what happens to a dead track that is
+   *  still the one playing (the provider says why and moves on, or stops
+   *  after too many in a row); without it, Next is pressed. */
+  const probe = useCallback((
+    onStillPlayable?: (track: { id: string; title: string }) => void,
+    onDead?: (track: { id: string; title: string }, reason: string | null) => void,
+  ) => {
     const st = usePlayerStore.getState();
     const cur = st.queue[st.index];
     if (!cur || isUnavailable(cur)) return;
@@ -61,29 +78,29 @@ export function useAvailabilityProbe(
         onStillPlayable?.(cur);
         return;
       }
-      const at = new Date().toISOString();
       const before = usePlayerStore.getState();
       // The request outlived its track: the user may have skipped away (or
       // the track left the queue) while it was in flight. Flag the entry by
       // id wherever it now sits, but only auto-advance if it is still the
       // one actually playing, otherwise this stale answer would fire an
       // unrequested extra skip from wherever they are now.
-      if (!before.queue.some((t) => t.id === erroredId)) return;
-      usePlayerStore.setState((s) => ({
-        queue: s.queue.map((t) => (
-          t.id === erroredId ? { ...t, unavailableAt: at, unavailableReason: reason } : t
-        )),
-      }));
-      qc.invalidateQueries({ queryKey: QK.likes });
-      qc.invalidateQueries({ queryKey: QK.history });
-      qc.invalidateQueries({ queryKey: ['playlist'] });
+      if (!flagQueueUnavailable(erroredId, reason)) return;
+      refreshLists();
       logger.breadcrumb('playback', 'unavailable', { trackId: erroredId, reason });
-      if (before.queue[before.index]?.id === erroredId) nextRef.current();
+      if (before.queue[before.index]?.id !== erroredId) return;
+      if (onDead) onDead(cur, reason);
+      else nextRef.current();
     }).catch(() => {
       // The server could not be asked either. The track is not known to be
       // dead, so it is the same "it just would not load" case: say so rather
       // than leaving the player silent with no explanation.
       onStillPlayable?.(cur);
     });
-  }, [qc, nextRef, onOfflineRef, signedIn]);
+  }, [refreshLists, nextRef, onOfflineRef, signedIn]);
+
+  useEffect(() => {
+    if (refreshRef) refreshRef.current = refreshLists;
+  }, [refreshRef, refreshLists]);
+
+  return probe;
 }

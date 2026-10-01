@@ -57,6 +57,24 @@ internal fun queueContextArgs(data: JSONObject): Bundle = Bundle().apply {
     putInt("baseCount", data.optInt("baseCount", 0).coerceAtLeast(0))
 }
 
+/** The `unplayable` event's name, and its payload: { notices: [...] }, each
+ *  { trackId, title, kind, reason, outcome } (lib/playback/unplayable.ts). */
+internal const val EVENT_UNPLAYABLE = "unplayable"
+
+internal fun unplayableJs(notices: List<UnplayableNotice>): JSObject = JSObject().apply {
+    val list = JSArray()
+    notices.forEach { n ->
+        list.put(JSObject().apply {
+            put("trackId", n.trackId)
+            put("title", n.title)
+            put("kind", n.kind)
+            put("reason", n.reason ?: JSONObject.NULL)
+            put("outcome", n.outcome)
+        })
+    }
+    put("notices", list)
+}
+
 /** `{ index, tracks, shuffle }`: the native queue as the web app holds it,
  *  and whether it is shuffled (the car's Shuffle button reorders it). Both
  *  the `queue` event and getQueue send this. */
@@ -190,7 +208,20 @@ class EmberPlayerPlugin : Plugin() {
     /** Keeps the app's own queue changes from being reported back to it. */
     private val echo = QueueEcho()
 
+    /** UnplayableNotices' delivery: refused (kept for later) while the page
+     *  has no `unplayable` listener, since Capacitor drops an event nobody
+     *  listens to. */
+    private val unplayableSink: (List<UnplayableNotice>) -> Boolean = { notices ->
+        if (!hasListeners(EVENT_UNPLAYABLE)) false
+        else {
+            val payload = unplayableJs(notices)
+            bridge.executeOnMainThread { notifyListeners(EVENT_UNPLAYABLE, payload) }
+            true
+        }
+    }
+
     override fun load() {
+        UnplayableNotices.attach(unplayableSink)
         main.post { startCast() }
         val token = SessionToken(context, ComponentName(context, EmberPlaybackService::class.java))
         val future = MediaController.Builder(context, token).setListener(sessionEvents).buildAsync()
@@ -366,6 +397,12 @@ class EmberPlayerPlugin : Plugin() {
         }
     }
     @PluginMethod fun getState(call: PluginCall) = withController { call.resolve(state(it)) }
+
+    /** Songs that failed while no page was listening (the app closed, the
+     *  WebView re-created): the page asks once, as it starts. */
+    @PluginMethod fun drainUnplayable(call: PluginCall) {
+        call.resolve(unplayableJs(UnplayableNotices.drain()))
+    }
     /** `{ index, tracks }`: what native is playing from. A page that starts
      *  while the music already plays (reopened after the car, or after the
      *  app was swiped away) takes this instead of pushing its saved queue
@@ -687,6 +724,9 @@ class EmberPlayerPlugin : Plugin() {
 
     override fun handleOnResume() {
         super.handleOnResume()
+        // Back in front: whatever failed while away arrives as one batch
+        // (one summary on screen), never a toast per song while unseen.
+        UnplayableNotices.setOnScreen(true)
         main.post {
             discover(true)
             // Back on screen after a trip to the settings or the switcher.
@@ -697,10 +737,13 @@ class EmberPlayerPlugin : Plugin() {
 
     override fun handleOnPause() {
         super.handleOnPause()
+        UnplayableNotices.setOnScreen(false)
         main.post { discover(false) }
     }
 
     override fun handleOnDestroy() {
+        UnplayableNotices.setOnScreen(false)
+        UnplayableNotices.detach(unplayableSink)
         controller?.release(); controller = null
         main.post {
             discover(false)

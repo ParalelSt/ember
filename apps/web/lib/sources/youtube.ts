@@ -10,6 +10,7 @@ import { downloadGate, type Release } from '@/lib/downloadGate';
 import { BusyError, createSemaphore, type Semaphore } from '@/lib/semaphore';
 import { exceedsMediaLimits, isTooLargeMessage } from '@/lib/mediaLimits';
 import { gainForMeasurement } from '@/lib/loudnessPolicy';
+import { forgetFailure, recentFailure, rememberUnavailable } from '@/lib/sources/failureMemo';
 
 // apps/web is one level deeper than the old apps/api in workspace layout,
 // but both resolve to the same spotify-clone root.
@@ -69,6 +70,24 @@ interface PythonError extends Error {
  *  definite no for this video, never retried, never streamed live instead. */
 export function isTooLargeError(e: unknown): e is Error & { status: 413; tooLarge: true } {
   return (e as { tooLarge?: boolean } | undefined)?.tooLarge === true;
+}
+
+/** The error a known-unavailable video fails with, without asking yt-dlp
+ *  again (lib/sources/failureMemo). Same shape as the one spawnPython builds
+ *  from yt-dlp's own answer, so every caller treats it the same. */
+function knownUnavailableError(videoId: string): PythonError | null {
+  const known = recentFailure(videoId);
+  if (known?.kind !== 'unavailable') return null;
+  const e: PythonError = new Error(known.message);
+  e.status = 410;
+  e.unavailableReason = known.reason;
+  return e;
+}
+
+/** Remember a definite "this video is gone" so the next request for it
+ *  (the player's retry, the real play after a prefetch) is answered at once. */
+function noteFailure(videoId: string, e: unknown): void {
+  if (isUnavailableError(e)) rememberUnavailable(videoId, e.unavailableReason, e.message);
 }
 
 function tooLargeError(message: string): PythonError {
@@ -165,7 +184,16 @@ function spawnPython<T>(args: string[], timeoutMs: number): Promise<T> {
     let stdout = '';
     let stderr = '';
     const reject_ = (e: PythonError) => {
-      serverLogger.error('python', e.message, { args, stderr: stderr.slice(-200) }, e);
+      // A video YouTube has taken down (removed, private, geo, members only,
+      // "This video is not available") is an answer, not a fault: the host
+      // did its job, and nothing on it needs fixing. Logged below 'error' so
+      // the daily digest counts real problems only; a 403, a timeout or a
+      // crash stays an error.
+      if (e.unavailableReason) {
+        serverLogger.info('python', 'video unavailable on YouTube', { args, reason: e.unavailableReason, detail: e.message });
+      } else {
+        serverLogger.error('python', e.message, { args, stderr: stderr.slice(-200) }, e);
+      }
       reject(e);
     };
     const timer = setTimeout(() => {
@@ -322,6 +350,11 @@ export async function ensureDownloaded(videoId: string, opts: { prefetch?: boole
   const already = findCachedFile(videoId);
   if (already) return already;
 
+  // YouTube told us minutes ago that this video is gone: asking again only
+  // spends seconds of yt-dlp (and a download slot) on the same answer.
+  const gone = knownUnavailableError(videoId);
+  if (gone) throw gone;
+
   let slot: Release | null = null;
   if (opts.prefetch) {
     slot = downloadGate.tryAcquireIdle();
@@ -342,7 +375,11 @@ export async function ensureDownloaded(videoId: string, opts: { prefetch?: boole
     }
     try {
       const result = await spawnPython<{ filePath: string }>(['download', '--', videoId], 180000);
+      forgetFailure(videoId);
       return result.filePath;
+    } catch (e) {
+      noteFailure(videoId, e);
+      throw e;
     } finally {
       release();
     }
@@ -883,7 +920,15 @@ export async function resolveStreamUrl(videoId: string): Promise<StreamInfo> {
   }
   const cached = URL_CACHE.get(videoId);
   if (cached && cached.expires > Date.now()) return cached.info;
-  const info = await runPython<StreamInfo>(['info', '--', videoId], { timeoutMs: 30000 });
+  const gone = knownUnavailableError(videoId);
+  if (gone) throw gone;
+  let info: StreamInfo;
+  try {
+    info = await runPython<StreamInfo>(['info', '--', videoId], { timeoutMs: 30000 });
+  } catch (e) {
+    noteFailure(videoId, e);
+    throw e;
+  }
   if (!info?.url) {
     const e: PythonError = new Error('no upstream URL');
     e.status = 502;

@@ -25,6 +25,14 @@ GET /api/youtube/stream/<videoId>   (no marker: a real play, unchanged)
   a cold id waits for a free download slot (FIFO), then behaves as before
 ```
 
+Songs that will not play are answered before any yt-dlp run, for a play and
+a prefetch alike: a video flagged unavailable in the tracks table (within 3
+days) or found gone by this process (6 hours) gets its 410 at once, and one
+that could not be fetched in the last 2 minutes gets a quick 502 with
+`recent: true` and a Retry-After. Both carry `Cache-Control: no-store`, so
+the host hears every ask and can tell the player why
+(`/api/tracks/<id>/availability`). See `apps/web/lib/sources/failureMemo.ts`.
+
 A prefetch takes the download path in every `STREAM_MODE`: proxying
 googlevideo is where 403s come from, and it would not leave the song on disk
 for the listener's real play.

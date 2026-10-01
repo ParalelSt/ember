@@ -15,6 +15,7 @@ import { AddToPlaylistMenu } from '@/components/track/menus/AddToPlaylistMenu';
 import { ShareButton } from '@/components/track/ShareButton';
 import { QueueSheet } from '@/components/player/QueueSheet';
 import { NowPlayingSummary } from '@/components/player/NowPlayingSummary';
+import { UnplayableMessage, useUnplayableMessage } from '@/components/player/UnplayableMessage';
 import { OfflineBadge } from '@/components/player/OfflineBadge';
 import { PhonePlayerBar, PLAYER_BAR_CHROME } from '@/components/player/PhonePlayerBar';
 import { SeekBar } from '@/components/player/SeekBar';
@@ -34,7 +35,7 @@ import { isTabsPathFor, tabsHref } from '@/lib/tabSources';
 import { leavePage, notePathname } from '@/lib/inAppHistory';
 
 export function PlayerBar() {
-  const { current, isPlaying, position, duration, volume, toggle, next, prev, seek, setVolume } = usePlayer();
+  const { current, isPlaying, position, duration, volume, toggle, next, prev, seek, setVolume, retry } = usePlayer();
   const { user } = useAuth();
   // A real media query, not `md:` classes: the two bars share almost no
   // geometry, and rendering both with one hidden would put two transports,
@@ -56,6 +57,8 @@ export function PlayerBar() {
   const cycleLoopMode = usePlayerStore((s) => s.cycleLoopMode);
   const muted = usePlayerStore((s) => s.muted);
   const toggleMuted = usePlayerStore((s) => s.toggleMuted);
+  // A song that could not play: said in the bar's title area, not a toast.
+  const unplayable = useUnplayableMessage();
 
   // Desktop only — the button is hidden on phones (md:inline-flex), where
   // lyrics live inside the full-screen NowPlaying view instead.
@@ -88,7 +91,12 @@ export function PlayerBar() {
           onSeek={seek}
           onNext={next}
           onOpen={() => openNowPlaying(true)}
+          onRetry={retry}
+          onOpenQueue={() => setQueueOpen(true)}
         />
+        {/* The bar's message opens the queue straight from here, where the
+            songs that could not play are listed with their reasons. */}
+        <QueueSheet open={queueOpen} onOpenChange={setQueueOpen} />
       </footer>
     );
   }
@@ -132,7 +140,11 @@ export function PlayerBar() {
       {/* Now playing. No tap-to-open here: this bar only renders on an md
           and wider window, and the phone bar owns that gesture. */}
       <div className="flex items-center gap-3 min-w-0">
-        <NowPlayingSummary track={current} size="sm" />
+        {unplayable ? (
+          <UnplayableMessage size="desktop" onRetry={retry} onOpenQueue={() => setQueueOpen(true)} />
+        ) : (
+          <NowPlayingSummary track={current} size="sm" />
+        )}
         <OfflineBadge />
         {current && user && (
           <div className="hidden sm:flex items-center gap-1 shrink-0">

@@ -14,7 +14,7 @@ vi.mock('@/lib/logger/withRequestLog', () => ({ withRequestLog: (_n: string, h: 
 vi.mock('@/lib/logger/server', () => ({ serverLogger: { error: vi.fn(), info: vi.fn(), warn: vi.fn() } }));
 vi.mock('@/lib/streamCache', () => ({ queueCacheWarm: vi.fn() }));
 vi.mock('@/lib/trackAvailability', () => ({
-  clearTrackUnavailable: vi.fn(), listUnavailableIds: async () => new Set(), markTrackUnavailable: vi.fn(),
+  clearTrackUnavailable: vi.fn(), listUnavailableIds: async () => new Set(), freshUnavailableMark: async () => null, markTrackUnavailable: vi.fn(),
 }));
 vi.mock('@/lib/upsertTrack', () => ({ fromError: (e: Error) => new Response(String(e?.message), { status: 500 }) }));
 vi.mock('@/lib/sources/youtube', () => ({
