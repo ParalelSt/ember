@@ -204,6 +204,10 @@ export class ImportRunner {
         failures += 1;
         const wait = backoff[failures - 1];
         this.deps.log?.('import batch failed', { job: job.id, failures, error: (e as Error).message });
+        // Stop may have been pressed while the batch was out; writing paused
+        // now would undo that cancel and the backoff would resume the job.
+        const current = await store.getJob(job.id);
+        if (!current || current.status !== 'running') return;
         if (wait === undefined) {
           await store.updateJob(job.id, {
             status: transition('running', 'give-up'),
@@ -258,6 +262,8 @@ export class ImportRunner {
       // claimNext still sorts by age, so it comes back once they are done.
       batches += 1;
       if (job.kind === 'liked' && batches % YIELD_AFTER_BATCHES === 0 && (await store.hasOtherQueued(job.id))) {
+        const current = await store.getJob(job.id);
+        if (!current || current.status !== 'running') return;
         this.deps.log?.('transfer yielded to a waiting import', { job: job.id, batches });
         await store.updateJob(job.id, { status: transition('running', 'yield'), heartbeat: null, runner: '' });
         return;

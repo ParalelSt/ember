@@ -322,6 +322,34 @@ describe('ImportRunner', () => {
     expect(match).toHaveBeenCalledTimes(1);
   });
 
+  it('a cancel while a batch is matching is not undone when that batch then fails', async () => {
+    const m = memoryStore(8);
+    const match = vi.fn(async () => {
+      m.job.status = 'cancelled';
+      throw Object.assign(new Error('503'), { status: 503 });
+    });
+    const { r, sleeps } = runner(m.store, { match });
+    await r.tick();
+    expect(m.job.status).toBe('cancelled');
+    expect(m.patches.some((p) => p.status === 'paused' || p.status === 'running')).toBe(false);
+    expect(sleeps).toEqual([]);
+    expect(match).toHaveBeenCalledTimes(1);
+  });
+
+  it('a cancel during the last failing batch is not turned into a give-up', async () => {
+    const m = memoryStore(8);
+    let calls = 0;
+    const match = vi.fn(async () => {
+      calls += 1;
+      if (calls === BACKOFF_MS.length + 1) m.job.status = 'cancelled';
+      throw new Error('503');
+    });
+    const { r } = runner(m.store, { match });
+    await r.tick();
+    expect(m.job.status).toBe('cancelled');
+    expect(m.job.error).not.toBe(GAVE_UP_MESSAGE);
+  });
+
   it('marks the job failed when the store breaks', async () => {
     const m = memoryStore(8);
     m.store.addTrack = vi.fn(async () => {
