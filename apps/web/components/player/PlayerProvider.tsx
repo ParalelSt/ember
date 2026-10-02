@@ -1179,9 +1179,11 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
   // The native Android player normalizes by itself (it moves between songs
   // without this page), so it only needs the setting.
+  // Sent again when casting ends: a change made while the cast backend
+  // (which has neither) was in charge never reached the local engine.
   useEffect(() => {
     backendRef.current?.setNormalize?.(normalizeVolume);
-  }, [backendReady, initialKind, normalizeVolume]);
+  }, [backendReady, initialKind, normalizeVolume, casting]);
 
   // The equalizer, on every engine: web audio builds its filters the first
   // time it is switched on, the desktop engine and the Android player keep
@@ -1192,7 +1194,9 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const eqChosenHere = useSettingsStore((s) => s.eqChosenHere);
   useEffect(() => {
     backendRef.current?.setEq?.(eqForDevice(equalizer, eqNeedsConsent(initialKind), eqChosenHere));
-  }, [backendReady, initialKind, equalizer, eqChosenHere]);
+    // `casting`: the local engine is back when a cast ends, and a change made
+    // while casting went to the cast backend, which has no equalizer.
+  }, [backendReady, initialKind, equalizer, eqChosenHere, casting]);
 
   // The shuffle button, for the native Android player: the queue it
   // reorders goes over with setQueue (above); native keeps the flag, which

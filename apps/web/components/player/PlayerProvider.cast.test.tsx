@@ -196,6 +196,24 @@ describe('PlayerProvider: casting', () => {
     expect(web.setVolume).toHaveBeenCalled();
   });
 
+  it('an equalizer change made while casting reaches the local engine when casting stops', async () => {
+    const setEq = vi.fn();
+    web.setEq = setEq;
+    try {
+      await startPlayingAt(5);
+      const remote = fakeRemote();
+      act(() => castSessionStarted(remote, 'TV'));
+      await flush();
+      setEq.mockClear();
+      const bass = { enabled: true, bands: [7, 4, 0, 0, 0] };
+      act(() => useSettingsStore.setState({ equalizer: bass, eqChosenHere: true }));
+      act(() => castSessionEnded());
+      expect(setEq).toHaveBeenLastCalledWith(bass);
+    } finally {
+      delete web.setEq;
+    }
+  });
+
   it('a session joined after a reload follows the TV as it is: no reload, no volume change', async () => {
     render(<PlayerProvider><Grab /></PlayerProvider>);
     const remote = fakeRemote({ state: 'playing', time: 120, duration: 200, contentId: 'https://ember.example/api/youtube/stream/aaaaaaaaaaa?st=x' });
