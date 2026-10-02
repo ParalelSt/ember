@@ -379,6 +379,29 @@ class QueueListenerTest {
         assertTrue(player.playWhenReady)
     }
 
+    /** Play pressed while radio is still looking: the dead song fails again
+     *  and asks again. The service answers both asks from one fetch; once the
+     *  first answer has moved the player on, the second must not say the
+     *  music stopped. */
+    @Test fun `the last song failing again while radio looks moves on once and reports no stop`() {
+        host(gone = mapOf("last" to "unavailable"))
+        val waiting = ArrayList<(Boolean) -> Unit>()
+        reporting { done -> waiting.add(done); true }
+        start(listOf(song("last")))
+        runUntil(10_000) { waiting.size == 1 }
+        // Play pressed again: the song fails a second time.
+        player.prepare()
+        runUntil(10_000) { waiting.size == 2 }
+        // Radio's one answer reaches both.
+        player.addMediaItem(song("fromRadio"))
+        waiting.forEach { it(true) }
+        runUntil(10_000) { player.currentMediaItemIndex == 1 && player.playbackState == Player.STATE_BUFFERING }
+        runUntil(300) { false }
+        assertEquals(1, player.currentMediaItemIndex)
+        assertEquals(listOf(Unplayable.SKIPPED), notices.map { it.outcome })
+        assertTrue(player.playWhenReady)
+    }
+
     @Test fun `the last song gone and radio finding nothing stops there, and says so`() {
         host(gone = mapOf("last" to "private"))
         reporting { done -> done(false); true }
