@@ -2,6 +2,7 @@ import type { NextRequest } from 'next/server';
 import { requireUser, UnauthorizedError, unauthorizedResponse } from '@/lib/auth';
 import { fromError, jsonError } from '@/lib/upsertTrack';
 import { addMember, sessionsClient } from '@/lib/sessions';
+import { normalizeCode } from '@/lib/carlist';
 import { withRequestLog } from '@/lib/logger/withRequestLog';
 
 /** Resolve a join code to a live session. */
@@ -9,20 +10,20 @@ export const POST = withRequestLog('sessions/join', async (request: NextRequest)
   try {
     const { user } = await requireUser();
     const body = (await request.json().catch(() => null)) as { code?: string } | null;
-    const code = String(body?.code ?? '')
-      .trim()
-      .toUpperCase()
-      .replace(/[^A-Z0-9]/g, '');
-    if (!code) return jsonError('Enter a join code.', 400);
+    // The Join box and the join link (/session/join/<code>) both land here.
+    const raw = typeof body?.code === 'string' ? body.code.trim() : '';
+    if (!raw) return jsonError('Enter a join code.', 400);
+    const code = normalizeCode(raw);
+    if (!code) return jsonError('No live session with that code.', 404);
     try {
       // Server client: a carlist you have not joined is hidden from you, and
       // this is how you join it.
       const pb = await sessionsClient();
       const session = await pb
         .collection('sessions')
-        .getFirstListItem(`code = "${code}" && active = true`);
+        .getFirstListItem(pb.filter('code = {:code} && active = true', { code }));
       await addMember(pb, session.id, user.id);
-      return Response.json({ session: { id: session.id, name: String(session.name) } });
+      return Response.json({ session: { id: session.id, name: String(session.name), code: String(session.code) } });
     } catch {
       return jsonError('No live session with that code.', 404);
     }

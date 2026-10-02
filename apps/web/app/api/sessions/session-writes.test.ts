@@ -22,6 +22,9 @@ function fakePb(kind: 'server' | 'member') {
   const refused = (name: string) => kind === 'member' && SESSION_COLLECTIONS.includes(name);
   const deny = (status: number) => Promise.reject(Object.assign(new Error('refused'), { status }));
   return {
+    // The SDK's pb.filter: binds parameters into the filter string.
+    filter: (expr: string, params: Record<string, unknown>) =>
+      expr.replace(/\{:(\w+)\}/g, (_m, k: string) => JSON.stringify(String(params[k]))),
     collection: (name: string) => ({
       getOne: async (id: string): Promise<Row> => {
         if (refused(name)) return deny(404);

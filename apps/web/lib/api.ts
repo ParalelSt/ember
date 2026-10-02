@@ -1,4 +1,5 @@
-import type { AlbumDetail, ArtistPayload, CollectionTrack, Playlist, SessionState, Track } from '@/types/track';
+import type { AlbumDetail, ArtistPayload, CollectionTrack, LiveCarlist, Playlist, SessionState, Track } from '@/types/track';
+import type { AddPosition } from '@/lib/carlist';
 import type { CopyOutcome } from '@/lib/playlistCopy';
 import type { CandidatePerson, CollabState } from '@/lib/collab';
 import { logger } from '@/lib/logger/client';
@@ -221,10 +222,20 @@ export const api = {
   createSession: (body: { name?: string; seedPlaylistId?: string }) =>
     req<{ session: { id: string; code: string; name: string } }>('/sessions', { method: 'POST', body }),
   joinSession: (code: string) =>
-    req<{ session: { id: string; name: string } }>('/sessions/join', { method: 'POST', body: { code } }),
+    req<{ session: { id: string; name: string; code: string } }>('/sessions/join', {
+      method: 'POST',
+      body: { code },
+      expected: [404],
+    }),
+  /** The live carlist you host or joined (the Carlist button), or null. */
+  getLiveCarlist: () => req<{ carlist: LiveCarlist | null }>('/sessions'),
   getSession: (id: string) => req<SessionState>(`/sessions/${id}`),
-  addToSession: (id: string, track: Track) =>
-    req<{ ok: true }>(`/sessions/${id}/tracks`, { method: 'POST', body: { track } }),
+  /** `ahead`: songs that play before it (-1: it is the first). */
+  addToSession: (id: string, track: Track, position: AddPosition = 'end') =>
+    req<{ ok: true; position: AddPosition; ahead: number }>(`/sessions/${id}/tracks`, {
+      method: 'POST',
+      body: { track, position },
+    }),
   skipSession: (id: string) => req<{ ok: true }>(`/sessions/${id}/skip`, { method: 'POST' }),
   consumeSessionCommands: (id: string) =>
     req<{ commands: { type: string }[] }>(`/sessions/${id}/commands/consume`, { method: 'POST' }),
