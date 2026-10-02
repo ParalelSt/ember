@@ -96,9 +96,10 @@ const { _resetFailureMemo, TRANSIENT_MEMO_MS } = await import('@/lib/sources/fai
 const { _resetBuckets } = await import('@/lib/rateLimit');
 
 let seq = 0;
-function stream(videoId: string, { prefetch = false } = {}) {
+function stream(videoId: string, { prefetch = false, retry = false } = {}) {
   seq += 1;
-  const req = new NextRequest(`http://localhost/api/youtube/stream/${videoId}${prefetch ? '?prefetch=1' : ''}`, {
+  const query = prefetch ? '?prefetch=1' : retry ? '?retry=1' : '';
+  const req = new NextRequest(`http://localhost/api/youtube/stream/${videoId}${query}`, {
     headers: { 'x-forwarded-for': `10.9.0.${seq % 250}`, range: 'bytes=0-' },
   });
   return GET(req, { params: Promise.resolve({ videoId }) } as never);
@@ -203,6 +204,21 @@ describe('a song that fails for a passing reason (403)', () => {
     now.mockReturnValue(t0 + TRANSIENT_MEMO_MS + 1);
     await stream(GLITCH_ID);
     expect(downloads(GLITCH_ID)).toBe(2);
+  });
+
+  it("the listener's own retry (Tap to retry) gets a real attempt within the two minutes", async () => {
+    expect((await stream(GLITCH_ID)).status).toBe(502);
+    expect(downloads(GLITCH_ID)).toBe(1);
+    const tapped = await stream(GLITCH_ID, { retry: true });
+    expect(tapped.status).toBe(502);
+    expect(await tapped.json()).not.toHaveProperty('recent');
+    expect(downloads(GLITCH_ID)).toBe(2);
+  });
+
+  it('a retry of a song YouTube says is gone is still answered from memory', async () => {
+    await stream(NOT_AVAILABLE_ID);
+    expect((await stream(NOT_AVAILABLE_ID, { retry: true })).status).toBe(410);
+    expect(downloads(NOT_AVAILABLE_ID)).toBe(1);
   });
 
   it('stays an error in the log: a 403 is a real problem', async () => {

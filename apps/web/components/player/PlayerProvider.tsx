@@ -21,7 +21,7 @@ import { useAuth } from '@/components/providers/AuthProvider';
 import { useExecuteRecordPlay, useQueryHistory, useQueryLikes } from '@/hooks/useLibrary';
 import { useQueryLyrics } from '@/hooks/useLyrics';
 import { api, apiUrl } from '@/lib/api';
-import { MAX_FAILURES_IN_A_ROW, reasonPhrase, type UnplayableNotice } from '@/lib/playback/unplayable';
+import { MAX_FAILURES_IN_A_ROW, reasonPhrase, retryStreamUrl, type UnplayableNotice } from '@/lib/playback/unplayable';
 import { createUnplayableNotifier, documentVisibility, type UnplayableNotifier } from '@/lib/playback/unplayableNotifier';
 import {
   clearCouldntPlay,
@@ -732,7 +732,12 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   // was first sent as a one-song queue and then again as the whole list, and
   // the one send it now gets must carry the new list's context and baseCount
   // (the auto cache's loop-all wrap), which the store does not hold yet.
-  const loadAndPlay = useCallback((track: Track | null, autoplay: boolean, next?: QueueOrigin & { list: Track[] }) => {
+  const loadAndPlay = useCallback((
+    track: Track | null,
+    autoplay: boolean,
+    next?: QueueOrigin & { list: Track[] },
+    opts?: { listenerRetry?: boolean },
+  ) => {
     let b = backendRef.current;
     if (!b) return;
     if (!track) {
@@ -826,7 +831,10 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     // have started, and until then the previous song's gain was on it.
     const norm = useSettingsStore.getState().normalizeVolume ? dbToLinear(cachedTrackGain(track.id)) : 1;
     pushVolume(track.id, norm);
-    b.load(local ?? cachedSrc ?? apiUrl(track.streamUrl), { autoplay, startAt, ...(cacheKey ? { cacheKey } : {}) });
+    // The listener's own retry asks the host for a real attempt, past the
+    // failure it remembers for a couple of minutes (retryStreamUrl).
+    const streamSrc = apiUrl(track.streamUrl);
+    b.load(local ?? cachedSrc ?? (opts?.listenerRetry ? retryStreamUrl(streamSrc) : streamSrc), { autoplay, startAt, ...(cacheKey ? { cacheKey } : {}) });
     // Set metadata in the same synchronous turn so the notification carries
     // across a track boundary (Firefox Android tears it down otherwise).
     // Local art (the same downloaded copy) wins over the remote artworkUrl.
@@ -1337,7 +1345,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       backendRef.current?.play();
       return;
     }
-    loadAndPlay(track, true);
+    loadAndPlay(track, true, undefined, { listenerRetry: true });
   }, [loadAndPlay]);
 
   // Playback moved on without the app's buttons (the lock screen, the car,

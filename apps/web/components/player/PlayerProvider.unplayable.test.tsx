@@ -169,6 +169,19 @@ describe('web and desktop: the song playing turns out to be gone', () => {
     expect(engine.load.mock.calls.at(-1)![0]).toBe(KLINCEK.streamUrl);
   });
 
+  it('the retry asks the host for a real attempt, past the failure it remembers (normal loads do not)', async () => {
+    const real = makeTrack({ id: 'youtube:glitchy0001', sourceId: 'glitchy0001', title: 'Glitchy', streamUrl: '/api/youtube/stream/glitchy0001', durationSec: 200 });
+    setQueue([real, NEXT], 0);
+    let retry: () => void = () => {};
+    function Grab() { retry = usePlayer().retry; return null; }
+    render(<PlayerProvider><Grab /></PlayerProvider>);
+    expect(loadedUrls().every((u) => !String(u).includes('retry='))).toBe(true);
+    act(() => events!.onError());
+    await waitFor(() => expect(bar()?.retry).toBe(true));
+    act(() => retry());
+    expect(engine.load.mock.calls.at(-1)![0]).toBe('/api/youtube/stream/glitchy0001?retry=1');
+  });
+
   it('five dead songs in a row: stops with a message instead of racing through the queue', async () => {
     const dead = Array.from({ length: 7 }, (_, i) => song(`dead${String(i).padStart(7, '0')}`, `Dead ${i}`));
     for (const t of dead) verdict[t.id] = { unavailable: true, reason: 'removed' };
