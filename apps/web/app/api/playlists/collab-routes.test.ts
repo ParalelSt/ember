@@ -331,6 +331,15 @@ describe('the owner', () => {
     expect(again.body).toEqual({ ok: true });
   });
 
+  it('removing someone replaces the link BEFORE it deletes the row', async () => {
+    world.writes.length = 0;
+    await call(memberRoute.DELETE, owner, { id: shared, userId: member });
+    const i = world.writes.indexOf('server:update:playlists');
+    const j = world.writes.indexOf('server:delete:playlist_members');
+    expect(i).toBeGreaterThanOrEqual(0);
+    expect(i).toBeLessThan(j);
+  });
+
   it('cannot add themselves, an unknown id, or anyone to a private playlist', async () => {
     expect((await call(membersRoute.POST, owner, { id: shared }, { userId: owner })).status).toBe(400);
     expect((await call(membersRoute.POST, owner, { id: shared }, { userId: 'nosuchuser00000' })).status).toBe(404);
@@ -377,6 +386,65 @@ describe('the invite link', () => {
       expect(r.status).toBe(404);
     }
     expect(world.db.playlist_members.some((m) => m.user === outsider)).toBe(false);
+  });
+
+  it('a join already in flight when the owner replaces the link is taken back out', async () => {
+    // The owner replaces the link between the join's lookup and its write.
+    const server = world.server();
+    const pbMod = server.collection('playlist_members');
+    serverOverride = {
+      ...server,
+      filter: server.filter,
+      collection: (name: string) => {
+        const c = server.collection(name);
+        if (name !== 'playlist_members') return c;
+        return {
+          ...c,
+          create: async (data: Record<string, unknown>) => {
+            const made = await pbMod.create(data);
+            await server.collection('playlists').update(shared, { invite_code: 'B'.repeat(32) });
+            return made;
+          },
+        };
+      },
+    };
+    const r = await call(joinRoute.POST, outsider, {}, { code: 'A'.repeat(32) });
+    expect(r.status).toBe(404);
+    expect(world.db.playlist_members.some((m) => m.user === outsider)).toBe(false);
+  });
+
+  it('a join with the current link still lands after the re-check', async () => {
+    const r = await call(joinRoute.POST, outsider, {}, { code: 'A'.repeat(32) });
+    expect(r.body.joined).toBe(true);
+    expect(world.db.playlist_members.some((m) => m.user === outsider)).toBe(true);
+  });
+
+  it('the hook refusing the 51st member (a 400) is "full", not an error', async () => {
+    for (let i = 0; i < 48; i++) world.addMember(shared, world.addUser(`Q${i}`).id);
+    const server = world.server();
+    let first = true;
+    serverOverride = {
+      ...server,
+      filter: server.filter,
+      collection: (name: string) => {
+        const c = server.collection(name);
+        if (name !== 'playlist_members') return c;
+        return {
+          ...c,
+          create: async (data: Record<string, unknown>) => {
+            if (first) {
+              // Someone else takes the last place after our count, before our write.
+              first = false;
+              world.addMember(shared, world.addUser('Racer').id);
+              throw Object.assign(new Error('Failed to create record.'), { status: 400 });
+            }
+            return c.create(data);
+          },
+        };
+      },
+    };
+    expect((await call(joinRoute.POST, outsider, {}, { code: 'A'.repeat(32) })).status).toBe(409);
+    expect(world.db.playlist_members.filter((m) => m.playlist === shared)).toHaveLength(50);
   });
 
   it('a code two playlists share is refused rather than guessed', async () => {
