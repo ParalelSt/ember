@@ -91,9 +91,30 @@ fi
 
 # Read PORT + POCKETBASE_PORT out of apps/web/.env.local without sourcing the
 # whole file (sourcing would expose every secret in there to this shell).
+#
+# Parsed by Next's own loader (@next/env) when it is installed, so a value
+# reads here exactly as `next start` reads it: an unquoted `#` starts a
+# comment, `$VAR` is expanded, quotes inside a value are kept. A hand parse
+# got those wrong, and PocketBase's superuser password (from this file) then
+# no longer matched the one Next signs in with. The grep below is the
+# fallback for a checkout without node_modules.
 read_env() {
-  local key="$1"
+  local key="$1" v
   [ -f "$ENV_FILE" ] || return 0
+  if v="$(cd "$ROOT/apps/web" 2>/dev/null && EMBER_ENV_KEY="$key" EMBER_ENV_FILE="$ENV_FILE" node -e '
+    const key = process.env.EMBER_ENV_KEY;
+    const file = process.env.EMBER_ENV_FILE;
+    delete process.env[key];
+    const { processEnv } = require(require.resolve("@next/env", { paths: [process.cwd()] }));
+    const contents = require("fs").readFileSync(file, "utf8");
+    const quiet = { info() {}, error() {} };
+    const [, parsed] = processEnv([{ path: ".env.local", contents }], process.cwd(), quiet, true);
+    const out = parsed[key];
+    process.stdout.write(out == null ? "" : String(out));
+  ' 2>/dev/null)"; then
+    printf '%s' "$v"
+    return 0
+  fi
   # `|| true` catches grep's no-match exit (1) so pipefail doesn't kill the
   # script via set -e when the key isn't in .env.local. Empty output then
   # flows through the rest of the pipe and we keep the default.
