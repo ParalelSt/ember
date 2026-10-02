@@ -274,6 +274,19 @@ class ServiceCarTest {
         assertTrue(player().playWhenReady)
     }
 
+    @Test fun `a press still being counted when the service goes away does nothing (no crash)`() {
+        // Nothing to resume: the foreground guard lets the service go while
+        // the headset's single press is still waiting for a second one.
+        start()
+        assertTrue(key(KeyEvent.KEYCODE_HEADSETHOOK))
+        idle(100)
+        controller.destroy()
+        // Before: the press settled after the service was gone, asked the
+        // shut-down resume executor to load the saved queue, and threw
+        // RejectedExecutionException on the main thread (the app crashed).
+        idle(450)
+    }
+
     // ── With the app closed (EmberMediaButtonReceiver + the service) ────
 
     private fun mediaButton(code: Int) = Intent(Intent.ACTION_MEDIA_BUTTON).putExtra(Intent.EXTRA_KEY_EVENT, KeyEvent(KeyEvent.ACTION_DOWN, code))
