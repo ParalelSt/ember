@@ -716,7 +716,7 @@ class EmberPlaybackService : MediaLibraryService() {
     /** The last song would not play (YouTube no longer has it): radio looks
      *  for what comes next, seeded by the song before it (a dead video makes
      *  a poor seed), and the listener moves on to what it finds. */
-    private fun extendAfterFailure(done: (Boolean) -> Unit): Boolean {
+    internal fun extendAfterFailure(done: (Boolean) -> Unit): Boolean {
         val player = active
         if (player.repeatMode != Player.REPEAT_MODE_OFF) return false
         if (player.currentMediaItemIndex != player.mediaItemCount - 1) return false
@@ -728,22 +728,49 @@ class EmberPlaybackService : MediaLibraryService() {
         return true
     }
 
+    /** Who waits on the radio fetch in flight; null when none is. Main
+     *  thread only. */
+    private var radioWaiters: MutableList<(Boolean) -> Unit>? = null
+
     /** Recommendations seeded by [seed], minus anything already queued,
      *  appended; [done] hears on the main thread whether any were. The host
-     *  leaves out songs it knows will not play. */
+     *  leaves out songs it knows will not play.
+     *
+     *  One fetch at a time: a dead last song that fails again while radio is
+     *  still looking (play pressed again) used to start a second fetch, which
+     *  appended the same songs twice and told the listener the music had
+     *  stopped. A caller that arrives while a fetch is out waits on it. */
     private fun fetchRadio(player: Player, seed: org.json.JSONObject, done: (Boolean) -> Unit) {
+        radioWaiters?.let { it.add(done); return }
+        val waiters = mutableListOf(done)
+        radioWaiters = waiters
+        fun finish(more: List<MediaItem>) {
+            radioWaiters = null
+            // Anything queued meanwhile (the web app's own radio) is left out.
+            val queued = (0 until player.mediaItemCount).map { player.getMediaItemAt(it).mediaId }.toSet()
+            val fresh = more.filter { it.mediaId !in queued }
+            runCatching { if (fresh.isNotEmpty()) player.addMediaItems(fresh) }
+                .onFailure { Log.w(TAG, "radio: ${it.message}") }
+            waiters.forEach { it(fresh.isNotEmpty()) }
+        }
         val queued = (0 until player.mediaItemCount).map { player.getMediaItemAt(it).mediaId }.toSet()
-        io.execute {
-            val more = runCatching { api.recommended(seed.optString("sourceId")) }
-                .getOrElse { Log.w(TAG, "radio: ${it.message}"); emptyList() }
-                .filter { it.optString("id") !in queued && it.optString("unavailableAt").isEmpty() }
-                .take(20)
-                .map { TrackItems.toMediaItem(it, api.baseUrl, artAuthority) }
-            Log.i(TAG, "radio after ${seed.optString("title")}: +${more.size}")
-            android.os.Handler(mainLooper).post {
-                if (more.isNotEmpty()) player.addMediaItems(more)
-                done(more.isNotEmpty())
+        try {
+            io.execute {
+                val more = try {
+                    api.recommended(seed.optString("sourceId"))
+                        .filter { it.optString("id") !in queued && it.optString("unavailableAt").isEmpty() }
+                        .take(20)
+                        .map { TrackItems.toMediaItem(it, api.baseUrl, artAuthority) }
+                } catch (e: Throwable) {
+                    Log.w(TAG, "radio: ${e.message}")
+                    emptyList()
+                }
+                Log.i(TAG, "radio after ${seed.optString("title")}: +${more.size}")
+                handler.post { finish(more) }
             }
+        } catch (e: java.util.concurrent.RejectedExecutionException) {
+            // The service is going away.
+            finish(emptyList())
         }
     }
 
