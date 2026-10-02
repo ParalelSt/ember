@@ -73,9 +73,19 @@ export function useAvailabilityProbe(
       return;
     }
 
+    /** The word that the song would not load, only while it is still the
+     *  song in front of the listener. One they have already moved on from
+     *  (Next, a pick, the car) would put a lasting "Couldn't load it, tap to
+     *  retry" over the song now playing, and the retry would reload that
+     *  one instead. */
+    const sayStillPlayable = () => {
+      const now = usePlayerStore.getState();
+      if (now.queue[now.index]?.id === erroredId) onStillPlayable?.(cur);
+    };
+
     api.getTrackAvailability(erroredId).then(({ unavailable, reason }) => {
       if (!unavailable) {
-        onStillPlayable?.(cur);
+        sayStillPlayable();
         return;
       }
       const before = usePlayerStore.getState();
@@ -94,7 +104,7 @@ export function useAvailabilityProbe(
       // The server could not be asked either. The track is not known to be
       // dead, so it is the same "it just would not load" case: say so rather
       // than leaving the player silent with no explanation.
-      onStillPlayable?.(cur);
+      sayStillPlayable();
     });
   }, [refreshLists, nextRef, onOfflineRef, signedIn]);
 
