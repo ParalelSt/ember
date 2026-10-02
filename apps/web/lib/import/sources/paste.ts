@@ -19,7 +19,11 @@ export const MAX_PASTE_LINES = 10_000;
 export const MAX_PASTE_LINE_CHARS = 300;
 
 const NUMBERING = /^\s*\d{1,5}\s*[.)\]]\s+/;
-const TRAILING_TIME = /\s+[(\[]?\d{1,2}:[0-5]\d(?::[0-5]\d)?[)\]]?\s*$/;
+/** Matched on a trimmed line. It starts at the length itself, after a space
+ *  (lookbehind), never at a run of spaces: `\s+...$` backtracked over every
+ *  space of a long run, quadratic in the line, and a pasted line of a few
+ *  hundred thousand spaces held the server for minutes. */
+const TRAILING_TIME = /(?<=\s)[(\[]?\d{1,2}:[0-5]\d(?::[0-5]\d)?[)\]]?$/;
 /** A hyphen, en dash or em dash with spaces either side: the separator every
  *  app uses, and never part of a name written that way. */
 const SEPARATOR = /\s+[-–—]\s+/;
@@ -31,7 +35,7 @@ export function parsePaste(text: string): ParsedSource | ParseError {
   let dropped = 0;
 
   for (const raw of lines) {
-    const line = raw.replace(NUMBERING, '').replace(TRAILING_TIME, '').trim().slice(0, MAX_PASTE_LINE_CHARS);
+    const line = raw.trim().replace(NUMBERING, '').replace(TRAILING_TIME, '').trim().slice(0, MAX_PASTE_LINE_CHARS);
     if (!line) continue;
 
     let artist = '';

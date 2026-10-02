@@ -77,3 +77,19 @@ describe('parsePaste', () => {
     expect((r as { error: string }).error).toContain('Artist - Title');
   });
 });
+
+describe('parsePaste: a long run of spaces inside a line', () => {
+  it('reads it in linear time (the trailing-length strip used to backtrack quadratically)', () => {
+    const line = `a${' '.repeat(50_000)}a`;
+    const started = performance.now();
+    const r = parse(`${line}\nArtist - Song 3:45`);
+    expect(performance.now() - started).toBeLessThan(500);
+    expect(r.items).toHaveLength(2);
+    expect(r.items[1]).toMatchObject({ artist: 'Artist', title: 'Song' });
+  });
+
+  it('still strips a length at the end, with or without brackets and trailing spaces', () => {
+    const r = parse('1. Artist - One 3:45\nArtist - Two (4:05)   \nArtist - Three [1:02:03]\n12. 3:45');
+    expect(r.items.map((i) => i.title)).toEqual(['One', 'Two', 'Three', '3:45']);
+  });
+});
