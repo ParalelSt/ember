@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { QK } from '@/hooks/useLibrary';
@@ -22,6 +22,9 @@ interface Props {
    *  generic/trending recommendations from the YouTube endpoint. */
   seeds?: Track[];
   onAdd: (track: Track) => void;
+  /** Replaces the Add button (a carlist asks Play next or Add to end).
+   *  `isAdded`: the track is in `added` already. */
+  renderAdd?: (track: Track, isAdded: boolean) => ReactNode;
   className?: string;
 }
 
@@ -29,7 +32,7 @@ interface Props {
  *  CreatePlaylistDialog and on the playlist detail page. Behaves like the
  *  main /search page (debounced, same `api.search`), with a recommendations
  *  fallback when the input is empty. */
-export function TrackSearchPicker({ added = [], seeds = [], onAdd, className }: Props) {
+export function TrackSearchPicker({ added = [], seeds = [], onAdd, renderAdd, className }: Props) {
   const { current, isPlaying, playTrack, toggle } = usePlayer();
   const [q, setQ] = useState('');
   const [debouncedQ, setDebouncedQ] = useState('');
@@ -146,15 +149,19 @@ export function TrackSearchPicker({ added = [], seeds = [], onAdd, className }: 
                   >
                     {playing && isPlaying ? <PauseIcon className="h-3.5 w-3.5" /> : <PlayIcon className="h-3.5 w-3.5" />}
                   </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => onAdd(t)}
-                    disabled={isAdded}
-                    className={cn('h-8 shrink-0 gap-1', isAdded && 'text-muted-foreground')}
-                  >
-                    {isAdded ? 'Added' : (<><PlusIcon className="h-3.5 w-3.5" /> Add</>)}
-                  </Button>
+                  {renderAdd ? (
+                    renderAdd(t, isAdded)
+                  ) : (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => onAdd(t)}
+                      disabled={isAdded}
+                      className={cn('h-8 shrink-0 gap-1', isAdded && 'text-muted-foreground')}
+                    >
+                      {isAdded ? 'Added' : (<><PlusIcon className="h-3.5 w-3.5" /> Add</>)}
+                    </Button>
+                  )}
                 </>
               }
             />

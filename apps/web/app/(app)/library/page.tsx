@@ -4,8 +4,8 @@ import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { CollectionShelf } from '@/components/library/CollectionShelf';
 import { UploadTrackDialog } from '@/components/track/menus/UploadTrackDialog';
-import { StartSessionDialog, JoinSessionDialog } from '@/components/session/SessionDialogs';
-import { QueueIcon, UploadIcon } from '@/components/icons';
+import { CarlistButton } from '@/components/session/CarlistButton';
+import { UploadIcon } from '@/components/icons';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { useCollections } from '@/hooks/useCollections';
 import { useOfflineStore } from '@/stores/useOfflineStore';
@@ -20,8 +20,6 @@ export default function LibraryPage() {
   const isOnline = useOnline();
   const pins = useOfflineStore((s) => s.pins);
   const [uploadOpen, setUploadOpen] = useState(false);
-  const [startOpen, setStartOpen] = useState(false);
-  const [joinOpen, setJoinOpen] = useState(false);
 
   if (!user) return <EmptyState>Sign in to see your library</EmptyState>;
 
@@ -61,21 +59,8 @@ export default function LibraryPage() {
     <div>
       <div className="mb-6 flex items-center justify-between gap-4">
         <PageTitle>Your library</PageTitle>
-        <div className="flex shrink-0 items-center gap-1">
-          <Button
-            variant="ghost"
-            onClick={() => setStartOpen(true)}
-            className="gap-1.5 text-muted-foreground hover:text-foreground"
-          >
-            <QueueIcon className="h-4 w-4" /> Session
-          </Button>
-          <Button
-            variant="ghost"
-            onClick={() => setJoinOpen(true)}
-            className="text-muted-foreground hover:text-foreground"
-          >
-            Join
-          </Button>
+        <div className="flex shrink-0 items-center gap-cluster">
+          <CarlistButton />
           <Button
             variant="ghost"
             onClick={() => setUploadOpen(true)}
@@ -86,8 +71,6 @@ export default function LibraryPage() {
         </div>
       </div>
       <UploadTrackDialog open={uploadOpen} onOpenChange={setUploadOpen} />
-      <StartSessionDialog open={startOpen} onOpenChange={setStartOpen} />
-      <JoinSessionDialog open={joinOpen} onOpenChange={setJoinOpen} />
 
       <CollectionShelf
         title="Your collections"
