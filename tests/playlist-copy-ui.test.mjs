@@ -203,7 +203,10 @@ async function goto(page, url) {
   await page.getByTestId('track-row').first().waitFor({ timeout: 20000 });
 }
 
-const titles = (page) => page.getByTestId('track-row-title').allTextContents();
+// Only the playlist's own rows: the "Add songs" picker below it draws
+// compact rows with the same title test id, and its recommendations would
+// otherwise be read as part of the playlist.
+const titles = (page) => page.getByTestId('track-row').getByTestId('track-row-title').allTextContents();
 
 async function sortBy(page, label) {
   await page.getByTestId('sort-button').click();
