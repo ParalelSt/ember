@@ -99,8 +99,15 @@ export async function addMember(
     await admin.collection('playlist_members').create({ playlist: playlistId, user: userId });
     return 'added';
   } catch (e) {
-    if ((e as { status?: number } | undefined)?.status === 400 && (await isMember(admin, playlistId, userId))) {
-      return 'already';
+    if ((e as { status?: number } | undefined)?.status === 400) {
+      if (await isMember(admin, playlistId, userId)) return 'already';
+      // The before-create hook (ensure_collab_playlists) refuses the 51st
+      // member inside the write itself, so several joins at once cannot all
+      // pass the count above. Its refusal arrives as a plain 400.
+      const now = await admin
+        .collection('playlist_members')
+        .getList(1, 1, { filter: admin.filter('playlist = {:p}', { p: playlistId }), fields: 'id' });
+      if (now.totalItems >= MAX_MEMBERS) return 'full';
     }
     throw e;
   }

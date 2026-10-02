@@ -32,6 +32,23 @@ export const POST = withRequestLog('playlists/join', async (request: NextRequest
 
     const outcome = await addMember(admin, playlist.id, user.id);
     if (outcome === 'full') return jsonError(`This playlist is already shared with ${MAX_MEMBERS} people`, 409);
+    if (outcome === 'added') {
+      // The owner may have replaced or turned off the link (removing
+      // someone does) while this join was in flight with the old one. Check
+      // again now the row is in, and take it back out if the link is gone.
+      const now = await admin.collection('playlists').getOne(playlist.id, { fields: 'id,invite_code,collaborative' });
+      if (now.invite_code !== code || now.collaborative !== true) {
+        const row = await admin
+          .collection('playlist_members')
+          .getFirstListItem(admin.filter('playlist = {:p} && user = {:u}', { p: playlist.id, u: user.id }))
+          .catch((e: { status?: number }) => {
+            if (e?.status === 404) return null;
+            throw e;
+          });
+        if (row) await admin.collection('playlist_members').delete(row.id);
+        return jsonError(DEAD_LINK, 404);
+      }
+    }
     return Response.json({ playlistId: playlist.id, joined: outcome === 'added' });
   } catch (e) {
     if (e instanceof UnauthorizedError) return unauthorizedResponse();

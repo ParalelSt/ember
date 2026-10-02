@@ -172,3 +172,25 @@ onRecordBeforeUpdateRequest((e) => {
     throw new ForbiddenError("Who added a song cannot be changed.");
   }
 }, "playlist_tracks");
+
+// At most 50 people per playlist (MAX_MEMBERS in apps/web/lib/collab.ts).
+// The route checks the count first, but several people opening an invite
+// link at once can all pass that check. This runs inside the write itself
+// (the create's own transaction, SQLite takes one writer at a time), so the
+// count it sees includes everyone who got in before. The refusal reaches
+// the app as a 400, which addMember reads as "full".
+// (Handlers run in their own scope, so the number lives inside.)
+onModelBeforeCreate((e) => {
+  const MAX_MEMBERS = 50;
+  const playlist = e.model.getString("playlist");
+  const row = new DynamicModel({ total: 0 });
+  e.dao
+    .db()
+    .select("count(*) as total")
+    .from("playlist_members")
+    .where($dbx.hashExp({ playlist: playlist }))
+    .one(row);
+  if (row.total >= MAX_MEMBERS) {
+    throw new BadRequestError("This playlist is already shared with " + MAX_MEMBERS + " people.");
+  }
+}, "playlist_members");
