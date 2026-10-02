@@ -120,9 +120,17 @@ const pid = (await owner.api('POST', '/playlists', { name: `Road trip ${stamp.sl
 for (const t of SONGS.slice(0, 2)) await owner.api('POST', `/playlists/${pid}/tracks`, { track: t });
 
 const browser = await chromium.launch({ executablePath: findChrome(), headless: true });
+// The "Add songs" picker under the playlist suggests songs. On a host whose
+// media helper works it draws them as compact rows with the same title test
+// id as the playlist's own rows; a sandbox without one shows none. Answer
+// the suggestions here, so the picker always has rows the checks must not
+// read as part of the playlist.
+const SUGGESTED = [song('sug1', 'Suggested One', '3a5f7d'), song('sug2', 'Suggested Two', '7d3a5f')];
 async function open(who, width, height) {
   const ctx = await browser.newContext({ viewport: { width, height }, deviceScaleFactor: 1 });
   await ctx.addCookies([{ name: 'pb_auth', value: who.cookie, url: APP }]);
+  await ctx.route('**/api/youtube/recommended**', (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ tracks: SUGGESTED }) }));
   const page = await ctx.newPage();
   return { ctx, page };
 }
@@ -136,7 +144,9 @@ const shot = async (page, name) => {
   fs.mkdirSync(SHOT_DIR, { recursive: true });
   await page.screenshot({ path: path.join(SHOT_DIR, name) });
 };
-const titles = (page) => page.getByTestId('track-row-title').allTextContents();
+// Only the playlist's own rows (`track-row`), never the picker's suggestions.
+const ROW_TITLES = '[data-testid="track-row"] [data-testid="track-row-title"]';
+const titles = (page) => page.locator(ROW_TITLES).allTextContents();
 
 try {
   // ── The owner shares it ────────────────────────────────────────────────
@@ -192,7 +202,7 @@ try {
   check('member at 390: no More button on the rows', (await m.page.getByTestId('track-row').nth(2).getByRole('button', { name: 'More' }).isVisible()) === false);
   await m.page.getByTestId('track-row').nth(2).getByRole('button', { name: 'Add to playlist' }).click();
   await m.page.getByRole('menuitem', { name: /Move up/ }).click();
-  await m.page.waitForFunction(() => document.querySelectorAll('[data-testid="track-row-title"]')[1]?.textContent === 'Third Rail');
+  await m.page.waitForFunction((sel) => document.querySelectorAll(sel)[1]?.textContent === 'Third Rail', ROW_TITLES);
   check('member: Move up moves the song', JSON.stringify(await titles(m.page)) === JSON.stringify(['First Light', 'Third Rail', 'Second Wind']));
   const overflow = await m.page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
   check('member at 390: nothing scrolls sideways', overflow <= 0, `${overflow}px`);
@@ -200,8 +210,8 @@ try {
 
   // The owner's open page follows (the collaborative poll).
   await o.page.waitForFunction(
-    () => [...document.querySelectorAll('[data-testid="track-row-title"]')].map((e) => e.textContent).join('|') === 'First Light|Third Rail|Second Wind',
-    undefined,
+    (sel) => [...document.querySelectorAll(sel)].map((e) => e.textContent).join('|') === 'First Light|Third Rail|Second Wind',
+    ROW_TITLES,
     { timeout: 15000 },
   ).then(() => check('owner: the open page shows the member\'s add and move within the poll', true),
     () => check('owner: the open page shows the member\'s add and move within the poll', false));
@@ -209,7 +219,7 @@ try {
   // The owner moves one back down from the desktop row's More menu.
   await o.page.getByTestId('track-row').nth(1).getByRole('button', { name: 'More' }).click();
   await o.page.getByRole('menuitem', { name: /Move down/ }).click();
-  await o.page.waitForFunction(() => document.querySelectorAll('[data-testid="track-row-title"]')[2]?.textContent === 'Third Rail');
+  await o.page.waitForFunction((sel) => document.querySelectorAll(sel)[2]?.textContent === 'Third Rail', ROW_TITLES);
   const serverOrder = (await owner.api('GET', `/playlists/${pid}`)).tracks.map((t) => t.title);
   check('owner at 1280: Move down in the More menu, saved on the server', serverOrder.join('|') === 'First Light|Second Wind|Third Rail', serverOrder.join('|'));
 
