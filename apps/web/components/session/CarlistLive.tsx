@@ -77,7 +77,7 @@ export function AddChoice({
         <Button
           size="sm"
           variant="ember"
-          className="h-8"
+          className="h-8 px-cluster text-xs"
           disabled={busy}
           onClick={() => onAdd('next')}
           aria-label={`Play ${track.title} next`}
@@ -87,7 +87,7 @@ export function AddChoice({
         <Button
           size="sm"
           variant="outline"
-          className="h-8"
+          className="h-8 px-cluster text-xs"
           disabled={busy}
           onClick={() => onAdd('end')}
           aria-label={`Add ${track.title} to the end`}

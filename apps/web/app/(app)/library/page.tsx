@@ -64,9 +64,11 @@ export default function LibraryPage() {
           <Button
             variant="ghost"
             onClick={() => setUploadOpen(true)}
+            aria-label="Upload"
             className="gap-1.5 text-muted-foreground hover:text-foreground"
           >
-            <UploadIcon className="h-4 w-4" /> Upload
+            {/* Icon only on a phone, so the title keeps one line next to Carlist. */}
+            <UploadIcon className="h-4 w-4" /> <span className="hidden sm:inline">Upload</span>
           </Button>
         </div>
       </div>
