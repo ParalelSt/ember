@@ -54,6 +54,8 @@ Test folders, `apps/web/`:
   42").
 - `lib/reports/`: the report libs behind bug reports and the daily digest:
   `fingerprint` (grouping two occurrences of one bug together),
+  `reporterEntries` (a report keeps only the reporter's own server entries
+  and server-wide ones cut to their message, never another member's),
   `timeline`/`selectTimeline` (the readable Evidence block), `history`
   ("seen before" counts), `digest` (grouping and formatting), `discord`
   (webhook selection and 1024-char field splitting) and `digestJob`

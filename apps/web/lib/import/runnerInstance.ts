@@ -3,6 +3,7 @@ import os from 'node:os';
 import type PocketBase from 'pocketbase';
 import { createAdminClient } from '@/lib/pocketbase/server';
 import { serverLogger } from '@/lib/logger/server';
+import { outsideRequest } from '@/lib/logger/context';
 import { matchItems } from '@/lib/import/match';
 import { createJobStore } from '@/lib/import/store';
 import { ImportRunner } from '@/lib/import/runner';
@@ -86,8 +87,12 @@ export function startImportRunner(): void {
 
 /** A job was queued: run it now instead of at the next poll. */
 export function kickImportRunner(): void {
-  startImportRunner();
-  void slot()
-    .runner.tick()
-    .catch(() => {});
+  // The runner works through everyone's imports: started from a member's
+  // request it would log every later job as theirs.
+  outsideRequest(() => {
+    startImportRunner();
+    void slot()
+      .runner.tick()
+      .catch(() => {});
+  });
 }

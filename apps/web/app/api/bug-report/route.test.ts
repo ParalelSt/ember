@@ -67,6 +67,9 @@ function serverError(over: Partial<ServerLogEntry> = {}): ServerLogEntry {
     side: 'server',
     reqId: 'r1',
     route: '/api/youtube/stream',
+    // The reporter's own (requireUser above answers u1): a report only
+    // carries entries logged for its reporter.
+    userId: 'u1',
     ...over,
   };
 }
@@ -176,7 +179,7 @@ describe('POST /api/bug-report: server log scrubbing', () => {
       side: 'server',
       reqId: 'r1',
       route: 'upstream',
-      userId: 'user123',
+      userId: 'u1',
     };
     vi.mocked(serverLogger.recentSince).mockResolvedValue([entry]);
 
@@ -186,7 +189,51 @@ describe('POST /api/bug-report: server log scrubbing', () => {
     expect(reportText).not.toContain('sk-ant-abcdefgh12345678');
     expect(reportText).toContain('[scrubbed]');
     // userId is the host's own PocketBase id, not a secret: it survives.
-    expect(reportText).toContain('user123');
+    expect(reportText).toContain('"userId": "u1"');
+  });
+});
+
+describe("POST /api/bug-report: only the reporter's server entries", () => {
+  // The server log is everyone's: the five minutes before a report hold
+  // other members' failures too (a lyrics lookup for their song).
+  const others = [
+    serverError({ userId: 'u2', reqId: 'r-u2', route: 'lyrics', message: 'GET lyrics -> 500', data: { q: 'Someone Elses Song' } }),
+    serverError({ userId: 'u2', reqId: 'r-u2b', category: 'python', message: 'lyrics helper failed for OtherArtist' }),
+    // A request nobody was signed in to cannot be told apart from someone else's.
+    serverError({ userId: undefined, reqId: 'r-anon', message: 'GET cast stream -> 502', data: { videoId: 'castVidAnon' } }),
+  ];
+  const mine = serverError({ ts: Date.now() - 1000, message: 'GET /api/youtube/stream/mine0001 -> 502' });
+  const serverWide = serverError({
+    userId: undefined, reqId: '', route: '', category: 'stream', message: 'cache warm gave up',
+    data: { videoId: 'warmVidOther' }, stack: 'Error: download failed for warmVidOther',
+  });
+
+  async function report() {
+    vi.mocked(serverLogger.recentSince).mockResolvedValue([...others, mine, serverWide]);
+    const res = await POST(request({ client: snapshot() }), undefined as never);
+    expect(res.status).toBe(200);
+    const form = postedForm(fetchMock);
+    return {
+      embed: form.get('payload_json') as string,
+      reportJson: await (form.get('files[0]') as File).text(),
+      triageInput: JSON.stringify(vi.mocked(triageBugReport).mock.calls.at(-1)?.[0]),
+    };
+  }
+
+  it("never puts another member's entries in the Discord post, report.json or the triage prompt", async () => {
+    const { embed, reportJson, triageInput } = await report();
+    for (const text of [embed, reportJson, triageInput]) {
+      expect(text).not.toMatch(/u2|r-u2|Someone Elses Song|OtherArtist|GET lyrics|castVidAnon|r-anon/);
+    }
+  });
+
+  it("keeps the reporter's own entries, and server-wide ones as their bare message", async () => {
+    const { embed, reportJson } = await report();
+    expect(embed).toContain('mine0001');
+    const server = JSON.parse(reportJson).server as ServerLogEntry[];
+    expect(server.map((e) => e.message)).toEqual(['GET /api/youtube/stream/mine0001 -> 502', 'cache warm gave up']);
+    expect(reportJson).not.toContain('warmVidOther');
+    expect(JSON.parse(reportJson).counts.server_errors).toBe(2);
   });
 });
 

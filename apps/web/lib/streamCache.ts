@@ -2,6 +2,7 @@ import 'server-only';
 import { ensureDownloaded, findCachedFile, isUnavailableError } from '@/lib/sources/youtube';
 import { markTrackUnavailable } from '@/lib/trackAvailability';
 import { serverLogger } from '@/lib/logger/server';
+import { outsideRequest } from '@/lib/logger/context';
 
 /** Background caching of played tracks, deliberately SLOW.
  *
@@ -75,7 +76,9 @@ export function queueCacheWarm(videoId: string, opts: { delayMs?: number } = {})
   queued.add(videoId);
   queue.push({ videoId, attempt: 0, readyAt });
   wake?.();
-  void drain();
+  // The queue holds everyone's songs: run it outside the request that
+  // happened to start it, or its failures are logged as that member's.
+  outsideRequest(() => void drain());
 }
 
 async function drain(): Promise<void> {
