@@ -42,7 +42,7 @@ let events: AudioBackendEvents | null = null;
 vi.mock('@/lib/playback/webBackend', () => ({
   createWebBackend: (e: AudioBackendEvents) => { events = e; return engine; },
 }));
-const native = vi.hoisted(() => ({ setQueue: vi.fn(), setLoop: vi.fn(), next: vi.fn(), prev: vi.fn() }));
+const native = vi.hoisted(() => ({ setQueue: vi.fn(), setLoop: vi.fn(), next: vi.fn(), prev: vi.fn(), retry: vi.fn() }));
 vi.mock('@/lib/playback/androidBackend', () => ({
   androidPluginPresent: () => true,
   createAndroidBackend: (e: AudioBackendEvents) => { events = e; return Object.assign(engine, native); },
@@ -377,6 +377,20 @@ describe('android: the native player reports what it could not play', () => {
     act(() => events!.onError({ trackId: GONE.id, nativeExplains: false }));
     await waitFor(() => expect(messages()).toContain('Couldn\'t play "Radio Song One": not available on YouTube. Skipped to the next song.'));
     expect(usePlayerStore.getState().queue[1].unavailableAt).toBeTruthy();
+  });
+
+  it('the bar\'s retry asks native for a marked reload of the failed song, not a plain play', () => {
+    setQueue([KLINCEK, NEXT], 0);
+    let retry: () => void = () => {};
+    function Grab() { retry = usePlayer().retry; return null; }
+    render(<PlayerProvider><Grab /></PlayerProvider>);
+    act(() => events!.onUnplayable!([
+      { trackId: KLINCEK.id, title: KLINCEK.title, kind: 'transient', reason: null, outcome: 'stopped' },
+    ]));
+    engine.play.mockClear();
+    act(() => retry());
+    expect(native.retry).toHaveBeenCalledTimes(1);
+    expect(engine.play).not.toHaveBeenCalled();
   });
 
   it('a build that explains itself is not asked about again', () => {

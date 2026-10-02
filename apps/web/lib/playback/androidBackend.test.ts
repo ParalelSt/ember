@@ -473,3 +473,25 @@ describe('androidBackend: volume', () => {
     expect(n.plugin.setVolume).toHaveBeenLastCalledWith({ v: 1 });
   });
 });
+
+describe('androidBackend: tap to retry', () => {
+  afterEach(() => {
+    delete (window as unknown as { Capacitor?: unknown }).Capacitor;
+  });
+
+  it('asks native for a retry (a reload with the host\'s retry mark), not a plain play', () => {
+    const n = installPlugin(false);
+    n.plugin.retry = vi.fn().mockResolvedValue(undefined);
+    const b = createAndroidBackend(makeFakeEvents());
+    b.retry!();
+    expect(n.plugin.retry).toHaveBeenCalledTimes(1);
+    expect(n.plugin.play).not.toHaveBeenCalled();
+  });
+
+  it('an app build from before it plays, as before', () => {
+    const n = installPlugin(false);
+    const b = createAndroidBackend(makeFakeEvents());
+    b.retry!();
+    expect(n.plugin.play).toHaveBeenCalledTimes(1);
+  });
+});

@@ -142,6 +142,11 @@ export interface AudioBackend {
    *  `startSec` is where a song that has to start does start (a cold start
    *  restoring the saved queue); a song already playing keeps its place. */
   setQueue?(tracks: Track[], index: number, play: boolean, origin?: QueueOrigin, startSec?: number): void;
+  /** Queue-owning backends only (Android): the listener's "Tap to retry".
+   *  The native player reloads the song that failed with the host's retry
+   *  mark (lib/playback/unplayable retryStreamUrl), where a plain play()
+   *  reloaded the same address and got the failure the host remembers. */
+  retry?(): void;
   /** Queue-owning backends only: the native player decides what is next. */
   next?(): void;
   prev?(): void;
