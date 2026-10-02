@@ -6,7 +6,9 @@ import android.app.NotificationManager
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.net.wifi.WifiManager
 import android.os.IBinder
+import android.os.PowerManager
 import android.util.Log
 import android.webkit.CookieManager
 import androidx.core.app.NotificationCompat
@@ -93,6 +95,12 @@ class OfflineDownloadService : Service() {
     private fun drain(startId: Int) {
         val baseUrl = ServerConfig.baseUrl(this)
         val api = ServerApi(baseUrl) { CookieManager.getInstance().getCookie(baseUrl) }
+        // A foreground service does not keep the CPU or Wi-Fi awake: with the
+        // screen off the download stalled until the phone was woken again.
+        // Held for the whole drain and refreshed per track, so a hung request
+        // cannot keep the phone awake for more than LOCK_TIMEOUT_MS.
+        val locks = DownloadLocks(this)
+        locks.acquire()
         try {
             // The downloading itself lives in OfflineDownloader so it can be
             // unit tested; all this shell adds is the progress notification and
@@ -104,6 +112,7 @@ class OfflineDownloadService : Service() {
                 plain = plainHttp,
                 cacheDir = cacheDir,
                 onStart = { pin, progress ->
+                    locks.acquire()
                     current = progress
                     listener?.invoke(progress)
                     startForeground(1, notification("${pin.name}: ${progress.getInt("done") + 1} of ${progress.getInt("total")}"))
@@ -111,6 +120,7 @@ class OfflineDownloadService : Service() {
                 onDone = { listener?.invoke(null) },
             ).drain()
         } finally {
+            locks.release()
             cancelled.clear(); current = null
             listener?.invoke(null)
             // stopSelfResult, not stopSelf: it only stops when startId is still
@@ -130,5 +140,32 @@ class OfflineDownloadService : Service() {
         val nm = getSystemService(NotificationManager::class.java)
         if (nm.getNotificationChannel(CHANNEL) == null) nm.createNotificationChannel(NotificationChannel(CHANNEL, "Downloads", NotificationManager.IMPORTANCE_LOW))
         return NotificationCompat.Builder(this, CHANNEL).setSmallIcon(android.R.drawable.stat_sys_download).setContentTitle("Ember downloads").setContentText(text).setOngoing(true).build()
+    }
+}
+
+/** The partial wake lock and Wi-Fi lock a download drain holds. Not reference
+ *  counted, so acquire() again only pushes the timeout out. */
+internal class DownloadLocks(context: Context) {
+    private val wake: PowerManager.WakeLock? = (context.getSystemService(Context.POWER_SERVICE) as PowerManager?)
+        ?.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "ember:offline-download")?.apply { setReferenceCounted(false) }
+    @Suppress("DEPRECATION")
+    private val wifi: WifiManager.WifiLock? = runCatching {
+        (context.applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager?)
+            ?.createWifiLock(WifiManager.WIFI_MODE_FULL_HIGH_PERF, "ember:offline-download")?.apply { setReferenceCounted(false) }
+    }.getOrNull()
+
+    fun acquire() {
+        runCatching { wake?.acquire(LOCK_TIMEOUT_MS) }
+        runCatching { wifi?.acquire() }
+    }
+
+    fun release() {
+        runCatching { if (wake?.isHeld == true) wake.release() }
+        runCatching { if (wifi?.isHeld == true) wifi.release() }
+    }
+
+    companion object {
+        /** Longer than any one track can take with the client's timeouts. */
+        const val LOCK_TIMEOUT_MS = 10 * 60 * 1000L
     }
 }
