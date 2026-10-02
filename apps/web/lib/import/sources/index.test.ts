@@ -127,3 +127,19 @@ describe('parseTransferInput cleans up what it read', () => {
     expect(parse({ text: 'A - B\nC - D' }).truncated).toBe(false);
   });
 });
+
+describe('parseTransferInput: fields import_items can store and player.py can be handed', () => {
+  it('cuts a long CSV title to what import_items.source_title holds (300)', () => {
+    const csv = `Track Name,Artist Name\n${'x'.repeat(400)},Someone\n`;
+    const r = parse({ filename: 'likes.csv', bytes: new TextEncoder().encode(csv) });
+    expect(r.items[0].title.length).toBeLessThanOrEqual(300);
+  });
+
+  it('drops NUL bytes, which spawn refuses in an argument', () => {
+    const r = parse({ text: 'Art\u0000ist - Ti\u0000tle' });
+    expect(r.items[0]).toMatchObject({ artist: 'Artist', title: 'Title' });
+    const csv = `Track Name,Artist Name\n${'a'.repeat(5000)}\nSo\u0000ng,Band\n`;
+    const c = parse({ filename: 'likes.csv', bytes: new TextEncoder().encode(csv) });
+    expect(c.items.some((i) => i.title.includes('\u0000') || i.artist.includes('\u0000'))).toBe(false);
+  });
+});
