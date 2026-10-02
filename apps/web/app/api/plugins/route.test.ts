@@ -139,3 +139,30 @@ describe('PATCH /api/plugins', () => {
     expect(update).not.toHaveBeenCalled();
   });
 });
+
+describe('PATCH /api/plugins concurrency', () => {
+  it('two PATCHes in flight at once both land (no lost update)', async () => {
+    // Each read takes a moment, as a real PocketBase round trip does: without
+    // ordering, both requests read the same row and the second write drops
+    // the first one's key.
+    getOne.mockImplementation(async () => {
+      const snapshot = { ...row };
+      await new Promise((r) => setTimeout(r, 5));
+      return snapshot;
+    });
+    const [a, b] = await Promise.all([
+      PATCH(request({ normalizeVolume: false }), undefined as never),
+      PATCH(request({ tabsEnabled: false }), undefined as never),
+    ]);
+    expect(a.status).toBe(200);
+    expect(b.status).toBe(200);
+    expect(row.plugins).toEqual({ normalizeVolume: false, tabsEnabled: false });
+  });
+
+  it('a failed PATCH does not block the next one', async () => {
+    update.mockRejectedValueOnce(new Error('down'));
+    expect((await PATCH(request({ tabsEnabled: false }), undefined as never)).status).toBe(500);
+    expect((await PATCH(request({ tabsEnabled: true }), undefined as never)).status).toBe(200);
+    expect(row.plugins).toEqual({ tabsEnabled: true });
+  });
+});
