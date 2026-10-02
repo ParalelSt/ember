@@ -62,3 +62,22 @@ describe('queueCacheWarm', () => {
     expect(ensureDownloaded).toHaveBeenCalledWith('eeeeeeeeeee');
   });
 });
+
+describe('queueCacheWarm and the request that started it', () => {
+  it("runs everyone's queue outside any member's request, so nothing it logs is put down to them", async () => {
+    const { queueCacheWarm } = await load();
+    const { requestContext } = await import('@/lib/logger/context');
+    const seen: unknown[] = [];
+    ensureDownloaded.mockImplementation(async (id: string) => {
+      seen.push(requestContext.getStore());
+      return `/music/${id}.m4a`;
+    });
+    // Member A's request starts the drain; member B's song joins the queue.
+    requestContext.run({ reqId: 'ra', userId: 'a' }, () => queueCacheWarm('fffffffffff', { delayMs: 0 }));
+    await vi.advanceTimersByTimeAsync(10);
+    requestContext.run({ reqId: 'rb', userId: 'b' }, () => queueCacheWarm('ggggggggggg', { delayMs: 0 }));
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect(ensureDownloaded).toHaveBeenCalledWith('ggggggggggg');
+    expect(seen).toEqual([undefined, undefined]);
+  });
+});
