@@ -107,6 +107,15 @@ describe('useVoiceSearch', () => {
     expect(native.stop).toHaveBeenCalledTimes(1);
   });
 
+  it('cancel aborts a running session and is a no-op without one', async () => {
+    const { result, native } = await startListening();
+    act(() => result.current.cancel());
+    expect(native.abort).toHaveBeenCalledTimes(1);
+    act(() => native.events.onEnd());
+    expect(() => act(() => result.current.cancel())).not.toThrow();
+    expect(native.abort).toHaveBeenCalledTimes(1);
+  });
+
   it('unmount aborts', async () => {
     const { unmount, native } = await startListening();
     unmount();

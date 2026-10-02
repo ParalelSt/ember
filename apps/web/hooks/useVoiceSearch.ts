@@ -100,5 +100,11 @@ export function useVoiceSearch(onTranscript: (text: string, isFinal: boolean) =>
     );
   }, []);
 
-  return { supported, listening, toggle };
+  /** Drop the session without a result (the search sheet closing): the
+   *  mic stops at once instead of listening on behind a closed sheet. */
+  const cancel = useCallback(() => {
+    sessionRef.current?.abort();
+  }, []);
+
+  return { supported, listening, toggle, cancel };
 }

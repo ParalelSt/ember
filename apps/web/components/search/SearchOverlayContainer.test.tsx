@@ -39,8 +39,9 @@ vi.mock('@/components/ui/dialog', () => ({
 const online = vi.hoisted(() => ({ value: true }));
 vi.mock('@/lib/useOnline', () => ({ useOnline: () => online.value }));
 
+const voice = vi.hoisted(() => ({ cancel: vi.fn() }));
 vi.mock('@/hooks/useVoiceSearch', () => ({
-  useVoiceSearch: () => ({ supported: false, listening: false, toggle: vi.fn() }),
+  useVoiceSearch: () => ({ supported: false, listening: false, toggle: vi.fn(), cancel: voice.cancel }),
 }));
 
 vi.mock('@/components/track/menus/TrackMenu', () => ({
@@ -477,6 +478,13 @@ describe('SearchOverlayContainer, phone sheet', () => {
     expect(back.compareDocumentPosition(box()) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     fireEvent.click(back);
     expect(useUiStore.getState().searchOpen).toBe(false);
+  });
+
+  it('closing the sheet stops voice search, so the mic is not left listening behind it', () => {
+    renderOverlay();
+    expect(voice.cancel).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Close search' }));
+    expect(voice.cancel).toHaveBeenCalled();
   });
 
   it('keeps the typed text when the back arrow closes it, same as before', () => {
