@@ -77,6 +77,9 @@ class EmberPlaybackService : MediaLibraryService() {
          *  before, when it turned shuffle on). The app has reordered its
          *  queue itself; this only keeps the flag and the way back. */
         const val COMMAND_SHUFFLE_STATE = "ember.shuffleState"
+        /** The app's "Tap to retry": the failed song reloads with the host's
+         *  retry mark (ListenerRetry), not as a plain play. */
+        const val COMMAND_RETRY = "ember.retry"
         /** Apps that are the car: the heart button needs to know which songs
          *  are liked once one of them connects. */
         val CAR_PACKAGES = setOf(
@@ -135,19 +138,21 @@ class EmberPlaybackService : MediaLibraryService() {
 
         /** The music player: streams (through the auto cache, see MediaCache),
          *  or the downloaded copy when there is one (OfflineAudio), through
-         *  the equalizer [eq] when given (Equalizer.kt). Its own function so
-         *  tests build the same one. */
+         *  the equalizer [eq] when given (Equalizer.kt), marking the listener's
+         *  retry of a failed song when [retry] is given (ListenerRetry). Its
+         *  own function so tests build the same one. */
         fun buildPlayer(
             context: Context,
             streams: DataSource.Factory,
             offline: OfflineStore,
             eq: AudioProcessor? = null,
+            retry: ListenerRetry? = null,
             online: () -> Boolean = { true },
         ): ExoPlayer =
             (if (eq != null) ExoPlayer.Builder(context, EqualizerProcessor.renderers(context, eq)) else ExoPlayer.Builder(context))
                 .setMediaSourceFactory(
                     DefaultMediaSourceFactory(context)
-                        .setDataSourceFactory(OfflineAudio.dataSourceFactory(context, streams, offline))
+                        .setDataSourceFactory(OfflineAudio.dataSourceFactory(context, retry?.dataSourceFactory(streams) ?: streams, offline))
                         .setLoadErrorHandlingPolicy(PatientLoadErrors(online)),
                 )
                 .setAudioAttributes(AudioAttributes.Builder().setUsage(C.USAGE_MEDIA).setContentType(C.AUDIO_CONTENT_TYPE_MUSIC).build(), true)
@@ -160,6 +165,7 @@ class EmberPlaybackService : MediaLibraryService() {
                 // Shuffle reorders the queue itself (QueueShuffle), so the
                 // shuffle flag must never change the play order as well.
                 .also { it.setShuffleOrder(ShuffleOrder.UnshuffledShuffleOrder(0)) }
+                .also { p -> retry?.let { p.addListener(it) } }
     }
 
     private lateinit var player: ExoPlayer
@@ -186,6 +192,8 @@ class EmberPlaybackService : MediaLibraryService() {
     /** Covers on the Ember server go to the car as content URIs (ArtworkProvider). */
     private val artAuthority: String by lazy { ArtworkUris.authority(packageName) }
     private val shuffle = ShuffleState()
+    /** "Tap to retry" from the app (COMMAND_RETRY). */
+    private val listenerRetry = ListenerRetry()
     private val liked = LikedSongs()
     @Volatile private var likesLoading = false
     /** The last custom layout sent: only a change is sent again. */
@@ -249,7 +257,7 @@ class EmberPlaybackService : MediaLibraryService() {
         val streams = MediaCache.dataSourceFactory(cache, dataSource)
         // Asked live on each failed load; the network watch starts just below.
         equalizer.settings = EqSettings.load(EqSettings.prefs(this))
-        player = buildPlayer(this, streams, offline, equalizer) { !::net.isInitialized || net.current().online }
+        player = buildPlayer(this, streams, offline, equalizer, listenerRetry) { !::net.isInitialized || net.current().online }
         player.addListener(QueueListener(
             player,
             recordPlay = ::recordPlay,
@@ -841,6 +849,7 @@ class EmberPlaybackService : MediaLibraryService() {
                         add(SessionCommand(COMMAND_EQUALIZER, Bundle.EMPTY))
                         add(SessionCommand(COMMAND_OUTPUT, Bundle.EMPTY))
                         add(SessionCommand(COMMAND_SHUFFLE_STATE, Bundle.EMPTY))
+                        add(SessionCommand(COMMAND_RETRY, Bundle.EMPTY))
                     }
                 }
                 .build()
@@ -854,6 +863,7 @@ class EmberPlaybackService : MediaLibraryService() {
             when (command.customAction) {
                 COMMAND_SHUFFLE -> setShuffle(!shuffle.on)
                 COMMAND_REPEAT -> player.repeatMode = CarButtons.nextRepeat(player.repeatMode)
+                COMMAND_RETRY -> listenerRetry.retry(player, mark = player === this@EmberPlaybackService.player)
                 CarButtons.COMMAND_LIKE -> return Futures.immediateFuture(toggleLike())
                 COMMAND_SHUFFLE_STATE -> {
                     when {

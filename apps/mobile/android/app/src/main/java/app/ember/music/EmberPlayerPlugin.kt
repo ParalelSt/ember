@@ -336,6 +336,13 @@ class EmberPlayerPlugin : Plugin() {
         }
     }
     @PluginMethod fun play(call: PluginCall) = withController { it.play(); call.resolve() }
+    /** "Tap to retry": the song that failed reloads with the host's retry
+     *  mark (ListenerRetry). A plain play reloaded the same address, which
+     *  the host answers from its memory of the failure for two minutes. */
+    @PluginMethod fun retry(call: PluginCall) = withController {
+        it.sendCustomCommand(SessionCommand(EmberPlaybackService.COMMAND_RETRY, Bundle.EMPTY), Bundle.EMPTY)
+        call.resolve()
+    }
     @PluginMethod fun pause(call: PluginCall) = withController { it.pause(); call.resolve() }
     @PluginMethod fun next(call: PluginCall) = withController { it.seekToNextMediaItem(); call.resolve() }
     @PluginMethod fun prev(call: PluginCall) = withController { previous(it); call.resolve() }

@@ -1340,9 +1340,12 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     const st = usePlayerStore.getState();
     const track = st.queue[st.index];
     if (!track) return;
-    // The native player keeps the song it failed on: play asks it again.
+    // The native player keeps the song it failed on and reloads it itself,
+    // with the same retry mark as below.
     if (backendKindRef.current === 'android') {
-      backendRef.current?.play();
+      const b = backendRef.current;
+      if (b?.retry) b.retry();
+      else b?.play();
       return;
     }
     loadAndPlay(track, true, undefined, { listenerRetry: true });
