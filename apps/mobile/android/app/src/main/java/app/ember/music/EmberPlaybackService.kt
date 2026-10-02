@@ -395,6 +395,8 @@ class EmberPlaybackService : MediaLibraryService() {
     /** The saved queue (SavedQueue), where it was, playing. Nothing saved:
      *  nothing to play (the foreground guard then lets the service go). */
     private fun resumeAndPlay() {
+        // The service is going away: nothing to load into.
+        if (resumeIo.isShutdown) return
         resumeIo.execute {
             val saved = runCatching { savedQueue.resume(api.baseUrl, artAuthority) }.getOrNull()
             handler.post {
@@ -784,6 +786,11 @@ class EmberPlaybackService : MediaLibraryService() {
     override fun onDestroy() {
         handler.removeCallbacks(tickLoop)
         handler.removeCallbacks(foregroundGuard)
+        // Anything else still waiting on the main thread, above all a media
+        // key press still being counted (presses): settling it after this
+        // point asked the shut-down resumeIo for the saved queue and crashed
+        // the app with a RejectedExecutionException.
+        handler.removeCallbacksAndMessages(null)
         runCatching { audioManager?.unregisterAudioDeviceCallback(deviceWatch) }
         autoCacher.cancel()
         net.stop()
