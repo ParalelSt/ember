@@ -635,15 +635,20 @@ def artist_from_browse(response):
             "songs": {}, "albums": {}, "singles": {}}
 
     # Sections (songs / albums / singles). Best effort: an unparsable layout
-    # just leaves them empty, the name/picture/search songs still show.
+    # just leaves them empty, the name/picture/search songs still show. The
+    # songs shelf and the albums/singles are parsed apart, so one odd row in
+    # the songs does not throw away albums that would have parsed.
+    contents = response.get("contents") or {}
+    sections = _find_key(contents, "sectionListRenderer")
+    sections = (sections.get("contents") if isinstance(sections, dict) else None) or []
+    first = sections[0] if sections and isinstance(sections[0], dict) else {}
     try:
-        contents = response.get("contents") or {}
-        sections = _find_key(contents, "sectionListRenderer")
-        sections = (sections or {}).get("contents") or []
-        first = sections[0] if sections else {}
         if "musicShelfRenderer" in first:
             from ytmusicapi.parsers.playlists import parse_playlist_items
             info["songs"] = {"results": parse_playlist_items(first["musicShelfRenderer"]["contents"])}
+    except Exception as e:
+        print(f"artist: songs shelf parse skipped: {type(e).__name__}: {e}", file=sys.stderr)
+    try:
         info.update({k: v for k, v in yt.parser.parse_channel_contents(sections).items()
                      if k in ("albums", "singles")})
     except Exception as e:
