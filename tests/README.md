@@ -1289,7 +1289,10 @@ the header, who added each song, no cover button, a menu with only "Who can
 edit" and "Leave playlist", and moves a song up from the row's + menu; the
 owner's open page follows within the 5 s poll and moves it back down from
 the desktop More menu; the outsider joins through the link; the member
-leaves. Nothing scrolls sideways at 390.
+leaves. Nothing scrolls sideways at 390. The "Add songs" picker's
+suggestions are answered by the test itself (two fake songs), so the picker
+always draws its compact rows, and every order check reads only the
+playlist's own rows (`track-row`), never the picker's.
 
 ## M2 to M5 of the same audit
 
