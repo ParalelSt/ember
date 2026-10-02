@@ -14,6 +14,29 @@ import { parsePluginPatch, readStoredPlugins, type StoredPlugins } from '@/lib/p
  *  pb_hooks/ensure_plugin_settings.pb.js; the keys live in
  *  lib/pluginSettings.ts. */
 
+/** One user's PATCHes, in order. Each is a read-merge-write of the whole
+ *  `plugins` field: two in flight at once (a quick second toggle, the
+ *  equalizer's delayed save landing next to a switch, the first-load
+ *  migration) would both read the same row, and the later write would drop
+ *  the earlier one's key. Same shape as the theme lock in
+ *  lib/theme/serverActive.ts. */
+const locks = new Map<string, Promise<unknown>>();
+
+function withPluginsLock<T>(userId: string, fn: () => Promise<T>): Promise<T> {
+  const prior = locks.get(userId) ?? Promise.resolve();
+  const run = prior.then(fn, fn);
+  const tail = run.then(
+    () => {},
+    () => {},
+  );
+  locks.set(userId, tail);
+  // Drop the entry once nothing is queued behind this one.
+  void tail.then(() => {
+    if (locks.get(userId) === tail) locks.delete(userId);
+  });
+  return run;
+}
+
 export const GET = withRequestLog('plugins', async () => {
   try {
     const { pb, user } = await requireUser();
@@ -38,11 +61,13 @@ export const PATCH = withRequestLog('plugins', async (request: NextRequest) => {
 
     // Merge into what is stored, keeping keys this build does not know about
     // (a newer build may have written them).
-    const record = await pb.collection('users').getOne(user.id);
-    const current = typeof record.plugins === 'object' && record.plugins !== null && !Array.isArray(record.plugins)
-      ? (record.plugins as Record<string, unknown>)
-      : {};
-    const updated = await pb.collection('users').update(user.id, { plugins: { ...current, ...patch } });
+    const updated = await withPluginsLock(user.id, async () => {
+      const record = await pb.collection('users').getOne(user.id);
+      const current = typeof record.plugins === 'object' && record.plugins !== null && !Array.isArray(record.plugins)
+        ? (record.plugins as Record<string, unknown>)
+        : {};
+      return pb.collection('users').update(user.id, { plugins: { ...current, ...patch } });
+    });
     return Response.json(readStoredPlugins(updated.plugins) satisfies StoredPlugins);
   } catch (e) {
     if (e instanceof UnauthorizedError) return unauthorizedResponse();
