@@ -377,8 +377,10 @@ Exit code 0 = everything passed; each check prints PASS/FAIL with detail.
 `ai-triage-ui.test.mjs` drives a headless browser: it submits a report as a
 throwaway user and checks the diagnosis panel (including the "Reproduce"
 line) renders, resets on **Done**, and logs no console errors. Before
-submitting, it also fires one deliberately-failing request (a nonexistent
-playlist id) so the server log the report picks up has a real error line,
+submitting, it also fires one deliberately-failing request that the server
+logs (a sixth lyrics report in 10 minutes, refused with a 429; a missing
+playlist's 404 is not logged since b1259cdf) so the server log the report
+picks up has a real error line,
 then: via the fake servers' introspection `GET` (see `fake-anthropic.mjs`),
 checks the "State when reported" context block and that server error both
 reached the AI prompt, and that the context ("Where") and reproduction
@@ -889,15 +891,18 @@ PB_URL=http://127.0.0.1:8092 APP_URL=http://127.0.0.1:3011 SB="$SB" node tests/u
 PB_URL=http://127.0.0.1:8092 APP_URL=http://127.0.0.1:3011 SB="$SB" node tests/unavailable-ui.test.mjs   # or: npm run test:unavailable-ui
 ```
 
-`unavailable.test.mjs` (42 checks): detection (a definitive failure answers
+`unavailable.test.mjs` (49 checks): detection (a definitive failure answers
 410 with a clean reason, never a Python traceback), the flag carried on
 playlists and likes, a transient 403 never flagging anything, the flag
-clearing once a track plays again, the replacements/availability endpoints,
+a song found gone answered 410 from the host's memory without running the
+player again even once it is back upstream (since ea92c237), the flag
+clearing once it plays from disk, the replacements/availability endpoints,
 replace-in-playlist (including merging into an already-present track and
 refusing another user's edit), and unavailable tracks excluded from
 recommended radio. It's safe to rerun against a reused sandbox: it clears any
 flag left over from a previous run, through the real clear-on-play path
-rather than a raw PocketBase patch, before seeding its own state.
+(a play from a file it puts on disk) rather than a raw PocketBase patch,
+before seeding its own state.
 
 The pure skip-over-unavailable rules (`isUnavailable`, `nextPlayable`) are
 unit-tested in `apps/web/lib/playback/queueNav.test.ts`, run by

@@ -139,21 +139,25 @@ async function waitClearedInPB(videoIds, tries = 30) {
 
 // ── Idempotency: a rerun against a reused sandbox must not start with any of
 //    this test's ids already flagged from a previous pass. Stream each one
-//    with the fake player set to succeed, so the server's own clearIfFlagged
-//    path (not a hand-written PocketBase patch) clears the PB flag AND nulls
-//    the app's in-memory unavailable-ids cache. A raw admin PATCH would clear
+//    from a file put on disk for it, so the server's own clearIfFlagged path
+//    (not a hand-written PocketBase patch) clears the PB flag AND nulls the
+//    app's in-memory unavailable-ids cache. On disk, not through the fake
+//    player: since ea92c237 a song the host found gone is answered 410 from
+//    its memory (and a fresh flag) without asking the player at all, so only
+//    a play from disk makes it forget. A raw admin PATCH would clear
 //    PocketBase but leave that cache stale for up to 60s, which would make
 //    the very next run's B2 candidate-ordering check fail intermittently. ──
 const IDEMPOTENCY_IDS = [DEAD, LIVE, FLAKY, 'bbbbbbbbbbb', 'eeeeeeeeeee', 'fffffffffff'];
 writeList('unavailable.txt', []);
 writeList('transient.txt', []);
+fs.mkdirSync(`${SB}/music`, { recursive: true });
 for (const id of IDEMPOTENCY_IDS) {
+  fs.writeFileSync(`${SB}/music/${id}.m4a`, `FAKE-AUDIO-${id}`);
   const r = await call(`/api/youtube/stream/${id}`).catch(() => null);
   await r?.arrayBuffer().catch(() => {});
 }
 await waitClearedInPB(IDEMPOTENCY_IDS);
-// Streaming to clear the flag also downloads each id to MUSIC_DIR as a side
-// effect of succeeding. Left in place, that cached file would poison A1/A4/B2
+// The files put on disk to clear the flags, left in place, would poison A1/A4/B2
 // below (a cache hit skips the fake player entirely, so DEAD/FLAKY/eee could
 // never fail again). Delete it now that the flag is cleared.
 for (const id of IDEMPOTENCY_IDS) {
@@ -234,13 +238,30 @@ const pl4 = await call(`/api/playlists/${playlistId}`).then((r) => r.json());
 const flaky4 = pl4.tracks?.find((t) => t.id === `youtube:${FLAKY}`);
 check('A4 FLAKY has no unavailableAt', !flaky4?.unavailableAt, JSON.stringify(flaky4));
 
-// ── A5: the flag clears once the track plays again, and re-flags on the
-//    next definitive failure ──
+// ── A5: a song found gone is not asked about again for a while, even once
+//    YouTube has it back (by design since ea92c237: the host remembers for
+//    hours, so retries and prefetches never rerun yt-dlp for the same
+//    refusal). It plays again, and the flag clears, once it is on disk; the
+//    next definitive failure flags it again ──
 writeList('unavailable.txt', []);
-const s5 = await call(`/api/youtube/stream/${DEAD}`);
-check('A5 stream DEAD is 200 once restored', s5.status === 200, `status ${s5.status}`);
-await s5.arrayBuffer().catch(() => {});
+const callsLog = `${SB}/calls.log`;
+const calls = () => (fs.existsSync(callsLog) ? fs.readFileSync(callsLog, 'utf8').split('\n').filter(Boolean) : []);
+const deadRunsA5 = calls().filter((l) => l.endsWith(DEAD)).length;
+const s5r = await call(`/api/youtube/stream/${DEAD}`);
+const s5rBody = await s5r.json().catch(() => ({}));
+check('A5 restored upstream, still answered 410 from memory', s5r.status === 410 && s5rBody?.unavailable === true, `status ${s5r.status}`);
+check('A5 and yt-dlp is not run for it again', calls().filter((l) => l.endsWith(DEAD)).length === deadRunsA5,
+  `${calls().filter((l) => l.endsWith(DEAD)).length - deadRunsA5} new runs`);
 const getPl = () => call(`/api/playlists/${playlistId}`).then((r) => r.json());
+check('A5 the flag stays meanwhile', !!(await getPl()).tracks?.find((t) => t.id === `youtube:${DEAD}`)?.unavailableAt);
+
+// On disk again (the way a song comes back: a download that worked), it
+// plays, and both the memory and the flag forget it.
+fs.mkdirSync(`${SB}/music`, { recursive: true });
+fs.writeFileSync(`${SB}/music/${DEAD}.m4a`, `FAKE-AUDIO-${DEAD}`);
+const s5 = await call(`/api/youtube/stream/${DEAD}`);
+check('A5 stream DEAD is 200 once it is on disk', s5.status === 200, `status ${s5.status}`);
+await s5.arrayBuffer().catch(() => {});
 const dead5 = await pollTrack(getPl, DEAD, (t) => !t?.unavailableAt);
 check('A5 DEAD flag cleared', !dead5?.unavailableAt, JSON.stringify(dead5));
 
