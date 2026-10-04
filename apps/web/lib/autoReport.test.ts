@@ -10,6 +10,7 @@ import type { LogEntry } from './logger/types';
 vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn() }));
 
 const { maybeAutoReport } = await import('./autoReport');
+const { connectionOk } = await import('./connectionBlip');
 
 function errorEntry(over: Partial<LogEntry> = {}): LogEntry {
   return {
@@ -40,6 +41,7 @@ function signOut() {
 beforeEach(() => {
   vi.useFakeTimers();
   window.sessionStorage.clear();
+  connectionOk();
   useUiStore.setState({ bugReportOpen: false });
   useSettingsStore.setState({ autoReportEnabled: true });
   signIn();
@@ -171,6 +173,70 @@ describe('maybeAutoReport [bughunt V5]: a lost session is not a bug', () => {
     window.history.replaceState(null, '', '/library');
     const fetchMock = mockFetch();
     maybeAutoReport(errorEntry({ category: 'api', message: 'GET /likes → 500', data: { status: 500 } }));
+    await vi.advanceTimersByTimeAsync(3000);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('maybeAutoReport [discord-2026-10-04 #6]: one report per connection blip', () => {
+  const netError = (path: string) =>
+    errorEntry({ category: 'api', message: `GET ${path} network error`, data: { method: 'GET', path, network: true } });
+
+  it('a burst of network errors within a second sends nothing', async () => {
+    const fetchMock = mockFetch();
+    maybeAutoReport(netError('/history'));
+    await vi.advanceTimersByTimeAsync(300);
+    maybeAutoReport(netError('/likes'));
+    await vi.advanceTimersByTimeAsync(300);
+    maybeAutoReport(netError('/playlists'));
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('network errors that keep coming for over 30 s send exactly one report', async () => {
+    const fetchMock = mockFetch();
+    const paths = ['/history', '/likes', '/playlists', '/listening'];
+    for (let t = 0; t <= 60_000; t += 5_000) {
+      maybeAutoReport(netError(paths[(t / 5_000) % paths.length]));
+      await vi.advanceTimersByTimeAsync(5_000);
+    }
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const body = JSON.parse(String((fetchMock.mock.calls[0] as [string, RequestInit])[1].body));
+    expect(body.note).toMatch(/^api: network errors for over 30s, last: GET \/\S+ network error$/);
+  });
+
+  it('a server answer in between ends the run: two short blips send nothing', async () => {
+    const fetchMock = mockFetch();
+    for (let t = 0; t <= 20_000; t += 5_000) {
+      maybeAutoReport(netError('/history'));
+      await vi.advanceTimersByTimeAsync(5_000);
+    }
+    connectionOk();
+    for (let t = 0; t <= 20_000; t += 5_000) {
+      maybeAutoReport(netError('/likes'));
+      await vi.advanceTimersByTimeAsync(5_000);
+    }
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('a second lasting outage in the same session is not reported again', async () => {
+    const fetchMock = mockFetch();
+    for (let round = 0; round < 2; round++) {
+      connectionOk();
+      for (let t = 0; t <= 40_000; t += 5_000) {
+        maybeAutoReport(netError('/listening'));
+        await vi.advanceTimersByTimeAsync(5_000);
+      }
+    }
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('dedupes an identical automatic report within a session', async () => {
+    const fetchMock = mockFetch();
+    const entry = () => errorEntry({ category: 'api', message: 'GET /likes → 500', data: { status: 500 } });
+    maybeAutoReport(entry());
+    await vi.advanceTimersByTimeAsync(3000);
+    maybeAutoReport(entry());
     await vi.advanceTimersByTimeAsync(3000);
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });

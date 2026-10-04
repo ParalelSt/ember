@@ -5,6 +5,7 @@ import type { CandidatePerson, CollabState } from '@/lib/collab';
 import { logger } from '@/lib/logger/client';
 import { isPublicPage } from '@/lib/publicPaths';
 import { sessionExpired } from '@/lib/sessionExpired';
+import { connectionOk } from '@/lib/connectionBlip';
 import type { ImportItem, ImportJob, InspectResult, JobKind } from '@/lib/import/types';
 import type { TransferPreview } from '@/app/api/import/upload/route';
 import type { FlowState as GoogleFlowState, GooglePreview } from '@/lib/import/google/flows';
@@ -70,26 +71,56 @@ interface ReqOptions {
    *  with reasons): logged as a warning, so they never trigger a silent
    *  crash report. The error still throws, carrying the response body. */
   expected?: number[];
+  /** A background write nobody waits on (the play history record, Discord
+   *  presence): retried on a network failure like a GET, and a final
+   *  failure is only a warning, never an automatic bug report. */
+  background?: boolean;
 }
 
-async function req<T>(path: string, { method = 'GET', body, signal, expected }: ReqOptions = {}): Promise<T> {
+/** Waits before each retry of a request that got no HTTP answer at all (a
+ *  connection blip). Only GETs and background writes retry: a retried POST
+ *  could apply twice. */
+export const NETWORK_RETRY_DELAYS_MS = [300, 1000];
+
+const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+async function req<T>(path: string, { method = 'GET', body, signal, expected, background }: ReqOptions = {}): Promise<T> {
   let res: Response;
   // A FormData body carries its own multipart boundary: setting the header
   // by hand would strip it and the upload would arrive unreadable.
   const form = body instanceof FormData;
-  try {
-    res = await fetch(`${API_BASE}/api${path}`, {
-      method,
-      headers: body && !form ? { 'Content-Type': 'application/json' } : undefined,
-      body: form ? (body as FormData) : body ? JSON.stringify(body) : undefined,
-      credentials: 'include',
-      signal,
-    });
-  } catch (e) {
-    // Network-level failure (offline, DNS, CORS, etc.). Log + rethrow.
-    logger.error('api', `${method} ${path} network error`, { method, path }, e as Error);
-    throw e;
+  const retryDelays = method === 'GET' || background ? NETWORK_RETRY_DELAYS_MS : [];
+  for (let attempt = 0; ; attempt++) {
+    try {
+      res = await fetch(`${API_BASE}/api${path}`, {
+        method,
+        headers: body && !form ? { 'Content-Type': 'application/json' } : undefined,
+        body: form ? (body as FormData) : body ? JSON.stringify(body) : undefined,
+        credentials: 'include',
+        signal,
+      });
+      break;
+    } catch (e) {
+      // Network-level failure (offline, DNS, CORS, a dropped connection), or
+      // the caller aborting, which is never retried. `network` tells
+      // autoReport this is a possible blip, not a fault on its own.
+      const aborted = !!signal?.aborted || (e instanceof Error && e.name === 'AbortError');
+      const data = { method, path, network: !aborted };
+      if (!aborted && attempt < retryDelays.length) {
+        logger.warn('api', `${method} ${path} network error, retrying`, { ...data, attempt: attempt + 1 });
+        await sleep(retryDelays[attempt]);
+        continue;
+      }
+      if (background) {
+        logger.warn('api', `${method} ${path} network error`, { ...data, error: (e as Error)?.message });
+      } else {
+        logger.error('api', `${method} ${path} network error`, data, e as Error);
+      }
+      throw e;
+    }
   }
+  // Any HTTP answer, even an error status, means the connection is back.
+  connectionOk();
   if (!res.ok) {
     const err = (await res.json().catch(() => ({ error: res.statusText }))) as { error?: string };
     // proxy.ts stamps every response with x-request-id; surfacing it here
@@ -416,12 +447,14 @@ export const api = {
   },
 
   getHistory: () => req<{ tracks: Track[] }>('/history'),
-  recordPlay: (track: Track) => req<{ ok: true }>('/history', { method: 'POST', body: { track } }),
+  recordPlay: (track: Track) =>
+    req<{ ok: true }>('/history', { method: 'POST', body: { track }, background: true }),
 
   updateDiscord: (track: Track | null, isPlaying: boolean, positionSec = 0, durationSec = 0) =>
     req<{ ok: true; shared: boolean }>('/discord/update', {
       method: 'POST',
       body: { track, isPlaying, positionSec, durationSec },
+      background: true,
     }),
 
   // — Privacy: two independent "don't broadcast what I'm playing" switches —
