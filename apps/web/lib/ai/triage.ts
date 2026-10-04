@@ -300,16 +300,35 @@ export function isTriageConfigured(): boolean {
   return !!process.env.ANTHROPIC_API_KEY;
 }
 
-/** Called once at server startup (instrumentation.ts's register()). A
- *  missing key doesn't stop the app: triageBugReport() already degrades to
- *  null and the report still sends. But bug reports silently arriving with
- *  no diagnosis, forever, is confusing enough to deserve one clear line in
- *  the logs the moment the server boots, not a mystery discovered later. */
+let missingKeyNoted = false;
+
+/** Called once at server startup (instrumentation.ts's register()), and
+ *  again by triageBugReport() on a report that arrives with no key. A
+ *  missing key doesn't stop the app: triage degrades to null and the report
+ *  still sends. But bug reports silently arriving with no diagnosis, forever,
+ *  is confusing enough to deserve one clear line in the logs, not a mystery
+ *  discovered later. It is a setting, not a fault, so the line is 'info'
+ *  (never in the daily digest) and is written once per server process, not
+ *  once per report. */
 export function checkTriageConfig(): void {
-  if (isTriageConfigured()) return;
+  if (isTriageConfigured() || missingKeyNoted) return;
+  missingKeyNoted = true;
   const message = 'ANTHROPIC_API_KEY is not set: bug reports will arrive without AI triage';
-  serverLogger.warn('ai', message);
+  serverLogger.info('ai', message);
   console.warn(`[triage] ${message}`);
+}
+
+/** For tests: forget that the missing key was already noted. */
+export function resetTriageConfigNote(): void {
+  missingKeyNoted = false;
+}
+
+/** Data for a failed model call's log line. A failed call is a 'warn' kept
+ *  out of the daily digest (lib/reports/digest.ts honours `digest: false`):
+ *  the report or digest it was for still goes out, just without the AI part,
+ *  so it is a degradation to see in a bug report's logs, not a daily problem. */
+function failedCall(extra?: Record<string, unknown>) {
+  return { ...extra, digest: false };
 }
 
 /** The daily digest's model output: one headline plus a few short lines of
@@ -383,7 +402,7 @@ export async function summarizeDigest(digestText: string, groupCount: number): P
 
     if (!res.ok) {
       const detail = await res.text().catch(() => '');
-      serverLogger.error('ai', `digest summary HTTP ${res.status}`, { detail: clip(detail, 300) });
+      serverLogger.warn('ai', `digest summary HTTP ${res.status}`, failedCall({ detail: clip(detail, 300) }));
       return null;
     }
 
@@ -394,20 +413,23 @@ export async function summarizeDigest(digestText: string, groupCount: number): P
       .join('\n')
       .trim();
     if (!text) {
-      serverLogger.error('ai', 'digest summary returned no text');
+      serverLogger.warn('ai', 'digest summary returned no text', failedCall());
       return null;
     }
 
     return DigestSummarySchema.parse(extractJson(text));
   } catch (e) {
-    serverLogger.error('ai', 'digest summary failed', undefined, e);
+    serverLogger.warn('ai', 'digest summary failed', failedCall(), e);
     return null;
   }
 }
 
 export async function triageBugReport(input: TriageInput): Promise<Triage | null> {
   const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) return null;
+  if (!apiKey) {
+    checkTriageConfig();
+    return null;
+  }
 
   try {
     // Digest and prompt construction happen inside the try too: a malformed
@@ -439,7 +461,7 @@ export async function triageBugReport(input: TriageInput): Promise<Triage | null
 
     if (!res.ok) {
       const detail = await res.text().catch(() => '');
-      serverLogger.error('ai', `triage HTTP ${res.status}`, { detail: clip(detail, 300) });
+      serverLogger.warn('ai', `triage HTTP ${res.status}`, failedCall({ detail: clip(detail, 300) }));
       return null;
     }
 
@@ -450,7 +472,7 @@ export async function triageBugReport(input: TriageInput): Promise<Triage | null
       .join('\n')
       .trim();
     if (!text) {
-      serverLogger.error('ai', 'triage returned no text');
+      serverLogger.warn('ai', 'triage returned no text', failedCall());
       return null;
     }
 
@@ -458,7 +480,7 @@ export async function triageBugReport(input: TriageInput): Promise<Triage | null
   } catch (e) {
     // Timeout, network error, malformed JSON, schema mismatch — all the same
     // here: no triage, report still goes out.
-    serverLogger.error('ai', 'triage failed', undefined, e);
+    serverLogger.warn('ai', 'triage failed', failedCall(), e);
     return null;
   }
 }
