@@ -318,6 +318,7 @@ export function useExecuteDeletePlaylist() {
     mutationFn: (id: string) => api.deletePlaylist(id),
     onSuccess: (_d, id) => {
       qc.invalidateQueries({ queryKey: QK.playlists });
+      qc.invalidateQueries({ queryKey: QK.containingAll });
       logger.breadcrumb('library', 'playlist.delete', { id });
     },
   });
@@ -399,6 +400,7 @@ export function useExecuteReplaceInPlaylist() {
       api.replaceInPlaylist(id, trackId, track),
     onSuccess: (_d, { id, trackId, track }) => {
       qc.invalidateQueries({ queryKey: QK.playlist(id) });
+      qc.invalidateQueries({ queryKey: QK.containingAll });
       logger.breadcrumb('library', 'playlist.replace', { playlistId: id, from: trackId, to: track.id });
     },
   });
@@ -451,6 +453,9 @@ export function useExecuteBulkAddToPlaylist() {
     onSuccess: (outcome, { id }) => {
       qc.invalidateQueries({ queryKey: QK.playlist(id) });
       qc.invalidateQueries({ queryKey: QK.playlists });
+      // Which playlists hold these songs changed: the Add to playlist
+      // menu's marks are out of date.
+      qc.invalidateQueries({ queryKey: QK.containingAll });
       logger.breadcrumb('library', 'playlist.bulkAdd', { playlistId: id, added: outcome.added, skipped: outcome.skipped.length });
     },
   });
