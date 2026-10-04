@@ -2,7 +2,7 @@
 import { EventEmitter } from 'node:events';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
-import { NOT_AVAILABLE_ID, YTDLP_NOT_AVAILABLE_STDERR } from '@/test-utils/ytdlpStderr';
+import { AGE_GATE_ID, NOT_AVAILABLE_ID, YTDLP_AGE_GATE_STDERR, YTDLP_NOT_AVAILABLE_STDERR } from '@/test-utils/ytdlpStderr';
 
 // The report (2026-09-30): radio queued 0LYiIUMeO1o, which YouTube Music
 // still lists but yt-dlp refuses with "This video is not available", and the
@@ -36,6 +36,9 @@ vi.mock('node:child_process', () => {
       const id = args[args.length - 1];
       if ((command === 'download' || command === 'info') && id === NOT_AVAILABLE_ID) {
         child.stderr.emit('data', Buffer.from(YTDLP_NOT_AVAILABLE_STDERR));
+        child.emit('close', 1);
+      } else if ((command === 'download' || command === 'info') && id === AGE_GATE_ID) {
+        child.stderr.emit('data', Buffer.from(YTDLP_AGE_GATE_STDERR));
         child.emit('close', 1);
       } else if ((command === 'download' || command === 'info') && id === GLITCH_ID) {
         child.stderr.emit('data', Buffer.from('ERROR: unable to download video data: HTTP Error 403: Forbidden\n'));
@@ -181,6 +184,53 @@ describe('a radio song YouTube refuses ("This video is not available")', () => {
     await stream(NOT_AVAILABLE_ID);
     for (let i = 0; i < 70; i++) expect((await stream(NOT_AVAILABLE_ID)).status).toBe(410);
     expect(downloads(NOT_AVAILABLE_ID)).toBe(1);
+  });
+});
+
+// The report (2026-10-03, desktop 0.7.16): JuXvuM-xn5M is age-restricted,
+// yt-dlp says "Sign in to confirm your age", and the host (which never signs
+// in to YouTube) tried the download, then a live-stream lookup, then answered
+// 502 with three errors in the digest. It is as final as a removed video.
+describe('an age-restricted song ("Sign in to confirm your age")', () => {
+  it('answers 410 with the reason "age", after one yt-dlp run and no live-stream attempt', async () => {
+    const first = await stream(AGE_GATE_ID);
+    expect(first.status).toBe(410);
+    expect(first.headers.get('cache-control')).toBe('no-store');
+    expect(await first.json()).toMatchObject({ unavailable: true, reason: 'age' });
+    expect(downloads(AGE_GATE_ID)).toBe(1);
+    expect(lookups(AGE_GATE_ID)).toBe(0);
+  });
+
+  it('is remembered: repeats and retries are answered at once, without yt-dlp', async () => {
+    await stream(AGE_GATE_ID);
+    const again = [await stream(AGE_GATE_ID), await stream(AGE_GATE_ID, { retry: true }), await stream(AGE_GATE_ID, { prefetch: true })];
+    expect(again.map((r) => r.status)).toEqual([410, 410, 410]);
+    for (const r of again) expect(await r.json()).toMatchObject({ reason: 'age' });
+    expect(downloads(AGE_GATE_ID)).toBe(1);
+    expect(lookups(AGE_GATE_ID)).toBe(0);
+  });
+
+  it('is an expected answer in the log (info), not an error the digest counts', async () => {
+    await stream(AGE_GATE_ID);
+    await stream(AGE_GATE_ID);
+    expect(logs.error).not.toHaveBeenCalled();
+    expect(logs.info).toHaveBeenCalledWith('python', 'video unavailable on YouTube', expect.objectContaining({ reason: 'age' }));
+    expect(logs.info).toHaveBeenCalledWith('stream', 'known unavailable, not asking YouTube again', expect.objectContaining({ reason: 'age' }));
+  });
+
+  it('flags the saved row with the reason, and the availability check says why', async () => {
+    db.hasRow = true;
+    await stream(AGE_GATE_ID);
+    expect(markTrackUnavailable).toHaveBeenCalledWith(`youtube:${AGE_GATE_ID}`, 'age');
+    expect(await availability(`youtube:${AGE_GATE_ID}`)).toEqual({ unavailable: true, reason: 'age' });
+  });
+
+  it('a prefetch finds it out too, with the same answer', async () => {
+    const res = await stream(AGE_GATE_ID, { prefetch: true });
+    expect(res.status).toBe(410);
+    expect(await res.json()).toMatchObject({ unavailable: true, reason: 'age' });
+    expect(lookups(AGE_GATE_ID)).toBe(0);
+    expect(logs.error).not.toHaveBeenCalled();
   });
 });
 

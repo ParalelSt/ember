@@ -146,6 +146,36 @@ describe('yt-dlp failure classification', () => {
     expect(classifyYtdlpFailure('[youtube] dQw4w9WgXcQ: Video unavailable')).toBe('unavailable');
     expect(classifyYtdlpFailure('[youtube] dQw4w9WgXcQ: Video unavailable. This video has been removed by the uploader')).toBe('removed');
   });
+
+  // The host never signs in to YouTube, so an age gate is as final as a
+  // removed video (report 2026-10-03, JuXvuM-xn5M).
+  it('an age-restricted video is unavailable with the reason "age"', async () => {
+    const { classifyYtdlpFailure } = await import('./youtube');
+    expect(classifyYtdlpFailure(
+      '[youtube] JuXvuM-xn5M: Sign in to confirm your age. Use --cookies-from-browser or --cookies for the authentication.',
+    )).toBe('age');
+    expect(classifyYtdlpFailure('[youtube] JuXvuM-xn5M: Sign in to confirm your age. This video may be inappropriate for some users.')).toBe('age');
+    expect(classifyYtdlpFailure('[youtube] JuXvuM-xn5M: This video may be inappropriate for some users.')).toBe('age');
+    expect(classifyYtdlpFailure('[youtube] JuXvuM-xn5M: Age-restricted video')).toBe('age');
+  });
+
+  it('the bot check is still a passing failure, not an age gate', async () => {
+    const { classifyYtdlpFailure } = await import('./youtube');
+    expect(classifyYtdlpFailure("[youtube] dQw4w9WgXcQ: Sign in to confirm you're not a bot. Use --cookies-from-browser")).toBeNull();
+    expect(classifyYtdlpFailure('[youtube] dQw4w9WgXcQ: Sign in to confirm you’re not a bot.')).toBeNull();
+  });
+
+  it('an age-gated download fails 410 with the reason, never a 502', async () => {
+    const { YTDLP_AGE_GATE_STDERR, AGE_GATE_ID } = await import('@/test-utils/ytdlpStderr');
+    nextStdout = '';
+    nextStderr = YTDLP_AGE_GATE_STDERR;
+    nextCode = 1;
+    const { ensureDownloaded, isUnavailableError } = await import('./youtube');
+    const err = await ensureDownloaded(AGE_GATE_ID).catch((e: unknown) => e);
+    expect(isUnavailableError(err)).toBe(true);
+    expect(err).toMatchObject({ status: 410, unavailableReason: 'age' });
+    expect((err as Error).message).toMatch(/^\[youtube\] JuXvuM-xn5M: Sign in to confirm your age/);
+  });
 });
 
 // "Nothing found" was cached for 5 minutes, so a moment when search could

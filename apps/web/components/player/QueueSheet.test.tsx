@@ -88,6 +88,21 @@ describe('QueueSheet: "Couldn\'t play" (songs this session skipped)', () => {
     expect(rows[0].querySelector('.grayscale')).not.toBeNull();
   });
 
+  it('an age-restricted song reads "Age-restricted on YouTube", in the list and on its pill', () => {
+    const aged = makeTrack({ id: 'youtube:JuXvuM-xn5M', title: 'Age Gated', unavailableAt: '2026-10-03T10:35:00Z', unavailableReason: 'age' });
+    usePlayerStore.setState({ queue: [aged, glass, aged], index: 1, context: null });
+    recordCouldntPlay([skipped(aged, 'age')]);
+    render(<QueueSheet open onOpenChange={() => {}} />);
+    const section = screen.getByTestId('couldnt-play');
+    expect(within(section).getAllByTestId('couldnt-play-row').map((r) => r.textContent)).toEqual([
+      'Age GatedAge-restricted on YouTube · Skipped',
+    ]);
+    // The same song still ahead in the queue: greyed, the reason on its pill.
+    const pills = screen.getAllByTestId('unavailable-badge');
+    expect(pills.length).toBeGreaterThan(0);
+    for (const pill of pills) expect(pill).toHaveAttribute('title', 'Age-restricted on YouTube');
+  });
+
   it('a song whose reason the host did not give says "Not available on YouTube"; one that would not load says so', () => {
     const odd = makeTrack({ id: 'youtube:o', title: 'Odd One' });
     const flaky = makeTrack({ id: 'youtube:k', title: 'Flaky' });

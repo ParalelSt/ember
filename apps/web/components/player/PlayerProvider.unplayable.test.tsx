@@ -144,6 +144,18 @@ describe('web and desktop: the song playing turns out to be gone', () => {
     await waitFor(() => expect(messages()).toContain('Couldn\'t play "Radio Song One": not available on YouTube in this country. Skipped to the next song.'));
   });
 
+  it('an age-restricted song (the host answered 410 "age"): the bar says so and the next one plays', async () => {
+    setQueue([GONE, NEXT], 0);
+    verdict[GONE.id] = { unavailable: true, reason: 'age' };
+    render(<PlayerProvider>{null}</PlayerProvider>);
+    act(() => events!.onError());
+    await waitFor(() => expect(current().id).toBe(NEXT.id));
+    expect(messages()).toContain('Couldn\'t play "Radio Song One": age-restricted on YouTube. Skipped to the next song.');
+    expect(bar()).toMatchObject({ top: 'Skipped: Radio Song One', bottom: 'Age-restricted on YouTube', sticky: false });
+    expect(usePlayerStore.getState().queue[0].unavailableReason).toBe('age');
+    noToasts();
+  });
+
   it('a song that would not load right now: stays on it, says so, is not greyed', async () => {
     setQueue([KLINCEK, NEXT], 0);
     render(<PlayerProvider>{null}</PlayerProvider>);
@@ -319,6 +331,18 @@ describe('android: the native player reports what it could not play', () => {
     expect(messages()).toEqual(['Couldn\'t play "Radio Song One": not available on YouTube. Skipped to the next song.']);
     expect(bar()).toMatchObject({ top: 'Skipped: Radio Song One', bottom: 'Not available on YouTube' });
     noToasts();
+    expect(api.getTrackAvailability).not.toHaveBeenCalled();
+  });
+
+  it('an age-restricted song native skipped reads "Age-restricted on YouTube"', () => {
+    setQueue([KLINCEK, GONE, NEXT], 2);
+    render(<PlayerProvider>{null}</PlayerProvider>);
+    act(() => events!.onUnplayable!([
+      { trackId: GONE.id, title: GONE.title, kind: 'unavailable', reason: 'age', outcome: 'skipped' },
+    ]));
+    expect(usePlayerStore.getState().queue[1].unavailableReason).toBe('age');
+    expect(messages()).toEqual(['Couldn\'t play "Radio Song One": age-restricted on YouTube. Skipped to the next song.']);
+    expect(bar()).toMatchObject({ top: 'Skipped: Radio Song One', bottom: 'Age-restricted on YouTube' });
     expect(api.getTrackAvailability).not.toHaveBeenCalled();
   });
 

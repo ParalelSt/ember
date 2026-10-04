@@ -50,3 +50,15 @@ yt_dlp.utils.DownloadError: ERROR: [youtube] 0LYiIUMeO1o: This video is not avai
 `;
 
 export const NOT_AVAILABLE_ID = '0LYiIUMeO1o';
+
+/** What yt-dlp prints for an age-restricted video on a host that never signs
+ *  in to YouTube (JuXvuM-xn5M, the desktop report of 2026-10-03), the ERROR
+ *  line verbatim from the host's log, traceback shortened. Exit code 1. */
+export const YTDLP_AGE_GATE_STDERR = `ERROR: [youtube] JuXvuM-xn5M: Sign in to confirm your age. Use --cookies-from-browser or --cookies for the authentication. See  https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp  for how to manually pass cookies. Also see  https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies  for tips on effectively exporting YouTube cookies
+Traceback (most recent call last):
+  File "/srv/ember/.venv/lib/python3.13/site-packages/yt_dlp/YoutubeDL.py", line 1103, in trouble
+    raise DownloadError(message, exc_info)
+yt_dlp.utils.DownloadError: ERROR: [youtube] JuXvuM-xn5M: Sign in to confirm your age. Use --cookies-from-browser or --cookies for the authentication.
+`;
+
+export const AGE_GATE_ID = 'JuXvuM-xn5M';

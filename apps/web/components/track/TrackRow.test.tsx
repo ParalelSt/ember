@@ -288,6 +288,15 @@ describe('TrackRow (unavailable)', () => {
     expect(screen.queryByTestId('unavailable-badge')).toBeNull();
   });
 
+  it('an age-restricted song says so in the pill\'s tooltip and when clicked', () => {
+    render(<TrackRow track={{ ...dead, unavailableReason: 'age' }} unavailable onPlay={vi.fn()} />);
+    const badge = screen.getByTestId('unavailable-badge');
+    expect(badge).toHaveTextContent('Unavailable');
+    expect(badge).toHaveAttribute('title', 'Age-restricted on YouTube');
+    fireEvent.click(screen.getByText('Midnight Drive'));
+    expect(toast.message).toHaveBeenCalledWith('Couldn\'t play "Midnight Drive": age-restricted on YouTube.');
+  });
+
   it('falls back to a generic reason when the code is unknown', () => {
     render(<TrackRow track={{ ...dead, unavailableReason: 'weird' }} unavailable />);
     expect(screen.getByTestId('unavailable-badge')).toHaveAttribute('title', 'Not available');

@@ -16,6 +16,7 @@ describe('unplayableMessage', () => {
     ['geo', 'not available on YouTube in this country'],
     ['members', 'for YouTube channel members only'],
     ['terminated', 'its YouTube channel was closed'],
+    ['age', 'age-restricted on YouTube'],
     ['unavailable', 'not available on YouTube'],
     [null, 'not available on YouTube'],
   ])('reason %s reads "%s"', (reason, phrase) => {
@@ -69,6 +70,7 @@ describe('summarizeUnplayable', () => {
 describe('reasonLabel', () => {
   it('is short, for the queue row', () => {
     expect(reasonLabel('removed')).toBe('Removed from YouTube');
+    expect(reasonLabel('age')).toBe('Age-restricted on YouTube');
     expect(reasonLabel('whatever')).toBe('Not available');
   });
 });
