@@ -15,7 +15,11 @@ export const POST = withRequestLog('sessions/[id]/now', async (request: NextRequ
     const body = (await request.json().catch(() => null)) as { index?: number } | null;
     const index = Number(body?.index);
     if (!Number.isFinite(index) || index < 0) return jsonError('index required', 400);
-    await pb.collection('sessions').update(session.id, { now_index: Math.floor(index) });
+    // Only a real move writes: the row's update time is when the current
+    // song started, as far as guests' progress bars know.
+    if (Number(session.now_index ?? 0) !== Math.floor(index)) {
+      await pb.collection('sessions').update(session.id, { now_index: Math.floor(index) });
+    }
     return Response.json({ ok: true });
   } catch (e) {
     if (e instanceof UnauthorizedError) return unauthorizedResponse();

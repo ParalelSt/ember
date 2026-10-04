@@ -1,9 +1,11 @@
-import type { AlbumDetail, ArtistPayload, CollectionTrack, Playlist, SessionState, Track } from '@/types/track';
+import type { AlbumDetail, ArtistPayload, CollectionTrack, LiveCarlist, Playlist, SessionState, Track } from '@/types/track';
+import type { AddPosition } from '@/lib/carlist';
 import type { CopyOutcome } from '@/lib/playlistCopy';
 import type { CandidatePerson, CollabState } from '@/lib/collab';
 import { logger } from '@/lib/logger/client';
 import { isPublicPage } from '@/lib/publicPaths';
 import { sessionExpired } from '@/lib/sessionExpired';
+import { connectionOk } from '@/lib/connectionBlip';
 import type { ImportItem, ImportJob, InspectResult, JobKind } from '@/lib/import/types';
 import type { TransferPreview } from '@/app/api/import/upload/route';
 import type { FlowState as GoogleFlowState, GooglePreview } from '@/lib/import/google/flows';
@@ -69,26 +71,56 @@ interface ReqOptions {
    *  with reasons): logged as a warning, so they never trigger a silent
    *  crash report. The error still throws, carrying the response body. */
   expected?: number[];
+  /** A background write nobody waits on (the play history record, Discord
+   *  presence): retried on a network failure like a GET, and a final
+   *  failure is only a warning, never an automatic bug report. */
+  background?: boolean;
 }
 
-async function req<T>(path: string, { method = 'GET', body, signal, expected }: ReqOptions = {}): Promise<T> {
+/** Waits before each retry of a request that got no HTTP answer at all (a
+ *  connection blip). Only GETs and background writes retry: a retried POST
+ *  could apply twice. */
+export const NETWORK_RETRY_DELAYS_MS = [300, 1000];
+
+const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+async function req<T>(path: string, { method = 'GET', body, signal, expected, background }: ReqOptions = {}): Promise<T> {
   let res: Response;
   // A FormData body carries its own multipart boundary: setting the header
   // by hand would strip it and the upload would arrive unreadable.
   const form = body instanceof FormData;
-  try {
-    res = await fetch(`${API_BASE}/api${path}`, {
-      method,
-      headers: body && !form ? { 'Content-Type': 'application/json' } : undefined,
-      body: form ? (body as FormData) : body ? JSON.stringify(body) : undefined,
-      credentials: 'include',
-      signal,
-    });
-  } catch (e) {
-    // Network-level failure (offline, DNS, CORS, etc.). Log + rethrow.
-    logger.error('api', `${method} ${path} network error`, { method, path }, e as Error);
-    throw e;
+  const retryDelays = method === 'GET' || background ? NETWORK_RETRY_DELAYS_MS : [];
+  for (let attempt = 0; ; attempt++) {
+    try {
+      res = await fetch(`${API_BASE}/api${path}`, {
+        method,
+        headers: body && !form ? { 'Content-Type': 'application/json' } : undefined,
+        body: form ? (body as FormData) : body ? JSON.stringify(body) : undefined,
+        credentials: 'include',
+        signal,
+      });
+      break;
+    } catch (e) {
+      // Network-level failure (offline, DNS, CORS, a dropped connection), or
+      // the caller aborting, which is never retried. `network` tells
+      // autoReport this is a possible blip, not a fault on its own.
+      const aborted = !!signal?.aborted || (e instanceof Error && e.name === 'AbortError');
+      const data = { method, path, network: !aborted };
+      if (!aborted && attempt < retryDelays.length) {
+        logger.warn('api', `${method} ${path} network error, retrying`, { ...data, attempt: attempt + 1 });
+        await sleep(retryDelays[attempt]);
+        continue;
+      }
+      if (background) {
+        logger.warn('api', `${method} ${path} network error`, { ...data, error: (e as Error)?.message });
+      } else {
+        logger.error('api', `${method} ${path} network error`, data, e as Error);
+      }
+      throw e;
+    }
   }
+  // Any HTTP answer, even an error status, means the connection is back.
+  connectionOk();
   if (!res.ok) {
     const err = (await res.json().catch(() => ({ error: res.statusText }))) as { error?: string };
     // proxy.ts stamps every response with x-request-id; surfacing it here
@@ -100,8 +132,8 @@ async function req<T>(path: string, { method = 'GET', body, signal, expected }: 
     // it sent an automatic bug report per call (bughunt V5).
     if (res.status === 401 || expected?.includes(res.status)) logger.warn('api', `${method} ${path} → ${res.status}`, entry);
     else logger.error('api', `${method} ${path} → ${res.status}`, entry);
-    // Attach the HTTP status so callers can branch on it (e.g. 400 = duplicate
-    // → friendly "already in playlist" toast instead of the raw server text).
+    // Attach the HTTP status so callers can branch on it (e.g. 409 = already
+    // in the playlist → a friendly toast instead of the raw server text).
     const error = new Error(err.error || `Request failed: ${res.status}`) as Error & { status?: number; body?: unknown };
     error.status = res.status;
     error.body = err;
@@ -209,8 +241,14 @@ export const api = {
    *  (lib/playlistCopy's rule) and says which. */
   bulkAddToPlaylist: (id: string, tracks: Track[]) =>
     req<CopyOutcome>(`/playlists/${id}/tracks/bulk`, { method: 'POST', body: { tracks } }),
+  /** 409 (`isAlreadyInPlaylist`): the song is already there. An answer the
+   *  app shows as "Already in <playlist>", never an automatic bug report. */
   addToPlaylist: (id: string, track: Track) =>
-    req<{ ok: true }>(`/playlists/${id}/tracks`, { method: 'POST', body: { track } }),
+    req<{ ok: true }>(`/playlists/${id}/tracks`, { method: 'POST', body: { track }, expected: [409] }),
+  /** The playlists (yours and the ones shared with you) that already have
+   *  this song, for the Add to playlist menu's marks. */
+  playlistsContaining: (trackId: string) =>
+    req<{ playlistIds: string[] }>(`/playlists/containing?track=${encodeURIComponent(trackId)}`),
   removeFromPlaylist: (id: string, trackId: string) =>
     req<{ ok: true }>(`/playlists/${id}/tracks/${encodeURIComponent(trackId)}`, { method: 'DELETE' }),
   replaceInPlaylist: (playlistId: string, trackId: string, track: Track) =>
@@ -222,10 +260,20 @@ export const api = {
   createSession: (body: { name?: string; seedPlaylistId?: string }) =>
     req<{ session: { id: string; code: string; name: string } }>('/sessions', { method: 'POST', body }),
   joinSession: (code: string) =>
-    req<{ session: { id: string; name: string } }>('/sessions/join', { method: 'POST', body: { code } }),
+    req<{ session: { id: string; name: string; code: string } }>('/sessions/join', {
+      method: 'POST',
+      body: { code },
+      expected: [404],
+    }),
+  /** The live carlist you host or joined (the Carlist button), or null. */
+  getLiveCarlist: () => req<{ carlist: LiveCarlist | null }>('/sessions'),
   getSession: (id: string) => req<SessionState>(`/sessions/${id}`),
-  addToSession: (id: string, track: Track) =>
-    req<{ ok: true }>(`/sessions/${id}/tracks`, { method: 'POST', body: { track } }),
+  /** `ahead`: songs that play before it (-1: it is the first). */
+  addToSession: (id: string, track: Track, position: AddPosition = 'end') =>
+    req<{ ok: true; position: AddPosition; ahead: number }>(`/sessions/${id}/tracks`, {
+      method: 'POST',
+      body: { track, position },
+    }),
   skipSession: (id: string) => req<{ ok: true }>(`/sessions/${id}/skip`, { method: 'POST' }),
   consumeSessionCommands: (id: string) =>
     req<{ commands: { type: string }[] }>(`/sessions/${id}/commands/consume`, { method: 'POST' }),
@@ -399,12 +447,14 @@ export const api = {
   },
 
   getHistory: () => req<{ tracks: Track[] }>('/history'),
-  recordPlay: (track: Track) => req<{ ok: true }>('/history', { method: 'POST', body: { track } }),
+  recordPlay: (track: Track) =>
+    req<{ ok: true }>('/history', { method: 'POST', body: { track }, background: true }),
 
   updateDiscord: (track: Track | null, isPlaying: boolean, positionSec = 0, durationSec = 0) =>
     req<{ ok: true; shared: boolean }>('/discord/update', {
       method: 'POST',
       body: { track, isPlaying, positionSec, durationSec },
+      background: true,
     }),
 
   // — Privacy: two independent "don't broadcast what I'm playing" switches —

@@ -43,6 +43,7 @@ export function reasonLabel(reason: string | null | undefined): string {
     case 'geo': return 'Blocked in this country';
     case 'members': return 'Members only';
     case 'terminated': return 'Channel closed';
+    case 'age': return 'Age-restricted on YouTube';
     default: return 'Not available';
   }
 }
@@ -55,6 +56,7 @@ export function reasonPhrase(reason: string | null | undefined): string {
     case 'geo': return 'not available on YouTube in this country';
     case 'members': return 'for YouTube channel members only';
     case 'terminated': return 'its YouTube channel was closed';
+    case 'age': return 'age-restricted on YouTube';
     default: return 'not available on YouTube';
   }
 }
@@ -102,4 +104,19 @@ export function summarizeUnplayable(notices: readonly UnplayableNotice[]): strin
   const why = allGone ? "they're not available on YouTube" : "they wouldn't load";
   const end = stoppedPlayback(said) ? 'Playback stopped.' : 'They were skipped.';
   return `Couldn't play ${songs.length} songs (${list}): ${why}. ${end}`;
+}
+
+/** The query parameter that marks a load as the listener's own retry ("Tap
+ *  to retry"): the host then makes a real attempt even when the song failed
+ *  for a passing reason moments ago, instead of handing back the failure it
+ *  remembers for the player's automatic retries (lib/sources/failureMemo).
+ *  A song YouTube says is gone is still answered from memory. */
+export const STREAM_RETRY_PARAM = 'retry';
+
+/** [url] with the retry mark, for the host's YouTube stream route only
+ *  (nothing else knows it, and a downloaded or cached copy needs none). */
+export function retryStreamUrl(url: string): string {
+  if (!/\/api\/youtube\/stream\/[^/?#]+(\?|$)/.test(url)) return url;
+  const sep = url.includes('?') ? '&' : '?';
+  return `${url}${sep}${STREAM_RETRY_PARAM}=1`;
 }

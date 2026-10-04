@@ -1,8 +1,10 @@
-import { AsyncLocalStorage } from 'node:async_hooks';
 import 'server-only';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import type { LogLevel, ServerLogEntry } from './types';
+import { requestContext, type ServerLogContext } from './context';
+
+export { outsideRequest, requestContext, type ServerLogContext } from './context';
 
 // Logs live at <repo-root>/logs/errors-YYYY-MM-DD.jsonl.
 // apps/web is two directories deep in the workspace; resolve via cwd then up.
@@ -76,17 +78,6 @@ function todayFile(d: Date = new Date()): string {
   const da = String(d.getUTCDate()).padStart(2, '0');
   return `errors-${y}-${mo}-${da}.jsonl`;
 }
-
-export interface ServerLogContext {
-  reqId?: string;
-  route?: string;
-  userId?: string;
-}
-/** Request-scoped context set by withRequestLog, so any serverLogger call
- *  made while handling a request carries its reqId, route and userId even
- *  when the caller (fromError and friends) passes no ctx of its own. */
-export const requestContext = new AsyncLocalStorage<ServerLogContext>();
-
 
 function writeEntry(
   level: LogLevel,

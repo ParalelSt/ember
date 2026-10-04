@@ -118,7 +118,11 @@ class QueueListener(
             // through radio's songs, so a run of dead ones still stops.
             val gone = Unplayable.kindOf(Unplayable.httpFailure(error)?.first) == Unplayable.UNAVAILABLE
             val waiting = gone && extendAfterFailure { added ->
-                if (added && player.currentMediaItem?.mediaId == failed && player.hasNextMediaItem()) {
+                // The player is past this song already: an earlier ask for it
+                // (it failed again while radio looked) moved on, or a song was
+                // picked. Nothing stopped, so nothing to report.
+                if (player.currentMediaItem?.mediaId != failed) return@extendAfterFailure
+                if (added && player.hasNextMediaItem()) {
                     report(Unplayable.SKIPPED)
                     player.seekToNextMediaItem()
                     player.prepare()

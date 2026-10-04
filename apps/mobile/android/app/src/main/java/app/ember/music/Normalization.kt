@@ -257,12 +257,24 @@ class Normalizer(
 class LevelPlayer(
     player: Player,
     private val normalizer: Normalizer,
+    /** What Previous goes back to (PlayHistory): the songs actually played.
+     *  Every Previous (the app, the notification, the lock screen, Bluetooth,
+     *  the car) reaches this player. Null: Media3's own, the song above. */
+    private val history: PlayHistory? = null,
     /** Shuffle from a controller (the car, a head unit over Bluetooth): the
      *  service reorders the queue instead (QueueShuffle). Null: as is. */
     private val onShuffle: ((Boolean) -> Unit)? = null,
 ) : ForwardingPlayer(player) {
     override fun setVolume(volume: Float) = normalizer.setUserLevel(volume)
     override fun getVolume(): Float = normalizer.userLevel
+    override fun seekToPrevious() {
+        val h = history
+        if (h != null) h.seekToPrevious(wrappedPlayer) else super.seekToPrevious()
+    }
+    override fun seekToPreviousMediaItem() {
+        val h = history
+        if (h != null) h.seekToPreviousMediaItem(wrappedPlayer) else super.seekToPreviousMediaItem()
+    }
     override fun setShuffleModeEnabled(shuffleModeEnabled: Boolean) {
         val fn = onShuffle
         if (fn != null) fn(shuffleModeEnabled) else super.setShuffleModeEnabled(shuffleModeEnabled)

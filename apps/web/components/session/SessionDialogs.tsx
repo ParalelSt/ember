@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import {
   Dialog,
@@ -16,6 +17,9 @@ import { Input } from '@/components/ui/input';
 import { api } from '@/lib/api';
 import { useQueryPlaylists } from '@/hooks/useLibrary';
 import { useSessionStore } from '@/stores/useSessionStore';
+import { liveCarlistKey } from '@/hooks/useSession';
+import { parseJoinInput } from '@/lib/carlist';
+import { cn } from '@/lib/utils';
 
 interface DialogProps {
   open: boolean;
@@ -25,6 +29,7 @@ interface DialogProps {
 /** Host: name the session, optionally seed it from a playlist, go live. */
 export function StartSessionDialog({ open, onOpenChange }: DialogProps) {
   const router = useRouter();
+  const qc = useQueryClient();
   const { data: playlists = [] } = useQueryPlaylists();
   const setHostingSessionId = useSessionStore((s) => s.setHostingSessionId);
   const [name, setName] = useState('');
@@ -39,6 +44,7 @@ export function StartSessionDialog({ open, onOpenChange }: DialogProps) {
         seedPlaylistId: seedId || undefined,
       });
       setHostingSessionId(session.id);
+      void qc.invalidateQueries({ queryKey: liveCarlistKey });
       toast.success(`Session live — code ${session.code}`);
       onOpenChange(false);
       router.push(`/session/${session.id}`);
@@ -90,21 +96,30 @@ export function StartSessionDialog({ open, onOpenChange }: DialogProps) {
   );
 }
 
-/** Guest: enter the 6-char code from the host. */
+/** Guest: the host's link or QR code joins straight away
+ *  (app/(app)/session/join/[code]); typing the 6-character code, or pasting
+ *  the link, here is the fallback. */
 export function JoinSessionDialog({ open, onOpenChange }: DialogProps) {
   const router = useRouter();
-  const [code, setCode] = useState('');
+  const qc = useQueryClient();
+  const [input, setInput] = useState('');
   const [busy, setBusy] = useState(false);
+  const code = parseJoinInput(input);
 
   const join = async () => {
+    if (!code) {
+      toast.error("That isn't a join code. It has 6 letters and numbers.");
+      return;
+    }
     setBusy(true);
     try {
       const { session } = await api.joinSession(code);
+      void qc.invalidateQueries({ queryKey: liveCarlistKey });
       onOpenChange(false);
       router.push(`/session/${session.id}`);
     } catch (e) {
       // 404 message from the server is already user-friendly.
-      toast.error((e as Error).message || "Couldn't join — check the code.");
+      toast.error((e as Error).message || "Couldn't join. Check the code.");
     } finally {
       setBusy(false);
     }
@@ -114,22 +129,31 @@ export function JoinSessionDialog({ open, onOpenChange }: DialogProps) {
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Join a session</DialogTitle>
-          <DialogDescription>Ask the host for the 6-character code.</DialogDescription>
+          <DialogTitle>Join a carlist</DialogTitle>
+          <DialogDescription>
+            Scan the host&apos;s QR code or open their link. Or type the 6-character code here.
+          </DialogDescription>
         </DialogHeader>
         <Input
           autoFocus
-          value={code}
-          onChange={(e) => setCode(e.target.value.toUpperCase())}
+          aria-label="Join code"
+          value={input}
+          onChange={(e) => {
+            const v = e.target.value;
+            // A pasted link stays as it is; a typed code shows in capitals.
+            setInput(/[/:]/.test(v) ? v : v.toUpperCase());
+          }}
           onKeyDown={(e) => {
-            if (e.key === 'Enter' && code.trim()) void join();
+            if (e.key === 'Enter' && input.trim()) void join();
           }}
           placeholder="e.g. K7MPQ4"
-          maxLength={8}
-          className="mt-2 tracking-[0.3em] text-center uppercase"
+          maxLength={300}
+          autoComplete="off"
+          autoCapitalize="characters"
+          className={cn('mt-2 text-center', !/[/:]/.test(input) && 'tracking-[0.3em]')}
         />
         <DialogFooter>
-          <Button onClick={() => void join()} disabled={busy || !code.trim()} variant="ember">
+          <Button onClick={() => void join()} disabled={busy || !input.trim()} variant="ember">
             {busy ? 'Joining…' : 'Join'}
           </Button>
         </DialogFooter>

@@ -193,13 +193,13 @@ const findReplacementBtn = row.getByRole('button', { name: 'Find replacement' })
 check('U1: the row shows a "Find replacement" button', (await findReplacementBtn.count()) === 1);
 
 // ── U2: the page's big Play button starts the playlist at track 0 (the dead
-// one), skips it with a toast, and plays the live track instead ──
+// one), skips it (the player bar says so), and plays the live track instead ──
 // The row Play buttons share this aria-label too, but the big button is the
 // first `button[aria-label="Play"]` in the DOM (it sits above the track list).
 const bigPlayBtn = page.locator('button[aria-label="Play"]').first();
 await bigPlayBtn.click();
-await page.getByText(/^Skipped: "Replacement Song"/).waitFor({ timeout: 5_000 });
-check('U2: a "Skipped" toast names the dead track', true);
+await page.getByTestId('player-bar').getByText(/^Skipped: Replacement Song/).waitFor({ timeout: 5_000 });
+check('U2: the player bar says "Skipped: <song>" for the dead track', true);
 // The live track still has to actually download through the fake player
 // (tests/fake-player.sh sleeps ~2s to simulate that), so give this more
 // room than the toast's 5s bound.

@@ -24,6 +24,11 @@ class UnplayableTest {
         assertEquals("removed", Unplayable.reasonFrom("""{"unavailable":true, "reason" : "removed"}""".toByteArray()))
     }
 
+    @Test fun `an age-restricted song keeps its reason, so the app can say so`() {
+        val body = """{"error":"[youtube] JuXvuM-xn5M: Sign in to confirm your age. Use --cookies-from-browser or --cookies for the authentication.","unavailable":true,"reason":"age"}"""
+        assertEquals("age", Unplayable.reasonFrom(body.toByteArray()))
+    }
+
     @Test fun `an unknown or missing reason is none`() {
         assertNull(Unplayable.reasonFrom("""{"reason":"weird"}""".toByteArray()))
         assertNull(Unplayable.reasonFrom("<html>".toByteArray()))

@@ -12,6 +12,7 @@ import { fromError, jsonError } from "@/lib/upsertTrack";
 import { withRequestLog } from '@/lib/logger/withRequestLog';
 import { scrubServerEntry, scrubText } from "@/lib/logger/sanitize";
 import { formatTimeline, selectTimeline } from "@/lib/reports/timeline";
+import { entriesForReporter } from "@/lib/reports/reporterEntries";
 import {
   codeFields,
   DISCORD_UNREACHABLE,
@@ -161,8 +162,12 @@ export const POST = withRequestLog('bug-report', async (request: NextRequest) =>
     const desktopLog =
       typeof rawDesktopLog === "string" ? rawDesktopLog.slice(-MAX_DESKTOP_LOG) : "";
 
-    const server = (
-      await serverLogger.recentSince(Date.now() - REPORT_WINDOW_MS)
+    // Only what the reporter's own requests logged, plus server-wide
+    // entries cut to their message: the log is everyone's, and this report
+    // goes to Discord and the triage model under the reporter's name.
+    const server = entriesForReporter(
+      await serverLogger.recentSince(Date.now() - REPORT_WINDOW_MS),
+      user.id,
     ).map(scrubServerEntry);
     // Wider window, counts only: how often has each error fingerprint in
     // this report shown up in the last week (formatSeenBefore, shared with

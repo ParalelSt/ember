@@ -1,7 +1,7 @@
 import type { NextRequest } from 'next/server';
 import { requireUser, UnauthorizedError, unauthorizedResponse } from '@/lib/auth';
 import { fromError, jsonError } from '@/lib/upsertTrack';
-import { newSessionCode, addMember, sessionsClient } from '@/lib/sessions';
+import { newSessionCode, addMember, sessionsClient, LIVE_WINDOW_MS } from '@/lib/sessions';
 import { withRequestLog } from '@/lib/logger/withRequestLog';
 import { playlistAccess } from '@/lib/playlistAccess';
 
@@ -64,6 +64,34 @@ export const POST = withRequestLog('sessions', async (request: NextRequest) => {
       { session: { id: session.id, code: String(session.code), name: String(session.name) } },
       { status: 201 },
     );
+  } catch (e) {
+    if (e instanceof UnauthorizedError) return unauthorizedResponse();
+    return fromError(e);
+  }
+});
+
+/** The live carlist the caller hosts or joined, for the Carlist button in
+ *  Your library: {carlist: {id, code, name, isHost} | null}. One that has
+ *  not moved on in LIVE_WINDOW_MS no longer counts (hosts often just close
+ *  the app instead of ending it). */
+export const GET = withRequestLog('sessions', async () => {
+  try {
+    const { user } = await requireUser();
+    const server = await sessionsClient();
+    const since = new Date(Date.now() - LIVE_WINDOW_MS);
+    const list = await server.collection('sessions').getList(1, 1, {
+      filter: server.filter(
+        'active = true && updated >= {:since} && (host = {:u} || session_members_via_session.user ?= {:u})',
+        { since, u: user.id },
+      ),
+      sort: '-updated',
+    });
+    const row = list.items[0];
+    return Response.json({
+      carlist: row
+        ? { id: row.id, code: String(row.code), name: String(row.name), isHost: row.host === user.id }
+        : null,
+    });
   } catch (e) {
     if (e instanceof UnauthorizedError) return unauthorizedResponse();
     return fromError(e);

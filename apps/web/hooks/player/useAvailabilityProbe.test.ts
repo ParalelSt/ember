@@ -117,6 +117,31 @@ describe('useAvailabilityProbe', () => {
     expect(next).not.toHaveBeenCalled();
   });
 
+  it('says nothing about a song the listener already moved on from (no stuck "Tap to retry" over the next song)', async () => {
+    api.getTrackAvailability.mockResolvedValue({ unavailable: false, reason: null });
+    const { probe } = setup();
+    const stillPlayable = vi.fn();
+    probe(stillPlayable);
+    // The listener hit Next while the request was in flight.
+    usePlayerStore.setState({ index: 1 });
+
+    await waitFor(() => expect(api.getTrackAvailability).toHaveBeenCalled());
+    await new Promise((r) => setTimeout(r, 0));
+    expect(stillPlayable).not.toHaveBeenCalled();
+  });
+
+  it('the same when the server could not be asked and the listener moved on', async () => {
+    api.getTrackAvailability.mockRejectedValue(new Error('offline'));
+    const { probe } = setup();
+    const stillPlayable = vi.fn();
+    probe(stillPlayable);
+    usePlayerStore.setState({ index: 1 });
+
+    await waitFor(() => expect(api.getTrackAvailability).toHaveBeenCalled());
+    await new Promise((r) => setTimeout(r, 0));
+    expect(stillPlayable).not.toHaveBeenCalled();
+  });
+
   it('leaves the queue alone when the track is gone from it entirely', async () => {
     const { probe, next } = setup();
     probe();

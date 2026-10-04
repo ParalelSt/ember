@@ -32,6 +32,9 @@ export const QK = {
   track: (videoId: string) => ['track', videoId] as const,
   search: (q: string) => ['search', q] as const,
   uploads: ['uploads'] as const,
+  /** Which playlists have a song (the Add to playlist menu's marks). */
+  containing: (trackId: string) => ['playlists-containing', trackId] as const,
+  containingAll: ['playlists-containing'] as const,
 };
 
 /** Every song members have uploaded to this server — a shared library, not
@@ -73,10 +76,42 @@ export function useQueryPlaylists() {
   });
 }
 
+/** Your own edits to a playlist's songs (a move, a removal) that the server
+ *  has not answered yet, per playlist, and a counter that ticks whenever one
+ *  starts or ends. A fetch that overlaps one read the songs from before it,
+ *  so its answer would put the old order back over the row that just moved:
+ *  it keeps what is on screen instead, and the refetch after the edit (or the
+ *  next poll) brings the server's order. */
+const pendingEdits = new Map<string, number>();
+let editTick = 0;
+function editStarted(id: string) {
+  pendingEdits.set(id, (pendingEdits.get(id) ?? 0) + 1);
+  editTick += 1;
+}
+function editEnded(id: string) {
+  const left = (pendingEdits.get(id) ?? 1) - 1;
+  if (left > 0) pendingEdits.set(id, left);
+  else pendingEdits.delete(id);
+  editTick += 1;
+}
+
+type PlaylistData = Awaited<ReturnType<typeof api.getPlaylist>>;
+
+function fetchPlaylist(qc: QueryClient, id: string) {
+  return async (): Promise<PlaylistData> => {
+    const tick = editTick;
+    const quiet = !pendingEdits.has(id);
+    const fresh = await api.getPlaylist(id);
+    if (quiet && !pendingEdits.has(id) && tick === editTick) return fresh;
+    return qc.getQueryData<PlaylistData>(QK.playlist(id)) ?? fresh;
+  };
+}
+
 export function useQueryPlaylist(id: string) {
+  const qc = useQueryClient();
   return useQuery({
     queryKey: QK.playlist(id),
-    queryFn: () => api.getPlaylist(id),
+    queryFn: fetchPlaylist(qc, id),
     // A collaborative playlist follows the other people's edits. Stops once
     // it fails (deleted, or you were removed): the page says so instead.
     refetchInterval: (q) => (q.state.status !== 'error' && q.state.data?.playlist.collaborative ? COLLAB_POLL_MS : false),
@@ -88,10 +123,11 @@ export function useQueryPlaylist(id: string) {
  *  holds the fetches until the picker opens. Missing ids are still
  *  loading. */
 export function useQueryPlaylistTracks(ids: string[], enabled: boolean): Map<string, Track[]> {
+  const qc = useQueryClient();
   const results = useQueries({
     queries: ids.map((id) => ({
       queryKey: QK.playlist(id),
-      queryFn: () => api.getPlaylist(id),
+      queryFn: fetchPlaylist(qc, id),
       enabled,
     })),
   });
@@ -100,6 +136,17 @@ export function useQueryPlaylistTracks(ids: string[], enabled: boolean): Map<str
     if (r.data) out.set(ids[i], r.data.tracks);
   });
   return out;
+}
+
+/** The ids of your playlists that already have this song. `enabled` holds
+ *  the fetch until the Add to playlist menu opens. */
+export function useQueryPlaylistsContaining(trackId: string, enabled: boolean) {
+  const { user } = useAuth();
+  return useQuery({
+    queryKey: QK.containing(trackId),
+    queryFn: () => api.playlistsContaining(trackId).then((r) => r.playlistIds),
+    enabled: enabled && !!user && !!trackId,
+  });
 }
 
 export function useQueryTrending() {
@@ -256,6 +303,11 @@ export function useExecuteAddToPlaylist() {
       qc.invalidateQueries({ queryKey: QK.playlist(id) });
       logger.breadcrumb('library', 'playlist.add', { playlistId: id, trackId: track.id });
     },
+    // Added, or found already there (409): either way the menu's marks
+    // for this song are out of date.
+    onSettled: (_d, _e, { track }) => {
+      qc.invalidateQueries({ queryKey: QK.containing(track.id) });
+    },
   });
 }
 
@@ -275,6 +327,7 @@ export function useExecuteRemoveFromPlaylist() {
   return useMutation({
     mutationFn: ({ id, trackId }: { id: string; trackId: string }) => api.removeFromPlaylist(id, trackId),
     onMutate: async ({ id, trackId }) => {
+      editStarted(id);
       await qc.cancelQueries({ queryKey: QK.playlist(id) });
       const prev = qc.getQueryData<{ tracks: Track[]; playlist: Playlist }>(QK.playlist(id));
       if (prev) {
@@ -303,6 +356,10 @@ export function useExecuteRemoveFromPlaylist() {
     },
     onError: (_e, _v, ctx) => {
       if (ctx?.prev && ctx?.id) qc.setQueryData(QK.playlist(ctx.id), ctx.prev);
+    },
+    onSettled: (_d, _e, { id, trackId }) => {
+      editEnded(id);
+      qc.invalidateQueries({ queryKey: QK.containing(trackId) });
     },
   });
 }
@@ -341,6 +398,7 @@ export function useExecuteMovePlaylistTrack() {
     mutationFn: ({ id, trackId, to }: { id: string; trackId: string; from: number; to: number }) =>
       api.movePlaylistTrack(id, trackId, to),
     onMutate: async ({ id, from, to }) => {
+      editStarted(id);
       await qc.cancelQueries({ queryKey: QK.playlist(id) });
       const prev = qc.getQueryData<Data>(QK.playlist(id));
       if (prev) qc.setQueryData<Data>(QK.playlist(id), { ...prev, tracks: moveItem(prev.tracks, from, to) });
@@ -349,7 +407,10 @@ export function useExecuteMovePlaylistTrack() {
     onError: (_e, { id }, ctx) => {
       if (ctx?.prev) qc.setQueryData(QK.playlist(id), ctx.prev);
     },
-    onSettled: (_d, _e, { id }) => qc.invalidateQueries({ queryKey: QK.playlist(id) }),
+    onSettled: (_d, _e, { id }) => {
+      editEnded(id);
+      return qc.invalidateQueries({ queryKey: QK.playlist(id) });
+    },
   });
 }
 

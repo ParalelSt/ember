@@ -71,6 +71,17 @@ export function SearchOverlayContainer() {
     onPlay,
   } = useSearchQuery();
 
+  // The phone sheet is the voice UI there: closing it (Back, the arrow, a
+  // navigation) ends any listening. Otherwise the mic stays on behind the
+  // closed sheet, still typing into the box and firing searches; and once
+  // text arrives the sheet swaps the mic for the clear button, so there is
+  // no stop control left. The desktop box stays on the page, so the panel
+  // closing leaves its mic alone.
+  const cancelVoice = voice.cancel;
+  useEffect(() => {
+    if (!open && !isDesktop) cancelVoice();
+  }, [open, isDesktop, cancelVoice]);
+
   const recentsNode = recentTracks.length > 0 ? (
     <div className="mb-2">
       <SectionHeader title="Recent searches" className="mb-3" />

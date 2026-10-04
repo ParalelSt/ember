@@ -159,9 +159,17 @@ class AutoCacher(
         val r = Running(id, d)
         running = r
         inFlight = id
-        executor.execute {
-            val out = runCatching { d.run() }
-            main(Runnable { finish(r, out) })
+        try {
+            executor.execute {
+                val out = runCatching { d.run() }
+                main(Runnable { finish(r, out) })
+            }
+        } catch (e: java.util.concurrent.RejectedExecutionException) {
+            // The service is shutting down (its executor is gone): nothing
+            // runs, so nothing may be left looking like it is in flight.
+            Log.w(TAG, "prefetch $id: ${e.message}")
+            running = null
+            inFlight = null
         }
     }
 

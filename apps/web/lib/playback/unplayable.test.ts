@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { reasonLabel, summarizeUnplayable, unplayableMessage, type UnplayableNotice } from './unplayable';
+import { reasonLabel, retryStreamUrl, summarizeUnplayable, unplayableMessage, type UnplayableNotice } from './unplayable';
 
 const n = (over: Partial<UnplayableNotice> = {}): UnplayableNotice => ({
   trackId: 'youtube:a', title: 'Klinček stoji pod oblokom', kind: 'unavailable', reason: 'unavailable', outcome: 'skipped', ...over,
@@ -16,6 +16,7 @@ describe('unplayableMessage', () => {
     ['geo', 'not available on YouTube in this country'],
     ['members', 'for YouTube channel members only'],
     ['terminated', 'its YouTube channel was closed'],
+    ['age', 'age-restricted on YouTube'],
     ['unavailable', 'not available on YouTube'],
     [null, 'not available on YouTube'],
   ])('reason %s reads "%s"', (reason, phrase) => {
@@ -69,6 +70,16 @@ describe('summarizeUnplayable', () => {
 describe('reasonLabel', () => {
   it('is short, for the queue row', () => {
     expect(reasonLabel('removed')).toBe('Removed from YouTube');
+    expect(reasonLabel('age')).toBe('Age-restricted on YouTube');
     expect(reasonLabel('whatever')).toBe('Not available');
+  });
+});
+
+describe('retryStreamUrl', () => {
+  it('marks the host stream route only', () => {
+    expect(retryStreamUrl('/api/youtube/stream/abcdefghijk')).toBe('/api/youtube/stream/abcdefghijk?retry=1');
+    expect(retryStreamUrl('https://h.example/api/youtube/stream/abcdefghijk?x=1')).toBe('https://h.example/api/youtube/stream/abcdefghijk?x=1&retry=1');
+    expect(retryStreamUrl('/api/uploads/abc/stream')).toBe('/api/uploads/abc/stream');
+    expect(retryStreamUrl('blob:http://x/1')).toBe('blob:http://x/1');
   });
 });

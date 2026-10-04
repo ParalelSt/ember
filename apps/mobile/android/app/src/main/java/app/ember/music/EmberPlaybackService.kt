@@ -77,6 +77,14 @@ class EmberPlaybackService : MediaLibraryService() {
          *  before, when it turned shuffle on). The app has reordered its
          *  queue itself; this only keeps the flag and the way back. */
         const val COMMAND_SHUFFLE_STATE = "ember.shuffleState"
+        /** The app's "Tap to retry": the failed song reloads with the host's
+         *  retry mark (ListenerRetry), not as a plain play. */
+        const val COMMAND_RETRY = "ember.retry"
+        /** The app's Previous button, run on the session's player here
+         *  (PlayHistory). A plain seekToPrevious from the app's
+         *  MediaController first shows the song above (Media3 masks the move
+         *  locally) and only then the song the service really went back to. */
+        const val COMMAND_PREVIOUS = "ember.previous"
         /** Apps that are the car: the heart button needs to know which songs
          *  are liked once one of them connects. */
         val CAR_PACKAGES = setOf(
@@ -135,19 +143,21 @@ class EmberPlaybackService : MediaLibraryService() {
 
         /** The music player: streams (through the auto cache, see MediaCache),
          *  or the downloaded copy when there is one (OfflineAudio), through
-         *  the equalizer [eq] when given (Equalizer.kt). Its own function so
-         *  tests build the same one. */
+         *  the equalizer [eq] when given (Equalizer.kt), marking the listener's
+         *  retry of a failed song when [retry] is given (ListenerRetry). Its
+         *  own function so tests build the same one. */
         fun buildPlayer(
             context: Context,
             streams: DataSource.Factory,
             offline: OfflineStore,
             eq: AudioProcessor? = null,
+            retry: ListenerRetry? = null,
             online: () -> Boolean = { true },
         ): ExoPlayer =
             (if (eq != null) ExoPlayer.Builder(context, EqualizerProcessor.renderers(context, eq)) else ExoPlayer.Builder(context))
                 .setMediaSourceFactory(
                     DefaultMediaSourceFactory(context)
-                        .setDataSourceFactory(OfflineAudio.dataSourceFactory(context, streams, offline))
+                        .setDataSourceFactory(OfflineAudio.dataSourceFactory(context, retry?.dataSourceFactory(streams) ?: streams, offline))
                         .setLoadErrorHandlingPolicy(PatientLoadErrors(online)),
                 )
                 .setAudioAttributes(AudioAttributes.Builder().setUsage(C.USAGE_MEDIA).setContentType(C.AUDIO_CONTENT_TYPE_MUSIC).build(), true)
@@ -160,6 +170,7 @@ class EmberPlaybackService : MediaLibraryService() {
                 // Shuffle reorders the queue itself (QueueShuffle), so the
                 // shuffle flag must never change the play order as well.
                 .also { it.setShuffleOrder(ShuffleOrder.UnshuffledShuffleOrder(0)) }
+                .also { p -> retry?.let { p.addListener(it) } }
     }
 
     private lateinit var player: ExoPlayer
@@ -186,6 +197,12 @@ class EmberPlaybackService : MediaLibraryService() {
     /** Covers on the Ember server go to the car as content URIs (ArtworkProvider). */
     private val artAuthority: String by lazy { ArtworkUris.authority(packageName) }
     private val shuffle = ShuffleState()
+    /** What Previous goes back to on the phone (PlayHistory): the songs
+     *  actually played, so a tap further down the queue then Previous returns
+     *  to the song before the tap. The TV keeps its own while casting. */
+    private val history = PlayHistory()
+    /** "Tap to retry" from the app (COMMAND_RETRY). */
+    private val listenerRetry = ListenerRetry()
     private val liked = LikedSongs()
     @Volatile private var likesLoading = false
     /** The last custom layout sent: only a change is sent again. */
@@ -249,7 +266,7 @@ class EmberPlaybackService : MediaLibraryService() {
         val streams = MediaCache.dataSourceFactory(cache, dataSource)
         // Asked live on each failed load; the network watch starts just below.
         equalizer.settings = EqSettings.load(EqSettings.prefs(this))
-        player = buildPlayer(this, streams, offline, equalizer) { !::net.isInitialized || net.current().online }
+        player = buildPlayer(this, streams, offline, equalizer, listenerRetry) { !::net.isInitialized || net.current().online }
         player.addListener(QueueListener(
             player,
             recordPlay = ::recordPlay,
@@ -260,6 +277,7 @@ class EmberPlaybackService : MediaLibraryService() {
             onUnplayable = UnplayableNotices::record,
             extendAfterFailure = ::extendAfterFailure,
         ))
+        player.addListener(history.Tracker(player))
         savedQueue = SavedQueue(java.io.File(filesDir, SavedQueue.FILE_NAME))
         player.addListener(savedQueue.Saver(player, io))
         overlay = PrankOverlay(this, player, dataSource, baseUrl)
@@ -273,7 +291,7 @@ class EmberPlaybackService : MediaLibraryService() {
         normalizer.setEnabled(getSharedPreferences(NORMALIZE_PREFS, MODE_PRIVATE).getBoolean("enabled", true))
         // The session (the app, the notification, the car) sets the person's
         // level; the player underneath adds the song's gain (Normalizer).
-        levelPlayer = LevelPlayer(player, normalizer) { on -> setShuffle(on) }
+        levelPlayer = LevelPlayer(player, normalizer, history) { on -> setShuffle(on) }
         session = MediaLibrarySession.Builder(this, levelPlayer, Callback())
             // Covers on the Ember server need the cookie; others must not get it.
             .setBitmapLoader(ArtworkSources.bitmapLoader(this, baseUrl, dataSource, OkHttpDataSource.Factory(okhttp3.OkHttpClient())))
@@ -395,6 +413,8 @@ class EmberPlaybackService : MediaLibraryService() {
     /** The saved queue (SavedQueue), where it was, playing. Nothing saved:
      *  nothing to play (the foreground guard then lets the service go). */
     private fun resumeAndPlay() {
+        // The service is going away: nothing to load into.
+        if (resumeIo.isShutdown) return
         resumeIo.execute {
             val saved = runCatching { savedQueue.resume(api.baseUrl, artAuthority) }.getOrNull()
             handler.post {
@@ -482,7 +502,9 @@ class EmberPlaybackService : MediaLibraryService() {
             .onFailure { Log.w(TAG, "cast player: ${it.message}") }
             .getOrNull() ?: return
         val signer = CastSigner({ ids -> api.castLinks(ids) })
-        val queue = CastQueuePlayer(cast, signer, baseUrl, castIo) { handler.post(it) }
+        val castHistory = PlayHistory()
+        val queue = CastQueuePlayer(cast, signer, baseUrl, castIo, { handler.post(it) }, castHistory)
+        queue.addListener(castHistory.Tracker(queue))
         // History and radio go on while the TV plays; a song the TV cannot
         // play is skipped, as on the phone.
         queue.addListener(QueueListener(queue, recordPlay = ::recordPlay, extendQueue = ::maybeExtendQueue, onUnplayable = UnplayableNotices::record))
@@ -714,7 +736,7 @@ class EmberPlaybackService : MediaLibraryService() {
     /** The last song would not play (YouTube no longer has it): radio looks
      *  for what comes next, seeded by the song before it (a dead video makes
      *  a poor seed), and the listener moves on to what it finds. */
-    private fun extendAfterFailure(done: (Boolean) -> Unit): Boolean {
+    internal fun extendAfterFailure(done: (Boolean) -> Unit): Boolean {
         val player = active
         if (player.repeatMode != Player.REPEAT_MODE_OFF) return false
         if (player.currentMediaItemIndex != player.mediaItemCount - 1) return false
@@ -726,22 +748,49 @@ class EmberPlaybackService : MediaLibraryService() {
         return true
     }
 
+    /** Who waits on the radio fetch in flight; null when none is. Main
+     *  thread only. */
+    private var radioWaiters: MutableList<(Boolean) -> Unit>? = null
+
     /** Recommendations seeded by [seed], minus anything already queued,
      *  appended; [done] hears on the main thread whether any were. The host
-     *  leaves out songs it knows will not play. */
+     *  leaves out songs it knows will not play.
+     *
+     *  One fetch at a time: a dead last song that fails again while radio is
+     *  still looking (play pressed again) used to start a second fetch, which
+     *  appended the same songs twice and told the listener the music had
+     *  stopped. A caller that arrives while a fetch is out waits on it. */
     private fun fetchRadio(player: Player, seed: org.json.JSONObject, done: (Boolean) -> Unit) {
+        radioWaiters?.let { it.add(done); return }
+        val waiters = mutableListOf(done)
+        radioWaiters = waiters
+        fun finish(more: List<MediaItem>) {
+            radioWaiters = null
+            // Anything queued meanwhile (the web app's own radio) is left out.
+            val queued = (0 until player.mediaItemCount).map { player.getMediaItemAt(it).mediaId }.toSet()
+            val fresh = more.filter { it.mediaId !in queued }
+            runCatching { if (fresh.isNotEmpty()) player.addMediaItems(fresh) }
+                .onFailure { Log.w(TAG, "radio: ${it.message}") }
+            waiters.forEach { it(fresh.isNotEmpty()) }
+        }
         val queued = (0 until player.mediaItemCount).map { player.getMediaItemAt(it).mediaId }.toSet()
-        io.execute {
-            val more = runCatching { api.recommended(seed.optString("sourceId")) }
-                .getOrElse { Log.w(TAG, "radio: ${it.message}"); emptyList() }
-                .filter { it.optString("id") !in queued && it.optString("unavailableAt").isEmpty() }
-                .take(20)
-                .map { TrackItems.toMediaItem(it, api.baseUrl, artAuthority) }
-            Log.i(TAG, "radio after ${seed.optString("title")}: +${more.size}")
-            android.os.Handler(mainLooper).post {
-                if (more.isNotEmpty()) player.addMediaItems(more)
-                done(more.isNotEmpty())
+        try {
+            io.execute {
+                val more = try {
+                    api.recommended(seed.optString("sourceId"))
+                        .filter { it.optString("id") !in queued && it.optString("unavailableAt").isEmpty() }
+                        .take(20)
+                        .map { TrackItems.toMediaItem(it, api.baseUrl, artAuthority) }
+                } catch (e: Throwable) {
+                    Log.w(TAG, "radio: ${e.message}")
+                    emptyList()
+                }
+                Log.i(TAG, "radio after ${seed.optString("title")}: +${more.size}")
+                handler.post { finish(more) }
             }
+        } catch (e: java.util.concurrent.RejectedExecutionException) {
+            // The service is going away.
+            finish(emptyList())
         }
     }
 
@@ -784,6 +833,11 @@ class EmberPlaybackService : MediaLibraryService() {
     override fun onDestroy() {
         handler.removeCallbacks(tickLoop)
         handler.removeCallbacks(foregroundGuard)
+        // Anything else still waiting on the main thread, above all a media
+        // key press still being counted (presses): settling it after this
+        // point asked the shut-down resumeIo for the saved queue and crashed
+        // the app with a RejectedExecutionException.
+        handler.removeCallbacksAndMessages(null)
         runCatching { audioManager?.unregisterAudioDeviceCallback(deviceWatch) }
         autoCacher.cancel()
         net.stop()
@@ -834,6 +888,8 @@ class EmberPlaybackService : MediaLibraryService() {
                         add(SessionCommand(COMMAND_EQUALIZER, Bundle.EMPTY))
                         add(SessionCommand(COMMAND_OUTPUT, Bundle.EMPTY))
                         add(SessionCommand(COMMAND_SHUFFLE_STATE, Bundle.EMPTY))
+                        add(SessionCommand(COMMAND_RETRY, Bundle.EMPTY))
+                        add(SessionCommand(COMMAND_PREVIOUS, Bundle.EMPTY))
                     }
                 }
                 .build()
@@ -847,6 +903,11 @@ class EmberPlaybackService : MediaLibraryService() {
             when (command.customAction) {
                 COMMAND_SHUFFLE -> setShuffle(!shuffle.on)
                 COMMAND_REPEAT -> player.repeatMode = CarButtons.nextRepeat(player.repeatMode)
+                COMMAND_RETRY -> listenerRetry.retry(player, mark = player === this@EmberPlaybackService.player)
+                // The session's player (LevelPlayer, or the cast queue): its
+                // seekToPrevious follows the play history, as every other
+                // Previous does.
+                COMMAND_PREVIOUS -> session.player.seekToPrevious()
                 CarButtons.COMMAND_LIKE -> return Futures.immediateFuture(toggleLike())
                 COMMAND_SHUFFLE_STATE -> {
                     when {

@@ -224,6 +224,41 @@ describe('NowPlaying: the top row', () => {
     expect(screen.queryByRole('menu')).toBeNull();
   });
 
+  it('closes More and the playlist menu when the song changes, so they never act on the next song', () => {
+    auth.user = { id: 'u1' };
+    player.current = { ...TRACK, artistId: 'UC1' };
+    const { rerender } = render(<NowPlaying />);
+    fireEvent.click(within(view()).getByRole('button', { name: 'More' }));
+    expect(screen.getByRole('menu')).toBeInTheDocument();
+    // Song A ends and B starts while the menu is still up.
+    player.current = { ...TRACK, id: 't2', sourceId: 'v2', title: 'Other', artistId: 'UC2' };
+    rerender(<NowPlaying />);
+    expect(screen.queryByRole('menu')).toBeNull();
+
+    fireEvent.click(within(view()).getByRole('button', { name: 'More' }));
+    fireEvent.click(within(screen.getByRole('menu')).getByText('Add to playlist'));
+    expect(screen.getByTestId('add-to-playlist-menu')).toBeInTheDocument();
+    player.current = { ...TRACK, id: 't3', sourceId: 'v3', title: 'Third' };
+    rerender(<NowPlaying />);
+    expect(screen.queryByTestId('add-to-playlist-menu')).toBeNull();
+  });
+
+  it('closes More and the playlist menu when the player closes without them (Back, Escape)', () => {
+    auth.user = { id: 'u1' };
+    render(<NowPlaying />);
+    fireEvent.click(within(view()).getByRole('button', { name: 'More' }));
+    expect(screen.getByRole('menu')).toBeInTheDocument();
+    act(() => usePlayerStore.getState().setNowPlayingOpen(false));
+    expect(screen.queryByRole('menu')).toBeNull();
+
+    act(() => usePlayerStore.getState().setNowPlayingOpen(true));
+    fireEvent.click(within(view()).getByRole('button', { name: 'More' }));
+    fireEvent.click(within(screen.getByRole('menu')).getByText('Add to playlist'));
+    expect(screen.getByTestId('add-to-playlist-menu')).toBeInTheDocument();
+    act(() => usePlayerStore.getState().setNowPlayingOpen(false));
+    expect(screen.queryByTestId('add-to-playlist-menu')).toBeNull();
+  });
+
   it('has no More button when it would be empty', () => {
     player.current = { ...TRACK, source: 'jamendo' };
     render(<NowPlaying />);

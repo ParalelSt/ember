@@ -83,6 +83,24 @@ class ParseHeaderVariants(unittest.TestCase):
         self.assertIsNone(player.artist_from_browse({"header": {"xRenderer": {"title": {"runs": []}}}}))
 
 
+class FallbackSections(unittest.TestCase):
+    def test_a_bad_song_row_keeps_the_albums_and_singles(self):
+        """One odd row in the songs shelf used to throw away the albums and
+        singles that would have parsed, in the same try."""
+        r = copy.deepcopy(FIXTURE)
+        sections = r["contents"]["singleColumnBrowseResultsRenderer"]["tabs"][0]["tabRenderer"]["content"]["sectionListRenderer"]["contents"]
+        sections.insert(0, {"musicShelfRenderer": {"contents": [{"odd": True}]}})
+        fake = mock.MagicMock()
+        fake.parser.parse_channel_contents.return_value = {"albums": {"results": ["A1"]}, "singles": {"results": ["S1"]}}
+        with mock.patch.object(player, "yt", fake), \
+                mock.patch("ytmusicapi.parsers.playlists.parse_playlist_items", side_effect=KeyError("odd")), \
+                redirect_stderr(io.StringIO()):
+            info = player.artist_from_browse(r)
+        self.assertEqual(info["songs"], {})
+        self.assertEqual(info["albums"], {"results": ["A1"]})
+        self.assertEqual(info["singles"], {"results": ["S1"]})
+
+
 class ArtistCommandFallback(unittest.TestCase):
     def setUp(self):
         self.yt = mock.MagicMock()

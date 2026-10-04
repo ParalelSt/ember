@@ -71,6 +71,36 @@ describe('groupForDigest', () => {
     expect(group.count).toBe(1);
   });
 
+  it('leaves out a warn whose data says digest: false, but still counts an ordinary warn', () => {
+    const quiet = serverEntry({ ts: SINCE + 1000, level: 'warn', category: 'ai', message: 'triage failed', data: { digest: false } });
+    const quietWithErr = serverEntry({
+      ts: SINCE + 1500,
+      level: 'warn',
+      category: 'ai',
+      message: 'triage HTTP 500',
+      data: { detail: 'overloaded', digest: false, err: 'x' },
+    });
+    const loud = serverEntry({ ts: SINCE + 2000, level: 'warn', message: 'upstream 502' });
+    const groups = groupForDigest([quiet, quietWithErr, loud], SINCE);
+    expect(groups.map((g) => g.example.message)).toEqual(['upstream 502']);
+  });
+
+  it('does not let a digest: false warn into an error group it shares a fingerprint with', () => {
+    const quiet = serverEntry({ ts: SINCE + 1000, level: 'warn', message: 'same', data: { digest: false } });
+    const err = serverEntry({ ts: SINCE + 2000, level: 'error', message: 'same' });
+    const [group] = groupForDigest([quiet, err], SINCE);
+    expect(group.count).toBe(1);
+  });
+
+  it('only a literal digest: false opts out (other data shapes are counted as before)', () => {
+    const entries = [
+      serverEntry({ ts: SINCE + 1000, route: '/a', level: 'warn', data: { digest: 'false' } }),
+      serverEntry({ ts: SINCE + 1000, route: '/b', level: 'warn', data: 'digest: false' }),
+      serverEntry({ ts: SINCE + 1000, route: '/c', level: 'warn', data: null }),
+    ];
+    expect(groupForDigest(entries, SINCE)).toHaveLength(3);
+  });
+
   it('keeps distinct fingerprints as separate groups', () => {
     const a = serverEntry({ route: '/api/a', ts: SINCE + 1000 });
     const b = serverEntry({ route: '/api/b', ts: SINCE + 1000 });

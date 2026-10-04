@@ -4,7 +4,7 @@
 //
 //   unavailable_at      → when the server last confirmed yt-dlp can't play it
 //   unavailable_reason  → why (removed / private / geo / members / terminated
-//                          / unavailable), see lib/sources/youtube.ts
+//                          / age / unavailable), see lib/sources/youtube.ts
 //
 // The flag lives on the track, not on a per-user or per-playlist row, because
 // availability is a property of the SONG on YouTube, not of who's looking at

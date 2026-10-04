@@ -29,7 +29,7 @@ export const UNAVAILABLE_RECHECK_MS = 3 * 24 * 60 * 60 * 1000;
  *  repeat does not cost a write on every play but the date still moves on. */
 const REMARK_AFTER_MS = 24 * 60 * 60 * 1000;
 
-const REASONS = new Set<string>(['removed', 'private', 'geo', 'members', 'terminated', 'unavailable']);
+const REASONS = new Set<string>(['removed', 'private', 'geo', 'members', 'terminated', 'age', 'unavailable']);
 
 function toMark(row: { unavailable_at?: string; unavailable_reason?: string }): UnavailableMark {
   const at = Date.parse(String(row.unavailable_at ?? '').replace(' ', 'T'));

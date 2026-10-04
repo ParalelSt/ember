@@ -53,12 +53,15 @@ export const DELETE = withRequestLog('playlists/[id]/members/[userId]', async (
     if (userId === user.id) return jsonError('The owner cannot leave their own playlist', 400);
     const admin = await access.admin();
     const row = await membership(admin, id, userId);
-    if (row) await admin.collection('playlist_members').delete(row.id);
+    // Replace the link BEFORE the removal: the other way round, the person
+    // (or a join already in flight with the old link) could get back in
+    // between the two writes.
     let inviteCode: string | undefined;
     if (row && typeof access.playlist.invite_code === 'string' && access.playlist.invite_code) {
       inviteCode = newInviteCode();
       await admin.collection('playlists').update(id, { invite_code: inviteCode });
     }
+    if (row) await admin.collection('playlist_members').delete(row.id);
     return Response.json({ ok: true, ...(inviteCode ? { inviteCode } : {}) });
   } catch (e) {
     if (e instanceof UnauthorizedError) return unauthorizedResponse();

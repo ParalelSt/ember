@@ -7,8 +7,13 @@ import { fakePocketBase, type FakePb } from '@/test-utils/fakePocketBase';
 
 const errorSpy = vi.fn();
 const warnSpy = vi.fn();
+const infoSpy = vi.fn();
 vi.mock('@/lib/logger/server', () => ({
-  serverLogger: { error: (...args: unknown[]) => errorSpy(...args), warn: (...args: unknown[]) => warnSpy(...args) },
+  serverLogger: {
+    error: (...args: unknown[]) => errorSpy(...args),
+    warn: (...args: unknown[]) => warnSpy(...args),
+    info: (...args: unknown[]) => infoSpy(...args),
+  },
 }));
 
 /** Lining a tab up (lib/tabAlign.ts): the job around align.py. The script
@@ -62,6 +67,7 @@ beforeEach(() => {
   resetOptionalDepsWarning();
   errorSpy.mockClear();
   warnSpy.mockClear();
+  infoSpy.mockClear();
   fs.rmSync(CALLS, { force: true });
   writeScript(`printf '%s' '${JSON.stringify(TIMING)}' > "$3"`);
   store = fakePocketBase({
@@ -94,6 +100,18 @@ describe('lining a tab up', () => {
       status: 'ready',
       timing: { offsetMs: 1350, bpm: 97.4, confidence: 0.82, bars: TIMING.bars },
     });
+  });
+
+  it('logs a tab that lined up at info, so the daily digest does not list a success as a problem', async () => {
+    const tab = store.rows.get('tabs')![0];
+    expect(await alignTab(store.pb, tab)).not.toBeNull();
+    expect(infoSpy).toHaveBeenCalledWith(
+      'tabs',
+      'tab lined up',
+      expect.objectContaining({ tab: 'tab1', offsetMs: 1350, bpm: 97.4, confidence: 0.82, bars: 2 }),
+    );
+    expect(warnSpy).not.toHaveBeenCalled();
+    expect(errorSpy).not.toHaveBeenCalled();
   });
 
   it('runs one job per tab: two callers share it', async () => {

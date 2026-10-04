@@ -583,16 +583,16 @@ pub fn start(backend: Box<dyn OutputBackend>, config: RouterConfig) -> Result<(M
 
 /// Targets a poll failed to open, for the device list it saw. A device that
 /// will not open is not retried every 2 s (with a log line each time) until
-/// something about the devices changes.
+/// something about the devices changes, which includes the OS default moving.
 #[derive(Default)]
 struct Backoff {
-    devices: Vec<String>,
+    devices: Vec<(String, bool)>,
     targets: Vec<Option<String>>,
 }
 
 impl Backoff {
-    fn ids(devices: &[OutputDevice]) -> Vec<String> {
-        devices.iter().map(|d| d.id.clone()).collect()
+    fn ids(devices: &[OutputDevice]) -> Vec<(String, bool)> {
+        devices.iter().map(|d| (d.id.clone(), d.is_default)).collect()
     }
 
     fn holds(&self, target: &Option<String>, devices: &[OutputDevice]) -> bool {
@@ -749,7 +749,21 @@ impl Router {
             return false;
         }
         match self.open(target.as_deref(), devices) {
-            Ok(()) => true,
+            Ok(()) => {
+                // The backend falls back to another device when the default
+                // will not open, usually the one already playing. Counted as
+                // a failed open of the default, or every poll would rebuild
+                // that stream (a dropout every 2 s) while the default is dead.
+                if polled && target.is_none() {
+                    if let Some(default) = devices.iter().find(|d| d.is_default) {
+                        if self.active.as_deref() != Some(default.id.as_str()) {
+                            self.log("WARN", &format!("could not open the system default ({}); playing on {}", default.id, self.active.as_deref().unwrap_or("?")));
+                            self.backoff.record(None, devices);
+                        }
+                    }
+                }
+                true
+            }
             Err(e) => {
                 let what = target.as_deref().unwrap_or("the system default");
                 self.log("WARN", &format!("could not open {what}: {e}"));

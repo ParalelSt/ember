@@ -32,17 +32,25 @@ export function findCachedFile(videoId: string): string | null {
 
 const VIDEO_ID_RE = /^[A-Za-z0-9_-]{11}$/;
 
-export type UnavailableReason = 'removed' | 'private' | 'geo' | 'members' | 'terminated' | 'unavailable';
+export type UnavailableReason = 'removed' | 'private' | 'geo' | 'members' | 'terminated' | 'age' | 'unavailable';
 
 /** YouTube's mood, not the video's fate. Checked FIRST, and an unknown
  *  message is transient too: a wrong "unavailable" hides a song from everyone,
  *  a wrong "transient" only costs one more failed play. The rate limit starts
  *  with "Video unavailable. This content isn't available, try again later",
- *  so it must be caught here before the unavailable rules see it. */
-const TRANSIENT_RE = /HTTP Error \d{3}|not a bot|confirm your age|timed out|Connection reset|Remote end closed|unable to download|Unable to extract|Failed to extract|Requested format is not available|nsig|Temporary failure|Name or service not known|try again later|rate-limited/i;
+ *  so it must be caught here before the unavailable rules see it.
+ *
+ *  "Sign in to confirm your age" is NOT here: the host never signs in to
+ *  YouTube (no cookies, on purpose), so an age-gated video can never play
+ *  on it and is answered like any other gone video (the 'age' rule below).
+ *  "Sign in to confirm you're not a bot" stays transient. */
+const TRANSIENT_RE = /HTTP Error \d{3}|not a bot|timed out|Connection reset|Remote end closed|unable to download|Unable to extract|Failed to extract|Requested format is not available|nsig|Temporary failure|Name or service not known|try again later|rate-limited/i;
 
 const UNAVAILABLE_RULES: [RegExp, UnavailableReason][] = [
   [/account associated with this video has been terminated/i, 'terminated'],
+  // yt-dlp: "Sign in to confirm your age. Use --cookies-from-browser ...",
+  // or YouTube's own "This video may be inappropriate for some users".
+  [/confirm your age|age[- ]restricted|inappropriate for some users/i, 'age'],
   [/removed by the uploader|has been removed|copyright claim|Terms of Service/i, 'removed'],
   [/Private video|This video is private/i, 'private'],
   [/not available in your country|not made this video available/i, 'geo'],
@@ -185,7 +193,7 @@ function spawnPython<T>(args: string[], timeoutMs: number): Promise<T> {
     let stderr = '';
     const reject_ = (e: PythonError) => {
       // A video YouTube has taken down (removed, private, geo, members only,
-      // "This video is not available") is an answer, not a fault: the host
+      // age-restricted, "This video is not available") is an answer, not a fault: the host
       // did its job, and nothing on it needs fixing. Logged below 'error' so
       // the daily digest counts real problems only; a 403, a timeout or a
       // crash stays an error.

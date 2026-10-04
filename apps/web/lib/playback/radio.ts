@@ -1,4 +1,5 @@
 import { songKey } from '../songKey';
+import { exclusionKeys, identityKeys, isExcluded } from '../trackIdentity';
 import type { PlaybackContext, Track } from '../../types/track';
 
 /** Radio ranking: turn a raw recommendation list into the tracks to append at
@@ -31,15 +32,20 @@ const FRONT_LOAD_MAX = 2;
 const WEAVE_EVERY = 3;
 
 export function rankRadioPool({ pool, queue, current, history, liked, context }: RankRadioInput): Track[] {
-  // Block re-playing the current song or any variant of it, plus variants of
-  // anything already queued. songKey() ignores "(Official Video)" etc.
-  const blockedKeys = new Set<string>([songKey(current), ...queue.map(songKey)]);
-  const queuedIds = new Set(queue.map((q) => q.id));
+  // Block re-playing the current song or any variant of it, plus anything
+  // already queued (by id in any spelling, or another version of it).
+  // songKey() ignores "(Official Video)" etc.
+  const blocked = new Set<string>([...identityKeys(current), ...exclusionKeys(queue)]);
+  // A song played from somewhere that already has songs (a recommendation
+  // under a playlist) brings their keys: radio adds none of them.
+  if (context?.type === 'single' && Array.isArray(context.exclude)) {
+    for (const k of context.exclude) if (typeof k === 'string') blocked.add(k);
+  }
   const seenKeys = new Set<string>();
   let candidates = pool.filter((t) => {
-    if (t.id === current.id || queuedIds.has(t.id)) return false;
+    if (isExcluded(t, blocked)) return false;
     const k = songKey(t);
-    if (blockedKeys.has(k) || seenKeys.has(k)) return false;
+    if (seenKeys.has(k)) return false;
     seenKeys.add(k);
     return true;
   });

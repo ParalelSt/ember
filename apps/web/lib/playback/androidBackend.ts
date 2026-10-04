@@ -38,6 +38,9 @@ interface EmberPlayerPlugin {
     startSec?: number;
   }): Promise<void>;
   play(): Promise<void>;
+  /** "Tap to retry": reloads the failed song with the host's retry mark.
+   *  Absent on app builds from before it (they only have play). */
+  retry?(): Promise<void>;
   pause(): Promise<void>;
   seek(o: { sec: number }): Promise<void>;
   next(): Promise<void>;
@@ -353,6 +356,9 @@ export const createAndroidBackend: CreateAudioBackend = (events: AudioBackendEve
     },
     play() {
       if (p) call(p.play());
+    },
+    retry() {
+      if (p) call(p.retry ? p.retry() : p.play());
     },
     pause() {
       if (p) call(p.pause());

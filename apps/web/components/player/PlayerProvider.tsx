@@ -21,7 +21,7 @@ import { useAuth } from '@/components/providers/AuthProvider';
 import { useExecuteRecordPlay, useQueryHistory, useQueryLikes } from '@/hooks/useLibrary';
 import { useQueryLyrics } from '@/hooks/useLyrics';
 import { api, apiUrl } from '@/lib/api';
-import { MAX_FAILURES_IN_A_ROW, reasonPhrase, type UnplayableNotice } from '@/lib/playback/unplayable';
+import { MAX_FAILURES_IN_A_ROW, reasonPhrase, retryStreamUrl, type UnplayableNotice } from '@/lib/playback/unplayable';
 import { createUnplayableNotifier, documentVisibility, type UnplayableNotifier } from '@/lib/playback/unplayableNotifier';
 import {
   clearCouldntPlay,
@@ -34,7 +34,7 @@ import {
 import { logger } from '@/lib/logger/client';
 import { detectShell } from '@/lib/playback/detectShell';
 import { chooseDuration } from '@/lib/playback/chooseDuration';
-import { isUnavailable, nextIndex, nextPlayable, nextPlayableOffline, prevIndex } from '@/lib/playback/queueNav';
+import { isUnavailable, nextIndex, nextPlayable, nextPlayableOffline, prevIndex, previousFromHistory, rememberPlayed } from '@/lib/playback/queueNav';
 import { useAvailabilityProbe } from '@/hooks/player/useAvailabilityProbe';
 import { useAutoCache } from '@/hooks/player/useAutoCache';
 import type { BackendKind } from '@/lib/autoCache/select';
@@ -261,6 +261,11 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   // without re-registering handlers or rebuilding the backend.
   const nextRef = useRef<() => void>(() => {});
   const prevRef = useRef<() => void>(() => {});
+  /** Ids of the songs played before the current one, newest last: what
+   *  Previous goes back to (the rule is in lib/playback/queueNav, "Play
+   *  history"). This session only, and not on the native Android player,
+   *  which owns the queue and keeps its own (PlayHistory.kt). */
+  const playedRef = useRef<string[]>([]);
 
   const current = queue[index] ?? null;
 
@@ -732,7 +737,12 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   // was first sent as a one-song queue and then again as the whole list, and
   // the one send it now gets must carry the new list's context and baseCount
   // (the auto cache's loop-all wrap), which the store does not hold yet.
-  const loadAndPlay = useCallback((track: Track | null, autoplay: boolean, next?: QueueOrigin & { list: Track[] }) => {
+  const loadAndPlay = useCallback((
+    track: Track | null,
+    autoplay: boolean,
+    next?: QueueOrigin & { list: Track[] },
+    opts?: { listenerRetry?: boolean },
+  ) => {
     let b = backendRef.current;
     if (!b) return;
     if (!track) {
@@ -826,7 +836,10 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     // have started, and until then the previous song's gain was on it.
     const norm = useSettingsStore.getState().normalizeVolume ? dbToLinear(cachedTrackGain(track.id)) : 1;
     pushVolume(track.id, norm);
-    b.load(local ?? cachedSrc ?? apiUrl(track.streamUrl), { autoplay, startAt, ...(cacheKey ? { cacheKey } : {}) });
+    // The listener's own retry asks the host for a real attempt, past the
+    // failure it remembers for a couple of minutes (retryStreamUrl).
+    const streamSrc = apiUrl(track.streamUrl);
+    b.load(local ?? cachedSrc ?? (opts?.listenerRetry ? retryStreamUrl(streamSrc) : streamSrc), { autoplay, startAt, ...(cacheKey ? { cacheKey } : {}) });
     // Set metadata in the same synchronous turn so the notification carries
     // across a track boundary (Firefox Android tears it down otherwise).
     // Local art (the same downloaded copy) wins over the remote artworkUrl.
@@ -987,9 +1000,17 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     }
   }, [setIsPlaying]);
 
-  const goTo = useCallback((target: number, step: 1 | -1, stallId?: string) => {
+  const goTo = useCallback((target: number, step: 1 | -1, stallId?: string, opts?: { back?: boolean }) => {
     const st = usePlayerStore.getState();
     const ac = useAutoCacheStore.getState();
+    // Moving on (Next, a natural advance, a tap in the queue) remembers the
+    // song being left, for Previous. Going back (Previous itself) does not,
+    // or a second Previous would bounce between the same two songs.
+    const leaving = st.queue[st.index];
+    const remember = (to: number) => {
+      if (opts?.back || !leaving || to === st.index || isUnavailable(leaving)) return;
+      playedRef.current = rememberPlayed(playedRef.current, leaving.id);
+    };
     // Offline, only a track with a copy on this device can play: walk past
     // the rest (not flagged, just out of reach). Nothing left means a stall
     // (see stallOffline); the connection coming back loads the song we
@@ -1006,6 +1027,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       if (r.uncached.length > 0) {
         logger.breadcrumb('playback', 'offline: skipped uncached', { count: r.uncached.length });
       }
+      remember(r.index);
       loadAndPlay(st.queue[r.index], true);
       setIndex(r.index);
       return;
@@ -1016,6 +1038,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       toast.error("Nothing left to play: the songs left in the queue aren't available.");
       return;
     }
+    remember(r.index);
     loadAndPlay(st.queue[r.index], true);
     setIndex(r.index);
   }, [announce, loadAndPlay, setIndex, stallOffline]);
@@ -1086,15 +1109,25 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
   const prev = useCallback(() => {
     userInteracted.current = true;
+    // The native player keeps its own play history (PlayHistory.kt), so the
+    // notification, the lock screen and the car go back the same way.
     if (backendKindRef.current === 'android') { backendRef.current?.prev?.(); return; }
     const b = backendRef.current;
-    const move = prevIndex(navState(), b ? b.getCurrentTime() : 0);
+    const st = usePlayerStore.getState();
+    // The song actually played before this one, when the history has it
+    // (lib/playback/queueNav, "Play history"); else the song above.
+    const back = previousFromHistory(st.queue, st.index, playedRef.current);
+    const move = prevIndex(navState(), b ? b.getCurrentTime() : 0, back?.index);
     if (!move) return;
     if ('restart' in move) {
       b?.seek(0);
       return;
     }
-    goTo(move.index, -1);
+    // Popped only now that Previous really goes back (a restart keeps it);
+    // nothing usable left on it means it is spent.
+    if (back && move.index === back.index) playedRef.current = back.history;
+    else if (!back) playedRef.current = [];
+    goTo(move.index, -1, undefined, { back: true });
   }, [goTo, navState]);
 
   useEffect(() => {
@@ -1171,9 +1204,11 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
   // The native Android player normalizes by itself (it moves between songs
   // without this page), so it only needs the setting.
+  // Sent again when casting ends: a change made while the cast backend
+  // (which has neither) was in charge never reached the local engine.
   useEffect(() => {
     backendRef.current?.setNormalize?.(normalizeVolume);
-  }, [backendReady, initialKind, normalizeVolume]);
+  }, [backendReady, initialKind, normalizeVolume, casting]);
 
   // The equalizer, on every engine: web audio builds its filters the first
   // time it is switched on, the desktop engine and the Android player keep
@@ -1184,7 +1219,9 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const eqChosenHere = useSettingsStore((s) => s.eqChosenHere);
   useEffect(() => {
     backendRef.current?.setEq?.(eqForDevice(equalizer, eqNeedsConsent(initialKind), eqChosenHere));
-  }, [backendReady, initialKind, equalizer, eqChosenHere]);
+    // `casting`: the local engine is back when a cast ends, and a change made
+    // while casting went to the cast backend, which has no equalizer.
+  }, [backendReady, initialKind, equalizer, eqChosenHere, casting]);
 
   // The shuffle button, for the native Android player: the queue it
   // reorders goes over with setQueue (above); native keeps the flag, which
@@ -1263,6 +1300,18 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     const context: PlaybackContext = nextContext ?? { type: 'single' };
     // Size of the curated list, before radio extends it.
     const baseCount = queueList.length;
+    // Play history (what Previous goes back to): a tap on another song of
+    // the list already playing (the same songs in the same order at the top
+    // of the queue) is a jump within it, so the song being left is
+    // remembered. Any other list is a new queue, with a fresh history.
+    const before = usePlayerStore.getState();
+    const sameList = before.queue.length >= queueList.length
+      && queueList.every((t, k) => before.queue[k]?.id === t.id);
+    const leaving = before.queue[before.index];
+    if (!sameList) playedRef.current = [];
+    else if (leaving && leaving.id !== track.id && !isUnavailable(leaving)) {
+      playedRef.current = rememberPlayed(playedRef.current, leaving.id);
+    }
     loadAndPlay(track, true, { list: queueList, context, baseCount });
     usePlayerStore.setState({
       queue: queueList,
@@ -1332,12 +1381,15 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     const st = usePlayerStore.getState();
     const track = st.queue[st.index];
     if (!track) return;
-    // The native player keeps the song it failed on: play asks it again.
+    // The native player keeps the song it failed on and reloads it itself,
+    // with the same retry mark as below.
     if (backendKindRef.current === 'android') {
-      backendRef.current?.play();
+      const b = backendRef.current;
+      if (b?.retry) b.retry();
+      else b?.play();
       return;
     }
-    loadAndPlay(track, true);
+    loadAndPlay(track, true, undefined, { listenerRetry: true });
   }, [loadAndPlay]);
 
   // Playback moved on without the app's buttons (the lock screen, the car,

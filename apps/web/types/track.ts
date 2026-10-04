@@ -99,14 +99,19 @@ export type PlaybackContext =
   | { type: 'history' }
   | { type: 'uploads' }
   | { type: 'radio' }
-  | { type: 'single' };
+  /** `exclude`: songs radio must not add after it (lib/trackIdentity keys),
+   *  e.g. a recommendation played from under a playlist skips what the
+   *  playlist already has. */
+  | { type: 'single'; exclude?: string[] };
 
 /** One row of a live carlist session queue. */
 export interface SessionQueueItem {
   id: string;
   position: number;
   played: boolean;
+  /** Who added it, as everyone sees them (lib/collab publicName). */
   addedByName: string;
+  addedBy: PlaylistPerson | null;
   track: Track;
 }
 
@@ -119,7 +124,23 @@ export interface SessionState {
     active: boolean;
     nowIndex: number;
     hostName: string;
+    hostId: string;
     isHost: boolean;
+    /** The signed-in viewer's id ("Added by You"). */
+    viewerId: string;
+    /** About how long the current song has played: time since the host last
+     *  moved on (the session row's update time). null when unknown. */
+    nowElapsedMs: number | null;
   };
+  /** Everyone in the car, the host first. */
+  members: PlaylistPerson[];
   queue: SessionQueueItem[];
+}
+
+/** GET /api/sessions: the live carlist the signed-in user hosts or joined. */
+export interface LiveCarlist {
+  id: string;
+  code: string;
+  name: string;
+  isHost: boolean;
 }

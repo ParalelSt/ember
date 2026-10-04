@@ -55,6 +55,9 @@ struct MockState {
     devices: Vec<OutputDevice>,
     fail: HashSet<String>,
     streams: Vec<MockStream>,
+    /// Opening the default tries every other device when it will not open,
+    /// as `CpalBackend` does.
+    fallback: bool,
 }
 
 /// Closes its stream when the router drops it.
@@ -82,6 +85,10 @@ impl Mock {
 
     fn fail_open(&self, id: &str) {
         self.0.lock().unwrap().fail.insert(id.into());
+    }
+
+    fn fall_back_like_cpal(&self) {
+        self.0.lock().unwrap().fallback = true;
     }
 
     /// Takes `id` out of the list and has its stream report the loss, as
@@ -141,12 +148,18 @@ impl OutputBackend for Mock {
         let mut state = self.0.lock().unwrap();
         let target = match id {
             Some(id) => state.devices.iter().find(|d| d.id == id).map(|d| d.id.clone()),
-            None => state
-                .devices
-                .iter()
-                .find(|d| d.is_default)
-                .or(state.devices.first())
-                .map(|d| d.id.clone()),
+            None => {
+                let default = state.devices.iter().find(|d| d.is_default).or(state.devices.first());
+                let mut candidates: Vec<&OutputDevice> = default.into_iter().collect();
+                if state.fallback {
+                    candidates.extend(state.devices.iter().filter(|d| Some(d.id.as_str()) != default.map(|d| d.id.as_str())));
+                }
+                candidates
+                    .iter()
+                    .find(|d| !state.fail.contains(&d.id))
+                    .or(candidates.first())
+                    .map(|d| d.id.clone())
+            }
         }
         .ok_or_else(|| "mock: no such device".to_string())?;
         if state.fail.contains(&target) {
@@ -424,6 +437,32 @@ fn a_poll_does_not_retry_a_device_that_will_not_open_until_the_list_changes() {
     router.tick_now();
     assert_eq!(router.list().unwrap().active.as_deref(), Some("Speakers"), "kept what it had");
     assert_eq!(mock.opens(), 1, "no stream was opened after the start");
+}
+
+/// The real backend opens another device when the default will not open,
+/// usually the one already playing. A poll that lands back there must not
+/// tear down and rebuild that stream every 2 s (a dropout each time) for as
+/// long as the default stays dead, and must still follow the default once
+/// it moves to a device that works.
+#[test]
+fn a_default_that_will_not_open_does_not_reopen_the_playing_device_every_poll() {
+    let mock = Mock::new(&[("Speakers", true), ("AirPods", false), ("Monitor", false)]);
+    mock.fall_back_like_cpal();
+    let (_mixer, router) = router_on(&mock, true);
+    mock.fail_open("AirPods");
+    mock.set_devices(&[("Speakers", false), ("AirPods", true), ("Monitor", false)]);
+    router.tick_now();
+    let opens = mock.opens();
+    router.tick_now();
+    router.tick_now();
+    router.tick_now();
+    assert_eq!(router.list().unwrap().active.as_deref(), Some("Speakers"), "kept what it had");
+    assert_eq!(mock.opens(), opens, "the playing device was reopened on every poll");
+
+    // The OS default moves on to a device that does open: followed.
+    mock.set_devices(&[("Speakers", false), ("AirPods", false), ("Monitor", true)]);
+    router.tick_now();
+    assert_eq!(router.list().unwrap().active.as_deref(), Some("Monitor"));
 }
 
 #[test]

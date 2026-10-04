@@ -178,7 +178,7 @@ async function run(pb: PocketBase, row: RecordModel, deps: AlignDeps): Promise<T
     if (!timing) throw new Error('align.py wrote no timing');
     const writer = deps.freshPb ? await deps.freshPb() : pb;
     await writer.collection('tabs').update(row.id, { timing: toRow(timing), aligned_at: new Date().toISOString() });
-    serverLogger.warn('tabs', 'tab lined up', {
+    serverLogger.info('tabs', 'tab lined up', {
       tab: row.id,
       offsetMs: timing.offsetMs,
       bpm: timing.bpm,

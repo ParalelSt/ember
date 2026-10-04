@@ -3,6 +3,9 @@ import type PocketBase from 'pocketbase';
 import type { RecordModel } from 'pocketbase';
 import { ForbiddenError } from '@/lib/auth';
 import { createCatalogClient } from '@/lib/pocketbase/server';
+import { fileUrl } from '@/lib/pocketbase/fileUrl';
+import { publicName } from '@/lib/collab';
+import type { PlaylistPerson } from '@/types/track';
 
 /** Unambiguous join-code alphabet (no 0/O/1/I). */
 const CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -79,4 +82,31 @@ export async function assertMember(
   } catch {
     throw new ForbiddenError('Join this session with its code first.');
   }
+}
+
+/** Someone in a carlist as the others see them: the name they chose (the
+ *  same "Unnamed member" fallback as collaborative playlists, never their
+ *  email) and their picture. */
+export function carlistPerson(user: RecordModel | Record<string, unknown> | null | undefined, id?: string): PlaylistPerson {
+  const u = (user ?? {}) as Record<string, unknown>;
+  const avatar = typeof u.avatar === 'string' ? u.avatar : '';
+  const userId = String(u.id ?? id ?? '');
+  return {
+    id: userId,
+    name: publicName(u),
+    avatarUrl: avatar ? (fileUrl(u, avatar) || null) : null,
+  };
+}
+
+/** A carlist stops counting as live for the Carlist button once nobody has
+ *  moved it on (song change, start) for this long: hosts often just close
+ *  the app instead of ending it. */
+export const LIVE_WINDOW_MS = 12 * 60 * 60 * 1000;
+
+/** Milliseconds since a PocketBase timestamp ("2026-10-02 12:00:00.000Z"),
+ *  null when it does not parse. */
+export function msSince(stamp: unknown, now = Date.now()): number | null {
+  if (typeof stamp !== 'string' || !stamp) return null;
+  const t = Date.parse(stamp.replace(' ', 'T'));
+  return Number.isFinite(t) ? Math.max(0, now - t) : null;
 }

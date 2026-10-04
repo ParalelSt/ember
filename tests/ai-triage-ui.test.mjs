@@ -91,15 +91,27 @@ page.on('pageerror', (e) => consoleErrors.push(`pageerror: ${e.message}`));
 
 await page.goto(`${APP_URL}/settings/help`, { waitUntil: 'networkidle' });
 
-// A deliberately failing request (a playlist id that doesn't exist), so the
-// server request log this test's report picks up has a real error line to
-// carry, not just breadcrumbs: proves the server side of the digest, not
-// only that context/reqId code compiles.
+// A deliberately failing request that the server logs, so the server request
+// log this test's report picks up has a real error line to carry, not just
+// breadcrumbs: proves the server side of the digest, not only that
+// context/reqId code compiles. A missing playlist used to be that request,
+// but since b1259cdf its 404 is an answer, not logged; a 429 always is
+// (withRequestLog). The lyrics report allows 5 in 10 minutes and checks
+// that before the body, so the sixth empty one is refused.
 const failingRequestStatus = await page.evaluate(async () => {
-  const res = await fetch('/api/playlists/nonexistent-playlist-000', { credentials: 'include' });
-  return res.status;
+  let status = 0;
+  for (let i = 0; i < 6; i++) {
+    const res = await fetch('/api/lyrics-report', {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'content-type': 'application/json' },
+      body: '{}',
+    });
+    status = res.status;
+  }
+  return status;
 });
-// Chrome logs a failed resource load to the console for that 404: it's this
+// Chrome logs a failed resource load to the console for those: it's this
 // test's own deliberate failure, not a bug, so it shouldn't fail the "no
 // console errors" check below. Give the (already-resolved) fetch's async
 // console event a moment to land, then drop anything collected so far.
@@ -139,10 +151,10 @@ const discordSeen = await fetch(`http://127.0.0.1:${FAKE_DISCORD_PORT}`).then((r
 const prompt = anthropicSeen?.prompt ?? '';
 const discordBody = discordSeen?.body ?? '';
 
-checks.push(['deliberately failing request actually failed', failingRequestStatus >= 400]);
+checks.push(['deliberately failing request actually failed (429)', failingRequestStatus === 429]);
 checks.push(['context block reached the prompt', prompt.includes('## State when reported') && prompt.includes('route: /settings/help')]);
 checks.push(['server error from the failing request reached the prompt (readable timeline, not a raw dump)',
-  prompt.includes('## Timeline') && prompt.includes('Errors') && /-> 404/.test(prompt)]);
+  prompt.includes('## Timeline') && prompt.includes('Errors') && /lyrics-report -> 429/.test(prompt)]);
 checks.push(['context reached the Discord embed as "Where"', discordBody.includes('"name":"Where"')]);
 checks.push(['reproduction reached the Discord embed as "Reproduce"',
   discordBody.includes('"name":"Reproduce"') && discordBody.includes('wait a few seconds for it to cut out')]);
@@ -205,7 +217,7 @@ checks.push(['a second identical error does not produce a second automatic repor
   JSON.stringify(afterSecondBody) === JSON.stringify(autoDiscordBody)]);
 
 // These two deliberate throws are this test's own doing, not a bug: drop
-// them before the "no console errors" check, same as the earlier 404.
+// them before the "no console errors" check, same as the earlier 429.
 consoleErrors.length = 0;
 
 checks.push(['no console errors', consoleErrors.length === 0]);

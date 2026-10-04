@@ -14,6 +14,7 @@ import type { Track } from '@/types/track';
 const row = { id: 'row1', user: 'u1', position: 1, played_at: '' };
 const memberPb = {
   autoCancellation: () => undefined,
+  filter: (expr: string) => expr,
   collection: () => ({
     getOne: async () => row,
     getFirstListItem: async () => row,

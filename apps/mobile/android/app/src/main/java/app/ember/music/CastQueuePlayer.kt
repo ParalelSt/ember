@@ -26,6 +26,9 @@ class CastQueuePlayer(
     private val baseUrl: String,
     private val io: Executor,
     private val main: Executor,
+    /** What Previous goes back to while casting (PlayHistory), as on the
+     *  phone. Null: Media3's own, the song above. */
+    private val history: PlayHistory? = null,
 ) : ForwardingPlayer(cast) {
     companion object {
         const val MAX_ITEMS = 300
@@ -127,9 +130,15 @@ class CastQueuePlayer(
     override fun seekTo(positionMs: Long) = ordered { super.seekTo(positionMs) }
     override fun seekToDefaultPosition(mediaItemIndex: Int) = ordered { super.seekToDefaultPosition(mediaItemIndex) }
     override fun seekToNext() = ordered { super.seekToNext() }
-    override fun seekToPrevious() = ordered { super.seekToPrevious() }
+    override fun seekToPrevious() = ordered {
+        val h = history
+        if (h != null) h.seekToPrevious(wrappedPlayer) else super.seekToPrevious()
+    }
     override fun seekToNextMediaItem() = ordered { super.seekToNextMediaItem() }
-    override fun seekToPreviousMediaItem() = ordered { super.seekToPreviousMediaItem() }
+    override fun seekToPreviousMediaItem() = ordered {
+        val h = history
+        if (h != null) h.seekToPreviousMediaItem(wrappedPlayer) else super.seekToPreviousMediaItem()
+    }
     override fun removeMediaItem(index: Int) = ordered { super.removeMediaItem(index) }
     override fun removeMediaItems(fromIndex: Int, toIndex: Int) = ordered { super.removeMediaItems(fromIndex, toIndex) }
     override fun moveMediaItem(currentIndex: Int, newIndex: Int) = ordered { super.moveMediaItem(currentIndex, newIndex) }

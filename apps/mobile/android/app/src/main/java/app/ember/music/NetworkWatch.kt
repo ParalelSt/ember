@@ -36,7 +36,9 @@ class NetworkWatch(context: Context, private val onChange: (State) -> Unit) {
     }
 
     private fun changed() {
-        main.post { onChange(current()) }
+        // Checked again when it runs: a change posted just before stop() must
+        // not reach a service that has already been torn down.
+        main.post { if (registered) onChange(current()) }
     }
 
     fun current(): State {
@@ -60,6 +62,7 @@ class NetworkWatch(context: Context, private val onChange: (State) -> Unit) {
         if (!registered) return
         runCatching { cm?.unregisterNetworkCallback(callback) }
         registered = false
+        main.removeCallbacksAndMessages(null)
     }
 
     companion object {

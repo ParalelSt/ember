@@ -19,9 +19,16 @@ describe('the bar\'s words for songs that could not play', () => {
     expect(shortReason({ kind: 'unavailable', reason: 'geo' })).toBe('Blocked in this country');
     expect(shortReason({ kind: 'unavailable', reason: 'members' })).toBe('Members only');
     expect(shortReason({ kind: 'unavailable', reason: 'terminated' })).toBe('Channel closed');
+    expect(shortReason({ kind: 'unavailable', reason: 'age' })).toBe('Age-restricted on YouTube');
     expect(shortReason({ kind: 'unavailable', reason: 'unavailable' })).toBe('Not available on YouTube');
     expect(shortReason({ kind: 'unavailable', reason: null })).toBe('Not available on YouTube');
     expect(shortReason({ kind: 'transient', reason: null })).toBe("Couldn't load right now");
+  });
+
+  it('an age-restricted song: "Skipped: <title>", "Age-restricted on YouTube" under it', () => {
+    expect(lines([n('JuXvuM', { reason: 'age' })])).toMatchObject({
+      top: 'Skipped: JuXvuM', bottom: 'Age-restricted on YouTube', sticky: false, retry: false,
+    });
   });
 
   it('a burst is one message: "Skipped 3 songs"', () => {

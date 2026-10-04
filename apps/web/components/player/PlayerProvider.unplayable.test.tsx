@@ -42,7 +42,7 @@ let events: AudioBackendEvents | null = null;
 vi.mock('@/lib/playback/webBackend', () => ({
   createWebBackend: (e: AudioBackendEvents) => { events = e; return engine; },
 }));
-const native = vi.hoisted(() => ({ setQueue: vi.fn(), setLoop: vi.fn(), next: vi.fn(), prev: vi.fn() }));
+const native = vi.hoisted(() => ({ setQueue: vi.fn(), setLoop: vi.fn(), next: vi.fn(), prev: vi.fn(), retry: vi.fn() }));
 vi.mock('@/lib/playback/androidBackend', () => ({
   androidPluginPresent: () => true,
   createAndroidBackend: (e: AudioBackendEvents) => { events = e; return Object.assign(engine, native); },
@@ -144,6 +144,18 @@ describe('web and desktop: the song playing turns out to be gone', () => {
     await waitFor(() => expect(messages()).toContain('Couldn\'t play "Radio Song One": not available on YouTube in this country. Skipped to the next song.'));
   });
 
+  it('an age-restricted song (the host answered 410 "age"): the bar says so and the next one plays', async () => {
+    setQueue([GONE, NEXT], 0);
+    verdict[GONE.id] = { unavailable: true, reason: 'age' };
+    render(<PlayerProvider>{null}</PlayerProvider>);
+    act(() => events!.onError());
+    await waitFor(() => expect(current().id).toBe(NEXT.id));
+    expect(messages()).toContain('Couldn\'t play "Radio Song One": age-restricted on YouTube. Skipped to the next song.');
+    expect(bar()).toMatchObject({ top: 'Skipped: Radio Song One', bottom: 'Age-restricted on YouTube', sticky: false });
+    expect(usePlayerStore.getState().queue[0].unavailableReason).toBe('age');
+    noToasts();
+  });
+
   it('a song that would not load right now: stays on it, says so, is not greyed', async () => {
     setQueue([KLINCEK, NEXT], 0);
     render(<PlayerProvider>{null}</PlayerProvider>);
@@ -167,6 +179,19 @@ describe('web and desktop: the song playing turns out to be gone', () => {
     expect(bar()).toBeNull();
     expect(engine.load.mock.calls.length).toBe(loads + 1);
     expect(engine.load.mock.calls.at(-1)![0]).toBe(KLINCEK.streamUrl);
+  });
+
+  it('the retry asks the host for a real attempt, past the failure it remembers (normal loads do not)', async () => {
+    const real = makeTrack({ id: 'youtube:glitchy0001', sourceId: 'glitchy0001', title: 'Glitchy', streamUrl: '/api/youtube/stream/glitchy0001', durationSec: 200 });
+    setQueue([real, NEXT], 0);
+    let retry: () => void = () => {};
+    function Grab() { retry = usePlayer().retry; return null; }
+    render(<PlayerProvider><Grab /></PlayerProvider>);
+    expect(loadedUrls().every((u) => !String(u).includes('retry='))).toBe(true);
+    act(() => events!.onError());
+    await waitFor(() => expect(bar()?.retry).toBe(true));
+    act(() => retry());
+    expect(engine.load.mock.calls.at(-1)![0]).toBe('/api/youtube/stream/glitchy0001?retry=1');
   });
 
   it('five dead songs in a row: stops with a message instead of racing through the queue', async () => {
@@ -309,6 +334,18 @@ describe('android: the native player reports what it could not play', () => {
     expect(api.getTrackAvailability).not.toHaveBeenCalled();
   });
 
+  it('an age-restricted song native skipped reads "Age-restricted on YouTube"', () => {
+    setQueue([KLINCEK, GONE, NEXT], 2);
+    render(<PlayerProvider>{null}</PlayerProvider>);
+    act(() => events!.onUnplayable!([
+      { trackId: GONE.id, title: GONE.title, kind: 'unavailable', reason: 'age', outcome: 'skipped' },
+    ]));
+    expect(usePlayerStore.getState().queue[1].unavailableReason).toBe('age');
+    expect(messages()).toEqual(['Couldn\'t play "Radio Song One": age-restricted on YouTube. Skipped to the next song.']);
+    expect(bar()).toMatchObject({ top: 'Skipped: Radio Song One', bottom: 'Age-restricted on YouTube' });
+    expect(api.getTrackAvailability).not.toHaveBeenCalled();
+  });
+
   it('several held while the app was away: one summary, "while you were away"', () => {
     setQueue([KLINCEK, GONE, NEXT], 0);
     render(<PlayerProvider>{null}</PlayerProvider>);
@@ -364,6 +401,20 @@ describe('android: the native player reports what it could not play', () => {
     act(() => events!.onError({ trackId: GONE.id, nativeExplains: false }));
     await waitFor(() => expect(messages()).toContain('Couldn\'t play "Radio Song One": not available on YouTube. Skipped to the next song.'));
     expect(usePlayerStore.getState().queue[1].unavailableAt).toBeTruthy();
+  });
+
+  it('the bar\'s retry asks native for a marked reload of the failed song, not a plain play', () => {
+    setQueue([KLINCEK, NEXT], 0);
+    let retry: () => void = () => {};
+    function Grab() { retry = usePlayer().retry; return null; }
+    render(<PlayerProvider><Grab /></PlayerProvider>);
+    act(() => events!.onUnplayable!([
+      { trackId: KLINCEK.id, title: KLINCEK.title, kind: 'transient', reason: null, outcome: 'stopped' },
+    ]));
+    engine.play.mockClear();
+    act(() => retry());
+    expect(native.retry).toHaveBeenCalledTimes(1);
+    expect(engine.play).not.toHaveBeenCalled();
   });
 
   it('a build that explains itself is not asked about again', () => {

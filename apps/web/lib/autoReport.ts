@@ -7,6 +7,7 @@ import { useSettingsStore } from '@/stores/useSettingsStore';
 import { useUiStore } from '@/stores/useUiStore';
 import { readDesktopLog } from './desktopLog';
 import { scrubText } from './logger/sanitize';
+import { PERSIST_MS, networkFailure } from './connectionBlip';
 
 /** Silent crash reports: when the client logger records an error-level
  *  entry, post the same body BugReportDialog would send (tagged
@@ -19,6 +20,9 @@ import { scrubText } from './logger/sanitize';
 const STORAGE_KEY = 'ember.autoReport.session';
 const MAX_PER_SESSION = 3;
 const DEBOUNCE_MS = 2000;
+/** One fingerprint for every lasting connection outage, whichever calls it
+ *  broke, so a session files at most one of those. */
+const CONNECTION_FP = 'connection-outage';
 
 interface SessionState {
   /** Fingerprints already reported this session, one automatic report per
@@ -124,6 +128,12 @@ function isUnauthorized(entry: LogEntry): boolean {
   return data?.status === 401;
 }
 
+/** A call that got no HTTP answer at all (api.ts req() marks it). */
+function isNetworkFailure(entry: LogEntry): boolean {
+  const data = entry.data as { network?: unknown } | undefined;
+  return entry.category === 'api' && data?.network === true;
+}
+
 /** The sign-in page: whatever fails there comes from a session that is
  *  gone or never was, and the report route needs one anyway. */
 function onSignInPage(): boolean {
@@ -135,6 +145,20 @@ export function maybeAutoReport(entry: LogEntry): void {
     if (typeof window === 'undefined') return;
     if (entry.kind !== 'error' || entry.level !== 'error') return;
     if (isUnauthorized(entry) || onSignInPage()) return;
+
+    // A connection blip fails several calls at once and then recovers: one
+    // report per failed call was noise. Only a run of network failures that
+    // lasts past connectionBlip's PERSIST_MS is reported, once per session.
+    let report = entry;
+    let fp: string;
+    if (isNetworkFailure(entry)) {
+      if (!networkFailure(entry.ts)) return;
+      report = { ...entry, message: `network errors for over ${PERSIST_MS / 1000}s, last: ${entry.message}` };
+      fp = CONNECTION_FP;
+    } else {
+      fp = fingerprint(entry);
+    }
+
     if (!useSettingsStore.getState().autoReportEnabled) return;
     if (!isSignedIn()) return;
     if (useUiStore.getState().bugReportOpen) return;
@@ -142,7 +166,6 @@ export function maybeAutoReport(entry: LogEntry): void {
     // up one of the session's three reports (and mark the fingerprint done).
     if (!isOnline()) return;
 
-    const fp = fingerprint(entry);
     if (pendingTimers.has(fp)) return; // burst: already debounced
 
     const state = readSession();
@@ -159,7 +182,7 @@ export function maybeAutoReport(entry: LogEntry): void {
       if (useUiStore.getState().bugReportOpen) return;
       if (!isOnline()) return;
       if (!reserve(fp)) return;
-      void send(entry);
+      void send(report);
     }, DEBOUNCE_MS);
     pendingTimers.set(fp, timer);
   } catch (e) {

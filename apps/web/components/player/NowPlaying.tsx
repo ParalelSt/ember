@@ -132,6 +132,22 @@ export function NowPlaying() {
     };
   }, [open, setOpen]);
 
+  // More and the playlist menu belong to the song they were opened on, in
+  // the open player. They portal above this view, so closing it any way
+  // other than through them (Back, Escape, the chevron, playback stopping)
+  // would leave them floating over the app, and a new song starting would
+  // turn "Add to playlist" or "Go to artist" into actions on that song.
+  // Reset while rendering when either changes (React's "adjusting state
+  // when a prop changes" pattern), so they are never painted open on the
+  // wrong song even for a frame.
+  const menusKey = `${open ? 1 : 0}:${current?.id ?? ''}`;
+  const [menusFor, setMenusFor] = useState(menusKey);
+  if (menusFor !== menusKey) {
+    setMenusFor(menusKey);
+    setMoreOpen(false);
+    setAddOpen(false);
+  }
+
   // Auto-close if playback stops entirely (queue cleared).
   useEffect(() => {
     if (open && !current) setOpen(false);

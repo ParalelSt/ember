@@ -1,9 +1,29 @@
 import type { NextRequest } from 'next/server';
+import type PocketBase from 'pocketbase';
 import { requireUser, UnauthorizedError, unauthorizedResponse } from '@/lib/auth';
 import type { Track } from '@/types/track';
 import { fromError, jsonError, upsertCatalogTrack } from '@/lib/upsertTrack';
 import { withRequestLog } from '@/lib/logger/withRequestLog';
 import { notFound, playlistAccess } from '@/lib/playlistAccess';
+import { ALREADY_IN_PLAYLIST, isUniqueViolation } from '@/lib/playlistAdd';
+
+const alreadyThere = () => jsonError(ALREADY_IN_PLAYLIST, 409);
+
+async function hasRow(db: PocketBase, playlistId: string, trackRecordId: string): Promise<boolean> {
+  try {
+    await db
+      .collection('playlist_tracks')
+      .getFirstListItem(db.filter('playlist = {:p} && track = {:t}', { p: playlistId, t: trackRecordId }), {
+        fields: 'id',
+      });
+    return true;
+  } catch (e) {
+    if ((e as { status?: number } | undefined)?.status === 404) return false;
+    throw e;
+  }
+}
+
+const isBadRequest = (e: unknown) => (e as { status?: number } | undefined)?.status === 400;
 
 export const POST = withRequestLog('playlists/[id]/tracks', async (request: NextRequest, ctx: RouteContext<'/api/playlists/[id]/tracks'>) => {
   try {
@@ -36,12 +56,21 @@ export const POST = withRequestLog('playlists/[id]/tracks', async (request: Next
       // empty playlist — keep 1
     }
 
-    await db.collection('playlist_tracks').create({
-      playlist: id,
-      track: trackRecordId,
-      position: nextPosition,
-      added_by: user.id,
-    });
+    try {
+      await db.collection('playlist_tracks').create({
+        playlist: id,
+        track: trackRecordId,
+        position: nextPosition,
+        added_by: user.id,
+      });
+    } catch (e) {
+      // The song is already there: the (playlist, track) unique index
+      // refuses the row. Answer that plainly (409), not as PocketBase's raw
+      // "Value must be unique." 400, which the app filed as a bug report.
+      // A 400 without the field detail counts when the row is really there.
+      if (isUniqueViolation(e) || (isBadRequest(e) && (await hasRow(db, id, trackRecordId)))) return alreadyThere();
+      throw e;
+    }
     return Response.json({ ok: true }, { status: 201 });
   } catch (e) {
     if (e instanceof UnauthorizedError) return unauthorizedResponse();

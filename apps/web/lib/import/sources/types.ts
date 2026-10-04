@@ -59,9 +59,14 @@ export function jobSourceFor(kind: TransferSourceKind): ImportSourceKind {
 }
 
 /** Longest a single field may be. A source that writes an essay into a song
- *  title is cut, not refused. */
-export const MAX_FIELD_CHARS = 500;
+ *  title is cut, not refused. No more than import_items.source_title holds
+ *  (300, pocketbase/pb_hooks/ensure_imports.pb.js): one longer title failed
+ *  the whole transfer's create. */
+export const MAX_FIELD_CHARS = 300;
 
+/** NUL bytes go: the title and artist are handed to player.py as arguments,
+ *  and spawn refuses an argument with one, so its batch failed on every
+ *  retry and the transfer never got past it. */
 export function field(value: string, max = MAX_FIELD_CHARS): string {
-  return value.trim().slice(0, max);
+  return value.replace(/\u0000/g, '').trim().slice(0, max);
 }
