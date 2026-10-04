@@ -7,7 +7,7 @@ import { useSettingsStore } from '@/stores/useSettingsStore';
 import { useUiStore } from '@/stores/useUiStore';
 import { readDesktopLog } from './desktopLog';
 import { scrubText } from './logger/sanitize';
-import { PERSIST_MS, networkFailure } from './connectionBlip';
+import { PERSIST_MS, networkFailure, whenConnectionBack } from './connectionBlip';
 
 /** Silent crash reports: when the client logger records an error-level
  *  entry, post the same body BugReportDialog would send (tagged
@@ -89,7 +89,11 @@ function isSignedIn(): boolean {
   return !!m && decodeURIComponent(m[1]).length > 0;
 }
 
-async function send(entry: LogEntry): Promise<void> {
+/** `retryWhenBack`: a send that gets no answer at all (the outage report,
+ *  sent while the server is still unreachable) goes again once, the next
+ *  time the server answers. */
+async function send(entry: LogEntry, retryWhenBack = false): Promise<void> {
+  let reached = false;
   try {
     const snapshot = logger.snapshot();
     // Desktop only, best effort: same as BugReportDialog's submit.
@@ -105,6 +109,7 @@ async function send(entry: LogEntry): Promise<void> {
         automatic: true,
       }),
     });
+    reached = true;
     if (!res.ok) {
       logger.breadcrumb('autoReport', `automatic report failed: ${res.status}`);
     }
@@ -112,6 +117,12 @@ async function send(entry: LogEntry): Promise<void> {
     logger.breadcrumb('autoReport', 'automatic report failed', {
       error: e instanceof Error ? e.message : String(e),
     });
+    if (retryWhenBack && !reached) {
+      whenConnectionBack(() => {
+        if (!useSettingsStore.getState().autoReportEnabled || !isSignedIn()) return;
+        void send(entry);
+      });
+    }
   }
 }
 
@@ -182,7 +193,9 @@ export function maybeAutoReport(entry: LogEntry): void {
       if (useUiStore.getState().bugReportOpen) return;
       if (!isOnline()) return;
       if (!reserve(fp)) return;
-      void send(report);
+      // The outage report is sent while the outage may still be on: if it
+      // cannot get through, it waits for the server to answer again.
+      void send(report, fp === CONNECTION_FP);
     }, DEBOUNCE_MS);
     pendingTimers.set(fp, timer);
   } catch (e) {
