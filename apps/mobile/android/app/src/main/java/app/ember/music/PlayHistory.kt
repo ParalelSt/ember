@@ -2,6 +2,7 @@ package app.ember.music
 
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
+import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 
 /** What Previous goes back to: the songs actually played, not the song above
@@ -33,6 +34,8 @@ class PlayHistory(private val max: Int = MAX) {
         /** Past this far into a song, Previous starts it over: Media3's own
          *  default (maxSeekToPreviousPosition) and the web player's 3 s. */
         const val RESTART_AFTER_MS = 3_000L
+        /** A song that failed this far in had played: it is not dead. */
+        const val HEARD_AFTER_MS = 1_000L
     }
 
     sealed interface Move {
@@ -47,6 +50,11 @@ class PlayHistory(private val max: Int = MAX) {
     }
 
     private val stack = ArrayDeque<String>()
+    /** Songs in this queue that failed before a note of them played (the
+     *  player skipped them). Previous does not go back to one: it would fail
+     *  again and be skipped forward to the song Previous was pressed on, so
+     *  Previous could never get past it. Forgotten once the song plays. */
+    private val dead = HashSet<String>()
 
     /** The stack, oldest first (for tests and logs). */
     val ids: List<String> get() = stack.toList()
@@ -57,7 +65,10 @@ class PlayHistory(private val max: Int = MAX) {
         while (stack.size > max) stack.removeFirst()
     }
 
-    fun clear() = stack.clear()
+    fun clear() {
+        stack.clear()
+        dead.clear()
+    }
 
     /** Where Previous goes for a player at [index] of [queue] (media ids),
      *  [positionMs] into the song. Pops the entries it uses or finds stale (a
@@ -69,7 +80,7 @@ class PlayHistory(private val max: Int = MAX) {
             val id = stack.removeLast()
             var best = -1
             queue.forEachIndexed { i, q ->
-                if (i != index && q == id && (best < 0 || Math.abs(i - index) < Math.abs(best - index))) best = i
+                if (i != index && q == id && id !in dead && (best < 0 || Math.abs(i - index) < Math.abs(best - index))) best = i
             }
             if (best >= 0) return Move.To(best)
         }
@@ -94,7 +105,7 @@ class PlayHistory(private val max: Int = MAX) {
                 player.seekToDefaultPosition(move.index)
             }
             Move.Default -> {
-                val before = player.previousMediaItemIndex
+                val before = previousUsable(player, queue)
                 if (before == C.INDEX_UNSET) {
                     player.seekTo(0)
                 } else {
@@ -116,7 +127,7 @@ class PlayHistory(private val max: Int = MAX) {
                 player.seekToDefaultPosition(move.index)
             }
             else -> {
-                val before = player.previousMediaItemIndex
+                val before = previousUsable(player, queue)
                 if (before != C.INDEX_UNSET) {
                     goingBackTo = queue.getOrNull(before)
                     player.seekToDefaultPosition(before)
@@ -125,14 +136,47 @@ class PlayHistory(private val max: Int = MAX) {
         }
     }
 
+    /** The song before the current one in the queue (Media3's previous item,
+     *  which wraps under repeat-all), passing over songs that are [dead]. */
+    private fun previousUsable(player: Player, queue: List<String>): Int {
+        val current = player.currentMediaItemIndex
+        var i = player.previousMediaItemIndex
+        if (i == C.INDEX_UNSET || queue.getOrNull(i) !in dead) return i
+        val timeline = player.currentTimeline
+        val repeat = if (player.repeatMode == Player.REPEAT_MODE_ONE) Player.REPEAT_MODE_OFF else player.repeatMode
+        var steps = 0
+        while (i != C.INDEX_UNSET && i != current && queue.getOrNull(i) in dead && steps++ < queue.size) {
+            i = timeline.getPreviousWindowIndex(i, repeat, player.shuffleModeEnabled)
+        }
+        return if (i == current || (i != C.INDEX_UNSET && queue.getOrNull(i) in dead)) C.INDEX_UNSET else i
+    }
+
     /** Feeds the stack from the player it listens to. */
-    inner class Tracker(player: Player) : Player.Listener {
+    inner class Tracker(private val player: Player) : Player.Listener {
         private var playing: String? = player.currentMediaItem?.mediaId
+        /** The song playing now has started playing since it came up. */
+        private var heard = player.isPlaying
+
+        override fun onIsPlayingChanged(isPlaying: Boolean) {
+            if (!isPlaying) return
+            heard = true
+            playing?.let(dead::remove)
+        }
+
+        /** A song that fails before it has played is one the player skips:
+         *  not something Previous should go back to. One that played a while
+         *  and then dropped (a natural advance into it raises no
+         *  onIsPlayingChanged, hence the position) is still history. */
+        override fun onPlayerError(error: PlaybackException) {
+            val id = playing ?: return
+            if (!heard && player.currentPosition < HEARD_AFTER_MS) dead.add(id)
+        }
 
         override fun onMediaItemTransition(item: MediaItem?, reason: Int) {
             val left = playing
             val now = item?.mediaId
             playing = now
+            heard = false
             val back = goingBackTo
             goingBackTo = null
             when {
@@ -143,8 +187,9 @@ class PlayHistory(private val max: Int = MAX) {
                 reason == Player.MEDIA_ITEM_TRANSITION_REASON_PLAYLIST_CHANGED -> clear()
                 // Repeat-one playing the same song again.
                 reason == Player.MEDIA_ITEM_TRANSITION_REASON_REPEAT -> {}
-                // The next song, a natural advance, a tap in the queue.
-                left != null && left != now -> played(left)
+                // The next song, a natural advance, a tap in the queue. Not
+                // a song that failed before it played (see `dead`).
+                left != null && left != now && left !in dead -> played(left)
             }
         }
     }

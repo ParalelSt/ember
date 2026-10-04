@@ -1,6 +1,7 @@
 package app.ember.music
 
 import android.content.Context
+import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import org.json.JSONObject
@@ -105,6 +106,43 @@ class PlayHistoryTest {
         assertEquals(emptyList<String>(), h.ids)
     }
 
+    @Test fun `a song that failed before a note of it played is not gone back to`() {
+        // a plays, Next to x, which will not load, and the player skips it to
+        // b (QueueListener). Previous from b went to x, which failed and was
+        // skipped forward to b again, and pushed x again: Previous could
+        // never get back past a dead song to a.
+        val h = PlayHistory()
+        val t = h.Tracker(player)
+        t.onMediaItemTransition(item("a"), Player.MEDIA_ITEM_TRANSITION_REASON_PLAYLIST_CHANGED)
+        t.onIsPlayingChanged(true)
+        t.onMediaItemTransition(item("x"), Player.MEDIA_ITEM_TRANSITION_REASON_SEEK)
+        t.onIsPlayingChanged(false)
+        t.onPlayerError(PlaybackException("410", null, PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS))
+        t.onMediaItemTransition(item("b"), Player.MEDIA_ITEM_TRANSITION_REASON_SEEK)
+        assertEquals(listOf("a"), h.ids)
+        assertEquals(PlayHistory.Move.To(0), h.previous(listOf("a", "x", "b"), 2, 0))
+    }
+
+    @Test fun `a song that played and then failed is still history`() {
+        val h = PlayHistory()
+        val t = h.Tracker(player)
+        t.onMediaItemTransition(item("a"), Player.MEDIA_ITEM_TRANSITION_REASON_PLAYLIST_CHANGED)
+        t.onIsPlayingChanged(true)
+        t.onPlayerError(PlaybackException("dropped", null, PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS))
+        t.onMediaItemTransition(item("b"), Player.MEDIA_ITEM_TRANSITION_REASON_SEEK)
+        assertEquals(listOf("a"), h.ids)
+    }
+
+    @Test fun `a song that failed and then played after a retry is history`() {
+        val h = PlayHistory()
+        val t = h.Tracker(player)
+        t.onMediaItemTransition(item("x"), Player.MEDIA_ITEM_TRANSITION_REASON_PLAYLIST_CHANGED)
+        t.onPlayerError(PlaybackException("503", null, PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS))
+        t.onIsPlayingChanged(true)
+        t.onMediaItemTransition(item("b"), Player.MEDIA_ITEM_TRANSITION_REASON_AUTO)
+        assertEquals(listOf("x"), h.ids)
+    }
+
     // ── On the player ───────────────────────────────────────────────────
 
     @Test fun `a tap in the queue, then Previous, returns to the song played before`() {
@@ -114,6 +152,16 @@ class PlayHistoryTest {
         assertEquals(0, player.currentMediaItemIndex)
         // Going back pushed nothing: no bouncing back to d.
         assertEquals(emptyList<String>(), history.ids)
+    }
+
+    @Test fun `with no history Previous passes over a song that failed before it played`() {
+        player.setMediaItems(items("a", "x", "b"), 1, 0)
+        // x will not load; the player skips it (QueueListener).
+        history.Tracker(player).onPlayerError(PlaybackException("410", null, PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS))
+        player.seekTo(2, 0)
+        assertEquals(emptyList<String>(), history.ids)
+        level.seekToPrevious()
+        assertEquals(0, player.currentMediaItemIndex)
     }
 
     @Test fun `past 3 s it restarts, then the next press goes back`() {
