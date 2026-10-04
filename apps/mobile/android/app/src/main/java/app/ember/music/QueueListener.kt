@@ -33,7 +33,15 @@ class QueueListener(
      *  song). Radio used to run only once a song was heard, so a dead song
      *  at the end of the queue stopped the music with no word. */
     private val extendAfterFailure: (done: (Boolean) -> Unit) -> Boolean = { false },
+    /** The song last counted, shared by the phone's listener and the TV's:
+     *  casting hands the playing song from one player to the other. */
+    private val lastHeard: LastHeard = LastHeard(),
 ) : Player.Listener {
+    /** The id of the song last counted as a play (see [lastHeard]). */
+    class LastHeard {
+        @Volatile var id: String? = null
+    }
+
     companion object {
         /** Songs that fail back to back before the player gives up, so a
          *  queue where nothing plays (no network, signed out) cannot spin. */
@@ -56,7 +64,13 @@ class QueueListener(
      *  counting that added a play nobody made, and fetched radio that then
      *  replaced the app's queue and dropped its playlist. */
     override fun onMediaItemTransition(item: MediaItem?, reason: Int) {
-        unheard = item
+        // The song already counted, handed over to another player (casting
+        // starting or ending sets the same queue on it, at the song and the
+        // place it had reached): the same play going on, not a new one. A
+        // song picked again from its start (position 0) is a new play.
+        val handedOver = reason == Player.MEDIA_ITEM_TRANSITION_REASON_PLAYLIST_CHANGED &&
+            item != null && item.mediaId == lastHeard.id && player.currentPosition > 0
+        unheard = if (handedOver) null else item
         if (player.isPlaying) heard()
     }
 
@@ -73,6 +87,7 @@ class QueueListener(
         if (offlineSkips(item)) return
         val track = TrackItems.trackOf(item) ?: return
         unheard = null
+        lastHeard.id = item.mediaId
         recordPlay(track)
         extendQueue()
     }

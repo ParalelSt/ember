@@ -201,6 +201,9 @@ class EmberPlaybackService : MediaLibraryService() {
      *  actually played, so a tap further down the queue then Previous returns
      *  to the song before the tap. The TV keeps its own while casting. */
     private val history = PlayHistory()
+    /** The song last counted as a play, on the phone or the TV: handing it
+     *  from one to the other is not a new play (QueueListener). */
+    private val lastHeard = QueueListener.LastHeard()
     /** "Tap to retry" from the app (COMMAND_RETRY). */
     private val listenerRetry = ListenerRetry()
     private val liked = LikedSongs()
@@ -276,6 +279,7 @@ class EmberPlaybackService : MediaLibraryService() {
             offlineSkips = { offlinePlayback.skips(it) },
             onUnplayable = UnplayableNotices::record,
             extendAfterFailure = ::extendAfterFailure,
+            lastHeard = lastHeard,
         ))
         player.addListener(history.Tracker(player))
         savedQueue = SavedQueue(java.io.File(filesDir, SavedQueue.FILE_NAME))
@@ -507,7 +511,7 @@ class EmberPlaybackService : MediaLibraryService() {
         queue.addListener(castHistory.Tracker(queue))
         // History and radio go on while the TV plays; a song the TV cannot
         // play is skipped, as on the phone.
-        queue.addListener(QueueListener(queue, recordPlay = ::recordPlay, extendQueue = ::maybeExtendQueue, onUnplayable = UnplayableNotices::record))
+        queue.addListener(QueueListener(queue, recordPlay = ::recordPlay, extendQueue = ::maybeExtendQueue, onUnplayable = UnplayableNotices::record, lastHeard = lastHeard))
         queue.addListener(buttonWatch)
         val switch = CastSwitch(
             player, queue, baseUrl,
@@ -594,10 +598,16 @@ class EmberPlaybackService : MediaLibraryService() {
         // Defaults per the owner: on, but never on mobile data unless asked.
         autoCacher.setSettings(prefs.getBoolean("enabled", true), prefs.getBoolean("onMetered", false))
         net = NetworkWatch(this) { state ->
+            if (state.online) history.backOnline()
             offlinePlayback.onNetwork(state.online)
             cacheTick()
         }
-        offlinePlayback = OfflinePlayback(player, ::playableOffline, { net.current().online }) { publishCacheState() }
+        // Offline, Previous passes over a song the offline rules skipped.
+        offlinePlayback = OfflinePlayback(
+            player, ::playableOffline, { net.current().online },
+            onStalledChanged = { publishCacheState() },
+            onPassedOver = history::passedOver,
+        )
         player.addListener(offlinePlayback)
         player.addListener(object : Player.Listener {
             override fun onMediaItemTransition(item: MediaItem?, reason: Int) = cacheTick()
@@ -764,14 +774,30 @@ class EmberPlaybackService : MediaLibraryService() {
         radioWaiters?.let { it.add(done); return }
         val waiters = mutableListOf(done)
         radioWaiters = waiters
+        // The song radio is fetched to follow: the queue's last one now.
+        val tail = player.mediaItemCount.takeIf { it > 0 }?.let { player.getMediaItemAt(it - 1).mediaId }
         fun finish(more: List<MediaItem>) {
             radioWaiters = null
-            // Anything queued meanwhile (the web app's own radio) is left out.
-            val queued = (0 until player.mediaItemCount).map { player.getMediaItemAt(it).mediaId }.toSet()
-            val fresh = more.filter { it.mediaId !in queued }
-            runCatching { if (fresh.isNotEmpty()) player.addMediaItems(fresh) }
-                .onFailure { Log.w(TAG, "radio: ${it.message}") }
-            waiters.forEach { it(fresh.isNotEmpty()) }
+            val now = (0 until player.mediaItemCount).map { player.getMediaItemAt(it).mediaId }
+            val at = now.lastIndexOf(tail)
+            val added = when {
+                // Another queue (a playlist picked in the car or the app)
+                // came in while radio looked: these songs follow nothing in
+                // it. They used to go on its end, and its own radio never ran.
+                tail == null || at < 0 -> false
+                // The web app's own radio got there first: it wins, and there
+                // is something after the song now.
+                at < now.size - 1 -> true
+                else -> {
+                    // Anything queued meanwhile is left out.
+                    val queued = now.toSet()
+                    val fresh = more.filter { it.mediaId !in queued }
+                    runCatching { if (fresh.isNotEmpty()) player.addMediaItems(fresh) }
+                        .onFailure { Log.w(TAG, "radio: ${it.message}") }
+                        .isSuccess && fresh.isNotEmpty()
+                }
+            }
+            waiters.forEach { it(added) }
         }
         val queued = (0 until player.mediaItemCount).map { player.getMediaItemAt(it).mediaId }.toSet()
         try {
