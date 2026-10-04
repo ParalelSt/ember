@@ -37,12 +37,24 @@ export function useMetronome({ on, running, position, rate, beats }: MetronomeOp
     if (!ctx) return;
     let last = -Infinity;
     let prev: { sec: number; at: number } | null = null;
+    // Clicks handed to Web Audio ahead of their time (up to LOOKAHEAD_SEC,
+    // longer at slow speeds): silenced when their moment no longer comes,
+    // or a pause, a stop or a seek let one more click sound from the old
+    // place.
+    let ahead: { when: number; silence: () => void }[] = [];
+    const silenceAhead = () => {
+      for (const c of ahead) if (c.when > ctx.currentTime) c.silence();
+      ahead = [];
+    };
     const tick = () => {
       const now = performance.now();
       const { rate: r, beats: beatsIn } = latest.current;
       const sec = estimateSongSec(anchor.current, now, true, r);
       // A seek (or the loop jumping back): start over from here.
-      if (clockJumped(prev, sec, now, r)) last = sec - 0.01;
+      if (clockJumped(prev, sec, now, r)) {
+        if (prev) silenceAhead();
+        last = sec - 0.01;
+      }
       prev = { sec, at: now };
       let found: Click[] = [];
       try {
@@ -52,11 +64,18 @@ export function useMetronome({ on, running, position, rate, beats }: MetronomeOp
       }
       const plan = planClicks(found, sec, r, last);
       last = plan.last;
-      for (const c of plan.clicks) playClick(ctx, ctx.currentTime + c.delay, c.accent);
+      ahead = ahead.filter((c) => c.when > ctx.currentTime);
+      for (const c of plan.clicks) {
+        const when = ctx.currentTime + c.delay;
+        ahead.push({ when, silence: playClick(ctx, when, c.accent) });
+      }
     };
     tick();
     const id = window.setInterval(tick, SCHEDULE_MS);
-    return () => window.clearInterval(id);
+    return () => {
+      window.clearInterval(id);
+      silenceAhead();
+    };
   }, [on, running]);
 
   // The page closing: close the clicks' AudioContext with it, so nothing
