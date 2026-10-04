@@ -88,6 +88,14 @@ export function recordRateLimitHit(key: string, cfg: RateLimitConfig): void {
   buckets.set(key, bucket);
 }
 
+/** Gives back the newest hit of `key`, for a caller that spent one up
+ *  front (so requests arriving together cannot all pass the check) and then
+ *  did not do the guarded work after all. */
+export function releaseRateLimitHit(key: string): void {
+  const bucket = buckets.get(key);
+  if (bucket && bucket.hits.length > 0) bucket.hits.pop();
+}
+
 /** The caller's IP address: the LAST X-Forwarded-For entry.
  *
  *  Next 16 gives route handlers no socket address. What it does do (see

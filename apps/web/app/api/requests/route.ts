@@ -5,7 +5,7 @@ import {
   unauthorizedResponse,
 } from "@/lib/auth";
 import { serverLogger } from "@/lib/logger/server";
-import { rateLimitResponse, recordRateLimitHit } from "@/lib/rateLimit";
+import { rateLimitResponse, releaseRateLimitHit } from "@/lib/rateLimit";
 import { fromError, jsonError } from "@/lib/upsertTrack";
 import { withRequestLog } from "@/lib/logger/withRequestLog";
 import { scrubText } from "@/lib/logger/sanitize";
@@ -75,119 +75,124 @@ export const POST = withRequestLog("requests", async (request: NextRequest) => {
     const limitKey = `requests:${user.id}`;
     const limitCfg = { max: 5, windowMs: 60 * 60 * 1000 };
 
-    // Peek, don't spend: a malformed request or a Discord hiccup shouldn't
-    // burn one of the 5 hourly tries. The quota is only actually charged
-    // (recordRateLimitHit, below) once Discord accepts the message.
-    const limited = rateLimitResponse(limitKey, limitCfg, { consume: false });
+    // Spend a try up front, so requests sent all at once cannot all pass
+    // the check while the first is still waiting on Discord, and give it
+    // back below when nothing went out: a malformed request or a Discord
+    // hiccup still does not burn one of the 5 hourly tries.
+    const limited = rateLimitResponse(limitKey, limitCfg);
     if (limited) return limited;
+    let sent = false;
+    try {
+      const parsed = await readReportBody<RequestBody>(request);
+      if (!parsed.ok) return jsonError(parsed.error ?? "Invalid request body", 400);
+      const { body, files } = parsed;
 
-    const parsed = await readReportBody<RequestBody>(request);
-    if (!parsed.ok) return jsonError(parsed.error ?? "Invalid request body", 400);
-    const { body, files } = parsed;
+      const kind = body.kind;
+      if (kind !== "feature" && kind !== "fix") {
+        return jsonError("kind must be 'feature' or 'fix'", 400);
+      }
 
-    const kind = body.kind;
-    if (kind !== "feature" && kind !== "fix") {
-      return jsonError("kind must be 'feature' or 'fix'", 400);
-    }
+      const name = String(body.name ?? "").trim();
+      if (name.length < 1 || name.length > MAX_NAME_LEN) {
+        return jsonError(`name must be 1-${MAX_NAME_LEN} characters`, 400);
+      }
 
-    const name = String(body.name ?? "").trim();
-    if (name.length < 1 || name.length > MAX_NAME_LEN) {
-      return jsonError(`name must be 1-${MAX_NAME_LEN} characters`, 400);
-    }
+      const main = String(body.main ?? "").trim();
+      if (main.length < 1 || main.length > MAX_MAIN_LEN) {
+        return jsonError(`that field must be 1-${MAX_MAIN_LEN} characters`, 400);
+      }
 
-    const main = String(body.main ?? "").trim();
-    if (main.length < 1 || main.length > MAX_MAIN_LEN) {
-      return jsonError(`that field must be 1-${MAX_MAIN_LEN} characters`, 400);
-    }
+      const extraRaw = String(body.extra ?? "").trim();
+      if (extraRaw.length > MAX_EXTRA_LEN) {
+        return jsonError(`extra must be at most ${MAX_EXTRA_LEN} characters`, 400);
+      }
 
-    const extraRaw = String(body.extra ?? "").trim();
-    if (extraRaw.length > MAX_EXTRA_LEN) {
-      return jsonError(`extra must be at most ${MAX_EXTRA_LEN} characters`, 400);
-    }
+      const target = resolveWebhook(kind, user.email);
+      if (target.skip) {
+        return Response.json({ ok: true, skipped: "test account" });
+      }
+      const webhookUrl = target.url;
+      if (!webhookUrl) {
+        return jsonError("Requests are not set up on this server", 503);
+      }
 
-    const target = resolveWebhook(kind, user.email);
-    if (target.skip) {
-      return Response.json({ ok: true, skipped: "test account" });
-    }
-    const webhookUrl = target.url;
-    if (!webhookUrl) {
-      return jsonError("Requests are not set up on this server", 503);
-    }
+      const context = sanitizeContext(body.context);
 
-    const context = sanitizeContext(body.context);
+      // Scrub every text field: a pasted token or cookie in the description
+      // must never reach the webhook payload.
+      const scrubbedName = scrubText(name);
+      const scrubbedMain = scrubText(main);
+      const scrubbedExtra = extraRaw ? scrubText(extraRaw) : "";
 
-    // Scrub every text field: a pasted token or cookie in the description
-    // must never reach the webhook payload.
-    const scrubbedName = scrubText(name);
-    const scrubbedMain = scrubText(main);
-    const scrubbedExtra = extraRaw ? scrubText(extraRaw) : "";
+      const title =
+        kind === "feature" ? `New feature: ${scrubbedName}` : `Fix: ${scrubbedName}`;
 
-    const title =
-      kind === "feature" ? `New feature: ${scrubbedName}` : `Fix: ${scrubbedName}`;
+      const footerParts = [
+        user.email,
+        context?.appVersion,
+        context?.shell,
+        context?.route,
+      ].filter((p): p is string => typeof p === "string" && p.length > 0);
 
-    const footerParts = [
-      user.email,
-      context?.appVersion,
-      context?.shell,
-      context?.route,
-    ].filter((p): p is string => typeof p === "string" && p.length > 0);
+      const fields = scrubbedExtra
+        ? [{ name: "Anything else", value: truncate(scrubbedExtra, 1024) }]
+        : [];
 
-    const fields = scrubbedExtra
-      ? [{ name: "Anything else", value: truncate(scrubbedExtra, 1024) }]
-      : [];
+      const embed = {
+        title: truncate(title, 256),
+        description: truncate(scrubbedMain, 4096),
+        color: EMBED_COLOR[kind],
+        fields,
+        footer: footerParts.length ? { text: footerParts.join(" · ") } : undefined,
+      };
 
-    const embed = {
-      title: truncate(title, 256),
-      description: truncate(scrubbedMain, 4096),
-      color: EMBED_COLOR[kind],
-      fields,
-      footer: footerParts.length ? { text: footerParts.join(" · ") } : undefined,
-    };
+      // JSON exactly as before; with screenshots or clips, multipart so they
+      // land on the same message as real attachments.
+      const send = (withFiles: boolean) => {
+        if (files.length === 0) {
+          return postToDiscord(webhookUrl, {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ embeds: [embed], allowed_mentions: { parse: [] } }),
+          });
+        }
+        const sentEmbed = withFiles ? embed : { ...embed, fields: [...fields, droppedAttachmentsField(files)] };
+        const form = new FormData();
+        form.append("payload_json", JSON.stringify({ embeds: [sentEmbed], allowed_mentions: { parse: [] } }));
+        if (withFiles) {
+          files.forEach((f, i) => form.append(`files[${i}]`, f, safeAttachmentName(f.name, i)));
+        }
+        return postToDiscord(webhookUrl, { method: "POST", body: form });
+      };
 
-    // JSON exactly as before; with screenshots or clips, multipart so they
-    // land on the same message as real attachments.
-    const send = (withFiles: boolean) => {
-      if (files.length === 0) {
-        return postToDiscord(webhookUrl, {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ embeds: [embed], allowed_mentions: { parse: [] } }),
+      let discordRes = await send(true);
+      // Discord's size limit can be lower than ours (it depends on the
+      // server's boosts): rather than lose the request, send it once more
+      // without the files and say so in the embed.
+      let attachmentsDropped = false;
+      if (!discordRes.ok && files.length > 0) {
+        const text = await discordRes.text().catch(() => "");
+        if (isTooLargeForDiscord(discordRes.status, text)) {
+          attachmentsDropped = true;
+          discordRes = await send(false);
+        }
+      }
+
+      if (!discordRes.ok) {
+        serverLogger.error("api", "requests: Discord rejected the request", {
+          status: discordRes.status,
         });
+        return jsonError("Couldn't send the request, please try again", 502);
       }
-      const sentEmbed = withFiles ? embed : { ...embed, fields: [...fields, droppedAttachmentsField(files)] };
-      const form = new FormData();
-      form.append("payload_json", JSON.stringify({ embeds: [sentEmbed], allowed_mentions: { parse: [] } }));
-      if (withFiles) {
-        files.forEach((f, i) => form.append(`files[${i}]`, f, safeAttachmentName(f.name, i)));
-      }
-      return postToDiscord(webhookUrl, { method: "POST", body: form });
-    };
 
-    let discordRes = await send(true);
-    // Discord's size limit can be lower than ours (it depends on the
-    // server's boosts): rather than lose the request, send it once more
-    // without the files and say so in the embed.
-    let attachmentsDropped = false;
-    if (!discordRes.ok && files.length > 0) {
-      const text = await discordRes.text().catch(() => "");
-      if (isTooLargeForDiscord(discordRes.status, text)) {
-        attachmentsDropped = true;
-        discordRes = await send(false);
-      }
+      // The message went out: the try spent above stays spent.
+      sent = true;
+
+      if (attachmentsDropped) return Response.json({ ok: true, attachmentsDropped });
+      return Response.json({ ok: true });
+    } finally {
+      if (!sent) releaseRateLimitHit(limitKey);
     }
-
-    if (!discordRes.ok) {
-      serverLogger.error("api", "requests: Discord rejected the request", {
-        status: discordRes.status,
-      });
-      return jsonError("Couldn't send the request, please try again", 502);
-    }
-
-    // Only charge the hourly quota once the message actually went out.
-    recordRateLimitHit(limitKey, limitCfg);
-
-    if (attachmentsDropped) return Response.json({ ok: true, attachmentsDropped });
-    return Response.json({ ok: true });
   } catch (e) {
     if (e instanceof UnauthorizedError) return unauthorizedResponse();
     return fromError(e);

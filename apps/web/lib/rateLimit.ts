@@ -6,6 +6,7 @@ export {
   checkRateLimit,
   clientIp,
   recordRateLimitHit,
+  releaseRateLimitHit,
   _bucketCount,
   _resetBuckets,
 } from '@/lib/rateLimitCore';

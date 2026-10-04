@@ -14,10 +14,10 @@ vi.mock('@/lib/auth', () => ({
   unauthorizedResponse: () => Response.json({ error: 'Unauthorized' }, { status: 401 }),
 }));
 const rateLimitMock = vi.fn(() => null as Response | null);
-const recordRateLimitHitMock = vi.fn();
+const releaseRateLimitHitMock = vi.fn();
 vi.mock('@/lib/rateLimit', () => ({
   rateLimitResponse: () => rateLimitMock(),
-  recordRateLimitHit: () => recordRateLimitHitMock(),
+  releaseRateLimitHit: () => releaseRateLimitHitMock(),
 }));
 vi.mock('@/lib/logger/server', () => ({ serverLogger: { error: vi.fn() } }));
 vi.mock('@/lib/upsertTrack', () => ({
@@ -56,7 +56,7 @@ beforeEach(() => {
   vi.stubGlobal('fetch', fetchMock);
   requireUserMock.mockResolvedValue({ user: { id: 'u1', email: 'dev@ember.test' } });
   rateLimitMock.mockReturnValue(null);
-  recordRateLimitHitMock.mockClear();
+  releaseRateLimitHitMock.mockClear();
   process.env.DISCORD_FEATURE_WEBHOOK_URL = 'http://127.0.0.1:4321/feature';
   process.env.DISCORD_FIX_WEBHOOK_URL = 'http://127.0.0.1:4321/fix';
 });
@@ -152,7 +152,7 @@ describe('POST /api/requests: validation', () => {
     expect(fetchMock).not.toHaveBeenCalled();
     // [bughunt W12] a request that never reaches Discord must not burn the
     // hourly quota.
-    expect(recordRateLimitHitMock).not.toHaveBeenCalled();
+    expect(releaseRateLimitHitMock).toHaveBeenCalledTimes(1);
   });
 
   it('rejects an empty name', async () => {
@@ -203,10 +203,10 @@ describe('POST /api/requests: rate limiting', () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it('[bughunt W12] charges the quota once Discord accepts the message, and not before', async () => {
+  it('[bughunt W12] keeps the try it spent once Discord accepts the message', async () => {
     const res = await POST(request(validBody()), undefined as never);
     expect(res.status).toBe(200);
-    expect(recordRateLimitHitMock).toHaveBeenCalledTimes(1);
+    expect(releaseRateLimitHitMock).not.toHaveBeenCalled();
   });
 });
 
@@ -218,10 +218,10 @@ describe('POST /api/requests: Discord failure', () => {
     expect(await res.json()).toEqual({ error: "Couldn't send the request, please try again" });
   });
 
-  it('[bughunt W12] does not charge the quota when Discord rejects the post', async () => {
+  it('[bughunt W12] gives the try back when Discord rejects the post', async () => {
     fetchMock.mockResolvedValue({ ok: false, status: 500, text: async () => 'server error' });
     await POST(request(validBody()), undefined as never);
-    expect(recordRateLimitHitMock).not.toHaveBeenCalled();
+    expect(releaseRateLimitHitMock).toHaveBeenCalledTimes(1);
   });
 });
 
