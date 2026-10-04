@@ -30,7 +30,11 @@ vi.mock('@/components/providers/AuthProvider', () => ({
     isAdmin: false,
   }),
 }));
-vi.mock('@/hooks/useLibrary', () => ({ useQueryPlaylists: () => ({ data: [] }) }));
+const playlists = vi.hoisted(() => ({ list: [] as { id: string; name: string }[] }));
+vi.mock('@/hooks/useLibrary', () => ({ useQueryPlaylists: () => ({ data: playlists.list }) }));
+vi.mock('@/hooks/useNavPlaylists', () => ({
+  useNavPlaylists: (items: unknown[]) => ({ items, onOpen: vi.fn(), onTogglePin: vi.fn() }),
+}));
 vi.mock('@/hooks/useChangelog', () => ({ useChangelog: () => ({ hasNew: false }) }));
 vi.mock('@/hooks/useCreatePlaylistFlow', () => ({
   useCreatePlaylistFlow: () => ({ createOpen: false, setCreateOpen: vi.fn(), handleCreate: vi.fn() }),
@@ -47,5 +51,18 @@ describe('Drawer', () => {
     const img = container.querySelector('img');
     expect(img).toHaveAttribute('src', '/pb/api/files/users/u1/avatar.png');
     expect(screen.getByText('Robin')).toBeInTheDocument();
+  });
+
+  it('30 playlists sit in a shrinkable scroller and every row keeps its height', () => {
+    playlists.list = Array.from({ length: 30 }, (_, i) => ({ id: `p${i}`, name: `Playlist ${i}` }));
+    render(<Drawer open onOpenChange={() => {}} />);
+    const scroller = screen.getByTestId('playlist-scroller');
+    expect(scroller.className).toContain('min-h-0');
+    const rows = scroller.querySelectorAll('[data-testid="playlist-nav-row"]');
+    expect(rows).toHaveLength(30);
+    rows.forEach((r) => expect(r.className).toContain('shrink-0'));
+    // The user row stays outside the scroller, at the bottom.
+    expect(scroller.contains(screen.getByText('Robin'))).toBe(false);
+    playlists.list = [];
   });
 });

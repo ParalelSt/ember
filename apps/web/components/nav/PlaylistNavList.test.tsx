@@ -1,6 +1,6 @@
 import type { ComponentProps } from 'react';
 import { describe, expect, it, vi } from 'vitest';
-import { render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { PlaylistNavList } from './PlaylistNavList';
 
 vi.mock('next/link', () => ({
@@ -30,7 +30,7 @@ describe('PlaylistNavList import states', () => {
     expect(ring).toHaveAttribute('aria-valuenow', '18');
     expect(ring).toHaveAttribute('aria-valuemax', '42');
     expect(row.className).toContain('bg-sidebar-accent');
-    expect(screen.getByText('Gym').closest('a')).not.toHaveAttribute('data-testid');
+    expect(screen.getByText('Gym').closest('a')).toHaveAttribute('data-testid', 'playlist-nav-row');
   });
 
   it('once done it says how many songs wait for a look', () => {
@@ -71,5 +71,57 @@ describe('PlaylistNavList shared playlists', () => {
     expect(screen.getByTestId('nav-shared')).toHaveAttribute('aria-label', 'Shared by Olga');
     expect(screen.getByRole('link', { name: /Road trip/ })).toHaveAttribute('title', 'Road trip, Shared by Olga');
     expect(screen.getAllByTestId('nav-shared')).toHaveLength(1);
+  });
+});
+
+const many = Array.from({ length: 30 }, (_, i) => ({ id: `p${i}`, name: `Playlist number ${i}`, href: `/playlist/p${i}` }));
+
+describe('PlaylistNavList rows', () => {
+  it('30 rows are fixed-height, never shrink and only the name truncates', () => {
+    render(<PlaylistNavList authed items={many} />);
+    const rows = screen.getAllByTestId('playlist-nav-row');
+    expect(rows).toHaveLength(30);
+    for (const row of rows) {
+      expect(row.className).toContain('shrink-0');
+      expect(row.className).toContain('min-h-11');
+      expect(row.className).not.toMatch(/(^|\s)truncate(\s|$)/);
+      expect(row.querySelector('span.truncate')).not.toBeNull();
+    }
+  });
+
+  it('shows a pin on pinned rows and reports taps', () => {
+    const onOpen = vi.fn();
+    const onNavigate = vi.fn();
+    render(
+      <PlaylistNavList authed onOpen={onOpen} onNavigate={onNavigate} onTogglePin={vi.fn()} items={[{ ...many[0], pinned: true }, many[1]]} />,
+    );
+    expect(screen.getAllByLabelText('Pinned')).toHaveLength(1);
+    fireEvent.click(screen.getByText('Playlist number 1'));
+    expect(onOpen).toHaveBeenCalledWith('p1');
+    expect(onNavigate).toHaveBeenCalled();
+  });
+
+  it('right-click toggles the pin and does not open the playlist', () => {
+    const onOpen = vi.fn();
+    const onTogglePin = vi.fn();
+    render(<PlaylistNavList authed onOpen={onOpen} onTogglePin={onTogglePin} items={many.slice(0, 2)} />);
+    const row = screen.getByText('Playlist number 1').closest('a')!;
+    fireEvent.contextMenu(row);
+    expect(onTogglePin).toHaveBeenCalledWith('p1');
+    fireEvent.click(row);
+    expect(onOpen).not.toHaveBeenCalled();
+    fireEvent.click(row);
+    expect(onOpen).toHaveBeenCalledWith('p1');
+  });
+
+  it('a long press toggles the pin', () => {
+    vi.useFakeTimers();
+    const onTogglePin = vi.fn();
+    render(<PlaylistNavList authed onTogglePin={onTogglePin} items={many.slice(0, 1)} />);
+    const row = screen.getByText('Playlist number 0').closest('a')!;
+    fireEvent.pointerDown(row, { button: 0, clientX: 5, clientY: 5 });
+    vi.advanceTimersByTime(600);
+    expect(onTogglePin).toHaveBeenCalledWith('p0');
+    vi.useRealTimers();
   });
 });

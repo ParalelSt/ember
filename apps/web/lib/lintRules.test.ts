@@ -190,7 +190,7 @@ const SPACING_BASELINE: Record<string, number> = {
   'components/nav/Drawer.tsx': 18,
   'components/nav/MobileNav.tsx': 2,
   'components/nav/NavLinks.tsx': 3,
-  'components/nav/PlaylistNavList.tsx': 4,
+  'components/nav/PlaylistNavList.tsx': 3,
   'components/nav/Sidebar.tsx': 19,
   'components/nav/TopBar.tsx': 4,
   'components/page/CollectionSkeleton.tsx': 4,
