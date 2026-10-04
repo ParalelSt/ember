@@ -68,6 +68,7 @@ export function SearchOverlayContainer() {
     data,
     isFetching,
     rateLimited,
+    searchFailed,
     onPlay,
   } = useSearchQuery();
 
@@ -135,6 +136,7 @@ export function SearchOverlayContainer() {
       isOnline={isOnline}
       isFetching={isFetching}
       rateLimited={rateLimited}
+      searchFailed={searchFailed}
       hasResults={!!data?.length}
       recentsNode={recentsNode}
       resultsNode={resultsNode}

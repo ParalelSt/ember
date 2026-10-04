@@ -43,6 +43,9 @@ export interface SearchOverlayProps {
   isOnline: boolean;
   isFetching: boolean;
   rateLimited: boolean;
+  /** The search itself failed (not a rate limit): said as such, rather than
+   *  an empty list that reads as "nothing matched". */
+  searchFailed?: boolean;
   /** True once the current query has any results, so the "Searching…" line
    *  only shows before the first batch arrives, same as the page. */
   hasResults: boolean;
@@ -72,6 +75,7 @@ export function SearchOverlay({
   isOnline,
   isFetching,
   rateLimited,
+  searchFailed = false,
   hasResults,
   recentsNode,
   resultsNode,
@@ -79,7 +83,8 @@ export function SearchOverlay({
   const showOffline = !isOnline;
   const showRateLimited = !showOffline && rateLimited;
   const showSearching = !showOffline && !showRateLimited && isFetching && !hasResults;
-  const showResults = !showOffline && !showRateLimited && !showSearching;
+  const showFailed = !showOffline && !showRateLimited && !showSearching && searchFailed;
+  const showResults = !showOffline && !showRateLimited && !showSearching && !showFailed;
   const isSheet = variant === 'sheet';
 
   // The sheet owns its Escape rather than relying only on the dialog
@@ -208,6 +213,9 @@ export function SearchOverlay({
         <EmptyState className="text-sm">Searching too fast, one moment.</EmptyState>
       )}
       {showSearching && <EmptyState className="text-sm">Searching…</EmptyState>}
+      {showFailed && (
+        <EmptyState className="text-sm">{"Search isn't working right now. Try again in a moment."}</EmptyState>
+      )}
       {showResults && resultsNode}
     </>
   );

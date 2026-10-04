@@ -113,6 +113,18 @@ describe('SearchPage', () => {
     expect(await screen.findByText('Searching too fast, one moment.')).toBeInTheDocument();
   });
 
+  it('says the search failed when YouTube cannot be reached, instead of an empty list', async () => {
+    api.search.mockImplementation((q: string) =>
+      q ? Promise.reject(Object.assign(new Error('down'), { status: 502 })) : Promise.resolve({ tracks: [] }));
+    renderPage();
+
+    fireEvent.change(screen.getByPlaceholderText('What do you want to listen to?'), {
+      target: { value: 'daft punk' },
+    });
+
+    expect(await screen.findByText("Search isn't working right now. Try again in a moment.")).toBeInTheDocument();
+  });
+
   it('renders search results through TrackList once the query resolves', async () => {
     const track = makeTrack({ id: 'youtube:b2', sourceId: 'b2', title: 'Second Wind' });
     // Distinct from the empty-query (trending) fetch, so the assertion below

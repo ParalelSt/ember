@@ -2,7 +2,7 @@ import type { ReactNode } from 'react';
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { renderHook, waitFor, act } from '@testing-library/react';
-import { useSearchQuery } from './useSearchQuery';
+import { SEARCH_RATE_LIMIT_RETRY_MS, useSearchQuery } from './useSearchQuery';
 import type { Track } from '@/types/track';
 
 vi.mock('@/lib/useOnline', () => ({ useOnline: () => true }));
@@ -65,6 +65,41 @@ beforeEach(() => {
   recents.tracks = [];
   shell.value = 'web';
   api.search.mockResolvedValue({ tracks: [] });
+});
+
+describe('useSearchQuery: a search that fails', () => {
+  it('asks again after a rate limit, so the message clears without retyping', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      const track = makeTrack();
+      api.search.mockImplementation(async (q: string) => {
+        if (q === 'daft punk' && api.search.mock.calls.filter((c) => c[0] === 'daft punk').length === 1) {
+          throw { status: 429 };
+        }
+        return { tracks: q ? [track] : [] };
+      });
+      const { result } = renderHook(() => useSearchQuery(), { wrapper });
+      act(() => result.current.setQ('daft punk'));
+      await waitFor(() => expect(result.current.rateLimited).toBe(true));
+
+      await act(async () => { await vi.advanceTimersByTimeAsync(SEARCH_RATE_LIMIT_RETRY_MS + 100); });
+      await waitFor(() => expect(result.current.rateLimited).toBe(false));
+      expect(result.current.data).toEqual([track]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('says the search failed when the server could not search, rather than showing no results', async () => {
+    api.search.mockImplementation(async (q: string) => {
+      if (q) throw Object.assign(new Error("Couldn't reach YouTube"), { status: 502 });
+      return { tracks: [] };
+    });
+    const { result } = renderHook(() => useSearchQuery(), { wrapper });
+    act(() => result.current.setQ('daft punk'));
+    await waitFor(() => expect(result.current.searchFailed).toBe(true));
+    expect(result.current.rateLimited).toBe(false);
+  });
 });
 
 describe('useSearchQuery', () => {

@@ -28,6 +28,7 @@ export default function SearchPage() {
     data,
     isFetching,
     rateLimited,
+    searchFailed,
     onPlay,
   } = useSearchQuery();
 
@@ -53,6 +54,8 @@ export default function SearchPage() {
 
   const results = rateLimited ? (
     <EmptyState className="text-sm">Searching too fast, one moment.</EmptyState>
+  ) : searchFailed && !isFetching ? (
+    <EmptyState className="text-sm">{"Search isn't working right now. Try again in a moment."}</EmptyState>
   ) : isFetching && !data?.length ? (
     <EmptyState className="text-sm">Searching…</EmptyState>
   ) : (
