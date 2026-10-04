@@ -1,7 +1,6 @@
 'use client';
 
 import { use } from 'react';
-import Link from 'next/link';
 import { TrackList } from '@/components/track/TrackList';
 import { renderTrackMenu } from '@/components/track/menus/TrackMenu';
 import { useTrackActions } from '@/hooks/useTrackActions';
@@ -13,6 +12,7 @@ import { useQueryArtist } from '@/hooks/useLibrary';
 import { OnlineOnly } from '@/components/OnlineOnly';
 import { pickThumbnail } from '@/lib/artwork';
 import { EmptyState } from '@/components/page/EmptyState';
+import { BrowseError } from '@/components/page/BrowseError';
 import { SectionHeader } from '@/components/page/SectionHeader';
 
 export default function ArtistPage({ params }: { params: Promise<{ id: string }> }) {
@@ -26,16 +26,9 @@ export default function ArtistPage({ params }: { params: Promise<{ id: string }>
 
 function ArtistView({ id }: { id: string }) {
   const trackActions = useTrackActions();
-  const { data, isLoading, error } = useQueryArtist(id);
+  const { data, isLoading, error, refetch } = useQueryArtist(id);
 
-  if (error) {
-    return (
-      <EmptyState>
-        Artist not found.<br />
-        <Link href="/" className="text-ember hover:underline">Home</Link>
-      </EmptyState>
-    );
-  }
+  if (error) return <BrowseError error={error} kind="Artist" onRetry={() => void refetch()} />;
   if (isLoading || !data) return <EmptyState>Loading…</EmptyState>;
 
   const { name, description, thumbnails = [], tracks = [], albums = [], singles = [] } = data;
