@@ -11,7 +11,8 @@
  *
  *  Two kinds, remembered for different lengths of time:
  *  - unavailable: YouTube says the video is gone (removed, private, geo,
- *    members only, channel closed). Hours: it will not come back by itself
+ *    members only, channel closed, age-restricted for a host that never
+ *    signs in). Hours: it will not come back by itself
  *    in the next few minutes, and a play that finds it on disk (or a
  *    successful download) forgets it at once.
  *  - transient: nothing could serve it right now (yt-dlp 403, a stall, a
@@ -24,7 +25,7 @@
 
 /** The UnavailableReason codes of lib/sources/youtube, repeated here so this
  *  module does not import a server-only file. */
-export type MemoReason = 'removed' | 'private' | 'geo' | 'members' | 'terminated' | 'unavailable';
+export type MemoReason = 'removed' | 'private' | 'geo' | 'members' | 'terminated' | 'age' | 'unavailable';
 
 export type KnownFailure =
   | { kind: 'unavailable'; reason: MemoReason; message: string; until: number }

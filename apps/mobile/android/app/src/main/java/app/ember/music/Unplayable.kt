@@ -29,7 +29,7 @@ object Unplayable {
     const val FLAGGED = "flagged"
 
     /** lib/sources/youtube's UnavailableReason codes. */
-    private val REASONS = setOf("removed", "private", "geo", "members", "terminated", "unavailable")
+    private val REASONS = setOf("removed", "private", "geo", "members", "terminated", "age", "unavailable")
     private val REASON_RE = Regex("\"reason\"\\s*:\\s*\"([a-z]+)\"")
 
     /** The status and body of the HTTP answer behind a failure, wherever it

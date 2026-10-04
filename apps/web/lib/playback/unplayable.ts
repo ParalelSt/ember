@@ -43,6 +43,7 @@ export function reasonLabel(reason: string | null | undefined): string {
     case 'geo': return 'Blocked in this country';
     case 'members': return 'Members only';
     case 'terminated': return 'Channel closed';
+    case 'age': return 'Age-restricted on YouTube';
     default: return 'Not available';
   }
 }
@@ -55,6 +56,7 @@ export function reasonPhrase(reason: string | null | undefined): string {
     case 'geo': return 'not available on YouTube in this country';
     case 'members': return 'for YouTube channel members only';
     case 'terminated': return 'its YouTube channel was closed';
+    case 'age': return 'age-restricted on YouTube';
     default: return 'not available on YouTube';
   }
 }
