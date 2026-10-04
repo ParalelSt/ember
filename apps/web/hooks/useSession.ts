@@ -45,7 +45,7 @@ export function useExecuteAddToSession(id: string) {
 }
 
 export function useExecuteSkipSession(id: string) {
-  return useMutation({ mutationFn: () => api.skipSession(id) });
+  return useMutation({ mutationFn: (index?: number) => api.skipSession(id, index) });
 }
 
 export function useExecuteEndSession(id: string) {

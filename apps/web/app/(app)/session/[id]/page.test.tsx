@@ -138,3 +138,21 @@ describe('/session/[id] when a poll fails', () => {
     expect(screen.getByText('Carlist not found.')).toBeInTheDocument();
   });
 });
+
+describe('/session/[id] Skip', () => {
+  it('says which song it skips, so a late skip cannot skip the next one too', async () => {
+    data.queue = [
+      { id: 'st1', position: 1, played: false, addedByName: 'Hana', addedBy: null, track: midnight },
+      { id: 'st2', position: 2, played: false, addedByName: 'Hana', addedBy: null, track: { ...midnight, id: 'youtube:eeeeeeeeeee' } },
+    ];
+    data.session.nowIndex = 1;
+    try {
+      await open();
+      fireEvent.click(screen.getByTestId('skip'));
+      expect(idle.mutate).toHaveBeenCalledWith(1, expect.anything());
+    } finally {
+      data.queue = [];
+      data.session.nowIndex = 0;
+    }
+  });
+});

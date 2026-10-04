@@ -308,3 +308,40 @@ describe('the host moving on', () => {
     expect(writes).toEqual(['update:sessions:s1']);
   });
 });
+
+describe('Skip from several phones', () => {
+  const skipAs = async (user: string, body?: unknown) => {
+    caller.id = user;
+    const POST = await handler(import('./[id]/skip/route'));
+    return POST(req(body), ctx);
+  };
+  const consume = async () => {
+    caller.id = 'u1';
+    const POST = await handler(import('./[id]/commands/consume/route'));
+    return (await (await POST(req(), ctx)).json()) as { commands: { type: string }[] };
+  };
+
+  beforeEach(() => {
+    db.session_members.push({ id: 'm2', session: 's1', user: 'u2', created: '2' });
+    db.session_members.push({ id: 'm3', session: 's1', user: 'u3', created: '3' });
+  });
+
+  it('two people skipping the same song skip it once, not the next one too', async () => {
+    expect((await skipAs('u2', { index: 0 })).status).toBe(201);
+    expect((await skipAs('u3', { index: 0 })).status).toBeLessThan(300);
+    expect((await consume()).commands).toEqual([{ type: 'skip' }]);
+    expect(db.session_commands).toHaveLength(0);
+  });
+
+  it('a skip for a song that has already changed does nothing', async () => {
+    db.sessions[0].now_index = 1;
+    const res = await skipAs('u2', { index: 0 });
+    expect(res.status).toBeLessThan(300);
+    expect((await consume()).commands).toEqual([]);
+  });
+
+  it('an older app that sends no index still skips', async () => {
+    expect((await skipAs('u2')).status).toBe(201);
+    expect((await consume()).commands).toEqual([{ type: 'skip' }]);
+  });
+});

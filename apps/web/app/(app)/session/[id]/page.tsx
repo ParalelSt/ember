@@ -55,7 +55,7 @@ export default function SessionPage({ params }: { params: Promise<{ id: string }
   };
 
   const handleSkip = () => {
-    skip.mutate(undefined, {
+    skip.mutate(data.session.nowIndex, {
       onSuccess: () => toast.message('Skip sent'),
       onError: () => toast.error("Couldn't skip. Please try again."),
     });
