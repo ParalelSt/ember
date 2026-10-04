@@ -190,6 +190,49 @@ class QueueListenerTest {
         assertEquals(listOf("a", "b", "b", "a"), played)
     }
 
+    /** Casting hands the queue over with setMediaItems, at the song that is
+     *  playing and where it is in it (CastSwitch), to the TV's player and
+     *  back. That is the same play going on, not a new one: it used to put
+     *  the song in history again each way, and fetch radio again. */
+    @Test fun `a song handed over to the TV and back is not a new play`() {
+        val heard = QueueListener.LastHeard()
+        var phonePlaying = true
+        val phone = object : ForwardingPlayer(player) {
+            override fun isPlaying() = phonePlaying
+            override fun getCurrentPosition() = 0L
+        }
+        var tvPosition = 42_000L
+        val tv = object : ForwardingPlayer(player) {
+            override fun isPlaying() = true
+            override fun getCurrentPosition() = tvPosition
+        }
+        val onPhone = QueueListener(phone, recordPlay = { played.add(it.getString("id")) }, extendQueue = { radio++ }, lastHeard = heard)
+        val onTv = QueueListener(tv, recordPlay = { played.add(it.getString("id")) }, extendQueue = { radio++ }, lastHeard = heard)
+        val a = item("a", "/a")
+        val b = item("b", "/b")
+        onPhone.onMediaItemTransition(a, Player.MEDIA_ITEM_TRANSITION_REASON_PLAYLIST_CHANGED)
+        assertEquals(listOf("a"), played)
+        // Cast: the TV gets the queue at a, 42 s in.
+        onTv.onMediaItemTransition(a, Player.MEDIA_ITEM_TRANSITION_REASON_PLAYLIST_CHANGED)
+        // And back to the phone, which plays on when play is pressed.
+        phonePlaying = false
+        val back = object : ForwardingPlayer(player) {
+            override fun isPlaying() = phonePlaying
+            override fun getCurrentPosition() = 50_000L
+        }
+        val onPhoneAgain = QueueListener(back, recordPlay = { played.add(it.getString("id")) }, extendQueue = { radio++ }, lastHeard = heard)
+        onPhoneAgain.onMediaItemTransition(a, Player.MEDIA_ITEM_TRANSITION_REASON_PLAYLIST_CHANGED)
+        phonePlaying = true
+        onPhoneAgain.onIsPlayingChanged(true)
+        assertEquals(listOf("a"), played)
+        assertEquals(1, radio)
+        // The next song, and the same song picked again from the top, count.
+        onTv.onMediaItemTransition(b, Player.MEDIA_ITEM_TRANSITION_REASON_AUTO)
+        tvPosition = 0L
+        onTv.onMediaItemTransition(b, Player.MEDIA_ITEM_TRANSITION_REASON_PLAYLIST_CHANGED)
+        assertEquals(listOf("a", "b", "b"), played)
+    }
+
     // With the auto cache's offline rules (OfflinePlayback), wired as the
     // service does: this listener first, the offline rules after it.
 

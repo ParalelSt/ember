@@ -201,6 +201,9 @@ class EmberPlaybackService : MediaLibraryService() {
      *  actually played, so a tap further down the queue then Previous returns
      *  to the song before the tap. The TV keeps its own while casting. */
     private val history = PlayHistory()
+    /** The song last counted as a play, on the phone or the TV: handing it
+     *  from one to the other is not a new play (QueueListener). */
+    private val lastHeard = QueueListener.LastHeard()
     /** "Tap to retry" from the app (COMMAND_RETRY). */
     private val listenerRetry = ListenerRetry()
     private val liked = LikedSongs()
@@ -276,6 +279,7 @@ class EmberPlaybackService : MediaLibraryService() {
             offlineSkips = { offlinePlayback.skips(it) },
             onUnplayable = UnplayableNotices::record,
             extendAfterFailure = ::extendAfterFailure,
+            lastHeard = lastHeard,
         ))
         player.addListener(history.Tracker(player))
         savedQueue = SavedQueue(java.io.File(filesDir, SavedQueue.FILE_NAME))
@@ -507,7 +511,7 @@ class EmberPlaybackService : MediaLibraryService() {
         queue.addListener(castHistory.Tracker(queue))
         // History and radio go on while the TV plays; a song the TV cannot
         // play is skipped, as on the phone.
-        queue.addListener(QueueListener(queue, recordPlay = ::recordPlay, extendQueue = ::maybeExtendQueue, onUnplayable = UnplayableNotices::record))
+        queue.addListener(QueueListener(queue, recordPlay = ::recordPlay, extendQueue = ::maybeExtendQueue, onUnplayable = UnplayableNotices::record, lastHeard = lastHeard))
         queue.addListener(buttonWatch)
         val switch = CastSwitch(
             player, queue, baseUrl,
