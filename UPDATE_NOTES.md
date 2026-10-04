@@ -1,3 +1,12 @@
+# 0.7.18: Carlist sharing, playback and fixes (apps 0.4.13)
+
+**Host: run `./update.sh` as usual (no new packages).** It restarts PocketBase,
+which applies the shared-playlist member cap hook. `start-static.sh` now reads
+`apps/web/.env.local` the same way the web app does, so passwords with `#`,
+`$` or quotes work. Bug reports now only include the reporter's own server
+errors. The Android fixes and the desktop slow-connection fix need the new
+apps, 0.4.13 (Android versionCode 18), which the `v0.4.13` tag builds.
+
 # 0.7.17: Playlists in the menu
 
 **Host: run `./update.sh` as usual (no new packages).** It restarts

@@ -21,6 +21,49 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    id: 'carlist-qr',
+    version: '0.7.18',
+    date: '2026-10-04',
+    title: 'Carlist, easier to share',
+    summary: 'One Carlist button, a QR code to join, and a choice between Play next and Add to end.',
+    bullets: [
+      'Your library has one Carlist button: start or join from its menu, and while you are in a carlist it shows "Live" with the code and takes you straight back.',
+      'The host can show a QR code or copy a link, and opening it puts friends in the carlist right away. Typing the code still works.',
+      "The carlist screen has a big now-playing card with who added the song, and the queue shows everyone's picks. When you add a song, choose Play next or Add to end.",
+      'People without a display name show as "Unnamed member", never their email.',
+    ],
+  },
+  {
+    id: 'playback-fixes-0718',
+    version: '0.7.18',
+    date: '2026-10-04',
+    title: 'Smoother playback',
+    summary: 'Previous takes you back to what you played, age-restricted songs are skipped cleanly, and the desktop app copes with slow connections.',
+    bullets: [
+      'Previous now goes back to the song you actually played before, even after tapping a song further down the queue.',
+      'Age-restricted YouTube songs are skipped right away and labelled "Age-restricted on YouTube" instead of failing with an error.',
+      'Recommendations under a playlist no longer bring back songs already in it, and adding a song twice says "Already in this playlist".',
+      'Desktop app: songs on a slow connection keep playing instead of stopping after a second, and a song that really stops is retried once by itself.',
+      'Tap to retry really tries the song again, and a "Couldn\'t load" message no longer sticks around after you have moved on.',
+      "The full player's menus close when the song changes, so they always act on the right song. Equalizer and volume leveling changes made while casting now apply when you stop casting.",
+    ],
+  },
+  {
+    id: 'fixes-0718',
+    version: '0.7.18',
+    date: '2026-10-04',
+    title: 'Fixes',
+    summary: 'A round of fixes across the app, Android and imports.',
+    bullets: [
+      'Android: no crash when pressing play on a headset or in the car just as the player closes; radio no longer adds songs twice; pinned playlists keep downloading with the screen off.',
+      'Shared playlists stay at 50 people even when several join at once, a removed person cannot rejoin with an old link, and moving a song no longer jumps back.',
+      'Closing search on your phone turns off voice search, and changing several settings quickly no longer loses one.',
+      'Imports: Stop stays stopped, very long titles work, and odd pasted lists no longer slow the server down.',
+      'Brief connection drops are retried quietly instead of showing errors, and bug reports only ever include your own activity.',
+      'Artist pages no longer lose their albums and singles because of one odd song.',
+    ],
+  },
+  {
     id: 'sidebar-playlists',
     version: '0.7.17',
     date: '2026-10-04',
