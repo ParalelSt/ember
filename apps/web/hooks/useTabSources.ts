@@ -237,9 +237,16 @@ export function useTabAlignment(tab: TabSummary | null): TabAlignment {
     staleTime: known ? Infinity : 0,
     retry: false,
   });
+  // The tab rides along with the press: switching tabs while the request is
+  // out must not mark the newly drawn tab as the one lining up.
   const lineUp = useMutation({
-    mutationFn: () => api.lineTabUp(id),
-    onSuccess: () => qc.setQueryData(['tab-align', id], { status: 'running' as const }),
+    mutationFn: (tabId: string) => api.lineTabUp(tabId),
+    onSuccess: async (_d, tabId) => {
+      // A status read that left before the press would land after this and
+      // put back "none" (or the old failure), and the polling would stop.
+      await qc.cancelQueries({ queryKey: ['tab-align', tabId] });
+      qc.setQueryData(['tab-align', tabId], { status: 'running' as const });
+    },
   });
 
   // A job that finished brings the row its timing.
@@ -250,10 +257,10 @@ export function useTabAlignment(tab: TabSummary | null): TabAlignment {
 
   return {
     timing: query.data?.status === 'ready' ? (query.data.timing ?? null) : (tab?.timing ?? null),
-    running: status === 'running' || lineUp.isPending,
+    running: status === 'running' || (lineUp.isPending && lineUp.variables === id),
     error: query.data?.status === 'failed' ? (query.data.error ?? 'It could not be lined up.') : null,
     lineUp: () => {
-      if (id) lineUp.mutate();
+      if (id) lineUp.mutate(id);
     },
   };
 }
