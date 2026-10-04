@@ -1125,7 +1125,10 @@ fn seek_target(total: Option<Duration>, sec: f64) -> Option<Duration> {
     if total == Some(Duration::ZERO) {
         return None;
     }
-    Some(Duration::from_secs_f64(sec.max(0.0)))
+    // A Duration cannot hold an absurd target (or infinity), and
+    // `from_secs_f64` panics on one, which `panic = abort` makes a crash of
+    // the whole app. NaN.max(0.0) is 0.
+    Duration::try_from_secs_f64(sec.max(0.0)).ok()
 }
 
 /// Pure state mapping for the OS Now Playing widget (bughunt L5), factored
@@ -1815,7 +1818,7 @@ pub fn audio_seek<R: Runtime>(app: AppHandle<R>, engine: State<'_, AudioEngine>,
     // (a seek to 0 and a play, on `audio:ended`) restarted the song into
     // silence. Loading the track again is the only way back into it.
     let plan = if spent {
-        SeekPlan::Reopen(Duration::from_secs_f64(sec.max(0.0)))
+        Duration::try_from_secs_f64(sec.max(0.0)).map_or(SeekPlan::Refuse, SeekPlan::Reopen)
     } else {
         plan_seek(total, forward_only, pos, sec)
     };
@@ -1828,7 +1831,7 @@ pub fn audio_seek<R: Runtime>(app: AppHandle<R>, engine: State<'_, AudioEngine>,
             log_audio(
                 &app,
                 "WARN",
-                &format!("refused a seek to {sec:.1}s: the decoder reports no duration for this track"),
+                &format!("refused a seek to {sec:.1}s: the decoder reports no duration for this track, or the target is out of range"),
             );
             return;
         }
@@ -2342,6 +2345,18 @@ mod tests {
         assert!(engine.sink.lock().unwrap().is_none(), "the old sink must be gone");
         assert!(engine.current_url.lock().unwrap().is_none(), "no track is loaded any more");
         assert!(engine.generation.load(Ordering::SeqCst) > before, "the old timer must stand down");
+    }
+
+    /// The webview's seconds come in unchecked, and a Duration cannot hold
+    /// an absurd one: `from_secs_f64` panicked, and with `panic = abort` in
+    /// release a single bad seek closed the app. Refused instead.
+    #[test]
+    fn an_absurd_seek_is_refused_not_a_crash() {
+        let total = Some(Duration::from_secs(120));
+        assert_eq!(plan_seek(total, false, Duration::ZERO, 1e300), SeekPlan::Refuse);
+        assert_eq!(plan_seek(None, true, Duration::from_secs(5), f64::INFINITY), SeekPlan::Refuse);
+        assert_eq!(seek_target(total, f64::NAN), Some(Duration::ZERO));
+        assert_eq!(seek_target(total, -4.0), Some(Duration::ZERO));
     }
 
     #[test]
