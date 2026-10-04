@@ -14,6 +14,16 @@ export interface DigestGroup {
   level: LogLevel;
 }
 
+/** A line (in practice a 'warn') its caller marked `{ digest: false }` in its
+ *  data, as lib/ai/triage.ts does for a failed model call: worth keeping
+ *  on disk and in a bug report's server logs, but a known degradation (the
+ *  report still went out, just without its AI diagnosis) rather than a
+ *  problem for the daily digest. */
+function leftOutOfDigest(e: ServerLogEntry): boolean {
+  const data = e.data;
+  return typeof data === 'object' && data !== null && (data as { digest?: unknown }).digest === false;
+}
+
 /** Groups server entries after `sinceMs` by fingerprint, for a periodic
  *  "here's what broke" digest. One group per distinct bug, not one line per
  *  occurrence. */
@@ -27,6 +37,7 @@ export function groupForDigest(entries: ServerLogEntry[], sinceMs: number): Dige
     // never counted, and never promoted to visibility by an 'error' in the
     // same fingerprint the way 'warn' can be.
     if (e.level === 'info') continue;
+    if (leftOutOfDigest(e)) continue;
     const fp = fingerprint(e);
     const existing = groups.get(fp);
     if (!existing) {
