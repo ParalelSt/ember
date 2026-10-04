@@ -4,6 +4,7 @@ import { usePlayerStore, type LoopMode } from '@/stores/usePlayerStore';
 import { useSessionStore } from '@/stores/useSessionStore';
 import { useRadioExtend } from './useRadioExtend';
 import { makeTrack } from '@/test-utils/fakeBackend';
+import { exclusionKeys } from '@/lib/trackIdentity';
 import type { PlaybackContext, Track } from '@/types/track';
 
 const api = vi.hoisted(() => ({ getRecommended: vi.fn() }));
@@ -180,5 +181,16 @@ describe('useRadioExtend: songs found unavailable (the 2026-09-30 report)', () =
     usePlayerStore.setState({ queue: [other], index: 0 });
     setup({ onExtended, current: other, queue: [other] });
     await waitFor(() => expect(onExtended).toHaveBeenCalledWith(0, 'youtube:other'));
+  });
+  it('started from under a playlist, never adds a song the playlist already has', async () => {
+    // The playlist page's picker plays a recommendation with the playlist's
+    // keys (TrackSearchPicker); rec1 is in the playlist, under another spelling.
+    const inPlaylist = makeTrack({ id: 'youtube:youtube:r1', sourceId: 'r1', title: 'Rec One' });
+    setup({ context: { type: 'single', exclude: exclusionKeys([inPlaylist]) } });
+    await waitFor(() => expect(usePlayerStore.getState().queue).toHaveLength(2));
+    expect(usePlayerStore.getState().queue.map((t) => t.id)).toEqual(['youtube:seed', 'youtube:r2']);
+    expect(logger.breadcrumb).toHaveBeenCalledWith('radio', 'extend', {
+      context: 'single', seed: 'seed', recs: 2, added: 1,
+    });
   });
 });
