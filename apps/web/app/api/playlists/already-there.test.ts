@@ -119,6 +119,32 @@ describe('POST /api/playlists/:id/tracks with a song already there', () => {
     expect(rowsOf(diary)).toHaveLength(2);
   });
 
+  it('a failed look-up of the last place refuses the add, rather than putting the song at the top', async () => {
+    wrapMember = (pb) => ({
+      ...pb,
+      collection: (name: string) => {
+        const c = pb.collection(name);
+        if (name !== 'playlist_tracks') return c;
+        return {
+          ...c,
+          getFirstListItem: async (filter: string, opts?: { sort?: string }) => {
+            if (opts?.sort === '-position') throw Object.assign(new Error('Something went wrong'), { status: 500 });
+            return c.getFirstListItem(filter, opts);
+          },
+        };
+      },
+    });
+    const r = await post(owner, diary, song('youtube:new'));
+    expect(r.status).toBe(500);
+    expect(rowsOf(diary)).toHaveLength(1);
+  });
+
+  it('an empty playlist still gets its first song at place 1', async () => {
+    const empty = world.addPlaylist(owner, 'Empty').id;
+    expect((await post(owner, empty, song('youtube:first'))).status).toBe(201);
+    expect(rowsOf(empty).map((r) => r.position)).toEqual([1]);
+  });
+
   it('a song added twice in a row lands once: 201, then 409', async () => {
     expect((await post(owner, diary, song('youtube:twice'))).status).toBe(201);
     expect((await post(owner, diary, song('youtube:twice'))).status).toBe(409);

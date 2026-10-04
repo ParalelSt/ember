@@ -25,6 +25,15 @@ export function useImportReview(items: ImportItem[]) {
   const [sheet, setSheet] = useState<SheetState | null>(null);
   const [searchResults, setSearchResults] = useState<Track[] | null>(null);
   const [searching, setSearching] = useState(false);
+  /** Bumped by every search and every move to another song: an answer that
+   *  comes back for an older one (the sheet moved on, or a newer search was
+   *  sent) is dropped, or "Use" would put song one's video in for song two. */
+  const searchSeq = useRef(0);
+  const forgetSearch = useCallback(() => {
+    searchSeq.current += 1;
+    setSearchResults(null);
+    setSearching(false);
+  }, []);
 
   const byId = useMemo(() => new Map(items.map((i) => [i.id, i])), [items]);
   const queue = useMemo(
@@ -35,20 +44,23 @@ export function useImportReview(items: ImportItem[]) {
   const openReview = useCallback(
     (start?: ImportItem) => {
       const ids = reviewQueue(items).map((i) => i.id);
-      setSearchResults(null);
+      forgetSearch();
       setSheet({ mode: 'review', ids, index: Math.max(0, start ? ids.indexOf(start.id) : 0) });
     },
-    [items],
+    [items, forgetSearch],
   );
   const openRematch = useCallback((item: ImportItem) => {
-    setSearchResults(null);
+    forgetSearch();
     setSheet({ mode: 'rematch', ids: [item.id], index: 0 });
-  }, []);
-  const close = useCallback(() => setSheet(null), []);
+  }, [forgetSearch]);
+  const close = useCallback(() => {
+    forgetSearch();
+    setSheet(null);
+  }, [forgetSearch]);
   const advance = useCallback(() => {
-    setSearchResults(null);
+    forgetSearch();
     setSheet((s) => (s ? { ...s, index: s.index + 1 } : s));
-  }, []);
+  }, [forgetSearch]);
 
   // Preview: play the candidate through the normal player, then pause it
   // after PREVIEW_MS if it is still the one playing.
@@ -78,12 +90,20 @@ export function useImportReview(items: ImportItem[]) {
   );
 
   const onSearch = useCallback((q: string) => {
+    const seq = ++searchSeq.current;
+    const current = () => seq === searchSeq.current;
     setSearching(true);
     api
       .search(q)
-      .then((r) => setSearchResults(r.tracks.filter((t) => t.source === 'youtube')))
-      .catch(() => setSearchResults([]))
-      .finally(() => setSearching(false));
+      .then((r) => {
+        if (current()) setSearchResults(r.tracks.filter((t) => t.source === 'youtube'));
+      })
+      .catch(() => {
+        if (current()) setSearchResults([]);
+      })
+      .finally(() => {
+        if (current()) setSearching(false);
+      });
   }, []);
 
   return {

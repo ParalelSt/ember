@@ -52,8 +52,10 @@ export const POST = withRequestLog('playlists/[id]/tracks', async (request: Next
         .collection('playlist_tracks')
         .getFirstListItem(`playlist = "${id}"`, { sort: '-position' });
       nextPosition = (Number(last.position) || 0) + 1;
-    } catch {
-      // empty playlist — keep 1
+    } catch (e) {
+      // Empty playlist (no row to find): keep 1. Any other failure must not
+      // put the new song at place 1, near the top of a full playlist.
+      if ((e as { status?: number } | undefined)?.status !== 404) throw e;
     }
 
     try {

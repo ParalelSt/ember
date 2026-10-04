@@ -39,17 +39,29 @@ export const POST = withRequestLog('recent-searches', async (request: NextReques
     const trackRecordId = await upsertCatalogTrack(track);
     const playedAt = new Date().toISOString();
 
-    try {
+    const bump = async () => {
       const existing = await pb
         .collection('recent_searches')
         .getFirstListItem(`user = "${user.id}" && track = "${trackRecordId}"`);
       await pb.collection('recent_searches').update(existing.id, { played_at: playedAt });
-    } catch {
-      await pb.collection('recent_searches').create({
-        user: user.id,
-        track: trackRecordId,
-        played_at: playedAt,
-      });
+    };
+    try {
+      await bump();
+    } catch (e) {
+      if ((e as { status?: number } | undefined)?.status !== 404) throw e;
+      try {
+        await pb.collection('recent_searches').create({
+          user: user.id,
+          track: trackRecordId,
+          played_at: playedAt,
+        });
+      } catch (createError) {
+        // Another play of the same song (a double click, a second device)
+        // made the row in between: the unique (user, track) index refuses
+        // this one, and bumping that row is all that was asked.
+        if ((createError as { status?: number } | undefined)?.status !== 400) throw createError;
+        await bump();
+      }
     }
 
     // Trim anything past the cap (oldest first).

@@ -5,7 +5,7 @@ import { steadyBeats } from '@/lib/tabTimeline';
 
 /** A fake AudioContext whose clock is the (fake) wall clock, recording
  *  when each oscillator is told to start. */
-const audio = vi.hoisted(() => ({ starts: [] as { at: number; freq: number }[], made: 0, closed: 0 }));
+const audio = vi.hoisted(() => ({ starts: [] as { at: number; freq: number }[], made: 0, closed: 0, silenced: 0 }));
 
 class FakeAudioContext {
   state = 'running';
@@ -35,7 +35,11 @@ class FakeAudioContext {
     return osc;
   }
   createGain() {
-    return { gain: { setValueAtTime: () => {}, exponentialRampToValueAtTime: () => {} }, connect: () => {} };
+    return {
+      gain: { setValueAtTime: () => {}, exponentialRampToValueAtTime: () => {} },
+      connect: () => {},
+      disconnect: () => { audio.silenced++; },
+    };
   }
 }
 
@@ -43,6 +47,7 @@ beforeEach(() => {
   vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval', 'setTimeout', 'clearTimeout', 'performance', 'Date'] });
   audio.starts = [];
   audio.closed = 0;
+  audio.silenced = 0;
   (window as unknown as { AudioContext: unknown }).AudioContext = FakeAudioContext;
 });
 afterEach(() => {
@@ -59,6 +64,34 @@ function run(opts: Partial<MetronomeOptions> = {}) {
 
 /** Start times relative to when the hook started, rounded to ms. */
 const startsFrom = (t0: number) => audio.starts.map((s) => Math.round((s.at - t0) * 1000));
+
+describe('useMetronome: stopping', () => {
+  it('a pause silences the click already handed to Web Audio for just after it', () => {
+    const { rerender } = run({ position: 9.9 });
+    vi.advanceTimersByTime(30);
+    // The beat at 10 s (70 ms from now) is already scheduled.
+    expect(audio.starts).toHaveLength(1);
+    rerender({ on: true, running: false, position: 9.93, rate: 1, beats: everyHalf });
+    expect(audio.silenced).toBe(1);
+  });
+
+  it('turning it off silences what was scheduled too', () => {
+    const { rerender } = run({ position: 9.9 });
+    vi.advanceTimersByTime(30);
+    rerender({ on: false, running: true, position: 9.93, rate: 1, beats: everyHalf });
+    expect(audio.silenced).toBe(1);
+  });
+
+  it('a click already sounded is left alone', () => {
+    const { rerender } = run({ position: 9.9 });
+    vi.advanceTimersByTime(300);
+    const scheduled = audio.starts.length;
+    rerender({ on: true, running: false, position: 10.2, rate: 1, beats: everyHalf });
+    // Only the ones still ahead of the clock are silenced.
+    expect(audio.silenced).toBe(audio.starts.filter((c) => c.at > performance.now() / 1000).length);
+    expect(scheduled).toBeGreaterThan(audio.silenced);
+  });
+});
 
 describe('useMetronome', () => {
   it('clicks each beat once, on time, accenting the bar', () => {

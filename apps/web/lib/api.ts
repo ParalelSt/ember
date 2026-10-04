@@ -274,7 +274,13 @@ export const api = {
       method: 'POST',
       body: { track, position },
     }),
-  skipSession: (id: string) => req<{ ok: true }>(`/sessions/${id}/skip`, { method: 'POST' }),
+  /** `index`: the queue row the skipper sees playing, so a skip that
+   *  arrives after the song already changed skips nothing more. */
+  skipSession: (id: string, index?: number) =>
+    req<{ ok: true; stale?: boolean }>(`/sessions/${id}/skip`, {
+      method: 'POST',
+      body: index === undefined ? undefined : { index },
+    }),
   consumeSessionCommands: (id: string) =>
     req<{ commands: { type: string }[] }>(`/sessions/${id}/commands/consume`, { method: 'POST' }),
   publishSessionNow: (id: string, index: number) =>

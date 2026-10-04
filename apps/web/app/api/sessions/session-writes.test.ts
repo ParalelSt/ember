@@ -112,6 +112,17 @@ describe('carlist routes write through the server (X2)', () => {
     expect(serverWrites).toEqual(['create:sessions', 'create:session_members', 'create:session_tracks']);
   });
 
+  it('seeding from a playlist you cannot open starts nothing', async () => {
+    // u2 neither owns playlist0000001 nor is a member of it: the start fails,
+    // and must not leave a live carlist behind (the Carlist button would
+    // show it as Live after the "Couldn't start" toast).
+    caller.id = 'u2';
+    const POST = await route(import('./route'));
+    const res = await POST(req({ name: 'Trip', seedPlaylistId: 'playlist0000001' }));
+    expect(res.status).toBe(404);
+    expect(serverWrites).toEqual([]);
+  });
+
   it('a guest joins with the code', async () => {
     caller.id = 'u2';
     const POST = await route(import('./join/route'));

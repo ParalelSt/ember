@@ -4,7 +4,8 @@ import { fromError } from '@/lib/upsertTrack';
 import { loadSession, assertHost, sessionsClient } from '@/lib/sessions';
 import { withRequestLog } from '@/lib/logger/withRequestLog';
 
-/** Host poll: return pending guest commands and delete them. */
+/** Host poll: return pending guest commands (each kind once) and delete
+ *  them. */
 export const POST = withRequestLog('sessions/[id]/commands/consume', async (_req: NextRequest, ctx: RouteContext<'/api/sessions/[id]/commands/consume'>) => {
   try {
     const { user } = await requireUser();
@@ -19,7 +20,10 @@ export const POST = withRequestLog('sessions/[id]/commands/consume', async (_req
     for (const c of pending) {
       await pb.collection('session_commands').delete(c.id);
     }
-    return Response.json({ commands: pending.map((c) => ({ type: String(c.type) })) });
+    // Several people pressing Skip on the same song all mean that song: one
+    // skip per batch, or the host would also skip the songs after it.
+    const types = [...new Set(pending.map((c) => String(c.type)))];
+    return Response.json({ commands: types.map((type) => ({ type })) });
   } catch (e) {
     if (e instanceof UnauthorizedError) return unauthorizedResponse();
     return fromError(e);

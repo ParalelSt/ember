@@ -3,7 +3,7 @@ import { requireUser, UnauthorizedError, unauthorizedResponse } from '@/lib/auth
 import { fromError, jsonError } from '@/lib/upsertTrack';
 import { newSessionCode, addMember, sessionsClient, LIVE_WINDOW_MS } from '@/lib/sessions';
 import { withRequestLog } from '@/lib/logger/withRequestLog';
-import { playlistAccess } from '@/lib/playlistAccess';
+import { playlistAccess, type PlaylistAccess } from '@/lib/playlistAccess';
 
 /** Start a carlist session. Optionally seeds the queue from one of the
  *  caller's playlists. Returns {session:{id, code, name}}. */
@@ -15,6 +15,21 @@ export const POST = withRequestLog('sessions', async (request: NextRequest) => {
       | { name?: string; seedPlaylistId?: string }
       | null;
     const name = String(body?.name ?? '').trim() || 'Carlist';
+
+    // Seeding reads a playlist's tracks, so it has to be one you can open
+    // (yours, or a collaborative one you are a member of), otherwise a
+    // session id doubles as a peek into someone else's library. Checked
+    // before the session exists: a refused seed must not leave a live
+    // carlist behind for the Carlist button to show.
+    let seed: { seedId: string; access: PlaylistAccess } | null = null;
+    if (body?.seedPlaylistId) {
+      const seedId = String(body.seedPlaylistId).replace(/[^a-zA-Z0-9]/g, '');
+      const access = await playlistAccess(pb, user.id, seedId);
+      if (!access) {
+        return jsonError("That playlist doesn't exist, or isn't yours.", 404);
+      }
+      seed = { seedId, access };
+    }
 
     // Unique code — retry a few times on the (rare) unique-index collision.
     let session = null;
@@ -35,15 +50,8 @@ export const POST = withRequestLog('sessions', async (request: NextRequest) => {
 
     await addMember(server, session.id, user.id);
 
-    if (body?.seedPlaylistId) {
-      const seedId = body.seedPlaylistId.replace(/[^a-zA-Z0-9]/g, '');
-      // Seeding reads a playlist's tracks, so it has to be one you can open
-      // (yours, or a collaborative one you are a member of), otherwise a
-      // session id doubles as a peek into someone else's library.
-      const access = await playlistAccess(pb, user.id, seedId);
-      if (!access) {
-        return jsonError("That playlist doesn't exist, or isn't yours.", 404);
-      }
+    if (seed) {
+      const { seedId, access } = seed;
       const items = await access.db.collection('playlist_tracks').getFullList({
         filter: `playlist = "${seedId}"`,
         sort: 'position',

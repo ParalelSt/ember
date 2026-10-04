@@ -538,3 +538,17 @@ describe('a Google likes transfer, through the store', () => {
     expect(g.freshJob()).toMatchObject({ accepted: 1, review: 0, notMusic: 2 });
   });
 });
+
+describe('createJobStore.claimNext after a transfer steps aside', () => {
+  it('claims the import waiting behind it, not the transfer again', async () => {
+    const f = fakePb();
+    // The transfer is older: by age alone it would always come first.
+    const transfer = await f.pb.collection('import_jobs').create({ status: 'queued', kind: 'liked' });
+    const playlist = await f.pb.collection('import_jobs').create({ status: 'queued', kind: 'playlist' });
+    const store = createJobStore(async () => f.pb);
+    const next = await store.claimNext('runner-1', 1_000, transfer.id);
+    expect(next?.id).toBe(playlist.id);
+    // With nothing else waiting it is the transfer's turn again.
+    expect((await store.claimNext('runner-1', 2_000, transfer.id))?.id).toBe(transfer.id);
+  });
+});

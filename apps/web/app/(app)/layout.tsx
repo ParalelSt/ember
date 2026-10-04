@@ -15,6 +15,7 @@ import { hydrateOfflineStore } from '@/lib/offline';
 import { useUiStore } from '@/stores/useUiStore';
 import { useChangelog } from '@/hooks/useChangelog';
 import { useIsDesktop } from '@/hooks/useIsDesktop';
+import { useReleaseStaleHosting } from '@/hooks/useSession';
 
 export default function AppShellLayout({ children }: { children: ReactNode }) {
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -28,6 +29,8 @@ export default function AppShellLayout({ children }: { children: ReactNode }) {
   // Desktop: the search bar lives INSIDE the scroller (DesktopTopBar).
   // Phone: the search sheet stays outside it, as before.
   const isDesktop = useIsDesktop();
+  // A carlist this device hosted and nobody ended must not keep radio off.
+  useReleaseStaleHosting();
 
   // Hydrate the offline store on app boot. On Android this subscribes to the
   // native EmberOffline plugin's pins/trackFiles; elsewhere it reads OPFS

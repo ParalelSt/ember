@@ -359,6 +359,16 @@ export function TransferDialog({
     }
   }, [kind, text, url, readText, readLink]);
 
+  /** The pasted list or link changed: a preview (or a look-up still on its
+   *  way) for what was there before is not this text's, so it goes, and
+   *  Start waits for the new one. Start used to import the previewed
+   *  playlist, not the link now in the box. */
+  const editSource = (token: string) => {
+    if (asked.current === token) return;
+    asked.current = '';
+    if (lookup.step !== 'idle') setLookup({ step: 'idle' });
+  };
+
   const chooseFile = (e: ChangeEvent<HTMLInputElement>) => {
     const chosen = e.target.files?.[0] ?? null;
     setFile(chosen);
@@ -596,7 +606,10 @@ export function TransferDialog({
                 aria-label="Your songs, one a line"
                 rows={6}
                 value={text}
-                onChange={(e) => setText(e.target.value)}
+                onChange={(e) => {
+                  setText(e.target.value);
+                  editSource(`text:${e.target.value.trim()}`);
+                }}
                 placeholder={'Halcyon Drift - Paper Lanterns\nNadia Okonkwo - Slow Weather'}
                 className="w-full resize-none rounded-lg border border-border bg-transparent px-row py-cluster text-sm"
               />
@@ -609,7 +622,10 @@ export function TransferDialog({
                   autoFocus
                   aria-label="Playlist link"
                   value={url}
-                  onChange={(e) => setUrl(e.target.value)}
+                  onChange={(e) => {
+                    setUrl(e.target.value);
+                    editSource(`link:${e.target.value.trim()}`);
+                  }}
                   placeholder={serviceId === 'ytmusic' ? 'Paste the YouTube Music playlist link' : 'Paste the Spotify playlist link'}
                   className="truncate pl-10"
                 />

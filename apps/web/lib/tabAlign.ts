@@ -43,8 +43,21 @@ export type AlignStatus =
   | { status: 'failed'; error: string }
   | { status: 'none' };
 
-const running = new Map<string, Promise<TabTiming | null>>();
-const lastError = new Map<string, string>();
+/** One record per server PROCESS, not per module copy: a production build
+ *  bundles each route on its own, so plain module Maps gave the search
+ *  route that starts background alignments and /api/tabs/align, which the
+ *  page asks, separate memories (lib/sources/failureMemo.ts). The page
+ *  then saw "none" for a running job and could start it a second time. */
+interface AlignState {
+  running: Map<string, Promise<TabTiming | null>>;
+  lastError: Map<string, string>;
+}
+const STATE_KEY = Symbol.for('ember.tabAlign');
+const state = ((globalThis as Record<symbol, unknown>)[STATE_KEY] ??= {
+  running: new Map(),
+  lastError: new Map(),
+}) as AlignState;
+const { running, lastError } = state;
 
 /** For tests: forget what is running and what failed. */
 export function resetAlignment(): void {

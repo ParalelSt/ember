@@ -62,3 +62,36 @@ describe('upsertCatalogTrack', () => {
     expect(createCatalogClient).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('upsertCatalogTrack: the stream link is the server\'s, not the caller\'s', () => {
+  // The catalog row is shared: the first member to like or add a song writes
+  // it, and everyone after plays whatever stream_url it holds.
+  async function created(t: Track) {
+    const c = client(async () => ({ id: 'rec1' }));
+    createCatalogClient.mockResolvedValue(c.pb);
+    await upsertCatalogTrack(t);
+    return (c.create.mock.calls[0] as unknown[])[0] as Record<string, unknown>;
+  }
+
+  it('builds a YouTube song\'s link from its id, ignoring one sent along', async () => {
+    const row = await created({ ...track, streamUrl: 'https://evil.example/a.m4a' });
+    expect(row.stream_url).toBe('/api/youtube/stream/abcdefghijk');
+  });
+
+  it('takes the source and video from the id, so a mismatched sourceId cannot point the row elsewhere', async () => {
+    const row = await created({ ...track, sourceId: 'zzzzzzzzzzz', streamUrl: '/api/youtube/stream/zzzzzzzzzzz' });
+    expect(row).toMatchObject({ source: 'youtube', source_id: 'abcdefghijk', stream_url: '/api/youtube/stream/abcdefghijk' });
+  });
+
+  it('builds an upload\'s link from its record id', async () => {
+    const row = await created({ ...track, id: 'upload:abc123def456ghi', source: 'upload', sourceId: 'abc123def456ghi', streamUrl: 'https://evil.example/x' });
+    expect(row.stream_url).toBe('/api/uploads/abc123def456ghi/stream');
+  });
+
+  it('keeps a Jamendo link only when it is Jamendo\'s own https address', async () => {
+    const ok = await created({ ...track, id: 'jamendo:123', source: 'jamendo', sourceId: '123', streamUrl: 'https://prod-1.storage.jamendo.com/?trackid=123' });
+    expect(ok.stream_url).toBe('https://prod-1.storage.jamendo.com/?trackid=123');
+    const bad = await created({ ...track, id: 'jamendo:123', source: 'jamendo', sourceId: '123', streamUrl: 'https://evil.example/jamendo.com' });
+    expect(bad.stream_url).toBe('');
+  });
+});

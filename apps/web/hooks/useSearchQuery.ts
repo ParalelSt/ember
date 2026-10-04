@@ -18,6 +18,13 @@ import { isIosApp } from '@/lib/playback/nativePlatform';
 import { micUnavailableMessage } from '@/lib/speech/messages';
 import type { PlaybackContext, Track } from '@/types/track';
 
+/** How long after a rate limit (429) the search asks again by itself. */
+export const SEARCH_RATE_LIMIT_RETRY_MS = 10_000;
+
+function statusOf(error: unknown): number | undefined {
+  return (error as { status?: number } | null)?.status;
+}
+
 /** Everything the search page and the search overlay need, pulled into one
  *  place so results, recents and error copy stay identical between them
  *  (they are two different chrome around the same query). Keep every string
@@ -53,10 +60,17 @@ export function useSearchQuery() {
     queryFn: () => api.search(debouncedQ).then((r) => r.tracks),
     enabled: isOnline,
     retry: false,
+    // A rate limit passes: ask again on our own, or "Searching too fast"
+    // stayed up for good (window focus does not refetch here) until the
+    // listener changed the text.
+    refetchInterval: (query) => (statusOf(query.state.error) === 429 ? SEARCH_RATE_LIMIT_RETRY_MS : false),
   });
 
   // Surface the rate-limit 429 quietly instead of a blank result set.
-  const rateLimited = (error as { status?: number } | null)?.status === 429;
+  const rateLimited = statusOf(error) === 429;
+  // Any other failure (YouTube Music down, the host unreachable) is said as
+  // such: an empty list read as "No tracks", as if nothing matched.
+  const searchFailed = !!error && !rateLimited && !data?.length;
 
   const onMicClick = () => {
     if (!voice.supported) {
@@ -88,6 +102,7 @@ export function useSearchQuery() {
     data,
     isFetching,
     rateLimited,
+    searchFailed,
     onPlay,
   };
 }

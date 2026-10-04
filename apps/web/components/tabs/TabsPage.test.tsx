@@ -7,6 +7,7 @@ import type { Track } from '@/types/track';
 import { useSettingsStore } from '@/stores/useSettingsStore';
 import type { LiveTabScoreProps } from './LiveTabScore';
 import { TabsPage } from './TabsPage';
+import { toast } from 'sonner';
 import { buildTimeline } from '@/lib/tabTimeline';
 
 // The page around the score: which tab it picks, what the header says, the
@@ -221,6 +222,19 @@ describe('TabsPage source selection', () => {
     fireEvent.change(screen.getByLabelText('Tab timing offset in seconds'), { target: { value: '2.5' } });
     expect(screen.getByTestId('tab-score')).toHaveAttribute('data-offset', '2500');
     expect(window.localStorage.getItem('ember.tab.offset.f1')).toBe('2.5');
+  });
+
+  it('Save for everyone that the server refuses says so, and keeps the nudge on this device', async () => {
+    const error = vi.spyOn(toast, 'error').mockImplementation(() => '');
+    api.getTrackTabs.mockResolvedValue({ tabs: [tab({ canDelete: true })] });
+    api.saveTabOffset.mockRejectedValueOnce(Object.assign(new Error('forbidden'), { status: 403 }));
+    wrap(<TabsPage trackId="upload:song1" />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Sync' }));
+    fireEvent.change(screen.getByLabelText('Tab timing offset in seconds'), { target: { value: '2.5' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save for everyone' }));
+    await waitFor(() => expect(error).toHaveBeenCalled());
+    expect(screen.getByTestId('tab-score')).toHaveAttribute('data-offset', '2500');
+    error.mockRestore();
   });
 
   it('takes an exact nudge far past the old 10 s, typed or stepped', async () => {
@@ -783,6 +797,30 @@ describe('TabsPage and the player', () => {
       </QueryClientProvider>,
     );
     await waitFor(() => expect(router.replace).toHaveBeenCalledWith('/tabs/upload%3Asong2'));
+  });
+
+  it('keeps following when the player skips twice before the first move lands', async () => {
+    const view = wrap(<TabsPage trackId="upload:song1" />);
+    await screen.findByTestId('tab-score');
+    const at = (page: string) =>
+      view.rerender(
+        <QueryClientProvider client={new QueryClient()}>
+          <TabsPage trackId={page} />
+        </QueryClientProvider>,
+      );
+    player.current = { ...SONG, id: 'upload:song2' };
+    at('upload:song1');
+    await waitFor(() => expect(router.replace).toHaveBeenCalledWith('/tabs/upload%3Asong2'));
+    // Skipped again while the page is still on song 1's address.
+    player.current = { ...SONG, id: 'upload:song3' };
+    at('upload:song1');
+    await waitFor(() => expect(router.replace).toHaveBeenCalledWith('/tabs/upload%3Asong3'));
+    // The two moves land in turn; the page ends up following song 3.
+    at('upload:song2');
+    at('upload:song3');
+    player.current = { ...SONG, id: 'upload:song4' };
+    at('upload:song3');
+    await waitFor(() => expect(router.replace).toHaveBeenLastCalledWith('/tabs/upload%3Asong4'));
   });
 
   it('Back goes back', async () => {

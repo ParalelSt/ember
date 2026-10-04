@@ -69,12 +69,15 @@ export interface ClickAudio {
   createGain(): {
     gain: { setValueAtTime(v: number, t: number): unknown; exponentialRampToValueAtTime(v: number, t: number): unknown };
     connect(node: unknown): unknown;
+    disconnect?(): unknown;
   };
 }
 
 /** One click at `when` (context seconds): a short high blip, higher and
- *  louder on the first beat of a bar. */
-export function playClick(ctx: ClickAudio, when: number, accent: boolean, volume = 0.6): void {
+ *  louder on the first beat of a bar. Returns a way to silence it, for a
+ *  click handed over ahead of time whose moment never comes (a pause, a
+ *  seek, the metronome turned off). */
+export function playClick(ctx: ClickAudio, when: number, accent: boolean, volume = 0.6): () => void {
   const t = Math.max(when, ctx.currentTime);
   const osc = ctx.createOscillator();
   const gain = ctx.createGain();
@@ -87,6 +90,13 @@ export function playClick(ctx: ClickAudio, when: number, accent: boolean, volume
   gain.connect(ctx.destination);
   osc.start(t);
   osc.stop(t + 0.05);
+  return () => {
+    try {
+      gain.disconnect?.();
+    } catch {
+      // Already gone with its context.
+    }
+  };
 }
 
 let shared: AudioContext | null = null;

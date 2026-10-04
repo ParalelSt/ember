@@ -12,9 +12,30 @@ const RUN_GAP_MS = 30_000;
 let runStart: number | null = null;
 let lastFailure = 0;
 
-/** The server answered: whatever run of network failures was going on is over. */
+/** Work waiting for the server to answer again (whenConnectionBack). */
+let waiting: Array<() => void> = [];
+
+/** The server answered: whatever run of network failures was going on is
+ *  over, and whatever was waiting for it runs now. */
 export function connectionOk(): void {
   runStart = null;
+  if (waiting.length === 0) return;
+  const run = waiting;
+  waiting = [];
+  for (const fn of run) {
+    try {
+      fn();
+    } catch {
+      // One waiter failing must not stop the others, nor the request that
+      // just got its answer.
+    }
+  }
+}
+
+/** Runs `fn` once, the next time the server answers anything. For what
+ *  cannot reach it during an outage, like the report about that outage. */
+export function whenConnectionBack(fn: () => void): void {
+  waiting.push(fn);
 }
 
 /** Records one network failure at `now`. True once the current run has been

@@ -11,6 +11,7 @@ import { OnlineOnly } from '@/components/OnlineOnly';
 import { formatTotalDuration } from '@/lib/format';
 import { pickThumbnail } from '@/lib/artwork';
 import { EmptyState } from '@/components/page/EmptyState';
+import { BrowseError } from '@/components/page/BrowseError';
 import { CollectionHeader } from '@/components/page/CollectionHeader';
 import { ActionBar } from '@/components/page/ActionBar';
 
@@ -25,16 +26,9 @@ export default function AlbumPage({ params }: { params: Promise<{ id: string }> 
 
 function AlbumView({ id }: { id: string }) {
   const trackActions = useTrackActions();
-  const { data, isLoading, error } = useQueryAlbum(id);
+  const { data, isLoading, error, refetch } = useQueryAlbum(id);
 
-  if (error) {
-    return (
-      <EmptyState>
-        Album not found.<br />
-        <Link href="/" className="text-ember hover:underline">Home</Link>
-      </EmptyState>
-    );
-  }
+  if (error) return <BrowseError error={error} kind="Album" onRetry={() => void refetch()} />;
   if (isLoading || !data) return <EmptyState>Loading…</EmptyState>;
 
   const { title, artist, artistId, year, thumbnails = [], tracks = [], trackCount, totalDurationSec } = data;

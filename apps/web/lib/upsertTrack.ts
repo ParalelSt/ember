@@ -33,10 +33,11 @@ export async function upsertTrack(pb: PocketBase, track: Track): Promise<string>
   // Not found — create. If a concurrent request wins the unique-index race,
   // PocketBase rejects with 400; in that case look it up again.
   try {
+    const origin = catalogOrigin(track);
     const created = await pb.collection('tracks').create({
       external_id: track.id,
-      source: track.source,
-      source_id: track.sourceId,
+      source: origin.source,
+      source_id: origin.sourceId,
       title: track.title,
       artist: track.artist ?? '',
       artist_id: track.artistId ?? '',
@@ -44,7 +45,7 @@ export async function upsertTrack(pb: PocketBase, track: Track): Promise<string>
       album_id: track.albumId ?? '',
       duration_sec: track.durationSec ?? 0,
       artwork_url: track.artworkUrl ?? '',
-      stream_url: track.streamUrl ?? '',
+      stream_url: origin.streamUrl,
     });
     return created.id;
   } catch (e) {
@@ -56,6 +57,39 @@ export async function upsertTrack(pb: PocketBase, track: Track): Promise<string>
     }
     throw e;
   }
+}
+
+const YOUTUBE_VIDEO_ID = /^[A-Za-z0-9_-]{11}$/;
+const RECORD_ID = /^[a-z0-9]{15}$/;
+
+/** Where a new catalog row plays from. The row is shared: the first member
+ *  to like, add or search-play a song writes it, and everyone after plays
+ *  whatever it holds, so its stream link is built here from the song's own
+ *  id (`youtube:<video>`, `upload:<record>`) rather than taken from the
+ *  request. A Jamendo link can only come from Jamendo, so it is kept only
+ *  when it is Jamendo's own https address. */
+export function catalogOrigin(track: Track): { source: string; sourceId: string; streamUrl: string } {
+  const at = track.id.indexOf(':');
+  const idSource = at > 0 ? track.id.slice(0, at) : '';
+  const idSourceId = at > 0 ? track.id.slice(at + 1) : '';
+  if (idSource === 'youtube') {
+    const ok = YOUTUBE_VIDEO_ID.test(idSourceId);
+    return { source: 'youtube', sourceId: idSourceId, streamUrl: ok ? `/api/youtube/stream/${idSourceId}` : '' };
+  }
+  if (idSource === 'upload') {
+    const ok = RECORD_ID.test(idSourceId);
+    return { source: 'upload', sourceId: idSourceId, streamUrl: ok ? `/api/uploads/${idSourceId}/stream` : '' };
+  }
+  let streamUrl = '';
+  if (idSource === 'jamendo' && track.streamUrl) {
+    try {
+      const u = new URL(track.streamUrl);
+      if (u.protocol === 'https:' && (u.hostname === 'jamendo.com' || u.hostname.endsWith('.jamendo.com'))) streamUrl = u.toString();
+    } catch {
+      // Not a link at all.
+    }
+  }
+  return { source: idSource || track.source, sourceId: idSourceId || track.sourceId, streamUrl };
 }
 
 /** upsertTrack for routes acting for a member (like, play, playlist add).

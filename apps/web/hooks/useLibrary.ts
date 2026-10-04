@@ -107,14 +107,29 @@ function fetchPlaylist(qc: QueryClient, id: string) {
   };
 }
 
+/** The playlist is gone for this person: deleted, or they were removed
+ *  from it (the server answers both with a 404). Anything else (the host
+ *  restarting, a dropped connection) is passing. */
+export function isPlaylistGone(error: unknown): boolean {
+  const status = (error as { status?: number } | null)?.status;
+  return status === 404 || status === 403;
+}
+
+/** How often an open playlist asks again: a collaborative one follows the
+ *  other people's edits, and stops only once it is gone (the page says so
+ *  instead). A poll that fails for a passing reason keeps the songs on
+ *  screen and tries again. */
+export function playlistPollMs(state: { status: string; data?: PlaylistData; error: unknown }): number | false {
+  if (state.status === 'error' && isPlaylistGone(state.error)) return false;
+  return state.data?.playlist.collaborative ? COLLAB_POLL_MS : false;
+}
+
 export function useQueryPlaylist(id: string) {
   const qc = useQueryClient();
   return useQuery({
     queryKey: QK.playlist(id),
     queryFn: fetchPlaylist(qc, id),
-    // A collaborative playlist follows the other people's edits. Stops once
-    // it fails (deleted, or you were removed): the page says so instead.
-    refetchInterval: (q) => (q.state.status !== 'error' && q.state.data?.playlist.collaborative ? COLLAB_POLL_MS : false),
+    refetchInterval: (q) => playlistPollMs(q.state),
   });
 }
 
@@ -203,9 +218,18 @@ function sameTrackIds(a: string[], b: string[]): boolean {
   return sa.every((id, i) => id === sb[i]);
 }
 
+/** Every like and unlike, wherever its heart is. */
+const LIKE_MUTATION_KEY = ['like-toggle'] as const;
+
 export function useExecuteToggleLike() {
   const qc = useQueryClient();
   return useMutation({
+    mutationKey: LIKE_MUTATION_KEY,
+    // One at a time, in the order they were tapped: a quick like then
+    // unlike used to race, and the server could take the unlike first
+    // (nothing to delete) and then the like, keeping a song the listener
+    // had just unliked.
+    scope: { id: 'like-toggle' },
     mutationFn: async ({ track, wasLiked }: { track: Track; wasLiked: boolean }) =>
       wasLiked ? api.unlike(track.id) : api.like(track),
     onMutate: async ({ track, wasLiked }) => {
@@ -219,6 +243,10 @@ export function useExecuteToggleLike() {
       if (ctx?.prev) qc.setQueryData(QK.likes, ctx.prev);
     },
     onSettled: () => {
+      // Another toggle still on its way: the server's list does not have it
+      // yet, and refetching now would put back the heart it just changed.
+      // The last one to finish refetches.
+      if (qc.isMutating({ mutationKey: LIKE_MUTATION_KEY }) > 1) return;
       qc.invalidateQueries({ queryKey: QK.likes });
       syncLikedPin(qc);
     },
@@ -290,6 +318,7 @@ export function useExecuteDeletePlaylist() {
     mutationFn: (id: string) => api.deletePlaylist(id),
     onSuccess: (_d, id) => {
       qc.invalidateQueries({ queryKey: QK.playlists });
+      qc.invalidateQueries({ queryKey: QK.containingAll });
       logger.breadcrumb('library', 'playlist.delete', { id });
     },
   });
@@ -371,6 +400,7 @@ export function useExecuteReplaceInPlaylist() {
       api.replaceInPlaylist(id, trackId, track),
     onSuccess: (_d, { id, trackId, track }) => {
       qc.invalidateQueries({ queryKey: QK.playlist(id) });
+      qc.invalidateQueries({ queryKey: QK.containingAll });
       logger.breadcrumb('library', 'playlist.replace', { playlistId: id, from: trackId, to: track.id });
     },
   });
@@ -423,6 +453,9 @@ export function useExecuteBulkAddToPlaylist() {
     onSuccess: (outcome, { id }) => {
       qc.invalidateQueries({ queryKey: QK.playlist(id) });
       qc.invalidateQueries({ queryKey: QK.playlists });
+      // Which playlists hold these songs changed: the Add to playlist
+      // menu's marks are out of date.
+      qc.invalidateQueries({ queryKey: QK.containingAll });
       logger.breadcrumb('library', 'playlist.bulkAdd', { playlistId: id, added: outcome.added, skipped: outcome.skipped.length });
     },
   });

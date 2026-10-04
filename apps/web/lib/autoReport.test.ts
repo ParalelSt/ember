@@ -231,6 +231,27 @@ describe('maybeAutoReport [discord-2026-10-04 #6]: one report per connection bli
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
+  it('the outage report waits for the server when it cannot get through, then arrives once', async () => {
+    // During a real outage the report itself cannot reach the server: it is
+    // sent when the server answers again, not lost.
+    const fetchMock = vi.fn().mockRejectedValue(new TypeError('Failed to fetch'));
+    vi.stubGlobal('fetch', fetchMock);
+    for (let t = 0; t <= 40_000; t += 5_000) {
+      maybeAutoReport(netError('/listening'));
+      await vi.advanceTimersByTimeAsync(5_000);
+    }
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    fetchMock.mockResolvedValue({ ok: true, json: async () => ({ ok: true, triage: null }) });
+    connectionOk();
+    await vi.advanceTimersByTimeAsync(3000);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    const body = JSON.parse(String((fetchMock.mock.calls[1] as [string, RequestInit])[1].body));
+    expect(body.note).toMatch(/^api: network errors for over 30s/);
+    connectionOk();
+    await vi.advanceTimersByTimeAsync(3000);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
   it('dedupes an identical automatic report within a session', async () => {
     const fetchMock = mockFetch();
     const entry = () => errorEntry({ category: 'api', message: 'GET /likes → 500', data: { status: 500 } });
