@@ -147,6 +147,12 @@ pub struct AudioEngine {
     /// What the OS widget was last told, kept whether or not media controls
     /// exist, so tests (which have none) can check it.
     widget: Mutex<Widget>,
+    /// The clocks of the playback watchdog (see `judge_frozen`).
+    play_budgets: PlayBudgets,
+    /// The song the webview asked for last has already been opened again
+    /// once after a stall (see `spawn_position_timer`). Cleared by every
+    /// `audio_load`, so each song gets one native retry.
+    stall_retried: AtomicBool,
 }
 
 /// The OS Now Playing widget's state as last sent.
@@ -193,6 +199,8 @@ impl AudioEngine {
             controls: Mutex::new(None),
             nowplaying_meta: Mutex::new(None),
             widget: Mutex::new(Widget::default()),
+            play_budgets: PlayBudgets::DEFAULT,
+            stall_retried: AtomicBool::new(false),
         })
     }
 
@@ -230,6 +238,8 @@ impl AudioEngine {
             controls: Mutex::new(None),
             nowplaying_meta: Mutex::new(None),
             widget: Mutex::new(Widget::default()),
+            play_budgets: PlayBudgets::DEFAULT,
+            stall_retried: AtomicBool::new(false),
         }
     }
 
@@ -238,6 +248,12 @@ impl AudioEngine {
     #[cfg(test)]
     pub(crate) fn with_output(mixer: Mixer) -> Self {
         Self { mixer: Some(mixer), ..Self::new_degraded() }
+    }
+
+    /// The same, with the playback watchdog on shorter clocks.
+    #[cfg(test)]
+    pub(crate) fn with_play_budgets(self, play_budgets: PlayBudgets) -> Self {
+        Self { play_budgets, ..self }
     }
 
     /// Whether a real output device is attached.
@@ -445,6 +461,11 @@ struct ErrPayload {
     retry: &'static str,
     #[serde(skip_serializing_if = "Option::is_none")]
     token: Option<u64>,
+    /// The engine has already done what a native retry could (it opened the
+    /// song again once, or there was nothing to fetch again), so the webview
+    /// should not try one of its own. Older engines send no such field.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    retried: bool,
 }
 /// An OS media-button press forwarded to the webview. `kind` is one of
 /// play/pause/toggle/next/prev/seek; `sec` is set only for seek.
@@ -484,7 +505,14 @@ fn emit_err<R: Runtime>(app: &AppHandle<R>, retry: &'static str, message: String
 /// `emit_err` for a failure of one particular load's playback.
 fn emit_err_about<R: Runtime>(app: &AppHandle<R>, retry: &'static str, message: String, token: Option<u64>) {
     use tauri::Emitter;
-    let _ = app.emit("audio:error", ErrPayload { message, retry, token });
+    let _ = app.emit("audio:error", ErrPayload { message, retry, token, retried: false });
+}
+
+/// `emit_err_about` for a playback stall the engine has already retried, or
+/// that a retry could not help (see `ErrPayload::retried`).
+fn emit_stall<R: Runtime>(app: &AppHandle<R>, message: String, token: Option<u64>) {
+    use tauri::Emitter;
+    let _ = app.emit("audio:error", ErrPayload { message, retry: RETRY_WEB_AUDIO, token, retried: true });
 }
 
 // --- Commands ---------------------------------------------------------------
@@ -749,6 +777,93 @@ impl LoadBudgets {
     };
 }
 
+/// The clocks the playback watchdog runs on (see `judge_frozen`). A struct
+/// so a test can run the real watchdog on short ones.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct PlayBudgets {
+    /// A playhead stopped this long is looked at; shorter is a hiccup.
+    pub frozen: Duration,
+    /// A download that has brought nothing for this long, while the song
+    /// waits on it, is dead. Shorter silences are what a slow link costs:
+    /// every request a playing song makes (the rest of the body after the
+    /// decoder read the tail, or `stream-download` asking again after 5 s
+    /// without a chunk) waits behind whatever is already on its way.
+    pub quiet: Duration,
+    /// Longest a playhead may stand still while the download is still
+    /// bringing bytes: past it the link is too slow to play from.
+    pub buffering: Duration,
+}
+
+impl PlayBudgets {
+    /// What real playback uses.
+    pub(crate) const DEFAULT: Self = Self {
+        frozen: Duration::from_secs(6),
+        quiet: Duration::from_secs(20),
+        buffering: Duration::from_secs(30),
+    };
+}
+
+/// What a playhead that has not moved for `frozen` means.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Frozen {
+    /// Not long enough to say anything.
+    Fine,
+    /// The song is waiting on bytes the host is still sending.
+    Buffering,
+    /// The song is not going to move: report it (or open it again).
+    Stalled,
+}
+
+/// The download a playing song reads from, as the watchdog sees it.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) struct DownloadView {
+    /// Since the last chunk arrived.
+    pub quiet: Duration,
+    /// How long the reader has been waiting in a seek, if it is.
+    pub seek_wait: Option<Duration>,
+    /// The whole body is here.
+    pub complete: bool,
+    /// What a request gets to be answered (see `is_stalled_during`).
+    pub request_grace: Duration,
+}
+
+impl DownloadProgress {
+    pub(crate) fn view(&self) -> DownloadView {
+        DownloadView {
+            quiet: self.quiet_for(),
+            seek_wait: self.seek_wait(),
+            complete: self.is_complete(),
+            request_grace: self.request_grace,
+        }
+    }
+}
+
+/// Judges a playhead that has stood still for `frozen` while playing.
+///
+/// It used to be one rule: 6 s without moving is a starved source, report
+/// it, and the webview swaps the session to web audio. But a song that
+/// started on the little its first response brought then waits on a new
+/// request, and on a slow link that wait alone is longer than 6 s ("playback
+/// stalled at 1.1s", Luka, 2026-10-02). So while the download behind the
+/// song is still moving, the song is buffering, up to `buffering`. A song
+/// with nothing left to download (a cached copy, a finished download) has no
+/// such excuse and keeps the old rule.
+pub(crate) fn judge_frozen(frozen: Duration, download: Option<DownloadView>, b: PlayBudgets) -> Frozen {
+    if frozen < b.frozen {
+        return Frozen::Fine;
+    }
+    match download {
+        Some(d)
+            if !d.complete
+                && frozen < b.buffering
+                && !is_stalled_during(d.quiet, d.seek_wait, false, b.quiet, d.request_grace) =>
+        {
+            Frozen::Buffering
+        }
+        _ => Frozen::Stalled,
+    }
+}
+
 /// Why the engine stopped waiting for a source.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum LoadStop {
@@ -889,6 +1004,11 @@ impl DownloadProgress {
         }
     }
 
+    /// The whole body has arrived.
+    pub(crate) fn is_complete(&self) -> bool {
+        self.complete.load(Ordering::SeqCst)
+    }
+
     /// How long the source has been silent.
     pub(crate) fn quiet_for(&self) -> Duration {
         self.started
@@ -940,6 +1060,13 @@ impl<R: Seek> Seek for SeekWatched<R> {
 /// difference between a song that will not load and one that is merely slow —
 /// and, for a source that IS delivering but far too slowly to be worth
 /// waiting on, at `hard`.
+///
+/// Time the reader spends waiting in a seek does not count towards `hard`.
+/// That wait is the host answering a new request (the decoder's read of the
+/// tail of a remuxed file), which has its own budget (`request_grace`, see
+/// `is_stalled_during`). Counted twice, a slow link ran out the clock while
+/// the host was answering everything: "the song was still decoding after
+/// 25s" (Luka, 2026-10-02, src/audio/slow_start.rs).
 pub(crate) async fn while_progressing<F: std::future::Future>(
     fut: F,
     progress: &DownloadProgress,
@@ -947,12 +1074,18 @@ pub(crate) async fn while_progressing<F: std::future::Future>(
     hard: Duration,
 ) -> Result<F::Output, LoadStop> {
     tokio::pin!(fut);
-    let deadline = tokio::time::Instant::now() + hard;
+    let mut deadline = tokio::time::Instant::now() + hard;
+    let mut last_tick = tokio::time::Instant::now();
     let mut tick = tokio::time::interval(Duration::from_millis(100));
     loop {
         tokio::select! {
             out = &mut fut => return Ok(out),
             _ = tick.tick() => {
+                let now = tokio::time::Instant::now();
+                if progress.seek_wait().is_some() {
+                    deadline += now - last_tick;
+                }
+                last_tick = now;
                 if progress.is_stalled(grace) {
                     return Err(if progress.seek_wait().is_some() {
                         LoadStop::Unanswered
@@ -1024,6 +1157,8 @@ pub(crate) struct OpenedSource {
     pub forward_only: bool,
     /// Stops the download (see `AudioEngine::current_download`).
     pub stop: DownloadStop,
+    /// How the download is going, for the playback watchdog.
+    pub progress: Arc<DownloadProgress>,
 }
 
 /// Why a source could not be opened, in words the app log can print, plus
@@ -1168,7 +1303,7 @@ pub(crate) async fn open_source(
         decoder.total_duration()
     };
     let stop: DownloadStop = Box::new(move || download.cancel());
-    Ok(OpenedSource { decoder, total, failed, forward_only, stop })
+    Ok(OpenedSource { decoder, total, failed, forward_only, stop, progress })
 }
 
 /// `open_source`, with one more attempt when the first one STALLED.
@@ -1215,6 +1350,8 @@ pub async fn audio_load<R: Runtime>(
     if let Ok(mut t) = engine.asked_token.lock() {
         *t = token;
     }
+    // A song the webview asks for gets its own native retry after a stall.
+    engine.stall_retried.store(false, Ordering::SeqCst);
     load_track(&app, engine.inner(), url, autoplay, start_at, cookie, cache_key).await
 }
 
@@ -1382,9 +1519,16 @@ async fn load_claimed<R: Runtime>(
     // A failure there is REPORTED through `audio:error` and then returns Ok:
     // that event carries the retry decision the webview needs, and an Err as
     // well would race a second, less informed report through invoke()'s catch.
-    type Playable = (Box<dyn rodio::Source + Send>, Option<Duration>, Arc<AtomicBool>, bool, Option<DownloadStop>);
+    type Playable = (
+        Box<dyn rodio::Source + Send>,
+        Option<Duration>,
+        Arc<AtomicBool>,
+        bool,
+        Option<DownloadStop>,
+        Option<Arc<DownloadProgress>>,
+    );
     let opened: Result<Playable, OpenError> = match from_cache {
-        Some((decoder, total, failed)) => Ok((Box::new(decoder), total, failed, false, None)),
+        Some((decoder, total, failed)) => Ok((Box::new(decoder), total, failed, false, None, None)),
         None if !is_http_url(&stream_url) => Err(OpenError {
             message: "the song is not in the cache and has no stream URL".into(),
             retry: RETRY_NONE,
@@ -1401,9 +1545,9 @@ async fn load_claimed<R: Runtime>(
             )
             .await
             .map(|o| {
-                let OpenedSource { decoder, total, failed, forward_only, stop } = o;
+                let OpenedSource { decoder, total, failed, forward_only, stop, progress } = o;
                 let source: Box<dyn rodio::Source + Send> = Box::new(decoder);
-                (source, total, failed, forward_only, Some(stop))
+                (source, total, failed, forward_only, Some(stop), Some(progress))
             })
         }
     };
@@ -1424,7 +1568,7 @@ async fn load_claimed<R: Runtime>(
             return Ok(());
         }
     };
-    let (decoder, total, failed, forward_only, stop) = opened;
+    let (decoder, total, failed, forward_only, stop, progress) = opened;
 
     // Someone asked for a different track while this one was downloading —
     // discard it silently rather than yanking playback back.
@@ -1528,7 +1672,7 @@ async fn load_claimed<R: Runtime>(
     engine.set_nowplaying(playing);
 
     let (sink_arc, generation) = engine.inner_arc();
-    spawn_position_timer(app.clone(), sink_arc, generation, my_gen, Arc::clone(&failed), token);
+    spawn_position_timer(app.clone(), sink_arc, generation, my_gen, Arc::clone(&failed), token, progress);
     if let Some(sec) = late_seek {
         // Planned like any seek: a backward one in a forward-only track
         // cannot be done in place (it would end the song), it re-opens.
@@ -1882,15 +2026,23 @@ fn spawn_position_timer<R: Runtime>(
     my_gen: u64,
     failed: Arc<AtomicBool>,
     token: Option<u64>,
+    progress: Option<Arc<DownloadProgress>>,
 ) {
     tauri::async_runtime::spawn(async move {
-        let mut interval = tokio::time::interval(Duration::from_millis(250));
+        const TICK: Duration = Duration::from_millis(250);
+        let mut interval = tokio::time::interval(TICK);
         // Stall watchdog. A sink can be un-paused and non-empty yet produce no
         // sound: the source is a blocking HTTP read, and if it starves, cpal
         // gets no samples and get_pos() freezes. It looks to the user like the
         // song simply won't play, with no error anywhere. Rather than sit
-        // there, report it so the webview can fall back to web audio.
-        const STALL_TICKS: u32 = 24; // 24 × 250ms = 6s of no progress
+        // there, the song is opened again once and, if that stalls too,
+        // reported so the webview can fall back to web audio. A song whose
+        // download is still moving is buffering, not stalled (`judge_frozen`).
+        let budgets = {
+            use tauri::Manager;
+            app.state::<AudioEngine>().play_budgets
+        };
+        let mut said_buffering = false;
         let mut last_pos = f64::NAN;
         let mut stalled_for: u32 = 0;
         // A seek holds the reports back for at most this long (25 s, the
@@ -1980,21 +2132,71 @@ fn spawn_position_timer<R: Runtime>(
                 stalled_for = 0; // paused on purpose is not a stall
             } else if pos == last_pos {
                 stalled_for += 1;
-                if stalled_for >= STALL_TICKS {
-                    log_audio(
-                        &app,
-                        "WARN",
-                        &format!("playback stalled at {pos:.1}s — source starved, giving up"),
-                    );
-                    emit_err_about(&app, RETRY_WEB_AUDIO, format!("playback stalled at {pos:.1}s"), token);
-                    break;
+                let download = progress.as_ref().map(|p| p.view());
+                match judge_frozen(TICK * stalled_for, download, budgets) {
+                    Frozen::Fine => {}
+                    Frozen::Buffering => {
+                        if !said_buffering {
+                            said_buffering = true;
+                            log_audio(
+                                &app,
+                                "INFO",
+                                &format!("waiting at {pos:.1}s for the host to send more of the song"),
+                            );
+                        }
+                    }
+                    Frozen::Stalled => {
+                        use tauri::Manager;
+                        let engine = app.state::<AudioEngine>();
+                        if retry_after_stall(&app, engine.inner(), pos, download) {
+                            break;
+                        }
+                        log_audio(
+                            &app,
+                            "WARN",
+                            &format!("playback stalled at {pos:.1}s, source starved, giving up"),
+                        );
+                        emit_stall(&app, format!("playback stalled at {pos:.1}s"), token);
+                        break;
+                    }
                 }
             } else {
                 stalled_for = 0;
+                said_buffering = false;
             }
             last_pos = pos;
         }
     });
+}
+
+/// Opens a song that stalled while playing again, natively, where it
+/// stopped: once per song the webview asked for. Returns whether it did.
+///
+/// Only a song whose download had not finished: a fresh request is what
+/// helps a link that queued the old one. A song with every byte already
+/// here (a cached copy, a finished download) would only stall again, and is
+/// reported at once, as before. Nor while a newer load is on its way: that
+/// one is what the listener wants now.
+fn retry_after_stall<R: Runtime>(
+    app: &AppHandle<R>,
+    engine: &AudioEngine,
+    pos: f64,
+    download: Option<DownloadView>,
+) -> bool {
+    let downloading = download.is_some_and(|d| !d.complete);
+    if !downloading || engine.load_in_flight() || engine.stall_retried.swap(true, Ordering::SeqCst) {
+        return false;
+    }
+    let Some((url, cookie, _, cache_key)) = engine.requested.lock().ok().and_then(|r| r.clone()) else {
+        return false;
+    };
+    log_audio(
+        app,
+        "WARN",
+        &format!("playback stalled at {pos:.1}s waiting on the host; opening the song again here once"),
+    );
+    spawn_load(app, engine, (url, cookie, pos, cache_key), true);
+    true
 }
 
 #[cfg(test)]
@@ -2005,6 +2207,8 @@ mod fastfail;
 mod stall_repro;
 #[cfg(test)]
 mod luka_repro;
+#[cfg(test)]
+mod slow_start;
 // Needs tauri's `test` feature, which is off on Windows (see Cargo.toml).
 #[cfg(all(test, not(windows)))]
 mod transport_repro;

@@ -363,3 +363,70 @@ describe('tauriBackend equalizer', () => {
     });
   });
 });
+
+describe('tauriBackend after a playback stall (Luka, 2026-10-02)', () => {
+  const loads = () => invoked.filter((i) => i.cmd === 'audio_load');
+
+  it('opens a song an older engine gave up on again natively, once, where it stopped', async () => {
+    const events = makeFakeEvents();
+    const backend = createTauriBackend(events);
+    backend.load('/api/youtube/stream/abc', { autoplay: true, cacheKey: 'youtube:abc' });
+    await emit('audio:time', { sec: 1.1, token: 1 });
+
+    // An older engine: no `retried`, so the webview does the native retry.
+    await emit('audio:error', { message: 'playback stalled at 1.1s', retry: 'web-audio', token: 1 });
+
+    expect(events.onError).not.toHaveBeenCalled();
+    expect(loads()).toHaveLength(2);
+    expect(loads()[1].args).toMatchObject({
+      url: `${window.location.origin}/api/youtube/stream/abc`,
+      cacheKey: 'youtube:abc',
+      autoplay: true,
+      startAt: 1.1,
+      token: 2,
+    });
+    expect(backend.isPaused()).toBe(false);
+
+    // The retry stalls too: now web audio.
+    await emit('audio:error', { message: 'playback stalled at 1.1s', retry: 'web-audio', token: 2 });
+    expect(events.onError).toHaveBeenCalledWith({ canRetryOnWebAudio: true });
+    expect(loads()).toHaveLength(2);
+  });
+
+  it('leaves the retry to an engine that already did it', async () => {
+    const events = makeFakeEvents();
+    const backend = createTauriBackend(events);
+    backend.load('/api/youtube/stream/abc', { autoplay: true });
+
+    await emit('audio:error', { message: 'playback stalled at 1.1s', retry: 'web-audio', token: 1, retried: true });
+
+    expect(events.onError).toHaveBeenCalledWith({ canRetryOnWebAudio: true });
+    expect(loads()).toHaveLength(1);
+  });
+
+  it('retries only stalls, not a song the host refused', async () => {
+    const events = makeFakeEvents();
+    const backend = createTauriBackend(events);
+    backend.load('/api/youtube/stream/abc', { autoplay: true });
+
+    await emit('audio:error', { message: 'the song was still decoding after 25s', retry: 'none', token: 1 });
+
+    expect(events.onError).toHaveBeenCalledWith({ canRetryOnWebAudio: false });
+    expect(loads()).toHaveLength(1);
+  });
+
+  it('gives every new song its own retry', async () => {
+    const events = makeFakeEvents();
+    const backend = createTauriBackend(events);
+    backend.load('/api/youtube/stream/a', { autoplay: true });
+    await emit('audio:error', { message: 'playback stalled at 2.0s', token: 1 });
+    await emit('audio:error', { message: 'playback stalled at 2.0s', token: 2 });
+    expect(events.onError).toHaveBeenCalledTimes(1);
+
+    backend.load('/api/youtube/stream/b', { autoplay: true });
+    await emit('audio:time', { sec: 0.5, token: 3 });
+    await emit('audio:error', { message: 'playback stalled at 0.5s', token: 3 });
+    expect(events.onError).toHaveBeenCalledTimes(1);
+    expect(loads().at(-1)?.args).toMatchObject({ url: `${window.location.origin}/api/youtube/stream/b`, startAt: 0.5 });
+  });
+});

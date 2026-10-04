@@ -125,9 +125,21 @@ export const createTauriBackend: CreateAudioBackend = (events) => {
   // 'none' means the host could not deliver the song at all, so swapping
   // engines only asks the same server the same question. Anything else (an
   // older engine sends no field at all) keeps the old "try web audio" answer.
-  sub<{ message: string; retry?: string; token?: number }>('audio:error', (p) => {
+  sub<{ message: string; retry?: string; token?: number; retried?: boolean }>('audio:error', (p) => {
     if (stale(p)) return;
     const { message, retry } = p;
+    // A playhead that stopped while the song was still arriving: on a slow
+    // link that is the next request queuing, not a dead song (Luka,
+    // 2026-10-02, "playback stalled at 1.1s"). Desktop engines from 0.7.17
+    // open the song again themselves once and say so (`retried`); an older
+    // engine gives up at once, so it gets that one native retry from here,
+    // where it resumes, before the whole session swaps to web audio.
+    if (!p.retried && lastLoad && !nativeRetried && /^playback stalled/.test(message ?? '')) {
+      nativeRetried = true;
+      logger.warn('audio', `${message}; opening it again on the native engine`);
+      sendLoad({ ...lastLoad, startAt: curTime, autoplay: true });
+      return;
+    }
     logger.error('audio', message || 'native audio error');
     curTime = 0;
     // Nothing is playing now. Left at "playing", the provider's toggle sent
@@ -148,38 +160,56 @@ export const createTauriBackend: CreateAudioBackend = (events) => {
     else if (kind === 'seek' && typeof sec === 'number') cmds.seek(sec);
   });
 
+  /** The provider's latest load, for the one native retry after a stall. */
+  let lastLoad: { url: string; cacheKey: string | null; autoplay: boolean; startAt: number } | null = null;
+  /** Whether that load has had its native retry. */
+  let nativeRetried = false;
+
+  /** Sends a load to the engine under a new tag, so whatever the previous
+   *  one still reports is dropped (see `stale`). */
+  const sendLoad = (l: { url: string; cacheKey: string | null; autoplay: boolean; startAt: number }) => {
+    token++;
+    armTransition();
+    duration = 0;
+    curTime = l.startAt;
+    paused = !l.autoplay;
+    void invoke('audio_load', {
+      url: l.url,
+      // An older desktop build ignores the extra argument and streams.
+      cacheKey: l.cacheKey,
+      autoplay: l.autoplay,
+      startAt: l.startAt,
+      // The Rust engine fetches over plain HTTP with no browser session, so
+      // authenticated routes 401 there: member uploads, and any YouTube
+      // song the host has not downloaded yet (only songs on disk are
+      // public). Only pb_auth is forwarded.
+      cookie: sessionCookie(),
+      // Ignored by desktop builds up to 0.4.8, whose reports then
+      // carry no tag and are all taken as before.
+      token,
+      // A rejection here means the COMMAND could not run at all (the
+      // capability denied it, no output device): the engine is the problem,
+      // not the song, so web audio is exactly the right answer. Failures the
+      // engine itself saw come through `audio:error` instead, with their own
+      // verdict, and do not reject.
+    }).catch(() => events.onError({ canRetryOnWebAudio: true }));
+  };
+
   const backend: AudioBackend = {
     load(url, opts) {
       asked++;
-      token++;
-      armTransition();
-      duration = 0;
-      curTime = opts.startAt ?? 0;
-      paused = !opts.autoplay;
       // A cached song arrives either as `opts.cacheKey` beside its stream URL
       // or as the `cache:<id>` stand-in; either way the engine gets the id.
       const fromCache = url.startsWith(TAURI_CACHE_PREFIX);
       const cacheKey = opts.cacheKey ?? (fromCache ? url.slice(TAURI_CACHE_PREFIX.length) : undefined);
-      void invoke('audio_load', {
+      lastLoad = {
         url: fromCache ? url : toAbsolute(url),
-        // An older desktop build ignores the extra argument and streams.
         cacheKey: cacheKey ?? null,
         autoplay: opts.autoplay,
         startAt: opts.startAt ?? 0,
-        // The Rust engine fetches over plain HTTP with no browser session, so
-        // authenticated routes 401 there: member uploads, and any YouTube
-        // song the host has not downloaded yet (only songs on disk are
-        // public). Only pb_auth is forwarded.
-        cookie: sessionCookie(),
-        // Ignored by desktop builds up to 0.4.8, whose reports then
-        // carry no tag and are all taken as before.
-        token,
-        // A rejection here means the COMMAND could not run at all (the
-        // capability denied it, no output device): the engine is the problem,
-        // not the song, so web audio is exactly the right answer. Failures the
-        // engine itself saw come through `audio:error` instead, with their own
-        // verdict, and do not reject.
-      }).catch(() => events.onError({ canRetryOnWebAudio: true }));
+      };
+      nativeRetried = false;
+      sendLoad(lastLoad);
     },
     play() { asked++; paused = false; void invoke('audio_play').catch(() => {}); },
     pause() { paused = true; void invoke('audio_pause').catch(() => {}); },
