@@ -23,6 +23,9 @@ class OfflinePlayback(
     /** Asked live, not cached: the validated-network callback can lag the
      *  player's own network error by a moment. */
     private val isOnline: () -> Boolean,
+    /** The player is being moved past this song (its media id) because it
+     *  cannot play offline (PlayHistory: Previous does not go back to it). */
+    private val onPassedOver: (String) -> Unit = {},
     private val onStalledChanged: (Boolean) -> Unit = {},
 ) : Player.Listener {
     var stalled = false
@@ -72,6 +75,7 @@ class OfflinePlayback(
             return
         }
         setStalled(false)
+        player.currentMediaItem?.mediaId?.let(onPassedOver)
         // playWhenReady is left as it was: a playing queue keeps playing.
         player.seekTo(target, 0)
         player.prepare()

@@ -598,10 +598,16 @@ class EmberPlaybackService : MediaLibraryService() {
         // Defaults per the owner: on, but never on mobile data unless asked.
         autoCacher.setSettings(prefs.getBoolean("enabled", true), prefs.getBoolean("onMetered", false))
         net = NetworkWatch(this) { state ->
+            if (state.online) history.backOnline()
             offlinePlayback.onNetwork(state.online)
             cacheTick()
         }
-        offlinePlayback = OfflinePlayback(player, ::playableOffline, { net.current().online }) { publishCacheState() }
+        // Offline, Previous passes over a song the offline rules skipped.
+        offlinePlayback = OfflinePlayback(
+            player, ::playableOffline, { net.current().online },
+            onStalledChanged = { publishCacheState() },
+            onPassedOver = history::passedOver,
+        )
         player.addListener(offlinePlayback)
         player.addListener(object : Player.Listener {
             override fun onMediaItemTransition(item: MediaItem?, reason: Int) = cacheTick()

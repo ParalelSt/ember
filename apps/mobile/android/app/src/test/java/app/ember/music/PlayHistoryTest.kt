@@ -164,6 +164,34 @@ class PlayHistoryTest {
         assertEquals(0, player.currentMediaItemIndex)
     }
 
+    /** Offline, a song not on the phone is skipped the moment the player
+     *  gets to it (OfflinePlayback). Previous to one bounced straight back. */
+    @Test fun `offline, Previous passes over a song the offline rules skipped`() {
+        var online = false
+        val offline = OfflinePlayback(player, { it.mediaId != "x" }, { online }, onPassedOver = history::passedOver)
+        player.addListener(offline)
+        player.setMediaItems(items("a", "x", "b"), 0, 0)
+        player.seekTo(1, 0) // Next onto x: the offline rules move on to b
+        assertEquals(2, player.currentMediaItemIndex)
+        assertEquals(listOf("a"), history.ids)
+        level.seekToPrevious()
+        assertEquals(0, player.currentMediaItemIndex)
+        // With no history either, b's Previous is a, not x.
+        player.seekTo(2, 0)
+        history.clear()
+        offline.onMediaItemTransition(null, 0)
+        history.passedOver("x")
+        level.seekToPrevious()
+        assertEquals(0, player.currentMediaItemIndex)
+        // Back online, x can play again.
+        online = true
+        history.backOnline()
+        player.seekTo(2, 0)
+        history.clear()
+        level.seekToPrevious()
+        assertEquals(1, player.currentMediaItemIndex)
+    }
+
     @Test fun `past 3 s it restarts, then the next press goes back`() {
         player.setMediaItems(items("a", "b", "c", "d"), 0, 0)
         player.seekTo(3, 60_000)
