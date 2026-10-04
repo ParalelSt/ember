@@ -12,23 +12,28 @@ export const POST = withRequestLog('sessions', async (request: NextRequest) => {
     const { pb, user } = await requireUser();
     const server = await sessionsClient();
     const body = (await request.json().catch(() => null)) as
-      | { name?: string; seedPlaylistId?: string }
+      | { name?: string; seedPlaylistId?: unknown }
       | null;
     const name = String(body?.name ?? '').trim() || 'Carlist';
 
-    // Seeding reads a playlist's tracks, so it has to be one you can open
-    // (yours, or a collaborative one you are a member of), otherwise a
-    // session id doubles as a peek into someone else's library. Checked
-    // before the session exists: a refused seed must not leave a live
-    // carlist behind for the Carlist button to show.
-    let seed: { seedId: string; access: PlaylistAccess } | null = null;
-    if (body?.seedPlaylistId) {
-      const seedId = String(body.seedPlaylistId).replace(/[^a-zA-Z0-9]/g, '');
-      const access = await playlistAccess(pb, user.id, seedId);
+    // The seed playlist is checked BEFORE anything is created: a refusal
+    // after the session row existed left a "live" carlist behind (shown by
+    // the Carlist button for hours), and each retry made another.
+    const rawSeed = body?.seedPlaylistId;
+    if (rawSeed !== undefined && rawSeed !== null && typeof rawSeed !== 'string') {
+      return jsonError('seedPlaylistId must be a string', 400);
+    }
+    let seed: { id: string; access: PlaylistAccess } | null = null;
+    if (rawSeed) {
+      const seedId = rawSeed.replace(/[^a-zA-Z0-9]/g, '');
+      // Seeding reads a playlist's tracks, so it has to be one you can open
+      // (yours, or a collaborative one you are a member of), otherwise a
+      // session id doubles as a peek into someone else's library.
+      const access = seedId ? await playlistAccess(pb, user.id, seedId) : null;
       if (!access) {
         return jsonError("That playlist doesn't exist, or isn't yours.", 404);
       }
-      seed = { seedId, access };
+      seed = { id: seedId, access };
     }
 
     // Unique code — retry a few times on the (rare) unique-index collision.
@@ -48,24 +53,30 @@ export const POST = withRequestLog('sessions', async (request: NextRequest) => {
     }
     if (!session) return jsonError('Could not create the session — try again.', 500);
 
-    await addMember(server, session.id, user.id);
+    try {
+      await addMember(server, session.id, user.id);
 
-    if (seed) {
-      const { seedId, access } = seed;
-      const items = await access.db.collection('playlist_tracks').getFullList({
-        filter: `playlist = "${seedId}"`,
-        sort: 'position',
-      });
-      let position = 1;
-      for (const item of items) {
-        await server.collection('session_tracks').create({
-          session: session.id,
-          track: item.track,
-          position: position++,
-          added_by: user.id,
-          played: false,
+      if (seed) {
+        const items = await seed.access.db.collection('playlist_tracks').getFullList({
+          filter: `playlist = "${seed.id}"`,
+          sort: 'position',
         });
+        let position = 1;
+        for (const item of items) {
+          await server.collection('session_tracks').create({
+            session: session.id,
+            track: item.track,
+            position: position++,
+            added_by: user.id,
+            played: false,
+          });
+        }
       }
+    } catch (e) {
+      // Half made is no carlist: take it away again rather than leave a
+      // live session with a partial queue behind.
+      await server.collection('sessions').delete(session.id).catch(() => undefined);
+      throw e;
     }
 
     return Response.json(

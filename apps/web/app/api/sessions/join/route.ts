@@ -15,18 +15,21 @@ export const POST = withRequestLog('sessions/join', async (request: NextRequest)
     if (!raw) return jsonError('Enter a join code.', 400);
     const code = normalizeCode(raw);
     if (!code) return jsonError('No live session with that code.', 404);
+    // Server client: a carlist you have not joined is hidden from you, and
+    // this is how you join it.
+    const pb = await sessionsClient();
+    let session;
     try {
-      // Server client: a carlist you have not joined is hidden from you, and
-      // this is how you join it.
-      const pb = await sessionsClient();
-      const session = await pb
+      session = await pb
         .collection('sessions')
         .getFirstListItem(pb.filter('code = {:code} && active = true', { code }));
-      await addMember(pb, session.id, user.id);
-      return Response.json({ session: { id: session.id, name: String(session.name), code: String(session.code) } });
     } catch {
       return jsonError('No live session with that code.', 404);
     }
+    // Outside the 404 above: a roster write that failed is the host's
+    // problem, not a wrong code, and must not be answered as a join either.
+    await addMember(pb, session.id, user.id);
+    return Response.json({ session: { id: session.id, name: String(session.name), code: String(session.code) } });
   } catch (e) {
     if (e instanceof UnauthorizedError) return unauthorizedResponse();
     return fromError(e);

@@ -59,6 +59,11 @@ function unsafeQueryExpr(expr) {
   if (text.trim() === '') return '';
   const bare = stripStrings(text);
   if (bare === null) return 'unclosed quote';
+  // PocketBase reads `//` to the end of the line as a comment, and a quote
+  // inside one is plain text, not the start of a string. stripStrings does
+  // not know that, so a commented-out quote could hide a join from the checks
+  // below while PocketBase still ran it. The app never sends a comment.
+  if (bare.includes('//')) return 'comments are not allowed';
   if (/_via_/i.test(bare)) return 'back-relations are not allowed';
   // A dotted path that is not an @request/@collection macro: a field of a
   // related record. Anything glued to the left (a letter, a digit, a dot or

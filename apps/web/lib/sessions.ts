@@ -61,9 +61,13 @@ export async function addMember(
 ): Promise<void> {
   try {
     await pb.collection('session_members').create({ session: sessionId, user: userId });
-  } catch {
-    // Already on the roster, or an older server whose hook hasn't created the
-    // collection yet. Neither is worth failing the join over.
+  } catch (e) {
+    // Already on the roster (the unique index, 400), or an older server whose
+    // hook hasn't created the collection yet (404). Neither is worth failing
+    // the join over. Anything else (PocketBase down, a 5xx) is: reporting a
+    // join that did not happen only gets the joiner a 403 on every poll.
+    const status = (e as { status?: number } | undefined)?.status;
+    if (status !== 400 && status !== 404) throw e;
   }
 }
 

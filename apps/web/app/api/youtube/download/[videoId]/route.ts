@@ -20,8 +20,9 @@ export const POST = withRequestLog('youtube/download/[videoId]', async (_req: Ne
       const limited = newFetchLimitResponse(member);
       if (limited) return limited;
     }
-    const filePath = await ensureDownloaded(videoId);
-    return Response.json({ ok: true, filePath });
+    await ensureDownloaded(videoId);
+    // Never the path itself: it only gives away the host's directory layout.
+    return Response.json({ ok: true });
   } catch (e) {
     if (isTooLargeError(e)) return tooLargeResponse(e.message);
     return fromError(e);

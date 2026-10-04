@@ -35,6 +35,19 @@ for (const expr of [
 ]) {
   check(`refuses ${expr}`, refuses(expr), unsafeQueryExpr(expr));
 }
+// PocketBase 0.22's filter parser has `//` line comments, inside which a
+// quote is just text. Read as string delimiters, those quotes hid a join.
+for (const expr of [
+  'id != "" // "\n&& likes_via_track.user ?= "victim" // "',
+  "id != '' // '\n&& uploader.playlists_via_user.name ~ 'a%' // '",
+  'id != "" // "\n&& uploader.name = "x" // "',
+  'id != "" // just a comment',
+]) {
+  check(`refuses a comment: ${JSON.stringify(expr)}`, refuses(expr), unsafeQueryExpr(expr));
+}
+check('subscription hiding a join in a comment is refused',
+  unsafeSubscription(`tracks/*?options=${encodeURIComponent(JSON.stringify({ query: { filter: 'id != "" // "\n&& likes_via_track.user = "a" // "' } }))}`) !== '');
+check('a slash pair inside a string is fine', !refuses('title = "AC//DC"'));
 check('refuses an unclosed quote', refuses('title = "abc && uploader.name = x'));
 
 // Allowed: what the app sends.

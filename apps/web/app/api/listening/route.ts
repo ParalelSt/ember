@@ -3,6 +3,7 @@ import { createAdminClient } from '@/lib/pocketbase/server';
 import { mapTrackRow, type TrackRecord } from '@/lib/mapTrack';
 import { fromError } from '@/lib/upsertTrack';
 import { withRequestLog } from '@/lib/logger/withRequestLog';
+import { publicName } from '@/lib/collab';
 
 /** How far back a play still counts as "listening now". */
 const WINDOW_MS = 30 * 60 * 1000;
@@ -34,7 +35,7 @@ export const GET = withRequestLog('listening', async () => {
       if (seenUsers.has(userId)) continue; // newest play per user only
       seenUsers.add(userId);
       const who = (r.expand?.user ?? null) as
-        | { name?: string; email?: string; share_listening?: boolean }
+        | { name?: string; share_listening?: boolean }
         | null;
       // Opted out of being seen. `seenUsers` already has them, so their older
       // plays can't slip through further down the list either.
@@ -43,7 +44,8 @@ export const GET = withRequestLog('listening', async () => {
       const track = mapTrackRow(((r.expand?.track as unknown) ?? null) as TrackRecord | null);
       if (!track) continue;
       items.push({
-        userName: String(who?.name || who?.email?.split('@')[0] || 'someone'),
+        // A name, never the email: a member without one is "Unnamed member".
+        userName: publicName(who),
         playedAt: String(r.played_at),
         track,
       });

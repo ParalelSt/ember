@@ -63,9 +63,11 @@ describe('upsertCatalogTrack', () => {
   });
 });
 
-describe('upsertCatalogTrack: the stream link is the server\'s, not the caller\'s', () => {
-  // The catalog row is shared: the first member to like or add a song writes
-  // it, and everyone after plays whatever stream_url it holds.
+// The catalog is shared: a row one member creates is what every other
+// member's player plays (the first member to like, add or search-play a song
+// writes it). Its source and stream URL therefore come from the track id,
+// never from what the client sent.
+describe('upsertCatalogTrack: what a member may not choose', () => {
   async function created(t: Track) {
     const c = client(async () => ({ id: 'rec1' }));
     createCatalogClient.mockResolvedValue(c.pb);
@@ -78,6 +80,11 @@ describe('upsertCatalogTrack: the stream link is the server\'s, not the caller\'
     expect(row.stream_url).toBe('/api/youtube/stream/abcdefghijk');
   });
 
+  it('ignores a protocol-relative link and a mismatched source sent along', async () => {
+    const row = await created({ ...track, streamUrl: '//evil.example/a.m4a', source: 'jamendo', sourceId: 'zzz' });
+    expect(row).toMatchObject({ source: 'youtube', source_id: 'abcdefghijk', stream_url: '/api/youtube/stream/abcdefghijk' });
+  });
+
   it('takes the source and video from the id, so a mismatched sourceId cannot point the row elsewhere', async () => {
     const row = await created({ ...track, sourceId: 'zzzzzzzzzzz', streamUrl: '/api/youtube/stream/zzzzzzzzzzz' });
     expect(row).toMatchObject({ source: 'youtube', source_id: 'abcdefghijk', stream_url: '/api/youtube/stream/abcdefghijk' });
@@ -85,13 +92,25 @@ describe('upsertCatalogTrack: the stream link is the server\'s, not the caller\'
 
   it('builds an upload\'s link from its record id', async () => {
     const row = await created({ ...track, id: 'upload:abc123def456ghi', source: 'upload', sourceId: 'abc123def456ghi', streamUrl: 'https://evil.example/x' });
-    expect(row.stream_url).toBe('/api/uploads/abc123def456ghi/stream');
+    expect(row).toMatchObject({ source: 'upload', source_id: 'abc123def456ghi', stream_url: '/api/uploads/abc123def456ghi/stream' });
+    const short = await created({ ...track, id: 'upload:abc123', source: 'upload', sourceId: 'abc123', streamUrl: 'https://evil.example/x' });
+    expect(short).toMatchObject({ source: 'upload', source_id: 'abc123', stream_url: '/api/uploads/abc123/stream' });
   });
 
   it('keeps a Jamendo link only when it is Jamendo\'s own https address', async () => {
-    const ok = await created({ ...track, id: 'jamendo:123', source: 'jamendo', sourceId: '123', streamUrl: 'https://prod-1.storage.jamendo.com/?trackid=123' });
-    expect(ok.stream_url).toBe('https://prod-1.storage.jamendo.com/?trackid=123');
-    const bad = await created({ ...track, id: 'jamendo:123', source: 'jamendo', sourceId: '123', streamUrl: 'https://evil.example/jamendo.com' });
-    expect(bad.stream_url).toBe('');
+    const jam = { ...track, id: 'jamendo:123', source: 'jamendo' as const, sourceId: '123' };
+    const ok = await created({ ...jam, streamUrl: 'https://prod-1.storage.jamendo.com/?trackid=123&format=mp31' });
+    expect(ok).toMatchObject({ source: 'jamendo', source_id: '123', stream_url: 'https://prod-1.storage.jamendo.com/?trackid=123&format=mp31' });
+    for (const streamUrl of ['https://evil.example/jamendo.com', 'https://jamendo.com.evil.example/x', '//prod-1.storage.jamendo.com/x']) {
+      const bad = await created({ ...jam, streamUrl });
+      expect(bad.stream_url).toBe('');
+    }
+  });
+
+  it('refuses an id that is no known source with a 400', async () => {
+    const c = client(async () => ({ id: 'rec1' }));
+    createCatalogClient.mockResolvedValue(c.pb);
+    await expect(upsertCatalogTrack({ ...track, id: 'evil:"x' })).rejects.toMatchObject({ status: 400 });
+    expect(c.create).not.toHaveBeenCalled();
   });
 });
