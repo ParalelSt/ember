@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type ComponentProps } from 'react';
+import { toast } from 'sonner';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Button, buttonVariants } from '@/components/ui/button';
@@ -540,7 +541,14 @@ function TabsSheet({ song, sources, onBack }: { song: TabSong; sources: TabSourc
                 shared={tab.offsetMs}
                 canShare={tab.canDelete}
                 onChange={changeOffset}
-                onShare={() => sources.saveOffset(tab.id, offsetMs).then(() => changeOffset(null))}
+                onShare={() =>
+                  sources.saveOffset(tab.id, offsetMs).then(
+                    () => changeOffset(null),
+                    // Not saved: the nudge stays on this device, and the
+                    // listener is told rather than left guessing.
+                    () => toast.error("Couldn't save the timing for everyone. It is still saved on this device."),
+                  )
+                }
               />
             )}
             {practiceOpen && (
