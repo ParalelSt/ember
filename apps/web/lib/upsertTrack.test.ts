@@ -62,3 +62,52 @@ describe('upsertCatalogTrack', () => {
     expect(createCatalogClient).toHaveBeenCalledTimes(1);
   });
 });
+
+// The catalog is shared: a row one member creates is what every other
+// member's player plays. Its source and stream URL therefore come from the
+// track id, never from what the client sent.
+describe('upsertCatalogTrack: what a member may not choose', () => {
+  it('derives a YouTube stream URL instead of storing the client one', async () => {
+    const c = client(async () => ({ id: 'rec1' }));
+    createCatalogClient.mockResolvedValue(c.pb);
+    await upsertCatalogTrack({ ...track, streamUrl: '//evil.example/a.m4a', source: 'jamendo' as const, sourceId: 'zzz' });
+    expect(c.create).toHaveBeenCalledWith(expect.objectContaining({
+      source: 'youtube',
+      source_id: 'abcdefghijk',
+      stream_url: '/api/youtube/stream/abcdefghijk',
+    }));
+  });
+
+  it('derives an upload stream URL', async () => {
+    const c = client(async () => ({ id: 'rec1' }));
+    createCatalogClient.mockResolvedValue(c.pb);
+    await upsertCatalogTrack({ ...track, id: 'upload:abc123', source: 'upload', sourceId: 'abc123', streamUrl: 'https://evil.example/x' });
+    expect(c.create).toHaveBeenCalledWith(expect.objectContaining({
+      source: 'upload',
+      source_id: 'abc123',
+      stream_url: '/api/uploads/abc123/stream',
+    }));
+  });
+
+  it('keeps a Jamendo stream URL only when it points at Jamendo', async () => {
+    const ok = client(async () => ({ id: 'rec1' }));
+    createCatalogClient.mockResolvedValue(ok.pb);
+    const jam = { ...track, id: 'jamendo:123', source: 'jamendo' as const, sourceId: '123' };
+    await upsertCatalogTrack({ ...jam, streamUrl: 'https://prod-1.storage.jamendo.com/?trackid=123&format=mp31' });
+    expect(ok.create).toHaveBeenCalledWith(expect.objectContaining({
+      source: 'jamendo',
+      stream_url: 'https://prod-1.storage.jamendo.com/?trackid=123&format=mp31',
+    }));
+    const bad = client(async () => ({ id: 'rec2' }));
+    createCatalogClient.mockResolvedValue(bad.pb);
+    await upsertCatalogTrack({ ...jam, streamUrl: 'https://jamendo.com.evil.example/x' });
+    expect(bad.create).toHaveBeenCalledWith(expect.objectContaining({ stream_url: '' }));
+  });
+
+  it('refuses an id that is no known source with a 400', async () => {
+    const c = client(async () => ({ id: 'rec1' }));
+    createCatalogClient.mockResolvedValue(c.pb);
+    await expect(upsertCatalogTrack({ ...track, id: 'evil:"x' })).rejects.toMatchObject({ status: 400 });
+    expect(c.create).not.toHaveBeenCalled();
+  });
+});

@@ -31,12 +31,15 @@ export async function upsertTrack(pb: PocketBase, track: Track): Promise<string>
   }
 
   // Not found — create. If a concurrent request wins the unique-index race,
-  // PocketBase rejects with 400; in that case look it up again.
+  // PocketBase rejects with 400; in that case look it up again. Only a new
+  // row is checked: one already in the catalog (an older id shape included)
+  // keeps working.
+  const origin = catalogOrigin(track);
   try {
     const created = await pb.collection('tracks').create({
       external_id: track.id,
-      source: track.source,
-      source_id: track.sourceId,
+      source: origin.source,
+      source_id: origin.sourceId,
       title: track.title,
       artist: track.artist ?? '',
       artist_id: track.artistId ?? '',
@@ -44,7 +47,7 @@ export async function upsertTrack(pb: PocketBase, track: Track): Promise<string>
       album_id: track.albumId ?? '',
       duration_sec: track.durationSec ?? 0,
       artwork_url: track.artworkUrl ?? '',
-      stream_url: track.streamUrl ?? '',
+      stream_url: origin.streamUrl,
     });
     return created.id;
   } catch (e) {
@@ -56,6 +59,42 @@ export async function upsertTrack(pb: PocketBase, track: Track): Promise<string>
     }
     throw e;
   }
+}
+
+const YOUTUBE_TRACK_RE = /^youtube:([A-Za-z0-9_-]{1,64})$/;
+const VIDEO_ID_RE = /^[A-Za-z0-9_-]{11}$/;
+const UPLOAD_TRACK_RE = /^upload:([A-Za-z0-9]{1,40})$/;
+const JAMENDO_TRACK_RE = /^jamendo:(\d{1,20})$/;
+
+/** A Jamendo audio URL as Jamendo's API hands them out (https, on one of
+ *  its own hosts), or '' for anything else. */
+function jamendoStreamUrl(raw: unknown): string {
+  if (typeof raw !== 'string') return '';
+  try {
+    const u = new URL(raw);
+    const host = u.hostname.toLowerCase();
+    if (u.protocol === 'https:' && (host === 'jamendo.com' || host.endsWith('.jamendo.com'))) return u.toString();
+  } catch {
+    // not a URL
+  }
+  return '';
+}
+
+/** Source, source id and stream URL of a catalog row, worked out from the
+ *  track id rather than taken from the client. The catalog is shared: the
+ *  stream URL one member's request stores is the one every other member's
+ *  player fetches, so a member must not be able to point a song at a host of
+ *  their choosing (a protocol-relative `//host/...` URL plays from that host
+ *  in the browser). An id of no known source is a 400. */
+function catalogOrigin(track: Track): { source: Track['source']; sourceId: string; streamUrl: string } {
+  const id = typeof track?.id === 'string' ? track.id : '';
+  let m = YOUTUBE_TRACK_RE.exec(id);
+  if (m) return { source: 'youtube', sourceId: m[1], streamUrl: VIDEO_ID_RE.test(m[1]) ? `/api/youtube/stream/${m[1]}` : '' };
+  m = UPLOAD_TRACK_RE.exec(id);
+  if (m) return { source: 'upload', sourceId: m[1], streamUrl: `/api/uploads/${m[1]}/stream` };
+  m = JAMENDO_TRACK_RE.exec(id);
+  if (m) return { source: 'jamendo', sourceId: m[1], streamUrl: jamendoStreamUrl(track.streamUrl) };
+  throw Object.assign(new Error('unknown track id'), { status: 400 });
 }
 
 /** upsertTrack for routes acting for a member (like, play, playlist add).
