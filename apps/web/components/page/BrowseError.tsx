@@ -26,7 +26,7 @@ export function BrowseError({
       <br />
       {!missing && (
         <>
-          <Button variant="ghost" className="mt-2 text-ember" onClick={onRetry}>Try again</Button>
+          <Button variant="ghost" className="mt-cluster text-ember" onClick={onRetry}>Try again</Button>
           <br />
         </>
       )}

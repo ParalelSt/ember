@@ -152,7 +152,7 @@ export default function PlaylistPage({ params }: { params: Promise<{ id: string 
         <br />
         {!gone && (
           <>
-            <Button variant="ghost" className="mt-2 text-ember" onClick={() => void refetch()}>Try again</Button>
+            <Button variant="ghost" className="mt-cluster text-ember" onClick={() => void refetch()}>Try again</Button>
             <br />
           </>
         )}
