@@ -32,7 +32,11 @@ export default function SessionPage({ params }: { params: Promise<{ id: string }
   useSessionHost(data);
   const progress = useCarlistProgress(data, dataUpdatedAt);
 
-  if (error) {
+  // A failed poll keeps the last answer: in a car the connection drops
+  // often, and the next poll catches up. Only a carlist that is really gone
+  // (or never loaded) says so.
+  const status = (error as { status?: number } | null)?.status;
+  if (error && (!data || status === 403 || status === 404)) {
     return <EmptyState>Carlist not found.</EmptyState>;
   }
   if (isLoading || !data) {

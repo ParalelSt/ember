@@ -53,8 +53,9 @@ const data: SessionState = {
   queue: [],
 };
 const idle = { mutate: vi.fn(), isPending: false };
+const poll = vi.hoisted(() => ({ error: null as (Error & { status?: number }) | null, hasData: true }));
 vi.mock('@/hooks/useSession', () => ({
-  useQuerySession: () => ({ data, isLoading: false, error: null, dataUpdatedAt: 1 }),
+  useQuerySession: () => ({ data: poll.hasData ? data : undefined, isLoading: false, error: poll.error, dataUpdatedAt: 1 }),
   useExecuteAddToSession: () => ({ mutateAsync, isPending: false }),
   useExecuteSkipSession: () => idle,
   useExecuteEndSession: () => idle,
@@ -75,7 +76,11 @@ async function open() {
   });
 }
 
-beforeEach(() => vi.clearAllMocks());
+beforeEach(() => {
+  vi.clearAllMocks();
+  poll.error = null;
+  poll.hasData = true;
+});
 
 describe('/session/[id] adding a song', () => {
   it('Play next: sent as position next, toast says it plays next', async () => {
@@ -109,5 +114,27 @@ describe('/session/[id] adding a song', () => {
     expect(screen.queryByTestId('share')).toBeNull();
     fireEvent.click(screen.getByTestId('code-chip'));
     expect(screen.getByTestId('share')).toHaveTextContent('K7MPQ4');
+  });
+});
+
+describe('/session/[id] when a poll fails', () => {
+  it('a connection drop keeps the carlist on screen (the next poll catches up)', async () => {
+    poll.error = new Error('Failed to fetch');
+    await open();
+    expect(screen.getByTestId('carlist-live-page')).toBeInTheDocument();
+    expect(screen.queryByText('Carlist not found.')).toBeNull();
+  });
+
+  it('a carlist that is gone (404) says so', async () => {
+    poll.error = Object.assign(new Error('Session not found.'), { status: 404 });
+    await open();
+    expect(screen.getByText('Carlist not found.')).toBeInTheDocument();
+  });
+
+  it('no data at all and an error says not found', async () => {
+    poll.error = new Error('Failed to fetch');
+    poll.hasData = false;
+    await open();
+    expect(screen.getByText('Carlist not found.')).toBeInTheDocument();
   });
 });
