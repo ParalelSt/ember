@@ -341,6 +341,35 @@ describe('TransferDialog: every answer reaches its route', () => {
     await waitFor(() => expect(api.importStart).toHaveBeenCalledWith(LINK, 'liked'));
   });
 
+  it('changing the link after a preview turns Start off until the new link is read', async () => {
+    api.importInspect.mockResolvedValue({
+      source: 'spotify', id: 'x', name: 'Late night drive', coverUrl: null, items: [{}, {}, {}], truncated: false,
+    });
+    setup();
+    pick('Liked songs');
+    service('Spotify');
+    have(/A link to a playlist/);
+    fireEvent.change(screen.getByLabelText('Playlist link'), { target: { value: LINK } });
+    await waitFor(() => expect(screen.getByTestId('link-preview')).toHaveTextContent('Late night drive'));
+    // Another link: the old preview is not this one's.
+    fireEvent.change(screen.getByLabelText('Playlist link'), { target: { value: 'not a link any more' } });
+    expect(startButton()).toBeDisabled();
+    expect(screen.queryByTestId('link-preview')).toBeNull();
+  });
+
+  it('emptying a typed list after its preview turns Start off', async () => {
+    api.transferPreview.mockResolvedValue(preview({ kind: 'paste', label: 'Liked songs from a list', count: 2 }));
+    setup();
+    pick('Liked songs');
+    service('Somewhere else');
+    have(/Just a list/);
+    const box = screen.getByLabelText('Your songs, one a line');
+    fireEvent.change(box, { target: { value: 'Halcyon Drift - Paper Lanterns' } });
+    await waitFor(() => expect(startButton()).toBeEnabled());
+    fireEvent.change(box, { target: { value: '' } });
+    expect(startButton()).toBeDisabled();
+  });
+
   it('a pasted YouTube Music playlist link goes through the same route', async () => {
     api.importInspect.mockResolvedValue({
       source: 'ytmusic',
