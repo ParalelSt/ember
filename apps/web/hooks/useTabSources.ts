@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { QK, useQueryTrack } from '@/hooks/useLibrary';
 import { drawableTabs, type TabSummary } from '@/lib/tabSources';
@@ -93,14 +93,31 @@ function againResult(
  *  longer than that has nothing left to wait for. */
 const ALIGN_GIVE_UP_MS = 6 * 60 * 1000;
 
+interface AskedLineUp {
+  /** The row's confidence when the job was asked for. */
+  was: number | null;
+  at: number;
+  /** The server took the job: from then on its own status counts. */
+  started?: boolean;
+}
+
 /** Of the tabs someone pressed "Line it up" on, the ones still waiting: the
  *  row is there, its confidence is the one it had when the job was asked
- *  for, and align.py has not had longer than its own cap. Worked out at
- *  render time, so a finished job needs no effect to clear it. */
-function stillWaiting(asked: Record<string, { was: number | null; at: number }>, rows: TabSummary[] | undefined): string[] {
+ *  for, the server has not said the job is over, and align.py has not had
+ *  longer than its own cap. A failed job leaves the confidence as it was,
+ *  as does one that worked out the same answer again, so the server's word
+ *  is what ends those (they used to sit on "Lining it up" for six minutes).
+ *  Worked out at render time, so a finished job needs no effect to clear it. */
+function stillWaiting(
+  asked: Record<string, AskedLineUp>,
+  rows: TabSummary[] | undefined,
+  statusOf: (tabId: string) => string | undefined = () => undefined,
+): string[] {
   return Object.entries(asked)
     .filter(([tabId, started]) => {
       if (Date.now() - started.at >= ALIGN_GIVE_UP_MS) return false;
+      const status = started.started ? statusOf(tabId) : undefined;
+      if (status && status !== 'running') return false;
       if (!rows) return true;
       const row = rows.find((t) => t.id === tabId);
       return !!row && (row.timing?.confidence ?? null) === started.was;
@@ -122,15 +139,34 @@ export function useTabSources(song: TabSong | null): TabSourcesState {
   // waiting the chain is re-read every few seconds; a tab leaves the list
   // when its row comes back with a different confidence (align.py wrote a
   // new timing), or when the job has had longer than align.py's own cap.
-  const [waiting, setWaiting] = useState<Record<string, { was: number | null; at: number }>>({});
+  const [waiting, setWaiting] = useState<Record<string, AskedLineUp>>({});
+
+  // How each started job stands, asked every few seconds while it runs
+  // (the same cache as the drawn tab's useTabAlignment).
+  const startedIds = Object.entries(waiting).filter(([, w]) => w.started).map(([tabId]) => tabId);
+  const jobStatuses = useQueries({
+    queries: startedIds.map((tabId) => ({
+      queryKey: ['tab-align', tabId],
+      queryFn: () => api.getTabAlignment(tabId),
+      refetchInterval: (q: { state: { data?: { status: string } } }) => (q.state.data?.status === 'running' ? 4000 : false),
+      retry: false,
+    })),
+  });
+  const statusByTab = new Map(startedIds.map((tabId, k) => [tabId, jobStatuses[k]?.data?.status]));
+  const statusOf = (tabId: string) => statusByTab.get(tabId);
+  // A job that finished brings its row new timing: read the chain again.
+  const readyKey = startedIds.filter((tabId) => statusByTab.get(tabId) === 'ready').join(',');
+  useEffect(() => {
+    if (readyKey) void qc.invalidateQueries({ queryKey: ['track-tabs', id] });
+  }, [readyKey, id, qc]);
 
   const tabsQuery = useQuery({
     queryKey: tabsKey,
     queryFn: () => api.getTrackTabs(id, title, artist).then((r) => r.tabs),
     enabled: !!song,
-    refetchInterval: (q) => (stillWaiting(waiting, q.state.data).length > 0 ? 4000 : false),
+    refetchInterval: (q) => (stillWaiting(waiting, q.state.data, statusOf).length > 0 ? 4000 : false),
   });
-  const liningUp = stillWaiting(waiting, tabsQuery.data);
+  const liningUp = stillWaiting(waiting, tabsQuery.data, statusOf);
   const matchesQuery = useQuery({
     queryKey: ['tabs', id],
     queryFn: () => api.getTabs(title, artist).then((r) => r.matches),
@@ -179,6 +215,11 @@ export function useTabSources(song: TabSong | null): TabSourcesState {
   });
   const lineUpOne = useMutation({
     mutationFn: (tabId: string) => api.lineTabUp(tabId),
+    onSuccess: async (_d, tabId) => {
+      await qc.cancelQueries({ queryKey: ['tab-align', tabId] });
+      qc.setQueryData(['tab-align', tabId], { status: 'running' as const });
+      setWaiting((m) => (m[tabId] ? { ...m, [tabId]: { ...m[tabId], started: true } } : m));
+    },
     onError: (_e, tabId) =>
       setWaiting((m) => Object.fromEntries(Object.entries(m).filter(([k]) => k !== tabId))),
   });
