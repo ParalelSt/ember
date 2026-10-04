@@ -106,6 +106,40 @@ class ServiceRadioTest {
         assertEquals("both callers hear radio found songs", listOf(true, true), heard)
     }
 
+    @Test fun `radio for a queue that has since been replaced is not added to the new one`() {
+        start()
+        val base = server.url("/").toString().trimEnd('/')
+        player().setMediaItems(listOf(track("a"), track("dead")).map { TrackItems.toMediaItem(it, base) }, 1, 0)
+        val heard = ArrayList<Boolean>()
+        service.extendAfterFailure { heard.add(it) }
+        until { asked.get() == 1 }
+        // Another playlist picked (the car, the app) while radio looks.
+        player().setMediaItems(listOf(track("c"), track("d")).map { TrackItems.toMediaItem(it, base) }, 0, 0)
+        answer.countDown()
+        until { heard.size == 1 }
+        settle()
+
+        assertEquals(listOf("youtube:c", "youtube:d"), ids())
+        assertEquals(listOf(false), heard)
+    }
+
+    @Test fun `radio that lands after the app's own extension is not added on top of it`() {
+        start()
+        val base = server.url("/").toString().trimEnd('/')
+        player().setMediaItems(listOf(track("a"), track("dead")).map { TrackItems.toMediaItem(it, base) }, 1, 0)
+        val heard = ArrayList<Boolean>()
+        service.extendAfterFailure { heard.add(it) }
+        until { asked.get() == 1 }
+        // The web app's radio got there first (setQueue appends its songs).
+        player().addMediaItems(listOf(track("w1"), track("w2")).map { TrackItems.toMediaItem(it, base) })
+        answer.countDown()
+        until { heard.size == 1 }
+        settle()
+
+        assertEquals(listOf("youtube:a", "youtube:dead", "youtube:w1", "youtube:w2"), ids())
+        assertEquals("there is more to play: the listener moves on", listOf(true), heard)
+    }
+
     @Test fun `a failed fetch frees radio for the next try`() {
         start()
         server.dispatcher = object : Dispatcher() {

@@ -764,14 +764,30 @@ class EmberPlaybackService : MediaLibraryService() {
         radioWaiters?.let { it.add(done); return }
         val waiters = mutableListOf(done)
         radioWaiters = waiters
+        // The song radio is fetched to follow: the queue's last one now.
+        val tail = player.mediaItemCount.takeIf { it > 0 }?.let { player.getMediaItemAt(it - 1).mediaId }
         fun finish(more: List<MediaItem>) {
             radioWaiters = null
-            // Anything queued meanwhile (the web app's own radio) is left out.
-            val queued = (0 until player.mediaItemCount).map { player.getMediaItemAt(it).mediaId }.toSet()
-            val fresh = more.filter { it.mediaId !in queued }
-            runCatching { if (fresh.isNotEmpty()) player.addMediaItems(fresh) }
-                .onFailure { Log.w(TAG, "radio: ${it.message}") }
-            waiters.forEach { it(fresh.isNotEmpty()) }
+            val now = (0 until player.mediaItemCount).map { player.getMediaItemAt(it).mediaId }
+            val at = now.lastIndexOf(tail)
+            val added = when {
+                // Another queue (a playlist picked in the car or the app)
+                // came in while radio looked: these songs follow nothing in
+                // it. They used to go on its end, and its own radio never ran.
+                tail == null || at < 0 -> false
+                // The web app's own radio got there first: it wins, and there
+                // is something after the song now.
+                at < now.size - 1 -> true
+                else -> {
+                    // Anything queued meanwhile is left out.
+                    val queued = now.toSet()
+                    val fresh = more.filter { it.mediaId !in queued }
+                    runCatching { if (fresh.isNotEmpty()) player.addMediaItems(fresh) }
+                        .onFailure { Log.w(TAG, "radio: ${it.message}") }
+                        .isSuccess && fresh.isNotEmpty()
+                }
+            }
+            waiters.forEach { it(added) }
         }
         val queued = (0 until player.mediaItemCount).map { player.getMediaItemAt(it).mediaId }.toSet()
         try {
