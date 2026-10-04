@@ -43,6 +43,10 @@ export function useCollectionPlayback(tracks: Track[], context: PlaybackContext)
     playTrack(shuffled[0], shuffled, context);
     // playTrack clears any previous shuffle snapshot, so record THIS
     // collection's original order right after, so shuffle-off can restore it.
+    // Only when the list really is the queue now: with nothing in it that
+    // can play, playTrack refuses it, and turning shuffle on then would
+    // reorder the queue still playing by this list on shuffle-off.
+    if (usePlayerStore.getState().queue !== shuffled) return;
     usePlayerStore.setState({ shuffle: true, orderBackup: tracks });
   };
 
