@@ -80,6 +80,11 @@ class EmberPlaybackService : MediaLibraryService() {
         /** The app's "Tap to retry": the failed song reloads with the host's
          *  retry mark (ListenerRetry), not as a plain play. */
         const val COMMAND_RETRY = "ember.retry"
+        /** The app's Previous button, run on the session's player here
+         *  (PlayHistory). A plain seekToPrevious from the app's
+         *  MediaController first shows the song above (Media3 masks the move
+         *  locally) and only then the song the service really went back to. */
+        const val COMMAND_PREVIOUS = "ember.previous"
         /** Apps that are the car: the heart button needs to know which songs
          *  are liked once one of them connects. */
         val CAR_PACKAGES = setOf(
@@ -192,6 +197,10 @@ class EmberPlaybackService : MediaLibraryService() {
     /** Covers on the Ember server go to the car as content URIs (ArtworkProvider). */
     private val artAuthority: String by lazy { ArtworkUris.authority(packageName) }
     private val shuffle = ShuffleState()
+    /** What Previous goes back to on the phone (PlayHistory): the songs
+     *  actually played, so a tap further down the queue then Previous returns
+     *  to the song before the tap. The TV keeps its own while casting. */
+    private val history = PlayHistory()
     /** "Tap to retry" from the app (COMMAND_RETRY). */
     private val listenerRetry = ListenerRetry()
     private val liked = LikedSongs()
@@ -268,6 +277,7 @@ class EmberPlaybackService : MediaLibraryService() {
             onUnplayable = UnplayableNotices::record,
             extendAfterFailure = ::extendAfterFailure,
         ))
+        player.addListener(history.Tracker(player))
         savedQueue = SavedQueue(java.io.File(filesDir, SavedQueue.FILE_NAME))
         player.addListener(savedQueue.Saver(player, io))
         overlay = PrankOverlay(this, player, dataSource, baseUrl)
@@ -281,7 +291,7 @@ class EmberPlaybackService : MediaLibraryService() {
         normalizer.setEnabled(getSharedPreferences(NORMALIZE_PREFS, MODE_PRIVATE).getBoolean("enabled", true))
         // The session (the app, the notification, the car) sets the person's
         // level; the player underneath adds the song's gain (Normalizer).
-        levelPlayer = LevelPlayer(player, normalizer) { on -> setShuffle(on) }
+        levelPlayer = LevelPlayer(player, normalizer, history) { on -> setShuffle(on) }
         session = MediaLibrarySession.Builder(this, levelPlayer, Callback())
             // Covers on the Ember server need the cookie; others must not get it.
             .setBitmapLoader(ArtworkSources.bitmapLoader(this, baseUrl, dataSource, OkHttpDataSource.Factory(okhttp3.OkHttpClient())))
@@ -492,7 +502,9 @@ class EmberPlaybackService : MediaLibraryService() {
             .onFailure { Log.w(TAG, "cast player: ${it.message}") }
             .getOrNull() ?: return
         val signer = CastSigner({ ids -> api.castLinks(ids) })
-        val queue = CastQueuePlayer(cast, signer, baseUrl, castIo) { handler.post(it) }
+        val castHistory = PlayHistory()
+        val queue = CastQueuePlayer(cast, signer, baseUrl, castIo, { handler.post(it) }, castHistory)
+        queue.addListener(castHistory.Tracker(queue))
         // History and radio go on while the TV plays; a song the TV cannot
         // play is skipped, as on the phone.
         queue.addListener(QueueListener(queue, recordPlay = ::recordPlay, extendQueue = ::maybeExtendQueue, onUnplayable = UnplayableNotices::record))
@@ -877,6 +889,7 @@ class EmberPlaybackService : MediaLibraryService() {
                         add(SessionCommand(COMMAND_OUTPUT, Bundle.EMPTY))
                         add(SessionCommand(COMMAND_SHUFFLE_STATE, Bundle.EMPTY))
                         add(SessionCommand(COMMAND_RETRY, Bundle.EMPTY))
+                        add(SessionCommand(COMMAND_PREVIOUS, Bundle.EMPTY))
                     }
                 }
                 .build()
@@ -891,6 +904,10 @@ class EmberPlaybackService : MediaLibraryService() {
                 COMMAND_SHUFFLE -> setShuffle(!shuffle.on)
                 COMMAND_REPEAT -> player.repeatMode = CarButtons.nextRepeat(player.repeatMode)
                 COMMAND_RETRY -> listenerRetry.retry(player, mark = player === this@EmberPlaybackService.player)
+                // The session's player (LevelPlayer, or the cast queue): its
+                // seekToPrevious follows the play history, as every other
+                // Previous does.
+                COMMAND_PREVIOUS -> session.player.seekToPrevious()
                 CarButtons.COMMAND_LIKE -> return Futures.immediateFuture(toggleLike())
                 COMMAND_SHUFFLE_STATE -> {
                     when {

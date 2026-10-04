@@ -341,6 +341,29 @@ could before (casting), and nothing fails. The equalizer, volume leveling
 and the loudness boost keep working after a switch on every platform (they
 are on the player, not on the device).
 
+## Previous button (every app)
+
+Previous follows what was actually played, not the order of the queue. Each
+time a song starts because the player moved on to it (Next, the song ending,
+a tap on a song in the queue, a tap on another song of the list already
+playing), the song being left goes on a small play-history stack (ids, at
+most 100). Previous then:
+
+1. past the first 3 s of a song, starts it over (unchanged);
+2. otherwise goes back to the song on top of the stack, wherever it sits in
+   the queue (the queue stays as it is; only the current song moves), and
+   pops it, so pressing again keeps walking back;
+3. with nothing usable on the stack (a fresh queue, a song since removed),
+   goes to the song above, as before (loop-all still wraps from the top).
+
+Going back never pushes, so two presses never bounce between the same two
+songs. Played in order, the stack is exactly the songs above, so playlists
+and albums behave as they always did. Playing a different list starts a fresh
+stack. Web and desktop: `lib/playback/queueNav.ts` ("Play history") and
+`PlayerProvider`. Android: `PlayHistory.kt` in the player service, reached by
+the app's button (`ember.previous`), the notification, the lock screen,
+Bluetooth keys and the car alike; the TV keeps its own while casting.
+
 ## Installing
 
 **Android (sideload):** send the APK (Discord/Drive/USB) → open it on the
