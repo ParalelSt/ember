@@ -10,22 +10,32 @@ import { withRequestLog } from '@/lib/logger/withRequestLog';
  *  Honours the per-user `share_discord` switch. The check is here as well as in
  *  the client because this route drives the host's visible presence — a stale
  *  or replayed client call shouldn't be able to broadcast for someone who
- *  turned it off. Unauthenticated callers are treated as opted out: without a
- *  session there's no preference to respect. */
+ *  turned it off. A caller without a verified session changes nothing. */
 export const POST = withRequestLog('discord/update', async (request: NextRequest) => {
   const body = (await request.json().catch(() => null)) as
     | { track?: Track | null; isPlaying?: boolean; positionSec?: number; durationSec?: number }
     | null;
 
+  // requireUser, not the cookie's record: the id must be the one
+  // PocketBase vouches for, or anyone could borrow another member's switch.
+  let session: Awaited<ReturnType<typeof requireUser>>;
+  try {
+    session = await requireUser();
+  } catch {
+    // No verified member (signed out, or PocketBase could not say), no say
+    // in the host's card: this route is public (proxy.ts), and a signed-out
+    // caller used to be able to wipe whatever a member was showing. Not a
+    // 401: the client treats one as "signed out" and drops its session,
+    // which a PocketBase blip must never do.
+    return Response.json({ ok: true, shared: false });
+  }
+
   let mayShare = false;
   try {
-    // requireUser, not the cookie's record: the id must be the one
-    // PocketBase vouches for, or anyone could borrow another member's switch.
-    const { pb, user } = await requireUser();
-    const record = await pb.collection('users').getOne(user.id);
+    const record = await session.pb.collection('users').getOne(session.user.id);
     mayShare = record.share_discord === true;
   } catch {
-    // PB unreachable / no session — fall through as "don't broadcast".
+    // PB unreachable: fall through as "don't broadcast".
   }
 
   if (mayShare && body?.track && body.isPlaying) {
