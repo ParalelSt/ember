@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { QK } from '@/hooks/useLibrary';
@@ -9,9 +9,13 @@ import { Button } from '@/components/ui/button';
 import { SearchIcon, PlusIcon, RefreshIcon, PlayIcon, PauseIcon } from '@/components/icons';
 import { TrackRow } from '@/components/track/TrackRow';
 import { usePlayer } from '@/components/player/PlayerProvider';
-import { songKey } from '@/lib/songKey';
+import { exclusionKeys, identityKeys, isExcluded, MAX_EXCLUDE_KEYS } from '@/lib/trackIdentity';
 import type { Track } from '@/types/track';
 import { cn } from '@/lib/utils';
+
+/** A track's id keys only: the "Added" badge is for this very track, not
+ *  for another version of it. */
+const idKeys = (t: Track) => identityKeys(t).filter((k) => k.startsWith('id:'));
 
 interface Props {
   /** Tracks already added — shown disabled with an "Added" badge so the user
@@ -64,14 +68,20 @@ export function TrackSearchPicker({ added = [], seeds = [], onAdd, renderAdd, cl
 
   const refreshRecs = () => setRefreshNonce((n) => n + 1);
 
-  const addedIds = new Set(added.map((t) => t.id));
-  const addedKeys = new Set(added.map(songKey));
+  // Every key of what is already there (lib/trackIdentity: the id in any
+  // spelling, and the song itself, so another upload of it counts too).
+  const addedKeys = useMemo(() => new Set(exclusionKeys(added)), [added]);
+  const addedIds = useMemo(() => new Set(added.flatMap(idKeys)), [added]);
   // Recommendations must never suggest a song already in the playlist (by id OR
-  // variant — a different upload of the same track). Search results keep showing
+  // variant: a different upload of the same track). Search results keep showing
   // the "Added" badge so a deliberate search still gives feedback.
   const list = searching
     ? searchQuery.data
-    : (recsQuery.data ?? []).filter((t) => !addedIds.has(t.id) && !addedKeys.has(songKey(t)));
+    : (recsQuery.data ?? []).filter((t) => !isExcluded(t, addedKeys));
+  // Playing one of these previews just that song, then radio carries on
+  // from it: radio must not bring back what is already here either.
+  const preview = (t: Track) =>
+    playTrack(t, undefined, { type: 'single', exclude: exclusionKeys(added, MAX_EXCLUDE_KEYS) });
   const loading = searching ? searchQuery.isFetching : recsQuery.isFetching;
 
   return (
@@ -123,7 +133,7 @@ export function TrackSearchPicker({ added = [], seeds = [], onAdd, renderAdd, cl
           </div>
         )}
         {(list ?? []).map((t) => {
-          const isAdded = addedIds.has(t.id);
+          const isAdded = idKeys(t).some((k) => addedIds.has(k));
           const playing = current?.id === t.id;
           return (
             <TrackRow
@@ -139,11 +149,12 @@ export function TrackSearchPicker({ added = [], seeds = [], onAdd, renderAdd, cl
               className="px-2 py-1.5 hover:bg-accent/60"
               trailing={
                 <>
-                  {/* Preview play/pause: plays just this track (then flows into radio). */}
+                  {/* Preview play/pause: plays just this track (then flows into radio,
+                      minus what is already here). */}
                   <Button
                     variant="ghost"
                     size="icon"
-                    onClick={() => (playing ? toggle() : playTrack(t))}
+                    onClick={() => (playing ? toggle() : preview(t))}
                     aria-label={playing && isPlaying ? 'Pause' : 'Play'}
                     className={cn('h-8 w-8 shrink-0', playing ? 'text-ember hover:text-ember' : 'text-muted-foreground hover:text-foreground')}
                   >

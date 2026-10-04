@@ -99,7 +99,10 @@ export type PlaybackContext =
   | { type: 'history' }
   | { type: 'uploads' }
   | { type: 'radio' }
-  | { type: 'single' };
+  /** `exclude`: songs radio must not add after it (lib/trackIdentity keys),
+   *  e.g. a recommendation played from under a playlist skips what the
+   *  playlist already has. */
+  | { type: 'single'; exclude?: string[] };
 
 /** One row of a live carlist session queue. */
 export interface SessionQueueItem {

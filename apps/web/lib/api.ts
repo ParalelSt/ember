@@ -100,8 +100,8 @@ async function req<T>(path: string, { method = 'GET', body, signal, expected }: 
     // it sent an automatic bug report per call (bughunt V5).
     if (res.status === 401 || expected?.includes(res.status)) logger.warn('api', `${method} ${path} → ${res.status}`, entry);
     else logger.error('api', `${method} ${path} → ${res.status}`, entry);
-    // Attach the HTTP status so callers can branch on it (e.g. 400 = duplicate
-    // → friendly "already in playlist" toast instead of the raw server text).
+    // Attach the HTTP status so callers can branch on it (e.g. 409 = already
+    // in the playlist → a friendly toast instead of the raw server text).
     const error = new Error(err.error || `Request failed: ${res.status}`) as Error & { status?: number; body?: unknown };
     error.status = res.status;
     error.body = err;
@@ -209,8 +209,14 @@ export const api = {
    *  (lib/playlistCopy's rule) and says which. */
   bulkAddToPlaylist: (id: string, tracks: Track[]) =>
     req<CopyOutcome>(`/playlists/${id}/tracks/bulk`, { method: 'POST', body: { tracks } }),
+  /** 409 (`isAlreadyInPlaylist`): the song is already there. An answer the
+   *  app shows as "Already in <playlist>", never an automatic bug report. */
   addToPlaylist: (id: string, track: Track) =>
-    req<{ ok: true }>(`/playlists/${id}/tracks`, { method: 'POST', body: { track } }),
+    req<{ ok: true }>(`/playlists/${id}/tracks`, { method: 'POST', body: { track }, expected: [409] }),
+  /** The playlists (yours and the ones shared with you) that already have
+   *  this song, for the Add to playlist menu's marks. */
+  playlistsContaining: (trackId: string) =>
+    req<{ playlistIds: string[] }>(`/playlists/containing?track=${encodeURIComponent(trackId)}`),
   removeFromPlaylist: (id: string, trackId: string) =>
     req<{ ok: true }>(`/playlists/${id}/tracks/${encodeURIComponent(trackId)}`, { method: 'DELETE' }),
   replaceInPlaylist: (playlistId: string, trackId: string, track: Track) =>

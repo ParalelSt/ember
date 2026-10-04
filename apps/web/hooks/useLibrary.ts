@@ -32,6 +32,9 @@ export const QK = {
   track: (videoId: string) => ['track', videoId] as const,
   search: (q: string) => ['search', q] as const,
   uploads: ['uploads'] as const,
+  /** Which playlists have a song (the Add to playlist menu's marks). */
+  containing: (trackId: string) => ['playlists-containing', trackId] as const,
+  containingAll: ['playlists-containing'] as const,
 };
 
 /** Every song members have uploaded to this server — a shared library, not
@@ -133,6 +136,17 @@ export function useQueryPlaylistTracks(ids: string[], enabled: boolean): Map<str
     if (r.data) out.set(ids[i], r.data.tracks);
   });
   return out;
+}
+
+/** The ids of your playlists that already have this song. `enabled` holds
+ *  the fetch until the Add to playlist menu opens. */
+export function useQueryPlaylistsContaining(trackId: string, enabled: boolean) {
+  const { user } = useAuth();
+  return useQuery({
+    queryKey: QK.containing(trackId),
+    queryFn: () => api.playlistsContaining(trackId).then((r) => r.playlistIds),
+    enabled: enabled && !!user && !!trackId,
+  });
 }
 
 export function useQueryTrending() {
@@ -289,6 +303,11 @@ export function useExecuteAddToPlaylist() {
       qc.invalidateQueries({ queryKey: QK.playlist(id) });
       logger.breadcrumb('library', 'playlist.add', { playlistId: id, trackId: track.id });
     },
+    // Added, or found already there (409): either way the menu's marks
+    // for this song are out of date.
+    onSettled: (_d, _e, { track }) => {
+      qc.invalidateQueries({ queryKey: QK.containing(track.id) });
+    },
   });
 }
 
@@ -338,7 +357,10 @@ export function useExecuteRemoveFromPlaylist() {
     onError: (_e, _v, ctx) => {
       if (ctx?.prev && ctx?.id) qc.setQueryData(QK.playlist(ctx.id), ctx.prev);
     },
-    onSettled: (_d, _e, { id }) => editEnded(id),
+    onSettled: (_d, _e, { id, trackId }) => {
+      editEnded(id);
+      qc.invalidateQueries({ queryKey: QK.containing(trackId) });
+    },
   });
 }
 

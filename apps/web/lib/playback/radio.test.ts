@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { rankRadioPool, type RankRadioInput } from './radio';
+import { exclusionKeys } from '../trackIdentity';
 import type { Track } from '../../types/track';
 
 function track(id: string, over: Partial<Track> = {}): Track {
@@ -167,5 +168,44 @@ describe('rankRadioPool: front load and weave', () => {
     const out = rank({ pool: [...fresh, ...known], history });
     expect(out).toHaveLength(known.length + fresh.length);
     expect(new Set(ids(out)).size).toBe(out.length);
+  });
+});
+
+describe('rankRadioPool: songs a played-from list already has', () => {
+  // A recommendation tapped under a playlist plays alone, then radio carries
+  // on from it. What the playlist already has must not come back (bug
+  // report 2026-10-02: "the next one in queue was a song already in the
+  // playlist").
+  const inPlaylist = track('youtube:pl1', { sourceId: 'pl1', title: 'Already Here', artist: 'Band' });
+  const exclude = exclusionKeys([inPlaylist]);
+
+  it('drops a song the playlist already has', () => {
+    const out = rank({ pool: [inPlaylist, track('a')], context: { type: 'single', exclude } });
+    expect(ids(out)).toEqual(['a']);
+  });
+
+  it('drops it whatever spelling its id comes back in', () => {
+    const doubled = track('youtube:youtube:pl1', { sourceId: 'pl1', title: 'Already Here', artist: 'Band' });
+    expect(ids(rank({ pool: [doubled, track('a')], context: { type: 'single', exclude } }))).toEqual(['a']);
+  });
+
+  it('drops another version of it', () => {
+    const video = track('youtube:pl1-video', { sourceId: 'pl1-video', title: 'Already Here (Official Video)', artist: 'Band' });
+    expect(ids(rank({ pool: [video, track('a')], context: { type: 'single', exclude } }))).toEqual(['a']);
+  });
+
+  it('keeps everything without an exclude list', () => {
+    expect(ids(rank({ pool: [inPlaylist, track('a')], context: { type: 'single' } }))).toEqual(['youtube:pl1', 'a']);
+  });
+
+  it('ignores a malformed persisted exclude list', () => {
+    const context = { type: 'single', exclude: 'nope' } as unknown as RankRadioInput['context'];
+    expect(ids(rank({ pool: [inPlaylist, track('a')], context }))).toEqual(['youtube:pl1', 'a']);
+  });
+
+  it('drops a queued song whose id is spelled with a doubled prefix', () => {
+    const queued = track('youtube:q9', { sourceId: 'q9', title: 'Queued', artist: 'Q' });
+    const doubled = { ...queued, id: 'youtube:youtube:q9' };
+    expect(ids(rank({ queue: [seed, queued], pool: [doubled, track('a')] }))).toEqual(['a']);
   });
 });

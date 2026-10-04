@@ -123,3 +123,27 @@ describe('req() [bughunt V5]: a 401 drops the dead session', () => {
     expect(expired).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('addToPlaylist: a song already in the playlist', () => {
+  const answer = (status: number, error: string) =>
+    vi.fn().mockResolvedValue({ ok: false, status, headers: new Headers(), json: async () => ({ error }) });
+  const song = { id: 'youtube:x', source: 'youtube', sourceId: 'x', title: 'Song', artist: 'A' } as Parameters<typeof api.addToPlaylist>[1];
+
+  beforeEach(() => {
+    vi.mocked(logger.error).mockClear();
+    vi.mocked(logger.warn).mockClear();
+  });
+
+  it('the 409 is a warning, never an error (no automatic bug report)', async () => {
+    vi.stubGlobal('fetch', answer(409, 'already in this playlist'));
+    await expect(api.addToPlaylist('p1', song)).rejects.toMatchObject({ status: 409, message: 'already in this playlist' });
+    expect(logger.error).not.toHaveBeenCalled();
+    expect(logger.warn).toHaveBeenCalledTimes(1);
+  });
+
+  it('a real failure is still an error', async () => {
+    vi.stubGlobal('fetch', answer(500, 'boom'));
+    await expect(api.addToPlaylist('p1', song)).rejects.toMatchObject({ status: 500 });
+    expect(logger.error).toHaveBeenCalledTimes(1);
+  });
+});
