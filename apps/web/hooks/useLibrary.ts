@@ -203,9 +203,18 @@ function sameTrackIds(a: string[], b: string[]): boolean {
   return sa.every((id, i) => id === sb[i]);
 }
 
+/** Every like and unlike, wherever its heart is. */
+const LIKE_MUTATION_KEY = ['like-toggle'] as const;
+
 export function useExecuteToggleLike() {
   const qc = useQueryClient();
   return useMutation({
+    mutationKey: LIKE_MUTATION_KEY,
+    // One at a time, in the order they were tapped: a quick like then
+    // unlike used to race, and the server could take the unlike first
+    // (nothing to delete) and then the like, keeping a song the listener
+    // had just unliked.
+    scope: { id: 'like-toggle' },
     mutationFn: async ({ track, wasLiked }: { track: Track; wasLiked: boolean }) =>
       wasLiked ? api.unlike(track.id) : api.like(track),
     onMutate: async ({ track, wasLiked }) => {
@@ -219,6 +228,10 @@ export function useExecuteToggleLike() {
       if (ctx?.prev) qc.setQueryData(QK.likes, ctx.prev);
     },
     onSettled: () => {
+      // Another toggle still on its way: the server's list does not have it
+      // yet, and refetching now would put back the heart it just changed.
+      // The last one to finish refetches.
+      if (qc.isMutating({ mutationKey: LIKE_MUTATION_KEY }) > 1) return;
       qc.invalidateQueries({ queryKey: QK.likes });
       syncLikedPin(qc);
     },
