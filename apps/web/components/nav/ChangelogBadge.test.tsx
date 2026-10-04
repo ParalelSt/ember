@@ -13,6 +13,9 @@ vi.mock('next/navigation', () => ({ usePathname: () => '/' }));
 vi.mock('@/components/providers/AuthProvider', () => ({
   useAuth: () => ({ user: { id: 'u1', email: 'dev@ember.test' }, name: 'Dev', avatarUrl: null, isAdmin: false }),
 }));
+vi.mock('@/hooks/useNavPlaylists', () => ({
+  useNavPlaylists: (items: unknown[]) => ({ items, onOpen: vi.fn(), onTogglePin: vi.fn() }),
+}));
 vi.mock('@/hooks/useLibrary', () => ({ useQueryPlaylists: () => ({ data: [] }) }));
 vi.mock('@/hooks/useCreatePlaylistFlow', () => ({
   useCreatePlaylistFlow: () => ({ createOpen: false, setCreateOpen: () => {}, handleCreate: () => {} }),

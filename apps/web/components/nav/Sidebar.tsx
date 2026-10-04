@@ -15,6 +15,7 @@ import { NavLinks } from '@/components/nav/NavLinks';
 import { WhatsNewLink } from '@/components/changelog/WhatsNewLink';
 import { useChangelog } from '@/hooks/useChangelog';
 import { PlaylistNavList } from '@/components/nav/PlaylistNavList';
+import { useNavPlaylists } from '@/hooks/useNavPlaylists';
 import { Avatar } from '@/components/primitives/Avatar';
 import { FlameIcon, PlusIcon } from '@/components/icons';
 import { BASE_NAV, ADMIN_NAV_ITEM } from '@/lib/nav';
@@ -30,6 +31,15 @@ export function Sidebar() {
   const { createOpen, setCreateOpen, handleCreate } = useCreatePlaylistFlow();
   const { data: importJobs = [] } = useImportJobs();
   const importStates = navImportStates(importJobs);
+  const nav = useNavPlaylists(
+    playlists.map((p) => ({
+      id: p.id,
+      name: p.name,
+      href: hrefFor({ kind: 'playlist', id: p.id }),
+      importState: importStates[p.id],
+      sharedLabel: sharedLabel(p),
+    })),
+  );
   const setSearchOpen = useUiStore((s) => s.setSearchOpen);
 
   return (
@@ -74,15 +84,11 @@ export function Sidebar() {
       <ScrollArea className="flex-1 mt-2">
         <div className="px-2 pb-3 flex flex-col gap-0.5">
           <PlaylistNavList
-            items={playlists.map((p) => ({
-              id: p.id,
-              name: p.name,
-              href: hrefFor({ kind: 'playlist', id: p.id }),
-              importState: importStates[p.id],
-              sharedLabel: sharedLabel(p),
-            }))}
+            items={nav.items}
             activePath={pathname}
             authed={!!user}
+            onOpen={nav.onOpen}
+            onTogglePin={nav.onTogglePin}
           />
         </div>
       </ScrollArea>

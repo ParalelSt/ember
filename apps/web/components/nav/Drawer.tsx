@@ -15,6 +15,8 @@ import { NavLinks } from '@/components/nav/NavLinks';
 import { WhatsNewLink } from '@/components/changelog/WhatsNewLink';
 import { useChangelog } from '@/hooks/useChangelog';
 import { PlaylistNavList } from '@/components/nav/PlaylistNavList';
+import { FadeScroll } from '@/components/nav/FadeScroll';
+import { useNavPlaylists } from '@/hooks/useNavPlaylists';
 import { Avatar } from '@/components/primitives/Avatar';
 import { FlameIcon, PlusIcon } from '@/components/icons';
 import { BASE_NAV, ADMIN_NAV_ITEM } from '@/lib/nav';
@@ -34,6 +36,15 @@ export function Drawer({ open, onOpenChange }: Props) {
   const { hasNew } = useChangelog();
   const { data: importJobs = [] } = useImportJobs();
   const importStates = navImportStates(importJobs);
+  const nav = useNavPlaylists(
+    playlists.map((p) => ({
+      id: p.id,
+      name: p.name,
+      href: hrefFor({ kind: 'playlist', id: p.id }),
+      importState: importStates[p.id],
+      sharedLabel: sharedLabel(p),
+    })),
+  );
   const setSearchOpen = useUiStore((s) => s.setSearchOpen);
 
   const close = () => onOpenChange(false);
@@ -89,20 +100,16 @@ export function Drawer({ open, onOpenChange }: Props) {
             </Button>
           )}
         </div>
-        <div className="flex-1 overflow-y-auto px-2 py-2 flex flex-col gap-0.5">
+        <FadeScroll className="px-2 py-2 flex flex-col gap-0.5">
           <PlaylistNavList
-            items={playlists.map((p) => ({
-              id: p.id,
-              name: p.name,
-              href: hrefFor({ kind: 'playlist', id: p.id }),
-              importState: importStates[p.id],
-              sharedLabel: sharedLabel(p),
-            }))}
+            items={nav.items}
             activePath={pathname}
             authed={!!user}
             onNavigate={close}
+            onOpen={nav.onOpen}
+            onTogglePin={nav.onTogglePin}
           />
-        </div>
+        </FadeScroll>
 
         {user && (
           <div className="border-t border-sidebar-border px-2 py-3">
