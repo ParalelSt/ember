@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isPlayableOffline, isUnavailable, nextIndex, nextPlayable, nextPlayableOffline, prevIndex, wrapPoint, type QueueNavState } from './queueNav';
+import { PLAY_HISTORY_MAX, isPlayableOffline, isUnavailable, nextIndex, nextPlayable, nextPlayableOffline, prevIndex, previousFromHistory, rememberPlayed, wrapPoint, type QueueNavState } from './queueNav';
 
 /** A queue of `n` placeholder entries; only the length is read. */
 function q(n: number) {
@@ -150,6 +150,61 @@ describe('prevIndex', () => {
 
   it('returns null for an empty queue', () => {
     expect(prevIndex(state({ queue: q(0), index: 0, loopMode: 'all' }), 0)).toBeNull();
+  });
+
+  it('goes to the song the history names, not the one above, in the first 3 seconds', () => {
+    // Played index 0, then tapped index 3: Previous goes back to 0, not 2.
+    expect(prevIndex(state({ queue: q(5), index: 3 }), 0, 0)).toEqual({ index: 0 });
+    expect(prevIndex(state({ queue: q(5), index: 3 }), 3, 0)).toEqual({ index: 0 });
+  });
+
+  it('still restarts the current song past 3 seconds, history or not', () => {
+    expect(prevIndex(state({ queue: q(5), index: 3 }), 3.01, 0)).toEqual({ restart: true });
+  });
+
+  it('follows the history over the loop-all wrap on the first track', () => {
+    expect(prevIndex(state({ queue: q(5), index: 0, loopMode: 'all' }), 0, 3)).toEqual({ index: 3 });
+  });
+
+  it('ignores a history index outside the queue', () => {
+    expect(prevIndex(state({ queue: q(5), index: 2 }), 0, 9)).toEqual({ index: 1 });
+    expect(prevIndex(state({ queue: q(5), index: 2 }), 0, null)).toEqual({ index: 1 });
+  });
+});
+
+describe('play history', () => {
+  const tr = (id: string, dead = false) => ({ id, unavailableAt: dead ? '2026-10-04T00:00:00.000Z' : null });
+  const queue = ['a', 'b', 'c', 'd', 'e'].map((id) => tr(id));
+
+  it('rememberPlayed pushes on top and keeps only the newest entries', () => {
+    expect(rememberPlayed([], 'a')).toEqual(['a']);
+    expect(rememberPlayed(['a'], 'b')).toEqual(['a', 'b']);
+    const full = Array.from({ length: PLAY_HISTORY_MAX }, (_, i) => `t${i}`);
+    const out = rememberPlayed(full, 'new');
+    expect(out).toHaveLength(PLAY_HISTORY_MAX);
+    expect(out[0]).toBe('t1');
+    expect(out[out.length - 1]).toBe('new');
+  });
+
+  it('previousFromHistory pops the song actually played before', () => {
+    // a played, then d tapped: history [a], current d (3).
+    expect(previousFromHistory(queue, 3, ['a'])).toEqual({ index: 0, history: [] });
+    expect(previousFromHistory(queue, 3, ['b', 'a'])).toEqual({ index: 0, history: ['b'] });
+  });
+
+  it('is null with an empty history', () => {
+    expect(previousFromHistory(queue, 3, [])).toBeNull();
+  });
+
+  it('skips entries no longer in the queue, unavailable, or the song playing', () => {
+    const q2 = [tr('a'), tr('b', true), tr('c'), tr('d')];
+    expect(previousFromHistory(q2, 3, ['a', 'gone', 'b', 'd'])).toEqual({ index: 0, history: [] });
+    expect(previousFromHistory(q2, 3, ['gone', 'b'])).toBeNull();
+  });
+
+  it('picks the copy nearest the current song when a song is listed twice', () => {
+    const q2 = [tr('a'), tr('b'), tr('c'), tr('a'), tr('d')];
+    expect(previousFromHistory(q2, 4, ['a'])).toEqual({ index: 3, history: [] });
   });
 });
 

@@ -193,8 +193,20 @@ internal fun castDevicesJs(devices: List<CastDevice>): JSObject = JSObject().app
 
 /** The app's Previous button, as everywhere else in Ember (the web player,
  *  the notification, the car): past the first 3 s it starts the song over,
- *  before that it goes to the song before. It used to always go back a song. */
+ *  before that it goes to the song played before (the service's
+ *  PlayHistory, through the session's LevelPlayer), or the song above when
+ *  there is no history. It used to always go back a song. */
 internal fun previous(player: Player) = player.seekToPrevious()
+
+/** The app's Previous button on the app's MediaController: the service runs
+ *  it (COMMAND_PREVIOUS), so the app never sees Media3's locally masked guess
+ *  (the song above) before the song the history says. A service that does
+ *  not offer the command gets the plain seekToPrevious. */
+internal fun previous(controller: MediaController) {
+    val command = SessionCommand(EmberPlaybackService.COMMAND_PREVIOUS, Bundle.EMPTY)
+    if (controller.isSessionCommandAvailable(command)) controller.sendCustomCommand(command, Bundle.EMPTY)
+    else previous(controller as Player)
+}
 
 /** The web UI's handle on the native player. Commands in, state out.
  *
