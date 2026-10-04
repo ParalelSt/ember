@@ -1,3 +1,9 @@
+# 0.7.17: Playlists in the menu
+
+**Host: run `./update.sh` as usual (no new packages).** It restarts
+PocketBase, which adds the `navPlaylists` field to users (pins and recent
+order for the menu). Web only: the apps stay at 0.4.12.
+
 # 0.7.16: Songs that cannot play, artist pages (apps 0.4.12)
 
 **Host: run `./update.sh` as usual (no new packages, no database changes).**

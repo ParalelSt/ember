@@ -21,6 +21,17 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    id: 'sidebar-playlists',
+    version: '0.7.17',
+    date: '2026-10-04',
+    title: 'Playlists in the menu',
+    summary: 'Playlists in the menu no longer get squashed, and you can pin your favourites to the top.',
+    bullets: [
+      'Every playlist keeps a readable size, and a long list scrolls with faded edges instead of squeezing the names.',
+      'Hold a playlist on your phone (or right-click on a computer) to pin it. Pinned playlists stay on top, the rest are ordered by what you opened last, and your pins follow you to every device.',
+    ],
+  },
+  {
     id: 'songs-that-cannot-play',
     version: '0.7.16',
     date: '2026-10-01',
