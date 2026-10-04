@@ -5,6 +5,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
+import { Button } from '@/components/ui/button';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { TrackSearchPicker } from '@/components/track/menus/TrackSearchPicker';
 import { CollectionPage } from '@/components/library/CollectionPage';
@@ -46,6 +47,7 @@ import {
   useExecuteRenamePlaylist,
   useExecuteReplaceInPlaylist,
   useExecuteUpdatePlaylistArtwork,
+  isPlaylistGone,
   useQueryPlaylist,
   QK,
 } from '@/hooks/useLibrary';
@@ -60,7 +62,7 @@ const addedBy = (t: Track) => (t as CollectionTrack).addedBy;
 export default function PlaylistPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const router = useRouter();
-  const { data, isLoading, error } = useQueryPlaylist(id);
+  const { data, isLoading, error, refetch } = useQueryPlaylist(id);
   const deletePlaylist = useExecuteDeletePlaylist();
   const removeFromPlaylist = useExecuteRemoveFromPlaylist();
   const addToPlaylist = useExecuteAddToPlaylist();
@@ -139,11 +141,21 @@ export default function PlaylistPage({ params }: { params: Promise<{ id: string 
     }
   };
 
-  if (error) {
+  // A refetch that failed for a passing reason keeps the songs it had on
+  // screen (React Query holds on to them); only a playlist that is gone, or
+  // one that never loaded, swaps them for the message.
+  if (error && (!data || isPlaylistGone(error))) {
+    const gone = isPlaylistGone(error);
     return (
       <EmptyState>
-        Playlist not found.
+        {gone ? 'Playlist not found.' : "Couldn't load this playlist right now."}
         <br />
+        {!gone && (
+          <>
+            <Button variant="ghost" className="mt-2 text-ember" onClick={() => void refetch()}>Try again</Button>
+            <br />
+          </>
+        )}
         <Link href="/library" className="text-ember hover:underline">Back to library</Link>
       </EmptyState>
     );

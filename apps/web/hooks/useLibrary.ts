@@ -107,14 +107,29 @@ function fetchPlaylist(qc: QueryClient, id: string) {
   };
 }
 
+/** The playlist is gone for this person: deleted, or they were removed
+ *  from it (the server answers both with a 404). Anything else (the host
+ *  restarting, a dropped connection) is passing. */
+export function isPlaylistGone(error: unknown): boolean {
+  const status = (error as { status?: number } | null)?.status;
+  return status === 404 || status === 403;
+}
+
+/** How often an open playlist asks again: a collaborative one follows the
+ *  other people's edits, and stops only once it is gone (the page says so
+ *  instead). A poll that fails for a passing reason keeps the songs on
+ *  screen and tries again. */
+export function playlistPollMs(state: { status: string; data?: PlaylistData; error: unknown }): number | false {
+  if (state.status === 'error' && isPlaylistGone(state.error)) return false;
+  return state.data?.playlist.collaborative ? COLLAB_POLL_MS : false;
+}
+
 export function useQueryPlaylist(id: string) {
   const qc = useQueryClient();
   return useQuery({
     queryKey: QK.playlist(id),
     queryFn: fetchPlaylist(qc, id),
-    // A collaborative playlist follows the other people's edits. Stops once
-    // it fails (deleted, or you were removed): the page says so instead.
-    refetchInterval: (q) => (q.state.status !== 'error' && q.state.data?.playlist.collaborative ? COLLAB_POLL_MS : false),
+    refetchInterval: (q) => playlistPollMs(q.state),
   });
 }
 
