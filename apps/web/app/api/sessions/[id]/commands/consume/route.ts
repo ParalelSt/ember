@@ -16,10 +16,20 @@ export const POST = withRequestLog('sessions/[id]/commands/consume', async (_req
       filter: `session = "${session.id}"`,
       sort: 'created',
     });
+    // A command is this poll's only if this poll deleted it. Two polls that
+    // overlap (a slow answer, a second host tab) read the same rows: the one
+    // that loses a delete (404) leaves that command to the other, instead of
+    // running it twice or failing and dropping the ones it did win.
+    const mine: typeof pending = [];
     for (const c of pending) {
-      await pb.collection('session_commands').delete(c.id);
+      try {
+        await pb.collection('session_commands').delete(c.id);
+        mine.push(c);
+      } catch (e) {
+        if ((e as { status?: number } | undefined)?.status !== 404) throw e;
+      }
     }
-    return Response.json({ commands: pending.map((c) => ({ type: String(c.type) })) });
+    return Response.json({ commands: mine.map((c) => ({ type: String(c.type) })) });
   } catch (e) {
     if (e instanceof UnauthorizedError) return unauthorizedResponse();
     return fromError(e);
