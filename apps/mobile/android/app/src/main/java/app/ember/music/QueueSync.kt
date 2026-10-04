@@ -41,7 +41,10 @@ object QueueSync {
      *  ExoPlayer itself in tests. [startMs] is where a song that has to
      *  start does start (the app restoring its saved queue resumes where the
      *  listener was); a song that keeps playing keeps its own position. */
-    fun apply(player: Player, items: List<MediaItem>, index: Int, startMs: Long = 0) {
+    fun apply(player: Player, items: List<MediaItem>, requested: Int, startMs: Long = 0) {
+        // The app's index comes over the bridge as it is: one outside the
+        // queue made setMediaItems throw on the main thread (the app died).
+        val index = if (items.isEmpty()) requested else requested.coerceIn(0, items.size - 1)
         val current = (0 until player.mediaItemCount).map { player.getMediaItemAt(it).mediaId }
         val at = player.currentMediaItemIndex
         when (val p = plan(current, at, items.map { it.mediaId }, index)) {

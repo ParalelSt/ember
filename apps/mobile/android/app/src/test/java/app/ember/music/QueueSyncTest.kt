@@ -132,4 +132,18 @@ class QueueSyncTest {
         QueueSync.apply(player, items("abcd"), 1, startMs = 95_000)
         assertKeptPlaying("abcd", 1)
     }
+
+    /** The app's index comes over the bridge unchecked. A new queue with
+     *  an index past its end threw inside the player on the main thread,
+     *  which crashed the whole app; on the same queue it was dropped. */
+    @Test fun `an index outside the queue goes to the nearest song instead of crashing`() {
+        playing("abc", 1)
+        QueueSync.apply(player, items("xy"), 5)
+        assertEquals("xy", ids())
+        assertEquals(1, player.currentMediaItemIndex)
+        QueueSync.apply(player, items("xy"), -1)
+        assertEquals(0, player.currentMediaItemIndex)
+        QueueSync.apply(player, items("xy"), 2)
+        assertEquals(1, player.currentMediaItemIndex)
+    }
 }
