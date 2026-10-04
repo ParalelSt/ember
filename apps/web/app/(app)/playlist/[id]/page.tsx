@@ -27,6 +27,7 @@ import { isActive } from '@/lib/import/jobState';
 import { importRows, itemForTrack } from '@/lib/import/rows';
 import type { ImportItem } from '@/lib/import/types';
 import { useTrackActions } from '@/hooks/useTrackActions';
+import { isAlreadyInPlaylist } from '@/lib/playlistAdd';
 import { countLabel, pinIdFor } from '@/lib/collections';
 import { useCollectionPlayback } from '@/hooks/useCollectionPlayback';
 import { useCollectionSort } from '@/hooks/useCollectionSort';
@@ -133,8 +134,7 @@ export default function PlaylistPage({ params }: { params: Promise<{ id: string 
       await addToPlaylist.mutateAsync({ id, track });
       toast.success(`Added "${track.title}"`);
     } catch (e) {
-      const status = (e as { status?: number } | undefined)?.status;
-      if (status === 400) toast.message(`"${track.title}" is already in this playlist`);
+      if (isAlreadyInPlaylist(e)) toast.message(`Already in ${name || 'this playlist'}`);
       else toast.error(`Couldn't add "${track.title}", please try again.`);
     }
   };

@@ -10,7 +10,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { CreatePlaylistDialog } from '@/components/track/menus/CreatePlaylistDialog';
-import { ArrowDownIcon, ArrowUpIcon, PlusIcon, RefreshIcon } from '@/components/icons';
+import { ArrowDownIcon, ArrowUpIcon, CheckIcon, PlusIcon, RefreshIcon } from '@/components/icons';
 import type { TrackMoves } from './trackMoves';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { formatCount } from '@/lib/format';
@@ -18,7 +18,9 @@ import {
   useExecuteAddToPlaylist,
   useExecuteCreatePlaylist,
   useQueryPlaylists,
+  useQueryPlaylistsContaining,
 } from '@/hooks/useLibrary';
+import { isAlreadyInPlaylist } from '@/lib/playlistAdd';
 import type { Track } from '@/types/track';
 import { cn } from '@/lib/utils';
 
@@ -51,6 +53,10 @@ export function AddToPlaylistMenu({
     onOpenChange?.(next);
   };
   const [createOpen, setCreateOpen] = useState(false);
+  // The playlists that already have this song: marked "Added" and not
+  // offered again. Asked for when the menu opens.
+  const { data: containingIds } = useQueryPlaylistsContaining(track.id, open);
+  const containing = new Set(containingIds ?? []);
 
   if (!user) return null;
 
@@ -60,11 +66,10 @@ export function AddToPlaylistMenu({
       await addToPlaylist.mutateAsync({ id, track });
       toast.success(`Added "${track.title}" to ${playlistName}`);
     } catch (e) {
-      // Unique-index conflict means the track is already in the playlist;
+      // Already there (the server's 409) is an answer, not a failure;
       // every other failure is real.
-      const status = (e as { status?: number } | undefined)?.status;
-      if (status === 400) toast.message(`"${track.title}" is already in ${playlistName}`);
-      else toast.error(`Couldn't add "${track.title}" — please try again.`);
+      if (isAlreadyInPlaylist(e)) toast.message(`Already in ${playlistName}`);
+      else toast.error(`Couldn't add "${track.title}", please try again.`);
     }
   };
 
@@ -83,7 +88,7 @@ export function AddToPlaylistMenu({
       }
       toast.success(`Created "${playlist.name}" with ${formatCount(tracks.length, 'track')}`);
     } catch (e) {
-      toast.error(`Couldn't create the playlist — please try again.`);
+      toast.error(`Couldn't create the playlist, please try again.`);
     }
   };
 
@@ -125,11 +130,24 @@ export function AddToPlaylistMenu({
           <PlusIcon className="h-3.5 w-3.5" /> New playlist
         </DropdownMenuItem>
         {playlists.length > 0 && <DropdownMenuSeparator />}
-        {playlists.map((p) => (
-          <DropdownMenuItem key={p.id} onClick={() => add(p.id, p.name)} className="truncate">
-            {p.name}
-          </DropdownMenuItem>
-        ))}
+        {playlists.map((p) => {
+          const has = containing.has(p.id);
+          return (
+            <DropdownMenuItem
+              key={p.id}
+              onClick={has ? undefined : () => add(p.id, p.name)}
+              disabled={has}
+              className="truncate"
+            >
+              <span className="truncate">{p.name}</span>
+              {has && (
+                <span className="ml-auto flex shrink-0 items-center gap-inset text-xs text-muted-foreground">
+                  <CheckIcon className="h-3.5 w-3.5" aria-hidden /> Added
+                </span>
+              )}
+            </DropdownMenuItem>
+          );
+        })}
       </DropdownMenuContent>
       <CreatePlaylistDialog
         open={createOpen}
