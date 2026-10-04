@@ -785,6 +785,30 @@ describe('TabsPage and the player', () => {
     await waitFor(() => expect(router.replace).toHaveBeenCalledWith('/tabs/upload%3Asong2'));
   });
 
+  it('keeps following when the player skips twice before the first move lands', async () => {
+    const view = wrap(<TabsPage trackId="upload:song1" />);
+    await screen.findByTestId('tab-score');
+    const at = (page: string) =>
+      view.rerender(
+        <QueryClientProvider client={new QueryClient()}>
+          <TabsPage trackId={page} />
+        </QueryClientProvider>,
+      );
+    player.current = { ...SONG, id: 'upload:song2' };
+    at('upload:song1');
+    await waitFor(() => expect(router.replace).toHaveBeenCalledWith('/tabs/upload%3Asong2'));
+    // Skipped again while the page is still on song 1's address.
+    player.current = { ...SONG, id: 'upload:song3' };
+    at('upload:song1');
+    await waitFor(() => expect(router.replace).toHaveBeenCalledWith('/tabs/upload%3Asong3'));
+    // The two moves land in turn; the page ends up following song 3.
+    at('upload:song2');
+    at('upload:song3');
+    player.current = { ...SONG, id: 'upload:song4' };
+    at('upload:song3');
+    await waitFor(() => expect(router.replace).toHaveBeenLastCalledWith('/tabs/upload%3Asong4'));
+  });
+
   it('Back goes back', async () => {
     wrap(<TabsPage trackId="upload:song1" />);
     fireEvent.click(await screen.findByRole('button', { name: 'Back' }));

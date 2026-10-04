@@ -131,10 +131,19 @@ export function TabsPage({ trackId }: { trackId: string }) {
   // The player moved on to another song while this page followed it.
   const currentId = player.current?.id ?? null;
   const prevCurrent = useRef(currentId);
+  // The song the page is on its way to: a second skip that comes before the
+  // first move lands still finds the page following (it is going to the
+  // song that just ended), instead of judging it by the old address and
+  // leaving it stuck on a tab that is no longer playing.
+  const headingTo = useRef<string | null>(null);
   useEffect(() => {
-    const next = followTrackChange(trackId, prevCurrent.current, currentId);
+    if (headingTo.current === trackId) headingTo.current = null;
+    const next = followTrackChange(headingTo.current ?? trackId, prevCurrent.current, currentId);
     prevCurrent.current = currentId;
-    if (next) router.replace(next);
+    if (next && currentId) {
+      headingTo.current = currentId;
+      router.replace(next);
+    }
   }, [currentId, trackId, router]);
 
   // Back to the page before when it was Ember's, else home: the same as a
