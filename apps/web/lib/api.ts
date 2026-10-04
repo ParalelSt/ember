@@ -11,6 +11,7 @@ import type { FlowState as GoogleFlowState, GooglePreview } from '@/lib/import/g
 import type { TabSummary } from '@/lib/tabSources';
 import type { TabTiming } from '@/lib/tabSync';
 import type { StoredPlugins } from '@/lib/pluginSettings';
+import type { NavPatch, NavPrefs } from '@/lib/navPlaylists';
 import type { PresetId, ThemeDoc, ThemeInputs } from '@/lib/theme/model';
 import type { SavedTheme, ThemeSelection, ThemesList } from '@/lib/theme/saved';
 import type {
@@ -446,6 +447,11 @@ export const api = {
       method: 'PATCH',
       body: patch,
     }),
+
+  // Sidebar / Drawer playlist order: pins and last-opened times, per user.
+  getNavPlaylists: () => req<NavPrefs>('/nav-playlists'),
+  patchNavPlaylists: (patch: NavPatch) =>
+    req<NavPrefs>('/nav-playlists', { method: 'PATCH', body: patch }),
 
   // Themes (Settings > Appearance). The active theme follows the account;
   // saved themes are a list per person, each optionally shared with
