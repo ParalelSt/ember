@@ -65,13 +65,13 @@ beforeEach(() => {
 describe('POST /api/recent-searches', () => {
   it('a second play at the same moment bumps the row the first one made', async () => {
     raceOnce = true;
-    const res = await POST(request({ track }));
+    const res = await POST(request({ track }), {} as never);
     expect(res.status).toBe(201);
     expect(rows).toHaveLength(1);
   });
 
   it('a first play still creates the row', async () => {
-    const res = await POST(request({ track }));
+    const res = await POST(request({ track }), {} as never);
     expect(res.status).toBe(201);
     expect(rows).toHaveLength(1);
   });

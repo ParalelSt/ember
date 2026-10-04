@@ -457,8 +457,8 @@ describe('ImportRunner, a transfer into the likes', () => {
     await r.tick();
     // The first claim has nothing to skip; the one right after a yield
     // names the transfer, so the import waiting behind it goes first.
-    expect(m.store.claimNext.mock.calls[0][2]).toBeUndefined();
-    expect(m.store.claimNext.mock.calls[1][2]).toBe('j1');
+    expect(vi.mocked(m.store.claimNext).mock.calls[0][2]).toBeUndefined();
+    expect(vi.mocked(m.store.claimNext).mock.calls[1][2]).toBe('j1');
   });
 
   it('never steps aside when nothing else is waiting', async () => {

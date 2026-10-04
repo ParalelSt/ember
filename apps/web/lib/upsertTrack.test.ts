@@ -70,7 +70,7 @@ describe('upsertCatalogTrack: the stream link is the server\'s, not the caller\'
     const c = client(async () => ({ id: 'rec1' }));
     createCatalogClient.mockResolvedValue(c.pb);
     await upsertCatalogTrack(t);
-    return c.create.mock.calls[0][0] as Record<string, unknown>;
+    return (c.create.mock.calls[0] as unknown[])[0] as Record<string, unknown>;
   }
 
   it('builds a YouTube song\'s link from its id, ignoring one sent along', async () => {
