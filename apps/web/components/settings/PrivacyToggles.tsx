@@ -83,7 +83,7 @@ export function PrivacyToggles() {
     <div className="mt-12 pt-6 border-t border-border max-w-xl">
       <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">Privacy</h3>
       {failed && (
-        <p className="mt-2 text-xs text-muted-foreground">
+        <p className="mt-cluster text-xs text-muted-foreground">
           Couldn&apos;t load your privacy settings.{' '}
           <button type="button" className="text-ember underline-offset-2 hover:underline" onClick={() => void load()}>
             Try again
