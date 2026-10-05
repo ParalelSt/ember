@@ -21,6 +21,44 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    id: 'carlist-fixes-0719',
+    version: '0.7.19',
+    date: '2026-10-05',
+    title: 'Carlist, steadier',
+    summary: 'A carlist survives a weak signal, skips once when several people press Skip, and ends by itself when nobody uses it.',
+    bullets: [
+      'A few seconds without signal no longer replaces the carlist with "Carlist not found".',
+      'When several people press Skip on the same song, only that song is skipped.',
+      'A carlist with no song change for 12 hours ends by itself, and its code stops working. Radio comes back on the host\'s device once it ends.',
+    ],
+  },
+  {
+    id: 'fixes-0719',
+    version: '0.7.19',
+    date: '2026-10-05',
+    title: 'Fixes',
+    summary: 'A big round of fixes across search, playlists, tabs, uploads and the apps, plus privacy fixes.',
+    bullets: [
+      'Liking and unliking quickly sticks, "Searching too fast" clears by itself, and a YouTube outage no longer looks like "No tracks" or "not found" on artist pages.',
+      'Playlists: the "already in" marks stay right, a new song never lands at the top by mistake, and deleted playlists no longer crowd the menu.',
+      'Tabs follow the song after quick skips, Line it up no longer spins forever, and the metronome stays quiet after a pause.',
+      'Uploads: a file that is too big says so, and the upload dialog resets properly. Privacy switches that could not load stay off until they do.',
+      'Your likes, plays and private playlists are better protected from other members.',
+    ],
+  },
+  {
+    id: 'apps-fixes-0719',
+    version: '0.7.19',
+    date: '2026-10-05',
+    title: 'App fixes',
+    summary: 'Android downloads and Previous behave, and the desktop app is safer.',
+    bullets: [
+      'Android: Previous gets back past a song that would not play, also offline; casting no longer counts a song twice; radio only adds to the queue it was meant for.',
+      'Android: downloads pick up again after the app is closed, a failed song can be retried from every list it is in, and the app no longer crashes when Android pauses long downloads.',
+      'Desktop: an odd seek no longer closes the app, and your sign-in is only ever sent to your Ember server.',
+    ],
+  },
+  {
     id: 'carlist-qr',
     version: '0.7.18',
     date: '2026-10-04',

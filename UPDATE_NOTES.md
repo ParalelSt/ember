@@ -1,3 +1,11 @@
+# 0.7.19: Carlist and a big round of fixes (apps 0.4.14)
+
+**Host: run `./update.sh` as usual (no new packages).** It restarts PocketBase,
+which applies the tightened filter guard hook (closes a way to read other
+members' likes and plays). Idle carlists now end on the server after 12 hours.
+The Android and desktop fixes need the new apps, 0.4.14 (Android versionCode
+19), which the `v0.4.14` tag builds.
+
 # 0.7.18: Carlist sharing, playback and fixes (apps 0.4.13)
 
 **Host: run `./update.sh` as usual (no new packages).** It restarts PocketBase,
