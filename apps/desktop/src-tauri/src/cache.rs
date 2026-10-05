@@ -703,11 +703,14 @@ fn write_index(root: &Path, idx: &Index) -> Result<(), String> {
 
 #[tauri::command]
 pub async fn cache_prefetch(
+    app: tauri::AppHandle,
     cache: State<'_, AudioCache>,
     url: String,
     key: String,
     cookie: Option<String>,
 ) -> Result<PrefetchOutcome, String> {
+    // Only for the Ember server: a Jamendo prefetch must not carry it.
+    let cookie = crate::audio::session_cookie_for_app(&app, &url, cookie);
     let client = crate::audio::http_client(cookie.as_deref())?;
     Ok(cache.prefetch(client, &url, &key).await)
 }
