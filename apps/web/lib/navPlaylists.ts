@@ -72,6 +72,21 @@ export function applyNavPatch(prefs: NavPrefs, patch: NavPatch, now: number): Na
   return { pinned, opened: prefs.opened };
 }
 
+/** Whether a patch could push something out: the pins or the open times
+ *  are at their cap. */
+export function atNavCap(prefs: NavPrefs): boolean {
+  return prefs.pinned.length >= MAX_PINNED || Object.keys(prefs.opened).length >= MAX_OPENED;
+}
+
+/** The prefs without playlists that are gone (deleted, or a share that
+ *  ended), so they stop using up the caps. `live` is every playlist id the
+ *  user can still open. */
+export function pruneNavPrefs(prefs: NavPrefs, live: ReadonlySet<string>): NavPrefs {
+  const opened: Record<string, number> = {};
+  for (const [id, at] of Object.entries(prefs.opened)) if (live.has(id)) opened[id] = at;
+  return { pinned: prefs.pinned.filter((id) => live.has(id)), opened };
+}
+
 /** `items` ordered by the prefs; each also says whether it is pinned. */
 export function orderNavPlaylists<T extends { id: string }>(items: T[], prefs: NavPrefs): (T & { pinned: boolean })[] {
   const pinRank = new Map(prefs.pinned.map((id, i) => [id, i]));

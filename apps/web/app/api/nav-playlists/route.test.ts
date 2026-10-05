@@ -14,6 +14,12 @@ vi.mock('@/lib/auth', () => ({
 vi.mock('@/lib/upsertTrack', () => ({
   fromError: (e: unknown) => Response.json({ error: String(e) }, { status: 500 }),
 }));
+const ownIds = vi.fn(async (): Promise<{ id: string }[]> => []);
+const sharedWithMock = vi.fn(async (): Promise<{ id: string }[]> => []);
+vi.mock('@/lib/playlistAccess', () => ({
+  collabClient: async () => ({}),
+  sharedWith: () => sharedWithMock(),
+}));
 vi.mock('@/lib/logger/withRequestLog', () => ({
   withRequestLog: (_route: string, handler: unknown) => handler,
 }));
@@ -30,7 +36,14 @@ beforeEach(() => {
   getOne.mockReset();
   update.mockReset();
   requireUserMock.mockReset();
-  requireUserMock.mockResolvedValue({ user: { id: 'u1' }, pb: { collection: () => ({ getOne, update }) } });
+  ownIds.mockReset();
+  ownIds.mockResolvedValue([]);
+  sharedWithMock.mockReset();
+  sharedWithMock.mockResolvedValue([]);
+  requireUserMock.mockResolvedValue({
+    user: { id: 'u1' },
+    pb: { collection: (name: string) => (name === 'playlists' ? { getFullList: ownIds } : { getOne, update }) },
+  });
   getOne.mockImplementation(async () => ({ ...row }));
   update.mockImplementation(async (_id: string, patch: Record<string, unknown>) => {
     row = { ...row, ...patch };
@@ -87,5 +100,35 @@ describe('/api/nav-playlists', () => {
   it('keeps two quick PATCHes from dropping each other', async () => {
     await Promise.all([call(PATCH, { pin: 'a', pinned: true }), call(PATCH, { pin: 'b', pinned: true })]);
     expect((row.navPlaylists as { pinned: string[] }).pinned).toEqual(['b', 'a']);
+  });
+
+  it('deleted playlists do not use up the pin cap: a live pin survives a new one', async () => {
+    const dead = Array.from({ length: 199 }, (_, i) => `dead${i}`);
+    row = { navPlaylists: { pinned: [...dead, 'live1'], opened: {} } };
+    ownIds.mockResolvedValue([{ id: 'live1' }, { id: 'fresh' }]);
+    const res = await call(PATCH, { pin: 'fresh', pinned: true });
+    expect((await res.json()).pinned).toEqual(['fresh', 'live1']);
+  });
+
+  it('deleted playlists do not use up the opened cap, and a shared playlist is kept', async () => {
+    const opened: Record<string, number> = {};
+    for (let i = 0; i < 300; i++) opened[`dead${i}`] = 1000 + i;
+    opened.old = 1;
+    opened.shared = 2;
+    row = { navPlaylists: { pinned: [], opened } };
+    ownIds.mockResolvedValue([{ id: 'old' }, { id: 'new1' }]);
+    sharedWithMock.mockResolvedValue([{ id: 'shared' }]);
+    vi.spyOn(Date, 'now').mockReturnValue(9999);
+    const res = await call(PATCH, { opened: 'new1' });
+    vi.restoreAllMocks();
+    expect((await res.json()).opened).toEqual({ old: 1, shared: 2, new1: 9999 });
+  });
+
+  it('when the shared list cannot be read, nothing is pruned', async () => {
+    row = { navPlaylists: { pinned: Array.from({ length: 200 }, (_, i) => `p${i}`), opened: {} } };
+    sharedWithMock.mockRejectedValue(new Error('admin down'));
+    const res = await call(PATCH, { pin: 'p0', pinned: false });
+    expect(res.status).toBe(200);
+    expect((await res.json()).pinned).toHaveLength(199);
   });
 });
