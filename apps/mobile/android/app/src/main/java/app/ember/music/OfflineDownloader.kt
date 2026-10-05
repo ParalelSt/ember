@@ -61,9 +61,16 @@ class OfflineDownloader(
                 // where "gave up on this track" is actually decided.
                 NativeLog.error("offline", "download failed: $reason", JSONObject()
                     .put("pinId", pinId).put("trackId", track.getString("id")).put("reason", reason))
-                failed.getOrPut(pinId) { Collections.synchronizedSet(HashSet()) }.add(track.getString("id"))
-                // putIfAbsent is API 24 and minSdk here is 23, so do it by hand.
-                synchronized(failedReason) { if (failedReason[pinId] == null) failedReason[pinId] = reason }
+                // Every pin that lists the song failed on it, not just the one
+                // it was fetched for: another list holding it would otherwise
+                // show it as neither downloaded nor failed, with no Retry.
+                val trackId = track.getString("id")
+                for (p in (store.pinsWith(trackId) + pinId).distinct()) {
+                    if (isCancelled(p)) continue
+                    failed.getOrPut(p) { Collections.synchronizedSet(HashSet()) }.add(trackId)
+                    // putIfAbsent is API 24 and minSdk here is 23, so do it by hand.
+                    synchronized(failedReason) { if (failedReason[p] == null) failedReason[p] = reason }
+                }
             }
             onDone()
         }

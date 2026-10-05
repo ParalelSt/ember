@@ -56,13 +56,18 @@ class OfflineStore(private val root: File) {
 
     @Synchronized fun removePin(id: String) { pins.remove(id); prune(); save() }
 
-    /** Tracks that still need their audio, in pin order, once each. */
-    @Synchronized fun pending(): List<Pair<String, JSONObject>> {
-        val seen = HashSet<String>()
-        return pins.values.flatMap { pin -> pin.trackIds.mapNotNull { tid ->
-            if (!seen.add(tid) || audioFileFor(tid).exists()) null else tracks[tid]?.let { pin.id to it }
+    /** Tracks that still need their audio, in pin order: once per pin, so a
+     *  track two pins share is listed under both. The downloader skips the
+     *  pins that gave up on it (or were cancelled); listing it only under the
+     *  first pin left the second one unable to retry it, ever. A track that
+     *  downloads under one pin stops being pending for all of them. */
+    @Synchronized fun pending(): List<Pair<String, JSONObject>> =
+        pins.values.flatMap { pin -> pin.trackIds.distinct().mapNotNull { tid ->
+            if (audioFileFor(tid).exists()) null else tracks[tid]?.let { pin.id to it }
         } }
-    }
+
+    /** The pins that list this track. */
+    @Synchronized fun pinsWith(trackId: String): List<String> = pins.values.filter { trackId in it.trackIds }.map { it.id }
 
     /** A download that finishes after its pin was removed must not resurrect
      *  the file: prune() already ran, so nothing would ever delete it again.
