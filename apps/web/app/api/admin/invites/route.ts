@@ -9,6 +9,7 @@ import {
 import { createAdminClient } from '@/lib/pocketbase/server';
 import { fromError, jsonError } from '@/lib/upsertTrack';
 import { withRequestLog } from '@/lib/logger/withRequestLog';
+import { isUniqueHit } from '@/lib/pocketbase/uniqueHit';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -57,8 +58,10 @@ export const POST = withRequestLog('admin/invites', async (req: NextRequest) => 
         },
       });
     } catch (e) {
-      const status = (e as { status?: number }).status;
-      if (status === 400) return jsonError('That email is already on the list', 409);
+      // Only the unique index means "already invited"; any other 400 (an
+      // address PocketBase's email check refuses) falls through to its
+      // own message.
+      if (isUniqueHit(e, ['email'])) return jsonError('That email is already on the list', 409);
       throw e;
     }
   } catch (e) {
