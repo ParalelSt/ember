@@ -13,7 +13,7 @@ vi.mock('@/components/ui/dialog', () => ({
   DialogDescription: ({ children }: PropsWithChildren) => <p>{children}</p>,
 }));
 vi.mock('@/components/ui/button', () => ({
-  Button: ({ children, variant: _v, ...rest }: ComponentProps<'button'> & { variant?: string }) => <button {...rest}>{children}</button>,
+  Button: ({ children, ...rest }: ComponentProps<'button'>) => <button {...rest}>{children}</button>,
 }));
 vi.mock('@/components/ui/input', () => ({ Input: (props: ComponentProps<'input'>) => <input {...props} /> }));
 
@@ -75,5 +75,27 @@ describe('UploadTrackDialog', () => {
     fireEvent.click(screen.getByRole('button', { name: 'reopen' }));
     expect(screen.getByPlaceholderText('Title')).toHaveValue('');
     expect(screen.getByRole('button', { name: 'Upload' })).toBeDisabled();
+  });
+
+  it('picking another file replaces the first file\'s filled-in title, artist and length', async () => {
+    render(<Harness />);
+    await pick('First Band - First Song.mp3');
+    await pick('Second Band - Second Song.mp3');
+    expect(screen.getByPlaceholderText('Title')).toHaveValue('Second Song');
+    expect(screen.getByPlaceholderText('Artist')).toHaveValue('Second Band');
+
+    // The second file's length lands first; the first file's late answer
+    // must not overwrite it.
+    await act(async () => pendingMeta.get('blob:2')!(200));
+    await act(async () => pendingMeta.get('blob:1')!(100));
+    expect(screen.getByText(/3:20/)).toBeInTheDocument();
+  });
+
+  it('a title the member typed is kept when they pick another file', async () => {
+    render(<Harness />);
+    await pick('First Band - First Song.mp3');
+    fireEvent.change(screen.getByPlaceholderText('Title'), { target: { value: 'My own title' } });
+    await pick('Second Band - Second Song.mp3');
+    expect(screen.getByPlaceholderText('Title')).toHaveValue('My own title');
   });
 });
