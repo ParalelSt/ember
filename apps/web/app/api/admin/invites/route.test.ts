@@ -39,7 +39,7 @@ beforeEach(() => {
 
 describe('POST /api/admin/invites', () => {
   it('answers a null JSON body with a 400, not a 500', async () => {
-    const res = await POST(request(null));
+    const res = await POST(request(null), undefined as never);
     expect(res.status).toBe(400);
     expect(create).not.toHaveBeenCalled();
   });
@@ -51,7 +51,7 @@ describe('POST /api/admin/invites', () => {
         data: { data: { email: { code: 'validation_not_unique', message: 'Value must be unique.' } } },
       }),
     );
-    const res = await POST(request({ email: 'a@b.co' }));
+    const res = await POST(request({ email: 'a@b.co' }), undefined as never);
     expect(res.status).toBe(409);
   });
 
@@ -62,7 +62,7 @@ describe('POST /api/admin/invites', () => {
         data: { data: { email: { code: 'validation_is_email', message: 'Must be a valid email address.' } } },
       }),
     );
-    const res = await POST(request({ email: 'a@b..co' }));
+    const res = await POST(request({ email: 'a@b..co' }), undefined as never);
     expect(res.status).toBe(400);
     expect((await res.json()).error).not.toMatch(/already on the list/);
   });
