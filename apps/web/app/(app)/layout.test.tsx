@@ -109,8 +109,8 @@ describe('app shell, phone', () => {
   });
 });
 
-describe('LyricsPanel under the bar', () => {
-  it('sticks just under the bar and is that much shorter than the scroller', async () => {
+describe('LyricsPanel beside the bar', () => {
+  it('runs from the top of the scroller to its bottom: pulled up by the bar, sticky at the top', async () => {
     const { LyricsPanel: Real, LYRICS_PANEL_W: width } = await vi.importActual<{
       LyricsPanel: typeof LyricsPanel;
       LYRICS_PANEL_W: string;
@@ -121,12 +121,28 @@ describe('LyricsPanel under the bar', () => {
     render(<Real />);
     const aside = document.querySelector<HTMLElement>('aside[aria-label="Lyrics"]')!;
     expect(aside.className).toMatch(/\bsticky\b/);
+    expect(aside.className).toMatch(/\bself-start\b/);
     expect(aside.className).toMatch(/\bz-30\b/);
-    // The width the layout hands the bar's cover (happy-dom drops a min()
-    // width from the style, so the constant is checked instead).
+    // Phones never show it (they scroll to the lyrics in Now playing).
+    expect(aside.className).toMatch(/(^|\s)hidden(\s|$)/);
+    expect(aside.className).toMatch(/\bmd:flex\b/);
+    // The width the layout hands the bar (happy-dom drops a min() width
+    // from the style, so the constant is checked instead).
     expect(width).toBe('min(28rem, 40vw)');
-    expect(aside.style.top).toBe('var(--ember-topbar-h, 0px)');
-    expect(aside.style.height).toBe('calc(var(--ember-scroller-h, 100dvh) - var(--ember-topbar-h, 0px))');
+    // Not under the bar any more: it starts where the scroller starts and
+    // is as tall as the scroller.
+    expect(aside.style.top).toBe('0px');
+    expect(aside.style.marginTop).toBe('calc(-1 * var(--ember-topbar-h, 0px))');
+    expect(aside.style.height).toBe('var(--ember-scroller-h, 100dvh)');
     useUiStore.setState({ lyricsOpen: false });
+  });
+
+  it('the bar stops short of the panel, so the panel has the strip above the page to itself', () => {
+    renderShell();
+    const bar = screen.getByTestId('topbar-bar');
+    expect(bar.style.marginRight).toBe('var(--ember-lyrics-w, 0px)');
+    // The panel is the row's last child, after <main>, in the scroller.
+    const row = scroller().children[1] as HTMLElement;
+    expect(row.lastElementChild).toBe(screen.getByTestId('lyrics'));
   });
 });

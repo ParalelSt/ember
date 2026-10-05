@@ -69,9 +69,10 @@ export default function AppShellLayout({ children }: { children: ReactNode }) {
             caps its panel with it so the results never reach past the
             player bar. --ember-topbar-h is the desktop top bar's height
             (0 on a phone and on /search): the things that stick to the
-            scroller's top (lyrics, the tabs toolbar, the Appearance
-            preview) stick just under the bar instead, and the bar's cover
-            stops short of the lyrics panel (--ember-lyrics-w). */}
+            scroller's top (the tabs toolbar, the Appearance preview)
+            stick just under the bar instead. The bar stops short of the
+            lyrics panel (--ember-lyrics-w), which runs the scroller's full
+            height beside it. */}
         <div
           className="flex-1 min-h-0 flex flex-col"
           style={
@@ -90,7 +91,7 @@ export default function AppShellLayout({ children }: { children: ReactNode }) {
               viewport past the LyricsPanel. Inside: the desktop top bar
               (sticky, the page scrolls under it), then a flex row holding
               <main> (grows tall, drives the scroll) and the LyricsPanel
-              (sticky just under the bar). */}
+              (pulled up beside the bar, sticky at the top). */}
           <div ref={scrollerRef} data-app-scroller className="flex-1 min-h-0 overflow-y-auto">
             {isDesktop && (
               <DesktopTopBar raised={searchOpen} onHeightChange={setBarH}>
