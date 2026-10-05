@@ -31,6 +31,10 @@ class OfflineDownloader(
     private val onStart: (pin: OfflineStore.Pin, progress: JSONObject) -> Unit = { _, _ -> },
     /** That track is finished, one way or another. */
     private val onDone: () -> Unit = {},
+    /** Asked before each track: false ends the drain (the service has to
+     *  stop, see OfflineDownloadService.onTimeout). What is left stays
+     *  pending for the next start. */
+    private val keepGoing: () -> Boolean = { true },
 ) {
     private val failed get() = OfflineDownloadService.failed
     private val failedReason get() = OfflineDownloadService.failedReason
@@ -41,7 +45,7 @@ class OfflineDownloader(
 
     fun drain() {
         cacheDir.mkdirs()
-        while (true) {
+        while (keepGoing()) {
             val next = store.pending().firstOrNull { (pinId, t) ->
                 !isCancelled(pinId) && failed[pinId]?.contains(t.getString("id")) != true
             } ?: break

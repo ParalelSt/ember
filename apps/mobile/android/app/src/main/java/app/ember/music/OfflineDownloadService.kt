@@ -53,6 +53,22 @@ class OfflineDownloadService : Service() {
 
     override fun onBind(intent: Intent?): IBinder? = null
 
+    /** Set once the service has to stop: the drain in flight starts no
+     *  further track. */
+    @Volatile private var stopping = false
+
+    /** Android 15 gives a dataSync foreground service six hours a day; when
+     *  they are used up it calls this, and a service still running a few
+     *  seconds later crashes the app (music included). Stop now: the track
+     *  being fetched finishes or is dropped, the rest stays pending in the
+     *  index for the next start (a pin, a retry, the next app launch). */
+    override fun onTimeout(startId: Int, fgsType: Int) {
+        stopping = true
+        NativeLog.warn("service", "download service out of foreground time: stopping, the rest waits for the next start")
+        androidx.core.app.ServiceCompat.stopForeground(this, androidx.core.app.ServiceCompat.STOP_FOREGROUND_REMOVE)
+        stopSelf()
+    }
+
     override fun onDestroy() {
         // The executor's thread is a non-daemon core thread that never times
         // out, so without this every service lifecycle would leak one.
@@ -118,6 +134,7 @@ class OfflineDownloadService : Service() {
                     startForeground(1, notification("${pin.name}: ${progress.getInt("done") + 1} of ${progress.getInt("total")}"))
                 },
                 onDone = { listener?.invoke(null) },
+                keepGoing = { !stopping },
             ).drain()
         } finally {
             locks.release()
