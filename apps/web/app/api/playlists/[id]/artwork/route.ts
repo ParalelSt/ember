@@ -16,8 +16,10 @@ export const PATCH = withRequestLog('playlists/[id]/artwork', async (
     if (!access) return notFound();
     if (access.role !== 'owner') return ownerOnly();
 
-    const incoming = await request.formData();
-    const file = incoming.get('artwork');
+    // A body that is not multipart makes formData() throw: that is the
+    // caller's mistake (400), not a server error.
+    const incoming = await request.formData().catch(() => null);
+    const file = incoming?.get('artwork');
     if (!(file instanceof File)) return jsonError('artwork file required', 400);
 
     // Re-wrap into a fresh FormData for the PB SDK — passing the original
