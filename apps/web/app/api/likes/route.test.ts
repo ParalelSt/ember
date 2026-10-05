@@ -92,8 +92,18 @@ describe('POST /api/likes', () => {
   });
 
   it('a second like of the same song is not an error', async () => {
-    create.mockRejectedValueOnce(Object.assign(new Error('unique'), { status: 400 }));
+    create.mockRejectedValueOnce(Object.assign(new Error('Failed to create record.'), { status: 400, data: { data: { track: { code: 'validation_not_unique', message: 'Value must be unique.' } } } }));
     expect((await POST(request({ track }), {})).status).toBe(201);
+  });
+
+  it('any other 400 (a refused write) is an error, not an idempotent like', async () => {
+    create.mockRejectedValueOnce(
+      Object.assign(new Error('Failed to create record.'), {
+        status: 400,
+        data: { data: { track: { code: 'validation_missing_rel_records', message: 'Failed to find all relation records with the provided ids.' } } },
+      }),
+    );
+    expect((await POST(request({ track }), {})).status).not.toBe(201);
   });
 
   it('needs a track', async () => {

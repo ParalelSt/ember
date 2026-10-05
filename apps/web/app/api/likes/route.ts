@@ -4,6 +4,7 @@ import { mapTrackRow, type TrackRecord } from '@/lib/mapTrack';
 import type { CollectionTrack, Track } from '@/types/track';
 import { fromError, jsonError, upsertCatalogTrack } from '@/lib/upsertTrack';
 import { withRequestLog } from '@/lib/logger/withRequestLog';
+import { isUniqueHit } from '@/lib/pocketbase/uniqueHit';
 
 export const GET = withRequestLog('likes', async () => {
   try {
@@ -46,9 +47,9 @@ export const POST = withRequestLog('likes', async (request: NextRequest) => {
         origin: 'user',
       });
     } catch (e) {
-      // Unique (user, track) — already liked. Treat as idempotent.
-      const status = (e as { status?: number } | undefined)?.status;
-      if (status !== 400) throw e;
+      // Unique (user, track): already liked. Treat as idempotent. Any other
+      // 400 is a like that was not saved, and must not answer as if it was.
+      if (!isUniqueHit(e, ['user', 'track'])) throw e;
     }
     return Response.json({ ok: true }, { status: 201 });
   } catch (e) {

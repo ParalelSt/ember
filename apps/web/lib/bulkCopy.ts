@@ -63,11 +63,10 @@ export async function mapLimit<T, R>(items: T[], limit: number, fn: (item: T, in
   return out;
 }
 
-/** PocketBase answers a unique-index hit (the song is already there, added
- *  a moment ago by another tab) with a 400. */
-export function isUniqueHit(e: unknown): boolean {
-  return (e as { status?: number } | undefined)?.status === 400;
-}
+/** The unique index turned the write away (the song is already there,
+ *  added a moment ago by another tab). Only that 400: any other refusal is
+ *  a real failure, not a song to count as already there. */
+export { isUniqueHit } from '@/lib/pocketbase/uniqueHit';
 
 /** A song the unique index turned away mid-copy: counted as already there. */
 export function racedSkip(track: Track): CopySkip {

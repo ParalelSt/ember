@@ -46,7 +46,7 @@ const pb = {
     }),
     create: vi.fn(async (data: Like) => {
       if (likes.some((l) => l.user === data.user && l.track === data.track)) {
-        throw Object.assign(new Error('Failed to create record.'), { status: 400 });
+        throw Object.assign(new Error('Failed to create record.'), { status: 400, data: { data: { track: { code: 'validation_not_unique', message: 'Value must be unique.' } } } });
       }
       likes.push(data);
       return { id: `l${likes.length}` };
@@ -172,7 +172,7 @@ describe('POST /api/likes/bulk', () => {
 
   it('a like made meanwhile (unique index) counts as already there', async () => {
     const create = vi.fn(async () => {
-      throw Object.assign(new Error('Failed to create record.'), { status: 400 });
+      throw Object.assign(new Error('Failed to create record.'), { status: 400, data: { data: { track: { code: 'validation_not_unique', message: 'Value must be unique.' } } } });
     });
     const orig = pb.collection;
     pb.collection = () => ({ ...orig(), create });
@@ -182,6 +182,20 @@ describe('POST /api/likes/bulk', () => {
         added: 0,
         skipped: [{ id: 'youtube:north', title: 'Northbound', artist: 'The Nulls', reason: 'same-track', existingTitle: 'Northbound' }],
       });
+    } finally {
+      pb.collection = orig;
+    }
+  });
+
+  it('any other 400 (a refused write) is an error, not counted as already liked', async () => {
+    const create = vi.fn(async () => {
+      throw Object.assign(new Error('Failed to create record.'), { status: 400, data: { data: {} } });
+    });
+    const orig = pb.collection;
+    pb.collection = () => ({ ...orig(), create });
+    try {
+      const res = await POST(request({ tracks: [NORTH], confirmed: true }), {});
+      expect(res.status).not.toBe(201);
     } finally {
       pb.collection = orig;
     }
