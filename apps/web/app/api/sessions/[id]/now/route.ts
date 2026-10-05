@@ -1,7 +1,7 @@
 import type { NextRequest } from 'next/server';
 import { requireUser, UnauthorizedError, unauthorizedResponse } from '@/lib/auth';
 import { fromError, jsonError } from '@/lib/upsertTrack';
-import { loadSession, assertHost, sessionsClient } from '@/lib/sessions';
+import { loadSession, assertActive, assertHost, sessionsClient } from '@/lib/sessions';
 import { withRequestLog } from '@/lib/logger/withRequestLog';
 
 /** Host publishes which queue position is playing (drives guests' screens). */
@@ -12,6 +12,7 @@ export const POST = withRequestLog('sessions/[id]/now', async (request: NextRequ
     const { id } = await ctx.params;
     const session = await loadSession(pb, id);
     assertHost(session, user.id);
+    assertActive(session);
     const body = (await request.json().catch(() => null)) as { index?: number } | null;
     const index = Number(body?.index);
     if (!Number.isFinite(index) || index < 0) return jsonError('index required', 400);

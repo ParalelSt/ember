@@ -1,7 +1,7 @@
 import type { NextRequest } from 'next/server';
 import { requireUser, UnauthorizedError, unauthorizedResponse } from '@/lib/auth';
 import { fromError } from '@/lib/upsertTrack';
-import { loadSession, assertHost, sessionsClient } from '@/lib/sessions';
+import { loadSession, assertActive, assertHost, sessionsClient } from '@/lib/sessions';
 import { withRequestLog } from '@/lib/logger/withRequestLog';
 
 /** Host poll: return pending guest commands (each kind once) and delete
@@ -13,6 +13,7 @@ export const POST = withRequestLog('sessions/[id]/commands/consume', async (_req
     const { id } = await ctx.params;
     const session = await loadSession(pb, id);
     assertHost(session, user.id);
+    assertActive(session);
     const pending = await pb.collection('session_commands').getFullList({
       filter: `session = "${session.id}"`,
       sort: 'created',

@@ -1,7 +1,7 @@
 import type { NextRequest } from 'next/server';
 import { requireUser, UnauthorizedError, unauthorizedResponse } from '@/lib/auth';
 import { fromError, jsonError } from '@/lib/upsertTrack';
-import { addMember, sessionsClient } from '@/lib/sessions';
+import { addMember, sessionsClient, endIfExpired } from '@/lib/sessions';
 import { normalizeCode } from '@/lib/carlist';
 import { withRequestLog } from '@/lib/logger/withRequestLog';
 
@@ -24,6 +24,10 @@ export const POST = withRequestLog('sessions/join', async (request: NextRequest)
         .collection('sessions')
         .getFirstListItem(pb.filter('code = {:code} && active = true', { code }));
     } catch {
+      return jsonError('No live session with that code.', 404);
+    }
+    // Idle past the live window: ended, same answer as an unknown code.
+    if ((await endIfExpired(pb, session)).active !== true) {
       return jsonError('No live session with that code.', 404);
     }
     // Outside the 404 above: a roster write that failed is the host's
