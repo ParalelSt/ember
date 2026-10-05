@@ -298,4 +298,32 @@ class OfflineDownloadServiceTest {
         assertEquals("ID3AUDIOBYTES", store.audioFileFor("youtube:a").readText())
         assertTrue(OfflineDownloadService.failed.isEmpty())
     }
+
+    /** A song in two downloaded lists (Liked and a playlist) that fails:
+     *  the second list used to show "49/50 downloaded" with no failure and
+     *  no Retry, for good. The drain offered each song once, under the
+     *  first list, so the failure landed only there, and Retry on the second
+     *  list cleared nothing that held the song back. */
+    @Test fun aFailedSongSharedByTwoListsFailsInBothAndRetryOnEitherFetchesIt() {
+        // One try and its retry: the song is not fetched again for the second list.
+        repeat(2) { server.enqueue(MockResponse().setResponseCode(500)) }
+        store.upsertPin("liked", "Liked", listOf(track("youtube:a")))
+        store.upsertPin("p1", "Road", listOf(track("youtube:a")))
+
+        downloader().drain()
+
+        assertEquals(setOf("youtube:a"), OfflineDownloadService.failed["liked"])
+        assertEquals("the second list shows the failure too", setOf("youtube:a"), OfflineDownloadService.failed["p1"])
+        assertEquals("http", OfflineDownloadService.failedReason["p1"])
+        assertEquals(2, server.requestCount)
+
+        // Retry on the second list (what EmberOfflinePlugin.retry clears).
+        OfflineDownloadService.failed.remove("p1")
+        OfflineDownloadService.failedReason.remove("p1")
+        server.enqueue(audio())
+        downloader().drain()
+
+        assertTrue("Retry on the second list fetched the song", store.audioFileFor("youtube:a").exists())
+        assertEquals(1 to 1, store.progress(store.pins().first { it.id == "p1" }))
+    }
 }

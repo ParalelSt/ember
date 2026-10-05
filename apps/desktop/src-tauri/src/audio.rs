@@ -526,6 +526,9 @@ fn emit_stall<R: Runtime>(app: &AppHandle<R>, message: String, token: Option<u64
 /// while playing fine in any browser. Sending the session makes the
 /// native engine as capable as the webview without opening uploads to the
 /// whole internet.
+///
+/// Callers pass the cookie through `session_cookie_for` first: it is for
+/// the Ember server only, never for a third-party stream URL.
 pub(crate) fn http_client(cookie: Option<&str>) -> Result<Client, String> {
     let mut builder = Client::builder();
     if let Some(cookie) = cookie.filter(|c| !c.is_empty()) {
@@ -535,6 +538,21 @@ pub(crate) fn http_client(cookie: Option<&str>) -> Result<Client, String> {
         builder = builder.default_headers(headers);
     }
     builder.build().map_err(|e| e.to_string())
+}
+
+/// The session cookie, only when `url` is on the Ember server itself (same
+/// scheme, host and port as `server`). A Jamendo song streams straight from
+/// Jamendo, and the webview hands every load and prefetch its `pb_auth`
+/// cookie; attached there, it gave the user's session token to a third party.
+pub(crate) fn session_cookie_for(url: &str, server: Option<&tauri::Url>, cookie: Option<String>) -> Option<String> {
+    let server = server?;
+    let target = tauri::Url::parse(url).ok()?;
+    (target.origin() == server.origin()).then_some(cookie).flatten()
+}
+
+/// `session_cookie_for` with the server the main window is configured to load.
+pub(crate) fn session_cookie_for_app<R: Runtime>(app: &AppHandle<R>, url: &str, cookie: Option<String>) -> Option<String> {
+    session_cookie_for(url, crate::connect::server_url(app.config()).as_ref(), cookie)
 }
 
 /// A reader that remembers whether it ever failed.
@@ -1538,7 +1556,7 @@ async fn load_claimed<R: Runtime>(
             stalled: false,
         }),
         None => {
-            let client = http_client(cookie.as_deref())?;
+            let client = http_client(session_cookie_for_app(app, &stream_url, cookie.clone()).as_deref())?;
             open_source_retrying(
                 client,
                 &stream_url,
@@ -2421,6 +2439,25 @@ mod tests {
     #[test]
     fn nowplaying_state_has_no_position_when_nothing_is_loaded() {
         assert_eq!(nowplaying_state(false, None), MediaPlayback::Paused { progress: None });
+    }
+
+    /// A Jamendo song's stream URL is Jamendo's own (absolute, third party).
+    /// The session cookie is for the Ember server only: sending it with every
+    /// song handed the user's pb_auth token to Jamendo's servers.
+    #[test]
+    fn the_session_goes_only_to_the_ember_server() {
+        let server = tauri::Url::parse("https://ember.example.ts.net").unwrap();
+        let cookie = || Some("pb_auth=secret".to_string());
+        let on = |url: &str| session_cookie_for(url, Some(&server), cookie());
+        assert_eq!(on("https://ember.example.ts.net/api/uploads/x/stream").as_deref(), Some("pb_auth=secret"));
+        assert_eq!(on("https://EMBER.example.ts.net:443/api/youtube/stream/abc?prefetch=1").as_deref(), Some("pb_auth=secret"));
+        assert_eq!(on("https://prod-1.storage.jamendo.com/?trackid=1&format=mp31"), None);
+        assert_eq!(on("http://ember.example.ts.net/api/x"), None, "another scheme is another origin");
+        assert_eq!(on("https://ember.example.ts.net:8443/api/x"), None, "another port is another origin");
+        assert_eq!(on("https://ember.example.ts.net.evil.com/api/x"), None);
+        assert_eq!(on("not a url"), None);
+        assert_eq!(session_cookie_for("https://ember.example.ts.net/a", None, cookie()), None, "no known server, no cookie");
+        assert_eq!(session_cookie_for("https://ember.example.ts.net/a", Some(&server), None), None);
     }
 
     /// Public routes must keep working with no session attached.

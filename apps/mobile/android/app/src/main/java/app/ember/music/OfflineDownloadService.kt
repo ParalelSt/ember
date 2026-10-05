@@ -37,6 +37,20 @@ class OfflineDownloadService : Service() {
         var listener: ((JSONObject?) -> Unit)? = null
 
         fun start(ctx: Context) { androidx.core.content.ContextCompat.startForegroundService(ctx, Intent(ctx, OfflineDownloadService::class.java)) }
+        /** Starts the downloader when the index still has work: a drain cut
+         *  off by the process going away is otherwise only picked up again
+         *  by a sticky restart, which Android may never do (force stop, an
+         *  OEM's task killer), and its list sat part-downloaded with no
+         *  failure and no Retry. Called when the app starts. */
+        fun resumePending(ctx: Context, store: OfflineStore) {
+            // Work a drain would actually take: not what this process already
+            // gave up on (that waits for Retry), not a cancelled pin.
+            val work = store.pending().any { (pinId, t) -> pinId !in cancelled && failed[pinId]?.contains(t.getString("id")) != true }
+            if (!work) return
+            runCatching { start(ctx) }.onFailure {
+                NativeLog.warn("offline", "could not resume pending downloads: " + (it.message ?: it.javaClass.simpleName))
+            }
+        }
         fun cancel(ctx: Context, pinId: String) { cancelled.add(pinId); ctx.startService(Intent(ctx, OfflineDownloadService::class.java).setAction(ACTION_CANCEL)) }
     }
 
@@ -52,6 +66,22 @@ class OfflineDownloadService : Service() {
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
+
+    /** Set once the service has to stop: the drain in flight starts no
+     *  further track. */
+    @Volatile private var stopping = false
+
+    /** Android 15 gives a dataSync foreground service six hours a day; when
+     *  they are used up it calls this, and a service still running a few
+     *  seconds later crashes the app (music included). Stop now: the track
+     *  being fetched finishes or is dropped, the rest stays pending in the
+     *  index for the next start (a pin, a retry, the next app launch). */
+    override fun onTimeout(startId: Int, fgsType: Int) {
+        stopping = true
+        NativeLog.warn("service", "download service out of foreground time: stopping, the rest waits for the next start")
+        androidx.core.app.ServiceCompat.stopForeground(this, androidx.core.app.ServiceCompat.STOP_FOREGROUND_REMOVE)
+        stopSelf()
+    }
 
     override fun onDestroy() {
         // The executor's thread is a non-daemon core thread that never times
@@ -118,6 +148,7 @@ class OfflineDownloadService : Service() {
                     startForeground(1, notification("${pin.name}: ${progress.getInt("done") + 1} of ${progress.getInt("total")}"))
                 },
                 onDone = { listener?.invoke(null) },
+                keepGoing = { !stopping },
             ).drain()
         } finally {
             locks.release()

@@ -31,6 +31,10 @@ class OfflineDownloader(
     private val onStart: (pin: OfflineStore.Pin, progress: JSONObject) -> Unit = { _, _ -> },
     /** That track is finished, one way or another. */
     private val onDone: () -> Unit = {},
+    /** Asked before each track: false ends the drain (the service has to
+     *  stop, see OfflineDownloadService.onTimeout). What is left stays
+     *  pending for the next start. */
+    private val keepGoing: () -> Boolean = { true },
 ) {
     private val failed get() = OfflineDownloadService.failed
     private val failedReason get() = OfflineDownloadService.failedReason
@@ -41,7 +45,7 @@ class OfflineDownloader(
 
     fun drain() {
         cacheDir.mkdirs()
-        while (true) {
+        while (keepGoing()) {
             val next = store.pending().firstOrNull { (pinId, t) ->
                 !isCancelled(pinId) && failed[pinId]?.contains(t.getString("id")) != true
             } ?: break
@@ -61,9 +65,16 @@ class OfflineDownloader(
                 // where "gave up on this track" is actually decided.
                 NativeLog.error("offline", "download failed: $reason", JSONObject()
                     .put("pinId", pinId).put("trackId", track.getString("id")).put("reason", reason))
-                failed.getOrPut(pinId) { Collections.synchronizedSet(HashSet()) }.add(track.getString("id"))
-                // putIfAbsent is API 24 and minSdk here is 23, so do it by hand.
-                synchronized(failedReason) { if (failedReason[pinId] == null) failedReason[pinId] = reason }
+                // Every pin that lists the song failed on it, not just the one
+                // it was fetched for: another list holding it would otherwise
+                // show it as neither downloaded nor failed, with no Retry.
+                val trackId = track.getString("id")
+                for (p in (store.pinsWith(trackId) + pinId).distinct()) {
+                    if (isCancelled(p)) continue
+                    failed.getOrPut(p) { Collections.synchronizedSet(HashSet()) }.add(trackId)
+                    // putIfAbsent is API 24 and minSdk here is 23, so do it by hand.
+                    synchronized(failedReason) { if (failedReason[p] == null) failedReason[p] = reason }
+                }
             }
             onDone()
         }
