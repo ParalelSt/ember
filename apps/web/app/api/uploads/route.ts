@@ -27,6 +27,10 @@ import { saveUploadCover } from '@/lib/uploads/cover';
  *  with what's actually on disk. */
 
 const MAX_TEXT = 200;
+const MULTIPART_MARGIN = 1024 * 1024;
+
+const tooLarge = () =>
+  jsonError(`File too large: the limit is ${Math.round(MAX_UPLOAD_BYTES / 1024 / 1024)}MB`, 413);
 
 export const GET = withRequestLog('uploads', async () => {
   try {
@@ -50,14 +54,20 @@ export const POST = withRequestLog('uploads', async (request: NextRequest) => {
     const limited = rateLimitResponse(`upload:${user.id}`, { windowMs: 60 * 60 * 1000, max: 10 });
     if (limited) return limited;
 
+    // Check the declared size before reading the body: past the proxy's
+    // buffer (next.config.ts proxyClientMaxBodySize) a big song arrives cut
+    // short, formData() cannot read it, and the member would be told "No
+    // file uploaded" instead of the limit. The margin covers the multipart
+    // framing and the text fields.
+    const declared = Number(request.headers.get('content-length') ?? 0);
+    if (Number.isFinite(declared) && declared > MAX_UPLOAD_BYTES + MULTIPART_MARGIN) return tooLarge();
+
     const form = await request.formData().catch(() => null);
     const file = form?.get('file');
     if (!form || !(file instanceof File)) return jsonError('No file uploaded', 400);
 
     if (file.size === 0) return jsonError('That file is empty', 400);
-    if (file.size > MAX_UPLOAD_BYTES) {
-      return jsonError(`File too large — the limit is ${Math.round(MAX_UPLOAD_BYTES / 1024 / 1024)}MB`, 413);
-    }
+    if (file.size > MAX_UPLOAD_BYTES) return tooLarge();
 
     const buf = Buffer.from(await file.arrayBuffer());
     // Trust the bytes over the browser's Content-Type, but accept either as
