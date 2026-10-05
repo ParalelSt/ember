@@ -63,6 +63,8 @@ export function PrivacyToggles() {
   const shareDiscord = usePrivacyStore((s) => s.shareDiscord);
   const shareListening = usePrivacyStore((s) => s.shareListening);
   const loaded = usePrivacyStore((s) => s.loaded);
+  const failed = usePrivacyStore((s) => s.failed);
+  const load = usePrivacyStore((s) => s.load);
   const save = usePrivacyStore((s) => s.set);
   const [busy, setBusy] = useState(false);
 
@@ -80,6 +82,14 @@ export function PrivacyToggles() {
   return (
     <div className="mt-12 pt-6 border-t border-border max-w-xl">
       <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">Privacy</h3>
+      {failed && (
+        <p className="mt-2 text-xs text-muted-foreground">
+          Couldn&apos;t load your privacy settings.{' '}
+          <button type="button" className="text-ember underline-offset-2 hover:underline" onClick={() => void load()}>
+            Try again
+          </button>
+        </p>
+      )}
       <div className="mt-2 divide-y divide-border">
         <Toggle
           id="share-discord"
