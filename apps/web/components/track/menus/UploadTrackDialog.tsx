@@ -44,6 +44,14 @@ export function UploadTrackDialog({
     if (inputRef.current) inputRef.current.value = '';
   };
 
+  /** Every way out of the dialog forgets the picked file: Cancel too, or
+   *  reopening would show an empty picker with the old file still set to
+   *  upload. */
+  const close = () => {
+    reset();
+    onOpenChange(false);
+  };
+
   /** Read the duration in the browser — the server can't count on ffprobe
    *  being installed, and a wrong duration makes the progress bar lie. */
   const readDuration = (f: File) =>
@@ -79,8 +87,7 @@ export function UploadTrackDialog({
     onSuccess: ({ track }) => {
       toast.success(`Uploaded “${track.title}”`, { description: 'Everyone on the server can find it now.' });
       void qc.invalidateQueries({ queryKey: QK.uploads });
-      reset();
-      onOpenChange(false);
+      close();
     },
     onError: (e: Error) => toast.error(e.message),
   });
@@ -124,7 +131,7 @@ export function UploadTrackDialog({
             </div>
           )}
           <DialogFooter>
-            <Button type="button" variant="ghost" onClick={() => onOpenChange(false)} disabled={upload.isPending}>
+            <Button type="button" variant="ghost" onClick={close} disabled={upload.isPending}>
               Cancel
             </Button>
             <Button
