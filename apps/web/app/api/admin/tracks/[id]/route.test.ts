@@ -15,17 +15,9 @@ vi.mock('@/lib/auth', () => {
 });
 
 const update = vi.fn();
-
-// See app/api/admin/users/route.test.ts: files.getURL() on the server client
-// bakes in the internal POCKETBASE_URL, the exact bug this route must avoid
-// by using the fileUrl() helper instead.
 vi.mock('@/lib/pocketbase/server', () => ({
-  createAdminClient: async () => ({
-    collection: () => ({ update: (id: string, patch: unknown) => update(id, patch) }),
-    files: { getURL: () => 'http://127.0.0.1:8090/api/files/users/u1/avatar.png' },
-  }),
+  createAdminClient: async () => ({ collection: () => ({ update: (id: string, patch: unknown) => update(id, patch) }) }),
 }));
-
 vi.mock('@/lib/upsertTrack', () => ({
   fromError: (e: unknown) => Response.json({ error: String(e) }, { status: 500 }),
   jsonError: (error: string, status: number) => Response.json({ error }, { status }),
@@ -47,24 +39,9 @@ beforeEach(() => {
   vi.clearAllMocks();
 });
 
-describe('PATCH /api/admin/users/[id]', () => {
-  it('returns a same-origin /pb avatar URL, not the internal server URL', async () => {
-    update.mockResolvedValue({
-      id: 'u1', collectionId: 'col_users', collectionName: 'users',
-      email: 'a@b.c', name: 'New Name', avatar: 'avatar.png', is_admin: false, created: '2024-01-01',
-    });
-
-    const res = await PATCH(request({ name: 'New Name' }), ctx('u1'));
-    const body = await res.json();
-
-    expect(res.status).toBe(200);
-    expect(body.user.avatarUrl).toBe('/pb/api/files/col_users/u1/avatar.png');
-  });
-});
-
-describe('PATCH /api/admin/users/[id] body checks', () => {
+describe('PATCH /api/admin/tracks/[id]', () => {
   it('answers a null JSON body with a 400, not a 500', async () => {
-    const res = await PATCH(request(null), ctx('u1'));
+    const res = await PATCH(request(null), ctx('t1'));
     expect(res.status).toBe(400);
     expect(update).not.toHaveBeenCalled();
   });

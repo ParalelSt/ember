@@ -18,10 +18,11 @@ export const PATCH = withRequestLog('admin/users/[id]', async (req: NextRequest,
     const { user: actor } = await requireAdmin();
     const { id } = await ctx.params;
 
-    const body = (await req.json().catch(() => ({}))) as {
-      name?: string;
-      isAdmin?: boolean;
-    };
+    const body = (await req.json().catch(() => null)) as {
+      name?: unknown;
+      isAdmin?: unknown;
+    } | null;
+    if (!body || typeof body !== 'object') return jsonError('Invalid body', 400);
 
     if (id === actor.id && body.isAdmin === false) {
       return jsonError("You can't remove your own admin role", 400);

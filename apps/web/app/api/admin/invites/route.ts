@@ -40,7 +40,8 @@ export const GET = withRequestLog('admin/invites', async (_req: NextRequest) => 
 export const POST = withRequestLog('admin/invites', async (req: NextRequest) => {
   try {
     await requireAdmin();
-    const body = (await req.json().catch(() => ({}))) as { email?: string };
+    const body = (await req.json().catch(() => null)) as { email?: unknown } | null;
+    if (!body || typeof body !== 'object') return jsonError('Invalid email', 400);
     const email = String(body.email ?? '').trim().toLowerCase();
     if (!EMAIL_RE.test(email)) return jsonError('Invalid email', 400);
 
