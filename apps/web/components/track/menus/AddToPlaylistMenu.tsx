@@ -28,19 +28,22 @@ import { cn } from '@/lib/utils';
  *  has no room for a separate More button) this menu also offers "Wrong
  *  song? Re-match". `moves` does the same for Move up / Move down on a
  *  playlist shown in its own order. `open`/`onOpenChange` let a parent open
- *  the menu from elsewhere (the full-screen player's More menu). */
+ *  the menu from elsewhere. `triggerClassName` restyles the + button (the
+ *  full-screen player's action rail). */
 export function AddToPlaylistMenu({
   track,
   onRematch,
   moves,
   open: openProp,
   onOpenChange,
+  triggerClassName,
 }: {
   track: Track;
   onRematch?: () => void;
   moves?: TrackMoves;
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
+  triggerClassName?: string;
 }) {
   const { user } = useAuth();
   const { data: playlists = [] } = useQueryPlaylists();
@@ -97,6 +100,7 @@ export function AddToPlaylistMenu({
       <DropdownMenuTrigger
         className={cn(
           'inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-accent transition-colors',
+          triggerClassName,
         )}
         onClick={(e) => e.stopPropagation()}
         aria-label="Add to playlist"

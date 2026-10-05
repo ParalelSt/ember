@@ -26,13 +26,22 @@ interface Props {
    *  built-in via the overlay, the desktop panel renders an inline X. */
   onClose?: () => void;
   showHeader?: boolean;
+  /** The report form, when a parent opens it from elsewhere too (the
+   *  full-screen player's More menu). Uncontrolled without these. */
+  reportOpen?: boolean;
+  onReportOpenChange?: (open: boolean) => void;
 }
 
-export function LyricsBody({ active, onClose, showHeader = true }: Props) {
+export function LyricsBody({ active, onClose, showHeader = true, reportOpen: reportOpenProp, onReportOpenChange }: Props) {
   const { current, seek } = usePlayer();
   const { data, isLoading, error } = useQueryLyrics(current, active);
 
-  const [reportOpen, setReportOpen] = useState(false);
+  const [reportOpenState, setReportOpenState] = useState(false);
+  const reportOpen = reportOpenProp ?? reportOpenState;
+  const setReportOpen = (open: boolean) => {
+    setReportOpenState(open);
+    onReportOpenChange?.(open);
+  };
   const [note, setNote] = useState('');
   const [submitting, setSubmitting] = useState(false);
 

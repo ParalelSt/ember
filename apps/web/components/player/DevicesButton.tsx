@@ -46,7 +46,6 @@ import {
 } from '@/lib/outputs/rows';
 import { useCastStore } from '@/stores/useCastStore';
 import { useOutputStore } from '@/stores/useOutputStore';
-import { PlayerToolButton } from '@/components/player/PlayerToolButton';
 import { cn } from '@/lib/utils';
 
 /** Where the music plays: one button (Spotify's device picker) in the
@@ -125,7 +124,7 @@ function RowBody({ row }: { row: DeviceRow }) {
 }
 
 interface Props {
-  /** `bar`: the desktop player bar (a menu); `full`: the tool row of the
+  /** `bar`: the desktop player bar (a menu); `full`: the top bar of the
    *  phone's full-screen player (a sheet). */
   variant: 'bar' | 'full';
   className?: string;
@@ -192,16 +191,26 @@ export function DevicesButton({ variant, className, iconClassName }: Props) {
   const casting = cast.connection === 'connected';
   return (
     <>
-      <PlayerToolButton
-        label={on ?? (cast.connection === 'connecting' ? 'Connecting' : 'Devices')}
-        ariaLabel={label}
+      {/* An icon in the full player's top bar; while the music plays
+          somewhere else it is lit and names where (the headset, the TV). */}
+      <button
+        type="button"
         onClick={() => onOpenChange(true)}
-        lit={lit}
+        aria-label={label}
+        title={label}
         data-testid="devices-button"
-        className={cn(cast.connection === 'connecting' && 'animate-pulse', className)}
+        className={cn(
+          'inline-flex h-10 min-w-10 max-w-36 items-center justify-center gap-1.5 rounded-full px-2.5 transition-colors hover:bg-foreground/5',
+          lit ? 'text-ember' : 'text-foreground/80 hover:text-foreground',
+          cast.connection === 'connecting' && 'animate-pulse',
+          className,
+        )}
       >
         {icon}
-      </PlayerToolButton>
+        {(on || cast.connection === 'connecting') && (
+          <span className="truncate text-xs font-semibold">{on ?? 'Connecting'}</span>
+        )}
+      </button>
       <Sheet open={open} onOpenChange={onOpenChange}>
         <SheetContent side="bottom" className="max-h-[85vh] overflow-y-auto rounded-t-2xl p-0" data-testid="devices-list">
           <SheetHeader className="px-block pt-block pb-0">

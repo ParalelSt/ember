@@ -49,6 +49,7 @@ vi.mock('@/components/providers/AuthProvider', () => ({ useAuth: () => ({ user: 
 vi.mock('@/hooks/useLikeToggle', () => ({ useLikeToggle: () => ({ liked: false, toggle: () => {} }) }));
 vi.mock('@/lib/offlineNative', () => ({ useTrackArtSrc: () => null }));
 vi.mock('@/lib/useBackDismiss', () => ({ useBackDismiss: () => {} }));
+vi.mock('@/hooks/useLyrics', () => ({ useQueryLyrics: () => ({ data: null }) }));
 // base-ui's menu brings the root's second React into a test render (see
 // QueueSheet.test.tsx): the full player's More menu is a plain box.
 vi.mock('@/components/ui/dropdown-menu', () => {

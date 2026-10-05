@@ -163,13 +163,14 @@ describe('DevicesButton', () => {
 });
 
 describe('DevicesButton, full player', () => {
-  it('labels itself with a headset, not the phone', () => {
+  it('names a headset beside its icon, and is a bare icon on the phone', () => {
     useOutputStore.setState({ platform: 'ios', devices: [], currentId: 'r', currentName: 'AirPods Pro', currentKind: 'bluetooth', systemPicker: 'ios-route-picker' });
     const { rerender } = render(<DevicesButton variant="full" />);
     expect(screen.getByTestId('devices-button')).toHaveTextContent('AirPods Pro');
     useOutputStore.setState({ currentName: 'iPhone', currentKind: 'phone' });
     rerender(<DevicesButton variant="full" />);
-    expect(screen.getByTestId('devices-button')).toHaveTextContent(/^Devices$/);
+    expect(screen.getByTestId('devices-button')).toHaveTextContent(/^$/);
+    expect(screen.getByTestId('devices-button')).toHaveAccessibleName('Devices');
   });
 
   it('while casting, the sheet says the equalizer and leveling are off (not for AirPlay, which keeps the page’s audio)', () => {

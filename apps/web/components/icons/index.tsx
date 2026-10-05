@@ -46,6 +46,10 @@ export {
   Upload as UploadIcon,
   MessageSquarePlus as RequestIcon,
   Link2 as LinkIcon,
+  // The full-screen player's More menu: the artist, the album, a report.
+  UserRound as ArtistIcon,
+  Disc3 as AlbumIcon,
+  Flag as FlagIcon,
   SlidersVertical as EqualizerIcon,
   Cast as CastIcon,
   Airplay as AirplayIcon,

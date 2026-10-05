@@ -4,8 +4,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import {
-  ChevronDownIcon, EqualizerIcon, LibraryIcon, MicIcon, MoreIcon, MusicIcon, PlusIcon, QueueIcon,
-  RepeatIcon, RepeatOneIcon, ShareIcon, ShuffleIcon, TabsIcon,
+  AlbumIcon, ArtistIcon, ChevronDownIcon, EqualizerIcon, FlagIcon, LinkIcon, LyricsIcon, MoreIcon, MusicIcon,
+  QueueIcon, RepeatIcon, RepeatOneIcon, ShareIcon, ShuffleIcon, TabsIcon,
 } from '@/components/icons';
 import {
   DropdownMenu,
@@ -16,7 +16,7 @@ import {
 import { Artwork } from '@/components/primitives/Artwork';
 import { LikeButton } from '@/components/primitives/LikeButton';
 import { AddToPlaylistMenu } from '@/components/track/menus/AddToPlaylistMenu';
-import { ShareButton, canShare, shareTrack } from '@/components/track/ShareButton';
+import { canShare, shareTrack } from '@/components/track/ShareButton';
 import { LyricsBody } from '@/components/player/LyricsBody';
 import { NowPlayingSummary } from '@/components/player/NowPlayingSummary';
 import { UnplayableMessage, useUnplayableMessage } from '@/components/player/UnplayableMessage';
@@ -25,12 +25,12 @@ import { EqualizerSheet } from '@/components/player/EqualizerSheet';
 import { SeekBar } from '@/components/player/SeekBar';
 import { TransportControls } from '@/components/player/TransportControls';
 import { DevicesButton } from '@/components/player/DevicesButton';
-import { PlayerToolButton } from '@/components/player/PlayerToolButton';
 import { useBackDismiss } from '@/lib/useBackDismiss';
 import { useTrackArtSrc } from '@/lib/offlineNative';
 import { usePlayer } from '@/components/player/PlayerProvider';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { useLikeToggle } from '@/hooks/useLikeToggle';
+import { useQueryLyrics } from '@/hooks/useLyrics';
 import { usePlayerStore } from '@/stores/usePlayerStore';
 import { useSettingsStore } from '@/stores/useSettingsStore';
 import { useUiStore } from '@/stores/useUiStore';
@@ -47,6 +47,10 @@ interface MoreItem {
   Icon: typeof MoreIcon;
   onSelect: () => void;
 }
+
+/** One button on the action rail over the artwork. */
+const RAIL_BUTTON =
+  'size-11 rounded-full bg-black/45 text-white shadow-md backdrop-blur-sm transition-colors hover:bg-black/60 hover:text-white [&_svg]:size-5';
 
 /** Full-screen "Now Playing" view — phones only. Slides up over the app shell
  *  with large artwork up top and transport controls at the bottom, like the
@@ -74,8 +78,9 @@ export function NowPlaying() {
   const isPlaylist = context?.type === 'playlist';
   const title = contextTitle(context);
   const tabsEnabled = useSettingsStore((s) => s.tabsEnabled);
-  // The queue: the phone bar has no queue button of its own any more, so
-  // this is where phones reach it. The sheet portals above this view.
+  // The queue ("Up next" under the controls): the phone bar has no queue
+  // button of its own, so this is where phones reach it. The sheet portals
+  // above this view.
   const [queueOpen, setQueueOpen] = useState(false);
   // The equalizer, lit while it is on.
   const [eqOpen, setEqOpen] = useState(false);
@@ -83,9 +88,15 @@ export function NowPlaying() {
   // A Cast receiver plays the stream itself, with no equalizer: the EQ tool
   // goes while casting (AirPlay keeps this page's audio, and its filters).
   const eqAvailable = useCastStore((s) => !(s.connection === 'connected' && s.path !== 'airplay'));
-  // The More menu, and the like row's add-to-playlist menu it can open.
+  // The More menu, the rail's add-to-playlist menu, and the lyrics report
+  // form More can open.
   const [moreOpen, setMoreOpen] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
+  const [reportOpen, setReportOpen] = useState(false);
+  // Whether the song has lyrics to report (the same cached query the
+  // lyrics card below reads; PlayerProvider prefetches it).
+  const { data: lyricsData } = useQueryLyrics(current, open);
+  const hasLyrics = !!lyricsData?.lyrics;
 
   const router = useRouter();
   // Leaving for another page (the tab page, the artist, the album). Closing
@@ -112,12 +123,6 @@ export function NowPlaying() {
 
   const scrollerRef = useRef<HTMLDivElement | null>(null);
   const lyricsRef = useRef<HTMLDivElement | null>(null);
-
-  // The playlist menu opens from the like row's +, in the player pane above
-  // the lyrics: bring it into view when More opens it from further down.
-  useEffect(() => {
-    if (addOpen) scrollerRef.current?.scrollTo?.({ top: 0 });
-  }, [addOpen]);
 
   // Close on Escape; lock body scroll while open.
   useEffect(() => {
@@ -146,6 +151,7 @@ export function NowPlaying() {
     setMenusFor(menusKey);
     setMoreOpen(false);
     setAddOpen(false);
+    setReportOpen(false);
   }
 
   // Auto-close if playback stops entirely (queue cleared).
@@ -179,30 +185,38 @@ export function NowPlaying() {
   // with NowPlayingSummary's player-bar thumbnail.
   const art = useTrackArtSrc(current);
 
-  // The More menu: what fits no button on the player. Add to playlist also
-  // has the like row's +, which is where its menu opens; share joins here
-  // only when the like row (signed-in only) is not there to carry it.
+  // The More menu: what has no button on the player. Like, Add to playlist
+  // and Tabs are on the rail over the artwork, Lyrics and Up next under the
+  // controls, Devices and EQ beside this menu. Share copies the link where
+  // the phone has no share sheet.
   const moreItems: MoreItem[] = [];
-  if (current && user && !isUnavailable(current)) {
+  if (current && canShare(current)) {
+    const track = current;
+    const sheet = typeof navigator !== 'undefined' && !!navigator.share;
     moreItems.push({
-      key: 'add',
-      label: 'Add to playlist',
-      Icon: PlusIcon,
-      onSelect: () => setAddOpen(true),
+      key: 'share',
+      label: sheet ? 'Share' : 'Copy link',
+      Icon: sheet ? ShareIcon : LinkIcon,
+      onSelect: () => void shareTrack(track),
     });
   }
   if (current?.artistId) {
     const href = `/artist/${encodeURIComponent(current.artistId)}`;
-    moreItems.push({ key: 'artist', label: 'Go to artist', Icon: MicIcon, onSelect: () => closeThenGo(href) });
+    moreItems.push({ key: 'artist', label: 'Go to artist', Icon: ArtistIcon, onSelect: () => closeThenGo(href) });
   }
   if (current?.albumId) {
     const href = `/album/${encodeURIComponent(current.albumId)}`;
-    moreItems.push({ key: 'album', label: 'Go to album', Icon: LibraryIcon, onSelect: () => closeThenGo(href) });
+    moreItems.push({ key: 'album', label: 'Go to album', Icon: AlbumIcon, onSelect: () => closeThenGo(href) });
   }
-  if (current && !user && canShare(current)) {
-    const track = current;
-    moreItems.push({ key: 'share', label: 'Share', Icon: ShareIcon, onSelect: () => void shareTrack(track) });
+  if (current && hasLyrics) {
+    moreItems.push({ key: 'report', label: 'Report wrong lyrics', Icon: FlagIcon, onSelect: () => setReportOpen(true) });
   }
+
+  // The rail over the artwork: Like and Add to playlist (signed in, and
+  // a song that can still play), Tabs (when the plugin is on).
+  const canAdd = !!(current && user && !isUnavailable(current));
+  const hasRail = !!current && (!!user || tabsEnabled);
+  const showLyrics = () => lyricsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 
   // Pinned left, mirroring the loop button on the right: keeping both OUT of
   // the flex flow is what keeps prev/play/next centered. Playlists only:
@@ -280,8 +294,29 @@ export function NowPlaying() {
       >
         <ChevronDownIcon className="h-6 w-6" />
       </Button>
-      {moreItems.length > 0 && (
-        <div className="absolute z-20 right-3" style={{ top: 'calc(var(--safe-top) + 1rem)' }}>
+      {/* Right of the chevron, floating with it: Devices (only when there
+          is somewhere else to play), the equalizer (not while casting) and
+          More. */}
+      <div
+        data-testid="top-tools"
+        className="absolute z-20 right-3 flex items-center gap-1"
+        style={{ top: 'calc(var(--safe-top) + 1rem)' }}
+      >
+        <DevicesButton variant="full" iconClassName="h-5 w-5 shrink-0" />
+        {eqAvailable && (
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => setEqOpen(true)}
+            aria-label="Equalizer"
+            title="Equalizer"
+            aria-pressed={eqOn}
+            className={cn('h-10 w-10', eqOn ? 'text-ember hover:text-ember' : 'text-foreground/80 hover:text-foreground')}
+          >
+            <EqualizerIcon className="h-5 w-5" />
+          </Button>
+        )}
+        {moreItems.length > 0 && (
           <DropdownMenu open={moreOpen} onOpenChange={setMoreOpen}>
             <DropdownMenuTrigger
               aria-label="More"
@@ -306,8 +341,8 @@ export function NowPlaying() {
               ))}
             </DropdownMenuContent>
           </DropdownMenu>
-        </div>
-      )}
+        )}
+      </div>
       <QueueSheet open={queueOpen} onOpenChange={setQueueOpen} />
       <EqualizerSheet open={eqOpen} onOpenChange={setEqOpen} />
 
@@ -325,27 +360,56 @@ export function NowPlaying() {
           they push the scroller into overflow and become scroll-reachable. */}
       <div className="flex flex-col min-h-full">
 
-        {/* "Playing from playlist / Road trip", between the chevron and More. */}
-        <div data-testid="context-title" className="mx-hit flex h-10 min-w-0 flex-col items-center justify-center text-center">
+        {/* "Playing from playlist / Road trip", beside the chevron, left of
+            the top-right tools (up to three icons, or a speaker's name). */}
+        <div data-testid="context-title" className="ml-hit mr-40 flex h-10 min-w-0 flex-col items-start justify-center text-left">
           <div className="max-w-full truncate text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
             {title.kicker}
           </div>
           {title.name && <div className="max-w-full truncate text-sm font-semibold">{title.name}</div>}
         </div>
 
-        {/* Artwork — fills the upper space, centered. */}
+        {/* Artwork, filling the upper space, with the action rail on its
+            right edge: Like, Add to playlist, Tabs. */}
         <div className="flex-1 grid place-items-center py-4">
-          <Artwork
-            src={art}
-            className="w-full max-w-sm aspect-square rounded-2xl bg-art shadow-2xl ring-1 ring-foreground/10"
-          >
-            <div className="h-full w-full grid place-items-center text-foreground/20">
-              <MusicIcon className="h-20 w-20" />
-            </div>
-          </Artwork>
+          <div className="relative w-full max-w-sm">
+            <Artwork
+              src={art}
+              className="w-full aspect-square rounded-2xl bg-art shadow-2xl ring-1 ring-foreground/10"
+            >
+              <div className="h-full w-full grid place-items-center text-foreground/20">
+                <MusicIcon className="h-20 w-20" />
+              </div>
+            </Artwork>
+            {hasRail && current && (
+              <div data-testid="action-rail" className="absolute right-2 bottom-2 flex flex-col items-center gap-cluster">
+                {user && (
+                  <LikeButton
+                    size="md"
+                    liked={isLiked}
+                    onToggle={toggleLike}
+                    className={cn(RAIL_BUTTON, 'h-11 w-11', isLiked && 'text-ember hover:text-ember')}
+                  />
+                )}
+                {canAdd && (
+                  <AddToPlaylistMenu
+                    track={current}
+                    open={addOpen}
+                    onOpenChange={setAddOpen}
+                    triggerClassName={cn(RAIL_BUTTON, 'h-11 w-11 rounded-full text-white')}
+                  />
+                )}
+                {tabsEnabled && (
+                  <Button variant="ghost" size="icon" onClick={openTabs} aria-label="Guitar tabs" title="Guitar tabs" className={RAIL_BUTTON}>
+                    <TabsIcon />
+                  </Button>
+                )}
+              </div>
+            )}
+          </div>
         </div>
 
-        {/* Title + artist + like */}
+        {/* Title + artist */}
         <div className="flex items-end justify-between gap-4">
           {/* A song that could not play: said here too, as in the bar. */}
           {unplayable ? (
@@ -357,13 +421,6 @@ export function NowPlaying() {
               marquee={open}
               onArtistNavigate={() => setOpen(false)}
             />
-          )}
-          {current && user && (
-            <div className="flex items-center gap-1 shrink-0">
-              <LikeButton size="md" liked={isLiked} onToggle={toggleLike} />
-              <AddToPlaylistMenu track={current} open={addOpen} onOpenChange={setAddOpen} />
-              <ShareButton track={current} className="h-10 w-10" />
-            </div>
           )}
         </div>
 
@@ -382,25 +439,23 @@ export function NowPlaying() {
           right={loopButton}
         />
 
-        {/* The tools, each an icon over a label: where the music plays (the
-            label names the output when it is not the phone), guitar tabs
-            (when the plugin is on), the equalizer (not while casting) and
-            the queue. Equal columns, however many there are. */}
-        <div data-testid="tool-row" className="mt-block grid grid-flow-col auto-cols-fr gap-inset">
-          <DevicesButton variant="full" iconClassName="h-5 w-5" />
-          {tabsEnabled && (
-            <PlayerToolButton label="Tabs" ariaLabel="Guitar tabs" onClick={openTabs}>
-              <TabsIcon className="h-5 w-5" />
-            </PlayerToolButton>
-          )}
-          {eqAvailable && (
-            <PlayerToolButton label="EQ" ariaLabel="Equalizer" lit={eqOn} onClick={() => setEqOpen(true)}>
-              <EqualizerIcon className="h-5 w-5" />
-            </PlayerToolButton>
-          )}
-          <PlayerToolButton label="Queue" onClick={() => setQueueOpen(true)}>
-            <QueueIcon className="h-5 w-5" />
-          </PlayerToolButton>
+        {/* Lyrics (down to the card below) and Up next (the queue sheet),
+            two wide buttons under the controls. */}
+        <div data-testid="lyrics-queue" className="mt-block grid grid-cols-2 gap-cluster">
+          <button
+            type="button"
+            onClick={showLyrics}
+            className="flex h-12 items-center justify-center gap-cluster rounded-xl bg-foreground/[0.07] text-sm font-semibold text-foreground/90 transition-colors hover:bg-foreground/[0.12]"
+          >
+            <LyricsIcon className="h-5 w-5" /> Lyrics
+          </button>
+          <button
+            type="button"
+            onClick={() => setQueueOpen(true)}
+            className="flex h-12 items-center justify-center gap-cluster rounded-xl bg-foreground/[0.07] text-sm font-semibold text-foreground/90 transition-colors hover:bg-foreground/[0.12]"
+          >
+            <QueueIcon className="h-5 w-5" /> Up next
+          </button>
         </div>
       </div>
 
@@ -422,7 +477,7 @@ export function NowPlaying() {
         ref={lyricsRef}
         className="mt-8 mb-6 -mr-6 -ml-3.5 h-[70vh] rounded-t-2xl bg-sidebar/90 text-sidebar-foreground backdrop-blur-sm flex flex-col"
       >
-        <LyricsBody active={open} showHeader={false} />
+        <LyricsBody active={open} showHeader={false} reportOpen={reportOpen} onReportOpenChange={setReportOpen} />
       </div>
       </div>
     </div>
