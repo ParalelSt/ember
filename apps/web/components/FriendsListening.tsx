@@ -30,7 +30,9 @@ export function FriendsListening() {
     <section className="mb-10">
       <h2 className="text-xl font-bold tracking-tight mb-4">Friends are listening to</h2>
       <div className="flex gap-4 overflow-x-auto pb-2 -mx-1 px-1 scrollbar-thin">
-        {data.map((item) => (
+        {data.map((item) => {
+          const ago = formatAgo(item.playedAt);
+          return (
           // Fixed width + shrink-0 so the row scrolls horizontally instead
           // of wrapping; TrackCard itself is width-agnostic (it fills
           // whatever box it's given, same as it does in a shelf's grid
@@ -41,11 +43,12 @@ export function FriendsListening() {
             <TrackCard
               track={item.track}
               onActivate={() => playTrack(item.track)}
-              subtitle={`${item.userName} · ${formatAgo(item.playedAt)}`}
+              subtitle={ago ? `${item.userName} · ${ago}` : item.userName}
               artworkFallback={MUSIC_ICON_FALLBACK}
             />
           </div>
-        ))}
+          );
+        })}
       </div>
     </section>
   );
