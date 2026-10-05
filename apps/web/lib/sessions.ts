@@ -31,13 +31,15 @@ interface StatusError extends Error {
 }
 
 export async function loadSession(pb: PocketBase, id: string): Promise<RecordModel> {
+  let row: RecordModel;
   try {
-    return await pb.collection('sessions').getOne(id, { expand: 'host' });
+    row = await pb.collection('sessions').getOne(id, { expand: 'host' });
   } catch {
     const e: StatusError = new Error('Session not found.');
     e.status = 404;
     throw e;
   }
+  return endIfExpired(pb, row);
 }
 
 export function assertActive(session: RecordModel): void {
@@ -102,9 +104,12 @@ export function carlistPerson(user: RecordModel | Record<string, unknown> | null
   };
 }
 
-/** A carlist stops counting as live for the Carlist button once nobody has
- *  moved it on (song change, start) for this long: hosts often just close
- *  the app instead of ending it. */
+/** A carlist is over once nobody has moved it on (song change, start) for
+ *  this long: hosts often just close the app instead of ending it. The
+ *  Carlist button stops showing it and the server stops serving it (join,
+ *  poll, add, skip, now, commands) after the same window, measured from the
+ *  session row's `updated`, so a long drive that keeps changing songs stays
+ *  alive. */
 export const LIVE_WINDOW_MS = 12 * 60 * 60 * 1000;
 
 /** Milliseconds since a PocketBase timestamp ("2026-10-02 12:00:00.000Z"),
@@ -113,4 +118,26 @@ export function msSince(stamp: unknown, now = Date.now()): number | null {
   if (typeof stamp !== 'string' || !stamp) return null;
   const t = Date.parse(stamp.replace(' ', 'T'));
   return Number.isFinite(t) ? Math.max(0, now - t) : null;
+}
+
+/** True when an active carlist has been idle longer than LIVE_WINDOW_MS. A
+ *  row with no parseable `updated` is never expired. */
+export function sessionExpired(session: RecordModel, now = Date.now()): boolean {
+  if (session.active !== true) return false;
+  const idle = msSince(session.updated, now);
+  return idle !== null && idle > LIVE_WINDOW_MS;
+}
+
+/** Lazy expiry: an expired carlist is marked ended in the DB the first time
+ *  it is seen, and handed back as ended, so every route treats it like one
+ *  the host ended. */
+export async function endIfExpired(
+  pb: PocketBase,
+  session: RecordModel,
+  now = Date.now(),
+): Promise<RecordModel> {
+  if (!sessionExpired(session, now)) return session;
+  await pb.collection('sessions').update(session.id, { active: false }).catch(() => undefined);
+  session.active = false;
+  return session;
 }

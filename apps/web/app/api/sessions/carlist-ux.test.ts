@@ -175,6 +175,47 @@ const order = () =>
 beforeEach(() => {
   reset();
   caller.id = 'u1';
+  // The fixtures' timestamps are "an hour or two ago" on this day.
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(new Date('2026-10-02T11:00:00Z'));
+});
+
+describe('server-side expiry (12h idle)', () => {
+  const stale = () => {
+    db.sessions[0].updated = '2026-10-01 10:00:00.000Z';
+  };
+
+  it('join by code answers like an unknown code, and ends the row', async () => {
+    stale();
+    caller.id = 'u2';
+    const POST = await handler(import('./join/route'));
+    expect((await POST(req({ code: 'K7MPQ4' }))).status).toBe(404);
+    expect(db.sessions[0].active).toBe(false);
+    expect(db.session_members.some((m) => m.user === 'u2')).toBe(false);
+  });
+
+  it('poll shows the normal ended state', async () => {
+    stale();
+    const GET = await handler(import('./[id]/route'), 'GET');
+    const res = await GET(req(), { params: Promise.resolve({ id: 's1' }) });
+    expect((await res.json()).session.active).toBe(false);
+    expect(db.sessions[0].active).toBe(false);
+  });
+
+  it('host now answers 410 and writes nothing', async () => {
+    stale();
+    const POST = await handler(import('./[id]/now/route'));
+    const res = await POST(req({ index: 1 }), { params: Promise.resolve({ id: 's1' }) });
+    expect(res.status).toBe(410);
+    expect(db.sessions[0].now_index).toBe(0);
+  });
+
+  it('recent activity keeps it alive', async () => {
+    db.sessions[0].updated = '2026-10-02 00:30:00.000Z';
+    caller.id = 'u2';
+    const POST = await handler(import('./join/route'));
+    expect((await POST(req({ code: 'K7MPQ4' }))).status).toBe(200);
+  });
 });
 
 describe('joining by the link code', () => {

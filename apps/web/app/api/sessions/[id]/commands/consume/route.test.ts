@@ -18,6 +18,7 @@ vi.mock('@/lib/auth', () => ({
 vi.mock('@/lib/sessions', () => ({
   loadSession: async () => ({ id: 's1', host: 'host', active: true }),
   assertHost: () => undefined,
+  assertActive: () => undefined,
   sessionsClient: async () => ({
     collection: () => ({
       getFullList: async () => rows.filter((r) => !deleted.has(r.id)),
