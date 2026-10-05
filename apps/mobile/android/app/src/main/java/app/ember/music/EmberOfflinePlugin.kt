@@ -64,6 +64,10 @@ class EmberOfflinePlugin : Plugin() {
     override fun load() {
         OfflineDownloadService.listener = progressListener
         NativeLog.attach(logSink)
+        // Downloads a killed process left half done. Off the main thread:
+        // the index is read from disk and every pending file is checked.
+        val ctx = context.applicationContext
+        Thread { OfflineDownloadService.resumePending(ctx, OfflineStore.shared(ctx)) }.start()
     }
 
     /** Capacitor only delivers to listeners that already exist, so the events

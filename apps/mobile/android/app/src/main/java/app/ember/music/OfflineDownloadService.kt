@@ -37,6 +37,20 @@ class OfflineDownloadService : Service() {
         var listener: ((JSONObject?) -> Unit)? = null
 
         fun start(ctx: Context) { androidx.core.content.ContextCompat.startForegroundService(ctx, Intent(ctx, OfflineDownloadService::class.java)) }
+        /** Starts the downloader when the index still has work: a drain cut
+         *  off by the process going away is otherwise only picked up again
+         *  by a sticky restart, which Android may never do (force stop, an
+         *  OEM's task killer), and its list sat part-downloaded with no
+         *  failure and no Retry. Called when the app starts. */
+        fun resumePending(ctx: Context, store: OfflineStore) {
+            // Work a drain would actually take: not what this process already
+            // gave up on (that waits for Retry), not a cancelled pin.
+            val work = store.pending().any { (pinId, t) -> pinId !in cancelled && failed[pinId]?.contains(t.getString("id")) != true }
+            if (!work) return
+            runCatching { start(ctx) }.onFailure {
+                NativeLog.warn("offline", "could not resume pending downloads: " + (it.message ?: it.javaClass.simpleName))
+            }
+        }
         fun cancel(ctx: Context, pinId: String) { cancelled.add(pinId); ctx.startService(Intent(ctx, OfflineDownloadService::class.java).setAction(ACTION_CANCEL)) }
     }
 

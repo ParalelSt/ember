@@ -21,7 +21,11 @@ import java.nio.file.Files
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34])
 class OfflineDownloadTimeoutTest {
-    @After fun tearDown() { OfflineDownloadService.cancelled.clear() }
+    @After fun tearDown() {
+        OfflineDownloadService.cancelled.clear()
+        OfflineDownloadService.failed.clear()
+        OfflineDownloadService.failedReason.clear()
+    }
 
     @Test fun theTimeoutStopsTheServiceAtOnce() {
         val controller = Robolectric.buildService(OfflineDownloadService::class.java).create()
