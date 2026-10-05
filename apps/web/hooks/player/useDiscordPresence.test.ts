@@ -188,4 +188,23 @@ describe('useDiscordPresence: skipping at 2:45', () => {
     rerender({ current: c, isPlaying: true, position: OLD, duration: DURATION });
     expect(presence.publishDiscordPresence).toHaveBeenLastCalledWith(c, true, 0, 240);
   });
+
+  it('republishes when the Discord switch changes, so turning it on or off shows at once', async () => {
+    const { usePrivacyStore } = await import('@/stores/usePrivacyStore');
+    const { act } = await import('@testing-library/react');
+    usePrivacyStore.setState({ shareDiscord: false });
+    const { rerender } = setup({ position: 0 });
+    rerender({ current: a, isPlaying: true, position: 40, duration: DURATION });
+    rerender({ current: a, isPlaying: true, position: 41, duration: DURATION });
+    presence.publishDiscordPresence.mockClear();
+
+    // The settings load (or the member flips the switch) mid-song.
+    act(() => usePrivacyStore.setState({ shareDiscord: true }));
+    expect(presence.publishDiscordPresence).toHaveBeenCalledTimes(1);
+    expect(presence.publishDiscordPresence).toHaveBeenLastCalledWith(a, true, 41, DURATION);
+
+    act(() => usePrivacyStore.setState({ shareDiscord: false }));
+    expect(presence.publishDiscordPresence).toHaveBeenCalledTimes(2);
+  });
 });
+

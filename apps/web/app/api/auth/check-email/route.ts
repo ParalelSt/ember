@@ -17,7 +17,8 @@ export const POST = withRequestLog('auth/check-email', async (req: NextRequest) 
     const limited = await limitCaller(req, 'check-email', CHECK_EMAIL_LIMIT);
     if (limited) return limited;
 
-    const body = (await req.json().catch(() => ({}))) as { email?: string };
+    const body = (await req.json().catch(() => null)) as { email?: unknown } | null;
+    if (!body || typeof body !== 'object') return jsonError('Invalid email', 400);
     const email = String(body.email ?? '').trim().toLowerCase();
     if (!EMAIL_RE.test(email)) return jsonError('Invalid email', 400);
 

@@ -43,7 +43,11 @@ export function formatCount(n: number, noun: string, plural?: string): string {
 /** Ported from `FriendsListening`'s `agoLabel` exactly: minutes only, no
  *  hour/day buckets. `now` is injectable so tests are deterministic. */
 export function formatAgo(iso: string, now: number = Date.now()): string {
-  const mins = Math.max(0, Math.round((now - new Date(iso).getTime()) / 60000));
+  // PocketBase sends `2026-06-12 10:00:00.000Z`; Safari's engine reads only
+  // the ISO `T` form and would answer "NaN min ago".
+  const at = new Date(String(iso ?? '').replace(' ', 'T')).getTime();
+  if (Number.isNaN(at)) return '';
+  const mins = Math.max(0, Math.round((now - at) / 60000));
   if (mins < 1) return 'now';
   if (mins === 1) return '1 min ago';
   return `${mins} min ago`;

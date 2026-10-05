@@ -2,7 +2,9 @@ import type { NextRequest } from 'next/server';
 import { requireUser, UnauthorizedError, unauthorizedResponse } from '@/lib/auth';
 import { fromError } from '@/lib/upsertTrack';
 import { withRequestLog } from '@/lib/logger/withRequestLog';
-import { applyNavPatch, parseNavPatch, readNavPrefs, type NavPrefs } from '@/lib/navPlaylists';
+import { applyNavPatch, atNavCap, parseNavPatch, pruneNavPrefs, readNavPrefs, type NavPrefs } from '@/lib/navPlaylists';
+import { collabClient, sharedWith } from '@/lib/playlistAccess';
+import type PocketBase from 'pocketbase';
 
 /** Per-user order of the Sidebar / Drawer playlists, synced across devices.
  *
@@ -33,6 +35,19 @@ function withNavLock<T>(userId: string, fn: () => Promise<T>): Promise<T> {
   return run;
 }
 
+/** Every playlist id the user can still open: their own and the shared
+ *  ones. Null when the shared list cannot be read, so nothing is dropped
+ *  on a guess. */
+async function liveIds(pb: PocketBase, userId: string): Promise<Set<string> | null> {
+  try {
+    const own = await pb.collection('playlists').getFullList({ filter: `user = "${userId}"`, fields: 'id' });
+    const shared = await sharedWith(await collabClient(), userId);
+    return new Set([...own, ...shared].map((p) => p.id));
+  } catch {
+    return null;
+  }
+}
+
 export const GET = withRequestLog('nav-playlists', async () => {
   try {
     const { pb, user } = await requireUser();
@@ -53,7 +68,14 @@ export const PATCH = withRequestLog('nav-playlists', async (request: NextRequest
     }
     const updated = await withNavLock(user.id, async () => {
       const record = await pb.collection('users').getOne(user.id);
-      const next = applyNavPatch(readNavPrefs(record.navPlaylists), patch, Date.now());
+      let prefs = readNavPrefs(record.navPlaylists);
+      // At a cap, deleted playlists would push out live pins and open
+      // times: drop them first. Only then, so a normal open costs no query.
+      if (atNavCap(prefs)) {
+        const live = await liveIds(pb, user.id);
+        if (live) prefs = pruneNavPrefs(prefs, live);
+      }
+      const next = applyNavPatch(prefs, patch, Date.now());
       return pb.collection('users').update(user.id, { navPlaylists: next });
     });
     return Response.json(readNavPrefs(updated.navPlaylists) satisfies NavPrefs);

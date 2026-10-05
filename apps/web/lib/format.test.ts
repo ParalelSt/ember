@@ -137,3 +137,30 @@ describe('formatAddedDate', () => {
     expect(formatAddedDate('not a date', now)).toBe('');
   });
 });
+
+describe('formatAgo with PocketBase dates', () => {
+  it('reads the space-separated PocketBase date even where the engine only takes ISO (Safari)', async () => {
+    const { formatAgo } = await import('./format');
+    const RealDate = Date;
+    // JavaScriptCore answers Invalid Date for "YYYY-MM-DD HH:MM:SS".
+    class StrictDate extends RealDate {
+      constructor(...args: unknown[]) {
+        if (typeof args[0] === 'string' && /^\d{4}-\d\d-\d\d /.test(args[0])) super(NaN);
+        else super(...(args as []));
+      }
+    }
+    vi.stubGlobal('Date', StrictDate);
+    try {
+      const now = RealDate.parse('2026-10-05T21:10:00.000Z');
+      expect(formatAgo('2026-10-05 21:00:00.000Z', now)).toBe('10 min ago');
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('says nothing about a date it cannot read, never "NaN min ago"', async () => {
+    const { formatAgo } = await import('./format');
+    expect(formatAgo('', 0)).not.toMatch(/NaN/);
+    expect(formatAgo('soon', 0)).not.toMatch(/NaN/);
+  });
+});

@@ -8,7 +8,7 @@ import {
 } from '@/lib/auth';
 import { createAdminClient } from '@/lib/pocketbase/server';
 import { mapTrackRow, type TrackRecord } from '@/lib/mapTrack';
-import { fromError } from '@/lib/upsertTrack';
+import { fromError, jsonError } from '@/lib/upsertTrack';
 import { withRequestLog } from '@/lib/logger/withRequestLog';
 
 // `id` in the URL is PB's internal record id, NOT the Track.id external id.
@@ -19,11 +19,12 @@ export const PATCH = withRequestLog('admin/tracks/[id]', async (req: NextRequest
   try {
     await requireAdmin();
     const { id } = await ctx.params;
-    const body = (await req.json().catch(() => ({}))) as {
-      title?: string;
-      artist?: string;
-      album?: string;
-    };
+    const body = (await req.json().catch(() => null)) as {
+      title?: unknown;
+      artist?: unknown;
+      album?: unknown;
+    } | null;
+    if (!body || typeof body !== 'object') return jsonError('Invalid body', 400);
     const patch: Record<string, unknown> = {};
     if (typeof body.title === 'string')  patch.title  = body.title.slice(0, 500);
     if (typeof body.artist === 'string') patch.artist = body.artist.slice(0, 500);

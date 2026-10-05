@@ -65,3 +65,11 @@ describe('POST /api/admin/users/[id]/password', () => {
     expect(errorSpy).not.toHaveBeenCalled();
   });
 });
+
+describe('POST /api/admin/users/[id]/password body checks', () => {
+  it('answers a null JSON body with a 400, not a 500', async () => {
+    const res = await POST(request(null), ctx('u1'));
+    expect(res.status).toBe(400);
+    expect(update).not.toHaveBeenCalled();
+  });
+});

@@ -3,6 +3,7 @@
 import { useEffect, useRef } from 'react';
 import { publishDiscordPresence } from '@/lib/discordPresence';
 import { chooseDuration } from '@/lib/playback/chooseDuration';
+import { usePrivacyStore } from '@/stores/usePrivacyStore';
 import type { Track } from '@/types/track';
 
 /** How big a jump between two playhead ticks counts as a seek rather than
@@ -100,4 +101,22 @@ export function useDiscordPresence({
     if (jumped && isPlaying) publishDiscordPresence(current, true, position, duration);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [current?.id, isPlaying, position]);
+
+  // The Discord switch: publishDiscordPresence reads it on every call, but a
+  // change (the settings landing after the first publish, or the member
+  // flipping it mid-song) would otherwise wait for the next song, pause or
+  // seek. Republish what is on now, at the last playhead this song reported.
+  const shareDiscord = usePrivacyStore((st) => st.shareDiscord);
+  const lastShare = useRef(shareDiscord);
+  useEffect(() => {
+    if (lastShare.current === shareDiscord) return;
+    lastShare.current = shareDiscord;
+    const s = seen.current;
+    if (!s.mounted) return;
+    const length = s.leftover !== null ? chooseDuration(current?.durationSec ?? 0, null) : duration;
+    publishDiscordPresence(current, isPlaying, s.sec, length);
+    // Only the switch: the song, play state and playhead have their own
+    // publishes above.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shareDiscord]);
 }

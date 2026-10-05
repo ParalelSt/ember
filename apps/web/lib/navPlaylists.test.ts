@@ -58,3 +58,21 @@ describe('readNavPrefs / parseNavPatch', () => {
     }
   });
 });
+
+describe('pruneNavPrefs / atNavCap', () => {
+  it('drops ids that are no longer live, keeping order and times', async () => {
+    const { pruneNavPrefs } = await import('./navPlaylists');
+    expect(pruneNavPrefs({ pinned: ['a', 'gone', 'b'], opened: { a: 1, gone: 2, c: 3 } }, new Set(['a', 'b', 'c']))).toEqual({
+      pinned: ['a', 'b'],
+      opened: { a: 1, c: 3 },
+    });
+  });
+
+  it('is at the cap only when the pins or open times are full', async () => {
+    const { atNavCap, MAX_PINNED } = await import('./navPlaylists');
+    expect(atNavCap({ pinned: ['a'], opened: {} })).toBe(false);
+    expect(atNavCap({ pinned: Array.from({ length: MAX_PINNED }, (_, i) => `p${i}`), opened: {} })).toBe(true);
+    const opened = Object.fromEntries(Array.from({ length: MAX_OPENED }, (_, i) => [`o${i}`, i + 1]));
+    expect(atNavCap({ pinned: [], opened })).toBe(true);
+  });
+});

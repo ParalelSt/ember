@@ -18,7 +18,8 @@ export const POST = withRequestLog('admin/users/[id]/password', async (req: Next
   try {
     const { user: actor } = await requireAdmin();
     const { id } = await ctx.params;
-    const body = (await req.json().catch(() => ({}))) as { password?: string };
+    const body = (await req.json().catch(() => null)) as { password?: unknown } | null;
+    if (!body || typeof body !== 'object') return jsonError('Password cannot be blank', 400);
     const pw = typeof body.password === 'string' ? body.password : '';
 
     if (pw.trim().length === 0) return jsonError('Password cannot be blank', 400);

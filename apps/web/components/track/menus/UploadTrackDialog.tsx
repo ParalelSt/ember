@@ -34,14 +34,29 @@ export function UploadTrackDialog({
   const [artist, setArtist] = useState('');
   const [album, setAlbum] = useState('');
   const [durationSec, setDurationSec] = useState(0);
+  /** What the last picked file's name filled in: a field still holding it
+   *  is the app's guess, not the member's, and the next file replaces it. */
+  const prefilled = useRef({ title: '', artist: '' });
+  /** The newest pick: a slower length read of an earlier file is dropped. */
+  const pickSeq = useRef(0);
 
   const reset = () => {
+    pickSeq.current++;
+    prefilled.current = { title: '', artist: '' };
     setFile(null);
     setTitle('');
     setArtist('');
     setAlbum('');
     setDurationSec(0);
     if (inputRef.current) inputRef.current.value = '';
+  };
+
+  /** Every way out of the dialog forgets the picked file: Cancel too, or
+   *  reopening would show an empty picker with the old file still set to
+   *  upload. */
+  const close = () => {
+    reset();
+    onOpenChange(false);
   };
 
   /** Read the duration in the browser — the server can't count on ffprobe
@@ -60,18 +75,31 @@ export function UploadTrackDialog({
     });
 
   const pick = async (f: File | null) => {
+    const seq = ++pickSeq.current;
     setFile(f);
+    setDurationSec(0);
     if (!f) return;
-    // Pre-fill from the filename so the common case is one click.
+    // Pre-fill from the filename so the common case is one click. A field
+    // the member typed in is theirs; one still holding the previous file's
+    // guess takes this file's.
     const base = f.name.replace(/\.[^.]+$/, '');
     const dash = base.split(/\s+-\s+/);
-    if (dash.length >= 2) {
-      if (!artist) setArtist(dash[0].trim());
-      if (!title) setTitle(dash.slice(1).join(' - ').trim());
-    } else if (!title) {
-      setTitle(base);
+    const guess = dash.length >= 2
+      ? { artist: dash[0].trim(), title: dash.slice(1).join(' - ').trim() }
+      : { artist: '', title: base };
+    const last = prefilled.current;
+    const next = { title: last.title, artist: last.artist };
+    if (!title || title === last.title) {
+      setTitle(guess.title);
+      next.title = guess.title;
     }
-    setDurationSec(await readDuration(f));
+    if (!artist || artist === last.artist) {
+      setArtist(guess.artist);
+      next.artist = guess.artist;
+    }
+    prefilled.current = next;
+    const length = await readDuration(f);
+    if (seq === pickSeq.current) setDurationSec(length);
   };
 
   const upload = useMutation({
@@ -79,8 +107,7 @@ export function UploadTrackDialog({
     onSuccess: ({ track }) => {
       toast.success(`Uploaded “${track.title}”`, { description: 'Everyone on the server can find it now.' });
       void qc.invalidateQueries({ queryKey: QK.uploads });
-      reset();
-      onOpenChange(false);
+      close();
     },
     onError: (e: Error) => toast.error(e.message),
   });
@@ -124,7 +151,7 @@ export function UploadTrackDialog({
             </div>
           )}
           <DialogFooter>
-            <Button type="button" variant="ghost" onClick={() => onOpenChange(false)} disabled={upload.isPending}>
+            <Button type="button" variant="ghost" onClick={close} disabled={upload.isPending}>
               Cancel
             </Button>
             <Button

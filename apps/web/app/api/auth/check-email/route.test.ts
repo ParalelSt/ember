@@ -70,3 +70,15 @@ describe('POST /api/auth/check-email', () => {
     expect((await check('me@example.com', '198.51.100.7')).status).toBe(200);
   });
 });
+
+describe('POST /api/auth/check-email body checks', () => {
+  it('answers a JSON null body with a 400, not a 500', async () => {
+    const res = await POST(new NextRequest('http://ember.test/api/auth/check-email', {
+      method: 'POST',
+      body: 'null',
+      headers: { 'content-type': 'application/json', 'x-forwarded-for': '203.0.113.77' },
+    }), undefined);
+    expect(res.status).toBe(400);
+    expect(lookups).not.toHaveBeenCalled();
+  });
+});

@@ -139,4 +139,19 @@ describe('FriendsListening', () => {
 
     expect(await screen.findByTestId('music-fallback')).toBeInTheDocument();
   });
+
+  it('two nameless members on the same song are two cards, without a duplicate key', async () => {
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      const item = { userName: 'Unnamed member', playedAt: new Date(NOW - 60_000).toISOString(), track: makeTrack() };
+      api.listening.mockResolvedValue({ items: [item, { ...item }] });
+      renderWithClient();
+      expect(await screen.findAllByText('Midnight Drive')).toHaveLength(2);
+      const keyWarnings = errors.mock.calls.filter((c) => c.some((a) => typeof a === 'string' && /same key/i.test(a)));
+      expect(keyWarnings).toEqual([]);
+    } finally {
+      errors.mockRestore();
+    }
+  });
 });
+

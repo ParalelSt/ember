@@ -42,6 +42,7 @@ const playlists: Record<string, { id: string; user: string; collaborative?: bool
 let rows: Row[] = [];
 const catalog = new Map<string, Track>();
 let failCreateFor: string | null = null;
+let refuseCreateFor: string | null = null;
 /** "playlist:user" pairs on playlist_members. */
 const members = new Set<string>();
 const notFoundErr = () => Object.assign(new Error('not found'), { status: 404 });
@@ -86,9 +87,10 @@ function fakePb(kind: 'member' | 'server') {
           if (kind === 'member' && playlists[data.playlist]?.user !== 'u1') {
             throw Object.assign(new Error('Failed to create record.'), { status: 400 });
           }
-          if (failCreateFor && data.track === failCreateFor) throw Object.assign(new Error('Failed to create record.'), { status: 400 });
+          if (failCreateFor && data.track === failCreateFor) throw Object.assign(new Error('Failed to create record.'), { status: 400, data: { data: { track: { code: 'validation_not_unique', message: 'Value must be unique.' } } } });
+          if (refuseCreateFor && data.track === refuseCreateFor) throw Object.assign(new Error('Failed to create record.'), { status: 400, data: { data: {} } });
           if (rows.some((r) => r.playlist === data.playlist && r.track === data.track)) {
-            throw Object.assign(new Error('Failed to create record.'), { status: 400 });
+            throw Object.assign(new Error('Failed to create record.'), { status: 400, data: { data: { track: { code: 'validation_not_unique', message: 'Value must be unique.' } } } });
           }
           rows.push(data);
           return { id: `row${rows.length}` };
@@ -154,6 +156,7 @@ beforeEach(() => {
   rows = [];
   catalog.clear();
   failCreateFor = null;
+  refuseCreateFor = null;
   members.clear();
   requireUserMock.mockClear();
   seed('mine', 'u1', [SLOW, HARBOR_VIDEO, HOME_B]);
@@ -230,6 +233,13 @@ describe('POST /api/playlists/[id]/tracks/bulk', () => {
     const body = await res.json();
     expect(body.added).toBe(2);
     expect(body.skipped).toEqual([{ id: 'youtube:other', title: 'Other', artist: 'Band', reason: 'same-track', existingTitle: 'Other' }]);
+  });
+
+  it('any other 400 mid-loop (a refused write) is an error, not counted as already there', async () => {
+    refuseCreateFor = 'youtube:other';
+    const other = t('youtube:other', 'Other', 'Band');
+    const res = await POST(request({ tracks: [other] }), ctx('mine'));
+    expect(res.status).not.toBe(201);
   });
 
   it('two artist-less uploads with the same title are both added', async () => {
