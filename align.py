@@ -62,10 +62,11 @@ POLISH_S = 0.07              # last, each bar is placed this finely on the mix
 SEARCH_START_S = 90.0        # the tab's first note may be this late into the recording
 SCALES = np.arange(0.80, 1.2501, 0.002)    # recording seconds per tab second
 WINDOW_S = 30.0              # the tab's first seconds that find the start
-TOP_CANDIDATES = 30          # the strongest distinct starts, refined on the first bars
-EARLIEST_CANDIDATES = 12     # and the earliest strong ones
+TOP_CANDIDATES = 60          # the strongest distinct starts, refined on the first bars
+EARLIEST_CANDIDATES = 30     # and the earliest strong ones
 NEAR_BEST = 0.7              # starts this close to the best are followed through the song
-FOLLOW_CANDIDATES = 8
+FOLLOW_CANDIDATES = 8        # (the earliest and the best few by their first bars)
+SURVEY_CANDIDATES = 8        # and the best by the whole song at one steady pace
 WINDOW_BARS = 8              # bars of evidence for each placement
 REFINE_S = 0.1               # each start is refined this far on the first bars
 FOLLOW_SHIFT_S = 0.12        # a bar may start this far from where the one before put it
@@ -372,31 +373,64 @@ def whole_fit(tab: Tab, env: np.ndarray, peaks: np.ndarray, chroma: np.ndarray, 
     return {"anchor_t": anchor_t, "anchor_s": anchor_s, "onset": onset, "covered": covered, "chroma": chroma_sim, "pace": pace}
 
 
+def steady_fit(tab: Tab, env: np.ndarray, peaks: np.ndarray, chroma: np.ndarray, tab_chroma: np.ndarray, zero: float, pace: float) -> dict:
+    """whole_fit without following the bars: the tab laid over the whole
+    recording at one steady pace from `zero`. Cheap enough for every start,
+    and close enough to rank them: a start a bar or a beat out fits the
+    first bars about as well as the right one (a riff repeats, a drum hits
+    every beat), but not the whole song."""
+    song = zero + tab.onsets * pace
+    lo, hi = float(song.min()) - 0.5, float(song.max()) + 0.5
+    onset = float(sample(env, song).mean()) / max(1e-6, span_mean(env, lo, hi))
+    strong = peaks[sample(env, peaks) > 1.0] if len(peaks) else peaks
+    covered = float(((strong >= lo) & (strong <= hi)).mean()) if len(strong) else 0.0
+    ends = zero + np.append(tab.bars, tab.end) * pace
+    chroma_sim = chroma_score(tab_chroma, ends, chroma) if tab_chroma.any() else 0.0
+    return {"onset": onset, "covered": covered, "chroma": chroma_sim}
+
+
+def fit_total(fits: list[dict]) -> None:
+    """Each fit's total: its onsets against the best of them, the span of
+    the recording's onsets it covers, and the chroma."""
+    top = max(f["onset"] for f in fits) or 1.0
+    for f in fits:
+        f["total"] = f["onset"] / top + 0.3 * f["covered"] + f["chroma"]
+
+
 def best_fit(tab: Tab, env: np.ndarray, peaks: np.ndarray, chroma: np.ndarray, cands: list) -> dict:
     """The start: every candidate refined on the first bars; those close to
-    the best (a riff that repeats fits as well one repeat later) followed
-    through the whole song, earliest first; the best sum of onsets (against
-    the best of them), span of the recording's onsets and chroma wins, the
-    earlier one on a near tie. A start one repeat late leaves the song's
-    first bars unexplained and runs out of recording at the end."""
+    the best (a riff that repeats fits as well one repeat later) are
+    followed through the whole song: the earliest few, the best few by the
+    first bars, and the best few by the whole song laid at a steady pace
+    (steady_fit). The first bars alone cannot tell a start one bar or one
+    beat out from the right one when the riff repeats and a drum hits every
+    beat, and the right one used to be left out (an extra intro bar put a
+    tab 13 s late). The best sum of onsets (against the best of them), span
+    of the recording's onsets and chroma wins, the earlier one on a near
+    tie. A start one repeat late leaves the song's first bars unexplained
+    and runs out of recording at the end."""
     refined = []
     for _, s, zero in cands:
         score, pace, z = refine(tab, env, s, zero)
         refined.append((score, pace, z))
     top_window = max(r[0] for r in refined)
     close = sorted({round(r[2], 2): r for r in refined if r[0] >= NEAR_BEST * top_window}.values(), key=lambda r: r[2])
+    tab_chroma = tab.bar_chroma()
+    surveyed = [steady_fit(tab, env, peaks, chroma, tab_chroma, r[2], r[1]) | {"r": r} for r in close]
+    fit_total(surveyed)
+    by_song = [f["r"] for f in sorted(surveyed, key=lambda f: -f["total"])[:SURVEY_CANDIDATES]]
     # The best few, and the earliest few: a song whose later half is busier
     # fits any tab better there, and the whole-song fit is the judge.
-    chosen = sorted({id(r): r for r in close[: FOLLOW_CANDIDATES // 2] + sorted(close, key=lambda r: -r[0])[: FOLLOW_CANDIDATES // 2]}.values(), key=lambda r: r[2])
+    picks = close[: FOLLOW_CANDIDATES // 2] + sorted(close, key=lambda r: -r[0])[: FOLLOW_CANDIDATES // 2] + by_song
+    chosen = sorted({id(r): r for r in picks}.values(), key=lambda r: r[2])
     fits = []
     for score, pace, z in chosen:
         fit = whole_fit(tab, env, peaks, chroma, z, pace)
         fit["window"] = score
         fits.append(fit)
-    top = max(f["onset"] for f in fits) or 1.0
+    fit_total(fits)
     best = None
     for f in fits:
-        f["total"] = f["onset"] / top + 0.3 * f["covered"] + f["chroma"]
         if best is None or f["total"] > best["total"] + 0.005:
             best = f
     return best
