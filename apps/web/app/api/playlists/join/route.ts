@@ -2,10 +2,8 @@ import type { NextRequest } from 'next/server';
 import { requireUser, UnauthorizedError, unauthorizedResponse } from '@/lib/auth';
 import { fromError, jsonError } from '@/lib/upsertTrack';
 import { withRequestLog } from '@/lib/logger/withRequestLog';
-import { isInviteCode, MAX_MEMBERS } from '@/lib/collab';
-import { addMember, collabClient } from '@/lib/playlistAccess';
-
-const DEAD_LINK = 'This invite link doesn’t work anymore. Ask the owner for a new one.';
+import { DEAD_LINK, isInviteCode, MAX_MEMBERS } from '@/lib/collab';
+import { addMember, collabClient, playlistForCode } from '@/lib/playlistAccess';
 
 /** Open an invite link: `{ code }`. Whoever is signed in becomes a member
  *  of the collaborative playlist whose link it is, and gets its id back.
@@ -22,12 +20,8 @@ export const POST = withRequestLog('playlists/join', async (request: NextRequest
     if (!isInviteCode(code)) return jsonError(DEAD_LINK, 404);
 
     const admin = await collabClient();
-    const found = await admin.collection('playlists').getList(1, 2, {
-      filter: admin.filter('invite_code = {:code} && collaborative = true', { code }),
-      fields: 'id,user',
-    });
-    if (found.items.length !== 1) return jsonError(DEAD_LINK, 404);
-    const playlist = found.items[0];
+    const playlist = await playlistForCode(admin, code, 'id,user');
+    if (!playlist) return jsonError(DEAD_LINK, 404);
     if (playlist.user === user.id) return Response.json({ playlistId: playlist.id, joined: false });
 
     const outcome = await addMember(admin, playlist.id, user.id);

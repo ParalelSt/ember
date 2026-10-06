@@ -178,6 +178,16 @@ export async function sharedWith(admin: PocketBase, userId: string): Promise<Pla
   });
 }
 
+/** The one collaborative playlist whose live link this is, or null. The
+ *  code must already have passed isInviteCode. */
+export async function playlistForCode(admin: PocketBase, code: string, fields?: string) {
+  const found = await admin.collection('playlists').getList(1, 2, {
+    filter: admin.filter('invite_code = {:code} && collaborative = true', { code }),
+    ...(fields ? { fields } : {}),
+  });
+  return found.items.length === 1 ? found.items[0] : null;
+}
+
 /** A fresh invite code: 24 random bytes, base64url (32 characters, the
  *  shape lib/collab's isInviteCode accepts). */
 export function newInviteCode(): string {

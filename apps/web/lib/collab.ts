@@ -15,6 +15,31 @@ export interface CollabState {
   inviteCode?: string | null;
 }
 
+/** POST /api/playlists/join/preview `{ code }`: what the invite card shows before you
+ *  join. Names and faces only (never an email or a user id), the first
+ *  few songs, and `playlistId` only for someone already on it. */
+export interface InvitePreview {
+  name: string;
+  artworkUrl: string | null;
+  owner: Pick<PlaylistPerson, 'name' | 'avatarUrl'>;
+  /** The owner first, then the members, at most PREVIEW_PEOPLE of them. */
+  people: Pick<PlaylistPerson, 'name' | 'avatarUrl'>[];
+  /** Everyone on it, the owner included. */
+  peopleCount: number;
+  songCount: number;
+  /** The first PREVIEW_SONGS songs in the playlist's own order. */
+  songs: { title: string; artist: string; artworkUrl: string | null }[];
+  /** You own it or are on it already: no card, just open it. */
+  alreadyIn: boolean;
+  playlistId?: string;
+}
+
+export const PREVIEW_PEOPLE = 5;
+/** What a dead invite link (off, replaced, or on a playlist no longer
+ *  shared) answers, from the join and from the preview alike. */
+export const DEAD_LINK = 'This invite link doesn’t work anymore. Ask the owner for a new one.';
+export const PREVIEW_SONGS = 3;
+
 /** GET /api/playlists/:id/people: someone the owner could add. `email`
  *  only when the owner is an Ember admin. */
 export type CandidatePerson = PlaylistPerson & { email?: string };
