@@ -197,7 +197,7 @@ const SPACING_BASELINE: Record<string, number> = {
   'components/page/PageTitle.tsx': 1,
   'components/page/SectionHeader.tsx': 1,
   'components/player/LyricsBody.tsx': 22,
-  'components/player/NowPlaying.tsx': 8,
+  'components/player/NowPlaying.tsx': 7,
   'components/player/NowPlayingSummary.tsx': 2,
   'components/player/PlayerBar.tsx': 8,
   'components/player/QueueSheet.tsx': 9,
