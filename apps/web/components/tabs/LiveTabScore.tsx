@@ -62,6 +62,9 @@ export interface LiveTabScoreProps {
   playing: boolean;
   /** Ember's playhead, seconds. */
   position: number;
+  /** When the player reported `position` (performance.now()); the line
+   *  runs on from then. Absent or 0: from when the page got it. */
+  positionAt?: number;
   /** Ember's track length, seconds. */
   duration: number;
   onSeek: (sec: number) => void;
@@ -552,15 +555,24 @@ export function LiveTabScore(props: LiveTabScoreProps) {
   // ── transport: mirror Ember into AlphaTab ───────────────────────────────
   // Its cursor only animates while it believes playback runs, so a score
   // left stopped sits still whatever position it is fed.
-  const { follows, playing, position } = props;
+  const { follows, playing, position, positionAt = 0 } = props;
   useEffect(() => {
-    anchor.current = { sec: position, at: performance.now() };
-  }, [position]);
+    // From the report, not from this render: a busy page renders late, and
+    // stamped here the line ran that much behind the song.
+    const now = performance.now();
+    anchor.current = { sec: position, at: positionAt > 0 && positionAt <= now ? positionAt : now };
+  }, [position, positionAt]);
 
+  const wasPlaying = useRef(playing);
   useEffect(() => {
     // Paused and resumed from here: the estimate restarts from the last
-    // report rather than jumping by the time spent paused.
-    anchor.current = { sec: live.current.position, at: performance.now() };
+    // report rather than jumping by the time spent paused. Anything else
+    // (the score getting ready) keeps the report's own time.
+    const now = performance.now();
+    const at = live.current.positionAt ?? 0;
+    const toggled = wasPlaying.current !== playing;
+    wasPlaying.current = playing;
+    anchor.current = { sec: live.current.position, at: !toggled && at > 0 && at <= now ? at : now };
     const api = apiRef.current;
     if (!api || !synced) return;
     try {
