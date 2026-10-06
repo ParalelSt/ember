@@ -722,6 +722,12 @@ The admin dashboard lets you view every user and track, delete either, toggle is
 
 ---
 
+### Discord "new version" reminder (CI)
+
+`.github/workflows/release-ping.yml` pings the host once an evening (never before 19:00 Zagreb time) when main has a new version. Create a webhook in the Discord #release-notif channel and add it as the repository secret `DISCORD_RELEASE_WEBHOOK`.
+Add the host's Discord user id as the repository variable `DISCORD_NOTIFY_USER_ID` (Settings, Secrets and variables, Actions). Never commit either value.
+Without both, the workflow logs and does nothing; state is the tag `notified/main`.
+
 ## Reset the database (wipes all users + data)
 
 Download a backup first (**Admin → Backups**) if you might want anything back.

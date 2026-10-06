@@ -1,0 +1,45 @@
+# Pings the friend who hosts in Discord (#release-notif) when main has a new
+# version. At most once per evening, never before 19:00 Europe/Zagreb. The
+# schedule fires at 17:00 and 18:00 UTC so 19:00 local is covered in summer and
+# winter time; the script itself decides whether to ping. State lives in the
+# annotated tag notified/main (message = date it was sent).
+#
+# Config (Settings -> Secrets and variables -> Actions):
+#   * Secret    DISCORD_RELEASE_WEBHOOK  webhook of the #release-notif channel
+#   * Variable  DISCORD_NOTIFY_USER_ID   Discord user id of the host
+# Without both, the run logs and exits without moving the tag.
+
+name: release-ping
+
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "0 17,18 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: release-ping
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+          fetch-tags: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Ping if there is a new version
+        env:
+          DISCORD_RELEASE_WEBHOOK: ${{ secrets.DISCORD_RELEASE_WEBHOOK }}
+          DISCORD_NOTIFY_USER_ID: ${{ vars.DISCORD_NOTIFY_USER_ID }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: node .github/scripts/release-ping.mjs
