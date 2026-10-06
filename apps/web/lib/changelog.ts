@@ -21,6 +21,17 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    id: 'fixes-0723',
+    version: '0.7.23',
+    date: '2026-10-06',
+    title: 'Fixes',
+    summary: 'The Linux app now plays through your system\'s sound, and the app stops hammering the server when it is busy.',
+    bullets: [
+      'Linux app: plays through PipeWire or PulseAudio, so it follows your Bluetooth headphones and shows up as Ember in the volume mixer. It also gets the right icon.',
+      'When the server says it is busy, the app waits and tries again later instead of asking over and over.',
+    ],
+  },
+  {
     id: 'tabs-redesign',
     version: '0.7.22',
     date: '2026-10-06',

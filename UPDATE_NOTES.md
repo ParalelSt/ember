@@ -1,3 +1,9 @@
+# 0.7.23: Linux sound and icon, calmer polling (apps 0.4.17)
+
+**Host: run `./update.sh` as usual (no new packages).** The Linux sound fix and
+icon need the new desktop app, 0.4.17 (Android versionCode 22), which the
+`v0.4.17` tag builds.
+
 # 0.7.22: New tabs page, lyrics follow, player menu fixes
 
 **Host: run `./update.sh` as usual (no new packages).** Web only: the apps stay
