@@ -78,3 +78,33 @@ describe('usePresenceHeartbeat', () => {
     expect(send).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('usePresenceHeartbeat (429 backoff)', () => {
+  it('stops sending after a 429 and honors Retry-After', async () => {
+    const send = vi.fn<Send>(async () => { throw Object.assign(new Error('x'), { status: 429, retryAfterMs: 30_000 }); });
+    const { rerender } = setup(send, { userId: 'u1', current: a, isPlaying: true });
+    await vi.advanceTimersByTimeAsync(0);
+    for (let i = 0; i < 40; i++) {
+      rerender({ userId: 'u1', current: a, isPlaying: i % 2 === 1 });
+      await vi.advanceTimersByTimeAsync(50);
+    }
+    expect(send).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(31_000);
+    rerender({ userId: 'u1', current: b, isPlaying: true });
+    expect(send).toHaveBeenCalledTimes(2);
+  });
+
+  it('caps a flapping state even without errors', () => {
+    const send = vi.fn<Send>(async () => ({}));
+    const { rerender } = setup(send, { userId: 'u1', current: a, isPlaying: true });
+    for (let i = 0; i < 100; i++) rerender({ userId: 'u1', current: a, isPlaying: i % 2 === 1 });
+    expect(send.mock.calls.length).toBeLessThanOrEqual(9);
+  });
+
+  it('runs one heartbeat per tab', () => {
+    const send = vi.fn<Send>(async () => ({}));
+    setup(send, { userId: 'u1', current: a, isPlaying: true });
+    setup(send, { userId: 'u1', current: a, isPlaying: true });
+    expect(send).toHaveBeenCalledTimes(1);
+  });
+});

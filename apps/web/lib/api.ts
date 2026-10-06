@@ -169,7 +169,11 @@ async function quiet<T>(path: string, { method = 'GET', body }: ReqOptions = {})
   });
   if (!res.ok) {
     if (res.status === 401) sessionExpired();
-    throw Object.assign(new Error(`Request failed: ${res.status}`), { status: res.status });
+    const secs = Number(res.headers.get('retry-after'));
+    throw Object.assign(new Error(`Request failed: ${res.status}`), {
+      status: res.status,
+      retryAfterMs: Number.isFinite(secs) && secs > 0 ? secs * 1000 : null,
+    });
   }
   return (await res.json()) as T;
 }

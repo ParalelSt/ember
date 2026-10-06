@@ -3,6 +3,7 @@
 import { useEffect, useRef } from 'react';
 import { api } from '@/lib/api';
 import { createClient } from '@/lib/pocketbase/client';
+import { claimSingleton, createBackoff, releaseSingleton, retryAfterOf } from '@/lib/pranks/backoff';
 import { toPrankRow } from '@/lib/pranks/decide';
 import type { PrankAck, PrankRow } from '@/lib/pranks/types';
 
@@ -10,6 +11,8 @@ import type { PrankAck, PrankRow } from '@/lib/pranks/types';
  *  otherwise (a ping still arrives well inside its 45 s window). */
 export const POLL_PLAYING_MS = 2_500;
 export const POLL_IDLE_MS = 10_000;
+/** No two inbox fetches closer than this, whatever re-fires. */
+export const MIN_FETCH_GAP_MS = 2_000;
 
 /** Realtime link. Returns an unsubscribe. `onConnect` fires on every
  *  (re)connect, `onDisconnect` whenever the link drops. */
@@ -136,17 +139,35 @@ export function usePrankInbox({
       .catch(() => {});
   });
 
-  const catchUp = useRef(() =>
-    depsRef.current
+  const backoff = useRef(createBackoff());
+  const inFlight = useRef<Promise<void> | null>(null);
+  const lastFetchAt = useRef(0);
+
+  /** One fetch at a time, never inside a backoff, never closer than
+   *  MIN_FETCH_GAP_MS to the last one (an effect re-firing must not turn
+   *  into a request storm), and none while the tab is hidden. */
+  const catchUp = useRef((skipGap = false): Promise<void> => {
+    if (inFlight.current) return inFlight.current;
+    const now = Date.now();
+    if (typeof document !== 'undefined' && document.hidden) return Promise.resolve();
+    if (backoff.current.blocked(now) || (!skipGap && now - lastFetchAt.current < MIN_FETCH_GAP_MS)) return Promise.resolve();
+    lastFetchAt.current = now;
+    const p = depsRef.current
       .fetchInbox()
       .then((rows) => {
+        backoff.current.ok();
         // Whatever is still waiting comes back in this fetch; one that
         // expired or went to another device does not.
         waiting.current.clear();
         rows.forEach((r) => handleRef.current(r));
       })
-      .catch(() => {}),
-  );
+      .catch((e) => backoff.current.fail(retryAfterOf(e)))
+      .finally(() => {
+        inFlight.current = null;
+      });
+    inFlight.current = p;
+    return p;
+  });
 
   // A different account on this device starts with a clean slate.
   useEffect(() => {
@@ -162,7 +183,7 @@ export function usePrankInbox({
       (row) => handleRef.current(row),
       () => {
         live.current = true;
-        void catchUp.current();
+        void catchUp.current(true);
       },
       () => {
         live.current = false;
@@ -176,17 +197,26 @@ export function usePrankInbox({
 
   useEffect(() => {
     if (!userId) return;
+    const owner = Symbol('inbox');
+    if (!claimSingleton('inbox', owner)) return;
     let stopped = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
     const every = isPlaying ? POLL_PLAYING_MS : POLL_IDLE_MS;
     const tick = async () => {
+      clearTimeout(timer);
       if (!live.current || waiting.current.size) await catchUp.current();
-      if (!stopped) timer = setTimeout(tick, every);
+      if (!stopped) timer = setTimeout(tick, Math.max(every, backoff.current.remaining()));
     };
     void tick();
+    const onVisible = () => {
+      if (!document.hidden) void tick();
+    };
+    document.addEventListener('visibilitychange', onVisible);
     return () => {
       stopped = true;
       clearTimeout(timer);
+      document.removeEventListener('visibilitychange', onVisible);
+      releaseSingleton('inbox', owner);
     };
   }, [userId, isPlaying]);
 }
