@@ -3,37 +3,20 @@ import { ChevronLeftIcon } from '@/components/icons';
 import { PageTitle } from '@/components/page/PageTitle';
 import { cn } from '@/lib/utils';
 
-/** Where the notes came from, the small chip beside the meta line: "File
- *  added by Aron, shared". Presentational; `children` may replace the plain
- *  label with a menu trigger when there is more than one source. Never wider
- *  than its row: a long label is cut with an ellipsis, whole in `title`. */
-export function TabSourceChip({ label, children }: { label: string; children?: ReactNode }) {
-  return (
-    <span
-      data-testid="tab-source-chip"
-      title={label}
-      className="inline-flex max-w-full min-w-0 items-center gap-inset rounded-full bg-card px-cluster py-inset text-xs text-muted-foreground"
-    >
-      <span aria-hidden className="size-1.5 shrink-0 rounded-full bg-ember" />
-      {children ?? <span className="min-w-0 truncate">{label}</span>}
-    </span>
-  );
-}
-
 export interface TabSheetHeaderProps {
   phone: boolean;
   title: string;
   meta: string;
-  /** The source chip (TabSourceChip), or nothing while there is no tab. */
+  /** Beside the meta line, when there is something to show there. */
   chip?: ReactNode;
   /** Top-right actions (add a file, search again, delete). */
   actions?: ReactNode;
   onBack?: () => void;
 }
 
-/** The Sheet page header approved on /dizajn: Back, the "Guitar tab"
- *  eyebrow, the song title, then the meta line with bpm, key, instrument
- *  and tuning beside the source chip. */
+/** The full header of a song with no tab yet: Back and the ⋯ menu, the
+ *  "Guitar tab" eyebrow, the song title, then the meta line. (A drawn tab
+ *  has the stage's thin title line instead, TabStage.tsx.) */
 export function TabSheetHeader({ phone, title, meta, chip, actions, onBack }: TabSheetHeaderProps) {
   return (
     <div data-testid="tab-sheet-header">

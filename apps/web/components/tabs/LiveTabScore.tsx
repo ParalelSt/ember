@@ -17,13 +17,19 @@ import {
   type TabsStaff,
 } from '@/lib/tabScore';
 import {
+  alphaTabMs,
   barStartsMs,
+  DRAW_FRAMES,
   beatToSongSec,
+  cursorSpeed,
+  drawLead,
   estimateSongSec,
   FEED_INTERVAL_MS,
   followScroll,
   isJump,
+  nextFrameMs,
   songSecToTabMs,
+  speedChanged,
   syncPoints,
   type Anchor,
   type Box,
@@ -85,7 +91,7 @@ export interface LiveTabScoreProps {
  *  AlphaTab ships a synthesizer, and it is not used: Ember plays the real
  *  recording. The score is loaded in `EnabledExternalMedia` mode, where
  *  AlphaTab draws and moves the cursor while something else owns the time
- *  axis, and Ember's playhead is fed to it every 50 ms (between the
+ *  axis, and Ember's playhead is fed to it every frame (between the
  *  player's own reports the wall clock carries it on). A position that is
  *  not where playback would have got to (a seek, the sync nudge, a fresh
  *  layout) goes to AlphaTab as a seek, so the line jumps there rather than
@@ -140,8 +146,14 @@ export function LiveTabScore(props: LiveTabScoreProps) {
   const readAnchorsRef = useRef<() => void>(() => {});
   /** Mark the practice loop's bars on the score (or clear the mark). */
   const highlightRef = useRef<() => void>(() => {});
-  /** The last position fed to AlphaTab; null makes the next feed a seek. */
+  /** The last position fed to AlphaTab (on its own clock, lib/tabSync.ts
+   *  alphaTabMs); null makes the next feed a seek. */
   const fed = useRef<Fed | null>(null);
+  /** The playback speed AlphaTab is set to: the practice speed times the
+   *  tab's pace against the recording (lib/tabSync.ts cursorSpeed). */
+  const speed = useRef(1);
+  /** Feeds left before a seek made while playing is placed once more. */
+  const confirm = useRef(0);
   /** Song time against tab time at every bar, from the alignment and
    *  AlphaTab's own tick lookup. Empty when the tab is not lined up. */
   const points = useRef<SyncPoint[]>([]);
@@ -453,6 +465,8 @@ export function LiveTabScore(props: LiveTabScoreProps) {
       followPlayhead.current = () => {};
       highlightRef.current = () => {};
       fed.current = null;
+      speed.current = 1;
+      confirm.current = 0;
       endMs.current = Infinity;
       setSynced(false);
     };
@@ -535,19 +549,6 @@ export function LiveTabScore(props: LiveTabScoreProps) {
     highlightRef.current();
   }, [hlStart, hlEnd, track, status]);
 
-  const rate = props.rate ?? 1;
-  useEffect(() => {
-    const api = apiRef.current;
-    if (!api || !synced) return;
-    try {
-      // AlphaTab times its line's glide between beats by this; the handler
-      // it forwards the speed to is inert (Ember's player owns the speed).
-      api.playbackSpeed = rate;
-    } catch {
-      // A line that glides at the wrong speed still lands on the beat.
-    }
-  }, [rate, synced]);
-
   // ── transport: mirror Ember into AlphaTab ───────────────────────────────
   // Its cursor only animates while it believes playback runs, so a score
   // left stopped sits still whatever position it is fed.
@@ -563,46 +564,80 @@ export function LiveTabScore(props: LiveTabScoreProps) {
     const api = apiRef.current;
     if (!api || !synced) return;
     try {
-      if (follows && playing) api.play();
+      // Before the tab's first bar (an intro it does not have) AlphaTab
+      // waits: told to play, it glides the line through the first beat in
+      // the silence. The feed below starts it when the tab begins.
+      const p = live.current;
+      const before = songSecToTabMs(p.position, points.current, p.offsetMs) <= 0;
+      if (follows && playing && !before) api.play();
       else api.pause();
     } catch {
       // Mirroring the transport must never break playback.
     }
   }, [follows, playing, synced]);
 
-  // ── feed the playhead every 50 ms ───────────────────────────────────────
+  // ── feed the playhead every frame ───────────────────────────────────────
   useEffect(() => {
     if (!follows || !synced) return;
     let raf = 0;
     let last = -Infinity;
+    let prevFrame = -Infinity;
+    let frame = 1000 / 60;
     const tick = (now: number) => {
       raf = requestAnimationFrame(tick);
+      frame = nextFrameMs(frame, now - prevFrame);
+      prevFrame = now;
       if (now - last < FEED_INTERVAL_MS) return;
       last = now;
       const p = live.current;
       const output = outputRef.current;
       const api = apiRef.current;
       if (!output || !api) return;
-      const tabMs = songSecToTabMs(estimateSongSec(anchor.current, now, p.playing, p.rate ?? 1), points.current, p.offsetMs);
+      // Where the song will be when AlphaTab draws this (lib/tabSync.ts
+      // drawLead); paused, the estimate holds still whatever the time.
+      const songSec = estimateSongSec(anchor.current, now + drawLead(frame), p.playing, p.rate ?? 1);
       try {
+        // AlphaTab glides its line between beats at its playback speed
+        // (the handler it forwards the speed to is inert: Ember's player
+        // owns the speed), and counts its time at that speed too.
+        const want = cursorSpeed(p.rate ?? 1, points.current, songSec, p.offsetMs);
+        if (speedChanged(speed.current, want)) {
+          api.playbackSpeed = want;
+          speed.current = want;
+          fed.current = null;
+        }
+        const tabMs = songSecToTabMs(songSec, points.current, p.offsetMs);
+        // The position on AlphaTab's clock (lib/tabSync.ts alphaTabMs).
+        const atMs = alphaTabMs(tabMs, speed.current);
         if (!api.isReadyForPlayback) {
           // No score in the player yet: it cannot seek, and whatever it
           // shows now is placed again once it can.
-          output.updatePosition(tabMs);
+          output.updatePosition(atMs);
           fed.current = null;
-        } else if (isJump(fed.current, tabMs, now, p.playing)) {
+        } else if (isJump(fed.current, atMs, now, p.playing)) {
           // Fed as playback, AlphaTab would animate its line from where it
           // was towards here over a beat or two; as a seek it jumps.
-          api.timePosition = tabMs;
-          fed.current = { ms: tabMs, at: now };
+          api.timePosition = atMs;
+          fed.current = { ms: atMs, at: now };
           followPlayhead.current();
+          confirm.current = p.playing ? DRAW_FRAMES + 1 : 0;
+        } else if (confirm.current > 0 && --confirm.current === 0) {
+          // AlphaTab draws a seek over three frames, reading state the
+          // feeds (and further seeks) arriving meanwhile change: quick seeks
+          // left the line a bar off, crawling back for two seconds. Once it
+          // is quiet, the line is placed again where the song is.
+          api.timePosition = atMs;
+          fed.current = { ms: atMs, at: now };
         } else {
-          output.updatePosition(tabMs);
-          fed.current = { ms: tabMs, at: now };
+          output.updatePosition(atMs);
+          fed.current = { ms: atMs, at: now };
         }
         // Past the last bar AlphaTab stops itself; after a seek back into
-        // the score it has to be told to run again.
-        if (p.playing && api.playerState !== 1 && tabMs < endMs.current - 200) api.play();
+        // the score it has to be told to run again. Before the first bar
+        // (an intro the tab does not have) it waits on the first beat.
+        if (p.playing && tabMs <= 0) {
+          if (api.playerState === 1) api.pause();
+        } else if (p.playing && api.playerState !== 1 && atMs < endMs.current - 200) api.play();
       } catch {
         // A cursor that cannot move must never break playback.
       }

@@ -370,17 +370,38 @@ describe('LiveTabScore sync', () => {
 
   it('steady playback is fed as playback, not as seeks', async () => {
     const { api } = await mount({ position: 10, playing: true });
-    await waitFor(() => expect(api.player.output.updatePosition.mock.calls.length).toBeGreaterThan(3));
-    expect(api.seeks).toHaveLength(1);
+    // The first placement, and the one that confirms it (below).
+    await waitFor(() => expect(api.seeks).toHaveLength(2));
+    const fed = api.player.output.updatePosition.mock.calls.length;
+    await waitFor(() => expect(api.player.output.updatePosition.mock.calls.length).toBeGreaterThan(fed + 3));
+    expect(api.seeks).toHaveLength(2);
+  });
+
+  it('playing, a seek is confirmed once AlphaTab has drawn it: seeks arriving while it draws tangled its steps', async () => {
+    // Three quick 5 s jumps left the line a bar off, crawling back over
+    // two seconds (tests/tabs-sync-live.test.mjs). Once the seeks stop,
+    // the line is placed again where the song is.
+    const { view, api, p } = await mount({ position: 30, playing: true });
+    await waitFor(() => expect(api.seeks).toHaveLength(2));
+    view.rerender(<LiveTabScore {...p} position={35} />);
+    view.rerender(<LiveTabScore {...p} position={40} />);
+    await waitFor(() => expect(api.seeks.length).toBeGreaterThanOrEqual(4));
+    await new Promise((r) => setTimeout(r, 300));
+    const last = api.seeks.at(-1)!;
+    expect(last).toBeGreaterThanOrEqual(40_000);
+    expect(last).toBeLessThan(40_000 + 400);
+    const settled = api.seeks.length;
+    await new Promise((r) => setTimeout(r, 300));
+    expect(api.seeks).toHaveLength(settled);
   });
 
   it('a jump a beat ahead reaches AlphaTab as a seek, so the line jumps instead of sliding', async () => {
     const { view, api, p } = await mount({ position: 30, playing: true });
-    await waitFor(() => expect(api.seeks).toHaveLength(1));
-    view.rerender(<LiveTabScore {...p} position={30.9} />);
     await waitFor(() => expect(api.seeks).toHaveLength(2));
-    expect(api.seeks[1]).toBeGreaterThanOrEqual(30_900);
-    expect(api.seeks[1]).toBeLessThan(31_000);
+    view.rerender(<LiveTabScore {...p} position={30.9} />);
+    await waitFor(() => expect(api.seeks).toHaveLength(3));
+    expect(api.seeks[2]).toBeGreaterThanOrEqual(30_900);
+    expect(api.seeks[2]).toBeLessThan(31_000);
   });
 
   it('the sync nudge moves the line at once', async () => {
@@ -402,14 +423,32 @@ describe('LiveTabScore sync', () => {
   it('at a practice speed the line runs on at that speed between reports, and glides at it', async () => {
     const { view, api, p } = await mount({ position: 30, playing: true, rate: 0.5 });
     await waitFor(() => expect(api.playbackSpeed).toBe(0.5));
-    await waitFor(() => expect(api.seeks).toHaveLength(1));
-    // Half a second of wall clock is a quarter second of song.
+    await waitFor(() => expect(api.seeks.length).toBeGreaterThan(0));
+    // Half a second of wall clock is a quarter second of song. AlphaTab
+    // is fed its own clock (tab time over its speed): it multiplies by the
+    // speed again to find the tick, so its line is at the song's place.
     await new Promise((r) => setTimeout(r, 500));
     const last = api.player.output.updatePosition.mock.lastCall?.[0] as number;
-    expect(last).toBeGreaterThan(30_150);
-    expect(last).toBeLessThan(30_450);
+    expect(last * api.playbackSpeed).toBeGreaterThan(30_150);
+    expect(last * api.playbackSpeed).toBeLessThan(30_450);
+    expect(api.seeks[0] * 0.5).toBeCloseTo(30_000, -2);
     view.rerender(<LiveTabScore {...p} position={30} playing rate={1} />);
     await waitFor(() => expect(api.playbackSpeed).toBe(1));
+  });
+
+  it('a lined-up tab glides at the pace of the recording against the tab', async () => {
+    // The tab at 96 bpm (2.5 s a bar), the band 4% faster, from 3.2 s.
+    const bar = 2500 / 1.04;
+    const timing = { offsetMs: 3200, bpm: 99.84, confidence: 0.9, bars: [0, 1, 2].map((i) => ({ bar: i, ms: 3200 + i * bar })) };
+    const { api } = await mount({ position: 4, playing: true, timing });
+    api.tickCache.masterBars = [0, 1, 2].map((i) => ({ start: i * 3840, tempoChanges: i ? [] : [{ tick: 0, tempo: 96 }], masterBar: { index: i } }));
+    api.midiLoaded.fire();
+    await waitFor(() => expect(api.playbackSpeed).toBeCloseTo(1.04, 3));
+    // And is fed its own clock at that speed: 0.8 s into the song's bar
+    // 1 is 832 ms of tab.
+    await waitFor(() => expect(api.seeks.length).toBeGreaterThan(0));
+    expect(api.seeks.at(-1)! * api.playbackSpeed).toBeGreaterThan(832 - 1);
+    expect(api.seeks.at(-1)! * api.playbackSpeed).toBeLessThan(832 + 120);
   });
 
   it('marks the loop’s bars on the score, and clears the mark', async () => {
@@ -482,6 +521,17 @@ describe('LiveTabScore sync', () => {
     expect(api.seeks).toEqual([]);
     api.isReadyForPlayback = true;
     await waitFor(() => expect(api.seeks).toEqual([30_000]));
+  });
+
+  it('holds the line on the first beat while the song is still before the tab, then runs it', async () => {
+    // An intro the tab does not have: the tab starts 3.2 s in. Told to
+    // play, AlphaTab glided its line through the first beat during the
+    // silence and was 200 ms ahead when the music came in.
+    const { view, api, p } = await mount({ position: 1, playing: true, offsetMs: -3200 });
+    await waitFor(() => expect(api.player.output.updatePosition.mock.calls.length).toBeGreaterThan(2));
+    expect(api.play).not.toHaveBeenCalled();
+    view.rerender(<LiveTabScore {...p} position={4} playing />);
+    await waitFor(() => expect(api.play).toHaveBeenCalled());
   });
 
   it('mirrors play and pause, so the cursor runs and stops with the song', async () => {
@@ -557,9 +607,9 @@ describe('LiveTabScore follow-scroll', () => {
     page.scrollTo = vi.fn() as never;
     const scrollTo = page.scrollTo as unknown as ReturnType<typeof vi.fn>;
     const { view, api, p } = await mount({ position: 10, playing: true, getPageScroller: () => page });
-    await waitFor(() => expect(api.seeks).toHaveLength(1));
-    view.rerender(<LiveTabScore {...p} position={60} getPageScroller={() => page} />);
     await waitFor(() => expect(api.seeks).toHaveLength(2));
+    view.rerender(<LiveTabScore {...p} position={60} getPageScroller={() => page} />);
+    await waitFor(() => expect(api.seeks).toHaveLength(3));
     expect(scrollTo).toHaveBeenLastCalledWith(expect.objectContaining({ behavior: 'instant' }));
     act(() => api.playedBeatChanged.fire({}));
     expect(scrollTo).toHaveBeenLastCalledWith(expect.objectContaining({ behavior: 'smooth' }));

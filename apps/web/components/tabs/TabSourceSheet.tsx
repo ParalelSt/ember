@@ -2,19 +2,20 @@
 
 import type { ReactNode } from 'react';
 import { createPortal } from 'react-dom';
-import { CheckIcon, CloseIcon } from '@/components/icons';
+import { CloseIcon, DrumIcon, TabsIcon, UploadIcon } from '@/components/icons';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
-import { groupRows, type TabSheetRow } from '@/lib/tabPick';
+import { BEST_BADGE, PICK_BADGE } from '@/lib/tabPick';
+import type { InstrumentChoice, VersionChoice } from '@/lib/tabChoose';
 
-/** The Source sheet (candidate B, the owner's
- *  pick): every tab Ember has for a song, in rank order, as a side sheet on
- *  desktop and a bottom sheet on phone. Choosing one draws it.
+/** Choosing a tab, instrument first (the owner's pick): what you play as
+ *  tiles with how many versions each has, then that instrument's versions,
+ *  best match first, with Line it up and Delete on each and Add a file
+ *  under them. A side sheet on desktop, a bottom sheet on phone.
  *
- *  Presentational: rows come from lib/tabPick.ts sheetRows(), actions are
- *  callbacks. The design gallery renders the very same component with mock
- *  rows. */
+ *  Presentational: the tiles and rows come from lib/tabChoose.ts, actions
+ *  are callbacks. */
 
 /** One button under the list: "Search online again", "Add a file"... */
 export interface TabSheetAction {
@@ -31,25 +32,33 @@ export interface TabSourceSheetProps {
   phone: boolean;
   title: string;
   artist: string;
-  rows: TabSheetRow[];
+  instruments: InstrumentChoice[];
+  /** The instrument whose versions are listed (its key). */
+  instrument: string | null;
+  onInstrument: (key: string) => void;
+  /** That instrument's versions, best first. */
+  versions: VersionChoice[];
+  /** The version on screen, when it is this instrument's. */
+  current: { id: string; track: number } | null;
   /** Ember is looking online right now: the sites and two placeholders. */
   searching?: boolean;
   /** Said when there is nothing to list. */
   emptyNote?: string;
-  /** Two bars of the tab under a row, for the gallery's preview. */
-  previewOf?: (row: TabSheetRow) => string | null;
-  /** Over the whole window (the app) or inside the nearest positioned box
-   *  (the design gallery's shell preview). */
+  /** Over the whole window (the app) or inside the nearest positioned box. */
   position?: 'fixed' | 'absolute';
-  onPick: (id: string) => void;
+  onPick: (id: string, track: number) => void;
   onClose: () => void;
   onLineUp?: (id: string) => void;
   onDelete?: (id: string) => void;
   actions?: TabSheetAction[];
 }
 
+export function InstrumentIcon({ name, className }: { name: string; className?: string }) {
+  return /drum|percussion/i.test(name) ? <DrumIcon className={className} /> : <TabsIcon className={className} />;
+}
+
 /** "Lined up 94%" in ember, or a quiet "Not lined up yet". */
-function StatusBadge({ row }: { row: TabSheetRow }) {
+function StatusBadge({ row }: { row: VersionChoice }) {
   return (
     <span
       data-testid="tab-source-status"
@@ -85,15 +94,17 @@ function SiteChecks() {
   );
 }
 
-function SourceCard({
+function VersionRow({
   row,
-  preview,
+  best,
+  on,
   onPick,
   onLineUp,
   onDelete,
 }: {
-  row: TabSheetRow;
-  preview?: string | null;
+  row: VersionChoice;
+  best: boolean;
+  on: boolean;
   onPick: () => void;
   onLineUp?: () => void;
   onDelete?: () => void;
@@ -104,71 +115,43 @@ function SourceCard({
       : null,
     onDelete && row.canDelete ? { key: 'delete', label: 'Delete', run: onDelete, danger: true, off: false } : null,
   ].filter((a): a is { key: string; label: string; run: () => void; danger: boolean; off: boolean } => !!a);
+  const detail = [row.source, row.type, row.rating || row.addedBy].filter(Boolean).join(' · ');
 
   return (
     <div
       data-testid="tab-source-row"
       data-tab-id={row.id}
-      className={cn(
-        'min-w-0 rounded-xl border transition-colors',
-        row.drawn ? 'border-ember/40 bg-card' : 'border-border hover:bg-card',
-      )}
+      className={cn('min-w-0 rounded-xl border transition-colors', on ? 'border-ember/40 bg-card' : 'border-border hover:bg-card')}
     >
       <button
         type="button"
         role="radio"
-        aria-checked={row.drawn}
+        aria-checked={on}
         onClick={onPick}
-        className="block w-full min-w-0 rounded-xl p-row text-left"
+        className="flex w-full min-w-0 items-center gap-row rounded-xl p-row text-left"
       >
-        <span className="flex min-w-0 items-center justify-between gap-row">
-          <span className="text-eyebrow min-w-0 truncate">{row.type}</span>
-          <StatusBadge row={row} />
+        <span
+          aria-hidden
+          className={cn(
+            'grid size-8 shrink-0 place-items-center rounded-full text-xs font-semibold tabular-nums',
+            best ? 'bg-ember/15 text-ember' : 'bg-muted text-muted-foreground',
+          )}
+        >
+          {row.rank}
         </span>
-        <span title={row.name} className={cn('mt-inset line-clamp-2 break-words text-sm font-semibold', row.drawn && 'text-ember')}>
-          {row.name}
-        </span>
-        {row.badge && (
-          <span className="mt-inset inline-flex items-center gap-inset text-[11px] font-medium text-ember">
-            <CheckIcon className="size-3 shrink-0" />
-            {row.badge}
-          </span>
-        )}
-        {(row.rating || row.addedBy) && (
-          <span className="text-meta mt-inset block min-w-0 truncate">{row.rating || row.addedBy}</span>
-        )}
-        {row.instruments.length > 0 && (
-          <span className="mt-cluster flex min-w-0 flex-wrap gap-inset">
-            {row.instruments.map((i) => (
-              <span
-                key={i}
-                title={i}
-                className="max-w-full truncate rounded-full bg-muted px-cluster py-inset text-[11px] text-muted-foreground"
-              >
-                {i}
-              </span>
-            ))}
-          </span>
-        )}
-        {row.confidence !== null && (
-          <span className="mt-cluster flex items-center gap-cluster text-[11px] text-muted-foreground">
-            <span className="relative h-1 min-w-0 flex-1 rounded-full bg-muted">
-              <span
-                className={cn('absolute inset-y-0 left-0 rounded-full', row.linedUp ? 'bg-ember' : 'bg-muted-foreground/60')}
-                style={{ width: `${Math.max(0, Math.min(100, row.confidence))}%` }}
-              />
+        <span className="min-w-0 flex-1">
+          <span className="flex min-w-0 flex-wrap items-center gap-x-cluster gap-y-inset">
+            <span title={row.name} className={cn('min-w-0 truncate text-sm font-semibold', on && 'text-ember')}>
+              {row.name}
             </span>
-            <span className="shrink-0 tabular-nums">{row.confidence}% sure</span>
+            {best && <span className="shrink-0 rounded-full bg-ember/15 px-cluster py-inset text-[11px] font-medium leading-none text-ember">{BEST_BADGE}</span>}
+            {row.badge === PICK_BADGE && (
+              <span className="shrink-0 rounded-full bg-muted px-cluster py-inset text-[11px] font-medium leading-none text-foreground">{PICK_BADGE}</span>
+            )}
           </span>
-        )}
-        {preview && (
-          <span
-            aria-hidden
-            className="mt-cluster block overflow-hidden whitespace-pre rounded-md bg-background/60 p-cluster font-mono text-[10px] leading-3 text-muted-foreground"
-          >
-            {preview}
-          </span>
-        )}
+          <span className="text-meta block min-w-0 truncate">{detail}</span>
+        </span>
+        <StatusBadge row={row} />
       </button>
       {acts.length > 0 && (
         <div className="flex min-w-0 flex-wrap gap-inset border-t border-border/60 px-row py-cluster">
@@ -195,24 +178,17 @@ function SourceCard({
 
 export function TabSourceSheet(p: TabSourceSheetProps) {
   const fixed = (p.position ?? 'fixed') === 'fixed';
-  const online = p.rows.filter((r) => r.group !== 'server').length;
-
-  const summary = p.searching
-    ? 'Looking online…'
-    : p.rows.length > 0
-      ? `${p.rows.length} tab${p.rows.length === 1 ? '' : 's'}, ${online} found online`
-      : (p.emptyNote ?? 'Nothing found online');
+  const chosen = p.instruments.find((i) => i.key === p.instrument) ?? null;
 
   const body = (
     <>
       <div className="flex shrink-0 items-start justify-between gap-row px-block pt-block">
         <div className="min-w-0">
-          <div className="text-eyebrow">Tabs for this song</div>
+          <div className="text-eyebrow">What do you want to play?</div>
           <div className="min-w-0 truncate font-semibold">
             {p.title}
             {p.artist && <span className="font-normal text-muted-foreground"> · {p.artist}</span>}
           </div>
-          <div className="text-meta mt-inset min-w-0 truncate">{summary}</div>
         </div>
         <button
           type="button"
@@ -223,42 +199,63 @@ export function TabSourceSheet(p: TabSourceSheetProps) {
           <CloseIcon className="size-4" />
         </button>
       </div>
-      <div
-        role="radiogroup"
-        aria-label="Tabs for this song"
-        className="flex min-h-0 flex-1 flex-col gap-block overflow-y-auto overflow-x-hidden px-block py-block"
-      >
+      <div className="flex min-h-0 flex-1 flex-col gap-block overflow-y-auto overflow-x-hidden px-block py-block">
+        {p.instruments.length > 0 && (
+          <div role="group" aria-label="Instrument" className="-mx-block flex gap-cluster overflow-x-auto px-block pb-inset">
+            {p.instruments.map((i) => (
+              <button
+                key={i.key}
+                type="button"
+                aria-pressed={i.key === p.instrument}
+                data-testid="tab-instrument-tile"
+                onClick={() => p.onInstrument(i.key)}
+                className={cn(
+                  'flex w-24 shrink-0 flex-col items-center gap-inset rounded-xl border p-cluster text-center text-xs transition-colors',
+                  i.key === p.instrument ? 'border-ember bg-ember/10 text-foreground' : 'border-border text-muted-foreground hover:bg-card',
+                )}
+              >
+                <InstrumentIcon name={i.name} className="size-6" />
+                <span className="line-clamp-2 font-medium">{i.name}</span>
+                <small className="text-[10.5px] text-muted-foreground">
+                  {i.count} version{i.count === 1 ? '' : 's'}
+                </small>
+              </button>
+            ))}
+          </div>
+        )}
         {p.searching && (
           <div className="flex flex-col gap-row">
             <SiteChecks />
             {[0, 1].map((i) => (
-              <Skeleton key={i} className="h-36 w-full rounded-xl" />
+              <Skeleton key={i} className="h-16 w-full rounded-xl" />
             ))}
           </div>
         )}
-        {!p.searching && p.rows.length === 0 && (
+        {!p.searching && p.instruments.length === 0 && (
           <p className="text-sm text-muted-foreground">{p.emptyNote ?? 'Nothing found online for this song yet.'}</p>
         )}
-        {groupRows(p.rows).map((g) => (
-          <div key={g.group} className="flex min-w-0 flex-col gap-cluster">
-            <div className="text-eyebrow">{g.label}</div>
-            {g.rows.map((row) => (
-              <SourceCard
+        {chosen && (
+          <div role="radiogroup" aria-label={`${chosen.name}, best first`} className="flex min-w-0 flex-col gap-cluster">
+            <div className="text-eyebrow">{chosen.name}, best first</div>
+            {p.versions.map((row, i) => (
+              <VersionRow
                 key={row.id}
                 row={row}
-                preview={p.previewOf?.(row) ?? null}
-                onPick={() => p.onPick(row.id)}
+                best={i === 0 && p.versions.length > 1}
+                on={!!p.current && p.current.id === row.id && p.current.track === row.track}
+                onPick={() => p.onPick(row.id, row.track)}
                 onLineUp={p.onLineUp && (() => p.onLineUp!(row.id))}
                 onDelete={p.onDelete && (() => p.onDelete!(row.id))}
               />
             ))}
           </div>
-        ))}
+        )}
       </div>
       {p.actions && p.actions.length > 0 && (
         <div className="flex min-w-0 shrink-0 flex-wrap gap-cluster border-t border-border px-block py-row">
           {p.actions.map((a) => (
             <Button key={a.id} size="sm" variant={a.variant ?? 'outline'} disabled={a.disabled} onClick={a.onClick} className="min-w-0">
+              {a.id === 'add-file' && <UploadIcon className="size-3.5" />}
               <span className="min-w-0 truncate">{a.label}</span>
             </Button>
           ))}

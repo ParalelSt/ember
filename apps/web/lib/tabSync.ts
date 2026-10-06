@@ -148,6 +148,43 @@ export function tabMsToSongSecAligned(tabMs: number, points: SyncPoint[], nudgeM
   return Math.max(0, (piecewise(points, tabMs, 'tab', 'song') - nudgeMs) / 1000);
 }
 
+// ── AlphaTab's own clock ──────────────────────────────────────────────────
+
+/** AlphaTab's time positions are wall clock at its playback speed: it finds
+ *  the tick for a time by multiplying the time by the speed (at 0.5, 20 s
+ *  of playing is 10 s of score). So the tab's own ms are handed to it
+ *  divided by the speed it is set to, or at 75% its line sat at three
+ *  quarters of the way through. */
+export function alphaTabMs(tabMs: number, speed: number): number {
+  return tabMs / (speed > 0 ? speed : 1);
+}
+
+/** How fast the tab's clock runs against the song's at `songSec` (tab ms
+ *  per song ms): the slope of the anchors' segment there, the edge
+ *  segment's beyond them, read where the feed reads (the nudge on top). */
+function tabPaceAt(points: SyncPoint[], songSec: number, nudgeMs: number): number {
+  const n = points.length;
+  if (n < 2) return 1;
+  const x = songSec * 1000 + nudgeMs;
+  let i = 0;
+  while (i < n - 2 && points[i + 1].song <= x) i++;
+  return edgeSlope(points[i], points[i + 1]);
+}
+
+/** The speed AlphaTab glides its line at between beats: the practice speed
+ *  times the tab's pace against the recording (a band 4% faster than its
+ *  tab moves the tab 4% faster; at 1 the line slid behind and caught up at
+ *  every beat). */
+export function cursorSpeed(rate: number, points: SyncPoint[], songSec: number, nudgeMs = 0): number {
+  return (rate > 0 ? rate : 1) * tabPaceAt(points, songSec, nudgeMs);
+}
+
+/** A new speed is a re-seek in AlphaTab, so a change smaller than this
+ *  (2%: a few ms over a beat) is not worth one. */
+export function speedChanged(current: number, next: number): boolean {
+  return Math.abs(next / current - 1) > 0.02;
+}
+
 /** Each master bar's start on the tab's clock, from AlphaTab's tick lookup
  *  (bars in playing order; a bar played twice keeps its first start). */
 export function barStartsMs(masterBars: { start: number; masterBar?: { index?: number }; tempoChanges?: { tick: number; tempo: number }[] }[]): number[] {
@@ -236,7 +273,7 @@ export interface Anchor {
 const MAX_EXTRAPOLATION_MS = 1000;
 
 /** The song time right now. The player's position arrives a few times a
- *  second; the cursor is fed every 50 ms, so between reports it moves on by
+ *  second; the cursor is fed every frame, so between reports it moves on by
  *  the wall clock while playing, at the playback speed (`rate` 0.5: half a
  *  second of song per second). Paused, it holds still. */
 export function estimateSongSec(anchor: Anchor, now: number, playing: boolean, rate = 1): number {
@@ -245,8 +282,34 @@ export function estimateSongSec(anchor: Anchor, now: number, playing: boolean, r
   return anchor.sec + (elapsed / 1000) * (rate > 0 ? rate : 1);
 }
 
-/** The cursor is fed at most this often. */
-export const FEED_INTERVAL_MS = 50;
+/** AlphaTab draws a position it is handed three animation frames later:
+ *  its position event, its beat lookup and its line's CSS glide each wait
+ *  for a requestAnimationFrame. Measured in tests/tabs-sync-live.test.mjs
+ *  as the drawn line 60 to 90 ms behind the page's own estimate of the
+ *  song, which was within 10 ms of the audio. */
+export const DRAW_FRAMES = 3;
+
+/** How far ahead of the song to feed AlphaTab while playing, for frames of
+ *  `frameMs`: where the song will be when the line is drawn. A frame longer
+ *  than 50 ms (a busy page) counts as 50, so a stall never runs it ahead. */
+export function drawLead(frameMs: number): number {
+  const f = Number.isFinite(frameMs) && frameMs > 0 ? Math.min(frameMs, 50) : 1000 / 60;
+  return DRAW_FRAMES * f;
+}
+
+/** The frame length, smoothed over the last ten or so frames; one long
+ *  frame (a page in the background) moves it a little. */
+export function nextFrameMs(prev: number, delta: number): number {
+  if (!Number.isFinite(delta) || delta <= 0) return prev;
+  return prev + 0.1 * (Math.min(delta, 50) - prev);
+}
+
+/** The cursor is fed at most this often: every frame at 60 Hz, every
+ *  other at 120. AlphaTab re-aims its line only when the beat changes, and
+ *  between feeds it glides on at the last beat's pace; fed every 50 ms, a
+ *  new beat reached it up to three frames late and the line ran up to
+ *  250 ms past the song after a wide gap, then crawled back. */
+export const FEED_INTERVAL_MS = 15;
 
 /** The last position fed to the cursor (tab ms) and when (performance.now). */
 export interface Fed {

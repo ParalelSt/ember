@@ -147,3 +147,21 @@ describe('addToPlaylist: a song already in the playlist', () => {
     expect(logger.error).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('addTabText: a pasted text tab', () => {
+  it('posts the text and the song, and hands back the saved tab', async () => {
+    const fetch = vi.fn().mockResolvedValue({ ok: true, status: 200, headers: new Headers(), json: async () => ({ tab: { id: 't1' } }) });
+    vi.stubGlobal('fetch', fetch);
+    await expect(api.addTabText('e|--0--|', { title: 'Copper Sky', artist: 'Coastline', trackId: 'upload:song1' })).resolves.toEqual({ tab: { id: 't1' } });
+    const [url, init] = fetch.mock.calls[0];
+    expect(url).toMatch(/\/api\/tabs\/text$/);
+    expect(init.method).toBe('POST');
+    expect(JSON.parse(init.body)).toEqual({ text: 'e|--0--|', title: 'Copper Sky', artist: 'Coastline', trackId: 'upload:song1' });
+  });
+
+  it('a paste the server cannot read throws its reason, logged as expected', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 422, headers: new Headers(), json: async () => ({ error: 'No tab lines found' }) }));
+    await expect(api.addTabText('hello', { title: 'x', artist: '' })).rejects.toThrow('No tab lines found');
+    expect(logger.warn).toHaveBeenCalled();
+  });
+});

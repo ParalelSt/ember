@@ -263,10 +263,10 @@ async function measure(page) {
     return r ? { w: Math.round(r.width), h: Math.round(r.height) } : null;
   });
   check('AlphaTab draws the pasted tab', !!surface && surface.w > 300 && surface.h > 100, JSON.stringify(surface));
-  const chip = (await page.getByTestId('tab-source-chip').textContent().catch(() => '')) ?? '';
-  check('the chip says Text tab pasted by, with the name', /Text tab pasted by Tab Paster, shared/.test(chip), chip);
-  const header = await page.getByTestId('tab-sheet-header').innerText().catch(() => '');
-  check('the header reads 120 bpm and Drop D from the alphaTex', /120 bpm/.test(header) && /Drop D/.test(header), header.replace(/\s+/g, ' '));
+  const chip = (await page.getByTestId('tab-source-chip').getAttribute('title').catch(() => '')) ?? '';
+  check('the version button says Text tab pasted by, with the name', /Text tab pasted by Tab Paster, shared/.test(chip), chip);
+  const header = (await page.getByTestId('tab-stage-meta').getAttribute('title').catch(() => '')) ?? '';
+  check('the title line reads 120 bpm and Drop D from the alphaTex', /120 bpm/.test(header) && /Drop D/.test(header), header.replace(/\s+/g, ' '));
 
   // Follows the song: the bar under the line matches the real audio time.
   const a = await measure(page);
@@ -307,7 +307,7 @@ async function measure(page) {
   const page = await newPage({ width: 1440, height: 900 });
   await page.goto(`${APP_URL}${trackPath(chain.id)}`, { waitUntil: 'networkidle' });
   await scoreReady(page).catch(() => {});
-  const chip = (await page.getByTestId('tab-source-chip').textContent().catch(() => '')) ?? '';
+  const chip = (await page.getByTestId('tab-source-chip').getAttribute('title').catch(() => '')) ?? '';
   check('with a file and a pasted tab, the file shows first', /File added by Tab Paster, shared/.test(chip), chip);
   await page.getByRole('button', { name: 'Choose a tab' }).click();
   await page.getByTestId('tab-source-row').first().waitFor({ timeout: 10_000 }).catch(() => {});
@@ -317,10 +317,11 @@ async function measure(page) {
     items.length === 2 && /Guitar Pro file/.test(items[0]) && /added by Tab Paster/.test(items[0]) &&
     /Pasted text tab/.test(items[1]) && /pasted by Tab Paster/.test(items[1]), items.join(' | '));
   await page.getByTestId('tab-source-row').nth(1).getByRole('radio').click();
-  await page.waitForFunction(() => /Text tab pasted by/.test(document.querySelector('[data-testid="tab-source-chip"]')?.textContent ?? ''), null, { timeout: 10_000 }).catch(() => {});
+  await page.waitForFunction(() => /Text tab pasted by/.test(document.querySelector('[data-testid="tab-source-chip"]')?.getAttribute('title') ?? ''), null, { timeout: 10_000 }).catch(() => {});
   await scoreReady(page).catch(() => {});
-  const after = (await page.getByTestId('tab-source-chip').textContent().catch(() => '')) ?? '';
-  const header = await page.getByTestId('tab-sheet-header').innerText().catch(() => '');
+  await page.waitForTimeout(500);
+  const after = (await page.getByTestId('tab-source-chip').getAttribute('title').catch(() => '')) ?? '';
+  const header = (await page.getByTestId('tab-stage-meta').getAttribute('title').catch(() => '')) ?? '';
   check('picking the text tab draws it', /Text tab pasted by Tab Paster/.test(after) && /120 bpm/.test(header), `${after} / ${header.replace(/\s+/g, ' ')}`);
   await page.context().close();
 }
@@ -331,18 +332,17 @@ async function measure(page) {
   const page = await newPage({ width: 1440, height: 900 });
   await page.goto(`${APP_URL}${trackPath(bare.id)}`, { waitUntil: 'networkidle' });
   await page.locator('[data-testid="tabs-empty"]:not([data-state="searching"])').waitFor({ timeout: 15_000 }).catch(() => {});
-  const links = await page.locator('[data-testid="tabs-empty-site"], [data-testid="tab-search-links"] a').evaluateAll((as) =>
-    as.map((a) => ({ link: a.dataset.link, href: a.getAttribute('href'), target: a.getAttribute('target'), rel: a.getAttribute('rel') })),
+  const links = await page.locator('[data-testid="tabs-empty-site"] a').evaluateAll((as) =>
+    as.map((a) => ({ link: a.closest('[data-link]')?.dataset.link, href: a.getAttribute('href'), target: a.getAttribute('target'), rel: a.getAttribute('rel') })),
   ).catch(() => []);
   const q = encodeURIComponent(`${bare.artist} ${bare.title}`).replace(/%20/g, '+');
   const byLink = Object.fromEntries(links.map((l) => [l.link, l]));
   check('Ultimate Guitar search link', byLink['ultimate-guitar']?.href === `https://www.ultimate-guitar.com/search.php?search_type=title&value=${q}`, byLink['ultimate-guitar']?.href);
   check('Guitar Pro files search link', byLink['guitar-pro']?.href === `https://duckduckgo.com/?q=${q}+(gp5+OR+gpx+OR+"guitar+pro")`, byLink['guitar-pro']?.href);
-  const versions = await page.getByTestId('tabs-empty-match').evaluateAll((as) => as.map((a) => ({ href: a.getAttribute('href'), target: a.getAttribute('target'), rel: a.getAttribute('rel') }))).catch(() => []);
-  check('Songsterr versions link to songsterr.com', versions.every((v) => /^https:\/\/www\.songsterr\.com\//.test(v.href ?? '')), JSON.stringify(versions).slice(0, 160));
-  check('every link opens a new tab with noopener', links.length === 2 && [...links, ...versions].every((l) => l.target === '_blank' && /noopener/.test(l.rel ?? '')));
-  const buttons = await page.getByTestId('tabs-empty').getByRole('button').allInnerTexts();
-  check('Add a file is the only action: no Generate', buttons.length === 1 && buttons[0].trim() === 'Add a file', buttons.join(' | '));
+  check('Songsterr links to songsterr.com', /^https:\/\/www\.songsterr\.com\//.test(byLink.songsterr?.href ?? ''), byLink.songsterr?.href);
+  check('every link opens a new tab with noopener', links.length === 3 && links.every((l) => l.target === '_blank' && /noopener/.test(l.rel ?? '')));
+  const buttons = (await page.getByTestId('tabs-empty').getByRole('button').allInnerTexts()).map((b) => b.trim());
+  check('Look again and Add a file are its actions: no Generate', buttons.join(' | ') === 'Look again | Add a file', buttons.join(' | '));
   await page.context().close();
 }
 

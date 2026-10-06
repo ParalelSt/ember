@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type ComponentProps } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { toast } from 'sonner';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -14,29 +14,47 @@ import {
 } from '@/components/ui/dropdown-menu';
 import {
   ChevronDownIcon,
-  ChevronRightIcon,
-  ClockIcon,
   MoreIcon,
   PlayIcon,
   RepeatIcon,
-  SearchIcon,
-  TabsIcon,
-  UploadIcon,
 } from '@/components/icons';
 import { EmptyState } from '@/components/page/EmptyState';
-import { Skeleton } from '@/components/ui/skeleton';
 import { usePlayer } from '@/components/player/PlayerProvider';
 import { LiveTabScore } from '@/components/tabs/LiveTabScore';
-import { TabSheetHeader, TabSourceChip } from '@/components/tabs/TabSheetHeader';
-import { TabSourceSheet, type TabSheetAction } from '@/components/tabs/TabSourceSheet';
-import { TabsToolbar, chip, chipOff, chipOn } from '@/components/tabs/TabsToolbar';
+import { TabSheetHeader } from '@/components/tabs/TabSheetHeader';
+import { NoTab, openLink } from '@/components/tabs/TabEmpty';
+import { InstrumentIcon, TabSourceSheet, type TabSheetAction } from '@/components/tabs/TabSourceSheet';
+import { chip, chipOff, chipOn } from '@/components/tabs/chips';
+import { PlayPill, StageHeader } from '@/components/tabs/TabStage';
+import {
+  ClickEditor,
+  CountInEditor,
+  DelayEditor,
+  LoopEditor,
+  MAX_BPM,
+  MIN_BPM,
+  PracticeToolbar,
+  SpeedEditor,
+  ToolPopover,
+} from '@/components/tabs/PracticeTools';
+import { useCountIn } from '@/hooks/useCountIn';
+import {
+  barPosition,
+  countInFrom,
+  countInPlan,
+  nextSlower,
+  stageMeta,
+  toolCells,
+  type CountInBars,
+  type ToolId,
+} from '@/lib/tabStage';
 import { useTabAlignment, useTabSong, useTabSources, type TabSong, type TabSourcesState } from '@/hooks/useTabSources';
 import { useSettingsStore } from '@/stores/useSettingsStore';
 import { cn } from '@/lib/utils';
 import { metaLine, scoreScale, type ScoreInfo, type TabsScroll, type TabsStaff } from '@/lib/tabScore';
-import { emptyStateFor, followTrackChange, sourceChipLabel, type TabSummary } from '@/lib/tabSources';
-import type { TabMatch } from '@/lib/songsterr';
-import { chooseTab, confidencePercent, loadPick, savePick, sheetRows } from '@/lib/tabPick';
+import { followTrackChange, sourceChipLabel } from '@/lib/tabSources';
+import { chooseTab, confidencePercent, loadPick, savePick } from '@/lib/tabPick';
+import { instrumentChoices, instrumentKey, tabParts, versionLabel, versionsFor } from '@/lib/tabChoose';
 import {
   clampOffset,
   isLinedUp,
@@ -46,38 +64,23 @@ import {
   syncPoints,
   tabMsToSongSecAligned,
 } from '@/lib/tabSync';
-import { barStartsOf, bpmAtMs, steadyBeats, tabBeats, tempoSteps, type Click, type TabTimeline } from '@/lib/tabTimeline';
+import { barAtMs, barStartsOf, bpmAtMs, steadyBeats, tabBeats, tempoSteps, type Click, type TabTimeline } from '@/lib/tabTimeline';
 import { clickContext } from '@/lib/metronome';
 import { useMetronome } from '@/hooks/useMetronome';
 import { usePracticeLoop } from '@/hooks/usePracticeLoop';
 import {
   barCount,
-  bpmAtRate,
   loopSpanMs,
   normalizeRange,
   pickBar,
   rangeLabel,
-  rateFromBpm,
   rateFromPercent,
   sectionRanges,
-  SPEED_PRESETS,
   type BarRange,
-  type SectionRange,
 } from '@/lib/tabPractice';
-import {
-  beatClockOf,
-  formatOffset,
-  nudgeSteps,
-  offsetFromInput,
-  offsetInUnit,
-  sliderSpanSec,
-  type BeatClock,
-  type OffsetUnit,
-} from '@/lib/tabOffset';
-import { tabSearchLinks, type TabSearchLink } from '@/lib/tabSearchLinks';
-import { openExternal } from '@/lib/openExternal';
+import { beatClockOf, formatOffset, type OffsetUnit } from '@/lib/tabOffset';
+import { tabSearchLinks } from '@/lib/tabSearchLinks';
 import { leavePage } from '@/lib/inAppHistory';
-import { announceOpen } from '@/components/ExternalLinks';
 
 const TAB_ACCEPT = '.gp,.gp3,.gp4,.gp5,.gpx,.musicxml,.xml,.mxl';
 const STAFF_KEY = 'ember.tabs.staff';
@@ -85,9 +88,8 @@ const SCROLL_KEY = 'ember.tabs.scroll';
 const OFFSET_UNIT_KEY = 'ember.tabs.offsetUnit';
 const trackKey = (tabId: string) => `ember.tab.track.${tabId}`;
 const bpmKey = (tabId: string) => `ember.tab.bpm.${tabId}`;
-/** The metronome override's bounds, as a tab's own tempo is kept. */
-const MIN_BPM = 20;
-const MAX_BPM = 400;
+const COUNT_IN_KEY = 'ember.tabs.countIn';
+const TOOLS_KEY = 'ember.tabs.tools';
 
 function readPref<T extends string>(key: string, allowed: readonly T[], fallback: T): T {
   try {
@@ -174,7 +176,7 @@ export function TabsPage({ trackId }: { trackId: string }) {
 
 function TabsSheet({ song, sources, onBack }: { song: TabSong; sources: TabSourcesState; onBack: () => void }) {
   const phone = usePhone();
-  const { current, isPlaying, position, duration, seek, playTrack, rate, setRate, canSetRate } = usePlayer();
+  const { current, isPlaying, position, duration, seek, playTrack, toggle, rate, setRate, canSetRate } = usePlayer();
   const follows = current?.id === song.id;
 
   // Which tab is drawn: the listener's own pick for this song when they
@@ -221,17 +223,15 @@ function TabsSheet({ song, sources, onBack }: { song: TabSong; sources: TabSourc
       return 0;
     }
   };
+  // Kept inside the drawn score's tracks; before the score is read, the
+  // choice stands (a version picked for its second instrument), and the
+  // score keeps it inside the file (lib/tabScore.ts trackIndexIn).
   const trackIndex = tab
     ? Math.min(
         trackChoice?.tabId === tab.id ? trackChoice.index : savedTrack(tab.id),
-        Math.max(0, (info?.tracks.length ?? 1) - 1),
+        info ? Math.max(0, info.tracks.length - 1) : Number.MAX_SAFE_INTEGER,
       )
     : 0;
-  const setTrack = (index: number) => {
-    if (!tab) return;
-    setTrackChoice({ tabId: tab.id, index });
-    writePref(trackKey(tab.id), String(index));
-  };
 
   // The sync nudge: this device's own if it has one, else the tab's shared one.
   const [localOffset, setLocalOffset] = useState<{ id: string; ms: number | null } | null>(null);
@@ -243,7 +243,6 @@ function TabsSheet({ song, sources, onBack }: { song: TabSong; sources: TabSourc
     setLocalOffset({ id: offsetId, ms: v });
     saveLocalOffsetMs(offsetId, v);
   };
-  const [syncOpen, setSyncOpen] = useState(false);
   const [offsetUnit, setOffsetUnitState] = useState<OffsetUnit>(() =>
     readPref(OFFSET_UNIT_KEY, ['seconds', 'beats'] as const, 'seconds'),
   );
@@ -309,7 +308,6 @@ function TabsSheet({ song, sources, onBack }: { song: TabSong; sources: TabSourc
   }, [follows, canSetRate, speed, setRate]);
   const playRate = follows && canSetRate ? rate : 1;
 
-  const [practiceOpen, setPracticeOpen] = useState(false);
   const [loop, setLoop] = useState<{ tabId: string; range: BarRange; on: boolean } | null>(null);
   const loopRange = tab && timeline && loop?.tabId === tab.id ? normalizeRange(loop.range, timeline) : null;
   const loopOn = !!loopRange && !!loop?.on;
@@ -353,6 +351,27 @@ function TabsSheet({ song, sources, onBack }: { song: TabSong; sources: TabSourc
     setMetronomeOn((v) => !v);
   };
 
+  // The count-in before Play on the pill starts the song (lib/tabStage.ts),
+  // remembered on this device.
+  const [countInBars, setCountInState] = useState<CountInBars>(() => {
+    try {
+      return countInFrom(window.localStorage.getItem(COUNT_IN_KEY));
+    } catch {
+      return 1;
+    }
+  });
+  const setCountIn = (n: CountInBars) => {
+    setCountInState(n);
+    writePref(COUNT_IN_KEY, String(n));
+  };
+  const countIn = useCountIn();
+  // The count ends after a few seconds: by then the listener may have
+  // started the song from the player bar, and a toggle would pause it.
+  const playingNow = useRef(isPlaying);
+  useLayoutEffect(() => {
+    playingNow.current = isPlaying;
+  });
+
   const stickyRef = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -366,10 +385,31 @@ function TabsSheet({ song, sources, onBack }: { song: TabSong; sources: TabSourc
     sources.remove(id);
   };
 
-  // The Source sheet (candidate B): every tab
-  // for the song in rank order, with what it is, how well it matched the
-  // recording, and the actions that apply to it.
-  const rows = sheetRows(sources.tabs, { chosenId, aligning: sources.liningUp });
+  // Choosing a tab, instrument first (lib/tabChoose.ts): the parts the
+  // song's tabs hold (the drawn score's own track names for the tab on
+  // screen), and the versions of the one shown, best match first.
+  const rankOpts = { chosenId, aligning: sources.liningUp };
+  const drawnParts = tab && info ? { tabId: tab.id, tracks: info.tracks.map((t) => ({ name: t.name, instrument: t.instrument })) } : null;
+  const parts = tab ? tabParts(tab, drawnParts) : [];
+  const currentPart = parts[Math.min(trackIndex, parts.length - 1)] ?? null;
+  const instruments = instrumentChoices(sources.tabs, drawnParts, rankOpts);
+  const currentVersions = currentPart ? versionsFor(sources.tabs, currentPart, drawnParts, rankOpts) : [];
+  // The instrument the sheet lists: the one tapped there, else the one
+  // shown.
+  const [sheetInstrument, setSheetInstrument] = useState<string | null>(null);
+  const wanted = sheetInstrument ?? (currentPart ? instrumentKey(currentPart) : null);
+  const listed = instruments.find((i) => i.key === wanted)?.key ?? instruments[0]?.key ?? null;
+  const versions = listed ? versionsFor(sources.tabs, listed, drawnParts, rankOpts) : [];
+  const openSheet = () => {
+    setSheetInstrument(null);
+    setSheetOpen((v) => !v);
+  };
+  const choose = (id: string, track: number) => {
+    pick(id);
+    setTrackChoice({ tabId: id, index: track });
+    writePref(trackKey(id), String(track));
+    setSheetOpen(false);
+  };
   const sheetActions: TabSheetAction[] = [
     {
       id: 'search-again',
@@ -379,6 +419,38 @@ function TabsSheet({ song, sources, onBack }: { song: TabSong; sources: TabSourc
     },
     { id: 'add-file', label: sources.uploading ? 'Adding…' : 'Add a file', disabled: sources.uploading, onClick: addFile },
   ];
+
+  // The practice toolbar (lib/tabStage.ts toolCells): over the tab on a
+  // wide screen; on a phone a strip above the pill that its sliders button
+  // shows and hides (remembered). One popover at a time.
+  const [toolsShown, setToolsShown] = useState(() => readPref(TOOLS_KEY, ['open', 'closed'] as const, 'closed') === 'open');
+  const toolsOpen = !phone || toolsShown;
+  const setToolsOpen = (open: boolean) => {
+    setToolsShown(open);
+    writePref(TOOLS_KEY, open ? 'open' : 'closed');
+  };
+  const [openTool, setOpenTool] = useState<ToolId | null>(null);
+  const toolsRef = useRef<HTMLDivElement>(null);
+  const pillRef = useRef<HTMLDivElement>(null);
+  // A tap or click anywhere else closes the popover (the pill is left out:
+  // its loop button opens one).
+  useEffect(() => {
+    if (!openTool) return;
+    const away = (e: PointerEvent) => {
+      const t = e.target as Node | null;
+      if (t && (toolsRef.current?.contains(t) || pillRef.current?.contains(t))) return;
+      setOpenTool(null);
+    };
+    const esc = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setOpenTool(null);
+    };
+    document.addEventListener('pointerdown', away);
+    document.addEventListener('keydown', esc);
+    return () => {
+      document.removeEventListener('pointerdown', away);
+      document.removeEventListener('keydown', esc);
+    };
+  }, [openTool]);
 
   const actions = (
     <DropdownMenu>
@@ -402,6 +474,19 @@ function TabsSheet({ song, sources, onBack }: { song: TabSong; sources: TabSourc
             onClick={align.lineUp}
           />
         )}
+        {tab && (
+          <>
+            <DropdownMenuSeparator />
+            <MenuItem
+              label={staff === 'tab' ? 'Show the score too' : 'Show the tab only'}
+              onClick={() => setStaff(staff === 'tab' ? 'score-tab' : 'tab')}
+            />
+            <MenuItem
+              label={scroll === 'vertical' ? 'Scroll sideways' : 'Scroll down the page'}
+              onClick={() => setScroll(scroll === 'vertical' ? 'horizontal' : 'vertical')}
+            />
+          </>
+        )}
         <DropdownMenuSeparator />
         {searchLinks.map((l) => (
           <MenuItem key={l.id} label={l.menuLabel} onClick={() => openLink(l.url)} />
@@ -420,14 +505,38 @@ function TabsSheet({ song, sources, onBack }: { song: TabSong; sources: TabSourc
     </DropdownMenu>
   );
 
-  const chipNode = tab ? (
-    <>
-      <SourceChip
-        tab={tab}
-        instrument={info?.tracks[trackIndex]?.name}
-        open={sheetOpen}
-        onOpen={() => setSheetOpen((v) => !v)}
-      />
+  // What you play and which version, under the title (pick 4): both open
+  // the sheet. Line it up beside them when the tab is not lined up yet.
+  const linedPct = tab && isLinedUp(tab.timing) ? confidencePercent(tab) : null;
+  const chooseNode = tab ? (
+    <div data-testid="tab-choose" className="flex min-w-0 items-center gap-cluster">
+      <button
+        type="button"
+        data-testid="tab-instrument"
+        aria-label={`What you play: ${currentPart ?? 'Guitar'}`}
+        aria-haspopup="dialog"
+        aria-expanded={sheetOpen}
+        onClick={openSheet}
+        className={cn(PICK_BUTTON, 'font-semibold text-foreground')}
+      >
+        <InstrumentIcon name={currentPart ?? ''} className="size-4 shrink-0" />
+        <span className="min-w-0 truncate">{currentPart ?? 'Guitar'}</span>
+        <ChevronDownIcon className="size-3 shrink-0" />
+      </button>
+      <button
+        type="button"
+        data-testid="tab-source-chip"
+        aria-label="Choose a tab"
+        aria-haspopup="dialog"
+        aria-expanded={sheetOpen}
+        onClick={openSheet}
+        title={sourceChipLabel(tab, currentPart ?? undefined)}
+        className={cn(PICK_BUTTON, 'text-muted-foreground')}
+      >
+        <span className="min-w-0 truncate">{versionLabel(currentVersions, tab)}</span>
+        {linedPct !== null && <span className="shrink-0 tabular-nums text-ember">{linedPct}%</span>}
+        <ChevronDownIcon className="size-3 shrink-0" />
+      </button>
       {tab.kind === 'fetched' && !timing && (
         <button
           type="button"
@@ -440,8 +549,150 @@ function TabsSheet({ song, sources, onBack }: { song: TabSong; sources: TabSourc
           {align.running ? 'Lining it up…' : 'Line it up'}
         </button>
       )}
-    </>
+    </div>
   ) : null;
+
+  const statusLines = (
+    <>
+      {sources.searchAgainResult && sources.searchAgainResult !== 'found' && (
+        <p role="status" data-testid="tabs-online-status" className="text-meta mt-cluster">
+          {sources.searchAgainResult === 'none'
+            ? 'Nothing new found online.'
+            : 'Could not search online just now. Try again later.'}
+        </p>
+      )}
+      {(sources.uploading || sources.uploadError) && (
+        <p role="status" className={cn('text-meta mt-cluster', sources.uploadError && 'text-destructive')}>
+          {sources.uploadError ?? 'Adding the file…'}
+        </p>
+      )}
+    </>
+  );
+
+  // The pill: play from here (after the count-in), where the song is on
+  // the tab, the speed and the loop.
+  const speedPercent = Math.round(speed * 100);
+  const at = barPosition(timeline, toTabMs(position));
+  const counting = countIn.beat !== null;
+  const pillLabel = counting
+    ? `Count ${(countIn.beat! % countIn.beatsPerBar) + 1}`
+    : !timeline || !at
+      ? 'Bar …'
+      : follows
+        ? `Bar ${at.bar} / ${at.total}`
+        : `${at.total} bars`;
+  const playPause = () => {
+    if (counting) {
+      countIn.cancel();
+      return;
+    }
+    if (!follows) {
+      if (song.track) playTrack(song.track);
+      return;
+    }
+    if (isPlaying || !countInBars || !timeline) {
+      toggle();
+      return;
+    }
+    const bar = barAtMs(timeline, toTabMs(position)) ?? timeline.bars[0];
+    const plan = countInPlan(countInBars, {
+      bpm: bpmOverride ?? tabBpmNow,
+      numerator: bar?.numerator,
+      denominator: bar?.denominator,
+      rate: playRate,
+    });
+    countIn.start(plan, () => {
+      if (!playingNow.current) toggle();
+    });
+  };
+  const showTool = (id: ToolId) => {
+    if (phone) setToolsOpen(true);
+    setOpenTool(id);
+  };
+  const loopPill = () => {
+    if (loopRange) setLoopRange(loopRange, !loopOn);
+    else showTool('loop');
+  };
+  const startPicking = () => {
+    if (!tab) return;
+    if (pickingNow) {
+      setPicking(null);
+      return;
+    }
+    // The popover goes so the tab can be tapped; the banner says what next.
+    setPicking({ tabId: tab.id, first: null });
+    setOpenTool(null);
+  };
+
+  const cells = toolCells({
+    speedPercent,
+    loopOn,
+    loopLabel: loopRange ? rangeLabel(loopRange) : null,
+    metronomeOn,
+    bpm: bpmOverride ?? tabBpmNow,
+    countIn: countInBars,
+    offsetMs,
+    offsetText: formatOffset(offsetMs, offsetUnit, beatClock),
+  });
+  const editor = (id: ToolId) => {
+    if (!tab) return null;
+    if (id === 'speed') return <SpeedEditor canSetRate={canSetRate} speed={speed} onSpeed={setSpeed} tabBpm={tabBpmNow} />;
+    if (id === 'loop')
+      return (
+        <LoopEditor
+          timeline={!!timeline}
+          barTotal={timeline ? barCount(timeline) : 0}
+          sections={timeline ? sectionRanges(timeline) : []}
+          range={loopRange}
+          loopOn={loopOn}
+          onLoopOn={(on) => loopRange && setLoopRange(loopRange, on)}
+          onRange={(r) => setLoopRange(r, loop?.on ?? true)}
+          onClear={() => {
+            setLoopRange(null);
+            setPicking(null);
+          }}
+          picking={!!pickingNow}
+          onPick={startPicking}
+        />
+      );
+    if (id === 'click')
+      return (
+        <ClickEditor
+          on={metronomeOn}
+          canClick={!!timeline}
+          onToggle={toggleMetronome}
+          tabBpm={tabBpmNow}
+          steps={timeline ? tempoSteps(timeline) : []}
+          override={bpmOverride}
+          onOverride={setBpmOverride}
+        />
+      );
+    if (id === 'count') return <CountInEditor value={countInBars} onChange={setCountIn} />;
+    return (
+      <DelayEditor
+        offsetMs={offsetMs}
+        unit={offsetUnit}
+        clock={beatClock}
+        onUnitChange={setOffsetUnit}
+        shared={tab.offsetMs}
+        canShare={tab.canDelete}
+        onChange={changeOffset}
+        onShare={() =>
+          sources.saveOffset(tab.id, offsetMs).then(
+            () => changeOffset(null),
+            // Not saved: the nudge stays on this device, and the listener
+            // is told rather than left guessing.
+            () => toast.error("Couldn't save the timing for everyone. It is still saved on this device."),
+          )
+        }
+      />
+    );
+  };
+  const popover = openTool && (
+    <ToolPopover id={openTool} title={cells.find((c) => c.id === openTool)?.name ?? ''}>
+      {editor(openTool)}
+    </ToolPopover>
+  );
 
   return (
     <div data-testid="tabs-page" data-track-id={song.id}>
@@ -457,129 +708,48 @@ function TabsSheet({ song, sources, onBack }: { song: TabSong; sources: TabSourc
           e.target.value = '';
         }}
       />
-      <TabSheetHeader phone={phone} title={song.title} meta={meta} chip={chipNode} actions={actions} onBack={onBack} />
-      {sources.searchAgainResult && sources.searchAgainResult !== 'found' && (
-        <p role="status" data-testid="tabs-online-status" className="text-meta mt-cluster">
-          {sources.searchAgainResult === 'none'
-            ? 'Nothing new found online.'
-            : 'Could not search online just now. Try again later.'}
-        </p>
-      )}
-      {(sources.uploading || sources.uploadError) && (
-        <p role="status" className={cn('text-meta mt-cluster', sources.uploadError && 'text-destructive')}>
-          {sources.uploadError ?? 'Adding the file…'}
-        </p>
-      )}
 
       {tab ? (
         <>
           <div
             ref={stickyRef}
             data-testid="tabs-sticky"
-            className="sticky top-(--ember-topbar-h,0px) z-20 mt-block border-b border-border bg-background/95 py-cluster backdrop-blur"
+            className="sticky top-(--ember-topbar-h,0px) z-20 -mt-page border-b border-border bg-background/95 pb-cluster backdrop-blur md:-mt-page-lg"
           >
-            <TabsToolbar
-              phone={phone}
-              staff={staff}
-              scroll={scroll}
-              tracks={info?.tracks ?? []}
-              track={trackIndex}
-              onStaffChange={setStaff}
-              onScrollChange={setScroll}
-              onTrackChange={setTrack}
-            >
-              <button
-                type="button"
-                aria-pressed={syncOpen}
-                aria-label="Sync"
-                onClick={() => setSyncOpen((v) => !v)}
-                title="Nudge the tab if it runs ahead of or behind the recording"
-                className={cn(chip, syncOpen || offsetMs !== 0 ? chipOn : chipOff)}
-              >
-                Sync
-                <span className="tabular-nums font-normal">{formatOffset(offsetMs, offsetUnit, beatClock)}</span>
-              </button>
-              <button
-                type="button"
-                aria-pressed={practiceOpen}
-                aria-label="Practice"
-                onClick={() => setPracticeOpen((v) => !v)}
-                title="Loop a section and slow it down"
-                className={cn(chip, practiceOpen || loopOn || speed !== 1 ? chipOn : chipOff)}
-              >
-                <RepeatIcon className="size-3.5" />
-                {!phone && 'Practice'}
-                {speed !== 1 && canSetRate && <span className="tabular-nums font-normal">{Math.round(speed * 100)}%</span>}
-                {loopOn && loopRange && <span className="font-normal">{rangeLabel(loopRange)}</span>}
-              </button>
-              <button
-                type="button"
-                aria-pressed={metronomeOn}
-                aria-label="Metronome"
-                disabled={!timeline}
-                onClick={toggleMetronome}
-                title={
-                  timeline
-                    ? 'Clicks on the beat, following the tab’s tempo'
-                    : 'The metronome starts once the tab is drawn'
-                }
-                className={cn(chip, metronomeOn ? chipOn : chipOff, 'disabled:opacity-50')}
-              >
-                <ClockIcon className="size-3.5" />
-                {!phone && 'Metronome'}
-                {(bpmOverride ?? tabBpmNow) && (
-                  <span className="tabular-nums font-normal">{Math.round(bpmOverride ?? tabBpmNow ?? 0)}</span>
-                )}
-              </button>
-            </TabsToolbar>
-            {syncOpen && (
-              <SyncRow
-                offsetMs={offsetMs}
-                unit={offsetUnit}
-                clock={beatClock}
-                onUnitChange={setOffsetUnit}
-                shared={tab.offsetMs}
-                canShare={tab.canDelete}
-                onChange={changeOffset}
-                onShare={() =>
-                  sources.saveOffset(tab.id, offsetMs).then(
-                    () => changeOffset(null),
-                    // Not saved: the nudge stays on this device, and the
-                    // listener is told rather than left guessing.
-                    () => toast.error("Couldn't save the timing for everyone. It is still saved on this device."),
-                  )
-                }
-              />
+            <StageHeader
+              title={song.title}
+              meta={stageMeta(song.artist, info, trackIndex, speed)}
+              metaTitle={meta}
+              dim={follows && isPlaying && !sheetOpen && !openTool}
+              chip={phone ? undefined : chooseNode}
+              below={phone ? chooseNode : undefined}
+              actions={actions}
+              onBack={onBack}
+            />
+            {!phone && (
+              <div ref={toolsRef} className="relative">
+                <PracticeToolbar phone={false} cells={cells} open={openTool} onOpen={setOpenTool} />
+                {popover && <div className="absolute left-0 top-full z-30 mt-cluster w-[min(30rem,100%)]">{popover}</div>}
+              </div>
             )}
-            {practiceOpen && (
-              <PracticeRow
-                timeline={!!timeline}
-                barTotal={timeline ? barCount(timeline) : 0}
-                sections={timeline ? sectionRanges(timeline) : []}
-                canSetRate={canSetRate}
-                speed={speed}
-                onSpeed={setSpeed}
-                tabBpm={tabBpmNow}
-                range={loopRange}
-                loopOn={loopOn}
-                onLoopOn={(on) => loopRange && setLoopRange(loopRange, on)}
-                onRange={(r) => setLoopRange(r, loop?.on ?? true)}
-                onClear={() => {
-                  setLoopRange(null);
-                  setPicking(null);
-                }}
-                picking={pickingNow ? (pickingNow.first === null ? 'first' : 'last') : null}
-                onPick={() => (pickingNow ? setPicking(null) : tab && setPicking({ tabId: tab.id, first: null }))}
-              />
+            {pickingNow && (
+              <div
+                role="status"
+                data-testid="tab-loop-picking"
+                className="mt-cluster flex items-center gap-cluster rounded-lg border border-ember/40 bg-ember/10 px-row py-cluster text-xs text-foreground"
+              >
+                <RepeatIcon className="size-4 shrink-0 text-ember" />
+                <span className="min-w-0 flex-1">
+                  {pickingNow.first === null
+                    ? `${phone ? 'Tap' : 'Click'} the first bar of the loop.`
+                    : `Now ${phone ? 'tap' : 'click'} its last bar.`}
+                </span>
+                <Button size="sm" variant="outline" onClick={() => setPicking(null)}>
+                  Cancel
+                </Button>
+              </div>
             )}
-            {metronomeOn && timeline && (
-              <MetronomeRow
-                tabBpm={tabBpmNow}
-                steps={tempoSteps(timeline)}
-                override={bpmOverride}
-                onOverride={setBpmOverride}
-              />
-            )}
+            {statusLines}
           </div>
           {!follows && (
             <div className="mt-block flex flex-wrap items-center gap-row rounded-lg bg-card px-block py-row text-sm text-muted-foreground">
@@ -613,8 +783,8 @@ function TabsSheet({ song, sources, onBack }: { song: TabSong; sources: TabSourc
             onBarPick={pickingNow ? onBarPick : null}
             getPageScroller={() => stickyRef.current?.closest<HTMLElement>('[data-app-scroller]') ?? null}
             getTopInset={() => {
-              // The toolbar, plus the desktop top bar it sticks under
-              // (`--ember-topbar-h`, 0 on a phone).
+              // The title line and the toolbar, plus the desktop top bar
+              // they stick under (`--ember-topbar-h`, 0 on a phone).
               const el = stickyRef.current;
               if (!el) return 0;
               const bar = parseFloat(getComputedStyle(el).getPropertyValue('--ember-topbar-h')) || 0;
@@ -622,22 +792,64 @@ function TabsSheet({ song, sources, onBack }: { song: TabSong; sources: TabSourc
             }}
             className="mt-block"
           />
+          <div
+            data-tabs-dock
+            data-tools={phone && toolsOpen ? 'open' : undefined}
+            className="pointer-events-none sticky bottom-cluster z-20 mt-block flex flex-col items-center gap-cluster"
+          >
+            {phone && toolsOpen && (
+              <div ref={toolsRef} className="flex w-full flex-col gap-cluster">
+                {popover}
+                <PracticeToolbar phone cells={cells} open={openTool} onOpen={setOpenTool} />
+              </div>
+            )}
+            <div ref={pillRef} className="max-w-full">
+              <PlayPill
+                playing={(follows && isPlaying) || counting}
+                canPlay={follows || !!song.track}
+                onPlayPause={playPause}
+                label={pillLabel}
+                speedPercent={speedPercent}
+                canSetRate={canSetRate}
+                onSlower={() => setSpeed(rateFromPercent(nextSlower(speedPercent)))}
+                loopOn={loopOn}
+                loopLabel={loopRange ? rangeLabel(loopRange) : null}
+                onLoop={loopPill}
+                more={
+                  phone
+                    ? {
+                        open: toolsOpen,
+                        onToggle: () => {
+                          setOpenTool(null);
+                          setToolsOpen(!toolsOpen);
+                        },
+                      }
+                    : undefined
+                }
+              />
+            </div>
+          </div>
         </>
       ) : (
-        <NoTab sources={sources} searchLinks={searchLinks} phone={phone} onAddFile={addFile} />
+        <>
+          <TabSheetHeader phone={phone} title={song.title} meta={meta} actions={actions} onBack={onBack} />
+          {statusLines}
+          <NoTab sources={sources} searchLinks={searchLinks} song={song} onAddFile={addFile} />
+        </>
       )}
       <TabSourceSheet
         open={sheetOpen}
         phone={phone}
         title={song.title}
         artist={song.artist}
-        rows={rows}
-        searching={sources.searchingOnline && rows.length === 0}
+        instruments={instruments}
+        instrument={listed}
+        onInstrument={setSheetInstrument}
+        versions={versions}
+        current={tab ? { id: tab.id, track: trackIndex } : null}
+        searching={sources.searchingOnline && sources.tabs.length === 0}
         emptyNote="Ember found nothing online for this song yet."
-        onPick={(id) => {
-          pick(id);
-          setSheetOpen(false);
-        }}
+        onPick={choose}
         onClose={() => setSheetOpen(false)}
         onLineUp={sources.lineUp}
         onDelete={removeTab}
@@ -647,15 +859,13 @@ function TabsSheet({ song, sources, onBack }: { song: TabSong; sources: TabSourc
   );
 }
 
-/** Open a link out of Ember: a new tab, or the system browser in the
- *  desktop app, where the webview drops new-tab links (lib/openExternal.ts). */
-function openLink(url: string): void {
-  void openExternal(url).then(announceOpen);
-}
-
 /** The tab page's menus never run off the screen: at most the
  *  viewport less a margin, whatever the trigger's width. */
 const MENU_CLASS = 'w-max min-w-56 max-w-[calc(100vw-2rem)]';
+
+/** The two buttons under the title: what you play, which version. */
+const PICK_BUTTON =
+  'inline-flex min-w-0 max-w-full items-center gap-inset rounded-lg border border-border px-cluster py-inset text-xs transition-colors hover:bg-muted';
 
 /** One line of a menu: cut with an ellipsis when too long, whole in the
  *  tooltip. */
@@ -674,592 +884,5 @@ function MenuItem({
     <DropdownMenuItem title={label} disabled={disabled} onClick={onClick} className={cn('min-w-0', className)}>
       <span className="min-w-0 truncate">{label}</span>
     </DropdownMenuItem>
-  );
-}
-
-/** "File added by Aron, shared", "Text tab pasted by Aron, shared" or
- *  "From Songsterr, Rhythm Guitar, lined up", with how sure the alignment
- *  is when there is one. Clicking it opens the Source sheet: every tab for
- *  the song. */
-function SourceChip({
-  tab,
-  instrument,
-  open,
-  onOpen,
-}: {
-  tab: TabSummary;
-  /** The staff on screen, named on the chip of a tab that holds several. */
-  instrument?: string;
-  open: boolean;
-  onOpen: () => void;
-}) {
-  const label = sourceChipLabel(tab, instrument);
-  const pct = isLinedUp(tab.timing) ? confidencePercent(tab) : null;
-  return (
-    <TabSourceChip label={label}>
-      <button
-        type="button"
-        aria-label="Choose a tab"
-        aria-haspopup="dialog"
-        aria-expanded={open}
-        onClick={onOpen}
-        title={label}
-        className="inline-flex min-w-0 max-w-full items-center gap-inset hover:text-foreground"
-      >
-        <span className="min-w-0 truncate">{label}</span>
-        {pct !== null && <span className="shrink-0 tabular-nums text-ember">{pct}%</span>}
-        <ChevronDownIcon className="size-3 shrink-0" />
-      </button>
-    </TabSourceChip>
-  );
-}
-
-/** The nudge: slide the tab against the recording. Kept on this device;
- *  whoever added the tab can save it for everyone. A slider for the rough
- *  place, steps and a box for the exact one, in seconds or in beats of the
- *  tab (its tempo and time signature, lib/tabOffset.ts). */
-function SyncRow({
-  offsetMs,
-  unit,
-  clock,
-  onUnitChange,
-  shared,
-  canShare,
-  onChange,
-  onShare,
-}: {
-  offsetMs: number;
-  unit: OffsetUnit;
-  clock: BeatClock | null;
-  onUnitChange: (unit: OffsetUnit) => void;
-  shared: number;
-  canShare: boolean;
-  onChange: (ms: number | null) => void;
-  onShare: () => void;
-}) {
-  const shown: OffsetUnit = unit === 'beats' && clock ? 'beats' : 'seconds';
-  const span = sliderSpanSec(offsetMs);
-  const value = offsetInUnit(offsetMs, shown, clock);
-  // The box keeps what is being typed ("-", "1.") until it reads as a
-  // number; it shows the nudge again whenever the nudge changes elsewhere.
-  const [draft, setDraft] = useState<{ text: string; for: string } | null>(null);
-  const key = `${offsetMs}|${shown}`;
-  const text = draft && draft.for === key ? draft.text : String(value);
-  const commit = (raw: string) => {
-    const ms = offsetFromInput(raw, shown, clock);
-    setDraft({ text: raw, for: ms === null ? key : `${clampOffset(ms)}|${shown}` });
-    if (ms !== null && ms !== offsetMs) onChange(ms);
-  };
-  return (
-    <div data-testid="tab-sync" className="mt-cluster flex flex-col gap-cluster text-xs text-muted-foreground">
-      <div className="flex flex-wrap items-center gap-row">
-        <input
-          type="range"
-          min={-span}
-          max={span}
-          step={0.01}
-          value={offsetMs / 1000}
-          onChange={(e) => onChange(Number(e.target.value) * 1000)}
-          className="min-w-40 flex-1 accent-ember"
-          aria-label="Tab timing offset in seconds"
-        />
-        <div className="flex shrink-0 items-center gap-inset">
-          <input
-            type="number"
-            inputMode="decimal"
-            step={shown === 'beats' ? 0.25 : 0.01}
-            value={text}
-            onChange={(e) => commit(e.target.value)}
-            className="h-7 w-24 rounded-md border border-border bg-background px-cluster text-right text-xs tabular-nums text-foreground"
-            aria-label={shown === 'beats' ? 'Tab timing offset in beats' : 'Tab timing offset, exact seconds'}
-          />
-          <div className="flex items-center rounded-full bg-muted p-inset" role="group" aria-label="Offset unit">
-            {(['seconds', 'beats'] as const).map((u) => (
-              <button
-                key={u}
-                type="button"
-                aria-pressed={shown === u}
-                disabled={u === 'beats' && !clock}
-                title={u === 'beats' && !clock ? 'This tab has no tempo to count beats by' : undefined}
-                onClick={() => onUnitChange(u)}
-                className={cn(
-                  'rounded-full px-row py-inset text-xs font-medium transition-colors disabled:opacity-40',
-                  shown === u ? 'bg-background text-foreground shadow-soft' : 'text-muted-foreground hover:text-foreground',
-                )}
-              >
-                {u === 'seconds' ? 's' : 'beats'}
-              </button>
-            ))}
-          </div>
-        </div>
-      </div>
-      <div className="flex flex-wrap items-center gap-inset">
-        {nudgeSteps(shown, clock).map((s) => (
-          <Button key={s.label} size="sm" variant="ghost" className="tabular-nums" onClick={() => onChange(clampOffset(offsetMs + s.ms))}>
-            {s.label}
-          </Button>
-        ))}
-        <Button size="sm" variant="ghost" onClick={() => onChange(0)}>
-          Reset
-        </Button>
-        {canShare && offsetMs !== shared && (
-          <Button size="sm" variant="outline" onClick={onShare}>
-            Save for everyone
-          </Button>
-        )}
-        {shown === 'beats' && clock && (
-          <span className="tabular-nums" data-testid="tab-sync-beat">
-            1 beat = {Math.round((60_000 / clock.bpm) * (4 / clock.denominator))} ms at {Math.round(clock.bpm)} bpm, {clock.numerator}/{clock.denominator}
-          </span>
-        )}
-      </div>
-    </div>
-  );
-}
-
-/** Practice: the speed (pitch kept) and a loop over a section or a range
- *  of bars (lib/tabPractice.ts). */
-function PracticeRow({
-  timeline,
-  barTotal,
-  sections,
-  canSetRate,
-  speed,
-  onSpeed,
-  tabBpm,
-  range,
-  loopOn,
-  onLoopOn,
-  onRange,
-  onClear,
-  picking,
-  onPick,
-}: {
-  /** The score is drawn, so its bars are known. */
-  timeline: boolean;
-  barTotal: number;
-  sections: SectionRange[];
-  canSetRate: boolean;
-  speed: number;
-  onSpeed: (rate: number) => void;
-  /** The tab's tempo at the playhead. */
-  tabBpm: number | null;
-  range: BarRange | null;
-  loopOn: boolean;
-  onLoopOn: (on: boolean) => void;
-  onRange: (range: BarRange) => void;
-  onClear: () => void;
-  /** Choosing bars on the score: the next click is the first or the last. */
-  picking: 'first' | 'last' | null;
-  onPick: () => void;
-}) {
-  const percent = Math.round(speed * 100);
-  const heard = bpmAtRate(tabBpm, speed);
-  const [bpmDraft, setBpmDraft] = useState<string | null>(null);
-  const [percentDraft, setPercentDraft] = useState<string | null>(null);
-  const sectionValue = range ? sections.findIndex((x) => x.start === range.start && x.end === range.end) : -1;
-  const barInput = (label: string, value: number | undefined, set: (bar: number) => void) => (
-    <input
-      type="number"
-      inputMode="numeric"
-      min={1}
-      max={Math.max(1, barTotal)}
-      step={1}
-      value={value === undefined ? '' : value + 1}
-      disabled={!timeline}
-      onChange={(e) => {
-        const n = Math.round(Number(e.target.value));
-        if (Number.isFinite(n) && n >= 1) set(n - 1);
-      }}
-      className="h-7 w-16 rounded-md border border-border bg-background px-cluster text-right text-xs tabular-nums text-foreground disabled:opacity-50"
-      aria-label={label}
-    />
-  );
-  return (
-    <div data-testid="tab-practice" className="mt-cluster flex flex-col gap-cluster text-xs text-muted-foreground">
-      <div className="flex flex-wrap items-center gap-row" role="group" aria-label="Speed">
-        <span className="font-medium text-foreground">Speed</span>
-        {canSetRate ? (
-          <>
-            <div className="flex flex-wrap items-center gap-inset">
-              {SPEED_PRESETS.map((p) => (
-                <button
-                  key={p}
-                  type="button"
-                  aria-pressed={percent === p}
-                  onClick={() => {
-                    setPercentDraft(null);
-                    setBpmDraft(null);
-                    onSpeed(rateFromPercent(p));
-                  }}
-                  className={cn(chip, percent === p ? chipOn : chipOff, 'tabular-nums')}
-                >
-                  {p}%
-                </button>
-              ))}
-            </div>
-            <label className="flex items-center gap-inset">
-              <input
-                type="number"
-                inputMode="numeric"
-                min={50}
-                max={125}
-                step={5}
-                value={percentDraft ?? String(percent)}
-                onChange={(e) => {
-                  setPercentDraft(e.target.value);
-                  setBpmDraft(null);
-                  const n = Number(e.target.value);
-                  if (Number.isFinite(n) && n >= 50 && n <= 125) onSpeed(rateFromPercent(n));
-                }}
-                onBlur={() => setPercentDraft(null)}
-                className="h-7 w-16 rounded-md border border-border bg-background px-cluster text-right text-xs tabular-nums text-foreground"
-                aria-label="Speed in percent"
-              />
-              <span>%</span>
-            </label>
-            {tabBpm ? (
-              <label className="flex items-center gap-inset">
-                <span>=</span>
-                <input
-                  type="number"
-                  inputMode="numeric"
-                  min={1}
-                  step={1}
-                  value={bpmDraft ?? String(heard ?? '')}
-                  onChange={(e) => {
-                    setBpmDraft(e.target.value);
-                    setPercentDraft(null);
-                    const r = rateFromBpm(Number(e.target.value), tabBpm);
-                    if (r !== null) onSpeed(r);
-                  }}
-                  onBlur={() => setBpmDraft(null)}
-                  className="h-7 w-16 rounded-md border border-border bg-background px-cluster text-right text-xs tabular-nums text-foreground"
-                  aria-label="Speed in bpm"
-                />
-                <span>bpm (the tab: {Math.round(tabBpm)})</span>
-              </label>
-            ) : null}
-          </>
-        ) : (
-          <span data-testid="tab-speed-unavailable">
-            Slowing down works in the browser for now; this app plays at full speed.
-          </span>
-        )}
-      </div>
-      <div className="flex flex-wrap items-center gap-row" role="group" aria-label="Loop">
-        <button
-          type="button"
-          aria-pressed={loopOn}
-          aria-label="Loop"
-          disabled={!range}
-          onClick={() => onLoopOn(!loopOn)}
-          title={range ? `Loop ${rangeLabel(range).toLowerCase()}` : 'Choose bars or a section to loop first'}
-          className={cn(chip, loopOn ? chipOn : chipOff, 'disabled:opacity-50')}
-        >
-          <RepeatIcon className="size-3.5" />
-          Loop
-        </button>
-        {sections.length > 0 && (
-          <select
-            aria-label="Loop a section"
-            value={sectionValue >= 0 ? String(sectionValue) : ''}
-            onChange={(e) => {
-              const sct = sections[Number(e.target.value)];
-              if (sct) onRange({ start: sct.start, end: sct.end });
-            }}
-            className="h-7 rounded-md border border-border bg-background px-cluster text-xs text-foreground"
-          >
-            <option value="">Section…</option>
-            {sections.map((sct, i) => (
-              <option key={`${sct.start}:${sct.name}`} value={String(i)}>
-                {sct.name} ({rangeLabel(sct).toLowerCase()})
-              </option>
-            ))}
-          </select>
-        )}
-        <span className="flex items-center gap-inset">
-          <span>Bars</span>
-          {barInput('Loop from bar', range?.start, (b) => onRange({ start: b, end: Math.max(b, range?.end ?? b) }))}
-          <span>to</span>
-          {barInput('Loop to bar', range?.end, (b) => onRange({ start: Math.min(b, range?.start ?? b), end: b }))}
-          {barTotal > 0 && <span>of {barTotal}</span>}
-        </span>
-        <Button size="sm" variant={picking ? 'outline' : 'ghost'} disabled={!timeline} onClick={onPick}>
-          {picking ? 'Cancel picking' : 'Pick on the tab'}
-        </Button>
-        {range && (
-          <Button size="sm" variant="ghost" onClick={onClear}>
-            Clear
-          </Button>
-        )}
-        {picking && (
-          <span role="status" data-testid="tab-loop-picking" className="text-ember">
-            {picking === 'first' ? 'Click the first bar of the loop.' : 'Now click its last bar.'}
-          </span>
-        )}
-      </div>
-    </div>
-  );
-}
-
-/** The metronome's tempo: the tab's (which changes where the tab does), or
- *  one the listener sets because the tab's is wrong. */
-function MetronomeRow({
-  tabBpm,
-  steps,
-  override,
-  onOverride,
-}: {
-  /** The tab's tempo at the playhead. */
-  tabBpm: number | null;
-  /** Every tempo the tab plays at, in order. */
-  steps: number[];
-  override: number | null;
-  onOverride: (bpm: number | null) => void;
-}) {
-  const [draft, setDraft] = useState<string | null>(null);
-  const shown = draft ?? (override !== null ? String(override) : '');
-  const tabText = tabBpm ? `${Math.round(tabBpm)} bpm` : 'no tempo';
-  return (
-    <div data-testid="tab-metronome" className="mt-cluster flex flex-wrap items-center gap-row text-xs text-muted-foreground">
-      <span data-testid="tab-metronome-status">
-        {override !== null
-          ? `Clicking at ${override} bpm; the tab says ${tabText} here.`
-          : `Follows the tab: ${tabText} here${steps.length > 1 ? ` (tempo changes ${steps.join(' → ')})` : ''}.`}
-      </span>
-      <label className="flex items-center gap-inset">
-        <span>Set bpm</span>
-        <input
-          type="number"
-          inputMode="decimal"
-          min={MIN_BPM}
-          max={MAX_BPM}
-          step={1}
-          value={shown}
-          placeholder={tabBpm ? String(Math.round(tabBpm)) : ''}
-          onChange={(e) => {
-            const raw = e.target.value;
-            setDraft(raw);
-            const n = Number(raw);
-            if (raw.trim() === '') onOverride(null);
-            else if (Number.isFinite(n) && n >= MIN_BPM && n <= MAX_BPM) onOverride(n);
-          }}
-          onBlur={() => setDraft(null)}
-          className="h-7 w-20 rounded-md border border-border bg-background px-cluster text-right text-xs tabular-nums text-foreground"
-          aria-label="Metronome bpm"
-        />
-      </label>
-      {override !== null && (
-        <Button
-          size="sm"
-          variant="ghost"
-          onClick={() => {
-            setDraft(null);
-            onOverride(null);
-          }}
-        >
-          Use the tab’s tempo
-        </Button>
-      )}
-    </div>
-  );
-}
-
-/** What each place to look by hand holds, under its name in the list. */
-const SITE_NOTES: Record<TabSearchLink['id'], string> = {
-  'ultimate-guitar': 'Text and Guitar Pro tabs, rated by players',
-  'guitar-pro': 'A web search for .gp and .gpx files',
-  songsterr: 'Search Songsterr yourself',
-};
-
-const FILE_NOTE = 'A Guitar Pro or MusicXML tab. Everyone here gets it.';
-
-/** "Guitar, Bass, Drums, chords": what a Songsterr version holds. */
-function matchInstruments(m: TabMatch): string {
-  return [m.instruments.join(', '), m.hasChords ? 'chords' : ''].filter(Boolean).join(', ');
-}
-
-/** The card's heading and the line under it, per state. */
-function emptyHead(state: EmptyStateView): { title: string; sub: string } {
-  if (state.kind === 'searching') return { title: 'Looking on Songsterr…', sub: 'This takes a few seconds.' };
-  if (state.kind === 'none') return { title: 'Nothing on Songsterr', sub: 'Try the places people post tabs, then add the file here.' };
-  const n = state.matches.length;
-  return n === 1
-    ? {
-        title: '1 tab on Songsterr',
-        sub: 'Ember could not draw it here. Open it on Songsterr, or get its Guitar Pro file and add it below.',
-      }
-    : {
-        title: `${n} tabs on Songsterr`,
-        sub: 'Ember could not draw these here. Open one on Songsterr, or get its Guitar Pro file and add it below.',
-      };
-}
-
-type EmptyStateView = ReturnType<typeof emptyStateFor>;
-
-/** A link out of Ember that opens through lib/openExternal (the desktop
- *  app drops plain new-tab links). */
-function OutLink({ href, className, children, ...rest }: ComponentProps<'a'>) {
-  return (
-    <a
-      href={href}
-      target="_blank"
-      rel="noopener noreferrer"
-      onClick={(e) => {
-        e.preventDefault();
-        if (href) openLink(href);
-      }}
-      className={className}
-      {...rest}
-    >
-      {children}
-    </a>
-  );
-}
-
-/** The end of a row: "Open"/"Search" on a wide screen, a chevron on a phone. */
-function RowEnd({ phone, label }: { phone: boolean; label: string }) {
-  return phone ? (
-    <ChevronRightIcon aria-hidden className="size-4 shrink-0 text-muted-foreground" />
-  ) : (
-    <span className={cn(chip, chipOff, 'group-hover:bg-background group-hover:text-foreground')}>{label}</span>
-  );
-}
-
-const ROW = 'group flex min-w-0 items-center gap-row px-block py-row transition-colors hover:bg-muted/60';
-
-/** One Songsterr version: the tab icon, its title, what it holds, Open. */
-function MatchRow({ match, best, phone }: { match: TabMatch; best: boolean; phone: boolean }) {
-  return (
-    <li>
-      <OutLink href={match.url} data-testid="tabs-empty-match" className={ROW}>
-        <span aria-hidden className="grid size-10 shrink-0 place-items-center rounded-lg bg-ember/15 text-ember">
-          <TabsIcon className="size-5" />
-        </span>
-        <span className="min-w-0 flex-1">
-          <span className="flex min-w-0 items-center gap-cluster">
-            <span title={match.title} className="min-w-0 truncate text-sm font-medium">
-              {match.title}
-            </span>
-            {best && (
-              <span className="inline-flex shrink-0 items-center whitespace-nowrap rounded-full bg-ember/15 px-cluster py-inset text-[11px] font-medium leading-none text-ember">
-                Best match
-              </span>
-            )}
-          </span>
-          <span className="block truncate text-xs text-muted-foreground">{matchInstruments(match)}</span>
-        </span>
-        <RowEnd phone={phone} label="Open" />
-      </OutLink>
-    </li>
-  );
-}
-
-/** A place to look by hand, drawn like a Songsterr row. */
-function SiteRow({ link, phone }: { link: TabSearchLink; phone: boolean }) {
-  return (
-    <li>
-      <OutLink href={link.url} data-testid="tabs-empty-site" data-link={link.id} className={ROW}>
-        <span aria-hidden className="grid size-10 shrink-0 place-items-center rounded-lg bg-muted text-muted-foreground">
-          <SearchIcon className="size-4" />
-        </span>
-        <span className="min-w-0 flex-1">
-          <span className="block truncate text-sm font-medium">{link.label}</span>
-          <span className="block truncate text-xs text-muted-foreground">{SITE_NOTES[link.id]}</span>
-        </span>
-        <RowEnd phone={phone} label="Search" />
-      </OutLink>
-    </li>
-  );
-}
-
-function SkeletonRows() {
-  return (
-    <>
-      {[0, 1, 2].map((i) => (
-        <li key={i} aria-hidden className="flex items-center gap-row px-block py-row">
-          <Skeleton className="size-10 shrink-0 rounded-lg" />
-          <div className="flex min-w-0 flex-1 flex-col gap-inset">
-            <Skeleton className="h-3.5 w-2/5" />
-            <Skeleton className="h-3 w-1/4" />
-          </div>
-        </li>
-      ))}
-    </>
-  );
-}
-
-/** No tab to draw (the "Songsterr list" the owner picked): Songsterr's
- *  versions of the song to open there, or the places people post tabs when
- *  Songsterr has none, with Add a file below either. While Ember is still
- *  asking, the list is a skeleton. */
-function NoTab({
-  sources,
-  searchLinks,
-  phone,
-  onAddFile,
-}: {
-  sources: TabSourcesState;
-  searchLinks: TabSearchLink[];
-  phone: boolean;
-  onAddFile: () => void;
-}) {
-  const state = emptyStateFor({
-    loading: sources.loading,
-    searchingOnline: sources.searchingOnline,
-    matchesLoading: sources.matchesLoading,
-    matches: sources.matches,
-  });
-  const head = emptyHead(state);
-  // Ultimate Guitar and Guitar Pro files: Songsterr has its own rows.
-  const otherSites = searchLinks.filter((l) => l.id !== 'songsterr');
-  const searching = state.kind === 'searching';
-  return (
-    <div data-testid="tabs-empty" data-state={state.kind} className="mt-stack flex max-w-2xl flex-col gap-stack">
-      <section className="overflow-hidden rounded-2xl border border-border bg-card/60">
-        <header className="px-block pb-row pt-block">
-          <h2
-            role={searching ? 'status' : undefined}
-            data-testid={searching ? 'tabs-searching' : undefined}
-            className="text-lg font-semibold"
-          >
-            {head.title}
-          </h2>
-          <p className="text-meta mt-inset">{head.sub}</p>
-        </header>
-        <ul data-testid="tabs-empty-list" aria-busy={searching || undefined} className="divide-y divide-border border-t border-border">
-          {state.kind === 'matches' &&
-            state.matches.map((m, i) => <MatchRow key={m.id} match={m} best={i === 0 && state.matches.length > 1} phone={phone} />)}
-          {state.kind === 'none' && otherSites.map((l) => <SiteRow key={l.id} link={l} phone={phone} />)}
-          {searching && <SkeletonRows />}
-        </ul>
-      </section>
-      <div className="flex flex-wrap items-center gap-x-block gap-y-cluster">
-        <Button variant="ember" onClick={onAddFile} disabled={sources.uploading}>
-          <UploadIcon className="size-4" />
-          {sources.uploading ? 'Adding…' : 'Add a file'}
-        </Button>
-        <p className="text-meta min-w-0 flex-1 basis-56">{FILE_NOTE}</p>
-      </div>
-      {state.kind !== 'none' && otherSites.length > 0 && (
-        <p data-testid="tab-search-links" className="text-meta">
-          Not the version you want? Search{' '}
-          {otherSites.map((l, i) => (
-            <span key={l.id}>
-              {i > 0 && ' or '}
-              <OutLink
-                href={l.url}
-                data-link={l.id}
-                className="font-medium text-foreground underline decoration-border underline-offset-4 hover:decoration-foreground"
-              >
-                {l.label}
-              </OutLink>
-            </span>
-          ))}
-          .
-        </p>
-      )}
-    </div>
   );
 }

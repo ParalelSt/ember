@@ -414,6 +414,11 @@ export const api = {
     }
     return (await res.json()) as { tab: TabFile };
   },
+  /** Add a text tab someone pasted (POST /api/tabs/text): the server reads
+   *  it with the same parser as the preview (lib/tabText.ts) and keeps it
+   *  for everyone. A paste it cannot read answers 422 with why. */
+  addTabText: (text: string, meta: { title: string; artist: string; trackId?: string }) =>
+    req<{ tab: TabFile }>('/tabs/text', { method: 'POST', body: { text, ...meta }, expected: [422] }),
   /** Save a tab's sync nudge for everyone (its uploader or an admin). */
   saveTabOffset: (id: string, offsetMs: number) =>
     req<{ tab: TabFile }>(`/tabs/files/${id}`, { method: 'PATCH', body: { offsetMs } }),

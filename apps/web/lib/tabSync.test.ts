@@ -20,6 +20,12 @@ import {
   tempoMap,
   tickToMs,
   type TickLookup,
+  alphaTabMs,
+  cursorSpeed,
+  drawLead,
+  FEED_INTERVAL_MS,
+  nextFrameMs,
+  speedChanged,
 } from './tabSync';
 
 describe('song time and the tab clock', () => {
@@ -232,6 +238,82 @@ describe('the playhead between player reports', () => {
 
   it('stops running ahead after a second without a report (a stall)', () => {
     expect(estimateSongSec({ sec: 10, at: 1000 }, 9000, true)).toBeCloseTo(11);
+  });
+});
+
+describe("AlphaTab's own clock", () => {
+  // AlphaTab's time positions are wall clock at its playback speed: it
+  // turns a time into a tick by multiplying by the speed. Fed the tab's
+  // own ms at 75%, its line sat at three quarters of the way (measured in
+  // tests/tabs-sync-live.test.mjs: seconds behind, the wrong beat).
+  it('is the tab time divided by the speed AlphaTab is set to', () => {
+    expect(alphaTabMs(30_000, 1)).toBe(30_000);
+    expect(alphaTabMs(30_000, 0.75)).toBe(40_000);
+    expect(alphaTabMs(30_000, 0.5)).toBe(60_000);
+    expect(alphaTabMs(30_000, 0)).toBe(30_000);
+  });
+
+  // The line glides between beats at AlphaTab's speed: the practice speed
+  // times how fast the tab's clock runs against the song (a recording 4%
+  // faster than its tab moves the tab 4% faster). At 1 it slid behind by
+  // about 50 ms and caught up at every beat.
+  it('glides at the practice speed times the pace of the tab against the song', () => {
+    const points = [
+      { song: 3200, tab: 0 },
+      { song: 3200 + 2400 / 1.04, tab: 2400 },
+      { song: 3200 + 4800 / 1.04, tab: 4800 },
+    ];
+    expect(cursorSpeed(1, [], 10)).toBe(1);
+    expect(cursorSpeed(0.75, [], 10)).toBe(0.75);
+    expect(cursorSpeed(1, points, 4)).toBeCloseTo(1.04, 6);
+    expect(cursorSpeed(0.75, points, 4)).toBeCloseTo(0.78, 6);
+    // Before the first anchor and after the last: the edge segment's pace.
+    expect(cursorSpeed(1, points, 1)).toBeCloseTo(1.04, 6);
+    expect(cursorSpeed(1, points, 60)).toBeCloseTo(1.04, 6);
+    // The nudge moves where on the song the pace is read, like the feed.
+    const bent = [{ song: 0, tab: 0 }, { song: 1000, tab: 1000 }, { song: 2000, tab: 3000 }];
+    expect(cursorSpeed(1, bent, 0.5)).toBeCloseTo(1, 6);
+    expect(cursorSpeed(1, bent, 0.5, 1000)).toBeCloseTo(2, 6);
+    // Within sane bounds, as the mapping's own edges.
+    expect(cursorSpeed(1, [{ song: 0, tab: 0 }, { song: 1000, tab: 5000 }], 0.5)).toBe(2);
+  });
+
+  it('changes the speed only for a change worth a re-seek', () => {
+    expect(speedChanged(1, 1)).toBe(false);
+    expect(speedChanged(1, 1.015)).toBe(false);
+    expect(speedChanged(1, 1.04)).toBe(true);
+    expect(speedChanged(1, 0.75)).toBe(true);
+  });
+});
+
+describe('AlphaTab draws three frames late', () => {
+  // Between the position it is handed and the line's glide starting there
+  // are three requestAnimationFrame hops inside AlphaTab: measured in
+  // tests/tabs-sync-live.test.mjs as the drawn line 60 to 90 ms behind
+  // the page's own (right) estimate of the song.
+  it('so the page feeds it where the song will be three frames on', () => {
+    expect(drawLead(1000 / 60)).toBeCloseTo(50, 6);
+    expect(drawLead(1000 / 120)).toBeCloseTo(25, 6);
+    // A stalled frame (a busy main thread) is not a reason to run ahead.
+    expect(drawLead(400)).toBe(150);
+    expect(drawLead(Number.NaN)).toBeCloseTo(50, 6);
+  });
+
+  it('is fed every frame at 60 Hz, so a new beat reaches it within a frame', () => {
+    // AlphaTab only re-aims its line when the beat changes. Fed every 50 ms,
+    // the change reached it up to three frames late, and the line, still
+    // gliding at the last beat's pace (a wide gap after a short note), ran
+    // up to 250 ms past the song, then crawled back over a few beats
+    // (tests/tabs-sync-live.test.mjs, after a seek).
+    expect(FEED_INTERVAL_MS).toBeLessThanOrEqual(1000 / 60);
+  });
+
+  it('measures the frame from the frames, smoothly', () => {
+    let f = 1000 / 60;
+    for (let i = 0; i < 60; i++) f = nextFrameMs(f, 1000 / 120);
+    expect(f).toBeCloseTo(1000 / 120, 0);
+    // One long frame (a tab in the background) moves it a little, not to 1 s.
+    expect(nextFrameMs(1000 / 60, 1000)).toBeLessThan(25);
   });
 });
 
