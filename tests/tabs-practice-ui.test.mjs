@@ -1,8 +1,9 @@
-/** UI check for the tab page's practice tools (as built): the sync nudge
- *  past 10 s and in beats, the metronome on the
- *  tab's beats through a tempo change, the speed (pitch kept) and the loop,
- *  and the links out of a song with no tab (the places to look, and
- *  Songsterr's versions).
+/** UI check for the tab page's practice tools (as built): the stage's pill
+ *  (play, pause, the bar, the count-in), the practice toolbar's popovers
+ *  (the delay nudge past 10 s and in beats, the metronome on the tab's
+ *  beats through a tempo change, the speed (pitch kept) and the loop), and
+ *  a song with no tab (Find one on each site, then the card that adds what
+ *  was found). SHOTS=dir saves screenshots of both, desktop and phone.
  *
  *      node tests/tabs-practice-ui.test.mjs
  *
@@ -175,21 +176,42 @@ const trackPath = (id) => `/tabs/${encodeURIComponent(id)}`;
   check('the song plays on the tab page', playing);
   await page.waitForTimeout(1500);
 
-  // ── sync: past the old 10 s, and in beats ────────────────────────────────
-  await page.getByRole('button', { name: 'Sync' }).click();
-  await page.getByLabel('Tab timing offset, exact seconds').fill('-95.25');
-  const sync = await page.getByRole('button', { name: 'Sync' }).innerText();
+  const cell = (id) => page.getByTestId(`tab-tool-${id}`);
+  const pop = (id) => page.getByTestId(`tab-popover-${id}`);
+
+  // ── the pill: where the song is, pause, and play after a count-in ───────
+  const where = await page.getByTestId('tab-pill-bar').innerText();
+  check('the pill says the bar the song is in', /^Bar \d+ \/ 48$/.test(where.trim()), where);
+  const pill = page.getByTestId('tab-pill');
+  await pill.getByRole('button', { name: 'Pause' }).click();
+  await page.waitForTimeout(500);
+  check('Pause on the pill pauses the song', await page.evaluate(() => document.querySelector('audio')?.paused === true));
+  const before = await page.evaluate(() => window.__clicks.length);
+  await pill.getByRole('button', { name: 'Play' }).click();
+  await page.waitForTimeout(700);
+  const counting = await page.getByTestId('tab-pill-bar').innerText();
+  const stillPaused = await page.evaluate(() => document.querySelector('audio')?.paused === true);
+  check('Play counts a bar in first, the song still waiting', /^Count [1-4]$/.test(counting.trim()) && stillPaused, counting);
+  await page.waitForTimeout(2200);
+  const counted = (await page.evaluate(() => window.__clicks.length)) - before;
+  check('four clicks, then the song plays', counted === 4 && (await page.evaluate(() => !document.querySelector('audio')?.paused)), `${counted} clicks`);
+
+  // ── delay: past the old 10 s, and in beats ───────────────────────────────
+  await cell('delay').click();
+  await pop('delay').getByLabel('Tab timing offset, exact seconds').fill('-95.25');
+  const sync = await cell('delay').innerText();
   check('the nudge takes -95.25 s (the old limit was 10 s)', /-95\.25 s/.test(sync), sync);
-  await page.getByRole('button', { name: 'Reset' }).click();
-  await page.getByRole('button', { name: 'beats', exact: true }).click();
-  await page.getByLabel('Tab timing offset in beats').fill('4');
-  const beats = await page.getByRole('button', { name: 'Sync' }).innerText();
+  await pop('delay').getByRole('button', { name: 'Reset' }).click();
+  await pop('delay').getByRole('button', { name: 'beats', exact: true }).click();
+  await pop('delay').getByLabel('Tab timing offset in beats').fill('4');
+  const beats = await cell('delay').innerText();
   check('and counts it in beats of the tab (4 beats at 120 bpm)', /\+4 beats/.test(beats), beats);
   const beatNote = await page.getByTestId('tab-sync-beat').innerText().catch(() => '');
   check('it says what a beat is', /1 beat = 500 ms at 120 bpm, 4\/4/.test(beatNote), beatNote);
-  await page.getByRole('button', { name: 'Reset' }).click();
-  await page.getByRole('button', { name: 's', exact: true }).click();
-  await page.getByRole('button', { name: 'Sync' }).click();
+  await pop('delay').getByRole('button', { name: 'Reset' }).click();
+  await pop('delay').getByRole('button', { name: 's', exact: true }).click();
+  await cell('delay').click();
+  check('the same cell closes its popover', (await pop('delay').count()) === 0);
 
   // ── metronome: the tab's beats, through its tempo change ─────────────────
   await page.evaluate(() => {
@@ -197,22 +219,25 @@ const trackPath = (id) => `/tabs/${encodeURIComponent(id)}`;
     a.currentTime = 44; // bar 23, 2 s before the Chorus drops to 60 bpm
   });
   await page.waitForTimeout(400);
-  await page.getByRole('button', { name: /Metronome/ }).click();
+  await cell('click').click();
+  const clicksBefore = await page.evaluate(() => window.__clicks.length);
+  await pop('click').getByRole('button', { name: 'Metronome', exact: true }).click();
   const status = await page.getByTestId('tab-metronome-status').innerText().catch(() => '');
   check('the metronome follows the tab and names its tempo changes', /Follows the tab: 120 bpm here \(tempo changes 120 → 60\)/.test(status), status);
   await page.waitForTimeout(7500);
-  const clicks = await page.evaluate(() => window.__clicks);
+  const clicks = (await page.evaluate(() => window.__clicks)).slice(clicksBefore);
   const gaps = clicks.slice(1).map((c, i) => Math.round((c.t - clicks[i].t) * 100) / 100);
   const fast = gaps.filter((g) => Math.abs(g - 0.5) < 0.06).length;
   const slow = gaps.filter((g) => Math.abs(g - 1) < 0.06).length;
   check('it clicks every half second at 120 bpm, then every second at 60', fast >= 2 && slow >= 2, JSON.stringify(gaps));
   const accents = clicks.filter((c) => c.f > 1500).length;
   check('with the first beat of each bar accented', accents >= 1 && accents < clicks.length, `${accents} of ${clicks.length}`);
-  await page.getByRole('button', { name: /Metronome/ }).click();
+  await pop('click').getByRole('button', { name: 'Metronome', exact: true }).click();
+  await cell('click').click();
 
   // ── speed: 50%, pitch kept ────────────────────────────────────────────────
-  await page.getByRole('button', { name: /Practice/ }).click();
-  await page.getByRole('button', { name: '50%' }).click();
+  await cell('speed').click();
+  await pop('speed').getByRole('button', { name: '50%' }).click();
   const el = await page.evaluate(() => {
     const a = document.querySelector('audio');
     return { rate: a.playbackRate, pitch: a.preservesPitch };
@@ -222,14 +247,18 @@ const trackPath = (id) => `/tabs/${encodeURIComponent(id)}`;
   await page.waitForTimeout(2000);
   const t1 = await now(page);
   check('the song runs at half speed', t1 - t0 > 0.7 && t1 - t0 < 1.3, `${(t1 - t0).toFixed(2)} s of song in 2 s`);
-  const bpmField = await page.getByLabel('Speed in bpm').inputValue();
+  const bpmField = await pop('speed').getByLabel('Speed in bpm').inputValue();
   check('and says the tempo heard', bpmField === '30' || bpmField === '60', `${bpmField} bpm`);
-  await page.getByRole('button', { name: '100%' }).click();
+  const pillSpeed = await pill.getByRole('button', { name: /^Speed/ }).innerText();
+  check('the pill says 50% too', /50%/.test(pillSpeed), pillSpeed);
+  await pop('speed').getByRole('button', { name: '100%' }).click();
   check('back to 100%', (await page.evaluate(() => document.querySelector('audio').playbackRate)) === 1);
+  await cell('speed').click();
 
   // ── loop: bars typed in, marked, and looped ───────────────────────────────
-  await page.getByLabel('Loop from bar').fill('3');
-  await page.getByLabel('Loop to bar').fill('3');
+  await cell('loop').click();
+  await pop('loop').getByLabel('Loop from bar').fill('3');
+  await pop('loop').getByLabel('Loop to bar').fill('3');
   await page.waitForTimeout(600);
   const start = await now(page);
   check('turning the loop on outside it goes to its start (bar 3 is at 4 s)', start >= 3.9 && start < 5, start.toFixed(2));
@@ -243,20 +272,56 @@ const trackPath = (id) => `/tabs/${encodeURIComponent(id)}`;
   const inside = seen.every((s) => s >= 3.9 && s <= 6.15);
   const wrapped = seen.some((s, i) => i > 0 && s < seen[i - 1]);
   check('it plays bar 3 over and over (4 s to 6 s)', inside && wrapped, seen.map((s) => s.toFixed(1)).join(' '));
-  const chip = await page.getByRole('button', { name: /Practice/ }).innerText();
-  check('the chip says what loops', /Bar 3/.test(chip), chip.replace(/\s+/g, ' '));
-  await page.getByLabel('Loop a section').selectOption({ label: 'Verse (bars 9–24)' });
+  const chip = await cell('loop').innerText();
+  check('the Loop cell says what loops', /Bar 3/.test(chip), chip.replace(/\s+/g, ' '));
+  await pop('loop').getByRole('button', { name: 'Verse', exact: true }).click();
   await page.waitForTimeout(600);
   const verse = await now(page);
-  check('a section loops from its marker (the Verse at bar 9, 16 s)', verse >= 15.9 && verse < 17.5, verse.toFixed(2));
-  await page.getByRole('button', { name: 'Clear' }).click();
+  check('a section loops from its shortcut (the Verse at bar 9, 16 s)', verse >= 15.9 && verse < 17.5, verse.toFixed(2));
+  await pill.getByRole('button', { name: 'Loop the bars' }).click();
+  check('the pill turns the loop off', (await page.locator('.at-selection div').count()) === 0);
+  await pill.getByRole('button', { name: 'Loop the bars' }).click();
+  check('and on again', (await page.locator('.at-selection div').count()) > 0);
+  await pop('loop').getByRole('button', { name: 'Clear' }).click();
   check('Clear takes the mark away', (await page.locator('.at-selection div').count()) === 0);
 
   // Picking on the tab: two clicks.
-  await page.getByRole('button', { name: 'Pick on the tab' }).click();
+  await pop('loop').getByRole('button', { name: 'Pick bars on the tab' }).click();
   const hint = await page.getByTestId('tab-loop-picking').innerText().catch(() => '');
-  check('Pick on the tab asks for the first bar', /first bar/.test(hint), hint);
-  await page.getByRole('button', { name: 'Cancel picking' }).click();
+  check('Pick bars on the tab asks for the first bar, the popover out of the way', /first bar/.test(hint) && (await pop('loop').count()) === 0, hint);
+  await page.getByTestId('tab-loop-picking').getByRole('button', { name: 'Cancel' }).click();
+
+  // ── what you play, which version ──────────────────────────────────────────
+  await page.getByTestId('tab-instrument').click();
+  const tiles = await page.getByTestId('tab-instrument-tile').allInnerTexts();
+  check('the sheet asks the instrument first', tiles.length === 1 && /Guitar/.test(tiles[0]), tiles.join(' | '));
+  const rows = await page.getByTestId('tab-source-row').count();
+  check('then lists its versions', rows === 1);
+  await page.getByRole('button', { name: 'Close the tab list' }).first().click();
+
+  if (process.env.SHOTS) {
+    await page.waitForTimeout(500);
+    await page.screenshot({ path: path.join(process.env.SHOTS, 'tabs-desktop.png') });
+    await cell('loop').click();
+    await page.screenshot({ path: path.join(process.env.SHOTS, 'tabs-desktop-loop.png') });
+  }
+  await page.close();
+}
+
+if (process.env.SHOTS) {
+  const page = await newPage({ width: 390, height: 844 });
+  await page.goto(`${APP_URL}${trackPath(song.id)}`, { waitUntil: 'networkidle' });
+  await scoreReady(page).catch(() => {});
+  await page.waitForTimeout(800);
+  await page.screenshot({ path: path.join(process.env.SHOTS, 'tabs-phone.png') });
+  await page.getByTestId('tab-pill').getByRole('button', { name: 'Practice tools' }).click();
+  await page.getByTestId('tab-tool-delay').click();
+  await page.waitForTimeout(300);
+  await page.screenshot({ path: path.join(process.env.SHOTS, 'tabs-phone-tools.png') });
+  await page.getByTestId('tab-tool-delay').click();
+  await page.getByTestId('tab-instrument').click();
+  await page.waitForTimeout(300);
+  await page.screenshot({ path: path.join(process.env.SHOTS, 'tabs-phone-sheet.png') });
   await page.close();
 }
 
@@ -266,27 +331,37 @@ const trackPath = (id) => `/tabs/${encodeURIComponent(id)}`;
   await page.context().route(/ultimate-guitar\.com|duckduckgo\.com|songsterr\.com/, (r) => r.fulfill({ status: 200, body: 'ok' }));
   await page.goto(`${APP_URL}${trackPath(bare.id)}`, { waitUntil: 'networkidle' });
   await page.locator('[data-testid="tabs-empty"]:not([data-state="searching"])').waitFor({ timeout: 20_000 }).catch(() => {});
-  // The places to look by hand: rows when Songsterr has nothing, the line
-  // under Songsterr's versions when it has some.
-  const place = (id) => page.locator(`[data-testid="tabs-empty-site"][data-link="${id}"], [data-testid="tab-search-links"] a[data-link="${id}"]`).first();
-  for (const [id, name, host] of [['ultimate-guitar', 'Ultimate Guitar', 'www.ultimate-guitar.com'], ['guitar-pro', 'Guitar Pro files', 'duckduckgo.com']]) {
+  const line = await page.getByTestId('tabs-looked').innerText().catch(() => '');
+  check('it says Ember already looked on Songsterr', /Songsterr/.test(line), line);
+  const place = (id) => page.locator(`[data-testid="tabs-empty-site"][data-link="${id}"] a`);
+  for (const [id, name, host] of [['ultimate-guitar', 'Ultimate Guitar', 'www.ultimate-guitar.com'], ['guitar-pro', 'Guitar Pro files', 'duckduckgo.com'], ['songsterr', 'Songsterr', 'www.songsterr.com']]) {
     const popup = page.context().waitForEvent('page', { timeout: 5000 }).catch(() => null);
     await place(id).click();
     const opened = await popup;
     const url = opened ? opened.url() : '';
-    check(`Find one: ${name} opens its search for the song`, url.includes(host) && /Practice(\+|%20)Tester/.test(url), url);
+    check(`Find one: ${name} opens it for the song`, url.includes(host) && /Practice(\+|%20)Tester|practice-bare/i.test(url), url);
     await opened?.close();
+    const back = await page.getByTestId('tabs-return').innerText().catch(() => '');
+    check(`then a card waits: back from ${name}?`, back.includes(`Back from ${name}?`), back.split('\n')[0]);
   }
-  // Songsterr: a version of the song opens its page there.
-  const versions = page.getByTestId('tabs-empty-match');
-  if (await versions.count()) {
-    const popup = page.context().waitForEvent('page', { timeout: 5000 }).catch(() => null);
-    await versions.first().click();
-    const opened = await popup;
-    const url = opened ? opened.url() : '';
-    check('Find one: a Songsterr version opens its page', url.includes('www.songsterr.com') && /practice-bare/i.test(url), url);
-    await opened?.close();
-  }
+  await page.getByTestId('tabs-return').getByRole('button', { name: 'Paste a text tab' }).click();
+  await page.getByLabel('Text tab').fill(['e|---0---3---|', 'B|---1---0---|', 'G|---0---0---|', 'D|---2---0---|', 'A|---3---2---|', 'E|-------3---|'].join('\n'));
+  const read = await page.getByTestId('tabs-paste-check').innerText();
+  check('a pasted text tab is read as it is typed', /^Looks like a tab: 6 strings/.test(read), read);
+  if (process.env.SHOTS) await page.screenshot({ path: path.join(process.env.SHOTS, 'tabs-empty-desktop.png') });
+  await page.getByRole('button', { name: 'Add this tab' }).click();
+  await scoreReady(page).catch(() => {});
+  const drawn = await page.getByTestId('tab-source-chip').innerText().catch(() => '');
+  check('Add this tab draws it, a text tab', /Text tab/.test(drawn), drawn);
+  await page.close();
+}
+
+if (process.env.SHOTS) {
+  const page = await newPage({ width: 390, height: 844 });
+  const other = await uploadSong(`Practice Empty ${run}`);
+  await page.goto(`${APP_URL}${trackPath(other.id)}`, { waitUntil: 'networkidle' });
+  await page.locator('[data-testid="tabs-empty"]:not([data-state="searching"])').waitFor({ timeout: 20_000 }).catch(() => {});
+  await page.screenshot({ path: path.join(process.env.SHOTS, 'tabs-empty-phone.png'), fullPage: true });
   await page.close();
 }
 
