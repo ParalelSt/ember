@@ -502,6 +502,17 @@ describe('LiveTabScore sync', () => {
     await waitFor(() => expect(api.seeks).toEqual([30_000]));
   });
 
+  it('holds the line on the first beat while the song is still before the tab, then runs it', async () => {
+    // An intro the tab does not have: the tab starts 3.2 s in. Told to
+    // play, AlphaTab glided its line through the first beat during the
+    // silence and was 200 ms ahead when the music came in.
+    const { view, api, p } = await mount({ position: 1, playing: true, offsetMs: -3200 });
+    await waitFor(() => expect(api.player.output.updatePosition.mock.calls.length).toBeGreaterThan(2));
+    expect(api.play).not.toHaveBeenCalled();
+    view.rerender(<LiveTabScore {...p} position={4} playing />);
+    await waitFor(() => expect(api.play).toHaveBeenCalled());
+  });
+
   it('mirrors play and pause, so the cursor runs and stops with the song', async () => {
     const { view, api, p } = await mount();
     view.rerender(<LiveTabScore {...p} playing />);
