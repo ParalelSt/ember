@@ -41,6 +41,7 @@
     "test:tabs-ui": "node tests/tabs-ui.test.mjs",
     "test:tabs-practice-ui": "node tests/tabs-practice-ui.test.mjs",
     "test:tabs-sync": "node tests/tabs-sync.test.mjs",
+    "test:tabs-sync-live": "node tests/tabs-sync-live.test.mjs",
     "test:tabs-text": "node tests/tabs-text.test.mjs",
     "test:tabs-fetch": "node tests/tabs-fetch.test.mjs",
     "test:ffmpeg": "node tests/ffmpeg-resolve.test.mjs",
