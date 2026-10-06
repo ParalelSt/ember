@@ -13,6 +13,9 @@ import { PlaylistMenu } from '@/components/library/PlaylistMenu';
 import { RenamePlaylistDialog } from '@/components/library/RenamePlaylistDialog';
 import { CollaborateSheet } from '@/components/library/CollaborateSheet';
 import { SharedByBadge } from '@/components/library/SharedByBadge';
+import { PeopleChip } from '@/components/library/PeopleChip';
+import { useQueryPlaylistCollab } from '@/hooks/usePlaylistCollab';
+import { chipPeople } from '@/lib/collab';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { useCollaborateSheet } from '@/hooks/useCollaborateSheet';
 import { api } from '@/lib/api';
@@ -77,6 +80,10 @@ export default function PlaylistPage({ params }: { params: Promise<{ id: string 
   const [renameOpen, setRenameOpen] = useState(false);
   const [collabOpen, setCollabOpen] = useState(false);
   const collabSheet = useCollaborateSheet(id, collabOpen);
+  // The owner's people chip: who is on it, once it is shared (the same
+  // query the share sheet reads, so opening the sheet costs nothing).
+  const ownsShared = (data?.playlist.role ?? 'owner') === 'owner' && data?.playlist.collaborative === true;
+  const collabState = useQueryPlaylistCollab(id, ownsShared).data;
   const [pendingRemove, setPendingRemove] = useState<Track | null>(null);
   const [pendingReplace, setPendingReplace] = useState<Track | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -173,7 +180,10 @@ export default function PlaylistPage({ params }: { params: Promise<{ id: string 
   const meta = job
     ? [`From ${SOURCE_NAME[job.source]}`, importing ? `${job.cursor} of ${job.total} songs` : countLabel(tracks.length)]
     : [countLabel(tracks.length)];
-  // Shared with you: the "Shared by" badge under the title says whose it is.
+  // Yours: the people chip opens the share sheet. Shared with you: the
+  // "Shared by" badge under the title says whose it is.
+  const me = { name: user?.name || 'You', avatarUrl: user?.avatarUrl ?? null };
+  const people = chipPeople(collaborative, collabState, me);
   const sharedBy = isOwner
     ? undefined
     : { name: playlist.owner_name || 'someone', avatarUrl: playlist.owner_avatar_url ?? null };
@@ -268,7 +278,9 @@ export default function PlaylistPage({ params }: { params: Promise<{ id: string 
       eyebrow={collaborative && isOwner ? 'Collaborative playlist' : 'Playlist'}
       title={playlist.name}
       meta={meta}
-      belowTitle={sharedBy ? <SharedByBadge owner={sharedBy} /> : undefined}
+      belowTitle={
+        sharedBy ? <SharedByBadge owner={sharedBy} /> : <PeopleChip people={people} onOpen={() => setCollabOpen(true)} />
+      }
       cover={{ src: localCoverSrc ?? playlist.artwork_url, icon: null }}
       // The cover is the owner's to change.
       onCoverClick={isOwner ? () => fileInputRef.current?.click() : undefined}

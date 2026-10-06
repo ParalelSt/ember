@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { inviteUrl, isInviteCode, isRecordId, moveItem, publicName } from './collab';
+import { chipPeople, inviteUrl, isInviteCode, isRecordId, moveItem, publicName, type CollabState } from './collab';
 
 describe('isInviteCode', () => {
   it('takes 32 base64url characters and nothing else', () => {
@@ -45,5 +45,32 @@ describe('moveItem', () => {
     expect(moveItem(['a', 'b', 'c'], 0, 99)).toEqual(['b', 'c', 'a']);
     expect(moveItem(['a', 'b', 'c'], 2, -5)).toEqual(['c', 'a', 'b']);
     expect(moveItem(['a', 'b'], 5, 0)).toEqual(['a', 'b']);
+  });
+});
+
+describe('chipPeople', () => {
+  const me = { name: 'Olga', avatarUrl: null };
+  const mia = { id: 'mia', name: 'Mia', avatarUrl: null };
+  const state = (patch: Partial<CollabState> = {}): CollabState => ({
+    collaborative: true,
+    role: 'owner',
+    owner: { id: 'olga', ...me },
+    members: [mia],
+    maxMembers: 50,
+    inviteCode: null,
+    ...patch,
+  });
+
+  it('a private playlist, or one whose people have not loaded: just you', () => {
+    expect(chipPeople(false, state(), me)).toEqual([me]);
+    expect(chipPeople(true, undefined, me)).toEqual([me]);
+  });
+
+  it('shared: the owner first, then everyone on it', () => {
+    expect(chipPeople(true, state(), me).map((p) => p.name)).toEqual(['Olga', 'Mia']);
+  });
+
+  it('turned off with people kept for next time: just you, nobody else can edit', () => {
+    expect(chipPeople(true, state({ collaborative: false }), me)).toEqual([me]);
   });
 });

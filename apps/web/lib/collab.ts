@@ -73,6 +73,18 @@ export function publicName(user: object | null | undefined): string {
   return name || 'Unnamed member';
 }
 
+/** Who the owner's people chip shows: the owner first, then everyone on
+ *  it, while it is shared and the sheet's state has loaded; else only you
+ *  (and the chip reads "+ Invite"). */
+export function chipPeople(
+  collaborative: boolean,
+  state: CollabState | undefined,
+  me: Pick<PlaylistPerson, 'name' | 'avatarUrl'>,
+): Pick<PlaylistPerson, 'name' | 'avatarUrl'>[] {
+  if (!collaborative || !state?.collaborative) return [me];
+  return [state.owner, ...state.members];
+}
+
 /** The link that adds whoever opens it (signed in) to the playlist. */
 export function inviteUrl(origin: string, code: string): string {
   return `${origin.replace(/\/+$/, '')}/playlist/join/${code}`;
