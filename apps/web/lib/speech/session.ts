@@ -6,8 +6,13 @@ type ClearTimer = (id: unknown) => void;
 export interface SpeechSessionOptions {
   lang: string;
   events: SpeechEvents;
-  /** Hard cap on one listen, whatever the recognizer thinks of the silence. */
+  /** Hard cap on one listen, whatever the recognizer thinks of the silence,
+   *  counted from when the adapter's start() resolves. */
   hardTimeoutMs?: number;
+  /** How long start() may take (first-use permission dialogs) before the
+   *  listen is given up: a bridge that never answers must not leave the mic
+   *  "listening". Matches the desktop adapter's own limit. */
+  startTimeoutMs?: number;
   /** After the cap's stop(), how long to wait for onEnd before abort(). */
   abortGraceMs?: number;
   setTimeout?: SetTimer;
@@ -25,6 +30,7 @@ export interface SpeechSession {
  *  arrives after it, and our own cancel never shows up as an error. */
 export function createSpeechSession(adapter: SpeechAdapter, opts: SpeechSessionOptions): SpeechSession {
   const hardTimeoutMs = opts.hardTimeoutMs ?? 15000;
+  const startTimeoutMs = opts.startTimeoutMs ?? 90000;
   const abortGraceMs = opts.abortGraceMs ?? 3000;
   const setTimer: SetTimer = opts.setTimeout ?? ((fn, ms) => globalThis.setTimeout(fn, ms));
   const clearTimer: ClearTimer =
@@ -77,6 +83,20 @@ export function createSpeechSession(adapter: SpeechAdapter, opts: SpeechSessionO
       native = adapter.create();
       hardTimer = setTimer(() => {
         hardTimer = null;
+        abort();
+      }, startTimeoutMs);
+      try {
+        await native.start(opts.lang, guarded);
+      } catch (err) {
+        finish();
+        throw err;
+      }
+      // The cap counts from here, not from the tap: on first use start()
+      // waits for the OS permission dialogs.
+      if (ended) return;
+      if (hardTimer !== null) clearTimer(hardTimer);
+      hardTimer = setTimer(() => {
+        hardTimer = null;
         if (ended) return;
         native?.stop();
         graceTimer = setTimer(() => {
@@ -84,12 +104,6 @@ export function createSpeechSession(adapter: SpeechAdapter, opts: SpeechSessionO
           abort();
         }, abortGraceMs);
       }, hardTimeoutMs);
-      try {
-        await native.start(opts.lang, guarded);
-      } catch (err) {
-        finish();
-        throw err;
-      }
     },
     stop() {
       if (!ended) native?.stop();
