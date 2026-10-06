@@ -52,6 +52,9 @@ interface MoreItem {
  *  with large artwork up top and transport controls at the bottom, like the
  *  Spotify / YouTube Music expanded player. Opened by tapping the mini player
  *  bar; dismissed with the chevron, Escape, or tapping outside the controls. */
+const SCROLLED_MASK =
+  'linear-gradient(to bottom, transparent calc(var(--safe-top) + 3.5rem), #000 calc(var(--safe-top) + 4.5rem))';
+
 export function NowPlaying() {
   const open = usePlayerStore((s) => s.nowPlayingOpen);
   const setOpen = usePlayerStore((s) => s.setNowPlayingOpen);
@@ -121,6 +124,8 @@ export function NowPlaying() {
   };
 
   const scrollerRef = useRef<HTMLDivElement | null>(null);
+  // Scrolled at all: the band under the floating buttons fades out.
+  const [scrolled, setScrolled] = useState(false);
   const lyricsRef = useRef<HTMLDivElement | null>(null);
   // Lyrics in More scrolls down to the lyrics card (counted, so asking twice
   // scrolls twice).
@@ -383,11 +388,19 @@ export function NowPlaying() {
 
       <div
         ref={scrollerRef}
+        data-testid="now-playing-scroller"
+        onScroll={(e) => setScrolled(e.currentTarget.scrollTop > 0)}
         className="relative h-full overflow-y-auto px-6"
         style={{
           // Padding-top lines the title up with the floating buttons.
           paddingTop: 'calc(var(--safe-top) + 1rem)',
           paddingBottom: 'calc(var(--safe-bottom) + 1.5rem)',
+          // The buttons float with no background, so scrolled content slid
+          // under them and read through them (bughunt V6). Once scrolled,
+          // it fades out under the buttons (their bottom edge is the safe
+          // area + 1rem + 2.5rem). At the top nothing is masked: the
+          // "Playing from" title sits in that band.
+          ...(scrolled ? { maskImage: SCROLLED_MASK, WebkitMaskImage: SCROLLED_MASK } : null),
         }}
       >
       {/* "Player" pane — sized to fill the first viewport so the artwork-
