@@ -45,6 +45,7 @@ const api = vi.hoisted(() => ({
   getTrackTabs: vi.fn(),
   getTabs: vi.fn(),
   uploadTabFile: vi.fn(),
+  addTabText: vi.fn(),
   deleteTabFile: vi.fn(),
   saveTabOffset: vi.fn(),
   getTrack: vi.fn(),
@@ -644,125 +645,142 @@ const MATCHES = [
 ];
 const UG_URL = 'https://www.ultimate-guitar.com/search.php?search_type=title&value=Coastline+Copper+Sky';
 const GP_URL = 'https://duckduckgo.com/?q=Coastline+Copper+Sky+(gp5+OR+gpx+OR+"guitar+pro")';
+const SS_SEARCH = 'https://www.songsterr.com/?pattern=Coastline+Copper+Sky';
 
-describe('TabsPage empty state: Songsterr has the song', () => {
-  beforeEach(() => {
-    api.getTabs.mockResolvedValue({ matches: MATCHES });
-  });
-
-  it('lists its versions, best first, each opening on Songsterr in a new tab', async () => {
-    wrap(<TabsPage trackId="upload:song1" />);
-    expect(await screen.findByRole('heading', { name: '3 tabs on Songsterr' })).toBeInTheDocument();
-    const empty = screen.getByTestId('tabs-empty');
-    expect(empty).toHaveAttribute('data-state', 'matches');
-    expect(screen.getByText(/Ember could not draw these here\. Open one on Songsterr, or get its Guitar Pro file and add it below\./)).toBeInTheDocument();
-    const rows = screen.getAllByTestId('tabs-empty-match');
-    expect(rows.map((r) => r.getAttribute('href'))).toEqual(MATCHES.map((m) => m.url));
-    for (const r of rows) {
-      expect(r).toHaveAttribute('target', '_blank');
-      expect(r).toHaveAttribute('rel', 'noopener noreferrer');
-    }
-    expect(rows[0]).toHaveTextContent('Copper Sky');
-    expect(rows[0]).toHaveTextContent('Best match');
-    expect(rows[0]).toHaveTextContent('Guitar, Bass, Drums, chords');
-    expect(rows[1]).toHaveTextContent('Guitar, Bass');
-    expect(rows[1]).not.toHaveTextContent('Best match');
-    expect(rows[2]).toHaveTextContent('Acoustic Guitar, chords');
-    // Wide screen: each row says Open.
-    expect(within(rows[0]).getByText('Open')).toBeInTheDocument();
-    expect(rows[0].lastElementChild?.tagName.toLowerCase()).toBe('span');
-    expect(screen.queryByTestId('tab-score')).toBeNull();
-  });
-
-  it('a click on a version opens it through the link helper', async () => {
+describe('TabsPage empty state: find one, then add it', () => {
+  it('says Ember looked on Songsterr, then three sites, each with Find one opening it in a new tab', async () => {
     const open = vi.spyOn(window, 'open').mockReturnValue(null);
     wrap(<TabsPage trackId="upload:song1" />);
-    fireEvent.click((await screen.findAllByTestId('tabs-empty-match'))[1]);
-    expect(open).toHaveBeenLastCalledWith('https://www.songsterr.com/a/8', '_blank', 'noopener,noreferrer');
+    expect(await screen.findByText('Ember looked on Songsterr: nothing yet. Find one, then add it here.')).toBeInTheDocument();
+    expect(screen.getByTestId('tabs-empty')).toHaveAttribute('data-state', 'none');
+    // The header stays the full one: Guitar tab over the title.
+    expect(screen.getByRole('heading', { name: 'Copper Sky' })).toBeInTheDocument();
+    expect(screen.getByText('Guitar tab')).toBeInTheDocument();
+    const sites = screen.getAllByTestId('tabs-empty-site');
+    expect(sites.map((a) => a.getAttribute('data-link'))).toEqual(['songsterr', 'ultimate-guitar', 'guitar-pro']);
+    expect(sites[1]).toHaveTextContent('Ultimate Guitar');
+    expect(sites[1]).toHaveTextContent('Text and Guitar Pro tabs, rated by players');
+    expect(sites[2]).toHaveTextContent('A web search for .gp and .gpx files');
+    const find = (i: number) => within(sites[i]).getByRole('link', { name: /^Find one on/ });
+    expect(find(0)).toHaveAttribute('href', SS_SEARCH);
+    expect(find(1)).toHaveAttribute('href', UG_URL);
+    expect(find(2)).toHaveAttribute('href', GP_URL);
+    for (const i of [0, 1, 2]) {
+      expect(find(i)).toHaveAttribute('target', '_blank');
+      expect(find(i)).toHaveAttribute('rel', 'noopener noreferrer');
+      expect(find(i)).toHaveTextContent('Find one');
+    }
+    fireEvent.click(find(2));
+    expect(open).toHaveBeenLastCalledWith(GP_URL, '_blank', 'noopener,noreferrer');
     open.mockRestore();
   });
 
-  it('in the desktop app a version opens in the system browser', async () => {
+  it('back from a site: a card waits at the top to add the file, and that site says Again', async () => {
+    const open = vi.spyOn(window, 'open').mockReturnValue(null);
+    api.uploadTabFile.mockResolvedValue({ tab: tab({}) });
+    wrap(<TabsPage trackId="upload:song1" />);
+    const ug = (await screen.findAllByTestId('tabs-empty-site'))[1];
+    expect(screen.queryByTestId('tabs-return')).toBeNull();
+    fireEvent.click(within(ug).getByRole('link', { name: 'Find one on Ultimate Guitar' }));
+    const back = screen.getByTestId('tabs-return');
+    expect(back).toHaveTextContent('Back from Ultimate Guitar? Add what you found.');
+    expect(within(ug).getByRole('link')).toHaveTextContent('Again');
+    // The quiet Add a file line under the sites gives way to the card.
+    expect(screen.queryByRole('button', { name: 'Add a file' })).toBeNull();
+    const input = screen.getByLabelText('Tab file') as HTMLInputElement;
+    const pick = vi.spyOn(input, 'click');
+    fireEvent.click(within(back).getByRole('button', { name: 'Add the file' }));
+    expect(pick).toHaveBeenCalled();
+    const file = new File(['x'], 'copper.gp5');
+    fireEvent.change(input, { target: { files: [file] } });
+    await waitFor(() =>
+      expect(api.uploadTabFile).toHaveBeenCalledWith(file, { title: 'Copper Sky', artist: 'Coastline', trackId: 'upload:song1' }),
+    );
+    open.mockRestore();
+  });
+
+  it('or paste the text tab: read as it is typed, then added for the song', async () => {
+    const open = vi.spyOn(window, 'open').mockReturnValue(null);
+    api.addTabText.mockResolvedValue({ tab: tab({ id: 'p1', kind: 'pasted' }) });
+    wrap(<TabsPage trackId="upload:song1" />);
+    fireEvent.click(within((await screen.findAllByTestId('tabs-empty-site'))[0]).getByRole('link'));
+    const back = screen.getByTestId('tabs-return');
+    expect(back).toHaveTextContent('Back from Songsterr?');
+    fireEvent.click(within(back).getByRole('button', { name: 'Paste a text tab' }));
+    const add = within(back).getByRole('button', { name: 'Add this tab' });
+    expect(add).toBeDisabled();
+    fireEvent.change(within(back).getByLabelText('Text tab'), { target: { value: 'hello there' } });
+    expect(add).toBeDisabled();
+    expect(screen.getByTestId('tabs-paste-check').textContent).not.toBe('');
+    const text = ['e|---0---3---|', 'B|---1---0---|', 'G|---0---0---|', 'D|---2---0---|', 'A|---3---2---|', 'E|-------3---|'].join('\n');
+    fireEvent.change(within(back).getByLabelText('Text tab'), { target: { value: text } });
+    expect(screen.getByTestId('tabs-paste-check')).toHaveTextContent(/^Looks like a tab: 6 strings, Standard/);
+    fireEvent.click(add);
+    await waitFor(() =>
+      expect(api.addTabText).toHaveBeenCalledWith(text, { title: 'Copper Sky', artist: 'Coastline', trackId: 'upload:song1' }),
+    );
+    open.mockRestore();
+  });
+
+  it('a paste the server turns down says why', async () => {
+    const open = vi.spyOn(window, 'open').mockReturnValue(null);
+    api.addTabText.mockRejectedValue(new Error('No tab lines found'));
+    wrap(<TabsPage trackId="upload:song1" />);
+    fireEvent.click(within((await screen.findAllByTestId('tabs-empty-site'))[0]).getByRole('link'));
+    const back = screen.getByTestId('tabs-return');
+    fireEvent.click(within(back).getByRole('button', { name: 'Paste a text tab' }));
+    fireEvent.change(within(back).getByLabelText('Text tab'), {
+      target: { value: ['e|---0---3---|', 'B|---1---0---|', 'G|---0---0---|', 'D|---2---0---|', 'A|---3---2---|', 'E|-------3---|'].join('\n') },
+    });
+    fireEvent.click(within(back).getByRole('button', { name: 'Add this tab' }));
+    expect(await within(back).findByRole('alert')).toHaveTextContent('No tab lines found');
+    open.mockRestore();
+  });
+
+  it('Look again asks anew, saying it looks while it does', async () => {
+    wrap(<TabsPage trackId="upload:song1" />);
+    await screen.findByText(/Ember looked on Songsterr/);
+    await waitFor(() => expect(api.findTabsOnline).toHaveBeenCalledTimes(1));
+    let finish: (v: unknown) => void = () => {};
+    api.findTabsOnline.mockReturnValue(new Promise((r) => (finish = r)));
+    fireEvent.click(screen.getByRole('button', { name: 'Look again' }));
+    expect(await screen.findByTestId('tabs-searching')).toHaveTextContent('Looking on Songsterr…');
+    expect(screen.getByRole('button', { name: 'Look again' })).toBeDisabled();
+    expect(api.findTabsOnline).toHaveBeenLastCalledWith('upload:song1', 'Copper Sky', 'Coastline', true);
+    await act(async () => finish({ status: 'none', searchedAt: 'now', added: 0 }));
+    expect(await screen.findByText(/Ember looked on Songsterr/)).toBeInTheDocument();
+  });
+
+  it('a song Songsterr has but Ember could not draw: said so, and Find one opens its best version', async () => {
+    api.getTabs.mockResolvedValue({ matches: MATCHES });
+    wrap(<TabsPage trackId="upload:song1" />);
+    expect(await screen.findByText('Songsterr has 3 tabs Ember could not draw here. Find one there, then add it here.')).toBeInTheDocument();
+    expect(screen.getByTestId('tabs-empty')).toHaveAttribute('data-state', 'matches');
+    const ss = screen.getAllByTestId('tabs-empty-site')[0];
+    expect(ss).toHaveTextContent('3 versions there');
+    expect(within(ss).getByRole('link')).toHaveAttribute('href', 'https://www.songsterr.com/a/7');
+  });
+
+  it('one version: said in the singular', async () => {
+    api.getTabs.mockResolvedValue({ matches: [MATCHES[0]] });
+    wrap(<TabsPage trackId="upload:song1" />);
+    expect(await screen.findByText('Songsterr has 1 tab Ember could not draw here. Find it there, then add it here.')).toBeInTheDocument();
+    expect(screen.getAllByTestId('tabs-empty-site')[0]).toHaveTextContent('1 version there');
+  });
+
+  it('in the desktop app Find one opens in the system browser', async () => {
     const invoke = vi.fn(async () => null);
     (window as unknown as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__ = { invoke };
     const open = vi.spyOn(window, 'open').mockReturnValue(null);
     try {
       wrap(<TabsPage trackId="upload:song1" />);
-      fireEvent.click((await screen.findAllByTestId('tabs-empty-match'))[0]);
-      await waitFor(() => expect(invoke).toHaveBeenCalledWith('open_external', { url: 'https://www.songsterr.com/a/7' }));
+      fireEvent.click(within((await screen.findAllByTestId('tabs-empty-site'))[1]).getByRole('link'));
+      await waitFor(() => expect(invoke).toHaveBeenCalledWith('open_external', { url: UG_URL }));
       expect(open).not.toHaveBeenCalled();
     } finally {
       delete (window as unknown as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__;
       open.mockRestore();
     }
-  });
-
-  it('under the list: Add a file, and the other places to search for another version', async () => {
-    const open = vi.spyOn(window, 'open').mockReturnValue(null);
-    wrap(<TabsPage trackId="upload:song1" />);
-    await screen.findByRole('heading', { name: '3 tabs on Songsterr' });
-    expect(screen.getByRole('button', { name: 'Add a file' })).toBeEnabled();
-    expect(screen.getByText('A Guitar Pro or MusicXML tab. Everyone here gets it.')).toBeInTheDocument();
-    const other = screen.getByTestId('tab-search-links');
-    expect(other).toHaveTextContent('Not the version you want? Search Ultimate Guitar or Guitar Pro files.');
-    const ug = within(other).getByRole('link', { name: 'Ultimate Guitar' });
-    expect(ug).toHaveAttribute('href', UG_URL);
-    expect(within(other).getByRole('link', { name: 'Guitar Pro files' })).toHaveAttribute('href', GP_URL);
-    fireEvent.click(ug);
-    expect(open).toHaveBeenLastCalledWith(UG_URL, '_blank', 'noopener,noreferrer');
-    open.mockRestore();
-  });
-
-  it('one version: said in the singular, and no Best match badge', async () => {
-    api.getTabs.mockResolvedValue({ matches: [MATCHES[0]] });
-    wrap(<TabsPage trackId="upload:song1" />);
-    expect(await screen.findByRole('heading', { name: '1 tab on Songsterr' })).toBeInTheDocument();
-    expect(screen.getByText(/Ember could not draw it here\. Open it on Songsterr/)).toBeInTheDocument();
-    expect(screen.getAllByTestId('tabs-empty-match')).toHaveLength(1);
-    expect(screen.queryByText('Best match')).toBeNull();
-  });
-
-  it('phone width: a chevron at the end of each row instead of Open', async () => {
-    phone = true;
-    wrap(<TabsPage trackId="upload:song1" />);
-    const rows = await screen.findAllByTestId('tabs-empty-match');
-    expect(rows).toHaveLength(3);
-    expect(screen.queryByText('Open')).toBeNull();
-    for (const r of rows) expect(r.lastElementChild?.tagName.toLowerCase()).toBe('svg');
-  });
-
-  it('works for any song Songsterr knows, whatever the source', async () => {
-    player.current = { ...SONG, id: 'jamendo:9', source: 'jamendo' };
-    wrap(<TabsPage trackId="jamendo:9" />);
-    const rows = await screen.findAllByTestId('tabs-empty-match');
-    expect(rows[0]).toHaveAttribute('href', 'https://www.songsterr.com/a/7');
-    expect(screen.getByRole('button', { name: 'Add a file' })).toBeInTheDocument();
-  });
-});
-
-describe('TabsPage empty state: nothing on Songsterr', () => {
-  it('lists the places people post tabs, each searching for the song', async () => {
-    const open = vi.spyOn(window, 'open').mockReturnValue(null);
-    wrap(<TabsPage trackId="upload:song1" />);
-    expect(await screen.findByRole('heading', { name: 'Nothing on Songsterr' })).toBeInTheDocument();
-    expect(screen.getByTestId('tabs-empty')).toHaveAttribute('data-state', 'none');
-    expect(screen.getByText('Try the places people post tabs, then add the file here.')).toBeInTheDocument();
-    const sites = screen.getAllByTestId('tabs-empty-site');
-    expect(sites.map((a) => a.getAttribute('data-link'))).toEqual(['ultimate-guitar', 'guitar-pro']);
-    expect(sites[0]).toHaveAttribute('href', UG_URL);
-    expect(sites[0]).toHaveTextContent('Ultimate Guitar');
-    expect(sites[0]).toHaveTextContent('Text and Guitar Pro tabs, rated by players');
-    expect(sites[0]).toHaveAttribute('target', '_blank');
-    expect(sites[0]).toHaveAttribute('rel', 'noopener noreferrer');
-    expect(sites[1]).toHaveAttribute('href', GP_URL);
-    expect(sites[1]).toHaveTextContent('A web search for .gp and .gpx files');
-    expect(within(sites[0]).getByText('Search')).toBeInTheDocument();
-    // Nothing to open on Songsterr, and no "another version" line.
-    expect(screen.queryByTestId('tabs-empty-match')).toBeNull();
-    expect(screen.queryByTestId('tab-search-links')).toBeNull();
-    fireEvent.click(sites[1]);
-    expect(open.mock.lastCall?.[0]).toBe(GP_URL);
-    open.mockRestore();
   });
 
   it('an upload that is not playing and has no tab yet is named from the uploads, and offers Add a file', async () => {
@@ -781,27 +799,23 @@ describe('TabsPage empty state: nothing on Songsterr', () => {
 });
 
 describe('TabsPage empty state: still looking', () => {
-  it('while Songsterr has not answered: Looking on Songsterr, a skeleton list, Add a file already there', async () => {
+  it('while Songsterr has not answered: Looking on Songsterr, the sites and Add a file already there', async () => {
     api.getTabs.mockReturnValue(new Promise(() => {}));
     wrap(<TabsPage trackId="upload:song1" />);
     const status = await screen.findByRole('status');
     expect(status).toHaveTextContent('Looking on Songsterr…');
     expect(screen.getByTestId('tabs-empty')).toHaveAttribute('data-state', 'searching');
-    expect(screen.getByText('This takes a few seconds.')).toBeInTheDocument();
-    expect(screen.getByTestId('tabs-empty-list')).toHaveAttribute('aria-busy', 'true');
-    expect(screen.queryByTestId('tabs-empty-match')).toBeNull();
-    expect(screen.queryByTestId('tabs-empty-site')).toBeNull();
+    expect(screen.getAllByTestId('tabs-empty-site')).toHaveLength(3);
     expect(screen.getByRole('button', { name: 'Add a file' })).toBeEnabled();
-    expect(screen.getByTestId('tab-search-links')).toHaveTextContent('Not the version you want?');
   });
 
-  it('then turns into the list once Songsterr answers', async () => {
+  it('then says what it found once Songsterr answers', async () => {
     let answer: (v: unknown) => void = () => {};
     api.getTabs.mockReturnValue(new Promise((r) => (answer = r)));
     wrap(<TabsPage trackId="upload:song1" />);
     expect(await screen.findByText('Looking on Songsterr…')).toBeInTheDocument();
     await act(async () => answer({ matches: MATCHES.slice(0, 2) }));
-    expect(await screen.findByRole('heading', { name: '2 tabs on Songsterr' })).toBeInTheDocument();
+    expect(await screen.findByText(/Songsterr has 2 tabs/)).toBeInTheDocument();
     expect(screen.queryByRole('status')).toBeNull();
   });
 });
@@ -815,6 +829,7 @@ describe('TabsPage empty state: Add a file', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Add a file' }));
     expect(pick).toHaveBeenCalled();
     expect(input).toHaveAttribute('accept', '.gp,.gp3,.gp4,.gp5,.gpx,.musicxml,.xml,.mxl');
+    expect(screen.getByText('A Guitar Pro or MusicXML tab. Everyone here gets it.')).toBeInTheDocument();
     const file = new File(['x'], 'copper.gp5');
     fireEvent.change(input, { target: { files: [file] } });
     await waitFor(() =>
@@ -838,7 +853,7 @@ describe('TabsPage empty state: Add a file', () => {
 describe('TabsPage without tab generation', () => {
   it('offers no Generate anywhere: not in the empty state, the ⋯ menu or the Source sheet', async () => {
     wrap(<TabsPage trackId="upload:song1" />);
-    await screen.findByRole('heading', { name: 'Nothing on Songsterr' });
+    await screen.findByText(/Ember looked on Songsterr/);
     expect(screen.queryByText(/Generat|Transcrib|rough/i)).toBeNull();
     expect(screen.getAllByRole('menuitem').map((m) => m.textContent)).toEqual([
       'Add a Guitar Pro or MusicXML file',

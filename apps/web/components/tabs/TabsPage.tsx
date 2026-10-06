@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ComponentProps } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { toast } from 'sonner';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -14,19 +14,15 @@ import {
 } from '@/components/ui/dropdown-menu';
 import {
   ChevronDownIcon,
-  ChevronRightIcon,
   MoreIcon,
   PlayIcon,
   RepeatIcon,
-  SearchIcon,
-  TabsIcon,
-  UploadIcon,
 } from '@/components/icons';
 import { EmptyState } from '@/components/page/EmptyState';
-import { Skeleton } from '@/components/ui/skeleton';
 import { usePlayer } from '@/components/player/PlayerProvider';
 import { LiveTabScore } from '@/components/tabs/LiveTabScore';
 import { TabSheetHeader, TabSourceChip } from '@/components/tabs/TabSheetHeader';
+import { NoTab, openLink } from '@/components/tabs/TabEmpty';
 import { TabSourceSheet, type TabSheetAction } from '@/components/tabs/TabSourceSheet';
 import { chip, chipOff, chipOn } from '@/components/tabs/chips';
 import { PlayPill, StageHeader } from '@/components/tabs/TabStage';
@@ -56,8 +52,7 @@ import { useTabAlignment, useTabSong, useTabSources, type TabSong, type TabSourc
 import { useSettingsStore } from '@/stores/useSettingsStore';
 import { cn } from '@/lib/utils';
 import { metaLine, scoreScale, type ScoreInfo, type TabsScroll, type TabsStaff } from '@/lib/tabScore';
-import { emptyStateFor, followTrackChange, sourceChipLabel, type TabSummary } from '@/lib/tabSources';
-import type { TabMatch } from '@/lib/songsterr';
+import { followTrackChange, sourceChipLabel, type TabSummary } from '@/lib/tabSources';
 import { chooseTab, confidencePercent, loadPick, savePick, sheetRows } from '@/lib/tabPick';
 import {
   clampOffset,
@@ -83,10 +78,8 @@ import {
   type BarRange,
 } from '@/lib/tabPractice';
 import { beatClockOf, formatOffset, type OffsetUnit } from '@/lib/tabOffset';
-import { tabSearchLinks, type TabSearchLink } from '@/lib/tabSearchLinks';
-import { openExternal } from '@/lib/openExternal';
+import { tabSearchLinks } from '@/lib/tabSearchLinks';
 import { leavePage } from '@/lib/inAppHistory';
-import { announceOpen } from '@/components/ExternalLinks';
 
 const TAB_ACCEPT = '.gp,.gp3,.gp4,.gp5,.gpx,.musicxml,.xml,.mxl';
 const STAFF_KEY = 'ember.tabs.staff';
@@ -803,7 +796,7 @@ function TabsSheet({ song, sources, onBack }: { song: TabSong; sources: TabSourc
         <>
           <TabSheetHeader phone={phone} title={song.title} meta={meta} actions={actions} onBack={onBack} />
           {statusLines}
-          <NoTab sources={sources} searchLinks={searchLinks} phone={phone} onAddFile={addFile} />
+          <NoTab sources={sources} searchLinks={searchLinks} song={song} onAddFile={addFile} />
         </>
       )}
       <TabSourceSheet
@@ -825,12 +818,6 @@ function TabsSheet({ song, sources, onBack }: { song: TabSong; sources: TabSourc
       />
     </div>
   );
-}
-
-/** Open a link out of Ember: a new tab, or the system browser in the
- *  desktop app, where the webview drops new-tab links (lib/openExternal.ts). */
-function openLink(url: string): void {
-  void openExternal(url).then(announceOpen);
 }
 
 /** The tab page's menus never run off the screen: at most the
@@ -891,203 +878,5 @@ function SourceChip({
         <ChevronDownIcon className="size-3 shrink-0" />
       </button>
     </TabSourceChip>
-  );
-}
-
-/** What each place to look by hand holds, under its name in the list. */
-const SITE_NOTES: Record<TabSearchLink['id'], string> = {
-  'ultimate-guitar': 'Text and Guitar Pro tabs, rated by players',
-  'guitar-pro': 'A web search for .gp and .gpx files',
-  songsterr: 'Search Songsterr yourself',
-};
-
-const FILE_NOTE = 'A Guitar Pro or MusicXML tab. Everyone here gets it.';
-
-/** "Guitar, Bass, Drums, chords": what a Songsterr version holds. */
-function matchInstruments(m: TabMatch): string {
-  return [m.instruments.join(', '), m.hasChords ? 'chords' : ''].filter(Boolean).join(', ');
-}
-
-/** The card's heading and the line under it, per state. */
-function emptyHead(state: EmptyStateView): { title: string; sub: string } {
-  if (state.kind === 'searching') return { title: 'Looking on Songsterr…', sub: 'This takes a few seconds.' };
-  if (state.kind === 'none') return { title: 'Nothing on Songsterr', sub: 'Try the places people post tabs, then add the file here.' };
-  const n = state.matches.length;
-  return n === 1
-    ? {
-        title: '1 tab on Songsterr',
-        sub: 'Ember could not draw it here. Open it on Songsterr, or get its Guitar Pro file and add it below.',
-      }
-    : {
-        title: `${n} tabs on Songsterr`,
-        sub: 'Ember could not draw these here. Open one on Songsterr, or get its Guitar Pro file and add it below.',
-      };
-}
-
-type EmptyStateView = ReturnType<typeof emptyStateFor>;
-
-/** A link out of Ember that opens through lib/openExternal (the desktop
- *  app drops plain new-tab links). */
-function OutLink({ href, className, children, ...rest }: ComponentProps<'a'>) {
-  return (
-    <a
-      href={href}
-      target="_blank"
-      rel="noopener noreferrer"
-      onClick={(e) => {
-        e.preventDefault();
-        if (href) openLink(href);
-      }}
-      className={className}
-      {...rest}
-    >
-      {children}
-    </a>
-  );
-}
-
-/** The end of a row: "Open"/"Search" on a wide screen, a chevron on a phone. */
-function RowEnd({ phone, label }: { phone: boolean; label: string }) {
-  return phone ? (
-    <ChevronRightIcon aria-hidden className="size-4 shrink-0 text-muted-foreground" />
-  ) : (
-    <span className={cn(chip, chipOff, 'group-hover:bg-background group-hover:text-foreground')}>{label}</span>
-  );
-}
-
-const ROW = 'group flex min-w-0 items-center gap-row px-block py-row transition-colors hover:bg-muted/60';
-
-/** One Songsterr version: the tab icon, its title, what it holds, Open. */
-function MatchRow({ match, best, phone }: { match: TabMatch; best: boolean; phone: boolean }) {
-  return (
-    <li>
-      <OutLink href={match.url} data-testid="tabs-empty-match" className={ROW}>
-        <span aria-hidden className="grid size-10 shrink-0 place-items-center rounded-lg bg-ember/15 text-ember">
-          <TabsIcon className="size-5" />
-        </span>
-        <span className="min-w-0 flex-1">
-          <span className="flex min-w-0 items-center gap-cluster">
-            <span title={match.title} className="min-w-0 truncate text-sm font-medium">
-              {match.title}
-            </span>
-            {best && (
-              <span className="inline-flex shrink-0 items-center whitespace-nowrap rounded-full bg-ember/15 px-cluster py-inset text-[11px] font-medium leading-none text-ember">
-                Best match
-              </span>
-            )}
-          </span>
-          <span className="block truncate text-xs text-muted-foreground">{matchInstruments(match)}</span>
-        </span>
-        <RowEnd phone={phone} label="Open" />
-      </OutLink>
-    </li>
-  );
-}
-
-/** A place to look by hand, drawn like a Songsterr row. */
-function SiteRow({ link, phone }: { link: TabSearchLink; phone: boolean }) {
-  return (
-    <li>
-      <OutLink href={link.url} data-testid="tabs-empty-site" data-link={link.id} className={ROW}>
-        <span aria-hidden className="grid size-10 shrink-0 place-items-center rounded-lg bg-muted text-muted-foreground">
-          <SearchIcon className="size-4" />
-        </span>
-        <span className="min-w-0 flex-1">
-          <span className="block truncate text-sm font-medium">{link.label}</span>
-          <span className="block truncate text-xs text-muted-foreground">{SITE_NOTES[link.id]}</span>
-        </span>
-        <RowEnd phone={phone} label="Search" />
-      </OutLink>
-    </li>
-  );
-}
-
-function SkeletonRows() {
-  return (
-    <>
-      {[0, 1, 2].map((i) => (
-        <li key={i} aria-hidden className="flex items-center gap-row px-block py-row">
-          <Skeleton className="size-10 shrink-0 rounded-lg" />
-          <div className="flex min-w-0 flex-1 flex-col gap-inset">
-            <Skeleton className="h-3.5 w-2/5" />
-            <Skeleton className="h-3 w-1/4" />
-          </div>
-        </li>
-      ))}
-    </>
-  );
-}
-
-/** No tab to draw (the "Songsterr list" the owner picked): Songsterr's
- *  versions of the song to open there, or the places people post tabs when
- *  Songsterr has none, with Add a file below either. While Ember is still
- *  asking, the list is a skeleton. */
-function NoTab({
-  sources,
-  searchLinks,
-  phone,
-  onAddFile,
-}: {
-  sources: TabSourcesState;
-  searchLinks: TabSearchLink[];
-  phone: boolean;
-  onAddFile: () => void;
-}) {
-  const state = emptyStateFor({
-    loading: sources.loading,
-    searchingOnline: sources.searchingOnline,
-    matchesLoading: sources.matchesLoading,
-    matches: sources.matches,
-  });
-  const head = emptyHead(state);
-  // Ultimate Guitar and Guitar Pro files: Songsterr has its own rows.
-  const otherSites = searchLinks.filter((l) => l.id !== 'songsterr');
-  const searching = state.kind === 'searching';
-  return (
-    <div data-testid="tabs-empty" data-state={state.kind} className="mt-stack flex max-w-2xl flex-col gap-stack">
-      <section className="overflow-hidden rounded-2xl border border-border bg-card/60">
-        <header className="px-block pb-row pt-block">
-          <h2
-            role={searching ? 'status' : undefined}
-            data-testid={searching ? 'tabs-searching' : undefined}
-            className="text-lg font-semibold"
-          >
-            {head.title}
-          </h2>
-          <p className="text-meta mt-inset">{head.sub}</p>
-        </header>
-        <ul data-testid="tabs-empty-list" aria-busy={searching || undefined} className="divide-y divide-border border-t border-border">
-          {state.kind === 'matches' &&
-            state.matches.map((m, i) => <MatchRow key={m.id} match={m} best={i === 0 && state.matches.length > 1} phone={phone} />)}
-          {state.kind === 'none' && otherSites.map((l) => <SiteRow key={l.id} link={l} phone={phone} />)}
-          {searching && <SkeletonRows />}
-        </ul>
-      </section>
-      <div className="flex flex-wrap items-center gap-x-block gap-y-cluster">
-        <Button variant="ember" onClick={onAddFile} disabled={sources.uploading}>
-          <UploadIcon className="size-4" />
-          {sources.uploading ? 'Adding…' : 'Add a file'}
-        </Button>
-        <p className="text-meta min-w-0 flex-1 basis-56">{FILE_NOTE}</p>
-      </div>
-      {state.kind !== 'none' && otherSites.length > 0 && (
-        <p data-testid="tab-search-links" className="text-meta">
-          Not the version you want? Search{' '}
-          {otherSites.map((l, i) => (
-            <span key={l.id}>
-              {i > 0 && ' or '}
-              <OutLink
-                href={l.url}
-                data-link={l.id}
-                className="font-medium text-foreground underline decoration-border underline-offset-4 hover:decoration-foreground"
-              >
-                {l.label}
-              </OutLink>
-            </span>
-          ))}
-          .
-        </p>
-      )}
-    </div>
   );
 }

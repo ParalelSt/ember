@@ -63,6 +63,10 @@ export interface TabSourcesState {
   upload: (file: File) => void;
   uploading: boolean;
   uploadError: string | null;
+  /** Add a pasted text tab for the song (POST /api/tabs/text). */
+  paste: (text: string) => void;
+  pasting: boolean;
+  pasteError: string | null;
   remove: (id: string) => void;
   saveOffset: (id: string, offsetMs: number) => Promise<unknown>;
   /** Ember is looking for the song online (the automatic search when the
@@ -199,6 +203,10 @@ export function useTabSources(song: TabSong | null): TabSourcesState {
     mutationFn: (file: File) => api.uploadTabFile(file, { title, artist, trackId: id }),
     onSuccess: refresh,
   });
+  const paste = useMutation({
+    mutationFn: (text: string) => api.addTabText(text, { title, artist, trackId: id }),
+    onSuccess: refresh,
+  });
   const remove = useMutation({
     mutationFn: (tabId: string) => api.deleteTabFile(tabId),
     onSuccess: refresh,
@@ -207,6 +215,11 @@ export function useTabSources(song: TabSong | null): TabSourcesState {
     mutationFn: () => api.findTabsOnline(id, title, artist, true),
     onSuccess: (r) => {
       if (r.added > 0) void qc.invalidateQueries({ queryKey: ['track-tabs', id] });
+    },
+    // Songsterr's own list is asked again too ("Look again" on the empty
+    // page): it may have the song by now.
+    onSettled: () => {
+      void qc.invalidateQueries({ queryKey: ['tabs', id] });
     },
   });
   const saveOffset = useMutation({
@@ -232,6 +245,9 @@ export function useTabSources(song: TabSong | null): TabSourcesState {
     upload: (file) => upload.mutate(file),
     uploading: upload.isPending,
     uploadError: upload.error ? (upload.error as Error).message : null,
+    paste: (text) => paste.mutate(text),
+    pasting: paste.isPending,
+    pasteError: paste.error ? (paste.error as Error).message : null,
     remove: (tabId) => remove.mutate(tabId),
     saveOffset: (tabId, offsetMs) => saveOffset.mutateAsync({ tabId, offsetMs }),
     searchingOnline: online.isFetching || searchAgain.isPending,
