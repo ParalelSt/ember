@@ -20,6 +20,8 @@ allow = [
   "audio_set_volume",
   # The equalizer (src/eq.rs).
   "audio_set_eq",
+  # Repeat one inside the engine (src/repeat.rs).
+  "audio_set_loop",
   "audio_set_metadata",
   # Choosing the output device (src/output.rs). Without these the remote
   # page gets "not allowed by ACL" and the output picker stays empty.

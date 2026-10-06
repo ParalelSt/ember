@@ -364,6 +364,16 @@ describe('tauriBackend equalizer', () => {
   });
 });
 
+describe('tauriBackend repeat one (the loop gap)', () => {
+  it('has the engine loop the song itself', () => {
+    const b = createTauriBackend(makeFakeEvents());
+    b.setRepeatOne!(true);
+    expect(invoked.filter((c) => c.cmd === 'audio_set_loop').at(-1)?.args).toEqual({ one: true });
+    b.setRepeatOne!(false);
+    expect(invoked.filter((c) => c.cmd === 'audio_set_loop').at(-1)?.args).toEqual({ one: false });
+  });
+});
+
 describe('tauriBackend after a playback stall (Luka, 2026-10-02)', () => {
   const loads = () => invoked.filter((i) => i.cmd === 'audio_load');
 

@@ -13,6 +13,7 @@ mod discord;
 mod eq;
 mod external;
 mod output;
+mod repeat;
 mod speech;
 mod theme;
 mod update;
@@ -236,6 +237,7 @@ pub fn run() {
             audio::audio_seek,
             audio::audio_set_volume,
             audio::audio_set_eq,
+            audio::audio_set_loop,
             audio::audio_set_metadata,
             output::audio_outputs,
             output::audio_set_output,
