@@ -148,6 +148,43 @@ export function tabMsToSongSecAligned(tabMs: number, points: SyncPoint[], nudgeM
   return Math.max(0, (piecewise(points, tabMs, 'tab', 'song') - nudgeMs) / 1000);
 }
 
+// ── AlphaTab's own clock ──────────────────────────────────────────────────
+
+/** AlphaTab's time positions are wall clock at its playback speed: it finds
+ *  the tick for a time by multiplying the time by the speed (at 0.5, 20 s
+ *  of playing is 10 s of score). So the tab's own ms are handed to it
+ *  divided by the speed it is set to, or at 75% its line sat at three
+ *  quarters of the way through. */
+export function alphaTabMs(tabMs: number, speed: number): number {
+  return tabMs / (speed > 0 ? speed : 1);
+}
+
+/** How fast the tab's clock runs against the song's at `songSec` (tab ms
+ *  per song ms): the slope of the anchors' segment there, the edge
+ *  segment's beyond them, read where the feed reads (the nudge on top). */
+function tabPaceAt(points: SyncPoint[], songSec: number, nudgeMs: number): number {
+  const n = points.length;
+  if (n < 2) return 1;
+  const x = songSec * 1000 + nudgeMs;
+  let i = 0;
+  while (i < n - 2 && points[i + 1].song <= x) i++;
+  return edgeSlope(points[i], points[i + 1]);
+}
+
+/** The speed AlphaTab glides its line at between beats: the practice speed
+ *  times the tab's pace against the recording (a band 4% faster than its
+ *  tab moves the tab 4% faster; at 1 the line slid behind and caught up at
+ *  every beat). */
+export function cursorSpeed(rate: number, points: SyncPoint[], songSec: number, nudgeMs = 0): number {
+  return (rate > 0 ? rate : 1) * tabPaceAt(points, songSec, nudgeMs);
+}
+
+/** A new speed is a re-seek in AlphaTab, so a change smaller than this
+ *  (2%: a few ms over a beat) is not worth one. */
+export function speedChanged(current: number, next: number): boolean {
+  return Math.abs(next / current - 1) > 0.02;
+}
+
 /** Each master bar's start on the tab's clock, from AlphaTab's tick lookup
  *  (bars in playing order; a bar played twice keeps its first start). */
 export function barStartsMs(masterBars: { start: number; masterBar?: { index?: number }; tempoChanges?: { tick: number; tempo: number }[] }[]): number[] {

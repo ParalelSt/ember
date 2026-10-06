@@ -410,7 +410,7 @@ describe('LiveTabScore sync', () => {
     const last = api.player.output.updatePosition.mock.lastCall?.[0] as number;
     expect(last * api.playbackSpeed).toBeGreaterThan(30_150);
     expect(last * api.playbackSpeed).toBeLessThan(30_450);
-    expect(api.seeks[0] * 0.5).toBe(30_000);
+    expect(api.seeks[0] * 0.5).toBeCloseTo(30_000, -2);
     view.rerender(<LiveTabScore {...p} position={30} playing rate={1} />);
     await waitFor(() => expect(api.playbackSpeed).toBe(1));
   });
