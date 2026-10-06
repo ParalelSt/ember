@@ -624,3 +624,249 @@ fn the_commands_are_registered_and_allowed() {
     assert!(lib.contains("output::audio_set_output"));
     assert!(lib.contains("\"audio:outputs\""));
 }
+
+// --- Linux: the sound server first ------------------------------------------------
+//
+// A Debian user's .deb played on the laptop speaker while every other app
+// used their Bluetooth headphones, and Ember never showed in the volume
+// mixer: cpal's ALSA "default" there is the sound card itself, not PipeWire
+// or PulseAudio. `ServerFirst` puts a sound server stream in front of ALSA.
+
+use super::server::{stream_env, ServerFirst, SoundServer, SERVER_ID};
+
+/// How the router runs on Linux (see `RouterConfig::for_this_os`).
+const LINUX: RouterConfig = RouterConfig { poll: None, trust_absence: false };
+
+/// A sound server that is up or down. A stream on it is the test pulling
+/// from the tap, as with `Mock`.
+#[derive(Clone, Default)]
+struct FakeServer {
+    down: Arc<std::sync::atomic::AtomicBool>,
+    taps: Arc<Mutex<Vec<Arc<Mutex<Tap>>>>>,
+    lost: Arc<Mutex<Vec<OnLost>>>,
+}
+
+impl FakeServer {
+    fn down() -> Self {
+        let s = FakeServer::default();
+        s.down.store(true, Ordering::SeqCst);
+        s
+    }
+
+    fn pull(&self, n: usize) -> Vec<f32> {
+        let tap = Arc::clone(self.taps.lock().unwrap().last().expect("a server stream"));
+        let mut tap = tap.lock().unwrap();
+        tap.by_ref().take(n).collect()
+    }
+
+    fn opens(&self) -> usize {
+        self.taps.lock().unwrap().len()
+    }
+
+    /// The server went away under the stream (a crash, a restart).
+    fn drop_out(&self) {
+        self.down.store(true, Ordering::SeqCst);
+        let lost = self.lost.lock().unwrap().pop();
+        if let Some(mut f) = lost {
+            f();
+        }
+    }
+}
+
+impl SoundServer for FakeServer {
+    fn open(&self, tap: Tap, on_lost: OnLost) -> Result<Box<dyn std::any::Any>, (String, Tap, OnLost)> {
+        if self.down.load(Ordering::SeqCst) {
+            return Err(("Connection refused".to_string(), tap, on_lost));
+        }
+        self.taps.lock().unwrap().push(Arc::new(Mutex::new(tap)));
+        self.lost.lock().unwrap().push(on_lost);
+        Ok(Box::new(()))
+    }
+}
+
+fn server_first(server: Option<&FakeServer>, alsa: &Mock) -> ServerFirst {
+    let server = match server {
+        Some(s) => Ok(Box::new(s.clone()) as Box<dyn SoundServer>),
+        None => Err("libpulse-simple.so.0: cannot open shared object file".to_string()),
+    };
+    ServerFirst::new(server, Box::new(alsa.clone()))
+}
+
+#[test]
+fn the_sound_server_is_listed_first_as_the_default() {
+    let alsa = Mock::new(&[("default", true), ("HDA Intel PCH", false)]);
+    let server = FakeServer::default();
+    let backend = server_first(Some(&server), &alsa);
+    assert_eq!(
+        backend.devices(),
+        vec![dev(SERVER_ID, true), dev("default", false), dev("HDA Intel PCH", false)]
+    );
+}
+
+#[test]
+fn without_a_sound_server_library_the_alsa_list_is_unchanged() {
+    let alsa = Mock::new(&[("default", true), ("HDA Intel PCH", false)]);
+    let backend = server_first(None, &alsa);
+    assert_eq!(backend.devices(), vec![dev("default", true), dev("HDA Intel PCH", false)]);
+}
+
+#[test]
+fn the_system_default_plays_through_the_sound_server() {
+    let alsa = Mock::new(&[("default", true), ("HDA Intel PCH", false)]);
+    let server = FakeServer::default();
+    let (mixer, router) = start(Box::new(server_first(Some(&server), &alsa)), LINUX).unwrap();
+    let snap = router.list().unwrap();
+    assert_eq!(snap.active.as_deref(), Some(SERVER_ID));
+    assert_eq!(alsa.opens(), 0, "no ALSA device is touched while the sound server plays");
+    // And the music reaches it.
+    let sink = Sink::connect_new(&mixer);
+    sink.append(SamplesBuffer::new(2, 48_000, ramp(20_000)));
+    let _warm_up = server.pull(4_096);
+    assert_counts_up(&server.pull(4_800), "the sound server stream");
+}
+
+#[test]
+fn a_sound_server_that_is_down_falls_back_to_alsa_with_the_same_tap() {
+    let alsa = Mock::new(&[("default", true), ("HDA Intel PCH", false)]);
+    let server = FakeServer::down();
+    let (mixer, router) = start(Box::new(server_first(Some(&server), &alsa)), LINUX).unwrap();
+    assert_eq!(router.list().unwrap().active.as_deref(), Some("default"));
+    let sink = Sink::connect_new(&mixer);
+    sink.append(SamplesBuffer::new(2, 48_000, ramp(20_000)));
+    let _warm_up = alsa.pull("default", 4_096);
+    assert_counts_up(&alsa.pull("default", 4_800), "the ALSA fallback");
+}
+
+#[test]
+fn an_explicit_alsa_choice_still_works_and_back_to_the_server() {
+    let alsa = Mock::new(&[("default", true), ("HDA Intel PCH", false)]);
+    let server = FakeServer::default();
+    let (_mixer, router) = start(Box::new(server_first(Some(&server), &alsa)), LINUX).unwrap();
+    let snap = router.set(Some("HDA Intel PCH".into())).unwrap();
+    assert_eq!(snap.active.as_deref(), Some("HDA Intel PCH"));
+    assert_eq!(snap.preferred.as_deref(), Some("HDA Intel PCH"));
+    let snap = router.set(None).unwrap();
+    assert_eq!(snap.active.as_deref(), Some(SERVER_ID));
+    let snap = router.set(Some(SERVER_ID.into())).unwrap();
+    assert_eq!(snap.active.as_deref(), Some(SERVER_ID));
+    assert_eq!(server.opens(), 2, "picking the server it already plays on does not reopen it");
+}
+
+#[test]
+fn a_dropped_sound_server_connection_moves_to_alsa() {
+    let alsa = Mock::new(&[("default", true)]);
+    let server = FakeServer::default();
+    let (_mixer, router) = start(Box::new(server_first(Some(&server), &alsa)), LINUX).unwrap();
+    let seen = listen(&router);
+    server.drop_out();
+    router.tick_now();
+    assert_eq!(actives(&seen).last().cloned().flatten().as_deref(), Some("default"));
+}
+
+#[test]
+fn why_the_sound_server_was_skipped_reaches_the_app_log() {
+    let alsa = Mock::new(&[("default", true)]);
+    let (_mixer, router) = start(Box::new(server_first(None, &alsa)), LINUX).unwrap();
+    let lines: Arc<Mutex<Vec<String>>> = Arc::default();
+    let sink = Arc::clone(&lines);
+    // Set after the launch open, as lib.rs does: what happened before is kept.
+    router.set_logger(Box::new(move |level, msg| sink.lock().unwrap().push(format!("{level} {msg}"))));
+    let lines = lines.lock().unwrap().clone();
+    assert!(lines.iter().any(|l| l.contains("libpulse-simple.so.0")), "{lines:?}");
+    assert!(lines.iter().any(|l| l.contains("playing on default")), "{lines:?}");
+}
+
+#[test]
+fn the_stream_is_named_for_the_volume_mixer() {
+    let env = stream_env(|_| None);
+    let get = |k: &str| env.iter().find(|(name, _)| *name == k).map(|(_, v)| v.clone());
+    let pulse = get("PULSE_PROP").expect("PULSE_PROP");
+    assert!(pulse.contains("application.name='Ember'"), "{pulse}");
+    assert!(pulse.contains("media.role='music'"), "{pulse}");
+    assert!(pulse.contains("application.icon_name='ember-desktop'"), "{pulse}");
+    let pw: serde_json::Value = serde_json::from_str(&get("PIPEWIRE_PROPS").expect("PIPEWIRE_PROPS")).unwrap();
+    assert_eq!(pw["application.name"], "Ember");
+    assert_eq!(pw["media.role"], "Music");
+    assert_eq!(pw["application.icon-name"], "ember-desktop");
+}
+
+#[test]
+fn stream_names_never_overwrite_what_the_user_set() {
+    let env = stream_env(|k| (k == "PULSE_PROP").then(|| "media.role='game'".to_string()));
+    assert!(env.iter().all(|(k, _)| *k != "PULSE_PROP"), "{env:?}");
+    assert!(env.iter().any(|(k, _)| *k == "PIPEWIRE_PROPS"));
+}
+
+// --- Linux: which ALSA device is "the default" ----------------------------------
+//
+// The same user's next launch: "native audio failed, falling back to web
+// audio". The log said `no audio output (The requested device is no longer
+// available...)`, which is cpal's EBUSY: ALSA's "default" was the sound card,
+// the sound server was holding it, and the error named only that first
+// device. A sound-server PCM never reports busy, so it goes first.
+
+fn names(list: &[&str]) -> Vec<String> {
+    list.iter().map(|s| s.to_string()).collect()
+}
+
+#[test]
+fn on_alsa_a_sound_server_pcm_is_the_default() {
+    let all = names(&["default", "pipewire", "pulse", "HDA Intel PCH"]);
+    assert_eq!(default_device_name(&all, Some("default"), true), Some("pipewire"));
+    let no_pipewire = names(&["default", "pulse", "HDA Intel PCH"]);
+    assert_eq!(default_device_name(&no_pipewire, Some("default"), true), Some("pulse"));
+    let bare = names(&["default", "HDA Intel PCH"]);
+    assert_eq!(default_device_name(&bare, Some("default"), true), Some("default"));
+}
+
+#[test]
+fn elsewhere_the_host_default_stands() {
+    let mac = names(&["MacBook Pro Speakers", "pulse"]);
+    assert_eq!(default_device_name(&mac, Some("MacBook Pro Speakers"), false), Some("MacBook Pro Speakers"));
+}
+
+#[test]
+fn the_default_is_tried_first_then_the_sound_server_then_the_hardware() {
+    let ids = |order: Vec<usize>, devices: &[OutputDevice]| -> Vec<String> {
+        order.into_iter().map(|i| devices[i].id.clone()).collect()
+    };
+    let linux = [
+        dev("default", false),
+        dev("pipewire", true),
+        dev("pulse", false),
+        dev("jack", false),
+        dev("HDA Intel PCH", false),
+        dev("USB DAC", false),
+    ];
+    assert_eq!(ids(default_order(&linux), &linux), ["pipewire", "pulse", "default", "jack", "HDA Intel PCH", "USB DAC"]);
+    let mac = [dev("A", false), dev("B", true), dev("C", false)];
+    assert_eq!(ids(default_order(&mac), &mac), ["B", "A", "C"]);
+    let none_marked = [dev("A", false), dev("B", false)];
+    assert_eq!(ids(default_order(&none_marked), &none_marked), ["A", "B"]);
+}
+
+#[test]
+fn the_first_device_that_opens_wins() {
+    let mut tried = Vec::new();
+    let got = open_first(
+        vec![("default".to_string(), 1), ("pulse".to_string(), 2), ("HDA Intel PCH".to_string(), 3)],
+        |d| {
+            tried.push(d);
+            if d == 1 { Err("busy".to_string()) } else { Ok(d * 10) }
+        },
+    );
+    assert_eq!(got, Ok(("pulse".to_string(), 20)));
+    assert_eq!(tried, [1, 2], "nothing is opened after a success");
+}
+
+#[test]
+fn when_nothing_opens_every_reason_is_reported() {
+    let got: Result<(String, ()), String> = open_first(
+        vec![("default".to_string(), ()), ("HDA Intel PCH".to_string(), ())],
+        |_| Err("The requested device is no longer available".to_string()),
+    );
+    let err = got.unwrap_err();
+    assert!(err.contains("default: The requested device"), "{err}");
+    assert!(err.contains("HDA Intel PCH: The requested device"), "{err}");
+    assert_eq!(open_first::<(), ()>(Vec::new(), |_| Ok(())).unwrap_err(), "no output device to open");
+}
