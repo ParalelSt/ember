@@ -23,6 +23,7 @@ import {
   alphaTabMs,
   cursorSpeed,
   drawLead,
+  FEED_INTERVAL_MS,
   nextFrameMs,
   speedChanged,
 } from './tabSync';
@@ -296,6 +297,15 @@ describe('AlphaTab draws three frames late', () => {
     // A stalled frame (a busy main thread) is not a reason to run ahead.
     expect(drawLead(400)).toBe(150);
     expect(drawLead(Number.NaN)).toBeCloseTo(50, 6);
+  });
+
+  it('is fed every frame at 60 Hz, so a new beat reaches it within a frame', () => {
+    // AlphaTab only re-aims its line when the beat changes. Fed every 50 ms,
+    // the change reached it up to three frames late, and the line, still
+    // gliding at the last beat's pace (a wide gap after a short note), ran
+    // up to 250 ms past the song, then crawled back over a few beats
+    // (tests/tabs-sync-live.test.mjs, after a seek).
+    expect(FEED_INTERVAL_MS).toBeLessThanOrEqual(1000 / 60);
   });
 
   it('measures the frame from the frames, smoothly', () => {
