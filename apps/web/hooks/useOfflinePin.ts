@@ -91,6 +91,7 @@ export function useOfflinePin(ref: CollectionRef, name: string, tracks: Track[])
     state: inFlight ? 'downloading' : downloaded ? (stale ? 'stale' : 'downloaded') : 'idle',
     progress: inFlight ? { current: inFlight.current, total: inFlight.total } : undefined,
     disabled: tracks.length === 0,
+    native: nativePresent,
     onDownload,
     onCancel: () => cancelDownload(id),
     onRemove,
