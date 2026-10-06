@@ -46,6 +46,7 @@ interface RequestBody {
   kind?: Kind;
   name?: string;
   main?: string;
+  /** No longer sent by the dialog; still accepted and forwarded from older clients. */
   extra?: string;
   context?: RequestContext;
 }

@@ -108,6 +108,15 @@ describe('POST /api/requests: routing per kind', () => {
     expect(embed.fields).toEqual([{ name: 'Anything else', value: 'Happens on Chrome only' }]);
   });
 
+  it('accepts a body with no extra key at all (current clients)', async () => {
+    const noExtra: Record<string, unknown> = validBody();
+    delete noExtra.extra;
+    const res = await POST(request(noExtra), undefined as never);
+    expect(res.status).toBe(200);
+    const { body } = postedPayload();
+    expect(body.embeds[0].fields).toEqual([]);
+  });
+
   it('omits the field entirely when extra is empty', async () => {
     await POST(request(validBody({ extra: '' })), undefined as never);
     const { body } = postedPayload();

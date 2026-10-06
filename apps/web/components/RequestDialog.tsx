@@ -28,14 +28,12 @@ type Kind = 'feature' | 'fix';
 
 const MAX_NAME = 80;
 const MAX_MAIN = 2000;
-const MAX_EXTRA = 2000;
 
 interface Copy {
   nameLabel: string;
   namePlaceholder: string;
   mainLabel: string;
   mainPlaceholder: string;
-  extraPlaceholder: string;
 }
 
 const COPY: Record<Kind, Copy> = {
@@ -45,7 +43,6 @@ const COPY: Record<Kind, Copy> = {
     mainLabel: 'Description',
     mainPlaceholder:
       'What should it do, and when would you use it? e.g. Stop playback after 30 minutes so I can fall asleep to music.',
-    extraPlaceholder: 'Examples from other apps, edge cases.',
   },
   fix: {
     nameLabel: 'Name',
@@ -53,7 +50,6 @@ const COPY: Record<Kind, Copy> = {
     mainLabel: 'Recommended approach',
     mainPlaceholder:
       "What happens now and what you'd expect instead. For UI: what you'd see, where, and how it should work.",
-    extraPlaceholder: 'Steps, device, how often it happens.',
   },
 };
 
@@ -66,7 +62,6 @@ export function RequestDialog({ open, onOpenChange }: RequestDialogProps) {
   const [kind, setKind] = useState<Kind>('feature');
   const [name, setName] = useState('');
   const [main, setMain] = useState('');
-  const [extra, setExtra] = useState('');
   const [files, setFiles] = useState<File[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -79,7 +74,6 @@ export function RequestDialog({ open, onOpenChange }: RequestDialogProps) {
     setKind('feature');
     setName('');
     setMain('');
-    setExtra('');
     setFiles([]);
     setError(null);
   };
@@ -101,7 +95,6 @@ export function RequestDialog({ open, onOpenChange }: RequestDialogProps) {
         kind,
         name: name.trim(),
         main: main.trim(),
-        extra: extra.trim() || undefined,
         context: { appVersion, shell, route, platform },
       });
       // Plain JSON as before without files; with files, the same JSON as a
@@ -168,16 +161,6 @@ export function RequestDialog({ open, onOpenChange }: RequestDialogProps) {
               onChange={(e) => setMain(e.target.value.slice(0, MAX_MAIN))}
               placeholder={copy.mainPlaceholder}
               rows={4}
-            />
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="request-extra">Anything else (optional)</Label>
-            <Textarea
-              id="request-extra"
-              value={extra}
-              onChange={(e) => setExtra(e.target.value.slice(0, MAX_EXTRA))}
-              placeholder={copy.extraPlaceholder}
-              rows={3}
             />
           </div>
           <AttachmentPicker files={files} onChange={setFiles} disabled={busy} />
