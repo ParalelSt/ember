@@ -30,8 +30,14 @@ describe('decidePrank', () => {
 
   it('plays a sound only while music plays', () => {
     expect(decidePrank(prank(), ctx())).toEqual({ type: 'sound', url: '/api/pranks/media/s1', volume: 0.5, duck: true });
-    expect(decidePrank(prank(), ctx({ isPlaying: false }))).toEqual({ type: 'skip', reason: 'not-playing' });
-    expect(decidePrank(prank(), ctx({ hasTrack: false }))).toEqual({ type: 'skip', reason: 'not-playing' });
+  });
+
+  it('a device where nothing plays leaves the sound for one that does, and never answers for them', () => {
+    expect(decidePrank(prank(), ctx({ isPlaying: false }))).toEqual({ type: 'wait' });
+    expect(decidePrank(prank(), ctx({ hasTrack: false }))).toEqual({ type: 'wait' });
+    // Even one that could not play it anyway: the phone in their hand might.
+    expect(decidePrank(prank(), ctx({ isPlaying: false, engine: 'native-stub' }))).toEqual({ type: 'wait' });
+    expect(decidePrank(prank(), ctx({ isPlaying: false, engine: 'android' }))).toEqual({ type: 'wait' });
   });
 
   it('skips when another prank is running', () => {

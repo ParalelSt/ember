@@ -28,6 +28,10 @@ export interface PrankReceipt {
   then: Promise<PrankAck | null>;
 }
 
+/** What `receive` returns to leave a prank pending and be offered it again
+ *  on the next fetch (a sound, while nothing plays on this device). */
+export type PrankLater = 'later';
+
 export interface PrankInboxDeps {
   fetchInbox: () => Promise<PrankRow[]>;
   ack: (id: string, body: PrankAck) => Promise<unknown>;
@@ -75,11 +79,12 @@ export const defaultPrankInboxDeps: PrankInboxDeps = {
 };
 
 /** Receives pranks for the signed-in user: poll (always while the realtime
- *  link is down), realtime when available, a catch-up fetch on every
- *  (re)connect. Each prank is handed to `receive` once; whatever it returns
- *  is sent back as the acknowledgement (null sends nothing; a receipt sends
- *  its ack, then its follow-up). Silent by design: nothing here toasts,
- *  logs or throws. */
+ *  link is down, or while a prank waits here for later), realtime when
+ *  available, a catch-up fetch on every (re)connect. Each prank is handed to
+ *  `receive` once; whatever it returns is sent back as the acknowledgement
+ *  (null sends nothing; a receipt sends its ack, then its follow-up;
+ *  'later' sends nothing and offers it again next time). Silent by design:
+ *  nothing here toasts, logs or throws. */
 export function usePrankInbox({
   userId,
   isPlaying,
@@ -88,7 +93,9 @@ export function usePrankInbox({
 }: {
   userId: string | null;
   isPlaying: boolean;
-  receive: (row: PrankRow) => PrankAck | PrankReceipt | null | Promise<PrankAck | PrankReceipt | null>;
+  receive: (
+    row: PrankRow,
+  ) => PrankAck | PrankReceipt | PrankLater | null | Promise<PrankAck | PrankReceipt | PrankLater | null>;
   deps?: PrankInboxDeps;
 }) {
   const receiveRef = useRef(receive);
@@ -102,6 +109,8 @@ export function usePrankInbox({
   }, [deps]);
 
   const seen = useRef(new Set<string>());
+  /** Left for later: offered again on the next fetch. */
+  const waiting = useRef(new Set<string>());
   const live = useRef(false);
 
   const handleRef = useRef((row: PrankRow) => {
@@ -110,6 +119,11 @@ export function usePrankInbox({
     Promise.resolve()
       .then(() => receiveRef.current(row))
       .then(async (result) => {
+        if (result === 'later') {
+          seen.current.delete(row.id);
+          waiting.current.add(row.id);
+          return;
+        }
         if (!result) return;
         if (!('ack' in result)) {
           await depsRef.current.ack(row.id, result);
@@ -125,13 +139,19 @@ export function usePrankInbox({
   const catchUp = useRef(() =>
     depsRef.current
       .fetchInbox()
-      .then((rows) => rows.forEach((r) => handleRef.current(r)))
+      .then((rows) => {
+        // Whatever is still waiting comes back in this fetch; one that
+        // expired or went to another device does not.
+        waiting.current.clear();
+        rows.forEach((r) => handleRef.current(r));
+      })
       .catch(() => {}),
   );
 
   // A different account on this device starts with a clean slate.
   useEffect(() => {
     seen.current = new Set();
+    waiting.current = new Set();
   }, [userId]);
 
   useEffect(() => {
@@ -160,7 +180,7 @@ export function usePrankInbox({
     let timer: ReturnType<typeof setTimeout> | undefined;
     const every = isPlaying ? POLL_PLAYING_MS : POLL_IDLE_MS;
     const tick = async () => {
-      if (!live.current) await catchUp.current();
+      if (!live.current || waiting.current.size) await catchUp.current();
       if (!stopped) timer = setTimeout(tick, every);
     };
     void tick();

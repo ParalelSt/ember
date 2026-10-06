@@ -15,7 +15,7 @@ import type { AudioBackend } from '@/lib/playback/types';
 // doubles. Nothing on this side may toast or log.
 
 const inbox = vi.hoisted(() => ({
-  receive: null as null | ((row: PrankRow) => PrankAck | PrankReceipt | null | Promise<PrankAck | PrankReceipt | null>),
+  receive: null as null | ((row: PrankRow) => PrankAck | PrankReceipt | 'later' | null | Promise<PrankAck | PrankReceipt | null>),
 }));
 vi.mock('@/hooks/pranks/usePrankInbox', () => ({
   usePrankInbox: (opts: { receive: typeof inbox.receive }) => {
@@ -130,13 +130,14 @@ describe('PrankReceiver: sounds', () => {
     expect(overlay.play).not.toHaveBeenCalled();
   });
 
-  it('only while music is actually playing', async () => {
+  it('only while music is actually playing, and an idle device leaves it for one that plays', async () => {
     usePlayerStore.setState({ isPlaying: false });
     mount();
-    expect(inbox.receive!(sound())).toMatchObject({ status: 'skipped', reason: 'not-playing' });
+    // No ack: a skip from here would swallow it for their other device.
+    expect(inbox.receive!(sound())).toBe('later');
     usePlayerStore.setState({ isPlaying: true });
     backend.paused = true;
-    expect(inbox.receive!({ ...sound(), id: 'p2' })).toMatchObject({ status: 'skipped', reason: 'not-playing' });
+    expect(inbox.receive!({ ...sound(), id: 'p2' })).toBe('later');
     expect(overlay.play).not.toHaveBeenCalled();
   });
 
@@ -274,7 +275,7 @@ describe('PrankReceiver: sounds on the native Android engine', () => {
     const native = withNativeOverlay(backend);
     backend.paused = true;
     mount('android');
-    expect(inbox.receive!(sound())).toMatchObject({ status: 'skipped', reason: 'not-playing' });
+    expect(inbox.receive!(sound())).toBe('later');
     expect(native.playOverlay).not.toHaveBeenCalled();
   });
 });
