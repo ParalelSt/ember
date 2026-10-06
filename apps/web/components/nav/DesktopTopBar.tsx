@@ -5,7 +5,7 @@ import { cn } from '@/lib/utils';
 
 interface Props {
   /** The search panel is open: lift the bar (and the panel hanging off it)
-   *  over the lyrics panel, which sits at z-30 in the same scroller. */
+   *  over everything else in the scroller (the lyrics panel is z-30). */
   raised: boolean;
   /** The bar's own height in px, 0 when it unmounts or holds nothing (the
    *  /search page draws its own box). The layout publishes it as
@@ -16,11 +16,11 @@ interface Props {
   children: ReactNode;
 }
 
-/** The cover stops short of the lyrics panel (`--ember-lyrics-w`, 0 when
- *  it is closed), which has its own background and sticks just under the
- *  bar: while the search panel is open the bar is lifted over the panel,
- *  and a full-width cover would then hide the panel's top. */
-const COVER_BOX = { right: 'var(--ember-lyrics-w, 0px)' } as const;
+/** The bar stops short of the lyrics panel (`--ember-lyrics-w`, 0 when it
+ *  is closed), which runs from the top of the scroller to its bottom beside
+ *  it: the pill and the search panel hanging off it stay over the page, and
+ *  never under or over the panel. */
+const BAR_BOX = { marginRight: 'var(--ember-lyrics-w, 0px)' } as const;
 
 /** The desktop top bar, the "floating pill": the search box sits `sticky
  *  top-0` INSIDE the page scroller (`[data-app-scroller]`), so the
@@ -67,13 +67,13 @@ export function DesktopTopBar({ raised, onHeightChange, children }: Props) {
       data-testid="topbar-bar"
       data-scrolled={scrolled || undefined}
       className={cn('sticky top-0', raised ? 'z-40' : 'z-20')}
+      style={BAR_BOX}
     >
       {scrolled && height > 0 && (
         <div
           aria-hidden
           data-testid="topbar-cover"
-          className="pointer-events-none absolute inset-y-0 left-0"
-          style={COVER_BOX}
+          className="pointer-events-none absolute inset-0"
         >
           <div className="h-full bg-background" />
           <div data-testid="topbar-band" className="h-block bg-background" />
