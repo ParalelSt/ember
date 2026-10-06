@@ -81,8 +81,8 @@ interface PlayerControls {
   playAt: (index: number) => void;
   /** Go back `steps` songs through this session's play history, as
    *  Previous pressed that many times (without its restart rule): the queue
-   *  sheet's "Played" list. The queue stays as it is. Nothing on the native
-   *  Android player, which keeps its own history. */
+   *  sheet's "Played" list. The queue stays as it is. On the native Android
+   *  player its own history does it (PlayHistory.kt, COMMAND_BACK). */
   playBack: (steps: number) => void;
   toggle: () => void;
   next: () => void;
@@ -273,10 +273,11 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const playedRef = useRef<string[]>([]);
   /** Every change to the history goes through here, so the queue sheet's
    *  copy (the store's `played`) is always the stack Previous uses. Not on
-   *  Android: there the page's stack is not what Previous follows. */
+   *  Android: there the native player's history is the one Previous
+   *  follows, and the store has what it sends (onPlayed). */
   const setPlayed = useCallback((ids: string[]) => {
     playedRef.current = ids;
-    usePlayerStore.setState({ played: backendKindRef.current === 'android' ? [] : ids });
+    if (backendKindRef.current !== 'android') usePlayerStore.setState({ played: ids });
   }, []);
 
   const current = queue[index] ?? null;
@@ -352,6 +353,10 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
           loadedTrackRef.current = st.queue[i].id;
           setIndex(i);
         }
+      },
+      // The native player's play history (Android), for the queue sheet.
+      onPlayed: (ids) => {
+        if (backendKindRef.current === 'android') usePlayerStore.setState({ played: ids });
       },
       onQueueReplaced: (tracks, i, info) => {
         nativeChangeAt.current = Date.now();
@@ -1147,8 +1152,14 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
   const playBack = useCallback((steps: number) => {
     userInteracted.current = true;
-    if (backendKindRef.current === 'android') return;
     const st = usePlayerStore.getState();
+    // The native player goes back through its own history (the store has
+    // what it sent): it is told the queue entry the list showed.
+    if (backendKindRef.current === 'android') {
+      const to = playedWalk(st.queue, st.index, st.played)[steps - 1];
+      if (to) backendRef.current?.back?.(to.index);
+      return;
+    }
     const to = playedWalk(st.queue, st.index, playedRef.current)[steps - 1];
     if (!to) return;
     // Where Previous pressed `steps` times leaves the history: going back

@@ -42,8 +42,9 @@ interface PlayerState {
   /** Ids of the songs played before the current one, newest last: what
    *  Previous walks back through (PlayerProvider keeps it, see "Play
    *  history" in lib/playback/queueNav), here for the queue sheet's "Played"
-   *  list. This session only: never persisted. Empty on the native Android
-   *  player, which keeps its own (PlayHistory.kt). */
+   *  list. This session only: never persisted. On the native Android
+   *  player, the history it sends (PlayHistory.kt); empty from an app build
+   *  that sends none. */
   played: string[];
   setQueue: (queue: Track[]) => void;
   setIndex: (i: number) => void;

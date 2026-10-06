@@ -16,7 +16,7 @@ vi.mock('@/lib/playback/detectShell', () => ({ detectShell: () => 'capacitor' })
 
 const fake = makeFakeBackend();
 const native = vi.hoisted(() => ({
-  setQueue: vi.fn(), setLoop: vi.fn(), next: vi.fn(), prev: vi.fn(), setNormalize: vi.fn(), setEq: vi.fn(), setShuffle: vi.fn(),
+  setQueue: vi.fn(), setLoop: vi.fn(), next: vi.fn(), prev: vi.fn(), back: vi.fn(), setNormalize: vi.fn(), setEq: vi.fn(), setShuffle: vi.fn(),
 }));
 let ev: AudioBackendEvents | null = null;
 vi.mock('@/lib/playback/androidBackend', () => ({
@@ -288,20 +288,40 @@ describe('sameSongs', () => {
   });
 });
 
-/** The native player keeps its own play history (PlayHistory.kt) and does
- *  not hand it to the page, so the queue sheet's "Played" list stays empty
- *  on Android rather than showing the page's partial copy. */
+/** The native player keeps its own play history (PlayHistory.kt) and sends
+ *  it in its state; the queue sheet's "Played" list shows that, and a tap
+ *  on one of its songs asks native to go back to it. An app build that does
+ *  not send it leaves the list empty. */
 describe('android: the queue sheet\'s played history', () => {
-  it('stays empty, and a tap on a played song changes nothing', () => {
+  it('shows what native sends, never the page\'s own copy', () => {
     usePlayerStore.setState({ queue: [A, B, C, D], index: 0, played: [] });
     render(<PlayerProvider><Grab /></PlayerProvider>);
     act(() => { player!.playAt(2); });
+    // An app build that sends no history: nothing.
     expect(usePlayerStore.getState().played).toEqual([]);
+    act(() => { ev!.onPlayed!([A.id, D.id]); });
+    expect(usePlayerStore.getState().played).toEqual([A.id, D.id]);
+  });
+
+  it('a tap on a played song asks native to go back to its entry', () => {
+    usePlayerStore.setState({ queue: [A, B, C, D], index: 1, played: [] });
+    render(<PlayerProvider><Grab /></PlayerProvider>);
+    act(() => { ev!.onPlayed!([A.id, D.id]); });
     native.setQueue.mockClear();
     native.prev.mockClear();
+    act(() => { player!.playBack(2); });
+    expect(native.back).toHaveBeenCalledWith(0);
     act(() => { player!.playBack(1); });
+    expect(native.back).toHaveBeenLastCalledWith(3);
     expect(native.setQueue).not.toHaveBeenCalled();
     expect(native.prev).not.toHaveBeenCalled();
+  });
+
+  it('with no history from native, a tap changes nothing', () => {
+    usePlayerStore.setState({ queue: [A, B, C, D], index: 2, played: [] });
+    render(<PlayerProvider><Grab /></PlayerProvider>);
+    act(() => { player!.playBack(1); });
+    expect(native.back).not.toHaveBeenCalled();
     expect(usePlayerStore.getState().index).toBe(2);
   });
 });

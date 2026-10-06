@@ -63,6 +63,11 @@ export interface AudioBackendEvents {
    *  host's reason. `away`: the ones that failed while no page was
    *  listening, held by native and handed over when the app came back. */
   onUnplayable?: (notices: UnplayableNotice[], opts?: { away?: boolean }) => void;
+  /** Queue-owning backends only (Android): the native player's play history
+   *  (PlayHistory.kt), song ids oldest first, newest last: what its Previous
+   *  walks back through, for the queue sheet's "Played" list. Sent when it
+   *  changes; never by an app build from before it. */
+  onPlayed?: (ids: string[]) => void;
 }
 
 export interface LoadOptions {
@@ -150,6 +155,10 @@ export interface AudioBackend {
   /** Queue-owning backends only: the native player decides what is next. */
   next?(): void;
   prev?(): void;
+  /** Queue-owning backends only: a tap on a song in the queue sheet's
+   *  "Played" list. The native player goes back through its play history to
+   *  queue entry `index`, as Previous pressed until it lands there. */
+  back?(index: number): void;
   /** Queue-owning backends only: the native player repeats by itself, so it
    *  has to be told the loop mode. */
   setLoop?(mode: LoopMode): void;
