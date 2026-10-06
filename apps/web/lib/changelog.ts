@@ -21,6 +21,42 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    id: 'tabs-redesign',
+    version: '0.7.22',
+    date: '2026-10-06',
+    title: 'A new tabs page',
+    summary: 'The tab fills the screen, practice tools sit in one toolbar, and a missing tab is two taps away.',
+    bullets: [
+      'A floating pill keeps play, the bar you are on, slow down and loop under your thumb.',
+      'The practice toolbar shows Speed, Loop, Click, Count-in and Delay with their values; tap one to change it. Count-in is new.',
+      'Pick what you play first, then the best version of it.',
+      'No tab yet? Find one on Songsterr, Ultimate Guitar or Guitar Pro sites, then add the file or paste a text tab.',
+      'The tab now stays in time with the song, also slowed down, after seeking and around loops, and Line it up finds the right start much more reliably.',
+    ],
+  },
+  {
+    id: 'lyrics-follow',
+    version: '0.7.22',
+    date: '2026-10-06',
+    title: 'Read lyrics ahead',
+    summary: 'Scroll the lyrics and they stop pulling you back.',
+    bullets: [
+      'A Follow lyrics pill takes you back to the current line.',
+      'Lyrics follow the song again by themselves once the current line is back in the middle and you leave them alone for a moment.',
+    ],
+  },
+  {
+    id: 'fixes-0722',
+    version: '0.7.22',
+    date: '2026-10-06',
+    title: 'Fixes',
+    summary: 'A simpler phone player menu and a shorter request form.',
+    bullets: [
+      'Like, Devices and Lyrics are back on the phone player; the rest is under ⋯.',
+      'The request form drops the "Anything else" box.',
+    ],
+  },
+  {
     id: 'queue-history',
     version: '0.7.21',
     date: '2026-10-06',

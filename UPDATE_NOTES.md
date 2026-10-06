@@ -1,3 +1,8 @@
+# 0.7.22: New tabs page, lyrics follow, player menu fixes
+
+**Host: run `./update.sh` as usual (no new packages).** Web only: the apps stay
+at 0.4.16. `align.py` changed (better tab alignment), which update.sh picks up.
+
 # 0.7.21: Queue history and older fixes (apps 0.4.16)
 
 **Host: run `./update.sh` as usual (no new packages).** It restarts PocketBase,
