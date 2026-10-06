@@ -19,6 +19,7 @@ import {
 import {
   alphaTabMs,
   barStartsMs,
+  DRAW_FRAMES,
   beatToSongSec,
   cursorSpeed,
   drawLead,
@@ -151,6 +152,8 @@ export function LiveTabScore(props: LiveTabScoreProps) {
   /** The playback speed AlphaTab is set to: the practice speed times the
    *  tab's pace against the recording (lib/tabSync.ts cursorSpeed). */
   const speed = useRef(1);
+  /** Feeds left before a seek made while playing is placed once more. */
+  const confirm = useRef(0);
   /** Song time against tab time at every bar, from the alignment and
    *  AlphaTab's own tick lookup. Empty when the tab is not lined up. */
   const points = useRef<SyncPoint[]>([]);
@@ -463,6 +466,7 @@ export function LiveTabScore(props: LiveTabScoreProps) {
       highlightRef.current = () => {};
       fed.current = null;
       speed.current = 1;
+      confirm.current = 0;
       endMs.current = Infinity;
       setSynced(false);
     };
@@ -616,6 +620,14 @@ export function LiveTabScore(props: LiveTabScoreProps) {
           api.timePosition = atMs;
           fed.current = { ms: atMs, at: now };
           followPlayhead.current();
+          confirm.current = p.playing ? DRAW_FRAMES + 1 : 0;
+        } else if (confirm.current > 0 && --confirm.current === 0) {
+          // AlphaTab draws a seek over three frames, reading state the
+          // feeds (and further seeks) arriving meanwhile change: quick seeks
+          // left the line a bar off, crawling back for two seconds. Once it
+          // is quiet, the line is placed again where the song is.
+          api.timePosition = atMs;
+          fed.current = { ms: atMs, at: now };
         } else {
           output.updatePosition(atMs);
           fed.current = { ms: atMs, at: now };
