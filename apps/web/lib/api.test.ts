@@ -164,4 +164,9 @@ describe('addTabText: a pasted text tab', () => {
     await expect(api.addTabText('hello', { title: 'x', artist: '' })).rejects.toThrow('No tab lines found');
     expect(logger.warn).toHaveBeenCalled();
   });
+
+  it('the silent sounds calls carry the server Retry-After on a 429', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('{}', { status: 429, headers: { 'Retry-After': '17' } })));
+    await expect(api.pranks.inbox()).rejects.toMatchObject({ status: 429, retryAfterMs: 17_000 });
+  });
 });

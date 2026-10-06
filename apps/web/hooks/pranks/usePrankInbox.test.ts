@@ -55,6 +55,7 @@ describe('usePrankInbox (poll)', () => {
     await flush();
     expect(deps.fetchInbox).toHaveBeenCalledTimes(2);
 
+    await act(async () => { vi.advanceTimersByTime(2_000); });
     rerender({ isPlaying: true });
     await flush();
     expect(deps.fetchInbox).toHaveBeenCalledTimes(3);
@@ -151,8 +152,10 @@ describe('usePrankInbox (poll)', () => {
     const idle = device(false);
     const phone = device(true);
     // The idle tab looks first.
-    renderHook(() => usePrankInbox({ userId: 'u1', isPlaying: false, receive: idle.receive, deps: idle }));
+    // (Two devices are two tabs; one tab runs one poller, so the first leaves.)
+    const idleTab = renderHook(() => usePrankInbox({ userId: 'u1', isPlaying: false, receive: idle.receive, deps: idle }));
     await flush();
+    idleTab.unmount();
     renderHook(() => usePrankInbox({ userId: 'u1', isPlaying: true, receive: phone.receive, deps: phone }));
     await flush();
     expect(idle.ack).not.toHaveBeenCalled();
@@ -167,7 +170,8 @@ describe('usePrankInbox (poll)', () => {
     renderHook(() => usePrankInbox({ userId: 'u1', isPlaying: true, receive: () => DELIVERED, deps }));
     await flush();
     inbox.push(ping('p2'));
-    await act(async () => { vi.advanceTimersByTime(POLL_PLAYING_MS); });
+    // The failed fetch backs off 5 s before the next try.
+    await act(async () => { vi.advanceTimersByTime(5_000); });
     await flush();
     expect(deps.ack).toHaveBeenCalledWith('p2', DELIVERED);
   });
@@ -216,5 +220,61 @@ describe('usePrankInbox (realtime)', () => {
 
     unmount();
     expect(link.off).toHaveBeenCalled();
+  });
+});
+
+describe('usePrankInbox (429 backoff)', () => {
+  const tooMany = (retryAfterMs: number | null = null) => Object.assign(new Error('Request failed: 429'), { status: 429, retryAfterMs });
+
+  it('does not refetch in a storm after a 429, even when isPlaying flaps', async () => {
+    const { deps } = fakeDeps();
+    deps.fetchInbox.mockRejectedValue(tooMany());
+    const { rerender } = renderHook((p: { isPlaying: boolean }) =>
+      usePrankInbox({ userId: 'u1', isPlaying: p.isPlaying, receive: () => null, deps }), { initialProps: { isPlaying: true } });
+    await flush();
+    for (let i = 0; i < 50; i++) {
+      rerender({ isPlaying: i % 2 === 0 });
+      await flush();
+      await act(async () => { vi.advanceTimersByTime(100); });
+    }
+    expect(deps.fetchInbox).toHaveBeenCalledTimes(1);
+    // 60 s of polling stays well under one request per poll tick.
+    await act(async () => { vi.advanceTimersByTime(60_000); });
+    await flush();
+    expect(deps.fetchInbox.mock.calls.length).toBeLessThanOrEqual(5);
+  });
+
+  it('honors Retry-After, then resumes', async () => {
+    const { deps } = fakeDeps();
+    deps.fetchInbox.mockRejectedValueOnce(tooMany(30_000));
+    renderHook(() => usePrankInbox({ userId: 'u1', isPlaying: true, receive: () => null, deps }));
+    await flush();
+    await act(async () => { vi.advanceTimersByTime(29_000); });
+    await flush();
+    expect(deps.fetchInbox).toHaveBeenCalledTimes(1);
+    await act(async () => { vi.advanceTimersByTime(2_500); });
+    await flush();
+    expect(deps.fetchInbox).toHaveBeenCalledTimes(2);
+  });
+
+  it('runs one poller per tab: a second mounted copy stays idle', async () => {
+    const { deps } = fakeDeps();
+    renderHook(() => usePrankInbox({ userId: 'u1', isPlaying: true, receive: () => null, deps }));
+    renderHook(() => usePrankInbox({ userId: 'u1', isPlaying: true, receive: () => null, deps }));
+    await flush();
+    expect(deps.fetchInbox).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not fetch while the tab is hidden', async () => {
+    const { deps } = fakeDeps();
+    Object.defineProperty(document, 'hidden', { configurable: true, get: () => true });
+    try {
+      renderHook(() => usePrankInbox({ userId: 'u1', isPlaying: true, receive: () => null, deps }));
+      await flush();
+      await act(async () => { vi.advanceTimersByTime(30_000); });
+      expect(deps.fetchInbox).not.toHaveBeenCalled();
+    } finally {
+      Object.defineProperty(document, 'hidden', { configurable: true, get: () => false });
+    }
   });
 });

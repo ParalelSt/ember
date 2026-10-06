@@ -118,6 +118,7 @@ describe('rateLimit consume:false / recordRateLimitHit', () => {
     recordRateLimitHit(key, quotaCfg);
     const res = rateLimitResponse(key, quotaCfg, { consume: false });
     expect(res?.status).toBe(429);
+    expect(Number(res?.headers.get("Retry-After"))).toBeGreaterThan(0);
     // Checking again did not add a third hit; the bucket is still exactly 2.
     expect(checkRateLimit(key, quotaCfg, { consume: false }).ok).toBe(false);
   });
