@@ -166,6 +166,17 @@ describe('toSummary', () => {
     expect(pinned.sharing).toBe('member');
   });
 
+  it('a playlist shared with you carries the owner for the "Shared by" badge', () => {
+    const shared = { role: 'member' as const, ownerName: 'Olga', ownerAvatarUrl: '/pb/olga.png' };
+    expect(toSummary({ kind: 'playlist', id: 'p1' }, { name: 'Trip', sharing: shared }).sharedBy).toEqual({
+      name: 'Olga',
+      avatarUrl: '/pb/olga.png',
+    });
+    const nameless = toSummary({ kind: 'playlist', id: 'p1' }, { name: 'Trip', sharing: { role: 'member' } });
+    expect(nameless.sharedBy).toEqual({ name: 'someone', avatarUrl: null });
+    expect(toSummary({ kind: 'playlist', id: 'p1' }, { sharing: { role: 'owner' } }).sharedBy).toBeUndefined();
+  });
+
   it('your own collaborative playlist says Collaborative until it is pinned', () => {
     const own = { role: 'owner' as const };
     expect(toSummary({ kind: 'playlist', id: 'p1' }, { sharing: own }).subtitle).toBe('Collaborative');
@@ -179,7 +190,12 @@ describe('sharingOf / sharedLabel', () => {
     expect(sharingOf({ role: 'owner', collaborative: false })).toBeUndefined();
     expect(sharingOf({})).toBeUndefined();
     expect(sharingOf({ role: 'owner', collaborative: true })).toEqual({ role: 'owner' });
-    expect(sharingOf({ role: 'member', collaborative: true, owner_name: 'Olga' })).toEqual({ role: 'member', ownerName: 'Olga' });
+    expect(sharingOf({ role: 'member', collaborative: true, owner_name: 'Olga' })).toEqual({
+      role: 'member',
+      ownerName: 'Olga',
+      ownerAvatarUrl: null,
+    });
+    expect(sharingOf({ role: 'member', owner_name: 'Olga', owner_avatar_url: '/pb/o.png' })?.ownerAvatarUrl).toBe('/pb/o.png');
     expect(sharedLabel({ role: 'member', owner_name: 'Olga' })).toBe('Shared by Olga');
     expect(sharedLabel({ role: 'owner', collaborative: true })).toBe('Collaborative');
     expect(sharedLabel({ role: 'owner' })).toBeUndefined();

@@ -542,3 +542,15 @@ describe('the invite preview (POST /api/playlists/join/preview)', () => {
     expect((await preview(member, CODE)).status).toBe(404);
   });
 });
+
+describe('the owner\'s face, for the "Shared by" badge', () => {
+  it('a member gets the owner\'s picture on the playlist and in the library; the owner does not need it', async () => {
+    world.db.users.find((u) => u.id === owner)!.avatar = 'olga.png';
+    const m = await call(one.GET, member, { id: shared });
+    expect(m.body.playlist.owner_avatar_url).toMatch(/olga\.png$/);
+    const lib = await call(list.GET, member);
+    expect(lib.body.playlists[0].owner_avatar_url).toMatch(/olga\.png$/);
+    const o = await call(one.GET, owner, { id: shared });
+    expect(o.body.playlist.owner_avatar_url ?? null).toBeNull();
+  });
+});

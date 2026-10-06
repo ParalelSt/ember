@@ -174,6 +174,7 @@ export async function sharedWith(admin: PocketBase, userId: string): Promise<Pla
       collaborative: true,
       role: 'member',
       owner_name: owner ? publicName(owner) : publicName(null),
+      owner_avatar_url: owner ? toPerson(owner).avatarUrl : null,
     }];
   });
 }

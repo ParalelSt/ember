@@ -42,6 +42,8 @@ export interface CollectionPageProps {
   eyebrow: string;
   title: string;
   meta: string[];
+  /** Under the title and meta: the "Shared by" badge, the people chip. */
+  belowTitle?: ReactNode;
   cover: CollectionCoverProps;
   onCoverClick?: () => void;
   coverLabel?: string;
@@ -94,6 +96,7 @@ export function CollectionPage({
   eyebrow,
   title,
   meta,
+  belowTitle,
   cover,
   onCoverClick,
   coverLabel,
@@ -133,6 +136,7 @@ export function CollectionPage({
           eyebrow={eyebrow}
           title={title}
           meta={meta}
+          belowTitle={belowTitle}
           cover={cover}
           onCoverClick={onCoverClick}
           coverLabel={coverLabel}

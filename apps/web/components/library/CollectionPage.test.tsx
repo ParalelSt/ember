@@ -81,6 +81,11 @@ describe('CollectionPage', () => {
     expect(screen.getByTestId('action-bar').className).not.toMatch(/(^|\s)m[tbxy]?-/);
   });
 
+  it('puts a block under the title (the "Shared by" badge) in the header', () => {
+    render(<CollectionPage {...props({ belowTitle: <span data-testid="under-title">Shared by Olga</span> })} />);
+    expect(within(screen.getByTestId('collection-header')).getByTestId('under-title')).toBeInTheDocument();
+  });
+
   it('keeps the page children after the stack', () => {
     render(
       <CollectionPage {...props()}>

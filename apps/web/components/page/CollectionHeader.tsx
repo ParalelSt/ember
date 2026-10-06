@@ -27,6 +27,9 @@ export interface CollectionHeaderProps {
   coverBusy?: boolean;
   /** Block under the meta line (the artist page's bio paragraph). */
   description?: ReactNode;
+  /** A small block right under the title and meta (the "Shared by" badge,
+   *  the people chip). */
+  belowTitle?: ReactNode;
   children?: ReactNode;
 }
 
@@ -59,6 +62,7 @@ export function CollectionHeader({
   coverLabel,
   coverBusy,
   description,
+  belowTitle,
   children,
 }: CollectionHeaderProps) {
   const v = HEADER_VARIANTS[variant];
@@ -102,6 +106,7 @@ export function CollectionHeader({
             ))}
           </div>
         )}
+        {belowTitle ? <div className={HEADER_CLASSES.meta}>{belowTitle}</div> : null}
         {description ? <div className={HEADER_CLASSES.description}>{description}</div> : null}
         {children ? <div className={HEADER_CLASSES.actions}>{children}</div> : null}
       </div>

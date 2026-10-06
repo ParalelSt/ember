@@ -12,6 +12,7 @@ import { CollectionPage } from '@/components/library/CollectionPage';
 import { PlaylistMenu } from '@/components/library/PlaylistMenu';
 import { RenamePlaylistDialog } from '@/components/library/RenamePlaylistDialog';
 import { CollaborateSheet } from '@/components/library/CollaborateSheet';
+import { SharedByBadge } from '@/components/library/SharedByBadge';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { useCollaborateSheet } from '@/hooks/useCollaborateSheet';
 import { api } from '@/lib/api';
@@ -172,7 +173,10 @@ export default function PlaylistPage({ params }: { params: Promise<{ id: string 
   const meta = job
     ? [`From ${SOURCE_NAME[job.source]}`, importing ? `${job.cursor} of ${job.total} songs` : countLabel(tracks.length)]
     : [countLabel(tracks.length)];
-  if (!isOwner) meta.unshift(`By ${playlist.owner_name || 'someone'}`);
+  // Shared with you: the "Shared by" badge under the title says whose it is.
+  const sharedBy = isOwner
+    ? undefined
+    : { name: playlist.owner_name || 'someone', avatarUrl: playlist.owner_avatar_url ?? null };
 
   // Move up / down: only while the list is shown in the playlist's own
   // order (the default sort), so "up" means up on screen too.
@@ -261,9 +265,10 @@ export default function PlaylistPage({ params }: { params: Promise<{ id: string 
 
   return (
     <CollectionPage
-      eyebrow={collaborative ? 'Collaborative playlist' : 'Playlist'}
+      eyebrow={collaborative && isOwner ? 'Collaborative playlist' : 'Playlist'}
       title={playlist.name}
       meta={meta}
+      belowTitle={sharedBy ? <SharedByBadge owner={sharedBy} /> : undefined}
       cover={{ src: localCoverSrc ?? playlist.artwork_url, icon: null }}
       // The cover is the owner's to change.
       onCoverClick={isOwner ? () => fileInputRef.current?.click() : undefined}
