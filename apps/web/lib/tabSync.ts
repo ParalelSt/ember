@@ -273,7 +273,7 @@ export interface Anchor {
 const MAX_EXTRAPOLATION_MS = 1000;
 
 /** The song time right now. The player's position arrives a few times a
- *  second; the cursor is fed every 50 ms, so between reports it moves on by
+ *  second; the cursor is fed every frame, so between reports it moves on by
  *  the wall clock while playing, at the playback speed (`rate` 0.5: half a
  *  second of song per second). Paused, it holds still. */
 export function estimateSongSec(anchor: Anchor, now: number, playing: boolean, rate = 1): number {
@@ -304,8 +304,12 @@ export function nextFrameMs(prev: number, delta: number): number {
   return prev + 0.1 * (Math.min(delta, 50) - prev);
 }
 
-/** The cursor is fed at most this often. */
-export const FEED_INTERVAL_MS = 50;
+/** The cursor is fed at most this often: every frame at 60 Hz, every
+ *  other at 120. AlphaTab re-aims its line only when the beat changes, and
+ *  between feeds it glides on at the last beat's pace; fed every 50 ms, a
+ *  new beat reached it up to three frames late and the line ran up to
+ *  250 ms past the song after a wide gap, then crawled back. */
+export const FEED_INTERVAL_MS = 15;
 
 /** The last position fed to the cursor (tab ms) and when (performance.now). */
 export interface Fed {

@@ -90,7 +90,7 @@ export interface LiveTabScoreProps {
  *  AlphaTab ships a synthesizer, and it is not used: Ember plays the real
  *  recording. The score is loaded in `EnabledExternalMedia` mode, where
  *  AlphaTab draws and moves the cursor while something else owns the time
- *  axis, and Ember's playhead is fed to it every 50 ms (between the
+ *  axis, and Ember's playhead is fed to it every frame (between the
  *  player's own reports the wall clock carries it on). A position that is
  *  not where playback would have got to (a seek, the sync nudge, a fresh
  *  layout) goes to AlphaTab as a seek, so the line jumps there rather than
@@ -572,7 +572,7 @@ export function LiveTabScore(props: LiveTabScoreProps) {
     }
   }, [follows, playing, synced]);
 
-  // ── feed the playhead every 50 ms ───────────────────────────────────────
+  // ── feed the playhead every frame ───────────────────────────────────────
   useEffect(() => {
     if (!follows || !synced) return;
     let raf = 0;
