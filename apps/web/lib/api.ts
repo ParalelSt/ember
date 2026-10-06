@@ -39,6 +39,9 @@ export interface AdminUser {
 export interface AdminTrack extends Track {
   /** PocketBase internal record id — used in admin PATCH / DELETE URLs. */
   recordId: string;
+  /** An uploaded song whose upload was deleted: the catalog row is kept
+   *  (playlists may hold it) but there is nothing left to stream. */
+  missing?: true;
 }
 
 export interface AdminInvite {
