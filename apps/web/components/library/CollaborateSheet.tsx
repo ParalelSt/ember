@@ -24,7 +24,12 @@ export interface CollaborateSheetData {
   picking: boolean;
   onPickingChange: (picking: boolean) => void;
   busy: boolean;
-  onToggle: (on: boolean) => void;
+  /** The big "Copy invite link": turns sharing on if it is off, makes a
+   *  link if there is none, and copies it. */
+  onShareLink: () => void;
+  /** Turns sharing off (and the link with it). */
+  onStopSharing: () => void;
+  /** Adds someone, turning sharing on first if it is off. */
   onAdd: (person: PlaylistPerson) => void;
   onRemove: (person: PlaylistPerson) => void;
   onNewLink: () => void;
@@ -35,16 +40,20 @@ export interface CollaborateSheetData {
 export interface CollaborateSheetProps extends CollaborateSheetData {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  playlistName: string;
 }
 
-/** Presentational only: the Collaborate sheet, from the playlist menu. The
- *  owner turns collaboration on and off, adds people by name, removes them,
- *  and makes, copies, replaces or turns off the invite link. A member sees
- *  who else can edit, read-only. A side sheet on a desktop window, a
- *  bottom sheet on a phone, like the other sheets. */
+/** Presentational only: the share sheet, from the people chip under the
+ *  title or the playlist menu. Link first: the owner's one big "Copy invite
+ *  link" turns sharing on (there is no separate switch), then Copy link,
+ *  New link and Turn off link once a link exists; "People who can edit"
+ *  with Add by name under it; Stop sharing at the end. A member sees who
+ *  can edit, read-only. A side sheet on a desktop window, a bottom sheet
+ *  on a phone, like the other sheets. */
 export function CollaborateSheet({
   open,
   onOpenChange,
+  playlistName,
   side,
   state,
   error,
@@ -55,7 +64,8 @@ export function CollaborateSheet({
   picking,
   onPickingChange,
   busy,
-  onToggle,
+  onShareLink,
+  onStopSharing,
   onAdd,
   onRemove,
   onNewLink,
@@ -79,7 +89,8 @@ export function CollaborateSheet({
     );
   }, [people, memberIds, query]);
 
-  const title = isOwner || !state ? 'Collaborate' : 'Who can edit';
+  const title = isOwner || !state ? `Share "${playlistName}"` : 'Who can edit';
+  const shared = !!state?.collaborative;
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -90,10 +101,10 @@ export function CollaborateSheet({
       >
         <div className="flex min-h-0 flex-col gap-stack overflow-y-auto px-block pt-block pb-stack">
           <div className="flex flex-col gap-inset pr-section">
-            <SheetTitle className="text-base font-semibold">{title}</SheetTitle>
+            <SheetTitle className="text-base font-semibold break-words">{title}</SheetTitle>
             <SheetDescription>
               {isOwner || !state
-                ? 'People you add can add, remove and reorder songs. Only you can rename it, change the cover or delete it.'
+                ? 'People you invite can add, remove and reorder songs. Only you can rename it, change the cover or delete it.'
                 : 'Everyone here can add, remove and reorder songs. Only the owner can rename it, change the cover or delete it.'}
             </SheetDescription>
           </div>
@@ -101,33 +112,64 @@ export function CollaborateSheet({
           {error && <p className="text-sm text-muted-foreground">Couldn’t load this. {error}</p>}
           {!state && !error && <p className="text-sm text-muted-foreground">Loading…</p>}
 
-          {state && isOwner && <SwitchRow on={state.collaborative} busy={busy} onToggle={() => onToggle(!state.collaborative)} />}
+          {state && isOwner && (
+            <section data-testid="collab-link" className="flex flex-col gap-cluster rounded-lg border border-border p-block">
+              <div className="flex items-center gap-cluster text-sm font-semibold">
+                <LinkIcon className="size-4 text-ember" /> Invite link
+              </div>
+              {inviteLink && shared ? (
+                <>
+                  <Input
+                    readOnly
+                    value={inviteLink}
+                    aria-label="Invite link"
+                    data-testid="collab-link-url"
+                    onFocus={(e) => e.currentTarget.select()}
+                  />
+                  <Button variant="ember" className="h-10 w-full" data-testid="collab-link-copy" onClick={onCopyLink}>
+                    <CopyIcon /> Copy link
+                  </Button>
+                  <div className="flex flex-wrap gap-cluster">
+                    <Button variant="ghost" size="sm" data-testid="collab-link-new" disabled={busy} onClick={onNewLink}>
+                      <RefreshIcon /> New link
+                    </Button>
+                    <Button variant="ghost" size="sm" data-testid="collab-link-off" disabled={busy} onClick={onStopLink}>
+                      Turn off link
+                    </Button>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    New link or Turn off link stops the old one working. Removing someone also replaces it.
+                  </p>
+                </>
+              ) : (
+                <>
+                  <p className="text-xs text-muted-foreground">
+                    Send it in any chat. Whoever opens it, signed in to this server, can edit.
+                  </p>
+                  <Button
+                    variant="ember"
+                    className="h-10 w-full"
+                    data-testid="collab-link-create"
+                    disabled={busy}
+                    onClick={onShareLink}
+                  >
+                    <CopyIcon /> Copy invite link
+                  </Button>
+                </>
+              )}
+            </section>
+          )}
 
-          {state?.collaborative && (
+          {state && (isOwner || shared) && (
             <section data-testid="collab-people" className="flex flex-col gap-cluster">
               <div className="flex items-center justify-between gap-row">
-                <h3 className="text-sm font-semibold">People</h3>
+                <h3 className="text-sm font-semibold">{isOwner ? 'People who can edit' : 'People'}</h3>
                 {isOwner && !picking && state.members.length < state.maxMembers && (
                   <Button variant="ghost" size="sm" data-testid="collab-add" onClick={() => onPickingChange(true)}>
-                    <AddPersonIcon /> Add people
+                    <AddPersonIcon /> Add by name
                   </Button>
                 )}
               </div>
-              <PersonRow person={state.owner} you={state.owner.id === meId} tag="Owner" />
-              {state.members.map((m) => (
-                <PersonRow
-                  key={m.id}
-                  person={m}
-                  you={m.id === meId}
-                  onRemove={isOwner ? () => onRemove(m) : undefined}
-                  busy={busy}
-                />
-              ))}
-              {state.members.length === 0 && (
-                <p className="text-sm text-muted-foreground">
-                  {isOwner ? 'Nobody yet. Add people, or send them the invite link.' : 'Nobody else yet.'}
-                </p>
-              )}
 
               {isOwner && picking && (
                 <div data-testid="collab-picker" className="flex flex-col gap-cluster rounded-lg border border-border p-cluster">
@@ -143,7 +185,7 @@ export function CollaborateSheet({
                       <CloseIcon />
                     </Button>
                   </div>
-                  <div className="flex max-h-60 flex-col gap-inset overflow-y-auto">
+                  <div className="flex max-h-48 flex-col gap-inset overflow-y-auto">
                     {peopleLoading && <p className="px-cluster text-sm text-muted-foreground">Loading…</p>}
                     {people && candidates.length === 0 && (
                       <p className="px-cluster text-sm text-muted-foreground">
@@ -156,77 +198,38 @@ export function CollaborateSheet({
                   </div>
                 </div>
               )}
+
+              {isOwner && !shared && state.members.length > 0 && (
+                <p className="text-xs text-muted-foreground">
+                  Sharing is off. These people can edit again once you share it.
+                </p>
+              )}
+              <PersonRow person={state.owner} you={state.owner.id === meId} tag="Owner" />
+              {state.members.map((m) => (
+                <PersonRow
+                  key={m.id}
+                  person={m}
+                  you={m.id === meId}
+                  onRemove={isOwner ? () => onRemove(m) : undefined}
+                  busy={busy}
+                />
+              ))}
+              {state.members.length === 0 && (
+                <p className="text-sm text-muted-foreground">{isOwner ? 'Only you so far.' : 'Nobody else yet.'}</p>
+              )}
             </section>
           )}
 
-          {state?.collaborative && isOwner && (
-            <section data-testid="collab-link" className="flex flex-col gap-cluster">
-              <h3 className="text-sm font-semibold">Invite link</h3>
-              <p className="text-xs text-muted-foreground">
-                Anyone signed in to this server who opens it is added. Turn it off or make a new one to stop the old link working.
-                Removing someone also replaces it.
-              </p>
-              {inviteLink ? (
-                <>
-                  <Input
-                    readOnly
-                    value={inviteLink}
-                    aria-label="Invite link"
-                    data-testid="collab-link-url"
-                    onFocus={(e) => e.currentTarget.select()}
-                  />
-                  <div className="flex flex-wrap gap-cluster">
-                    <Button variant="ember" size="sm" data-testid="collab-link-copy" onClick={onCopyLink}>
-                      <CopyIcon /> Copy link
-                    </Button>
-                    <Button variant="ghost" size="sm" data-testid="collab-link-new" disabled={busy} onClick={onNewLink}>
-                      <RefreshIcon /> New link
-                    </Button>
-                    <Button variant="ghost" size="sm" data-testid="collab-link-off" disabled={busy} onClick={onStopLink}>
-                      Turn off
-                    </Button>
-                  </div>
-                </>
-              ) : (
-                <div>
-                  <Button variant="outline" size="sm" data-testid="collab-link-create" disabled={busy} onClick={onNewLink}>
-                    <LinkIcon /> Create invite link
-                  </Button>
-                </div>
-              )}
-            </section>
+          {isOwner && shared && (
+            <div>
+              <Button variant="destructive" data-testid="collab-stop-sharing" disabled={busy} onClick={onStopSharing}>
+                Stop sharing
+              </Button>
+            </div>
           )}
         </div>
       </SheetContent>
     </Sheet>
-  );
-}
-
-function SwitchRow({ on, busy, onToggle }: { on: boolean; busy: boolean; onToggle: () => void }) {
-  return (
-    <div className="flex items-center justify-between gap-row rounded-lg border border-border px-row py-cluster">
-      <div className="min-w-0">
-        <div className="text-sm font-medium">Collaborative</div>
-        <div className="text-xs text-muted-foreground">
-          {on ? 'People you add can edit the songs.' : 'Only you can change this playlist.'}
-        </div>
-      </div>
-      <button
-        type="button"
-        role="switch"
-        aria-checked={on}
-        aria-label="Collaborative"
-        data-testid="collab-switch"
-        disabled={busy}
-        onClick={onToggle}
-        className={cn(
-          'relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors disabled:opacity-50',
-          on ? 'bg-ember' : 'bg-muted',
-        )}
-      >
-        <span className={cn('block size-4 rounded-full bg-background transition-transform', on ? 'translate-x-6' : 'translate-x-1')} />
-      </button>
-    </div>
   );
 }
 

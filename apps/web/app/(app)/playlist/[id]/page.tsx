@@ -12,6 +12,10 @@ import { CollectionPage } from '@/components/library/CollectionPage';
 import { PlaylistMenu } from '@/components/library/PlaylistMenu';
 import { RenamePlaylistDialog } from '@/components/library/RenamePlaylistDialog';
 import { CollaborateSheet } from '@/components/library/CollaborateSheet';
+import { SharedByBadge } from '@/components/library/SharedByBadge';
+import { PeopleChip } from '@/components/library/PeopleChip';
+import { useQueryPlaylistCollab } from '@/hooks/usePlaylistCollab';
+import { chipPeople, moveItem } from '@/lib/collab';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { useCollaborateSheet } from '@/hooks/useCollaborateSheet';
 import { api } from '@/lib/api';
@@ -42,8 +46,8 @@ import { useOnline } from '@/lib/useOnline';
 import {
   useExecuteAddToPlaylist,
   useExecuteDeletePlaylist,
-  useExecuteMovePlaylistTrack,
   useExecuteRemoveFromPlaylist,
+  useExecuteReorderPlaylist,
   useExecuteRenamePlaylist,
   useExecuteReplaceInPlaylist,
   useExecuteUpdatePlaylistArtwork,
@@ -69,13 +73,19 @@ export default function PlaylistPage({ params }: { params: Promise<{ id: string 
   const updateArtwork = useExecuteUpdatePlaylistArtwork();
   const replaceInPlaylist = useExecuteReplaceInPlaylist();
   const renamePlaylist = useExecuteRenamePlaylist();
-  const moveTrack = useExecuteMovePlaylistTrack();
+  const reorderPlaylist = useExecuteReorderPlaylist();
+  // Edit order's working copy of the list, or null outside Edit order.
+  const [draftOrder, setDraftOrder] = useState<Track[] | null>(null);
   const { user } = useAuth();
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
   const [confirmLeaveOpen, setConfirmLeaveOpen] = useState(false);
   const [renameOpen, setRenameOpen] = useState(false);
   const [collabOpen, setCollabOpen] = useState(false);
   const collabSheet = useCollaborateSheet(id, collabOpen);
+  // The owner's people chip: who is on it, once it is shared (the same
+  // query the share sheet reads, so opening the sheet costs nothing).
+  const ownsShared = (data?.playlist.role ?? 'owner') === 'owner' && data?.playlist.collaborative === true;
+  const collabState = useQueryPlaylistCollab(id, ownsShared).data;
   const [pendingRemove, setPendingRemove] = useState<Track | null>(null);
   const [pendingReplace, setPendingReplace] = useState<Track | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -172,29 +182,37 @@ export default function PlaylistPage({ params }: { params: Promise<{ id: string 
   const meta = job
     ? [`From ${SOURCE_NAME[job.source]}`, importing ? `${job.cursor} of ${job.total} songs` : countLabel(tracks.length)]
     : [countLabel(tracks.length)];
-  if (!isOwner) meta.unshift(`By ${playlist.owner_name || 'someone'}`);
+  // Yours: the people chip opens the share sheet. Shared with you: the
+  // "Shared by" badge under the title says whose it is.
+  const me = { name: user?.name || 'You', avatarUrl: user?.avatarUrl ?? null };
+  const people = chipPeople(collaborative, collabState, me);
+  const sharedBy = isOwner
+    ? undefined
+    : { name: playlist.owner_name || 'someone', avatarUrl: playlist.owner_avatar_url ?? null };
 
-  // Move up / down: only while the list is shown in the playlist's own
-  // order (the default sort), so "up" means up on screen too.
-  const inOwnOrder = sameSort(sort, DEFAULT_PLAYLIST_SORT) && !showImport && !selection.selecting;
-  const movesFor = (t: Track) => {
-    if (!inOwnOrder) return undefined;
-    const at = rawTracks.findIndex((x) => x.id === t.id);
-    if (at < 0) return undefined;
-    const move = (to: number) =>
-      moveTrack.mutate(
-        { id, trackId: t.id, from: at, to },
-        { onError: (e) => toast.error(`Couldn't move "${t.title}": ${(e as Error).message}`) },
-      );
-    return {
-      up: at > 0 ? () => move(at - 1) : undefined,
-      down: at < rawTracks.length - 1 ? () => move(at + 1) : undefined,
-    };
+  // Edit order: everyone who can open the playlist can reorder it. It
+  // edits the playlist's own order, so it starts by showing that order.
+  const startEditOrder = () => {
+    if (!sameSort(sort, DEFAULT_PLAYLIST_SORT)) setSort(DEFAULT_PLAYLIST_SORT);
+    setDraftOrder(rawTracks);
+  };
+  const finishEditOrder = () => {
+    const draft = draftOrder ?? [];
+    setDraftOrder(null);
+    const order = draft.map((t) => t.id);
+    if (order.join('\n') === rawTracks.map((t) => t.id).join('\n')) return;
+    reorderPlaylist.mutate(
+      { id, order },
+      {
+        onSuccess: () => toast.success('Order saved'),
+        onError: (e) => toast.error(`Couldn't save the order: ${(e as Error).message}`),
+      },
+    );
   };
 
   const trailing = (t: Track) => {
     const item = job ? itemForTrack(items, t) : null;
-    return <TrackMenu track={t} onRematch={item ? () => review.openRematch(item) : undefined} moves={movesFor(t)} />;
+    return <TrackMenu track={t} onRematch={item ? () => review.openRematch(item) : undefined} />;
   };
 
   const act = (action: 'cancel' | 'retry' | 'dismiss') =>
@@ -261,9 +279,12 @@ export default function PlaylistPage({ params }: { params: Promise<{ id: string 
 
   return (
     <CollectionPage
-      eyebrow={collaborative ? 'Collaborative playlist' : 'Playlist'}
+      eyebrow={collaborative && isOwner ? 'Collaborative playlist' : 'Playlist'}
       title={playlist.name}
       meta={meta}
+      belowTitle={
+        sharedBy ? <SharedByBadge owner={sharedBy} /> : <PeopleChip people={people} onOpen={() => setCollabOpen(true)} />
+      }
       cover={{ src: localCoverSrc ?? playlist.artwork_url, icon: null }}
       // The cover is the owner's to change.
       onCoverClick={isOwner ? () => fileInputRef.current?.click() : undefined}
@@ -323,6 +344,18 @@ export default function PlaylistPage({ params }: { params: Promise<{ id: string 
       selection={selection}
       addedLabel={addedLabel}
       addedBy={collaborative ? addedBy : undefined}
+      reorder={
+        showImport
+          ? undefined
+          : {
+              editing: draftOrder !== null,
+              tracks: draftOrder ?? tracks,
+              onStart: startEditOrder,
+              onDone: finishEditOrder,
+              onMove: (from, to) => setDraftOrder((d) => (d ? moveItem(d, from, to) : d)),
+              saving: reorderPlaylist.isPending,
+            }
+      }
       selectionBar={
         <CopySongsBar
           source={{ kind: 'playlist', id }}
@@ -381,7 +414,7 @@ export default function PlaylistPage({ params }: { params: Promise<{ id: string 
         }
       />
 
-      <CollaborateSheet open={collabOpen} onOpenChange={setCollabOpen} {...collabSheet} />
+      <CollaborateSheet open={collabOpen} onOpenChange={setCollabOpen} playlistName={playlist.name} {...collabSheet} />
 
       <ConfirmDialog
         open={!!pendingRemove}

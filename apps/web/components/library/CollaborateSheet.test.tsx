@@ -27,6 +27,7 @@ function setup(patch: Partial<Parameters<typeof CollaborateSheet>[0]> = {}) {
   const props = {
     open: true,
     onOpenChange: vi.fn(),
+    playlistName: 'Road trip',
     side: 'right' as const,
     state: state(),
     error: null,
@@ -37,7 +38,8 @@ function setup(patch: Partial<Parameters<typeof CollaborateSheet>[0]> = {}) {
     picking: false,
     onPickingChange: vi.fn(),
     busy: false,
-    onToggle: vi.fn(),
+    onShareLink: vi.fn(),
+    onStopSharing: vi.fn(),
     onAdd: vi.fn(),
     onRemove: vi.fn(),
     onNewLink: vi.fn(),
@@ -49,26 +51,57 @@ function setup(patch: Partial<Parameters<typeof CollaborateSheet>[0]> = {}) {
   return props;
 }
 
-describe('CollaborateSheet, the owner', () => {
-  it('shows the switch, the owner and members, and removes a member', () => {
+describe('CollaborateSheet, the owner (link first)', () => {
+  it('is titled Share "<name>" and has no Collaborative switch', () => {
+    setup({ state: state({ collaborative: false, members: [] }) });
+    expect(screen.getByRole('heading', { name: 'Share "Road trip"' })).toBeInTheDocument();
+    expect(screen.queryByRole('switch')).toBeNull();
+  });
+
+  it('first time: one big Copy invite link that turns sharing on; only you so far; no Stop sharing', () => {
+    const p = setup({ state: state({ collaborative: false, members: [] }) });
+    const link = screen.getByTestId('collab-link');
+    expect(within(link).queryByTestId('collab-link-url')).toBeNull();
+    fireEvent.click(within(link).getByRole('button', { name: 'Copy invite link' }));
+    expect(p.onShareLink).toHaveBeenCalled();
+    expect(screen.getByTestId('collab-people')).toHaveTextContent('Only you so far.');
+    expect(screen.queryByTestId('collab-stop-sharing')).toBeNull();
+  });
+
+  it('shared but no link yet: the same Copy invite link makes one', () => {
     const p = setup();
-    expect(screen.getByRole('switch', { name: 'Collaborative' })).toHaveAttribute('aria-checked', 'true');
-    const rows = screen.getAllByTestId('collab-person');
-    expect(rows.map((r) => r.textContent)).toEqual(['OOlgaOwner · You', 'Mia']);
+    fireEvent.click(screen.getByTestId('collab-link-create'));
+    expect(p.onShareLink).toHaveBeenCalled();
+  });
+
+  it('with a link: the link, Copy link, New link and Turn off link', () => {
+    const p = setup({ inviteLink: 'https://ember.test/playlist/join/abc' });
+    expect(screen.getByTestId('collab-link-url')).toHaveValue('https://ember.test/playlist/join/abc');
+    expect(screen.queryByTestId('collab-link-create')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Copy link' }));
+    fireEvent.click(screen.getByRole('button', { name: 'New link' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Turn off link' }));
+    expect(p.onCopyLink).toHaveBeenCalled();
+    expect(p.onNewLink).toHaveBeenCalled();
+    expect(p.onStopLink).toHaveBeenCalled();
+  });
+
+  it('People who can edit: the owner and members, and removes a member', () => {
+    const p = setup();
+    const people = screen.getByTestId('collab-people');
+    expect(within(people).getByRole('heading', { name: 'People who can edit' })).toBeInTheDocument();
+    expect(screen.getAllByTestId('collab-person').map((r) => r.textContent)).toEqual(['OOlgaOwner · You', 'Mia']);
     fireEvent.click(screen.getByRole('button', { name: 'Remove Mia' }));
     expect(p.onRemove).toHaveBeenCalledWith(mia);
-    fireEvent.click(screen.getByRole('switch', { name: 'Collaborative' }));
-    expect(p.onToggle).toHaveBeenCalledWith(false);
   });
 
-  it('while it is off: only the switch, no people or link', () => {
-    setup({ state: state({ collaborative: false }) });
-    expect(screen.getByRole('switch')).toHaveAttribute('aria-checked', 'false');
-    expect(screen.queryByTestId('collab-people')).toBeNull();
-    expect(screen.queryByTestId('collab-link')).toBeNull();
+  it('Add by name opens the picker, which leaves out members and filters by name', () => {
+    const first = setup({ state: state({ collaborative: false, members: [] }) });
+    fireEvent.click(screen.getByRole('button', { name: 'Add by name' }));
+    expect(first.onPickingChange).toHaveBeenCalledWith(true);
   });
 
-  it('the picker leaves out members and filters by name', () => {
+  it('the picker', () => {
     const p = setup({ picking: true, people: [mia, xan, { id: 'ana', name: 'Ana', avatarUrl: null }] });
     const picker = screen.getByTestId('collab-picker');
     expect(within(picker).getAllByTestId('collab-candidate').map((r) => r.textContent)).toEqual(['XXanAdd', 'AAnaAdd']);
@@ -76,6 +109,8 @@ describe('CollaborateSheet, the owner', () => {
     expect(within(picker).getAllByTestId('collab-candidate')).toHaveLength(1);
     fireEvent.click(within(picker).getByRole('button', { name: 'Add Xan' }));
     expect(p.onAdd).toHaveBeenCalledWith(xan);
+    fireEvent.click(within(picker).getByRole('button', { name: 'Close the picker' }));
+    expect(p.onPickingChange).toHaveBeenCalledWith(false);
   });
 
   it('an email shows only when the server sent one (an admin owner)', () => {
@@ -83,26 +118,26 @@ describe('CollaborateSheet, the owner', () => {
     expect(screen.getByTestId('collab-candidate').textContent).toContain('xan@ember.test');
   });
 
-  it('the invite link: create when off; copy, replace and turn off when on', () => {
-    const off = setup();
-    fireEvent.click(screen.getByTestId('collab-link-create'));
-    expect(off.onNewLink).toHaveBeenCalled();
+  it('Stop sharing at the end, while it is shared', () => {
+    const p = setup();
+    fireEvent.click(screen.getByTestId('collab-stop-sharing'));
+    expect(p.onStopSharing).toHaveBeenCalled();
   });
 
-  it('with a link on', () => {
-    const on = setup({ inviteLink: 'https://ember.test/playlist/join/abc' });
-    expect(screen.getByTestId('collab-link-url')).toHaveValue('https://ember.test/playlist/join/abc');
-    fireEvent.click(screen.getByTestId('collab-link-copy'));
-    fireEvent.click(screen.getByTestId('collab-link-new'));
-    fireEvent.click(screen.getByTestId('collab-link-off'));
-    expect(on.onCopyLink).toHaveBeenCalled();
-    expect(on.onNewLink).toHaveBeenCalled();
-    expect(on.onStopLink).toHaveBeenCalled();
+  it('sharing off with people still listed: says they get back in when it is shared again', () => {
+    setup({ state: state({ collaborative: false }) });
+    expect(screen.getByTestId('collab-people')).toHaveTextContent('Sharing is off.');
+    expect(screen.queryByTestId('collab-stop-sharing')).toBeNull();
   });
 
-  it('no Add people at the cap', () => {
+  it('no Add by name at the cap', () => {
     setup({ state: state({ maxMembers: 1 }) });
-    expect(screen.queryByTestId('collab-add')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Add by name' })).toBeNull();
+  });
+
+  it('busy: the link buttons wait', () => {
+    setup({ busy: true, state: state({ collaborative: false, members: [] }) });
+    expect(screen.getByRole('button', { name: 'Copy invite link' })).toBeDisabled();
   });
 });
 
@@ -110,10 +145,10 @@ describe('CollaborateSheet, a member', () => {
   it('reads who can edit, and nothing else', () => {
     setup({ state: state({ role: 'member', inviteCode: undefined, members: [mia, xan] }), meId: 'mia' });
     expect(screen.getByRole('heading', { name: 'Who can edit' })).toBeInTheDocument();
-    expect(screen.queryByRole('switch')).toBeNull();
     expect(screen.queryByRole('button', { name: /Remove/ })).toBeNull();
-    expect(screen.queryByTestId('collab-add')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Add by name' })).toBeNull();
     expect(screen.queryByTestId('collab-link')).toBeNull();
+    expect(screen.queryByTestId('collab-stop-sharing')).toBeNull();
     expect(screen.getAllByTestId('collab-person').map((r) => r.textContent)).toEqual(['OOlgaOwner', 'MiaYou', 'XXan']);
   });
 });

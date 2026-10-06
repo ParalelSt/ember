@@ -8,7 +8,7 @@ import { useOfflineStore } from '@/stores/useOfflineStore';
 import { logger } from '@/lib/logger/client';
 import { LIKED_PIN, RECENT_PIN, pinLiked, pinList, playableFor } from '@/lib/offline';
 import { nativeOfflinePresent } from '@/lib/offlineNative';
-import { moveItem } from '@/lib/collab';
+import { planMoves } from '@/lib/collab';
 import type { CollectionTrack, Playlist, Track } from '@/types/track';
 
 /** How often an open collaborative playlist asks for other people's
@@ -417,22 +417,34 @@ export function useExecuteRenamePlaylist() {
   });
 }
 
-/** Move one song within the playlist's own order. The cache moves first,
- *  so the row jumps at once; a failure puts it back. `from` and `to` are
- *  places in the server's order (the page only offers moves while the list
- *  is shown in that order). */
-export function useExecuteMovePlaylistTrack() {
+/** Edit order's Done: `order` is the songs' ids as the list shows them.
+ *  The cache takes the new order at once; the server gets the fewest
+ *  single moves that make it (lib/collab's planMoves), one after the other
+ *  because each reads the order the last one left. A song someone else
+ *  added meanwhile stays, after the rest; one they removed is skipped. A
+ *  refusal puts the old order back (the refetch brings whatever did land). */
+export function useExecuteReorderPlaylist() {
   const qc = useQueryClient();
   type Data = { playlist: Playlist; tracks: CollectionTrack[] };
   return useMutation({
-    mutationFn: ({ id, trackId, to }: { id: string; trackId: string; from: number; to: number }) =>
-      api.movePlaylistTrack(id, trackId, to),
-    onMutate: async ({ id, from, to }) => {
+    onMutate: async ({ id }) => {
       editStarted(id);
       await qc.cancelQueries({ queryKey: QK.playlist(id) });
+      return { prev: qc.getQueryData<Data>(QK.playlist(id)) };
+    },
+    mutationFn: async ({ id, order }: { id: string; order: string[] }) => {
+      // Planned from the order before this change, then shown at once.
       const prev = qc.getQueryData<Data>(QK.playlist(id));
-      if (prev) qc.setQueryData<Data>(QK.playlist(id), { ...prev, tracks: moveItem(prev.tracks, from, to) });
-      return { prev };
+      const current = (prev?.tracks ?? []).map((t) => t.id);
+      const ids = lineUp(current, order);
+      if (prev) {
+        const byId = new Map(prev.tracks.map((t) => [t.id, t]));
+        qc.setQueryData<Data>(QK.playlist(id), { ...prev, tracks: ids.map((x) => byId.get(x)!) });
+      }
+      for (const m of planMoves(current, ids)) {
+        await api.movePlaylistTrack(id, m.trackId, m.to);
+      }
+      return { ok: true as const };
     },
     onError: (_e, { id }, ctx) => {
       if (ctx?.prev) qc.setQueryData(QK.playlist(id), ctx.prev);
@@ -442,6 +454,14 @@ export function useExecuteMovePlaylistTrack() {
       return qc.invalidateQueries({ queryKey: QK.playlist(id) });
     },
   });
+}
+
+/** `order` with the songs no longer in `current` left out and the ones it
+ *  does not know (added meanwhile) after the rest. */
+function lineUp(current: string[], order: string[]): string[] {
+  const here = new Set(current);
+  const known = new Set(order);
+  return [...order.filter((x) => here.has(x)), ...current.filter((x) => !known.has(x))];
 }
 
 /** Copy songs into a playlist (the Copy to… bar). The server skips the ones

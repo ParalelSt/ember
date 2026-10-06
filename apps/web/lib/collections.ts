@@ -80,6 +80,8 @@ export interface CollectionSummary {
   /** A collaborative playlist: `owner` yours, `member` someone else's that
    *  was shared with you. Absent for everything else. */
   sharing?: 'owner' | 'member';
+  /** A playlist shared with you: its owner, for the "Shared by" badge. */
+  sharedBy?: { name: string; avatarUrl: string | null };
 }
 
 /** Pure: no queries, no store reads. A system collection's subtitle is
@@ -95,7 +97,7 @@ export function toSummary(
     artworkUrl?: string | null;
     downloaded?: boolean;
     /** Only for a collaborative playlist. */
-    sharing?: { role: 'owner' | 'member'; ownerName?: string | null };
+    sharing?: { role: 'owner' | 'member'; ownerName?: string | null; ownerAvatarUrl?: string | null };
   } = {},
 ): CollectionSummary {
   const { name, count, artworkUrl = null, downloaded = false, sharing } = meta;
@@ -117,15 +119,21 @@ export function toSummary(
     artworkUrl,
     downloaded,
     ...(ref.kind === 'playlist' && sharing ? { sharing: sharing.role } : {}),
+    ...(ref.kind === 'playlist' && sharing?.role === 'member'
+      ? { sharedBy: { name: sharing.ownerName || 'someone', avatarUrl: sharing.ownerAvatarUrl ?? null } }
+      : {}),
   };
 }
 
 /** A playlist's sharing, for toSummary and the nav rows: only a
  *  collaborative one has any. */
-export function sharingOf(p: { collaborative?: boolean; role?: 'owner' | 'member'; owner_name?: string | null }):
-  | { role: 'owner' | 'member'; ownerName?: string | null }
-  | undefined {
-  if (p.role === 'member') return { role: 'member', ownerName: p.owner_name };
+export function sharingOf(p: {
+  collaborative?: boolean;
+  role?: 'owner' | 'member';
+  owner_name?: string | null;
+  owner_avatar_url?: string | null;
+}): { role: 'owner' | 'member'; ownerName?: string | null; ownerAvatarUrl?: string | null } | undefined {
+  if (p.role === 'member') return { role: 'member', ownerName: p.owner_name, ownerAvatarUrl: p.owner_avatar_url ?? null };
   return p.collaborative ? { role: 'owner' } : undefined;
 }
 

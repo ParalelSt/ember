@@ -50,6 +50,7 @@ const membersRoute = await import('./[id]/members/route');
 const memberRoute = await import('./[id]/members/[userId]/route');
 const peopleRoute = await import('./[id]/people/route');
 const joinRoute = await import('./join/route');
+const previewRoute = await import('./join/preview/route');
 
 type Handler = (req: NextRequest, ctx: never) => Promise<Response>;
 const req = (body?: unknown) =>
@@ -450,5 +451,106 @@ describe('the invite link', () => {
   it('a code two playlists share is refused rather than guessed', async () => {
     world.addPlaylist(outsider, 'Copycat', { collaborative: true, invite_code: 'A'.repeat(32) });
     expect((await call(joinRoute.POST, member, {}, { code: 'A'.repeat(32) })).status).toBe(404);
+  });
+});
+
+describe('the invite preview (POST /api/playlists/join/preview)', () => {
+  const CODE = 'A'.repeat(32);
+  const preview = (as: string, code: unknown) => call(previewRoute.POST, as, {}, { code });
+
+  it('shows what the card needs and adds nobody', async () => {
+    world.addMember(shared, world.addUser('').id);
+    const before = JSON.stringify(world.db);
+    const r = await preview(outsider, CODE);
+    expect(r.status).toBe(200);
+    expect(r.body).toEqual({
+      name: 'Road trip',
+      artworkUrl: null,
+      owner: { name: 'Olga', avatarUrl: null },
+      people: [
+        { name: 'Olga', avatarUrl: null },
+        { name: 'Mia', avatarUrl: expect.stringMatching(/mia\.png$/) },
+        { name: 'Unnamed member', avatarUrl: null },
+      ],
+      peopleCount: 3,
+      songCount: 3,
+      songs: [
+        { title: 'youtube:aaa', artist: 'Band', artworkUrl: null },
+        { title: 'youtube:bbb', artist: 'Band', artworkUrl: null },
+        { title: 'youtube:ccc', artist: 'Band', artworkUrl: null },
+      ],
+      alreadyIn: false,
+    });
+    expect(JSON.stringify(world.db)).toBe(before);
+    expect(world.db.playlist_members.some((m) => m.user === outsider)).toBe(false);
+  });
+
+  it('never shows an email, a user id or the playlist id to someone not on it', async () => {
+    const r = await preview(outsider, CODE);
+    const text = JSON.stringify(r.body);
+    expect(text).not.toContain('@');
+    expect(text).not.toContain(owner);
+    expect(text).not.toContain(shared);
+    expect(text).not.toContain('job1');
+    expect(r.body.playlistId).toBeUndefined();
+    // Who added which song is the members' business.
+    expect(text).not.toContain('addedBy');
+  });
+
+  it('only the first three songs, with the real count', async () => {
+    const d = world.addTrack('youtube:ddd').id;
+    world.addRow(shared, d, 4, owner);
+    const r = await preview(outsider, CODE);
+    expect(r.body.songs).toHaveLength(3);
+    expect(r.body.songCount).toBe(4);
+  });
+
+  it('the owner or a member is told they are already on it, with the id to open', async () => {
+    for (const who of [owner, member]) {
+      const r = await preview(who, CODE);
+      expect(r.body).toMatchObject({ alreadyIn: true, playlistId: shared });
+    }
+  });
+
+  it('a missing, short or odd code is a 404 before any lookup', async () => {
+    for (const code of [undefined, '', 'short', 'A'.repeat(31) + '"', { $ne: '' }]) {
+      const r = await preview(outsider, code);
+      expect(r.status).toBe(404);
+      expect(r.body.name).toBeUndefined();
+    }
+  });
+
+  it('an unknown, replaced or turned-off link, or one on a playlist no longer shared, is a 404', async () => {
+    expect((await preview(outsider, 'Z'.repeat(32))).status).toBe(404);
+
+    const made = await call(inviteRoute.POST, owner, { id: shared });
+    const old = await preview(outsider, CODE);
+    expect(old.status).toBe(404);
+    expect(old.body.name).toBeUndefined();
+    expect((await preview(outsider, made.body.inviteCode)).status).toBe(200);
+
+    await call(inviteRoute.DELETE, owner, { id: shared });
+    expect((await preview(outsider, made.body.inviteCode)).status).toBe(404);
+
+    world.db.playlists.find((p) => p.id === shared)!.invite_code = CODE;
+    world.db.playlists.find((p) => p.id === shared)!.collaborative = false;
+    expect((await preview(outsider, CODE)).status).toBe(404);
+  });
+
+  it('a code two playlists share is refused rather than guessed', async () => {
+    world.addPlaylist(outsider, 'Copycat', { collaborative: true, invite_code: CODE });
+    expect((await preview(member, CODE)).status).toBe(404);
+  });
+});
+
+describe('the owner\'s face, for the "Shared by" badge', () => {
+  it('a member gets the owner\'s picture on the playlist and in the library; the owner does not need it', async () => {
+    world.db.users.find((u) => u.id === owner)!.avatar = 'olga.png';
+    const m = await call(one.GET, member, { id: shared });
+    expect(m.body.playlist.owner_avatar_url).toMatch(/olga\.png$/);
+    const lib = await call(list.GET, member);
+    expect(lib.body.playlists[0].owner_avatar_url).toMatch(/olga\.png$/);
+    const o = await call(one.GET, owner, { id: shared });
+    expect(o.body.playlist.owner_avatar_url ?? null).toBeNull();
   });
 });

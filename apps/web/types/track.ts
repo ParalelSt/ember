@@ -58,6 +58,9 @@ export interface Playlist {
   role?: PlaylistRole;
   /** The owner's name, on a playlist shared with you (`role: 'member'`). */
   owner_name?: string | null;
+  /** The owner's picture, on a playlist shared with you (the "Shared by"
+   *  badge). Null when they have none. */
+  owner_avatar_url?: string | null;
 }
 
 export interface AlbumSummary {

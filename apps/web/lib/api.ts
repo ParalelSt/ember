@@ -1,7 +1,7 @@
 import type { AlbumDetail, ArtistPayload, CollectionTrack, LiveCarlist, Playlist, SessionState, Track } from '@/types/track';
 import type { AddPosition } from '@/lib/carlist';
 import type { CopyOutcome } from '@/lib/playlistCopy';
-import type { CandidatePerson, CollabState } from '@/lib/collab';
+import type { CandidatePerson, CollabState, InvitePreview } from '@/lib/collab';
 import { logger } from '@/lib/logger/client';
 import { isPublicPage } from '@/lib/publicPaths';
 import { sessionExpired } from '@/lib/sessionExpired';
@@ -235,6 +235,9 @@ export const api = {
       expected: [403, 404],
     }),
   listPlaylistPeople: (id: string) => req<{ people: CandidatePerson[] }>(`/playlists/${id}/people`, { expected: [403, 404] }),
+  /** What an invite link leads to, without joining (the invite card). */
+  previewPlaylistInvite: (code: string) =>
+    req<InvitePreview>('/playlists/join/preview', { method: 'POST', body: { code }, expected: [404] }),
   joinPlaylist: (code: string) =>
     req<{ playlistId: string; joined: boolean }>('/playlists/join', { method: 'POST', body: { code }, expected: [404, 409] }),
   /** Copy songs into a playlist: the server skips the ones already there

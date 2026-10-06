@@ -5,15 +5,16 @@
  *      EMBER_PB_SUPERUSER_EMAIL=... EMBER_PB_SUPERUSER_PASSWORD=... \
  *        node tests/collab-ui.test.mjs        # or: npm run test:collab-ui
  *
- *  The owner opens the playlist menu, Collaborate, turns it on, finds the
- *  member by name in the picker and adds them, and makes an invite link.
- *  The member sees the playlist in their library (people mark, "Shared by
- *  <owner>"), opens it (eyebrow "Collaborative playlist", "By <owner>",
- *  who added each song, no cover button, a menu with only "Who can edit"
- *  and "Leave playlist"), moves the last song up from the row's + menu (a
- *  phone row has no More button), and the owner's open page follows within
- *  the poll; the owner moves it back down from the desktop More menu. The outsider opens the invite link and lands on
- *  the playlist. The member leaves and it is gone from their library.
+ *  The owner taps the people chip under the title ("Invite"), finds the
+ *  member by name in the share sheet and adds them (which shares it), and
+ *  copies an invite link. The member sees the playlist in their library (a
+ *  "Shared by <owner>" pill), opens it (the same pill under the title, who
+ *  added each song, no cover button, a menu with only "Who can edit" and
+ *  "Leave playlist"), moves the last song up in Edit order, and the
+ *  owner's open page follows within the poll; the owner moves it back down
+ *  in Edit order. The outsider opens the invite link, sees the preview
+ *  card, joins and lands on the playlist. The member leaves and it is gone
+ *  from their library.
  *  Nothing scrolls sideways at 390. SHOT_DIR keeps screenshots.
  *
  *  Needs the sandbox of collab-rbac.test.mjs and playwright-core with a
@@ -152,44 +153,50 @@ try {
   // ── The owner shares it ────────────────────────────────────────────────
   const o = await open(owner, 1280, 800);
   await go(o.page, `${APP}/playlist/${pid}`, o.page.getByTestId('track-row').first());
+  const chip = o.page.getByTestId('people-chip');
+  const chipText = await chip.textContent();
+  check('owner: the people chip reads "+ Invite" while it is only them', chipText.includes('Invite') && !chipText.includes('people'), chipText);
   await o.page.getByTestId('playlist-menu').click();
   await o.page.getByTestId('menu-collaborate').waitFor();
   const items = await o.page.getByRole('menuitem').allTextContents();
-  check('owner: the menu has Collaborate, Rename and Delete', items.map((s) => s.trim()).join('|') === 'Collaborate|Rename|Delete playlist', items.join('|'));
-  await o.page.getByTestId('menu-collaborate').click();
+  check('owner: the menu keeps Collaborate, Rename and Delete', items.map((s) => s.trim()).join('|') === 'Collaborate|Rename|Delete playlist', items.join('|'));
+  await o.page.keyboard.press('Escape');
+  await chip.click();
   const sheet = o.page.getByTestId('collab-sheet');
-  await sheet.getByTestId('collab-switch').waitFor();
-  check('owner: the sheet opens with collaboration off', (await sheet.getByTestId('collab-switch').getAttribute('aria-checked')) === 'false');
-  await sheet.getByTestId('collab-switch').click();
-  await sheet.getByTestId('collab-people').waitFor();
-  check('owner: switched on, the people and link sections appear', await sheet.getByTestId('collab-link').isVisible());
+  await sheet.getByTestId('collab-link').waitFor();
+  check('owner: the chip opens the share sheet, link first, no switch',
+    (await sheet.getByRole('switch').count()) === 0 && (await sheet.getByRole('heading', { name: `Share "Road trip ${stamp.slice(-4)}"` }).count()) === 1);
   await sheet.getByTestId('collab-add').click();
   await sheet.getByRole('textbox', { name: 'Find someone by name' }).fill('Mia');
   const candidate = sheet.getByTestId('collab-candidate').filter({ hasText: member.name });
   await candidate.waitFor();
-  check('owner: the picker finds the member by name, no email shown', !(await sheet.getByTestId('collab-picker').textContent()).includes('@'));
+  check('owner: Add by name finds the member, no email shown', !(await sheet.getByTestId('collab-picker').textContent()).includes('@'));
   await candidate.getByRole('button', { name: `Add ${member.name}` }).click();
   await sheet.getByTestId('collab-person').filter({ hasText: member.name }).waitFor();
-  check('owner: the member is on the list', true);
+  check('owner: the member is on the list, and it is shared', await sheet.getByTestId('collab-stop-sharing').isVisible());
   await sheet.getByTestId('collab-link-create').click();
   const url = await sheet.getByTestId('collab-link-url').inputValue({ timeout: 10000 });
-  check('owner: an invite link on this server', url.startsWith(`${APP}/playlist/join/`) && url.length === `${APP}/playlist/join/`.length + 32, url);
+  check('owner: Copy invite link makes a link on this server', url.startsWith(`${APP}/playlist/join/`) && url.length === `${APP}/playlist/join/`.length + 32, url);
   await shot(o.page, 'collab-owner-sheet-1280.png');
   await o.page.keyboard.press('Escape');
   await o.page.getByText('Collaborative playlist').first().waitFor();
   check('owner: the header says Collaborative playlist', true);
+  await o.page.waitForFunction(() => document.querySelector('[data-testid="people-chip"]')?.textContent?.includes('2 people'));
+  check('owner: the chip now shows both faces', (await chip.locator('[data-testid="face-stack"] > *').count()) === 2);
   check('owner: each row says who added it', (await o.page.getByTestId('track-row-added-by').count()) === 2);
 
   // ── The member finds it and edits ──────────────────────────────────────
   const m = await open(member, 390, 844);
   await member.api('POST', `/playlists/${pid}/tracks`, { track: SONGS[2] });
-  const card = m.page.locator('a', { has: m.page.getByTestId('shared-badge') }).filter({ hasText: `Road trip ${stamp.slice(-4)}` });
+  const card = m.page.locator('a', { has: m.page.getByTestId('shared-by') }).filter({ hasText: `Road trip ${stamp.slice(-4)}` });
   await go(m.page, `${APP}/library`, card);
-  check('member: the library card says whose it is', (await card.textContent()).includes(`Shared by ${owner.name}`), await card.textContent());
-  check('member: and wears the people mark', (await card.getByTestId('shared-badge').count()) === 1);
+  check('member: the library card has the Shared by pill', (await card.getByTestId('shared-by').textContent()).includes(`Shared by ${owner.name}`), await card.textContent());
+  check('member: and no people mark', (await card.getByTestId('shared-badge').count()) === 0);
   await go(m.page, `${APP}/playlist/${pid}`, m.page.getByTestId('track-row').first());
-  const header = await m.page.locator('main').first().textContent();
-  check('member: eyebrow and "By <owner>" in the header', header.includes('Collaborative playlist') && header.includes(`By ${owner.name}`));
+  const header = m.page.getByTestId('collection-header');
+  check('member: the Shared by pill under the title, no "By <owner>"',
+    (await header.getByTestId('shared-by').textContent()).includes(owner.name) && !(await header.textContent()).includes(`By ${owner.name}`));
+  check('member: no people chip', (await m.page.getByTestId('people-chip').count()) === 0);
   check('member: no cover button', (await m.page.getByRole('button', { name: 'Change playlist cover' }).count()) === 0);
   const by = await m.page.getByTestId('track-row-added-by').evaluateAll((els) => els.map((e) => e.getAttribute('aria-label')));
   check('member: who added each song', JSON.stringify(by) === JSON.stringify([`Added by ${owner.name}`, `Added by ${owner.name}`, `Added by ${member.name}`]), by.join(', '));
@@ -198,12 +205,15 @@ try {
   const mItems = (await m.page.getByRole('menuitem').allTextContents()).map((s) => s.trim());
   check('member: the menu has only Who can edit and Leave', mItems.join('|') === 'Who can edit|Leave playlist', mItems.join('|'));
   await m.page.keyboard.press('Escape');
-  // A phone row has no room for a More button: Move up sits in its + menu.
-  check('member at 390: no More button on the rows', (await m.page.getByTestId('track-row').nth(2).getByRole('button', { name: 'More' }).isVisible()) === false);
-  await m.page.getByTestId('track-row').nth(2).getByRole('button', { name: 'Add to playlist' }).click();
-  await m.page.getByRole('menuitem', { name: /Move up/ }).click();
+  // Edit order, on a phone.
+  await m.page.getByRole('button', { name: 'Edit order' }).click();
+  await m.page.getByTestId('reorder-list').waitFor();
+  check('member at 390: Edit order rows have arrows and a handle, no hearts',
+    (await m.page.getByRole('button', { name: 'Drag Third Rail' }).isVisible()) && (await m.page.getByTestId('reorder-list').getByRole('button', { name: /Like/ }).count()) === 0);
+  await m.page.getByRole('button', { name: 'Move Third Rail up' }).click();
+  await m.page.getByRole('button', { name: 'Done' }).click();
   await m.page.waitForFunction((sel) => document.querySelectorAll(sel)[1]?.textContent === 'Third Rail', ROW_TITLES);
-  check('member: Move up moves the song', JSON.stringify(await titles(m.page)) === JSON.stringify(['First Light', 'Third Rail', 'Second Wind']));
+  check('member: Edit order moves the song', JSON.stringify(await titles(m.page)) === JSON.stringify(['First Light', 'Third Rail', 'Second Wind']));
   const overflow = await m.page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
   check('member at 390: nothing scrolls sideways', overflow <= 0, `${overflow}px`);
   await shot(m.page, 'collab-member-390.png');
@@ -216,18 +226,27 @@ try {
   ).then(() => check('owner: the open page shows the member\'s add and move within the poll', true),
     () => check('owner: the open page shows the member\'s add and move within the poll', false));
 
-  // The owner moves one back down from the desktop row's More menu.
-  await o.page.getByTestId('track-row').nth(1).getByRole('button', { name: 'More' }).click();
-  await o.page.getByRole('menuitem', { name: /Move down/ }).click();
+  // The owner moves it back down in Edit order on a wide window.
+  await o.page.getByRole('button', { name: 'Edit order' }).click();
+  await o.page.getByRole('button', { name: 'Move Third Rail down' }).click();
+  await o.page.getByRole('button', { name: 'Done' }).click();
   await o.page.waitForFunction((sel) => document.querySelectorAll(sel)[2]?.textContent === 'Third Rail', ROW_TITLES);
+  await o.page.waitForTimeout(500);
   const serverOrder = (await owner.api('GET', `/playlists/${pid}`)).tracks.map((t) => t.title);
-  check('owner at 1280: Move down in the More menu, saved on the server', serverOrder.join('|') === 'First Light|Second Wind|Third Rail', serverOrder.join('|'));
+  check('owner at 1280: Edit order, saved on the server', serverOrder.join('|') === 'First Light|Second Wind|Third Rail', serverOrder.join('|'));
 
   // ── The outsider comes in through the link ─────────────────────────────
   const x = await open(outsider, 1280, 800);
   await x.page.goto(url, { waitUntil: 'networkidle' });
+  const preview = x.page.getByTestId('invite-preview');
+  await preview.waitFor({ timeout: 15000 });
+  const previewText = await preview.textContent();
+  check('outsider: the link shows a preview card first, no email',
+    previewText.includes(`${owner.name} invited you to edit`) && previewText.includes('3 songs') && !previewText.includes('@'), previewText);
+  check('outsider: not joined yet', !(await owner.api('GET', `/playlists/${pid}/collab`)).members.some((p) => p.id === outsider.id));
+  await preview.getByRole('button', { name: 'Join' }).click();
   await x.page.waitForURL(`**/playlist/${pid}`, { timeout: 15000 }).then(() => {}, () => {});
-  check('outsider: the invite link lands on the playlist', x.page.url().endsWith(`/playlist/${pid}`), x.page.url());
+  check('outsider: Join lands on the playlist', x.page.url().endsWith(`/playlist/${pid}`), x.page.url());
   await x.page.getByTestId('track-row').first().waitFor({ timeout: 15000 });
   check('outsider: and can see its songs', (await x.page.getByTestId('track-row').count()) === 3);
 

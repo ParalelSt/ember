@@ -53,6 +53,7 @@ export const GET = withRequestLog('playlists/[id]', async (_req: NextRequest, ct
         collaborative,
         role,
         owner_name: role === 'member' ? (people.get(String(playlistRec.user))?.name ?? null) : null,
+        owner_avatar_url: role === 'member' ? (people.get(String(playlistRec.user))?.avatarUrl ?? null) : null,
       },
       tracks,
     });
