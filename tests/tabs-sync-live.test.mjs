@@ -28,7 +28,8 @@
  *  resume) that the page needs to hear about it (the player reports the
  *  position about four times a second). The highlighted beat must be the
  *  sounding one in 95% of samples, a beat boundary +-60 ms aside. Drift
- *  over the 100% run under 30 ms a minute.
+ *  (the slope of the lag once settled, 3 s in) under 30 ms a minute over
+ *  the 100% and the 75% runs.
  *
  *      node tests/tabs-sync-live.test.mjs          # or: npm run test:tabs-sync-live
  *
@@ -474,7 +475,12 @@ function analyse(label, { settleMs = 300 } = {}) {
     estimate: stats(fed),
     position: stats(pos),
     cursor: stats(curOk),
-    driftMsPerMin: slopePerMin(kept.filter((_, i) => cur[i] !== null).map((s) => s.t), curOk),
+    // Drift is read once the line has settled (AlphaTab halves an error
+    // at every beat, so a seek's last few ms take a couple of seconds).
+    driftMsPerMin: slopePerMin(
+      kept.filter((s, i) => cur[i] !== null && s.wall - rows[0].wall >= 3000).map((s) => s.t),
+      cur.filter((x, i) => x !== null && kept[i].wall - rows[0].wall >= 3000),
+    ),
     beatRight: beatCounted ? r1((100 * beatRight) / beatCounted) : NaN,
     pillRight: pillCounted ? r1((100 * pillRight) / pillCounted) : NaN,
   };
@@ -523,7 +529,7 @@ await cell('speed').click();
 await pop('speed').getByRole('button', { name: '75%' }).click();
 await cell('speed').click();
 await page.evaluate((t) => { document.querySelector('audio').currentTime = t; }, tabMsToSong(8 * BAR_TAB_MS));
-await sampleFor('75%', 15);
+await sampleFor('75%', 25);
 const at75 = await audio(() => document.querySelector('audio').playbackRate);
 check('75%: the recording plays at 0.75', Math.abs(at75 - 0.75) < 1e-6, `${at75}`);
 judge('75% speed', analyse('75%'), { drift: true });
