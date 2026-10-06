@@ -34,7 +34,7 @@ import {
 import { logger } from '@/lib/logger/client';
 import { detectShell } from '@/lib/playback/detectShell';
 import { chooseDuration } from '@/lib/playback/chooseDuration';
-import { isUnavailable, nextIndex, nextPlayable, nextPlayableOffline, prevIndex, previousFromHistory, rememberPlayed, repeatsCurrent } from '@/lib/playback/queueNav';
+import { isUnavailable, nextIndex, nextPlayable, nextPlayableOffline, playedWalk, prevIndex, previousFromHistory, rememberPlayed, repeatsCurrent } from '@/lib/playback/queueNav';
 import { useAvailabilityProbe } from '@/hooks/player/useAvailabilityProbe';
 import { useAutoCache } from '@/hooks/player/useAutoCache';
 import type { BackendKind } from '@/lib/autoCache/select';
@@ -79,6 +79,11 @@ interface PlayerControls {
   /** Jump to the song at `index` of the queue as it is (the queue sheet):
    *  the queue, its context, the shuffle and the loop point all stay. */
   playAt: (index: number) => void;
+  /** Go back `steps` songs through this session's play history, as
+   *  Previous pressed that many times (without its restart rule): the queue
+   *  sheet's "Played" list. The queue stays as it is. On the native Android
+   *  player its own history does it (PlayHistory.kt, COMMAND_BACK). */
+  playBack: (steps: number) => void;
   toggle: () => void;
   next: () => void;
   prev: () => void;
@@ -266,6 +271,14 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
    *  history"). This session only, and not on the native Android player,
    *  which owns the queue and keeps its own (PlayHistory.kt). */
   const playedRef = useRef<string[]>([]);
+  /** Every change to the history goes through here, so the queue sheet's
+   *  copy (the store's `played`) is always the stack Previous uses. Not on
+   *  Android: there the native player's history is the one Previous
+   *  follows, and the store has what it sends (onPlayed). */
+  const setPlayed = useCallback((ids: string[]) => {
+    playedRef.current = ids;
+    if (backendKindRef.current !== 'android') usePlayerStore.setState({ played: ids });
+  }, []);
 
   const current = queue[index] ?? null;
 
@@ -340,6 +353,10 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
           loadedTrackRef.current = st.queue[i].id;
           setIndex(i);
         }
+      },
+      // The native player's play history (Android), for the queue sheet.
+      onPlayed: (ids) => {
+        if (backendKindRef.current === 'android') usePlayerStore.setState({ played: ids });
       },
       onQueueReplaced: (tracks, i, info) => {
         nativeChangeAt.current = Date.now();
@@ -1012,7 +1029,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     const leaving = st.queue[st.index];
     const remember = (to: number) => {
       if (opts?.back || !leaving || to === st.index || isUnavailable(leaving)) return;
-      playedRef.current = rememberPlayed(playedRef.current, leaving.id);
+      setPlayed(rememberPlayed(playedRef.current, leaving.id));
     };
     // Offline, only a track with a copy on this device can play: walk past
     // the rest (not flagged, just out of reach). Nothing left means a stall
@@ -1044,7 +1061,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     remember(r.index);
     loadAndPlay(st.queue[r.index], true);
     setIndex(r.index);
-  }, [announce, loadAndPlay, setIndex, stallOffline]);
+  }, [announce, loadAndPlay, setIndex, setPlayed, stallOffline]);
 
   // The current song failed while offline (useAvailabilityProbe): move to the
   // next song with a local copy; with none, stall on the failed song itself,
@@ -1128,10 +1145,28 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     }
     // Popped only now that Previous really goes back (a restart keeps it);
     // nothing usable left on it means it is spent.
-    if (back && move.index === back.index) playedRef.current = back.history;
-    else if (!back) playedRef.current = [];
+    if (back && move.index === back.index) setPlayed(back.history);
+    else if (!back) setPlayed([]);
     goTo(move.index, -1, undefined, { back: true });
-  }, [goTo, navState]);
+  }, [goTo, navState, setPlayed]);
+
+  const playBack = useCallback((steps: number) => {
+    userInteracted.current = true;
+    const st = usePlayerStore.getState();
+    // The native player goes back through its own history (the store has
+    // what it sent): it is told the queue entry the list showed.
+    if (backendKindRef.current === 'android') {
+      const to = playedWalk(st.queue, st.index, st.played)[steps - 1];
+      if (to) backendRef.current?.back?.(to.index);
+      return;
+    }
+    const to = playedWalk(st.queue, st.index, playedRef.current)[steps - 1];
+    if (!to) return;
+    // Where Previous pressed `steps` times leaves the history: going back
+    // never remembers the song being left.
+    setPlayed(to.history);
+    goTo(to.index, -1, undefined, { back: true });
+  }, [goTo, setPlayed]);
 
   useEffect(() => {
     nextRef.current = next;
@@ -1324,9 +1359,9 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     const sameList = before.queue.length >= queueList.length
       && queueList.every((t, k) => before.queue[k]?.id === t.id);
     const leaving = before.queue[before.index];
-    if (!sameList) playedRef.current = [];
+    if (!sameList) setPlayed([]);
     else if (leaving && leaving.id !== track.id && !isUnavailable(leaving)) {
-      playedRef.current = rememberPlayed(playedRef.current, leaving.id);
+      setPlayed(rememberPlayed(playedRef.current, leaving.id));
     }
     loadAndPlay(track, true, { list: queueList, context, baseCount });
     usePlayerStore.setState({
@@ -1344,7 +1379,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     // source, and the backend's onPlay event records 'play' once it actually
     // starts: logging 'play' here too would be a third, earlier copy of the
     // same transition.
-  }, [announce, loadAndPlay]);
+  }, [announce, loadAndPlay, setPlayed]);
 
   const playAt = useCallback((i: number) => {
     userInteracted.current = true;
@@ -1388,6 +1423,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     playTrack(track, list, nextContext);
   }, [playTrack]);
   const userPlayAt = useCallback((i: number) => { dismissUnplayable(); playAt(i); }, [playAt]);
+  const userPlayBack = useCallback((steps: number) => { dismissUnplayable(); playBack(steps); }, [playBack]);
   const userToggle = useCallback(() => { dismissUnplayable(); toggle(); }, [toggle]);
   const userNext = useCallback(() => { dismissUnplayable(); next(); }, [next]);
   const userPrev = useCallback(() => { dismissUnplayable(); prev(); }, [prev]);
@@ -1422,10 +1458,10 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const value = useMemo<PlayerControls>(
     () => ({
       current, isPlaying, position, duration, volume, queue, index, context,
-      playTrack: userPlayTrack, playAt: userPlayAt, toggle: userToggle, next: userNext, prev: userPrev,
+      playTrack: userPlayTrack, playAt: userPlayAt, playBack: userPlayBack, toggle: userToggle, next: userNext, prev: userPrev,
       seek, setVolume, rate, setRate, canSetRate, retry,
     }),
-    [current, isPlaying, position, duration, volume, queue, index, context, userPlayTrack, userPlayAt, userToggle, userNext, userPrev, seek, setVolume, rate, setRate, canSetRate, retry],
+    [current, isPlaying, position, duration, volume, queue, index, context, userPlayTrack, userPlayAt, userPlayBack, userToggle, userNext, userPrev, seek, setVolume, rate, setRate, canSetRate, retry],
   );
 
   // Pranks (admin only, never announced) sit beside the tree rather than in

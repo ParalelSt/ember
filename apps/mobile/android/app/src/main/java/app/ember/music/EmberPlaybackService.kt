@@ -85,6 +85,14 @@ class EmberPlaybackService : MediaLibraryService() {
          *  MediaController first shows the song above (Media3 masks the move
          *  locally) and only then the song the service really went back to. */
         const val COMMAND_PREVIOUS = "ember.previous"
+        /** A tap on a song in the app's "Played" list (`index`: its entry in
+         *  the queue): back through the play history to it, as Previous
+         *  pressed until it lands there, without the restart rule. */
+        const val COMMAND_BACK = "ember.back"
+        /** The play history as the app's queue sheet shows it (PlayHistory
+         *  .visible): song ids, oldest first, newest last. Absent from a
+         *  service from before it, so the app knows to show none. */
+        const val EXTRA_PLAYED = "played"
         /** Apps that are the car: the heart button needs to know which songs
          *  are liked once one of them connects. */
         val CAR_PACKAGES = setOf(
@@ -201,6 +209,9 @@ class EmberPlaybackService : MediaLibraryService() {
      *  actually played, so a tap further down the queue then Previous returns
      *  to the song before the tap. The TV keeps its own while casting. */
     private val history = PlayHistory()
+    /** The history the session's player follows: the phone's, or the TV's
+     *  while casting. Its songs are the app's "Played" list. */
+    private var activeHistory: PlayHistory = history
     /** The song last counted as a play, on the phone or the TV: handing it
      *  from one to the other is not a new play (QueueListener). */
     private val lastHeard = QueueListener.LastHeard()
@@ -282,6 +293,7 @@ class EmberPlaybackService : MediaLibraryService() {
             lastHeard = lastHeard,
         ))
         player.addListener(history.Tracker(player))
+        history.onChange = { if (activeHistory === history) publishExtras() }
         savedQueue = SavedQueue(java.io.File(filesDir, SavedQueue.FILE_NAME))
         player.addListener(savedQueue.Saver(player, io))
         overlay = PrankOverlay(this, player, dataSource, baseUrl)
@@ -507,6 +519,7 @@ class EmberPlaybackService : MediaLibraryService() {
             .getOrNull() ?: return
         val signer = CastSigner({ ids -> api.castLinks(ids) })
         val castHistory = PlayHistory()
+        castHistory.onChange = { if (activeHistory === castHistory) publishExtras() }
         val queue = CastQueuePlayer(cast, signer, baseUrl, castIo, { handler.post(it) }, castHistory)
         queue.addListener(castHistory.Tracker(queue))
         // History and radio go on while the TV plays; a song the TV cannot
@@ -523,6 +536,8 @@ class EmberPlaybackService : MediaLibraryService() {
             onCasting = booster::setSuspended,
         ) { p ->
             session.player = if (p === queue) queue else levelPlayer
+            activeHistory = if (p === queue) castHistory else history
+            publishExtras()
             refreshButtons()
         }
         cast.setSessionAvailabilityListener(object : SessionAvailabilityListener {
@@ -693,6 +708,7 @@ class EmberPlaybackService : MediaLibraryService() {
             }
             putInt(EXTRA_OUTPUT_PREFERRED, output.extra)
             putBoolean(EXTRA_SHUFFLE, shuffle.on)
+            putStringArrayList(EXTRA_PLAYED, ArrayList(activeHistory.visible))
         })
     }
 
@@ -916,6 +932,7 @@ class EmberPlaybackService : MediaLibraryService() {
                         add(SessionCommand(COMMAND_SHUFFLE_STATE, Bundle.EMPTY))
                         add(SessionCommand(COMMAND_RETRY, Bundle.EMPTY))
                         add(SessionCommand(COMMAND_PREVIOUS, Bundle.EMPTY))
+                        add(SessionCommand(COMMAND_BACK, Bundle.EMPTY))
                     }
                 }
                 .build()
@@ -934,6 +951,7 @@ class EmberPlaybackService : MediaLibraryService() {
                 // seekToPrevious follows the play history, as every other
                 // Previous does.
                 COMMAND_PREVIOUS -> session.player.seekToPrevious()
+                COMMAND_BACK -> (session.player as? HistoryBack)?.seekBackTo(args.getInt("index", -1))
                 CarButtons.COMMAND_LIKE -> return Futures.immediateFuture(toggleLike())
                 COMMAND_SHUFFLE_STATE -> {
                     when {

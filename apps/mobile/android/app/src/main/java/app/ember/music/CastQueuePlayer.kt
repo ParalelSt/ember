@@ -29,7 +29,7 @@ class CastQueuePlayer(
     /** What Previous goes back to while casting (PlayHistory), as on the
      *  phone. Null: Media3's own, the song above. */
     private val history: PlayHistory? = null,
-) : ForwardingPlayer(cast) {
+) : ForwardingPlayer(cast), HistoryBack {
     companion object {
         const val MAX_ITEMS = 300
         const val TAG = "EmberCast"
@@ -134,6 +134,7 @@ class CastQueuePlayer(
         val h = history
         if (h != null) h.seekToPrevious(wrappedPlayer) else super.seekToPrevious()
     }
+    override fun seekBackTo(index: Int) = ordered { history?.seekBack(wrappedPlayer, index) }
     override fun seekToNextMediaItem() = ordered { super.seekToNextMediaItem() }
     override fun seekToPreviousMediaItem() = ordered {
         val h = history

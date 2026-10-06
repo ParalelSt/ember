@@ -495,3 +495,42 @@ describe('androidBackend: tap to retry', () => {
     expect(n.plugin.play).toHaveBeenCalledTimes(1);
   });
 });
+
+// The native play history (PlayHistory.kt) for the queue sheet's "Played"
+// list, and a tap on one of its songs going back to it.
+describe('androidBackend: played history', () => {
+  afterEach(() => {
+    delete (window as unknown as { Capacitor?: unknown }).Capacitor;
+  });
+
+  const state = (extra: Record<string, unknown> = {}) => ({ playing: true, position: 0, duration: 0, index: 1, trackId: 'b', ...extra });
+
+  it('mirrors the history native reports, only when it changes', () => {
+    const n = installPlugin(false);
+    const events = { ...makeFakeEvents(), onPlayed: vi.fn() };
+    createAndroidBackend(events);
+    n.emit('state', state({ played: ['a', 'd'] }));
+    n.emit('state', state({ played: ['a', 'd'], position: 1 }));
+    expect(events.onPlayed.mock.calls).toEqual([[['a', 'd']]]);
+    n.emit('state', state({ played: [] }));
+    expect(events.onPlayed).toHaveBeenLastCalledWith([]);
+  });
+
+  it('an app build that does not send it reports nothing', () => {
+    const n = installPlugin(false);
+    const events = { ...makeFakeEvents(), onPlayed: vi.fn() };
+    createAndroidBackend(events);
+    n.emit('state', state());
+    expect(events.onPlayed).not.toHaveBeenCalled();
+  });
+
+  it('back sends the tapped entry to native; an older app build is left alone', () => {
+    const n = installPlugin(false);
+    n.plugin.back = vi.fn().mockResolvedValue(undefined);
+    createAndroidBackend(makeFakeEvents()).back!(2);
+    expect(n.plugin.back).toHaveBeenCalledWith({ index: 2 });
+    delete (window as unknown as { Capacitor?: unknown }).Capacitor;
+    installPlugin(false);
+    expect(() => createAndroidBackend(makeFakeEvents()).back!(2)).not.toThrow();
+  });
+});

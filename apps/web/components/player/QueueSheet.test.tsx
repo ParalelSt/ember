@@ -3,15 +3,15 @@
  *  playTrack: a search-started queue collapsed to the tapped song, shuffle
  *  turned itself off, and the loop point moved into the radio tail. */
 import type { PropsWithChildren } from 'react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { QueueSheet } from './QueueSheet';
 import { usePlayerStore } from '@/stores/usePlayerStore';
 import { clearCouldntPlay, recordCouldntPlay, resetUnplayableStore } from '@/stores/useUnplayableStore';
 import type { UnplayableNotice } from '@/lib/playback/unplayable';
 import { makeTrack } from '@/test-utils/fakeBackend';
 
-const player = vi.hoisted(() => ({ playAt: vi.fn(), playTrack: vi.fn() }));
+const player = vi.hoisted(() => ({ playAt: vi.fn(), playTrack: vi.fn(), playBack: vi.fn() }));
 vi.mock('@/components/player/PlayerProvider', () => ({ usePlayer: () => player }));
 vi.mock('@/components/ui/sheet', () => ({
   Sheet: ({ children }: PropsWithChildren) => <div>{children}</div>,
@@ -21,6 +21,7 @@ vi.mock('@/components/ui/sheet', () => ({
 }));
 vi.mock('next/navigation', () => ({ usePathname: () => '/', useRouter: () => ({ push: vi.fn() }) }));
 
+beforeEach(() => usePlayerStore.setState({ played: [], position: 0, duration: 0 }));
 afterEach(() => resetUnplayableStore());
 
 describe('QueueSheet', () => {
@@ -128,5 +129,123 @@ describe('QueueSheet: "Couldn\'t play" (songs this session skipped)', () => {
     clearCouldntPlay();
     view.rerender(<QueueSheet open onOpenChange={() => {}} />);
     expect(screen.queryByTestId('couldnt-play')).toBeNull();
+  });
+});
+
+/** The songs already played this session sit above "Now playing" (the
+ *  owner's pick, /dizajn queue history: dimmed rows under "Played · N", a
+ *  highlighted Now playing card, this session only, opening on Now playing). */
+describe('QueueSheet: played history', () => {
+  const a = makeTrack({ id: 'youtube:a', title: 'Alpha' });
+  const b = makeTrack({ id: 'youtube:b', title: 'Bravo' });
+  const c = makeTrack({ id: 'youtube:c', title: 'Charlie' });
+  const d = makeTrack({ id: 'youtube:d', title: 'Delta' });
+  const e = makeTrack({ id: 'youtube:e', title: 'Echo' });
+
+  beforeEach(() => {
+    player.playAt.mockClear();
+    player.playTrack.mockClear();
+    player.playBack.mockClear();
+  });
+
+  it('lists them above Now playing, oldest first, dimmed, under "Played · N"', () => {
+    usePlayerStore.setState({ queue: [a, b, c, d, e], index: 3, context: null, played: [a.id, b.id, c.id] });
+    render(<QueueSheet open onOpenChange={() => {}} />);
+    const section = screen.getByTestId('played');
+    expect(section).toHaveTextContent('Played · 3');
+    const rows = within(section).getAllByTestId('played-row');
+    expect(rows.map((r) => within(r).getByTestId('track-row-title').textContent)).toEqual(['Alpha', 'Bravo', 'Charlie']);
+    for (const r of rows) {
+      const row = r.firstElementChild as HTMLElement;
+      expect(row).toHaveClass('opacity-50');
+      expect(row).toHaveClass('hover:opacity-100');
+      expect(row).toHaveClass('focus-within:opacity-100');
+    }
+    const text = document.body.textContent ?? '';
+    expect(text.indexOf('Played · 3')).toBeLessThan(text.indexOf('Now playing'));
+    expect(text.indexOf('Now playing')).toBeLessThan(text.indexOf('Next up'));
+  });
+
+  it('shows the songs Previous would walk back through, after a jump too', () => {
+    // a played, then d tapped, then b tapped: Previous goes d, then a.
+    usePlayerStore.setState({ queue: [a, b, c, d, e], index: 1, context: null, played: [a.id, d.id] });
+    render(<QueueSheet open onOpenChange={() => {}} />);
+    const rows = within(screen.getByTestId('played')).getAllByTestId('played-row');
+    expect(rows.map((r) => within(r).getByTestId('track-row-title').textContent)).toEqual(['Alpha', 'Delta']);
+  });
+
+  it('a tap on a played song walks back to it, keeping the queue', () => {
+    usePlayerStore.setState({ queue: [a, b, c, d, e], index: 3, context: null, played: [a.id, b.id, c.id] });
+    render(<QueueSheet open onOpenChange={() => {}} />);
+    const section = screen.getByTestId('played');
+    fireEvent.click(within(section).getByText('Alpha'));
+    expect(player.playBack).toHaveBeenLastCalledWith(3);
+    fireEvent.click(within(section).getByText('Charlie'));
+    expect(player.playBack).toHaveBeenLastCalledWith(1);
+    // Not a new queue.
+    expect(player.playTrack).not.toHaveBeenCalled();
+    expect(player.playAt).not.toHaveBeenCalled();
+  });
+
+  it('shows no heading with no history, or only songs no longer in the queue', () => {
+    usePlayerStore.setState({ queue: [a, b], index: 0, context: null, played: [] });
+    const view = render(<QueueSheet open onOpenChange={() => {}} />);
+    expect(screen.queryByTestId('played')).toBeNull();
+    expect(screen.queryByText(/Played ·/)).toBeNull();
+    act(() => usePlayerStore.setState({ played: ['youtube:gone'] }));
+    view.rerender(<QueueSheet open onOpenChange={() => {}} />);
+    expect(screen.queryByTestId('played')).toBeNull();
+  });
+
+  it('Now playing is a highlighted card with a progress line that follows playback', () => {
+    usePlayerStore.setState({ queue: [a, b], index: 0, context: null, position: 50, duration: 200 });
+    render(<QueueSheet open onOpenChange={() => {}} />);
+    const card = screen.getByTestId('now-playing');
+    expect(card).toHaveClass('rounded-xl');
+    expect(card).toHaveClass('bg-sidebar-accent');
+    expect(within(card).getByText('Now playing')).toBeInTheDocument();
+    const fill = within(card).getByTestId('now-progress-fill');
+    expect(fill.style.width).toBe('25%');
+    act(() => usePlayerStore.setState({ position: 150 }));
+    expect(fill.style.width).toBe('75%');
+    // Unknown length: an empty line, not NaN.
+    act(() => usePlayerStore.setState({ duration: 0 }));
+    expect(fill.style.width).toBe('0%');
+  });
+
+  describe('opening on Now playing', () => {
+    const tops = new WeakMap<Element, number>();
+    let restore: () => void = () => {};
+    beforeEach(() => {
+      const proto = HTMLElement.prototype;
+      const scrollTop = Object.getOwnPropertyDescriptor(Element.prototype, 'scrollTop');
+      const offsetTop = Object.getOwnPropertyDescriptor(proto, 'offsetTop');
+      Object.defineProperty(Element.prototype, 'scrollTop', {
+        configurable: true,
+        get() { return tops.get(this) ?? 0; },
+        set(v: number) { tops.set(this, v); },
+      });
+      Object.defineProperty(proto, 'offsetTop', {
+        configurable: true,
+        get() { return (this as HTMLElement).dataset.testid === 'now-anchor' ? 320 : 0; },
+      });
+      restore = () => {
+        if (scrollTop) Object.defineProperty(Element.prototype, 'scrollTop', scrollTop);
+        if (offsetTop) Object.defineProperty(proto, 'offsetTop', offsetTop);
+      };
+    });
+    afterEach(() => restore());
+
+    it('opens scrolled so Now playing is at the top, and again each time it opens', () => {
+      usePlayerStore.setState({ queue: [a, b, c, d, e], index: 3, context: null, played: [a.id, b.id, c.id] });
+      const view = render(<QueueSheet open onOpenChange={() => {}} />);
+      const scroller = screen.getByTestId('queue-scroller');
+      expect(scroller.scrollTop).toBe(320);
+      // The listener scrolls up into the history, closes, and opens again.
+      scroller.scrollTop = 0;
+      view.rerender(<QueueSheet open={false} onOpenChange={() => {}} />);
+      view.rerender(<QueueSheet open onOpenChange={() => {}} />);
+      expect(screen.getByTestId('queue-scroller').scrollTop).toBe(320);
+    });
   });
 });

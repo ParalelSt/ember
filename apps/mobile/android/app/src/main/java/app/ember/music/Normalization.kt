@@ -264,8 +264,11 @@ class LevelPlayer(
     /** Shuffle from a controller (the car, a head unit over Bluetooth): the
      *  service reorders the queue instead (QueueShuffle). Null: as is. */
     private val onShuffle: ((Boolean) -> Unit)? = null,
-) : ForwardingPlayer(player) {
+) : ForwardingPlayer(player), HistoryBack {
     override fun setVolume(volume: Float) = normalizer.setUserLevel(volume)
+    override fun seekBackTo(index: Int) {
+        history?.seekBack(wrappedPlayer, index)
+    }
     override fun getVolume(): Float = normalizer.userLevel
     override fun seekToPrevious() {
         val h = history

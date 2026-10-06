@@ -143,6 +143,27 @@ export function previousFromHistory<T extends Availability & { id: string }>(
   return null;
 }
 
+/** Every step Previous would take, pressed again and again from `index`:
+ *  newest first, each the queue entry it lands on and the history left
+ *  after it (the queue sheet's "Played" list, and where a tap on one of its
+ *  songs leaves the history). Empty with nothing usable on the stack. */
+export function playedWalk<T extends Availability & { id: string }>(
+  queue: readonly T[],
+  index: number,
+  history: readonly string[],
+): { index: number; history: string[] }[] {
+  const steps: { index: number; history: string[] }[] = [];
+  let at = index;
+  let rest: readonly string[] = history;
+  for (;;) {
+    const step = previousFromHistory(queue, at, rest);
+    if (!step) return steps;
+    steps.push(step);
+    at = step.index;
+    rest = step.history;
+  }
+}
+
 /* ── Unavailable tracks ────────────────────────────────────────────────
  *  A YouTube video the server has confirmed is gone (removed, private,
  *  geo-blocked, channel terminated) carries `unavailableAt`. Navigation

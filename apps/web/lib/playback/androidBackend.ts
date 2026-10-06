@@ -23,6 +23,9 @@ interface NativeState {
    *  App builds from before the car's shuffle reached the app report the
    *  player's own flag, which the app never set. */
   shuffle?: boolean;
+  /** The play history (song ids, oldest first): app builds from before the
+   *  queue sheet's "Played" list leave it out. */
+  played?: string[];
 }
 interface EmberPlayerPlugin {
   addListener(event: string, cb: (data: never) => void): unknown;
@@ -45,6 +48,9 @@ interface EmberPlayerPlugin {
   seek(o: { sec: number }): Promise<void>;
   next(): Promise<void>;
   prev(): Promise<void>;
+  /** Back through the play history to queue entry `index`. Absent on app
+   *  builds from before the queue sheet's "Played" list. */
+  back?(o: { index: number }): Promise<void>;
   /** Absent on app builds from before the loop button reached native. */
   setRepeat?(o: { mode: LoopMode }): Promise<void>;
   /** Absent on app builds from before the car's shuffle reached the app. */
@@ -183,6 +189,8 @@ export const createAndroidBackend: CreateAudioBackend = (events: AudioBackendEve
   /** The song native last said it was on: the one a bare `error` (an app
    *  build that does not explain failures) is about. */
   let trackId: string | null = null;
+  /** The play history native last reported, joined (only a change is passed on). */
+  let playedKey: string | null = null;
 
   const onState = (s: NativeState) => {
     paused = !s.playing;
@@ -199,6 +207,14 @@ export const createAndroidBackend: CreateAudioBackend = (events: AudioBackendEve
     events.onTime(s.position);
     onLoop(s.loop);
     onShuffleReport(s.shuffle);
+    if (Array.isArray(s.played)) {
+      const ids = s.played.filter((id): id is string => typeof id === 'string');
+      const key = ids.join('\u0000');
+      if (key !== playedKey) {
+        playedKey = key;
+        events.onPlayed?.(ids);
+      }
+    }
     // Re-assert on every event, not only when our own mirror flips: native is
     // the source of truth here, and anything else that writes the store's
     // playing flag (an error toast, a stale closure) would otherwise leave the
@@ -375,6 +391,9 @@ export const createAndroidBackend: CreateAudioBackend = (events: AudioBackendEve
     },
     prev() {
       if (p) call(p.prev());
+    },
+    back(i) {
+      if (p?.back) call(p.back({ index: i }));
     },
     setLoop(mode) {
       if (!p?.setRepeat) return;
