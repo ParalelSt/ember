@@ -39,6 +39,12 @@ interface PlayerState {
   /** Full-screen "Now Playing" overlay (mobile only). Ephemeral — never
    *  persisted, so a reload always starts collapsed. */
   nowPlayingOpen: boolean;
+  /** Ids of the songs played before the current one, newest last: what
+   *  Previous walks back through (PlayerProvider keeps it, see "Play
+   *  history" in lib/playback/queueNav), here for the queue sheet's "Played"
+   *  list. This session only: never persisted. Empty on the native Android
+   *  player, which keeps its own (PlayHistory.kt). */
+  played: string[];
   setQueue: (queue: Track[]) => void;
   setIndex: (i: number) => void;
   setPosition: (p: number) => void;
@@ -100,6 +106,7 @@ export const usePlayerStore = create<PlayerState>()(
       orderBackup: null,
       muted: false,
       nowPlayingOpen: false,
+      played: [],
       setQueue: (queue) => set({ queue }),
       setIndex: (index) => set({ index }),
       setPosition: (position) => set({ position }),

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { PLAY_HISTORY_MAX, isPlayableOffline, isUnavailable, nextIndex, nextPlayable, nextPlayableOffline, prevIndex, previousFromHistory, rememberPlayed, repeatsCurrent, wrapPoint, type QueueNavState } from './queueNav';
+import { PLAY_HISTORY_MAX, isPlayableOffline, isUnavailable, nextIndex, nextPlayable, nextPlayableOffline, prevIndex, playedWalk, previousFromHistory, rememberPlayed, repeatsCurrent, wrapPoint, type QueueNavState } from './queueNav';
 
 /** A queue of `n` placeholder entries; only the length is read. */
 function q(n: number) {
@@ -205,6 +205,23 @@ describe('play history', () => {
   it('picks the copy nearest the current song when a song is listed twice', () => {
     const q2 = [tr('a'), tr('b'), tr('c'), tr('a'), tr('d')];
     expect(previousFromHistory(q2, 4, ['a'])).toEqual({ index: 3, history: [] });
+  });
+
+  it('playedWalk lists every step Previous would take, newest first', () => {
+    // a, then d tapped, then b tapped: history [a, d], current b (1).
+    expect(playedWalk(queue, 1, ['a', 'd'])).toEqual([
+      { index: 3, history: ['a'] },
+      { index: 0, history: [] },
+    ]);
+  });
+
+  it('playedWalk is empty with no history, and leaves out what Previous would skip', () => {
+    expect(playedWalk(queue, 2, [])).toEqual([]);
+    const q2 = [tr('a'), tr('b', true), tr('c'), tr('d')];
+    expect(playedWalk(q2, 3, ['a', 'gone', 'b', 'c'])).toEqual([
+      { index: 2, history: ['a', 'gone', 'b'] },
+      { index: 0, history: [] },
+    ]);
   });
 });
 

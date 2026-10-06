@@ -287,3 +287,21 @@ describe('sameSongs', () => {
     expect(sameSongs([], [])).toBe(false);
   });
 });
+
+/** The native player keeps its own play history (PlayHistory.kt) and does
+ *  not hand it to the page, so the queue sheet's "Played" list stays empty
+ *  on Android rather than showing the page's partial copy. */
+describe('android: the queue sheet\'s played history', () => {
+  it('stays empty, and a tap on a played song changes nothing', () => {
+    usePlayerStore.setState({ queue: [A, B, C, D], index: 0, played: [] });
+    render(<PlayerProvider><Grab /></PlayerProvider>);
+    act(() => { player!.playAt(2); });
+    expect(usePlayerStore.getState().played).toEqual([]);
+    native.setQueue.mockClear();
+    native.prev.mockClear();
+    act(() => { player!.playBack(1); });
+    expect(native.setQueue).not.toHaveBeenCalled();
+    expect(native.prev).not.toHaveBeenCalled();
+    expect(usePlayerStore.getState().index).toBe(2);
+  });
+});

@@ -83,6 +83,7 @@ beforeEach(() => {
   usePlayerStore.setState({
     queue: [A, B, C, D], index: 0, position: 0, isPlaying: false, duration: 200,
     context: null, loopMode: 'off', baseCount: 4, shuffle: false, orderBackup: null,
+    played: [],
   });
 });
 
@@ -199,5 +200,55 @@ describe('Previous after a tap in the queue', () => {
     act(() => usePlayerStore.setState({ queue: [A, B, D, E], index: 3 }));
     act(() => controls!.prev());
     expect(usePlayerStore.getState().queue[at()].id).toBe(A.id);
+  });
+});
+
+/** The queue sheet's "Played" list reads the same history (the store's
+ *  `played`), and a tap on one of its songs walks back to it like Previous
+ *  pressed that many times. */
+describe('the history the queue sheet shows', () => {
+  const played = () => usePlayerStore.getState().played;
+
+  it('mirrors what Previous goes back through, and resets with a new queue', () => {
+    usePlayerStore.setState({ played: [] });
+    render(<PlayerProvider><Grab /></PlayerProvider>);
+    act(() => controls!.playAt(3)); // A -> D
+    act(() => controls!.playAt(1)); // D -> B
+    expect(played()).toEqual([A.id, D.id]);
+    act(() => controls!.prev());
+    expect(played()).toEqual([A.id]);
+    act(() => controls!.playTrack(B, [C, A, D, B], { type: 'playlist', playlistId: 'p2', playlistName: 'Other' }));
+    expect(played()).toEqual([]);
+  });
+
+  it('playBack jumps back several songs at once and keeps the queue', () => {
+    render(<PlayerProvider><Grab /></PlayerProvider>);
+    act(() => controls!.playAt(3)); // A -> D
+    act(() => controls!.playAt(1)); // D -> B
+    web().load.mockClear();
+    act(() => controls!.playBack(2));
+    expect(at()).toBe(0);
+    expect(web().load.mock.calls.map((c) => c[0])).toEqual(['/s/a']);
+    expect(ids()).toEqual([A.id, B.id, C.id, D.id]);
+    // Nothing left to go back to, and the songs after A are still ahead.
+    expect(played()).toEqual([]);
+  });
+
+  it('playBack(1) is Previous without the restart rule', () => {
+    render(<PlayerProvider><Grab /></PlayerProvider>);
+    act(() => controls!.playAt(3)); // A -> D
+    act(() => controls!.playAt(1)); // D -> B
+    web().currentTime = 30;
+    act(() => controls!.playBack(1));
+    expect(at()).toBe(3);
+    expect(played()).toEqual([A.id]);
+  });
+
+  it('playBack past the end of the history does nothing', () => {
+    render(<PlayerProvider><Grab /></PlayerProvider>);
+    act(() => controls!.playAt(2));
+    act(() => controls!.playBack(5));
+    expect(at()).toBe(2);
+    expect(played()).toEqual([A.id]);
   });
 });
