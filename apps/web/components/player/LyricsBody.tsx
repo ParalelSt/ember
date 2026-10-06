@@ -12,10 +12,11 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
-import { CloseIcon } from '@/components/icons';
+import { ArrowDownIcon, ArrowUpIcon, CloseIcon } from '@/components/icons';
 import { Artwork } from '@/components/primitives/Artwork';
 import { usePlayer } from '@/components/player/PlayerProvider';
 import { useQueryLyrics, type LyricsLine } from '@/hooks/useLyrics';
+import { centerLine, useLyricsFollow, type FollowDirection } from '@/hooks/useLyricsFollow';
 import { cn } from '@/lib/utils';
 
 interface Props {
@@ -135,7 +136,7 @@ export function LyricsBody({ active, onClose, showHeader = true, reportOpen: rep
         )}
 
         {current && data && synced && (
-          <SyncedLyrics lines={synced} onSeek={seek} scrollerRef={scrollerRef} />
+          <SyncedLyrics lines={synced} onSeek={seek} scrollerRef={scrollerRef} songKey={current.id} />
         )}
 
         {current && data && !synced && data.lyrics && (
@@ -226,14 +227,18 @@ const LOOKAHEAD_SEC = 0.2;
 /** Karaoke-style lyric scroller: lines dim by distance from the current
  *  position, the active line is highlighted, and the active line is
  *  smooth-scrolled into the center of the lyrics scroller as the song
- *  plays. Clicking a line seeks playback to that timestamp. */
+ *  plays, unless the user has scrolled away to read (see useLyricsFollow).
+ *  Clicking a line seeks playback to that timestamp. */
 function SyncedLyrics({
   lines,
   onSeek,
   scrollerRef,
+  songKey,
 }: {
   lines: LyricsLine[];
   onSeek: (t: number) => void;
+  /** Changes with the song; a new song starts out following. */
+  songKey: string;
   /** The overflow-y-auto container that wraps the lyrics. Auto-scroll
    *  is math-applied to THIS element directly — scrollIntoView walks
    *  up the ancestor chain and was yanking the main app scroller
@@ -264,6 +269,8 @@ function SyncedLyrics({
 
   const lineRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const prevActiveIdxRef = useRef<number>(-1);
+  const follow = useLyricsFollow({ scrollerRef, lineRefs, activeIdx, resetKey: songKey });
+  const { followingRef, relock, behavior } = follow;
 
   // Only render + auto-scroll the lyric lines while the scroller is actually on
   // screen. Off-screen (the user is up at the artwork), the ~4×/sec activeIdx
@@ -293,6 +300,17 @@ function SyncedLyrics({
 
   useEffect(() => {
     if (!inView) return;
+    const prev = prevActiveIdxRef.current;
+    // A big seek (a jump back, a skip of more than two lines, or landing
+    // past the first line from nowhere) brings the reader back to the song.
+    // Plain playback, which can skip a line when two are very close, can't.
+    const bigSeek = prev >= 0 ? activeIdx < prev || activeIdx - prev > 2 : activeIdx > 0;
+    if (bigSeek) relock();
+    // The user scrolled away to read: leave the view where they put it.
+    if (!followingRef.current) {
+      prevActiveIdxRef.current = activeIdx;
+      return;
+    }
     if (activeIdx < 0) {
       // No line active — playback is before lines[0].time (intro).
       // If the user rewound here from a later line, snap the scroller
@@ -317,7 +335,6 @@ function SyncedLyrics({
     // backward step — is a seek-style transition where we want the
     // scroll to LAND immediately rather than glide across multiple
     // lines while the highlight has already moved.
-    const prev = prevActiveIdxRef.current;
     const isSeek = prev < 0 || activeIdx - prev !== 1;
 
     // First line special-case: there's nothing above line 0 to centre
@@ -325,67 +342,81 @@ function SyncedLyrics({
     // visually return to the top of the lyrics list — not leave the
     // container half-scrolled from the centring math.
     if (activeIdx === 0) {
-      container.scrollTo({ top: 0, behavior: isSeek ? 'auto' : 'smooth' });
+      container.scrollTo({ top: 0, behavior: behavior(!isSeek) });
       prevActiveIdxRef.current = activeIdx;
       return;
     }
 
-    // Scroll ONLY this container, not its ancestors. scrollIntoView
-    // walks the ancestor chain and yanks the main app shell along
-    // with the lyrics container, scrolling the search/home page.
-    const containerRect = container.getBoundingClientRect();
-    const elRect = el.getBoundingClientRect();
-    const scrollDelta =
-      (elRect.top - containerRect.top)
-      - container.clientHeight / 2
-      + el.clientHeight / 2;
-    container.scrollTo({
-      top: container.scrollTop + scrollDelta,
-      behavior: isSeek ? 'auto' : 'smooth',
-    });
+    // Scroll ONLY this container, not its ancestors.
+    centerLine(container, el, behavior(!isSeek));
 
     prevActiveIdxRef.current = activeIdx;
-  }, [activeIdx, scrollerRef, inView]);
+  }, [activeIdx, scrollerRef, inView, followingRef, relock, behavior]);
 
   return (
-    <div className="flex flex-col gap-2 py-2">
-      {inView && lines.map((line, i) => {
-        const isActive = i === activeIdx;
-        const isPast = i < activeIdx;
-        const text = line.text || '♪';
-        return (
-          <button
-            key={`${line.time}-${i}`}
-            type="button"
-            ref={(el) => {
-              lineRefs.current[i] = el;
-            }}
-            // Blur after the click so Space (play/pause) doesn't replay
-            // this button's onClick and seek the audio back to its
-            // timestamp — the global Space handler can then pause instead.
-            onClick={(e) => {
-              onSeek(line.time);
-              e.currentTarget.blur();
-            }}
-            className={cn(
-              'text-left rounded-md px-2 py-1.5 text-sm transition-all duration-100',
-              'leading-relaxed cursor-pointer outline-none',
-              'focus-visible:bg-sidebar-foreground/10',
-              // Keep font-size constant across all states so a long
-              // active line doesn't re-wrap and shove the lines below it
-              // out of view. Scale is a GPU transform — visible pop
-              // without touching layout.
-              isActive
-                ? 'text-foreground font-semibold scale-[1.02] origin-left'
-                : isPast
-                  ? 'text-sidebar-foreground/30'
-                  : 'text-sidebar-foreground/65 hover:text-sidebar-foreground',
-            )}
-          >
-            {text}
-          </button>
-        );
-      })}
+    <>
+      <div className="flex flex-col gap-2 py-2">
+        {inView && lines.map((line, i) => {
+          const isActive = i === activeIdx;
+          const isPast = i < activeIdx;
+          const text = line.text || '♪';
+          return (
+            <button
+              key={`${line.time}-${i}`}
+              type="button"
+              ref={(el) => {
+                lineRefs.current[i] = el;
+              }}
+              // Blur after the click so Space (play/pause) doesn't replay
+              // this button's onClick and seek the audio back to its
+              // timestamp; the global Space handler can then pause instead.
+              onClick={(e) => {
+                relock();
+                onSeek(line.time);
+                e.currentTarget.blur();
+              }}
+              className={cn(
+                'text-left rounded-md px-2 py-1.5 text-sm transition-all duration-100',
+                'leading-relaxed cursor-pointer outline-none',
+                'focus-visible:bg-sidebar-foreground/10',
+                // Keep font-size constant across all states so a long
+                // active line doesn't re-wrap and shove the lines below it
+                // out of view. Scale is a GPU transform: visible pop
+                // without touching layout.
+                isActive
+                  ? 'text-foreground font-semibold scale-[1.02] origin-left'
+                  : isPast
+                    ? 'text-sidebar-foreground/30'
+                    : 'text-sidebar-foreground/65 hover:text-sidebar-foreground',
+              )}
+            >
+              {text}
+            </button>
+          );
+        })}
+      </div>
+      {inView && !follow.following && <FollowPill direction={follow.direction} onClick={follow.resume} />}
+    </>
+  );
+}
+
+/** Floats at the bottom of the lyrics scroller while following is off.
+ *  Sticky inside the scroller with zero height, so it never adds to the
+ *  scrollable length; the arrow points toward the current line. */
+function FollowPill({ direction, onClick }: { direction: FollowDirection; onClick: () => void }) {
+  const Arrow = direction === 'up' ? ArrowUpIcon : ArrowDownIcon;
+  return (
+    <div className="pointer-events-none sticky bottom-3 z-10 flex h-0 justify-center">
+      <button
+        type="button"
+        onClick={onClick}
+        aria-label="Follow lyrics, back to the current line"
+        data-direction={direction}
+        className="pointer-events-auto flex -translate-y-full items-center gap-inset rounded-full bg-ember px-row py-cluster text-xs font-semibold text-ember-foreground shadow-lg transition-colors hover:bg-ember-soft"
+      >
+        <Arrow className="h-3.5 w-3.5" aria-hidden />
+        Follow lyrics
+      </button>
     </div>
   );
 }
