@@ -50,6 +50,7 @@ import {
 } from '@/lib/tabStage';
 import { useTabAlignment, useTabSong, useTabSources, type TabSong, type TabSourcesState } from '@/hooks/useTabSources';
 import { useSettingsStore } from '@/stores/useSettingsStore';
+import { usePlayerStore } from '@/stores/usePlayerStore';
 import { cn } from '@/lib/utils';
 import { metaLine, scoreScale, type ScoreInfo, type TabsScroll, type TabsStaff } from '@/lib/tabScore';
 import { followTrackChange, sourceChipLabel } from '@/lib/tabSources';
@@ -177,6 +178,8 @@ export function TabsPage({ trackId }: { trackId: string }) {
 function TabsSheet({ song, sources, onBack }: { song: TabSong; sources: TabSourcesState; onBack: () => void }) {
   const phone = usePhone();
   const { current, isPlaying, position, duration, seek, playTrack, toggle, rate, setRate, canSetRate } = usePlayer();
+  // When the player reported `position`: the line runs on from then.
+  const positionAt = usePlayerStore((s) => s.positionAt);
   const follows = current?.id === song.id;
 
   // Which tab is drawn: the listener's own pick for this song when they
@@ -774,6 +777,7 @@ function TabsSheet({ song, sources, onBack }: { song: TabSong; sources: TabSourc
             follows={follows}
             playing={isPlaying}
             position={position}
+            positionAt={positionAt}
             duration={duration}
             onSeek={seek}
             onScore={(next) => setDrawn({ tabId: tab.id, info: next })}

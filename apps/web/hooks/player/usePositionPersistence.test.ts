@@ -37,6 +37,19 @@ describe('usePositionPersistence: persist', () => {
     expect(storedPosition()).toBe(73.5);
   });
 
+  it('stamps the time it read the playhead, like every position report', () => {
+    // A fresh position with an old stamp made the tab page run its line on
+    // from the old time: up to 250 ms ahead of the song.
+    const { backend, api } = setup();
+    backend!.currentTime = 73.5;
+    backend!.durationSec = 191;
+    usePlayerStore.setState({ positionAt: 1 });
+    const now = vi.spyOn(performance, 'now').mockReturnValue(9_000);
+    act(() => api().persist());
+    expect(usePlayerStore.getState().positionAt).toBe(9_000);
+    now.mockRestore();
+  });
+
   it('writes nothing while the backend is transitioning', () => {
     const { backend, api } = setup();
     backend!.currentTime = 73.5;

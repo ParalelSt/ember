@@ -11,6 +11,11 @@ interface PlayerState {
   queue: Track[];
   index: number;
   position: number;
+  /** When `position` was reported (performance.now()), so a view that runs
+   *  the playhead on between reports (the tab page) counts from the report,
+   *  not from whenever it rendered. 0: no report this session. Never
+   *  persisted. */
+  positionAt: number;
   volume: number;
   isPlaying: boolean;
   duration: number;
@@ -95,6 +100,7 @@ export const usePlayerStore = create<PlayerState>()(
       queue: [],
       index: -1,
       position: 0,
+      positionAt: 0,
       // Default sits in the first quarter of the slider — a fresh device
       // starts QUIET (0.25^1.5 ≈ 0.13 gain), not blasting from the middle.
       volume: 0.25,
@@ -110,7 +116,7 @@ export const usePlayerStore = create<PlayerState>()(
       played: [],
       setQueue: (queue) => set({ queue }),
       setIndex: (index) => set({ index }),
-      setPosition: (position) => set({ position }),
+      setPosition: (position) => set({ position, positionAt: typeof performance === 'undefined' ? 0 : performance.now() }),
       setDuration: (duration) => set({ duration }),
       setIsPlaying: (isPlaying) => set({ isPlaying }),
       setVolume: (volume) => set({ volume: Math.min(1, Math.max(0, volume)) }),

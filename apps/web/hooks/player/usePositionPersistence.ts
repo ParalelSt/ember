@@ -62,7 +62,9 @@ export function usePositionPersistence({
     const havePlayable = dur && dur !== Infinity && dur > 0;
     const trustworthyPos = pos > 0.5 ? pos : lastValidPosition.current;
     if (!havePlayable && trustworthyPos < 0.5) return;
-    usePlayerStore.setState({ position: trustworthyPos });
+    // Through setPosition, which stamps the time: the tab page runs its
+    // line on from the stamp, and an old one put it ahead of the song.
+    usePlayerStore.getState().setPosition(trustworthyPos);
   }, [backendRef]);
   useEffect(() => {
     persistRef.current = persist;
@@ -77,7 +79,7 @@ export function usePositionPersistence({
       const now = Date.now();
       if (now - lastPosWrite.current > 1000) {
         lastPosWrite.current = now;
-        usePlayerStore.setState({ position: sec });
+        usePlayerStore.getState().setPosition(sec);
       }
     }
   }, [backendRef]);
@@ -113,7 +115,6 @@ export function usePositionPersistence({
     // persist()'s fallback too: left alone, a pause before this track's first
     // report stored the previous song's time.
     lastValidPosition.current = at;
-    usePlayerStore.setState({ position: at });
     setPosition(at);
     return at;
   }, [setPosition]);
