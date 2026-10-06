@@ -11,6 +11,7 @@ import { PlayerBar } from '@/components/player/PlayerBar';
 import { NowPlaying } from '@/components/player/NowPlaying';
 import { LYRICS_PANEL_W, LyricsPanel } from '@/components/player/LyricsPanel';
 import { SearchOverlayContainer } from '@/components/search/SearchOverlayContainer';
+import { SessionHostBridge } from '@/components/session/SessionHostBridge';
 import { hydrateOfflineStore } from '@/lib/offline';
 import { useUiStore } from '@/stores/useUiStore';
 import { useChangelog } from '@/hooks/useChangelog';
@@ -113,6 +114,7 @@ export default function AppShellLayout({ children }: { children: ReactNode }) {
         <MobileNav onSearchClick={() => setSearchOpen(true)} />
       </div>
       <NowPlaying />
+      <SessionHostBridge />
     </div>
   );
 }

@@ -7,12 +7,16 @@ import { useSessionStore } from '@/stores/useSessionStore';
 import { api } from '@/lib/api';
 import { logger } from '@/lib/logger/client';
 import { mergeIntoPlayerQueue, sessionIndexFor } from '@/lib/carlist';
+import { useQuerySession } from '@/hooks/useSession';
 import type { SessionState } from '@/types/track';
 
 const COMMAND_POLL_MS = 2500;
 
-/** Host-side mirror for a live carlist session. Mounted by the session page
- *  when this device is the host:
+/** Host-side mirror for a live carlist session. Mounted once by the app
+ *  shell (SessionHostBridge), so it keeps running while the host browses
+ *  other pages (bughunt X6: it lived on the session page, and a host who
+ *  went looking for a song stopped getting the group's songs and skips).
+ *  Active while this device's `hostingSessionId` is set:
  *  - puts session tracks into the local player queue, each after the song it
  *    follows in the session, so Play next lands right after the current song
  *    (idempotent id-diff, so refreshes and repeat polls are safe; a track
@@ -20,15 +24,21 @@ const COMMAND_POLL_MS = 2500;
  *    limitation);
  *  - consumes guest commands (skip → player.next());
  *  - publishes the playing session row so guests' screens track it;
- *  - claims/clears the hosting flag (which also suppresses radio auto-extend).
+ *  - drops the hosting flag (which also suppresses radio auto-extend) once
+ *    the carlist has ended or is no longer ours; useReleaseStaleHosting
+ *    covers one that is gone.
  *  Autoplay note: the very first track still needs one tap on the host phone
  *  (browser gesture policy) — after that, advances are automatic. */
-export function useSessionHost(state: SessionState | undefined) {
+export function useSessionHost() {
   const { next, current } = usePlayer();
-  const setHostingSessionId = useSessionStore((s) => s.setHostingSessionId);
+  const hostingId = useSessionStore((s) => s.hostingSessionId);
+  const { data } = useQuerySession(hostingId);
+  // An answer for another carlist (cached while the flag changed) says
+  // nothing about this one.
+  const state = data && data.session.id === hostingId ? data : undefined;
 
   const isActiveHost = !!state && state.session.isHost && state.session.active;
-  const sessionId = state?.session.id ?? null;
+  const sessionId = isActiveHost ? hostingId : null;
 
   // Latest next() for the command interval without re-registering it.
   const nextRef = useRef(next);
@@ -36,13 +46,13 @@ export function useSessionHost(state: SessionState | undefined) {
     nextRef.current = next;
   }, [next]);
 
-  // Claim / clear the hosting flag.
+  // Let go of the flag once the carlist is over for this device. Only if it
+  // still names this carlist: a new one may have been claimed meanwhile.
   useEffect(() => {
-    if (!state) return;
-    if (state.session.isHost) {
-      setHostingSessionId(state.session.active ? state.session.id : null);
-    }
-  }, [state, setHostingSessionId]);
+    if (!state || isActiveHost) return;
+    const store = useSessionStore.getState();
+    if (store.hostingSessionId === state.session.id) store.setHostingSessionId(null);
+  }, [state, isActiveHost]);
 
   // Mirror: any session track missing from the player queue goes in after
   // the song it follows in the session. Runs on every poll result; no-ops
@@ -94,6 +104,17 @@ export function useSessionHost(state: SessionState | undefined) {
       lastPublished.current = null;
     });
   }, [isActiveHost, sessionId, playingRow, serverNow]);
+}
+
+/** Session page: a host looking at their own live carlist claims the host
+ *  role on this device (e.g. after a sign-in on a fresh device). Releasing
+ *  is useSessionHost's job, so leaving the page never drops the role. */
+export function useClaimSessionHost(state: SessionState | undefined) {
+  const setHostingSessionId = useSessionStore((s) => s.setHostingSessionId);
+  const claim = state?.session.isHost && state.session.active ? state.session.id : null;
+  useEffect(() => {
+    if (claim) setHostingSessionId(claim);
+  }, [claim, setHostingSessionId]);
 }
 
 /** Start hosting on this device. Whatever is playing keeps playing, but the

@@ -24,6 +24,7 @@ vi.mock('@/components/search/SearchOverlayContainer', () => ({
 vi.mock('@/lib/offline', () => ({ hydrateOfflineStore: vi.fn(async () => {}) }));
 vi.mock('@/hooks/useChangelog', () => ({ useChangelog: () => ({ hasNew: false }) }));
 vi.mock('@/hooks/useSession', () => ({ useReleaseStaleHosting: () => {} }));
+vi.mock('@/components/session/SessionHostBridge', () => ({ SessionHostBridge: () => null }));
 const desktop = vi.hoisted(() => ({ value: true }));
 vi.mock('@/hooks/useIsDesktop', () => ({ useIsDesktop: () => desktop.value }));
 
