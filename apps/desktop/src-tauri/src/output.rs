@@ -229,6 +229,27 @@ pub trait OutputBackend: Send + 'static {
     /// the handle closes the stream. The handle never leaves the router
     /// thread, so it need not be `Send`.
     fn open(&self, id: Option<&str>, tap: Tap, on_lost: OnLost) -> Result<(String, Box<dyn std::any::Any>), String>;
+
+    /// Something the last `open` wants in the app log (why it played where
+    /// it did), taken once.
+    fn take_note(&self) -> Option<String> {
+        None
+    }
+}
+
+/// The real machine. On Linux that is the sound server first, then ALSA
+/// (see `server`); elsewhere cpal's own host already is the OS mixer.
+pub fn system_backend() -> Box<dyn OutputBackend> {
+    #[cfg(target_os = "linux")]
+    {
+        server::apply_stream_env();
+        let server = pulse::PulseServer::load().map(|s| Box::new(s) as Box<dyn server::SoundServer>);
+        Box::new(server::ServerFirst::new(server, Box::new(CpalBackend)))
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        Box::new(CpalBackend)
+    }
 }
 
 /// The real machine, through cpal (as re-exported by rodio).
@@ -458,6 +479,9 @@ struct Shared {
     listener: Mutex<Option<Listener>>,
     store_dir: Mutex<Option<PathBuf>>,
     logger: Mutex<Option<Logger>>,
+    /// Lines logged before there was a logger (the launch open happens
+    /// before the app log is wired up), handed to it when it comes.
+    early: Mutex<Vec<(String, String)>>,
 }
 
 /// Sends `Shutdown` when the last handle goes. The router thread keeps a
@@ -521,7 +545,12 @@ impl OutputRouter {
 
     /// Where the router's log lines go (stderr until this is set).
     pub fn set_logger(&self, logger: Logger) {
-        *self.shared.logger.lock().unwrap_or_else(PoisonError::into_inner) = Some(logger);
+        let mut slot = self.shared.logger.lock().unwrap_or_else(PoisonError::into_inner);
+        let early = std::mem::take(&mut *self.shared.early.lock().unwrap_or_else(PoisonError::into_inner));
+        for (level, msg) in early {
+            logger(&level, &msg);
+        }
+        *slot = Some(logger);
     }
 
     /// One poll, now, and returns once it is done: tests drive the router
@@ -683,9 +712,16 @@ impl Router {
 
     fn log(&self, level: &str, msg: &str) {
         let logger = self.shared.logger.lock().unwrap_or_else(PoisonError::into_inner);
+        let line = format!("output: {msg}");
         match logger.as_ref() {
-            Some(log) => log(level, &format!("output: {msg}")),
-            None => eprintln!("[ember] output: {msg}"),
+            Some(log) => log(level, &line),
+            None => {
+                eprintln!("[ember] {line}");
+                let mut early = self.shared.early.lock().unwrap_or_else(PoisonError::into_inner);
+                if early.len() < 50 {
+                    early.push((level.to_string(), line));
+                }
+            }
         }
     }
 
@@ -708,7 +744,11 @@ impl Router {
         let on_lost: OnLost = Box::new(move || {
             let _ = tx.send(Cmd::Lost(id));
         });
-        let (opened, stream) = self.backend.open(target, tap, on_lost)?;
+        let opened = self.backend.open(target, tap, on_lost);
+        if let Some(note) = self.backend.take_note() {
+            self.log("WARN", &note);
+        }
+        let (opened, stream) = opened?;
         self.last_tap = id;
         self.active_tap.store(id, Ordering::SeqCst);
         drop(self.stream.replace(stream));
@@ -861,6 +901,11 @@ pub async fn audio_outputs(engine: State<'_, AudioEngine>) -> Result<OutputsSnap
 pub async fn audio_set_output(engine: State<'_, AudioEngine>, id: Option<String>) -> Result<OutputsSnapshot, String> {
     set_output(engine.outputs().cloned(), id).await
 }
+
+mod server;
+
+#[cfg(unix)]
+mod pulse;
 
 #[cfg(test)]
 mod tests;

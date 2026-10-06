@@ -175,7 +175,7 @@ impl AudioEngine {
         // it must not cross threads). It hands back the master mixer, which
         // the songs play into whichever device is under it (src/output.rs).
         let (mixer, router) = crate::output::start(
-            Box::new(crate::output::CpalBackend),
+            crate::output::system_backend(),
             crate::output::RouterConfig::for_this_os(),
         )?;
 
