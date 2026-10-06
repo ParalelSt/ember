@@ -3,6 +3,7 @@
 import { useState, type ComponentProps } from 'react';
 import { CheckIcon, ExternalIcon, PasteIcon, RepeatIcon, UploadIcon } from '@/components/icons';
 import { Button, buttonVariants } from '@/components/ui/button';
+import { Textarea } from '@/components/ui/textarea';
 import { announceOpen } from '@/components/ExternalLinks';
 import type { TabSourcesState } from '@/hooks/useTabSources';
 import { openExternal } from '@/lib/openExternal';
@@ -117,13 +118,13 @@ export function NoTab({
           </div>
           {pasteOpen && (
             <div className="flex flex-col gap-cluster">
-              <textarea
+              <Textarea
                 aria-label="Text tab"
                 value={text}
                 onChange={(e) => setText(e.target.value)}
                 placeholder={'e|---0---3---|\nB|---1---0---|'}
                 rows={6}
-                className="min-h-24 w-full rounded-lg border border-border bg-background p-row font-mono text-xs text-foreground"
+                className="min-h-24 font-mono text-xs"
               />
               <div className="flex flex-wrap items-center justify-between gap-cluster">
                 <span data-testid="tabs-paste-check" className={cn('text-meta min-w-0 flex-1', text.trim() && !check.ok && 'text-destructive')}>
