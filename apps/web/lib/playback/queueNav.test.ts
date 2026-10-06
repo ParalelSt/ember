@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { PLAY_HISTORY_MAX, isPlayableOffline, isUnavailable, nextIndex, nextPlayable, nextPlayableOffline, prevIndex, previousFromHistory, rememberPlayed, wrapPoint, type QueueNavState } from './queueNav';
+import { PLAY_HISTORY_MAX, isPlayableOffline, isUnavailable, nextIndex, nextPlayable, nextPlayableOffline, prevIndex, previousFromHistory, rememberPlayed, repeatsCurrent, wrapPoint, type QueueNavState } from './queueNav';
 
 /** A queue of `n` placeholder entries; only the length is read. */
 function q(n: number) {
@@ -316,5 +316,24 @@ describe('nextPlayableOffline', () => {
   it('an out-of-range start without wrap, or an empty queue, is -1', () => {
     expect(nextPlayableOffline(q, 9, 1, false, new Set(['a']), new Set()).index).toBe(-1);
     expect(nextPlayableOffline([], 0, 1, true, new Set(), new Set()).index).toBe(-1);
+  });
+});
+
+describe('repeatsCurrent', () => {
+  it('is true under loop-one', () => {
+    expect(repeatsCurrent(state({ loopMode: 'one', index: 2 }))).toBe(true);
+  });
+
+  it('is true when loop-all wraps back onto the song playing', () => {
+    expect(repeatsCurrent(state({ loopMode: 'all', queue: q(1) }))).toBe(true);
+    // A one-song playlist with an old radio tail behind it wraps to itself.
+    const playlist = { type: 'playlist' as const, playlistId: 'p', playlistName: 'P' };
+    expect(repeatsCurrent(state({ loopMode: 'all', queue: q(4), baseCount: 1, context: playlist }))).toBe(true);
+  });
+
+  it('is false when the next song is another one, or nothing', () => {
+    expect(repeatsCurrent(state({ loopMode: 'all', queue: q(3) }))).toBe(false);
+    expect(repeatsCurrent(state({ loopMode: 'off', queue: q(1) }))).toBe(false);
+    expect(repeatsCurrent(state({ loopMode: 'all', queue: q(0) }))).toBe(false);
   });
 });

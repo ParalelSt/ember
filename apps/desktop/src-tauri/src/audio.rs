@@ -119,6 +119,11 @@ pub struct AudioEngine {
     /// read by the position timer so a dead stream is reported as an error
     /// rather than as the end of the track. One per load.
     source_failed: Mutex<Arc<AtomicBool>>,
+    /// Repeat one, as the webview last set it (`audio_set_loop`): the song
+    /// playing goes back to the top by itself instead of ending (src/repeat.rs).
+    repeat_one: Arc<AtomicBool>,
+    /// The loaded song's lap clock: what its loops added to the sink's clock.
+    loop_clock: Mutex<Arc<crate::repeat::LoopClock>>,
     /// What the decoder said the loaded track lasts. Read by `audio_seek`:
     /// rodio clamps every seek target to this figure, so a decoder that
     /// reports zero (a fragmented mp4, which is what the stream route proxies
@@ -194,6 +199,8 @@ impl AudioEngine {
             forward_only: AtomicBool::new(false),
             current_total: Mutex::new(None),
             source_failed: Mutex::new(Arc::new(AtomicBool::new(false))),
+            repeat_one: Arc::new(AtomicBool::new(false)),
+            loop_clock: Mutex::new(Arc::default()),
             volume: Mutex::new(1.0),
             eq: Arc::new(crate::eq::EqControl::new()),
             controls: Mutex::new(None),
@@ -233,6 +240,8 @@ impl AudioEngine {
             forward_only: AtomicBool::new(false),
             current_total: Mutex::new(None),
             source_failed: Mutex::new(Arc::new(AtomicBool::new(false))),
+            repeat_one: Arc::new(AtomicBool::new(false)),
+            loop_clock: Mutex::new(Arc::default()),
             volume: Mutex::new(1.0),
             eq: Arc::new(crate::eq::EqControl::new()),
             controls: Mutex::new(None),
@@ -271,8 +280,17 @@ impl AudioEngine {
     /// Playing/Paused and never a position, so it has no scrubber. No-op if
     /// media controls failed to initialize.
     fn set_nowplaying(&self, playing: bool) {
-        let pos = self.sink.lock().ok().and_then(|g| g.as_ref().map(|s| s.get_pos()));
+        let pos = self.sink.lock().ok().and_then(|g| g.as_ref().map(|s| self.track_pos(s)));
         self.set_playback(nowplaying_state(playing, pos));
+    }
+
+    /// Where the loaded song is: the sink's clock less what loops added.
+    fn track_pos(&self, sink: &Sink) -> Duration {
+        let pos = sink.get_pos();
+        match self.loop_clock.lock() {
+            Ok(c) => c.track_pos(pos),
+            Err(_) => pos,
+        }
     }
 
     fn set_playback(&self, pb: MediaPlayback) {
@@ -1611,7 +1629,18 @@ async fn load_claimed<R: Runtime>(
     sink.pause();
     // Through the equalizer, which passes the samples through untouched
     // while it is off.
-    sink.append(crate::eq::Equalized::new(decoder, Arc::clone(&engine.eq)));
+    // Repeat one loops the song in here, from the bytes already loaded
+    // (src/repeat.rs). A forward-only stream cannot go back: it ends, and the
+    // webview opens it again.
+    let clock = Arc::new(crate::repeat::LoopClock::default());
+    let looping = crate::repeat::Looping::new(
+        decoder,
+        Arc::clone(&engine.repeat_one),
+        Arc::clone(&failed),
+        !forward_only,
+        Arc::clone(&clock),
+    );
+    sink.append(crate::eq::Equalized::new(looping, Arc::clone(&engine.eq)));
     // A seek pressed while this was on its way wins over where it was asked
     // to start (D2): the slider already shows it.
     let early_seek = engine.pending_seek.lock().ok().and_then(|mut p| p.take());
@@ -1643,6 +1672,9 @@ async fn load_claimed<R: Runtime>(
             sink.play();
         } else {
             sink.pause();
+        }
+        if let Ok(mut c) = engine.loop_clock.lock() {
+            *c = Arc::clone(&clock);
         }
         *slot = Some(Arc::clone(&sink));
         // Settled now, under the lock, rather than when this function
@@ -1693,11 +1725,11 @@ async fn load_claimed<R: Runtime>(
     engine.set_nowplaying(playing);
 
     let (sink_arc, generation) = engine.inner_arc();
-    spawn_position_timer(app.clone(), sink_arc, generation, my_gen, Arc::clone(&failed), token, progress);
+    spawn_position_timer(app.clone(), sink_arc, generation, my_gen, Arc::clone(&failed), clock, token, progress);
     if let Some(sec) = late_seek {
         // Planned like any seek: a backward one in a forward-only track
         // cannot be done in place (it would end the song), it re-opens.
-        match plan_seek(total, forward_only, sink.get_pos(), sec) {
+        match plan_seek(total, forward_only, engine.track_pos(&sink), sec) {
             SeekPlan::InPlace(target) => seek_in_place(app, engine, sink, failed, target, token),
             SeekPlan::Reopen(target) => {
                 let url = engine.current_url.lock().ok().and_then(|g| g.clone());
@@ -1828,7 +1860,7 @@ pub fn audio_seek<R: Runtime>(app: AppHandle<R>, engine: State<'_, AudioEngine>,
             }
             return;
         }
-        g.as_ref().map(|s| (Arc::clone(s), s.get_pos(), !s.is_paused(), s.empty()))
+        g.as_ref().map(|s| (Arc::clone(s), engine.track_pos(s), !s.is_paused(), s.empty()))
     };
     let Some((sink, pos, playing, spent)) = loaded else { return };
     // A sink that has played its source to the end has nothing left to seek
@@ -1962,6 +1994,16 @@ pub fn audio_set_eq(engine: State<'_, AudioEngine>, enabled: bool, bands: Vec<f3
     engine.set_eq(crate::eq::EqSettings::from_command(enabled, &bands));
 }
 
+/// Repeat one (loop-one, or loop-all over a single song), from the webview.
+/// On, the song playing goes back to the top by itself when it ends, from
+/// what is already loaded, and no `audio:ended` is sent (src/repeat.rs).
+/// Desktop builds before this command reject it as unknown; the webview then
+/// repeats the old way, on `audio:ended`.
+#[tauri::command]
+pub fn audio_set_loop(engine: State<'_, AudioEngine>, one: bool) {
+    engine.repeat_one.store(one, Ordering::SeqCst);
+}
+
 // --- OS media controls (souvlaki) -------------------------------------------
 
 /// Initialize OS media controls and route their transport-button presses to the
@@ -2040,12 +2082,14 @@ pub fn audio_set_metadata(
 
 // --- Position timer + end detection -----------------------------------------
 
+#[allow(clippy::too_many_arguments)]
 fn spawn_position_timer<R: Runtime>(
     app: AppHandle<R>,
     sink: SharedSink,
     generation: Arc<AtomicU64>,
     my_gen: u64,
     failed: Arc<AtomicBool>,
+    clock: Arc<crate::repeat::LoopClock>,
     token: Option<u64>,
     progress: Option<Arc<DownloadProgress>>,
 ) {
@@ -2090,7 +2134,7 @@ fn spawn_position_timer<R: Runtime>(
                     Err(_) => break,
                 };
                 match g.as_ref() {
-                    Some(s) => (s.get_pos().as_secs_f64(), s.empty(), s.is_paused()),
+                    Some(s) => (clock.track_pos(s.get_pos()).as_secs_f64(), s.empty(), s.is_paused()),
                     None => break,
                 }
             };

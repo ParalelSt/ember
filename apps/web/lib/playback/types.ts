@@ -153,6 +153,13 @@ export interface AudioBackend {
   /** Queue-owning backends only: the native player repeats by itself, so it
    *  has to be told the loop mode. */
   setLoop?(mode: LoopMode): void;
+  /** Engines that play one song at a time (web audio, desktop): the song
+   *  playing repeats when it ends (loop-one, or loop-all over one song).
+   *  The engine loops it itself, from the audio it already holds, so the
+   *  repeat starts at once instead of after a fresh load. Optional: an
+   *  engine without it (an older desktop app) still reports `ended`, and the
+   *  provider seeks back to 0. */
+  setRepeatOne?(on: boolean): void;
   /** Queue-owning backends only: the shuffle button. The queue itself is
    *  reordered here and handed over with setQueue; native only keeps the
    *  flag (the car's Shuffle button shows it) and `order`, the song ids from

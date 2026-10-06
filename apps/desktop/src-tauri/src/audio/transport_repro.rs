@@ -18,7 +18,7 @@ use std::time::{Duration, Instant};
 use tauri::test::{mock_app, MockRuntime};
 use tauri::{App, AppHandle, Listener, Manager};
 
-use super::{audio_load, audio_pause, audio_play, audio_seek, audio_stop, AudioEngine};
+use super::{audio_load, audio_pause, audio_play, audio_seek, audio_set_loop, audio_stop, AudioEngine};
 
 /// 120 s of AAC in a plain m4a: a cached song, decoded seekable.
 const TRACK: &[u8] = include_bytes!("../../test-fixtures/tone-faststart.m4a");
@@ -682,4 +682,100 @@ async fn a_pause_during_a_slow_seek_leaves_the_widget_paused() {
         "widget: {:?}",
         rig.engine().widget().playback
     );
+}
+
+// --- The loop gap: repeat one inside the engine ------------------------------
+
+/// Every position the engine reported after the `from`-th event.
+fn times_after(events: &[(String, String)], from: usize) -> Vec<f64> {
+    events[from..]
+        .iter()
+        .filter(|(n, _)| n == "audio:time")
+        .filter_map(|(_, p)| serde_json::from_str::<serde_json::Value>(p).ok()?["sec"].as_f64())
+        .collect()
+}
+
+/// How many times the loaded song has gone back to the top. Read from the
+/// engine: this rig plays faster than the 250 ms position reports can follow.
+fn laps(rig: &Rig) -> u64 {
+    rig.engine().loop_clock.lock().expect("clock").laps()
+}
+
+/// The loaded song's own position: the sink's, less what loops added.
+fn track_pos(rig: &Rig) -> Option<f64> {
+    let engine = rig.engine();
+    let g = engine.sink.lock().expect("sink");
+    g.as_ref().map(|s| engine.track_pos(s).as_secs_f64())
+}
+
+/// "When the loop ends it takes a while for the song to start playing
+/// again." Repeat one waited for `audio:ended`, and then the webview's seek
+/// to 0 found a spent sink and opened the song again: a new request to the
+/// host, a new decoder, seconds of silence. Told up front, the engine loops
+/// the song itself from the bytes it already has.
+#[tokio::test(flavor = "multi_thread")]
+async fn repeat_one_loops_in_the_engine_without_ending_or_opening_the_song_again() {
+    let rig = Rig::new();
+    let song = host(&[Answer::Song], Duration::ZERO);
+    audio_set_loop(rig.engine(), true);
+    rig.load(&song.url, true).await;
+
+    assert!(
+        rig.until(Duration::from_secs(60), |r| laps(r) >= 1).await,
+        "the song never came round again: {:?}",
+        rig.events().last()
+    );
+    let asked = song.requests.load(Ordering::SeqCst);
+    assert!(rig.until(Duration::from_secs(60), |r| laps(r) >= 2).await, "the second time round never came");
+    assert_eq!(rig.count("audio:ended"), 0, "a looping song does not end");
+    assert_eq!(rig.count("audio:error"), 0);
+    assert_eq!(rig.engine().load_seq.load(Ordering::SeqCst), 1, "the song was opened again");
+    assert_eq!(song.requests.load(Ordering::SeqCst), asked, "the host was asked again for a song already here");
+    let times = times_after(&rig.events(), 0);
+    let latest = times.iter().cloned().fold(0.0, f64::max);
+    assert!(latest <= 121.0, "the position ran past the song: {latest:.1}");
+    assert!(track_pos(&rig).is_some_and(|p| p <= 121.0), "{:?}", track_pos(&rig));
+    assert!(rig.sink().is_some_and(|(sound_left, paused)| sound_left && !paused), "still playing");
+}
+
+/// A seek after a loop lands on the song's own clock: the laps before it no
+/// longer count against the position.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_seek_after_a_loop_lands_on_the_songs_own_clock() {
+    let rig = Rig::new();
+    let song = host(&[Answer::Song], Duration::ZERO);
+    audio_set_loop(rig.engine(), true);
+    rig.load(&song.url, true).await;
+    assert!(rig.until(Duration::from_secs(60), |r| laps(r) >= 1).await);
+
+    rig.pause();
+    rig.seek(30.0);
+    assert!(
+        rig.until(Duration::from_secs(5), |r| track_pos(r).is_some_and(|p| (29.0..31.5).contains(&p))).await,
+        "the song is at {:?} after a seek to 30 s (sink clock {:?})",
+        track_pos(&rig),
+        sink_pos(&rig)
+    );
+    // Paused, so the next report is the seek's spot whatever the speed.
+    let mark = rig.events().len();
+    assert!(rig.until(Duration::from_secs(5), |r| !times_after(&r.events(), mark).is_empty()).await);
+    let reported = times_after(&rig.events(), mark)[0];
+    assert!((29.0..31.5).contains(&reported), "reported {reported:.1}s after a seek to 30 s");
+}
+
+/// Turned off again, the song ends as before and the webview moves on.
+#[tokio::test(flavor = "multi_thread")]
+async fn with_repeat_one_off_again_the_song_ends() {
+    let rig = Rig::new();
+    let song = host(&[Answer::Song], Duration::ZERO);
+    audio_set_loop(rig.engine(), true);
+    rig.load(&song.url, true).await;
+    assert!(rig.until(Duration::from_secs(60), |r| laps(r) >= 1).await);
+
+    audio_set_loop(rig.engine(), false);
+    assert!(
+        rig.until(Duration::from_secs(60), |r| r.count("audio:ended") == 1).await,
+        "the song should end once repeat one is off"
+    );
+    assert_eq!(laps(&rig), 1);
 }

@@ -235,6 +235,13 @@ export const createTauriBackend: CreateAudioBackend = (events) => {
       // songs. Desktop builds before the equalizer reject the command.
       void invoke('audio_set_eq', { enabled: eq.enabled, bands: eq.bands }).catch(() => {});
     },
+    setRepeatOne(on) {
+      // The engine loops the song itself, from what it already has, with no
+      // `audio:ended` (src/repeat.rs). Desktop builds before that reject the
+      // command and still send `ended`, which the provider answers with a
+      // seek back to 0.
+      void invoke('audio_set_loop', { one: on }).catch(() => {});
+    },
     setMetadata(track: Track | null) {
       void invoke('audio_set_metadata', {
         title: track?.title ?? '',

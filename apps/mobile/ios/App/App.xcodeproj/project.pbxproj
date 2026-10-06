@@ -11,6 +11,7 @@
 		0E9F918A74C5AC2D5F1AFA34 /* AudioRoute.swift in Sources */ = {isa = PBXBuildFile; fileRef = 07D6AA1950DE0E612EE93589 /* AudioRoute.swift */; };
 		A46F83B8F793FD80AC818ECE /* AudioRoute.swift in Sources */ = {isa = PBXBuildFile; fileRef = 07D6AA1950DE0E612EE93589 /* AudioRoute.swift */; };
 		49BB7847A6F3E34850928566 /* EmberAudioRoutePlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 46F944E69708469E0DDAB724 /* EmberAudioRoutePlugin.swift */; };
+		5A1E0C2D7B3F4E6A8C9D0E1F /* EmberAppPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6B2F1D3E8C4A5F7B9D0E1F2A /* EmberAppPlugin.swift */; };
 		C6A4D3947722C7F081F89281 /* AudioRouteTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C15BB424A55A6300DDB37B6E /* AudioRouteTests.swift */; };
 		0C6342BC6C79B32A100509BC /* EmberThemePlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 548069038F6BC4DA53CAD38C /* EmberThemePlugin.swift */; };
 		0E6CFB91D5EED551B800D071 /* SpokenDurationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = EA10F4C7F176EA2B603B1A97 /* SpokenDurationTests.swift */; };
@@ -68,6 +69,7 @@
 		50B271D01FEDC1A000F3C39B /* public */ = {isa = PBXFileReference; lastKnownFileType = folder; path = public; sourceTree = "<group>"; };
 		07D6AA1950DE0E612EE93589 /* AudioRoute.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = AudioRoute.swift; sourceTree = "<group>"; };
 		46F944E69708469E0DDAB724 /* EmberAudioRoutePlugin.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = EmberAudioRoutePlugin.swift; sourceTree = "<group>"; };
+		6B2F1D3E8C4A5F7B9D0E1F2A /* EmberAppPlugin.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = EmberAppPlugin.swift; sourceTree = "<group>"; };
 		C15BB424A55A6300DDB37B6E /* AudioRouteTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = AudioRouteTests.swift; sourceTree = "<group>"; };
 		548069038F6BC4DA53CAD38C /* EmberThemePlugin.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = EmberThemePlugin.swift; sourceTree = "<group>"; };
 		63472E279E42789B00B334E6 /* ShellTheme.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = ShellTheme.swift; sourceTree = "<group>"; };
@@ -156,6 +158,7 @@
 				548069038F6BC4DA53CAD38C /* EmberThemePlugin.swift */,
 				07D6AA1950DE0E612EE93589 /* AudioRoute.swift */,
 				46F944E69708469E0DDAB724 /* EmberAudioRoutePlugin.swift */,
+				6B2F1D3E8C4A5F7B9D0E1F2A /* EmberAppPlugin.swift */,
 				0A90818C98E416CA18E7BF59 /* EmberViewController.swift */,
 			);
 			path = App;
@@ -394,6 +397,7 @@
 				0C6342BC6C79B32A100509BC /* EmberThemePlugin.swift in Sources */,
 				0E9F918A74C5AC2D5F1AFA34 /* AudioRoute.swift in Sources */,
 				49BB7847A6F3E34850928566 /* EmberAudioRoutePlugin.swift in Sources */,
+				5A1E0C2D7B3F4E6A8C9D0E1F /* EmberAppPlugin.swift in Sources */,
 				08E975C8A5D06F0A08801E58 /* EmberViewController.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

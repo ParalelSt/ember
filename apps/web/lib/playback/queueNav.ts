@@ -61,6 +61,16 @@ export function nextIndex(state: QueueNavState): NextMove | null {
   return null;
 }
 
+/** Whether the end of the song playing means the same song again: loop-one,
+ *  or loop-all wrapping back onto it (a one-song queue). The engine is told
+ *  so (setRepeatOne) and loops the song itself from what it already holds,
+ *  and an `ended` that still arrives restarts it with a seek, never a load. */
+export function repeatsCurrent(state: QueueNavState): boolean {
+  if (state.loopMode === 'one') return state.queue.length > 0;
+  if (state.loopMode !== 'all') return false;
+  return nextIndex(state)?.index === state.index;
+}
+
 /** Where Previous goes. `historyIndex` is the queue index of the song the
  *  listener actually played before this one (see `previousFromHistory`), or
  *  null/undefined when the play history has nothing usable. The order:
