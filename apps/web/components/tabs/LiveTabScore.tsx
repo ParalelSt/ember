@@ -560,7 +560,12 @@ export function LiveTabScore(props: LiveTabScoreProps) {
     const api = apiRef.current;
     if (!api || !synced) return;
     try {
-      if (follows && playing) api.play();
+      // Before the tab's first bar (an intro it does not have) AlphaTab
+      // waits: told to play, it glides the line through the first beat in
+      // the silence. The feed below starts it when the tab begins.
+      const p = live.current;
+      const before = songSecToTabMs(p.position, points.current, p.offsetMs) <= 0;
+      if (follows && playing && !before) api.play();
       else api.pause();
     } catch {
       // Mirroring the transport must never break playback.
@@ -597,8 +602,9 @@ export function LiveTabScore(props: LiveTabScoreProps) {
           speed.current = want;
           fed.current = null;
         }
+        const tabMs = songSecToTabMs(songSec, points.current, p.offsetMs);
         // The position on AlphaTab's clock (lib/tabSync.ts alphaTabMs).
-        const atMs = alphaTabMs(songSecToTabMs(songSec, points.current, p.offsetMs), speed.current);
+        const atMs = alphaTabMs(tabMs, speed.current);
         if (!api.isReadyForPlayback) {
           // No score in the player yet: it cannot seek, and whatever it
           // shows now is placed again once it can.
@@ -615,8 +621,11 @@ export function LiveTabScore(props: LiveTabScoreProps) {
           fed.current = { ms: atMs, at: now };
         }
         // Past the last bar AlphaTab stops itself; after a seek back into
-        // the score it has to be told to run again.
-        if (p.playing && api.playerState !== 1 && atMs < endMs.current - 200) api.play();
+        // the score it has to be told to run again. Before the first bar
+        // (an intro the tab does not have) it waits on the first beat.
+        if (p.playing && tabMs <= 0) {
+          if (api.playerState === 1) api.pause();
+        } else if (p.playing && api.playerState !== 1 && atMs < endMs.current - 200) api.play();
       } catch {
         // A cursor that cannot move must never break playback.
       }
