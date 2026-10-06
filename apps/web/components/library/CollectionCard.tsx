@@ -32,7 +32,7 @@ export function CollectionCard({ title, subtitle, href, cover, badge, shared, sh
         <div className={cn('truncate font-semibold', size === 'lg' ? 'text-base' : 'text-sm')}>{title}</div>
       </div>
       {sharedBy ? (
-        <SharedByBadge owner={sharedBy} size="sm" className="mt-1" />
+        <SharedByBadge owner={sharedBy} size="sm" className="mt-inset" />
       ) : (
         <div className="mt-1 text-xs text-muted-foreground">{subtitle}</div>
       )}

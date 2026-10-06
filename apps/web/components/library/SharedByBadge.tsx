@@ -19,7 +19,7 @@ export function SharedByBadge({
       data-testid="shared-by"
       className={cn(
         'inline-flex max-w-full items-center gap-cluster rounded-full bg-card font-medium',
-        size === 'sm' ? 'py-0.5 pr-cluster pl-0.5 text-xs' : 'py-inset pr-row pl-inset text-sm',
+        size === 'sm' ? 'p-inset pr-cluster text-xs' : 'py-inset pr-row pl-inset text-sm',
         className,
       )}
     >
