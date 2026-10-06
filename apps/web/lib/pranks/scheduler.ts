@@ -52,7 +52,12 @@ export interface TickStore {
   isPlaying(targetId: string, now: number): boolean;
   /** The sound's media URL, null when it left the library. */
   soundUrl(soundId: string): Promise<string | null>;
-  createPrank(row: TickPrank): Promise<void>;
+  /** Returns the new row's id. */
+  createPrank(row: TickPrank): Promise<string>;
+  /** The schedule is still on: Stop (or Stop everything) not pressed since
+   *  `due` read it. */
+  scheduleActive(id: string): Promise<boolean>;
+  cancelPrank(id: string): Promise<void>;
   updateSchedule(id: string, patch: SchedulePatch): Promise<void>;
   /** Writes expired onto pending rows past their window; returns how many. */
   expireStale(now: number): Promise<number>;
@@ -122,7 +127,19 @@ export async function runTick(now: number, store: TickStore): Promise<{ results:
       continue;
     }
 
-    await store.createPrank({ ...row, status: 'pending', reason: '', expiresAt: now + PRANK_LIMITS.expirySec * 1000 });
+    // Stop turns the schedule off, then cancels its pending rows. Checked
+    // again here, and once more after the write: a row written after that
+    // cancel pass is taken back, since the schedule already says stop.
+    if (!(await store.scheduleActive(s.id))) {
+      results.push({ id: s.id, result: 'switched-off' });
+      continue;
+    }
+    const id = await store.createPrank({ ...row, status: 'pending', reason: '', expiresAt: now + PRANK_LIMITS.expirySec * 1000 });
+    if (!(await store.scheduleActive(s.id))) {
+      await store.cancelPrank(id);
+      results.push({ id: s.id, result: 'switched-off' });
+      continue;
+    }
     await store.updateSchedule(s.id, advance(s.fired + 1));
     results.push({ id: s.id, result: 'fired' });
   }
