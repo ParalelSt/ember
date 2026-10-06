@@ -364,6 +364,9 @@ const APP_LOG_SCRIPT: &str = r#"
 "#;
 
 #[cfg(test)]
+mod packaging_tests;
+
+#[cfg(test)]
 mod devtools_tests {
     use super::wants_devtools_on_launch;
 
