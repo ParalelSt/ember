@@ -8,6 +8,7 @@ class EmberViewController: CAPBridgeViewController {
     override open func capacitorDidLoad() {
         bridge?.registerPluginInstance(EmberThemePlugin())
         bridge?.registerPluginInstance(EmberAudioRoutePlugin())
+        bridge?.registerPluginInstance(EmberAppPlugin())
     }
 
     #if DEBUG

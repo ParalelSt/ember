@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { SettingsTabs } from '@/components/settings/SettingsTabs';
 import { PageTitle } from '@/components/page/PageTitle';
+import { BuildStamp } from '@/components/settings/BuildStamp';
 
 export default function SettingsLayout({ children }: { children: ReactNode }) {
   return (
@@ -11,9 +12,10 @@ export default function SettingsLayout({ children }: { children: ReactNode }) {
         <div className="flex-1 min-w-0">{children}</div>
       </div>
       {/* Build stamp — NEXT_PUBLIC_APP_VERSION is inlined at build time
-          (git SHA + build date, see next.config.ts). */}
+          (git SHA + build date, see next.config.ts). Inside the desktop or
+          phone app, that app's own version follows it. */}
       <div className="mt-10 text-xs text-muted-foreground/60">
-        Ember build {process.env.NEXT_PUBLIC_APP_VERSION ?? 'unknown'}
+        <BuildStamp build={process.env.NEXT_PUBLIC_APP_VERSION ?? 'unknown'} />
       </div>
     </div>
   );
