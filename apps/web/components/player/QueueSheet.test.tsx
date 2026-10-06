@@ -36,6 +36,20 @@ describe('QueueSheet', () => {
     expect(player.playTrack).not.toHaveBeenCalled();
   });
 
+  // O9: an upcoming row only played on a click of the row itself, a
+  // mouse-only handler with no keyboard-reachable control.
+  it('gives an upcoming row a keyboard-reachable play button', () => {
+    const a = makeTrack({ id: 'youtube:a', title: 'Alpha' });
+    const b = makeTrack({ id: 'youtube:b', title: 'Bravo' });
+    usePlayerStore.setState({ queue: [a, b], index: 0, context: null });
+    render(<QueueSheet open onOpenChange={() => {}} />);
+    player.playAt.mockClear();
+    const play = screen.getByRole('button', { name: 'Play Bravo' });
+    fireEvent.click(play);
+    expect(player.playAt).toHaveBeenCalledTimes(1);
+    expect(player.playAt).toHaveBeenCalledWith(1);
+  });
+
   it('keeps a song that could not play in the queue, greyed, with the UNAVAILABLE pill', () => {
     const a = makeTrack({ id: 'youtube:a', title: 'Alpha' });
     const gone = makeTrack({ id: 'youtube:g', title: 'Gone Song', unavailableAt: '2026-09-30T10:00:00Z', unavailableReason: 'removed' });

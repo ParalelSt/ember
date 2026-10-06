@@ -102,6 +102,17 @@ describe('SearchPage', () => {
     expect(recents.removeMutate).toHaveBeenCalledWith(track.id);
   });
 
+  // O9: the recents row only played on a click of the whole row, a
+  // mouse-only handler on a div that Tab never reaches.
+  it('gives the recent-searches row a keyboard-reachable play button', () => {
+    const track = makeTrack();
+    recents.tracks = [track];
+    renderPage();
+
+    fireEvent.click(screen.getByRole('button', { name: `Play ${track.title}` }));
+    expect(trackActions.onPlay).toHaveBeenCalledWith(track);
+  });
+
   it('shows the rate-limit message instead of results when the search hook reports a 429', async () => {
     api.search.mockRejectedValue({ status: 429 });
     renderPage();
