@@ -386,7 +386,7 @@ export default function PlaylistPage({ params }: { params: Promise<{ id: string 
         }
       />
 
-      <CollaborateSheet open={collabOpen} onOpenChange={setCollabOpen} {...collabSheet} />
+      <CollaborateSheet open={collabOpen} onOpenChange={setCollabOpen} playlistName={playlist.name} {...collabSheet} />
 
       <ConfirmDialog
         open={!!pendingRemove}
