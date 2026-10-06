@@ -204,7 +204,12 @@ function spawnPython<T>(args: string[], timeoutMs: number): Promise<T> {
       }
       reject(e);
     };
+    // Once the timeout fires, `close` still arrives (SIGKILL doesn't skip it)
+    // with some non-zero code, which would otherwise log AND reject a second
+    // time for the same one timeout.
+    let timedOut = false;
     const timer = setTimeout(() => {
+      timedOut = true;
       child.kill('SIGKILL');
       const e: PythonError = new Error('python timed out');
       e.status = 504;
@@ -222,6 +227,7 @@ function spawnPython<T>(args: string[], timeoutMs: number): Promise<T> {
     child.on('error', (e) => { clearTimeout(timer); reject_(e as PythonError); });
     child.on('close', (code) => {
       clearTimeout(timer);
+      if (timedOut) return; // already rejected (and logged) by the timer above
       if (code !== 0) {
         // The MESSAGE reaches the browser (and toasts), so it must be a
         // sentence, not a Python traceback — those leak absolute server paths
