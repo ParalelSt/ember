@@ -10,9 +10,9 @@ import { useOutputStore } from '@/stores/useOutputStore';
 
 // The phone bar keeps only play/pause, so the full-screen view is where a
 // phone reaches previous, next, the queue and the other tools. The layout:
-// a close chevron and the "Playing from" title, then Devices, EQ and More
-// at the top right; an action rail on the artwork (Like, Add to playlist,
-// Tabs); Lyrics and Up next as two wide buttons under the controls.
+// a close chevron, the "Playing from" title and one More button on top;
+// More opens one sheet that holds every other action; under the controls,
+// nothing but the seek bar and the transport.
 
 const nav = vi.hoisted(() => ({ push: vi.fn() }));
 vi.mock('next/navigation', () => ({ useRouter: () => ({ push: nav.push }), usePathname: () => '/' }));
@@ -56,11 +56,11 @@ vi.mock('@/components/track/ShareButton', () => ({
   canShare: (t: Track) => t.source === 'youtube',
   shareTrack: share.shareTrack,
 }));
-// The rail's + menu: here it only has to open, and say how it is drawn.
+// The playlist menu: here it only has to open, from an anchor nobody sees.
 vi.mock('@/components/track/menus/AddToPlaylistMenu', () => ({
-  AddToPlaylistMenu: ({ open, onOpenChange, triggerClassName }: { open?: boolean; onOpenChange?: (o: boolean) => void; triggerClassName?: string }) => (
+  AddToPlaylistMenu: ({ open, hiddenTrigger }: { open?: boolean; hiddenTrigger?: boolean }) => (
     <>
-      <button type="button" aria-label="Add to playlist" className={triggerClassName} onClick={() => onOpenChange?.(!open)} />
+      <span data-testid="add-anchor" data-hidden={hiddenTrigger} />
       {open && <div data-testid="add-to-playlist-menu" />}
     </>
   ),
@@ -125,11 +125,12 @@ const PHONE_WITH_BUDS = {
 };
 
 const view = () => screen.getByTestId('now-playing');
-const top = () => screen.getByTestId('top-tools');
-const topNames = () => Array.from(top().querySelectorAll('button')).map((b) => b.getAttribute('aria-label'));
-const rail = () => screen.getByTestId('action-rail');
-const railNames = () => Array.from(rail().querySelectorAll('button')).map((b) => b.getAttribute('aria-label'));
-const menuItems = () => within(screen.getByRole('menu')).getAllByRole('menuitem').map((m) => m.textContent?.trim());
+const openMore = () => fireEvent.click(within(view()).getByRole('button', { name: 'More' }));
+const sheet = () => screen.getByTestId('now-playing-more-sheet');
+const rows = () => Array.from(sheet().querySelectorAll<HTMLElement>('[data-testid^="more-"]')).map((b) => b.dataset.testid!.slice(5));
+const groups = () => Array.from(sheet().querySelectorAll('[role="group"]')).map((g) => Array.from(g.querySelectorAll<HTMLElement>('button')).map((b) => b.dataset.testid!.slice(5)));
+const row = (key: string) => within(sheet()).getByTestId(`more-${key}`);
+const LYRICS = { lyrics: 'la la', synced: null, source: 'lrclib' };
 
 beforeEach(() => {
   player.toggle.mockReset();
@@ -162,13 +163,20 @@ describe('NowPlaying', () => {
 });
 
 describe('NowPlaying: the top row', () => {
-  it('is the close chevron and the "Playing from" title, then Devices, EQ and More on the right', () => {
+  it('is the close chevron, the "Playing from" title and one More button, nothing else', () => {
+    auth.user = { id: 'u1' };
     player.current = { ...TRACK, artistId: 'UC1' };
     usePlayerStore.setState({ context: { type: 'playlist', playlistId: 'p1', playlistName: 'Road trip' } });
     render(<NowPlaying />);
     expect(screen.getByTestId('context-title')).toHaveTextContent('Playing from playlistRoad trip');
     expect(within(view()).getByRole('button', { name: 'Close' })).toBeInTheDocument();
-    expect(topNames()).toEqual(['Devices', 'Equalizer', 'More']);
+    expect(within(view()).getAllByRole('button', { name: 'More' })).toHaveLength(1);
+    // No tool sits on the player itself any more: no rail, no row, no icons.
+    for (const name of ['Equalizer', 'Devices', 'Like', 'Unlike', 'Guitar tabs', 'Up next', 'Lyrics', 'Queue']) {
+      expect(within(view()).queryByRole('button', { name })).toBeNull();
+    }
+    expect(screen.queryByTestId('tool-row')).toBeNull();
+    expect(screen.getByTestId('add-anchor')).toHaveAttribute('data-hidden', 'true');
   });
 
   it('names the album, artist, liked songs or search it plays from, and says "Now playing" for a lone song', () => {
@@ -190,177 +198,63 @@ describe('NowPlaying: the top row', () => {
     rerender(<NowPlaying />);
     expect(screen.getByTestId('context-title')).toHaveTextContent(/^Now playing$/);
   });
-
-  it('hides Devices when there is nothing to choose, and EQ while casting to a Cast device (kept over AirPlay)', () => {
-    useOutputStore.setState(NO_OUTPUTS);
-    const { rerender } = render(<NowPlaying />);
-    expect(topNames()).toEqual(['Equalizer', 'More']);
-    act(() => useCastStore.setState({ path: 'android', availability: 'available', connection: 'connected', deviceName: 'Living Room TV' }));
-    rerender(<NowPlaying />);
-    expect(topNames()).toEqual(['Devices: playing on Living Room TV', 'More']);
-    act(() => useCastStore.setState({ path: 'airplay', connection: 'connected', deviceName: null }));
-    rerender(<NowPlaying />);
-    expect(topNames()).toEqual(['Devices: playing on AirPlay', 'Equalizer', 'More']);
-  });
-
-  it('EQ opens the equalizer in a sheet, and it works there; the button is lit while it is on', async () => {
-    useSettingsStore.setState({ equalizer: { enabled: false, bands: [0, 0, 0, 0, 0] } });
-    const { rerender } = render(<NowPlaying />);
-    expect(screen.queryByTestId('equalizer')).toBeNull();
-    const eq = within(top()).getByRole('button', { name: 'Equalizer' });
-    expect(eq.className).not.toContain('text-ember');
-    fireEvent.click(eq);
-    const panel = await screen.findByTestId('equalizer');
-    fireEvent.click(within(panel).getByRole('button', { name: 'Bass boost' }));
-    expect(useSettingsStore.getState().equalizer).toEqual({ enabled: true, bands: [7, 4, 0, 0, 0] });
-    expect(usePlayerStore.getState().nowPlayingOpen).toBe(true);
-    rerender(<NowPlaying />);
-    expect(within(top()).getByRole('button', { name: 'Equalizer' }).className).toContain('text-ember');
-  });
-
-  it('Devices opens the devices picker', () => {
-    render(<NowPlaying />);
-    expect(screen.queryByTestId('devices-list')).toBeNull();
-    fireEvent.click(within(top()).getByRole('button', { name: 'Devices' }));
-    const list = screen.getByTestId('devices-list');
-    expect(within(list).getByText('Pixel Buds')).toBeInTheDocument();
-    expect(within(list).getByText('More devices')).toBeInTheDocument();
-  });
 });
 
-describe('NowPlaying: More', () => {
-  it('holds Copy link, Go to artist, Go to album and Report wrong lyrics, and nothing on the rail', async () => {
+describe('NowPlaying: the More sheet', () => {
+  it('signed in, holds every action, grouped, under the song', () => {
     auth.user = { id: 'u1' };
-    lyrics.data = { lyrics: 'la la', synced: null, source: 'lrclib' };
+    lyrics.data = LYRICS;
     player.current = { ...TRACK, artistId: 'UC1', albumId: 'MPRE b' };
     render(<NowPlaying />);
-    fireEvent.click(within(top()).getByRole('button', { name: 'More' }));
-    expect(menuItems()).toEqual(['Copy link', 'Go to artist', 'Go to album', 'Report wrong lyrics']);
-    fireEvent.click(within(screen.getByRole('menu')).getByText('Go to artist'));
-    expect(usePlayerStore.getState().nowPlayingOpen).toBe(false);
-    await waitFor(() => expect(nav.push).toHaveBeenCalledWith('/artist/UC1'));
-
-    act(() => usePlayerStore.getState().setNowPlayingOpen(true));
-    fireEvent.click(within(top()).getByRole('button', { name: 'More' }));
-    fireEvent.click(within(screen.getByRole('menu')).getByText('Go to album'));
-    await waitFor(() => expect(nav.push).toHaveBeenCalledWith('/album/MPRE%20b'));
+    expect(screen.queryByTestId('now-playing-more-sheet')).toBeNull();
+    openMore();
+    expect(within(sheet()).getByText('Copper Sky')).toBeInTheDocument();
+    expect(within(sheet()).getByText('Coastline')).toBeInTheDocument();
+    expect(groups()).toEqual([
+      ['like', 'add', 'share'],
+      ['queue', 'lyrics', 'tabs'],
+      ['devices', 'eq'],
+      ['artist', 'album'],
+      ['report'],
+    ]);
+    expect(row('share')).toHaveTextContent('Copy link');
   });
 
-  it('Copy link shares the song, signed in or out', () => {
+  it('signed out, keeps what needs no account', () => {
     render(<NowPlaying />);
-    fireEvent.click(within(top()).getByRole('button', { name: 'More' }));
-    fireEvent.click(within(screen.getByRole('menu')).getByText('Copy link'));
+    openMore();
+    expect(rows()).toEqual(['share', 'queue', 'lyrics', 'tabs', 'devices', 'eq']);
+  });
+
+  it('Like toggles in place and keeps the sheet open', () => {
+    auth.user = { id: 'u1' };
+    render(<NowPlaying />);
+    openMore();
+    expect(row('like')).toHaveAttribute('aria-pressed', 'false');
+    fireEvent.click(row('like'));
+    expect(sheet()).toBeInTheDocument();
+  });
+
+  it('Add to playlist closes the sheet and opens the playlist menu', () => {
+    auth.user = { id: 'u1' };
+    render(<NowPlaying />);
+    openMore();
+    fireEvent.click(row('add'));
+    expect(screen.queryByTestId('now-playing-more-sheet')).toBeNull();
+    expect(screen.getByTestId('add-to-playlist-menu')).toBeInTheDocument();
+  });
+
+  it('Copy link shares the song', () => {
+    render(<NowPlaying />);
+    openMore();
+    fireEvent.click(row('share'));
     expect(share.shareTrack).toHaveBeenCalledWith(TRACK);
-  });
-
-  it('Report wrong lyrics shows only with lyrics, and opens the lyrics card’s report form', () => {
-    const { rerender } = render(<NowPlaying />);
-    fireEvent.click(within(top()).getByRole('button', { name: 'More' }));
-    expect(menuItems()).toEqual(['Copy link']);
-    fireEvent.click(within(top()).getByRole('button', { name: 'More' }));
-    lyrics.data = { lyrics: 'la la', synced: null, source: 'lrclib' };
-    rerender(<NowPlaying />);
-    fireEvent.click(within(top()).getByRole('button', { name: 'More' }));
-    expect(screen.queryByTestId('lyrics-report')).toBeNull();
-    fireEvent.click(within(screen.getByRole('menu')).getByText('Report wrong lyrics'));
-    expect(screen.getByTestId('lyrics-report')).toBeInTheDocument();
-    expect(usePlayerStore.getState().nowPlayingOpen).toBe(true);
-  });
-
-  it('has no More button when it would be empty', () => {
-    player.current = { ...TRACK, source: 'jamendo' };
-    render(<NowPlaying />);
-    expect(within(view()).queryByRole('button', { name: 'More' })).toBeNull();
-    expect(within(view()).getByRole('button', { name: 'Close' })).toBeInTheDocument();
-  });
-
-  it('closes More and the playlist menu when the song changes, so they never act on the next song', () => {
-    auth.user = { id: 'u1' };
-    player.current = { ...TRACK, artistId: 'UC1' };
-    const { rerender } = render(<NowPlaying />);
-    fireEvent.click(within(top()).getByRole('button', { name: 'More' }));
-    expect(screen.getByRole('menu')).toBeInTheDocument();
-    // Song A ends and B starts while the menu is still up.
-    player.current = { ...TRACK, id: 't2', sourceId: 'v2', title: 'Other', artistId: 'UC2' };
-    rerender(<NowPlaying />);
-    expect(screen.queryByRole('menu')).toBeNull();
-
-    fireEvent.click(within(rail()).getByRole('button', { name: 'Add to playlist' }));
-    expect(screen.getByTestId('add-to-playlist-menu')).toBeInTheDocument();
-    player.current = { ...TRACK, id: 't3', sourceId: 'v3', title: 'Third' };
-    rerender(<NowPlaying />);
-    expect(screen.queryByTestId('add-to-playlist-menu')).toBeNull();
-  });
-
-  it('closes More and the playlist menu when the player closes without them (Back, Escape)', () => {
-    auth.user = { id: 'u1' };
-    render(<NowPlaying />);
-    fireEvent.click(within(top()).getByRole('button', { name: 'More' }));
-    expect(screen.getByRole('menu')).toBeInTheDocument();
-    act(() => usePlayerStore.getState().setNowPlayingOpen(false));
-    expect(screen.queryByRole('menu')).toBeNull();
-
-    act(() => usePlayerStore.getState().setNowPlayingOpen(true));
-    fireEvent.click(within(rail()).getByRole('button', { name: 'Add to playlist' }));
-    expect(screen.getByTestId('add-to-playlist-menu')).toBeInTheDocument();
-    act(() => usePlayerStore.getState().setNowPlayingOpen(false));
-    expect(screen.queryByTestId('add-to-playlist-menu')).toBeNull();
-  });
-});
-
-describe('NowPlaying: the action rail on the artwork', () => {
-  it('signed in, is exactly Like, Add to playlist and Guitar tabs, drawn as round buttons', () => {
-    auth.user = { id: 'u1' };
-    render(<NowPlaying />);
-    expect(railNames()).toEqual(['Like', 'Add to playlist', 'Guitar tabs']);
-    for (const b of rail().querySelectorAll('button')) expect(b.className).toContain('rounded-full');
-    // Each lives on the rail only: no Queue, no Lyrics, no More there.
-    for (const name of ['Like', 'Add to playlist', 'Guitar tabs']) expect(within(view()).getAllByRole('button', { name })).toHaveLength(1);
-  });
-
-  it('Add to playlist opens the playlist menu', () => {
-    auth.user = { id: 'u1' };
-    render(<NowPlaying />);
-    expect(screen.queryByTestId('add-to-playlist-menu')).toBeNull();
-    fireEvent.click(within(rail()).getByRole('button', { name: 'Add to playlist' }));
-    expect(screen.getByTestId('add-to-playlist-menu')).toBeInTheDocument();
-  });
-
-  it('signed out, only Tabs; with the tabs plugin off too, no rail at all', () => {
-    render(<NowPlaying />);
-    expect(railNames()).toEqual(['Guitar tabs']);
-    act(() => useSettingsStore.setState({ tabsEnabled: false }));
-    expect(screen.queryByTestId('action-rail')).toBeNull();
-  });
-
-  it('hides Tabs when guitar tabs are off in settings', () => {
-    auth.user = { id: 'u1' };
-    useSettingsStore.getState().setTabsEnabled(false);
-    render(<NowPlaying />);
-    expect(railNames()).toEqual(['Like', 'Add to playlist']);
-  });
-
-  it('Tabs closes the player and opens the tab page for the song', async () => {
-    render(<NowPlaying />);
-    fireEvent.click(within(rail()).getByRole('button', { name: 'Guitar tabs' }));
-    expect(usePlayerStore.getState().nowPlayingOpen).toBe(false);
-    await waitFor(() => expect(nav.push).toHaveBeenCalledWith('/tabs/t1'));
-  });
-});
-
-describe('NowPlaying: Lyrics and Up next under the controls', () => {
-  it('are two wide buttons, and the old tool row is gone', () => {
-    render(<NowPlaying />);
-    const pair = screen.getByTestId('lyrics-queue');
-    expect(Array.from(pair.querySelectorAll('button')).map((b) => b.textContent?.trim())).toEqual(['Lyrics', 'Up next']);
-    expect(screen.queryByTestId('tool-row')).toBeNull();
-    expect(within(view()).queryByRole('button', { name: 'Queue' })).toBeNull();
   });
 
   it('Up next opens the queue sheet over the player', () => {
     render(<NowPlaying />);
-    expect(screen.queryByTestId('queue-sheet')).toBeNull();
-    fireEvent.click(within(view()).getByRole('button', { name: 'Up next' }));
+    openMore();
+    fireEvent.click(row('queue'));
     expect(screen.getByTestId('queue-sheet')).toBeInTheDocument();
     expect(usePlayerStore.getState().nowPlayingOpen).toBe(true);
   });
@@ -369,38 +263,136 @@ describe('NowPlaying: Lyrics and Up next under the controls', () => {
     const scroll = vi.fn();
     const spy = vi.spyOn(HTMLElement.prototype, 'scrollIntoView').mockImplementation(scroll);
     render(<NowPlaying />);
-    fireEvent.click(within(view()).getByRole('button', { name: 'Lyrics' }));
+    openMore();
+    fireEvent.click(row('lyrics'));
     expect(scroll).toHaveBeenCalledWith({ behavior: 'smooth', block: 'start' });
     spy.mockRestore();
   });
-});
 
-describe('NowPlaying: the Devices button', () => {
-  it('names headphones the phone plays through, and is a bare icon on the phone’s own speaker', () => {
-    useOutputStore.setState({ currentId: '9', currentName: 'Pixel Buds', currentKind: 'bluetooth' });
-    const { rerender } = render(<NowPlaying />);
-    const devices = within(top()).getByTestId('devices-button');
-    expect(devices).toHaveTextContent('Pixel Buds');
-    expect(devices).toHaveAccessibleName('Devices: playing on Pixel Buds');
-    expect(devices.className).toContain('text-ember');
-    expect(within(view()).queryByText(/Playing on/)).toBeNull();
-    act(() => useOutputStore.setState({ currentId: '2', currentName: 'This phone', currentKind: 'phone' }));
-    rerender(<NowPlaying />);
-    expect(within(top()).getByTestId('devices-button')).toHaveTextContent(/^$/);
-    expect(within(top()).getByTestId('devices-button')).toHaveAccessibleName('Devices');
-    expect(within(top()).getByTestId('devices-button').className).not.toContain('text-ember');
+  it('Guitar tabs closes the player and opens the tab page; off in settings, it is gone', async () => {
+    const { unmount } = render(<NowPlaying />);
+    openMore();
+    fireEvent.click(row('tabs'));
+    expect(usePlayerStore.getState().nowPlayingOpen).toBe(false);
+    await waitFor(() => expect(nav.push).toHaveBeenCalledWith('/tabs/t1'));
+    unmount();
+    act(() => useSettingsStore.setState({ tabsEnabled: false }));
+    act(() => usePlayerStore.getState().setNowPlayingOpen(true));
+    render(<NowPlaying />);
+    openMore();
+    expect(rows()).not.toContain('tabs');
   });
 
-  it('names the TV while casting, and shows up once a cast device is around', () => {
-    useOutputStore.setState(NO_OUTPUTS);
-    useCastStore.setState({ path: 'google', availability: 'none', connection: 'idle', deviceName: null });
+  it('Equalizer opens the equalizer sheet, which works; the row says On and is lit while it is on', async () => {
+    useSettingsStore.setState({ equalizer: { enabled: false, bands: [0, 0, 0, 0, 0] } });
+    render(<NowPlaying />);
+    openMore();
+    expect(row('eq')).toHaveTextContent('EqualizerOff');
+    fireEvent.click(row('eq'));
+    const panel = await screen.findByTestId('equalizer');
+    fireEvent.click(within(panel).getByRole('button', { name: 'Bass boost' }));
+    expect(useSettingsStore.getState().equalizer).toEqual({ enabled: true, bands: [7, 4, 0, 0, 0] });
+    expect(usePlayerStore.getState().nowPlayingOpen).toBe(true);
+    openMore();
+    expect(row('eq')).toHaveTextContent('EqualizerOn');
+    expect(row('eq').querySelector('svg')!.getAttribute('class')).toContain('text-ember');
+  });
+
+  it('hides Equalizer while casting to a Cast device, and keeps it over AirPlay', () => {
+    useCastStore.setState({ path: 'android', availability: 'available', connection: 'connected', deviceName: 'Living Room TV' });
     const { rerender } = render(<NowPlaying />);
-    expect(within(view()).queryByTestId('devices-button')).toBeNull();
-    act(() => useCastStore.setState({ availability: 'available' }));
+    openMore();
+    expect(rows()).not.toContain('eq');
+    act(() => useCastStore.setState({ path: 'airplay', connection: 'connected', deviceName: null }));
     rerender(<NowPlaying />);
-    expect(within(top()).getByTestId('devices-button')).toHaveAccessibleName('Devices');
-    act(() => useCastStore.setState({ connection: 'connected', deviceName: 'Living Room TV' }));
+    expect(rows()).toContain('eq');
+  });
+
+  it('Devices opens the devices picker, and names where it plays when not the phone', () => {
+    useOutputStore.setState({ currentId: '9', currentName: 'Pixel Buds', currentKind: 'bluetooth' });
+    render(<NowPlaying />);
+    openMore();
+    expect(row('devices')).toHaveTextContent('DevicesPixel Buds');
+    fireEvent.click(row('devices'));
+    expect(screen.queryByTestId('now-playing-more-sheet')).toBeNull();
+    const list = screen.getByTestId('devices-list');
+    expect(within(list).getByText('Pixel Buds')).toBeInTheDocument();
+    expect(within(list).getByText('More devices')).toBeInTheDocument();
+  });
+
+  it('Devices says nothing more on the phone’s own speaker, and is gone with nothing to choose', () => {
+    const { rerender } = render(<NowPlaying />);
+    openMore();
+    expect(row('devices')).toHaveTextContent(/^Devices$/);
+    act(() => useOutputStore.setState(NO_OUTPUTS));
     rerender(<NowPlaying />);
-    expect(within(top()).getByRole('button', { name: 'Devices: playing on Living Room TV' })).toHaveTextContent('Living Room TV');
+    expect(rows()).not.toContain('devices');
+  });
+
+  it('names the TV while casting', () => {
+    useOutputStore.setState(NO_OUTPUTS);
+    useCastStore.setState({ path: 'google', availability: 'available', connection: 'connected', deviceName: 'Living Room TV' });
+    render(<NowPlaying />);
+    openMore();
+    expect(row('devices')).toHaveTextContent('DevicesLiving Room TV');
+  });
+
+  it('goes to the artist and the album, closing the player first', async () => {
+    player.current = { ...TRACK, artistId: 'UC1', albumId: 'MPRE b' };
+    render(<NowPlaying />);
+    openMore();
+    fireEvent.click(row('artist'));
+    expect(usePlayerStore.getState().nowPlayingOpen).toBe(false);
+    await waitFor(() => expect(nav.push).toHaveBeenCalledWith('/artist/UC1'));
+    act(() => usePlayerStore.getState().setNowPlayingOpen(true));
+    openMore();
+    fireEvent.click(row('album'));
+    await waitFor(() => expect(nav.push).toHaveBeenCalledWith('/album/MPRE%20b'));
+  });
+
+  it('Report wrong lyrics shows only with lyrics, and opens the lyrics card’s report form', () => {
+    const { rerender } = render(<NowPlaying />);
+    openMore();
+    expect(rows()).not.toContain('report');
+    lyrics.data = LYRICS;
+    rerender(<NowPlaying />);
+    fireEvent.click(row('report'));
+    expect(screen.getByTestId('lyrics-report')).toBeInTheDocument();
+    expect(usePlayerStore.getState().nowPlayingOpen).toBe(true);
+  });
+
+  it('closes the sheet and the playlist menu when the song changes, so they never act on the next song', () => {
+    auth.user = { id: 'u1' };
+    const { rerender } = render(<NowPlaying />);
+    openMore();
+    player.current = { ...TRACK, id: 't2', sourceId: 'v2', title: 'Other' };
+    rerender(<NowPlaying />);
+    expect(screen.queryByTestId('now-playing-more-sheet')).toBeNull();
+    openMore();
+    fireEvent.click(row('add'));
+    expect(screen.getByTestId('add-to-playlist-menu')).toBeInTheDocument();
+    player.current = { ...TRACK, id: 't3', sourceId: 'v3', title: 'Third' };
+    rerender(<NowPlaying />);
+    expect(screen.queryByTestId('add-to-playlist-menu')).toBeNull();
+  });
+
+  it('closes the sheet and the playlist menu when the player closes without them (Back, Escape)', () => {
+    auth.user = { id: 'u1' };
+    render(<NowPlaying />);
+    openMore();
+    act(() => usePlayerStore.getState().setNowPlayingOpen(false));
+    expect(screen.queryByTestId('now-playing-more-sheet')).toBeNull();
+    act(() => usePlayerStore.getState().setNowPlayingOpen(true));
+    openMore();
+    fireEvent.click(row('add'));
+    act(() => usePlayerStore.getState().setNowPlayingOpen(false));
+    expect(screen.queryByTestId('add-to-playlist-menu')).toBeNull();
+  });
+
+  it('has no More button with no song', () => {
+    player.current = null;
+    usePlayerStore.getState().setNowPlayingOpen(false);
+    render(<NowPlaying />);
+    expect(within(view()).queryByRole('button', { name: 'More' })).toBeNull();
   });
 });

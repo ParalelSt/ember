@@ -48,6 +48,7 @@ export {
   Link2 as LinkIcon,
   // The full-screen player's More menu: the artist, the album, a report.
   UserRound as ArtistIcon,
+  ListPlus as ListPlusIcon,
   Disc3 as AlbumIcon,
   Flag as FlagIcon,
   SlidersVertical as EqualizerIcon,

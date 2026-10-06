@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import type { Track } from '@/types/track';
@@ -50,6 +51,13 @@ vi.mock('@/hooks/useLikeToggle', () => ({ useLikeToggle: () => ({ liked: false, 
 vi.mock('@/lib/offlineNative', () => ({ useTrackArtSrc: () => null }));
 vi.mock('@/lib/useBackDismiss', () => ({ useBackDismiss: () => {} }));
 vi.mock('@/hooks/useLyrics', () => ({ useQueryLyrics: () => ({ data: null }) }));
+// Now playing's More sheet, as a plain box while open (see NowPlaying.test.tsx).
+vi.mock('@/components/ui/sheet', () => ({
+  Sheet: ({ open, children }: { open: boolean; children: ReactNode }) => (open ? <div>{children}</div> : null),
+  SheetContent: ({ children }: { children: ReactNode }) => <div>{children}</div>,
+  SheetHeader: ({ children }: { children: ReactNode }) => <div>{children}</div>,
+  SheetTitle: ({ children }: { children: ReactNode }) => <div>{children}</div>,
+}));
 // base-ui's menu brings the root's second React into a test render (see
 // QueueSheet.test.tsx): the full player's More menu is a plain box.
 vi.mock('@/components/ui/dropdown-menu', () => {
@@ -109,7 +117,9 @@ describe('tabs entry points', () => {
   it('on phones, Now playing opens the same page and closes itself', async () => {
     usePlayerStore.getState().setNowPlayingOpen(true);
     render(<NowPlaying />);
-    fireEvent.click(screen.getByRole('button', { name: 'Guitar tabs' }));
+    // On the phone, Guitar tabs is a row in the More sheet.
+    fireEvent.click(screen.getByRole('button', { name: 'More' }));
+    fireEvent.click(screen.getByTestId('more-tabs'));
     expect(usePlayerStore.getState().nowPlayingOpen).toBe(false);
     // After the view's own history entry is popped, so the back cannot undo it.
     await waitFor(() => expect(nav.push).toHaveBeenCalledWith('/tabs/youtube%3AdQw4w9WgXcQ'));
@@ -126,7 +136,8 @@ describe('tabs entry points', () => {
     useSettingsStore.getState().setTabsEnabled(false);
     usePlayerStore.getState().setNowPlayingOpen(true);
     render(<NowPlaying />);
-    expect(screen.queryByRole('button', { name: 'Guitar tabs' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'More' }));
+    expect(screen.queryByTestId('more-tabs')).toBeNull();
   });
 });
 

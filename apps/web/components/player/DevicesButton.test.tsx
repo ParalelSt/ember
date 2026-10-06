@@ -1,4 +1,4 @@
-import type { ComponentProps, ReactNode } from 'react';
+import { useState, type ComponentProps, type ReactNode } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, within } from '@testing-library/react';
 
@@ -40,7 +40,7 @@ vi.mock('@/components/ui/sheet', () => ({
   SheetTitle: ({ children }: { children: ReactNode }) => <h2>{children}</h2>,
 }));
 
-import { DevicesButton } from './DevicesButton';
+import { DevicesButton, DevicesSheet, useDevicesEntry } from './DevicesButton';
 import { useOutputStore } from '@/stores/useOutputStore';
 import { useCastStore } from '@/stores/useCastStore';
 
@@ -64,10 +64,26 @@ beforeEach(() => {
   useCastStore.setState({ path: null, availability: 'none', connection: 'idle', deviceName: null });
 });
 
+/** The phone's way in, as NowPlaying's More sheet uses it: a row named by
+ *  useDevicesEntry that opens DevicesSheet. */
+function PhoneDevices() {
+  const entry = useDevicesEntry();
+  const [open, setOpen] = useState(false);
+  if (!entry.visible) return null;
+  return (
+    <>
+      <button type="button" data-testid="devices-button" aria-label={entry.label} data-lit={entry.lit} onClick={() => setOpen(true)}>
+        {entry.on ?? ''}
+      </button>
+      <DevicesSheet open={open} onOpenChange={setOpen} />
+    </>
+  );
+}
+
 describe('DevicesButton', () => {
   it('is not there with nothing to choose', () => {
     render(<DevicesButton variant="bar" />);
-    render(<DevicesButton variant="full" />);
+    render(<PhoneDevices />);
     expect(screen.queryByTestId('devices-button')).toBeNull();
   });
 
@@ -111,7 +127,7 @@ describe('DevicesButton', () => {
       castDevices: [{ id: 'tv', name: 'Living Room TV', description: 'Chromecast', selected: false, connecting: false }],
     });
     useCastStore.setState({ path: 'android', availability: 'available' });
-    render(<DevicesButton variant="full" />);
+    render(<PhoneDevices />);
     fireEvent.click(screen.getByRole('button', { name: 'Devices: playing on Pixel Buds' }));
     expect(actions.refreshOutputs).toHaveBeenCalled();
     const list = screen.getByTestId('devices-list');
@@ -136,9 +152,9 @@ describe('DevicesButton', () => {
 
   it('casting from Chrome: the TV is lit, the button too, and Stop casting stops it', () => {
     useCastStore.setState({ path: 'google', availability: 'available', connection: 'connected', deviceName: 'Living Room TV' });
-    render(<DevicesButton variant="full" />);
+    render(<PhoneDevices />);
     const button = screen.getByRole('button', { name: 'Devices: playing on Living Room TV' });
-    expect(button.className).toContain('text-ember');
+    expect(button).toHaveAttribute('data-lit', 'true');
     fireEvent.click(button);
     const list = screen.getByTestId('devices-list');
     expect(within(list).getByText('Living Room TV').closest('button')).toHaveAttribute('aria-current', 'true');
@@ -148,46 +164,53 @@ describe('DevicesButton', () => {
 
   it('cast only (a browser that cannot pick speakers): one row opens the cast picker', () => {
     useCastStore.setState({ path: 'google', availability: 'unknown' });
-    render(<DevicesButton variant="full" />);
+    render(<PhoneDevices />);
     fireEvent.click(screen.getByRole('button', { name: 'Devices' }));
     fireEvent.click(within(screen.getByTestId('devices-list')).getByText('Cast to a device'));
     expect(actions.openCastPicker).toHaveBeenCalled();
   });
 
-  it('connecting pulses', () => {
+  it('connecting: says so, lit', () => {
     useCastStore.setState({ path: 'android', availability: 'available', connection: 'connecting' });
-    render(<DevicesButton variant="full" />);
+    render(<PhoneDevices />);
     const b = screen.getByRole('button', { name: 'Devices: connecting to a cast device' });
-    expect(b.className).toContain('animate-pulse');
+    expect(b).toHaveTextContent('Connecting');
+    expect(b).toHaveAttribute('data-lit', 'true');
+  });
+
+  it('desktop bar: connecting pulses', () => {
+    useCastStore.setState({ path: 'google', availability: 'available', connection: 'connecting' });
+    render(<DevicesButton variant="bar" />);
+    expect(screen.getByTestId('devices-button').className).toContain('animate-pulse');
   });
 });
 
 describe('DevicesButton, full player', () => {
   it('names a headset beside its icon, and is a bare icon on the phone', () => {
     useOutputStore.setState({ platform: 'ios', devices: [], currentId: 'r', currentName: 'AirPods Pro', currentKind: 'bluetooth', systemPicker: 'ios-route-picker' });
-    const { rerender } = render(<DevicesButton variant="full" />);
+    const { rerender } = render(<PhoneDevices />);
     expect(screen.getByTestId('devices-button')).toHaveTextContent('AirPods Pro');
     useOutputStore.setState({ currentName: 'iPhone', currentKind: 'phone' });
-    rerender(<DevicesButton variant="full" />);
+    rerender(<PhoneDevices />);
     expect(screen.getByTestId('devices-button')).toHaveTextContent(/^$/);
     expect(screen.getByTestId('devices-button')).toHaveAccessibleName('Devices');
   });
 
   it('while casting, the sheet says the equalizer and leveling are off (not for AirPlay, which keeps the page’s audio)', () => {
     useCastStore.setState({ path: 'android', availability: 'available', connection: 'connected', deviceName: 'Living Room TV' });
-    const { rerender } = render(<DevicesButton variant="full" />);
+    const { rerender } = render(<PhoneDevices />);
     expect(screen.getByTestId('devices-button')).toHaveTextContent('Living Room TV');
     fireEvent.click(screen.getByTestId('devices-button'));
     expect(screen.getByTestId('casting-note')).toHaveTextContent('The equalizer and volume leveling are off while casting.');
     useCastStore.setState({ path: 'airplay', deviceName: 'AirPlay' });
-    rerender(<DevicesButton variant="full" />);
+    rerender(<PhoneDevices />);
     expect(screen.getByTestId('devices-button')).toHaveTextContent('AirPlay');
     expect(screen.queryByTestId('casting-note')).toBeNull();
   });
 
   it('says Connecting while it connects', () => {
     useCastStore.setState({ path: 'google', availability: 'available', connection: 'connecting' });
-    render(<DevicesButton variant="full" />);
+    render(<PhoneDevices />);
     expect(screen.getByTestId('devices-button')).toHaveTextContent('Connecting');
   });
 });

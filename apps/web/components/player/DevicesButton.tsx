@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, type ComponentType } from 'react';
+import { useEffect, useState, type ComponentType } from 'react';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -48,13 +48,12 @@ import { useCastStore } from '@/stores/useCastStore';
 import { useOutputStore } from '@/stores/useOutputStore';
 import { cn } from '@/lib/utils';
 
-/** Where the music plays: one button (Spotify's device picker) in the
- *  desktop player bar and the phone's full-screen player. It lists this
- *  device's outputs (speakers, headphones; lib/outputs), the platform's own
- *  picker where it has one, and the cast devices, with the one playing lit.
- *  The bar opens a menu above it; the phone's is a labelled tool (the label
- *  names the output when it is not the phone itself) that opens a sheet
- *  from the bottom. */
+/** Where the music plays (Spotify's device picker): this device's outputs
+ *  (speakers, headphones; lib/outputs), the platform's own picker where it
+ *  has one, and the cast devices, with the one playing lit. The desktop
+ *  player bar has a button that opens a menu above it (DevicesButton); the
+ *  phone's full-screen player has a row in its More sheet
+ *  (useDevicesEntry) that opens DevicesSheet from the bottom. */
 
 const ICONS: Record<DeviceRow['icon'], ComponentType<{ className?: string }>> = {
   computer: LaptopIcon,
@@ -124,14 +123,13 @@ function RowBody({ row }: { row: DeviceRow }) {
 }
 
 interface Props {
-  /** `bar`: the desktop player bar (a menu); `full`: the top bar of the
-   *  phone's full-screen player (a sheet). */
-  variant: 'bar' | 'full';
+  /** The desktop player bar's button (a menu above it). */
+  variant: 'bar';
   className?: string;
   iconClassName?: string;
 }
 
-export function DevicesButton({ variant, className, iconClassName }: Props) {
+export function DevicesButton({ className, iconClassName }: Props) {
   const { out, cast } = useSummaries();
   const [open, setOpen] = useState(false);
   if (!devicesButtonVisible(out, cast)) return null;
@@ -148,73 +146,75 @@ export function DevicesButton({ variant, className, iconClassName }: Props) {
   };
   const icon = <DevicesIcon className={iconClassName ?? 'h-4 w-4'} />;
 
-  if (variant === 'bar') {
-    const buttonClass = cn(
-      lit ? 'text-ember hover:text-ember' : 'text-muted-foreground hover:text-foreground',
-      cast.connection === 'connecting' && 'animate-pulse',
-      className,
-    );
-    return (
-      <DropdownMenu open={open} onOpenChange={onOpenChange}>
-        <DropdownMenuTrigger
-          data-testid="devices-button"
-          aria-label={label}
-          title={label}
-          className={cn('inline-flex items-center justify-center rounded-md transition-colors hover:bg-accent', buttonClass)}
-        >
-          {icon}
-        </DropdownMenuTrigger>
-        <DropdownMenuContent side="top" align="end" className="min-w-72 max-w-80" data-testid="devices-list">
-          {sections.map((section, i) => (
-            <DropdownMenuGroup key={section.key}>
-              {i > 0 && <DropdownMenuSeparator />}
-              <DropdownMenuLabel>{section.title}</DropdownMenuLabel>
-              {section.rows.map((row) => (
-                <DropdownMenuItem
-                  key={row.key}
-                  onClick={() => pick(row)}
-                  aria-current={row.current || undefined}
-                  data-current={row.current || undefined}
-                  className="gap-row py-cluster"
-                >
-                  <RowBody row={row} />
-                </DropdownMenuItem>
-              ))}
-            </DropdownMenuGroup>
-          ))}
-        </DropdownMenuContent>
-      </DropdownMenu>
-    );
-  }
-
-  const on = playingOn(out, cast);
-  const casting = cast.connection === 'connected';
+  const buttonClass = cn(
+    lit ? 'text-ember hover:text-ember' : 'text-muted-foreground hover:text-foreground',
+    cast.connection === 'connecting' && 'animate-pulse',
+    className,
+  );
   return (
-    <>
-      {/* An icon in the full player's top bar; while the music plays
-          somewhere else it is lit and names where (the headset, the TV). */}
-      <button
-        type="button"
-        onClick={() => onOpenChange(true)}
+    <DropdownMenu open={open} onOpenChange={onOpenChange}>
+      <DropdownMenuTrigger
+        data-testid="devices-button"
         aria-label={label}
         title={label}
-        data-testid="devices-button"
-        className={cn(
-          'inline-flex h-10 min-w-10 max-w-36 items-center justify-center gap-1.5 rounded-full px-2.5 transition-colors hover:bg-foreground/5',
-          lit ? 'text-ember' : 'text-foreground/80 hover:text-foreground',
-          cast.connection === 'connecting' && 'animate-pulse',
-          className,
-        )}
+        className={cn('inline-flex items-center justify-center rounded-md transition-colors hover:bg-accent', buttonClass)}
       >
         {icon}
-        {(on || cast.connection === 'connecting') && (
-          <span className="truncate text-xs font-semibold">{on ?? 'Connecting'}</span>
-        )}
-      </button>
-      <Sheet open={open} onOpenChange={onOpenChange}>
-        <SheetContent side="bottom" className="max-h-[85vh] overflow-y-auto rounded-t-2xl p-0" data-testid="devices-list">
-          <SheetHeader className="px-block pt-block pb-0">
-            <SheetTitle className="text-base">Devices</SheetTitle>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent side="top" align="end" className="min-w-72 max-w-80" data-testid="devices-list">
+        {sections.map((section, i) => (
+          <DropdownMenuGroup key={section.key}>
+            {i > 0 && <DropdownMenuSeparator />}
+            <DropdownMenuLabel>{section.title}</DropdownMenuLabel>
+            {section.rows.map((row) => (
+              <DropdownMenuItem
+                key={row.key}
+                onClick={() => pick(row)}
+                aria-current={row.current || undefined}
+                data-current={row.current || undefined}
+                className="gap-row py-cluster"
+              >
+                <RowBody row={row} />
+              </DropdownMenuItem>
+            ))}
+          </DropdownMenuGroup>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+/** The phone's More sheet row: whether to show it (only with somewhere
+ *  else to play), what to call it, and the output it plays on when that
+ *  is not the phone itself (the headset, the TV). */
+export function useDevicesEntry() {
+  const { out, cast } = useSummaries();
+  return {
+    visible: devicesButtonVisible(out, cast),
+    label: devicesLabel(out, cast),
+    on: playingOn(out, cast) ?? (cast.connection === 'connecting' ? 'Connecting' : null),
+    lit: cast.connection !== 'idle' || playingOn(out, cast) !== null,
+  };
+}
+
+/** The phone's devices sheet, from the bottom. Opening it refreshes the
+ *  list; picking a row switches and closes it. */
+export function DevicesSheet({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
+  const { out, cast } = useSummaries();
+  const sections = deviceSections(out, cast);
+  const casting = cast.connection === 'connected';
+  useEffect(() => {
+    if (open) void refreshOutputs();
+  }, [open]);
+  const pick = (row: DeviceRow) => {
+    onOpenChange(false);
+    runAction(row.action);
+  };
+  return (
+    <Sheet open={open} onOpenChange={onOpenChange}>
+      <SheetContent side="bottom" className="max-h-[85vh] overflow-y-auto rounded-t-2xl p-0" data-testid="devices-list">
+        <SheetHeader className="px-block pt-block pb-0">
+          <SheetTitle className="text-base">Devices</SheetTitle>
           </SheetHeader>
           {casting && cast.path !== 'airplay' && (
             <p data-testid="casting-note" role="note" className="px-block text-xs text-muted-foreground">
@@ -241,7 +241,6 @@ export function DevicesButton({ variant, className, iconClassName }: Props) {
             ))}
           </div>
         </SheetContent>
-      </Sheet>
-    </>
+    </Sheet>
   );
 }
