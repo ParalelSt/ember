@@ -1,3 +1,10 @@
+# 0.7.21: Queue history and older fixes (apps 0.4.16)
+
+**Host: run `./update.sh` as usual (no new packages).** It restarts PocketBase,
+which adds `like_id` to import items and makes the boot hooks survive an
+admin-UI schema save. Queue history on Android needs the new apps, 0.4.16
+(Android versionCode 21), which the `v0.4.16` tag builds.
+
 # 0.7.20: One player menu, simpler sharing, seamless repeat (apps 0.4.15)
 
 **Host: run `./update.sh` as usual (no new packages).** Invite links now open a

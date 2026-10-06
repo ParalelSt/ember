@@ -21,6 +21,31 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    id: 'queue-history',
+    version: '0.7.21',
+    date: '2026-10-06',
+    title: 'Queue history',
+    summary: 'The queue shows the songs you already played, above the one playing now.',
+    bullets: [
+      'Songs played since you opened the app sit above Now playing, faded. Tap one to go back to it; the rest of the queue stays.',
+      'The song playing now is a highlighted card with a thin progress line, and the queue opens right on it.',
+      'Android needs the new app (0.4.16) to show the played songs.',
+    ],
+  },
+  {
+    id: 'fixes-0721',
+    version: '0.7.21',
+    date: '2026-10-06',
+    title: 'Fixes',
+    summary: 'A round of older fixes: keyboard use, carlists, layouts, transfers and the server.',
+    bullets: [
+      'Play buttons, sliders and controls work from the keyboard and are named for screen readers.',
+      'Carlist guests\' songs and skips keep reaching the host on any page, and starting a carlist clears your old queue.',
+      'Album songs keep their cover, dialogs and the library header fit small screens, and Back to top stays in place.',
+      'Removing a member who added songs works, shared tabs and themes stay when their owner leaves, and lyrics match the right song length.',
+    ],
+  },
+  {
     id: 'phone-player-menu',
     version: '0.7.20',
     date: '2026-10-06',
