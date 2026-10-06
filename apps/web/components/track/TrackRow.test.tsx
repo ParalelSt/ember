@@ -55,6 +55,16 @@ describe('TrackRow (list density)', () => {
     expect(screen.queryByText('5')).toBeNull();
   });
 
+  // O8: the rank column's play button (behind the rank number) was only
+  // revealed by group-hover, so a keyboard user tabbing to it never saw it
+  // before pressing it.
+  it('reveals the rank column play button on keyboard focus, not just hover', () => {
+    render(<TrackRow track={track} index={4} showRank onPlay={() => {}} />);
+    const button = screen.getByRole('button', { name: 'Play' });
+    expect(button.className).toContain('group-focus-within:opacity-100');
+    expect(button.className).toContain('focus-visible:opacity-100');
+  });
+
   it('marks the active row and follows the playing state on the play cell', () => {
     const { container, rerender } = render(<TrackRow track={track} />);
     expect(container.firstElementChild?.className).not.toContain('text-ember');
@@ -225,6 +235,15 @@ describe('TrackRow (compact density)', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Remove "Midnight Drive" from recent searches' }));
     expect(onRemove).toHaveBeenCalledTimes(1);
     expect(onPlay).not.toHaveBeenCalled();
+  });
+
+  // O8: the compact remove button was only revealed by group-hover, so a
+  // keyboard user tabbing onto the row never saw it before pressing it.
+  it('reveals the compact remove button on keyboard focus, not just hover', () => {
+    render(<TrackRow track={track} density="compact" onRemove={() => {}} />);
+    const button = screen.getByRole('button', { name: 'Remove' });
+    expect(button.className).toContain('group-focus-within:opacity-100');
+    expect(button.className).toContain('focus-visible:opacity-100');
   });
 
   it('keeps an artwork box with the fallback when the track has no art', () => {
