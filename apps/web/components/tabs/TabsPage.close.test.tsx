@@ -275,13 +275,14 @@ async function openEverything() {
   act(() => alphaTab.playerReady.fire());
 
   // Metronome on (enabled once the score's bars are known).
-  const metronome = screen.getByRole('button', { name: /Metronome/ });
+  fireEvent.click(screen.getByRole('button', { name: 'Practice tools' }));
+  const metronome = screen.getByRole('button', { name: 'Metronome' });
   await waitFor(() => expect(metronome).toBeEnabled());
   fireEvent.click(metronome);
   expect(metronome).toHaveAttribute('aria-pressed', 'true');
 
   // Practice: 75% and a loop over bar 1.
-  fireEvent.click(screen.getByRole('button', { name: /Practice/ }));
+  fireEvent.click(screen.getByRole('button', { name: 'Practice' }));
   const practice = screen.getByTestId('tab-practice');
   fireEvent.click(within(practice).getByRole('button', { name: '75%' }));
   fireEvent.change(within(practice).getByLabelText('Loop from bar'), { target: { value: '1' } });

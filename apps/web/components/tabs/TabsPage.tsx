@@ -29,7 +29,9 @@ import { usePlayer } from '@/components/player/PlayerProvider';
 import { LiveTabScore } from '@/components/tabs/LiveTabScore';
 import { TabSheetHeader, TabSourceChip } from '@/components/tabs/TabSheetHeader';
 import { TabSourceSheet, type TabSheetAction } from '@/components/tabs/TabSourceSheet';
-import { TabsToolbar, chip, chipOff, chipOn } from '@/components/tabs/TabsToolbar';
+import { chip, chipOff, chipOn } from '@/components/tabs/chips';
+import { PlayPill, StageHeader } from '@/components/tabs/TabStage';
+import { barPosition, nextSlower, stageMeta } from '@/lib/tabStage';
 import { useTabAlignment, useTabSong, useTabSources, type TabSong, type TabSourcesState } from '@/hooks/useTabSources';
 import { useSettingsStore } from '@/stores/useSettingsStore';
 import { cn } from '@/lib/utils';
@@ -174,7 +176,7 @@ export function TabsPage({ trackId }: { trackId: string }) {
 
 function TabsSheet({ song, sources, onBack }: { song: TabSong; sources: TabSourcesState; onBack: () => void }) {
   const phone = usePhone();
-  const { current, isPlaying, position, duration, seek, playTrack, rate, setRate, canSetRate } = usePlayer();
+  const { current, isPlaying, position, duration, seek, playTrack, toggle, rate, setRate, canSetRate } = usePlayer();
   const follows = current?.id === song.id;
 
   // Which tab is drawn: the listener's own pick for this song when they
@@ -380,6 +382,10 @@ function TabsSheet({ song, sources, onBack }: { song: TabSong; sources: TabSourc
     { id: 'add-file', label: sources.uploading ? 'Adding…' : 'Add a file', disabled: sources.uploading, onClick: addFile },
   ];
 
+  // The rest of the practice tools, under the pill's sliders button.
+  const [toolsOpen, setToolsOpen] = useState(false);
+  const tracks = info?.tracks ?? [];
+
   const actions = (
     <DropdownMenu>
       <DropdownMenuTrigger
@@ -401,6 +407,25 @@ function TabsSheet({ song, sources, onBack }: { song: TabSong; sources: TabSourc
             disabled={align.running}
             onClick={align.lineUp}
           />
+        )}
+        {tab && (
+          <>
+            <DropdownMenuSeparator />
+            <MenuItem
+              label={staff === 'tab' ? 'Show the score too' : 'Show the tab only'}
+              onClick={() => setStaff(staff === 'tab' ? 'score-tab' : 'tab')}
+            />
+            <MenuItem
+              label={scroll === 'vertical' ? 'Scroll sideways' : 'Scroll down the page'}
+              onClick={() => setScroll(scroll === 'vertical' ? 'horizontal' : 'vertical')}
+            />
+            {tracks.length > 1 &&
+              tracks.map((t, i) =>
+                i === trackIndex ? null : (
+                  <MenuItem key={`${i}:${t.name}`} label={`Show the ${t.name || t.instrument} part`} onClick={() => setTrack(i)} />
+                ),
+              )}
+          </>
         )}
         <DropdownMenuSeparator />
         {searchLinks.map((l) => (
@@ -443,6 +468,43 @@ function TabsSheet({ song, sources, onBack }: { song: TabSong; sources: TabSourc
     </>
   ) : null;
 
+  const statusLines = (
+    <>
+      {sources.searchAgainResult && sources.searchAgainResult !== 'found' && (
+        <p role="status" data-testid="tabs-online-status" className="text-meta mt-cluster">
+          {sources.searchAgainResult === 'none'
+            ? 'Nothing new found online.'
+            : 'Could not search online just now. Try again later.'}
+        </p>
+      )}
+      {(sources.uploading || sources.uploadError) && (
+        <p role="status" className={cn('text-meta mt-cluster', sources.uploadError && 'text-destructive')}>
+          {sources.uploadError ?? 'Adding the file…'}
+        </p>
+      )}
+    </>
+  );
+
+  // The pill: play from here, where the song is on the tab, the speed and
+  // the loop.
+  const speedPercent = Math.round(speed * 100);
+  const at = barPosition(timeline, toTabMs(position));
+  const pillLabel = !timeline || !at ? 'Bar …' : follows ? `Bar ${at.bar} / ${at.total}` : `${at.total} bars`;
+  const playPause = () => {
+    if (!follows) {
+      if (song.track) playTrack(song.track);
+      return;
+    }
+    toggle();
+  };
+  const loopPill = () => {
+    if (loopRange) setLoopRange(loopRange, !loopOn);
+    else {
+      setToolsOpen(true);
+      setPracticeOpen(true);
+    }
+  };
+
   return (
     <div data-testid="tabs-page" data-track-id={song.id}>
       <input
@@ -457,129 +519,24 @@ function TabsSheet({ song, sources, onBack }: { song: TabSong; sources: TabSourc
           e.target.value = '';
         }}
       />
-      <TabSheetHeader phone={phone} title={song.title} meta={meta} chip={chipNode} actions={actions} onBack={onBack} />
-      {sources.searchAgainResult && sources.searchAgainResult !== 'found' && (
-        <p role="status" data-testid="tabs-online-status" className="text-meta mt-cluster">
-          {sources.searchAgainResult === 'none'
-            ? 'Nothing new found online.'
-            : 'Could not search online just now. Try again later.'}
-        </p>
-      )}
-      {(sources.uploading || sources.uploadError) && (
-        <p role="status" className={cn('text-meta mt-cluster', sources.uploadError && 'text-destructive')}>
-          {sources.uploadError ?? 'Adding the file…'}
-        </p>
-      )}
 
       {tab ? (
         <>
           <div
             ref={stickyRef}
             data-testid="tabs-sticky"
-            className="sticky top-(--ember-topbar-h,0px) z-20 mt-block border-b border-border bg-background/95 py-cluster backdrop-blur"
+            className="sticky top-(--ember-topbar-h,0px) z-20 -mt-page border-b border-border bg-background/95 pb-cluster backdrop-blur md:-mt-page-lg"
           >
-            <TabsToolbar
-              phone={phone}
-              staff={staff}
-              scroll={scroll}
-              tracks={info?.tracks ?? []}
-              track={trackIndex}
-              onStaffChange={setStaff}
-              onScrollChange={setScroll}
-              onTrackChange={setTrack}
-            >
-              <button
-                type="button"
-                aria-pressed={syncOpen}
-                aria-label="Sync"
-                onClick={() => setSyncOpen((v) => !v)}
-                title="Nudge the tab if it runs ahead of or behind the recording"
-                className={cn(chip, syncOpen || offsetMs !== 0 ? chipOn : chipOff)}
-              >
-                Sync
-                <span className="tabular-nums font-normal">{formatOffset(offsetMs, offsetUnit, beatClock)}</span>
-              </button>
-              <button
-                type="button"
-                aria-pressed={practiceOpen}
-                aria-label="Practice"
-                onClick={() => setPracticeOpen((v) => !v)}
-                title="Loop a section and slow it down"
-                className={cn(chip, practiceOpen || loopOn || speed !== 1 ? chipOn : chipOff)}
-              >
-                <RepeatIcon className="size-3.5" />
-                {!phone && 'Practice'}
-                {speed !== 1 && canSetRate && <span className="tabular-nums font-normal">{Math.round(speed * 100)}%</span>}
-                {loopOn && loopRange && <span className="font-normal">{rangeLabel(loopRange)}</span>}
-              </button>
-              <button
-                type="button"
-                aria-pressed={metronomeOn}
-                aria-label="Metronome"
-                disabled={!timeline}
-                onClick={toggleMetronome}
-                title={
-                  timeline
-                    ? 'Clicks on the beat, following the tab’s tempo'
-                    : 'The metronome starts once the tab is drawn'
-                }
-                className={cn(chip, metronomeOn ? chipOn : chipOff, 'disabled:opacity-50')}
-              >
-                <ClockIcon className="size-3.5" />
-                {!phone && 'Metronome'}
-                {(bpmOverride ?? tabBpmNow) && (
-                  <span className="tabular-nums font-normal">{Math.round(bpmOverride ?? tabBpmNow ?? 0)}</span>
-                )}
-              </button>
-            </TabsToolbar>
-            {syncOpen && (
-              <SyncRow
-                offsetMs={offsetMs}
-                unit={offsetUnit}
-                clock={beatClock}
-                onUnitChange={setOffsetUnit}
-                shared={tab.offsetMs}
-                canShare={tab.canDelete}
-                onChange={changeOffset}
-                onShare={() =>
-                  sources.saveOffset(tab.id, offsetMs).then(
-                    () => changeOffset(null),
-                    // Not saved: the nudge stays on this device, and the
-                    // listener is told rather than left guessing.
-                    () => toast.error("Couldn't save the timing for everyone. It is still saved on this device."),
-                  )
-                }
-              />
-            )}
-            {practiceOpen && (
-              <PracticeRow
-                timeline={!!timeline}
-                barTotal={timeline ? barCount(timeline) : 0}
-                sections={timeline ? sectionRanges(timeline) : []}
-                canSetRate={canSetRate}
-                speed={speed}
-                onSpeed={setSpeed}
-                tabBpm={tabBpmNow}
-                range={loopRange}
-                loopOn={loopOn}
-                onLoopOn={(on) => loopRange && setLoopRange(loopRange, on)}
-                onRange={(r) => setLoopRange(r, loop?.on ?? true)}
-                onClear={() => {
-                  setLoopRange(null);
-                  setPicking(null);
-                }}
-                picking={pickingNow ? (pickingNow.first === null ? 'first' : 'last') : null}
-                onPick={() => (pickingNow ? setPicking(null) : tab && setPicking({ tabId: tab.id, first: null }))}
-              />
-            )}
-            {metronomeOn && timeline && (
-              <MetronomeRow
-                tabBpm={tabBpmNow}
-                steps={tempoSteps(timeline)}
-                override={bpmOverride}
-                onOverride={setBpmOverride}
-              />
-            )}
+            <StageHeader
+              title={song.title}
+              meta={stageMeta(song.artist, info, trackIndex, speed)}
+              metaTitle={meta}
+              dim={follows && isPlaying && !sheetOpen && !toolsOpen}
+              chip={chipNode}
+              actions={actions}
+              onBack={onBack}
+            />
+            {statusLines}
           </div>
           {!follows && (
             <div className="mt-block flex flex-wrap items-center gap-row rounded-lg bg-card px-block py-row text-sm text-muted-foreground">
@@ -613,7 +570,7 @@ function TabsSheet({ song, sources, onBack }: { song: TabSong; sources: TabSourc
             onBarPick={pickingNow ? onBarPick : null}
             getPageScroller={() => stickyRef.current?.closest<HTMLElement>('[data-app-scroller]') ?? null}
             getTopInset={() => {
-              // The toolbar, plus the desktop top bar it sticks under
+              // The title line, plus the desktop top bar it sticks under
               // (`--ember-topbar-h`, 0 on a phone).
               const el = stickyRef.current;
               if (!el) return 0;
@@ -622,9 +579,132 @@ function TabsSheet({ song, sources, onBack }: { song: TabSong; sources: TabSourc
             }}
             className="mt-block"
           />
+          <div
+            data-tabs-dock
+            data-tools={toolsOpen ? 'open' : undefined}
+            className="pointer-events-none sticky bottom-cluster z-20 mt-block flex flex-col items-center gap-cluster"
+          >
+            {toolsOpen && (
+              <div
+                data-testid="tab-practice-panel"
+                className="pointer-events-auto max-h-[60vh] w-full max-w-2xl overflow-y-auto rounded-2xl border border-border bg-popover p-block text-popover-foreground shadow-soft"
+              >
+                <div role="toolbar" aria-label="Practice" className="flex flex-wrap items-center gap-cluster">
+                  <button
+                    type="button"
+                    aria-pressed={syncOpen}
+                    aria-label="Sync"
+                    onClick={() => setSyncOpen((v) => !v)}
+                    title="Nudge the tab if it runs ahead of or behind the recording"
+                    className={cn(chip, syncOpen || offsetMs !== 0 ? chipOn : chipOff)}
+                  >
+                    Sync
+                    <span className="tabular-nums font-normal">{formatOffset(offsetMs, offsetUnit, beatClock)}</span>
+                  </button>
+                  <button
+                    type="button"
+                    aria-pressed={practiceOpen}
+                    aria-label="Practice"
+                    onClick={() => setPracticeOpen((v) => !v)}
+                    title="Loop a section and slow it down"
+                    className={cn(chip, practiceOpen || loopOn || speed !== 1 ? chipOn : chipOff)}
+                  >
+                    <RepeatIcon className="size-3.5" />
+                    Practice
+                    {speed !== 1 && canSetRate && <span className="tabular-nums font-normal">{Math.round(speed * 100)}%</span>}
+                    {loopOn && loopRange && <span className="font-normal">{rangeLabel(loopRange)}</span>}
+                  </button>
+                  <button
+                    type="button"
+                    aria-pressed={metronomeOn}
+                    aria-label="Metronome"
+                    disabled={!timeline}
+                    onClick={toggleMetronome}
+                    title={
+                      timeline
+                        ? 'Clicks on the beat, following the tab’s tempo'
+                        : 'The metronome starts once the tab is drawn'
+                    }
+                    className={cn(chip, metronomeOn ? chipOn : chipOff, 'disabled:opacity-50')}
+                  >
+                    <ClockIcon className="size-3.5" />
+                    Metronome
+                    {(bpmOverride ?? tabBpmNow) && (
+                      <span className="tabular-nums font-normal">{Math.round(bpmOverride ?? tabBpmNow ?? 0)}</span>
+                    )}
+                  </button>
+                </div>
+                {syncOpen && (
+                  <SyncRow
+                    offsetMs={offsetMs}
+                    unit={offsetUnit}
+                    clock={beatClock}
+                    onUnitChange={setOffsetUnit}
+                    shared={tab.offsetMs}
+                    canShare={tab.canDelete}
+                    onChange={changeOffset}
+                    onShare={() =>
+                      sources.saveOffset(tab.id, offsetMs).then(
+                        () => changeOffset(null),
+                        // Not saved: the nudge stays on this device, and the
+                        // listener is told rather than left guessing.
+                        () => toast.error("Couldn't save the timing for everyone. It is still saved on this device."),
+                      )
+                    }
+                  />
+                )}
+                {practiceOpen && (
+                  <PracticeRow
+                    timeline={!!timeline}
+                    barTotal={timeline ? barCount(timeline) : 0}
+                    sections={timeline ? sectionRanges(timeline) : []}
+                    canSetRate={canSetRate}
+                    speed={speed}
+                    onSpeed={setSpeed}
+                    tabBpm={tabBpmNow}
+                    range={loopRange}
+                    loopOn={loopOn}
+                    onLoopOn={(on) => loopRange && setLoopRange(loopRange, on)}
+                    onRange={(r) => setLoopRange(r, loop?.on ?? true)}
+                    onClear={() => {
+                      setLoopRange(null);
+                      setPicking(null);
+                    }}
+                    picking={pickingNow ? (pickingNow.first === null ? 'first' : 'last') : null}
+                    onPick={() => (pickingNow ? setPicking(null) : tab && setPicking({ tabId: tab.id, first: null }))}
+                  />
+                )}
+                {metronomeOn && timeline && (
+                  <MetronomeRow
+                    tabBpm={tabBpmNow}
+                    steps={tempoSteps(timeline)}
+                    override={bpmOverride}
+                    onOverride={setBpmOverride}
+                  />
+                )}
+              </div>
+            )}
+            <PlayPill
+              playing={follows && isPlaying}
+              canPlay={follows || !!song.track}
+              onPlayPause={playPause}
+              label={pillLabel}
+              speedPercent={speedPercent}
+              canSetRate={canSetRate}
+              onSlower={() => setSpeed(rateFromPercent(nextSlower(speedPercent)))}
+              loopOn={loopOn}
+              loopLabel={loopRange ? rangeLabel(loopRange) : null}
+              onLoop={loopPill}
+              more={{ open: toolsOpen, onToggle: () => setToolsOpen((v) => !v) }}
+            />
+          </div>
         </>
       ) : (
-        <NoTab sources={sources} searchLinks={searchLinks} phone={phone} onAddFile={addFile} />
+        <>
+          <TabSheetHeader phone={phone} title={song.title} meta={meta} actions={actions} onBack={onBack} />
+          {statusLines}
+          <NoTab sources={sources} searchLinks={searchLinks} phone={phone} onAddFile={addFile} />
+        </>
       )}
       <TabSourceSheet
         open={sheetOpen}

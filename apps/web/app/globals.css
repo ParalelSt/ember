@@ -240,6 +240,11 @@ body:has([data-copy-bar]) [data-back-to-top] { bottom: 6.25rem; }
   body:has([data-copy-bar]) [data-back-to-top] { bottom: 6rem; }
 }
 
+/* The tab page's pill floats at the bottom of the same scroller: Back to
+   top steps up over it, and over the practice tools when they are open. */
+body:has([data-tabs-dock]) [data-back-to-top] { bottom: 4.5rem; }
+body:has([data-tabs-dock][data-tools="open"]) [data-back-to-top] { bottom: 9rem; }
+
 /* Marquee for overflowing titles (full-screen NowPlaying). Continuous
    one-direction loop: two copies of the text scroll left and the second
    seamlessly takes the first's place. --marquee-shift is the negative
