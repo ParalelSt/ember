@@ -17,10 +17,11 @@ const toast = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn(), message: vi.
 vi.mock('sonner', () => ({ toast }));
 const api = vi.hoisted(() => ({ joinSession: vi.fn(), createSession: vi.fn() }));
 vi.mock('@/lib/api', () => ({ api }));
-vi.mock('@/hooks/useLibrary', () => ({ useQueryPlaylists: () => ({ data: [] }), QK: { playlists: ['playlists'] } }));
+const playlists = vi.hoisted(() => ({ data: [] as { id: string; name: string }[] }));
+vi.mock('@/hooks/useLibrary', () => ({ useQueryPlaylists: () => playlists, QK: { playlists: ['playlists'] } }));
 vi.mock('@/components/providers/AuthProvider', () => ({ useAuth: () => ({ user: { id: 'u2' } }) }));
 
-const { JoinSessionDialog } = await import('./SessionDialogs');
+const { JoinSessionDialog, StartSessionDialog } = await import('./SessionDialogs');
 
 function setup() {
   render(
@@ -31,7 +32,10 @@ function setup() {
   return screen.getByRole('textbox', { name: 'Join code' });
 }
 
-beforeEach(() => vi.clearAllMocks());
+beforeEach(() => {
+  vi.clearAllMocks();
+  playlists.data = [];
+});
 
 describe('JoinSessionDialog: typing the code is the fallback', () => {
   it('a typed code joins and opens the carlist', async () => {
@@ -58,5 +62,24 @@ describe('JoinSessionDialog: typing the code is the fallback', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Join' }));
     expect(toast.error).toHaveBeenCalled();
     expect(api.joinSession).not.toHaveBeenCalled();
+  });
+});
+
+// Bughunt V3: a select is as wide as its longest option, so a long playlist
+// name pushed the Start a session dialog past the screen's edge. The select
+// and its column must be allowed to shrink to the dialog.
+describe('StartSessionDialog', () => {
+  it('lets the playlist select shrink to the dialog instead of its longest option', () => {
+    const LONG = 'BUGHUNT Supercalifragilisticexpialidocious playlist with an extremely long name';
+    playlists.data = [{ id: 'p1', name: LONG }];
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <StartSessionDialog open onOpenChange={vi.fn()} />
+      </QueryClientProvider>,
+    );
+    const select = screen.getByRole('combobox', { name: 'Seed from playlist' });
+    expect(select).toHaveTextContent(LONG);
+    expect(select).toHaveClass('w-full', 'min-w-0', 'truncate');
+    expect(select.parentElement).toHaveClass('min-w-0');
   });
 });

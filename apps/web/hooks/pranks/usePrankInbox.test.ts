@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, renderHook } from '@testing-library/react';
 import { POLL_IDLE_MS, POLL_PLAYING_MS, usePrankInbox, type PrankInboxDeps, type PrankSubscribe } from './usePrankInbox';
+import { decidePrank } from '@/lib/pranks/decide';
 import type { PrankAck, PrankRow } from '@/lib/pranks/types';
 
 const ping = (id: string): PrankRow => ({
@@ -111,6 +112,52 @@ describe('usePrankInbox (poll)', () => {
     renderHook(() => usePrankInbox({ userId: null, isPlaying: true, receive: () => DELIVERED, deps: other.deps }));
     await flush();
     expect(other.deps.fetchInbox).not.toHaveBeenCalled();
+  });
+
+  it('a prank left for later is not acked, and is offered again on the next poll', async () => {
+    const { inbox, deps } = fakeDeps();
+    inbox.push(ping('s1'));
+    const receive = vi.fn<(row: PrankRow) => PrankAck | 'later'>(() => 'later');
+    renderHook(() => usePrankInbox({ userId: 'u1', isPlaying: false, receive, deps }));
+    await flush();
+    expect(receive).toHaveBeenCalledTimes(1);
+    expect(deps.ack).not.toHaveBeenCalled();
+
+    // The music starts here within the window: this device takes it.
+    receive.mockImplementation(() => DELIVERED);
+    await act(async () => { vi.advanceTimersByTime(POLL_IDLE_MS); });
+    await flush();
+    expect(receive).toHaveBeenCalledTimes(2);
+    expect(deps.ack).toHaveBeenCalledWith('s1', DELIVERED);
+  });
+
+  it('an idle second device never swallows the sound meant for the one playing', async () => {
+    // One server inbox; an ack moves the row out of pending.
+    const server: PrankRow[] = [{ ...ping('s1'), kind: 'sound', streamUrl: '/api/pranks/media/x' }];
+    const pending = () => server.filter((r) => !acked.has(r.id));
+    const acked = new Map<string, PrankAck>();
+    // Each device decides the way PrankReceiver does.
+    const device = (playing: boolean) => ({
+      fetchInbox: vi.fn(async () => pending()),
+      ack: vi.fn(async (id: string, body: PrankAck) => void acked.set(id, body)),
+      subscribe: null,
+      receive: vi.fn((row: PrankRow): PrankAck | 'later' | null => {
+        const a = decidePrank(row, { isPlaying: playing, hasTrack: true, engine: 'web', busy: false, pluginHasOverlay: false, now: Date.now() });
+        if (a.type === 'sound') return DELIVERED;
+        if (a.type === 'skip') return { status: 'skipped', reason: a.reason };
+        return a.type === 'ignore' ? null : 'later';
+      }),
+    });
+    const idle = device(false);
+    const phone = device(true);
+    // The idle tab looks first.
+    renderHook(() => usePrankInbox({ userId: 'u1', isPlaying: false, receive: idle.receive, deps: idle }));
+    await flush();
+    renderHook(() => usePrankInbox({ userId: 'u1', isPlaying: true, receive: phone.receive, deps: phone }));
+    await flush();
+    expect(idle.ack).not.toHaveBeenCalled();
+    expect(acked.get('s1')).toEqual(DELIVERED);
+    expect(phone.receive).toHaveBeenCalledTimes(1);
   });
 
   it('swallows a failing fetch or ack and keeps polling', async () => {

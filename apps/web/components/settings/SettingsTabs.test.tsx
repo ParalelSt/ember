@@ -18,4 +18,14 @@ describe('SettingsTabs', () => {
     render(<SettingsTabs />);
     expect(screen.getByRole('link', { name: 'Appearance' })).toHaveAttribute('href', '/settings/appearance');
   });
+
+  // Bughunt V8: at md the app sidebar already takes 240px, and a side nav of
+  // its own left the page ~230px. It is the scrolling row phones use until lg.
+  it('is the row across the top until lg, the side column from lg', () => {
+    const { container } = render(<SettingsTabs />);
+    const nav = container.querySelector('nav')!;
+    expect(nav).toHaveClass('lg:w-48');
+    expect(nav).not.toHaveClass('md:w-48');
+    expect(nav.querySelector('ul')).toHaveClass('flex', 'lg:flex-col', 'overflow-x-auto', 'lg:overflow-visible');
+  });
 });

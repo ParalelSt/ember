@@ -155,7 +155,10 @@ const pushShared = await fetch(`${APP_URL}/api/discord/update`, {
   // The playhead rides along so the card's time bar can follow a seek.
   body: JSON.stringify({ track: { title: 'Public', artist: 'X' }, isPlaying: true, positionSec: 91, durationSec: 200 }),
 }).then((r) => r.json());
-check('C3 broadcasts again once re-enabled (with a playhead)', pushShared?.shared === true, JSON.stringify(pushShared));
+// The server's card is the owner's (bughunt X3): alice is a member, so her
+// call is ignored even with sharing on, rather than taking the card over.
+check('C3 a member who shares cannot take over the owner\'s card',
+  pushShared?.owner === false && pushShared?.shared === false, JSON.stringify(pushShared));
 
 const anonPush = await fetch(`${APP_URL}/api/discord/update`, {
   method: 'POST',

@@ -59,6 +59,12 @@ onAfterBootstrap((e) => {
 
   if (added === 0) return;
 
-  dao.saveCollection(tracks);
-  console.log("[ensure_track_availability] added " + added + " field(s)");
+  // A failed save must not stop PocketBase from booting: warn and carry on,
+  // same as ensure_superuser (bughunt X11).
+  try {
+    dao.saveCollection(tracks);
+    console.log("[ensure_track_availability] added " + added + " field(s)");
+  } catch (err) {
+    console.warn("[ensure_track_availability] could not save the tracks collection: " + err);
+  }
 });

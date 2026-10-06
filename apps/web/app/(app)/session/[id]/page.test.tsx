@@ -32,7 +32,7 @@ vi.mock('@/components/track/menus/TrackSearchPicker', () => ({
 vi.mock('@/components/session/CarlistShare', () => ({
   CarlistShareDialog: ({ open, code }: { open: boolean; code: string }) => (open ? <div data-testid="share">{code}</div> : null),
 }));
-vi.mock('@/hooks/useSessionHost', () => ({ useSessionHost: vi.fn() }));
+vi.mock('@/hooks/useSessionHost', () => ({ useClaimSessionHost: vi.fn() }));
 vi.mock('@/hooks/useCarlistProgress', () => ({ useCarlistProgress: () => 0.25 }));
 
 const mutateAsync = vi.hoisted(() => vi.fn());

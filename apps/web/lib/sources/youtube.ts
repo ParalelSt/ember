@@ -204,7 +204,12 @@ function spawnPython<T>(args: string[], timeoutMs: number): Promise<T> {
       }
       reject(e);
     };
+    // Once the timeout fires, `close` still arrives (SIGKILL doesn't skip it)
+    // with some non-zero code, which would otherwise log AND reject a second
+    // time for the same one timeout.
+    let timedOut = false;
     const timer = setTimeout(() => {
+      timedOut = true;
       child.kill('SIGKILL');
       const e: PythonError = new Error('python timed out');
       e.status = 504;
@@ -222,6 +227,7 @@ function spawnPython<T>(args: string[], timeoutMs: number): Promise<T> {
     child.on('error', (e) => { clearTimeout(timer); reject_(e as PythonError); });
     child.on('close', (code) => {
       clearTimeout(timer);
+      if (timedOut) return; // already rejected (and logged) by the timer above
       if (code !== 0) {
         // The MESSAGE reaches the browser (and toasts), so it must be a
         // sentence, not a Python traceback — those leak absolute server paths
@@ -728,6 +734,9 @@ const URL_CACHE = new Map<string, { info: StreamInfo; expires: number }>();
 // Fallback TTL when the upstream URL carries no readable expiry. googlevideo
 // URLs are signed for ~6h, so an hour is still conservative.
 const URL_TTL_MS = 60 * 60 * 1000;
+// Same shape as SEARCH_CACHE above: drop the oldest insertion at the cap
+// (not strict LRU, but TTL evicts stale entries anyway).
+const URL_CACHE_MAX = 500;
 
 /** Cache lifetime for a resolved stream URL. googlevideo URLs embed their own
  *  signed expiry (`expire=<unix seconds>`); trust it minus a 10-min margin.
@@ -770,6 +779,18 @@ export interface LyricsResult {
 
 const LYRICS_CACHE = new Map<string, { result: LyricsResult; expires: number }>();
 const LYRICS_TTL_MS = 60 * 60 * 1000;
+const LYRICS_CACHE_MAX = 500;
+
+/** Shared with URL_CACHE: both are keyed by an unbounded input (every
+ *  videoId or title+artist ever played), so without a cap they grow for the
+ *  life of the process. Same eviction as SEARCH_CACHE above. */
+function capInsert<V>(map: Map<string, V>, key: string, value: V, max: number): void {
+  if (map.size >= max && !map.has(key)) {
+    const oldest = map.keys().next().value;
+    if (oldest !== undefined) map.delete(oldest);
+  }
+  map.set(key, value);
+}
 
 /** Parse LRC body into sorted {time, text} entries. Tolerates the common
  *  `[mm:ss.xx]` and `[mm:ss]` forms, multiple stamps per line, and metadata
@@ -799,6 +820,8 @@ function parseLRC(body: string): LyricsLine[] {
 
 interface RawLrclibHit {
   id?: number;
+  /** Seconds, the length of the version these lyrics were timed to. */
+  duration?: number;
   plainLyrics?: string | null;
   syncedLyrics?: string | null;
   instrumental?: boolean;
@@ -827,8 +850,23 @@ function cleanForLyricsLookup(s: string): string {
  *  has nothing.
  *
  *  Uses /api/search (fuzzy) rather than /api/get (exact) because YouTube
- *  metadata almost never matches LRCLib's clean artist/title strings. */
-async function fetchLrclib(title: string, artist: string): Promise<LyricsResult | null> {
+ *  metadata almost never matches LRCLib's clean artist/title strings. The
+ *  search returns every version of a song (radio edit, live, extended), so
+ *  with the track's length known, synced lines only come from a version
+ *  within LRCLIB_DURATION_SLACK_SEC of it; other versions give words only.
+ *
+ *  `failed` means LRCLib itself could not answer (timeout, network, a bad
+ *  response), as opposed to answering "nothing", so the caller can skip
+ *  caching whatever it falls back to. */
+const LRCLIB_DURATION_SLACK_SEC = 3;
+
+async function fetchLrclib(
+  title: string,
+  artist: string,
+  durationSec?: number,
+): Promise<{ result: LyricsResult | null; failed: boolean }> {
+  const none = { result: null, failed: false };
+  const failed = { result: null, failed: true };
   const cleanTitle = cleanForLyricsLookup(title);
   const cleanArtist = cleanForLyricsLookup(artist);
   const params = new URLSearchParams({ track_name: cleanTitle });
@@ -841,32 +879,43 @@ async function fetchLrclib(title: string, artist: string): Promise<LyricsResult 
       signal: AbortSignal.timeout(8000),
     });
   } catch {
-    return null;
+    return failed;
   }
-  if (!res.ok) return null;
+  if (!res.ok) return failed;
   const hits = (await res.json().catch(() => null)) as RawLrclibHit[] | null;
-  if (!Array.isArray(hits) || hits.length === 0) return null;
+  if (!Array.isArray(hits)) return failed;
+  if (hits.length === 0) return none;
 
+  const hasSynced = (h: RawLrclibHit) => !h.instrumental && !!h.syncedLyrics && h.syncedLyrics.trim().length > 0;
+  const hasPlain = (h: RawLrclibHit) => !h.instrumental && !!h.plainLyrics;
+  const known = typeof durationSec === 'number' && durationSec > 0;
+  const off = (h: RawLrclibHit) =>
+    typeof h.duration === 'number' ? Math.abs(h.duration - (durationSec as number)) : Infinity;
   // Prefer a hit that actually has synced lyrics — that's the whole point
-  // of going to LRCLib. Fall back to the first hit otherwise.
-  const hit =
-    hits.find((h) => !h.instrumental && h.syncedLyrics && h.syncedLyrics.trim().length > 0)
-    ?? hits.find((h) => !h.instrumental && h.plainLyrics);
-  if (!hit) return null;
+  // of going to LRCLib — from the closest version when the length is known.
+  const timed = known
+    ? hits.filter((h) => hasSynced(h) && off(h) <= LRCLIB_DURATION_SLACK_SEC).sort((a, b) => off(a) - off(b))[0]
+    : hits.find(hasSynced);
+  const hit = timed ?? hits.find(hasPlain) ?? (known ? hits.find(hasSynced) : undefined);
+  if (!hit) return none;
 
-  const synced = hit.syncedLyrics ? parseLRC(hit.syncedLyrics) : [];
+  // Another version's timing would run ahead of or behind the song.
+  const synced = hit === timed && hit.syncedLyrics ? parseLRC(hit.syncedLyrics) : [];
   const plain = (hit.plainLyrics ?? '').trim()
-    || (synced.length ? synced.map((l) => l.text).join('\n') : '');
-  if (!plain && synced.length === 0) return null;
+    || (hit.syncedLyrics ? parseLRC(hit.syncedLyrics).map((l) => l.text).join('\n') : '');
+  if (!plain && synced.length === 0) return none;
   return {
-    lyrics: plain || null,
-    source: 'lrclib',
-    url: null,
-    synced: synced.length ? synced : undefined,
+    result: {
+      lyrics: plain || null,
+      source: 'lrclib',
+      url: null,
+      synced: synced.length ? synced : undefined,
+    },
+    failed: false,
   };
 }
 
-export async function getLyrics(title: string, artist: string): Promise<LyricsResult> {
+export async function getLyrics(title: string, artist: string, durationSec?: number): Promise<LyricsResult> {
   const cleanTitle = title.trim().slice(0, 200);
   const cleanArtist = artist.trim().slice(0, 200);
   if (!cleanTitle) {
@@ -875,16 +924,19 @@ export async function getLyrics(title: string, artist: string): Promise<LyricsRe
     throw e;
   }
   // v2 = LRCLib (synced) path added. Bumping ensures any v1-era cached
-  // entries (Genius-only, no `synced`) don't shadow newer lookups.
-  const cacheKey = `v2:${cleanArtist}::${cleanTitle}`.toLowerCase();
+  // entries (Genius-only, no `synced`) don't shadow newer lookups. The
+  // length is part of the key: two versions of a song time differently.
+  const seconds = Number.isFinite(durationSec) && (durationSec as number) > 0 ? Math.round(durationSec as number) : 0;
+  const cacheKey = `v2:${cleanArtist}::${cleanTitle}::${seconds}`.toLowerCase();
   const cached = LYRICS_CACHE.get(cacheKey);
   if (cached && cached.expires > Date.now()) return cached.result;
 
   // Prefer LRCLib because it can give us synced timing. If it has nothing
   // useful, fall back to Genius via the Python scraper for the plain text.
-  const fromLrclib = await fetchLrclib(cleanTitle, cleanArtist);
+  const lrclib = await fetchLrclib(cleanTitle, cleanArtist, seconds || undefined);
+  const fromLrclib = lrclib.result;
   if (fromLrclib) {
-    LYRICS_CACHE.set(cacheKey, { result: fromLrclib, expires: Date.now() + LYRICS_TTL_MS });
+    capInsert(LYRICS_CACHE, cacheKey, { result: fromLrclib, expires: Date.now() + LYRICS_TTL_MS }, LYRICS_CACHE_MAX);
     return fromLrclib;
   }
 
@@ -899,7 +951,11 @@ export async function getLyrics(title: string, artist: string): Promise<LyricsRe
     source: raw?.source ?? 'none',
     url: raw?.url ?? null,
   };
-  LYRICS_CACHE.set(cacheKey, { result, expires: Date.now() + LYRICS_TTL_MS });
+  // LRCLib failing is not LRCLib having nothing: an hour of plain (or no)
+  // lyrics because of one timeout is the wrong trade, so ask it again.
+  if (!lrclib.failed) {
+    capInsert(LYRICS_CACHE, cacheKey, { result, expires: Date.now() + LYRICS_TTL_MS }, LYRICS_CACHE_MAX);
+  }
   return result;
 }
 
@@ -945,6 +1001,6 @@ export async function resolveStreamUrl(videoId: string): Promise<StreamInfo> {
   // Proxy mode streams this live, so the length cap has to hold here too.
   const over = exceedsMediaLimits(info);
   if (over) throw tooLargeError(over);
-  URL_CACHE.set(videoId, { info, expires: urlCacheExpiry(info.url) });
+  capInsert(URL_CACHE, videoId, { info, expires: urlCacheExpiry(info.url) }, URL_CACHE_MAX);
   return info;
 }

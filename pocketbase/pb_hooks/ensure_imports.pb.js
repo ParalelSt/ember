@@ -16,7 +16,9 @@
 //
 // A job with `kind: 'liked'` is a transfer: it has no playlist, its accepted
 // songs become likes instead, its items carry the `liked_at` those likes get,
-// and `existing` counts the ones the person had already liked.
+// and `existing` counts the ones the person had already liked. An item's
+// `like_id` is the like it made (empty when the song was already liked), so
+// re-matching it removes only that like.
 //
 // Playlists get `source_url` and `import_job`, so a later re-sync knows
 // where a playlist came from.
@@ -167,6 +169,8 @@ onAfterBootstrap((e) => {
         { name: "confidence", type: "number", options: {} },
         // Every scored candidate, best first (ImportCandidate[]).
         { name: "candidates", type: "json", options: { maxSize: 200000 } },
+        // A transfer only: the likes record this item created.
+        { name: "like_id", type: "text", options: { max: 30 } },
       ],
     });
     dao.saveCollection(items);
@@ -200,15 +204,35 @@ onAfterBootstrap((e) => {
       jobFields++;
     }
   }
+  // A failed save must not stop PocketBase from booting: warn and carry on,
+  // same as ensure_superuser (bughunt X11).
   if (jobFields) {
-    dao.saveCollection(jobs);
-    console.log("[ensure_imports] updated " + jobFields + " import_jobs field(s)");
+    try {
+      dao.saveCollection(jobs);
+      console.log("[ensure_imports] updated " + jobFields + " import_jobs field(s)");
+    } catch (err) {
+      console.warn("[ensure_imports] could not save import_jobs: " + err);
+    }
   }
 
+  let itemFields = 0;
   if (!itemsColl.schema.getFieldByName("liked_at")) {
     itemsColl.schema.addField(new SchemaField({ name: "liked_at", type: "date", required: false, options: {} }));
-    dao.saveCollection(itemsColl);
-    console.log("[ensure_imports] added import_items.liked_at");
+    itemFields++;
+  }
+  // Items saved before this field existed stay empty, and an empty one
+  // never unlikes anything.
+  if (!itemsColl.schema.getFieldByName("like_id")) {
+    itemsColl.schema.addField(new SchemaField({ name: "like_id", type: "text", required: false, options: { max: 30 } }));
+    itemFields++;
+  }
+  if (itemFields) {
+    try {
+      dao.saveCollection(itemsColl);
+      console.log("[ensure_imports] updated " + itemFields + " import_items field(s)");
+    } catch (err) {
+      console.warn("[ensure_imports] could not save import_items: " + err);
+    }
   }
 
   let added = 0;
@@ -224,7 +248,11 @@ onAfterBootstrap((e) => {
     added++;
   }
   if (added) {
-    dao.saveCollection(playlists);
-    console.log("[ensure_imports] added " + added + " playlist field(s)");
+    try {
+      dao.saveCollection(playlists);
+      console.log("[ensure_imports] added " + added + " playlist field(s)");
+    } catch (err) {
+      console.warn("[ensure_imports] could not save the playlists collection: " + err);
+    }
   }
 });

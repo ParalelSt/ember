@@ -98,3 +98,18 @@ describe('TrackSearchPicker recommendations under a playlist', () => {
     expect(player.playTrack).toHaveBeenCalledWith(fresh, undefined, { type: 'single', exclude: [] });
   });
 });
+
+// Bughunt V7: in the New playlist dialog (capped at 90% of the window) the
+// recommended list ran under the footer and out of the dialog, because the
+// box around it could not shrink. The list and its wrapper must be a
+// shrinkable column.
+describe('TrackSearchPicker in a height-capped dialog', () => {
+  it('lets the recommended list shrink and scroll', async () => {
+    setup([]);
+    const row = await screen.findByText('Live Forever');
+    const list = row.closest('.overflow-y-auto') as HTMLElement;
+    expect(list).not.toBeNull();
+    expect(list.parentElement).toHaveClass('flex', 'min-h-0', 'flex-col');
+    expect(list.parentElement!.parentElement).toHaveClass('min-h-0');
+  });
+});

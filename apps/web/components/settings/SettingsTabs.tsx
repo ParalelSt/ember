@@ -18,7 +18,7 @@ export function SettingsTabs() {
   const path = usePathname();
   const activeRef = useRef<HTMLAnchorElement>(null);
 
-  // Below md the tab row scrolls horizontally, so a tab picked from a link
+  // Below lg the tab row scrolls horizontally, so a tab picked from a link
   // elsewhere (or the section landed on directly) can start off-screen with
   // nothing on the page hinting there's more to scroll to. Bring it into
   // view whenever the active tab changes.
@@ -27,8 +27,8 @@ export function SettingsTabs() {
   }, [path]);
 
   return (
-    <nav className="md:w-48 shrink-0 relative">
-      <ul className="flex md:flex-col gap-1 overflow-x-auto md:overflow-visible">
+    <nav className="lg:w-48 shrink-0 relative">
+      <ul className="flex lg:flex-col gap-1 overflow-x-auto lg:overflow-visible">
         {TABS.map(({ href, label }) => {
           const active = path.startsWith(href);
           return (
@@ -49,17 +49,17 @@ export function SettingsTabs() {
           );
         })}
       </ul>
-      {/* Edge fades hint that the row scrolls, below md only (md:overflow-visible
+      {/* Edge fades hint that the row scrolls, below lg only (lg:overflow-visible
           removes the scroller above that). bg-background (never a hardcoded
           colour) so it holds under every theme; pointer-events-none so it
           never blocks a tap on a tab underneath. */}
       <div
         aria-hidden
-        className="pointer-events-none absolute inset-y-0 left-0 w-block bg-linear-to-r from-background to-transparent md:hidden"
+        className="pointer-events-none absolute inset-y-0 left-0 w-block bg-linear-to-r from-background to-transparent lg:hidden"
       />
       <div
         aria-hidden
-        className="pointer-events-none absolute inset-y-0 right-0 w-block bg-linear-to-l from-background to-transparent md:hidden"
+        className="pointer-events-none absolute inset-y-0 right-0 w-block bg-linear-to-l from-background to-transparent lg:hidden"
       />
     </nav>
   );

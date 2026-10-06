@@ -127,7 +127,7 @@ async function upload(u, title) {
 }
 
 /** A tab row owned by `u`, with a real file behind it in MUSIC_DIR/tabs. */
-async function makeTab(u, title) {
+async function makeTab(u, title, shared = true) {
   const file = `x10-${Date.now()}-${Math.floor(Math.random() * 1e5)}.gp5`;
   if (MUSIC_DIR) {
     fs.mkdirSync(path.join(MUSIC_DIR, 'tabs'), { recursive: true });
@@ -135,7 +135,7 @@ async function makeTab(u, title) {
   }
   const row = await asSuper('/api/collections/tabs/records', {
     method: 'POST',
-    body: JSON.stringify({ user: u.id, title, artist: 'A', file, kind: 'file', format: 'gp5', shared: true, song_key: `${title.toLowerCase()}::a` }),
+    body: JSON.stringify({ user: u.id, title, artist: 'A', file, kind: 'file', format: 'gp5', shared, song_key: `${title.toLowerCase()}::a` }),
   }).then((r) => r.json());
   return { id: row.id, file };
 }
@@ -255,6 +255,7 @@ check('F9 an admin deletes a member with no history', plainDel.status === 200, `
 const tia = await member('Tia');
 const shared = await makeTab(tia, `X10 Shared ${Date.now()}`);
 const own = await makeTab(tia, `X10 Own ${Date.now()}`);
+const secret = await makeTab(tia, `X10 Private ${Date.now()}`, false);
 const pbDel = await pbAs(tia, `/api/collections/tabs/records/${own.id}`, { method: 'DELETE' });
 const ownStill = await superGet(`/api/collections/tabs/records/${own.id}`);
 check('X10a a tab row cannot be deleted around the app (its file would stay)', !pbDel.ok && !!ownStill && tabFileExists(own.file), `status ${pbDel.status}`);
@@ -267,6 +268,8 @@ const sharedKept = await superGet(`/api/collections/tabs/records/${shared.id}`);
 check('X10b deleting a member keeps the tabs they shared', tiaDel.status === 200 && !!sharedKept && tabFileExists(shared.file), `delete ${tiaDel.status}, row ${sharedKept ? 'kept' : 'gone'}`);
 const sharedSeen = await asJson(gus, `/api/tabs/files/${shared.id}/download`);
 check('X10c others still open that tab', sharedSeen.status === 200, `status ${sharedSeen.status}`);
+const secretGone = !(await asSuper(`/api/collections/tabs/records/${secret.id}`)).ok;
+check('X10d their private tab goes with them, file and all', secretGone && !tabFileExists(secret.file), `row ${secretGone ? 'gone' : 'kept'}, file ${tabFileExists(secret.file) ? 'left on disk' : 'gone'}`);
 
 // ── F: ending the carlist ────────────────────────────────────────────────
 const ended = await as(hana, `/api/sessions/${sid}/end`, { method: 'POST' });

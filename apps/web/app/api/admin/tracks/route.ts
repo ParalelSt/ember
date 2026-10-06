@@ -9,6 +9,7 @@ import {
 import { createAdminClient } from '@/lib/pocketbase/server';
 import { mapTrackRow, type TrackRecord } from '@/lib/mapTrack';
 import { fromError } from '@/lib/upsertTrack';
+import { missingUploadIds } from '@/lib/uploads/missing';
 import { withRequestLog } from '@/lib/logger/withRequestLog';
 
 const PAGE_SIZE = 50;
@@ -32,10 +33,18 @@ export const GET = withRequestLog('admin/tracks', async (req: NextRequest) => {
     // Admin endpoint returns BOTH ids: `id` (Track.id = external_id, used in
     // the canonical Track shape everywhere else) and `recordId` (PB's
     // internal pkey used in PATCH/DELETE URLs below).
+    // An `upload` row whose upload was deleted stays in the catalog (it may
+    // be in a playlist) but no longer plays: flag it, never delete it.
+    const gone = await missingUploadIds(
+      pb,
+      list.items.filter((r) => r.source === 'upload').map((r) => String(r.source_id)),
+    );
     const tracks = list.items
       .map((r) => {
         const mapped = mapTrackRow(r as unknown as TrackRecord);
-        return mapped ? { ...mapped, recordId: r.id } : null;
+        if (!mapped) return null;
+        const missing = mapped.source === 'upload' && gone.has(mapped.sourceId);
+        return { ...mapped, recordId: r.id, ...(missing ? { missing: true } : {}) };
       })
       .filter((t): t is NonNullable<typeof t> => t !== null);
 

@@ -75,7 +75,7 @@ describe('PhonePlayerBar', () => {
     // The artwork sits beside the name, in one row, the old bar's shape.
     expect(titleRow.querySelector('.size-art-bar')).not.toBeNull();
     expect(titleRow).toHaveTextContent(TRACK.artist);
-    expect(within(bar).getAllByRole('button').map((b) => b.getAttribute('aria-label'))).toEqual(['Pause', 'Next']);
+    expect(within(bar).getAllByRole('button').map((b) => b.getAttribute('aria-label'))).toEqual(['Open player', 'Pause', 'Next']);
     // Previous and the queue live on the full-screen view.
     for (const name of ['Previous', 'Queue']) {
       expect(within(bar).queryByRole('button', { name })).toBeNull();
@@ -187,6 +187,20 @@ describe('PhonePlayerBar', () => {
     // Once per tap: nothing inside opens it a second time on the way up.
     expect(onOpen).toHaveBeenCalledTimes(4);
     expect(onToggle).not.toHaveBeenCalled();
+  });
+
+  // O9: the title area was a plain div, reachable only by a pointer tap. A
+  // keyboard or screen-reader user had no way to open the full-screen view
+  // (the row's own onClick is on a div, invisible to Tab).
+  it('makes the title area a real button labelled "Open player", reachable by keyboard', () => {
+    const { onOpen } = setup();
+    const titleButton = screen.getByRole('button', { name: 'Open player' });
+    expect(titleButton).toBe(screen.getByTestId('phone-player-title-row'));
+    expect(titleButton.tagName).toBe('BUTTON');
+    titleButton.focus();
+    expect(document.activeElement).toBe(titleButton);
+    fireEvent.click(titleButton);
+    expect(onOpen).toHaveBeenCalledTimes(1);
   });
 
   it('lines the seek line up with the row: under the artwork on the left, under the next icon on the right', () => {

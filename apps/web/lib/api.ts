@@ -39,6 +39,9 @@ export interface AdminUser {
 export interface AdminTrack extends Track {
   /** PocketBase internal record id — used in admin PATCH / DELETE URLs. */
   recordId: string;
+  /** An uploaded song whose upload was deleted: the catalog row is kept
+   *  (playlists may hold it) but there is nothing left to stream. */
+  missing?: true;
 }
 
 export interface AdminInvite {
@@ -460,7 +463,7 @@ export const api = {
     req<{ ok: true }>('/history', { method: 'POST', body: { track }, background: true }),
 
   updateDiscord: (track: Track | null, isPlaying: boolean, positionSec = 0, durationSec = 0) =>
-    req<{ ok: true; shared: boolean }>('/discord/update', {
+    req<{ ok: true; shared: boolean; owner?: boolean }>('/discord/update', {
       method: 'POST',
       body: { track, isPlaying, positionSec, durationSec },
       background: true,

@@ -16,7 +16,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { api } from '@/lib/api';
 import { useQueryPlaylists } from '@/hooks/useLibrary';
-import { useSessionStore } from '@/stores/useSessionStore';
+import { startHosting } from '@/hooks/useSessionHost';
 import { liveCarlistKey } from '@/hooks/useSession';
 import { parseJoinInput } from '@/lib/carlist';
 import { cn } from '@/lib/utils';
@@ -31,7 +31,6 @@ export function StartSessionDialog({ open, onOpenChange }: DialogProps) {
   const router = useRouter();
   const qc = useQueryClient();
   const { data: playlists = [] } = useQueryPlaylists();
-  const setHostingSessionId = useSessionStore((s) => s.setHostingSessionId);
   const [name, setName] = useState('');
   const [seedId, setSeedId] = useState('');
   const [busy, setBusy] = useState(false);
@@ -43,7 +42,7 @@ export function StartSessionDialog({ open, onOpenChange }: DialogProps) {
         name: name.trim() || undefined,
         seedPlaylistId: seedId || undefined,
       });
-      setHostingSessionId(session.id);
+      startHosting(session.id);
       void qc.invalidateQueries({ queryKey: liveCarlistKey });
       toast.success(`Session live — code ${session.code}`);
       onOpenChange(false);
@@ -64,7 +63,10 @@ export function StartSessionDialog({ open, onOpenChange }: DialogProps) {
             Your phone plays the music; everyone with the code can add songs and skip.
           </DialogDescription>
         </DialogHeader>
-        <div className="flex flex-col gap-3 py-2">
+        {/* min-w-0 here and on the select: a select is as wide as its
+            longest option, and a long playlist name would otherwise push the
+            whole dialog wider than the screen. */}
+        <div className="flex min-w-0 flex-col gap-3 py-2">
           <Input
             autoFocus
             value={name}
@@ -75,7 +77,7 @@ export function StartSessionDialog({ open, onOpenChange }: DialogProps) {
           <select
             value={seedId}
             onChange={(e) => setSeedId(e.target.value)}
-            className="h-9 rounded-md bg-card px-3 text-sm text-foreground border-0 outline-none"
+            className="h-9 w-full min-w-0 truncate rounded-md bg-card px-3 text-sm text-foreground border-0 outline-none"
             aria-label="Seed from playlist"
           >
             <option value="">Start with an empty queue</option>

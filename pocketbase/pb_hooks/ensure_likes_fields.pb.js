@@ -49,9 +49,15 @@ onAfterBootstrap((e) => {
     added++;
   }
 
+  // A failed save must not stop PocketBase from booting: warn and carry on,
+  // same as ensure_superuser (bughunt X11).
   if (added) {
-    dao.saveCollection(likes);
-    console.log("[ensure_likes_fields] added " + added + " like field(s)");
+    try {
+      dao.saveCollection(likes);
+      console.log("[ensure_likes_fields] added " + added + " like field(s)");
+    } catch (err) {
+      console.warn("[ensure_likes_fields] could not save the likes collection: " + err);
+    }
   }
 
   // Backfill in pages. The filter shrinks as rows are filled in, so every

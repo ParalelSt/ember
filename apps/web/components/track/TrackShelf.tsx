@@ -1,12 +1,12 @@
 'use client';
 
-import { useState, useEffect, type ReactNode } from 'react';
+import { useState, useEffect, useLayoutEffect, type CSSProperties, type ReactNode } from 'react';
 import Link from 'next/link';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ChevronLeftIcon } from '@/components/icons';
 import { PageTitle } from '@/components/page/PageTitle';
 import { SectionHeader } from '@/components/page/SectionHeader';
-import { gridColsClass, visibleCount } from '@/lib/layout';
+import { columnsForWidth, gridColsClass, visibleCount } from '@/lib/layout';
 import type { Track } from '@/types/track';
 
 interface Props {
@@ -31,29 +31,46 @@ interface Props {
 
 // When the desktop lyrics panel is open, main shrinks by ~max(40vw, 28rem).
 // Use fewer columns so cards stay legible instead of cramming together.
-// The grid-cols strings and the one-row visible count both come from
-// lib/layout.ts's SHELF_ROW_COUNT now, instead of two hand-kept literals.
-// This is a pure viewport hook (it reads window width, never app state), so
-// it can live inside a presentational component.
-function useResponsiveRowCount(lyricsOpen: boolean): number {
+// The columns come from the width the grid itself gets (lib/layout.ts
+// columnsForWidth): the window width alone put 5 cards in the ~460px a 768
+// tablet leaves beside the sidebar (bughunt V8). Until the grid has been
+// measured (server render, tests) the old viewport guess and its matching
+// grid-cols classes stand in. Pure layout (it reads sizes, never app state),
+// so it can live inside a presentational component.
+function useShelfColumns(lyricsOpen: boolean) {
   const variant = lyricsOpen ? 'lyrics' : 'default';
+  const [grid, setGrid] = useState<HTMLDivElement | null>(null);
+  const [width, setWidth] = useState(0);
   // Same pre-mount guess as before: the largest (lg+) count per variant,
   // since SSR has no window width to measure.
-  const [count, setCount] = useState(lyricsOpen ? 4 : 6);
+  const [guess, setGuess] = useState(lyricsOpen ? 4 : 6);
   useEffect(() => {
-    const update = () => setCount(visibleCount(variant, window.innerWidth));
+    const update = () => setGuess(visibleCount(variant, window.innerWidth));
     update();
     window.addEventListener('resize', update);
     return () => window.removeEventListener('resize', update);
   }, [variant]);
-  return count;
+  // Before paint, so a client-side visit never flashes the guessed count.
+  useLayoutEffect(() => {
+    if (!grid) return;
+    const update = () => setWidth(grid.clientWidth);
+    update();
+    if (typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver(update);
+    ro.observe(grid);
+    return () => ro.disconnect();
+  }, [grid]);
+  const count = width > 0 ? columnsForWidth(variant, width) : guess;
+  const style: CSSProperties | undefined =
+    width > 0 ? { gridTemplateColumns: `repeat(${count}, minmax(0, 1fr))` } : undefined;
+  return { gridRef: setGrid, count, style };
 }
 
 /** Presentational only: one horizontal shelf of track cards, with an
  *  optional "Show all" link, or the fullscreen grid of every card. */
 export function TrackShelf({ title, tracks, loading, showAllHref, renderCard, lyricsOpen = false, fullscreen }: Props) {
   const gridCols = gridColsClass(lyricsOpen ? 'lyrics' : 'default');
-  const rowCount = useResponsiveRowCount(lyricsOpen);
+  const { gridRef, count: rowCount, style: gridStyle } = useShelfColumns(lyricsOpen);
   const hasTracks = !!tracks && tracks.length > 0;
   if (!loading && !hasTracks) return null;
 
@@ -70,7 +87,7 @@ export function TrackShelf({ title, tracks, loading, showAllHref, renderCard, ly
           Back
         </Link>
         <PageTitle className="mb-6">{title}</PageTitle>
-        <div className={`grid gap-4 ${gridCols}`} role="list">
+        <div ref={gridRef} className={`grid gap-4 ${gridCols}`} style={gridStyle} role="list">
           {all.map((t) => (
             <div key={t.id} role="listitem">
               {renderCard(t, all)}
@@ -101,7 +118,7 @@ export function TrackShelf({ title, tracks, loading, showAllHref, renderCard, ly
         }
       />
 
-      <div className={`grid gap-4 ${gridCols}`} role="list">
+      <div ref={gridRef} className={`grid gap-4 ${gridCols}`} style={gridStyle} role="list">
         {loading && !hasTracks
           ? Array.from({ length: rowCount }).map((_, i) => (
               <div key={i} className="p-3 rounded-xl bg-card">

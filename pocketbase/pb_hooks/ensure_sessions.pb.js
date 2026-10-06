@@ -77,7 +77,7 @@ onAfterBootstrap((e) => {
         {
           name: "added_by",
           type: "relation",
-          required: true,
+          required: false,
           options: { collectionId: users.id, maxSelect: 1, cascadeDelete: false },
         },
         { name: "played", type: "bool", options: {} },
@@ -102,7 +102,7 @@ onAfterBootstrap((e) => {
         {
           name: "issued_by",
           type: "relation",
-          required: true,
+          required: false,
           options: { collectionId: users.id, maxSelect: 1, cascadeDelete: false },
         },
       ],
@@ -135,6 +135,28 @@ onAfterBootstrap((e) => {
     console.log("[ensure_sessions] created session_members");
   }
 
+  // Deleting a member who queued a song or skipped used to fail, because
+  // these links were required (bughunt X4). They are optional now: the rows
+  // stay, naming nobody.
+  const OPTIONAL = [
+    { collection: "session_tracks", field: "added_by" },
+    { collection: "session_commands", field: "issued_by" },
+  ];
+  // A failed save must not stop PocketBase from booting: warn and carry on,
+  // same as ensure_superuser (bughunt X11).
+  for (const o of OPTIONAL) {
+    const col = find(o.collection);
+    const field = col.schema.getFieldByName(o.field);
+    if (!field || !field.required) continue;
+    field.required = false;
+    try {
+      dao.saveCollection(col);
+      console.log(`[ensure_sessions] ${o.collection}.${o.field} is optional now`);
+    } catch (err) {
+      console.warn(`[ensure_sessions] could not save ${o.collection}: ` + err);
+    }
+  }
+
   const HOST_OR_MEMBER = "host = @request.auth.id || session_members_via_session.user ?= @request.auth.id";
   const IN_SESSION = "session.host = @request.auth.id || session.session_members_via_session.user ?= @request.auth.id";
   const RULES = {
@@ -162,7 +184,11 @@ onAfterBootstrap((e) => {
     col.createRule = null;
     col.updateRule = null;
     col.deleteRule = null;
-    dao.saveCollection(col);
-    console.log(`[ensure_sessions] ${name}: server-written, readable by the carlist only`);
+    try {
+      dao.saveCollection(col);
+      console.log(`[ensure_sessions] ${name}: server-written, readable by the carlist only`);
+    } catch (err) {
+      console.warn(`[ensure_sessions] could not save ${name}: ` + err);
+    }
   }
 });

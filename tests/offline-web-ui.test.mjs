@@ -127,7 +127,7 @@ try {
   await page.goto(`${APP_URL}/playlist/${pl.id}`, { waitUntil: 'networkidle' });
   await page.getByText('Offline One').first().waitFor({ timeout: 15_000 });
 
-  await page.getByTitle('Save this collection for offline playback').click();
+  await page.getByTitle('Plays offline while Ember stays open in this tab').click();
   const toast = page.locator('[data-sonner-toast]').filter({ hasText: /Offline Mix/ }).first();
   await toast.waitFor({ timeout: 30_000 });
   const toastText = (await toast.innerText()).replace(/\s+/g, ' ').trim();

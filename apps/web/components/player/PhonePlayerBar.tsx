@@ -114,27 +114,36 @@ export function PhonePlayerBar({
         onClick={openUnlessButton}
         className="flex cursor-pointer items-center gap-block pl-block pr-block pt-row pb-cluster"
       >
-        <div data-testid="phone-player-title-row" className="flex min-w-0 flex-1 items-center gap-row">
-          {unplayable ? (
+        {unplayable ? (
+          <div data-testid="phone-player-title-row" className="flex min-w-0 flex-1 items-center gap-row">
             <UnplayableMessage size="bar" onRetry={onRetry} onOpenQueue={onOpenQueue} />
-          ) : (
-            <>
-              <Artwork src={artSrc} className="size-art-bar shrink-0 rounded-md bg-art" />
-              {/* min-w-0 flex-1: the marquee's box is sized by the row, never by
-                  the title inside it, which is what keeps measuring it stable. */}
-              <div className="min-w-0 flex-1">
-                <MarqueeText text={track.title} className="text-base font-semibold" />
-                {online ? (
-                  <div className="truncate text-sm text-muted-foreground" title={track.artist}>
-                    {track.artist}
-                  </div>
-                ) : (
-                  <OfflineBadge inline className="flex" />
-                )}
-              </div>
-            </>
-          )}
-        </div>
+          </div>
+        ) : (
+          // A real button, not a div in a clickable row: a keyboard or
+          // screen-reader user could not reach the full-screen view any
+          // other way. Not while the message shows: it has its own buttons.
+          <button
+            type="button"
+            data-testid="phone-player-title-row"
+            onClick={onOpen}
+            aria-label="Open player"
+            className="flex min-w-0 flex-1 items-center gap-row text-left"
+          >
+            <Artwork src={artSrc} className="size-art-bar shrink-0 rounded-md bg-art" />
+            {/* min-w-0 flex-1: the marquee's box is sized by the row, never by
+                the title inside it, which is what keeps measuring it stable. */}
+            <div className="min-w-0 flex-1">
+              <MarqueeText text={track.title} className="text-base font-semibold" />
+              {online ? (
+                <div className="truncate text-sm text-muted-foreground" title={track.artist}>
+                  {track.artist}
+                </div>
+              ) : (
+                <OfflineBadge inline className="flex" />
+              )}
+            </div>
+          </button>
+        )}
 
         {/* Hit boxes touch: the glyphs' own margins space them. */}
         <div className="flex shrink-0 items-center">

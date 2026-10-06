@@ -4,8 +4,22 @@ import { requireUser } from '@/lib/auth';
 import type { Track } from '@/types/track';
 import { withRequestLog } from '@/lib/logger/withRequestLog';
 
+/** Is this the account whose Discord the server's card is? The server can
+ *  only reach the Discord running next to it: the owner's. The owner is the
+ *  EMBER_ADMIN_EMAIL account (ensure_admin.pb.js); without one configured,
+ *  any admin. */
+function isPresenceOwner(user: { email: string; isAdmin: boolean }): boolean {
+  const owner = (process.env.EMBER_ADMIN_EMAIL ?? '').trim().toLowerCase();
+  if (owner) return user.email.trim().toLowerCase() === owner;
+  return user.isAdmin;
+}
+
 /** Publish "now playing" to the HOST's Discord (browsers can't reach their
  *  own Discord client; the desktop app talks to the local one directly).
+ *
+ *  One card, so only the owner's own sessions may set or clear it: any other
+ *  member's call is ignored, whether they share or not, or they would take
+ *  the card over or wipe it (bughunt X3).
  *
  *  Honours the per-user `share_discord` switch. The check is here as well as in
  *  the client because this route drives the host's visible presence — a stale
@@ -30,6 +44,8 @@ export const POST = withRequestLog('discord/update', async (request: NextRequest
     return Response.json({ ok: true, shared: false });
   }
 
+  if (!isPresenceOwner(session.user)) return Response.json({ ok: true, shared: false, owner: false });
+
   let mayShare = false;
   try {
     const record = await session.pb.collection('users').getOne(session.user.id);
@@ -42,5 +58,5 @@ export const POST = withRequestLog('discord/update', async (request: NextRequest
     updateDiscordActivity(body.track, true, Number(body.positionSec) || 0, Number(body.durationSec) || 0);
   } else clearDiscordActivity();
 
-  return Response.json({ ok: true, shared: mayShare });
+  return Response.json({ ok: true, shared: mayShare, owner: true });
 });

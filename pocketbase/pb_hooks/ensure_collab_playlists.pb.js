@@ -61,8 +61,14 @@ onAfterBootstrap((e) => {
     addedPlaylistFields++;
   }
   if (addedPlaylistFields > 0) {
-    dao.saveCollection(playlists);
-    console.log("[ensure_collab_playlists] added " + addedPlaylistFields + " field(s) to playlists");
+    // A failed save must not stop PocketBase from booting: warn and carry
+    // on, same as ensure_superuser (bughunt X11).
+    try {
+      dao.saveCollection(playlists);
+      console.log("[ensure_collab_playlists] added " + addedPlaylistFields + " field(s) to playlists");
+    } catch (err) {
+      console.warn("[ensure_collab_playlists] could not save the playlists collection: " + err);
+    }
   }
 
   if (!playlistTracks.schema.getFieldByName("added_by")) {
@@ -76,8 +82,14 @@ onAfterBootstrap((e) => {
         options: { collectionId: users.id, maxSelect: 1, cascadeDelete: false },
       }),
     );
-    dao.saveCollection(playlistTracks);
-    console.log("[ensure_collab_playlists] added added_by to playlist_tracks");
+    // A failed save must not stop PocketBase from booting: warn and carry
+    // on, same as ensure_superuser (bughunt X11).
+    try {
+      dao.saveCollection(playlistTracks);
+      console.log("[ensure_collab_playlists] added added_by to playlist_tracks");
+    } catch (err) {
+      console.warn("[ensure_collab_playlists] could not save playlist_tracks: " + err);
+    }
   }
 
   if (!find("playlist_members")) {

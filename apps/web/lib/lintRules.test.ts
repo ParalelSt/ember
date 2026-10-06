@@ -478,12 +478,13 @@ describe('safe-area insets', () => {
       expect(readFileSync(join(ROOT, file), 'utf8'), file).toContain(token);
     uses('components/import/ReviewSheet.tsx', 'max-md:pb-(--safe-bottom)');
     uses('components/tabs/TabSourceSheet.tsx', 'safe-area-bottom');
-    uses('components/nav/BackToTop.tsx', 'bottom-[calc(10.375rem+var(--safe-bottom))]');
-    uses('components/nav/BackToTop.tsx', 'md:bottom-[calc(7rem+var(--safe-bottom))]');
+    // Back to top sits in the scroller's column, above the bars that spend
+    // the inset, so it spends none of its own (bughunt V12).
+    uses('components/nav/BackToTop.tsx', "'bottom-cluster md:bottom-block'");
     uses('components/ui/sonner.tsx', 'mobileOffset={{ bottom: "calc(var(--safe-bottom) + 16px)" }}');
     uses('components/ui/sonner.tsx', 'offset={{ bottom: "calc(var(--safe-bottom) + 24px)" }}');
-    expect(occurrences('body:has([data-copy-bar]) [data-back-to-top] { bottom: calc(16rem + var(--safe-bottom)); }')).toBe(1);
-    expect(occurrences('body:has([data-copy-bar]) [data-back-to-top] { bottom: calc(12rem + var(--safe-bottom)); }')).toBe(1);
+    expect(occurrences('body:has([data-copy-bar]) [data-back-to-top] { bottom: 6.25rem; }')).toBe(1);
+    expect(occurrences('body:has([data-copy-bar]) [data-back-to-top] { bottom: 6rem; }')).toBe(1);
   });
 
   // The bundled offline page (apps/mobile/public/offline.html) is its own

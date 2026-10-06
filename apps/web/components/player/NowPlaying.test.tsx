@@ -179,6 +179,22 @@ describe('NowPlaying: the top row', () => {
     expect(screen.getByTestId('add-anchor')).toHaveAttribute('data-hidden', 'true');
   });
 
+  // Bughunt V6: Close and More float over the scroller with no background,
+  // so scrolled lyrics slid under them and read through the buttons. Once
+  // scrolled, the band under the buttons fades the content out instead; at
+  // the top nothing changes (the "Playing from" title sits in that band).
+  it('fades scrolled content out under the floating buttons, and only once scrolled', () => {
+    render(<NowPlaying />);
+    const scroller = screen.getByTestId('now-playing-scroller');
+    expect(scroller.style.maskImage).toBe('');
+    scroller.scrollTop = 120;
+    fireEvent.scroll(scroller);
+    expect(scroller.style.maskImage).toContain('transparent calc(var(--safe-top) + 3.5rem)');
+    scroller.scrollTop = 0;
+    fireEvent.scroll(scroller);
+    expect(scroller.style.maskImage).toBe('');
+  });
+
   it('names the album, artist, liked songs or search it plays from, and says "Now playing" for a lone song', () => {
     const { rerender } = render(<NowPlaying />);
     expect(screen.getByTestId('context-title')).toHaveTextContent(/^Now playing$/);

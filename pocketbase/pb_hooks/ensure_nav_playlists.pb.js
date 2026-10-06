@@ -33,6 +33,12 @@ onAfterBootstrap((e) => {
       options: { maxSize: 60000 },
     }),
   );
-  dao.saveCollection(users);
-  console.log("[ensure_nav_playlists] added the navPlaylists field to users");
+  // A failed save must not stop PocketBase from booting: warn and carry
+  // on, same as ensure_superuser (bughunt X11).
+  try {
+    dao.saveCollection(users);
+    console.log("[ensure_nav_playlists] added the navPlaylists field to users");
+  } catch (err) {
+    console.warn("[ensure_nav_playlists] could not save the users collection: " + err);
+  }
 });

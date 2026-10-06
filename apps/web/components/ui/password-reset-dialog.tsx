@@ -73,7 +73,8 @@ export function PasswordResetDialog({
     <Dialog open={open} onOpenChange={(o) => !busy && onOpenChange(o)}>
       <DialogContent className="sm:max-w-sm">
         <DialogHeader>
-          <DialogTitle>Reset password for {targetEmail}</DialogTitle>
+          {/* pr-stack keeps a long email clear of the close X in the corner. */}
+          <DialogTitle className="pr-stack break-words">Reset password for {targetEmail}</DialogTitle>
           <DialogDescription>
             The user&apos;s existing sessions will be invalidated.
           </DialogDescription>

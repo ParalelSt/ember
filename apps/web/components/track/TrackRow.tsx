@@ -166,7 +166,7 @@ export function TrackRow({
       className={cn(
         'text-muted-foreground hover:text-foreground',
         compact
-          ? 'h-7 w-7 opacity-0 group-hover:opacity-100 max-md:opacity-100 transition-opacity'
+          ? 'h-7 w-7 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 max-md:opacity-100 transition-opacity'
           : 'h-8 w-8',
       )}
       // Compact rows play on a single click, so the remove press must not
@@ -327,14 +327,14 @@ export function TrackRow({
       {!trailingPlayControl && !selecting && (
         <div className="relative grid place-items-center h-8 w-8 justify-self-center">
           {showRank && !active && (
-            <span className="pointer-events-none absolute inset-0 grid place-items-center text-sm tabular-nums text-muted-foreground group-hover:opacity-0 transition-opacity">
+            <span className="pointer-events-none absolute inset-0 grid place-items-center text-sm tabular-nums text-muted-foreground group-hover:opacity-0 group-focus-within:opacity-0 transition-opacity">
               {index + 1}
             </span>
           )}
           <Button
             variant="ghost"
             size="icon"
-            className={cn('h-8 w-8', showRank && !active && 'opacity-0 group-hover:opacity-100 transition-opacity')}
+            className={cn('h-8 w-8', showRank && !active && 'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 transition-opacity')}
             onClick={() => (active ? onToggle?.() : onPlay?.())}
             disabled={unavailable}
             aria-label={unavailable ? 'Unavailable' : active && playing ? 'Pause' : 'Play'}

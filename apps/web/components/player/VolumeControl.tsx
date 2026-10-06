@@ -67,6 +67,7 @@ export function VolumeControl({
           step={1}
           disabled={muted}
           aria-disabled={muted}
+          thumbLabel="Volume"
         />
       </div>
     </div>

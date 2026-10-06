@@ -25,6 +25,7 @@ function Slider({
   onValueChange,
   onValueCommitted,
   thumbLabel,
+  getAriaValueText,
   ...props
 }: SliderPrimitive.Root.Props & {
   /** Glide the fill + thumb between value changes. For the playback progress
@@ -35,6 +36,10 @@ function Slider({
   /** Accessible name for the thumb (the element that actually has the
    *  `slider` role), e.g. "Seek". An aria-label on the root names a div. */
   thumbLabel?: string
+  /** aria-valuetext for the thumb's input, read out instead of the raw
+   *  number (e.g. "1:23 of 3:45" rather than a bare percentage). Receives
+   *  the same (formattedValue, value, index) base-ui's Thumb gives it. */
+  getAriaValueText?: (formattedValue: string, value: number, index: number) => string
 }) {
   const _values = Array.isArray(value)
     ? value
@@ -82,6 +87,7 @@ function Slider({
             data-slot="slider-thumb"
             key={index}
             getAriaLabel={thumbLabel ? () => thumbLabel : undefined}
+            getAriaValueText={getAriaValueText}
             className={cn(
               "relative block size-3 shrink-0 rounded-full border border-ring bg-foreground ring-ring/50 transition-[color,box-shadow] select-none after:absolute after:-inset-2 hover:ring-3 focus-visible:ring-3 focus-visible:outline-hidden active:ring-3 disabled:pointer-events-none disabled:opacity-50",
               smooth && "transition-[inset-inline-start,color,box-shadow] duration-250 ease-linear data-dragging:transition-none",

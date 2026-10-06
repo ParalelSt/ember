@@ -12,7 +12,7 @@ import {
   useExecuteEndSession,
   useExecuteSaveSession,
 } from '@/hooks/useSession';
-import { useSessionHost } from '@/hooks/useSessionHost';
+import { useClaimSessionHost } from '@/hooks/useSessionHost';
 import { useCarlistProgress } from '@/hooks/useCarlistProgress';
 import { addedMessage, type AddPosition } from '@/lib/carlist';
 import type { Track } from '@/types/track';
@@ -28,8 +28,9 @@ export default function SessionPage({ params }: { params: Promise<{ id: string }
   const [saved, setSaved] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
 
-  // No-op for guests; hosts mirror the queue into their player.
-  useSessionHost(data);
+  // No-op for guests. The host's queue mirror and skip handling run from
+  // the app shell (SessionHostBridge), so they survive leaving this page.
+  useClaimSessionHost(data);
   const progress = useCarlistProgress(data, dataUpdatedAt);
 
   // A failed poll keeps the last answer: in a car the connection drops

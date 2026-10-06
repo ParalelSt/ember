@@ -38,7 +38,22 @@ onAfterBootstrap((e) => {
       changed = true;
       console.log("[ensure_uploads] uploads deletes are server-only now");
     }
-    if (changed) dao.saveCollection(existing);
+    // A required uploader made deleting that member fail (bughunt X4).
+    const uploader = existing.schema.getFieldByName("uploader");
+    if (uploader && uploader.required) {
+      uploader.required = false;
+      changed = true;
+      console.log("[ensure_uploads] uploader is optional now");
+    }
+    // A failed save must not stop PocketBase from booting: warn and carry
+    // on, same as ensure_superuser (bughunt X11).
+    if (changed) {
+      try {
+        dao.saveCollection(existing);
+      } catch (err) {
+        console.warn("[ensure_uploads] could not update the uploads collection: " + err);
+      }
+    }
     return;
   }
 
@@ -73,9 +88,9 @@ onAfterBootstrap((e) => {
       {
         name: "uploader",
         type: "relation",
-        required: true,
-        // Keep the song when its uploader leaves — other people's playlists
-        // may point at it.
+        // Keep the song when its uploader leaves (other people's playlists
+        // may point at it): the link is emptied, so it can't be required.
+        required: false,
         options: { collectionId: users.id, maxSelect: 1, cascadeDelete: false },
       },
       { name: "title", type: "text", required: true, options: { max: 200 } },

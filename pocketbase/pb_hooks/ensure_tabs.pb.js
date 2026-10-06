@@ -39,14 +39,19 @@
 // use (lib/tabStore.ts backfillTabRows), so the normalization lives in one
 // place (lib/songKey.ts) rather than a JS copy here.
 //
-// Rows are written only by the web app (admin client), so a record can never
-// disagree with what is on disk: createRule and updateRule stay null.
+// Rows are written and deleted only by the web app (admin client), so a record
+// can never disagree with what is on disk: createRule, updateRule and
+// deleteRule stay null. Deleting a row straight through /pb used to be allowed
+// for its uploader, and left the file behind (bughunt X10).
+//
+// A tab outlives the member who added it: shared tabs are for everyone, so
+// deleting the member only empties `user` (no cascade). Their private tabs
+// are removed, files and all, by the admin delete route (deletePrivateTabs).
 
 onAfterBootstrap((e) => {
   // Everything lives inside the handler: PocketBase runs each handler in an
   // isolated context, so top-level constants and functions are not visible.
   const LIST_RULE = '@request.auth.id != "" && (shared = true || user = @request.auth.id)';
-  const DELETE_RULE = '@request.auth.id != "" && (user = @request.auth.id || @request.auth.is_admin = true)';
 
   function createBase(dao) {
     let users, tracks;
@@ -65,14 +70,14 @@ onAfterBootstrap((e) => {
       viewRule: LIST_RULE,
       createRule: null,
       updateRule: null,
-      deleteRule: DELETE_RULE,
+      deleteRule: null,
       indexes: ["CREATE INDEX idx_tabs_user ON tabs (user)"],
       schema: [
         {
           name: "user",
           type: "relation",
           required: false,
-          options: { collectionId: users.id, maxSelect: 1, cascadeDelete: true },
+          options: { collectionId: users.id, maxSelect: 1, cascadeDelete: false },
         },
         {
           name: "track",
@@ -151,28 +156,50 @@ onAfterBootstrap((e) => {
     user.required = false;
     changed = true;
   }
+  if (user && user.options.cascadeDelete) {
+    user.options.cascadeDelete = false;
+    changed = true;
+  }
 
   // Rules come back from Go as string pointers (objects), so compare their
   // JSON form rather than the values themselves.
   const rule = (r) => (r === null || r === undefined ? null : JSON.parse(JSON.stringify(r)));
-  if (rule(tabs.listRule) !== LIST_RULE || rule(tabs.viewRule) !== LIST_RULE || rule(tabs.deleteRule) !== DELETE_RULE) {
+  if (rule(tabs.listRule) !== LIST_RULE || rule(tabs.viewRule) !== LIST_RULE || rule(tabs.deleteRule) !== null) {
     tabs.listRule = LIST_RULE;
     tabs.viewRule = LIST_RULE;
-    tabs.deleteRule = DELETE_RULE;
+    tabs.deleteRule = null;
     changed = true;
   }
 
+  // The admin UI re-serializes an index's SQL when the collection is
+  // re-saved from there (backtick-quoted identifiers, whitespace), so a
+  // plain string match against NEW_INDEXES stops seeing an index that is
+  // still there under a different spelling and tries to create it again,
+  // which SQLite refuses (name collision) and used to crash boot entirely
+  // (bughunt X11). Compare by index name instead.
+  const indexName = (sql) => {
+    const m = /CREATE\s+(?:UNIQUE\s+)?INDEX\s+(?:IF\s+NOT\s+EXISTS\s+)?`?(\w+)`?/i.exec(sql);
+    return m ? m[1] : sql;
+  };
   const indexes = tabs.indexes || [];
+  const existingNames = new Set(indexes.map(indexName));
   for (const idx of NEW_INDEXES) {
-    if (indexes.indexOf(idx) >= 0) continue;
+    if (existingNames.has(indexName(idx))) continue;
     indexes.push(idx);
     changed = true;
   }
   tabs.indexes = indexes;
 
   if (changed) {
-    dao.saveCollection(tabs);
-    console.log("[ensure_tabs] tabs store up to date (song_key, kind, shared, hints, pasted, fetched, timing, aligned_at)");
+    // A failed save (a stray schema edit from the admin UI PocketBase itself
+    // rejects, say) must not stop PocketBase from booting: warn and carry on,
+    // same as ensure_superuser.
+    try {
+      dao.saveCollection(tabs);
+      console.log("[ensure_tabs] tabs store up to date (song_key, kind, shared, hints, pasted, fetched, timing, aligned_at)");
+    } catch (err) {
+      console.warn("[ensure_tabs] could not update the tabs collection: " + err);
+    }
   }
 
   let lookups = null;

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { gridColsClass, visibleCount } from './layout';
+import { columnsForWidth, gridColsClass, visibleCount } from './layout';
 
 describe('gridColsClass', () => {
   it('matches the original TrackRow GRID_COLS_DEFAULT string', () => {
@@ -48,5 +48,32 @@ describe('visibleCount', () => {
       expect(visibleCount('lyrics', 1024)).toBe(4);
       expect(visibleCount('lyrics', 1920)).toBe(4);
     });
+  });
+});
+
+// Bughunt V8: the shelf's own width decides, not the window's.
+describe('columnsForWidth', () => {
+  it.each([
+    [312, 2], // 360 phone
+    [342, 2], // 390 phone
+    [382, 2], // 430 phone
+    [464, 3], // 768 tablet, beside the sidebar
+    [592, 4], // 640, no sidebar
+    [720, 5], // 1024
+    [976, 6], // 1280
+    [1280, 6], // content max
+  ])('default: %ipx gets %i columns', (width, cols) => {
+    expect(columnsForWidth('default', width)).toBe(cols);
+  });
+
+  it.each([
+    [150, 2], // 768 with the lyrics panel
+    [310, 2], // 1024 with the lyrics panel
+    [342, 2], // phone (the panel is desktop only)
+    [400, 3],
+    [528, 4], // 1280 with the lyrics panel, as before
+    [1168, 4], // 1920 with the lyrics panel: never more than 4
+  ])('lyrics: %ipx gets %i columns', (width, cols) => {
+    expect(columnsForWidth('lyrics', width)).toBe(cols);
   });
 });

@@ -31,6 +31,12 @@ onAfterBootstrap((e) => {
 
   tracks.createRule = null;
   tracks.updateRule = null;
-  dao.saveCollection(tracks);
-  console.log("[ensure_tracks_rules] tracks are server-written only now");
+  // A failed save must not stop PocketBase from booting: warn and carry on,
+  // same as ensure_superuser (bughunt X11).
+  try {
+    dao.saveCollection(tracks);
+    console.log("[ensure_tracks_rules] tracks are server-written only now");
+  } catch (err) {
+    console.warn("[ensure_tracks_rules] could not save the tracks collection: " + err);
+  }
 });

@@ -24,6 +24,7 @@ vi.mock('@/components/search/SearchOverlayContainer', () => ({
 vi.mock('@/lib/offline', () => ({ hydrateOfflineStore: vi.fn(async () => {}) }));
 vi.mock('@/hooks/useChangelog', () => ({ useChangelog: () => ({ hasNew: false }) }));
 vi.mock('@/hooks/useSession', () => ({ useReleaseStaleHosting: () => {} }));
+vi.mock('@/components/session/SessionHostBridge', () => ({ SessionHostBridge: () => null }));
 const desktop = vi.hoisted(() => ({ value: true }));
 vi.mock('@/hooks/useIsDesktop', () => ({ useIsDesktop: () => desktop.value }));
 
@@ -57,9 +58,22 @@ describe('app shell, desktop top bar', () => {
     expect(scroller().firstElementChild).toBe(bar);
     expect(bar.contains(screen.getByTestId('search-box'))).toBe(true);
     // The scroller is the column's only in-flow child: it starts at the
-    // column's top.
+    // column's top. (Back to top floats over it, out of flow.)
     const column = scroller().parentElement!;
-    expect([...column.children]).toEqual([scroller()]);
+    const backToTop = screen.getByRole('button', { name: 'Back to top' });
+    expect([...column.children].filter((c) => c !== backToTop)).toEqual([scroller()]);
+  });
+
+  // Bughunt V12: Back to top floats against the scroller's own column, so
+  // it keeps one step above the scroller's edge with or without the player
+  // bar, and every page ends with room for it.
+  it('pins Back to top to the scroller column and leaves room for it under the page', () => {
+    renderShell();
+    const column = scroller().parentElement!;
+    expect(column).toHaveClass('relative');
+    expect(column.contains(screen.getByRole('button', { name: 'Back to top' }))).toBe(true);
+    const page = screen.getByRole('heading', { name: 'Home' }).parentElement!;
+    expect(page).toHaveClass('pb-section');
   });
 
   it('adds no extra layout gap: the page row fills only what is left under the bar', () => {

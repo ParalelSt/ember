@@ -135,6 +135,7 @@ export function QueueSheet({ open, onOpenChange }: Props) {
                         // many times: the queue stays, the songs after it
                         // are still ahead.
                         onPlay={() => playBack(history.length - i)}
+                        trailingPlayControl
                       />
                     </div>
                   ))}
@@ -186,6 +187,9 @@ export function QueueSheet({ open, onOpenChange }: Props) {
                       // would collapse a search-started queue to one song,
                       // turn shuffle off and move the loop point.
                       onPlay={() => playAt(index + 1 + i)}
+                      // A real Play button too: the row's own click is a
+                      // mouse-only handler on a div that Tab never reaches.
+                      trailingPlayControl
                     />
                   ))}
                 </div>

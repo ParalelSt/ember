@@ -205,10 +205,10 @@ describe('PlayerBar', () => {
       usePlayerStore.getState().setNowPlayingOpen(false);
     });
 
-    it('draws the one-row bar with play and next as its controls', () => {
+    it('draws the one-row bar: Open player (the title), then play and next', () => {
       render(<PlayerBar />);
       const footer = bar();
-      expect(within(footer).getAllByRole('button').map((b) => b.getAttribute('aria-label'))).toEqual(['Pause', 'Next']);
+      expect(within(footer).getAllByRole('button').map((b) => b.getAttribute('aria-label'))).toEqual(['Open player', 'Pause', 'Next']);
       // MobileNav under it carries the inset instead: see the dedicated
       // 'leaves the safe-area lift to MobileNav' test above.
       expect(footer).not.toHaveClass('safe-area-bottom');

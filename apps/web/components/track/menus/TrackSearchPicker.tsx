@@ -122,7 +122,10 @@ export function TrackSearchPicker({ added = [], seeds = [], onAdd, renderAdd, cl
 
       {/* Wrapper provides visual padding above + below the scrollable element
           so the native scrollbar's rounded thumb tips don't touch the edges. */}
-      <div className="py-3">
+      {/* A shrinkable flex column, so inside a height-capped dialog the list
+          gives up height and scrolls rather than running under the footer
+          (bughunt V7); its own max-h still caps it on a page. */}
+      <div className="flex min-h-0 flex-col py-3">
         <div className="flex flex-col gap-1 overflow-y-auto max-h-96 md:max-h-[60vh] pr-2">
           {loading && !list?.length && (
           <div className="text-sm text-muted-foreground py-6 text-center">Loading…</div>

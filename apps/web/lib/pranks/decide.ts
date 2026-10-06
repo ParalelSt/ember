@@ -12,16 +12,18 @@ export interface DecideContext {
 }
 
 /** What the receiver should do with one prank. Pure: the unit tests hammer it.
- *  Sounds only while music is actually playing (owner decision). */
+ *  Sounds only while music is actually playing (owner decision). A device
+ *  that is not playing never answers for a sound, whatever its engine: the
+ *  person may be listening on another one. */
 export function decidePrank(row: PrankRow, ctx: DecideContext): PrankAction {
   const expires = parsePbDate(row.expiresAt);
   if (!Number.isFinite(expires) || expires < ctx.now) return { type: 'ignore' };
   if (row.kind === 'ping') return { type: 'ack-only' };
 
-  if (ctx.engine === 'native-stub') return { type: 'skip', reason: 'engine-unsupported' };
   if (!row.streamUrl) return { type: 'skip', reason: 'error:no-media' };
+  if (!ctx.hasTrack || !ctx.isPlaying) return { type: 'wait' };
 
-  if (!ctx.hasTrack || !ctx.isPlaying) return { type: 'skip', reason: 'not-playing' };
+  if (ctx.engine === 'native-stub') return { type: 'skip', reason: 'engine-unsupported' };
   if (ctx.busy) return { type: 'skip', reason: 'busy' };
   if (ctx.engine === 'android' && !ctx.pluginHasOverlay) return { type: 'skip', reason: 'engine-unsupported' };
   return { type: 'sound', url: row.streamUrl, volume: row.params.volume, duck: row.params.mode === 'duck' };
