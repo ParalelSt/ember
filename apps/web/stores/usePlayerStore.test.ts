@@ -170,3 +170,22 @@ describe('toggleMuted', () => {
     expect(s.volume).toBe(0.6);
   });
 });
+
+describe('setPosition', () => {
+  it('stamps when the player reported the position, so a late render does not make the song look late', () => {
+    // The tab page runs its line on from the last report by the wall clock;
+    // stamped when React got round to it, a busy page put the line 160 ms
+    // behind the song (tests/tabs-sync-live.test.mjs).
+    const now = vi.spyOn(performance, 'now').mockReturnValue(12_345);
+    usePlayerStore.getState().setPosition(42.5);
+    expect(usePlayerStore.getState().position).toBe(42.5);
+    expect(usePlayerStore.getState().positionAt).toBe(12_345);
+    now.mockRestore();
+  });
+
+  it('is not persisted: a reload has no report yet', () => {
+    usePlayerStore.getState().setPosition(10);
+    const persisted = JSON.parse(localStorage.getItem('ember.player.v1') ?? '{}');
+    expect(persisted.state?.positionAt).toBeUndefined();
+  });
+});

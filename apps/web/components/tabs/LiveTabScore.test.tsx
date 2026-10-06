@@ -436,6 +436,15 @@ describe('LiveTabScore sync', () => {
     await waitFor(() => expect(api.playbackSpeed).toBe(1));
   });
 
+  it('runs the line on from when the player reported the position, not from when the page rendered it', async () => {
+    // Reported 200 ms before the page got to it (a busy main thread): the
+    // song is already 200 ms further on.
+    const { api } = await mount({ position: 30, playing: true, positionAt: performance.now() - 200 });
+    await waitFor(() => expect(api.seeks.length).toBeGreaterThan(0));
+    expect(api.seeks[0]).toBeGreaterThanOrEqual(30_200);
+    expect(api.seeks[0]).toBeLessThan(30_200 + 150);
+  });
+
   it('a lined-up tab glides at the pace of the recording against the tab', async () => {
     // The tab at 96 bpm (2.5 s a bar), the band 4% faster, from 3.2 s.
     const bar = 2500 / 1.04;
