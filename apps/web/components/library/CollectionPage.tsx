@@ -1,7 +1,8 @@
 import type { ReactNode } from 'react';
 import { Button } from '@/components/ui/button';
 import { TrackList, type TrackActions } from '@/components/track/TrackList';
-import { SelectIcon, ShuffleIcon } from '@/components/icons';
+import { CheckIcon, SelectIcon, ShuffleIcon, SortIcon } from '@/components/icons';
+import { ReorderList } from '@/components/track/ReorderList';
 import { Checkbox } from '@/components/primitives/Checkbox';
 import { SortMenu } from '@/components/track/SortMenu';
 import { formatCount } from '@/lib/format';
@@ -84,6 +85,17 @@ export interface CollectionPageProps {
   addedLabel?: (track: Track) => string | undefined;
   /** Who added each song, on a collaborative playlist. */
   addedBy?: (track: Track) => PlaylistPerson | null | undefined;
+  /** Edit order, for someone who can change the playlist: an "Edit order"
+   *  button in the list toolbar; while `editing`, `tracks` (the page's
+   *  draft order) show with arrows and drag handles, and Done saves. */
+  reorder?: {
+    editing: boolean;
+    tracks: Track[];
+    onStart: () => void;
+    onDone: () => void;
+    onMove: (from: number, to: number) => void;
+    saving?: boolean;
+  };
 }
 
 /** Presentational only: the header, action bar and track list shared by
@@ -121,13 +133,16 @@ export function CollectionPage({
   selectionBar,
   addedLabel,
   addedBy,
+  reorder,
 }: CollectionPageProps) {
   // No empty action bar (offline, nothing to play or download): the header
   // would still reserve its stack gap above it.
   // Select and Sort work on the plain list only: an import's own rows
   // (`list`) and an empty collection have nothing to pick.
-  const canSelect = !!selection && !list && tracks.length > 0;
+  const editingOrder = !!reorder?.editing && !list;
+  const canSelect = !!selection && !list && tracks.length > 0 && !editingOrder;
   const selecting = canSelect && selection.selecting;
+  const canReorder = !!reorder && !list && tracks.length > 1 && !selecting;
   const hasActions = !hideActions || !!download || !!actions || canSelect;
   return (
     <div>
@@ -187,7 +202,7 @@ export function CollectionPage({
           <EmptyState>{emptyMessage}</EmptyState>
         ) : (
           <div className="flex flex-col gap-cluster">
-            {(sort || canSelect) && (
+            {(sort || canSelect || canReorder || editingOrder) && (
               <div
                 data-testid="list-toolbar"
                 className="flex min-h-12 items-center justify-between gap-row border-b border-border px-row pb-cluster"
@@ -212,24 +227,47 @@ export function CollectionPage({
                       {selection.count} of {selection.total}
                     </span>
                   </div>
+                ) : editingOrder ? (
+                  <span className="truncate text-sm text-muted-foreground">Drag a song, or use the arrows</span>
                 ) : (
                   <span className="text-sm text-muted-foreground">{formatCount(tracks.length, 'song')}</span>
                 )}
-                {sort && <SortMenu sort={sort.value} onChange={sort.onChange} />}
+                <div className="flex shrink-0 items-center gap-cluster">
+                  {(canReorder || editingOrder) && reorder && (
+                    <button
+                      type="button"
+                      data-testid="edit-order"
+                      disabled={reorder.saving}
+                      onClick={editingOrder ? reorder.onDone : reorder.onStart}
+                      className={cn(
+                        'inline-flex h-8 items-center gap-inset rounded-full border px-row text-sm font-medium transition-colors disabled:opacity-50',
+                        editingOrder ? 'border-ember bg-ember text-ember-foreground hover:bg-ember-soft' : 'border-border hover:bg-card',
+                      )}
+                    >
+                      {editingOrder ? <CheckIcon className="size-4" /> : <SortIcon className="size-4" />}
+                      {editingOrder ? 'Done' : 'Edit order'}
+                    </button>
+                  )}
+                  {sort && !editingOrder && <SortMenu sort={sort.value} onChange={sort.onChange} />}
+                </div>
               </div>
             )}
-            <TrackList
-              tracks={tracks}
-              showRank={showRank}
-              context={context}
-              onRemove={onRemoveTrack}
-              onReplace={onReplaceTrack}
-              trailing={trailing}
-              selection={canSelect ? selection : undefined}
-              addedLabel={addedLabel}
-              addedBy={addedBy}
-              {...trackActions}
-            />
+            {editingOrder && reorder ? (
+              <ReorderList tracks={reorder.tracks} onMove={reorder.onMove} />
+            ) : (
+              <TrackList
+                tracks={tracks}
+                showRank={showRank}
+                context={context}
+                onRemove={onRemoveTrack}
+                onReplace={onReplaceTrack}
+                trailing={trailing}
+                selection={canSelect ? selection : undefined}
+                addedLabel={addedLabel}
+                addedBy={addedBy}
+                {...trackActions}
+              />
+            )}
           </div>
         ))}
       </div>

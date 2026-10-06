@@ -1,5 +1,5 @@
 /** A collaborative playlist polls the server every few seconds. A poll that
- *  goes out while your own move or removal is still on its way reads the
+ *  goes out while your own reorder or removal is still on its way reads the
  *  order from before it, and must not put that old order back over the row
  *  you just moved (the list "jumped back" until the next answer). Once the
  *  edit is done, polls show everyone's changes again. */
@@ -7,7 +7,7 @@ import type { ReactNode } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, renderHook } from '@testing-library/react';
-import { QK, useExecuteMovePlaylistTrack, useExecuteRemoveFromPlaylist, useQueryPlaylist } from './useLibrary';
+import { QK, useExecuteReorderPlaylist, useExecuteRemoveFromPlaylist, useQueryPlaylist } from './useLibrary';
 
 vi.mock('@/components/providers/AuthProvider', () => ({ useAuth: () => ({ user: { id: 'u1' } }) }));
 const api = vi.hoisted(() => ({ movePlaylistTrack: vi.fn(), removeFromPlaylist: vi.fn(), getPlaylist: vi.fn() }));
@@ -34,11 +34,11 @@ describe('a poll while your own edit is on its way', () => {
     let finish!: (v: unknown) => void;
     api.movePlaylistTrack.mockReset().mockReturnValueOnce(new Promise((r) => (finish = r)));
     const { client, wrapper } = setup();
-    const { result } = renderHook(() => ({ list: useQueryPlaylist('pl'), move: useExecuteMovePlaylistTrack() }), { wrapper });
+    const { result } = renderHook(() => ({ list: useQueryPlaylist('pl'), move: useExecuteReorderPlaylist() }), { wrapper });
 
     let done!: Promise<unknown>;
     act(() => {
-      done = result.current.move.mutateAsync({ id: 'pl', trackId: 'c', from: 2, to: 1 });
+      done = result.current.move.mutateAsync({ id: 'pl', order: ['a', 'c', 'b'] });
     });
     await vi.waitFor(() => expect(order(client)).toEqual(['a', 'c', 'b']));
 
@@ -89,9 +89,9 @@ describe('a poll while your own edit is on its way', () => {
     api.getPlaylist.mockReset().mockImplementation(async () => answer(['a', 'b', 'c']));
     api.movePlaylistTrack.mockReset().mockRejectedValueOnce(Object.assign(new Error('gone'), { status: 404 }));
     const { client, wrapper } = setup();
-    const { result } = renderHook(() => ({ list: useQueryPlaylist('pl'), move: useExecuteMovePlaylistTrack() }), { wrapper });
+    const { result } = renderHook(() => ({ list: useQueryPlaylist('pl'), move: useExecuteReorderPlaylist() }), { wrapper });
     await act(async () => {
-      await result.current.move.mutateAsync({ id: 'pl', trackId: 'c', from: 2, to: 1 }).catch(() => {});
+      await result.current.move.mutateAsync({ id: 'pl', order: ['a', 'c', 'b'] }).catch(() => {});
     });
     expect(order(client)).toEqual(['a', 'b', 'c']);
     await poll(client);

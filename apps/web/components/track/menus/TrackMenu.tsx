@@ -7,9 +7,8 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { AddToPlaylistMenu } from './AddToPlaylistMenu';
-import type { TrackMoves } from './trackMoves';
 import { ShareButton } from '../ShareButton';
-import { ArrowDownIcon, ArrowUpIcon, MoreIcon, RefreshIcon } from '@/components/icons';
+import { MoreIcon, RefreshIcon } from '@/components/icons';
 import { isUnavailable } from '@/lib/playback/queueNav';
 import type { Track } from '@/types/track';
 
@@ -29,19 +28,13 @@ import type { Track } from '@/types/track';
  *  candidates (on phones, where the row is narrow, the item sits in the
  *  add-to-playlist menu instead).
  *
- *  `moves` is set on a playlist shown in its own order: "Move up" and "Move
- *  down" in the same More menu, and on phones in the add-to-playlist menu
- *  like the re-match (an end the song cannot move past leaves its item
- *  out). */
-export type { TrackMoves };
-
-export function TrackMenu({ track, onRematch, moves }: { track: Track; onRematch?: () => void; moves?: TrackMoves }) {
-  const canMove = !!(moves?.up || moves?.down);
+ *  Reordering a playlist is the list toolbar's Edit order, not a row menu. */
+export function TrackMenu({ track, onRematch }: { track: Track; onRematch?: () => void }) {
   return (
     <>
-      {!isUnavailable(track) && <AddToPlaylistMenu track={track} onRematch={onRematch} moves={moves} />}
+      {!isUnavailable(track) && <AddToPlaylistMenu track={track} onRematch={onRematch} />}
       <ShareButton track={track} className={isUnavailable(track) ? 'max-md:hidden' : undefined} />
-      {(onRematch || canMove) && (
+      {onRematch && (
         <DropdownMenu>
           <DropdownMenuTrigger
             className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground max-md:hidden"
@@ -51,21 +44,9 @@ export function TrackMenu({ track, onRematch, moves }: { track: Track; onRematch
             <MoreIcon className="h-4 w-4" />
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="min-w-56" onClick={(e) => e.stopPropagation()}>
-            {moves?.up && (
-              <DropdownMenuItem onClick={moves.up}>
-                <ArrowUpIcon className="h-3.5 w-3.5" /> Move up
-              </DropdownMenuItem>
-            )}
-            {moves?.down && (
-              <DropdownMenuItem onClick={moves.down}>
-                <ArrowDownIcon className="h-3.5 w-3.5" /> Move down
-              </DropdownMenuItem>
-            )}
-            {onRematch && (
-              <DropdownMenuItem onClick={onRematch}>
-                <RefreshIcon className="h-3.5 w-3.5" /> Wrong song? Re-match
-              </DropdownMenuItem>
-            )}
+            <DropdownMenuItem onClick={onRematch}>
+              <RefreshIcon className="h-3.5 w-3.5" /> Wrong song? Re-match
+            </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
       )}

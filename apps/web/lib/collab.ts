@@ -100,3 +100,44 @@ export function moveItem<T>(items: readonly T[], from: number, to: number): T[] 
   out.splice(target, 0, picked);
   return out;
 }
+
+/** The moves (the move route's `{ trackId, to }`, applied one after the
+ *  other) that turn `current` into `target`: Edit order's Done. Only the
+ *  songs off the longest run already in order move, each to just after
+ *  the song it follows in `target`, so one song dragged is one request.
+ *  Both lists must hold the same songs; otherwise nothing is planned. */
+export function planMoves(current: readonly string[], target: readonly string[]): { trackId: string; to: number }[] {
+  const at = new Map(current.map((id, i) => [id, i]));
+  if (current.length !== target.length || at.size !== current.length || target.some((id) => !at.has(id))) return [];
+
+  // Longest increasing run of current positions, read in target order
+  // (patience sorting, O(n log n)): those songs stay where they are.
+  const seq = target.map((id) => at.get(id)!);
+  const tails: number[] = [];
+  const prev = new Array<number>(seq.length).fill(-1);
+  for (let i = 0; i < seq.length; i++) {
+    let lo = 0;
+    let hi = tails.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (seq[tails[mid]] < seq[i]) lo = mid + 1;
+      else hi = mid;
+    }
+    prev[i] = lo > 0 ? tails[lo - 1] : -1;
+    tails[lo] = i;
+  }
+  const keep = new Set<string>();
+  for (let i = tails.length ? tails[tails.length - 1] : -1; i >= 0; i = prev[i]) keep.add(target[i]);
+
+  let list = [...current];
+  const moves: { trackId: string; to: number }[] = [];
+  target.forEach((id, i) => {
+    if (keep.has(id)) return;
+    const from = list.indexOf(id);
+    const without = list.filter((x) => x !== id);
+    const to = i === 0 ? 0 : without.indexOf(target[i - 1]) + 1;
+    list = moveItem(list, from, to);
+    moves.push({ trackId: id, to });
+  });
+  return moves;
+}

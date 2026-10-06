@@ -50,14 +50,9 @@ beforeEach(() => {
 });
 
 describe('AddToPlaylistMenu', () => {
-  it('on a phone it carries Move up / Move down, phone-only', () => {
-    const up = vi.fn();
-    render(<AddToPlaylistMenu track={track} moves={{ up }} />);
-    const item = screen.getByRole('menuitem', { name: /Move up/ });
-    expect(item.className).toContain('md:hidden');
-    expect(screen.queryByRole('menuitem', { name: /Move down/ })).toBeNull();
-    fireEvent.click(item);
-    expect(up).toHaveBeenCalledTimes(1);
+  it('has no Move up / Move down (Edit order replaces them)', () => {
+    render(<AddToPlaylistMenu track={track} onRematch={vi.fn()} />);
+    expect(screen.queryByRole('menuitem', { name: /Move (up|down)/ })).toBeNull();
   });
 
   it('lists playlists shared with you as places to add to', () => {

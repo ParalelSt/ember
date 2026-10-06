@@ -2,7 +2,7 @@ import { useState, type ComponentProps, type ReactNode } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import { CollectionPage, type CollectionPageProps, type CollectionSelectionHandle } from './CollectionPage';
-import { sortCollection, type SortState } from '@/lib/playlistCopy';
+import { DEFAULT_PLAYLIST_SORT, sortCollection, type SortState } from '@/lib/playlistCopy';
 import type { Track } from '@/types/track';
 
 // base-ui's Popover can't render under vitest here (test-utils/popoverMock.tsx).
@@ -254,5 +254,59 @@ describe('CollectionPage select mode and sort', () => {
     unmount();
     render(<SelectablePage tracks={[]} />);
     expect(screen.queryByTestId('select-toggle')).toBeNull();
+  });
+});
+
+describe('CollectionPage Edit order', () => {
+  const list = [track('a', 'One'), track('b', 'Two')];
+  const reorder = (over: Partial<NonNullable<CollectionPageProps['reorder']>> = {}) => ({
+    editing: false,
+    tracks: list,
+    onStart: vi.fn(),
+    onDone: vi.fn(),
+    onMove: vi.fn(),
+    ...over,
+  });
+
+  it('an Edit order button in the list toolbar for someone who can edit', () => {
+    const r = reorder();
+    render(<CollectionPage {...props({ tracks: list, reorder: r })} />);
+    const btn = within(screen.getByTestId('list-toolbar')).getByRole('button', { name: 'Edit order' });
+    fireEvent.click(btn);
+    expect(r.onStart).toHaveBeenCalled();
+    expect(screen.queryByTestId('reorder-list')).toBeNull();
+  });
+
+  it('no Edit order without the prop (someone who cannot edit, or not a playlist)', () => {
+    render(<CollectionPage {...props({ tracks: list })} />);
+    expect(screen.queryByRole('button', { name: 'Edit order' })).toBeNull();
+  });
+
+  it('editing: the arrows-and-handles list, Done saves; no Sort, no Select, no hearts', () => {
+    const r = reorder({ editing: true });
+    const selection = {
+      selecting: false, enter: vi.fn(), exit: vi.fn(), isSelected: () => false, toggle: vi.fn(), toggleAll: vi.fn(), count: 0, total: 2, allState: false as const,
+    };
+    render(
+      <CollectionPage
+        {...props({ tracks: list, reorder: r, selection, sort: { value: DEFAULT_PLAYLIST_SORT, onChange: vi.fn() } })}
+      />,
+    );
+    expect(screen.getByTestId('reorder-list')).toBeInTheDocument();
+    expect(screen.queryAllByTestId('track-row-title')).toHaveLength(0);
+    expect(screen.queryByTestId('select-toggle')).toBeNull();
+    expect(screen.queryByRole('button', { name: /^Sort/ })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Move One down' }));
+    expect(r.onMove).toHaveBeenCalledWith(0, 1);
+    fireEvent.click(within(screen.getByTestId('list-toolbar')).getByRole('button', { name: 'Done' }));
+    expect(r.onDone).toHaveBeenCalled();
+  });
+
+  it('no Edit order while selecting', () => {
+    const selection = {
+      selecting: true, enter: vi.fn(), exit: vi.fn(), isSelected: () => false, toggle: vi.fn(), toggleAll: vi.fn(), count: 0, total: 2, allState: false as const,
+    };
+    render(<CollectionPage {...props({ tracks: list, reorder: reorder(), selection })} />);
+    expect(screen.queryByRole('button', { name: 'Edit order' })).toBeNull();
   });
 });

@@ -78,4 +78,6 @@ export {
   Car as CarIcon,
   Usb as UsbIcon,
   Square as StopIcon,
+  // Edit order: the drag handle on each row.
+  GripVertical as GripIcon,
 } from 'lucide-react';

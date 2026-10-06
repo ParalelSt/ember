@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { chipPeople, inviteUrl, isInviteCode, isRecordId, moveItem, publicName, type CollabState } from './collab';
+import { chipPeople, planMoves, inviteUrl, isInviteCode, isRecordId, moveItem, publicName, type CollabState } from './collab';
 
 describe('isInviteCode', () => {
   it('takes 32 base64url characters and nothing else', () => {
@@ -72,5 +72,37 @@ describe('chipPeople', () => {
 
   it('turned off with people kept for next time: just you, nobody else can edit', () => {
     expect(chipPeople(true, state({ collaborative: false }), me)).toEqual([me]);
+  });
+});
+
+describe('planMoves (Edit order: Done)', () => {
+  const apply = (from: string[], moves: { trackId: string; to: number }[]) =>
+    moves.reduce((list, m) => moveItem(list, list.indexOf(m.trackId), m.to), from);
+
+  it('nothing moved: nothing to send', () => {
+    expect(planMoves(['a', 'b', 'c'], ['a', 'b', 'c'])).toEqual([]);
+  });
+
+  it('one song moved anywhere is one request', () => {
+    expect(planMoves(['a', 'b', 'c', 'd'], ['d', 'a', 'b', 'c'])).toEqual([{ trackId: 'd', to: 0 }]);
+    expect(planMoves(['a', 'b', 'c', 'd'], ['b', 'c', 'd', 'a'])).toEqual([{ trackId: 'a', to: 3 }]);
+    expect(planMoves(['a', 'b', 'c', 'd'], ['a', 'c', 'b', 'd'])).toHaveLength(1);
+  });
+
+  it('any shuffle comes out right, in as few moves as songs out of place', () => {
+    let seed = 7;
+    const rand = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+    for (let n = 0; n < 300; n++) {
+      const len = 1 + Math.floor(rand() * 12);
+      const from = Array.from({ length: len }, (_, i) => `t${i}`);
+      const to = [...from].sort(() => rand() - 0.5);
+      const moves = planMoves(from, to);
+      expect(apply(from, moves)).toEqual(to);
+      expect(moves.length).toBeLessThan(len);
+    }
+  });
+
+  it('lists that do not hold the same songs: nothing (the caller lines them up first)', () => {
+    expect(planMoves(['a', 'b'], ['b', 'c'])).toEqual([]);
   });
 });

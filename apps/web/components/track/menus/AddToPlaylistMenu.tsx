@@ -10,8 +10,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { CreatePlaylistDialog } from '@/components/track/menus/CreatePlaylistDialog';
-import { ArrowDownIcon, ArrowUpIcon, CheckIcon, PlusIcon, RefreshIcon } from '@/components/icons';
-import type { TrackMoves } from './trackMoves';
+import { CheckIcon, PlusIcon, RefreshIcon } from '@/components/icons';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { formatCount } from '@/lib/format';
 import {
@@ -26,19 +25,16 @@ import { cn } from '@/lib/utils';
 
 /** `onRematch`: the track came from an import, so on phones (where the row
  *  has no room for a separate More button) this menu also offers "Wrong
- *  song? Re-match". `moves` does the same for Move up / Move down on a
- *  playlist shown in its own order. `open`/`onOpenChange` let a parent open
+ *  song? Re-match". `open`/`onOpenChange` let a parent open
  *  the menu from elsewhere (the full-screen player's More menu). */
 export function AddToPlaylistMenu({
   track,
   onRematch,
-  moves,
   open: openProp,
   onOpenChange,
 }: {
   track: Track;
   onRematch?: () => void;
-  moves?: TrackMoves;
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
 }) {
@@ -104,16 +100,6 @@ export function AddToPlaylistMenu({
         <PlusIcon className="h-4 w-4" />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="min-w-56" onClick={(e) => e.stopPropagation()}>
-        {moves?.up && (
-          <DropdownMenuItem onClick={() => { setOpen(false); moves.up?.(); }} className="md:hidden">
-            <ArrowUpIcon className="h-3.5 w-3.5" /> Move up
-          </DropdownMenuItem>
-        )}
-        {moves?.down && (
-          <DropdownMenuItem onClick={() => { setOpen(false); moves.down?.(); }} className="md:hidden">
-            <ArrowDownIcon className="h-3.5 w-3.5" /> Move down
-          </DropdownMenuItem>
-        )}
         {onRematch && (
           <DropdownMenuItem
             onClick={() => {
@@ -125,7 +111,7 @@ export function AddToPlaylistMenu({
             <RefreshIcon className="h-3.5 w-3.5" /> Wrong song? Re-match
           </DropdownMenuItem>
         )}
-        {(onRematch || moves?.up || moves?.down) && <DropdownMenuSeparator className="md:hidden" />}
+        {onRematch && <DropdownMenuSeparator className="md:hidden" />}
         <DropdownMenuItem onClick={openCreate} className="text-ember font-semibold">
           <PlusIcon className="h-3.5 w-3.5" /> New playlist
         </DropdownMenuItem>
