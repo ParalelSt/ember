@@ -54,6 +54,11 @@ export function SeekBar({ position, duration, onSeek, labels = 'none', className
       smooth
       disabled={!duration}
       className={labels === 'inline' ? 'flex-1' : undefined}
+      thumbLabel="Seek"
+      // A screen reader read a bare percentage ("42 percent") by default,
+      // which says nothing about where in the song that is. "1:23 of 3:45"
+      // is what the visible labels already say.
+      getAriaValueText={(_formatted, pct) => `${formatTime((pct / 100) * (duration || 0))} of ${formatTime(duration)}`}
     />
   );
 
