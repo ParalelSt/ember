@@ -48,6 +48,12 @@ internal fun cacheState(extras: Bundle): Triple<List<String>, Boolean, Boolean> 
     extras.getBoolean(EmberPlaybackService.EXTRA_OFFLINE, false),
 )
 
+/** The play history the queue sheet shows ("Played": song ids, oldest
+ *  first), from the service's session extras; null from a service from
+ *  before it, so the app keeps the section hidden. */
+internal fun playedOf(extras: Bundle): List<String>? =
+    if (extras.containsKey(EmberPlaybackService.EXTRA_PLAYED)) extras.getStringArrayList(EmberPlaybackService.EXTRA_PLAYED)?.toList() ?: emptyList() else null
+
 /** setQueue's optional `context: { type }` and `baseCount`, as the service's
  *  COMMAND_QUEUE_CONTEXT args. Missing means no curated base (the car's
  *  default). */
@@ -208,6 +214,15 @@ internal fun previous(controller: MediaController) {
     else previous(controller as Player)
 }
 
+/** The queue sheet's tap on a played song, run by the service
+ *  (COMMAND_BACK). Nothing on a service without the command: an app that
+ *  old shows no "Played" list to tap. */
+internal fun back(controller: MediaController, index: Int) {
+    val command = SessionCommand(EmberPlaybackService.COMMAND_BACK, Bundle.EMPTY)
+    if (index < 0 || !controller.isSessionCommandAvailable(command)) return
+    controller.sendCustomCommand(command, Bundle().apply { putInt("index", index) })
+}
+
 /** The web UI's handle on the native player. Commands in, state out.
  *
  *  Everything goes through a Media3 MediaController, the same door the car
@@ -280,6 +295,7 @@ class EmberPlayerPlugin : Plugin() {
             put("offlineStalled", stalled)
             put("offline", offline)
         }
+        playedOf(c.sessionExtras)?.let { put("played", JSArray(it)) }
     }
 
     private val listener = object : Player.Listener {
@@ -358,6 +374,10 @@ class EmberPlayerPlugin : Plugin() {
     @PluginMethod fun pause(call: PluginCall) = withController { it.pause(); call.resolve() }
     @PluginMethod fun next(call: PluginCall) = withController { it.seekToNextMediaItem(); call.resolve() }
     @PluginMethod fun prev(call: PluginCall) = withController { previous(it); call.resolve() }
+    /** A tap on a song in the queue sheet's "Played" list (`index`: its
+     *  entry in the queue): the service goes back through the history to it
+     *  (COMMAND_BACK). */
+    @PluginMethod fun back(call: PluginCall) = withController { back(it, call.getInt("index") ?: -1); call.resolve() }
     @PluginMethod fun seek(call: PluginCall) = withController { it.seekTo(((call.getDouble("sec") ?: 0.0) * 1000).toLong()); call.resolve() }
     /** The volume slider. While casting it sets the TV's (or speaker's) own
      *  volume, like the volume keys do. */

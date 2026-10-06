@@ -110,4 +110,41 @@ class ServicePreviousTest {
         idle()
         assertEquals(0, player().currentMediaItemIndex)
     }
+
+    // ── The app's "Played" list ─────────────────────────────────────────
+
+    private fun played() = session().sessionExtras.getStringArrayList(EmberPlaybackService.EXTRA_PLAYED)
+
+    @Test fun `the service publishes the play history for the app's queue sheet`() {
+        playThenTap()
+        assertEquals(listOf("a"), played())
+        player().seekTo(1, 0) // b tapped
+        idle()
+        assertEquals(listOf("a", "d"), played())
+        assertEquals(listOf("a", "d"), playedOf(session().sessionExtras))
+    }
+
+    @Test fun `a tap on a played song goes back to it through the history`() {
+        playThenTap()
+        player().seekTo(1, 60_000) // b tapped, a minute in
+        idle()
+        val args = Bundle().apply { putInt("index", 0) }
+        val result = service.Callback().onCustomCommand(session(), own, SessionCommand(EmberPlaybackService.COMMAND_BACK, Bundle.EMPTY), args).get()
+        assertEquals(SessionResult.RESULT_SUCCESS, result.resultCode)
+        idle()
+        assertEquals(0, player().currentMediaItemIndex)
+        assertEquals(4, player().mediaItemCount)
+        assertEquals(emptyList<String>(), played())
+    }
+
+    @Test fun `only Ember itself gets the back command`() {
+        val cmds = service.Callback().onConnect(session(), own).availableSessionCommands
+        assertTrue(cmds.contains(SessionCommand(EmberPlaybackService.COMMAND_BACK, Bundle.EMPTY)))
+        val car = service.Callback().onConnect(session(), headUnit).availableSessionCommands
+        assertTrue(!car.contains(SessionCommand(EmberPlaybackService.COMMAND_BACK, Bundle.EMPTY)))
+    }
+
+    @Test fun `an older service without the history reads as none to show`() {
+        assertEquals(null, playedOf(Bundle.EMPTY))
+    }
 }

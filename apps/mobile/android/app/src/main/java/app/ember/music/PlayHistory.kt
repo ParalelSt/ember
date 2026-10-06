@@ -64,24 +64,46 @@ class PlayHistory(private val max: Int = MAX) {
     /** Offline, the player was moved past [id] (OfflinePlayback). */
     fun passedOver(id: String) {
         passed.add(id)
+        changed()
     }
 
     /** The connection is back: songs passed over offline can play again. */
-    fun backOnline() = passed.clear()
+    fun backOnline() {
+        passed.clear()
+        changed()
+    }
 
     /** The stack, oldest first (for tests and logs). */
     val ids: List<String> get() = stack.toList()
+
+    /** The stack as the app's queue sheet shows it ("Played"), oldest first,
+     *  newest last: without the songs Previous would pass over ([dead],
+     *  [passed]). The sheet walks it the way [previous] does. */
+    val visible: List<String> get() = stack.filter { !skipped(it) }
+
+    /** Called (on the player's thread) whenever [visible] changes: the
+     *  service publishes it to the app (EmberPlaybackService.EXTRA_PLAYED). */
+    var onChange: (() -> Unit)? = null
+    private var lastVisible: List<String> = emptyList()
+    private fun changed() {
+        val now = visible
+        if (now == lastVisible) return
+        lastVisible = now
+        onChange?.invoke()
+    }
 
     /** The song being left, pushed on top. */
     fun played(id: String) {
         stack.addLast(id)
         while (stack.size > max) stack.removeFirst()
+        changed()
     }
 
     fun clear() {
         stack.clear()
         dead.clear()
         passed.clear()
+        changed()
     }
 
     /** Where Previous goes for a player at [index] of [queue] (media ids),
@@ -90,6 +112,13 @@ class PlayHistory(private val max: Int = MAX) {
      *  in the queue twice, the copy nearest the current one. */
     fun previous(queue: List<String>, index: Int, positionMs: Long): Move {
         if (positionMs > RESTART_AFTER_MS) return Move.Restart
+        val move = pop(queue, index)
+        changed()
+        return move
+    }
+
+    /** [previous] without the restart rule or the change report. */
+    private fun pop(queue: List<String>, index: Int): Move {
         while (stack.isNotEmpty()) {
             val id = stack.removeLast()
             var best = -1
@@ -99,6 +128,39 @@ class PlayHistory(private val max: Int = MAX) {
             if (best >= 0) return Move.To(best)
         }
         return Move.Default
+    }
+
+    /** A tap on a song in the app's "Played" list: back through the history
+     *  to the queue entry [target], as Previous pressed until it lands there
+     *  (without the restart rule). Pops what it walks through and returns
+     *  true; false, with the history untouched, when it does not lead there
+     *  (the list the app showed is out of date). The web player's playBack. */
+    fun back(queue: List<String>, index: Int, target: Int): Boolean {
+        val before = ArrayList(stack)
+        var at = index
+        while (true) {
+            val move = pop(queue, at)
+            if (move !is Move.To) {
+                stack.clear()
+                stack.addAll(before)
+                return false
+            }
+            if (move.index == target) {
+                changed()
+                return true
+            }
+            at = move.index
+        }
+    }
+
+    /** Carries out [back] on [player] (the player underneath the session's
+     *  wrapper). Nothing when the history does not lead to [target]. */
+    fun seekBack(player: Player, target: Int) {
+        if (target < 0 || target >= player.mediaItemCount) return
+        val queue = (0 until player.mediaItemCount).map { player.getMediaItemAt(it).mediaId }
+        if (!back(queue, player.currentMediaItemIndex, target)) return
+        goingBackTo = queue[target]
+        player.seekToDefaultPosition(target)
     }
 
     /** The id the next transition is expected to land on because Previous
@@ -179,6 +241,7 @@ class PlayHistory(private val max: Int = MAX) {
             if (!isPlaying) return
             heard = true
             playing?.let(dead::remove)
+            changed()
         }
 
         /** A song that fails before it has played is one the player skips:
@@ -188,6 +251,7 @@ class PlayHistory(private val max: Int = MAX) {
         override fun onPlayerError(error: PlaybackException) {
             val id = playing ?: return
             if (!heard && player.currentPosition < HEARD_AFTER_MS) dead.add(id)
+            changed()
         }
 
         override fun onMediaItemTransition(item: MediaItem?, reason: Int) {
@@ -211,4 +275,10 @@ class PlayHistory(private val max: Int = MAX) {
             }
         }
     }
+}
+
+/** A session player that can go back through the play history to a given
+ *  queue entry (the app's "Played" list): LevelPlayer, the cast queue. */
+interface HistoryBack {
+    fun seekBackTo(index: Int)
 }

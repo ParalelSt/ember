@@ -143,6 +143,46 @@ class PlayHistoryTest {
         assertEquals(listOf("x"), h.ids)
     }
 
+    // ── The app's "Played" list ─────────────────────────────────────────
+
+    @Test fun `the list the app shows leaves out songs Previous passes over, and reports changes`() {
+        val h = PlayHistory()
+        var changes = 0
+        h.onChange = { changes++ }
+        h.played("a")
+        h.played("x")
+        h.played("b")
+        assertEquals(3, changes)
+        h.passedOver("x")
+        assertEquals(listOf("a", "b"), h.visible)
+        assertEquals(4, changes)
+        // Nothing the list shows changed: no report.
+        h.passedOver("x")
+        assertEquals(4, changes)
+        h.previous(listOf("a", "x", "b", "c"), 3, 0)
+        assertEquals(listOf("a"), h.visible)
+        assertEquals(5, changes)
+        h.clear()
+        assertEquals(emptyList<String>(), h.visible)
+        assertEquals(6, changes)
+    }
+
+    @Test fun `back walks the history to the tapped entry, several songs at once`() {
+        val h = PlayHistory()
+        h.played("a") // a, then d tapped, then b tapped
+        h.played("d")
+        assertEquals(true, h.back(abcd, 1, 0))
+        assertEquals(emptyList<String>(), h.ids)
+    }
+
+    @Test fun `back to an entry the history does not lead to changes nothing`() {
+        val h = PlayHistory()
+        h.played("a")
+        h.played("d")
+        assertEquals(false, h.back(abcd, 1, 2))
+        assertEquals(listOf("a", "d"), h.ids)
+    }
+
     // ── On the player ───────────────────────────────────────────────────
 
     @Test fun `a tap in the queue, then Previous, returns to the song played before`() {
@@ -190,6 +230,18 @@ class PlayHistoryTest {
         history.clear()
         level.seekToPrevious()
         assertEquals(1, player.currentMediaItemIndex)
+    }
+
+    @Test fun `a tap on a played song goes back to it, past 3 s too, and keeps the queue`() {
+        player.setMediaItems(items("a", "b", "c", "d"), 0, 0)
+        player.seekTo(3, 0) // a, then d tapped
+        player.seekTo(1, 60_000) // then b tapped, a minute in
+        assertEquals(listOf("a", "d"), history.visible)
+        level.seekBackTo(0)
+        assertEquals(0, player.currentMediaItemIndex)
+        assertEquals(4, player.mediaItemCount)
+        // Going back pushed nothing.
+        assertEquals(emptyList<String>(), history.ids)
     }
 
     @Test fun `past 3 s it restarts, then the next press goes back`() {
