@@ -796,3 +796,77 @@ fn stream_names_never_overwrite_what_the_user_set() {
     assert!(env.iter().all(|(k, _)| *k != "PULSE_PROP"), "{env:?}");
     assert!(env.iter().any(|(k, _)| *k == "PIPEWIRE_PROPS"));
 }
+
+// --- Linux: which ALSA device is "the default" ----------------------------------
+//
+// The same user's next launch: "native audio failed, falling back to web
+// audio". The log said `no audio output (The requested device is no longer
+// available...)`, which is cpal's EBUSY: ALSA's "default" was the sound card,
+// the sound server was holding it, and the error named only that first
+// device. A sound-server PCM never reports busy, so it goes first.
+
+fn names(list: &[&str]) -> Vec<String> {
+    list.iter().map(|s| s.to_string()).collect()
+}
+
+#[test]
+fn on_alsa_a_sound_server_pcm_is_the_default() {
+    let all = names(&["default", "pipewire", "pulse", "HDA Intel PCH"]);
+    assert_eq!(default_device_name(&all, Some("default"), true), Some("pipewire"));
+    let no_pipewire = names(&["default", "pulse", "HDA Intel PCH"]);
+    assert_eq!(default_device_name(&no_pipewire, Some("default"), true), Some("pulse"));
+    let bare = names(&["default", "HDA Intel PCH"]);
+    assert_eq!(default_device_name(&bare, Some("default"), true), Some("default"));
+}
+
+#[test]
+fn elsewhere_the_host_default_stands() {
+    let mac = names(&["MacBook Pro Speakers", "pulse"]);
+    assert_eq!(default_device_name(&mac, Some("MacBook Pro Speakers"), false), Some("MacBook Pro Speakers"));
+}
+
+#[test]
+fn the_default_is_tried_first_then_the_sound_server_then_the_hardware() {
+    let ids = |order: Vec<usize>, devices: &[OutputDevice]| -> Vec<String> {
+        order.into_iter().map(|i| devices[i].id.clone()).collect()
+    };
+    let linux = [
+        dev("default", false),
+        dev("pipewire", true),
+        dev("pulse", false),
+        dev("jack", false),
+        dev("HDA Intel PCH", false),
+        dev("USB DAC", false),
+    ];
+    assert_eq!(ids(default_order(&linux), &linux), ["pipewire", "pulse", "default", "jack", "HDA Intel PCH", "USB DAC"]);
+    let mac = [dev("A", false), dev("B", true), dev("C", false)];
+    assert_eq!(ids(default_order(&mac), &mac), ["B", "A", "C"]);
+    let none_marked = [dev("A", false), dev("B", false)];
+    assert_eq!(ids(default_order(&none_marked), &none_marked), ["A", "B"]);
+}
+
+#[test]
+fn the_first_device_that_opens_wins() {
+    let mut tried = Vec::new();
+    let got = open_first(
+        vec![("default".to_string(), 1), ("pulse".to_string(), 2), ("HDA Intel PCH".to_string(), 3)],
+        |d| {
+            tried.push(d);
+            if d == 1 { Err("busy".to_string()) } else { Ok(d * 10) }
+        },
+    );
+    assert_eq!(got, Ok(("pulse".to_string(), 20)));
+    assert_eq!(tried, [1, 2], "nothing is opened after a success");
+}
+
+#[test]
+fn when_nothing_opens_every_reason_is_reported() {
+    let got: Result<(String, ()), String> = open_first(
+        vec![("default".to_string(), ()), ("HDA Intel PCH".to_string(), ())],
+        |_| Err("The requested device is no longer available".to_string()),
+    );
+    let err = got.unwrap_err();
+    assert!(err.contains("default: The requested device"), "{err}");
+    assert!(err.contains("HDA Intel PCH: The requested device"), "{err}");
+    assert_eq!(open_first::<(), ()>(Vec::new(), |_| Ok(())).unwrap_err(), "no output device to open");
+}

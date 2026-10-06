@@ -105,6 +105,69 @@ pub(crate) fn label_devices(names: &[String], default_name: Option<&str>) -> Vec
         .collect()
 }
 
+/// ALSA PCMs that hand the audio to the desktop sound server, best first.
+const SERVER_PCMS: [&str; 2] = ["pipewire", "pulse"];
+
+/// ALSA's own default PCM, which cpal reports as the default device.
+const ALSA_DEFAULT: &str = "default";
+
+/// The device that stands for "the system default". cpal's ALSA default is
+/// the "default" PCM, which is the sound card itself on a machine without
+/// pipewire-alsa: playing there bypasses the output the desktop has chosen
+/// and fails with "busy" while the sound server holds the card. A listed
+/// sound-server PCM is the desktop's real default, so on ALSA (`alsa`) it
+/// wins. Elsewhere the host's own default stands.
+pub(crate) fn default_device_name<'a>(names: &'a [String], host_default: Option<&'a str>, alsa: bool) -> Option<&'a str> {
+    if alsa {
+        let server = SERVER_PCMS.iter().find_map(|pcm| names.iter().find(|n| n.as_str() == *pcm));
+        if let Some(name) = server {
+            return Some(name.as_str());
+        }
+    }
+    host_default
+}
+
+/// The order to try devices in when opening the system default: the
+/// default, then the sound-server PCMs, then ALSA's "default", then the rest
+/// as listed (a machine whose default will not open should still play
+/// somewhere, and through the sound server before the bare hardware).
+pub(crate) fn default_order(devices: &[OutputDevice]) -> Vec<usize> {
+    let rank = |d: &OutputDevice| -> usize {
+        if d.is_default {
+            0
+        } else if let Some(i) = SERVER_PCMS.iter().position(|p| *p == d.id) {
+            1 + i
+        } else if d.id == ALSA_DEFAULT {
+            1 + SERVER_PCMS.len()
+        } else {
+            2 + SERVER_PCMS.len()
+        }
+    };
+    let mut order: Vec<usize> = (0..devices.len()).collect();
+    order.sort_by_key(|&i| rank(&devices[i]));
+    order
+}
+
+/// Opens the first candidate that will open. When none does, the error
+/// names every device and why, not just the first.
+pub(crate) fn open_first<D, S>(
+    candidates: Vec<(String, D)>,
+    mut open: impl FnMut(D) -> Result<S, String>,
+) -> Result<(String, S), String> {
+    let mut errors = Vec::new();
+    for (label, device) in candidates {
+        match open(device) {
+            Ok(stream) => return Ok((label, stream)),
+            Err(e) => errors.push(format!("{label}: {e}")),
+        }
+    }
+    if errors.is_empty() {
+        Err("no output device to open".to_string())
+    } else {
+        Err(errors.join("; "))
+    }
+}
+
 // --- The tap -----------------------------------------------------------------
 
 /// The master mixer's output, shared by every tap.
@@ -261,13 +324,14 @@ impl CpalBackend {
     fn enumerate() -> Vec<(OutputDevice, rodio::cpal::Device)> {
         use rodio::cpal::traits::{DeviceTrait, HostTrait};
         let host = rodio::cpal::default_host();
-        let default_name = host.default_output_device().and_then(|d| d.name().ok());
+        let host_default = host.default_output_device().and_then(|d| d.name().ok());
         let devices: Vec<rodio::cpal::Device> = host.output_devices().map(|it| it.collect()).unwrap_or_default();
         let names: Vec<String> = devices
             .iter()
             .map(|d| d.name().unwrap_or_else(|_| "Unknown output".to_string()))
             .collect();
-        label_devices(&names, default_name.as_deref()).into_iter().zip(devices).collect()
+        let default_name = default_device_name(&names, host_default.as_deref(), cfg!(target_os = "linux"));
+        label_devices(&names, default_name).into_iter().zip(devices).collect()
     }
 }
 
@@ -278,7 +342,14 @@ impl OutputBackend for CpalBackend {
 
     fn default_format(&self) -> Option<(ChannelCount, SampleRate)> {
         use rodio::cpal::traits::{DeviceTrait, HostTrait};
-        let config = rodio::cpal::default_host().default_output_device()?.default_output_config().ok()?;
+        // On Linux the default is not always cpal's (see `default_device_name`).
+        let listed = if cfg!(target_os = "linux") {
+            Self::enumerate().into_iter().find(|(d, _)| d.is_default).map(|(_, dev)| dev)
+        } else {
+            None
+        };
+        let device = listed.or_else(|| rodio::cpal::default_host().default_output_device())?;
+        let config = device.default_output_config().ok()?;
         Some((config.channels(), config.sample_rate().0))
     }
 
@@ -287,9 +358,10 @@ impl OutputBackend for CpalBackend {
         let mut listed = Self::enumerate();
         // The devices to try, in order. A named device is that device only:
         // the listener asked for it, and quietly playing somewhere else would
-        // be a lie. The default is tried first and then every other device,
-        // as rodio's own `open_default_stream` does: a machine whose default
-        // will not open should still make sound somewhere.
+        // be a lie. The default is tried first and then every other device
+        // (see `default_order`), as rodio's own `open_default_stream` does:
+        // a machine whose default will not open should still make sound
+        // somewhere.
         let candidates: Vec<(String, rodio::cpal::Device)> = match id {
             Some(id) => {
                 let i = listed.iter().position(|(d, _)| d.id == id).ok_or_else(|| NO_SUCH_DEVICE.to_string())?;
@@ -298,21 +370,17 @@ impl OutputBackend for CpalBackend {
             }
             None => {
                 let mut out = Vec::new();
-                match listed.iter().position(|(d, _)| d.is_default) {
-                    Some(i) => {
-                        let (d, dev) = listed.remove(i);
-                        out.push((d.id, dev));
-                    }
-                    // A default the enumeration does not show (ALSA can hide
-                    // a busy one): open it anyway, under its own name.
-                    None => {
-                        if let Some(dev) = rodio::cpal::default_host().default_output_device() {
-                            let name = dev.name().unwrap_or_else(|_| "Default output".to_string());
-                            out.push((name, dev));
-                        }
+                // A default the enumeration does not show (ALSA can hide a
+                // busy one): open it anyway, under its own name.
+                if !listed.iter().any(|(d, _)| d.is_default) {
+                    if let Some(dev) = rodio::cpal::default_host().default_output_device() {
+                        let name = dev.name().unwrap_or_else(|_| "Default output".to_string());
+                        out.push((name, dev));
                     }
                 }
-                out.extend(listed.into_iter().map(|(d, dev)| (d.id, dev)));
+                let order = default_order(&listed.iter().map(|(d, _)| d.clone()).collect::<Vec<_>>());
+                let mut slots: Vec<Option<(OutputDevice, rodio::cpal::Device)>> = listed.into_iter().map(Some).collect();
+                out.extend(order.into_iter().filter_map(|i| slots[i].take()).map(|(d, dev)| (d.id, dev)));
                 out
             }
         };
@@ -329,28 +397,17 @@ impl OutputBackend for CpalBackend {
             other => eprintln!("[ember] audio stream error: {other}"),
         };
 
-        let mut tap = Some(tap);
-        let mut first_err: Option<String> = None;
-        for (label, device) in candidates {
-            let opened = rodio::OutputStreamBuilder::from_device(device)
+        let (label, mut stream) = open_first(candidates, |device| {
+            rodio::OutputStreamBuilder::from_device(device)
                 .map(|b| b.with_error_callback(callback.clone()))
-                .and_then(|b| b.open_stream_or_fallback());
-            match opened {
-                Ok(mut stream) => {
-                    // A switch drops a stream on purpose; rodio would print a
-                    // warning to stderr for every one.
-                    stream.log_on_drop(false);
-                    if let Some(tap) = tap.take() {
-                        stream.mixer().add(tap);
-                    }
-                    return Ok((label, Box::new(stream)));
-                }
-                Err(e) => {
-                    first_err.get_or_insert_with(|| format!("{label}: {e}"));
-                }
-            }
-        }
-        Err(first_err.unwrap_or_else(|| "no output device to open".to_string()))
+                .and_then(|b| b.open_stream_or_fallback())
+                .map_err(|e| e.to_string())
+        })?;
+        // A switch drops a stream on purpose; rodio would print a warning to
+        // stderr for every one.
+        stream.log_on_drop(false);
+        stream.mixer().add(tap);
+        Ok((label, Box::new(stream)))
     }
 }
 
