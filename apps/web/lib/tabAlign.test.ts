@@ -102,6 +102,33 @@ describe('lining a tab up', () => {
     });
   });
 
+  it('lines up a Guitar Pro file someone added, not only alphaTex, as the Source sheet offers it for every row', async () => {
+    // The plan is read from the file as AlphaTab reads any tab file. A
+    // Guitar Pro file read as alphaTex text failed with "No alphaTex data
+    // found", so Line it up never worked on an added file.
+    const at = await import('@coderline/alphatab');
+    const settings = new at.Settings();
+    const importer = new at.importer.AlphaTexImporter();
+    importer.initFromString(TEX, settings);
+    const gp = new at.exporter.Gp7Exporter().export(importer.readScore(), settings);
+    const { TAB_DIR } = await import('./tabs');
+    fs.mkdirSync(TAB_DIR, { recursive: true });
+    fs.writeFileSync(path.join(TAB_DIR, 'added.gp'), gp);
+    const PLAN = path.join(dir, 'plan-copy.json');
+    writeScript(`cp "$2" ${JSON.stringify(PLAN)}\nprintf '%s' '${JSON.stringify(TIMING)}' > "$3"`);
+    store = fakePocketBase({
+      tabs: [{ id: 'file1', kind: 'file', file: 'added.gp', track_key: 'upload:up1' }],
+      uploads: [{ id: 'up1', filename: 'song.m4a' }],
+    });
+    const tab = store.rows.get('tabs')![0];
+    expect(await alignTab(store.pb, tab)).toEqual({ offsetMs: 1350, bpm: 97.4, confidence: 0.82, bars: TIMING.bars });
+    const plan = JSON.parse(fs.readFileSync(PLAN, 'utf8'));
+    expect(plan.tempo).toBe(100);
+    expect(plan.bars.map((b: { ms: number }) => b.ms)).toEqual([0, 2400]);
+    expect(plan.notes).toHaveLength(8);
+    expect(store.rows.get('tabs')![0].timing).toEqual(TIMING);
+  });
+
   it('logs a tab that lined up at info, so the daily digest does not list a success as a problem', async () => {
     const tab = store.rows.get('tabs')![0];
     expect(await alignTab(store.pb, tab)).not.toBeNull();
