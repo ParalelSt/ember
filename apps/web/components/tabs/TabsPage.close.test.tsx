@@ -275,18 +275,20 @@ async function openEverything() {
   act(() => alphaTab.playerReady.fire());
 
   // Metronome on (enabled once the score's bars are known).
-  fireEvent.click(screen.getByRole('button', { name: 'Practice tools' }));
-  const metronome = screen.getByRole('button', { name: 'Metronome' });
+  fireEvent.click(screen.getByTestId('tab-tool-click'));
+  const metronome = within(screen.getByTestId('tab-popover-click')).getByRole('button', { name: 'Metronome' });
   await waitFor(() => expect(metronome).toBeEnabled());
   fireEvent.click(metronome);
   expect(metronome).toHaveAttribute('aria-pressed', 'true');
 
   // Practice: 75% and a loop over bar 1.
-  fireEvent.click(screen.getByRole('button', { name: 'Practice' }));
-  const practice = screen.getByTestId('tab-practice');
-  fireEvent.click(within(practice).getByRole('button', { name: '75%' }));
+  fireEvent.click(screen.getByTestId('tab-tool-speed'));
+  fireEvent.click(within(screen.getByTestId('tab-popover-speed')).getByRole('button', { name: '75%' }));
+  fireEvent.click(screen.getByTestId('tab-tool-loop'));
+  const practice = screen.getByTestId('tab-popover-loop');
   fireEvent.change(within(practice).getByLabelText('Loop from bar'), { target: { value: '1' } });
   expect(within(practice).getByRole('button', { name: 'Loop' })).toHaveAttribute('aria-pressed', 'true');
+  fireEvent.click(screen.getByTestId('tab-tool-loop'));
 
   // "Line it up" from the Source sheet: the tab list is asked again every 4 s.
   fireEvent.click(screen.getByRole('button', { name: 'Choose a tab' }));
@@ -357,5 +359,33 @@ describe('closing the tab page stops everything it ran', () => {
     // The music is not touched: no pause, no stop, no seek.
     expect(player.toggle).not.toHaveBeenCalled();
     expect(player.playTrack).not.toHaveBeenCalled();
+  });
+
+  it('a count-in cut short by closing never starts the song, and leaves nothing running', async () => {
+    player.isPlaying = false;
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const view = render(
+      <QueryClientProvider client={qc}>
+        <TabsPage trackId="upload:song1" />
+      </QueryClientProvider>,
+    );
+    await waitFor(() => expect(screen.getByTestId('tab-score')).toHaveAttribute('data-status', 'ready'));
+    await waitFor(() => expect(screen.getByTestId('tab-pill-bar')).toHaveTextContent('Bar 1 / 3'));
+    fireEvent.click(within(screen.getByTestId('tab-pill')).getByRole('button', { name: 'Play' }));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(700);
+    });
+    expect(screen.getByTestId('tab-pill-bar')).toHaveTextContent(/Count [12]/);
+    const clicks = audio.oscillators;
+    expect(clicks).toBeGreaterThan(0);
+
+    view.unmount();
+    expect(audio.contexts.every((c) => c.state === 'closed')).toBe(true);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(10 * 60_000);
+    });
+    expect(player.toggle).not.toHaveBeenCalled();
+    expect(audio.oscillators).toBe(clicks);
+    expect(vi.getTimerCount()).toBe(0);
   });
 });

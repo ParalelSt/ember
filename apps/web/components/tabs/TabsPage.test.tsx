@@ -1,5 +1,5 @@
 import type { ComponentProps, ReactNode } from 'react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { TabSummary } from '@/lib/tabSources';
@@ -218,8 +218,7 @@ describe('TabsPage source selection', () => {
   it('the Sync slider changes the offset the score gets', async () => {
     api.getTrackTabs.mockResolvedValue({ tabs: [tab({})] });
     wrap(<TabsPage trackId="upload:song1" />);
-    fireEvent.click(await screen.findByRole('button', { name: 'Practice tools' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Sync' }));
+    fireEvent.click(await screen.findByTestId('tab-tool-delay'));
     fireEvent.change(screen.getByLabelText('Tab timing offset in seconds'), { target: { value: '2.5' } });
     expect(screen.getByTestId('tab-score')).toHaveAttribute('data-offset', '2500');
     expect(window.localStorage.getItem('ember.tab.offset.f1')).toBe('2.5');
@@ -230,8 +229,7 @@ describe('TabsPage source selection', () => {
     api.getTrackTabs.mockResolvedValue({ tabs: [tab({ canDelete: true })] });
     api.saveTabOffset.mockRejectedValueOnce(Object.assign(new Error('forbidden'), { status: 403 }));
     wrap(<TabsPage trackId="upload:song1" />);
-    fireEvent.click(await screen.findByRole('button', { name: 'Practice tools' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Sync' }));
+    fireEvent.click(await screen.findByTestId('tab-tool-delay'));
     fireEvent.change(screen.getByLabelText('Tab timing offset in seconds'), { target: { value: '2.5' } });
     fireEvent.click(screen.getByRole('button', { name: 'Save for everyone' }));
     await waitFor(() => expect(error).toHaveBeenCalled());
@@ -242,8 +240,7 @@ describe('TabsPage source selection', () => {
   it('takes an exact nudge far past the old 10 s, typed or stepped', async () => {
     api.getTrackTabs.mockResolvedValue({ tabs: [tab({})] });
     wrap(<TabsPage trackId="upload:song1" />);
-    fireEvent.click(await screen.findByRole('button', { name: 'Practice tools' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Sync' }));
+    fireEvent.click(await screen.findByTestId('tab-tool-delay'));
     fireEvent.change(screen.getByLabelText('Tab timing offset, exact seconds'), { target: { value: '-95.25' } });
     expect(screen.getByTestId('tab-score')).toHaveAttribute('data-offset', '-95250');
     expect(window.localStorage.getItem('ember.tab.offset.f1')).toBe('-95.25');
@@ -252,14 +249,13 @@ describe('TabsPage source selection', () => {
     expect(Number(slider.getAttribute('min'))).toBeLessThanOrEqual(-95.25);
     fireEvent.click(screen.getByRole('button', { name: '+0.1 s' }));
     expect(screen.getByTestId('tab-score')).toHaveAttribute('data-offset', '-95150');
-    expect(screen.getByRole('button', { name: 'Sync' })).toHaveTextContent('-95.15 s');
+    expect(screen.getByTestId('tab-tool-delay')).toHaveTextContent('-95.15 s');
   });
 
   it('counts the nudge in beats of the tab: its tempo and time signature', async () => {
     api.getTrackTabs.mockResolvedValue({ tabs: [tab({})] });
     wrap(<TabsPage trackId="upload:song1" />);
-    fireEvent.click(await screen.findByRole('button', { name: 'Practice tools' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Sync' }));
+    fireEvent.click(await screen.findByTestId('tab-tool-delay'));
     // No score drawn yet: no tempo, so no beats.
     expect(screen.getByRole('button', { name: 'beats' })).toBeDisabled();
     act(() =>
@@ -274,7 +270,7 @@ describe('TabsPage source selection', () => {
     fireEvent.change(screen.getByLabelText('Tab timing offset in beats'), { target: { value: '8' } });
     // 8 quarter notes at 120 bpm.
     expect(screen.getByTestId('tab-score')).toHaveAttribute('data-offset', '4000');
-    expect(screen.getByRole('button', { name: 'Sync' })).toHaveTextContent('+8 beats');
+    expect(screen.getByTestId('tab-tool-delay')).toHaveTextContent('+8 beats');
     // A bar of 3/4 is three beats.
     fireEvent.click(screen.getByRole('button', { name: '-1 bar' }));
     expect(screen.getByTestId('tab-score')).toHaveAttribute('data-offset', '2500');
@@ -296,21 +292,32 @@ describe('TabsPage metronome', () => {
     api.getTrackTabs.mockResolvedValue({ tabs: [tab({})] });
     player.position = 1;
     wrap(<TabsPage trackId="upload:song1" />);
-    fireEvent.click(await screen.findByRole('button', { name: 'Practice tools' }));
-    const chip = screen.getByRole('button', { name: 'Metronome' });
+    const cell = await screen.findByTestId('tab-tool-click');
+    expect(cell).toHaveTextContent('Off');
+    fireEvent.click(cell);
+    const pop = screen.getByTestId('tab-popover-click');
+    const sw = within(pop).getByRole('button', { name: 'Metronome' });
     // Nothing to click on until the tab is drawn.
-    expect(chip).toBeDisabled();
+    expect(sw).toBeDisabled();
     act(() => score.last!.onTimeline!(timeline()));
-    expect(chip).toBeEnabled();
-    expect(chip).toHaveTextContent('96');
-    fireEvent.click(chip);
-    expect(chip).toHaveAttribute('aria-pressed', 'true');
+    expect(sw).toBeEnabled();
+    expect(within(pop).getByTestId('tab-metronome-bpm')).toHaveTextContent('96 bpm');
+    fireEvent.click(sw);
+    expect(sw).toHaveAttribute('aria-pressed', 'true');
+    expect(cell).toHaveTextContent('96');
     expect(screen.getByTestId('tab-metronome-status')).toHaveTextContent('Follows the tab: 96 bpm here (tempo changes 96 → 140).');
 
     fireEvent.change(screen.getByLabelText('Metronome bpm'), { target: { value: '104' } });
     expect(screen.getByTestId('tab-metronome-status')).toHaveTextContent('Clicking at 104 bpm; the tab says 96 bpm here.');
-    expect(chip).toHaveTextContent('104');
+    expect(cell).toHaveTextContent('104');
     expect(window.localStorage.getItem('ember.tab.bpm.f1')).toBe('104');
+
+    // The steps go one bpm at a time.
+    fireEvent.click(screen.getByRole('button', { name: 'Faster click' }));
+    expect(cell).toHaveTextContent('105');
+    fireEvent.click(screen.getByRole('button', { name: 'Slower click' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Slower click' }));
+    expect(window.localStorage.getItem('ember.tab.bpm.f1')).toBe('103');
 
     fireEvent.click(screen.getByRole('button', { name: 'Use the tab’s tempo' }));
     expect(screen.getByTestId('tab-metronome-status')).toHaveTextContent('Follows the tab');
@@ -324,8 +331,8 @@ describe('TabsPage metronome', () => {
     wrap(<TabsPage trackId="upload:song1" />);
     await screen.findByTestId('tab-score');
     act(() => score.last!.onTimeline!(timeline()));
-    fireEvent.click(screen.getByRole('button', { name: 'Practice tools' }));
-    expect(screen.getByRole('button', { name: 'Metronome' })).toHaveTextContent('140');
+    fireEvent.click(screen.getByTestId('tab-tool-click'));
+    expect(screen.getByTestId('tab-metronome-bpm')).toHaveTextContent('140 bpm');
   });
 
   it('a tempo set before for this tab is remembered', async () => {
@@ -334,8 +341,8 @@ describe('TabsPage metronome', () => {
     wrap(<TabsPage trackId="upload:song1" />);
     await screen.findByTestId('tab-score');
     act(() => score.last!.onTimeline!(timeline()));
-    fireEvent.click(screen.getByRole('button', { name: 'Practice tools' }));
-    expect(screen.getByRole('button', { name: 'Metronome' })).toHaveTextContent('88');
+    fireEvent.click(screen.getByTestId('tab-tool-click'));
+    expect(screen.getByTestId('tab-metronome-bpm')).toHaveTextContent('88 bpm');
   });
 });
 
@@ -356,34 +363,66 @@ describe('TabsPage practice', () => {
       })),
     );
 
-  async function open() {
+  async function open(tool: 'speed' | 'loop' = 'loop') {
     api.getTrackTabs.mockResolvedValue({ tabs: [tab({})] });
     wrap(<TabsPage trackId="upload:song1" />);
     await screen.findByTestId('tab-score');
     act(() => score.last!.onTimeline!(timeline()));
-    fireEvent.click(screen.getByRole('button', { name: 'Practice tools' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Practice' }));
-    return screen.getByTestId('tab-practice');
+    fireEvent.click(screen.getByTestId(`tab-tool-${tool}`));
+    return screen.getByTestId(`tab-popover-${tool}`);
   }
+
+  it('five cells over the tab on a wide screen, with their names and values', async () => {
+    api.getTrackTabs.mockResolvedValue({ tabs: [tab({})] });
+    wrap(<TabsPage trackId="upload:song1" />);
+    const bar = await screen.findByRole('toolbar', { name: 'Practice' });
+    expect(within(bar).getAllByRole('button').map((b) => b.textContent)).toEqual([
+      'Speed100%',
+      'LoopOff',
+      'ClickOff',
+      '1234Count-in1 bar',
+      'Delay0 s',
+    ]);
+    // In the sticky part with the title line, not floating at the bottom.
+    expect(screen.getByTestId('tabs-sticky')).toContainElement(bar);
+    // One popover at a time; the same cell again closes it.
+    fireEvent.click(screen.getByTestId('tab-tool-speed'));
+    expect(screen.getByTestId('tab-popover-speed')).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('tab-tool-delay'));
+    expect(screen.queryByTestId('tab-popover-speed')).toBeNull();
+    expect(screen.getByTestId('tab-popover-delay')).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('tab-tool-delay'));
+    expect(screen.queryByTestId('tab-popover-delay')).toBeNull();
+  });
+
+  it('a press outside the popover, or Escape, closes it', async () => {
+    await open('speed');
+    fireEvent.pointerDown(screen.getByTestId('tab-score'));
+    expect(screen.queryByTestId('tab-popover-speed')).toBeNull();
+    fireEvent.click(screen.getByTestId('tab-tool-speed'));
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(screen.queryByTestId('tab-popover-speed')).toBeNull();
+  });
 
   it('slows the song down by percent, pitch kept by the player, and back to full speed on leaving', async () => {
     api.getTrackTabs.mockResolvedValue({ tabs: [tab({})] });
     const view = wrap(<TabsPage trackId="upload:song1" />);
     await screen.findByTestId('tab-score');
-    fireEvent.click(screen.getByRole('button', { name: 'Practice tools' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Practice' }));
+    fireEvent.click(screen.getByTestId('tab-tool-speed'));
     fireEvent.click(screen.getByRole('button', { name: '75%' }));
     expect(player.setRate).toHaveBeenLastCalledWith(0.75);
-    expect(screen.getByRole('button', { name: 'Practice' })).toHaveTextContent('75%');
+    expect(screen.getByTestId('tab-tool-speed')).toHaveTextContent('75%');
+    // The pill says the same.
+    expect(within(screen.getByTestId('tab-pill')).getByRole('button', { name: /^Speed/ })).toHaveTextContent('75%');
     view.unmount();
     expect(player.setRate).toHaveBeenLastCalledWith(1);
   });
 
   it('or by tempo: 90 bpm of a 120 bpm tab is 75%', async () => {
-    const row = await open();
-    fireEvent.change(within(row).getByLabelText('Speed in bpm'), { target: { value: '90' } });
+    const pop = await open('speed');
+    fireEvent.change(within(pop).getByLabelText('Speed in bpm'), { target: { value: '90' } });
     expect(player.setRate).toHaveBeenLastCalledWith(0.75);
-    fireEvent.change(within(row).getByLabelText('Speed in percent'), { target: { value: '50' } });
+    fireEvent.change(within(pop).getByLabelText('Speed in percent'), { target: { value: '50' } });
     expect(player.setRate).toHaveBeenLastCalledWith(0.5);
   });
 
@@ -396,43 +435,47 @@ describe('TabsPage practice', () => {
 
   it('an engine that cannot change speed says so instead', async () => {
     player.canSetRate = false;
-    const row = await open();
-    expect(within(row).getByTestId('tab-speed-unavailable')).toBeInTheDocument();
-    expect(within(row).queryByRole('button', { name: '75%' })).toBeNull();
+    const pop = await open('speed');
+    expect(within(pop).getByTestId('tab-speed-unavailable')).toBeInTheDocument();
+    expect(within(pop).queryByRole('button', { name: '75%' })).toBeNull();
     expect(player.setRate).not.toHaveBeenCalled();
   });
 
-  it('loops a section: marked on the score, named on the chip', async () => {
-    const row = await open();
-    expect(within(row).getByRole('button', { name: 'Loop' })).toBeDisabled();
-    fireEvent.change(within(row).getByLabelText('Loop a section'), { target: { value: '1' } });
-    expect(within(row).getByRole('button', { name: 'Loop' })).toHaveAttribute('aria-pressed', 'true');
+  it('loops a section from its shortcut: marked on the score, named on the cell', async () => {
+    const pop = await open();
+    const sw = within(pop).getByRole('button', { name: 'Loop' });
+    expect(sw).toBeDisabled();
+    fireEvent.click(within(pop).getByRole('button', { name: 'Verse' }));
+    expect(sw).toHaveAttribute('aria-pressed', 'true');
+    expect(within(pop).getByRole('button', { name: 'Verse' })).toHaveAttribute('aria-pressed', 'true');
     expect(screen.getByTestId('tab-score')).toHaveAttribute('data-highlight', '2-5');
-    expect(screen.getByRole('button', { name: 'Practice' })).toHaveTextContent('Bars 3–6');
-    expect((within(row).getByLabelText('Loop from bar') as HTMLInputElement).value).toBe('3');
-    expect((within(row).getByLabelText('Loop to bar') as HTMLInputElement).value).toBe('6');
+    expect(screen.getByTestId('tab-tool-loop')).toHaveTextContent('Bars 3–6');
+    expect((within(pop).getByLabelText('Loop from bar') as HTMLInputElement).value).toBe('3');
+    expect((within(pop).getByLabelText('Loop to bar') as HTMLInputElement).value).toBe('6');
     // Off keeps the bars for next time, and takes the mark away.
-    fireEvent.click(within(row).getByRole('button', { name: 'Loop' }));
+    fireEvent.click(sw);
     expect(screen.getByTestId('tab-score')).toHaveAttribute('data-highlight', '');
-    fireEvent.click(within(row).getByRole('button', { name: 'Loop' }));
+    expect(screen.getByTestId('tab-tool-loop')).toHaveTextContent('Off');
+    fireEvent.click(sw);
     expect(screen.getByTestId('tab-score')).toHaveAttribute('data-highlight', '2-5');
-    fireEvent.click(within(row).getByRole('button', { name: 'Clear' }));
+    fireEvent.click(within(pop).getByRole('button', { name: 'Clear' }));
     expect(screen.getByTestId('tab-score')).toHaveAttribute('data-highlight', '');
   });
 
   it('loops bars typed in, and seeks to the loop when it starts outside it', async () => {
     player.position = 1;
-    const row = await open();
-    fireEvent.change(within(row).getByLabelText('Loop from bar'), { target: { value: '5' } });
-    fireEvent.change(within(row).getByLabelText('Loop to bar'), { target: { value: '6' } });
+    const pop = await open();
+    fireEvent.change(within(pop).getByLabelText('Loop from bar'), { target: { value: '5' } });
+    fireEvent.change(within(pop).getByLabelText('Loop to bar'), { target: { value: '6' } });
     expect(screen.getByTestId('tab-score')).toHaveAttribute('data-highlight', '4-5');
     // Bar 5 starts 8 s into the tab, which starts with the song.
     await waitFor(() => expect(player.seek).toHaveBeenLastCalledWith(8));
   });
 
-  it('picks the loop on the tab with two clicks', async () => {
-    const row = await open();
-    fireEvent.click(within(row).getByRole('button', { name: 'Pick on the tab' }));
+  it('picks the loop on the tab with two clicks, the popover out of the way', async () => {
+    const pop = await open();
+    fireEvent.click(within(pop).getByRole('button', { name: 'Pick bars on the tab' }));
+    expect(screen.queryByTestId('tab-popover-loop')).toBeNull();
     expect(screen.getByTestId('tab-loop-picking')).toHaveTextContent('Click the first bar');
     expect(screen.getByTestId('tab-score')).toHaveAttribute('data-picking', 'true');
     act(() => score.last!.onBarPick!(6));
@@ -441,7 +484,144 @@ describe('TabsPage practice', () => {
     expect(screen.queryByTestId('tab-loop-picking')).toBeNull();
     expect(screen.getByTestId('tab-score')).toHaveAttribute('data-picking', 'false');
     expect(screen.getByTestId('tab-score')).toHaveAttribute('data-highlight', '3-6');
-    expect(within(row).getByRole('button', { name: 'Loop' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByTestId('tab-tool-loop')).toHaveTextContent('Bars 4–7');
+  });
+
+  it('the banner cancels picking', async () => {
+    const pop = await open();
+    fireEvent.click(within(pop).getByRole('button', { name: 'Pick bars on the tab' }));
+    fireEvent.click(within(screen.getByTestId('tab-loop-picking')).getByRole('button', { name: 'Cancel' }));
+    expect(screen.queryByTestId('tab-loop-picking')).toBeNull();
+    expect(screen.getByTestId('tab-score')).toHaveAttribute('data-picking', 'false');
+  });
+});
+
+describe('TabsPage count-in', () => {
+  /** Four bars of 4/4 at 120: a beat is half a second. */
+  const timeline = () =>
+    buildTimeline(
+      [0, 1, 2, 3].map((i) => ({
+        start: i * 3840,
+        end: (i + 1) * 3840,
+        tempoChanges: [{ tick: i * 3840, tempo: 120 }],
+        masterBar: { index: i, timeSignatureNumerator: 4, timeSignatureDenominator: 4 },
+      })),
+    );
+
+  beforeEach(() => {
+    api.getTrackTabs.mockResolvedValue({ tabs: [tab({})] });
+    player.isPlaying = false;
+    player.position = 1;
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  /** The page drawn, then the clock faked when `fake` (the count runs on
+   *  timeouts). */
+  async function ready(fake = false) {
+    wrap(<TabsPage trackId="upload:song1" />);
+    await screen.findByTestId('tab-score');
+    act(() => score.last!.onTimeline!(timeline()));
+    if (fake) vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+  }
+
+  it('Play on the pill counts one bar in, then starts the song', async () => {
+    {
+      await ready(true);
+      fireEvent.click(within(screen.getByTestId('tab-pill')).getByRole('button', { name: 'Play' }));
+      expect(player.toggle).not.toHaveBeenCalled();
+      act(() => vi.advanceTimersByTime(100));
+      expect(screen.getByTestId('tab-pill-bar')).toHaveTextContent('Count 1');
+      act(() => vi.advanceTimersByTime(1000));
+      expect(screen.getByTestId('tab-pill-bar')).toHaveTextContent('Count 3');
+      act(() => vi.advanceTimersByTime(1000));
+      expect(player.toggle).toHaveBeenCalledTimes(1);
+      expect(screen.getByTestId('tab-pill-bar')).toHaveTextContent('Bar 1 / 4');
+    }
+  });
+
+  it('a second press during the count stops it, and the song does not start', async () => {
+    {
+      await ready(true);
+      const pill = screen.getByTestId('tab-pill');
+      fireEvent.click(within(pill).getByRole('button', { name: 'Play' }));
+      act(() => vi.advanceTimersByTime(600));
+      fireEvent.click(within(pill).getByRole('button', { name: 'Pause' }));
+      act(() => vi.advanceTimersByTime(5000));
+      expect(player.toggle).not.toHaveBeenCalled();
+      expect(screen.getByTestId('tab-pill-bar')).toHaveTextContent('Bar 1 / 4');
+    }
+  });
+
+  it('Off in the Count-in popover plays at once, and is remembered', async () => {
+    await ready();
+    fireEvent.click(screen.getByTestId('tab-tool-count'));
+    fireEvent.click(within(screen.getByTestId('tab-popover-count')).getByRole('button', { name: 'Off' }));
+    expect(screen.getByTestId('tab-tool-count')).toHaveTextContent('Off');
+    expect(window.localStorage.getItem('ember.tabs.countIn')).toBe('0');
+    fireEvent.click(within(screen.getByTestId('tab-pill')).getByRole('button', { name: 'Play' }));
+    expect(player.toggle).toHaveBeenCalledTimes(1);
+  });
+
+  it('two bars, chosen before, count eight beats', async () => {
+    window.localStorage.setItem('ember.tabs.countIn', '2');
+    {
+      await ready(true);
+      expect(screen.getByTestId('tab-tool-count')).toHaveTextContent('2 bars');
+      fireEvent.click(within(screen.getByTestId('tab-pill')).getByRole('button', { name: 'Play' }));
+      act(() => vi.advanceTimersByTime(3000));
+      expect(player.toggle).not.toHaveBeenCalled();
+      act(() => vi.advanceTimersByTime(1200));
+      expect(player.toggle).toHaveBeenCalledTimes(1);
+    }
+  });
+
+  it('pausing is never counted in', async () => {
+    player.isPlaying = true;
+    await ready();
+    fireEvent.click(within(screen.getByTestId('tab-pill')).getByRole('button', { name: 'Pause' }));
+    expect(player.toggle).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('TabsPage practice tools on a phone', () => {
+  beforeEach(() => {
+    phone = true;
+    api.getTrackTabs.mockResolvedValue({ tabs: [tab({})] });
+  });
+
+  it('the pill’s sliders button shows the five cells above it, and the choice is remembered', async () => {
+    const view = wrap(<TabsPage trackId="upload:song1" />);
+    await screen.findByTestId('tab-score');
+    expect(screen.queryByRole('toolbar', { name: 'Practice' })).toBeNull();
+    const more = within(screen.getByTestId('tab-pill')).getByRole('button', { name: 'Practice tools' });
+    expect(more).toHaveAttribute('aria-expanded', 'false');
+    fireEvent.click(more);
+    const bar = screen.getByRole('toolbar', { name: 'Practice' });
+    expect(within(bar).getAllByRole('button')).toHaveLength(5);
+    // At the bottom with the pill, not in the title line.
+    expect(screen.getByTestId('tabs-sticky')).not.toContainElement(bar);
+    expect(window.localStorage.getItem('ember.tabs.tools')).toBe('open');
+    view.unmount();
+    wrap(<TabsPage trackId="upload:song1" />);
+    expect(await screen.findByRole('toolbar', { name: 'Practice' })).toBeInTheDocument();
+  });
+
+  it('the pill’s loop with no bars chosen opens the strip at the Loop popover', async () => {
+    wrap(<TabsPage trackId="upload:song1" />);
+    await screen.findByTestId('tab-score');
+    fireEvent.click(within(screen.getByTestId('tab-pill')).getByRole('button', { name: 'Loop the bars' }));
+    expect(screen.getByRole('toolbar', { name: 'Practice' })).toBeInTheDocument();
+    expect(screen.getByTestId('tab-popover-loop')).toBeInTheDocument();
+  });
+
+  it('a wide screen has no sliders button: the toolbar is always there', async () => {
+    phone = false;
+    wrap(<TabsPage trackId="upload:song1" />);
+    await screen.findByTestId('tab-score');
+    expect(within(screen.getByTestId('tab-pill')).queryByRole('button', { name: 'Practice tools' })).toBeNull();
   });
 });
 
@@ -860,7 +1040,7 @@ describe('TabsPage pill', () => {
     act(() => score.last!.onTimeline!(timeline()));
     const loop = () => within(screen.getByTestId('tab-pill')).getByRole('button', { name: 'Loop the bars' });
     fireEvent.click(loop());
-    const row = screen.getByTestId('tab-practice');
+    const row = screen.getByTestId('tab-popover-loop');
     fireEvent.change(within(row).getByLabelText('Loop from bar'), { target: { value: '3' } });
     fireEvent.change(within(row).getByLabelText('Loop to bar'), { target: { value: '4' } });
     expect(loop()).toHaveAttribute('aria-pressed', 'true');
