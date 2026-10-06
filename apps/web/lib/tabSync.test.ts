@@ -22,6 +22,8 @@ import {
   type TickLookup,
   alphaTabMs,
   cursorSpeed,
+  drawLead,
+  nextFrameMs,
   speedChanged,
 } from './tabSync';
 
@@ -280,6 +282,28 @@ describe("AlphaTab's own clock", () => {
     expect(speedChanged(1, 1.015)).toBe(false);
     expect(speedChanged(1, 1.04)).toBe(true);
     expect(speedChanged(1, 0.75)).toBe(true);
+  });
+});
+
+describe('AlphaTab draws three frames late', () => {
+  // Between the position it is handed and the line's glide starting there
+  // are three requestAnimationFrame hops inside AlphaTab: measured in
+  // tests/tabs-sync-live.test.mjs as the drawn line 60 to 90 ms behind
+  // the page's own (right) estimate of the song.
+  it('so the page feeds it where the song will be three frames on', () => {
+    expect(drawLead(1000 / 60)).toBeCloseTo(50, 6);
+    expect(drawLead(1000 / 120)).toBeCloseTo(25, 6);
+    // A stalled frame (a busy main thread) is not a reason to run ahead.
+    expect(drawLead(400)).toBe(150);
+    expect(drawLead(Number.NaN)).toBeCloseTo(50, 6);
+  });
+
+  it('measures the frame from the frames, smoothly', () => {
+    let f = 1000 / 60;
+    for (let i = 0; i < 60; i++) f = nextFrameMs(f, 1000 / 120);
+    expect(f).toBeCloseTo(1000 / 120, 0);
+    // One long frame (a tab in the background) moves it a little, not to 1 s.
+    expect(nextFrameMs(1000 / 60, 1000)).toBeLessThan(25);
   });
 });
 
