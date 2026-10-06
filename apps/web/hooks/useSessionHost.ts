@@ -95,3 +95,21 @@ export function useSessionHost(state: SessionState | undefined) {
     });
   }, [isActiveHost, sessionId, playingRow, serverNow]);
 }
+
+/** Start hosting on this device. Whatever is playing keeps playing, but the
+ *  rest of the old queue goes: the mirror above puts the group's songs after
+ *  the song they follow, or at the END when none of them is in the player,
+ *  which put every carlist song behind the host's leftovers. A guest's Skip
+ *  then skipped the host's own songs too (bughunt X5). */
+export function startHosting(sessionId: string) {
+  const { queue, index } = usePlayerStore.getState();
+  const playing = queue[index];
+  usePlayerStore.setState({
+    queue: playing ? [playing] : [],
+    index: playing ? 0 : -1,
+    baseCount: 0,
+    shuffle: false,
+    orderBackup: null,
+  });
+  useSessionStore.getState().setHostingSessionId(sessionId);
+}

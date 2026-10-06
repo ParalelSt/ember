@@ -16,7 +16,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { api } from '@/lib/api';
 import { useQueryPlaylists } from '@/hooks/useLibrary';
-import { useSessionStore } from '@/stores/useSessionStore';
+import { startHosting } from '@/hooks/useSessionHost';
 import { liveCarlistKey } from '@/hooks/useSession';
 import { parseJoinInput } from '@/lib/carlist';
 import { cn } from '@/lib/utils';
@@ -31,7 +31,6 @@ export function StartSessionDialog({ open, onOpenChange }: DialogProps) {
   const router = useRouter();
   const qc = useQueryClient();
   const { data: playlists = [] } = useQueryPlaylists();
-  const setHostingSessionId = useSessionStore((s) => s.setHostingSessionId);
   const [name, setName] = useState('');
   const [seedId, setSeedId] = useState('');
   const [busy, setBusy] = useState(false);
@@ -43,7 +42,7 @@ export function StartSessionDialog({ open, onOpenChange }: DialogProps) {
         name: name.trim() || undefined,
         seedPlaylistId: seedId || undefined,
       });
-      setHostingSessionId(session.id);
+      startHosting(session.id);
       void qc.invalidateQueries({ queryKey: liveCarlistKey });
       toast.success(`Session live — code ${session.code}`);
       onOpenChange(false);
