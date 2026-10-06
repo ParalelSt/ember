@@ -80,6 +80,32 @@ describe('RequestDialog: default kind', () => {
   });
 });
 
+describe('RequestDialog: no optional extra box', () => {
+  it('has no "Anything else" field on either kind', async () => {
+    render(<RequestDialog open onOpenChange={() => {}} />);
+    expect(screen.queryByText(/Anything else/i)).not.toBeInTheDocument();
+    expect(screen.getAllByRole('textbox')).toHaveLength(2);
+    await userEvent.click(screen.getByRole('tab', { name: 'Fix' }));
+    expect(screen.queryByText(/Anything else/i)).not.toBeInTheDocument();
+    expect(screen.getAllByRole('textbox')).toHaveLength(2);
+  });
+
+  it('does not send an extra field', async () => {
+    const fetchMock = mockFetch();
+    render(<RequestDialog open onOpenChange={() => {}} />);
+    await userEvent.type(screen.getByPlaceholderText('Short name, e.g. Sleep timer'), 'Sleep timer');
+    await userEvent.type(
+      screen.getByPlaceholderText(
+        'What should it do, and when would you use it? e.g. Stop playback after 30 minutes so I can fall asleep to music.',
+      ),
+      'Stop after 30 min',
+    );
+    await userEvent.click(screen.getByRole('button', { name: 'Send' }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    expect(requestBody(fetchMock)).not.toHaveProperty('extra');
+  });
+});
+
 describe('RequestDialog: switching kind', () => {
   it('changes labels and placeholders and keeps typed text', async () => {
     render(<RequestDialog open onOpenChange={() => {}} />);
