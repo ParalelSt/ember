@@ -1,3 +1,11 @@
+# 0.7.20: One player menu, simpler sharing, seamless repeat (apps 0.4.15)
+
+**Host: run `./update.sh` as usual (no new packages).** Invite links now open a
+preview first (a new read-only preview route; nobody is added until they tap
+Join). The desktop seamless repeat and the app version in Settings on phones
+need the new apps, 0.4.15 (Android versionCode 20), which the `v0.4.15` tag
+builds. The iOS project version is now 0.4.15 as well.
+
 # 0.7.19: Carlist and a big round of fixes (apps 0.4.14)
 
 **Host: run `./update.sh` as usual (no new packages).** It restarts PocketBase,

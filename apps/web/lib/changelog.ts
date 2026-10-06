@@ -21,6 +21,42 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    id: 'phone-player-menu',
+    version: '0.7.20',
+    date: '2026-10-06',
+    title: 'One menu in the phone player',
+    summary: 'Everything the phone player can do now sits behind one button, so the cover gets more room.',
+    bullets: [
+      'Tap ⋯ at the top of the phone player for Like, Add to playlist, Up next, Lyrics, Guitar tabs, Devices, Equalizer, Copy link and Go to artist or album.',
+      'Devices shows the speaker or TV you are playing on, and Equalizer shows whether it is on.',
+      'On desktop, the lyrics panel now reaches the top of the window.',
+    ],
+  },
+  {
+    id: 'collab-sharing',
+    version: '0.7.20',
+    date: '2026-10-06',
+    title: 'Sharing playlists, simpler',
+    summary: 'Share a playlist from the faces under its title, see who shared it with you, and look before you join.',
+    bullets: [
+      'Tap the faces under a playlist title (or "+ Invite") to share it. Copy invite link turns sharing on in one step.',
+      'A playlist someone shared with you shows "Shared by" and their face, on the playlist and in your library.',
+      'Opening an invite link shows the playlist first, with Join or Not now.',
+      'Edit order lets everyone who can edit move songs with arrows or by dragging, on phone and desktop.',
+    ],
+  },
+  {
+    id: 'loop-and-version',
+    version: '0.7.20',
+    date: '2026-10-06',
+    title: 'Seamless repeat',
+    summary: 'Repeat one starts the song again right away, and Settings shows your app version.',
+    bullets: [
+      'Repeat one no longer pauses to load the song again in the browser and the desktop app.',
+      'Settings shows the desktop or phone app version next to the web build, so it is easy to tell what you are running.',
+    ],
+  },
+  {
     id: 'carlist-fixes-0719',
     version: '0.7.19',
     date: '2026-10-05',
