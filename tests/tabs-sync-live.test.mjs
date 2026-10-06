@@ -529,7 +529,9 @@ await cell('speed').click();
 await pop('speed').getByRole('button', { name: '75%' }).click();
 await cell('speed').click();
 await page.evaluate((t) => { document.querySelector('audio').currentTime = t; }, tabMsToSong(8 * BAR_TAB_MS));
-await sampleFor('75%', 25);
+// Long enough that the slope is drift and not the riff: the line sits
+// 10 to 20 ms differently on different bars (their notes' spacing).
+await sampleFor('75%', 45);
 const at75 = await audio(() => document.querySelector('audio').playbackRate);
 check('75%: the recording plays at 0.75', Math.abs(at75 - 0.75) < 1e-6, `${at75}`);
 judge('75% speed', analyse('75%'), { drift: true });
