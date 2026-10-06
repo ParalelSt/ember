@@ -44,7 +44,13 @@ onAfterBootstrap((e) => {
     }
     if (rule(col.updateRule) === RULES[name]) continue;
     col.updateRule = RULES[name];
-    dao.saveCollection(col);
-    console.log("[ensure_owner_rules] " + name + ": an update can no longer change the owner");
+    // A failed save must not stop PocketBase from booting: warn and carry
+    // on, same as ensure_superuser (bughunt X11).
+    try {
+      dao.saveCollection(col);
+      console.log("[ensure_owner_rules] " + name + ": an update can no longer change the owner");
+    } catch (err) {
+      console.warn("[ensure_owner_rules] could not save " + name + ": " + err);
+    }
   }
 });

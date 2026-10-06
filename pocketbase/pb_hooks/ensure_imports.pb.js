@@ -204,9 +204,15 @@ onAfterBootstrap((e) => {
       jobFields++;
     }
   }
+  // A failed save must not stop PocketBase from booting: warn and carry on,
+  // same as ensure_superuser (bughunt X11).
   if (jobFields) {
-    dao.saveCollection(jobs);
-    console.log("[ensure_imports] updated " + jobFields + " import_jobs field(s)");
+    try {
+      dao.saveCollection(jobs);
+      console.log("[ensure_imports] updated " + jobFields + " import_jobs field(s)");
+    } catch (err) {
+      console.warn("[ensure_imports] could not save import_jobs: " + err);
+    }
   }
 
   let itemFields = 0;
@@ -221,8 +227,12 @@ onAfterBootstrap((e) => {
     itemFields++;
   }
   if (itemFields) {
-    dao.saveCollection(itemsColl);
-    console.log("[ensure_imports] updated " + itemFields + " import_items field(s)");
+    try {
+      dao.saveCollection(itemsColl);
+      console.log("[ensure_imports] updated " + itemFields + " import_items field(s)");
+    } catch (err) {
+      console.warn("[ensure_imports] could not save import_items: " + err);
+    }
   }
 
   let added = 0;
@@ -238,7 +248,11 @@ onAfterBootstrap((e) => {
     added++;
   }
   if (added) {
-    dao.saveCollection(playlists);
-    console.log("[ensure_imports] added " + added + " playlist field(s)");
+    try {
+      dao.saveCollection(playlists);
+      console.log("[ensure_imports] added " + added + " playlist field(s)");
+    } catch (err) {
+      console.warn("[ensure_imports] could not save the playlists collection: " + err);
+    }
   }
 });

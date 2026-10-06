@@ -142,13 +142,19 @@ onAfterBootstrap((e) => {
     { collection: "session_tracks", field: "added_by" },
     { collection: "session_commands", field: "issued_by" },
   ];
+  // A failed save must not stop PocketBase from booting: warn and carry on,
+  // same as ensure_superuser (bughunt X11).
   for (const o of OPTIONAL) {
     const col = find(o.collection);
     const field = col.schema.getFieldByName(o.field);
     if (!field || !field.required) continue;
     field.required = false;
-    dao.saveCollection(col);
-    console.log(`[ensure_sessions] ${o.collection}.${o.field} is optional now`);
+    try {
+      dao.saveCollection(col);
+      console.log(`[ensure_sessions] ${o.collection}.${o.field} is optional now`);
+    } catch (err) {
+      console.warn(`[ensure_sessions] could not save ${o.collection}: ` + err);
+    }
   }
 
   const HOST_OR_MEMBER = "host = @request.auth.id || session_members_via_session.user ?= @request.auth.id";
@@ -178,7 +184,11 @@ onAfterBootstrap((e) => {
     col.createRule = null;
     col.updateRule = null;
     col.deleteRule = null;
-    dao.saveCollection(col);
-    console.log(`[ensure_sessions] ${name}: server-written, readable by the carlist only`);
+    try {
+      dao.saveCollection(col);
+      console.log(`[ensure_sessions] ${name}: server-written, readable by the carlist only`);
+    } catch (err) {
+      console.warn(`[ensure_sessions] could not save ${name}: ` + err);
+    }
   }
 });
