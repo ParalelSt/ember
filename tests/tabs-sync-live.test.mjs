@@ -272,11 +272,29 @@ const PROBE = () => {
     }
     return out.sort((a, b) => a.tick - b.tick);
   };
+  /** Every position the page feeds AlphaTab as playback, with the audio
+   *  clock at that instant: the page's own estimate of the song time,
+   *  before AlphaTab draws anything. */
+  window.__feeds = [];
+  const watchFeeds = (api) => {
+    const out = api.player?.output;
+    if (!out || out.__watched) return;
+    const real = out.updatePosition.bind(out);
+    out.updatePosition = (ms) => {
+      const a = document.querySelector('audio');
+      if (a && !a.paused) window.__feeds.push({ tabMs: ms * (api.playbackSpeed || 1), t: a.currentTime, at: performance.now() });
+      if (window.__feeds.length > 4000) window.__feeds.splice(0, 1000);
+      return real(ms);
+    };
+    out.__watched = true;
+  };
   window.__syncSample = () => {
     const a = document.querySelector('audio');
     const s = { t: a ? a.currentTime : null, paused: a ? a.paused : null, rate: a ? a.playbackRate : null };
     const api = window.__syncApi();
     if (!api) return s;
+    watchFeeds(api);
+    s.feeds = window.__feeds.splice(0);
     s.tick = api.tickPosition;
     s.speed = api.playbackSpeed;
     const beat = api._currentBeat?.beat;
@@ -425,6 +443,7 @@ function analyse(label, { settleMs = 300 } = {}) {
     (s) => s.t !== null && s.t >= INTRO_S + 0.3 && s.tick !== undefined && !jumpsAt.some((j) => s.wall >= j && s.wall - j < settleMs),
   );
   const pos = kept.map((s) => toSong(tickMs(s.tick) - truth(s)));
+  const fed = kept.flatMap((s) => (s.feeds ?? []).filter((f) => f.t >= INTRO_S + 0.3).map((f) => toSong(f.tabMs - truthTabMs(f.t + s.delayMs / 1000))));
   const cur = kept.map(curErr);
   const curOk = cur.filter((x) => x !== null);
   let beatRight = 0;
@@ -452,6 +471,7 @@ function analyse(label, { settleMs = 300 } = {}) {
     kept: kept.length,
     jumps: jumpsAt.length - 1,
     settleMs: settle.length ? Math.max(...settle) : 0,
+    estimate: stats(fed),
     position: stats(pos),
     cursor: stats(curOk),
     driftMsPerMin: slopePerMin(kept.filter((_, i) => cur[i] !== null).map((s) => s.t), curOk),
@@ -461,7 +481,7 @@ function analyse(label, { settleMs = 300 } = {}) {
   report.scenarios[label] = out;
   console.log(
     `      ${label}: cursor lag mean ${out.cursor.mean} ms (|mean| ${out.cursor.meanAbs}, p95 ${out.cursor.p95}, max ${out.cursor.max}), ` +
-      `AlphaTab position mean ${out.position.mean} ms (max ${out.position.max}), drift ${out.driftMsPerMin} ms/min, ` +
+      `page estimate mean ${out.estimate.mean} ms (max ${out.estimate.max}), AlphaTab position mean ${out.position.mean} ms (max ${out.position.max}), drift ${out.driftMsPerMin} ms/min, ` +
       `beat right ${out.beatRight}%, pill bar right ${out.pillRight}%, back in line within ${out.settleMs} ms, ` +
       `${out.kept}/${out.samples} samples, ${out.jumps} jumps`,
   );
