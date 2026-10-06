@@ -78,7 +78,7 @@ function fakeEnv({ tag = null, head = 'h2' } = {}) {
     if (j.startsWith('rev-parse --verify')) { if (!state.tag) throw new Error('no'); return state.tag.commit; }
     if (j.startsWith('tag -l --format')) return state.tag.date;
     if (j === 'rev-parse HEAD~1') return 'h1';
-    if (a[0] === 'diff') return 'apps/web/a.ts';
+    if (a[0] === 'diff') return state.diff ?? 'apps/web/a.ts';
     if (a[0] === 'show' && a[1].endsWith('package.json')) return JSON.stringify({ version: '0.7.20' });
     if (a[0] === 'show') return NOTES;
     if (a[0] === 'tag' && a[1] === '--merged') return '';
@@ -116,4 +116,13 @@ test('run: before 19:00 does nothing', async () => {
   const f = fakeEnv({ tag: { commit: 'h1', date: '2026-10-05' } });
   assert.equal((await run({ ...f.deps, now: at('2026-10-06T10:00:00Z') })).pinged, false);
   assert.equal(f.state.posts.length, 0);
+});
+
+test('run: a change the host does not run (CI, docs) does not ping or move the tag', async () => {
+  const f = fakeEnv({ tag: { commit: 'h1', date: '2026-10-05' } });
+  f.state.diff = '.github/workflows/release-ping.yml\nREADME.md';
+  const r = await run({ ...f.deps, now: at('2026-10-06T17:05:00Z') });
+  assert.equal(r.pinged, false);
+  assert.equal(f.state.posts.length, 0);
+  assert.equal(f.state.tag.commit, 'h1');
 });

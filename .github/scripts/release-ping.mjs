@@ -105,6 +105,13 @@ export async function run(deps) {
   const atHead = tagsAt(head).sort((a, b) => cmp(bare(a), bare(b)));
   const appsVersion = atHead.length ? bare(atHead[atHead.length - 1]) : null;
 
+  // Nothing the host runs changed (CI, docs, tests): no ping, and no tag
+  // move either, so these commits ride along with the next real change.
+  if (!changed.some((p) => NEEDS_UPDATE.test(p))) {
+    log('nothing for the host to update');
+    return { pinged: false, reason: 'nothing for the host' };
+  }
+
   const text = buildMessage({
     userId, webVersion, appsVersion, changedPaths: changed,
     notesExtra: extraNotes(show(head, 'UPDATE_NOTES.md'), sinceVersion),
