@@ -20,39 +20,41 @@ export interface StageHeaderProps {
   chip?: ReactNode;
   /** The ⋯ menu. */
   actions?: ReactNode;
+  /** A second row under the title (a phone's choose buttons). */
+  below?: ReactNode;
   onBack: () => void;
 }
 
 /** Back, the title over the meta line, the chip and the ⋯ menu, in one
  *  line. */
-export function StageHeader({ title, meta, metaTitle, dim, chip, actions, onBack }: StageHeaderProps) {
+export function StageHeader({ title, meta, metaTitle, dim, chip, actions, below, onBack }: StageHeaderProps) {
   return (
     <div
       data-testid="tab-stage-header"
       data-dim={dim || undefined}
-      className={cn(
-        'flex min-w-0 items-center gap-cluster py-cluster transition-opacity duration-300',
-        dim && 'opacity-40 hover:opacity-100 focus-within:opacity-100',
-      )}
+      className={cn('transition-opacity duration-300', dim && 'opacity-40 hover:opacity-100 focus-within:opacity-100')}
     >
-      <button
-        type="button"
-        aria-label="Back"
-        onClick={onBack}
-        className="grid size-9 shrink-0 place-items-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-      >
-        <ChevronLeftIcon className="size-5" />
-      </button>
-      <div className="min-w-0 flex-1">
-        <h1 className="truncate text-sm font-semibold leading-tight" title={title}>
-          {title}
-        </h1>
-        <p data-testid="tab-stage-meta" className="truncate text-xs text-muted-foreground" title={metaTitle ?? meta}>
-          {meta}
-        </p>
+      <div className="flex min-w-0 items-center gap-cluster py-cluster">
+        <button
+          type="button"
+          aria-label="Back"
+          onClick={onBack}
+          className="grid size-9 shrink-0 place-items-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+        >
+          <ChevronLeftIcon className="size-5" />
+        </button>
+        <div className="min-w-0 flex-1">
+          <h1 className="truncate text-sm font-semibold leading-tight" title={title}>
+            {title}
+          </h1>
+          <p data-testid="tab-stage-meta" className="truncate text-xs text-muted-foreground" title={metaTitle ?? meta}>
+            {meta}
+          </p>
+        </div>
+        {chip && <div className="flex min-w-0 shrink items-center gap-cluster">{chip}</div>}
+        {actions && <div className="flex shrink-0 items-center">{actions}</div>}
       </div>
-      {chip && <div className="flex min-w-0 shrink items-center gap-cluster">{chip}</div>}
-      {actions && <div className="flex shrink-0 items-center">{actions}</div>}
+      {below && <div className="pb-cluster">{below}</div>}
     </div>
   );
 }

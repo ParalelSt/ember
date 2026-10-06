@@ -1,14 +1,14 @@
 import { describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, within } from '@testing-library/react';
-import type { TabSheetRow } from '@/lib/tabPick';
+import type { InstrumentChoice, VersionChoice } from '@/lib/tabChoose';
 import { TabSourceSheet } from './TabSourceSheet';
 
-/** The Source sheet: what each kind of source
- *  looks like, what it says about the alignment, which actions a row
- *  offers, and the side sheet against the bottom sheet. Rows come in ready
- *  made (lib/tabPick.test.ts covers how they are worked out). */
+/** The sheet that chooses a tab, instrument first: the tiles, the list of
+ *  the chosen instrument's versions, what each row says and offers, and the
+ *  side sheet against the bottom sheet. Tiles and rows come in ready made
+ *  (lib/tabChoose.test.ts covers how they are worked out). */
 
-function row(over: Partial<TabSheetRow> & { id: string }): TabSheetRow {
+function version(over: Partial<VersionChoice> & { id: string }): VersionChoice {
   return {
     group: 'server',
     groupLabel: 'On this server',
@@ -25,36 +25,44 @@ function row(over: Partial<TabSheetRow> & { id: string }): TabSheetRow {
     canDelete: false,
     canLineUp: true,
     aligning: false,
+    rank: 1,
+    track: 0,
+    source: 'File',
     ...over,
   };
 }
 
-const SONGSTERR = row({
+const SONGSTERR = version({
   id: 's',
   group: 'songsterr',
   groupLabel: 'Songsterr',
   type: 'Tab with rhythm',
-  instruments: ['Rhythm Guitar', 'Lead Guitar', 'Bass'],
+  instruments: ['Rhythm Guitar', 'Bass'],
   confidence: 94,
   linedUp: true,
   status: 'Lined up 94%',
-  badge: 'Best match',
   addedBy: null,
   drawn: true,
+  source: 'Songsterr',
+  rank: 1,
+  track: 0,
 });
-
-const UG = row({
+const UG = version({
   id: 'u',
   group: 'ug',
   groupLabel: 'Ultimate Guitar',
   type: 'Text tab',
   name: 'Copper Sky (ver 2)',
   rating: '★ 4.8 (1,204 votes)',
-  instruments: ['Guitar'],
-  confidence: 41,
-  status: 'Not lined up yet',
   addedBy: null,
+  source: 'Ultimate Guitar',
+  rank: 2,
 });
+const INSTRUMENTS: InstrumentChoice[] = [
+  { name: 'Rhythm Guitar', key: 'rhythm guitar', count: 2 },
+  { name: 'Bass', key: 'bass', count: 1 },
+  { name: 'Drums', key: 'drums', count: 1 },
+];
 
 function sheet(over: Partial<Parameters<typeof TabSourceSheet>[0]> = {}) {
   const props = {
@@ -62,7 +70,11 @@ function sheet(over: Partial<Parameters<typeof TabSourceSheet>[0]> = {}) {
     phone: false,
     title: 'Copper Sky',
     artist: 'Coastline',
-    rows: [SONGSTERR, UG],
+    instruments: INSTRUMENTS,
+    instrument: 'rhythm guitar',
+    onInstrument: vi.fn(),
+    versions: [SONGSTERR, UG],
+    current: { id: 's', track: 0 },
     onPick: vi.fn(),
     onClose: vi.fn(),
     ...over,
@@ -71,106 +83,106 @@ function sheet(over: Partial<Parameters<typeof TabSourceSheet>[0]> = {}) {
   return props;
 }
 
-describe('TabSourceSheet', () => {
+describe('TabSourceSheet, instrument first', () => {
   it('draws nothing until it is opened', () => {
     sheet({ open: false });
     expect(screen.queryByTestId('tab-source-sheet')).toBeNull();
   });
 
   it('is a side sheet on desktop and a bottom sheet on phone', () => {
-    const { unmount } = render(
-      <TabSourceSheet open phone={false} title="Copper Sky" artist="Coastline" rows={[SONGSTERR]} onPick={vi.fn()} onClose={vi.fn()} />,
-    );
-    expect(screen.getByTestId('tab-source-sheet').tagName).toBe('ASIDE');
-    unmount();
-    render(
-      <TabSourceSheet open phone title="Copper Sky" artist="Coastline" rows={[SONGSTERR]} onPick={vi.fn()} onClose={vi.fn()} />,
-    );
-    expect(screen.getByTestId('tab-source-sheet').dataset.phone).toBe('true');
+    sheet();
+    expect(screen.getByTestId('tab-source-sheet')).toHaveAttribute('data-phone', 'false');
     expect(screen.getByRole('dialog', { name: 'Choose a tab' })).toBeInTheDocument();
   });
 
-  it('lists every source under its site, with the type, rating, instruments and how it lines up', () => {
-    sheet();
-    expect(screen.getByText('Songsterr')).toBeInTheDocument();
-    expect(screen.getByText('Ultimate Guitar')).toBeInTheDocument();
-    expect(screen.getByText('2 tabs, 2 found online')).toBeInTheDocument();
-    const rows = screen.getAllByTestId('tab-source-row');
-    expect(rows.map((r) => r.dataset.tabId)).toEqual(['s', 'u']);
-    expect(rows[0]).toHaveTextContent('Tab with rhythm');
-    expect(rows[0]).toHaveTextContent('Lined up 94%');
-    expect(rows[0]).toHaveTextContent('Best match');
-    expect(rows[0]).toHaveTextContent('Rhythm Guitar');
-    expect(within(rows[0]).getByRole('radio')).toHaveAttribute('aria-checked', 'true');
-    expect(rows[1]).toHaveTextContent('★ 4.8 (1,204 votes)');
-    expect(rows[1]).toHaveTextContent('Not lined up yet');
-    expect(within(rows[1]).getByRole('radio')).toHaveAttribute('aria-checked', 'false');
-  });
-
-  it('names who added a tab on this server', () => {
-    sheet({ rows: [row({ id: 'p', type: 'Pasted text tab', addedBy: 'pasted by you' })] });
-    expect(screen.getByTestId('tab-source-row')).toHaveTextContent('pasted by you');
-    expect(screen.getByText('1 tab, 0 found online')).toBeInTheDocument();
-  });
-
-  it('choosing a source hands its id back, and the close button closes', () => {
-    const p = sheet();
-    fireEvent.click(within(screen.getAllByTestId('tab-source-row')[1]).getByRole('radio'));
-    expect(p.onPick).toHaveBeenCalledWith('u');
+  it('on a phone the bar above it closes it', () => {
+    const p = sheet({ phone: true });
+    expect(screen.getByTestId('tab-source-sheet')).toHaveAttribute('data-phone', 'true');
     fireEvent.click(screen.getAllByRole('button', { name: 'Close the tab list' })[0]);
     expect(p.onClose).toHaveBeenCalled();
   });
 
-  it('offers Line it up on a row, and says so while the job runs', () => {
+  it('asks the instrument first: a tile each, with how many versions, the one listed pressed', () => {
+    const p = sheet();
+    expect(screen.getByText('What do you want to play?')).toBeInTheDocument();
+    const tiles = screen.getAllByTestId('tab-instrument-tile');
+    expect(tiles.map((t) => t.textContent)).toEqual(['Rhythm Guitar2 versions', 'Bass1 version', 'Drums1 version']);
+    expect(tiles[0]).toHaveAttribute('aria-pressed', 'true');
+    fireEvent.click(tiles[1]);
+    expect(p.onInstrument).toHaveBeenCalledWith('bass');
+  });
+
+  it('then that instrument’s versions, best first: rank, name, where from, how well lined up', () => {
+    sheet();
+    expect(screen.getByText('Rhythm Guitar, best first')).toBeInTheDocument();
+    const rows = screen.getAllByTestId('tab-source-row');
+    expect(rows).toHaveLength(2);
+    expect(rows[0]).toHaveTextContent('1');
+    expect(rows[0]).toHaveTextContent('Best match');
+    expect(rows[0]).toHaveTextContent('Songsterr · Tab with rhythm');
+    expect(within(rows[0]).getByTestId('tab-source-status')).toHaveTextContent('Lined up 94%');
+    expect(rows[1]).toHaveTextContent('Ultimate Guitar · Text tab · ★ 4.8 (1,204 votes)');
+    expect(rows[1]).not.toHaveTextContent('Best match');
+    expect(within(rows[1]).getByTestId('tab-source-status')).toHaveTextContent('Not lined up yet');
+  });
+
+  it('the version on screen is the checked one; a tap picks a version with its track', () => {
+    const p = sheet({ versions: [SONGSTERR, { ...UG, track: 1 }] });
+    const radios = screen.getAllByRole('radio');
+    expect(radios[0]).toHaveAttribute('aria-checked', 'true');
+    expect(radios[1]).toHaveAttribute('aria-checked', 'false');
+    fireEvent.click(radios[1]);
+    expect(p.onPick).toHaveBeenCalledWith('u', 1);
+  });
+
+  it('the same tab on another instrument is not the checked one', () => {
+    sheet({ current: { id: 's', track: 1 } });
+    expect(screen.getAllByRole('radio')[0]).toHaveAttribute('aria-checked', 'false');
+  });
+
+  it('one version: no Best match badge', () => {
+    sheet({ versions: [SONGSTERR] });
+    expect(screen.queryByText('Best match')).toBeNull();
+  });
+
+  it('a version the listener picked says so', () => {
+    sheet({ versions: [{ ...SONGSTERR, badge: 'Your pick' }] });
+    expect(screen.getByText('Your pick')).toBeInTheDocument();
+  });
+
+  it('Line it up and Delete on the rows that allow them', () => {
     const onLineUp = vi.fn();
-    sheet({ rows: [UG, row({ id: 'busy', aligning: true, status: 'Lining it up…' })], onLineUp });
-    fireEvent.click(within(screen.getAllByTestId('tab-source-row')[0]).getByRole('button', { name: 'Line it up' }));
-    expect(onLineUp).toHaveBeenCalledWith('u');
-    const busy = screen.getAllByTestId('tab-source-row')[1];
-    expect(within(busy).getByRole('button', { name: 'Lining it up…' })).toBeDisabled();
-  });
-
-  it('never offers Line it up on a row that has no tab to line up', () => {
-    sheet({ rows: [row({ id: 'generated:upload:1', canLineUp: false })], onLineUp: vi.fn() });
-    expect(screen.queryByRole('button', { name: 'Line it up' })).toBeNull();
-  });
-
-  it('offers Delete only on the rows that allow it', () => {
     const onDelete = vi.fn();
-    sheet({ rows: [row({ id: 'mine', canDelete: true }), row({ id: 'theirs', canDelete: false })], onDelete });
-    expect(screen.getAllByRole('button', { name: 'Delete' })).toHaveLength(1);
-    fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
-    expect(onDelete).toHaveBeenCalledWith('mine');
+    sheet({ versions: [SONGSTERR, { ...UG, canDelete: true, aligning: true, status: 'Lining it up…' }], onLineUp, onDelete });
+    const rows = screen.getAllByTestId('tab-source-row');
+    fireEvent.click(within(rows[0]).getByRole('button', { name: 'Line it up' }));
+    expect(onLineUp).toHaveBeenCalledWith('s');
+    expect(within(rows[0]).queryByRole('button', { name: 'Delete' })).toBeNull();
+    expect(within(rows[1]).getByRole('button', { name: 'Lining it up…' })).toBeDisabled();
+    fireEvent.click(within(rows[1]).getByRole('button', { name: 'Delete' }));
+    expect(onDelete).toHaveBeenCalledWith('u');
   });
 
-  it('shows no actions at all when the page hands none over', () => {
-    sheet({ rows: [row({ id: 'mine', canDelete: true })] });
-    expect(screen.queryByRole('button', { name: 'Delete' })).toBeNull();
-    expect(screen.queryByRole('button', { name: 'Line it up' })).toBeNull();
-  });
-
-  it('says it is looking while Ember searches, with nothing to list yet', () => {
-    sheet({ rows: [], searching: true });
-    expect(screen.getByText('Looking online…')).toBeInTheDocument();
-    expect(screen.getByTestId('tab-source-checks')).toHaveTextContent('Songsterr');
-    expect(screen.queryByTestId('tab-source-row')).toBeNull();
-  });
-
-  it('says so calmly when there is nothing to list', () => {
-    sheet({ rows: [], emptyNote: 'Ember found nothing online for this song yet.' });
-    expect(screen.getAllByText('Ember found nothing online for this song yet.').length).toBeGreaterThan(0);
-  });
-
-  it('puts the page’s own actions under the list', () => {
-    const search = vi.fn();
+  it('the buttons under the list: Search online again and Add a file', () => {
+    const add = vi.fn();
     sheet({
       actions: [
-        { id: 'search', label: 'Search online again', onClick: search },
-        { id: 'add', label: 'Adding…', onClick: vi.fn(), disabled: true },
+        { id: 'search-again', label: 'Search online again', onClick: vi.fn() },
+        { id: 'add-file', label: 'Add a file', onClick: add },
       ],
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Search online again' }));
-    expect(search).toHaveBeenCalled();
-    expect(screen.getByRole('button', { name: 'Adding…' })).toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name: 'Add a file' }));
+    expect(add).toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: 'Search online again' })).toBeInTheDocument();
+  });
+
+  it('while Ember looks online: the sites it checks and placeholders', () => {
+    sheet({ instruments: [], versions: [], instrument: null, searching: true });
+    expect(screen.getByTestId('tab-source-checks')).toHaveTextContent('Songsterr');
+  });
+
+  it('nothing at all: the note says so', () => {
+    sheet({ instruments: [], versions: [], instrument: null, emptyNote: 'Ember found nothing online for this song yet.' });
+    expect(screen.getByText('Ember found nothing online for this song yet.')).toBeInTheDocument();
   });
 });

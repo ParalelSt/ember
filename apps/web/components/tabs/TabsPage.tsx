@@ -21,9 +21,9 @@ import {
 import { EmptyState } from '@/components/page/EmptyState';
 import { usePlayer } from '@/components/player/PlayerProvider';
 import { LiveTabScore } from '@/components/tabs/LiveTabScore';
-import { TabSheetHeader, TabSourceChip } from '@/components/tabs/TabSheetHeader';
+import { TabSheetHeader } from '@/components/tabs/TabSheetHeader';
 import { NoTab, openLink } from '@/components/tabs/TabEmpty';
-import { TabSourceSheet, type TabSheetAction } from '@/components/tabs/TabSourceSheet';
+import { InstrumentIcon, TabSourceSheet, type TabSheetAction } from '@/components/tabs/TabSourceSheet';
 import { chip, chipOff, chipOn } from '@/components/tabs/chips';
 import { PlayPill, StageHeader } from '@/components/tabs/TabStage';
 import {
@@ -52,8 +52,9 @@ import { useTabAlignment, useTabSong, useTabSources, type TabSong, type TabSourc
 import { useSettingsStore } from '@/stores/useSettingsStore';
 import { cn } from '@/lib/utils';
 import { metaLine, scoreScale, type ScoreInfo, type TabsScroll, type TabsStaff } from '@/lib/tabScore';
-import { followTrackChange, sourceChipLabel, type TabSummary } from '@/lib/tabSources';
-import { chooseTab, confidencePercent, loadPick, savePick, sheetRows } from '@/lib/tabPick';
+import { followTrackChange, sourceChipLabel } from '@/lib/tabSources';
+import { chooseTab, confidencePercent, loadPick, savePick } from '@/lib/tabPick';
+import { instrumentChoices, instrumentKey, tabParts, versionLabel, versionsFor } from '@/lib/tabChoose';
 import {
   clampOffset,
   isLinedUp,
@@ -222,17 +223,15 @@ function TabsSheet({ song, sources, onBack }: { song: TabSong; sources: TabSourc
       return 0;
     }
   };
+  // Kept inside the drawn score's tracks; before the score is read, the
+  // choice stands (a version picked for its second instrument), and the
+  // score keeps it inside the file (lib/tabScore.ts trackIndexIn).
   const trackIndex = tab
     ? Math.min(
         trackChoice?.tabId === tab.id ? trackChoice.index : savedTrack(tab.id),
-        Math.max(0, (info?.tracks.length ?? 1) - 1),
+        info ? Math.max(0, info.tracks.length - 1) : Number.MAX_SAFE_INTEGER,
       )
     : 0;
-  const setTrack = (index: number) => {
-    if (!tab) return;
-    setTrackChoice({ tabId: tab.id, index });
-    writePref(trackKey(tab.id), String(index));
-  };
 
   // The sync nudge: this device's own if it has one, else the tab's shared one.
   const [localOffset, setLocalOffset] = useState<{ id: string; ms: number | null } | null>(null);
@@ -386,10 +385,31 @@ function TabsSheet({ song, sources, onBack }: { song: TabSong; sources: TabSourc
     sources.remove(id);
   };
 
-  // The Source sheet (candidate B): every tab
-  // for the song in rank order, with what it is, how well it matched the
-  // recording, and the actions that apply to it.
-  const rows = sheetRows(sources.tabs, { chosenId, aligning: sources.liningUp });
+  // Choosing a tab, instrument first (lib/tabChoose.ts): the parts the
+  // song's tabs hold (the drawn score's own track names for the tab on
+  // screen), and the versions of the one shown, best match first.
+  const rankOpts = { chosenId, aligning: sources.liningUp };
+  const drawnParts = tab && info ? { tabId: tab.id, tracks: info.tracks.map((t) => t.name || t.instrument) } : null;
+  const parts = tab ? tabParts(tab, drawnParts) : [];
+  const currentPart = parts[Math.min(trackIndex, parts.length - 1)] ?? null;
+  const instruments = instrumentChoices(sources.tabs, drawnParts, rankOpts);
+  const currentVersions = currentPart ? versionsFor(sources.tabs, currentPart, drawnParts, rankOpts) : [];
+  // The instrument the sheet lists: the one tapped there, else the one
+  // shown.
+  const [sheetInstrument, setSheetInstrument] = useState<string | null>(null);
+  const wanted = sheetInstrument ?? (currentPart ? instrumentKey(currentPart) : null);
+  const listed = instruments.find((i) => i.key === wanted)?.key ?? instruments[0]?.key ?? null;
+  const versions = listed ? versionsFor(sources.tabs, listed, drawnParts, rankOpts) : [];
+  const openSheet = () => {
+    setSheetInstrument(null);
+    setSheetOpen((v) => !v);
+  };
+  const choose = (id: string, track: number) => {
+    pick(id);
+    setTrackChoice({ tabId: id, index: track });
+    writePref(trackKey(id), String(track));
+    setSheetOpen(false);
+  };
   const sheetActions: TabSheetAction[] = [
     {
       id: 'search-again',
@@ -431,7 +451,6 @@ function TabsSheet({ song, sources, onBack }: { song: TabSong; sources: TabSourc
       document.removeEventListener('keydown', esc);
     };
   }, [openTool]);
-  const tracks = info?.tracks ?? [];
 
   const actions = (
     <DropdownMenu>
@@ -466,12 +485,6 @@ function TabsSheet({ song, sources, onBack }: { song: TabSong; sources: TabSourc
               label={scroll === 'vertical' ? 'Scroll sideways' : 'Scroll down the page'}
               onClick={() => setScroll(scroll === 'vertical' ? 'horizontal' : 'vertical')}
             />
-            {tracks.length > 1 &&
-              tracks.map((t, i) =>
-                i === trackIndex ? null : (
-                  <MenuItem key={`${i}:${t.name}`} label={`Show the ${t.name || t.instrument} part`} onClick={() => setTrack(i)} />
-                ),
-              )}
           </>
         )}
         <DropdownMenuSeparator />
@@ -492,14 +505,38 @@ function TabsSheet({ song, sources, onBack }: { song: TabSong; sources: TabSourc
     </DropdownMenu>
   );
 
-  const chipNode = tab ? (
-    <>
-      <SourceChip
-        tab={tab}
-        instrument={info?.tracks[trackIndex]?.name}
-        open={sheetOpen}
-        onOpen={() => setSheetOpen((v) => !v)}
-      />
+  // What you play and which version, under the title (pick 4): both open
+  // the sheet. Line it up beside them when the tab is not lined up yet.
+  const linedPct = tab && isLinedUp(tab.timing) ? confidencePercent(tab) : null;
+  const chooseNode = tab ? (
+    <div data-testid="tab-choose" className="flex min-w-0 items-center gap-cluster">
+      <button
+        type="button"
+        data-testid="tab-instrument"
+        aria-label={`What you play: ${currentPart ?? 'Guitar'}`}
+        aria-haspopup="dialog"
+        aria-expanded={sheetOpen}
+        onClick={openSheet}
+        className={cn(PICK_BUTTON, 'font-semibold text-foreground')}
+      >
+        <InstrumentIcon name={currentPart ?? ''} className="size-4 shrink-0" />
+        <span className="min-w-0 truncate">{currentPart ?? 'Guitar'}</span>
+        <ChevronDownIcon className="size-3 shrink-0" />
+      </button>
+      <button
+        type="button"
+        data-testid="tab-source-chip"
+        aria-label="Choose a tab"
+        aria-haspopup="dialog"
+        aria-expanded={sheetOpen}
+        onClick={openSheet}
+        title={sourceChipLabel(tab, currentPart ?? undefined)}
+        className={cn(PICK_BUTTON, 'text-muted-foreground')}
+      >
+        <span className="min-w-0 truncate">{versionLabel(currentVersions, tab)}</span>
+        {linedPct !== null && <span className="shrink-0 tabular-nums text-ember">{linedPct}%</span>}
+        <ChevronDownIcon className="size-3 shrink-0" />
+      </button>
       {tab.kind === 'fetched' && !timing && (
         <button
           type="button"
@@ -512,7 +549,7 @@ function TabsSheet({ song, sources, onBack }: { song: TabSong; sources: TabSourc
           {align.running ? 'Lining it up…' : 'Line it up'}
         </button>
       )}
-    </>
+    </div>
   ) : null;
 
   const statusLines = (
@@ -684,7 +721,8 @@ function TabsSheet({ song, sources, onBack }: { song: TabSong; sources: TabSourc
               meta={stageMeta(song.artist, info, trackIndex, speed)}
               metaTitle={meta}
               dim={follows && isPlaying && !sheetOpen && !openTool}
-              chip={chipNode}
+              chip={phone ? undefined : chooseNode}
+              below={phone ? chooseNode : undefined}
               actions={actions}
               onBack={onBack}
             />
@@ -804,13 +842,14 @@ function TabsSheet({ song, sources, onBack }: { song: TabSong; sources: TabSourc
         phone={phone}
         title={song.title}
         artist={song.artist}
-        rows={rows}
-        searching={sources.searchingOnline && rows.length === 0}
+        instruments={instruments}
+        instrument={listed}
+        onInstrument={setSheetInstrument}
+        versions={versions}
+        current={tab ? { id: tab.id, track: trackIndex } : null}
+        searching={sources.searchingOnline && sources.tabs.length === 0}
         emptyNote="Ember found nothing online for this song yet."
-        onPick={(id) => {
-          pick(id);
-          setSheetOpen(false);
-        }}
+        onPick={choose}
         onClose={() => setSheetOpen(false)}
         onLineUp={sources.lineUp}
         onDelete={removeTab}
@@ -823,6 +862,10 @@ function TabsSheet({ song, sources, onBack }: { song: TabSong; sources: TabSourc
 /** The tab page's menus never run off the screen: at most the
  *  viewport less a margin, whatever the trigger's width. */
 const MENU_CLASS = 'w-max min-w-56 max-w-[calc(100vw-2rem)]';
+
+/** The two buttons under the title: what you play, which version. */
+const PICK_BUTTON =
+  'inline-flex min-w-0 max-w-full items-center gap-inset rounded-lg border border-border px-cluster py-inset text-xs transition-colors hover:bg-muted';
 
 /** One line of a menu: cut with an ellipsis when too long, whole in the
  *  tooltip. */
@@ -841,42 +884,5 @@ function MenuItem({
     <DropdownMenuItem title={label} disabled={disabled} onClick={onClick} className={cn('min-w-0', className)}>
       <span className="min-w-0 truncate">{label}</span>
     </DropdownMenuItem>
-  );
-}
-
-/** "File added by Aron, shared", "Text tab pasted by Aron, shared" or
- *  "From Songsterr, Rhythm Guitar, lined up", with how sure the alignment
- *  is when there is one. Clicking it opens the Source sheet: every tab for
- *  the song. */
-function SourceChip({
-  tab,
-  instrument,
-  open,
-  onOpen,
-}: {
-  tab: TabSummary;
-  /** The staff on screen, named on the chip of a tab that holds several. */
-  instrument?: string;
-  open: boolean;
-  onOpen: () => void;
-}) {
-  const label = sourceChipLabel(tab, instrument);
-  const pct = isLinedUp(tab.timing) ? confidencePercent(tab) : null;
-  return (
-    <TabSourceChip label={label}>
-      <button
-        type="button"
-        aria-label="Choose a tab"
-        aria-haspopup="dialog"
-        aria-expanded={open}
-        onClick={onOpen}
-        title={label}
-        className="inline-flex min-w-0 max-w-full items-center gap-inset hover:text-foreground"
-      >
-        <span className="min-w-0 truncate">{label}</span>
-        {pct !== null && <span className="shrink-0 tabular-nums text-ember">{pct}%</span>}
-        <ChevronDownIcon className="size-3 shrink-0" />
-      </button>
-    </TabSourceChip>
   );
 }

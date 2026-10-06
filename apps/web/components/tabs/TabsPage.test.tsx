@@ -175,7 +175,8 @@ describe('TabsPage source selection', () => {
     });
     wrap(<TabsPage trackId="upload:song1" />);
     expect(await screen.findByTestId('tab-score')).toHaveAttribute('data-url', '/api/tabs/files/f1/download');
-    expect(screen.getByTestId('tab-source-chip')).toHaveTextContent('File added by Mira, shared');
+    expect(screen.getByTestId('tab-source-chip')).toHaveTextContent('File · 1 of 1');
+    expect(screen.getByTestId('tab-source-chip')).toHaveAttribute('title', 'File added by Mira, shared');
     expect(screen.getByRole('heading', { name: 'Copper Sky' })).toBeInTheDocument();
     // The chip opens the Source sheet, which lists the file alone.
     fireEvent.click(screen.getByRole('button', { name: 'Choose a tab' }));
@@ -203,7 +204,8 @@ describe('TabsPage source selection', () => {
     api.getTrackTabs.mockResolvedValue({ tabs: [tab({ id: 'g1', kind: 'generated' as never }), tab({})] });
     wrap(<TabsPage trackId="upload:song1" />);
     expect(await screen.findByTestId('tab-score')).toHaveAttribute('data-url', '/api/tabs/files/f1/download');
-    expect(screen.getByTestId('tab-source-chip')).toHaveTextContent('File added by Mira, shared');
+    expect(screen.getByTestId('tab-source-chip')).toHaveTextContent('File · 1 of 1');
+    expect(screen.getByTestId('tab-source-chip')).toHaveAttribute('title', 'File added by Mira, shared');
   });
 
   it('uses the tab’s shared offset, and this device’s nudge over it', async () => {
@@ -955,7 +957,9 @@ describe('TabsPage toolbar and layout', () => {
     const meta = screen.getByTestId('tab-stage-meta');
     expect(meta).toHaveTextContent('Coastline · Guitar · 100%');
     expect(meta).toHaveAttribute('title', 'Coastline · 96 bpm · D minor · Distortion guitar, Drop D (D A D G B E)');
-    fireEvent.click(screen.getByRole('menuitem', { name: 'Show the Bass part' }));
+    fireEvent.click(screen.getByRole('button', { name: 'What you play: Guitar' }));
+    fireEvent.click(screen.getByRole('button', { name: /^Bass/ }));
+    fireEvent.click(within(screen.getByTestId('tab-source-row')).getByRole('radio'));
     expect(screen.getByTestId('tab-score')).toHaveAttribute('data-track', '1');
     expect(screen.getByTestId('tab-stage-meta')).toHaveTextContent('Coastline · Bass · 100%');
   });
@@ -1131,6 +1135,93 @@ describe('TabsPage and the player', () => {
   });
 });
 
+describe('TabsPage choosing a tab, instrument first', () => {
+  const ssTab = (id: string, instruments: string[], confidence?: number) =>
+    tab({
+      id,
+      kind: 'fetched',
+      addedBy: null,
+      downloadUrl: `/api/tabs/files/${id}/download`,
+      source: { site: 'songsterr', siteLabel: 'Songsterr', url: 'https://www.songsterr.com/a/7', part: 'multi', instruments, version: 1, rating: null, votes: null },
+      ...(confidence === undefined ? {} : { timing: { offsetMs: 0, bpm: 120, confidence, bars: [] } }),
+    });
+
+  it('two buttons under the title: what you play, and which version of how many', async () => {
+    api.getTrackTabs.mockResolvedValue({
+      tabs: [ssTab('s1', ['Rhythm Guitar', 'Bass'], 0.94), ssTab('s2', ['Rhythm Guitar']), tab({ id: 'f1', instrument: 'Bass' })],
+    });
+    wrap(<TabsPage trackId="upload:song1" />);
+    await screen.findByTestId('tab-score');
+    expect(screen.getByTestId('tab-instrument')).toHaveTextContent('Rhythm Guitar');
+    expect(screen.getByTestId('tab-source-chip')).toHaveTextContent('Songsterr · 1 of 294%');
+    expect(screen.getByTestId('tab-source-chip')).toHaveAttribute('title', 'From Songsterr, Rhythm Guitar, lined up');
+  });
+
+  it('the sheet asks the instrument first, lists its versions best first, and a version opens on that instrument', async () => {
+    api.getTrackTabs.mockResolvedValue({
+      tabs: [ssTab('s1', ['Rhythm Guitar', 'Bass'], 0.94), ssTab('s2', ['Rhythm Guitar']), tab({ id: 'f1', instrument: 'Bass' })],
+    });
+    wrap(<TabsPage trackId="upload:song1" />);
+    await screen.findByTestId('tab-score');
+    fireEvent.click(screen.getByTestId('tab-instrument'));
+    const sheet = screen.getByTestId('tab-source-sheet');
+    const tiles = within(sheet).getAllByTestId('tab-instrument-tile');
+    expect(tiles.map((t) => t.textContent)).toEqual(['Rhythm Guitar2 versions', 'Bass2 versions']);
+    expect(tiles[0]).toHaveAttribute('aria-pressed', 'true');
+    expect(within(sheet).getAllByTestId('tab-source-row').map((r) => r.getAttribute('data-tab-id'))).toEqual(['s1', 's2']);
+    // Bass: the lined-up Songsterr tab first, then the file.
+    fireEvent.click(tiles[1]);
+    const rows = within(sheet).getAllByTestId('tab-source-row');
+    expect(rows.map((r) => r.getAttribute('data-tab-id'))).toEqual(['s1', 'f1']);
+    expect(rows[0]).toHaveTextContent('Best match');
+    // The drawn tab's bass is its second track.
+    fireEvent.click(within(rows[0]).getByRole('radio'));
+    expect(screen.queryByTestId('tab-source-sheet')).toBeNull();
+    expect(screen.getByTestId('tab-score')).toHaveAttribute('data-track', '1');
+    expect(screen.getByTestId('tab-instrument')).toHaveTextContent('Bass');
+    expect(screen.getByTestId('tab-source-chip')).toHaveTextContent('Songsterr · 1 of 2');
+    expect(window.localStorage.getItem('ember.tab.track.s1')).toBe('1');
+    // Another version of the bass: that tab, its own bass track.
+    fireEvent.click(screen.getByTestId('tab-source-chip'));
+    fireEvent.click(within(screen.getAllByTestId('tab-source-row')[1]).getByRole('radio'));
+    await waitFor(() => expect(screen.getByTestId('tab-score')).toHaveAttribute('data-url', '/api/tabs/files/f1/download'));
+    expect(screen.getByTestId('tab-score')).toHaveAttribute('data-track', '0');
+    expect(window.localStorage.getItem('ember.tab.pick.upload:song1')).toBe('f1');
+  });
+
+  it('the drawn score’s own track names are the instruments of the tab on screen', async () => {
+    api.getTrackTabs.mockResolvedValue({ tabs: [tab({})] });
+    wrap(<TabsPage trackId="upload:song1" />);
+    await screen.findByTestId('tab-score');
+    expect(screen.getByTestId('tab-instrument')).toHaveTextContent('Guitar');
+    act(() =>
+      score.last!.onScore!({
+        tempo: 96,
+        signature: null,
+        key: null,
+        tracks: [
+          { index: 0, name: 'Lead', instrument: 'Guitar', tuning: '', strings: '', tab: true },
+          { index: 1, name: 'Drums', instrument: 'Drums', tuning: '', strings: '', tab: false },
+        ],
+      }),
+    );
+    expect(screen.getByTestId('tab-instrument')).toHaveTextContent('Lead');
+    fireEvent.click(screen.getByTestId('tab-instrument'));
+    expect(screen.getAllByTestId('tab-instrument-tile').map((t) => t.textContent)).toEqual(['Lead1 version', 'Drums1 version']);
+  });
+
+  it('on a phone the two buttons sit on their own line under the title', async () => {
+    phone = true;
+    api.getTrackTabs.mockResolvedValue({ tabs: [tab({})] });
+    wrap(<TabsPage trackId="upload:song1" />);
+    await screen.findByTestId('tab-score');
+    const header = screen.getByTestId('tab-stage-header');
+    const titleRow = within(header).getByRole('heading', { name: 'Copper Sky' }).parentElement!.parentElement!;
+    expect(titleRow).not.toContainElement(screen.getByTestId('tab-choose'));
+    expect(header).toContainElement(screen.getByTestId('tab-choose'));
+  });
+});
+
 describe('TabsPage looking online', () => {
   const fetched = tab({
     id: 'u1',
@@ -1163,7 +1254,8 @@ describe('TabsPage looking online', () => {
     expect(await screen.findByTestId('tabs-searching')).toHaveTextContent('Looking on Songsterr…');
     finish({ status: 'found', searchedAt: 'now', added: 1 });
     expect(await screen.findByTestId('tab-score')).toHaveAttribute('data-url', '/api/tabs/files/u1/download');
-    expect(screen.getByTestId('tab-source-chip')).toHaveTextContent('From Ultimate Guitar, not lined up yet');
+    expect(screen.getByTestId('tab-source-chip')).toHaveTextContent('Ultimate Guitar · 1 of 1');
+    expect(screen.getByTestId('tab-source-chip')).toHaveAttribute('title', 'From Ultimate Guitar, not lined up yet');
   });
 
   it('the Source sheet lists every tab with its type and rating, and a pick is remembered', async () => {

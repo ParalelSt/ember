@@ -144,7 +144,8 @@ function nameOf(tab: TabSummary): string {
   return version > 1 ? `${tab.title} (ver ${version})` : tab.title;
 }
 
-function instrumentsOf(tab: TabSummary): string[] {
+/** The instruments a tab holds, as its source names them. */
+export function instrumentsOf(tab: TabSummary): string[] {
   if (tab.kind === 'fetched' && tab.source?.site === 'songsterr') return tab.source.instruments ?? [];
   if (tab.kind === 'fetched') return [tab.source?.part === 'bass' ? 'Bass' : 'Guitar'];
   return tab.instrument ? [tab.instrument] : [];
