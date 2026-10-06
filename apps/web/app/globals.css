@@ -231,11 +231,13 @@
 /* The Copy to… bar (components/track/menus/CopySongsBar) sticks to the
    bottom of the page scroller while songs are being picked. Back to top
    floats at the same height on the right, so it steps up over the bar
-   instead of covering Copy to…: 16rem clears the phone bar, 12rem the
-   desktop one, each plus the safe-area inset the bars below it grow by. */
-body:has([data-copy-bar]) [data-back-to-top] { bottom: calc(16rem + var(--safe-bottom)); }
+   instead of covering Copy to…. Both are measured from the scroller's own
+   bottom edge (Back to top sits in the scroller's column, bughunt V12), so
+   the lift is the old one minus the player bar and nav under the column:
+   6.25rem clears the phone bar, 6rem the desktop one. */
+body:has([data-copy-bar]) [data-back-to-top] { bottom: 6.25rem; }
 @media (min-width: 48rem) {
-  body:has([data-copy-bar]) [data-back-to-top] { bottom: calc(12rem + var(--safe-bottom)); }
+  body:has([data-copy-bar]) [data-back-to-top] { bottom: 6rem; }
 }
 
 /* Marquee for overflowing titles (full-screen NowPlaying). Continuous

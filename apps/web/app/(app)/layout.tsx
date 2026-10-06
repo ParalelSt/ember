@@ -75,7 +75,7 @@ export default function AppShellLayout({ children }: { children: ReactNode }) {
             lyrics panel (--ember-lyrics-w), which runs the scroller's full
             height beside it. */}
         <div
-          className="flex-1 min-h-0 flex flex-col"
+          className="relative flex-1 min-h-0 flex flex-col"
           style={
             {
               ...(scrollerH ? { ['--ember-scroller-h' as string]: `${scrollerH}px` } : null),
@@ -103,13 +103,18 @@ export default function AppShellLayout({ children }: { children: ReactNode }) {
                 scroll by the bar's height. */}
             <div className="flex min-w-0 min-h-[calc(100%-var(--ember-topbar-h,0px))]">
               <main className="flex-1 min-w-0 p-page md:p-page-lg">
-                <div className="mx-auto max-w-(--content-max)">{children}</div>
+                {/* pb-section: room past the page's last row, so scrolled
+                    to the end nothing is left under Back to top. */}
+                <div className="mx-auto max-w-(--content-max) pb-section">{children}</div>
               </main>
               <LyricsPanel />
             </div>
           </div>
+          {/* Inside this `relative` column, so it floats a fixed step above
+              the scroller's own bottom edge whether or not the player bar
+              is showing (bughunt V12). */}
+          <BackToTop scrollRef={scrollerRef} />
         </div>
-        <BackToTop scrollRef={scrollerRef} />
         <PlayerBar />
         <MobileNav onSearchClick={() => setSearchOpen(true)} />
       </div>
