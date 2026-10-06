@@ -39,14 +39,19 @@
 // use (lib/tabStore.ts backfillTabRows), so the normalization lives in one
 // place (lib/songKey.ts) rather than a JS copy here.
 //
-// Rows are written only by the web app (admin client), so a record can never
-// disagree with what is on disk: createRule and updateRule stay null.
+// Rows are written and deleted only by the web app (admin client), so a record
+// can never disagree with what is on disk: createRule, updateRule and
+// deleteRule stay null. Deleting a row straight through /pb used to be allowed
+// for its uploader, and left the file behind (bughunt X10).
+//
+// A tab outlives the member who added it: shared tabs are for everyone, so
+// deleting the member only empties `user` (no cascade). Their private tabs
+// are removed, files and all, by the admin delete route (deletePrivateTabs).
 
 onAfterBootstrap((e) => {
   // Everything lives inside the handler: PocketBase runs each handler in an
   // isolated context, so top-level constants and functions are not visible.
   const LIST_RULE = '@request.auth.id != "" && (shared = true || user = @request.auth.id)';
-  const DELETE_RULE = '@request.auth.id != "" && (user = @request.auth.id || @request.auth.is_admin = true)';
 
   function createBase(dao) {
     let users, tracks;
@@ -65,14 +70,14 @@ onAfterBootstrap((e) => {
       viewRule: LIST_RULE,
       createRule: null,
       updateRule: null,
-      deleteRule: DELETE_RULE,
+      deleteRule: null,
       indexes: ["CREATE INDEX idx_tabs_user ON tabs (user)"],
       schema: [
         {
           name: "user",
           type: "relation",
           required: false,
-          options: { collectionId: users.id, maxSelect: 1, cascadeDelete: true },
+          options: { collectionId: users.id, maxSelect: 1, cascadeDelete: false },
         },
         {
           name: "track",
@@ -151,14 +156,18 @@ onAfterBootstrap((e) => {
     user.required = false;
     changed = true;
   }
+  if (user && user.options.cascadeDelete) {
+    user.options.cascadeDelete = false;
+    changed = true;
+  }
 
   // Rules come back from Go as string pointers (objects), so compare their
   // JSON form rather than the values themselves.
   const rule = (r) => (r === null || r === undefined ? null : JSON.parse(JSON.stringify(r)));
-  if (rule(tabs.listRule) !== LIST_RULE || rule(tabs.viewRule) !== LIST_RULE || rule(tabs.deleteRule) !== DELETE_RULE) {
+  if (rule(tabs.listRule) !== LIST_RULE || rule(tabs.viewRule) !== LIST_RULE || rule(tabs.deleteRule) !== null) {
     tabs.listRule = LIST_RULE;
     tabs.viewRule = LIST_RULE;
-    tabs.deleteRule = DELETE_RULE;
+    tabs.deleteRule = null;
     changed = true;
   }
 
