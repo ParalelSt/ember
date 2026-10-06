@@ -70,11 +70,11 @@ const A = makeTrack({ id: 'youtube:a', sourceId: 'a', streamUrl: '/s/a', duratio
 const B = makeTrack({ id: 'youtube:b', sourceId: 'b', streamUrl: '/s/b', durationSec: 200 });
 const C = makeTrack({ id: 'youtube:c', sourceId: 'c', streamUrl: '/s/c', durationSec: 200 });
 
-function Harness({ track = C }: { track?: Track }) {
+function Harness({ track = C, list = [A, B, C] }: { track?: Track; list?: Track[] }) {
   const { playTrack, next, prev } = usePlayer();
   return (
     <>
-      <button onClick={() => playTrack(track, [A, B, C], { type: 'album', id: 'x' } as never)}>play</button>
+      <button onClick={() => playTrack(track, list, { type: 'album', id: 'x' } as never)}>play</button>
       <button onClick={() => next()}>next</button>
       <button onClick={() => prev()}>prev</button>
     </>
@@ -88,6 +88,7 @@ beforeEach(() => {
   shell.kind = 'web';
   ev = null;
   delete (fake as { setQueue?: unknown }).setQueue;
+  delete (fake as { setRepeatOne?: unknown }).setRepeatOne;
   fake.currentTime = 0;
   fake.paused = true;
   usePlayerStore.setState({
@@ -152,6 +153,37 @@ describe.each(['web', 'tauri'] as const)('one load per track change (%s)', (kind
     expect(fake.load).not.toHaveBeenCalled();
     expect(fake.seek).toHaveBeenCalledWith(0);
     expect(fake.play).toHaveBeenCalledTimes(1);
+  });
+
+  it('loop-all over a single song repeats by seeking to 0, without a reload', () => {
+    render(<PlayerProvider><Harness track={A} list={[A]} /></PlayerProvider>);
+    fireEvent.click(screen.getByText('play'));
+    act(() => { usePlayerStore.setState({ loopMode: 'all', duration: 200, position: 200 }); });
+    fake.load.mockClear();
+    fake.play.mockClear();
+    fake.currentTime = 200;
+    act(() => { ev!.onEnded(); });
+    expect(fake.load).not.toHaveBeenCalled();
+    expect(fake.seek).toHaveBeenCalledWith(0);
+    expect(fake.play).toHaveBeenCalledTimes(1);
+  });
+
+  it('tells the engine to repeat the song itself under loop-one, or loop-all over one song', () => {
+    const setRepeatOne = vi.fn();
+    Object.assign(fake, { setRepeatOne });
+    render(<PlayerProvider><Harness track={A} /></PlayerProvider>);
+    fireEvent.click(screen.getByText('play'));
+    expect(setRepeatOne).toHaveBeenLastCalledWith(false);
+    act(() => { usePlayerStore.setState({ loopMode: 'one' }); });
+    expect(setRepeatOne).toHaveBeenLastCalledWith(true);
+    // Loop-all over three songs moves on.
+    act(() => { usePlayerStore.setState({ loopMode: 'all' }); });
+    expect(setRepeatOne).toHaveBeenLastCalledWith(false);
+    // Loop-all over one song is the same song again.
+    act(() => { usePlayerStore.setState({ queue: [A], index: 0 }); });
+    expect(setRepeatOne).toHaveBeenLastCalledWith(true);
+    act(() => { usePlayerStore.setState({ loopMode: 'off' }); });
+    expect(setRepeatOne).toHaveBeenLastCalledWith(false);
   });
 
   it('a reload restores the persisted track once, paused, at its position', () => {

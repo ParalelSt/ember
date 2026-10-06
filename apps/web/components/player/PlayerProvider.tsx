@@ -34,7 +34,7 @@ import {
 import { logger } from '@/lib/logger/client';
 import { detectShell } from '@/lib/playback/detectShell';
 import { chooseDuration } from '@/lib/playback/chooseDuration';
-import { isUnavailable, nextIndex, nextPlayable, nextPlayableOffline, prevIndex, previousFromHistory, rememberPlayed } from '@/lib/playback/queueNav';
+import { isUnavailable, nextIndex, nextPlayable, nextPlayableOffline, prevIndex, previousFromHistory, rememberPlayed, repeatsCurrent } from '@/lib/playback/queueNav';
 import { useAvailabilityProbe } from '@/hooks/player/useAvailabilityProbe';
 import { useAutoCache } from '@/hooks/player/useAutoCache';
 import type { BackendKind } from '@/lib/autoCache/select';
@@ -439,7 +439,10 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
           handleError();
           return;
         }
-        if (state.loopMode === 'one' && cur) {
+        // Loop-one, or loop-all over a single song: the same song again,
+        // from the audio already loaded. Going through next() here loaded
+        // it again from the network, a gap of seconds on every repeat.
+        if (cur && repeatsCurrent({ queue: state.queue, index: state.index, loopMode: state.loopMode, context: state.context, baseCount: state.baseCount })) {
           // A cast receiver unloads a finished song: there is nothing left
           // to seek in, so it gets the song again.
           if (isCastBackend(backendRef.current)) {
@@ -1248,6 +1251,19 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     backendRef.current?.setLoop?.(loopMode);
   }, [backendReady, loopMode]);
+
+  // Web audio and the desktop engine play one song at a time: when the song
+  // playing is also the next one (loop-one, loop-all over one song), they
+  // loop it themselves, from the audio they hold. Waiting for `ended` and
+  // seeking back left a gap, and on web audio the play() after that seek
+  // loaded the whole song again. Re-sent when the engine changes (the
+  // desktop app falling back to web audio, a cast session ending).
+  const repeatOne = usePlayerStore((s) =>
+    repeatsCurrent({ queue: s.queue, index: s.index, loopMode: s.loopMode, context: s.context, baseCount: s.baseCount }),
+  );
+  useEffect(() => {
+    backendRef.current?.setRepeatOne?.(repeatOne);
+  }, [backendReady, repeatOne, initialKind, casting]);
 
   // The Android backend's setRemoteCommands/setMetadata are no-ops: the native
   // Media3 session owns the lock screen and the car, so this registers nothing

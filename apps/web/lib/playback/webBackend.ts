@@ -292,7 +292,11 @@ export const createWebBackend: CreateAudioBackend = (events) => {
       // A MediaSession action / click counts as a user gesture, so resume() is
       // allowed here. Wake the graph in case it suspended in the background.
       audioCtx?.resume?.().catch(() => {});
-      if (a.src && !a.error && a.readyState >= 2) {
+      // A seek in progress (repeat one's seek back to 0 at the end) drops
+      // readyState to HAVE_METADATA until the data at the new spot is
+      // decoded. That is not a suspended element: rebuilding it there
+      // loaded the whole song again.
+      if (a.src && !a.error && (a.readyState >= 2 || (a.seeking && a.readyState >= 1))) {
         a.play().then(() => events.onPlay()).catch(() => {});
         return;
       }
@@ -392,6 +396,12 @@ export const createWebBackend: CreateAudioBackend = (events) => {
       // (it caps how far ahead it reads), which it may never resume: that is
       // "cannot tell", and the policy falls back to play time.
       return a.networkState === NETWORK_LOADING ? false : null;
+    },
+
+    setRepeatOne(on) {
+      // The element loops the song by itself, from what it has buffered: no
+      // `ended`, no seek from here, no gap. It stays set across loads.
+      a.loop = on;
     },
 
     setRate(rate) {

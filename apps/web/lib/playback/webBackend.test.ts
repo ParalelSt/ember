@@ -372,3 +372,49 @@ describe('webBackend remote commands (lock screen)', () => {
     b.destroy();
   });
 });
+
+describe('webBackend repeat one (the loop gap)', () => {
+  // Repeat one used to wait for `ended`, then seek to 0 and call play().
+  // A browser drops readyState to HAVE_METADATA while that seek runs, so
+  // play() took its "suspended, rebuild the element" path and set the src
+  // again: a whole new request for a song the element already held, and a
+  // pause before it started again.
+  function element() {
+    const all = document.body.querySelectorAll('audio');
+    return all[all.length - 1] as HTMLAudioElement;
+  }
+
+  it('lets the element loop the song itself, across loads', () => {
+    const b = createWebBackend(makeFakeEvents());
+    const a = element();
+    b.setRepeatOne?.(true);
+    expect(a.loop).toBe(true);
+    b.load('/s/a', { autoplay: false });
+    expect(a.loop).toBe(true);
+    b.setRepeatOne?.(false);
+    expect(a.loop).toBe(false);
+    b.destroy();
+  });
+
+  it('play() during a seek to 0 at the end plays what is loaded, without loading it again', () => {
+    vi.spyOn(HTMLMediaElement.prototype, 'play').mockImplementation(() => Promise.resolve());
+    const b = createWebBackend(makeFakeEvents());
+    const a = element();
+    b.load('/s/a', { autoplay: false });
+    const srcSet = vi.fn();
+    const proto = Object.getOwnPropertyDescriptor(HTMLMediaElement.prototype, 'src')!;
+    Object.defineProperty(a, 'src', {
+      configurable: true,
+      get: () => proto.get!.call(a),
+      set: (v: string) => { srcSet(v); proto.set!.call(a, v); },
+    });
+    // The song ran out and the seek back to the top is under way.
+    Object.defineProperty(a, 'readyState', { configurable: true, get: () => 1 });
+    Object.defineProperty(a, 'seeking', { configurable: true, get: () => true });
+    b.seek(0);
+    b.play();
+    expect(srcSet).not.toHaveBeenCalled();
+    expect(HTMLMediaElement.prototype.play).toHaveBeenCalledTimes(1);
+    b.destroy();
+  });
+});
