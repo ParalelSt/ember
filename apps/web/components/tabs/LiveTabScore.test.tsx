@@ -403,13 +403,31 @@ describe('LiveTabScore sync', () => {
     const { view, api, p } = await mount({ position: 30, playing: true, rate: 0.5 });
     await waitFor(() => expect(api.playbackSpeed).toBe(0.5));
     await waitFor(() => expect(api.seeks).toHaveLength(1));
-    // Half a second of wall clock is a quarter second of song.
+    // Half a second of wall clock is a quarter second of song. AlphaTab
+    // is fed its own clock (tab time over its speed): it multiplies by the
+    // speed again to find the tick, so its line is at the song's place.
     await new Promise((r) => setTimeout(r, 500));
     const last = api.player.output.updatePosition.mock.lastCall?.[0] as number;
-    expect(last).toBeGreaterThan(30_150);
-    expect(last).toBeLessThan(30_450);
+    expect(last * api.playbackSpeed).toBeGreaterThan(30_150);
+    expect(last * api.playbackSpeed).toBeLessThan(30_450);
+    expect(api.seeks[0] * 0.5).toBe(30_000);
     view.rerender(<LiveTabScore {...p} position={30} playing rate={1} />);
     await waitFor(() => expect(api.playbackSpeed).toBe(1));
+  });
+
+  it('a lined-up tab glides at the pace of the recording against the tab', async () => {
+    // The tab at 96 bpm (2.5 s a bar), the band 4% faster, from 3.2 s.
+    const bar = 2500 / 1.04;
+    const timing = { offsetMs: 3200, bpm: 99.84, confidence: 0.9, bars: [0, 1, 2].map((i) => ({ bar: i, ms: 3200 + i * bar })) };
+    const { api } = await mount({ position: 4, playing: true, timing });
+    api.tickCache.masterBars = [0, 1, 2].map((i) => ({ start: i * 3840, tempoChanges: i ? [] : [{ tick: 0, tempo: 96 }], masterBar: { index: i } }));
+    api.midiLoaded.fire();
+    await waitFor(() => expect(api.playbackSpeed).toBeCloseTo(1.04, 3));
+    // And is fed its own clock at that speed: 0.8 s into the song's bar
+    // 1 is 832 ms of tab.
+    await waitFor(() => expect(api.seeks.length).toBeGreaterThan(0));
+    expect(api.seeks.at(-1)! * api.playbackSpeed).toBeGreaterThan(832 - 1);
+    expect(api.seeks.at(-1)! * api.playbackSpeed).toBeLessThan(832 + 120);
   });
 
   it('marks the loop’s bars on the score, and clears the mark', async () => {

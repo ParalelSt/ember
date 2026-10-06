@@ -20,6 +20,9 @@ import {
   tempoMap,
   tickToMs,
   type TickLookup,
+  alphaTabMs,
+  cursorSpeed,
+  speedChanged,
 } from './tabSync';
 
 describe('song time and the tab clock', () => {
@@ -232,6 +235,51 @@ describe('the playhead between player reports', () => {
 
   it('stops running ahead after a second without a report (a stall)', () => {
     expect(estimateSongSec({ sec: 10, at: 1000 }, 9000, true)).toBeCloseTo(11);
+  });
+});
+
+describe("AlphaTab's own clock", () => {
+  // AlphaTab's time positions are wall clock at its playback speed: it
+  // turns a time into a tick by multiplying by the speed. Fed the tab's
+  // own ms at 75%, its line sat at three quarters of the way (measured in
+  // tests/tabs-sync-live.test.mjs: seconds behind, the wrong beat).
+  it('is the tab time divided by the speed AlphaTab is set to', () => {
+    expect(alphaTabMs(30_000, 1)).toBe(30_000);
+    expect(alphaTabMs(30_000, 0.75)).toBe(40_000);
+    expect(alphaTabMs(30_000, 0.5)).toBe(60_000);
+    expect(alphaTabMs(30_000, 0)).toBe(30_000);
+  });
+
+  // The line glides between beats at AlphaTab's speed: the practice speed
+  // times how fast the tab's clock runs against the song (a recording 4%
+  // faster than its tab moves the tab 4% faster). At 1 it slid behind by
+  // about 50 ms and caught up at every beat.
+  it('glides at the practice speed times the pace of the tab against the song', () => {
+    const points = [
+      { song: 3200, tab: 0 },
+      { song: 3200 + 2400 / 1.04, tab: 2400 },
+      { song: 3200 + 4800 / 1.04, tab: 4800 },
+    ];
+    expect(cursorSpeed(1, [], 10)).toBe(1);
+    expect(cursorSpeed(0.75, [], 10)).toBe(0.75);
+    expect(cursorSpeed(1, points, 4)).toBeCloseTo(1.04, 6);
+    expect(cursorSpeed(0.75, points, 4)).toBeCloseTo(0.78, 6);
+    // Before the first anchor and after the last: the edge segment's pace.
+    expect(cursorSpeed(1, points, 1)).toBeCloseTo(1.04, 6);
+    expect(cursorSpeed(1, points, 60)).toBeCloseTo(1.04, 6);
+    // The nudge moves where on the song the pace is read, like the feed.
+    const bent = [{ song: 0, tab: 0 }, { song: 1000, tab: 1000 }, { song: 2000, tab: 3000 }];
+    expect(cursorSpeed(1, bent, 0.5)).toBeCloseTo(1, 6);
+    expect(cursorSpeed(1, bent, 0.5, 1000)).toBeCloseTo(2, 6);
+    // Within sane bounds, as the mapping's own edges.
+    expect(cursorSpeed(1, [{ song: 0, tab: 0 }, { song: 1000, tab: 5000 }], 0.5)).toBe(2);
+  });
+
+  it('changes the speed only for a change worth a re-seek', () => {
+    expect(speedChanged(1, 1)).toBe(false);
+    expect(speedChanged(1, 1.015)).toBe(false);
+    expect(speedChanged(1, 1.04)).toBe(true);
+    expect(speedChanged(1, 0.75)).toBe(true);
   });
 });
 
