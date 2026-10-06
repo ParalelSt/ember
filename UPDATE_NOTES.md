@@ -89,7 +89,7 @@ PocketBase's admin UI, yours is kept.
   **Download** for each, **Back up now**, and a warning when disk space is
   low.
 - **Download member files** there gets uploaded songs, covers, tabs and
-  prank sounds, which are not in the database backups. Cached YouTube songs
+  admin sounds, which are not in the database backups. Cached YouTube songs
   are left out (they download again).
 - The backups are on the same disk as everything else, so they do not help
   if that disk dies. **Download one now, and again now and then, and keep it
@@ -276,21 +276,11 @@ the tab alignment package below, then restart the web app.**
    `update.sh` does not install it (see internal notes on the "luka"
    playback repro).
 
-# 0.6.0: Admin pranks (plan-23-9)
+# 0.6.0: Admin sounds (plan-23-9)
 
-**Host, in order: `./update.sh` as usual, then a new Android APK for the
-prank sound to reach the app there.**
-
-1. **`./update.sh`** (a normal rebuild and restart). Restarting PocketBase
-   runs `pb_hooks/ensure_pranks.pb.js`, which creates the `pranks`,
-   `prank_sounds` and `prank_schedules` collections on first boot; nothing
-   to do by hand.
-2. **A new Android APK** is what brings prank sound playback to the app;
-   an older APK still receives a prank but logs "their app cannot do that
-   yet" instead of playing it. Web and desktop (through the desktop app's
-   webview overlay) already work once the host is updated.
-3. See the prank feature's internal docs for what the feature does, its limits, and the
-   `PRANK_TICK_DISABLED` / `PRANK_TICK_INTERVAL_MS` env settings.
+**Host: `./update.sh` as usual, then a new Android APK for the sounds to play
+there.** Restarting PocketBase creates the new collections on first boot;
+nothing to do by hand. Web and desktop work once the host is updated.
 
 # 0.5.0: Bring your liked songs over
 
