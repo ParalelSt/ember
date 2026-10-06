@@ -149,9 +149,9 @@ function memoryStore(total: number, opts: StoreOpts = {}) {
     }),
     like: vi.fn(async (_userId: string, t: Track, likedAt: number | null) => {
       // The (user, track) unique index: a song already liked is a no-op.
-      if (alreadyLiked.has(t.sourceId) || likes.some((l) => l.track.id === t.id)) return { created: false };
+      if (alreadyLiked.has(t.sourceId) || likes.some((l) => l.track.id === t.id)) return { created: false, id: null };
       likes.push({ track: t, likedAt });
-      return { created: true };
+      return { created: true, id: `like-${t.sourceId}` };
     }),
     hasOtherQueued: vi.fn(async () => opts.othersQueued === true),
     counts: vi.fn(async () => countItems(items.map((i) => i.status))),
@@ -421,6 +421,17 @@ describe('ImportRunner, a transfer into the likes', () => {
     expect(m.job.existing).toBe(2);
     expect(m.job.accepted).toBe(m.items.filter((i) => i.status === 'accepted').length);
     expect(m.likes.map((l) => l.track.sourceId)).not.toContain('vid0');
+  });
+
+  it('saves on each item the like it made, and none for a song already liked', async () => {
+    const m = memoryStore(8, { liked: true, alreadyLiked: ['vid0'] });
+    const { r } = runner(m.store);
+    await r.tick();
+    const saved = vi.mocked(m.store.saveResults).mock.calls.flatMap((c) => c[0]);
+    const accepted = saved.filter((x) => x.status === 'accepted');
+    expect(accepted.find((x) => x.position === 0)?.likeId).toBeNull();
+    expect(accepted.find((x) => x.position === 1)?.likeId).toBe('like-vid1');
+    expect(saved.filter((x) => x.status !== 'accepted').every((x) => !x.likeId)).toBe(true);
   });
 
   it('a playlist import never writes an existing count', async () => {
