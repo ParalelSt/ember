@@ -12,8 +12,7 @@ export const DEFAULT_PART = 'Guitar';
 
 /** One tile of the instrument step. */
 export interface InstrumentChoice {
-  /** As the first tab that holds it names it ("Rhythm Guitar"), with a
-   *  capital first letter. */
+  /** "Rhythm guitar", "Bass" (partName). */
   name: string;
   /** For matching across tabs: lower case, trimmed. */
   key: string;
@@ -31,25 +30,72 @@ export interface VersionChoice extends TabSheetRow {
   source: string;
 }
 
-/** The score on screen and the names its tracks have (truer than what the
- *  site said, and in the file's own order). */
+/** The score on screen and its tracks (truer than what the site said, and
+ *  in the file's own order): each track's name and its instrument (the
+ *  General MIDI program's name, "Clean guitar"). */
 export interface DrawnParts {
   tabId: string;
-  tracks: string[];
+  tracks: { name: string; instrument?: string }[];
 }
 
 const capitalized = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+
+/** What a track is, said the same way whoever named it: files, Songsterr
+ *  and the drawn score all name parts their own way ("Gtr", "Rhythm
+ *  Guitar", "Distortion guitar", "Track 1"). Null when the name says
+ *  nothing known. */
+export function partFamily(raw: string): string | null {
+  const n = raw.toLowerCase();
+  if (/drum|percussion/.test(n)) return 'Drums';
+  if (/bass/.test(n)) return 'Bass';
+  if (/guitar|gtr|\bgt\b/.test(n)) {
+    if (/lead|solo/.test(n)) return 'Lead guitar';
+    if (/rhythm/.test(n)) return 'Rhythm guitar';
+    if (/acoustic|nylon|steel|classical/.test(n)) return 'Acoustic guitar';
+    return 'Guitar';
+  }
+  if (/vocal|voice|vox|sing/.test(n)) return 'Vocals';
+  if (/piano|keys|keyboard|synth|organ/.test(n)) return 'Keys';
+  return null;
+}
+
+/** A part's name for the tiles: its family by its name, else by its
+ *  instrument, else the name as given. The instrument (a General MIDI
+ *  program, which files often leave at a default) only says guitar, bass
+ *  or drums; lead, rhythm or acoustic come from the name alone ("Lead"
+ *  playing a guitar is the lead guitar). */
+export function partName(name: string, instrument?: string): string {
+  const byName = partFamily(name);
+  if (byName) return byName;
+  const family = instrument ? partFamily(instrument) : null;
+  if (family && /guitar/i.test(family)) return partFamily(`${name} guitar`) ?? 'Guitar';
+  return family ?? capitalized(name.trim() || DEFAULT_PART);
+}
 
 export function instrumentKey(name: string): string {
   return name.trim().toLowerCase();
 }
 
+/** Two parts of one tab with the same name are told apart: "Guitar",
+ *  "Guitar 2". */
+function numbered(names: string[]): string[] {
+  const seen = new Map<string, number>();
+  return names.map((n) => {
+    const k = instrumentKey(n);
+    const count = (seen.get(k) ?? 0) + 1;
+    seen.set(k, count);
+    return count > 1 ? `${n} ${count}` : n;
+  });
+}
+
 /** The parts a tab holds, in track order: the drawn score's own tracks,
  *  else what its source said, else one guitar part. */
 export function tabParts(tab: TabSummary, drawn?: DrawnParts | null): string[] {
-  if (drawn && drawn.tabId === tab.id && drawn.tracks.length > 0) return drawn.tracks;
+  if (drawn && drawn.tabId === tab.id && drawn.tracks.length > 0) {
+    return numbered(drawn.tracks.map((t) => partName(t.name, t.instrument)));
+  }
   const named = instrumentsOf(tab).filter((n) => n.trim());
-  return named.length > 0 ? named : [DEFAULT_PART];
+  return named.length > 0 ? numbered(named.map((n) => partName(n))) : [DEFAULT_PART];
 }
 
 /** Where a tab is from, in a word or two. */
@@ -66,14 +112,11 @@ export function instrumentChoices(tabs: TabSummary[], drawn?: DrawnParts | null,
   for (const row of sheetRows(tabs, o)) {
     const tab = byId.get(row.id);
     if (!tab) continue;
-    const seen = new Set<string>();
     for (const name of tabParts(tab, drawn)) {
       const key = instrumentKey(name);
-      if (seen.has(key)) continue;
-      seen.add(key);
       const known = out.find((c) => c.key === key);
       if (known) known.count++;
-      else out.push({ name: capitalized(name.trim()), key, count: 1 });
+      else out.push({ name, key, count: 1 });
     }
   }
   return out;

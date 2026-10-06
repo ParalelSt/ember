@@ -1152,9 +1152,9 @@ describe('TabsPage choosing a tab, instrument first', () => {
     });
     wrap(<TabsPage trackId="upload:song1" />);
     await screen.findByTestId('tab-score');
-    expect(screen.getByTestId('tab-instrument')).toHaveTextContent('Rhythm Guitar');
+    expect(screen.getByTestId('tab-instrument')).toHaveTextContent('Rhythm guitar');
     expect(screen.getByTestId('tab-source-chip')).toHaveTextContent('Songsterr · 1 of 294%');
-    expect(screen.getByTestId('tab-source-chip')).toHaveAttribute('title', 'From Songsterr, Rhythm Guitar, lined up');
+    expect(screen.getByTestId('tab-source-chip')).toHaveAttribute('title', 'From Songsterr, Rhythm guitar, lined up');
   });
 
   it('the sheet asks the instrument first, lists its versions best first, and a version opens on that instrument', async () => {
@@ -1166,7 +1166,7 @@ describe('TabsPage choosing a tab, instrument first', () => {
     fireEvent.click(screen.getByTestId('tab-instrument'));
     const sheet = screen.getByTestId('tab-source-sheet');
     const tiles = within(sheet).getAllByTestId('tab-instrument-tile');
-    expect(tiles.map((t) => t.textContent)).toEqual(['Rhythm Guitar2 versions', 'Bass2 versions']);
+    expect(tiles.map((t) => t.textContent)).toEqual(['Rhythm guitar2 versions', 'Bass2 versions']);
     expect(tiles[0]).toHaveAttribute('aria-pressed', 'true');
     expect(within(sheet).getAllByTestId('tab-source-row').map((r) => r.getAttribute('data-tab-id'))).toEqual(['s1', 's2']);
     // Bass: the lined-up Songsterr tab first, then the file.
@@ -1205,9 +1205,9 @@ describe('TabsPage choosing a tab, instrument first', () => {
         ],
       }),
     );
-    expect(screen.getByTestId('tab-instrument')).toHaveTextContent('Lead');
+    expect(screen.getByTestId('tab-instrument')).toHaveTextContent('Lead guitar');
     fireEvent.click(screen.getByTestId('tab-instrument'));
-    expect(screen.getAllByTestId('tab-instrument-tile').map((t) => t.textContent)).toEqual(['Lead1 version', 'Drums1 version']);
+    expect(screen.getAllByTestId('tab-instrument-tile').map((t) => t.textContent)).toEqual(['Lead guitar1 version', 'Drums1 version']);
   });
 
   it('on a phone the two buttons sit on their own line under the title', async () => {

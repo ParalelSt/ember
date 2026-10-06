@@ -389,7 +389,7 @@ function TabsSheet({ song, sources, onBack }: { song: TabSong; sources: TabSourc
   // song's tabs hold (the drawn score's own track names for the tab on
   // screen), and the versions of the one shown, best match first.
   const rankOpts = { chosenId, aligning: sources.liningUp };
-  const drawnParts = tab && info ? { tabId: tab.id, tracks: info.tracks.map((t) => t.name || t.instrument) } : null;
+  const drawnParts = tab && info ? { tabId: tab.id, tracks: info.tracks.map((t) => ({ name: t.name, instrument: t.instrument })) } : null;
   const parts = tab ? tabParts(tab, drawnParts) : [];
   const currentPart = parts[Math.min(trackIndex, parts.length - 1)] ?? null;
   const instruments = instrumentChoices(sources.tabs, drawnParts, rankOpts);

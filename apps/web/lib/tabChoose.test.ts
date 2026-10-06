@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { TabSummary } from '@/lib/tabSources';
-import { instrumentChoices, instrumentKey, sourceName, tabParts, versionLabel, versionsFor } from './tabChoose';
+import { instrumentChoices, instrumentKey, partFamily, partName, sourceName, tabParts, versionLabel, versionsFor } from './tabChoose';
 
 // Choosing a tab instrument first: the tiles (what you play) and the list
 // of that instrument's versions, best match first.
@@ -41,15 +41,43 @@ const ug = (id: string, part: 'guitar' | 'bass', confidence?: number) =>
     ...(confidence === undefined ? {} : { timing: timing(confidence) }),
   });
 
+describe('partFamily and partName', () => {
+  it('says a part the same way whoever named it', () => {
+    expect(['Rhythm Guitar', 'rhythm gtr', 'Gtr. Rhythm'].map(partFamily)).toEqual(['Rhythm guitar', 'Rhythm guitar', 'Rhythm guitar']);
+    expect(['Lead Guitar', 'Solo gtr'].map(partFamily)).toEqual(['Lead guitar', 'Lead guitar']);
+    expect(['Acoustic Guitar', 'Steel-string guitar', 'Nylon guitar'].map(partFamily)).toEqual(['Acoustic guitar', 'Acoustic guitar', 'Acoustic guitar']);
+    expect(['Guitar', 'Distortion guitar', 'Gtr', 'GT 1'].map(partFamily)).toEqual(['Guitar', 'Guitar', 'Guitar', 'Guitar']);
+    expect(['Bass', 'Fingered bass', 'Bass Guitar'].map(partFamily)).toEqual(['Bass', 'Bass', 'Bass']);
+    expect(['Drums', 'Percussion', 'Drumkit'].map(partFamily)).toEqual(['Drums', 'Drums', 'Drums']);
+    expect(['Vocals', 'Lead Vox'].map(partFamily)).toEqual(['Vocals', 'Vocals']);
+    expect(['Piano', 'Synth Pad'].map(partFamily)).toEqual(['Keys', 'Keys']);
+    expect(partFamily('Track 1')).toBeNull();
+  });
+
+  it('a name that says nothing falls back to the instrument, then to itself', () => {
+    expect(partName('Track 1', 'Clean guitar')).toBe('Guitar');
+    expect(partName('Track 1', 'Violin')).toBe('Track 1');
+    expect(partName('theremin')).toBe('Theremin');
+    expect(partName('Lead', 'Overdriven guitar')).toBe('Lead guitar');
+    // A file's default program says guitar, not which kind.
+    expect(partName('Track 1', 'Acoustic Guitar (steel)')).toBe('Guitar');
+    expect(partName('Track 2', 'Fingered bass')).toBe('Bass');
+  });
+});
+
 describe('tabParts', () => {
-  it('the drawn score’s own track names win; then what the site said; then one guitar part', () => {
+  it('the drawn score’s own tracks win; then what the site said; then one guitar part', () => {
     const ss = songsterr('s1', ['Rhythm Guitar', 'Bass']);
-    expect(tabParts(ss)).toEqual(['Rhythm Guitar', 'Bass']);
-    expect(tabParts(ss, { tabId: 's1', tracks: ['Guitar 1', 'Bass'] })).toEqual(['Guitar 1', 'Bass']);
-    expect(tabParts(ss, { tabId: 'other', tracks: ['Piano'] })).toEqual(['Rhythm Guitar', 'Bass']);
+    expect(tabParts(ss)).toEqual(['Rhythm guitar', 'Bass']);
+    expect(tabParts(ss, { tabId: 's1', tracks: [{ name: 'Track 1', instrument: 'Overdriven guitar' }, { name: 'Bass' }] })).toEqual(['Guitar', 'Bass']);
+    expect(tabParts(ss, { tabId: 'other', tracks: [{ name: 'Piano' }] })).toEqual(['Rhythm guitar', 'Bass']);
     expect(tabParts(ug('u1', 'bass'))).toEqual(['Bass']);
-    expect(tabParts(tab({ id: 'f1', instrument: 'Lead Guitar' }))).toEqual(['Lead Guitar']);
+    expect(tabParts(tab({ id: 'f1', instrument: 'Lead Guitar' }))).toEqual(['Lead guitar']);
     expect(tabParts(tab({ id: 'f2' }))).toEqual(['Guitar']);
+  });
+
+  it('two parts of one tab with the same name are told apart', () => {
+    expect(tabParts(songsterr('s1', ['Guitar 1', 'Guitar 2', 'Bass']))).toEqual(['Guitar', 'Guitar 2', 'Bass']);
   });
 
   it('matching ignores case and spaces', () => {
@@ -61,15 +89,18 @@ describe('instrumentChoices', () => {
   it('every instrument once, with how many tabs hold it, in the order the best tabs hold them', () => {
     const tabs = [ug('u1', 'guitar'), songsterr('s1', ['Rhythm Guitar', 'Bass', 'Drums'], 0.9), ug('u2', 'bass'), tab({ id: 'f1', instrument: 'guitar' })];
     expect(instrumentChoices(tabs)).toEqual([
-      { name: 'Rhythm Guitar', key: 'rhythm guitar', count: 1 },
+      { name: 'Rhythm guitar', key: 'rhythm guitar', count: 1 },
       { name: 'Bass', key: 'bass', count: 2 },
       { name: 'Drums', key: 'drums', count: 1 },
       { name: 'Guitar', key: 'guitar', count: 2 },
     ]);
   });
 
-  it('a tab naming an instrument twice counts once', () => {
-    expect(instrumentChoices([songsterr('s1', ['Guitar', 'Guitar'])])).toEqual([{ name: 'Guitar', key: 'guitar', count: 1 }]);
+  it('a file named one way and a site’s tab named another meet on one tile', () => {
+    const tabs = [tab({ id: 'f1' }), tab({ id: 'p1', kind: 'pasted', instrument: 'guitar' })];
+    expect(instrumentChoices(tabs, { tabId: 'f1', tracks: [{ name: 'Gtr', instrument: 'Clean guitar' }] })).toEqual([
+      { name: 'Guitar', key: 'guitar', count: 2 },
+    ]);
   });
 
   it('nothing for no tabs', () => {
