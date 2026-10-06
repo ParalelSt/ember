@@ -7,7 +7,7 @@ import type PocketBase from 'pocketbase';
 import type { RecordModel } from 'pocketbase';
 import { serverLogger } from '@/lib/logger/server';
 import { queuePythonJob } from '@/lib/pythonJobs';
-import { buildTabPlan } from '@/lib/tabPlan';
+import { buildTabPlanFromFile } from '@/lib/tabPlan';
 import { resolveRowPath } from '@/lib/tabs';
 import { parseTrackKey } from '@/lib/trackKey';
 import { ensureDownloaded, findCachedFile } from '@/lib/sources/youtube';
@@ -172,13 +172,13 @@ async function markTried(pb: PocketBase, row: RecordModel, deps: AlignDeps): Pro
 }
 
 async function run(pb: PocketBase, row: RecordModel, deps: AlignDeps): Promise<TabTiming | null> {
-  const texPath = resolveRowPath(row);
-  if (!texPath) throw new Error('that tab has no file to read');
+  const tabPath = resolveRowPath(row);
+  if (!tabPath) throw new Error('that tab has no file to read');
   const trackId = String(row.track_key || '');
   const audio = await audioForTrack(trackId, pb);
   if (!audio) throw new Error('Ember has no recording for that song yet');
-  const tex = await fs.readFile(texPath, 'utf8');
-  const plan = await buildTabPlan(tex);
+  // A file someone added is Guitar Pro or MusicXML, not alphaTex.
+  const plan = await buildTabPlanFromFile(tabPath, new Uint8Array(await fs.readFile(tabPath)));
   if (plan.notes.length < 4) throw new Error('that tab has too few notes to line up');
 
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'ember-align-'));

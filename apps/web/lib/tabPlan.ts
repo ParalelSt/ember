@@ -108,3 +108,13 @@ export async function buildTabPlan(tex: string): Promise<TabPlan> {
   const at = await import('@coderline/alphatab');
   return planFromAlphaTex(at, tex);
 }
+
+/** The plan of a tab file as it is stored: alphaTex (a fetched or pasted
+ *  tab) by its name, anything else (Guitar Pro, MusicXML) the way the tab
+ *  page loads it, through AlphaTab's ScoreLoader. Throws when AlphaTab
+ *  cannot read it. */
+export async function buildTabPlanFromFile(name: string, bytes: Uint8Array): Promise<TabPlan> {
+  if (name.toLowerCase().endsWith('.alphatex')) return buildTabPlan(new TextDecoder().decode(bytes));
+  const at = await import('@coderline/alphatab');
+  return planFromScore(at, at.importer.ScoreLoader.loadScoreFromBytes(bytes, new at.Settings()));
+}
