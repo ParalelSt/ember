@@ -21,10 +21,12 @@ import {
   barStartsMs,
   beatToSongSec,
   cursorSpeed,
+  drawLead,
   estimateSongSec,
   FEED_INTERVAL_MS,
   followScroll,
   isJump,
+  nextFrameMs,
   songSecToTabMs,
   speedChanged,
   syncPoints,
@@ -570,15 +572,21 @@ export function LiveTabScore(props: LiveTabScoreProps) {
     if (!follows || !synced) return;
     let raf = 0;
     let last = -Infinity;
+    let prevFrame = -Infinity;
+    let frame = 1000 / 60;
     const tick = (now: number) => {
       raf = requestAnimationFrame(tick);
+      frame = nextFrameMs(frame, now - prevFrame);
+      prevFrame = now;
       if (now - last < FEED_INTERVAL_MS) return;
       last = now;
       const p = live.current;
       const output = outputRef.current;
       const api = apiRef.current;
       if (!output || !api) return;
-      const songSec = estimateSongSec(anchor.current, now, p.playing, p.rate ?? 1);
+      // Where the song will be when AlphaTab draws this (lib/tabSync.ts
+      // drawLead); paused, the estimate holds still whatever the time.
+      const songSec = estimateSongSec(anchor.current, now + drawLead(frame), p.playing, p.rate ?? 1);
       try {
         // AlphaTab glides its line between beats at its playback speed
         // (the handler it forwards the speed to is inert: Ember's player

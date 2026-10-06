@@ -282,6 +282,28 @@ export function estimateSongSec(anchor: Anchor, now: number, playing: boolean, r
   return anchor.sec + (elapsed / 1000) * (rate > 0 ? rate : 1);
 }
 
+/** AlphaTab draws a position it is handed three animation frames later:
+ *  its position event, its beat lookup and its line's CSS glide each wait
+ *  for a requestAnimationFrame. Measured in tests/tabs-sync-live.test.mjs
+ *  as the drawn line 60 to 90 ms behind the page's own estimate of the
+ *  song, which was within 10 ms of the audio. */
+export const DRAW_FRAMES = 3;
+
+/** How far ahead of the song to feed AlphaTab while playing, for frames of
+ *  `frameMs`: where the song will be when the line is drawn. A frame longer
+ *  than 50 ms (a busy page) counts as 50, so a stall never runs it ahead. */
+export function drawLead(frameMs: number): number {
+  const f = Number.isFinite(frameMs) && frameMs > 0 ? Math.min(frameMs, 50) : 1000 / 60;
+  return DRAW_FRAMES * f;
+}
+
+/** The frame length, smoothed over the last ten or so frames; one long
+ *  frame (a page in the background) moves it a little. */
+export function nextFrameMs(prev: number, delta: number): number {
+  if (!Number.isFinite(delta) || delta <= 0) return prev;
+  return prev + 0.1 * (Math.min(delta, 50) - prev);
+}
+
 /** The cursor is fed at most this often. */
 export const FEED_INTERVAL_MS = 50;
 
