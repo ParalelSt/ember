@@ -3,8 +3,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
+import { LikeButton } from '@/components/primitives/LikeButton';
 import {
-  AlbumIcon, ArtistIcon, ChevronDownIcon, DevicesIcon, EqualizerIcon, FlagIcon, HeartIcon, LinkIcon, ListPlusIcon,
+  AlbumIcon, ArtistIcon, ChevronDownIcon, DevicesIcon, EqualizerIcon, FlagIcon, LinkIcon, ListPlusIcon,
   LyricsIcon, MoreIcon, MusicIcon, QueueIcon, RepeatIcon, RepeatOneIcon, ShareIcon, ShuffleIcon, TabsIcon,
 } from '@/components/icons';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
@@ -41,10 +42,8 @@ interface MoreItem {
   /** A second line: the speaker it plays on, the equalizer On/Off. */
   detail?: string;
   Icon: typeof MoreIcon;
-  /** Ember: liked, playing elsewhere, the equalizer on. */
+  /** Ember: the equalizer on. */
   lit?: boolean;
-  /** Like toggles in place; every other row closes the sheet first. */
-  stay?: boolean;
   onSelect: () => void;
 }
 
@@ -127,7 +126,7 @@ export function NowPlaying() {
   // Scrolled at all: the band under the floating buttons fades out.
   const [scrolled, setScrolled] = useState(false);
   const lyricsRef = useRef<HTMLDivElement | null>(null);
-  // Lyrics in More scrolls down to the lyrics card (counted, so asking twice
+  // Lyrics scrolls down to the lyrics card (counted, so asking twice
   // scrolls twice).
   const [lyricsAsked, setLyricsAsked] = useState(0);
   useEffect(() => {
@@ -195,53 +194,38 @@ export function NowPlaying() {
   // with NowPlayingSummary's player-bar thumbnail.
   const art = useTrackArtSrc(current);
 
-  // The More sheet: every player action lives here, in groups. The song
-  // (Like, Add to playlist, Share), what to look at (Up next, Lyrics,
-  // Tabs), where and how it sounds (Devices, Equalizer), where to go, and
-  // the lyrics report. Each row opens the sheet or page it always did.
+  // The More sheet: one plain list of what has no button on the player. Like,
+  // Lyrics and Devices stay on the player itself. Each row opens the sheet or
+  // page it always did.
   const canAdd = !!(current && user && !isUnavailable(current));
-  const song: MoreItem[] = [];
-  const look: MoreItem[] = [];
-  const sound: MoreItem[] = [];
-  const goTo: MoreItem[] = [];
-  const help: MoreItem[] = [];
-  if (current && user) {
-    song.push({ key: 'like', label: isLiked ? 'Liked' : 'Like', Icon: HeartIcon, lit: isLiked, stay: true, onSelect: toggleLike });
+  const items: MoreItem[] = [];
+  if (canAdd) items.push({ key: 'add', label: 'Add to playlist', Icon: ListPlusIcon, onSelect: () => setAddOpen(true) });
+  if (current) items.push({ key: 'queue', label: 'Up next', Icon: QueueIcon, onSelect: () => setQueueOpen(true) });
+  if (current && tabsEnabled) items.push({ key: 'tabs', label: 'Guitar tabs', Icon: TabsIcon, onSelect: openTabs });
+  if (eqAvailable) {
+    items.push({ key: 'eq', label: 'Equalizer', detail: eqOn ? 'On' : 'Off', Icon: EqualizerIcon, lit: eqOn, onSelect: () => setEqOpen(true) });
   }
-  if (canAdd) song.push({ key: 'add', label: 'Add to playlist', Icon: ListPlusIcon, onSelect: () => setAddOpen(true) });
   if (current && canShare(current)) {
     const track = current;
     const sheet = typeof navigator !== 'undefined' && !!navigator.share;
-    song.push({
+    items.push({
       key: 'share',
       label: sheet ? 'Share' : 'Copy link',
       Icon: sheet ? ShareIcon : LinkIcon,
       onSelect: () => void shareTrack(track),
     });
   }
-  if (current) {
-    look.push({ key: 'queue', label: 'Up next', Icon: QueueIcon, onSelect: () => setQueueOpen(true) });
-    look.push({ key: 'lyrics', label: 'Lyrics', Icon: LyricsIcon, onSelect: () => setLyricsAsked((n) => n + 1) });
-  }
-  if (current && tabsEnabled) look.push({ key: 'tabs', label: 'Guitar tabs', Icon: TabsIcon, onSelect: openTabs });
-  if (devices.visible) {
-    sound.push({ key: 'devices', label: 'Devices', detail: devices.on ?? undefined, Icon: DevicesIcon, lit: devices.lit, onSelect: () => setDevicesOpen(true) });
-  }
-  if (eqAvailable) {
-    sound.push({ key: 'eq', label: 'Equalizer', detail: eqOn ? 'On' : 'Off', Icon: EqualizerIcon, lit: eqOn, onSelect: () => setEqOpen(true) });
-  }
   if (current?.artistId) {
     const href = `/artist/${encodeURIComponent(current.artistId)}`;
-    goTo.push({ key: 'artist', label: 'Go to artist', Icon: ArtistIcon, onSelect: () => closeThenGo(href) });
+    items.push({ key: 'artist', label: 'Go to artist', Icon: ArtistIcon, onSelect: () => closeThenGo(href) });
   }
   if (current?.albumId) {
     const href = `/album/${encodeURIComponent(current.albumId)}`;
-    goTo.push({ key: 'album', label: 'Go to album', Icon: AlbumIcon, onSelect: () => closeThenGo(href) });
+    items.push({ key: 'album', label: 'Go to album', Icon: AlbumIcon, onSelect: () => closeThenGo(href) });
   }
   if (current && hasLyrics) {
-    help.push({ key: 'report', label: 'Report wrong lyrics', Icon: FlagIcon, onSelect: () => setReportOpen(true) });
+    items.push({ key: 'report', label: 'Report wrong lyrics', Icon: FlagIcon, onSelect: () => setReportOpen(true) });
   }
-  const moreGroups = [song, look, sound, goTo, help].filter((g) => g.length > 0);
 
   // Pinned left, mirroring the loop button on the right: keeping both OUT of
   // the flex flow is what keeps prev/play/next centered. Playlists only:
@@ -321,7 +305,7 @@ export function NowPlaying() {
       </Button>
       {/* The one options button, floating with the chevron. The playlist
           menu hangs from an invisible anchor beside it. */}
-      {current && moreGroups.length > 0 && (
+      {current && items.length > 0 && (
         <div className="absolute z-20 right-3 flex items-center" style={{ top: 'calc(var(--safe-top) + 1rem)' }}>
           {canAdd && (
             <div className="absolute inset-y-0 right-0">
@@ -357,26 +341,21 @@ export function NowPlaying() {
               </div>
             </SheetHeader>
             <div className="flex flex-col px-cluster pb-stack">
-              {moreGroups.map((group, i) => (
-                <div key={group[0].key} role="group" className={cn('flex flex-col', i > 0 && 'mt-cluster border-t border-border pt-cluster')}>
-                  {group.map(({ key, label, detail, Icon, lit, stay, onSelect }) => (
-                    <button
-                      key={key}
-                      type="button"
-                      data-testid={`more-${key}`}
-                      aria-pressed={key === 'like' ? !!lit : undefined}
-                      onClick={() => {
-                        if (!stay) setMoreOpen(false);
-                        onSelect();
-                      }}
-                      className="flex min-h-12 items-center gap-row rounded-lg px-row py-cluster text-left text-[15px] outline-none hover:bg-accent focus-visible:bg-accent"
-                    >
-                      <Icon className={cn('h-5 w-5 shrink-0', lit ? 'text-ember' : 'text-muted-foreground', key === 'like' && lit && 'fill-current')} />
-                      <span className={cn('min-w-0 flex-1 truncate', lit && key === 'like' && 'text-ember')}>{label}</span>
-                      {detail && <span className={cn('max-w-40 truncate text-xs', lit ? 'text-ember' : 'text-muted-foreground')}>{detail}</span>}
-                    </button>
-                  ))}
-                </div>
+              {items.map(({ key, label, detail, Icon, lit, onSelect }) => (
+                <button
+                  key={key}
+                  type="button"
+                  data-testid={`more-${key}`}
+                  onClick={() => {
+                    setMoreOpen(false);
+                    onSelect();
+                  }}
+                  className="flex min-h-12 items-center gap-row rounded-lg px-row py-cluster text-left text-[15px] outline-none hover:bg-accent focus-visible:bg-accent"
+                >
+                  <Icon className={cn('h-5 w-5 shrink-0', lit ? 'text-ember' : 'text-muted-foreground')} />
+                  <span className="min-w-0 flex-1 truncate">{label}</span>
+                  {detail && <span className={cn('max-w-40 truncate text-xs', lit ? 'text-ember' : 'text-muted-foreground')}>{detail}</span>}
+                </button>
               ))}
             </div>
           </SheetContent>
@@ -441,6 +420,9 @@ export function NowPlaying() {
               onArtistNavigate={() => setOpen(false)}
             />
           )}
+          {current && user && (
+            <LikeButton size="md" liked={isLiked} onToggle={toggleLike} className="shrink-0" />
+          )}
         </div>
 
         {/* Progress */}
@@ -457,6 +439,40 @@ export function NowPlaying() {
           left={shuffleButton}
           right={loopButton}
         />
+
+        {/* Devices bottom-left (named when it plays elsewhere), Lyrics
+            bottom-right, under the transport. */}
+        {current && (
+          <div className="mt-block flex items-center justify-between gap-block">
+            {devices.visible ? (
+              <button
+                type="button"
+                aria-label="Devices"
+                title="Devices"
+                data-testid="player-devices"
+                onClick={() => setDevicesOpen(true)}
+                className={cn(
+                  'inline-flex h-10 min-w-0 items-center gap-cluster rounded-md pr-cluster transition-colors hover:text-foreground',
+                  devices.lit ? 'text-ember' : 'text-muted-foreground',
+                )}
+              >
+                <DevicesIcon className="h-5 w-5 shrink-0" />
+                {devices.on && <span className="max-w-32 truncate text-xs">{devices.on}</span>}
+              </button>
+            ) : <span />}
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => setLyricsAsked((n) => n + 1)}
+              aria-label="Lyrics"
+              title="Lyrics"
+              data-testid="player-lyrics"
+              className="h-10 w-10 text-muted-foreground hover:text-foreground"
+            >
+              <LyricsIcon className="h-5 w-5" />
+            </Button>
+          </div>
+        )}
 
       </div>
 
