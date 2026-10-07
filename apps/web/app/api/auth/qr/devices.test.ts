@@ -47,6 +47,9 @@ vi.mock('@/lib/logger/server', () => {
 const recent = await import('./recent/route');
 const revokeAll = await import('./revoke-all/route');
 const adminRevoke = await import('../../admin/users/[id]/revoke/route');
+const start = await import('./start/route');
+const approve = await import('./approve/route');
+const status = await import('./status/route');
 const { _resetBuckets } = await import('@/lib/rateLimitCore');
 
 const ROBIN = { id: 'member000000001', email: 'robin@ember.test', isAdmin: false };
@@ -166,5 +169,41 @@ describe('POST /api/admin/users/[id]/revoke', () => {
     expect((await call('nosuchuser1234x')).status).toBe(404);
     expect((await call(EVE.id, { origin: 'https://evil.example' })).status).toBe(403);
     expect(h.fake.revoked).toEqual([]);
+  });
+});
+
+describe('sign out everywhere cancels a sign-in approved but not yet collected', () => {
+  /** A new device asks, ROBIN approves it, the device has not polled yet. */
+  async function approvedButWaiting() {
+    const res = await start.POST(request('/api/auth/qr/start', { body: {} }), undefined as never);
+    const { id, approveUrl } = await res.json();
+    const cookie = /(ember_qr[^=]*=[^;]+)/.exec(res.headers.get('set-cookie') ?? '')![1];
+    h.user = ROBIN;
+    const ok = await approve.POST(request('/api/auth/qr/approve', { body: { id, token: String(approveUrl).split('/link/')[1] } }), undefined as never);
+    expect(ok.status).toBe(200);
+    return { id, cookie };
+  }
+  const pollAs = async (id: string, cookie: string) => {
+    h.user = null;
+    const r = await status.GET(request(`/api/auth/qr/status?id=${id}`, { headers: { cookie } }), undefined as never);
+    return { status: r.status, text: await r.text() };
+  };
+
+  it('after the member signs out everywhere, the device gets no session', async () => {
+    const w = await approvedButWaiting();
+    expect((await revokeAll.POST(request('/api/auth/qr/revoke-all', { body: {} }), undefined as never)).status).toBe(200);
+    const p = await pollAs(w.id, w.cookie);
+    expect(JSON.parse(p.text)).toEqual({ status: 'expired' });
+    expect(p.text).not.toContain('token');
+    expect(h.fake.minted).toHaveLength(0);
+  });
+
+  it('after an admin signs the member out everywhere, the device gets no session', async () => {
+    const w = await approvedButWaiting();
+    h.user = OWNER;
+    expect((await adminRevoke.POST(request(`/api/admin/users/${ROBIN.id}/revoke`, { body: {} }), ctx(ROBIN.id))).status).toBe(200);
+    const p = await pollAs(w.id, w.cookie);
+    expect(JSON.parse(p.text)).toEqual({ status: 'expired' });
+    expect(h.fake.minted).toHaveLength(0);
   });
 });

@@ -108,6 +108,9 @@ export function createFakeQrPb() {
         const items = [...rows.values()].filter(matcher(opts.filter)).sort(sorter(opts.sort)).slice(0, perPage);
         return { items: items.map((r) => ({ ...r })), page: 1, perPage, totalItems: items.length, totalPages: 1 };
       },
+      async getFullList(opts: { filter?: string; sort?: string } = {}) {
+        return [...rows.values()].filter(matcher(opts.filter)).sort(sorter(opts.sort)).map((r) => ({ ...r }));
+      },
       async update(id: string, data: Record<string, unknown>) {
         const r = rows.get(id);
         if (!r) throw notFound();

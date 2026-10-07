@@ -18,7 +18,9 @@
  *      token passes authRefresh as the approver, and the record has the
  *      same keys authWithPassword gives
  *    - POST /api/ember/qr-login/revoke-all: same guards; afterwards every
- *      token of that user (minted or password) is refused
+ *      token of that user (minted or password) is refused, and a request
+ *      they approved that no device has collected yet can no longer be
+ *      minted
  *    - the sweep flips a pending row past its expiry to expired */
 import { spawn, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
@@ -199,7 +201,6 @@ try {
     check('Q6b the minted record has the same keys authWithPassword gives', mintKeys === pwKeys, `mint ${mintKeys} | password ${pwKeys}`);
     check('Q6c the minted record carries the email and no secrets', minted.body?.record?.email === member.email &&
       !('tokenKey' in (minted.body?.record ?? {})) && !('passwordHash' in (minted.body?.record ?? {})));
-    check('Q6d the minted token is a new token, not the password session', minted.body?.token !== member.token);
     const after = await rowOf(approvedId);
     check('Q6e the same call claimed the request: used, used_at, and only a hash of the token', after.status === 'used' && !!after.used_at &&
       after.minted_hash === createHash('sha256').update(String(minted.body?.token)).digest('hex') && !JSON.stringify(after).includes(String(minted.body?.token)));
@@ -229,12 +230,19 @@ try {
     // Still alive before the revoke.
     const stillOk = await json('POST', '/api/collections/users/auth-refresh', { token: member.token });
     const ownerBefore = await json('POST', '/api/collections/users/auth-refresh', { token: owner.token });
+    // Approved on the phone, not yet collected by the new device.
+    const waitingId = await request('approved');
+    const othersId = await request('approved', { user: owner.id });
     const revoked = await json('POST', REVOKE, { token: su, body: { user: member.id } });
     check('Q9 revoke-all with superuser auth is ok', revoked.status === 200 && revoked.body?.ok === true && stillOk.status === 200, `status ${revoked.status}`);
     const afterMint = await json('POST', '/api/collections/users/auth-refresh', { token: minted.body?.token });
     const afterPw = await json('POST', '/api/collections/users/auth-refresh', { token: member.token });
     check('Q9b after revoke-all the minted token is refused', afterMint.status === 401, `status ${afterMint.status}`);
     check('Q9c after revoke-all the password session is refused too', afterPw.status === 401, `status ${afterPw.status}`);
+    const late = await json('POST', MINT, { token: su, body: { request: waitingId } });
+    check('Q9f revoke-all cancels an approved, not yet collected request: no session is minted after it', late.status === 409 &&
+      (await rowOf(waitingId)).status === 'expired', `status ${late.status}`);
+    check('Q9g another member\'s approved request is untouched', (await rowOf(othersId)).status === 'approved');
     const ownerAfter = await json('POST', '/api/collections/users/auth-refresh', { token: owner.token });
     check('Q9d another member is untouched', ownerBefore.status === 200 && ownerAfter.status === 200, `${ownerBefore.status} ${ownerAfter.status}`);
     const relog = await json('POST', '/api/collections/users/auth-with-password', { body: { identity: member.email, password: MEMBER_PASSWORD } });

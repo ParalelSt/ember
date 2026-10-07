@@ -12,7 +12,9 @@
 // however many Next processes poll at once, a request is minted once. It
 // mints only for the member who approved, and only while the request is
 // approved and unexpired. revoke-all rotates the member's token key, so
-// every session of theirs (minted or password) dies at once.
+// every session of theirs (minted or password) dies at once, and cancels any
+// request they approved that no device has collected yet. (A pending request
+// names nobody until it is approved, so there is nothing of theirs to cancel.)
 //
 // Both routes require a SUPERUSER token ($apis.requireAdminAuth): a member's
 // token, even an is_admin member's, is refused. The public /pb proxy never
@@ -77,17 +79,27 @@ routerAdd("POST", "/api/ember/qr-login/mint", (c) => {
 routerAdd("POST", "/api/ember/qr-login/revoke-all", (c) => {
   const data = $apis.requestInfo(c).data || {};
   const id = String(data.user || "");
-  let record = null;
+  let found = false;
   if (/^[a-z0-9]{15}$/.test(id)) {
-    try {
-      record = $app.dao().findRecordById("users", id);
-    } catch (_) {
-      record = null;
-    }
+    $app.dao().runInTransaction((tx) => {
+      let record = null;
+      try {
+        record = tx.findRecordById("users", id);
+      } catch (_) {
+        return;
+      }
+      found = true;
+      // A request this member approved that no device has collected yet
+      // would still mint a session after the key rotates: cancel it too.
+      const waiting = tx.findRecordsByFilter("login_requests", "user = {:user} && status = 'approved'", "", 0, 0, { user: id });
+      for (const r of waiting) {
+        r.set("status", "expired");
+        tx.saveRecord(r);
+      }
+      record.refreshTokenKey();
+      tx.saveRecord(record);
+    });
   }
-  if (!record) return c.json(404, { code: 404, message: "No such user.", data: {} });
-
-  record.refreshTokenKey();
-  $app.dao().saveRecord(record);
+  if (!found) return c.json(404, { code: 404, message: "No such user.", data: {} });
   return c.json(200, { ok: true });
 }, $apis.requireAdminAuth());

@@ -131,6 +131,21 @@ export async function findRow(pb: PocketBase, field: 'token_hash' | 'code', valu
   }
 }
 
+/** Sign out everywhere: a request this member approved that no device has
+ *  collected yet would still mint a session after their key rotates, so
+ *  cancel it first. The revoke-all hook does the same in its own
+ *  transaction; this keeps the rule even against an older hook. A pending
+ *  request names nobody until it is approved, so it is not theirs to cancel. */
+export async function cancelApprovedFor(pb: PocketBase, userId: string): Promise<void> {
+  const waiting = await pb.collection('login_requests').getFullList({
+    filter: pb.filter('user = {:user} && status = {:status}', { user: userId, status: 'approved' }),
+    requestKey: null,
+  });
+  for (const r of waiting) {
+    await pb.collection('login_requests').update(r.id, { status: 'expired' }, { requestKey: null });
+  }
+}
+
 /** One change at a time per request id in this process, so two polls (or
  *  an approve and a deny) arriving together cannot both act. */
 const locks = new Map<string, Promise<void>>();
