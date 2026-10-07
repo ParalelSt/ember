@@ -45,6 +45,12 @@ export function useExecuteResetAdminUserPassword() {
   });
 }
 
+export function useExecuteSignOutAdminUserEverywhere() {
+  return useMutation({
+    mutationFn: (id: string) => api.admin.signOutUserEverywhere(id),
+  });
+}
+
 // ───── Tracks ─────
 
 export function useQueryAdminTracks(page: number, q: string) {

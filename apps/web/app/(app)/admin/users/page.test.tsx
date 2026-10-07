@@ -1,6 +1,6 @@
 import type { PropsWithChildren } from 'react';
 import { describe, expect, it, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import AdminUsersPage from './page';
 import type { AdminUser } from '@/lib/api';
 
@@ -24,7 +24,10 @@ const users: AdminUser[] = [
   { id: 'u1', email: 'robin@ember.test', name: 'Robin', avatarUrl: '/pb/api/files/users/u1/avatar.png', isAdmin: false, created: '2024-01-01' },
 ];
 
+const signOutEverywhere = vi.hoisted(() => vi.fn(async () => ({ ok: true, self: false })));
+vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 vi.mock('@/hooks/useAdmin', () => ({
+  useExecuteSignOutAdminUserEverywhere: () => ({ mutateAsync: signOutEverywhere }),
   useQueryAdminUsers: () => ({ data: users, isLoading: false }),
   useExecuteUpdateAdminUser: () => ({ mutate: vi.fn() }),
   useExecuteDeleteAdminUser: () => ({ mutateAsync: vi.fn() }),
@@ -39,5 +42,16 @@ describe('AdminUsersPage', () => {
     const img = container.querySelector('img');
     expect(img).toHaveAttribute('src', '/pb/api/files/users/u1/avatar.png');
     expect(screen.getByText('robin@ember.test')).toBeInTheDocument();
+  });
+
+  it('signs a member out everywhere after confirming', async () => {
+    render(<AdminUsersPage />);
+    fireEvent.click(screen.getByRole('button', { name: 'Sign robin@ember.test out everywhere' }));
+    expect(screen.getByText('Sign robin@ember.test out everywhere?')).toBeInTheDocument();
+    expect(signOutEverywhere).not.toHaveBeenCalled();
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Sign out everywhere' }));
+    });
+    expect(signOutEverywhere).toHaveBeenCalledWith('u1');
   });
 });

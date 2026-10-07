@@ -7,11 +7,12 @@ import { Button } from '@/components/ui/button';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { PasswordResetDialog } from '@/components/ui/password-reset-dialog';
 import { Avatar } from '@/components/primitives/Avatar';
-import { KeyIcon, TrashIcon } from '@/components/icons';
+import { KeyIcon, LogOutIcon, TrashIcon } from '@/components/icons';
 import { useAuth } from '@/components/providers/AuthProvider';
 import {
   useExecuteDeleteAdminUser,
   useExecuteResetAdminUserPassword,
+  useExecuteSignOutAdminUserEverywhere,
   useExecuteUpdateAdminUser,
   useQueryAdminUsers,
 } from '@/hooks/useAdmin';
@@ -26,10 +27,12 @@ export default function AdminUsersPage() {
   const updateUser = useExecuteUpdateAdminUser();
   const deleteUser = useExecuteDeleteAdminUser();
   const resetPassword = useExecuteResetAdminUserPassword();
+  const signOutEverywhere = useExecuteSignOutAdminUserEverywhere();
 
   const [search, setSearch] = useState('');
   const [pendingDelete, setPendingDelete] = useState<AdminUser | null>(null);
   const [pendingReset, setPendingReset] = useState<AdminUser | null>(null);
+  const [pendingSignOut, setPendingSignOut] = useState<AdminUser | null>(null);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -78,6 +81,7 @@ export default function AdminUsersPage() {
             )}
             onDelete={() => setPendingDelete(u)}
             onResetPassword={() => setPendingReset(u)}
+            onSignOutEverywhere={() => setPendingSignOut(u)}
           />
         ))}
       </div>
@@ -97,6 +101,27 @@ export default function AdminUsersPage() {
             setPendingDelete(null);
           } catch (e) {
             toast.error(`Couldn't delete: ${(e as Error).message}`);
+            throw e;
+          }
+        }}
+      />
+
+      <ConfirmDialog
+        open={pendingSignOut !== null}
+        onOpenChange={(o) => !o && setPendingSignOut(null)}
+        title={pendingSignOut ? `Sign ${pendingSignOut.email} out everywhere?` : ''}
+        description="Every device signed in to this account is signed out at once. The password stays the same."
+        confirmLabel="Sign out everywhere"
+        variant="destructive"
+        onConfirm={async () => {
+          if (!pendingSignOut) return;
+          try {
+            const result = await signOutEverywhere.mutateAsync(pendingSignOut.id);
+            toast.success(`Signed ${pendingSignOut.email} out everywhere`);
+            setPendingSignOut(null);
+            if (result.self) await signOut();
+          } catch (e) {
+            toast.error(`Couldn't sign out: ${(e as Error).message}`);
             throw e;
           }
         }}
@@ -136,9 +161,10 @@ interface RowProps {
   onToggleAdmin: (isAdmin: boolean) => void;
   onDelete: () => void;
   onResetPassword: () => void;
+  onSignOutEverywhere: () => void;
 }
 
-function UserRow({ user, isSelf, onRename, onToggleAdmin, onDelete, onResetPassword }: RowProps) {
+function UserRow({ user, isSelf, onRename, onToggleAdmin, onDelete, onResetPassword, onSignOutEverywhere }: RowProps) {
   const [name, setName] = useState(user.name);
 
   const commitRename = () => {
@@ -148,7 +174,7 @@ function UserRow({ user, isSelf, onRename, onToggleAdmin, onDelete, onResetPassw
   };
 
   return (
-    <div className="grid grid-cols-[40px_1fr] gap-y-cluster gap-x-row items-center px-3 py-2 rounded-lg bg-card md:grid-cols-[40px_minmax(0,1.4fr)_minmax(0,1fr)_auto_auto_auto] md:gap-3">
+    <div className="grid grid-cols-[40px_1fr] gap-y-cluster gap-x-row items-center px-3 py-2 rounded-lg bg-card md:grid-cols-[40px_minmax(0,1.4fr)_minmax(0,1fr)_auto_auto_auto_auto] md:gap-3">
       <Avatar
         src={user.avatarUrl}
         name={user.name}
@@ -177,7 +203,7 @@ function UserRow({ user, isSelf, onRename, onToggleAdmin, onDelete, onResetPassw
           admin toggle and the action buttons are grouped into one full-width
           flex row, spread to the edges. md:contents on both wrappers drops
           them from layout at md and up, letting the label and each button
-          fall back into their own columns of the original 6-column grid. */}
+          fall back into their own columns of the original 7-column grid. */}
       <div className="col-span-2 flex items-center justify-between md:contents">
         <label
           className={cn(
@@ -205,6 +231,16 @@ function UserRow({ user, isSelf, onRename, onToggleAdmin, onDelete, onResetPassw
             className="h-8 w-8 text-muted-foreground hover:text-foreground"
           >
             <KeyIcon className="h-4 w-4" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={onSignOutEverywhere}
+            title="Sign out everywhere"
+            aria-label={`Sign ${user.email} out everywhere`}
+            className="h-8 w-8 text-muted-foreground hover:text-foreground"
+          >
+            <LogOutIcon className="h-4 w-4" />
           </Button>
           <Button
             variant="ghost"

@@ -35,6 +35,7 @@
     "test:pb-rbac": "node tests/pb-rbac.test.mjs",
     "test:pb-filter-guard": "node tests/pb-filter-guard.test.mjs",
     "test:pb-qr-login": "node tests/pb-qr-login.test.mjs",
+    "test:qr-login-ui": "node tests/qr-login-ui.test.mjs",
     "test:collab-rbac": "node tests/collab-rbac.test.mjs",
     "test:collab-member-cap": "node tests/collab-member-cap.test.mjs",
     "test:collab-ui": "node tests/collab-ui.test.mjs",
