@@ -5,6 +5,7 @@ import {
   NOTHING_TO_MATCH,
   routesFor,
   serviceById,
+  serviceOpen,
   soleRoute,
   SPOTIFY_LINK_CAP,
   TRANSFER_SERVICES,
@@ -70,6 +71,18 @@ describe('the real limits, said where the path shows up', () => {
 });
 
 describe('what a destination leaves on offer', () => {
+  it('Spotify leads with its data export for Liked songs and with the link for a playlist', () => {
+    const spotify = serviceById('spotify');
+    expect(routesFor(spotify, 'liked').map((r) => r.id)).toEqual(['spotify-export', 'spotify-converter', 'spotify-link']);
+    expect(routesFor(spotify, 'playlist').map((r) => r.id)).toEqual(['spotify-link', 'spotify-export', 'spotify-converter']);
+  });
+
+  it('every service is open for Liked songs, and serviceOpen keeps the hold-back switch', () => {
+    for (const s of TRANSFER_SERVICES) expect(serviceOpen(s.id, 'liked')).toBe(true);
+    expect(serviceOpen('spotify', 'liked', ['ytmusic'])).toBe(false);
+    expect(serviceOpen('spotify', 'playlist', ['ytmusic'])).toBe(true);
+  });
+
   it('the Google sign-in is offered for Liked songs only, first', () => {
     const ytmusic = serviceById('ytmusic');
     expect(routesFor(ytmusic, 'liked').map((r) => r.kind)).toEqual(['google', 'link']);

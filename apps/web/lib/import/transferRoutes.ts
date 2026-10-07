@@ -52,6 +52,10 @@ export interface TransferRoute {
   /** True only for the Google sign-in: it always lands its
    *  songs in the likes, so it makes no sense as a way to build a playlist. */
   likedOnly?: boolean;
+  /** Listed first when the songs are going into a new playlist, last for
+   *  Liked songs: a link shows only a public playlist, which is a poor way
+   *  to bring a whole library across. */
+  playlistFirst?: boolean;
 }
 
 export interface TransferService {
@@ -71,15 +75,16 @@ export const TRANSFER_SERVICES: readonly TransferService[] = [
     heading: 'Bring in your Spotify songs',
     routes: [
       {
-        id: 'spotify-link',
-        kind: 'link',
-        whatYouHave: 'A link to a playlist',
+        id: 'spotify-export',
+        kind: 'file',
+        whatYouHave: 'Nothing yet, but I can wait a few days',
         steps: [
-          'Spotify cannot share your liked songs as a link, so in Spotify make a new playlist and add them to it.',
-          'Make that playlist public, then copy its link.',
-          'Paste the link below.',
+          'In Spotify, go to Account, then Privacy settings.',
+          'Choose "Download your data" and ask for it. Spotify emails you in a few days.',
+          'Unzip what arrives and find the file called YourLibrary.json.',
+          'Come back here and choose that file below.',
         ],
-        notes: [SPOTIFY_LINK_CAP, MATCHED_BY_NAME],
+        notes: [MATCHED_BY_NAME],
       },
       {
         id: 'spotify-converter',
@@ -92,16 +97,16 @@ export const TRANSFER_SERVICES: readonly TransferService[] = [
         notes: [MATCHED_BY_NAME],
       },
       {
-        id: 'spotify-export',
-        kind: 'file',
-        whatYouHave: 'Nothing yet, but I can wait a few days',
+        id: 'spotify-link',
+        kind: 'link',
+        playlistFirst: true,
+        whatYouHave: 'A link to a playlist',
         steps: [
-          'In Spotify, go to Account, then Privacy settings.',
-          'Choose "Download your data" and ask for it. Spotify emails you in a few days.',
-          'Unzip what arrives and find the file called YourLibrary.json.',
-          'Come back here and choose that file below.',
+          'Spotify cannot share your liked songs as a link, so in Spotify make a new playlist and add them to it.',
+          'Make that playlist public, then copy its link.',
+          'Paste the link below.',
         ],
-        notes: [MATCHED_BY_NAME],
+        notes: [SPOTIFY_LINK_CAP, MATCHED_BY_NAME],
       },
     ],
   },
@@ -173,14 +178,13 @@ export const TRANSFER_SERVICES: readonly TransferService[] = [
   },
 ];
 
-/** Which services can fill the Liked songs for now. The owner has opened
- *  only YouTube Music (its Google sign-in brings the exact songs over); the
- *  others stay listed, crossed out, until they are opened again here. A new
- *  playlist can still come from any of them. */
-export const LIKED_SERVICES_OPEN: readonly TransferServiceId[] = ['ytmusic'];
-
 /** Every service, for when nothing is held back. */
 export const ALL_SERVICES: readonly TransferServiceId[] = ['spotify', 'ytmusic', 'apple', 'other'];
+
+/** Which services can fill the Liked songs. All of them: each has a way in
+ *  that ends in the same transfer. A future hold-back is one line here, and
+ *  the dialog crosses out whatever is left off. */
+export const LIKED_SERVICES_OPEN: readonly TransferServiceId[] = ALL_SERVICES;
 
 /** Whether a service card can be picked for this destination. */
 export function serviceOpen(
@@ -199,7 +203,8 @@ export function serviceById(id: TransferServiceId): TransferService {
  *  Google sign-in always lands in the likes, so it is not
  *  offered while a new playlist is the destination. */
 export function routesFor(service: TransferService, destination: JobKind): TransferRoute[] {
-  return service.routes.filter((r) => !r.likedOnly || destination === 'liked');
+  const offered = service.routes.filter((r) => !r.likedOnly || destination === 'liked');
+  return destination === 'liked' ? offered : [...offered.filter((r) => r.playlistFirst), ...offered.filter((r) => !r.playlistFirst)];
 }
 
 /** The one a service falls to when there is nothing to ask: the first way

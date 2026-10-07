@@ -1,7 +1,7 @@
 /** Transfer in a real browser, end to end: Settings > Library, the Transfer
  *  row, then the three plain questions (where the songs land, where the
- *  music is now, what you already have). For Liked songs only YouTube
- *  Music is open for now, so it checks the others are crossed out, then
+ *  music is now, what you already have). For Liked songs every service is
+ *  open, so it checks none is crossed out, then
  *  runs an uploaded CSV into a new playlist: its preview, Start, and the
  *  playlist page with the import and the songs. The Liked songs page run
  *  is covered by tests/transfer-google-ui.test.mjs.
@@ -131,15 +131,14 @@ try {
   const services = await page.$$eval('[data-testid="transfer-service-card"]', (els) => els.map((e) => e.textContent));
   check('B3 then it asks where the music is now, by name',
     JSON.stringify(services) === '["Spotify","YouTube Music","Apple Music","Somewhere else"]', `${services}`);
-  // For now only YouTube Music may fill the Liked songs: the others are
-  // crossed out and cannot be pressed (LIKED_SERVICES_OPEN).
+  // Every service may fill the Liked songs: no card is crossed out.
   const open = await page.$$eval('[data-testid="transfer-service-card"]', (els) =>
     Object.fromEntries(els.map((e) => [e.dataset.service, !e.disabled])));
-  check('B3b for Liked songs only YouTube Music can be picked',
-    JSON.stringify(open) === '{"spotify":false,"ytmusic":true,"apple":false,"other":false}', JSON.stringify(open));
-  const heldBack = await page.textContent('[data-testid="transfer-services-held-back"]').catch(() => '');
-  check('B3c and the dialog says why, in a sentence', /only YouTube Music/.test(heldBack ?? ''), `${heldBack}`);
-  await shot(page, 'liked-locked');
+  check('B3b for Liked songs every service can be picked',
+    JSON.stringify(open) === '{"spotify":true,"ytmusic":true,"apple":true,"other":true}', JSON.stringify(open));
+  const heldBack = await page.textContent('[data-testid="transfer-services-held-back"]', { timeout: 500 }).catch(() => '');
+  check('B3c and no held-back sentence is shown', (heldBack ?? '') === '', `${heldBack}`);
+  await shot(page, 'liked-open');
 
   // A file still makes a new playlist from any service: go back one step.
   await page.getByRole('button', { name: /Back/ }).click();

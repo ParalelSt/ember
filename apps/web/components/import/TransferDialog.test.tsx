@@ -180,14 +180,14 @@ describe('TransferDialog: where the songs land', () => {
 });
 
 describe('TransferDialog: what do you have already', () => {
-  it('Spotify asks about a link, a file, or nothing yet', () => {
+  it('Spotify asks about an export first, then a file, then a link, for Liked songs', () => {
     setup();
     pick('Liked songs');
     service('Spotify');
     expect(screen.getAllByTestId('transfer-have-option').map((o) => o.textContent)).toEqual([
-      'A link to a playlist',
-      'A file someone gave me, or one I downloaded',
       'Nothing yet, but I can wait a few days',
+      'A file someone gave me, or one I downloaded',
+      'A link to a playlist',
     ]);
     // No technical name anywhere in the question.
     expect(screen.queryByText(/CSV/)).toBeNull();
@@ -771,7 +771,7 @@ describe('TransferDialog: YouTube Music likes, after a Google sign-in', () => {
   });
 });
 
-describe('TransferDialog: only YouTube Music fills the Liked songs for now', () => {
+describe('TransferDialog: every service can fill the Liked songs', () => {
   function setupDefault() {
     const qc = new QueryClient();
     render(
@@ -781,25 +781,36 @@ describe('TransferDialog: only YouTube Music fills the Liked songs for now', () 
     );
   }
 
-  it('is the default, with YouTube Music the one service open', () => {
-    expect(LIKED_SERVICES_OPEN).toEqual(['ytmusic']);
+  it('is the default: every service is open', () => {
+    expect([...LIKED_SERVICES_OPEN].sort()).toEqual([...ALL_SERVICES].sort());
   });
 
-  it('crosses out and disables every other service for Liked songs, and says why', () => {
+  it('shows every service enabled and not crossed out for Liked songs, with no held-back note', () => {
     setupDefault();
     pick('Liked songs');
     const cards = screen.getAllByTestId('transfer-service-card');
-    const byId = Object.fromEntries(cards.map((c) => [c.dataset.service, c as HTMLButtonElement]));
-    expect(byId.ytmusic).toBeEnabled();
-    for (const id of ['spotify', 'apple', 'other']) {
-      expect(byId[id]).toBeDisabled();
-      expect(byId[id]).toHaveClass('line-through');
+    expect(cards).toHaveLength(4);
+    for (const card of cards) {
+      expect(card).toBeEnabled();
+      expect(card).not.toHaveClass('line-through');
     }
-    expect(screen.getByTestId('transfer-services-held-back')).toHaveTextContent('For now only YouTube Music');
-    // A crossed-out card does nothing when pressed.
-    fireEvent.click(byId.spotify);
-    expect(screen.queryAllByTestId('transfer-have-option')).toHaveLength(0);
-    expect(screen.getAllByTestId('transfer-service-card')).toHaveLength(4);
+    expect(screen.queryByTestId('transfer-services-held-back')).toBeNull();
+    expect(screen.queryByText(/For now only YouTube Music/)).toBeNull();
+  });
+
+  it('Spotify offers its data export first for Liked songs, the link last', () => {
+    setupDefault();
+    pick('Liked songs');
+    service('Spotify');
+    const routes = screen.getAllByTestId('transfer-have-option').map((o) => o.dataset.route);
+    expect(routes).toEqual(['spotify-export', 'spotify-converter', 'spotify-link']);
+  });
+
+  it('Spotify still offers the link first for a new playlist', () => {
+    setupDefault();
+    pick('A new playlist');
+    service('Spotify');
+    expect(screen.getAllByTestId('transfer-have-option')[0].dataset.route).toBe('spotify-link');
   });
 
   it('YouTube Music still opens its choices', () => {

@@ -104,7 +104,7 @@ export interface TransferDialogProps {
   /** Where the dialog was opened from, for the breadcrumb only. */
   from?: string;
   /** Services that may fill the Liked songs; the rest show crossed out.
-   *  Defaults to what is open for now (`LIKED_SERVICES_OPEN`). */
+   *  Defaults to every service (`LIKED_SERVICES_OPEN`). */
   likedServicesOpen?: readonly TransferServiceId[];
 }
 
@@ -519,11 +519,6 @@ export function TransferDialog({
                     </button>
                   );
                 })}
-                {destination === 'liked' && TRANSFER_SERVICES.some((s) => !likedServicesOpen.includes(s.id)) && (
-                  <p data-testid="transfer-services-held-back" className="text-xs text-muted-foreground md:col-span-2">
-                    For now only YouTube Music can fill your Liked songs. The others can still make a new playlist.
-                  </p>
-                )}
               </div>
             )}
 
