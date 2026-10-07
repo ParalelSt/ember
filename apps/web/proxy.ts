@@ -116,6 +116,16 @@ export function isPbAuthPath(path: string): boolean {
   return PB_AUTH_ROUTE.test(full.slice(3));
 }
 
+/** QR sign-in approve links (/link/<token>, plan 1b). A signed-out phone
+ *  must sign in first, but the token must not ride along in
+ *  /auth?next=... where it would sit in the browser history: it waits in a
+ *  short httpOnly cookie only /link can see, and next is plain /link. */
+const LINK_PATH = /^\/link\/([A-Za-z0-9_-]{43})$/;
+export const LINK_COOKIE = 'ember_link';
+function linkCookie(value: string, maxAge: number, secure: boolean): string {
+  return `${LINK_COOKIE}=${value}; Path=/link; Max-Age=${maxAge}; HttpOnly; SameSite=Lax${secure ? '; Secure' : ''}`;
+}
+
 /** A Cookie header without the named cookie. */
 function withoutCookie(header: string, name: string): string {
   return header
@@ -241,10 +251,20 @@ export default async function proxy(req: NextRequest) {
     }
     const url = req.nextUrl.clone();
     url.pathname = '/auth';
-    url.searchParams.set('next', path);
+    const isLink = path.startsWith('/link/');
+    if (isLink) url.search = '';
+    url.searchParams.set('next', isLink ? '/link' : path);
     const redirect = NextResponse.redirect(url);
     for (const c of setCookies) redirect.headers.append('set-cookie', c);
+    const linkToken = LINK_PATH.exec(path)?.[1];
+    if (linkToken) redirect.headers.append('set-cookie', linkCookie(linkToken, 300, isHttps));
     return redirect;
+  }
+
+  // The stashed approve token is read once by the /link page this request
+  // renders; the browser drops it at the same time.
+  if (user && path === '/link' && new RegExp(`(?:^|;\\s*)${LINK_COOKIE}=`).test(req.headers.get('cookie') ?? '')) {
+    response.headers.append('set-cookie', linkCookie('', 0, isHttps));
   }
 
   if (user && path === '/auth') {

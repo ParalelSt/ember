@@ -16,7 +16,8 @@
  *  declined on the device. Sign out everywhere on A signs B out. With
  *  QR_LOGIN_TTL_S=3 the device renews quietly 5 times, then shows "Code
  *  expired" and Get a new code works. Throughout: the poll cookie is
- *  httpOnly, a third browser cannot use the link, /pb/api/ember is a 404,
+ *  httpOnly, a third browser cannot use the link, a signed-out scan keeps the
+ *  token out of every URL across the sign-in, /pb/api/ember is a 404,
  *  and no token, code, poll secret or minted session reaches a log. */
 import { execSync, spawn, spawnSync } from 'node:child_process';
 import fs from 'node:fs';
@@ -251,12 +252,27 @@ try {
   const cCtx = await browser.newContext();
   const c = await cCtx.newPage();
   await c.goto(link);
-  check('C1 a signed-out browser opening the link is sent to sign in first', new URL(c.url()).pathname === '/auth' &&
-    new URL(c.url()).searchParams.get('next')?.startsWith('/link/'), c.url());
+  const tokenB = String(bStart.approveUrl).split('/link/')[1];
+  const cUrl = new URL(c.url());
+  check('C1 a signed-out browser opening the link is sent to sign in, with no token in the URL', cUrl.pathname === '/auth' &&
+    cUrl.searchParams.get('next') === '/link' && !c.url().includes(tokenB), c.url());
+  const stash = (await cCtx.cookies()).find((x) => x.name === 'ember_link');
+  check('C1b the token waits in a short httpOnly cookie only /link sees', !!stash && stash.httpOnly && stash.path === '/link');
   const cStatus = await c.request.get(`${APP}/api/auth/qr/status`);
   check('C2 without the poll cookie the status route says nothing', cStatus.status() === 404);
   const cMint = await c.request.post(`${APP}/pb/api/ember/qr-login/mint`, { data: { user: 'x' } });
   check('C3 /pb/api/ember/qr-login/mint is a 404 through the app', cMint.status() === 404, String(cMint.status()));
+  // That browser signs in (as A, the only member here) and lands on the
+  // card, still with no token in any URL.
+  await c.getByLabel('Email').fill(A_EMAIL);
+  await c.getByRole('button', { name: 'Continue' }).click();
+  await c.getByLabel('Password').fill(A_PASSWORD);
+  await c.getByRole('button', { name: 'Log in' }).click();
+  await c.getByTestId('approve-card').waitFor({ timeout: 30_000 });
+  const cCard = await c.getByTestId('approve-card').textContent();
+  check('C4 after sign-in it lands on /link with the card for that request, the token never in a URL', c.url() === `${APP}/link` &&
+    cCard.includes(bDevice) && !c.url().includes(tokenB), c.url());
+  check('C5 and the stashed cookie is gone', !(await cCtx.cookies()).some((x) => x.name === 'ember_link'));
   await cCtx.close();
 
   // ── A approves ──

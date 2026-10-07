@@ -336,12 +336,45 @@ describe('proxy [qr sign-in]: /pb/api/ember is not proxied', () => {
 });
 
 describe('proxy [qr sign-in]: the approve page is a signed-in page', () => {
-  it('sends a signed-out visitor of /link/<token> to sign in, then back', async () => {
-    const res = await proxy(req('/link/abc'));
+  const TOKEN = 'AbC_-'.repeat(8) + 'xyz';
+
+  it('sends a signed-out visitor of /link/<token> to sign in with no token in the URL, keeping it in a short httpOnly cookie', async () => {
+    const res = await proxy(req(`/link/${TOKEN}`));
     expect(res.status).toBe(307);
-    const location = new URL(res.headers.get('location')!);
+    const loc = res.headers.get('location')!;
+    expect(loc).not.toContain(TOKEN);
+    const location = new URL(loc);
     expect(location.pathname).toBe('/auth');
-    expect(location.searchParams.get('next')).toBe('/link/abc');
+    expect(location.searchParams.get('next')).toBe('/link');
+    const stash = res.headers.getSetCookie().find((c) => c.startsWith('ember_link='))!;
+    expect(stash).toContain(`ember_link=${TOKEN}`);
+    expect(stash).toMatch(/HttpOnly/i);
+    expect(stash).toMatch(/Path=\/link(;|$)/);
+    expect(stash).toMatch(/Max-Age=300/);
+    expect(stash).toMatch(/SameSite=lax/i);
+  });
+
+  it('a malformed /link path is not stashed, and does not reach the URL either', async () => {
+    const res = await proxy(req('/link/abc'));
+    expect(new URL(res.headers.get('location')!).searchParams.get('next')).toBe('/link');
+    expect(res.headers.getSetCookie().some((c) => c.startsWith('ember_link='))).toBe(false);
+  });
+
+  it('signed in, /link is rendered from the stashed cookie and the response clears it', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ token: futureToken(), record: { id: 'u1', collectionName: 'users' } }), {
+      status: 200, headers: { 'content-type': 'application/json' },
+    })));
+    try {
+      const cookie = `pb_auth=${encodeURIComponent(JSON.stringify({ token: futureToken(), record: { id: 'u1' } }))}; ember_link=${TOKEN}`;
+      const res = await proxy(req('/link', { cookie }));
+      expect(res.status).toBe(200);
+      // The page render still sees it ...
+      expect(res.headers.get('x-middleware-request-cookie') ?? cookie).toContain(`ember_link=${TOKEN}`);
+      // ... and the browser drops it.
+      expect(res.headers.getSetCookie().some((c) => /^ember_link=;/.test(c) && /Max-Age=0/.test(c))).toBe(true);
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 
   it('leaves the QR routes reachable without a session (each decides its own auth)', async () => {
