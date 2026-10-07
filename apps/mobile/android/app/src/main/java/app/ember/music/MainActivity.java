@@ -41,6 +41,17 @@ public class MainActivity extends BridgeActivity {
         injectBridgeIntoErrorPage();
         publishSafeAreaInsets();
         applyStoredTheme();
+        // The session cookie to disk on pause and stop, and after every page
+        // load below: a process killed soon after signing in kept no cookie.
+        CookieFlush.INSTANCE.install(this);
+        if (getBridge() != null) {
+            getBridge().addWebViewListener(new WebViewListener() {
+                @Override
+                public void onPageLoaded(WebView view) {
+                    CookieFlush.INSTANCE.now();
+                }
+            });
+        }
         BackButton.INSTANCE.install(this, () -> getBridge() == null ? null : getBridge().getWebView(), () -> {
             moveTaskToBack(true);
             return kotlin.Unit.INSTANCE;
