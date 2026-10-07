@@ -133,15 +133,15 @@ describe('ApproveSignIn', () => {
     expect(screen.getByText('Declined.')).toBeInTheDocument();
   });
 
-  it('a link already used, or one that matches nothing, says so without a card', async () => {
-    answers.lookup = { status: 200, body: facts({ status: 'used' }) };
+  it('a request approved a moment ago, or one the server no longer knows, says so without a card', async () => {
+    answers.lookup = { status: 200, body: facts({ status: 'approved' }) };
     await show();
     expect(screen.getByText('This code was already used.')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Approve' })).toBeNull();
     cleanup();
     answers.lookup = { status: 404, body: { error: 'No sign-in request with that code.' } };
     await show();
-    expect(screen.getByText('This code has expired, ask the device for a new one.')).toBeInTheDocument();
+    expect(screen.getByText('This code has expired or was already used. Ask the device for a new one.')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /Have a code/ })).toHaveAttribute('href', '/settings/devices');
   });
 

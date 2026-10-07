@@ -406,16 +406,25 @@ describe('POST lookup', () => {
     }
   });
 
-  it('tells a used request apart (the person opened the link twice)', async () => {
-    const r = await newRequest();
+  it('only a live request answers: used and denied ones look like unknown, by token and by code', async () => {
+    const used = await newRequest();
     asUser(MEMBER);
-    await hit(approve.POST, '/api/auth/qr/approve', { body: { id: r.id, token: r.token } });
+    await hit(approve.POST, '/api/auth/qr/approve', { body: { id: used.id, token: used.token } });
+    // Approved but not yet collected: still live, says so.
+    const waiting = await hit(lookup.POST, '/api/auth/qr/lookup', { body: { token: used.token } });
+    expect(waiting.status).toBe(200);
+    expect(waiting.body?.status).toBe('approved');
     asUser(null);
-    await poll(r.cookie);
+    await poll(used.cookie);
+    const denied = await newRequest({ ip: '203.0.113.81' });
     asUser(MEMBER);
-    const again = await hit(lookup.POST, '/api/auth/qr/lookup', { body: { token: r.token } });
-    expect(again.status).toBe(200);
-    expect(again.body?.status).toBe('used');
+    await hit(deny.POST, '/api/auth/qr/deny', { body: { id: denied.id, token: denied.token } });
+    const unknown = await hit(lookup.POST, '/api/auth/qr/lookup', { body: { token: 'B'.repeat(43) } });
+    for (const body of [{ token: used.token }, { code: used.code }, { token: denied.token }, { code: denied.code }]) {
+      const x = await hit(lookup.POST, '/api/auth/qr/lookup', { body });
+      expect(x.status, JSON.stringify(body)).toBe(404);
+      expect(x.text).toBe(unknown.text);
+    }
   });
 
   it('brute force: 5 code lookups per member per 10 minutes', async () => {

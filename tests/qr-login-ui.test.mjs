@@ -11,8 +11,8 @@
  *
  *  Context A is a phone signed in with a password; B is a new device on
  *  /auth. A opens B's QR link, sees B's device and "Same network", approves
- *  after the 2 s guard; B lands signed in as A. The link again says already
- *  used. A fresh request typed in Settings > Devices and declined shows
+ *  after the 2 s guard; B lands signed in as A. The link again finds
+ *  nothing. A fresh request typed in Settings > Devices and declined shows
  *  declined on the device. Sign out everywhere on A signs B out. With
  *  QR_LOGIN_TTL_S=3 the device renews quietly 5 times, then shows "Code
  *  expired" and Get a new code works. Throughout: the poll cookie is
@@ -290,8 +290,8 @@ try {
   check('B7 the poll cookie is gone after delivery', !(await pollCookie(b.ctx)));
 
   await a.goto(link);
-  await a.getByText('This code was already used.').waitFor({ timeout: 10_000 });
-  check('A5 the same link again says already used', true);
+  await a.getByText('This code has expired or was already used. Ask the device for a new one.').waitFor({ timeout: 10_000 });
+  check('A5 the same link again finds nothing to approve', (await a.getByTestId('approve-card').count()) === 0);
 
   // ── A fresh request, typed in Settings > Devices, declined ──
   const b2 = await newDevice(browser);

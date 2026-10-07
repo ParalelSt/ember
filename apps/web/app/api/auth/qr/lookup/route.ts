@@ -49,7 +49,9 @@ export const POST = withRequestLog('auth/qr/lookup', async (req: NextRequest) =>
     const now = Date.now();
     if (!row) return noSuchRequest();
     const status = effectiveStatus(row, now);
-    if (status === 'expired') return noSuchRequest();
+    // Only a live request answers. A used, denied or expired one looks like
+    // one that never existed, so old codes say nothing for their 30 days.
+    if (status !== 'pending' && status !== 'approved') return noSuchRequest();
     const asked = parsePbDate(row.created);
     return json({
       id: row.id,

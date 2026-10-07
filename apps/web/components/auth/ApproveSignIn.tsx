@@ -20,6 +20,7 @@ export const APPROVE_ARM_MS = 2000;
 const RESULT = {
   done: 'Done. The other device is signing in.',
   expired: 'This code has expired, ask the device for a new one.',
+  gone: 'This code has expired or was already used. Ask the device for a new one.',
   used: 'This code was already used.',
   denied: 'Declined.',
   limited: 'Too many tries. Wait a few minutes, then try again.',
@@ -31,7 +32,7 @@ type Phase = { kind: 'loading' } | { kind: 'card'; facts: QrFacts } | { kind: 'b
 
 function resultFor(status: number, body: { status?: unknown } | null): Result {
   if (status === 429) return 'limited';
-  if (status === 404) return 'expired';
+  if (status === 404) return 'gone';
   if (status === 409) {
     const s = body?.status;
     if (s === 'used' || s === 'denied' || s === 'expired') return s;
@@ -115,7 +116,7 @@ export function ApproveSignIn({ credential, onDone }: { credential: Credential; 
     return (
       <div data-testid="approve-result" className="rounded-2xl bg-card p-page shadow-soft" aria-live="polite">
         <div className="font-semibold">{RESULT[phase.result]}</div>
-        {phase.result === 'expired' && 'token' in credential && (
+        {(phase.result === 'expired' || phase.result === 'gone') && 'token' in credential && (
           <Link href="/settings/devices" className="mt-cluster inline-block text-sm text-muted-foreground underline hover:text-foreground">
             Have a code? Type it in Settings &gt; Devices
           </Link>
