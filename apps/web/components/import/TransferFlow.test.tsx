@@ -107,12 +107,22 @@ function chooseFile(name = 'exportify.csv', body = 'Track Name,Artist Name\na,b\
   fireEvent.change(input, { target: { files: [new File([body], name, { type: 'text/csv' })] } });
 }
 
+/** The labels of the "what do you have already?" rows. */
+const haveLabels = () => screen.getAllByTestId('transfer-have-label').map((o) => o.textContent);
+
+/** Past the pictures to the last step, where the real control is. */
+function toEnd() {
+  const skip = screen.queryByRole('button', { name: 'I have it already, skip to the end' });
+  if (skip) fireEvent.click(skip);
+}
+
 /** Straight to the Spotify converter-file route, the one most of the error
  *  cases below travel through. */
 function toSpotifyFile() {
   pick('Liked songs');
   service('Spotify');
   have(/A file someone gave me/);
+  toEnd();
 }
 
 /** A refusal shaped the way lib/api.ts throws one. */
@@ -176,7 +186,7 @@ describe('TransferFlow: one screen, where to and where from', () => {
 
   it('Back on the first screen returns to the page it was opened from', () => {
     setup({ from: '/settings/library' });
-    fireEvent.click(screen.getByRole('button', { name: 'Back' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Go back' }));
     expect(push).toHaveBeenCalledWith('/settings/library');
   });
 
@@ -193,7 +203,7 @@ describe('TransferFlow: what do you have already', () => {
     setup();
     pick('Liked songs');
     service('Spotify');
-    expect(screen.getAllByTestId('transfer-have-option').map((o) => o.textContent)).toEqual([
+    expect(haveLabels()).toEqual([
       'Nothing yet, but I can wait a few days',
       'A file someone gave me, or one I downloaded',
       'A link to a playlist',
@@ -204,20 +214,60 @@ describe('TransferFlow: what do you have already', () => {
 
   it('a file in hand gets the converter steps and the file picker, not the export wait', () => {
     setup();
-    toSpotifyFile();
+    pick('Liked songs');
+    service('Spotify');
+    have(/A file someone gave me/);
     expect(steps()).toMatch(/Exportify, Soundiiz or TuneMyMusic/);
     expect(steps()).not.toMatch(/Download your data/);
     expect(steps()).toContain(MATCHED_BY_NAME);
+    toEnd();
     expect(screen.getByLabelText('Song list file')).toBeInTheDocument();
   });
 
-  it('nothing yet gets the data-export steps, and the same file picker', () => {
+  it('nothing yet gets the data-export steps one at a time, each with a picture, then the same file picker', () => {
     setup();
     pick('Liked songs');
     service('Spotify');
     have(/Nothing yet/);
+    expect(screen.getByText('Step 1 of 4')).toBeInTheDocument();
+    expect(screen.getByTestId('transfer-step-text')).toHaveTextContent('go to Account, then Privacy settings');
+    expect(screen.getByTestId('transfer-illustration')).toHaveTextContent('Account');
+    expect(screen.getByTestId('transfer-illustration').querySelector('[data-tap="true"]')).toHaveTextContent('Privacy settings');
+    // No file picker until the last step, and Back cannot go before the first.
+    expect(screen.queryByLabelText('Song list file')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Back' })).toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name: 'Next step' }));
+    expect(screen.getByText('Step 2 of 4')).toBeInTheDocument();
     expect(steps()).toMatch(/Download your data/);
+    fireEvent.click(screen.getByRole('button', { name: 'Next step' }));
     expect(steps()).toMatch(/YourLibrary\.json/);
+    expect(screen.getByTestId('transfer-illustration').querySelector('[data-tap="true"]')).toHaveTextContent('YourLibrary.json');
+    fireEvent.click(screen.getByRole('button', { name: 'Back' }));
+    expect(screen.getByText('Step 2 of 4')).toBeInTheDocument();
+    // The dots jump straight to a step.
+    fireEvent.click(screen.getByRole('button', { name: 'Step 4' }));
+    expect(screen.getByText('Step 4 of 4')).toBeInTheDocument();
+    expect(screen.getByLabelText('Song list file')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Next step' })).toBeNull();
+  });
+
+  it('each answer says how long that way takes', () => {
+    setup();
+    pick('Liked songs');
+    service('Spotify');
+    const rows = screen.getAllByTestId('transfer-have-option');
+    expect(rows[0]).toHaveTextContent('Free and complete. Spotify takes a few days');
+    expect(rows[2]).toHaveTextContent('Instant, first 100 songs only');
+  });
+
+  it('"I have it already" goes straight to the last step', () => {
+    setup();
+    pick('Liked songs');
+    service('Spotify');
+    have(/Nothing yet/);
+    toEnd();
+    expect(screen.getByText('Step 4 of 4')).toBeInTheDocument();
+    expect(screen.getByTestId('transfer-illustration')).toHaveTextContent('Ember');
     expect(screen.getByLabelText('Song list file')).toBeInTheDocument();
   });
 
@@ -228,6 +278,7 @@ describe('TransferFlow: what do you have already', () => {
     have(/A link to a playlist/);
     expect(steps()).toMatch(/cannot share your liked songs as a link/);
     expect(steps()).toContain(SPOTIFY_LINK_CAP);
+    toEnd();
     expect(screen.getByLabelText('Playlist link')).toBeInTheDocument();
   });
 
@@ -238,6 +289,7 @@ describe('TransferFlow: what do you have already', () => {
     expect(screen.queryAllByTestId('transfer-have-option')).toHaveLength(0);
     expect(steps()).toMatch(/privacy\.apple\.com/);
     expect(steps()).toMatch(/shares no links/);
+    toEnd();
     expect(screen.getByLabelText('Song list file')).toBeInTheDocument();
   });
 
@@ -245,23 +297,24 @@ describe('TransferFlow: what do you have already', () => {
     setup();
     pick('Liked songs');
     service('Somewhere else');
-    expect(screen.getAllByTestId('transfer-have-option').map((o) => o.textContent)).toEqual([
+    expect(haveLabels()).toEqual([
       'Just a list I can type out',
       'A file someone gave me',
     ]);
     have(/Just a list/);
+    toEnd();
     expect(screen.getByLabelText('Your songs, one a line')).toBeInTheDocument();
   });
 
   it('Back walks the questions backwards, one at a time', () => {
     setup();
     toSpotifyFile();
-    fireEvent.click(screen.getByRole('button', { name: /Back/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Go back' }));
     expect(screen.getAllByTestId('transfer-have-option').length).toBeGreaterThan(1);
-    fireEvent.click(screen.getByRole('button', { name: /Back/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Go back' }));
     expect(screen.getAllByTestId('transfer-service-card')).toHaveLength(4);
     expect(screen.getAllByTestId('transfer-destination-card')).toHaveLength(2);
-    fireEvent.click(screen.getByRole('button', { name: /Back/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Go back' }));
     expect(push).toHaveBeenCalledWith('/library/liked');
   });
 
@@ -269,7 +322,7 @@ describe('TransferFlow: what do you have already', () => {
     setup();
     pick('Liked songs');
     service('Apple Music');
-    fireEvent.click(screen.getByRole('button', { name: /Back/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Go back' }));
     expect(screen.getAllByTestId('transfer-service-card')).toHaveLength(4);
   });
 });
@@ -310,6 +363,7 @@ describe('TransferFlow: every answer reaches its route', () => {
     pick('A new playlist');
     service('Spotify');
     have(/A file someone gave me/);
+    toEnd();
     chooseFile();
     await waitFor(() => expect(startButton()).toBeEnabled());
     fireEvent.click(startButton());
@@ -323,6 +377,7 @@ describe('TransferFlow: every answer reaches its route', () => {
     pick('Liked songs');
     service('Somewhere else');
     have(/Just a list/);
+    toEnd();
     fireEvent.change(screen.getByLabelText('Your songs, one a line'), {
       target: { value: 'Halcyon Drift - Paper Lanterns\nNadia Okonkwo - Slow Weather' },
     });
@@ -344,6 +399,7 @@ describe('TransferFlow: every answer reaches its route', () => {
     pick('Liked songs');
     service('Spotify');
     have(/A link to a playlist/);
+    toEnd();
     fireEvent.change(screen.getByLabelText('Playlist link'), { target: { value: LINK } });
     await waitFor(() => expect(screen.getByTestId('link-preview')).toHaveTextContent('Late night drive'));
     fireEvent.click(startButton());
@@ -358,6 +414,7 @@ describe('TransferFlow: every answer reaches its route', () => {
     pick('Liked songs');
     service('Spotify');
     have(/A link to a playlist/);
+    toEnd();
     fireEvent.change(screen.getByLabelText('Playlist link'), { target: { value: LINK } });
     await waitFor(() => expect(screen.getByTestId('link-preview')).toHaveTextContent('Late night drive'));
     // Another link: the old preview is not this one's.
@@ -372,6 +429,7 @@ describe('TransferFlow: every answer reaches its route', () => {
     pick('Liked songs');
     service('Somewhere else');
     have(/Just a list/);
+    toEnd();
     const box = screen.getByLabelText('Your songs, one a line');
     fireEvent.change(box, { target: { value: 'Halcyon Drift - Paper Lanterns' } });
     await waitFor(() => expect(startButton()).toBeEnabled());
@@ -389,6 +447,7 @@ describe('TransferFlow: every answer reaches its route', () => {
     setup();
     pick('A new playlist');
     service('YouTube Music');
+    toEnd();
     fireEvent.change(screen.getByLabelText('Playlist link'), { target: { value: YT_LINK } });
     await waitFor(() => expect(screen.getByTestId('link-preview')).toHaveTextContent('Weekend'));
     fireEvent.click(startButton());
@@ -500,6 +559,7 @@ describe('TransferFlow: YouTube Music likes, after a Google sign-in', () => {
     pick('Liked songs');
     service('YouTube Music');
     have(/sign in to my Google account/);
+    toEnd();
   }
   const signInButton = () => screen.getByRole('button', { name: /Sign in with Google/ });
   /** One of the dialog's polls of the server. */
@@ -519,6 +579,7 @@ describe('TransferFlow: YouTube Music likes, after a Google sign-in', () => {
     service('YouTube Music');
     expect(screen.queryAllByTestId('transfer-have-option')).toHaveLength(0);
     expect(screen.queryByRole('button', { name: /Sign in with Google/ })).toBeNull();
+    toEnd();
     expect(screen.getByLabelText('Playlist link')).toBeInTheDocument();
   });
 
@@ -526,11 +587,12 @@ describe('TransferFlow: YouTube Music likes, after a Google sign-in', () => {
     setup();
     pick('Liked songs');
     service('YouTube Music');
-    expect(screen.getAllByTestId('transfer-have-option').map((o) => o.textContent)).toEqual([
+    expect(haveLabels()).toEqual([
       'I can sign in to my Google account',
       'A link to a playlist',
     ]);
     have(/sign in to my Google account/);
+    fireEvent.click(screen.getByRole('button', { name: 'Next step' }));
     expect(steps()).toMatch(/google\.com\/device/);
     expect(steps()).toMatch(/nothing to look up by name/);
     expect(steps()).toMatch(/signs itself out/);
@@ -692,6 +754,7 @@ describe('TransferFlow: YouTube Music likes, after a Google sign-in', () => {
     expect(screen.queryByRole('button', { name: /^Transfer/ })).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'A link to a playlist' }));
     expect(screen.queryByTestId('google-not-set-up')).toBeNull();
+    toEnd();
     expect(screen.getByLabelText('Playlist link')).toBeInTheDocument();
   });
 
@@ -739,7 +802,7 @@ describe('TransferFlow: YouTube Music likes, after a Google sign-in', () => {
     await waitFor(() => expect(screen.getByTestId('google-code-panel')).toBeInTheDocument());
     await poll();
     await waitFor(() => expect(screen.getByTestId('transfer-preview')).toBeInTheDocument());
-    fireEvent.click(screen.getByRole('button', { name: /Back/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Go back' }));
     await waitFor(() => expect(api.googleLikesCancel).toHaveBeenCalledWith(FLOW));
   });
 

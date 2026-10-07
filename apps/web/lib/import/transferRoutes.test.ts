@@ -24,6 +24,20 @@ describe('the four services a transfer asks about', () => {
     }
   });
 
+  it('says under each answer how long that way takes', () => {
+    const time = Object.fromEntries(TRANSFER_SERVICES.flatMap((s) => s.routes.map((r) => [r.id, r.time])));
+    expect(time).toEqual({
+      'spotify-export': 'Free and complete. Spotify takes a few days',
+      'spotify-converter': 'Instant, through a free site',
+      'spotify-link': 'Instant, first 100 songs only',
+      'ytmusic-google': 'Exact, about a minute',
+      'ytmusic-link': 'Instant, from a public playlist',
+      'apple-export': 'Apple takes a few days',
+      'other-paste': 'Type or paste, one a line',
+      'other-file': 'Any CSV with a header row',
+    });
+  });
+
   it('asks what a person has, never which technical route to take', () => {
     const asked = TRANSFER_SERVICES.flatMap((s) => s.routes.map((r) => r.whatYouHave));
     for (const q of asked) expect(q).not.toMatch(/CSV|JSON|export|headers/i);
@@ -40,7 +54,7 @@ describe('the four services a transfer asks about', () => {
   });
 
   it('has no em dashes in anything it says', () => {
-    const everything = TRANSFER_SERVICES.flatMap((s) => [s.name, s.heading, s.need, ...s.routes.flatMap((r) => [r.whatYouHave, ...r.steps, ...r.notes])]);
+    const everything = TRANSFER_SERVICES.flatMap((s) => [s.name, s.heading, s.need, ...s.routes.flatMap((r) => [r.whatYouHave, r.time, ...r.steps, ...r.notes])]);
     for (const line of everything) expect(line).not.toContain('\u2014');
   });
 });

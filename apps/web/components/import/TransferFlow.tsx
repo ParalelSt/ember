@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { AlertIcon, CheckIcon, ChevronLeftIcon, ChevronRightIcon, HeartIcon, KeyIcon, LinkIcon, QueueIcon, UploadIcon } from '@/components/icons';
 import { LinkPreview } from '@/components/import/LinkPreview';
+import { HaveOptions, StepCard } from '@/components/import/TransferSteps';
 import { api } from '@/lib/api';
 import { QK } from '@/hooks/useLibrary';
 import { IMPORT_QK } from '@/hooks/useImports';
@@ -134,6 +135,8 @@ export function TransferFlow({
   const [destination, setDestination] = useState<JobKind>(initialDestination);
   const [serviceId, setServiceId] = useState<TransferServiceId | null>(null);
   const [routeId, setRouteId] = useState<string | null>(null);
+  // Which of the way in's steps is showing, one at a time.
+  const [step, setStep] = useState(0);
   const [file, setFile] = useState<File | null>(null);
   const [text, setText] = useState('');
   const [url, setUrl] = useState('');
@@ -360,11 +363,13 @@ export function TransferFlow({
   const pickService = (id: TransferServiceId) => {
     setServiceId(id);
     setRouteId(null);
+    setStep(0);
     clearSource();
   };
 
   const pickRoute = (id: string) => {
     setRouteId(id);
+    setStep(0);
     clearSource();
   };
 
@@ -373,6 +378,7 @@ export function TransferFlow({
    *  the service cards. */
   const back = () => {
     clearSource();
+    setStep(0);
     if (route && choices.length > 1) setRouteId(null);
     else if (service) setServiceId(null);
     else router.push(from);
@@ -444,7 +450,7 @@ export function TransferFlow({
   return (
     <div data-testid="transfer-page" className="mx-auto flex min-h-full w-full max-w-2xl flex-col gap-block">
       <div className="sticky top-[var(--ember-topbar-h,0px)] z-10 -mx-cluster flex items-center gap-cluster bg-background px-cluster py-cluster">
-        <Button type="button" variant="ghost" size="icon" aria-label="Back" onClick={back}>
+        <Button type="button" variant="ghost" size="icon" aria-label="Go back" onClick={back}>
           <ChevronLeftIcon className="h-5 w-5" />
         </Button>
         <h1 className="min-w-0 flex-1 truncate text-lg font-bold tracking-tight">{title}</h1>
@@ -459,39 +465,7 @@ export function TransferFlow({
         />
       ) : (
         <div className="flex min-h-0 flex-col gap-block">
-          {!route && (
-            <div className="flex flex-col gap-cluster" data-testid="transfer-have-options">
-              {choices.map((r) => (
-                <button
-                  key={r.id}
-                  type="button"
-                  data-testid="transfer-have-option"
-                  data-route={r.id}
-                  onClick={() => pickRoute(r.id)}
-                  className="rounded-lg border border-border p-row text-left text-sm font-medium transition-colors hover:border-ember hover:bg-accent/40"
-                >
-                  {r.whatYouHave}
-                </button>
-              ))}
-            </div>
-          )}
-
-          {route && (
-            <div className="flex flex-col gap-cluster" data-testid="transfer-steps">
-              <ol className="flex flex-col gap-inset text-xs text-muted-foreground">
-                {route.steps.map((step, i) => (
-                  <li key={i}>
-                    {i + 1}. {step}
-                  </li>
-                ))}
-              </ol>
-              {route.notes.map((note) => (
-                <p key={note} className="text-xs text-muted-foreground">
-                  {note}
-                </p>
-              ))}
-            </div>
-          )}
+          {!route && <HaveOptions choices={choices} onPick={pickRoute} />}
 
           {notSetUp && (
             <div data-testid="google-not-set-up" className="flex flex-col gap-row rounded-lg border border-border bg-card p-row">
@@ -510,62 +484,73 @@ export function TransferFlow({
             </div>
           )}
 
-          {route && route.kind === 'file' && (
-            <div className="flex flex-col gap-cluster">
-              <input
-                ref={fileInput}
-                type="file"
-                accept=".json,.csv,.tsv,.txt,application/json,text/csv,text/plain"
-                aria-label="Song list file"
-                className="hidden"
-                onChange={chooseFile}
-              />
-              <button
-                type="button"
-                onClick={() => fileInput.current?.click()}
-                className="flex flex-col items-center gap-cluster rounded-lg border border-dashed border-border py-block text-center transition-colors hover:border-ember hover:bg-accent/40"
-              >
-                <UploadIcon className="h-5 w-5 text-muted-foreground" />
-                <span className="text-sm">{file ? file.name : 'Choose a file'}</span>
-                <span className="text-xs text-muted-foreground">YourLibrary.json, or a .csv</span>
-              </button>
-            </div>
-          )}
+          {route && !notSetUp && (
+            <StepCard
+              route={route}
+              step={step}
+              onStep={setStep}
+              control={
+                <div className="flex flex-col gap-cluster">
+                  {route.kind === 'file' && (
+                    <div className="flex flex-col gap-cluster">
+                      <input
+                        ref={fileInput}
+                        type="file"
+                        accept=".json,.csv,.tsv,.txt,application/json,text/csv,text/plain"
+                        aria-label="Song list file"
+                        className="hidden"
+                        onChange={chooseFile}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => fileInput.current?.click()}
+                        className="flex flex-col items-center gap-cluster rounded-lg border border-dashed border-border py-block text-center transition-colors hover:border-ember hover:bg-accent/40"
+                      >
+                        <UploadIcon className="h-5 w-5 text-muted-foreground" />
+                        <span className="text-sm">{file ? file.name : 'Choose a file'}</span>
+                        <span className="text-xs text-muted-foreground">YourLibrary.json, or a .csv</span>
+                      </button>
+                    </div>
+                  )}
 
-          {route && route.kind === 'paste' && (
-            <textarea
-              autoFocus
-              aria-label="Your songs, one a line"
-              rows={6}
-              value={text}
-              onChange={(e) => {
-                setText(e.target.value);
-                editSource(`text:${e.target.value.trim()}`);
-              }}
-              placeholder={'Halcyon Drift - Paper Lanterns\nNadia Okonkwo - Slow Weather'}
-              className="w-full resize-none rounded-lg border border-border bg-transparent px-row py-cluster text-sm"
+                  {route.kind === 'paste' && (
+                    <textarea
+                      autoFocus
+                      aria-label="Your songs, one a line"
+                      rows={6}
+                      value={text}
+                      onChange={(e) => {
+                        setText(e.target.value);
+                        editSource(`text:${e.target.value.trim()}`);
+                      }}
+                      placeholder={'Halcyon Drift - Paper Lanterns\nNadia Okonkwo - Slow Weather'}
+                      className="w-full resize-none rounded-lg border border-border bg-transparent px-row py-cluster text-sm"
+                    />
+                  )}
+
+                  {route.kind === 'link' && (
+                    <div className="relative">
+                      <LinkIcon className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                      <Input
+                        autoFocus
+                        aria-label="Playlist link"
+                        value={url}
+                        onChange={(e) => {
+                          setUrl(e.target.value);
+                          editSource(`link:${e.target.value.trim()}`);
+                        }}
+                        placeholder={serviceId === 'ytmusic' ? 'Paste the YouTube Music playlist link' : 'Paste the Spotify playlist link'}
+                        className="truncate pl-10"
+                      />
+                    </div>
+                  )}
+
+                  {route.kind === 'google' && lookup.step !== 'google' && (
+                    <GoogleSignInPanel signIn={signIn} onSignIn={() => void beginSignIn()} />
+                  )}
+                </div>
+              }
             />
-          )}
-
-          {route && route.kind === 'link' && (
-            <div className="relative">
-              <LinkIcon className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                autoFocus
-                aria-label="Playlist link"
-                value={url}
-                onChange={(e) => {
-                  setUrl(e.target.value);
-                  editSource(`link:${e.target.value.trim()}`);
-                }}
-                placeholder={serviceId === 'ytmusic' ? 'Paste the YouTube Music playlist link' : 'Paste the Spotify playlist link'}
-                className="truncate pl-10"
-              />
-            </div>
-          )}
-
-          {route && route.kind === 'google' && !notSetUp && lookup.step !== 'google' && (
-            <GoogleSignInPanel signIn={signIn} onSignIn={() => void beginSignIn()} />
           )}
 
           {lookup.step === 'file' && <FilePreviewCard preview={lookup.preview} />}
@@ -617,7 +602,7 @@ export function TransferFlow({
         </div>
       )}
 
-      {route && !notSetUp && (
+      {route && !notSetUp && step >= route.steps.length - 1 && (
         <div className="sticky bottom-0 mt-auto bg-gradient-to-b from-transparent to-background to-30% pt-block pb-row">
           <Button
             type="button"

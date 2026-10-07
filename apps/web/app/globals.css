@@ -377,3 +377,15 @@ body:has([data-tabs-dock][data-tools="open"]) [data-back-to-top] { bottom: 9rem;
   .ember-new-pulse,
   .ember-new-dot { animation: none !important; }
 }
+
+/* The tap dot on a Transfer step's picture (components/import/TransferSteps.tsx):
+   a ring that widens and fades, like a finger landing. Off under reduced
+   motion, leaving a solid dot. */
+@keyframes ember-tap {
+  0% { box-shadow: 0 0 0 0 color-mix(in oklab, var(--ember) 60%, transparent); }
+  100% { box-shadow: 0 0 0 10px color-mix(in oklab, var(--ember) 0%, transparent); }
+}
+.ember-tap { animation: ember-tap 1.4s ease-out infinite; }
+@media (prefers-reduced-motion: reduce) {
+  .ember-tap { animation: none !important; }
+}

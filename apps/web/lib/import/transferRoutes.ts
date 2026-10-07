@@ -45,6 +45,8 @@ export interface TransferRoute {
   kind: TransferRouteKind;
   /** The plain "what do you have already?" option that leads here. */
   whatYouHave: string;
+  /** Under that option: how long this way takes, or what it asks of you. */
+  time: string;
   steps: readonly string[];
   /** Plain lines under the steps: what this way in cannot do, and how the
    *  songs are found. */
@@ -84,6 +86,7 @@ export const TRANSFER_SERVICES: readonly TransferService[] = [
         id: 'spotify-export',
         kind: 'file',
         whatYouHave: 'Nothing yet, but I can wait a few days',
+        time: 'Free and complete. Spotify takes a few days',
         steps: [
           'In Spotify, go to Account, then Privacy settings.',
           'Choose "Download your data" and ask for it. Spotify emails you in a few days.',
@@ -96,6 +99,7 @@ export const TRANSFER_SERVICES: readonly TransferService[] = [
         id: 'spotify-converter',
         kind: 'file',
         whatYouHave: 'A file someone gave me, or one I downloaded',
+        time: 'Instant, through a free site',
         steps: [
           'If you do not have the file yet, a free site like Exportify, Soundiiz or TuneMyMusic will make one: sign in with Spotify and export your Liked Songs as a CSV.',
           'Choose that file below.',
@@ -107,6 +111,7 @@ export const TRANSFER_SERVICES: readonly TransferService[] = [
         kind: 'link',
         playlistFirst: true,
         whatYouHave: 'A link to a playlist',
+        time: 'Instant, first 100 songs only',
         steps: [
           'Spotify cannot share your liked songs as a link, so in Spotify make a new playlist and add them to it.',
           'Make that playlist public, then copy its link.',
@@ -127,6 +132,7 @@ export const TRANSFER_SERVICES: readonly TransferService[] = [
         id: 'ytmusic-google',
         kind: 'google',
         whatYouHave: 'I can sign in to my Google account',
+        time: 'Exact, about a minute',
         steps: GOOGLE_SIGNIN_STEPS,
         notes: [GOOGLE_FORGET_NOTE, GOOGLE_MUSIC_ONLY_NOTE, NOTHING_TO_MATCH],
         likedOnly: true,
@@ -135,6 +141,7 @@ export const TRANSFER_SERVICES: readonly TransferService[] = [
         id: 'ytmusic-link',
         kind: 'link',
         whatYouHave: 'A link to a playlist',
+        time: 'Instant, from a public playlist',
         steps: [
           'In YouTube Music, make a playlist from your liked songs: Library, then Liked, then add them all to a new playlist.',
           'Make that playlist public and copy its share link.',
@@ -155,6 +162,7 @@ export const TRANSFER_SERVICES: readonly TransferService[] = [
         id: 'apple-export',
         kind: 'file',
         whatYouHave: 'A file Apple sent me',
+        time: 'Apple takes a few days',
         steps: [
           'On an iPhone, or at privacy.apple.com, ask for a copy of your data and choose Apple Media Services.',
           "Wait for Apple's email, which can take a few days, and download the file it links to.",
@@ -176,6 +184,7 @@ export const TRANSFER_SERVICES: readonly TransferService[] = [
         id: 'other-paste',
         kind: 'paste',
         whatYouHave: 'Just a list I can type out',
+        time: 'Type or paste, one a line',
         steps: ['Write your songs down, one a line, like "Artist - Title".', 'Paste that list below.'],
         notes: [MATCHED_BY_NAME],
       },
@@ -183,6 +192,7 @@ export const TRANSFER_SERVICES: readonly TransferService[] = [
         id: 'other-file',
         kind: 'file',
         whatYouHave: 'A file someone gave me',
+        time: 'Any CSV with a header row',
         steps: ['Get the file with your songs in it, from a friend or another app, as a CSV.', 'Choose it below.'],
         notes: [MATCHED_BY_NAME],
       },
