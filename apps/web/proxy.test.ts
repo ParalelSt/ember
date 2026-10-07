@@ -298,3 +298,39 @@ describe('proxy: signed cast links (lib/streamToken)', () => {
     }
   });
 });
+
+// QR sign-in (plan 2d): the hook routes under /api/ember mint sessions and
+// rotate token keys. They already require a superuser token, and the public
+// /pb proxy never forwards them either: only the Next server's own admin
+// client, talking to PocketBase directly, reaches them.
+describe('proxy [qr sign-in]: /pb/api/ember is not proxied', () => {
+  const blocked = [
+    '/pb/api/ember/qr-login/mint',
+    '/pb/api/ember/qr-login/revoke-all',
+    '/pb/api/ember',
+    '/pb/api/ember/',
+    '/pb/api/%65mber/qr-login/mint',
+    '/pb/api/ember%2Fqr-login%2Fmint',
+    '/pb//api/ember/qr-login/mint',
+    '/pb/api//ember/qr-login/mint',
+    '/pb/api/x/../ember/qr-login/mint',
+    '/pb/api/%2e%2e/api/ember/qr-login/mint',
+    '/pb/API/Ember/qr-login/mint',
+    '/PB/api/ember/qr-login/mint',
+    '/pb/api/ember/qr-login/mint/',
+  ];
+
+  it('answers every spelling with a plain 404, for GET and POST', async () => {
+    for (const p of blocked) {
+      expect(isBlockedPbPath(p), p).toBe(true);
+      expect((await proxy(req(p))).status, p).toBe(404);
+      expect((await proxy(req(p, { method: 'POST' }))).status, p).toBe(404);
+    }
+  });
+
+  it('does not block look-alike member paths or the app\'s own /api/auth/qr routes', () => {
+    for (const p of ['/pb/api/emberx', '/pb/api/collections/ember/records', '/api/auth/qr/start', '/api/ember/qr-login/mint']) {
+      expect(isBlockedPbPath(p), p).toBe(false);
+    }
+  });
+});

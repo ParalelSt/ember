@@ -49,10 +49,12 @@ export function isStaticAsset(path: string): boolean {
  *  management, settings, backups, logs and the collection definitions. The
  *  server's own admin client reaches PocketBase directly on POCKETBASE_URL,
  *  so nothing legitimate asks for these through /pb. next.config.ts keeps the
- *  same list out of its /pb rewrite for paths this proxy's matcher skips. */
+ *  same list out of its /pb rewrite for paths this proxy's matcher skips.
+ *  /api/ember/* are the QR sign-in hook routes (pb_hooks/qr_login.pb.js):
+ *  they mint sessions, so they are superuser-only AND never proxied. */
 const PB_SUPERUSER_ROUTES = [
   /^\/_(\/|$)/,
-  /^\/api\/(admins|settings|backups|logs)(\/|$)/,
+  /^\/api\/(admins|settings|backups|logs|ember)(\/|$)/,
   /^\/api\/collections\/_superusers(\/|$)/,
   /^\/api\/collections(\/[^/]*)?\/?$/,
 ];
