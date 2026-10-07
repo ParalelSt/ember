@@ -23,11 +23,17 @@ export interface LogEntry {
   sessionId: string;
 }
 
+/** Where a phone app's player event happened (POST /api/native-log): a
+ *  phone, a phone projecting to a car, or a car running Android itself. */
+export type NativeSurface = 'phone' | 'android-auto' | 'aaos';
+
 export interface ServerLogEntry extends LogEntry {
   side: 'server';
   reqId: string;
   route: string;
   userId?: string;
+  /** Category 'native' only: lib/logger/nativeLog.ts. */
+  surface?: NativeSurface;
 }
 
 /** Minimal track identity carried in the context envelope: never the whole

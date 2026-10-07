@@ -259,6 +259,18 @@ class EmberPlaybackService : MediaLibraryService() {
     /** The output the app's picker pinned (AudioOutputs.kt). */
     private val output = OutputPreference(route = ::routeTo, publish = ::publishExtras)
     private val audioManager: AudioManager? get() = getSystemService(AUDIO_SERVICE) as AudioManager?
+    /** The player's own log to the server (PlaybackLog.kt): it sends with
+     *  no page open, which is all the car ever has. */
+    lateinit var playbackLog: PlaybackLog
+    private lateinit var playWatch: PlayWatch
+    /** Sending log batches: never behind a browse list on `io`. */
+    private val logIo = Executors.newSingleThreadExecutor()
+    /** The log's timers, off the main thread: the watchdog must fire while
+     *  the main thread is stuck in an audio focus request. */
+    private val logTimer = Executors.newSingleThreadScheduledExecutor()
+    /** Car controllers connected now (Android Auto, the car's media centre):
+     *  the log's surface. */
+    private val carControllers: MutableSet<String> = java.util.Collections.synchronizedSet(HashSet())
 
     override fun onCreate() {
         super.onCreate()
@@ -308,6 +320,7 @@ class EmberPlaybackService : MediaLibraryService() {
         // The session (the app, the notification, the car) sets the person's
         // level; the player underneath adds the song's gain (Normalizer).
         levelPlayer = LevelPlayer(player, normalizer, history) { on -> setShuffle(on) }
+        startLog(baseUrl)
         session = MediaLibrarySession.Builder(this, levelPlayer, Callback())
             // Covers on the Ember server need the cookie; others must not get it.
             .setBitmapLoader(ArtworkSources.bitmapLoader(this, baseUrl, dataSource, OkHttpDataSource.Factory(okhttp3.OkHttpClient())))
@@ -319,6 +332,37 @@ class EmberPlaybackService : MediaLibraryService() {
         // notification), each showing its state.
         player.addListener(buttonWatch)
         refreshButtons()
+    }
+
+    private fun startLog(baseUrl: String) {
+        val delay = Delay { ms, task ->
+            val f = logTimer.schedule(task, ms, java.util.concurrent.TimeUnit.MILLISECONDS)
+            ({ f.cancel(false); Unit })
+        }
+        val automotive = Surfaces.isAutomotive(this)
+        playbackLog = PlaybackLog(
+            send = { body ->
+                // Signed out: nobody to file it under, and the server would
+                // only answer 401.
+                if (CookieManager.getInstance().getCookie(baseUrl).isNullOrBlank()) throw java.io.IOException("signed out")
+                api.postJson("/api/native-log", body)
+            },
+            online = { !::net.isInitialized || net.current().online },
+            io = logIo,
+            delay = delay,
+            surface = { Surfaces.of(automotive, Surfaces.isCarMode(this), carControllers.isNotEmpty()) },
+            device = org.json.JSONObject()
+                .put("model", "${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL}".take(80))
+                .put("sdk", android.os.Build.VERSION.SDK_INT)
+                .put("app", AppVersion.name(this).orEmpty()),
+        )
+        playWatch = PlayWatch(playbackLog, delay, caller = {
+            if (::session.isInitialized) session.controllerForCurrentRequest?.packageName else null
+        })
+        player.addListener(playWatch)
+        levelPlayer.watch = playWatch
+        playbackLog.info("service.start", "player service started", org.json.JSONObject().put("automotive", automotive))
+        logIo.execute { runCatching { ExitReasons.report(this, playbackLog, getSharedPreferences(ExitReasons.PREFS, MODE_PRIVATE)) } }
     }
 
     /** Keeps the buttons' state with the player's (the phone's or the TV's). */
@@ -873,6 +917,11 @@ class EmberPlaybackService : MediaLibraryService() {
     }
 
     override fun onDestroy() {
+        playbackLog.info("service.stop", "player service stopped")
+        playbackLog.flush()
+        logTimer.shutdownNow()
+        // Lets the last batch go out, then ends the thread.
+        logIo.shutdown()
         handler.removeCallbacks(tickLoop)
         handler.removeCallbacks(foregroundGuard)
         // Anything else still waiting on the main thread, above all a media
@@ -911,7 +960,12 @@ class EmberPlaybackService : MediaLibraryService() {
             Log.i(TAG, "connect from ${controller.packageName} uid=${controller.uid} (legacy=${controller.controllerVersion == MediaSession.ControllerInfo.LEGACY_CONTROLLER_VERSION}) -> $verdict")
             // Any app on the phone can bind to an exported service; only the
             // system, the car, the Assistant and Ember itself get in.
+            if (controller.packageName != packageName) {
+                playbackLog.info("controller.connect", "${controller.packageName} connected: $verdict",
+                    org.json.JSONObject().put("caller", controller.packageName).put("verdict", verdict.name))
+            }
             if (!verdict.allowed) return MediaSession.ConnectionResult.reject()
+            if (controller.packageName in CAR_PACKAGES) carControllers.add(controller.packageName)
             val commands = MediaSession.ConnectionResult.DEFAULT_SESSION_AND_LIBRARY_COMMANDS.buildUpon()
                 .add(SessionCommand(COMMAND_SHUFFLE, Bundle.EMPTY))
                 .add(SessionCommand(COMMAND_REPEAT, Bundle.EMPTY))
@@ -939,6 +993,13 @@ class EmberPlaybackService : MediaLibraryService() {
             // The car: its heart button needs the liked songs.
             if (controller.packageName in CAR_PACKAGES) loadLikes()
             return MediaSession.ConnectionResult.AcceptedResultBuilder(session).setAvailableSessionCommands(commands).build()
+        }
+
+        override fun onDisconnected(session: MediaSession, controller: MediaSession.ControllerInfo) {
+            if (controller.packageName in CAR_PACKAGES) {
+                carControllers.remove(controller.packageName)
+                playbackLog.info("controller.disconnect", "${controller.packageName} disconnected", org.json.JSONObject().put("caller", controller.packageName))
+            }
         }
 
         override fun onCustomCommand(session: MediaSession, controller: MediaSession.ControllerInfo, command: SessionCommand, args: Bundle): ListenableFuture<SessionResult> {
@@ -1126,6 +1187,8 @@ class EmberPlaybackService : MediaLibraryService() {
                     tree.queueFor(items[0].mediaId).map { TrackItems.toMediaItem(it, api.baseUrl, artAuthority) }
                 else items.mapNotNull(::resolve)
             Log.i(TAG, "set ${items.size} item(s) from ${controller.packageName} -> queue of ${resolved.size}")
+            playbackLog.info("queue.set", "queue of ${resolved.size} from ${controller.packageName}",
+                org.json.JSONObject().put("caller", controller.packageName).put("count", resolved.size))
             return Futures.immediateFuture(MediaSession.MediaItemsWithStartPosition(resolved, startIndex.coerceIn(0, maxOf(0, resolved.size - 1)), startPositionMs))
         }
 

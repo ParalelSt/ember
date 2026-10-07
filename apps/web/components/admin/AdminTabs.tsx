@@ -10,6 +10,7 @@ const TABS = [
   { href: '/admin/tracks', label: 'Tracks' },
   { href: '/admin/pranks', label: 'Pranks' },
   { href: '/admin/backups', label: 'Backups' },
+  { href: '/admin/car', label: 'Car and Android Auto' },
 ];
 
 export function AdminTabs() {
