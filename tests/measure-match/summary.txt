@@ -1,13 +1,13 @@
-TOTAL 152: accepted 134, review 16, missing 2
+TOTAL 152: accepted 132, review 18, missing 2
 pop        18: accepted 18, review 0, missing 0
 rock       16: accepted 16, review 0, missing 0
 hiphop     12: accepted 12, review 0, missing 0
-electronic 12: accepted 11, review 1, missing 0
+electronic 12: accepted 10, review 2, missing 0
 rnb        8: accepted 8, review 0, missing 0
 classic    17: accepted 17, review 0, missing 0
 latin      10: accepted 9, review 1, missing 0
-nonlatin   31: accepted 20, review 9, missing 2
-live       8: accepted 6, review 2, missing 0
+nonlatin   31: accepted 21, review 8, missing 2
+live       8: accepted 4, review 4, missing 0
 remix      8: accepted 6, review 2, missing 0
 feat       8: accepted 8, review 0, missing 0
 remaster   4: accepted 3, review 1, missing 0
@@ -15,6 +15,7 @@ remaster   4: accepted 3, review 1, missing 0
    80 Back In Black | AC/DC => Back In Black | AC/DC | ATV
    80 Take On Me | a-ha => Take on Me | a-ha | ATV
 --- review and missing
+   review 50 One More Time | Daft Punk => One More Time (Radio Edit) | Daft Punk | ATV
    review 65 Greece 2000 | Three Drives => Greece 2000 | Three Drives On A Vinyl | ATV
    review 68 Bamba | Ritchie Valens => La Bamba | Ritchie Valens | ATV
    missing 46 残酷な天使のテーゼ | 高橋洋子 => 残酷な天使のテーゼ （新世紀エヴァンゲリオン OP） | Rekka Katagiri | ATV
@@ -24,12 +25,13 @@ remaster   4: accepted 3, review 1, missing 0
    missing 46 Калинка | Red Army Choir => Калинка (Radio Version) | Vairious Words | ATV
    review 59 Habibi Ya Nour El Ain | Amr Diab => Nour El Ein | Amr Diab | ATV
    review 50 Alors on danse | Stromae => Alors on danse (Radio Edit) | Stromae | ATV
-   review 50 Volare | Gipsy Kings => Volare | Chico and The Gypsies | ATV
    review 50 Vaikuttaa | Cheek => Vaikuttaa | Coldivo | ATV
    review 50 Jelena | Dubioza Kolektiv => Jelena | Balša Jovanović | ATV
-   review 64 Ievan Polkka | Loituma => Ieva's Polka (Ievan Polkka) | Loituma | ATV
+   review 64 Ievan Polkka | Loituma => Ieva's Polka (Ievan Polkka) (1996 Version) | Loituma | ATV
+   review 50 Hallelujah - Live at the Royal Albert Hall | Jeff Buckley => Hallelujah (Live at Sin-é, New York, NY - July/August 1993) | Jeff Buckley | ATV
    review 65 Hotel California - Live | Eagles => Hotel California (Live) | The Eagles | ATV
-   review 50 Hurt - Live | Johnny Cash => Hurt | Johnny Cash | ATV
+   review 65 Hurt - Live | Johnny Cash => Hurt (Live) | The Man In Black: A Tribute To Johnny Cash | ATV
+   review 50 Under Pressure - Live Aid | Queen => Under Pressure (Live At Wembley Stadium / July 1986) | Queen | ATV
    review 50 Don't Start Now - Purple Disco Machine Remix | Dua Lipa => Don't Start Now (Purple Disco Machine Remix) [Extended] | Dua Lipa | ATV
    review 50 Stay With Me - Acoustic | Sam Smith => Stay With Me | Sam Smith | ATV
    review 50 Dream On - Remastered 2007 | Aerosmith => Dream On | Blacktop Mojo | ATV
@@ -81,7 +83,6 @@ remaster   4: accepted 3, review 1, missing 0
    80 Mask Off | Future => Mask Off | Future | ATV
    80 Alright | Kendrick Lamar => Alright | Kendrick Lamar | ATV
    80 Around the World | Daft Punk => Around the World | Daft Punk | ATV
-   80 One More Time | Daft Punk => One More Time | Daft Punk | ATV
    80 Levels | Avicii => Levels | Avicii | ATV
    80 Wake Me Up | Avicii => Wake Me Up | Avicii | ATV
    80 Titanium | David Guetta, Sia => Titanium (feat. Sia) | David Guetta | ATV
@@ -141,16 +142,15 @@ remaster   4: accepted 3, review 1, missing 0
    80 99 Luftballons | Nena => 99 Luftballons | Nena | ATV
    80 Du hast | Rammstein => Du hast | Rammstein | ATV
    80 Sonne | Rammstein => Sonne | Rammstein | ATV
+   76 Volare | Gipsy Kings => Volare (Nel Blu di Pinto di Blu) | Gipsy Kings | ATV
    80 Con te partirò | Andrea Bocelli => Con Te Partirò | Andrea Bocelli | ATV
    80 Zombie | The Cranberries => Zombie | The Cranberries | ATV
    80 Ederlezi | Goran Bregović => Ederlezi | Goran Bregovic | ATV
    80 Mamma Mia | ABBA => Mamma Mia | ABBA | ATV
    80 Wonderwall - Live | Oasis => Wonderwall (Live at Knebworth, 10 August '96) | Oasis | ATV
-   80 Hallelujah - Live at the Royal Albert Hall | Jeff Buckley => Hallelujah (Live at Sin-é, New York, NY - July/August 1993) | Jeff Buckley | ATV
    80 Comfortably Numb - Live | Pink Floyd => Comfortably Numb (Live) | Pink Floyd | ATV
    80 Free Bird - Live | Lynyrd Skynyrd => Free Bird (Live At Fox Theatre, Atlanta, 1976 / Undubbed) | Lynyrd Skynyrd | ATV
    80 Purple Rain - Live | Prince => Purple Rain (Live In Syracuse, March 30, 1985 - 2022 Remaster) | Prince | ATV
-   80 Under Pressure - Live Aid | Queen => Under Pressure (Live At Wembley Stadium / July 1986) | Queen | ATV
    80 Mr. Brightside - Jacques Lu Cont's Thin White Duke Mix | The Killers => Mr. Brightside (Jacques Lu Cont's Thin White Duke Mix) | The Killers | ATV
    80 Blinding Lights - Remix | The Weeknd, ROSALÍA => Blinding Lights (Remix) | The Weeknd, ROSALÍA | ATV
    80 Closer - Remix | The Chainsmokers, Halsey => Closer (R3hab Remix) (feat. Halsey) | The Chainsmokers | ATV

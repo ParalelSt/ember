@@ -192,3 +192,36 @@ describe('variantMarkers', () => {
     expect(result.reasons).toContain('Instrumental');
   });
 });
+
+describe('a version the source names must be the version offered', () => {
+  const status = (a: ScoreSource, c: ScoreCandidate) => statusFor(score(a, c).score);
+  const jb = ['Jeff Buckley'];
+
+  it('Hallelujah at the Royal Albert Hall is not Hallelujah at Sin-e', () => {
+    const s = src('Hallelujah - Live at the Royal Albert Hall', jb, null, null);
+    const wrong = cand('Hallelujah (Live at Sin-é, New York, NY - July/August 1993)', jb, null, null);
+    expect(status(s, wrong)).toBe('review');
+    expect(score(s, wrong).reasons).toContain('Different version details');
+    const right = cand('Hallelujah (Live at the Royal Albert Hall)', jb, null, null);
+    expect(status(s, right)).toBe('accepted');
+  });
+
+  it('a different remixer is for review, the same remixer is accepted', () => {
+    const s = src('Don\'t Start Now - Purple Disco Machine Remix', ['Dua Lipa'], null, null);
+    expect(status(s, cand('Don\'t Start Now (Purple Disco Machine Remix)', ['Dua Lipa'], null, null))).toBe('accepted');
+    expect(status(s, cand('Don\'t Start Now (Jax Jones Remix)', ['Dua Lipa'], null, null))).toBe('review');
+  });
+
+  it('a remaster year the source names must match the candidate\'s', () => {
+    const s = src('Dream On - Remastered 2007', ['Aerosmith'], null, null);
+    expect(status(s, cand('Dream On (2007 Remaster)', ['Aerosmith'], null, null))).toBe('accepted');
+    expect(status(s, cand('Dream On (2022 Remaster)', ['Aerosmith'], null, null))).toBe('review');
+    expect(status(s, cand('Dream On', ['Aerosmith'], null, null))).toBe('accepted');
+  });
+
+  it('a plain or bare-variant source still matches as before', () => {
+    expect(status(src('Wonderwall', ['Oasis'], null, null), cand('Wonderwall (Remastered)', ['Oasis'], null, null))).toBe('accepted');
+    expect(status(src('Wonderwall - Live', ['Oasis'], null, null), cand('Wonderwall (Live at Knebworth)', ['Oasis'], null, null))).toBe('accepted');
+    expect(status(src('Rain On Me - Remix', ['Lady Gaga'], null, null), cand('Rain On Me (Purple Disco Machine Remix)', ['Lady Gaga'], null, null))).toBe('accepted');
+  });
+});

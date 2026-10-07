@@ -331,9 +331,9 @@
  {
   "cat": "electronic",
   "src": "One More Time | Daft Punk",
-  "status": "accepted",
-  "score": 80,
-  "got": "One More Time | Daft Punk | ATV"
+  "status": "review",
+  "score": 50,
+  "got": "One More Time (Radio Edit) | Daft Punk | ATV"
  },
  {
   "cat": "electronic",
@@ -814,9 +814,9 @@
  {
   "cat": "nonlatin",
   "src": "Volare | Gipsy Kings",
-  "status": "review",
-  "score": 50,
-  "got": "Volare | Chico and The Gypsies | ATV"
+  "status": "accepted",
+  "score": 76,
+  "got": "Volare (Nel Blu di Pinto di Blu) | Gipsy Kings | ATV"
  },
  {
   "cat": "nonlatin",
@@ -865,7 +865,7 @@
   "src": "Ievan Polkka | Loituma",
   "status": "review",
   "score": 64,
-  "got": "Ieva's Polka (Ievan Polkka) | Loituma | ATV"
+  "got": "Ieva's Polka (Ievan Polkka) (1996 Version) | Loituma | ATV"
  },
  {
   "cat": "live",
@@ -877,8 +877,8 @@
  {
   "cat": "live",
   "src": "Hallelujah - Live at the Royal Albert Hall | Jeff Buckley",
-  "status": "accepted",
-  "score": 80,
+  "status": "review",
+  "score": 50,
   "got": "Hallelujah (Live at Sin-é, New York, NY - July/August 1993) | Jeff Buckley | ATV"
  },
  {
@@ -913,14 +913,14 @@
   "cat": "live",
   "src": "Hurt - Live | Johnny Cash",
   "status": "review",
-  "score": 50,
-  "got": "Hurt | Johnny Cash | ATV"
+  "score": 65,
+  "got": "Hurt (Live) | The Man In Black: A Tribute To Johnny Cash | ATV"
  },
  {
   "cat": "live",
   "src": "Under Pressure - Live Aid | Queen",
-  "status": "accepted",
-  "score": 80,
+  "status": "review",
+  "score": 50,
   "got": "Under Pressure (Live At Wembley Stadium / July 1986) | Queen | ATV"
  },
  {

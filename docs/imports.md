@@ -197,11 +197,11 @@ The preview card says about how long it will take (`transferEstimate`: 8 songs p
 
 Measured on 2026-10-07 with `tests/measure-match` (152 well-known songs across pop, rock, hip hop, electronic, R&B, classics, Latin, 31 in other scripts and languages, live, remix, featuring and remastered versions), through the real `matchItems` and scorer, anonymously, with titles and artists only (the shape of a `YourLibrary.json`, so no length to help):
 
-- 134 accepted (88 %), 16 to 17 needing review (11 %), 1 to 2 not found (1 %). Two runs differed by one song.
+- 132 accepted (87 %), 18 needing review (12 %), 2 not found (1 %), after the version fix below. Before it: 134 / 16 to 17 / 1 to 2. Runs differ by about one song.
 - Pop, rock, hip hop, R&B, classics and featuring versions: every song accepted, every pick the right song.
 - Songs in other scripts or with a differently spelled artist ("Lemon" by 米津玄師 comes back as Kenshi Yonezu) land in review at 50, the lowest passing score, because the artist names share no letters. The pick is almost always right; the review sheet confirms it.
 - Without a length the best score is 80, so `ACCEPT_AT` 75 holds and raising it to 80 would change nothing. A file with lengths (Exportify) scores higher.
-- Systematic mistake: when the source names a specific live or remix version ("Hallelujah - Live at the Royal Albert Hall", "Rain On Me - Remix"), the matcher accepts some other live or remix version of the same song at 80. Same song, same artist, wrong take. A studio song with a "- Remastered" suffix matches the plain track, which is what a person wants.
+- Was a systematic mistake, now fixed in `score.ts`: a source naming a specific version ("Hallelujah - Live at the Royal Albert Hall") was accepted against another take ("Live at Sin-e"). A different venue, remixer or remaster year now costs 30 points (reason "Different version details"), so it goes to review. A bare "- Live" or "- Remix" still accepts any live or remix version, and a plain title still matches the studio track.
 - Review picks that were wrong were different songs sharing a title (Dream On by Blacktop Mojo, Vaikuttaa by Coldivo), and they stayed in review, so none reached the likes unchecked.
 
 Rerun: from `apps/web`, `PYTHON_BIN=<venv python> npx vitest run --config ../../tests/measure-match/vitest.config.mts`. It needs the network, writes `results.json` and `summary.txt` beside the script, and is not part of the normal suite.
