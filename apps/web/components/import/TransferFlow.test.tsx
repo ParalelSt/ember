@@ -34,6 +34,7 @@ const api = vi.hoisted(() => ({
 vi.mock('@/lib/api', () => ({ api }));
 
 const { TransferFlow, safeFrom } = await import('./TransferFlow');
+const { useTransferStore } = await import('@/stores/useTransferStore');
 const { ALL_SERVICES, LIKED_SERVICES_OPEN } = await import('@/lib/import/transferRoutes');
 
 const LINK = 'https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M';
@@ -149,6 +150,7 @@ beforeEach(() => {
   logger.breadcrumb.mockReset();
   logger.error.mockReset();
   toast.info.mockReset();
+  toast.success.mockReset();
   for (const fn of Object.values(api)) fn.mockReset();
   api.googleLikesConfig.mockResolvedValue({ configured: true });
   api.googleLikesCancel.mockResolvedValue({ cancelled: true });
@@ -354,20 +356,24 @@ describe('TransferFlow: every answer reaches its route', () => {
     expect(startButton()).toHaveTextContent('Transfer 42 songs');
   });
 
-  it('starting an uploaded transfer sends the destination and lands on the Liked page', async () => {
+  it('starting an uploaded transfer sends the destination, follows it and goes back where you were', async () => {
     api.transferPreview.mockResolvedValue(preview());
     api.transferStart.mockResolvedValue({ job, playlistId: null });
-    setup();
+    useTransferStore.setState({ followed: [] });
+    setup({ from: '/settings/library' });
     toSpotifyFile();
     chooseFile();
     await waitFor(() => expect(startButton()).toBeEnabled());
     fireEvent.click(startButton());
     await waitFor(() => expect(api.transferStart).toHaveBeenCalled());
     expect(api.transferStart.mock.calls[0][0]).toMatchObject({ destination: 'liked' });
-    await waitFor(() => expect(push).toHaveBeenCalledWith('/library/liked'));
+    await waitFor(() => expect(push).toHaveBeenCalledWith('/settings/library'));
+    expect(toast.success).toHaveBeenCalledWith('Transfer started. Ember tells you when it is done.');
+    // The progress chip follows it from now on.
+    expect(useTransferStore.getState().followed).toContain('j1');
   });
 
-  it('the same file can make a playlist instead, and lands on it', async () => {
+  it('the same file can make a playlist instead, and you still stay where you were', async () => {
     api.transferPreview.mockResolvedValue(preview());
     api.transferStart.mockResolvedValue({ job, playlistId: 'p7' });
     setup();
@@ -379,7 +385,8 @@ describe('TransferFlow: every answer reaches its route', () => {
     await waitFor(() => expect(startButton()).toBeEnabled());
     fireEvent.click(startButton());
     await waitFor(() => expect(api.transferStart.mock.calls[0][0]).toMatchObject({ destination: 'playlist' }));
-    await waitFor(() => expect(push).toHaveBeenCalledWith('/playlist/p7'));
+    await waitFor(() => expect(push).toHaveBeenCalledWith('/library/liked'));
+    expect(useTransferStore.getState().followed).toContain('j1');
   });
 
   it('a typed-out list is read when Continue is pressed', async () => {

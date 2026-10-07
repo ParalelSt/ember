@@ -1,0 +1,150 @@
+import type { ComponentProps } from 'react';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { act, fireEvent, render, screen } from '@testing-library/react';
+import type { ImportJob } from '@/lib/import/types';
+
+// The chip and the "Transfer done" notification in the app shell, with the
+// jobs list faked: you stay where you were, the chip says how far, and the
+// notification says the result and opens the list.
+
+const push = vi.fn();
+const nav = vi.hoisted(() => ({ path: '/library/liked' }));
+vi.mock('next/navigation', () => ({ useRouter: () => ({ push }), usePathname: () => nav.path }));
+const toast = vi.hoisted(() => Object.assign(vi.fn(), { success: vi.fn(), error: vi.fn() }));
+vi.mock('sonner', () => ({ toast }));
+const jobsState = vi.hoisted(() => ({ jobs: [] as ImportJob[] }));
+const update = vi.hoisted(() => ({ mutate: vi.fn() }));
+vi.mock('@/hooks/useImports', () => ({
+  useImportJobs: () => ({ data: jobsState.jobs }),
+  useImportActions: () => ({ update }),
+}));
+vi.mock('@/components/ui/button', () => ({
+  Button: ({ children, ...rest }: ComponentProps<'button'>) => <button {...rest}>{children}</button>,
+}));
+
+const { TransferStatus } = await import('./TransferStatus');
+const { useTransferStore } = await import('@/stores/useTransferStore');
+
+const job = (over: Partial<ImportJob> = {}): ImportJob => ({
+  id: 'j1',
+  userId: 'u1',
+  kind: 'liked',
+  playlistId: null,
+  name: 'Liked songs from Spotify',
+  source: 'spotify-export',
+  sourceUrl: '',
+  coverUrl: null,
+  status: 'running',
+  total: 1200,
+  cursor: 300,
+  accepted: 280,
+  review: 6,
+  missing: 2,
+  existing: 0,
+  error: null,
+  retryAt: null,
+  dismissed: false,
+  ...over,
+});
+
+beforeEach(() => {
+  nav.path = '/library/liked';
+  jobsState.jobs = [];
+  push.mockReset();
+  toast.mockReset();
+  update.mutate.mockReset();
+  useTransferStore.setState({ followed: [], notified: [], seen: [] });
+});
+
+describe('TransferStatus', () => {
+  it('shows nothing without a transfer', () => {
+    render(<TransferStatus />);
+    expect(screen.queryByTestId('transfer-chip-status')).toBeNull();
+  });
+
+  it('a small chip says how far, and a tap says X of Y and about how long, with Stop', () => {
+    jobsState.jobs = [job()];
+    render(<TransferStatus />);
+    const chip = screen.getByTestId('transfer-chip-status');
+    expect(chip).toHaveTextContent('Transfer 25%');
+    fireEvent.click(chip);
+    expect(toast).toHaveBeenCalledWith('300 of 1,200, about 20 minutes left', expect.objectContaining({ action: expect.objectContaining({ label: 'Stop' }) }));
+    (toast.mock.calls[0][1] as { action: { onClick: () => void } }).action.onClick();
+    expect(update.mutate).toHaveBeenCalledWith('cancel');
+    expect(push).not.toHaveBeenCalled();
+  });
+
+  it('a transfer waiting for Retry says why, and offers it', () => {
+    jobsState.jobs = [job({ status: 'paused', error: 'YouTube Music is busy.' })];
+    render(<TransferStatus />);
+    fireEvent.click(screen.getByTestId('transfer-chip-status'));
+    expect(toast).toHaveBeenCalledWith('YouTube Music is busy.', expect.objectContaining({ action: expect.objectContaining({ label: 'Retry' }) }));
+  });
+
+  it('when it finishes: "Transfer done" with the plain result, and a tap opens the one list', () => {
+    jobsState.jobs = [job()];
+    const { rerender } = render(<TransferStatus />);
+    expect(screen.queryByTestId('transfer-notification')).toBeNull();
+    jobsState.jobs = [job({ status: 'done', cursor: 1200, accepted: 1192 })];
+    rerender(<TransferStatus />);
+    const n = screen.getByTestId('transfer-notification');
+    expect(n).toHaveTextContent('Transfer done');
+    expect(screen.getByTestId('transfer-notification-result')).toHaveTextContent('We found 1192 songs. 6 need a quick check, 2 we could not find.');
+    expect(screen.getByTestId('transfer-chip-status')).toHaveTextContent('8 to check');
+    fireEvent.click(screen.getByText('Transfer done'));
+    expect(push).toHaveBeenCalledWith('/transfer/review?job=j1');
+    expect(screen.queryByTestId('transfer-notification')).toBeNull();
+  });
+
+  it('says it once, even after a reload', () => {
+    jobsState.jobs = [job()];
+    const first = render(<TransferStatus />);
+    jobsState.jobs = [job({ status: 'done' })];
+    first.rerender(<TransferStatus />);
+    first.unmount();
+    render(<TransferStatus />);
+    expect(screen.queryByTestId('transfer-notification')).toBeNull();
+  });
+
+  it('one started here that finished while the app was closed is said on the next open', () => {
+    useTransferStore.setState({ followed: ['j1'] });
+    jobsState.jobs = [job({ status: 'done' })];
+    render(<TransferStatus />);
+    expect(screen.getByTestId('transfer-notification')).toHaveTextContent('Transfer done');
+  });
+
+  it('an old finished transfer says nothing, and its chip opens the list', () => {
+    jobsState.jobs = [job({ status: 'done' })];
+    render(<TransferStatus />);
+    expect(screen.queryByTestId('transfer-notification')).toBeNull();
+    fireEvent.click(screen.getByTestId('transfer-chip-status'));
+    expect(push).toHaveBeenCalledWith('/transfer/review?job=j1');
+  });
+
+  it('with nothing to check, the chip goes once the notification is dismissed', () => {
+    jobsState.jobs = [job()];
+    const { rerender } = render(<TransferStatus />);
+    jobsState.jobs = [job({ status: 'done', review: 0, missing: 0 })];
+    rerender(<TransferStatus />);
+    expect(screen.getByTestId('transfer-chip-status')).toHaveTextContent('Transfer done');
+    act(() => fireEvent.click(screen.getByRole('button', { name: 'Dismiss' })));
+    expect(screen.queryByTestId('transfer-notification')).toBeNull();
+    expect(screen.queryByTestId('transfer-chip-status')).toBeNull();
+  });
+
+  it('a new-playlist transfer is followed only when it was started here', () => {
+    jobsState.jobs = [job({ kind: 'playlist', playlistId: 'p1' })];
+    const { rerender } = render(<TransferStatus />);
+    expect(screen.queryByTestId('transfer-chip-status')).toBeNull();
+    act(() => useTransferStore.getState().follow('j1'));
+    rerender(<TransferStatus />);
+    expect(screen.getByTestId('transfer-chip-status')).toBeInTheDocument();
+  });
+
+  it('stays out of the way on the list page itself', () => {
+    nav.path = '/transfer/review';
+    jobsState.jobs = [job({ status: 'done' })];
+    render(<TransferStatus />);
+    expect(screen.queryByTestId('transfer-chip-status')).toBeNull();
+  });
+});

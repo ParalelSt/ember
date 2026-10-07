@@ -25,6 +25,7 @@ vi.mock('@/lib/offline', () => ({ hydrateOfflineStore: vi.fn(async () => {}) }))
 vi.mock('@/hooks/useChangelog', () => ({ useChangelog: () => ({ hasNew: false }) }));
 vi.mock('@/hooks/useSession', () => ({ useReleaseStaleHosting: () => {} }));
 vi.mock('@/components/session/SessionHostBridge', () => ({ SessionHostBridge: () => null }));
+vi.mock('@/components/import/TransferStatus', () => ({ TransferStatus: () => null }));
 const desktop = vi.hoisted(() => ({ value: true }));
 vi.mock('@/hooks/useIsDesktop', () => ({ useIsDesktop: () => desktop.value }));
 

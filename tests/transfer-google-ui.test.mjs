@@ -1,16 +1,16 @@
 /** Transfer: YouTube Music likes after a Google sign-in, in a real browser,
  *  against a fake Google. Settings > Library > Transfer > Liked songs >
  *  YouTube Music > Sign in with Google > the code > the fake Google's device
- *  page says Allow > "Checking which likes are songs" > preview > Start >
- *  the Liked page shows the transfer. Two passes before the preview: the
+ *  page says Allow > "Checking which likes are songs" > preview chips > Start >
+ *  "Transfer done" and the one list of songs to check. Two passes before the preview: the
  *  gaming like (category 20) is dropped at once, then YouTube Music (the
  *  fake player's `classify`, from fixtures/imports/ytm-classify.json) says
  *  which of the rest are songs. Official ones are in the preview and liked,
- *  uploads are counted to check and wait for a yes or no in the review
- *  sheet, and the rest (a Minecraft video YouTube files under "Music", a
+ *  uploads are counted to check and wait for Use or Skip on that
+ *  list, and the rest (a Minecraft video YouTube files under "Music", a
  *  video whose lookup fails) never show anywhere and are only counted.
  *  Then the two other endings a person can reach: saying no on Google's page,
- *  and closing the dialog halfway.
+ *  and going back halfway.
  *
  *      node tests/transfer-google-ui.test.mjs
  *
@@ -244,14 +244,15 @@ const shot = async (page, name) => {
 async function openGoogleRoute(page) {
   await page.goto(`${APP}/settings/library`, { waitUntil: 'networkidle' });
   await page.click('[data-testid="settings-transfer-button"]');
-  await page.waitForSelector('[data-testid="transfer-dialog"]');
+  await page.waitForSelector('[data-testid="transfer-page"]');
   await page.click('[data-testid="transfer-destination-card"][data-destination="liked"]');
   await page.click('[data-testid="transfer-service-card"][data-service="ytmusic"]');
   await page.click('[data-testid="transfer-have-option"][data-route="ytmusic-google"]');
+  await page.getByRole('button', { name: 'I have it already, skip to the end' }).click();
   await page.getByRole('button', { name: /Sign in with Google/ }).waitFor();
 }
 
-/** Type the code on the fake Google's page, opened from the dialog's link
+/** Type the code on the fake Google's page, opened from the page's link
  *  the way a person would, and press Allow or Deny. */
 async function answerOnGoogle(page, answer) {
   const userCode = (await page.textContent('[data-testid="google-user-code"]'))?.trim() ?? '';
@@ -283,15 +284,22 @@ try {
   // ── A. The way in ──
   await page.goto(`${APP}/settings/library`, { waitUntil: 'networkidle' });
   await page.click('[data-testid="settings-transfer-button"]');
-  await page.waitForSelector('[data-testid="transfer-dialog"]');
+  await page.waitForSelector('[data-testid="transfer-page"]');
   await page.click('[data-testid="transfer-destination-card"][data-destination="liked"]');
   await page.click('[data-testid="transfer-service-card"][data-service="ytmusic"]');
-  const options = await page.$$eval('[data-testid="transfer-have-option"]', (els) => els.map((e) => e.textContent));
+  const options = await page.$$eval('[data-testid="transfer-have-label"]', (els) => els.map((e) => e.textContent));
   check('A1 signing in is the first answer for YouTube Music likes', options[0] === 'I can sign in to my Google account', JSON.stringify(options));
   await page.click('[data-testid="transfer-have-option"][data-route="ytmusic-google"]');
+  // The steps come one at a time: read them all on the way to the last.
+  let stepsText = '';
+  for (;;) {
+    stepsText += `${(await page.textContent('[data-testid="transfer-steps"]')) ?? ''} `;
+    const next = page.getByRole('button', { name: 'Next step' });
+    if ((await next.count()) === 0) break;
+    await next.click();
+  }
   const signIn = page.getByRole('button', { name: /Sign in with Google/ });
   await signIn.waitFor();
-  const stepsText = (await page.textContent('[data-testid="transfer-dialog"]')) ?? '';
   check('A2 the steps name google.com/device and say Ember forgets it', /google\.com\/device/.test(stepsText) && /signs itself out/.test(stepsText));
   check('A3 nothing about developer tools or headers anywhere', !/F12|developer tools|request headers/i.test(stepsText));
   await shot(page, 'steps');
@@ -319,15 +327,18 @@ try {
       )
       .then(() => page.textContent('[data-testid="google-waiting"]'))
       .catch(() => '');
-    check('C0 while YouTube Music checks, the dialog says how far it is', /^Checking which likes are songs: \d of 5$/.test(line ?? ''), line ?? '');
+    check('C0 while YouTube Music checks, the page says how far it is', /^Checking which likes are songs: \d of 5$/.test(line ?? ''), line ?? '');
   } else {
     console.log('SKIP  C0 the checking line: start the server and this test with FAKE_CLASSIFY_SLEEP=3');
   }
   await page.waitForSelector('[data-testid="transfer-preview"]', { timeout: 30_000 });
   const preview = (await page.textContent('[data-testid="transfer-preview"]')) ?? '';
-  check('C1 the preview names the source and counts only the songs', /Liked songs from YouTube Music/.test(preview) && /3 songs/.test(preview), preview);
-  check('C2 newest first, with the music video title cleaned up', /Paper Lanterns, Halcyon Drift/.test(preview), preview);
-  const dialogText = (await page.textContent('[data-testid="transfer-dialog"]')) ?? '';
+  const songsChip = (await page.textContent('[data-testid="transfer-chip"][data-chip="new"]')) ?? '';
+  check('C1 the preview names the source and counts only the songs', /Liked songs from YouTube Music/.test(preview) && songsChip === '3 songs', `${preview} | ${songsChip}`);
+  await page.click('[data-testid="transfer-chip"][data-chip="new"]');
+  const firstSong = (await page.locator('[data-testid="transfer-chip-songs"] li').first().textContent()) ?? '';
+  check('C2 newest first, with the music video title cleaned up', firstSong === 'Paper LanternsHalcyon Drift', firstSong);
+  const dialogText = (await page.textContent('[data-testid="transfer-page"]')) ?? '';
   check('C3 no gaming video, no "Music" Minecraft video, no failed lookup, no upload named in the preview',
     !/speedrun|Mob Farm|lookup fails|Garage demo|Bricks and Minifigs/.test(dialogText), dialogText);
   const toCheck = (await page.textContent('[data-testid="google-to-check"]')) ?? '';
@@ -340,44 +351,43 @@ try {
     calls === 1 && /gMobFarm001/.test(asked) && !/gNineStrt01|gSlowWthr01|gSpeedrun01/.test(asked), `${calls} call(s): ${asked}`);
   await shot(page, 'preview');
 
-  // ── D. Start, and the Liked page takes over ──
+  // ── D. Start: you stay where you were, and a notification says when it is done ──
   const start = page.getByRole('button', { name: /^Transfer 5 songs$/ });
   check('D1 Start counts the songs and the uploads', (await start.count()) === 1 && !(await start.isDisabled()));
   const classifyCallsAtStart = playerCalls('classify').length;
   await start.click();
-  await page.waitForURL('**/library/liked', { timeout: 20_000 });
-  await page.waitForSelector('[data-testid="transfer-result"]', { timeout: 60_000 });
-  const result = (await page.textContent('[data-testid="transfer-result"]')) ?? '';
-  check('D2 the summary says it in plain words', result === 'We found 3 songs. 2 need a quick check. 2 likes were not music.', result);
+  await page.waitForURL('**/settings/library', { timeout: 20_000 });
+  await page.waitForSelector('[data-testid="transfer-notification"]', { timeout: 60_000 });
+  const result = (await page.textContent('[data-testid="transfer-notification-result"]')) ?? '';
+  check('D2 "Transfer done" says it in plain words', result === 'We found 3 songs. 2 need a quick check. 2 likes were not music.', result);
   const likedNow = await likedTitles();
   check('D3 only the official songs were liked', JSON.stringify(likedNow) === JSON.stringify(['Nine Streets', 'Paper Lanterns', 'Slow Weather']),
     JSON.stringify(likedNow));
-  const toSort = (await page.textContent('[data-testid="transferring-block"]')) ?? '';
-  check('D4 the two uploads wait under "Still to sort out", the rest are nowhere',
-    /Still to sort out/.test(toSort) && /Garage demo/.test(toSort) && /Bricks and Minifigs/.test(toSort) &&
+  await page.click('[data-testid="transfer-notification"] >> text=Transfer done');
+  await page.waitForSelector('[data-testid="transfer-review-list"]', { timeout: 20_000 });
+  const toSort = (await page.textContent('[data-testid="transfer-review-list"]')) ?? '';
+  check('D4 tapping it opens one list with the two uploads, and nothing else',
+    /Garage demo/.test(toSort) && /Bricks and Minifigs/.test(toSort) &&
       !/speedrun|Mob Farm|lookup fails/.test((await page.textContent('body')) ?? ''), toSort);
   check('D5 the transfer itself asked YouTube Music nothing more', playerCalls('classify').length === classifyCallsAtStart,
     `${playerCalls('classify').length - classifyCallsAtStart} more call(s)`);
   await shot(page, 'liked');
 
-  // ── D6. The quick check: yes to the demo, no to the satire ad ──
-  await page.locator('[data-testid="import-summary"]').getByRole('button', { name: /Review/ }).click();
-  await page.waitForSelector('[data-testid="review-sheet"]');
-  const first = (await page.textContent('[data-testid="review-source"]')) ?? '';
-  check('D6 the sheet asks whether the upload is a song', /Garage demo/.test(first) && /Is this a song\?/.test(first), first);
+  // ── D6. The quick check: Use for the demo, Skip for the satire ad ──
+  const demo = page.locator('[data-testid="transfer-review-item"]', { hasText: 'Garage demo' });
+  check('D6 each upload shows Ember\u2019s best guess with Use', (await demo.getByRole('button', { name: 'Use' }).count()) === 1);
   await shot(page, 'review');
-  await page.getByRole('button', { name: 'Use best match' }).click();
-  await page.waitForFunction(() => /Bricks and Minifigs/.test(document.querySelector('[data-testid="review-source"]')?.textContent ?? ''), null, { timeout: 10_000 });
-  await page.getByRole('button', { name: /Remove song/ }).click();
-  await page.waitForSelector('[data-testid="review-done"]', { timeout: 10_000 });
-  await page.locator('[data-testid="review-sheet"]').getByRole('button', { name: 'Close' }).click();
+  await demo.getByRole('button', { name: 'Use' }).click();
+  await page.waitForSelector('[data-testid="transfer-review-done"]', { timeout: 10_000 });
+  await page.locator('[data-testid="transfer-review-item"]', { hasText: 'Bricks and Minifigs' }).getByRole('button', { name: 'Skip' }).click();
+  await page.waitForSelector('[data-testid="transfer-review-all-done"]', { timeout: 10_000 });
   await page.waitForFunction(
-    () => document.querySelector('[data-testid="transfer-result"]')?.textContent === 'We found 4 songs. 3 likes were not music.',
+    () => document.querySelector('[data-testid="transfer-review-result"]')?.textContent === 'We found 4 songs. 3 likes were not music.',
     null,
     { timeout: 15_000 },
   ).catch(() => {});
-  const after = (await page.textContent('[data-testid="transfer-result"]')) ?? '';
-  check('D7 a yes likes the upload, a no counts it as not music', after === 'We found 4 songs. 3 likes were not music.', after);
+  const after = (await page.textContent('[data-testid="transfer-review-result"]')) ?? '';
+  check('D7 Use likes the upload, Skip counts it as not music', after === 'We found 4 songs. 3 likes were not music.', after);
   const likedAfter = await likedTitles();
   check('D8 and the likes now hold the demo, not the ad', likedAfter.includes('Garage demo, first take') && !likedAfter.some((t) => /Bricks/.test(t)),
     JSON.stringify(likedAfter));
@@ -394,7 +404,7 @@ try {
   check('E2 the button is back for another go', await page.getByRole('button', { name: /Sign in with Google/ }).isEnabled());
   check('E3 and there was no token to revoke', google.revoked.length === revokedBefore);
 
-  // ── F. Closing the dialog halfway stops the server asking Google ──
+  // ── F. Leaving halfway stops the server asking Google ──
   const pollsBefore = google.tokenPolls;
   await page.getByRole('button', { name: /Sign in with Google/ }).click();
   await page.waitForSelector('[data-testid="google-user-code"]');
@@ -403,12 +413,12 @@ try {
   const deadline = Date.now() + 10_000;
   while (google.tokenPolls < pollsBefore + 2 && Date.now() < deadline) await page.waitForTimeout(200);
   check('F0 while the code is up, the server is asking Google', google.tokenPolls >= pollsBefore + 2);
-  await page.getByRole('button', { name: /^Cancel$/ }).click();
-  await page.waitForSelector('[data-testid="transfer-dialog"]', { state: 'detached' });
+  await page.getByRole('button', { name: 'Go back' }).click();
+  await page.waitForSelector('[data-testid="google-user-code"]', { state: 'detached' });
   await page.waitForTimeout(1_500);
   const pollsAfterClose = google.tokenPolls;
   await page.waitForTimeout(3_000);
-  check('F1 once the dialog closes, nobody polls Google for that code again', google.tokenPolls === pollsAfterClose,
+  check('F1 once the person goes back, nobody polls Google for that code again', google.tokenPolls === pollsAfterClose,
     `${pollsAfterClose} then ${google.tokenPolls}`);
 
   // ── G. Nothing secret ever left the server ──

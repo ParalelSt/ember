@@ -45,6 +45,7 @@ import type { JobKind, ImportSourceKind } from '@/lib/import/types';
 import type { TransferPreview } from '@/app/api/import/upload/route';
 import type { CheckProgress, GooglePreview } from '@/lib/import/google/flows';
 import { cn } from '@/lib/utils';
+import { useTransferStore } from '@/stores/useTransferStore';
 
 /** How often the dialog asks the server how a Google sign-in stands. The
  *  server does the polling of Google itself. */
@@ -135,6 +136,7 @@ export function TransferFlow({
   likedServicesOpen = LIKED_SERVICES_OPEN,
 }: TransferFlowProps) {
   const from = safeFrom(fromParam);
+  const follow = useTransferStore((s) => s.follow);
   const router = useRouter();
   const qc = useQueryClient();
   const [destination, setDestination] = useState<JobKind>(initialDestination);
@@ -419,6 +421,14 @@ export function TransferFlow({
   const empty = previewed && base === 0 && !overCap;
   const ready = previewed && count > 0 && !overCap;
 
+  /** Started: the progress chip follows it from here, and the person goes
+   *  back to where they were. */
+  const started = (jobId: string) => {
+    follow(jobId);
+    toast.success('Transfer started. Ember tells you when it is done.');
+    router.push(from);
+  };
+
   const start = async () => {
     if (!ready || starting) return;
     setStarting(true);
@@ -432,7 +442,7 @@ export function TransferFlow({
         void qc.invalidateQueries({ queryKey: IMPORT_QK.jobs });
         void qc.invalidateQueries({ queryKey: QK.likes });
         if (r.note) toast.info(r.note);
-        router.push('/library/liked');
+        started(r.job.id);
         return;
       }
       const r =
@@ -447,7 +457,7 @@ export function TransferFlow({
       void qc.invalidateQueries({ queryKey: IMPORT_QK.jobs });
       void qc.invalidateQueries({ queryKey: QK.playlists });
       void qc.invalidateQueries({ queryKey: QK.likes });
-      router.push(r.playlistId ? `/playlist/${r.playlistId}` : '/library/liked');
+      started(r.job.id);
     } catch (e) {
       if (lookup.step === 'google') {
         flowRef.current = null;

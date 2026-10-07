@@ -12,6 +12,7 @@ import { NowPlaying } from '@/components/player/NowPlaying';
 import { LYRICS_PANEL_W, LyricsPanel } from '@/components/player/LyricsPanel';
 import { SearchOverlayContainer } from '@/components/search/SearchOverlayContainer';
 import { SessionHostBridge } from '@/components/session/SessionHostBridge';
+import { TransferStatus } from '@/components/import/TransferStatus';
 import { hydrateOfflineStore } from '@/lib/offline';
 import { useUiStore } from '@/stores/useUiStore';
 import { useChangelog } from '@/hooks/useChangelog';
@@ -114,6 +115,9 @@ export default function AppShellLayout({ children }: { children: ReactNode }) {
               the scroller's own bottom edge whether or not the player bar
               is showing (bughunt V12). */}
           <BackToTop scrollRef={scrollerRef} />
+          {/* A transfer in the background: its chip and its "Transfer
+              done" notification, over the top of whatever page is open. */}
+          <TransferStatus />
         </div>
         <PlayerBar />
         <MobileNav onSearchClick={() => setSearchOpen(true)} />

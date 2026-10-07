@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import type PocketBase from 'pocketbase';
-import { addTrackAt, createImportJob, createJobStore, likeTrack, pickItem, skipItem } from '@/lib/import/store';
+import { addTrackAt, createImportJob, createJobStore, likeTrack, pickItem, skipItem, undoItem } from '@/lib/import/store';
 import { ImportRunner } from '@/lib/import/runner';
 import { isParseError, parseTransferInput } from '@/lib/import/sources/index';
 import { jobSourceFor } from '@/lib/import/sources/types';
@@ -260,6 +260,15 @@ describe('pickItem and skipItem', () => {
     expect(s.job()).toMatchObject({ accepted: 3, review: 0, missing: 1 });
   });
 
+  it('Undo of a review pick takes the song back out of the playlist', async () => {
+    const s = await withItems();
+    await pickItem(s.f.pb, s.job(), s.item(1), track('alt1'));
+    await undoItem(s.f.pb, s.job(), s.item(1), 'review');
+    expect(order(s.f, s.playlistId)).toEqual(['vid0', 'vid3']);
+    expect(s.item(1)).toMatchObject({ status: 'review', videoId: null });
+    expect(s.job()).toMatchObject({ accepted: 2, review: 1, missing: 1 });
+  });
+
   it('a re-match swaps the old track out in place', async () => {
     const s = await withItems();
     await pickItem(s.f.pb, s.job(), s.item(0), track('alt0'));
@@ -509,6 +518,37 @@ describe('pickItem and skipItem on a transfer', () => {
     await skipItem(s.f.pb, s.freshJob(), s.item(2));
     expect(s.item(2).status).toBe('skipped');
     expect(s.liked()).toEqual(['vid0']);
+  });
+
+  it('Undo of a Use unlikes the song it liked and puts the song back to check', async () => {
+    const s = await withItems();
+    await pickItem(s.f.pb, s.freshJob(), s.item(1), track('alt1'));
+    expect(s.liked()).toEqual(['vid0', 'alt1']);
+    await undoItem(s.f.pb, s.freshJob(), s.item(1), 'review');
+    expect(s.liked()).toEqual(['vid0']);
+    expect(s.item(1)).toMatchObject({ status: 'review', videoId: null });
+    expect(s.f.table('import_items')[1].like_id).toBe('');
+    expect(s.freshJob()).toMatchObject({ accepted: 1, review: 1, missing: 1 });
+    // And it can be used again, with another version this time.
+    await pickItem(s.f.pb, s.freshJob(), s.item(1), track('vid1'));
+    expect(s.liked().sort()).toEqual(['vid0', 'vid1']);
+  });
+
+  it('Undo of a Use leaves a like the person already had', async () => {
+    const s = await withItems();
+    await likeTrack(s.f.pb, 'u1', track('alt1'), 5);
+    s.f.table('likes').forEach((l) => Object.assign(l, { origin: 'user' }));
+    await pickItem(s.f.pb, s.freshJob(), s.item(1), track('alt1'));
+    await undoItem(s.f.pb, s.freshJob(), s.item(1), 'review');
+    expect(s.liked().sort()).toEqual(['alt1', 'vid0']);
+  });
+
+  it('Undo of a Skip puts a not-found song back as not found', async () => {
+    const s = await withItems();
+    await skipItem(s.f.pb, s.freshJob(), s.item(2));
+    await undoItem(s.f.pb, s.freshJob(), s.item(2), 'missing');
+    expect(s.item(2).status).toBe('missing');
+    expect(s.freshJob()).toMatchObject({ accepted: 1, review: 1, missing: 1 });
   });
 });
 

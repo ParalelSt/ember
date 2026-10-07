@@ -70,7 +70,7 @@ function SourceCard({ item, source }: { item: ImportItem; source: ImportSourceKi
 }
 
 /** "None of these": search YouTube Music and use any result. */
-function SearchPanel({
+export function SearchPanel({
   initial,
   results,
   searching,

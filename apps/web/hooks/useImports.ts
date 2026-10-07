@@ -94,7 +94,7 @@ export function useLikedImportJob(): { job: ImportJob | null; items: ImportItem[
   return { job, items };
 }
 
-/** Stop, Retry, Dismiss, and settling one song. Every change refreshes the
+/** Stop, Retry, Dismiss, and settling one song (and undoing that). Every change refreshes the
  *  job, the sidebar's list and wherever the songs land: a playlist's tracks,
  *  or the likes when this is a transfer (no playlist at all). */
 export function useImportActions(jobId: string | null | undefined, playlistId: string | null) {
@@ -122,5 +122,9 @@ export function useImportActions(jobId: string | null | undefined, playlistId: s
     mutationFn: (itemId: string) => api.skipImportItem(itemId),
     onSuccess: (r) => refresh(r.job, r.item),
   });
-  return { update, pick, skip, busy: update.isPending || pick.isPending || skip.isPending };
+  const undo = useMutation({
+    mutationFn: ({ itemId, to }: { itemId: string; to: 'review' | 'missing' }) => api.undoImportItem(itemId, to),
+    onSuccess: (r) => refresh(r.job, r.item),
+  });
+  return { update, pick, skip, undo, busy: update.isPending || pick.isPending || skip.isPending || undo.isPending };
 }

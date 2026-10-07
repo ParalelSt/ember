@@ -377,6 +377,12 @@ export const api = {
       method: 'POST',
       body: { action: 'skip' },
     }),
+  /** Undo a Use or a Skip: the song goes back to `to`. */
+  undoImportItem: (id: string, to: 'review' | 'missing') =>
+    req<{ item: ImportItem; job: ImportJob }>(`/import/items/${encodeURIComponent(id)}`, {
+      method: 'POST',
+      body: { action: 'undo', to },
+    }),
   // — Recent searches (server-backed so they sync across devices) —
   listRecentSearches: () => req<{ tracks: Track[] }>('/recent-searches'),
   addRecentSearch: (track: Track) =>
