@@ -175,6 +175,31 @@ describe('POST /api/import/upload?preview=1', () => {
   });
 });
 
+describe('POST /api/import/upload, a list over the cap', () => {
+  const library = (n: number) =>
+    Buffer.from(JSON.stringify({ tracks: Array.from({ length: n }, (_, i) => ({ artist: `Artist ${i}`, track: `Song ${i}` })) }));
+
+  it('a YourLibrary.json over 10 000 songs starts with the first 10 000 instead of refusing', async () => {
+    const res = await POST(fileRequest('YourLibrary.json', library(10_050)), {});
+    expect(res.status).toBe(201);
+    expect((newImports[0].items as unknown[]).length).toBe(10_000);
+    expect(kick).toHaveBeenCalled();
+  });
+
+  it('its preview says it was cut, with the source kind the dialog keys on', async () => {
+    const res = await POST(fileRequest('YourLibrary.json', library(10_050), '?preview=1'), {});
+    const { preview } = (await res.json()) as { preview: { kind: string; truncated: boolean; count: number } };
+    expect(preview).toMatchObject({ kind: 'spotify-export', truncated: true, count: 10_000 });
+  });
+
+  it('a pasted or CSV list over the cap is still refused', async () => {
+    const many = Array.from({ length: 10_001 }, (_, i) => `Artist ${i} - Song ${i}`).join('\n');
+    const res = await POST(jsonRequest({ text: many }), {});
+    expect(res.status).toBe(413);
+    expect(createImportJob).not.toHaveBeenCalled();
+  });
+});
+
 describe('POST /api/import/upload, starting the transfer', () => {
   it('queues a liked job from a file and kicks the runner', async () => {
     const res = await POST(fileRequest('YourLibrary.json', fixture('YourLibrary.sample.json')), {});

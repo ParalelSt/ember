@@ -11,6 +11,23 @@ const CAP = MAX_TRANSFER_ITEMS.toLocaleString('en-GB');
  *  so the preview says it before the person presses Start. */
 export const OVER_CAP_MESSAGE = `Ember can transfer up to ${CAP} songs at once. Split the file and upload it in parts.`;
 
+/** A YourLibrary.json longer than one transfer may carry. The file cannot be
+ *  split by hand, so Ember starts with what fits instead of refusing, as the
+ *  Google route does. */
+export const KEPT_FIRST_MESSAGE = `This list is longer than one transfer can carry, so Ember keeps the first ${CAP} songs.`;
+
+/** About how long a by-name transfer takes: a batch of 8 songs is about
+ *  10 seconds of searching. Rounded up to 5 minute steps, and "under 5
+ *  minutes" below that, because the real time depends on how busy YouTube
+ *  Music is. Empty for no songs. */
+export function transferEstimate(count: number): string {
+  if (count <= 0) return '';
+  const minutes = ((count / 8) * 10) / 60;
+  const stay = 'You can leave this page; the transfer carries on and the Liked songs page shows how far it is.';
+  if (minutes < 5) return `Under 5 minutes. ${stay}`;
+  return `About ${Math.ceil(minutes / 5) * 5} minutes. ${stay}`;
+}
+
 /** Five uploads an hour. The generic limiter answers in seconds, which
  *  never says what the rule was. */
 export const RATE_LIMITED_MESSAGE =

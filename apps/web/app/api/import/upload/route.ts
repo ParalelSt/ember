@@ -59,7 +59,9 @@ export const POST = withRequestLog('import/upload', async (request: NextRequest)
     const limited = rateLimitResponse(`import-upload:${user.id}`, { windowMs: 3_600_000, max: 5 });
     if (limited) return limited;
 
-    if (parsed.truncated) return jsonError(OVER_CAP_MESSAGE, 413);
+    // A YourLibrary.json cannot be split by hand, so it starts with the
+    // first 10 000 (the parser already cut it); anything else is refused.
+    if (parsed.truncated && parsed.kind !== 'spotify-export') return jsonError(OVER_CAP_MESSAGE, 413);
     if (!parsed.items.length) return jsonError('There are no songs in that.', 422);
 
     const destination: JobKind = read.destination === 'playlist' ? 'playlist' : 'liked';

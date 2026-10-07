@@ -123,6 +123,16 @@ describe('parseTransferInput cleans up what it read', () => {
     expect(r.truncated).toBe(true);
   });
 
+  it('a YourLibrary.json with more than 10 000 songs keeps the first 10 000 and says so', () => {
+    const tracks = Array.from({ length: MAX_TRANSFER_ITEMS + 5 }, (_, i) => ({ artist: `Artist ${i}`, track: `Song ${i}` }));
+    const r = parse({ filename: 'YourLibrary.json', text: JSON.stringify({ tracks }) });
+    expect(r.kind).toBe('spotify-export');
+    expect(r.items).toHaveLength(MAX_TRANSFER_ITEMS);
+    expect(r.items[0].title).toBe('Song 0');
+    expect(r.items[MAX_TRANSFER_ITEMS - 1].title).toBe(`Song ${MAX_TRANSFER_ITEMS - 1}`);
+    expect(r.truncated).toBe(true);
+  });
+
   it('a list that fits is not flagged', () => {
     expect(parse({ text: 'A - B\nC - D' }).truncated).toBe(false);
   });

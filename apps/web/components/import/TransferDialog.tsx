@@ -20,7 +20,13 @@ import { QK } from '@/hooks/useLibrary';
 import { IMPORT_QK } from '@/hooks/useImports';
 import { logger } from '@/lib/logger/client';
 import { parseImportUrl } from '@/lib/import/url';
-import { googleLikesErrorMessage, OVER_CAP_MESSAGE, transferErrorMessage } from '@/lib/import/transferCopy';
+import {
+  googleLikesErrorMessage,
+  KEPT_FIRST_MESSAGE,
+  OVER_CAP_MESSAGE,
+  transferErrorMessage,
+  transferEstimate,
+} from '@/lib/import/transferCopy';
 import {
   LIKED_SERVICES_OPEN,
   routesFor,
@@ -401,7 +407,9 @@ export function TransferDialog({
   // here instead of letting someone press Start and be turned away. The
   // Google sign-in is different: over the cap it still starts, just with
   // the newest songs kept, so it never sets overCap.
-  const overCap = lookup.step === 'file' && lookup.preview.truncated;
+  // A YourLibrary.json is the exception: it starts with the first 10 000.
+  const keptFirst = lookup.step === 'file' && lookup.preview.truncated && lookup.preview.kind === 'spotify-export';
+  const overCap = lookup.step === 'file' && lookup.preview.truncated && !keptFirst;
   const previewed = lookup.step === 'file' || lookup.step === 'link' || lookup.step === 'google';
   // A Google preview counts songs and the uploads to check separately; both
   // come across, so the button counts both.
@@ -650,6 +658,16 @@ export function TransferDialog({
                 count={lookup.preview.count}
                 truncated={lookup.preview.truncated}
               />
+            )}
+            {keptFirst && (
+              <p data-testid="transfer-kept-first" className="text-xs text-muted-foreground">
+                {KEPT_FIRST_MESSAGE}
+              </p>
+            )}
+            {ready && lookup.step !== 'google' && (
+              <p data-testid="transfer-estimate" className="text-xs text-muted-foreground">
+                {transferEstimate(count)}
+              </p>
             )}
             {overCap && (
               <p role="alert" data-testid="transfer-over-cap" className="text-xs text-destructive">

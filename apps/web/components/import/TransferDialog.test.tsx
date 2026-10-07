@@ -433,6 +433,17 @@ describe('TransferDialog: what it says when Ember will not take it', () => {
     expect(startButton()).toBeDisabled();
   });
 
+  it('over 10 000 songs in a YourLibrary.json: Ember keeps the first 10 000 and Start stays on', async () => {
+    api.transferPreview.mockResolvedValue(preview({ kind: 'spotify-export', count: 10_000, truncated: true }));
+    setup();
+    toSpotifyFile();
+    chooseFile('YourLibrary.json', '{"tracks":[]}');
+    await waitFor(() => expect(screen.getByTestId('transfer-kept-first')).toBeInTheDocument());
+    expect(screen.getByTestId('transfer-kept-first')).toHaveTextContent('first 10,000');
+    expect(screen.queryByTestId('transfer-over-cap')).toBeNull();
+    expect(startButton()).toBeEnabled();
+  });
+
   it('a file with no songs in it: Start stays off', async () => {
     api.transferPreview.mockResolvedValue(preview({ count: 0, sample: [] }));
     setup();
@@ -768,6 +779,25 @@ describe('TransferDialog: YouTube Music likes, after a Google sign-in', () => {
     await waitFor(() => expect(screen.getByTestId('transfer-error')).toHaveTextContent(GOOGLE_MESSAGES.gone));
     expect(signInButton()).toBeEnabled();
     expect(push).not.toHaveBeenCalled();
+  });
+});
+
+describe('TransferDialog: the time estimate', () => {
+  it('a by-name preview says about how long and that the page can be left', async () => {
+    api.transferPreview.mockResolvedValue(preview({ count: 300 }));
+    setup();
+    toSpotifyFile();
+    chooseFile();
+    await waitFor(() => expect(screen.getByTestId('transfer-estimate')).toBeInTheDocument());
+    expect(screen.getByTestId('transfer-estimate')).toHaveTextContent('About 10 minutes. You can leave this page');
+  });
+
+  it('a short list says under 5 minutes', async () => {
+    api.transferPreview.mockResolvedValue(preview({ count: 3 }));
+    setup();
+    toSpotifyFile();
+    chooseFile();
+    await waitFor(() => expect(screen.getByTestId('transfer-estimate')).toHaveTextContent('Under 5 minutes.'));
   });
 });
 
