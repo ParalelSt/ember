@@ -10,14 +10,18 @@
  *
  *    - login_requests exists with every rule null (server-only) and the
  *      unique code / token_hash indexes plus the user index
- *    - POST /api/ember/qr-login/mint: 401 without auth, 401 with a member's
- *      token (even an is_admin member), 404 for an unknown user, and with a
- *      superuser a token that passes authRefresh as that user, whose record
- *      has the same keys authWithPassword gives
+ *    - POST /api/ember/qr-login/mint { request }: 401 without auth, 401 with
+ *      a member's token (even an is_admin member), 404 for an unknown
+ *      request, 409 unless the request is approved and unexpired. It claims
+ *      the request (approved -> used) and mints in one transaction, so of
+ *      several concurrent mints for one request exactly one succeeds. The
+ *      token passes authRefresh as the approver, and the record has the
+ *      same keys authWithPassword gives
  *    - POST /api/ember/qr-login/revoke-all: same guards; afterwards every
  *      token of that user (minted or password) is refused
  *    - the sweep flips a pending row past its expiry to expired */
 import { spawn, spawnSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { existsSync, mkdtempSync, mkdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -142,21 +146,53 @@ try {
 
     // ── mint ──
     const MINT = '/api/ember/qr-login/mint';
-    const noAuth = await json('POST', MINT, { body: { user: member.id } });
+    let seq = 0;
+    /** A login request as the Next routes would leave it. */
+    const request = async (status, { user = member.id, expiresInMs = 120_000 } = {}) => {
+      seq++;
+      const r = await json('POST', '/api/collections/login_requests/records', {
+        token: su,
+        body: {
+          token_hash: `th-${seq}-${Date.now()}`, poll_hash: 'ph', code: `M${String(seq).padStart(7, '0')}`, status,
+          user: status === 'pending' ? '' : user, device: 'A browser on Linux', shell: 'web', requester_ip: '127.0.0.1',
+          expires: new Date(Date.now() + expiresInMs).toISOString(),
+        },
+      });
+      if (r.status !== 200) throw new Error(`could not seed a login request: ${JSON.stringify(r.body)}`);
+      return r.body.id;
+    };
+    const rowOf = async (id) => (await json('GET', `/api/collections/login_requests/records/${id}`, { token: su })).body;
+
+    const approvedId = await request('approved');
+    const noAuth = await json('POST', MINT, { body: { request: approvedId } });
     check('Q3 mint without auth is 401', noAuth.status === 401, `status ${noAuth.status}`);
-    const asMember = await json('POST', MINT, { token: member.token, body: { user: member.id } });
+    const asMember = await json('POST', MINT, { token: member.token, body: { request: approvedId } });
     check('Q4 mint with a member token is 401', asMember.status === 401, `status ${asMember.status}`);
-    const asOwner = await json('POST', MINT, { token: owner.token, body: { user: member.id } });
+    const asOwner = await json('POST', MINT, { token: owner.token, body: { request: approvedId } });
     check('Q4b mint with an is_admin member token is 401 too', asOwner.status === 401, `status ${asOwner.status}`);
     const getMint = await fetch(PB + MINT, { headers: { Authorization: su } });
     check('Q4c mint is not a GET', getMint.status === 404 || getMint.status === 405, `status ${getMint.status}`);
-    const unknown = await json('POST', MINT, { token: su, body: { user: 'nosuchuser1234' } });
-    check('Q5 mint for an unknown user is 404', unknown.status === 404, `status ${unknown.status}`);
-    const blank = await json('POST', MINT, { token: su, body: {} });
-    check('Q5b mint with no user is 404', blank.status === 404, `status ${blank.status}`);
+    check('Q4d refused mints leave the request approved', (await rowOf(approvedId)).status === 'approved');
+    const unknown = await json('POST', MINT, { token: su, body: { request: 'nosuchrequest12' } });
+    check('Q5 mint for an unknown request is 404', unknown.status === 404, `status ${unknown.status}`);
+    const blank = await json('POST', MINT, { token: su, body: { user: member.id } });
+    check('Q5b mint by user (no request) is 404', blank.status === 404, `status ${blank.status}`);
+    const pendingId = await request('pending');
+    const pend = await json('POST', MINT, { token: su, body: { request: pendingId } });
+    check('Q5c a pending request is not minted (409) and stays pending', pend.status === 409 && pend.body?.data?.status === 'pending' &&
+      (await rowOf(pendingId)).status === 'pending', `status ${pend.status}`);
+    for (const st of ['denied', 'expired', 'used']) {
+      const id = await request(st);
+      const r = await json('POST', MINT, { token: su, body: { request: id } });
+      check(`Q5d a ${st} request is not minted (409)`, r.status === 409 && r.body?.data?.status === st, `status ${r.status}`);
+    }
+    const staleId = await request('approved', { expiresInMs: -31_000 });
+    const stale = await json('POST', MINT, { token: su, body: { request: staleId } });
+    check('Q5e an approved request past its expiry and the grace is 409 expired, and marked so', stale.status === 409 &&
+      stale.body?.data?.status === 'expired' && (await rowOf(staleId)).status === 'expired', `status ${stale.status}`);
 
-    const minted = await json('POST', MINT, { token: su, body: { user: member.id } });
-    check('Q6 mint with superuser auth answers { token, record }', minted.status === 200 && typeof minted.body?.token === 'string' && minted.body?.record?.id === member.id,
+    const minted = await json('POST', MINT, { token: su, body: { request: approvedId } });
+    check('Q6 mint with superuser auth answers { token, record } for the approver', minted.status === 200 && typeof minted.body?.token === 'string' && minted.body?.record?.id === member.id,
       `status ${minted.status}`);
     const mintKeys = Object.keys(minted.body?.record ?? {}).sort().join(',');
     const pwKeys = Object.keys(member.authBody.record ?? {}).sort().join(',');
@@ -164,6 +200,20 @@ try {
     check('Q6c the minted record carries the email and no secrets', minted.body?.record?.email === member.email &&
       !('tokenKey' in (minted.body?.record ?? {})) && !('passwordHash' in (minted.body?.record ?? {})));
     check('Q6d the minted token is a new token, not the password session', minted.body?.token !== member.token);
+    const after = await rowOf(approvedId);
+    check('Q6e the same call claimed the request: used, used_at, and only a hash of the token', after.status === 'used' && !!after.used_at &&
+      after.minted_hash === createHash('sha256').update(String(minted.body?.token)).digest('hex') && !JSON.stringify(after).includes(String(minted.body?.token)));
+    const again = await json('POST', MINT, { token: su, body: { request: approvedId } });
+    check('Q6f a second mint for the same request is 409 used', again.status === 409 && again.body?.data?.status === 'used', `status ${again.status}`);
+
+    // Several Next processes polling at once: PocketBase decides, once.
+    let rounds = 0;
+    for (let round = 0; round < 8; round++) {
+      const id = await request('approved');
+      const results = await Promise.all(Array.from({ length: 6 }, () => json('POST', MINT, { token: su, body: { request: id } })));
+      if (results.filter((r) => r.status === 200).length === 1 && results.filter((r) => r.status === 409).length === 5) rounds++;
+    }
+    check('Q12 of 6 concurrent mints for one request exactly one succeeds (8 rounds)', rounds === 8, `${rounds}/8 rounds`);
 
     const refreshed = await json('POST', '/api/collections/users/auth-refresh', { token: minted.body?.token });
     check('Q7 the minted token passes authRefresh as that user', refreshed.status === 200 && refreshed.body?.record?.id === member.id,

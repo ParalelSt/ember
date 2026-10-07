@@ -4,7 +4,7 @@ import { withRequestLog } from '@/lib/logger/withRequestLog';
 import { serverLogger } from '@/lib/logger/server';
 import { clientIp, rateLimitResponse } from '@/lib/rateLimit';
 import { hash, sameHash } from '@/lib/qrLogin/secrets';
-import { effectiveStatus, transition } from '@/lib/qrLogin/state';
+import { effectiveStatus } from '@/lib/qrLogin/state';
 import {
   clearQrCookie,
   failure,
@@ -12,7 +12,6 @@ import {
   isHttps,
   json,
   noSuchRequest,
-  pbIso,
   QR_LIMITS,
   readQrCookie,
   withLock,
@@ -20,8 +19,9 @@ import {
 
 /** The new device polls here (plan 2b). Only the holder of the poll cookie
  *  gets an answer; a wrong or missing cookie looks exactly like an unknown
- *  request. Once approved, the session is minted and handed over ONCE, the
- *  row becomes used and the cookie is cleared. */
+ *  request. Once approved, the session is minted and handed over ONCE (the
+ *  hook claims the row as used in the same transaction) and the cookie is
+ *  cleared. */
 export const GET = withRequestLog('auth/qr/status', async (req: NextRequest) => {
   try {
     const limited = rateLimitResponse(`qr-status-ip:${clientIp(req)}`, QR_LIMITS.statusPerIp);
@@ -45,29 +45,23 @@ export const GET = withRequestLog('auth/qr/status', async (req: NextRequest) => 
         res.headers.append('set-cookie', clearQrCookie(https));
         return res;
       }
-      const next = transition(row, 'deliver', now);
-      if (!next.ok) return json({ status: next.error });
-
-      // Claim first, so nothing can deliver twice even if the mint is slow.
-      await pb.collection('login_requests').update(row.id, { status: 'used', used_at: pbIso(now) }, { requestKey: null });
+      // PocketBase claims the request (approved -> used) and mints in one
+      // transaction (pb_hooks/qr_login.pb.js), so even several server
+      // processes polling at once deliver it once. The lock above only saves
+      // the round trip within this process.
       let session: { token: string; record: Record<string, unknown> };
       try {
-        session = await pb.send('/api/ember/qr-login/mint', { method: 'POST', body: { user: row.user }, requestKey: null });
+        session = await pb.send('/api/ember/qr-login/mint', { method: 'POST', body: { request: row.id }, requestKey: null });
       } catch (e) {
-        const mintStatus = (e as { status?: number })?.status;
-        if (mintStatus === 404) {
-          // The member is gone: nothing to sign in as.
-          await pb.collection('login_requests').update(row.id, { status: 'expired' }, { requestKey: null });
-          return json({ status: 'expired' });
+        const err = e as { status?: number; response?: { data?: { status?: unknown } } };
+        if (err?.status === 409 || err?.status === 404) {
+          const claimed = err.response?.data?.status;
+          const res = json({ status: err.status === 409 && (claimed === 'used' || claimed === 'denied') ? claimed : 'expired' });
+          res.headers.append('set-cookie', clearQrCookie(https));
+          return res;
         }
-        await pb.collection('login_requests').update(row.id, { status: 'approved', used_at: '' }, { requestKey: null });
-        serverLogger.warn('auth', 'qr mint failed', { requestId: row.id, status: mintStatus });
+        serverLogger.warn('auth', 'qr mint failed', { requestId: row.id, status: err?.status });
         return json({ error: "Can't reach Ember, retrying..." }, 503);
-      }
-      try {
-        await pb.collection('login_requests').update(row.id, { minted_hash: hash(session.token) }, { requestKey: null });
-      } catch {
-        // The audit hash is for per-device sign-out later; the sign-in stands.
       }
       serverLogger.info('auth', 'qr delivered', { requestId: row.id, userId: row.user, device: row.device });
       const res = json({ status: 'approved', token: session.token, record: session.record });

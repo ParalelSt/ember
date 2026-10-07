@@ -1,9 +1,12 @@
+import { createHash } from 'node:crypto';
 import PocketBase from 'pocketbase';
 
 /** An in-memory stand-in for the server's admin PocketBase client, enough
  *  for the QR sign-in routes: the login_requests collection (with the unique
  *  code and token_hash indexes), the users the mint hook signs in, and the
- *  two hook routes behind pb.send. Filters are the SDK's own pb.filter()
+ *  two hook routes behind pb.send, with the hooks' own rules (mint claims an
+ *  approved, unexpired request and mints for its approver, once; revoke-all
+ *  rotates the key). Filters are the SDK's own pb.filter()
  *  output, read back clause by clause (`a = 'x' && b >= '...'`). */
 
 export type Row = Record<string, unknown> & { id: string; created: string; updated: string };
@@ -67,6 +70,8 @@ export function createFakeQrPb() {
   const revoked: string[] = [];
   /** Throw from the next mint (a PocketBase outage). */
   let failNextMint: Error | null = null;
+  /** Another Next process claims the request just before our mint. */
+  let raceNextMint = false;
   /** Collide with the unique code index this many times on create. */
   let codeCollisions = 0;
   const sdk = new PocketBase('http://127.0.0.1:1');
@@ -117,19 +122,38 @@ export function createFakeQrPb() {
     filter: (expr: string, params: Record<string, unknown>) => sdk.filter(expr, params),
     collection,
     async send(path: string, opts: { method?: string; body?: Record<string, unknown> }) {
-      const id = String(opts.body?.user ?? '');
-      const user = users.get(id);
       if (path === '/api/ember/qr-login/mint' && opts.method === 'POST') {
         if (failNextMint) {
           const e = failNextMint;
           failNextMint = null;
           throw e;
         }
-        if (!user) throw notFound();
-        const token = `minted.${id}.${minted.length + 1}.${Math.random().toString(36).slice(2)}`;
+        const row = rows.get(String(opts.body?.request ?? ''));
+        if (!row) throw notFound();
+        if (raceNextMint) {
+          raceNextMint = false;
+          row.status = 'used';
+        }
+        const expires = Date.parse(String(row.expires).replace(' ', 'T'));
+        if (row.status === 'approved' && !(Date.now() < expires + 30_000)) row.status = 'expired';
+        if (row.status !== 'approved') {
+          throw Object.assign(new Error('This sign-in request cannot be used.'), {
+            status: 409,
+            response: { code: 409, message: 'This sign-in request cannot be used.', data: { status: row.status } },
+          });
+        }
+        const user = users.get(String(row.user));
+        if (!user) {
+          row.status = 'expired';
+          throw notFound();
+        }
+        const token = `minted.${user.id}.${minted.length + 1}.${Math.random().toString(36).slice(2)}`;
         minted.push(token);
+        Object.assign(row, { status: 'used', used_at: pbNow(), minted_hash: createHash('sha256').update(token).digest('hex') });
         return { token, record: { ...user, collectionName: 'users', collectionId: '_pb_users_auth_', avatar: '', theme: null, plugins: null } };
       }
+      const id = String(opts.body?.user ?? '');
+      const user = users.get(id);
       if (path === '/api/ember/qr-login/revoke-all' && opts.method === 'POST') {
         if (!user) throw notFound();
         revoked.push(id);
@@ -147,6 +171,9 @@ export function createFakeQrPb() {
     revoked,
     addUser(u: FakeUser) {
       users.set(u.id, u);
+    },
+    raceNextMint() {
+      raceNextMint = true;
     },
     failNextMint(e: Error) {
       failNextMint = e;

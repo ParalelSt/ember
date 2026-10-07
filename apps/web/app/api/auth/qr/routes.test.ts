@@ -1,4 +1,5 @@
 // @vitest-environment node
+import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -252,7 +253,7 @@ describe('GET status: the poll secret binds the session to the requesting browse
     const row = h.fake.rows.get(r.id)!;
     expect(row.status).toBe('used');
     expect(row.used_at).not.toBe('');
-    expect(row.minted_hash).toBe(hash(String(first.body?.token)));
+    expect(row.minted_hash).toBe(createHash('sha256').update(String(first.body?.token)).digest('hex'));
     expect(JSON.stringify(row)).not.toContain(String(first.body?.token));
 
     const second = await poll(r.cookie);
@@ -270,6 +271,18 @@ describe('GET status: the poll secret binds the session to the requesting browse
     const delivered = [a, b].filter((x) => x.body?.status === 'approved');
     expect(delivered).toHaveLength(1);
     expect(h.fake.minted).toHaveLength(1);
+  });
+
+  it('the claim is PocketBase\'s: when another server process got there first, this one hands over nothing', async () => {
+    const r = await newRequest();
+    asUser(MEMBER);
+    await hit(approve.POST, '/api/auth/qr/approve', { body: { id: r.id, token: r.token } });
+    asUser(null);
+    h.fake.raceNextMint();
+    const p = await poll(r.cookie);
+    expect(p.status).toBe(200);
+    expect(p.body).toEqual({ status: 'used' });
+    expect(h.fake.minted).toHaveLength(0);
   });
 
   it('a failed mint is not a lost sign-in: 503, the row stays approved, the next poll delivers', async () => {
