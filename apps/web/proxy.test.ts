@@ -334,3 +334,20 @@ describe('proxy [qr sign-in]: /pb/api/ember is not proxied', () => {
     }
   });
 });
+
+describe('proxy [qr sign-in]: the approve page is a signed-in page', () => {
+  it('sends a signed-out visitor of /link/<token> to sign in, then back', async () => {
+    const res = await proxy(req('/link/abc'));
+    expect(res.status).toBe(307);
+    const location = new URL(res.headers.get('location')!);
+    expect(location.pathname).toBe('/auth');
+    expect(location.searchParams.get('next')).toBe('/link/abc');
+  });
+
+  it('leaves the QR routes reachable without a session (each decides its own auth)', async () => {
+    for (const p of ['/api/auth/qr/start', '/api/auth/qr/status', '/api/auth/qr/lookup', '/api/auth/qr/approve']) {
+      const res = await proxy(req(p));
+      expect(res.status, p).toBe(200);
+    }
+  });
+});
