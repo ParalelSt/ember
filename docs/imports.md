@@ -180,6 +180,34 @@ Tests: `lib/import/google/*.test.ts` (the device flow, the first-pass filter, pa
 
 This replaced an earlier way in that asked the person to copy the request headers of a signed-in music.youtube.com tab out of the browser's developer tools; that route (`POST /api/import/liked/ytmusic`, `player.py liked`) is gone.
 
+## 12. Liked songs from Spotify, Apple Music and anywhere else
+
+Every service card is open for **Liked songs** (`LIKED_SERVICES_OPEN` is `ALL_SERVICES` in `lib/import/transferRoutes.ts`; keep `serviceOpen` and the dialog's `likedServicesOpen` prop, so a future hold-back is one line). Everything except the Google sign-in is matched by name, so a few songs end up in the review list and a few may be missing.
+
+| Service | Way in | Notes |
+|---|---|---|
+| Spotify | `YourLibrary.json` from Spotify's "Download your data" (first), a converter CSV (Exportify, Soundiiz, TuneMyMusic), a playlist link (last for Liked, first for a playlist) | The export takes Spotify a few days and has no like dates. The link only sees 100 songs. A JSON over 10 000 songs starts with the first 10 000 instead of being refused. |
+| YouTube Music | Google sign-in, or a playlist link | Exact, nothing to match. |
+| Apple Music | "Apple Music Likes and Dislikes.csv" from privacy.apple.com | Apple shares no links. |
+| Somewhere else | A pasted `Artist - Title` list, or any CSV with a header row | |
+
+The preview card says about how long it will take (`transferEstimate`: 8 songs per 10 seconds, rounded up to 5 minutes, "Under 5 minutes" below that) and that the person can leave the page.
+
+### How well the by-name match does
+
+Measured on 2026-10-07 with `tests/measure-match` (152 well-known songs across pop, rock, hip hop, electronic, R&B, classics, Latin, 31 in other scripts and languages, live, remix, featuring and remastered versions), through the real `matchItems` and scorer, anonymously, with titles and artists only (the shape of a `YourLibrary.json`, so no length to help):
+
+- 134 accepted (88 %), 16 to 17 needing review (11 %), 1 to 2 not found (1 %). Two runs differed by one song.
+- Pop, rock, hip hop, R&B, classics and featuring versions: every song accepted, every pick the right song.
+- Songs in other scripts or with a differently spelled artist ("Lemon" by 米津玄師 comes back as Kenshi Yonezu) land in review at 50, the lowest passing score, because the artist names share no letters. The pick is almost always right; the review sheet confirms it.
+- Without a length the best score is 80, so `ACCEPT_AT` 75 holds and raising it to 80 would change nothing. A file with lengths (Exportify) scores higher.
+- Systematic mistake: when the source names a specific live or remix version ("Hallelujah - Live at the Royal Albert Hall", "Rain On Me - Remix"), the matcher accepts some other live or remix version of the same song at 80. Same song, same artist, wrong take. A studio song with a "- Remastered" suffix matches the plain track, which is what a person wants.
+- Review picks that were wrong were different songs sharing a title (Dream On by Blacktop Mojo, Vaikuttaa by Coldivo), and they stayed in review, so none reached the likes unchecked.
+
+Rerun: from `apps/web`, `PYTHON_BIN=<venv python> npx vitest run --config ../../tests/measure-match/vitest.config.mts`. It needs the network, writes `results.json` and `summary.txt` beside the script, and is not part of the normal suite.
+
+Each liked transfer is tested from file to likes (`lib/import/store.test.ts`, "every service ends in likes with like_id"): Spotify `YourLibrary.json`, Apple's CSV, Exportify and TuneMyMusic CSVs and a pasted list each queue a liked job, the runner writes one `origin: 'import'` like per song, and every item records its `like_id`.
+
 ## Decisions for the owner
 
 1. Spotify default is the embed page with a 100-track cap, OAuth optional in stage 5? Recommended: yes.
