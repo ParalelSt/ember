@@ -57,3 +57,17 @@ describe('AuthProvider [bughunt V5]: a dead session is dropped', () => {
     expect(seen).toBeNull();
   });
 });
+
+describe('AuthProvider: QR sign-in', () => {
+  it('adoptSession puts the approved session in the same store a password sign-in uses', () => {
+    let adopt: ((t: string, r: { id: string } & Record<string, unknown>) => void) | null = null;
+    function Grab() {
+      adopt = useAuth().adoptSession;
+      return null;
+    }
+    render(<AuthProvider initialUser={null}><Grab /></AuthProvider>);
+    authStore.save.mockClear();
+    act(() => adopt!('minted-token', { id: 'u9', email: 'n@b.c' }));
+    expect(authStore.save).toHaveBeenCalledWith('minted-token', { id: 'u9', email: 'n@b.c' });
+  });
+});

@@ -2,6 +2,7 @@
 
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { usePathname } from 'next/navigation';
+import type { RecordModel } from 'pocketbase';
 import { createClient } from '@/lib/pocketbase/client';
 import { onSessionExpired } from '@/lib/sessionExpired';
 import { usePrivacyStore } from '@/stores/usePrivacyStore';
@@ -33,6 +34,10 @@ interface AuthValue {
   signIn: (email: string, password: string) => Promise<{ error: { message: string } | null }>;
   signUp: (email: string, password: string) => Promise<{ error: { message: string } | null; needsConfirmation: boolean }>;
   signOut: () => Promise<void>;
+  /** Signs in with a session another device approved (QR sign-in): the
+   *  same store, so the client wrapper writes the same pb_auth cookie a
+   *  password sign-in does. */
+  adoptSession: (token: string, record: { id: string } & Record<string, unknown>) => void;
   /** Re-pulls the user record from PB so derived fields (name, avatarUrl)
    *  refresh after a profile save. */
   refresh: () => Promise<void>;
@@ -166,6 +171,10 @@ export function AuthProvider({ children, initialUser }: { children: ReactNode; i
           logger.error('auth', 'signup failed', { reason: extractPbError(e) }, e instanceof Error ? e : undefined);
           return { error: { message: extractPbError(e) }, needsConfirmation: false };
         }
+      },
+      adoptSession: (token, record) => {
+        pb.authStore.save(token, record as unknown as RecordModel);
+        logger.breadcrumb('auth', 'qr signin', { userId: record.id });
       },
       signOut: async () => {
         logger.breadcrumb('auth', 'signout', { userId: user?.id });

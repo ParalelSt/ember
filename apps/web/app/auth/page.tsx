@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { FlameIcon } from '@/components/icons';
 import { safeNext } from '@/lib/safeNext';
+import { QrSignIn } from '@/components/auth/QrSignIn';
 
 type Stage =
   | { kind: 'email' }
@@ -86,76 +87,77 @@ export default function AuthPage() {
 
   return (
     <div className="min-h-screen grid place-items-center px-4 bg-[radial-gradient(circle_at_30%_20%,color-mix(in_oklab,var(--ember)_18%,transparent),transparent_60%)]">
-      <form
-        onSubmit={stage.kind === 'email' ? submitEmail : submitPassword}
-        className="w-full max-w-sm rounded-2xl bg-card p-8 shadow-soft"
-      >
-        <div className="flex items-center gap-2 text-xs uppercase tracking-widest text-muted-foreground mb-3">
-          <FlameIcon className="h-3.5 w-3.5 text-ember" />
-          Ember
-        </div>
-
-        {stage.kind === 'email' ? (
-          <>
-            <h1 className="text-2xl font-bold tracking-tight">Welcome</h1>
-            <p className="mt-1 text-sm text-muted-foreground">Enter your invite email to continue.</p>
-            <div className="mt-6 grid gap-2">
-              <Label htmlFor="email">Email</Label>
-              <Input
-                id="email"
-                type="email"
-                required
-                autoFocus
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-              />
-            </div>
-            <Button type="submit" disabled={busy} variant="ember" className="mt-6 w-full">
-              {busy ? '…' : 'Continue'}
-            </Button>
-          </>
-        ) : (
-          <>
-            <h1 className="text-2xl font-bold tracking-tight">
-              {stage.mode === 'existing' ? 'Welcome back' : 'Create your account'}
-            </h1>
-            <p className="mt-1 text-sm text-muted-foreground">
-              {stage.mode === 'existing' ? 'Enter your password to log in.' : 'Set a password to register.'}
-            </p>
-            <div className="mt-4 rounded-lg bg-muted/50 px-3 py-2 text-sm flex items-center justify-between">
-              <span className="truncate">{stage.email}</span>
-              <button
-                type="button"
-                onClick={back}
-                className="text-xs text-muted-foreground hover:text-foreground shrink-0 ml-2"
-              >
-                Not you?
-              </button>
-            </div>
-            <div className="mt-4 grid gap-2">
-              <Label htmlFor="password">Password</Label>
-              <Input
-                id="password"
-                type="password"
-                required
-                minLength={8}
-                autoFocus
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-              />
-            </div>
-            <Button type="submit" disabled={busy} variant="ember" className="mt-6 w-full">
-              {busy ? '…' : stage.mode === 'existing' ? 'Log in' : 'Register'}
-            </Button>
-          </>
-        )}
-
-        {err && (
-          <div className="mt-4 rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-            {err}
+      <div className="w-full max-w-sm rounded-2xl bg-card p-8 shadow-soft">
+        <form onSubmit={stage.kind === 'email' ? submitEmail : submitPassword}>
+          <div className="flex items-center gap-2 text-xs uppercase tracking-widest text-muted-foreground mb-3">
+            <FlameIcon className="h-3.5 w-3.5 text-ember" />
+            Ember
           </div>
-        )}
-      </form>
+
+          {stage.kind === 'email' ? (
+            <>
+              <h1 className="text-2xl font-bold tracking-tight">Welcome</h1>
+              <p className="mt-1 text-sm text-muted-foreground">Enter your invite email to continue.</p>
+              <div className="mt-6 grid gap-2">
+                <Label htmlFor="email">Email</Label>
+                <Input
+                  id="email"
+                  type="email"
+                  required
+                  autoFocus
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                />
+              </div>
+              <Button type="submit" disabled={busy} variant="ember" className="mt-6 w-full">
+                {busy ? '…' : 'Continue'}
+              </Button>
+            </>
+          ) : (
+            <>
+              <h1 className="text-2xl font-bold tracking-tight">
+                {stage.mode === 'existing' ? 'Welcome back' : 'Create your account'}
+              </h1>
+              <p className="mt-1 text-sm text-muted-foreground">
+                {stage.mode === 'existing' ? 'Enter your password to log in.' : 'Set a password to register.'}
+              </p>
+              <div className="mt-4 rounded-lg bg-muted/50 px-3 py-2 text-sm flex items-center justify-between">
+                <span className="truncate">{stage.email}</span>
+                <button
+                  type="button"
+                  onClick={back}
+                  className="text-xs text-muted-foreground hover:text-foreground shrink-0 ml-2"
+                >
+                  Not you?
+                </button>
+              </div>
+              <div className="mt-4 grid gap-2">
+                <Label htmlFor="password">Password</Label>
+                <Input
+                  id="password"
+                  type="password"
+                  required
+                  minLength={8}
+                  autoFocus
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                />
+              </div>
+              <Button type="submit" disabled={busy} variant="ember" className="mt-6 w-full">
+                {busy ? '…' : stage.mode === 'existing' ? 'Log in' : 'Register'}
+              </Button>
+            </>
+          )}
+
+          {err && (
+            <div className="mt-4 rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+              {err}
+            </div>
+          )}
+        </form>
+        {/* Sign in from a phone instead: only before an email is chosen. */}
+        {stage.kind === 'email' && <QrSignIn next={next} />}
+      </div>
     </div>
   );
 }
