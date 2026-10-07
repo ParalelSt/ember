@@ -197,7 +197,7 @@ async function newDevice(browser) {
 }
 async function pollCookie(ctx) {
   // No URL filter: the cookie's path is /api/auth/qr, not /.
-  return (await ctx.cookies()).find((c) => c.name === 'ember_qr') ?? null;
+  return (await ctx.cookies()).find((c) => c.name.startsWith('ember_qr_')) ?? null;
 }
 /** The link the QR holds, on this test's own origin. */
 function linkOn(approveUrl) {
@@ -240,8 +240,8 @@ try {
     (await b.page.getByTestId('qr').count()) === 1, shownCode);
   const bDevice = (await b.page.getByText(/^This device: /).textContent()).replace('This device: ', '').trim();
   const bCookie = await pollCookie(b.ctx);
-  if (bCookie) secrets.add(decodeURIComponent(bCookie.value).split('.')[1]);
-  check('B2 the poll secret is an httpOnly cookie scoped to the QR routes', !!bCookie && bCookie.httpOnly && bCookie.path === '/api/auth/qr' && bCookie.sameSite === 'Lax',
+  if (bCookie) secrets.add(bCookie.value);
+  check('B2 the poll secret is an httpOnly cookie of its own request, scoped to the QR routes', !!bCookie && bCookie.name === `ember_qr_${bStart.id}` && bCookie.httpOnly && bCookie.path === '/api/auth/qr' && bCookie.sameSite === 'Lax',
     JSON.stringify(bCookie && { httpOnly: bCookie.httpOnly, path: bCookie.path, sameSite: bCookie.sameSite }));
   check('B3 the token is only in the QR, never in the page text', !(await b.page.content()).includes(String(bStart.approveUrl).split('/link/')[1]));
   const link = linkOn(bStart.approveUrl);

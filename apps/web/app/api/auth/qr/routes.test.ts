@@ -107,21 +107,26 @@ async function newRequest(opts: { ip?: string; shell?: string } = {}) {
   const r = await hit(start.POST, '/api/auth/qr/start', { body: { shell: opts.shell ?? 'capacitor' }, ip: opts.ip });
   expect(r.status).toBe(200);
   const setCookie = r.res.headers.get('set-cookie') ?? '';
-  const value = /ember_qr=([^;]+)/.exec(setCookie)?.[1] ?? '';
+  const id = String(r.body?.id);
+  const value = new RegExp(`ember_qr_${id}=([^;]+)`).exec(setCookie)?.[1] ?? '';
   const approveUrl = String(r.body?.approveUrl ?? '');
   const token = approveUrl.split('/link/')[1] ?? '';
   return {
-    id: String(r.body?.id),
+    id,
     code: String(r.body?.code),
     token,
-    cookie: `ember_qr=${value}`,
-    secret: decodeURIComponent(value).split('.')[1] ?? '',
+    cookie: `ember_qr_${id}=${value}`,
+    secret: decodeURIComponent(value),
     setCookie,
     body: r.body!,
     text: r.text,
   };
 }
-const poll = (cookie?: string, ip?: string) => hit(status.GET, '/api/auth/qr/status', { cookie, ip });
+/** A status poll for request `id`, sending the browser's cookie jar. */
+const poll = (cookie?: string, ip?: string, id?: string) => {
+  const forId = id ?? /ember_qr_([a-z0-9]{15})=/.exec(cookie ?? '')?.[1] ?? '';
+  return hit(status.GET, `/api/auth/qr/status${forId ? `?id=${forId}` : ''}`, { cookie, ip });
+};
 const asUser = (u: typeof MEMBER | null) => { h.user = u; };
 
 beforeEach(() => {
@@ -212,10 +217,15 @@ describe('GET status: the poll secret binds the session to the requesting browse
   it('is 404 without the cookie, with a wrong secret, or a malformed cookie, all with the same body', async () => {
     const r = await newRequest();
     const none = await poll();
-    const wrong = await poll(`ember_qr=${r.id}.${'A'.repeat(43)}`);
-    const junk = await poll('ember_qr=nonsense');
-    const unknownId = await poll(`ember_qr=zzzzzzzzzzzzzzz.${r.secret}`);
-    for (const x of [none, wrong, junk, unknownId]) {
+    const noId = await poll(r.cookie, undefined, 'x');
+    const wrong = await poll(`ember_qr_${r.id}=${'A'.repeat(43)}`);
+    const junk = await poll(`ember_qr_${r.id}=nonsense`);
+    const unknownId = await poll(`ember_qr_zzzzzzzzzzzzzzz=${r.secret}`);
+    // Another request's cookie is not this request's.
+    const other = await newRequest({ ip: '203.0.113.44' });
+    const crossed = await poll(other.cookie, undefined, r.id);
+    const oldName = await poll(`ember_qr=${r.id}.${r.secret}`, undefined, r.id);
+    for (const x of [none, noId, wrong, junk, unknownId, crossed, oldName]) {
       expect(x.status).toBe(404);
       expect(x.text).toBe(none.text);
     }
@@ -238,7 +248,7 @@ describe('GET status: the poll secret binds the session to the requesting browse
     // A photographed QR is useless: another browser has no poll secret, and
     // its own request's secret does not open this one.
     const thief = await newRequest({ ip: '192.0.2.66' });
-    const stolen = await poll(`ember_qr=${r.id}.${thief.secret}`, '192.0.2.66');
+    const stolen = await poll(`ember_qr_${r.id}=${thief.secret}`, '192.0.2.66');
     expect(stolen.status).toBe(404);
     expect(stolen.text).not.toContain('minted');
     expect((await poll(thief.cookie, '192.0.2.66')).body).toEqual({ status: 'pending' });
@@ -249,7 +259,7 @@ describe('GET status: the poll secret binds the session to the requesting browse
     expect(typeof first.body?.token).toBe('string');
     expect((first.body?.record as { id: string }).id).toBe(MEMBER.id);
     // The holder's cookie is cleared on delivery.
-    expect(first.res.headers.get('set-cookie')).toMatch(/ember_qr=;.*Max-Age=0/);
+    expect(first.res.headers.get('set-cookie')).toMatch(new RegExp(`ember_qr_${r.id}=;.*Max-Age=0`));
     const row = h.fake.rows.get(r.id)!;
     expect(row.status).toBe('used');
     expect(row.used_at).not.toBe('');
@@ -260,6 +270,24 @@ describe('GET status: the poll secret binds the session to the requesting browse
     expect(second.body).toEqual({ status: 'used' });
     expect(second.text).not.toContain('token');
     expect(h.fake.minted).toHaveLength(1);
+  });
+
+  it('two /auth tabs in one browser each keep their own request; approving one signs in that one', async () => {
+    const a = await newRequest();
+    const b = await newRequest();
+    expect(a.setCookie).toMatch(new RegExp(`^ember_qr_${a.id}=`));
+    expect(b.setCookie).toMatch(new RegExp(`^ember_qr_${b.id}=`));
+    const jar = `${a.cookie}; ${b.cookie}`;
+    expect((await poll(jar, undefined, a.id)).body).toEqual({ status: 'pending' });
+    expect((await poll(jar, undefined, b.id)).body).toEqual({ status: 'pending' });
+    asUser(MEMBER);
+    await hit(approve.POST, '/api/auth/qr/approve', { body: { id: a.id, token: a.token } });
+    asUser(null);
+    const gotA = await poll(jar, undefined, a.id);
+    expect(gotA.body?.status).toBe('approved');
+    expect(gotA.res.headers.get('set-cookie')).toMatch(new RegExp(`^ember_qr_${a.id}=;`));
+    expect((await poll(jar, undefined, b.id)).body).toEqual({ status: 'pending' });
+    expect(h.fake.rows.get(b.id)!.status).toBe('pending');
   });
 
   it('two polls at the same moment still mint once', async () => {

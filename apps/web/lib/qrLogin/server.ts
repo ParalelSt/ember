@@ -78,31 +78,39 @@ export function isHttps(req: Request): boolean {
   }
 }
 
-/** The poll cookie: only the requesting browser holds it, scripts cannot
- *  read it, and it goes nowhere but the QR routes. */
-export function qrCookie(value: string, maxAgeS: number, https: boolean): string {
-  return `${QR_COOKIE}=${encodeURIComponent(value)}; Path=${QR_COOKIE_PATH}; Max-Age=${maxAgeS}; HttpOnly; SameSite=Lax${https ? '; Secure' : ''}`;
+/** The poll cookie, one per request (ember_qr_<id>), so two /auth tabs in
+ *  one browser never overwrite each other's. Only the requesting browser
+ *  holds it, scripts cannot read it, it goes nowhere but the QR routes, and
+ *  it expires on its own a little after the request does. */
+export function qrCookieName(id: string): string {
+  return `${QR_COOKIE}_${id}`;
 }
 
-export function clearQrCookie(https: boolean): string {
-  return `${QR_COOKIE}=; Path=${QR_COOKIE_PATH}; Max-Age=0; HttpOnly; SameSite=Lax${https ? '; Secure' : ''}`;
+export function qrCookie(id: string, secret: string, maxAgeS: number, https: boolean): string {
+  return `${qrCookieName(id)}=${secret}; Path=${QR_COOKIE_PATH}; Max-Age=${maxAgeS}; HttpOnly; SameSite=Lax${https ? '; Secure' : ''}`;
 }
 
-/** The poll cookie as { id, secret }, or null when missing or malformed. */
+export function clearQrCookie(id: string, https: boolean): string {
+  return `${qrCookieName(id)}=; Path=${QR_COOKIE_PATH}; Max-Age=0; HttpOnly; SameSite=Lax${https ? '; Secure' : ''}`;
+}
+
+/** The request the poll asks about (?id=) and that request's own cookie,
+ *  or null when either is missing or malformed. */
 export function readQrCookie(req: Request): { id: string; secret: string } | null {
+  let id: string | null;
+  try {
+    id = new URL(req.url).searchParams.get('id');
+  } catch {
+    return null;
+  }
+  if (!id || !ID_RE.test(id)) return null;
+  const name = qrCookieName(id);
   const header = req.headers.get('cookie') ?? '';
   for (const part of header.split(';')) {
-    const [name, ...rest] = part.trim().split('=');
-    if (name !== QR_COOKIE) continue;
-    let value: string;
-    try {
-      value = decodeURIComponent(rest.join('='));
-    } catch {
-      return null;
-    }
-    const [id, secret, extra] = value.split('.');
-    if (extra !== undefined || !ID_RE.test(id ?? '') || !isSecret(secret)) return null;
-    return { id, secret };
+    const eq = part.indexOf('=');
+    if (eq < 0 || part.slice(0, eq).trim() !== name) continue;
+    const secret = part.slice(eq + 1).trim();
+    return isSecret(secret) ? { id, secret } : null;
   }
   return null;
 }

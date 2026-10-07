@@ -9,6 +9,7 @@ import { BACKOFF_MS, MAX_RENEWALS, POLL_MS, useQrSignIn } from './useQrSignIn';
 let visibility: DocumentVisibilityState = 'visible';
 let startCount = 0;
 let statusCalls = 0;
+const statusUrls: string[] = [];
 let statusAnswers: Array<() => Response> = [];
 const startBodies: unknown[] = [];
 
@@ -27,6 +28,7 @@ beforeEach(() => {
   Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => visibility });
   startCount = 0;
   statusCalls = 0;
+  statusUrls.length = 0;
   statusAnswers = [];
   startBodies.length = 0;
   vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
@@ -41,8 +43,9 @@ beforeEach(() => {
         device: 'Ember on Android Automotive',
       });
     }
-    if (url.endsWith('/api/auth/qr/status')) {
+    if (url.includes('/api/auth/qr/status')) {
       statusCalls++;
+      statusUrls.push(url);
       const next = statusAnswers.shift();
       return next ? next() : jsonRes({ status: 'pending' });
     }
@@ -71,6 +74,13 @@ describe('useQrSignIn', () => {
     expect(startCount).toBe(1);
     expect(startBodies[0]).toEqual({ shell: 'capacitor' });
     expect(result.current.state).toMatchObject({ kind: 'waiting', code: 'ABCDEFGH', device: 'Ember on Android Automotive', offline: false });
+  });
+
+  it('polls for its own request by id (each request has its own cookie)', async () => {
+    const { result } = await mount();
+    await advance(POLL_MS + 400);
+    const id = (result.current.state as { id: string }).id;
+    expect(statusUrls[0]).toBe(`/api/auth/qr/status?id=${id}`);
   });
 
   it('polls every 2 s with a little jitter', async () => {

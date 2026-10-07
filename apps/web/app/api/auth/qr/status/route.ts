@@ -42,7 +42,7 @@ export const GET = withRequestLog('auth/qr/status', async (req: NextRequest) => 
       if (status === 'pending') return json({ status });
       if (status !== 'approved') {
         const res = json({ status });
-        res.headers.append('set-cookie', clearQrCookie(https));
+        res.headers.append('set-cookie', clearQrCookie(row.id, https));
         return res;
       }
       // PocketBase claims the request (approved -> used) and mints in one
@@ -57,7 +57,7 @@ export const GET = withRequestLog('auth/qr/status', async (req: NextRequest) => 
         if (err?.status === 409 || err?.status === 404) {
           const claimed = err.response?.data?.status;
           const res = json({ status: err.status === 409 && (claimed === 'used' || claimed === 'denied') ? claimed : 'expired' });
-          res.headers.append('set-cookie', clearQrCookie(https));
+          res.headers.append('set-cookie', clearQrCookie(row.id, https));
           return res;
         }
         serverLogger.warn('auth', 'qr mint failed', { requestId: row.id, status: err?.status });
@@ -65,7 +65,7 @@ export const GET = withRequestLog('auth/qr/status', async (req: NextRequest) => 
       }
       serverLogger.info('auth', 'qr delivered', { requestId: row.id, userId: row.user, device: row.device });
       const res = json({ status: 'approved', token: session.token, record: session.record });
-      res.headers.append('set-cookie', clearQrCookie(https));
+      res.headers.append('set-cookie', clearQrCookie(row.id, https));
       return res;
     });
   } catch (e) {

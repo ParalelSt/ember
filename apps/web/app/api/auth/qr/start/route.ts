@@ -56,7 +56,7 @@ export const POST = withRequestLog('auth/qr/start', async (req: NextRequest) => 
       expiresAt: expires,
       device,
     });
-    res.headers.append('set-cookie', qrCookie(`${created.id}.${pollSecret}`, Math.ceil(ttl / 1000) + 20, isHttps(req)));
+    res.headers.append('set-cookie', qrCookie(created.id, pollSecret, Math.ceil(ttl / 1000) + 20, isHttps(req)));
     return res;
   } catch (e) {
     return failure(e);

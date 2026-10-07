@@ -6,7 +6,8 @@ import type { Shell } from '@/lib/playback/detectShell';
 /** The new device's side of QR sign-in (plan 1a). Starts a request (the
  *  server sets the httpOnly poll cookie), polls /api/auth/qr/status every
  *  2 s with up to 300 ms of jitter while the tab is visible, and hands the
- *  minted session to onApproved exactly once. A code that runs out is
+ *  minted session to onApproved exactly once. Each request has its own
+ *  cookie and is polled by id, so two tabs never get in each other's way. A code that runs out is
  *  renewed silently up to 5 times (15 minutes on screen), then the person
  *  is asked. Errors keep the QR up and back off to 5 s. */
 
@@ -130,7 +131,7 @@ export function useQrSignIn({ shell, onApproved }: Options) {
       }
       let res: Response;
       try {
-        res = await fetch('/api/auth/qr/status', { credentials: 'same-origin', cache: 'no-store' });
+        res = await fetch(`/api/auth/qr/status?id=${encodeURIComponent(waitingId)}`, { credentials: 'same-origin', cache: 'no-store' });
       } catch {
         if (cancelled) return;
         setOffline(true);
