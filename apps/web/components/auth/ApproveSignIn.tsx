@@ -10,8 +10,8 @@ import { cn } from '@/lib/utils';
 
 /** "Sign in on another device?" (plan 1b): the approving device's card, for
  *  the /link page and for Settings > Devices. Shows what is needed to spot
- *  a fake (the device, how long ago it asked, whether it is on this
- *  network) and whose account would be signed in. Approve is dead for 2 s
+ *  a fake (what the device says it is, how long ago it asked, and whether
+ *  it is on this network, the one fact the device cannot claim for itself) and whose account would be signed in. Approve is dead for 2 s
  *  so a reflex tap cannot approve; Not me is one tap. The code itself is
  *  never shown, so nobody can be talked into reading it out. */
 
@@ -131,7 +131,9 @@ export function ApproveSignIn({ credential, onDone }: { credential: Credential; 
     <div data-testid="approve-card" className="rounded-2xl bg-card p-page shadow-soft">
       <h2 className="text-section-title">Sign in on another device?</h2>
       <dl className="mt-block grid gap-cluster text-sm">
-        <div className="font-semibold">{facts.device}</div>
+        {/* The device names itself (from its User-Agent), so the card says
+            so; the network line is the fact the server observed. */}
+        <div className="font-semibold">Says it is: {facts.device}</div>
         <div className="text-muted-foreground">{ago(facts.askedSecondsAgo)}</div>
         <div className={cn(facts.sameNetwork ? 'text-muted-foreground' : 'font-semibold text-destructive')}>
           {facts.sameNetwork ? 'Same network as this phone' : 'Different network from this phone'}

@@ -282,7 +282,7 @@ try {
   check('A1 the token leaves the address bar', new URL(a.url()).pathname === '/link', a.url());
   const cardText = await card.textContent();
   check('A2 the card names the device, the network and the account', cardText.includes(bDevice) && cardText.includes('Same network as this phone') &&
-    cardText.includes(A_EMAIL) && !cardText.includes(bStart.code), cardText);
+    cardText.includes(`Says it is: ${bDevice}`) && cardText.includes(A_EMAIL) && !cardText.includes(bStart.code), cardText);
   const approveBtn = a.getByRole('button', { name: 'Approve' });
   check('A3 Approve is disabled at first', await approveBtn.isDisabled());
   await a.waitForTimeout(2200);

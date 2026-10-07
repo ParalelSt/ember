@@ -55,7 +55,8 @@ describe('ApproveSignIn', () => {
   it('shows the device, the age, the network and whose account it signs in', async () => {
     await show();
     expect(screen.getByText('Sign in on another device?')).toBeInTheDocument();
-    expect(screen.getByText('Ember on Android Automotive')).toBeInTheDocument();
+    // The label comes from the device itself, and the card says so.
+    expect(screen.getByText('Says it is: Ember on Android Automotive')).toBeInTheDocument();
     expect(screen.getByText('Asked 40 s ago')).toBeInTheDocument();
     const net = screen.getByText('Same network as this phone');
     expect(net.className).not.toMatch(/destructive/);
