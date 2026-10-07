@@ -1,4 +1,4 @@
-import type { ComponentProps, PropsWithChildren } from 'react';
+import type { ComponentProps } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -133,6 +133,14 @@ function refuse(status: number, message: string) {
 }
 
 const startButton = () => screen.getByRole('button', { name: /^Transfer/ });
+const noStart = () => expect(screen.queryByRole('button', { name: /^Transfer/ })).toBeNull();
+const continueButton = () => screen.getByRole('button', { name: 'Continue' });
+/** Tap a count chip and read the songs it shows. */
+function chip(id: string) {
+  const c = screen.getAllByTestId('transfer-chip').find((x) => x.dataset.chip === id);
+  if (!c) throw new Error(`no ${id} chip`);
+  return c;
+}
 const steps = () => screen.getByTestId('transfer-steps').textContent ?? '';
 
 beforeEach(() => {
@@ -328,17 +336,20 @@ describe('TransferFlow: what do you have already', () => {
 });
 
 describe('TransferFlow: every answer reaches its route', () => {
-  it('an uploaded file is read and previewed: where it came from, how many, the first songs', async () => {
-    api.transferPreview.mockResolvedValue(preview({ count: 42, dropped: 2 }));
+  it('an uploaded file is read and previewed on its own screen: where it came from, how many, the first songs', async () => {
+    api.transferPreview.mockResolvedValue(preview({ count: 42, dropped: 2, unreadable: 2 }));
     setup();
     toSpotifyFile();
     chooseFile();
     await waitFor(() => expect(screen.getByTestId('transfer-preview')).toBeInTheDocument());
+    expect(screen.getByRole('heading', { name: 'Before you start' })).toBeInTheDocument();
     const card = screen.getByTestId('transfer-preview');
     expect(card).toHaveTextContent('Liked songs from Spotify');
-    expect(card).toHaveTextContent('42 songs, 2 rows Ember could not read');
-    expect(card).toHaveTextContent('Paper Lanterns');
-    expect(card).toHaveTextContent('and 40 more');
+    expect(card).toHaveTextContent('exportify.csv');
+    expect(screen.getByTestId('transfer-preview-sentence')).toHaveTextContent('42 songs to bring over, under 5 minutes.');
+    fireEvent.click(chip('new'));
+    expect(screen.getByTestId('transfer-chip-songs')).toHaveTextContent('Paper Lanterns');
+    expect(screen.getByTestId('transfer-chip-songs')).toHaveTextContent('and 40 more');
     expect(startButton()).toBeEnabled();
     expect(startButton()).toHaveTextContent('Transfer 42 songs');
   });
@@ -371,16 +382,19 @@ describe('TransferFlow: every answer reaches its route', () => {
     await waitFor(() => expect(push).toHaveBeenCalledWith('/playlist/p7'));
   });
 
-  it('a typed-out list is read once typing stops', async () => {
+  it('a typed-out list is read when Continue is pressed', async () => {
     api.transferPreview.mockResolvedValue(preview({ kind: 'paste', label: 'Liked songs from a list', count: 2 }));
     setup();
     pick('Liked songs');
     service('Somewhere else');
     have(/Just a list/);
     toEnd();
+    expect(continueButton()).toBeDisabled();
     fireEvent.change(screen.getByLabelText('Your songs, one a line'), {
       target: { value: 'Halcyon Drift - Paper Lanterns\nNadia Okonkwo - Slow Weather' },
     });
+    expect(api.transferPreview).not.toHaveBeenCalled();
+    fireEvent.click(continueButton());
     await waitFor(() => expect(api.transferPreview).toHaveBeenCalledWith({ text: expect.stringContaining('Paper Lanterns') }));
     await waitFor(() => expect(screen.getByTestId('transfer-preview')).toHaveTextContent('Liked songs from a list'));
   });
@@ -401,12 +415,14 @@ describe('TransferFlow: every answer reaches its route', () => {
     have(/A link to a playlist/);
     toEnd();
     fireEvent.change(screen.getByLabelText('Playlist link'), { target: { value: LINK } });
-    await waitFor(() => expect(screen.getByTestId('link-preview')).toHaveTextContent('Late night drive'));
+    fireEvent.click(continueButton());
+    await waitFor(() => expect(screen.getByTestId('transfer-preview')).toHaveTextContent('Late night drive'));
+    expect(api.importInspect).toHaveBeenCalledWith(LINK, { liked: true });
     fireEvent.click(startButton());
-    await waitFor(() => expect(api.importStart).toHaveBeenCalledWith(LINK, 'liked'));
+    await waitFor(() => expect(api.importStart).toHaveBeenCalledWith(LINK, 'liked', {}));
   });
 
-  it('changing the link after a preview turns Start off until the new link is read', async () => {
+  it('Back from the preview returns to the link box empty, and a new link is read afresh', async () => {
     api.importInspect.mockResolvedValue({
       source: 'spotify', id: 'x', name: 'Late night drive', coverUrl: null, items: [{}, {}, {}], truncated: false,
     });
@@ -416,15 +432,16 @@ describe('TransferFlow: every answer reaches its route', () => {
     have(/A link to a playlist/);
     toEnd();
     fireEvent.change(screen.getByLabelText('Playlist link'), { target: { value: LINK } });
-    await waitFor(() => expect(screen.getByTestId('link-preview')).toHaveTextContent('Late night drive'));
-    // Another link: the old preview is not this one's.
-    fireEvent.change(screen.getByLabelText('Playlist link'), { target: { value: 'not a link any more' } });
-    expect(startButton()).toBeDisabled();
-    expect(screen.queryByTestId('link-preview')).toBeNull();
+    fireEvent.click(continueButton());
+    await waitFor(() => expect(screen.getByTestId('transfer-preview')).toHaveTextContent('Late night drive'));
+    fireEvent.click(screen.getByRole('button', { name: 'Go back' }));
+    expect(screen.queryByTestId('transfer-preview')).toBeNull();
+    expect(screen.getByLabelText('Playlist link')).toHaveValue('');
+    expect(continueButton()).toBeDisabled();
+    noStart();
   });
 
-  it('emptying a typed list after its preview turns Start off', async () => {
-    api.transferPreview.mockResolvedValue(preview({ kind: 'paste', label: 'Liked songs from a list', count: 2 }));
+  it('Continue stays off while the list box is empty', () => {
     setup();
     pick('Liked songs');
     service('Somewhere else');
@@ -432,9 +449,10 @@ describe('TransferFlow: every answer reaches its route', () => {
     toEnd();
     const box = screen.getByLabelText('Your songs, one a line');
     fireEvent.change(box, { target: { value: 'Halcyon Drift - Paper Lanterns' } });
-    await waitFor(() => expect(startButton()).toBeEnabled());
-    fireEvent.change(box, { target: { value: '' } });
-    expect(startButton()).toBeDisabled();
+    expect(continueButton()).toBeEnabled();
+    fireEvent.change(box, { target: { value: '   ' } });
+    expect(continueButton()).toBeDisabled();
+    noStart();
   });
 
   it('a pasted YouTube Music playlist link goes through the same route', async () => {
@@ -449,9 +467,13 @@ describe('TransferFlow: every answer reaches its route', () => {
     service('YouTube Music');
     toEnd();
     fireEvent.change(screen.getByLabelText('Playlist link'), { target: { value: YT_LINK } });
-    await waitFor(() => expect(screen.getByTestId('link-preview')).toHaveTextContent('Weekend'));
+    fireEvent.click(continueButton());
+    await waitFor(() => expect(screen.getByTestId('transfer-preview')).toHaveTextContent('Weekend'));
+    // A new playlist never asks about likes.
+    expect(api.importInspect).toHaveBeenCalledWith(YT_LINK, { liked: false });
+    expect(screen.queryByTestId('transfer-skip-liked')).toBeNull();
     fireEvent.click(startButton());
-    await waitFor(() => expect(api.importStart).toHaveBeenCalledWith(YT_LINK, 'playlist'));
+    await waitFor(() => expect(api.importStart).toHaveBeenCalledWith(YT_LINK, 'playlist', {}));
   });
 });
 
@@ -487,7 +509,7 @@ describe('TransferFlow: what it says when Ember will not take it', () => {
       chooseFile();
       await waitFor(() => expect(screen.getByTestId('transfer-error')).toHaveTextContent(shown));
       expect(screen.getByTestId('transfer-error')).toHaveAttribute('role', 'alert');
-      expect(startButton()).toBeDisabled();
+      noStart();
     });
   }
 
@@ -639,7 +661,7 @@ describe('TransferFlow: YouTube Music likes, after a Google sign-in', () => {
     toGoogle();
     fireEvent.click(signInButton());
     await waitFor(() => expect(screen.getByTestId('google-code-panel')).toBeInTheDocument());
-    expect(startButton()).toBeDisabled();
+    noStart();
 
     await poll();
     expect(api.googleLikesStatus).toHaveBeenCalledWith(FLOW);
@@ -654,8 +676,13 @@ describe('TransferFlow: YouTube Music likes, after a Google sign-in', () => {
     const card = screen.getByTestId('transfer-preview');
     expect(card).toHaveTextContent('Liked songs from YouTube Music');
     // Songs only: what YouTube Music said is not music is nowhere.
-    expect(card).toHaveTextContent('3 songs');
-    expect(card).toHaveTextContent('Paper Lanterns');
+    expect(chip('new')).toHaveTextContent('3 songs');
+    expect(chip('check')).toHaveTextContent('2 to check');
+    fireEvent.click(chip('new'));
+    expect(screen.getByTestId('transfer-chip-songs')).toHaveTextContent('Paper Lanterns');
+    // Nothing is looked up by name, so it is quick, and there is nothing to skip.
+    expect(screen.getByTestId('transfer-preview-sentence')).toHaveTextContent('5 songs to bring over, about a minute.');
+    expect(screen.queryByTestId('transfer-skip-liked')).toBeNull();
     expect(screen.getByTestId('google-to-check')).toHaveTextContent('2 more need a quick check: uploads YouTube Music is not sure are songs.');
 
     // No more polling once it is ready.
@@ -713,7 +740,7 @@ describe('TransferFlow: YouTube Music likes, after a Google sign-in', () => {
       await waitFor(() => expect(screen.getByTestId('transfer-error')).toHaveTextContent(message));
       expect(screen.getByTestId('transfer-error')).toHaveAttribute('role', 'alert');
       expect(signInButton()).toBeEnabled();
-      expect(startButton()).toBeDisabled();
+      noStart();
       // The server already forgot it: nothing to cancel on close.
       expect(api.googleLikesCancel).not.toHaveBeenCalled();
     });
@@ -835,22 +862,131 @@ describe('TransferFlow: YouTube Music likes, after a Google sign-in', () => {
   });
 });
 
-describe('TransferFlow: the time estimate', () => {
-  it('a by-name preview says about how long and that the page can be left', async () => {
+describe('TransferFlow: before you start, the chips', () => {
+  it('one sentence says how many and about how long', async () => {
     api.transferPreview.mockResolvedValue(preview({ count: 300 }));
     setup();
     toSpotifyFile();
     chooseFile();
-    await waitFor(() => expect(screen.getByTestId('transfer-estimate')).toBeInTheDocument());
-    expect(screen.getByTestId('transfer-estimate')).toHaveTextContent('About 10 minutes. You can leave this page');
+    await waitFor(() => expect(screen.getByTestId('transfer-preview-sentence')).toHaveTextContent('300 songs to bring over, about 10 minutes.'));
   });
 
-  it('a short list says under 5 minutes', async () => {
-    api.transferPreview.mockResolvedValue(preview({ count: 3 }));
+  it('every count is a chip that shows which songs it means', async () => {
+    api.transferPreview.mockResolvedValue(
+      preview({
+        count: 120,
+        dropped: 5,
+        alreadyLiked: 20,
+        likedSample: [{ title: 'Copper Sky', artist: 'Coastline' }],
+        newSample: [{ title: 'Northbound', artist: 'Mira Vale' }],
+        duplicates: 3,
+        duplicateSample: [{ title: 'Paper Lanterns', artist: 'Halcyon Drift' }],
+        unreadable: 2,
+      }),
+    );
     setup();
     toSpotifyFile();
     chooseFile();
-    await waitFor(() => expect(screen.getByTestId('transfer-estimate')).toHaveTextContent('Under 5 minutes.'));
+    await waitFor(() => expect(screen.getByTestId('transfer-preview')).toBeInTheDocument());
+    expect(screen.getAllByTestId('transfer-chip').map((c) => c.textContent)).toEqual([
+      '100 new',
+      '20 already liked',
+      '3 twice in the file',
+      '2 unreadable',
+    ]);
+    // Closed until tapped; one at a time.
+    expect(screen.queryByTestId('transfer-chip-songs')).toBeNull();
+    fireEvent.click(chip('liked'));
+    expect(chip('liked')).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByTestId('transfer-chip-songs')).toHaveTextContent('Copper Sky');
+    expect(screen.getByTestId('transfer-chip-songs')).toHaveTextContent('and 19 more');
+    fireEvent.click(chip('double'));
+    expect(screen.getByTestId('transfer-chip-songs')).toHaveTextContent('Paper Lanterns');
+    expect(screen.getByTestId('transfer-chip-songs')).toHaveTextContent('Brought over once.');
+    fireEvent.click(chip('bad'));
+    expect(screen.getByTestId('transfer-chip-songs')).toHaveTextContent('2 rows have no song Ember could read');
+    fireEvent.click(chip('bad'));
+    expect(screen.queryByTestId('transfer-chip-songs')).toBeNull();
+  });
+
+  it('Skip already liked is on to start with, takes them off the count and is sent with Start', async () => {
+    api.transferPreview.mockResolvedValue(preview({ count: 120, alreadyLiked: 20 }));
+    api.transferStart.mockResolvedValue({ job, playlistId: null });
+    setup();
+    toSpotifyFile();
+    chooseFile();
+    await waitFor(() => expect(screen.getByTestId('transfer-skip-liked')).toBeInTheDocument());
+    const skip = screen.getByTestId('transfer-skip-liked');
+    expect(skip).toHaveAttribute('aria-pressed', 'true');
+    expect(startButton()).toHaveTextContent('Transfer 100 songs');
+    expect(screen.getByTestId('transfer-preview-sentence')).toHaveTextContent('100 songs to bring over');
+    fireEvent.click(startButton());
+    await waitFor(() => expect(api.transferStart).toHaveBeenCalled());
+    expect(api.transferStart.mock.calls[0][0]).toMatchObject({ destination: 'liked', skipLiked: true });
+  });
+
+  it('turned off, every song goes, and nothing is skipped', async () => {
+    api.transferPreview.mockResolvedValue(preview({ count: 120, alreadyLiked: 20 }));
+    api.transferStart.mockResolvedValue({ job, playlistId: null });
+    setup();
+    toSpotifyFile();
+    chooseFile();
+    await waitFor(() => expect(screen.getByTestId('transfer-skip-liked')).toBeInTheDocument());
+    fireEvent.click(screen.getByTestId('transfer-skip-liked'));
+    expect(screen.getByTestId('transfer-skip-liked')).toHaveAttribute('aria-pressed', 'false');
+    expect(startButton()).toHaveTextContent('Transfer 120 songs');
+    fireEvent.click(startButton());
+    await waitFor(() => expect(api.transferStart).toHaveBeenCalled());
+    expect(api.transferStart.mock.calls[0][0].skipLiked).toBeUndefined();
+  });
+
+  it('a new playlist has no already-liked chip and nothing to skip', async () => {
+    api.transferPreview.mockResolvedValue(preview({ count: 120, alreadyLiked: 20 }));
+    setup();
+    pick('A new playlist');
+    service('Spotify');
+    have(/A file someone gave me/);
+    toEnd();
+    chooseFile();
+    await waitFor(() => expect(screen.getByTestId('transfer-preview')).toBeInTheDocument());
+    expect(screen.getAllByTestId('transfer-chip').map((c) => c.dataset.chip)).toEqual(['new']);
+    expect(screen.queryByTestId('transfer-skip-liked')).toBeNull();
+    expect(startButton()).toHaveTextContent('Transfer 120 songs');
+    expect(screen.getByTestId('transfer-preview')).toHaveTextContent('Into a new playlist');
+  });
+
+  it('a link going into the likes skips its already-liked songs too', async () => {
+    api.importInspect.mockResolvedValue({
+      source: 'spotify',
+      id: 'x',
+      name: 'Late night drive',
+      coverUrl: null,
+      items: [{ title: 'A', artist: 'X' }, { title: 'B', artist: 'Y' }, { title: 'C', artist: 'Z' }],
+      truncated: false,
+      liked: { count: 1, sample: [{ title: 'A', artist: 'X' }], newSample: [{ title: 'B', artist: 'Y' }] },
+    });
+    api.importStart.mockResolvedValue({ job: { ...job, source: 'spotify' }, playlistId: null });
+    setup();
+    pick('Liked songs');
+    service('Spotify');
+    have(/A link to a playlist/);
+    toEnd();
+    fireEvent.change(screen.getByLabelText('Playlist link'), { target: { value: LINK } });
+    fireEvent.click(continueButton());
+    await waitFor(() => expect(chip('liked')).toHaveTextContent('1 already liked'));
+    expect(startButton()).toHaveTextContent('Transfer 2 songs');
+    fireEvent.click(startButton());
+    await waitFor(() => expect(api.importStart).toHaveBeenCalledWith(LINK, 'liked', { skipLiked: true }));
+  });
+
+  it('a YourLibrary.json over the limit says how many are left over', async () => {
+    api.transferPreview.mockResolvedValue(preview({ kind: 'spotify-export', count: 10_000, truncated: true, overLimit: 4_210 }));
+    setup();
+    toSpotifyFile();
+    chooseFile('YourLibrary.json', '{"tracks":[]}');
+    await waitFor(() => expect(chip('over')).toHaveTextContent('4,210 over the limit'));
+    fireEvent.click(chip('over'));
+    expect(screen.getByTestId('transfer-chip-songs')).toHaveTextContent('first 10,000');
   });
 });
 

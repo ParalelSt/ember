@@ -6,6 +6,8 @@ import {
   RATE_LIMITED_MESSAGE,
   transferErrorMessage,
   transferEstimate,
+  transferMinutes,
+  transferTimeLeft,
   UNKNOWN_MESSAGE,
 } from './transferCopy';
 
@@ -111,6 +113,25 @@ describe('transferEstimate', () => {
 
   it('says nothing for an empty list', () => {
     expect(transferEstimate(0)).toBe('');
+  });
+});
+
+describe('transferMinutes and transferTimeLeft', () => {
+  it('is the estimate as a phrase, for the preview sentence', () => {
+    expect(transferMinutes(40)).toBe('Under 5 minutes');
+    expect(transferMinutes(300)).toBe('About 10 minutes');
+    expect(transferMinutes(0)).toBe('');
+  });
+
+  it('an exact transfer searches for nothing, so it is about a minute', () => {
+    expect(transferMinutes(640, true)).toBe('About a minute');
+    expect(transferMinutes(5_000, true)).toBe('About 5 minutes');
+  });
+
+  it('says what is left while it runs', () => {
+    expect(transferTimeLeft(1_000)).toBe('About 25 minutes left');
+    expect(transferTimeLeft(10)).toBe('Under 5 minutes left');
+    expect(transferTimeLeft(0)).toBe('Almost done');
   });
 });
 

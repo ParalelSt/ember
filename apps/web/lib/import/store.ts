@@ -230,6 +230,9 @@ export interface NewImport {
   tracks?: Track[];
   /** How the source lists its songs, for dating a transfer's likes. */
   order?: SourceOrder;
+  /** Songs Skip already liked left out of a transfer: counted from the
+   *  start as ones the person already had. */
+  existing?: number;
 }
 
 /** The oldest like the person already has, for placing a transfer's songs
@@ -285,7 +288,7 @@ export async function createImportJob(
     accepted: 0,
     review,
     missing: 0,
-    existing: 0,
+    existing: kind === 'liked' ? Math.max(0, n.existing ?? 0) : 0,
     ...(playlist ? { playlist: playlist.id } : {}),
     dismissed: false,
   });

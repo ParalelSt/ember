@@ -10,6 +10,9 @@ import { attachCover, createImportJob } from '@/lib/import/store';
 import { kickImportRunner } from '@/lib/import/runnerInstance';
 import { withRequestLog } from '@/lib/logger/withRequestLog';
 import type { JobKind } from '@/lib/import/types';
+import { splitAlreadyLiked } from '@/lib/import/alreadyLiked';
+import { likedIndexFor } from '@/lib/import/likedSongs';
+import { ALL_LIKED_MESSAGE } from '@/lib/import/transferCopy';
 
 /** What a transfer from a pasted link calls itself. */
 const SOURCE_LABEL = { spotify: 'Spotify', ytmusic: 'YouTube Music', youtube: 'YouTube' } as const;
@@ -36,14 +39,15 @@ export const GET = withRequestLog('import/jobs', async () => {
  *  source, and the job is queued for the server's runner; the dialog closes
  *  on the answer and the sidebar and the playlist page follow the job from
  *  here. With `destination: 'liked'` there is no playlist: the songs become
- *  likes and the Liked songs page follows the job instead. */
+ *  likes and the Liked songs page follows the job instead, and `skipLiked`
+ *  leaves the songs the person already liked out of it. */
 export const POST = withRequestLog('import/jobs', async (request: NextRequest) => {
   try {
     const { user } = await requireUser();
     const limited = rateLimitResponse(`import-start:${user.id}`, { windowMs: 600_000, max: 5 });
     if (limited) return limited;
 
-    const body = (await request.json().catch(() => null)) as { url?: unknown; destination?: unknown } | null;
+    const body = (await request.json().catch(() => null)) as { url?: unknown; destination?: unknown; skipLiked?: unknown } | null;
     const url = typeof body?.url === 'string' ? body.url.trim().slice(0, 500) : '';
     const destination: JobKind = body?.destination === 'liked' ? 'liked' : 'playlist';
     const parsed = url ? parseImportUrl(url) : null;
@@ -54,6 +58,24 @@ export const POST = withRequestLog('import/jobs', async (request: NextRequest) =
     if (!count) return jsonError('That playlist has no songs Ember can import.', 400);
 
     const admin = await createAdminClient();
+    let songs = src.source === 'spotify' ? { items: src.items } : { tracks: src.tracks };
+    let existing = 0;
+    if (destination === 'liked' && body?.skipLiked === true) {
+      const liked = await likedIndexFor(admin, user.id);
+      if (src.source === 'spotify') {
+        const split = splitAlreadyLiked(src.items, liked);
+        songs = { items: split.fresh };
+        existing = split.liked.length;
+      } else {
+        const split = splitAlreadyLiked(
+          src.tracks.map((t, position) => ({ title: t.title, artist: t.artist, videoId: t.sourceId, position, track: t })),
+          liked,
+        );
+        songs = { tracks: split.fresh.map((s) => s.track) };
+        existing = split.liked.length;
+      }
+      if (count === existing) return jsonError(ALL_LIKED_MESSAGE, 422);
+    }
     const { job, playlistId } = await createImportJob(admin, {
       userId: user.id,
       source: src.source,
@@ -65,7 +87,8 @@ export const POST = withRequestLog('import/jobs', async (request: NextRequest) =
       // A playlist reads top down, so the first song is the one liked longest
       // ago once its songs become likes.
       order: 'oldest-first',
-      ...(src.source === 'spotify' ? { items: src.items } : { tracks: src.tracks }),
+      ...songs,
+      ...(existing ? { existing } : {}),
     });
     kickImportRunner();
     if (playlistId && job.coverUrl) void attachCover(admin, playlistId, job.coverUrl);

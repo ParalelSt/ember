@@ -51,6 +51,12 @@ vi.mock('@/lib/import/store', () => ({
   attachCover: () => attachCover(),
 }));
 
+const likedSongs = vi.hoisted(() => ({ list: [] as { title: string; artist: string }[] }));
+vi.mock('@/lib/import/likedSongs', async () => {
+  const { likedIndex } = await import('@/lib/import/alreadyLiked');
+  return { likedIndexFor: vi.fn(async () => likedIndex(likedSongs.list)) };
+});
+
 const { POST } = await import('./route');
 
 const request = (body: unknown) =>
@@ -58,6 +64,7 @@ const request = (body: unknown) =>
 const LINK = 'https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M';
 
 beforeEach(() => {
+  likedSongs.list = [];
   rateLimitMock.mockReturnValue(null);
   newImports.length = 0;
   createImportJob.mockClear();
@@ -100,5 +107,26 @@ describe('POST /api/import/jobs', () => {
   it('still needs a link Ember can read', async () => {
     expect((await POST(request({ url: 'https://example.com/nope', destination: 'liked' }), {})).status).toBe(400);
     expect(createImportJob).not.toHaveBeenCalled();
+  });
+
+  it('Skip already liked leaves the liked songs of a link out, and counts them as already had', async () => {
+    likedSongs.list = [{ title: 'A', artist: 'X' }];
+    await POST(request({ url: LINK, destination: 'liked', skipLiked: true }), {});
+    const arg = newImports[0] as { items: { title: string; position: number }[]; existing: number };
+    expect(arg.items.map((i) => [i.position, i.title])).toEqual([[0, 'B']]);
+    expect(arg.existing).toBe(1);
+  });
+
+  it('Skip already liked with every song liked starts nothing', async () => {
+    likedSongs.list = [{ title: 'A', artist: 'X' }, { title: 'B', artist: 'Y' }];
+    const res = await POST(request({ url: LINK, destination: 'liked', skipLiked: true }), {});
+    expect(res.status).toBe(422);
+    expect(createImportJob).not.toHaveBeenCalled();
+  });
+
+  it('without Skip already liked every song of the link is looked up', async () => {
+    likedSongs.list = [{ title: 'A', artist: 'X' }];
+    await POST(request({ url: LINK, destination: 'liked' }), {});
+    expect((newImports[0] as { items: unknown[] }).items).toHaveLength(2);
   });
 });

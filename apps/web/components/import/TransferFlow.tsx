@@ -7,22 +7,25 @@ import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { AlertIcon, CheckIcon, ChevronLeftIcon, ChevronRightIcon, HeartIcon, KeyIcon, LinkIcon, QueueIcon, UploadIcon } from '@/components/icons';
-import { LinkPreview } from '@/components/import/LinkPreview';
+import { PreviewChips, type CountChip } from '@/components/import/TransferPreviewChips';
+import { SOURCE_NAME } from '@/components/import/parts';
 import { HaveOptions, StepCard } from '@/components/import/TransferSteps';
 import { api } from '@/lib/api';
 import { QK } from '@/hooks/useLibrary';
 import { IMPORT_QK } from '@/hooks/useImports';
 import { logger } from '@/lib/logger/client';
-import { parseImportUrl } from '@/lib/import/url';
 import {
   googleLikesErrorMessage,
   KEPT_FIRST_MESSAGE,
   OVER_CAP_MESSAGE,
   transferErrorMessage,
-  transferEstimate,
+  transferMinutes,
 } from '@/lib/import/transferCopy';
 import {
   LIKED_SERVICES_OPEN,
+  MATCHED_BY_NAME,
+  NOTHING_TO_MATCH,
+  SPOTIFY_LINK_CAP,
   routesFor,
   serviceById,
   serviceOpen,
@@ -43,9 +46,6 @@ import type { TransferPreview } from '@/app/api/import/upload/route';
 import type { CheckProgress, GooglePreview } from '@/lib/import/google/flows';
 import { cn } from '@/lib/utils';
 
-/** Wait this long after typing stops before reading a pasted list or link. */
-const LOOKUP_DELAY_MS = 400;
-
 /** How often the dialog asks the server how a Google sign-in stands. The
  *  server does the polling of Google itself. */
 export const GOOGLE_POLL_MS = 2_000;
@@ -65,15 +65,20 @@ const DESTINATIONS: { id: JobKind; name: string; consequence: string; icon: type
   },
 ];
 
-/** A link Ember looked up, flattened so both kinds of source render the
- *  same preview card. */
+/** A link Ember looked up, flattened so both kinds of source make the
+ *  same preview. */
 interface LinkLookup {
   url: string;
   kind: ImportSourceKind;
   name: string;
-  coverUrl: string | null;
   count: number;
   truncated: boolean;
+  /** The first few songs, and which of them the person already liked
+   *  (asked only when they go into the likes). */
+  sample: { title: string; artist: string }[];
+  alreadyLiked: number;
+  likedSample: { title: string; artist: string }[];
+  newSample: { title: string; artist: string }[];
 }
 
 type Lookup =
@@ -151,6 +156,10 @@ export function TransferFlow({
   const attempt = useRef(0);
   const [lookup, setLookup] = useState<Lookup>({ step: 'idle' });
   const [starting, setStarting] = useState(false);
+  // A refusal at Start, said on the preview it came from.
+  const [startError, setStartError] = useState<string | null>(null);
+  // Skip already liked: on until the person turns it off.
+  const [skipLiked, setSkipLiked] = useState(true);
   const fileInput = useRef<HTMLInputElement>(null);
   const asked = useRef('');
 
@@ -160,6 +169,8 @@ export function TransferFlow({
     setUrl('');
     setSignIn({ step: 'idle' });
     setLookup({ step: 'idle' });
+    setStartError(null);
+    setSkipLiked(true);
   }, []);
 
   /** Tell the server to revoke and forget the sign-in in flight, if any.
@@ -218,26 +229,30 @@ export function TransferFlow({
     }
   }, []);
 
-  const readLink = useCallback(async (link: string) => {
+  const readLink = useCallback(async (link: string, liked: boolean) => {
     const token = `link:${link}`;
     asked.current = token;
     setLookup({ step: 'looking' });
     try {
-      const r = await api.importInspect(link);
+      const r = await api.importInspect(link, { liked });
       if (asked.current !== token) return;
+      const songs =
+        r.source === 'spotify'
+          ? r.items.map((i) => ({ title: i.title, artist: i.artist }))
+          : r.tracks.map((t) => ({ title: t.title, artist: t.artist }));
       setLookup({
         step: 'link',
-        preview:
-          r.source === 'spotify'
-            ? { url: link, kind: 'spotify', name: r.name, coverUrl: r.coverUrl, count: r.items.length, truncated: r.truncated }
-            : {
-                url: link,
-                kind: /music\.youtube\.com/i.test(link) ? 'ytmusic' : 'youtube',
-                name: r.name,
-                coverUrl: r.tracks[0]?.artworkUrl ?? null,
-                count: r.tracks.length,
-                truncated: false,
-              },
+        preview: {
+          url: link,
+          kind: r.source === 'spotify' ? 'spotify' : /music\.youtube\.com/i.test(link) ? 'ytmusic' : 'youtube',
+          name: r.name,
+          count: songs.length,
+          truncated: r.source === 'spotify' ? r.truncated : false,
+          sample: songs.slice(0, 5),
+          alreadyLiked: r.liked?.count ?? 0,
+          likedSample: r.liked?.sample ?? [],
+          newSample: r.liked?.newSample ?? songs.slice(0, 5),
+        },
       });
     } catch (e) {
       // Server messages here are written for people (private, not found,
@@ -325,32 +340,20 @@ export function TransferFlow({
     };
   }, [waitingOn]);
 
-  // A pasted list and a pasted link both read themselves once typing stops;
-  // a chosen file is read at once.
-  const kind = routeKind;
-  useEffect(() => {
-    if (kind === 'paste') {
-      const body = text.trim();
-      if (!body || asked.current === `text:${body}`) return;
-      const t = setTimeout(() => void readText(body), LOOKUP_DELAY_MS);
-      return () => clearTimeout(t);
-    }
-    if (kind === 'link') {
-      const link = url.trim();
-      if (!link || asked.current === `link:${link}` || !parseImportUrl(link)) return;
-      const t = setTimeout(() => void readLink(link), LOOKUP_DELAY_MS);
-      return () => clearTimeout(t);
-    }
-  }, [kind, text, url, readText, readLink]);
-
-  /** The pasted list or link changed: a preview (or a look-up still on its
-   *  way) for what was there before is not this text's, so it goes, and
-   *  Start waits for the new one. Start used to import the previewed
-   *  playlist, not the link now in the box. */
-  const editSource = (token: string) => {
-    if (asked.current === token) return;
+  /** The pasted list or link changed: a sentence about what was there
+   *  before is not about this, so it goes. */
+  const editSource = () => {
     asked.current = '';
-    if (lookup.step !== 'idle') setLookup({ step: 'idle' });
+    if (lookup.step === 'error') setLookup({ step: 'idle' });
+  };
+
+  /** Continue: read the typed list or the pasted link, then show what is
+   *  in it. */
+  const typed = routeKind === 'paste' ? text.trim() : routeKind === 'link' ? url.trim() : '';
+  const continueTyped = () => {
+    if (!typed || lookup.step === 'looking') return;
+    if (routeKind === 'paste') void readText(typed);
+    else void readLink(typed, destination === 'liked');
   };
 
   const chooseFile = (e: ChangeEvent<HTMLInputElement>) => {
@@ -378,6 +381,8 @@ export function TransferFlow({
    *  the service cards. */
   const back = () => {
     clearSource();
+    // From the preview, back to the step that took the source.
+    if (previewed) return;
     setStep(0);
     if (route && choices.length > 1) setRouteId(null);
     else if (service) setServiceId(null);
@@ -394,8 +399,8 @@ export function TransferFlow({
     }
   };
 
-  // Over the cap, the upload route refuses the start, so the dialog says so
-  // here instead of letting someone press Start and be turned away. The
+  // Over the cap, the upload route refuses the start, so the preview says
+  // so here instead of letting someone press Start and be turned away. The
   // Google sign-in is different: over the cap it still starts, just with
   // the newest songs kept, so it never sets overCap.
   // A YourLibrary.json is the exception: it starts with the first 10 000.
@@ -404,13 +409,20 @@ export function TransferFlow({
   const previewed = lookup.step === 'file' || lookup.step === 'link' || lookup.step === 'google';
   // A Google preview counts songs and the uploads to check separately; both
   // come across, so the button counts both.
-  const count = !previewed ? 0 : lookup.step === 'google' ? lookup.preview.count + lookup.preview.toCheck : lookup.preview.count;
-  const empty = previewed && count === 0 && !overCap;
+  const base = !previewed ? 0 : lookup.step === 'google' ? lookup.preview.count + lookup.preview.toCheck : lookup.preview.count;
+  // Songs already liked, by name: only a by-name source going into the
+  // likes knows, and only those can be skipped.
+  const already =
+    destination !== 'liked' ? 0 : lookup.step === 'file' ? (lookup.preview.alreadyLiked ?? 0) : lookup.step === 'link' ? lookup.preview.alreadyLiked : 0;
+  const skipping = skipLiked && already > 0;
+  const count = skipping ? Math.max(0, base - already) : base;
+  const empty = previewed && base === 0 && !overCap;
   const ready = previewed && count > 0 && !overCap;
 
   const start = async () => {
     if (!ready || starting) return;
     setStarting(true);
+    setStartError(null);
     try {
       if (lookup.step === 'google') {
         const r = await api.googleLikesStart(lookup.flowId);
@@ -425,8 +437,12 @@ export function TransferFlow({
       }
       const r =
         lookup.step === 'link'
-          ? await api.importStart(lookup.preview.url, destination)
-          : await api.transferStart(file ? { file, destination } : { text: text.trim(), destination });
+          ? await api.importStart(lookup.preview.url, destination, skipping ? { skipLiked: true } : {})
+          : await api.transferStart({
+              ...(file ? { file } : { text: text.trim() }),
+              destination,
+              ...(skipping ? { skipLiked: true } : {}),
+            });
       logger.breadcrumb('import', 'transfer queued', { from, destination, source: r.job.source, total: r.job.total });
       void qc.invalidateQueries({ queryKey: IMPORT_QK.jobs });
       void qc.invalidateQueries({ queryKey: QK.playlists });
@@ -438,14 +454,82 @@ export function TransferFlow({
         setLookup({ step: 'idle' });
         setSignIn({ step: 'failed', message: googleLikesErrorMessage(e) });
       } else {
-        setLookup({ step: 'error', message: transferErrorMessage(e) });
+        setStartError(transferErrorMessage(e));
       }
     } finally {
       setStarting(false);
     }
   };
 
-  const title = !service ? 'Transfer songs into Ember' : !route ? 'What do you have already?' : service.heading;
+  /** The second line under the source's name on the preview. */
+  const previewDetail = (): string => {
+    if (lookup.step === 'file') return file ? file.name : 'A list of songs';
+    if (lookup.step === 'link') return `${SOURCE_NAME[lookup.preview.kind]} playlist`;
+    return 'Your YouTube Music likes';
+  };
+
+  /** The counts as chips, each with the songs it means. */
+  const previewChips = (): CountChip[] => {
+    const out: CountChip[] = [];
+    if (lookup.step === 'google') {
+      out.push({ id: 'new', label: `${lookup.preview.count.toLocaleString('en-GB')} songs`, count: lookup.preview.count, songs: lookup.preview.sample });
+      if (lookup.preview.toCheck > 0) {
+        out.push({ id: 'check', label: `${lookup.preview.toCheck} to check`, count: lookup.preview.toCheck, note: toCheckLine(lookup.preview.toCheck) });
+      }
+      return out;
+    }
+    if (lookup.step !== 'file' && lookup.step !== 'link') return out;
+    const p = lookup.preview;
+    const fresh = Math.max(0, p.count - already);
+    const newSample = p.newSample ?? p.sample;
+    out.push({ id: 'new', label: `${fresh.toLocaleString('en-GB')} new`, count: fresh, songs: newSample });
+    if (already > 0) {
+      out.push({
+        id: 'liked',
+        label: `${already.toLocaleString('en-GB')} already liked`,
+        count: already,
+        songs: p.likedSample ?? [],
+        note: skipping ? 'Skipped: they stay as they are.' : 'Looked up again; nothing changes for them.',
+      });
+    }
+    if (lookup.step === 'file') {
+      const f = lookup.preview;
+      if (f.duplicates) {
+        out.push({
+          id: 'double',
+          label: `${f.duplicates} twice in the file`,
+          count: f.duplicates,
+          songs: f.duplicateSample ?? [],
+          note: 'Brought over once.',
+        });
+      }
+      if (f.unreadable) {
+        out.push({
+          id: 'bad',
+          label: `${f.unreadable} unreadable`,
+          count: f.unreadable,
+          note: `${f.unreadable === 1 ? 'One row has' : `${f.unreadable} rows have`} no song Ember could read, so ${f.unreadable === 1 ? 'it is' : 'they are'} left out.`,
+        });
+      }
+      if (f.truncated) {
+        out.push({
+          id: 'over',
+          label: f.overLimit ? `${f.overLimit.toLocaleString('en-GB')} over the limit` : 'Over the limit',
+          count: f.overLimit ?? 0,
+          note: keptFirst ? KEPT_FIRST_MESSAGE : OVER_CAP_MESSAGE,
+        });
+      }
+    }
+    return out;
+  };
+
+  const title = !service
+    ? 'Transfer songs into Ember'
+    : previewed
+      ? 'Before you start'
+      : !route
+        ? 'What do you have already?'
+        : service.heading;
 
   return (
     <div data-testid="transfer-page" className="mx-auto flex min-h-full w-full max-w-2xl flex-col gap-block">
@@ -467,6 +551,51 @@ export function TransferFlow({
         <div className="flex min-h-0 flex-col gap-block">
           {!route && <HaveOptions choices={choices} onPick={pickRoute} />}
 
+          {previewed && service && (
+            <PreviewChips
+              mark={<ServiceMark service={service} size={32} />}
+              label={lookup.step === 'link' ? lookup.preview.name : lookup.preview.label}
+              detail={previewDetail()}
+              total={count}
+              estimate={transferMinutes(count, lookup.step === 'google' || lookup.preview.kind === 'ytmusic' || lookup.preview.kind === 'youtube')}
+              chips={previewChips()}
+              destination={destination}
+              skip={{ available: already > 0, on: skipLiked, onToggle: () => setSkipLiked((v) => !v) }}
+              note={`${lookup.step === 'google' ? NOTHING_TO_MATCH : MATCHED_BY_NAME} You can leave while it runs.`}
+            >
+              {lookup.step === 'google' && lookup.preview.toCheck > 0 && (
+                <p data-testid="google-to-check" className="text-xs text-muted-foreground">
+                  {toCheckLine(lookup.preview.toCheck)}
+                </p>
+              )}
+              {lookup.step === 'link' && lookup.preview.truncated && (
+                <p data-testid="transfer-link-cap" className="text-xs text-muted-foreground">
+                  {SPOTIFY_LINK_CAP}
+                </p>
+              )}
+              {keptFirst && (
+                <p data-testid="transfer-kept-first" className="text-xs text-muted-foreground">
+                  {KEPT_FIRST_MESSAGE}
+                </p>
+              )}
+              {overCap && (
+                <p role="alert" data-testid="transfer-over-cap" className="text-xs text-destructive">
+                  {OVER_CAP_MESSAGE}
+                </p>
+              )}
+              {empty && (
+                <p role="alert" data-testid="transfer-empty" className="text-xs text-destructive">
+                  There are no songs in that.
+                </p>
+              )}
+              {startError && (
+                <p role="alert" data-testid="transfer-error" className="text-xs text-destructive">
+                  {startError}
+                </p>
+              )}
+            </PreviewChips>
+          )}
+
           {notSetUp && (
             <div data-testid="google-not-set-up" className="flex flex-col gap-row rounded-lg border border-border bg-card p-row">
               <div className="flex items-center gap-cluster text-sm font-semibold">
@@ -484,7 +613,7 @@ export function TransferFlow({
             </div>
           )}
 
-          {route && !notSetUp && (
+          {route && !notSetUp && !previewed && (
             <StepCard
               route={route}
               step={step}
@@ -521,7 +650,7 @@ export function TransferFlow({
                       value={text}
                       onChange={(e) => {
                         setText(e.target.value);
-                        editSource(`text:${e.target.value.trim()}`);
+                        editSource();
                       }}
                       placeholder={'Halcyon Drift - Paper Lanterns\nNadia Okonkwo - Slow Weather'}
                       className="w-full resize-none rounded-lg border border-border bg-transparent px-row py-cluster text-sm"
@@ -537,7 +666,7 @@ export function TransferFlow({
                         value={url}
                         onChange={(e) => {
                           setUrl(e.target.value);
-                          editSource(`link:${e.target.value.trim()}`);
+                          editSource();
                         }}
                         placeholder={serviceId === 'ytmusic' ? 'Paste the YouTube Music playlist link' : 'Paste the Spotify playlist link'}
                         className="truncate pl-10"
@@ -545,75 +674,48 @@ export function TransferFlow({
                     </div>
                   )}
 
-                  {route.kind === 'google' && lookup.step !== 'google' && (
-                    <GoogleSignInPanel signIn={signIn} onSignIn={() => void beginSignIn()} />
+                  {route.kind === 'google' && <GoogleSignInPanel signIn={signIn} onSignIn={() => void beginSignIn()} />}
+
+                  {lookup.step === 'looking' && (
+                    <p role="status" className="text-xs text-muted-foreground">
+                      Reading it…
+                    </p>
+                  )}
+                  {lookup.step === 'error' && (
+                    <p role="alert" data-testid="transfer-error" className="text-xs text-destructive">
+                      {lookup.message}
+                    </p>
                   )}
                 </div>
               }
             />
           )}
-
-          {lookup.step === 'file' && <FilePreviewCard preview={lookup.preview} />}
-          {lookup.step === 'google' && (
-            <>
-              <FilePreviewCard preview={lookup.preview} />
-              {lookup.preview.toCheck > 0 && (
-                <p data-testid="google-to-check" className="text-xs text-muted-foreground">
-                  {toCheckLine(lookup.preview.toCheck)}
-                </p>
-              )}
-            </>
-          )}
-          {lookup.step === 'link' && (
-            <LinkPreview
-              kind={lookup.preview.kind}
-              name={lookup.preview.name}
-              coverUrl={lookup.preview.coverUrl}
-              count={lookup.preview.count}
-              truncated={lookup.preview.truncated}
-            />
-          )}
-          {keptFirst && (
-            <p data-testid="transfer-kept-first" className="text-xs text-muted-foreground">
-              {KEPT_FIRST_MESSAGE}
-            </p>
-          )}
-          {ready && lookup.step !== 'google' && (
-            <p data-testid="transfer-estimate" className="text-xs text-muted-foreground">
-              {transferEstimate(count)}
-            </p>
-          )}
-          {overCap && (
-            <p role="alert" data-testid="transfer-over-cap" className="text-xs text-destructive">
-              {OVER_CAP_MESSAGE}
-            </p>
-          )}
-          {empty && (
-            <p role="alert" data-testid="transfer-empty" className="text-xs text-destructive">
-              There are no songs in that.
-            </p>
-          )}
-          {lookup.step === 'looking' && <p className="text-xs text-muted-foreground">Reading it…</p>}
-          {lookup.step === 'error' && (
-            <p role="alert" data-testid="transfer-error" className="text-xs text-destructive">
-              {lookup.message}
-            </p>
-          )}
         </div>
       )}
 
-      {route && !notSetUp && step >= route.steps.length - 1 && (
-        <div className="sticky bottom-0 mt-auto bg-gradient-to-b from-transparent to-background to-30% pt-block pb-row">
-          <Button
-            type="button"
-            disabled={!ready || starting}
-            onClick={() => void start()}
-            variant="ember"
-            className="h-11 w-full"
-          >
-            {starting ? 'Starting…' : ready ? `Transfer ${count} ${count === 1 ? 'song' : 'songs'}` : 'Transfer'}
+      {previewed ? (
+        <div className="sticky bottom-0 mt-auto bg-gradient-to-b from-transparent to-background to-30% pb-row pt-block">
+          <Button type="button" disabled={!ready || starting} onClick={() => void start()} variant="ember" className="h-11 w-full">
+            {starting ? 'Starting…' : `Transfer ${count.toLocaleString('en-GB')} ${count === 1 ? 'song' : 'songs'}`}
           </Button>
         </div>
+      ) : (
+        route &&
+        !notSetUp &&
+        (routeKind === 'paste' || routeKind === 'link') &&
+        step >= route.steps.length - 1 && (
+          <div className="sticky bottom-0 mt-auto bg-gradient-to-b from-transparent to-background to-30% pb-row pt-block">
+            <Button
+              type="button"
+              disabled={!typed || lookup.step === 'looking'}
+              onClick={continueTyped}
+              variant="ember"
+              className="h-11 w-full"
+            >
+              Continue
+            </Button>
+          </div>
+        )
       )}
     </div>
   );
@@ -751,33 +853,6 @@ function GoogleSignInPanel({ signIn, onSignIn }: { signIn: SignIn; onSignIn: () 
         <KeyIcon className="h-4 w-4" />
         {signIn.step === 'asking' ? 'Asking Google…' : 'Sign in with Google'}
       </Button>
-    </div>
-  );
-}
-
-/** What Ember read out of the file or the pasted list, before anything is
- *  started: how many songs, where they came from, and the first few by name
- *  so an obviously wrong file is obvious. A Google sign-in shows only the
- *  likes YouTube Music calls songs. */
-function FilePreviewCard({ preview }: { preview: TransferPreview }) {
-  return (
-    <div data-testid="transfer-preview" className="rounded-lg border border-border bg-card p-row">
-      <div className="text-sm font-semibold">{preview.label}</div>
-      <div className="text-xs text-muted-foreground">
-        {preview.count} {preview.count === 1 ? 'song' : 'songs'}
-        {preview.dropped > 0 ? `, ${preview.dropped} ${preview.dropped === 1 ? 'row' : 'rows'} Ember could not read` : ''}
-      </div>
-      {preview.sample.length > 0 && (
-        <ul className="mt-cluster flex flex-col gap-inset text-xs text-muted-foreground">
-          {preview.sample.map((s, i) => (
-            <li key={`${s.title}-${i}`} className="truncate">
-              <span className="text-foreground">{s.title}</span>
-              {s.artist ? `, ${s.artist}` : ''}
-            </li>
-          ))}
-          {preview.count > preview.sample.length && <li>and {preview.count - preview.sample.length} more</li>}
-        </ul>
-      )}
     </div>
   );
 }

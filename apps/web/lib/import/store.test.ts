@@ -323,6 +323,11 @@ describe('a transfer into the likes', () => {
     expect(f.table('import_items')).toHaveLength(4);
   });
 
+  it('starts with the songs Skip already liked left out counted as already had', async () => {
+    const { job } = await transfer({ existing: 7 });
+    expect(job).toMatchObject({ existing: 7, total: 4 });
+  });
+
   it('dates every song below the oldest like the person already has, in source order', async () => {
     const f = fakePb();
     await f.pb.collection('likes').create({ user: 'u1', track: 'other', liked_at: '2025-01-01 00:00:00.000Z' });

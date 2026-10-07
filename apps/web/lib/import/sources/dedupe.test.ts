@@ -49,6 +49,8 @@ describe('dedupeItems', () => {
       [2, 'C'],
     ]);
     expect(r.dropped).toBe(1);
+    // The repeat is handed back too, so the preview can name it.
+    expect(r.repeats.map((i) => i.title)).toEqual(['A']);
   });
 
   it('keeps the first row’s like date, not the repeat’s', () => {
@@ -58,6 +60,6 @@ describe('dedupeItems', () => {
 
   it('a list with no repeats is handed back unchanged', () => {
     const items = [item({ position: 0, title: 'A' }), item({ position: 1, title: 'B' })];
-    expect(dedupeItems(items)).toEqual({ items, dropped: 0 });
+    expect(dedupeItems(items)).toEqual({ items, dropped: 0, repeats: [] });
   });
 });

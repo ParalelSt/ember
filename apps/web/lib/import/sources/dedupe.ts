@@ -19,16 +19,21 @@ export function songKeyOf(item: TransferItem): string {
   return `${normalizeTitle(item.title)}|${normalizeArtist(item.artists[0] ?? item.artist ?? '')}`;
 }
 
-/** The list with repeats taken out, positions renumbered from 0, and how
- *  many went. The first of a repeated pair wins, so source order holds. */
-export function dedupeItems(items: TransferItem[]): { items: TransferItem[]; dropped: number } {
+/** The list with repeats taken out, positions renumbered from 0, how many
+ *  went, and which (for the preview's "twice in the file"). The first of a
+ *  repeated pair wins, so source order holds. */
+export function dedupeItems(items: TransferItem[]): { items: TransferItem[]; dropped: number; repeats: TransferItem[] } {
   const seen = new Set<string>();
   const out: TransferItem[] = [];
+  const repeats: TransferItem[] = [];
   for (const item of items) {
     const key = songKeyOf(item);
-    if (seen.has(key)) continue;
+    if (seen.has(key)) {
+      repeats.push(item);
+      continue;
+    }
     seen.add(key);
     out.push({ ...item, position: out.length });
   }
-  return { items: out, dropped: items.length - out.length };
+  return { items: out, dropped: items.length - out.length, repeats };
 }
