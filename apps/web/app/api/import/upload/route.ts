@@ -53,7 +53,7 @@ export const POST = withRequestLog('import/upload', async (request: NextRequest)
     if (preview === '1' || preview === 'true') return Response.json({ preview: previewOf(parsed) });
 
     // Only a real transfer start counts against the hourly cap. The
-    // TransferDialog fires a preview on every pause in typing, which would
+    // The Transfer page fires a preview for every source it reads, which would
     // otherwise burn the 5-per-hour limit before the user ever presses
     // Import (see the branch above, which returns before this line).
     const limited = rateLimitResponse(`import-upload:${user.id}`, { windowMs: 3_600_000, max: 5 });

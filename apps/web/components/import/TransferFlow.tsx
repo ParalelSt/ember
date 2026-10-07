@@ -4,16 +4,9 @@ import { useCallback, useEffect, useRef, useState, type ChangeEvent } from 'reac
 import { useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
-import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { AlertIcon, ChevronLeftIcon, HeartIcon, KeyIcon, LinkIcon, QueueIcon, UploadIcon } from '@/components/icons';
+import { AlertIcon, CheckIcon, ChevronLeftIcon, ChevronRightIcon, HeartIcon, KeyIcon, LinkIcon, QueueIcon, UploadIcon } from '@/components/icons';
 import { LinkPreview } from '@/components/import/LinkPreview';
 import { api } from '@/lib/api';
 import { QK } from '@/hooks/useLibrary';
@@ -34,6 +27,7 @@ import {
   serviceOpen,
   TRANSFER_SERVICES,
   type TransferRoute,
+  type TransferService,
   type TransferServiceId,
 } from '@/lib/import/transferRoutes';
 import {
@@ -46,6 +40,7 @@ import {
 import type { JobKind, ImportSourceKind } from '@/lib/import/types';
 import type { TransferPreview } from '@/app/api/import/upload/route';
 import type { CheckProgress, GooglePreview } from '@/lib/import/google/flows';
+import { cn } from '@/lib/utils';
 
 /** Wait this long after typing stops before reading a pasted list or link. */
 const LOOKUP_DELAY_MS = 400;
@@ -104,32 +99,39 @@ type SignIn =
     }
   | { step: 'failed'; message: string };
 
-export interface TransferDialogProps {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  /** Where the dialog was opened from, for the breadcrumb only. */
+export interface TransferFlowProps {
+  /** Where the songs go until the person picks the other card. */
+  initialDestination?: JobKind;
+  /** The page the flow was opened from: Back on the first screen returns
+   *  there. Only an app path is accepted. */
   from?: string;
   /** Services that may fill the Liked songs; the rest show crossed out.
    *  Defaults to every service (`LIKED_SERVICES_OPEN`). */
   likedServicesOpen?: readonly TransferServiceId[];
 }
 
-/** Bring songs liked somewhere else into Ember, asked in plain words. Three
- *  questions, each a fact rather than a judgement: where the songs should
- *  land (two cards, because "these become your likes" is a consequence worth
- *  reading before anything is uploaded), where the music is now, and what
- *  the person already has in hand. Only the steps for that one combination
- *  show, so nobody reads about CSVs unless a file is their way in. Nothing
+/** An app path to go back to, or the Liked songs page. A full URL or a
+ *  protocol-relative one is never followed. */
+export function safeFrom(from: string | undefined | null): string {
+  return from && from.startsWith('/') && !from.startsWith('//') ? from : '/library/liked';
+}
+
+/** Bring songs liked somewhere else into Ember, on one page. The first
+ *  screen asks both questions a transfer starts with at once: where the
+ *  songs should go (two cards, because "these become your likes" is a
+ *  consequence worth reading before anything is uploaded) and where they
+ *  are now (the four services as rows, each saying what it needs; nothing
+ *  crossed out). Then only the way in the person has in hand, and nothing
  *  starts until Ember has read the source and shown a preview of it. */
-export function TransferDialog({
-  open,
-  onOpenChange,
-  from = 'settings',
+export function TransferFlow({
+  initialDestination = 'liked',
+  from: fromParam,
   likedServicesOpen = LIKED_SERVICES_OPEN,
-}: TransferDialogProps) {
+}: TransferFlowProps) {
+  const from = safeFrom(fromParam);
   const router = useRouter();
   const qc = useQueryClient();
-  const [destination, setDestination] = useState<JobKind | null>(null);
+  const [destination, setDestination] = useState<JobKind>(initialDestination);
   const [serviceId, setServiceId] = useState<TransferServiceId | null>(null);
   const [routeId, setRouteId] = useState<string | null>(null);
   const [file, setFile] = useState<File | null>(null);
@@ -175,42 +177,15 @@ export function TransferDialog({
     resetSource();
   }, [resetSource, cancelSignIn]);
 
-  // Reset on every fresh open, during render rather than in an effect, so
-  // the last run's file or preview never paints. The refs go with it, but
-  // they render nothing, so they can wait for the effect below.
-  const [wasOpen, setWasOpen] = useState(open);
-  if (open !== wasOpen) {
-    setWasOpen(open);
-    if (open) {
-      setDestination(null);
-      setServiceId(null);
-      setRouteId(null);
-      setStarting(false);
-      resetSource();
-    } else {
-      // Stop asking about a sign-in the moment the dialog closes; the effect
-      // below tells the server to forget it.
-      setSignIn({ step: 'idle' });
-    }
-  }
-  useEffect(() => {
-    // Closing the dialog cancels a sign-in that never reached Start, so the
-    // server revokes it now rather than at its timeout.
-    if (!open) {
-      cancelSignIn();
-      return;
-    }
-    asked.current = '';
-    if (fileInput.current) fileInput.current.value = '';
-  }, [open, cancelSignIn]);
-  // And so does leaving the page with the dialog still open.
+  // Leaving the page cancels a sign-in that never reached Start, so the
+  // server revokes it now rather than at its timeout.
   useEffect(() => cancelSignIn, [cancelSignIn]);
 
   const service = serviceId ? serviceById(serviceId) : null;
   // What this service can still offer for the chosen destination: the
   // Google sign-in always lands in the likes, so a new playlist never sees
   // it. One way in is no question at all, so it is taken as read.
-  const choices = service && destination ? routesFor(service, destination) : [];
+  const choices = service ? routesFor(service, destination) : [];
   const route: TransferRoute | null = choices.find((r) => r.id === routeId) ?? (choices.length === 1 ? choices[0] : null);
   // A server with no Google client says so, and offers the way in that
   // needs no sign-in, rather than a button that can only fail.
@@ -400,7 +375,17 @@ export function TransferDialog({
     clearSource();
     if (route && choices.length > 1) setRouteId(null);
     else if (service) setServiceId(null);
-    else setDestination(null);
+    else router.push(from);
+  };
+
+  const pickDestination = (d: JobKind) => {
+    setDestination(d);
+    // The Google sign-in is for Liked songs only: a way in that is no longer
+    // on offer goes, and the person picks again.
+    if (route?.likedOnly && d !== 'liked') {
+      setRouteId(null);
+      clearSource();
+    }
   };
 
   // Over the cap, the upload route refuses the start, so the dialog says so
@@ -418,7 +403,7 @@ export function TransferDialog({
   const ready = previewed && count > 0 && !overCap;
 
   const start = async () => {
-    if (!ready || !destination || starting) return;
+    if (!ready || starting) return;
     setStarting(true);
     try {
       if (lookup.step === 'google') {
@@ -429,7 +414,6 @@ export function TransferDialog({
         void qc.invalidateQueries({ queryKey: IMPORT_QK.jobs });
         void qc.invalidateQueries({ queryKey: QK.likes });
         if (r.note) toast.info(r.note);
-        onOpenChange(false);
         router.push('/library/liked');
         return;
       }
@@ -441,7 +425,6 @@ export function TransferDialog({
       void qc.invalidateQueries({ queryKey: IMPORT_QK.jobs });
       void qc.invalidateQueries({ queryKey: QK.playlists });
       void qc.invalidateQueries({ queryKey: QK.likes });
-      onOpenChange(false);
       router.push(r.playlistId ? `/playlist/${r.playlistId}` : '/library/liked');
     } catch (e) {
       if (lookup.step === 'google') {
@@ -456,255 +439,284 @@ export function TransferDialog({
     }
   };
 
-  const title = !destination
-    ? 'Transfer songs into Ember'
-    : !service
-      ? 'Where is your music now?'
-      : !route
-        ? 'What do you have already?'
-        : service.heading;
+  const title = !service ? 'Transfer songs into Ember' : !route ? 'What do you have already?' : service.heading;
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-2xl max-h-[90vh] flex flex-col" data-testid="transfer-dialog">
-        <DialogHeader>
-          <DialogTitle>{title}</DialogTitle>
-        </DialogHeader>
+    <div data-testid="transfer-page" className="mx-auto flex min-h-full w-full max-w-2xl flex-col gap-block">
+      <div className="sticky top-[var(--ember-topbar-h,0px)] z-10 -mx-cluster flex items-center gap-cluster bg-background px-cluster py-cluster">
+        <Button type="button" variant="ghost" size="icon" aria-label="Back" onClick={back}>
+          <ChevronLeftIcon className="h-5 w-5" />
+        </Button>
+        <h1 className="min-w-0 flex-1 truncate text-lg font-bold tracking-tight">{title}</h1>
+      </div>
 
-        {!destination ? (
-          <div className="flex min-h-0 flex-col gap-block">
-            <p className="text-sm text-muted-foreground">Where should the songs land?</p>
-            <div className="grid gap-row md:grid-cols-2">
-              {DESTINATIONS.map((d) => (
+      {!service ? (
+        <Chooser
+          destination={destination}
+          onDestination={pickDestination}
+          likedServicesOpen={likedServicesOpen}
+          onService={pickService}
+        />
+      ) : (
+        <div className="flex min-h-0 flex-col gap-block">
+          {!route && (
+            <div className="flex flex-col gap-cluster" data-testid="transfer-have-options">
+              {choices.map((r) => (
                 <button
-                  key={d.id}
+                  key={r.id}
                   type="button"
-                  data-testid="transfer-destination-card"
-                  data-destination={d.id}
-                  onClick={() => setDestination(d.id)}
-                  className="flex flex-col gap-cluster rounded-lg border border-border bg-card p-block text-left transition-colors hover:border-ember hover:bg-accent/60"
+                  data-testid="transfer-have-option"
+                  data-route={r.id}
+                  onClick={() => pickRoute(r.id)}
+                  className="rounded-lg border border-border p-row text-left text-sm font-medium transition-colors hover:border-ember hover:bg-accent/40"
                 >
-                  <d.icon className="h-5 w-5 text-ember" />
-                  <span className="text-sm font-semibold">{d.name}</span>
-                  <span className="text-xs text-muted-foreground">{d.consequence}</span>
+                  {r.whatYouHave}
                 </button>
               ))}
             </div>
-          </div>
-        ) : (
-          <div className="flex min-h-0 flex-col gap-block overflow-y-auto">
-            <div className="flex items-center gap-cluster text-xs text-muted-foreground">
-              <Button type="button" variant="ghost" size="sm" className="text-muted-foreground" onClick={back}>
-                <ChevronLeftIcon className="h-3.5 w-3.5" />
-                Back
-              </Button>
-              <span data-testid="transfer-chosen-destination">
-                Going to {destination === 'liked' ? 'your Liked songs' : 'a new playlist'}
-                {service ? ` · ${service.name}` : ''}
-              </span>
-            </div>
-
-            {!service && (
-              <div className="grid gap-row md:grid-cols-2">
-                {TRANSFER_SERVICES.map((s) => {
-                  const open = destination ? serviceOpen(s.id, destination, likedServicesOpen) : true;
-                  return (
-                    <button
-                      key={s.id}
-                      type="button"
-                      data-testid="transfer-service-card"
-                      data-service={s.id}
-                      data-open={open ? 'true' : 'false'}
-                      disabled={!open}
-                      onClick={() => pickService(s.id)}
-                      className={
-                        open
-                          ? 'rounded-lg border border-border bg-card p-block text-left text-sm font-semibold transition-colors hover:border-ember hover:bg-accent/60'
-                          : 'cursor-not-allowed rounded-lg border border-border bg-card p-block text-left text-sm font-semibold text-muted-foreground line-through opacity-50'
-                      }
-                    >
-                      {s.name}
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-
-            {service && !route && (
-              <div className="flex flex-col gap-cluster" data-testid="transfer-have-options">
-                {choices.map((r) => (
-                  <button
-                    key={r.id}
-                    type="button"
-                    data-testid="transfer-have-option"
-                    data-route={r.id}
-                    onClick={() => pickRoute(r.id)}
-                    className="rounded-lg border border-border p-row text-left text-sm font-medium transition-colors hover:border-ember hover:bg-accent/40"
-                  >
-                    {r.whatYouHave}
-                  </button>
-                ))}
-              </div>
-            )}
-
-            {route && (
-              <div className="flex flex-col gap-cluster" data-testid="transfer-steps">
-                <ol className="flex flex-col gap-inset text-xs text-muted-foreground">
-                  {route.steps.map((step, i) => (
-                    <li key={i}>
-                      {i + 1}. {step}
-                    </li>
-                  ))}
-                </ol>
-                {route.notes.map((note) => (
-                  <p key={note} className="text-xs text-muted-foreground">
-                    {note}
-                  </p>
-                ))}
-              </div>
-            )}
-
-            {notSetUp && (
-              <div data-testid="google-not-set-up" className="flex flex-col gap-row rounded-lg border border-border bg-card p-row">
-                <div className="flex items-center gap-cluster text-sm font-semibold">
-                  <AlertIcon className="h-4 w-4 text-muted-foreground" />
-                  {GOOGLE_MESSAGES.notConfigured}
-                </div>
-                <p className="text-xs text-muted-foreground">{GOOGLE_FALLBACK_HINT}</p>
-                {choices
-                  .filter((r) => r.kind === 'link')
-                  .map((r) => (
-                    <Button key={r.id} type="button" variant="secondary" size="sm" onClick={() => pickRoute(r.id)} className="self-start">
-                      {r.whatYouHave}
-                    </Button>
-                  ))}
-              </div>
-            )}
-
-            {route && route.kind === 'file' && (
-              <div className="flex flex-col gap-cluster">
-                <input
-                  ref={fileInput}
-                  type="file"
-                  accept=".json,.csv,.tsv,.txt,application/json,text/csv,text/plain"
-                  aria-label="Song list file"
-                  className="hidden"
-                  onChange={chooseFile}
-                />
-                <button
-                  type="button"
-                  onClick={() => fileInput.current?.click()}
-                  className="flex flex-col items-center gap-cluster rounded-lg border border-dashed border-border py-block text-center transition-colors hover:border-ember hover:bg-accent/40"
-                >
-                  <UploadIcon className="h-5 w-5 text-muted-foreground" />
-                  <span className="text-sm">{file ? file.name : 'Choose a file'}</span>
-                  <span className="text-xs text-muted-foreground">YourLibrary.json, or a .csv</span>
-                </button>
-              </div>
-            )}
-
-            {route && route.kind === 'paste' && (
-              <textarea
-                autoFocus
-                aria-label="Your songs, one a line"
-                rows={6}
-                value={text}
-                onChange={(e) => {
-                  setText(e.target.value);
-                  editSource(`text:${e.target.value.trim()}`);
-                }}
-                placeholder={'Halcyon Drift - Paper Lanterns\nNadia Okonkwo - Slow Weather'}
-                className="w-full resize-none rounded-lg border border-border bg-transparent px-row py-cluster text-sm"
-              />
-            )}
-
-            {route && route.kind === 'link' && (
-              <div className="relative">
-                <LinkIcon className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                <Input
-                  autoFocus
-                  aria-label="Playlist link"
-                  value={url}
-                  onChange={(e) => {
-                    setUrl(e.target.value);
-                    editSource(`link:${e.target.value.trim()}`);
-                  }}
-                  placeholder={serviceId === 'ytmusic' ? 'Paste the YouTube Music playlist link' : 'Paste the Spotify playlist link'}
-                  className="truncate pl-10"
-                />
-              </div>
-            )}
-
-            {route && route.kind === 'google' && !notSetUp && lookup.step !== 'google' && (
-              <GoogleSignInPanel signIn={signIn} onSignIn={() => void beginSignIn()} />
-            )}
-
-            {lookup.step === 'file' && <FilePreviewCard preview={lookup.preview} />}
-            {lookup.step === 'google' && (
-              <>
-                <FilePreviewCard preview={lookup.preview} />
-                {lookup.preview.toCheck > 0 && (
-                  <p data-testid="google-to-check" className="text-xs text-muted-foreground">
-                    {toCheckLine(lookup.preview.toCheck)}
-                  </p>
-                )}
-              </>
-            )}
-            {lookup.step === 'link' && (
-              <LinkPreview
-                kind={lookup.preview.kind}
-                name={lookup.preview.name}
-                coverUrl={lookup.preview.coverUrl}
-                count={lookup.preview.count}
-                truncated={lookup.preview.truncated}
-              />
-            )}
-            {keptFirst && (
-              <p data-testid="transfer-kept-first" className="text-xs text-muted-foreground">
-                {KEPT_FIRST_MESSAGE}
-              </p>
-            )}
-            {ready && lookup.step !== 'google' && (
-              <p data-testid="transfer-estimate" className="text-xs text-muted-foreground">
-                {transferEstimate(count)}
-              </p>
-            )}
-            {overCap && (
-              <p role="alert" data-testid="transfer-over-cap" className="text-xs text-destructive">
-                {OVER_CAP_MESSAGE}
-              </p>
-            )}
-            {empty && (
-              <p role="alert" data-testid="transfer-empty" className="text-xs text-destructive">
-                There are no songs in that.
-              </p>
-            )}
-            {lookup.step === 'looking' && <p className="text-xs text-muted-foreground">Reading it…</p>}
-            {lookup.step === 'error' && (
-              <p role="alert" data-testid="transfer-error" className="text-xs text-destructive">
-                {lookup.message}
-              </p>
-            )}
-          </div>
-        )}
-
-        <DialogFooter>
-          <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>
-            Cancel
-          </Button>
-          {route && !notSetUp && (
-            <Button
-              type="button"
-              disabled={!ready || starting}
-              onClick={() => void start()}
-              variant="ember"
-            >
-              {starting ? 'Starting…' : ready ? `Transfer ${count} ${count === 1 ? 'song' : 'songs'}` : 'Transfer'}
-            </Button>
           )}
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+
+          {route && (
+            <div className="flex flex-col gap-cluster" data-testid="transfer-steps">
+              <ol className="flex flex-col gap-inset text-xs text-muted-foreground">
+                {route.steps.map((step, i) => (
+                  <li key={i}>
+                    {i + 1}. {step}
+                  </li>
+                ))}
+              </ol>
+              {route.notes.map((note) => (
+                <p key={note} className="text-xs text-muted-foreground">
+                  {note}
+                </p>
+              ))}
+            </div>
+          )}
+
+          {notSetUp && (
+            <div data-testid="google-not-set-up" className="flex flex-col gap-row rounded-lg border border-border bg-card p-row">
+              <div className="flex items-center gap-cluster text-sm font-semibold">
+                <AlertIcon className="h-4 w-4 text-muted-foreground" />
+                {GOOGLE_MESSAGES.notConfigured}
+              </div>
+              <p className="text-xs text-muted-foreground">{GOOGLE_FALLBACK_HINT}</p>
+              {choices
+                .filter((r) => r.kind === 'link')
+                .map((r) => (
+                  <Button key={r.id} type="button" variant="secondary" size="sm" onClick={() => pickRoute(r.id)} className="self-start">
+                    {r.whatYouHave}
+                  </Button>
+                ))}
+            </div>
+          )}
+
+          {route && route.kind === 'file' && (
+            <div className="flex flex-col gap-cluster">
+              <input
+                ref={fileInput}
+                type="file"
+                accept=".json,.csv,.tsv,.txt,application/json,text/csv,text/plain"
+                aria-label="Song list file"
+                className="hidden"
+                onChange={chooseFile}
+              />
+              <button
+                type="button"
+                onClick={() => fileInput.current?.click()}
+                className="flex flex-col items-center gap-cluster rounded-lg border border-dashed border-border py-block text-center transition-colors hover:border-ember hover:bg-accent/40"
+              >
+                <UploadIcon className="h-5 w-5 text-muted-foreground" />
+                <span className="text-sm">{file ? file.name : 'Choose a file'}</span>
+                <span className="text-xs text-muted-foreground">YourLibrary.json, or a .csv</span>
+              </button>
+            </div>
+          )}
+
+          {route && route.kind === 'paste' && (
+            <textarea
+              autoFocus
+              aria-label="Your songs, one a line"
+              rows={6}
+              value={text}
+              onChange={(e) => {
+                setText(e.target.value);
+                editSource(`text:${e.target.value.trim()}`);
+              }}
+              placeholder={'Halcyon Drift - Paper Lanterns\nNadia Okonkwo - Slow Weather'}
+              className="w-full resize-none rounded-lg border border-border bg-transparent px-row py-cluster text-sm"
+            />
+          )}
+
+          {route && route.kind === 'link' && (
+            <div className="relative">
+              <LinkIcon className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                autoFocus
+                aria-label="Playlist link"
+                value={url}
+                onChange={(e) => {
+                  setUrl(e.target.value);
+                  editSource(`link:${e.target.value.trim()}`);
+                }}
+                placeholder={serviceId === 'ytmusic' ? 'Paste the YouTube Music playlist link' : 'Paste the Spotify playlist link'}
+                className="truncate pl-10"
+              />
+            </div>
+          )}
+
+          {route && route.kind === 'google' && !notSetUp && lookup.step !== 'google' && (
+            <GoogleSignInPanel signIn={signIn} onSignIn={() => void beginSignIn()} />
+          )}
+
+          {lookup.step === 'file' && <FilePreviewCard preview={lookup.preview} />}
+          {lookup.step === 'google' && (
+            <>
+              <FilePreviewCard preview={lookup.preview} />
+              {lookup.preview.toCheck > 0 && (
+                <p data-testid="google-to-check" className="text-xs text-muted-foreground">
+                  {toCheckLine(lookup.preview.toCheck)}
+                </p>
+              )}
+            </>
+          )}
+          {lookup.step === 'link' && (
+            <LinkPreview
+              kind={lookup.preview.kind}
+              name={lookup.preview.name}
+              coverUrl={lookup.preview.coverUrl}
+              count={lookup.preview.count}
+              truncated={lookup.preview.truncated}
+            />
+          )}
+          {keptFirst && (
+            <p data-testid="transfer-kept-first" className="text-xs text-muted-foreground">
+              {KEPT_FIRST_MESSAGE}
+            </p>
+          )}
+          {ready && lookup.step !== 'google' && (
+            <p data-testid="transfer-estimate" className="text-xs text-muted-foreground">
+              {transferEstimate(count)}
+            </p>
+          )}
+          {overCap && (
+            <p role="alert" data-testid="transfer-over-cap" className="text-xs text-destructive">
+              {OVER_CAP_MESSAGE}
+            </p>
+          )}
+          {empty && (
+            <p role="alert" data-testid="transfer-empty" className="text-xs text-destructive">
+              There are no songs in that.
+            </p>
+          )}
+          {lookup.step === 'looking' && <p className="text-xs text-muted-foreground">Reading it…</p>}
+          {lookup.step === 'error' && (
+            <p role="alert" data-testid="transfer-error" className="text-xs text-destructive">
+              {lookup.message}
+            </p>
+          )}
+        </div>
+      )}
+
+      {route && !notSetUp && (
+        <div className="sticky bottom-0 mt-auto bg-gradient-to-b from-transparent to-background to-30% pt-block pb-row">
+          <Button
+            type="button"
+            disabled={!ready || starting}
+            onClick={() => void start()}
+            variant="ember"
+            className="h-11 w-full"
+          >
+            {starting ? 'Starting…' : ready ? `Transfer ${count} ${count === 1 ? 'song' : 'songs'}` : 'Transfer'}
+          </Button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** The first screen: where the songs should go, as two cards on top, and
+ *  where they are now, as the four services in rows below, each saying
+ *  what a person needs for it. */
+function Chooser({
+  destination,
+  onDestination,
+  likedServicesOpen,
+  onService,
+}: {
+  destination: JobKind;
+  onDestination: (d: JobKind) => void;
+  likedServicesOpen: readonly TransferServiceId[];
+  onService: (id: TransferServiceId) => void;
+}) {
+  return (
+    <div className="flex flex-col gap-block">
+      <p className="text-sm text-muted-foreground">Where should the songs go?</p>
+      <div className="grid grid-cols-2 gap-row">
+        {DESTINATIONS.map((d) => {
+          const on = destination === d.id;
+          return (
+            <button
+              key={d.id}
+              type="button"
+              data-testid="transfer-destination-card"
+              data-destination={d.id}
+              aria-pressed={on}
+              onClick={() => onDestination(d.id)}
+              className={cn(
+                'relative flex min-w-0 flex-col gap-cluster rounded-xl border bg-card p-row text-left transition-colors hover:border-ember',
+                on ? 'border-ember bg-ember/10' : 'border-border',
+              )}
+            >
+              <d.icon className="h-5 w-5 text-ember" />
+              <span className="text-sm font-semibold">{d.name}</span>
+              <span className="text-xs text-muted-foreground">{d.consequence}</span>
+              {on && <CheckIcon className="absolute right-row top-row h-4 w-4 text-ember" />}
+            </button>
+          );
+        })}
+      </div>
+      <p className="text-sm text-muted-foreground">Where are they now?</p>
+      <div className="flex flex-col gap-cluster">
+        {TRANSFER_SERVICES.map((s) => {
+          const open = serviceOpen(s.id, destination, likedServicesOpen);
+          return (
+            <button
+              key={s.id}
+              type="button"
+              data-testid="transfer-service-card"
+              data-service={s.id}
+              data-open={open ? 'true' : 'false'}
+              disabled={!open}
+              onClick={() => onService(s.id)}
+              className="flex w-full items-center gap-row rounded-xl border border-border bg-card px-row py-row text-left transition-colors hover:border-ember disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <ServiceMark service={s} size={36} />
+              <span className="min-w-0 flex-1">
+                <span data-testid="transfer-service-name" className="block text-sm font-semibold">
+                  {s.name}
+                </span>
+                <span className="block text-xs text-muted-foreground">{s.need}</span>
+              </span>
+              <ChevronRightIcon className="h-4 w-4 text-muted-foreground" />
+            </button>
+          );
+        })}
+      </div>
+      <p className="text-xs text-muted-foreground">Every service can fill your Liked songs or make a new playlist.</p>
+    </div>
+  );
+}
+
+/** A stand-in for a service's own mark: its letter on its colour. */
+export function ServiceMark({ service, size = 28 }: { service: TransferService; size?: number }) {
+  return (
+    <span
+      aria-hidden="true"
+      className="grid shrink-0 place-items-center rounded-lg font-extrabold"
+      style={{ width: size, height: size, background: service.mark.bg, color: service.mark.fg, fontSize: Math.round(size / 2) }}
+    >
+      {service.mark.letter}
+    </span>
   );
 }
 

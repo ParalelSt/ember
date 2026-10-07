@@ -65,6 +65,10 @@ export interface TransferService {
   /** The title once this service is picked. "Somewhere else" cannot be
    *  possessive, so each service says its own. */
   heading: string;
+  /** Under the name on the chooser's row: what a person needs in hand. */
+  need: string;
+  /** A stand-in for the service's own mark: a letter on its colour. */
+  mark: { letter: string; bg: string; fg: string };
   routes: readonly TransferRoute[];
 }
 
@@ -73,6 +77,8 @@ export const TRANSFER_SERVICES: readonly TransferService[] = [
     id: 'spotify',
     name: 'Spotify',
     heading: 'Bring in your Spotify songs',
+    need: 'Your data export, a CSV or a playlist link',
+    mark: { letter: 'S', bg: '#1ed760', fg: '#06210f' },
     routes: [
       {
         id: 'spotify-export',
@@ -114,6 +120,8 @@ export const TRANSFER_SERVICES: readonly TransferService[] = [
     id: 'ytmusic',
     name: 'YouTube Music',
     heading: 'Bring in your YouTube Music songs',
+    need: 'Sign in with Google, or a playlist link',
+    mark: { letter: 'Y', bg: '#ff3b4a', fg: '#ffffff' },
     routes: [
       {
         id: 'ytmusic-google',
@@ -140,6 +148,8 @@ export const TRANSFER_SERVICES: readonly TransferService[] = [
     id: 'apple',
     name: 'Apple Music',
     heading: 'Bring in your Apple Music songs',
+    need: 'The file Apple sends you',
+    mark: { letter: 'A', bg: '#fc5c7d', fg: '#ffffff' },
     routes: [
       {
         id: 'apple-export',
@@ -159,6 +169,8 @@ export const TRANSFER_SERVICES: readonly TransferService[] = [
     id: 'other',
     name: 'Somewhere else',
     heading: 'Bring in your songs',
+    need: 'Paste a list, or any CSV',
+    mark: { letter: '+', bg: '#3a363c', fg: '#f2eeea' },
     routes: [
       {
         id: 'other-paste',

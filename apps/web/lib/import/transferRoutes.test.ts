@@ -29,8 +29,18 @@ describe('the four services a transfer asks about', () => {
     for (const q of asked) expect(q).not.toMatch(/CSV|JSON|export|headers/i);
   });
 
+  it('each says on its own row what a person needs for it', () => {
+    expect(TRANSFER_SERVICES.map((s) => s.need)).toEqual([
+      'Your data export, a CSV or a playlist link',
+      'Sign in with Google, or a playlist link',
+      'The file Apple sends you',
+      'Paste a list, or any CSV',
+    ]);
+    for (const s of TRANSFER_SERVICES) expect(s.mark.letter, s.id).toMatch(/^.$/);
+  });
+
   it('has no em dashes in anything it says', () => {
-    const everything = TRANSFER_SERVICES.flatMap((s) => [s.name, s.heading, ...s.routes.flatMap((r) => [r.whatYouHave, ...r.steps, ...r.notes])]);
+    const everything = TRANSFER_SERVICES.flatMap((s) => [s.name, s.heading, s.need, ...s.routes.flatMap((r) => [r.whatYouHave, ...r.steps, ...r.notes])]);
     for (const line of everything) expect(line).not.toContain('\u2014');
   });
 });

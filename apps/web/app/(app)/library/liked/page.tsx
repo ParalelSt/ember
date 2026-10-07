@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
 import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { CollectionPage } from '@/components/library/CollectionPage';
@@ -25,11 +26,14 @@ import { formatAddedDate } from '@/lib/format';
 import { useOfflinePin } from '@/hooks/useOfflinePin';
 import { useExecuteReplaceLike, useQueryLikes, QK } from '@/hooks/useLibrary';
 import { EmptyState } from '@/components/page/EmptyState';
+import { UploadIcon } from '@/components/icons';
 import type { ImportItem } from '@/lib/import/types';
 import type { CollectionTrack, Track } from '@/types/track';
 
 const REF = { kind: 'liked' } as const;
 const NO_TRACKS: CollectionTrack[] = [];
+/** The Transfer page, opened from here and returning here. */
+const LIKED_TRANSFER_HREF = `/transfer?from=${encodeURIComponent('/library/liked')}`;
 const addedLabel = (t: Track) => formatAddedDate((t as Partial<CollectionTrack>).addedAt);
 
 export default function LikedPage() {
@@ -112,6 +116,18 @@ export default function LikedPage() {
       hideActions={offlineEmpty}
       onReplaceTrack={setPendingReplace}
       sort={{ value: sort, onChange: setSort }}
+      actions={
+        isOnline ? (
+          <Link
+            href={LIKED_TRANSFER_HREF}
+            data-testid="liked-transfer-button"
+            className="inline-flex h-10 items-center gap-cluster rounded-full border border-border px-block text-sm font-medium transition-colors hover:bg-card"
+          >
+            <UploadIcon className="size-4" />
+            Transfer
+          </Link>
+        ) : undefined
+      }
       selection={selection}
       addedLabel={addedLabel}
       selectionBar={

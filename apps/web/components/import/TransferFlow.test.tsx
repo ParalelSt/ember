@@ -1,26 +1,17 @@
 import type { ComponentProps, PropsWithChildren } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { RATE_LIMITED_MESSAGE } from '@/lib/import/transferCopy';
 import { MATCHED_BY_NAME, SPOTIFY_LINK_CAP } from '@/lib/import/transferRoutes';
 import { GOOGLE_MESSAGES } from '@/lib/import/sources/ytmusicLiked';
 
-// The dialog's three plain questions (where they land, where the music is
-// now, what you already have), every route each answer reaches, and every
-// sentence a refused upload puts on screen. The real base-ui dialog resolves
-// a second React copy under happy-dom (see ReviewSheet.test.tsx), so its
-// shell is stubbed.
+// The Transfer page: where the songs go and where they are now on one
+// screen, then what you already have, every route each answer reaches, and
+// every sentence a refused upload puts on screen.
 
 const push = vi.fn();
 vi.mock('next/navigation', () => ({ useRouter: () => ({ push }) }));
-vi.mock('@/components/ui/dialog', () => ({
-  Dialog: ({ open, children }: PropsWithChildren<{ open: boolean }>) => (open ? <div>{children}</div> : null),
-  DialogContent: ({ children }: PropsWithChildren) => <div role="dialog">{children}</div>,
-  DialogHeader: ({ children }: PropsWithChildren) => <div>{children}</div>,
-  DialogFooter: ({ children }: PropsWithChildren) => <div>{children}</div>,
-  DialogTitle: ({ children }: PropsWithChildren) => <h2>{children}</h2>,
-}));
 vi.mock('@/components/ui/button', () => ({
   Button: ({ children, ...rest }: ComponentProps<'button'>) => <button {...rest}>{children}</button>,
 }));
@@ -42,7 +33,7 @@ const api = vi.hoisted(() => ({
 }));
 vi.mock('@/lib/api', () => ({ api }));
 
-const { TransferDialog } = await import('./TransferDialog');
+const { TransferFlow, safeFrom } = await import('./TransferFlow');
 const { ALL_SERVICES, LIKED_SERVICES_OPEN } = await import('@/lib/import/transferRoutes');
 
 const LINK = 'https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M';
@@ -81,15 +72,13 @@ const preview = (over: Record<string, unknown> = {}) => ({
 
 const job = { id: 'j1', source: 'csv', total: 3 };
 
-function setup() {
-  const onOpenChange = vi.fn();
+function setup(props: Partial<ComponentProps<typeof TransferFlow>> = {}) {
   const qc = new QueryClient();
-  render(
+  return render(
     <QueryClientProvider client={qc}>
-      <TransferDialog open onOpenChange={onOpenChange} likedServicesOpen={ALL_SERVICES} />
+      <TransferFlow likedServicesOpen={ALL_SERVICES} {...props} />
     </QueryClientProvider>,
   );
-  return { onOpenChange };
 }
 
 /** Question one: where the songs land. */
@@ -99,7 +88,9 @@ function pick(name: 'Liked songs' | 'A new playlist') {
 
 /** Question two: where the music is now. */
 function service(name: 'Spotify' | 'YouTube Music' | 'Apple Music' | 'Somewhere else') {
-  const card = screen.getAllByTestId('transfer-service-card').find((c) => c.textContent === name);
+  const card = screen
+    .getAllByTestId('transfer-service-card')
+    .find((c) => within(c).getByTestId('transfer-service-name').textContent === name);
   if (!card) throw new Error(`no service card called ${name}`);
   fireEvent.click(card);
 }
@@ -145,41 +136,59 @@ beforeEach(() => {
   api.googleLikesCancel.mockResolvedValue({ cancelled: true });
 });
 
-describe('TransferDialog: where the songs land', () => {
-  it('asks that first, as two cards with their consequence', () => {
+describe('TransferFlow: one screen, where to and where from', () => {
+  it('asks both at once: the two destinations on top, the four services below', () => {
     setup();
+    expect(screen.getByRole('heading', { name: 'Transfer songs into Ember' })).toBeInTheDocument();
     const cards = screen.getAllByTestId('transfer-destination-card');
     expect(cards.map((c) => c.dataset.destination)).toEqual(['liked', 'playlist']);
     expect(cards[0]).toHaveTextContent('These become your likes and shape your mixes and radio.');
     expect(cards[1]).toHaveTextContent('A playlist you can edit, reorder and share.');
-    // Nothing else is asked yet, and nothing can be started.
-    expect(screen.queryAllByTestId('transfer-service-card')).toHaveLength(0);
-    expect(screen.queryByRole('button', { name: /^Transfer/ })).toBeNull();
-  });
-
-  it('picking one asks where the music is now, saying where it is going', () => {
-    setup();
-    pick('Liked songs');
-    expect(screen.getByTestId('transfer-chosen-destination')).toHaveTextContent('Going to your Liked songs');
-    expect(screen.getAllByTestId('transfer-service-card').map((c) => c.textContent)).toEqual([
+    const rows = screen.getAllByTestId('transfer-service-card');
+    expect(rows.map((c) => within(c).getByTestId('transfer-service-name').textContent)).toEqual([
       'Spotify',
       'YouTube Music',
       'Apple Music',
       'Somewhere else',
     ]);
+    // Each row says what it needs, and nothing can be started yet.
+    expect(rows[0]).toHaveTextContent('Your data export, a CSV or a playlist link');
+    expect(rows[1]).toHaveTextContent('Sign in with Google, or a playlist link');
+    expect(rows[2]).toHaveTextContent('The file Apple sends you');
+    expect(rows[3]).toHaveTextContent('Paste a list, or any CSV');
     expect(screen.queryByRole('button', { name: /^Transfer/ })).toBeNull();
   });
 
-  it('Back returns to the two cards', () => {
+  it('Liked songs is picked to start with, and a tap moves the pick', () => {
     setup();
-    pick('A new playlist');
-    expect(screen.getByTestId('transfer-chosen-destination')).toHaveTextContent('a new playlist');
-    fireEvent.click(screen.getByRole('button', { name: /Back/ }));
-    expect(screen.getAllByTestId('transfer-destination-card')).toHaveLength(2);
+    const [liked, playlist] = screen.getAllByTestId('transfer-destination-card');
+    expect(liked).toHaveAttribute('aria-pressed', 'true');
+    expect(playlist).toHaveAttribute('aria-pressed', 'false');
+    fireEvent.click(playlist);
+    expect(playlist).toHaveAttribute('aria-pressed', 'true');
+    expect(liked).toHaveAttribute('aria-pressed', 'false');
+  });
+
+  it('can open on the new-playlist card', () => {
+    setup({ initialDestination: 'playlist' });
+    expect(screen.getAllByTestId('transfer-destination-card')[1]).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  it('Back on the first screen returns to the page it was opened from', () => {
+    setup({ from: '/settings/library' });
+    fireEvent.click(screen.getByRole('button', { name: 'Back' }));
+    expect(push).toHaveBeenCalledWith('/settings/library');
+  });
+
+  it('only follows an app path back, never another site', () => {
+    expect(safeFrom('/settings/library')).toBe('/settings/library');
+    expect(safeFrom('https://evil.example')).toBe('/library/liked');
+    expect(safeFrom('//evil.example')).toBe('/library/liked');
+    expect(safeFrom(undefined)).toBe('/library/liked');
   });
 });
 
-describe('TransferDialog: what do you have already', () => {
+describe('TransferFlow: what do you have already', () => {
   it('Spotify asks about an export first, then a file, then a link, for Liked songs', () => {
     setup();
     pick('Liked songs');
@@ -251,8 +260,9 @@ describe('TransferDialog: what do you have already', () => {
     expect(screen.getAllByTestId('transfer-have-option').length).toBeGreaterThan(1);
     fireEvent.click(screen.getByRole('button', { name: /Back/ }));
     expect(screen.getAllByTestId('transfer-service-card')).toHaveLength(4);
-    fireEvent.click(screen.getByRole('button', { name: /Back/ }));
     expect(screen.getAllByTestId('transfer-destination-card')).toHaveLength(2);
+    fireEvent.click(screen.getByRole('button', { name: /Back/ }));
+    expect(push).toHaveBeenCalledWith('/library/liked');
   });
 
   it('a service with nothing to ask goes straight back to the services', () => {
@@ -264,7 +274,7 @@ describe('TransferDialog: what do you have already', () => {
   });
 });
 
-describe('TransferDialog: every answer reaches its route', () => {
+describe('TransferFlow: every answer reaches its route', () => {
   it('an uploaded file is read and previewed: where it came from, how many, the first songs', async () => {
     api.transferPreview.mockResolvedValue(preview({ count: 42, dropped: 2 }));
     setup();
@@ -283,7 +293,7 @@ describe('TransferDialog: every answer reaches its route', () => {
   it('starting an uploaded transfer sends the destination and lands on the Liked page', async () => {
     api.transferPreview.mockResolvedValue(preview());
     api.transferStart.mockResolvedValue({ job, playlistId: null });
-    const { onOpenChange } = setup();
+    setup();
     toSpotifyFile();
     chooseFile();
     await waitFor(() => expect(startButton()).toBeEnabled());
@@ -291,7 +301,6 @@ describe('TransferDialog: every answer reaches its route', () => {
     await waitFor(() => expect(api.transferStart).toHaveBeenCalled());
     expect(api.transferStart.mock.calls[0][0]).toMatchObject({ destination: 'liked' });
     await waitFor(() => expect(push).toHaveBeenCalledWith('/library/liked'));
-    expect(onOpenChange).toHaveBeenCalledWith(false);
   });
 
   it('the same file can make a playlist instead, and lands on it', async () => {
@@ -387,7 +396,7 @@ describe('TransferDialog: every answer reaches its route', () => {
   });
 });
 
-describe('TransferDialog: what it says when Ember will not take it', () => {
+describe('TransferFlow: what it says when Ember will not take it', () => {
   const cases: [string, number, string, string][] = [
     ['nothing to read', 400, 'Choose a file or paste your songs.', 'Choose a file or paste your songs.'],
     [
@@ -466,7 +475,7 @@ describe('TransferDialog: what it says when Ember will not take it', () => {
   });
 });
 
-describe('TransferDialog: YouTube Music likes, after a Google sign-in', () => {
+describe('TransferFlow: YouTube Music likes, after a Google sign-in', () => {
   const FLOW = 'flow_abcdefghijklmnopqrstuv';
   const googlePreview = (over: Record<string, unknown> = {}) => ({
     kind: 'ytmusic-liked',
@@ -564,7 +573,7 @@ describe('TransferDialog: YouTube Music likes, after a Google sign-in', () => {
       .mockResolvedValueOnce({ state: 'reading', checking: { done: 40, total: 120 } })
       .mockResolvedValue({ state: 'ready', preview: googlePreview() });
     api.googleLikesStart.mockResolvedValue({ job, playlistId: null, truncated: false, note: null });
-    const { onOpenChange } = setup();
+    setup();
     toGoogle();
     fireEvent.click(signInButton());
     await waitFor(() => expect(screen.getByTestId('google-code-panel')).toBeInTheDocument());
@@ -597,7 +606,6 @@ describe('TransferDialog: YouTube Music likes, after a Google sign-in', () => {
     fireEvent.click(startButton());
     await waitFor(() => expect(api.googleLikesStart).toHaveBeenCalledWith(FLOW));
     await waitFor(() => expect(push).toHaveBeenCalledWith('/library/liked'));
-    expect(onOpenChange).toHaveBeenCalledWith(false);
     // Started, so there is nothing left to cancel.
     expect(api.googleLikesCancel).not.toHaveBeenCalled();
   });
@@ -696,21 +704,12 @@ describe('TransferDialog: YouTube Music likes, after a Google sign-in', () => {
     await waitFor(() => expect(screen.getByTestId('google-not-set-up')).toBeInTheDocument());
   });
 
-  it('closing the dialog mid-sign-in cancels it, so the server revokes it now', async () => {
-    const qc = new QueryClient();
-    const { rerender } = render(
-      <QueryClientProvider client={qc}>
-        <TransferDialog open onOpenChange={vi.fn()} />
-      </QueryClientProvider>,
-    );
+  it('leaving the page mid-sign-in cancels it, so the server revokes it now', async () => {
+    const { unmount } = setup();
     toGoogle();
     fireEvent.click(signInButton());
     await waitFor(() => expect(screen.getByTestId('google-code-panel')).toBeInTheDocument());
-    rerender(
-      <QueryClientProvider client={qc}>
-        <TransferDialog open={false} onOpenChange={vi.fn()} />
-      </QueryClientProvider>,
-    );
+    unmount();
     await waitFor(() => expect(api.googleLikesCancel).toHaveBeenCalledWith(FLOW));
     expect(api.googleLikesCancel).toHaveBeenCalledTimes(1);
     // And stops asking about it.
@@ -719,22 +718,13 @@ describe('TransferDialog: YouTube Music likes, after a Google sign-in', () => {
     expect(api.googleLikesStatus.mock.calls.length).toBe(calls);
   });
 
-  it('a code that arrives after the dialog closed is cancelled, never shown', async () => {
+  it('a code that arrives after the page was left is cancelled, never shown', async () => {
     let answer: (v: typeof begun) => void = () => {};
     api.googleLikesBegin.mockReturnValue(new Promise((r) => (answer = r)));
-    const qc = new QueryClient();
-    const { rerender } = render(
-      <QueryClientProvider client={qc}>
-        <TransferDialog open onOpenChange={vi.fn()} />
-      </QueryClientProvider>,
-    );
+    const { unmount } = setup();
     toGoogle();
     fireEvent.click(signInButton());
-    rerender(
-      <QueryClientProvider client={qc}>
-        <TransferDialog open={false} onOpenChange={vi.fn()} />
-      </QueryClientProvider>,
-    );
+    unmount();
     await act(async () => answer(begun));
     await waitFor(() => expect(api.googleLikesCancel).toHaveBeenCalledWith(FLOW));
     await poll();
@@ -782,7 +772,7 @@ describe('TransferDialog: YouTube Music likes, after a Google sign-in', () => {
   });
 });
 
-describe('TransferDialog: the time estimate', () => {
+describe('TransferFlow: the time estimate', () => {
   it('a by-name preview says about how long and that the page can be left', async () => {
     api.transferPreview.mockResolvedValue(preview({ count: 300 }));
     setup();
@@ -801,12 +791,12 @@ describe('TransferDialog: the time estimate', () => {
   });
 });
 
-describe('TransferDialog: every service can fill the Liked songs', () => {
+describe('TransferFlow: every service can fill the Liked songs', () => {
   function setupDefault() {
     const qc = new QueryClient();
     render(
       <QueryClientProvider client={qc}>
-        <TransferDialog open onOpenChange={vi.fn()} />
+        <TransferFlow />
       </QueryClientProvider>,
     );
   }
