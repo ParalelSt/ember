@@ -12,7 +12,6 @@ vi.mock('next/headers', () => ({
 }));
 const seen = vi.hoisted(() => ({ token: 'unset' as string | null }));
 vi.mock('@/components/auth/ApproveLinkView', () => ({
-  LINK_TOKEN_RE: /^[A-Za-z0-9_-]{43}$/,
   ApproveLinkView: ({ token }: { token: string | null }) => {
     seen.token = token;
     return <div data-testid="view" />;

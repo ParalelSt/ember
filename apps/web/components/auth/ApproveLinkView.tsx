@@ -4,8 +4,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { ApproveSignIn } from '@/components/auth/ApproveSignIn';
 import { PageTitle } from '@/components/page/PageTitle';
-
-export const LINK_TOKEN_RE = /^[A-Za-z0-9_-]{43}$/;
+import { LINK_TOKEN_RE } from '@/lib/qrLogin/codes';
 
 /** The approve page's body, for /link/<token> (signed in when the QR was
  *  scanned) and /link (token stashed by proxy.ts across a sign-in). The

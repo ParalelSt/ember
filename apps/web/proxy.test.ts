@@ -360,7 +360,7 @@ describe('proxy [qr sign-in]: the approve page is a signed-in page', () => {
     expect(res.headers.getSetCookie().some((c) => c.startsWith('ember_link='))).toBe(false);
   });
 
-  it('signed in, /link is rendered from the stashed cookie and the response clears it', async () => {
+  it('signed in, /link is rendered with the stashed cookie, which the page request leaves alone', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ token: futureToken(), record: { id: 'u1', collectionName: 'users' } }), {
       status: 200, headers: { 'content-type': 'application/json' },
     })));
@@ -368,10 +368,9 @@ describe('proxy [qr sign-in]: the approve page is a signed-in page', () => {
       const cookie = `pb_auth=${encodeURIComponent(JSON.stringify({ token: futureToken(), record: { id: 'u1' } }))}; ember_link=${TOKEN}`;
       const res = await proxy(req('/link', { cookie }));
       expect(res.status).toBe(200);
-      // The page render still sees it ...
-      expect(res.headers.get('x-middleware-request-cookie') ?? cookie).toContain(`ember_link=${TOKEN}`);
-      // ... and the browser drops it.
-      expect(res.headers.getSetCookie().some((c) => /^ember_link=;/.test(c) && /Max-Age=0/.test(c))).toBe(true);
+      // Sign-in does router.push then router.refresh: both renders of /link
+      // must still see it. The lookup route clears it once it is used.
+      expect(res.headers.getSetCookie().some((c) => c.startsWith('ember_link='))).toBe(false);
     } finally {
       vi.unstubAllGlobals();
     }

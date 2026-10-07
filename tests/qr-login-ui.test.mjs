@@ -272,7 +272,7 @@ try {
   const cCard = await c.getByTestId('approve-card').textContent();
   check('C4 after sign-in it lands on /link with the card for that request, the token never in a URL', c.url() === `${APP}/link` &&
     cCard.includes(bDevice) && !c.url().includes(tokenB), c.url());
-  check('C5 and the stashed cookie is gone', !(await cCtx.cookies()).some((x) => x.name === 'ember_link'));
+  check('C5 and the stashed cookie is gone once the card has used it', !(await cCtx.cookies()).some((x) => x.name === 'ember_link'));
   await cCtx.close();
 
   // ── A approves ──

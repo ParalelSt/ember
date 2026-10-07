@@ -32,3 +32,14 @@ export function normalizeCode(input: unknown): string | null {
 export function formatCode(code: string): string {
   return `${code.slice(0, 4)}-${code.slice(4)}`;
 }
+
+/** The approve token from a QR link (/link/<token>): 32 bytes, base64url. */
+export const LINK_TOKEN_RE = /^[A-Za-z0-9_-]{43}$/;
+
+/** A signed-out phone's approve token waits here across its sign-in
+ *  (proxy.ts sets it, the /link page reads it, the lookup route clears it):
+ *  httpOnly, only sent to /link, 5 minutes. */
+export const LINK_COOKIE = 'ember_link';
+export function linkCookie(value: string, maxAgeS: number, secure: boolean): string {
+  return `${LINK_COOKIE}=${value}; Path=/link; Max-Age=${maxAgeS}; HttpOnly; SameSite=Lax${secure ? '; Secure' : ''}`;
+}

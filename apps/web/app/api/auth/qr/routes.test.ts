@@ -382,6 +382,18 @@ describe('POST lookup', () => {
     for (const secret of [r.token, r.secret, r.code, hash(r.token), hash(r.secret)]) expect(res.text).not.toContain(secret);
   });
 
+  it('a lookup by token drops the token proxy.ts stashed for /link across a sign-in', async () => {
+    const r = await newRequest();
+    asUser(MEMBER);
+    const res = await hit(lookup.POST, '/api/auth/qr/lookup', { body: { token: r.token } });
+    const clear = res.res.headers.getSetCookie().find((c) => c.startsWith('ember_link='));
+    expect(clear).toMatch(/^ember_link=;/);
+    expect(clear).toMatch(/Path=\/link(;|$)/);
+    expect(clear).toMatch(/Max-Age=0/);
+    const unknown = await hit(lookup.POST, '/api/auth/qr/lookup', { body: { token: 'B'.repeat(43) } });
+    expect(unknown.res.headers.getSetCookie().some((c) => c.startsWith('ember_link=;'))).toBe(true);
+  });
+
   it('by code, typed any way, and the network line', async () => {
     const r = await newRequest();
     asUser(MEMBER);
