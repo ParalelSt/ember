@@ -34,8 +34,11 @@ export interface ReleaseAsset {
   id: number;
   name: string;
   size: number;
+  /** "sha256:<hex>", which GitHub reports for assets uploaded since mid 2025
+   *  (absent on older ones). */
+  digest?: string | null;
 }
-interface Release {
+export interface Release {
   tag_name: string;
   name?: string;
   body?: string;
@@ -59,8 +62,9 @@ function ghHeaders(): HeadersInit {
   };
 }
 
-/** Latest published (non-draft, non-prerelease) release. */
-async function latestRelease(): Promise<Release | null> {
+/** Latest published (non-draft, non-prerelease) release. Shared with the
+ *  Android app's feed (lib/androidUpdate.ts), so both read one cached copy. */
+export async function latestRelease(): Promise<Release | null> {
   if (cache && Date.now() - cache.at < CACHE_MS) return cache.release;
   if (!TOKEN) return null;
 

@@ -52,6 +52,13 @@ describe('proxy [bughunt W05]: unauthenticated /api/* gets 401 JSON, not a redir
     expect(res.headers.get('location')).toBeNull();
   });
 
+  it('leaves the desktop and Android update feeds open with no session', async () => {
+    for (const path of ['/api/desktop/update/darwin/aarch64/0.4.0', '/api/android/update?version=0.4.18', '/api/android/apk/123']) {
+      const res = await proxy(req(path));
+      expect(res.status, path).toBe(200);
+    }
+  });
+
   it('leaves the /pb proxy path open with no session', async () => {
     const res = await proxy(req('/pb/api/collections/users/auth-with-password'));
     expect(res.status).toBe(200);

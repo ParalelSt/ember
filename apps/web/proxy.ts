@@ -23,7 +23,10 @@ const PUBLIC_API_PREFIXES = ['/api/youtube/stream/', '/api/search', '/api/tracks
   // The desktop updater runs in Rust with no browser session, so its feed and
   // the asset proxy must be reachable without one. They expose the latest
   // version and a proxied installer, no user data.
-  '/api/desktop/'];
+  '/api/desktop/',
+  // The same for the phone app's updater (AppUpdater.kt): a signed-out phone
+  // must still update. The latest version and its APK, nothing else.
+  '/api/android/'];
 
 /** An upload's audio or cover asked for with a signed cast link (`?st=`):
  *  a Chromecast has no session to send. Let through to the route, which
