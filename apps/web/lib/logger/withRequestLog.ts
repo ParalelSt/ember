@@ -10,8 +10,9 @@ type RouteHandler<Ctx = any> = (req: NextRequest, ctx: Ctx) => Promise<Response>
 /** Routes where a 429 is the automatic-report quota doing its job, not a
  *  problem worth a human's attention: keep it out of the digest by logging
  *  it at 'info' instead of 'warn'. A real 5xx from these routes still logs
- *  normally (see below), so an actual failure stays visible. */
-const QUIET_429_ROUTES = new Set(['bug-report', 'requests']);
+ *  normally (see below), so an actual failure stays visible. native-log is
+ *  the phone app's player log over its batch budget: the limit working. */
+const QUIET_429_ROUTES = new Set(['bug-report', 'requests', 'native-log']);
 
 /** Best-effort current user id, verified the same way requireUser() does
  *  (PocketBase's answer to the session token, not the cookie's editable

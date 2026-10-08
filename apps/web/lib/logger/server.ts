@@ -130,6 +130,14 @@ export const serverLogger = {
     writeEntry('info', category, message, data, err, ctx);
   },
 
+  /** Writes a fully built entry as it is (the phone app's own player log,
+ *  lib/logger/nativeLog.ts, which carries its own ts, session and surface).
+ *  The caller has scrubbed it. Fire-and-forget like the rest. */
+  append(entry: ServerLogEntry): void {
+    ensureDailySweep();
+    void appendLine(entry).catch((e) => console.warn('[serverLogger] append failed', e));
+  },
+
   /** Returns server entries with ts > timestampMs. Reads today's + yesterday's
    *  files (covers the report window even across UTC midnight). */
   async recentSince(timestampMs: number): Promise<ServerLogEntry[]> {

@@ -10,6 +10,8 @@ import type { ImportItem, ImportJob, InspectResult, JobKind } from '@/lib/import
 import type { TransferPreview } from '@/app/api/import/upload/route';
 import type { FlowState as GoogleFlowState, GooglePreview } from '@/lib/import/google/flows';
 import type { TabSummary } from '@/lib/tabSources';
+import type { NativeDevice } from '@/lib/logger/nativeLog';
+import type { NativeSurface } from '@/lib/logger/types';
 import type { TabTiming } from '@/lib/tabSync';
 import type { StoredPlugins } from '@/lib/pluginSettings';
 import type { NavPatch, NavPrefs } from '@/lib/navPlaylists';
@@ -48,6 +50,13 @@ export interface AdminInvite {
   id: string;
   email: string;
   created: string;
+}
+
+/** GET /api/admin/native-log: the phone app's player log per device. */
+export interface AdminNativeLog {
+  since: number;
+  hours: 24 | 48;
+  devices: NativeDevice[];
 }
 
 /** GET /api/admin/backups (lib/backups.ts). */
@@ -635,6 +644,13 @@ export const api = {
     deleteInvite: (id: string) =>
       req<{ ok: true }>(`/admin/invites/${encodeURIComponent(id)}`, { method: 'DELETE' }),
 
+    nativeLog: (opts: { surface?: NativeSurface; hours?: 24 | 48 } = {}) => {
+      const qs = new URLSearchParams();
+      if (opts.surface) qs.set('surface', opts.surface);
+      if (opts.hours) qs.set('hours', String(opts.hours));
+      const tail = qs.toString();
+      return req<AdminNativeLog>(`/admin/native-log${tail ? `?${tail}` : ''}`);
+    },
     backups: () => req<AdminBackupsStatus>('/admin/backups'),
     backupNow: () =>
       req<AdminBackupsStatus>('/admin/backups', { method: 'POST', expected: [409] }),

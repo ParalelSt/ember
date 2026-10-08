@@ -173,3 +173,17 @@ describe('boot sweep', () => {
     expect(fs.existsSync(path.join(logDir, staleFile))).toBe(false);
   });
 });
+
+describe('serverLogger.append (the phone app\'s native log)', () => {
+  it('writes the entry as given into the day\'s file, where entriesSince finds it', async () => {
+    const e = entry({ category: 'native', level: 'warn', message: 'play did not start within 8 s', surface: 'aaos', userId: 'u1', sessionId: 'native:s1' });
+    serverLogger.append(e);
+    let found: ServerLogEntry[] = [];
+    for (let i = 0; i < 50 && found.length === 0; i++) {
+      await new Promise((r) => setTimeout(r, 10));
+      found = await serverLogger.entriesSince(e.ts - 1);
+    }
+    expect(found).toEqual([e]);
+    expect(fs.readdirSync(logDir)).toContain(fileFor(new Date()));
+  });
+});

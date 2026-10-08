@@ -2,6 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
+import type { NativeSurface } from '@/lib/logger/types';
 
 export const ADMIN_QK = {
   users: ['admin', 'users'] as const,
@@ -109,6 +110,15 @@ export function useExecuteDeleteAdminInvite() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: INVITES_QK });
     },
+  });
+}
+
+// ───── Car and Android Auto log ─────
+
+export function useQueryAdminNativeLog(surface: NativeSurface | undefined, hours: 24 | 48) {
+  return useQuery({
+    queryKey: ['admin', 'native-log', surface ?? 'all', hours] as const,
+    queryFn: () => api.admin.nativeLog({ surface, hours }),
   });
 }
 

@@ -11,6 +11,7 @@ import { useSettingsStore } from '@/stores/useSettingsStore';
 import { registerThemeCookieWriter, useThemeStore } from '@/stores/useThemeStore';
 import { parseThemeDoc, sameDoc } from '@/lib/theme/model';
 import { logger } from '@/lib/logger/client';
+import { flushNativeCookies } from '@/lib/nativeCookies';
 
 /** Minimal user shape exposed to the app — matches the old Supabase one
  *  closely enough that consumers don't care which backend produced it. */
@@ -71,6 +72,9 @@ export function AuthProvider({ children, initialUser }: { children: ReactNode; i
       const record = pb.authStore.record;
       setUser(record ? mapRecord(pb, record) : null);
       setLoading(false);
+      // The client wrapper has just rewritten pb_auth; in the phone app it
+      // goes to disk now, not ~30 s later (a kill in between lost it).
+      void flushNativeCookies();
     });
 
     // If we mounted without an initial user, attempt a token refresh so a

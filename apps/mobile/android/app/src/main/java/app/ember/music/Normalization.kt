@@ -265,6 +265,24 @@ class LevelPlayer(
      *  service reorders the queue instead (QueueShuffle). Null: as is. */
     private val onShuffle: ((Boolean) -> Unit)? = null,
 ) : ForwardingPlayer(player), HistoryBack {
+    /** "Play did not start" and the audio focus timing (PlaybackLog.kt):
+     *  every play from the app, the car or a key comes through here, and
+     *  ExoPlayer asks for focus inside the call. Null: no watching. */
+    var watch: PlayWatch? = null
+
+    override fun play() {
+        val w = watch ?: return super.play()
+        w.beforePlay(wrappedPlayer)
+        try { super.play() } finally { w.afterPlay(wrappedPlayer) }
+    }
+
+    override fun setPlayWhenReady(playWhenReady: Boolean) {
+        val w = watch
+        if (w == null || !playWhenReady) return super.setPlayWhenReady(playWhenReady)
+        w.beforePlay(wrappedPlayer)
+        try { super.setPlayWhenReady(true) } finally { w.afterPlay(wrappedPlayer) }
+    }
+
     override fun setVolume(volume: Float) = normalizer.setUserLevel(volume)
     override fun seekBackTo(index: Int) {
         history?.seekBack(wrappedPlayer, index)
