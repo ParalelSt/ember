@@ -180,11 +180,30 @@ async function quiet<T>(path: string, { method = 'GET', body }: ReqOptions = {})
 
 /** A file goes as multipart so it is never turned into a JSON string;
  *  pasted text goes as plain JSON. */
-function transferBody(input: { file?: File; text?: string; destination?: JobKind }): FormData | { text: string; destination?: JobKind } {
-  if (!input.file) return { text: input.text ?? '', ...(input.destination ? { destination: input.destination } : {}) };
+/** Which songs of a pasted link the person has already liked. */
+export interface LinkLikedCounts {
+  count: number;
+  sample: { title: string; artist: string }[];
+  newSample: { title: string; artist: string }[];
+}
+
+function transferBody(input: {
+  file?: File;
+  text?: string;
+  destination?: JobKind;
+  skipLiked?: boolean;
+}): FormData | { text: string; destination?: JobKind; skipLiked?: true } {
+  if (!input.file) {
+    return {
+      text: input.text ?? '',
+      ...(input.destination ? { destination: input.destination } : {}),
+      ...(input.skipLiked ? { skipLiked: true as const } : {}),
+    };
+  }
   const form = new FormData();
   form.append('file', input.file);
   if (input.destination) form.append('destination', input.destination);
+  if (input.skipLiked) form.append('skipLiked', '1');
   return form;
 }
 
@@ -299,21 +318,24 @@ export const api = {
   saveSession: (id: string, name?: string) =>
     req<{ playlist: { id: string; name: string } }>(`/sessions/${id}/save`, { method: 'POST', body: { name } }),
   /** Inspect a pasted playlist link for the create dialog's preview. */
-  importInspect: (url: string) =>
-    req<InspectResult>('/import/inspect', { method: 'POST', body: { url } }),
+  importInspect: (url: string, opts: { liked?: boolean } = {}) =>
+    req<InspectResult & { liked?: LinkLikedCounts }>('/import/inspect', {
+      method: 'POST',
+      body: opts.liked ? { url, liked: true } : { url },
+    }),
   /** Queue the import of a pasted link. The default destination creates the
    *  playlist now; `liked` makes its songs likes and returns no playlist. */
-  importStart: (url: string, destination: JobKind = 'playlist') =>
+  importStart: (url: string, destination: JobKind = 'playlist', opts: { skipLiked?: boolean } = {}) =>
     req<{ job: ImportJob; playlistId: string | null }>('/import/jobs', {
       method: 'POST',
-      body: { url, destination },
+      body: opts.skipLiked ? { url, destination, skipLiked: true } : { url, destination },
     }),
   /** What is in an uploaded file or a pasted list, without starting
    *  anything. */
   transferPreview: (input: { file?: File; text?: string }) =>
     req<{ preview: TransferPreview }>('/import/upload?preview=1', { method: 'POST', body: transferBody(input) }),
   /** Queue a transfer from an uploaded file or a pasted list. */
-  transferStart: (input: { file?: File; text?: string; destination?: JobKind }) =>
+  transferStart: (input: { file?: File; text?: string; destination?: JobKind; skipLiked?: boolean }) =>
     req<{ job: ImportJob; playlistId: string | null }>('/import/upload', { method: 'POST', body: transferBody(input) }),
   /** Is Google sign-in set up on this server? */
   googleLikesConfig: () => req<{ configured: boolean }>('/import/liked/google'),
@@ -354,6 +376,12 @@ export const api = {
     req<{ item: ImportItem; job: ImportJob }>(`/import/items/${encodeURIComponent(id)}`, {
       method: 'POST',
       body: { action: 'skip' },
+    }),
+  /** Undo a Use or a Skip: the song goes back to `to`. */
+  undoImportItem: (id: string, to: 'review' | 'missing') =>
+    req<{ item: ImportItem; job: ImportJob }>(`/import/items/${encodeURIComponent(id)}`, {
+      method: 'POST',
+      body: { action: 'undo', to },
     }),
   // — Recent searches (server-backed so they sync across devices) —
   listRecentSearches: () => req<{ tracks: Track[] }>('/recent-searches'),

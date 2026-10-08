@@ -45,6 +45,8 @@ export interface TransferRoute {
   kind: TransferRouteKind;
   /** The plain "what do you have already?" option that leads here. */
   whatYouHave: string;
+  /** Under that option: how long this way takes, or what it asks of you. */
+  time: string;
   steps: readonly string[];
   /** Plain lines under the steps: what this way in cannot do, and how the
    *  songs are found. */
@@ -52,6 +54,10 @@ export interface TransferRoute {
   /** True only for the Google sign-in: it always lands its
    *  songs in the likes, so it makes no sense as a way to build a playlist. */
   likedOnly?: boolean;
+  /** Listed first when the songs are going into a new playlist, last for
+   *  Liked songs: a link shows only a public playlist, which is a poor way
+   *  to bring a whole library across. */
+  playlistFirst?: boolean;
 }
 
 export interface TransferService {
@@ -61,6 +67,10 @@ export interface TransferService {
   /** The title once this service is picked. "Somewhere else" cannot be
    *  possessive, so each service says its own. */
   heading: string;
+  /** Under the name on the chooser's row: what a person needs in hand. */
+  need: string;
+  /** A stand-in for the service's own mark: a letter on its colour. */
+  mark: { letter: string; bg: string; fg: string };
   routes: readonly TransferRoute[];
 }
 
@@ -69,32 +79,14 @@ export const TRANSFER_SERVICES: readonly TransferService[] = [
     id: 'spotify',
     name: 'Spotify',
     heading: 'Bring in your Spotify songs',
+    need: 'Your data export, a CSV or a playlist link',
+    mark: { letter: 'S', bg: '#1ed760', fg: '#06210f' },
     routes: [
-      {
-        id: 'spotify-link',
-        kind: 'link',
-        whatYouHave: 'A link to a playlist',
-        steps: [
-          'Spotify cannot share your liked songs as a link, so in Spotify make a new playlist and add them to it.',
-          'Make that playlist public, then copy its link.',
-          'Paste the link below.',
-        ],
-        notes: [SPOTIFY_LINK_CAP, MATCHED_BY_NAME],
-      },
-      {
-        id: 'spotify-converter',
-        kind: 'file',
-        whatYouHave: 'A file someone gave me, or one I downloaded',
-        steps: [
-          'If you do not have the file yet, a free site like Exportify, Soundiiz or TuneMyMusic will make one: sign in with Spotify and export your Liked Songs as a CSV.',
-          'Choose that file below.',
-        ],
-        notes: [MATCHED_BY_NAME],
-      },
       {
         id: 'spotify-export',
         kind: 'file',
         whatYouHave: 'Nothing yet, but I can wait a few days',
+        time: 'Free and complete. Spotify takes a few days',
         steps: [
           'In Spotify, go to Account, then Privacy settings.',
           'Choose "Download your data" and ask for it. Spotify emails you in a few days.',
@@ -103,17 +95,44 @@ export const TRANSFER_SERVICES: readonly TransferService[] = [
         ],
         notes: [MATCHED_BY_NAME],
       },
+      {
+        id: 'spotify-converter',
+        kind: 'file',
+        whatYouHave: 'A file someone gave me, or one I downloaded',
+        time: 'Instant, through a free site',
+        steps: [
+          'If you do not have the file yet, a free site like Exportify, Soundiiz or TuneMyMusic will make one: sign in with Spotify and export your Liked Songs as a CSV.',
+          'Choose that file below.',
+        ],
+        notes: [MATCHED_BY_NAME],
+      },
+      {
+        id: 'spotify-link',
+        kind: 'link',
+        playlistFirst: true,
+        whatYouHave: 'A link to a playlist',
+        time: 'Instant, first 100 songs only',
+        steps: [
+          'Spotify cannot share your liked songs as a link, so in Spotify make a new playlist and add them to it.',
+          'Make that playlist public, then copy its link.',
+          'Paste the link below.',
+        ],
+        notes: [SPOTIFY_LINK_CAP, MATCHED_BY_NAME],
+      },
     ],
   },
   {
     id: 'ytmusic',
     name: 'YouTube Music',
     heading: 'Bring in your YouTube Music songs',
+    need: 'Sign in with Google, or a playlist link',
+    mark: { letter: 'Y', bg: '#ff3b4a', fg: '#ffffff' },
     routes: [
       {
         id: 'ytmusic-google',
         kind: 'google',
         whatYouHave: 'I can sign in to my Google account',
+        time: 'Exact, about a minute',
         steps: GOOGLE_SIGNIN_STEPS,
         notes: [GOOGLE_FORGET_NOTE, GOOGLE_MUSIC_ONLY_NOTE, NOTHING_TO_MATCH],
         likedOnly: true,
@@ -122,6 +141,7 @@ export const TRANSFER_SERVICES: readonly TransferService[] = [
         id: 'ytmusic-link',
         kind: 'link',
         whatYouHave: 'A link to a playlist',
+        time: 'Instant, from a public playlist',
         steps: [
           'In YouTube Music, make a playlist from your liked songs: Library, then Liked, then add them all to a new playlist.',
           'Make that playlist public and copy its share link.',
@@ -135,11 +155,14 @@ export const TRANSFER_SERVICES: readonly TransferService[] = [
     id: 'apple',
     name: 'Apple Music',
     heading: 'Bring in your Apple Music songs',
+    need: 'The file Apple sends you',
+    mark: { letter: 'A', bg: '#fc5c7d', fg: '#ffffff' },
     routes: [
       {
         id: 'apple-export',
         kind: 'file',
         whatYouHave: 'A file Apple sent me',
+        time: 'Apple takes a few days',
         steps: [
           'On an iPhone, or at privacy.apple.com, ask for a copy of your data and choose Apple Media Services.',
           "Wait for Apple's email, which can take a few days, and download the file it links to.",
@@ -154,11 +177,14 @@ export const TRANSFER_SERVICES: readonly TransferService[] = [
     id: 'other',
     name: 'Somewhere else',
     heading: 'Bring in your songs',
+    need: 'Paste a list, or any CSV',
+    mark: { letter: '+', bg: '#3a363c', fg: '#f2eeea' },
     routes: [
       {
         id: 'other-paste',
         kind: 'paste',
         whatYouHave: 'Just a list I can type out',
+        time: 'Type or paste, one a line',
         steps: ['Write your songs down, one a line, like "Artist - Title".', 'Paste that list below.'],
         notes: [MATCHED_BY_NAME],
       },
@@ -166,6 +192,7 @@ export const TRANSFER_SERVICES: readonly TransferService[] = [
         id: 'other-file',
         kind: 'file',
         whatYouHave: 'A file someone gave me',
+        time: 'Any CSV with a header row',
         steps: ['Get the file with your songs in it, from a friend or another app, as a CSV.', 'Choose it below.'],
         notes: [MATCHED_BY_NAME],
       },
@@ -173,14 +200,13 @@ export const TRANSFER_SERVICES: readonly TransferService[] = [
   },
 ];
 
-/** Which services can fill the Liked songs for now. The owner has opened
- *  only YouTube Music (its Google sign-in brings the exact songs over); the
- *  others stay listed, crossed out, until they are opened again here. A new
- *  playlist can still come from any of them. */
-export const LIKED_SERVICES_OPEN: readonly TransferServiceId[] = ['ytmusic'];
-
 /** Every service, for when nothing is held back. */
 export const ALL_SERVICES: readonly TransferServiceId[] = ['spotify', 'ytmusic', 'apple', 'other'];
+
+/** Which services can fill the Liked songs. All of them: each has a way in
+ *  that ends in the same transfer. A future hold-back is one line here, and
+ *  the dialog crosses out whatever is left off. */
+export const LIKED_SERVICES_OPEN: readonly TransferServiceId[] = ALL_SERVICES;
 
 /** Whether a service card can be picked for this destination. */
 export function serviceOpen(
@@ -199,7 +225,8 @@ export function serviceById(id: TransferServiceId): TransferService {
  *  Google sign-in always lands in the likes, so it is not
  *  offered while a new playlist is the destination. */
 export function routesFor(service: TransferService, destination: JobKind): TransferRoute[] {
-  return service.routes.filter((r) => !r.likedOnly || destination === 'liked');
+  const offered = service.routes.filter((r) => !r.likedOnly || destination === 'liked');
+  return destination === 'liked' ? offered : [...offered.filter((r) => r.playlistFirst), ...offered.filter((r) => !r.playlistFirst)];
 }
 
 /** The one a service falls to when there is nothing to ask: the first way

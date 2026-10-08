@@ -1,18 +1,17 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
 import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { CollectionPage } from '@/components/library/CollectionPage';
 import { ReplaceTrackDialog } from '@/components/track/menus/ReplaceTrackDialog';
 import { renderTrackMenu, TrackMenu } from '@/components/track/menus/TrackMenu';
 import { CopySongsBar } from '@/components/track/menus/CopySongsBar';
-import { TransferBlock } from '@/components/import/TransferBlock';
 import { ReviewSheet } from '@/components/import/ReviewSheet';
 import { useImportActions, useLikedImportJob } from '@/hooks/useImports';
 import { useImportReview } from '@/hooks/useImportReview';
 import { itemForTrack } from '@/lib/import/rows';
-import { isActive } from '@/lib/import/jobState';
 import { useTrackActions } from '@/hooks/useTrackActions';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { contextFor, countLabel, iconFor, titleFor } from '@/lib/collections';
@@ -25,11 +24,14 @@ import { formatAddedDate } from '@/lib/format';
 import { useOfflinePin } from '@/hooks/useOfflinePin';
 import { useExecuteReplaceLike, useQueryLikes, QK } from '@/hooks/useLibrary';
 import { EmptyState } from '@/components/page/EmptyState';
+import { UploadIcon } from '@/components/icons';
 import type { ImportItem } from '@/lib/import/types';
 import type { CollectionTrack, Track } from '@/types/track';
 
 const REF = { kind: 'liked' } as const;
 const NO_TRACKS: CollectionTrack[] = [];
+/** The Transfer page, opened from here and returning here. */
+const LIKED_TRANSFER_HREF = `/transfer?from=${encodeURIComponent('/library/liked')}`;
 const addedLabel = (t: Track) => formatAddedDate((t as Partial<CollectionTrack>).addedAt);
 
 export default function LikedPage() {
@@ -48,8 +50,9 @@ export default function LikedPage() {
   const replaceLike = useExecuteReplaceLike();
   const [pendingReplace, setPendingReplace] = useState<Track | null>(null);
 
-  // A transfer from another app: its songs become likes, so its progress,
-  // its review and its not-found songs live on this page.
+  // A transfer from another app: its songs become likes. Its progress and
+  // its songs to check live in the shell's chip and on /transfer/review;
+  // here a song it brought over can still be matched again.
   const { job, items } = useLikedImportJob();
   const importActions = useImportActions(job?.id, null);
   const review = useImportReview(items);
@@ -65,28 +68,18 @@ export default function LikedPage() {
 
   const offlineEmpty = !isOnline && tracks.length === 0;
   const showTransfer = !!job && !job.dismissed;
-  const act = (action: 'cancel' | 'retry' | 'dismiss') =>
-    importActions.update.mutate(action, { onError: (e) => toast.error((e as Error).message) });
-
   const handlePick = (item: ImportItem, track: Track) => {
-    const rematch = review.mode === 'rematch';
     importActions.pick.mutate(
       { itemId: item.id, track },
       {
         onSuccess: () => {
-          toast.success(`${rematch ? 'Swapped in' : 'Liked'} "${track.title}"`);
-          if (rematch) review.close();
-          else review.advance();
+          toast.success(`Swapped in "${track.title}"`);
+          review.close();
         },
         onError: (e) => toast.error(`Couldn't like that song: ${(e as Error).message}`),
       },
     );
   };
-  const handleRemoveItem = (item: ImportItem) =>
-    importActions.skip.mutate(item.id, {
-      onSuccess: () => review.advance(),
-      onError: (e) => toast.error((e as Error).message),
-    });
 
   // While a transfer is on the page, a liked song it brought over can be
   // matched again from its row menu, the way an imported playlist's can.
@@ -112,6 +105,18 @@ export default function LikedPage() {
       hideActions={offlineEmpty}
       onReplaceTrack={setPendingReplace}
       sort={{ value: sort, onChange: setSort }}
+      actions={
+        isOnline ? (
+          <Link
+            href={LIKED_TRANSFER_HREF}
+            data-testid="liked-transfer-button"
+            className="inline-flex h-10 items-center gap-cluster rounded-full border border-border px-block text-sm font-medium transition-colors hover:bg-card"
+          >
+            <UploadIcon className="size-4" />
+            Transfer
+          </Link>
+        ) : undefined
+      }
       selection={selection}
       addedLabel={addedLabel}
       selectionBar={
@@ -123,27 +128,10 @@ export default function LikedPage() {
           onDone={selection.exit}
         />
       }
-      banner={
-        showTransfer ? (
-          <TransferBlock
-            job={job}
-            items={items}
-            busy={importActions.busy}
-            onStop={() => act('cancel')}
-            onRetry={() => act('retry')}
-            onReview={() => review.openReview()}
-            onDismiss={() => act('dismiss')}
-            onOpenItem={(item) => review.openReview(item)}
-            {...trackActions}
-          />
-        ) : undefined
-      }
       emptyMessage={
         offlineEmpty
           ? 'Offline. Open this once while online to see its songs.'
-          : showTransfer && isActive(job.status)
-            ? 'The transferred songs land here as they are matched.'
-            : 'Nothing liked yet. Tap the heart on any song.'
+          : 'Nothing liked yet. Tap the heart on any song.'
       }
     >
       {job && (
@@ -160,8 +148,8 @@ export default function LikedPage() {
           previewPlaying={review.previewPlaying}
           onPreview={review.onPreview}
           onPick={handlePick}
-          onSkip={review.advance}
-          onRemove={handleRemoveItem}
+          onSkip={review.close}
+          onRemove={() => review.close()}
           searchResults={review.searchResults}
           searching={review.searching}
           onSearch={review.onSearch}

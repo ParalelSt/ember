@@ -162,7 +162,7 @@ The client secret stays in `.env.local` on the host and is never sent to a brows
 | Rule | Where |
 |---|---|
 | `POST /api/import/liked/google` asks Google for a code and answers `{ flowId, userCode, verificationUrl, expiresIn, interval }`; `GET` on the same path answers `{ configured }` | `app/api/import/liked/google/route.ts` |
-| The server polls Google's token endpoint at the interval Google gives (plus 5 s on `slow_down`); the dialog only asks `GET /api/import/liked/google/:flowId` every 2 s for `{ state: waiting, reading, ready, denied, expired, error, checking?, preview?, message? }` | `lib/import/google/flows.ts`, `components/import/TransferDialog.tsx` |
+| The server polls Google's token endpoint at the interval Google gives (plus 5 s on `slow_down`); the Transfer page only asks `GET /api/import/liked/google/:flowId` every 2 s for `{ state: waiting, reading, ready, denied, expired, error, checking?, preview?, message? }` | `lib/import/google/flows.ts`, `components/import/TransferFlow.tsx` |
 | Likes are read with `videos.list?myRating=like&part=snippet,contentDetails&maxResults=50`, paged to the end, newest first. First pass, no network: keep `categoryId` 10 or an auto-generated "- Topic" channel, which drops most of a person's likes at once (gaming, vlogs). At most 10 000 kept likes and 400 pages | `lib/import/google/client.ts`, `lib/import/google/likes.ts` |
 | Second pass, still before the preview (the dialog says "Checking which likes are songs: 40 of 120"): category 10 is only the uploader's word (the owner's Minecraft video and satire ad both said "Music"), so YouTube Music is asked about each survivor with `player.py classify` (anonymous `get_song`, `videoDetails.musicVideoType`), batches of 8, three in flight, a batch that fails waiting 5 s, 20 s, 60 s before it is asked again (then the sign-in ends with a sentence rather than guess). A "- Topic" channel is `ATV` already and is not asked about; a video whose own lookup fails is left out with a warning. A few hundred likes take about a minute | `lib/import/musicCheck.ts`, `lib/import/google/flows.ts`, `player.py` |
 | The preview counts and names songs only (`ATV`, `OMV`) and says "N more need a quick check" for uploads (`UGC`); the button reads "Transfer N songs" for both. The job is made with the songs pending (the runner likes them as they are, no search), the uploads already in the review list with the video as their one candidate (Use it, or Remove), and the likes that are not music already skipped at the end, only so the summary can count them: they never show in the preview or the Liked page's Transferring block. The summary: "We found 5 songs. 5 need a quick check. 6 likes were not music." The first pass's drops are not counted anywhere | `lib/import/sources/ytmusicLiked.ts`, `lib/import/store.ts` |
@@ -176,9 +176,42 @@ The client secret stays in `.env.local` on the host and is never sent to a brows
 
 YouTube does not say when a song was liked, so the like dates are synthesised from the order of the list, newest first, below every like the person already had (`lib/import/likedAt.ts`).
 
-Tests: `lib/import/google/*.test.ts` (the device flow, the first-pass filter, paging and the cap, the second pass with its progress, the flow store's every ending), `app/api/import/liked/google/route.test.ts` (the four routes, and that no token reaches a response or a log), `lib/import/redact.test.ts`, `components/import/TransferDialog.test.tsx`, `lib/import/musicCheck.test.ts` (batching, concurrency, backoff), `lib/import/runner.test.ts` and `lib/import/google/flows.test.ts` (the owner's 16 real likes, `tests/fixtures/imports/ytm-get-song-liked16.json`), `tests/test_player_classify.py`, and `tests/transfer-google-ui.test.mjs` (a real browser against a fake Google).
+Tests: `lib/import/google/*.test.ts` (the device flow, the first-pass filter, paging and the cap, the second pass with its progress, the flow store's every ending), `app/api/import/liked/google/route.test.ts` (the four routes, and that no token reaches a response or a log), `lib/import/redact.test.ts`, `components/import/TransferFlow.test.tsx`, `lib/import/musicCheck.test.ts` (batching, concurrency, backoff), `lib/import/runner.test.ts` and `lib/import/google/flows.test.ts` (the owner's 16 real likes, `tests/fixtures/imports/ytm-get-song-liked16.json`), `tests/test_player_classify.py`, and `tests/transfer-google-ui.test.mjs` (a real browser against a fake Google).
 
 This replaced an earlier way in that asked the person to copy the request headers of a signed-in music.youtube.com tab out of the browser's developer tools; that route (`POST /api/import/liked/ytmusic`, `player.py liked`) is gone.
+
+## 12. Liked songs from Spotify, Apple Music and anywhere else
+
+Every service card is open for **Liked songs** (`LIKED_SERVICES_OPEN` is `ALL_SERVICES` in `lib/import/transferRoutes.ts`; keep `serviceOpen` and the Transfer page's `likedServicesOpen` prop, so a future hold-back is one line). Everything except the Google sign-in is matched by name, so a few songs end up in the review list and a few may be missing.
+
+| Service | Way in | Notes |
+|---|---|---|
+| Spotify | `YourLibrary.json` from Spotify's "Download your data" (first), a converter CSV (Exportify, Soundiiz, TuneMyMusic), a playlist link (last for Liked, first for a playlist) | The export takes Spotify a few days and has no like dates. The link only sees 100 songs. A JSON over 10 000 songs starts with the first 10 000 instead of being refused. |
+| YouTube Music | Google sign-in, or a playlist link | Exact, nothing to match. |
+| Apple Music | "Apple Music Likes and Dislikes.csv" from privacy.apple.com | Apple shares no links. |
+| Somewhere else | A pasted `Artist - Title` list, or any CSV with a header row | |
+
+The flow is one page, `/transfer` (`components/import/TransferFlow.tsx`), opened by the Transfer button on Liked songs and by Settings > Library:
+
+1. **Where to, where from.** Liked songs or a new playlist as two cards, the four services as rows below, each saying what it needs.
+2. **What do you have already?** One row per way in, with how long it takes (`time` on each route). The chosen way's steps then show one at a time beside a small HTML mock of the screen to tap (`lib/import/transferIllustrations.ts`), with the real file, list, link or Google sign-in control on the last step.
+3. **Before you start.** One sentence with the count and about how long (`transferMinutes`: 8 songs per 10 seconds, rounded up to 5 minutes; about a minute for an exact source), the counts as chips that show which songs they mean (new, already liked, twice in the file, unreadable, over the limit), and the options. **Skip already liked** (on by default) leaves out every song whose title and artist make the same `songKey` as one of the person's likes (`lib/import/alreadyLiked.ts`); the upload and link routes take `skipLiked`, and the job starts with those counted in `existing`.
+4. **While it runs and after.** Start returns to where the page was opened. A chip in the shell (`components/import/TransferStatus.tsx`) says how far it is; a tap says "X of Y, about N minutes left" with Stop. When it finishes an in-app "Transfer done" notification says the result in one line (once per transfer; `stores/useTransferStore.ts` remembers which). It opens `/transfer/review`, one list of the songs Ember was not sure about with Use, Other versions (the other candidates and a search), Skip, Undo (`POST /api/import/items/:id { action: 'undo', to }`, which gives up the like the item made, `like_id`, like a re-match does) and Use all best guesses. A liked song's row menu still re-matches it through the review sheet.
+
+### How well the by-name match does
+
+Measured on 2026-10-07 with `tests/measure-match` (152 well-known songs across pop, rock, hip hop, electronic, R&B, classics, Latin, 31 in other scripts and languages, live, remix, featuring and remastered versions), through the real `matchItems` and scorer, anonymously, with titles and artists only (the shape of a `YourLibrary.json`, so no length to help):
+
+- 132 accepted (87 %), 18 needing review (12 %), 2 not found (1 %), after the version fix below. Before it: 134 / 16 to 17 / 1 to 2. Runs differ by about one song.
+- Pop, rock, hip hop, R&B, classics and featuring versions: every song accepted, every pick the right song.
+- Songs in other scripts or with a differently spelled artist ("Lemon" by 米津玄師 comes back as Kenshi Yonezu) land in review at 50, the lowest passing score, because the artist names share no letters. The pick is almost always right; the review sheet confirms it.
+- Without a length the best score is 80, so `ACCEPT_AT` 75 holds and raising it to 80 would change nothing. A file with lengths (Exportify) scores higher.
+- Was a systematic mistake, now fixed in `score.ts`: a source naming a specific version ("Hallelujah - Live at the Royal Albert Hall") was accepted against another take ("Live at Sin-e"). A different venue, remixer or remaster year now costs 30 points (reason "Different version details"), so it goes to review. A bare "- Live" or "- Remix" still accepts any live or remix version, and a plain title still matches the studio track.
+- Review picks that were wrong were different songs sharing a title (Dream On by Blacktop Mojo, Vaikuttaa by Coldivo), and they stayed in review, so none reached the likes unchecked.
+
+Rerun: from `apps/web`, `PYTHON_BIN=<venv python> npx vitest run --config ../../tests/measure-match/vitest.config.mts`. It needs the network, writes `results.json` and `summary.txt` beside the script, and is not part of the normal suite.
+
+Each liked transfer is tested from file to likes (`lib/import/store.test.ts`, "every service ends in likes with like_id"): Spotify `YourLibrary.json`, Apple's CSV, Exportify and TuneMyMusic CSVs and a pasted list each queue a liked job, the runner writes one `origin: 'import'` like per song, and every item records its `like_id`.
 
 ## Decisions for the owner
 

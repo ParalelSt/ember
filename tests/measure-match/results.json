@@ -1,0 +1,1066 @@
+[
+ {
+  "cat": "pop",
+  "src": "Blinding Lights | The Weeknd",
+  "status": "accepted",
+  "score": 80,
+  "got": "Blinding Lights | The Weeknd | ATV"
+ },
+ {
+  "cat": "pop",
+  "src": "Shape of You | Ed Sheeran",
+  "status": "accepted",
+  "score": 80,
+  "got": "Shape of You | Ed Sheeran | ATV"
+ },
+ {
+  "cat": "pop",
+  "src": "Bad Guy | Billie Eilish",
+  "status": "accepted",
+  "score": 80,
+  "got": "bad guy | Billie Eilish | ATV"
+ },
+ {
+  "cat": "pop",
+  "src": "Levitating | Dua Lipa",
+  "status": "accepted",
+  "score": 80,
+  "got": "Levitating | Dua Lipa | ATV"
+ },
+ {
+  "cat": "pop",
+  "src": "Rolling in the Deep | Adele",
+  "status": "accepted",
+  "score": 80,
+  "got": "Rolling in the Deep | Adele | ATV"
+ },
+ {
+  "cat": "pop",
+  "src": "Shake It Off | Taylor Swift",
+  "status": "accepted",
+  "score": 80,
+  "got": "Shake It Off | Taylor Swift | ATV"
+ },
+ {
+  "cat": "pop",
+  "src": "Uptown Funk | Mark Ronson, Bruno Mars",
+  "status": "accepted",
+  "score": 80,
+  "got": "Uptown Funk (feat. Bruno Mars) | Mark Ronson | ATV"
+ },
+ {
+  "cat": "pop",
+  "src": "Happy | Pharrell Williams",
+  "status": "accepted",
+  "score": 76,
+  "got": "Happy (From \"Despicable Me 2\") | Pharrell Williams | ATV"
+ },
+ {
+  "cat": "pop",
+  "src": "Firework | Katy Perry",
+  "status": "accepted",
+  "score": 80,
+  "got": "Firework | Katy Perry | ATV"
+ },
+ {
+  "cat": "pop",
+  "src": "Umbrella | Rihanna, JAY-Z",
+  "status": "accepted",
+  "score": 80,
+  "got": "Umbrella (feat. JAŸ-Z) | Rihanna | ATV"
+ },
+ {
+  "cat": "pop",
+  "src": "Dance Monkey | Tones And I",
+  "status": "accepted",
+  "score": 80,
+  "got": "Dance Monkey | Tones And I | ATV"
+ },
+ {
+  "cat": "pop",
+  "src": "Someone Like You | Adele",
+  "status": "accepted",
+  "score": 80,
+  "got": "Someone Like You | Adele | ATV"
+ },
+ {
+  "cat": "pop",
+  "src": "Watermelon Sugar | Harry Styles",
+  "status": "accepted",
+  "score": 80,
+  "got": "Watermelon Sugar | Harry Styles | ATV"
+ },
+ {
+  "cat": "pop",
+  "src": "drivers license | Olivia Rodrigo",
+  "status": "accepted",
+  "score": 80,
+  "got": "drivers license | Olivia Rodrigo | ATV"
+ },
+ {
+  "cat": "pop",
+  "src": "Stay | The Kid LAROI, Justin Bieber",
+  "status": "accepted",
+  "score": 80,
+  "got": "STAY | The Kid LAROI, Justin Bieber | ATV"
+ },
+ {
+  "cat": "pop",
+  "src": "As It Was | Harry Styles",
+  "status": "accepted",
+  "score": 80,
+  "got": "As It Was | Harry Styles | ATV"
+ },
+ {
+  "cat": "pop",
+  "src": "Flowers | Miley Cyrus",
+  "status": "accepted",
+  "score": 80,
+  "got": "Flowers | Miley Cyrus | ATV"
+ },
+ {
+  "cat": "pop",
+  "src": "Anti-Hero | Taylor Swift",
+  "status": "accepted",
+  "score": 80,
+  "got": "Anti-Hero | Taylor Swift | ATV"
+ },
+ {
+  "cat": "rock",
+  "src": "Bohemian Rhapsody | Queen",
+  "status": "accepted",
+  "score": 80,
+  "got": "Bohemian Rhapsody | Queen | ATV"
+ },
+ {
+  "cat": "rock",
+  "src": "Smells Like Teen Spirit | Nirvana",
+  "status": "accepted",
+  "score": 80,
+  "got": "Smells Like Teen Spirit | Nirvana | ATV"
+ },
+ {
+  "cat": "rock",
+  "src": "Hotel California | Eagles",
+  "status": "accepted",
+  "score": 80,
+  "got": "Hotel California | Eagles | ATV"
+ },
+ {
+  "cat": "rock",
+  "src": "Stairway to Heaven | Led Zeppelin",
+  "status": "accepted",
+  "score": 80,
+  "got": "Stairway to Heaven (Remaster) | Led Zeppelin | ATV"
+ },
+ {
+  "cat": "rock",
+  "src": "Sweet Child O' Mine | Guns N' Roses",
+  "status": "accepted",
+  "score": 80,
+  "got": "Sweet Child O' Mine | Guns N' Roses | ATV"
+ },
+ {
+  "cat": "rock",
+  "src": "Back In Black | AC/DC",
+  "status": "accepted",
+  "score": 80,
+  "got": "Back In Black | AC/DC | ATV"
+ },
+ {
+  "cat": "rock",
+  "src": "Paranoid | Black Sabbath",
+  "status": "accepted",
+  "score": 80,
+  "got": "Paranoid (2009 Remaster) | Black Sabbath | ATV"
+ },
+ {
+  "cat": "rock",
+  "src": "Creep | Radiohead",
+  "status": "accepted",
+  "score": 80,
+  "got": "Creep | Radiohead | ATV"
+ },
+ {
+  "cat": "rock",
+  "src": "Seven Nation Army | The White Stripes",
+  "status": "accepted",
+  "score": 80,
+  "got": "Seven Nation Army | The White Stripes | ATV"
+ },
+ {
+  "cat": "rock",
+  "src": "Mr. Brightside | The Killers",
+  "status": "accepted",
+  "score": 80,
+  "got": "Mr. Brightside | The Killers | ATV"
+ },
+ {
+  "cat": "rock",
+  "src": "Wonderwall | Oasis",
+  "status": "accepted",
+  "score": 80,
+  "got": "Wonderwall | Oasis | ATV"
+ },
+ {
+  "cat": "rock",
+  "src": "Come As You Are | Nirvana",
+  "status": "accepted",
+  "score": 80,
+  "got": "Come As You Are | Nirvana | ATV"
+ },
+ {
+  "cat": "rock",
+  "src": "Under the Bridge | Red Hot Chili Peppers",
+  "status": "accepted",
+  "score": 80,
+  "got": "Under the Bridge | Red Hot Chili Peppers | ATV"
+ },
+ {
+  "cat": "rock",
+  "src": "Boulevard of Broken Dreams | Green Day",
+  "status": "accepted",
+  "score": 80,
+  "got": "Boulevard of Broken Dreams | Green Day | ATV"
+ },
+ {
+  "cat": "rock",
+  "src": "Do I Wanna Know? | Arctic Monkeys",
+  "status": "accepted",
+  "score": 80,
+  "got": "Do I Wanna Know? | Arctic Monkeys | ATV"
+ },
+ {
+  "cat": "rock",
+  "src": "Take Me Out | Franz Ferdinand",
+  "status": "accepted",
+  "score": 80,
+  "got": "Take Me Out | Franz Ferdinand | ATV"
+ },
+ {
+  "cat": "hiphop",
+  "src": "HUMBLE. | Kendrick Lamar",
+  "status": "accepted",
+  "score": 80,
+  "got": "HUMBLE. | Kendrick Lamar | ATV"
+ },
+ {
+  "cat": "hiphop",
+  "src": "Lose Yourself | Eminem",
+  "status": "accepted",
+  "score": 80,
+  "got": "Lose Yourself | Eminem | ATV"
+ },
+ {
+  "cat": "hiphop",
+  "src": "God's Plan | Drake",
+  "status": "accepted",
+  "score": 80,
+  "got": "God's Plan | Drake | ATV"
+ },
+ {
+  "cat": "hiphop",
+  "src": "Sicko Mode | Travis Scott",
+  "status": "accepted",
+  "score": 80,
+  "got": "SICKO MODE | Travis Scott | ATV"
+ },
+ {
+  "cat": "hiphop",
+  "src": "Juicy | The Notorious B.I.G.",
+  "status": "accepted",
+  "score": 80,
+  "got": "Juicy | The Notorious B.I.G. | ATV"
+ },
+ {
+  "cat": "hiphop",
+  "src": "Empire State Of Mind | JAY-Z, Alicia Keys",
+  "status": "accepted",
+  "score": 80,
+  "got": "Empire State Of Mind (feat. Alicia Keys) | JAŸ-Z | ATV"
+ },
+ {
+  "cat": "hiphop",
+  "src": "Gold Digger | Kanye West, Jamie Foxx",
+  "status": "accepted",
+  "score": 80,
+  "got": "Gold Digger (feat. Jamie Foxx) | Kanye West | ATV"
+ },
+ {
+  "cat": "hiphop",
+  "src": "Still D.R.E. | Dr. Dre, Snoop Dogg",
+  "status": "accepted",
+  "score": 80,
+  "got": "Still D.R.E. (feat. Snoop Dogg) | Dr. Dre | ATV"
+ },
+ {
+  "cat": "hiphop",
+  "src": "Rockstar | Post Malone, 21 Savage",
+  "status": "accepted",
+  "score": 80,
+  "got": "rockstar (feat. 21 Savage) | Post Malone | ATV"
+ },
+ {
+  "cat": "hiphop",
+  "src": "Lucid Dreams | Juice WRLD",
+  "status": "accepted",
+  "score": 80,
+  "got": "Lucid Dreams | Juice WRLD | ATV"
+ },
+ {
+  "cat": "hiphop",
+  "src": "Mask Off | Future",
+  "status": "accepted",
+  "score": 80,
+  "got": "Mask Off | Future | ATV"
+ },
+ {
+  "cat": "hiphop",
+  "src": "Alright | Kendrick Lamar",
+  "status": "accepted",
+  "score": 80,
+  "got": "Alright | Kendrick Lamar | ATV"
+ },
+ {
+  "cat": "electronic",
+  "src": "Around the World | Daft Punk",
+  "status": "accepted",
+  "score": 80,
+  "got": "Around the World | Daft Punk | ATV"
+ },
+ {
+  "cat": "electronic",
+  "src": "One More Time | Daft Punk",
+  "status": "review",
+  "score": 50,
+  "got": "One More Time (Radio Edit) | Daft Punk | ATV"
+ },
+ {
+  "cat": "electronic",
+  "src": "Levels | Avicii",
+  "status": "accepted",
+  "score": 80,
+  "got": "Levels | Avicii | ATV"
+ },
+ {
+  "cat": "electronic",
+  "src": "Wake Me Up | Avicii",
+  "status": "accepted",
+  "score": 80,
+  "got": "Wake Me Up | Avicii | ATV"
+ },
+ {
+  "cat": "electronic",
+  "src": "Titanium | David Guetta, Sia",
+  "status": "accepted",
+  "score": 80,
+  "got": "Titanium (feat. Sia) | David Guetta | ATV"
+ },
+ {
+  "cat": "electronic",
+  "src": "Strobe | deadmau5",
+  "status": "accepted",
+  "score": 80,
+  "got": "Strobe | deadmau5 | ATV"
+ },
+ {
+  "cat": "electronic",
+  "src": "Greece 2000 | Three Drives",
+  "status": "review",
+  "score": 65,
+  "got": "Greece 2000 | Three Drives On A Vinyl | ATV"
+ },
+ {
+  "cat": "electronic",
+  "src": "Sandstorm | Darude",
+  "status": "accepted",
+  "score": 80,
+  "got": "Sandstorm | Darude | ATV"
+ },
+ {
+  "cat": "electronic",
+  "src": "Better Off Alone | Alice Deejay",
+  "status": "accepted",
+  "score": 80,
+  "got": "Better Off Alone | Alice Deejay | ATV"
+ },
+ {
+  "cat": "electronic",
+  "src": "Clarity | Zedd, Foxes",
+  "status": "accepted",
+  "score": 80,
+  "got": "Clarity (feat. Foxes) | Zedd | ATV"
+ },
+ {
+  "cat": "electronic",
+  "src": "Midnight City | M83",
+  "status": "accepted",
+  "score": 80,
+  "got": "Midnight City | M83 | ATV"
+ },
+ {
+  "cat": "electronic",
+  "src": "Language | Porter Robinson",
+  "status": "accepted",
+  "score": 80,
+  "got": "Language | Porter Robinson | ATV"
+ },
+ {
+  "cat": "rnb",
+  "src": "No Scrubs | TLC",
+  "status": "accepted",
+  "score": 80,
+  "got": "No Scrubs | TLC | ATV"
+ },
+ {
+  "cat": "rnb",
+  "src": "Crazy In Love | Beyonce, JAY-Z",
+  "status": "accepted",
+  "score": 80,
+  "got": "Crazy In Love (feat. JAY-Z) | Beyoncé | ATV"
+ },
+ {
+  "cat": "rnb",
+  "src": "Redbone | Childish Gambino",
+  "status": "accepted",
+  "score": 80,
+  "got": "Redbone | Childish Gambino | ATV"
+ },
+ {
+  "cat": "rnb",
+  "src": "Thinking Out Loud | Ed Sheeran",
+  "status": "accepted",
+  "score": 80,
+  "got": "Thinking out Loud | Ed Sheeran | ATV"
+ },
+ {
+  "cat": "rnb",
+  "src": "Let's Get It On | Marvin Gaye",
+  "status": "accepted",
+  "score": 80,
+  "got": "Let's Get It On | Marvin Gaye | ATV"
+ },
+ {
+  "cat": "rnb",
+  "src": "Superstition | Stevie Wonder",
+  "status": "accepted",
+  "score": 80,
+  "got": "Superstition | Stevie Wonder | ATV"
+ },
+ {
+  "cat": "rnb",
+  "src": "Ain't No Mountain High Enough | Marvin Gaye, Tammi Terrell",
+  "status": "accepted",
+  "score": 80,
+  "got": "Ain't No Mountain High Enough | Marvin Gaye, Tammi Terrell | ATV"
+ },
+ {
+  "cat": "rnb",
+  "src": "Girl on Fire | Alicia Keys",
+  "status": "accepted",
+  "score": 80,
+  "got": "Girl on Fire | Alicia Keys | ATV"
+ },
+ {
+  "cat": "classic",
+  "src": "Dancing Queen | ABBA",
+  "status": "accepted",
+  "score": 80,
+  "got": "Dancing Queen | ABBA | ATV"
+ },
+ {
+  "cat": "classic",
+  "src": "Imagine | John Lennon",
+  "status": "accepted",
+  "score": 80,
+  "got": "Imagine | John Lennon | ATV"
+ },
+ {
+  "cat": "classic",
+  "src": "Yesterday | The Beatles",
+  "status": "accepted",
+  "score": 80,
+  "got": "Yesterday | The Beatles | ATV"
+ },
+ {
+  "cat": "classic",
+  "src": "Hey Jude | The Beatles",
+  "status": "accepted",
+  "score": 80,
+  "got": "Hey Jude | The Beatles | ATV"
+ },
+ {
+  "cat": "classic",
+  "src": "Billie Jean | Michael Jackson",
+  "status": "accepted",
+  "score": 80,
+  "got": "Billie Jean | Michael Jackson | ATV"
+ },
+ {
+  "cat": "classic",
+  "src": "Thriller | Michael Jackson",
+  "status": "accepted",
+  "score": 80,
+  "got": "Thriller | Michael Jackson | ATV"
+ },
+ {
+  "cat": "classic",
+  "src": "Like a Rolling Stone | Bob Dylan",
+  "status": "accepted",
+  "score": 80,
+  "got": "Like a Rolling Stone | Bob Dylan | ATV"
+ },
+ {
+  "cat": "classic",
+  "src": "What a Wonderful World | Louis Armstrong",
+  "status": "accepted",
+  "score": 80,
+  "got": "What A Wonderful World | Louis Armstrong | ATV"
+ },
+ {
+  "cat": "classic",
+  "src": "Respect | Aretha Franklin",
+  "status": "accepted",
+  "score": 80,
+  "got": "Respect | Aretha Franklin | ATV"
+ },
+ {
+  "cat": "classic",
+  "src": "Don't Stop Believin' | Journey",
+  "status": "accepted",
+  "score": 80,
+  "got": "Don't Stop Believin' (2022 Remaster) | Journey | ATV"
+ },
+ {
+  "cat": "classic",
+  "src": "Every Breath You Take | The Police",
+  "status": "accepted",
+  "score": 80,
+  "got": "Every Breath You Take | The Police | ATV"
+ },
+ {
+  "cat": "classic",
+  "src": "Take On Me | a-ha",
+  "status": "accepted",
+  "score": 80,
+  "got": "Take on Me | a-ha | ATV"
+ },
+ {
+  "cat": "classic",
+  "src": "Girls Just Want to Have Fun | Cyndi Lauper",
+  "status": "accepted",
+  "score": 80,
+  "got": "Girls Just Want to Have Fun | Cyndi Lauper | ATV"
+ },
+ {
+  "cat": "classic",
+  "src": "Africa | TOTO",
+  "status": "accepted",
+  "score": 80,
+  "got": "Africa | Toto | ATV"
+ },
+ {
+  "cat": "classic",
+  "src": "Livin' on a Prayer | Bon Jovi",
+  "status": "accepted",
+  "score": 80,
+  "got": "Livin' On A Prayer | Bon Jovi | ATV"
+ },
+ {
+  "cat": "classic",
+  "src": "September | Earth, Wind & Fire",
+  "status": "accepted",
+  "score": 80,
+  "got": "September | Earth, Wind & Fire | ATV"
+ },
+ {
+  "cat": "classic",
+  "src": "Fly Me to the Moon | Frank Sinatra",
+  "status": "accepted",
+  "score": 80,
+  "got": "Fly Me To The Moon (2008 Remastered) (feat. Count Basie And His Orchestra) | Frank Sinatra | ATV"
+ },
+ {
+  "cat": "latin",
+  "src": "Despacito | Luis Fonsi, Daddy Yankee",
+  "status": "accepted",
+  "score": 80,
+  "got": "Despacito | Luis Fonsi, Daddy Yankee | ATV"
+ },
+ {
+  "cat": "latin",
+  "src": "Bailando | Enrique Iglesias",
+  "status": "accepted",
+  "score": 76,
+  "got": "Bailando (Spanish Version) (feat. Descemer Bueno & Gente De Zona) | Enrique Iglesias | ATV"
+ },
+ {
+  "cat": "latin",
+  "src": "Hips Don't Lie | Shakira, Wyclef Jean",
+  "status": "accepted",
+  "score": 80,
+  "got": "Hips Don't Lie (feat. Wyclef Jean) | Shakira | ATV"
+ },
+ {
+  "cat": "latin",
+  "src": "Mi Gente | J Balvin, Willy William",
+  "status": "accepted",
+  "score": 80,
+  "got": "Mi Gente | J. Balvin, Willy William | ATV"
+ },
+ {
+  "cat": "latin",
+  "src": "Vivir Mi Vida | Marc Anthony",
+  "status": "accepted",
+  "score": 80,
+  "got": "Vivir Mi Vida | Marc Anthony | ATV"
+ },
+ {
+  "cat": "latin",
+  "src": "Bamba | Ritchie Valens",
+  "status": "review",
+  "score": 68,
+  "got": "La Bamba | Ritchie Valens | ATV"
+ },
+ {
+  "cat": "latin",
+  "src": "Tusa | KAROL G, Nicki Minaj",
+  "status": "accepted",
+  "score": 80,
+  "got": "Tusa | KAROL G, Nicki Minaj | ATV"
+ },
+ {
+  "cat": "latin",
+  "src": "Titi Me Pregunto | Bad Bunny",
+  "status": "accepted",
+  "score": 80,
+  "got": "Tití Me Preguntó | Bad Bunny | ATV"
+ },
+ {
+  "cat": "latin",
+  "src": "La Bicicleta | Carlos Vives, Shakira",
+  "status": "accepted",
+  "score": 80,
+  "got": "La Bicicleta | Carlos Vives, Shakira | ATV"
+ },
+ {
+  "cat": "latin",
+  "src": "Gasolina | Daddy Yankee",
+  "status": "accepted",
+  "score": 80,
+  "got": "Gasolina | Daddy Yankee | ATV"
+ },
+ {
+  "cat": "nonlatin",
+  "src": "夜に駆ける | YOASOBI",
+  "status": "accepted",
+  "score": 80,
+  "got": "夜に駆ける | YOASOBI | ATV"
+ },
+ {
+  "cat": "nonlatin",
+  "src": "残酷な天使のテーゼ | 高橋洋子",
+  "status": "missing",
+  "score": 46,
+  "got": "残酷な天使のテーゼ （新世紀エヴァンゲリオン OP） | Rekka Katagiri | ATV"
+ },
+ {
+  "cat": "nonlatin",
+  "src": "Lemon | 米津玄師",
+  "status": "review",
+  "score": 50,
+  "got": "Lemon | Kenshi Yonezu | ATV"
+ },
+ {
+  "cat": "nonlatin",
+  "src": "Dynamite | BTS",
+  "status": "accepted",
+  "score": 80,
+  "got": "Dynamite | BTS | ATV"
+ },
+ {
+  "cat": "nonlatin",
+  "src": "Gangnam Style | PSY",
+  "status": "accepted",
+  "score": 80,
+  "got": "Gangnam Style | PSY | ATV"
+ },
+ {
+  "cat": "nonlatin",
+  "src": "봄날 | BTS",
+  "status": "review",
+  "score": 50,
+  "got": "봄날 | 김서하, 임동선 | ATV"
+ },
+ {
+  "cat": "nonlatin",
+  "src": "Kill This Love | BLACKPINK",
+  "status": "accepted",
+  "score": 80,
+  "got": "Kill This Love | BLACKPINK | ATV"
+ },
+ {
+  "cat": "nonlatin",
+  "src": "Катюша | Ансамбль Александрова",
+  "status": "review",
+  "score": 50,
+  "got": "Катюша | Ансамбль песни и пляски Советской армии имени А. В. Александрова | ATV"
+ },
+ {
+  "cat": "nonlatin",
+  "src": "Группа крови | КИНО",
+  "status": "accepted",
+  "score": 80,
+  "got": "Группа крови | Кино | ATV"
+ },
+ {
+  "cat": "nonlatin",
+  "src": "Звезда по имени Солнце | КИНО",
+  "status": "accepted",
+  "score": 80,
+  "got": "Звезда по имени Солнце | Кино | ATV"
+ },
+ {
+  "cat": "nonlatin",
+  "src": "Калинка | Red Army Choir",
+  "status": "missing",
+  "score": 46,
+  "got": "Калинка (Radio Version) | Vairious Words | ATV"
+ },
+ {
+  "cat": "nonlatin",
+  "src": "Tum Hi Ho | Arijit Singh",
+  "status": "accepted",
+  "score": 80,
+  "got": "Tum Hi Ho | Arijit Singh | ATV"
+ },
+ {
+  "cat": "nonlatin",
+  "src": "Kal Ho Naa Ho | Sonu Nigam",
+  "status": "accepted",
+  "score": 80,
+  "got": "Kal Ho Naa Ho | Shankar Ehsaan Loy, Sonu Nigam | ATV"
+ },
+ {
+  "cat": "nonlatin",
+  "src": "Chaiyya Chaiyya | Sukhwinder Singh, Sapna Awasthi",
+  "status": "accepted",
+  "score": 80,
+  "got": "Chaiyya Chaiyya | Sukhwinder Singh, Sapna Awasthi | ATV"
+ },
+ {
+  "cat": "nonlatin",
+  "src": "Habibi Ya Nour El Ain | Amr Diab",
+  "status": "review",
+  "score": 59,
+  "got": "Nour El Ein | Amr Diab | ATV"
+ },
+ {
+  "cat": "nonlatin",
+  "src": "Ya Rayah | Rachid Taha",
+  "status": "accepted",
+  "score": 80,
+  "got": "Ya Rayah | Rachid Taha | ATV"
+ },
+ {
+  "cat": "nonlatin",
+  "src": "Ai Se Eu Te Pego | Michel Teló",
+  "status": "accepted",
+  "score": 80,
+  "got": "Ai Se Eu Te Pego | Michel Teló | ATV"
+ },
+ {
+  "cat": "nonlatin",
+  "src": "Je veux | ZAZ",
+  "status": "accepted",
+  "score": 80,
+  "got": "Je veux | Zaz | ATV"
+ },
+ {
+  "cat": "nonlatin",
+  "src": "Alors on danse | Stromae",
+  "status": "review",
+  "score": 50,
+  "got": "Alors on danse (Radio Edit) | Stromae | ATV"
+ },
+ {
+  "cat": "nonlatin",
+  "src": "Papaoutai | Stromae",
+  "status": "accepted",
+  "score": 80,
+  "got": "Papaoutai | Stromae | ATV"
+ },
+ {
+  "cat": "nonlatin",
+  "src": "99 Luftballons | Nena",
+  "status": "accepted",
+  "score": 80,
+  "got": "99 Luftballons | Nena | ATV"
+ },
+ {
+  "cat": "nonlatin",
+  "src": "Du hast | Rammstein",
+  "status": "accepted",
+  "score": 80,
+  "got": "Du hast | Rammstein | ATV"
+ },
+ {
+  "cat": "nonlatin",
+  "src": "Sonne | Rammstein",
+  "status": "accepted",
+  "score": 80,
+  "got": "Sonne | Rammstein | ATV"
+ },
+ {
+  "cat": "nonlatin",
+  "src": "Volare | Gipsy Kings",
+  "status": "accepted",
+  "score": 76,
+  "got": "Volare (Nel Blu di Pinto di Blu) | Gipsy Kings | ATV"
+ },
+ {
+  "cat": "nonlatin",
+  "src": "Con te partirò | Andrea Bocelli",
+  "status": "accepted",
+  "score": 80,
+  "got": "Con Te Partirò | Andrea Bocelli | ATV"
+ },
+ {
+  "cat": "nonlatin",
+  "src": "Zombie | The Cranberries",
+  "status": "accepted",
+  "score": 80,
+  "got": "Zombie | The Cranberries | ATV"
+ },
+ {
+  "cat": "nonlatin",
+  "src": "Vaikuttaa | Cheek",
+  "status": "review",
+  "score": 50,
+  "got": "Vaikuttaa | Coldivo | ATV"
+ },
+ {
+  "cat": "nonlatin",
+  "src": "Jelena | Dubioza Kolektiv",
+  "status": "review",
+  "score": 50,
+  "got": "Jelena | Balša Jovanović | ATV"
+ },
+ {
+  "cat": "nonlatin",
+  "src": "Ederlezi | Goran Bregović",
+  "status": "accepted",
+  "score": 80,
+  "got": "Ederlezi | Goran Bregovic | ATV"
+ },
+ {
+  "cat": "nonlatin",
+  "src": "Mamma Mia | ABBA",
+  "status": "accepted",
+  "score": 80,
+  "got": "Mamma Mia | ABBA | ATV"
+ },
+ {
+  "cat": "nonlatin",
+  "src": "Ievan Polkka | Loituma",
+  "status": "review",
+  "score": 64,
+  "got": "Ieva's Polka (Ievan Polkka) (1996 Version) | Loituma | ATV"
+ },
+ {
+  "cat": "live",
+  "src": "Wonderwall - Live | Oasis",
+  "status": "accepted",
+  "score": 80,
+  "got": "Wonderwall (Live at Knebworth, 10 August '96) | Oasis | ATV"
+ },
+ {
+  "cat": "live",
+  "src": "Hallelujah - Live at the Royal Albert Hall | Jeff Buckley",
+  "status": "review",
+  "score": 50,
+  "got": "Hallelujah (Live at Sin-é, New York, NY - July/August 1993) | Jeff Buckley | ATV"
+ },
+ {
+  "cat": "live",
+  "src": "Comfortably Numb - Live | Pink Floyd",
+  "status": "accepted",
+  "score": 80,
+  "got": "Comfortably Numb (Live) | Pink Floyd | ATV"
+ },
+ {
+  "cat": "live",
+  "src": "Free Bird - Live | Lynyrd Skynyrd",
+  "status": "accepted",
+  "score": 80,
+  "got": "Free Bird (Live At Fox Theatre, Atlanta, 1976 / Undubbed) | Lynyrd Skynyrd | ATV"
+ },
+ {
+  "cat": "live",
+  "src": "Hotel California - Live | Eagles",
+  "status": "review",
+  "score": 65,
+  "got": "Hotel California (Live) | The Eagles | ATV"
+ },
+ {
+  "cat": "live",
+  "src": "Purple Rain - Live | Prince",
+  "status": "accepted",
+  "score": 80,
+  "got": "Purple Rain (Live In Syracuse, March 30, 1985 - 2022 Remaster) | Prince | ATV"
+ },
+ {
+  "cat": "live",
+  "src": "Hurt - Live | Johnny Cash",
+  "status": "review",
+  "score": 65,
+  "got": "Hurt (Live) | The Man In Black: A Tribute To Johnny Cash | ATV"
+ },
+ {
+  "cat": "live",
+  "src": "Under Pressure - Live Aid | Queen",
+  "status": "review",
+  "score": 50,
+  "got": "Under Pressure (Live At Wembley Stadium / July 1986) | Queen | ATV"
+ },
+ {
+  "cat": "remix",
+  "src": "Mr. Brightside - Jacques Lu Cont's Thin White Duke Mix | The Killers",
+  "status": "accepted",
+  "score": 80,
+  "got": "Mr. Brightside (Jacques Lu Cont's Thin White Duke Mix) | The Killers | ATV"
+ },
+ {
+  "cat": "remix",
+  "src": "Blinding Lights - Remix | The Weeknd, ROSALÍA",
+  "status": "accepted",
+  "score": 80,
+  "got": "Blinding Lights (Remix) | The Weeknd, ROSALÍA | ATV"
+ },
+ {
+  "cat": "remix",
+  "src": "Closer - Remix | The Chainsmokers, Halsey",
+  "status": "accepted",
+  "score": 80,
+  "got": "Closer (R3hab Remix) (feat. Halsey) | The Chainsmokers | ATV"
+ },
+ {
+  "cat": "remix",
+  "src": "Don't Start Now - Purple Disco Machine Remix | Dua Lipa",
+  "status": "review",
+  "score": 50,
+  "got": "Don't Start Now (Purple Disco Machine Remix) [Extended] | Dua Lipa | ATV"
+ },
+ {
+  "cat": "remix",
+  "src": "Rain On Me - Remix | Lady Gaga, Ariana Grande",
+  "status": "accepted",
+  "score": 80,
+  "got": "Rain On Me (Purple Disco Machine Remix) | Lady Gaga, Ariana Grande, Purple Disco Machine | ATV"
+ },
+ {
+  "cat": "remix",
+  "src": "Faded - Restrung | Alan Walker",
+  "status": "accepted",
+  "score": 80,
+  "got": "Faded (Restrung) | Alan Walker | ATV"
+ },
+ {
+  "cat": "remix",
+  "src": "Stay With Me - Acoustic | Sam Smith",
+  "status": "review",
+  "score": 50,
+  "got": "Stay With Me | Sam Smith | ATV"
+ },
+ {
+  "cat": "remix",
+  "src": "Heat Waves - Remix | Glass Animals",
+  "status": "accepted",
+  "score": 80,
+  "got": "Heat Waves (Shakur Ahmad Remix) | Glass Animals | ATV"
+ },
+ {
+  "cat": "feat",
+  "src": "Love The Way You Lie | Eminem, Rihanna",
+  "status": "accepted",
+  "score": 80,
+  "got": "Love The Way You Lie (feat. Rihanna) | Eminem | ATV"
+ },
+ {
+  "cat": "feat",
+  "src": "Fancy (feat. Charli XCX) | Iggy Azalea, Charli XCX",
+  "status": "accepted",
+  "score": 80,
+  "got": "Fancy (feat. Charli XCX) | Iggy Azalea | ATV"
+ },
+ {
+  "cat": "feat",
+  "src": "Wrecking Ball - Remastered | Miley Cyrus",
+  "status": "accepted",
+  "score": 80,
+  "got": "Wrecking Ball | Miley Cyrus | ATV"
+ },
+ {
+  "cat": "feat",
+  "src": "Congratulations (feat. Quavo) | Post Malone, Quavo",
+  "status": "accepted",
+  "score": 80,
+  "got": "Congratulations (feat. Quavo) | Post Malone | ATV"
+ },
+ {
+  "cat": "feat",
+  "src": "Old Town Road (feat. Billy Ray Cyrus) - Remix | Lil Nas X, Billy Ray Cyrus",
+  "status": "accepted",
+  "score": 80,
+  "got": "Old Town Road (Remix) (feat. Billy Ray Cyrus) | Lil Nas X | ATV"
+ },
+ {
+  "cat": "feat",
+  "src": "Lean On | Major Lazer, MØ, DJ Snake",
+  "status": "accepted",
+  "score": 80,
+  "got": "Lean On (feat. DJ Snake) | Major Lazer | ATV"
+ },
+ {
+  "cat": "feat",
+  "src": "Closer | The Chainsmokers, Halsey",
+  "status": "accepted",
+  "score": 80,
+  "got": "Closer (feat. Halsey) | The Chainsmokers | ATV"
+ },
+ {
+  "cat": "feat",
+  "src": "Call Me Maybe | Carly Rae Jepsen",
+  "status": "accepted",
+  "score": 80,
+  "got": "Call Me Maybe | Carly Rae Jepsen | ATV"
+ },
+ {
+  "cat": "remaster",
+  "src": "Karma Police - Remastered | Radiohead",
+  "status": "accepted",
+  "score": 80,
+  "got": "Karma Police | Radiohead | ATV"
+ },
+ {
+  "cat": "remaster",
+  "src": "Heroes - 2017 Remaster | David Bowie",
+  "status": "accepted",
+  "score": 80,
+  "got": "Heroes | David Bowie | ATV"
+ },
+ {
+  "cat": "remaster",
+  "src": "Born to Run - Remastered | Bruce Springsteen",
+  "status": "accepted",
+  "score": 80,
+  "got": "Born to Run | Bruce Springsteen | ATV"
+ },
+ {
+  "cat": "remaster",
+  "src": "Dream On - Remastered 2007 | Aerosmith",
+  "status": "review",
+  "score": 50,
+  "got": "Dream On | Blacktop Mojo | ATV"
+ }
+]

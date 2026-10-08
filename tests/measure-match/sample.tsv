@@ -1,0 +1,153 @@
+# category<TAB>title<TAB>artist (as a Spotify YourLibrary.json would name them: no length, no explicit flag)
+pop	Blinding Lights	The Weeknd
+pop	Shape of You	Ed Sheeran
+pop	Bad Guy	Billie Eilish
+pop	Levitating	Dua Lipa
+pop	Rolling in the Deep	Adele
+pop	Shake It Off	Taylor Swift
+pop	Uptown Funk	Mark Ronson, Bruno Mars
+pop	Happy	Pharrell Williams
+pop	Firework	Katy Perry
+pop	Umbrella	Rihanna, JAY-Z
+pop	Dance Monkey	Tones And I
+pop	Someone Like You	Adele
+pop	Watermelon Sugar	Harry Styles
+pop	drivers license	Olivia Rodrigo
+pop	Stay	The Kid LAROI, Justin Bieber
+pop	As It Was	Harry Styles
+pop	Flowers	Miley Cyrus
+pop	Anti-Hero	Taylor Swift
+rock	Bohemian Rhapsody	Queen
+rock	Smells Like Teen Spirit	Nirvana
+rock	Hotel California	Eagles
+rock	Stairway to Heaven	Led Zeppelin
+rock	Sweet Child O' Mine	Guns N' Roses
+rock	Back In Black	AC/DC
+rock	Paranoid	Black Sabbath
+rock	Creep	Radiohead
+rock	Seven Nation Army	The White Stripes
+rock	Mr. Brightside	The Killers
+rock	Wonderwall	Oasis
+rock	Come As You Are	Nirvana
+rock	Under the Bridge	Red Hot Chili Peppers
+rock	Boulevard of Broken Dreams	Green Day
+rock	Do I Wanna Know?	Arctic Monkeys
+rock	Take Me Out	Franz Ferdinand
+hiphop	HUMBLE.	Kendrick Lamar
+hiphop	Lose Yourself	Eminem
+hiphop	God's Plan	Drake
+hiphop	Sicko Mode	Travis Scott
+hiphop	Juicy	The Notorious B.I.G.
+hiphop	Empire State Of Mind	JAY-Z, Alicia Keys
+hiphop	Gold Digger	Kanye West, Jamie Foxx
+hiphop	Still D.R.E.	Dr. Dre, Snoop Dogg
+hiphop	Rockstar	Post Malone, 21 Savage
+hiphop	Lucid Dreams	Juice WRLD
+hiphop	Mask Off	Future
+hiphop	Alright	Kendrick Lamar
+electronic	Around the World	Daft Punk
+electronic	One More Time	Daft Punk
+electronic	Levels	Avicii
+electronic	Wake Me Up	Avicii
+electronic	Titanium	David Guetta, Sia
+electronic	Strobe	deadmau5
+electronic	Greece 2000	Three Drives
+electronic	Sandstorm	Darude
+electronic	Better Off Alone	Alice Deejay
+electronic	Clarity	Zedd, Foxes
+electronic	Midnight City	M83
+electronic	Language	Porter Robinson
+rnb	No Scrubs	TLC
+rnb	Crazy In Love	Beyonce, JAY-Z
+rnb	Redbone	Childish Gambino
+rnb	Thinking Out Loud	Ed Sheeran
+rnb	Let's Get It On	Marvin Gaye
+rnb	Superstition	Stevie Wonder
+rnb	Ain't No Mountain High Enough	Marvin Gaye, Tammi Terrell
+rnb	Girl on Fire	Alicia Keys
+classic	Dancing Queen	ABBA
+classic	Imagine	John Lennon
+classic	Yesterday	The Beatles
+classic	Hey Jude	The Beatles
+classic	Billie Jean	Michael Jackson
+classic	Thriller	Michael Jackson
+classic	Like a Rolling Stone	Bob Dylan
+classic	What a Wonderful World	Louis Armstrong
+classic	Respect	Aretha Franklin
+classic	Don't Stop Believin'	Journey
+classic	Every Breath You Take	The Police
+classic	Take On Me	a-ha
+classic	Girls Just Want to Have Fun	Cyndi Lauper
+classic	Africa	TOTO
+classic	Livin' on a Prayer	Bon Jovi
+classic	September	Earth, Wind & Fire
+classic	Fly Me to the Moon	Frank Sinatra
+latin	Despacito	Luis Fonsi, Daddy Yankee
+latin	Bailando	Enrique Iglesias
+latin	Hips Don't Lie	Shakira, Wyclef Jean
+latin	Mi Gente	J Balvin, Willy William
+latin	Vivir Mi Vida	Marc Anthony
+latin	Bamba	Ritchie Valens
+latin	Tusa	KAROL G, Nicki Minaj
+latin	Titi Me Pregunto	Bad Bunny
+latin	La Bicicleta	Carlos Vives, Shakira
+latin	Gasolina	Daddy Yankee
+nonlatin	夜に駆ける	YOASOBI
+nonlatin	残酷な天使のテーゼ	高橋洋子
+nonlatin	Lemon	米津玄師
+nonlatin	Dynamite	BTS
+nonlatin	Gangnam Style	PSY
+nonlatin	봄날	BTS
+nonlatin	Kill This Love	BLACKPINK
+nonlatin	Катюша	Ансамбль Александрова
+nonlatin	Группа крови	КИНО
+nonlatin	Звезда по имени Солнце	КИНО
+nonlatin	Калинка	Red Army Choir
+nonlatin	Tum Hi Ho	Arijit Singh
+nonlatin	Kal Ho Naa Ho	Sonu Nigam
+nonlatin	Chaiyya Chaiyya	Sukhwinder Singh, Sapna Awasthi
+nonlatin	Habibi Ya Nour El Ain	Amr Diab
+nonlatin	Ya Rayah	Rachid Taha
+nonlatin	Ai Se Eu Te Pego	Michel Teló
+nonlatin	Je veux	ZAZ
+nonlatin	Alors on danse	Stromae
+nonlatin	Papaoutai	Stromae
+nonlatin	99 Luftballons	Nena
+nonlatin	Du hast	Rammstein
+nonlatin	Sonne	Rammstein
+nonlatin	Volare	Gipsy Kings
+nonlatin	Con te partirò	Andrea Bocelli
+nonlatin	Zombie	The Cranberries
+nonlatin	Vaikuttaa	Cheek
+nonlatin	Jelena	Dubioza Kolektiv
+nonlatin	Ederlezi	Goran Bregović
+nonlatin	Mamma Mia	ABBA
+nonlatin	Ievan Polkka	Loituma
+live	Wonderwall - Live	Oasis
+live	Hallelujah - Live at the Royal Albert Hall	Jeff Buckley
+live	Comfortably Numb - Live	Pink Floyd
+live	Free Bird - Live	Lynyrd Skynyrd
+live	Hotel California - Live	Eagles
+live	Purple Rain - Live	Prince
+live	Hurt - Live	Johnny Cash
+live	Under Pressure - Live Aid	Queen
+remix	Mr. Brightside - Jacques Lu Cont's Thin White Duke Mix	The Killers
+remix	Blinding Lights - Remix	The Weeknd, ROSALÍA
+remix	Closer - Remix	The Chainsmokers, Halsey
+remix	Don't Start Now - Purple Disco Machine Remix	Dua Lipa
+remix	Rain On Me - Remix	Lady Gaga, Ariana Grande
+remix	Faded - Restrung	Alan Walker
+remix	Stay With Me - Acoustic	Sam Smith
+remix	Heat Waves - Remix	Glass Animals
+feat	Love The Way You Lie	Eminem, Rihanna
+feat	Fancy (feat. Charli XCX)	Iggy Azalea, Charli XCX
+feat	Wrecking Ball - Remastered	Miley Cyrus
+feat	Congratulations (feat. Quavo)	Post Malone, Quavo
+feat	Old Town Road (feat. Billy Ray Cyrus) - Remix	Lil Nas X, Billy Ray Cyrus
+feat	Lean On	Major Lazer, MØ, DJ Snake
+feat	Closer	The Chainsmokers, Halsey
+feat	Call Me Maybe	Carly Rae Jepsen
+remaster	Karma Police - Remastered	Radiohead
+remaster	Heroes - 2017 Remaster	David Bowie
+remaster	Born to Run - Remastered	Bruce Springsteen
+remaster	Dream On - Remastered 2007	Aerosmith

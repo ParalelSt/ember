@@ -1,17 +1,17 @@
 'use client';
 
-import { useState } from 'react';
-import { Button } from '@/components/ui/button';
+import Link from 'next/link';
+import { buttonVariants } from '@/components/ui/button';
 import { UploadIcon } from '@/components/icons';
 import { SectionHeader } from '@/components/page/SectionHeader';
-import { TransferDialog } from '@/components/import/TransferDialog';
+import { cn } from '@/lib/utils';
+
+/** The Transfer page, returning here when it is done or left. */
+const SETTINGS_TRANSFER_HREF = `/transfer?from=${encodeURIComponent('/settings/library')}`;
 
 /** Settings > Library. One row today: bringing songs liked somewhere else
- *  into Ember. It lives here rather than on the Liked songs page because it
- *  is a once-in-a-while setup job, not something to meet every time you
- *  open your likes. */
+ *  into Ember. It opens the same Transfer page as the button on Liked songs. */
 export default function SettingsLibrary() {
-  const [transferOpen, setTransferOpen] = useState(false);
   return (
     <section className="max-w-2xl">
       <SectionHeader title="Library" />
@@ -25,17 +25,15 @@ export default function SettingsLibrary() {
             background.
           </p>
         </div>
-        <Button
-          onClick={() => setTransferOpen(true)}
-          variant="ember"
-          className="shrink-0"
+        <Link
+          href={SETTINGS_TRANSFER_HREF}
+          className={cn(buttonVariants({ variant: 'ember' }), 'shrink-0')}
           data-testid="settings-transfer-button"
         >
           <UploadIcon className="h-4 w-4" />
           Transfer
-        </Button>
+        </Link>
       </div>
-      <TransferDialog open={transferOpen} onOpenChange={setTransferOpen} from="settings" />
     </section>
   );
 }

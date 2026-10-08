@@ -18,6 +18,9 @@ import { parsePaste } from '@/lib/import/sources/paste';
 import { parseSpotifyExport } from '@/lib/import/sources/spotifyExport';
 import { isParseError, type ParseError, type ParsedSource } from '@/lib/import/sources/types';
 
+/** How many songs of a kind the preview names. */
+export const SAMPLE_SIZE = 5;
+
 /** Most an upload may weigh. A 10 000-song Exportify CSV is about 2 MB, so
  *  this is generous and still far below what would hurt the host. */
 export const MAX_UPLOAD_BYTES = 20 * 1024 * 1024;
@@ -95,6 +98,10 @@ export function parseTransferInput(input: TransferInput): ParsedSource | ParseEr
     ...parsed,
     items: overCap ? deduped.items.slice(0, MAX_TRANSFER_ITEMS) : deduped.items,
     dropped: parsed.dropped + deduped.dropped,
+    unreadable: parsed.dropped,
+    duplicates: deduped.dropped,
+    duplicateSample: deduped.repeats.slice(0, SAMPLE_SIZE).map((i) => ({ title: i.title, artist: i.artist })),
+    overLimit: overCap ? deduped.items.length - MAX_TRANSFER_ITEMS : 0,
     // Either the whole list was longer than a transfer may carry, or the
     // parser stopped reading before it got to the end.
     truncated: overCap || parsed.truncated,

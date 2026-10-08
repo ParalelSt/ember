@@ -1,9 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import {
+  KEPT_FIRST_MESSAGE,
   OVER_CAP_MESSAGE,
   plainTransferResult,
   RATE_LIMITED_MESSAGE,
   transferErrorMessage,
+  transferEstimate,
+  transferMinutes,
+  transferTimeLeft,
   UNKNOWN_MESSAGE,
 } from './transferCopy';
 
@@ -87,5 +91,53 @@ describe('plainTransferResult', () => {
 
   it('has no em dashes', () => {
     expect(plainTransferResult({ found: 3, check: 1, notFound: 1, existing: 1, notMusic: 2 })).not.toContain('\u2014');
+  });
+});
+
+describe('transferEstimate', () => {
+  const STAY = 'You can leave this page; the transfer carries on and the Liked songs page shows how far it is.';
+
+  it('says under 5 minutes for a short list', () => {
+    expect(transferEstimate(1)).toBe(`Under 5 minutes. ${STAY}`);
+    expect(transferEstimate(40)).toBe(`Under 5 minutes. ${STAY}`);
+    expect(transferEstimate(239)).toBe(`Under 5 minutes. ${STAY}`);
+  });
+
+  it('is 5 minutes at exactly 240 songs (8 songs per 10 seconds) and rounds up in 5 minute steps', () => {
+    expect(transferEstimate(240)).toBe(`About 5 minutes. ${STAY}`);
+    expect(transferEstimate(241)).toBe(`About 10 minutes. ${STAY}`);
+    expect(transferEstimate(300)).toBe(`About 10 minutes. ${STAY}`);
+    expect(transferEstimate(5_000)).toBe(`About 105 minutes. ${STAY}`);
+    expect(transferEstimate(10_000)).toBe(`About 210 minutes. ${STAY}`);
+  });
+
+  it('says nothing for an empty list', () => {
+    expect(transferEstimate(0)).toBe('');
+  });
+});
+
+describe('transferMinutes and transferTimeLeft', () => {
+  it('is the estimate as a phrase, for the preview sentence', () => {
+    expect(transferMinutes(40)).toBe('Under 5 minutes');
+    expect(transferMinutes(300)).toBe('About 10 minutes');
+    expect(transferMinutes(0)).toBe('');
+  });
+
+  it('an exact transfer searches for nothing, so it is about a minute', () => {
+    expect(transferMinutes(640, true)).toBe('About a minute');
+    expect(transferMinutes(5_000, true)).toBe('About 5 minutes');
+  });
+
+  it('says what is left while it runs', () => {
+    expect(transferTimeLeft(1_000)).toBe('About 25 minutes left');
+    expect(transferTimeLeft(10)).toBe('Under 5 minutes left');
+    expect(transferTimeLeft(0)).toBe('Almost done');
+  });
+});
+
+describe('KEPT_FIRST_MESSAGE', () => {
+  it('names the 10 000 Ember keeps', () => {
+    expect(KEPT_FIRST_MESSAGE).toContain('first 10,000');
+    expect(KEPT_FIRST_MESSAGE).not.toMatch(/split/i);
   });
 });

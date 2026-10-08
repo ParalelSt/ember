@@ -40,6 +40,14 @@ export interface ParsedSource {
   dropped: number;
   /** The source had more songs than one transfer may carry. */
   truncated: boolean;
+  /** Of `dropped`, the rows Ember could not read (set by parseTransferInput). */
+  unreadable?: number;
+  /** Of `dropped`, the same song a second time, and the first few of them. */
+  duplicates?: number;
+  duplicateSample?: { title: string; artist: string }[];
+  /** Songs past the 10 000 one transfer carries, when the list was read to
+   *  its end. */
+  overLimit?: number;
 }
 
 export interface ParseError {

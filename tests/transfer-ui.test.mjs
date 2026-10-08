@@ -1,10 +1,11 @@
 /** Transfer in a real browser, end to end: Settings > Library, the Transfer
- *  row, then the three plain questions (where the songs land, where the
- *  music is now, what you already have). For Liked songs only YouTube
- *  Music is open for now, so it checks the others are crossed out, then
- *  runs an uploaded CSV into a new playlist: its preview, Start, and the
- *  playlist page with the import and the songs. The Liked songs page run
- *  is covered by tests/transfer-google-ui.test.mjs.
+ *  row, then the Transfer wizard: where the songs are now (nothing crossed
+ *  out), a sheet asking where they go, what you already have, the steps
+ *  one at a time with Back and Next step in the bottom bar, then an
+ *  uploaded CSV into a new playlist: the big-number preview, Start, back
+ *  where it was opened with the floating pill, the "Transfer done" card and
+ *  the one list of songs to check. The Liked songs run is covered by
+ *  tests/transfer-google-ui.test.mjs.
  *
  *      node tests/transfer-ui.test.mjs
  *
@@ -116,79 +117,86 @@ try {
   check('A2 it holds the "Transfer from another app" row', await page.getByText('Transfer from another app').count() > 0);
   await shot(page, 'settings');
 
-  // ── B. Destination first, as two cards ──
+  // ── B. Services first ──
   await page.click('[data-testid="settings-transfer-button"]');
-  await page.waitForSelector('[data-testid="transfer-dialog"]');
-  const cards = await page.$$eval('[data-testid="transfer-destination-card"]', (els) => els.map((e) => e.dataset.destination));
-  check('B1 the dialog asks where the songs land, as two cards', JSON.stringify(cards) === '["liked","playlist"]', `${cards}`);
-  await shot(page, 'destination');
-  await page.click('[data-testid="transfer-destination-card"][data-destination="liked"]');
-  await page.waitForSelector('[data-testid="transfer-chosen-destination"]');
-  const chosen = await page.textContent('[data-testid="transfer-chosen-destination"]');
-  check('B2 picking Liked songs opens the source step and says so', /Liked songs/.test(chosen ?? ''), `${chosen}`);
-
-  // ── B'. Where is your music now? ──
-  const services = await page.$$eval('[data-testid="transfer-service-card"]', (els) => els.map((e) => e.textContent));
-  check('B3 then it asks where the music is now, by name',
+  await page.waitForURL('**/transfer?**');
+  await page.waitForSelector('[data-testid="transfer-page"]');
+  const progress = await page.$$eval('[data-testid="transfer-progress"] li', (els) => els.map((e) => e.textContent));
+  check('B1 a wizard header says where you are', JSON.stringify(progress) === '["1 Where","2 How","3 Check"]', `${progress}`);
+  const services = await page.$$eval('[data-testid="transfer-service-name"]', (els) => els.map((e) => e.textContent));
+  check('B2 the first screen asks where the music is now, by name',
     JSON.stringify(services) === '["Spotify","YouTube Music","Apple Music","Somewhere else"]', `${services}`);
-  // For now only YouTube Music may fill the Liked songs: the others are
-  // crossed out and cannot be pressed (LIKED_SERVICES_OPEN).
   const open = await page.$$eval('[data-testid="transfer-service-card"]', (els) =>
     Object.fromEntries(els.map((e) => [e.dataset.service, !e.disabled])));
-  check('B3b for Liked songs only YouTube Music can be picked',
-    JSON.stringify(open) === '{"spotify":false,"ytmusic":true,"apple":false,"other":false}', JSON.stringify(open));
-  const heldBack = await page.textContent('[data-testid="transfer-services-held-back"]').catch(() => '');
-  check('B3c and the dialog says why, in a sentence', /only YouTube Music/.test(heldBack ?? ''), `${heldBack}`);
-  await shot(page, 'liked-locked');
+  check('B3 every service can be picked',
+    JSON.stringify(open) === '{"spotify":true,"ytmusic":true,"apple":true,"other":true}', JSON.stringify(open));
+  const needs = (await page.textContent('[data-testid="transfer-service-card"][data-service="apple"]')) ?? '';
+  check('B3c each row says what it needs', /The file Apple sends you/.test(needs), needs);
+  await shot(page, 'chooser');
 
-  // A file still makes a new playlist from any service: go back one step.
-  await page.getByRole('button', { name: /Back/ }).click();
-  await page.click('[data-testid="transfer-destination-card"][data-destination="playlist"]');
-  await page.waitForSelector('[data-testid="transfer-service-card"][data-service="spotify"]:not([disabled])');
+  // ── B'. A sheet asks where they go ──
   await page.click('[data-testid="transfer-service-card"][data-service="spotify"]');
+  await page.waitForSelector('[data-testid="transfer-where-sheet"]');
+  const cards = await page.$$eval('[data-testid="transfer-where-sheet"] [data-testid="transfer-destination-card"]', (els) => els.map((e) => e.dataset.destination));
+  check('B3d picking a service opens a sheet with the two places', JSON.stringify(cards) === '["liked","playlist"]', `${cards}`);
+  const checked = await page.getAttribute('[data-testid="transfer-where-sheet"] [data-destination="liked"]', 'aria-checked');
+  check('B3e Liked songs is picked to start with', checked === 'true', `${checked}`);
+  await shot(page, 'where-to');
+  // A file makes a new playlist from any service.
+  await page.click('[data-testid="transfer-where-sheet"] [data-destination="playlist"]');
+  await page.locator('[data-testid="transfer-where-sheet"]').getByRole('button', { name: 'Continue' }).click();
 
   // ── B''. What do you have already? ──
-  const options = await page.$$eval('[data-testid="transfer-have-option"]', (els) => els.map((e) => e.textContent));
+  const options = await page.$$eval('[data-testid="transfer-have-label"]', (els) => els.map((e) => e.textContent));
   check('B4 and what is already in hand, not which route to take',
     JSON.stringify(options) === JSON.stringify([
       'A link to a playlist',
-      'A file someone gave me, or one I downloaded',
       'Nothing yet, but I can wait a few days',
+      'A file someone gave me, or one I downloaded',
     ]), `${options}`);
   await shot(page, 'what-you-have');
   await page.click('[data-testid="transfer-have-option"][data-route="spotify-converter"]');
+  await page.getByRole('button', { name: 'Next', exact: true }).click();
   await page.waitForSelector('[data-testid="transfer-steps"]');
   const stepsText = await page.textContent('[data-testid="transfer-steps"]');
-  check('B5 only that one combination\u2019s steps show',
-    /Exportify/.test(stepsText ?? '') && !/Download your data/.test(stepsText ?? ''), `${(stepsText ?? '').slice(0, 120)}`);
-  check('B6 and the steps say songs are looked up by name', /looks each song up by name/.test(stepsText ?? ''));
-  const startOffBefore = await page.getByRole('button', { name: /^Transfer$/ }).isDisabled();
-  check('B7 nothing can be started before Ember has read a source', startOffBefore);
+  check('B5 the steps show one at a time, with a picture',
+    /Exportify/.test(stepsText ?? '') && (await page.locator('[data-testid="transfer-illustration"]').count()) === 1, `${(stepsText ?? '').slice(0, 120)}`);
+  check('B6 and say songs are looked up by name', /looks each song up by name/.test(stepsText ?? ''));
+  await shot(page, 'steps');
+  await page.getByRole('button', { name: 'Next step' }).click();
+  check('B7 the file box is on the last step', await page.locator('input[type="file"][aria-label="Song list file"]').count() === 1);
 
   // ── C. An uploaded CSV, previewed before anything happens ──
   await page.setInputFiles('input[type="file"][aria-label="Song list file"]', FIXTURE);
   await page.waitForSelector('[data-testid="transfer-preview"]', { timeout: 20_000 });
-  const preview = await page.textContent('[data-testid="transfer-preview"]');
-  check('C1 the preview names the source and the count', /Liked songs from Spotify/.test(preview ?? '') && /3 songs/.test(preview ?? ''), `${preview}`);
-  check('C2 and the first songs, so a wrong file is obvious', /Paper Lanterns/.test(preview ?? ''), `${preview}`);
+  const big = await page.textContent('[data-testid="transfer-preview-count"]');
+  const sentence = await page.textContent('[data-testid="transfer-preview-sentence"]');
+  check('C1 the preview says how many as one big number, and where they go',
+    big === '3' && /songs to bring into a new playlist/.test(sentence ?? ''), `${big} ${sentence}`);
+  await page.click('[data-testid="transfer-chip"][data-chip="new"]');
+  const songs = await page.textContent('[data-testid="transfer-chip-songs"]');
+  check('C2 a count chip shows which songs it means', /Paper Lanterns/.test(songs ?? ''), `${songs}`);
   await shot(page, 'preview');
 
-  // ── D. Start, and the new playlist takes over ──
+  // ── D. Start, and stay where you were ──
   const start = page.getByRole('button', { name: /^Transfer 3 songs$/ });
   check('D1 Start is on once the preview is there', await start.count() === 1 && !(await start.isDisabled()));
   await start.click();
-  await page.waitForURL('**/playlist/**', { timeout: 20_000 });
-  await page.waitForSelector('[data-testid="import-progress-banner"], [data-testid="import-summary"]', { timeout: 20_000 });
-  check('D2 it lands on the new playlist with the import showing', true);
+  await page.waitForURL('**/settings/library', { timeout: 20_000 });
+  await page.waitForSelector('[data-testid="transfer-chip-status"]', { timeout: 20_000 });
+  check('D2 it goes back to where it was opened, with the floating pill showing', true);
   await shot(page, 'running');
 
-  // ── E. It finishes, and the songs are in the playlist ──
-  await page.waitForSelector('[data-testid="import-summary"]', { timeout: 60_000 });
-  const summary = await page.textContent('[data-testid="import-summary"]');
-  check('E1 the import says it finished', (summary ?? '').length > 0, `${(summary ?? '').slice(0, 160)}`);
-  await page.waitForFunction(() => document.body.innerText.includes('Paper Lanterns'), null, { timeout: 30_000 });
-  check('E2 a transferred song is in the playlist', (await page.textContent('body'))?.includes('Paper Lanterns') ?? false);
+  // ── E. It finishes: a notification, then the one list ──
+  await page.waitForSelector('[data-testid="transfer-notification"]', { timeout: 60_000 });
+  const result = await page.textContent('[data-testid="transfer-notification-result"]');
+  check('E1 a "Transfer done" notification says the result', /We found/.test(result ?? ''), `${result}`);
   await shot(page, 'done');
+  await page.locator('[data-testid="transfer-notification"]').getByRole('button', { name: /^Check \d+ songs?$/ }).click();
+  await page.waitForURL('**/transfer/review?job=**', { timeout: 20_000 });
+  await page.waitForSelector('[data-testid="transfer-review"]');
+  check('E2 tapping it opens the list of songs to check', true);
+  await shot(page, 'review');
 
   check('F1 no page errors anywhere in the flow', errors.length === 0, errors.join(' | '));
   await ctx.close();

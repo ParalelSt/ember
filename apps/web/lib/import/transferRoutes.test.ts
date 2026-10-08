@@ -5,6 +5,7 @@ import {
   NOTHING_TO_MATCH,
   routesFor,
   serviceById,
+  serviceOpen,
   soleRoute,
   SPOTIFY_LINK_CAP,
   TRANSFER_SERVICES,
@@ -23,13 +24,37 @@ describe('the four services a transfer asks about', () => {
     }
   });
 
+  it('says under each answer how long that way takes', () => {
+    const time = Object.fromEntries(TRANSFER_SERVICES.flatMap((s) => s.routes.map((r) => [r.id, r.time])));
+    expect(time).toEqual({
+      'spotify-export': 'Free and complete. Spotify takes a few days',
+      'spotify-converter': 'Instant, through a free site',
+      'spotify-link': 'Instant, first 100 songs only',
+      'ytmusic-google': 'Exact, about a minute',
+      'ytmusic-link': 'Instant, from a public playlist',
+      'apple-export': 'Apple takes a few days',
+      'other-paste': 'Type or paste, one a line',
+      'other-file': 'Any CSV with a header row',
+    });
+  });
+
   it('asks what a person has, never which technical route to take', () => {
     const asked = TRANSFER_SERVICES.flatMap((s) => s.routes.map((r) => r.whatYouHave));
     for (const q of asked) expect(q).not.toMatch(/CSV|JSON|export|headers/i);
   });
 
+  it('each says on its own row what a person needs for it', () => {
+    expect(TRANSFER_SERVICES.map((s) => s.need)).toEqual([
+      'Your data export, a CSV or a playlist link',
+      'Sign in with Google, or a playlist link',
+      'The file Apple sends you',
+      'Paste a list, or any CSV',
+    ]);
+    for (const s of TRANSFER_SERVICES) expect(s.mark.letter, s.id).toMatch(/^.$/);
+  });
+
   it('has no em dashes in anything it says', () => {
-    const everything = TRANSFER_SERVICES.flatMap((s) => [s.name, s.heading, ...s.routes.flatMap((r) => [r.whatYouHave, ...r.steps, ...r.notes])]);
+    const everything = TRANSFER_SERVICES.flatMap((s) => [s.name, s.heading, s.need, ...s.routes.flatMap((r) => [r.whatYouHave, r.time, ...r.steps, ...r.notes])]);
     for (const line of everything) expect(line).not.toContain('\u2014');
   });
 });
@@ -70,6 +95,18 @@ describe('the real limits, said where the path shows up', () => {
 });
 
 describe('what a destination leaves on offer', () => {
+  it('Spotify leads with its data export for Liked songs and with the link for a playlist', () => {
+    const spotify = serviceById('spotify');
+    expect(routesFor(spotify, 'liked').map((r) => r.id)).toEqual(['spotify-export', 'spotify-converter', 'spotify-link']);
+    expect(routesFor(spotify, 'playlist').map((r) => r.id)).toEqual(['spotify-link', 'spotify-export', 'spotify-converter']);
+  });
+
+  it('every service is open for Liked songs, and serviceOpen keeps the hold-back switch', () => {
+    for (const s of TRANSFER_SERVICES) expect(serviceOpen(s.id, 'liked')).toBe(true);
+    expect(serviceOpen('spotify', 'liked', ['ytmusic'])).toBe(false);
+    expect(serviceOpen('spotify', 'playlist', ['ytmusic'])).toBe(true);
+  });
+
   it('the Google sign-in is offered for Liked songs only, first', () => {
     const ytmusic = serviceById('ytmusic');
     expect(routesFor(ytmusic, 'liked').map((r) => r.kind)).toEqual(['google', 'link']);

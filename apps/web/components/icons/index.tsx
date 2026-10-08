@@ -91,4 +91,6 @@ export {
   Square as StopIcon,
   // Edit order: the drag handle on each row.
   GripVertical as GripIcon,
+  // The Transfer page: a file to choose.
+  FileText as FileIcon,
 } from 'lucide-react';

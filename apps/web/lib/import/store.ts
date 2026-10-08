@@ -230,6 +230,9 @@ export interface NewImport {
   tracks?: Track[];
   /** How the source lists its songs, for dating a transfer's likes. */
   order?: SourceOrder;
+  /** Songs Skip already liked left out of a transfer: counted from the
+   *  start as ones the person already had. */
+  existing?: number;
 }
 
 /** The oldest like the person already has, for placing a transfer's songs
@@ -285,7 +288,7 @@ export async function createImportJob(
     accepted: 0,
     review,
     missing: 0,
-    existing: 0,
+    existing: kind === 'liked' ? Math.max(0, n.existing ?? 0) : 0,
     ...(playlist ? { playlist: playlist.id } : {}),
     dismissed: false,
   });
@@ -402,24 +405,31 @@ async function pickLiked(pb: PocketBase, job: ImportJob, item: ImportItem, track
   const own = String((await pb.collection('import_items').getOne(item.id)).like_id ?? '');
   let kept = own;
   if (own && oldVideo && oldVideo !== track.sourceId) {
+    await releaseLike(pb, job, item, own, oldVideo);
     kept = '';
-    const sharing = (
-      await pb.collection('import_items').getFullList({ filter: `job = "${esc(job.id)}" && video_id = "${esc(oldVideo)}"` })
-    ).filter((r) => r.id !== item.id && (r.status === 'accepted' || r.status === 'resolved'));
-    if (sharing.length) {
-      await pb.collection('import_items').update(sharing[0].id, { like_id: own });
-    } else {
-      try {
-        const like = await pb.collection('likes').getOne(own);
-        if (like.origin === 'import') await pb.collection('likes').delete(own);
-      } catch (e) {
-        // Unliked by hand since.
-        if (status(e) !== 404) throw e;
-      }
-    }
   }
   const liked = await likeTrack(pb, job.userId, track, item.likedAt);
   return liked.id ?? kept;
+}
+
+/** Let go of the like this item made (`own`, for `video`): another song of
+ *  the transfer still pointing at the same video takes it over; otherwise
+ *  it is unliked, if Ember made it. */
+async function releaseLike(pb: PocketBase, job: ImportJob, item: ImportItem, own: string, video: string): Promise<void> {
+  const sharing = (
+    await pb.collection('import_items').getFullList({ filter: `job = "${esc(job.id)}" && video_id = "${esc(video)}"` })
+  ).filter((r) => r.id !== item.id && (r.status === 'accepted' || r.status === 'resolved'));
+  if (sharing.length) {
+    await pb.collection('import_items').update(sharing[0].id, { like_id: own });
+    return;
+  }
+  try {
+    const like = await pb.collection('likes').getOne(own);
+    if (like.origin === 'import') await pb.collection('likes').delete(own);
+  } catch (e) {
+    // Unliked by hand since.
+    if (status(e) !== 404) throw e;
+  }
 }
 
 /** The item is settled: it points at the picked song, which joins the
@@ -453,4 +463,39 @@ async function saveResolvedItem(
 export async function skipItem(pb: PocketBase, job: ImportJob, item: ImportItem): Promise<void> {
   await pb.collection('import_items').update(item.id, { status: 'skipped' });
   await pb.collection('import_jobs').update(job.id, await jobCounts(pb, job.id));
+}
+
+/** Undo on the transfer's list: a song the person used or skipped goes back
+ *  to what it was (`to`, which the list remembers). A used song gives up
+ *  the like it made, the same way a re-match does, or leaves the playlist
+ *  when no other song of the import holds the same video. */
+export async function undoItem(pb: PocketBase, job: ImportJob, item: ImportItem, to: 'review' | 'missing'): Promise<void> {
+  if (item.status === 'resolved' && item.videoId) {
+    if (job.kind === 'liked') {
+      const own = String((await pb.collection('import_items').getOne(item.id)).like_id ?? '');
+      if (own) await releaseLike(pb, job, item, own, item.videoId);
+    } else if (job.playlistId) {
+      await removeFromPlaylist(pb, job, item, item.videoId);
+    }
+  }
+  await pb.collection('import_items').update(item.id, { status: to, video_id: '', like_id: '' });
+  await pb.collection('import_jobs').update(job.id, await jobCounts(pb, job.id));
+}
+
+/** Take a used song back out of an import's playlist, unless another song
+ *  of the import is the same video. */
+async function removeFromPlaylist(pb: PocketBase, job: ImportJob, item: ImportItem, video: string): Promise<void> {
+  const sharing = (
+    await pb.collection('import_items').getFullList({ filter: `job = "${esc(job.id)}" && video_id = "${esc(video)}"` })
+  ).filter((r) => r.id !== item.id && (r.status === 'accepted' || r.status === 'resolved'));
+  if (sharing.length || !job.playlistId) return;
+  try {
+    const t = await pb.collection('tracks').getFirstListItem(`source_id = "${esc(video)}"`);
+    const row = await pb
+      .collection('playlist_tracks')
+      .getFirstListItem(`playlist = "${esc(job.playlistId)}" && track = "${t.id}"`);
+    await pb.collection('playlist_tracks').delete(row.id);
+  } catch (e) {
+    if (status(e) !== 404) throw e;
+  }
 }

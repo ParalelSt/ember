@@ -45,6 +45,14 @@ vi.mock('@/lib/import/store', () => ({
   createImportJob: (pb: unknown, n: Record<string, unknown>) => createImportJob(pb, n),
 }));
 
+/** What the person has liked already, for "already liked" and "Skip
+ *  already liked". */
+const likedSongs = vi.hoisted(() => ({ list: [] as { title: string; artist: string }[] }));
+vi.mock('@/lib/import/likedSongs', async () => {
+  const { likedIndex } = await import('@/lib/import/alreadyLiked');
+  return { likedIndexFor: vi.fn(async () => likedIndex(likedSongs.list)) };
+});
+
 const { POST } = await import('./route');
 
 function jsonRequest(body: unknown, query = ''): NextRequest {
@@ -55,10 +63,11 @@ function jsonRequest(body: unknown, query = ''): NextRequest {
   } as unknown as NextRequest;
 }
 
-function fileRequest(name: string, bytes: Buffer, query = '', destination?: string): NextRequest {
+function fileRequest(name: string, bytes: Buffer, query = '', destination?: string, skipLiked?: boolean): NextRequest {
   const form = new FormData();
   form.append('file', new File([new Uint8Array(bytes)], name));
   if (destination) form.append('destination', destination);
+  if (skipLiked) form.append('skipLiked', '1');
   return {
     url: `http://127.0.0.1/api/import/upload${query}`,
     headers: new Headers({ 'content-type': 'multipart/form-data; boundary=x' }),
@@ -69,6 +78,7 @@ function fileRequest(name: string, bytes: Buffer, query = '', destination?: stri
 const body = async (res: Response) => (await res.json()) as Record<string, never>;
 
 beforeEach(() => {
+  likedSongs.list = [];
   rateLimitMock.mockReturnValue(null);
   rateLimitKeys.length = 0;
   newImports.length = 0;
@@ -172,6 +182,99 @@ describe('POST /api/import/upload?preview=1', () => {
     const res = await POST(jsonRequest({ text: many }, '?preview=1'), {});
     const { preview } = (await res.json()) as { preview: { truncated: boolean; count: number } };
     expect(preview).toMatchObject({ truncated: true, count: 10_000 });
+  });
+});
+
+describe('POST /api/import/upload?preview=1, the counts the preview shows as chips', () => {
+  it('counts songs already liked, the new ones, and names a few of each', async () => {
+    likedSongs.list = [{ title: 'Paper Lanterns', artist: 'Halcyon Drift' }];
+    const res = await POST(fileRequest('exportify.csv', fixture('exportify.sample.csv'), '?preview=1'), {});
+    const { preview } = (await res.json()) as { preview: Record<string, unknown> };
+    expect(preview).toMatchObject({ count: 3, alreadyLiked: 1, duplicates: 0, unreadable: 0, overLimit: 0 });
+    expect(preview.likedSample).toEqual([{ title: 'Paper Lanterns', artist: 'Halcyon Drift' }]);
+    expect((preview.newSample as { title: string }[]).map((s) => s.title)).not.toContain('Paper Lanterns');
+    expect(preview.newSample).toHaveLength(2);
+  });
+
+  it('counts the same song twice and the rows it could not read apart', async () => {
+    const res = await POST(fileRequest('YourLibrary.json', fixture('YourLibrary.sample.json'), '?preview=1'), {});
+    const { preview } = (await res.json()) as { preview: Record<string, unknown> };
+    expect(preview).toMatchObject({ count: 4, dropped: 2, duplicates: 1, unreadable: 1, alreadyLiked: 0 });
+    expect((preview.duplicateSample as { title: string }[])[0].title).toBe('Paper Lanterns');
+  });
+
+  it('says how many are over the limit when it read them all', async () => {
+    const lib = Buffer.from(JSON.stringify({ tracks: Array.from({ length: 10_050 }, (_, i) => ({ artist: `A${i}`, track: `S${i}` })) }));
+    const res = await POST(fileRequest('YourLibrary.json', lib, '?preview=1'), {});
+    const { preview } = (await res.json()) as { preview: Record<string, unknown> };
+    expect(preview).toMatchObject({ truncated: true, overLimit: 50 });
+  });
+});
+
+describe('POST /api/import/upload, Skip already liked', () => {
+  it('leaves the songs already liked out of the job, and counts them as already had', async () => {
+    likedSongs.list = [{ title: 'Paper Lanterns', artist: 'Halcyon Drift' }];
+    const res = await POST(fileRequest('exportify.csv', fixture('exportify.sample.csv'), '', undefined, true), {});
+    expect(res.status).toBe(201);
+    const arg = newImports[0] as { items: { title: string; position: number }[]; existing: number };
+    expect(arg.items.map((i) => i.title)).not.toContain('Paper Lanterns');
+    expect(arg.items.map((i) => i.position)).toEqual([0, 1]);
+    expect(arg.existing).toBe(1);
+  });
+
+  it('from a pasted list too', async () => {
+    likedSongs.list = [{ title: 'Cold Open', artist: 'Mirror Hall' }];
+    await POST(jsonRequest({ text: 'Halcyon Drift - Paper Lanterns\nMirror Hall - Cold Open', skipLiked: true }), {});
+    const arg = newImports[0] as { items: { title: string }[]; existing: number };
+    expect(arg.items.map((i) => i.title)).toEqual(['Paper Lanterns']);
+    expect(arg.existing).toBe(1);
+  });
+
+  it('without it every song is looked up, already liked or not', async () => {
+    likedSongs.list = [{ title: 'Paper Lanterns', artist: 'Halcyon Drift' }];
+    await POST(fileRequest('exportify.csv', fixture('exportify.sample.csv')), {});
+    const arg = newImports[0] as { items: unknown[]; existing?: number };
+    expect(arg.items).toHaveLength(3);
+    expect(arg.existing ?? 0).toBe(0);
+  });
+
+  it('means nothing for a new playlist', async () => {
+    likedSongs.list = [{ title: 'Paper Lanterns', artist: 'Halcyon Drift' }];
+    await POST(fileRequest('exportify.csv', fixture('exportify.sample.csv'), '', 'playlist', true), {});
+    expect((newImports[0] as { items: unknown[] }).items).toHaveLength(3);
+  });
+
+  it('says so when every song is already liked, and starts nothing', async () => {
+    likedSongs.list = [{ title: 'Paper Lanterns', artist: 'Halcyon Drift' }];
+    const res = await POST(jsonRequest({ text: 'Halcyon Drift - Paper Lanterns', skipLiked: true }), {});
+    expect(res.status).toBe(422);
+    expect((await body(res)).error).toBe('Every song in that is already in your likes.');
+    expect(createImportJob).not.toHaveBeenCalled();
+  });
+});
+
+describe('POST /api/import/upload, a list over the cap', () => {
+  const library = (n: number) =>
+    Buffer.from(JSON.stringify({ tracks: Array.from({ length: n }, (_, i) => ({ artist: `Artist ${i}`, track: `Song ${i}` })) }));
+
+  it('a YourLibrary.json over 10 000 songs starts with the first 10 000 instead of refusing', async () => {
+    const res = await POST(fileRequest('YourLibrary.json', library(10_050)), {});
+    expect(res.status).toBe(201);
+    expect((newImports[0].items as unknown[]).length).toBe(10_000);
+    expect(kick).toHaveBeenCalled();
+  });
+
+  it('its preview says it was cut, with the source kind the dialog keys on', async () => {
+    const res = await POST(fileRequest('YourLibrary.json', library(10_050), '?preview=1'), {});
+    const { preview } = (await res.json()) as { preview: { kind: string; truncated: boolean; count: number } };
+    expect(preview).toMatchObject({ kind: 'spotify-export', truncated: true, count: 10_000 });
+  });
+
+  it('a pasted or CSV list over the cap is still refused', async () => {
+    const many = Array.from({ length: 10_001 }, (_, i) => `Artist ${i} - Song ${i}`).join('\n');
+    const res = await POST(jsonRequest({ text: many }), {});
+    expect(res.status).toBe(413);
+    expect(createImportJob).not.toHaveBeenCalled();
   });
 });
 

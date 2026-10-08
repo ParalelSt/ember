@@ -145,6 +145,35 @@ export function variantMarkers(title: string): string {
   return [...variantsOf(normalizeTitle(title))].sort().join('+');
 }
 
+/** Words in a version's description that name the version only generically. */
+const GENERIC = new Set(['live', 'version', 'remix', 'remixed', 'mix', 'acoustic', 'edit', 'radio', 'extended', 'demo', 'the', 'a', 'at', 'in', 'from', 'of', 'and', 's']);
+
+/** What a title says about its version beyond the bare marker: the words of
+ *  the bracket or dash part holding a variant word ("Royal Albert Hall",
+ *  "Purple Disco Machine"), and the year of a remaster. */
+function versionDetail(normalized: string): { words: Set<string> } {
+  const words = new Set<string>();
+  for (const v of VARIANTS) {
+    const any = v.re.source;
+    const parts = [
+      ...normalized.matchAll(new RegExp(String.raw`[(\[]([^)\]]*${any}[^)\]]*)[)\]]`, 'g')),
+      ...normalized.matchAll(new RegExp(String.raw`\s-\s([^-]*${any}.*)$`, 'g')),
+    ];
+    for (const m of parts) for (const w of flat(m[1]).split(' ')) if (w && !GENERIC.has(w)) words.add(w);
+  }
+  return { words };
+}
+
+/** Years named next to "remaster", read from the raw title because
+ *  normalizeTitle sets remaster notes aside. */
+function remasterYears(title: string): Set<string> {
+  const t = fold(title);
+  const out = new Set<string>();
+  for (const m of t.matchAll(/\b((?:19|20)\d{2})\s+(?:digital(?:ly)?\s+)?remaster/g)) out.add(m[1]);
+  for (const m of t.matchAll(/remaster(?:ed)?\s+((?:19|20)\d{2})\b/g)) out.add(m[1]);
+  return out;
+}
+
 function bigrams(s: string): Map<string, number> {
   const out = new Map<string, number>();
   for (let i = 0; i < s.length - 1; i++) {
@@ -255,6 +284,19 @@ export function score(source: ScoreSource, cand: ScoreCandidate): ScoreResult {
     points -= 30;
     for (const v of extra) reasons.push(capitalize(v));
     for (const v of missing) reasons.push(`Not the ${v}`);
+  }
+
+  // The same kind of version, but not the one the source names: another
+  // venue or remixer, or another remaster year.
+  const srcDetail = versionDetail(srcNorm).words;
+  const candDetail = versionDetail(candNorm).words;
+  const srcYears = remasterYears(source.title);
+  const candYears = remasterYears(cand.title);
+  const otherDetail = [...srcDetail].some((w) => !candDetail.has(w));
+  const otherYear = srcYears.size > 0 && candYears.size > 0 && ![...srcYears].some((y) => candYears.has(y));
+  if (otherDetail || otherYear) {
+    points -= 30;
+    reasons.push('Different version details');
   }
 
   // Video type.

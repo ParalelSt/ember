@@ -3,7 +3,7 @@ import { requireUser, UnauthorizedError, unauthorizedResponse } from '@/lib/auth
 import { fromError, jsonError } from '@/lib/upsertTrack';
 import { createAdminClient } from '@/lib/pocketbase/server';
 import { cleanPickedTrack, itemFromRecord, jobFromRecord } from '@/lib/import/records';
-import { pickItem, skipItem } from '@/lib/import/store';
+import { pickItem, skipItem, undoItem } from '@/lib/import/store';
 import { withRequestLog } from '@/lib/logger/withRequestLog';
 
 /** Settle one imported song by hand, from the review sheet or a track's
@@ -12,12 +12,14 @@ import { withRequestLog } from '@/lib/logger/withRequestLog';
  *    { action: 'pick', track }  put this YouTube video in the playlist at the
  *                               song's source position (a re-pick swaps the
  *                               old one out in place)
- *    { action: 'skip' }         leave the song out ("Remove song") */
+ *    { action: 'skip' }         leave the song out ("Remove song")
+ *    { action: 'undo', to }     the transfer list's Undo: a used or skipped
+ *                               song goes back to `review` or `missing` */
 export const POST = withRequestLog('import/items/[id]', async (request: NextRequest, ctx: RouteContext<'/api/import/items/[id]'>) => {
   try {
     const { pb, user } = await requireUser();
     const { id } = await ctx.params;
-    const body = (await request.json().catch(() => null)) as { action?: unknown; track?: unknown } | null;
+    const body = (await request.json().catch(() => null)) as { action?: unknown; track?: unknown; to?: unknown } | null;
 
     const itemRec = await pb.collection('import_items').getOne(id).catch(() => null);
     const jobRec = itemRec ? await pb.collection('import_jobs').getOne(String(itemRec.job)).catch(() => null) : null;
@@ -35,8 +37,12 @@ export const POST = withRequestLog('import/items/[id]', async (request: NextRequ
     } else if (body?.action === 'skip') {
       if (item.status !== 'review' && item.status !== 'missing') return jsonError('Only an unsure song can be left out.', 409);
       await skipItem(admin, job, item);
+    } else if (body?.action === 'undo') {
+      if (item.status !== 'resolved' && item.status !== 'skipped') return jsonError('Only a song you used or skipped can be undone.', 409);
+      if (body.to !== 'review' && body.to !== 'missing') return jsonError('to must be review or missing', 400);
+      await undoItem(admin, job, item, body.to);
     } else {
-      return jsonError('action must be pick or skip', 400);
+      return jsonError('action must be pick, skip or undo', 400);
     }
     const [fresh, freshJob] = await Promise.all([
       admin.collection('import_items').getOne(id),

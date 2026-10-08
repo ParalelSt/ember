@@ -1,6 +1,11 @@
 import { describe, expect, it, vi } from 'vitest';
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
 import type PocketBase from 'pocketbase';
-import { addTrackAt, createImportJob, createJobStore, likeTrack, pickItem, skipItem } from '@/lib/import/store';
+import { addTrackAt, createImportJob, createJobStore, likeTrack, pickItem, skipItem, undoItem } from '@/lib/import/store';
+import { ImportRunner } from '@/lib/import/runner';
+import { isParseError, parseTransferInput } from '@/lib/import/sources/index';
+import { jobSourceFor } from '@/lib/import/sources/types';
 import { parseYtmusicLiked } from '@/lib/import/sources/ytmusicLiked';
 import { GOOGLE_LIKES_SOURCE_ID } from '@/lib/import/musicCheck';
 import { itemFromRecord, jobFromRecord } from '@/lib/import/records';
@@ -24,6 +29,8 @@ function fakePb() {
   const matches = (r: Rec, filter?: string) =>
     !filter ||
     filter.split('&&').every((clause) => {
+      const num = /^\s*(\w+)\s*>=\s*(\d+)\s*$/.exec(clause);
+      if (num) return Number(r[num[1]] ?? 0) >= Number(num[2]);
       const m = /^\s*(\w+)\s*(!?=)\s*"([^"]*)"\s*$/.exec(clause);
       if (!m) throw new Error(`fake pb cannot read filter: ${clause}`);
       const same = String(r[m[1]] ?? '') === m[3];
@@ -253,6 +260,15 @@ describe('pickItem and skipItem', () => {
     expect(s.job()).toMatchObject({ accepted: 3, review: 0, missing: 1 });
   });
 
+  it('Undo of a review pick takes the song back out of the playlist', async () => {
+    const s = await withItems();
+    await pickItem(s.f.pb, s.job(), s.item(1), track('alt1'));
+    await undoItem(s.f.pb, s.job(), s.item(1), 'review');
+    expect(order(s.f, s.playlistId)).toEqual(['vid0', 'vid3']);
+    expect(s.item(1)).toMatchObject({ status: 'review', videoId: null });
+    expect(s.job()).toMatchObject({ accepted: 2, review: 1, missing: 1 });
+  });
+
   it('a re-match swaps the old track out in place', async () => {
     const s = await withItems();
     await pickItem(s.f.pb, s.job(), s.item(0), track('alt0'));
@@ -314,6 +330,11 @@ describe('a transfer into the likes', () => {
     expect(f.table('playlists')).toHaveLength(0);
     expect(job).toMatchObject({ kind: 'liked', playlistId: null, status: 'queued', total: 4, existing: 0 });
     expect(f.table('import_items')).toHaveLength(4);
+  });
+
+  it('starts with the songs Skip already liked left out counted as already had', async () => {
+    const { job } = await transfer({ existing: 7 });
+    expect(job).toMatchObject({ existing: 7, total: 4 });
   });
 
   it('dates every song below the oldest like the person already has, in source order', async () => {
@@ -498,6 +519,37 @@ describe('pickItem and skipItem on a transfer', () => {
     expect(s.item(2).status).toBe('skipped');
     expect(s.liked()).toEqual(['vid0']);
   });
+
+  it('Undo of a Use unlikes the song it liked and puts the song back to check', async () => {
+    const s = await withItems();
+    await pickItem(s.f.pb, s.freshJob(), s.item(1), track('alt1'));
+    expect(s.liked()).toEqual(['vid0', 'alt1']);
+    await undoItem(s.f.pb, s.freshJob(), s.item(1), 'review');
+    expect(s.liked()).toEqual(['vid0']);
+    expect(s.item(1)).toMatchObject({ status: 'review', videoId: null });
+    expect(s.f.table('import_items')[1].like_id).toBe('');
+    expect(s.freshJob()).toMatchObject({ accepted: 1, review: 1, missing: 1 });
+    // And it can be used again, with another version this time.
+    await pickItem(s.f.pb, s.freshJob(), s.item(1), track('vid1'));
+    expect(s.liked().sort()).toEqual(['vid0', 'vid1']);
+  });
+
+  it('Undo of a Use leaves a like the person already had', async () => {
+    const s = await withItems();
+    await likeTrack(s.f.pb, 'u1', track('alt1'), 5);
+    s.f.table('likes').forEach((l) => Object.assign(l, { origin: 'user' }));
+    await pickItem(s.f.pb, s.freshJob(), s.item(1), track('alt1'));
+    await undoItem(s.f.pb, s.freshJob(), s.item(1), 'review');
+    expect(s.liked().sort()).toEqual(['alt1', 'vid0']);
+  });
+
+  it('Undo of a Skip puts a not-found song back as not found', async () => {
+    const s = await withItems();
+    await skipItem(s.f.pb, s.freshJob(), s.item(2));
+    await undoItem(s.f.pb, s.freshJob(), s.item(2), 'missing');
+    expect(s.item(2).status).toBe('missing');
+    expect(s.freshJob()).toMatchObject({ accepted: 1, review: 1, missing: 1 });
+  });
 });
 
 // A Google likes transfer through the store. YouTube Music has already said
@@ -597,5 +649,74 @@ describe('createJobStore.claimNext after a transfer steps aside', () => {
     expect(next?.id).toBe(playlist.id);
     // With nothing else waiting it is the transfer's turn again.
     expect((await store.claimNext('runner-1', 2_000, transfer.id))?.id).toBe(transfer.id);
+  });
+});
+
+// Every way into the Liked songs, from the file or list the person hands
+// over to the likes the runner writes: parse it, queue a liked job, run it
+// with a matcher that finds a song for each title, and check that each
+// accepted song is a like Ember made and that the item remembers which one
+// (`like_id`, so a later re-match unlikes only that like).
+describe('every service ends in likes with like_id', () => {
+  const FIXTURES = path.resolve(__dirname, '../../../../tests/fixtures/imports/transfer');
+  const file = (name: string) => ({ filename: name, bytes: new Uint8Array(readFileSync(path.join(FIXTURES, name))) });
+  const cases: [string, Parameters<typeof parseTransferInput>[0]][] = [
+    ['Spotify YourLibrary.json', file('YourLibrary.sample.json')],
+    ['Apple Likes and Dislikes CSV', file('apple-likes.sample.csv')],
+    ['a converter CSV (Exportify)', file('exportify.sample.csv')],
+    ['a generic CSV (TuneMyMusic)', file('tunemymusic.sample.csv')],
+    ['a pasted list', { text: readFileSync(path.join(FIXTURES, 'paste.sample.txt'), 'utf8') }],
+  ];
+
+  it.each(cases)('%s', async (_name, input) => {
+    const parsed = parseTransferInput(input);
+    if (isParseError(parsed)) throw new Error(parsed.error);
+    expect(parsed.items.length).toBeGreaterThan(0);
+
+    const f = fakePb();
+    const { job, playlistId } = await createImportJob(f.pb, {
+      userId: 'u1',
+      source: jobSourceFor(parsed.kind),
+      sourceId: parsed.kind,
+      sourceUrl: '',
+      name: parsed.label,
+      coverUrl: null,
+      kind: 'liked',
+      order: parsed.order,
+      items: parsed.items,
+    });
+    expect(playlistId).toBeNull();
+
+    let clock = 1_000_000;
+    const store = createJobStore(async () => f.pb);
+    const runner = new ImportRunner({
+      store,
+      // One confident match per title, a distinct video each.
+      match: async (items) => items.map((item) => ({
+        item,
+        status: 'accepted' as const,
+        confidence: 90,
+        candidates: [cand(`vid${item.position}x${item.title.length}`, 90)],
+      })),
+      sleep: async (ms) => {
+        clock += ms;
+      },
+      now: () => clock,
+      runnerId: 'test',
+      paceMs: 0,
+    });
+    const claimed = await store.claimNext('test', clock);
+    if (!claimed) throw new Error('the job was not queued');
+    await runner.runJob(claimed);
+
+    const items = f.table('import_items').map(itemFromRecord);
+    const likes = f.table('likes');
+    expect(likes).toHaveLength(parsed.items.length);
+    expect(likes.every((l) => l.user === 'u1' && l.origin === 'import')).toBe(true);
+    expect(items.every((i) => i.status === 'accepted')).toBe(true);
+    const likeIds = f.table('import_items').map((r) => String(r.like_id ?? ''));
+    expect(likeIds.every(Boolean)).toBe(true);
+    expect(new Set(likeIds)).toEqual(new Set(likes.map((l) => l.id)));
+    expect(f.table('import_jobs').find((r) => r.id === job.id)).toMatchObject({ status: 'done' });
   });
 });

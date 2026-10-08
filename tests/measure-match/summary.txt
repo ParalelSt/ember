@@ -1,0 +1,170 @@
+TOTAL 152: accepted 132, review 18, missing 2
+pop        18: accepted 18, review 0, missing 0
+rock       16: accepted 16, review 0, missing 0
+hiphop     12: accepted 12, review 0, missing 0
+electronic 12: accepted 10, review 2, missing 0
+rnb        8: accepted 8, review 0, missing 0
+classic    17: accepted 17, review 0, missing 0
+latin      10: accepted 9, review 1, missing 0
+nonlatin   31: accepted 21, review 8, missing 2
+live       8: accepted 4, review 4, missing 0
+remix      8: accepted 6, review 2, missing 0
+feat       8: accepted 8, review 0, missing 0
+remaster   4: accepted 3, review 1, missing 0
+--- accepted picks whose artist shares no word with the source artist (check by eye)
+   80 Back In Black | AC/DC => Back In Black | AC/DC | ATV
+   80 Take On Me | a-ha => Take on Me | a-ha | ATV
+--- review and missing
+   review 50 One More Time | Daft Punk => One More Time (Radio Edit) | Daft Punk | ATV
+   review 65 Greece 2000 | Three Drives => Greece 2000 | Three Drives On A Vinyl | ATV
+   review 68 Bamba | Ritchie Valens => La Bamba | Ritchie Valens | ATV
+   missing 46 残酷な天使のテーゼ | 高橋洋子 => 残酷な天使のテーゼ （新世紀エヴァンゲリオン OP） | Rekka Katagiri | ATV
+   review 50 Lemon | 米津玄師 => Lemon | Kenshi Yonezu | ATV
+   review 50 봄날 | BTS => 봄날 | 김서하, 임동선 | ATV
+   review 50 Катюша | Ансамбль Александрова => Катюша | Ансамбль песни и пляски Советской армии имени А. В. Александрова | ATV
+   missing 46 Калинка | Red Army Choir => Калинка (Radio Version) | Vairious Words | ATV
+   review 59 Habibi Ya Nour El Ain | Amr Diab => Nour El Ein | Amr Diab | ATV
+   review 50 Alors on danse | Stromae => Alors on danse (Radio Edit) | Stromae | ATV
+   review 50 Vaikuttaa | Cheek => Vaikuttaa | Coldivo | ATV
+   review 50 Jelena | Dubioza Kolektiv => Jelena | Balša Jovanović | ATV
+   review 64 Ievan Polkka | Loituma => Ieva's Polka (Ievan Polkka) (1996 Version) | Loituma | ATV
+   review 50 Hallelujah - Live at the Royal Albert Hall | Jeff Buckley => Hallelujah (Live at Sin-é, New York, NY - July/August 1993) | Jeff Buckley | ATV
+   review 65 Hotel California - Live | Eagles => Hotel California (Live) | The Eagles | ATV
+   review 65 Hurt - Live | Johnny Cash => Hurt (Live) | The Man In Black: A Tribute To Johnny Cash | ATV
+   review 50 Under Pressure - Live Aid | Queen => Under Pressure (Live At Wembley Stadium / July 1986) | Queen | ATV
+   review 50 Don't Start Now - Purple Disco Machine Remix | Dua Lipa => Don't Start Now (Purple Disco Machine Remix) [Extended] | Dua Lipa | ATV
+   review 50 Stay With Me - Acoustic | Sam Smith => Stay With Me | Sam Smith | ATV
+   review 50 Dream On - Remastered 2007 | Aerosmith => Dream On | Blacktop Mojo | ATV
+--- all accepted
+   80 Blinding Lights | The Weeknd => Blinding Lights | The Weeknd | ATV
+   80 Shape of You | Ed Sheeran => Shape of You | Ed Sheeran | ATV
+   80 Bad Guy | Billie Eilish => bad guy | Billie Eilish | ATV
+   80 Levitating | Dua Lipa => Levitating | Dua Lipa | ATV
+   80 Rolling in the Deep | Adele => Rolling in the Deep | Adele | ATV
+   80 Shake It Off | Taylor Swift => Shake It Off | Taylor Swift | ATV
+   80 Uptown Funk | Mark Ronson, Bruno Mars => Uptown Funk (feat. Bruno Mars) | Mark Ronson | ATV
+   76 Happy | Pharrell Williams => Happy (From "Despicable Me 2") | Pharrell Williams | ATV
+   80 Firework | Katy Perry => Firework | Katy Perry | ATV
+   80 Umbrella | Rihanna, JAY-Z => Umbrella (feat. JAŸ-Z) | Rihanna | ATV
+   80 Dance Monkey | Tones And I => Dance Monkey | Tones And I | ATV
+   80 Someone Like You | Adele => Someone Like You | Adele | ATV
+   80 Watermelon Sugar | Harry Styles => Watermelon Sugar | Harry Styles | ATV
+   80 drivers license | Olivia Rodrigo => drivers license | Olivia Rodrigo | ATV
+   80 Stay | The Kid LAROI, Justin Bieber => STAY | The Kid LAROI, Justin Bieber | ATV
+   80 As It Was | Harry Styles => As It Was | Harry Styles | ATV
+   80 Flowers | Miley Cyrus => Flowers | Miley Cyrus | ATV
+   80 Anti-Hero | Taylor Swift => Anti-Hero | Taylor Swift | ATV
+   80 Bohemian Rhapsody | Queen => Bohemian Rhapsody | Queen | ATV
+   80 Smells Like Teen Spirit | Nirvana => Smells Like Teen Spirit | Nirvana | ATV
+   80 Hotel California | Eagles => Hotel California | Eagles | ATV
+   80 Stairway to Heaven | Led Zeppelin => Stairway to Heaven (Remaster) | Led Zeppelin | ATV
+   80 Sweet Child O' Mine | Guns N' Roses => Sweet Child O' Mine | Guns N' Roses | ATV
+   80 Back In Black | AC/DC => Back In Black | AC/DC | ATV
+   80 Paranoid | Black Sabbath => Paranoid (2009 Remaster) | Black Sabbath | ATV
+   80 Creep | Radiohead => Creep | Radiohead | ATV
+   80 Seven Nation Army | The White Stripes => Seven Nation Army | The White Stripes | ATV
+   80 Mr. Brightside | The Killers => Mr. Brightside | The Killers | ATV
+   80 Wonderwall | Oasis => Wonderwall | Oasis | ATV
+   80 Come As You Are | Nirvana => Come As You Are | Nirvana | ATV
+   80 Under the Bridge | Red Hot Chili Peppers => Under the Bridge | Red Hot Chili Peppers | ATV
+   80 Boulevard of Broken Dreams | Green Day => Boulevard of Broken Dreams | Green Day | ATV
+   80 Do I Wanna Know? | Arctic Monkeys => Do I Wanna Know? | Arctic Monkeys | ATV
+   80 Take Me Out | Franz Ferdinand => Take Me Out | Franz Ferdinand | ATV
+   80 HUMBLE. | Kendrick Lamar => HUMBLE. | Kendrick Lamar | ATV
+   80 Lose Yourself | Eminem => Lose Yourself | Eminem | ATV
+   80 God's Plan | Drake => God's Plan | Drake | ATV
+   80 Sicko Mode | Travis Scott => SICKO MODE | Travis Scott | ATV
+   80 Juicy | The Notorious B.I.G. => Juicy | The Notorious B.I.G. | ATV
+   80 Empire State Of Mind | JAY-Z, Alicia Keys => Empire State Of Mind (feat. Alicia Keys) | JAŸ-Z | ATV
+   80 Gold Digger | Kanye West, Jamie Foxx => Gold Digger (feat. Jamie Foxx) | Kanye West | ATV
+   80 Still D.R.E. | Dr. Dre, Snoop Dogg => Still D.R.E. (feat. Snoop Dogg) | Dr. Dre | ATV
+   80 Rockstar | Post Malone, 21 Savage => rockstar (feat. 21 Savage) | Post Malone | ATV
+   80 Lucid Dreams | Juice WRLD => Lucid Dreams | Juice WRLD | ATV
+   80 Mask Off | Future => Mask Off | Future | ATV
+   80 Alright | Kendrick Lamar => Alright | Kendrick Lamar | ATV
+   80 Around the World | Daft Punk => Around the World | Daft Punk | ATV
+   80 Levels | Avicii => Levels | Avicii | ATV
+   80 Wake Me Up | Avicii => Wake Me Up | Avicii | ATV
+   80 Titanium | David Guetta, Sia => Titanium (feat. Sia) | David Guetta | ATV
+   80 Strobe | deadmau5 => Strobe | deadmau5 | ATV
+   80 Sandstorm | Darude => Sandstorm | Darude | ATV
+   80 Better Off Alone | Alice Deejay => Better Off Alone | Alice Deejay | ATV
+   80 Clarity | Zedd, Foxes => Clarity (feat. Foxes) | Zedd | ATV
+   80 Midnight City | M83 => Midnight City | M83 | ATV
+   80 Language | Porter Robinson => Language | Porter Robinson | ATV
+   80 No Scrubs | TLC => No Scrubs | TLC | ATV
+   80 Crazy In Love | Beyonce, JAY-Z => Crazy In Love (feat. JAY-Z) | Beyoncé | ATV
+   80 Redbone | Childish Gambino => Redbone | Childish Gambino | ATV
+   80 Thinking Out Loud | Ed Sheeran => Thinking out Loud | Ed Sheeran | ATV
+   80 Let's Get It On | Marvin Gaye => Let's Get It On | Marvin Gaye | ATV
+   80 Superstition | Stevie Wonder => Superstition | Stevie Wonder | ATV
+   80 Ain't No Mountain High Enough | Marvin Gaye, Tammi Terrell => Ain't No Mountain High Enough | Marvin Gaye, Tammi Terrell | ATV
+   80 Girl on Fire | Alicia Keys => Girl on Fire | Alicia Keys | ATV
+   80 Dancing Queen | ABBA => Dancing Queen | ABBA | ATV
+   80 Imagine | John Lennon => Imagine | John Lennon | ATV
+   80 Yesterday | The Beatles => Yesterday | The Beatles | ATV
+   80 Hey Jude | The Beatles => Hey Jude | The Beatles | ATV
+   80 Billie Jean | Michael Jackson => Billie Jean | Michael Jackson | ATV
+   80 Thriller | Michael Jackson => Thriller | Michael Jackson | ATV
+   80 Like a Rolling Stone | Bob Dylan => Like a Rolling Stone | Bob Dylan | ATV
+   80 What a Wonderful World | Louis Armstrong => What A Wonderful World | Louis Armstrong | ATV
+   80 Respect | Aretha Franklin => Respect | Aretha Franklin | ATV
+   80 Don't Stop Believin' | Journey => Don't Stop Believin' (2022 Remaster) | Journey | ATV
+   80 Every Breath You Take | The Police => Every Breath You Take | The Police | ATV
+   80 Take On Me | a-ha => Take on Me | a-ha | ATV
+   80 Girls Just Want to Have Fun | Cyndi Lauper => Girls Just Want to Have Fun | Cyndi Lauper | ATV
+   80 Africa | TOTO => Africa | Toto | ATV
+   80 Livin' on a Prayer | Bon Jovi => Livin' On A Prayer | Bon Jovi | ATV
+   80 September | Earth, Wind & Fire => September | Earth, Wind & Fire | ATV
+   80 Fly Me to the Moon | Frank Sinatra => Fly Me To The Moon (2008 Remastered) (feat. Count Basie And His Orchestra) | Frank Sinatra | ATV
+   80 Despacito | Luis Fonsi, Daddy Yankee => Despacito | Luis Fonsi, Daddy Yankee | ATV
+   76 Bailando | Enrique Iglesias => Bailando (Spanish Version) (feat. Descemer Bueno & Gente De Zona) | Enrique Iglesias | ATV
+   80 Hips Don't Lie | Shakira, Wyclef Jean => Hips Don't Lie (feat. Wyclef Jean) | Shakira | ATV
+   80 Mi Gente | J Balvin, Willy William => Mi Gente | J. Balvin, Willy William | ATV
+   80 Vivir Mi Vida | Marc Anthony => Vivir Mi Vida | Marc Anthony | ATV
+   80 Tusa | KAROL G, Nicki Minaj => Tusa | KAROL G, Nicki Minaj | ATV
+   80 Titi Me Pregunto | Bad Bunny => Tití Me Preguntó | Bad Bunny | ATV
+   80 La Bicicleta | Carlos Vives, Shakira => La Bicicleta | Carlos Vives, Shakira | ATV
+   80 Gasolina | Daddy Yankee => Gasolina | Daddy Yankee | ATV
+   80 夜に駆ける | YOASOBI => 夜に駆ける | YOASOBI | ATV
+   80 Dynamite | BTS => Dynamite | BTS | ATV
+   80 Gangnam Style | PSY => Gangnam Style | PSY | ATV
+   80 Kill This Love | BLACKPINK => Kill This Love | BLACKPINK | ATV
+   80 Группа крови | КИНО => Группа крови | Кино | ATV
+   80 Звезда по имени Солнце | КИНО => Звезда по имени Солнце | Кино | ATV
+   80 Tum Hi Ho | Arijit Singh => Tum Hi Ho | Arijit Singh | ATV
+   80 Kal Ho Naa Ho | Sonu Nigam => Kal Ho Naa Ho | Shankar Ehsaan Loy, Sonu Nigam | ATV
+   80 Chaiyya Chaiyya | Sukhwinder Singh, Sapna Awasthi => Chaiyya Chaiyya | Sukhwinder Singh, Sapna Awasthi | ATV
+   80 Ya Rayah | Rachid Taha => Ya Rayah | Rachid Taha | ATV
+   80 Ai Se Eu Te Pego | Michel Teló => Ai Se Eu Te Pego | Michel Teló | ATV
+   80 Je veux | ZAZ => Je veux | Zaz | ATV
+   80 Papaoutai | Stromae => Papaoutai | Stromae | ATV
+   80 99 Luftballons | Nena => 99 Luftballons | Nena | ATV
+   80 Du hast | Rammstein => Du hast | Rammstein | ATV
+   80 Sonne | Rammstein => Sonne | Rammstein | ATV
+   76 Volare | Gipsy Kings => Volare (Nel Blu di Pinto di Blu) | Gipsy Kings | ATV
+   80 Con te partirò | Andrea Bocelli => Con Te Partirò | Andrea Bocelli | ATV
+   80 Zombie | The Cranberries => Zombie | The Cranberries | ATV
+   80 Ederlezi | Goran Bregović => Ederlezi | Goran Bregovic | ATV
+   80 Mamma Mia | ABBA => Mamma Mia | ABBA | ATV
+   80 Wonderwall - Live | Oasis => Wonderwall (Live at Knebworth, 10 August '96) | Oasis | ATV
+   80 Comfortably Numb - Live | Pink Floyd => Comfortably Numb (Live) | Pink Floyd | ATV
+   80 Free Bird - Live | Lynyrd Skynyrd => Free Bird (Live At Fox Theatre, Atlanta, 1976 / Undubbed) | Lynyrd Skynyrd | ATV
+   80 Purple Rain - Live | Prince => Purple Rain (Live In Syracuse, March 30, 1985 - 2022 Remaster) | Prince | ATV
+   80 Mr. Brightside - Jacques Lu Cont's Thin White Duke Mix | The Killers => Mr. Brightside (Jacques Lu Cont's Thin White Duke Mix) | The Killers | ATV
+   80 Blinding Lights - Remix | The Weeknd, ROSALÍA => Blinding Lights (Remix) | The Weeknd, ROSALÍA | ATV
+   80 Closer - Remix | The Chainsmokers, Halsey => Closer (R3hab Remix) (feat. Halsey) | The Chainsmokers | ATV
+   80 Rain On Me - Remix | Lady Gaga, Ariana Grande => Rain On Me (Purple Disco Machine Remix) | Lady Gaga, Ariana Grande, Purple Disco Machine | ATV
+   80 Faded - Restrung | Alan Walker => Faded (Restrung) | Alan Walker | ATV
+   80 Heat Waves - Remix | Glass Animals => Heat Waves (Shakur Ahmad Remix) | Glass Animals | ATV
+   80 Love The Way You Lie | Eminem, Rihanna => Love The Way You Lie (feat. Rihanna) | Eminem | ATV
+   80 Fancy (feat. Charli XCX) | Iggy Azalea, Charli XCX => Fancy (feat. Charli XCX) | Iggy Azalea | ATV
+   80 Wrecking Ball - Remastered | Miley Cyrus => Wrecking Ball | Miley Cyrus | ATV
+   80 Congratulations (feat. Quavo) | Post Malone, Quavo => Congratulations (feat. Quavo) | Post Malone | ATV
+   80 Old Town Road (feat. Billy Ray Cyrus) - Remix | Lil Nas X, Billy Ray Cyrus => Old Town Road (Remix) (feat. Billy Ray Cyrus) | Lil Nas X | ATV
+   80 Lean On | Major Lazer, MØ, DJ Snake => Lean On (feat. DJ Snake) | Major Lazer | ATV
+   80 Closer | The Chainsmokers, Halsey => Closer (feat. Halsey) | The Chainsmokers | ATV
+   80 Call Me Maybe | Carly Rae Jepsen => Call Me Maybe | Carly Rae Jepsen | ATV
+   80 Karma Police - Remastered | Radiohead => Karma Police | Radiohead | ATV
+   80 Heroes - 2017 Remaster | David Bowie => Heroes | David Bowie | ATV
+   80 Born to Run - Remastered | Bruce Springsteen => Born to Run | Bruce Springsteen | ATV

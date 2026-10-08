@@ -108,6 +108,10 @@ describe('parseTransferInput cleans up what it read', () => {
     expect(r.items.map((i) => i.title)).toEqual(['Paper Lanterns', 'Slow Weather', 'Nine Streets', 'Fjord, at Dawn']);
     expect(r.dropped).toBe(2);
     expect(r.items.map((i) => i.position)).toEqual([0, 1, 2, 3]);
+    // Counted apart for the preview: one unreadable, one twice in the file.
+    expect(r.unreadable).toBe(1);
+    expect(r.duplicates).toBe(1);
+    expect(r.duplicateSample).toEqual([{ title: 'Paper Lanterns', artist: expect.any(String) }]);
   });
 
   it('a repeat in a pasted list goes too', () => {
@@ -123,8 +127,23 @@ describe('parseTransferInput cleans up what it read', () => {
     expect(r.truncated).toBe(true);
   });
 
+  it('a YourLibrary.json with more than 10 000 songs keeps the first 10 000 and says so', () => {
+    const tracks = Array.from({ length: MAX_TRANSFER_ITEMS + 5 }, (_, i) => ({ artist: `Artist ${i}`, track: `Song ${i}` }));
+    const r = parse({ filename: 'YourLibrary.json', text: JSON.stringify({ tracks }) });
+    expect(r.kind).toBe('spotify-export');
+    expect(r.items).toHaveLength(MAX_TRANSFER_ITEMS);
+    expect(r.items[0].title).toBe('Song 0');
+    expect(r.items[MAX_TRANSFER_ITEMS - 1].title).toBe(`Song ${MAX_TRANSFER_ITEMS - 1}`);
+    expect(r.truncated).toBe(true);
+    // Read to its end, so the preview can say how many are left over.
+    expect(r.overLimit).toBe(5);
+  });
+
   it('a list that fits is not flagged', () => {
-    expect(parse({ text: 'A - B\nC - D' }).truncated).toBe(false);
+    const r = parse({ text: 'A - B\nC - D' });
+    expect(r.truncated).toBe(false);
+    expect(r.overLimit).toBe(0);
+    expect(r.duplicates).toBe(0);
   });
 });
 
