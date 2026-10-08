@@ -1,3 +1,13 @@
+# 0.7.25: The Android app updates itself (apps 0.4.19)
+
+**Host: run `./update.sh` as usual (no new packages, nothing new in
+`.env.local`).** It adds two public routes for the phone app's updater,
+`/api/android/update` and `/api/android/apk/<id>`, which pass the latest
+release's APK through from GitHub. Android 0.4.19 (versionCode 24) is the
+first build signed with the permanent Ember key, so phones must uninstall the
+old app once and install 0.4.19 by hand; every update after that comes by
+itself.
+
 # 0.7.24: Transfer from every service, QR sign-in, car fixes (apps 0.4.18)
 
 **Host: run `./update.sh` as usual (no new packages, nothing new in

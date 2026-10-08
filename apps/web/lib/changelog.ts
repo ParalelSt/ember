@@ -21,6 +21,19 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    id: 'android-updates-itself',
+    version: '0.7.25',
+    date: '2026-10-08',
+    title: 'The Android app updates itself',
+    summary: 'From app 0.4.19 on, Ember for Android gets new versions by itself, like the desktop app.',
+    bullets: [
+      'It checks for a new version when you open it and every few hours, and downloads it only when you are online, on Wi-Fi or mobile data.',
+      'It never installs while music is playing or while you are in the car. The car screen says when an update is ready.',
+      'One last time by hand: uninstall Ember, then install 0.4.19 from the release page. Settings > App updates shows your version and has Check for updates.',
+    ],
+    scope: 'android',
+  },
+  {
     id: 'transfer-every-service',
     version: '0.7.24',
     date: '2026-10-08',
