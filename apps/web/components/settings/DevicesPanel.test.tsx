@@ -104,4 +104,22 @@ describe('DevicesPanel', () => {
     expect(await screen.findByText(/Couldn't sign out everywhere/)).toBeInTheDocument();
     expect(h.signOut).not.toHaveBeenCalled();
   });
+
+  it('a short code read by Scan QR code opens the approve card once', async () => {
+    const { useUiStore } = await import('@/stores/useUiStore');
+    useUiStore.setState({ scannedCode: 'ABCDEFGH' });
+    await mount();
+    expect(screen.getByTestId('approve-card-stub')).toBeInTheDocument();
+    expect(h.credentials.at(-1)).toEqual({ code: 'ABCDEFGH' });
+    expect(screen.getByLabelText('Code')).toHaveValue('ABCD-EFGH');
+    expect(useUiStore.getState().scannedCode).toBeNull();
+  });
+
+  it('a code scanned while already on Settings > Devices shows too', async () => {
+    const { useUiStore } = await import('@/stores/useUiStore');
+    await mount();
+    expect(screen.queryByTestId('approve-card-stub')).toBeNull();
+    await act(async () => useUiStore.setState({ scannedCode: 'WXYZ2345' }));
+    expect(h.credentials.at(-1)).toEqual({ code: 'WXYZ2345' });
+  });
 });

@@ -93,4 +93,6 @@ export {
   GripVertical as GripIcon,
   // The Transfer page: a file to choose.
   FileText as FileIcon,
+  // Settings > Devices and the menu: scan a sign-in QR.
+  ScanQrCode as ScanQrIcon,
 } from 'lucide-react';

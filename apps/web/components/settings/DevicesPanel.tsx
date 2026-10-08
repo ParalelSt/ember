@@ -3,14 +3,16 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { ApproveSignIn } from '@/components/auth/ApproveSignIn';
+import { ScanQrButton } from '@/components/auth/ScanQrButton';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { SectionHeader } from '@/components/page/SectionHeader';
-import { normalizeCode } from '@/lib/qrLogin/codes';
+import { formatCode, normalizeCode } from '@/lib/qrLogin/codes';
 import { qrPost } from '@/lib/qrLogin/client';
 import { parsePbDate } from '@/lib/qrLogin/state';
 import { cn } from '@/lib/utils';
+import { useUiStore } from '@/stores/useUiStore';
 
 interface SignIn {
   id: string;
@@ -32,6 +34,24 @@ export function DevicesPanel() {
   const [confirming, setConfirming] = useState(false);
   const [revoking, setRevoking] = useState(false);
   const [revokeError, setRevokeError] = useState('');
+  // A short code read by "Scan QR code" (useOpenScanned): shown like a typed
+  // one (adjusted during render, React's pattern for state that follows an
+  // outside value), then cleared from the store so it never comes back.
+  const scannedCode = useUiStore((s) => s.scannedCode);
+  const setScannedCode = useUiStore((s) => s.setScannedCode);
+  const [shownScan, setShownScan] = useState<string | null>(null);
+  if (scannedCode !== shownScan) {
+    setShownScan(scannedCode);
+    if (scannedCode) {
+      setTyped(formatCode(scannedCode));
+      setCodeError('');
+      setCredential({ code: scannedCode });
+      setAttempt((a) => a + 1);
+    }
+  }
+  useEffect(() => {
+    if (scannedCode) setScannedCode(null);
+  }, [scannedCode, setScannedCode]);
 
   useEffect(() => {
     let cancelled = false;
@@ -85,8 +105,7 @@ export function DevicesPanel() {
       <div className="mt-stack rounded-2xl bg-card p-page shadow-soft">
         <div className="font-semibold">Sign in another device</div>
         <p className="mt-inset text-sm text-muted-foreground">
-          On the new device, open Ember and pick &quot;Sign in with your phone&quot;. Scan its QR code with your camera, or
-          type the code it shows here.
+          On the new device, open Ember to its sign-in page. Scan the QR code it shows, or type its code here.
         </p>
         <form onSubmit={submitCode} className="mt-block flex flex-wrap items-end gap-cluster">
           <div className="grid gap-inset">
@@ -106,6 +125,7 @@ export function DevicesPanel() {
           <Button type="submit" variant="ember">
             Continue
           </Button>
+          <ScanQrButton />
         </form>
         {codeError && <div className="mt-cluster text-sm text-destructive">{codeError}</div>}
         {credential && (

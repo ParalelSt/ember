@@ -14,6 +14,7 @@ import { SearchOverlayContainer } from '@/components/search/SearchOverlayContain
 import { SessionHostBridge } from '@/components/session/SessionHostBridge';
 import { TransferStatus } from '@/components/import/TransferStatus';
 import { AppUpdatePill } from '@/components/update/AppUpdatePill';
+import { QrScanHost } from '@/components/auth/QrScanHost';
 import { hydrateOfflineStore } from '@/lib/offline';
 import { useUiStore } from '@/stores/useUiStore';
 import { useChangelog } from '@/hooks/useChangelog';
@@ -128,6 +129,8 @@ export default function AppShellLayout({ children }: { children: ReactNode }) {
       </div>
       <NowPlaying />
       <SessionHostBridge />
+      {/* "Scan QR code" (menu, Settings > Devices): the page's own scanner. */}
+      <QrScanHost />
     </div>
   );
 }

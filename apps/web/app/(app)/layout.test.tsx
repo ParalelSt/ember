@@ -26,6 +26,7 @@ vi.mock('@/hooks/useChangelog', () => ({ useChangelog: () => ({ hasNew: false })
 vi.mock('@/hooks/useSession', () => ({ useReleaseStaleHosting: () => {} }));
 vi.mock('@/components/session/SessionHostBridge', () => ({ SessionHostBridge: () => null }));
 vi.mock('@/components/import/TransferStatus', () => ({ TransferStatus: () => null }));
+vi.mock('@/components/auth/QrScanHost', () => ({ QrScanHost: () => null }));
 const desktop = vi.hoisted(() => ({ value: true }));
 vi.mock('@/hooks/useIsDesktop', () => ({ useIsDesktop: () => desktop.value }));
 
