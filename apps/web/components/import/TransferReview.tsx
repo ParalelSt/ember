@@ -6,10 +6,11 @@ import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Artwork } from '@/components/primitives/Artwork';
-import { CheckIcon, ChevronLeftIcon, MusicIcon, PauseIcon, PlayIcon, SearchIcon } from '@/components/icons';
-import { CandidateRow, SOURCE_NAME, StatusPill } from '@/components/import/parts';
+import { CheckIcon, ChevronLeftIcon, HeartIcon, MusicIcon, PauseIcon, PlayIcon, PlusIcon, SearchIcon } from '@/components/icons';
+import { CandidateRow, SOURCE_NAME } from '@/components/import/parts';
 import { SearchPanel } from '@/components/import/ReviewSheet';
 import { resultLine } from '@/components/import/TransferStatus';
+import { WizardBar, WizardTitle } from '@/components/import/TransferWizard';
 import { useImportActions, useImportJob, useImportJobs } from '@/hooks/useImports';
 import { useImportReview } from '@/hooks/useImportReview';
 import { isActive } from '@/lib/import/jobState';
@@ -17,6 +18,11 @@ import { followedTransfer } from '@/lib/import/transferFollow';
 import type { ImportItem } from '@/lib/import/types';
 import { useTransferStore } from '@/stores/useTransferStore';
 import type { Track } from '@/types/track';
+import { formatTime } from '@/lib/format';
+import { cn } from '@/lib/utils';
+
+/** A best guess this close or closer is marked as a strong match. */
+const STRONG_MATCH = 65;
 
 /** What the person did with a song on this list, so the row can say so and
  *  Undo knows what it was before. */
@@ -29,9 +35,10 @@ interface Decision {
 }
 
 /** Every song of a transfer that Ember was not sure about, on one page:
- *  each with its best guess and Use, Other versions (the other candidates
- *  and a search), Skip, and Undo once decided; and "Use all best guesses"
- *  at the top. Opened from the "Transfer done" notification or the chip. */
+ *  each a card with its best guess's artwork large (tap it to hear it), Use
+ *  this, Others (the other candidates and a search), Skip, and Undo once
+ *  decided; and "Use all best guesses" in the bar at the bottom. Opened
+ *  from the "Transfer done" card or the pill. */
 export function TransferReview({ jobId }: { jobId?: string }) {
   const router = useRouter();
   const { data: jobs = [] } = useImportJobs();
@@ -130,48 +137,42 @@ export function TransferReview({ jobId }: { jobId?: string }) {
     router.push(backHref);
   };
 
-  const header = (title: string) => (
-    <div className="sticky top-[var(--ember-topbar-h,0px)] z-10 -mx-cluster flex items-center gap-cluster bg-background px-cluster py-cluster">
-      <Link
-        href={backHref}
-        aria-label="Go back"
-        className="grid size-8 place-items-center rounded-lg text-foreground hover:bg-muted"
-      >
-        <ChevronLeftIcon className="h-5 w-5" />
-      </Link>
-      <h1 className="min-w-0 flex-1 truncate text-lg font-bold tracking-tight">{title}</h1>
-    </div>
+  const backLink = (
+    <Link
+      href={backHref}
+      className="inline-flex h-11 shrink-0 items-center gap-inset rounded-lg border border-border px-row text-sm font-medium hover:bg-muted"
+    >
+      <ChevronLeftIcon className="h-4 w-4" />
+      Back
+    </Link>
   );
 
   if (!id || (!isLoading && !job)) {
     return (
-      <div data-testid="transfer-review" className="mx-auto flex w-full max-w-2xl flex-col gap-block">
-        {header('Nothing to check')}
+      <div data-testid="transfer-review" className="mx-auto flex min-h-full w-full max-w-2xl flex-col gap-block">
+        <WizardTitle>Nothing to check</WizardTitle>
         <p className="text-sm text-muted-foreground">There is no transfer with songs to check right now.</p>
+        <WizardBar back={backLink} />
       </div>
     );
   }
   if (!job) return <div data-testid="transfer-review" className="mx-auto w-full max-w-2xl text-sm text-muted-foreground">Loading…</div>;
 
   const running = isActive(job.status);
+  const UseIcon = liked ? HeartIcon : PlusIcon;
   return (
-    <div data-testid="transfer-review" className="mx-auto flex w-full max-w-2xl flex-col gap-block">
-      {header(rows.length ? `${rows.length} ${rows.length === 1 ? 'song' : 'songs'} to check` : 'Nothing to check')}
+    <div data-testid="transfer-review" className="mx-auto flex min-h-full w-full max-w-2xl flex-col gap-block">
+      <WizardTitle>{rows.length ? `${rows.length} ${rows.length === 1 ? 'song' : 'songs'} to check` : 'Nothing to check'}</WizardTitle>
       <p data-testid="transfer-review-result" className="text-sm text-muted-foreground">
         {running ? `Still transferring, ${job.cursor} of ${job.total}. More may join this list.` : resultLine(job)}
       </p>
       {open.length > 0 && (
         <p className="text-sm text-muted-foreground">
-          Ember was not sure about these. Use its best guess, pick another version, or skip.
+          Ember was not sure about these. Tap the artwork to hear it, then use it, pick another version, or skip.
         </p>
       )}
-      {bestable.length > 0 && (
-        <Button type="button" variant="ember" className="h-11 w-full" disabled={usingAll || actions.busy} onClick={() => void takeAllGuesses()}>
-          Use all best guesses ({bestable.length})
-        </Button>
-      )}
 
-      <div className="flex flex-col gap-cluster" data-testid="transfer-review-list">
+      <div className="flex flex-col gap-row" data-testid="transfer-review-list">
         {rows.map((item) => {
           const d = decided[item.id];
           if (d) {
@@ -201,62 +202,105 @@ export function TransferReview({ jobId }: { jobId?: string }) {
           const expanded = openId === item.id;
           const hearing = !!best && review.previewId === best.track.id && review.previewPlaying;
           return (
-            <div key={item.id} data-testid="transfer-review-item" data-status={item.status} className="flex flex-col gap-cluster rounded-xl border border-border bg-card p-row">
+            <div
+              key={item.id}
+              data-testid="transfer-review-item"
+              data-status={item.status}
+              className="flex flex-col gap-row rounded-[20px] border border-border bg-card p-row"
+            >
               <div className="truncate text-xs text-muted-foreground">
                 On {SOURCE_NAME[job.source]}: <span className="text-foreground">{item.source.title}</span>
                 {item.source.artist ? `, ${item.source.artist}` : ''}
               </div>
-              {missing ? (
-                <div className="flex items-center gap-cluster">
-                  <StatusPill status="not-found" />
-                  <span className="text-xs text-muted-foreground">Nothing close enough</span>
-                </div>
-              ) : (
-                <div className="flex items-center gap-row">
-                  <div className="relative shrink-0">
-                    <Artwork src={best.track.artworkUrl} size="sm" className="grid place-items-center rounded-md bg-art text-foreground/20">
-                      <MusicIcon className="h-4 w-4" />
-                    </Artwork>
-                    <button
-                      type="button"
-                      onClick={() => review.onPreview(best.track)}
-                      aria-label={`${hearing ? 'Pause' : 'Preview'} "${best.track.title}"`}
-                      className="absolute inset-0 grid place-items-center rounded-md bg-background/45 text-foreground hover:bg-background/65"
-                    >
-                      {hearing ? <PauseIcon className="h-4 w-4 fill-current" /> : <PlayIcon className="h-4 w-4 fill-current" />}
-                    </button>
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <div data-testid="transfer-review-guess" className="truncate text-sm font-semibold">
-                      {best.track.title}
-                    </div>
-                    <div className="truncate text-xs text-muted-foreground">
-                      {best.artists.length ? best.artists.join(', ') : best.track.artist} · {best.score}% match
-                    </div>
-                  </div>
-                </div>
-              )}
-              <div className="flex flex-wrap items-center gap-cluster">
+              <div className="flex min-w-0 items-center gap-row">
                 {missing ? (
-                  <Button type="button" size="sm" variant="outline" aria-expanded={expanded} onClick={() => toggleOthers(item)}>
+                  <span
+                    data-testid="transfer-review-missing"
+                    className="grid size-21 shrink-0 place-items-center rounded-[14px] border-[1.5px] border-dashed border-border text-muted-foreground"
+                  >
+                    <SearchIcon className="h-5 w-5" />
+                  </span>
+                ) : (
+                  <button
+                    type="button"
+                    data-testid="transfer-review-art"
+                    onClick={() => review.onPreview(best.track)}
+                    aria-label={`${hearing ? 'Pause' : 'Preview'} "${best.track.title}"`}
+                    aria-pressed={hearing}
+                    className={cn(
+                      'group relative size-21 shrink-0 rounded-[14px] shadow-lg',
+                      hearing && 'ring-2 ring-ember ring-offset-2 ring-offset-card',
+                    )}
+                  >
+                    <Artwork
+                      src={best.track.artworkUrl}
+                      className="grid size-21 place-items-center rounded-[14px] bg-art text-foreground/20"
+                    >
+                      <MusicIcon className="h-6 w-6" />
+                    </Artwork>
+                    <span className="absolute inset-0 grid place-items-center">
+                      <span className="grid size-10 place-items-center rounded-full bg-background/60 text-foreground backdrop-blur transition-colors group-hover:bg-background/80">
+                        {hearing ? <PauseIcon className="h-4 w-4 fill-current" /> : <PlayIcon className="h-4 w-4 fill-current" />}
+                      </span>
+                    </span>
+                  </button>
+                )}
+                <div className="min-w-0 flex-1">
+                  {missing ? (
+                    <>
+                      <div className="truncate text-base font-bold">Nothing close enough</div>
+                      <div className="truncate text-[13px] text-muted-foreground">Search YouTube Music for it</div>
+                    </>
+                  ) : (
+                    <>
+                      <div data-testid="transfer-review-guess" className="truncate text-base font-bold">
+                        {best.track.title}
+                      </div>
+                      <div className="truncate text-[13px] text-muted-foreground">
+                        {best.artists.length ? best.artists.join(', ') : best.track.artist}
+                        {best.track.durationSec ? ` · ${formatTime(best.track.durationSec)}` : ''}
+                      </div>
+                      <span
+                        data-testid="transfer-review-match"
+                        data-strong={best.score >= STRONG_MATCH ? 'true' : 'false'}
+                        className={cn(
+                          'mt-inset inline-flex items-center rounded-full px-cluster text-[11.5px] font-semibold leading-5',
+                          best.score >= STRONG_MATCH ? 'bg-foreground/10 text-foreground' : 'bg-muted text-muted-foreground',
+                        )}
+                      >
+                        {best.score}% match
+                      </span>
+                    </>
+                  )}
+                </div>
+              </div>
+              <div className="flex items-center gap-cluster">
+                {missing ? (
+                  <Button type="button" variant="outline" className="h-10 flex-1" aria-expanded={expanded} onClick={() => toggleOthers(item)}>
                     <SearchIcon className="h-3.5 w-3.5" />
                     Search
                   </Button>
                 ) : (
                   <>
-                    <Button type="button" size="sm" variant="ember" disabled={actions.busy || usingAll} onClick={() => use(item, best.track)}>
-                      Use
+                    <Button
+                      type="button"
+                      variant="ember"
+                      className="h-10 flex-1"
+                      disabled={actions.busy || usingAll}
+                      onClick={() => use(item, best.track)}
+                    >
+                      <UseIcon className="h-3.5 w-3.5" />
+                      Use this
                     </Button>
-                    <Button type="button" size="sm" variant="outline" aria-expanded={expanded} onClick={() => toggleOthers(item)}>
-                      {expanded ? 'Hide others' : 'Other versions'}
+                    <Button type="button" variant="outline" className="h-10" aria-expanded={expanded} onClick={() => toggleOthers(item)}>
+                      {expanded ? 'Hide' : 'Others'}
                     </Button>
                   </>
                 )}
                 <Button
                   type="button"
-                  size="sm"
                   variant="ghost"
-                  className="ml-auto text-muted-foreground"
+                  className="h-10 text-muted-foreground"
                   disabled={actions.busy || usingAll}
                   onClick={() => skip(item)}
                 >
@@ -310,6 +354,14 @@ export function TransferReview({ jobId }: { jobId?: string }) {
           </Button>
         </div>
       )}
+
+      <WizardBar back={backLink}>
+        {bestable.length > 0 ? (
+          <Button type="button" variant="ember" className="h-11 flex-1" disabled={usingAll || actions.busy} onClick={() => void takeAllGuesses()}>
+            Use all best guesses ({bestable.length})
+          </Button>
+        ) : null}
+      </WizardBar>
     </div>
   );
 }

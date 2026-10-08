@@ -4,8 +4,9 @@ import { act, fireEvent, render, screen, waitFor, within } from '@testing-librar
 import type { ImportCandidate, ImportItem, ImportJob } from '@/lib/import/types';
 import type { Track } from '@/types/track';
 
-// The one list of songs a transfer was not sure about: Use, Other versions,
-// Skip, Undo, and Use all best guesses, with the hooks faked.
+// The one list of songs a transfer was not sure about, as big artwork cards:
+// Use this, Others, Skip, Undo, and Use all best guesses in the bottom bar,
+// with the hooks faked.
 
 const push = vi.fn();
 vi.mock('next/navigation', () => ({ useRouter: () => ({ push }) }));
@@ -109,6 +110,7 @@ beforeEach(() => {
   for (const m of [actions.pick, actions.skip, actions.undo, actions.update]) m.mutate.mockReset();
   actions.pick.mutateAsync.mockReset();
   reviewHook.close.mockReset();
+  reviewHook.onPreview.mockReset();
 });
 
 const rows = () => screen.getAllByTestId(/transfer-review-(item|done)/);
@@ -121,14 +123,42 @@ describe('TransferReview', () => {
     expect(rows().map((r) => r.textContent?.match(/On Spotify: ([^,]+)/)?.[1])).toEqual(['Paper Lanterns', 'Slow Signal', 'Kindling (demo)']);
     expect(within(rows()[0]).getByTestId('transfer-review-guess')).toHaveTextContent('Paper Lanterns');
     expect(rows()[0]).toHaveTextContent('72% match');
-    expect(rows()[2]).toHaveTextContent('Not found');
-    expect(screen.getByRole('button', { name: 'Use all best guesses (2)' })).toBeInTheDocument();
+    expect(rows()[2]).toHaveTextContent('Nothing close enough');
+    expect(within(rows()[2]).getByTestId('transfer-review-missing')).toBeInTheDocument();
+    // Use all lives in the bar at the bottom, beside Back.
+    const bar = screen.getByTestId('transfer-bar');
+    expect(within(bar).getByRole('button', { name: 'Use all best guesses (2)' })).toBeInTheDocument();
+    expect(within(bar).getByRole('link', { name: 'Back' })).toHaveAttribute('href', '/library/liked');
+  });
+
+  it('each guess is a card with its artwork large: a tap plays it, and the match says how close', () => {
+    render(<TransferReview jobId="j1" />);
+    const art = within(rows()[0]).getByTestId('transfer-review-art');
+    expect(art).toHaveAccessibleName('Preview "Paper Lanterns"');
+    fireEvent.click(art);
+    expect(reviewHook.onPreview).toHaveBeenCalledWith(expect.objectContaining({ sourceId: 'c' }));
+    expect(rows()[0]).toHaveTextContent('Halcyon Drift · 3:20');
+    // 72% is a strong match, 68% too; under 65 would be muted.
+    expect(within(rows()[0]).getByTestId('transfer-review-match')).toHaveAttribute('data-strong', 'true');
+  });
+
+  it('a weak best guess has a muted match', () => {
+    state.items = [item('r9', 0, 'review', 'Glasshouse', [cand('z', 'Glasshouse (Cover)', 52)])];
+    render(<TransferReview jobId="j1" />);
+    expect(screen.getByTestId('transfer-review-match')).toHaveAttribute('data-strong', 'false');
+    expect(screen.getByTestId('transfer-review-match')).toHaveTextContent('52% match');
+  });
+
+  it('a new playlist goes back to that playlist', () => {
+    state.job = { ...baseJob, kind: 'playlist', playlistId: 'p1' };
+    render(<TransferReview jobId="j1" />);
+    expect(within(screen.getByTestId('transfer-bar')).getByRole('link', { name: 'Back' })).toHaveAttribute('href', '/playlist/p1');
   });
 
   it('Use likes the best guess, and the row says so with Undo', () => {
     succeed(actions.pick);
     render(<TransferReview jobId="j1" />);
-    fireEvent.click(within(rows()[0]).getByRole('button', { name: 'Use' }));
+    fireEvent.click(within(rows()[0]).getByRole('button', { name: 'Use this' }));
     expect(actions.pick.mutate.mock.calls[0][0]).toEqual({ itemId: 'r1', track: expect.objectContaining({ sourceId: 'c' }) });
     expect(toast.success).toHaveBeenCalledWith('Liked "Paper Lanterns"');
     expect(screen.getAllByTestId('transfer-review-done')[0]).toHaveTextContent('Liked Paper Lanterns');
@@ -139,7 +169,7 @@ describe('TransferReview', () => {
     succeed(actions.pick);
     succeed(actions.undo);
     render(<TransferReview jobId="j1" />);
-    fireEvent.click(within(rows()[0]).getByRole('button', { name: 'Use' }));
+    fireEvent.click(within(rows()[0]).getByRole('button', { name: 'Use this' }));
     fireEvent.click(screen.getByRole('button', { name: 'Undo' }));
     expect(actions.undo.mutate.mock.calls[0][0]).toEqual({ itemId: 'r1', to: 'review' });
     expect(screen.queryAllByTestId('transfer-review-done')).toHaveLength(0);
@@ -159,7 +189,7 @@ describe('TransferReview', () => {
   it('Other versions opens the other candidates and a search; picking one uses it', () => {
     succeed(actions.pick);
     render(<TransferReview jobId="j1" />);
-    fireEvent.click(within(rows()[0]).getByRole('button', { name: 'Other versions' }));
+    fireEvent.click(within(rows()[0]).getByRole('button', { name: 'Others' }));
     const others = screen.getByTestId('transfer-review-others');
     expect(within(others).getByLabelText('Search YouTube Music')).toHaveValue('Paper Lanterns Halcyon Drift');
     fireEvent.click(within(others).getByText('Paper Lanterns (Live)'));
@@ -169,7 +199,7 @@ describe('TransferReview', () => {
 
   it('a not-found song offers a search instead of a guess', () => {
     render(<TransferReview jobId="j1" />);
-    expect(within(rows()[2]).queryByRole('button', { name: 'Use' })).toBeNull();
+    expect(within(rows()[2]).queryByRole('button', { name: 'Use this' })).toBeNull();
     fireEvent.click(within(rows()[2]).getByRole('button', { name: 'Search' }));
     fireEvent.submit(within(screen.getByTestId('transfer-review-others')).getByLabelText('Search YouTube Music').closest('form')!);
     expect(reviewHook.onSearch).toHaveBeenCalledWith('Kindling (demo) Halcyon Drift');
@@ -188,7 +218,7 @@ describe('TransferReview', () => {
     succeed(actions.pick);
     state.job = { ...baseJob, kind: 'playlist', playlistId: 'p1' };
     render(<TransferReview jobId="j1" />);
-    fireEvent.click(within(rows()[0]).getByRole('button', { name: 'Use' }));
+    fireEvent.click(within(rows()[0]).getByRole('button', { name: 'Use this' }));
     expect(toast.success).toHaveBeenCalledWith('Added "Paper Lanterns"');
   });
 
