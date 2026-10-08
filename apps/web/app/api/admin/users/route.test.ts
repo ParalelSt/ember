@@ -25,7 +25,7 @@ const getFullList = vi.fn();
 // The server PocketBase client's own `files.getURL()` is bound to the
 // internal POCKETBASE_URL (e.g. http://127.0.0.1:8090), which is exactly
 // the broken-image bug: a browser on another machine can't reach it. The
-// route must not call it — it should call the shared `fileUrl()` helper
+// route must not call it, it should call the shared `fileUrl()` helper
 // instead, which always returns a same-origin `/pb/...` path. Wiring this
 // mock to return the internal URL means the assertions below fail loudly
 // if the route regresses to calling it directly.

@@ -3,7 +3,7 @@ import { Slider as SliderPrimitive } from "@base-ui/react/slider"
 import { cn } from "@/lib/utils"
 
 /** base-ui's slider has no pointercancel handler, so an interrupted drag
- *  (common on mobile) leaves its document pointer/touch listeners attached —
+ *  (common on mobile) leaves its document pointer/touch listeners attached,
  *  a later tap ANYWHERE then re-fires change+commit with the stale drag value
  *  and seeks playback back to it. base-ui passes the originating native event
  *  on every change/commit; a leaked event fires on the tapped element, which
@@ -11,7 +11,7 @@ import { cn } from "@/lib/utils"
  *  pointer capture, track-press, keyboard) always originate inside the slider. */
 function isFromInsideSlider(details: { event: Event } | undefined): boolean {
   const target = details?.event?.target
-  if (!(target instanceof Element)) return true // synthetic / no target — don't over-drop
+  if (!(target instanceof Element)) return true // synthetic / no target, don't over-drop
   return !!target.closest('[data-slot="slider"]')
 }
 

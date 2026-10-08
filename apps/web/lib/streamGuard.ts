@@ -3,7 +3,7 @@
  *  A proxied upstream (googlevideo) can accept the connection, answer with a
  *  200, and then simply stop sending. Nothing below us minds: `fetch` has no
  *  read timeout in Node or in a browser, so the client is left holding an open
- *  response that will never finish — the half-minute freeze an unplayable song
+ *  response that will never finish, the half-minute freeze an unplayable song
  *  used to cause. These two helpers put a clock on both halves of that: how
  *  long we wait for the response to START, and how long a gap between body
  *  chunks is allowed once it has.
@@ -58,7 +58,7 @@ export class StreamStalledError extends Error {
  *  instead of waiting forever.
  *
  *  The client then sees a broken response (a truncated body against a declared
- *  Content-Length) which every player treats as a failure — which is the point:
+ *  Content-Length) which every player treats as a failure, which is the point:
  *  a failure can be reported and retried, an endless wait cannot. `null` in
  *  (a bodyless response) is `null` out. */
 export function withStallTimeout(

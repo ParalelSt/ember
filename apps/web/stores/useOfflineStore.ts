@@ -14,7 +14,7 @@ interface OfflineState {
   /** Playlist IDs (or LIKED_PIN) with a complete download: OPFS on the web,
    *  or a native pin whose done count equals its total. */
   downloaded: string[];
-  /** In-flight downloads keyed by playlist id — ephemeral. */
+  /** In-flight downloads keyed by playlist id, ephemeral. */
   inFlight: Record<string, InFlight>;
   /** Sum of bytes across all downloaded playlists. */
   totalBytes: number;

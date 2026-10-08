@@ -36,7 +36,7 @@ export const POST = withRequestLog('sessions', async (request: NextRequest) => {
       seed = { id: seedId, access };
     }
 
-    // Unique code — retry a few times on the (rare) unique-index collision.
+    // Unique code, retry a few times on the (rare) unique-index collision.
     let session = null;
     for (let attempt = 0; attempt < 5 && !session; attempt++) {
       try {
@@ -51,7 +51,7 @@ export const POST = withRequestLog('sessions', async (request: NextRequest) => {
         if (attempt === 4) throw e;
       }
     }
-    if (!session) return jsonError('Could not create the session — try again.', 500);
+    if (!session) return jsonError('Could not create the session. Try again.', 500);
 
     try {
       await addMember(server, session.id, user.id);

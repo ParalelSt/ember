@@ -8,7 +8,7 @@ import { api } from '@/lib/api';
  *  Deliberately NOT persisted to localStorage: the server is the source of
  *  truth, and a cached "yes you're sharing" surviving a sign-out on a shared
  *  machine is exactly the wrong failure. Until the fetch lands we assume NOT
- *  sharing — erring toward silence rather than broadcasting for someone who
+ *  sharing, erring toward silence rather than broadcasting for someone who
  *  opted out. */
 interface PrivacyState {
   shareDiscord: boolean;

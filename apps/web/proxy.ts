@@ -22,7 +22,7 @@ export { PUBLIC_PATHS };
 const PUBLIC_API_PREFIXES = ['/api/youtube/stream/', '/api/search', '/api/tracks', '/api/youtube/search', '/api/youtube/trending', '/api/youtube/recommended', '/api/youtube/artist', '/api/youtube/album', '/api/youtube/track/', '/api/discord/', '/api/auth/',
   // The desktop updater runs in Rust with no browser session, so its feed and
   // the asset proxy must be reachable without one. They expose the latest
-  // version and a proxied installer — no user data.
+  // version and a proxied installer, no user data.
   '/api/desktop/'];
 
 /** An upload's audio or cover asked for with a signed cast link (`?st=`):
@@ -189,11 +189,11 @@ export default async function proxy(req: NextRequest) {
       await pb.collection('users').authRefresh();
       setCookies.push(pb.authStore.exportToCookie(cookieOpts));
     } catch (e) {
-      // An expired or invalid token is ROUTINE — someone came back after a
+      // An expired or invalid token is ROUTINE, someone came back after a
       // fortnight, or the server was reinstalled. Logging it as an error fills
       // the host's error log (and every bug report, which counts server errors)
-      // with non-events and buries the real ones. Only unexpected failures —
-      // PocketBase unreachable, a 5xx — deserve the error log.
+      // with non-events and buries the real ones. Only unexpected failures,
+      // PocketBase unreachable, a 5xx, deserve the error log.
       const status = (e as { status?: number } | undefined)?.status;
       const expiredSession = status === 401 || status === 403;
       if (!expiredSession) {

@@ -4,7 +4,7 @@
 //! answers from the GitHub Release (it holds the token; the app never does)
 //! and streams the installer back. Every update is signed with the updater
 //! key, and Tauri refuses anything that doesn't verify against the pubkey
-//! baked into tauri.conf.json — so a compromised server still can't push a
+//! baked into tauri.conf.json, so a compromised server still can't push a
 //! malicious build.
 //!
 //! Failures are deliberately quiet. A user who launched Ember wants music,
@@ -41,7 +41,7 @@ pub async fn check_on_startup(app: AppHandle, log_path: Option<PathBuf>) {
             applog::write_line(
                 log_path.as_ref(),
                 "INFO",
-                &format!("update available: {version} — downloading"),
+                &format!("update available: {version}, downloading"),
             );
             // No progress UI yet: this runs while the user is listening, and a
             // desktop shell update is a few MB.
@@ -49,7 +49,7 @@ pub async fn check_on_startup(app: AppHandle, log_path: Option<PathBuf>) {
                 Ok(()) => applog::write_line(
                     log_path.as_ref(),
                     "INFO",
-                    &format!("update {version} installed — applies on next launch"),
+                    &format!("update {version} installed, applies on next launch"),
                 ),
                 Err(e) => applog::write_line(
                     log_path.as_ref(),

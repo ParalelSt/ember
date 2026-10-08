@@ -2,7 +2,7 @@
 
 // The original allowed_emails migration shipped with createRule:
 //   @collection.allowed_emails.email = email
-// which in PB v0.22 means "ALL rows in allowed_emails must match" — never
+// which in PB v0.22 means "ALL rows in allowed_emails must match", never
 // true for a multi-row collection, so registration always 400'd.
 //
 // This migration corrects it to the "any-of" operator (?=), so any single

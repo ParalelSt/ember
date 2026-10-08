@@ -8,7 +8,7 @@ import type { AudioBackend, CreateAudioBackend } from './types';
  *  origin IPC access when the capability whitelists it. If that's missing (or
  *  the bridge hasn't been injected), every invoke() fails and the Rust engine
  *  produces SILENCE with no error the user can see. Probing here means we fall
- *  back to the web <audio> backend and the app still plays music — just without
+ *  back to the web <audio> backend and the app still plays music, just without
  *  OS media keys. Never trade working audio for a feature.
  *
  *  capacitor → handled by createCapacitorBackend, not here. */

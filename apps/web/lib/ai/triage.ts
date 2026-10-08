@@ -478,7 +478,7 @@ export async function triageBugReport(input: TriageInput): Promise<Triage | null
 
     return TriageSchema.parse(extractJson(text));
   } catch (e) {
-    // Timeout, network error, malformed JSON, schema mismatch — all the same
+    // Timeout, network error, malformed JSON, schema mismatch, all the same
     // here: no triage, report still goes out.
     serverLogger.warn('ai', 'triage failed', failedCall(), e);
     return null;

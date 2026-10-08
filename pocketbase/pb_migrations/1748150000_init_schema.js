@@ -1,13 +1,13 @@
 /// <reference path="../pb_data/types.d.ts" />
 
-// Initial schema — mirrors the old Supabase tables. Tracks are a shared
+// Initial schema, mirrors the old Supabase tables. Tracks are a shared
 // catalog (any authed user can read/upsert); playlists/likes/plays are scoped
 // to their owner via API rules (PocketBase equivalent of Postgres RLS).
 migrate((db) => {
   const dao = new Dao(db);
   const users = dao.findCollectionByNameOrId("users");
 
-  // tracks — cached track metadata. external_id is the app-facing id
+  // tracks, cached track metadata. external_id is the app-facing id
   // (e.g. "yt_dQw4w9WgXcQ"); a unique index enforces one row per source track.
   const tracks = new Collection({
     name: "tracks",
@@ -34,7 +34,7 @@ migrate((db) => {
   });
   dao.saveCollection(tracks);
 
-  // playlists — user-owned named collections of tracks.
+  // playlists, user-owned named collections of tracks.
   const playlists = new Collection({
     name: "playlists",
     type: "base",
@@ -53,7 +53,7 @@ migrate((db) => {
   });
   dao.saveCollection(playlists);
 
-  // playlist_tracks — junction with ordering. Unique on (playlist, track)
+  // playlist_tracks, junction with ordering. Unique on (playlist, track)
   // mirrors the composite PK in the old SQL schema.
   const playlistTracks = new Collection({
     name: "playlist_tracks",
@@ -75,7 +75,7 @@ migrate((db) => {
   });
   dao.saveCollection(playlistTracks);
 
-  // likes — user/track pairs.
+  // likes, user/track pairs.
   const likes = new Collection({
     name: "likes",
     type: "base",
@@ -94,7 +94,7 @@ migrate((db) => {
   });
   dao.saveCollection(likes);
 
-  // plays — listening history.
+  // plays, listening history.
   const plays = new Collection({
     name: "plays",
     type: "base",
@@ -120,7 +120,7 @@ migrate((db) => {
       const collection = dao.findCollectionByNameOrId(name);
       if (collection) dao.deleteCollection(collection);
     } catch (_) {
-      // already missing — ignore
+      // already missing, ignore
     }
   }
 });

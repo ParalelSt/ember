@@ -28,7 +28,7 @@ function appVersion(): string {
       .toString()
       .trim();
   } catch {
-    // Not a git checkout (tarball deploy) — keep 'unknown'.
+    // Not a git checkout (tarball deploy), keep 'unknown'.
   }
   return `${pkg.version} (${sha} ${new Date().toISOString().slice(0, 10)})`;
 }
@@ -45,7 +45,7 @@ const nextConfig: NextConfig = {
   experimental: {
     // proxy.ts sits in front of /api, and Next buffers every request body it
     // proxies up to this size, silently truncating anything past it (no
-    // error — just a partial body, see the proxyClientMaxBodySize docs). A
+    // error, just a partial body, see the proxyClientMaxBodySize docs). A
     // bug report or request can carry attachments (lib/attachments.ts) plus
     // its JSON, and a song upload can be up to MAX_UPLOAD_MB (lib/uploads.ts,
     // 50MB default): stay comfortably above the largest of those plus

@@ -47,12 +47,12 @@ export default function HomePage() {
     );
   };
 
-  // Reset the scroll position whenever the focus changes — going INTO a
+  // Reset the scroll position whenever the focus changes, going INTO a
   // focused song box (so you start at its top) and coming back OUT (so the
   // home page restarts from the top, not wherever you were when you clicked
   // Show all from a lower row). We reset immediately AND across two
   // animation frames because the new content can shift the layout after
-  // first paint (data resolving, image dimensions arriving, etc.) — a
+  // first paint (data resolving, image dimensions arriving, etc.), a
   // one-shot scroll lands "close to the top" but not all the way.
   useEffect(() => {
     const main = document.querySelector('main');

@@ -3,14 +3,14 @@ import { fetchTrackMeta } from '@/lib/trackMeta';
 import { TrackPageClient } from '@/components/track/TrackPageClient';
 
 /** Discord / Messenger / iMessage embed cards for shared song links. Runs
- *  server-side for crawlers too (the /track path is public in proxy.ts —
+ *  server-side for crawlers too (the /track path is public in proxy.ts,
  *  crawlers never log in). Failures fall back to the app's default metadata. */
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }): Promise<Metadata> {
   const { id } = await params;
   try {
     const track = await fetchTrackMeta(id);
-    if (!track) return { title: 'Ember — Music' };
-    const title = `${track.title} — ${track.artist}`;
+    if (!track) return { title: 'Ember - Music' };
+    const title = `${track.title} - ${track.artist}`;
     const description = track.album ? `${track.album} · Listen on Ember` : 'Listen on Ember';
     return {
       title: `${title} · Ember`,
@@ -30,7 +30,7 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
       },
     };
   } catch {
-    return { title: 'Ember — Music' };
+    return { title: 'Ember - Music' };
   }
 }
 

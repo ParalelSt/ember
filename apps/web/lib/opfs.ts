@@ -3,7 +3,7 @@
 /** Thin wrapper over the Origin Private File System.
  *  Centralizes the handful of operations the offline-playback feature uses
  *  so the orchestrator and service worker can share the same vocabulary.
- *  Async-only — sync access handles are available in workers but not worth
+ *  Async-only, sync access handles are available in workers but not worth
  *  the Safari risk surface for our scale.
  *
  *  Several casts below paper over gaps in TS's stdlib types: `dir.entries()`

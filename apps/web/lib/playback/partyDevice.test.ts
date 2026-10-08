@@ -19,7 +19,7 @@ describe('isPartyEligible', () => {
     expect(isPartyEligible()).toBe(true);
   });
 
-  it('is false on a plain web browser with a coarse (touch) pointer — a phone or tablet', () => {
+  it('is false on a plain web browser with a coarse (touch) pointer, a phone or tablet', () => {
     coarse(true);
     expect(isPartyEligible()).toBe(false);
   });

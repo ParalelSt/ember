@@ -47,7 +47,7 @@ interface MoreItem {
   onSelect: () => void;
 }
 
-/** Full-screen "Now Playing" view — phones only. Slides up over the app shell
+/** Full-screen "Now Playing" view, phones only. Slides up over the app shell
  *  with large artwork up top and transport controls at the bottom, like the
  *  Spotify / YouTube Music expanded player. Opened by tapping the mini player
  *  bar; dismissed with the chevron, Escape, or tapping outside the controls. */
@@ -170,7 +170,7 @@ export function NowPlaying() {
 
   // On every fresh open: reset scroll to the top. Without this the scroller
   // keeps its previous scrollTop (the dialog isn't unmounted, just hidden
-  // via translate-y) — so reopening after a Lyrics-focused open would
+  // via translate-y), so reopening after a Lyrics-focused open would
   // dump you mid-page inside the lyrics card. If focus IS 'lyrics' we
   // immediately scroll back down to the card after the open transition.
   useEffect(() => {
@@ -382,7 +382,7 @@ export function NowPlaying() {
           ...(scrolled ? { maskImage: SCROLLED_MASK, WebkitMaskImage: SCROLLED_MASK } : null),
         }}
       >
-      {/* "Player" pane — sized to fill the first viewport so the artwork-
+      {/* "Player" pane, sized to fill the first viewport so the artwork-
           centered look is preserved. Lyrics live BELOW this wrapper so
           they push the scroller into overflow and become scroll-reachable. */}
       <div className="flex flex-col min-h-full">
@@ -395,7 +395,7 @@ export function NowPlaying() {
           {title.name && <div className="max-w-full truncate text-sm font-semibold">{title.name}</div>}
         </div>
 
-        {/* Artwork — fills the upper space, centered. */}
+        {/* Artwork, fills the upper space, centered. */}
         <div className="flex-1 grid place-items-center py-4">
           <Artwork
             src={art}
@@ -428,7 +428,7 @@ export function NowPlaying() {
         {/* Progress */}
         <SeekBar position={position} duration={duration} onSeek={seek} labels="below" className="mt-6" />
 
-        {/* Transport controls — prev/play/next centered; loop pinned right. */}
+        {/* Transport controls, prev/play/next centered; loop pinned right. */}
         <TransportControls
           playing={isPlaying}
           onToggle={toggle}
@@ -476,12 +476,12 @@ export function NowPlaying() {
 
       </div>
 
-      {/* Lyrics card — sits BELOW the min-h-full player pane so the
+      {/* Lyrics card, sits BELOW the min-h-full player pane so the
           scroller actually overflows and scrollIntoView lands at the
           top of this block. Tapping Lyrics in the mini-bar opens
           NowPlaying with nowPlayingFocus='lyrics' and we smooth-scroll
           here. Height is 70vh (NOT 100vh) so the user can see they're
-          inside a card — and the page can be swiped down past the card
+          inside a card, and the page can be swiped down past the card
           to get back to the player pane without feeling stuck. The
           card's inner LyricsBody owns its own overflow-y-auto, so
           synced-lyrics auto-scroll happens inside the card; the outer

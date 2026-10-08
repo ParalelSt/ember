@@ -22,7 +22,7 @@ function isPresenceOwner(user: { email: string; isAdmin: boolean }): boolean {
  *  the card over or wipe it (bughunt X3).
  *
  *  Honours the per-user `share_discord` switch. The check is here as well as in
- *  the client because this route drives the host's visible presence — a stale
+ *  the client because this route drives the host's visible presence, a stale
  *  or replayed client call shouldn't be able to broadcast for someone who
  *  turned it off. A caller without a verified session changes nothing. */
 export const POST = withRequestLog('discord/update', async (request: NextRequest) => {

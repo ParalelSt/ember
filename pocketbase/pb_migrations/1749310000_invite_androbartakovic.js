@@ -1,6 +1,6 @@
 /// <reference path="../pb_data/types.d.ts" />
 
-// Add androbartakovic@gmail.com to the invite list. Idempotent — skips if a
+// Add androbartakovic@gmail.com to the invite list. Idempotent, skips if a
 // row with that email already exists.
 migrate((db) => {
   const dao = new Dao(db);
@@ -10,7 +10,7 @@ migrate((db) => {
     dao.findFirstRecordByFilter("allowed_emails", 'email = "' + email + '"');
     return; // already present
   } catch (e) {
-    // not found — fall through to insert
+    // not found, fall through to insert
   }
   const rec = new Record(allowed, { email: email });
   dao.saveRecord(rec);
@@ -23,6 +23,6 @@ migrate((db) => {
     );
     dao.deleteRecord(rec);
   } catch (e) {
-    // already absent — nothing to do
+    // already absent, nothing to do
   }
 });

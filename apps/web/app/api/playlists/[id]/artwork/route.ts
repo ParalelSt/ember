@@ -22,7 +22,7 @@ export const PATCH = withRequestLog('playlists/[id]/artwork', async (
     const file = incoming?.get('artwork');
     if (!(file instanceof File)) return jsonError('artwork file required', 400);
 
-    // Re-wrap into a fresh FormData for the PB SDK — passing the original
+    // Re-wrap into a fresh FormData for the PB SDK, passing the original
     // request's FormData directly carries extra Next-specific fields.
     const pbForm = new FormData();
     pbForm.append('artwork', file);

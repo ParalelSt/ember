@@ -2,12 +2,12 @@
  *
  *      node tests/desktop-logger.test.mjs   # or: npm run test:desktop-logger
  *
- *  No Tauri, no build — the script is extracted straight out of lib.rs and
+ *  No Tauri, no build, the script is extracted straight out of lib.rs and
  *  evaluated against stubs, so this runs anywhere in milliseconds.
  *
  *  The incident it guards: invoke() returns a promise, and a rejected one
  *  ("Command log_event not allowed by ACL") fired unhandledrejection, which
- *  the logger logged, which invoked again — a loop that filled the 200-entry
+ *  the logger logged, which invoked again, a loop that filled the 200-entry
  *  buffer with one repeated error. A real bug report came back containing 400
  *  copies of it and nothing else, so the actual problem was invisible.
  */
@@ -23,7 +23,7 @@ const SCRIPT = body.slice(0, body.indexOf('"#;'));
 const results = [];
 const check = (name, pass, detail = '') => {
   results.push({ name, pass });
-  console.log(`${pass ? 'PASS' : 'FAIL'}  ${name}${detail ? `  — ${detail}` : ''}`);
+  console.log(`${pass ? 'PASS' : 'FAIL'}  ${name}${detail ? `  - ${detail}` : ''}`);
 };
 
 /** A webview where every invoke is refused, exactly like the ACL denial. */

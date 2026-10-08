@@ -44,7 +44,7 @@ export const POST = withRequestLog('playlists/[id]/tracks', async (request: Next
     const trackRecordId = await upsertCatalogTrack(track);
 
     // Append at the next position. Pull the highest existing position via a
-    // single-record query for cheapness. Start at 1 — PocketBase's required
+    // single-record query for cheapness. Start at 1, PocketBase's required
     // validator on number fields rejects 0 as "missing".
     let nextPosition = 1;
     try {

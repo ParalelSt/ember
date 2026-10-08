@@ -5,7 +5,7 @@ import { ChevronUpIcon } from '@/components/icons';
 import { cn } from '@/lib/utils';
 
 interface Props {
-  /** Ref to the scrollable container — the `<main>` element in (app)/layout. */
+  /** Ref to the scrollable container, the `<main>` element in (app)/layout. */
   scrollRef: RefObject<HTMLElement | null>;
 }
 

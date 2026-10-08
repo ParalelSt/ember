@@ -26,7 +26,7 @@ const req = (url, headers = {}) => ({ url, headers: { get: (k) => headers[k.toLo
 const out = [];
 const check = (name, fn) => {
   try { fn(); out.push([name, true]); console.log(`PASS  ${name}`); }
-  catch (e) { out.push([name, false]); console.log(`FAIL  ${name}  — ${e.message}`); }
+  catch (e) { out.push([name, false]); console.log(`FAIL  ${name}  - ${e.message}`); }
 };
 
 check('the reported bug: a funnel’s internal origin is not used', () => {

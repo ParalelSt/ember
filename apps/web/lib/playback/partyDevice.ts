@@ -4,7 +4,7 @@ import { detectShell } from './detectShell';
  *  this device at all: the Tauri desktop app, or a browser with a real
  *  pointer (a mouse, not a touchscreen's coarse pointer). Never Capacitor
  *  (the Android app today, iOS to come) and never a coarse pointer,
- *  regardless of window width — a touch tablet parked at a desktop-size
+ *  regardless of window width, a touch tablet parked at a desktop-size
  *  window is still a touch device. PlayerBar's own isDesktop check
  *  (hooks/useIsDesktop) already hides the whole volume slider below the md
  *  breakpoint; this is the other half, for pointer type and the native

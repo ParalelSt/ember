@@ -14,7 +14,7 @@ export default function SettingsLayout({ children }: { children: ReactNode }) {
         <SettingsTabs />
         <div className="flex-1 min-w-0">{children}</div>
       </div>
-      {/* Build stamp — NEXT_PUBLIC_APP_VERSION is inlined at build time
+      {/* Build stamp, NEXT_PUBLIC_APP_VERSION is inlined at build time
           (git SHA + build date, see next.config.ts). Inside the desktop or
           phone app, that app's own version follows it. */}
       <div className="mt-10 text-xs text-muted-foreground/60">

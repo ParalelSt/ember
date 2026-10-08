@@ -8,7 +8,7 @@
    - Clean SaaS aesthetic, Linear/Notion/Stripe-ish.
    - Two accent colors max (warm ember red + cool slate accent).
    - 8px spacing rhythm, 16px radius for cards, soft shadows.
-   - Dark by default — music app.                              */
+   - Dark by default, music app.                              */
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -117,7 +117,7 @@
   --sidebar-accent-foreground: oklch(0.98 0 0);
   --sidebar-border: oklch(1 0 0 / 6%);
   --sidebar-ring: oklch(0.68 0.20 25);
-  /* Brand accents — warm ember + softer secondary. */
+  /* Brand accents, warm ember + softer secondary. */
   --ember: oklch(0.68 0.20 25);
   --ember-soft: oklch(0.78 0.13 25);
   /* Text on the accent (buttons, badges): white, what text-white paints
@@ -184,7 +184,7 @@
     @apply bg-background text-foreground antialiased;
     font-feature-settings: "ss01" on, "cv11" on;
   }
-  /* Custom scrollbar — thin, on-brand. */
+  /* Custom scrollbar, thin, on-brand. */
   ::-webkit-scrollbar { width: 10px; height: 10px; }
   ::-webkit-scrollbar-thumb {
     background: color-mix(in oklab, var(--foreground) 14%, transparent);
@@ -259,7 +259,7 @@ body:has([data-tabs-dock][data-tools="open"]) [data-back-to-top] { bottom: 9rem;
   .ember-marquee-anim { animation: none !important; }
 }
 
-/* Phone rotation lock — the app layout is portrait-only on phones. The PWA
+/* Phone rotation lock, the app layout is portrait-only on phones. The PWA
    manifest locks orientation when installed, but a browser tab can't truly
    lock it (iOS Safari ignores the manifest entirely), so cover the broken
    landscape layout with a "rotate to portrait" prompt instead. Heuristic:

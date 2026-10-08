@@ -218,7 +218,7 @@ function spawnPython<T>(args: string[], timeoutMs: number): Promise<T> {
     child.stdout.on('data', (d) => { stdout += d.toString(); });
     // Buffer stderr for error reporting AND forward live to Node's stderr so
     // `[search] …` / yt-dlp logs surface in the dev/prod terminal as they
-    // happen — not just when the process fails.
+    // happen, not just when the process fails.
     child.stderr.on('data', (d) => {
       const text = redactSecrets(d.toString());
       stderr += text;
@@ -230,7 +230,7 @@ function spawnPython<T>(args: string[], timeoutMs: number): Promise<T> {
       if (timedOut) return; // already rejected (and logged) by the timer above
       if (code !== 0) {
         // The MESSAGE reaches the browser (and toasts), so it must be a
-        // sentence, not a Python traceback — those leak absolute server paths
+        // sentence, not a Python traceback, those leak absolute server paths
         // and tell the listener nothing. The full stderr still goes to the
         // server log via reject_ below.
         const why = pythonReason(stderr, code);
@@ -307,7 +307,7 @@ export async function searchTracks(query: string, { limit = 30 } = {}): Promise<
   // moment, would otherwise read "no results" for the next 5 minutes.
   if (!tracks.length) return tracks;
 
-  // Bound the cache. Drop the oldest insertion when we hit the cap — Map
+  // Bound the cache. Drop the oldest insertion when we hit the cap, Map
   // iteration order is insertion order in JS. Not strict LRU (we don't
   // bump on hit) but TTL evicts stale entries anyway, and the cap of 100
   // keeps total memory in the low-MB range.
@@ -333,7 +333,7 @@ const inFlight = new Map<string, Promise<string>>();
  *
  *  Matters because a download is NOT atomic: yt-dlp renames the file into
  *  place and then post-processes it, so `<id>.m4a` can exist while still being
- *  written. Serving it in that window hands the player a truncated file — the
+ *  written. Serving it in that window hands the player a truncated file, the
  *  decoder starves and playback sits frozen at 0:00 with no error. */
 export function isDownloading(videoId: string): boolean {
   return inFlight.has(videoId);
@@ -360,7 +360,7 @@ export async function ensureDownloaded(videoId: string, opts: { prefetch?: boole
   const running = inFlight.get(videoId);
   if (running) return running;
 
-  // Nothing running — a file on disk now is genuinely finished.
+  // Nothing running, a file on disk now is genuinely finished.
   const already = findCachedFile(videoId);
   if (already) return already;
 
@@ -741,7 +741,7 @@ const URL_CACHE_MAX = 500;
 /** Cache lifetime for a resolved stream URL. googlevideo URLs embed their own
  *  signed expiry (`expire=<unix seconds>`); trust it minus a 10-min margin.
  *  The old flat 5-min TTL made every timestamp-slider seek PAST the 5-minute
- *  mark re-spawn yt-dlp (seconds of lag) — i.e. long tracks always lagged. */
+ *  mark re-spawn yt-dlp (seconds of lag), i.e. long tracks always lagged. */
 function urlCacheExpiry(url: string): number {
   try {
     const expire = Number(new URL(url).searchParams.get('expire'));
@@ -750,7 +750,7 @@ function urlCacheExpiry(url: string): number {
       if (ms > Date.now()) return Math.min(ms, Date.now() + 6 * 60 * 60 * 1000);
     }
   } catch {
-    // unparseable URL — fall through to the flat TTL
+    // unparseable URL, fall through to the flat TTL
   }
   return Date.now() + URL_TTL_MS;
 }
@@ -773,7 +773,7 @@ export interface LyricsResult {
   source: 'genius' | 'lrclib' | 'none';
   url: string | null;
   /** Time-synced lines when the source provides them. Empty/undefined
-   *  means we only have plain text — the UI renders it as a single block. */
+   *  means we only have plain text, the UI renders it as a single block. */
   synced?: LyricsLine[];
 }
 
@@ -834,7 +834,7 @@ interface RawLrclibHit {
 function cleanForLyricsLookup(s: string): string {
   return s
     .replace(/\s*[\[(][^\])]*\b(official|lyric|lyrics|music|audio|video|hd|hq|4k|live|remaster(ed)?|visualizer|mv|m\/v)\b[^\])]*[\])]/gi, '')
-    .replace(/\s*[-–—]\s*(official|lyric|lyrics|music|audio|video|hd|hq|4k|live|remaster(ed)?)\b.*$/i, '')
+    .replace(/\s*[-–\u2014]\s*(official|lyric|lyrics|music|audio|video|hd|hq|4k|live|remaster(ed)?)\b.*$/i, '')
     .replace(/\s*[\[(]?\bfeat(?:uring)?\.?\b[^)\]]*[\])]?/gi, '')
     .replace(/\s*[\[(]?\bft\.\b[^)\]]*[\])]?/gi, '')
     .replace(/\s+VEVO\b/gi, '')
@@ -846,7 +846,7 @@ function cleanForLyricsLookup(s: string): string {
 /** LRCLib is a community database that returns both `syncedLyrics` (LRC
  *  format) and `plainLyrics` for a track. No auth, no rate limits to speak
  *  of. We try it first because it's the only source we have with timing
- *  info — falling back to Genius (via the Python scraper) only when LRCLib
+ *  info, falling back to Genius (via the Python scraper) only when LRCLib
  *  has nothing.
  *
  *  Uses /api/search (fuzzy) rather than /api/get (exact) because YouTube
@@ -891,8 +891,8 @@ async function fetchLrclib(
   const known = typeof durationSec === 'number' && durationSec > 0;
   const off = (h: RawLrclibHit) =>
     typeof h.duration === 'number' ? Math.abs(h.duration - (durationSec as number)) : Infinity;
-  // Prefer a hit that actually has synced lyrics — that's the whole point
-  // of going to LRCLib — from the closest version when the length is known.
+  // Prefer a hit that actually has synced lyrics, that's the whole point
+  // of going to LRCLib, from the closest version when the length is known.
   const timed = known
     ? hits.filter((h) => hasSynced(h) && off(h) <= LRCLIB_DURATION_SLACK_SEC).sort((a, b) => off(a) - off(b))[0]
     : hits.find(hasSynced);

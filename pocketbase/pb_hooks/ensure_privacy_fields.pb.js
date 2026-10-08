@@ -1,6 +1,6 @@
 /// <reference path="../pb_data/types.d.ts" />
 
-// Privacy toggles — two independent switches for "don't broadcast what I'm
+// Privacy toggles, two independent switches for "don't broadcast what I'm
 // playing":
 //
 //   share_discord    → Discord rich presence
@@ -8,7 +8,7 @@
 //
 // Stored as share_* so that OFF is the default. PocketBase bool fields default
 // to false and existing users have no value at all, so everybody starts not
-// sharing and opts in deliberately — which is the right default for a switch
+// sharing and opts in deliberately, which is the right default for a switch
 // about broadcasting what you listen to.
 //
 // This replaces an earlier inverted pair (hide_discord / hide_listening) that

@@ -12,6 +12,7 @@
     "lint": "npm run lint -w apps/web",
     "test:unit": "npm run test:unit -w apps/web",
     "test:privacy": "node tests/privacy.test.mjs",
+    "test:no-em-dashes": "node tests/no-em-dashes.test.mjs",
     "test:triage": "node tests/ai-triage.test.mjs",
     "test:triage-ui": "node tests/ai-triage-ui.test.mjs",
     "test:uploads": "node tests/uploads.test.mjs",

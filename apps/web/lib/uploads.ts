@@ -48,7 +48,7 @@ export const MIME_BY_EXT: Record<string, string> = {
 };
 
 /** Magic-byte sniff. A browser-supplied Content-Type is a claim, not a fact,
- *  and this file gets streamed back to everyone — so check the bytes too.
+ *  and this file gets streamed back to everyone, so check the bytes too.
  *  Returns the detected extension, or null if it doesn't look like audio. */
 export function sniffAudio(buf: Buffer): string | null {
   const ascii = (start: number, len: number) => buf.subarray(start, start + len).toString('ascii');
@@ -65,7 +65,7 @@ export function sniffAudio(buf: Buffer): string | null {
   return null;
 }
 
-/** Random name — never the user's filename, which could carry path
+/** Random name, never the user's filename, which could carry path
  *  separators or a misleading extension. */
 export function newFilename(ext: string): string {
   return `${crypto.randomBytes(12).toString('hex')}${ext}`;
@@ -113,12 +113,12 @@ export function mapUpload(row: RecordModel): Track {
   };
 }
 
-// PB filter strings interpolate raw — escape user-controlled text.
+// PB filter strings interpolate raw, escape user-controlled text.
 function escape(s: string): string {
   return s.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
 }
 
-/** Uploads matching a search query, newest first. Errors return [] — a
+/** Uploads matching a search query, newest first. Errors return [], a
  *  problem here must not take down search for YouTube results. */
 export async function searchUploads(pb: PocketBase, q: string, limit = 10): Promise<Track[]> {
   const term = escape(q.trim());

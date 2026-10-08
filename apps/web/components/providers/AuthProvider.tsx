@@ -13,7 +13,7 @@ import { parseThemeDoc, sameDoc } from '@/lib/theme/model';
 import { logger } from '@/lib/logger/client';
 import { flushNativeCookies } from '@/lib/nativeCookies';
 
-/** Minimal user shape exposed to the app — matches the old Supabase one
+/** Minimal user shape exposed to the app, matches the old Supabase one
  *  closely enough that consumers don't care which backend produced it. */
 export interface AuthUser {
   id: string;
@@ -25,11 +25,11 @@ export interface AuthUser {
 
 interface AuthValue {
   user: AuthUser | null;
-  /** Convenience — `user?.name || ''`. Empty string when unset. */
+  /** Convenience, `user?.name || ''`. Empty string when unset. */
   name: string;
-  /** Convenience — `user?.avatarUrl`. */
+  /** Convenience, `user?.avatarUrl`. */
   avatarUrl: string | null;
-  /** Convenience — `user?.isAdmin === true`. */
+  /** Convenience, `user?.isAdmin === true`. */
   isAdmin: boolean;
   loading: boolean;
   signIn: (email: string, password: string) => Promise<{ error: { message: string } | null }>;
@@ -165,7 +165,7 @@ export function AuthProvider({ children, initialUser }: { children: ReactNode; i
       signUp: async (email, password) => {
         try {
           await pb.collection('users').create({ email, password, passwordConfirm: password });
-          // PocketBase doesn't gate on email verification out of the box —
+          // PocketBase doesn't gate on email verification out of the box,
           // sign the user straight in. If you enable "require verified" in
           // the admin UI, swap this for a verification flow.
           await pb.collection('users').authWithPassword(email, password);
@@ -220,7 +220,7 @@ function mapRecord(
 }
 
 /** Pulls the actual reason out of a PocketBase ClientResponseError. The
- *  top-level `.message` is a generic "Something went wrong" — the useful
+ *  top-level `.message` is a generic "Something went wrong", the useful
  *  per-field info lives in `.data.<field>.message`. */
 function extractPbError(e: unknown): string {
   if (!e || typeof e !== 'object') return 'Unexpected error';

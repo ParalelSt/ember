@@ -55,8 +55,8 @@ writeFileSync(confPath, JSON.stringify(conf, null, 2) + "\n");
 // It must NOT also list localhost:3000 unconditionally (bughunt L3): that
 // used to be added every time "for dev convenience", which meant a signed
 // build shipped to point at the real server (build-signed.sh, build-mac.sh
-// with no --local) still granted full IPC — native audio, Discord presence,
-// log reading — to anything answering on the user's own machine at
+// with no --local) still granted full IPC, native audio, Discord presence,
+// log reading, to anything answering on the user's own machine at
 // localhost:3000. `npm run dev` and `build-mac.sh --local` already resolve
 // `url` to http://localhost:3000, so `origin` alone still covers them.
 const cap = JSON.parse(readFileSync(capPath, "utf8"));

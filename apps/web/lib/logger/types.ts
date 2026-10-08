@@ -19,7 +19,7 @@ export interface LogEntry {
   data?: unknown;
   /** Stack trace string; errors only. */
   stack?: string;
-  /** UUID generated at client boot — lets us group entries by session. */
+  /** UUID generated at client boot, lets us group entries by session. */
   sessionId: string;
 }
 

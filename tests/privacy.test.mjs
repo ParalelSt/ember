@@ -5,7 +5,7 @@
  *  Needs the sandbox from tests/README.md (PB on 8091, app on 3005).
  *
  *  The point of these checks is that hiding is enforced by the SERVER. A UI
- *  that merely declines to render a hidden user is not privacy — the data is
+ *  that merely declines to render a hidden user is not privacy, the data is
  *  still in the response for anyone who opens the network tab. So every
  *  assertion here reads the raw API. */
 import assert from 'node:assert';
@@ -19,7 +19,7 @@ const PASSWORD = 'BugTest2026!';
 const results = [];
 const check = (name, pass, detail = '') => {
   results.push({ name, pass });
-  console.log(`${pass ? 'PASS' : 'FAIL'}  ${name}${detail ? `  — ${detail}` : ''}`);
+  console.log(`${pass ? 'PASS' : 'FAIL'}  ${name}${detail ? `  - ${detail}` : ''}`);
 };
 
 async function adminToken() {

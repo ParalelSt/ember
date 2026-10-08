@@ -24,7 +24,7 @@ export async function createClient() {
   return pb;
 }
 
-/** Server-side admin client. Re-auths each call — cheap (~30ms) at the
+/** Server-side admin client. Re-auths each call, cheap (~30ms) at the
  *  scale of "a handful of /api/auth/check-email hits per login session".
  *  Throws status:503 if creds aren't configured so the caller bubbles a
  *  clear error to the UI.

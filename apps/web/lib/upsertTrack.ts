@@ -8,10 +8,10 @@ import { createCatalogClient } from '@/lib/pocketbase/server';
 /** Upserts a Track into the shared `tracks` collection by `external_id`.
  *  Returns the PocketBase record id so callers can use it in relations
  *  (likes/plays/playlist_tracks all FK by PB id, not external id).
- *  On hit, additively backfills any fields the row is missing — see
+ *  On hit, additively backfills any fields the row is missing, see
  *  buildBackfillPatch. */
 export async function upsertTrack(pb: PocketBase, track: Track): Promise<string> {
-  // Try to find an existing row first — cheaper than catching a unique-index
+  // Try to find an existing row first, cheaper than catching a unique-index
   // conflict on every play.
   try {
     const existing = await pb
@@ -30,7 +30,7 @@ export async function upsertTrack(pb: PocketBase, track: Track): Promise<string>
     if (!isNotFound(e)) throw e;
   }
 
-  // Not found — create. If a concurrent request wins the unique-index race,
+  // Not found, create. If a concurrent request wins the unique-index race,
   // PocketBase rejects with 400; in that case look it up again. Only a new
   // row is checked: one already in the catalog (an older id shape included)
   // keeps working.
@@ -132,18 +132,18 @@ function isNotFound(e: unknown): boolean {
 
 function isUniqueConflict(e: unknown): boolean {
   // PocketBase returns 400 with a `data.external_id` validation error when the
-  // unique index trips. Treat any 400 from this insert as conflict — we already
+  // unique index trips. Treat any 400 from this insert as conflict, we already
   // know the only constrained field is external_id.
   return (e as ClientResponseError | undefined)?.status === 400;
 }
 
-// PB filter strings interpolate raw — escape user-controlled text.
+// PB filter strings interpolate raw, escape user-controlled text.
 function escape(s: string): string {
   return s.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
 }
 
 export function jsonError(message: string, status = 500) {
-  // PocketBase network failures carry status 0 — Response.json throws a
+  // PocketBase network failures carry status 0, Response.json throws a
   // RangeError outside 200-599, turning a clean error into a route crash.
   // Anything out of range means "couldn't reach upstream" → 502.
   const safe = Number.isFinite(status) && status >= 200 && status <= 599 ? status : 502;

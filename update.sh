@@ -11,7 +11,7 @@
 # start-static.sh deliberately SKIPS starting PocketBase when it's already
 # healthy, so re-running it rebuilds the web app but leaves the old PB process
 # alive. Ember adds collections and fields through pb_hooks that only run on PB
-# BOOT — so without a real PB restart, new features (uploads, the privacy
+# BOOT, so without a real PB restart, new features (uploads, the privacy
 # switches) silently do nothing, with no error to explain why. This script
 # always restarts PocketBase.
 
@@ -157,7 +157,7 @@ if [ "$MODE" = "check" ]; then
   exit 0
 fi
 
-# Refuse to clobber local edits — on a host these are usually a hand-patched
+# Refuse to clobber local edits, on a host these are usually a hand-patched
 # config someone will want back.
 if ! git diff --quiet || ! git diff --cached --quiet; then
   if [ "$MODE" = "force" ]; then
@@ -165,7 +165,7 @@ if ! git diff --quiet || ! git diff --cached --quiet; then
     git stash push --quiet --include-untracked -m "update.sh $(date -u +%FT%TZ)"
     echo "  restore them later with: git stash pop"
   else
-    echo "✗ NOT UPDATED — you have uncommitted changes, so the pull was skipped."
+    echo "✗ NOT UPDATED, you have uncommitted changes, so the pull was skipped."
     git status --short | sed 's/^/    /'
     echo
     echo "  This is usually package-lock.json, which npm rewrites whenever you"
@@ -197,11 +197,11 @@ if [ ! -d "$ROOT/node_modules" ] || [ ! -f "$STAMP" ] || [ "$(cat "$STAMP")" != 
   # running web app is not left without its dependencies, crashing, and
   # being restarted and reported by the watchdog while the install runs.
   stop_everything
-  echo "▶ installing dependencies — npm ci…"
+  echo "▶ installing dependencies, npm ci…"
   npm ci
   echo "$LOCK_SHA" > "$STAMP"
 else
-  echo "▶ dependencies already match the lockfile — skipping npm ci"
+  echo "▶ dependencies already match the lockfile, skipping npm ci"
 fi
 
 # yt-dlp goes stale fast: YouTube breaks older versions every few months, and
@@ -211,7 +211,7 @@ if [ "${SKIP_YTDLP_UPGRADE:-0}" != "1" ] && [ -x "$ROOT/.venv/bin/pip" ]; then
   echo "▶ updating yt-dlp + ytmusicapi…"
   BEFORE="$("$ROOT/.venv/bin/python" -m yt_dlp --version 2>/dev/null || echo none)"
   "$ROOT/.venv/bin/pip" install -q --upgrade yt-dlp ytmusicapi || \
-    echo "  ⚠ upgrade failed — carrying on, but 403s on downloads usually mean a stale yt-dlp"
+    echo "  ⚠ upgrade failed, carrying on, but 403s on downloads usually mean a stale yt-dlp"
   AFTER="$("$ROOT/.venv/bin/python" -m yt_dlp --version 2>/dev/null || echo none)"
   if [ "$BEFORE" = "$AFTER" ]; then
     echo "  yt-dlp $AFTER (already current)"
@@ -225,7 +225,7 @@ link_ffmpeg
 if [ "$MODE" = "no-start" ]; then
   echo
   echo "✓ code updated and dependencies installed."
-  echo "  Now restart your services yourself — and make sure POCKETBASE"
+  echo "  Now restart your services yourself, and make sure POCKETBASE"
   echo "  actually restarts, or new collections/fields won't be created."
   echo "  Give PocketBase EMBER_PB_SUPERUSER_EMAIL / EMBER_PB_SUPERUSER_PASSWORD"
   echo "  (the same values as POCKETBASE_ADMIN_* in apps/web/.env.local), or its"
@@ -242,7 +242,7 @@ if [ "$NOW" = "$(git rev-parse origin/main)" ]; then
   APP_VER="$(node -p "require('$ROOT/apps/web/package.json').version" 2>/dev/null || echo '?')"
   echo "✓ updated to $APP_VER ($(git rev-parse --short HEAD)): $(git log -1 --format=%s | cut -c1-60)"
 else
-  echo "✗ STILL BEHIND origin/main at $(git rev-parse --short HEAD) — the pull did not take."
+  echo "✗ STILL BEHIND origin/main at $(git rev-parse --short HEAD), the pull did not take."
 fi
 
 echo "▶ restarting (PocketBase reboots, so pb_hooks run)…"

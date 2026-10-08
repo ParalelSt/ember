@@ -2,7 +2,7 @@ import { EventEmitter } from 'node:events';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 // M4: a runPython() timeout kills the child, which still fires 'close' with
-// a non-zero/null code afterwards — SIGKILL doesn't skip that event. Before
+// a non-zero/null code afterwards, SIGKILL doesn't skip that event. Before
 // the fix, both the timeout handler and the close handler logged (and
 // rejected) the same failure, so one real timeout showed up as two log
 // lines. Kept isolated from youtube.test.ts, which owns its own
@@ -44,7 +44,7 @@ describe('runPython timeout logging', () => {
 
     const settled = resolveStreamUrl('AAAAAAAAAAA').catch((e: Error) => e);
     await vi.advanceTimersByTimeAsync(30000);
-    // SIGKILL doesn't skip 'close' — the real child still reports its exit
+    // SIGKILL doesn't skip 'close', the real child still reports its exit
     // after being killed, same as production.
     fakeChild.emit('close', null);
     await Promise.resolve();

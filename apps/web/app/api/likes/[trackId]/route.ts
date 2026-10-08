@@ -21,7 +21,7 @@ export const DELETE = withRequestLog('likes/[trackId]', async (_req: NextRequest
     return Response.json({ ok: true });
   } catch (e) {
     if (e instanceof UnauthorizedError) return unauthorizedResponse();
-    // Already not liked — idempotent.
+    // Already not liked, idempotent.
     if ((e as { status?: number }).status === 404) return Response.json({ ok: true });
     return fromError(e);
   }

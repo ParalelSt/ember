@@ -6,7 +6,7 @@ import type { AudioBackendEvents, CreateAudioBackend, RemoteCommands } from './t
 import type { Track } from '@/types/track';
 
 /** JS surface of @capgo/capacitor-media-session (mirrors the Web MediaSession
- *  API). Reached through the bridge Capacitor injects into the webview —
+ *  API). Reached through the bridge Capacitor injects into the webview,
  *  NOT imported from npm: this web app is served by the host, so the plugin's
  *  JS package is never bundled. Types transcribed from the plugin's
  *  definitions.d.ts (v7.3.0). */
@@ -18,7 +18,7 @@ interface MediaSessionPlugin {
     artwork?: { src: string; sizes?: string; type?: string }[];
   }): Promise<void>;
   setPlaybackState(options: { playbackState: 'none' | 'paused' | 'playing' }): Promise<void>;
-  // NOTE: returns `unknown`, not Promise — when a Capacitor plugin method is
+  // NOTE: returns `unknown`, not Promise, when a Capacitor plugin method is
   // invoked WITH a callback argument, the injected bridge switches to
   // callback mode and returns a callback-ID string instead of a Promise.
   setActionHandler(
@@ -47,7 +47,7 @@ function plugin(): MediaSessionPlugin | null {
 }
 
 /** Fire-and-forget: a missing/broken plugin must degrade to plain web
- *  behavior, never break playback. Duck-typed — Capacitor's bridge returns a
+ *  behavior, never break playback. Duck-typed, Capacitor's bridge returns a
  *  Promise for normal methods but a callback-ID STRING for callback-taking
  *  methods (setActionHandler), so `.catch` must not be assumed. */
 function call(p: unknown): void {
@@ -85,7 +85,7 @@ async function toDataUrl(src: string): Promise<string | null> {
 /** Guards against a slow read for a track the user has already skipped past. */
 let artToken = 0;
 
-/** Capacitor backend — the web <audio> pipeline unchanged, plus (Android
+/** Capacitor backend, the web <audio> pipeline unchanged, plus (Android
  *  builds without the native player) the native media-session plugin
  *  mirroring metadata / playback state / position and receiving the
  *  notification's transport commands. On Android the plugin runs a

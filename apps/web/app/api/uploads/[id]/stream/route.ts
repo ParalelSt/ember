@@ -28,7 +28,7 @@ export const GET = withRequestLog('uploads/[id]/stream', async (request: NextReq
     const row = await pb.collection('uploads').getOne(id).catch(() => null);
     if (!row) return new Response('not found', { status: 404 });
 
-    // The filename comes from our own record, but resolve defensively anyway —
+    // The filename comes from our own record, but resolve defensively anyway,
     // this is the one place a bad value would read an arbitrary file.
     const full = resolveUploadPath(String(row.filename ?? ''));
     if (!full || !fs.existsSync(full)) return new Response('file missing', { status: 404 });

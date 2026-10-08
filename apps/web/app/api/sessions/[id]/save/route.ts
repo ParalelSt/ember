@@ -4,7 +4,7 @@ import { fromError } from '@/lib/upsertTrack';
 import { loadSession, assertMember, sessionsClient } from '@/lib/sessions';
 import { withRequestLog } from '@/lib/logger/withRequestLog';
 
-/** Copy the session queue into a normal playlist owned by the caller —
+/** Copy the session queue into a normal playlist owned by the caller,
  *  anyone in the session can keep the roadtrip mix. */
 export const POST = withRequestLog('sessions/[id]/save', async (request: NextRequest, ctx: RouteContext<'/api/sessions/[id]/save'>) => {
   try {
@@ -30,7 +30,7 @@ export const POST = withRequestLog('sessions/[id]/save', async (request: NextReq
           position: position++,
         });
       } catch {
-        // duplicate track in the session (unique index) — skip
+        // duplicate track in the session (unique index), skip
       }
     }
     return Response.json({ playlist: { id: playlist.id, name } }, { status: 201 });

@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { toast } from 'sonner';
 import { usePrivacyStore } from '@/stores/usePrivacyStore';
 
-/** A plain accessible switch — the UI kit has no Switch component and this is
+/** A plain accessible switch, the UI kit has no Switch component and this is
  *  the only place that needs one. */
 function Toggle({
   id,
@@ -45,7 +45,7 @@ function Toggle({
             its own and falls back to its STATIC position, which a button
             centres (text-align: center). That put its origin at the middle of
             the track and the translate then pushed it clean outside the
-            pill — the switch read as "on" in both states. */}
+            pill, the switch read as "on" in both states. */}
         <span
           className={`absolute left-0 top-0.5 h-5 w-5 rounded-full transition-transform ${
             checked ? 'translate-x-[22px] bg-ember-foreground' : 'translate-x-0.5 bg-foreground'
@@ -109,7 +109,7 @@ export function PrivacyToggles() {
         />
       </div>
       <p className="mt-3 text-xs text-muted-foreground">
-        Your listening history is still saved either way — it just isn&apos;t shared.
+        Your listening history is still saved either way, it just isn&apos;t shared.
       </p>
     </div>
   );

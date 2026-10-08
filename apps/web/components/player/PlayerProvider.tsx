@@ -160,11 +160,11 @@ function pinnedIds(): Set<string> {
   return new Set([...Object.keys(webFiles), ...Object.keys(trackFiles)]);
 }
 
-/** Player provider — owns a swappable AudioBackend (web <audio> today, native
+/** Player provider, owns a swappable AudioBackend (web <audio> today, native
  *  bridge in the shells) and orchestrates playback, persistence-on-write merges,
  *  radio mode, Discord, and remote/media controls. The backend is ref-held and
  *  built on first client render; `backendReady` re-runs dependent effects once
- *  it exists. PlayerControls is identical to before — no consumer changes. */
+ *  it exists. PlayerControls is identical to before, no consumer changes. */
 export function PlayerProvider({ children }: { children: ReactNode }) {
   const queue = usePlayerStore((s) => s.queue);
   const index = usePlayerStore((s) => s.index);
@@ -186,7 +186,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
   const backendRef = useRef<AudioBackend | null>(null);
   /** Which engine is live, and whether we've already swapped away from a
-   *  broken native one (only ever done once — a fallback loop would be worse
+   *  broken native one (only ever done once, a fallback loop would be worse
    *  than the original fault). */
   const backendKindRef = useRef<BackendKind>('web');
   /** The engine in use, as state, so the auto cache can pick the adapter
@@ -194,7 +194,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
    *  engine falls back to web audio (which cannot open the Rust cache). */
   const [initialKind, setInitialKind] = useState<BackendKind | null>(null);
   const fellBackRef = useRef(false);
-  /** Track id currently handed to the backend — guards redundant re-loads. */
+  /** Track id currently handed to the backend, guards redundant re-loads. */
   const loadedTrackRef = useRef<string | null>(null);
   /** Track id whose CURRENTLY loaded src is a downloaded local file, else null.
    *  onError needs it to know whether retrying over the network is worth
@@ -282,7 +282,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
   const current = queue[index] ?? null;
 
-  // Ambient lyrics prefetch — fires the moment a track becomes current, so the
+  // Ambient lyrics prefetch, fires the moment a track becomes current, so the
   // panel has data ready when opened (React Query caches it). The lookup
   // needs a session: signed out it only collected 401s (bughunt V5).
   useQueryLyrics(current, !!user);
@@ -603,7 +603,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     }
     // Per-shell backend: tauri has a native engine (Part 5); capacitor keeps
     // web audio but mirrors the session to the native media-session plugin
-    // (Part 3a — foreground service = background playback); plain web uses the
+    // (Part 3a, foreground service = background playback); plain web uses the
     // bare <audio> backend.
     const shell = detectShell();
     let create = createWebBackend;
@@ -697,7 +697,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
   /** Swap a failing native engine for plain web audio, once, and resume.
    *
-   *  nativeBackendReady() can only check that Tauri's invoke() EXISTS — and it
+   *  nativeBackendReady() can only check that Tauri's invoke() EXISTS, and it
    *  does even when the capability denies every command, which is precisely
    *  what shipped in v0.2.0: the app chose the Rust engine, every call was
    *  refused, and the result was silence with a track apparently playing.
@@ -725,7 +725,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
   const fallbackToWebAudio = useCallback((reason: string) => {
     if (backendKindRef.current === 'web' || fellBackRef.current) return;
-    logger.error('playback', 'native audio failed — falling back to web audio', { reason });
+    logger.error('playback', 'native audio failed, falling back to web audio', { reason });
 
     const st0 = usePlayerStore.getState();
     const failing = st0.queue[st0.index];
@@ -774,7 +774,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     // Cold-start hydration runs more than once (three times, in a traced
     // launch), and each pass re-downloads and re-decodes the same track. Worse,
     // those loads carry autoplay=false: if one lands just after the user hits
-    // play, it replaces their playing audio with a PAUSED sink — the "had to
+    // play, it replaces their playing audio with a PAUSED sink, the "had to
     // click play a few times" bug. A silent re-load of the track that's already
     // loaded is never useful, so drop it.
     if (!autoplay && loadedTrackRef.current === track.id) return;
@@ -1326,7 +1326,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
   const playTrack = useCallback((track: Track, list?: Track[], nextContext?: PlaybackContext | null) => {
     userInteracted.current = true;
-    // Tapping a search result plays just that song then flows into radio — not
+    // Tapping a search result plays just that song then flows into radio, not
     // the variant-heavy results list. Other contexts queue their whole list.
     const isSearch = nextContext?.type === 'search';
     const queueList = !isSearch && list && list.length ? list : [track];
@@ -1369,7 +1369,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       index: i,
       context,
       baseCount,
-      // A new queue invalidates any shuffle snapshot — without this, turning
+      // A new queue invalidates any shuffle snapshot, without this, turning
       // shuffle off later would restore a PREVIOUS list's order. Callers that
       // want a shuffled start (the playlist Shuffle button) set it right after.
       shuffle: false,

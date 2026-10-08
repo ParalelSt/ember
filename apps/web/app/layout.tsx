@@ -26,7 +26,7 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: 'Ember — Music',
+  title: 'Ember - Music',
   description: 'Music streaming.',
   manifest: '/manifest.webmanifest',
   appleWebApp: { capable: true, title: 'Ember', statusBarStyle: 'black-translucent' },
@@ -81,7 +81,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         <script dangerouslySetInnerHTML={{ __html: CAR_CLASS_SCRIPT }} />
       </head>
       <body className="min-h-screen bg-background text-foreground antialiased">
-        {/* Portrait-only on phones — shown over the app when a phone is turned
+        {/* Portrait-only on phones, shown over the app when a phone is turned
             landscape (the layout is built for portrait). CSS-gated in
             globals.css; inert on tablets/desktop. */}
         <div className="rotate-lock">

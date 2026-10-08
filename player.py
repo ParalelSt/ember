@@ -154,13 +154,13 @@ def to_track_json_from_ytdlp(entry):
 
 def _ytdlp_usable(entry):
     """yt-dlp's ytsearch results can include playlists / channels alongside
-    videos. Skip anything without an id or a duration — those aren't
+    videos. Skip anything without an id or a duration, those aren't
     playable tracks."""
     return bool(entry and entry.get("id")) and entry.get("duration") is not None
 
 
 def ytdlp_search(query: str, limit: int):
-    """Plain YouTube search via yt-dlp — fallback for queries that crash
+    """Plain YouTube search via yt-dlp, fallback for queries that crash
     ytmusicapi. extract_flat='in_playlist' returns one batched listing
     (~1 HTTP request) instead of fetching each video page individually."""
     ydl_opts = {
@@ -423,7 +423,7 @@ def cmd_search(args):
         json.dump(merged, sys.stdout)
         return
 
-    # Neither backend produced anything — fall back to yt-dlp.
+    # Neither backend produced anything, fall back to yt-dlp.
     print(f"[search] falling back to yt-dlp for query={args.query!r}", file=sys.stderr)
     entries = []
     try:
@@ -487,7 +487,7 @@ def cmd_info(args):
         "title": info.get("title"),
         # The headers yt-dlp used to fetch this format (notably User-Agent).
         # googlevideo URLs are signed for the client that resolved them, so the
-        # proxy MUST replay these when fetching — a mismatched UA gets a 403.
+        # proxy MUST replay these when fetching, a mismatched UA gets a 403.
         "httpHeaders": info.get("http_headers") or {},
     }, sys.stdout)
 
@@ -497,7 +497,7 @@ def cmd_track(args):
     Used by the shareable /track/<videoId> page for ids nobody has played
     yet (PB rows take priority on the Node side). Note: author/channelId
     are video-level (the uploader), same compromise as the videos search
-    tier — PB-cached tracks keep their proper music metadata."""
+    tier, PB-cached tracks keep their proper music metadata."""
     try:
         song = yt.get_song(args.video_id)
     except (KeyError, TypeError, AttributeError) as e:
@@ -522,7 +522,7 @@ def cmd_track(args):
     }, sys.stdout)
 
 def cmd_recommended(args):
-    """Songs related to a seed videoId — uses YT Music's 'watch playlist'
+    """Songs related to a seed videoId, uses YT Music's 'watch playlist'
     (the up-next radio for that song). Falls back to the daily chart when the
     seed is missing or the lookup fails."""
     items = []
@@ -713,7 +713,7 @@ def cmd_artist(args):
                 # Only include results attributed to THIS artist's channelId.
                 # Matching by name mixed up same-named artists (two "Noah"s
                 # shared one page); search entries carry the artist id, so
-                # match on that. Entries without ids are dropped — the
+                # match on that. Entries without ids are dropped, the
                 # get_artist() fallback below covers an over-strict filter.
                 if not any(a.get("id") == args.channel_id
                            for a in (e.get("artists") or [])):
@@ -722,7 +722,7 @@ def cmd_artist(args):
         except Exception as e:
             print(f"artist: search failed: {e}", file=sys.stderr)
 
-    # Fallback: if the search returned nothing (rare — search down, or the
+    # Fallback: if the search returned nothing (rare, search down, or the
     # artist name is too generic to match cleanly), surface whatever
     # get_artist() gave us so the page isn't blank. Those rows won't have
     # durations, but the page works.
@@ -732,7 +732,7 @@ def cmd_artist(args):
     albums = (info.get("albums") or {}).get("results") or []
     # Standalone singles/EPs are a separate get_artist() category from albums;
     # without this they never reach the artist page (e.g. "Shadow of Intent -
-    # The Migrant"). Same shape as albums — each is an album-type browseId.
+    # The Migrant"). Same shape as albums, each is an album-type browseId.
     singles = (info.get("singles") or {}).get("results") or []
 
     def album_json(a):
@@ -794,7 +794,7 @@ def cmd_album(args):
     json.dump(out, sys.stdout)
 
 def cmd_lyrics(args):
-    """Fetch lyrics from Genius by direct search + page scrape — no API
+    """Fetch lyrics from Genius by direct search + page scrape, no API
     token required. Hits Genius's public /api/search/multi endpoint
     (the same one their own frontend uses), picks the best song hit,
     then parses the song page's data-lyrics-container divs.

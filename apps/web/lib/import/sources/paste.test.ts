@@ -27,7 +27,7 @@ describe('parsePaste', () => {
   });
 
   it('a hyphen, an en dash and an em dash all separate the artist from the song', () => {
-    expect(parse('A - B\nA – B\nA — B').items.every((i) => i.artist === 'A' && i.title === 'B')).toBe(true);
+    expect(parse('A - B\nA – B\nA \u2014 B').items.every((i) => i.artist === 'A' && i.title === 'B')).toBe(true);
   });
 
   it('a song whose own name has a dash keeps it', () => {

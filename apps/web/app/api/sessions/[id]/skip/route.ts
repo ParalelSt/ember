@@ -4,7 +4,7 @@ import { fromError } from '@/lib/upsertTrack';
 import { loadSession, assertActive, assertMember, sessionsClient } from '@/lib/sessions';
 import { withRequestLog } from '@/lib/logger/withRequestLog';
 
-/** Anyone in the session can skip — queues a command the host executes.
+/** Anyone in the session can skip, queues a command the host executes.
  *  Body (optional): { index }, the queue row the skipper sees playing. When
  *  the song has changed since (someone else's skip got there first), the
  *  skip is spent: it answers 200 { ok, stale: true } and queues nothing, so

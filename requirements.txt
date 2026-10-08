@@ -1,4 +1,4 @@
-# Python dependencies for player.py — the YouTube Music / yt-dlp bridge
+# Python dependencies for player.py, the YouTube Music / yt-dlp bridge
 # the Next API spawns as a subprocess. Touched by the API every time
 # someone searches, plays, or downloads.
 #
@@ -15,7 +15,7 @@
 # the next subprocess spawn picks up the new Python packages.
 #
 # ytmusicapi is pinned to >=1.12.0 because earlier versions crash with
-# `KeyError: 'musicShelfRenderer'` on certain YouTube Music queries —
+# `KeyError: 'musicShelfRenderer'` on certain YouTube Music queries,
 # the upstream guard was added in 1.12.0. yt-dlp stays unpinned so we
 # can pull the latest whenever YouTube changes their backend.
 

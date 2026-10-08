@@ -8,13 +8,13 @@ interface Props {
   className?: string;
   /** Only animate while the view is actually on-screen. NowPlaying stays
    *  mounted (translated off-screen) when closed, so without this the CSS
-   *  animation runs — and burns through its start delay — while hidden, and
+   *  animation runs, and burns through its start delay, while hidden, and
    *  you'd open the view to find it already mid-scroll. Gating on `active`
    *  makes the animation (and its delay) start when the view opens. */
   active?: boolean;
 }
 
-// Empty space between the end of the title and where it loops back in — the
+// Empty space between the end of the title and where it loops back in, the
 // "little break" between repeats.
 const GAP_PX = 56;
 // Scroll speed in px/s; duration is derived so speed is constant regardless
@@ -62,14 +62,14 @@ export function MarqueeText({ text, className, active = true }: Props) {
       // the ResizeObserver below is watching: no measure/render loop.
       const w = Math.ceil(measure.getBoundingClientRect().width);
       const avail = container.clientWidth;
-      if (!w || !avail) return; // not laid out yet — wait for a later trigger
+      if (!w || !avail) return; // not laid out yet, wait for a later trigger
       setTextWidth(w);
       setOverflowing((prev) => shouldScroll(prev, w, avail));
     };
 
     run();
     // Re-measure once a frame later (layout settled) and after web fonts load
-    // — the title font changes text width and the first pass can run too early.
+    //, the title font changes text width and the first pass can run too early.
     const raf = requestAnimationFrame(run);
     let cancelled = false;
     if (typeof document !== 'undefined' && 'fonts' in document) {

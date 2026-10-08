@@ -583,7 +583,7 @@ check('no console/page errors from the non-modal dropdown or the phone sheet',
 // clamp as the max, so the panel comes back to that size instead of
 // shrinking to a couple of lines of text. Checked at a roomy size (1440x900,
 // where the 28rem/448px cap wins) and a short one (1440x700, where the
-// scroller-relative term is what wins) — the panel must be tall in both,
+// scroller-relative term is what wins), the panel must be tall in both,
 // and never reach past where the player bar starts (the content scroller's
 // own bottom edge, since the player bar sits right below it in the shell).
 for (const size of [{ width: 1440, height: 900 }, { width: 1440, height: 700 }]) {

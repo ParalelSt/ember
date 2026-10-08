@@ -7,7 +7,7 @@ import { resolveUploadPath } from '@/lib/uploads';
 import { withRequestLog } from '@/lib/logger/withRequestLog';
 import { deleteUploadCover } from '@/lib/uploads/cover';
 
-/** Removes an upload — the record and the file on disk. Uploader or admin
+/** Removes an upload, the record and the file on disk. Uploader or admin
  *  only; other people may have it in a playlist, so this is deliberate. */
 export const DELETE = withRequestLog('uploads/[id]', async (_request: Request, ctx: RouteContext<'/api/uploads/[id]'>) => {
   try {

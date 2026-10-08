@@ -36,6 +36,6 @@ describe('the pictures beside the steps', () => {
 
   it('has no em dashes', () => {
     const all = Object.values(STEP_FRAMES).flatMap((fs) => fs.flatMap((f) => [f.app, f.title, ...f.rows])).join(' ');
-    expect(all).not.toContain('—');
+    expect(all).not.toContain('\u2014');
   });
 });

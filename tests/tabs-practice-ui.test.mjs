@@ -30,7 +30,7 @@ const PASSWORD = 'BugTest2026!';
 function findChrome() {
   if (process.env.CHROME_PATH) return process.env.CHROME_PATH;
   const root = path.join(process.env.HOME ?? '', 'Library/Caches/ms-playwright');
-  if (!fs.existsSync(root)) throw new Error('no Playwright browser cache — set CHROME_PATH');
+  if (!fs.existsSync(root)) throw new Error('no Playwright browser cache, set CHROME_PATH');
   for (const d of fs.readdirSync(root).filter((x) => x.startsWith('chromium-')).sort().reverse()) {
     const found = execSync(
       `find "${path.join(root, d)}" -maxdepth 6 -type f \\( -name "Google Chrome for Testing" -o -name "Chromium" \\) 2>/dev/null | head -1`,
@@ -38,7 +38,7 @@ function findChrome() {
     ).trim();
     if (found) return found;
   }
-  throw new Error('no Chromium binary found — set CHROME_PATH');
+  throw new Error('no Chromium binary found, set CHROME_PATH');
 }
 
 async function adminToken() {
@@ -121,7 +121,7 @@ const bare = await uploadSong(`Practice Bare ${run}`);
 const checks = [];
 const check = (name, pass, detail = '') => {
   checks.push([name, pass]);
-  console.log(`${pass ? 'PASS' : 'FAIL'}  ${name}${detail ? `  — ${detail}` : ''}`);
+  console.log(`${pass ? 'PASS' : 'FAIL'}  ${name}${detail ? `  - ${detail}` : ''}`);
 };
 const consoleErrors = [];
 const browser = await chromium.launch({ executablePath: findChrome(), headless: true, args: ['--autoplay-policy=no-user-gesture-required'] });

@@ -1,11 +1,11 @@
 /// <reference path="../pb_data/types.d.ts" />
 
-// Custom song uploads — songs a member adds from their own files, playable by
+// Custom song uploads, songs a member adds from their own files, playable by
 // everyone on the server (that's the point: the library grows with things
 // YouTube doesn't have). The audio itself lives on disk next to the cached
 // YouTube audio (MUSIC_DIR/uploads); this collection is the metadata.
 //
-// Created on boot if missing — same zero-manual-setup pattern as
+// Created on boot if missing, same zero-manual-setup pattern as
 // ensure_recent_searches.
 
 onAfterBootstrap((e) => {
@@ -68,7 +68,7 @@ onAfterBootstrap((e) => {
   const collection = new Collection({
     name: "uploads",
     type: "base",
-    // Anyone signed in can find and play an upload — uploads are a shared
+    // Anyone signed in can find and play an upload, uploads are a shared
     // library. Only the uploader (or an admin) can remove one, but even they
     // must go through the delete route: it also removes the audio and cover
     // files on disk, which a raw PB delete would leave orphaned. Nobody

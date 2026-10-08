@@ -9,7 +9,7 @@ import { publicName } from '@/lib/collab';
 const WINDOW_MS = 30 * 60 * 1000;
 
 /** What other members are listening to: each OTHER user's most recent play
- *  within the window. Admin client — the `plays` collection is per-user for
+ *  within the window. Admin client, the `plays` collection is per-user for
  *  normal reads; this is the one deliberate cross-user surface.
  *
  *  Only members who opted in (`share_listening`) appear, filtered HERE,

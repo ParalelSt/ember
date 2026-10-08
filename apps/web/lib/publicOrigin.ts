@@ -5,7 +5,7 @@ import 'server-only';
  *  `new URL(request.url).origin` is the origin the Next process saw, which
  *  behind a reverse proxy is the internal one. Ember is normally served
  *  through a Tailscale Funnel or similar, which forwards to something like
- *  http://localhost:30200 — so the update feed was handing installers a
+ *  http://localhost:30200, so the update feed was handing installers a
  *  download URL pointing at `localhost` ON THE LISTENER'S OWN MACHINE. The
  *  update check succeeded and the download then failed, which is the worst
  *  shape of bug: silent, and only in production.

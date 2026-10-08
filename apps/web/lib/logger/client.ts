@@ -51,7 +51,7 @@ class ClientLogger {
       const raw = window.localStorage.getItem(STORAGE_KEY);
       if (raw) this.previous = JSON.parse(raw) as LogEntry[];
     } catch {
-      // Corrupt / quota / disabled storage — start empty.
+      // Corrupt / quota / disabled storage, start empty.
       this.previous = [];
     }
 
@@ -292,7 +292,7 @@ class ClientLogger {
       }
       window.localStorage.setItem(STORAGE_KEY, payload);
     } catch {
-      // Quota / disabled — skip silently. Current session still works.
+      // Quota / disabled, skip silently. Current session still works.
     }
   }
 }
@@ -317,5 +317,5 @@ function safeJson(value: unknown): unknown {
   }
 }
 
-/** Module-level singleton — multiple imports share the same buffer. */
+/** Module-level singleton, multiple imports share the same buffer. */
 export const logger = new ClientLogger();

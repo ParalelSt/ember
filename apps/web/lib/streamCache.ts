@@ -7,7 +7,7 @@ import { outsideRequest } from '@/lib/logger/context';
 /** Background caching of played tracks, deliberately SLOW.
  *
  *  Downloads run one at a time with a gap between them. Firing a download per
- *  played track in parallel is what triggers YouTube's rate limiting — the very
+ *  played track in parallel is what triggers YouTube's rate limiting, the very
  *  403s this cache exists to avoid (observed: a burst of downloads made one
  *  fail, then the same track downloaded fine moments later). Failures back off
  *  and retry instead of being dropped. */
@@ -22,8 +22,8 @@ const GAP_MS = 3_000;
  *
  *  YouTube throttles a sequential stream to roughly playback speed. If we start
  *  yt-dlp on the SAME track while the user is still streaming it, the two
- *  compete for that throttled budget and the listener's audio — the thing they
- *  are actually waiting on — gets slower. Caching is never urgent; the point is
+ *  compete for that throttled budget and the listener's audio, the thing they
+ *  are actually waiting on, gets slower. Caching is never urgent; the point is
  *  to be fast NEXT time. So hang back and let the live stream have the pipe. */
 const WARM_DELAY_MS = 90_000;
 
@@ -89,7 +89,7 @@ async function drain(): Promise<void> {
       const now = Date.now();
       const idx = queue.findIndex((j) => j.readyAt <= now);
       if (idx === -1) {
-        // Everything is still backing off — wait for the soonest.
+        // Everything is still backing off, wait for the soonest.
         const soonest = Math.min(...queue.map((j) => j.readyAt));
         await sleepUntilWoken(Math.max(1_000, soonest - now));
         continue;

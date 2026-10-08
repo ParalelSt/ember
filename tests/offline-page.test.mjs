@@ -277,7 +277,7 @@ const twoPins = {
 // 10. The copy carries no em dashes (repo rule) and the page stays small.
 {
   const source = fs.readFileSync(PAGE, 'utf8');
-  check('no em dashes in the page', !source.includes('—'));
+  check('no em dashes in the page', !source.includes('\u2014'));
   check('the page is one small file', source.split('\n').length < 260);
 }
 

@@ -29,7 +29,7 @@ const AUDIO = Buffer.from('LIVE-STREAMED-AUDIO-BYTES');
 const results = [];
 const check = (name, pass, detail = '') => {
   results.push({ name, pass });
-  console.log(`${pass ? 'PASS' : 'FAIL'}  ${name}${detail ? `  — ${detail}` : ''}`);
+  console.log(`${pass ? 'PASS' : 'FAIL'}  ${name}${detail ? `  - ${detail}` : ''}`);
 };
 const calls = (cmd) =>
   fs.existsSync(LOG)

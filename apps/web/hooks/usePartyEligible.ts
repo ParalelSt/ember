@@ -5,7 +5,7 @@ import { isPartyEligible } from '@/lib/playback/partyDevice';
 
 const noSubscribe = () => () => {};
 
-/** Reactive read of lib/playback/partyDevice's isPartyEligible — see there
+/** Reactive read of lib/playback/partyDevice's isPartyEligible, see there
  *  for what it means. No real subscription: shell and pointer type do not
  *  change mid-session, so this is just an SSR-safe read (false on the server
  *  and first paint, corrected on the client's first commit), the same shape

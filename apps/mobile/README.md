@@ -1,8 +1,8 @@
-# Ember — Mobile (Capacitor thin client)
+# Ember: Mobile (Capacitor thin client)
 
 Ember is a **Next.js server app** and **cannot be statically bundled**. These
 native apps are **thin webview wrappers** that load the **LIVE server URL** via
-Capacitor's `server.url`. There is no bundled `dist` — the app just points a
+Capacitor's `server.url`. There is no bundled `dist`, the app just points a
 webview at a running Ember server.
 
 - App ID: `app.ember.music`
@@ -18,14 +18,14 @@ webview at a running Ember server.
 EMBER_APP_URL  (default: http://localhost:3000)
 ```
 
-`webDir` points at `public/` (a tiny "Ember — connecting to server…" fallback
+`webDir` points at `public/` (a tiny "Ember - connecting to server…" fallback
 page). Capacitor requires `webDir` to exist even when `server.url` is set; the
 fallback is only shown briefly before the live server loads.
 
 ### Setting EMBER_APP_URL
 
 `localhost:3000` only works in an emulator-less Mac context. **A physical phone
-cannot reach `localhost`** — on the phone, localhost is the phone itself.
+cannot reach `localhost`**, on the phone, localhost is the phone itself.
 
 On a real device, set `EMBER_APP_URL` to one of:
 
@@ -63,7 +63,7 @@ through the `EmberPlayer` Capacitor plugin. Details, emulator recipes and the
 Android Auto "Unknown sources" step: [ANDROID_AUTO.md](ANDROID_AUTO.md).
 An emulator build points at the Mac with `npm run apk -- http://10.0.2.2:3010`.
 
-There is **no web build step** — nothing is bundled. `sync` only pushes the
+There is **no web build step**, nothing is bundled. `sync` only pushes the
 config (incl. `EMBER_APP_URL`) and the fallback `public/` page into the native
 projects, so re-run `sync` whenever you change `EMBER_APP_URL`.
 
@@ -314,13 +314,13 @@ This is an npm workspace (`workspaces: ["apps/*"]`). `apps/web` pulls in
 `semver@6` transitively (hoisted to the root `node_modules`), while
 `@capacitor/cli` needs `semver@7` (it ships its own nested copy). A clean
 `npm ci` / `npm install` on macOS/Linux links `node_modules/.bin/cap` as a
-**symlink**, which resolves the CLI's nested `semver@7` correctly — so
+**symlink**, which resolves the CLI's nested `semver@7` correctly, so
 `npm run sync` etc. work normally.
 
 If npm ever materializes `.bin/cap` as a plain copy instead (it has been seen
 mid-install), the shim resolves the root `semver@6` and fails with
 `Cannot find module 'semver/functions/satisfies'`. The robust fix is to invoke
-the CLI by its real path (immune to the shim type) — this is exactly what CI
+the CLI by its real path (immune to the shim type), this is exactly what CI
 does:
 
 ```bash

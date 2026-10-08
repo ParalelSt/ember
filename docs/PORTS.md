@@ -39,4 +39,4 @@ tailscale funnel --bg 3001
 ## What NOT to change
 
 - The browser-facing path stays `/pb/*` regardless of which PB port you pick. That path is the proxy mount; it doesn't bake in a port.
-- Don't bind PocketBase to `0.0.0.0` and expose its port publicly. Keep it on `127.0.0.1`. The browser hits PB through Next's `/pb` proxy on the public Next port — that's the whole point of the rewrite (one public URL covers the whole app).
+- Don't bind PocketBase to `0.0.0.0` and expose its port publicly. Keep it on `127.0.0.1`. The browser hits PB through Next's `/pb` proxy on the public Next port, that's the whole point of the rewrite (one public URL covers the whole app).

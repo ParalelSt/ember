@@ -7,7 +7,7 @@ import { useEffect } from 'react';
  *  pops it on a back press; if the overlay is instead closed by the UI
  *  (chevron / Escape), the leftover entry is discarded on cleanup so Back
  *  never needs two presses and no trap is created. The same-URL push avoids
- *  any real navigation — Next's App Router sees the same route on popstate, so
+ *  any real navigation, Next's App Router sees the same route on popstate, so
  *  only our handler runs. `close` must be stable (wrap in useCallback). */
 export function useBackDismiss(isOpen: boolean, close: () => void): void {
   useEffect(() => {

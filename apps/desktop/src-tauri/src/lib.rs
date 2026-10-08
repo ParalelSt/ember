@@ -1,4 +1,4 @@
-// Ember desktop shell — webview wrapper + native audio engine (Part 5).
+// Ember desktop shell, webview wrapper + native audio engine (Part 5).
 //
 // The main window is configured in tauri.conf.json to load the live Ember server
 // URL (EMBER_APP_URL, default http://localhost:3000). The native audio engine
@@ -33,7 +33,7 @@ fn wants_devtools_on_launch(is_debug_build: bool, env_val: Option<&str>) -> bool
 pub fn run() {
     // Logging FIRST. It used to come after the audio engine, so anything that
     // went wrong during audio init produced a silent process death with no log
-    // to explain it — which is exactly what happened on a machine with no
+    // to explain it, which is exactly what happened on a machine with no
     // output device.
     let log_path = applog::init();
     applog::write_line(log_path.as_ref(), "INFO", "ember-desktop starting");
@@ -46,7 +46,7 @@ pub fn run() {
             applog::write_line(
                 log_path.as_ref(),
                 "WARN",
-                &format!("no audio output ({e}) — starting without the native engine"),
+                &format!("no audio output ({e}), starting without the native engine"),
             );
             audio::AudioEngine::new_degraded()
         }
@@ -176,7 +176,7 @@ pub fn run() {
 
             // Log the URL the window is ACTUALLY loading, read back from the
             // window itself. This used to log option_env!("EMBER_APP_URL"),
-            // which is a COMPILE-time variable — unset during the CI build, so
+            // which is a COMPILE-time variable, unset during the CI build, so
             // the log confidently claimed "loading http://localhost:3000"
             // while the window loaded the real server from tauri.conf.json.
             // A diagnostic that lies is worse than no diagnostic.
@@ -203,7 +203,7 @@ pub fn run() {
             tauri::async_runtime::spawn(connect::watch(connect_handle, connect_log));
 
             // Check for a new desktop build in the background. Never blocks
-            // startup, and a failure is logged rather than surfaced — see
+            // startup, and a failure is logged rather than surfaced, see
             // update.rs. EMBER_NO_UPDATE=1 opts out (used by CI's smoke test,
             // which shouldn't reach the network).
             if std::env::var("EMBER_NO_UPDATE").as_deref() != Ok("1") {
@@ -281,7 +281,7 @@ const APP_LOG_SCRIPT: &str = r#"
     return i && typeof i.invoke === 'function' ? i : null;
   };
   // invoke() returns a PROMISE. A rejected one (e.g. "Command log_event not
-  // allowed by ACL" — remote origins are denied every command the capability
+  // allowed by ACL", remote origins are denied every command the capability
   // doesn't name) fires unhandledrejection, which the handler below logs,
   // which invokes again: an infinite loop that filled the whole buffer with
   // one repeated error and drowned out every real diagnostic. A real bug
@@ -341,7 +341,7 @@ const APP_LOG_SCRIPT: &str = r#"
   window.addEventListener('unhandledrejection', function (e) {
     send('error', 'unhandled rejection: ' + ((e.reason && (e.reason.message || e.reason)) || ''));
   });
-  // Every auth / API call with its status — the missing piece when a login
+  // Every auth / API call with its status, the missing piece when a login
   // fails inside the shell and there is no console to look at.
   var origFetch = window.fetch;
   window.fetch = function (input, init) {

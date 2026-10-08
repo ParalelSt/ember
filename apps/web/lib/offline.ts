@@ -154,7 +154,7 @@ interface SwIndexRemove {
 async function notifySwIndex(message: SwIndexAdd | SwIndexRemove): Promise<void> {
   if (typeof navigator === 'undefined') return;
   // Ember no longer runs a service worker (see RegisterSW / public/sw.js). With
-  // no SW controlling the page, `serviceWorker.ready` never resolves — bail out
+  // no SW controlling the page, `serviceWorker.ready` never resolves, bail out
   // instead of awaiting a promise that hangs forever. (Offline SW messaging is
   // dormant and moving to the native app.)
   if (!navigator.serviceWorker?.controller) return;
@@ -282,7 +282,7 @@ export async function downloadPlaylist(playlist: Playlist, tracks: Track[]): Pro
             bytesArt = await writeStreamToOpfs(artDir, artFile, artRes.body, ac.signal);
           }
         } catch {
-          // Artwork is decorative — skip on failure, keep the track.
+          // Artwork is decorative, skip on failure, keep the track.
         }
       }
 

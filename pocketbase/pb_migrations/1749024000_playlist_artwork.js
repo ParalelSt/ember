@@ -17,7 +17,7 @@ migrate((db) => {
       mimeTypes: ["image/jpeg", "image/png", "image/webp", "image/gif"],
       thumbs: ["256x256", "512x512"],
       maxSelect: 1,
-      maxSize: 5242880, // 5 MB (no numeric separator — Goja JSVM may not parse it)
+      maxSize: 5242880, // 5 MB (no numeric separator, Goja JSVM may not parse it)
       protected: false,
     },
   }));

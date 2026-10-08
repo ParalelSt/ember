@@ -1,16 +1,16 @@
 import type { CapacitorConfig } from '@capacitor/cli';
 
 /**
- * Ember is a Next.js *server* app — it cannot be statically bundled into the
+ * Ember is a Next.js *server* app, it cannot be statically bundled into the
  * native app. These mobile apps are THIN WEBVIEW WRAPPERS that load the LIVE
  * server URL via Capacitor's `server.url`. There is no bundled `dist`.
  *
  * ───────────────────────────────────────────────────────────────────────────
- * EMBER_APP_URL — the live server the webview points at.
+ * EMBER_APP_URL, the live server the webview points at.
  *
  *   Default: http://localhost:3000  (Mac-local dev only)
  *
- *   ⚠️  A PHYSICAL PHONE CANNOT REACH `localhost` — localhost on the phone is
+ *   ⚠️  A PHYSICAL PHONE CANNOT REACH `localhost`, localhost on the phone is
  *       the phone itself, not your Mac. On a real device you MUST set
  *       EMBER_APP_URL to one of:
  *         • the Tailscale funnel URL:  https://ember.<tailnet>.ts.net   (preferred, https)

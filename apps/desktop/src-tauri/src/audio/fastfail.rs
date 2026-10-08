@@ -217,7 +217,7 @@ fn silence_only_counts_against_a_download_that_has_not_finished() {
 }
 
 /// Every chunk pushes the deadline out, so a slow link is never cut off for
-/// being slow — only for going quiet.
+/// being slow, only for going quiet.
 #[tokio::test(flavor = "multi_thread")]
 async fn a_download_that_keeps_moving_is_left_alone() {
     let progress = std::sync::Arc::new(DownloadProgress::started_now());

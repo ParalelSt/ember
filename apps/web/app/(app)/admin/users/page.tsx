@@ -127,7 +127,7 @@ export default function AdminUsersPage() {
         }}
       />
 
-      {/* `key` resets the dialog's internal state when the target changes —
+      {/* `key` resets the dialog's internal state when the target changes,
           cleaner than a useEffect reset, satisfies set-state-in-effect rule. */}
       <PasswordResetDialog
         key={pendingReset?.id ?? 'closed'}

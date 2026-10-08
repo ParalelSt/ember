@@ -36,7 +36,7 @@ migrate((db) => {
 
   // Gate user registration on allow-list membership. PB filter: the `email`
   // identifier on the right resolves to the incoming record's email field.
-  // `?=` is the "any-of" operator — true if ANY row in allowed_emails has
+  // `?=` is the "any-of" operator, true if ANY row in allowed_emails has
   // an email equal to the incoming email. `=` would require ALL rows to
   // match, which is never true for a multi-row collection.
   const users = dao.findCollectionByNameOrId("users");

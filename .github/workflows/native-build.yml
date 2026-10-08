@@ -1,8 +1,8 @@
-# WS3 — Native app build CI for Ember.
+# WS3, Native app build CI for Ember.
 #
 # Builds the native shells that wrap the live Ember web server:
-#   • apps/desktop  — Tauri 2 desktop app (macOS / Linux / Windows)
-#   • apps/mobile   — Capacitor 6 Android app (debug APK)
+#   • apps/desktop , Tauri 2 desktop app (macOS / Linux / Windows)
+#   • apps/mobile  , Capacitor 6 Android app (debug APK)
 #   • iOS           : Capacitor iPhone app; gated on vars.BUILD_IOS (job 3)
 #
 # apps/web is NOT built here; it is deployed separately. The native shells load a
@@ -15,11 +15,11 @@
 #   • workflow_dispatch          → builds + uploads workflow artifacts only (no Release)
 #
 # Required GitHub config (Settings → Secrets and variables → Actions):
-#   • Variable  EMBER_APP_URL  — the public URL the native apps should load
+#   • Variable  EMBER_APP_URL , the public URL the native apps should load
 #                                (e.g. https://ember.example.ts.net). Falls back to
 #                                http://localhost:3000 if unset, which is only useful
 #                                for smoke-testing the build, not a shippable app.
-#   • GITHUB_TOKEN             — provided automatically by Actions; used to create the
+#   • GITHUB_TOKEN            , provided automatically by Actions; used to create the
 #                                Release and upload assets. No manual setup needed.
 
 name: native-build
@@ -30,7 +30,7 @@ on:
       - "v*"
     # Build on pushes to this branch too, so the installers can be produced and
     # downloaded without cutting a release tag. `workflow_dispatch` only works
-    # once the workflow file is on the DEFAULT branch, which it isn't yet —
+    # once the workflow file is on the DEFAULT branch, which it isn't yet,
     # remove this once the fix reaches main.
     branches:
       - feat/windows-desktop
@@ -42,9 +42,9 @@ permissions:
 
 jobs:
   # ---------------------------------------------------------------------------
-  # 1. Desktop (Tauri 2) — matrix across the three desktop OSes.
+  # 1. Desktop (Tauri 2), matrix across the three desktop OSes.
   #    Uses the official tauri-apps/tauri-action, pinned to its current major (v0;
-  #    latest release is v0.6.x — there is no published v1 despite some doc samples).
+  #    latest release is v0.6.x, there is no published v1 despite some doc samples).
   #    The action runs `tauri build`, finds the produced bundles, and (when tagName
   #    is set) creates/updates a GitHub Release and uploads them as assets.
   # ---------------------------------------------------------------------------
@@ -56,7 +56,7 @@ jobs:
       #   ubuntu-latest  → .AppImage / .deb / .rpm
       # Branch pushes build Windows + Linux. The repo is private so minutes are
       # billed, but Linux is 1x and Linux-only breakage (the missing alsa
-      # headers) otherwise stays hidden until a tag. macOS is excluded at 10x —
+      # headers) otherwise stays hidden until a tag. macOS is excluded at 10x,
       # it can be built locally on the Mac.
       matrix:
         platform: >-
@@ -119,7 +119,7 @@ jobs:
 
       # macOS signing + notarization, and ONLY when a certificate actually
       # exists. Passing APPLE_CERTIFICATE straight into the build env looks
-      # harmless when the secret is unset — but GitHub still defines the
+      # harmless when the secret is unset, but GitHub still defines the
       # variable as an empty string, so Tauri tries to sign, `security import`
       # chokes on the empty cert, and the whole macOS build fails. Setting the
       # vars here means an absent cert leaves them undefined and the build
@@ -140,7 +140,7 @@ jobs:
           A_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
           if [ -z "$CERT" ]; then
-            echo "No Apple certificate configured — building unsigned."
+            echo "No Apple certificate configured, building unsigned."
             exit 0
           fi
           {
@@ -172,7 +172,7 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
           # Discord rich presence. Read at COMPILE time via option_env! (see
           # src/discord.rs), so a build without it ships an app that silently
-          # never connects to Discord — which is exactly what every release up
+          # never connects to Discord, which is exactly what every release up
           # to 0.2.3 did. Set the repo variable DISCORD_APP_ID to the Discord
           # application's ID; unset simply disables the feature.
           DISCORD_APP_ID: ${{ vars.DISCORD_APP_ID }}
@@ -182,18 +182,18 @@ jobs:
           # Use the local @tauri-apps/cli via the `tauri` npm script; the action
           # appends `build`, so this resolves to `npm run tauri -- build`.
           tauriScript: npm run tauri --
-          # BUILD ONLY — deliberately no tagName. With one set, the action
+          # BUILD ONLY, deliberately no tagName. With one set, the action
           # creates its own release and uploads bundles under their raw Tauri
           # names (Ember_0.1.0_x64_en-US.msi), which would sit alongside the
           # cleanly-named assets from the `release` job as duplicates. One
           # publisher only; see that job.
           #
-          # (Also note tauri-action@v0 has no `uploadWorkflowArtifacts` input —
+          # (Also note tauri-action@v0 has no `uploadWorkflowArtifacts` input,
           # passing it warns "Unexpected input(s)" and does nothing, which is
           # what made an early green build hand back no installers.)
 
       # tauri-action's own uploadWorkflowArtifacts only fires when there's a
-      # release to attach to — on a branch push it logs "No releaseId or
+      # release to attach to, on a branch push it logs "No releaseId or
       # tagName provided, skipping all uploads" and the installers it just
       # built are discarded with the runner. Upload them explicitly so a
       # non-tag build still hands you something installable.
@@ -214,11 +214,11 @@ jobs:
 
       # A binary that compiles is not a binary that works. GitHub's Windows
       # runners have a desktop session and a preinstalled WebView2 runtime, so
-      # the real app can be launched here and inspected — which is the only
+      # the real app can be launched here and inspected, which is the only
       # Windows machine this project has.
       #
       # Asserts: the process survives startup (no instant crash), it writes its
-      # log (which needs LOCALAPPDATA — $HOME doesn't exist on Windows), the
+      # log (which needs LOCALAPPDATA, $HOME doesn't exist on Windows), the
       # webview reaches the live server, and SMTC media controls initialise.
       - name: Smoke-test the Windows build
         if: matrix.platform == 'windows-latest'
@@ -232,7 +232,7 @@ jobs:
           if (-not $exe) { throw "no Ember binary in target/release" }
           Write-Host "launching $($exe.FullName)"
 
-          # Don't phone home for updates from CI — the feed lives on the Ember
+          # Don't phone home for updates from CI, the feed lives on the Ember
           # server and this test is about the binary, not the network.
           $env:EMBER_NO_UPDATE = '1'
           $proc = Start-Process -FilePath $exe.FullName -PassThru
@@ -247,7 +247,7 @@ jobs:
             Get-Content $log | Select-Object -First 60
             Write-Host "-----------------------------"
           } else {
-            Write-Host "::error::no log at $log — logging is broken on Windows"
+            Write-Host "::error::no log at $log, logging is broken on Windows"
           }
           if (-not $proc.HasExited) { Stop-Process -Id $proc.Id -Force }
 
@@ -260,7 +260,7 @@ jobs:
             # The runner has no sound card. The app must survive that rather
             # than aborting at launch, which is what it used to do.
             if ($text -match 'no audio output') {
-              Write-Host "note: no audio device on the runner — app degraded gracefully, as intended"
+              Write-Host "note: no audio device on the runner, app degraded gracefully, as intended"
             }
             # Wired in this branch; a regression here means no media keys and no
             # Now Playing flyout on Windows.
@@ -278,18 +278,18 @@ jobs:
           if ($failures.Count -gt 0) {
             throw "Windows smoke test failed: $($failures -join '; ')"
           }
-          Write-Host "OK — app launched, logged, and initialised media controls"
+          Write-Host "OK, app launched, logged, and initialised media controls"
 
   # ---------------------------------------------------------------------------
-  # 2. Android (Capacitor 7) — RELEASE APK. Signed with the Ember release key
+  # 2. Android (Capacitor 7), RELEASE APK. Signed with the Ember release key
   #    when the secrets below exist; falls back to a debug-signed release APK
   #    otherwise (still installable, but uninstall/reinstall needed when the
-  #    signature changes later — set the secrets before sharing widely).
+  #    signature changes later, set the secrets before sharing widely).
   #
   #    Optional secrets (Settings → Secrets → Actions):
-  #      • ANDROID_KEYSTORE_B64       — base64 of ember-release.keystore
+  #      • ANDROID_KEYSTORE_B64      , base64 of ember-release.keystore
   #                                     (make with: base64 -i ember-release.keystore)
-  #      • ANDROID_KEYSTORE_PASSWORD  — the store/key password
+  #      • ANDROID_KEYSTORE_PASSWORD , the store/key password
   # ---------------------------------------------------------------------------
   android:
     runs-on: ubuntu-latest
@@ -333,9 +333,9 @@ jobs:
         # is immune to npm's workspace symlink-vs-copy quirk.
         run: node ../../node_modules/@capacitor/cli/bin/capacitor sync android
 
-      # Materialize the release keystore from secrets (skipped when unset —
+      # Materialize the release keystore from secrets (skipped when unset,
       # build.gradle then falls back to debug signing automatically).
-      # NOTE: `secrets` is NOT available in a step-level `if:` — using it there
+      # NOTE: `secrets` is NOT available in a step-level `if:`, using it there
       # makes the whole workflow file invalid, and GitHub then fails every run
       # in 0s with "workflow file issue" (which is exactly what happened here:
       # no native build ever ran). Mirror the secret into `env` and branch on
@@ -515,7 +515,7 @@ jobs:
           rm -rf private_keys
 
   # ---------------------------------------------------------------------------
-  # 4. Release — one asset per build, clearly named.
+  # 4. Release, one asset per build, clearly named.
   #
   #    Runs only for tags, after every platform has finished. Collecting the
   #    artifacts here (rather than letting each job upload as it finishes)
@@ -558,11 +558,11 @@ jobs:
               *.msi)            out="Ember-${TAG}-windows-x64.msi" ;;
               *.AppImage)       out="Ember-${TAG}-linux-x86_64.AppImage" ;;
               *.deb)            out="Ember-${TAG}-linux-amd64.deb" ;;
-              # Fedora / RHEL / openSUSE — .deb alone only covers Debian-likes.
+              # Fedora / RHEL / openSUSE, .deb alone only covers Debian-likes.
               *.rpm)            out="Ember-${TAG}-linux-x86_64.rpm" ;;
               *.apk)            out="Ember-${TAG}-android.apk" ;;
               # Updater payloads: keep the platform in the name but leave the
-              # extension chain intact — the updater matches on it.
+              # extension chain intact, the updater matches on it.
               *.app.tar.gz)     out="Ember-${TAG}-macos-arm64.app.tar.gz" ;;
               *.app.tar.gz.sig) out="Ember-${TAG}-macos-arm64.app.tar.gz.sig" ;;
               *-setup.exe.sig)  out="Ember-${TAG}-windows-x64-setup.exe.sig" ;;
@@ -594,7 +594,7 @@ jobs:
           # the same tag idempotent.
           if ! gh release view "$TAG" >/dev/null 2>&1; then
             gh release create "$TAG" --title "Ember $TAG" \
-              --notes "Ember $TAG — one installer per platform. Desktop apps auto-update from here."
+              --notes "Ember $TAG, one installer per platform. Desktop apps auto-update from here."
           fi
           gh release upload "$TAG" dist/* --clobber
           echo "Assets now on $TAG:"

@@ -35,7 +35,7 @@ async function fetchLyrics(title: string, artist: string, durationSec: number): 
  *  user opens the lyrics sheet). Cached per track for an hour. */
 export function useQueryLyrics(track: Track | null, enabled: boolean) {
   return useQuery({
-    // 'v2' marks the LRCLib-synced shape — bumping it invalidates any
+    // 'v2' marks the LRCLib-synced shape, bumping it invalidates any
     // React Query cache entries from the Genius-only era so users see
     // synced lyrics without having to hard-refresh first.
     queryKey: ['lyrics', 'v2', track?.id ?? null],

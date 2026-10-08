@@ -414,8 +414,8 @@ describe('safe-area insets', () => {
   it('derives both insets once, from env() and the native inset, each falling back to 0', () => {
     expect(occurrences('--safe-top: max(env(safe-area-inset-top, 0px), var(--ember-inset-top, 0px));')).toBe(1);
     expect(occurrences('--safe-bottom: max(env(safe-area-inset-bottom, 0px), var(--ember-inset-bottom, 0px));')).toBe(1);
-    // Both arms fall back to 0px, so where there is no inset at all — every
-    // desktop browser, iOS Safari with nothing in the way — the bars move by
+    // Both arms fall back to 0px, so where there is no inset at all, every
+    // desktop browser, iOS Safari with nothing in the way, the bars move by
     // nothing and the layout is exactly what it was.
     expect(occurrences('env(safe-area-inset-top, 0px)')).toBe(1);
     expect(occurrences('env(safe-area-inset-bottom, 0px)')).toBe(1);

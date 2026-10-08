@@ -347,7 +347,7 @@ async function adminToken() {
     });
     if (res.ok) return (await res.json()).token;
   }
-  throw new Error('could not authenticate as PB admin — is the sandbox PB running?');
+  throw new Error('could not authenticate as PB admin, is the sandbox PB running?');
 }
 
 /** POST /api/admin/digest needs a real admin; the numbered bugtest users are
@@ -447,7 +447,7 @@ function noisySnapshot() {
   };
 }
 
-/** 30 distinct errors under 400 breadcrumbs — proves the digest condenses
+/** 30 distinct errors under 400 breadcrumbs, proves the digest condenses
  *  noise without flattening real signal. */
 function distinctSnapshot() {
   const now = Date.now();
@@ -541,7 +541,7 @@ anthropicMode = 'badschema';
 const d3 = await report(APP_URL, await authCookie(5), 'bad schema case');
 check('D6 schema mismatch → report sent, triage null', d3.json?.ok === true && d3.json?.triage === null);
 
-// E. no API key — the behaviour every deployment without a key gets
+// E. no API key, the behaviour every deployment without a key gets
 const before = anthropicSeen.length;
 const e = await report(APP_NOKEY_URL, cookie1, 'no key configured');
 check('E1 no key → report still sent', e.status === 200 && e.json?.ok === true);

@@ -2,7 +2,7 @@ import { EventEmitter } from 'node:events';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 // M5: URL_CACHE (resolved stream URLs) and LYRICS_CACHE were plain Maps with
-// no size limit, keyed by an unbounded input — every distinct videoId /
+// no size limit, keyed by an unbounded input, every distinct videoId /
 // title+artist ever played, for the life of the process. This drives
 // resolveStreamUrl well past URL_CACHE's cap with distinct ids, then asks
 // for the very first id again: unbounded, it's still cached (no new spawn);

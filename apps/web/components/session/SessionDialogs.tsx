@@ -44,11 +44,11 @@ export function StartSessionDialog({ open, onOpenChange }: DialogProps) {
       });
       startHosting(session.id);
       void qc.invalidateQueries({ queryKey: liveCarlistKey });
-      toast.success(`Session live — code ${session.code}`);
+      toast.success(`Session live, code ${session.code}`);
       onOpenChange(false);
       router.push(`/session/${session.id}`);
     } catch {
-      toast.error("Couldn't start the session — please try again.");
+      toast.error("Couldn't start the session. Please try again.");
     } finally {
       setBusy(false);
     }

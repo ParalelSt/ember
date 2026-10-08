@@ -19,8 +19,8 @@ import { saveUploadCover } from '@/lib/uploads/cover';
 
 /** Custom song uploads.
  *
- *  GET  — every upload on the server, newest first (they're a shared library).
- *  POST — multipart: `file` plus title/artist/album/durationSec fields.
+ *  GET , every upload on the server, newest first (they're a shared library).
+ *  POST, multipart: `file` plus title/artist/album/durationSec fields.
  *
  *  Writes go through an admin client because the collection's createRule is
  *  null: only this route may create rows, so the record can never disagree

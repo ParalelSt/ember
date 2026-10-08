@@ -60,7 +60,7 @@ export function PlayerBar() {
   // A song that could not play: said in the bar's title area, not a toast.
   const unplayable = useUnplayableMessage();
 
-  // Desktop only — the button is hidden on phones (md:inline-flex), where
+  // Desktop only, the button is hidden on phones (md:inline-flex), where
   // lyrics live inside the full-screen NowPlaying view instead.
   const onLyricsClick = () => setLyricsOpen(!lyricsOpen);
   const router = useRouter();
@@ -132,7 +132,7 @@ export function PlayerBar() {
   // MobileNav stays mounted but `md:hidden` on this breakpoint, so it
   // contributes no height and no safe-area lift here: this footer is the
   // bottom-most visible element on a desktop-width window and must carry
-  // the inset itself (a phone-sized window never reaches this branch — the
+  // the inset itself (a phone-sized window never reaches this branch, the
   // phone bar above leaves the inset to MobileNav instead).
   return (
     <footer data-testid="player-bar" className={cn(PLAYER_BAR_CHROME, 'safe-area-bottom')}>
@@ -174,7 +174,7 @@ export function PlayerBar() {
         />
       </div>
 
-      {/* Right column — Queue always visible; Volume desktop only. */}
+      {/* Right column, Queue always visible; Volume desktop only. */}
       <div className="flex justify-end items-center gap-2">
         <Button
           variant="ghost"

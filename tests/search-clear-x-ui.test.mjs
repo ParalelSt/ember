@@ -24,7 +24,7 @@
  *  phone) and after release. The release is away from the button so the
  *  resulting click never actually fires (a real click would clear the box
  *  and unmount the button, which is a separate, already-tested behaviour
- *  in instant-search-ui.test.mjs) — this test is only about whether
+ *  in instant-search-ui.test.mjs), this test is only about whether
  *  pressing moves it. Position and size must hold within 0.5px throughout.
  *
  *  Needs the sandbox from tests/README.md and playwright-core. Set

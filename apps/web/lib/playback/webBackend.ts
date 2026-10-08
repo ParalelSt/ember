@@ -12,7 +12,7 @@ const NETWORK_LOADING = 2;
 export const createWebBackend: CreateAudioBackend = (events) => {
   // --- Audio element (DOM-attached; Firefox Android only surfaces lock-screen
   // controls for a media element it can see in the document). preload='auto' so
-  // the browser buffers ahead of the playhead — survives background throttling.
+  // the browser buffers ahead of the playhead, survives background throttling.
   const a = new Audio();
   a.preload = 'auto';
   a.setAttribute('aria-hidden', 'true');
@@ -164,7 +164,7 @@ export const createWebBackend: CreateAudioBackend = (events) => {
   // position once metadata is known, then surface it via onTime so the provider
   // updates position + its last-valid fallback.
   // pendingMeta: the not-yet-fired handler from the CURRENT load. Removed
-  // before the next load registers its own — otherwise a stale restoreTo fires
+  // before the next load registers its own, otherwise a stale restoreTo fires
   // on the new track's loadedmetadata and seeks it to the previous song's
   // position (same leak fixed in the pre-seam provider on test-branch).
   let pendingMeta: (() => void) | null = null;

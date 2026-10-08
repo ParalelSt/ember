@@ -20,7 +20,7 @@ interface UiState {
    *  NowPlaying overlay's lyrics section instead. */
   lyricsOpen: boolean;
   setLyricsOpen: (open: boolean) => void;
-  /** Transient — when set to 'lyrics', the NowPlaying overlay scrolls
+  /** Transient, when set to 'lyrics', the NowPlaying overlay scrolls
    *  to its lyrics section on next render, then clears the flag. */
   nowPlayingFocus: NowPlayingFocus;
   setNowPlayingFocus: (focus: NowPlayingFocus) => void;

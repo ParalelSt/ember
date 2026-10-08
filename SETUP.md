@@ -1,4 +1,4 @@
-# Ember — Setup
+# Ember: Setup
 
 Ember is a self-hosted Spotify-like music app. You run it from your computer; you (and anyone you invite) can use it from any phone or browser.
 
@@ -17,11 +17,11 @@ Pick based on what you want to do *after* setup:
 | Use it on this computer only | `npm run dev` (after starting PB) | None |
 | Permanent phone-accessible URL | `./start-static.sh` | Tailscale Funnel (one-time, free) |
 
-The Friend setup below gets you to localhost first (cheapest path). When you're ready for phone access, jump to **Permanent URL — Tailscale Funnel**.
+The Friend setup below gets you to localhost first (cheapest path). When you're ready for phone access, jump to **Permanent URL: Tailscale Funnel**.
 
 ---
 
-## Friend setup — start here
+## Friend setup: start here
 
 Get a working app on your computer in ~10 minutes.
 
@@ -29,10 +29,10 @@ Get a working app on your computer in ~10 minutes.
 
 One-time downloads:
 
-- **Git** — https://git-scm.com/downloads *(Windows: this gives you Git Bash. Use it for everything below.)*
-- **Node.js 20+** — https://nodejs.org/en/download → LTS installer.
-- **Python 3.11+** — https://www.python.org/downloads. macOS already has it. **Windows:** tick *"Add Python to PATH"* in the installer.
-- **PocketBase v0.22.21** — https://github.com/pocketbase/pocketbase/releases → pick your OS, unzip, drop the executable (`pocketbase` on Mac/Linux, `pocketbase.exe` on Windows) into the repo's `pocketbase/` folder *after* you clone in step 2.
+- **Git**: https://git-scm.com/downloads *(Windows: this gives you Git Bash. Use it for everything below.)*
+- **Node.js 20+**: https://nodejs.org/en/download → LTS installer.
+- **Python 3.11+**: https://www.python.org/downloads. macOS already has it. **Windows:** tick *"Add Python to PATH"* in the installer.
+- **PocketBase v0.22.21**: https://github.com/pocketbase/pocketbase/releases → pick your OS, unzip, drop the executable (`pocketbase` on Mac/Linux, `pocketbase.exe` on Windows) into the repo's `pocketbase/` folder *after* you clone in step 2.
 
 ### 2. Clone, install, configure
 
@@ -96,7 +96,7 @@ npm run dev
 
 Wait for `Ready in …s`. Open **http://localhost:3000**.
 
-(If you'd rather have one command, see **Permanent URL — Tailscale Funnel** below — `./start-static.sh` wraps PB + Next together.)
+(If you'd rather have one command, see **Permanent URL: Tailscale Funnel** below, `./start-static.sh` wraps PB + Next together.)
 
 ### 6. Get yourself onto the invite list
 
@@ -111,11 +111,11 @@ Back at http://localhost:3000 → enter your email → set a password → done. 
 
 ---
 
-## Permanent URL — Tailscale Funnel
+## Permanent URL: Tailscale Funnel
 
 Free, static `https://ember.<your-tailnet>.ts.net` over the public internet. Your computer must stay **on + signed into Tailscale** for the URL to work; visitors just open it.
 
-Once this is set up, you stop using two terminals — `./start-static.sh` boots PocketBase + the production build of the app in one command.
+Once this is set up, you stop using two terminals, `./start-static.sh` boots PocketBase + the production build of the app in one command.
 
 ### 1. Install Tailscale
 
@@ -141,7 +141,7 @@ At https://login.tailscale.com/admin:
 - *Machines* → click this computer → *Edit machine name* → set to **`ember`**.
 - Back on the machine row → toggle **Funnel** on.
 
-If there's no Funnel toggle, go to *Access controls* (left sidebar — the ACL as JSON). Add a top-level key `nodeAttrs` just before the file's final `}`:
+If there's no Funnel toggle, go to *Access controls* (left sidebar, the ACL as JSON). Add a top-level key `nodeAttrs` just before the file's final `}`:
 
 ```jsonc
 "nodeAttrs": [
@@ -151,13 +151,13 @@ If there's no Funnel toggle, go to *Access controls* (left sidebar — the ACL a
 
 If the line before it doesn't already end with a comma, add one. Click **Save**, refresh the Machines page, the toggle appears.
 
-### 3. Open the public tunnel (once — persists across reboots)
+### 3. Open the public tunnel (once: persists across reboots)
 
 ```bash
 tailscale funnel --bg 3000
 ```
 
-It prints `https://ember.<your-tailnet>.ts.net` — your permanent URL.
+It prints `https://ember.<your-tailnet>.ts.net`, your permanent URL.
 
 ### 4. Run the app with one command
 
@@ -182,7 +182,7 @@ and relinks it to `.venv/bin/ffmpeg`, so the host never needs a system ffmpeg.
 
 **Don't use `git pull && ./start-static.sh` for this.** start-static.sh skips
 PocketBase when it's already healthy, so you'd rebuild the web app while the
-old PocketBase keeps running — and Ember creates collections and fields from
+old PocketBase keeps running, and Ember creates collections and fields from
 `pb_hooks` that only run at PB **boot**. New features would silently do
 nothing, with no error explaining why. `update.sh` always restarts PocketBase.
 
@@ -300,7 +300,7 @@ tail. The raw `report.json` is still attached, and the reporter sees the same
 diagnosis (including the reproduction guess) in the app.
 
 Without the key nothing changes: reports send exactly as they do today. The
-same is true if Anthropic is slow, down, or answers with nonsense — triage is
+same is true if Anthropic is slow, down, or answers with nonsense, triage is
 skipped and the report still goes out. It can never eat a bug report.
 
 ```bash
@@ -393,7 +393,7 @@ release's update files (the macOS `.app.tar.gz`, the Windows `-setup.exe`,
 the Linux `.AppImage`, their `.sig`, `latest.json`); any other asset of the
 repo is a 404 and GitHub is never asked for it.
 
-Because the repo is private, the server needs a read-only token — and it stays
+Because the repo is private, the server needs a read-only token, and it stays
 on the host, never inside the shipped app:
 
 1. github.com/settings/tokens → **Fine-grained tokens** → this repo only →
@@ -406,19 +406,19 @@ GITHUB_RELEASES_TOKEN=github_pat_...
 
 3. Restart the app.
 
-Without the token the feed just answers "no update" — the desktop apps keep
+Without the token the feed just answers "no update", the desktop apps keep
 working, they simply never self-update. Publishing a new version is only
 `git tag v0.3.0 && git push origin v0.3.0`: CI builds every platform and
 attaches the installers, and the apps pick it up on their next launch.
 
 Note the update endpoints are reachable without a login (the updater runs in
 Rust and has no session). They expose the latest version and a proxied
-installer download — no user data — and the download is rate-limited.
+installer download, no user data, and the download is rate-limited.
 
 ### Custom song uploads
 
 Library → **Upload** puts a file from someone's device onto the server. It
-becomes searchable and playable for every signed-in member — the point is a
+becomes searchable and playable for every signed-in member, the point is a
 shared library that grows with things YouTube doesn't have (local bands,
 demos, rips).
 
@@ -459,7 +459,7 @@ knowing:
 
 ### Lyrics
 
-The in-player **Lyrics** button (mic icon next to Queue) hits Genius directly — no API key needed. `player.py:cmd_lyrics` uses Genius's public search endpoint to find the song page, then scrapes the lyrics from the page HTML. Works out of the box.
+The in-player **Lyrics** button (mic icon next to Queue) hits Genius directly, no API key needed. `player.py:cmd_lyrics` uses Genius's public search endpoint to find the song page, then scrapes the lyrics from the page HTML. Works out of the box.
 
 ### Spotify playlist import (no setup)
 
@@ -534,7 +534,7 @@ Settings, Downloads screen.
 ### Streaming, the local cache, and 403s
 
 **Ember plays songs off the host's disk.** The first time anyone plays a
-track it's downloaded to `my_music/` with yt-dlp, then served from there —
+track it's downloaded to `my_music/` with yt-dlp, then served from there,
 and from that point on it never touches YouTube again. Local plays can't 403.
 
 The cost is that a brand-new song takes a few seconds to start while it
@@ -542,7 +542,7 @@ downloads. That's the deliberate trade: reliable beats instant, especially for
 the native apps.
 
 The alternative is streaming YouTube through live, which starts instantly but
-is where 403s come from — googlevideo URLs are signed for the client that
+is where 403s come from, googlevideo URLs are signed for the client that
 resolved them and expire, and native players (which fetch byte ranges over
 several connections) trip over that far more than a browser does. If you want
 that behaviour back:
@@ -560,7 +560,7 @@ STREAM_CACHE_WARM=0      # turn OFF background caching (saves disk, keeps 403 ex
 
 In proxy mode, a refused stream is re-resolved once, and if that still fails
 Ember downloads the track and serves the file instead. A 403 that survives all
-of that means YouTube is blocking the host's IP — fix that with cookies (see
+of that means YouTube is blocking the host's IP, fix that with cookies (see
 the yt-dlp cookie env vars above).
 
 **At most two downloads at once.** However many listeners hit uncached songs,
@@ -743,7 +743,7 @@ The superuser comes back from `POCKETBASE_ADMIN_EMAIL` / `POCKETBASE_ADMIN_PASSW
 
 ## Troubleshooting
 
-**Songs won't play / `502` on `/api/youtube/stream/...`** — yt-dlp is probably stale. YouTube changes their signature scrambler every couple weeks and yt-dlp ships daily fixes. Update + restart:
+**Songs won't play / `502` on `/api/youtube/stream/...`**: yt-dlp is probably stale. YouTube changes their signature scrambler every couple weeks and yt-dlp ships daily fixes. Update + restart:
 
 ```bash
 ./.venv/bin/pip install -U yt-dlp
@@ -751,21 +751,21 @@ The superuser comes back from `POCKETBASE_ADMIN_EMAIL` / `POCKETBASE_ADMIN_PASSW
 
 Then `Ctrl+C` whatever's running and start it again. `./.venv/bin/yt-dlp --version` should show today's date-ish.
 
-**`./.venv/bin/python: command not found`** — you skipped the venv step. Go back to **Friend setup → 3**.
+**`./.venv/bin/python: command not found`**: you skipped the venv step. Go back to **Friend setup → 3**.
 
-**`/auth` shows "PocketBase admin credentials not configured"** — you didn't paste `POCKETBASE_ADMIN_EMAIL` / `POCKETBASE_ADMIN_PASSWORD` into `apps/web/.env.local`. Re-do **Friend setup → 4**. The invite-only check needs them to read the `allowed_emails` collection.
+**`/auth` shows "PocketBase admin credentials not configured"**: you didn't paste `POCKETBASE_ADMIN_EMAIL` / `POCKETBASE_ADMIN_PASSWORD` into `apps/web/.env.local`. Re-do **Friend setup → 4**. The invite-only check needs them to read the `allowed_emails` collection.
 
 **`/auth` shows "Failed to authenticate as PB admin":** PocketBase's superuser password doesn't match `POCKETBASE_ADMIN_PASSWORD`. Restart with `./start-static.sh` (or `./update.sh`): that restarts PocketBase with the password from `.env.local`, and its hook brings the superuser in line. `logs/pocketbase.log` says what it did (`[ensure_superuser] ...`).
 
 **The PocketBase admin UI (`/_/`) says 404 on the public URL:** that is on purpose. The app's `/pb` proxy never forwards the admin UI or the superuser API to the internet. Open it on the host itself: `http://127.0.0.1:8090/_/`, or from your own computer through an SSH tunnel (`ssh -L 8090:127.0.0.1:8090 you@host`, then http://127.0.0.1:8090/_/).
 
-**"Bug reporting not configured" 503 when clicking Report a bug** — the Discord webhook isn't set. Set `DISCORD_BUG_REPORT_WEBHOOK_URL` in `apps/web/.env.local`, then `./update.sh`. There is no built-in default anymore (ask the project owner for the URL if you don't have your own).
+**"Bug reporting not configured" 503 when clicking Report a bug**: the Discord webhook isn't set. Set `DISCORD_BUG_REPORT_WEBHOOK_URL` in `apps/web/.env.local`, then `./update.sh`. There is no built-in default anymore (ask the project owner for the URL if you don't have your own).
 
-**Friends can't reach your Tailscale Funnel URL after switching wifi** — Tailscale Funnel binding can get stale when your network changes. On the hosting machine:
+**Friends can't reach your Tailscale Funnel URL after switching wifi**: Tailscale Funnel binding can get stale when your network changes. On the hosting machine:
 
 ```bash
 tailscale funnel reset
 tailscale funnel --bg 3000
 ```
 
-If still nothing, try the phone on mobile data instead of wifi — some restrictive wifi networks block `*.ts.net`.
+If still nothing, try the phone on mobile data instead of wifi, some restrictive wifi networks block `*.ts.net`.

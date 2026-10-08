@@ -3,7 +3,7 @@
  *  Submits a real report as a logged-in user in a headless browser and
  *  confirms the diagnosis renders, the panel resets, and the page logs no
  *  console errors. Requires the same sandbox as ai-triage.test.mjs plus a
- *  fake Anthropic on FAKE_ANTHROPIC_PORT — start one with:
+ *  fake Anthropic on FAKE_ANTHROPIC_PORT, start one with:
  *
  *      node tests/fake-anthropic.mjs &
  *      node tests/ai-triage-ui.test.mjs
@@ -15,7 +15,7 @@ import { execSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 
-// playwright-core isn't a repo dependency (the app doesn't need it) — install
+// playwright-core isn't a repo dependency (the app doesn't need it), install
 // it on demand rather than making everyone carry a browser driver.
 let chromium;
 try {
@@ -37,7 +37,7 @@ const PB_ADMIN_PASSWORD = process.env.PB_ADMIN_PASSWORD ?? 'egKa5WNMx3QpuG7';
 function findChrome() {
   if (process.env.CHROME_PATH) return process.env.CHROME_PATH;
   const root = path.join(process.env.HOME ?? '', 'Library/Caches/ms-playwright');
-  if (!fs.existsSync(root)) throw new Error('no Playwright browser cache — set CHROME_PATH');
+  if (!fs.existsSync(root)) throw new Error('no Playwright browser cache, set CHROME_PATH');
   const dirs = fs.readdirSync(root).filter((d) => d.startsWith('chromium-')).sort().reverse();
   for (const d of dirs) {
     const found = execSync(
@@ -46,7 +46,7 @@ function findChrome() {
     ).trim();
     if (found) return found;
   }
-  throw new Error('no Chromium binary found — set CHROME_PATH');
+  throw new Error('no Chromium binary found, set CHROME_PATH');
 }
 
 async function adminToken() {
@@ -128,7 +128,7 @@ await textarea.fill('Songs cut out a few seconds in, every time');
 await page.getByRole('button', { name: /send report/i }).click();
 
 await page.getByRole('heading', { name: /Report sent/i }).waitFor({ timeout: 30_000 });
-// The lyrics sheet is also a dialog in the DOM — scope to ours.
+// The lyrics sheet is also a dialog in the DOM, scope to ours.
 const body = await page.locator('[role="dialog"]').filter({ hasText: 'Report sent' }).first().innerText();
 
 const checks = [

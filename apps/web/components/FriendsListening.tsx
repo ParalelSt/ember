@@ -13,7 +13,7 @@ const POLL_MS = 30_000;
 const MUSIC_ICON_FALLBACK = <MusicIcon className="h-8 w-8" data-testid="music-fallback" />;
 
 /** Home section: what other members played in the last ~30 minutes (newest
- *  per person). Hidden entirely when nobody's listening — no empty state. */
+ *  per person). Hidden entirely when nobody's listening, no empty state. */
 export function FriendsListening() {
   const { user } = useAuth();
   const { playTrack } = usePlayer();

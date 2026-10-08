@@ -5,13 +5,13 @@ import { isNewer } from '@/lib/semver';
 /** Desktop auto-update feed, backed by the GitHub Release.
  *
  *  The repo is private, so release assets need a token. That token lives HERE,
- *  on the host — never in the shipped app, where anyone could pull it out of
+ *  on the host, never in the shipped app, where anyone could pull it out of
  *  the binary. The desktop app asks this server "is there something newer?",
  *  and downloads through /api/desktop/asset/<id>, which streams the bytes with
  *  the token attached server-side.
  *
  *  Set GITHUB_RELEASES_TOKEN (a fine-grained PAT with read-only Contents on
- *  this repo). Without it the feed simply reports "no update" — the desktop
+ *  this repo). Without it the feed simply reports "no update", the desktop
  *  app keeps working, it just never self-updates. */
 
 const API_BASE = (process.env.GITHUB_API_BASE || 'https://api.github.com').replace(/\/+$/, '');

@@ -48,7 +48,7 @@ const STALL_MS = 20_000;
 const checks = [];
 const check = (name, pass, detail = '') => {
   checks.push([name, pass]);
-  console.log(`${pass ? 'PASS' : 'FAIL'}  ${name}${detail ? ` — ${detail}` : ''}`);
+  console.log(`${pass ? 'PASS' : 'FAIL'}  ${name}${detail ? ` - ${detail}` : ''}`);
 };
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const videoId = () => Array.from({ length: 11 }, () => 'abcdefghijklmnopqrstuvwxyz0123456789'[Math.floor(Math.random() * 36)]).join('');

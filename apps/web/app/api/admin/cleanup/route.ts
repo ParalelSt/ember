@@ -6,7 +6,7 @@ import { runCleanup, STALE_AFTER_DAYS } from '@/lib/cleanup';
 import { withRequestLog } from '@/lib/logger/withRequestLog';
 
 /** Delete tracks nobody has played in the last two weeks, plus their cached
- *  audio. DRY RUN BY DEFAULT — pass {"apply": true} to actually delete, so the
+ *  audio. DRY RUN BY DEFAULT, pass {"apply": true} to actually delete, so the
  *  numbers can always be inspected first. Admin only. */
 export const POST = withRequestLog('admin/cleanup', async (request: NextRequest) => {
   try {

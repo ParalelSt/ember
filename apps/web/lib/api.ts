@@ -39,7 +39,7 @@ export interface AdminUser {
 }
 
 export interface AdminTrack extends Track {
-  /** PocketBase internal record id — used in admin PATCH / DELETE URLs. */
+  /** PocketBase internal record id, used in admin PATCH / DELETE URLs. */
   recordId: string;
   /** An uploaded song whose upload was deleted: the catalog row is kept
    *  (playlists may hold it) but there is nothing left to stream. */
@@ -69,7 +69,7 @@ export interface AdminBackupsStatus {
   memberFiles: { files: number; bytes: number };
 }
 
-// Cookies handle auth (PocketBase `pb_auth` cookie) — no manual Bearer headers.
+// Cookies handle auth (PocketBase `pb_auth` cookie), no manual Bearer headers.
 // API_BASE stays empty for the web build (same-origin); a Capacitor/native
 // shell can set NEXT_PUBLIC_API_BASE_URL to the server's URL.
 export const API_BASE = (process.env.NEXT_PUBLIC_API_BASE_URL ?? '').replace(/\/+$/, '');
@@ -294,7 +294,7 @@ export const api = {
       `/playlists/${playlistId}/tracks/${encodeURIComponent(trackId)}/replace`,
       { method: 'POST', body: { track } },
     ),
-  // — Carlist live sessions —
+  //, Carlist live sessions,
   createSession: (body: { name?: string; seedPlaylistId?: string }) =>
     req<{ session: { id: string; code: string; name: string } }>('/sessions', { method: 'POST', body }),
   joinSession: (code: string) =>
@@ -392,7 +392,7 @@ export const api = {
       method: 'POST',
       body: { action: 'undo', to },
     }),
-  // — Recent searches (server-backed so they sync across devices) —
+  //, Recent searches (server-backed so they sync across devices),
   listRecentSearches: () => req<{ tracks: Track[] }>('/recent-searches'),
   addRecentSearch: (track: Track) =>
     req<{ ok: true }>('/recent-searches', { method: 'POST', body: { track } }),
@@ -429,7 +429,7 @@ export const api = {
   unlike: (trackId: string) =>
     req<{ ok: true }>(`/likes/${encodeURIComponent(trackId)}`, { method: 'DELETE' }),
 
-  /** Guitar tabs for a track (Songsterr). Links only — they block embedding. */
+  /** Guitar tabs for a track (Songsterr). Links only, they block embedding. */
   getTabs: (title: string, artist: string) =>
     req<{ matches: { id: number; artist: string; title: string; hasChords: boolean; instruments: string[]; url: string }[] }>(
       `/tabs?title=${encodeURIComponent(title)}&artist=${encodeURIComponent(artist)}`,
@@ -480,12 +480,12 @@ export const api = {
     ),
   lineTabUp: (tabId: string) => req<{ status: 'running' }>('/tabs/align', { method: 'POST', body: { tabId } }),
 
-  // — Custom uploads (songs members add from their own files) —
+  //, Custom uploads (songs members add from their own files),
   listUploads: () => req<{ tracks: Track[] }>('/uploads'),
   deleteUpload: (id: string) =>
     req<{ ok: true }>(`/uploads/${encodeURIComponent(id)}`, { method: 'DELETE' }),
   /** Multipart, so it bypasses the JSON `req` helper. `durationSec` is read
-   *  in the browser — the server has no ffprobe to rely on. */
+   *  in the browser, the server has no ffprobe to rely on. */
   uploadTrack: async (
     file: File,
     meta: { title: string; artist: string; album?: string; durationSec: number },
@@ -515,7 +515,7 @@ export const api = {
       background: true,
     }),
 
-  // — Privacy: two independent "don't broadcast what I'm playing" switches —
+  //, Privacy: two independent "don't broadcast what I'm playing" switches,
   getPrivacy: () => req<{ shareDiscord: boolean; shareListening: boolean }>('/privacy'),
   updatePrivacy: (patch: { shareDiscord?: boolean; shareListening?: boolean }) =>
     req<{ shareDiscord: boolean; shareListening: boolean }>('/privacy', {

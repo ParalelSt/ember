@@ -122,7 +122,7 @@ describe('edit-save vs switch: no lost update (bughunt N2)', () => {
     const switchDone = themeRoute.PATCH(req({ themeId: b }), undefined as never);
 
     // Give the switch every chance to run to completion while the
-    // edit-save sits paused at its write — on the unfixed route this is
+    // edit-save sits paused at its write, on the unfixed route this is
     // enough for it to land in full before the edit-save resumes.
     for (let i = 0; i < 10; i++) await Promise.resolve();
 

@@ -5,7 +5,7 @@ import { newFilename } from '@/lib/uploads';
 
 /** Guitar Pro tab files.
  *
- *  Songsterr can tell us WHICH song a tab is for, but never the notes — their
+ *  Songsterr can tell us WHICH song a tab is for, but never the notes, their
  *  player refuses to be embedded and the notation is their licensed content.
  *  So the notes come from a Guitar Pro file the member supplies, stored here
  *  and rendered by AlphaTab in the browser.
@@ -17,7 +17,7 @@ const ROOT = path.resolve(process.cwd(), '..', '..');
 const MUSIC_DIR = process.env.MUSIC_DIR ?? path.join(ROOT, 'my_music');
 export const TAB_DIR = path.join(MUSIC_DIR, 'tabs');
 
-/** Tabs are small — a big Guitar Pro file is a couple of hundred KB. */
+/** Tabs are small, a big Guitar Pro file is a couple of hundred KB. */
 export const MAX_TAB_BYTES = Number(process.env.MAX_TAB_MB ?? 5) * 1024 * 1024;
 
 export const TAB_EXTS = ['.gp3', '.gp4', '.gp5', '.gpx', '.gp', '.musicxml', '.mxl'] as const;
@@ -28,7 +28,7 @@ export const TAB_EXTS = ['.gp3', '.gp4', '.gp5', '.gpx', '.gp', '.musicxml', '.m
  *  - gp3/gp4/gp5 open with a Pascal string: a length byte then
  *    "FICHIER GUITAR PRO v<n>".
  *  - gpx (Guitar Pro 6) is a BCFZ/BCFS container.
- *  - gp (Guitar Pro 7+) is a zip holding Content/score.gpif — the entry names
+ *  - gp (Guitar Pro 7+) is a zip holding Content/score.gpif, the entry names
  *    sit in plaintext in the local headers even though the data is deflated,
  *    so a zip that never mentions score.gpif is some other zip, not a tab.
  *  - MusicXML is the open interchange format every notation editor exports:
@@ -49,7 +49,7 @@ export function sniffTab(buf: Buffer): string | null {
   if (/<score-(partwise|timewise)/.test(head)) return '.musicxml';
 
   if (buf[0] === 0x50 && buf[1] === 0x4b && buf[2] === 0x03 && buf[3] === 0x04) {
-    // Only look at the head — enough to cover the entry names, and it keeps a
+    // Only look at the head, enough to cover the entry names, and it keeps a
     // large file from being scanned end to end.
     const zipHead = buf.subarray(0, Math.min(buf.length, 64 * 1024)).toString('latin1');
     if (zipHead.includes('score.gpif')) return '.gp';
@@ -64,7 +64,7 @@ export function newTabFilename(ext: string): string {
 
 /** Absolute path for a stored filename, refusing anything that escapes
  *  TAB_DIR. Deliberately a copy of the uploads guard rather than a shared
- *  helper taking a directory — a traversal check that can be pointed at the
+ *  helper taking a directory, a traversal check that can be pointed at the
  *  wrong directory is a footgun. */
 export function resolveTabPath(filename: string): string | null {
   if (!filename || filename.includes('/') || filename.includes('\\') || filename.includes('..')) return null;

@@ -133,12 +133,12 @@ function variantsOf(normalized: string): Set<string> {
 
 /** The sorted, joined labels of every version marker (instrumental, live,
  *  remix, acoustic, karaoke, sped up, slowed, cover, demo, extended, radio
- *  edit, clean/censored, ...) found in `title` — empty string when there are
+ *  edit, clean/censored, ...) found in `title`, empty string when there are
  *  none. Two titles with different marker sets must never collapse to one
  *  song identity, even when they're otherwise the same song; two titles that
  *  differ only by punctuation, "feat." spelling, or noise words like
  *  "(Official Video)" must produce the same markers (usually none) and so
- *  stay collapsible. This is the one shared source of variant words — reused
+ *  stay collapsible. This is the one shared source of variant words, reused
  *  by score() above (as a scoring penalty) and by songKey() (as part of the
  *  identity key), so a new marker only needs to be added here once. */
 export function variantMarkers(title: string): string {

@@ -356,7 +356,7 @@ export const POST = withRequestLog('bug-report', async (request: NextRequest) =>
       );
     }
 
-    // The reporter sees the diagnosis too — it tells them their report was
+    // The reporter sees the diagnosis too, it tells them their report was
     // understood, and sometimes it's something they can fix themselves.
     return Response.json(attachmentsDropped ? { ok: true, triage, attachmentsDropped } : { ok: true, triage });
   } catch (e) {

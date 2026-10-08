@@ -35,7 +35,7 @@ const check = (name, fn) => {
     console.log(`PASS  ${name}`);
   } catch (e) {
     out.push([name, false]);
-    console.log(`FAIL  ${name}  — ${e.message}`);
+    console.log(`FAIL  ${name}  - ${e.message}`);
   }
 };
 

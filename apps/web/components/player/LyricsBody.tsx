@@ -20,10 +20,10 @@ import { centerLine, useLyricsFollow, type FollowDirection } from '@/hooks/useLy
 import { cn } from '@/lib/utils';
 
 interface Props {
-  /** Active flag drives the lazy fetch — only goes to /api/lyrics while
+  /** Active flag drives the lazy fetch, only goes to /api/lyrics while
    *  the wrapping panel/sheet is actually visible. */
   active: boolean;
-  /** Wrapping context provides the close affordance — sheet has its own
+  /** Wrapping context provides the close affordance, sheet has its own
    *  built-in via the overlay, the desktop panel renders an inline X. */
   onClose?: () => void;
   showHeader?: boolean;
@@ -46,7 +46,7 @@ export function LyricsBody({ active, onClose, showHeader = true, reportOpen: rep
   const [note, setNote] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
-  // Ref to the scrolling lyrics container — passed down to SyncedLyrics
+  // Ref to the scrolling lyrics container, passed down to SyncedLyrics
   // so its active-line auto-scroll only moves THIS element, not the
   // outer app shell (search page, home, etc.).
   const scrollerRef = useRef<HTMLDivElement | null>(null);
@@ -72,7 +72,7 @@ export function LyricsBody({ active, onClose, showHeader = true, reportOpen: rep
         const j = (await res.json().catch(() => ({}))) as { error?: string };
         throw new Error(j.error || `Request failed: ${res.status}`);
       }
-      toast.success('Report sent — thanks');
+      toast.success('Report sent, thanks');
       setNote('');
       setReportOpen(false);
     } catch (err) {
@@ -240,7 +240,7 @@ function SyncedLyrics({
   /** Changes with the song; a new song starts out following. */
   songKey: string;
   /** The overflow-y-auto container that wraps the lyrics. Auto-scroll
-   *  is math-applied to THIS element directly — scrollIntoView walks
+   *  is math-applied to THIS element directly, scrollIntoView walks
    *  up the ancestor chain and was yanking the main app scroller
    *  (search page, home, etc.) every time the active line changed. */
   scrollerRef: React.RefObject<HTMLDivElement | null>;
@@ -275,7 +275,7 @@ function SyncedLyrics({
   // Only render + auto-scroll the lyric lines while the scroller is actually on
   // screen. Off-screen (the user is up at the artwork), the ~4×/sec activeIdx
   // churn would otherwise re-render every line and fire scrollTo on a hidden
-  // container — wasted "random updates" the user can't see. The lyrics data is
+  // container, wasted "random updates" the user can't see. The lyrics data is
   // still prefetched, so when scrolled into view the lines pop in already on
   // the right line. Seeking only happens by clicking a line that's in view.
   const [inView, setInView] = useState(false);
@@ -312,7 +312,7 @@ function SyncedLyrics({
       return;
     }
     if (activeIdx < 0) {
-      // No line active — playback is before lines[0].time (intro).
+      // No line active, playback is before lines[0].time (intro).
       // If the user rewound here from a later line, snap the scroller
       // back to the top so the lyric panel doesn't leave them stuck
       // wherever they were when activeIdx flipped to -1.
@@ -331,15 +331,15 @@ function SyncedLyrics({
     }
 
     // Normal playback advances activeIdx by exactly 1 per line. Anything
-    // else — initial activation from -1, a forward jump >1, any
-    // backward step — is a seek-style transition where we want the
+    // else, initial activation from -1, a forward jump >1, any
+    // backward step, is a seek-style transition where we want the
     // scroll to LAND immediately rather than glide across multiple
     // lines while the highlight has already moved.
     const isSeek = prev < 0 || activeIdx - prev !== 1;
 
     // First line special-case: there's nothing above line 0 to centre
     // against, and rewinding to near the start of the song should
-    // visually return to the top of the lyrics list — not leave the
+    // visually return to the top of the lyrics list, not leave the
     // container half-scrolled from the centring math.
     if (activeIdx === 0) {
       container.scrollTo({ top: 0, behavior: behavior(!isSeek) });

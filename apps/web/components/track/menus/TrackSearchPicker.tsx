@@ -18,7 +18,7 @@ import { cn } from '@/lib/utils';
 const idKeys = (t: Track) => identityKeys(t).filter((k) => k.startsWith('id:'));
 
 interface Props {
-  /** Tracks already added — shown disabled with an "Added" badge so the user
+  /** Tracks already added, shown disabled with an "Added" badge so the user
    *  doesn't add them twice. */
   added?: Track[];
   /** Seed tracks for recommendations when the search bar is empty. The first
@@ -40,7 +40,7 @@ export function TrackSearchPicker({ added = [], seeds = [], onAdd, renderAdd, cl
   const { current, isPlaying, playTrack, toggle } = usePlayer();
   const [q, setQ] = useState('');
   const [debouncedQ, setDebouncedQ] = useState('');
-  // Bumped by the refresh button — also cycles the active seed across the
+  // Bumped by the refresh button, also cycles the active seed across the
   // available seeds, so each click feels like a fresh pull instead of the
   // same watch-next list for the same seed.
   const [refreshNonce, setRefreshNonce] = useState(0);

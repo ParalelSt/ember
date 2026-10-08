@@ -1,4 +1,4 @@
-// Ember desktop — native audio engine (Part 5).
+// Ember desktop, native audio engine (Part 5).
 //
 // Streams a remote m4a/AAC URL (the host's /api/youtube/stream/<id>) via
 // `stream-download` (seekable, temp-file-backed HTTP reader) -> `rodio::Decoder`
@@ -131,7 +131,7 @@ pub struct AudioEngine {
     current_total: Mutex<Option<Duration>>,
     /// Last volume the UI asked for. rodio applies volume PER SINK and every
     /// load builds a new one, so without remembering it here each track would
-    /// start at rodio's default of 1.0 — i.e. the user sets 20%, the next song
+    /// start at rodio's default of 1.0, i.e. the user sets 20%, the next song
     /// blasts at full. Applied in `new_sink`.
     volume: Mutex<f32>,
     /// The equalizer every song plays through (src/eq.rs). Shared with the
@@ -139,7 +139,7 @@ pub struct AudioEngine {
     /// once, so it outlives track changes the way `volume` does.
     eq: Arc<crate::eq::EqControl>,
     /// OS media controls (macOS Now Playing / Windows SMTC / Linux MPRIS).
-    /// `None` if init failed — playback still works without OS controls.
+    /// `None` if init failed, playback still works without OS controls.
     /// On macOS `MediaControls` is a zero-sized unit struct (state lives in
     /// global MPNowPlayingInfoCenter/MPRemoteCommandCenter), so it is Send+Sync.
     controls: Mutex<Option<MediaControls>>,
@@ -216,7 +216,7 @@ impl AudioEngine {
     ///
     /// This is not hypothetical: a machine with no sound card, audio disabled,
     /// or (as CI proved) a headless Windows runner would abort the process
-    /// before it drew a window — `panic = abort` turns the `.expect()` into
+    /// before it drew a window, `panic = abort` turns the `.expect()` into
     /// exit code 0xC0000409 with nothing logged. A music app with no audio
     /// device should say so, not vanish.
     pub fn new_degraded() -> Self {
@@ -395,7 +395,7 @@ impl AudioEngine {
 
     /// Cut the sound of whatever is playing right now. A new load takes a
     /// second or two to connect, buffer and decode, and until this the old
-    /// track kept playing over that gap — pressing skip left the previous
+    /// track kept playing over that gap, pressing skip left the previous
     /// song audible after the UI had already moved on.
     pub fn silence_current(&self) {
         self.generation.fetch_add(1, Ordering::SeqCst);
@@ -466,7 +466,7 @@ struct TokenPayload {
 ///
 /// `WEB_AUDIO` is anything this engine could not do with bytes it did get (no
 /// output device, a codec rodio lacks): a browser may well manage. `NONE` is
-/// the host refusing or failing to deliver the song at all — the browser would
+/// the host refusing or failing to deliver the song at all, the browser would
 /// ask the same server for the same bytes and wait all over again, and the
 /// swap costs the whole session its OS media keys. Reported so the webview can
 /// tell the two apart instead of falling back on every error.
@@ -503,7 +503,7 @@ fn emit_bare<R: Runtime>(app: &AppHandle<R>, event: &str) {
 }
 /// Write a line into the app log from the audio engine.
 ///
-/// Playback faults here are intermittent and timing-dependent — the kind that
+/// Playback faults here are intermittent and timing-dependent, the kind that
 /// never reproduce while you're watching. Recording each load's sequence
 /// number, start offset and outcome means the next bug report explains itself
 /// instead of needing a re-run.
@@ -785,8 +785,8 @@ const CONNECT_BUDGET: Duration = Duration::from_secs(25);
 
 /// Longest silence allowed AFTER the headers, before the source is called dead.
 ///
-/// Headers mean the bytes exist — a file on disk, or a live stream already
-/// flowing — so a gap this long is a source that has stopped, not a slow one.
+/// Headers mean the bytes exist, a file on disk, or a live stream already
+/// flowing, so a gap this long is a source that has stopped, not a slow one.
 /// Every chunk resets it, so a weak link that keeps delivering is never cut
 /// off by it; `PROGRESS_BUDGET` is what bounds that case.
 const STALL_BUDGET: Duration = Duration::from_secs(3);
@@ -973,7 +973,7 @@ pub(crate) struct DownloadProgress {
 const NOT_SEEKING: u64 = u64::MAX;
 
 impl DownloadProgress {
-    /// Starts the clock now — call it when the headers land, so the first
+    /// Starts the clock now, call it when the headers land, so the first
     /// chunk is measured from there and not from the request.
     pub(crate) fn started_now() -> Self {
         Self {
@@ -1092,8 +1092,8 @@ impl<R: Seek> Seek for SeekWatched<R> {
 
 /// Awaits `fut` for as long as the download keeps moving.
 ///
-/// Gives up the moment the source has been quiet for `grace` — which is the
-/// difference between a song that will not load and one that is merely slow —
+/// Gives up the moment the source has been quiet for `grace`, which is the
+/// difference between a song that will not load and one that is merely slow,
 /// and, for a source that IS delivering but far too slowly to be worth
 /// waiting on, at `hard`.
 ///
@@ -1315,7 +1315,7 @@ pub(crate) async fn open_source(
     )
     .await
     {
-        // Say "stopped arriving", not "unrecognized format" — a misleading
+        // Say "stopped arriving", not "unrecognized format", a misleading
         // error here sends whoever reads the log hunting for a codec problem.
         Err(stop) => {
             download.cancel();
@@ -1609,7 +1609,7 @@ async fn load_claimed<R: Runtime>(
     };
     let (decoder, total, failed, forward_only, stop, progress) = opened;
 
-    // Someone asked for a different track while this one was downloading —
+    // Someone asked for a different track while this one was downloading,
     // discard it silently rather than yanking playback back.
     if !engine.is_current_load(my_seq) {
         log_audio(app, "INFO", &format!("load #{my_seq} superseded, discarded"));
@@ -2010,7 +2010,7 @@ pub fn audio_set_loop(engine: State<'_, AudioEngine>, one: bool) {
 /// webview as `audio:cmd` events. Call ONCE at app setup (main thread).
 ///
 /// macOS uses Now Playing, Linux MPRIS, Windows SMTC. Windows is the awkward
-/// one: SMTC is attached to a window, so souvlaki needs the HWND — and its
+/// one: SMTC is attached to a window, so souvlaki needs the HWND, and its
 /// Windows backend `.expect()`s on a None hwnd, i.e. it PANICS rather than
 /// returning Err. So the handle is resolved up front and a missing one becomes
 /// an ordinary Err, which the caller logs while playback carries on.
@@ -2040,7 +2040,7 @@ pub fn init_media_controls(app: &AppHandle, engine: &AudioEngine) -> Result<(), 
     controls
         .attach(move |event: MediaControlEvent| {
             use tauri::Emitter;
-            // The souvlaki callback runs on its own thread — only emit to the
+            // The souvlaki callback runs on its own thread, only emit to the
             // webview here (never touch the sink lock). Toggle is resolved in
             // the webview from its own play/paused mirror.
             let payload = match event {
@@ -2342,14 +2342,14 @@ mod tests {
 
     /// rodio applies volume per SINK, and every load builds a new one. Before
     /// this was stored on the engine, setting 20% then changing track played
-    /// the next song at rodio's default 1.0 — full blast. The volume set
+    /// the next song at rodio's default 1.0, full blast. The volume set
     /// BEFORE anything is loaded was discarded entirely.
     #[test]
     fn volume_survives_track_changes() {
         let engine = AudioEngine::new_degraded();
         assert_eq!(engine.volume(), 1.0, "fresh engine should be unity gain");
 
-        // Set with nothing playing — the old code dropped this on the floor.
+        // Set with nothing playing, the old code dropped this on the floor.
         engine.set_volume(0.2);
         assert!((engine.volume() - 0.2).abs() < f32::EPSILON);
 

@@ -28,7 +28,7 @@ const COMMAND_POLL_MS = 2500;
  *    the carlist has ended or is no longer ours; useReleaseStaleHosting
  *    covers one that is gone.
  *  Autoplay note: the very first track still needs one tap on the host phone
- *  (browser gesture policy) — after that, advances are automatic. */
+ *  (browser gesture policy), after that, advances are automatic. */
 export function useSessionHost() {
   const { next, current } = usePlayer();
   const hostingId = useSessionStore((s) => s.hostingSessionId);

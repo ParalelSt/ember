@@ -109,7 +109,7 @@ function writeEntry(
 }
 
 export const serverLogger = {
-  /** Fire-and-forget append. Failures fall back to console.warn — we never
+  /** Fire-and-forget append. Failures fall back to console.warn, we never
    *  let logging break a request. */
   error(category: string, message: string, data?: unknown, err?: unknown, ctx?: ServerLogContext): void {
     writeEntry('error', category, message, data, err, ctx);
@@ -124,7 +124,7 @@ export const serverLogger = {
 
   /** Same shape again, one level below warn(): routine/expected events worth
    *  keeping on disk for context (an admin audit action, a rate-limited
-   *  automatic report) but not a "problem" — the digest (lib/reports/digest.ts)
+   *  automatic report) but not a "problem", the digest (lib/reports/digest.ts)
    *  skips 'info' entries entirely, so these never show up as noise. */
   info(category: string, message: string, data?: unknown, err?: unknown, ctx?: ServerLogContext): void {
     writeEntry('info', category, message, data, err, ctx);

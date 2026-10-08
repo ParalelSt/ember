@@ -30,7 +30,7 @@ describe('songKey', () => {
       .toBe(songKey({ title: 'Blinding Lights', artist: 'The Weeknd' }));
   });
 
-  it('does NOT collapse a (Live) title into the plain title — it is a different recording', () => {
+  it('does NOT collapse a (Live) title into the plain title, it is a different recording', () => {
     expect(songKey({ title: 'Blinding Lights (Live)', artist: 'The Weeknd' }))
       .not.toBe(songKey({ title: 'Blinding Lights', artist: 'The Weeknd' }));
   });

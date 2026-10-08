@@ -26,7 +26,7 @@ const NUMBERING = /^\s*\d{1,5}\s*[.)\]]\s+/;
 const TRAILING_TIME = /(?<=\s)[(\[]?\d{1,2}:[0-5]\d(?::[0-5]\d)?[)\]]?$/;
 /** A hyphen, en dash or em dash with spaces either side: the separator every
  *  app uses, and never part of a name written that way. */
-const SEPARATOR = /\s+[-–—]\s+/;
+const SEPARATOR = /\s+[-–\u2014]\s+/;
 
 export function parsePaste(text: string): ParsedSource | ParseError {
   const all = text.split(/\r?\n/);

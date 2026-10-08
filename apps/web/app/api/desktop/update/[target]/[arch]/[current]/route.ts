@@ -6,7 +6,7 @@ import { withRequestLog } from '@/lib/logger/withRequestLog';
 /** Tauri's update feed. The desktop app is configured (tauri.conf.json) to
  *  call /api/desktop/update/{{target}}/{{arch}}/{{current_version}}.
  *
- *  204 means "you're up to date" — that's the contract, not an error, and it's
+ *  204 means "you're up to date", that's the contract, not an error, and it's
  *  also what every failure degrades to. A broken update check must never stop
  *  someone playing music, so nothing here returns 5xx.
  *
@@ -21,7 +21,7 @@ export const GET = withRequestLog('desktop/update/[target]/[arch]/[current]', as
     // the installer download URL.
     const origin = publicOrigin(_request);
     if (isLoopback(origin)) {
-      serverLogger.error('update', 'update feed built a loopback download URL — set PUBLIC_ORIGIN', { origin });
+      serverLogger.error('update', 'update feed built a loopback download URL, set PUBLIC_ORIGIN', { origin });
     }
 
     const manifest = await updateFor(target, arch, current, origin);

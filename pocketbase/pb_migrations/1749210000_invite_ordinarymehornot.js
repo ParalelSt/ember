@@ -11,7 +11,7 @@ migrate((db) => {
     dao.findFirstRecordByFilter("allowed_emails", 'email = "' + email + '"');
     return; // already present
   } catch (e) {
-    // not found — fall through to insert
+    // not found, fall through to insert
   }
   const rec = new Record(allowed, { email: email });
   dao.saveRecord(rec);
@@ -24,6 +24,6 @@ migrate((db) => {
     );
     dao.deleteRecord(rec);
   } catch (e) {
-    // already absent — nothing to do
+    // already absent, nothing to do
   }
 });

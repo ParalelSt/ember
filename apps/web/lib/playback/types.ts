@@ -139,7 +139,7 @@ export interface AudioBackend {
    *  prefetch never competes with the song the listener is waiting on.
    *  Optional: absent reads as null. */
   getBufferedToEnd?(): boolean | null;
-  /** True while a load/seek-restore is settling — callers must not persist
+  /** True while a load/seek-restore is settling, callers must not persist
    *  position during this window (the element reports transient values). */
   isTransitioning(): boolean;
   /** Queue-owning backends only. Hands the whole queue over; the backend diffs

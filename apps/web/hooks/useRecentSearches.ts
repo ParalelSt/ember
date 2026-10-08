@@ -7,7 +7,7 @@ import type { Track } from '@/types/track';
 
 export const RECENT_SEARCHES_KEY = ['recent-searches'] as const;
 
-/** Tracks played from search, newest first — server-backed so the list is the
+/** Tracks played from search, newest first, server-backed so the list is the
  *  same on every device the user signs into. */
 export function useQueryRecentSearches() {
   const { user } = useAuth();

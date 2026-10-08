@@ -2,7 +2,7 @@
  *
  *      node tests/session-authorization.test.mjs   # or: npm run test:sessions
  *
- *  Everyone in a carlist is a DJ — that's the feature. The bug this guards is
+ *  Everyone in a carlist is a DJ, that's the feature. The bug this guards is
  *  the step before it: a logged-in member who never joined could queue tracks
  *  and skip songs on someone else's session just by knowing its id. Membership
  *  is now recorded at join time, and the routes check it.
@@ -16,7 +16,7 @@ const PW = 'BugTest2026!';
 const out = [];
 const check = (name, pass, detail = '') => {
   out.push({ name, pass });
-  console.log(`${pass ? 'PASS' : 'FAIL'}  ${name}${detail ? `  — ${detail}` : ''}`);
+  console.log(`${pass ? 'PASS' : 'FAIL'}  ${name}${detail ? `  - ${detail}` : ''}`);
 };
 
 async function adminToken() {
@@ -105,7 +105,7 @@ const pEnd = await as(passenger, `/api/sessions/${sid}/end`, { method: 'POST' })
 check('C8 passenger cannot end someone else’s session', forbidden(pEnd), `status ${pEnd}`);
 
 // The outsider's track never reached the queue. Compare on video id, not
-// title — a track already in the library keeps its stored title.
+// title, a track already in the library keeps its stored title.
 const queue = await as(host, `/api/sessions/${sid}`).then((r) => r.json()).catch(() => ({}));
 const ids = (queue.queue ?? []).map((q) => q.track?.sourceId);
 check('C9 the outsider’s track is not in the queue', !ids.includes('kJQP7kiw5Fk'), ids.join(', ') || 'empty');

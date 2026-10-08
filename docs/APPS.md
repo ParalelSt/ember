@@ -1,4 +1,4 @@
-# Ember native apps — build, sign, install
+# Ember native apps: build, sign, install
 
 The Android, iPhone and desktop apps are **thin webview shells around the live server**
 (they load `EMBER_APP_URL`; nothing is bundled). Native extras: background
@@ -14,7 +14,7 @@ Before tagging, set `tauri.conf.json`, `Cargo.toml` and `build.gradle`
 `apps/web/package.json` (docs/changelog-system.md, section 5).
 
 Push a tag like `v0.3.0` (or run the **native-build** workflow manually):
-- **Desktop**: .dmg (macOS), .msi/.exe (Windows), .AppImage/.deb (Linux) —
+- **Desktop**: .dmg (macOS), .msi/.exe (Windows), .AppImage/.deb (Linux),
   attached to the draft GitHub Release on tags, or as workflow artifacts.
 - **Android**: `ember-android-apk` workflow artifact (attach it to the release
   manually if wanted).
@@ -53,7 +53,7 @@ version number ~10 times → ⋮ → Developer settings). Testing recipes:
 ## Discord status (desktop app)
 
 The desktop app sets **each user's own** Discord status (the server can only
-ever set the host's — Discord needs a local client, which browsers can't reach).
+ever set the host's, Discord needs a local client, which browsers can't reach).
 
 It needs the Discord application id baked in at build time:
 
@@ -62,7 +62,7 @@ cd apps/desktop
 DISCORD_APP_ID=your-app-id EMBER_APP_URL="https://ember.tailf4de41.ts.net" npm run build
 ```
 
-In CI, add a repo variable `DISCORD_APP_ID` — the workflow already passes it
+In CI, add a repo variable `DISCORD_APP_ID`, the workflow already passes it
 to the desktop build step. **Without it, rich presence silently does nothing**:
 `app_id()` reads it via `option_env!` at COMPILE time, so a build made without
 the variable set can never connect to Discord, no matter what the user does in
@@ -96,7 +96,7 @@ Element* (devtools are enabled in release), and check
 `~/Library/Logs/Ember/ember-desktop.log`.
 
 **Note on the DMG:** creating it drives Finder through AppleScript, so it only
-works from a normal Terminal — not from CI or an agent shell. The `.app` builds
+works from a normal Terminal, not from CI or an agent shell. The `.app` builds
 fine either way and is all you need to run it yourself.
 
 ## iOS (iPhone app)
@@ -240,7 +240,7 @@ npm run build:signed
 
 That picks the certificate up automatically and bakes in the funnel URL.
 
-### Notarization — the missing half
+### Notarization: the missing half
 
 Signing alone still makes other Macs say *"unidentified developer"*. Apple has
 to notarize the app too. One-time setup:
@@ -268,14 +268,14 @@ spctl -a -vvv -t install src-tauri/target/release/bundle/macos/Ember.app
 ### In CI
 
 Add these repo secrets and the workflow signs macOS builds itself
-(all optional — without them the build still succeeds, just unsigned):
+(all optional, without them the build still succeeds, just unsigned):
 `APPLE_CERTIFICATE` (base64 of an exported .p12), `APPLE_CERTIFICATE_PASSWORD`,
 `APPLE_SIGNING_IDENTITY`, `APPLE_ID`, `APPLE_PASSWORD`, `APPLE_TEAM_ID`.
 
-## Signing key (Android) — IMPORTANT
+## Signing key (Android): IMPORTANT
 
 `apps/mobile/android/ember-release.keystore` + `keystore.properties` live ONLY
-on the dev Mac (gitignored). **Back the keystore up** — Android updates must be
+on the dev Mac (gitignored). **Back the keystore up**, Android updates must be
 signed with the same key, or users must uninstall/reinstall. Regenerate (new
 identity) with:
 
@@ -368,12 +368,12 @@ Bluetooth keys and the car alike; the TV keeps its own while casting.
 
 **Android (sideload):** send the APK (Discord/Drive/USB) → open it on the
 phone → allow "install unknown apps" for the browser/file manager when asked.
-Play Protect may warn (unknown developer) — "install anyway".
+Play Protect may warn (unknown developer), "install anyway".
 
 **macOS:** open the .dmg, drag Ember to Applications. First launch:
 right-click → Open (unsigned app; once per install). No Apple Developer
 account = no notarization, which is fine for friends-and-family.
 
-**Store distribution is intentionally off the table** — YouTube-sourced audio
+**Store distribution is intentionally off the table**: YouTube-sourced audio
 would not pass store review. Sideload/direct download only (iPhone: TestFlight,
 see above).

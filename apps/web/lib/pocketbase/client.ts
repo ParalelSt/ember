@@ -3,7 +3,7 @@
 import PocketBase from 'pocketbase';
 
 // Defaults to the same-origin `/pb` proxy (see next.config.ts rewrites) so the
-// browser only ever talks to one origin — works locally and behind a single
+// browser only ever talks to one origin, works locally and behind a single
 // static tunnel URL without per-restart edits.
 const PB_URL = process.env.NEXT_PUBLIC_POCKETBASE_URL ?? '/pb';
 
@@ -15,7 +15,7 @@ export function createClient() {
   if (typeof document !== 'undefined') {
     pb.authStore.loadFromCookie(document.cookie);
     pb.authStore.onChange(() => {
-      // Match Secure to the current scheme — HTTPS deployments (tunnels) need
+      // Match Secure to the current scheme, HTTPS deployments (tunnels) need
       // Secure to be true or modern browsers (iOS Safari especially) ignore
       // the cookie, which breaks the post-signin redirect.
       const isHttps = window.location.protocol === 'https:';

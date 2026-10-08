@@ -40,7 +40,7 @@ if xcrun notarytool history --keychain-profile "$NOTARY_PROFILE" >/dev/null 2>&1
   export APPLE_KEYCHAIN_PROFILE="$NOTARY_PROFILE"
   echo "Notarizing with keychain profile: $NOTARY_PROFILE"
 else
-  echo "No notarytool profile '$NOTARY_PROFILE' — building SIGNED but NOT notarized."
+  echo "No notarytool profile '$NOTARY_PROFILE', building SIGNED but NOT notarized."
   echo "  (other Macs will warn 'unidentified developer'; see the header of this script)"
 fi
 

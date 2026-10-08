@@ -58,7 +58,7 @@ case "$CMD" in
     if [ "${FAKE_PARTIAL_FIRST:-0}" = "1" ]; then
       printf 'PARTIAL' > "$OUT"
     fi
-    # Slow enough that concurrent callers overlap — that's the race being tested.
+    # Slow enough that concurrent callers overlap, that's the race being tested.
     sleep "${FAKE_DOWNLOAD_SECONDS:-2}"
     printf 'FAKE-AUDIO-%s' "$VIDEO_ID" > "$OUT"
     printf '{"filePath": "%s"}' "$OUT"

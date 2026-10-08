@@ -4,7 +4,7 @@
  *
  *  The rule this locks in: **the downloaded file is the source of truth.** A
  *  song is fetched once with yt-dlp and served off disk forever after, so
- *  playback never depends on a signed googlevideo URL staying valid — which is
+ *  playback never depends on a signed googlevideo URL staying valid, which is
  *  what produced the 403s, especially in the native apps.
  *
  *  Uses tests/fake-player.sh instead of the real player.py, so there's no
@@ -27,7 +27,7 @@ const VIDEO = process.env.STREAM_VIDEO_ID ?? 'aaaaaaaaaaa';
 const results = [];
 const check = (name, pass, detail = '') => {
   results.push({ name, pass });
-  console.log(`${pass ? 'PASS' : 'FAIL'}  ${name}${detail ? `  — ${detail}` : ''}`);
+  console.log(`${pass ? 'PASS' : 'FAIL'}  ${name}${detail ? `  - ${detail}` : ''}`);
 };
 
 const calls = (cmd) => {
@@ -46,7 +46,7 @@ check('A1 uncached track plays', first.status === 200, `status ${first.status}`)
 check('A2 served the downloaded bytes', firstBody.toString() === `FAKE-AUDIO-${VIDEO}`, firstBody.toString().slice(0, 40));
 check('A3 it downloaded exactly once', calls('download').length === 1, `${calls('download').length} download(s)`);
 check('A4 it never resolved a live stream URL', calls('info').length === 0,
-  `${calls('info').length} info call(s) — proxying would mean 403 exposure`);
+  `${calls('info').length} info call(s), proxying would mean 403 exposure`);
 
 // ── a second play touches yt-dlp not at all ───────────────────────────────
 const second = await stream(VIDEO);
@@ -84,7 +84,7 @@ check('C4 the full response is the real audio',
 // yt-dlp renames the final filename into place and THEN post-processes it, so
 // `<id>.m4a` can exist while still being written. Serving it in that window
 // gave the player a truncated file: the decoder starved and playback sat
-// frozen at 0:00 with no error — an intermittent "song won't play".
+// frozen at 0:00 with no error, an intermittent "song won't play".
 const PARTIAL = 'ddddddddddd';
 const partialRuns = await Promise.all([
   stream(PARTIAL),

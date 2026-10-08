@@ -32,7 +32,7 @@ if [[ -n "${IDENT:-}" ]]; then
   export APPLE_SIGNING_IDENTITY="$IDENT"
   echo "Signing as: $IDENT"
 else
-  echo "No Developer ID certificate — building UNSIGNED."
+  echo "No Developer ID certificate, building UNSIGNED."
 fi
 
 # Notarize only if credentials were stored once (see docs/APPS.md).
@@ -40,7 +40,7 @@ if xcrun notarytool history --keychain-profile "AC_PASSWORD" >/dev/null 2>&1; th
   export APPLE_KEYCHAIN_PROFILE="AC_PASSWORD"
   echo "Notarizing (profile AC_PASSWORD)"
 else
-  echo "Not notarized — fine for you, warns on other Macs."
+  echo "Not notarized, fine for you, warns on other Macs."
 fi
 
 export EMBER_APP_URL="$URL"
@@ -60,7 +60,7 @@ rm -f src-tauri/target/release/bundle/macos/rw.*.dmg   # failed dmg leftovers
 
 if [[ ! -d "$APP" ]]; then
   echo
-  echo "BUILD FAILED — no app produced (exit $BUILD_STATUS)." >&2
+  echo "BUILD FAILED, no app produced (exit $BUILD_STATUS)." >&2
   exit 1
 fi
 
@@ -68,7 +68,7 @@ echo
 echo "================================================================"
 echo "Built: $(cd "$(dirname "$APP")" && pwd)/Ember.app"
 [[ -n "$DMG" ]] && echo "DMG:   $DMG"
-[[ -z "$DMG" ]] && echo "DMG:   not created (Finder/AppleScript unavailable in this shell) — the .app works fine"
+[[ -z "$DMG" ]] && echo "DMG:   not created (Finder/AppleScript unavailable in this shell), the .app works fine"
 echo
 echo "Run it:"
 echo "  open \"$(cd "$(dirname "$APP")" && pwd)/Ember.app\""

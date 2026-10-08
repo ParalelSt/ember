@@ -13,7 +13,7 @@ export interface AvatarProps {
   src?: string | null;
   name?: string | null;
   email?: string | null;
-  /** Sizing, background, and text classes — each call site keeps its own
+  /** Sizing, background, and text classes, each call site keeps its own
    *  look (circle size, ember/cover background, text size/color). */
   className?: string;
 }

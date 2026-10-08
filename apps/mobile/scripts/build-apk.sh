@@ -23,7 +23,7 @@ if [ -z "$APP_URL" ]; then
   echo "  <EMBER_APP_URL>  the live Ember server the app points at, e.g."
   echo "                   https://ember.<tailnet>.ts.net"
   echo
-  echo "  A phone CANNOT reach http://localhost:3000 — localhost on the phone"
+  echo "  A phone CANNOT reach http://localhost:3000, localhost on the phone"
   echo "  is the phone. Use the Tailscale funnel URL or your Mac's LAN IP."
   exit 1
 fi
@@ -80,7 +80,7 @@ echo "✓ APK: $APK"
 
 if [ "$INSTALL" = "--install" ]; then
   if ! command -v adb >/dev/null; then
-    echo "✗ adb not on PATH — install platform-tools or copy the APK across manually."
+    echo "✗ adb not on PATH, install platform-tools or copy the APK across manually."
     exit 1
   fi
   if [ -z "$(adb devices | sed -n '2p')" ]; then

@@ -34,11 +34,11 @@ Setup and hosting: **[SETUP.md](SETUP.md)**. Native builds, signing, Discord id:
 ```
 spotify-clone/
   apps/
-    web/                          # Next.js 16 app — the whole UI + API routes
+    web/                          # Next.js 16 app, the whole UI + API routes
       app/                        # routes (App Router)
         (app)/                    # authed shell: home, search, library,
                                   #   artist, album, playlist, settings, admin
-        api/                      # route handlers — playlists, likes, history,
+        api/                      # route handlers, playlists, likes, history,
                                   #   admin/*, auth/check-email, profile,
                                   #   bug-report, plus the youtube/jamendo proxies
         auth/                     # invite-only sign-in / register flow
@@ -77,7 +77,7 @@ spotify-clone/
         sources/jamendo.ts        # Jamendo REST adapter
         songKey.ts                # title+artist normalizer for variant-dedup radio
       stores/usePlayerStore.ts    # zustand store (queue, index, playback context)
-      proxy.ts                    # middleware — auth gate + cookie refresh
+      proxy.ts                    # middleware, auth gate + cookie refresh
       next.config.ts              # /pb/* rewrite → local PocketBase
     mobile/                       # Capacitor Android wrapper around the web build
   pocketbase/

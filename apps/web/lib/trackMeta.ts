@@ -22,12 +22,12 @@ export async function fetchTrackMeta(videoId: string): Promise<Track | null> {
       .getFirstListItem(`external_id = "youtube:${videoId}"`);
     const track = mapTrackRow(row as unknown as TrackRecord);
     if (track) {
-      // Old rows can have an empty stream_url — always serve a usable one.
+      // Old rows can have an empty stream_url, always serve a usable one.
       if (!track.streamUrl) track.streamUrl = `/api/youtube/stream/${videoId}`;
       return track;
     }
   } catch {
-    // Not in PB (or PB down) — fall through to ytmusicapi.
+    // Not in PB (or PB down), fall through to ytmusicapi.
   }
   return getTrack(videoId);
 }

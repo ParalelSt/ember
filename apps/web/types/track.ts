@@ -90,7 +90,7 @@ export interface AlbumDetail {
   tracks: Track[];
 }
 
-/** Where a queue was started from. Drives radio-mode behavior — e.g. when the
+/** Where a queue was started from. Drives radio-mode behavior, e.g. when the
  *  artist's catalog finishes, we filter out more-of-the-same so the listener
  *  drifts into similar-genre tracks by other artists. */
 export type PlaybackContext =

@@ -21,7 +21,7 @@ const PW = 'BugTest2026!';
 const out = [];
 const check = (name, pass, detail = '') => {
   out.push({ name, pass });
-  console.log(`${pass ? 'PASS' : 'FAIL'}  ${name}${detail ? `  — ${detail}` : ''}`);
+  console.log(`${pass ? 'PASS' : 'FAIL'}  ${name}${detail ? `  - ${detail}` : ''}`);
 };
 
 async function adminToken() {

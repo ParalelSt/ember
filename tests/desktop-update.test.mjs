@@ -21,7 +21,7 @@ const PORT = Number(process.env.FAKE_GITHUB_PORT ?? 4321);
 const results = [];
 const check = (name, pass, detail = '') => {
   results.push({ name, pass });
-  console.log(`${pass ? 'PASS' : 'FAIL'}  ${name}${detail ? `  — ${detail}` : ''}`);
+  console.log(`${pass ? 'PASS' : 'FAIL'}  ${name}${detail ? `  - ${detail}` : ''}`);
 };
 
 // ── fake GitHub ───────────────────────────────────────────────────────────

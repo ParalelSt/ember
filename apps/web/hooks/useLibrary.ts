@@ -37,7 +37,7 @@ export const QK = {
   containingAll: ['playlists-containing'] as const,
 };
 
-/** Every song members have uploaded to this server — a shared library, not
+/** Every song members have uploaded to this server, a shared library, not
  *  a per-user one. */
 export function useQueryUploads() {
   const { user } = useAuth();
@@ -363,7 +363,7 @@ export function useExecuteRemoveFromPlaylist() {
         qc.setQueryData(QK.playlist(id), { ...prev, tracks: prev.tracks.filter((t) => t.id !== trackId) });
       }
       // If this playlist is what's CURRENTLY playing, drop the track from the
-      // live player queue too — the queue is a snapshot, so without this the
+      // live player queue too, the queue is a snapshot, so without this the
       // removed song still plays when its turn comes (until a refresh).
       const s = usePlayerStore.getState();
       if (s.context?.type === 'playlist' && s.context.playlistId === id) {

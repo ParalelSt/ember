@@ -1,5 +1,5 @@
 """player.py `recommended`: the CLI must accept a hyphen-leading seed
-videoId (e.g. "-UaaeSP971U" or "-kPEbV8T35k" — both real YouTube ids seen in
+videoId (e.g. "-UaaeSP971U" or "-kPEbV8T35k", both real YouTube ids seen in
 production). Passed as `--seed <id>` (a space, two argv tokens), argparse
 reads the hyphen-leading id as another option and exits 2 before
 cmd_recommended ever runs, which is exactly the bug this guards against:

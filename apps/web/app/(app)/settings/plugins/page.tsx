@@ -17,7 +17,7 @@ export default function SettingsPlugins() {
   const partyVolume = useSettingsStore((s) => s.partyVolume);
   const setPartyVolume = useSettingsStore((s) => s.setPartyVolume);
   // Desktop only: a mouse-driven browser or the Tauri app. Hidden entirely on
-  // a phone, a tablet or the Android app rather than shown disabled — there
+  // a phone, a tablet or the Android app rather than shown disabled, there
   // is nothing there for it to affect (see lib/playback/partyDevice).
   const partyEligible = usePartyEligible();
   const tabsEnabled = useSettingsStore((s) => s.tabsEnabled);
@@ -46,7 +46,7 @@ export default function SettingsPlugins() {
           <PluginToggle
             name="Party-size volume slider"
             tag="PC only"
-            description="Wider slider in the player bar and removes the 85% cap so the audio can go all the way to max. Desktop only — hidden on phones, tablets and the Android app."
+            description="Wider slider in the player bar and removes the 85% cap so the audio can go all the way to max. Desktop only, hidden on phones, tablets and the Android app."
             on={partyVolume}
             onToggle={() => void setPartyVolume(!partyVolume)}
           />

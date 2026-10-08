@@ -1,7 +1,7 @@
 # Ember Desktop (Tauri 2)
 
 A thin native desktop shell for **Ember**. The window is a system webview that
-loads the **live Ember server URL** — it does **not** bundle the web UI (Ember is
+loads the **live Ember server URL**, it does **not** bundle the web UI (Ember is
 a server app). Audio plays through Ember's existing web `<audio>` backend inside
 the webview; native desktop audio / media keys are a later workstream.
 
@@ -16,7 +16,7 @@ vars there, so `scripts/set-url.mjs` writes the resolved URL into
 
 ## Prerequisites
 
-- **Rust** (stable) + Cargo — install via <https://rustup.rs>.
+- **Rust** (stable) + Cargo, install via <https://rustup.rs>.
 - **Node** (used only for the Tauri CLI + the URL-injection script).
 - macOS system WebView (built in). Linux needs `webkit2gtk`; Windows needs
   WebView2 (handled by CI in a later workstream).
@@ -54,7 +54,7 @@ EMBER_APP_URL=https://ember.<your-tailnet>.ts.net npm run build
 ```
 
 If `EMBER_APP_URL` is unreachable, the webview shows its native "can't reach"
-page — make sure the server is running first.
+page, make sure the server is running first.
 
 ## Build a macOS .dmg
 
@@ -85,7 +85,7 @@ The server URL is baked in from the repo variable `EMBER_APP_URL`
 (Settings → Secrets and variables → Actions → Variables).
 
 ⚠️ The Windows build is **unsigned**, so SmartScreen shows "Windows protected
-your PC" on first run — *More info* → *Run anyway*. Silencing that needs an
+your PC" on first run, *More info* → *Run anyway*. Silencing that needs an
 Authenticode certificate, which costs real money per year.
 
 ## Auto cache of upcoming songs
@@ -178,4 +178,4 @@ at startup.
 Windows SMTC was wired by resolving the window HWND (souvlaki panics on a
 missing one, so it's resolved up front and a failure degrades to "no media
 controls" rather than a crash). It compiles in CI but **has not been run on a
-Windows machine** — media keys and the Now Playing flyout are unverified.
+Windows machine**, media keys and the Now Playing flyout are unverified.

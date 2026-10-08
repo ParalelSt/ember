@@ -24,7 +24,7 @@ const PASSWORD = 'BugTest2026!';
 const results = [];
 const check = (name, pass, detail = '') => {
   results.push({ name, pass });
-  console.log(`${pass ? 'PASS' : 'FAIL'}  ${name}${detail ? `  — ${detail}` : ''}`);
+  console.log(`${pass ? 'PASS' : 'FAIL'}  ${name}${detail ? `  - ${detail}` : ''}`);
 };
 
 async function adminToken() {
@@ -99,7 +99,7 @@ async function upload(cookie, { bytes, filename, type, title, artist, durationSe
 }
 
 // ── auth ──────────────────────────────────────────────────────────────────
-// redirect:'manual' — otherwise fetch follows the middleware's 307 and
+// redirect:'manual', otherwise fetch follows the middleware's 307 and
 // re-POSTs to the sign-in page, which muddies what we're asserting.
 const anon = await fetch(`${APP_URL}/api/uploads`, { method: 'POST', body: new FormData(), redirect: 'manual' });
 check('A1 upload rejects signed-out callers', anon.status === 401 || anon.status === 307, `status ${anon.status}`);

@@ -27,7 +27,7 @@ export const POST = withRequestLog('lyrics-report', async (request: NextRequest)
     if (limited) return limited;
 
     // Read per call, not at module load: same reasoning as webhookUrl()'s
-    // own doc comment (lib/reports/discord.ts) — a route module can be
+    // own doc comment (lib/reports/discord.ts), a route module can be
     // evaluated well before a test sets the env var for its case.
     const webhook = webhookUrl();
     if (!webhook) {
@@ -44,7 +44,7 @@ export const POST = withRequestLog('lyrics-report', async (request: NextRequest)
     const lyricsSnippet = String(body.lyrics ?? '').slice(0, MAX_LYRICS_LEN);
 
     const embed = {
-      title: `Lyrics report — ${title}`,
+      title: `Lyrics report - ${title}`,
       description: note ? `> ${note.split('\n').join('\n> ')}` : '_(no note)_',
       color: 0xff5a3a,
       timestamp: new Date().toISOString(),

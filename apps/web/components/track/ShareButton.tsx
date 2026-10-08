@@ -43,7 +43,7 @@ export function canShare(track: Track): boolean {
  *  context), clipboard otherwise, legacy execCommand as the final fallback. */
 export async function shareTrack(track: Track): Promise<void> {
   const url = `${window.location.origin}/track/${track.sourceId}`;
-  const title = `${track.title} — ${track.artist}`;
+  const title = `${track.title} - ${track.artist}`;
 
   // 1. Native share sheet (mobile). Requires a secure context.
   if (navigator.share) {
@@ -70,7 +70,7 @@ export async function shareTrack(track: Track): Promise<void> {
 
   // 3. Legacy copy: works over plain http / older browsers.
   if (legacyCopy(url)) toast.success('Link copied');
-  else toast.error("Couldn't copy — open over the https link to share");
+  else toast.error("Couldn't copy, open over the https link to share");
 }
 
 /** The share button: see shareTrack. */

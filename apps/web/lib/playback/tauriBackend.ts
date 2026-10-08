@@ -15,7 +15,7 @@ export const TAURI_CACHE_PREFIX = 'cache:';
 
 /** Resolve a possibly-relative stream URL (e.g. "/api/youtube/stream/<id>") to an
  *  absolute URL against the webview's origin (the host the shell loaded), because
- *  the Rust engine — outside the webview — needs an absolute URL to stream. */
+ *  the Rust engine, outside the webview, needs an absolute URL to stream. */
 export function toAbsolute(url: string): string {
   try {
     return new URL(url, window.location.origin).href;

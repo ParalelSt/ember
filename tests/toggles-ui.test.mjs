@@ -3,7 +3,7 @@
  *      node tests/toggles-ui.test.mjs      # or: npm run test:toggles
  *
  *  Reported as "the toggle buttons look off". The thumb is absolutely
- *  positioned with no `left`, so it fell back to its STATIC position — and a
+ *  positioned with no `left`, so it fell back to its STATIC position, and a
  *  <button> centres its content, which put the origin at the middle of the
  *  44px track. The translate then added 22px more, so the thumb sat outside
  *  the pill entirely when on, and at the right-hand end when off: the switch
@@ -33,7 +33,7 @@ const PASSWORD = 'BugTest2026!';
 function findChrome() {
   if (process.env.CHROME_PATH) return process.env.CHROME_PATH;
   const root = path.join(process.env.HOME ?? '', 'Library/Caches/ms-playwright');
-  if (!fs.existsSync(root)) throw new Error('no Playwright browser cache — set CHROME_PATH');
+  if (!fs.existsSync(root)) throw new Error('no Playwright browser cache, set CHROME_PATH');
   for (const d of fs.readdirSync(root).filter((x) => x.startsWith('chromium-')).sort().reverse()) {
     const found = execSync(
       `find "${path.join(root, d)}" -maxdepth 6 -type f \\( -name "Google Chrome for Testing" -o -name "Chromium" \\) 2>/dev/null | head -1`,
@@ -41,7 +41,7 @@ function findChrome() {
     ).trim();
     if (found) return found;
   }
-  throw new Error('no Chromium binary found — set CHROME_PATH');
+  throw new Error('no Chromium binary found, set CHROME_PATH');
 }
 
 async function adminToken() {
@@ -73,7 +73,7 @@ const page = await ctx.newPage();
 const checks = [];
 const check = (name, pass, detail = '') => {
   checks.push([name, pass]);
-  console.log(`${pass ? 'PASS' : 'FAIL'}  ${name}${detail ? `  — ${detail}` : ''}`);
+  console.log(`${pass ? 'PASS' : 'FAIL'}  ${name}${detail ? `  - ${detail}` : ''}`);
 };
 
 /** Geometry of every switch, measured the way a viewer sees it. */

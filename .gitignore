@@ -1,4 +1,4 @@
-# Secrets — never commit
+# Secrets, never commit
 .env
 .env.*
 !.env.example
@@ -18,14 +18,14 @@ dist/
 build/
 .vite/
 
-# Next.js build output (regenerable — this was showing up as 10k+ "changes")
+# Next.js build output (regenerable, this was showing up as 10k+ "changes")
 .next/
 **/.next/
 .turbo/
 next-env.d.ts
 *.tsbuildinfo
 
-# Native-shell (Tauri desktop) build artifacts — left in the worktree as
+# Native-shell (Tauri desktop) build artifacts, left in the worktree as
 # leftovers from the native-shell branch; regenerable, thousands of files.
 apps/desktop/src-tauri/target*/
 apps/desktop/src-tauri/gen/
@@ -41,7 +41,7 @@ __pycache__/
 # Local audio cache (large, regenerable)
 my_music/
 
-# PocketBase — binary (per-platform) + data (per-user)
+# PocketBase, binary (per-platform) + data (per-user)
 pocketbase/pocketbase
 pocketbase/pb_data/
 pocketbase/pb_public/
@@ -52,23 +52,23 @@ pocketbase/pb_public/
 # app/(app)/admin/logs, which silently hid real app routes from git.
 /logs/
 
-# Internal design docs / brainstorming notes — local only
+# Internal design docs / brainstorming notes, local only
 docs/superpowers/
 docs/deslop/
 docs/DESLOP.md
 CHANGES.md
 
-# Bug-hunt reports / dossiers — local only
+# Bug-hunt reports / dossiers, local only
 docs/reports/
 ember-bug-dossier.txt
 
-# Claude Code local settings — local only
+# Claude Code local settings, local only
 .claude/
 
-# Legacy Supabase schema — unused, local only
+# Legacy Supabase schema, unused, local only
 supabase/
 
-# Router plugin local state — local only
+# Router plugin local state, local only
 .router/
 
 # Editors / OS
@@ -85,19 +85,19 @@ coverage/
 .nyc_output/
 cookies.txt
 
-# Local roadmap / status notes — not committed
+# Local roadmap / status notes, not committed
 ROADMAP.md
 
-# Local project rules / app reference / agent docs — not committed
+# Local project rules / app reference / agent docs, not committed
 /RULES.md
 /EMBER.md
 /FIXES-TEST-PLAN.md
 
-# Android release signing — NEVER commit (docs/APPS.md explains regeneration)
+# Android release signing, NEVER commit (docs/APPS.md explains regeneration)
 apps/mobile/android/ember-release.keystore
 apps/mobile/android/keystore.properties
 
-# Desktop updater signing key — NEVER commit. Unlike the Android keystore this
+# Desktop updater signing key, NEVER commit. Unlike the Android keystore this
 # one CANNOT be regenerated without breaking auto-update for everyone already
 # running Ember: the installed app only trusts updates signed by this exact
 # key. Back it up somewhere real (password manager), not just this folder.

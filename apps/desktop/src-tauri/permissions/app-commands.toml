@@ -1,6 +1,6 @@
 # The webview loads Ember from a REMOTE origin (the server URL). Tauri treats
 # remote origins as untrusted by default and denies every command that isn't
-# explicitly permitted — including this app's own commands. Without this file
+# explicitly permitted, including this app's own commands. Without this file
 # the shell's IPC is dead: playback, Discord presence and logging all fail with
 # "Command <name> not allowed by ACL", which is exactly what a bug report from
 # the Windows build showed.

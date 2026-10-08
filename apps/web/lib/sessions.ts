@@ -54,7 +54,7 @@ export function assertHost(session: RecordModel, userId: string): void {
   if (session.host !== userId) throw new ForbiddenError();
 }
 
-/** Add someone to a session's roster. Idempotent — the unique index makes a
+/** Add someone to a session's roster. Idempotent, the unique index makes a
  *  repeat join a no-op rather than an error. */
 export async function addMember(
   pb: PocketBase,

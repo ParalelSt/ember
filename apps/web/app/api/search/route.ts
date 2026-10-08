@@ -11,7 +11,7 @@ import { getTrendingChart } from '@/lib/trending';
 import { listUnavailableIds } from '@/lib/trackAvailability';
 
 /** Uploads for the signed-in caller. Uses the cookie-bound client, so
- *  PocketBase's own list rule decides visibility — a signed-out caller gets
+ *  PocketBase's own list rule decides visibility, a signed-out caller gets
  *  nothing rather than us hand-rolling the check. Never throws: uploads are
  *  a bonus on top of search, not a reason to fail it. */
 async function searchUploadsSafely(q: string): Promise<Track[]> {
@@ -46,7 +46,7 @@ export const GET = withRequestLog('search', async (request: NextRequest) => {
         return Response.json({ tracks: [] });
       }
     }
-    // Caps actual searches (typed or voice — voice just fills the box). Humans
+    // Caps actual searches (typed or voice, voice just fills the box). Humans
     // never hit this thanks to the 250ms debounce + React Query cache.
     const limited = await limitCaller(request, 'search', PUBLIC_PYTHON_LIMITS.search);
     if (limited) return limited;

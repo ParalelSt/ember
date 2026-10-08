@@ -76,7 +76,7 @@ export default function AdminInvitesPage() {
       {isLoading && <EmptyState>Loading…</EmptyState>}
       {!isLoading && filtered.length === 0 && (
         <EmptyState>
-          {search ? 'No invites match.' : 'No invites yet — add one above.'}
+          {search ? 'No invites match.' : 'No invites yet, add one above.'}
         </EmptyState>
       )}
 

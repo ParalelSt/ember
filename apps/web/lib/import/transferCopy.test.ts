@@ -41,7 +41,7 @@ describe('transferErrorMessage', () => {
   });
 
   it('has no em dashes', () => {
-    for (const s of [OVER_CAP_MESSAGE, RATE_LIMITED_MESSAGE, UNKNOWN_MESSAGE]) expect(s).not.toContain('—');
+    for (const s of [OVER_CAP_MESSAGE, RATE_LIMITED_MESSAGE, UNKNOWN_MESSAGE]) expect(s).not.toContain('\u2014');
   });
 });
 

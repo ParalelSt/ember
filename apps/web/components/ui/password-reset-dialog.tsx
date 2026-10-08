@@ -30,7 +30,7 @@ interface Props {
 /** Admin-only modal for overwriting another user's (or own) password.
  *
  *  Parent should mount with `key={target.id}` so a new target gets fresh
- *  internal state — avoids useEffect resets that trip the
+ *  internal state, avoids useEffect resets that trip the
  *  react-hooks/set-state-in-effect lint rule. */
 export function PasswordResetDialog({
   open,

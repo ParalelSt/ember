@@ -3,7 +3,7 @@
 // hardcoded one used to live in this directory (discord.ts's
 // DEFAULT_WEBHOOK_URL) and in the lyrics-report route; a public secret
 // scanner found it and Discord deleted the webhook. Webhooks must come from
-// the environment only (see discord.ts's doc comment) — this test fails the
+// the environment only (see discord.ts's doc comment), this test fails the
 // suite if a real-looking one shows up anywhere in tracked source.
 import { describe, it, expect } from 'vitest';
 import { execFileSync } from 'node:child_process';

@@ -7,7 +7,7 @@ migrate((db) => {
   const dao = new Dao(db);
   const users = dao.findCollectionByNameOrId("users");
   users.schema.addField(new SchemaField({
-    id: "usersisadmin01",   // 15 lowercase alphanumeric — PB v0.22 quirk
+    id: "usersisadmin01",   // 15 lowercase alphanumeric, PB v0.22 quirk
     name: "is_admin",
     type: "bool",
     required: false,

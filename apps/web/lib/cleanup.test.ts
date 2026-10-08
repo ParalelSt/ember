@@ -7,7 +7,7 @@ import { fakePocketBase } from '@/test-utils/fakePocketBase';
 
 /** lib/cleanup.ts: the stale-track sweep (existing) plus the orphan cache
  *  file sweep (bughunt S06). MUSIC_DIR is read when the module loads, so
- *  every test gets its own fresh temp dir and a fresh import — never the
+ *  every test gets its own fresh temp dir and a fresh import, never the
  *  real music cache. isDownloading is mocked so a test can simulate a
  *  download in progress without spawning anything. */
 

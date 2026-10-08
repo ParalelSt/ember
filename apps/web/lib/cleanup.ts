@@ -8,7 +8,7 @@ import { isDownloading } from '@/lib/sources/youtube';
 /** A track is stale when nobody has played it for this long. */
 export const STALE_AFTER_DAYS = 14;
 /** A cached file with no matching tracks row is only orphaned once it has
- *  sat untouched this long — a fresh download's row is written moments
+ *  sat untouched this long, a fresh download's row is written moments
  *  after the file, so a young unmatched file is a normal race, not a leak. */
 export const ORPHAN_CACHE_AFTER_DAYS = 30;
 
@@ -17,7 +17,7 @@ const MUSIC_DIR = process.env.MUSIC_DIR ?? path.join(ROOT, 'my_music');
 const CACHE_EXTS = ['.m4a', '.webm', '.opus', '.mp3', '.mp4'] as const;
 // A plain cached-audio filename: exactly "<videoId>.<ext>", nothing else.
 // yt-dlp writes a download as "<videoId>.<ext>.part"/".ytdl" while it's
-// still in progress and only the finished file matches this — so an
+// still in progress and only the finished file matches this, so an
 // in-progress download is excluded by name alone, before isDownloading()
 // is even checked. Anything else in MUSIC_DIR (an upload, a stray file) has
 // a different shape and never matches either.
@@ -37,7 +37,7 @@ export interface CleanupReport {
 
 /** Every track id referenced by something a user would miss. Liked songs,
  *  playlist entries, live-session queues and recent searches are all kept
- *  regardless of age — deleting those would visibly break someone's library. */
+ *  regardless of age, deleting those would visibly break someone's library. */
 async function protectedTrackIds(pb: PocketBase): Promise<Set<string>> {
   const keep = new Set<string>();
   const collect = async (collection: string, field = 'track') => {
@@ -49,7 +49,7 @@ async function protectedTrackIds(pb: PocketBase): Promise<Set<string>> {
       }
     } catch {
       // Collection may not exist on older deployments (sessions/recent_searches
-      // arrive with their bootstrap hooks) — absence just means nothing to keep.
+      // arrive with their bootstrap hooks), absence just means nothing to keep.
     }
   };
   await collect('likes');
@@ -59,7 +59,7 @@ async function protectedTrackIds(pb: PocketBase): Promise<Set<string>> {
   return keep;
 }
 
-/** Track record ids played within the window — these stay. */
+/** Track record ids played within the window, these stay. */
 async function recentlyPlayedIds(pb: PocketBase, since: string): Promise<Set<string>> {
   const keep = new Set<string>();
   try {
@@ -73,7 +73,7 @@ async function recentlyPlayedIds(pb: PocketBase, since: string): Promise<Set<str
     }
   } catch (e) {
     // Failing open (keeping everything) is the safe direction.
-    serverLogger.error('cleanup', 'could not read plays — keeping all tracks', undefined, e);
+    serverLogger.error('cleanup', 'could not read plays, keeping all tracks', undefined, e);
     throw e;
   }
   return keep;
@@ -217,7 +217,7 @@ export async function runCleanup(pb: PocketBase, { dryRun = false } = {}): Promi
       if (!dryRun) await pb.collection('tracks').delete(id);
       report.deletedRows += 1;
     } catch (e) {
-      // Usually a lingering relation we didn't account for — leave the row.
+      // Usually a lingering relation we didn't account for, leave the row.
       serverLogger.error('cleanup', 'could not delete track row', { id }, e);
     }
   }

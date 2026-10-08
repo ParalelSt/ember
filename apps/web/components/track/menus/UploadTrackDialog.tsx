@@ -18,7 +18,7 @@ import { QK } from '@/hooks/useLibrary';
 import { formatTime } from '@/lib/format';
 
 /** Add a song from your own files. It lands on the server and becomes
- *  searchable for everyone — that's the point: the library grows with the
+ *  searchable for everyone, that's the point: the library grows with the
  *  things YouTube doesn't have. */
 export function UploadTrackDialog({
   open,
@@ -59,7 +59,7 @@ export function UploadTrackDialog({
     onOpenChange(false);
   };
 
-  /** Read the duration in the browser — the server can't count on ffprobe
+  /** Read the duration in the browser, the server can't count on ffprobe
    *  being installed, and a wrong duration makes the progress bar lie. */
   const readDuration = (f: File) =>
     new Promise<number>((resolve) => {

@@ -40,7 +40,7 @@ export const PATCH = withRequestLog('privacy', async (request: NextRequest) => {
     if (typeof body?.shareListening === 'boolean') patch.share_listening = body.shareListening;
 
     if (Object.keys(patch).length === 0) {
-      // Nothing recognised — say so rather than reporting a successful no-op,
+      // Nothing recognised, say so rather than reporting a successful no-op,
       // which would look like the toggle saved when it didn't.
       return Response.json({ error: 'No privacy settings in request' }, { status: 400 });
     }

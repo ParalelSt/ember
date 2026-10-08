@@ -36,12 +36,12 @@ interface PlayerState {
    *  behaviour) rather than leaving the queue scrambled. */
   shuffle: boolean;
   /** Snapshot of the queue as it was before shuffling; null when shuffle is
-   *  off. Not persisted — a reload starts unshuffled. */
+   *  off. Not persisted, a reload starts unshuffled. */
   orderBackup: Track[] | null;
   /** True = audio output forced to 0. Restores previous `volume` when toggled
    *  off; the slider position stays put so the user doesn't lose their level. */
   muted: boolean;
-  /** Full-screen "Now Playing" overlay (mobile only). Ephemeral — never
+  /** Full-screen "Now Playing" overlay (mobile only). Ephemeral, never
    *  persisted, so a reload always starts collapsed. */
   nowPlayingOpen: boolean;
   /** Ids of the songs played before the current one, newest last: what
@@ -101,7 +101,7 @@ export const usePlayerStore = create<PlayerState>()(
       index: -1,
       position: 0,
       positionAt: 0,
-      // Default sits in the first quarter of the slider — a fresh device
+      // Default sits in the first quarter of the slider, a fresh device
       // starts QUIET (0.25^1.5 ≈ 0.13 gain), not blasting from the middle.
       volume: 0.25,
       isPlaying: false,
@@ -122,7 +122,7 @@ export const usePlayerStore = create<PlayerState>()(
       setVolume: (volume) => set({ volume: Math.min(1, Math.max(0, volume)) }),
       setContext: (context) => set({ context }),
       setLoopMode: (loopMode) => set({ loopMode }),
-      /** Shuffle the upcoming tracks only — whatever is playing stays playing
+      /** Shuffle the upcoming tracks only, whatever is playing stays playing
        *  and stays at the current index, so toggling never interrupts audio.
        *  Turning it off restores the original order and re-points the index at
        *  the same track. */

@@ -22,7 +22,7 @@ export function publishDiscordPresence(
   durationSec = 0,
 ): void {
   // Honour the user's Discord switch. The desktop app writes to the LOCAL
-  // Discord client, so nothing server-side can stop it — this check is the
+  // Discord client, so nothing server-side can stop it, this check is the
   // only thing standing between "hidden" and broadcasting. When sharing is
   // off we still publish a CLEAR, otherwise whatever was showing when they
   // flipped the switch would stay pinned to their profile.

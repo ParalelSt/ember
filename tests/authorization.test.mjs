@@ -15,7 +15,7 @@ const PW = 'BugTest2026!';
 const out = [];
 const check = (name, pass, detail = '') => {
   out.push({ name, pass });
-  console.log(`${pass ? 'PASS' : 'FAIL'}  ${name}${detail ? `  — ${detail}` : ''}`);
+  console.log(`${pass ? 'PASS' : 'FAIL'}  ${name}${detail ? `  - ${detail}` : ''}`);
 };
 
 async function adminToken() {
@@ -69,7 +69,7 @@ check('B1 bob cannot READ alice’s playlist',
   forbidden(await as(bob, `/api/playlists/${plId}`).then(status)),
   `status ${await as(bob, `/api/playlists/${plId}`).then(status)}`);
 // Use a track alice does NOT have, so a rejection can't be mistaken for a
-// duplicate-entry error — that ambiguity once hid whether the check ran at all.
+// duplicate-entry error, that ambiguity once hid whether the check ran at all.
 const intruder = { ...track, id: 'youtube:kJQP7kiw5Fk', sourceId: 'kJQP7kiw5Fk', title: 'BOB WAS HERE' };
 const addRes = await as(bob, `/api/playlists/${plId}/tracks`, { method: 'POST', body: JSON.stringify({ track: intruder }) });
 const addBody = await addRes.text();

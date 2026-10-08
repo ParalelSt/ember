@@ -78,7 +78,7 @@ fs.mkdirSync(SHOTS_DIR, { recursive: true });
 function findChrome() {
   if (process.env.CHROME_PATH) return process.env.CHROME_PATH;
   const root = path.join(process.env.HOME ?? '', 'Library/Caches/ms-playwright');
-  if (!fs.existsSync(root)) throw new Error('no Playwright browser cache — set CHROME_PATH');
+  if (!fs.existsSync(root)) throw new Error('no Playwright browser cache, set CHROME_PATH');
   for (const d of fs.readdirSync(root).filter((x) => x.startsWith('chromium-')).sort().reverse()) {
     const found = execSync(
       `find "${path.join(root, d)}" -maxdepth 6 -type f \\( -name "Google Chrome for Testing" -o -name "Chromium" \\) 2>/dev/null | head -1`,
@@ -86,7 +86,7 @@ function findChrome() {
     ).trim();
     if (found) return found;
   }
-  throw new Error('no Chromium binary found — set CHROME_PATH');
+  throw new Error('no Chromium binary found, set CHROME_PATH');
 }
 
 async function signIn() {
@@ -108,7 +108,7 @@ const cookieValue = await signIn();
 const checks = [];
 const check = (name, pass, detail = '') => {
   checks.push([name, pass]);
-  console.log(`${pass ? 'PASS' : 'FAIL'}  ${name}${detail ? `  — ${detail}` : ''}`);
+  console.log(`${pass ? 'PASS' : 'FAIL'}  ${name}${detail ? `  - ${detail}` : ''}`);
 };
 const consoleErrors = [];
 const browser = await chromium.launch({
@@ -123,8 +123,8 @@ async function newPage(viewport, extra = {}) {
   // The web playback backend builds a plain `new Audio()` that is never
   // attached to the DOM, so `document.querySelector('audio')` finds
   // nothing. This wraps the constructor (test-only instrumentation, no
-  // product code touched) so the real element — and its real
-  // `currentTime` — is reachable for the "line reflects the song's time"
+  // product code touched) so the real element, and its real
+  // `currentTime`, is reachable for the "line reflects the song's time"
   // checks.
   await ctx.addInitScript(() => {
     const Native = window.Audio;
@@ -259,7 +259,7 @@ async function clickBar(page, n, { scroller = null } = {}) {
     // Everything here runs inside the page: `label.y`/`label.x` are
     // viewport-relative (getBoundingClientRect), and so is the scroller's
     // own rect, so the two combine correctly without any Node-side DOM
-    // access (there is none — this is a headless test script).
+    // access (there is none, this is a headless test script).
     await page.evaluate(
       ({ sel, y, x, horizontal }) => {
         const sc = document.querySelector(sel);
@@ -565,7 +565,7 @@ console.log('\n=== 3. Moving the line controls the song ===\n');
   const targetLabel = labelsForDrag.find((l) => l.n === 9) ?? labelsForDrag.find((l) => l.n === 8);
   await shot(page, 'drag-before.png');
   if (!cur || !targetLabel) {
-    check('drag the line to seek', false, 'could not locate the cursor or a target bar to drag to — not tested');
+    check('drag the line to seek', false, 'could not locate the cursor or a target bar to drag to, not tested');
   } else {
     const startX = cur.x + cur.w / 2;
     const startY = cur.y + cur.h / 2;
@@ -592,7 +592,7 @@ console.log('\n=== 3. Moving the line controls the song ===\n');
       seekedToDrop,
       seekedToDrop
         ? `dropping at bar ${targetLabel.n} seeked the song to ${afterD.toFixed(2)}s (expected ~${expectDrop.toFixed(2)}s; time label while dragging: ${ghostLabel ?? 'none'})`
-        : `NOT SUPPORTED: pressed at bar 6 (~${expectPress.toFixed(2)}s) and dragged to bar ${targetLabel.n} (~${expectDrop.toFixed(2)}s), but the song ended up at ${afterD === null ? 'no reading' : `${afterD.toFixed(2)}s`} before ${beforeD?.toFixed(2)}s — ${seekedToPress ? 'only the initial press point took effect; the drop was ignored' : 'no click-through seek was registered at all on a mouse-down + drag'}`,
+        : `NOT SUPPORTED: pressed at bar 6 (~${expectPress.toFixed(2)}s) and dragged to bar ${targetLabel.n} (~${expectDrop.toFixed(2)}s), but the song ended up at ${afterD === null ? 'no reading' : `${afterD.toFixed(2)}s`} before ${beforeD?.toFixed(2)}s, ${seekedToPress ? 'only the initial press point took effect; the drop was ignored' : 'no click-through seek was registered at all on a mouse-down + drag'}`,
     );
   }
 }

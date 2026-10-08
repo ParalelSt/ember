@@ -17,7 +17,7 @@ export const DELETE = withRequestLog('recent-searches/[trackId]', async (_req: N
         .getFirstListItem(`external_id = "${decodeURIComponent(trackId).replace(/"/g, '')}"`);
       trackRecordId = trackRow.id;
     } catch {
-      return Response.json({ ok: true }); // unknown track — nothing to remove
+      return Response.json({ ok: true }); // unknown track, nothing to remove
     }
 
     try {

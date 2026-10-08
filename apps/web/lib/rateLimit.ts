@@ -25,7 +25,7 @@ export async function callerKey(request: Request): Promise<string> {
   return `ip:${clientIp(request)}`;
 }
 
-/** Convenience helper for routes — returns a Response if the caller is over
+/** Convenience helper for routes, returns a Response if the caller is over
  *  the limit, otherwise null so the handler continues. */
 export function rateLimitResponse(
   key: string,
@@ -35,7 +35,7 @@ export function rateLimitResponse(
   const r = checkRateLimit(key, cfg, opts);
   if (r.ok) return null;
   return Response.json(
-    { error: `Slow down — try again in about ${r.retryAfter}s.` },
+    { error: `Slow down, try again in about ${r.retryAfter}s.` },
     {
       status: 429,
       headers: { 'Retry-After': String(r.retryAfter) },

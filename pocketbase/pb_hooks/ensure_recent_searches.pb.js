@@ -1,6 +1,6 @@
 /// <reference path="../pb_data/types.d.ts" />
 
-// Recent searches — the tracks a user played from the search page, stored
+// Recent searches, the tracks a user played from the search page, stored
 // SERVER-SIDE so the list follows them across devices (it used to live in
 // localStorage, which is why it didn't sync). Created on boot if missing,
 // same zero-manual-setup pattern as ensure_sessions.

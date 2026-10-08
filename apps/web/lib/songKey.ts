@@ -1,7 +1,7 @@
 import type { Track } from '@/types/track';
 import { variantMarkers } from '@/lib/import/score';
 
-/** A normalized identity for a song, ignoring version noise — so "Blinding
+/** A normalized identity for a song, ignoring version noise, so "Blinding
  *  Lights", "Blinding Lights (Official Video)", "Blinding Lights (Live)" and
  *  "Blinding Lights [Lyrics]" all collapse to the same key. Used to keep radio
  *  from queueing a different *version* of what's already playing/queued, and
@@ -13,11 +13,11 @@ import { variantMarkers } from '@/lib/import/score';
  *  karaoke, sped up/slowed, cover, demo, extended, radio edit, or
  *  clean/censored cut IS a different recording, so `variantMarkers` (the
  *  same marker list score.ts uses to penalize import matches) is folded into
- *  the key too — two titles with different markers never share an identity,
+ *  the key too, two titles with different markers never share an identity,
  *  even if their title text is otherwise identical after stripping noise. */
 export function songKey(track: Pick<Track, 'title' | 'artist'> & { id?: string }): string {
   // Fall back to the raw lowercased title when aggressive normalization strips
-  // it to nothing — titles that are entirely version-noise/punctuation, or in a
+  // it to nothing, titles that are entirely version-noise/punctuation, or in a
   // non-Latin script (which `[^a-z0-9]` would erase). Without this, every such
   // song by one artist collapses to the same `::artist` key, so liking one
   // makes the others' hearts light up too (findLikedVariant false-positive).
@@ -38,7 +38,7 @@ export function songKey(track: Pick<Track, 'title' | 'artist'> & { id?: string }
 
 /** Returns the liked-list entry that matches `track` (same id or same
  *  normalized songKey), or null. Use to drive the heart UI and target the
- *  right row when toggling — clicking unlike on a variant operates on the
+ *  right row when toggling, clicking unlike on a variant operates on the
  *  existing liked entry rather than adding a second one. */
 export function findLikedVariant(track: Track | null | undefined, liked: Track[]): Track | null {
   if (!track) return null;

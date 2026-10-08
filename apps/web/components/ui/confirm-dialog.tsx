@@ -19,14 +19,14 @@ interface Props {
   description?: string;
   confirmLabel?: string;
   cancelLabel?: string;
-  /** "destructive" turns the confirm button red — for deletes etc. */
+  /** "destructive" turns the confirm button red, for deletes etc. */
   variant?: 'default' | 'destructive';
   /** Called when the user confirms. The dialog awaits the promise and closes
    *  on resolve. Throw to keep it open. */
   onConfirm: () => void | Promise<void>;
 }
 
-/** Reusable in-app confirmation dialog — replaces window.confirm so the
+/** Reusable in-app confirmation dialog, replaces window.confirm so the
  *  experience stays inside the app's styling. */
 export function ConfirmDialog({
   open,
