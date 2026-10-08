@@ -44,6 +44,9 @@
             </intent-filter>
         </service>
         <meta-data android:name="com.google.android.gms.car.application" android:resource="@xml/automotive_app_desc" />
+        <!-- "Scan QR code" (QrScan.kt): Play services fetches Google's code
+             scanner module when the app is installed, not on the first scan. -->
+        <meta-data android:name="com.google.mlkit.vision.DEPENDENCIES" android:value="barcode_ui" />
 
         <!-- Media buttons with the app closed (the car's play button over
              Bluetooth, a headset, a mirroring app's steering-wheel keys):
@@ -141,6 +144,11 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <!-- Voice search (EmberSpeechPlugin), asked for on the first mic tap. -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <!-- "Scan QR code" when Google's scanner is missing (no Play services):
+         the page's own scanner asks for the camera on first use. Google's
+         scanner itself needs no permission. A camera is not required. -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
 
     <!-- The in-app updater (AppUpdater.kt) installs Ember's own next APK
          with a PackageInstaller session. REQUEST_INSTALL_PACKAGES is the

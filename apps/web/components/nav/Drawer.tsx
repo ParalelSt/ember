@@ -18,6 +18,7 @@ import { PlaylistNavList } from '@/components/nav/PlaylistNavList';
 import { FadeScroll } from '@/components/nav/FadeScroll';
 import { useNavPlaylists } from '@/hooks/useNavPlaylists';
 import { Avatar } from '@/components/primitives/Avatar';
+import { ScanQrButton } from '@/components/auth/ScanQrButton';
 import { FlameIcon, PlusIcon } from '@/components/icons';
 import { BASE_NAV, ADMIN_NAV_ITEM } from '@/lib/nav';
 import { hrefFor, sharedLabel, systemCollections } from '@/lib/collections';
@@ -113,6 +114,8 @@ export function Drawer({ open, onOpenChange }: Props) {
 
         {user && (
           <div className="border-t border-sidebar-border px-2 py-3">
+            {/* Approve a new device's sign-in QR (phones and tablets only). */}
+            <ScanQrButton look="nav" onBeforeStart={close} />
             <Link
               href="/settings/profile"
               onClick={close}

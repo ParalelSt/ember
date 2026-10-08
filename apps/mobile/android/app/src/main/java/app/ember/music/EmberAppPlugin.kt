@@ -5,6 +5,7 @@ import com.getcapacitor.Plugin
 import com.getcapacitor.PluginCall
 import com.getcapacitor.PluginMethod
 import com.getcapacitor.annotation.CapacitorPlugin
+import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * The page asks which app it runs in (apps/web/lib/shellVersion.ts):
@@ -15,6 +16,9 @@ import com.getcapacitor.annotation.CapacitorPlugin
  * `flushCookies()`: the page signed in or out (apps/web/lib/nativeCookies.ts);
  * the session cookie goes to disk now, so a process killed straight after
  * does not lose it (CookieFlush).
+ *
+ * `scanQr()`: "Scan QR code" (apps/web/lib/qrScan/nativeScan.ts), Google's
+ * code scanner; always resolves `{ status, value? }` (QrScan).
  */
 @CapacitorPlugin(name = "EmberApp")
 class EmberAppPlugin : Plugin() {
@@ -28,5 +32,22 @@ class EmberAppPlugin : Plugin() {
     fun flushCookies(call: PluginCall) {
         CookieFlush.now()
         call.resolve()
+    }
+
+    @PluginMethod
+    fun scanQr(call: PluginCall) {
+        val host = activity ?: return call.resolve(toJs(QrScanOutcome.Unavailable))
+        val answered = AtomicBoolean(false)
+        host.runOnUiThread {
+            QrScan.start(host) { outcome ->
+                if (answered.compareAndSet(false, true)) call.resolve(toJs(outcome))
+            }
+        }
+    }
+
+    private fun toJs(outcome: QrScanOutcome): JSObject {
+        val js = JSObject()
+        QrScan.answer(outcome).forEach { (k, v) -> js.put(k, v) }
+        return js
     }
 }

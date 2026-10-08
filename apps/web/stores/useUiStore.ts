@@ -24,6 +24,15 @@ interface UiState {
    *  to its lyrics section on next render, then clears the flag. */
   nowPlayingFocus: NowPlayingFocus;
   setNowPlayingFocus: (focus: NowPlayingFocus) => void;
+  /** "Scan QR code" (QrScanHost, ephemeral): 'native' asks the Android
+   *  app's scanner first, 'web' shows the page's own scanner full screen. */
+  qrScan: 'idle' | 'native' | 'web';
+  setQrScan: (qrScan: 'idle' | 'native' | 'web') => void;
+  /** A short code scanned from a QR, waiting for Settings > Devices to show
+   *  its approve card (DevicesPanel takes it once). Memory only, never the
+   *  URL or storage. */
+  scannedCode: string | null;
+  setScannedCode: (code: string | null) => void;
 }
 
 export const useUiStore = create<UiState>()(
@@ -37,6 +46,10 @@ export const useUiStore = create<UiState>()(
       setLyricsOpen: (lyricsOpen) => set({ lyricsOpen }),
       nowPlayingFocus: null,
       setNowPlayingFocus: (nowPlayingFocus) => set({ nowPlayingFocus }),
+      qrScan: 'idle',
+      setQrScan: (qrScan) => set({ qrScan }),
+      scannedCode: null,
+      setScannedCode: (scannedCode) => set({ scannedCode }),
     }),
     {
       name: 'ember.ui.v1',
