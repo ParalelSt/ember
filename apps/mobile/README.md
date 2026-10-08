@@ -84,6 +84,18 @@ to point it at another server, rebuild with that URL as usual. Android 6
 (API 23) has no per-host config: there, cleartext stays allowed as before.
 Tests: `NetworkSecurityTest`.
 
+## Updates (Android only)
+
+The app updates itself from the Ember server: it checks on start and every 6
+hours, downloads the release APK over Wi-Fi or mobile data, checks that it is
+the next Ember signed with the same key, and installs it when that stops
+nothing (never in the car, never by itself while music plays). Android 12+
+installs silently once Ember is the installer of record; the first update and
+older Android versions show the system's confirm dialog. Every APK must be
+signed with the same release keystore (alias `ember`, GitHub secrets
+`ANDROID_KEYSTORE_B64` / `ANDROID_KEYSTORE_PASSWORD`), so keep it safe.
+Details, per-version behaviour and the release checklist: [docs/APPS.md](../../docs/APPS.md#in-app-updates-android).
+
 ## Offline (Android only)
 
 Pins, not a bulk cache: each playlist and Liked Songs can be pinned for

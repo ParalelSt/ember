@@ -286,6 +286,88 @@ keytool -genkeypair -keystore ember-release.keystore -alias ember \
 cp keystore.properties.example keystore.properties   # fill in the password
 ```
 
+## In-app updates (Android)
+
+The Android app updates itself from the Ember server, like the desktop app
+(`AppUpdater.kt`, `UpdateRules.kt`, `UpdateInstaller.kt`, `UpdateCheckJob.kt`
+in `apps/mobile/android/app/src/main/java/app/ember/music/`).
+
+**How it works**
+
+1. **Check.** On app start (at most every 15 minutes) and every 6 hours with
+   the app closed (Android's JobScheduler, needs a network, kept across a
+   reboot), the app asks `GET /api/android/update?version=0.4.18&versionCode=23`.
+   The server reads the latest published GitHub Release (the same cached
+   lookup as the desktop feed, `GITHUB_RELEASES_TOKEN` required) and answers
+   204 (up to date, or any failure) or `{ version, versionCode, url, size,
+   sha256 }`. `url` is `/api/android/apk/<id>`, a proxy that streams only the
+   latest release's `Ember-vX.Y.Z-android.apk` with the host's token. Both
+   routes are public (a signed-out phone must still update); the APK proxy
+   is rate limited.
+2. **Download.** Only over a network Android has validated (INTERNET +
+   VALIDATED) on Wi-Fi, mobile data or ethernet; offline it skips and tries
+   at the next check. The APK goes to the app's private cache.
+3. **Verify.** Installed only when the file matches the release's sha256
+   (when GitHub reported one), its package is `app.ember.music`, its
+   versionCode is higher than the installed one, and it is signed with the
+   installed app's certificate (a rotated key passes only through its
+   lineage). A refused APK is deleted and not downloaded again until the
+   person taps Check for updates.
+4. **Install** through a PackageInstaller session, and only when that stops
+   nothing:
+   - never while Android Auto is projecting or a car is connected to the
+     player, not even on a tap; the car's Home shows "Ember update ready"
+     with "Installs when you're parked and the music is stopped" (or, where
+     Android will ask first, "open Ember on your phone to install");
+   - never by itself while music plays (phone or cast); a tap on Install is
+     the person's choice;
+   - by itself only when Android will not ask, Ember is off screen, and
+     nothing has played for 2 minutes; with Ember on screen the page shows
+     "Update ready, tap to install" instead of the app vanishing.
+
+**Per Android version**
+
+| Android | First update from inside Ember | Later updates |
+| --- | --- | --- |
+| 6 to 11 (API 23 to 30) | System confirm dialog (after a tap on Install) | Confirm dialog every time |
+| 12 (API 31, 32) | Confirm dialog once: the APK was installed by a browser or file manager, which is its installer of record | Silent (`USER_ACTION_NOT_REQUIRED`, Ember is now the installer of record) |
+| 13+ (API 33+) | Same as 12 | Silent, through `UPDATE_PACKAGES_WITHOUT_USER_ACTION` |
+
+"Install unknown apps" must be allowed for Ember (Android 8+). When it is
+off, the update pill and Settings offer **Allow installs**, which opens that
+switch. If Android still asks for confirmation when a silent install was
+expected (it decides, not Ember), the confirm screen opens while Ember is on
+screen, or waits for a tap.
+
+**In the page.** Inside the Android app only: a small pill under the top bar
+(downloading with its percentage, ready, Allow installs, Updating) and an
+**App updates** card at the bottom of Settings with the app version and
+**Check for updates** (`lib/appUpdate.ts`, `components/update/`,
+`components/settings/AppUpdateCard.tsx`).
+
+**Logs.** Every step is sent to `POST /api/native-log` as `update.*` events
+(check, available, skip, download, ready, rejected, deferred, install,
+confirm, declined, failed, installed, car), so they show on the admin's
+**Car and Android Auto** page with the device and surface.
+
+**For each release**
+
+- The tag is `vX.Y.Z` and equals `versionName` in `build.gradle`; the phone
+  compares by that name. **`versionCode` must go up**, or the phone refuses
+  the APK as not newer. (The release notes may state `versionCode: N`; the
+  feed passes it on, but nothing needs it.)
+- The release must be published (not draft or prerelease) and carry
+  `Ember-vX.Y.Z-android.apk` (the release job names it so).
+- **Keep the release keystore.** Every APK must be signed with the same key
+  (alias `ember`), or every installed phone refuses the update
+  (`update.rejected SIGNATURE_MISMATCH` in the log) and people have to
+  uninstall and reinstall. CI signs with it from the repo secrets
+  `ANDROID_KEYSTORE_B64` and `ANDROID_KEYSTORE_PASSWORD`
+  (`.github/workflows/native-build.yml`, read by `app/build.gradle`); when
+  they are missing the build falls back to the debug key, and that APK can
+  never update a release-signed install. Back the keystore up somewhere
+  besides the Mac and GitHub.
+
 ## Offline downloads (Android)
 
 Android builds can pin a playlist or Liked Songs for offline playback: the
