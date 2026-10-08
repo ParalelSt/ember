@@ -1,8 +1,14 @@
-# Pings the friend who hosts in Discord (#release-notif) when main has a new
-# version. At most once per evening, never before 19:00 Europe/Zagreb. The
-# schedule fires at 17:00 and 18:00 UTC so 19:00 local is covered in summer and
-# winter time; the script itself decides whether to ping. State lives in the
-# annotated tag notified/main (message = date it was sent).
+# Pings the friend who hosts in Discord (#release-notif) when main has changes
+# he needs to update for. Changes pushed before 19:00 Europe/Zagreb are sent at
+# 19:00; changes pushed after 19:00 are sent as soon as they are pushed. No
+# changes, no ping.
+#
+# GitHub starts scheduled runs late (hours, at busy times), so the afternoon
+# runs start well before 19:00: one that finds waiting changes sleeps until
+# 19:00, fetches main again and pings then. Only one run holds the
+# concurrency group, so the others queue behind it and find nothing new. The
+# evening runs are a fallback if the afternoon ones never started.
+# State lives in the annotated tag notified/main (message = date it was sent).
 #
 # Config (Settings -> Secrets and variables -> Actions):
 #   * Secret    DISCORD_RELEASE_WEBHOOK  webhook of the #release-notif channel
@@ -15,7 +21,10 @@ on:
   push:
     branches: [main]
   schedule:
-    - cron: "0 17,18 * * *"
+    # afternoon (UTC): sleep until 19:00 local, summer and winter time
+    - cron: "23,53 12-16 * * *"
+    # evening fallback: pings at once if something is still waiting
+    - cron: "7,37 17-21 * * *"
   workflow_dispatch:
 
 concurrency:
@@ -28,6 +37,8 @@ permissions:
 jobs:
   ping:
     runs-on: ubuntu-latest
+    # a run may sleep up to 5.5 hours until 19:00 (MAX_WAIT_MS)
+    timeout-minutes: 345
     steps:
       - uses: actions/checkout@v4
         with:
