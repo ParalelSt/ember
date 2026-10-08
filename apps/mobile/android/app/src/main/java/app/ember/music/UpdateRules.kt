@@ -136,6 +136,13 @@ object UpdateRules {
         return Verdict.OK
     }
 
+    /** A refusal that will not change on a second download: remembered, so
+     *  the 6-hourly check does not fetch the same APK again. A hash
+     *  mismatch or an unreadable file can be a damaged transfer, so those
+     *  are tried again. */
+    fun isPermanent(v: Verdict): Boolean =
+        v == Verdict.WRONG_PACKAGE || v == Verdict.NOT_NEWER || v == Verdict.SIGNATURE_MISMATCH
+
     // ── Installing ──────────────────────────────────────────────────────
 
     /** Whether Android will install without asking: Android 12+ with
@@ -197,6 +204,12 @@ object UpdateRules {
         f.idleMs < IDLE_GRACE_MS -> Decision.WAIT_IDLE
         else -> Decision.INSTALL
     }
+
+    /** Whether the player counts as playing for the updater: it is meant to
+     *  play (playWhenReady) and has something loaded that has not ended.
+     *  States: 1 idle, 2 buffering, 3 ready, 4 ended (Player.STATE_*). */
+    fun meansPlaying(playWhenReady: Boolean, playbackState: Int): Boolean =
+        playWhenReady && playbackState != 1 && playbackState != 4
 
     /** Whether a periodic or start-up check is due. */
     fun checkDue(now: Long, lastCheck: Long, minGapMs: Long): Boolean =

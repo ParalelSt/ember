@@ -19,8 +19,13 @@ import java.io.File
 object UpdateInstaller {
     const val ACTION_STATUS = "app.ember.music.UPDATE_STATUS"
 
-    fun commit(context: Context, apk: File, silent: Boolean) {
+    /** Stages [apk] and commits it, unless [stillOk] says no at the last
+     *  moment (the session is then abandoned and false returned). Sessions
+     *  an earlier attempt left open (a confirm never answered) are dropped
+     *  first, so no staged copies pile up. */
+    fun commit(context: Context, apk: File, silent: Boolean, stillOk: () -> Boolean = { true }): Boolean {
         val installer = context.packageManager.packageInstaller
+        runCatching { installer.mySessions.forEach { old -> runCatching { installer.abandonSession(old.sessionId) } } }
         val params = PackageInstaller.SessionParams(PackageInstaller.SessionParams.MODE_FULL_INSTALL).apply {
             setAppPackageName(context.packageName)
             setSize(apk.length())
@@ -39,8 +44,13 @@ object UpdateInstaller {
                 // intent into it. Explicit, so nothing else can receive it.
                 val flags = PendingIntent.FLAG_UPDATE_CURRENT or (if (Build.VERSION.SDK_INT >= 31) PendingIntent.FLAG_MUTABLE else 0)
                 val pending = PendingIntent.getBroadcast(context, id, intent, flags)
+                if (!stillOk()) {
+                    session.abandon()
+                    return false
+                }
                 session.commit(pending.intentSender)
             }
+            return true
         } catch (e: Exception) {
             runCatching { installer.abandonSession(id) }
             throw e

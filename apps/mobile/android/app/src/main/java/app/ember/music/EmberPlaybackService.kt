@@ -342,6 +342,8 @@ class EmberPlaybackService : MediaLibraryService() {
     private var noticeShown = false
     private val presenceWatch = object : Player.Listener {
         override fun onIsPlayingChanged(isPlaying: Boolean) = publishPresence()
+        override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) = publishPresence()
+        override fun onPlaybackStateChanged(playbackState: Int) = publishPresence()
     }
     private val updateListener: (org.json.JSONObject) -> Unit = { handler.post { refreshUpdateNotice() } }
 
@@ -358,7 +360,11 @@ class EmberPlaybackService : MediaLibraryService() {
     }
 
     private fun publishPresence() {
-        UpdatePresence.setPlaying(runCatching { active.isPlaying }.getOrDefault(false))
+        // Meant to play, not "sound coming out right now": a call or a
+        // navigation prompt pauses isPlaying for a while, and buffering
+        // does too, but the music is still on and must not be cut by an
+        // update.
+        UpdatePresence.setPlaying(runCatching { UpdateRules.meansPlaying(active.playWhenReady, active.playbackState) }.getOrDefault(false))
         UpdatePresence.setCar(carControllers.isNotEmpty())
     }
 

@@ -129,7 +129,12 @@ object AppUpdater {
     @Volatile private var error: String? = null
     @Volatile private var waiting: String? = null
     @Volatile private var ready: Ready? = null
-    @Volatile private var busy = false
+    /** A check or an install commit is under way (one at a time). */
+    private val busy = java.util.concurrent.atomic.AtomicBoolean(false)
+    /** Whether this run opened Android's confirm screen; coming back from
+     *  it without an answer arrives as a plain resume. */
+    @Volatile private var confirmShown = false
+    private val stuckCheck = Runnable { unstick(force = true) }
     /** The system's confirm screen for a session that needs the person. */
     @Volatile private var pendingConfirm: Intent? = null
     /** The person said no (or the install failed) this run: no more tries
@@ -183,6 +188,7 @@ object AppUpdater {
         listeners.forEach { l -> runCatching { l(s) } }
     }
 
+    @Synchronized
     private fun set(status: Status, latest: String? = this.latest, progress: Double? = null, error: String? = null, waiting: String? = null) {
         this.status = status
         this.latest = latest
@@ -234,8 +240,7 @@ object AppUpdater {
     /** Ask the server, download what is newer, then see whether it may
      *  install. [done] runs when all of that has finished (the job's end). */
     fun check(manual: Boolean, reason: String, done: (() -> Unit)? = null) {
-        if (busy || status == Status.INSTALLING) { done?.let { main.post(it) }; return }
-        busy = true
+        if (status == Status.INSTALLING || !busy.compareAndSet(false, true)) { done?.let { main.post(it) }; return }
         work.execute {
             try {
                 runCheck(manual, reason)
@@ -248,7 +253,7 @@ object AppUpdater {
                     publish()
                 }
             } finally {
-                busy = false
+                busy.set(false)
                 main.post { evaluate(false) }
                 done?.let { main.post(it) }
             }
@@ -256,6 +261,7 @@ object AppUpdater {
     }
 
     private fun runCheck(manual: Boolean, reason: String) {
+        if (status == Status.INSTALLING) return
         val net = netFacts()
         if (!UpdateRules.canDownload(net)) {
             log.info("update.skip", "no working network, update check skipped", JSONObject().put("reason", reason))
@@ -344,7 +350,9 @@ object AppUpdater {
         val verdict = UpdateRules.verify(archive, installed(), feed.sha256, hex)
         if (verdict != UpdateRules.Verdict.OK) {
             apk.delete()
-            prefs().edit().putString(KEY_REJECTED, feed.version).apply()
+            // A damaged transfer is tried again at the next check; only an
+            // APK that can never go in is remembered.
+            if (UpdateRules.isPermanent(verdict)) prefs().edit().putString(KEY_REJECTED, feed.version).apply()
             log.error("update.rejected", "downloaded ${feed.version} refused: $verdict", JSONObject().put("version", feed.version).put("verdict", verdict.name))
             set(Status.FAILED, latest = feed.version, error = when (verdict) {
                 UpdateRules.Verdict.SIGNATURE_MISMATCH -> "This update is signed with a different key"
@@ -372,8 +380,12 @@ object AppUpdater {
         main.post {
             autoBlocked = false
             val confirm = pendingConfirm
-            if (confirm != null && UpdatePresence.foreground && launch(confirm)) {
-                pendingConfirm = null
+            if (confirm != null && UpdatePresence.foreground && !carSession() && launch(confirm)) {
+                // Kept: a Back out of the screen can be followed by another tap.
+                confirmShown = true
+                set(Status.INSTALLING, latest = ready?.version ?: latest)
+                main.removeCallbacks(stuckCheck)
+                main.postDelayed(stuckCheck, STUCK_INSTALL_MS)
                 return@post
             }
             evaluate(true)
@@ -385,7 +397,7 @@ object AppUpdater {
     fun evaluate(userRequested: Boolean) {
         main.removeCallbacks(idleCheck)
         val r = ready ?: return
-        if (status == Status.INSTALLING || busy) return
+        if (status == Status.INSTALLING || busy.get()) return
         if (!r.file.exists()) { clearReady(); set(Status.IDLE); return }
         val facts = UpdateRules.InstallFacts(
             playing = UpdatePresence.playing,
@@ -406,7 +418,7 @@ object AppUpdater {
             else log.info("update.deferred", "update ${r.version} waits: ${decision.name.lowercase()}", data)
         }
         when (decision) {
-            UpdateRules.Decision.INSTALL -> install(r)
+            UpdateRules.Decision.INSTALL -> install(r, userRequested)
             UpdateRules.Decision.WAIT_CAR -> set(Status.READY, latest = r.version, waiting = "car")
             UpdateRules.Decision.WAIT_PLAYING -> set(Status.READY, latest = r.version, waiting = "playback")
             UpdateRules.Decision.WAIT_IDLE -> {
@@ -419,19 +431,55 @@ object AppUpdater {
         }
     }
 
-    private fun install(r: Ready) {
+    private fun install(r: Ready, userRequested: Boolean) {
+        if (!busy.compareAndSet(false, true)) return
         installStartedAt = System.currentTimeMillis()
         set(Status.INSTALLING, latest = r.version)
         prefs().edit().putString(KEY_INSTALLING, r.version).apply()
+        pendingConfirm = null
+        // A session that never got an answer is cleaned up after a while.
+        main.removeCallbacks(stuckCheck)
+        main.postDelayed(stuckCheck, STUCK_INSTALL_MS)
         // Installing replaces this process: send what is buffered first.
         log.flush()
         work.execute {
             try {
-                UpdateInstaller.commit(app, r.file, silent = Build.VERSION.SDK_INT >= 31)
+                // Copying the APK takes a moment: music started (a headset's
+                // play key) or a car connected in the meantime still wins.
+                val committed = UpdateInstaller.commit(app, r.file, silent = Build.VERSION.SDK_INT >= 31) {
+                    !carSession() && (userRequested || !UpdatePresence.playing)
+                }
+                if (!committed) busy.set(false)
+                if (!committed) main.post {
+                    log.info("update.deferred", "install of ${r.version} called off: music or the car started")
+                    main.removeCallbacks(stuckCheck)
+                    prefs().edit().remove(KEY_INSTALLING).apply()
+                    lastDecision = null
+                    set(Status.READY, latest = r.version)
+                    evaluate(false)
+                }
             } catch (e: Exception) {
                 main.post { onInstallFailed("install could not start: ${e.message}", keep = true) }
+            } finally {
+                busy.set(false)
             }
         }
+    }
+
+    /** INSTALLING with no answer from Android: the confirm screen was left
+     *  without a choice, or the session died quietly. Back to "tap to
+     *  install" ([force]: the timeout; otherwise only after a confirm screen
+     *  this run opened). */
+    private fun unstick(force: Boolean) {
+        val r = ready ?: return
+        if (status != Status.INSTALLING) return
+        if (!force && !confirmShown) return
+        confirmShown = false
+        main.removeCallbacks(stuckCheck)
+        autoBlocked = true
+        lastDecision = UpdateRules.Decision.ASK_USER
+        log.info("update.unanswered", "no answer to the install of ${r.version}", JSONObject().put("timeout", force))
+        set(Status.READY, latest = r.version, waiting = "tap")
     }
 
     /** UpdateInstallReceiver: the system needs the person to confirm. On
@@ -440,11 +488,16 @@ object AppUpdater {
         main.post {
             val r = ready ?: return@post
             log.info("update.confirm", "Android asks to confirm ${r.version}", JSONObject().put("foreground", UpdatePresence.foreground))
+            pendingConfirm = confirm
             if (confirm != null && UpdatePresence.foreground && !carSession() && launch(confirm)) {
+                confirmShown = true
                 set(Status.INSTALLING, latest = r.version)
                 return@post
             }
-            pendingConfirm = confirm
+            // Android asked where a silent install was expected: no more
+            // tries by itself (each would stage the whole APK again).
+            autoBlocked = true
+            main.removeCallbacks(stuckCheck)
             lastDecision = UpdateRules.Decision.ASK_USER
             set(Status.READY, latest = r.version, waiting = "tap")
         }
@@ -460,6 +513,8 @@ object AppUpdater {
         main.post {
             val r = ready
             prefs().edit().remove(KEY_INSTALLING).apply()
+            main.removeCallbacks(stuckCheck)
+            confirmShown = false
             autoBlocked = true
             pendingConfirm = null
             if (aborted) log.info("update.declined", "install of ${r?.version} not confirmed")
@@ -498,12 +553,7 @@ object AppUpdater {
      *  confirm screen may have been left with Back (no answer arrives then). */
     fun refresh() {
         main.post {
-            val r = ready
-            if (status == Status.INSTALLING && r != null && System.currentTimeMillis() - installStartedAt > STUCK_INSTALL_MS) {
-                autoBlocked = true
-                lastDecision = UpdateRules.Decision.ASK_USER
-                set(Status.READY, latest = r.version, waiting = "tap")
-            }
+            unstick(force = status == Status.INSTALLING && System.currentTimeMillis() - installStartedAt > STUCK_INSTALL_MS)
             evaluate(false)
             publish()
         }

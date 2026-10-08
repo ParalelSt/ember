@@ -44,6 +44,13 @@ class EmberUpdatePlugin : Plugin() {
         AppUpdater.refresh()
     }
 
+    /** Also after Android's confirm screen (a dialog over the app: no
+     *  onStart when it closes). */
+    override fun handleOnResume() {
+        super.handleOnResume()
+        AppUpdater.refresh()
+    }
+
     override fun handleOnStop() {
         super.handleOnStop()
         UpdatePresence.setForeground(false)

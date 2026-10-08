@@ -118,6 +118,27 @@ class UpdateRulesTest {
         assertEquals(Verdict.HASH_MISMATCH, UpdateRules.verify(apk(), installed, expectedSha256 = "ab".repeat(32), actualSha256 = "cd".repeat(32)))
     }
 
+    @Test fun `only a refusal a new download cannot fix is remembered`() {
+        assertTrue(UpdateRules.isPermanent(Verdict.WRONG_PACKAGE))
+        assertTrue(UpdateRules.isPermanent(Verdict.NOT_NEWER))
+        assertTrue(UpdateRules.isPermanent(Verdict.SIGNATURE_MISMATCH))
+        assertFalse(UpdateRules.isPermanent(Verdict.HASH_MISMATCH))
+        assertFalse(UpdateRules.isPermanent(Verdict.UNREADABLE))
+        assertFalse(UpdateRules.isPermanent(Verdict.OK))
+    }
+
+    @Test fun `music meant to play counts as playing through a call, a nav prompt or buffering`() {
+        val idle = androidx.media3.common.Player.STATE_IDLE
+        val buffering = androidx.media3.common.Player.STATE_BUFFERING
+        val ready = androidx.media3.common.Player.STATE_READY
+        val ended = androidx.media3.common.Player.STATE_ENDED
+        assertTrue(UpdateRules.meansPlaying(true, ready))
+        assertTrue(UpdateRules.meansPlaying(true, buffering))
+        assertFalse(UpdateRules.meansPlaying(false, ready))
+        assertFalse(UpdateRules.meansPlaying(true, idle))
+        assertFalse(UpdateRules.meansPlaying(true, ended))
+    }
+
     // ── Installing ──────────────────────────────────────────────────────
 
     @Test fun `silent only on Android 12+ with Ember as the installer of record`() {
