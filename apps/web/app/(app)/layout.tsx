@@ -115,8 +115,8 @@ export default function AppShellLayout({ children }: { children: ReactNode }) {
               the scroller's own bottom edge whether or not the player bar
               is showing (bughunt V12). */}
           <BackToTop scrollRef={scrollerRef} />
-          {/* A transfer in the background: its chip and its "Transfer
-              done" notification, over the top of whatever page is open. */}
+          {/* A transfer in the background: its floating pill and its
+              "Transfer done" card, over whatever page is open. */}
           <TransferStatus />
         </div>
         <PlayerBar />

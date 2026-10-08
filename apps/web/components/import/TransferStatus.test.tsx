@@ -3,9 +3,9 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import type { ImportJob } from '@/lib/import/types';
 
-// The chip and the "Transfer done" notification in the app shell, with the
-// jobs list faked: you stay where you were, the chip says how far, and the
-// notification says the result and opens the list.
+// The floating pill and the "Transfer done" card in the app shell, with the
+// jobs list faked: you stay where you were, the pill says how far, and the
+// card says the result and opens the list.
 
 const push = vi.fn();
 const nav = vi.hoisted(() => ({ path: '/library/liked' }));
@@ -62,23 +62,40 @@ describe('TransferStatus', () => {
     expect(screen.queryByTestId('transfer-chip-status')).toBeNull();
   });
 
-  it('a small chip says how far, and a tap says X of Y and about how long, with Stop', () => {
+  it('a pill floats at the bottom saying how far, and a tap says about how long is left, with Stop', () => {
     jobsState.jobs = [job()];
     render(<TransferStatus />);
+    const pill = screen.getByTestId('transfer-pill');
+    expect(pill.className).toMatch(/bottom-/);
+    expect(pill.className).not.toMatch(/top-/);
     const chip = screen.getByTestId('transfer-chip-status');
-    expect(chip).toHaveTextContent('Transfer 25%');
+    expect(chip).toHaveTextContent('Transferring · 25%');
+    expect(screen.getByTestId('transfer-pill-detail')).toHaveTextContent('300 of 1,200');
+    expect(screen.queryByRole('button', { name: 'Stop' })).toBeNull();
     fireEvent.click(chip);
-    expect(toast).toHaveBeenCalledWith('300 of 1,200, about 20 minutes left', expect.objectContaining({ action: expect.objectContaining({ label: 'Stop' }) }));
-    (toast.mock.calls[0][1] as { action: { onClick: () => void } }).action.onClick();
+    expect(chip).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByTestId('transfer-pill-detail')).toHaveTextContent('About 20 minutes left');
+    fireEvent.click(screen.getByRole('button', { name: 'Stop' }));
     expect(update.mutate).toHaveBeenCalledWith('cancel');
     expect(push).not.toHaveBeenCalled();
+    expect(toast).not.toHaveBeenCalled();
   });
 
   it('a transfer waiting for Retry says why, and offers it', () => {
     jobsState.jobs = [job({ status: 'paused', error: 'YouTube Music is busy.' })];
     render(<TransferStatus />);
+    expect(screen.getByTestId('transfer-chip-status')).toHaveTextContent('Transfer paused');
+    expect(screen.getByTestId('transfer-pill-detail')).toHaveTextContent('YouTube Music is busy.');
     fireEvent.click(screen.getByTestId('transfer-chip-status'));
-    expect(toast).toHaveBeenCalledWith('YouTube Music is busy.', expect.objectContaining({ action: expect.objectContaining({ label: 'Retry' }) }));
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+    expect(update.mutate).toHaveBeenCalledWith('retry');
+  });
+
+  it('floats higher on the Transfer page, over its own bottom bar', () => {
+    nav.path = '/transfer';
+    jobsState.jobs = [job()];
+    render(<TransferStatus />);
+    expect(screen.getByTestId('transfer-pill').className).toMatch(/bottom-24/);
   });
 
   it('when it finishes: "Transfer done" with the plain result, and a tap opens the one list', () => {
@@ -90,10 +107,34 @@ describe('TransferStatus', () => {
     const n = screen.getByTestId('transfer-notification');
     expect(n).toHaveTextContent('Transfer done');
     expect(screen.getByTestId('transfer-notification-result')).toHaveTextContent('We found 1192 songs. 6 need a quick check, 2 we could not find.');
-    expect(screen.getByTestId('transfer-chip-status')).toHaveTextContent('8 to check');
-    fireEvent.click(screen.getByText('Transfer done'));
+    // The card takes the pill's place while it is up.
+    expect(screen.queryByTestId('transfer-chip-status')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Check 8 songs' }));
     expect(push).toHaveBeenCalledWith('/transfer/review?job=j1');
     expect(screen.queryByTestId('transfer-notification')).toBeNull();
+  });
+
+  it('the card itself opens the list too, and once dismissed the pill says how many to check', () => {
+    jobsState.jobs = [job()];
+    const { rerender } = render(<TransferStatus />);
+    jobsState.jobs = [job({ status: 'done', cursor: 1200, accepted: 1192 })];
+    rerender(<TransferStatus />);
+    act(() => fireEvent.click(screen.getByRole('button', { name: 'Dismiss' })));
+    expect(screen.getByTestId('transfer-chip-status')).toHaveTextContent('8 to check');
+    fireEvent.click(screen.getByTestId('transfer-chip-status'));
+    expect(push).toHaveBeenCalledWith('/transfer/review?job=j1');
+  });
+
+  it('a stopped transfer says so on its card', () => {
+    jobsState.jobs = [job()];
+    const { rerender } = render(<TransferStatus />);
+    jobsState.jobs = [job({ status: 'cancelled', review: 0, missing: 0 })];
+    rerender(<TransferStatus />);
+    expect(screen.getByTestId('transfer-notification')).toHaveTextContent('Transfer stopped');
+    // Nothing to check: no Check button.
+    expect(screen.queryByRole('button', { name: /^Check/ })).toBeNull();
+    fireEvent.click(screen.getByText('Transfer stopped'));
+    expect(push).toHaveBeenCalledWith('/transfer/review?job=j1');
   });
 
   it('says it once, even after a reload', () => {
@@ -126,7 +167,7 @@ describe('TransferStatus', () => {
     const { rerender } = render(<TransferStatus />);
     jobsState.jobs = [job({ status: 'done', review: 0, missing: 0 })];
     rerender(<TransferStatus />);
-    expect(screen.getByTestId('transfer-chip-status')).toHaveTextContent('Transfer done');
+    expect(screen.getByTestId('transfer-notification')).toHaveTextContent('Transfer done');
     act(() => fireEvent.click(screen.getByRole('button', { name: 'Dismiss' })));
     expect(screen.queryByTestId('transfer-notification')).toBeNull();
     expect(screen.queryByTestId('transfer-chip-status')).toBeNull();
