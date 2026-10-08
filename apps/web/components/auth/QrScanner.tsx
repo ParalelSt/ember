@@ -181,7 +181,7 @@ export function QrScanner({ onResult, onClose, onTypeCode, origin, getUserMedia,
           size="icon-lg"
           onClick={onClose}
           aria-label="Close scanner"
-          className="text-white hover:bg-white/10 hover:text-white"
+          className="text-inherit opacity-90 hover:bg-transparent hover:text-inherit hover:opacity-100"
         >
           <CloseIcon />
         </Button>
@@ -198,14 +198,14 @@ export function QrScanner({ onResult, onClose, onTypeCode, origin, getUserMedia,
         />
         {!failed && (
           <div aria-hidden className="pointer-events-none absolute inset-0 grid place-items-center">
-            <div className="aspect-square w-2/3 max-w-xs rounded-2xl border-2 border-white/80 shadow-[0_0_0_100vmax_rgba(0,0,0,0.45)]" />
+            <div className="aspect-square w-2/3 max-w-xs rounded-2xl border-2 border-current opacity-80 shadow-[0_0_0_100vmax_rgba(0,0,0,0.45)]" />
           </div>
         )}
         {failed && (
           <div className="absolute inset-0 grid place-items-center p-page text-center">
             <div className="max-w-sm">
               <div className="text-lg font-semibold">{MESSAGES[state].title}</div>
-              <p className="mt-cluster text-sm text-white/75">{MESSAGES[state].body}</p>
+              <p className="mt-cluster text-sm opacity-75">{MESSAGES[state].body}</p>
               {state !== 'no-camera' && (
                 <Button type="button" variant="outline" className="mt-block" onClick={() => setAttempt((a) => a + 1)}>
                   Try again
@@ -219,18 +219,18 @@ export function QrScanner({ onResult, onClose, onTypeCode, origin, getUserMedia,
       <div className="p-page text-center" aria-live="polite">
         {invalid ? (
           <div className="font-semibold" data-testid="qr-invalid">
-            <span className="rounded-md bg-destructive px-cluster py-inset text-white">{NOT_A_SIGN_IN_CODE}</span>
+            <span className="rounded-md bg-destructive px-cluster py-inset">{NOT_A_SIGN_IN_CODE}</span>
           </div>
         ) : state === 'starting' ? (
-          <div className="text-sm text-white/75">Starting the camera...</div>
+          <div className="text-sm opacity-75">Starting the camera...</div>
         ) : state === 'scanning' ? (
-          <div className="text-sm text-white/75">Point at the QR code on the other device.</div>
+          <div className="text-sm opacity-75">Point at the QR code on the other device.</div>
         ) : null}
         {onTypeCode && (
           <button
             type="button"
             onClick={onTypeCode}
-            className="mt-block inline-block text-sm text-white/75 underline hover:text-white"
+            className="mt-block inline-block text-sm underline opacity-75 hover:opacity-100"
           >
             No camera? Type the code in Settings &gt; Devices
           </button>

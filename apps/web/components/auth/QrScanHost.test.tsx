@@ -22,6 +22,7 @@ vi.mock('@/components/auth/QrScanner', () => ({
 }));
 
 const { QrScanHost } = await import('./QrScanHost');
+const { ScanQrButton } = await import('./ScanQrButton');
 const { useUiStore } = await import('@/stores/useUiStore');
 
 const TOKEN = 'AbCdEfGhIjKlMnOpQrStUvWxYz0123456789-_abcde';
@@ -126,7 +127,6 @@ describe('ScanQrButton', () => {
   });
 
   it('is not there on a desktop browser', async () => {
-    const { ScanQrButton } = await import('./ScanQrButton');
     vi.spyOn(window.navigator, 'userAgent', 'get').mockReturnValue(
       'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/120 Safari/537.36',
     );
@@ -137,7 +137,6 @@ describe('ScanQrButton', () => {
   });
 
   it('is not there in the desktop app', async () => {
-    const { ScanQrButton } = await import('./ScanQrButton');
     (window as unknown as { __TAURI_INTERNALS__: unknown }).__TAURI_INTERNALS__ = {};
     try {
       await act(async () => {
@@ -150,7 +149,6 @@ describe('ScanQrButton', () => {
   });
 
   it('is not there on a car screen', async () => {
-    const { ScanQrButton } = await import('./ScanQrButton');
     vi.spyOn(window.navigator, 'userAgent', 'get').mockReturnValue(
       'Mozilla/5.0 (Linux; Android 12) AppleWebKit/537.36 Chrome/120 Safari/537.36 EmberCar',
     );
@@ -162,7 +160,6 @@ describe('ScanQrButton', () => {
   });
 
   it('in the Android app: shows, closes the drawer first, and starts a scan', async () => {
-    const { ScanQrButton } = await import('./ScanQrButton');
     vi.spyOn(window.navigator, 'userAgent', 'get').mockReturnValue(
       'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 Chrome/120 Mobile Safari/537.36',
     );
@@ -177,7 +174,6 @@ describe('ScanQrButton', () => {
   });
 
   it('in an iPhone browser with a camera API: shows', async () => {
-    const { ScanQrButton } = await import('./ScanQrButton');
     vi.spyOn(window.navigator, 'userAgent', 'get').mockReturnValue(
       'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148 Safari/604.1',
     );

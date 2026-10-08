@@ -299,6 +299,8 @@ const COLOUR_BASELINE: Record<string, number> = {
   'components/tabs/TabSourceSheet.tsx': 1, // tap-to-close backdrop bg-black/50
   'components/ui/dialog.tsx': 1, // shadcn overlay bg-black/10
   'components/ui/sheet.tsx': 1, // shadcn overlay bg-black/10
+  // A camera preview is a photo: black around it, white on it, in every theme.
+  'components/auth/QrScanner.tsx': 2, // bg-black camera backdrop + text-white
   // Danger stays red in every theme (owner decision 5), so white on it stays.
   'components/ui/confirm-dialog.tsx': 1, // text-white on bg-destructive
   // Status colours: severity is semantic, not decorative.
