@@ -1,4 +1,6 @@
-// Once-an-evening "new version" Discord ping. Node 20 built-ins only.
+// "New version" Discord ping. Changes pushed before 19:00 Europe/Zagreb are
+// announced at 19:00; changes pushed after 19:00 are announced right away.
+// Node 20 built-ins only.
 // See .github/workflows/release-ping.yml for the config and the state model.
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
@@ -6,6 +8,9 @@ import { fileURLToPath } from 'node:url';
 export const TAG = 'notified/main';
 export const TZ = 'Europe/Zagreb';
 export const FROM_HOUR = 19;
+// A run that finds waiting changes before 19:00 sleeps until 19:00 if that is
+// at most this far off (a GitHub job may run for 6 hours at most).
+export const MAX_WAIT_MS = 330 * 60 * 1000;
 
 /** Local date (YYYY-MM-DD) and hour in Europe/Zagreb for an instant. */
 export function localParts(now, timeZone = TZ) {
@@ -17,12 +22,23 @@ export function localParts(now, timeZone = TZ) {
   return { date: `${p.year}-${p.month}-${p.day}`, hour: Number(p.hour) };
 }
 
+/** Milliseconds from now until 19:00 local today (0 once it is 19:00 or later). */
+export function msUntilEvening(now, timeZone = TZ) {
+  const f = new Intl.DateTimeFormat('en-GB', {
+    timeZone, hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23',
+  });
+  const p = Object.fromEntries(f.formatToParts(now).map((x) => [x.type, Number(x.value)]));
+  const sinceMidnight = ((p.hour * 60 + p.minute) * 60 + p.second) * 1000 + now.getMilliseconds();
+  return Math.max(0, FROM_HOUR * 3600 * 1000 - sinceMidnight);
+}
+
 /** Decide whether to ping. tag = { commit, date } or null. */
 export function decide({ now, head, tag }) {
   const { date, hour } = localParts(now);
-  if (hour < FROM_HOUR) return { ping: false, reason: 'before 19:00 local', date };
   if (tag && tag.commit === head) return { ping: false, reason: 'nothing new', date };
-  if (tag && tag.date === date) return { ping: false, reason: 'already pinged this evening', date };
+  if (hour < FROM_HOUR) {
+    return { ping: false, reason: 'before 19:00 local', date, waitMs: msUntilEvening(now) };
+  }
   return { ping: true, reason: 'new version', date };
 }
 
@@ -71,28 +87,59 @@ function gitRunner(cwd) {
   return (...args) => execFileSync('git', args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
 }
 
-/** Orchestration. deps: { now, env, git, fetch, log } (all injectable). */
+/** Orchestration. deps: { now, env, git, fetch, log, sleep?, clock? } (all injectable).
+ * With sleep, a run that finds waiting changes before 19:00 sleeps until 19:00,
+ * fetches main again and pings then. */
 export async function run(deps) {
-  const { now, env, git, log } = deps;
+  const { env, git, log } = deps;
   const doFetch = deps.fetch;
   const hook = env.DISCORD_RELEASE_WEBHOOK;
   const userId = env.DISCORD_NOTIFY_USER_ID;
   const tryGit = (...a) => { try { return git(...a); } catch { return null; } };
 
-  const head = git('rev-parse', 'HEAD');
-  const tagCommit = tryGit('rev-parse', '--verify', '-q', `refs/tags/${TAG}^{commit}`);
-  const tagDate = tagCommit ? tryGit('tag', '-l', '--format=%(contents)', TAG)?.trim() : null;
-  const tag = tagCommit ? { commit: tagCommit, date: tagDate } : null;
+  const look = () => {
+    const head = git('rev-parse', 'HEAD');
+    const tagCommit = tryGit('rev-parse', '--verify', '-q', `refs/tags/${TAG}^{commit}`);
+    const tagDate = tagCommit ? tryGit('tag', '-l', '--format=%(contents)', TAG)?.trim() : null;
+    const base = tagCommit || tryGit('rev-parse', 'HEAD~1') || head;
+    const changed = (tryGit('diff', '--name-only', base, head) || '').split('\n').filter(Boolean);
+    return { head, tagCommit, tag: tagCommit ? { commit: tagCommit, date: tagDate } : null, base, changed };
+  };
+  // Nothing the host runs changed (CI, docs, tests): no ping, and no tag
+  // move either, so these commits ride along with the next real change.
+  const forHost = (changed) => changed.some((p) => NEEDS_UPDATE.test(p));
 
-  const d = decide({ now, head, tag });
+  let now = deps.now;
+  let s = look();
+  let d = decide({ now, head: s.head, tag: s.tag });
+
+  if (!d.ping && d.waitMs > 0 && forHost(s.changed) && deps.sleep) {
+    if (d.waitMs > MAX_WAIT_MS) {
+      log('waiting changes, but 19:00 is too far off; a later run will ping');
+      return { pinged: false, reason: 'too early to wait' };
+    }
+    log(`waiting changes; sleeping ${Math.round(d.waitMs / 60000)} min until 19:00`);
+    await deps.sleep(d.waitMs);
+    // main and the tag may have moved while sleeping
+    tryGit('fetch', '-q', '-f', 'origin', `+refs/tags/${TAG}:refs/tags/${TAG}`);
+    tryGit('fetch', '-q', 'origin', 'main');
+    tryGit('reset', '-q', '--hard', 'FETCH_HEAD');
+    now = deps.clock ? deps.clock() : new Date(now.getTime() + d.waitMs);
+    s = look();
+    d = decide({ now, head: s.head, tag: s.tag });
+  }
+
   if (!d.ping) { log(`no ping: ${d.reason}`); return { pinged: false, reason: d.reason }; }
+  if (!forHost(s.changed)) {
+    log('nothing for the host to update');
+    return { pinged: false, reason: 'nothing for the host' };
+  }
   if (!hook || !userId) {
     log('DISCORD_RELEASE_WEBHOOK or DISCORD_NOTIFY_USER_ID missing; not pinging, tag not moved');
     return { pinged: false, reason: 'not configured' };
   }
 
-  const base = tagCommit || tryGit('rev-parse', 'HEAD~1') || head;
-  const changed = (tryGit('diff', '--name-only', base, head) || '').split('\n').filter(Boolean);
+  const { head, base, changed } = s;
   const pkgVersion = (rev) => {
     try { return JSON.parse(git('show', `${rev}:apps/web/package.json`)).version; } catch { return null; }
   };
@@ -104,13 +151,6 @@ export async function run(deps) {
   const bare = (t) => t.replace(/^v/, '');
   const atHead = tagsAt(head).sort((a, b) => cmp(bare(a), bare(b)));
   const appsVersion = atHead.length ? bare(atHead[atHead.length - 1]) : null;
-
-  // Nothing the host runs changed (CI, docs, tests): no ping, and no tag
-  // move either, so these commits ride along with the next real change.
-  if (!changed.some((p) => NEEDS_UPDATE.test(p))) {
-    log('nothing for the host to update');
-    return { pinged: false, reason: 'nothing for the host' };
-  }
 
   const text = buildMessage({
     userId, webVersion, appsVersion, changedPaths: changed,
@@ -136,6 +176,10 @@ export async function run(deps) {
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const now = process.env.RELEASE_PING_NOW ? new Date(process.env.RELEASE_PING_NOW) : new Date();
-  run({ now, env: process.env, git: gitRunner(process.cwd()), fetch: globalThis.fetch, log: console.log })
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  run({
+    now, env: process.env, git: gitRunner(process.cwd()), fetch: globalThis.fetch, log: console.log,
+    sleep: process.env.RELEASE_PING_NO_WAIT ? undefined : sleep, clock: () => new Date(),
+  })
     .catch((e) => { console.error(e.message); process.exit(1); });
 }

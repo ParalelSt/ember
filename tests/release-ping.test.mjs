@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  localParts, decide, buildMessage, extraNotes, run,
+  localParts, decide, buildMessage, extraNotes, run, msUntilEvening, MAX_WAIT_MS,
 } from '../.github/scripts/release-ping.mjs';
 
 const U = '123456789';
@@ -24,10 +24,20 @@ test('decide: 19:05 with new commits pings', () => {
 test('decide: no tag pings', () => {
   assert.equal(decide({ now: at('2026-10-06T17:05:00Z'), head: 'b', tag: null }).ping, true);
 });
-test('decide: same evening no second ping, next day pings', () => {
+test('decide: after 19:00 a new commit pings even when there was a ping earlier that evening', () => {
   const tag = { commit: 'a', date: '2026-10-06' };
-  assert.equal(decide({ now: at('2026-10-06T18:30:00Z'), head: 'b', tag }).ping, false);
-  assert.equal(decide({ now: at('2026-10-07T17:00:00Z'), head: 'b', tag }).ping, true);
+  assert.equal(decide({ now: at('2026-10-06T19:30:00Z'), head: 'b', tag }).ping, true);
+});
+test('decide: before 19:00 says how long to wait', () => {
+  const d = decide({ now: at('2026-10-06T16:30:00Z'), head: 'b', tag: { commit: 'a', date: '2026-10-05' } });
+  assert.equal(d.ping, false);
+  assert.equal(d.waitMs, 30 * 60 * 1000);
+});
+test('msUntilEvening: summer and winter, 0 once it is evening', () => {
+  assert.equal(msUntilEvening(at('2026-07-15T16:00:00Z')), 60 * 60 * 1000);
+  assert.equal(msUntilEvening(at('2026-01-15T17:00:00Z')), 60 * 60 * 1000);
+  assert.equal(msUntilEvening(at('2026-07-15T17:00:00Z')), 0);
+  assert.equal(msUntilEvening(at('2026-07-15T21:00:00Z')), 0);
 });
 test('decide: tag at HEAD no ping', () => {
   assert.equal(decide({ now: at('2026-10-07T17:00:00Z'), head: 'a', tag: { commit: 'a', date: '2026-10-01' } }).ping, false);
@@ -71,10 +81,12 @@ test('message: never prank, short', () => {
 
 // Flow with fake git and fetch.
 function fakeEnv({ tag = null, head = 'h2' } = {}) {
-  const state = { tag, posts: [], pushed: 0 };
+  const state = { tag, head, posts: [], pushed: 0, fetched: 0 };
   const git = (...a) => {
     const j = a.join(' ');
-    if (j === 'rev-parse HEAD') return head;
+    if (j === 'rev-parse HEAD') return state.head;
+    if (a[0] === 'fetch') { state.fetched++; return ''; }
+    if (a[0] === 'reset') { if (state.remoteHead) state.head = state.remoteHead; return ''; }
     if (j.startsWith('rev-parse --verify')) { if (!state.tag) throw new Error('no'); return state.tag.commit; }
     if (j.startsWith('tag -l --format')) return state.tag.date;
     if (j === 'rev-parse HEAD~1') return 'h1';
@@ -91,17 +103,53 @@ function fakeEnv({ tag = null, head = 'h2' } = {}) {
   return { state, deps: { git, fetch, env, log: () => {} } };
 }
 
-test('run: pings once per evening, again next evening', async () => {
+test('run: after 19:00 every new push pings right away', async () => {
   const f = fakeEnv({ tag: { commit: 'h1', date: '2026-10-05' } });
   const r1 = await run({ ...f.deps, now: at('2026-10-06T17:05:00Z') });
   assert.equal(r1.pinged, true);
   assert.deepEqual(f.state.posts[0].allowed_mentions, { users: [U] });
   assert.equal(f.state.tag.date, '2026-10-06');
   assert.equal(f.state.pushed, 1);
-  // new commit same evening
-  f.deps.git = fakeEnv({ tag: f.state.tag, head: 'h3' }).deps.git;
-  assert.equal((await run({ ...f.deps, now: at('2026-10-06T18:10:00Z') })).pinged, false);
-  assert.equal(f.state.posts.length, 1);
+  // a new push later the same evening
+  f.state.head = 'h3';
+  assert.equal((await run({ ...f.deps, now: at('2026-10-06T19:10:00Z') })).pinged, true);
+  assert.equal(f.state.posts.length, 2);
+  assert.equal(f.state.tag.commit, 'h3');
+  // the same commit again (a scheduled run) does not ping
+  assert.equal((await run({ ...f.deps, now: at('2026-10-06T20:00:00Z') })).pinged, false);
+  assert.equal(f.state.posts.length, 2);
+});
+test('run: changes before 19:00 sleep until 19:00, then ping the newest main', async () => {
+  const f = fakeEnv({ tag: { commit: 'h1', date: '2026-10-05' } });
+  const slept = [];
+  f.state.remoteHead = 'h4'; // pushed while the run was sleeping
+  const r = await run({
+    ...f.deps, now: at('2026-10-06T14:00:00Z'),
+    sleep: async (ms) => { slept.push(ms); },
+    clock: () => at('2026-10-06T17:00:00Z'),
+  });
+  assert.deepEqual(slept, [3 * 60 * 60 * 1000]);
+  assert.equal(f.state.fetched, 2);
+  assert.equal(r.pinged, true);
+  assert.equal(f.state.tag.commit, 'h4');
+  assert.equal(f.state.tag.date, '2026-10-06');
+});
+test('run: no waiting when nothing changed, or only CI and docs changed', async () => {
+  const sleep = async () => { throw new Error('should not sleep'); };
+  const same = fakeEnv({ tag: { commit: 'h2', date: '2026-10-05' } });
+  assert.equal((await run({ ...same.deps, sleep, now: at('2026-10-06T14:00:00Z') })).pinged, false);
+  const docs = fakeEnv({ tag: { commit: 'h1', date: '2026-10-05' } });
+  docs.state.diff = 'README.md';
+  assert.equal((await run({ ...docs.deps, sleep, now: at('2026-10-06T14:00:00Z') })).pinged, false);
+  assert.equal(same.state.posts.length + docs.state.posts.length, 0);
+});
+test('run: too long before 19:00 leaves it for a later run', async () => {
+  const f = fakeEnv({ tag: { commit: 'h1', date: '2026-10-05' } });
+  const now = at('2026-10-06T08:00:00Z'); // 10:00 local, 9 hours to go
+  assert.ok(msUntilEvening(now) > MAX_WAIT_MS);
+  const r = await run({ ...f.deps, now, sleep: async () => { throw new Error('should not sleep'); } });
+  assert.equal(r.reason, 'too early to wait');
+  assert.equal(f.state.posts.length, 0);
 });
 test('run: missing env does not ping or move tag; failed POST throws without moving', async () => {
   const f = fakeEnv({ tag: { commit: 'h1', date: '2026-10-05' } });
