@@ -6,9 +6,10 @@ import { RATE_LIMITED_MESSAGE } from '@/lib/import/transferCopy';
 import { MATCHED_BY_NAME, SPOTIFY_LINK_CAP } from '@/lib/import/transferRoutes';
 import { GOOGLE_MESSAGES } from '@/lib/import/sources/ytmusicLiked';
 
-// The Transfer page: where the songs go and where they are now on one
-// screen, then what you already have, every route each answer reaches, and
-// every sentence a refused upload puts on screen.
+// The Transfer page, a wizard: where the songs are now first, then a sheet
+// asking where they go, then what you already have, the steps, every route
+// each answer reaches, and every sentence a refused upload puts on screen.
+// Back and the next move live in a bar at the bottom.
 
 const push = vi.fn();
 vi.mock('next/navigation', () => ({ useRouter: () => ({ push }) }));
@@ -16,6 +17,7 @@ vi.mock('@/components/ui/button', () => ({
   Button: ({ children, ...rest }: ComponentProps<'button'>) => <button {...rest}>{children}</button>,
 }));
 vi.mock('@/components/ui/input', () => ({ Input: (props: ComponentProps<'input'>) => <input {...props} /> }));
+vi.mock('@/components/ui/sheet', () => import('@/test-utils/dialogMock'));
 const logger = vi.hoisted(() => ({ breadcrumb: vi.fn(), error: vi.fn() }));
 vi.mock('@/lib/logger/client', () => ({ logger }));
 const toast = vi.hoisted(() => ({ info: vi.fn(), success: vi.fn(), error: vi.fn() }));
@@ -82,26 +84,47 @@ function setup(props: Partial<ComponentProps<typeof TransferFlow>> = {}) {
   );
 }
 
-/** Question one: where the songs land. */
+/** Where the songs land, answered in the sheet the next service opens. */
+let nextDest: 'liked' | 'playlist' | null = null;
 function pick(name: 'Liked songs' | 'A new playlist') {
-  fireEvent.click(screen.getByRole('button', { name: new RegExp(name) }));
+  nextDest = name === 'Liked songs' ? 'liked' : 'playlist';
 }
 
-/** Question two: where the music is now. */
-function service(name: 'Spotify' | 'YouTube Music' | 'Apple Music' | 'Somewhere else') {
+const sheet = () => screen.getByTestId('transfer-where-sheet');
+const serviceRow = (name: string) => {
   const card = screen
     .getAllByTestId('transfer-service-card')
     .find((c) => within(c).getByTestId('transfer-service-name').textContent === name);
   if (!card) throw new Error(`no service card called ${name}`);
-  fireEvent.click(card);
+  return card;
+};
+const destRow = (d: 'liked' | 'playlist') => {
+  const row = within(sheet())
+    .getAllByTestId('transfer-destination-card')
+    .find((c) => c.dataset.destination === d);
+  if (!row) throw new Error(`no ${d} row in the sheet`);
+  return row;
+};
+
+/** Where the music is now: a tap opens the sheet, which takes the
+ *  destination picked with pick() (or the one already on) and Continue. */
+function service(name: 'Spotify' | 'YouTube Music' | 'Apple Music' | 'Somewhere else') {
+  fireEvent.click(serviceRow(name));
+  if (nextDest) fireEvent.click(destRow(nextDest));
+  nextDest = null;
+  fireEvent.click(within(sheet()).getByRole('button', { name: 'Continue' }));
 }
 
-/** Question three: what is already in hand. */
+/** What is already in hand: pick the row, then Next in the bar. */
 function have(match: RegExp) {
   const option = screen.getAllByTestId('transfer-have-option').find((o) => match.test(o.textContent ?? ''));
   if (!option) throw new Error(`no "what do you have" option matching ${match}`);
   fireEvent.click(option);
+  fireEvent.click(nextButton());
 }
+const nextButton = () => screen.getByRole('button', { name: 'Next' });
+const backButton = () => screen.getByRole('button', { name: 'Back' });
+const progressAt = () => screen.getByTestId('transfer-progress').dataset.at;
 
 function chooseFile(name = 'exportify.csv', body = 'Track Name,Artist Name\na,b\n') {
   const input = screen.getByLabelText('Song list file');
@@ -145,6 +168,7 @@ function chip(id: string) {
 const steps = () => screen.getByTestId('transfer-steps').textContent ?? '';
 
 beforeEach(() => {
+  nextDest = null;
   setWidth(1280);
   push.mockReset();
   logger.breadcrumb.mockReset();
@@ -156,14 +180,11 @@ beforeEach(() => {
   api.googleLikesCancel.mockResolvedValue({ cancelled: true });
 });
 
-describe('TransferFlow: one screen, where to and where from', () => {
-  it('asks both at once: the two destinations on top, the four services below', () => {
+describe('TransferFlow: services first, then a sheet for where to', () => {
+  it('asks where the songs are now: the four services as rows, each saying what it needs', () => {
     setup();
     expect(screen.getByRole('heading', { name: 'Transfer songs into Ember' })).toBeInTheDocument();
-    const cards = screen.getAllByTestId('transfer-destination-card');
-    expect(cards.map((c) => c.dataset.destination)).toEqual(['liked', 'playlist']);
-    expect(cards[0]).toHaveTextContent('These become your likes and shape your mixes and radio.');
-    expect(cards[1]).toHaveTextContent('A playlist you can edit, reorder and share.');
+    expect(screen.getByText('Where are your songs now?')).toBeInTheDocument();
     const rows = screen.getAllByTestId('transfer-service-card');
     expect(rows.map((c) => within(c).getByTestId('transfer-service-name').textContent)).toEqual([
       'Spotify',
@@ -171,32 +192,84 @@ describe('TransferFlow: one screen, where to and where from', () => {
       'Apple Music',
       'Somewhere else',
     ]);
-    // Each row says what it needs, and nothing can be started yet.
     expect(rows[0]).toHaveTextContent('Your data export, a CSV or a playlist link');
     expect(rows[1]).toHaveTextContent('Sign in with Google, or a playlist link');
     expect(rows[2]).toHaveTextContent('The file Apple sends you');
     expect(rows[3]).toHaveTextContent('Paste a list, or any CSV');
+    // Where they go is not asked yet, and nothing can be started.
+    expect(screen.queryByTestId('transfer-where-sheet')).toBeNull();
+    expect(screen.queryAllByTestId('transfer-destination-card')).toHaveLength(0);
     expect(screen.queryByRole('button', { name: /^Transfer/ })).toBeNull();
   });
 
-  it('Liked songs is picked to start with, and a tap moves the pick', () => {
+  it('a wizard header says where you are: 1 Where, 2 How, 3 Check', () => {
     setup();
-    const [liked, playlist] = screen.getAllByTestId('transfer-destination-card');
-    expect(liked).toHaveAttribute('aria-pressed', 'true');
-    expect(playlist).toHaveAttribute('aria-pressed', 'false');
-    fireEvent.click(playlist);
-    expect(playlist).toHaveAttribute('aria-pressed', 'true');
-    expect(liked).toHaveAttribute('aria-pressed', 'false');
+    const steps = within(screen.getByTestId('transfer-progress')).getAllByRole('listitem');
+    expect(steps.map((s) => s.textContent)).toEqual(['1 Where', '2 How', '3 Check']);
+    expect(steps.map((s) => s.dataset.state)).toEqual(['current', 'next', 'next']);
+    expect(progressAt()).toBe('0');
+    service('Spotify');
+    expect(progressAt()).toBe('1');
+    const after = within(screen.getByTestId('transfer-progress')).getAllByRole('listitem');
+    expect(after.map((s) => s.dataset.state)).toEqual(['done', 'current', 'next']);
   });
 
-  it('can open on the new-playlist card', () => {
+  it('tapping a service opens a sheet asking where they go, Liked songs picked to start with', () => {
+    setup();
+    fireEvent.click(serviceRow('Spotify'));
+    expect(sheet()).toHaveTextContent('Where should they go?');
+    expect(sheet()).toHaveTextContent('Bringing in from Spotify');
+    expect(destRow('liked')).toHaveTextContent('These become your likes and shape your mixes and radio.');
+    expect(destRow('playlist')).toHaveTextContent('A playlist you can edit, reorder and share.');
+    expect(destRow('liked')).toHaveAttribute('aria-checked', 'true');
+    expect(destRow('playlist')).toHaveAttribute('aria-checked', 'false');
+    fireEvent.click(destRow('playlist'));
+    expect(destRow('playlist')).toHaveAttribute('aria-checked', 'true');
+    expect(destRow('liked')).toHaveAttribute('aria-checked', 'false');
+    // The service row shows as picked behind the sheet.
+    expect(serviceRow('Spotify')).toHaveAttribute('aria-checked', 'true');
+  });
+
+  it('Continue in the sheet goes on to what you have, for the destination picked there', () => {
+    setup();
+    fireEvent.click(serviceRow('Spotify'));
+    fireEvent.click(destRow('playlist'));
+    fireEvent.click(within(sheet()).getByRole('button', { name: 'Continue' }));
+    expect(screen.queryByTestId('transfer-where-sheet')).toBeNull();
+    expect(screen.getByRole('heading', { name: 'What do you have already?' })).toBeInTheDocument();
+    // A new playlist: the link is the first answer.
+    expect(screen.getAllByTestId('transfer-have-option')[0].dataset.route).toBe('spotify-link');
+  });
+
+  it('can open with the new playlist already picked in the sheet', () => {
     setup({ initialDestination: 'playlist' });
-    expect(screen.getAllByTestId('transfer-destination-card')[1]).toHaveAttribute('aria-pressed', 'true');
+    fireEvent.click(serviceRow('Apple Music'));
+    expect(destRow('playlist')).toHaveAttribute('aria-checked', 'true');
+  });
+
+  it('a service that cannot fill the likes opens the sheet on a new playlist, Liked songs off', () => {
+    setup({ likedServicesOpen: ['ytmusic'] });
+    fireEvent.click(serviceRow('Spotify'));
+    expect(destRow('liked')).toBeDisabled();
+    expect(destRow('playlist')).toHaveAttribute('aria-checked', 'true');
+  });
+
+  it('Next stays off until a service is picked, and reopens the sheet for it', () => {
+    setup();
+    expect(nextButton()).toBeDisabled();
+    service('Apple Music');
+    // Back from the steps keeps the service picked, so Next can carry on.
+    fireEvent.click(backButton());
+    expect(screen.queryByTestId('transfer-where-sheet')).toBeNull();
+    expect(serviceRow('Apple Music')).toHaveAttribute('aria-checked', 'true');
+    expect(nextButton()).toBeEnabled();
+    fireEvent.click(nextButton());
+    expect(sheet()).toHaveTextContent('Bringing in from Apple Music');
   });
 
   it('Back on the first screen returns to the page it was opened from', () => {
     setup({ from: '/settings/library' });
-    fireEvent.click(screen.getByRole('button', { name: 'Go back' }));
+    fireEvent.click(backButton());
     expect(push).toHaveBeenCalledWith('/settings/library');
   });
 
@@ -243,9 +316,9 @@ describe('TransferFlow: what do you have already', () => {
     expect(screen.getByTestId('transfer-step-text')).toHaveTextContent('go to Account, then Privacy settings');
     expect(screen.getByTestId('transfer-illustration')).toHaveTextContent('Account');
     expect(screen.getByTestId('transfer-illustration').querySelector('[data-tap="true"]')).toHaveTextContent('Privacy settings');
-    // No file picker until the last step, and Back cannot go before the first.
+    // No file picker until the last step; Back and Next step are in the bar.
     expect(screen.queryByLabelText('Song list file')).toBeNull();
-    expect(screen.getByRole('button', { name: 'Back' })).toBeDisabled();
+    expect(screen.getByTestId('transfer-bar')).toContainElement(screen.getByRole('button', { name: 'Next step' }));
     fireEvent.click(screen.getByRole('button', { name: 'Next step' }));
     expect(screen.getByText('Step 2 of 4')).toBeInTheDocument();
     expect(steps()).toMatch(/Download your data/);
@@ -259,6 +332,8 @@ describe('TransferFlow: what do you have already', () => {
     expect(screen.getByText('Step 4 of 4')).toBeInTheDocument();
     expect(screen.getByLabelText('Song list file')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Next step' })).toBeNull();
+    // With nothing to press, the bar says what moves it on.
+    expect(screen.getByTestId('transfer-bar-hint')).toHaveTextContent('Choose the file above to go on');
   });
 
   it('each answer says how long that way takes', () => {
@@ -316,23 +391,37 @@ describe('TransferFlow: what do you have already', () => {
     expect(screen.getByLabelText('Your songs, one a line')).toBeInTheDocument();
   });
 
-  it('Back walks the questions backwards, one at a time', () => {
+  it('Back walks the steps, then the questions, backwards one at a time', () => {
     setup();
     toSpotifyFile();
-    fireEvent.click(screen.getByRole('button', { name: 'Go back' }));
+    expect(screen.getByText('Step 2 of 2')).toBeInTheDocument();
+    fireEvent.click(backButton());
+    expect(screen.getByText('Step 1 of 2')).toBeInTheDocument();
+    fireEvent.click(backButton());
     expect(screen.getAllByTestId('transfer-have-option').length).toBeGreaterThan(1);
-    fireEvent.click(screen.getByRole('button', { name: 'Go back' }));
+    // The answer you came back from is still picked, so Next goes on again.
+    const picked = screen.getAllByTestId('transfer-have-option').find((o) => o.dataset.route === 'spotify-converter');
+    expect(picked).toHaveAttribute('aria-checked', 'true');
+    fireEvent.click(backButton());
     expect(screen.getAllByTestId('transfer-service-card')).toHaveLength(4);
-    expect(screen.getAllByTestId('transfer-destination-card')).toHaveLength(2);
-    fireEvent.click(screen.getByRole('button', { name: 'Go back' }));
+    fireEvent.click(backButton());
     expect(push).toHaveBeenCalledWith('/library/liked');
+  });
+
+  it('Next on what you have stays off until a row is picked', () => {
+    setup();
+    service('Spotify');
+    expect(nextButton()).toBeDisabled();
+    fireEvent.click(screen.getAllByTestId('transfer-have-option')[1]);
+    expect(screen.getAllByTestId('transfer-have-option')[1]).toHaveAttribute('aria-checked', 'true');
+    expect(nextButton()).toBeEnabled();
   });
 
   it('a service with nothing to ask goes straight back to the services', () => {
     setup();
     pick('Liked songs');
     service('Apple Music');
-    fireEvent.click(screen.getByRole('button', { name: 'Go back' }));
+    fireEvent.click(backButton());
     expect(screen.getAllByTestId('transfer-service-card')).toHaveLength(4);
   });
 });
@@ -348,7 +437,12 @@ describe('TransferFlow: every answer reaches its route', () => {
     const card = screen.getByTestId('transfer-preview');
     expect(card).toHaveTextContent('Liked songs from Spotify');
     expect(card).toHaveTextContent('exportify.csv');
-    expect(screen.getByTestId('transfer-preview-sentence')).toHaveTextContent('42 songs to bring over, under 5 minutes.');
+    expect(screen.getByRole('heading', { name: 'Before you start' })).toBeInTheDocument();
+    expect(progressAt()).toBe('2');
+    // The count as one big number, where they go and about how long under it.
+    expect(screen.getByTestId('transfer-preview-count')).toHaveTextContent('42');
+    expect(screen.getByTestId('transfer-preview-sentence')).toHaveTextContent('songs to bring into your Liked songs');
+    expect(screen.getByTestId('transfer-preview-time')).toHaveTextContent('Under 5 minutes, you can leave while it runs');
     fireEvent.click(chip('new'));
     expect(screen.getByTestId('transfer-chip-songs')).toHaveTextContent('Paper Lanterns');
     expect(screen.getByTestId('transfer-chip-songs')).toHaveTextContent('and 40 more');
@@ -441,7 +535,7 @@ describe('TransferFlow: every answer reaches its route', () => {
     fireEvent.change(screen.getByLabelText('Playlist link'), { target: { value: LINK } });
     fireEvent.click(continueButton());
     await waitFor(() => expect(screen.getByTestId('transfer-preview')).toHaveTextContent('Late night drive'));
-    fireEvent.click(screen.getByRole('button', { name: 'Go back' }));
+    fireEvent.click(backButton());
     expect(screen.queryByTestId('transfer-preview')).toBeNull();
     expect(screen.getByLabelText('Playlist link')).toHaveValue('');
     expect(continueButton()).toBeDisabled();
@@ -688,7 +782,8 @@ describe('TransferFlow: YouTube Music likes, after a Google sign-in', () => {
     fireEvent.click(chip('new'));
     expect(screen.getByTestId('transfer-chip-songs')).toHaveTextContent('Paper Lanterns');
     // Nothing is looked up by name, so it is quick, and there is nothing to skip.
-    expect(screen.getByTestId('transfer-preview-sentence')).toHaveTextContent('5 songs to bring over, about a minute.');
+    expect(screen.getByTestId('transfer-preview-count')).toHaveTextContent('5');
+    expect(screen.getByTestId('transfer-preview-time')).toHaveTextContent('About a minute');
     expect(screen.queryByTestId('transfer-skip-liked')).toBeNull();
     expect(screen.getByTestId('google-to-check')).toHaveTextContent('2 more need a quick check: uploads YouTube Music is not sure are songs.');
 
@@ -836,7 +931,7 @@ describe('TransferFlow: YouTube Music likes, after a Google sign-in', () => {
     await waitFor(() => expect(screen.getByTestId('google-code-panel')).toBeInTheDocument());
     await poll();
     await waitFor(() => expect(screen.getByTestId('transfer-preview')).toBeInTheDocument());
-    fireEvent.click(screen.getByRole('button', { name: 'Go back' }));
+    fireEvent.click(backButton());
     await waitFor(() => expect(api.googleLikesCancel).toHaveBeenCalledWith(FLOW));
   });
 
@@ -870,12 +965,28 @@ describe('TransferFlow: YouTube Music likes, after a Google sign-in', () => {
 });
 
 describe('TransferFlow: before you start, the chips', () => {
-  it('one sentence says how many and about how long', async () => {
-    api.transferPreview.mockResolvedValue(preview({ count: 300 }));
+  it('one big number says how many, with where they go and about how long under it', async () => {
+    api.transferPreview.mockResolvedValue(preview({ count: 1300 }));
     setup();
     toSpotifyFile();
     chooseFile();
-    await waitFor(() => expect(screen.getByTestId('transfer-preview-sentence')).toHaveTextContent('300 songs to bring over, about 10 minutes.'));
+    await waitFor(() => expect(screen.getByTestId('transfer-preview-count')).toHaveTextContent('1,300'));
+    expect(screen.getByTestId('transfer-preview-sentence')).toHaveTextContent('songs to bring into your Liked songs');
+    expect(screen.getByTestId('transfer-preview-time')).toHaveTextContent('About 30 minutes, you can leave while it runs');
+    // How the songs are found, under the chips.
+    expect(screen.getByTestId('transfer-preview')).toHaveTextContent(MATCHED_BY_NAME);
+    // Start is in the bottom bar, beside Back.
+    expect(screen.getByTestId('transfer-bar')).toContainElement(startButton());
+  });
+
+  it('one song is a song', async () => {
+    api.transferPreview.mockResolvedValue(preview({ count: 1 }));
+    setup();
+    toSpotifyFile();
+    chooseFile();
+    await waitFor(() => expect(screen.getByTestId('transfer-preview-sentence')).toHaveTextContent('song to bring into your Liked songs'));
+    expect(screen.getByTestId('transfer-preview-sentence').textContent).toMatch(/^song to/);
+    expect(startButton()).toHaveTextContent('Transfer 1 song');
   });
 
   it('every count is a chip that shows which songs it means', async () => {
@@ -924,9 +1035,11 @@ describe('TransferFlow: before you start, the chips', () => {
     chooseFile();
     await waitFor(() => expect(screen.getByTestId('transfer-skip-liked')).toBeInTheDocument());
     const skip = screen.getByTestId('transfer-skip-liked');
-    expect(skip).toHaveAttribute('aria-pressed', 'true');
+    expect(skip).toHaveAttribute('role', 'switch');
+    expect(skip).toHaveAttribute('aria-checked', 'true');
+    expect(skip).toHaveTextContent('Skip songs I already like');
     expect(startButton()).toHaveTextContent('Transfer 100 songs');
-    expect(screen.getByTestId('transfer-preview-sentence')).toHaveTextContent('100 songs to bring over');
+    expect(screen.getByTestId('transfer-preview-count')).toHaveTextContent('100');
     fireEvent.click(startButton());
     await waitFor(() => expect(api.transferStart).toHaveBeenCalled());
     expect(api.transferStart.mock.calls[0][0]).toMatchObject({ destination: 'liked', skipLiked: true });
@@ -940,7 +1053,7 @@ describe('TransferFlow: before you start, the chips', () => {
     chooseFile();
     await waitFor(() => expect(screen.getByTestId('transfer-skip-liked')).toBeInTheDocument());
     fireEvent.click(screen.getByTestId('transfer-skip-liked'));
-    expect(screen.getByTestId('transfer-skip-liked')).toHaveAttribute('aria-pressed', 'false');
+    expect(screen.getByTestId('transfer-skip-liked')).toHaveAttribute('aria-checked', 'false');
     expect(startButton()).toHaveTextContent('Transfer 120 songs');
     fireEvent.click(startButton());
     await waitFor(() => expect(api.transferStart).toHaveBeenCalled());
@@ -959,7 +1072,7 @@ describe('TransferFlow: before you start, the chips', () => {
     expect(screen.getAllByTestId('transfer-chip').map((c) => c.dataset.chip)).toEqual(['new']);
     expect(screen.queryByTestId('transfer-skip-liked')).toBeNull();
     expect(startButton()).toHaveTextContent('Transfer 120 songs');
-    expect(screen.getByTestId('transfer-preview')).toHaveTextContent('Into a new playlist');
+    expect(screen.getByTestId('transfer-preview-sentence')).toHaveTextContent('songs to bring into a new playlist');
   });
 
   it('a link going into the likes skips its already-liked songs too', async () => {

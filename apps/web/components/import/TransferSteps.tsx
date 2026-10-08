@@ -1,13 +1,13 @@
 import type { ReactNode } from 'react';
-import { Button } from '@/components/ui/button';
-import { ChevronRightIcon, EditIcon, FileIcon, KeyIcon, LinkIcon } from '@/components/icons';
+import { IconTile, RadioRow } from '@/components/import/TransferWizard';
+import { EditIcon, FileIcon, KeyIcon, LinkIcon } from '@/components/icons';
 import { stepFrame, type StepFrame } from '@/lib/import/transferIllustrations';
 import type { TransferRoute, TransferRouteKind } from '@/lib/import/transferRoutes';
 import { cn } from '@/lib/utils';
 
-// The middle of the Transfer page: "What do you have already?" as big rows,
-// then the chosen way's steps one at a time, each beside a small picture of
-// the screen to tap. Presentational: data in, callbacks out.
+// The middle of the Transfer page: "What do you have already?" as rows to
+// pick from, then the chosen way's steps one at a time, each beside a small
+// picture of the screen to tap. Presentational: data in, callbacks out.
 
 const KIND_ICON: Record<TransferRouteKind, typeof FileIcon> = {
   file: FileIcon,
@@ -17,32 +17,36 @@ const KIND_ICON: Record<TransferRouteKind, typeof FileIcon> = {
 };
 
 /** The ways in a service offers, each with what it asks of you and how
- *  long it takes. */
-export function HaveOptions({ choices, onPick }: { choices: readonly TransferRoute[]; onPick: (id: string) => void }) {
+ *  long it takes, as rows to pick one of; Next in the bottom bar goes on. */
+export function HaveOptions({
+  choices,
+  picked,
+  onPick,
+}: {
+  choices: readonly TransferRoute[];
+  picked: string | null;
+  onPick: (id: string) => void;
+}) {
   return (
-    <div className="flex flex-col gap-cluster" data-testid="transfer-have-options">
+    <div role="radiogroup" aria-label="What you have" className="flex flex-col gap-cluster" data-testid="transfer-have-options">
       {choices.map((r) => {
         const Icon = KIND_ICON[r.kind];
         return (
-          <button
+          <RadioRow
             key={r.id}
-            type="button"
             data-testid="transfer-have-option"
             data-route={r.id}
+            on={picked === r.id}
             onClick={() => onPick(r.id)}
-            className="flex w-full items-center gap-row rounded-2xl border border-border bg-card p-row text-left transition-colors hover:border-ember"
-          >
-            <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-ember/15 text-ember">
-              <Icon className="h-5 w-5" />
-            </span>
-            <span className="min-w-0 flex-1">
-              <span data-testid="transfer-have-label" className="block text-sm font-semibold">
-                {r.whatYouHave}
-              </span>
-              <span className="block text-xs text-muted-foreground">{r.time}</span>
-            </span>
-            <ChevronRightIcon className="h-4 w-4 shrink-0 text-muted-foreground" />
-          </button>
+            lead={
+              <IconTile>
+                <Icon className="h-5 w-5" />
+              </IconTile>
+            }
+            titleTestId="transfer-have-label"
+            title={r.whatYouHave}
+            sub={r.time}
+          />
         );
       })}
     </div>
@@ -83,9 +87,9 @@ export function StepIllustration({ frame }: { frame: StepFrame }) {
 }
 
 /** One step of a way in at a time: its picture, where it is ("Step 2 of
- *  4") with a dot per step, the sentence, then Back and Next step, or on
- *  the last step the real control that takes the file, the list, the link
- *  or the Google sign-in. */
+ *  4") with a dot per step, the sentence, then a skip to the end, or on the
+ *  last step the real control that takes the file, the list, the link or
+ *  the Google sign-in. Back and Next step live in the bottom bar. */
 export function StepCard({
   route,
   step,
@@ -132,23 +136,13 @@ export function StepCard({
       {last ? (
         control
       ) : (
-        <>
-          <div className="flex items-center gap-cluster">
-            <Button type="button" variant="outline" disabled={i === 0} onClick={() => onStep(i - 1)} className="h-10">
-              Back
-            </Button>
-            <Button type="button" variant="ember" onClick={() => onStep(i + 1)} className="h-10 flex-1">
-              Next step
-            </Button>
-          </div>
-          <button
-            type="button"
-            onClick={() => onStep(n - 1)}
-            className="self-start text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground"
-          >
-            I have it already, skip to the end
-          </button>
-        </>
+        <button
+          type="button"
+          onClick={() => onStep(n - 1)}
+          className="self-start text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground"
+        >
+          I have it already, skip to the end
+        </button>
       )}
       {route.notes.map((note) => (
         <p key={note} className="text-xs text-muted-foreground">

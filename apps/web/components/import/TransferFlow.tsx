@@ -6,10 +6,12 @@ import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { AlertIcon, CheckIcon, ChevronLeftIcon, ChevronRightIcon, HeartIcon, KeyIcon, LinkIcon, QueueIcon, UploadIcon } from '@/components/icons';
+import { AlertIcon, KeyIcon, LinkIcon, UploadIcon } from '@/components/icons';
 import { PreviewChips, type CountChip } from '@/components/import/TransferPreviewChips';
 import { SOURCE_NAME } from '@/components/import/parts';
 import { HaveOptions, StepCard } from '@/components/import/TransferSteps';
+import { RadioRow, ServiceMark, WhereToSheet, WizardBar, WizardProgress, WizardTitle } from '@/components/import/TransferWizard';
+import { useIsDesktop } from '@/hooks/useIsDesktop';
 import { api } from '@/lib/api';
 import { QK } from '@/hooks/useLibrary';
 import { IMPORT_QK } from '@/hooks/useImports';
@@ -31,7 +33,6 @@ import {
   serviceOpen,
   TRANSFER_SERVICES,
   type TransferRoute,
-  type TransferService,
   type TransferServiceId,
 } from '@/lib/import/transferRoutes';
 import {
@@ -44,27 +45,13 @@ import {
 import type { JobKind, ImportSourceKind } from '@/lib/import/types';
 import type { TransferPreview } from '@/app/api/import/upload/route';
 import type { CheckProgress, GooglePreview } from '@/lib/import/google/flows';
-import { cn } from '@/lib/utils';
 import { useTransferStore } from '@/stores/useTransferStore';
 
 /** How often the dialog asks the server how a Google sign-in stands. The
  *  server does the polling of Google itself. */
 export const GOOGLE_POLL_MS = 2_000;
 
-const DESTINATIONS: { id: JobKind; name: string; consequence: string; icon: typeof HeartIcon }[] = [
-  {
-    id: 'liked',
-    name: 'Liked songs',
-    consequence: 'These become your likes and shape your mixes and radio.',
-    icon: HeartIcon,
-  },
-  {
-    id: 'playlist',
-    name: 'A new playlist',
-    consequence: 'A playlist you can edit, reorder and share.',
-    icon: QueueIcon,
-  },
-];
+export { ServiceMark };
 
 /** A link Ember looked up, flattened so both kinds of source make the
  *  same preview. */
@@ -142,6 +129,12 @@ export function TransferFlow({
   const [destination, setDestination] = useState<JobKind>(initialDestination);
   const [serviceId, setServiceId] = useState<TransferServiceId | null>(null);
   const [routeId, setRouteId] = useState<string | null>(null);
+  // Picked on the first screen, before the sheet says where the songs go;
+  // and the way in picked on "What do you have", before Next.
+  const [picked, setPicked] = useState<TransferServiceId | null>(null);
+  const [sheetFor, setSheetFor] = useState<TransferServiceId | null>(null);
+  const [pickedRoute, setPickedRoute] = useState<string | null>(null);
+  const isDesktop = useIsDesktop();
   // Which of the way in's steps is showing, one at a time.
   const [step, setStep] = useState(0);
   const [file, setFile] = useState<File | null>(null);
@@ -378,27 +371,38 @@ export function TransferFlow({
     clearSource();
   };
 
+  /** A service picked: the sheet asks where its songs go. A service that
+   *  cannot fill the likes starts on the new playlist. */
+  const openSheet = (id: TransferServiceId) => {
+    setPicked(id);
+    if (destination === 'liked' && !serviceOpen(id, 'liked', likedServicesOpen)) setDestination('playlist');
+    setSheetFor(id);
+  };
+
+  /** Continue in the sheet: on to that service's ways in. */
+  const continueSheet = () => {
+    if (!sheetFor) return;
+    const id = sheetFor;
+    setSheetFor(null);
+    setPickedRoute(null);
+    pickService(id);
+  };
+
   /** One question back, whichever question that is. A service with a single
    *  way in never asked "what do you have", so its steps go straight back to
-   *  the service cards. */
+   *  the services. The answer you came back from stays picked. */
   const back = () => {
     clearSource();
     // From the preview, back to the step that took the source.
     if (previewed) return;
     setStep(0);
-    if (route && choices.length > 1) setRouteId(null);
-    else if (service) setServiceId(null);
-    else router.push(from);
-  };
-
-  const pickDestination = (d: JobKind) => {
-    setDestination(d);
-    // The Google sign-in is for Liked songs only: a way in that is no longer
-    // on offer goes, and the person picks again.
-    if (route?.likedOnly && d !== 'liked') {
+    if (route && choices.length > 1) {
+      setPickedRoute(route.id);
       setRouteId(null);
-      clearSource();
-    }
+    } else if (service) {
+      setPicked(service.id);
+      setServiceId(null);
+    } else router.push(from);
   };
 
   // Over the cap, the upload route refuses the start, so the preview says
@@ -533,37 +537,107 @@ export function TransferFlow({
     return out;
   };
 
-  const title = !service
-    ? 'Transfer songs into Ember'
-    : previewed
-      ? 'Before you start'
-      : !route
-        ? 'What do you have already?'
-        : service.heading;
+  const stage: 'start' | 'have' | 'steps' | 'preview' = !service ? 'start' : previewed ? 'preview' : !route ? 'have' : 'steps';
+  const title =
+    stage === 'start'
+      ? 'Transfer songs into Ember'
+      : stage === 'preview'
+        ? 'Before you start'
+        : stage === 'have'
+          ? 'What do you have already?'
+          : (service?.heading ?? '');
+  const lastStep = !!route && step >= route.steps.length - 1;
+
+  /** Back in the bottom bar: a step at a time through the steps, then one
+   *  question back. */
+  const barBack = () => {
+    if (stage === 'steps' && !notSetUp && step > 0) setStep(step - 1);
+    else back();
+  };
+
+  /** What the bottom bar offers next, on each screen. */
+  const barNext = () => {
+    if (stage === 'start') {
+      return (
+        <Button type="button" variant="ember" disabled={!picked} onClick={() => picked && openSheet(picked)} className="h-11 flex-1">
+          Next
+        </Button>
+      );
+    }
+    if (stage === 'have') {
+      return (
+        <Button type="button" variant="ember" disabled={!pickedRoute} onClick={() => pickedRoute && pickRoute(pickedRoute)} className="h-11 flex-1">
+          Next
+        </Button>
+      );
+    }
+    if (stage === 'preview') {
+      return (
+        <Button type="button" disabled={!ready || starting} onClick={() => void start()} variant="ember" className="h-11 flex-1">
+          {starting ? 'Starting…' : `Transfer ${count.toLocaleString('en-GB')} ${count === 1 ? 'song' : 'songs'}`}
+        </Button>
+      );
+    }
+    if (!route || notSetUp) return null;
+    if (!lastStep) {
+      return (
+        <Button type="button" variant="ember" onClick={() => setStep(step + 1)} className="h-11 flex-1">
+          Next step
+        </Button>
+      );
+    }
+    if (routeKind === 'paste' || routeKind === 'link') {
+      return (
+        <Button type="button" disabled={!typed || lookup.step === 'looking'} onClick={continueTyped} variant="ember" className="h-11 flex-1">
+          Continue
+        </Button>
+      );
+    }
+    return null;
+  };
+  const barHint =
+    stage === 'steps' && lastStep && !notSetUp
+      ? routeKind === 'google'
+        ? 'Sign in above to go on'
+        : routeKind === 'file'
+          ? 'Choose the file above to go on'
+          : ''
+      : '';
 
   return (
-    <div data-testid="transfer-page" className="mx-auto flex min-h-full w-full max-w-2xl flex-col gap-block">
-      <div className="sticky top-[var(--ember-topbar-h,0px)] z-10 -mx-cluster flex items-center gap-cluster bg-background px-cluster py-cluster">
-        <Button type="button" variant="ghost" size="icon" aria-label="Go back" onClick={back}>
-          <ChevronLeftIcon className="h-5 w-5" />
-        </Button>
-        <h1 className="min-w-0 flex-1 truncate text-lg font-bold tracking-tight">{title}</h1>
+    <div data-testid="transfer-page" data-stage={stage} className="mx-auto flex min-h-full w-full max-w-2xl flex-col gap-block">
+      <div className="flex flex-col pt-inset">
+        <WizardProgress at={stage === 'start' ? 0 : stage === 'preview' ? 2 : 1} />
+        <WizardTitle>{title}</WizardTitle>
       </div>
 
-      {!service ? (
-        <Chooser
-          destination={destination}
-          onDestination={pickDestination}
-          likedServicesOpen={likedServicesOpen}
-          onService={pickService}
-        />
+      {stage === 'start' ? (
+        <div className="flex flex-col gap-row">
+          <p className="text-sm text-muted-foreground">Where are your songs now?</p>
+          <div role="radiogroup" aria-label="Where your songs are now" className="flex flex-col gap-cluster">
+            {TRANSFER_SERVICES.map((s) => (
+              <RadioRow
+                key={s.id}
+                data-testid="transfer-service-card"
+                data-service={s.id}
+                on={picked === s.id}
+                onClick={() => openSheet(s.id)}
+                lead={<ServiceMark service={s} size={36} />}
+                titleTestId="transfer-service-name"
+                title={s.name}
+                sub={s.need}
+              />
+            ))}
+          </div>
+          <p className="text-xs text-muted-foreground">Next you say where they go: your Liked songs or a new playlist.</p>
+        </div>
       ) : (
         <div className="flex min-h-0 flex-col gap-block">
-          {!route && <HaveOptions choices={choices} onPick={pickRoute} />}
+          {stage === 'have' && <HaveOptions choices={choices} picked={pickedRoute} onPick={setPickedRoute} />}
 
           {previewed && service && (
             <PreviewChips
-              mark={<ServiceMark service={service} size={32} />}
+              mark={<ServiceMark service={service} size={22} />}
               label={lookup.step === 'link' ? lookup.preview.name : lookup.preview.label}
               detail={previewDetail()}
               total={count}
@@ -571,35 +645,35 @@ export function TransferFlow({
               chips={previewChips()}
               destination={destination}
               skip={{ available: already > 0, on: skipLiked, onToggle: () => setSkipLiked((v) => !v) }}
-              note={`${lookup.step === 'google' ? NOTHING_TO_MATCH : MATCHED_BY_NAME} You can leave while it runs.`}
+              note={lookup.step === 'google' ? NOTHING_TO_MATCH : MATCHED_BY_NAME}
             >
               {lookup.step === 'google' && lookup.preview.toCheck > 0 && (
-                <p data-testid="google-to-check" className="text-xs text-muted-foreground">
+                <p data-testid="google-to-check" className="text-center text-xs text-muted-foreground">
                   {toCheckLine(lookup.preview.toCheck)}
                 </p>
               )}
               {lookup.step === 'link' && lookup.preview.truncated && (
-                <p data-testid="transfer-link-cap" className="text-xs text-muted-foreground">
+                <p data-testid="transfer-link-cap" className="text-center text-xs text-muted-foreground">
                   {SPOTIFY_LINK_CAP}
                 </p>
               )}
               {keptFirst && (
-                <p data-testid="transfer-kept-first" className="text-xs text-muted-foreground">
+                <p data-testid="transfer-kept-first" className="text-center text-xs text-muted-foreground">
                   {KEPT_FIRST_MESSAGE}
                 </p>
               )}
               {overCap && (
-                <p role="alert" data-testid="transfer-over-cap" className="text-xs text-destructive">
+                <p role="alert" data-testid="transfer-over-cap" className="text-center text-xs text-destructive">
                   {OVER_CAP_MESSAGE}
                 </p>
               )}
               {empty && (
-                <p role="alert" data-testid="transfer-empty" className="text-xs text-destructive">
+                <p role="alert" data-testid="transfer-empty" className="text-center text-xs text-destructive">
                   There are no songs in that.
                 </p>
               )}
               {startError && (
-                <p role="alert" data-testid="transfer-error" className="text-xs text-destructive">
+                <p role="alert" data-testid="transfer-error" className="text-center text-xs text-destructive">
                   {startError}
                 </p>
               )}
@@ -703,117 +777,21 @@ export function TransferFlow({
         </div>
       )}
 
-      {previewed ? (
-        <div className="sticky bottom-0 mt-auto bg-gradient-to-b from-transparent to-background to-30% pb-row pt-block">
-          <Button type="button" disabled={!ready || starting} onClick={() => void start()} variant="ember" className="h-11 w-full">
-            {starting ? 'Starting…' : `Transfer ${count.toLocaleString('en-GB')} ${count === 1 ? 'song' : 'songs'}`}
-          </Button>
-        </div>
-      ) : (
-        route &&
-        !notSetUp &&
-        (routeKind === 'paste' || routeKind === 'link') &&
-        step >= route.steps.length - 1 && (
-          <div className="sticky bottom-0 mt-auto bg-gradient-to-b from-transparent to-background to-30% pb-row pt-block">
-            <Button
-              type="button"
-              disabled={!typed || lookup.step === 'looking'}
-              onClick={continueTyped}
-              variant="ember"
-              className="h-11 w-full"
-            >
-              Continue
-            </Button>
-          </div>
-        )
-      )}
-    </div>
-  );
-}
+      <WizardBar onBack={barBack} hint={barHint}>
+        {barNext()}
+      </WizardBar>
 
-/** The first screen: where the songs should go, as two cards on top, and
- *  where they are now, as the four services in rows below, each saying
- *  what a person needs for it. */
-function Chooser({
-  destination,
-  onDestination,
-  likedServicesOpen,
-  onService,
-}: {
-  destination: JobKind;
-  onDestination: (d: JobKind) => void;
-  likedServicesOpen: readonly TransferServiceId[];
-  onService: (id: TransferServiceId) => void;
-}) {
-  return (
-    <div className="flex flex-col gap-block">
-      <p className="text-sm text-muted-foreground">Where should the songs go?</p>
-      <div className="grid grid-cols-2 gap-row">
-        {DESTINATIONS.map((d) => {
-          const on = destination === d.id;
-          return (
-            <button
-              key={d.id}
-              type="button"
-              data-testid="transfer-destination-card"
-              data-destination={d.id}
-              aria-pressed={on}
-              onClick={() => onDestination(d.id)}
-              className={cn(
-                'relative flex min-w-0 flex-col gap-cluster rounded-xl border bg-card p-row text-left transition-colors hover:border-ember',
-                on ? 'border-ember bg-ember/10' : 'border-border',
-              )}
-            >
-              <d.icon className="h-5 w-5 text-ember" />
-              <span className="text-sm font-semibold">{d.name}</span>
-              <span className="text-xs text-muted-foreground">{d.consequence}</span>
-              {on && <CheckIcon className="absolute right-row top-row h-4 w-4 text-ember" />}
-            </button>
-          );
-        })}
-      </div>
-      <p className="text-sm text-muted-foreground">Where are they now?</p>
-      <div className="flex flex-col gap-cluster">
-        {TRANSFER_SERVICES.map((s) => {
-          const open = serviceOpen(s.id, destination, likedServicesOpen);
-          return (
-            <button
-              key={s.id}
-              type="button"
-              data-testid="transfer-service-card"
-              data-service={s.id}
-              data-open={open ? 'true' : 'false'}
-              disabled={!open}
-              onClick={() => onService(s.id)}
-              className="flex w-full items-center gap-row rounded-xl border border-border bg-card px-row py-row text-left transition-colors hover:border-ember disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              <ServiceMark service={s} size={36} />
-              <span className="min-w-0 flex-1">
-                <span data-testid="transfer-service-name" className="block text-sm font-semibold">
-                  {s.name}
-                </span>
-                <span className="block text-xs text-muted-foreground">{s.need}</span>
-              </span>
-              <ChevronRightIcon className="h-4 w-4 text-muted-foreground" />
-            </button>
-          );
-        })}
-      </div>
-      <p className="text-xs text-muted-foreground">Every service can fill your Liked songs or make a new playlist.</p>
+      <WhereToSheet
+        service={sheetFor ? serviceById(sheetFor) : null}
+        open={!!sheetFor}
+        onOpenChange={(o) => !o && setSheetFor(null)}
+        destination={destination}
+        onDestination={setDestination}
+        likedOpen={!!sheetFor && serviceOpen(sheetFor, 'liked', likedServicesOpen)}
+        onContinue={continueSheet}
+        side={isDesktop ? 'right' : 'bottom'}
+      />
     </div>
-  );
-}
-
-/** A stand-in for a service's own mark: its letter on its colour. */
-export function ServiceMark({ service, size = 28 }: { service: TransferService; size?: number }) {
-  return (
-    <span
-      aria-hidden="true"
-      className="grid shrink-0 place-items-center rounded-lg font-extrabold"
-      style={{ width: size, height: size, background: service.mark.bg, color: service.mark.fg, fontSize: Math.round(size / 2) }}
-    >
-      {service.mark.letter}
-    </span>
   );
 }
 

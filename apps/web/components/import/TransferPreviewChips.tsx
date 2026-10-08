@@ -1,13 +1,14 @@
 'use client';
 
 import { useState, type ReactNode } from 'react';
-import { CheckIcon } from '@/components/icons';
+import { ClockIcon } from '@/components/icons';
 import type { JobKind } from '@/lib/import/types';
 import { cn } from '@/lib/utils';
 
-// "Before you start" on the Transfer page: one sentence with the count and
-// about how long, the counts as chips that show which songs they mean, and
-// the options as chips. Presentational: data in, callbacks out.
+// "Before you start" on the Transfer page: the count as one huge number,
+// where the songs go and about how long under it, the counts as chips that
+// show which songs they mean, and Skip already liked as a switch.
+// Presentational: data in, callbacks out.
 
 export interface SongName {
   title: string;
@@ -49,24 +50,32 @@ export function PreviewChips({ mark, label, detail, total, estimate, chips, dest
   const picked = chips.find((c) => c.id === open) ?? null;
   return (
     <div data-testid="transfer-preview" className="flex flex-col gap-row">
-      <div className="flex items-center gap-row">
-        {mark}
-        <div className="min-w-0">
-          <div className="truncate text-sm font-semibold">{label}</div>
-          <div className="truncate text-xs text-muted-foreground">{detail}</div>
+      <div className="flex flex-col items-center gap-inset px-inset pt-row text-center">
+        <span className="inline-flex max-w-full items-center gap-cluster rounded-full border border-border py-inset pl-inset pr-row text-[12.5px] text-muted-foreground">
+          {mark}
+          <span className="truncate">
+            {label} · {detail}
+          </span>
+        </span>
+        <div
+          data-testid="transfer-preview-count"
+          className="mt-block bg-gradient-to-b from-foreground from-30% to-ember-soft bg-clip-text pb-inset text-[80px] font-bold leading-none tracking-[-0.045em] tabular-nums text-transparent"
+        >
+          {total.toLocaleString('en-GB')}
         </div>
+        <p data-testid="transfer-preview-sentence" className="text-[15px] font-medium">
+          {total === 1 ? 'song' : 'songs'} to bring into {destination === 'liked' ? 'your Liked songs' : 'a new playlist'}
+        </p>
+        {estimate && (
+          <p data-testid="transfer-preview-time" className="mt-inset inline-flex items-center gap-inset text-[13px] text-muted-foreground">
+            <ClockIcon className="h-3.5 w-3.5" />
+            {estimate}, you can leave while it runs
+          </p>
+        )}
       </div>
 
-      <p data-testid="transfer-preview-sentence" className="text-base leading-snug">
-        <b>
-          {total.toLocaleString('en-GB')} {total === 1 ? 'song' : 'songs'}
-        </b>{' '}
-        to bring over
-        {estimate && <span className="text-muted-foreground">, {estimate.toLowerCase()}</span>}.
-      </p>
-
       {chips.length > 0 && (
-        <div className="flex flex-wrap gap-cluster">
+        <div className="flex flex-wrap justify-center gap-cluster">
           {chips.map((c) => (
             <button
               key={c.id}
@@ -109,29 +118,31 @@ export function PreviewChips({ mark, label, detail, total, estimate, chips, dest
 
       {children}
 
-      <div className="text-eyebrow">Options</div>
-      <div className="flex flex-wrap gap-cluster">
-        {skip.available && (
-          <button
-            type="button"
-            data-testid="transfer-skip-liked"
-            aria-pressed={skip.on}
-            onClick={skip.onToggle}
-            className={cn(
-              'inline-flex h-8 items-center gap-inset whitespace-nowrap rounded-full border px-row text-xs transition-colors',
-              skip.on ? 'border-ember/50 bg-ember/15 text-ember' : 'border-border hover:bg-card',
-            )}
+      {skip.available && (
+        <button
+          type="button"
+          role="switch"
+          data-testid="transfer-skip-liked"
+          aria-checked={skip.on}
+          onClick={skip.onToggle}
+          className="flex w-full items-center gap-row rounded-xl border border-border px-row py-cluster text-left transition-colors hover:bg-card"
+        >
+          <span className="min-w-0 flex-1 text-sm">Skip songs I already like</span>
+          <span
+            aria-hidden="true"
+            className={cn('relative h-6 w-11 shrink-0 rounded-full transition-colors', skip.on ? 'bg-ember' : 'bg-muted')}
           >
-            {skip.on && <CheckIcon className="h-3.5 w-3.5" />}
-            Skip already liked
-          </button>
-        )}
-        <span className="inline-flex h-8 items-center whitespace-nowrap rounded-full border border-border px-row text-xs text-muted-foreground">
-          Into {destination === 'liked' ? 'Liked songs' : 'a new playlist'}
-        </span>
-      </div>
+            <span
+              className={cn(
+                'absolute left-1 top-1 size-4 rounded-full bg-background transition-transform',
+                skip.on && 'translate-x-5',
+              )}
+            />
+          </span>
+        </button>
+      )}
 
-      <p className="text-xs text-muted-foreground">{note}</p>
+      <p className="text-center text-xs text-muted-foreground">{note}</p>
     </div>
   );
 }
