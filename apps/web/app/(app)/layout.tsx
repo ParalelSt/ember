@@ -13,6 +13,7 @@ import { LYRICS_PANEL_W, LyricsPanel } from '@/components/player/LyricsPanel';
 import { SearchOverlayContainer } from '@/components/search/SearchOverlayContainer';
 import { SessionHostBridge } from '@/components/session/SessionHostBridge';
 import { TransferStatus } from '@/components/import/TransferStatus';
+import { AppUpdatePill } from '@/components/update/AppUpdatePill';
 import { hydrateOfflineStore } from '@/lib/offline';
 import { useUiStore } from '@/stores/useUiStore';
 import { useChangelog } from '@/hooks/useChangelog';
@@ -118,6 +119,9 @@ export default function AppShellLayout({ children }: { children: ReactNode }) {
           {/* A transfer in the background: its floating pill and its
               "Transfer done" card, over whatever page is open. */}
           <TransferStatus />
+          {/* The Android app's update (downloading, ready, tap to install);
+              nothing anywhere else. */}
+          <AppUpdatePill />
         </div>
         <PlayerBar />
         <MobileNav onSearchClick={() => setSearchOpen(true)} />

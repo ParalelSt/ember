@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import { SettingsTabs } from '@/components/settings/SettingsTabs';
 import { PageTitle } from '@/components/page/PageTitle';
 import { BuildStamp } from '@/components/settings/BuildStamp';
+import { AppUpdateCard } from '@/components/settings/AppUpdateCard';
 
 export default function SettingsLayout({ children }: { children: ReactNode }) {
   return (
@@ -14,6 +15,9 @@ export default function SettingsLayout({ children }: { children: ReactNode }) {
         <SettingsTabs />
         <div className="flex-1 min-w-0">{children}</div>
       </div>
+      {/* The Android app's updater: its version, where the update is, and
+          Check for updates. Renders nothing outside the Android app. */}
+      <AppUpdateCard />
       {/* Build stamp, NEXT_PUBLIC_APP_VERSION is inlined at build time
           (git SHA + build date, see next.config.ts). Inside the desktop or
           phone app, that app's own version follows it. */}
