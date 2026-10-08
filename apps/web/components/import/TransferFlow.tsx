@@ -551,8 +551,11 @@ export function TransferFlow({
   /** Back in the bottom bar: a step at a time through the steps, then one
    *  question back. */
   const barBack = () => {
-    if (stage === 'steps' && !notSetUp && step > 0) setStep(step - 1);
-    else back();
+    if (stage === 'steps' && !notSetUp && step > 0) {
+      // Leaving the sign-in step leaves the sign-in: the server revokes it now.
+      if (routeKind === 'google') clearSource();
+      setStep(step - 1);
+    } else back();
   };
 
   /** What the bottom bar offers next, on each screen. */

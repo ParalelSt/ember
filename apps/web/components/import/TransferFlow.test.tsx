@@ -935,6 +935,19 @@ describe('TransferFlow: YouTube Music likes, after a Google sign-in', () => {
     await waitFor(() => expect(api.googleLikesCancel).toHaveBeenCalledWith(FLOW));
   });
 
+  it('Back a step from the sign-in cancels a sign-in in flight', async () => {
+    api.googleLikesStatus.mockResolvedValue({ state: 'waiting' });
+    setup();
+    toGoogle();
+    fireEvent.click(signInButton());
+    await waitFor(() => expect(screen.getByTestId('google-code-panel')).toBeInTheDocument());
+    const last = Number(screen.getByTestId('transfer-steps').dataset.step);
+    fireEvent.click(backButton());
+    await waitFor(() => expect(api.googleLikesCancel).toHaveBeenCalledWith(FLOW));
+    expect(screen.queryByTestId('google-code-panel')).toBeNull();
+    expect(Number(screen.getByTestId('transfer-steps').dataset.step)).toBe(last - 1);
+  });
+
   it('a second press replaces the first sign-in', async () => {
     api.googleLikesStatus.mockResolvedValue({ state: 'expired', message: GOOGLE_MESSAGES.expired });
     setup();
