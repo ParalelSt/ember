@@ -298,3 +298,88 @@ describe('proxy: signed cast links (lib/streamToken)', () => {
     }
   });
 });
+
+// QR sign-in (plan 2d): the hook routes under /api/ember mint sessions and
+// rotate token keys. They already require a superuser token, and the public
+// /pb proxy never forwards them either: only the Next server's own admin
+// client, talking to PocketBase directly, reaches them.
+describe('proxy [qr sign-in]: /pb/api/ember is not proxied', () => {
+  const blocked = [
+    '/pb/api/ember/qr-login/mint',
+    '/pb/api/ember/qr-login/revoke-all',
+    '/pb/api/ember',
+    '/pb/api/ember/',
+    '/pb/api/%65mber/qr-login/mint',
+    '/pb/api/ember%2Fqr-login%2Fmint',
+    '/pb//api/ember/qr-login/mint',
+    '/pb/api//ember/qr-login/mint',
+    '/pb/api/x/../ember/qr-login/mint',
+    '/pb/api/%2e%2e/api/ember/qr-login/mint',
+    '/pb/API/Ember/qr-login/mint',
+    '/PB/api/ember/qr-login/mint',
+    '/pb/api/ember/qr-login/mint/',
+  ];
+
+  it('answers every spelling with a plain 404, for GET and POST', async () => {
+    for (const p of blocked) {
+      expect(isBlockedPbPath(p), p).toBe(true);
+      expect((await proxy(req(p))).status, p).toBe(404);
+      expect((await proxy(req(p, { method: 'POST' }))).status, p).toBe(404);
+    }
+  });
+
+  it('does not block look-alike member paths or the app\'s own /api/auth/qr routes', () => {
+    for (const p of ['/pb/api/emberx', '/pb/api/collections/ember/records', '/api/auth/qr/start', '/api/ember/qr-login/mint']) {
+      expect(isBlockedPbPath(p), p).toBe(false);
+    }
+  });
+});
+
+describe('proxy [qr sign-in]: the approve page is a signed-in page', () => {
+  const TOKEN = 'AbC_-'.repeat(8) + 'xyz';
+
+  it('sends a signed-out visitor of /link/<token> to sign in with no token in the URL, keeping it in a short httpOnly cookie', async () => {
+    const res = await proxy(req(`/link/${TOKEN}`));
+    expect(res.status).toBe(307);
+    const loc = res.headers.get('location')!;
+    expect(loc).not.toContain(TOKEN);
+    const location = new URL(loc);
+    expect(location.pathname).toBe('/auth');
+    expect(location.searchParams.get('next')).toBe('/link');
+    const stash = res.headers.getSetCookie().find((c) => c.startsWith('ember_link='))!;
+    expect(stash).toContain(`ember_link=${TOKEN}`);
+    expect(stash).toMatch(/HttpOnly/i);
+    expect(stash).toMatch(/Path=\/link(;|$)/);
+    expect(stash).toMatch(/Max-Age=300/);
+    expect(stash).toMatch(/SameSite=lax/i);
+  });
+
+  it('a malformed /link path is not stashed, and does not reach the URL either', async () => {
+    const res = await proxy(req('/link/abc'));
+    expect(new URL(res.headers.get('location')!).searchParams.get('next')).toBe('/link');
+    expect(res.headers.getSetCookie().some((c) => c.startsWith('ember_link='))).toBe(false);
+  });
+
+  it('signed in, /link is rendered with the stashed cookie, which the page request leaves alone', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ token: futureToken(), record: { id: 'u1', collectionName: 'users' } }), {
+      status: 200, headers: { 'content-type': 'application/json' },
+    })));
+    try {
+      const cookie = `pb_auth=${encodeURIComponent(JSON.stringify({ token: futureToken(), record: { id: 'u1' } }))}; ember_link=${TOKEN}`;
+      const res = await proxy(req('/link', { cookie }));
+      expect(res.status).toBe(200);
+      // Sign-in does router.push then router.refresh: both renders of /link
+      // must still see it. The lookup route clears it once it is used.
+      expect(res.headers.getSetCookie().some((c) => c.startsWith('ember_link='))).toBe(false);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('leaves the QR routes reachable without a session (each decides its own auth)', async () => {
+    for (const p of ['/api/auth/qr/start', '/api/auth/qr/status', '/api/auth/qr/lookup', '/api/auth/qr/approve']) {
+      const res = await proxy(req(p));
+      expect(res.status, p).toBe(200);
+    }
+  });
+});

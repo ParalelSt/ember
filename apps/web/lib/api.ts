@@ -602,6 +602,12 @@ export const api = {
         `/admin/users/${encodeURIComponent(id)}/password`,
         { method: 'POST', body: { password } },
       ),
+    /** Ends every session of that member (rotates their token key). */
+    signOutUserEverywhere: (id: string) =>
+      req<{ ok: true; self: boolean }>(
+        `/admin/users/${encodeURIComponent(id)}/revoke`,
+        { method: 'POST', body: {} },
+      ),
 
     listTracks: (params: { page?: number; q?: string } = {}) => {
       const qs = new URLSearchParams();

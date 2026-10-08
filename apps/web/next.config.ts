@@ -7,10 +7,11 @@ const POCKETBASE_ORIGIN = process.env.POCKETBASE_URL ?? 'http://127.0.0.1:8090';
 
 // The superuser-only PocketBase routes, as a lookahead for the /pb rewrite
 // (the same list as PB_SUPERUSER_ROUTES in proxy.ts): the admin UI, superuser
-// sign-in and management, settings, backups, logs, collection definitions.
+// sign-in and management, settings, backups, logs, collection definitions,
+// and the QR sign-in hook routes (/api/ember/*, pb_hooks/qr_login.pb.js).
 const PB_SUPERUSER_ROUTES = [
   '_(?:/|$)',
-  'api/(?:admins|settings|backups|logs)(?:/|$)',
+  'api/(?:admins|settings|backups|logs|ember)(?:/|$)',
   'api/collections/_superusers(?:/|$)',
   'api/collections(?:/[^/]*)?/?$',
 ].join('|');

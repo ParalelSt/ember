@@ -1,6 +1,5 @@
 'use client';
 
-import { useMemo } from 'react';
 import { toast } from 'sonner';
 import {
   Dialog,
@@ -12,7 +11,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { CopyIcon, ShareIcon } from '@/components/icons';
 import { legacyCopy } from '@/components/track/ShareButton';
-import { encodeQr, qrSvgPath } from '@/lib/qr';
+import { QrSvg } from '@/components/ui/QrSvg';
 import { carlistJoinUrl } from '@/lib/carlist';
 
 /** The join link for a code, on whatever address this page was opened on. */
@@ -36,28 +35,9 @@ export async function copyJoinLink(code: string): Promise<void> {
   else toast.message(`Join code: ${code}`);
 }
 
-/** A QR code drawn as one SVG path, dark on white with the quiet zone the
- *  spec asks for, so phone cameras read it in either app theme. */
+/** The carlist's QR: the shared QrSvg with its own label. */
 export function QrCode({ value, size = 176, className }: { value: string; size?: number; className?: string }) {
-  const qr = useMemo(() => encodeQr(value), [value]);
-  const quiet = 4;
-  const box = qr.size + quiet * 2;
-  return (
-    <svg
-      data-testid="qr"
-      role="img"
-      aria-label="QR code to join"
-      viewBox={`${-quiet} ${-quiet} ${box} ${box}`}
-      width={size}
-      height={size}
-      shapeRendering="crispEdges"
-      className={className}
-    >
-      {/* White whatever the theme: phone cameras want dark on light. */}
-      <rect x={-quiet} y={-quiet} width={box} height={box} rx={2} fill="#fff" />
-      <path d={qrSvgPath(qr)} fill="#000" />
-    </svg>
-  );
+  return <QrSvg value={value} size={size} className={className} label="QR code to join" />;
 }
 
 /** QR first (scan it in the car), then the link for chats, and the code

@@ -3,6 +3,7 @@ import PocketBase from 'pocketbase';
 import { serverLogger } from '@/lib/logger/server';
 import { PUBLIC_PATHS, isPublicPage as isPublicPath } from '@/lib/publicPaths';
 import { checkRateLimit, clientIp, type RateLimitConfig } from '@/lib/rateLimitCore';
+import { linkCookie } from '@/lib/qrLogin/codes';
 
 // Middleware runs server-side, so it needs an absolute URL. The public
 // NEXT_PUBLIC_POCKETBASE_URL may be the relative `/pb` proxy path; fall back to
@@ -49,10 +50,12 @@ export function isStaticAsset(path: string): boolean {
  *  management, settings, backups, logs and the collection definitions. The
  *  server's own admin client reaches PocketBase directly on POCKETBASE_URL,
  *  so nothing legitimate asks for these through /pb. next.config.ts keeps the
- *  same list out of its /pb rewrite for paths this proxy's matcher skips. */
+ *  same list out of its /pb rewrite for paths this proxy's matcher skips.
+ *  /api/ember/* are the QR sign-in hook routes (pb_hooks/qr_login.pb.js):
+ *  they mint sessions, so they are superuser-only AND never proxied. */
 const PB_SUPERUSER_ROUTES = [
   /^\/_(\/|$)/,
-  /^\/api\/(admins|settings|backups|logs)(\/|$)/,
+  /^\/api\/(admins|settings|backups|logs|ember)(\/|$)/,
   /^\/api\/collections\/_superusers(\/|$)/,
   /^\/api\/collections(\/[^/]*)?\/?$/,
 ];
@@ -113,6 +116,13 @@ export function isPbAuthPath(path: string): boolean {
   if (full === null || !/^\/pb(\/|$)/.test(full)) return false;
   return PB_AUTH_ROUTE.test(full.slice(3));
 }
+
+/** QR sign-in approve links (/link/<token>, plan 1b). A signed-out phone
+ *  must sign in first, but the token must not ride along in
+ *  /auth?next=... where it would sit in the browser history: it waits in a
+ *  short httpOnly cookie only /link can see, and next is plain /link. */
+const LINK_PATH = /^\/link\/([A-Za-z0-9_-]{43})$/;
+// The lookup route clears it once the card has used it (lib/qrLogin/codes).
 
 /** A Cookie header without the named cookie. */
 function withoutCookie(header: string, name: string): string {
@@ -239,9 +249,13 @@ export default async function proxy(req: NextRequest) {
     }
     const url = req.nextUrl.clone();
     url.pathname = '/auth';
-    url.searchParams.set('next', path);
+    const isLink = path.startsWith('/link/');
+    if (isLink) url.search = '';
+    url.searchParams.set('next', isLink ? '/link' : path);
     const redirect = NextResponse.redirect(url);
     for (const c of setCookies) redirect.headers.append('set-cookie', c);
+    const linkToken = LINK_PATH.exec(path)?.[1];
+    if (linkToken) redirect.headers.append('set-cookie', linkCookie(linkToken, 300, isHttps));
     return redirect;
   }
 

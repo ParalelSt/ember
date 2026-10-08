@@ -6,11 +6,11 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 
 const nav = vi.hoisted(() => ({ push: vi.fn(), refresh: vi.fn(), search: new URLSearchParams() }));
 vi.mock('next/navigation', () => ({
-  useRouter: () => ({ push: nav.push, refresh: nav.refresh }),
+  useRouter: () => ({ push: nav.push, replace: vi.fn(), refresh: nav.refresh }),
   useSearchParams: () => nav.search,
 }));
 vi.mock('@/components/providers/AuthProvider', () => ({
-  useAuth: () => ({ signIn: vi.fn(async () => ({ error: null })), signUp: vi.fn() }),
+  useAuth: () => ({ signIn: vi.fn(async () => ({ error: null })), signUp: vi.fn(), adoptSession: vi.fn() }),
 }));
 
 const { default: AuthPage } = await import('./page');
@@ -51,5 +51,30 @@ describe('AuthPage next= [bughunt V2]', () => {
     ['absolute', 'next=https://example.com'],
   ])('never leaves the site: %s', async (_label, query) => {
     expect(await signInWith(query)).toBe('/');
+  });
+});
+
+describe('AuthPage QR sign-in block', () => {
+  it('shows the QR block under the email form, and not on the password stage', async () => {
+    nav.search = new URLSearchParams();
+    render(<AuthPage />);
+    expect(screen.getByTestId('qr-sign-in')).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('Email'), { target: { value: 'a@b.test' } });
+    fireEvent.submit(screen.getByLabelText('Email').closest('form')!);
+    await screen.findByLabelText('Password');
+    expect(screen.queryByTestId('qr-sign-in')).toBeNull();
+  });
+
+  it('the email form still works when the QR routes fail', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      if (String(url).includes('/api/auth/qr/')) return new Response(JSON.stringify({ error: 'down' }), { status: 503 });
+      return new Response(JSON.stringify({ status: 'existing' }), { status: 200 });
+    }));
+    nav.search = new URLSearchParams();
+    render(<AuthPage />);
+    expect(await screen.findByText(/Can't get a code right now/)).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('Email'), { target: { value: 'a@b.test' } });
+    fireEvent.submit(screen.getByLabelText('Email').closest('form')!);
+    expect(await screen.findByLabelText('Password')).toBeInTheDocument();
   });
 });

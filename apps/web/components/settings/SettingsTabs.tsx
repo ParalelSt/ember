@@ -11,6 +11,7 @@ const TABS = [
   { href: '/settings/library', label: 'Library' },
   { href: '/settings/downloads', label: 'Downloads' },
   { href: '/settings/plugins', label: 'Plugins' },
+  { href: '/settings/devices', label: 'Devices' },
   { href: '/settings/help', label: 'Help' },
 ];
 

@@ -21,6 +21,18 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    id: 'qr-sign-in',
+    version: '0.7.24',
+    date: '2026-10-07',
+    title: 'Sign in with your phone',
+    summary: 'Sign in a new device by scanning a QR code from your phone.',
+    bullets: [
+      'The sign-in page shows a QR code and a short code. Scan it with a phone that is signed in, check the device, and tap Approve.',
+      'No camera handy? Type the code in Settings > Devices.',
+      'Settings > Devices also lists the devices you signed in this way, and can sign you out everywhere at once.',
+    ],
+  },
+  {
     id: 'fixes-0723',
     version: '0.7.23',
     date: '2026-10-06',
