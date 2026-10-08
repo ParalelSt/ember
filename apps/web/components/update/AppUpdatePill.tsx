@@ -4,7 +4,6 @@ import { useState } from 'react';
 import { CloseIcon, DownloadIcon, RefreshIcon } from '@/components/icons';
 import { useAppUpdate } from '@/hooks/useAppUpdate';
 import { installAppUpdate, openInstallSettings, updatePill } from '@/lib/appUpdate';
-import { cn } from '@/lib/utils';
 
 /** The Android app's update, in one small line floating under the top bar:
  *  "Downloading update 0.4.19 · 42%", "Update 0.4.19 ready · Tap to
@@ -32,17 +31,17 @@ export function AppUpdatePill() {
       data-testid="app-update-pill"
       data-status={state.status}
       role="status"
-      className="fixed left-1/2 z-40 flex max-w-[calc(100%-1.5rem)] -translate-x-1/2 items-center gap-2 rounded-full border border-border bg-popover/95 py-1.5 pl-1.5 pr-2 shadow-2xl backdrop-blur"
+      className="fixed left-1/2 z-40 flex max-w-[calc(100%-1.5rem)] -translate-x-1/2 items-center gap-cluster rounded-full border border-border bg-popover/95 p-inset pr-cluster shadow-2xl backdrop-blur"
       style={{ top: 'calc(var(--safe-top, 0px) + 4.25rem)' }}
     >
       <button
         type="button"
         onClick={act}
         disabled={!pill.action}
-        className="flex min-w-0 items-center gap-2 rounded-full text-left disabled:cursor-default"
+        className="flex min-w-0 items-center gap-cluster rounded-full text-left disabled:cursor-default"
       >
         <span className="grid size-7 shrink-0 place-items-center rounded-full bg-ember/15 text-ember">
-          {busy ? <RefreshIcon className={cn('h-3.5 w-3.5', 'animate-spin')} /> : <DownloadIcon className="h-3.5 w-3.5" />}
+          {busy ? <RefreshIcon className="h-3.5 w-3.5 animate-spin" /> : <DownloadIcon className="h-3.5 w-3.5" />}
         </span>
         <span className="min-w-0">
           <b className="block truncate text-[13px]">{pill.title}</b>

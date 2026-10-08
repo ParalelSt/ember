@@ -19,13 +19,13 @@ export function AppUpdateCard() {
   const canInstallNow = ready && !needsSettings && state.waiting !== 'car';
 
   return (
-    <div data-testid="app-update-card" className="mt-10 max-w-2xl rounded-2xl bg-card p-6 shadow-soft">
+    <div data-testid="app-update-card" className="mt-section max-w-2xl rounded-2xl bg-card p-stack shadow-soft">
       <div className="font-semibold">App updates</div>
-      <p className="mt-1 text-sm text-muted-foreground">
+      <p className="mt-inset text-sm text-muted-foreground">
         {state.current ? `Ember for Android ${state.current}. ` : null}
         <span data-testid="app-update-line">{updateLine(state)}</span>
       </p>
-      <div className="mt-4 flex flex-wrap gap-2">
+      <div className="mt-block flex flex-wrap gap-cluster">
         {needsSettings ? (
           <Button variant="ember" onClick={() => void openInstallSettings()}>
             Allow installs
