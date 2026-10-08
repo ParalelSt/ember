@@ -98,6 +98,18 @@
             android:exported="false"
             android:foregroundServiceType="dataSync" />
 
+        <!-- The in-app updater (AppUpdater.kt): a check every 6 hours with
+             the app closed too, and the install session's answer. Neither
+             is exported; the job binds through the system's permission and
+             the receiver only hears its own PendingIntent. -->
+        <service
+            android:name=".UpdateCheckJob"
+            android:exported="false"
+            android:permission="android.permission.BIND_JOB_SERVICE" />
+        <receiver
+            android:name=".UpdateInstallReceiver"
+            android:exported="false" />
+
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileprovider"
@@ -129,6 +141,16 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <!-- Voice search (EmberSpeechPlugin), asked for on the first mic tap. -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
+
+    <!-- The in-app updater (AppUpdater.kt) installs Ember's own next APK
+         with a PackageInstaller session. REQUEST_INSTALL_PACKAGES is the
+         "Install unknown apps" switch; UPDATE_PACKAGES_WITHOUT_USER_ACTION
+         (Android 13+) lets an update Ember is the installer of record for go
+         in without a dialog; RECEIVE_BOOT_COMPLETED keeps the 6-hourly check
+         (UpdateCheckJob) scheduled across a reboot. -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <uses-permission android:name="android.permission.UPDATE_PACKAGES_WITHOUT_USER_ACTION" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
     <!-- Android 11+ package visibility: without this the system recognizer
          service is invisible and isRecognitionAvailable() is always false. -->

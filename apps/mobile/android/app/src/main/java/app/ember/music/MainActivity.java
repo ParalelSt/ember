@@ -35,6 +35,7 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(EmberSpeechPlugin.class);
         registerPlugin(EmberThemePlugin.class);
         registerPlugin(EmberAppPlugin.class);
+        registerPlugin(EmberUpdatePlugin.class);
         super.onCreate(savedInstanceState);
         WebSecurity.INSTANCE.lockDown(getBridge() == null ? null : getBridge().getWebView());
         CarScreen.INSTANCE.apply(this, getBridge() == null ? null : getBridge().getWebView());
