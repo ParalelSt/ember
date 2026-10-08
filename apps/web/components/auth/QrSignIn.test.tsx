@@ -54,7 +54,10 @@ describe('QrSignIn', () => {
     expect(screen.getByTestId('qr-code')).toHaveTextContent('ABCD-EFGH');
     expect(screen.getByText(/This device: Ember on Android Automotive/)).toBeInTheDocument();
     expect(screen.getByText(/Waiting for approval/)).toBeInTheDocument();
-    expect(screen.getByText(/Settings > Devices > Type the code/)).toBeInTheDocument();
+    expect(screen.getByTestId('qr-steps')).toHaveTextContent(
+      'Open Ember on your phoneTap Scan QR code in the menu, or in Settings > DevicesTap Approve',
+    );
+    expect(screen.getByText(/No camera\? Type/)).toHaveTextContent('No camera? Type ABCD-EFGH in Settings > Devices');
     expect(h.shell).toBe('web');
   });
 

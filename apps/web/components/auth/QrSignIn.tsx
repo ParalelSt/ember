@@ -44,10 +44,11 @@ export function QrSignIn({ next }: { next: string }) {
         <div>
           <div className="font-semibold">Sign in with your phone</div>
           {state.kind === 'waiting' && (
-            <p className="mt-inset text-sm text-muted-foreground">
-              Scan this with a phone that is already signed in to Ember, or open Settings &gt; Devices &gt; Type the
-              code and enter <span className="font-semibold text-foreground">{formatCode(state.code)}</span>.
-            </p>
+            <ol data-testid="qr-steps" className="mt-cluster grid list-inside list-decimal gap-inset text-left text-sm text-muted-foreground">
+              <li>Open Ember on your phone</li>
+              <li>Tap Scan QR code in the menu, or in Settings &gt; Devices</li>
+              <li>Tap Approve</li>
+            </ol>
           )}
         </div>
 
@@ -60,9 +61,13 @@ export function QrSignIn({ next }: { next: string }) {
         {state.kind === 'waiting' && (
           <>
             <QrSvg value={state.approveUrl} size={240} label="QR code to sign in" />
-            <div data-testid="qr-code" className="font-mono text-3xl font-bold tracking-widest">
-              {formatCode(state.code)}
-            </div>
+            <p className="text-sm text-muted-foreground">
+              No camera? Type{' '}
+              <span data-testid="qr-code" className="font-mono font-bold tracking-widest text-foreground">
+                {formatCode(state.code)}
+              </span>{' '}
+              in Settings &gt; Devices
+            </p>
             <div className="text-xs text-muted-foreground">This device: {state.device}</div>
             <div className="flex items-center gap-cluster text-sm text-muted-foreground" aria-live="polite">
               <span className="size-2 animate-pulse rounded-full bg-ember" aria-hidden />
