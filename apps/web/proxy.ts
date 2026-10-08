@@ -25,8 +25,9 @@ const PUBLIC_API_PREFIXES = ['/api/youtube/stream/', '/api/search', '/api/tracks
   // version and a proxied installer, no user data.
   '/api/desktop/',
   // The same for the phone app's updater (AppUpdater.kt): a signed-out phone
-  // must still update. The latest version and its APK, nothing else.
-  '/api/android/'];
+  // must still update. Only these two routes: the latest version and its
+  // APK. Anything else added under /api/android/ stays behind sign-in.
+  '/api/android/update', '/api/android/apk/'];
 
 /** An upload's audio or cover asked for with a signed cast link (`?st=`):
  *  a Chromecast has no session to send. Let through to the route, which

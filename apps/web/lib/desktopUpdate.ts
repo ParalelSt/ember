@@ -21,6 +21,8 @@ const TOKEN = process.env.GITHUB_RELEASES_TOKEN || '';
 // API rate limit. Overridable mainly so tests can exercise the failure paths,
 // which a warm cache would otherwise hide.
 const CACHE_MS = Number(process.env.UPDATE_CACHE_MS ?? 5 * 60 * 1000);
+/** How long GitHub may take to start answering an asset download. */
+export const ASSET_HEADERS_TIMEOUT_MS = 60_000;
 
 export interface UpdateManifest {
   version: string;
@@ -180,15 +182,22 @@ async function fetchAssetText(id: number): Promise<string | null> {
  *  checks the id with updaterAsset first. */
 export async function fetchAsset(id: number): Promise<Response | null> {
   if (!TOKEN) return null;
+  // The timeout covers GitHub answering, not the transfer: a signal that
+  // stays armed also cuts the body, and an APK over a phone's mobile data
+  // (or an installer on a slow line) can take longer than a minute.
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), ASSET_HEADERS_TIMEOUT_MS);
   try {
     return await fetch(`${API_BASE}/repos/${REPO}/releases/assets/${id}`, {
       headers: { ...ghHeaders(), accept: 'application/octet-stream' },
       cache: 'no-store',
       redirect: 'follow',
-      signal: AbortSignal.timeout(60_000),
+      signal: controller.signal,
     });
   } catch (e) {
     serverLogger.error('update', 'asset fetch failed', { id }, e);
     return null;
+  } finally {
+    clearTimeout(timer);
   }
 }

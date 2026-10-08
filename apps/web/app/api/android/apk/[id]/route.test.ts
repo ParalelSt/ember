@@ -26,14 +26,17 @@ const releases = [
 ];
 
 const assetFetches: string[] = [];
+const assetSignals: AbortSignal[] = [];
 let upstreamStatus = 200;
 const realFetch = globalThis.fetch;
-globalThis.fetch = vi.fn(async (input: string | URL | Request) => {
+globalThis.fetch = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
   const url = String(input instanceof Request ? input.url : input);
   if (url.includes('/releases?')) return Response.json(releases);
   const m = /\/releases\/assets\/(\d+)$/.exec(url);
   if (m) {
     assetFetches.push(m[1]);
+    const signal = (init as RequestInit | undefined)?.signal;
+    if (signal) assetSignals.push(signal);
     if (upstreamStatus !== 200) return new Response('gone', { status: upstreamStatus });
     return new Response(`APK-${m[1]}`, { headers: { 'content-type': 'application/octet-stream', 'content-length': '7' } });
   }
@@ -77,6 +80,20 @@ describe('GET /api/android/apk/[id]', () => {
     const res = await get(id);
     expect(res.status).toBe(404);
     expect(assetFetches).toEqual([]);
+  });
+
+  it('times out only while waiting for GitHub, never during a slow transfer', async () => {
+    vi.useFakeTimers();
+    try {
+      assetSignals.length = 0;
+      const res = await get('401');
+      expect(res.status).toBe(200);
+      vi.advanceTimersByTime(10 * 60 * 1000);
+      expect(assetSignals).toHaveLength(1);
+      expect(assetSignals[0].aborted).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('answers 404 when GitHub does not hand the file over', async () => {
