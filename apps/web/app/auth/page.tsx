@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { Button } from '@/components/ui/button';
@@ -9,6 +9,7 @@ import { Label } from '@/components/ui/label';
 import { FlameIcon } from '@/components/icons';
 import { safeNext } from '@/lib/safeNext';
 import { QrSignIn } from '@/components/auth/QrSignIn';
+import { isPhone } from '@/lib/isPhone';
 
 type Stage =
   | { kind: 'email' }
@@ -27,6 +28,10 @@ export default function AuthPage() {
   const [password, setPassword] = useState('');
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
+  // Nothing on the server or first render; the QR mounts (and starts its
+  // polling) only once the client says this is not a phone.
+  const [showQr, setShowQr] = useState(false);
+  useEffect(() => setShowQr(!isPhone()), []);
 
   const submitEmail = async (e: FormEvent) => {
     e.preventDefault();
@@ -155,8 +160,8 @@ export default function AuthPage() {
             </div>
           )}
         </form>
-        {/* Sign in from a phone instead: only before an email is chosen. */}
-        {stage.kind === 'email' && <QrSignIn next={next} />}
+        {/* Sign in from a phone instead: only before an email is chosen, and never on a phone. */}
+        {stage.kind === 'email' && showQr && <QrSignIn next={next} />}
       </div>
     </div>
   );
