@@ -462,7 +462,8 @@ describe('TransferFlow: every answer reaches its route', () => {
     await waitFor(() => expect(api.transferStart).toHaveBeenCalled());
     expect(api.transferStart.mock.calls[0][0]).toMatchObject({ destination: 'liked' });
     await waitFor(() => expect(push).toHaveBeenCalledWith('/settings/library'));
-    expect(toast.success).toHaveBeenCalledWith('Transfer started. Ember tells you when it is done.');
+    // From the top: the pill and the bottom bar hold the bottom of the screen.
+    expect(toast.success).toHaveBeenCalledWith('Transfer started. Ember tells you when it is done.', { position: 'top-center' });
     // The progress chip follows it from now on.
     expect(useTransferStore.getState().followed).toContain('j1');
   });
@@ -823,7 +824,7 @@ describe('TransferFlow: YouTube Music likes, after a Google sign-in', () => {
     await poll();
     await waitFor(() => expect(startButton()).toBeEnabled());
     fireEvent.click(startButton());
-    await waitFor(() => expect(toast.info).toHaveBeenCalledWith('Ember will take the newest 10,000.'));
+    await waitFor(() => expect(toast.info).toHaveBeenCalledWith('Ember will take the newest 10,000.', { position: 'top-center' }));
   });
 
   const endings: [string, string, string][] = [

@@ -160,7 +160,7 @@ describe('TransferReview', () => {
     render(<TransferReview jobId="j1" />);
     fireEvent.click(within(rows()[0]).getByRole('button', { name: 'Use this' }));
     expect(actions.pick.mutate.mock.calls[0][0]).toEqual({ itemId: 'r1', track: expect.objectContaining({ sourceId: 'c' }) });
-    expect(toast.success).toHaveBeenCalledWith('Liked "Paper Lanterns"');
+    expect(toast.success).toHaveBeenCalledWith('Liked "Paper Lanterns"', { position: 'top-center' });
     expect(screen.getAllByTestId('transfer-review-done')[0]).toHaveTextContent('Liked Paper Lanterns');
     expect(screen.getByRole('button', { name: 'Use all best guesses (1)' })).toBeInTheDocument();
   });
@@ -209,7 +209,7 @@ describe('TransferReview', () => {
     actions.pick.mutateAsync.mockResolvedValue({});
     render(<TransferReview jobId="j1" />);
     await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Use all best guesses (2)' })));
-    await waitFor(() => expect(toast.success).toHaveBeenCalledWith('Liked 2 songs'));
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith('Liked 2 songs', { position: 'top-center' }));
     expect(actions.pick.mutateAsync.mock.calls.map((c) => c[0].itemId)).toEqual(['r1', 'r2']);
     expect(screen.getAllByTestId('transfer-review-done')).toHaveLength(2);
   });
@@ -219,7 +219,7 @@ describe('TransferReview', () => {
     state.job = { ...baseJob, kind: 'playlist', playlistId: 'p1' };
     render(<TransferReview jobId="j1" />);
     fireEvent.click(within(rows()[0]).getByRole('button', { name: 'Use this' }));
-    expect(toast.success).toHaveBeenCalledWith('Added "Paper Lanterns"');
+    expect(toast.success).toHaveBeenCalledWith('Added "Paper Lanterns"', { position: 'top-center' });
   });
 
   it('once every song is settled: All sorted, and Done closes the transfer', () => {

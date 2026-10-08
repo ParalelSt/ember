@@ -10,7 +10,7 @@ import { CheckIcon, ChevronLeftIcon, HeartIcon, MusicIcon, PauseIcon, PlayIcon, 
 import { CandidateRow, SOURCE_NAME } from '@/components/import/parts';
 import { SearchPanel } from '@/components/import/ReviewSheet';
 import { resultLine } from '@/components/import/TransferStatus';
-import { WizardBar, WizardTitle } from '@/components/import/TransferWizard';
+import { TOAST_UP, WIZARD_PAGE, WizardBar, WizardTitle } from '@/components/import/TransferWizard';
 import { useImportActions, useImportJob, useImportJobs } from '@/hooks/useImports';
 import { useImportReview } from '@/hooks/useImportReview';
 import { isActive } from '@/lib/import/jobState';
@@ -78,9 +78,9 @@ export function TransferReview({ jobId }: { jobId?: string }) {
         onSuccess: () => {
           decide(item, { kind: 'used', from, title: track.title });
           if (openId === item.id) setOpenId(null);
-          toast.success(`${verb} "${track.title}"`);
+          toast.success(`${verb} "${track.title}"`, TOAST_UP);
         },
-        onError: (e) => toast.error(`Couldn't ${liked ? 'like' : 'add'} that song: ${(e as Error).message}`),
+        onError: (e) => toast.error(`Couldn't ${liked ? 'like' : 'add'} that song: ${(e as Error).message}`, TOAST_UP),
       },
     );
   };
@@ -91,7 +91,7 @@ export function TransferReview({ jobId }: { jobId?: string }) {
         decide(item, { kind: 'skipped', from });
         if (openId === item.id) setOpenId(null);
       },
-      onError: (e) => toast.error((e as Error).message),
+      onError: (e) => toast.error((e as Error).message, TOAST_UP),
     });
   };
   const undo = (item: ImportItem) => {
@@ -106,7 +106,7 @@ export function TransferReview({ jobId }: { jobId?: string }) {
             delete next[item.id];
             return next;
           }),
-        onError: (e) => toast.error((e as Error).message),
+        onError: (e) => toast.error((e as Error).message, TOAST_UP),
       },
     );
   };
@@ -120,9 +120,9 @@ export function TransferReview({ jobId }: { jobId?: string }) {
         decide(item, { kind: 'used', from: 'review', title: item.candidates[0].track.title });
         done += 1;
       }
-      toast.success(`${verb} ${done} ${done === 1 ? 'song' : 'songs'}`);
+      toast.success(`${verb} ${done} ${done === 1 ? 'song' : 'songs'}`, TOAST_UP);
     } catch (e) {
-      toast.error(`Stopped after ${done}: ${(e as Error).message}`);
+      toast.error(`Stopped after ${done}: ${(e as Error).message}`, TOAST_UP);
     } finally {
       setUsingAll(false);
     }
@@ -149,7 +149,7 @@ export function TransferReview({ jobId }: { jobId?: string }) {
 
   if (!id || (!isLoading && !job)) {
     return (
-      <div data-testid="transfer-review" className="mx-auto flex min-h-full w-full max-w-2xl flex-col gap-block">
+      <div data-testid="transfer-review" className={WIZARD_PAGE}>
         <WizardTitle>Nothing to check</WizardTitle>
         <p className="text-sm text-muted-foreground">There is no transfer with songs to check right now.</p>
         <WizardBar back={backLink} />
@@ -161,7 +161,7 @@ export function TransferReview({ jobId }: { jobId?: string }) {
   const running = isActive(job.status);
   const UseIcon = liked ? HeartIcon : PlusIcon;
   return (
-    <div data-testid="transfer-review" className="mx-auto flex min-h-full w-full max-w-2xl flex-col gap-block">
+    <div data-testid="transfer-review" className={WIZARD_PAGE}>
       <WizardTitle>{rows.length ? `${rows.length} ${rows.length === 1 ? 'song' : 'songs'} to check` : 'Nothing to check'}</WizardTitle>
       <p data-testid="transfer-review-result" className="text-sm text-muted-foreground">
         {running ? `Still transferring, ${job.cursor} of ${job.total}. More may join this list.` : resultLine(job)}

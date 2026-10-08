@@ -10,7 +10,7 @@ import { AlertIcon, KeyIcon, LinkIcon, UploadIcon } from '@/components/icons';
 import { PreviewChips, type CountChip } from '@/components/import/TransferPreviewChips';
 import { SOURCE_NAME } from '@/components/import/parts';
 import { HaveOptions, StepCard } from '@/components/import/TransferSteps';
-import { RadioRow, ServiceMark, WhereToSheet, WizardBar, WizardProgress, WizardTitle } from '@/components/import/TransferWizard';
+import { RadioRow, ServiceMark, TOAST_UP, WhereToSheet, WIZARD_PAGE, WizardBar, WizardProgress, WizardTitle } from '@/components/import/TransferWizard';
 import { useIsDesktop } from '@/hooks/useIsDesktop';
 import { api } from '@/lib/api';
 import { QK } from '@/hooks/useLibrary';
@@ -429,7 +429,7 @@ export function TransferFlow({
    *  back to where they were. */
   const started = (jobId: string) => {
     follow(jobId);
-    toast.success('Transfer started. Ember tells you when it is done.');
+    toast.success('Transfer started. Ember tells you when it is done.', TOAST_UP);
     router.push(from);
   };
 
@@ -445,7 +445,7 @@ export function TransferFlow({
         logger.breadcrumb('import', 'transfer queued', { from, destination, source: r.job.source, total: r.job.total });
         void qc.invalidateQueries({ queryKey: IMPORT_QK.jobs });
         void qc.invalidateQueries({ queryKey: QK.likes });
-        if (r.note) toast.info(r.note);
+        if (r.note) toast.info(r.note, TOAST_UP);
         started(r.job.id);
         return;
       }
@@ -608,7 +608,7 @@ export function TransferFlow({
       : '';
 
   return (
-    <div data-testid="transfer-page" data-stage={stage} className="mx-auto flex min-h-full w-full max-w-2xl flex-col gap-block">
+    <div data-testid="transfer-page" data-stage={stage} className={WIZARD_PAGE}>
       <div className="flex flex-col pt-inset">
         <WizardProgress at={stage === 'start' ? 0 : stage === 'preview' ? 2 : 1} />
         <WizardTitle>{title}</WizardTitle>

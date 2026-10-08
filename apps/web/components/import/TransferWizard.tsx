@@ -28,6 +28,19 @@ export const DESTINATIONS: { id: JobKind; name: string; consequence: string; ico
   },
 ];
 
+/** A wizard page is at least as tall as the scroller (less the top bar and
+ *  the main column's top padding) and eats the column's bottom padding, so
+ *  its bar sits on the very bottom even when there is little to show. */
+export const WIZARD_PAGE = cn(
+  'mx-auto flex w-full max-w-2xl flex-col gap-block',
+  'min-h-[calc(var(--ember-scroller-h,100svh)-var(--ember-topbar-h,0px)-var(--spacing-page))] -mb-[calc(var(--spacing-section)+var(--spacing-page))]',
+  'md:min-h-[calc(var(--ember-scroller-h,100svh)-var(--ember-topbar-h,0px)-var(--spacing-page-lg))] md:-mb-[calc(var(--spacing-section)+var(--spacing-page-lg))]',
+);
+
+/** The bottom bar and the floating pill hold the bottom of the screen, so
+ *  the flow's toasts drop in from the top instead. */
+export const TOAST_UP = { position: 'top-center' } as const;
+
 const STAGES = ['Where', 'How', 'Check'] as const;
 
 /** Where you are: three bars, the done ones ticked, the current one bold. */
