@@ -1,3 +1,14 @@
+# 0.7.24: Transfer from every service, QR sign-in, car fixes (apps 0.4.18)
+
+**Host: run `./update.sh` as usual (no new packages, nothing new in
+`.env.local`).** It restarts PocketBase, which creates the `login_requests`
+collection for QR sign-in and loads its two hook routes (`qr_login.pb.js`).
+They take only the superuser token the app already signs in with, and the
+public `/pb` proxy never forwards them. The Android fixes (a fresh sign-in
+survives the app being closed, no rotate prompt on car screens) and the
+player log behind the admin's Car and Android Auto page need the new apps,
+0.4.18 (Android versionCode 23), which the `v0.4.18` tag builds.
+
 # 0.7.23: Linux sound and icon, calmer polling (apps 0.4.17)
 
 **Host: run `./update.sh` as usual (no new packages).** The Linux sound fix and

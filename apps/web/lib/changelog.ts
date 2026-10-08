@@ -21,15 +21,40 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    id: 'transfer-every-service',
+    version: '0.7.24',
+    date: '2026-10-08',
+    title: 'Transfer, step by step',
+    summary: 'Bring your liked songs over from Spotify, Apple Music or anywhere else, not just YouTube Music, on a new Transfer page.',
+    bullets: [
+      'Open Transfer from Liked songs or from Settings, under Library. Pick where your songs are now and where they go, then follow the steps, each with a picture of the screen to tap.',
+      'Before it starts you see how many songs there are and about how long it takes, and songs you already like are left out.',
+      'You can leave the page while it runs: a small pill shows how far it is, then says Transfer done. Songs Ember was not sure about wait as big cards to check, or take all the best guesses at once.',
+    ],
+  },
+  {
     id: 'qr-sign-in',
     version: '0.7.24',
-    date: '2026-10-07',
+    date: '2026-10-08',
     title: 'Sign in with your phone',
     summary: 'Sign in a new device by scanning a QR code from your phone.',
     bullets: [
       'The sign-in page shows a QR code and a short code. Scan it with a phone that is signed in, check the device, and tap Approve.',
       'No camera handy? Type the code in Settings > Devices.',
       'Settings > Devices also lists the devices you signed in this way, and can sign you out everywhere at once.',
+    ],
+  },
+  {
+    id: 'fixes-0724',
+    version: '0.7.24',
+    date: '2026-10-08',
+    title: 'Fixes',
+    summary: 'The Android app keeps you signed in, and car screens no longer ask you to turn your phone.',
+    bullets: [
+      'Android: signing in just before the app is closed no longer leaves you signed out when it opens again.',
+      'Android car screens show the app instead of "Rotate your phone to portrait".',
+      'Admins get a Car and Android Auto page with the app\'s player log, to find out why a song did not play in the car.',
+      'Android needs the new app (0.4.18) for these.',
     ],
   },
   {
