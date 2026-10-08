@@ -241,13 +241,26 @@ const shot = async (page, name) => {
   await page.screenshot({ path: path.join(SHOTS, `transfer-google-ui-${name}.png`), fullPage: true });
 };
 
+/** A service, then where its songs go in the sheet, then Continue. */
+async function chooseService(page, service, dest) {
+  await page.click(`[data-testid="transfer-service-card"][data-service="${service}"]`);
+  await page.waitForSelector('[data-testid="transfer-where-sheet"]');
+  await page.click(`[data-testid="transfer-where-sheet"] [data-destination="${dest}"]`);
+  await page.locator('[data-testid="transfer-where-sheet"]').getByRole('button', { name: 'Continue' }).click();
+}
+
+/** What you have: pick the row, then Next in the bottom bar. */
+async function chooseHave(page, route) {
+  await page.click(`[data-testid="transfer-have-option"][data-route="${route}"]`);
+  await page.getByRole('button', { name: 'Next', exact: true }).click();
+}
+
 async function openGoogleRoute(page) {
   await page.goto(`${APP}/settings/library`, { waitUntil: 'networkidle' });
   await page.click('[data-testid="settings-transfer-button"]');
   await page.waitForSelector('[data-testid="transfer-page"]');
-  await page.click('[data-testid="transfer-destination-card"][data-destination="liked"]');
-  await page.click('[data-testid="transfer-service-card"][data-service="ytmusic"]');
-  await page.click('[data-testid="transfer-have-option"][data-route="ytmusic-google"]');
+  await chooseService(page, 'ytmusic', 'liked');
+  await chooseHave(page, 'ytmusic-google');
   await page.getByRole('button', { name: 'I have it already, skip to the end' }).click();
   await page.getByRole('button', { name: /Sign in with Google/ }).waitFor();
 }
@@ -285,11 +298,10 @@ try {
   await page.goto(`${APP}/settings/library`, { waitUntil: 'networkidle' });
   await page.click('[data-testid="settings-transfer-button"]');
   await page.waitForSelector('[data-testid="transfer-page"]');
-  await page.click('[data-testid="transfer-destination-card"][data-destination="liked"]');
-  await page.click('[data-testid="transfer-service-card"][data-service="ytmusic"]');
+  await chooseService(page, 'ytmusic', 'liked');
   const options = await page.$$eval('[data-testid="transfer-have-label"]', (els) => els.map((e) => e.textContent));
   check('A1 signing in is the first answer for YouTube Music likes', options[0] === 'I can sign in to my Google account', JSON.stringify(options));
-  await page.click('[data-testid="transfer-have-option"][data-route="ytmusic-google"]');
+  await chooseHave(page, 'ytmusic-google');
   // The steps come one at a time: read them all on the way to the last.
   let stepsText = '';
   for (;;) {
@@ -363,7 +375,7 @@ try {
   const likedNow = await likedTitles();
   check('D3 only the official songs were liked', JSON.stringify(likedNow) === JSON.stringify(['Nine Streets', 'Paper Lanterns', 'Slow Weather']),
     JSON.stringify(likedNow));
-  await page.click('[data-testid="transfer-notification"] >> text=Transfer done');
+  await page.locator('[data-testid="transfer-notification"]').getByRole('button', { name: /^Check \d+ songs?$/ }).click();
   await page.waitForSelector('[data-testid="transfer-review-list"]', { timeout: 20_000 });
   const toSort = (await page.textContent('[data-testid="transfer-review-list"]')) ?? '';
   check('D4 tapping it opens one list with the two uploads, and nothing else',
@@ -375,9 +387,9 @@ try {
 
   // ── D6. The quick check: Use for the demo, Skip for the satire ad ──
   const demo = page.locator('[data-testid="transfer-review-item"]', { hasText: 'Garage demo' });
-  check('D6 each upload shows Ember\u2019s best guess with Use', (await demo.getByRole('button', { name: 'Use' }).count()) === 1);
+  check('D6 each upload shows Ember\u2019s best guess with Use this', (await demo.getByRole('button', { name: 'Use this' }).count()) === 1);
   await shot(page, 'review');
-  await demo.getByRole('button', { name: 'Use' }).click();
+  await demo.getByRole('button', { name: 'Use this' }).click();
   await page.waitForSelector('[data-testid="transfer-review-done"]', { timeout: 10_000 });
   await page.locator('[data-testid="transfer-review-item"]', { hasText: 'Bricks and Minifigs' }).getByRole('button', { name: 'Skip' }).click();
   await page.waitForSelector('[data-testid="transfer-review-all-done"]', { timeout: 10_000 });
@@ -413,7 +425,7 @@ try {
   const deadline = Date.now() + 10_000;
   while (google.tokenPolls < pollsBefore + 2 && Date.now() < deadline) await page.waitForTimeout(200);
   check('F0 while the code is up, the server is asking Google', google.tokenPolls >= pollsBefore + 2);
-  await page.getByRole('button', { name: 'Go back' }).click();
+  await page.getByRole('button', { name: 'Back', exact: true }).click();
   await page.waitForSelector('[data-testid="google-user-code"]', { state: 'detached' });
   await page.waitForTimeout(1_500);
   const pollsAfterClose = google.tokenPolls;
