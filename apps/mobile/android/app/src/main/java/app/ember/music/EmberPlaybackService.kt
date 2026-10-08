@@ -283,6 +283,7 @@ class EmberPlaybackService : MediaLibraryService() {
             downloadedArt = { offline.artFileFor(it).exists() },
             online = { !::net.isInitialized || net.current().online },
             onLiked = { ids -> handler.post { liked.replace(ids); refreshButtons() } },
+            notice = { UpdateRules.carNotice(AppUpdater.isReady(), AppUpdater.installsSilently()) },
         )
         // Streams go through the same OkHttp client, so they carry the cookie
         // and get the same 401 retry as the JSON calls.
@@ -332,6 +333,41 @@ class EmberPlaybackService : MediaLibraryService() {
         // notification), each showing its state.
         player.addListener(buttonWatch)
         refreshButtons()
+        watchForUpdates()
+    }
+
+    // ── App updates (AppUpdater) ────────────────────────────────────────
+
+    /** Whether the car's Home last showed the update notice. */
+    private var noticeShown = false
+    private val presenceWatch = object : Player.Listener {
+        override fun onIsPlayingChanged(isPlaying: Boolean) = publishPresence()
+    }
+    private val updateListener: (org.json.JSONObject) -> Unit = { handler.post { refreshUpdateNotice() } }
+
+    /** The updater waits for the music and the car: it hears from here when
+     *  either changes, and the car's Home gets its "update ready" line. */
+    private fun watchForUpdates() {
+        runCatching {
+            AppUpdater.init(this)
+            AppUpdater.addListener(updateListener)
+        }.onFailure { playbackLog.warn("update.watch", "updater unavailable: ${it.message}") }
+        player.addListener(presenceWatch)
+        publishPresence()
+        refreshUpdateNotice()
+    }
+
+    private fun publishPresence() {
+        UpdatePresence.setPlaying(runCatching { active.isPlaying }.getOrDefault(false))
+        UpdatePresence.setCar(carControllers.isNotEmpty())
+    }
+
+    private fun refreshUpdateNotice() {
+        val show = AppUpdater.isReady()
+        if (show == noticeShown || !::session.isInitialized) return
+        noticeShown = show
+        if (show && carControllers.isNotEmpty()) playbackLog.info("update.car", "car shows: update ready, installs once parked")
+        runCatching { session.notifyChildrenChanged(BrowseTree.HOME, Int.MAX_VALUE, null) }
     }
 
     private fun startLog(baseUrl: String) {
@@ -570,6 +606,8 @@ class EmberPlaybackService : MediaLibraryService() {
         // play is skipped, as on the phone.
         queue.addListener(QueueListener(queue, recordPlay = ::recordPlay, extendQueue = ::maybeExtendQueue, onUnplayable = UnplayableNotices::record, lastHeard = lastHeard))
         queue.addListener(buttonWatch)
+        // Music on the TV is music too: the updater waits for it as well.
+        queue.addListener(presenceWatch)
         val switch = CastSwitch(
             player, queue, baseUrl,
             whenApplied = queue::afterPending,
@@ -917,6 +955,9 @@ class EmberPlaybackService : MediaLibraryService() {
     }
 
     override fun onDestroy() {
+        AppUpdater.removeListener(updateListener)
+        UpdatePresence.setPlaying(false)
+        UpdatePresence.setCar(false)
         playbackLog.info("service.stop", "player service stopped")
         playbackLog.flush()
         logTimer.shutdownNow()
@@ -965,7 +1006,10 @@ class EmberPlaybackService : MediaLibraryService() {
                     org.json.JSONObject().put("caller", controller.packageName).put("verdict", verdict.name))
             }
             if (!verdict.allowed) return MediaSession.ConnectionResult.reject()
-            if (controller.packageName in CAR_PACKAGES) carControllers.add(controller.packageName)
+            if (controller.packageName in CAR_PACKAGES) {
+                carControllers.add(controller.packageName)
+                handler.post { publishPresence() }
+            }
             val commands = MediaSession.ConnectionResult.DEFAULT_SESSION_AND_LIBRARY_COMMANDS.buildUpon()
                 .add(SessionCommand(COMMAND_SHUFFLE, Bundle.EMPTY))
                 .add(SessionCommand(COMMAND_REPEAT, Bundle.EMPTY))
@@ -998,6 +1042,7 @@ class EmberPlaybackService : MediaLibraryService() {
         override fun onDisconnected(session: MediaSession, controller: MediaSession.ControllerInfo) {
             if (controller.packageName in CAR_PACKAGES) {
                 carControllers.remove(controller.packageName)
+                handler.post { publishPresence() }
                 playbackLog.info("controller.disconnect", "${controller.packageName} disconnected", org.json.JSONObject().put("caller", controller.packageName))
             }
         }

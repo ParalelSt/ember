@@ -33,6 +33,9 @@ class BrowseTree(
     /** Every liked song's id, whenever the Liked tab is fetched (the car's
      *  heart button shows it). */
     private val onLiked: (List<String>) -> Unit = {},
+    /** A line for the top of Home (title, subtitle), or null: an app update
+     *  waiting until the car is parked (UpdateRules.carNotice). */
+    private val notice: () -> Pair<String, String>? = { null },
 ) {
     /** Every track the car has been shown, by id. A tap from a legacy browser
      *  (Android Auto, the car Media Center) hands back only the mediaId, so the
@@ -131,8 +134,15 @@ class BrowseTree(
                 .setMediaType(MediaMetadata.MEDIA_TYPE_FOLDER_MIXED).build()).build()
 
     /** A non-playable, non-browsable line the car shows as a message. */
-    fun placeholder(text: String): MediaItem = MediaItem.Builder().setMediaId("msg:" + text.hashCode())
-        .setMediaMetadata(MediaMetadata.Builder().setTitle(text).setIsBrowsable(false).setIsPlayable(false).build()).build()
+    fun placeholder(text: String, subtitle: String? = null): MediaItem = MediaItem.Builder().setMediaId("msg:" + text.hashCode())
+        .setMediaMetadata(MediaMetadata.Builder().setTitle(text).setSubtitle(subtitle).setIsBrowsable(false).setIsPlayable(false).build()).build()
+
+    /** Home with the notice, if there is one, on top. Never in the way of
+     *  the list: a notice that fails to build is left out. */
+    private fun withNotice(items: List<MediaItem>): List<MediaItem> {
+        val (title, subtitle) = runCatching { notice() }.getOrNull() ?: return items
+        return listOf(placeholder(title, subtitle)) + items
+    }
 
     fun root(): MediaItem = folder(ROOT, "Ember")
 
@@ -141,7 +151,7 @@ class BrowseTree(
         if (pageIndex != null) return pageOf(base, pageIndex)
         return when {
             parentId == ROOT -> tabsFor(rootLimit).map(::tab)
-            parentId == HOME -> home()
+            parentId == HOME -> withNotice(home())
             parentId == LIBRARY -> listOf(
                 folder(RECENT, "Recently played"),
                 folder(UPLOADS, "Uploads"),
