@@ -16,6 +16,7 @@ import { ThemeApplier } from '@/components/providers/ThemeApplier';
 import { themeFromRecord } from '@/lib/theme/fromRecord';
 import { htmlProps, themeColor } from '@/lib/theme/css';
 import { DEFAULT_THEME, type ThemeDoc } from '@/lib/theme/model';
+import { CAR_CLASS_SCRIPT } from '@/lib/carUa';
 import './globals.css';
 
 const inter = Inter({
@@ -75,6 +76,10 @@ export default async function RootLayout({ children }: { children: React.ReactNo
 
   return (
     <html lang="en" className={html.className} style={html.style as React.CSSProperties} suppressHydrationWarning>
+      <head>
+        {/* Car screens are tagged before first paint so the rotate lock never flashes. */}
+        <script dangerouslySetInnerHTML={{ __html: CAR_CLASS_SCRIPT }} />
+      </head>
       <body className="min-h-screen bg-background text-foreground antialiased">
         {/* Portrait-only on phones — shown over the app when a phone is turned
             landscape (the layout is built for portrait). CSS-gated in
