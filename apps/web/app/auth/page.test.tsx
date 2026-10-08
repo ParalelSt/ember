@@ -78,3 +78,37 @@ describe('AuthPage QR sign-in block', () => {
     expect(await screen.findByLabelText('Password')).toBeInTheDocument();
   });
 });
+
+describe('AuthPage QR on phones', () => {
+  const setUa = (ua: string) => vi.spyOn(window.navigator, 'userAgent', 'get').mockReturnValue(ua);
+  afterEach(() => vi.restoreAllMocks());
+
+  it('does not render or start the QR on an iPhone', async () => {
+    setUa('Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148 Safari/604.1');
+    const f = vi.fn(async () => new Response('{}', { status: 200 }));
+    vi.stubGlobal('fetch', f);
+    nav.search = new URLSearchParams();
+    render(<AuthPage />);
+    await new Promise((r) => setTimeout(r, 20));
+    expect(screen.queryByTestId('qr-sign-in')).toBeNull();
+    expect(f.mock.calls.some((c) => String((c as unknown[])[0]).includes('/api/auth/qr'))).toBe(false);
+    expect(screen.getByLabelText('Email')).toBeInTheDocument();
+  });
+
+  it('does not render the QR on an Android car screen', () => {
+    setUa('Mozilla/5.0 (Linux; Android 12) Chrome/120 Safari/537.36 EmberCar');
+    nav.search = new URLSearchParams();
+    render(<AuthPage />);
+    expect(screen.queryByTestId('qr-sign-in')).toBeNull();
+  });
+
+  it('still renders and starts the QR on desktop', async () => {
+    setUa('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120 Safari/537.36 Edg/120');
+    const f = vi.fn(async () => new Response('{}', { status: 503 }));
+    vi.stubGlobal('fetch', f);
+    nav.search = new URLSearchParams();
+    render(<AuthPage />);
+    expect(screen.getByTestId('qr-sign-in')).toBeInTheDocument();
+    await waitFor(() => expect(f.mock.calls.some((c) => String((c as unknown[])[0]).includes('/api/auth/qr/start'))).toBe(true));
+  });
+});
