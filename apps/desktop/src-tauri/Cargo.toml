@@ -77,3 +77,13 @@ lto = true
 opt-level = "s"
 panic = "abort"
 strip = true
+
+# cpal 0.16.0 passes its CoreAudio size out-parameters through shared
+# references (`let data_size = 0u32; NonNull::from(&data_size)`), so the
+# compiler may assume they never change. Built with current Rust, the device
+# list is sized as empty and CoreAudio then writes into address 0x4: the app
+# crashed at launch on every Mac (macOS 26.6). vendor/cpal is 0.16.0 with
+# those out-parameters made mutable. Drop this once rodio moves to a cpal
+# with the fix.
+[patch.crates-io]
+cpal = { path = "vendor/cpal" }

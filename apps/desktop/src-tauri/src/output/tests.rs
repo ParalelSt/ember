@@ -870,3 +870,20 @@ fn when_nothing_opens_every_reason_is_reported() {
     assert!(err.contains("HDA Intel PCH: The requested device"), "{err}");
     assert_eq!(open_first::<(), ()>(Vec::new(), |_| Ok(())).unwrap_err(), "no output device to open");
 }
+
+/// cpal 0.16.0 sized the device list through a shared reference, so a release
+/// build read it as empty and CoreAudio wrote the device ids to address 0x4:
+/// the app crashed at launch on every Mac. Listing devices on a real machine
+/// must just work (vendor/cpal carries the fix). Run with `--release` to catch
+/// it, since the bad read only shows up optimized.
+#[test]
+fn listing_output_devices_does_not_crash() {
+    use rodio::cpal::traits::{DeviceTrait, HostTrait};
+    let host = rodio::cpal::default_host();
+    let names: Vec<String> = host
+        .output_devices()
+        .map(|it| it.filter_map(|d| d.name().ok()).collect())
+        .unwrap_or_default();
+    // Build machines may have no sound card; the point is reaching this line.
+    let _ = (names, host.default_output_device());
+}
