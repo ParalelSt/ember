@@ -37,10 +37,3 @@ export function parseScanned(raw: unknown, origin: string): ScannedCredential | 
   const token = LINK_PATH.exec(url.pathname)?.[1];
   return token && LINK_TOKEN_RE.test(token) ? { kind: 'token', token } : null;
 }
-
-/** The in-app address of the approve page for a scanned token. The page
- *  (ApproveLinkView) swaps it for plain /link as soon as it has read the
- *  token, the same as when a phone camera opens the link. */
-export function approvePath(token: string): string {
-  return `/link/${token}`;
-}

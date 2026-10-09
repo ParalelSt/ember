@@ -9,6 +9,7 @@ import { nativeScanQr } from '@/lib/qrScan/nativeScan';
 import { NOT_A_SIGN_IN_CODE, parseScanned, type ScannedCredential } from '@/lib/qrScan/parseScanned';
 import { useUiStore } from '@/stores/useUiStore';
 
+// The same value as ApproveSheetHost's SCAN_MARK.
 const MARK = '__emberQrScan';
 
 const markIsCurrent = () =>
@@ -22,9 +23,9 @@ const markIsCurrent = () =>
  *  browsers, old APKs, no Play services) moves on to 'web'.
  *
  *  'web': the page's scanner, full screen. Back closes it (its own history
- *  entry, like useBackDismiss). A result REPLACES that entry with the
- *  approve page, so nothing is left to go back to and no history.back()
- *  races the navigation. */
+ *  entry, like useBackDismiss). A result opens the approve sheet
+ *  (ApproveSheetHost), which takes that entry over as its own, so one Back
+ *  still closes it and no history.back() races anything. */
 export function QrScanHost() {
   const mode = useUiStore((s) => s.qrScan);
   const setMode = useUiStore((s) => s.setQrScan);
@@ -67,7 +68,7 @@ export function QrScanHost() {
   const onResult = useCallback(
     (credential: ScannedCredential) => {
       setMode('idle');
-      openScanned(credential, markIsCurrent() ? 'replace' : 'push');
+      openScanned(credential);
     },
     [setMode, openScanned],
   );

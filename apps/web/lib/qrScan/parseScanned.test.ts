@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { approvePath, parseScanned } from './parseScanned';
+import { parseScanned } from './parseScanned';
 
 const ORIGIN = 'https://ember.example.com';
 const TOKEN = 'AbCdEfGhIjKlMnOpQrStUvWxYz0123456789-_abcde';
@@ -60,9 +60,5 @@ describe('parseScanned', () => {
 
   it('a broken app origin refuses every link', () => {
     expect(parseScanned(`${ORIGIN}/link/${TOKEN}`, 'not a url')).toBeNull();
-  });
-
-  it('approvePath is the in-app approve page', () => {
-    expect(approvePath(TOKEN)).toBe(`/link/${TOKEN}`);
   });
 });

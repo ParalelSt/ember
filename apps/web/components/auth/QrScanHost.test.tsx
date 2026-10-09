@@ -32,7 +32,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   h.scanner = null;
   h.native = { status: 'unavailable' };
-  useUiStore.setState({ qrScan: 'idle', scannedCode: null });
+  useUiStore.setState({ qrScan: 'idle', approveRequest: null });
 });
 afterEach(cleanup);
 
@@ -44,19 +44,22 @@ async function start() {
 }
 
 describe('QrScanHost, Android app scanner', () => {
-  it('a sign-in link for this server opens the approve page', async () => {
+  it('a sign-in link for this server opens the approve sheet over this page, the token never in a URL', async () => {
     h.native = { status: 'scanned', value: `${ORIGIN}/link/${TOKEN}` };
     await start();
-    expect(h.push).toHaveBeenCalledWith(`/link/${TOKEN}`);
+    expect(useUiStore.getState().approveRequest?.credential).toEqual({ token: TOKEN });
+    expect(h.push).not.toHaveBeenCalled();
+    expect(h.replace).not.toHaveBeenCalled();
+    expect(window.location.href).not.toContain(TOKEN);
     expect(useUiStore.getState().qrScan).toBe('idle');
     expect(screen.queryByTestId('qr-scanner-stub')).toBeNull();
   });
 
-  it('a short code goes to Settings > Devices with the code waiting in memory', async () => {
+  it('a short code opens the approve sheet too', async () => {
     h.native = { status: 'scanned', value: 'ABCD-EFGH' };
     await start();
-    expect(h.push).toHaveBeenCalledWith('/settings/devices');
-    expect(useUiStore.getState().scannedCode).toBe('ABCDEFGH');
+    expect(useUiStore.getState().approveRequest?.credential).toEqual({ code: 'ABCDEFGH' });
+    expect(h.push).not.toHaveBeenCalled();
   });
 
   it('anything else: "That\'s not an Ember sign-in code", and no navigation', async () => {
@@ -85,13 +88,15 @@ describe('QrScanHost, page scanner (no native scanner)', () => {
     expect((window.history.state as Record<string, unknown>).__emberQrScan).toBe(true);
   });
 
-  it('a result REPLACES the scanner entry with the approve page (no back() race)', async () => {
+  it('a result opens the approve sheet and leaves the scanner entry for it to take over (no back() race)', async () => {
     await start();
     const back = vi.spyOn(window.history, 'back');
     act(() => h.scanner!.onResult({ kind: 'token', token: TOKEN }));
-    expect(h.replace).toHaveBeenCalledWith(`/link/${TOKEN}`);
+    expect(useUiStore.getState().approveRequest?.credential).toEqual({ token: TOKEN });
+    expect(h.replace).not.toHaveBeenCalled();
     expect(h.push).not.toHaveBeenCalled();
     expect(back).not.toHaveBeenCalled();
+    expect((window.history.state as Record<string, unknown>).__emberQrScan).toBe(true);
     expect(screen.queryByTestId('qr-scanner-stub')).toBeNull();
     back.mockRestore();
   });

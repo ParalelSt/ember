@@ -95,4 +95,6 @@ export {
   FileText as FileIcon,
   // Settings > Devices and the menu: scan a sign-in QR.
   ScanQrCode as ScanQrIcon,
+  // The approve sheet: a tablet asking to sign in.
+  Tablet as TabletIcon,
 } from 'lucide-react';

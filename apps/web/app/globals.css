@@ -391,3 +391,20 @@ body:has([data-tabs-dock][data-tools="open"]) [data-back-to-top] { bottom: 9rem;
 @media (prefers-reduced-motion: reduce) {
   .ember-tap { animation: none !important; }
 }
+
+/* Settings > Devices: the device just approved on this phone
+   (components/settings/DevicesPanel.tsx). An accent ring that holds for a
+   moment, then widens and fades out; the row keeps its tint and New pill.
+   Off under reduced motion, leaving the tint and the pill. */
+@keyframes ember-just-approved {
+  0%, 35% {
+    box-shadow: 0 0 0 2px var(--ember), 0 0 0 6px color-mix(in oklab, var(--ember) 25%, transparent);
+  }
+  100% {
+    box-shadow: 0 0 0 2px color-mix(in oklab, var(--ember) 0%, transparent), 0 0 0 14px color-mix(in oklab, var(--ember) 0%, transparent);
+  }
+}
+.ember-just-approved { animation: ember-just-approved 2.6s ease-out 0.2s both; }
+@media (prefers-reduced-motion: reduce) {
+  .ember-just-approved { animation: none !important; }
+}

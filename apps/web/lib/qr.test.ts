@@ -144,7 +144,7 @@ describe('penalty', () => {
 
 describe('qrSvgPath', () => {
   it('draws each run of dark modules as one rectangle', () => {
-    const qr = { version: 1, mask: 0, size: 3, modules: [[true, true, false], [false, false, false], [true, false, true]] };
+    const qr = { version: 1, ecLevel: 'M' as const, mask: 0, size: 3, modules: [[true, true, false], [false, false, false], [true, false, true]] };
     expect(qrSvgPath(qr)).toBe('M0 0h2v1h-2zM0 2h1v1h-1zM2 2h1v1h-1z');
   });
 });
