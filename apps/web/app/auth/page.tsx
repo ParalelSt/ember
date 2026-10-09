@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, type FormEvent } from 'react';
+import { useState, useSyncExternalStore, type FormEvent } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { Button } from '@/components/ui/button';
@@ -10,6 +10,11 @@ import { FlameIcon } from '@/components/icons';
 import { safeNext } from '@/lib/safeNext';
 import { QrSignIn } from '@/components/auth/QrSignIn';
 import { isPhone } from '@/lib/isPhone';
+
+// Whether this is a phone never changes while the page is open.
+const noSubscribe = () => () => {};
+const notPhone = () => !isPhone();
+const serverUnknown = () => null;
 
 type Stage =
   | { kind: 'email' }
@@ -33,9 +38,8 @@ export default function AuthPage() {
   // form straight away, as there is no other phone to scan with; anything
   // else gets the QR first (owner's pick), with the form one tap away. The
   // QR mounts, and starts polling, only when it is on screen.
-  const [qrAvailable, setQrAvailable] = useState<boolean | null>(null);
+  const qrAvailable = useSyncExternalStore<boolean | null>(noSubscribe, notPhone, serverUnknown);
   const [view, setView] = useState<'qr' | 'password'>('qr');
-  useEffect(() => setQrAvailable(!isPhone()), []);
 
   const submitEmail = async (e: FormEvent) => {
     e.preventDefault();
