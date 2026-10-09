@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { encodeQr, formatBits, penalty, qrCapacity, qrSvgPath, QrTooLongError, reedSolomon, versionBits } from './qr';
+import { encodeQr, formatBits, penalty, qrCapacity, qrLogoArea, qrSvgPath, QrTooLongError, reedSolomon, versionBits } from './qr';
 import { QR_VECTORS } from './qr.vectors';
 
 const hex = (s: string) => s.split(' ').map((h) => parseInt(h, 16));
@@ -32,6 +32,20 @@ describe('format and version information', () => {
     table.forEach((bits, mask) => expect(formatBits(mask).toString(2).padStart(15, '0')).toBe(bits));
   });
 
+  it('level H, every mask (the spec table)', () => {
+    const table = [
+      '001011010001001',
+      '001001110111110',
+      '001110011100111',
+      '001100111010000',
+      '000011101100010',
+      '000001001010101',
+      '000110100001100',
+      '000100000111011',
+    ];
+    table.forEach((bits, mask) => expect(formatBits(mask, 'H').toString(2).padStart(15, '0')).toBe(bits));
+  });
+
   it('version 7 and 10 (the spec table)', () => {
     expect(versionBits(7).toString(2).padStart(18, '0')).toBe('000111110010010100');
     expect(versionBits(10).toString(2).padStart(18, '0')).toBe('001010010011010011');
@@ -40,7 +54,43 @@ describe('format and version information', () => {
 
 describe('encodeQr', () => {
   it('capacity per version at level M, byte mode', () => {
-    expect([1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(qrCapacity)).toEqual([14, 26, 42, 62, 84, 106, 122, 152, 180, 213]);
+    expect([1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((v) => qrCapacity(v))).toEqual([14, 26, 42, 62, 84, 106, 122, 152, 180, 213]);
+  });
+
+  it('capacity per version at level H, byte mode (the spec table)', () => {
+    expect([1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((v) => qrCapacity(v, 'H'))).toEqual([7, 14, 24, 34, 44, 58, 64, 84, 98, 119]);
+  });
+
+  it('level H: a sign-in link fits, says its level, and too long throws', () => {
+    const link = `https://ember.example.com/link/${'A'.repeat(43)}`;
+    const qr = encodeQr(link, { ecLevel: 'H' });
+    expect(qr.ecLevel).toBe('H');
+    expect(qr.version).toBe(8);
+    expect(encodeQr(link).ecLevel).toBe('M');
+    expect(() => encodeQr('x'.repeat(120), { ecLevel: 'H' })).toThrow(QrTooLongError);
+  });
+
+  it('the logo area is an odd, centred square of about a fifth of the side', () => {
+    for (const v of [1, 5, 8, 10]) {
+      const qr = encodeQr('x', { minVersion: v, ecLevel: 'H' });
+      const { start, span } = qrLogoArea(qr);
+      expect(span % 2).toBe(1);
+      expect(start * 2 + span).toBe(qr.size);
+      expect(span / qr.size).toBeGreaterThan(0.15);
+      expect(span / qr.size).toBeLessThan(0.25);
+    }
+  });
+
+  it('qrSvgPath leaves the cleared square light', () => {
+    const qr = encodeQr('x', { minVersion: 3, ecLevel: 'H' });
+    const area = qrLogoArea(qr);
+    const d = qrSvgPath(qr, { clear: area });
+    for (const m of d.matchAll(/M(\d+) (\d+)h(\d+)/g)) {
+      const [x, y, n] = [Number(m[1]), Number(m[2]), Number(m[3])];
+      const rowInside = y >= area.start && y < area.start + area.span;
+      const overlaps = x < area.start + area.span && x + n > area.start;
+      expect(rowInside && overlaps).toBe(false);
+    }
   });
 
   it.each(QR_VECTORS.map((v) => [v.text.slice(0, 24), v] as const))('matches the reference symbol: %s', (_label, v) => {
