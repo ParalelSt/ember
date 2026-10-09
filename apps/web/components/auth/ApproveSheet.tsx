@@ -34,7 +34,7 @@ export function ApproveSheet({
         showCloseButton={false}
         aria-label="Sign in on another device?"
         data-testid="approve-sheet"
-        className="mx-auto w-full max-w-lg gap-0 rounded-t-3xl p-0 sm:border-x"
+        className="mx-auto w-full max-w-lg gap-0 rounded-t-3xl p-0 outline-none sm:border-x"
       >
         <div className="mx-auto mt-cluster h-1 w-10 rounded-full bg-muted-foreground/30" aria-hidden />
         <div className="px-page pt-block pb-stack">
