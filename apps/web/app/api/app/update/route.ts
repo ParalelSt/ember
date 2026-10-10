@@ -30,7 +30,7 @@ import { CHECK_AFTER_S, decideUpdate, isInstallKind, isPlatform, type AppUpdateA
 const WAIT_MS = Number(process.env.UPDATE_GATE_WAIT_MS ?? 700);
 /** Per address: a whole household of shells launching all day stays far
  *  below it. */
-export const APP_UPDATE_LIMIT = { windowMs: 60 * 60 * 1000, max: 120 };
+const APP_UPDATE_LIMIT = { windowMs: 60 * 60 * 1000, max: 120 };
 
 export const GET = withRequestLog('app/update', async (request: Request) => {
   const params = new URL(request.url).searchParams;
