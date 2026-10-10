@@ -23,9 +23,10 @@ export interface LogEntry {
   sessionId: string;
 }
 
-/** Where a phone app's player event happened (POST /api/native-log): a
- *  phone, a phone projecting to a car, or a car running Android itself. */
-export type NativeSurface = 'phone' | 'android-auto' | 'aaos';
+/** Where a native event happened (POST /api/native-log): a phone, a phone
+ *  projecting to a car, a car running Android itself, or the desktop app
+ *  (its launch gate's update events, lib/desktopGateEvents.ts). */
+export type NativeSurface = 'phone' | 'android-auto' | 'aaos' | 'desktop';
 
 export interface ServerLogEntry extends LogEntry {
   side: 'server';

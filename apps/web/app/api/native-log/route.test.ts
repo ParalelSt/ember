@@ -77,6 +77,15 @@ describe('POST /api/native-log', () => {
     expect(state.stored).toHaveLength(0);
   });
 
+  it('takes the desktop app\'s launch gate events under surface desktop', async () => {
+    const res = await post(batch({
+      device: { model: 'Ember desktop', app: '0.4.23' },
+      events: [event({ level: 'info', event: 'update.gate.check', message: 'update.gate.check', surface: 'desktop', data: { ms: 140, result: 'none', install: 'nsis' } })],
+    }));
+    expect(res.status).toBe(200);
+    expect(state.stored[0]).toMatchObject({ surface: 'desktop', category: 'native', data: { event: 'update.gate.check', result: 'none' } });
+  });
+
   it('stores each event as a native entry with its surface, user and device', async () => {
     const res = await post(batch({ events: [event(), event({ level: 'info', event: 'state', message: 'ready', surface: 'android-auto', data: undefined })] }));
     expect(res.status).toBe(200);

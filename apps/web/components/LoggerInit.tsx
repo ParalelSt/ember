@@ -3,6 +3,7 @@
 import { useEffect } from 'react';
 import { logger } from '@/lib/logger/client';
 import { subscribeNativeLog } from '@/lib/nativeLog';
+import { forwardDesktopGateEvents } from '@/lib/desktopGateEvents';
 
 /** Client-only mount that boots the logger. Renders nothing. Idempotent:
  *  multiple mounts share the underlying logger singleton. Route-change
@@ -16,6 +17,9 @@ export function LoggerInit() {
     // and service failures) into the same buffer, and drains whatever the
     // plugin buffered before this page loaded.
     subscribeNativeLog();
+    // Desktop only: the launch gate's update events, kept by the shell
+    // until a page could send them.
+    void forwardDesktopGateEvents();
   }, []);
 
   return null;

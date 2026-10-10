@@ -14,6 +14,7 @@ const SURFACE_LABELS: Record<NativeSurface, string> = {
   phone: 'Phone',
   'android-auto': 'Android Auto',
   aaos: 'Car (Android Automotive)',
+  desktop: 'Desktop app',
 };
 
 const FILTERS: { value: NativeSurface | undefined; label: string }[] = [
@@ -21,6 +22,7 @@ const FILTERS: { value: NativeSurface | undefined; label: string }[] = [
   { value: 'android-auto', label: 'Android Auto' },
   { value: 'aaos', label: 'Car' },
   { value: 'phone', label: 'Phone' },
+  { value: 'desktop', label: 'Desktop' },
 ];
 
 function when(ts: number): string {

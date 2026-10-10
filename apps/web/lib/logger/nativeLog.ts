@@ -9,11 +9,13 @@ import type { LogLevel, NativeSurface, ServerLogEntry } from './types';
  *  report. The service sends its events in batches to POST /api/native-log;
  *  they are stored in the same daily server log as everything else
  *  (lib/logger/server.ts) under category 'native', with the surface they
- *  happened on, and read back by the admin's "Car and Android Auto" page. */
+ *  happened on, and read back by the admin's "Car and Android Auto" page.
+ *  The desktop app sends its launch gate's update events the same way
+ *  (surface 'desktop', lib/desktopGateEvents.ts). */
 
 export const NATIVE_CATEGORY = 'native';
 export const NATIVE_ROUTE = 'native-log';
-export const SURFACES = ['phone', 'android-auto', 'aaos'] as const satisfies readonly NativeSurface[];
+export const SURFACES = ['phone', 'android-auto', 'aaos', 'desktop'] as const satisfies readonly NativeSurface[];
 
 export const NATIVE_LOG_LIMITS = {
   /** The whole request body. A full batch of 25 is ~10 KB. */
