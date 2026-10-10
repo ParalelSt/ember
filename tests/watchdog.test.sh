@@ -129,7 +129,7 @@ new_root() {
   rm -rf "$ROOT_DIR"
   mkdir -p "$ROOT_DIR/scripts"
   cp "$REPO/start-static.sh" "$REPO/update.sh" "$ROOT_DIR/"
-  cp "$REPO/scripts/crash-report.mjs" "$ROOT_DIR/scripts/"
+  cp "$REPO/scripts/crash-report.mjs" "$REPO/scripts/read-env.mjs" "$ROOT_DIR/scripts/"
   : >"$POSTS"
 }
 

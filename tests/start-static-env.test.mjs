@@ -34,6 +34,8 @@ fs.mkdirSync(path.join(root, 'apps/web'), { recursive: true });
 fs.mkdirSync(path.join(root, 'scripts'), { recursive: true });
 fs.copyFileSync(path.join(REPO, 'start-static.sh'), path.join(root, 'start-static.sh'));
 fs.copyFileSync(path.join(REPO, 'scripts/crash-report.mjs'), path.join(root, 'scripts/crash-report.mjs'));
+fs.copyFileSync(path.join(REPO, 'scripts/read-env.mjs'), path.join(root, 'scripts/read-env.mjs'));
+fs.copyFileSync(path.join(REPO, 'update.sh'), path.join(root, 'update.sh'));
 fs.symlinkSync(path.join(REPO, 'node_modules'), path.join(root, 'node_modules'));
 
 // Values a dotenv file reads in a way a plain `cut -d= -f2-` does not.
@@ -47,12 +49,14 @@ const envLocal = [
   '',
 ].join('\n');
 fs.writeFileSync(path.join(root, 'apps/web/.env.local'), envLocal);
+// A setting only in apps/web/.env: Next reads that file too (under .env.local).
+fs.writeFileSync(path.join(root, 'apps/web/.env'), 'EMBER_BACKUP_KEEP=7\nPORT=9999\n');
 
 const dump = path.join(tmp, 'env.json');
 fs.writeFileSync(
   path.join(tmp, 'dump.mjs'),
   `import fs from 'node:fs';
-const keys = ['EMBER_PB_SUPERUSER_EMAIL', 'EMBER_PB_SUPERUSER_PASSWORD', 'EMBER_ADMIN_EMAIL', 'EMBER_ADMIN_PASSWORD'];
+const keys = ['EMBER_PB_SUPERUSER_EMAIL', 'EMBER_PB_SUPERUSER_PASSWORD', 'EMBER_ADMIN_EMAIL', 'EMBER_ADMIN_PASSWORD', 'EMBER_BACKUP_KEEP'];
 fs.writeFileSync(process.argv[2], JSON.stringify(Object.fromEntries(keys.map((k) => [k, process.env[k]]))));
 setInterval(() => {}, 1 << 30);
 `,
@@ -106,7 +110,24 @@ try {
     check('an inline comment is not part of the owner email',
       pb.EMBER_ADMIN_EMAIL === 'me@example.com', JSON.stringify(pb.EMBER_ADMIN_EMAIL));
     check('an inline comment is not part of the port', next.PORT === '3221', JSON.stringify(next.PORT));
+    check('a setting only in apps/web/.env reaches PocketBase, as it reaches Next',
+      pb.EMBER_BACKUP_KEEP === nextEnv.EMBER_BACKUP_KEEP && pb.EMBER_BACKUP_KEEP === '7',
+      `PocketBase ${JSON.stringify(pb.EMBER_BACKUP_KEEP)}, Next ${JSON.stringify(nextEnv.EMBER_BACKUP_KEEP)}`);
   }
+
+  // update.sh finds Ember on the ports start-static.sh started it on: the
+  // same reader, so an inline comment is not part of the port there either.
+  const ports = await new Promise((resolve) => {
+    const u = spawn('bash', [path.join(root, 'update.sh')], {
+      env: { ...env, UPDATE_PORTS_ONLY: '1' },
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    let text = '';
+    u.stdout.on('data', (d) => { text += d; });
+    u.stderr.on('data', (d) => { text += d; });
+    u.on('exit', () => resolve(text.trim()));
+  });
+  check('update.sh reads the same ports', ports === 'web=3221 pocketbase=8248', JSON.stringify(ports));
 } finally {
   wd.kill('SIGTERM');
   await new Promise((r) => {

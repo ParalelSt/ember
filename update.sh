@@ -30,7 +30,15 @@ case "${1:-}" in
 esac
 
 ENV_FILE="$ROOT/apps/web/.env.local"
+# The same reader as start-static.sh: Next's own env loader through
+# scripts/read-env.mjs, so `PORT=3000 # web` is port 3000 here too, as it is
+# for the web app (bughunt O3). The grep is the fallback before npm ci.
 read_env() {
+  local v
+  if v="$(node "$ROOT/scripts/read-env.mjs" "$ROOT/apps/web" "$1" 2>/dev/null)"; then
+    printf '%s' "$v"
+    return 0
+  fi
   [ -f "$ENV_FILE" ] || return 0
   { grep -E "^${1}=" "$ENV_FILE" || true; } | tail -1 | cut -d= -f2- | tr -d '\r"'"'"
 }
@@ -123,6 +131,12 @@ link_ffmpeg() {
   ln -sfn "$exe" "$venv/ffmpeg"
   echo "  $venv/ffmpeg -> $exe"
 }
+
+# Test-only: print the ports it would stop (tests/start-static-env.test.mjs).
+if [ "${UPDATE_PORTS_ONLY:-0}" = "1" ]; then
+  echo "web=$PORT pocketbase=$PB_PORT"
+  exit 0
+fi
 
 # Test-only: run just the stop sequence (tests/watchdog.test.sh), no git.
 if [ "${UPDATE_STOP_ONLY:-0}" = "1" ]; then
