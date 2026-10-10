@@ -90,7 +90,15 @@ describe('isUpdaterAssetName', () => {
   it('knows the updater files and nothing else', () => {
     for (const n of ['Ember-v1.0.0-macos-arm64.app.tar.gz', 'Ember-v1.0.0-macos-arm64.app.tar.gz.sig', 'Ember-v1.0.0-windows-x64-setup.exe',
       'Ember-v1.0.0-windows-arm64-setup.exe.sig', 'Ember-v1.0.0-linux-x86_64.AppImage', 'latest.json']) expect(isUpdaterAssetName(n)).toBe(true);
-    for (const n of ['Ember-v1.0.0-macos-arm64.dmg', 'Ember-v1.0.0-windows-x64.msi', 'Ember-v1.0.0-linux-amd64.deb', 'Ember-v1.0.0-android.apk',
-      'secrets.env', 'latest.json.bak', 'x.app.tar.gz.zip']) expect(isUpdaterAssetName(n)).toBe(false);
+    for (const n of ['Ember-v1.0.0-macos-arm64.dmg', 'Ember-v1.0.0-android.apk',
+      'secrets.env', 'latest.json.bak', 'x.app.tar.gz.zip', 'Ember-v1.0.0-windows-x64.msi.zip', 'evil.deb']) expect(isUpdaterAssetName(n)).toBe(false);
+  });
+
+  // Since the launch gate, an .msi, .deb or .rpm install updates from its
+  // own kind of package, so those (and their signatures) are updater files
+  // now. The .dmg and the APK still are not.
+  it('includes the .msi, .deb and .rpm and their signatures', () => {
+    for (const n of ['Ember-v1.0.0-windows-x64.msi', 'Ember-v1.0.0-windows-x64.msi.sig', 'Ember-v1.0.0-linux-amd64.deb',
+      'Ember-v1.0.0-linux-amd64.deb.sig', 'Ember-v1.0.0-linux-x86_64.rpm', 'Ember-v1.0.0-linux-x86_64.rpm.sig']) expect(isUpdaterAssetName(n), n).toBe(true);
   });
 });

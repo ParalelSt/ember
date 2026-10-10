@@ -53,7 +53,7 @@ describe('proxy [bughunt W05]: unauthenticated /api/* gets 401 JSON, not a redir
   });
 
   it('leaves the desktop and Android update feeds open with no session', async () => {
-    for (const path of ['/api/desktop/update/darwin/aarch64/0.4.0', '/api/android/update?version=0.4.18', '/api/android/apk/123']) {
+    for (const path of ['/api/desktop/update/darwin/aarch64/0.4.0', '/api/android/update?version=0.4.18', '/api/android/apk/123', '/api/app/update?platform=windows&version=0.4.21']) {
       const res = await proxy(req(path));
       expect(res.status, path).toBe(200);
     }
@@ -61,6 +61,11 @@ describe('proxy [bughunt W05]: unauthenticated /api/* gets 401 JSON, not a redir
 
   it('keeps any other /api/android/ route behind sign-in', async () => {
     const res = await proxy(req('/api/android/something-else'));
+    expect(res.status).toBe(401);
+  });
+
+  it('keeps any other /api/app/ route behind sign-in', async () => {
+    const res = await proxy(req('/api/app/something-else'));
     expect(res.status).toBe(401);
   });
 

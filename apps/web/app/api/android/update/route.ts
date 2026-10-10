@@ -1,6 +1,7 @@
 import { androidUpdateFor, cleanVersion } from '@/lib/androidUpdate';
 import { serverLogger } from '@/lib/logger/server';
 import { withRequestLog } from '@/lib/logger/withRequestLog';
+import { isPaused } from '@/lib/updatePolicy';
 
 /** The Android app's update feed (AppUpdater.kt):
  *  GET /api/android/update?version=0.4.18[&versionCode=23]
@@ -15,12 +16,14 @@ import { withRequestLog } from '@/lib/logger/withRequestLog';
  *  update (the fix for a sign-in bug arrives this way). It tells nobody
  *  anything but the latest version. versionCode is accepted for the logs and
  *  for the future; the comparison is by version, since a release does not
- *  carry its versionCode. */
+ *  carry its versionCode. EMBER_UPDATES_PAUSED covering android makes it a
+ *  204 like any "no update". */
 export const GET = withRequestLog('android/update', async (request: Request) => {
   const params = new URL(request.url).searchParams;
   const current = cleanVersion(params.get('version'));
   if (!current) return Response.json({ error: 'version=x.y.z is required' }, { status: 400 });
 
+  if (isPaused('android')) return new Response(null, { status: 204 });
   try {
     const update = await androidUpdateFor(current);
     if (!update) return new Response(null, { status: 204 });

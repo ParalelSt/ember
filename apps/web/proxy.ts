@@ -27,7 +27,10 @@ const PUBLIC_API_PREFIXES = ['/api/youtube/stream/', '/api/search', '/api/tracks
   // The same for the phone app's updater (AppUpdater.kt): a signed-out phone
   // must still update. Only these two routes: the latest version and its
   // APK. Anything else added under /api/android/ stays behind sign-in.
-  '/api/android/update', '/api/android/apk/'];
+  '/api/android/update', '/api/android/apk/',
+  // The launch gate of every native shell (app/api/app/update): asked
+  // before anyone can sign in. Only this route under /api/app/.
+  '/api/app/update'];
 
 /** An upload's audio or cover asked for with a signed cast link (`?st=`):
  *  a Chromecast has no session to send. Let through to the route, which

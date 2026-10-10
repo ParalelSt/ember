@@ -118,6 +118,17 @@ describe('GET /api/android/update', () => {
     expect((await get('?version=0.4.18')).status).toBe(204);
   });
 
+  it('answers 204 while the host pauses android updates', async () => {
+    vi.stubEnv('EMBER_UPDATES_PAUSED', 'android');
+    try {
+      expect((await get('?version=0.4.18')).status).toBe(204);
+      vi.stubEnv('EMBER_UPDATES_PAUSED', 'windows');
+      expect((await get('?version=0.4.18')).status).toBe(200);
+    } finally {
+      vi.stubEnv('EMBER_UPDATES_PAUSED', '');
+    }
+  });
+
   it('rejects a missing or malformed version with 400', async () => {
     for (const q of ['', '?version=', '?version=banana', '?version=1.2', '?versionCode=23', '?version=1.2.3.4']) {
       expect((await get(q)).status, q).toBe(400);

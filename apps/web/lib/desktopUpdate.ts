@@ -1,6 +1,7 @@
 import 'server-only';
 import { serverLogger } from '@/lib/logger/server';
 import { isNewer } from '@/lib/semver';
+import { installAssetPattern, isInstallKind, platformOfTarget } from '@/lib/updatePolicy';
 
 /** Desktop auto-update feed, backed by the GitHub Release.
  *
@@ -51,6 +52,14 @@ export interface Release {
 }
 
 let cache: { at: number; release: Release | null } | null = null;
+/** The lookup under way, shared by every caller that needs it meanwhile. */
+let inflight: Promise<Release | null> | null = null;
+
+/** How long a good answer may still be served while a fresh one is fetched
+ *  (stale-while-revalidate): a fleet of shells launching at once, or a
+ *  GitHub hiccup, never makes a launch wait on GitHub. Off when the cache is
+ *  (tests set UPDATE_CACHE_MS=0 to see every failure). */
+const STALE_MS = CACHE_MS > 0 ? 6 * 60 * 60 * 1000 : 0;
 
 export function isUpdateConfigured(): boolean {
   return TOKEN.length > 0;
@@ -64,12 +73,14 @@ function ghHeaders(): HeadersInit {
   };
 }
 
-/** Latest published (non-draft, non-prerelease) release. Shared with the
- *  Android app's feed (lib/androidUpdate.ts), so both read one cached copy. */
-export async function latestRelease(): Promise<Release | null> {
-  if (cache && Date.now() - cache.at < CACHE_MS) return cache.release;
-  if (!TOKEN) return null;
-
+async function fetchLatest(): Promise<Release | null> {
+  // A failure keeps the last good answer while it is fresh enough to serve
+  // stale, so one bad minute at GitHub does not read as "no update".
+  const keepGood = (): Release | null => {
+    const good = cache?.release && Date.now() - cache.at < STALE_MS ? cache.release : null;
+    cache = good ? { at: cache!.at, release: good } : { at: Date.now(), release: null };
+    return good;
+  };
   try {
     const res = await fetch(`${API_BASE}/repos/${REPO}/releases?per_page=10`, {
       headers: ghHeaders(),
@@ -78,8 +89,7 @@ export async function latestRelease(): Promise<Release | null> {
     });
     if (!res.ok) {
       serverLogger.error('update', `GitHub releases ${res.status}`, { repo: REPO });
-      cache = { at: Date.now(), release: null };
-      return null;
+      return keepGood();
     }
     const all = (await res.json()) as Release[];
     const release = all.find((r) => !r.draft && !r.prerelease) ?? null;
@@ -87,18 +97,75 @@ export async function latestRelease(): Promise<Release | null> {
     return release;
   } catch (e) {
     serverLogger.error('update', 'could not reach GitHub', undefined, e);
-    cache = { at: Date.now(), release: null };
-    return null;
+    return keepGood();
   }
 }
 
+function refresh(): Promise<Release | null> {
+  if (inflight) return inflight;
+  const p: Promise<Release | null> = fetchLatest().finally(() => {
+    if (inflight === p) inflight = null;
+  });
+  inflight = p;
+  return p;
+}
+
+/** Latest published (non-draft, non-prerelease) release. Shared with the
+ *  Android app's feed (lib/androidUpdate.ts) and the launch gate's
+ *  (app/api/app/update), so all of them read one cached copy. */
+export async function latestRelease(): Promise<Release | null> {
+  if (!TOKEN) return null;
+  const age = cache ? Date.now() - cache.at : Infinity;
+  if (cache && age < CACHE_MS) return cache.release;
+  if (cache?.release && age < STALE_MS) {
+    void refresh();
+    return cache.release;
+  }
+  return refresh();
+}
+
+/** latestRelease(), but never waiting longer than `ms`: the launch gate has
+ *  a budget of about a second and a half, so a cold cache answers
+ *  `undefined` ("could not tell in time") while the lookup carries on and
+ *  warms the cache for the next launch. */
+export async function latestReleaseWithin(ms: number): Promise<Release | null | undefined> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const late = new Promise<undefined>((resolve) => {
+    timer = setTimeout(() => resolve(undefined), ms);
+  });
+  try {
+    return await Promise.race([latestRelease(), late]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/** Fill the cache at server start, so the first launch after a restart is
+ *  answered from memory. */
+export function warmReleaseCache(): void {
+  if (!TOKEN) return;
+  void latestRelease().catch(() => {});
+}
+
+/** Tests only. */
+export function _resetReleaseCache(): void {
+  cache = null;
+  inflight = null;
+}
+
 /** The files of a release the updater itself ever needs: each platform's
- *  update bundle, its signature, and a latest.json manifest. Installers a
- *  person downloads by hand (.dmg, .msi, .deb) are not among them. */
+ *  update bundle, its signature, and a latest.json manifest. Since the launch
+ *  gate, a shell installed from the .msi, .deb or .rpm updates from its own
+ *  kind of package (a per-user setup.exe over a per-machine .msi would make a
+ *  second copy; an AppImage over a .deb would not install at all), so those
+ *  count too. The .dmg and the APK are not among them. */
 const UPDATER_ASSET_NAMES: RegExp[] = [
   /macos-[\w.-]+\.app\.tar\.gz(\.sig)?$/,
   /windows-(x64|arm64)-setup\.exe(\.sig)?$/,
+  /windows-x64\.msi(\.sig)?$/,
   /linux-[\w.-]+\.AppImage(\.sig)?$/,
+  /linux-amd64\.deb(\.sig)?$/,
+  /linux-x86_64\.rpm(\.sig)?$/,
   /^latest\.json$/,
 ];
 
@@ -117,14 +184,15 @@ export async function updaterAsset(id: number): Promise<ReleaseAsset | null> {
 }
 
 /** Which asset a given platform updates FROM. Note these are not the files a
- *  human downloads: macOS updates from the .app.tar.gz, not the .dmg. */
-function assetPattern(target: string, arch: string): RegExp | null {
-  const t = target.toLowerCase();
-  const a = arch.toLowerCase();
-  if (t.startsWith('darwin') || t.startsWith('macos')) return /macos-.*\.app\.tar\.gz$/;
-  if (t.startsWith('windows')) return a.includes('aarch64') ? /windows-arm64-setup\.exe$/ : /windows-x64-setup\.exe$/;
-  if (t.startsWith('linux')) return /linux-.*\.AppImage$/;
-  return null;
+ *  human downloads: macOS updates from the .app.tar.gz, not the .dmg.
+ *  `bundle` is the install kind the shell reports ({{bundle_type}} in the
+ *  updater endpoint); shells from before it send none and get what they
+ *  always got. */
+function assetPattern(target: string, arch: string, bundle: string | null): RegExp | null {
+  const platform = platformOfTarget(target);
+  if (!platform) return null;
+  const install = isInstallKind(bundle) ? bundle : null;
+  return installAssetPattern(platform, install, arch.toLowerCase());
 }
 
 /** The manifest Tauri's updater expects, or null when there's nothing newer
@@ -134,6 +202,7 @@ export async function updateFor(
   arch: string,
   currentVersion: string,
   origin: string,
+  bundle: string | null = null,
 ): Promise<UpdateManifest | null> {
   const release = await latestRelease();
   if (!release) return null;
@@ -141,13 +210,13 @@ export async function updateFor(
   const version = release.tag_name.replace(/^v/, '');
   if (!isNewer(version, currentVersion)) return null;
 
-  const pattern = assetPattern(target, arch);
+  const pattern = assetPattern(target, arch, bundle);
   if (!pattern) return null;
 
   const assets = release.assets ?? [];
   const asset = assets.find((x) => pattern.test(x.name));
   if (!asset) {
-    serverLogger.error('update', 'no asset for platform', { target, arch, tag: release.tag_name });
+    serverLogger.error('update', 'no asset for platform', { target, arch, bundle, tag: release.tag_name });
     return null;
   }
 

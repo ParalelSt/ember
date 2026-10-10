@@ -44,6 +44,14 @@ export async function register() {
     digest.unref?.();
   }
 
+  // The release lookup behind the update feeds, filled now so the first
+  // launch gate after a restart is answered from memory instead of waiting
+  // on GitHub (lib/desktopUpdate.ts). Does nothing without a token.
+  if (process.env.UPDATE_WARMUP_DISABLED !== '1') {
+    const { warmReleaseCache } = await import('@/lib/desktopUpdate');
+    warmReleaseCache();
+  }
+
   // Background playlist imports (docs/imports.md): one runner per server,
   // picking up where it stopped if the server went down mid-import.
   if (process.env.IMPORT_RUNNER_DISABLED !== '1') {
