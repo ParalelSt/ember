@@ -503,7 +503,8 @@ mod launch_order_tests {
     fn body_of(name: &str) -> &'static str {
         let start = LIB.find(&format!("fn {name}(")).unwrap_or_else(|| panic!("no fn {name}"));
         let rest = &LIB[start..];
-        let end = rest.find("\n}\n").expect("end of fn");
+        // A Windows checkout may have CRLF line endings.
+        let end = rest.find("\n}\n").or_else(|| rest.find("\r\n}\r\n")).expect("end of fn");
         &rest[..end]
     }
 
