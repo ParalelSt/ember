@@ -26,6 +26,9 @@ interface NativeState {
   /** The play history (song ids, oldest first): app builds from before the
    *  queue sheet's "Played" list leave it out. */
   played?: string[];
+  /** When native read this state (ms, the phone's clock). App builds from
+   *  before the screen-off fix leave it out. */
+  at?: number;
 }
 interface EmberPlayerPlugin {
   addListener(event: string, cb: (data: never) => void): unknown;
@@ -101,6 +104,12 @@ function parseNotices(d: { notices?: unknown } | null | undefined): UnplayableNo
   return Array.isArray(d?.notices) ? d.notices.map(parseNotice).filter((n): n is UnplayableNotice => n !== null) : [];
 }
 const LOOP_MODES: readonly LoopMode[] = ['off', 'all', 'one'];
+/** A state native read longer ago than this was held up on its way here (a
+ *  frozen page, see below), not merely late: the page asks for a fresh one. */
+export const STALE_STATE_MS = 3_000;
+/** A resync whose answer never comes stops holding state events back after
+ *  this long, so a hung bridge cannot freeze the bar for good. */
+export const RESYNC_GIVE_UP_MS = 15_000;
 /** If native never reports the end (the service died), give up this long
  *  after the cap so the receiver is not busy forever. */
 export const OVERLAY_END_GRACE_MS = 5_000;
@@ -192,7 +201,53 @@ export const createAndroidBackend: CreateAudioBackend = (events: AudioBackendEve
   /** The play history native last reported, joined (only a change is passed on). */
   let playedKey: string | null = null;
 
+  /** Catching up after the page was away (hidden, or frozen by the WebView).
+   *
+   *  Chromium freezes a hidden page that plays no sound of its own after a
+   *  few minutes, and Ember's music plays natively, so the page is silent:
+   *  with the screen off, every state event native sent waited in line, and
+   *  when the screen came back on the page replayed them all, minutes of
+   *  positions at 4 a second. The bar raced through songs long finished
+   *  while the right one played, and the page was too busy to draw (a black
+   *  screen) or let a tap navigate (bug report 2026-10-09).
+   *
+   *  So on coming back (and on any state that says it is old) the page asks
+   *  native for its state, and drops every state event until the answer
+   *  lands: the answer comes down the same line as the events, after all the
+   *  held ones, so everything before it is older than it. */
+  let resyncing = false;
+  let resyncSeq = 0;
+  let resyncTimer: ReturnType<typeof setTimeout> | undefined;
+  const resync = () => {
+    if (!p || resyncing) return;
+    resyncing = true;
+    const seq = ++resyncSeq;
+    const done = (s: NativeState | null) => {
+      if (seq !== resyncSeq) return;
+      clearTimeout(resyncTimer);
+      resyncing = false;
+      if (s && typeof s === 'object') applyState(s);
+    };
+    resyncTimer = setTimeout(() => done(null), RESYNC_GIVE_UP_MS);
+    let answer: Promise<NativeState>;
+    try {
+      answer = p.getState();
+    } catch {
+      done(null);
+      return;
+    }
+    Promise.resolve(answer).then(done, () => done(null));
+  };
   const onState = (s: NativeState) => {
+    if (resyncing) return;
+    // Only an app build that dates its states (see NativeState.at).
+    if (typeof s?.at === 'number' && Date.now() - s.at > STALE_STATE_MS) {
+      resync();
+      return;
+    }
+    applyState(s);
+  };
+  const applyState = (s: NativeState) => {
     paused = !s.playing;
     trackId = s.trackId ?? null;
     if (s.index !== index) {
@@ -313,8 +368,18 @@ export const createAndroidBackend: CreateAudioBackend = (events: AudioBackendEve
     } else if (h) {
       send(h, false);
     }
-    if (s) onState(s);
+    if (s) applyState(s);
   };
+  // Back on screen: native's state now, not the line of old ones the page
+  // may be about to replay. 'resume' is the page coming out of a freeze.
+  const onShown = () => {
+    if (document.visibilityState === 'visible') resync();
+  };
+  if (p && typeof document !== 'undefined') {
+    document.addEventListener('visibilitychange', onShown);
+    document.addEventListener('resume', onShown);
+  }
+
   // No time limit: a slow answer (the player service still binding on a
   // busy cold start) is exactly when native may already be playing, and
   // guessing "empty" then pushed the saved queue over it. Only a failed
@@ -436,7 +501,13 @@ export const createAndroidBackend: CreateAudioBackend = (events: AudioBackendEve
     isPaused: () => paused,
     isTransitioning: () => false,
     destroy() {
-      /* listeners die with the WebView; the native player keeps playing */
+      // The native listeners die with the WebView; the native player keeps
+      // playing.
+      if (typeof document !== 'undefined') {
+        document.removeEventListener('visibilitychange', onShown);
+        document.removeEventListener('resume', onShown);
+      }
+      clearTimeout(resyncTimer);
     },
   };
 };
