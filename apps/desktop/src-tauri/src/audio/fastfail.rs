@@ -297,9 +297,10 @@ async fn a_host_that_goes_quiet_mid_body_is_reported_within_seconds() {
 
 /// The same host, with the head of the song sent before it goes quiet. This
 /// used to fail too, because building the decoder waited for the WHOLE body
-/// (see `download_settings`); the decoder needs the head and one read of the
-/// tail, so it opens, and a body that then dies mid-song is the position
-/// timer's to report (skip_repro covers that).
+/// (see `download_settings`); the decoder needs only the head (the index
+/// comes first, so the tail is not read: see `TailSkip`), so it opens, and a
+/// body that then dies mid-song is the position timer's to report
+/// (skip_repro covers that).
 #[tokio::test(flavor = "multi_thread")]
 async fn a_host_that_goes_quiet_after_the_head_does_not_hold_up_the_load() {
     let url = fake_host(Behaviour::AnswersThenStalls { sent: 300 * 1024 });
@@ -355,12 +356,12 @@ async fn a_host_that_answers_nothing_at_all_is_given_up_on_at_the_connect_budget
 }
 
 /// The guard that matters most: a link that is slow but delivering must still
-/// play. 4 KB every 220 ms takes longer to open (the moov, then a 64 KB read of
-/// the tail) than the stall grace allows for SILENCE, and none of the budgets
-/// may fire on it.
+/// play. 1 KB every 300 ms takes longer to open (the 11 KB moov and the first
+/// samples; this layout needs no read of the tail) than the stall grace allows
+/// for SILENCE, and none of the budgets may fire on it.
 #[tokio::test(flavor = "multi_thread")]
 async fn a_slow_but_progressing_download_still_plays() {
-    let url = fake_host(Behaviour::SlowButProgressing { chunk: 4 * 1024, gap_ms: 220 });
+    let url = fake_host(Behaviour::SlowButProgressing { chunk: 1024, gap_ms: 300 });
     let (took, outcome) = open(&url).await;
     let total = outcome.expect("a slow download is still a download");
 

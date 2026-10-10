@@ -2,8 +2,9 @@
 //! then "native audio failed, falling back to web audio"; and, on another
 //! song, "the song was still decoding after 25s".
 //!
-//! Both are a slow link read as a dead one. A remuxed song (ftyp, moov, mdat)
-//! opens with three requests: the whole body, which the decoder leaves after
+//! Both are a slow link read as a dead one. A song whose decoder needs the
+//! file's tail (since 2026-10-09 only one with its index at the end) opens
+//! with three requests: the whole body, which the decoder leaves after
 //! the moov to read the file's tail (a Range request), and, once the tail is
 //! in, the rest of the body (a second Range request, from where the first
 //! response stopped). On a slow link every new request waits behind whatever
@@ -31,9 +32,15 @@ use std::time::{Duration, Instant};
 
 use super::{http_client, judge_frozen, open_source, DownloadView, Frozen, LoadBudgets, PlayBudgets};
 
-/// 120 s of AAC in a plain m4a (ftyp, moov, mdat): what a host with ffmpeg
-/// keeps on disk, and what Luka's songs are.
-const TRACK: &[u8] = include_bytes!("../../test-fixtures/tone-faststart.m4a");
+/// 120 s of AAC with its index (moov) at the end: ftyp, free, mdat, moov.
+/// Opening it takes the three requests above. The layout the host keeps
+/// (index first) opens from one request since 2026-10-09
+/// (src/audio/one_request.rs), so these tests use the one that still needs
+/// the tail.
+const TRACK: &[u8] = include_bytes!("../../test-fixtures/tone-moov-at-end.m4a");
+/// The same audio with the index first: ftyp, moov, free, mdat. Opens from
+/// the first request alone.
+const FASTSTART: &[u8] = include_bytes!("../../test-fixtures/tone-faststart.m4a");
 
 /// `bytes=a-b` of a request, if it had one.
 type Range = Option<(usize, Option<usize>)>;
@@ -45,6 +52,9 @@ enum Answer {
     After(Duration),
     /// Headers at once, then nothing ever again: a connection that died.
     GoQuiet,
+    /// Headers at once, the first this many bytes of the answer at the
+    /// host's rate, then nothing ever again: a connection that died mid-song.
+    Cut(usize),
 }
 
 struct Host {
@@ -135,6 +145,10 @@ fn host(
                     std::thread::sleep(Duration::from_secs(120));
                     return;
                 }
+                let chunk = match how {
+                    Answer::Cut(n) => &chunk[..n.min(chunk.len())],
+                    _ => chunk,
+                };
                 // About ten pieces a second, so a slow rate is a trickle and
                 // not long silences between big pieces.
                 for part in chunk.chunks((bytes_per_sec / 10).clamp(256, 16 * 1024)) {
@@ -144,6 +158,9 @@ fn host(
                     std::thread::sleep(Duration::from_secs_f64(part.len() as f64 / bytes_per_sec as f64));
                 }
                 let _ = stream.flush();
+                if let Answer::Cut(_) = how {
+                    std::thread::sleep(Duration::from_secs(120));
+                }
             });
         }
     });
@@ -395,6 +412,45 @@ mod playing {
         assert!(payload.contains("\"retried\":true"), "the webview must not retry again: {payload}");
         assert!(payload.contains("\"token\":1"), "{payload}");
         let log = host.log();
+        assert_eq!(
+            log.iter().filter(|r| *r == "whole").count(),
+            2,
+            "the song is opened twice, the second time by the engine: {log:?}"
+        );
+        assert_eq!(rig.count("audio:ended"), 0, "a dead song is not a finished one: {:?}", rig.events());
+    }
+
+    /// A song opened from ONE request (index first, src/audio/one_request.rs)
+    /// has no later request to wait on: everything rides on that response.
+    /// When it dies mid-song the watchdog must still call the download dead,
+    /// open the song again once, and then report it. The second open seeks to
+    /// where the song stopped, past what its own response has brought, and
+    /// the host never answers that request: it used to hold the load inside
+    /// the sink's seek, with no clock and no watchdog, so nothing was ever
+    /// reported. Now it is given up on at the request budget (25 s).
+    #[tokio::test(flavor = "multi_thread")]
+    async fn a_song_opened_from_one_request_whose_response_dies_is_opened_again_once_then_reported() {
+        let host = host(FASTSTART, 400_000, move |_, range| match range {
+            None => Answer::Cut(150 * 1024),
+            Some(_) => Answer::GoQuiet,
+        });
+        let rig = Rig::new(|m| AudioEngine::with_output(m).with_play_budgets(SHORT));
+        rig.load(&host.url).await;
+
+        let failed = rig.until(Duration::from_secs(45), |r| r.count("audio:error") > 0).await;
+        assert!(failed, "no error (events: {:?}, requests: {:?})", rig.events(), host.log());
+        tokio::time::sleep(Duration::from_secs(1)).await;
+
+        let errors: Vec<_> = rig.events().into_iter().filter(|(n, _)| n == "audio:error").collect();
+        assert_eq!(errors.len(), 1, "events: {:?}", rig.events());
+        let payload = &errors[0].1;
+        assert!(
+            payload.contains("playback stalled") || payload.contains("did not answer a request for more of the song while seeking"),
+            "{payload}"
+        );
+        assert!(payload.contains("\"retried\":true"), "the webview must not retry again: {payload}");
+        let log = host.log();
+        assert_eq!(log.first().map(String::as_str), Some("whole"));
         assert_eq!(
             log.iter().filter(|r| *r == "whole").count(),
             2,
