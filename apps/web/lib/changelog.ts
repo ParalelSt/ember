@@ -21,6 +21,18 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    id: 'fixes-0728',
+    version: '0.7.28',
+    date: '2026-10-10',
+    title: 'Fixes',
+    summary: 'A tidier player bar on smaller windows, and calmer Windows updates.',
+    bullets: [
+      'On a narrow desktop window the player bar keeps the song name visible. Add to playlist, Share and, on the narrowest, Lyrics, Guitar tabs and Devices move into the ... menu.',
+      'Windows: an update no longer closes the app mid-song. It downloads in the background and installs the next time Ember starts.',
+      'Signing out on a device that was hosting a carlist ends it, so the next person gets radio again straight away.',
+    ],
+  },
+  {
     id: 'scan-to-sign-in',
     version: '0.7.27',
     date: '2026-10-10',

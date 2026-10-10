@@ -1,3 +1,14 @@
+# 0.7.28: Safer updates, tidier player bar (apps 0.4.22)
+
+**Host: run `./update.sh` as usual (no new packages, nothing new in
+`.env.local`).** This first run still uses the old script; from the next
+update on, `update.sh` puts the previous version back if an update fails, and
+keeps Ember running in the background after the SSH window closes when tmux is
+installed (`sudo apt install tmux`, recommended). Keep about 1 GB free during
+updates. Optional: run Ember at boot with systemd, see SETUP.md "Run Ember at
+boot" (use tmux or systemd, not both). The Windows update change needs the new
+desktop app, 0.4.22 (Android versionCode 27), which the `v0.4.22` tag builds.
+
 # 0.7.27: Scan to sign in, Mac and Windows fixes (apps 0.4.21)
 
 **Host: run `./update.sh` as usual (no new packages).** If computers and
