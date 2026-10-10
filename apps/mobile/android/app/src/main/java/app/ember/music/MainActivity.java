@@ -4,6 +4,7 @@ import android.content.Context;
 import android.content.SharedPreferences;
 import android.net.Uri;
 import android.os.Bundle;
+import android.webkit.RenderProcessGoneDetail;
 import android.webkit.WebView;
 import androidx.webkit.ScriptHandler;
 import androidx.webkit.WebViewCompat;
@@ -50,6 +51,15 @@ public class MainActivity extends BridgeActivity {
                 @Override
                 public void onPageLoaded(WebView view) {
                     CookieFlush.INSTANCE.now();
+                }
+
+                // The page's renderer died (killed for memory while the
+                // screen was off, or crashed): reload the page instead of
+                // letting Android take the app, and the music, down with it.
+                @Override
+                @androidx.annotation.RequiresApi(26)
+                public boolean onRenderProcessGone(WebView view, RenderProcessGoneDetail detail) {
+                    return RendererGone.INSTANCE.handle(MainActivity.this, view, detail != null && detail.didCrash(), System.currentTimeMillis());
                 }
             });
         }
