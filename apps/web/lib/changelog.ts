@@ -21,6 +21,30 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    id: 'scan-to-sign-in',
+    version: '0.7.27',
+    date: '2026-10-10',
+    title: 'Sign in by scanning',
+    summary: 'Sign in a computer or TV by scanning its QR code with Ember on your phone.',
+    bullets: [
+      'The sign-in page now leads with a QR code. On your phone, tap Scan QR code in the menu or in Settings > Devices, then tap Approve in the sheet that slides up.',
+      'You land on Settings > Devices with the new device marked New. No camera? Type the short code shown under the QR there.',
+      'Password sign-in is one tap away under the QR, and phones go straight to it.',
+    ],
+  },
+  {
+    id: 'fixes-0727',
+    version: '0.7.27',
+    date: '2026-10-10',
+    title: 'Fixes',
+    summary: 'The Mac app opens again, and songs start reliably in the desktop app.',
+    bullets: [
+      'Mac: Ember closed right after opening on macOS 26.6. It cannot update itself while it closes at once, so download app 0.4.21 from the release page this one time.',
+      'Desktop: some songs never started over a slow connection ("the host did not answer"). They now start from a single request.',
+      'Library: Carlist and Upload are now matching buttons, and Carlist opens a sheet with Start and Join.',
+    ],
+  },
+  {
     id: 'android-black-screen',
     version: '0.7.26',
     date: '2026-10-10',

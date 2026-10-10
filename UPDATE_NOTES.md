@@ -1,3 +1,12 @@
+# 0.7.27: Scan to sign in, Mac and Windows fixes (apps 0.4.21)
+
+**Host: run `./update.sh` as usual (no new packages).** If computers and
+phones reach Ember by different addresses, set `PUBLIC_ORIGIN` in
+`.env.local`, or QR scans are refused (typing the code still works). The Mac
+and Windows fixes and the in-app scanner are in the new apps, 0.4.21 (Android
+versionCode 26), which the `v0.4.21` tag builds. Macs that crash at launch
+cannot reach the updater, so they need the 0.4.21 download once.
+
 # 0.7.26: Android black screen fix (apps 0.4.20)
 
 **Host: run `./update.sh` as usual (no new packages, nothing new in
