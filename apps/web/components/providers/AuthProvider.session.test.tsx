@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, render } from '@testing-library/react';
+import { useSessionStore } from '@/stores/useSessionStore';
 
 /** A session the server refuses is dropped at once, and nobody counts as
  *  signed in on the sign-in page (bughunt V5). */
@@ -69,5 +70,22 @@ describe('AuthProvider: QR sign-in', () => {
     authStore.save.mockClear();
     act(() => adopt!('minted-token', { id: 'u9', email: 'n@b.c' }));
     expect(authStore.save).toHaveBeenCalledWith('minted-token', { id: 'u9', email: 'n@b.c' });
+  });
+});
+
+describe('AuthProvider sign-out [bughunt X6]', () => {
+  it('clears the carlist hosting flag, so the next account on this device does not inherit it', async () => {
+    useSessionStore.setState({ hostingSessionId: 's1' });
+    let signOut: (() => Promise<void>) | null = null;
+    function Grab() {
+      signOut = useAuth().signOut;
+      return null;
+    }
+    render(<AuthProvider initialUser={user}><Grab /></AuthProvider>);
+    await act(async () => {
+      await signOut!();
+    });
+    expect(authStore.clear).toHaveBeenCalled();
+    expect(useSessionStore.getState().hostingSessionId).toBeNull();
   });
 });
