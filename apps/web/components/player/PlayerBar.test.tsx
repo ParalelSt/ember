@@ -64,6 +64,8 @@ vi.mock('@/components/track/ShareButton', () => ({
   shareTrack,
 }));
 vi.mock('@/components/player/QueueSheet', () => ({ QueueSheet: () => null }));
+// The Devices sheet (opened from the More menu below lg) is base-ui's dialog.
+vi.mock('@/components/ui/sheet', () => import('@/test-utils/dialogMock'));
 // base-ui's menu brings the root's second React into a test render (see
 // QueueSheet.test.tsx): the Devices menu is a plain box here.
 vi.mock('@/components/ui/dropdown-menu', () => {
@@ -210,12 +212,22 @@ describe('PlayerBar', () => {
       useUiStore.getState().setLyricsOpen(false);
     });
 
-    it('leaves only queue, devices and mute on the right below lg', () => {
+    it('leaves only queue and mute on the right below lg', () => {
       const [, , right] = [...desktopBar().firstElementChild!.children] as HTMLElement[];
       expect(within(right).getByRole('button', { name: 'Lyrics' })).toHaveClass('hidden', 'lg:inline-flex');
       expect(within(right).getByRole('button', { name: 'Guitar tabs' })).toHaveClass('hidden', 'lg:inline-flex');
       // The volume slider's box: gone below lg, shorter below xl.
       expect(volumeSlider().parentElement).toHaveClass('hidden', 'lg:block', 'w-20', 'xl:w-29.5');
+    });
+
+    it('moves Devices into the More menu below lg, when there is a choice', async () => {
+      const { useCastStore } = await import('@/stores/useCastStore');
+      useCastStore.setState({ path: 'google', availability: 'available', connection: 'idle', deviceName: null });
+      const more = within(desktopBar()).getByTestId('more-menu');
+      const item = within(more).getAllByRole('menuitem').find((i) => i.textContent?.includes('Devices'));
+      expect(item).toHaveClass('lg:hidden');
+      expect(screen.getByTestId('devices-button')).toHaveClass('hidden', 'lg:inline-flex');
+      useCastStore.setState({ path: null, availability: 'none' });
     });
 
     it('leaves the tabs item out of the More menu when the plugin is off', () => {

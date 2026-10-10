@@ -123,12 +123,16 @@ try {
         return { l: r.left, r: r.right, t: r.top, b: r.bottom, w: r.width };
       };
       const shown = (el) => { const r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0; };
-      const titleEl = f.querySelector(`[title="${title}"]`);
+      // The seeded song has no audio, so the bar may already say it could
+      // not play it; that line takes the title's place and its room.
+      const titleEl = f.querySelector(`[title="${title}"]`) ?? f.querySelector('[data-testid="unplayable-top"]');
       const parts = [];
       const img = f.querySelector('img');
       if (img && shown(img)) parts.push({ name: 'artwork', ...box(img) });
       if (titleEl) parts.push({ name: 'title', ...box(titleEl) });
       for (const b of f.querySelectorAll('button')) {
+        // The could-not-play line is itself a button around the title text.
+        if (titleEl && b.contains(titleEl)) continue;
         if (shown(b)) parts.push({ name: b.getAttribute('aria-label') ?? b.textContent?.trim() ?? '?', ...box(b) });
       }
       const grid = f.firstElementChild;

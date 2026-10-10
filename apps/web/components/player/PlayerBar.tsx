@@ -10,6 +10,7 @@ import {
   RepeatIcon,
   RepeatOneIcon,
   ShareIcon,
+  DevicesIcon,
 } from '@/components/icons';
 import { DropdownMenuItem, DropdownMenuSeparator } from '@/components/ui/dropdown-menu';
 import { LikeButton } from '@/components/primitives/LikeButton';
@@ -23,7 +24,7 @@ import { PhonePlayerBar, PLAYER_BAR_CHROME } from '@/components/player/PhonePlay
 import { SeekBar } from '@/components/player/SeekBar';
 import { TransportControls } from '@/components/player/TransportControls';
 import { VolumeControl } from '@/components/player/VolumeControl';
-import { DevicesButton } from '@/components/player/DevicesButton';
+import { DevicesButton, DevicesSheet, useDevicesEntry } from '@/components/player/DevicesButton';
 import { usePlayer } from '@/components/player/PlayerProvider';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { useIsDesktop } from '@/hooks/useIsDesktop';
@@ -53,6 +54,8 @@ export function PlayerBar() {
   const partyActive = partyVolume && partyEligible;
   const tabsEnabled = useSettingsStore((s) => s.tabsEnabled);
   const [queueOpen, setQueueOpen] = useState(false);
+  const [devicesOpen, setDevicesOpen] = useState(false);
+  const devices = useDevicesEntry();
   const lyricsOpen = useUiStore((s) => s.lyricsOpen);
   const setLyricsOpen = useUiStore((s) => s.setLyricsOpen);
   const loopMode = usePlayerStore((s) => s.loopMode);
@@ -134,8 +137,8 @@ export function PlayerBar() {
   // Below xl the title's column cannot also hold add and share, so they
   // move into a "More" menu (the add-to-playlist menu with a ... trigger);
   // below lg lyrics and tabs join them, since the right column then keeps
-  // only the queue, devices and mute. Each item carries the breakpoint its
-  // bar button comes back at (bughunt V1).
+  // only the queue and mute (Devices then opens its sheet from here). Each
+  // item carries the breakpoint its bar button comes back at (bughunt V1).
   const shareable = canShare(current);
   const moreItems = (
     <>
@@ -155,6 +158,11 @@ export function PlayerBar() {
           <TabsIcon className="h-3.5 w-3.5" /> {tabsOpen ? 'Close guitar tabs' : 'Guitar tabs'}
         </DropdownMenuItem>
       )}
+      {devices.visible && (
+        <DropdownMenuItem onClick={() => setDevicesOpen(true)} className="lg:hidden">
+          <DevicesIcon className="h-3.5 w-3.5" /> {devices.label}
+        </DropdownMenuItem>
+      )}
       <DropdownMenuSeparator className={shareable ? undefined : 'lg:hidden'} />
     </>
   );
@@ -169,8 +177,7 @@ export function PlayerBar() {
     {/* The title's column has a floor at every width (13.5rem, 16.5rem,
         20rem), so the song name always keeps at least ~75px, 120px and
         140px; from about 1600 wide the old 1fr / 2fr / 1fr split is back
-        unchanged. Below lg the right column is just queue, devices and mute
-        (auto). */}
+        unchanged. Below lg the right column is just queue and mute (auto). */}
     <div className="px-4 pt-3 pb-2 grid grid-cols-[1fr_auto_1fr] md:grid-cols-[minmax(13.5rem,1fr)_1fr_auto] lg:grid-cols-[minmax(16.5rem,1fr)_2fr_1fr] xl:grid-cols-[minmax(20rem,1fr)_2fr_1fr] gap-4 items-center">
       {/* Now playing. No tap-to-open here: this bar only renders on an md
           and wider window, and the phone bar owns that gesture. */}
@@ -250,8 +257,9 @@ export function PlayerBar() {
           </Button>
         )}
         {/* Devices: where the music plays (this computer's outputs, and
-            cast devices when there are any). Only when there is a choice. */}
-        <DevicesButton variant="bar" className="hidden md:inline-flex h-8 w-8" />
+            cast devices when there are any). Only when there is a choice;
+            below lg it lives in the More menu instead (bughunt V1). */}
+        <DevicesButton variant="bar" className="hidden lg:inline-flex h-8 w-8" />
         <Button
           variant="ghost"
           size="icon"
@@ -276,6 +284,7 @@ export function PlayerBar() {
     </div>
 
     <QueueSheet open={queueOpen} onOpenChange={setQueueOpen} />
+    <DevicesSheet open={devicesOpen} onOpenChange={setDevicesOpen} />
     </footer>
   );
 }
