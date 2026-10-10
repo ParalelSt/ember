@@ -234,6 +234,8 @@ class EmberPlayerPlugin : Plugin() {
     private val pending = ArrayList<(MediaController) -> Unit>()
     /** Keeps the app's own queue changes from being reported back to it. */
     private val echo = QueueEcho()
+    /** Which state events reach the page while the app is off screen. */
+    private val gate = PageStateGate()
 
     /** UnplayableNotices' delivery: refused (kept for later) while the page
      *  has no `unplayable` listener, since Capacitor drops an event nobody
@@ -281,8 +283,30 @@ class EmberPlayerPlugin : Plugin() {
 
     private fun items(c: MediaController): List<MediaItem> = (0 until c.mediaItemCount).map { c.getMediaItemAt(it) }
 
+    private fun playing(c: MediaController): Boolean = c.isPlaying || (c.playWhenReady && c.playbackState == Player.STATE_BUFFERING)
+
+    /** One `state` event, if the page is to hear it (PageStateGate). [tick]:
+     *  the periodic position report. */
+    private fun emitState(c: MediaController, tick: Boolean = false) {
+        val (_, stalled, offline) = cacheState(c.sessionExtras)
+        val key = PageStateGate.key(
+            if (c.mediaItemCount == 0) -1 else c.currentMediaItemIndex,
+            c.currentMediaItem?.mediaId,
+            playing(c),
+            LoopModes.fromRepeat(c.repeatMode),
+            shuffleOf(c.sessionExtras, c.shuffleModeEnabled),
+            stalled,
+            offline,
+        )
+        if (gate.admit(key, tick)) notifyListeners("state", state(c))
+    }
+
     private fun state(c: MediaController): JSObject = JSObject().apply {
-        put("playing", c.isPlaying || (c.playWhenReady && c.playbackState == Player.STATE_BUFFERING))
+        put("playing", playing(c))
+        // When native read it (the phone's clock, as Date.now() on the page):
+        // a state the page receives long after this was held while the page
+        // was frozen, and the page asks for a fresh one instead.
+        put("at", System.currentTimeMillis())
         put("position", c.currentPosition / 1000.0)
         put("duration", if (c.duration > 0) c.duration / 1000.0 else 0.0)
         put("index", if (c.mediaItemCount == 0) -1 else c.currentMediaItemIndex)
@@ -300,7 +324,7 @@ class EmberPlayerPlugin : Plugin() {
 
     private val listener = object : Player.Listener {
         override fun onEvents(player: Player, events: Player.Events) {
-            controller?.let { notifyListeners("state", state(it)) }
+            controller?.let { emitState(it) }
             if (events.contains(Player.EVENT_PLAYBACK_STATE_CHANGED) && player.playbackState == Player.STATE_ENDED) {
                 notifyListeners("ended", JSObject())
             }
@@ -322,7 +346,7 @@ class EmberPlayerPlugin : Plugin() {
      *  as session extras. */
     private val sessionEvents = object : MediaController.Listener {
         override fun onExtrasChanged(controller: MediaController, extras: Bundle) {
-            notifyListeners("state", state(controller))
+            emitState(controller)
             pinned = pinnedOutput(extras)
             emitOutputs()
         }
@@ -334,11 +358,17 @@ class EmberPlayerPlugin : Plugin() {
         }
     }
 
-    /** ~4 Hz position while playing; the web slider expects that cadence. */
+    /** ~4 Hz position while playing and on screen; the web slider expects
+     *  that cadence. Off screen it stops (PageStateGate), and coming back
+     *  starts it again. Only one runs at a time: a start while one is
+     *  already running replaces it. */
+    private val tickTask = Runnable { tick() }
     private fun tick() {
+        main.removeCallbacks(tickTask)
         val c = controller ?: return
-        if (c.isPlaying) notifyListeners("state", state(c))
-        main.postDelayed({ tick() }, 250)
+        if (!gate.onScreen) return
+        if (c.isPlaying) emitState(c, tick = true)
+        main.postDelayed(tickTask, 250)
     }
 
     @PluginMethod fun setQueue(call: PluginCall) {
@@ -761,6 +791,25 @@ class EmberPlayerPlugin : Plugin() {
         }
     }
 
+    override fun handleOnStart() {
+        super.handleOnStart()
+        main.post {
+            if (!gate.shown()) return@post
+            // Back on screen: one fresh state at once (what the page shows
+            // first), then the tick again.
+            controller?.let { emitState(it) }
+            tick()
+        }
+    }
+
+    override fun handleOnStop() {
+        super.handleOnStop()
+        main.post {
+            gate.hidden()
+            main.removeCallbacks(tickTask)
+        }
+    }
+
     override fun handleOnResume() {
         super.handleOnResume()
         // Back in front: whatever failed while away arrives as one batch
@@ -781,6 +830,7 @@ class EmberPlayerPlugin : Plugin() {
     }
 
     override fun handleOnDestroy() {
+        main.removeCallbacks(tickTask)
         UnplayableNotices.setOnScreen(false)
         UnplayableNotices.detach(unplayableSink)
         controller?.release(); controller = null
