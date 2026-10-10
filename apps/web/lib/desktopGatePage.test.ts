@@ -173,6 +173,8 @@ describe('desktop launch gate page', () => {
     expect(visible('buttons')).toBe(false);
     emit(view('installing', { asksPassword: true }));
     expect(text('detail')).toBe('Enter your password to install it');
+    emit(view('installing', { asksAdmin: true }));
+    expect(text('detail')).toBe('Allow the update when Windows asks');
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
     expect(invoked).not.toContain('gate_not_now');
   });
@@ -191,6 +193,8 @@ describe('desktop launch gate page', () => {
     expect(text('title')).toBe("Couldn't update");
     expect(text('detail')).toBe("Opening Ember. We'll try again next time.");
     expect(visible('buttons')).toBe(false);
+    emit(view('failed', { hint: 'move-to-applications' }));
+    expect(text('detail')).toBe('Move Ember to the Applications folder to update it. Opening Ember.');
   });
 
   it('done: the dialog goes away', () => {

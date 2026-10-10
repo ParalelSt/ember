@@ -238,6 +238,22 @@ pub fn install_asks_password(kind: &str) -> bool {
     matches!(kind, "deb" | "rpm")
 }
 
+/// An .msi install is per-machine: Windows asks to allow the update (UAC).
+pub fn install_asks_admin(kind: &str) -> bool {
+    kind == "msi"
+}
+
+/// macOS cannot replace an app run from the disk image or from a
+/// quarantined copy it moved aside (App Translocation): the update has
+/// nowhere to go. Said before trying, so the dialog can say what to do.
+pub fn mac_location_problem(exe: &Path) -> bool {
+    let p = exe.to_string_lossy();
+    p.starts_with("/Volumes/") || p.contains("/AppTranslocation/")
+}
+
+/// What the "Couldn't update" dialog says when moving the app would fix it.
+pub const HINT_MOVE_TO_APPLICATIONS: &str = "move-to-applications";
+
 pub fn platform() -> &'static str {
     if cfg!(target_os = "windows") {
         "windows"
@@ -336,7 +352,8 @@ pub enum Input {
     NotNow,
     UpdateNow,
     Quit,
-    InstallFailed,
+    /// `hint`: something the person can do about it (HINT_*).
+    InstallFailed { hint: Option<String> },
     FailedTimeout,
 }
 
@@ -363,11 +380,13 @@ pub struct Machine {
     pub update_now: bool,
     /// Installing a .deb or .rpm: a failure falls back to the download page.
     pub manual_fallback: bool,
+    /// Why the install failed, when the person can fix it.
+    pub hint: Option<String>,
 }
 
 impl Machine {
     pub fn new(recovery: bool, focused: bool, manual_fallback: bool) -> Self {
-        Machine { phase: Phase::Checking, offer: None, recovery, focused, update_now: false, manual_fallback }
+        Machine { phase: Phase::Checking, offer: None, recovery, focused, update_now: false, manual_fallback, hint: None }
     }
 
     pub fn mandatory(&self) -> bool {
@@ -504,7 +523,8 @@ impl Machine {
                 self.phase = Phase::Done;
                 vec![Effect::Event("update.gate.quit", json!({ "version": self.version() })), Effect::Quit]
             }
-            (Input::InstallFailed, Phase::Installing) => {
+            (Input::InstallFailed { hint }, Phase::Installing) => {
+                self.hint = hint;
                 let url = self.offer.as_ref().and_then(|o| o.url.clone());
                 if self.manual_fallback && url.is_some() {
                     self.phase = Phase::Manual { url };
@@ -537,12 +557,16 @@ pub struct View {
     pub update_now: bool,
     /// Installing will ask for the person's password (.deb, .rpm).
     pub asks_password: bool,
+    /// Windows will ask to allow it (a per-machine .msi install).
+    pub asks_admin: bool,
+    /// Why it failed, when the person can fix it (HINT_*).
+    pub hint: Option<String>,
     /// The theme's background, for the splash.
     pub background: Option<String>,
 }
 
 impl View {
-    pub fn of(m: &Machine, asks_password: bool, background: Option<String>) -> View {
+    pub fn of(m: &Machine, install: &str, background: Option<String>) -> View {
         View {
             phase: m.phase.clone(),
             version: m.offer.as_ref().map(|o| o.version.clone()),
@@ -550,7 +574,9 @@ impl View {
             reason: m.offer.as_ref().and_then(|o| o.reason.clone()),
             recovery: m.recovery,
             update_now: m.update_now,
-            asks_password,
+            asks_password: install_asks_password(install),
+            asks_admin: install_asks_admin(install),
+            hint: m.hint.clone(),
             background,
         }
     }
@@ -826,13 +852,14 @@ pub async fn run(app: AppHandle, gate: Arc<Gate>, opts: GateRun) {
                     tauri::async_runtime::spawn(async move {
                         if let Err(e) = install(&app, &gate, &update, dir.as_deref()).await {
                             gate.event("update.gate.failed", json!({ "stage": "install", "error": e }));
-                            let _ = tx.send(Input::InstallFailed);
+                            let hint = e.contains("Applications").then(|| HINT_MOVE_TO_APPLICATIONS.to_string());
+                            let _ = tx.send(Input::InstallFailed { hint });
                         }
                     });
                 }
             }
         }
-        gate.set_view(&app, View::of(&machine, asks_password, opts.background.clone()));
+        gate.set_view(&app, View::of(&machine, kind, opts.background.clone()));
         if machine.phase == Phase::Done {
             break;
         }
@@ -907,6 +934,9 @@ pub async fn run(app: AppHandle, gate: Arc<Gate>, opts: GateRun) {
         slot: &tokio::sync::Mutex<Option<tauri_plugin_updater::Update>>,
         dir: Option<&Path>,
     ) -> Result<(), String> {
+        if cfg!(target_os = "macos") && std::env::current_exe().is_ok_and(|exe| mac_location_problem(&exe)) {
+            return Err("Ember runs from outside Applications".into());
+        }
         let update = fetch_update(app, slot).await?;
         let dir = dir.ok_or("no app data folder")?;
         if crate::update::staged_version(dir).as_deref() != Some(update.version.as_str()) {
@@ -1182,7 +1212,7 @@ mod tests {
         let o = Offer { url: Some("https://ember.test/get".into()), ..offer("0.5.0") };
         shown(&mut m, o, true);
         m.handle(Input::UpdateNow);
-        m.handle(Input::InstallFailed);
+        m.handle(Input::InstallFailed { hint: None });
         assert_eq!(m.phase, Phase::Manual { url: Some("https://ember.test/get".into()) });
         assert!(has(&m.handle(Input::NotNow), &Effect::EnterApp));
     }
@@ -1192,7 +1222,7 @@ mod tests {
         let mut m = Machine::new(false, true, false);
         shown(&mut m, offer("0.5.0"), true);
         m.handle(Input::UpdateNow);
-        let fx = m.handle(Input::InstallFailed);
+        let fx = m.handle(Input::InstallFailed { hint: None });
         assert!(has(&fx, &Effect::Linger));
         assert_eq!(m.phase, Phase::Failed);
     }
@@ -1247,6 +1277,51 @@ mod tests {
         assert!(!is_newer("0.4.9", "0.4.9"));
         assert!(!is_newer("0.4", "0.3.0"));
         assert!(!is_newer("0.5.0.1", "0.3.0"));
+    }
+
+    #[test]
+    fn an_app_outside_applications_cannot_update_itself() {
+        assert!(mac_location_problem(Path::new("/Volumes/Ember/Ember.app/Contents/MacOS/ember-desktop")));
+        assert!(mac_location_problem(Path::new("/private/var/folders/x/T/AppTranslocation/ABC/d/Ember.app/Contents/MacOS/ember-desktop")));
+        assert!(!mac_location_problem(Path::new("/Applications/Ember.app/Contents/MacOS/ember-desktop")));
+        assert!(!mac_location_problem(Path::new("/Users/a/Applications/Ember.app/Contents/MacOS/ember-desktop")));
+    }
+
+    #[test]
+    fn a_failed_install_keeps_its_hint_for_the_dialog() {
+        let mut m = Machine::new(false, true, false);
+        shown(&mut m, offer("0.5.0"), true);
+        m.handle(Input::UpdateNow);
+        m.handle(Input::InstallFailed { hint: Some(HINT_MOVE_TO_APPLICATIONS.into()) });
+        assert_eq!(m.phase, Phase::Failed);
+        let v = serde_json::to_value(View::of(&m, "app", None)).unwrap();
+        assert_eq!(v["hint"], HINT_MOVE_TO_APPLICATIONS);
+    }
+
+    #[test]
+    fn only_an_msi_asks_windows_for_permission() {
+        assert!(install_asks_admin("msi"));
+        assert!(!install_asks_admin("nsis"));
+    }
+
+    /// Windows installs in passive mode: a small progress window and no
+    /// questions (S1). The plugin passes /R (relaunch) in passive and quiet
+    /// mode alike; passive keeps visible progress for the moment the person
+    /// already chose by staying on the dialog.
+    #[test]
+    fn windows_installs_in_passive_mode() {
+        let conf: serde_json::Value = serde_json::from_str(include_str!("../tauri.conf.json")).expect("conf");
+        assert_eq!(conf["plugins"]["updater"]["windows"]["installMode"], "passive");
+    }
+
+    /// The updater says how the app was installed, so an .msi, .deb or .rpm
+    /// gets its own kind of package (S4, S5).
+    #[test]
+    fn the_update_feed_is_told_the_bundle_type() {
+        let conf: serde_json::Value = serde_json::from_str(include_str!("../tauri.conf.json")).expect("conf");
+        let endpoints = conf["plugins"]["updater"]["endpoints"].as_array().expect("endpoints");
+        assert!(endpoints.iter().all(|e| e.as_str().is_some_and(|s| s.ends_with("?bundle={{bundle_type}}"))), "{endpoints:?}");
+        assert!(include_str!("../../scripts/set-url.mjs").contains("?bundle={{bundle_type}}"), "set-url.mjs must keep the query");
     }
 
     #[test]
@@ -1427,7 +1502,7 @@ mod tests {
     fn the_view_is_what_the_page_reads() {
         let mut m = Machine::new(false, true, false);
         shown(&mut m, required("0.5.0"), true);
-        let v = serde_json::to_value(View::of(&m, false, Some("#101014".into()))).unwrap();
+        let v = serde_json::to_value(View::of(&m, "nsis", Some("#101014".into()))).unwrap();
         assert_eq!(v["phase"], "countdown");
         assert_eq!(v["seconds"], COUNTDOWN_S);
         assert_eq!(v["held"], false);
@@ -1440,8 +1515,10 @@ mod tests {
         let mut d = Machine::new(false, true, false);
         shown(&mut d, offer("0.5.0"), false);
         d.handle(Input::Progress(Some(3)));
-        let v = serde_json::to_value(View::of(&d, false, None)).unwrap();
+        let v = serde_json::to_value(View::of(&d, "msi", None)).unwrap();
         assert_eq!(v["phase"], "downloading");
         assert_eq!(v["percent"], 3);
+        assert_eq!(v["asksAdmin"], true);
+        assert_eq!(v["hint"], serde_json::Value::Null);
     }
 }

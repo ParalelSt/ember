@@ -569,6 +569,10 @@ jobs:
               *.msi.sig)        out="Ember-${TAG}-windows-x64.msi.sig" ;;
               *.AppImage.sig)   out="Ember-${TAG}-linux-x86_64.AppImage.sig" ;;
               *.rpm.sig)        out="Ember-${TAG}-linux-x86_64.rpm.sig" ;;
+              # The .deb's signature: a .deb install updates itself from the
+              # .deb since the launch gate (pkexec asks for the password).
+              # The bundler always made it; this job used to skip it.
+              *.deb.sig)        out="Ember-${TAG}-linux-amd64.deb.sig" ;;
               *)                echo "skipping $base"; continue ;;
             esac
             cp "$src" "dist/$out"

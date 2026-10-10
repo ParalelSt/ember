@@ -239,15 +239,18 @@ export function decideUpdate(input: DecideInput): AppUpdateAnswer {
     update: { version: latest, mandatory, reason, action, size, notes: plainNotes(release), url },
   });
 
-  if (asset && hasSignature(platform, asset, assets)) return offer('install', null, asset.size);
+  // Where a .deb or .rpm install gets the package by hand: the host's page,
+  // or the package itself through the server's asset proxy.
+  const linuxPackage = platform === 'linux' && (install === 'deb' || install === 'rpm');
+  const page = (env.LINUX_DOWNLOAD_URL ?? '').trim() || (asset && input.origin ? `${input.origin}/api/desktop/asset/${asset.id}` : '');
+
+  // A .deb or .rpm installs through a password prompt (pkexec), which can be
+  // refused or missing: the page is the shell's fallback then.
+  if (asset && hasSignature(platform, asset, assets)) return offer('install', linuxPackage && page ? page : null, asset.size);
 
   // A .deb or .rpm the shell cannot install itself (no signature on the
   // release) is still worth a notice with a way to get it.
-  if (platform === 'linux' && (install === 'deb' || install === 'rpm')) {
-    const page = (env.LINUX_DOWNLOAD_URL ?? '').trim();
-    if (page) return offer('download-page', page, asset?.size ?? null);
-    if (asset && input.origin) return offer('download-page', `${input.origin}/api/desktop/asset/${asset.id}`, asset.size);
-  }
+  if (linuxPackage && page) return offer('download-page', page, asset?.size ?? null);
   errors.push(`release ${release.tag_name} has nothing ${platform}/${install ?? 'default'} can install`);
   return answer;
 }

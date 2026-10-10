@@ -57,7 +57,11 @@ describe('decideUpdate: who gets which update', () => {
     it(`offers ${platform}/${install ?? 'default'} an install of the newer release`, () => {
       const a = decide(platform, install);
       expect(a.latest).toBe('0.4.22');
-      expect(a.update).toMatchObject({ version: '0.4.22', action: 'install', mandatory: false, reason: null, url: null });
+      expect(a.update).toMatchObject({ version: '0.4.22', action: 'install', mandatory: false, reason: null });
+      // A .deb or .rpm gets the download page as its fallback; nothing else
+      // needs one.
+      if (install === 'deb' || install === 'rpm') expect(a.update!.url).toMatch(/^https:\/\/ember\.test\/api\/desktop\/asset\/\d+$/);
+      else expect(a.update!.url).toBeNull();
       expect(a.update!.size).toBeGreaterThan(0);
     });
   }

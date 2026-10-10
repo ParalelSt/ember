@@ -26,9 +26,12 @@
   "plugins": {
     "updater": {
       "endpoints": [
-        "https://ember.tailf4de41.ts.net/api/desktop/update/{{target}}/{{arch}}/{{current_version}}"
+        "https://ember.tailf4de41.ts.net/api/desktop/update/{{target}}/{{arch}}/{{current_version}}?bundle={{bundle_type}}"
       ],
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDkyMEQ1RTA3NUEzMTVFQTgKUldTb1hqRmFCMTROa3M5ZDBEVXZLWWltZmRSeUtKb05GRTR1NVFwSSs4Nk52ZGFLamREY3NJMVkK"
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDkyMEQ1RTA3NUEzMTVFQTgKUldTb1hqRmFCMTROa3M5ZDBEVXZLWWltZmRSeUtKb05GRTR1NVFwSSs4Nk52ZGFLamREY3NJMVkK",
+      "windows": {
+        "installMode": "passive"
+      }
     }
   },
   "bundle": {

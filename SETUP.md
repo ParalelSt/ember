@@ -447,12 +447,32 @@ posting anywhere.
 ### Desktop auto-update
 
 The desktop apps check this server on launch and install new builds
-themselves. They ask `/api/desktop/update/...`; the server answers from the
-GitHub Release and streams the installer back. That download route
+themselves. At launch, before the music starts, they ask
+`/api/app/update` (the Android app too); with an update out, a dialog offers
+"Not now" and "Update now", downloads, counts down "Restarting in 7s" and
+installs. "Not now" opens Ember and the next launch asks again. While Ember
+runs, updates are only downloaded, never installed.
+
+The download goes through `/api/desktop/update/...`; the server answers from
+the GitHub Release and streams the installer back. That download route
 (`/api/desktop/asset/<id>`) is public, so it only serves the latest published
-release's update files (the macOS `.app.tar.gz`, the Windows `-setup.exe`,
-the Linux `.AppImage`, their `.sig`, `latest.json`); any other asset of the
-repo is a 404 and GitHub is never asked for it.
+release's update files (the macOS `.app.tar.gz`, the Windows `-setup.exe` and
+`.msi`, the Linux `.AppImage`, `.deb` and `.rpm`, their `.sig`,
+`latest.json`); any other asset of the repo is a 404 and GitHub is never
+asked for it. An app installed from the `.msi`, `.deb` or `.rpm` updates from
+its own kind of package (Windows asks to allow an `.msi` update; Linux asks
+for the password of a `.deb` or `.rpm` one, and offers the download page if
+that fails).
+
+Controls, all optional:
+
+| Where | What |
+|---|---|
+| Release notes: `mandatory: true` | Every older app must update: the dialog has "Quit Ember" instead of "Not now". |
+| Release notes: `minVersion: 0.4.20` (or `minVersion.windows: 0.4.20`) | Apps older than that must update. Stripped from the notes the apps show. |
+| `EMBER_UPDATES_PAUSED=all` (or `windows,macos,linux,android`) | Every update feed for those platforms says "no update". The kill switch for a bad release. |
+| `EMBER_MIN_VERSION_WINDOWS=0.4.20` (and `_MACOS`, `_LINUX`, `_ANDROID`) | The same as `minVersion`, from the host. |
+| `LINUX_DOWNLOAD_URL=https://...` | Where a `.deb`/`.rpm` app sends people to update by hand (default: the package itself through this server). |
 
 Because the repo is private, the server needs a read-only token, and it stays
 on the host, never inside the shipped app:

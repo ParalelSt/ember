@@ -103,7 +103,8 @@
         break;
       case 'installing':
         c.title = 'Installing update';
-        c.detail = v.asksPassword ? 'Enter your password to install it' : 'Ember reopens in a moment';
+        c.detail = v.asksPassword ? 'Enter your password to install it'
+          : v.asksAdmin ? 'Allow the update when Windows asks' : 'Ember reopens in a moment';
         c.buttons = false;
         break;
       case 'manual':
@@ -114,7 +115,9 @@
         break;
       case 'failed':
         c.title = "Couldn't update";
-        c.detail = "Opening Ember. We'll try again next time.";
+        c.detail = v.hint === 'move-to-applications'
+          ? 'Move Ember to the Applications folder to update it. Opening Ember.'
+          : "Opening Ember. We'll try again next time.";
         c.buttons = false;
         break;
       default:
