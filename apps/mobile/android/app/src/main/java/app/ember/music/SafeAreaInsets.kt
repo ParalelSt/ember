@@ -16,7 +16,7 @@ import androidx.core.view.WindowInsetsCompat
  * those on the WebView versions phones run today), so for the navigation
  * bar the page reads 0.
  *
- * So MainActivity reads the real insets off the window and publishes them
+ * So EmberActivity reads the real insets off the window and publishes them
  * here as CSS custom properties on `<html>`. `--safe-top` / `--safe-bottom`
  * in globals.css are `max(env(...), var(--ember-inset-*, 0px))`, so whichever
  * of the two is real wins and both being absent still resolves to 0.
@@ -84,7 +84,7 @@ object SafeAreaInsets {
      *
      * It runs three ways: against the page that is open when the insets
      * arrive, as a document-start script on every page loaded afterwards,
-     * and again at the end of every page load (MainActivity), so it has to
+     * and again at the end of every page load (EmberActivity), so it has to
      * be idempotent. At document start `document.documentElement` can still
      * be null, hence the retry on readystatechange.
      *

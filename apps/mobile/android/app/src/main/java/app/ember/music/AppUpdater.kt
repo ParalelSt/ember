@@ -160,6 +160,36 @@ object AppUpdater {
 
     fun isReady(): Boolean = ready != null && status != Status.INSTALLING
 
+    /** The version of the downloaded, verified APK that waits, if any. */
+    fun readyVersion(): String? = ready?.takeIf { it.file.exists() }?.version
+
+    /** The launch gate's countdown ended, or the person pressed "Update
+     *  now" (LaunchGateActivity): install the waiting APK now, as a tap on
+     *  Install would. The person is looking at the gate and chose it, so the
+     *  "never while on screen" rule does not apply; the car and the install
+     *  permission still do (UpdateRules.decide). False when nothing waits. */
+    fun installFromGate(a: Activity): Boolean {
+        if (readyVersion() == null) return false
+        attachActivity(a)
+        UpdatePresence.setForeground(true)
+        var tries = 0
+        main.post(object : Runnable {
+            override fun run() {
+                // The check that downloaded it may still be finishing.
+                if (busy.get() && tries++ < 50) { main.postDelayed(this, 200); return }
+                autoBlocked = false
+                evaluate(true)
+            }
+        })
+        return true
+    }
+
+    /** The launch gate's telemetry ("update.gate.*"), through the same log
+     *  as the updater's own. */
+    fun gateEvent(event: String, message: String, data: JSONObject? = null) {
+        if (::log.isInitialized) log.info(event, message, data)
+    }
+
     fun addListener(l: (JSONObject) -> Unit) { listeners.add(l) }
     fun removeListener(l: (JSONObject) -> Unit) { listeners.remove(l) }
 

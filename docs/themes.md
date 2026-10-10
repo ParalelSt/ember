@@ -298,7 +298,7 @@ the shells get Ember, like the page.
 
 - `EmberThemePlugin` (`EmberTheme.apply({ background, scheme, vars })`)
   keeps the values in `SharedPreferences("ember_theme")` and has
-  `MainActivity.applyTheme` paint the chrome.
+  `EmberActivity.applyTheme` paint the chrome.
 - `ThemeColors.applyToWindow` sets the WebView's and the window's own
   background (what shows between the splash and the first byte, and behind a
   loading page), the bar icon lightness, and below SDK 35 the status and
@@ -306,12 +306,12 @@ the shells get Ember, like the page.
   the page's own background is their colour and only the icons are set. Bar
   icons turn dark only for a light background (relative luminance over
   0.4), which no v1 theme has.
-- `MainActivity.applyStoredTheme` applies the stored theme right after
+- `EmberActivity.applyStoredTheme` applies the stored theme right after
   `onCreate`, before the page loads, so a cold start opens on the theme's
   colour; a phone that never reported one opens on Ember's `#0c0d0f`. The
   splash itself stays the brand red on black.
 - The bundled `offline.html` lives on another origin and never sees the
-  account, so `MainActivity` registers `ThemeColors.script(vars)` as a
+  account, so `EmberActivity` registers `ThemeColors.script(vars)` as a
   document-start script for that origin only. The page's styles read
   `var(--background, #0a0a0a)` and friends, so with nothing published it
   looks as it always did. `parseVars` keeps only `--name` keys and plain

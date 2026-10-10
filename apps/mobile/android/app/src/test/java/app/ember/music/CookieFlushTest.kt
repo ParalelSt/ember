@@ -64,7 +64,7 @@ class CookieFlushTest {
     }
 
     @Test fun `the activity installs it and flushes on every page load`() {
-        val activity = File("src/main/java/app/ember/music/MainActivity.java").readText()
+        val activity = File("src/main/java/app/ember/music/EmberActivity.java").readText()
         assertTrue(activity.contains("CookieFlush.INSTANCE.install(this)"))
         assertTrue(activity.contains("CookieFlush.INSTANCE.now()"))
     }

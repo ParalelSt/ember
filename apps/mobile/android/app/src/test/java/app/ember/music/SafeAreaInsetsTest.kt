@@ -6,7 +6,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * The px -> CSS px conversion and the script MainActivity injects, which is
+ * The px -> CSS px conversion and the script EmberActivity injects, which is
  * everything about the safe-area fix that does not need a live window.
  */
 class SafeAreaInsetsTest {

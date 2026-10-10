@@ -76,7 +76,7 @@ the APK is built for is `http://` (a LAN or Tailscale IP, or the emulator's
 from `assets/capacitor.config.json` (what `npx cap sync` bakes in) on every
 build, and the manifest points at it. An `https://` server (the Tailscale
 Funnel) gets no cleartext exception at all. Mixed content (http resources on
-an https page) is refused (`allowMixedContent: false`, and `MainActivity`
+an https page) is refused (`allowMixedContent: false`, and `EmberActivity`
 sets the WebView to never allow it).
 
 So a phone built for one http server cannot fetch http from anything else;
@@ -95,6 +95,17 @@ older Android versions show the system's confirm dialog. Every APK must be
 signed with the same release keystore (alias `ember`, GitHub secrets
 `ANDROID_KEYSTORE_B64` / `ANDROID_KEYSTORE_PASSWORD`), so keep it safe.
 Details, per-version behaviour and the release checklist: [docs/APPS.md](../../docs/APPS.md#in-app-updates-android).
+
+**On launch.** The home screen icon opens a launch gate first
+(`LaunchGateActivity`, decisions in `GateRules.kt`): before the WebView or the
+player exist it asks `/api/app/update` (2 s budget), and with an update out
+shows "Not now" / "Update now", downloads, counts down "Restarting in 7s" and
+installs. A required update has "Quit Ember" instead of "Not now". Never in a
+car, never with music already playing, never for anything but a launcher tap.
+Android does not reopen an app that updated itself, so the new version posts
+"Ember updated, tap to open" (`UpdatedReceiver`). The icon keeps its old
+component name (`.MainActivity` is now an alias of the gate) so pinned icons
+survive the update; the app itself is `EmberActivity`.
 
 ## Offline (Android only)
 
@@ -171,7 +182,7 @@ the server fails, including a reachable server's main-frame 4xx/5xx, not
 just being offline. It lists downloaded tracks by pin, plays them locally,
 drives the lock screen via the capgo `MediaSession` plugin, and has a "Try
 again" button. It needs `window.Capacitor` injected, which Capacitor does
-not do for the error page by default; `MainActivity.java` composes and
+not do for the error page by default; `EmberActivity.java` composes and
 registers that injection by hand using Capacitor's `JSExport` statics.
 **Upgrade-sensitive**: not a documented contract, re-check on Capacitor
 bumps (falls back to "Connecting to server..." rather than crashing).
@@ -273,7 +284,7 @@ WebView's `webkitSpeechRecognition` (it exists but every session fails with
   without it Android 11+ package visibility hides the recognizer and
   `isRecognitionAvailable` is false.
 
-The native `EmberSpeech` Capacitor plugin (registered in `MainActivity.java`,
+The native `EmberSpeech` Capacitor plugin (registered in `EmberActivity.java`,
 reached from the web app as `window.Capacitor.Plugins.EmberSpeech`):
 
 | | |

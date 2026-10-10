@@ -17,12 +17,33 @@
              usesCleartextTraffic="true" on every sync; it is removed here so
              nothing but the config decides. -->
 
+        <!-- The app itself (Capacitor's WebView, the plugins, the player).
+             Started by the launch gate below, not by the launcher. -->
         <activity
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|locale|smallestScreenSize|screenLayout|uiMode"
-            android:name=".MainActivity"
+            android:name=".EmberActivity"
             android:label="@string/title_activity_main"
             android:theme="@style/AppTheme.NoActionBarLaunch"
             android:launchMode="singleTask"
+            android:exported="false" />
+
+        <!-- The launch gate (LaunchGateActivity, GateRules): a launcher tap
+             asks the server for an update before the WebView or the player
+             exist, and offers it with "Not now". -->
+        <activity
+            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|locale|smallestScreenSize|screenLayout|uiMode"
+            android:name=".LaunchGateActivity"
+            android:label="@string/title_activity_main"
+            android:theme="@style/AppTheme.NoActionBarLaunch"
+            android:exported="false" />
+
+        <!-- The home screen icon. Its component name stays .MainActivity,
+             which is what launchers pinned before the gate existed: a
+             launcher drops a pinned icon whose component is gone. -->
+        <activity-alias
+            android:name=".MainActivity"
+            android:targetActivity=".LaunchGateActivity"
+            android:label="@string/title_activity_main"
             android:exported="true">
 
             <intent-filter>
@@ -30,7 +51,7 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
 
-        </activity>
+        </activity-alias>
 
         <!-- The native player. Exported because Android Auto and the car's
              Media Center bind to it from another process. -->
@@ -112,6 +133,15 @@
         <receiver
             android:name=".UpdateInstallReceiver"
             android:exported="false" />
+        <!-- Android does not reopen an app that updated itself: after an
+             update from the launch gate, a notification offers to (S3). -->
+        <receiver
+            android:name=".UpdatedReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
 
         <provider
             android:name="androidx.core.content.FileProvider"

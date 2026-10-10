@@ -66,7 +66,7 @@ refused, that line names the package: add it (with its key) to
 
 The APK also ships the offline downloads plugin (`EmberOffline` +
 `OfflineDownloadService`) and the capgo `MediaSession` plugin, both registered
-in `MainActivity`. They coexist with the native player rather than competing
+in `EmberActivity`. They coexist with the native player rather than competing
 with it: the provider picks ONE backend per launch (`androidBackend` when the
 `EmberPlayer` plugin is present, otherwise `capacitorBackend`), so only one
 media session is ever published, and the capgo plugin is there for the bundled

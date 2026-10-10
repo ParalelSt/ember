@@ -41,7 +41,7 @@ class AppVersionTest {
     @Test
     fun `the page finds it under the plugin name it asks for, registered at start`() {
         assertEquals("EmberApp", EmberAppPlugin::class.java.getAnnotation(CapacitorPlugin::class.java)?.name)
-        val activity = File("src/main/java/app/ember/music/MainActivity.java").readText()
+        val activity = File("src/main/java/app/ember/music/EmberActivity.java").readText()
         assertTrue(activity.contains("registerPlugin(EmberAppPlugin.class)"))
     }
 }

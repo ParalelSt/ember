@@ -10,7 +10,7 @@ import com.getcapacitor.annotation.CapacitorPlugin
  * The page reports its theme here after every change (apps/web/lib/theme/
  * native.ts): `apply({ background: '#rrggbb', scheme, vars: '<json>' })`.
  *
- * The value is kept for the next cold start (MainActivity.applyStoredTheme)
+ * The value is kept for the next cold start (EmberActivity.applyStoredTheme)
  * and applied to the window now: the bars, the window background and the
  * offline page's variables. An APK from before themes has no such plugin,
  * and the web side treats that as a no-op.
@@ -32,7 +32,7 @@ class EmberThemePlugin : Plugin() {
             .apply()
         bridge.executeOnMainThread {
             val host = activity
-            if (host is MainActivity) host.applyTheme(color, vars)
+            if (host is EmberActivity) host.applyTheme(color, vars)
             else if (host != null) ThemeColors.applyToWindow(host, bridge.webView, color)
             call.resolve()
         }
