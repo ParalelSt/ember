@@ -1,3 +1,12 @@
+# 0.7.29: Updates when you open the app (apps 0.4.23)
+
+**Host: run `./update.sh` as usual (no new packages, nothing new in
+`.env.local`).** Optional settings, see SETUP.md: `EMBER_UPDATES_PAUSED` stops
+all update offers, `EMBER_MIN_VERSION_<PLATFORM>` makes an update required.
+The desktop and Android apps need 0.4.23 (Android versionCode 28), which the
+`v0.4.23` tag builds. Current apps install 0.4.23 through their usual
+background update; the new dialog shows from the update after that.
+
 # 0.7.28: Safer updates, tidier player bar (apps 0.4.22)
 
 **Host: run `./update.sh` as usual (no new packages, nothing new in

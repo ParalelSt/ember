@@ -21,6 +21,21 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    id: 'update-on-launch',
+    version: '0.7.29',
+    date: '2026-10-10',
+    title: 'Updates when you open the app',
+    summary: 'The desktop and Android apps check for an update as they open, and you can always say Not now.',
+    bullets: [
+      'When a new version is out, Ember asks as it opens, before any music starts. Pick Update now, or Not now to go straight in and get asked again next time.',
+      'After Update now, Ember restarts in 7 seconds. Not now still works during the countdown, so a game or call is never interrupted.',
+      'If an update is required, the dialog says why, and the other choice is Quit Ember.',
+      'Updates download quietly in the background and only install from this dialog, never mid-song.',
+      'Linux .deb and .rpm installs can update themselves after a password prompt.',
+      'Android skips the check in the car and when music is already playing.',
+    ],
+  },
+  {
     id: 'fixes-0728',
     version: '0.7.28',
     date: '2026-10-10',
