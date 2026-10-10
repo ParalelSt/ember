@@ -1,3 +1,10 @@
+# 0.7.26: Android black screen fix (apps 0.4.20)
+
+**Host: run `./update.sh` as usual (no new packages, nothing new in
+`.env.local`).** The page part of the fix works as soon as the server is
+updated; the rest is in the Android app 0.4.20 (versionCode 25), which the
+`v0.4.20` tag builds and which Android phones on 0.4.19 install by themselves.
+
 # 0.7.25: The Android app updates itself (apps 0.4.19)
 
 **Host: run `./update.sh` as usual (no new packages, nothing new in

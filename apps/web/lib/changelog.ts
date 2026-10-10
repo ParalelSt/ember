@@ -21,6 +21,19 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    id: 'android-black-screen',
+    version: '0.7.26',
+    date: '2026-10-10',
+    title: 'Fixes',
+    summary: 'Android no longer wakes up to a black screen after the screen was off.',
+    bullets: [
+      'After the screen was off for a while, the app could come back black, with only search working and the progress bar racing ahead. It now shows the right song and spot straight away.',
+      'If Android closes the page in the background, Ember reloads it and the music keeps playing.',
+      'The full fix is in the new app (0.4.20), which updates itself.',
+    ],
+    scope: 'android',
+  },
+  {
     id: 'android-updates-itself',
     version: '0.7.25',
     date: '2026-10-08',
