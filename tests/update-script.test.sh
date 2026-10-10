@@ -292,22 +292,27 @@ check "no new tmux session" file_lacks "$FAKE_LOG" "tmux new"
 check "Ember serves the new version" wait_until 10 served "$WEB_PORT" "$V2_SHORT"
 stop_ember
 
-# ── 3. no tmux on the host: refuse before touching anything ─────────────
+# ── 3. no tmux on the host: Ember stays in this window, as before ──────
 echo "── no tmux installed"
 new_host
 PATH="$TMP/bin-notmux:$BASE_PATH"
 start_ember
-OLD_WD="$(watchdog_pid)"
 run_update
-check "without tmux, update.sh refuses" update_returned 20
-reap_update
-check "with exit 1" [ "$UPD_RC" = 1 ]
-check "saying how to install it" file_has "$TMP/update.out" "sudo apt install tmux"
-check "and naming --here" file_has "$TMP/update.out" "./update.sh --here"
-check "nothing was pulled" head_is "$V1"
-check "the running Ember was left alone" [ "$(watchdog_pid)" = "$OLD_WD" ]
-check "and still serves" served "$WEB_PORT" "$V1_SHORT"
+check "without tmux, update.sh still updates and keeps Ember in this window" wait_until 40 watchdog_is_update
+check "it serves the new version" wait_until 10 served "$WEB_PORT" "$V2_SHORT"
+check "it says how to install tmux" file_has "$TMP/update.out" "sudo apt install tmux"
+check "and that closing the window stops Ember" file_has "$TMP/update.out" "stops when"
+check "no tmux was called" file_lacks "$FAKE_LOG" "tmux "
+check "the update was applied" head_is "$V2"
 stop_ember
+
+# --check needs no tmux and says nothing about it.
+new_host
+PATH="$TMP/bin-notmux:$BASE_PATH"
+run_update --check
+check "--check without tmux finishes" update_returned 20
+check "--check does not talk about tmux" file_lacks "$TMP/update.out" "tmux"
+check "--check pulled nothing" head_is "$V1"
 
 new_host
 PATH="$TMP/bin-notmux:$BASE_PATH"

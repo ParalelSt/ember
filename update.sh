@@ -11,9 +11,10 @@
 # restarted right there, in the foreground, as always. Run from a plain SSH
 # shell, it is restarted in the background in a tmux session named "ember"
 # (`tmux attach -t ember` to see it): started in this terminal, it would
-# stop the moment the SSH window closes (bughunt O2). On a host where systemd
-# runs Ember (deploy/ember.service is active), it is restarted through
-# systemd instead, from anywhere (bughunt O6).
+# stop the moment the SSH window closes (bughunt O2). Without tmux installed
+# it stays in this window, as before, and says how to get tmux. On a host
+# where systemd runs Ember (deploy/ember.service is active), it is restarted
+# through systemd instead, from anywhere (bughunt O6).
 #
 # WHY THIS EXISTS, and not just `git pull && ./start-static.sh`:
 # start-static.sh deliberately SKIPS starting PocketBase when it's already
@@ -179,19 +180,24 @@ elif [ -n "${TMUX:-}" ] || [ -n "${STY:-}" ] || [ "$HERE" = 1 ]; then
 else
   RELAUNCH="tmux"
 fi
-if [ "$RELAUNCH" = tmux ] && { [ "$MODE" = start ] || [ "$MODE" = force ]; } \
-   && ! command -v tmux >/dev/null 2>&1; then
-  echo "✗ NOT UPDATED: tmux is not installed."
-  echo "  update.sh restarts Ember inside tmux, so it keeps running after you close"
-  echo "  this window. Install it, then run the update again:"
+# Without tmux, Ember comes back in this window as it always did, and the
+# owner hears how to keep it running past a closed window. Said now, before
+# anything changes, and again at the end.
+say_no_tmux() {
+  echo "⚠ tmux is not installed, so Ember restarts in this window and stops when"
+  echo "  you close it. To keep it running after you disconnect:"
   echo
-  echo "      sudo apt install tmux && ./update.sh"
+  echo "      sudo apt install tmux"
   echo
-  echo "  Or keep Ember in this window (closing the window then stops Ember):"
-  echo
-  echo "      ./update.sh --here"
-  echo
-  exit 1
+  echo "  then the next ./update.sh starts it in the background, in tmux."
+}
+NO_TMUX_NOTE=0
+if [ "$RELAUNCH" = tmux ] && ! command -v tmux >/dev/null 2>&1; then
+  RELAUNCH="here"
+  if [ "$MODE" = start ] || [ "$MODE" = force ]; then
+    NO_TMUX_NOTE=1
+    say_no_tmux
+  fi
 fi
 
 # launch_ember: the last step. Here; through systemd; or in the tmux session
@@ -206,6 +212,7 @@ launch_ember() {
   local flag="--no-build"
   [ -f "$ROOT/apps/web/.next/BUILD_ID" ] || flag=""
   if [ "$RELAUNCH" = here ]; then
+    if [ "$NO_TMUX_NOTE" = 1 ]; then say_no_tmux; fi
     exec "$ROOT/start-static.sh" $flag
   fi
   local cmd pid where look
