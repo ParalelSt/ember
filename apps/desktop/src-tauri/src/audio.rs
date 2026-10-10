@@ -636,7 +636,29 @@ fn build_decoder<R: Read + Seek + Send + Sync + 'static>(
 /// yt-dlp could not run its ffmpeg fixup. A remuxed file (ftyp, moov, mdat) is
 /// not. Anything that is not an mp4 at all (webm) is "not fragmented", which
 /// leaves it on the path it always took.
+#[cfg(test)]
 pub(crate) fn sniff_fragmented(head: &[u8]) -> Option<bool> {
+    sniff_layout(head, None).map(|l| l.fragmented)
+}
+
+/// What the head of a streamed body says about how it is laid out.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct HeadLayout {
+    /// See `sniff_fragmented`.
+    pub fragmented: bool,
+    /// Where the payload of the body's one mdat starts, when that mdat runs
+    /// to the end of the body and the index (moov) came before it: ftyp,
+    /// moov, free, mdat, which is how yt-dlp's ffmpeg fixup leaves every song
+    /// on the host. Nothing follows such an mdat (see `TailSkip`).
+    pub trailing_mdat: Option<u64>,
+}
+
+/// `sniff_fragmented`, plus where an mdat that ends the body starts.
+/// `byte_len` is the length the response declared; without it nothing is
+/// claimed about the end of the body.
+pub(crate) fn sniff_layout(head: &[u8], byte_len: Option<u64>) -> Option<HeadLayout> {
+    const PLAIN: HeadLayout = HeadLayout { fragmented: false, trailing_mdat: None };
+    const FRAGMENTED: HeadLayout = HeadLayout { fragmented: true, trailing_mdat: None };
     let atom_at = |pos: usize| -> Option<(u64, [u8; 4], usize)> {
         let h = head.get(pos..pos + 8)?;
         let kind = [h[4], h[5], h[6], h[7]];
@@ -649,18 +671,24 @@ pub(crate) fn sniff_fragmented(head: &[u8]) -> Option<bool> {
         }
     };
     let mut pos = 0usize;
+    let mut moov_seen = false;
     loop {
         let (size, kind, header) = atom_at(pos)?;
         if pos == 0 && &kind != b"ftyp" {
-            return Some(false);
+            return Some(PLAIN);
+        }
+        if &kind == b"mdat" {
+            // A size of zero means "to the end of the body", by definition.
+            let ends_body = byte_len.is_some_and(|len| size == 0 || (pos as u64).checked_add(size) == Some(len));
+            let trailing_mdat = (moov_seen && ends_body).then_some((pos + header) as u64);
+            return Some(HeadLayout { fragmented: false, trailing_mdat });
         }
         if size < header as u64 {
             // Zero ("to the end") or a corrupt size: nothing after it to find.
-            return Some(false);
+            return Some(PLAIN);
         }
         match &kind {
-            b"moof" | b"sidx" => return Some(true),
-            b"mdat" => return Some(false),
+            b"moof" | b"sidx" => return Some(FRAGMENTED),
             b"moov" => {
                 // An mvex (movie extends) child is what declares fragments.
                 let end = pos.checked_add(usize::try_from(size).ok()?)?;
@@ -668,7 +696,7 @@ pub(crate) fn sniff_fragmented(head: &[u8]) -> Option<bool> {
                 let mut child = 0usize;
                 while let Some(h) = body.get(child..child + 8) {
                     if &h[4..8] == b"mvex" {
-                        return Some(true);
+                        return Some(FRAGMENTED);
                     }
                     let len = u32::from_be_bytes([h[0], h[1], h[2], h[3]]) as usize;
                     if len < 8 {
@@ -676,6 +704,7 @@ pub(crate) fn sniff_fragmented(head: &[u8]) -> Option<bool> {
                     }
                     child += len;
                 }
+                moov_seen = true;
             }
             _ => {}
         }
@@ -683,30 +712,157 @@ pub(crate) fn sniff_fragmented(head: &[u8]) -> Option<bool> {
     }
 }
 
-/// Reads the head of `reader` until `sniff_fragmented` can decide, then puts
-/// the reader back at the start. Reads only forwards, so it never asks the
-/// host for anything but the bytes already on their way.
-fn is_fragmented_stream<R: Read + Seek>(reader: &mut R) -> std::io::Result<bool> {
+/// Reads the head of `reader` until `sniff_layout` can decide, then puts the
+/// reader back at the start. Reads only forwards, so it never asks the host
+/// for anything but the bytes already on their way. Also says how many bytes
+/// it read.
+fn sniff_stream<R: Read + Seek>(reader: &mut R, byte_len: Option<u64>) -> std::io::Result<(HeadLayout, u64)> {
     /// A moov for a long remuxed track is ~130 KB; past this, give up and
     /// treat the body the way every body used to be treated.
     const MAX_HEAD: usize = 2 * 1024 * 1024;
     let mut head = Vec::new();
     let mut chunk = [0u8; 16 * 1024];
+    let plain = HeadLayout { fragmented: false, trailing_mdat: None };
     let verdict = loop {
-        if let Some(v) = sniff_fragmented(&head) {
+        if let Some(v) = sniff_layout(&head, byte_len) {
             break v;
         }
         if head.len() >= MAX_HEAD {
-            break false;
+            break plain;
         }
         let n = reader.read(&mut chunk)?;
         if n == 0 {
-            break false;
+            break plain;
         }
         head.extend_from_slice(&chunk[..n]);
     };
     reader.seek(std::io::SeekFrom::Start(0))?;
-    Ok(verdict)
+    Ok((verdict, head.len() as u64))
+}
+
+/// How far past everything read so far a jump has to land before `TailSkip`
+/// answers it itself. The decoder, while it is built, reads the first
+/// samples just after the mdat header (within the head the sniff read);
+/// symphonia's skip over the mdat lands 64 KB before the end of the body.
+const TAIL_SKIP_MARGIN: u64 = 256 * 1024;
+
+/// The reader a streamed decoder is BUILT from: answers symphonia's skip over
+/// an mdat that ends the body without asking the host.
+///
+/// A seekable mp4 reader walks every top-level atom before it plays, and it
+/// gets past the mdat by seeking to the last 64 KB of it and reading them
+/// (`MediaSourceStream::ignore_bytes`), only to find the end of the body. For
+/// a streamed song that seek is a Range request, sent while the first
+/// response is still arriving and no longer read, so its answer waits behind
+/// everything already on its way: on a slow Funnel link longer than the 25 s
+/// request budget, twice (Luka, 2026-10-09, src/audio/one_request.rs). A
+/// browser never asks for those bytes, and neither does the demuxer need
+/// them: it discards them unread. So while the decoder is being built, a jump
+/// into such an mdat, well past everything read so far, moves only this
+/// reader's position, and reads there give zeros up to the end of the body.
+/// The next seek (symphonia goes back to the start right after) is a real one
+/// again. Once the decoder is built (`finish_building`) every seek is passed
+/// on, and a read left at a stand-in position first moves the real reader
+/// there.
+pub(crate) struct TailSkip<R> {
+    inner: R,
+    /// The trailing mdat's payload start and the body's length, when the
+    /// body has one (see `HeadLayout::trailing_mdat`).
+    skippable: Option<(u64, u64)>,
+    building: Arc<AtomicBool>,
+    /// The position the decoder sees.
+    pos: u64,
+    /// The furthest byte read so far.
+    read_to: u64,
+    /// `inner` is not at `pos`: reads are being answered here.
+    standing_in: bool,
+}
+
+impl<R> TailSkip<R> {
+    /// `inner` must be at the start of the body; `read_so_far` is how much of
+    /// it has already been read (the sniffed head).
+    pub(crate) fn new(inner: R, skippable: Option<(u64, u64)>, read_so_far: u64) -> Self {
+        Self {
+            inner,
+            skippable,
+            building: Arc::new(AtomicBool::new(true)),
+            pos: 0,
+            read_to: read_so_far,
+            standing_in: false,
+        }
+    }
+
+    /// The decoder is built: from now on every seek is the real reader's.
+    #[cfg(test)]
+    pub(crate) fn finish_building(&self) {
+        self.building.store(false, Ordering::SeqCst);
+    }
+
+    /// `finish_building`, for after the reader has moved into the decoder.
+    fn build_done(&self) -> impl Fn() {
+        let building = Arc::clone(&self.building);
+        move || building.store(false, Ordering::SeqCst)
+    }
+
+    fn is_building(&self) -> bool {
+        self.building.load(Ordering::SeqCst)
+    }
+}
+
+impl<R: Read + Seek> Read for TailSkip<R> {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        if self.standing_in {
+            match self.skippable {
+                Some((_, len)) if self.is_building() => {
+                    let n = usize::try_from(len.saturating_sub(self.pos)).unwrap_or(usize::MAX).min(buf.len());
+                    buf[..n].fill(0);
+                    self.pos += n as u64;
+                    return Ok(n);
+                }
+                _ => {
+                    self.inner.seek(std::io::SeekFrom::Start(self.pos))?;
+                    self.standing_in = false;
+                }
+            }
+        }
+        let n = self.inner.read(buf)?;
+        self.pos += n as u64;
+        self.read_to = self.read_to.max(self.pos);
+        Ok(n)
+    }
+}
+
+impl<R: Read + Seek> Seek for TailSkip<R> {
+    fn seek(&mut self, to: std::io::SeekFrom) -> std::io::Result<u64> {
+        use std::io::SeekFrom;
+        if let (Some((mdat, len)), true) = (self.skippable, self.is_building()) {
+            let target = match to {
+                SeekFrom::Start(p) => Some(p),
+                SeekFrom::Current(d) => self.pos.checked_add_signed(d),
+                SeekFrom::End(d) => len.checked_add_signed(d),
+            };
+            if let Some(target) = target {
+                if target >= mdat && target <= len && target > self.read_to.saturating_add(TAIL_SKIP_MARGIN) {
+                    self.pos = target;
+                    self.standing_in = true;
+                    return Ok(target);
+                }
+            }
+        }
+        // The real reader is not where the decoder thinks it is: say where.
+        let to = match (self.standing_in, to) {
+            (true, SeekFrom::Current(d)) => SeekFrom::Start(
+                self.pos
+                    .checked_add_signed(d)
+                    .ok_or_else(|| std::io::Error::new(std::io::ErrorKind::InvalidInput, "seek before the start"))?,
+            ),
+            (_, other) => other,
+        };
+        let at = self.inner.seek(to)?;
+        self.pos = at;
+        self.standing_in = false;
+        Ok(at)
+    }
 }
 
 /// Builds the decoder a STREAMED load plays from, and says whether it is
@@ -726,16 +882,28 @@ fn is_fragmented_stream<R: Read + Seek>(reader: &mut R) -> std::io::Result<bool>
 /// A fragmented body is therefore decoded forward-only, from the one request
 /// already flowing; its segment index still gives the track's length. What it
 /// cannot do is seek backwards, and `plan_seek` re-opens it for that. Every
-/// other body keeps the seekable decoder, whose walk costs one short read.
+/// other body keeps the seekable decoder. Its walk hops over one mdat, and
+/// when that mdat ends the body (every remuxed song on the host) `TailSkip`
+/// makes the hop without a request, so it too opens from one request.
 pub(crate) fn open_decoder<R: Read + Seek + Send + Sync + 'static>(
     mut reader: R,
     byte_len: Option<u64>,
-) -> Result<(rodio::Decoder<R>, bool), rodio::decoder::DecoderError> {
+) -> Result<(rodio::Decoder<TailSkip<R>>, bool), rodio::decoder::DecoderError> {
     // A sniff that fails leaves the reader wherever it stopped; the build
     // below then reports the same failure the old path would have.
-    let fragmented = byte_len.is_some() && is_fragmented_stream(&mut reader).unwrap_or(false);
+    let (layout, head_len) = match byte_len {
+        Some(_) => sniff_stream(&mut reader, byte_len).ok(),
+        None => None,
+    }
+    .unwrap_or((HeadLayout { fragmented: false, trailing_mdat: None }, 0));
+    let fragmented = layout.fragmented;
     let len = if fragmented { None } else { byte_len };
-    build_decoder(reader, len).map(|d| (d, fragmented))
+    let skippable = layout.trailing_mdat.zip(len);
+    let reader = TailSkip::new(reader, skippable, head_len);
+    let built = reader.build_done();
+    let out = build_decoder(reader, len).map(|d| (d, fragmented));
+    built();
+    out
 }
 
 /// What `audio_seek` does with a seek.
@@ -1182,7 +1350,7 @@ fn nowplaying_state(playing: bool, pos: Option<Duration>) -> MediaPlayback {
 
 /// The reader a load decodes from: a temp-file-backed HTTP download that
 /// remembers whether it ever failed.
-type StreamReader = FailFlagged<SeekWatched<StreamDownload<TempStorageProvider>>>;
+type StreamReader = TailSkip<FailFlagged<SeekWatched<StreamDownload<TempStorageProvider>>>>;
 
 /// A source that is ready to play.
 pub(crate) struct OpenedSource {
@@ -1251,19 +1419,7 @@ pub(crate) async fn open_source(
     let progress = Arc::new(DownloadProgress::started_now().with_request_grace(budgets.connect));
     let stalled = |stop: LoadStop, stage: &str| OpenError {
         stalled: matches!(stop, LoadStop::Stalled | LoadStop::Unanswered),
-        ..host_error(match stop {
-            LoadStop::Stalled => format!(
-                "the song stopped arriving while {stage} (nothing for {}s)",
-                budgets.stall.as_secs()
-            ),
-            LoadStop::TooSlow => {
-                format!("the song was still {stage} after {}s", budgets.progress.as_secs())
-            }
-            LoadStop::Unanswered => format!(
-                "the host did not answer a request for more of the song while {stage} (nothing for {}s)",
-                budgets.connect.as_secs()
-            ),
-        })
+        ..host_error(load_stop_message(stop, stage, budgets))
     };
 
     let reader = match while_progressing(
@@ -1343,6 +1499,55 @@ pub(crate) async fn open_source(
     };
     let stop: DownloadStop = Box::new(move || download.cancel());
     Ok(OpenedSource { decoder, total, failed, forward_only, stop, progress })
+}
+
+/// Why a load gave up waiting while it was `stage` ("decoding", ...), in the
+/// words the app log and the webview get.
+fn load_stop_message(stop: LoadStop, stage: &str, budgets: LoadBudgets) -> String {
+    match stop {
+        LoadStop::Stalled => format!(
+            "the song stopped arriving while {stage} (nothing for {}s)",
+            budgets.stall.as_secs()
+        ),
+        LoadStop::TooSlow => format!("the song was still {stage} after {}s", budgets.progress.as_secs()),
+        LoadStop::Unanswered => format!(
+            "the host did not answer a request for more of the song while {stage} (nothing for {}s)",
+            budgets.connect.as_secs()
+        ),
+    }
+}
+
+/// Moves a STREAMED decoder to where its song starts, before it plays.
+///
+/// That seek usually lands past the bytes that have arrived (the engine
+/// opening a stalled song again where it stopped, or a song resumed after a
+/// restart), so it is a Range request, and the decoder waits on it. Through
+/// the sink, as it used to be done, that wait had no clock at all: the load
+/// sat inside rodio's `try_seek` before its sink was in, so no watchdog
+/// looked at it either, and a host that did not answer left the song
+/// loading forever with nothing said. Here it is judged like the open
+/// itself (`while_progressing`), and a seek the decoder refuses is left for
+/// the sink's own seek to meet, as before.
+async fn seek_streamed(
+    decoder: Box<dyn rodio::Source + Send>,
+    target: Duration,
+    progress: &DownloadProgress,
+    budgets: LoadBudgets,
+) -> Result<Box<dyn rodio::Source + Send>, String> {
+    let task = tauri::async_runtime::spawn_blocking(move || {
+        let mut decoder = decoder;
+        let _ = decoder.try_seek(target);
+        decoder
+    });
+    match while_progressing(task, progress, budgets.stall, budgets.progress).await {
+        Ok(Ok(decoder)) => Ok(decoder),
+        Ok(Err(e)) => Err(e.to_string()),
+        Err(stop) => Err(load_stop_message(
+            stop,
+            &format!("seeking to {:.1}s", target.as_secs_f64()),
+            budgets,
+        )),
+    }
 }
 
 /// `open_source`, with one more attempt when the first one STALLED.
@@ -1616,6 +1821,43 @@ async fn load_claimed<R: Runtime>(
         return Ok(());
     }
 
+    // A seek pressed while this was on its way wins over where it was asked
+    // to start (D2): the slider already shows it.
+    let early_seek = engine.pending_seek.lock().ok().and_then(|mut p| p.take());
+    let start_at = early_seek.unwrap_or(start_at);
+    // Same guard as audio_seek: a decoder that reports no length would
+    // clamp this to 0, so resuming a proxied track just starts it over.
+    let start = if start_at > 1.0 { seek_target(total, start_at) } else { None };
+    // A streamed song goes there before it plays, on the load's clocks (see
+    // `seek_streamed`); a cached one seeks in its file, at once.
+    let decoder = match (start, progress.as_deref()) {
+        (Some(target), Some(watch)) => match seek_streamed(decoder, target, watch, LoadBudgets::DEFAULT).await {
+            Ok(d) => d,
+            Err(message) => {
+                if let Some(stop) = &stop {
+                    stop();
+                }
+                log_audio(app, "WARN", &format!("load #{my_seq} {message}"));
+                if !engine.is_current_load(my_seq) {
+                    if let (Some(sec), Ok(mut p)) = (early_seek, engine.pending_seek.lock()) {
+                        p.get_or_insert(sec);
+                    }
+                    log_audio(app, "INFO", &format!("load #{my_seq} superseded, failure not reported"));
+                    return Ok(());
+                }
+                // The engine's own second try at a stalled song: the webview
+                // must not try natively again.
+                if engine.stall_retried.load(Ordering::SeqCst) {
+                    emit_stall(app, message, token);
+                } else {
+                    emit_err_about(app, RETRY_NONE, message, token);
+                }
+                return Ok(());
+            }
+        },
+        _ => decoder,
+    };
+
     // Fix 1: bump the generation BEFORE storing the new sink so that the
     // previous position-timer can never observe the new sink under the old
     // generation number.
@@ -1641,16 +1883,10 @@ async fn load_claimed<R: Runtime>(
         Arc::clone(&clock),
     );
     sink.append(crate::eq::Equalized::new(looping, Arc::clone(&engine.eq)));
-    // A seek pressed while this was on its way wins over where it was asked
-    // to start (D2): the slider already shows it.
-    let early_seek = engine.pending_seek.lock().ok().and_then(|mut p| p.take());
-    let start_at = early_seek.unwrap_or(start_at);
-    if start_at > 1.0 {
-        // Same guard as audio_seek: a decoder that reports no length would
-        // clamp this to 0, so resuming a proxied track just starts it over.
-        if let Some(target) = seek_target(total, start_at) {
-            let _ = sink.try_seek(target);
-        }
+    // Through the sink as well, so its position reads from there. A streamed
+    // decoder is already there (above), so this costs no request.
+    if let Some(target) = start {
+        let _ = sink.try_seek(target);
     }
     // Play or pause as the listener wants NOW: a pause pressed while this
     // load was on its way used to be dropped (there was no sink to pause),
@@ -2272,6 +2508,8 @@ mod fastfail;
 mod stall_repro;
 #[cfg(test)]
 mod luka_repro;
+#[cfg(test)]
+mod one_request;
 #[cfg(test)]
 mod slow_start;
 // Needs tauri's `test` feature, which is off on Windows (see Cargo.toml).

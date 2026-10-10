@@ -160,7 +160,7 @@ const SPACING_BASELINE: Record<string, number> = {
   'app/(app)/admin/tracks/page.tsx': 14,
   'app/(app)/admin/users/page.tsx': 8,
   'app/(app)/library/loading.tsx': 5,
-  'app/(app)/library/page.tsx': 5,
+  'app/(app)/library/page.tsx': 4,
   'app/(app)/page.tsx': 1,
   'app/(app)/playlist/[id]/page.tsx': 2,
   'app/(app)/search/loading.tsx': 8,
@@ -299,6 +299,8 @@ const COLOUR_BASELINE: Record<string, number> = {
   'components/tabs/TabSourceSheet.tsx': 1, // tap-to-close backdrop bg-black/50
   'components/ui/dialog.tsx': 1, // shadcn overlay bg-black/10
   'components/ui/sheet.tsx': 1, // shadcn overlay bg-black/10
+  // A camera preview is a photo: black around it, white on it, in every theme.
+  'components/auth/QrScanner.tsx': 2, // bg-black camera backdrop + text-white
   // Danger stays red in every theme (owner decision 5), so white on it stays.
   'components/ui/confirm-dialog.tsx': 1, // text-white on bg-destructive
   // Status colours: severity is semantic, not decorative.

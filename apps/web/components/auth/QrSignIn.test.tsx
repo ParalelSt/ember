@@ -46,15 +46,22 @@ afterEach(() => {
 });
 
 describe('QrSignIn', () => {
-  it('waiting: the QR of the link, the grouped code, the device and the wait line', () => {
+  it('waiting: the QR of the link with the flame, the steps, the grouped code, the device and the wait line', () => {
     h.state = waiting;
     render(<QrSignIn next="/" />);
-    expect(screen.getByText('Sign in with your phone')).toBeInTheDocument();
     expect(screen.getByTestId('qr')).toBeInTheDocument();
+    expect(screen.getByRole('img', { name: 'QR code to sign in' })).toBeInTheDocument();
+    expect(screen.getByTestId('qr-logo')).toBeInTheDocument();
     expect(screen.getByTestId('qr-code')).toHaveTextContent('ABCD-EFGH');
     expect(screen.getByText(/This device: Ember on Android Automotive/)).toBeInTheDocument();
     expect(screen.getByText(/Waiting for approval/)).toBeInTheDocument();
-    expect(screen.getByText(/Settings > Devices > Type the code/)).toBeInTheDocument();
+    const steps = screen.getByTestId('qr-steps').querySelectorAll('li');
+    expect([...steps].map((li) => li.textContent)).toEqual([
+      '1Open Ember on your phone',
+      '2Tap Scan QR code in the menuor in Settings > Devices',
+      '3Tap ApproveThis screen signs in by itself.',
+    ]);
+    expect(screen.getByText(/No camera\? Type/)).toHaveTextContent('No camera? Type ABCD-EFGH in Settings > Devices');
     expect(h.shell).toBe('web');
   });
 
@@ -65,11 +72,21 @@ describe('QrSignIn', () => {
     expect(screen.getByText(/Can't reach Ember, retrying/)).toBeInTheDocument();
   });
 
-  it('expired (after the silent renewals): Get a new code', () => {
+  it('starting: a placeholder where the QR goes, the steps already there', () => {
+    render(<QrSignIn next="/" />);
+    expect(screen.getByText('Getting a code...')).toBeInTheDocument();
+    expect(screen.queryByTestId('qr')).toBeNull();
+    expect(screen.getByTestId('qr-steps')).toBeInTheDocument();
+    expect(screen.queryByTestId('qr-code')).toBeNull();
+  });
+
+  it('expired (after the silent renewals): Get a new code, in place of the QR', () => {
     h.state = { kind: 'expired' };
     render(<QrSignIn next="/" />);
     expect(screen.getByText('Code expired')).toBeInTheDocument();
     expect(screen.queryByTestId('qr')).toBeNull();
+    expect(screen.queryByTestId('qr-code')).toBeNull();
+    expect(screen.queryByText(/Waiting for approval/)).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Get a new code' }));
     expect(h.restart).toHaveBeenCalled();
   });

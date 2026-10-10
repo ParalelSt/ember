@@ -25,7 +25,7 @@
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>NSCameraUsageDescription</key>
-	<string>Ember uses the camera only when you choose to take a photo, for example for your profile picture or a playlist cover.</string>
+	<string>Ember uses the camera to scan sign-in codes, and to take a photo when you choose to, for example for your profile picture or a playlist cover.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Ember uses the microphone only when you choose to record a video to attach to a bug report.</string>
 	<key>UIBackgroundModes</key>

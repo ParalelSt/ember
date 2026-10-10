@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, type FormEvent } from 'react';
+import { useState, useSyncExternalStore, type FormEvent } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { Button } from '@/components/ui/button';
@@ -9,6 +9,12 @@ import { Label } from '@/components/ui/label';
 import { FlameIcon } from '@/components/icons';
 import { safeNext } from '@/lib/safeNext';
 import { QrSignIn } from '@/components/auth/QrSignIn';
+import { isPhone } from '@/lib/isPhone';
+
+// Whether this is a phone never changes while the page is open.
+const noSubscribe = () => () => {};
+const notPhone = () => !isPhone();
+const serverUnknown = () => null;
 
 type Stage =
   | { kind: 'email' }
@@ -27,6 +33,13 @@ export default function AuthPage() {
   const [password, setPassword] = useState('');
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
+  // Unknown on the server and the first render (nothing shown yet, so a
+  // desktop does not flash the password form). A phone gets the password
+  // form straight away, as there is no other phone to scan with; anything
+  // else gets the QR first (owner's pick), with the form one tap away. The
+  // QR mounts, and starts polling, only when it is on screen.
+  const qrAvailable = useSyncExternalStore<boolean | null>(noSubscribe, notPhone, serverUnknown);
+  const [view, setView] = useState<'qr' | 'password'>('qr');
 
   const submitEmail = async (e: FormEvent) => {
     e.preventDefault();
@@ -85,14 +98,44 @@ export default function AuthPage() {
     setPassword('');
   };
 
+  const bg =
+    'min-h-screen grid place-items-center px-4 py-section bg-[radial-gradient(circle_at_30%_20%,color-mix(in_oklab,var(--ember)_18%,transparent),transparent_60%)]';
+  const brand = (
+    <div className="flex items-center gap-2 text-xs uppercase tracking-widest text-muted-foreground mb-3">
+      <FlameIcon className="h-3.5 w-3.5 text-ember" />
+      Ember
+    </div>
+  );
+
+  if (qrAvailable === null) {
+    return <div className={bg} />;
+  }
+
+  if (qrAvailable && view === 'qr') {
+    return (
+      <div className={bg}>
+        <div className="w-full max-w-2xl rounded-2xl bg-card p-page shadow-soft sm:p-page-lg">
+          {brand}
+          <h1 className="mb-stack text-2xl font-bold tracking-tight">Sign in with your phone</h1>
+          <QrSignIn next={next} />
+          <div className="my-stack flex items-center gap-row text-xs text-muted-foreground">
+            <span className="h-px flex-1 bg-border" />
+            or
+            <span className="h-px flex-1 bg-border" />
+          </div>
+          <Button type="button" variant="outline" className="w-full" onClick={() => setView('password')}>
+            Use password instead
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="min-h-screen grid place-items-center px-4 bg-[radial-gradient(circle_at_30%_20%,color-mix(in_oklab,var(--ember)_18%,transparent),transparent_60%)]">
+    <div className={bg}>
       <div className="w-full max-w-sm rounded-2xl bg-card p-8 shadow-soft">
         <form onSubmit={stage.kind === 'email' ? submitEmail : submitPassword}>
-          <div className="flex items-center gap-2 text-xs uppercase tracking-widest text-muted-foreground mb-3">
-            <FlameIcon className="h-3.5 w-3.5 text-ember" />
-            Ember
-          </div>
+          {brand}
 
           {stage.kind === 'email' ? (
             <>
@@ -155,8 +198,18 @@ export default function AuthPage() {
             </div>
           )}
         </form>
-        {/* Sign in from a phone instead: only before an email is chosen. */}
-        {stage.kind === 'email' && <QrSignIn next={next} />}
+        {/* Back to the QR; never on a phone, which has no QR. */}
+        {qrAvailable && (
+          <div className="mt-stack text-center">
+            <button
+              type="button"
+              onClick={() => setView('qr')}
+              className="text-sm text-muted-foreground underline underline-offset-4 hover:text-foreground"
+            >
+              Use QR code instead
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );

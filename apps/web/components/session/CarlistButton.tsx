@@ -2,25 +2,22 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
-import { CarIcon, KeyIcon } from '@/components/icons';
+import { CarIcon } from '@/components/icons';
+import { HeaderIconButton } from '@/components/page/HeaderIconButton';
+import { CarlistSheet } from '@/components/session/CarlistSheet';
 import { StartSessionDialog, JoinSessionDialog } from '@/components/session/SessionDialogs';
 import { useQueryLiveCarlist } from '@/hooks/useSession';
 import { cn } from '@/lib/utils';
 
 const PILL =
-  'inline-flex h-9 shrink-0 items-center gap-inset rounded-full border px-row text-sm font-medium transition-colors outline-none focus-visible:ring-3 focus-visible:ring-ring/50';
+  'inline-flex h-11 shrink-0 items-center gap-inset rounded-full border px-row text-sm font-medium transition-colors outline-none focus-visible:ring-3 focus-visible:ring-ring/50';
 
-/** Your library's one Carlist button. Nothing live: a menu, Start a carlist
- *  or Join a carlist. A carlist live for you (hosting or joined): it reads
+/** Your library's one Carlist button. Nothing live: an icon button that opens a
+ *  bottom sheet, Start a carlist or Join a carlist. A carlist live for you (hosting or joined): it reads
  *  "Live · CODE" and opens that carlist. */
 export function CarlistButton() {
   const { data: live } = useQueryLiveCarlist();
+  const [menuOpen, setMenuOpen] = useState(false);
   const [startOpen, setStartOpen] = useState(false);
   const [joinOpen, setJoinOpen] = useState(false);
 
@@ -40,22 +37,15 @@ export function CarlistButton() {
 
   return (
     <>
-      <DropdownMenu>
-        <DropdownMenuTrigger
-          data-testid="carlist-entry"
-          className={cn(PILL, 'border-border text-muted-foreground hover:bg-card hover:text-foreground')}
-        >
-          <CarIcon className="size-4" /> Carlist
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="min-w-52">
-          <DropdownMenuItem onClick={() => setStartOpen(true)}>
-            <CarIcon /> Start a carlist
-          </DropdownMenuItem>
-          <DropdownMenuItem onClick={() => setJoinOpen(true)}>
-            <KeyIcon /> Join a carlist
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
+      <HeaderIconButton data-testid="carlist-entry" aria-label="Carlist" onClick={() => setMenuOpen(true)}>
+        <CarIcon className="size-5" />
+      </HeaderIconButton>
+      <CarlistSheet
+        open={menuOpen}
+        onOpenChange={setMenuOpen}
+        onStart={() => setStartOpen(true)}
+        onJoin={() => setJoinOpen(true)}
+      />
       <StartSessionDialog open={startOpen} onOpenChange={setStartOpen} />
       <JoinSessionDialog open={joinOpen} onOpenChange={setJoinOpen} />
     </>

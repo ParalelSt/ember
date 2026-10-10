@@ -1,11 +1,17 @@
-/** A small QR code encoder: byte mode, error correction level M, versions 1
- *  to 10 (up to 213 bytes, plenty for a join link). No dependencies, no
+/** A small QR code encoder: byte mode, error correction level M (or H, for a
+ *  code with a logo over its middle), versions 1 to 10 (up to 213 bytes at
+ *  M, plenty for a join link; 119 at H). No dependencies, no
  *  React: `encodeQr` returns the module grid and `qrSvgPath` turns it into
  *  one SVG path. Follows ISO/IEC 18004; tests/qr vectors come from the spec
  *  and from a reference encoder (lib/qr.test.ts). */
 
+/** M recovers about 15% of the symbol, H about 30%: enough to cover the
+ *  middle with a logo and still read. */
+export type QrEcLevel = 'M' | 'H';
+
 export interface QrCode {
   version: number;
+  ecLevel: QrEcLevel;
   /** The mask pattern used (0 to 7). */
   mask: number;
   /** Modules per side: 17 + 4 * version. */
@@ -14,9 +20,11 @@ export interface QrCode {
   modules: boolean[][];
 }
 
+type BlockLayout = ReadonlyArray<{ ec: number; groups: ReadonlyArray<readonly [number, number]> }>;
+
 /** Level M block layout per version: EC codewords per block, then
  *  [block count, data codewords per block] for each group. */
-const BLOCKS_M: ReadonlyArray<{ ec: number; groups: ReadonlyArray<readonly [number, number]> }> = [
+const BLOCKS_M: BlockLayout = [
   { ec: 10, groups: [[1, 16]] },
   { ec: 16, groups: [[1, 28]] },
   { ec: 26, groups: [[1, 44]] },
@@ -28,6 +36,24 @@ const BLOCKS_M: ReadonlyArray<{ ec: number; groups: ReadonlyArray<readonly [numb
   { ec: 22, groups: [[3, 36], [2, 37]] },
   { ec: 26, groups: [[4, 43], [1, 44]] },
 ];
+
+/** Level H, the same shape (ISO/IEC 18004 table 9). */
+const BLOCKS_H: BlockLayout = [
+  { ec: 17, groups: [[1, 9]] },
+  { ec: 28, groups: [[1, 16]] },
+  { ec: 22, groups: [[2, 13]] },
+  { ec: 16, groups: [[4, 9]] },
+  { ec: 22, groups: [[2, 11], [2, 12]] },
+  { ec: 28, groups: [[4, 15]] },
+  { ec: 26, groups: [[4, 13], [1, 14]] },
+  { ec: 26, groups: [[4, 14], [2, 15]] },
+  { ec: 24, groups: [[4, 12], [4, 13]] },
+  { ec: 28, groups: [[6, 15], [2, 16]] },
+];
+
+const BLOCKS: Record<QrEcLevel, BlockLayout> = { M: BLOCKS_M, H: BLOCKS_H };
+/** The two format bits that name the level (M is 00, H is 10). */
+const LEVEL_BITS: Record<QrEcLevel, number> = { M: 0b00, H: 0b10 };
 
 const ALIGNMENT: ReadonlyArray<readonly number[]> = [
   [],
@@ -44,14 +70,14 @@ const ALIGNMENT: ReadonlyArray<readonly number[]> = [
 
 export const QR_MAX_VERSION = BLOCKS_M.length;
 
-function dataCodewords(version: number): number {
-  return BLOCKS_M[version - 1].groups.reduce((n, [blocks, words]) => n + blocks * words, 0);
+function dataCodewords(version: number, level: QrEcLevel): number {
+  return BLOCKS[level][version - 1].groups.reduce((n, [blocks, words]) => n + blocks * words, 0);
 }
 
-/** Most bytes one version holds at level M in byte mode. */
-export function qrCapacity(version: number): number {
+/** Most bytes one version holds at a level (M unless asked) in byte mode. */
+export function qrCapacity(version: number, level: QrEcLevel = 'M'): number {
   const countBits = version < 10 ? 8 : 16;
-  return Math.floor((dataCodewords(version) * 8 - 4 - countBits) / 8);
+  return Math.floor((dataCodewords(version, level) * 8 - 4 - countBits) / 8);
 }
 
 // ---------- GF(256) and Reed-Solomon ----------
@@ -101,9 +127,10 @@ export function reedSolomon(data: readonly number[], ecCount: number): number[] 
 
 // ---------- Format and version information ----------
 
-/** The 15 format bits for level M and a mask, BCH coded and masked. */
-export function formatBits(mask: number): number {
-  const data = (0b00 << 3) | mask; // level M is 00
+/** The 15 format bits for a level (M unless asked) and a mask, BCH coded
+ *  and masked. */
+export function formatBits(mask: number, level: QrEcLevel = 'M'): number {
+  const data = (LEVEL_BITS[level] << 3) | mask;
   let rem = data;
   for (let i = 0; i < 10; i++) rem = (rem << 1) ^ ((rem >>> 9) * 0x537);
   return ((data << 10) | rem) ^ 0x5412;
@@ -118,7 +145,7 @@ export function versionBits(version: number): number {
 
 // ---------- Data ----------
 
-function encodeData(bytes: Uint8Array, version: number): number[] {
+function encodeData(bytes: Uint8Array, version: number, level: QrEcLevel): number[] {
   const bits: number[] = [];
   const put = (value: number, length: number) => {
     for (let i = length - 1; i >= 0; i--) bits.push((value >>> i) & 1);
@@ -126,7 +153,7 @@ function encodeData(bytes: Uint8Array, version: number): number[] {
   put(0b0100, 4); // byte mode
   put(bytes.length, version < 10 ? 8 : 16);
   for (const b of bytes) put(b, 8);
-  const capacity = dataCodewords(version) * 8;
+  const capacity = dataCodewords(version, level) * 8;
   put(0, Math.min(4, capacity - bits.length)); // terminator
   while (bits.length % 8) bits.push(0);
   const words: number[] = [];
@@ -140,8 +167,8 @@ function encodeData(bytes: Uint8Array, version: number): number[] {
 }
 
 /** Data and EC codewords split into blocks and interleaved. */
-function interleave(data: number[], version: number): number[] {
-  const { ec, groups } = BLOCKS_M[version - 1];
+function interleave(data: number[], version: number, level: QrEcLevel): number[] {
+  const { ec, groups } = BLOCKS[level][version - 1];
   const blocks: number[][] = [];
   let at = 0;
   for (const [count, words] of groups) {
@@ -188,7 +215,7 @@ function set(g: Grid, r: number, c: number, dark: boolean) {
   g.fixed[r][c] = true;
 }
 
-function drawFunctionPatterns(g: Grid, version: number) {
+function drawFunctionPatterns(g: Grid, version: number, level: QrEcLevel) {
   const { size } = g;
   // Finders with their light separators.
   for (const [fr, fc] of [
@@ -224,7 +251,7 @@ function drawFunctionPatterns(g: Grid, version: number) {
   );
   // Reserve the format areas (written for real once the mask is known) and
   // the always-dark module.
-  drawFormat(g, 0);
+  drawFormat(g, 0, level);
   set(g, size - 8, 8, true);
   if (version >= 7) {
     const bits = versionBits(version);
@@ -238,9 +265,9 @@ function drawFunctionPatterns(g: Grid, version: number) {
   }
 }
 
-function drawFormat(g: Grid, mask: number) {
+function drawFormat(g: Grid, mask: number, level: QrEcLevel) {
   const { size } = g;
-  const bits = formatBits(mask);
+  const bits = formatBits(mask, level);
   const bit = (i: number) => ((bits >>> i) & 1) === 1;
   // Around the top-left finder.
   for (let i = 0; i <= 5; i++) set(g, i, 8, bit(i));
@@ -323,35 +350,40 @@ export function penalty(dark: boolean[][]): number {
 }
 
 export class QrTooLongError extends Error {
-  constructor(bytes: number) {
-    super(`Too long for a QR code here: ${bytes} bytes (at most ${qrCapacity(QR_MAX_VERSION)}).`);
+  constructor(bytes: number, level: QrEcLevel = 'M') {
+    super(`Too long for a QR code here: ${bytes} bytes (at most ${qrCapacity(QR_MAX_VERSION, level)} at level ${level}).`);
   }
 }
 
-/** Encodes `text` (as UTF-8) in the smallest version that fits. `mask`
- *  forces a mask pattern; otherwise the lowest-penalty one is used. */
-export function encodeQr(text: string, opts: { mask?: number; minVersion?: number } = {}): QrCode {
+/** Encodes `text` (as UTF-8) in the smallest version that fits, at level M
+ *  unless `ecLevel` says H. `mask` forces a mask pattern; otherwise the
+ *  lowest-penalty one is used. */
+export function encodeQr(
+  text: string,
+  opts: { mask?: number; minVersion?: number; ecLevel?: QrEcLevel } = {},
+): QrCode {
+  const level = opts.ecLevel ?? 'M';
   const bytes = new TextEncoder().encode(text);
   let version = Math.max(1, opts.minVersion ?? 1);
-  while (version <= QR_MAX_VERSION && qrCapacity(version) < bytes.length) version++;
-  if (version > QR_MAX_VERSION) throw new QrTooLongError(bytes.length);
+  while (version <= QR_MAX_VERSION && qrCapacity(version, level) < bytes.length) version++;
+  if (version > QR_MAX_VERSION) throw new QrTooLongError(bytes.length, level);
 
-  const codewords = interleave(encodeData(bytes, version), version);
+  const codewords = interleave(encodeData(bytes, version, level), version, level);
   const size = 17 + 4 * version;
   const base = newGrid(size);
-  drawFunctionPatterns(base, version);
+  drawFunctionPatterns(base, version, level);
   placeData(base, codewords);
 
   const build = (mask: number) => {
     const g: Grid = { size, dark: base.dark.map((r) => [...r]), fixed: base.fixed };
     applyMask(g, mask);
-    drawFormat(g, mask);
+    drawFormat(g, mask, level);
     return g.dark;
   };
 
   if (opts.mask !== undefined) {
     if (!Number.isInteger(opts.mask) || opts.mask < 0 || opts.mask > 7) throw new RangeError('mask must be 0 to 7');
-    return { version, mask: opts.mask, size, modules: build(opts.mask) };
+    return { version, ecLevel: level, mask: opts.mask, size, modules: build(opts.mask) };
   }
   let best = { mask: 0, modules: build(0), score: Infinity };
   for (let mask = 0; mask < 8; mask++) {
@@ -359,22 +391,34 @@ export function encodeQr(text: string, opts: { mask?: number; minVersion?: numbe
     const score = penalty(modules);
     if (score < best.score) best = { mask, modules, score };
   }
-  return { version, mask: best.mask, size, modules: best.modules };
+  return { version, ecLevel: level, mask: best.mask, size, modules: best.modules };
+}
+
+/** The square in the middle of a level H code that a logo may cover: an
+ *  odd number of modules, about a fifth of the side (some 4% of the area,
+ *  against the 30% level H recovers), centred. In module coordinates. */
+export function qrLogoArea(qr: QrCode): { start: number; span: number } {
+  const span = Math.round(qr.size * 0.2) | 1;
+  return { start: (qr.size - span) / 2, span };
 }
 
 /** One SVG path (`d`) drawing every dark module as a unit square, each row's
- *  runs merged; place it in a viewBox of `0 0 size size` (plus a quiet zone). */
-export function qrSvgPath(qr: QrCode): string {
+ *  runs merged; place it in a viewBox of `0 0 size size` (plus a quiet zone).
+ *  `clear` leaves a square of modules light (where a logo goes). */
+export function qrSvgPath(qr: QrCode, opts: { clear?: { start: number; span: number } } = {}): string {
+  const { clear } = opts;
+  const inClear = (r: number, c: number) =>
+    !!clear && r >= clear.start && r < clear.start + clear.span && c >= clear.start && c < clear.start + clear.span;
   const parts: string[] = [];
   qr.modules.forEach((row, r) => {
     let c = 0;
     while (c < qr.size) {
-      if (!row[c]) {
+      if (!row[c] || inClear(r, c)) {
         c++;
         continue;
       }
       const start = c;
-      while (c < qr.size && row[c]) c++;
+      while (c < qr.size && row[c] && !inClear(r, c)) c++;
       parts.push(`M${start} ${r}h${c - start}v1h${start - c}z`);
     }
   });

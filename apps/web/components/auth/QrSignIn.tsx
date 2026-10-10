@@ -1,18 +1,86 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { Button } from '@/components/ui/button';
 import { QrSvg } from '@/components/ui/QrSvg';
-import { useQrSignIn, type QrSession } from '@/hooks/useQrSignIn';
+import { CheckIcon } from '@/components/icons';
+import { useQrSignIn, type QrSession, type QrSignInState } from '@/hooks/useQrSignIn';
 import { formatCode } from '@/lib/qrLogin/codes';
 import { detectShell } from '@/lib/playback/detectShell';
 
-/** Below the email form on /auth (plan 1a): a QR of the approve link and
- *  the short code. A phone that is already signed in approves, and this
- *  device signs itself in. The email form stays usable whatever happens
- *  here. */
+const QR_PX = 224;
+
+const STEPS: ReadonlyArray<{ title: string; sub?: string }> = [
+  { title: 'Open Ember on your phone' },
+  { title: 'Tap Scan QR code in the menu', sub: 'or in Settings > Devices' },
+  { title: 'Tap Approve', sub: 'This screen signs in by itself.' },
+];
+
+/** The square the QR fills, so the card does not jump between states. */
+function Square({ children }: { children: ReactNode }) {
+  return (
+    <div className="grid size-56 place-items-center content-center gap-block rounded-xl bg-muted/50 p-block text-center text-sm">
+      {children}
+    </div>
+  );
+}
+
+function QrArea({ state, restart }: { state: QrSignInState; restart: () => void }) {
+  switch (state.kind) {
+    case 'starting':
+      return <Square><span className="text-muted-foreground">Getting a code...</span></Square>;
+    case 'waiting':
+      return (
+        // The white tile is the quiet zone, so it reads the same in a dark theme.
+        <QrSvg value={state.approveUrl} size={QR_PX} logo label="QR code to sign in" className="rounded-xl" />
+      );
+    case 'approved':
+      return (
+        <Square>
+          <span className="grid size-12 place-items-center rounded-full bg-ember text-ember-foreground" aria-hidden>
+            <CheckIcon className="size-6" />
+          </span>
+          <span className="font-semibold" aria-live="polite">
+            Signed in as {state.name}
+          </span>
+        </Square>
+      );
+    case 'expired':
+      return (
+        <Square>
+          <span className="font-semibold">Code expired</span>
+          <Button type="button" variant="outline" onClick={restart}>
+            Get a new code
+          </Button>
+        </Square>
+      );
+    case 'denied':
+      return (
+        <Square>
+          <span>Sign-in was declined on your other device.</span>
+          <Button type="button" variant="outline" onClick={restart}>
+            Try again
+          </Button>
+        </Square>
+      );
+    case 'error':
+      return (
+        <Square>
+          <span className="text-muted-foreground">Can&apos;t get a code right now.</span>
+          <Button type="button" variant="outline" onClick={restart}>
+            Try again
+          </Button>
+        </Square>
+      );
+  }
+}
+
+/** The QR card on /auth (owner's pick: the QR is the hero, with the Ember
+ *  flame in its middle and three numbered steps beside it). A phone that is
+ *  already signed in scans it and approves, and this device signs itself
+ *  in. The short code under it is for a phone without a camera. */
 export function QrSignIn({ next }: { next: string }) {
   const { adoptSession } = useAuth();
   const router = useRouter();
@@ -34,76 +102,48 @@ export function QrSignIn({ next }: { next: string }) {
   const { state, restart } = useQrSignIn({ shell, onApproved });
 
   return (
-    <div data-testid="qr-sign-in" className="mt-stack">
-      <div className="flex items-center gap-row text-xs text-muted-foreground">
-        <span className="h-px flex-1 bg-border" />
-        or
-        <span className="h-px flex-1 bg-border" />
-      </div>
-      <div className="mt-stack flex flex-col items-center gap-block text-center">
-        <div>
-          <div className="font-semibold">Sign in with your phone</div>
+    <div data-testid="qr-sign-in">
+      <div className="grid items-center justify-items-center gap-stack sm:grid-cols-[auto_1fr] sm:justify-items-start">
+        <div className="flex flex-col items-center gap-block">
+          <QrArea state={state} restart={restart} />
           {state.kind === 'waiting' && (
-            <p className="mt-inset text-sm text-muted-foreground">
-              Scan this with a phone that is already signed in to Ember, or open Settings &gt; Devices &gt; Type the
-              code and enter <span className="font-semibold text-foreground">{formatCode(state.code)}</span>.
-            </p>
-          )}
-        </div>
-
-        {state.kind === 'starting' && (
-          <div className="grid size-60 place-items-center rounded-lg bg-muted/50 text-sm text-muted-foreground">
-            Getting a code...
-          </div>
-        )}
-
-        {state.kind === 'waiting' && (
-          <>
-            <QrSvg value={state.approveUrl} size={240} label="QR code to sign in" />
-            <div data-testid="qr-code" className="font-mono text-3xl font-bold tracking-widest">
-              {formatCode(state.code)}
-            </div>
-            <div className="text-xs text-muted-foreground">This device: {state.device}</div>
             <div className="flex items-center gap-cluster text-sm text-muted-foreground" aria-live="polite">
               <span className="size-2 animate-pulse rounded-full bg-ember" aria-hidden />
               {state.offline ? "Can't reach Ember, retrying..." : 'Waiting for approval...'}
             </div>
-          </>
-        )}
+          )}
+        </div>
 
-        {state.kind === 'approved' && (
-          <div className="text-sm font-semibold" aria-live="polite">
-            Signed in as {state.name}
-          </div>
-        )}
-
-        {state.kind === 'expired' && (
-          <>
-            <div className="text-sm font-semibold">Code expired</div>
-            <Button type="button" variant="outline" onClick={restart}>
-              Get a new code
-            </Button>
-          </>
-        )}
-
-        {state.kind === 'denied' && (
-          <>
-            <div className="text-sm">Sign-in was declined on your other device.</div>
-            <Button type="button" variant="outline" onClick={restart}>
-              Try again
-            </Button>
-          </>
-        )}
-
-        {state.kind === 'error' && (
-          <>
-            <div className="text-sm text-muted-foreground">Can&apos;t get a code right now.</div>
-            <Button type="button" variant="outline" onClick={restart}>
-              Try again
-            </Button>
-          </>
-        )}
+        <ol data-testid="qr-steps" className="grid gap-block text-left">
+          {STEPS.map((step, i) => (
+            <li key={step.title} className="flex items-start gap-row">
+              <span
+                className="grid size-7 shrink-0 place-items-center rounded-full bg-ember text-sm font-bold text-ember-foreground"
+                aria-hidden
+              >
+                {i + 1}
+              </span>
+              <div className="pt-inset">
+                <div className="font-medium leading-snug">{step.title}</div>
+                {step.sub && <div className="mt-inset text-sm text-muted-foreground">{step.sub}</div>}
+              </div>
+            </li>
+          ))}
+        </ol>
       </div>
+
+      {state.kind === 'waiting' && (
+        <div className="mt-stack grid gap-inset text-center text-sm text-muted-foreground sm:text-left">
+          <p>
+            No camera? Type{' '}
+            <span data-testid="qr-code" className="font-mono font-bold tracking-widest text-foreground">
+              {formatCode(state.code)}
+            </span>{' '}
+            in Settings &gt; Devices
+          </p>
+          <p className="text-xs">This device: {state.device}</p>
+        </div>
+      )}
     </div>
   );
 }

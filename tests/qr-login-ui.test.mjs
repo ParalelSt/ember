@@ -9,11 +9,14 @@
  *  pointing at it, served on APP_PORT (default 3181). Never the sandbox or
  *  live data. Bug reports go to a dead local address.
  *
- *  Context A is a phone signed in with a password; B is a new device on
- *  /auth. A opens B's QR link, sees B's device and "Same network", approves
- *  after the 2 s guard; B lands signed in as A. The link again finds
- *  nothing. A fresh request typed in Settings > Devices and declined shows
- *  declined on the device. Sign out everywhere on A signs B out. With
+ *  Context A is a phone signed in with a password (a phone gets the form
+ *  directly, no QR); B is a new device on /auth, where the QR with the
+ *  flame is the hero. A opens B's QR link and gets the approve sheet over
+ *  a quiet page, sees B's device and "Same network", approves after the 2 s
+ *  guard and lands on Settings > Devices with B lit up at the top; B lands
+ *  signed in as A. The link again finds nothing. A fresh request typed in
+ *  Settings > Devices opens the sheet there, and Not me shows declined on
+ *  the device. Sign out everywhere on A signs B out. With
  *  QR_LOGIN_TTL_S=3 the device renews quietly 5 times, then shows "Code
  *  expired" and Get a new code works. Throughout: the poll cookie is
  *  httpOnly, a third browser cannot use the link, a signed-out scan keeps the
@@ -45,6 +48,7 @@ const SU_PASSWORD = 'Qr-Ui-Superuser-2026';
 const A_EMAIL = 'robin@qr.test';
 const A_PASSWORD = 'Qr-Ui-Member-2026';
 const A_NAME = 'Robin QR';
+const PHONE_UA = 'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Mobile Safari/537.36';
 
 if (!fs.existsSync(PB_BIN)) {
   console.error(`No PocketBase binary at ${PB_BIN}; set PB_BIN.`);
@@ -223,9 +227,12 @@ try {
   browser = await chromium.launch({ executablePath: findChrome(), headless: true });
 
   // ── A signs in with a password, the way a phone would ──
-  const aCtx = await browser.newContext({ viewport: { width: 400, height: 860 } });
+  const aCtx = await browser.newContext({ viewport: { width: 400, height: 860 }, userAgent: PHONE_UA, isMobile: true, hasTouch: true });
   const a = await aCtx.newPage();
   await a.goto(`${APP}/auth`);
+  await a.getByLabel('Email').waitFor({ timeout: 30_000 });
+  check('A0a a phone gets the password form directly, with no QR and no way to one', (await a.getByTestId('qr-sign-in').count()) === 0 &&
+    (await a.getByRole('button', { name: 'Use QR code instead' }).count()) === 0);
   await a.getByLabel('Email').fill(A_EMAIL);
   await a.getByRole('button', { name: 'Continue' }).click();
   await a.getByLabel('Password').fill(A_PASSWORD);
@@ -239,6 +246,34 @@ try {
   const shownCode = (await b.page.getByTestId('qr-code').textContent()).trim();
   check('B1 /auth shows the QR and the grouped code', /^[0-9A-Z]{4}-[0-9A-Z]{4}$/.test(shownCode) && shownCode.replace('-', '') === bStart?.code &&
     (await b.page.getByTestId('qr').count()) === 1, shownCode);
+  check('B1b the QR is the hero: level H with the flame in it, the three steps beside it, the form behind a button',
+    (await b.page.getByTestId('qr').getAttribute('data-ec')) === 'H' && (await b.page.getByTestId('qr-logo').count()) === 1 &&
+    (await b.page.getByTestId('qr-steps').locator('li').count()) === 3 && (await b.page.getByLabel('Email').count()) === 0 &&
+    (await b.page.getByRole('button', { name: 'Use password instead' }).count()) === 1);
+  {
+    // The QR as the browser draws it, flame and all, read back by the
+    // browser's own decoder where it has one.
+    const read = await b.page.evaluate(async () => {
+      if (!('BarcodeDetector' in window)) return null;
+      const svg = document.querySelector('[data-testid="qr"]');
+      const img = new Image();
+      const css = getComputedStyle(document.documentElement);
+      const xml = new XMLSerializer().serializeToString(svg).replace(/class="fill-ember"/g, `fill="${css.getPropertyValue('--ember')}"`);
+      img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(xml);
+      await img.decode();
+      const canvas = document.createElement('canvas');
+      canvas.width = canvas.height = 448;
+      canvas.getContext('2d').drawImage(img, 0, 0, 448, 448);
+      try {
+        const codes = await new window.BarcodeDetector({ formats: ['qr_code'] }).detect(canvas);
+        return codes[0]?.rawValue ?? '';
+      } catch {
+        return null;
+      }
+    });
+    if (read === null) console.log('SKIP  B1c no BarcodeDetector in this browser (the unit test decodes it with jsQR)');
+    else check('B1c the browser reads the drawn QR, flame and all, as the approve link', read === bStart.approveUrl, read);
+  }
   const bDevice = (await b.page.getByText(/^This device: /).textContent()).replace('This device: ', '').trim();
   const bCookie = await pollCookie(b.ctx);
   if (bCookie) secrets.add(bCookie.value);
@@ -263,14 +298,15 @@ try {
   const cMint = await c.request.post(`${APP}/pb/api/ember/qr-login/mint`, { data: { user: 'x' } });
   check('C3 /pb/api/ember/qr-login/mint is a 404 through the app', cMint.status() === 404, String(cMint.status()));
   // That browser signs in (as A, the only member here) and lands on the
-  // card, still with no token in any URL.
+  // sheet, still with no token in any URL.
+  await c.getByRole('button', { name: 'Use password instead' }).click();
   await c.getByLabel('Email').fill(A_EMAIL);
   await c.getByRole('button', { name: 'Continue' }).click();
   await c.getByLabel('Password').fill(A_PASSWORD);
   await c.getByRole('button', { name: 'Log in' }).click();
   await c.getByTestId('approve-card').waitFor({ timeout: 30_000 });
   const cCard = await c.getByTestId('approve-card').textContent();
-  check('C4 after sign-in it lands on /link with the card for that request, the token never in a URL', c.url() === `${APP}/link` &&
+  check('C4 after sign-in it lands on /link with the sheet for that request, the token never in a URL', c.url() === `${APP}/link` &&
     cCard.includes(bDevice) && !c.url().includes(tokenB), c.url());
   check('C5 and the stashed cookie is gone once the card has used it', !(await cCtx.cookies()).some((x) => x.name === 'ember_link'));
   await cCtx.close();
@@ -280,15 +316,23 @@ try {
   const card = a.getByTestId('approve-card');
   await card.waitFor({ timeout: 20_000 });
   check('A1 the token leaves the address bar', new URL(a.url()).pathname === '/link', a.url());
+  check('A1b the approve UI is a bottom sheet over the page', (await a.getByRole('dialog', { name: 'Sign in on another device?' }).count()) === 1 &&
+    (await a.getByTestId('approve-sheet').getAttribute('data-side')) === 'bottom');
   const cardText = await card.textContent();
-  check('A2 the card names the device, the network and the account', cardText.includes(bDevice) && cardText.includes('Same network as this phone') &&
-    cardText.includes(`Says it is: ${bDevice}`) && cardText.includes(A_EMAIL) && !cardText.includes(bStart.code), cardText);
+  check('A2 the sheet names the device, the network and the account', cardText.includes(bDevice) && cardText.includes('Same network as this phone') &&
+    cardText.includes(`Says it is ${bDevice}`) && cardText.includes(A_EMAIL) && !cardText.includes(bStart.code), cardText);
   const approveBtn = a.getByRole('button', { name: 'Approve' });
   check('A3 Approve is disabled at first', await approveBtn.isDisabled());
   await a.waitForTimeout(2200);
   await approveBtn.click();
-  await a.getByText('Done. The other device is signing in.').waitFor({ timeout: 10_000 });
-  check('A4 approving says done', true);
+  await a.waitForURL(`${APP}/settings/devices`, { timeout: 10_000 });
+  await a.getByTestId('device-new').waitFor({ timeout: 10_000 });
+  const lit = a.getByTestId('device-new');
+  check('A4 approving opens Settings > Devices with the new device lit up at the top', (await lit.textContent()).includes(bDevice) &&
+    (await lit.evaluate((el) => el.parentElement.firstElementChild === el)) && (await a.getByRole('dialog').count()) === 0);
+  await a.goBack();
+  await a.waitForTimeout(500);
+  check('A4b Back from there does not return to the spent link', !a.url().includes('/link'), a.url());
 
   await b.page.getByText(`Signed in as ${A_NAME}`).waitFor({ timeout: 15_000 });
   check('B5 the new device says whose account it signed in as', true);
@@ -317,7 +361,8 @@ try {
   await a.getByRole('button', { name: 'Continue' }).click();
   await a.getByTestId('approve-card').waitFor({ timeout: 10_000 });
   await a.getByRole('button', { name: 'Not me' }).click();
-  await a.getByText('Declined.').waitFor({ timeout: 10_000 });
+  await a.getByText('Declined. That device was not signed in.').waitFor({ timeout: 10_000 });
+  check('D0 Not me closes the sheet and stays on Settings > Devices', (await a.getByRole('dialog').count()) === 0 && a.url() === `${APP}/settings/devices`, a.url());
   await b2.page.getByText('Sign-in was declined on your other device.').waitFor({ timeout: 15_000 });
   check('D1 Not me from the typed code shows declined on the device', true);
   await b2.ctx.close();

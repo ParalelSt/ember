@@ -21,10 +21,15 @@ use std::time::{Duration, Instant};
 
 use super::{http_client, open_source_retrying, LoadBudgets};
 
-/// 120 s of AAC in a plain m4a (ftyp, moov, mdat): the layout the host keeps
-/// on disk when yt-dlp's ffmpeg fixup ran, which is what both of Luka's songs
-/// are (uV18CIbSXZo, 6:22, 6.2 MB; OmeUVcUuV10, 5:52, 5.7 MB).
-const TRACK: &[u8] = include_bytes!("../../test-fixtures/tone-faststart.m4a");
+/// 120 s of AAC with its index (moov) at the END: ftyp, free, mdat, moov.
+///
+/// Luka's songs then were remuxed with the index first (uV18CIbSXZo, 6:22,
+/// 6.2 MB; OmeUVcUuV10, 5:52, 5.7 MB), and their decoder read the file's tail
+/// as well. Since 2026-10-09 that layout opens from one request
+/// (src/audio/one_request.rs covers it on this link), so these tests use the
+/// layout whose tail the decoder really needs, to keep the request budget for
+/// a seek under test.
+const TRACK: &[u8] = include_bytes!("../../test-fixtures/tone-moov-at-end.m4a");
 
 /// How the shared link behaves.
 #[derive(Clone, Copy, Debug)]
@@ -438,7 +443,7 @@ async fn a_request_for_the_tail_that_is_never_answered_still_fails() {
             std::thread::spawn(move || {
                 let headers = read_headers(&stream);
                 if range_of(&headers).is_none() {
-                    // The head of the song (ftyp, moov, the mdat header and
+                    // The head of the song (ftyp, free, the mdat header and
                     // some audio), then nothing more on this response.
                     let _ = write!(
                         stream,

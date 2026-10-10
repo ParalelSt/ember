@@ -55,8 +55,10 @@ describe('ApproveSignIn', () => {
   it('shows the device, the age, the network and whose account it signs in', async () => {
     await show();
     expect(screen.getByText('Sign in on another device?')).toBeInTheDocument();
-    // The label comes from the device itself, and the card says so.
-    expect(screen.getByText('Says it is: Ember on Android Automotive')).toBeInTheDocument();
+    // A friendly name for the big line; the label comes from the device
+    // itself, and the sheet says so.
+    expect(screen.getByTestId('approve-device')).toHaveTextContent('Car screen');
+    expect(screen.getByText(/^Says it is Ember on Android Automotive/)).toBeInTheDocument();
     expect(screen.getByText('Asked 40 s ago')).toBeInTheDocument();
     const net = screen.getByText('Same network as this phone');
     expect(net.className).not.toMatch(/destructive/);
@@ -144,6 +146,41 @@ describe('ApproveSignIn', () => {
     await show();
     expect(screen.getByText('This code has expired or was already used. Ask the device for a new one.')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /Have a code/ })).toHaveAttribute('href', '/settings/devices');
+  });
+
+  it('tells the caller what Approve and Not me came to, with the facts, but not what a lookup found', async () => {
+    const onDone = vi.fn();
+    answers.lookup = { status: 404, body: {} };
+    render(<ApproveSignIn credential={{ code: 'ABCDEFGH' }} onDone={onDone} />);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(onDone).not.toHaveBeenCalled();
+    cleanup();
+    answers.lookup = { status: 200, body: facts() };
+    render(<ApproveSignIn credential={{ code: 'ABCDEFGH' }} onDone={onDone} />);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2000);
+    });
+    await act(async () => {
+      fireEvent.click(approveBtn());
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(onDone).toHaveBeenCalledWith('done', expect.objectContaining({ id: 'req000000000001', device: 'Ember on Android Automotive' }));
+  });
+
+  it('a result has a Close button when the caller can close', async () => {
+    const onClose = vi.fn();
+    answers.lookup = { status: 429, body: {} };
+    render(<ApproveSignIn credential={{ code: 'ABCDEFGH' }} onClose={onClose} />);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+    expect(onClose).toHaveBeenCalled();
   });
 
   it('too many tries says to wait', async () => {

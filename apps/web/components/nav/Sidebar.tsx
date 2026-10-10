@@ -17,6 +17,7 @@ import { useChangelog } from '@/hooks/useChangelog';
 import { PlaylistNavList } from '@/components/nav/PlaylistNavList';
 import { useNavPlaylists } from '@/hooks/useNavPlaylists';
 import { Avatar } from '@/components/primitives/Avatar';
+import { ScanQrButton } from '@/components/auth/ScanQrButton';
 import { FlameIcon, PlusIcon } from '@/components/icons';
 import { BASE_NAV, ADMIN_NAV_ITEM } from '@/lib/nav';
 import { hrefFor, sharedLabel, systemCollections } from '@/lib/collections';
@@ -95,6 +96,8 @@ export function Sidebar() {
 
       {user && (
         <div className="mt-auto border-t border-sidebar-border px-2 py-3">
+          {/* Approve a new device's sign-in QR (tablets; never the desktop). */}
+          <ScanQrButton look="nav" />
           <Link
             href="/settings/profile"
             className="flex items-center gap-3 px-2 py-2 min-w-0 rounded-md hover:bg-sidebar-accent/60 transition-colors"
