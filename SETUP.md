@@ -185,8 +185,8 @@ restarts in the background, in a tmux session called `ember`, and
 with `tmux attach -t ember` (leave again with Ctrl+B, then D). That needs
 tmux (`sudo apt install tmux`); without it Ember restarts in the window you
 ran `update.sh` from, as it always did, and `update.sh` says how to get
-tmux. If systemd runs Ember (see **Run Ember at boot**
-below), `update.sh` restarts it through systemd instead, and needs no tmux.
+tmux. If systemd runs Ember (see **Run Ember at boot** below), `update.sh`
+restarts it through systemd instead, and needs no tmux.
 
 Every run also installs Ember's own ffmpeg (`imageio-ffmpeg`) if it is missing
 and relinks it to `.venv/bin/ffmpeg`, so the host never needs a system ffmpeg.
@@ -283,7 +283,6 @@ Starting a second copy while one is running refuses with the running pid.
 It also refuses when another program already listens on the web or PocketBase
 port, naming its pid (a PocketBase you started by hand is still used as it is).
 
-
 ### Run Ember at boot (systemd, optional)
 
 Instead of tmux, systemd can run Ember: it then starts when the machine boots,
@@ -311,9 +310,16 @@ journalctl --user -u ember -f     # its output (also in logs/)
 The unit runs `./start-static.sh --no-build`, so the watchdog, crash reports
 and logs all work as described above, and it serves the build `./update.sh`
 last made instead of rebuilding at every boot. After changing code by hand,
-build before restarting: `(cd apps/web && npx next build --webpack) && systemctl --user restart ember`. `systemctl --user stop ember` is a planned stop (no
-crash report): systemd signals the watchdog, which stops both services, and
-the unit gives it 35 s to do so.
+build before restarting:
+
+```bash
+(cd apps/web && npx next build --webpack) && systemctl --user restart ember
+```
+
+`systemctl --user stop ember` is a planned stop (no crash report): systemd
+signals the watchdog, which stops both services, and the unit gives it 35 s
+to do so.
+
 ---
 
 ## Project-owner-only setup
