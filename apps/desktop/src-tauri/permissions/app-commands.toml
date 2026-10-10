@@ -8,7 +8,7 @@
 # Referenced from capabilities/default.json.
 [[permission]]
 identifier = "allow-ember-commands"
-description = "Ember's own IPC commands: native audio and its output device, the auto cache of upcoming songs, Discord presence, log forwarding, voice search, the window following the theme, and links opening in the system browser."
+description = "Ember's own IPC commands: native audio and its output device, the auto cache of upcoming songs, Discord presence, log forwarding, voice search, the window following the theme, the launch gate's update dialog, and links opening in the system browser."
 
 [permission.commands]
 allow = [
@@ -56,6 +56,14 @@ allow = [
   # The Retry button on the page shown when the server is out of reach
   # (src/connect.rs).
   "connect_retry",
+  # The launch gate's dialog on the bundled gate page (src/gate.rs): its
+  # state and its buttons. update_gate_events is how the signed-in page
+  # picks up the gate's telemetry to send to the server.
+  "gate_state",
+  "gate_not_now",
+  "gate_update_now",
+  "gate_quit",
+  "update_gate_events",
   # Links out of the app (the tab page's "Find one", any new-tab link) open
   # in the system browser: the webview itself drops them (src/external.rs).
   "open_external",

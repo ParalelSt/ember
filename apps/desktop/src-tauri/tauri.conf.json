@@ -15,7 +15,8 @@
         "url": "https://ember.tailf4de41.ts.net",
         "width": 1200,
         "height": 800,
-        "resizable": true
+        "resizable": true,
+        "create": false
       }
     ],
     "security": {

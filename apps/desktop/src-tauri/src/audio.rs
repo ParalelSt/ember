@@ -429,7 +429,9 @@ impl AudioEngine {
     }
 
     /// Whether music is playing, or about to once its load lands. The
-    /// Windows updater quits the app to install, so it waits for this.
+    /// updater used to wait for this before installing; installing now only
+    /// happens in the launch gate, before the engine exists (src/gate.rs).
+    #[allow(dead_code)]
     pub fn is_playing(&self) -> bool {
         let Ok(g) = self.sink.lock() else { return false };
         match g.as_ref() {

@@ -15,10 +15,12 @@
 //! on disk and the running app carries on. On Windows it starts the installer
 //! and quits the app on the spot (`std::process::exit` inside the plugin),
 //! and the installer then starts Ember again. Doing that while a song played
-//! cut the song off mid-way, so on Windows an update is downloaded and kept,
-//! and installed at the start of the next launch, before any music.
-//! Installing on quit instead would open Ember again right after the listener
-//! closed it.
+//! cut the song off mid-way.
+//!
+//! So this background check only ever downloads and keeps the update, on
+//! every OS (owner decision D6). Installing happens in one place: the launch
+//! dialog (src/gate.rs), at the start of a launch, before any music, with a
+//! countdown and "Not now".
 
 use std::path::{Path, PathBuf};
 
@@ -27,32 +29,20 @@ use tauri::{AppHandle, Manager};
 use tauri_plugin_updater::UpdaterExt;
 
 use crate::applog;
-use crate::audio::AudioEngine;
 
 /// What to do with an update the server offers.
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) enum Step {
-    /// Download and install at once: installing leaves the app running, and
-    /// the new version applies on the next launch.
-    DownloadAndInstall,
-    /// Download and keep it, to install at the next launch.
+    /// Download it and keep it for the launch dialog.
     DownloadAndStage,
-    /// Install the copy an earlier session downloaded. Quits the app.
-    InstallStaged,
-    /// The copy is here, but music is playing: leave it for the next launch.
-    Wait,
+    /// That version is already downloaded: nothing to do until a launch.
+    AlreadyStaged,
 }
 
-/// `install_quits`: installing ends this process (Windows). `staged`: the
-/// version an earlier session downloaded, if any. `playing`: music is
-/// playing or about to.
-pub(crate) fn plan(install_quits: bool, staged: Option<&str>, offered: &str, playing: bool) -> Step {
-    if !install_quits {
-        return Step::DownloadAndInstall;
-    }
+/// `staged`: the version an earlier session downloaded, if any.
+pub(crate) fn plan(staged: Option<&str>, offered: &str) -> Step {
     match staged {
-        Some(v) if v == offered && playing => Step::Wait,
-        Some(v) if v == offered => Step::InstallStaged,
+        Some(v) if v == offered => Step::AlreadyStaged,
         _ => Step::DownloadAndStage,
     }
 }
@@ -102,8 +92,13 @@ pub(crate) fn verify(bytes: &[u8], signature: &str, pubkey: &str) -> Result<(), 
     key.verify(bytes, &sig, true).map_err(|e| e.to_string())
 }
 
+/// Where the downloaded copy is kept.
+pub(crate) fn update_dir(app: &AppHandle) -> Option<PathBuf> {
+    app.path().app_local_data_dir().ok().map(|d| d.join("update"))
+}
+
 /// The updater pubkey from tauri.conf.json.
-fn pubkey(app: &AppHandle) -> Option<String> {
+pub(crate) fn pubkey(app: &AppHandle) -> Option<String> {
     app.config()
         .plugins
         .0
@@ -113,10 +108,11 @@ fn pubkey(app: &AppHandle) -> Option<String> {
         .map(str::to_string)
 }
 
-/// Check for an update and download it; install it now where that leaves the
-/// app running, or at the next launch on Windows (see the module docs).
+/// Check for an update and download it, to be installed by the launch
+/// dialog at the next launch (see the module docs).
 ///
-/// Runs in the background at startup.
+/// Runs in the background after the launch gate, when the gate itself did not
+/// already start a download.
 pub async fn check_on_startup(app: AppHandle, log_path: Option<PathBuf>) {
     let log = |level: &str, msg: &str| applog::write_line(log_path.as_ref(), level, msg);
     let updater = match app.updater() {
@@ -126,16 +122,18 @@ pub async fn check_on_startup(app: AppHandle, log_path: Option<PathBuf>) {
             return;
         }
     };
-    let dir = app.path().app_local_data_dir().ok().map(|d| d.join("update"));
+    let Some(dir) = update_dir(&app) else {
+        // Nowhere to keep it, and installing now could quit mid-song.
+        log("WARN", "update check skipped: no app data folder");
+        return;
+    };
 
     let update = match updater.check().await {
         Ok(Some(update)) => update,
         Ok(None) => {
             log("INFO", "no update available");
             // The kept copy, if any, is what is running now.
-            if let Some(dir) = &dir {
-                clear(dir);
-            }
+            clear(&dir);
             return;
         }
         Err(e) => {
@@ -146,47 +144,14 @@ pub async fn check_on_startup(app: AppHandle, log_path: Option<PathBuf>) {
         }
     };
     let version = update.version.clone();
-    let install_quits = cfg!(windows);
-    if install_quits && dir.is_none() {
-        // Nowhere to keep it, and installing now would quit mid-song.
-        log("WARN", &format!("update {version} skipped: no app data folder"));
-        return;
-    }
-    let staged = dir.as_deref().and_then(staged_version);
-    let playing = app.state::<AudioEngine>().is_playing();
-    let mut step = plan(install_quits, staged.as_deref(), &version, playing);
-
-    if let (Step::InstallStaged, Some(dir)) = (&step, dir.as_deref()) {
-        let checked = staged_bytes(dir).map_err(|e| e.to_string()).and_then(|bytes| {
-            let key = pubkey(&app).ok_or("no updater pubkey")?;
-            verify(&bytes, &update.signature, &key).map(|()| bytes)
-        });
-        match checked {
-            Ok(bytes) => {
-                log("INFO", &format!("installing update {version} downloaded earlier"));
-                clear(dir);
-                // On Windows this does not return: the installer takes over
-                // and starts the new version.
-                if let Err(e) = update.install(bytes) {
-                    log("WARN", &format!("update {version} failed to install: {e}"));
-                }
-                return;
-            }
-            Err(e) => {
-                log("WARN", &format!("kept update {version} unusable ({e}), downloading again"));
-                clear(dir);
-                step = Step::DownloadAndStage;
-            }
-        }
-    }
-    if step == Step::Wait {
-        log("INFO", &format!("update {version} ready, music playing: installs next launch"));
+    if plan(staged_version(&dir).as_deref(), &version) == Step::AlreadyStaged {
+        log("INFO", &format!("update {version} already downloaded, the launch dialog installs it"));
         return;
     }
 
     log("INFO", &format!("update available: {version}, downloading"));
-    // No progress UI yet: this runs while the user is listening, and a
-    // desktop shell update is a few MB.
+    // No progress UI: this runs while the user is listening, and a desktop
+    // shell update is a few MB.
     let bytes = match update.download(|_chunk, _total| {}, || {}).await {
         Ok(b) => b,
         Err(e) => {
@@ -194,16 +159,9 @@ pub async fn check_on_startup(app: AppHandle, log_path: Option<PathBuf>) {
             return;
         }
     };
-    if let (Step::DownloadAndStage, Some(dir)) = (&step, dir.as_deref()) {
-        match stage(dir, &version, &bytes) {
-            Ok(()) => log("INFO", &format!("update {version} downloaded, installs next launch")),
-            Err(e) => log("WARN", &format!("update {version} could not be kept: {e}")),
-        }
-        return;
-    }
-    match update.install(bytes) {
-        Ok(()) => log("INFO", &format!("update {version} installed, applies on next launch")),
-        Err(e) => log("WARN", &format!("update {version} failed to install: {e}")),
+    match stage(&dir, &version, &bytes) {
+        Ok(()) => log("INFO", &format!("update {version} downloaded, the launch dialog installs it")),
+        Err(e) => log("WARN", &format!("update {version} could not be kept: {e}")),
     }
 }
 
@@ -224,34 +182,30 @@ mod tests {
     }
 
     /// The bug: on Windows the update installed (and quit the app) as soon as
-    /// it downloaded, whatever was playing. Now it is only downloaded.
+    /// it downloaded, whatever was playing. Now the background check only
+    /// downloads, on every OS (D6); the launch dialog installs.
     #[test]
-    fn on_windows_a_new_update_is_downloaded_not_installed() {
-        assert_eq!(plan(true, None, "0.5.0", true), Step::DownloadAndStage);
-        assert_eq!(plan(true, None, "0.5.0", false), Step::DownloadAndStage);
+    fn a_new_update_is_downloaded_and_kept_not_installed() {
+        assert_eq!(plan(None, "0.5.0"), Step::DownloadAndStage);
     }
 
     #[test]
-    fn on_windows_the_kept_update_installs_at_the_next_launch() {
-        assert_eq!(plan(true, Some("0.5.0"), "0.5.0", false), Step::InstallStaged);
-    }
-
-    #[test]
-    fn on_windows_the_kept_update_waits_while_music_plays() {
-        assert_eq!(plan(true, Some("0.5.0"), "0.5.0", true), Step::Wait);
+    fn an_update_already_kept_is_not_downloaded_again() {
+        assert_eq!(plan(Some("0.5.0"), "0.5.0"), Step::AlreadyStaged);
     }
 
     #[test]
     fn an_older_kept_update_is_replaced_by_the_newer_one() {
-        assert_eq!(plan(true, Some("0.5.0"), "0.5.1", false), Step::DownloadAndStage);
+        assert_eq!(plan(Some("0.5.0"), "0.5.1"), Step::DownloadAndStage);
     }
 
-    /// macOS and Linux keep what they did: install at once, which leaves the
-    /// app running.
+    /// Nothing in the background path may install: installing quits the app
+    /// on Windows and swaps it under a running copy elsewhere.
     #[test]
-    fn elsewhere_the_update_installs_at_once() {
-        assert_eq!(plan(false, None, "0.5.0", true), Step::DownloadAndInstall);
-        assert_eq!(plan(false, Some("0.5.0"), "0.5.0", true), Step::DownloadAndInstall);
+    fn the_background_path_never_installs() {
+        let src = include_str!("update.rs");
+        let body = &src[src.find("pub async fn check_on_startup").unwrap()..src.find("#[cfg(test)]").unwrap()];
+        assert!(!body.contains(".install("), "check_on_startup must only download and stage");
     }
 
     #[test]
