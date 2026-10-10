@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Button } from '@/components/ui/button';
+import { HeaderIconButton } from '@/components/page/HeaderIconButton';
 import { CollectionShelf } from '@/components/library/CollectionShelf';
 import { UploadTrackDialog } from '@/components/track/menus/UploadTrackDialog';
 import { CarlistButton } from '@/components/session/CarlistButton';
@@ -61,15 +61,9 @@ export default function LibraryPage() {
         <PageTitle>Your library</PageTitle>
         <div className="flex shrink-0 items-center gap-cluster">
           <CarlistButton />
-          <Button
-            variant="ghost"
-            onClick={() => setUploadOpen(true)}
-            aria-label="Upload"
-            className="gap-1.5 text-muted-foreground hover:text-foreground"
-          >
-            {/* Icon only on a phone, so the title keeps one line next to Carlist. */}
-            <UploadIcon className="h-4 w-4" /> <span className="hidden sm:inline">Upload</span>
-          </Button>
+          <HeaderIconButton onClick={() => setUploadOpen(true)} aria-label="Upload songs">
+            <UploadIcon className="size-5" />
+          </HeaderIconButton>
         </div>
       </div>
       <UploadTrackDialog open={uploadOpen} onOpenChange={setUploadOpen} />
