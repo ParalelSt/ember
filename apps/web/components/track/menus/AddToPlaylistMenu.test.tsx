@@ -8,6 +8,8 @@ vi.mock('@/components/ui/dropdown-menu', () => ({
   DropdownMenuTrigger: ({ children, ...rest }: ComponentProps<'button'>) => <button {...rest}>{children}</button>,
   DropdownMenuContent: ({ children }: PropsWithChildren) => <div role="menu">{children}</div>,
   DropdownMenuSeparator: () => <hr />,
+  DropdownMenuGroup: ({ children }: PropsWithChildren) => <div>{children}</div>,
+  DropdownMenuLabel: ({ children }: PropsWithChildren) => <div data-testid="menu-label">{children}</div>,
   DropdownMenuItem: ({
     children,
     onClick,
@@ -50,6 +52,30 @@ beforeEach(() => {
 });
 
 describe('AddToPlaylistMenu', () => {
+  it('is a plain + button without extra items', () => {
+    render(<AddToPlaylistMenu track={track} triggerClassName="max-xl:hidden" />);
+    const trigger = screen.getByRole('button', { name: 'Add to playlist' });
+    expect(trigger).toHaveClass('max-xl:hidden');
+    expect(screen.queryByTestId('menu-label')).toBeNull();
+  });
+
+  it('becomes a More button with the caller\'s items above the playlists (bughunt V1)', () => {
+    render(
+      <AddToPlaylistMenu
+        track={track}
+        triggerClassName="xl:hidden"
+        more={<div role="menuitem">Share</div>}
+      />,
+    );
+    const trigger = screen.getByRole('button', { name: 'More' });
+    expect(trigger).toHaveClass('xl:hidden');
+    expect(trigger).toHaveAttribute('title', 'More');
+    const names = screen.getAllByRole('menuitem').map((i) => i.textContent?.trim());
+    expect(names[0]).toBe('Share');
+    expect(names).toContain('Mine');
+    expect(screen.getByTestId('menu-label')).toHaveTextContent('Add to playlist');
+  });
+
   it('has no Move up / Move down (Edit order replaces them)', () => {
     render(<AddToPlaylistMenu track={track} onRematch={vi.fn()} />);
     expect(screen.queryByRole('menuitem', { name: /Move (up|down)/ })).toBeNull();

@@ -1,16 +1,18 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { toast } from 'sonner';
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuItem,
+  DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { CreatePlaylistDialog } from '@/components/track/menus/CreatePlaylistDialog';
-import { CheckIcon, PlusIcon, RefreshIcon } from '@/components/icons';
+import { CheckIcon, MoreIcon, PlusIcon, RefreshIcon } from '@/components/icons';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { formatCount } from '@/lib/format';
 import {
@@ -27,19 +29,28 @@ import { cn } from '@/lib/utils';
  *  has no room for a separate More button) this menu also offers "Wrong
  *  song? Re-match". `open`/`onOpenChange` let a parent open the menu from
  *  elsewhere; with `hiddenTrigger` the + button is only an invisible anchor
- *  for it (the full-screen player's More sheet opens it, just under its ⋯). */
+ *  for it (the full-screen player's More sheet opens it, just under its ⋯).
+ *
+ *  `more`: menu items for a caller with no room for its own buttons (the
+ *  desktop player bar on a narrow window, bughunt V1), ending in their own
+ *  separator. They go above the playlists, under an "Add to playlist"
+ *  label, and the trigger becomes a "More" (...) button. */
 export function AddToPlaylistMenu({
   track,
   onRematch,
   open: openProp,
   onOpenChange,
   hiddenTrigger,
+  more,
+  triggerClassName,
 }: {
   track: Track;
   onRematch?: () => void;
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
   hiddenTrigger?: boolean;
+  more?: ReactNode;
+  triggerClassName?: string;
 }) {
   const { user } = useAuth();
   const { data: playlists = [] } = useQueryPlaylists();
@@ -97,15 +108,25 @@ export function AddToPlaylistMenu({
         className={cn(
           'inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-accent transition-colors',
           hiddenTrigger && 'pointer-events-none opacity-0',
+          triggerClassName,
         )}
         onClick={(e) => e.stopPropagation()}
-        aria-label="Add to playlist"
+        aria-label={more ? 'More' : 'Add to playlist'}
+        title={more ? 'More' : undefined}
         aria-hidden={hiddenTrigger || undefined}
         tabIndex={hiddenTrigger ? -1 : undefined}
       >
-        <PlusIcon className="h-4 w-4" />
+        {more ? <MoreIcon className="h-4 w-4" /> : <PlusIcon className="h-4 w-4" />}
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="min-w-56" onClick={(e) => e.stopPropagation()}>
+        {more && (
+          <>
+            {more}
+            <DropdownMenuGroup>
+              <DropdownMenuLabel>Add to playlist</DropdownMenuLabel>
+            </DropdownMenuGroup>
+          </>
+        )}
         {onRematch && (
           <DropdownMenuItem
             onClick={() => {
