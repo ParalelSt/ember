@@ -935,6 +935,20 @@ pub async fn run(app: AppHandle, gate: Arc<Gate>, opts: GateRun) {
 mod tests {
     use super::*;
 
+    /// The window starts on a page bundled with the app, and that page
+    /// speaks the gate's commands and event.
+    #[test]
+    fn the_gate_page_is_bundled() {
+        let conf: serde_json::Value = serde_json::from_str(include_str!("../tauri.conf.json")).expect("conf");
+        let dist = conf["build"]["frontendDist"].as_str().expect("build.frontendDist");
+        let page = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(dist).join(crate::GATE_PAGE);
+        let html = std::fs::read_to_string(&page).expect("the bundled gate page");
+        for needle in ["gate:state", "gate_state", "gate_not_now", "gate_update_now", "gate_quit", "Restarting in ", "Quit Ember", "Not now", "Update now"] {
+            assert!(html.contains(needle), "gate.html has no {needle}");
+        }
+        assert!(!html.contains('\u{2014}'), "no em dashes in the copy");
+    }
+
     fn offer(version: &str) -> Offer {
         Offer { version: version.into(), mandatory: false, reason: None, download_page: false, url: None }
     }

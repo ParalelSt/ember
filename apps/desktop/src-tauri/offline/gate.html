@@ -1,0 +1,175 @@
+<!doctype html>
+<!-- The launch gate (src/gate.rs). The window opens here, on the theme's
+     colour, while the shell asks the server whether a newer Ember is out.
+     No update: the shell loads the server and this page is never seen for
+     more than a moment. An update: a dialog over the dimmed window with
+     "Not now" and "Update now" (a required one has "Quit Ember" instead of
+     "Not now"). The shell owns every decision; this page only shows the state
+     it sends (`gate:state`) and passes the buttons on. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Ember</title>
+<style>
+  html, body { height: 100%; margin: 0; }
+  body {
+    background: #16161a; color: #f5f5f7;
+    font: 15px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+    -webkit-user-select: none; user-select: none; cursor: default;
+  }
+  .splash { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; }
+  .splash svg { width: 72px; height: 72px; opacity: 0.9; }
+  .scrim {
+    position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
+    background: rgba(0, 0, 0, 0.55); padding: 24px;
+  }
+  .dialog {
+    width: 100%; max-width: 380px; box-sizing: border-box;
+    background: #1f1f24; border: 1px solid #2e2e35; border-radius: 16px;
+    padding: 24px; box-shadow: 0 24px 64px rgba(0, 0, 0, 0.45);
+  }
+  h1 { font-size: 18px; font-weight: 600; margin: 0 0 6px; }
+  p { margin: 0 0 6px; color: #b4b4bd; }
+  #reason { color: #f5f5f7; }
+  .bar { height: 4px; border-radius: 2px; background: #2e2e35; overflow: hidden; margin: 14px 0 4px; }
+  .bar > div { height: 100%; width: 0; background: #f5f5f7; transition: width 0.2s ease; }
+  .bar.indeterminate > div { width: 30%; animation: slide 1.2s ease-in-out infinite; }
+  @keyframes slide { from { transform: translateX(-100%); } to { transform: translateX(340%); } }
+  .buttons { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 20px; }
+  button {
+    font: inherit; font-weight: 500; cursor: pointer;
+    padding: 10px 14px; border-radius: 999px;
+  }
+  #cancel { color: #f5f5f7; background: transparent; border: 1px solid #3a3a42; }
+  #cancel:hover { background: #2a2a30; }
+  #primary { color: #18181c; background: #f5f5f7; border: 1px solid #f5f5f7; }
+  #primary:hover { background: #ffffff; }
+  button:disabled { opacity: 0.55; cursor: default; }
+  button:focus-visible { outline: 2px solid #ff2d2d; outline-offset: 2px; }
+</style>
+</head>
+<body>
+<div class="splash" aria-hidden="true">
+  <svg viewBox="0 0 24 24" fill="#ff2d2d" stroke="#ff2d2d" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z"/>
+  </svg>
+</div>
+<div class="scrim" id="scrim" hidden>
+  <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="title" aria-describedby="detail">
+    <h1 id="title" aria-live="polite"></h1>
+    <p id="reason" hidden></p>
+    <p id="detail"></p>
+    <div class="bar" id="bar" hidden><div id="fill"></div></div>
+    <div class="buttons" id="buttons">
+      <button id="cancel" type="button">Not now</button>
+      <button id="primary" type="button">Update now</button>
+    </div>
+  </div>
+</div>
+<script>
+(function () {
+  var $ = function (id) { return document.getElementById(id); };
+  var tauri = window.__TAURI__;
+  var invoke = function (cmd) {
+    try {
+      var p = tauri && tauri.core ? tauri.core.invoke(cmd)
+        : window.__TAURI_INTERNALS__ ? window.__TAURI_INTERNALS__.invoke(cmd) : null;
+      return p && typeof p.then === 'function' ? p.catch(function () { return null; }) : Promise.resolve(null);
+    } catch (_) { return Promise.resolve(null); }
+  };
+
+  var REASONS = {
+    'min-version': 'This version no longer works with the server.',
+    'flagged': 'This update fixes a serious problem.'
+  };
+
+  // Copy for one state. Plain, short, the same on every desktop OS.
+  function copy(v) {
+    var version = v.version || '';
+    var c = { title: '', reason: '', detail: '', bar: null, cancel: v.mandatory ? 'Quit Ember' : 'Not now',
+              cancelCmd: v.mandatory ? 'gate_quit' : 'gate_not_now', primary: 'Update now', buttons: true, primaryOff: false };
+    if (v.mandatory) c.reason = REASONS[v.reason] || REASONS.flagged;
+    else if (v.recovery) c.reason = "Ember didn't start properly last time.";
+    switch (v.phase) {
+      case 'downloading':
+        c.title = v.mandatory ? 'Ember needs an update' : v.recovery ? 'Getting a fix' : 'Updating Ember';
+        c.detail = 'Version ' + version + (typeof v.percent === 'number' ? ' · ' + v.percent + '%' : '');
+        c.bar = typeof v.percent === 'number' ? v.percent : -1;
+        if (v.updateNow) { c.primary = 'Updating...'; c.primaryOff = true; }
+        break;
+      case 'countdown':
+        c.title = 'Restarting in ' + v.seconds + 's';
+        c.detail = v.held ? 'Waiting until Ember is in front again' : 'Version ' + version + ' is ready';
+        break;
+      case 'installing':
+        c.title = 'Installing update';
+        c.detail = v.asksPassword ? 'Enter your password to install it' : 'Ember reopens in a moment';
+        c.buttons = false;
+        break;
+      case 'manual':
+        c.title = 'Ember ' + version + ' is out';
+        c.detail = 'Update it from the download page';
+        c.primary = 'Open download page';
+        if (!v.url) c.primaryOff = true;
+        break;
+      case 'failed':
+        c.title = "Couldn't update";
+        c.detail = "Opening Ember. We'll try again next time.";
+        c.buttons = false;
+        break;
+      default:
+        return null;
+    }
+    return c;
+  }
+
+  var current = null;
+
+  function render(v) {
+    current = v;
+    if (v && v.background && /^#[0-9a-fA-F]{6}$/.test(v.background)) document.body.style.background = v.background;
+    var c = v ? copy(v) : null;
+    var scrim = $('scrim');
+    if (!c) { scrim.hidden = true; return; }
+    var wasHidden = scrim.hidden;
+    scrim.hidden = false;
+    $('title').textContent = c.title;
+    $('reason').textContent = c.reason;
+    $('reason').hidden = !c.reason;
+    $('detail').textContent = c.detail;
+    var bar = $('bar');
+    bar.hidden = c.bar === null;
+    bar.className = c.bar === -1 ? 'bar indeterminate' : 'bar';
+    $('fill').style.width = c.bar !== null && c.bar >= 0 ? c.bar + '%' : '';
+    $('buttons').hidden = !c.buttons;
+    $('cancel').textContent = c.cancel;
+    $('cancel').dataset.cmd = c.cancelCmd;
+    $('primary').textContent = c.primary;
+    $('primary').disabled = c.primaryOff;
+    // Focus starts on the safe choice.
+    if (wasHidden && c.buttons) $('cancel').focus();
+  }
+
+  $('cancel').addEventListener('click', function () { invoke(this.dataset.cmd || 'gate_not_now'); });
+  $('primary').addEventListener('click', function () { if (!this.disabled) invoke('gate_update_now'); });
+  document.addEventListener('keydown', function (e) {
+    if ($('scrim').hidden || $('buttons').hidden) return;
+    // Esc never quits: only "Not now" is on it.
+    if (e.key === 'Escape' && current && !current.mandatory) { e.preventDefault(); invoke('gate_not_now'); }
+    // Enter on a focused button presses that button by itself.
+    var onButton = document.activeElement && document.activeElement.tagName === 'BUTTON';
+    if (e.key === 'Enter' && !onButton && !$('primary').disabled) { e.preventDefault(); invoke('gate_update_now'); }
+  });
+
+  if (tauri && tauri.event && typeof tauri.event.listen === 'function') {
+    try {
+      var l = tauri.event.listen('gate:state', function (e) { render(e && e.payload); });
+      if (l && typeof l.catch === 'function') l.catch(function () {});
+    } catch (_) {}
+  }
+  // The state so far, for a page that loaded after the first event.
+  invoke('gate_state').then(function (v) { if (v && !current) render(v); });
+})();
+</script>
+</body>
+</html>
