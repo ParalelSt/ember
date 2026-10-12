@@ -61,6 +61,8 @@ CHANGES.md
 # Bug-hunt reports / dossiers, local only
 docs/reports/
 ember-bug-dossier.txt
+/atprobe-drive.mjs
+/bughunt-review/
 
 # Claude Code local settings, local only
 .claude/
