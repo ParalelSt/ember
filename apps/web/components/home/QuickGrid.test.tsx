@@ -87,7 +87,9 @@ describe('QuickGrid, desktop (the owner\'s "chips4" pick)', () => {
     const onPlay = vi.fn();
     render(<QuickGrid variant="desktop" items={desk} onPlay={onPlay} isPlaying={() => false} />);
     const play = screen.getByRole('button', { name: 'Play Road trip' });
-    expect(play).toHaveClass('opacity-0', 'group-hover:opacity-100', 'right-[10px]');
+    expect(play).toHaveClass('opacity-0', 'group-hover:opacity-100', 'right-[10px]', 'top-row');
+    // No translate to centre it: pressing the button nudges it by one.
+    expect(play.className).not.toMatch(/-translate-y-1\/2/);
     expect(play.closest('a')).toBeNull();
     fireEvent.click(play);
     expect(onPlay).toHaveBeenCalledWith(desk[2]);

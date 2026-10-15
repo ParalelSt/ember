@@ -49,7 +49,10 @@ function DesktopQuickGrid({ items, onPlay, isPlaying }: Omit<QuickGridProps, 'va
                 playing={playing}
                 onClick={() => onPlay(item)}
                 className={cn(
-                  'absolute top-1/2 right-[10px] -translate-y-1/2 shadow-soft transition-opacity',
+                  // Centred by a fixed top, (64 - 40) / 2, not a translate:
+                  // the button's own press nudge is a translate and would
+                  // make it jump out from under the pointer.
+                  'absolute top-row right-[10px] shadow-soft transition-opacity',
                   playing ? 'opacity-100' : 'opacity-0 group-hover:opacity-100 focus-visible:opacity-100',
                 )}
               />
