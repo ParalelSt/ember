@@ -249,10 +249,9 @@ against the same `policy.cases.json`).
   plays; `CacheWriter` fetches the next two (`?prefetch=1`, one at a time,
   after 15 s of the current song and once it is buffered). Pinned downloads
   stay in `files/offline` and are never evicted by this.
-- **When not:** setting off, offline, battery saver, Data Saver, or mobile
-  data with "Also on mobile data" turned off (it is on by default; phones
-  that stored the old "off" default get it on once, `AutoCachePrefs.kt`).
-  Busy (503) and
+- **When not:** setting off, offline, battery saver, or Data Saver. Mobile
+  data never holds it back: there is no setting for it (`AutoCachePrefs.kt`
+  ignores and clears the one older builds stored). Busy (503) and
   rate-limited (429) answers back off as the server asks; 410 drops the song.
 - **Offline:** (no validated network, or one that carries nothing, see
   `ConnectionHealth.kt`) songs on the phone (cached whole, or pinned) play;
@@ -261,10 +260,10 @@ against the same `policy.cases.json`).
   connection is back the song goes on by itself.
 - **Web side:** `lib/autoCache/native.ts` (the bridge) and
   `lib/autoCache/androidAdapter.ts` (the cache as Settings and the badge see
-  it). No JS download ever runs on this engine: the page hands the two
-  settings down whenever they change and mirrors `offline` and
+  it). No JS download ever runs on this engine: the page hands the setting
+  down whenever it changes and mirrors `offline` and
   `offlineStalled` into the Offline badge. Plugin methods on `EmberPlayer`:
-  `setAutoCache({ enabled, onMetered })` (kept across restarts),
+  `setAutoCache({ enabled })` (kept across restarts),
   `cacheStats()` and `clearCache()` (both `{ bytes, count, cap }`), and the
   `state` event gains `cachedIds`, `offlineStalled` and `offline`. Older app
   builds lack the methods and the wrapper does nothing.

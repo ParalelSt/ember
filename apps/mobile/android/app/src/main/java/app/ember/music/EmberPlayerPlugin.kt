@@ -508,16 +508,16 @@ class EmberPlayerPlugin : Plugin() {
         call.resolve()
     }
 
-    /** Auto cache settings, from the web app's device settings
-     *  (`autoCacheEnabled`, `autoCacheOnMetered`). The service keeps them
-     *  across restarts, so the car and the screen-off player follow them with
-     *  the WebView gone. Resolves `{ enabled, onMetered }` as applied. */
+    /** The auto cache setting, from the web app's device setting
+     *  (`autoCacheEnabled`). The service keeps it across restarts, so the car
+     *  and the screen-off player follow it with the WebView gone. It always
+     *  caches on mobile data too; an `onMetered` from an older page is
+     *  ignored. Resolves `{ enabled }` as applied. */
     @PluginMethod fun setAutoCache(call: PluginCall) {
         val args = Bundle()
         call.getBoolean("enabled")?.let { args.putBoolean("enabled", it) }
-        (call.getBoolean("onMetered") ?: call.getBoolean("allowMetered"))?.let { args.putBoolean("onMetered", it) }
         sendForExtras(call, EmberPlaybackService.COMMAND_AUTO_CACHE, args) { e ->
-            JSObject().put("enabled", e.getBoolean("enabled")).put("onMetered", e.getBoolean("onMetered"))
+            JSObject().put("enabled", e.getBoolean("enabled"))
         }
     }
 

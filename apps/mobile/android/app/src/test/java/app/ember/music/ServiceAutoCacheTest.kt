@@ -45,11 +45,11 @@ class ServiceAutoCacheTest {
     private lateinit var service: EmberPlaybackService
     private val own = MediaSession.ControllerInfo.createTestOnlyControllerInfo(app.packageName, 0, 0, 0, 0, false, Bundle.EMPTY)
 
-    private fun network(validated: Boolean) {
+    private fun network(validated: Boolean, metered: Boolean = false) {
         val cm = app.getSystemService(ConnectivityManager::class.java)
         val caps = ShadowNetworkCapabilities.newInstance()
         shadowOf(caps).addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
-        shadowOf(caps).addCapability(NetworkCapabilities.NET_CAPABILITY_NOT_METERED)
+        if (!metered) shadowOf(caps).addCapability(NetworkCapabilities.NET_CAPABILITY_NOT_METERED)
         if (validated) shadowOf(caps).addCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
         shadowOf(cm).setNetworkCapabilities(cm.activeNetwork, caps)
     }
@@ -93,30 +93,28 @@ class ServiceAutoCacheTest {
     @Test fun `settings from the web app are applied and kept for the next start`() {
         network(true)
         startService()
-        val r = command(EmberPlaybackService.COMMAND_AUTO_CACHE, Bundle().apply { putBoolean("enabled", false); putBoolean("onMetered", true) })
+        val r = command(EmberPlaybackService.COMMAND_AUTO_CACHE, Bundle().apply { putBoolean("enabled", false) })
         assertEquals(SessionResult.RESULT_SUCCESS, r.resultCode)
         assertFalse(r.extras.getBoolean("enabled"))
-        assertTrue(r.extras.getBoolean("onMetered"))
         val prefs = app.getSharedPreferences("ember.autoCache", Context.MODE_PRIVATE)
         assertFalse(prefs.getBoolean("enabled", true))
-        assertTrue(prefs.getBoolean("onMetered", false))
     }
 
-    @Test fun `mobile data is on by default, and the old stored off is switched on once`() {
+    /** There is no mobile data setting: an "off" stored by an older build,
+     *  or sent by an older page, changes nothing. */
+    @Test fun `it caches on mobile data whatever an older build stored or a page sends`() {
         val prefs = app.getSharedPreferences(AutoCachePrefs.NAME, Context.MODE_PRIVATE)
-        prefs.edit().clear().putBoolean("enabled", true).putBoolean("onMetered", false).commit()
-        network(true)
+        prefs.edit().clear().putBoolean("enabled", true).putBoolean("onMetered", false).putBoolean("onMeteredDefaultOn", true).commit()
+        network(true, metered = true)
         startService()
-        val now = command(EmberPlaybackService.COMMAND_AUTO_CACHE).extras
-        assertTrue(now.getBoolean("enabled"))
-        assertTrue(now.getBoolean("onMetered"))
-        assertTrue(prefs.getBoolean("onMetered", false))
-        // Switched off afterwards: kept for the next start.
-        command(EmberPlaybackService.COMMAND_AUTO_CACHE, Bundle().apply { putBoolean("onMetered", false) })
-        controller.destroy()
-        MediaCache.releaseShared()
-        startService()
-        assertFalse(command(EmberPlaybackService.COMMAND_AUTO_CACHE).extras.getBoolean("onMetered"))
+        assertFalse("the old key is gone", prefs.contains("onMetered"))
+        command(EmberPlaybackService.COMMAND_AUTO_CACHE, Bundle().apply { putBoolean("enabled", true); putBoolean("onMetered", false) })
+        session().player.setMediaItems(listOf(item("youtube:a"), item("youtube:b"), item("youtube:c")))
+        idle()
+        val action = service.autoCacher.tick()
+        // The metered gate comes before the "not settled yet" one: past it.
+        assertTrue("on mobile data: $action", action is AutoCachePolicy.Action.Idle && action.reason == "not-settled")
+        assertFalse(prefs.contains("onMetered"))
     }
 
     @Test fun `stats and clear cover the auto cache`() {

@@ -176,19 +176,17 @@ class AutoCacherTest {
 
     @Test fun `turning the setting off cancels the running download`() {
         cacher.tick()
-        cacher.setSettings(enabled = false, allowMetered = false)
+        cacher.setEnabled(false)
         assertEquals(AutoCachePolicy.Action.Idle("disabled"), cacher.tick())
         assertTrue(created[0].canceled)
     }
 
-    @Test fun `mobile data cancels unless allowed`() {
-        cacher.setSettings(enabled = true, allowMetered = false)
-        cacher.tick()
+    @Test fun `mobile data never holds it back, Data Saver does`() {
         snap = snap.copy(net = NetworkWatch.State(online = true, metered = true, saveData = false))
+        assertEquals(AutoCachePolicy.Action.Start("youtube:c"), cacher.tick())
+        snap = snap.copy(net = NetworkWatch.State(online = true, metered = true, saveData = true))
         assertEquals(AutoCachePolicy.Action.Idle("metered"), cacher.tick())
         assertTrue(created[0].canceled)
-        cacher.setSettings(enabled = true, allowMetered = true)
-        assertEquals(AutoCachePolicy.Action.Start("youtube:c"), cacher.tick())
     }
 
     @Test fun `going offline cancels and waits`() {
@@ -226,8 +224,7 @@ class AutoCacherTest {
         assertEquals("https://e/s/a?v=1&prefetch=1", AutoCacher.prefetchUrl("https://e/s/a?v=1"))
     }
 
-    @Test fun `settings default to on, mobile data included`() {
+    @Test fun `the cache is on by default`() {
         assertTrue(cacher.enabled)
-        assertTrue(cacher.allowMetered)
     }
 }

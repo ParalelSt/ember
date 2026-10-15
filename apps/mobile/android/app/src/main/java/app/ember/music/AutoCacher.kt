@@ -65,9 +65,6 @@ class AutoCacher(
 
     @Volatile var enabled = true
         private set
-    /** Mobile data too: on by default (AutoCachePrefs). */
-    @Volatile var allowMetered = true
-        private set
 
     var inFlight: String? = null
         private set
@@ -82,9 +79,8 @@ class AutoCacher(
         @Volatile var canceled = false
     }
 
-    fun setSettings(enabled: Boolean, allowMetered: Boolean) {
+    fun setEnabled(enabled: Boolean) {
         this.enabled = enabled
-        this.allowMetered = allowMetered
     }
 
     private fun input(s: Snapshot): AutoCachePolicy.Input {
@@ -103,7 +99,9 @@ class AutoCacher(
             saveData = s.net.saveData,
             batterySaver = s.batterySaver,
             enabled = enabled,
-            allowMetered = allowMetered,
+            // Always on mobile data too (AutoCachePrefs); Data Saver still
+            // holds it back.
+            allowMetered = true,
             // SimpleCache writes the current song through as the player reads it.
             requestCurrent = false,
             cached = store.fullyCached(),

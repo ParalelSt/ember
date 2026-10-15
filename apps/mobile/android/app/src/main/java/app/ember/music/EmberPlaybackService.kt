@@ -47,7 +47,8 @@ class EmberPlaybackService : MediaLibraryService() {
         const val TAG = "EmberPlayback"
         const val COMMAND_SHUFFLE = "ember.shuffle"
         const val COMMAND_REPEAT = "ember.repeat"
-        /** Auto cache settings from the web UI: `enabled`, `onMetered`. */
+        /** The auto cache setting from the web UI: `enabled`. It always
+         *  works on mobile data too. */
         const val COMMAND_AUTO_CACHE = "ember.autoCache"
         /** `{ bytes, count, cap }` of the auto cache. */
         const val COMMAND_CACHE_STATS = "ember.cacheStats"
@@ -253,7 +254,8 @@ class EmberPlaybackService : MediaLibraryService() {
     private lateinit var cache: SimpleCache
     private lateinit var offline: OfflineStore
     private lateinit var net: NetworkWatch
-    private lateinit var autoCacher: AutoCacher
+    /** Internal for tests, which read its last decision. */
+    internal lateinit var autoCacher: AutoCacher
     private lateinit var offlinePlayback: OfflinePlayback
     /** Whether the connection gets anything through (a validated network
      *  can carry nothing on a weak mobile signal). Internal for tests,
@@ -728,9 +730,8 @@ class EmberPlaybackService : MediaLibraryService() {
             // nothing has been skipped yet).
             onGone = { id, error -> UnplayableNotices.record(Unplayable.notice(id, titleInQueue(id), error, Unplayable.FLAGGED)) },
         )
-        // Defaults per the owner: on, mobile data included (AutoCachePrefs).
-        val settings = AutoCachePrefs.load(getSharedPreferences(AutoCachePrefs.NAME, MODE_PRIVATE))
-        autoCacher.setSettings(settings.enabled, settings.onMetered)
+        // On by default, mobile data included (AutoCachePrefs).
+        autoCacher.setEnabled(AutoCachePrefs.load(getSharedPreferences(AutoCachePrefs.NAME, MODE_PRIVATE)))
         net = NetworkWatch(this) {
             health.onNetworkChanged()
             networkChanged()
@@ -866,9 +867,9 @@ class EmberPlaybackService : MediaLibraryService() {
         })
     }
 
-    private fun setAutoCache(enabled: Boolean, onMetered: Boolean) {
-        autoCacher.setSettings(enabled, onMetered)
-        AutoCachePrefs.save(getSharedPreferences(AutoCachePrefs.NAME, MODE_PRIVATE), AutoCachePrefs.Settings(enabled, onMetered))
+    private fun setAutoCache(enabled: Boolean) {
+        autoCacher.setEnabled(enabled)
+        AutoCachePrefs.save(getSharedPreferences(AutoCachePrefs.NAME, MODE_PRIVATE), enabled)
         cacheTick()
     }
 
@@ -1150,10 +1151,11 @@ class EmberPlaybackService : MediaLibraryService() {
                 OverlayEvents.COMMAND_PLAY -> return playOverlay(session, controller, args)
                 OverlayEvents.COMMAND_STOP -> overlay.stop()
                 COMMAND_AUTO_CACHE -> {
-                    setAutoCache(args.getBoolean("enabled", autoCacher.enabled), args.getBoolean("onMetered", autoCacher.allowMetered))
+                    // An "onMetered" from an older page is ignored: mobile
+                    // data is always allowed.
+                    setAutoCache(args.getBoolean("enabled", autoCacher.enabled))
                     return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS, Bundle().apply {
                         putBoolean("enabled", autoCacher.enabled)
-                        putBoolean("onMetered", autoCacher.allowMetered)
                     }))
                 }
                 COMMAND_CACHE_STATS -> return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS, cacheStats()))
