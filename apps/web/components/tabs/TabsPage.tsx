@@ -128,7 +128,7 @@ function usePhone(): boolean {
  *  has no transport of its own. */
 export function TabsPage({ trackId }: { trackId: string }) {
   const desktopPlugins = useDesktopPlugins();
-  if (!desktopPlugins) return <p>Guitar tabs are available on desktop.</p>;
+  if (!desktopPlugins) return <EmptyState>Guitar tabs are available on desktop.</EmptyState>;
   return <DesktopTabsPage trackId={trackId} />;
 }
 
