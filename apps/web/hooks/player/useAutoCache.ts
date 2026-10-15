@@ -11,6 +11,7 @@ import { createAutoCacheDriver, type AutoCacheDriver, type TestOverrides } from 
 import { createCacheAdapter, type BackendKind } from '@/lib/autoCache/select';
 import { isAndroidCacheAdapter, type AndroidCacheAdapter } from '@/lib/autoCache/androidAdapter';
 import type { AudioBackend } from '@/lib/playback/types';
+import { waitingForServer } from '@/lib/playback/serverReach';
 
 /** How often the policy looks again while a song plays: the 15 s and
  *  "fully buffered" gates are crossed by the clock, not by an event. */
@@ -98,7 +99,10 @@ export function useAutoCache({ backendRef, backendKind, createAdapter = createCa
   // skip and the badge need it on every device.
   useEffect(() => watchConditions((c) => {
     conditionsRef.current = c;
-    if (useAutoCacheStore.getState().online !== c.online) useAutoCacheStore.getState().setOnline(c.online);
+    // A server found unreachable keeps the player offline until it answers
+    // (lib/playback/serverReach), whatever the browser says meanwhile.
+    const online = c.online && !waitingForServer();
+    if (useAutoCacheStore.getState().online !== online) useAutoCacheStore.getState().setOnline(online);
     driverRef.current?.tick();
   }), []);
 

@@ -7,6 +7,12 @@ import { QK } from '@/hooks/useLibrary';
 import { api } from '@/lib/api';
 import { logger } from '@/lib/logger/client';
 import { isUnavailable } from '@/lib/playback/queueNav';
+import { serverUnreachable } from '@/lib/playback/serverReach';
+
+/** api errors carry the HTTP status of the answer; a network failure has none. */
+function hasHttpStatus(e: unknown): boolean {
+  return typeof e === 'object' && e !== null && typeof (e as { status?: unknown }).status === 'number';
+}
 
 /** The engine failed on the current track for a reason other than "we
  *  already knew it was dead". Ask the server whether it has just become
@@ -29,7 +35,13 @@ import { isUnavailable } from '@/lib/playback/queueNav';
  *  `onOfflineRef` (PlayerProvider: play the next song with a copy on this
  *  device, or stop with the offline badge and come back to this one when the
  *  connection returns), or calls plain Next without one. Asking anyway used to end in
- *  "Couldn't load" for every song in the queue. */
+ *  "Couldn't load" for every song in the queue.
+ *
+ *  The browser can say online while nothing gets through (a weak mobile
+ *  signal). When the server gives no answer at all to the question, that is
+ *  the same case: with `onOfflineRef`, the player goes offline until the
+ *  server answers again (lib/playback/serverReach) and the track goes the
+ *  offline way, to a song on this device. */
 export function useAvailabilityProbe(
   nextRef: RefObject<() => void>,
   onOfflineRef?: RefObject<((failed: { id: string }) => void) | null>,
@@ -100,10 +112,19 @@ export function useAvailabilityProbe(
       if (before.queue[before.index]?.id !== erroredId) return;
       if (onDead) onDead(cur, reason);
       else nextRef.current();
-    }).catch(() => {
-      // The server could not be asked either. The track is not known to be
-      // dead, so it is the same "it just would not load" case: say so rather
-      // than leaving the player silent with no explanation.
+    }).catch((e: unknown) => {
+      // No HTTP answer at all (the api already retried): the connection,
+      // not the song. Offline rules, while it is still the song playing.
+      if (onOfflineRef?.current && !hasHttpStatus(e)) {
+        logger.breadcrumb('playback', 'probe-unreachable', { trackId: erroredId });
+        serverUnreachable();
+        const now = usePlayerStore.getState();
+        if (now.queue[now.index]?.id === erroredId) onOfflineRef.current(cur);
+        return;
+      }
+      // The server answered, but not about the song. The track is not known
+      // to be dead, so it is the same "it just would not load" case: say so
+      // rather than leaving the player silent with no explanation.
       sayStillPlayable();
     });
   }, [refreshLists, nextRef, onOfflineRef, signedIn]);

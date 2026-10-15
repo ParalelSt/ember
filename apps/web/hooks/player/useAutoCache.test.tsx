@@ -15,6 +15,8 @@ import { TICK_MS, useAutoCache } from './useAutoCache';
 import { createAndroidCacheAdapter } from '@/lib/autoCache/androidAdapter';
 import type { NativeCacheState } from '@/lib/autoCache/native';
 import type { BackendKind } from '@/lib/autoCache/select';
+import { resetServerReach, serverUnreachable } from '@/lib/playback/serverReach';
+import { connectionOk } from '@/lib/connectionBlip';
 
 vi.mock('@/lib/logger/client', () => ({ logger: { breadcrumb: vi.fn(), error: vi.fn() } }));
 
@@ -86,6 +88,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  resetServerReach();
   vi.useRealTimers();
   vi.restoreAllMocks();
 });
@@ -207,6 +210,17 @@ describe('useAutoCache', () => {
     act(() => { window.dispatchEvent(new Event('online')); });
     expect(useAutoCacheStore.getState().online).toBe(true);
     expect(adapter.started()).toEqual([A.id, A.id]);
+    hook.unmount();
+  });
+
+  it('a server found unreachable stays offline whatever the browser says, until it answers', async () => {
+    const hook = await mount();
+    act(() => { serverUnreachable(); });
+    expect(useAutoCacheStore.getState().online).toBe(false);
+    act(() => { window.dispatchEvent(new Event('online')); });
+    expect(useAutoCacheStore.getState().online).toBe(false);
+    act(() => { connectionOk(); });
+    expect(useAutoCacheStore.getState().online).toBe(true);
     hook.unmount();
   });
 

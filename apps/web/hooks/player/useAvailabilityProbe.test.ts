@@ -10,6 +10,9 @@ vi.mock('@/lib/api', () => ({ api }));
 const logger = vi.hoisted(() => ({ breadcrumb: vi.fn(), error: vi.fn() }));
 vi.mock('@/lib/logger/client', () => ({ logger }));
 
+const reach = vi.hoisted(() => ({ serverUnreachable: vi.fn() }));
+vi.mock('@/lib/playback/serverReach', () => reach);
+
 const invalidateQueries = vi.hoisted(() => vi.fn());
 vi.mock('@tanstack/react-query', () => ({
   useQueryClient: () => ({ invalidateQueries }),
@@ -213,5 +216,52 @@ describe('useAvailabilityProbe: flags the provider makes itself', () => {
     probe(undefined, onDead);
     await waitFor(() => expect(onDead).toHaveBeenCalledWith(expect.objectContaining({ id: 'youtube:dead' }), 'removed'));
     expect(next).not.toHaveBeenCalled();
+  });
+});
+
+/** The browser says online, but nothing gets through (a weak mobile
+ *  signal): the question about the song gets no answer at all. That is the
+ *  connection, not the song, so it goes the offline way. */
+describe('useAvailabilityProbe: no answer from the server at all', () => {
+  function withHandler(queue = [dead, live], index = 0) {
+    usePlayerStore.setState({ queue, index });
+    const next = vi.fn();
+    const onOffline = vi.fn();
+    const { result } = renderHook(() => useAvailabilityProbe({ current: next }, { current: onOffline }));
+    return { probe: result.current, next, onOffline };
+  }
+
+  it('puts the player offline and hands the track to the offline handler', async () => {
+    api.getTrackAvailability.mockRejectedValue(new TypeError('Failed to fetch'));
+    const { probe, next, onOffline } = withHandler();
+    const stillPlayable = vi.fn();
+    probe(stillPlayable);
+    await waitFor(() => expect(onOffline).toHaveBeenCalledWith(dead));
+    expect(reach.serverUnreachable).toHaveBeenCalledTimes(1);
+    expect(stillPlayable).not.toHaveBeenCalled();
+    expect(next).not.toHaveBeenCalled();
+    expect(usePlayerStore.getState().queue[0].unavailableAt).toBeUndefined();
+    expect(logger.breadcrumb).toHaveBeenCalledWith('playback', 'probe-unreachable', { trackId: 'youtube:dead' });
+  });
+
+  it('an HTTP error is an answer: the song just would not load', async () => {
+    api.getTrackAvailability.mockRejectedValue(Object.assign(new Error('boom'), { status: 500 }));
+    const { probe, onOffline } = withHandler();
+    const stillPlayable = vi.fn();
+    probe(stillPlayable);
+    await waitFor(() => expect(stillPlayable).toHaveBeenCalledTimes(1));
+    expect(onOffline).not.toHaveBeenCalled();
+    expect(reach.serverUnreachable).not.toHaveBeenCalled();
+  });
+
+  it('a song the listener already moved on from is left where it is', async () => {
+    let fail: (e: unknown) => void = () => {};
+    api.getTrackAvailability.mockReturnValue(new Promise((_, reject) => { fail = reject; }));
+    const { probe, onOffline } = withHandler();
+    probe(vi.fn());
+    usePlayerStore.setState({ index: 1 });
+    fail(new TypeError('Failed to fetch'));
+    await waitFor(() => expect(reach.serverUnreachable).toHaveBeenCalledTimes(1));
+    expect(onOffline).not.toHaveBeenCalled();
   });
 });
