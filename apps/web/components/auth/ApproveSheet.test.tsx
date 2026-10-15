@@ -2,23 +2,22 @@ import type { ComponentProps } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 
-/** The approve sheet (owner's pick: a bottom sheet over the page): the
+/** The approve sheet (a centered dialog over the page): the
  *  device facts, Approve dead for the first 2 s, Approve handing over to
  *  the caller, Not me declining with a toast, and dismissing NOT declining. */
 
 const h = vi.hoisted(() => ({ toast: vi.fn(), dismiss: null as null | ((open: boolean) => void) }));
 // base-ui's Dialog cannot run under the unit tests' React (test-utils/
-// dialogMock.tsx): the stand-in keeps the side and hands over onOpenChange,
+// dialogMock.tsx): the stand-in hands over onOpenChange,
 // which is what the scrim, Escape and Back call.
-vi.mock('@/components/ui/sheet', async () => {
+vi.mock('@/components/ui/dialog', async () => {
   const real = await import('@/test-utils/dialogMock');
   return {
     ...real,
-    Sheet: (props: ComponentProps<typeof real.Sheet>) => {
+    Dialog: (props: ComponentProps<typeof real.Dialog>) => {
       h.dismiss = props.onOpenChange ?? null;
-      return <real.Sheet {...props} />;
+      return <real.Dialog {...props} />;
     },
-    SheetContent: ({ side, ...rest }: ComponentProps<typeof real.SheetContent>) => <real.SheetContent {...rest} data-side={side} />,
   };
 });
 vi.mock('next/link', () => ({ default: ({ children, ...rest }: ComponentProps<'a'>) => <a {...rest}>{children}</a> }));
@@ -74,7 +73,7 @@ describe('ApproveSheet', () => {
   it('is a dialog over the page with the device, its browser and OS, the time and the account', async () => {
     await open();
     const sheet = screen.getByRole('dialog', { name: 'Sign in on another device?' });
-    expect(sheet).toHaveAttribute('data-side', 'bottom');
+    expect(sheet).toBeInTheDocument();
     expect(screen.getByTestId('approve-device')).toHaveTextContent('Windows PC');
     expect(screen.getByText(/^Says it is Chrome on Windows/)).toBeInTheDocument();
     expect(screen.getByText('Asked 12 s ago')).toBeInTheDocument();

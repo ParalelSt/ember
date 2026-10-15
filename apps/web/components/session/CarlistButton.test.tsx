@@ -6,13 +6,13 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 // dialogMock.tsx): the stand-in hands over onOpenChange, which is what the
 // scrim and Escape call.
 const h = vi.hoisted(() => ({ dismiss: null as null | ((open: boolean) => void) }));
-vi.mock('@/components/ui/sheet', async () => {
+vi.mock('@/components/ui/dialog', async () => {
   const real = await import('@/test-utils/dialogMock');
   return {
     ...real,
-    Sheet: (props: ComponentProps<typeof real.Sheet>) => {
+    Dialog: (props: ComponentProps<typeof real.Dialog>) => {
       h.dismiss = props.onOpenChange ?? null;
-      return <real.Sheet {...props} />;
+      return <real.Dialog {...props} />;
     },
   };
 });

@@ -216,22 +216,17 @@ export function CopySongsBar({ source, selecting, picked, onClear, onDone }: Cop
         </BottomSheet>
       )}
 
-      {isDesktop ? (
-        <Dialog open={confirmLiked} onOpenChange={(o) => !busy && setConfirmLiked(o)}>
-          <DialogContent className="sm:max-w-md" showCloseButton={false}>
-            <LikedWarning count={count} already={likedPlan.skipped.length} toLike={likedPlan.add.length} busy={busy} onConfirm={toLiked} onCancel={() => setConfirmLiked(false)} />
-          </DialogContent>
-        </Dialog>
-      ) : (
-        <BottomSheet open={confirmLiked} onOpenChange={(o) => !busy && setConfirmLiked(o)}>
-          <LikedWarning count={count} already={likedPlan.skipped.length} toLike={likedPlan.add.length} busy={busy} onConfirm={toLiked} onCancel={() => setConfirmLiked(false)} stacked />
-        </BottomSheet>
-      )}
+      <Dialog open={confirmLiked} onOpenChange={(o) => !busy && setConfirmLiked(o)}>
+        <DialogContent className="sm:max-w-md" showCloseButton={false}>
+          <LikedWarning count={count} already={likedPlan.skipped.length} toLike={likedPlan.add.length} busy={busy} onConfirm={toLiked} onCancel={() => setConfirmLiked(false)} stacked={!isDesktop} />
+        </DialogContent>
+      </Dialog>
     </>
   );
 }
 
-/** A sheet up from the bottom of a phone, clear of Android's buttons. */
+/** The phone destination picker: a long list, so a real bottom sheet, clear
+ *  of Android's buttons. Small choice pop-ups use the centered Dialog. */
 function BottomSheet({
   open,
   onOpenChange,

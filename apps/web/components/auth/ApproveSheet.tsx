@@ -2,17 +2,17 @@
 
 import { toast } from 'sonner';
 import { ApproveSignIn } from '@/components/auth/ApproveSignIn';
-import { Sheet, SheetContent } from '@/components/ui/sheet';
+import { Dialog, DialogContent } from '@/components/ui/dialog';
 import type { Credential, QrFacts } from '@/lib/qrLogin/client';
 
 export const DECLINED_TOAST = 'Declined. That device was not signed in.';
 
-/** The approve UI as a bottom sheet over whatever page is open (owner's
- *  pick), so approving never leaves the page. Swipe-free on purpose: the
+/** The approve UI as a centered dialog over whatever page is open, so
+ *  approving never leaves the page. Swipe-free on purpose: the
  *  scrim, Escape and Back just close it (the request stays pending and runs
  *  out by itself); only Not me declines. Approve hands over to the caller,
  *  which goes on to Settings > Devices; Not me closes it with a toast. A
- *  lookup or approve that fails stays in the sheet with a Close button. */
+ *  lookup or approve that fails stays in the dialog with a Close button. */
 export function ApproveSheet({
   credential,
   onClose,
@@ -23,21 +23,19 @@ export function ApproveSheet({
   onApproved: (facts: QrFacts) => void;
 }) {
   return (
-    <Sheet
+    <Dialog
       open
       onOpenChange={(open) => {
         if (!open) onClose();
       }}
     >
-      <SheetContent
-        side="bottom"
+      <DialogContent
         showCloseButton={false}
         aria-label="Sign in on another device?"
         data-testid="approve-sheet"
-        className="mx-auto w-full max-w-lg gap-0 rounded-t-3xl p-0 outline-none sm:border-x"
+        className="gap-0 p-0 sm:max-w-md"
       >
-        <div className="mx-auto mt-cluster h-1 w-10 rounded-full bg-muted-foreground/30" aria-hidden />
-        <div className="px-page pt-block pb-stack">
+        <div className="px-page py-stack">
           <ApproveSignIn
             credential={credential}
             onClose={onClose}
@@ -50,7 +48,7 @@ export function ApproveSheet({
             }}
           />
         </div>
-      </SheetContent>
-    </Sheet>
+      </DialogContent>
+    </Dialog>
   );
 }

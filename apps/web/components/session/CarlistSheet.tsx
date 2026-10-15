@@ -2,7 +2,7 @@
 
 import type { ReactNode } from 'react';
 import { useCallback } from 'react';
-import { Sheet, SheetContent, SheetDescription, SheetTitle } from '@/components/ui/sheet';
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
 import { CarIcon, KeyIcon } from '@/components/icons';
 import { useBackDismiss } from '@/lib/useBackDismiss';
 
@@ -37,8 +37,10 @@ function Option({
   );
 }
 
-/** The Carlist menu as a bottom sheet (owner's pick): two big option cards.
- *  Back, Escape and the scrim close it. Picking an option closes the sheet
+/** The Carlist menu as a centered dialog: two big option cards. It uses the
+ *  shared Dialog (fixed, centered on both axes) so it sits in the middle of
+ *  the screen on phone and desktop, never at the bottom edge.
+ *  Back, Escape and the scrim close it. Picking an option closes the menu
  *  and hands over to the caller, which opens the matching dialog. */
 export function CarlistSheet({
   open,
@@ -55,17 +57,15 @@ export function CarlistSheet({
   useBackDismiss(open, close);
 
   return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent
-        side="bottom"
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent
         showCloseButton={false}
         data-testid="carlist-sheet"
-        className="mx-auto w-full max-w-lg gap-0 rounded-t-3xl p-0 outline-none sm:border-x"
+        className="gap-0 p-0 sm:max-w-md"
       >
-        <div className="mx-auto mt-cluster h-1 w-10 rounded-full bg-muted-foreground/30" aria-hidden />
-        <div className="px-page pt-block pb-stack">
-          <SheetTitle className="text-lg font-semibold">Carlist</SheetTitle>
-          <SheetDescription className="sr-only">Start a carlist or join one.</SheetDescription>
+        <div className="px-page py-stack">
+          <DialogTitle className="text-lg font-semibold">Carlist</DialogTitle>
+          <DialogDescription className="sr-only">Start a carlist or join one.</DialogDescription>
           <div className="mt-block flex flex-col gap-row">
             <Option
               testId="carlist-start"
@@ -89,7 +89,7 @@ export function CarlistSheet({
             />
           </div>
         </div>
-      </SheetContent>
-    </Sheet>
+      </DialogContent>
+    </Dialog>
   );
 }

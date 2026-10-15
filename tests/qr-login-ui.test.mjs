@@ -316,8 +316,8 @@ try {
   const card = a.getByTestId('approve-card');
   await card.waitFor({ timeout: 20_000 });
   check('A1 the token leaves the address bar', new URL(a.url()).pathname === '/link', a.url());
-  check('A1b the approve UI is a bottom sheet over the page', (await a.getByRole('dialog', { name: 'Sign in on another device?' }).count()) === 1 &&
-    (await a.getByTestId('approve-sheet').getAttribute('data-side')) === 'bottom');
+  check('A1b the approve UI is a centered dialog over the page', (await a.getByRole('dialog', { name: 'Sign in on another device?' }).count()) === 1 &&
+    (await a.getByTestId('approve-sheet').getAttribute('data-slot')) === 'dialog-content');
   const cardText = await card.textContent();
   check('A2 the sheet names the device, the network and the account', cardText.includes(bDevice) && cardText.includes('Same network as this phone') &&
     cardText.includes(`Says it is ${bDevice}`) && cardText.includes(A_EMAIL) && !cardText.includes(bStart.code), cardText);
