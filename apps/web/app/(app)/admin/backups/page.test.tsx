@@ -38,7 +38,7 @@ beforeEach(() => {
 describe('AdminBackupsPage', () => {
   it('lists each backup with its size, kind and a download link', () => {
     render(<AdminBackupsPage />);
-    const items = screen.getAllByRole('listitem');
+    const items = within(screen.getByRole('list', { name: 'Database backups' })).getAllByRole('listitem');
     expect(items).toHaveLength(2);
     expect(items[0].textContent).toContain('pb_backup_ember_20260926120000.zip');
     expect(items[0].textContent).toContain('5.0 MB');
@@ -81,18 +81,29 @@ describe('AdminBackupsPage', () => {
     expect(screen.getByRole('button', { name: 'Backing up…' })).toBeDisabled();
   });
 
-  it('offers the member files archive and explains what is left out', () => {
+  it('offers the member files archive with its size in a short card', () => {
     render(<AdminBackupsPage />);
     const link = screen.getByRole('link', { name: 'Download member files' });
     expect(link.getAttribute('href')).toBe('/api/admin/backups/member-files');
     expect(screen.getByTestId('member-files').textContent).toBe('42 files, 300.0 MB before compression');
-    expect(document.body.textContent).toMatch(/Cached\s+YouTube songs are left out/);
+    const card = screen.getByRole('heading', { name: 'Member files' }).parentElement!;
+    expect(card).toHaveClass('rounded-2xl', 'bg-card', 'p-stack', 'shadow-soft');
+    expect(card.querySelector('p')!.textContent!.length).toBeLessThan(180);
   });
 
   it('has a restore note but no restore button', () => {
     render(<AdminBackupsPage />);
     expect(screen.getByRole('heading', { name: 'Restoring' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /restore/i })).toBeNull();
+    const steps = screen.getByRole('list', { name: 'Restore steps' });
+    expect(steps.tagName).toBe('OL');
+    expect(within(steps).getAllByRole('listitem')).toHaveLength(3);
+    expect(steps.textContent).toMatch(/Upload backup/);
+    expect(steps.textContent).toMatch(/MUSIC_DIR/);
+    expect(screen.getByRole('link', { name: 'SETUP.md: Backups' })).toHaveAttribute(
+      'href', 'https://github.com/ParalelSt/ember/blob/main/SETUP.md#backups',
+    );
+    expect(document.body.textContent).not.toMatch(/https?:\/\/(localhost|127\.0\.0\.1)/);
   });
 
   it('shows an empty state when there are no backups yet', () => {
@@ -100,4 +111,10 @@ describe('AdminBackupsPage', () => {
     render(<AdminBackupsPage />);
     expect(screen.getByText('No backups yet. Make one with Back up now.')).toBeInTheDocument();
   });
+});
+
+it('shows when the automatic backup schedule is unavailable', () => {
+  state.data = { ...base(), schedule: null };
+  render(<AdminBackupsPage />);
+  expect(screen.getByTestId('backup-schedule')).toHaveTextContent('Automatic backups: status unavailable.');
 });

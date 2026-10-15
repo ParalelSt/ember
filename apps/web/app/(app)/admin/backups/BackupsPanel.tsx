@@ -10,13 +10,7 @@ import { apiUrl } from '@/lib/api';
 import { describeBackupSchedule } from '@/lib/backupSchedule';
 import { formatBytes } from '@/lib/format';
 
-/** Database backups (PocketBase's own, nightly by default) plus the member
- *  files that live outside the database. Listing, "Back up now" and the
- *  downloads all go through /api/admin/backups (admin only). No restore
- *  button on purpose: restoring replaces every account and playlist, so it
- *  stays a deliberate step in PocketBase's admin UI (see the note below and
- *  SETUP.md, "Backups"). */
-export default function AdminBackupsPage() {
+export default function BackupsPanel() {
   const { data, isLoading, error } = useQueryAdminBackups();
   const backupNow = useExecuteBackupNow();
 
@@ -42,9 +36,7 @@ export default function AdminBackupsPage() {
           }
         />
         <p className="text-sm text-muted-foreground">
-          A backup is the whole database: accounts, playlists, likes, settings, avatars and playlist artwork.
-          They are kept on this machine, so download one now and then and keep it somewhere else. A dead disk
-          takes the backups on it along with everything else.
+          Database backups include accounts, playlists, likes, settings and artwork. Keep a copy off this server.
         </p>
       </div>
 
@@ -57,12 +49,12 @@ export default function AdminBackupsPage() {
             {data.schedule && schedule && <p data-testid="backup-schedule">Automatic backups: {schedule}</p>}
             {data.schedule && !schedule && (
               <p data-testid="backup-schedule" className="text-destructive">
-                Automatic backups are off. Turn them on in PocketBase&apos;s admin UI (Settings, Backups) or set
-                EMBER_BACKUP_CRON and restart.
+                Automatic backups are off. Enable them in PocketBase → Settings → Backups.
               </p>
             )}
+            {!data.schedule && <p data-testid="backup-schedule">Automatic backups: status unavailable.</p>}
             {data.schedule?.s3 && (
-              <p className="text-muted-foreground">Backups are stored on S3 (set in PocketBase&apos;s admin UI).</p>
+              <p className="text-muted-foreground">Backups are stored on S3.</p>
             )}
             {data.disk && (
               <p className="text-muted-foreground" data-testid="backup-disk">
@@ -76,8 +68,7 @@ export default function AdminBackupsPage() {
               >
                 <AlertIcon className="h-4 w-4 mt-inset shrink-0" />
                 <span>
-                  Disk space is low. A backup may fail, and so may new songs and uploads. Free some space or
-                  keep fewer backups (PocketBase admin UI, Settings, Backups).
+                  Disk space is low. Free space or reduce backup retention in PocketBase to avoid failed backups and uploads.
                 </span>
               </div>
             )}
@@ -86,7 +77,7 @@ export default function AdminBackupsPage() {
           <div>
             <SectionHeader title={`Database backups · ${data.backups.length}`} className="mb-row" />
             {data.backups.length === 0 && <EmptyState>No backups yet. Make one with Back up now.</EmptyState>}
-            <ul className="flex flex-col gap-cluster">
+            <ul aria-label="Database backups" className="flex flex-col gap-cluster">
               {data.backups.map((b) => (
                 <li
                   key={b.name}
@@ -112,12 +103,10 @@ export default function AdminBackupsPage() {
             </ul>
           </div>
 
-          <div>
+          <div className="rounded-2xl bg-card p-stack shadow-soft">
             <SectionHeader title="Member files" className="mb-cluster" />
             <p className="text-sm text-muted-foreground mb-row">
-              Uploaded songs and their covers, tabs and prank sounds are stored next to the music, not in the
-              database, so the backups above do not include them. Download them here as one archive. Cached
-              YouTube songs are left out: they download again the next time someone plays them.
+              Download uploaded songs, covers, tabs and prank sounds separately from the database, excluding cached YouTube songs.
             </p>
             <div className="flex items-center gap-row flex-wrap">
               <a
@@ -134,18 +123,31 @@ export default function AdminBackupsPage() {
             </div>
           </div>
 
-          <div className="text-sm text-muted-foreground">
+          <div className="rounded-2xl bg-card p-stack shadow-soft text-sm text-muted-foreground">
             <SectionHeader title="Restoring" className="mb-cluster" />
-            <p className="mb-cluster">
-              Restoring replaces everything in the database with the backup, so it is not a button here. On the
-              host, open PocketBase&apos;s admin UI at http://127.0.0.1:8090/_/ (Settings, Backups) and choose
-              Restore on a backup. PocketBase restarts with it.
-            </p>
-            <p>
-              From a downloaded copy: stop Ember, move pocketbase/pb_data aside, unzip the backup into a new
-              pocketbase/pb_data and start Ember again. For member files, unpack the archive and copy its
-              folders into the music folder (MUSIC_DIR). SETUP.md, &ldquo;Backups&rdquo;, has the details.
-            </p>
+            <p className="mb-row">Restoring replaces the entire database.</p>
+            <ol aria-label="Restore steps" className="list-decimal pl-stack space-y-cluster">
+              <li>
+                In PocketBase → Settings → Backups, choose Restore; for a downloaded copy, use Upload backup first.
+                PocketBase restarts automatically.
+              </li>
+              <li>
+                For a manual restore instead, stop Ember, move <code>pocketbase/pb_data</code> aside,
+                unzip the backup into a new <code>pocketbase/pb_data</code>, then restart Ember.
+              </li>
+              <li>
+                Extract the member files archive and copy the folders inside <code>ember-files/</code> into
+                your music folder (<code>MUSIC_DIR</code>).
+              </li>
+            </ol>
+            <a
+              href="https://github.com/ParalelSt/ember/blob/main/SETUP.md#backups"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mt-row inline-block underline underline-offset-4 hover:text-foreground"
+            >
+              SETUP.md: Backups
+            </a>
           </div>
         </>
       )}
