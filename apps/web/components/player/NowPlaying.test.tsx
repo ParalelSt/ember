@@ -305,6 +305,8 @@ describe('NowPlaying: the More sheet', () => {
     expect(row('eq')).toHaveTextContent('EqualizerOff');
     fireEvent.click(row('eq'));
     const panel = await screen.findByTestId('equalizer');
+    expect(within(panel).queryByRole('group', { name: 'Presets' })).toBeNull();
+    fireEvent.click(within(panel).getByRole('button', { name: 'Turn on Equalizer' }));
     fireEvent.click(within(panel).getByRole('button', { name: 'Bass boost' }));
     expect(useSettingsStore.getState().equalizer).toEqual({ enabled: true, bands: [7, 4, 0, 0, 0] });
     expect(usePlayerStore.getState().nowPlayingOpen).toBe(true);

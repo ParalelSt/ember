@@ -47,11 +47,14 @@ describe('Settings > Plugins', () => {
     expect(screen.getByRole('button', { name: 'Turn on Normalize volume' })).toHaveAttribute('aria-pressed', 'false');
   });
 
-  it('has the equalizer, off by default, with its presets and five bands', () => {
+  it('gates equalizer settings behind its toggle', () => {
     render(<SettingsPlugins />);
-    const panel = screen.getByTestId('equalizer');
     expect(screen.getByRole('button', { name: 'Turn on Equalizer' })).toHaveAttribute('aria-pressed', 'false');
-    expect(panel.querySelectorAll('input[type="range"]')).toHaveLength(5);
+    expect(screen.queryByRole('group', { name: 'Presets' })).toBeNull();
+    expect(screen.queryByRole('slider')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Reset' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Turn on Equalizer' }));
+    expect(screen.getAllByRole('slider')).toHaveLength(5);
     expect(screen.getByRole('group', { name: 'Presets' })).toBeInTheDocument();
   });
 
