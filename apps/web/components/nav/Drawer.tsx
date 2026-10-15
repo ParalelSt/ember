@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { useAuth } from '@/components/providers/AuthProvider';
-import { useQueryPlaylists } from '@/hooks/useLibrary';
+import { useCachedCollectionTracks, useQueryPlaylists } from '@/hooks/useLibrary';
 import { useCreatePlaylistFlow } from '@/hooks/useCreatePlaylistFlow';
 import { useImportJobs } from '@/hooks/useImports';
 import { LIKED_NAV_KEY, navImportStates } from '@/lib/import/nav';
@@ -22,6 +22,7 @@ import { ScanQrButton } from '@/components/auth/ScanQrButton';
 import { FlameIcon, PlusIcon } from '@/components/icons';
 import { BASE_NAV, ADMIN_NAV_ITEM } from '@/lib/nav';
 import { hrefFor, sharedLabel, systemCollections } from '@/lib/collections';
+import { firstArts } from '@/lib/library';
 import { useUiStore } from '@/stores/useUiStore';
 
 interface Props {
@@ -34,6 +35,7 @@ export function Drawer({ open, onOpenChange }: Props) {
   const { user, name: displayName, avatarUrl, isAdmin } = useAuth();
   const NAV = isAdmin ? [...BASE_NAV, ADMIN_NAV_ITEM] : BASE_NAV;
   const { data: playlists = [] } = useQueryPlaylists();
+  const collectionTracks = useCachedCollectionTracks();
   const { hasNew } = useChangelog();
   const { data: importJobs = [] } = useImportJobs();
   const importStates = navImportStates(importJobs);
@@ -41,6 +43,9 @@ export function Drawer({ open, onOpenChange }: Props) {
     playlists.map((p) => ({
       id: p.id,
       name: p.name,
+      artworkUrl: p.artwork_url,
+      trackArtworks: p.track_artworks,
+      trackCount: p.track_count,
       href: hrefFor({ kind: 'playlist', id: p.id }),
       importState: importStates[p.id],
       sharedLabel: sharedLabel(p),
@@ -85,6 +90,8 @@ export function Drawer({ open, onOpenChange }: Props) {
                 label: title,
                 href,
                 icon,
+                count: collectionTracks[icon]?.length,
+                artworks: firstArts(collectionTracks[icon] ?? []),
                 importState: ref.kind === LIKED_NAV_KEY ? importStates[LIKED_NAV_KEY] : undefined,
               }))}
               activePath={pathname}

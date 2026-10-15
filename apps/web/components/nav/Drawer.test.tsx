@@ -30,8 +30,8 @@ vi.mock('@/components/providers/AuthProvider', () => ({
     isAdmin: false,
   }),
 }));
-const playlists = vi.hoisted(() => ({ list: [] as { id: string; name: string }[] }));
-vi.mock('@/hooks/useLibrary', () => ({ useQueryPlaylists: () => ({ data: playlists.list }) }));
+const playlists = vi.hoisted(() => ({ list: [] as { id: string; name: string; track_count?: number; track_artworks?: string[] }[] }));
+vi.mock('@/hooks/useLibrary', () => ({ useQueryPlaylists: () => ({ data: playlists.list }), useCachedCollectionTracks: () => ({ heart: [], clock: [{ artworkUrl: '/recent' }], upload: undefined }) }));
 vi.mock('@/hooks/useNavPlaylists', () => ({
   useNavPlaylists: (items: unknown[]) => ({ items, onOpen: vi.fn(), onTogglePin: vi.fn() }),
 }));
@@ -48,7 +48,7 @@ describe('Drawer', () => {
     const { container } = render(<Drawer open onOpenChange={() => {}} />);
     // The Avatar's structural classes (see components/primitives/Avatar.tsx).
     expect(container.querySelector('.rounded-full.grid.place-items-center')).not.toBeNull();
-    const img = container.querySelector('img');
+    const img = container.querySelector('a[href="/settings/profile"] img');
     expect(img).toHaveAttribute('src', '/pb/api/files/users/u1/avatar.png');
     expect(screen.getByText('Robin')).toBeInTheDocument();
   });
@@ -65,4 +65,21 @@ describe('Drawer', () => {
     expect(scroller.contains(screen.getByText('Robin'))).toBe(false);
     playlists.list = [];
   });
+});
+
+
+it('passes cached collection songs and playlist metadata to the shared rows', () => {
+  playlists.list = [{ id: 'p1', name: 'Mix', track_count: 4, track_artworks: ['/a', '/b', '/c', '/d'] }];
+  render(<Drawer open onOpenChange={() => {}} />);
+  expect(screen.getByRole('link', { name: /Liked songs/ })).toHaveTextContent('Playlist · 0 songs');
+  const recent = screen.getByRole('link', { name: /Recently played/ });
+  expect(recent).toHaveTextContent('Auto playlist · 1 song');
+  expect(recent.querySelector('img')).toHaveAttribute('src', '/recent');
+  const uploads = screen.getByRole('link', { name: /^Uploads/ });
+  expect(uploads).not.toHaveTextContent('songs');
+  expect(uploads.querySelector('[data-look="plain"]')).not.toBeNull();
+  const playlist = screen.getByRole('link', { name: /Mix/ });
+  expect(playlist).toHaveTextContent('Playlist · 4 songs');
+  expect(playlist.querySelectorAll('[data-mosaic] img')).toHaveLength(4);
+  playlists.list = [];
 });

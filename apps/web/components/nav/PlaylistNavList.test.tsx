@@ -125,3 +125,29 @@ describe('PlaylistNavList rows', () => {
     vi.useRealTimers();
   });
 });
+
+
+describe('PlaylistNavList covers', () => {
+  it('renders mosaics, single art, custom covers and the existing empty fallback', () => {
+    render(<PlaylistNavList authed items={[
+      { id: 'm', href: '/m', name: 'Mosaic', trackCount: 4, trackArtworks: ['/a', '/b', '/c', '/d'] },
+      { id: 's', href: '/s', name: 'Single', trackCount: 1, trackArtworks: ['/single'] },
+      { id: 'c', href: '/c', name: 'Custom', artworkUrl: '/custom', trackArtworks: ['/a', '/b', '/c', '/d'] },
+      { id: 'e', href: '/e', name: 'Empty', trackCount: 0 },
+    ]} />);
+    const rows = screen.getAllByTestId('playlist-nav-row');
+    expect(rows[0].querySelectorAll('[data-mosaic] img')).toHaveLength(4);
+    expect(rows[0]).toHaveTextContent('Playlist · 4 songs');
+    expect(rows[1].querySelector('img')).toHaveAttribute('src', '/single');
+    expect(rows[1]).toHaveTextContent('Playlist · 1 song');
+    expect(rows[2].querySelector('img')).toHaveAttribute('src', '/custom');
+    expect(rows[2]).not.toHaveTextContent('songs');
+    expect(rows[3].querySelector('.cover-placeholder')).not.toBeNull();
+    expect(rows[3].querySelector('img')).toBeNull();
+    expect(rows[3]).toHaveTextContent('Playlist · 0 songs');
+    for (const row of rows) {
+      expect(row.firstElementChild).toHaveClass('size-8', 'shrink-0', 'rounded-[4px]');
+      expect(row).toHaveClass('px-2', 'py-1.5', 'gap-3');
+    }
+  });
+});

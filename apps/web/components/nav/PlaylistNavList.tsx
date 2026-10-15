@@ -1,4 +1,6 @@
 import Link from 'next/link';
+import { CollectionCover } from '@/components/primitives/CollectionCover';
+import { countLabel, playlistCover } from '@/lib/collections';
 import { ProgressRing } from '@/components/primitives/ProgressRing';
 import { PeopleIcon } from '@/components/icons';
 import { PinIcon } from '@/components/icons';
@@ -13,6 +15,9 @@ export interface PlaylistNavListProps {
     id: string;
     name: string;
     href: string;
+    artworkUrl?: string | null;
+    trackArtworks?: string[];
+    trackCount?: number;
     importState?: NavImportState;
     /** A collaborative playlist: "Collaborative" (yours) or "Shared by
      *  Olga", shown as a small people mark and its tooltip. */
@@ -58,9 +63,8 @@ export function ImportTail({ state }: { state: NavImportState }) {
 /** Presentational only: no data fetching, no store reads. The "Playlists"
  *  link list under the collections nav in Sidebar and Drawer; each keeps
  *  its own wrapping element since the scroll container differs (ScrollArea
- *  vs a plain scrolling div). Rows are plain text at a fixed height (44px
- *  on a phone) and never shrink, however many there are: the scroller
- *  around them scrolls instead. A playlist being imported shows its
+ *  vs a plain scrolling div). Rows have a cover and two lines at a fixed
+ *  height (44px) and never shrink: the scroller around them scrolls instead. A playlist being imported shows its
  *  progress ring and count; one with songs left to check says how many. */
 export function PlaylistNavList({ items, authed, activePath, onNavigate, onOpen, onTogglePin }: PlaylistNavListProps) {
   const hold = useHold((id) => onTogglePin?.(id));
@@ -85,13 +89,23 @@ export function PlaylistNavList({ items, authed, activePath, onNavigate, onOpen,
           title={p.sharedLabel ? `${p.name}, ${p.sharedLabel}` : undefined}
           {...(onTogglePin ? hold.props(p.id) : {})}
           className={cn(
-            'flex shrink-0 items-center gap-cluster min-h-11 md:min-h-9 px-3 rounded-md text-sm transition-colors select-none',
+            'flex shrink-0 items-center gap-3 min-h-11 px-2 py-1.5 rounded-md text-sm transition-colors select-none',
             activePath === p.href
               ? 'bg-sidebar-accent text-sidebar-accent-foreground'
               : 'text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent/60',
           )}
         >
-          <span className="min-w-0 flex-1 truncate">{p.name}</span>
+          <CollectionCover
+            {...playlistCover(p.artworkUrl ?? null, p.trackArtworks)}
+            icon={null}
+            className="size-8 shrink-0 rounded-[4px] shadow-none"
+          />
+          <span className="min-w-0 flex-1">
+            <span className="block truncate text-[14.5px] leading-4 text-sidebar-foreground">{p.name}</span>
+            <span className="block truncate text-xs leading-4 text-sidebar-foreground/55">
+              Playlist{typeof p.trackCount === 'number' ? ` · ${countLabel(p.trackCount)}` : ''}
+            </span>
+          </span>
           {p.sharedLabel && !p.importState && (
             <PeopleIcon data-testid="nav-shared" aria-label={p.sharedLabel} className="size-3.5 shrink-0 text-sidebar-foreground/55" />
           )}
