@@ -155,3 +155,42 @@ describe('FriendsListening', () => {
   });
 });
 
+
+describe('FriendsListening row layout (the phone Home)', () => {
+  function renderRow() {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    return render(
+      <QueryClientProvider client={client}>
+        <FriendsListening layout="row" />
+      </QueryClientProvider>,
+    );
+  }
+
+  it('is a sideways row of tiles that keeps the "name · time ago" line', async () => {
+    api.listening.mockResolvedValue({
+      items: [{ userName: 'Robin', playedAt: new Date(NOW - 5 * 60_000).toISOString(), track: makeTrack() }],
+    });
+    renderRow();
+    expect(await screen.findByRole('heading', { name: 'Friends are listening to' })).toHaveClass('truncate');
+    expect(screen.getByRole('list')).toHaveClass('flex', 'overflow-x-auto', 'snap-x');
+    expect(screen.getByText('Robin · 5 min ago')).toBeInTheDocument();
+    expect(screen.getByText('Midnight Drive')).toHaveClass('line-clamp-2');
+  });
+
+  it('plays the tapped track', async () => {
+    const track = makeTrack();
+    api.listening.mockResolvedValue({
+      items: [{ userName: 'Robin', playedAt: new Date(NOW - 60_000).toISOString(), track }],
+    });
+    renderRow();
+    fireEvent.click(await screen.findByText('Midnight Drive'));
+    expect(playTrack).toHaveBeenCalledWith(track);
+  });
+
+  it('renders nothing when nobody is listening', async () => {
+    api.listening.mockResolvedValue({ items: [] });
+    const { container } = renderRow();
+    await waitFor(() => expect(api.listening).toHaveBeenCalled());
+    expect(container).toBeEmptyDOMElement();
+  });
+});

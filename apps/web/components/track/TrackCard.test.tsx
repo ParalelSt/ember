@@ -92,3 +92,47 @@ describe('TrackCard', () => {
     expect(screen.getByTestId('artwork-fallback')).toBeInTheDocument();
   });
 });
+
+describe('TrackCard tile (the phone Home row)', () => {
+  const long = { ...track, title: 'An Extremely Long Song Title That Would Otherwise Push The Whole Row Wide Open' };
+
+  it('is a bare tile: no card box, the title clamped to two lines, the artist to one', () => {
+    const { container } = render(<TrackCard track={long} variant="tile" onActivate={() => {}} />);
+    const root = container.firstElementChild as HTMLElement;
+    expect(root).not.toHaveClass('bg-card');
+    expect(root).not.toHaveClass('p-4');
+    const title = screen.getByText(long.title);
+    expect(title).toHaveClass('line-clamp-2', 'break-words', 'font-semibold');
+    expect(title).not.toHaveClass('truncate');
+    expect(screen.getByRole('link', { name: 'The Nulls' }).parentElement).toHaveClass('truncate', 'text-muted-foreground');
+  });
+
+  it('marks the current track: ember title and a visible button that shows Pause while it plays', () => {
+    const { rerender } = render(<TrackCard track={track} variant="tile" onActivate={() => {}} />);
+    expect(screen.getByText('Midnight Drive')).not.toHaveClass('text-ember');
+    expect(screen.getByRole('button', { name: 'Play' })).toHaveClass('opacity-0');
+
+    rerender(<TrackCard track={track} variant="tile" active playing onActivate={() => {}} />);
+    expect(screen.getByText('Midnight Drive')).toHaveClass('text-ember');
+    const pause = screen.getByRole('button', { name: 'Pause' });
+    expect(pause).toHaveClass('opacity-100');
+
+    rerender(<TrackCard track={track} variant="tile" active playing={false} onActivate={() => {}} />);
+    expect(screen.getByRole('button', { name: 'Play' })).toHaveClass('opacity-100');
+  });
+
+  it('activates from a tap on the tile or its button, not from the artist link', () => {
+    const onActivate = vi.fn();
+    render(<TrackCard track={track} variant="tile" onActivate={onActivate} />);
+    fireEvent.click(screen.getByText('Midnight Drive'));
+    fireEvent.click(screen.getByRole('button', { name: 'Play' }));
+    expect(onActivate).toHaveBeenCalledTimes(2);
+    fireEvent.click(screen.getByRole('link', { name: 'The Nulls' }));
+    expect(onActivate).toHaveBeenCalledTimes(2);
+  });
+
+  it('shows the optional third line (FriendsListening)', () => {
+    render(<TrackCard track={track} variant="tile" subtitle="Robin · 5 min ago" onActivate={() => {}} />);
+    expect(screen.getByText('Robin · 5 min ago')).toHaveClass('truncate');
+  });
+});

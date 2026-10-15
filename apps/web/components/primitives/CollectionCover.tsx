@@ -1,18 +1,23 @@
-import { ClockIcon, HeartIcon, UploadIcon } from '@/components/icons';
+import { CarIcon, ClockIcon, HeartIcon, UploadIcon } from '@/components/icons';
 import { Artwork } from '@/components/primitives/Artwork';
 import { cn } from '@/lib/utils';
 import type { CollectionIcon } from '@/lib/collections';
 
+/** A collection's icons, plus the car for a live carlist (the phone Home's
+ *  quick grid), which is not a library collection. */
+export type CoverIcon = CollectionIcon | 'car';
+
 export interface CollectionCoverProps {
   src: string | null;
-  icon: CollectionIcon | null;
+  icon: CoverIcon | null;
   className?: string;
   /** What shows through with no artwork: the ember gradient every library
    *  collection uses, or the flat card colour of the album/track heroes. */
   fallback?: 'gradient' | 'card';
 }
 
-const ICONS: Record<CollectionIcon, typeof HeartIcon> = {
+const ICONS: Record<CoverIcon, typeof HeartIcon> = {
+  car: CarIcon,
   heart: HeartIcon,
   clock: ClockIcon,
   upload: UploadIcon,

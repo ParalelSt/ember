@@ -6,15 +6,19 @@ import { usePlayer } from '@/components/player/PlayerProvider';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { MusicIcon } from '@/components/icons';
 import { TrackCard } from '@/components/track/TrackCard';
+import { RowShelf } from '@/components/page/RowShelf';
 import { formatAgo } from '@/lib/format';
 
 const POLL_MS = 30_000;
 
 const MUSIC_ICON_FALLBACK = <MusicIcon className="h-8 w-8" data-testid="music-fallback" />;
 
+const TITLE = 'Friends are listening to';
+
 /** Home section: what other members played in the last ~30 minutes (newest
- *  per person). Hidden entirely when nobody's listening, no empty state. */
-export function FriendsListening() {
+ *  per person). Hidden entirely when nobody's listening, no empty state.
+ *  `layout="row"` is the phone Home's version: a RowShelf of bare tiles. */
+export function FriendsListening({ layout = 'cards' }: { layout?: 'cards' | 'row' } = {}) {
   const { user } = useAuth();
   const { playTrack } = usePlayer();
   const { data } = useQuery({
@@ -26,9 +30,29 @@ export function FriendsListening() {
 
   if (!data?.length) return null;
 
+  if (layout === 'row') {
+    return (
+      <RowShelf title={TITLE}>
+        {data.map((item, i) => {
+          const ago = formatAgo(item.playedAt);
+          return (
+            <TrackCard
+              key={`${i}-${item.userName}-${item.track.id}`}
+              variant="tile"
+              track={item.track}
+              onActivate={() => playTrack(item.track)}
+              subtitle={ago ? `${item.userName} · ${ago}` : item.userName}
+              artworkFallback={MUSIC_ICON_FALLBACK}
+            />
+          );
+        })}
+      </RowShelf>
+    );
+  }
+
   return (
     <section className="mb-10">
-      <h2 className="text-xl font-bold tracking-tight mb-4">Friends are listening to</h2>
+      <h2 className="text-xl font-bold tracking-tight mb-4">{TITLE}</h2>
       <div className="flex gap-4 overflow-x-auto pb-2 -mx-1 px-1 scrollbar-thin">
         {data.map((item, i) => {
           const ago = formatAgo(item.playedAt);

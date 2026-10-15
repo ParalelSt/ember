@@ -18,11 +18,30 @@ export interface CollectionCardProps {
    *  face takes the people mark's and the subtitle's place. */
   sharedBy?: Pick<PlaylistPerson, 'name' | 'avatarUrl'>;
   size: 'md' | 'lg';
+  /** 'card' (default): the boxed Library card. 'tile': the phone Home
+   *  row's bare tile, cover on top, a two-line title and one muted line. */
+  variant?: 'card' | 'tile';
 }
 
 /** Presentational only: no data fetching, no store reads. One tile in a
  *  CollectionShelf, for a system collection or a playlist alike. */
-export function CollectionCard({ title, subtitle, href, cover, badge, shared, sharedBy, size }: CollectionCardProps) {
+export function CollectionCard({ title, subtitle, href, cover, badge, shared, sharedBy, size, variant = 'card' }: CollectionCardProps) {
+  if (variant === 'tile') {
+    return (
+      <Link href={href} className="group block min-w-0">
+        <CollectionCover {...cover} className={cn('w-full rounded-[8px] shadow-none', cover.className)} />
+        {/* The marks sit inline before the name, so they wrap and clamp
+            with it instead of taking a column of their own. */}
+        <div className="mt-cluster min-w-0 line-clamp-2 break-words text-sm font-semibold leading-snug">
+          {badge === 'downloaded' && <CheckIcon className="mr-1 inline size-3.5 align-[-2px] text-ember" />}
+          {shared && !sharedBy && <PeopleIcon data-testid="shared-badge" aria-label="Shared" className="mr-1 inline size-3.5 align-[-2px] text-muted-foreground" />}
+          {title}
+        </div>
+        {/* A shared playlist's subtitle already says whose it is. */}
+        <div className="mt-inset truncate text-xs text-muted-foreground">{subtitle}</div>
+      </Link>
+    );
+  }
   return (
     <Link href={href} className="group block p-4 rounded-md bg-card hover:bg-card/80 transition-colors">
       <CollectionCover {...cover} />

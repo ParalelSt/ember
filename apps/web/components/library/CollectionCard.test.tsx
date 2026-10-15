@@ -27,3 +27,21 @@ describe('CollectionCard', () => {
     expect(screen.getByText('Collaborative')).toBeInTheDocument();
   });
 });
+
+describe('CollectionCard tile (the phone Home "Your playlists" row)', () => {
+  it('is a bare link tile: square cover, a two-line title and one muted line', () => {
+    const title = 'A Playlist Name So Long It Would Never Fit On One Line Of A Phone Tile';
+    render(<CollectionCard {...base} title={title} variant="tile" />);
+    const link = screen.getByRole('link');
+    expect(link).toHaveAttribute('href', '/playlist/p1');
+    expect(link).not.toHaveClass('bg-card');
+    expect(screen.getByText(title)).toHaveClass('line-clamp-2', 'break-words', 'min-w-0');
+    expect(screen.getByText('Playlist')).toHaveClass('truncate', 'text-muted-foreground');
+  });
+
+  it('a shared playlist says whose it is in its one line, without the pill', () => {
+    render(<CollectionCard {...base} subtitle="Shared by Olga" shared sharedBy={{ name: 'Olga', avatarUrl: null }} variant="tile" />);
+    expect(screen.getByText('Shared by Olga')).toBeInTheDocument();
+    expect(screen.queryByTestId('shared-by')).toBeNull();
+  });
+});

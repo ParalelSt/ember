@@ -1,7 +1,7 @@
 import type { ComponentProps } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
-import { TrackShelf } from './TrackShelf';
+import { render, screen, within } from '@testing-library/react';
+import { ROW_MAX, TrackShelf } from './TrackShelf';
 import { SHELF_ROW_COUNT } from '@/lib/layout';
 import type { Track } from '@/types/track';
 
@@ -187,5 +187,52 @@ describe('TrackShelf', () => {
       );
       expect(screen.getAllByRole('listitem')).toHaveLength(4);
     });
+  });
+});
+
+describe('TrackShelf row layout (the phone Home)', () => {
+  it('puts the tracks in one sideways row, up to ROW_MAX, with Show all to the focus view', () => {
+    render(
+      <TrackShelf
+        layout="row"
+        title="Recently played"
+        tracks={makeTracks(ROW_MAX + 5)}
+        showAllHref="/?focus=history"
+        renderCard={renderCard}
+      />,
+    );
+    const list = screen.getByRole('list');
+    expect(list).toHaveClass('flex', 'overflow-x-auto', 'snap-x');
+    expect(within(list).getAllByRole('listitem')).toHaveLength(ROW_MAX);
+    expect(screen.getByRole('link', { name: 'Show all' })).toHaveAttribute('href', '/?focus=history');
+  });
+
+  it('offers Show all even on a short row, and hands the whole list to each card', () => {
+    const seen: number[] = [];
+    render(
+      <TrackShelf
+        layout="row"
+        title="From your liked songs"
+        tracks={makeTracks(3)}
+        showAllHref="/?focus=liked"
+        renderCard={(t, list) => {
+          seen.push(list.length);
+          return <div>{t.title}</div>;
+        }}
+      />,
+    );
+    expect(screen.getAllByRole('listitem')).toHaveLength(3);
+    expect(screen.getByRole('link', { name: 'Show all' })).toHaveAttribute('href', '/?focus=liked');
+    expect(seen.every((n) => n === 3)).toBe(true);
+  });
+
+  it('shows skeleton tiles while loading and hides when it ends up empty', () => {
+    const { rerender, container } = render(
+      <TrackShelf layout="row" title="Trending right now" tracks={undefined} loading renderCard={renderCard} />,
+    );
+    expect(screen.getAllByRole('listitem')).toHaveLength(3);
+    expect(screen.queryByRole('link', { name: 'Show all' })).toBeNull();
+    rerender(<TrackShelf layout="row" title="Trending right now" tracks={[]} renderCard={renderCard} />);
+    expect(container).toBeEmptyDOMElement();
   });
 });

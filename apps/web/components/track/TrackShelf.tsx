@@ -6,6 +6,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { ChevronLeftIcon } from '@/components/icons';
 import { PageTitle } from '@/components/page/PageTitle';
 import { SectionHeader } from '@/components/page/SectionHeader';
+import { RowShelf } from '@/components/page/RowShelf';
 import { columnsForWidth, gridColsClass, visibleCount } from '@/lib/layout';
 import type { Track } from '@/types/track';
 
@@ -27,7 +28,14 @@ interface Props {
   /** When true, the whole content area belongs to this shelf: back link
    *  + big title + responsive grid of every track. */
   fullscreen?: boolean;
+  /** 'grid' (default): one measured row of cards, the desktop shelf.
+   *  'row': the phone Home's sideways-scrolling row (RowShelf), its first
+   *  ROW_MAX tracks, with "Show all" whenever `showAllHref` is given. */
+  layout?: 'grid' | 'row';
 }
+
+/** How many tiles a phone row holds before "Show all" is the way on. */
+export const ROW_MAX = 20;
 
 // When the desktop lyrics panel is open, main shrinks by ~max(40vw, 28rem).
 // Use fewer columns so cards stay legible instead of cramming together.
@@ -68,7 +76,7 @@ function useShelfColumns(lyricsOpen: boolean) {
 
 /** Presentational only: one horizontal shelf of track cards, with an
  *  optional "Show all" link, or the fullscreen grid of every card. */
-export function TrackShelf({ title, tracks, loading, showAllHref, renderCard, lyricsOpen = false, fullscreen }: Props) {
+export function TrackShelf({ title, tracks, loading, showAllHref, renderCard, lyricsOpen = false, fullscreen, layout = 'grid' }: Props) {
   const gridCols = gridColsClass(lyricsOpen ? 'lyrics' : 'default');
   const { gridRef, count: rowCount, style: gridStyle } = useShelfColumns(lyricsOpen);
   const hasTracks = !!tracks && tracks.length > 0;
@@ -95,6 +103,24 @@ export function TrackShelf({ title, tracks, loading, showAllHref, renderCard, ly
           ))}
         </div>
       </section>
+    );
+  }
+
+  if (layout === 'row') {
+    const loadingRow = loading && !hasTracks;
+    const rowTracks = all.slice(0, ROW_MAX);
+    return (
+      <RowShelf title={title} showAllHref={loadingRow ? undefined : showAllHref}>
+        {loadingRow
+          ? Array.from({ length: 3 }).map((_, i) => (
+              <div key={`skeleton-${i}`}>
+                <Skeleton className="aspect-square w-full rounded-[8px]" />
+                <Skeleton className="mt-cluster h-4 w-3/4" />
+                <Skeleton className="mt-inset h-3 w-1/2" />
+              </div>
+            ))
+          : rowTracks.map((t) => <div key={t.id}>{renderCard(t, all)}</div>)}
+      </RowShelf>
     );
   }
 

@@ -212,6 +212,10 @@
   .shadow-glow   { box-shadow: 0 8px 30px -12px color-mix(in oklab, var(--ember) 65%, transparent); }
   .ring-ember    { box-shadow: 0 0 0 2px color-mix(in oklab, var(--ember) 70%, transparent); }
   .scrollbar-thin::-webkit-scrollbar { height: 6px; width: 6px; }
+  /* A sideways shelf that scrolls by touch with no bar showing (the
+     phone Home rows, components/page/RowShelf.tsx). */
+  .scrollbar-none { scrollbar-width: none; }
+  .scrollbar-none::-webkit-scrollbar { display: none; }
 
   /* Put `inline-block` back to meaning only "display: inline-block".
      Tailwind 4 derives a logical-width family (`inline-*` -> inline-size)
