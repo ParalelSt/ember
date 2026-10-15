@@ -1,6 +1,6 @@
 import type { ComponentProps } from 'react';
 import { describe, expect, it, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 
 vi.mock('next/link', () => ({
   default: ({ href, children, ...rest }: ComponentProps<'a'>) => <a href={href} {...rest}>{children}</a>,
@@ -43,5 +43,38 @@ describe('CollectionCard tile (the phone Home "Your playlists" row)', () => {
     render(<CollectionCard {...base} subtitle="Shared by Olga" shared sharedBy={{ name: 'Olga', avatarUrl: null }} variant="tile" />);
     expect(screen.getByText('Shared by Olga')).toBeInTheDocument();
     expect(screen.queryByTestId('shared-by')).toBeNull();
+  });
+});
+
+describe('CollectionCard, desktop tile (tile-lg)', () => {
+  it('is a bare 180px-row tile: cover, a 15px two-line name that opens it, a 13px muted line', () => {
+    render(<CollectionCard {...base} variant="tile-lg" subtitle="Playlist · Aron" />);
+    const name = screen.getByRole('link', { name: 'Road trip' });
+    expect(name).toHaveAttribute('href', '/playlist/p1');
+    expect(name).toHaveClass('text-[15px]', 'font-bold', 'line-clamp-2');
+    expect(screen.getByText('Playlist · Aron')).toHaveClass('text-[13px]', 'text-muted-foreground');
+    // One link in the tab order; the cover's own link is hidden from it.
+    expect(screen.getAllByRole('link')).toHaveLength(1);
+  });
+
+  it('a play button slides up on hover and plays the collection', () => {
+    const onPlay = vi.fn();
+    render(<CollectionCard {...base} variant="tile-lg" onPlay={onPlay} />);
+    const play = screen.getByRole('button', { name: 'Play Road trip' });
+    expect(play).toHaveClass('opacity-0', 'translate-y-2', 'group-hover:opacity-100', 'group-hover:translate-y-0');
+    // Not inside a link: pressing it plays, it does not open the page.
+    expect(play.closest('a')).toBeNull();
+    fireEvent.click(play);
+    expect(onPlay).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps the button up as Pause while the collection plays', () => {
+    render(<CollectionCard {...base} variant="tile-lg" onPlay={() => {}} playing />);
+    expect(screen.getByRole('button', { name: 'Pause' })).toHaveClass('opacity-100');
+  });
+
+  it('has no play button without onPlay', () => {
+    render(<CollectionCard {...base} variant="tile-lg" />);
+    expect(screen.queryByRole('button')).toBeNull();
   });
 });

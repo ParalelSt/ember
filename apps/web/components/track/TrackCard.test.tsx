@@ -145,3 +145,26 @@ describe('TrackCard tile (the phone Home row)', () => {
     expect(screen.getByText('Robin · 5 min ago')).toHaveClass('truncate');
   });
 });
+
+describe('TrackCard, desktop tile (tile-lg)', () => {
+  it('has a 15px bold title over two lines and a 13px muted artist', () => {
+    render(<TrackCard track={track} variant="tile-lg" onActivate={() => {}} />);
+    expect(screen.getByText('Midnight Drive')).toHaveClass('text-[15px]', 'font-bold', 'line-clamp-2');
+    expect(screen.getByRole('link', { name: 'The Nulls' }).parentElement).toHaveClass('text-[13px]', 'text-muted-foreground');
+  });
+
+  it('slides its play button up on hover, and the button plays', () => {
+    const onActivate = vi.fn();
+    render(<TrackCard track={track} variant="tile-lg" onActivate={onActivate} />);
+    const play = screen.getByRole('button', { name: 'Play' });
+    expect(play).toHaveClass('opacity-0', 'translate-y-2', 'group-hover:opacity-100', 'group-hover:translate-y-0');
+    fireEvent.click(play);
+    expect(onActivate).toHaveBeenCalledTimes(1);
+  });
+
+  it('marks the current track in ember and keeps its button up, as on a phone', () => {
+    render(<TrackCard track={track} variant="tile-lg" active playing onActivate={() => {}} />);
+    expect(screen.getByText('Midnight Drive')).toHaveClass('text-ember');
+    expect(screen.getByRole('button', { name: 'Pause' })).toHaveClass('opacity-100');
+  });
+});

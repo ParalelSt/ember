@@ -25,8 +25,10 @@ interface Props {
   artworkFallback?: ReactNode;
   /** 'card' (default): the boxed card of the desktop shelves. 'tile': the
    *  phone Home row's bare tile, a square cover with the title (up to two
-   *  lines) and artist below it, and the current track marked in ember. */
-  variant?: 'card' | 'tile';
+   *  lines) and artist below it, and the current track marked in ember.
+   *  'tile-lg': the desktop Home row's tile, the same with bigger type and a
+   *  play button that slides up on hover. */
+  variant?: 'card' | 'tile' | 'tile-lg';
   /** The tile's kind word before the artist ("Song" reads "Song · Artist"),
    *  like Spotify's Recents tiles. Omit for the artist alone. */
   kind?: string;
@@ -55,7 +57,8 @@ function ArtistLine({ track, className, kind }: { track: Track; className: strin
 /** Presentational only: a square track card with a hover-revealed play
  *  button. Playback state and the activate handler come from props. */
 export function TrackCard({ track, active = false, playing = false, onActivate, subtitle, artworkFallback, variant = 'card', kind, className }: Props) {
-  if (variant === 'tile') {
+  if (variant === 'tile' || variant === 'tile-lg') {
+    const lg = variant === 'tile-lg';
     return (
       <div
         onClick={onActivate}
@@ -78,24 +81,31 @@ export function TrackCard({ track, active = false, playing = false, onActivate, 
             playing={active && playing}
             onClick={(e) => { e.stopPropagation(); onActivate(); }}
             className={cn(
-              'absolute right-2 bottom-2 shadow-soft transition-opacity',
+              'absolute right-2 bottom-2 shadow-soft',
               // The current track keeps its button showing (pause while it
-              // plays); the rest stay clean until focused by keyboard.
-              active ? 'opacity-100' : 'opacity-0 focus-visible:opacity-100',
+              // plays); the rest stay clean until focused by keyboard, and on
+              // a desktop until hovered, when it slides up into place.
+              lg ? 'transition-[opacity,translate]' : 'transition-opacity',
+              active
+                ? 'opacity-100'
+                : lg
+                  ? 'translate-y-2 opacity-0 group-hover:translate-y-0 group-hover:opacity-100 focus-visible:translate-y-0 focus-visible:opacity-100'
+                  : 'opacity-0 focus-visible:opacity-100',
             )}
           />
         </div>
         <div
           className={cn(
-            'mt-cluster line-clamp-2 break-words text-sm font-bold leading-snug',
+            'mt-cluster line-clamp-2 break-words font-bold leading-snug',
+            lg ? 'text-[15px]' : 'text-sm',
             active ? 'text-ember' : 'text-foreground',
           )}
         >
           {track.title}
         </div>
-        <ArtistLine track={track} kind={kind} className="mt-inset truncate text-xs text-muted-foreground" />
+        <ArtistLine track={track} kind={kind} className={cn('mt-inset truncate text-muted-foreground', lg ? 'text-[13px]' : 'text-xs')} />
         {subtitle != null && (
-          <div className="mt-inset truncate text-xs text-ember">{subtitle}</div>
+          <div className={cn('mt-inset truncate text-ember', lg ? 'text-[13px]' : 'text-xs')}>{subtitle}</div>
         )}
       </div>
     );
