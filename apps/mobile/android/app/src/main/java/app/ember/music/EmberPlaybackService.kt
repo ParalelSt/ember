@@ -115,11 +115,11 @@ class EmberPlaybackService : MediaLibraryService() {
         private const val SETTLED_AHEAD_MS = 30_000L
 
         /** Whether the current song is loaded far enough that a prefetch
-         *  will not compete with it. Media3 buffers ~50 s ahead, so "loaded to
-         *  the end" alone would hold every prefetch until a song's last 50 s;
-         *  a full buffer means the player is not waiting on the network
-         *  either. null when the length is unknown (the policy then waits
-         *  for 45 s of play instead). */
+         *  will not compete with it. The player loads the playing song whole
+         *  (SongLoadControl), which on a slow connection takes a while, so 30 s
+         *  ahead counts too: the player is not waiting on the network then.
+         *  null when the length is unknown (the policy then waits for 45 s of
+         *  play instead). */
         fun settled(durationMs: Long, bufferedMs: Long, aheadMs: Long, wholeOnDisk: Boolean): Boolean? = when {
             wholeOnDisk -> true
             durationMs == C.TIME_UNSET || durationMs <= 0 -> null
@@ -152,8 +152,9 @@ class EmberPlaybackService : MediaLibraryService() {
         /** The music player: streams (through the auto cache, see MediaCache),
          *  or the downloaded copy when there is one (OfflineAudio), through
          *  the equalizer [eq] when given (Equalizer.kt), marking the listener's
-         *  retry of a failed song when [retry] is given (ListenerRetry). Its
-         *  own function so tests build the same one. */
+         *  retry of a failed song when [retry] is given (ListenerRetry). It
+         *  loads the playing song whole (SongLoadControl). Its own function
+         *  so tests build the same one. */
         fun buildPlayer(
             context: Context,
             streams: DataSource.Factory,
@@ -161,6 +162,7 @@ class EmberPlaybackService : MediaLibraryService() {
             eq: AudioProcessor? = null,
             retry: ListenerRetry? = null,
             online: () -> Boolean = { true },
+            loads: SongLoadControl = SongLoadControl(),
         ): ExoPlayer =
             (if (eq != null) ExoPlayer.Builder(context, EqualizerProcessor.renderers(context, eq)) else ExoPlayer.Builder(context))
                 .setMediaSourceFactory(
@@ -168,6 +170,7 @@ class EmberPlaybackService : MediaLibraryService() {
                         .setDataSourceFactory(OfflineAudio.dataSourceFactory(context, retry?.dataSourceFactory(streams) ?: streams, offline))
                         .setLoadErrorHandlingPolicy(PatientLoadErrors(online)),
                 )
+                .setLoadControl(loads)
                 .setAudioAttributes(AudioAttributes.Builder().setUsage(C.USAGE_MEDIA).setContentType(C.AUDIO_CONTENT_TYPE_MUSIC).build(), true)
                 .setHandleAudioBecomingNoisy(true)
                 // Screen off, Android lets the CPU and Wi-Fi sleep; the audio
@@ -179,6 +182,7 @@ class EmberPlaybackService : MediaLibraryService() {
                 // shuffle flag must never change the play order as well.
                 .also { it.setShuffleOrder(ShuffleOrder.UnshuffledShuffleOrder(0)) }
                 .also { p -> retry?.let { p.addListener(it) } }
+                .also { loads.follow(it) }
     }
 
     private lateinit var player: ExoPlayer
