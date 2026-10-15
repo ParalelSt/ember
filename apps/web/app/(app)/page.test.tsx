@@ -26,6 +26,8 @@ const state = vi.hoisted(() => ({
   isPlaying: false,
   playTrack: vi.fn(),
   toggle: vi.fn(),
+  playCollection: vi.fn(),
+  collectionPlaying: null as string | null,
 }));
 
 vi.mock('next/navigation', () => ({
@@ -47,6 +49,13 @@ vi.mock('@/hooks/useCollections', () => ({
   }),
 }));
 vi.mock('@/hooks/useSession', () => ({ useQueryLiveCarlist: () => ({ data: state.carlist }) }));
+// Its own tests cover fetching the songs; here it only has to be asked.
+vi.mock('@/hooks/usePlayCollection', () => ({
+  usePlayCollection: () => ({
+    play: state.playCollection,
+    isPlaying: (ref: { kind: string; id?: string }) => (ref.kind === 'playlist' ? ref.id : ref.kind) === state.collectionPlaying,
+  }),
+}));
 vi.mock('@/stores/usePlayerStore', () => ({
   usePlayerStore: (sel: (s: { context: PlaybackContext | null }) => unknown) => sel({ context: state.context }),
 }));
@@ -101,6 +110,7 @@ beforeEach(() => {
     context: null,
     current: null,
     isPlaying: false,
+    collectionPlaying: null,
   });
 });
 
@@ -328,23 +338,127 @@ describe('Home on a phone, playback', () => {
   });
 });
 
-describe('Home on a desktop window', () => {
-  it('keeps the title, the grid shelves and their order, with no quick grid', () => {
+describe('Home on a desktop window (the owner\'s picks)', () => {
+  beforeEach(() => {
     state.desktop = true;
+  });
+  const chip = (name: string) => within(screen.getByRole('toolbar', { name: 'Filter Home' })).getByRole('button', { name });
+  const grid = () => screen.getByRole('list', { name: 'Your collections' });
+
+  it('has no big Home title; chips, then the 4-column quick grid', () => {
     render(<HomePage />);
-    expect(screen.getByRole('heading', { level: 1, name: 'Home' })).toBeInTheDocument();
-    expect(screen.queryByRole('list', { name: 'Your collections' })).toBeNull();
+    expect(screen.queryByRole('heading', { level: 1 })).toBeNull();
+    const bar = screen.getByRole('toolbar', { name: 'Filter Home' });
+    expect(within(bar).getAllByRole('button').map((b) => b.textContent)).toEqual(['All', 'Playlists']);
+    expect(chip('All')).toHaveClass('bg-ember');
+    expect(bar).not.toHaveClass('sticky');
+    expect(grid()).toHaveClass('grid-cols-4');
+    // The chips come first, then the grid.
+    expect(bar.compareDocumentPosition(grid()) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('holds eight tiles: Liked songs, then your playlists', () => {
+    state.playlists = Array.from({ length: 9 }, (_, i) => toSummary({ kind: 'playlist', id: `p${i}` }, { name: `List ${i}` }));
+    render(<HomePage />);
+    const names = within(grid()).getAllByRole('link').map((a) => a.textContent);
+    expect(names).toHaveLength(8);
+    expect(names.slice(0, 2)).toEqual(['Liked songs', 'List 0']);
+  });
+
+  it('orders the rows like the phone (order B), with Popular now and no "From your liked songs"', () => {
+    render(<HomePage />);
     expect(headings()).toEqual([
-      'Friends are listening to',
-      'Because you played "hist song 0"',
-      'Trending right now',
-      'From your liked songs',
       'Recently played',
+      'Because you played "hist song 0"',
+      'Popular now',
+      'Your playlists',
+      'Friends are listening to',
     ]);
-    expect(screen.getByRole('region', { name: 'Friends are listening to' })).toHaveAttribute('data-layout', 'cards');
-    // The desktop shelves are grids, not sideways rows.
-    const lists = screen.getAllByRole('list');
-    for (const l of lists) expect(l).toHaveClass('grid');
+    expect(screen.queryByText('Trending right now')).toBeNull();
+    expect(screen.queryByText('From your liked songs')).toBeNull();
+    expect(screen.getByRole('region', { name: 'Friends are listening to' })).toHaveAttribute('data-layout', 'desktop-row');
+  });
+
+  it('the Playlists chip keeps the grid and Your playlists only', () => {
+    render(<HomePage />);
+    fireEvent.click(chip('Playlists'));
+    expect(grid()).toBeInTheDocument();
+    expect(headings()).toEqual(['Your playlists']);
+  });
+
+  it('every row scrolls sideways with 180px tiles and < > in its header, Show all only when there is more', () => {
+    state.history = makeTracks('hist', ROW_MAX + 1);
+    render(<HomePage />);
+    for (const name of ['Recently played', 'Popular now', 'Your playlists']) {
+      const region = within(screen.getByRole('region', { name }));
+      const row = region.getByRole('list');
+      expect(row).toHaveClass('flex', 'overflow-x-auto');
+      expect(region.getAllByRole('listitem')[0]).toHaveClass('w-[180px]');
+      expect(region.getByRole('button', { name: 'Scroll left' })).toBeInTheDocument();
+      expect(region.getByRole('button', { name: 'Scroll right' })).toBeInTheDocument();
+      expect(region.getByRole('heading', { level: 2 })).toHaveClass('text-2xl', 'font-bold');
+    }
+    expect(within(screen.getByRole('region', { name: 'Recently played' })).getByRole('link', { name: 'Show all' }))
+      .toHaveAttribute('href', '/?focus=history');
+    expect(within(screen.getByRole('region', { name: 'Popular now' })).queryByRole('link', { name: 'Show all' })).toBeNull();
+  });
+
+  it('uses the full width: no bleed past the gutter and the content cap lifted', () => {
+    const { container } = render(<HomePage />);
+    expect(container.querySelector('[data-home-wide]')).not.toBeNull();
+    for (const row of document.querySelectorAll('[data-row-shelf]')) expect(row.className).not.toMatch(/-mx-|px-page/);
+    const hero = document.querySelector('[data-hero="wide"]') as HTMLElement;
+    expect(hero.className).not.toMatch(/-m[xl]-/);
+  });
+
+  it('a song tile plays its row, the current one toggles and stays marked', () => {
+    state.current = state.trending[1];
+    state.isPlaying = true;
+    render(<HomePage />);
+    const row = within(screen.getByRole('region', { name: 'Popular now' }));
+    fireEvent.click(row.getByText('trend song 3'));
+    expect(state.playTrack).toHaveBeenCalledWith(state.trending[3], state.trending);
+    expect(row.getByText('trend song 1')).toHaveClass('text-ember', 'text-[15px]');
+    fireEvent.click(row.getByRole('button', { name: 'Pause' }));
+    expect(state.toggle).toHaveBeenCalledTimes(1);
+  });
+
+  it('the hover play buttons on the quick grid and on Your playlists play that collection', () => {
+    render(<HomePage />);
+    fireEvent.click(within(grid()).getByRole('button', { name: 'Play Liked songs' }));
+    expect(state.playCollection).toHaveBeenLastCalledWith({ kind: 'liked' }, 'Liked songs');
+    fireEvent.click(within(grid()).getByRole('button', { name: 'Play Gym' }));
+    expect(state.playCollection).toHaveBeenLastCalledWith({ kind: 'playlist', id: 'p2' }, 'Gym');
+    const lists = within(screen.getByRole('region', { name: 'Your playlists' }));
+    fireEvent.click(lists.getByRole('button', { name: 'Play Road trip' }));
+    expect(state.playCollection).toHaveBeenLastCalledWith({ kind: 'playlist', id: 'p1' }, 'Road trip');
+  });
+
+  it('shows Pause on the collection that is playing', () => {
+    state.collectionPlaying = 'p1';
+    render(<HomePage />);
+    expect(within(grid()).getByRole('button', { name: 'Pause' })).toBeInTheDocument();
+    expect(within(screen.getByRole('region', { name: 'Your playlists' })).getByRole('button', { name: 'Pause' })).toBeInTheDocument();
+  });
+
+  it('Because you played is the wide card: plays the list, a row from that song, the current one toggles', () => {
+    render(<HomePage />);
+    const card = within(screen.getByRole('region', { name: 'Because you played "hist song 0"' }));
+    expect(document.querySelector('[data-hero="wide"]')).not.toBeNull();
+    expect(card.getAllByRole('listitem')).toHaveLength(4);
+    fireEvent.click(card.getByRole('button', { name: 'Play these songs' }));
+    expect(state.playTrack).toHaveBeenLastCalledWith(state.recommended[0], state.recommended);
+    fireEvent.click(card.getByText('rec song 3'));
+    expect(state.playTrack).toHaveBeenLastCalledWith(state.recommended[3], state.recommended);
+    // 6 suggestions, the card holds 5.
+    expect(card.getByRole('link', { name: 'Show all' })).toHaveAttribute('href', '/?focus=recommended');
+  });
+
+  it('Show all still opens the full grid of that row', () => {
+    state.focus = 'trending';
+    render(<HomePage />);
+    expect(screen.getByRole('heading', { level: 1, name: 'Popular now' })).toBeInTheDocument();
+    expect(screen.queryByRole('list', { name: 'Your collections' })).toBeNull();
   });
 });
 

@@ -15,7 +15,6 @@ import { usePlayer } from '@/components/player/PlayerProvider';
 import { useUiStore } from '@/stores/useUiStore';
 import { FriendsListening } from '@/components/FriendsListening';
 import type { Track } from '@/types/track';
-import { PageTitle } from '@/components/page/PageTitle';
 import { RowShelf } from '@/components/page/RowShelf';
 import { CollectionCard } from '@/components/library/CollectionCard';
 import { QuickGrid } from '@/components/home/QuickGrid';
@@ -25,17 +24,25 @@ import { useAuth } from '@/components/providers/AuthProvider';
 import { useIsDesktop } from '@/hooks/useIsDesktop';
 import { useCollections } from '@/hooks/useCollections';
 import { useQueryLiveCarlist } from '@/hooks/useSession';
+import { usePlayCollection } from '@/hooks/usePlayCollection';
 import { usePlayerStore } from '@/stores/usePlayerStore';
-import { homeChips, phoneHomeView, quickPicks, recentFirst, type HomeFilter, type HomeRowKey } from '@/lib/home';
+import {
+  QUICK_MAX,
+  QUICK_MAX_DESKTOP,
+  homeChips,
+  phoneHomeView,
+  quickPicks,
+  recentFirst,
+  type HomeFilter,
+  type HomeRowKey,
+  type QuickPick,
+} from '@/lib/home';
 import { playlistCover } from '@/lib/collections';
 import { publicName } from '@/lib/collab';
 
 interface Section {
   key: string;
   title: string;
-  /** The phone Home's name for the row, when it differs (order B renamed
-   *  "Trending right now" to "Popular now"; the desktop keeps its title). */
-  phoneTitle?: string;
   tracks: Track[];
   loading?: boolean;
   hidden?: boolean;
@@ -48,19 +55,22 @@ export default function HomePage() {
   // The shelves are presentational, so the page reads the lyrics flag and
   // renders the cards (with their playback state) itself.
   const lyricsOpen = useUiStore((s) => s.lyricsOpen);
-  // A phone gets Spotify's mobile Home (quick grid, sideways rows); md and
-  // up keep the desktop shelves. A media query, not md: classes, so only
-  // one of the two layouts is ever in the page.
+  // A phone and a desktop window get the same Home (chips, quick grid, the
+  // owner's order B of sideways rows), each with its own sizes: 140px tiles
+  // that snap by touch on a phone, 180px tiles with header arrows, a
+  // four-column grid and a wide hero card on md and up. A media query, not
+  // md: classes, so only one of the two is ever in the page.
   const isDesktop = useIsDesktop();
+  const collection = usePlayCollection();
 
-  const renderTrack = (t: Track, list: Track[], variant: 'card' | 'tile') => {
+  const renderTrack = (t: Track, list: Track[], variant: 'card' | 'tile' | 'tile-lg') => {
     const active = current?.id === t.id;
     return (
       <TrackCard
         track={t}
         variant={variant}
-        // Phone rows of songs read "Song · <artist>", Spotify's Recents tiles.
-        kind={variant === 'tile' ? 'Song' : undefined}
+        // Rows of songs read "Song · <artist>", Spotify's Recents tiles.
+        kind={variant === 'card' ? undefined : 'Song'}
         active={active}
         playing={isPlaying}
         // Same rule the card used to own: re-tapping the current track
@@ -70,7 +80,7 @@ export default function HomePage() {
     );
   };
   const renderCard = (t: Track, list: Track[]) => renderTrack(t, list, 'card');
-  const renderTile = (t: Track, list: Track[]) => renderTrack(t, list, 'tile');
+  const renderTile = (t: Track, list: Track[]) => renderTrack(t, list, isDesktop ? 'tile-lg' : 'tile');
   const { user } = useAuth();
   const [filter, setFilter] = useState<HomeFilter>('all');
 
@@ -114,14 +124,15 @@ export default function HomePage() {
 
   const sections: Section[] = [
     { key: 'recommended', title: recsTitle, tracks: recommended, loading: recommendedLoading },
-    { key: 'trending', title: 'Trending right now', phoneTitle: 'Popular now', tracks: trending, loading: trendingLoading },
+    { key: 'trending', title: 'Popular now', tracks: trending, loading: trendingLoading },
     { key: 'liked', title: 'From your liked songs', tracks: liked, hidden: liked.length === 0 },
     { key: 'history', title: 'Recently played', tracks: history, hidden: history.length === 0 },
   ];
 
-  // The phone's rows (the owner's order B, lib/home.ts PHONE_ORDER) and
-  // which of them have something to show, which also decides the chips.
-  // "From your liked songs" is not one of them: Liked songs is in the grid.
+  // The rows (the owner's order B, lib/home.ts PHONE_ORDER, on a desktop
+  // too) and which of them have something to show, which also decides the
+  // chips. "From your liked songs" is not one of them: Liked songs is in
+  // the grid. Its focus view stays for old links.
   const available = new Set<HomeRowKey>(['friends']);
   if (history.length > 0) available.add('history');
   if (recommended.length > 0 || recommendedLoading) available.add('recommended');
@@ -132,13 +143,81 @@ export default function HomePage() {
   const myName = publicName(user);
 
   const focused = focus ? sections.find((s) => s.key === focus && !s.hidden) : null;
-  const titleOf = (sec: Section) => (!isDesktop && sec.phoneTitle) || sec.title;
+
+  const quick = quickPicks({
+    liked: system.find((c) => c.ref.kind === 'liked'),
+    playlists,
+    carlist,
+    playingPlaylistId,
+    max: isDesktop ? QUICK_MAX_DESKTOP : QUICK_MAX,
+  });
+  const playQuick = (item: QuickPick) => {
+    if (item.ref) void collection.play(item.ref, item.title);
+  };
+  const quickPlaying = (item: QuickPick) => !!item.ref && collection.isPlaying(item.ref);
+
+  const renderRow = (key: HomeRowKey) => {
+    if (key === 'playlists') {
+      return (
+        <RowShelf key={key} title="Your playlists" showAllHref="/library" variant={isDesktop ? 'desktop' : 'phone'}>
+          {recentFirst(playlists, playingPlaylistId).map((p) => (
+            <CollectionCard
+              key={p.href}
+              variant={isDesktop ? 'tile-lg' : 'tile'}
+              size="md"
+              title={p.title}
+              subtitle={`Playlist · ${p.sharedBy?.name ?? myName}`}
+              href={p.href}
+              cover={{ icon: null, ...playlistCover(p.artworkUrl, p.trackArtworks) }}
+              badge={p.downloaded ? 'downloaded' : undefined}
+              shared={!!p.sharing}
+              sharedBy={p.sharedBy}
+              {...(isDesktop
+                ? { onPlay: () => void collection.play(p.ref, p.title), playing: collection.isPlaying(p.ref) }
+                : null)}
+            />
+          ))}
+        </RowShelf>
+      );
+    }
+    if (key === 'friends') return <FriendsListening key={key} layout={isDesktop ? 'desktop-row' : 'row'} />;
+    if (key === 'recommended') {
+      return (
+        <BecauseYouPlayed
+          key={key}
+          variant={isDesktop ? 'wide' : 'phone'}
+          title={recsTitle}
+          seedArtist={seedTrack?.artist}
+          tracks={recommended}
+          loading={recommendedLoading}
+          currentId={current?.id}
+          isPlaying={isPlaying}
+          onPlay={playTrack}
+          onToggle={toggle}
+          showAllHref="/?focus=recommended"
+        />
+      );
+    }
+    const s = sections.find((x) => x.key === key);
+    if (!s || s.hidden) return null;
+    return (
+      <TrackShelf
+        key={s.key}
+        layout={isDesktop ? 'desktop-row' : 'row'}
+        title={s.title}
+        tracks={s.tracks}
+        loading={s.loading}
+        showAllHref={`/?focus=${encodeURIComponent(s.key)}`}
+        renderCard={renderTile}
+      />
+    );
+  };
 
   return (
     <OnlineOnly>
       {focused ? (
         <TrackShelf
-          title={titleOf(focused)}
+          title={focused.title}
           tracks={focused.tracks}
           loading={focused.loading}
           renderCard={renderCard}
@@ -148,86 +227,16 @@ export default function HomePage() {
       ) : !isDesktop ? (
         <div>
           {chips.length > 1 && <HomeChips chips={chips} active={view.filter} onChange={setFilter} />}
-          {view.quickGrid && (
-            <QuickGrid
-              items={quickPicks({
-                liked: system.find((c) => c.ref.kind === 'liked'),
-                playlists,
-                carlist,
-                playingPlaylistId,
-              })}
-            />
-          )}
-          {view.rows.map((key) => {
-            if (key === 'playlists') {
-              return (
-                <RowShelf key={key} title="Your playlists" showAllHref="/library">
-                  {recentFirst(playlists, playingPlaylistId).map((p) => (
-                    <CollectionCard
-                      key={p.href}
-                      variant="tile"
-                      size="md"
-                      title={p.title}
-                      subtitle={`Playlist · ${p.sharedBy?.name ?? myName}`}
-                      href={p.href}
-                      cover={{ icon: null, ...playlistCover(p.artworkUrl, p.trackArtworks) }}
-                      badge={p.downloaded ? 'downloaded' : undefined}
-                      shared={!!p.sharing}
-                      sharedBy={p.sharedBy}
-                    />
-                  ))}
-                </RowShelf>
-              );
-            }
-            if (key === 'friends') return <FriendsListening key={key} layout="row" />;
-            if (key === 'recommended') {
-              return (
-                <BecauseYouPlayed
-                  key={key}
-                  title={recsTitle}
-                  seedArtist={seedTrack?.artist}
-                  tracks={recommended}
-                  loading={recommendedLoading}
-                  currentId={current?.id}
-                  isPlaying={isPlaying}
-                  onPlay={playTrack}
-                  onToggle={toggle}
-                  showAllHref="/?focus=recommended"
-                />
-              );
-            }
-            const s = sections.find((x) => x.key === key);
-            if (!s || s.hidden) return null;
-            return (
-              <TrackShelf
-                key={s.key}
-                layout="row"
-                title={titleOf(s)}
-                tracks={s.tracks}
-                loading={s.loading}
-                showAllHref={`/?focus=${encodeURIComponent(s.key)}`}
-                renderCard={renderTile}
-              />
-            );
-          })}
+          {view.quickGrid && <QuickGrid items={quick} />}
+          {view.rows.map(renderRow)}
         </div>
       ) : (
-        <div>
-          <PageTitle className="mb-8">Home</PageTitle>
-          <FriendsListening />
-          {sections
-            .filter((s) => !s.hidden)
-            .map((s) => (
-              <TrackShelf
-                key={s.key}
-                title={s.title}
-                tracks={s.tracks}
-                loading={s.loading}
-                showAllHref={`/?focus=${encodeURIComponent(s.key)}`}
-                renderCard={renderCard}
-                lyricsOpen={lyricsOpen}
-              />
-            ))}
+        // data-home-wide lifts the shell's content width cap (the owner's
+        // "full" pick): the desktop Home uses the whole main area.
+        <div data-home-wide>
+          {chips.length > 1 && <HomeChips variant="desktop" chips={chips} active={view.filter} onChange={setFilter} />}
+          {view.quickGrid && <QuickGrid variant="desktop" items={quick} onPlay={playQuick} isPlaying={quickPlaying} />}
+          {view.rows.map(renderRow)}
         </div>
       )}
     </OnlineOnly>
