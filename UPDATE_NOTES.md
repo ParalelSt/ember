@@ -1,3 +1,11 @@
+# 0.7.30: Keeps playing through dead zones (apps 0.4.24)
+
+**Host: run `./update.sh` as usual (no new packages, nothing new in
+`.env.local`).** The offline playback and keyboard fixes need the new apps,
+0.4.24 (Android versionCode 29), which the `v0.4.24` tag builds. This is also
+the first update that existing 0.4.23 apps offer through the new update dialog
+when they open.
+
 # 0.7.29: Updates when you open the app (apps 0.4.23)
 
 **Host: run `./update.sh` as usual (no new packages, nothing new in

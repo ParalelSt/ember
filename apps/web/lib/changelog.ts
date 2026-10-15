@@ -21,6 +21,19 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    id: 'dead-zones',
+    version: '0.7.30',
+    date: '2026-10-15',
+    title: 'Keeps playing through dead zones',
+    summary: 'A weak or dead connection no longer stops the music, and text boxes stay above the keyboard on Android.',
+    bullets: [
+      'When the signal drops or stops carrying anything, Ember finishes the song and keeps going with the songs already saved on your phone, then picks up by itself when the connection is back.',
+      'Upcoming songs are now saved on mobile data too, so a weak signal never stops the music. The separate mobile data switch is gone.',
+      'Pop-ups with a text box, like Report a bug and Request a feature, now move above the keyboard and scroll on Android.',
+      'The Follow lyrics button is bigger, and tapping it never jumps the song to another line.',
+    ],
+  },
+  {
     id: 'update-on-launch',
     version: '0.7.29',
     date: '2026-10-10',
