@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { TrackShelf } from '@/components/track/TrackShelf';
 import { TrackCard } from '@/components/track/TrackCard';
@@ -19,15 +19,23 @@ import { PageTitle } from '@/components/page/PageTitle';
 import { RowShelf } from '@/components/page/RowShelf';
 import { CollectionCard } from '@/components/library/CollectionCard';
 import { QuickGrid } from '@/components/home/QuickGrid';
+import { HomeChips } from '@/components/home/HomeChips';
+import { BecauseYouPlayed } from '@/components/home/BecauseYouPlayed';
+import { useAuth } from '@/components/providers/AuthProvider';
 import { useIsDesktop } from '@/hooks/useIsDesktop';
 import { useCollections } from '@/hooks/useCollections';
 import { useQueryLiveCarlist } from '@/hooks/useSession';
 import { usePlayerStore } from '@/stores/usePlayerStore';
-import { quickPicks, recentFirst } from '@/lib/home';
+import { homeChips, phoneHomeView, quickPicks, recentFirst, type HomeFilter, type HomeRowKey } from '@/lib/home';
+import { playlistCover } from '@/lib/collections';
+import { publicName } from '@/lib/collab';
 
 interface Section {
   key: string;
   title: string;
+  /** The phone Home's name for the row, when it differs (order B renamed
+   *  "Trending right now" to "Popular now"; the desktop keeps its title). */
+  phoneTitle?: string;
   tracks: Track[];
   loading?: boolean;
   hidden?: boolean;
@@ -51,6 +59,8 @@ export default function HomePage() {
       <TrackCard
         track={t}
         variant={variant}
+        // Phone rows of songs read "Song · <artist>", Spotify's Recents tiles.
+        kind={variant === 'tile' ? 'Song' : undefined}
         active={active}
         playing={isPlaying}
         // Same rule the card used to own: re-tapping the current track
@@ -61,6 +71,8 @@ export default function HomePage() {
   };
   const renderCard = (t: Track, list: Track[]) => renderTrack(t, list, 'card');
   const renderTile = (t: Track, list: Track[]) => renderTrack(t, list, 'tile');
+  const { user } = useAuth();
+  const [filter, setFilter] = useState<HomeFilter>('all');
 
   // Reset the scroll position whenever the focus changes, going INTO a
   // focused song box (so you start at its top) and coming back OUT (so the
@@ -102,22 +114,31 @@ export default function HomePage() {
 
   const sections: Section[] = [
     { key: 'recommended', title: recsTitle, tracks: recommended, loading: recommendedLoading },
-    { key: 'trending', title: 'Trending right now', tracks: trending, loading: trendingLoading },
+    { key: 'trending', title: 'Trending right now', phoneTitle: 'Popular now', tracks: trending, loading: trendingLoading },
     { key: 'liked', title: 'From your liked songs', tracks: liked, hidden: liked.length === 0 },
     { key: 'history', title: 'Recently played', tracks: history, hidden: history.length === 0 },
   ];
 
-  // The phone's order, Spotify's: what you played, your playlists, then
-  // suggestions, your likes, and what friends are on.
-  const phoneOrder = ['history', 'playlists', 'recommended', 'trending', 'liked', 'friends'] as const;
+  // The phone's rows (the owner's order B, lib/home.ts PHONE_ORDER) and
+  // which of them have something to show, which also decides the chips.
+  // "From your liked songs" is not one of them: Liked songs is in the grid.
+  const available = new Set<HomeRowKey>(['friends']);
+  if (history.length > 0) available.add('history');
+  if (recommended.length > 0 || recommendedLoading) available.add('recommended');
+  if (trending.length > 0 || trendingLoading) available.add('trending');
+  if (playlists.length > 0) available.add('playlists');
+  const chips = homeChips(available);
+  const view = phoneHomeView(filter, available);
+  const myName = publicName(user);
 
   const focused = focus ? sections.find((s) => s.key === focus && !s.hidden) : null;
+  const titleOf = (sec: Section) => (!isDesktop && sec.phoneTitle) || sec.title;
 
   return (
     <OnlineOnly>
       {focused ? (
         <TrackShelf
-          title={focused.title}
+          title={titleOf(focused)}
           tracks={focused.tracks}
           loading={focused.loading}
           renderCard={renderCard}
@@ -126,15 +147,18 @@ export default function HomePage() {
         />
       ) : !isDesktop ? (
         <div>
-          <QuickGrid
-            items={quickPicks({
-              liked: system.find((c) => c.ref.kind === 'liked'),
-              playlists,
-              carlist,
-              playingPlaylistId,
-            })}
-          />
-          {phoneOrder.map((key) => {
+          {chips.length > 1 && <HomeChips chips={chips} active={view.filter} onChange={setFilter} />}
+          {view.quickGrid && (
+            <QuickGrid
+              items={quickPicks({
+                liked: system.find((c) => c.ref.kind === 'liked'),
+                playlists,
+                carlist,
+                playingPlaylistId,
+              })}
+            />
+          )}
+          {view.rows.map((key) => {
             if (key === 'playlists') {
               return (
                 <RowShelf key={key} title="Your playlists" showAllHref="/library">
@@ -144,9 +168,9 @@ export default function HomePage() {
                       variant="tile"
                       size="md"
                       title={p.title}
-                      subtitle={p.subtitle}
+                      subtitle={`Playlist · ${p.sharedBy?.name ?? myName}`}
                       href={p.href}
-                      cover={{ src: p.artworkUrl, icon: null }}
+                      cover={{ icon: null, ...playlistCover(p.artworkUrl, p.trackArtworks) }}
                       badge={p.downloaded ? 'downloaded' : undefined}
                       shared={!!p.sharing}
                       sharedBy={p.sharedBy}
@@ -156,13 +180,29 @@ export default function HomePage() {
               );
             }
             if (key === 'friends') return <FriendsListening key={key} layout="row" />;
+            if (key === 'recommended') {
+              return (
+                <BecauseYouPlayed
+                  key={key}
+                  title={recsTitle}
+                  seedArtist={seedTrack?.artist}
+                  tracks={recommended}
+                  loading={recommendedLoading}
+                  currentId={current?.id}
+                  isPlaying={isPlaying}
+                  onPlay={playTrack}
+                  onToggle={toggle}
+                  showAllHref="/?focus=recommended"
+                />
+              );
+            }
             const s = sections.find((x) => x.key === key);
             if (!s || s.hidden) return null;
             return (
               <TrackShelf
                 key={s.key}
                 layout="row"
-                title={s.title}
+                title={titleOf(s)}
                 tracks={s.tracks}
                 loading={s.loading}
                 showAllHref={`/?focus=${encodeURIComponent(s.key)}`}

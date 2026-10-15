@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import HomePage from './page';
 import { toSummary } from '@/lib/collections';
+import { ROW_MAX } from '@/components/page/RowShelf';
 import type { LiveCarlist, PlaybackContext, Track } from '@/types/track';
 
 vi.mock('next/link', () => ({
@@ -31,6 +32,7 @@ vi.mock('next/navigation', () => ({
   useSearchParams: () => new URLSearchParams(state.focus ? `focus=${state.focus}` : ''),
 }));
 vi.mock('@/hooks/useIsDesktop', () => ({ useIsDesktop: () => state.desktop }));
+vi.mock('@/components/providers/AuthProvider', () => ({ useAuth: () => ({ user: { id: 'u1', name: 'Aron' } }) }));
 vi.mock('@/components/OnlineOnly', () => ({ OnlineOnly: ({ children }: { children: React.ReactNode }) => <>{children}</> }));
 vi.mock('@/hooks/useLibrary', () => ({
   useQueryHistory: () => ({ data: state.history }),
@@ -121,16 +123,17 @@ describe('Home on a phone', () => {
     expect(within(grid).getAllByRole('link').map((a) => a.textContent)).toEqual(['Liked songs', 'Friday drive', 'Gym', 'Road trip']);
   });
 
-  it('orders the rows like Spotify: Recently played, Your playlists, suggestions, likes, friends', () => {
+  it('orders the rows like the owner\'s order B, with Popular now and no "From your liked songs"', () => {
     render(<HomePage />);
     expect(headings()).toEqual([
       'Recently played',
-      'Your playlists',
       'Because you played "hist song 0"',
-      'Trending right now',
-      'From your liked songs',
+      'Popular now',
+      'Your playlists',
       'Friends are listening to',
     ]);
+    expect(screen.queryByText('Trending right now')).toBeNull();
+    expect(screen.queryByText('From your liked songs')).toBeNull();
     expect(screen.getByRole('region', { name: 'Friends are listening to' })).toHaveAttribute('data-layout', 'row');
   });
 
@@ -142,26 +145,156 @@ describe('Home on a phone', () => {
     expect(within(screen.getByRole('list', { name: 'Your collections' })).getAllByRole('link')).toHaveLength(1);
   });
 
-  it('every row scrolls sideways', () => {
+  it('every row of tiles scrolls sideways', () => {
     render(<HomePage />);
-    for (const name of ['Recently played', 'Your playlists', 'Trending right now', 'From your liked songs']) {
+    for (const name of ['Recently played', 'Your playlists', 'Popular now']) {
       const row = within(screen.getByRole('region', { name })).getByRole('list');
       expect(row).toHaveClass('flex', 'overflow-x-auto', 'snap-x');
       expect(row).not.toHaveClass('grid');
     }
   });
 
-  it('links Show all to the focus view, and Your playlists to the Library', () => {
+  it('lines every row, the chips and the hero card up with the page gutter', () => {
+    render(<HomePage />);
+    // Sideways rows bleed to the screen edges but pad back to the gutter
+    // and snap there.
+    for (const row of document.querySelectorAll('[data-row-shelf]')) {
+      expect(row).toHaveClass('-mx-page', 'px-page', 'scroll-px-page');
+    }
+    expect(document.querySelector('[data-home-chips]')).toHaveClass('-mx-page', 'px-page');
+    // The big card sits inside the gutter: no negative margin at all.
+    const hero = document.querySelector('[data-hero]') as HTMLElement;
+    expect(hero.className).not.toMatch(/-m[xl]-/);
+    expect(hero.parentElement!.className).not.toMatch(/-m[xl]-/);
+  });
+
+  it('offers Show all only on rows that hold more than they show', () => {
+    render(<HomePage />);
+    // 4 played, 5 popular, 2 playlists: everything is already on screen.
+    for (const name of ['Recently played', 'Popular now', 'Your playlists']) {
+      expect(within(screen.getByRole('region', { name })).queryByRole('link', { name: 'Show all' })).toBeNull();
+    }
+    // 6 suggestions, the card holds 4.
+    expect(
+      within(screen.getByRole('region', { name: 'Because you played "hist song 0"' })).getByRole('link', { name: 'Show all' }),
+    ).toHaveAttribute('href', '/?focus=recommended');
+  });
+
+  it('links Show all to the focus view, and Your playlists to the Library, once a row overflows', () => {
+    state.history = makeTracks('hist', ROW_MAX + 1);
+    state.trending = makeTracks('trend', ROW_MAX + 1);
+    state.playlists = Array.from({ length: ROW_MAX + 1 }, (_, i) => toSummary({ kind: 'playlist', id: `p${i}` }, { name: `List ${i}` }));
     render(<HomePage />);
     const showAll = (name: string) =>
       within(screen.getByRole('region', { name })).getByRole('link', { name: 'Show all' });
     expect(showAll('Recently played')).toHaveAttribute('href', '/?focus=history');
-    expect(showAll('Trending right now')).toHaveAttribute('href', '/?focus=trending');
-    expect(showAll('From your liked songs')).toHaveAttribute('href', '/?focus=liked');
-    expect(showAll('Because you played "hist song 0"')).toHaveAttribute('href', '/?focus=recommended');
+    expect(showAll('Popular now')).toHaveAttribute('href', '/?focus=trending');
     expect(showAll('Your playlists')).toHaveAttribute('href', '/library');
   });
 
+  it('subtitles tiles like Spotify Recents: "Playlist · <owner>" and "Song · <artist>"', () => {
+    state.playlists = [
+      toSummary({ kind: 'playlist', id: 'p1' }, { name: 'Road trip' }),
+      toSummary({ kind: 'playlist', id: 'p3' }, { name: 'Their list', sharing: { role: 'member', ownerName: 'Olga' } }),
+    ];
+    render(<HomePage />);
+    const lists = within(screen.getByRole('region', { name: 'Your playlists' }));
+    expect(lists.getByText('Playlist · Aron')).toBeInTheDocument();
+    expect(lists.getByText('Playlist · Olga')).toBeInTheDocument();
+    const played = within(screen.getByRole('region', { name: 'Recently played' }));
+    expect(played.getAllByText('Song · The Nulls')).toHaveLength(4);
+  });
+
+  it('draws a playlist with four song covers as a mosaic, in the grid and in its row', () => {
+    const arts = ['a', 'b', 'c', 'd'].map((x) => `/art/${x}.jpg`);
+    state.playlists = [toSummary({ kind: 'playlist', id: 'p1' }, { name: 'Road trip', trackArtworks: arts })];
+    render(<HomePage />);
+    const gridTile = within(screen.getByRole('list', { name: 'Your collections' })).getByRole('link', { name: 'Road trip' });
+    expect(gridTile.querySelector('[data-mosaic]')).not.toBeNull();
+    const rowTile = within(screen.getByRole('region', { name: 'Your playlists' })).getByRole('link', { name: /Road trip/ });
+    expect([...rowTile.querySelectorAll('[data-mosaic] img')].map((i) => i.getAttribute('src'))).toEqual(arts);
+  });
+
+  it('holds six tiles in the quick grid', () => {
+    state.playlists = Array.from({ length: 9 }, (_, i) => toSummary({ kind: 'playlist', id: `p${i}` }, { name: `List ${i}` }));
+    render(<HomePage />);
+    expect(within(screen.getByRole('list', { name: 'Your collections' })).getAllByRole('link')).toHaveLength(6);
+  });
+});
+
+describe('Home filter chips on a phone', () => {
+  const chip = (name: string) => within(screen.getByRole('toolbar', { name: 'Filter Home' })).getByRole('button', { name });
+
+  it('shows All (active, ember) and Playlists, and no Mixes or Charts yet', () => {
+    render(<HomePage />);
+    const bar = screen.getByRole('toolbar', { name: 'Filter Home' });
+    expect(within(bar).getAllByRole('button').map((b) => b.textContent)).toEqual(['All', 'Playlists']);
+    expect(chip('All')).toHaveAttribute('aria-pressed', 'true');
+    expect(chip('All')).toHaveClass('bg-ember');
+    expect(chip('Playlists')).toHaveAttribute('aria-pressed', 'false');
+  });
+
+  it('Playlists keeps the quick grid and Your playlists only; All brings everything back', () => {
+    render(<HomePage />);
+    fireEvent.click(chip('Playlists'));
+    expect(chip('Playlists')).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('list', { name: 'Your collections' })).toBeInTheDocument();
+    expect(headings()).toEqual(['Your playlists']);
+    fireEvent.click(chip('All'));
+    expect(headings()).toEqual([
+      'Recently played',
+      'Because you played "hist song 0"',
+      'Popular now',
+      'Your playlists',
+      'Friends are listening to',
+    ]);
+  });
+
+  it('has no chips to pick from without playlists', () => {
+    state.playlists = [];
+    render(<HomePage />);
+    expect(screen.queryByRole('toolbar', { name: 'Filter Home' })).toBeNull();
+  });
+});
+
+describe('Because you played: the hero card', () => {
+  const card = () => within(screen.getByRole('region', { name: 'Because you played "hist song 0"' }));
+
+  it('shows the first suggestion big, "artist · More like <seed artist>", and the next three as rows', () => {
+    render(<HomePage />);
+    expect(card().getByText('rec song 0')).toBeInTheDocument();
+    expect(card().getByText('The Nulls · More like The Nulls')).toBeInTheDocument();
+    expect(card().getAllByRole('listitem').map((li) => li.textContent)).toEqual([
+      'rec song 1The Nulls',
+      'rec song 2The Nulls',
+      'rec song 3The Nulls',
+    ]);
+    expect(card().queryByText('rec song 4')).toBeNull();
+  });
+
+  it('the play button plays the list from the top', () => {
+    render(<HomePage />);
+    fireEvent.click(card().getByRole('button', { name: 'Play these songs' }));
+    expect(state.playTrack).toHaveBeenCalledWith(state.recommended[0], state.recommended);
+  });
+
+  it('a song row plays from that song', () => {
+    render(<HomePage />);
+    fireEvent.click(card().getByText('rec song 2'));
+    expect(state.playTrack).toHaveBeenCalledWith(state.recommended[2], state.recommended);
+  });
+
+  it('toggles when the card\'s song is already the current one', () => {
+    state.current = state.recommended[0];
+    state.isPlaying = true;
+    render(<HomePage />);
+    fireEvent.click(card().getByRole('button', { name: 'Pause' }));
+    expect(state.toggle).toHaveBeenCalledTimes(1);
+    expect(state.playTrack).not.toHaveBeenCalled();
+  });
+});
+
+describe('Home on a phone, playback', () => {
   it('a tap plays the track with its row as the list; a tap on the current track toggles', () => {
     render(<HomePage />);
     fireEvent.click(screen.getByText('trend song 2'));
@@ -186,6 +319,12 @@ describe('Home on a phone', () => {
     expect(screen.getByRole('heading', { level: 1, name: 'Recently played' })).toBeInTheDocument();
     expect(screen.queryByRole('list', { name: 'Your collections' })).toBeNull();
     expect(screen.getAllByRole('listitem')).toHaveLength(4);
+  });
+
+  it('calls the trending grid Popular now on a phone', () => {
+    state.focus = 'trending';
+    render(<HomePage />);
+    expect(screen.getByRole('heading', { level: 1, name: 'Popular now' })).toBeInTheDocument();
   });
 });
 
