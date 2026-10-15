@@ -1,6 +1,6 @@
 import type { ComponentProps } from 'react';
 import { describe, expect, it, vi } from 'vitest';
-import { render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { QuickGrid } from './QuickGrid';
 import type { QuickPick } from '@/lib/home';
 
@@ -61,5 +61,42 @@ describe('QuickGrid', () => {
   it('renders nothing with no items', () => {
     const { container } = render(<QuickGrid items={[]} />);
     expect(container).toBeEmptyDOMElement();
+  });
+});
+
+describe('QuickGrid, desktop (the owner\'s "chips4" pick)', () => {
+  const desk: QuickPick[] = [
+    { key: 'liked', title: 'Liked songs', href: '/library/liked', src: null, icon: 'heart', ref: { kind: 'liked' } },
+    { key: 's1', title: 'Friday drive', href: '/session/s1', src: null, icon: 'car' },
+    { key: 'p1', title: 'Road trip', href: '/playlist/p1', src: null, icon: null, mosaic: ['/a', '/b', '/c', '/d'], ref: { kind: 'playlist', id: 'p1' } },
+  ];
+
+  it('is four columns of 64px tiles on a faint wash that lightens on hover', () => {
+    render(<QuickGrid variant="desktop" items={desk} />);
+    expect(screen.getByRole('list', { name: 'Your collections' })).toHaveClass('grid', 'grid-cols-4');
+    const link = screen.getByRole('link', { name: 'Road trip' });
+    expect(link).toHaveClass('h-16', 'bg-foreground/10', 'group-hover:bg-foreground/20');
+    expect(link.firstElementChild).toHaveClass('size-16');
+    expect(link.querySelector('[data-mosaic]')).not.toBeNull();
+    // Liked songs wears its sound-wave heart cover.
+    expect(screen.getByRole('link', { name: 'Liked songs' }).querySelector('svg')).not.toBeNull();
+    expect(screen.getByText('Road trip')).toHaveClass('line-clamp-2', 'font-bold');
+  });
+
+  it('shows a play button on hover that plays the collection, none for a carlist', () => {
+    const onPlay = vi.fn();
+    render(<QuickGrid variant="desktop" items={desk} onPlay={onPlay} isPlaying={() => false} />);
+    const play = screen.getByRole('button', { name: 'Play Road trip' });
+    expect(play).toHaveClass('opacity-0', 'group-hover:opacity-100', 'right-[10px]');
+    expect(play.closest('a')).toBeNull();
+    fireEvent.click(play);
+    expect(onPlay).toHaveBeenCalledWith(desk[2]);
+    expect(screen.getByRole('button', { name: 'Play Liked songs' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Play Friday drive' })).toBeNull();
+  });
+
+  it('keeps the button up as Pause on the collection that is playing', () => {
+    render(<QuickGrid variant="desktop" items={desk} onPlay={() => {}} isPlaying={(i) => i.key === 'liked'} />);
+    expect(screen.getByRole('button', { name: 'Pause' })).toHaveClass('opacity-100');
   });
 });
