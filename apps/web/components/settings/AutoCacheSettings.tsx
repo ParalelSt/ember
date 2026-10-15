@@ -59,8 +59,6 @@ function SwitchRow({
 export function AutoCacheSettings() {
   const enabled = useSettingsStore((s) => s.autoCacheEnabled);
   const setEnabled = useSettingsStore((s) => s.setAutoCacheEnabled);
-  const onMetered = useSettingsStore((s) => s.autoCacheOnMetered);
-  const setOnMetered = useSettingsStore((s) => s.setAutoCacheOnMetered);
   const supported = useAutoCacheStore((s) => s.supported);
   const needsAppUpdate = useAutoCacheStore((s) => s.needsAppUpdate);
   const adapter = useAutoCacheStore((s) => s.adapter);
@@ -91,17 +89,10 @@ export function AutoCacheSettings() {
     <div className="flex flex-col gap-row" data-testid="auto-cache-settings">
       <SwitchRow
         name="Cache upcoming songs"
-        description="Quietly saves the song you are playing and the next two on this device, so the music keeps going if the connection drops."
+        description="Quietly saves the song you are playing and the next two on this device, on Wi-Fi and mobile data, so the music keeps going if the connection drops."
         on={enabled}
         disabled={!supported}
         onToggle={() => setEnabled(!enabled)}
-      />
-      <SwitchRow
-        name="Also on mobile data"
-        description="Uses some mobile data, so cached songs carry you through a weak signal. Turn off to cache only on Wi-Fi."
-        on={onMetered}
-        disabled={!supported || !enabled}
-        onToggle={() => setOnMetered(!onMetered)}
       />
       {supported ? (
         <div className="flex items-center justify-between gap-block rounded-2xl bg-card px-block py-row shadow-soft">

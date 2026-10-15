@@ -6,21 +6,20 @@ import { api } from '@/lib/api';
 import { PLUGIN_KEYS, type PluginKey, type StoredPlugins } from '@/lib/pluginSettings';
 import { DEFAULT_EQ, parseEq, sameEq, type EqSettings } from '@/lib/playback/eq';
 
-/** The stored settings' version (zustand persist). 1: the auto cache works
- *  on mobile data by default. */
-export const SETTINGS_VERSION = 1;
+/** The stored settings' version (zustand persist). 2: no mobile data
+ *  setting for the auto cache. */
+export const SETTINGS_VERSION = 2;
 
 /** Settings stored by an older build, brought up to date once.
  *
- *  Version 1 (2026-10, the owner: caching is what keeps the music going on
- *  a weak signal): "Also on mobile data" used to be off by default, and the
- *  store wrote that default along with any other change, so a stored "off"
- *  cannot be told from one somebody chose. It is turned on once for
- *  everyone; turning it off again afterwards sticks. */
+ *  Version 2 (2026-10, the owner: caching is what keeps the music going on
+ *  a weak signal): the auto cache always works on mobile data, so the
+ *  "Also on mobile data" setting (`autoCacheOnMetered`) is gone. A stored
+ *  value is dropped; it would mean nothing anyway. */
 export function migrateSettings(persisted: unknown, version: number): unknown {
   if (typeof persisted !== 'object' || persisted === null) return persisted;
   const state = { ...(persisted as Record<string, unknown>) };
-  if (version < 1) state.autoCacheOnMetered = true;
+  if (version < 2) delete state.autoCacheOnMetered;
   return state;
 }
 
@@ -77,12 +76,10 @@ interface SettingsState {
   eqUnsavedFor: string | null;
   /** Quietly save the current song and the next two on this device, so a
    *  dropped connection does not stop the music (hooks/player/useAutoCache).
+   *  On mobile data too, always: there is no setting for that.
    *  Per device, not synced: it is about this device's storage and network. */
   autoCacheEnabled: boolean;
   setAutoCacheEnabled: (on: boolean) => void;
-  /** Let the auto cache run on mobile data too. Off by default. */
-  autoCacheOnMetered: boolean;
-  setAutoCacheOnMetered: (on: boolean) => void;
 
   /** The signed-in user the plugin switches are synced with (null when
    *  signed out: toggles then stay on this device). Not persisted. */
@@ -165,8 +162,6 @@ export const useSettingsStore = create<SettingsState>()(
         eqUnsavedFor: null,
         autoCacheEnabled: true,
         setAutoCacheEnabled: (autoCacheEnabled) => set({ autoCacheEnabled }),
-        autoCacheOnMetered: true,
-        setAutoCacheOnMetered: (autoCacheOnMetered) => set({ autoCacheOnMetered }),
 
         pluginsUserId: null,
         pluginsLoaded: false,
@@ -247,7 +242,6 @@ export const useSettingsStore = create<SettingsState>()(
         eqChosenHere: s.eqChosenHere,
         eqUnsavedFor: s.eqUnsavedFor,
         autoCacheEnabled: s.autoCacheEnabled,
-        autoCacheOnMetered: s.autoCacheOnMetered,
       }),
     },
   ),

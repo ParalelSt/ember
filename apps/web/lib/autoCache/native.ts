@@ -8,14 +8,15 @@ import type { PlaybackContext } from '@/types/track';
  *  On Android the native player owns the queue and caches the current song
  *  and the next two itself (Media3 SimpleCache, 300 MB, least recently used
  *  first out; see apps/mobile/android/.../AutoCacher.kt), so it keeps working
- *  with the screen off and in the car. The web side only hands down the two
- *  device settings and reads back what is cached. Everything here goes
+ *  with the screen off and in the car. The web side only hands down the
+ *  device setting and reads back what is cached. Everything here goes
  *  through the EmberPlayer Capacitor plugin and quietly does nothing on an
  *  app build that predates it (the plugin object only carries the methods the
  *  installed APK registered), so callers never need to guard.
  *
  *  Plugin methods (EmberPlayerPlugin.kt):
- *  - `setAutoCache({ enabled, onMetered })` -> `{ enabled, onMetered }`
+ *  - `setAutoCache({ enabled })` -> `{ enabled }` (it always caches on
+ *    mobile data; app builds from before that also get `onMetered: true`)
  *  - `cacheStats()` -> `{ bytes, count, cap }`
  *  - `clearCache()` -> `{ bytes, count, cap }` after clearing
  *  - `state` events and `getState()` carry `cachedIds`, `offlineStalled`,
@@ -41,8 +42,6 @@ export interface NativeCacheState {
 export interface NativeAutoCacheSettings {
   /** `autoCacheEnabled` */
   enabled: boolean;
-  /** `autoCacheOnMetered` */
-  onMetered: boolean;
 }
 
 interface Handle {
@@ -52,7 +51,7 @@ interface Handle {
 interface CachePlugin {
   addListener?(event: string, cb: (d: never) => void): Promise<Handle> | Handle | unknown;
   getState?(): Promise<unknown>;
-  setAutoCache?(o: NativeAutoCacheSettings): Promise<unknown>;
+  setAutoCache?(o: NativeAutoCacheSettings & { onMetered?: boolean }): Promise<unknown>;
   cacheStats?(): Promise<unknown>;
   clearCache?(): Promise<unknown>;
 }
@@ -81,13 +80,15 @@ function toStats(v: unknown): NativeCacheStats | null {
   return { bytes: num(o.bytes), count: num(o.count), cap: num(o.cap) };
 }
 
-/** Hands the device settings down. Resolves false when the app cannot take
+/** Hands the device setting down. Resolves false when the app cannot take
  *  them (old build, bridge error); never throws. */
 export async function setNativeAutoCache(settings: NativeAutoCacheSettings): Promise<boolean> {
   const p = plugin();
   if (typeof p?.setAutoCache !== 'function') return false;
   try {
-    await p.setAutoCache({ enabled: !!settings.enabled, onMetered: !!settings.onMetered });
+    // `onMetered: true` is for app builds that still have the mobile data
+    // setting (off by default there); newer ones ignore it.
+    await p.setAutoCache({ enabled: !!settings.enabled, onMetered: true });
     return true;
   } catch {
     return false;

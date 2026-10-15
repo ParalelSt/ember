@@ -45,7 +45,8 @@ export interface DriverDeps {
   player: () => PlayerSnapshot;
   playback: () => PlaybackSnapshot;
   conditions: () => Conditions;
-  settings: () => { enabled: boolean; allowMetered: boolean };
+  /** The device setting. There is none for mobile data: always allowed. */
+  settings: () => { enabled: boolean };
   overrides?: TestOverrides | null;
   now?: () => number;
   /** The adapter's contents changed (a download landed, something was evicted). */
@@ -128,7 +129,9 @@ export function createAutoCacheDriver(deps: DriverDeps): AutoCacheDriver {
       saveData: c.saveData,
       batterySaver: c.batterySaver,
       enabled: s.enabled,
-      allowMetered: s.allowMetered,
+      // The auto cache always works on mobile data (Data Saver still
+      // holds it back).
+      allowMetered: true,
       requestCurrent: !adapter.writesThrough,
       cached: new Set(entries.keys()),
       inFlight: inFlight?.id ?? null,
@@ -209,7 +212,7 @@ export function createAutoCacheDriver(deps: DriverDeps): AutoCacheDriver {
     if (action.kind === 'idle') {
       // The device-level gates do not abort by themselves (policy README):
       // the driver does, so a download never runs against a setting that
-      // was just turned off, on mobile data, or into a dead connection.
+      // was just turned off, under Data Saver, or into a dead connection.
       if (inFlight && ['disabled', 'offline', 'battery', 'metered'].includes(action.reason)) cancel();
       if (action.reason === 'backoff' && action.wakeAtMs !== undefined) {
         wakeTimer = setTimeout(tick, Math.max(0, action.wakeAtMs - input.nowMs));

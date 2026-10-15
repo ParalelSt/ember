@@ -83,7 +83,7 @@ beforeEach(() => {
   backend.getBufferedToEnd = () => backend.buffered;
   backend.currentTime = 0;
   usePlayerStore.setState({ queue: [A, B, C, D], index: 0, isPlaying: true, loopMode: 'off', context: null, baseCount: 4 });
-  useSettingsStore.setState({ autoCacheEnabled: true, autoCacheOnMetered: false });
+  useSettingsStore.setState({ autoCacheEnabled: true });
   useAutoCacheStore.setState({ online: true, offlineStalled: false, stalledTrackId: null, inFlight: null });
 });
 
@@ -239,16 +239,30 @@ describe('useAutoCache', () => {
     hook.unmount();
   });
 
-  it('never runs on mobile data unless allowed', async () => {
+  it('runs on mobile data, whatever an older build stored about it', async () => {
     const conn = Object.assign(new EventTarget(), { type: 'cellular', saveData: false });
+    Object.defineProperty(navigator, 'connection', { configurable: true, get: () => conn });
+    // A leftover of the old "Also on mobile data" setting means nothing.
+    useSettingsStore.setState({ autoCacheOnMetered: false } as never);
+    try {
+      const hook = await mount();
+      backend.currentTime = 20;
+      await advance(TICK_MS);
+      expect(adapter.started()).toEqual([A.id]);
+      hook.unmount();
+    } finally {
+      Object.defineProperty(navigator, 'connection', { configurable: true, get: () => undefined });
+    }
+  });
+
+  it('Data Saver still holds it back on mobile data', async () => {
+    const conn = Object.assign(new EventTarget(), { type: 'cellular', saveData: true });
     Object.defineProperty(navigator, 'connection', { configurable: true, get: () => conn });
     try {
       const hook = await mount();
       backend.currentTime = 20;
       await advance(TICK_MS * 2);
       expect(adapter.prefetch).not.toHaveBeenCalled();
-      act(() => useSettingsStore.getState().setAutoCacheOnMetered(true));
-      expect(adapter.started()).toEqual([A.id]);
       hook.unmount();
     } finally {
       Object.defineProperty(navigator, 'connection', { configurable: true, get: () => undefined });
@@ -320,14 +334,12 @@ describe('useAutoCache on the Android engine', () => {
     return hook;
   }
 
-  it('hands the settings to native now and whenever they change, and never downloads from JS', async () => {
+  it('hands the setting to native now and whenever it changes, and never downloads from JS', async () => {
     const n = native();
     const hook = await mountAndroid(n);
-    expect(n.deps.setSettings).toHaveBeenLastCalledWith({ enabled: true, onMetered: false });
-    act(() => { useSettingsStore.setState({ autoCacheOnMetered: true }); });
-    expect(n.deps.setSettings).toHaveBeenLastCalledWith({ enabled: true, onMetered: true });
+    expect(n.deps.setSettings).toHaveBeenLastCalledWith({ enabled: true });
     act(() => { useSettingsStore.setState({ autoCacheEnabled: false }); });
-    expect(n.deps.setSettings).toHaveBeenLastCalledWith({ enabled: false, onMetered: true });
+    expect(n.deps.setSettings).toHaveBeenLastCalledWith({ enabled: false });
     expect(useAutoCacheStore.getState().supported).toBe(true);
     expect(useAutoCacheStore.getState().stats.bytes).toBe(4_000_000);
     hook.unmount();

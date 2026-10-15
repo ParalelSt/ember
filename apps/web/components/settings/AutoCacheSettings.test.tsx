@@ -17,29 +17,27 @@ const adapter: CacheAdapter = {
 
 beforeEach(() => {
   clear.mockClear();
-  useSettingsStore.setState({ autoCacheEnabled: true, autoCacheOnMetered: true });
+  useSettingsStore.setState({ autoCacheEnabled: true });
   useAutoCacheStore.setState({ adapter, supported: true, needsAppUpdate: false, stats: adapter.stats(), cancelInFlight: null });
 });
 
 describe('AutoCacheSettings', () => {
-  it('shows both switches with their defaults and the storage line', () => {
+  it('shows the switch with its default and the storage line', () => {
     render(<AutoCacheSettings />);
     expect(screen.getByRole('button', { name: 'Turn off Cache upcoming songs' })).toHaveAttribute('aria-pressed', 'true');
-    expect(screen.getByRole('button', { name: 'Turn off Also on mobile data' })).toHaveAttribute('aria-pressed', 'true');
-    expect(screen.getByText(/Turn off to cache only on Wi-Fi/)).toBeInTheDocument();
+    expect(screen.getByText(/on Wi-Fi and mobile data/)).toBeInTheDocument();
+    // There is no mobile data switch: caching always works on it.
+    expect(screen.queryByRole('button', { name: /mobile data/ })).toBeNull();
+    expect(screen.getAllByRole('button', { name: /^Turn (on|off) / })).toHaveLength(1);
     expect(screen.getByTestId('auto-cache-stats')).toHaveTextContent('Cached: 34.0 MB, 9 songs');
   });
 
-  it('the switches flip the device settings', () => {
+  it('the switch flips the device setting', () => {
     render(<AutoCacheSettings />);
-    fireEvent.click(screen.getByRole('button', { name: 'Turn off Also on mobile data' }));
-    expect(useSettingsStore.getState().autoCacheOnMetered).toBe(false);
-    fireEvent.click(screen.getByRole('button', { name: 'Turn on Also on mobile data' }));
-    expect(useSettingsStore.getState().autoCacheOnMetered).toBe(true);
     fireEvent.click(screen.getByRole('button', { name: 'Turn off Cache upcoming songs' }));
     expect(useSettingsStore.getState().autoCacheEnabled).toBe(false);
-    // Mobile data means nothing with caching off.
-    expect(screen.getByRole('button', { name: 'Turn off Also on mobile data' })).toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name: 'Turn on Cache upcoming songs' }));
+    expect(useSettingsStore.getState().autoCacheEnabled).toBe(true);
   });
 
   it('Clear cached songs stops the download in flight and empties the cache', async () => {

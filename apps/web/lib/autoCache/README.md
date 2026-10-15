@@ -38,7 +38,8 @@ Ember track id (`youtube:<videoId>`, `upload:<...>`).
 | `playing` | bool | informational only, never gates |
 | `online`, `saveData`, `batterySaver` | bool | |
 | `metered` | bool or null | null = unknown = not metered |
-| `enabled`, `allowMetered` | bool | device settings `autoCacheEnabled`, `autoCacheOnMetered`: both on by default (mobile data too, since 2026-10; settings stored before that get it on once, `migrateSettings` in `stores/useSettingsStore.ts`, and `AutoCachePrefs.kt` on Android) |
+| `enabled` | bool | device setting `autoCacheEnabled`, on by default |
+| `allowMetered` | bool | always true in the app: the auto cache works on mobile data, with no setting for it (since 2026-10; an older stored `autoCacheOnMetered` is dropped by `migrateSettings` in `stores/useSettingsStore.ts`, and by `AutoCachePrefs.kt` on Android). Kept in the policy so the shared table still covers the gate |
 | `requestCurrent` | bool | web true; Android and desktop false (their players write the current track through) |
 | `cached` | set of ids | ids fully in the auto cache |
 | `inFlight` | id or null | the one prefetch download running |
@@ -194,7 +195,7 @@ offline, battery, metered) closes, and sets one timer for a `backoff` wake.
 |---|---|---|
 | `web`, `capacitor` | `opfsAdapter.ts` | blob: URLs the audio element plays; `noneAdapter` without OPFS |
 | `tauri-native` | `tauriAdapter.ts` | the shell's `cache_*` commands; `localSrcFor` is null, the engine opens the file by `LoadOptions.cacheKey` |
-| `android` | `androidAdapter.ts` | a mirror of the native player's own cache: never downloads (`prefetch` resolves failed) or evicts; `useAutoCache` runs no driver, only hands the settings down (`setNativeAutoCache`) and mirrors `offline` / `offlineStalled` into `useAutoCacheStore` |
+| `android` | `androidAdapter.ts` | a mirror of the native player's own cache: never downloads (`prefetch` resolves failed) or evicts; `useAutoCache` runs no driver, only hands the setting down (`setNativeAutoCache`) and mirrors `offline` / `offlineStalled` into `useAutoCacheStore` |
 | anything else | `noneAdapter` | |
 
 An app engine (`tauri-native`, `android`) whose adapter resolves `ready()`

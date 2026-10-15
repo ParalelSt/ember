@@ -46,14 +46,14 @@ describe('native auto cache: an app build without it', () => {
   it('reports unavailable and every call is a no-op', async () => {
     install({});
     expect(nativeAutoCacheAvailable()).toBe(false);
-    await expect(setNativeAutoCache({ enabled: true, onMetered: false })).resolves.toBe(false);
+    await expect(setNativeAutoCache({ enabled: true })).resolves.toBe(false);
     await expect(nativeCacheStats()).resolves.toBeNull();
     await expect(clearNativeCache()).resolves.toBeNull();
   });
 
   it('outside the app (no Capacitor at all) too', async () => {
     expect(nativeAutoCacheAvailable()).toBe(false);
-    await expect(setNativeAutoCache({ enabled: true, onMetered: true })).resolves.toBe(false);
+    await expect(setNativeAutoCache({ enabled: true })).resolves.toBe(false);
     const cb = vi.fn();
     subscribeNativeCacheState(cb)();
     expect(cb).not.toHaveBeenCalled();
@@ -61,17 +61,19 @@ describe('native auto cache: an app build without it', () => {
 });
 
 describe('native auto cache: settings and stats', () => {
-  it('hands both device settings to setAutoCache', async () => {
-    const setAutoCache = vi.fn().mockResolvedValue({ enabled: false, onMetered: true });
+  it('hands the setting to setAutoCache, with mobile data always on for older app builds', async () => {
+    const setAutoCache = vi.fn().mockResolvedValue({ enabled: false });
     install({ setAutoCache });
     expect(nativeAutoCacheAvailable()).toBe(true);
-    await expect(setNativeAutoCache({ enabled: false, onMetered: true })).resolves.toBe(true);
+    await expect(setNativeAutoCache({ enabled: false })).resolves.toBe(true);
+    // A build that still has the mobile data setting (off by default there)
+    // gets it on; newer builds ignore it.
     expect(setAutoCache).toHaveBeenCalledWith({ enabled: false, onMetered: true });
   });
 
   it('a bridge error resolves false instead of throwing', async () => {
     install({ setAutoCache: vi.fn().mockRejectedValue(new Error('gone')) });
-    await expect(setNativeAutoCache({ enabled: true, onMetered: false })).resolves.toBe(false);
+    await expect(setNativeAutoCache({ enabled: true })).resolves.toBe(false);
   });
 
   it('reads stats, and the stats after a clear', async () => {

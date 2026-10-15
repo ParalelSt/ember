@@ -46,7 +46,7 @@ describe('useSettingsStore tabsEnabled', () => {
     getPlugins.mockResolvedValue({ partyVolume: false, tabsEnabled: true });
     await useSettingsStore.getState().loadPlugins('u1');
     expect(Object.keys(stored()).sort()).toEqual([
-      'autoCacheEnabled', 'autoCacheOnMetered', 'autoReportEnabled', 'eqChosenHere', 'eqUnsavedFor', 'equalizer',
+      'autoCacheEnabled', 'autoReportEnabled', 'eqChosenHere', 'eqUnsavedFor', 'equalizer',
       'normalizeVolume', 'partyVolume', 'tabsEnabled',
     ]);
   });
@@ -66,48 +66,49 @@ describe('useSettingsStore normalizeVolume', () => {
   });
 });
 
-describe('useSettingsStore auto cache switches', () => {
-  it('cache upcoming songs is on by default, mobile data too', () => {
+describe('useSettingsStore auto cache switch', () => {
+  it('cache upcoming songs is on by default, and there is no mobile data setting', () => {
     expect(useSettingsStore.getState().autoCacheEnabled).toBe(true);
-    expect(useSettingsStore.getState().autoCacheOnMetered).toBe(true);
+    expect(useSettingsStore.getState()).not.toHaveProperty('autoCacheOnMetered');
+    expect(useSettingsStore.getState()).not.toHaveProperty('setAutoCacheOnMetered');
   });
 
-  it('settings stored by an older build get mobile data on, once', async () => {
-    window.localStorage.setItem('ember.settings.v1', JSON.stringify({
-      state: { autoCacheEnabled: true, autoCacheOnMetered: false, partyVolume: true },
-      version: 0,
-    }));
-    await useSettingsStore.persist.rehydrate();
-    expect(useSettingsStore.getState().autoCacheOnMetered).toBe(true);
-    expect(useSettingsStore.getState().partyVolume).toBe(true);
-    // Turned off afterwards: stored with the new version, and it sticks.
-    useSettingsStore.getState().setAutoCacheOnMetered(false);
-    expect(JSON.parse(window.localStorage.getItem('ember.settings.v1')!).version).toBe(SETTINGS_VERSION);
-    await useSettingsStore.persist.rehydrate();
-    expect(useSettingsStore.getState().autoCacheOnMetered).toBe(false);
+  it('an older build\'s mobile data setting is dropped from stored settings, the rest kept', async () => {
+    for (const version of [0, 1]) {
+      window.localStorage.setItem('ember.settings.v1', JSON.stringify({
+        state: { autoCacheEnabled: false, autoCacheOnMetered: false, partyVolume: true },
+        version,
+      }));
+      await useSettingsStore.persist.rehydrate();
+      expect(useSettingsStore.getState()).not.toHaveProperty('autoCacheOnMetered');
+      expect(useSettingsStore.getState().autoCacheEnabled).toBe(false);
+      expect(useSettingsStore.getState().partyVolume).toBe(true);
+      useSettingsStore.setState(initial, true);
+    }
+    useSettingsStore.getState().setAutoCacheEnabled(true);
+    const saved = JSON.parse(window.localStorage.getItem('ember.settings.v1')!);
+    expect(saved.version).toBe(SETTINGS_VERSION);
+    expect(saved.state).not.toHaveProperty('autoCacheOnMetered');
   });
 
-  it('the migration leaves the cache switch itself alone', () => {
-    expect(migrateSettings({ autoCacheEnabled: false, autoCacheOnMetered: false }, 0))
-      .toEqual({ autoCacheEnabled: false, autoCacheOnMetered: true });
-    expect(migrateSettings({ autoCacheOnMetered: false }, 1)).toEqual({ autoCacheOnMetered: false });
+  it('the migration only drops the old field', () => {
+    expect(migrateSettings({ autoCacheEnabled: false, autoCacheOnMetered: false }, 0)).toEqual({ autoCacheEnabled: false });
+    expect(migrateSettings({ autoCacheOnMetered: true, partyVolume: true }, 1)).toEqual({ partyVolume: true });
     expect(migrateSettings(null, 0)).toBeNull();
   });
 
-  it('both persist on this device', () => {
+  it('persists on this device', () => {
     useSettingsStore.getState().setAutoCacheEnabled(false);
-    useSettingsStore.getState().setAutoCacheOnMetered(true);
-    expect(stored()).toMatchObject({ autoCacheEnabled: false, autoCacheOnMetered: true });
+    expect(stored()).toMatchObject({ autoCacheEnabled: false });
   });
 
-  it('never follow the account: an account load leaves them alone and saves nothing for them', async () => {
+  it('never follows the account: an account load leaves it alone and saves nothing for it', async () => {
     useSettingsStore.getState().setAutoCacheEnabled(false);
     getPlugins.mockResolvedValue({ partyVolume: true, tabsEnabled: true, autoCacheEnabled: true });
     await useSettingsStore.getState().loadPlugins('u1');
     expect(useSettingsStore.getState().autoCacheEnabled).toBe(false);
     for (const [patch] of updatePlugins.mock.calls) {
       expect(patch).not.toHaveProperty('autoCacheEnabled');
-      expect(patch).not.toHaveProperty('autoCacheOnMetered');
     }
   });
 });

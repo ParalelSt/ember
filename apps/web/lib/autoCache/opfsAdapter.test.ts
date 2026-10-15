@@ -235,7 +235,7 @@ describe('opfsAdapter with the driver', () => {
       player: () => ({ queue: tracks, index: 0, loopMode: 'off', context: null, baseCount: 3, playing: true }),
       playback: () => ({ playedSec: 60, bufferedToEnd: true }),
       conditions: () => ({ online: true, metered: false, saveData: false, batterySaver: false }),
-      settings: () => ({ enabled: true, allowMetered: false }),
+      settings: () => ({ enabled: true }),
       now: () => clock,
     });
     driver.tick();

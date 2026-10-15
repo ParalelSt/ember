@@ -17,7 +17,7 @@ import {
  *  The native player caches by itself (Media3 SimpleCache plus its own copy
  *  of the policy, see native.ts), so it keeps going with the screen off and
  *  in the car. Here the adapter only reports what native says is cached,
- *  hands the device settings down and empties the cache on request. It never
+ *  hands the device setting down and empties the cache on request. It never
  *  downloads (`prefetch` resolves failed; useAutoCache does not run the JS
  *  driver on this engine) and never evicts (SimpleCache does, least recently
  *  used first).
@@ -38,7 +38,7 @@ export interface AndroidCacheDeps {
 export type AndroidCacheAdapter = CacheAdapter & {
   /** The last cache state native reported (offline, stalled, cached ids). */
   nativeState(): NativeCacheState;
-  /** Hands `autoCacheEnabled` / `autoCacheOnMetered` to the native player. */
+  /** Hands `autoCacheEnabled` to the native player. */
   pushSettings(s: NativeAutoCacheSettings): Promise<boolean>;
   reload(): Promise<void>;
   /** Stops following the native state (the engine is going away). */

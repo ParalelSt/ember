@@ -46,7 +46,7 @@ describe('androidCacheAdapter', () => {
     expect(await a.ready()).toBe(false);
     expect(a.kind).toBe('none');
     expect(n.deps.subscribeState).not.toHaveBeenCalled();
-    expect(await a.pushSettings({ enabled: true, onMetered: false })).toBe(false);
+    expect(await a.pushSettings({ enabled: true })).toBe(false);
     expect(n.deps.setSettings).not.toHaveBeenCalled();
   });
 
@@ -102,8 +102,8 @@ describe('androidCacheAdapter', () => {
     const n = fakeNative();
     const a = createAndroidCacheAdapter(n.deps);
     await a.ready();
-    await a.pushSettings({ enabled: false, onMetered: true });
-    expect(n.deps.setSettings).toHaveBeenCalledWith({ enabled: false, onMetered: true });
+    await a.pushSettings({ enabled: false });
+    expect(n.deps.setSettings).toHaveBeenCalledWith({ enabled: false });
     a.dispose();
     expect(n.deps.unsubscribed).toHaveBeenCalled();
   });

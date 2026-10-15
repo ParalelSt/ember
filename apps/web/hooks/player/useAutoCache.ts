@@ -50,13 +50,13 @@ interface Options {
 const APP_ENGINES: readonly BackendKind[] = ['android', 'tauri-native'];
 
 /** Android: the native player caches and decides by itself, so there is no
- *  JS driver. The page hands the device settings down whenever they change,
+ *  JS driver. The page hands the device setting down whenever it changes,
  *  and mirrors native's offline state into the store the badge reads.
  *  Returns the unsubscribes. */
 function followNative(adapter: AndroidCacheAdapter): Array<() => void> {
   const push = () => {
     const s = useSettingsStore.getState();
-    void adapter.pushSettings({ enabled: s.autoCacheEnabled, onMetered: s.autoCacheOnMetered });
+    void adapter.pushSettings({ enabled: s.autoCacheEnabled });
   };
   let lastOffline: boolean | null = null;
   const sync = () => {
@@ -79,7 +79,7 @@ function followNative(adapter: AndroidCacheAdapter): Array<() => void> {
   sync();
   return [
     useSettingsStore.subscribe((s, prev) => {
-      if (s.autoCacheEnabled !== prev.autoCacheEnabled || s.autoCacheOnMetered !== prev.autoCacheOnMetered) push();
+      if (s.autoCacheEnabled !== prev.autoCacheEnabled) push();
     }),
     adapter.subscribe!(sync),
   ];
@@ -138,7 +138,7 @@ export function useAutoCache({ backendRef, backendKind, createAdapter = createCa
         conditions: () => conditionsRef.current,
         settings: () => {
           const s = useSettingsStore.getState();
-          return { enabled: s.autoCacheEnabled, allowMetered: s.autoCacheOnMetered };
+          return { enabled: s.autoCacheEnabled };
         },
         overrides: readTestOverrides(),
         onCacheChange: () => useAutoCacheStore.getState().refresh(),
@@ -161,7 +161,7 @@ export function useAutoCache({ backendRef, backendKind, createAdapter = createCa
           if (s.isPlaying !== prev.isPlaying) syncTimer(s.isPlaying);
         }),
         useSettingsStore.subscribe((s, prev) => {
-          if (s.autoCacheEnabled !== prev.autoCacheEnabled || s.autoCacheOnMetered !== prev.autoCacheOnMetered) driver.tick();
+          if (s.autoCacheEnabled !== prev.autoCacheEnabled) driver.tick();
         }),
       ];
       if (adapter.subscribe) unsubscribe.push(adapter.subscribe(() => useAutoCacheStore.getState().refresh()));
