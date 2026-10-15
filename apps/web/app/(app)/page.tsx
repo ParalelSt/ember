@@ -16,6 +16,14 @@ import { useUiStore } from '@/stores/useUiStore';
 import { FriendsListening } from '@/components/FriendsListening';
 import type { Track } from '@/types/track';
 import { PageTitle } from '@/components/page/PageTitle';
+import { RowShelf } from '@/components/page/RowShelf';
+import { CollectionCard } from '@/components/library/CollectionCard';
+import { QuickGrid } from '@/components/home/QuickGrid';
+import { useIsDesktop } from '@/hooks/useIsDesktop';
+import { useCollections } from '@/hooks/useCollections';
+import { useQueryLiveCarlist } from '@/hooks/useSession';
+import { usePlayerStore } from '@/stores/usePlayerStore';
+import { quickPicks, recentFirst } from '@/lib/home';
 
 interface Section {
   key: string;
@@ -32,12 +40,17 @@ export default function HomePage() {
   // The shelves are presentational, so the page reads the lyrics flag and
   // renders the cards (with their playback state) itself.
   const lyricsOpen = useUiStore((s) => s.lyricsOpen);
+  // A phone gets Spotify's mobile Home (quick grid, sideways rows); md and
+  // up keep the desktop shelves. A media query, not md: classes, so only
+  // one of the two layouts is ever in the page.
+  const isDesktop = useIsDesktop();
 
-  const renderCard = (t: Track, list: Track[]) => {
+  const cardFor = (variant: 'card' | 'tile') => (t: Track, list: Track[]) => {
     const active = current?.id === t.id;
     return (
       <TrackCard
         track={t}
+        variant={variant}
         active={active}
         playing={isPlaying}
         // Same rule the card used to own: re-tapping the current track
@@ -46,6 +59,8 @@ export default function HomePage() {
       />
     );
   };
+  const renderCard = cardFor('card');
+  const renderTile = cardFor('tile');
 
   // Reset the scroll position whenever the focus changes, going INTO a
   // focused song box (so you start at its top) and coming back OUT (so the
@@ -76,6 +91,11 @@ export default function HomePage() {
   const seedTrack = history[0];
   const { data: recommended = [], isLoading: recommendedLoading } = useQueryRecommended(seedTrack?.sourceId);
 
+  const { system, playlists } = useCollections();
+  const { data: carlist } = useQueryLiveCarlist();
+  const playbackContext = usePlayerStore((s) => s.context);
+  const playingPlaylistId = playbackContext?.type === 'playlist' ? playbackContext.playlistId : null;
+
   const recsTitle = seedTrack ? `Because you played "${seedTrack.title}"` : 'Recommended for you';
 
   const sections: Section[] = [
@@ -84,6 +104,10 @@ export default function HomePage() {
     { key: 'liked', title: 'From your liked songs', tracks: liked, hidden: liked.length === 0 },
     { key: 'history', title: 'Recently played', tracks: history, hidden: history.length === 0 },
   ];
+
+  // The phone's order, Spotify's: what you played, your playlists, then
+  // suggestions, your likes, and what friends are on.
+  const phoneOrder = ['history', 'playlists', 'recommended', 'trending', 'liked', 'friends'] as const;
 
   const focused = focus ? sections.find((s) => s.key === focus && !s.hidden) : null;
 
@@ -98,6 +122,53 @@ export default function HomePage() {
           lyricsOpen={lyricsOpen}
           fullscreen
         />
+      ) : !isDesktop ? (
+        <div>
+          <QuickGrid
+            items={quickPicks({
+              liked: system.find((c) => c.ref.kind === 'liked'),
+              playlists,
+              carlist,
+              playingPlaylistId,
+            })}
+          />
+          {phoneOrder.map((key) => {
+            if (key === 'playlists') {
+              return (
+                <RowShelf key={key} title="Your playlists" showAllHref="/library">
+                  {recentFirst(playlists, playingPlaylistId).map((p) => (
+                    <CollectionCard
+                      key={p.href}
+                      variant="tile"
+                      size="md"
+                      title={p.title}
+                      subtitle={p.subtitle}
+                      href={p.href}
+                      cover={{ src: p.artworkUrl, icon: null }}
+                      badge={p.downloaded ? 'downloaded' : undefined}
+                      shared={!!p.sharing}
+                      sharedBy={p.sharedBy}
+                    />
+                  ))}
+                </RowShelf>
+              );
+            }
+            if (key === 'friends') return <FriendsListening key={key} layout="row" />;
+            const s = sections.find((x) => x.key === key);
+            if (!s || s.hidden) return null;
+            return (
+              <TrackShelf
+                key={s.key}
+                layout="row"
+                title={s.title}
+                tracks={s.tracks}
+                loading={s.loading}
+                showAllHref={`/?focus=${encodeURIComponent(s.key)}`}
+                renderCard={renderTile}
+              />
+            );
+          })}
+        </div>
       ) : (
         <div>
           <PageTitle className="mb-8">Home</PageTitle>
