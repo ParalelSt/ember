@@ -232,7 +232,7 @@ export function SearchOverlay({
     <Dialog open={open} onOpenChange={(o) => (o ? undefined : onClose())}>
       <DialogContent
         showCloseButton={false}
-        className="top-0 left-0 h-dvh w-full max-w-none sm:max-w-none translate-x-0 translate-y-0 flex flex-col gap-0 overflow-hidden rounded-none bg-background p-0 pt-(--safe-top) pb-(--safe-bottom) ring-0"
+        className="top-0 left-0 h-[calc(100dvh-var(--keyboard-inset,0px))] max-h-none! w-full max-w-none sm:max-w-none translate-x-0 translate-y-0 flex flex-col gap-0 overflow-hidden rounded-none bg-background p-0 pt-(--safe-top) pb-(--safe-bottom) ring-0"
       >
         {/* Visually hidden: base-ui requires a title for a11y, the search
             icon + input already say what this is. */}
