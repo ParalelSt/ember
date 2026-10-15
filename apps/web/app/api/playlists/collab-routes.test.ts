@@ -572,6 +572,15 @@ describe('the library list carries each playlist\'s first song covers (phone Hom
     expect(o.body.playlists.find((p: { id: string }) => p.id === secret).track_artworks).toEqual([]);
   });
 
+  it('counts every song of each playlist, with art or without (the phone Library rows)', async () => {
+    const mine = world.addPlaylist(owner, 'Counted').id;
+    [1, 0, 2].forEach((n, i) => world.addRow(mine, world.addTrack(`youtube:cnt${i}`, `c${i}`, n ? { artwork_url: art(n) } : {}).id, i + 1));
+    const empty = world.addPlaylist(owner, 'Nothing yet').id;
+    const o = await call(list.GET, owner);
+    expect(o.body.playlists.find((p: { id: string }) => p.id === mine).track_count).toBe(3);
+    expect(o.body.playlists.find((p: { id: string }) => p.id === empty).track_count).toBe(0);
+  });
+
   it('gives a member the shared playlist\'s covers too, read with the server\'s client', async () => {
     const id = world.addTrack('youtube:sharedart', 'x', { artwork_url: art(9) }).id;
     world.addRow(shared, id, 4, owner);
@@ -617,5 +626,7 @@ describe('the library list carries each playlist\'s first song covers (phone Hom
     const m = await call(list.GET, member);
     expect(m.status).toBe(200);
     expect(m.body.playlists).toEqual([expect.objectContaining({ id: shared, track_artworks: [] })]);
+    // An unknown count is left out, never reported as zero.
+    expect(m.body.playlists[0]).not.toHaveProperty('track_count');
   });
 });

@@ -11,7 +11,8 @@ const MAX_NAME_LEN = 200;
 /** Your own playlists, newest first, then the collaborative ones other
  *  people added you to (newest share first, `role: 'member'`, with the
  *  owner's name). Each carries `track_artworks`, the covers of its first
- *  few distinct songs, for the phone Home's mosaic tiles. */
+ *  few distinct songs, for the phone Home's mosaic tiles, and
+ *  `track_count`, how many songs it has (the phone Library's rows). */
 export const GET = withRequestLog('playlists', async () => {
   try {
     const { pb, user } = await requireUser();
@@ -35,13 +36,22 @@ export const GET = withRequestLog('playlists', async () => {
       serverLogger.error('api', 'shared playlists lookup failed', { userId: user.id }, e instanceof Error ? e : undefined);
     }
     // Covers are decoration: if they cannot be read the list still loads.
-    let artworks = new Map<string, string[]>();
+    let artworks: Map<string, string[]> = new Map();
+    let counts: Map<string, number> | null = null;
     try {
-      artworks = await playlistArtworks(pb, own.map((p) => p.id), shared.map((p) => p.id), collabClient);
+      const found = await playlistArtworks(pb, own.map((p) => p.id), shared.map((p) => p.id), collabClient);
+      artworks = found;
+      counts = found.counts;
     } catch (e) {
       serverLogger.error('api', 'playlist artworks lookup failed', { userId: user.id }, e instanceof Error ? e : undefined);
     }
-    const playlists = [...own, ...shared].map((p) => ({ ...p, track_artworks: artworks.get(p.id) ?? [] }));
+    // The song count rides on the same rows; when they could not be read it
+    // is left out rather than reported as zero.
+    const playlists = [...own, ...shared].map((p) => ({
+      ...p,
+      track_artworks: artworks.get(p.id) ?? [],
+      ...(counts ? { track_count: counts.get(p.id) ?? 0 } : {}),
+    }));
     return Response.json({ playlists });
   } catch (e) {
     if (e instanceof UnauthorizedError) return unauthorizedResponse();

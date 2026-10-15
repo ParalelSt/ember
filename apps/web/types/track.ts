@@ -64,6 +64,9 @@ export interface Playlist {
   /** The covers of its first few distinct songs, in playlist order (only
    *  on GET /api/playlists): the phone Home's 2x2 mosaic. */
   track_artworks?: string[];
+  /** How many songs it has (only on GET /api/playlists, and only when the
+   *  rows could be read): the phone Library's "Playlist · 23 songs". */
+  track_count?: number;
 }
 
 export interface AlbumSummary {

@@ -138,6 +138,17 @@ export function firstArtworks(rows: readonly RecordModel[]): Map<string, string[
   return out;
 }
 
+/** How many songs each playlist has, from the same playlist_tracks rows
+ *  firstArtworks reads (every row counts, with art or without). Pure. */
+export function trackCounts(rows: readonly RecordModel[]): Map<string, number> {
+  const out = new Map<string, number>();
+  for (const r of rows) {
+    const pid = String(r.playlist ?? '');
+    if (pid) out.set(pid, (out.get(pid) ?? 0) + 1);
+  }
+  return out;
+}
+
 /** The covers for the Home tiles' mosaics, for every playlist in the
  *  library in at most two requests: one for your own (your session, so
  *  PocketBase checks it too), one for the shared ones (the server's
@@ -150,7 +161,7 @@ export async function playlistArtworks(
   ownIds: readonly string[],
   sharedIds: readonly string[],
   admin: () => Promise<PocketBase>,
-): Promise<Map<string, string[]>> {
+): Promise<Map<string, string[]> & { counts: Map<string, number> }> {
   const rowsFor = async (db: PocketBase, ids: readonly string[]): Promise<RecordModel[]> => {
     const valid = ids.filter(isRecordId);
     if (valid.length === 0) return [];
@@ -168,7 +179,8 @@ export async function playlistArtworks(
   };
   const own = await rowsFor(pb, ownIds);
   const theirs = sharedIds.length > 0 ? await rowsFor(await admin(), sharedIds) : [];
-  return firstArtworks([...own, ...theirs]);
+  const rows = [...own, ...theirs];
+  return Object.assign(firstArtworks(rows), { counts: trackCounts(rows) });
 }
 
 /** A user row as members see it: name and picture, no email. */
