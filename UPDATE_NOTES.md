@@ -165,7 +165,7 @@ PocketBase's admin UI, yours is kept.
   **Download** for each, **Back up now**, and a warning when disk space is
   low.
 - **Download member files** there gets uploaded songs, covers, tabs and
-  admin sounds, which are not in the database backups. Cached YouTube songs
+  other uploaded files, which are not in the database backups. Cached YouTube songs
   are left out (they download again).
 - The backups are on the same disk as everything else, so they do not help
   if that disk dies. **Download one now, and again now and then, and keep it
@@ -352,10 +352,9 @@ the tab alignment package below, then restart the web app.**
    `update.sh` does not install it (see internal notes on the "luka"
    playback repro).
 
-# 0.6.0: Admin sounds (plan-23-9)
+# 0.6.0: New server collections
 
-**Host: `./update.sh` as usual, then a new Android APK for the sounds to play
-there.** Restarting PocketBase creates the new collections on first boot;
+**Host: `./update.sh` as usual, then a new Android APK.** Restarting PocketBase creates the new collections on first boot;
 nothing to do by hand. Web and desktop work once the host is updated.
 
 # 0.5.0: Bring your liked songs over
