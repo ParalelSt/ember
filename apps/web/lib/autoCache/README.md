@@ -233,6 +233,24 @@ ahead. When the connection returns, the stall clears and the song it stopped
 at is loaded paused; the listener presses play. The availability probe asks
 the server nothing while offline.
 
+The browser can call itself online while nothing gets through (a weak
+mobile signal). When the availability probe gets no HTTP answer at all,
+`lib/playback/serverReach` puts `online` to false and the failed song goes
+the offline way above; any later answer from the server (an api call, or
+its own HEAD for a small icon every 10 s) puts it back.
+
+### Offline behaviour (Android app)
+
+The native player decides by itself (`OfflinePlayback.kt`); the page only
+mirrors `offline` and `offlineStalled`. Offline is no validated network, or
+one that carries nothing: a song stuck loading for 8 s, or a load failing on
+the connection, makes the player ask the server (`ConnectionHealth.kt`), and
+no answer counts as offline. The playing song loads whole
+(`SongLoadControl.kt`), so it finishes from memory; after it, songs on the
+phone play and the rest are passed over. With nothing on the phone ahead the
+player waits on the song with play left on (`offlineStalled`), and goes on
+by itself when the server answers again.
+
 ### Tests
 
 `adapter.test.ts`, `opfsAdapter.test.ts` (fake OPFS in
