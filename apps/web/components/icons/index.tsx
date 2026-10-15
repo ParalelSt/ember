@@ -16,7 +16,6 @@ export {
   MenuIcon,
   CloseIcon,
   MusicIcon,
-  FlameIcon,
   ChevronDownIcon,
   RefreshIcon,
   BugIcon,
@@ -98,3 +97,4 @@ export {
   OctagonXIcon,
   Loader2Icon,
 } from './phosphor';
+export { FlameIcon } from './EmberLogo';

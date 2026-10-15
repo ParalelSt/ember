@@ -5,7 +5,8 @@ import * as icons from './index';
 afterEach(cleanup);
 
 describe('Phosphor icons', () => {
-  for (const [name, Icon] of Object.entries(icons)) {
+  // FlameIcon is the Ember logo, not part of the icon set (EmberLogo.test.tsx).
+  for (const [name, Icon] of Object.entries(icons).filter(([n]) => n !== 'FlameIcon')) {
     it(`${name} renders a filled, decorative icon and passes classes through`, () => {
       const { container } = render(<Icon className="size-5 text-ember" />);
       const svg = container.querySelector('svg')!;
