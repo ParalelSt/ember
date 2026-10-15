@@ -39,7 +39,7 @@ export function CollectionNavList({ items, activePath, onNavigate }: CollectionN
             data-testid={importState ? 'import-nav-row' : undefined}
             data-import={importState?.kind}
             className={cn(
-              'flex items-center gap-3 px-2 py-1.5 rounded-md text-sm transition-colors',
+              'flex items-center gap-row px-cluster py-1.5 rounded-md text-sm transition-colors',
               isActive
                 ? 'bg-sidebar-accent text-sidebar-accent-foreground'
                 : 'text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent/60',

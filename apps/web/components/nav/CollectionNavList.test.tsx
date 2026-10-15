@@ -71,7 +71,7 @@ it('uses supplied counts and system artwork, keeping navigation and truncation',
   expect(screen.getByText('Auto playlist · 4 songs')).toBeInTheDocument();
   expect(screen.getByText('Uploads · 1 song')).toBeInTheDocument();
   const recent = screen.getByRole('link', { name: /^Recently played/ });
-  expect(recent).toHaveClass('bg-sidebar-accent', 'px-2', 'py-1.5', 'gap-3');
+  expect(recent).toHaveClass('bg-sidebar-accent', 'px-cluster', 'py-1.5', 'gap-row');
   expect(recent.querySelectorAll('[data-mosaic] img')).toHaveLength(4);
   expect(recent.querySelector('[data-badge]')).not.toBeNull();
   expect(screen.getByText('Recently played')).toHaveClass('truncate', 'text-[14.5px]');

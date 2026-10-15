@@ -184,7 +184,7 @@ const SPACING_BASELINE: Record<string, number> = {
   'components/changelog/WhatsNewLink.tsx': 3,
   'components/library/CollectionCard.tsx': 4,
   'components/library/CollectionShelf.tsx': 5,
-  'components/nav/CollectionNavList.tsx': 5,
+  'components/nav/CollectionNavList.tsx': 3,
   'components/nav/Drawer.tsx': 18,
   'components/nav/MobileNav.tsx': 2,
   'components/nav/NavLinks.tsx': 3,

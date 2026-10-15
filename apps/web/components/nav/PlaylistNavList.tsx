@@ -89,7 +89,7 @@ export function PlaylistNavList({ items, authed, activePath, onNavigate, onOpen,
           title={p.sharedLabel ? `${p.name}, ${p.sharedLabel}` : undefined}
           {...(onTogglePin ? hold.props(p.id) : {})}
           className={cn(
-            'flex shrink-0 items-center gap-3 min-h-11 px-2 py-1.5 rounded-md text-sm transition-colors select-none',
+            'flex shrink-0 items-center gap-row min-h-11 px-cluster py-1.5 rounded-md text-sm transition-colors select-none',
             activePath === p.href
               ? 'bg-sidebar-accent text-sidebar-accent-foreground'
               : 'text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent/60',

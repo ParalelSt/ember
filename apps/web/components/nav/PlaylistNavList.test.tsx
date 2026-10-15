@@ -147,7 +147,7 @@ describe('PlaylistNavList covers', () => {
     expect(rows[3]).toHaveTextContent('Playlist · 0 songs');
     for (const row of rows) {
       expect(row.firstElementChild).toHaveClass('size-8', 'shrink-0', 'rounded-[4px]');
-      expect(row).toHaveClass('px-2', 'py-1.5', 'gap-3');
+      expect(row).toHaveClass('px-cluster', 'py-1.5', 'gap-row');
     }
   });
 });
