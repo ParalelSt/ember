@@ -13,6 +13,8 @@ import { useOnline } from '@/lib/useOnline';
 import { hrefFor, iconFor, refFromPinId } from '@/lib/collections';
 import { EmptyState } from '@/components/page/EmptyState';
 import { PageTitle } from '@/components/page/PageTitle';
+import { PhoneLibrary } from '@/components/library/PhoneLibrary';
+import { useIsDesktop } from '@/hooks/useIsDesktop';
 
 export default function LibraryPage() {
   const { user } = useAuth();
@@ -20,6 +22,10 @@ export default function LibraryPage() {
   const isOnline = useOnline();
   const pins = useOfflineStore((s) => s.pins);
   const [uploadOpen, setUploadOpen] = useState(false);
+  // A phone gets the owner's Spotify-style list (components/library/
+  // PhoneLibrary); md and up keep the shelves below. A media query, not md:
+  // classes, so only one of the two is ever in the page.
+  const isDesktop = useIsDesktop();
 
   if (!user) return <EmptyState>Sign in to see your library</EmptyState>;
 
@@ -54,6 +60,8 @@ export default function LibraryPage() {
       </div>
     );
   }
+
+  if (!isDesktop) return <PhoneLibrary />;
 
   return (
     <div>
