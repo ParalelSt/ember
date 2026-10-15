@@ -1,0 +1,578 @@
+[
+  {
+    "lucide": "House",
+    "app": "HomeIcon",
+    "name": "house",
+    "weight": "fill"
+  },
+  {
+    "lucide": "Search",
+    "app": "SearchIcon",
+    "name": "magnifying-glass",
+    "weight": "fill"
+  },
+  {
+    "lucide": "LibraryBig",
+    "app": "LibraryIcon",
+    "name": "books",
+    "weight": "fill"
+  },
+  {
+    "lucide": "Play",
+    "app": "PlayIcon",
+    "name": "play",
+    "weight": "fill"
+  },
+  {
+    "lucide": "Pause",
+    "app": "PauseIcon",
+    "name": "pause",
+    "weight": "fill"
+  },
+  {
+    "lucide": "SkipForward",
+    "app": "NextIcon",
+    "name": "skip-forward",
+    "weight": "fill"
+  },
+  {
+    "lucide": "SkipBack",
+    "app": "PrevIcon",
+    "name": "skip-back",
+    "weight": "fill"
+  },
+  {
+    "lucide": "Heart",
+    "app": "HeartIcon",
+    "name": "heart",
+    "weight": "fill"
+  },
+  {
+    "lucide": "Plus",
+    "app": "PlusIcon",
+    "name": "plus",
+    "weight": "bold"
+  },
+  {
+    "lucide": "Trash2",
+    "app": "TrashIcon",
+    "name": "trash",
+    "weight": "fill"
+  },
+  {
+    "lucide": "Volume2",
+    "app": "VolumeIcon",
+    "name": "speaker-high",
+    "weight": "fill"
+  },
+  {
+    "lucide": "LogOut",
+    "app": "LogOutIcon",
+    "name": "sign-out",
+    "weight": "fill"
+  },
+  {
+    "lucide": "Menu",
+    "app": "MenuIcon",
+    "name": "list",
+    "weight": "bold"
+  },
+  {
+    "lucide": "X",
+    "app": "CloseIcon",
+    "name": "x",
+    "weight": "bold"
+  },
+  {
+    "lucide": "Music",
+    "app": "MusicIcon",
+    "name": "music-notes",
+    "weight": "fill"
+  },
+  {
+    "lucide": "Flame",
+    "app": "FlameIcon",
+    "name": "fire",
+    "weight": "fill"
+  },
+  {
+    "lucide": "ChevronDown",
+    "app": "ChevronDownIcon",
+    "name": "caret-down",
+    "weight": "fill"
+  },
+  {
+    "lucide": "RotateCw",
+    "app": "RefreshIcon",
+    "name": "arrow-clockwise",
+    "weight": "fill"
+  },
+  {
+    "lucide": "Bug",
+    "app": "BugIcon",
+    "name": "bug",
+    "weight": "fill"
+  },
+  {
+    "lucide": "Settings",
+    "app": "SettingsIcon",
+    "name": "gear",
+    "weight": "fill"
+  },
+  {
+    "lucide": "Shield",
+    "app": "ShieldIcon",
+    "name": "shield",
+    "weight": "fill"
+  },
+  {
+    "lucide": "MoreHorizontal",
+    "app": "MoreIcon",
+    "name": "dots-three",
+    "weight": "bold"
+  },
+  {
+    "lucide": "Download",
+    "app": "DownloadIcon",
+    "name": "download-simple",
+    "weight": "fill"
+  },
+  {
+    "lucide": "ListMusic",
+    "app": "QueueIcon",
+    "name": "playlist",
+    "weight": "bold"
+  },
+  {
+    "lucide": "ChevronUp",
+    "app": "ChevronUpIcon",
+    "name": "caret-up",
+    "weight": "fill"
+  },
+  {
+    "lucide": "ChevronLeft",
+    "app": "ChevronLeftIcon",
+    "name": "caret-left",
+    "weight": "fill"
+  },
+  {
+    "lucide": "Mic2",
+    "app": "LyricsIcon",
+    "name": "microphone-stage",
+    "weight": "fill"
+  },
+  {
+    "lucide": "Mic",
+    "app": "MicIcon",
+    "name": "microphone",
+    "weight": "fill"
+  },
+  {
+    "lucide": "Clock",
+    "app": "ClockIcon",
+    "name": "clock",
+    "weight": "fill"
+  },
+  {
+    "lucide": "Sparkles",
+    "app": "SparklesIcon",
+    "name": "sparkle",
+    "weight": "fill"
+  },
+  {
+    "lucide": "Guitar",
+    "app": "TabsIcon",
+    "name": "guitar",
+    "weight": "fill"
+  },
+  {
+    "lucide": "Gauge",
+    "app": "GaugeIcon",
+    "name": "gauge",
+    "weight": "fill"
+  },
+  {
+    "lucide": "SlidersHorizontal",
+    "app": "SlidersIcon",
+    "name": "sliders-horizontal",
+    "weight": "fill"
+  },
+  {
+    "lucide": "Timer",
+    "app": "TimerIcon",
+    "name": "timer",
+    "weight": "fill"
+  },
+  {
+    "lucide": "Drum",
+    "app": "DrumIcon",
+    "name": "metronome",
+    "weight": "fill"
+  },
+  {
+    "lucide": "ExternalLink",
+    "app": "ExternalIcon",
+    "name": "arrow-square-out",
+    "weight": "fill"
+  },
+  {
+    "lucide": "ClipboardPaste",
+    "app": "PasteIcon",
+    "name": "clipboard-text",
+    "weight": "fill"
+  },
+  {
+    "lucide": "Shuffle",
+    "app": "ShuffleIcon",
+    "name": "shuffle",
+    "weight": "fill"
+  },
+  {
+    "lucide": "Repeat",
+    "app": "RepeatIcon",
+    "name": "repeat",
+    "weight": "fill"
+  },
+  {
+    "lucide": "Repeat1",
+    "app": "RepeatOneIcon",
+    "name": "repeat-once",
+    "weight": "fill"
+  },
+  {
+    "lucide": "VolumeX",
+    "app": "VolumeMutedIcon",
+    "name": "speaker-x",
+    "weight": "fill"
+  },
+  {
+    "lucide": "Key",
+    "app": "KeyIcon",
+    "name": "key",
+    "weight": "fill"
+  },
+  {
+    "lucide": "Eye",
+    "app": "EyeIcon",
+    "name": "eye",
+    "weight": "fill"
+  },
+  {
+    "lucide": "EyeOff",
+    "app": "EyeOffIcon",
+    "name": "eye-slash",
+    "weight": "fill"
+  },
+  {
+    "lucide": "CloudDownload",
+    "app": "CloudDownloadIcon",
+    "name": "cloud-arrow-down",
+    "weight": "fill"
+  },
+  {
+    "lucide": "Check",
+    "app": "CheckIcon",
+    "name": "check",
+    "weight": "bold"
+  },
+  {
+    "lucide": "XCircle",
+    "app": "XCircleIcon",
+    "name": "x-circle",
+    "weight": "bold"
+  },
+  {
+    "lucide": "Share",
+    "app": "ShareIcon",
+    "name": "share-network",
+    "weight": "fill"
+  },
+  {
+    "lucide": "Upload",
+    "app": "UploadIcon",
+    "name": "upload-simple",
+    "weight": "fill"
+  },
+  {
+    "lucide": "MessageSquarePlus",
+    "app": "RequestIcon",
+    "name": "chat-circle-dots",
+    "weight": "fill"
+  },
+  {
+    "lucide": "Link2",
+    "app": "LinkIcon",
+    "name": "link",
+    "weight": "bold"
+  },
+  {
+    "lucide": "UserRound",
+    "app": "ArtistIcon",
+    "name": "user",
+    "weight": "fill"
+  },
+  {
+    "lucide": "ListPlus",
+    "app": "ListPlusIcon",
+    "name": "list-plus",
+    "weight": "bold"
+  },
+  {
+    "lucide": "Disc3",
+    "app": "AlbumIcon",
+    "name": "vinyl-record",
+    "weight": "fill"
+  },
+  {
+    "lucide": "Flag",
+    "app": "FlagIcon",
+    "name": "flag",
+    "weight": "fill"
+  },
+  {
+    "lucide": "SlidersVertical",
+    "app": "EqualizerIcon",
+    "name": "sliders",
+    "weight": "fill"
+  },
+  {
+    "lucide": "Cast",
+    "app": "CastIcon",
+    "name": "screencast",
+    "weight": "fill"
+  },
+  {
+    "lucide": "Airplay",
+    "app": "AirplayIcon",
+    "name": "airplay",
+    "weight": "fill"
+  },
+  {
+    "lucide": "ChevronRight",
+    "app": "ChevronRightIcon",
+    "name": "caret-right",
+    "weight": "fill"
+  },
+  {
+    "lucide": "CircleAlert",
+    "app": "AlertIcon",
+    "name": "warning-circle",
+    "weight": "bold"
+  },
+  {
+    "lucide": "TriangleAlert",
+    "app": "WarningIcon",
+    "name": "warning",
+    "weight": "fill"
+  },
+  {
+    "lucide": "ListChecks",
+    "app": "ReviewIcon",
+    "name": "list-checks",
+    "weight": "bold"
+  },
+  {
+    "lucide": "Paperclip",
+    "app": "AttachIcon",
+    "name": "paperclip",
+    "weight": "bold"
+  },
+  {
+    "lucide": "Film",
+    "app": "VideoIcon",
+    "name": "film-strip",
+    "weight": "fill"
+  },
+  {
+    "lucide": "ImageUp",
+    "app": "ImageUploadIcon",
+    "name": "image",
+    "weight": "fill"
+  },
+  {
+    "lucide": "Pencil",
+    "app": "EditIcon",
+    "name": "pencil-simple",
+    "weight": "fill"
+  },
+  {
+    "lucide": "Copy",
+    "app": "CopyIcon",
+    "name": "copy",
+    "weight": "fill"
+  },
+  {
+    "lucide": "CopyPlus",
+    "app": "CopyToIcon",
+    "name": "files",
+    "weight": "fill"
+  },
+  {
+    "lucide": "ArrowUpDown",
+    "app": "SortIcon",
+    "name": "arrows-down-up",
+    "weight": "fill"
+  },
+  {
+    "lucide": "ArrowUp",
+    "app": "ArrowUpIcon",
+    "name": "arrow-up",
+    "weight": "fill"
+  },
+  {
+    "lucide": "ArrowDown",
+    "app": "ArrowDownIcon",
+    "name": "arrow-down",
+    "weight": "fill"
+  },
+  {
+    "lucide": "Minus",
+    "app": "MinusIcon",
+    "name": "minus",
+    "weight": "bold"
+  },
+  {
+    "lucide": "SquareCheck",
+    "app": "SelectIcon",
+    "name": "check-square",
+    "weight": "bold"
+  },
+  {
+    "lucide": "Users",
+    "app": "PeopleIcon",
+    "name": "users",
+    "weight": "fill"
+  },
+  {
+    "lucide": "UserPlus",
+    "app": "AddPersonIcon",
+    "name": "user-plus",
+    "weight": "fill"
+  },
+  {
+    "lucide": "MonitorSpeaker",
+    "app": "DevicesIcon",
+    "name": "desktop-tower",
+    "weight": "fill"
+  },
+  {
+    "lucide": "Speaker",
+    "app": "SpeakerIcon",
+    "name": "speaker-hifi",
+    "weight": "fill"
+  },
+  {
+    "lucide": "Headphones",
+    "app": "HeadphonesIcon",
+    "name": "headphones",
+    "weight": "fill"
+  },
+  {
+    "lucide": "Bluetooth",
+    "app": "BluetoothIcon",
+    "name": "bluetooth",
+    "weight": "fill"
+  },
+  {
+    "lucide": "Smartphone",
+    "app": "PhoneIcon",
+    "name": "device-mobile",
+    "weight": "fill"
+  },
+  {
+    "lucide": "Laptop",
+    "app": "LaptopIcon",
+    "name": "laptop",
+    "weight": "fill"
+  },
+  {
+    "lucide": "Tv",
+    "app": "TvIcon",
+    "name": "television",
+    "weight": "fill"
+  },
+  {
+    "lucide": "Car",
+    "app": "CarIcon",
+    "name": "car",
+    "weight": "fill"
+  },
+  {
+    "lucide": "Usb",
+    "app": "UsbIcon",
+    "name": "usb",
+    "weight": "fill"
+  },
+  {
+    "lucide": "Square",
+    "app": "StopIcon",
+    "name": "square",
+    "weight": "fill"
+  },
+  {
+    "lucide": "GripVertical",
+    "app": "GripIcon",
+    "name": "dots-six-vertical",
+    "weight": "bold"
+  },
+  {
+    "lucide": "FileText",
+    "app": "FileIcon",
+    "name": "file-text",
+    "weight": "fill"
+  },
+  {
+    "lucide": "ScanQrCode",
+    "app": "ScanQrIcon",
+    "name": "qr-code",
+    "weight": "fill"
+  },
+  {
+    "lucide": "Tablet",
+    "app": "TabletIcon",
+    "name": "device-tablet",
+    "weight": "fill"
+  },
+  {
+    "lucide": "LayoutGrid",
+    "app": "GridIcon",
+    "name": "squares-four",
+    "weight": "fill"
+  },
+  {
+    "lucide": "List",
+    "app": "ListIcon",
+    "name": "list",
+    "weight": "bold"
+  },
+  {
+    "lucide": "Pin",
+    "app": "PinIcon",
+    "name": "push-pin",
+    "weight": "fill"
+  },
+  {
+    "lucide": "CircleCheck",
+    "app": "CircleCheckIcon",
+    "name": "check-circle",
+    "weight": "bold"
+  },
+  {
+    "lucide": "Info",
+    "app": "InfoIcon",
+    "name": "info",
+    "weight": "bold"
+  },
+  {
+    "lucide": "OctagonX",
+    "app": "OctagonXIcon",
+    "name": "warning-octagon",
+    "weight": "bold"
+  },
+  {
+    "lucide": "Loader2",
+    "app": "Loader2Icon",
+    "name": "spinner-gap",
+    "weight": "fill"
+  }
+]
