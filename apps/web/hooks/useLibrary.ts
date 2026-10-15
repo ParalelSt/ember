@@ -1,6 +1,6 @@
 'use client';
 
-import { useMutation, useQueries, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
+import { skipToken, useMutation, useQueries, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { usePlayerStore } from '@/stores/usePlayerStore';
@@ -36,6 +36,22 @@ export const QK = {
   containing: (trackId: string) => ['playlists-containing', trackId] as const,
   containingAll: ['playlists-containing'] as const,
 };
+
+/** Observe collection data already loaded by pages or player actions. The nav
+ *  never fetches songs just to fill a cover or count. */
+export function useCachedCollectionTracks() {
+  const [liked, recent, uploads] = useQueries({
+    queries: [QK.likes, QK.history, QK.uploads].map((queryKey) => ({
+      queryKey,
+      queryFn: skipToken,
+    })),
+  });
+  return {
+    heart: liked.data as Track[] | undefined,
+    clock: recent.data as Track[] | undefined,
+    upload: uploads.data as Track[] | undefined,
+  };
+}
 
 /** Every song members have uploaded to this server, a shared library, not
  *  a per-user one. */
