@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { APP_VERSION, CHANGELOG } from './changelog';
+import { APP_VERSION, CHANGELOG, computeNewIds } from './changelog';
 import { isNewer, parseVersion } from './semver';
 import pkg from '../package.json';
 
@@ -47,5 +47,17 @@ describe('CHANGELOG invariants', () => {
       const text = [e.title, e.summary, ...e.bullets].join(' ');
       expect(text, e.id).not.toContain(String.fromCharCode(0x2014));
     }
+  });
+});
+
+describe('computeNewIds readIds', () => {
+  const es = [
+    { id: 'b', version: '0.3.1', date: '2026-09-20', title: 'B', summary: '', bullets: [] },
+    { id: 'a', version: '0.3.0', date: '2026-09-18', title: 'A', summary: '', bullets: [] },
+  ];
+  it('leaves opened entries un-tagged but keeps the rest', () => {
+    expect(computeNewIds(es, '0.2.0', false, ['b'])).toEqual(['a']);
+    expect(computeNewIds(es, '0.2.0', false, [])).toEqual(['b', 'a']);
+    expect(computeNewIds(es, '0.2.0', false)).toEqual(['b', 'a']);
   });
 });

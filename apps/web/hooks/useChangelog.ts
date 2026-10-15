@@ -12,6 +12,7 @@ export interface UseChangelog {
   hideNew: boolean;
   setHideNew: (hide: boolean) => Promise<void>;
   markAllRead: () => Promise<void>;
+  markRead: (id: string) => Promise<void>;
   loaded: boolean;
 }
 
@@ -23,8 +24,10 @@ export function useChangelog(): UseChangelog {
   const loaded = useChangelogStore((s) => s.loaded);
   const setHideNew = useChangelogStore((s) => s.setHideNew);
   const markAllRead = useChangelogStore((s) => s.markAllRead);
+  const markRead = useChangelogStore((s) => s.markRead);
+  const readIds = useChangelogStore((s) => s.readIds);
 
-  const newIds = useMemo(() => new Set(computeNewIds(CHANGELOG, seenVersion, hideNew)), [seenVersion, hideNew]);
+  const newIds = useMemo(() => new Set(computeNewIds(CHANGELOG, seenVersion, hideNew, readIds)), [seenVersion, hideNew, readIds]);
 
-  return { entries: CHANGELOG, newIds, hasNew: newIds.size > 0, hideNew, setHideNew, markAllRead, loaded };
+  return { entries: CHANGELOG, newIds, hasNew: newIds.size > 0, hideNew, setHideNew, markAllRead, markRead, loaded };
 }

@@ -14,6 +14,8 @@ export interface ChangelogPageProps {
   hideTags: boolean;
   onHideTagsChange: (hide: boolean) => void;
   onMarkAllRead: () => void;
+  /** The user opened an entry (click, Enter or Space on its card). */
+  onOpenEntry?: (id: string) => void;
 }
 
 const SCOPE_LABEL: Record<NonNullable<ChangelogEntry['scope']>, string> = {
@@ -25,7 +27,7 @@ const SCOPE_LABEL: Record<NonNullable<ChangelogEntry['scope']>, string> = {
  *  pages (PageTitle, then rounded-2xl bg-card cards as on Settings > Help).
  *  Mark all as read and the persistent switch sit in the header so they are
  *  reachable before the first card. */
-export function ChangelogPage({ entries, newIds, hideTags, onHideTagsChange, onMarkAllRead }: ChangelogPageProps) {
+export function ChangelogPage({ entries, newIds, hideTags, onHideTagsChange, onMarkAllRead, onOpenEntry }: ChangelogPageProps) {
   return (
     <div data-testid="changelog-page" className="max-w-2xl">
       <PageTitle className="mb-2">What&apos;s new</PageTitle>
@@ -41,7 +43,20 @@ export function ChangelogPage({ entries, newIds, hideTags, onHideTagsChange, onM
 
       <div className="mt-6 flex flex-col gap-6">
         {entries.map((e) => (
-          <article key={e.id} data-testid="changelog-entry" data-entry-id={e.id} className="rounded-2xl bg-card p-6 shadow-soft">
+          <article
+            key={e.id}
+            data-testid="changelog-entry"
+            data-entry-id={e.id}
+            tabIndex={0}
+            onClick={() => onOpenEntry?.(e.id)}
+            onKeyDown={(ev) => {
+              if (ev.target === ev.currentTarget && (ev.key === 'Enter' || ev.key === ' ')) {
+                ev.preventDefault();
+                onOpenEntry?.(e.id);
+              }
+            }}
+            className="rounded-2xl bg-card p-6 shadow-soft"
+          >
             <div className="flex items-center justify-between gap-3">
               <Eyebrow>
                 {[e.version, e.date, e.scope && SCOPE_LABEL[e.scope]].filter(Boolean).join(' · ')}

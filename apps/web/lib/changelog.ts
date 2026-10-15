@@ -875,12 +875,14 @@ export const APP_VERSION = CHANGELOG[0].version;
 /** Ids of the entries that carry a New tag: everything released after the
  *  version the user last marked read. An empty `seen` means "not known yet"
  *  (not loaded, or a brand new user before the first write), which shows
- *  nothing as New. Hiding tags empties the set. */
+ *  nothing as New. `readIds` are entries opened one by one, which are not New
+ *  even though they are above `seen`. Hiding tags empties the set. */
 export function computeNewIds(
   entries: ChangelogEntry[],
   seen: string | null | undefined,
   hideNew: boolean,
+  readIds: readonly string[] = [],
 ): string[] {
   if (hideNew || !seen) return [];
-  return entries.filter((e) => isNewer(e.version, seen)).map((e) => e.id);
+  return entries.filter((e) => isNewer(e.version, seen) && !readIds.includes(e.id)).map((e) => e.id);
 }

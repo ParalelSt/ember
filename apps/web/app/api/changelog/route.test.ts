@@ -44,14 +44,14 @@ describe('GET /api/changelog', () => {
     getOne.mockResolvedValue({ changelog_seen_version: '0.2.4', changelog_hide_new: true });
     const res = await GET(request(null), undefined as never);
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ seenVersion: '0.2.4', hideNew: true });
+    expect(await res.json()).toEqual({ seenVersion: '0.2.4', hideNew: true, readIds: [] });
     expect(getOne).toHaveBeenCalledWith('u1');
   });
 
   it('reads missing fields as never seen and tags shown', async () => {
     getOne.mockResolvedValue({});
     const res = await GET(request(null), undefined as never);
-    expect(await res.json()).toEqual({ seenVersion: '', hideNew: false });
+    expect(await res.json()).toEqual({ seenVersion: '', hideNew: false, readIds: [] });
   });
 
   it('401 without a user', async () => {
@@ -67,13 +67,13 @@ describe('PATCH /api/changelog', () => {
     const res = await PATCH(request({ seenVersion: '0.3.0' }), undefined as never);
     expect(res.status).toBe(200);
     expect(update).toHaveBeenCalledWith('u1', { changelog_seen_version: '0.3.0' });
-    expect(await res.json()).toEqual({ seenVersion: '0.3.0', hideNew: false });
+    expect(await res.json()).toEqual({ seenVersion: '0.3.0', hideNew: false, readIds: [] });
   });
 
   it('saves the hide switch alone', async () => {
     const res = await PATCH(request({ hideNew: true }), undefined as never);
     expect(update).toHaveBeenCalledWith('u1', { changelog_hide_new: true });
-    expect(await res.json()).toEqual({ seenVersion: '0.3.0', hideNew: true });
+    expect(await res.json()).toEqual({ seenVersion: '0.3.0', hideNew: true, readIds: [] });
   });
 
   it('saves both at once', async () => {
@@ -107,5 +107,29 @@ describe('PATCH /api/changelog', () => {
     const res = await PATCH(request({ hideNew: true }), undefined as never);
     expect(res.status).toBe(401);
     expect(update).not.toHaveBeenCalled();
+  });
+});
+
+describe('changelog readIds', () => {
+  it('reads the JSON list and drops junk', async () => {
+    getOne.mockResolvedValue({ changelog_read_ids: JSON.stringify(['dead-zones', 5, 'Bad Id', 'ok-1']) });
+    const res = await GET(request(null), undefined as never);
+    expect((await res.json()).readIds).toEqual(['dead-zones', 'ok-1']);
+  });
+
+  it('treats a corrupt value as empty', async () => {
+    getOne.mockResolvedValue({ changelog_read_ids: '{nope' });
+    const res = await GET(request(null), undefined as never);
+    expect((await res.json()).readIds).toEqual([]);
+  });
+
+  it('saves a sanitised, de-duplicated list as JSON', async () => {
+    await PATCH(request({ readIds: ['a-1', 'a-1', 'B!', 7, 'b-2'] }), undefined as never);
+    expect(update).toHaveBeenCalledWith('u1', { changelog_read_ids: JSON.stringify(['a-1', 'b-2']) });
+  });
+
+  it('an empty list is a valid write (mark all clears it)', async () => {
+    await PATCH(request({ readIds: [] }), undefined as never);
+    expect(update).toHaveBeenCalledWith('u1', { changelog_read_ids: '[]' });
   });
 });

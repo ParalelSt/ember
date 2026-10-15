@@ -109,7 +109,7 @@ export function AuthProvider({ children, initialUser }: { children: ReactNode; i
   const userId = user?.id;
   useEffect(() => {
     if (userId) void useChangelogStore.getState().load();
-    else useChangelogStore.setState({ seenVersion: null, hideNew: false, loaded: false });
+    else useChangelogStore.setState({ seenVersion: null, hideNew: false, readIds: [], loaded: false });
   }, [userId]);
 
   // Plugin switches follow the account. The local cache keeps showing the

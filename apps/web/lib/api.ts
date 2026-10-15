@@ -524,9 +524,9 @@ export const api = {
     }),
 
   // What's new: the version last marked read and "Don't show New tags", per user.
-  getChangelog: () => req<{ seenVersion: string; hideNew: boolean }>('/changelog'),
-  updateChangelog: (patch: { seenVersion?: string; hideNew?: boolean }) =>
-    req<{ seenVersion: string; hideNew: boolean }>('/changelog', {
+  getChangelog: () => req<{ seenVersion: string; hideNew: boolean; readIds: string[] }>('/changelog'),
+  updateChangelog: (patch: { seenVersion?: string; hideNew?: boolean; readIds?: string[] }) =>
+    req<{ seenVersion: string; hideNew: boolean; readIds: string[] }>('/changelog', {
       method: 'PATCH',
       body: patch,
     }),

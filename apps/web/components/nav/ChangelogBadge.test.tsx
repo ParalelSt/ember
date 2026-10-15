@@ -34,7 +34,7 @@ const { Sidebar } = await import('./Sidebar');
 const { Drawer } = await import('./Drawer');
 const { TopBar } = await import('./TopBar');
 const { useChangelogStore } = await import('@/stores/useChangelogStore');
-const { APP_VERSION } = await import('@/lib/changelog');
+const { APP_VERSION, CHANGELOG } = await import('@/lib/changelog');
 
 const initial = useChangelogStore.getState();
 
@@ -67,6 +67,13 @@ describe('Sidebar What\'s new row', () => {
 
   it('has no tag while New tags are hidden', () => {
     setState('0.0.1', true);
+    render(<Sidebar />);
+    expect(within(whatsNewRow()).queryByTestId('new-badge')).toBeNull();
+  });
+
+  it('drops the tag once every New entry was opened one by one', () => {
+    setState('0.0.1');
+    useChangelogStore.setState({ readIds: CHANGELOG.map((e) => e.id) });
     render(<Sidebar />);
     expect(within(whatsNewRow()).queryByTestId('new-badge')).toBeNull();
   });

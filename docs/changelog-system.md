@@ -63,7 +63,7 @@ No per-entry read state. "Read" is version level: one field, one write. `useSett
 - Mark all as read: `PATCH { seenVersion: APP_VERSION }`.
 - Brand new user, or an existing user on the first build with this feature (field empty): the store writes `seenVersion = APP_VERSION` on first load. Nothing is New; history is browsable.
 - User who skipped versions: every entry above `seen` is New, regardless of how many versions passed. One click clears them all.
-- Opening the page does not clear tags; only the button does. The UI may call `markAllRead` from wherever the chosen placement wants.
+- Opening the page does not clear tags. Opening an entry (click or Enter on its card) marks just that entry read (`changelog_read_ids`, a JSON list; only ids above `seen` are kept, mark all clears it); the button clears everything. The UI may call `markAllRead` from wherever the chosen placement wants.
 
 What the UI gets: one hook `useChangelog()` returning `{ entries, newIds, hasNew, hideNew, setHideNew, markAllRead, loaded }`. This matches `ChangelogPageProps` (`ChangelogPage.tsx:11-23`) with no redesign.
 

@@ -4,6 +4,7 @@
 //
 //   changelog_seen_version  (text) the app version they last marked read
 //   changelog_hide_new      (bool) "Don't show New tags"
+//   changelog_read_ids      (text) JSON list of entry ids opened one by one
 //
 // An empty seen version means "never loaded": the web app then writes the
 // current version, so a brand new user sees nothing as New. See
@@ -25,6 +26,7 @@ onAfterBootstrap((e) => {
   const wanted = [
     { name: "changelog_seen_version", type: "text" },
     { name: "changelog_hide_new", type: "bool" },
+    { name: "changelog_read_ids", type: "text" },
   ];
   let added = 0;
 

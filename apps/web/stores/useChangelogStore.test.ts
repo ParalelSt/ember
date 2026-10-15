@@ -15,16 +15,17 @@ const { APP_VERSION, CHANGELOG, computeNewIds } = await import('@/lib/changelog'
 const initial = useChangelogStore.getState();
 const newCount = () => {
   const s = useChangelogStore.getState();
-  return computeNewIds(CHANGELOG, s.seenVersion, s.hideNew).length;
+  return computeNewIds(CHANGELOG, s.seenVersion, s.hideNew, s.readIds).length;
 };
 
 beforeEach(() => {
   useChangelogStore.setState(initial, true);
   getChangelog.mockReset();
   updateChangelog.mockReset();
-  updateChangelog.mockImplementation(async (patch: { seenVersion?: string; hideNew?: boolean }) => ({
+  updateChangelog.mockImplementation(async (patch: { seenVersion?: string; hideNew?: boolean; readIds?: string[] }) => ({
     seenVersion: patch.seenVersion ?? '0.0.1',
     hideNew: patch.hideNew ?? false,
+    readIds: patch.readIds ?? [],
   }));
 });
 
@@ -53,7 +54,7 @@ describe('useChangelogStore', () => {
     getChangelog.mockResolvedValue({ seenVersion: '0.0.1', hideNew: false });
     await useChangelogStore.getState().load();
     await useChangelogStore.getState().markAllRead();
-    expect(updateChangelog).toHaveBeenCalledWith({ seenVersion: APP_VERSION });
+    expect(updateChangelog).toHaveBeenCalledWith({ seenVersion: APP_VERSION, readIds: [] });
     expect(useChangelogStore.getState().seenVersion).toBe(APP_VERSION);
     expect(newCount()).toBe(0);
   });
@@ -85,5 +86,38 @@ describe('useChangelogStore', () => {
     updateChangelog.mockRejectedValue(new Error('offline'));
     await useChangelogStore.getState().setHideNew(true);
     expect(useChangelogStore.getState().hideNew).toBe(false);
+  });
+
+  it('markRead clears just that entry and persists the id', async () => {
+    getChangelog.mockResolvedValue({ seenVersion: '0.0.1', hideNew: false, readIds: [] });
+    await useChangelogStore.getState().load();
+    const id = CHANGELOG[0].id;
+    await useChangelogStore.getState().markRead(id);
+    expect(updateChangelog).toHaveBeenCalledWith({ readIds: [id] });
+    expect(newCount()).toBe(CHANGELOG.length - 1);
+  });
+
+  it('markRead is a no-op for an already read id, an old entry, or before load', async () => {
+    await useChangelogStore.getState().markRead(CHANGELOG[0].id);
+    getChangelog.mockResolvedValue({ seenVersion: '0.0.1', hideNew: false, readIds: [CHANGELOG[0].id] });
+    await useChangelogStore.getState().load();
+    await useChangelogStore.getState().markRead(CHANGELOG[0].id);
+    useChangelogStore.setState({ seenVersion: APP_VERSION, readIds: [] });
+    await useChangelogStore.getState().markRead(CHANGELOG[0].id);
+    expect(updateChangelog).not.toHaveBeenCalled();
+  });
+
+  it('markRead rolls back when the save fails', async () => {
+    getChangelog.mockResolvedValue({ seenVersion: '0.0.1', hideNew: false, readIds: [] });
+    await useChangelogStore.getState().load();
+    updateChangelog.mockRejectedValueOnce(new Error('offline'));
+    await useChangelogStore.getState().markRead(CHANGELOG[0].id);
+    expect(newCount()).toBe(CHANGELOG.length);
+  });
+
+  it('loaded readIds keep those entries un-tagged', async () => {
+    getChangelog.mockResolvedValue({ seenVersion: '0.0.1', hideNew: false, readIds: [CHANGELOG[0].id] });
+    await useChangelogStore.getState().load();
+    expect(newCount()).toBe(CHANGELOG.length - 1);
   });
 });
