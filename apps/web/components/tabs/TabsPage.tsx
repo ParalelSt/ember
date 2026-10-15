@@ -759,7 +759,7 @@ function TabsSheet({ song, sources, onBack }: { song: TabSong; sources: TabSourc
               This song is not playing, so the tab stays still.
               {song.track && (
                 <Button size="sm" variant="outline" onClick={() => playTrack(song.track!)}>
-                  <PlayIcon className="size-3.5 fill-current" />
+                  <PlayIcon className="size-3.5" />
                   Play it
                 </Button>
               )}

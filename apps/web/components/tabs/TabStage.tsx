@@ -98,7 +98,7 @@ export function PlayPill(p: PlayPillProps) {
         onClick={p.onPlayPause}
         className="grid size-10 shrink-0 place-items-center rounded-full bg-foreground text-background transition-opacity disabled:opacity-50"
       >
-        {p.playing ? <PauseIcon className="size-4 fill-current" /> : <PlayIcon className="size-4 translate-x-px fill-current" />}
+        {p.playing ? <PauseIcon className="size-4" /> : <PlayIcon className="size-4 translate-x-px" />}
       </button>
       <span
         data-testid="tab-pill-bar"

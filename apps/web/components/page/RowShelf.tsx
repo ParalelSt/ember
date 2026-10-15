@@ -111,7 +111,7 @@ function ArrowButton({ dir, enabled, onClick }: { dir: -1 | 1; enabled: boolean;
         'disabled:invisible',
       )}
     >
-      <Icon className="size-4" strokeWidth={2.6} />
+      <Icon className="size-4" />
     </button>
   );
 }

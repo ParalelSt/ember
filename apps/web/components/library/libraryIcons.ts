@@ -1,4 +1,4 @@
-import type { ComponentType } from 'react';
+import type { Icon } from '@/components/icons';
 import { ArrowDownIcon, ArrowUpIcon, ClockIcon } from '@/components/icons';
 import type { LibraryBadgeKind } from '@/lib/library';
 
@@ -7,14 +7,14 @@ export type { LibraryBadgeKind };
 /** The phone Library's system collection badges, in ONE place: the small
  *  round mark in the corner of the Recently played, Uploads and Downloaded
  *  mosaic covers (and the big glyph on their plain tile when there are no
- *  song covers yet). The icons are PROVISIONAL: the owner is picking an icon
- *  set separately, so swap them here and every cover follows.
+ *  song covers yet). Icons come from the shared Phosphor entry point, so every cover
+ *  uses the same glyphs.
  *
  *  The colours are fixed art, the same in every theme (like the Liked songs
  *  cover), so they live here as literals rather than as theme tokens
  *  (lib/lintRules.test.ts allows this file by name). */
 
-export type LibraryBadgeIcon = ComponentType<{ className?: string; strokeWidth?: number; 'aria-hidden'?: boolean }>;
+export type LibraryBadgeIcon = Icon;
 
 export interface LibraryBadge {
   icon: LibraryBadgeIcon;

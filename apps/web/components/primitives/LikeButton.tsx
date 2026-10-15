@@ -38,7 +38,7 @@ export function LikeButton({ liked, onToggle, size = 'sm', className }: LikeButt
       aria-pressed={liked}
       aria-label={liked ? 'Unlike' : 'Like'}
     >
-      <HeartIcon className={ICON[size]} fill={liked ? 'currentColor' : 'none'} />
+      <HeartIcon className={ICON[size]} />
     </Button>
   );
 }

@@ -58,7 +58,7 @@ export function LibraryCover({ cover, className }: LibraryCoverProps) {
       )}
       {look.mode === 'plain' ? (
         <span data-glyph className="absolute inset-0 grid place-items-center" style={{ color: LIBRARY_BADGE_FOREGROUND }}>
-          <Icon aria-hidden className="size-[42%]" strokeWidth={2.4} />
+          <Icon aria-hidden className="size-[42%]" />
         </span>
       ) : (
         <span
@@ -66,7 +66,7 @@ export function LibraryCover({ cover, className }: LibraryCoverProps) {
           className="absolute right-[6%] bottom-[6%] grid aspect-square w-[34%] place-items-center rounded-full shadow-soft"
           style={{ background: badge.color, color: LIBRARY_BADGE_FOREGROUND }}
         >
-          <Icon aria-hidden className="size-[60%]" strokeWidth={2.8} />
+          <Icon aria-hidden className="size-[60%]" />
         </span>
       )}
     </div>

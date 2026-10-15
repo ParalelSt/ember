@@ -473,8 +473,8 @@ describe('SearchOverlayContainer, phone sheet', () => {
     await waitFor(() => expect(box()).toHaveFocus());
     const back = screen.getByRole('button', { name: 'Close search' });
     // A back arrow left of the box, not an X inside it.
-    expect(back.querySelector('.lucide-chevron-left')).not.toBeNull();
-    expect(back.querySelector('.lucide-x')).toBeNull();
+    expect(back.querySelector('.phosphor-caret-left')).not.toBeNull();
+    expect(back.querySelector('.phosphor-x')).toBeNull();
     expect(back.compareDocumentPosition(box()) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     fireEvent.click(back);
     expect(useUiStore.getState().searchOpen).toBe(false);
@@ -509,14 +509,14 @@ describe('SearchOverlayContainer, phone sheet', () => {
 
     expect(screen.getByRole('button', { name: 'Search by voice' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Clear search' })).toBeNull();
-    expect(sheet.querySelectorAll('.lucide-x')).toHaveLength(0);
+    expect(sheet.querySelectorAll('.phosphor-x')).toHaveLength(0);
 
     fireEvent.change(box(), { target: { value: 'daft' } });
     expect(screen.getByRole('button', { name: 'Clear search' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Search by voice' })).toBeNull();
     // Never two X icons: the only X is the one that clears.
-    expect(sheet.querySelectorAll('.lucide-x')).toHaveLength(1);
-    expect(screen.getByRole('button', { name: 'Clear search' }).querySelector('.lucide-x')).not.toBeNull();
+    expect(sheet.querySelectorAll('.phosphor-x')).toHaveLength(1);
+    expect(screen.getByRole('button', { name: 'Clear search' }).querySelector('.phosphor-x')).not.toBeNull();
   });
 
   it('clears on the X without closing, focus kept in the box', async () => {

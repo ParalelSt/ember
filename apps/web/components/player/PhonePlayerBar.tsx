@@ -42,7 +42,7 @@ function BarPlayButton({ playing, onToggle }: { playing: boolean; onToggle: () =
       >
         {/* The play triangle's weight sits left of its box: a whole pixel
             nudge centres it at 20px and keeps it crisp. */}
-        <Glyph className={cn('size-5 fill-current', !playing && 'translate-x-px')} />
+        <Glyph className={cn('size-5', !playing && 'translate-x-px')} />
       </span>
     </Button>
   );
@@ -155,7 +155,7 @@ export function PhonePlayerBar({
             aria-label="Next"
             className="size-12 shrink-0 rounded-full text-foreground"
           >
-            <NextIcon data-testid="phone-next-glyph" className="size-6 fill-current" />
+            <NextIcon data-testid="phone-next-glyph" className="size-6" />
           </Button>
         </div>
       </div>

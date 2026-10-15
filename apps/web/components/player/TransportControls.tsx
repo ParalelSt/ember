@@ -80,8 +80,8 @@ export function PlayPauseButton({
       )}
     >
       {playing
-        ? <PauseIcon className={cn(PLAY_ICON[size], 'fill-current')} />
-        : <PlayIcon className={cn(PLAY_ICON[size], 'fill-current ml-0.5')} />}
+        ? <PauseIcon className={PLAY_ICON[size]} />
+        : <PlayIcon className={cn(PLAY_ICON[size], 'ml-0.5')} />}
     </Button>
   );
 }

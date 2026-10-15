@@ -59,7 +59,7 @@ export function PlayButton({
         className,
       )}
     >
-      <Icon className={cn(ICON[size], 'fill-current', !playing && NUDGE[size])} />
+      <Icon className={cn(ICON[size], !playing && NUDGE[size])} />
     </Button>
   );
 }

@@ -97,10 +97,10 @@ export function ThemePreview({ vars, className }: ThemePreviewProps) {
           <div className="truncate text-xs text-muted-foreground">{PREVIEW_NOW_PLAYING.artist}</div>
         </div>
         <span className="grid size-hit shrink-0 place-items-center rounded-full text-ember">
-          <HeartIcon className="h-4 w-4 fill-current" />
+          <HeartIcon className="h-4 w-4" />
         </span>
         <span className="grid size-hit shrink-0 place-items-center rounded-full bg-foreground text-background">
-          <PauseIcon className="h-4 w-4 fill-current" />
+          <PauseIcon className="h-4 w-4" />
         </span>
       </footer>
     </div>

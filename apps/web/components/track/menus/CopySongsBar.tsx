@@ -459,7 +459,7 @@ function LikedWarning({
           data-testid="copy-liked-yes"
           className={cn('h-10 rounded-full px-block', stacked && 'w-full')}
         >
-          <HeartIcon className="size-4 fill-current" />
+          <HeartIcon className="size-4" />
           Like {formatCount(toLike, 'song')}
         </Button>
       </div>

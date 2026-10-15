@@ -130,7 +130,7 @@ describe('PhonePlayerBar', () => {
     // Half the disc, the ratio the desktop disc uses.
     const glyph = disc.querySelector('svg')!;
     expect(sizePx(glyph)).toBe(20);
-    expect(glyph).toHaveClass('fill-current');
+    expect(glyph).toHaveAttribute('fill', 'currentColor');
     expect(within(play).getAllByTestId('phone-play-disc')).toHaveLength(1);
   });
 
@@ -166,7 +166,7 @@ describe('PhonePlayerBar', () => {
     expect(within(next).queryByTestId('phone-play-disc')).toBeNull();
     const glyph = within(next).getByTestId('phone-next-glyph');
     expect(sizePx(glyph)).toBe(24);
-    expect(glyph).toHaveClass('fill-current');
+    expect(glyph).toHaveAttribute('fill', 'currentColor');
   });
 
   it('next skips without toggling or opening the full-screen view', () => {

@@ -25,7 +25,7 @@ function DownloadedMark() {
       className="grid size-[14px] shrink-0 place-items-center rounded-full"
       style={{ background: DOWNLOADED_MARK.color, color: DOWNLOADED_MARK.foreground }}
     >
-      <Icon aria-hidden className="size-[10px]" strokeWidth={3.2} />
+      <Icon aria-hidden className="size-[10px]" />
     </span>
   );
 }
@@ -34,7 +34,7 @@ function DownloadedMark() {
 function Subtitle({ item, className }: { item: LibraryItem; className?: string }) {
   return (
     <div className={cn('flex min-w-0 items-center gap-[5px] text-muted-foreground', className)}>
-      {item.pinned && <PinIcon aria-label="Pinned" data-pinned-mark className="size-[14px] shrink-0 rotate-45 fill-current text-ember" />}
+      {item.pinned && <PinIcon aria-label="Pinned" data-pinned-mark className="size-[14px] shrink-0 rotate-45 text-ember" />}
       {item.downloaded && <DownloadedMark />}
       <span className="min-w-0 truncate">{item.subtitle}</span>
     </div>

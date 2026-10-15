@@ -172,7 +172,7 @@ export function CandidateRow({
           title={hearing ? 'Pause' : 'Preview 20 seconds'}
           className="absolute inset-0 grid place-items-center rounded-md bg-black/35 text-white opacity-90 transition-opacity hover:bg-black/50"
         >
-          {hearing ? <PauseIcon className="h-4 w-4 fill-current" /> : <PlayIcon className="h-4 w-4 fill-current" />}
+          {hearing ? <PauseIcon className="h-4 w-4" /> : <PlayIcon className="h-4 w-4" />}
         </button>
       </div>
       <button type="button" onClick={onPick} disabled={disabled} className="min-w-0 flex-1 text-left disabled:opacity-60">

@@ -240,7 +240,7 @@ export function TransferReview({ jobId }: { jobId?: string }) {
                     </Artwork>
                     <span className="absolute inset-0 grid place-items-center">
                       <span className="grid size-10 place-items-center rounded-full bg-background/60 text-foreground backdrop-blur transition-colors group-hover:bg-background/80">
-                        {hearing ? <PauseIcon className="h-4 w-4 fill-current" /> : <PlayIcon className="h-4 w-4 fill-current" />}
+                        {hearing ? <PauseIcon className="h-4 w-4" /> : <PlayIcon className="h-4 w-4" />}
                       </span>
                     </span>
                   </button>

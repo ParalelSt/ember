@@ -62,7 +62,7 @@ export function BackToTop({ scrollRef }: Props) {
           : 'opacity-0 translate-y-2 pointer-events-none',
       )}
     >
-      <ChevronUpIcon className="size-6 -translate-y-px" strokeWidth={3} />
+      <ChevronUpIcon className="size-6 -translate-y-px" />
     </button>
   );
 }

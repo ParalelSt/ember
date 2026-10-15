@@ -3,6 +3,13 @@ import { render, screen } from '@testing-library/react';
 import { LikeButton } from './LikeButton';
 
 describe('LikeButton', () => {
+  it('keeps the heart visible in both states', () => {
+    const { container, rerender } = render(<LikeButton liked={false} onToggle={() => {}} />);
+    expect(container.querySelector('svg')).toHaveAttribute('fill', 'currentColor');
+    rerender(<LikeButton liked onToggle={() => {}} />);
+    expect(container.querySelector('svg')).toHaveAttribute('fill', 'currentColor');
+  });
+
   it('labels itself Like and is unpressed when not liked', () => {
     render(<LikeButton liked={false} onToggle={() => {}} />);
     const button = screen.getByRole('button', { name: 'Like' });

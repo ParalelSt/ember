@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { ProgressRing } from '@/components/primitives/ProgressRing';
 import { PeopleIcon } from '@/components/icons';
-import { PinIcon } from 'lucide-react';
+import { PinIcon } from '@/components/icons';
 import { useHold } from '@/hooks/useHold';
 import { cn } from '@/lib/utils';
 import type { NavImportState } from '@/lib/import/nav';
