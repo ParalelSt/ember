@@ -70,9 +70,11 @@ export default function HomePage() {
   // first paint (data resolving, image dimensions arriving, etc.), a
   // one-shot scroll lands "close to the top" but not all the way.
   useEffect(() => {
-    const main = document.querySelector('main');
-    if (!main) return;
-    const reset = () => { main.scrollTop = 0; };
+    // The page scrolls in the shell's scroller around <main>, not in <main>
+    // itself (app/(app)/layout.tsx), so reset that one.
+    const scroller = document.querySelector<HTMLElement>('[data-app-scroller]');
+    if (!scroller) return;
+    const reset = () => { scroller.scrollTop = 0; };
     reset();
     let raf2 = 0;
     const raf1 = requestAnimationFrame(() => {

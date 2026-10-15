@@ -208,3 +208,20 @@ describe('Home on a desktop window', () => {
     for (const l of lists) expect(l).toHaveClass('grid');
   });
 });
+
+describe('Show all and back', () => {
+  it('starts the page at the top: the shell scroller, not <main>, is reset', () => {
+    const scroller = document.createElement('div');
+    scroller.setAttribute('data-app-scroller', '');
+    document.body.appendChild(scroller);
+    try {
+      scroller.scrollTop = 600;
+      expect(scroller.scrollTop).toBe(600);
+      state.focus = 'trending';
+      render(<HomePage />);
+      expect(scroller.scrollTop).toBe(0);
+    } finally {
+      scroller.remove();
+    }
+  });
+});
