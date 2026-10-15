@@ -171,7 +171,7 @@ describe('FriendsListening row layout (the phone Home)', () => {
       items: [{ userName: 'Robin', playedAt: new Date(NOW - 5 * 60_000).toISOString(), track: makeTrack() }],
     });
     renderRow();
-    expect(await screen.findByRole('heading', { name: 'Friends are listening to' })).toHaveClass('truncate');
+    expect(await screen.findByRole('heading', { name: 'Friends are listening to' })).toHaveClass('line-clamp-2');
     expect(screen.getByRole('list')).toHaveClass('flex', 'overflow-x-auto', 'snap-x');
     expect(screen.getByText('Robin · 5 min ago')).toBeInTheDocument();
     expect(screen.getByText('Midnight Drive')).toHaveClass('line-clamp-2');

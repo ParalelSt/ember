@@ -57,14 +57,14 @@ export function BecauseYouPlayed({
         <Skeleton data-testid="hero-skeleton" className="h-[178px] w-full rounded-[14px]" />
       ) : (
         <div data-hero className="overflow-hidden rounded-[14px] bg-card">
-          <div className="relative flex h-[178px] items-end p-3">
+          <div className="relative flex h-[178px] items-end p-row">
             <Artwork src={hero.artworkUrl} fallback="gradient" className="absolute inset-0 bg-art" />
-            <div aria-hidden className="absolute inset-0 bg-gradient-to-b from-transparent from-30% to-black/80" />
-            <div className="relative z-[1] min-w-0 pr-12 text-white">
+            <div aria-hidden className="absolute inset-0 bg-gradient-to-b from-transparent from-30% to-art/80" />
+            <div className="relative z-[1] min-w-0 pr-[46px] text-foreground">
               <div className={cn('line-clamp-2 break-words text-[19px] font-bold leading-tight', currentId === hero.id && 'text-ember')}>
                 {hero.title}
               </div>
-              <div className="mt-0.5 line-clamp-2 break-words text-[12.5px] text-white/85">
+              <div className="mt-[2px] line-clamp-2 break-words text-[12.5px] text-foreground/85">
                 {seedArtist ? `${hero.artist} · More like ${seedArtist}` : hero.artist}
               </div>
             </div>
@@ -77,13 +77,13 @@ export function BecauseYouPlayed({
             />
           </div>
           {rows.length > 0 && (
-            <ul className="px-3 pt-1 pb-2">
+            <ul className="px-row pt-inset pb-cluster">
               {rows.map((t) => (
                 <li key={t.id} className="border-t border-border">
                   <button
                     type="button"
                     onClick={() => activate(t)}
-                    className="flex w-full min-w-0 items-center gap-2.5 py-[7px] text-left"
+                    className="flex w-full min-w-0 items-center gap-[10px] py-[7px] text-left"
                   >
                     <Artwork src={t.artworkUrl} loading="lazy" className="size-[34px] shrink-0 rounded-[4px] bg-art" />
                     <span className="min-w-0 flex-1">

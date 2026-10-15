@@ -28,7 +28,7 @@ export function HomeChips({ chips, active, onChange }: HomeChipsProps) {
             aria-pressed={on}
             onClick={() => onChange(c.id)}
             className={cn(
-              'shrink-0 whitespace-nowrap rounded-full px-3.5 py-[7px] text-[13px] font-semibold transition-colors',
+              'shrink-0 whitespace-nowrap rounded-full px-[14px] py-[7px] text-[13px] font-semibold transition-colors',
               on ? 'bg-ember text-ember-foreground' : 'bg-secondary text-foreground hover:bg-accent',
             )}
           >

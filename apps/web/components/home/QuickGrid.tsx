@@ -23,7 +23,7 @@ export function QuickGrid({ items }: { items: QuickPick[] }) {
               mosaic={item.mosaic}
               className="size-14 shrink-0 rounded-none shadow-none"
             />
-            <span className="min-w-0 flex-1 px-2.5 line-clamp-2 break-words text-[13px] font-bold leading-tight">
+            <span className="min-w-0 flex-1 px-[10px] line-clamp-2 break-words text-[13px] font-bold leading-tight">
               {item.title}
             </span>
           </Link>

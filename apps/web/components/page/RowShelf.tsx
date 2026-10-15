@@ -38,7 +38,7 @@ export function RowHeader({ title, showAllHref }: RowHeaderProps) {
         showAllHref ? (
           <Link
             href={showAllHref}
-            className="shrink-0 whitespace-nowrap pb-0.5 text-sm font-bold text-muted-foreground hover:text-foreground transition-colors"
+            className="shrink-0 whitespace-nowrap pb-[2px] text-sm font-bold text-muted-foreground hover:text-foreground transition-colors"
           >
             Show all
           </Link>
