@@ -412,7 +412,7 @@ function FollowPill({ direction, onClick }: { direction: FollowDirection; onClic
         onClick={onClick}
         aria-label="Follow lyrics, back to the current line"
         data-direction={direction}
-        className="pointer-events-auto flex -translate-y-full items-center gap-inset rounded-full bg-ember px-row py-cluster text-xs font-semibold text-ember-foreground shadow-lg transition-colors hover:bg-ember-soft"
+        className="pointer-events-auto flex -translate-y-full items-center gap-inset rounded-full bg-ember px-block py-row text-xs font-semibold text-ember-foreground shadow-lg transition-colors hover:bg-ember-soft"
       >
         <Arrow className="h-3.5 w-3.5" aria-hidden />
         Follow lyrics
