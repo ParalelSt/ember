@@ -37,7 +37,7 @@ export const GET = withRequestLog('playlists', async () => {
     // Covers are decoration: if they cannot be read the list still loads.
     let artworks = new Map<string, string[]>();
     try {
-      artworks = await playlistArtworks(pb, user.id, shared, collabClient);
+      artworks = await playlistArtworks(pb, own.map((p) => p.id), shared.map((p) => p.id), collabClient);
     } catch (e) {
       serverLogger.error('api', 'playlist artworks lookup failed', { userId: user.id }, e instanceof Error ? e : undefined);
     }

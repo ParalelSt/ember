@@ -141,30 +141,33 @@ export function firstArtworks(rows: readonly RecordModel[]): Map<string, string[
 /** The covers for the Home tiles' mosaics, for every playlist in the
  *  library in at most two requests: one for your own (your session, so
  *  PocketBase checks it too), one for the shared ones (the server's
- *  client, like their rows). Only the playlist id and the song's cover
- *  come back, never the whole song. */
+ *  client, like their rows). The filter names the playlist ids themselves:
+ *  pb_hooks/guard_filters refuses a related field (`playlist.user`) to
+ *  anyone but a superuser. Only the playlist id and the song's cover come
+ *  back, never the whole song. */
 export async function playlistArtworks(
   pb: PocketBase,
-  userId: string,
-  shared: readonly Playlist[],
+  ownIds: readonly string[],
+  sharedIds: readonly string[],
   admin: () => Promise<PocketBase>,
 ): Promise<Map<string, string[]>> {
-  const query = { sort: 'position,created', expand: 'track', fields: 'playlist,expand.track.artwork_url' };
-  const own = await pb.collection('playlist_tracks').getFullList({
-    ...query,
-    filter: pb.filter('playlist.user = {:u} && track.artwork_url != ""', { u: userId }),
-  });
-  let theirs: RecordModel[] = [];
-  const ids = shared.map((p) => p.id).filter(isRecordId);
-  if (ids.length > 0) {
-    const server = await admin();
+  const rowsFor = async (db: PocketBase, ids: readonly string[]): Promise<RecordModel[]> => {
+    const valid = ids.filter(isRecordId);
+    if (valid.length === 0) return [];
     const params: Record<string, string> = {};
-    const clauses = ids.map((id, i) => {
+    const clauses = valid.map((id, i) => {
       params[`p${i}`] = id;
       return `playlist = {:p${i}}`;
     });
-    theirs = await server.collection('playlist_tracks').getFullList({ ...query, filter: server.filter(clauses.join(' || '), params) });
-  }
+    return db.collection('playlist_tracks').getFullList({
+      filter: db.filter(clauses.join(' || '), params),
+      sort: 'position,created',
+      expand: 'track',
+      fields: 'playlist,expand.track.artwork_url',
+    });
+  };
+  const own = await rowsFor(pb, ownIds);
+  const theirs = sharedIds.length > 0 ? await rowsFor(await admin(), sharedIds) : [];
   return firstArtworks([...own, ...theirs]);
 }
 

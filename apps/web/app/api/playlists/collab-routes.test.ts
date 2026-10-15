@@ -579,21 +579,30 @@ describe('the library list carries each playlist\'s first song covers (phone Hom
     expect(m.body.playlists).toEqual([expect.objectContaining({ id: shared, track_artworks: [art(9)] })]);
   });
 
-  it('asks for the covers in one request for your own playlists, however many there are', async () => {
-    for (let i = 0; i < 5; i++) world.addPlaylist(owner, `More ${i}`);
-    const server = world.server();
-    const seen: string[] = [];
-    const own = world.member(owner);
-    const spy = {
-      ...own,
+  it('asks for the covers in one request for your own playlists, however many there are, with no related-field filter', async () => {
+    const ids = [secret, ...Array.from({ length: 5 }, (_, i) => world.addPlaylist(owner, `More ${i}`).id)];
+    const seen: { who: string; filter?: string }[] = [];
+    const spyOn = (c: ReturnType<typeof world.server>) => ({
+      ...c,
       collection: (name: string) => {
-        const c = own.collection(name);
-        return { ...c, getFullList: async (opts: { filter?: string } = {}) => { seen.push(`${name}:${opts.filter}`); return c.getFullList(opts); } };
+        const col = c.collection(name);
+        return { ...col, getFullList: async (opts: { filter?: string } = {}) => { seen.push({ who: c.label, filter: opts.filter }); return col.getFullList(opts); } };
       },
-    };
+    });
     const { playlistArtworks } = await import('@/lib/playlistAccess');
-    await playlistArtworks(spy as never, owner, [], async () => server as never);
-    expect(seen).toEqual([`playlist_tracks:playlist.user = "${owner}" && track.artwork_url != ""`]);
+    await playlistArtworks(spyOn(world.member(owner)) as never, ids, [], async () => spyOn(world.server()) as never);
+    expect(seen).toHaveLength(1);
+    expect(seen[0].who).toBe(owner);
+    expect(seen[0].filter).toBe(ids.map((id) => `playlist = "${id}"`).join(' || '));
+    // pb_hooks/guard_filters refuses `relation.field` paths to users: the
+    // real guard must pass this filter.
+    const { createRequire } = await import('node:module');
+    const guard = createRequire(import.meta.url)('../../../../../pocketbase/pb_hooks/lib/filterGuard.js');
+    expect(guard.unsafeQueryExpr(seen[0].filter)).toBe('');
+    expect(guard.unsafeQueryExpr('playlist.user = "x"')).not.toBe('');
+    seen.length = 0;
+    await playlistArtworks(spyOn(world.member(member)) as never, [], [shared], async () => spyOn(world.server()) as never);
+    expect(seen).toEqual([{ who: 'server', filter: `playlist = "${shared}"` }]);
   });
 
   it('still lists the playlists when the covers cannot be read', async () => {
