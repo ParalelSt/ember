@@ -82,6 +82,22 @@ export interface CollectionSummary {
   sharing?: 'owner' | 'member';
   /** A playlist shared with you: its owner, for the "Shared by" badge. */
   sharedBy?: { name: string; avatarUrl: string | null };
+  /** A playlist's first few distinct song covers (the phone Home mosaic). */
+  trackArtworks?: string[];
+}
+
+/** What a playlist tile on the phone Home shows: its own cover when it has
+ *  one (you picked it), else a 2x2 mosaic of its first four distinct song
+ *  covers, else the first song cover full size when it has one to three,
+ *  else nothing (the ember gradient). Pure. */
+export function playlistCover(
+  artworkUrl: string | null,
+  trackArtworks: readonly string[] | undefined,
+): { src: string | null; mosaic?: string[] } {
+  if (artworkUrl) return { src: artworkUrl };
+  const arts = trackArtworks ?? [];
+  if (arts.length >= 4) return { src: null, mosaic: arts.slice(0, 4) };
+  return { src: arts[0] ?? null };
 }
 
 /** Pure: no queries, no store reads. A system collection's subtitle is
@@ -96,11 +112,13 @@ export function toSummary(
     count?: number;
     artworkUrl?: string | null;
     downloaded?: boolean;
+    /** A playlist's first song covers, from GET /api/playlists. */
+    trackArtworks?: string[];
     /** Only for a collaborative playlist. */
     sharing?: { role: 'owner' | 'member'; ownerName?: string | null; ownerAvatarUrl?: string | null };
   } = {},
 ): CollectionSummary {
-  const { name, count, artworkUrl = null, downloaded = false, sharing } = meta;
+  const { name, count, artworkUrl = null, downloaded = false, sharing, trackArtworks } = meta;
   const playlistSubtitle =
     sharing?.role === 'member'
       ? `Shared by ${sharing.ownerName || 'someone'}`
@@ -122,6 +140,7 @@ export function toSummary(
     ...(ref.kind === 'playlist' && sharing?.role === 'member'
       ? { sharedBy: { name: sharing.ownerName || 'someone', avatarUrl: sharing.ownerAvatarUrl ?? null } }
       : {}),
+    ...(ref.kind === 'playlist' && trackArtworks?.length ? { trackArtworks } : {}),
   };
 }
 

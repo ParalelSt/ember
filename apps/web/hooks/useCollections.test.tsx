@@ -96,4 +96,16 @@ describe('useCollections', () => {
       },
     ]);
   });
+
+  it('passes each playlist\'s first song covers through for the Home mosaic', async () => {
+    const arts = ['a', 'b', 'c', 'd'].map((x) => `https://img.test/${x}.jpg`);
+    api.listPlaylists.mockResolvedValue({
+      playlists: [{ ...makePlaylist('p1', 'Road Trip'), track_artworks: arts }, { ...makePlaylist('p2', 'Chill'), track_artworks: [] }],
+    });
+    const { result } = setup();
+    await waitFor(() => expect(result.current.playlists).toHaveLength(2));
+    expect(result.current.playlists[0].trackArtworks).toEqual(arts);
+    // None at all: the key stays off, like every other optional field.
+    expect(result.current.playlists[1]).not.toHaveProperty('trackArtworks');
+  });
 });

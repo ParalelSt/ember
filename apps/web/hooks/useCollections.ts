@@ -44,7 +44,13 @@ export function useCollections(): UseCollectionsResult {
       playlistData.map((p) =>
         toSummary(
           { kind: 'playlist', id: p.id },
-          { name: p.name, artworkUrl: p.artwork_url, downloaded: downloadedIds.has(p.id), sharing: sharingOf(p) },
+          {
+            name: p.name,
+            artworkUrl: p.artwork_url,
+            downloaded: downloadedIds.has(p.id),
+            sharing: sharingOf(p),
+            trackArtworks: p.track_artworks,
+          },
         ),
       ),
     [playlistData, downloadedIds],

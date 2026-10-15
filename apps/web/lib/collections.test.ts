@@ -12,6 +12,7 @@ import {
   toSummary,
   sharingOf,
   sharedLabel,
+  playlistCover,
 } from './collections';
 
 describe('hrefFor', () => {
@@ -199,5 +200,32 @@ describe('sharingOf / sharedLabel', () => {
     expect(sharedLabel({ role: 'member', owner_name: 'Olga' })).toBe('Shared by Olga');
     expect(sharedLabel({ role: 'owner', collaborative: true })).toBe('Collaborative');
     expect(sharedLabel({ role: 'owner' })).toBeUndefined();
+  });
+});
+
+describe('playlistCover (phone Home tiles)', () => {
+  const arts = ['1', '2', '3', '4', '5'].map((n) => `https://img.test/${n}.jpg`);
+
+  it('keeps a cover you picked, whatever the songs are', () => {
+    expect(playlistCover('/pb/mine.jpg', arts)).toEqual({ src: '/pb/mine.jpg' });
+  });
+
+  it('makes a 2x2 mosaic of the first four song covers', () => {
+    expect(playlistCover(null, arts)).toEqual({ src: null, mosaic: arts.slice(0, 4) });
+  });
+
+  it('uses the first song cover full size with one to three', () => {
+    expect(playlistCover(null, arts.slice(0, 1))).toEqual({ src: arts[0] });
+    expect(playlistCover(null, arts.slice(0, 3))).toEqual({ src: arts[0] });
+  });
+
+  it('falls back to the ember gradient (no src) with none', () => {
+    expect(playlistCover(null, [])).toEqual({ src: null });
+    expect(playlistCover(null, undefined)).toEqual({ src: null });
+  });
+
+  it('toSummary keeps the covers on a playlist only', () => {
+    expect(toSummary({ kind: 'playlist', id: 'p' }, { trackArtworks: arts }).trackArtworks).toEqual(arts);
+    expect(toSummary({ kind: 'liked' }, { trackArtworks: arts })).not.toHaveProperty('trackArtworks');
   });
 });
