@@ -34,6 +34,12 @@ object SafeAreaInsets {
     @JvmField
     val PROPERTIES = arrayOf("--ember-inset-top", "--ember-inset-right", "--ember-inset-bottom", "--ember-inset-left")
 
+    /** The soft keyboard's height, published beside the four insets so a dialog
+     *  can stand off it: on Android 15 (SDK 35, edge-to-edge) the window no
+     *  longer resizes for the keyboard, so neither the layout viewport nor
+     *  visualViewport shrinks and the page cannot see it any other way. */
+    const val KEYBOARD_PROPERTY = "--ember-inset-keyboard"
+
     /** What stands between the page and the screen edge: the status bar, the
      *  navigation bar (buttons or pill) and a display cutout. */
     @JvmStatic
@@ -58,6 +64,17 @@ object SafeAreaInsets {
         return intArrayOf(cssPx(i.top, density), cssPx(i.right, density), cssPx(i.bottom, density), cssPx(i.left, density))
     }
 
+    /** The keyboard's height in CSS px, 0 while it is closed. It is the part
+     *  of the IME inset that rises above the navigation bar, which the page
+     *  already clears with --ember-inset-bottom. */
+    @JvmStatic
+    fun cssKeyboard(windowInsets: WindowInsetsCompat, density: Float): Int {
+        if (!windowInsets.isVisible(WindowInsetsCompat.Type.ime())) return 0
+        val ime = windowInsets.getInsets(WindowInsetsCompat.Type.ime()).bottom
+        val bars = windowInsets.getInsets(types()).bottom
+        return cssPx(ime - bars, density)
+    }
+
     /**
      * Listen for the view's window insets and hand [publish] the script for
      * every set that arrives: the first layout, a switch between gesture and
@@ -73,7 +90,7 @@ object SafeAreaInsets {
     fun install(view: View, density: () -> Float, publish: (String) -> Unit) {
         ViewCompat.setOnApplyWindowInsetsListener(view) { v, windowInsets ->
             val css = cssInsets(windowInsets, density())
-            publish(script(css[0], css[1], css[2], css[3]))
+            publish(script(css[0], css[1], css[2], css[3], cssKeyboard(windowInsets, density())))
             ViewCompat.onApplyWindowInsets(v, windowInsets)
         }
         ViewCompat.requestApplyInsets(view)
@@ -96,12 +113,20 @@ object SafeAreaInsets {
      * because the native side only sends them again when the insets change.
      */
     @JvmStatic
-    fun script(top: Int, right: Int, bottom: Int, left: Int): String {
-        val values = intArrayOf(top, right, bottom, left)
+    fun script(top: Int, right: Int, bottom: Int, left: Int): String =
+        script(intArrayOf(top, right, bottom, left), PROPERTIES)
+
+    /** The four insets plus the keyboard height, always written so a closing
+     *  keyboard puts the page back. */
+    @JvmStatic
+    fun script(top: Int, right: Int, bottom: Int, left: Int, keyboard: Int): String =
+        script(intArrayOf(top, right, bottom, left, keyboard), PROPERTIES + KEYBOARD_PROPERTY)
+
+    private fun script(values: IntArray, names: Array<String>): String {
         val pairs = StringBuilder()
-        for (i in PROPERTIES.indices) {
+        for (i in names.indices) {
             if (i > 0) pairs.append(',')
-            pairs.append('\'').append(PROPERTIES[i]).append("':'").append(values[i]).append("px'")
+            pairs.append('\'').append(names[i]).append("':'").append(values[i]).append("px'")
         }
         return "(function(){var w=window;w.__emberInsets={$pairs};" +
             "function a(){var e=document.documentElement;if(!e)return false;var v=w.__emberInsets;" +

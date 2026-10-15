@@ -53,19 +53,19 @@ class SafeAreaInsetsWindowTest {
     fun `three-button navigation reaches the page as a 48px bottom inset`() {
         // 48dp buttons and a 24dp status bar, in device pixels at 2.625x.
         dispatch(insets(statusBar = 63, navBar = 126))
-        assertEquals(listOf(SafeAreaInsets.script(24, 0, 48, 0)), published)
+        assertEquals(listOf(SafeAreaInsets.script(24, 0, 48, 0, 0)), published)
     }
 
     @Test
     fun `the gesture pill reaches the page as its own smaller inset`() {
         dispatch(insets(statusBar = 63, navBar = 63))
-        assertEquals(listOf(SafeAreaInsets.script(24, 0, 24, 0)), published)
+        assertEquals(listOf(SafeAreaInsets.script(24, 0, 24, 0, 0)), published)
     }
 
     @Test
     fun `a cutout deeper than the status bar wins at the top`() {
         dispatch(insets(statusBar = 63, navBar = 126, cutoutTop = 105))
-        assertEquals(listOf(SafeAreaInsets.script(40, 0, 48, 0)), published)
+        assertEquals(listOf(SafeAreaInsets.script(40, 0, 48, 0, 0)), published)
     }
 
     @Test
@@ -73,7 +73,7 @@ class SafeAreaInsetsWindowTest {
         // The page handles the keyboard itself (visualViewport); lifting the
         // bars by it too would float them half way up the screen.
         dispatch(insets(statusBar = 63, navBar = 126, ime = 800))
-        assertEquals(listOf(SafeAreaInsets.script(24, 0, 48, 0)), published)
+        assertEquals(listOf(SafeAreaInsets.script(24, 0, 48, 0, 0)), published)
     }
 
     @Test
@@ -81,7 +81,7 @@ class SafeAreaInsetsWindowTest {
         dispatch(insets(statusBar = 63, navBar = 126))
         dispatch(insets(statusBar = 63, navBar = 63))
         assertEquals(
-            listOf(SafeAreaInsets.script(24, 0, 48, 0), SafeAreaInsets.script(24, 0, 24, 0)),
+            listOf(SafeAreaInsets.script(24, 0, 48, 0, 0), SafeAreaInsets.script(24, 0, 24, 0, 0)),
             published,
         )
     }
@@ -91,7 +91,7 @@ class SafeAreaInsetsWindowTest {
         // Below SDK 35 the decor lays the WebView out between the bars, so
         // the insets it is handed are empty: the page must not lift.
         dispatch(insets())
-        assertEquals(listOf(SafeAreaInsets.script(0, 0, 0, 0)), published)
+        assertEquals(listOf(SafeAreaInsets.script(0, 0, 0, 0, 0)), published)
     }
 
     @Test
@@ -126,7 +126,7 @@ class SafeAreaInsetsWindowTest {
         if (android.os.Build.VERSION.SDK_INT >= 35) {
             assertTrue("no insets reached the WebView after install", got.isNotEmpty())
         } else {
-            assertTrue(got.toString(), got.all { it == SafeAreaInsets.script(0, 0, 0, 0) })
+            assertTrue(got.toString(), got.all { it == SafeAreaInsets.script(0, 0, 0, 0, 0) })
         }
     }
 }

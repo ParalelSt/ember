@@ -104,4 +104,14 @@ class SafeAreaInsetsTest {
         val js = SafeAreaInsets.script(0, 0, 0, 0)
         assertTrue(js, js.contains("'--ember-inset-bottom':'0px'"))
     }
+
+    @Test
+    fun `publishes the keyboard height beside the insets and zero when it closes`() {
+        val open = SafeAreaInsets.script(24, 0, 48, 0, 300)
+        assertTrue(open, open.contains("'--ember-inset-keyboard':'300px'"))
+        assertTrue(open, open.contains("'--ember-inset-bottom':'48px'"))
+        val closed = SafeAreaInsets.script(24, 0, 48, 0, 0)
+        assertTrue(closed, closed.contains("'--ember-inset-keyboard':'0px'"))
+        assertEquals("--ember-inset-keyboard", SafeAreaInsets.KEYBOARD_PROPERTY)
+    }
 }
