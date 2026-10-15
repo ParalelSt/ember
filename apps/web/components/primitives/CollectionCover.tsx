@@ -1,4 +1,5 @@
-import { CarIcon, ClockIcon, HeartIcon, UploadIcon } from '@/components/icons';
+import { CarIcon, ClockIcon, UploadIcon } from '@/components/icons';
+import { LikedSongsCover } from '@/components/library/LikedSongsCover';
 import { Artwork } from '@/components/primitives/Artwork';
 import { cn } from '@/lib/utils';
 import type { CollectionIcon } from '@/lib/collections';
@@ -19,9 +20,8 @@ export interface CollectionCoverProps {
   mosaic?: readonly string[];
 }
 
-const ICONS: Record<CoverIcon, typeof HeartIcon> = {
+const ICONS: Record<Exclude<CoverIcon, 'heart'>, typeof CarIcon> = {
   car: CarIcon,
-  heart: HeartIcon,
   clock: ClockIcon,
   upload: UploadIcon,
 };
@@ -29,7 +29,8 @@ const ICONS: Record<CoverIcon, typeof HeartIcon> = {
 /** Presentational only: no data fetching, no store reads. A collection's
  *  cover is either its artwork, a system icon, or the bare ember gradient. */
 export function CollectionCover({ src, icon, className, fallback = 'gradient', mosaic }: CollectionCoverProps) {
-  const Icon = icon ? ICONS[icon] : null;
+  const Icon = icon && icon !== 'heart' ? ICONS[icon] : null;
+  const liked = icon === 'heart';
   const tiles = !icon && mosaic && mosaic.length >= 4 ? mosaic.slice(0, 4) : null;
   return (
     <Artwork
@@ -41,6 +42,7 @@ export function CollectionCover({ src, icon, className, fallback = 'gradient', m
         className,
       )}
     >
+      {liked ? <LikedSongsCover className="absolute inset-0" /> : null}
       {Icon ? <Icon className="absolute inset-0 m-auto h-1/3 w-1/3 text-ember-foreground/90" /> : null}
       {tiles ? (
         <div data-mosaic className="absolute inset-0 grid grid-cols-2 grid-rows-2">

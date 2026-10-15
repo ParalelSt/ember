@@ -107,6 +107,8 @@ describe('CopySongsBar', () => {
     await openPicker();
     const ids = screen.getAllByTestId('copy-destination').map((b) => b.getAttribute('data-destination'));
     expect(ids).toEqual(['new', 'liked', 'gym', 'dad']);
+    const likedRow = screen.getAllByTestId('copy-destination')[1];
+    expect(likedRow.querySelector('[data-liked-cover]')).not.toBeNull();
     expect(notes()).toEqual({
       new: 'With these 4 songs',
       liked: '2 already liked, 2 to add',
@@ -154,6 +156,7 @@ describe('CopySongsBar', () => {
     const list = await openPicker();
     fireEvent.click(list.getByText('Liked songs'));
     const warning = await screen.findByTestId('copy-liked-confirm');
+    expect(warning.querySelector('[data-liked-cover]')).not.toBeNull();
     expect(warning).toHaveTextContent('Adding songs to Liked songs likes every one of them');
     expect(warning).toHaveTextContent('2 are already liked, so 2 songs get a new like.');
     expect(within(warning).getByTestId('copy-liked-yes')).toHaveTextContent('Like 2 songs');

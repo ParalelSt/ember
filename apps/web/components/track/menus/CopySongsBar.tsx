@@ -7,6 +7,7 @@ import { toast } from 'sonner';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
 import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet';
+import { LikedSongsCover } from '@/components/library/LikedSongsCover';
 import { CheckIcon, ChevronDownIcon, CopyToIcon, HeartIcon, PlusIcon } from '@/components/icons';
 import { Artwork } from '@/components/primitives/Artwork';
 import { useIsDesktop } from '@/hooks/useIsDesktop';
@@ -330,9 +331,7 @@ function DestinationList({
         <DestinationRow
           id="liked"
           cover={
-            <div className="cover-placeholder grid size-art-xs shrink-0 place-items-center rounded">
-              <HeartIcon className="size-4 fill-current text-ember-foreground" />
-            </div>
+            <LikedSongsCover className="size-art-xs shrink-0 rounded" />
           }
           name="Liked songs"
           {...counts(picked, liked, 'liked')}
@@ -432,9 +431,7 @@ function LikedWarning({
   return (
     <div data-testid="copy-liked-confirm" className="flex flex-col gap-block">
       <div className="flex items-start gap-row">
-        <div className="cover-placeholder grid size-art-xs shrink-0 place-items-center rounded-full">
-          <HeartIcon className="size-5 fill-current text-ember-foreground" />
-        </div>
+        <LikedSongsCover className="size-art-xs shrink-0 rounded-full" />
         <div className="min-w-0">
           <DialogTitle className="text-section-title">
             Like {formatCount(count, 'song')}?

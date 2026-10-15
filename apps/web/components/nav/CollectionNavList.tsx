@@ -1,5 +1,6 @@
 import Link from 'next/link';
-import { ClockIcon, HeartIcon, UploadIcon } from '@/components/icons';
+import { LikedSongsCover } from '@/components/library/LikedSongsCover';
+import { ClockIcon, UploadIcon } from '@/components/icons';
 import { ImportTail } from '@/components/nav/PlaylistNavList';
 import type { NavImportState } from '@/lib/import/nav';
 import type { CollectionIcon } from '@/lib/collections';
@@ -12,8 +13,7 @@ export interface CollectionNavListProps {
   onNavigate?: () => void;
 }
 
-const ICONS: Record<CollectionIcon, typeof HeartIcon> = {
-  heart: HeartIcon,
+const ICONS: Record<Exclude<CollectionIcon, 'heart'>, typeof ClockIcon> = {
   clock: ClockIcon,
   upload: UploadIcon,
 };
@@ -26,7 +26,7 @@ export function CollectionNavList({ items, activePath, onNavigate }: CollectionN
   return (
     <div className="px-2 flex flex-col gap-0.5">
       {items.map(({ label, href, icon, importState }) => {
-        const Icon = ICONS[icon];
+        const Icon = icon === 'heart' ? null : ICONS[icon];
         const isActive = activePath === href;
         return (
           <Link
@@ -42,7 +42,7 @@ export function CollectionNavList({ items, activePath, onNavigate }: CollectionN
                 : 'text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent/60',
             )}
           >
-            <Icon className="h-4 w-4 shrink-0" />
+            {Icon ? <Icon className="h-4 w-4 shrink-0" /> : <LikedSongsCover className="size-5 shrink-0 rounded-[4px]" />}
             <span className="min-w-0 flex-1 truncate">{label}</span>
             {importState && <ImportTail state={importState} />}
           </Link>

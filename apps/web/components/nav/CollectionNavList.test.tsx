@@ -20,6 +20,14 @@ describe('CollectionNavList', () => {
     expect(screen.queryByTestId('import-nav-row')).toBeNull();
   });
 
+  it('draws the Liked songs entry with the wave-heart cover, other rows keep their icon', () => {
+    render(<CollectionNavList items={ITEMS} activePath="/" />);
+    const liked = screen.getByRole('link', { name: 'Liked songs' });
+    expect(liked.querySelector('[data-liked-cover]')).not.toBeNull();
+    const recent = screen.getByRole('link', { name: 'Recently played' });
+    expect(recent.querySelector('[data-liked-cover]')).toBeNull();
+  });
+
   it('a running transfer puts its progress on Liked songs', () => {
     render(
       <CollectionNavList

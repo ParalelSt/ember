@@ -25,6 +25,6 @@ describe('CollectionCover mosaic', () => {
   it('a system icon (Liked songs heart) wins over a mosaic', () => {
     const { container } = render(<CollectionCover src={null} icon="heart" mosaic={arts} />);
     expect(container.querySelector('[data-mosaic]')).toBeNull();
-    expect(container.querySelector('svg')).not.toBeNull();
+    expect(container.querySelector('[data-liked-cover]')).not.toBeNull();
   });
 });

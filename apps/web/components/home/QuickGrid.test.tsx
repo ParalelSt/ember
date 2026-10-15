@@ -43,11 +43,10 @@ describe('QuickGrid', () => {
     expect(name).toHaveClass('line-clamp-2', 'break-words', 'min-w-0', 'font-bold');
   });
 
-  it('draws Liked songs with the heart on the ember gradient', () => {
+  it('draws Liked songs with the sound-wave heart cover', () => {
     render(<QuickGrid items={items} />);
     const cover = screen.getByRole('link', { name: 'Liked songs' }).firstElementChild as HTMLElement;
-    expect(cover).toHaveClass('cover-placeholder');
-    expect(cover.querySelector('svg')).not.toBeNull();
+    expect(cover.querySelector('[data-liked-cover]')).not.toBeNull();
   });
 
   it('draws a playlist with four song covers as a 2x2 mosaic flush left', () => {
