@@ -409,3 +409,12 @@ describe('NowPlaying: the More sheet', () => {
     expect(within(view()).queryByRole('button', { name: 'More' })).toBeNull();
   });
 });
+
+afterEach(() => vi.unstubAllGlobals());
+it.each(['narrow', 'native'])('hides guitar tabs on %s devices with the plugin enabled', (device) => {
+  vi.stubGlobal('matchMedia', (q: string) => ({ matches: device === 'narrow' && q === '(max-width: 767px)', addEventListener() {}, removeEventListener() {} }));
+  vi.stubGlobal('Capacitor', { isNativePlatform: () => device === 'native' });
+  render(<NowPlaying />);
+  openMore();
+  expect(rows()).not.toContain('tabs');
+});

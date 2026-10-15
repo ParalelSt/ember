@@ -27,6 +27,7 @@ import { useAuth } from '@/components/providers/AuthProvider';
 import { useLikeToggle } from '@/hooks/useLikeToggle';
 import { useQueryLyrics } from '@/hooks/useLyrics';
 import { usePlayerStore } from '@/stores/usePlayerStore';
+import { useDesktopPlugins } from '@/hooks/useDesktopPlugins';
 import { useSettingsStore } from '@/stores/useSettingsStore';
 import { useUiStore } from '@/stores/useUiStore';
 import { useCastStore } from '@/stores/useCastStore';
@@ -75,7 +76,8 @@ export function NowPlaying() {
   const context = usePlayerStore((s) => s.context);
   const isPlaylist = context?.type === 'playlist';
   const title = contextTitle(context);
-  const tabsEnabled = useSettingsStore((s) => s.tabsEnabled);
+  const desktopPlugins = useDesktopPlugins();
+  const tabsEnabled = useSettingsStore((s) => s.tabsEnabled) && desktopPlugins;
   // The queue ("Up next" under the controls): the phone bar has no queue
   // button of its own, so this is where phones reach it. The sheet portals
   // above this view.
@@ -117,9 +119,9 @@ export function NowPlaying() {
     setOpen(false);
     window.setTimeout(go, 400);
   };
-  // The tab page for this song, full screen on phones like everything else.
+  // Guitar tabs are currently available only on desktop.
   const openTabs = () => {
-    if (current) closeThenGo(tabsHref(current.id));
+    if (current && tabsEnabled) closeThenGo(tabsHref(current.id));
   };
 
   const scrollerRef = useRef<HTMLDivElement | null>(null);

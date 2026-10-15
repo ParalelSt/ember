@@ -31,6 +31,7 @@ import { useIsDesktop } from '@/hooks/useIsDesktop';
 import { usePartyEligible } from '@/hooks/usePartyEligible';
 import { useLikeToggle } from '@/hooks/useLikeToggle';
 import { usePlayerStore } from '@/stores/usePlayerStore';
+import { useDesktopPlugins } from '@/hooks/useDesktopPlugins';
 import { useSettingsStore } from '@/stores/useSettingsStore';
 import { useUiStore } from '@/stores/useUiStore';
 import { cn } from '@/lib/utils';
@@ -52,7 +53,8 @@ export function PlayerBar() {
   // the Android app, regardless of window width. See lib/playback/partyDevice.
   const partyEligible = usePartyEligible();
   const partyActive = partyVolume && partyEligible;
-  const tabsEnabled = useSettingsStore((s) => s.tabsEnabled);
+  const desktopPlugins = useDesktopPlugins();
+  const tabsEnabled = useSettingsStore((s) => s.tabsEnabled) && desktopPlugins;
   const [queueOpen, setQueueOpen] = useState(false);
   const [devicesOpen, setDevicesOpen] = useState(false);
   const devices = useDevicesEntry();
@@ -237,8 +239,7 @@ export function PlayerBar() {
             click closes it again (Back to where the listener was, or home
             when they came in from outside Ember). Closing unmounts the
             page, which stops everything it ran; the music plays on.
-            Phones reach it from the full-screen NowPlaying view. Hidden
-            entirely when the Songsterr integration plugin is switched off
+            Hidden on phones and when the Songsterr integration is switched off
             in Settings. */}
         {tabsEnabled && (
           <Button

@@ -589,35 +589,9 @@ describe('TabsPage count-in', () => {
   });
 });
 
-describe('TabsPage practice tools on a phone', () => {
+describe('TabsPage practice tools', () => {
   beforeEach(() => {
-    phone = true;
     api.getTrackTabs.mockResolvedValue({ tabs: [tab({})] });
-  });
-
-  it('the pill’s sliders button shows the five cells above it, and the choice is remembered', async () => {
-    const view = wrap(<TabsPage trackId="upload:song1" />);
-    await screen.findByTestId('tab-score');
-    expect(screen.queryByRole('toolbar', { name: 'Practice' })).toBeNull();
-    const more = within(screen.getByTestId('tab-pill')).getByRole('button', { name: 'Practice tools' });
-    expect(more).toHaveAttribute('aria-expanded', 'false');
-    fireEvent.click(more);
-    const bar = screen.getByRole('toolbar', { name: 'Practice' });
-    expect(within(bar).getAllByRole('button')).toHaveLength(5);
-    // At the bottom with the pill, not in the title line.
-    expect(screen.getByTestId('tabs-sticky')).not.toContainElement(bar);
-    expect(window.localStorage.getItem('ember.tabs.tools')).toBe('open');
-    view.unmount();
-    wrap(<TabsPage trackId="upload:song1" />);
-    expect(await screen.findByRole('toolbar', { name: 'Practice' })).toBeInTheDocument();
-  });
-
-  it('the pill’s loop with no bars chosen opens the strip at the Loop popover', async () => {
-    wrap(<TabsPage trackId="upload:song1" />);
-    await screen.findByTestId('tab-score');
-    fireEvent.click(within(screen.getByTestId('tab-pill')).getByRole('button', { name: 'Loop the bars' }));
-    expect(screen.getByRole('toolbar', { name: 'Practice' })).toBeInTheDocument();
-    expect(screen.getByTestId('tab-popover-loop')).toBeInTheDocument();
   });
 
   it('a wide screen has no sliders button: the toolbar is always there', async () => {
@@ -976,13 +950,6 @@ describe('TabsPage toolbar and layout', () => {
     );
     await waitFor(() => expect(screen.getByTestId('tab-stage-header')).not.toHaveAttribute('data-dim'));
   });
-
-  it('phone width: smaller score, the same pill', async () => {
-    phone = true;
-    wrap(<TabsPage trackId="upload:song1" />);
-    expect(await screen.findByTestId('tab-score')).toHaveAttribute('data-scale', '0.65');
-    expect(screen.getByTestId('tab-pill')).toBeInTheDocument();
-  });
 });
 
 describe('TabsPage pill', () => {
@@ -1209,17 +1176,6 @@ describe('TabsPage choosing a tab, instrument first', () => {
     fireEvent.click(screen.getByTestId('tab-instrument'));
     expect(screen.getAllByTestId('tab-instrument-tile').map((t) => t.textContent)).toEqual(['Lead guitar1 version', 'Drums1 version']);
   });
-
-  it('on a phone the two buttons sit on their own line under the title', async () => {
-    phone = true;
-    api.getTrackTabs.mockResolvedValue({ tabs: [tab({})] });
-    wrap(<TabsPage trackId="upload:song1" />);
-    await screen.findByTestId('tab-score');
-    const header = screen.getByTestId('tab-stage-header');
-    const titleRow = within(header).getByRole('heading', { name: 'Copper Sky' }).parentElement!.parentElement!;
-    expect(titleRow).not.toContainElement(screen.getByTestId('tab-choose'));
-    expect(header).toContainElement(screen.getByTestId('tab-choose'));
-  });
 });
 
 describe('TabsPage looking online', () => {
@@ -1298,4 +1254,30 @@ describe('TabsPage looking online', () => {
     await waitFor(() => expect(screen.getByTestId('tabs-empty')).toHaveAttribute('data-state', 'none'));
     expect(screen.queryByTestId('tabs-searching')).toBeNull();
   });
+});
+
+it.each(['narrow', 'native'])('blocks direct tabs navigation on %s devices before fetching', (device) => {
+  vi.stubGlobal('matchMedia', (q: string) => ({ matches: device === 'narrow' && q === '(max-width: 767px)', addEventListener() {}, removeEventListener() {} }));
+  vi.stubGlobal('Capacitor', { isNativePlatform: () => device === 'native' });
+  render(<QueryClientProvider client={new QueryClient()}><TabsPage trackId="t1" /></QueryClientProvider>);
+  expect(screen.getByText('Guitar tabs are available on desktop.')).toBeInTheDocument();
+  expect(api.getTrackTabs).not.toHaveBeenCalled();
+  expect(api.getTrack).not.toHaveBeenCalled();
+});
+afterEach(() => vi.unstubAllGlobals());
+
+it('unmounts the reader when the window becomes phone-sized', async () => {
+  let narrow = false;
+  const listeners = new Set<() => void>();
+  vi.stubGlobal('matchMedia', (q: string) => ({
+    get matches() { return narrow && q === '(max-width: 767px)'; },
+    addEventListener: (_: string, listener: () => void) => listeners.add(listener),
+    removeEventListener: (_: string, listener: () => void) => listeners.delete(listener),
+  }));
+  api.getTrackTabs.mockResolvedValue({ tabs: [tab({})] });
+  wrap(<TabsPage trackId="upload:song1" />);
+  await screen.findByTestId('tab-score');
+  act(() => { narrow = true; listeners.forEach((listener) => listener()); });
+  expect(screen.queryByTestId('tab-score')).toBeNull();
+  expect(screen.getByText('Guitar tabs are available on desktop.')).toBeInTheDocument();
 });

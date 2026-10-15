@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import { useDesktopPlugins } from '@/hooks/useDesktopPlugins';
 import { toast } from 'sonner';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -126,6 +127,12 @@ function usePhone(): boolean {
  *  content column, and the player bar left visible below, since the page
  *  has no transport of its own. */
 export function TabsPage({ trackId }: { trackId: string }) {
+  const desktopPlugins = useDesktopPlugins();
+  if (!desktopPlugins) return <p>Guitar tabs are available on desktop.</p>;
+  return <DesktopTabsPage trackId={trackId} />;
+}
+
+function DesktopTabsPage({ trackId }: { trackId: string }) {
   const router = useRouter();
   const player = usePlayer();
   const tabsEnabled = useSettingsStore((s) => s.tabsEnabled);

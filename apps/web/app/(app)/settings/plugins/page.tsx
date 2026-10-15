@@ -4,6 +4,7 @@ import { useSettingsStore } from '@/stores/useSettingsStore';
 import { cn } from '@/lib/utils';
 import { SectionHeader } from '@/components/page/SectionHeader';
 import { EqualizerPanel } from '@/components/settings/EqualizerPanel';
+import { useDesktopPlugins } from '@/hooks/useDesktopPlugins';
 import { usePartyEligible } from '@/hooks/usePartyEligible';
 
 const PLACEHOLDERS = [
@@ -14,6 +15,7 @@ const PLACEHOLDERS = [
 ];
 
 export default function SettingsPlugins() {
+  const desktopPlugins = useDesktopPlugins();
   const partyVolume = useSettingsStore((s) => s.partyVolume);
   const setPartyVolume = useSettingsStore((s) => s.setPartyVolume);
   // Desktop only: a mouse-driven browser or the Tauri app. Hidden entirely on
@@ -42,7 +44,7 @@ export default function SettingsPlugins() {
 
         <EqualizerPanel className="rounded-2xl bg-card p-block shadow-soft" />
 
-        {partyEligible && (
+        {desktopPlugins && partyEligible && (
           <PluginToggle
             name="Party-size volume slider"
             tag="PC only"
@@ -52,15 +54,17 @@ export default function SettingsPlugins() {
           />
         )}
 
-        <PluginToggle
-          name="Songsterr integration"
-          tag="Work in progress"
-          description="Guitar tabs and guitar mode for the currently-playing track."
-          on={tabsEnabled}
-          onToggle={() => void setTabsEnabled(!tabsEnabled)}
-        />
+        {desktopPlugins && (
+          <PluginToggle
+            name="Songsterr integration"
+            tag="Work in progress"
+            description="Guitar tabs and guitar mode for the currently-playing track."
+            on={tabsEnabled}
+            onToggle={() => void setTabsEnabled(!tabsEnabled)}
+          />
+        )}
 
-        {PLACEHOLDERS.map((p) => (
+        {desktopPlugins && PLACEHOLDERS.map((p) => (
           <div
             key={p.name}
             className="rounded-2xl bg-card p-5 shadow-soft flex items-start justify-between gap-4 opacity-60"

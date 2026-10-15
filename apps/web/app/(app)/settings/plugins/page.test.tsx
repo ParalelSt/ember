@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { useSettingsStore } from '@/stores/useSettingsStore';
 import SettingsPlugins from './page';
@@ -84,4 +84,18 @@ describe('Settings > Plugins', () => {
       ).toBeNull();
     });
   });
+});
+
+afterEach(() => vi.unstubAllGlobals());
+
+it.each(['narrow', 'native'])('hides desktop plugins on %s devices without changing saved preferences', (device) => {
+  vi.stubGlobal('matchMedia', (q: string) => ({ matches: device === 'narrow' && q === '(max-width: 767px)', addEventListener() {}, removeEventListener() {} }));
+  vi.stubGlobal('Capacitor', { isNativePlatform: () => device === 'native' });
+  render(<SettingsPlugins />);
+  expect(screen.queryByText('Songsterr integration')).toBeNull();
+  expect(screen.queryByText('Party-size volume slider')).toBeNull();
+  expect(screen.queryByText('TikTok window')).toBeNull();
+  expect(screen.getByText('Normalize volume')).toBeInTheDocument();
+  expect(screen.getByTestId('equalizer')).toBeInTheDocument();
+  expect(useSettingsStore.getState().tabsEnabled).toBe(true);
 });

@@ -64,3 +64,9 @@ describe('appVolume', () => {
     expect(appVolume(0.85)).toBe(1);
   });
 });
+
+it('rejects a narrow mouse browser and ignores stored volume', () => {
+  vi.stubGlobal('matchMedia', (q: string) => ({ matches: q === '(max-width: 767px)' }));
+  expect(isPartyEligible()).toBe(false);
+  expect(appVolume(1.5)).toBe(1);
+});

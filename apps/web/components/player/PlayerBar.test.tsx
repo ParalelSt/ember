@@ -1,5 +1,5 @@
 import type { ComponentProps, PropsWithChildren, ReactNode } from 'react';
-import { describe, expect, it, vi, beforeEach } from 'vitest';
+import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import { PlayerBar } from './PlayerBar';
 import { usePlayerStore } from '@/stores/usePlayerStore';
@@ -345,4 +345,13 @@ describe('PlayerBar: devices button', () => {
     expect(screen.getByTestId('devices-button')).toBeInTheDocument();
     useOutputStore.setState({ platform: null, devices: [], currentId: null });
   });
+});
+
+afterEach(() => vi.unstubAllGlobals());
+it.each(['narrow', 'native'])('hides guitar tabs on %s devices with the plugin enabled', (device) => {
+  vi.stubGlobal('matchMedia', (q: string) => ({ matches: device === 'narrow' && q === '(max-width: 767px)', addEventListener() {}, removeEventListener() {} }));
+  vi.stubGlobal('Capacitor', { isNativePlatform: () => device === 'native' });
+  render(<PlayerBar />);
+  expect(screen.queryByRole('button', { name: 'Guitar tabs' })).toBeNull();
+  expect(screen.queryByRole('menuitem', { name: 'Guitar tabs' })).toBeNull();
 });

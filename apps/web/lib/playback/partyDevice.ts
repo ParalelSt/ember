@@ -1,3 +1,4 @@
+import { canUseDesktopPlugins } from '@/lib/desktopPlugins';
 import { detectShell } from './detectShell';
 
 /** Whether "party" (the volume slider's above-100% boost) is available on
@@ -7,8 +8,8 @@ import { detectShell } from './detectShell';
  *  regardless of window width, a touch tablet parked at a desktop-size
  *  window is still a touch device. PlayerBar's own isDesktop check
  *  (hooks/useIsDesktop) already hides the whole volume slider below the md
- *  breakpoint; this is the other half, for pointer type and the native
- *  shells that check cannot see.
+ *  breakpoint; the shared desktop-plugin gate also enforces this at use
+ *  time, including native shells and phone browsers in landscape.
  *
  *  Everything that gates party mode (the settings toggle, the wider slider,
  *  the Web Audio gain node in webBackend) reads this so a phone or the
@@ -19,7 +20,7 @@ const coarsePointer = () =>
   typeof window !== 'undefined' && (window.matchMedia?.('(pointer: coarse)').matches ?? false);
 
 export function isPartyEligible(): boolean {
-  if (typeof window === 'undefined') return false;
+  if (!canUseDesktopPlugins()) return false;
   const shell = detectShell();
   if (shell === 'capacitor') return false;
   if (shell === 'tauri') return true;
