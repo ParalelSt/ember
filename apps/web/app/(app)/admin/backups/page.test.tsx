@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, within } from '@testing-library/react';
-import AdminBackupsPage from './page';
+import AdminBackupsPage from './BackupsPanel';
 import type { AdminBackupsStatus } from '@/lib/api';
 
 const GB = 1024 * 1024 * 1024;

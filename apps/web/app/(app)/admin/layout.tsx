@@ -1,14 +1,14 @@
 import { redirect } from 'next/navigation';
 import type { ReactNode } from 'react';
-import { requireUser, UnauthorizedError } from '@/lib/auth';
+import { ForbiddenError, requireAdmin, UnauthorizedError } from '@/lib/auth';
 import { AdminTabs } from '@/components/admin/AdminTabs';
 import { PageTitle } from '@/components/page/PageTitle';
 
 export default async function AdminLayout({ children }: { children: ReactNode }) {
   try {
-    const { user } = await requireUser();
-    if (!user.isAdmin) redirect('/');
+    await requireAdmin();
   } catch (e) {
+    if (e instanceof ForbiddenError) redirect('/');
     if (e instanceof UnauthorizedError) redirect('/auth?next=/admin');
     throw e;
   }
