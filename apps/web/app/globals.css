@@ -149,6 +149,12 @@
      inset at all these resolve to 0 and nothing moves. */
   --safe-top: max(env(safe-area-inset-top, 0px), var(--ember-inset-top, 0px));
   --safe-bottom: max(env(safe-area-inset-bottom, 0px), var(--ember-inset-bottom, 0px));
+
+  /* The soft keyboard's height above the navigation bar. Capacitor's Android
+     WebView does not resize for the keyboard on SDK 35 (edge-to-edge), so
+     EmberActivity publishes it as --ember-inset-keyboard; dialogs and sheets
+     cap their height by it and scroll. 0 where the browser resizes itself. */
+  --keyboard-inset: var(--ember-inset-keyboard, 0px);
 }
 
 /* Type utilities: one name per repeated class string so call sites read as
