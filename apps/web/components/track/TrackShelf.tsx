@@ -30,8 +30,9 @@ interface Props {
   fullscreen?: boolean;
   /** 'grid' (default): one measured row of cards, the desktop shelf.
    *  'row': the phone Home's sideways-scrolling row (RowShelf), its first
-   *  ROW_MAX tracks, with "Show all" only when there are more. */
-  layout?: 'grid' | 'row';
+   *  ROW_MAX tracks, with "Show all" only when there are more.
+   *  'desktop-row': the same on the desktop Home: 180px tiles and arrows. */
+  layout?: 'grid' | 'row' | 'desktop-row';
 }
 
 // When the desktop lyrics panel is open, main shrinks by ~max(40vw, 28rem).
@@ -103,12 +104,16 @@ export function TrackShelf({ title, tracks, loading, showAllHref, renderCard, ly
     );
   }
 
-  if (layout === 'row') {
+  if (layout === 'row' || layout === 'desktop-row') {
     const loadingRow = loading && !hasTracks;
     return (
-      <RowShelf title={title} showAllHref={loadingRow ? undefined : showAllHref}>
+      <RowShelf
+        title={title}
+        showAllHref={loadingRow ? undefined : showAllHref}
+        variant={layout === 'desktop-row' ? 'desktop' : 'phone'}
+      >
         {loadingRow
-          ? Array.from({ length: 3 }).map((_, i) => (
+          ? Array.from({ length: layout === 'desktop-row' ? 6 : 3 }).map((_, i) => (
               <div key={`skeleton-${i}`}>
                 <Skeleton className="aspect-square w-full rounded-[8px]" />
                 <Skeleton className="mt-cluster h-4 w-3/4" />

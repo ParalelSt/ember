@@ -237,3 +237,21 @@ describe('TrackShelf row layout (the phone Home)', () => {
     expect(container).toBeEmptyDOMElement();
   });
 });
+
+describe('TrackShelf desktop row layout (the desktop Home)', () => {
+  it('is a sideways row of 180px tiles with arrows, up to ROW_MAX, Show all only when there is more', () => {
+    const { rerender } = render(
+      <TrackShelf layout="desktop-row" title="Popular now" tracks={makeTracks(ROW_MAX + 2)} showAllHref="/?focus=trending" renderCard={renderCard} />,
+    );
+    const list = screen.getByRole('list');
+    expect(list).toHaveClass('flex', 'overflow-x-auto');
+    expect(list).not.toHaveClass('snap-x');
+    const items = within(list).getAllByRole('listitem');
+    expect(items).toHaveLength(ROW_MAX);
+    expect(items[0]).toHaveClass('w-[180px]');
+    expect(screen.getByRole('button', { name: 'Scroll right' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Show all' })).toHaveAttribute('href', '/?focus=trending');
+    rerender(<TrackShelf layout="desktop-row" title="Popular now" tracks={makeTracks(4)} showAllHref="/?focus=trending" renderCard={renderCard} />);
+    expect(screen.queryByRole('link', { name: 'Show all' })).toBeNull();
+  });
+});

@@ -194,3 +194,25 @@ describe('FriendsListening row layout (the phone Home)', () => {
     expect(container).toBeEmptyDOMElement();
   });
 });
+
+describe('FriendsListening desktop row layout (the desktop Home)', () => {
+  it('is a row of big tiles with arrows that plays the clicked track', async () => {
+    const track = makeTrack();
+    api.listening.mockResolvedValue({
+      items: [{ userName: 'Robin', playedAt: new Date(NOW - 5 * 60_000).toISOString(), track }],
+    });
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <FriendsListening layout="desktop-row" />
+      </QueryClientProvider>,
+    );
+    expect(await screen.findByRole('heading', { name: 'Friends are listening to' })).toHaveClass('text-2xl');
+    expect(screen.getByRole('listitem')).toHaveClass('w-[180px]');
+    expect(screen.getByRole('button', { name: 'Scroll right' })).toBeInTheDocument();
+    expect(screen.getByText('Midnight Drive')).toHaveClass('text-[15px]');
+    expect(screen.getByText('Robin · 5 min ago')).toBeInTheDocument();
+    fireEvent.click(screen.getByText('Midnight Drive'));
+    expect(playTrack).toHaveBeenCalledWith(track);
+  });
+});

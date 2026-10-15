@@ -17,8 +17,9 @@ const TITLE = 'Friends are listening to';
 
 /** Home section: what other members played in the last ~30 minutes (newest
  *  per person). Hidden entirely when nobody's listening, no empty state.
- *  `layout="row"` is the phone Home's version: a RowShelf of bare tiles. */
-export function FriendsListening({ layout = 'cards' }: { layout?: 'cards' | 'row' } = {}) {
+ *  `layout="row"` is the phone Home's version: a RowShelf of bare tiles;
+ *  `layout="desktop-row"` the desktop Home's, bigger tiles with arrows. */
+export function FriendsListening({ layout = 'cards' }: { layout?: 'cards' | 'row' | 'desktop-row' } = {}) {
   const { user } = useAuth();
   const { playTrack } = usePlayer();
   const { data } = useQuery({
@@ -30,15 +31,16 @@ export function FriendsListening({ layout = 'cards' }: { layout?: 'cards' | 'row
 
   if (!data?.length) return null;
 
-  if (layout === 'row') {
+  if (layout === 'row' || layout === 'desktop-row') {
+    const lg = layout === 'desktop-row';
     return (
-      <RowShelf title={TITLE}>
+      <RowShelf title={TITLE} variant={lg ? 'desktop' : 'phone'}>
         {data.map((item, i) => {
           const ago = formatAgo(item.playedAt);
           return (
             <TrackCard
               key={`${i}-${item.userName}-${item.track.id}`}
-              variant="tile"
+              variant={lg ? 'tile-lg' : 'tile'}
               track={item.track}
               onActivate={() => playTrack(item.track)}
               subtitle={ago ? `${item.userName} · ${ago}` : item.userName}
