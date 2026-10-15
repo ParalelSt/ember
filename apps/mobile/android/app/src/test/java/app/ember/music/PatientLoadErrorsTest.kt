@@ -16,6 +16,7 @@ import org.json.JSONObject
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -27,10 +28,11 @@ import java.nio.file.Files
 import java.time.Duration
 
 /**
- * A connection that gives out while the phone counts as online (a tunnel, a
- * dead zone) is retried inside the player for minutes, so the song keeps its
- * place and the player stays "buffering" (the service keeps its foreground).
- * Offline it is final at once, for the offline rules. A 4xx is final too.
+ * A connection that gives out (a tunnel, a dead zone, no network at all) is
+ * retried inside the player for about ten minutes, so the song keeps its
+ * place and the player stays "buffering" (the service keeps its foreground)
+ * and goes on by itself when the connection is back. Moving on to a song on
+ * the phone is the offline rules' call, not an error's. A 4xx is final.
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34])
@@ -42,31 +44,39 @@ class PatientLoadErrorsTest {
     private fun transport(code: Int) = HttpDataSource.HttpDataSourceException(IOException("down"), spec, code, HttpDataSource.HttpDataSourceException.TYPE_OPEN)
     private fun status(code: Int) = HttpDataSource.InvalidResponseCodeException(code, null, null, emptyMap(), spec, ByteArray(0))
 
-    @Test fun `online, a dropped connection waits longer each time`() {
-        val policy = PatientLoadErrors { true }
+    @Test fun `a dropped connection waits longer each time`() {
+        val policy = PatientLoadErrors()
         val e = transport(PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED)
         assertEquals(2_000L, policy.getRetryDelayMsFor(info(e, 1)))
         assertEquals(5_000L, policy.getRetryDelayMsFor(info(e, 2)))
         assertEquals(30_000L, policy.getRetryDelayMsFor(info(e, 9)))
         assertEquals(10_000L, policy.getRetryDelayMsFor(info(transport(PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT), 3)))
-        assertEquals(PatientLoadErrors.DELAYS_MS.size, policy.getMinimumLoadableRetryCount(C.DATA_TYPE_MEDIA))
+        // Only the policy ends a retry: the loader never reports one early.
+        assertEquals(Int.MAX_VALUE, policy.getMinimumLoadableRetryCount(C.DATA_TYPE_MEDIA))
     }
 
-    @Test fun `offline, or a song the server does not have, is final at once`() {
-        val e = transport(PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED)
-        assertEquals(C.TIME_UNSET, PatientLoadErrors { false }.getRetryDelayMsFor(info(e, 1)))
-        assertEquals(C.TIME_UNSET, PatientLoadErrors { true }.getRetryDelayMsFor(info(status(404), 1)))
-        // A server error keeps ExoPlayer's own retries.
-        assertEquals(1_000L, PatientLoadErrors { true }.getRetryDelayMsFor(info(status(503), 2)))
+    @Test fun `a dropped connection is final after about ten minutes of waiting`() {
+        val policy = PatientLoadErrors()
+        val e = transport(PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT)
+        val waits = (1..PatientLoadErrors.TRANSPORT_TRIES).sumOf { policy.getRetryDelayMsFor(info(e, it)) }
+        assertTrue("waited ${waits / 1000} s", waits in 9 * 60_000L..12 * 60_000L)
+        assertEquals(C.TIME_UNSET, policy.getRetryDelayMsFor(info(e, PatientLoadErrors.TRANSPORT_TRIES + 1)))
+    }
+
+    @Test fun `a song the server does not have is final at once, a server error after ExoPlayer's tries`() {
+        val policy = PatientLoadErrors()
+        assertEquals(C.TIME_UNSET, policy.getRetryDelayMsFor(info(status(404), 1)))
+        // A server error keeps ExoPlayer's own retries, and its count.
+        assertEquals(1_000L, policy.getRetryDelayMsFor(info(status(503), 2)))
+        assertEquals(C.TIME_UNSET, policy.getRetryDelayMsFor(info(status(503), PatientLoadErrors.OTHER_TRIES + 1)))
     }
 
     // The service's own player, against an address nothing listens on.
 
     private val app = RuntimeEnvironment.getApplication()
-    private var online = true
     private val player = EmberPlaybackService.buildPlayer(
         app, OkHttpDataSource.Factory(OkHttpClient()), OfflineStore(Files.createTempDirectory("patient").toFile()),
-    ) { online }
+    )
 
     @After fun release() = player.release()
 
@@ -87,17 +97,13 @@ class PatientLoadErrorsTest {
         player.play()
     }
 
-    @Test fun `online, the player keeps buffering the song instead of failing`() {
+    /** Past the old limit (five tries, about 70 s), which used to stop the
+     *  song with an error. */
+    @Test fun `the player keeps buffering the song instead of failing`() {
         startUnreachable()
-        runFor(15_000)
+        runFor(120_000)
         assertNull(player.playerError)
         assertEquals(Player.STATE_BUFFERING, player.playbackState)
-    }
-
-    @Test fun `offline, the player fails at once for the offline rules`() {
-        online = false
-        startUnreachable()
-        runFor(5_000) { player.playerError != null }
-        assertEquals(PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED, player.playerError?.errorCode)
+        assertTrue(player.playWhenReady)
     }
 }

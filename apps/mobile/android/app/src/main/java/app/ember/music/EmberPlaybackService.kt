@@ -153,22 +153,22 @@ class EmberPlaybackService : MediaLibraryService() {
          *  or the downloaded copy when there is one (OfflineAudio), through
          *  the equalizer [eq] when given (Equalizer.kt), marking the listener's
          *  retry of a failed song when [retry] is given (ListenerRetry). It
-         *  loads the playing song whole (SongLoadControl). Its own function
-         *  so tests build the same one. */
+         *  waits out a dropped connection (PatientLoadErrors) and loads the
+         *  playing song whole (SongLoadControl). Its own function so tests
+         *  build the same one. */
         fun buildPlayer(
             context: Context,
             streams: DataSource.Factory,
             offline: OfflineStore,
             eq: AudioProcessor? = null,
             retry: ListenerRetry? = null,
-            online: () -> Boolean = { true },
             loads: SongLoadControl = SongLoadControl(),
         ): ExoPlayer =
             (if (eq != null) ExoPlayer.Builder(context, EqualizerProcessor.renderers(context, eq)) else ExoPlayer.Builder(context))
                 .setMediaSourceFactory(
                     DefaultMediaSourceFactory(context)
                         .setDataSourceFactory(OfflineAudio.dataSourceFactory(context, retry?.dataSourceFactory(streams) ?: streams, offline))
-                        .setLoadErrorHandlingPolicy(PatientLoadErrors(online)),
+                        .setLoadErrorHandlingPolicy(PatientLoadErrors()),
                 )
                 .setLoadControl(loads)
                 .setAudioAttributes(AudioAttributes.Builder().setUsage(C.USAGE_MEDIA).setContentType(C.AUDIO_CONTENT_TYPE_MUSIC).build(), true)
@@ -256,6 +256,12 @@ class EmberPlaybackService : MediaLibraryService() {
     private lateinit var net: NetworkWatch
     private lateinit var autoCacher: AutoCacher
     private lateinit var offlinePlayback: OfflinePlayback
+    /** Whether the connection gets anything through (a validated network
+     *  can carry nothing on a weak mobile signal). Internal for tests,
+     *  which swap in one whose probe they answer. */
+    internal lateinit var health: ConnectionHealth
+    /** Asking the server whether it can be reached: never behind anything. */
+    private val probeIo = Executors.newSingleThreadExecutor()
     private var queueContextType: String? = null
     private var queueBaseCount = 0
     private var publishedExtras: Triple<List<String>, Boolean, Boolean>? = null
@@ -280,24 +286,46 @@ class EmberPlaybackService : MediaLibraryService() {
         super.onCreate()
         val baseUrl = ServerConfig.baseUrl(this)
         api = ServerApi(baseUrl) { CookieManager.getInstance().getCookie(baseUrl) }
+        health = ConnectionHealth(
+            probe = api::reachable,
+            io = { probeIo.execute(it) },
+            main = { handler.post(it) },
+            later = { ms, task ->
+                handler.postDelayed(task, ms)
+                ({ handler.removeCallbacks(task) })
+            },
+            onChange = ::connectionChanged,
+        )
         // Read at call time: offline and net are set up just below.
         tree = BrowseTree(
             api, artAuthority,
             downloads = ::downloadedTracks,
             downloadedArt = { offline.artFileFor(it).exists() },
-            online = { !::net.isInitialized || net.current().online },
+            online = ::online,
             onLiked = { ids -> handler.post { liked.replace(ids); refreshButtons() } },
             notice = { UpdateRules.carNotice(AppUpdater.isReady(), AppUpdater.installsSilently()) },
         )
         // Streams go through the same OkHttp client, so they carry the cookie
-        // and get the same 401 retry as the JSON calls.
-        val dataSource = OkHttpDataSource.Factory(api.http)
+        // and get the same 401 retry as the JSON calls. Every byte they bring
+        // in shows the connection works (ConnectionHealth).
+        val dataSource = OkHttpDataSource.Factory(api.http).setTransferListener(DataSeen { health.onData() })
         cache = MediaCache.shared(this)
         offline = OfflineStore.shared(this)
         val streams = MediaCache.dataSourceFactory(cache, dataSource)
-        // Asked live on each failed load; the network watch starts just below.
         equalizer.settings = EqSettings.load(EqSettings.prefs(this))
-        player = buildPlayer(this, streams, offline, equalizer, listenerRetry) { !::net.isInitialized || net.current().online }
+        player = buildPlayer(this, streams, offline, equalizer, listenerRetry)
+        // A load that failed on the connection: is it there at all?
+        player.addAnalyticsListener(object : androidx.media3.exoplayer.analytics.AnalyticsListener {
+            override fun onLoadError(
+                eventTime: androidx.media3.exoplayer.analytics.AnalyticsListener.EventTime,
+                loadEventInfo: androidx.media3.exoplayer.source.LoadEventInfo,
+                mediaLoadData: androidx.media3.exoplayer.source.MediaLoadData,
+                error: java.io.IOException,
+                wasCanceled: Boolean,
+            ) {
+                if (PatientLoadErrors.isTransport(error)) health.suspect()
+            }
+        })
         player.addListener(QueueListener(
             player,
             recordPlay = ::recordPlay,
@@ -393,7 +421,7 @@ class EmberPlaybackService : MediaLibraryService() {
                 if (CookieManager.getInstance().getCookie(baseUrl).isNullOrBlank()) throw java.io.IOException("signed out")
                 api.postJson("/api/native-log", body)
             },
-            online = { !::net.isInitialized || net.current().online },
+            online = ::online,
             io = logIo,
             delay = delay,
             surface = { Surfaces.of(automotive, Surfaces.isCarMode(this), carControllers.isNotEmpty()) },
@@ -704,16 +732,27 @@ class EmberPlaybackService : MediaLibraryService() {
         val prefs = getSharedPreferences(PREFS, MODE_PRIVATE)
         // Defaults per the owner: on, but never on mobile data unless asked.
         autoCacher.setSettings(prefs.getBoolean("enabled", true), prefs.getBoolean("onMetered", false))
-        net = NetworkWatch(this) { state ->
-            if (state.online) history.backOnline()
-            offlinePlayback.onNetwork(state.online)
-            cacheTick()
+        net = NetworkWatch(this) {
+            health.onNetworkChanged()
+            networkChanged()
         }
-        // Offline, Previous passes over a song the offline rules skipped.
         offlinePlayback = OfflinePlayback(
-            player, ::playableOffline, { net.current().online },
-            onStalledChanged = { publishCacheState() },
-            onPassedOver = history::passedOver,
+            player, ::playableOffline, ::online,
+            // Offline, Previous passes over a song the offline rules skipped.
+            onPassedOver = { id ->
+                history.passedOver(id)
+                playbackLog.info("offline.skip", "not on the phone, offline: moved past it", org.json.JSONObject().put("trackId", id))
+            },
+            later = { ms, task ->
+                handler.postDelayed(task, ms)
+                ({ handler.removeCallbacks(task) })
+            },
+            onStuck = { health.suspect() },
+            onStalledChanged = { stalled ->
+                if (stalled) playbackLog.warn("offline.stall", "offline with nothing on the phone ahead: waiting for the connection, play left on")
+                else playbackLog.info("offline.resume", "the music can go on again")
+                publishCacheState()
+            },
         )
         player.addListener(offlinePlayback)
         player.addListener(object : Player.Listener {
@@ -724,6 +763,28 @@ class EmberPlaybackService : MediaLibraryService() {
             override fun onShuffleModeEnabledChanged(shuffleModeEnabled: Boolean) = cacheTick()
         })
         net.start()
+    }
+
+    /** Online for the music: a validated network that also gets something
+     *  through (ConnectionHealth). */
+    private fun online(): Boolean =
+        (!::net.isInitialized || net.current().online) && !(::health.isInitialized && health.down)
+
+    /** The network, or what it carries, changed. */
+    private fun networkChanged() {
+        if (!::offlinePlayback.isInitialized) return
+        val now = online()
+        if (now) history.backOnline()
+        offlinePlayback.onNetwork(now)
+        cacheTick()
+    }
+
+    internal fun connectionChanged(down: Boolean) {
+        if (::playbackLog.isInitialized) {
+            if (down) playbackLog.warn("net.down", "the network is up but nothing gets through: playing what is on the phone")
+            else playbackLog.info("net.up", "the connection gets through again")
+        }
+        networkChanged()
     }
 
     /** A song that can play without the network: pinned, or whole in the cache. */
@@ -751,7 +812,9 @@ class EmberPlaybackService : MediaLibraryService() {
             bufferedToEnd = settled(player.duration, player.bufferedPosition, player.totalBufferedDuration,
                 offline.audioFileFor(currentId).exists() || MediaCache.isFullyCached(cache, currentId)),
             playing = player.isPlaying,
-            net = net.current(),
+            // A network that carries nothing counts as none: no prefetch
+            // into a dead connection.
+            net = net.current().let { if (health.down) it.copy(online = false) else it },
             batterySaver = (getSystemService(POWER_SERVICE) as PowerManager?)?.isPowerSaveMode == true,
             isLocal = { offline.audioFileFor(it).exists() },
         )
@@ -781,7 +844,7 @@ class EmberPlaybackService : MediaLibraryService() {
         val full = MediaCache.fullyCached(cache)
         val ids = (0 until player.mediaItemCount).map { player.getMediaItemAt(it).mediaId }.distinct()
             .filter { it in full || offline.audioFileFor(it).exists() }
-        val next = Triple(ids, offlinePlayback.stalled, !net.current().online)
+        val next = Triple(ids, offlinePlayback.stalled, !online())
         if (next == publishedExtras) return
         publishedExtras = next
         publishExtras()
@@ -946,8 +1009,8 @@ class EmberPlaybackService : MediaLibraryService() {
         io.execute {
             val items: List<MediaItem> = try {
                 // Offline, the lists are the downloads, which need no sign-in.
-                val online = !::net.isInitialized || net.current().online
-                if (online && CookieManager.getInstance().getCookie(api.baseUrl).isNullOrBlank()) listOf(tree.placeholder("Sign in to Ember on your phone"))
+                val reachable = online()
+                if (reachable && CookieManager.getInstance().getCookie(api.baseUrl).isNullOrBlank()) listOf(tree.placeholder("Sign in to Ember on your phone"))
                 else fn()
             } catch (e: Exception) {
                 Log.w(TAG, "browse: ${e.message}")
@@ -983,6 +1046,8 @@ class EmberPlaybackService : MediaLibraryService() {
         runCatching { audioManager?.unregisterAudioDeviceCallback(deviceWatch) }
         autoCacher.cancel()
         net.stop()
+        health.stop()
+        probeIo.shutdownNow()
         cacheIo.shutdown()
         // The SimpleCache stays open: it is one per process (MediaCache), and
         // a service started again in this process reuses it.

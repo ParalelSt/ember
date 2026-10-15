@@ -29,7 +29,8 @@ import java.time.Duration
 
 /**
  * Offline, the native player skips songs that are not on the phone and
- * stops (flagged) when nothing ahead is; back online it reloads, paused.
+ * waits (flagged, play left on) when nothing ahead is; back online the song
+ * goes on by itself.
  * A real ExoPlayer; which songs "are on the phone" is a set the test owns,
  * except in the last test, where it is the real cache after a real
  * network error.
@@ -74,13 +75,13 @@ class OfflineSkipTest {
         assertFalse(guard.stalled)
     }
 
-    @Test fun `nothing ahead on the phone pauses and flags it`() {
+    @Test fun `nothing ahead on the phone waits on the song, play left on, and flags it`() {
         onPhone += "a"
         start("a", "b", "c", at = 1)
         guard.onPlayerError(networkError)
         idle()
         assertEquals(1, player.currentMediaItemIndex)
-        assertFalse(player.playWhenReady)
+        assertTrue("not paused: it goes on when the connection is back", player.playWhenReady)
         assertTrue(guard.stalled)
         assertEquals(listOf(true), stalledEvents)
     }
@@ -140,7 +141,7 @@ class OfflineSkipTest {
         assertFalse(guard.stalled)
     }
 
-    @Test fun `back online the stalled song loads again, paused`() {
+    @Test fun `back online the stalled song loads again and goes on by itself`() {
         start("a", "b")
         guard.onPlayerError(networkError)
         idle()
@@ -151,7 +152,7 @@ class OfflineSkipTest {
         idle()
         assertFalse(guard.stalled)
         assertNotEquals(Player.STATE_IDLE, player.playbackState)
-        assertFalse("never plays by itself", player.playWhenReady)
+        assertTrue("plays on: nobody paused it", player.playWhenReady)
         assertEquals(listOf(true, false), stalledEvents)
     }
 

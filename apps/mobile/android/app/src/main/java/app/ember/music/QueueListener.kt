@@ -108,8 +108,11 @@ class QueueListener(
         // the network) or the server out of reach. That is not the song's
         // fault, and skipping burned through the queue, a song per outage,
         // then stopped. The player has already kept trying for minutes
-        // (PatientLoadErrors); it stops on this song, and play, or the
-        // network coming back (OfflinePlayback.onNetwork), picks it up.
+        // (PatientLoadErrors), and a connection that carries nothing is the
+        // offline rules' (OfflinePlayback, via ConnectionHealth): they move
+        // to a song on the phone. Here the server answered all along, so it
+        // stays on this song, and play, or the network coming back
+        // (OfflinePlayback.onNetwork), picks it up.
         if (error.errorCode in TRANSPORT_ERRORS) {
             Log.w(EmberPlaybackService.TAG, "connection gave out on $failed, staying on it: ${error.errorCodeName}")
             return

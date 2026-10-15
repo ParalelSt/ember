@@ -144,7 +144,39 @@ class ServiceAutoCacheTest {
         player.playWhenReady = true
         player.setMediaItems(listOf(item("youtube:a"), item("youtube:c")))
         idle()
-        assertFalse(player.playWhenReady)
+        assertTrue("play left on, so it goes on when the network is back", player.playWhenReady)
         assertTrue(session().sessionExtras.getBoolean(EmberPlaybackService.EXTRA_OFFLINE_STALLED))
+    }
+
+    /** The 2026-10 report: the network validated, but nothing got through.
+     *  The connection check (its probe answered here by the test) finds it
+     *  down; the service then plays the cached song and tells the web UI it
+     *  is offline, and data coming in again ends it. */
+    @Test fun `a validated network that carries nothing plays the cached song and says it is offline`() {
+        network(true)
+        startService()
+        val handler = android.os.Handler(Looper.getMainLooper())
+        service.health = ConnectionHealth(
+            probe = { false },
+            io = { it.run() },
+            main = { handler.post(it) },
+            later = { _, _ -> {} },
+        ) { service.connectionChanged(it) }
+        cacheSong("youtube:b")
+        val player = session().player
+        player.setMediaItems(listOf(item("youtube:a"), item("youtube:b")))
+        player.prepare()
+        player.play()
+        idle()
+        assertEquals(0, player.currentMediaItemIndex)
+        assertFalse(session().sessionExtras.getBoolean(EmberPlaybackService.EXTRA_OFFLINE))
+        service.health.suspect()
+        idle()
+        assertEquals(1, player.currentMediaItemIndex)
+        assertTrue(player.playWhenReady)
+        assertTrue(session().sessionExtras.getBoolean(EmberPlaybackService.EXTRA_OFFLINE))
+        service.health.onData()
+        idle()
+        assertFalse(session().sessionExtras.getBoolean(EmberPlaybackService.EXTRA_OFFLINE))
     }
 }

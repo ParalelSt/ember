@@ -278,9 +278,10 @@ class QueueListenerTest {
         assertTrue(player.playWhenReady)
     }
 
-    /** Offline with nothing else on the phone, the offline rules pause on the
-     *  song that failed and flag the stall. This listener must not also move
-     *  the queue on: that would put the stall on a song that never failed. */
+    /** Offline with nothing else on the phone, the offline rules wait on the
+     *  song that failed (play left on, for when the connection is back) and
+     *  flag the stall. This listener must not also move the queue on: that
+     *  would put the stall on a song that never failed. */
     @Test fun `offline, a network error is left to the offline rules`() {
         serve()
         val rules = withOfflineRules(online = { false }, onPhone = setOf("a"))
@@ -288,8 +289,8 @@ class QueueListenerTest {
         runUntil(10_000) { rules.stalled }
         runUntil(300) { false }
         assertTrue(rules.stalled)
-        assertEquals("paused on the song that failed", 0, player.currentMediaItemIndex)
-        assertFalse(player.playWhenReady)
+        assertEquals("waits on the song that failed", 0, player.currentMediaItemIndex)
+        assertTrue(player.playWhenReady)
         assertFalse("b was never tried", synchronized(asked) { "b" in asked })
     }
 
