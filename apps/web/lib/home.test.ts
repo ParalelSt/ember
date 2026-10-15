@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { QUICK_MAX, homeChips, phoneHomeView, quickPicks, recentFirst, type HomeRowKey } from './home';
+import { QUICK_MAX, QUICK_MAX_DESKTOP, homeChips, phoneHomeView, quickPicks, recentFirst, rowEnds, rowStep, type HomeRowKey } from './home';
 import { toSummary } from './collections';
 
 const liked = toSummary({ kind: 'liked' }, { count: 3 });
@@ -106,5 +106,41 @@ describe('filter chips and order B', () => {
   it('a filter whose chip is gone falls back to All', () => {
     expect(phoneHomeView('mixes', today).filter).toBe('all');
     expect(phoneHomeView('playlists', new Set(['history'])).rows).toEqual(['history']);
+  });
+});
+
+describe('the desktop quick grid', () => {
+  it('holds eight tiles, two rows of four, when asked', () => {
+    const many = Array.from({ length: 12 }, (_, i) => pl(`p${i}`, `P${i}`));
+    expect(QUICK_MAX_DESKTOP).toBe(8);
+    expect(quickPicks({ liked, playlists: many, carlist: null, max: QUICK_MAX_DESKTOP })).toHaveLength(8);
+  });
+
+  it('knows the collection behind each tile so it can be played, but not a carlist', () => {
+    const picks = quickPicks({
+      liked,
+      playlists: [pl('a', 'Road trip')],
+      carlist: { id: 's1', code: 'ABC123', name: 'Friday drive', isHost: true },
+    });
+    expect(picks.map((p) => p.ref)).toEqual([{ kind: 'liked' }, undefined, { kind: 'playlist', id: 'a' }]);
+  });
+});
+
+describe('the desktop row arrows', () => {
+  it('offers only > at the start, both in the middle, only < at the end', () => {
+    expect(rowEnds(0, 400, 1000)).toEqual({ canLeft: false, canRight: true });
+    expect(rowEnds(300, 400, 1000)).toEqual({ canLeft: true, canRight: true });
+    expect(rowEnds(600, 400, 1000)).toEqual({ canLeft: true, canRight: false });
+    // A fraction of a pixel short of the end counts as the end.
+    expect(rowEnds(599.5, 400, 1000).canRight).toBe(false);
+  });
+
+  it('offers neither when the row fits', () => {
+    expect(rowEnds(0, 1000, 1000)).toEqual({ canLeft: false, canRight: false });
+  });
+
+  it('scrolls about 80% of the row width per press', () => {
+    expect(rowStep(1000)).toBe(800);
+    expect(rowStep(0)).toBe(1);
   });
 });
