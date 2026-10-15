@@ -108,4 +108,14 @@ describe('useCollections', () => {
     // None at all: the key stays off, like every other optional field.
     expect(result.current.playlists[1]).not.toHaveProperty('trackArtworks');
   });
+
+  it('passes each playlist\'s song count through for the phone Library rows', async () => {
+    api.listPlaylists.mockResolvedValue({
+      playlists: [{ ...makePlaylist('p1', 'Road Trip'), track_count: 23 }, makePlaylist('p2', 'Chill')],
+    });
+    const { result } = setup();
+    await waitFor(() => expect(result.current.playlists).toHaveLength(2));
+    expect(result.current.playlists[0].trackCount).toBe(23);
+    expect(result.current.playlists[1]).not.toHaveProperty('trackCount');
+  });
 });

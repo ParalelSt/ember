@@ -228,4 +228,11 @@ describe('playlistCover (phone Home tiles)', () => {
     expect(toSummary({ kind: 'playlist', id: 'p' }, { trackArtworks: arts }).trackArtworks).toEqual(arts);
     expect(toSummary({ kind: 'liked' }, { trackArtworks: arts })).not.toHaveProperty('trackArtworks');
   });
+
+  it('toSummary keeps a playlist\'s song count, zero included, and only on a playlist', () => {
+    expect(toSummary({ kind: 'playlist', id: 'p' }, { trackCount: 23 }).trackCount).toBe(23);
+    expect(toSummary({ kind: 'playlist', id: 'p' }, { trackCount: 0 }).trackCount).toBe(0);
+    expect(toSummary({ kind: 'playlist', id: 'p' })).not.toHaveProperty('trackCount');
+    expect(toSummary({ kind: 'liked' }, { trackCount: 4 })).not.toHaveProperty('trackCount');
+  });
 });

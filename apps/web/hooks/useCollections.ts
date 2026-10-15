@@ -50,6 +50,7 @@ export function useCollections(): UseCollectionsResult {
             downloaded: downloadedIds.has(p.id),
             sharing: sharingOf(p),
             trackArtworks: p.track_artworks,
+            trackCount: p.track_count,
           },
         ),
       ),

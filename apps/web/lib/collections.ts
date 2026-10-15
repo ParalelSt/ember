@@ -84,6 +84,8 @@ export interface CollectionSummary {
   sharedBy?: { name: string; avatarUrl: string | null };
   /** A playlist's first few distinct song covers (the phone Home mosaic). */
   trackArtworks?: string[];
+  /** A playlist's song count, when the server sent one (the phone Library). */
+  trackCount?: number;
 }
 
 /** What a playlist tile on the phone Home shows: its own cover when it has
@@ -114,11 +116,13 @@ export function toSummary(
     downloaded?: boolean;
     /** A playlist's first song covers, from GET /api/playlists. */
     trackArtworks?: string[];
+    /** A playlist's song count, from GET /api/playlists. */
+    trackCount?: number;
     /** Only for a collaborative playlist. */
     sharing?: { role: 'owner' | 'member'; ownerName?: string | null; ownerAvatarUrl?: string | null };
   } = {},
 ): CollectionSummary {
-  const { name, count, artworkUrl = null, downloaded = false, sharing, trackArtworks } = meta;
+  const { name, count, artworkUrl = null, downloaded = false, sharing, trackArtworks, trackCount } = meta;
   const playlistSubtitle =
     sharing?.role === 'member'
       ? `Shared by ${sharing.ownerName || 'someone'}`
@@ -141,6 +145,7 @@ export function toSummary(
       ? { sharedBy: { name: sharing.ownerName || 'someone', avatarUrl: sharing.ownerAvatarUrl ?? null } }
       : {}),
     ...(ref.kind === 'playlist' && trackArtworks?.length ? { trackArtworks } : {}),
+    ...(ref.kind === 'playlist' && typeof trackCount === 'number' ? { trackCount } : {}),
   };
 }
 
