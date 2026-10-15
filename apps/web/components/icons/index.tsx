@@ -97,4 +97,8 @@ export {
   ScanQrCode as ScanQrIcon,
   // The approve sheet: a tablet asking to sign in.
   Tablet as TabletIcon,
+  // The phone Library: grid or list view, a pinned playlist's mark.
+  LayoutGrid as GridIcon,
+  List as ListIcon,
+  Pin as PinIcon,
 } from 'lucide-react';
