@@ -45,7 +45,7 @@ export default function HomePage() {
   // one of the two layouts is ever in the page.
   const isDesktop = useIsDesktop();
 
-  const cardFor = (variant: 'card' | 'tile') => (t: Track, list: Track[]) => {
+  const renderTrack = (t: Track, list: Track[], variant: 'card' | 'tile') => {
     const active = current?.id === t.id;
     return (
       <TrackCard
@@ -59,8 +59,8 @@ export default function HomePage() {
       />
     );
   };
-  const renderCard = cardFor('card');
-  const renderTile = cardFor('tile');
+  const renderCard = (t: Track, list: Track[]) => renderTrack(t, list, 'card');
+  const renderTile = (t: Track, list: Track[]) => renderTrack(t, list, 'tile');
 
   // Reset the scroll position whenever the focus changes, going INTO a
   // focused song box (so you start at its top) and coming back OUT (so the
