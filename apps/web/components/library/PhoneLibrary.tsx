@@ -1,28 +1,16 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useState } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
 import { CloseIcon, GridIcon, ListIcon, SearchIcon, SortIcon } from '@/components/icons';
 import { Avatar } from '@/components/primitives/Avatar';
 import { LibraryAddMenu } from '@/components/library/LibraryAddMenu';
 import { LibraryEmptyCard } from '@/components/library/LibraryEmptyCard';
 import { LibraryItemRow } from '@/components/library/LibraryItemRow';
-import { CreatePlaylistDialog } from '@/components/track/menus/CreatePlaylistDialog';
-import { StartSessionDialog } from '@/components/session/SessionDialogs';
-import { useAuth } from '@/components/providers/AuthProvider';
-import { useCollections } from '@/hooks/useCollections';
-import { useCreatePlaylistFlow } from '@/hooks/useCreatePlaylistFlow';
-import { useQueryHistory, useQueryLikes, useQueryUploads } from '@/hooks/useLibrary';
-import { useNavPlaylists } from '@/hooks/useNavPlaylists';
-import { useQueryLiveCarlist } from '@/hooks/useSession';
 import {
   arrangeLibrary,
-  buildLibraryItems,
   libraryChips,
   nextChip,
-  readLibraryView,
-  writeLibraryView,
   type LibraryChip,
   type LibraryItem,
   type LibrarySort,
@@ -30,60 +18,58 @@ import {
 } from '@/lib/library';
 import { cn } from '@/lib/utils';
 
-/** Where Import goes: the Transfer flow, with Back returning here. */
-export const LIBRARY_IMPORT_HREF = `/transfer?from=${encodeURIComponent('/library')}`;
-/** The empty card's import is about playlists, so it starts on that card. */
-export const LIBRARY_IMPORT_PLAYLIST_HREF = `/transfer?to=playlist&from=${encodeURIComponent('/library')}`;
+export interface PhoneLibraryProps {
+  /** Every item (lib/library buildLibraryItems), before chip, search and sort. */
+  items: LibraryItem[];
+  /** False shows the "Create your first playlist" card. */
+  hasPlaylists: boolean;
+  profile: { name?: string | null; email?: string | null; avatarUrl?: string | null };
+  /** List or grid, remembered per device by the page (useLibraryView). */
+  view: LibraryView;
+  onViewChange: (view: LibraryView) => void;
+  /** A carlist is live for you: the + menu's carlist item opens it. */
+  carlistLive: boolean;
+  /** A playlist row was tapped (it moves up Recents). */
+  onOpenPlaylist: (id: string) => void;
+  onNewPlaylist: () => void;
+  onCarlist: () => void;
+  onImport: () => void;
+  /** The empty card's "Import from Spotify or YouTube" link. */
+  importPlaylistHref: string;
+}
 
-/** The phone Library (below md), from the owner's picks: the Spotify
- *  header (avatar, Your Library, search, +), sticky filter chips, a
- *  Recents / Alphabetical sort with a list or grid toggle (remembered per
- *  device), then one list where Liked songs, Recently played, Uploads and
- *  Downloaded come first, then the playlists. */
-export function PhoneLibrary() {
-  const router = useRouter();
-  const { user, name, avatarUrl } = useAuth();
-  const { playlists, downloadedIds } = useCollections();
-  const { data: liked = [] } = useQueryLikes();
-  const { data: history = [] } = useQueryHistory();
-  const { data: uploads = [] } = useQueryUploads();
-  const { data: carlist } = useQueryLiveCarlist();
-  // Recents is the nav's own order: pinned first, then last opened.
-  const nav = useNavPlaylists(playlists.map((p) => ({ ...p, id: p.pinId })));
-
+/** Presentational only: the phone Library (below md), from the owner's
+ *  picks. The Spotify header (avatar, Your Library, search, +), sticky
+ *  filter chips, a Recents / Alphabetical sort with a list or grid toggle,
+ *  then one list where Liked songs, Recently played, Uploads and Downloaded
+ *  come first, then the playlists. The chip, sort and search are this
+ *  page's own passing state; the data and the flows come in as props. */
+export function PhoneLibrary({
+  items: all,
+  hasPlaylists,
+  profile,
+  view,
+  onViewChange,
+  carlistLive,
+  onOpenPlaylist,
+  onNewPlaylist,
+  onCarlist,
+  onImport,
+  importPlaylistHref,
+}: PhoneLibraryProps) {
   const [chip, setChip] = useState<LibraryChip | null>(null);
   const [sort, setSort] = useState<LibrarySort>('recents');
-  const [view, setView] = useState<LibraryView>('list');
   const [searchOpen, setSearchOpen] = useState(false);
   const [query, setQuery] = useState('');
-  const [carlistOpen, setCarlistOpen] = useState(false);
-  const { createOpen, setCreateOpen, handleCreate } = useCreatePlaylistFlow();
 
-  // The saved view is read after mounting, so the server's first paint and
-  // the client's agree.
-  useEffect(() => {
-    const saved = readLibraryView();
-    if (saved !== 'list') setView(saved);
-  }, []);
-
-  const toggleView = () => {
-    const next = view === 'list' ? 'grid' : 'list';
-    setView(next);
-    writeLibraryView(next);
-  };
-
-  const all = useMemo(
-    () => buildLibraryItems({ liked, history, uploads, playlists: nav.items, downloadedIds }),
-    [liked, history, uploads, nav.items, downloadedIds],
-  );
   const items = arrangeLibrary(all, { chip, sort, query: searchOpen ? query : '' });
   const chips = libraryChips(all.some((i) => i.kind === 'mix'));
-  const noPlaylists = playlists.length === 0;
-  const showEmpty = noPlaylists && (chip === null || chip === 'playlists') && !(searchOpen && query.trim());
+  const searching = searchOpen && !!query.trim();
+  const showEmpty = !hasPlaylists && (chip === null || chip === 'playlists') && !searching;
 
   const activate = (item: LibraryItem) => {
     if (item.kind === 'downloaded') setChip('downloaded');
-    else if (item.playlistId) nav.onOpen(item.playlistId);
+    else if (item.playlistId) onOpenPlaylist(item.playlistId);
   };
 
   const closeSearch = () => {
@@ -96,9 +82,9 @@ export function PhoneLibrary() {
       <header className="flex h-[52px] items-center gap-row">
         <Link href="/settings/profile" aria-label="Profile and settings" className="shrink-0 rounded-full">
           <Avatar
-            src={avatarUrl}
-            name={name}
-            email={user?.email}
+            src={profile.avatarUrl}
+            name={profile.name}
+            email={profile.email}
             className="size-[34px] bg-ember text-sm font-extrabold text-ember-foreground"
           />
         </Link>
@@ -113,12 +99,7 @@ export function PhoneLibrary() {
           >
             <SearchIcon className="size-6" />
           </button>
-          <LibraryAddMenu
-            carlistLive={!!carlist}
-            onNewPlaylist={() => setCreateOpen(true)}
-            onCarlist={() => (carlist ? router.push(`/session/${carlist.id}`) : setCarlistOpen(true))}
-            onImport={() => router.push(LIBRARY_IMPORT_HREF)}
-          />
+          <LibraryAddMenu carlistLive={carlistLive} onNewPlaylist={onNewPlaylist} onCarlist={onCarlist} onImport={onImport} />
         </div>
       </header>
 
@@ -181,7 +162,7 @@ export function PhoneLibrary() {
           type="button"
           data-testid="library-view"
           aria-label={view === 'list' ? 'Show as grid' : 'Show as list'}
-          onClick={toggleView}
+          onClick={() => onViewChange(view === 'list' ? 'grid' : 'list')}
           className="grid size-8 place-items-center"
         >
           {view === 'list' ? <GridIcon className="size-[18px]" /> : <ListIcon className="size-[18px]" />}
@@ -204,17 +185,14 @@ export function PhoneLibrary() {
         ))}
 
       {showEmpty ? (
-        <LibraryEmptyCard onCreate={() => setCreateOpen(true)} importHref={LIBRARY_IMPORT_PLAYLIST_HREF} />
+        <LibraryEmptyCard onCreate={onNewPlaylist} importHref={importPlaylistHref} />
       ) : (
         items.length === 0 && (
           <p className="py-[34px] text-center text-[15px] text-muted-foreground">
-            {searchOpen && query.trim() ? `Nothing in your library matches "${query.trim()}"` : 'Nothing here yet'}
+            {searching ? `Nothing in your library matches "${query.trim()}"` : 'Nothing here yet'}
           </p>
         )
       )}
-
-      <CreatePlaylistDialog open={createOpen} onOpenChange={setCreateOpen} onCreate={handleCreate} />
-      <StartSessionDialog open={carlistOpen} onOpenChange={setCarlistOpen} />
     </div>
   );
 }

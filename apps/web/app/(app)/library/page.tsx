@@ -14,7 +14,46 @@ import { hrefFor, iconFor, refFromPinId } from '@/lib/collections';
 import { EmptyState } from '@/components/page/EmptyState';
 import { PageTitle } from '@/components/page/PageTitle';
 import { PhoneLibrary } from '@/components/library/PhoneLibrary';
+import { CreatePlaylistDialog } from '@/components/track/menus/CreatePlaylistDialog';
+import { StartSessionDialog } from '@/components/session/SessionDialogs';
 import { useIsDesktop } from '@/hooks/useIsDesktop';
+import { usePhoneLibrary } from '@/hooks/usePhoneLibrary';
+import { useLibraryView } from '@/hooks/useLibraryView';
+import { useCreatePlaylistFlow } from '@/hooks/useCreatePlaylistFlow';
+import { useQueryLiveCarlist } from '@/hooks/useSession';
+import { useRouter } from 'next/navigation';
+import { LIBRARY_IMPORT_HREF, LIBRARY_IMPORT_PLAYLIST_HREF } from '@/lib/library';
+
+/** The phone Library's composition root: its data, the remembered view and
+ *  the + menu's flows (New playlist, the carlist start dialog, Transfer). */
+function PhoneLibraryPage() {
+  const router = useRouter();
+  const { user, name, avatarUrl } = useAuth();
+  const { items, hasPlaylists, onOpenPlaylist } = usePhoneLibrary();
+  const [view, setView] = useLibraryView();
+  const { data: carlist } = useQueryLiveCarlist();
+  const { createOpen, setCreateOpen, handleCreate } = useCreatePlaylistFlow();
+  const [carlistOpen, setCarlistOpen] = useState(false);
+  return (
+    <>
+      <PhoneLibrary
+        items={items}
+        hasPlaylists={hasPlaylists}
+        profile={{ name, email: user?.email, avatarUrl }}
+        view={view}
+        onViewChange={setView}
+        carlistLive={!!carlist}
+        onOpenPlaylist={onOpenPlaylist}
+        onNewPlaylist={() => setCreateOpen(true)}
+        onCarlist={() => (carlist ? router.push(`/session/${carlist.id}`) : setCarlistOpen(true))}
+        onImport={() => router.push(LIBRARY_IMPORT_HREF)}
+        importPlaylistHref={LIBRARY_IMPORT_PLAYLIST_HREF}
+      />
+      <CreatePlaylistDialog open={createOpen} onOpenChange={setCreateOpen} onCreate={handleCreate} />
+      <StartSessionDialog open={carlistOpen} onOpenChange={setCarlistOpen} />
+    </>
+  );
+}
 
 export default function LibraryPage() {
   const { user } = useAuth();
@@ -61,7 +100,7 @@ export default function LibraryPage() {
     );
   }
 
-  if (!isDesktop) return <PhoneLibrary />;
+  if (!isDesktop) return <PhoneLibraryPage />;
 
   return (
     <div>

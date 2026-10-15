@@ -1,4 +1,3 @@
-import type { LibraryBadgeKind } from './libraryIcons';
 import { countLabel, playlistCover, type CollectionSummary } from './collections';
 import { formatCount } from './format';
 
@@ -10,6 +9,8 @@ import { formatCount } from './format';
 export type LibraryChip = 'playlists' | 'mixes' | 'downloaded';
 export type LibrarySort = 'recents' | 'alpha';
 export type LibraryView = 'list' | 'grid';
+/** The system collections that wear a corner badge (components/library/libraryIcons). */
+export type LibraryBadgeKind = 'recent' | 'uploads' | 'downloaded';
 export type LibraryItemKind = 'liked' | 'recent' | 'uploads' | 'downloaded' | 'playlist' | 'mix';
 
 /** What a row's art shows: the Liked songs heart, a system collection's
@@ -209,6 +210,11 @@ export function buildLibraryItems({ liked, history, uploads, playlists, download
   }
   return [...items, ...playlistItems];
 }
+
+/** Where the phone Library's Import goes: the Transfer flow, Back returning here. */
+export const LIBRARY_IMPORT_HREF = `/transfer?from=${encodeURIComponent('/library')}`;
+/** The empty card's import is about playlists, so it starts on that card. */
+export const LIBRARY_IMPORT_PLAYLIST_HREF = `/transfer?to=playlist&from=${encodeURIComponent('/library')}`;
 
 /** The list or grid choice, remembered per device. */
 export const LIBRARY_VIEW_KEY = 'ember.library.view';

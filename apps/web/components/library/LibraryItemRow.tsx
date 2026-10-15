@@ -3,7 +3,7 @@ import type { ReactNode } from 'react';
 import { PinIcon } from '@/components/icons';
 import { LibraryCover } from '@/components/library/LibraryCover';
 import type { LibraryItem } from '@/lib/library';
-import { DOWNLOADED_MARK } from '@/lib/libraryIcons';
+import { DOWNLOADED_MARK } from '@/components/library/libraryIcons';
 import { cn } from '@/lib/utils';
 
 export interface LibraryItemRowProps {

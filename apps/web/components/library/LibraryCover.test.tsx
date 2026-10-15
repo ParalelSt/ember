@@ -3,14 +3,14 @@ import { render } from '@testing-library/react';
 
 // The badge icons are provisional and live in one map: swapping an entry
 // there must change every cover, so the test swaps one.
-vi.mock('@/lib/libraryIcons', async (orig) => {
-  const real = await orig<typeof import('@/lib/libraryIcons')>();
+vi.mock('@/components/library/libraryIcons', async (orig) => {
+  const real = await orig<typeof import('@/components/library/libraryIcons')>();
   const Swapped = (props: { className?: string }) => <svg data-icon="swapped" {...props} />;
   return { ...real, LIBRARY_BADGES: { ...real.LIBRARY_BADGES, uploads: { ...real.LIBRARY_BADGES.uploads, icon: Swapped } } };
 });
 
 const { LibraryCover } = await import('./LibraryCover');
-const { LIBRARY_BADGES } = await import('@/lib/libraryIcons');
+const { LIBRARY_BADGES } = await import('@/components/library/libraryIcons');
 
 const arts = (n: number) => Array.from({ length: n }, (_, i) => `https://img.test/${i}.jpg`);
 const box = (container: HTMLElement) => container.firstElementChild as HTMLElement;
@@ -47,7 +47,7 @@ describe('LibraryCover', () => {
     expect(el.getAttribute('style')).toContain('linear-gradient');
   });
 
-  it('takes its badge icons from the one map in lib/libraryIcons', () => {
+  it('takes its badge icons from the one map in components/library/libraryIcons', () => {
     const { container } = render(<LibraryCover cover={{ kind: 'badge', badge: 'uploads', arts: arts(4) }} />);
     expect(box(container).querySelector('[data-badge] [data-icon="swapped"]')).not.toBeNull();
     expect(Object.keys(LIBRARY_BADGES).sort()).toEqual(['downloaded', 'recent', 'uploads']);

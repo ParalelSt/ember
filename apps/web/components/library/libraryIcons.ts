@@ -1,5 +1,8 @@
 import type { ComponentType } from 'react';
 import { ArrowDownIcon, ArrowUpIcon, ClockIcon } from '@/components/icons';
+import type { LibraryBadgeKind } from '@/lib/library';
+
+export type { LibraryBadgeKind };
 
 /** The phone Library's system collection badges, in ONE place: the small
  *  round mark in the corner of the Recently played, Uploads and Downloaded
@@ -8,9 +11,8 @@ import { ArrowDownIcon, ArrowUpIcon, ClockIcon } from '@/components/icons';
  *  set separately, so swap them here and every cover follows.
  *
  *  The colours are fixed art, the same in every theme (like the Liked songs
- *  cover), so they live here as literals rather than as theme tokens. */
-
-export type LibraryBadgeKind = 'recent' | 'uploads' | 'downloaded';
+ *  cover), so they live here as literals rather than as theme tokens
+ *  (lib/lintRules.test.ts allows this file by name). */
 
 export type LibraryBadgeIcon = ComponentType<{ className?: string; strokeWidth?: number; 'aria-hidden'?: boolean }>;
 

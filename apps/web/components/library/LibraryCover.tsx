@@ -1,7 +1,7 @@
 import { LikedSongsCover } from '@/components/library/LikedSongsCover';
 import { CollectionCover } from '@/components/primitives/CollectionCover';
 import { badgeCoverLook, type LibraryCoverSpec } from '@/lib/library';
-import { LIBRARY_BADGES, LIBRARY_BADGE_FOREGROUND } from '@/lib/libraryIcons';
+import { LIBRARY_BADGES, LIBRARY_BADGE_FOREGROUND } from '@/components/library/libraryIcons';
 import { cn } from '@/lib/utils';
 
 export interface LibraryCoverProps {
@@ -13,7 +13,7 @@ export interface LibraryCoverProps {
 /** Presentational only: one phone Library item's art. Liked songs keeps its
  *  sound-wave heart; Recently played, Uploads and Downloaded are a 2x2
  *  mosaic of their own song covers with a small round coloured badge in the
- *  bottom-right corner (the icon map is lib/libraryIcons), falling back to
+ *  bottom-right corner (the icon map is components/library/libraryIcons), falling back to
  *  one cover with the badge, or a plain coloured tile with the glyph, when
  *  there are fewer songs; a playlist is its cover or its song mosaic. */
 export function LibraryCover({ cover, className }: LibraryCoverProps) {

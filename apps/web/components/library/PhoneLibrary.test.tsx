@@ -1,67 +1,13 @@
 import type { ComponentProps, PropsWithChildren } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { act, fireEvent, render, screen, within } from '@testing-library/react';
-import { toSummary, type CollectionSummary } from '@/lib/collections';
-import { LIBRARY_VIEW_KEY } from '@/lib/library';
-import type { Track } from '@/types/track';
+import { fireEvent, render, screen, within } from '@testing-library/react';
+import { toSummary } from '@/lib/collections';
+import { buildLibraryItems, type LibraryInput, type LibraryView } from '@/lib/library';
 
 vi.mock('next/link', () => ({
   default: ({ href, children, ...rest }: ComponentProps<'a'>) => (
     <a href={href} {...rest}>{children}</a>
   ),
-}));
-
-const state = vi.hoisted(() => ({
-  push: vi.fn(),
-  liked: [] as Partial<Track>[],
-  history: [] as Partial<Track>[],
-  uploads: [] as Partial<Track>[],
-  playlists: [] as CollectionSummary[],
-  pinned: [] as string[],
-  downloaded: new Set<string>(),
-  carlist: null as { id: string } | null,
-  onOpen: vi.fn(),
-  handleCreate: vi.fn(),
-}));
-
-vi.mock('next/navigation', () => ({ useRouter: () => ({ push: state.push }) }));
-vi.mock('@/components/providers/AuthProvider', () => ({
-  useAuth: () => ({ user: { id: 'u1', email: 'a@b.c' }, name: 'Aron', avatarUrl: null }),
-}));
-vi.mock('@/hooks/useCollections', () => ({
-  useCollections: () => ({ system: [], playlists: state.playlists, downloadedIds: state.downloaded, isLoading: false }),
-}));
-vi.mock('@/hooks/useLibrary', () => ({
-  useQueryLikes: () => ({ data: state.liked }),
-  useQueryHistory: () => ({ data: state.history }),
-  useQueryUploads: () => ({ data: state.uploads }),
-}));
-// The real ordering is lib/navPlaylists' own tests: pinned first, kept in order.
-vi.mock('@/hooks/useNavPlaylists', () => ({
-  useNavPlaylists: <T extends { id: string }>(items: T[]) => ({
-    items: [
-      ...items.filter((i) => state.pinned.includes(i.id)),
-      ...items.filter((i) => !state.pinned.includes(i.id)),
-    ].map((i) => ({ ...i, pinned: state.pinned.includes(i.id) })),
-    onOpen: state.onOpen,
-    onTogglePin: vi.fn(),
-  }),
-}));
-vi.mock('@/hooks/useSession', () => ({ useQueryLiveCarlist: () => ({ data: state.carlist }) }));
-vi.mock('@/hooks/useCreatePlaylistFlow', async () => {
-  const { useState } = await import('react');
-  return {
-    useCreatePlaylistFlow: () => {
-      const [createOpen, setCreateOpen] = useState(false);
-      return { createOpen, setCreateOpen, handleCreate: state.handleCreate };
-    },
-  };
-});
-vi.mock('@/components/track/menus/CreatePlaylistDialog', () => ({
-  CreatePlaylistDialog: ({ open }: { open: boolean }) => (open ? <div role="dialog" aria-label="New playlist" /> : null),
-}));
-vi.mock('@/components/session/SessionDialogs', () => ({
-  StartSessionDialog: ({ open }: { open: boolean }) => (open ? <div role="dialog" aria-label="Start a carlist" /> : null),
 }));
 vi.mock('@/components/ui/dropdown-menu', () => ({
   DropdownMenu: ({ children }: PropsWithChildren) => <div>{children}</div>,
@@ -72,36 +18,59 @@ vi.mock('@/components/ui/dropdown-menu', () => ({
   ),
 }));
 
-const { PhoneLibrary, LIBRARY_IMPORT_HREF, LIBRARY_IMPORT_PLAYLIST_HREF } = await import('./PhoneLibrary');
+const { PhoneLibrary } = await import('./PhoneLibrary');
 
 const art = (n: number) => `https://img.test/${n}.jpg`;
-const songs = (...arts: number[]) => arts.map((n, i) => ({ id: `t${i}`, artworkUrl: n ? art(n) : null }));
-const pl = (id: string, name: string, extra: Parameters<typeof toSummary>[1] = {}) =>
-  toSummary({ kind: 'playlist', id }, { name, ...extra });
+const songs = (...arts: number[]) => arts.map((n) => ({ artworkUrl: n ? art(n) : null }));
+const pl = (id: string, name: string, extra: Parameters<typeof toSummary>[1] = {}, pinned = false) => ({
+  ...toSummary({ kind: 'playlist', id }, { name, ...extra }),
+  pinned,
+});
+
+const handlers = {
+  onViewChange: vi.fn(),
+  onOpenPlaylist: vi.fn(),
+  onNewPlaylist: vi.fn(),
+  onCarlist: vi.fn(),
+  onImport: vi.fn(),
+};
+
+function setup({ input = {}, view = 'list', carlistLive = false }: { input?: Partial<LibraryInput>; view?: LibraryView; carlistLive?: boolean } = {}) {
+  const full: LibraryInput = {
+    liked: songs(1, 2),
+    history: songs(1, 2, 3, 4, 5),
+    uploads: songs(7),
+    playlists: [
+      pl('p1', 'Zebra', { trackCount: 23 }),
+      pl('p2', 'apple', { trackCount: 1, downloaded: true }),
+      pl('p3', 'Mango', { trackCount: 4 }),
+    ],
+    downloadedIds: new Set(['p2']),
+    ...input,
+  };
+  return render(
+    <PhoneLibrary
+      items={buildLibraryItems(full)}
+      hasPlaylists={full.playlists.length > 0}
+      profile={{ name: 'Aron', email: 'a@b.c', avatarUrl: null }}
+      view={view}
+      carlistLive={carlistLive}
+      importPlaylistHref="/transfer?to=playlist"
+      {...handlers}
+    />,
+  );
+}
 
 const titles = () =>
   [...document.querySelectorAll('[data-library-item]')].map((el) => el.querySelector('.truncate')?.textContent);
+const row = (key: string) => document.querySelector(`[data-library-item="${key}"]`) as HTMLElement;
 const chip = (name: string) => within(screen.getByRole('toolbar', { name: 'Filter your library' })).getByRole('button', { name });
 
-beforeEach(() => {
-  vi.clearAllMocks();
-  localStorage.clear();
-  state.liked = songs(1, 2);
-  state.history = songs(1, 2, 3, 4, 5);
-  state.uploads = songs(7);
-  state.playlists = [
-    pl('p1', 'Zebra', { trackCount: 23 }),
-    pl('p2', 'apple', { trackCount: 1, downloaded: true }),
-    pl('p3', 'Mango', { trackCount: 4 }),
-  ];
-  state.pinned = [];
-  state.downloaded = new Set(['p2']);
-  state.carlist = null;
-});
+beforeEach(() => vi.clearAllMocks());
 
 describe('PhoneLibrary', () => {
   it('has the Spotify header: avatar to profile, Your Library, search and +, and no carlist or upload squircles', () => {
-    render(<PhoneLibrary />);
+    setup();
     expect(screen.getByRole('heading', { level: 1, name: 'Your Library' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Profile and settings' })).toHaveAttribute('href', '/settings/profile');
     expect(screen.getByRole('button', { name: 'Search your library' })).toBeInTheDocument();
@@ -111,32 +80,30 @@ describe('PhoneLibrary', () => {
     expect(document.querySelector('[data-shape="squircle"]')).toBeNull();
   });
 
-  it('lists the system collections first, Downloaded only with downloads, then playlists in Recents order', () => {
-    const { unmount } = render(<PhoneLibrary />);
+  it('lists the system collections first, Downloaded only with downloads, then the playlists', () => {
+    const { unmount } = setup();
     expect(titles()).toEqual(['Liked songs', 'Recently played', 'Uploads', 'Downloaded', 'Zebra', 'apple', 'Mango']);
     unmount();
-    state.downloaded = new Set();
-    state.playlists = state.playlists.map((p) => ({ ...p, downloaded: false }));
-    render(<PhoneLibrary />);
-    expect(titles()).toEqual(['Liked songs', 'Recently played', 'Uploads', 'Zebra', 'apple', 'Mango']);
+    setup({ input: { downloadedIds: new Set(), playlists: [pl('p1', 'Zebra')] } });
+    expect(titles()).toEqual(['Liked songs', 'Recently played', 'Uploads', 'Zebra']);
   });
 
   it('rows read "Playlist · 23 songs" with the green download mark and the pin mark where they apply', () => {
-    state.pinned = ['p3'];
-    render(<PhoneLibrary />);
-    const row = (key: string) => document.querySelector(`[data-library-item="${key}"]`) as HTMLElement;
+    setup({
+      input: { playlists: [pl('p3', 'Mango', { trackCount: 4 }, true), pl('p1', 'Zebra', { trackCount: 23 }), pl('p2', 'apple', { downloaded: true })] },
+    });
     expect(row('playlist:p1')).toHaveTextContent('Playlist · 23 songs');
     expect(row('recent')).toHaveTextContent('Auto playlist · 5 songs');
     expect(within(row('playlist:p2')).getByRole('img', { name: 'Downloaded' })).toBeInTheDocument();
     expect(within(row('playlist:p1')).queryByRole('img', { name: 'Downloaded' })).toBeNull();
     expect(row('playlist:p3').querySelector('[data-pinned-mark]')).not.toBeNull();
     expect(row('playlist:p1').querySelector('[data-pinned-mark]')).toBeNull();
-    // Pinned comes first among the playlists.
-    expect(titles().slice(4)).toEqual(['Mango', 'Zebra', 'apple']);
+    // 56px art, one-line title.
+    expect(row('playlist:p1').querySelector('.size-14')).not.toBeNull();
   });
 
-  it('chips filter, and tapping the active chip clears it', () => {
-    render(<PhoneLibrary />);
+  it('chips filter, and tapping the active chip clears it; Mixes only when there are mixes', () => {
+    setup();
     expect(screen.queryByRole('button', { name: 'Mixes' })).toBeNull();
     fireEvent.click(chip('Playlists'));
     expect(chip('Playlists')).toHaveAttribute('aria-pressed', 'true');
@@ -149,21 +116,29 @@ describe('PhoneLibrary', () => {
     expect(titles()).toHaveLength(7);
   });
 
+  it('the chips stick to the top while the list scrolls', () => {
+    setup();
+    expect(screen.getByRole('toolbar', { name: 'Filter your library' })).toHaveClass('sticky', 'top-0');
+  });
+
   it('the Downloaded row turns the Downloaded chip on', () => {
-    render(<PhoneLibrary />);
-    fireEvent.click(document.querySelector('[data-library-item="downloaded"]')!);
+    setup();
+    fireEvent.click(row('downloaded'));
     expect(chip('Downloaded')).toHaveAttribute('aria-pressed', 'true');
     expect(titles()).toEqual(['apple']);
   });
 
-  it('opening a playlist moves it up Recents', () => {
-    render(<PhoneLibrary />);
-    fireEvent.click(document.querySelector('[data-library-item="playlist:p3"]')!);
-    expect(state.onOpen).toHaveBeenCalledWith('p3');
+  it('opening a playlist reports it (it moves up Recents); a system collection does not', () => {
+    setup();
+    fireEvent.click(row('playlist:p3'));
+    expect(handlers.onOpenPlaylist).toHaveBeenCalledWith('p3');
+    fireEvent.click(row('liked'));
+    expect(handlers.onOpenPlaylist).toHaveBeenCalledTimes(1);
+    expect(row('liked')).toHaveAttribute('href', '/library/liked');
   });
 
   it('the sort toggles between Recents and Alphabetical, system collections staying first', () => {
-    render(<PhoneLibrary />);
+    setup();
     const sort = screen.getByTestId('library-sort');
     expect(sort).toHaveTextContent('Recents');
     fireEvent.click(sort);
@@ -174,23 +149,21 @@ describe('PhoneLibrary', () => {
     expect(titles().slice(4)).toEqual(['Zebra', 'apple', 'Mango']);
   });
 
-  it('the view toggle switches to a two-column grid of the same items and is remembered on this device', () => {
-    const { unmount } = render(<PhoneLibrary />);
+  it('the view toggle asks for the other view; grid is two columns of the same items', () => {
+    const { unmount } = setup();
     expect(document.querySelector('[data-library-view="list"]')).not.toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Show as grid' }));
-    const grid = document.querySelector('[data-library-view="grid"]')!;
-    expect(grid).toHaveClass('grid-cols-2');
-    expect(titles()).toHaveLength(7);
-    expect(localStorage.getItem(LIBRARY_VIEW_KEY)).toBe('grid');
+    expect(handlers.onViewChange).toHaveBeenCalledWith('grid');
     unmount();
-    render(<PhoneLibrary />);
-    expect(document.querySelector('[data-library-view="grid"]')).not.toBeNull();
+    setup({ view: 'grid' });
+    expect(document.querySelector('[data-library-view="grid"]')).toHaveClass('grid-cols-2');
+    expect(titles()).toEqual(['Liked songs', 'Recently played', 'Uploads', 'Downloaded', 'Zebra', 'apple', 'Mango']);
     fireEvent.click(screen.getByRole('button', { name: 'Show as list' }));
-    expect(localStorage.getItem(LIBRARY_VIEW_KEY)).toBe('list');
+    expect(handlers.onViewChange).toHaveBeenCalledWith('list');
   });
 
   it('search filters the list by name inline, and closing it brings everything back', () => {
-    render(<PhoneLibrary />);
+    setup();
     fireEvent.click(screen.getByRole('button', { name: 'Search your library' }));
     const input = screen.getByRole('searchbox', { name: 'Search Your Library' });
     fireEvent.change(input, { target: { value: 'ZEB' } });
@@ -198,41 +171,35 @@ describe('PhoneLibrary', () => {
     fireEvent.change(input, { target: { value: 'nothing like it' } });
     expect(titles()).toEqual([]);
     expect(screen.getByText(/Nothing in your library matches/)).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Close search' }));
+    fireEvent.keyDown(input, { key: 'Escape' });
     expect(screen.queryByRole('searchbox')).toBeNull();
     expect(titles()).toHaveLength(7);
   });
 
-  it('the + menu: New playlist opens the create dialog, Start a carlist the start dialog, Import the Transfer flow', () => {
-    render(<PhoneLibrary />);
-    const items = screen.getAllByRole('menuitem').map((i) => i.textContent?.trim());
-    expect(items).toEqual(['New playlist', 'Start a carlist', 'Import']);
+  it('the + menu: New playlist, Start a carlist, Import, each calling its flow', () => {
+    setup();
+    expect(screen.getAllByRole('menuitem').map((i) => i.textContent?.trim())).toEqual(['New playlist', 'Start a carlist', 'Import']);
     fireEvent.click(screen.getByRole('menuitem', { name: /New playlist/ }));
-    expect(screen.getByRole('dialog', { name: 'New playlist' })).toBeInTheDocument();
+    expect(handlers.onNewPlaylist).toHaveBeenCalledTimes(1);
     fireEvent.click(screen.getByRole('menuitem', { name: /Start a carlist/ }));
-    expect(screen.getByRole('dialog', { name: 'Start a carlist' })).toBeInTheDocument();
+    expect(handlers.onCarlist).toHaveBeenCalledTimes(1);
     fireEvent.click(screen.getByRole('menuitem', { name: /Import/ }));
-    expect(state.push).toHaveBeenCalledWith(LIBRARY_IMPORT_HREF);
-    expect(LIBRARY_IMPORT_HREF).toBe('/transfer?from=%2Flibrary');
+    expect(handlers.onImport).toHaveBeenCalledTimes(1);
   });
 
-  it('with a carlist live, the carlist item opens it instead', () => {
-    state.carlist = { id: 's9' };
-    render(<PhoneLibrary />);
-    fireEvent.click(screen.getByRole('menuitem', { name: /Open your carlist/ }));
-    expect(state.push).toHaveBeenCalledWith('/session/s9');
-    expect(screen.queryByRole('dialog', { name: 'Start a carlist' })).toBeNull();
+  it('with a carlist live, the carlist item says it opens yours', () => {
+    setup({ carlistLive: true });
+    expect(screen.getByRole('menuitem', { name: /Open your carlist/ })).toBeInTheDocument();
   });
 
-  it('with no playlists: the friendly card with Create playlist and the import link, under the system collections', () => {
-    state.playlists = [];
-    state.downloaded = new Set();
-    render(<PhoneLibrary />);
+  it('with no playlists: the friendly card under the system collections, with Create playlist and the import link', () => {
+    setup({ input: { playlists: [], downloadedIds: new Set() } });
     expect(titles()).toEqual(['Liked songs', 'Recently played', 'Uploads']);
     const card = screen.getByRole('region', { name: 'Create your first playlist' });
+    expect(card.querySelector('[data-empty-art]')).not.toBeNull();
     fireEvent.click(within(card).getByRole('button', { name: 'Create playlist' }));
-    expect(screen.getByRole('dialog', { name: 'New playlist' })).toBeInTheDocument();
-    expect(within(card).getByRole('link', { name: 'Import from Spotify or YouTube' })).toHaveAttribute('href', LIBRARY_IMPORT_PLAYLIST_HREF);
+    expect(handlers.onNewPlaylist).toHaveBeenCalledTimes(1);
+    expect(within(card).getByRole('link', { name: 'Import from Spotify or YouTube' })).toHaveAttribute('href', '/transfer?to=playlist');
     // The Playlists chip still shows the card; Downloaded does not.
     fireEvent.click(chip('Playlists'));
     expect(screen.getByRole('region', { name: 'Create your first playlist' })).toBeInTheDocument();
@@ -241,20 +208,19 @@ describe('PhoneLibrary', () => {
   });
 
   it('with playlists there is no empty card', () => {
-    render(<PhoneLibrary />);
+    setup();
     expect(screen.queryByRole('region', { name: 'Create your first playlist' })).toBeNull();
   });
 
-  it('covers: Liked keeps the sound-wave heart, Recently played a mosaic with its badge, Uploads one cover with its badge', async () => {
-    await act(async () => {
-      render(<PhoneLibrary />);
-    });
-    const cover = (key: string) => document.querySelector(`[data-library-item="${key}"] [data-library-cover], [data-library-item="${key}"] .aspect-square`) as HTMLElement;
-    expect(cover('liked').querySelector('[data-liked-cover]')).not.toBeNull();
-    expect(cover('recent')).toHaveAttribute('data-look', 'mosaic');
-    expect(cover('recent').querySelectorAll('[data-mosaic] img')).toHaveLength(4);
-    expect(cover('recent').querySelector('[data-badge]')).not.toBeNull();
-    expect(cover('uploads')).toHaveAttribute('data-look', 'single');
-    expect(cover('uploads').querySelector('[data-badge]')).not.toBeNull();
+  it('covers: Liked keeps the sound-wave heart, Recently played a mosaic with its badge, Uploads one cover with its badge', () => {
+    setup();
+    expect(row('liked').querySelector('[data-liked-cover]')).not.toBeNull();
+    const recent = row('recent').querySelector('[data-library-cover]')!;
+    expect(recent).toHaveAttribute('data-look', 'mosaic');
+    expect(recent.querySelectorAll('[data-mosaic] img')).toHaveLength(4);
+    expect(recent.querySelector('[data-badge]')).not.toBeNull();
+    const uploads = row('uploads').querySelector('[data-library-cover]')!;
+    expect(uploads).toHaveAttribute('data-look', 'single');
+    expect(uploads.querySelector('[data-badge]')).not.toBeNull();
   });
 });
