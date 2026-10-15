@@ -153,3 +153,32 @@ describe('AuthPage QR on phones', () => {
     await waitFor(() => expect(f.mock.calls.some((c) => String((c as unknown[])[0]).includes('/api/auth/qr/start'))).toBe(true));
   });
 });
+
+describe('AuthPage show password', () => {
+  it('the eye button shows and hides the password', async () => {
+    nav.search = new URLSearchParams();
+    render(<AuthPage />);
+    fireEvent.click(screen.getByRole('button', { name: 'Use password instead' }));
+    fireEvent.change(screen.getByLabelText('Email'), { target: { value: 'a@b.test' } });
+    fireEvent.submit(screen.getByLabelText('Email').closest('form')!);
+    const pw = await screen.findByLabelText('Password');
+    expect(pw).toHaveAttribute('type', 'password');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Show password' }));
+    expect(pw).toHaveAttribute('type', 'text');
+    expect(screen.getByRole('button', { name: 'Hide password' })).toHaveAttribute('aria-pressed', 'true');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Hide password' }));
+    expect(pw).toHaveAttribute('type', 'password');
+  });
+
+  it('the eye button does not submit the form', async () => {
+    nav.search = new URLSearchParams();
+    render(<AuthPage />);
+    fireEvent.click(screen.getByRole('button', { name: 'Use password instead' }));
+    fireEvent.change(screen.getByLabelText('Email'), { target: { value: 'a@b.test' } });
+    fireEvent.submit(screen.getByLabelText('Email').closest('form')!);
+    await screen.findByLabelText('Password');
+    expect(screen.getByRole('button', { name: 'Show password' })).toHaveAttribute('type', 'button');
+  });
+});
