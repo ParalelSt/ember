@@ -17,7 +17,7 @@ const adapter: CacheAdapter = {
 
 beforeEach(() => {
   clear.mockClear();
-  useSettingsStore.setState({ autoCacheEnabled: true, autoCacheOnMetered: false });
+  useSettingsStore.setState({ autoCacheEnabled: true, autoCacheOnMetered: true });
   useAutoCacheStore.setState({ adapter, supported: true, needsAppUpdate: false, stats: adapter.stats(), cancelInFlight: null });
 });
 
@@ -25,12 +25,15 @@ describe('AutoCacheSettings', () => {
   it('shows both switches with their defaults and the storage line', () => {
     render(<AutoCacheSettings />);
     expect(screen.getByRole('button', { name: 'Turn off Cache upcoming songs' })).toHaveAttribute('aria-pressed', 'true');
-    expect(screen.getByRole('button', { name: 'Turn on Also on mobile data' })).toHaveAttribute('aria-pressed', 'false');
+    expect(screen.getByRole('button', { name: 'Turn off Also on mobile data' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByText(/Turn off to cache only on Wi-Fi/)).toBeInTheDocument();
     expect(screen.getByTestId('auto-cache-stats')).toHaveTextContent('Cached: 34.0 MB, 9 songs');
   });
 
   it('the switches flip the device settings', () => {
     render(<AutoCacheSettings />);
+    fireEvent.click(screen.getByRole('button', { name: 'Turn off Also on mobile data' }));
+    expect(useSettingsStore.getState().autoCacheOnMetered).toBe(false);
     fireEvent.click(screen.getByRole('button', { name: 'Turn on Also on mobile data' }));
     expect(useSettingsStore.getState().autoCacheOnMetered).toBe(true);
     fireEvent.click(screen.getByRole('button', { name: 'Turn off Cache upcoming songs' }));

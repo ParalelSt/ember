@@ -38,7 +38,7 @@ Ember track id (`youtube:<videoId>`, `upload:<...>`).
 | `playing` | bool | informational only, never gates |
 | `online`, `saveData`, `batterySaver` | bool | |
 | `metered` | bool or null | null = unknown = not metered |
-| `enabled`, `allowMetered` | bool | device settings `autoCacheEnabled`, `autoCacheOnMetered` |
+| `enabled`, `allowMetered` | bool | device settings `autoCacheEnabled`, `autoCacheOnMetered`: both on by default (mobile data too, since 2026-10; settings stored before that get it on once, `migrateSettings` in `stores/useSettingsStore.ts`, and `AutoCachePrefs.kt` on Android) |
 | `requestCurrent` | bool | web true; Android and desktop false (their players write the current track through) |
 | `cached` | set of ids | ids fully in the auto cache |
 | `inFlight` | id or null | the one prefetch download running |

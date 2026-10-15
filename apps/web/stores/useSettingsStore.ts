@@ -6,6 +6,24 @@ import { api } from '@/lib/api';
 import { PLUGIN_KEYS, type PluginKey, type StoredPlugins } from '@/lib/pluginSettings';
 import { DEFAULT_EQ, parseEq, sameEq, type EqSettings } from '@/lib/playback/eq';
 
+/** The stored settings' version (zustand persist). 1: the auto cache works
+ *  on mobile data by default. */
+export const SETTINGS_VERSION = 1;
+
+/** Settings stored by an older build, brought up to date once.
+ *
+ *  Version 1 (2026-10, the owner: caching is what keeps the music going on
+ *  a weak signal): "Also on mobile data" used to be off by default, and the
+ *  store wrote that default along with any other change, so a stored "off"
+ *  cannot be told from one somebody chose. It is turned on once for
+ *  everyone; turning it off again afterwards sticks. */
+export function migrateSettings(persisted: unknown, version: number): unknown {
+  if (typeof persisted !== 'object' || persisted === null) return persisted;
+  const state = { ...(persisted as Record<string, unknown>) };
+  if (version < 1) state.autoCacheOnMetered = true;
+  return state;
+}
+
 /** Persisted user-level toggles. Anything that changes how the app
  *  behaves between sessions lives here so the choice survives reloads.
  *
@@ -147,7 +165,7 @@ export const useSettingsStore = create<SettingsState>()(
         eqUnsavedFor: null,
         autoCacheEnabled: true,
         setAutoCacheEnabled: (autoCacheEnabled) => set({ autoCacheEnabled }),
-        autoCacheOnMetered: false,
+        autoCacheOnMetered: true,
         setAutoCacheOnMetered: (autoCacheOnMetered) => set({ autoCacheOnMetered }),
 
         pluginsUserId: null,
@@ -211,6 +229,8 @@ export const useSettingsStore = create<SettingsState>()(
     },
     {
       name: 'ember.settings.v1',
+      version: SETTINGS_VERSION,
+      migrate: migrateSettings,
       // A stored equalizer that is not valid settings (hand-edited, or from
       // a build that stored it differently) falls back to the default.
       merge: (persisted, current) => {

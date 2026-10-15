@@ -98,7 +98,7 @@ export function AutoCacheSettings() {
       />
       <SwitchRow
         name="Also on mobile data"
-        description="Off: caching waits until you are on Wi-Fi."
+        description="Uses some mobile data, so cached songs carry you through a weak signal. Turn off to cache only on Wi-Fi."
         on={onMetered}
         disabled={!supported || !enabled}
         onToggle={() => setOnMetered(!onMetered)}

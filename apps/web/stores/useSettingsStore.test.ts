@@ -9,7 +9,7 @@ vi.mock('@/lib/api', () => ({
   },
 }));
 
-const { useSettingsStore } = await import('./useSettingsStore');
+const { useSettingsStore, migrateSettings, SETTINGS_VERSION } = await import('./useSettingsStore');
 
 // tabsEnabled: on by default (nobody using tabs today loses them on
 // update), and the setter persists like partyVolume does.
@@ -67,9 +67,31 @@ describe('useSettingsStore normalizeVolume', () => {
 });
 
 describe('useSettingsStore auto cache switches', () => {
-  it('cache upcoming songs is on by default, mobile data off', () => {
+  it('cache upcoming songs is on by default, mobile data too', () => {
     expect(useSettingsStore.getState().autoCacheEnabled).toBe(true);
+    expect(useSettingsStore.getState().autoCacheOnMetered).toBe(true);
+  });
+
+  it('settings stored by an older build get mobile data on, once', async () => {
+    window.localStorage.setItem('ember.settings.v1', JSON.stringify({
+      state: { autoCacheEnabled: true, autoCacheOnMetered: false, partyVolume: true },
+      version: 0,
+    }));
+    await useSettingsStore.persist.rehydrate();
+    expect(useSettingsStore.getState().autoCacheOnMetered).toBe(true);
+    expect(useSettingsStore.getState().partyVolume).toBe(true);
+    // Turned off afterwards: stored with the new version, and it sticks.
+    useSettingsStore.getState().setAutoCacheOnMetered(false);
+    expect(JSON.parse(window.localStorage.getItem('ember.settings.v1')!).version).toBe(SETTINGS_VERSION);
+    await useSettingsStore.persist.rehydrate();
     expect(useSettingsStore.getState().autoCacheOnMetered).toBe(false);
+  });
+
+  it('the migration leaves the cache switch itself alone', () => {
+    expect(migrateSettings({ autoCacheEnabled: false, autoCacheOnMetered: false }, 0))
+      .toEqual({ autoCacheEnabled: false, autoCacheOnMetered: true });
+    expect(migrateSettings({ autoCacheOnMetered: false }, 1)).toEqual({ autoCacheOnMetered: false });
+    expect(migrateSettings(null, 0)).toBeNull();
   });
 
   it('both persist on this device', () => {
