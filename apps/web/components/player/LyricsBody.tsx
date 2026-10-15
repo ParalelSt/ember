@@ -224,6 +224,11 @@ export function LyricsBody({ active, onClose, showHeader = true, reportOpen: rep
  *  vocal start without going meaningfully early on well-timed LRCs. */
 const LOOKAHEAD_SEC = 0.2;
 
+/** How long after the Follow pill is pressed a tap on a lyric line is
+ *  ignored, so the end of the same touch or the glide back to the current
+ *  line can never seek somewhere else. */
+const PILL_GUARD_MS = 600;
+
 /** Karaoke-style lyric scroller: lines dim by distance from the current
  *  position, the active line is highlighted, and the active line is
  *  smooth-scrolled into the center of the lyrics scroller as the song
@@ -269,6 +274,10 @@ function SyncedLyrics({
 
   const lineRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const prevActiveIdxRef = useRef<number>(-1);
+  // When the Follow pill was last pressed. A tap on the pill must never also
+  // seek: the pill disappears under the finger and the scroll glides, so a
+  // late click or the end of the same touch can land on a lyric line.
+  const pillPressedAtRef = useRef(0);
   const follow = useLyricsFollow({ scrollerRef, lineRefs, activeIdx, resetKey: songKey });
   const { followingRef, relock, behavior } = follow;
 
@@ -371,9 +380,10 @@ function SyncedLyrics({
               // this button's onClick and seek the audio back to its
               // timestamp; the global Space handler can then pause instead.
               onClick={(e) => {
+                e.currentTarget.blur();
+                if (Date.now() - pillPressedAtRef.current < PILL_GUARD_MS) return;
                 relock();
                 onSeek(line.time);
-                e.currentTarget.blur();
               }}
               className={cn(
                 'text-left rounded-md px-2 py-1.5 text-sm transition-all duration-100',
@@ -395,7 +405,15 @@ function SyncedLyrics({
           );
         })}
       </div>
-      {inView && !follow.following && <FollowPill direction={follow.direction} onClick={follow.resume} />}
+      {inView && !follow.following && (
+        <FollowPill
+          direction={follow.direction}
+          onPress={() => {
+            pillPressedAtRef.current = Date.now();
+          }}
+          onClick={follow.resume}
+        />
+      )}
     </>
   );
 }
@@ -403,16 +421,29 @@ function SyncedLyrics({
 /** Floats at the bottom of the lyrics scroller while following is off.
  *  Sticky inside the scroller with zero height, so it never adds to the
  *  scrollable length; the arrow points toward the current line. */
-function FollowPill({ direction, onClick }: { direction: FollowDirection; onClick: () => void }) {
+function FollowPill({
+  direction,
+  onPress,
+  onClick,
+}: {
+  direction: FollowDirection;
+  onPress: () => void;
+  onClick: () => void;
+}) {
   const Arrow = direction === 'up' ? ArrowUpIcon : ArrowDownIcon;
   return (
     <div className="pointer-events-none sticky bottom-3 z-10 flex h-0 justify-center">
       <button
         type="button"
-        onClick={onClick}
+        onPointerDown={onPress}
+        onClick={(e) => {
+          e.stopPropagation();
+          onPress();
+          onClick();
+        }}
         aria-label="Follow lyrics, back to the current line"
         data-direction={direction}
-        className="pointer-events-auto flex -translate-y-full items-center gap-inset rounded-full bg-ember px-block py-row text-xs font-semibold text-ember-foreground shadow-lg transition-colors hover:bg-ember-soft"
+        className="pointer-events-auto relative flex -translate-y-full items-center gap-inset rounded-full bg-ember px-block py-row before:absolute before:-inset-3 before:rounded-full before:content-[''] text-xs font-semibold text-ember-foreground shadow-lg transition-colors hover:bg-ember-soft"
       >
         <Arrow className="h-3.5 w-3.5" aria-hidden />
         Follow lyrics

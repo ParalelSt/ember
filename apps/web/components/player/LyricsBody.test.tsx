@@ -115,6 +115,35 @@ describe('LyricsBody: follow mode', () => {
     expect(scrollTo).toHaveBeenCalled();
   });
 
+  it('tapping the pill never seeks, even if the same tap lands on a line as the pill goes', () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    try {
+      renderBody();
+      userScroll();
+      const p = pill()!;
+      act(() => {
+        fireEvent.pointerDown(p);
+        fireEvent.click(p);
+      });
+      // The pill is gone and the finger's late click hits the line beneath it.
+      act(() => { fireEvent.click(screen.getByText('Line 8')); });
+      expect(player.seek).not.toHaveBeenCalled();
+
+      // Well after the pill tap, lines seek again as usual.
+      vi.advanceTimersByTime(1000);
+      act(() => { fireEvent.click(screen.getByText('Line 8')); });
+      expect(player.seek).toHaveBeenCalledWith(70);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('the pill has a padded tap zone around it, so a near miss does not hit a line', () => {
+    renderBody();
+    userScroll();
+    expect(pill()).toHaveClass('relative', 'before:absolute', 'before:-inset-3');
+  });
+
   it('a big seek re-locks and lands on the new line', () => {
     const { at } = renderBody();
     userScroll();
