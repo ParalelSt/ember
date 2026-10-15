@@ -11,8 +11,9 @@
  *    server()     the app's admin client: everything.
  *
  *  Filters understood: `a = "x"`, `a != "x"`, `a = true`, joined by all
- *  `&&` or all `||`, with `{:name}` params. Enough for the routes, not a
- *  PocketBase. */
+ *  `&&` or all `||`, with `{:name}` params. A field may follow relations
+ *  (`playlist.user`, `track.artwork_url`). `fields` is ignored: every row
+ *  comes back whole. Enough for the routes, not a PocketBase. */
 
 type Row = Record<string, unknown> & { id: string; created: string };
 type Store = Record<string, Row[]>;
@@ -34,15 +35,24 @@ export function createWorld() {
     return row;
   }
 
-  function matches(row: Row, raw: string): boolean {
+  /** A field's value, following relations for a dotted path. */
+  function valueAt(collection: string, row: Row, path: string): unknown {
+    const [first, ...rest] = path.split('.');
+    if (rest.length === 0) return row[first];
+    const target = RELATIONS[collection]?.[first];
+    const related = target ? db[target].find((r) => r.id === row[first]) : undefined;
+    return related ? valueAt(target, related, rest.join('.')) : undefined;
+  }
+
+  function matches(collection: string, row: Row, raw: string): boolean {
     const any = raw.includes(' || ');
     const clauses = raw.split(any ? ' || ' : ' && ');
     const test = (clause: string) => {
-      const m = /^\s*(\w+)\s*(!?=)\s*(?:"([^"]*)"|(true|false))\s*$/.exec(clause);
+      const m = /^\s*([\w.]+)\s*(!?=)\s*(?:"([^"]*)"|(true|false))\s*$/.exec(clause);
       if (!m) throw new Error(`fake PocketBase cannot read filter: ${clause}`);
       const [, field, op, str, bool] = m;
       const want: unknown = bool !== undefined ? bool === 'true' : str;
-      let have = row[field];
+      let have = valueAt(collection, row, field);
       if (have === undefined) have = bool !== undefined ? false : '';
       return op === '=' ? have === want : have !== want;
     };
@@ -124,7 +134,7 @@ export function createWorld() {
         raw.replace(/\{:(\w+)\}/g, (_m, k: string) => (typeof params[k] === 'string' ? `"${params[k]}"` : String(params[k]))),
       collection: (collection: string) => {
         const list = (filter?: string, sort?: string, exp?: string) =>
-          sorted(db[collection].filter((r) => visible(collection, r) && (!filter || matches(r, filter))), sort).map((r) =>
+          sorted(db[collection].filter((r) => visible(collection, r) && (!filter || matches(collection, r, filter))), sort).map((r) =>
             expand(collection, r, exp),
           );
         return {
@@ -187,8 +197,8 @@ export function createWorld() {
     server: () => client({ kind: 'server' }),
     addUser: (name: string, extra: Record<string, unknown> = {}) =>
       insert('users', { name, email: `${name.toLowerCase() || 'x'}@ember.test`, collectionId: '_pb_users_auth_', avatar: '', ...extra }),
-    addTrack: (externalId: string, title = externalId) =>
-      insert('tracks', { external_id: externalId, source: 'youtube', source_id: externalId.split(':')[1], title, artist: 'Band' }),
+    addTrack: (externalId: string, title = externalId, extra: Record<string, unknown> = {}) =>
+      insert('tracks', { external_id: externalId, source: 'youtube', source_id: externalId.split(':')[1], title, artist: 'Band', ...extra }),
     addPlaylist: (user: string, name: string, extra: Record<string, unknown> = {}) =>
       insert('playlists', { user, name, collaborative: false, invite_code: '', artwork: '', ...extra }),
     addRow: (playlist: string, track: string, position: number, addedBy = '') =>

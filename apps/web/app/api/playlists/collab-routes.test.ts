@@ -554,3 +554,59 @@ describe('the owner\'s face, for the "Shared by" badge', () => {
     expect(o.body.playlist.owner_avatar_url ?? null).toBeNull();
   });
 });
+
+describe('the library list carries each playlist\'s first song covers (phone Home mosaic)', () => {
+  const art = (n: number) => `https://img.test/${n}.jpg`;
+
+  it('gives your own playlist its first four distinct covers in playlist order, skipping artless and repeated ones', async () => {
+    const mine = world.addPlaylist(owner, 'Covers').id;
+    const t = [1, 2, 2, 0, 3, 4, 5].map((n, i) =>
+      world.addTrack(`youtube:art${i}`, `s${i}`, n ? { artwork_url: art(n) } : {}).id,
+    );
+    // Positions out of insert order: the list must follow position.
+    t.forEach((id, i) => world.addRow(mine, id, [2, 1, 3, 4, 5, 6, 7][i]));
+    const o = await call(list.GET, owner);
+    const row = o.body.playlists.find((p: { id: string }) => p.id === mine);
+    expect(row.track_artworks).toEqual([art(2), art(1), art(3), art(4)]);
+    // A playlist whose songs have no art gets an empty list, not a missing key.
+    expect(o.body.playlists.find((p: { id: string }) => p.id === secret).track_artworks).toEqual([]);
+  });
+
+  it('gives a member the shared playlist\'s covers too, read with the server\'s client', async () => {
+    const id = world.addTrack('youtube:sharedart', 'x', { artwork_url: art(9) }).id;
+    world.addRow(shared, id, 4, owner);
+    const m = await call(list.GET, member);
+    expect(m.body.playlists).toEqual([expect.objectContaining({ id: shared, track_artworks: [art(9)] })]);
+  });
+
+  it('asks for the covers in one request for your own playlists, however many there are', async () => {
+    for (let i = 0; i < 5; i++) world.addPlaylist(owner, `More ${i}`);
+    const server = world.server();
+    const seen: string[] = [];
+    const own = world.member(owner);
+    const spy = {
+      ...own,
+      collection: (name: string) => {
+        const c = own.collection(name);
+        return { ...c, getFullList: async (opts: { filter?: string } = {}) => { seen.push(`${name}:${opts.filter}`); return c.getFullList(opts); } };
+      },
+    };
+    const { playlistArtworks } = await import('@/lib/playlistAccess');
+    await playlistArtworks(spy as never, owner, [], async () => server as never);
+    expect(seen).toEqual([`playlist_tracks:playlist.user = "${owner}" && track.artwork_url != ""`]);
+  });
+
+  it('still lists the playlists when the covers cannot be read', async () => {
+    const real = world.server();
+    serverOverride = {
+      ...real,
+      collection: (name: string) =>
+        name === 'playlist_tracks'
+          ? { getFullList: async () => { throw Object.assign(new Error('down'), { status: 500 }); } }
+          : real.collection(name),
+    };
+    const m = await call(list.GET, member);
+    expect(m.status).toBe(200);
+    expect(m.body.playlists).toEqual([expect.objectContaining({ id: shared, track_artworks: [] })]);
+  });
+});

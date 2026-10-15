@@ -61,6 +61,9 @@ export interface Playlist {
   /** The owner's picture, on a playlist shared with you (the "Shared by"
    *  badge). Null when they have none. */
   owner_avatar_url?: string | null;
+  /** The covers of its first few distinct songs, in playlist order (only
+   *  on GET /api/playlists): the phone Home's 2x2 mosaic. */
+  track_artworks?: string[];
 }
 
 export interface AlbumSummary {

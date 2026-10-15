@@ -118,6 +118,56 @@ export function artworkUrl(record: { id: string; artwork?: unknown }): string | 
   return file ? `/pb/api/files/playlists/${record.id}/${file}` : null;
 }
 
+/** How many song covers a playlist tile's mosaic needs. */
+export const MOSAIC_ARTWORKS = 4;
+
+/** The first MOSAIC_ARTWORKS distinct song covers of each playlist, in
+ *  playlist order, from playlist_tracks rows already sorted by position
+ *  (each with its track expanded, or only `expand.track.artwork_url`). Rows
+ *  without art are skipped. Pure, so the list route stays one query. */
+export function firstArtworks(rows: readonly RecordModel[]): Map<string, string[]> {
+  const out = new Map<string, string[]>();
+  for (const r of rows) {
+    const pid = String(r.playlist ?? '');
+    const art = (r.expand?.track as { artwork_url?: unknown } | undefined)?.artwork_url;
+    if (!pid || typeof art !== 'string' || !art) continue;
+    const list = out.get(pid) ?? [];
+    if (list.length < MOSAIC_ARTWORKS && !list.includes(art)) list.push(art);
+    out.set(pid, list);
+  }
+  return out;
+}
+
+/** The covers for the Home tiles' mosaics, for every playlist in the
+ *  library in at most two requests: one for your own (your session, so
+ *  PocketBase checks it too), one for the shared ones (the server's
+ *  client, like their rows). Only the playlist id and the song's cover
+ *  come back, never the whole song. */
+export async function playlistArtworks(
+  pb: PocketBase,
+  userId: string,
+  shared: readonly Playlist[],
+  admin: () => Promise<PocketBase>,
+): Promise<Map<string, string[]>> {
+  const query = { sort: 'position,created', expand: 'track', fields: 'playlist,expand.track.artwork_url' };
+  const own = await pb.collection('playlist_tracks').getFullList({
+    ...query,
+    filter: pb.filter('playlist.user = {:u} && track.artwork_url != ""', { u: userId }),
+  });
+  let theirs: RecordModel[] = [];
+  const ids = shared.map((p) => p.id).filter(isRecordId);
+  if (ids.length > 0) {
+    const server = await admin();
+    const params: Record<string, string> = {};
+    const clauses = ids.map((id, i) => {
+      params[`p${i}`] = id;
+      return `playlist = {:p${i}}`;
+    });
+    theirs = await server.collection('playlist_tracks').getFullList({ ...query, filter: server.filter(clauses.join(' || '), params) });
+  }
+  return firstArtworks([...own, ...theirs]);
+}
+
 /** A user row as members see it: name and picture, no email. */
 export function toPerson(user: RecordModel | Record<string, unknown>): PlaylistPerson {
   const u = user as Record<string, unknown> & { id: string };

@@ -3,14 +3,15 @@ import { requireUser, UnauthorizedError, unauthorizedResponse } from '@/lib/auth
 import { fromError, jsonError } from '@/lib/upsertTrack';
 import { withRequestLog } from '@/lib/logger/withRequestLog';
 import { serverLogger } from '@/lib/logger/server';
-import { artworkUrl, collabClient, sharedWith } from '@/lib/playlistAccess';
+import { artworkUrl, collabClient, playlistArtworks, sharedWith } from '@/lib/playlistAccess';
 import type { Playlist } from '@/types/track';
 
 const MAX_NAME_LEN = 200;
 
 /** Your own playlists, newest first, then the collaborative ones other
  *  people added you to (newest share first, `role: 'member'`, with the
- *  owner's name). */
+ *  owner's name). Each carries `track_artworks`, the covers of its first
+ *  few distinct songs, for the phone Home's mosaic tiles. */
 export const GET = withRequestLog('playlists', async () => {
   try {
     const { pb, user } = await requireUser();
@@ -33,7 +34,15 @@ export const GET = withRequestLog('playlists', async () => {
     } catch (e) {
       serverLogger.error('api', 'shared playlists lookup failed', { userId: user.id }, e instanceof Error ? e : undefined);
     }
-    return Response.json({ playlists: [...own, ...shared] });
+    // Covers are decoration: if they cannot be read the list still loads.
+    let artworks = new Map<string, string[]>();
+    try {
+      artworks = await playlistArtworks(pb, user.id, shared, collabClient);
+    } catch (e) {
+      serverLogger.error('api', 'playlist artworks lookup failed', { userId: user.id }, e instanceof Error ? e : undefined);
+    }
+    const playlists = [...own, ...shared].map((p) => ({ ...p, track_artworks: artworks.get(p.id) ?? [] }));
+    return Response.json({ playlists });
   } catch (e) {
     if (e instanceof UnauthorizedError) return unauthorizedResponse();
     return fromError(e);
