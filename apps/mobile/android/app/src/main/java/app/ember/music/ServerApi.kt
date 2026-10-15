@@ -19,6 +19,11 @@ import java.util.concurrent.TimeUnit
  *  background; a 401 gets one retry with a freshly read cookie, which covers
  *  "signed in again on the phone while the car was open". */
 class ServerApi(val baseUrl: String, private val cookies: () -> String?) {
+    companion object {
+        /** What [reachable] asks for: one of the web app's public icons. */
+        const val PROBE_PATH = "/favicon-16.png"
+    }
+
     private val server = baseUrl.toHttpUrlOrNull()
 
     /** The cookie is the whole Ember session, so it goes to the Ember server
@@ -42,6 +47,28 @@ class ServerApi(val baseUrl: String, private val cookies: () -> String?) {
         .connectTimeout(15, TimeUnit.SECONDS)
         .readTimeout(30, TimeUnit.SECONDS)
         .build()
+
+    /** For [reachable] only: short waits, no redirects, and connections of
+     *  its own, so a socket the stream left hanging cannot answer for it. */
+    private val probeHttp: OkHttpClient by lazy {
+        http.newBuilder()
+            .connectionPool(okhttp3.ConnectionPool())
+            .followRedirects(false)
+            .followSslRedirects(false)
+            .retryOnConnectionFailure(false)
+            .connectTimeout(5, TimeUnit.SECONDS)
+            .readTimeout(5, TimeUnit.SECONDS)
+            .callTimeout(8, TimeUnit.SECONDS)
+            .build()
+    }
+
+    /** Whether the server can be reached at all: any HTTP answer counts. A
+     *  small static file, so asking costs the server nothing. Blocking. */
+    fun reachable(): Boolean = try {
+        probeHttp.newCall(Request.Builder().url(baseUrl + PROBE_PATH).head().build()).execute().use { true }
+    } catch (e: IOException) {
+        false
+    }
 
     /** Same scheme, host and port as baseUrl. */
     fun isServer(url: HttpUrl): Boolean =
