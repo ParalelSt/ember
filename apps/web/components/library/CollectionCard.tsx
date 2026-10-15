@@ -32,7 +32,7 @@ export function CollectionCard({ title, subtitle, href, cover, badge, shared, sh
         <CollectionCover {...cover} className={cn('w-full rounded-[8px] shadow-none', cover.className)} />
         {/* The marks sit inline before the name, so they wrap and clamp
             with it instead of taking a column of their own. */}
-        <div className="mt-cluster min-w-0 line-clamp-2 break-words text-sm font-semibold leading-snug">
+        <div className="mt-cluster min-w-0 line-clamp-2 break-words text-sm font-bold leading-snug">
           {badge === 'downloaded' && <CheckIcon className="mr-1 inline size-3.5 align-[-2px] text-ember" />}
           {shared && !sharedBy && <PeopleIcon data-testid="shared-badge" aria-label="Shared" className="mr-1 inline size-3.5 align-[-2px] text-muted-foreground" />}
           {title}

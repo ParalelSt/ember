@@ -102,9 +102,18 @@ describe('TrackCard tile (the phone Home row)', () => {
     expect(root).not.toHaveClass('bg-card');
     expect(root).not.toHaveClass('p-4');
     const title = screen.getByText(long.title);
-    expect(title).toHaveClass('line-clamp-2', 'break-words', 'font-semibold');
+    expect(title).toHaveClass('line-clamp-2', 'break-words', 'font-bold');
     expect(title).not.toHaveClass('truncate');
     expect(screen.getByRole('link', { name: 'The Nulls' }).parentElement).toHaveClass('truncate', 'text-muted-foreground');
+  });
+
+  it('puts the kind word before the artist, Spotify Recents style ("Song · artist")', () => {
+    const { rerender } = render(<TrackCard track={track} variant="tile" kind="Song" onActivate={() => {}} />);
+    const line = screen.getByRole('link', { name: 'The Nulls' }).parentElement as HTMLElement;
+    expect(line.textContent).toBe('Song · The Nulls');
+    expect(line).toHaveClass('text-muted-foreground');
+    rerender(<TrackCard track={track} variant="tile" onActivate={() => {}} />);
+    expect((screen.getByRole('link', { name: 'The Nulls' }).parentElement as HTMLElement).textContent).toBe('The Nulls');
   });
 
   it('marks the current track: ember title and a visible button that shows Pause while it plays', () => {

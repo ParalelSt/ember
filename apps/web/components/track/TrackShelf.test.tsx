@@ -1,7 +1,8 @@
 import type { ComponentProps } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { render, screen, within } from '@testing-library/react';
-import { ROW_MAX, TrackShelf } from './TrackShelf';
+import { TrackShelf } from './TrackShelf';
+import { ROW_MAX } from '@/components/page/RowShelf';
 import { SHELF_ROW_COUNT } from '@/lib/layout';
 import type { Track } from '@/types/track';
 
@@ -207,7 +208,7 @@ describe('TrackShelf row layout (the phone Home)', () => {
     expect(screen.getByRole('link', { name: 'Show all' })).toHaveAttribute('href', '/?focus=history');
   });
 
-  it('offers Show all even on a short row, and hands the whole list to each card', () => {
+  it('has no Show all on a short row (nothing more to see), and hands the whole list to each card', () => {
     const seen: number[] = [];
     render(
       <TrackShelf
@@ -222,7 +223,7 @@ describe('TrackShelf row layout (the phone Home)', () => {
       />,
     );
     expect(screen.getAllByRole('listitem')).toHaveLength(3);
-    expect(screen.getByRole('link', { name: 'Show all' })).toHaveAttribute('href', '/?focus=liked');
+    expect(screen.queryByRole('link', { name: 'Show all' })).toBeNull();
     expect(seen.every((n) => n === 3)).toBe(true);
   });
 

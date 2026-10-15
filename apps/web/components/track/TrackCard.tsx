@@ -27,12 +27,16 @@ interface Props {
    *  phone Home row's bare tile, a square cover with the title (up to two
    *  lines) and artist below it, and the current track marked in ember. */
   variant?: 'card' | 'tile';
+  /** The tile's kind word before the artist ("Song" reads "Song · Artist"),
+   *  like Spotify's Recents tiles. Omit for the artist alone. */
+  kind?: string;
   className?: string;
 }
 
-function ArtistLine({ track, className }: { track: Track; className: string }) {
+function ArtistLine({ track, className, kind }: { track: Track; className: string; kind?: string }) {
   return (
     <div className={className}>
+      {kind ? `${kind} · ` : null}
       {track.artistId ? (
         <Link
           href={`/artist/${track.artistId}`}
@@ -50,7 +54,7 @@ function ArtistLine({ track, className }: { track: Track; className: string }) {
 
 /** Presentational only: a square track card with a hover-revealed play
  *  button. Playback state and the activate handler come from props. */
-export function TrackCard({ track, active = false, playing = false, onActivate, subtitle, artworkFallback, variant = 'card', className }: Props) {
+export function TrackCard({ track, active = false, playing = false, onActivate, subtitle, artworkFallback, variant = 'card', kind, className }: Props) {
   if (variant === 'tile') {
     return (
       <div
@@ -83,13 +87,13 @@ export function TrackCard({ track, active = false, playing = false, onActivate, 
         </div>
         <div
           className={cn(
-            'mt-cluster line-clamp-2 break-words text-sm font-semibold leading-snug',
+            'mt-cluster line-clamp-2 break-words text-sm font-bold leading-snug',
             active ? 'text-ember' : 'text-foreground',
           )}
         >
           {track.title}
         </div>
-        <ArtistLine track={track} className="mt-inset truncate text-xs text-muted-foreground" />
+        <ArtistLine track={track} kind={kind} className="mt-inset truncate text-xs text-muted-foreground" />
         {subtitle != null && (
           <div className="mt-inset truncate text-xs text-ember">{subtitle}</div>
         )}

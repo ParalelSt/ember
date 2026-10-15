@@ -30,12 +30,9 @@ interface Props {
   fullscreen?: boolean;
   /** 'grid' (default): one measured row of cards, the desktop shelf.
    *  'row': the phone Home's sideways-scrolling row (RowShelf), its first
-   *  ROW_MAX tracks, with "Show all" whenever `showAllHref` is given. */
+   *  ROW_MAX tracks, with "Show all" only when there are more. */
   layout?: 'grid' | 'row';
 }
-
-/** How many tiles a phone row holds before "Show all" is the way on. */
-export const ROW_MAX = 20;
 
 // When the desktop lyrics panel is open, main shrinks by ~max(40vw, 28rem).
 // Use fewer columns so cards stay legible instead of cramming together.
@@ -108,7 +105,6 @@ export function TrackShelf({ title, tracks, loading, showAllHref, renderCard, ly
 
   if (layout === 'row') {
     const loadingRow = loading && !hasTracks;
-    const rowTracks = all.slice(0, ROW_MAX);
     return (
       <RowShelf title={title} showAllHref={loadingRow ? undefined : showAllHref}>
         {loadingRow
@@ -119,7 +115,7 @@ export function TrackShelf({ title, tracks, loading, showAllHref, renderCard, ly
                 <Skeleton className="mt-inset h-3 w-1/2" />
               </div>
             ))
-          : rowTracks.map((t) => <div key={t.id}>{renderCard(t, all)}</div>)}
+          : all.map((t) => <div key={t.id}>{renderCard(t, all)}</div>)}
       </RowShelf>
     );
   }
