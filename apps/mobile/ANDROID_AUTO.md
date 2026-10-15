@@ -81,10 +81,10 @@ download.
 
 The auto cache also runs in the car: the current song and the next two are
 kept on the phone (300 MB, least recently used out first, cleared from
-Settings, never on mobile data unless "Also on mobile data" is on). When the
-connection drops, songs on the phone keep playing and the rest are skipped;
-with nothing ahead the player pauses, and it reloads (paused) once the
-network is back. See README.md, "Auto cache".
+Settings, on Wi-Fi and mobile data alike). When the connection drops, or
+carries nothing, songs on the phone keep playing and the rest are skipped;
+with nothing ahead the player waits with play left on, and goes on by itself
+once the connection is back. See README.md, "Auto cache".
 
 Known limits: no like button in the car, live sessions (carlist) are not
 driven from the car. Playback resumption from the system
