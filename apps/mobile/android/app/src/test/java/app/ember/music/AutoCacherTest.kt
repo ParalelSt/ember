@@ -182,6 +182,7 @@ class AutoCacherTest {
     }
 
     @Test fun `mobile data cancels unless allowed`() {
+        cacher.setSettings(enabled = true, allowMetered = false)
         cacher.tick()
         snap = snap.copy(net = NetworkWatch.State(online = true, metered = true, saveData = false))
         assertEquals(AutoCachePolicy.Action.Idle("metered"), cacher.tick())
@@ -225,8 +226,8 @@ class AutoCacherTest {
         assertEquals("https://e/s/a?v=1&prefetch=1", AutoCacher.prefetchUrl("https://e/s/a?v=1"))
     }
 
-    @Test fun `settings default to on and not on mobile data`() {
+    @Test fun `settings default to on, mobile data included`() {
         assertTrue(cacher.enabled)
-        assertFalse(cacher.allowMetered)
+        assertTrue(cacher.allowMetered)
     }
 }

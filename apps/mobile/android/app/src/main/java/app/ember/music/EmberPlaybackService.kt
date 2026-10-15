@@ -108,7 +108,6 @@ class EmberPlaybackService : MediaLibraryService() {
         private const val GUARD_CHANNEL = "ember.resume"
         private const val GUARD_NOTIFICATION_ID = 7201
         private const val LIKES_MAX_AGE_MS = 5 * 60_000L
-        private const val PREFS = "ember.autoCache"
         private const val NORMALIZE_PREFS = "ember.normalize"
         private const val TICK_MS = 5_000L
         /** Buffered this far ahead, the song is not waiting on the network. */
@@ -729,9 +728,9 @@ class EmberPlaybackService : MediaLibraryService() {
             // nothing has been skipped yet).
             onGone = { id, error -> UnplayableNotices.record(Unplayable.notice(id, titleInQueue(id), error, Unplayable.FLAGGED)) },
         )
-        val prefs = getSharedPreferences(PREFS, MODE_PRIVATE)
-        // Defaults per the owner: on, but never on mobile data unless asked.
-        autoCacher.setSettings(prefs.getBoolean("enabled", true), prefs.getBoolean("onMetered", false))
+        // Defaults per the owner: on, mobile data included (AutoCachePrefs).
+        val settings = AutoCachePrefs.load(getSharedPreferences(AutoCachePrefs.NAME, MODE_PRIVATE))
+        autoCacher.setSettings(settings.enabled, settings.onMetered)
         net = NetworkWatch(this) {
             health.onNetworkChanged()
             networkChanged()
@@ -869,7 +868,7 @@ class EmberPlaybackService : MediaLibraryService() {
 
     private fun setAutoCache(enabled: Boolean, onMetered: Boolean) {
         autoCacher.setSettings(enabled, onMetered)
-        getSharedPreferences(PREFS, MODE_PRIVATE).edit().putBoolean("enabled", enabled).putBoolean("onMetered", onMetered).apply()
+        AutoCachePrefs.save(getSharedPreferences(AutoCachePrefs.NAME, MODE_PRIVATE), AutoCachePrefs.Settings(enabled, onMetered))
         cacheTick()
     }
 

@@ -102,6 +102,23 @@ class ServiceAutoCacheTest {
         assertTrue(prefs.getBoolean("onMetered", false))
     }
 
+    @Test fun `mobile data is on by default, and the old stored off is switched on once`() {
+        val prefs = app.getSharedPreferences(AutoCachePrefs.NAME, Context.MODE_PRIVATE)
+        prefs.edit().clear().putBoolean("enabled", true).putBoolean("onMetered", false).commit()
+        network(true)
+        startService()
+        val now = command(EmberPlaybackService.COMMAND_AUTO_CACHE).extras
+        assertTrue(now.getBoolean("enabled"))
+        assertTrue(now.getBoolean("onMetered"))
+        assertTrue(prefs.getBoolean("onMetered", false))
+        // Switched off afterwards: kept for the next start.
+        command(EmberPlaybackService.COMMAND_AUTO_CACHE, Bundle().apply { putBoolean("onMetered", false) })
+        controller.destroy()
+        MediaCache.releaseShared()
+        startService()
+        assertFalse(command(EmberPlaybackService.COMMAND_AUTO_CACHE).extras.getBoolean("onMetered"))
+    }
+
     @Test fun `stats and clear cover the auto cache`() {
         network(true)
         startService()

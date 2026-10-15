@@ -250,12 +250,15 @@ against the same `policy.cases.json`).
   after 15 s of the current song and once it is buffered). Pinned downloads
   stay in `files/offline` and are never evicted by this.
 - **When not:** setting off, offline, battery saver, Data Saver, or mobile
-  data unless "Also on mobile data" is on (default off). Busy (503) and
+  data with "Also on mobile data" turned off (it is on by default; phones
+  that stored the old "off" default get it on once, `AutoCachePrefs.kt`).
+  Busy (503) and
   rate-limited (429) answers back off as the server asks; 410 drops the song.
-- **Offline:** songs on the phone (cached whole, or pinned) play; others are
-  skipped in play order. With nothing ahead, playback pauses and the state
-  says `offlineStalled`. When the phone has a validated network again the
-  song is loaded, paused.
+- **Offline:** (no validated network, or one that carries nothing, see
+  `ConnectionHealth.kt`) songs on the phone (cached whole, or pinned) play;
+  others are skipped in play order. With nothing ahead, the player waits on
+  the song with play left on and the state says `offlineStalled`; when the
+  connection is back the song goes on by itself.
 - **Web side:** `lib/autoCache/native.ts` (the bridge) and
   `lib/autoCache/androidAdapter.ts` (the cache as Settings and the badge see
   it). No JS download ever runs on this engine: the page hands the two

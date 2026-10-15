@@ -65,7 +65,8 @@ class AutoCacher(
 
     @Volatile var enabled = true
         private set
-    @Volatile var allowMetered = false
+    /** Mobile data too: on by default (AutoCachePrefs). */
+    @Volatile var allowMetered = true
         private set
 
     var inFlight: String? = null
