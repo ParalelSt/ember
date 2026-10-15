@@ -31,7 +31,7 @@ describe('QuickGrid', () => {
   it('gives each tile a fixed 56px height with the cover on the left', () => {
     render(<QuickGrid items={items} />);
     const link = screen.getByRole('link', { name: LONG });
-    expect(link).toHaveClass('flex', 'h-14', 'rounded-sm', 'bg-popover', 'overflow-hidden');
+    expect(link).toHaveClass('flex', 'h-14', 'rounded-[6px]', 'bg-secondary', 'overflow-hidden');
     const cover = link.firstElementChild as HTMLElement;
     expect(cover).toHaveClass('size-14', 'shrink-0');
     expect(cover.querySelector('img')).toHaveAttribute('src', '/art/p1.jpg');
@@ -48,6 +48,15 @@ describe('QuickGrid', () => {
     const cover = screen.getByRole('link', { name: 'Liked songs' }).firstElementChild as HTMLElement;
     expect(cover).toHaveClass('cover-placeholder');
     expect(cover.querySelector('svg')).not.toBeNull();
+  });
+
+  it('draws a playlist with four song covers as a 2x2 mosaic flush left', () => {
+    const mosaic = ['a', 'b', 'c', 'd'].map((x) => `/art/${x}.jpg`);
+    render(<QuickGrid items={[{ key: 'p2', title: 'Mosaic', href: '/playlist/p2', src: null, icon: null, mosaic }]} />);
+    const cover = screen.getByRole('link', { name: 'Mosaic' }).firstElementChild as HTMLElement;
+    expect(cover).toHaveClass('size-14', 'rounded-none');
+    expect(cover.querySelector('[data-mosaic]')).not.toBeNull();
+    expect([...cover.querySelectorAll('img')].map((i) => i.getAttribute('src'))).toEqual(mosaic);
   });
 
   it('renders nothing with no items', () => {

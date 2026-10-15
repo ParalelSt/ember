@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { QUICK_MAX, quickPicks, recentFirst } from './home';
+import { QUICK_MAX, homeChips, phoneHomeView, quickPicks, recentFirst, type HomeRowKey } from './home';
 import { toSummary } from './collections';
 
 const liked = toSummary({ kind: 'liked' }, { count: 3 });
-const pl = (id: string, name: string, artworkUrl: string | null = null) =>
-  toSummary({ kind: 'playlist', id }, { name, artworkUrl });
+const pl = (id: string, name: string, artworkUrl: string | null = null, trackArtworks?: string[]) =>
+  toSummary({ kind: 'playlist', id }, { name, artworkUrl, trackArtworks });
 
 describe('recentFirst', () => {
   const list = [pl('a', 'A'), pl('b', 'B'), pl('c', 'C')];
@@ -40,16 +40,71 @@ describe('quickPicks', () => {
     expect(picks[1]).toMatchObject({ href: '/session/s1', icon: 'car' });
   });
 
-  it('holds at most eight tiles', () => {
+  it('holds at most six tiles, three rows of two', () => {
     const many = Array.from({ length: 12 }, (_, i) => pl(`p${i}`, `P${i}`));
     const picks = quickPicks({ liked, playlists: many, carlist: null });
     expect(picks).toHaveLength(QUICK_MAX);
-    expect(QUICK_MAX).toBe(8);
+    expect(QUICK_MAX).toBe(6);
+  });
+
+  it('gives a playlist with four song covers a mosaic, fewer the first cover, none the gradient', () => {
+    const arts = ['1', '2', '3', '4'].map((n) => `/art/${n}.jpg`);
+    const picks = quickPicks({
+      liked,
+      playlists: [pl('a', 'Four', null, arts), pl('b', 'Two', null, arts.slice(0, 2)), pl('c', 'None'), pl('d', 'Mine', '/art/mine.jpg', arts)],
+      carlist: null,
+    });
+    expect(picks[1]).toMatchObject({ src: null, mosaic: arts });
+    expect(picks[2]).toMatchObject({ src: '/art/1.jpg' });
+    expect(picks[2].mosaic).toBeUndefined();
+    expect(picks[3]).toMatchObject({ src: null });
+    expect(picks[3].mosaic).toBeUndefined();
+    expect(picks[4]).toMatchObject({ src: '/art/mine.jpg' });
+    expect(picks[4].mosaic).toBeUndefined();
+    // Liked songs keeps its heart, never a mosaic.
+    expect(picks[0]).toMatchObject({ icon: 'heart', src: null });
+    expect(picks[0].mosaic).toBeUndefined();
   });
 
   it('brings the playing playlist into the grid even when it is old', () => {
     const many = Array.from({ length: 12 }, (_, i) => pl(`p${i}`, `P${i}`));
     const picks = quickPicks({ liked, playlists: many, carlist: null, playingPlaylistId: 'p11' });
     expect(picks[1].title).toBe('P11');
+  });
+});
+
+describe('filter chips and order B', () => {
+  const today = new Set<HomeRowKey>(['history', 'recommended', 'trending', 'playlists', 'friends']);
+
+  it('shows only the chips with content today: All and Playlists', () => {
+    expect(homeChips(today).map((c) => c.label)).toEqual(['All', 'Playlists']);
+    expect(homeChips(new Set(['history'])).map((c) => c.label)).toEqual(['All']);
+  });
+
+  it('adds Mixes and Charts by themselves once those rows exist', () => {
+    const later = new Set<HomeRowKey>([...today, 'mixes', 'charts']);
+    expect(homeChips(later).map((c) => c.label)).toEqual(['All', 'Playlists', 'Mixes', 'Charts']);
+  });
+
+  it('All is order B: Recently played, Because you played, Popular now, Your playlists, Friends', () => {
+    expect(phoneHomeView('all', today)).toEqual({
+      filter: 'all',
+      quickGrid: true,
+      rows: ['history', 'recommended', 'trending', 'playlists', 'friends'],
+    });
+  });
+
+  it('puts Your mixes right after the grid and Charts after Popular now once they exist', () => {
+    const later = new Set<HomeRowKey>([...today, 'mixes', 'charts']);
+    expect(phoneHomeView('all', later).rows).toEqual(['mixes', 'history', 'recommended', 'trending', 'charts', 'playlists', 'friends']);
+  });
+
+  it('Playlists keeps the quick grid and the playlist rows only', () => {
+    expect(phoneHomeView('playlists', today)).toEqual({ filter: 'playlists', quickGrid: true, rows: ['playlists'] });
+  });
+
+  it('a filter whose chip is gone falls back to All', () => {
+    expect(phoneHomeView('mixes', today).filter).toBe('all');
+    expect(phoneHomeView('playlists', new Set(['history'])).rows).toEqual(['history']);
   });
 });
