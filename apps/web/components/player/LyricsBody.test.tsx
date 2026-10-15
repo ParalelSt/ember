@@ -96,11 +96,11 @@ describe('LyricsBody: follow mode', () => {
     expect(scrollTo).not.toHaveBeenCalled();
   });
 
-  it('the pill has roomy padding: 16px across, 12px down', () => {
+  it('the pill is tall: 12px across, 16px down', () => {
     renderBody();
     userScroll();
-    expect(pill()).toHaveClass('px-block', 'py-row');
-    expect(pill()).not.toHaveClass('px-row', 'py-cluster');
+    expect(pill()).toHaveClass('px-row', 'py-block');
+    expect(pill()).not.toHaveClass('px-block', 'py-row', 'py-cluster');
   });
 
   it('tapping the pill follows again and scrolls to the current line', () => {
