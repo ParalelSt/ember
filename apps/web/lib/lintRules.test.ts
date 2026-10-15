@@ -352,6 +352,7 @@ describe('colour ratchet', () => {
   // green), mock covers, and the example in the hex field's hint. Nothing else.
   const LITERAL_COLOUR_ALLOWED: Record<string, string> = {
     'components/import/parts.tsx': 'SOURCE_DOT brand dots',
+    'components/library/LikedSongsCover.tsx': 'the Liked songs cover art, fixed ember wine whatever the theme',
     'components/settings/appearance/previewData.ts': 'mock covers in the theme preview',
     'components/settings/appearance/ColourRow.tsx': 'the "#1a2b3c" example in the invalid-hex hint',
   };
