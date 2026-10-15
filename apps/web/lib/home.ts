@@ -11,6 +11,8 @@ export const QUICK_MAX = 6;
 export const QUICK_MAX_DESKTOP = 8;
 
 export interface QuickPick {
+  /** Real count label for optional desktop detail tiles. */
+  songCount?: string;
   key: string;
   title: string;
   href: string;
