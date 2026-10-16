@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, type TouchEvent } from 'react';
 import Link from 'next/link';
-import { ArrowLeftIcon, ArrowRightIcon, ChevronLeftIcon } from '@/components/icons';
+import { ArrowLeftIcon, ArrowRightIcon } from '@/components/icons';
 import { Eyebrow } from '@/components/page/Eyebrow';
 import type { ChangelogEntry } from '@/lib/changelog';
 import { SCOPE_LABEL } from '@/components/changelog/ChangelogPage';
@@ -87,7 +87,7 @@ export function ChangelogEntryPage({ entry, entries = [], onGo, onGotIt }: Props
       data-testid="changelog-back"
       className="inline-flex size-hit items-center justify-center rounded-full text-muted-foreground transition-colors hover:text-foreground md:size-8"
     >
-      <ChevronLeftIcon className="h-5 w-5" />
+      <ArrowLeftIcon className="h-5 w-5" />
     </Link>
   );
 

@@ -121,9 +121,14 @@ describe('ChangelogEntryPage', () => {
     expect(row).toHaveTextContent('2026-09-18');
     expect(row).toHaveTextContent('Desktop app');
     expect(screen.getByTestId('changelog-entry-page').className).toContain('md:max-w-[776px]');
-    // The only fill caret-left is in the phone bar, which is hidden from md up.
-    const carets = document.querySelectorAll('.phosphor-caret-left');
-    carets.forEach((c) => expect(c.closest('[data-testid="changelog-bar"]')).not.toBeNull());
+    // No filled triangle caret anywhere, phone bar included.
+    expect(document.querySelectorAll('.phosphor-caret-left')).toHaveLength(0);
+  });
+
+  it('phone bar back button uses the bold arrow, not the filled triangle', () => {
+    render(<ChangelogEntryPage entry={entries[1]} />);
+    const back = within(screen.getByTestId('changelog-bar')).getByRole('link', { name: "Back to What's new" });
+    expect(back.querySelector('.phosphor-arrow-left-bold')).not.toBeNull();
   });
 
   it('keeps the phone bar unchanged and hides it on desktop only', () => {
