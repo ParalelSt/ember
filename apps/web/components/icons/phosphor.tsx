@@ -1256,3 +1256,29 @@ export function Loader2Icon({ size = 24, width = size, height = size, strokeWidt
     </svg>
   );
 }
+
+/** Phosphor arrow-left, bold. */
+export function ArrowLeftIcon({ size = 24, width = size, height = size, strokeWidth: _strokeWidth,
+  absoluteStrokeWidth: _absoluteStrokeWidth, className, ...props }: IconProps) {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" width={width} height={height}
+      viewBox="0 0 256 256" fill="currentColor" {...props}
+      className={['phosphor-arrow-left-bold', className].filter(Boolean).join(' ')}
+      aria-hidden={props['aria-label'] !== undefined ? undefined : (props['aria-hidden'] ?? true)}>
+      <path d="M228,128a12,12,0,0,1-12,12H69l51.52,51.51a12,12,0,0,1-17,17l-72-72a12,12,0,0,1,0-17l72-72a12,12,0,0,1,17,17L69,116H216A12,12,0,0,1,228,128Z"/>
+    </svg>
+  );
+}
+
+/** Phosphor arrow-right, bold. */
+export function ArrowRightIcon({ size = 24, width = size, height = size, strokeWidth: _strokeWidth,
+  absoluteStrokeWidth: _absoluteStrokeWidth, className, ...props }: IconProps) {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" width={width} height={height}
+      viewBox="0 0 256 256" fill="currentColor" {...props}
+      className={['phosphor-arrow-right-bold', className].filter(Boolean).join(' ')}
+      aria-hidden={props['aria-label'] !== undefined ? undefined : (props['aria-hidden'] ?? true)}>
+      <path d="M224.49,136.49l-72,72a12,12,0,0,1-17-17L187,140H40a12,12,0,0,1,0-24H187L135.51,64.48a12,12,0,0,1,17-17l72,72A12,12,0,0,1,224.49,136.49Z"/>
+    </svg>
+  );
+}

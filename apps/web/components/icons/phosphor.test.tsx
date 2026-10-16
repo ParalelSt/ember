@@ -25,6 +25,13 @@ describe('Phosphor icons', () => {
     });
   }
 
+  it('bold icons use the official bold geometry and a distinct class', () => {
+    const { container } = render(<><icons.ArrowLeftIcon /><icons.ArrowRightIcon /></>);
+    expect(container.querySelector('.phosphor-arrow-left-bold')).not.toBeNull();
+    expect(container.querySelector('.phosphor-arrow-right-bold')).not.toBeNull();
+    expect(container.querySelector('.phosphor-caret-left')).toBeNull();
+  });
+
   it('supports sizing, styles, attributes and refs while ignoring Lucide stroke props', () => {
     let node: SVGSVGElement | null = null;
     const { container } = render(<icons.HomeIcon size={32} width={40} height="2em"

@@ -574,5 +574,15 @@
     "app": "Loader2Icon",
     "name": "spinner-gap",
     "weight": "fill"
+  },
+  {
+    "app": "ArrowLeftIcon",
+    "name": "arrow-left",
+    "weight": "bold"
+  },
+  {
+    "app": "ArrowRightIcon",
+    "name": "arrow-right",
+    "weight": "bold"
   }
 ]

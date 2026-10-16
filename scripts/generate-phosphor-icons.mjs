@@ -32,7 +32,7 @@ export function ${app}({ size = 24, width = size, height = size, strokeWidth: _s
   return (
     <svg xmlns="http://www.w3.org/2000/svg" width={width} height={height}
       viewBox="0 0 256 256" fill="currentColor" {...props}
-      className={['phosphor-${name}', className].filter(Boolean).join(' ')}
+      className={['phosphor-${name}${weight === 'fill' ? '' : `-${weight}`}', className].filter(Boolean).join(' ')}
       aria-hidden={props['aria-label'] !== undefined ? undefined : (props['aria-hidden'] ?? true)}>
       ${inner}
     </svg>

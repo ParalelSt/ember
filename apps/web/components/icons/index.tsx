@@ -96,5 +96,7 @@ export {
   InfoIcon,
   OctagonXIcon,
   Loader2Icon,
+  ArrowLeftIcon,
+  ArrowRightIcon,
 } from './phosphor';
 export { FlameIcon } from './EmberLogo';
