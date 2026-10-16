@@ -222,9 +222,9 @@ export const LIBRARY_VIEW_KEY = 'ember.library.view';
 export function readLibraryView(storage?: Pick<Storage, 'getItem'>): LibraryView {
   try {
     // Reading localStorage itself can throw (blocked site data), so inside the try.
-    return (storage ?? globalThis.localStorage)?.getItem(LIBRARY_VIEW_KEY) === 'grid' ? 'grid' : 'list';
+    return (storage ?? globalThis.localStorage)?.getItem(LIBRARY_VIEW_KEY) === 'list' ? 'list' : 'grid';
   } catch {
-    return 'list';
+    return 'grid';
   }
 }
 

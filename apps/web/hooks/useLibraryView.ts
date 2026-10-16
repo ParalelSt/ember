@@ -24,9 +24,9 @@ function subscribe(onChange: () => void): () => void {
 }
 
 const getSnapshot = (): LibraryView => memory ?? readLibraryView();
-/** The server has no storage: it renders the list, and the client switches
- *  to a saved grid right after hydrating, with no mismatch. */
-const getServerSnapshot = (): LibraryView => 'list';
+/** The server has no storage: it renders the default grid, and the client
+ *  switches to a saved list right after hydrating, with no mismatch. */
+const getServerSnapshot = (): LibraryView => 'grid';
 
 /** The phone Library's list or grid choice, remembered per device. */
 export function useLibraryView(): [LibraryView, (view: LibraryView) => void] {

@@ -8,7 +8,7 @@ import { cn } from '@/lib/utils';
 
 export interface LibraryItemRowProps {
   item: LibraryItem;
-  /** 'row' (default): the 56px list row. 'tile': the two-column grid's big cover. */
+  /** 'row' (default): the 56px list row. 'tile': the three-across grid's cover. */
   variant?: 'row' | 'tile';
   /** The row was tapped. On the Downloaded row (no href) this is its action. */
   onActivate?: (item: LibraryItem) => void;
@@ -64,8 +64,8 @@ export function LibraryItemRow({ item, variant = 'row', onActivate }: LibraryIte
     return (
       <Activator item={item} onActivate={onActivate} className="block min-w-0">
         <LibraryCover cover={item.cover} className="w-full rounded-[8px]" />
-        <div className="mt-cluster truncate text-sm font-bold leading-[1.3]">{item.title}</div>
-        <Subtitle item={item} className="mt-[2px] text-[12.5px] leading-[1.35]" />
+        <div className="mt-cluster truncate text-xs font-bold leading-[1.3]">{item.title}</div>
+        <Subtitle item={item} className="mt-[2px] text-[10px] leading-[1.35]" />
       </Activator>
     );
   }
