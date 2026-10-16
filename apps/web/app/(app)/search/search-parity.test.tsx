@@ -135,4 +135,16 @@ describe('search page vs. search overlay parity', () => {
     expect(overlayTitles).toEqual(pageTitles);
     expect(pageTitles).toEqual(['Midnight Drive', 'Second Wind']);
   });
+
+  it('clears the page query and keeps the input focused', () => {
+    renderWith(<SearchPage />);
+    const input = screen.getByPlaceholderText('What do you want to listen to?');
+    fireEvent.change(input, { target: { value: 'runner' } });
+    const clear = screen.getByRole('button', { name: 'Clear search' });
+    expect(fireEvent.mouseDown(clear)).toBe(false);
+    fireEvent.click(clear);
+    expect(input).toHaveValue('');
+    expect(input).toHaveFocus();
+    expect(screen.queryByRole('button', { name: 'Clear search' })).toBeNull();
+  });
 });
