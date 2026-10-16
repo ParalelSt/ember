@@ -8,7 +8,7 @@ vi.mock('next/link', () => ({
 
 const { CollectionCard } = await import('./CollectionCard');
 
-const base = { title: 'Road trip', subtitle: 'Playlist', href: '/playlist/p1', cover: { src: null, icon: null }, size: 'md' as const };
+const base = { title: 'Road trip', subtitle: 'Playlist', href: '/playlist/p1', cover: { src: null, icon: null } };
 
 describe('CollectionCard', () => {
   it('a playlist shared with you shows a "Shared by" pill with the owner\'s face, not the people mark', () => {
@@ -25,6 +25,17 @@ describe('CollectionCard', () => {
     expect(screen.getByTestId('shared-badge')).toBeInTheDocument();
     expect(screen.queryByTestId('shared-by')).toBeNull();
     expect(screen.getByText('Collaborative')).toBeInTheDocument();
+  });
+});
+
+describe('CollectionCard standard tile (the Library page)', () => {
+  it('is unboxed: no card background or padding, name and a small meta line under the cover', () => {
+    render(<CollectionCard {...base} />);
+    const link = screen.getByRole('link');
+    expect(link).not.toHaveClass('bg-card', 'p-4');
+    expect(link.className).not.toMatch(/\bp-\d|\bbg-/);
+    expect(screen.getByText('Road trip')).toHaveClass('truncate');
+    expect(screen.getByText('Playlist')).toHaveClass('truncate', 'text-muted-foreground');
   });
 });
 

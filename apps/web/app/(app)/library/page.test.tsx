@@ -115,8 +115,12 @@ describe('Library page, md and up', () => {
     expect(screen.getByRole('heading', { name: 'Playlists' })).toBeInTheDocument();
     const card = screen.getByRole('link', { name: /Road Trip/ });
     expect(card).toHaveAttribute('href', '/playlist/p1');
-    // The boxed desktop card keeps its old words, not the phone row's.
-    expect(card).toHaveClass('bg-card');
+    // The unboxed standard tile keeps its old words, not the phone row's.
+    expect(card).not.toHaveClass('bg-card', 'p-4');
+    // Both sections are the standard grid: 6 across on desktop (3 on phone).
+    const grids = [...document.querySelectorAll('[data-library-grid]')];
+    expect(grids).toHaveLength(2);
+    for (const g of grids) expect(g).toHaveClass('grid-cols-3', 'md:grid-cols-6');
     expect(card).toHaveTextContent('Playlist');
     expect(card).not.toHaveTextContent('9 songs');
     expect(document.querySelector('[data-phone-library]')).toBeNull();
@@ -168,14 +172,15 @@ describe('Library page, phone', () => {
 
   it('the list or grid choice is remembered on this device', () => {
     const first = render(<LibraryPage />);
+    // The standard 3-across grid is the default.
+    expect(document.querySelector('[data-library-view="grid"]')).toHaveClass('grid-cols-3');
+    fireEvent.click(screen.getByRole('button', { name: 'Show as list' }));
     expect(document.querySelector('[data-library-view="list"]')).not.toBeNull();
-    fireEvent.click(screen.getByRole('button', { name: 'Show as grid' }));
-    expect(document.querySelector('[data-library-view="grid"]')).not.toBeNull();
-    expect(localStorage.getItem(LIBRARY_VIEW_KEY)).toBe('grid');
+    expect(localStorage.getItem(LIBRARY_VIEW_KEY)).toBe('list');
     first.unmount();
     resetLibraryViewMemory();
     render(<LibraryPage />);
-    expect(document.querySelector('[data-library-view="grid"]')).not.toBeNull();
+    expect(document.querySelector('[data-library-view="list"]')).not.toBeNull();
   });
 
   it('offline keeps the Downloaded shelf', () => {
