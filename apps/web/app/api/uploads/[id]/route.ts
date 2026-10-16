@@ -3,9 +3,46 @@ import { requireUser, UnauthorizedError, unauthorizedResponse } from '@/lib/auth
 import { createAdminClient } from '@/lib/pocketbase/server';
 import { fromError, jsonError } from '@/lib/upsertTrack';
 import { serverLogger } from '@/lib/logger/server';
-import { resolveUploadPath } from '@/lib/uploads';
+import { mapMyUpload, resolveUploadPath } from '@/lib/uploads';
+import { loadOwnUpload, syncCatalogUpload } from '@/lib/uploads/own';
 import { withRequestLog } from '@/lib/logger/withRequestLog';
 import { deleteUploadCover } from '@/lib/uploads/cover';
+
+const MAX_TEXT = 200;
+
+/** Edits an upload's title, artist and album. Uploader or admin only; the
+ *  file itself never changes. Fields left out stay as they are; a title
+ *  cannot be emptied. The song's row in the shared catalog follows, so
+ *  playlists show the new name too. */
+export const PATCH = withRequestLog('uploads/[id]', async (request: Request, ctx: RouteContext<'/api/uploads/[id]'>) => {
+  try {
+    const { user } = await requireUser();
+    const { id } = await ctx.params;
+
+    const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
+    if (!body || typeof body !== 'object' || Array.isArray(body)) return jsonError('Invalid body', 400);
+    const patch: Record<string, string> = {};
+    for (const key of ['title', 'artist', 'album'] as const) {
+      const value = body[key];
+      if (value === undefined) continue;
+      if (typeof value !== 'string') return jsonError(`${key} must be text`, 400);
+      patch[key] = value.trim().slice(0, MAX_TEXT);
+    }
+    if (patch.title === '') return jsonError('A song needs a title', 400);
+
+    const pb = await createAdminClient();
+    const own = await loadOwnUpload(pb, id, user);
+    if (own.error) return own.error;
+    if (Object.keys(patch).length === 0) return Response.json({ upload: mapMyUpload(own.row) });
+
+    const updated = await pb.collection('uploads').update(id, patch);
+    await syncCatalogUpload(pb, updated);
+    return Response.json({ upload: mapMyUpload(updated) });
+  } catch (e) {
+    if (e instanceof UnauthorizedError) return unauthorizedResponse();
+    return fromError(e);
+  }
+});
 
 /** Removes an upload, the record and the file on disk. Uploader or admin
  *  only; other people may have it in a playlist, so this is deliberate. */

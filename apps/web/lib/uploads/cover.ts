@@ -106,3 +106,25 @@ export async function deleteUploadCover(id: string, ext: string): Promise<void> 
   if (!full) return;
   await fs.unlink(full).catch(() => {});
 }
+
+/** The kept format of an image a member picked as a cover, from its bytes
+ *  (the browser's type is only a claim): JPEG or PNG, else null. */
+export function sniffCoverImage(buf: Buffer): 'jpg' | 'png' | null {
+  if (buf.length >= 3 && buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff) return 'jpg';
+  if (buf.length >= 8 && buf.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))) {
+    return 'png';
+  }
+  return null;
+}
+
+/** Writes a cover a member picked in Settings > Uploads, in the same place
+ *  and under the same name as an extracted one (`<id>.<ext>` beside the
+ *  audio), and removes the old file when the format changed. Returns false
+ *  when the path will not resolve; a failed write throws. */
+export async function writeUploadCover(id: string, ext: 'jpg' | 'png', data: Buffer, oldExt: string): Promise<boolean> {
+  const full = resolveUploadPath(coverFilename(id, ext));
+  if (!full) return false;
+  await fs.writeFile(full, data);
+  if (oldExt && oldExt !== ext) await deleteUploadCover(id, oldExt);
+  return true;
+}

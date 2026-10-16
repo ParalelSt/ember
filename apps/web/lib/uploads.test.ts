@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { RecordModel } from 'pocketbase';
-import { hasUploadArt, mapUpload, newFilename, resolveUploadPath, sniffAudio } from '@/lib/uploads';
+import { hasUploadArt, mapMyUpload, mapUpload, newFilename, resolveUploadPath, sniffAudio, uploadArtUrl } from '@/lib/uploads';
 
 function row(over: Partial<RecordModel> = {}): RecordModel {
   return {
@@ -91,5 +91,32 @@ describe('newFilename', () => {
     const a = newFilename('.mp3');
     expect(a.endsWith('.mp3')).toBe(true);
     expect(newFilename('.mp3')).not.toBe(a);
+  });
+});
+
+describe('uploadArtUrl', () => {
+  it('keeps the plain URL for a cover never changed by hand', () => {
+    expect(uploadArtUrl(row({ artwork_ext: 'jpg' }))).toBe('/api/uploads/rec1/art');
+    expect(uploadArtUrl(row({ artwork_ext: 'jpg', artwork_v: 0 }))).toBe('/api/uploads/rec1/art');
+  });
+
+  it('carries the cover version once it was changed, so the year-long cache misses', () => {
+    expect(uploadArtUrl(row({ artwork_ext: 'png', artwork_v: 3 }))).toBe('/api/uploads/rec1/art?v=3');
+  });
+
+  it('is null without a cover, whatever the version', () => {
+    expect(uploadArtUrl(row({ artwork_ext: '', artwork_v: 4 }))).toBeNull();
+  });
+});
+
+describe('mapMyUpload', () => {
+  it('adds the file size and added date to the Track', () => {
+    const u = mapMyUpload(row({ size_bytes: 8_400_000, created: '2026-10-12 10:00:00.000Z' }));
+    expect(u).toMatchObject({ id: 'upload:rec1', title: 'Song', sizeBytes: 8_400_000, created: '2026-10-12 10:00:00.000Z' });
+  });
+
+  it('reads a missing or odd size as 0', () => {
+    expect(mapMyUpload(row()).sizeBytes).toBe(0);
+    expect(mapMyUpload(row({ size_bytes: -5 })).sizeBytes).toBe(0);
   });
 });

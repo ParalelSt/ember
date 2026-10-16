@@ -21,6 +21,16 @@ export interface Track {
   unavailableReason?: string | null;
 }
 
+/** One of your own uploads, as Settings > Uploads lists it
+ *  (GET /api/uploads/mine): the Track plus the file's size and when it was
+ *  added. */
+export type MyUpload = Track & {
+  /** Bytes of the audio file on disk. */
+  sizeBytes: number;
+  /** PocketBase `created` of the upload record. */
+  created: string;
+};
+
 /** A song in a playlist or in Liked songs, with when it landed there (the
  *  playlist row's `created`, the like's `liked_at`). The list routes add it
  *  for "Date added" sorting; everything else ignores it. */

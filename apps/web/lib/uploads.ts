@@ -4,7 +4,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import type PocketBase from 'pocketbase';
 import type { RecordModel } from 'pocketbase';
-import type { Track } from '@/types/track';
+import type { MyUpload, Track } from '@/types/track';
 
 /** Member-uploaded songs.
  *
@@ -93,6 +93,17 @@ export function hasUploadArt(row: Pick<RecordModel, 'artwork_ext'> | RecordModel
   return (COVER_EXTS as readonly string[]).includes(String(row.artwork_ext ?? ''));
 }
 
+/** The upload's cover URL. The art route caches covers for a year, so a
+ *  cover changed in Settings > Uploads bumps `artwork_v`
+ *  (pb_hooks/ensure_uploads_cover_version) and the URL carries it: a new
+ *  URL is a fresh fetch. Covers never changed keep their old, plain URL. */
+export function uploadArtUrl(row: RecordModel): string | null {
+  if (!hasUploadArt(row)) return null;
+  const v = Number(row.artwork_v ?? 0);
+  const base = `/api/uploads/${row.id}/art`;
+  return Number.isFinite(v) && v > 0 ? `${base}?v=${Math.floor(v)}` : base;
+}
+
 /** PB `uploads` record → the Track shape the whole app speaks. */
 export function mapUpload(row: RecordModel): Track {
   return {
@@ -108,8 +119,19 @@ export function mapUpload(row: RecordModel): Track {
     // Set only when the file carried an embedded cover we could extract at
     // upload time. Uploads from before that existed have no artwork_ext and
     // stay artwork-less, which is what they looked like anyway.
-    artworkUrl: hasUploadArt(row) ? `/api/uploads/${row.id}/art` : null,
+    artworkUrl: uploadArtUrl(row),
     streamUrl: `/api/uploads/${row.id}/stream`,
+  };
+}
+
+/** PB `uploads` record → a row of the uploader's own list in Settings >
+ *  Uploads: the Track plus its size and added date. */
+export function mapMyUpload(row: RecordModel): MyUpload {
+  const size = Number(row.size_bytes ?? 0);
+  return {
+    ...mapUpload(row),
+    sizeBytes: Number.isFinite(size) && size > 0 ? size : 0,
+    created: String(row.created ?? ''),
   };
 }
 

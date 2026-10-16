@@ -20,7 +20,7 @@ import {
 const musicDir = fs.mkdtempSync(path.join(os.tmpdir(), 'cover-test-'));
 process.env.MUSIC_DIR = musicDir;
 
-const { MAX_COVER_BYTES, coverExtFor, coverFilename, deleteUploadCover, extractCover, saveUploadCover } = await import(
+const { MAX_COVER_BYTES, coverExtFor, coverFilename, deleteUploadCover, extractCover, saveUploadCover, sniffCoverImage, writeUploadCover } = await import(
   '@/lib/uploads/cover'
 );
 const { UPLOAD_DIR } = await import('@/lib/uploads');
@@ -143,5 +143,36 @@ describe('deleteUploadCover', () => {
 describe('coverFilename', () => {
   it('keys the file by the record id', () => {
     expect(coverFilename('abc', 'jpg')).toBe('abc.jpg');
+  });
+});
+
+describe('sniffCoverImage', () => {
+  it('knows JPEG and PNG by their bytes', () => {
+    expect(sniffCoverImage(tinyJpeg())).toBe('jpg');
+    expect(sniffCoverImage(tinyPng())).toBe('png');
+  });
+
+  it('refuses anything else, whatever it is called', () => {
+    expect(sniffCoverImage(Buffer.from('GIF89a000000'))).toBeNull();
+    expect(sniffCoverImage(Buffer.from([0xff, 0xd8]))).toBeNull();
+    expect(sniffCoverImage(Buffer.alloc(0))).toBeNull();
+  });
+});
+
+describe('writeUploadCover', () => {
+  it('writes <id>.<ext> beside the audio, where the art route reads it', async () => {
+    expect(await writeUploadCover('rec9', 'jpg', tinyJpeg(), '')).toBe(true);
+    expect(fs.readFileSync(path.join(UPLOAD_DIR, 'rec9.jpg')).equals(tinyJpeg())).toBe(true);
+  });
+
+  it('removes the old file when the format changes', async () => {
+    fs.writeFileSync(path.join(UPLOAD_DIR, 'rec9.jpg'), tinyJpeg());
+    await writeUploadCover('rec9', 'png', tinyPng(), 'jpg');
+    expect(fs.existsSync(path.join(UPLOAD_DIR, 'rec9.jpg'))).toBe(false);
+    expect(fs.existsSync(path.join(UPLOAD_DIR, 'rec9.png'))).toBe(true);
+  });
+
+  it('refuses an id that would escape the uploads directory', async () => {
+    expect(await writeUploadCover('../escape', 'jpg', tinyJpeg(), '')).toBe(false);
   });
 });
