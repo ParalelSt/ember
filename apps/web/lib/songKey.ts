@@ -75,7 +75,7 @@ function normalizeTitle(s: string): string {
     .trim();
 }
 
-function normalizeArtist(s: string): string {
+export function normalizeArtist(s: string): string {
   return s
     .toLowerCase()
     .replace(/\s*-\s*topic\s*$/i, '')        // YouTube auto "Artist - Topic"

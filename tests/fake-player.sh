@@ -180,6 +180,62 @@ case "$CMD" in
       process.stdout.write(JSON.stringify(out));
     ' "$VIDEO_ID"
     ;;
+  genre-charts)
+    # Stand-in for player.py genre-charts. $FAKE_GENRE_CHARTS_FIXTURE (a JSON
+    # file shaped like the real output) wins; otherwise nine charts, the
+    # eight US genres plus balkan, of 12 songs each, "<Title> Song NN" by
+    # "<Title> Artist A".."D" (so each chart has four artists).
+    # FAKE_FAIL_GENRE_CHARTS=1 fails like player.py when every chart failed.
+    if [ "${FAKE_FAIL_GENRE_CHARTS:-0}" = "1" ]; then
+      echo "ERROR: genre-charts: every chart failed" >&2
+      exit 1
+    fi
+    if [ -n "${FAKE_GENRE_CHARTS_FIXTURE:-}" ]; then
+      cat "$FAKE_GENRE_CHARTS_FIXTURE"
+    else
+      node -e '
+        const list = [["hard-rock-metal", "Hard Rock & Metal"], ["rock", "Rock"], ["jazz", "Jazz"], ["country", "Country & Americana"],
+          ["pop", "Pop"], ["hip-hop", "Hip Hop"], ["latin", "Latin"], ["dance-electronic", "Dance & Electronic"], ["balkan", "Balkan"]];
+        const charts = list.map(([slug, title]) => ({
+          slug, title, playlistId: `PLfake${slug}`,
+          tracks: Array.from({ length: 12 }, (_, i) => ({
+            videoId: `${slug.replace(/-/g, "").slice(0, 7)}${String(i + 1).padStart(2, "0")}`.padEnd(11, "0"),
+            title: `${title} Song ${String(i + 1).padStart(2, "0")}`,
+            artist: `${title} Artist ${"ABCD"[i % 4]}`,
+            artworkUrl: "", durationSec: 200,
+          })),
+        }));
+        process.stdout.write(JSON.stringify({ charts, failed: [] }));
+      '
+    fi
+    ;;
+  radio-batch)
+    # Stand-in for player.py radio-batch. The seeds come as --seeds=a,b,c.
+    # $FAKE_RADIO_FIXTURE (JSON: { "<seed>": [track, ...] }) gives a seed's
+    # radio; a seed it does not list gets 10 songs "Radio <seed> NN" by
+    # "Radio Artist". FAKE_FAIL_RADIO_BATCH=1 fails like every seed failing.
+    if [ "${FAKE_FAIL_RADIO_BATCH:-0}" = "1" ]; then
+      echo "ERROR: radio-batch: every seed failed" >&2
+      exit 1
+    fi
+    echo "radio-batch-seeds $*" >> "$LOG"
+    node -e '
+      const fs = require("fs");
+      const file = process.env.FAKE_RADIO_FIXTURE;
+      const fix = file ? JSON.parse(fs.readFileSync(file, "utf8")) : {};
+      const arg = process.argv.slice(1).find((a) => a.startsWith("--seeds=")) ?? "--seeds=";
+      const seeds = arg.slice(8).split(",").map((s) => s.trim()).filter(Boolean);
+      const radios = seeds.map((seed) => ({
+        seed,
+        tracks: fix[seed] ?? Array.from({ length: 10 }, (_, i) => ({
+          videoId: `r${seed.slice(0, 8)}${i}`.padEnd(11, "0").slice(0, 11),
+          title: `Radio ${seed} ${String(i + 1).padStart(2, "0")}`,
+          artist: "Radio Artist", artworkUrl: "", durationSec: 200,
+        })),
+      }));
+      process.stdout.write(JSON.stringify({ radios, failed: [] }));
+    ' -- "$@"
+    ;;
   loudness)
     # loudness.py stand-in: a downloaded song gets FAKE_GAIN_DB (default -3)
     # written beside it, the same sidecar the real one writes.

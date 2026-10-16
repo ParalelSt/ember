@@ -13,6 +13,8 @@ import type { TabSummary } from '@/lib/tabSources';
 import type { NativeDevice } from '@/lib/logger/nativeLog';
 import type { NativeSurface } from '@/lib/logger/types';
 import type { TabTiming } from '@/lib/tabSync';
+import type { ChartPayload, ChartsPayload } from '@/lib/chartsView';
+import type { MixPayload, MixesPayload } from '@/lib/mixesView';
 import type { StoredPlugins } from '@/lib/pluginSettings';
 import type { NavPatch, NavPrefs } from '@/lib/navPlaylists';
 import type { PresetId, ThemeDoc, ThemeInputs } from '@/lib/theme/model';
@@ -220,6 +222,10 @@ export const api = {
   search: (q: string) => req<{ tracks: Track[] }>(`/search?q=${encodeURIComponent(q ?? '')}`),
   getTrending: () =>
     req<{ tracks: Track[]; title: string | null; country: string; fetchedAt: string | null; stale: boolean }>('/youtube/trending'),
+  getCharts: () => req<ChartsPayload>('/charts'),
+  getChart: (slug: string) => req<ChartPayload>(`/charts/${encodeURIComponent(slug)}`, { expected: [404] }),
+  getMixes: () => req<MixesPayload>('/mixes'),
+  getMix: (key: string) => req<MixPayload>(`/mixes/${encodeURIComponent(key)}`, { expected: [404] }),
   getRecommended: (seedSourceId?: string) =>
     req<{ tracks: Track[] }>(`/youtube/recommended${seedSourceId ? `?seed=${encodeURIComponent(seedSourceId)}` : ''}`),
   getArtist: (channelId: string) => req<ArtistPayload>(`/youtube/artist/${encodeURIComponent(channelId)}`),

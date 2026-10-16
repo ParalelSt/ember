@@ -1,6 +1,7 @@
 /** Next's startup hook: runs once when the server boots. Installs the
  *  uncaught-error catch, starts the playlist import runner, and schedules
- *  the daily cache/DB cleanup, the daily error digest and the prank tick. */
+ *  the daily cache/DB cleanup, the daily error digest, the nightly genre
+ *  mix build and the prank tick. */
 export async function register() {
   // Only the Node server runtime has a filesystem and PocketBase access.
   if (process.env.NEXT_RUNTIME !== 'nodejs') return;
@@ -42,6 +43,26 @@ export async function register() {
     // it comes back, and the marker file keeps that to once a day.
     const digest = setInterval(() => void tick(), 60 * 1000);
     digest.unref?.();
+  }
+
+  // Genre mixes (docs/mixes.md): rebuilt for every member who played
+  // something lately, once a night at MIXES_HOUR (default 4), checked every
+  // minute with a marker file like the digest. MIXES_DISABLED=1 opts out
+  // (the lazy rebuild from GET /api/mixes too).
+  if (process.env.MIXES_DISABLED !== '1') {
+    const { createNightlyTick, mixesHour } = await import('@/lib/mixes/schedule');
+    const { MUSIC_DIR } = await import('@/lib/sources/youtube');
+    const tick = createNightlyTick({
+      dir: MUSIC_DIR,
+      hour: mixesHour(),
+      build: async () => {
+        const { mixJob } = await import('@/lib/mixes/instance');
+        await mixJob().runAll();
+      },
+      warn: (message, detail) => serverLogger.warn('mixes', message, detail),
+    });
+    const nightly = setInterval(() => void tick().catch(() => {}), 60 * 1000);
+    nightly.unref?.();
   }
 
   // The release lookup behind the update feeds, filled now so the first

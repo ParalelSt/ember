@@ -1103,6 +1103,152 @@ def cmd_trending(args):
     title = "Trending blend" if len(used) > 1 else None
     json.dump({"title": title, "countries": used, "tracks": tracks}, sys.stdout)
 
+
+# Genre charts (docs/mixes.md, "Charts by genre"). YouTube Music only lists
+# genre charts for the US: get_charts('US')['genres'] is a list of
+# "Top 50 <genre> Music Videos United States" playlists. Each gets a stable
+# slug the web app keys its tiles and pages on; a genre YouTube adds later
+# gets a slug made from its name.
+GENRE_CHART_SLUGS = {
+    "hard rock & metal": "hard-rock-metal",
+    "rock": "rock",
+    "jazz": "jazz",
+    "country & americana": "country",
+    "pop": "pop",
+    "hip hop": "hip-hop",
+    "latin": "latin",
+    "dance & electronic": "dance-electronic",
+}
+GENRE_CHART_TITLE_RE = re.compile(r"^Top\s+\d+\s+(.+?)\s+Music Videos\b", re.IGNORECASE)
+# The regional chart the Balkan family gets: Serbia's daily chart.
+REGIONAL_CHARTS = (("balkan", "Balkan", "RS"),)
+
+
+def genre_chart_name(title):
+    """'Top 50 Hard Rock & Metal Music Videos United States' -> 'Hard Rock & Metal'."""
+    m = GENRE_CHART_TITLE_RE.match((title or "").strip())
+    return m.group(1).strip() if m else (title or "").strip()
+
+
+def genre_chart_slug(name):
+    known = GENRE_CHART_SLUGS.get(name.lower())
+    if known:
+        return known
+    return re.sub(r"[^a-z0-9]+", "-", name.lower().replace("&", " ")).strip("-") or None
+
+
+def pick_genre_charts(charts):
+    """The genre chart playlists in a get_charts() result, as
+    [{slug, title, playlistId}] in YouTube's order. Unknown shapes give []."""
+    if not isinstance(charts, dict):
+        return []
+    lists = charts.get("genres")
+    if isinstance(lists, dict):
+        lists = lists.get("items")
+    out, seen = [], set()
+    for p in lists or []:
+        if not isinstance(p, dict) or not p.get("playlistId"):
+            continue
+        name = genre_chart_name(p.get("title"))
+        slug = genre_chart_slug(name)
+        if not slug or slug in seen:
+            continue
+        seen.add(slug)
+        out.append({"slug": slug, "title": name, "playlistId": p["playlistId"]})
+    return out
+
+
+def fetch_genre_charts(country="US", regional=REGIONAL_CHARTS):
+    """Every genre chart plus the regional ones, sequentially, CHART_FETCH_PACING_SEC
+    apart (a quick second call has answered HTTP 503). A chart that fails is
+    skipped and named in `failed`, the rest still come back."""
+    charts, failed = [], []
+    calls = 0
+
+    def pace():
+        nonlocal calls
+        if calls > 0:
+            time.sleep(CHART_FETCH_PACING_SEC)
+        calls += 1
+
+    picked = []
+    try:
+        pace()
+        picked = pick_genre_charts(yt.get_charts(country=country))
+        if not picked:
+            print(f"genre-charts: get_charts({country}) listed no genre charts", file=sys.stderr)
+    except Exception as e:
+        print(f"genre-charts: get_charts({country}) failed ({e})", file=sys.stderr)
+        failed.append("genres")
+
+    for g in picked:
+        pace()
+        try:
+            tracks = chart_playlist_tracks(yt.get_playlist(g["playlistId"], limit=None))
+            if not tracks:
+                raise RuntimeError("no tracks")
+            charts.append({**g, "tracks": tracks})
+        except Exception as e:
+            print(f"genre-charts: {g['slug']} failed ({e})", file=sys.stderr)
+            failed.append(g["slug"])
+
+    for slug, title, code in regional:
+        pace()
+        try:
+            got = chart_tracks(code, allow_global_fallback=False)
+            charts.append({"slug": slug, "title": title, "playlistId": got.get("playlistId"), "tracks": got["tracks"]})
+        except Exception as e:
+            print(f"genre-charts: {slug} ({code}) failed ({e})", file=sys.stderr)
+            failed.append(slug)
+    return charts, failed
+
+
+def cmd_genre_charts(args):
+    """{charts: [{slug, title, playlistId, tracks}], failed: [slug]}. Exits
+    non-zero only when no chart at all came back; the server then keeps
+    serving its cached charts."""
+    charts, failed = fetch_genre_charts(country=args.country)
+    if not charts:
+        print("ERROR: genre-charts: every chart failed", file=sys.stderr)
+        sys.exit(1)
+    json.dump({"charts": charts, "failed": failed}, sys.stdout)
+
+
+def radio_batch(seeds, limit=30):
+    """The up-next radio of each seed, CHART_FETCH_PACING_SEC apart, as
+    ([{seed, tracks}], failed_seeds). The seed itself is left out of its
+    radio. A seed whose lookup fails is skipped, not fatal."""
+    radios, failed = [], []
+    for i, seed in enumerate(seeds):
+        if i > 0:
+            time.sleep(CHART_FETCH_PACING_SEC)
+        try:
+            wp = yt.get_watch_playlist(videoId=seed, limit=limit)
+            items = [t for t in ((wp or {}).get("tracks") or []) if t.get("videoId") and t.get("videoId") != seed]
+            radios.append({"seed": seed, "tracks": [to_track_json(t) for t in items][:limit]})
+        except Exception as e:
+            print(f"radio-batch: {seed} failed ({e})", file=sys.stderr)
+            failed.append(seed)
+    return radios, failed
+
+
+def cmd_radio_batch(args):
+    """{radios: [{seed, tracks}], failed: [seed]} for a comma list of seed
+    videoIds. Exits non-zero only when every seed failed."""
+    seeds = []
+    for s in (args.seeds or "").split(","):
+        s = s.strip()
+        if s and s not in seeds:
+            seeds.append(s)
+    if not seeds:
+        json.dump({"radios": [], "failed": []}, sys.stdout)
+        return
+    radios, failed = radio_batch(seeds, limit=args.limit)
+    if not radios:
+        print("ERROR: radio-batch: every seed failed", file=sys.stderr)
+        sys.exit(1)
+    json.dump({"radios": radios, "failed": failed}, sys.stdout)
+
 def _ytdlp_playlist(playlist_id):
     """Fallback reader for a public playlist when ytmusicapi fails: the same
     listing `yt-dlp --flat-playlist -J` prints. Also reads plain YouTube
@@ -1300,6 +1446,14 @@ def main():
     p_trending.add_argument("--country", default="ZZ", help="2-letter country code, ZZ=global (ignored if --countries is given)")
     p_trending.add_argument("--countries", help="Comma list of 2-letter country codes to blend, e.g. US,GB,DE,RS")
 
+    p_genre = sub.add_parser("genre-charts", help="Every YT Music genre chart plus the Balkan (RS daily) chart. Prints JSON.")
+    p_genre.add_argument("--country", default="US", help="Country whose genre charts to read (YouTube only has them for US)")
+
+    p_radio_batch = sub.add_parser("radio-batch", help="Up-next radio for several seed videoIds. Prints JSON.")
+    # Pass as --seeds=<a,b,c> so a hyphen-leading id is not read as an option.
+    p_radio_batch.add_argument("--seeds", default="", help="Comma list of seed videoIds")
+    p_radio_batch.add_argument("--limit", type=int, default=30)
+
     p_info = sub.add_parser("info", help="Resolve a videoId to a direct stream URL. Prints JSON.")
     p_info.add_argument("video_id", nargs="?")
 
@@ -1342,6 +1496,10 @@ def main():
         cmd_download(args)
     elif args.cmd == "trending":
         cmd_trending(args)
+    elif args.cmd == "genre-charts":
+        cmd_genre_charts(args)
+    elif args.cmd == "radio-batch":
+        cmd_radio_batch(args)
     elif args.cmd == "info":
         cmd_info(args)
     elif args.cmd == "recommended":

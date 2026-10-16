@@ -118,6 +118,10 @@ export type PlaybackContext =
   | { type: 'history' }
   | { type: 'uploads' }
   | { type: 'radio' }
+  /** A chart (`popular` or a genre chart, /chart/[slug]). */
+  | { type: 'chart'; chartSlug: string; chartTitle: string }
+  /** A personal genre mix (/mix/[key]). */
+  | { type: 'mix'; mixKey: string; mixTitle: string }
   /** `exclude`: songs radio must not add after it (lib/trackIdentity keys),
    *  e.g. a recommendation played from under a playlist skips what the
    *  playlist already has. */

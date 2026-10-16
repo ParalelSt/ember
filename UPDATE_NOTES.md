@@ -1,3 +1,19 @@
+# 0.7.31: Your mixes and charts by genre
+
+**Host: run `./update.sh` as usual (no new packages).** It restarts
+PocketBase, which creates two collections: `artist_genres` (admin only, each
+artist's genre) and `mixes` (each member reads only their own), from
+`ensure_artist_genres.pb.js` and `ensure_mixes.pb.js`. Nothing in
+`.env.local` is required. Recommended: a free Last.fm key as
+`LASTFM_API_KEY` (better genres, Balkan artists especially; without it
+MusicBrainz is used, keyless), and `MUSICBRAINZ_CONTACT` (your email or a
+URL). Optional: `MIXES_HOUR` (nightly rebuild hour, default 4),
+`MIXES_DISABLED=1`, `GENRES_LOOKUP_DISABLED=1`; see SETUP.md "Charts by
+genre and your mixes". The first Home visit after the update fetches the
+genre charts (about 35 seconds, once a day after that), and a member's
+first mixes appear a minute or two after they open Home. Web only: no new
+apps.
+
 # 0.7.30: Keeps playing through dead zones (apps 0.4.24)
 
 **Host: run `./update.sh` as usual (no new packages, nothing new in

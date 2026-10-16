@@ -39,19 +39,33 @@ export function recentFirst(
   return [playlists[at], ...playlists.slice(0, at), ...playlists.slice(at + 1)];
 }
 
+/** How many of the member's genre mixes take a quick grid slot. */
+export const QUICK_MIXES = 2;
+
+/** A genre mix as the quick grid needs it (lib/mixesView MixTile). */
+export interface QuickMix {
+  key: string;
+  title: string;
+  cover: { artworkUrls: string[] };
+}
+
 /** The quick grid: Liked songs, then a live carlist (it is happening now),
- *  then your playlists, up to QUICK_MAX tiles. */
+ *  then the member's top two genre mixes, then your playlists, up to
+ *  QUICK_MAX tiles. */
 export function quickPicks({
   liked,
   playlists,
   carlist,
   playingPlaylistId,
+  mixes = [],
   max = QUICK_MAX,
 }: {
   liked: CollectionSummary | undefined;
   playlists: readonly CollectionSummary[];
   carlist: LiveCarlist | null | undefined;
   playingPlaylistId?: string | null;
+  /** The member's genre mixes, Home order; the first QUICK_MIXES get a tile. */
+  mixes?: readonly QuickMix[];
   /** How many tiles: QUICK_MAX on a phone, QUICK_MAX_DESKTOP on a desktop. */
   max?: number;
 }): QuickPick[] {
@@ -59,6 +73,9 @@ export function quickPicks({
   if (liked) picks.push({ key: liked.pinId, title: liked.title, href: liked.href, src: null, icon: liked.icon, ref: liked.ref });
   if (carlist) {
     picks.push({ key: `carlist-${carlist.id}`, title: carlist.name || 'Carlist', href: `/session/${carlist.id}`, src: null, icon: 'car' });
+  }
+  for (const m of mixes.slice(0, QUICK_MIXES)) {
+    picks.push({ key: `mix-${m.key}`, title: `${m.title} Mix`, href: `/mix/${encodeURIComponent(m.key)}`, src: m.cover.artworkUrls[0] ?? null, icon: null });
   }
   for (const p of recentFirst(playlists, playingPlaylistId)) {
     picks.push({ key: p.pinId, title: p.title, href: p.href, icon: null, ref: p.ref, ...playlistCover(p.artworkUrl, p.trackArtworks) });

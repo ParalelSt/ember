@@ -28,6 +28,8 @@ const state = vi.hoisted(() => ({
   toggle: vi.fn(),
   playCollection: vi.fn(),
   collectionPlaying: null as string | null,
+  mixes: undefined as undefined | { eligible: boolean; building: boolean; mixes: { key: string; title: string; subtitle: string; cover: { artworkUrls: string[]; color: string }; builtAt: string; count: number }[] },
+  charts: undefined as undefined | { popular: unknown; genres: { slug: string; title: string; color: string; artworkUrls: string[]; count: number; fetchedAt: string | null; stale: boolean }[] },
 }));
 
 vi.mock('next/navigation', () => ({
@@ -41,6 +43,8 @@ vi.mock('@/hooks/useLibrary', () => ({
   useQueryLikes: () => ({ data: state.liked }),
   useQueryTrending: () => ({ data: state.trending, isLoading: false }),
   useQueryRecommended: () => ({ data: state.recommended, isLoading: false }),
+  useQueryCharts: () => ({ data: state.charts }),
+  useQueryMixes: () => ({ data: state.mixes }),
 }));
 vi.mock('@/hooks/useCollections', () => ({
   useCollections: () => ({
@@ -111,8 +115,21 @@ beforeEach(() => {
     current: null,
     isPlaying: false,
     collectionPlaying: null,
+    charts: undefined,
+    mixes: undefined,
   });
 });
+
+const mixTile = (key: string, title: string, count = 50) => ({
+  key, title, subtitle: `${title} Band, Other Band and more`, cover: { artworkUrls: [`/art/${key}a.jpg`, `/art/${key}b.jpg`, `/art/${key}c.jpg`], color: '#f2b8a8' },
+  builtAt: '2026-10-16T04:00:00.000Z', count,
+});
+const someMixes = () => ({ eligible: true, building: false, mixes: [mixTile('rock-metal', 'Rock & Metal'), mixTile('balkan', 'Balkan'), mixTile('pop', 'Pop')] });
+
+const genre = (slug: string, title: string) => ({
+  slug, title, color: '#123456', artworkUrls: [`/art/${slug}1.jpg`, `/art/${slug}2.jpg`], count: 50, fetchedAt: '2026-10-16T08:00:00Z', stale: false,
+});
+const someCharts = () => ({ popular: {}, genres: [genre('balkan', 'Balkan'), genre('rock', 'Rock'), genre('pop', 'Pop')] });
 
 describe('Home on a phone', () => {
   it('has no big Home title, and starts with the quick grid of Liked songs and your playlists', () => {
@@ -476,5 +493,116 @@ describe('Show all and back', () => {
     } finally {
       scroller.remove();
     }
+  });
+});
+
+describe('Charts by genre on Home', () => {
+  const chip = (name: string) => within(screen.getByRole('toolbar', { name: 'Filter Home' })).getByRole('button', { name });
+
+  it('adds the row after Popular now, a tile per chart linking to its page', () => {
+    state.charts = someCharts();
+    render(<HomePage />);
+    expect(headings()).toEqual([
+      'Recently played',
+      'Because you played "hist song 0"',
+      'Popular now',
+      'Charts by genre',
+      'Your playlists',
+      'Friends are listening to',
+    ]);
+    const row = within(screen.getByRole('region', { name: 'Charts by genre' }));
+    expect(row.getAllByRole('link').map((a) => a.getAttribute('href'))).toEqual(['/chart/balkan', '/chart/rock', '/chart/pop']);
+    expect(row.getByRole('link', { name: 'Rock chart' }).textContent).toContain('Top 50');
+    // A sideways row on the gutter like the others.
+    expect(row.getByRole('list')).toHaveClass('flex', 'overflow-x-auto', '-mx-page', 'px-page');
+  });
+
+  it('brings the Charts chip, which keeps the chart row only', () => {
+    state.charts = someCharts();
+    render(<HomePage />);
+    fireEvent.click(chip('Charts'));
+    expect(headings()).toEqual(['Charts by genre']);
+    expect(screen.queryByRole('list', { name: 'Your collections' })).toBeNull();
+  });
+
+  it('has no row and no chip while there are no genre charts', () => {
+    state.charts = { popular: {}, genres: [] };
+    render(<HomePage />);
+    expect(screen.queryByRole('region', { name: 'Charts by genre' })).toBeNull();
+    expect(within(screen.getByRole('toolbar', { name: 'Filter Home' })).queryByRole('button', { name: 'Charts' })).toBeNull();
+  });
+
+  it('uses the wide row on a desktop', () => {
+    state.desktop = true;
+    state.charts = someCharts();
+    render(<HomePage />);
+    const region = screen.getByRole('region', { name: 'Charts by genre' });
+    expect(region.querySelector('[data-row-shelf="wide"]')).not.toBeNull();
+  });
+});
+
+describe('Your mixes on Home', () => {
+  const chip = (name: string) => within(screen.getByRole('toolbar', { name: 'Filter Home' })).getByRole('button', { name });
+
+  it('puts Your mixes first under the quick grid (order B), Radio cards linking to each mix', () => {
+    state.mixes = someMixes();
+    state.charts = someCharts();
+    render(<HomePage />);
+    expect(headings()).toEqual([
+      'Your mixes',
+      'Recently played',
+      'Because you played "hist song 0"',
+      'Popular now',
+      'Charts by genre',
+      'Your playlists',
+      'Friends are listening to',
+    ]);
+    const row = within(screen.getByRole('region', { name: 'Your mixes' }));
+    expect(row.getAllByRole('link').map((a) => a.getAttribute('href'))).toEqual(['/mix/rock-metal', '/mix/balkan', '/mix/pop']);
+    const card = row.getByRole('link', { name: 'Rock & Metal Mix' });
+    expect(card.textContent).toContain('MIX');
+    expect(card.querySelectorAll('[data-mix-face]')).toHaveLength(3);
+    expect(row.getByText('Rock & Metal Band, Other Band and more')).toBeInTheDocument();
+    // 172px cards on the gutter.
+    expect(row.getAllByRole('listitem')[0]).toHaveClass('w-[172px]');
+    expect(row.getByRole('list')).toHaveClass('-mx-page', 'px-page', 'scroll-px-page');
+  });
+
+  it('gives the top two mixes a quick grid slot after Liked songs', () => {
+    state.mixes = someMixes();
+    render(<HomePage />);
+    const grid = screen.getByRole('list', { name: 'Your collections' });
+    expect(within(grid).getAllByRole('link').map((a) => a.textContent)).toEqual(['Liked songs', 'Rock & Metal Mix', 'Balkan Mix', 'Road trip', 'Gym']);
+    expect(within(grid).getByRole('link', { name: 'Balkan Mix' })).toHaveAttribute('href', '/mix/balkan');
+  });
+
+  it('brings the Mixes chip, which keeps the mixes row only', () => {
+    state.mixes = someMixes();
+    render(<HomePage />);
+    fireEvent.click(chip('Mixes'));
+    expect(headings()).toEqual(['Your mixes']);
+    expect(screen.queryByRole('list', { name: 'Your collections' })).toBeNull();
+  });
+
+  it('has no row, chip or grid slot without mixes (not eligible, or still building)', () => {
+    state.mixes = { eligible: false, building: false, mixes: [] };
+    render(<HomePage />);
+    expect(screen.queryByRole('region', { name: 'Your mixes' })).toBeNull();
+    expect(within(screen.getByRole('toolbar', { name: 'Filter Home' })).queryByRole('button', { name: 'Mixes' })).toBeNull();
+    expect(within(screen.getByRole('list', { name: 'Your collections' })).queryByText(/ Mix$/)).toBeNull();
+  });
+
+  it('leaves out a mix whose songs are all gone', () => {
+    state.mixes = { eligible: true, building: false, mixes: [mixTile('rock-metal', 'Rock & Metal', 0), mixTile('pop', 'Pop')] };
+    render(<HomePage />);
+    const row = within(screen.getByRole('region', { name: 'Your mixes' }));
+    expect(row.getAllByRole('link').map((a) => a.getAttribute('href'))).toEqual(['/mix/pop']);
+  });
+
+  it('uses the wide row on a desktop', () => {
+    state.desktop = true;
+    state.mixes = someMixes();
+    render(<HomePage />);
+    expect(screen.getByRole('region', { name: 'Your mixes' }).querySelector('[data-row-shelf="wide"]')).not.toBeNull();
   });
 });

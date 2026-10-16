@@ -21,6 +21,19 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    id: 'genre-mixes',
+    version: '0.7.31',
+    date: '2026-10-16',
+    title: 'Your mixes and charts by genre',
+    summary: 'Home now has your own mixes, one per genre you play, and a chart for each genre.',
+    bullets: [
+      'Your mixes: one mix for each genre you listen to, like Rock & Metal or Balkan, made from songs you play plus new ones from the same genre. They are rebuilt every night.',
+      'Charts by genre: the top songs in Balkan, Pop, Hip Hop, Rock and more, updated daily, right after Popular now.',
+      'Your top two mixes also sit in the grid at the top of Home, and the Mixes and Charts filters show just those.',
+      'Like a mix or a chart today? Save it as a playlist of your own.',
+    ],
+  },
+  {
     id: 'dead-zones',
     version: '0.7.30',
     date: '2026-10-15',
