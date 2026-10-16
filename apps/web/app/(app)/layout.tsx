@@ -67,65 +67,67 @@ export default function AppShellLayout({ children }: { children: ReactNode }) {
       <Sidebar />
       <Drawer open={drawerOpen} onOpenChange={setDrawerOpen} />
       <div className="flex-1 min-h-0 flex flex-col min-w-0">
-        <TopBar onMenu={() => setDrawerOpen(true)} menuDot={hasNew} />
-        {/* The content column. --ember-scroller-h is published HERE rather
-            than on the scroller itself so everything in the column can read
-            it: the LyricsPanel sizes itself to it, and the search dropdown
-            caps its panel with it so the results never reach past the
-            player bar. --ember-topbar-h is the desktop top bar's height
-            (0 on a phone and on /search): the things that stick to the
-            scroller's top (the tabs toolbar, the Appearance preview)
-            stick just under the bar instead. The bar stops short of the
-            lyrics panel (--ember-lyrics-w), which runs the scroller's full
-            height beside it. */}
-        <div
-          className="relative flex-1 min-h-0 flex flex-col"
-          style={
-            {
-              ...(scrollerH ? { ['--ember-scroller-h' as string]: `${scrollerH}px` } : null),
-              ['--ember-topbar-h' as string]: `${isDesktop ? barH : 0}px`,
-              ['--ember-lyrics-w' as string]: isDesktop && lyricsOpen ? LYRICS_PANEL_W : '0px',
-            } as CSSProperties
-          }
-        >
-          {/* Phone: nothing in flow, just the full-screen sheet when it is
-              open (the TopBar above has the search button). */}
-          {!isDesktop && <SearchOverlayContainer />}
-          {/* The OUTER scroller owns the scrollbar, from the very top of
-              the column to its bottom, on the far right edge of the
-              viewport past the LyricsPanel. Inside: the desktop top bar
-              (sticky, the page scrolls under it), then a flex row holding
-              <main> (grows tall, drives the scroll) and the LyricsPanel
-              (pulled up beside the bar, sticky at the top). */}
-          <div ref={scrollerRef} data-app-scroller className="flex-1 min-h-0 overflow-y-auto">
-            {isDesktop && (
-              <DesktopTopBar raised={searchOpen} onHeightChange={setBarH}>
-                <SearchOverlayContainer />
-              </DesktopTopBar>
-            )}
-            {/* Fills what is left under the bar, so a short page does not
-                scroll by the bar's height. */}
-            <div className="flex min-w-0 min-h-[calc(100%-var(--ember-topbar-h,0px))]">
-              <main className="flex-1 min-w-0 p-page md:p-page-lg">
-                {/* pb-section: room past the page's last row, so scrolled
-                    to the end nothing is left under Back to top. A page
-                    that marks itself data-home-wide (the desktop Home)
-                    uses the whole width instead of the content cap. */}
-                <div className="mx-auto max-w-(--content-max) pb-section has-[[data-home-wide]]:max-w-none">{children}</div>
-              </main>
-              <LyricsPanel />
+        <div data-phone-search-area className="relative flex-1 min-h-0 flex flex-col">
+          <TopBar onMenu={() => setDrawerOpen(true)} menuDot={hasNew} />
+          {/* The content column. --ember-scroller-h is published HERE rather
+              than on the scroller itself so everything in the column can read
+              it: the LyricsPanel sizes itself to it, and the search dropdown
+              caps its panel with it so the results never reach past the
+              player bar. --ember-topbar-h is the desktop top bar's height
+              (0 on a phone and on /search): the things that stick to the
+              scroller's top (the tabs toolbar, the Appearance preview)
+              stick just under the bar instead. The bar stops short of the
+              lyrics panel (--ember-lyrics-w), which runs the scroller's full
+              height beside it. */}
+          <div
+            className="relative flex-1 min-h-0 flex flex-col"
+            style={
+              {
+                ...(scrollerH ? { ['--ember-scroller-h' as string]: `${scrollerH}px` } : null),
+                ['--ember-topbar-h' as string]: `${isDesktop ? barH : 0}px`,
+                ['--ember-lyrics-w' as string]: isDesktop && lyricsOpen ? LYRICS_PANEL_W : '0px',
+              } as CSSProperties
+            }
+          >
+            {/* The OUTER scroller owns the scrollbar, from the very top of
+                the column to its bottom, on the far right edge of the
+                viewport past the LyricsPanel. Inside: the desktop top bar
+                (sticky, the page scrolls under it), then a flex row holding
+                <main> (grows tall, drives the scroll) and the LyricsPanel
+                (pulled up beside the bar, sticky at the top). */}
+            <div ref={scrollerRef} data-app-scroller className="flex-1 min-h-0 overflow-y-auto">
+              {isDesktop && (
+                <DesktopTopBar raised={searchOpen} onHeightChange={setBarH}>
+                  <SearchOverlayContainer />
+                </DesktopTopBar>
+              )}
+              {/* Fills what is left under the bar, so a short page does not
+                  scroll by the bar's height. */}
+              <div className="flex min-w-0 min-h-[calc(100%-var(--ember-topbar-h,0px))]">
+                <main className="flex-1 min-w-0 p-page md:p-page-lg">
+                  {/* pb-section: room past the page's last row, so scrolled
+                      to the end nothing is left under Back to top. A page
+                      that marks itself data-home-wide (the desktop Home)
+                      uses the whole width instead of the content cap. */}
+                  <div className="mx-auto max-w-(--content-max) pb-section has-[[data-home-wide]]:max-w-none">{children}</div>
+                </main>
+                <LyricsPanel />
+              </div>
             </div>
+            {/* Inside this `relative` column, so it floats a fixed step above
+                the scroller's own bottom edge whether or not the player bar
+                is showing (bughunt V12). */}
+            <BackToTop scrollRef={scrollerRef} />
+            {/* A transfer in the background: its floating pill and its
+                "Transfer done" card, over whatever page is open. */}
+            <TransferStatus />
+            {/* The Android app's update (downloading, ready, tap to install);
+                nothing anywhere else. */}
+            <AppUpdatePill />
           </div>
-          {/* Inside this `relative` column, so it floats a fixed step above
-              the scroller's own bottom edge whether or not the player bar
-              is showing (bughunt V12). */}
-          <BackToTop scrollRef={scrollerRef} />
-          {/* A transfer in the background: its floating pill and its
-              "Transfer done" card, over whatever page is open. */}
-          <TransferStatus />
-          {/* The Android app's update (downloading, ready, tap to install);
-              nothing anywhere else. */}
-          <AppUpdatePill />
+          {/* Bound phone search above playback, including when a result
+              starts the first song and the player enters the layout. */}
+          {!isDesktop && <SearchOverlayContainer />}
         </div>
         <PlayerBar />
         <MobileNav onSearchClick={() => setSearchOpen(true)} />

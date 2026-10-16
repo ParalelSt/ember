@@ -120,7 +120,12 @@ describe('app shell, phone', () => {
     const search = screen.getByTestId('search-box');
     expect(scroller().contains(search)).toBe(false);
     const column = scroller().parentElement!;
-    expect(column.firstElementChild).toBe(search);
+    // The sheet sits in the same bounded area as the top bar and the page,
+    // which ends above the player bar, so it can never cover playback.
+    const area = column.parentElement!;
+    expect(area).toHaveAttribute('data-phone-search-area');
+    expect(area.contains(search)).toBe(true);
+    expect(area.lastElementChild).toBe(search);
     expect(column.style.getPropertyValue('--ember-topbar-h')).toBe('0px');
     expect(screen.getByTestId('phone-topbar')).toBeInTheDocument();
   });
