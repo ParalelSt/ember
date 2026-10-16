@@ -137,6 +137,11 @@
   --sidebar-w: 15rem;
   --lyrics-w: 28rem;
   --content-max: 80rem;
+  /* Back to top on desktop: the content's right edge sits page-lg plus
+     half the spare width in from the scroller column's edge (the column
+     is the button's containing block, so 100% is its width). The button
+     goes 1.5rem past that edge, never closer than 1rem to the window. */
+  --back-to-top-right: max(1rem, calc(var(--spacing-page-lg) + max(0px, (100% - 2 * var(--spacing-page-lg) - var(--content-max)) / 2) - 1.5rem));
 
   /* Safe-area insets: the ONE source of truth for how far the bars have to
      stand off each edge. Two sources feed it, and whichever is real wins.
