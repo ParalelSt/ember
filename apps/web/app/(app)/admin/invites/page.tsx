@@ -14,6 +14,10 @@ import {
 import type { AdminInvite } from '@/lib/api';
 import { EmptyState } from '@/components/page/EmptyState';
 import { SectionHeader } from '@/components/page/SectionHeader';
+import { Label } from '@/components/ui/label';
+import { FloatingActionButton } from '@/components/ui/floating-action-button';
+import { AdminSheet } from '@/components/admin/AdminSheet';
+import { useIsDesktop } from '@/hooks/useIsDesktop';
 
 export default function AdminInvitesPage() {
   const { data: invites = [], isLoading } = useQueryAdminInvites();
@@ -23,6 +27,10 @@ export default function AdminInvitesPage() {
   const [newEmail, setNewEmail] = useState('');
   const [search, setSearch] = useState('');
   const [pendingDelete, setPendingDelete] = useState<AdminInvite | null>(null);
+  // Phone: Add invite is a floating + that opens this sheet, in place of
+  // the form across the top (which stays from md up).
+  const [addOpen, setAddOpen] = useState(false);
+  const isDesktop = useIsDesktop();
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -38,13 +46,14 @@ export default function AdminInvitesPage() {
       await addInvite.mutateAsync(email);
       toast.success(`Added ${email}`);
       setNewEmail('');
+      setAddOpen(false);
     } catch (err) {
       toast.error(`Couldn't add: ${(err as Error).message}`);
     }
   };
 
   return (
-    <section>
+    <section className="pb-stack md:pb-0">
       <div className="flex items-center justify-between gap-4 mb-4 flex-wrap">
         <SectionHeader title={`Invites · ${invites.length}`} />
         <Input
@@ -55,7 +64,7 @@ export default function AdminInvitesPage() {
         />
       </div>
 
-      <form onSubmit={onAdd} className="flex gap-2 mb-6">
+      <form onSubmit={onAdd} className="hidden md:flex gap-2 mb-6">
         <Input
           type="email"
           placeholder="email@example.com"
@@ -76,7 +85,7 @@ export default function AdminInvitesPage() {
       {isLoading && <EmptyState>Loading…</EmptyState>}
       {!isLoading && filtered.length === 0 && (
         <EmptyState>
-          {search ? 'No invites match.' : 'No invites yet, add one above.'}
+          {search ? 'No invites match.' : `No invites yet, add one ${isDesktop ? 'above' : 'with the + button'}.`}
         </EmptyState>
       )}
 
@@ -104,6 +113,40 @@ export default function AdminInvitesPage() {
           </div>
         ))}
       </div>
+
+      {!isDesktop && (
+        <>
+          <FloatingActionButton icon={PlusIcon} aria-label="Add invite" onClick={() => setAddOpen(true)} />
+          <AdminSheet open={addOpen} onOpenChange={setAddOpen} title="Add invite" data-testid="add-invite-sheet">
+            <form onSubmit={onAdd} className="flex flex-col gap-block">
+              <div className="flex flex-col gap-cluster">
+                <Label htmlFor="add-invite-email">Email</Label>
+                <Input
+                  id="add-invite-email"
+                  type="email"
+                  placeholder="email@example.com"
+                  value={newEmail}
+                  onChange={(e) => setNewEmail(e.target.value)}
+                  autoFocus
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-cluster">
+                <Button type="button" variant="outline" className="h-11" onClick={() => setAddOpen(false)}>
+                  Cancel
+                </Button>
+                <Button
+                  type="submit"
+                  variant="ember"
+                  className="h-11"
+                  disabled={addInvite.isPending || !newEmail.trim()}
+                >
+                  Add
+                </Button>
+              </div>
+            </form>
+          </AdminSheet>
+        </>
+      )}
 
       <ConfirmDialog
         open={pendingDelete !== null}
