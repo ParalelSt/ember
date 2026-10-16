@@ -168,13 +168,18 @@ export function DevicesPanel() {
   const showCode = codeOpen || !canScan;
 
   return (
-    <section className="max-w-2xl">
+    <section className="max-w-2xl lg:max-w-5xl">
       <SectionHeader title="Devices" />
+
+      {/* Desktop: two columns (owner pick devices2). Left: this device and
+          other devices; right: sign in and the danger zone. Phone keeps the
+          single stacked column in the same order. */}
+      <div data-testid="devices-grid" className="lg:mt-stack lg:grid lg:grid-cols-2 lg:items-start lg:gap-x-stack lg:gap-y-section">
 
       {/* This device */}
       <div
         data-testid="this-device"
-        className="mt-stack rounded-2xl border border-ember/30 bg-linear-to-br from-ember/20 via-ember/5 to-card p-page shadow-soft"
+        className="mt-stack rounded-2xl border border-ember/30 lg:col-start-1 lg:row-start-1 lg:mt-0 bg-linear-to-br from-ember/20 via-ember/5 to-card p-page shadow-soft"
       >
         <div className="flex items-center gap-row">
           <span className="grid size-14 shrink-0 place-items-center rounded-2xl bg-ember/20 text-ember" aria-hidden>
@@ -195,7 +200,7 @@ export function DevicesPanel() {
       {/* Sign in another device */}
       <div
         data-testid="signin-card"
-        className="mt-stack rounded-2xl bg-background bg-linear-to-br from-ember to-ember/70 p-page text-ember-foreground shadow-soft"
+        className="mt-stack rounded-2xl bg-background bg-linear-to-br lg:col-start-2 lg:row-start-1 lg:mt-0 from-ember to-ember/70 p-page text-ember-foreground shadow-soft"
       >
         <span className="grid size-14 place-items-center rounded-2xl bg-ember-foreground text-ember" aria-hidden>
           <ScanQrIcon className="size-8" />
@@ -260,7 +265,7 @@ export function DevicesPanel() {
       </div>
 
       {/* Other devices */}
-      <div className="mt-section">
+      <div data-testid="other-devices" className="mt-section lg:col-start-1 lg:row-start-2 lg:mt-0">
         <div className="flex items-baseline justify-between gap-cluster text-xs font-semibold uppercase tracking-widest text-muted-foreground">
           <h3>Other devices</h3>
           {recent !== null && <span data-testid="other-count">{rows.length}</span>}
@@ -313,7 +318,7 @@ export function DevicesPanel() {
       </div>
 
       {/* Danger zone */}
-      <div data-testid="danger-zone" className="mt-section rounded-2xl border border-destructive/45 bg-destructive/10 p-page">
+      <div data-testid="danger-zone" className="mt-section rounded-2xl lg:col-start-2 lg:row-start-2 lg:mt-0 border border-destructive/45 bg-destructive/10 p-page">
         <div className="flex items-center gap-cluster text-destructive">
           <ShieldWarningIcon className="size-6" />
           <h3 className="font-semibold">Danger zone</h3>
@@ -331,6 +336,7 @@ export function DevicesPanel() {
         >
           Sign out everywhere
         </Button>
+      </div>
       </div>
 
       <Sheet open={confirming} onOpenChange={(open) => !revoking && setConfirming(open)}>

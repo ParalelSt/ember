@@ -80,6 +80,15 @@ describe('DevicesPanel: layout', () => {
       expect(order[i - 1].compareDocumentPosition(order[i]) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     }
   });
+
+  it('on desktop: two columns, this device and other devices left, sign in and danger zone right', async () => {
+    await mount();
+    expect(screen.getByTestId('devices-grid')).toHaveClass('lg:grid', 'lg:grid-cols-2');
+    expect(screen.getByTestId('this-device')).toHaveClass('lg:col-start-1', 'lg:row-start-1');
+    expect(screen.getByTestId('other-devices')).toHaveClass('lg:col-start-1', 'lg:row-start-2');
+    expect(screen.getByTestId('signin-card')).toHaveClass('lg:col-start-2', 'lg:row-start-1');
+    expect(screen.getByTestId('danger-zone')).toHaveClass('lg:col-start-2', 'lg:row-start-2');
+  });
 });
 
 describe('DevicesPanel: this device', () => {
