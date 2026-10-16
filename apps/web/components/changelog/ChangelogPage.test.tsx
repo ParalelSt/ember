@@ -109,6 +109,32 @@ describe('ChangelogEntryPage', () => {
     expect(screen.getByRole('link', { name: "Back to What's new" })).toHaveAttribute('href', '/whats-new');
   });
 
+  it('desktop heading row has a bold back arrow, the version, date and scope, and no caret-left icon', () => {
+    render(<ChangelogEntryPage entry={entries[1]} />);
+    const row = screen.getByTestId('changelog-heading-row');
+    expect(row).toHaveClass('hidden', 'md:flex');
+    const back = within(row).getByRole('link', { name: 'All updates' });
+    expect(back).toHaveAttribute('href', '/whats-new');
+    expect(back).toHaveClass('hover:text-ember');
+    expect(back.querySelector('.phosphor-arrow-left-bold')).not.toBeNull();
+    expect(within(row).getByTestId('changelog-heading-version')).toHaveTextContent('0.3.0');
+    expect(row).toHaveTextContent('2026-09-18');
+    expect(row).toHaveTextContent('Desktop app');
+    expect(screen.getByTestId('changelog-entry-page').className).toContain('md:max-w-[776px]');
+    // The only fill caret-left is in the phone bar, which is hidden from md up.
+    const carets = document.querySelectorAll('.phosphor-caret-left');
+    carets.forEach((c) => expect(c.closest('[data-testid="changelog-bar"]')).not.toBeNull());
+  });
+
+  it('keeps the phone bar unchanged and hides it on desktop only', () => {
+    render(<ChangelogEntryPage entry={entries[1]} />);
+    const bar = screen.getByTestId('changelog-bar');
+    expect(bar).toHaveClass('sticky', 'top-0', 'md:hidden');
+    expect(within(bar).getByRole('link', { name: "Back to What's new" })).toHaveAttribute('href', '/whats-new');
+    expect(within(bar).getByText("What's new")).toBeInTheDocument();
+    expect(within(bar).getByTestId('changelog-version')).toHaveTextContent('0.3.0');
+  });
+
   it('shows a friendly state for an unknown entry', () => {
     render(<ChangelogEntryPage entry={undefined} />);
     expect(screen.getByTestId('changelog-missing')).toBeInTheDocument();
@@ -163,6 +189,55 @@ describe('ChangelogEntryPage navigation', () => {
     expect(dots.filter((d) => d.dataset.current === 'true')).toHaveLength(1);
     fireEvent.click(dots[0]);
     expect(onGo).toHaveBeenCalledWith('e2');
+  });
+
+  it('desktop newer and older buttons navigate and disable at the ends', () => {
+    const onGo = vi.fn();
+    const { unmount } = render(<ChangelogEntryPage entry={many[5]} entries={many} onGo={onGo} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Newer update' }));
+    expect(onGo).toHaveBeenLastCalledWith('e4');
+    fireEvent.click(screen.getByRole('button', { name: 'Older update' }));
+    expect(onGo).toHaveBeenLastCalledWith('e6');
+    expect(screen.getByTestId('changelog-hint-desktop')).toHaveTextContent('Click an arrow or use the left and right arrow keys');
+    unmount();
+    onGo.mockClear();
+    const first = render(<ChangelogEntryPage entry={many[0]} entries={many} onGo={onGo} />);
+    expect(screen.getByRole('button', { name: 'Newer update' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Older update' })).toBeEnabled();
+    fireEvent.click(screen.getByRole('button', { name: 'Newer update' }));
+    expect(onGo).not.toHaveBeenCalled();
+    first.unmount();
+    render(<ChangelogEntryPage entry={many[11]} entries={many} onGo={onGo} />);
+    expect(screen.getByRole('button', { name: 'Older update' })).toBeDisabled();
+  });
+
+  it('desktop cards preview the neighbours, navigate, and show end states', () => {
+    const onGo = vi.fn();
+    const { unmount } = render(<ChangelogEntryPage entry={many[5]} entries={many} onGo={onGo} />);
+    expect(screen.getByTestId('changelog-cards')).toHaveClass('hidden', 'md:grid');
+    const n = screen.getByTestId('changelog-card-newer');
+    const o = screen.getByTestId('changelog-card-older');
+    expect(n).toHaveTextContent('Newer');
+    expect(n).toHaveTextContent('T4');
+    expect(n).toHaveTextContent('0.1.16 · 2026-09-01');
+    expect(o).toHaveTextContent('T6');
+    fireEvent.click(n);
+    expect(onGo).toHaveBeenLastCalledWith('e4');
+    fireEvent.click(o);
+    expect(onGo).toHaveBeenLastCalledWith('e6');
+    unmount();
+    onGo.mockClear();
+    const first = render(<ChangelogEntryPage entry={many[0]} entries={many} onGo={onGo} />);
+    const dim = screen.getByTestId('changelog-card-newer');
+    expect(dim).toHaveAttribute('data-empty', 'true');
+    expect(dim).toHaveTextContent('You are up to date');
+    expect(dim).toHaveTextContent('Nothing newer');
+    fireEvent.click(dim);
+    expect(onGo).not.toHaveBeenCalled();
+    first.unmount();
+    render(<ChangelogEntryPage entry={many[11]} entries={many} onGo={onGo} />);
+    expect(screen.getByTestId('changelog-card-older')).toHaveTextContent('That is all');
+    expect(screen.getByTestId('changelog-card-older')).toHaveTextContent('Nothing older');
   });
 
   it('Got it marks read and returns to the list', () => {

@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, type TouchEvent } from 'react';
 import Link from 'next/link';
-import { ChevronLeftIcon } from '@/components/icons';
+import { ArrowLeftIcon, ArrowRightIcon, ChevronLeftIcon } from '@/components/icons';
 import { Eyebrow } from '@/components/page/Eyebrow';
 import type { ChangelogEntry } from '@/lib/changelog';
 import { SCOPE_LABEL } from '@/components/changelog/ChangelogPage';
@@ -41,7 +41,8 @@ interface Props {
   onGotIt?: () => void;
 }
 
-/** One full changelog entry: sticky back bar, bullets, swipe/arrow-key and dot
+/** One full changelog entry: sticky back bar (phone) or a heading row with a
+ *  back link (desktop), bullets, swipe/arrow-key and dot
  *  navigation, and a "Got it" card. */
 export function ChangelogEntryPage({ entry, entries = [], onGo, onGotIt }: Props) {
   const index = entry ? entries.findIndex((e) => e.id === entry.id) : -1;
@@ -109,11 +110,11 @@ export function ChangelogEntryPage({ entry, entries = [], onGo, onGotIt }: Props
       data-testid="changelog-entry-page"
       onTouchStart={onTouchStart}
       onTouchEnd={onTouchEnd}
-      className="max-w-2xl"
+      className="max-w-2xl md:mx-auto md:max-w-[776px] md:pt-stack"
     >
       <div
         data-testid="changelog-bar"
-        className="sticky top-0 z-10 -mx-page flex items-center gap-cluster border-b border-border bg-background/90 px-row py-inset backdrop-blur-md md:-mx-page-lg md:px-page-lg"
+        className="md:hidden sticky top-0 z-10 -mx-page flex items-center gap-cluster border-b border-border bg-background/90 px-row py-inset backdrop-blur-md md:-mx-page-lg md:px-page-lg"
       >
         {back}
         <b className="flex-1 text-sm font-semibold">What&apos;s new</b>
@@ -122,8 +123,32 @@ export function ChangelogEntryPage({ entry, entries = [], onGo, onGotIt }: Props
         </span>
       </div>
 
-      <Eyebrow className="mt-stack">{[entry.date, entry.scope && SCOPE_LABEL[entry.scope]].filter(Boolean).join(' · ')}</Eyebrow>
-      <h1 className="mt-inset text-2xl font-bold leading-tight tracking-tight md:text-3xl">{entry.title}</h1>
+      <div
+        data-testid="changelog-heading-row"
+        className="hidden min-h-hit items-center gap-row text-xs font-semibold uppercase tracking-widest text-muted-foreground md:flex"
+      >
+        <Link
+          href="/whats-new"
+          data-testid="changelog-back-desktop"
+          className="inline-flex items-center gap-cluster font-bold text-foreground transition-colors hover:text-ember"
+        >
+          <ArrowLeftIcon className="size-4" />
+          All updates
+        </Link>
+        <span aria-hidden className="text-muted-foreground/60">/</span>
+        <span data-testid="changelog-heading-version" className="text-ember">{entry.version}</span>
+        <span aria-hidden className="text-muted-foreground/60">&middot;</span>
+        <span>{entry.date}</span>
+        {entry.scope && (
+          <>
+            <span aria-hidden className="text-muted-foreground/60">&middot;</span>
+            <span>{SCOPE_LABEL[entry.scope]}</span>
+          </>
+        )}
+      </div>
+
+      <Eyebrow className="mt-stack md:hidden">{[entry.date, entry.scope && SCOPE_LABEL[entry.scope]].filter(Boolean).join(' · ')}</Eyebrow>
+      <h1 className="mt-inset text-2xl font-bold leading-tight tracking-tight md:mt-cluster md:text-4xl">{entry.title}</h1>
       <p className="mt-cluster max-w-prose text-muted-foreground">{entry.summary}</p>
 
       <ul className="mt-stack flex list-disc flex-col gap-row pl-stack text-muted-foreground marker:text-muted-foreground/50">
@@ -148,7 +173,22 @@ export function ChangelogEntryPage({ entry, entries = [], onGo, onGotIt }: Props
 
       {entries.length > 1 && (
         <div data-testid="changelog-nav" className="mt-section text-center text-xs text-muted-foreground">
-          <div className="mb-cluster flex items-center justify-center">
+          <div data-testid="changelog-cards" className="mb-stack hidden grid-cols-2 gap-row text-left md:grid">
+            <NeighbourCard dir="newer" target={newer} onGo={onGo} />
+            <NeighbourCard dir="older" target={older} onGo={onGo} />
+          </div>
+          <div className="mb-cluster flex items-center justify-center md:gap-block">
+            <button
+              type="button"
+              aria-label="Newer update"
+              data-testid="changelog-newer"
+              disabled={!newer}
+              onClick={() => newer && onGo?.(newer.id)}
+              className="hidden size-hit items-center justify-center rounded-full border border-border text-foreground transition-colors hover:bg-card disabled:pointer-events-none disabled:opacity-40 md:flex"
+            >
+              <ArrowLeftIcon className="size-4" />
+            </button>
+            <div className="flex items-center justify-center">
             {dots.map((i) => {
               const on = i === index;
               return (
@@ -166,10 +206,58 @@ export function ChangelogEntryPage({ entry, entries = [], onGo, onGotIt }: Props
                 </button>
               );
             })}
+            </div>
+            <button
+              type="button"
+              aria-label="Older update"
+              data-testid="changelog-older"
+              disabled={!older}
+              onClick={() => older && onGo?.(older.id)}
+              className="hidden size-hit items-center justify-center rounded-full border border-border text-foreground transition-colors hover:bg-card disabled:pointer-events-none disabled:opacity-40 md:flex"
+            >
+              <ArrowRightIcon className="size-4" />
+            </button>
           </div>
-          <p>{isCoarse() ? 'Swipe for newer or older' : 'Use the left and right arrow keys'}</p>
+          <p className="md:hidden">{isCoarse() ? 'Swipe for newer or older' : 'Use the left and right arrow keys'}</p>
+          <p data-testid="changelog-hint-desktop" className="hidden md:block">Click an arrow or use the left and right arrow keys</p>
         </div>
       )}
     </div>
+  );
+}
+
+const CARD_BASE = 'block w-full min-w-0 rounded-2xl border border-border bg-card px-block py-row';
+
+/** Desktop preview of the newer/older neighbour; dimmed and inert at the ends. */
+function NeighbourCard({ dir, target, onGo }: { dir: 'newer' | 'older'; target?: ChangelogEntry; onGo?: (id: string) => void }) {
+  const isNewer = dir === 'newer';
+  const align = isNewer ? '' : 'text-right';
+  const label = (text: string) => (
+    <small className={`flex items-center gap-cluster text-xs font-bold uppercase tracking-widest text-ember ${isNewer ? '' : 'justify-end'}`}>
+      {isNewer && target && <ArrowLeftIcon className="size-3.5" />}
+      {text}
+      {!isNewer && target && <ArrowRightIcon className="size-3.5" />}
+    </small>
+  );
+  if (!target) {
+    return (
+      <div data-testid={`changelog-card-${dir}`} data-empty="true" className={`${CARD_BASE} opacity-40 ${align}`}>
+        {label(isNewer ? 'Newest' : 'Oldest')}
+        <b className="mt-cluster block truncate text-sm text-foreground">{isNewer ? 'You are up to date' : 'That is all'}</b>
+        <span className="mt-inset block text-xs text-muted-foreground">{isNewer ? 'Nothing newer' : 'Nothing older'}</span>
+      </div>
+    );
+  }
+  return (
+    <button
+      type="button"
+      data-testid={`changelog-card-${dir}`}
+      onClick={() => onGo?.(target.id)}
+      className={`${CARD_BASE} transition-colors hover:border-ember ${align}`}
+    >
+      {label(isNewer ? 'Newer' : 'Older')}
+      <b className="mt-cluster block truncate text-sm text-foreground">{target.title}</b>
+      <span className="mt-inset block text-xs text-muted-foreground">{target.version} &middot; {target.date}</span>
+    </button>
   );
 }
