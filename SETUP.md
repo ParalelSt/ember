@@ -716,7 +716,7 @@ rows and files were removed and how much disk was freed.
 
 ### Trending chart country
 
-Home's "Trending right now" shelf is a blend of several countries' YouTube
+Home's "Popular now" shelf is a blend of several countries' YouTube
 Music daily charts, fetched a few times a day and cached in
 `my_music/trending.json`. By default it blends the US, UK, German and
 Serbian charts (a worldwide chart leans heavily toward whichever country has
@@ -741,6 +741,38 @@ TRENDING_COUNTRY=DE      # a single chart country code; overrides TRENDING_COUNT
 ```
 
 An unknown code falls back to the global chart (`ZZ`).
+
+### Charts by genre and your mixes
+
+Home's **Charts by genre** row shows YouTube Music's genre charts (Rock,
+Hard Rock & Metal, Pop, Hip Hop, Latin, Dance & Electronic, Country &
+Americana, Jazz; YouTube only publishes these for the US) plus a **Balkan**
+chart from Serbia's daily chart. They are fetched once a day (about 11
+YouTube requests, 3 seconds apart) and cached in `my_music/charts.json`.
+Nothing to set up.
+
+**Your mixes** are each member's own mixes, one per genre family they play
+(Rock & Metal, Balkan, Pop, ...), rebuilt every night for everyone who
+played something in the last 90 days, and right away for a member who
+opens Home with none yet. A member needs about 15 recent plays first (a
+like counts double). Ember works out an artist's genre from Last.fm when it
+has a key, from MusicBrainz otherwise (no key needed, but it knows fewer
+Balkan and new artists, so more songs are left out of mixes), and keeps the
+answers in PocketBase (`artist_genres`). All optional, in
+`apps/web/.env.local`:
+
+```bash
+LASTFM_API_KEY=            # a free key from https://www.last.fm/api/account/create; better genres
+MUSICBRAINZ_CONTACT=       # your email or a URL, sent to MusicBrainz as asked for (keyless lookups)
+MIXES_HOUR=4               # hour of the local day for the nightly rebuild, 0-23
+MIXES_DISABLED=1           # no mix builds at all (nightly or on opening Home)
+GENRES_LOOKUP_DISABLED=1   # never ask Last.fm or MusicBrainz (only stored genres and charts count)
+```
+
+An admin can set an artist's family by hand, which no lookup replaces:
+`PATCH /api/admin/artist-genres/<artist>` with `{"family": "rock-metal"}`
+(or `null` to keep them out of every mix). The families are listed in
+`apps/web/lib/genres/taxonomy.ts`.
 
 ### Backups
 

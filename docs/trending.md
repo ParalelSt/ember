@@ -1,6 +1,6 @@
 # Trending
 
-The Home "Trending right now" shelf shows YouTube Music's real daily chart. The shelf is the feature: there is no separate `/trending` page. Shipped as 0.3.2.
+The Home "Popular now" shelf (called "Trending right now" until the Home rebuild) shows YouTube Music's real daily chart. The shelf is the feature: there is no separate `/trending` page. Shipped as 0.3.2.
 
 ## What was broken
 
@@ -104,3 +104,9 @@ already, and doing the merge right there means the TS layer keeps treating
 | `tests/test_player_trending.py` | the playlist picker and fallback chain against saved `get_charts` / `get_playlist` output; `blend_charts` (Borda order, videoId + title/artist dedupe, tie-break, 100 cap), `fetch_country_charts` and `cmd_trending` (partial and total country failure, `--countries` parsing) |
 | `tests/fake-player.sh` | a `trending` case blended per `--countries`: shared songs in every country plus country-exclusives, so the blend is exercised end to end; `FAKE_FAIL_TRENDING=1` to fail it |
 | `tests/trending-ui.test.mjs` | Home shelf shows the blended order across `TRENDING_COUNTRIES`; the API's `source` field lists the blended countries; with the source failing after a good fetch it still shows the last good list |
+
+## Popular now and the genre charts (0.7.31)
+
+The shelf is "Popular now", unchanged underneath: same source, same cache, same `GET /api/youtube/trending` (the search empty state and the playlist picker still use it). It is also the `popular` chart of `GET /api/charts` and `/chart/popular`.
+
+The genre charts next to it ("Charts by genre") are a second, separate cache: `player.py genre-charts`, `lib/charts.ts`, `MUSIC_DIR/charts.json`, refreshed daily. See `docs/mixes.md`.
