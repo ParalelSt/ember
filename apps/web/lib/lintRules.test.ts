@@ -178,7 +178,6 @@ const SPACING_BASELINE: Record<string, number> = {
   'components/admin/AdminTabs.tsx': 3,
   'components/artist/AlbumCard.tsx': 3,
   'components/artist/AlbumRow.tsx': 3,
-  'components/changelog/ChangelogPage.tsx': 10,
   'components/changelog/HideTagsSwitch.tsx': 1,
   'components/changelog/NewBadge.tsx': 2,
   'components/changelog/WhatsNewLink.tsx': 3,

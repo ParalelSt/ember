@@ -18,11 +18,11 @@ describe('WhatsNewLink', () => {
     expect(screen.getByRole('link', { name: "What's new" })).toHaveAttribute('href', '/whats-new');
   });
 
-  it('shows the pulsing New pill only when showNew', () => {
+  it('shows the New pill only when showNew', () => {
     const { rerender } = render(<WhatsNewLink showNew activePath="/" />);
     const badge = screen.getByTestId('new-badge');
     expect(badge).toHaveTextContent('New');
-    expect(badge.className).toContain('ember-new-pulse');
+    expect(badge.className).not.toContain('animate');
     rerender(<WhatsNewLink showNew={false} activePath="/" />);
     expect(screen.queryByTestId('new-badge')).toBeNull();
   });
@@ -43,21 +43,22 @@ describe('WhatsNewLink', () => {
 });
 
 describe('NewBadge', () => {
-  it('carries the pulse class that globals.css turns off under reduced motion', () => {
+  it('is a still pill with no animation class', () => {
     render(<NewBadge />);
-    expect(screen.getByTestId('new-badge').className).toContain('ember-new-pulse');
+    const cls = screen.getByTestId('new-badge').className;
+    expect(cls).not.toContain('pulse');
+    expect(cls).not.toContain('animate');
   });
 });
 
 describe('reduced motion', () => {
-  it('globals.css switches both New animations off under prefers-reduced-motion', async () => {
+  it('globals.css switches the unread dot animation off under prefers-reduced-motion', async () => {
     const { readFileSync } = await import('node:fs');
     const { join } = await import('node:path');
     const css = readFileSync(join(process.cwd(), 'app/globals.css'), 'utf8');
     const blocks = [...css.matchAll(/@media \(prefers-reduced-motion: reduce\)\s*\{([^}]*)\}/g)].map((m) => m[1]);
-    const block = blocks.find((b) => b.includes('.ember-new-pulse'));
+    const block = blocks.find((b) => b.includes('.ember-new-dot'));
     expect(block).toBeDefined();
-    expect(block).toContain('.ember-new-dot');
     expect(block).toMatch(/animation:\s*none/);
   });
 });

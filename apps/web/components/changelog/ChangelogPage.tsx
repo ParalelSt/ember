@@ -1,5 +1,4 @@
-import { Button } from '@/components/ui/button';
-import { CheckIcon } from '@/components/icons';
+import Link from 'next/link';
 import { PageTitle } from '@/components/page/PageTitle';
 import { Eyebrow } from '@/components/page/Eyebrow';
 import type { ChangelogEntry } from '@/lib/changelog';
@@ -14,62 +13,51 @@ export interface ChangelogPageProps {
   hideTags: boolean;
   onHideTagsChange: (hide: boolean) => void;
   onMarkAllRead: () => void;
-  /** The user opened an entry (click, Enter or Space on its card). */
-  onOpenEntry?: (id: string) => void;
 }
 
-const SCOPE_LABEL: Record<NonNullable<ChangelogEntry['scope']>, string> = {
+export const SCOPE_LABEL: Record<NonNullable<ChangelogEntry['scope']>, string> = {
   desktop: 'Desktop app',
   android: 'Android app',
 };
 
-/** Presentational only: the full "What's new" page, shaped like the settings
- *  pages (PageTitle, then rounded-2xl bg-card cards as on Settings > Help).
- *  Mark all as read and the persistent switch sit in the header so they are
- *  reachable before the first card. */
-export function ChangelogPage({ entries, newIds, hideTags, onHideTagsChange, onMarkAllRead, onOpenEntry }: ChangelogPageProps) {
+export const entryHref = (id: string) => `/whats-new/${encodeURIComponent(id)}`;
+
+/** Presentational only: the "What's new" list. Compact cards (version and
+ *  date, title, one-line summary); each whole card links to its own page,
+ *  which marks the entry read. Mark all as read sits on the title row and
+ *  the persistent switch right under it. */
+export function ChangelogPage({ entries, newIds, hideTags, onHideTagsChange, onMarkAllRead }: ChangelogPageProps) {
   return (
     <div data-testid="changelog-page" className="max-w-2xl">
-      <PageTitle className="mb-2">What&apos;s new</PageTitle>
-      <p className="text-meta">Updates to Ember, newest first.</p>
-
-      <div className="mt-6 flex flex-col items-start gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <Button variant="outline" onClick={onMarkAllRead} disabled={newIds.size === 0}>
-          <CheckIcon className="h-4 w-4" />
+      <div className="flex items-baseline justify-between gap-block">
+        <PageTitle>What&apos;s new</PageTitle>
+        <button
+          type="button"
+          onClick={onMarkAllRead}
+          disabled={newIds.size === 0}
+          className="shrink-0 text-sm font-medium text-ember transition-opacity disabled:cursor-default disabled:opacity-40"
+        >
           Mark all as read
-        </Button>
-        <HideTagsSwitch checked={hideTags} onCheckedChange={onHideTagsChange} />
+        </button>
       </div>
+      <HideTagsSwitch checked={hideTags} onCheckedChange={onHideTagsChange} className="mt-row" />
 
-      <div className="mt-6 flex flex-col gap-6">
+      <div className="mt-stack flex flex-col gap-row">
         {entries.map((e) => (
-          <article
+          <Link
             key={e.id}
+            href={entryHref(e.id)}
             data-testid="changelog-entry"
             data-entry-id={e.id}
-            tabIndex={0}
-            onClick={() => onOpenEntry?.(e.id)}
-            onKeyDown={(ev) => {
-              if (ev.target === ev.currentTarget && (ev.key === 'Enter' || ev.key === ' ')) {
-                ev.preventDefault();
-                onOpenEntry?.(e.id);
-              }
-            }}
-            className="rounded-2xl bg-card p-6 shadow-soft"
+            className="block rounded-2xl bg-card p-block shadow-soft transition-colors hover:bg-card/80"
           >
-            <div className="flex items-center justify-between gap-3">
-              <Eyebrow>
-                {[e.version, e.date, e.scope && SCOPE_LABEL[e.scope]].filter(Boolean).join(' · ')}
-              </Eyebrow>
+            <div className="flex items-center justify-between gap-row">
+              <Eyebrow>{[e.version, e.date].join(' · ')}</Eyebrow>
               {newIds.has(e.id) && <NewBadge />}
             </div>
-            <div className="mt-2 font-semibold">{e.title}</div>
-            <ul className="mt-2 flex list-disc flex-col gap-1 pl-4 text-sm text-muted-foreground marker:text-muted-foreground/50">
-              {e.bullets.map((b) => (
-                <li key={b}>{b}</li>
-              ))}
-            </ul>
-          </article>
+            <div className="mt-inset truncate font-semibold">{e.title}</div>
+            <p className="truncate text-sm text-muted-foreground">{e.summary}</p>
+          </Link>
         ))}
       </div>
     </div>

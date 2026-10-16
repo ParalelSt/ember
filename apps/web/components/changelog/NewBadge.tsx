@@ -1,15 +1,13 @@
 import { cn } from '@/lib/utils';
 
-/** Presentational only: the pulsing "New" pill on an unread "What's new"
- *  entry point. The motion lives in the .ember-new-pulse class in
- *  globals.css, whose prefers-reduced-motion block switches it off, so a
- *  reduced-motion user sees the same static pill with no JS check here. */
+/** Presentational only: the calm, still "New" pill on an unread "What's new"
+ *  entry point. No animation. */
 export function NewBadge({ className }: { className?: string }) {
   return (
     <span
       data-testid="new-badge"
       className={cn(
-        'ember-new-pulse inline-flex shrink-0 items-center rounded-full bg-ember px-1.5 py-0.5 text-[10px] font-bold uppercase leading-none tracking-wider text-ember-foreground',
+        'inline-flex shrink-0 items-center rounded-full bg-ember px-1.5 py-0.5 text-[10px] font-bold uppercase leading-none tracking-wider text-ember-foreground',
         className,
       )}
     >

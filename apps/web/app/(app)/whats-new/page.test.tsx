@@ -1,5 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { act, fireEvent, render, screen, within } from '@testing-library/react';
+import type { ComponentProps } from 'react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
+
+vi.mock('next/link', () => ({
+  default: ({ href, children, ...rest }: ComponentProps<'a'>) => <a href={href} {...rest}>{children}</a>,
+}));
 
 // The real page, hook and store; only the network is faked.
 const updateChangelog = vi.fn();
@@ -11,6 +16,7 @@ vi.mock('@/lib/api', () => ({
 }));
 
 const { default: WhatsNewPage } = await import('./page');
+const { default: WhatsNewEntryPage } = await import('./[id]/page');
 const { useChangelogStore } = await import('@/stores/useChangelogStore');
 const { APP_VERSION, CHANGELOG } = await import('@/lib/changelog');
 
@@ -66,25 +72,31 @@ describe('What\'s new page', () => {
     expect(screen.queryAllByTestId('new-badge')).toHaveLength(0);
   });
 
-  it('opening an entry removes its New pill at once, persists it, and leaves the others', async () => {
+  it('the list only links to entries and never marks one read', () => {
     render(<WhatsNewPage />);
-    const total = screen.getAllByTestId('new-badge').length;
     const first = screen.getAllByTestId('changelog-entry')[0];
+    expect(first).toHaveAttribute('href', `/whats-new/${CHANGELOG[0].id}`);
+    fireEvent.click(first);
+    expect(updateChangelog).not.toHaveBeenCalled();
+  });
+});
+
+describe('What\'s new entry page', () => {
+  it('opening an entry marks it read and persists it', async () => {
     await act(async () => {
-      fireEvent.click(first);
+      render(<WhatsNewEntryPage params={Promise.resolve({ id: CHANGELOG[0].id })} />);
     });
-    expect(within(first).queryByTestId('new-badge')).toBeNull();
-    expect(screen.getAllByTestId('new-badge')).toHaveLength(total - 1);
+    expect(screen.getByRole('heading', { level: 1, name: CHANGELOG[0].title })).toBeInTheDocument();
     expect(updateChangelog).toHaveBeenCalledWith({ readIds: [CHANGELOG[0].id] });
+    expect(useChangelogStore.getState().readIds).toContain(CHANGELOG[0].id);
     expect(useChangelogStore.getState().seenVersion).toBe('0.0.1');
   });
 
-  it('Enter on a focused entry opens it too', async () => {
-    render(<WhatsNewPage />);
-    const first = screen.getAllByTestId('changelog-entry')[0];
+  it('an unknown id shows the empty state and marks nothing', async () => {
     await act(async () => {
-      fireEvent.keyDown(first, { key: 'Enter' });
+      render(<WhatsNewEntryPage params={Promise.resolve({ id: 'nope' })} />);
     });
-    expect(within(first).queryByTestId('new-badge')).toBeNull();
+    expect(screen.getByTestId('changelog-missing')).toBeInTheDocument();
+    expect(updateChangelog).not.toHaveBeenCalled();
   });
 });
