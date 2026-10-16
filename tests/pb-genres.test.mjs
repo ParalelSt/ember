@@ -7,7 +7,9 @@
  *  migrations, a temp data dir) on PB_PORT (default 8097). Checks:
  *   - artist_genres exists with a unique artist_key, and is admin only: a
  *     member can neither list, view nor write it
- *   - a second boot leaves it alone (the hook is idempotent) */
+ *   - mixes exists, unique per (user, key); a member lists and views only
+ *     their own rows and cannot write any; deleting a member deletes theirs
+ *   - a second boot leaves both alone (the hooks are idempotent) */
 import { spawn, spawnSync } from 'node:child_process';
 import { existsSync, mkdtempSync, mkdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -118,6 +120,31 @@ try {
       const view = await j('GET', `/api/collections/artist_genres/records/${rowId}`, m.token);
       check('a member cannot view a row', view.status === 403 || view.status === 404, String(view.status));
     }
+
+    // ── mixes ──
+    const mixes = await (await j('GET', '/api/collections/mixes', su)).json();
+    check('mixes exists', mixes?.name === 'mixes');
+    check('mixes: writes are admin only', [mixes.createRule, mixes.updateRule, mixes.deleteRule].every((r) => r === null));
+    check('mixes is unique per member and key', (mixes.indexes ?? []).some((x) => /UNIQUE INDEX .*\(user, key\)/.test(x)));
+    const other = await member(su, 'other');
+    const mk = (user, key) => j('POST', '/api/collections/mixes/records', su,
+      { user, key, title: key, position: 0, tracks: [{ id: 'youtube:aaaaaaaaaaa', title: 'A' }], cover: { artworkUrls: [], color: '#ffffff' }, built_at: '2026-10-16T04:00:00.000Z' });
+    const mine = await (await mk(m.id, 'pop')).json();
+    const theirs = await (await mk(other.id, 'balkan')).json();
+    check('a second mix with the same member and key is refused', !(await mk(m.id, 'pop')).ok);
+    const listed = await (await j('GET', '/api/collections/mixes/records', m.token)).json();
+    check('a member lists only their own mixes', listed.items?.length === 1 && listed.items[0].key === 'pop', JSON.stringify(listed.items?.map((x) => x.key)));
+    const peek = await j('GET', `/api/collections/mixes/records/${theirs.id}`, m.token);
+    check("a member cannot view another member's mix", peek.status === 404 || peek.status === 403, String(peek.status));
+    const own = await j('GET', `/api/collections/mixes/records/${mine.id}`, m.token);
+    check('a member can view their own mix', own.ok);
+    const edit = await j('PATCH', `/api/collections/mixes/records/${mine.id}`, m.token, { title: 'x' });
+    check('a member cannot edit even their own mix', !edit.ok, String(edit.status));
+    const forge = await j('POST', '/api/collections/mixes/records', m.token, { user: m.id, key: 'jazz-blues' });
+    check('a member cannot create a mix', !forge.ok, String(forge.status));
+    await j('DELETE', `/api/collections/users/records/${other.id}`, su);
+    const gone = await j('GET', `/api/collections/mixes/records/${theirs.id}`, su);
+    check("deleting a member deletes their mixes", gone.status === 404, String(gone.status));
   });
   check('PocketBase boots with the genre hooks', boot1.up, boot1.up ? '' : boot1.log.slice(-400));
   const boot2 = await boot(dir);

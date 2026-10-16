@@ -130,11 +130,8 @@ export function createTagger(deps: TaggerDeps) {
     return p;
   }
 
-  /** Every given artist's row, looking up at most `maxLookups` of the
-   *  missing or expired ones (in the order given: pass the most important
-   *  first; the rest wait for the next run). Lookups run one after another;
-   *  the sources pace themselves. */
-  async function ensureTags(refs: readonly ArtistRef[], { maxLookups = Infinity }: { maxLookups?: number } = {}): Promise<Map<string, ArtistGenre>> {
+  /** ensureTags, also saying how many lookups it made. */
+  async function ensureTagsCounted(refs: readonly ArtistRef[], { maxLookups = Infinity }: { maxLookups?: number } = {}): Promise<{ rows: Map<string, ArtistGenre>; lookups: number }> {
     const unique = new Map<string, ArtistRef>();
     for (const r of refs) {
       const key = artistKey(r.name);
@@ -142,17 +139,25 @@ export function createTagger(deps: TaggerDeps) {
     }
     const rows = await deps.store.getMany([...unique.keys()]);
     const canLookUp = !!(deps.lastfm || deps.musicbrainz);
-    if (!canLookUp) return rows;
-    let budget = maxLookups;
+    let lookups = 0;
+    if (!canLookUp) return { rows, lookups };
     for (const [key, ref] of unique) {
-      if (budget <= 0) break;
+      if (lookups >= maxLookups) break;
       const row = rows.get(key);
       if (!needsLookup(row, now())) continue;
-      budget--;
+      lookups++;
       const got = await lookupOnce(ref, key, row);
       if (got) rows.set(key, got);
     }
-    return rows;
+    return { rows, lookups };
+  }
+
+  /** Every given artist's row, looking up at most `maxLookups` of the
+   *  missing or expired ones (in the order given: pass the most important
+   *  first; the rest wait for the next run). Lookups run one after another;
+   *  the sources pace themselves. */
+  async function ensureTags(refs: readonly ArtistRef[], opts: { maxLookups?: number } = {}): Promise<Map<string, ArtistGenre>> {
+    return (await ensureTagsCounted(refs, opts)).rows;
   }
 
   /** Genre chart artists as weak priors: an artist in the Rock chart is
@@ -184,7 +189,7 @@ export function createTagger(deps: TaggerDeps) {
     return written;
   }
 
-  return { ensureTags, applyChartPriors };
+  return { ensureTags, ensureTagsCounted, applyChartPriors };
 }
 
 export type Tagger = ReturnType<typeof createTagger>;
