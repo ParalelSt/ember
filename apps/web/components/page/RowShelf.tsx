@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { SectionHeader } from '@/components/page/SectionHeader';
 import { ChevronLeftIcon, ChevronRightIcon } from '@/components/icons';
 import { rowEnds, rowStep } from '@/lib/home';
+import { useDragScroll } from '@/hooks/useDragScroll';
 import { cn } from '@/lib/utils';
 
 /** How many tiles a phone row holds; past that "Show all" is the way on. */
@@ -27,7 +28,8 @@ export const WIDE_TILE_CLASS = 'w-[180px] shrink-0';
 
 /** The desktop row: it starts and ends on the content area's edges (the
  *  page gutter), scrolls sideways with no bar showing, and is moved by the
- *  header's arrows or a trackpad. */
+ *  header's arrows, a trackpad or a mouse drag. Every desktop row, whatever
+ *  it holds, uses WIDE_TILE_CLASS tiles and this one gap. */
 export const WIDE_SCROLL_CLASS = 'flex gap-block overflow-x-auto overscroll-x-contain scrollbar-none';
 
 export interface RowHeaderProps {
@@ -123,6 +125,8 @@ function WideRowShelf({ title, showAllHref, tiles, className }: { title: string;
   const rowRef = useRef<HTMLDivElement>(null);
   const [ends, setEnds] = useState({ canLeft: false, canRight: false });
   const count = tiles.length;
+  // Mouse drag scrolls the row; the click that ends a drag opens nothing.
+  useDragScroll(rowRef);
   useEffect(() => {
     const el = rowRef.current;
     if (!el) return;
