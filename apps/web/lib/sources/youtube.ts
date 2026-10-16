@@ -522,6 +522,61 @@ export function parseTrendingChart(raw: RawTrendingChart | RawYoutubeTrack[] | n
   return { title: chart.title ?? null, source: chart.source ?? 'ytmusicapi', countries: chart.countries ?? [], tracks };
 }
 
+/** One chart of `player.py genre-charts`. */
+export interface GenreChartFetch {
+  slug: string;
+  title: string;
+  playlistId: string | null;
+  tracks: Track[];
+}
+
+interface RawGenreCharts {
+  charts?: { slug?: string; title?: string; playlistId?: string | null; tracks?: RawYoutubeTrack[] }[];
+  failed?: string[];
+}
+
+/** Player output to charts: bad entries dropped, tracks deduped in rank
+ *  order, a chart without a playable song left out. */
+export function parseGenreCharts(raw: RawGenreCharts | null | undefined): { charts: GenreChartFetch[]; failed: string[] } {
+  const charts: GenreChartFetch[] = [];
+  for (const c of raw?.charts ?? []) {
+    if (!c || typeof c.slug !== 'string' || !/^[a-z0-9-]{1,40}$/.test(c.slug)) continue;
+    const tracks = dedupeByVideoId((c.tracks ?? []).filter((t) => t && VIDEO_ID_RE.test(t.videoId ?? ''))).map(normalize);
+    if (tracks.length === 0) continue;
+    charts.push({ slug: c.slug, title: String(c.title ?? c.slug), playlistId: c.playlistId ?? null, tracks });
+  }
+  const failed = Array.isArray(raw?.failed) ? raw.failed.filter((s): s is string => typeof s === 'string') : [];
+  return { charts, failed };
+}
+
+/** Every genre chart plus the Balkan one, in one paced player run (about
+ *  11 YouTube calls, 3 s apart), on the bulk lane. Throws when every chart
+ *  failed; lib/charts.ts caches the result. */
+export async function fetchGenreCharts(): Promise<{ charts: GenreChartFetch[]; failed: string[] }> {
+  const raw = await runPython<RawGenreCharts>(['genre-charts'], { timeoutMs: 180_000, lane: 'bulk' });
+  return parseGenreCharts(raw);
+}
+
+/** The radio of several seeds in one paced player run, on the bulk lane:
+ *  `{ radios: [{ seed, tracks }], failed }`. Invalid seeds are never sent.
+ *  Throws when every seed failed. */
+export async function fetchRadioBatch(seeds: string[], limit = 30): Promise<{ radios: { seed: string; tracks: Track[] }[]; failed: string[] }> {
+  const valid = [...new Set(seeds.filter((s) => VIDEO_ID_RE.test(s)))];
+  if (valid.length === 0) return { radios: [], failed: [] };
+  // `--seeds=<list>` so a hyphen-leading id is not read as an option.
+  const raw = await runPython<{ radios?: { seed?: string; tracks?: RawYoutubeTrack[] }[]; failed?: string[] }>(
+    ['radio-batch', `--seeds=${valid.join(',')}`, '--limit', String(limit)],
+    { timeoutMs: 30_000 + valid.length * 15_000, lane: 'bulk' },
+  );
+  const radios = (raw?.radios ?? [])
+    .filter((r) => r && typeof r.seed === 'string')
+    .map((r) => ({
+      seed: r.seed as string,
+      tracks: dedupeByVideoId((r.tracks ?? []).filter((t) => t && VIDEO_ID_RE.test(t.videoId ?? ''))).map(normalize),
+    }));
+  return { radios, failed: Array.isArray(raw?.failed) ? raw.failed.filter((s): s is string => typeof s === 'string') : [] };
+}
+
 interface RecommendedArgs {
   seed?: string;
   country?: string;

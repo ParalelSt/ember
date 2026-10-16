@@ -26,6 +26,8 @@ export const QK = {
   playlists: ['playlists'] as const,
   playlist: (id: string) => ['playlist', id] as const,
   trending: ['trending'] as const,
+  charts: ['charts'] as const,
+  chart: (slug: string) => ['chart', slug] as const,
   recommended: (seed: string | undefined) => ['recommended', seed ?? null] as const,
   artist: (id: string) => ['artist', id] as const,
   album: (id: string) => ['album', id] as const,
@@ -184,6 +186,27 @@ export function useQueryTrending() {
   return useQuery({
     queryKey: QK.trending,
     queryFn: () => api.getTrending().then((r) => r.tracks),
+    staleTime: 5 * 60_000,
+  });
+}
+
+/** The chart tiles for Home: Popular now and the genre charts. */
+export function useQueryCharts() {
+  const { user } = useAuth();
+  return useQuery({
+    queryKey: QK.charts,
+    queryFn: () => api.getCharts(),
+    enabled: !!user,
+    staleTime: 5 * 60_000,
+  });
+}
+
+/** One chart's songs (`popular` or a genre chart slug). */
+export function useQueryChart(slug: string) {
+  return useQuery({
+    queryKey: QK.chart(slug),
+    queryFn: () => api.getChart(slug),
+    enabled: !!slug,
     staleTime: 5 * 60_000,
   });
 }
