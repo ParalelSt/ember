@@ -1,7 +1,8 @@
 'use client';
 
-import { useEffect, type ReactNode } from 'react';
+import { useLayoutEffect, type ReactNode } from 'react';
 import Link from 'next/link';
+import AdminUsersPage from '@/app/(app)/admin/users/page';
 import { useRouter } from 'next/navigation';
 import { useIsDesktop } from '@/hooks/useIsDesktop';
 import {
@@ -13,16 +14,17 @@ import {
 } from '@/hooks/useAdmin';
 import { ADMIN_SECTIONS, type AdminSectionId } from './sections';
 
-/** /admin. Desktop opens Users with the tabs, as it always has. A phone
+/** /admin. Desktop redirects to Users before paint. A phone
  *  gets a two-column grid of section tiles, each with its count where one
  *  is known; a tile opens its section full screen. */
 export function AdminHome() {
   const isDesktop = useIsDesktop();
   const router = useRouter();
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (isDesktop) router.replace('/admin/users');
   }, [isDesktop, router]);
-  if (isDesktop) return null;
+  // Keep the destination visible while the client navigation completes.
+  if (isDesktop) return <AdminUsersPage />;
   return <AdminTiles />;
 }
 

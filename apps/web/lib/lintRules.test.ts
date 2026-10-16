@@ -174,7 +174,6 @@ const SPACING_BASELINE: Record<string, number> = {
   'components/FriendsListening.tsx': 5,
   'components/OfflinePlaceholder.tsx': 3,
   'components/RequestDialog.tsx': 4,
-  'components/admin/AdminTabs.tsx': 3,
   'components/artist/AlbumCard.tsx': 3,
   'components/artist/AlbumRow.tsx': 3,
   'components/changelog/HideTagsSwitch.tsx': 1,

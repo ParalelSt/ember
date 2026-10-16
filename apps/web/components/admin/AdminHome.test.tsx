@@ -19,6 +19,7 @@ vi.mock('@/hooks/useAdmin', () => ({
   useQueryAdminNativeLog: () => ({ data: state.car }),
 }));
 
+vi.mock('@/app/(app)/admin/users/page', () => ({ default: () => <div>Users content</div> }));
 const { AdminHome } = await import('./AdminHome');
 
 beforeEach(() => {
@@ -63,6 +64,7 @@ describe('AdminHome on desktop', () => {
     state.desktop = true;
     render(<AdminHome />);
     expect(state.replace).toHaveBeenCalledWith('/admin/users');
+    expect(screen.getByText('Users content')).toBeInTheDocument();
     expect(screen.queryByRole('list', { name: 'Admin sections' })).toBeNull();
   });
 });

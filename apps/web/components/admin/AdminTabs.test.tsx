@@ -4,27 +4,29 @@ import { render, screen } from '@testing-library/react';
 
 vi.mock('next/link', () => ({ default: ({ children, ...rest }: ComponentProps<'a'>) => <a {...rest}>{children}</a> }));
 vi.mock('next/navigation', () => ({ usePathname: () => '/admin/users' }));
+vi.mock('@/hooks/useIsDesktop', () => ({ useIsDesktop: () => true }));
+vi.mock('@/hooks/useAdmin', () => ({
+  useQueryAdminUsers: () => ({ data: [{}, {}] }),
+  useQueryAdminInvites: () => ({ data: [] }),
+  useQueryAdminTracks: () => ({ data: { totalItems: 42 } }),
+  useQueryAdminBackups: () => ({ data: { backups: [] } }),
+  useQueryAdminNativeLog: () => ({ data: undefined }),
+}));
 const { AdminTabs } = await import('./AdminTabs');
 
-// Bughunt V8: at md the app sidebar already takes 240px, and a side nav of
-// its own left the page ~230px. It is the row across the top until lg.
-describe('AdminTabs', () => {
-  it('is the row across the top until lg, the side column from lg', () => {
-    const { container } = render(<AdminTabs />);
-    const nav = container.querySelector('nav')!;
-    expect(nav).toHaveClass('lg:w-48');
-    expect(nav).not.toHaveClass('md:w-48');
-    expect(nav.querySelector('ul')).toHaveClass('flex', 'lg:flex-col', 'overflow-x-auto', 'lg:overflow-visible');
-  });
-
-  // Phones get the section tiles and a back arrow instead (AdminHome,
-  // AdminHeader); md and up keep exactly these tabs.
-  it('is hidden on a phone and shown from md up, with every section', () => {
+describe('Admin desktop subnav', () => {
+  it('is vertical from md and links every section with icons and known counts', () => {
     const { container } = render(<AdminTabs />);
     expect(container.querySelector('nav')).toHaveClass('hidden', 'md:block');
-    expect(screen.getAllByRole('link').map((a) => a.textContent)).toEqual([
-      'Users', 'Invites', 'Tracks', 'Pranks', 'Backups', 'Car and Android Auto',
+    expect(container.querySelector('ul')).toHaveClass('flex-col');
+    const links = screen.getAllByRole('link');
+    expect(links.map(a => a.getAttribute('href'))).toEqual([
+      '/admin/users', '/admin/invites', '/admin/tracks', '/admin/pranks', '/admin/backups', '/admin/car',
     ]);
-    expect(screen.getByRole('link', { name: 'Users' })).toHaveClass('bg-card', 'text-foreground');
+    expect(links.every(a => a.querySelector('svg'))).toBe(true);
+    expect(links[0]).toHaveTextContent('Users2');
+    expect(links[0]).toHaveAttribute('aria-current', 'page');
+    expect(links[2]).toHaveTextContent('Tracks42');
+    expect(links[5]).toHaveTextContent('Car and Android Auto');
   });
 });
