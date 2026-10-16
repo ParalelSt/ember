@@ -158,15 +158,6 @@ const SHARED = Symbol.for('ember.chartsCache');
 type ChartsCache = ReturnType<typeof createChartsCache>;
 type ChartsGlobal = typeof globalThis & { [SHARED]?: ChartsCache };
 
-/** Listeners for each good chart run (the genre tagger registers one). */
-const LISTENERS = Symbol.for('ember.chartsListeners');
-type ListenerGlobal = typeof globalThis & { [LISTENERS]?: Set<(charts: ChartEntry[]) => void | Promise<void>> };
-
-export function onChartsRefresh(fn: (charts: ChartEntry[]) => void | Promise<void>): void {
-  const g = globalThis as ListenerGlobal;
-  (g[LISTENERS] ??= new Set()).add(fn);
-}
-
 /** The server's charts cache (one per process, survives hot reloads). */
 export function chartsCache(): ChartsCache {
   const g = globalThis as ChartsGlobal;
@@ -174,13 +165,14 @@ export function chartsCache(): ChartsCache {
     fetchCharts: fetchGenreCharts,
     cacheFile: path.join(MUSIC_DIR, 'charts.json'),
     warn: (message, detail) => serverLogger.warn('charts', message, detail),
+    // Chart artists become weak genre priors (lib/genres/tagger.ts).
     onRefresh: async (charts) => {
-      for (const fn of (globalThis as ListenerGlobal)[LISTENERS] ?? []) {
-        try {
-          await fn(charts);
-        } catch (e) {
-          serverLogger.warn('charts', 'a refresh listener failed', { reason: e instanceof Error ? e.message : String(e) });
-        }
+      try {
+        const { genreTagger } = await import('@/lib/genres/instance');
+        const written = await genreTagger().applyChartPriors(charts);
+        if (written) serverLogger.info('charts', 'chart artists added as genre priors', { written });
+      } catch (e) {
+        serverLogger.warn('charts', 'could not add chart artists as genre priors', { reason: e instanceof Error ? e.message : String(e) });
       }
     },
   });
